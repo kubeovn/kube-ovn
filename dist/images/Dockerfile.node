@@ -9,7 +9,7 @@ RUN yum install -y  \
         firewalld-filesystem \
         libpcap \
         hostname \
-        iproute strace socat \
+        iproute strace socat nc \
         unbound unbound-devel && \
         yum clean all
 
@@ -19,11 +19,12 @@ RUN rpm -i https://github.com/oilbeater/ovs/releases/download/v2.10.1/openvswitc
     rpm -i https://github.com/oilbeater/ovs/releases/download/v2.10.1/openvswitch-ovn-vtep-2.10.1-1.el7.centos.x86_64.rpm && \
     rpm -i https://github.com/oilbeater/ovs/releases/download/v2.10.1/openvswitch-ovn-central-2.10.1-1.el7.centos.x86_64.rpm && \
     rpm -i https://github.com/oilbeater/ovs/releases/download/v2.10.1/openvswitch-ovn-host-2.10.1-1.el7.centos.x86_64.rpm
+
 RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /etc/cni/net.d && \
     mkdir -p /opt/cni/bin
-RUN curl -L https://github.com/oilbeater/ovs/releases/download/v2.10.1/openvswitch-kmod-2.10.1-1.el7.centos.x86_64.rpm -o /root/kmod.rpm
 
 COPY start-ovs.sh /root/start-ovs.sh
+COPY start-ovn.sh /root/start-ovn.sh
 
 CMD ["/bin/bash", "/root/start-ovs.sh"]

@@ -24,11 +24,16 @@ spec:
       hostPID: true
       containers:
       - name: openvswitch
-        # This is the community build
-        image: "docker.io/ovnkube/ovn-daemonset:latest"
+        image: "index.alauda.cn/alaudak8s/kube-ovn-node:dev"
+        imagePullPolicy: Always
         securityContext:
           runAsUser: 0
           privileged: true
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
         volumeMounts:
         - mountPath: /lib/modules
           name: host-modules
@@ -42,6 +47,8 @@ spec:
           readOnly: true
         - mountPath: /etc/openvswitch
           name: host-config-openvswitch
+        - mountPath: /var/log/openvswitch
+          name: host-log
         resources:
           requests:
             cpu: 100m
@@ -64,4 +71,7 @@ spec:
       - name: host-config-openvswitch
         hostPath:
           path: /etc/origin/openvswitch
+      - name: host-log
+        hostPath:
+          path: /var/log/openvswitch
 
