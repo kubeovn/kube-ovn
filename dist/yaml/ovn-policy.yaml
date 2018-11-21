@@ -1,15 +1,3 @@
-# ovn-policy.yaml
-#
-# Setup for Kubernetes to support the ovn-kubernetes plugin
-#
-# Create the service account and policies.
-# ovnkube interacts with kubernetes and the environment
-# must be properly set up.
-# 
-# This provisioning is done as part of installation after the cluster is
-# up and before the ovn daemonsets are created.
-
----
 apiVersion: v1
 kind: ServiceAccount
 metadata:
