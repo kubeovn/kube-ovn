@@ -1,0 +1,5 @@
+FROM centos:7
+COPY kube-ovn-controller /kube-ovn/kube-ovn-controller
+COPY start-controller.sh /kube-ovn/start-controller.sh
+WORKDIR /kube-ovn
+CMD ["sh", "start-controller.sh"]

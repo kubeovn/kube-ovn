@@ -1,0 +1,18 @@
+ovs:
+  build: ovs
+  ports:
+    - "6640:6640"
+    - "6641:6641"
+    - "6642:6642"
+  privileged: true
+
+test:
+  build: golang-dev
+  links:
+    - ovs
+  volumes: 
+    - .:/go/src/github.com/oilbeater/libovsdb
+  working_dir: /go/src/github.com/oilbeater/libovsdb
+  environment:
+    DOCKER_IP: "ovs"
+  command: "make test-local"
