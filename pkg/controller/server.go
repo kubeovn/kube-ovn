@@ -1,18 +1,24 @@
 package controller
 
 import (
+	"fmt"
 	"github.com/emicklei/go-restful"
-	"log"
+	"k8s.io/klog"
 	"net/http"
+	"time"
 )
+
+var RequestLogString = "[%s] Incoming %s %s %s request from %s"
+var ResponseLogString = "[%s] Outcoming response to %s %s %s with %d status code in %vms"
 
 func RunServer(config *Configuration) {
 	oh, err := CreateOvnHandler(config)
 	if err != nil {
-		log.Fatal(err)
+		klog.Fatalf("create ovn handler failed %v", err)
 		return
 	}
-	log.Fatal(http.ListenAndServe(config.BindAddress, CreateHandler(oh)))
+	klog.Infof("start listen on %s:%d", config.BindAddress)
+	klog.Fatal(http.ListenAndServe(config.BindAddress, CreateHandler(oh)))
 }
 
 func CreateHandler(oh *OvnHandler) http.Handler {
@@ -61,5 +67,38 @@ func CreateHandler(oh *OvnHandler) http.Handler {
 		ws.DELETE("/ports/{name}").
 			To(oh.handleDeletePort))
 
+	ws.Filter(requestAndResponseLogger)
+
 	return wsContainer
+}
+
+// web-service filter function used for request and response logging.
+func requestAndResponseLogger(request *restful.Request, response *restful.Response,
+	chain *restful.FilterChain) {
+	klog.Infof(formatRequestLog(request))
+	start := time.Now()
+	chain.ProcessFilter(request, response)
+	elapsed := float64((time.Since(start)) / time.Millisecond)
+	klog.Infof(formatResponseLog(response, request, elapsed))
+}
+
+// formatRequestLog formats request log string.
+func formatRequestLog(request *restful.Request) string {
+	uri := ""
+	if request.Request.URL != nil {
+		uri = request.Request.URL.RequestURI()
+	}
+
+	return fmt.Sprintf(RequestLogString, time.Now().Format(time.RFC3339), request.Request.Proto,
+		request.Request.Method, uri, request.Request.RemoteAddr)
+}
+
+// formatResponseLog formats response log string.
+func formatResponseLog(response *restful.Response, request *restful.Request, reqTime float64) string {
+	uri := ""
+	if request.Request.URL != nil {
+		uri = request.Request.URL.RequestURI()
+	}
+	return fmt.Sprintf(ResponseLogString, time.Now().Format(time.RFC3339),
+		request.Request.RemoteAddr, request.Request.Method, uri, response.StatusCode(), reqTime)
 }

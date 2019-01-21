@@ -6,8 +6,10 @@ import (
 	"github.com/emicklei/go-restful"
 	"github.com/fatih/structs"
 	"github.com/oilbeater/libovsdb"
+	"k8s.io/klog"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type OvnHandler struct {
@@ -24,7 +26,7 @@ func CreateOvnHandler(config *Configuration) (*OvnHandler, error) {
 			return nil, err
 		}
 	} else {
-		ovs, err = libovsdb.Connect(config.OvnNbHost.String(), config.OvnNbPort)
+		ovs, err = libovsdb.Connect(config.OvnNbHost, config.OvnNbPort)
 		if err != nil {
 			return nil, err
 		}
@@ -131,6 +133,7 @@ func (oh *OvnHandler) handleCreatePort(request *restful.Request, response *restf
 		response.WriteHeaderAndEntity(http.StatusBadRequest, err)
 		return
 	}
+	klog.Infof("create port request %v", payload)
 
 	// TODO: if port exists return old one
 	port := make(map[string]interface{})
@@ -156,12 +159,58 @@ func (oh *OvnHandler) handleCreatePort(request *restful.Request, response *restf
 		Mutations: []interface{}{mutation},
 		Where:     []interface{}{condition},
 	}
+
 	//TODO: should check reply error
-	_, err = oh.OvsClient.Transact("OVN_Northbound", insertOp, mutateOp)
+	res, err := oh.OvsClient.Transact("OVN_Northbound", insertOp, mutateOp)
 	if err != nil {
 		response.WriteHeaderAndEntity(http.StatusInternalServerError, err)
 		return
 	}
+	klog.Infof("insert raw data from ovn-nb %v", res)
+	time.Sleep(3 * time.Second)
+	condition = libovsdb.NewCondition("name", "==", payload.Name)
+	selectOp := libovsdb.Operation{
+		Op:    "select",
+		Table: "Logical_Switch_Port",
+		Where: []interface{}{condition},
+	}
+	res, err = oh.OvsClient.Transact("OVN_Northbound", selectOp)
+	if err != nil {
+		klog.Errorf("select transaction failed %v", err)
+		response.WriteHeaderAndEntity(http.StatusInternalServerError, err)
+		return
+	}
+	klog.Infof("ovn return data %v", res)
+	if res[0].Error != "" {
+		klog.Errorf("insert into ovn-nb failed %v", res[0].Error)
+		response.WriteHeaderAndEntity(http.StatusInternalServerError, err)
+		return
+	}
+	rows := res[0].Rows
+	if len(rows) != 1 {
+		klog.Errorf("crated port not found")
+		response.WriteHeaderAndEntity(http.StatusInternalServerError, err)
+		return
+	}
+
+	lsp := libovsdb.LogicalSwitchPort{}
+	klog.Infof("returned port row %v", rows[0])
+	bs, _ := json.Marshal(rows[0])
+	err = json.Unmarshal(bs, &lsp)
+	if err != nil {
+		klog.Errorf("json unmarshal failed %v", err)
+		response.WriteHeaderAndEntity(http.StatusInternalServerError, err)
+		return
+	}
+
+	fil := AddPortResponse{
+		IpAddress:  strings.Split(lsp.DynamicAddresses, " ")[1],
+		MacAddress: strings.Split(lsp.DynamicAddresses, " ")[0],
+		CIDR:       "10.16.0.0/16",
+		Gateway:    "10.16.0.1",
+	}
+
+	response.WriteHeaderAndEntity(http.StatusOK, fil)
 	return
 }
 
@@ -218,4 +267,12 @@ func (oh *OvnHandler) handleDeletePort(request *restful.Request, response *restf
 	}
 	response.WriteHeader(http.StatusNoContent)
 	return
+}
+
+type AddPortResponse struct {
+	ID         string
+	IpAddress  string
+	MacAddress string
+	CIDR       string
+	Gateway    string
 }

@@ -3,22 +3,22 @@ package controller
 import (
 	"flag"
 	"github.com/spf13/pflag"
-	"net"
 )
 
 type Configuration struct {
 	BindAddress    string
 	OvnNbSocket    string
-	OvnNbHost      net.IP
+	OvnNbHost      string
 	OvnNbPort      int
 	KubeConfigFile string
 }
 
+// TODO: validate configuration
 func ParseFlags() (*Configuration, error) {
 	var (
 		argBindAddress    = pflag.String("bind-address", "0.0.0.0:9090", "The address controller bind to.")
 		argOvnNbSocket    = pflag.String("ovn-nb-socket", "", "The ovn-nb socket file. (If not set use ovn-nb-address)")
-		argOvnNbHost      = pflag.IP("ovn-nb-host", net.IPv4(0, 0, 0, 0), "The ovn-nb host address. (If not set use ovn-nb-socket)")
+		argOvnNbHost      = pflag.String("ovn-nb-host", "0.0.0.0", "The ovn-nb host address. (If not set use ovn-nb-socket)")
 		argOvnNbPort      = pflag.Int("ovn-nb-port", 6641, "")
 		argKubeConfigFile = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 	)
