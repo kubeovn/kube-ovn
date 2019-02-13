@@ -3,26 +3,21 @@ package daemon
 import (
 	"bitbucket.org/mathildetech/kube-ovn/pkg/request"
 	"github.com/emicklei/go-restful"
-	"github.com/oilbeater/libovsdb"
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type CniServerHandler struct {
-	ControllerClient request.ControllerClient
-	OvsClient        *libovsdb.OvsdbClient
+	KubeClient kubernetes.Interface
 }
 
 func createCniServerHandler(config *Configuration) (*CniServerHandler, error) {
-	cc := request.NewControllerClient(config.ControllerAddress)
-	ovs, err := libovsdb.ConnectWithUnixSocket(config.OvsSocket)
-	if err != nil {
-		return nil, err
-	}
 	return &CniServerHandler{
-		ControllerClient: cc,
-		OvsClient:        ovs,
+		KubeClient: config.KubeClient,
 	}, nil
 }
 
@@ -35,22 +30,35 @@ func (csh CniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		return
 	}
 	klog.Infof("add port request %v", podRequest)
-	res, err := csh.ControllerClient.AddPort(podRequest.PodName, podRequest.PodNamespace)
-	if err != nil {
-		klog.Errorf("add port request to controller failed %v", err)
-		resp.WriteHeaderAndEntity(http.StatusInternalServerError, err)
-		return
-	}
-	// TODO
-	cidr := strings.Split(res.CIDR, "/")[1]
+	var macAddr, ipAddr, cidr, gw string
+	for i := 0; i < 10; i++ {
+		pod, err := csh.KubeClient.CoreV1().Pods(podRequest.PodNamespace).Get(podRequest.PodName, v1.GetOptions{})
+		if err != nil {
+			klog.Errorf("get pod %s/%s failed %v", podRequest.PodNamespace, podRequest.PodName, err)
+			resp.WriteHeaderAndEntity(http.StatusInternalServerError, err)
+			return
+		}
+		macAddr = pod.GetAnnotations()["ovn.kubernetes.io/mac_address"]
+		ipAddr = pod.GetAnnotations()["ovn.kubernetes.io/ip_address"]
+		cidr = pod.GetAnnotations()["ovn.kubernetes.io/cidr"]
+		gw = pod.GetAnnotations()["ovn.kubernetes.io/gateway"]
 
-	err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.NetNs, podRequest.ContainerID, res.MacAddress, res.IpAddress+"/"+cidr)
+		if macAddr == "" || ipAddr == "" || cidr == "" || gw == "" {
+			// wait controller assign an address
+			time.Sleep(2 * time.Second)
+			continue
+		}
+		break
+	}
+
+	klog.Infof("create container mac %s, ip %s, cidr %s, gw %s", macAddr, ipAddr, cidr, gw)
+	err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.NetNs, podRequest.ContainerID, macAddr, ipAddr)
 	if err != nil {
 		klog.Errorf("configure nic failed %v", err)
 		resp.WriteHeaderAndEntity(http.StatusInternalServerError, err)
 		return
 	}
-	resp.WriteHeaderAndEntity(http.StatusOK, request.PodResponse{IpAddress: res.IpAddress, MacAddress: res.MacAddress, CIDR: res.CIDR, Gateway: res.Gateway})
+	resp.WriteHeaderAndEntity(http.StatusOK, request.PodResponse{IpAddress: strings.Split(ipAddr, "/")[0], MacAddress: macAddr, CIDR: "10.16.0.0/16", Gateway: gw})
 
 }
 
@@ -66,12 +74,6 @@ func (csh CniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 	err = csh.deleteNic(podRequest.NetNs, podRequest.ContainerID)
 	if err != nil {
 		klog.Errorf("del nic failed %v", err)
-		resp.WriteHeaderAndEntity(http.StatusInternalServerError, err)
-		return
-	}
-	err = csh.ControllerClient.DelPort(podRequest.PodName, podRequest.PodNamespace)
-	if err != nil {
-		klog.Errorf("del port request to controller failed %v", err)
 		resp.WriteHeaderAndEntity(http.StatusInternalServerError, err)
 		return
 	}
