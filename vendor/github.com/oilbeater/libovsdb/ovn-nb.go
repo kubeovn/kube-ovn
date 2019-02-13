@@ -37,8 +37,8 @@ func (ls *LogicalSwitch) UnmarshalJSON(b []byte) (err error) {
 }
 
 type LogicalSwitchPort struct {
-	UUID        UUID   `json:"_uuid,omitempty" structs:"-"`
-	Name        string `json:"name" structs:"name,omitempty"`
+	UUID             UUID   `json:"_uuid,omitempty" structs:"-"`
+	Name             string `json:"name" structs:"name,omitempty"`
 	DynamicAddresses string `json:"dynamic_addresses" structs:"dynamic_addresses,omitempty"`
 }
 

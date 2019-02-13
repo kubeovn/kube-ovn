@@ -12,4 +12,4 @@ then
 	rm ${SOCK}
 fi
 
-./kube-ovn-daemon --ovs-socket=/run/openvswitch/db.sock --controller-address="${KUBE_OVN_SERVICE_HOST}:${KUBE_OVN_SERVICE_PORT}" --bind-socket=${SOCK}
+./kube-ovn-daemon --ovs-socket=/run/openvswitch/db.sock --bind-socket=${SOCK}

@@ -9,7 +9,6 @@ import (
 	"github.com/containernetworking/cni/pkg/types"
 	"github.com/containernetworking/cni/pkg/types/current"
 	"github.com/containernetworking/cni/pkg/version"
-	"github.com/containernetworking/plugins/pkg/ns"
 	"net"
 	"runtime"
 	"strings"
@@ -41,10 +40,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	if err != nil {
 		return err
 	}
-	netns, err := ns.GetNS(args.Netns)
-	if err != nil {
-		return fmt.Errorf("failed to open netns %q: %v", netns, err)
-	}
+
 	client := request.NewCniServerClient(n.ServerSocket)
 
 	res, err := client.Add(request.PodRequest{
@@ -55,7 +51,6 @@ func cmdAdd(args *skel.CmdArgs) error {
 	if err != nil {
 		return err
 	}
-
 	result := generateCNIResult(cniVersion, res)
 	return types.PrintResult(&result, cniVersion)
 }

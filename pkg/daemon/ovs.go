@@ -8,10 +8,9 @@ import (
 	"os/exec"
 )
 
-func (csc CniServerHandler) configureNic(podName, podNamespace, netns, containerID, mac, ip string) error {
+func (csh CniServerHandler) configureNic(podName, podNamespace, netns, containerID, mac, ip string) error {
 	var err error
 	hostNicName, containerNicName := generateNicName(containerID)
-
 	// Create a veth pair, put one end to container ,the other to ovs port
 	// NOTE: DO NOT use ovs internal type interface for container.
 	// Kubernetes will detect 'eth0' nic in pod, so the nic name in pod must be 'eth0'.
@@ -57,7 +56,7 @@ func (csc CniServerHandler) configureNic(podName, podNamespace, netns, container
 	return nil
 }
 
-func (csc CniServerHandler) deleteNic(netns, containerID string) error {
+func (csh CniServerHandler) deleteNic(netns, containerID string) error {
 	hostNicName, _ := generateNicName(containerID)
 	// Remove ovs port
 	output, err := exec.Command("ovs-vsctl", "--if-exists", "--with-iface", "del-port", "br-int", hostNicName).CombinedOutput()
@@ -101,7 +100,7 @@ func configureHostNic(nicName string, macAddr net.HardwareAddr) error {
 	return nil
 }
 
-func configureContainerNic(nicName, ipAddr string, macaddr net.HardwareAddr, netns ns.NetNS) error {
+func configureContainerNic(nicName, ipAddr string, macAddr net.HardwareAddr, netns ns.NetNS) error {
 	containerLink, err := netlink.LinkByName(nicName)
 	if err != nil {
 		return fmt.Errorf("can not find container nic %s %v", nicName, err)
@@ -127,7 +126,7 @@ func configureContainerNic(nicName, ipAddr string, macaddr net.HardwareAddr, net
 			return fmt.Errorf("can not add address to container nic %v", err)
 		}
 
-		err = netlink.LinkSetHardwareAddr(containerLink, macaddr)
+		err = netlink.LinkSetHardwareAddr(containerLink, macAddr)
 		if err != nil {
 			return fmt.Errorf("can not set mac address to container nic %v", err)
 		}
