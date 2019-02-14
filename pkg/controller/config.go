@@ -18,6 +18,11 @@ type Configuration struct {
 	KubeConfigFile string
 	KubeClient     kubernetes.Interface
 	OvnClient      *libovsdb.OvsdbClient
+
+	DefaultLogicalSwitch string
+	DefaultCIDR          string
+	DefaultGateway       string
+	DefaultExcludeIps    string
 }
 
 // TODO: validate configuration
@@ -27,6 +32,11 @@ func ParseFlags() (*Configuration, error) {
 		argOvnNbHost      = pflag.String("ovn-nb-host", "0.0.0.0", "The ovn-nb host address. (If not set use ovn-nb-socket)")
 		argOvnNbPort      = pflag.Int("ovn-nb-port", 6641, "")
 		argKubeConfigFile = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
+
+		argDefaultLogicalSwitch = pflag.String("default-ls", "ovn-default", "The default logical switch name, default: ovn-default")
+		argDefaultCIDR          = pflag.String("default-cidr", "10.16.0.0/16", "default cidr for namespace with no logical switch annotation, default: 10.16.0.0/16")
+		argDefaultGateway       = pflag.String("default-gateway", "10.16.0.1", "default gateway for default subnet, default: 10.16.0.1")
+		argDefaultExcludeIps    = pflag.String("default-exclude-ips", "10.16.0.0..10.16.0.10", "exclude ips in default switch")
 	)
 
 	flag.Set("alsologtostderr", "true")
@@ -45,10 +55,14 @@ func ParseFlags() (*Configuration, error) {
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
 	config := &Configuration{
-		OvnNbSocket:    *argOvnNbSocket,
-		OvnNbHost:      *argOvnNbHost,
-		OvnNbPort:      *argOvnNbPort,
-		KubeConfigFile: *argKubeConfigFile,
+		OvnNbSocket:          *argOvnNbSocket,
+		OvnNbHost:            *argOvnNbHost,
+		OvnNbPort:            *argOvnNbPort,
+		KubeConfigFile:       *argKubeConfigFile,
+		DefaultLogicalSwitch: *argDefaultLogicalSwitch,
+		DefaultCIDR:          *argDefaultCIDR,
+		DefaultGateway:       *argDefaultGateway,
+		DefaultExcludeIps:    *argDefaultExcludeIps,
 	}
 	err := config.initKubeClient()
 	if err != nil {
