@@ -88,6 +88,11 @@ func NewController(
 		DeleteFunc: controller.enqueueDeletePod,
 	})
 
+	namespaceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddNamespace,
+		DeleteFunc: controller.enqueueDeleteNamespace,
+	})
+
 	return controller
 }
 
@@ -104,16 +109,19 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	klog.Info("Starting OVN controller")
 
 	// Wait for the caches to be synced before starting workers
-
 	klog.Info("Waiting for informer caches to sync")
 	if ok := cache.WaitForCacheSync(stopCh, c.podsSynced, c.namespacesSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
 	klog.Info("Starting workers")
-	// Launch workers to process Foo resources
+
+	// Launch workers to process resources
 	go wait.Until(c.runAddPodWorker, time.Second, stopCh)
 	go wait.Until(c.runDeletePodWorker, time.Second, stopCh)
+
+	go wait.Until(c.runAddNamespaceWorker, time.Second, stopCh)
+	go wait.Until(c.runDeleteNamespaceWorker, time.Second, stopCh)
 
 	klog.Info("Started workers")
 	<-stopCh

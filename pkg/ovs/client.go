@@ -36,12 +36,6 @@ func (c Client) CreatePort(ls, port, ip, mac string) (*Nic, error) {
 	// TODO
 	// 1. If port exists, return it directly
 	// 2. Use annotated ip and mac to replace dynamic addresses
-	var err error
-	defer func() {
-		if err != nil {
-			exec.Command("ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "lsp-del", port).CombinedOutput()
-		}
-	}()
 	raw, err := exec.Command("ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "lsp-add", ls, port,
 		"--", "set", "logical_switch_port", port, "addresses=dynamic").CombinedOutput()
 	if err != nil && !strings.Contains(string(raw), "already exists") {
@@ -89,20 +83,39 @@ func trimCommandOutput(raw []byte) string {
 
 func (c Client) CreateLogicalSwitch(ls, subnet, gateway, excludeIps string) error {
 	// TODO: should check if ls exists first
-	var err error
-	defer func() {
-		if err != nil {
-			exec.Command("ovn-nbctl", "ls-del", ls)
-		}
-	}()
 	output, err := exec.Command("ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "ls-add", ls, "--",
 		"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", subnet), "--",
 		"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
 		"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", excludeIps)).CombinedOutput()
 	if err == nil || strings.Contains(string(output), "already exists") {
-		klog.Infof("default switch ready")
+		klog.Infof("switch %s ready", ls)
 		return nil
 	}
-	klog.Errorf("init default switch failed %s", string(output))
+	klog.Errorf("init switch %s failed %s", ls, string(output))
 	return fmt.Errorf(string(output))
+}
+
+func (c Client) ListLogicalSwitch() ([]string, error) {
+	raw, err := exec.Command("ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "ls-list").CombinedOutput()
+	if err != nil {
+		klog.Errorf("failed to list logical switch %s", string(raw))
+		return nil, fmt.Errorf(string(raw))
+	}
+	output := trimCommandOutput(raw)
+	lines := strings.Split(output, "\n")
+	result := make([]string, 0, len(lines))
+	for _, l := range lines {
+		tmp := strings.Split(l, " ")[1]
+		tmp = strings.Trim(tmp, "()")
+		result = append(result, tmp)
+	}
+	return result, nil
+}
+
+func (c Client) DeleteLogicalSwitch(ls string) error {
+	raw, err := exec.Command("ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "ls-del", ls).CombinedOutput()
+	if err == nil || strings.Contains(string(raw), "not found") {
+		return nil
+	}
+	return fmt.Errorf(string(raw))
 }

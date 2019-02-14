@@ -39,7 +39,6 @@ func ParseFlags() (*Configuration, error) {
 		argDefaultExcludeIps    = pflag.String("default-exclude-ips", "10.16.0.0..10.16.0.10", "exclude ips in default switch")
 	)
 
-	flag.Set("alsologtostderr", "true")
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
 
