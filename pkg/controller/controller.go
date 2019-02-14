@@ -21,6 +21,7 @@ import (
 const controllerAgentName = "ovn-controller"
 
 type Controller struct {
+	config    *Configuration
 	ovnClient *ovs.Client
 	// kubeclientset is a standard kubernetes clientset
 	kubeclientset kubernetes.Interface
@@ -65,6 +66,7 @@ func NewController(
 	namespaceInformer := informerFactory.Core().V1().Namespaces()
 
 	controller := &Controller{
+		config:        config,
 		ovnClient:     ovs.NewClient(config.OvnNbHost, config.OvnNbPort),
 		kubeclientset: config.KubeClient,
 

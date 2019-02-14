@@ -22,6 +22,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	err = controller.InitDefaultLogicalSwitch(config)
+	if err != nil {
+		klog.Errorf("init default switch failed %v", err)
+		os.Exit(1)
+	}
+
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(config.KubeClient, time.Second*30)
 	ctl := controller.NewController(config, kubeInformerFactory)
 	kubeInformerFactory.Start(stopCh)

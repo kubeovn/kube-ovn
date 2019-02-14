@@ -2,6 +2,7 @@ package ovs
 
 import (
 	"fmt"
+	"k8s.io/klog"
 	"os/exec"
 	"strings"
 	"time"
@@ -19,7 +20,7 @@ func NewClient(ovnNbHost string, ovnNbPort int) *Client {
 	return &Client{OvnNbAddress: fmt.Sprintf("tcp:%s:%d", ovnNbHost, ovnNbPort)}
 }
 
-func (c Client) DeletePort(ls, port string) error {
+func (c Client) DeletePort(port string) error {
 	output, err := exec.Command("ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "lsp-del", port).CombinedOutput()
 	if err == nil {
 		return nil
@@ -84,4 +85,24 @@ type Nic struct {
 func trimCommandOutput(raw []byte) string {
 	output := strings.TrimSpace(string(raw))
 	return strings.Trim(output, "\"")
+}
+
+func (c Client) CreateLogicalSwitch(ls, subnet, gateway, excludeIps string) error {
+	// TODO: should check if ls exists first
+	var err error
+	defer func() {
+		if err != nil {
+			exec.Command("ovn-nbctl", "ls-del", ls)
+		}
+	}()
+	output, err := exec.Command("ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "ls-add", ls, "--",
+		"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", subnet), "--",
+		"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
+		"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", excludeIps)).CombinedOutput()
+	if err == nil || strings.Contains(string(output), "already exists") {
+		klog.Infof("default switch ready")
+		return nil
+	}
+	klog.Errorf("init default switch failed %s", string(output))
+	return fmt.Errorf(string(output))
 }

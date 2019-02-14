@@ -171,16 +171,26 @@ func (c *Controller) handleAddPod(key string) error {
 		}
 		return err
 	}
-	klog.Infof("add pod %s/%s", pod.Namespace, pod.Name)
+	klog.Infof("add pod %s/%s", namespace, name)
 	if pod.Spec.HostNetwork {
-		klog.Infof("pod %s/%s in host network mode no need for ovn process", pod.Namespace, pod.Name)
+		klog.Infof("pod %s/%s in host network mode no need for ovn process", namespace, name)
 		return nil
 	}
 
-	// pod address info already exists in ovn
+	ns, err := c.namespacesLister.Get(namespace)
+	if err != nil {
+		klog.Errorf("get namespace %s failed %v", namespace, err)
+		return err
+	}
+	ls := ns.GetAnnotations()["ovn.kubernetes.io/logical_switch"]
+	if ls == "" {
+		ls = c.config.DefaultLogicalSwitch
+	}
+
+	// pod address info may already exist in ovn
 	ip := pod.Annotations["ovn.kubernetes.io/ip_address"]
 	mac := pod.Annotations["ovn.kubernetes.io/mac_address"]
-	nic, err := c.ovnClient.CreatePort(namespace, podNameToPortName(name, namespace), ip, mac)
+	nic, err := c.ovnClient.CreatePort(ls, podNameToPortName(name, namespace), ip, mac)
 	if err != nil {
 		return err
 	}
@@ -192,10 +202,11 @@ func (c *Controller) handleAddPod(key string) error {
         "value": %s
     }]`
 	payload := map[string]string{
-		"ovn.kubernetes.io/ip_address":  nic.IpAddress,
-		"ovn.kubernetes.io/mac_address": nic.MacAddress,
-		"ovn.kubernetes.io/cidr":        nic.CIDR,
-		"ovn.kubernetes.io/gateway":     nic.Gateway,
+		"ovn.kubernetes.io/ip_address":     nic.IpAddress,
+		"ovn.kubernetes.io/mac_address":    nic.MacAddress,
+		"ovn.kubernetes.io/cidr":           nic.CIDR,
+		"ovn.kubernetes.io/gateway":        nic.Gateway,
+		"ovn.kubernetes.io/logical_switch": ls,
 	}
 	raw, _ := json.Marshal(payload)
 	op := "replace"
@@ -223,7 +234,7 @@ func (c *Controller) handleDeletePod(key string) error {
 		// The Pod resource may no longer exist, in this case we stop
 		// processing.
 		if errors.IsNotFound(err) {
-			return c.ovnClient.DeletePort(namespace, podNameToPortName(name, namespace))
+			return c.ovnClient.DeletePort(podNameToPortName(name, namespace))
 		}
 		return err
 	}
@@ -234,7 +245,7 @@ func (c *Controller) handleDeletePod(key string) error {
 	}
 
 	if pod.DeletionTimestamp != nil {
-		return c.ovnClient.DeletePort(namespace, podNameToPortName(name, namespace))
+		return c.ovnClient.DeletePort(podNameToPortName(name, namespace))
 	}
 
 	return nil
