@@ -2,11 +2,11 @@ package controller
 
 import (
 	"fmt"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
-	"link/src/backend/errors"
 )
 
 func (c *Controller) enqueueAddNamespace(obj interface{}) {
@@ -104,9 +104,10 @@ func (c *Controller) processNextDeleteNamespaceWorkItem() bool {
 func (c *Controller) handleAddNamespace(key string) error {
 	ns, err := c.namespacesLister.Get(key)
 	if err != nil {
-		if errors.IsNotFoundError(err) {
+		if errors.IsNotFound(err) {
 			return nil
 		}
+		return err
 	}
 	ls := ns.GetAnnotations()["ovn.kubernetes.io/logical_switch"]
 	cidr := ns.GetAnnotations()["ovn.kubernetes.io/cidr"]

@@ -23,6 +23,11 @@ type Configuration struct {
 	DefaultCIDR          string
 	DefaultGateway       string
 	DefaultExcludeIps    string
+
+	ClusterRouter     string
+	NodeSwitch        string
+	NodeSwitchCIDR    string
+	NodeSwitchGateway string
 }
 
 // TODO: validate configuration
@@ -34,9 +39,14 @@ func ParseFlags() (*Configuration, error) {
 		argKubeConfigFile = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 
 		argDefaultLogicalSwitch = pflag.String("default-ls", "ovn-default", "The default logical switch name, default: ovn-default")
-		argDefaultCIDR          = pflag.String("default-cidr", "10.16.0.0/16", "default cidr for namespace with no logical switch annotation, default: 10.16.0.0/16")
-		argDefaultGateway       = pflag.String("default-gateway", "10.16.0.1", "default gateway for default subnet, default: 10.16.0.1")
-		argDefaultExcludeIps    = pflag.String("default-exclude-ips", "10.16.0.0..10.16.0.10", "exclude ips in default switch")
+		argDefaultCIDR          = pflag.String("default-cidr", "10.16.0.0/16", "Default cidr for namespace with no logical switch annotation, default: 10.16.0.0/16")
+		argDefaultGateway       = pflag.String("default-gateway", "10.16.0.1", "Default gateway for default subnet. Default: 10.16.0.1")
+		argDefaultExcludeIps    = pflag.String("default-exclude-ips", "10.16.0.0..10.16.0.10", "Exclude ips in default switch")
+
+		argClusterRouter     = pflag.String("cluster-router", "ovn-cluster", "The router name for cluster router.Default: cluster-router")
+		argNodeSwitch        = pflag.String("node-switch", "join", "The name of node gateway switch which help node to access pod network. Default: join")
+		argNodeSwitchCIDR    = pflag.String("node-switch-cidr", "100.64.0.0/16", "The cidr for node switch. Default: 100.64.0.0/16")
+		argNodeSwitchGateway = pflag.String("node-switch-gateway", "100.64.0.1", "The gateway for node switch. Default: 100.64.0.1")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -62,6 +72,10 @@ func ParseFlags() (*Configuration, error) {
 		DefaultCIDR:          *argDefaultCIDR,
 		DefaultGateway:       *argDefaultGateway,
 		DefaultExcludeIps:    *argDefaultExcludeIps,
+		ClusterRouter:        *argClusterRouter,
+		NodeSwitch:           *argNodeSwitch,
+		NodeSwitchCIDR:       *argNodeSwitchCIDR,
+		NodeSwitchGateway:    *argNodeSwitchGateway,
 	}
 	err := config.initKubeClient()
 	if err != nil {

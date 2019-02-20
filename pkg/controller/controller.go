@@ -42,6 +42,11 @@ type Controller struct {
 	addNamespaceQueue    workqueue.RateLimitingInterface
 	deleteNamespaceQueue workqueue.RateLimitingInterface
 
+	nodesLister     v1.NodeLister
+	nodeSynced      cache.InformerSynced
+	addNodeQueue    workqueue.RateLimitingInterface
+	deleteNodeQueue workqueue.RateLimitingInterface
+
 	// recorder is an event recorder for recording Event resources to the
 	// Kubernetes API.
 	recorder record.EventRecorder
@@ -64,10 +69,11 @@ func NewController(
 
 	podInformer := informerFactory.Core().V1().Pods()
 	namespaceInformer := informerFactory.Core().V1().Namespaces()
+	nodeInformer := informerFactory.Core().V1().Nodes()
 
 	controller := &Controller{
 		config:        config,
-		ovnClient:     ovs.NewClient(config.OvnNbHost, config.OvnNbPort),
+		ovnClient:     ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.ClusterRouter),
 		kubeclientset: config.KubeClient,
 
 		podsLister:     podInformer.Lister(),
@@ -80,6 +86,11 @@ func NewController(
 		addNamespaceQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddNamespace"),
 		deleteNamespaceQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteNamespace"),
 
+		nodesLister:     nodeInformer.Lister(),
+		nodeSynced:      nodeInformer.Informer().HasSynced,
+		addNodeQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddNode"),
+		deleteNodeQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteNode"),
+
 		recorder: recorder,
 	}
 
@@ -91,6 +102,11 @@ func NewController(
 	namespaceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddNamespace,
 		DeleteFunc: controller.enqueueDeleteNamespace,
+	})
+
+	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddNode,
+		DeleteFunc: controller.enqueueDeleteNode,
 	})
 
 	return controller
@@ -122,6 +138,9 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 
 	go wait.Until(c.runAddNamespaceWorker, time.Second, stopCh)
 	go wait.Until(c.runDeleteNamespaceWorker, time.Second, stopCh)
+
+	go wait.Until(c.runAddNodeWorker, time.Second, stopCh)
+	go wait.Until(c.runDeleteNodeWorker, time.Second, stopCh)
 
 	klog.Info("Started workers")
 	<-stopCh
