@@ -22,6 +22,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	err = controller.InitClusterRouter(config)
+	if err != nil {
+		klog.Errorf("init cluster router failed %v", err)
+		os.Exit(1)
+	}
+
+	err = controller.InitNodeSwitch(config)
+	if err != nil {
+		klog.Errorf("init node switch failed %v", err)
+		os.Exit(1)
+	}
+
 	err = controller.InitDefaultLogicalSwitch(config)
 	if err != nil {
 		klog.Errorf("init default switch failed %v", err)

@@ -8,7 +8,7 @@ import (
 	"os/exec"
 )
 
-func (csh CniServerHandler) configureNic(podName, podNamespace, netns, containerID, mac, ip string) error {
+func (csh CniServerHandler) configureNic(podName, podNamespace, netns, containerID, mac, ip, gateway string) error {
 	var err error
 	hostNicName, containerNicName := generateNicName(containerID)
 	// Create a veth pair, put one end to container ,the other to ovs port
@@ -28,7 +28,9 @@ func (csh CniServerHandler) configureNic(podName, podNamespace, netns, container
 	}
 
 	// Add veth pair host end to ovs port
-	output, err := exec.Command("ovs-vsctl", "add-port", "br-int", hostNicName, "--", "set", "interface", hostNicName, fmt.Sprintf("external_ids:iface-id=%s.%s", podName, podNamespace)).CombinedOutput()
+	output, err := exec.Command(
+		"ovs-vsctl", "add-port", "br-int", hostNicName, "--",
+		"set", "interface", hostNicName, fmt.Sprintf("external_ids:iface-id=%s.%s", podName, podNamespace)).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("add nic to ovs failed %v: %s", err, output)
 	}
@@ -48,7 +50,7 @@ func (csh CniServerHandler) configureNic(podName, podNamespace, netns, container
 	if err != nil {
 		return fmt.Errorf("failed to open netns %q: %v", netns, err)
 	}
-	err = configureContainerNic(containerNicName, ip, macAddr, podNS)
+	err = configureContainerNic(containerNicName, ip, gateway, macAddr, podNS)
 	if err != nil {
 		return err
 	}
@@ -100,7 +102,7 @@ func configureHostNic(nicName string, macAddr net.HardwareAddr) error {
 	return nil
 }
 
-func configureContainerNic(nicName, ipAddr string, macAddr net.HardwareAddr, netns ns.NetNS) error {
+func configureContainerNic(nicName, ipAddr, gateway string, macAddr net.HardwareAddr, netns ns.NetNS) error {
 	containerLink, err := netlink.LinkByName(nicName)
 	if err != nil {
 		return fmt.Errorf("can not find container nic %s %v", nicName, err)
@@ -111,6 +113,7 @@ func configureContainerNic(nicName, ipAddr string, macAddr net.HardwareAddr, net
 		return fmt.Errorf("failed to link netns %v", err)
 	}
 
+	// TODO: use github.com/containernetworking/plugins/pkg/ipam.ConfigureIface to refactor this logical
 	return ns.WithNetNSPath(netns.Path(), func(_ ns.NetNS) error {
 		// Container nic name MUST be 'eth0', otherwise kubelet will recreate the pod
 		err = netlink.LinkSetName(containerLink, "eth0")
@@ -133,6 +136,17 @@ func configureContainerNic(nicName, ipAddr string, macAddr net.HardwareAddr, net
 		err = netlink.LinkSetUp(containerLink)
 		if err != nil {
 			return fmt.Errorf("can not set container nic %s up %v", nicName, err)
+		}
+
+		_, defaultNet, _ := net.ParseCIDR("0.0.0.0/0")
+		err = netlink.RouteAdd(&netlink.Route{
+			LinkIndex: containerLink.Attrs().Index,
+			Scope:     netlink.SCOPE_UNIVERSE,
+			Dst:       defaultNet,
+			Gw:        net.ParseIP(gateway),
+		})
+		if err != nil {
+			return fmt.Errorf("config gateway failed %v", err)
 		}
 		return nil
 	})

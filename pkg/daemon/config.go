@@ -2,11 +2,13 @@ package daemon
 
 import (
 	"flag"
+	"fmt"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
+	"os"
 )
 
 type Configuration struct {
@@ -14,6 +16,7 @@ type Configuration struct {
 	OvsSocket      string
 	KubeConfigFile string
 	KubeClient     kubernetes.Interface
+	NodeName       string
 }
 
 // TODO: validate configuration
@@ -27,10 +30,17 @@ func ParseFlags() (*Configuration, error) {
 	pflag.Parse()
 	flag.CommandLine.Parse(make([]string, 0)) // Init for glog calls in kubernetes packages
 
+	nodeName := os.Getenv("KUBE_NODE_NAME")
+	if nodeName == "" {
+		klog.Errorf("env KUBE_NODE_NAME not exists")
+		return nil, fmt.Errorf("env KUBE_NODE_NAME not exists")
+	}
+
 	config := &Configuration{
 		BindSocket:     *argBindSocket,
 		OvsSocket:      *argOvsSocket,
 		KubeConfigFile: *argKubeConfigFile,
+		NodeName:       nodeName,
 	}
 	err := config.initKubeClient()
 	if err != nil {
