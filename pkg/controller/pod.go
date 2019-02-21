@@ -182,7 +182,7 @@ func (c *Controller) handleAddPod(key string) error {
 		klog.Errorf("get namespace %s failed %v", namespace, err)
 		return err
 	}
-	ls := ns.GetAnnotations()["ovn.kubernetes.io/logical_switch"]
+	ls := ns.Annotations["ovn.kubernetes.io/logical_switch"]
 	if ls == "" {
 		ls = c.config.DefaultLogicalSwitch
 	}
@@ -210,7 +210,7 @@ func (c *Controller) handleAddPod(key string) error {
 	}
 	raw, _ := json.Marshal(payload)
 	op := "replace"
-	if len(pod.GetAnnotations()) == 0 {
+	if len(pod.Annotations) == 0 {
 		op = "add"
 	}
 	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
@@ -244,6 +244,7 @@ func (c *Controller) handleDeletePod(key string) error {
 		return nil
 	}
 
+	// for statefulset pod, names are same when updating, so double check to make sure the pod is to be deleted
 	if pod.DeletionTimestamp != nil {
 		return c.ovnClient.DeletePort(podNameToPortName(name, namespace))
 	}

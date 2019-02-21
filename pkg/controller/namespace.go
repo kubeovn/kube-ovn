@@ -109,14 +109,27 @@ func (c *Controller) handleAddNamespace(key string) error {
 		}
 		return err
 	}
-	ls := ns.GetAnnotations()["ovn.kubernetes.io/logical_switch"]
-	cidr := ns.GetAnnotations()["ovn.kubernetes.io/cidr"]
-	gateway := ns.GetAnnotations()["ovn.kubernetes.io/gateway"]
-	excludeIps := ns.GetAnnotations()["ovn.kubernetes.io/exclude_ips"]
+	ls := ns.Annotations["ovn.kubernetes.io/logical_switch"]
+	cidr := ns.Annotations["ovn.kubernetes.io/cidr"]
+	gateway := ns.Annotations["ovn.kubernetes.io/gateway"]
+	excludeIps := ns.Annotations["ovn.kubernetes.io/exclude_ips"]
 
 	if ls == "" {
 		klog.Infof("namespace %s use default logical switch %s", key, c.config.DefaultLogicalSwitch)
 		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	ss, err := c.ovnClient.ListLogicalSwitch()
+	if err != nil {
+		return err
+	}
+	for _, s := range ss {
+		if ls == s {
+			return nil
+		}
 	}
 
 	// If multiple namespace use same ls name, only first one will success
@@ -142,7 +155,7 @@ func (c *Controller) handleDeleteNamespace(key string) error {
 		}
 		found := false
 		for _, ns := range namespaces {
-			if ns.GetAnnotations()["ovn.kubernetes.io/logical_switch"] == ls {
+			if ns.Annotations["ovn.kubernetes.io/logical_switch"] == ls {
 				found = true
 				break
 			}

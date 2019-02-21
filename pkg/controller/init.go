@@ -38,7 +38,7 @@ func InitDefaultLogicalSwitch(config *Configuration) error {
 	}
 	raw, _ := json.Marshal(payload)
 	op := "replace"
-	if len(ns.GetAnnotations()) == 0 {
+	if len(ns.Annotations) == 0 {
 		op = "add"
 	}
 	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
@@ -51,7 +51,18 @@ func InitDefaultLogicalSwitch(config *Configuration) error {
 
 func InitNodeSwitch(config *Configuration) error {
 	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.ClusterRouter)
-	err := client.CreateLogicalSwitch(config.NodeSwitch, config.NodeSwitchCIDR, config.NodeSwitchGateway, config.NodeSwitchGateway)
+	ss, err := client.ListLogicalSwitch()
+	if err != nil {
+		return err
+	}
+	klog.Infof("exists switches %v", ss)
+	for _, s := range ss {
+		if config.NodeSwitch == s {
+			return nil
+		}
+	}
+
+	err = client.CreateLogicalSwitch(config.NodeSwitch, config.NodeSwitchCIDR, config.NodeSwitchGateway, config.NodeSwitchGateway)
 	if err != nil {
 		return err
 	}

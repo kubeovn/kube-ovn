@@ -29,7 +29,7 @@ func (csh CniServerHandler) configureNic(podName, podNamespace, netns, container
 
 	// Add veth pair host end to ovs port
 	output, err := exec.Command(
-		"ovs-vsctl", "add-port", "br-int", hostNicName, "--",
+		"ovs-vsctl", "--may-exist", "add-port", "br-int", hostNicName, "--",
 		"set", "interface", hostNicName, fmt.Sprintf("external_ids:iface-id=%s.%s", podName, podNamespace)).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("add nic to ovs failed %v: %s", err, output)

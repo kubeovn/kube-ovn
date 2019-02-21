@@ -99,6 +99,7 @@ func NewController(
 		DeleteFunc: controller.enqueueDeletePod,
 	})
 
+	// TODO: need to watch namespace update to update vswitch config
 	namespaceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddNamespace,
 		DeleteFunc: controller.enqueueDeleteNamespace,

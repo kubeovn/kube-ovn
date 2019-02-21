@@ -46,10 +46,10 @@ func (csh CniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			resp.WriteHeaderAndEntity(http.StatusInternalServerError, err)
 			return
 		}
-		macAddr = pod.GetAnnotations()["ovn.kubernetes.io/mac_address"]
-		ipAddr = pod.GetAnnotations()["ovn.kubernetes.io/ip_address"]
-		cidr = pod.GetAnnotations()["ovn.kubernetes.io/cidr"]
-		gw = pod.GetAnnotations()["ovn.kubernetes.io/gateway"]
+		macAddr = pod.Annotations["ovn.kubernetes.io/mac_address"]
+		ipAddr = pod.Annotations["ovn.kubernetes.io/ip_address"]
+		cidr = pod.Annotations["ovn.kubernetes.io/cidr"]
+		gw = pod.Annotations["ovn.kubernetes.io/gateway"]
 
 		if macAddr == "" || ipAddr == "" || cidr == "" || gw == "" {
 			// wait controller assign an address
@@ -66,7 +66,7 @@ func (csh CniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		resp.WriteHeaderAndEntity(http.StatusInternalServerError, err)
 		return
 	}
-	resp.WriteHeaderAndEntity(http.StatusOK, request.PodResponse{IpAddress: strings.Split(ipAddr, "/")[0], MacAddress: macAddr, CIDR: "10.16.0.0/16", Gateway: gw})
+	resp.WriteHeaderAndEntity(http.StatusOK, request.PodResponse{IpAddress: strings.Split(ipAddr, "/")[0], MacAddress: macAddr, CIDR: cidr, Gateway: gw})
 
 }
 
@@ -95,9 +95,9 @@ func (csh CniServerHandler) initNodeGateway() error {
 		klog.Errorf("failed to get node %s info %v", nodeName, err)
 		return err
 	}
-	macAddr := node.GetAnnotations()["ovn.kubernetes.io/mac_address"]
-	ipAddr := node.GetAnnotations()["ovn.kubernetes.io/ip_address"]
-	portName := node.GetAnnotations()["ovn.kubernetes.io/port_name"]
+	macAddr := node.Annotations["ovn.kubernetes.io/mac_address"]
+	ipAddr := node.Annotations["ovn.kubernetes.io/ip_address"]
+	portName := node.Annotations["ovn.kubernetes.io/port_name"]
 	if macAddr == "" || ipAddr == "" || portName == "" {
 		return fmt.Errorf("can not find macAddr, ipAddr and portName")
 	}
@@ -111,10 +111,10 @@ func configureNodeNic(nicName, ip, mac string) error {
 	}
 
 	raw, err := exec.Command(
-		"ovs-vsctl", "add-port", "br-int", nicName, "--",
+		"ovs-vsctl", "--may-exist", "add-port", "br-int", nicName, "--",
 		"set", "interface", nicName, "type=internal", "--",
 		"set", "interface", nicName, fmt.Sprintf("external_ids:iface-id=%s", nicName)).CombinedOutput()
-	if err != nil && !strings.Contains(string(raw), "already exists") {
+	if err != nil {
 		klog.Errorf("failed to configure node nic %s %s", nicName, string(raw))
 		return fmt.Errorf(string(raw))
 	}
@@ -128,7 +128,8 @@ func configureNodeNic(nicName, ip, mac string) error {
 	if err != nil {
 		return fmt.Errorf("can not parse %s %v", ip, err)
 	}
-	err = netlink.AddrAdd(nodeLink, ipAddr)
+
+	err = netlink.AddrReplace(nodeLink, ipAddr)
 	if err != nil {
 		return fmt.Errorf("can not add address to node nic %v", err)
 	}
@@ -137,10 +138,12 @@ func configureNodeNic(nicName, ip, mac string) error {
 	if err != nil {
 		return fmt.Errorf("can not set mac address to node nic %v", err)
 	}
-	err = netlink.LinkSetUp(nodeLink)
-	if err != nil {
-		return fmt.Errorf("can not set node nic %s up %v", nicName, err)
-	}
 
+	if nodeLink.Attrs().OperState != netlink.OperUp {
+		err = netlink.LinkSetUp(nodeLink)
+		if err != nil {
+			return fmt.Errorf("can not set node nic %s up %v", nicName, err)
+		}
+	}
 	return nil
 }
