@@ -3,11 +3,14 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
+	"strings"
 )
 
 func (c *Controller) enqueueAddNode(obj interface{}) {
@@ -116,6 +119,12 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
+	nodeAddr := getNodeInternalIP(node)
+	err = c.ovnClient.AddStaticRouter(nodeAddr, strings.Split(nic.IpAddress, "/")[0], c.config.ClusterRouter)
+	if err != nil {
+		return err
+	}
+
 	patchPayloadTemplate :=
 		`[{
         "op": "%s",
@@ -132,7 +141,7 @@ func (c *Controller) handleAddNode(key string) error {
 	}
 	raw, _ := json.Marshal(payload)
 	op := "replace"
-	if len(node.GetAnnotations()) == 0 {
+	if len(node.Annotations) == 0 {
 		op = "add"
 	}
 	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
@@ -149,5 +158,26 @@ func (c *Controller) handleDeleteNode(key string) error {
 		klog.Infof("failed to delete node switch port node-%s %v", key, err)
 		return err
 	}
-	return nil
+
+	node, err := c.kubeclientset.CoreV1().Nodes().Get(key, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	nodeAddr := getNodeInternalIP(node)
+	return c.ovnClient.DeleteStaticRouter(nodeAddr, c.config.ClusterRouter)
+}
+
+func getNodeInternalIP(node *v1.Node) string {
+	var nodeAddr string
+	for _, addr := range node.Status.Addresses {
+		if addr.Type == v1.NodeInternalIP {
+			nodeAddr = addr.Address
+			break
+		}
+	}
+	return nodeAddr
 }
