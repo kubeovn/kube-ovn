@@ -6,7 +6,6 @@ import (
 	"k8s.io/klog"
 	"os/exec"
 	"strings"
-	"time"
 )
 
 type Client struct {
@@ -22,7 +21,7 @@ func NewClient(ovnNbHost string, ovnNbPort int, clusterRouter string) *Client {
 }
 
 func (c Client) DeletePort(port string) error {
-	output, err := exec.Command("ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "--if-exists", "lsp-del", port).CombinedOutput()
+	output, err := exec.Command("ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "--wait=sb", "--if-exists", "lsp-del", port).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to delete port %s, %s", port, string(output))
 	}
@@ -32,14 +31,11 @@ func (c Client) DeletePort(port string) error {
 func (c Client) CreatePort(ls, port, ip, mac string) (*Nic, error) {
 	// TODO
 	// 1. Use annotated ip and mac to replace dynamic addresses
-	raw, err := exec.Command("ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "--may-exist", "lsp-add", ls, port,
+	raw, err := exec.Command("ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "--wait=sb", "--may-exist", "lsp-add", ls, port,
 		"--", "set", "logical_switch_port", port, "addresses=dynamic").CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("create port %s failed %s, %v", port, string(raw), err)
 	}
-
-	// wait dynamic addresses
-	time.Sleep(1 * time.Second)
 
 	raw, err = exec.Command("ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "get", "logical_switch_port", port, "dynamic-addresses").CombinedOutput()
 	if err != nil {
@@ -78,7 +74,7 @@ func trimCommandOutput(raw []byte) string {
 }
 
 func (c Client) CreateLogicalSwitch(ls, subnet, gateway, excludeIps string) error {
-	raw, err := exec.Command("ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "--may-exist", "ls-add", ls, "--",
+	raw, err := exec.Command("ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "--wait=sb", "--may-exist", "ls-add", ls, "--",
 		"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", subnet), "--",
 		"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
 		"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", excludeIps)).CombinedOutput()
@@ -89,6 +85,7 @@ func (c Client) CreateLogicalSwitch(ls, subnet, gateway, excludeIps string) erro
 
 	mac := util.GenerateMac()
 	mask := strings.Split(subnet, "/")[1]
+	klog.Infof("create route port for switch %s", ls)
 	err = c.CreateRouterPort(ls, c.ClusterRouter, gateway+"/"+mask, mac)
 	return err
 }
@@ -103,6 +100,29 @@ func (c Client) ListLogicalSwitch() ([]string, error) {
 	lines := strings.Split(output, "\n")
 	result := make([]string, 0, len(lines))
 	for _, l := range lines {
+		if len(l) == 0 || !strings.Contains(l, "") {
+			continue
+		}
+		tmp := strings.Split(l, " ")[1]
+		tmp = strings.Trim(tmp, "()")
+		result = append(result, tmp)
+	}
+	return result, nil
+}
+
+func (c Client) ListLogicalRouter() ([]string, error) {
+	raw, err := exec.Command("ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "lr-list").CombinedOutput()
+	if err != nil {
+		klog.Errorf("failed to list logical router %s", string(raw))
+		return nil, fmt.Errorf(string(raw))
+	}
+	output := trimCommandOutput(raw)
+	lines := strings.Split(output, "\n")
+	result := make([]string, 0, len(lines))
+	for _, l := range lines {
+		if len(l) == 0 || !strings.Contains(l, "") {
+			continue
+		}
 		tmp := strings.Split(l, " ")[1]
 		tmp = strings.Trim(tmp, "()")
 		result = append(result, tmp)
@@ -123,7 +143,7 @@ func (c Client) DeleteLogicalSwitch(ls string) error {
 }
 
 func (c Client) CreateLogicalRouter(lr string) error {
-	raw, err := exec.Command("ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "--may-exist", "lr-add", lr).CombinedOutput()
+	raw, err := exec.Command("ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "--wait=sb", "--may-exist", "lr-add", lr).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf(string(raw))
 	}
@@ -135,7 +155,7 @@ func (c Client) CreateRouterPort(ls, lr, ip, mac string) error {
 	lsTolr := fmt.Sprintf("%s-%s", ls, lr)
 	lrTols := fmt.Sprintf("%s-%s", lr, ls)
 	raw, err := exec.Command(
-		"ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "--may-exist", "lsp-add", ls, lsTolr, "--",
+		"ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "--may-exist", "--wait=sb", "lsp-add", ls, lsTolr, "--",
 		"set", "logical_switch_port", lsTolr, "type=router", "--",
 		"set", "logical_switch_port", lsTolr, fmt.Sprintf("addresses=\"%s\"", mac), "--",
 		"set", "logical_switch_port", lsTolr, fmt.Sprintf("options:router-port=%s", lrTols)).CombinedOutput()
@@ -153,7 +173,7 @@ func (c Client) CreateRouterPort(ls, lr, ip, mac string) error {
 }
 
 func (c Client) AddStaticRouter(cidr, nextHop, router string) error {
-	raw, err := exec.Command("ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "--may-exist", router, cidr, nextHop).CombinedOutput()
+	raw, err := exec.Command("ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "--may-exist", "lr-route-add", router, cidr, nextHop).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf(string(raw))
 	}
@@ -161,7 +181,7 @@ func (c Client) AddStaticRouter(cidr, nextHop, router string) error {
 }
 
 func (c Client) DeleteStaticRouter(cidr, router string) error {
-	raw, err := exec.Command("ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "--if-exists", router, cidr).CombinedOutput()
+	raw, err := exec.Command("ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "--if-exists", "lr-route-del", router, cidr).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf(string(raw))
 	}

@@ -2,14 +2,12 @@ package controller
 
 import (
 	"bitbucket.org/mathildetech/kube-ovn/pkg/ovs"
-	"bitbucket.org/mathildetech/kube-ovn/pkg/util"
 	"encoding/json"
 	"fmt"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
 	"os"
-	"strings"
 )
 
 func InitDefaultLogicalSwitch(config *Configuration) error {
@@ -66,12 +64,20 @@ func InitNodeSwitch(config *Configuration) error {
 	if err != nil {
 		return err
 	}
-	mac := util.GenerateMac()
-	mask := strings.Split(config.NodeSwitchCIDR, "/")[1]
-	return client.CreateRouterPort(config.NodeSwitch, config.ClusterRouter, config.NodeSwitchGateway+"/"+mask, mac)
+	return nil
 }
 
 func InitClusterRouter(config *Configuration) error {
 	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.ClusterRouter)
+	lrs, err := client.ListLogicalRouter()
+	if err != nil {
+		return err
+	}
+	klog.Infof("exists routers %v", lrs)
+	for _, r := range lrs {
+		if config.ClusterRouter == r {
+			return nil
+		}
+	}
 	return client.CreateLogicalRouter(config.ClusterRouter)
 }

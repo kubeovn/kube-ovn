@@ -150,7 +150,7 @@ func (c *Controller) handleDeleteNamespace(key string) error {
 	}
 
 	for _, ls := range switches {
-		if ls == c.config.DefaultLogicalSwitch {
+		if ls == c.config.DefaultLogicalSwitch || ls == c.config.NodeSwitch {
 			continue
 		}
 		found := false
