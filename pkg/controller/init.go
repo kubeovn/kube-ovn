@@ -49,7 +49,7 @@ func InitDefaultLogicalSwitch(config *Configuration) error {
 }
 
 func InitNodeSwitch(config *Configuration) error {
-	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.ClusterRouter)
+	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer)
 	ss, err := client.ListLogicalSwitch()
 	if err != nil {
 		return err
@@ -69,7 +69,7 @@ func InitNodeSwitch(config *Configuration) error {
 }
 
 func InitClusterRouter(config *Configuration) error {
-	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.ClusterRouter)
+	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer)
 	lrs, err := client.ListLogicalRouter()
 	if err != nil {
 		return err
@@ -81,4 +81,38 @@ func InitClusterRouter(config *Configuration) error {
 		}
 	}
 	return client.CreateLogicalRouter(config.ClusterRouter)
+}
+
+func InitLoadBalancer(config *Configuration) error {
+	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer)
+	tcpLb, err := client.FindLoadbalancer(config.ClusterTcpLoadBalancer)
+	if err != nil {
+		return fmt.Errorf("failed to find tcp lb %v", err)
+	}
+	if tcpLb == "" {
+		klog.Infof("init cluster tcp load balancer %s", config.ClusterTcpLoadBalancer)
+		err := client.CreateLoadBalancer(config.ClusterTcpLoadBalancer, util.ProtocolTCP)
+		if err != nil {
+			klog.Errorf("failed to crate cluster tcp load balancer %v", err)
+			return err
+		}
+	} else {
+		klog.Infof("tcp load balancer %s exists", tcpLb)
+	}
+
+	udpLb, err := client.FindLoadbalancer(config.ClusterUdpLoadBalancer)
+	if err != nil {
+		return fmt.Errorf("failed to find tcp lb %v", err)
+	}
+	if udpLb == "" {
+		klog.Infof("init cluster udp load balancer %s", config.ClusterUdpLoadBalancer)
+		err := client.CreateLoadBalancer(config.ClusterUdpLoadBalancer, util.ProtocolUDP)
+		if err != nil {
+			klog.Errorf("failed to crate cluster udp load balancer %v", err)
+			return err
+		}
+	} else {
+		klog.Infof("udp load balancer %s exists", udpLb)
+	}
+	return nil
 }

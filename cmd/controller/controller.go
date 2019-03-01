@@ -28,6 +28,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	err = controller.InitLoadBalancer(config)
+	if err != nil {
+		klog.Errorf("init load balancer failed %v", err)
+		os.Exit(1)
+	}
+
 	err = controller.InitNodeSwitch(config)
 	if err != nil {
 		klog.Errorf("init node switch failed %v", err)

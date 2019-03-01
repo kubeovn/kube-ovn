@@ -73,7 +73,7 @@ func NewController(
 
 	controller := &Controller{
 		config:        config,
-		ovnClient:     ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.ClusterRouter),
+		ovnClient:     ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer),
 		kubeclientset: config.KubeClient,
 
 		podsLister:     podInformer.Lister(),
