@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bitbucket.org/mathildetech/kube-ovn/pkg/util"
 	"fmt"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -109,10 +110,10 @@ func (c *Controller) handleAddNamespace(key string) error {
 		}
 		return err
 	}
-	ls := ns.Annotations["ovn.kubernetes.io/logical_switch"]
-	cidr := ns.Annotations["ovn.kubernetes.io/cidr"]
-	gateway := ns.Annotations["ovn.kubernetes.io/gateway"]
-	excludeIps := ns.Annotations["ovn.kubernetes.io/exclude_ips"]
+	ls := ns.Annotations[util.LogicalSwitchAnnotation]
+	cidr := ns.Annotations[util.CidrAnnotation]
+	gateway := ns.Annotations[util.GatewayAnnotation]
+	excludeIps := ns.Annotations[util.ExcludeIpsAnnotation]
 
 	if ls == "" {
 		klog.Infof("namespace %s use default logical switch %s", key, c.config.DefaultLogicalSwitch)
@@ -155,7 +156,7 @@ func (c *Controller) handleDeleteNamespace(key string) error {
 		}
 		found := false
 		for _, ns := range namespaces {
-			if ns.Annotations["ovn.kubernetes.io/logical_switch"] == ls {
+			if ns.Annotations[util.LogicalSwitchAnnotation] == ls {
 				found = true
 				break
 			}

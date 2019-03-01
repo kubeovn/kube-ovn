@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bitbucket.org/mathildetech/kube-ovn/pkg/util"
 	"encoding/json"
 	"fmt"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -182,14 +183,14 @@ func (c *Controller) handleAddPod(key string) error {
 		klog.Errorf("get namespace %s failed %v", namespace, err)
 		return err
 	}
-	ls := ns.Annotations["ovn.kubernetes.io/logical_switch"]
+	ls := ns.Annotations[util.LogicalSwitchAnnotation]
 	if ls == "" {
 		ls = c.config.DefaultLogicalSwitch
 	}
 
 	// pod address info may already exist in ovn
-	ip := pod.Annotations["ovn.kubernetes.io/ip_address"]
-	mac := pod.Annotations["ovn.kubernetes.io/mac_address"]
+	ip := pod.Annotations[util.IpAddressAnnotation]
+	mac := pod.Annotations[util.MacAddressAnnotation]
 	nic, err := c.ovnClient.CreatePort(ls, podNameToPortName(name, namespace), ip, mac)
 	if err != nil {
 		return err
@@ -202,11 +203,11 @@ func (c *Controller) handleAddPod(key string) error {
         "value": %s
     }]`
 	payload := map[string]string{
-		"ovn.kubernetes.io/ip_address":     nic.IpAddress,
-		"ovn.kubernetes.io/mac_address":    nic.MacAddress,
-		"ovn.kubernetes.io/cidr":           nic.CIDR,
-		"ovn.kubernetes.io/gateway":        nic.Gateway,
-		"ovn.kubernetes.io/logical_switch": ls,
+		util.IpAddressAnnotation:     nic.IpAddress,
+		util.MacAddressAnnotation:    nic.MacAddress,
+		util.CidrAnnotation:          nic.CIDR,
+		util.GatewayAnnotation:       nic.Gateway,
+		util.LogicalSwitchAnnotation: ls,
 	}
 	raw, _ := json.Marshal(payload)
 	op := "replace"

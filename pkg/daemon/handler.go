@@ -2,15 +2,13 @@ package daemon
 
 import (
 	"bitbucket.org/mathildetech/kube-ovn/pkg/request"
+	"bitbucket.org/mathildetech/kube-ovn/pkg/util"
 	"fmt"
 	"github.com/emicklei/go-restful"
-	"github.com/vishvananda/netlink"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog"
-	"net"
 	"net/http"
-	"os/exec"
 	"strings"
 	"time"
 )
@@ -46,10 +44,10 @@ func (csh CniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			resp.WriteHeaderAndEntity(http.StatusInternalServerError, err)
 			return
 		}
-		macAddr = pod.Annotations["ovn.kubernetes.io/mac_address"]
-		ipAddr = pod.Annotations["ovn.kubernetes.io/ip_address"]
-		cidr = pod.Annotations["ovn.kubernetes.io/cidr"]
-		gw = pod.Annotations["ovn.kubernetes.io/gateway"]
+		macAddr = pod.Annotations[util.MacAddressAnnotation]
+		ipAddr = pod.Annotations[util.IpAddressAnnotation]
+		cidr = pod.Annotations[util.CidrAnnotation]
+		gw = pod.Annotations[util.GatewayAnnotation]
 
 		if macAddr == "" || ipAddr == "" || cidr == "" || gw == "" {
 			// wait controller assign an address
@@ -95,55 +93,11 @@ func (csh CniServerHandler) initNodeGateway() error {
 		klog.Errorf("failed to get node %s info %v", nodeName, err)
 		return err
 	}
-	macAddr := node.Annotations["ovn.kubernetes.io/mac_address"]
-	ipAddr := node.Annotations["ovn.kubernetes.io/ip_address"]
-	portName := node.Annotations["ovn.kubernetes.io/port_name"]
+	macAddr := node.Annotations[util.MacAddressAnnotation]
+	ipAddr := node.Annotations[util.IpAddressAnnotation]
+	portName := node.Annotations[util.PortNameAnnotation]
 	if macAddr == "" || ipAddr == "" || portName == "" {
 		return fmt.Errorf("can not find macAddr, ipAddr and portName")
 	}
 	return configureNodeNic(portName, ipAddr, macAddr)
-}
-
-func configureNodeNic(nicName, ip, mac string) error {
-	macAddr, err := net.ParseMAC(mac)
-	if err != nil {
-		return fmt.Errorf("failed to parse mac %s %v", macAddr, err)
-	}
-
-	raw, err := exec.Command(
-		"ovs-vsctl", "--may-exist", "add-port", "br-int", nicName, "--",
-		"set", "interface", nicName, "type=internal", "--",
-		"set", "interface", nicName, fmt.Sprintf("external_ids:iface-id=%s", nicName)).CombinedOutput()
-	if err != nil {
-		klog.Errorf("failed to configure node nic %s %s", nicName, string(raw))
-		return fmt.Errorf(string(raw))
-	}
-
-	nodeLink, err := netlink.LinkByName(nicName)
-	if err != nil {
-		return fmt.Errorf("can not find node nic %s %v", nicName, err)
-	}
-
-	ipAddr, err := netlink.ParseAddr(ip)
-	if err != nil {
-		return fmt.Errorf("can not parse %s %v", ip, err)
-	}
-
-	err = netlink.AddrReplace(nodeLink, ipAddr)
-	if err != nil {
-		return fmt.Errorf("can not add address to node nic %v", err)
-	}
-
-	err = netlink.LinkSetHardwareAddr(nodeLink, macAddr)
-	if err != nil {
-		return fmt.Errorf("can not set mac address to node nic %v", err)
-	}
-
-	if nodeLink.Attrs().OperState != netlink.OperUp {
-		err = netlink.LinkSetUp(nodeLink)
-		if err != nil {
-			return fmt.Errorf("can not set node nic %s up %v", nicName, err)
-		}
-	}
-	return nil
 }

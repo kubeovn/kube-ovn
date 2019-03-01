@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bitbucket.org/mathildetech/kube-ovn/pkg/util"
 	"encoding/json"
 	"fmt"
 	"k8s.io/api/core/v1"
@@ -132,12 +133,12 @@ func (c *Controller) handleAddNode(key string) error {
         "value": %s
     }]`
 	payload := map[string]string{
-		"ovn.kubernetes.io/ip_address":     nic.IpAddress,
-		"ovn.kubernetes.io/mac_address":    nic.MacAddress,
-		"ovn.kubernetes.io/cidr":           nic.CIDR,
-		"ovn.kubernetes.io/gateway":        nic.Gateway,
-		"ovn.kubernetes.io/logical_switch": c.config.NodeSwitch,
-		"ovn.kubernetes.io/port_name":      fmt.Sprintf("node-%s", key),
+		util.IpAddressAnnotation:     nic.IpAddress,
+		util.MacAddressAnnotation:    nic.MacAddress,
+		util.CidrAnnotation:          nic.CIDR,
+		util.GatewayAnnotation:       nic.Gateway,
+		util.LogicalSwitchAnnotation: c.config.NodeSwitch,
+		util.PortNameAnnotation:      fmt.Sprintf("node-%s", key),
 	}
 	raw, _ := json.Marshal(payload)
 	op := "replace"

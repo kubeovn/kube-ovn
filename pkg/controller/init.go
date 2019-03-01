@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bitbucket.org/mathildetech/kube-ovn/pkg/ovs"
+	"bitbucket.org/mathildetech/kube-ovn/pkg/util"
 	"encoding/json"
 	"fmt"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,10 +30,10 @@ func InitDefaultLogicalSwitch(config *Configuration) error {
         "value": %s
     }]`
 	payload := map[string]string{
-		"ovn.kubernetes.io/logical_switch": config.DefaultLogicalSwitch,
-		"ovn.kubernetes.io/cidr":           config.DefaultCIDR,
-		"ovn.kubernetes.io/gateway":        config.DefaultGateway,
-		"ovn.kubernetes.io/exclude_ips":    config.DefaultExcludeIps,
+		util.LogicalSwitchAnnotation: config.DefaultLogicalSwitch,
+		util.CidrAnnotation:          config.DefaultCIDR,
+		util.GatewayAnnotation:       config.DefaultGateway,
+		util.ExcludeIpsAnnotation:    config.DefaultExcludeIps,
 	}
 	raw, _ := json.Marshal(payload)
 	op := "replace"

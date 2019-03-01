@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/vishvananda/netlink"
+	"k8s.io/klog"
 	"net"
 	"os/exec"
 )
@@ -150,4 +151,48 @@ func configureContainerNic(nicName, ipAddr, gateway string, macAddr net.Hardware
 		}
 		return nil
 	})
+}
+
+func configureNodeNic(nicName, ip, mac string) error {
+	macAddr, err := net.ParseMAC(mac)
+	if err != nil {
+		return fmt.Errorf("failed to parse mac %s %v", macAddr, err)
+	}
+
+	raw, err := exec.Command(
+		"ovs-vsctl", "--may-exist", "add-port", "br-int", nicName, "--",
+		"set", "interface", nicName, "type=internal", "--",
+		"set", "interface", nicName, fmt.Sprintf("external_ids:iface-id=%s", nicName)).CombinedOutput()
+	if err != nil {
+		klog.Errorf("failed to configure node nic %s %s", nicName, string(raw))
+		return fmt.Errorf(string(raw))
+	}
+
+	nodeLink, err := netlink.LinkByName(nicName)
+	if err != nil {
+		return fmt.Errorf("can not find node nic %s %v", nicName, err)
+	}
+
+	ipAddr, err := netlink.ParseAddr(ip)
+	if err != nil {
+		return fmt.Errorf("can not parse %s %v", ip, err)
+	}
+
+	err = netlink.AddrReplace(nodeLink, ipAddr)
+	if err != nil {
+		return fmt.Errorf("can not add address to node nic %v", err)
+	}
+
+	err = netlink.LinkSetHardwareAddr(nodeLink, macAddr)
+	if err != nil {
+		return fmt.Errorf("can not set mac address to node nic %v", err)
+	}
+
+	if nodeLink.Attrs().OperState != netlink.OperUp {
+		err = netlink.LinkSetUp(nodeLink)
+		if err != nil {
+			return fmt.Errorf("can not set node nic %s up %v", nicName, err)
+		}
+	}
+	return nil
 }
