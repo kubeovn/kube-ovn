@@ -43,9 +43,14 @@ type Controller struct {
 	deleteNamespaceQueue workqueue.RateLimitingInterface
 
 	nodesLister     v1.NodeLister
-	nodeSynced      cache.InformerSynced
+	nodesSynced     cache.InformerSynced
 	addNodeQueue    workqueue.RateLimitingInterface
 	deleteNodeQueue workqueue.RateLimitingInterface
+
+	servicesLister     v1.ServiceLister
+	serviceSynced      cache.InformerSynced
+	addServiceQueue    workqueue.RateLimitingInterface
+	updateServiceQueue workqueue.RateLimitingInterface
 
 	// recorder is an event recorder for recording Event resources to the
 	// Kubernetes API.
@@ -70,6 +75,7 @@ func NewController(
 	podInformer := informerFactory.Core().V1().Pods()
 	namespaceInformer := informerFactory.Core().V1().Namespaces()
 	nodeInformer := informerFactory.Core().V1().Nodes()
+	serviceInformer := informerFactory.Core().V1().Services()
 
 	controller := &Controller{
 		config:        config,
@@ -87,9 +93,14 @@ func NewController(
 		deleteNamespaceQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteNamespace"),
 
 		nodesLister:     nodeInformer.Lister(),
-		nodeSynced:      nodeInformer.Informer().HasSynced,
+		nodesSynced:     nodeInformer.Informer().HasSynced,
 		addNodeQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddNode"),
 		deleteNodeQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteNode"),
+
+		servicesLister:     serviceInformer.Lister(),
+		serviceSynced:      serviceInformer.Informer().HasSynced,
+		addServiceQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddService"),
+		updateServiceQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteService"),
 
 		recorder: recorder,
 	}
@@ -108,6 +119,11 @@ func NewController(
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddNode,
 		DeleteFunc: controller.enqueueDeleteNode,
+	})
+
+	serviceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddService,
+		UpdateFunc: controller.enqueueUpdateService,
 	})
 
 	return controller
@@ -142,6 +158,9 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 
 	go wait.Until(c.runAddNodeWorker, time.Second, stopCh)
 	go wait.Until(c.runDeleteNodeWorker, time.Second, stopCh)
+
+	go wait.Until(c.runAddServiceWorker, time.Second, stopCh)
+	go wait.Until(c.runUpdateServiceWorker, time.Second, stopCh)
 
 	klog.Info("Started workers")
 	<-stopCh

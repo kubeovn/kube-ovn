@@ -225,7 +225,7 @@ func (c *Controller) handleAddPod(key string) error {
 func (c *Controller) handleDeletePod(key string) error {
 	// Convert the namespace/name string into a distinct namespace and name
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
-	klog.Infof("delete pod %s/%s", name, namespace)
+	klog.Infof("delete pod %s/%s", namespace, name)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil

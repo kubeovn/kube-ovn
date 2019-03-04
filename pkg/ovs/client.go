@@ -2,6 +2,7 @@ package ovs
 
 import (
 	"bitbucket.org/mathildetech/kube-ovn/pkg/util"
+	"encoding/json"
 	"fmt"
 	"k8s.io/klog"
 	"os/exec"
@@ -213,7 +214,7 @@ func (c Client) FindLoadbalancer(lb string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf(string(raw))
 	}
-	return string(raw), nil
+	return strings.TrimSpace(string(raw)), nil
 }
 
 func (c Client) CreateLoadBalancer(lb, protocol string) error {
@@ -226,10 +227,43 @@ func (c Client) CreateLoadBalancer(lb, protocol string) error {
 	return nil
 }
 
+func (c Client) CreateLoadBalancerRule(lb, vip, ips string) error {
+	raw, err := exec.Command(
+		"ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "--may-exist", "lb-add", lb, vip, ips).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf(string(raw))
+	}
+	return nil
+}
+
 func (c Client) AddLoadBalancerToLogicalSwitch(lb, ls string) error {
 	raw, err := exec.Command("ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "--may-exist", "ls-lb-add", ls, lb).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf(string(raw))
 	}
 	return nil
+}
+
+func (c Client) DeleteLoadBalancerVip(vip, lb string) error {
+	raw, err := exec.Command("ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "--if-exists", "lb-del", lb, vip).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf(string(raw))
+	}
+	return nil
+}
+
+func (c Client) GetLoadBalancerVips(lb string) (map[string]string, error) {
+	raw, err := exec.Command(
+		"ovn-nbctl", fmt.Sprintf("--db=%s", c.OvnNbAddress), "--data=bare", "--no-heading",
+		"get", "load_balancer", lb, "vips").CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf(string(raw))
+	}
+	outStr := string(raw)
+	result := map[string]string{}
+	err = json.Unmarshal([]byte(strings.Replace(outStr, "=", ":", -1)), &result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
