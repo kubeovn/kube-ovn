@@ -43,10 +43,18 @@ type Controller struct {
 	deleteNamespaceQueue workqueue.RateLimitingInterface
 
 	nodesLister     v1.NodeLister
-	nodeSynced      cache.InformerSynced
+	nodesSynced     cache.InformerSynced
 	addNodeQueue    workqueue.RateLimitingInterface
 	deleteNodeQueue workqueue.RateLimitingInterface
 
+	servicesLister     v1.ServiceLister
+	serviceSynced      cache.InformerSynced
+	addServiceQueue    workqueue.RateLimitingInterface
+	updateServiceQueue workqueue.RateLimitingInterface
+
+	endpointsLister     v1.EndpointsLister
+	endpointsSynced     cache.InformerSynced
+	updateEndpointQueue workqueue.RateLimitingInterface
 	// recorder is an event recorder for recording Event resources to the
 	// Kubernetes API.
 	recorder record.EventRecorder
@@ -70,10 +78,12 @@ func NewController(
 	podInformer := informerFactory.Core().V1().Pods()
 	namespaceInformer := informerFactory.Core().V1().Namespaces()
 	nodeInformer := informerFactory.Core().V1().Nodes()
+	serviceInformer := informerFactory.Core().V1().Services()
+	endpointInformer := informerFactory.Core().V1().Endpoints()
 
 	controller := &Controller{
 		config:        config,
-		ovnClient:     ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.ClusterRouter),
+		ovnClient:     ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer),
 		kubeclientset: config.KubeClient,
 
 		podsLister:     podInformer.Lister(),
@@ -87,9 +97,18 @@ func NewController(
 		deleteNamespaceQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteNamespace"),
 
 		nodesLister:     nodeInformer.Lister(),
-		nodeSynced:      nodeInformer.Informer().HasSynced,
+		nodesSynced:     nodeInformer.Informer().HasSynced,
 		addNodeQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddNode"),
 		deleteNodeQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteNode"),
+
+		servicesLister:     serviceInformer.Lister(),
+		serviceSynced:      serviceInformer.Informer().HasSynced,
+		addServiceQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddService"),
+		updateServiceQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteService"),
+
+		endpointsLister:     endpointInformer.Lister(),
+		endpointsSynced:     endpointInformer.Informer().HasSynced,
+		updateEndpointQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateEndpoint"),
 
 		recorder: recorder,
 	}
@@ -99,7 +118,6 @@ func NewController(
 		DeleteFunc: controller.enqueueDeletePod,
 	})
 
-	// TODO: need to watch namespace update to update vswitch config
 	namespaceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddNamespace,
 		DeleteFunc: controller.enqueueDeleteNamespace,
@@ -108,6 +126,15 @@ func NewController(
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddNode,
 		DeleteFunc: controller.enqueueDeleteNode,
+	})
+
+	serviceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: controller.enqueueUpdateService,
+	})
+
+	endpointInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddEndpoint,
+		UpdateFunc: controller.enqueueUpdateEndpoint,
 	})
 
 	return controller
@@ -127,7 +154,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 
 	// Wait for the caches to be synced before starting workers
 	klog.Info("Waiting for informer caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.podsSynced, c.namespacesSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
@@ -142,6 +169,10 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 
 	go wait.Until(c.runAddNodeWorker, time.Second, stopCh)
 	go wait.Until(c.runDeleteNodeWorker, time.Second, stopCh)
+
+	go wait.Until(c.runUpdateServiceWorker, time.Second, stopCh)
+
+	go wait.Until(c.runUpdateEndpointWorker, time.Second, stopCh)
 
 	klog.Info("Started workers")
 	<-stopCh

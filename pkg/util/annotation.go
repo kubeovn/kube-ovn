@@ -10,4 +10,7 @@ const (
 
 	LogicalSwitchAnnotation = "ovn.kubernetes.io/logical_switch"
 	ExcludeIpsAnnotation    = "ovn.kubernetes.io/exclude_ips"
+
+	ProtocolTCP = "tcp"
+	ProtocolUDP = "udp"
 )

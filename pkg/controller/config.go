@@ -28,6 +28,9 @@ type Configuration struct {
 	NodeSwitch        string
 	NodeSwitchCIDR    string
 	NodeSwitchGateway string
+
+	ClusterTcpLoadBalancer string
+	ClusterUdpLoadBalancer string
 }
 
 // TODO: validate configuration
@@ -47,6 +50,9 @@ func ParseFlags() (*Configuration, error) {
 		argNodeSwitch        = pflag.String("node-switch", "join", "The name of node gateway switch which help node to access pod network. Default: join")
 		argNodeSwitchCIDR    = pflag.String("node-switch-cidr", "100.64.0.0/16", "The cidr for node switch. Default: 100.64.0.0/16")
 		argNodeSwitchGateway = pflag.String("node-switch-gateway", "100.64.0.1", "The gateway for node switch. Default: 100.64.0.1")
+
+		argClusterTcpLoadBalancer = pflag.String("cluster-tcp-loadbalancer", "cluster-tcp-loadbalancer", "The name for cluster tcp loadbalancer")
+		argClusterUdpLoadBalancer = pflag.String("cluster-udp-loadbalancer", "cluster-udp-loadbalancer", "The name for cluster udp loadbalancer")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -64,18 +70,20 @@ func ParseFlags() (*Configuration, error) {
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
 	config := &Configuration{
-		OvnNbSocket:          *argOvnNbSocket,
-		OvnNbHost:            *argOvnNbHost,
-		OvnNbPort:            *argOvnNbPort,
-		KubeConfigFile:       *argKubeConfigFile,
-		DefaultLogicalSwitch: *argDefaultLogicalSwitch,
-		DefaultCIDR:          *argDefaultCIDR,
-		DefaultGateway:       *argDefaultGateway,
-		DefaultExcludeIps:    *argDefaultExcludeIps,
-		ClusterRouter:        *argClusterRouter,
-		NodeSwitch:           *argNodeSwitch,
-		NodeSwitchCIDR:       *argNodeSwitchCIDR,
-		NodeSwitchGateway:    *argNodeSwitchGateway,
+		OvnNbSocket:            *argOvnNbSocket,
+		OvnNbHost:              *argOvnNbHost,
+		OvnNbPort:              *argOvnNbPort,
+		KubeConfigFile:         *argKubeConfigFile,
+		DefaultLogicalSwitch:   *argDefaultLogicalSwitch,
+		DefaultCIDR:            *argDefaultCIDR,
+		DefaultGateway:         *argDefaultGateway,
+		DefaultExcludeIps:      *argDefaultExcludeIps,
+		ClusterRouter:          *argClusterRouter,
+		NodeSwitch:             *argNodeSwitch,
+		NodeSwitchCIDR:         *argNodeSwitchCIDR,
+		NodeSwitchGateway:      *argNodeSwitchGateway,
+		ClusterTcpLoadBalancer: *argClusterTcpLoadBalancer,
+		ClusterUdpLoadBalancer: *argClusterUdpLoadBalancer,
 	}
 	err := config.initKubeClient()
 	if err != nil {
@@ -85,6 +93,8 @@ func ParseFlags() (*Configuration, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	klog.Infof("config is  %v", config)
 
 	return config, nil
 }
