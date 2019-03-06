@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
+	"strings"
 )
 
 func (c *Controller) enqueueAddPod(obj interface{}) {
@@ -186,6 +188,28 @@ func (c *Controller) handleAddPod(key string) error {
 	ls := ns.Annotations[util.LogicalSwitchAnnotation]
 	if ls == "" {
 		ls = c.config.DefaultLogicalSwitch
+	}
+
+	ipPool := strings.Split(pod.Annotations[util.IpPoolAnnotation], ",")
+	for _, ip := range ipPool {
+		pods, err := c.podsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list pod %v", err)
+			return err
+		}
+		used := false
+		for _, pod := range pods {
+			// use annotation to get exist ips, as podIp may not exist in this interval
+			if strings.Split(pod.Annotations[util.IpAddressAnnotation], "/")[0] == ip {
+				used = true
+				break
+			}
+		}
+
+		if !used {
+			pod.Annotations[util.IpAddressAnnotation] = ip
+			break
+		}
 	}
 
 	// pod address info may already exist in ovn

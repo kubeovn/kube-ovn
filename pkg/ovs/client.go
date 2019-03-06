@@ -56,28 +56,48 @@ func (c Client) DeletePort(port string) error {
 }
 
 func (c Client) CreatePort(ls, port, ip, mac string) (*Nic, error) {
-	_, err := c.ovnCommand(WaitSb, MayExist, "lsp-add", ls, port,
-		"--", "set", "logical_switch_port", port, "addresses=dynamic")
-	if err != nil {
-		return nil, fmt.Errorf("create port %s failed %v", port, err)
-	}
+	if ip == "" && mac == "" {
+		_, err := c.ovnCommand(WaitSb, MayExist, "lsp-add", ls, port,
+			"--", "set", "logical_switch_port", port, "addresses=dynamic")
+		if err != nil {
+			klog.Errorf("create port %s failed %v", port, err)
+			return nil, err
+		}
 
-	output, err := c.ovnCommand("get", "logical_switch_port", port, "dynamic-addresses")
-	if err != nil {
-		return nil, fmt.Errorf("get port %s failed %v", port, err)
-	}
-	mac = strings.Split(output, " ")[0]
-	ip = strings.Split(output, " ")[1]
+		output, err := c.ovnCommand("get", "logical_switch_port", port, "dynamic-addresses")
+		if err != nil {
+			klog.Errorf("get port %s addresses failed %v", port, err)
+			return nil, err
+		}
+		mac = strings.Split(output, " ")[0]
+		ip = strings.Split(output, " ")[1]
+	} else {
+		if mac == "" {
+			mac = util.GenerateMac()
+		}
 
+		// remove mask, and retrieve mask from subnet cidr later
+		// in this way we can deal with static ip with/without mask
+		ip = strings.Split(ip, "/")[0]
+
+		_, err := c.ovnCommand(WaitSb, MayExist, "lsp-add", ls, port, "--",
+			"lsp-set-addresses", port, fmt.Sprintf("%s %s", mac, ip))
+		if err != nil {
+			klog.Errorf("create port %s failed %v", port, err)
+			return nil, err
+		}
+	}
 	cidr, err := c.ovnCommand("get", "logical_switch", ls, "other_config:subnet")
 	if err != nil {
-		return nil, fmt.Errorf("get switch %s failed %v", ls, err)
+		klog.Errorf("get switch %s failed %v", ls, err)
+		return nil, err
 	}
 	mask := strings.Split(cidr, "/")[1]
 
 	gw, err := c.ovnCommand("get", "logical_switch", ls, "other_config:gateway")
 	if err != nil {
-		return nil, fmt.Errorf("get switch %s failed %v", ls, err)
+		klog.Errorf("get switch %s failed %v", ls, err)
+		return nil, err
 	}
 
 	return &Nic{IpAddress: fmt.Sprintf("%s/%s", ip, mask), MacAddress: mac, CIDR: cidr, Gateway: gw}, nil
