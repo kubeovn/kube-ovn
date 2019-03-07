@@ -4,11 +4,16 @@ import (
 	"bitbucket.org/mathildetech/kube-ovn/pkg/util"
 	"encoding/json"
 	"fmt"
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
+	"net"
+	"strconv"
+	"strings"
 )
 
 func (c *Controller) enqueueAddPod(obj interface{}) {
@@ -188,6 +193,52 @@ func (c *Controller) handleAddPod(key string) error {
 		ls = c.config.DefaultLogicalSwitch
 	}
 
+	ipPoolAnnotation := pod.Annotations[util.IpPoolAnnotation]
+
+	if ipPoolAnnotation != "" && pod.Annotations[util.IpAddressAnnotation] == "" {
+		ipPool := strings.Split(pod.Annotations[util.IpPoolAnnotation], ",")
+
+		if isStatefulSetPod(pod) {
+			numIndex := len(strings.Split(pod.Name, "-")) - 1
+			numStr := strings.Split(pod.Name, "-")[numIndex]
+			index, _ := strconv.Atoi(numStr)
+			if index < len(ipPool) {
+				pod.Annotations[util.IpAddressAnnotation] = ipPool[index]
+			}
+		} else {
+			for _, ip := range ipPool {
+				if net.ParseIP(ip) == nil {
+					continue
+				}
+				pods, err := c.podsLister.List(labels.Everything())
+				if err != nil {
+					klog.Errorf("failed to list pod %v", err)
+					return err
+				}
+				used := false
+				for _, pod := range pods {
+					if pod.DeletionTimestamp.IsZero() {
+						continue
+					}
+					// use annotation to get exist ips, as podIp may not exist in this interval
+					if strings.Split(pod.Annotations[util.IpAddressAnnotation], "/")[0] == ip {
+						used = true
+						break
+					}
+				}
+				if !used {
+					pod.Annotations[util.IpAddressAnnotation] = ip
+					break
+				}
+			}
+		}
+		if pod.Annotations[util.IpAddressAnnotation] == "" {
+			klog.Errorf("no unused ip for pod %s", key)
+			c.recorder.Event(pod, v1.EventTypeWarning, "FailedAllocateIP", "no unused ip")
+			return fmt.Errorf("no unused ip for pod %s", key)
+		}
+	}
+
 	// pod address info may already exist in ovn
 	ip := pod.Annotations[util.IpAddressAnnotation]
 	mac := pod.Annotations[util.MacAddressAnnotation]
@@ -255,4 +306,13 @@ func (c *Controller) handleDeletePod(key string) error {
 
 func podNameToPortName(pod, namespace string) string {
 	return fmt.Sprintf("%s.%s", pod, namespace)
+}
+
+func isStatefulSetPod(pod *v1.Pod) bool {
+	for _, owner := range pod.OwnerReferences {
+		if owner.Kind == "StatefulSet" {
+			return true
+		}
+	}
+	return false
 }

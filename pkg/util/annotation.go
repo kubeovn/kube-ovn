@@ -5,6 +5,7 @@ const (
 	IpAddressAnnotation  = "ovn.kubernetes.io/ip_address"
 	CidrAnnotation       = "ovn.kubernetes.io/cidr"
 	GatewayAnnotation    = "ovn.kubernetes.io/gateway"
+	IpPoolAnnotation     = "ovn.kubernetes.io/ip_pool"
 
 	PortNameAnnotation = "ovn.kubernetes.io/port_name"
 
