@@ -22,7 +22,7 @@ spec:
       hostNetwork: true
       containers:
         - name: ovn-central
-          image: "index.alauda.cn/alaudak8s/kube-ovn-node:dev"
+          image: "index.alauda.cn/alaudak8s/kube-ovn-node:v0.1.0"
           imagePullPolicy: Always
           args:
           - "/bin/bash"

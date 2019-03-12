@@ -23,7 +23,7 @@ spec:
       hostNetwork: true
       containers:
         - name: kube-ovn-controller
-          image: "index.alauda.cn/alaudak8s/kube-ovn-controller:dev"
+          image: "index.alauda.cn/alaudak8s/kube-ovn-controller:v0.1.0"
           imagePullPolicy: Always
           env:
             - name: POD_IP
@@ -84,7 +84,7 @@ spec:
       hostPID: true
       containers:
         - name: kube-ovn-cni
-          image: "index.alauda.cn/alaudak8s/kube-ovn-cni:dev"
+          image: "index.alauda.cn/alaudak8s/kube-ovn-cni:v0.1.0"
           imagePullPolicy: Always
           securityContext:
             runAsUser: 0
