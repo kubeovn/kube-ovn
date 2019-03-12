@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"bitbucket.org/mathildetech/kube-ovn/pkg/util"
 	"fmt"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/vishvananda/netlink"
@@ -153,24 +154,24 @@ func configureContainerNic(nicName, ipAddr, gateway string, macAddr net.Hardware
 	})
 }
 
-func configureNodeNic(nicName, ip, mac string) error {
+func configureNodeNic(portName, ip, mac string) error {
 	macAddr, err := net.ParseMAC(mac)
 	if err != nil {
 		return fmt.Errorf("failed to parse mac %s %v", macAddr, err)
 	}
 
 	raw, err := exec.Command(
-		"ovs-vsctl", "--may-exist", "add-port", "br-int", nicName, "--",
-		"set", "interface", nicName, "type=internal", "--",
-		"set", "interface", nicName, fmt.Sprintf("external_ids:iface-id=%s", nicName)).CombinedOutput()
+		"ovs-vsctl", "--may-exist", "add-port", "br-int", util.NodeNic, "--",
+		"set", "interface", util.NodeNic, "type=internal", "--",
+		"set", "interface", util.NodeNic, fmt.Sprintf("external_ids:iface-id=%s", portName)).CombinedOutput()
 	if err != nil {
-		klog.Errorf("failed to configure node nic %s %s", nicName, string(raw))
+		klog.Errorf("failed to configure node nic %s %s", portName, string(raw))
 		return fmt.Errorf(string(raw))
 	}
 
-	nodeLink, err := netlink.LinkByName(nicName)
+	nodeLink, err := netlink.LinkByName(util.NodeNic)
 	if err != nil {
-		return fmt.Errorf("can not find node nic %s %v", nicName, err)
+		return fmt.Errorf("can not find node nic %s %v", portName, err)
 	}
 
 	ipAddr, err := netlink.ParseAddr(ip)
@@ -191,7 +192,7 @@ func configureNodeNic(nicName, ip, mac string) error {
 	if nodeLink.Attrs().OperState != netlink.OperUp {
 		err = netlink.LinkSetUp(nodeLink)
 		if err != nil {
-			return fmt.Errorf("can not set node nic %s up %v", nicName, err)
+			return fmt.Errorf("can not set node nic %s up %v", portName, err)
 		}
 	}
 	return nil

@@ -126,20 +126,15 @@ func (c *Controller) reconcileRouters() error {
 		klog.Errorf("failed to get node %s %v", c.config.NodeName, err)
 		return err
 	}
-	nicName, ok := node.Annotations[util.PortNameAnnotation]
-	if !ok {
-		klog.Errorf("annotation for node %s ovn.kubernetes.io/port_name not exists", node.Name)
-		return fmt.Errorf("annotation for node ovn.kubernetes.io/port_name not exists")
-	}
 	gateway, ok := node.Annotations[util.GatewayAnnotation]
 	if !ok {
 		klog.Errorf("annotation for node %s ovn.kubernetes.io/gateway not exists", node.Name)
 		return fmt.Errorf("annotation for node ovn.kubernetes.io/gateway not exists")
 	}
-	nic, err := netlink.LinkByName(nicName)
+	nic, err := netlink.LinkByName(util.NodeNic)
 	if err != nil {
-		klog.Errorf("failed to get nic %s", nicName)
-		return fmt.Errorf("failed to get nic %s", nicName)
+		klog.Errorf("failed to get nic %s", util.NodeNic)
+		return fmt.Errorf("failed to get nic %s", util.NodeNic)
 	}
 	routers, err := netlink.RouteList(nic, netlink.FAMILY_V4)
 	if err != nil {
