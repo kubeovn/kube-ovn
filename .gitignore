@@ -1,1 +1,4 @@
 .idea/*
+dist/images/kube-ovn
+dist/images/kube-ovn-controller
+dist/images/kube-ovn-daemon
