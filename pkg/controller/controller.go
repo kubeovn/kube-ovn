@@ -129,6 +129,7 @@ func NewController(
 	})
 
 	serviceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddService,
 		UpdateFunc: controller.enqueueUpdateService,
 	})
 
@@ -171,6 +172,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	go wait.Until(c.runDeleteNodeWorker, time.Second, stopCh)
 
 	go wait.Until(c.runUpdateServiceWorker, time.Second, stopCh)
+	go wait.Until(c.runAddServiceWorker, time.Second, stopCh)
 
 	go wait.Until(c.runUpdateEndpointWorker, time.Second, stopCh)
 

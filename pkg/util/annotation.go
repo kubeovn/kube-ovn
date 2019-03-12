@@ -14,4 +14,6 @@ const (
 
 	ProtocolTCP = "tcp"
 	ProtocolUDP = "udp"
+
+	ServiceAnnotation = "ovn.kubernetes.io/service"
 )

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bitbucket.org/mathildetech/kube-ovn/pkg/util"
 	"fmt"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -10,12 +11,23 @@ import (
 	"strings"
 )
 
+func (c *Controller) enqueueAddService(obj interface{}) {
+	var key string
+	var err error
+	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
+		utilruntime.HandleError(err)
+		return
+	}
+	c.addServiceQueue.AddRateLimited(key)
+}
+
 func (c *Controller) enqueueUpdateService(old, new interface{}) {
 	oldSvc := old.(*v1.Service)
 	newSvc := new.(*v1.Service)
 	if oldSvc.ResourceVersion == newSvc.ResourceVersion {
 		return
 	}
+
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
@@ -25,9 +37,45 @@ func (c *Controller) enqueueUpdateService(old, new interface{}) {
 	c.updateServiceQueue.AddRateLimited(key)
 }
 
+func (c *Controller) runAddServiceWorker() {
+	for c.processNextAddServiceWorkItem() {
+	}
+}
+
 func (c *Controller) runUpdateServiceWorker() {
 	for c.processNextUpdateServiceWorkItem() {
 	}
+}
+
+func (c *Controller) processNextAddServiceWorkItem() bool {
+	obj, shutdown := c.addServiceQueue.Get()
+
+	if shutdown {
+		return false
+	}
+
+	err := func(obj interface{}) error {
+		defer c.addServiceQueue.Done(obj)
+		var key string
+		var ok bool
+		if key, ok = obj.(string); !ok {
+			c.addServiceQueue.Forget(obj)
+			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
+			return nil
+		}
+		if err := c.handleAddService(key); err != nil {
+			c.addServiceQueue.AddRateLimited(key)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		}
+		c.addServiceQueue.Forget(obj)
+		return nil
+	}(obj)
+
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
+	return true
 }
 
 func (c *Controller) processNextUpdateServiceWorkItem() bool {
@@ -61,7 +109,7 @@ func (c *Controller) processNextUpdateServiceWorkItem() bool {
 	return true
 }
 
-func (c *Controller) handleUpdateService(key string) error {
+func (c *Controller) handleAddService(key string) error {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
@@ -73,6 +121,56 @@ func (c *Controller) handleUpdateService(key string) error {
 			return nil
 		}
 		return err
+	}
+
+	if !containsString(svc.Finalizers, util.ServiceAnnotation) {
+		svc.SetFinalizers(append(svc.Finalizers, util.ServiceAnnotation))
+		_, err = c.config.KubeClient.CoreV1().Services(namespace).Update(svc)
+		if err != nil {
+			return err
+		}
+	}
+
+	ip := svc.Spec.ClusterIP
+	if ip == "" || ip == v1.ClusterIPNone {
+		return nil
+	}
+
+	if !svc.DeletionTimestamp.IsZero() {
+		if containsString(svc.Finalizers, util.ServiceAnnotation) {
+			svc.SetFinalizers(removeString(svc.Finalizers, util.ServiceAnnotation))
+			_, err = c.config.KubeClient.CoreV1().Services(namespace).Update(svc)
+		}
+	} else {
+		err = c.ovnClient.AddDnsRecord(svcDomain(name, namespace), []string{ip})
+	}
+
+	return err
+}
+
+func (c *Controller) handleUpdateService(key string) error {
+	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
+		return nil
+	}
+	klog.Infof("update svc %s/%s", namespace, name)
+	svc, err := c.servicesLister.Services(namespace).Get(name)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	if !svc.DeletionTimestamp.IsZero() {
+		if containsString(svc.Finalizers, util.ServiceAnnotation) {
+			svc.SetFinalizers(removeString(svc.Finalizers, util.ServiceAnnotation))
+			_, err = c.config.KubeClient.CoreV1().Services(namespace).Update(svc)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	ip := svc.Spec.ClusterIP
@@ -110,12 +208,10 @@ func (c *Controller) handleUpdateService(key string) error {
 			}
 		}
 
-		if containsString(svc.Finalizers, "ovn.kubernetes.io/service") {
-			svc.SetFinalizers(removeString(svc.Finalizers, "ovn.kubernetes.io/service"))
-			_, err = c.config.KubeClient.CoreV1().Services(namespace).Update(svc)
-			if err != nil {
-				return err
-			}
+		err = c.ovnClient.DeleteDnsRecord(svcDomain(name, namespace))
+		if err != nil {
+			klog.Errorf("failed to delete dns %s , %v", svcDomain(name, namespace), err)
+			return err
 		}
 	} else {
 		// for service update
@@ -202,4 +298,8 @@ func removeString(slice []string, s string) (result []string) {
 		result = append(result, item)
 	}
 	return
+}
+
+func svcDomain(svc, namespace string) string {
+	return fmt.Sprintf("%s.%s.svc.cluster.local", svc, namespace)
 }

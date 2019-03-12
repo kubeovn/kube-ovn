@@ -142,12 +142,11 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 			}
 		}
 	}
-
 	return nil
 }
 
 func convertIpToAddress(backends []string, targetPort int32) string {
-	addresses := []string{}
+	addresses := make([]string, 0, len(backends))
 	for _, backend := range backends {
 		address := fmt.Sprintf("%s:%d", backend, targetPort)
 		addresses = append(addresses, address)

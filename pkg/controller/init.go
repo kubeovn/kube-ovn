@@ -98,6 +98,7 @@ func InitLoadBalancer(config *Configuration) error {
 			return err
 		}
 	} else {
+		ovs.GlobalTcpLb = tcpLb
 		klog.Infof("tcp load balancer %s exists", tcpLb)
 	}
 
@@ -113,7 +114,19 @@ func InitLoadBalancer(config *Configuration) error {
 			return err
 		}
 	} else {
+		ovs.GlobalUdpLb = udpLb
 		klog.Infof("udp load balancer %s exists", udpLb)
 	}
+	return nil
+}
+
+func InitDnsTable(config *Configuration) error {
+	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer)
+	uuid, err := client.CreateDnsTable()
+	if err != nil {
+		return err
+	}
+	ovs.GlobalDnsTable = uuid
+	klog.Infof("dns table is %s", uuid)
 	return nil
 }
