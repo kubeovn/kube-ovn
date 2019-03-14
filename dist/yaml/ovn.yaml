@@ -18,6 +18,10 @@ spec:
         component: network
         type: infra
     spec:
+      tolerations:
+        - effect: NoSchedule
+          key: node.kubernetes.io/not-ready
+          operator: Exists
       serviceAccountName: ovn
       hostNetwork: true
       containers:
