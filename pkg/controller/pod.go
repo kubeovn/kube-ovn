@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/labels"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
@@ -210,18 +210,15 @@ func (c *Controller) handleAddPod(key string) error {
 				if net.ParseIP(ip) == nil {
 					continue
 				}
-				pods, err := c.podsLister.List(labels.Everything())
+				pods, err := c.kubeclientset.CoreV1().Pods(v1.NamespaceAll).List(metav1.ListOptions{})
 				if err != nil {
 					klog.Errorf("failed to list pod %v", err)
 					return err
 				}
 				used := false
-				for _, pod := range pods {
-					if pod.DeletionTimestamp.IsZero() {
-						continue
-					}
+				for _, existPod := range pods.Items {
 					// use annotation to get exist ips, as podIp may not exist in this interval
-					if strings.Split(pod.Annotations[util.IpAddressAnnotation], "/")[0] == ip {
+					if strings.Split(existPod.Annotations[util.IpAddressAnnotation], "/")[0] == ip {
 						used = true
 						break
 					}
@@ -247,24 +244,27 @@ func (c *Controller) handleAddPod(key string) error {
 		return err
 	}
 
+	op := "replace"
+	if len(pod.Annotations) == 0 {
+		op = "add"
+	}
+	if pod.Annotations == nil {
+		pod.Annotations = map[string]string{}
+	}
+	pod.Annotations[util.IpAddressAnnotation] = nic.IpAddress
+	pod.Annotations[util.MacAddressAnnotation] = nic.MacAddress
+	pod.Annotations[util.CidrAnnotation] = nic.CIDR
+	pod.Annotations[util.GatewayAnnotation] = nic.Gateway
+	pod.Annotations[util.LogicalSwitchAnnotation] = ls
+
 	patchPayloadTemplate :=
 		`[{
         "op": "%s",
         "path": "/metadata/annotations",
         "value": %s
     }]`
-	payload := map[string]string{
-		util.IpAddressAnnotation:     nic.IpAddress,
-		util.MacAddressAnnotation:    nic.MacAddress,
-		util.CidrAnnotation:          nic.CIDR,
-		util.GatewayAnnotation:       nic.Gateway,
-		util.LogicalSwitchAnnotation: ls,
-	}
-	raw, _ := json.Marshal(payload)
-	op := "replace"
-	if len(pod.Annotations) == 0 {
-		op = "add"
-	}
+
+	raw, _ := json.Marshal(pod.Annotations)
 	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
 	_, err = c.kubeclientset.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, []byte(patchPayload))
 	if err != nil {
