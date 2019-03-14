@@ -42,22 +42,6 @@ spec:
         beta.kubernetes.io/os: "linux"
 
 ---
-kind: Service
-apiVersion: v1
-metadata:
-  name: kube-ovn
-  namespace: kube-ovn
-spec:
-  ports:
-    - name: kube-ovn
-      protocol: TCP
-      port: 9090
-      targetPort: 9090
-  type: ClusterIP
-  selector:
-    app: kube-ovn-controller
-  sessionAffinity: None
----
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
