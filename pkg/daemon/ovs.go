@@ -17,7 +17,7 @@ func (csh CniServerHandler) configureNic(podName, podNamespace, netns, container
 	// NOTE: DO NOT use ovs internal type interface for container.
 	// Kubernetes will detect 'eth0' nic in pod, so the nic name in pod must be 'eth0'.
 	// When renaming internal interface to 'eth0', ovs will delete and recreate this interface.
-	veth := netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: hostNicName}, PeerName: containerNicName}
+	veth := netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: hostNicName, MTU: 1400}, PeerName: containerNicName}
 	defer func() {
 		// Remove veth link in case any error during creating pod network.
 		if err != nil {
@@ -187,6 +187,11 @@ func configureNodeNic(portName, ip, mac string) error {
 	err = netlink.LinkSetHardwareAddr(nodeLink, macAddr)
 	if err != nil {
 		return fmt.Errorf("can not set mac address to node nic %v", err)
+	}
+
+	err = netlink.LinkSetMTU(nodeLink, 1400)
+	if err != nil {
+		return fmt.Errorf("can not set mtu %v", err)
 	}
 
 	if nodeLink.Attrs().OperState != netlink.OperUp {
