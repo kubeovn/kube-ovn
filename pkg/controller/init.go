@@ -50,7 +50,7 @@ func InitDefaultLogicalSwitch(config *Configuration) error {
 }
 
 func InitNodeSwitch(config *Configuration) error {
-	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer)
+	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer)
 	ss, err := client.ListLogicalSwitch()
 	if err != nil {
 		return err
@@ -70,7 +70,7 @@ func InitNodeSwitch(config *Configuration) error {
 }
 
 func InitClusterRouter(config *Configuration) error {
-	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer)
+	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer)
 	lrs, err := client.ListLogicalRouter()
 	if err != nil {
 		return err
@@ -85,7 +85,7 @@ func InitClusterRouter(config *Configuration) error {
 }
 
 func InitLoadBalancer(config *Configuration) error {
-	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer)
+	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer)
 	tcpLb, err := client.FindLoadbalancer(config.ClusterTcpLoadBalancer)
 	if err != nil {
 		return fmt.Errorf("failed to find tcp lb %v", err)
@@ -121,7 +121,7 @@ func InitLoadBalancer(config *Configuration) error {
 }
 
 func InitDnsTable(config *Configuration) error {
-	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer)
+	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer)
 	uuid, err := client.CreateDnsTable()
 	if err != nil {
 		return err
