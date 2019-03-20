@@ -36,7 +36,7 @@ func (csh CniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		return
 	}
 	klog.Infof("add port request %v", podRequest)
-	var macAddr, ipAddr, cidr, gw string
+	var macAddr, ipAddr, cidr, gw, ingress, egress string
 	for i := 0; i < 10; i++ {
 		pod, err := csh.KubeClient.CoreV1().Pods(podRequest.PodNamespace).Get(podRequest.PodName, v1.GetOptions{})
 		if err != nil {
@@ -48,6 +48,8 @@ func (csh CniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		ipAddr = pod.Annotations[util.IpAddressAnnotation]
 		cidr = pod.Annotations[util.CidrAnnotation]
 		gw = pod.Annotations[util.GatewayAnnotation]
+		ingress = pod.Annotations[util.IngressRateAnnotation]
+		egress = pod.Annotations[util.EgressRateAnnotation]
 
 		if macAddr == "" || ipAddr == "" || cidr == "" || gw == "" {
 			// wait controller assign an address
@@ -58,7 +60,7 @@ func (csh CniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	}
 
 	klog.Infof("create container mac %s, ip %s, cidr %s, gw %s", macAddr, ipAddr, cidr, gw)
-	err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.NetNs, podRequest.ContainerID, macAddr, ipAddr, gw)
+	err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.NetNs, podRequest.ContainerID, macAddr, ipAddr, gw, ingress, egress)
 	if err != nil {
 		klog.Errorf("configure nic failed %v", err)
 		resp.WriteHeaderAndEntity(http.StatusInternalServerError, err)
