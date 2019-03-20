@@ -7,6 +7,9 @@ const (
 	GatewayAnnotation    = "ovn.kubernetes.io/gateway"
 	IpPoolAnnotation     = "ovn.kubernetes.io/ip_pool"
 
+	IngressRateAnnotation = "ovn.kubernetes.io/ingress_rate"
+	EgressRateAnnotation  = "ovn.kubernetes.io/egress_rate"
+
 	PortNameAnnotation = "ovn.kubernetes.io/port_name"
 
 	LogicalSwitchAnnotation = "ovn.kubernetes.io/logical_switch"
