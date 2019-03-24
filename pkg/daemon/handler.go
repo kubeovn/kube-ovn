@@ -59,6 +59,12 @@ func (csh CniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		break
 	}
 
+	if macAddr == "" || ipAddr == "" || cidr == "" || gw == "" {
+		klog.Errorf("no available ip for pod %s/%s", podRequest.PodNamespace, podRequest.PodName)
+		resp.WriteHeaderAndEntity(http.StatusInternalServerError, fmt.Sprintf("no available ip for pod %s/%s", podRequest.PodNamespace, podRequest.PodName))
+		return
+	}
+
 	klog.Infof("create container mac %s, ip %s, cidr %s, gw %s", macAddr, ipAddr, cidr, gw)
 	err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.NetNs, podRequest.ContainerID, macAddr, ipAddr, gw, ingress, egress)
 	if err != nil {
@@ -67,7 +73,6 @@ func (csh CniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		return
 	}
 	resp.WriteHeaderAndEntity(http.StatusOK, request.PodResponse{IpAddress: strings.Split(ipAddr, "/")[0], MacAddress: macAddr, CIDR: cidr, Gateway: gw})
-
 }
 
 func (csh CniServerHandler) handleDel(req *restful.Request, resp *restful.Response) {

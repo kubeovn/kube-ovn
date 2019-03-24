@@ -12,4 +12,4 @@ then
 	rm ${SOCK}
 fi
 
-./kube-ovn-daemon --ovs-socket=/run/openvswitch/db.sock --bind-socket=${SOCK}
+./kube-ovn-daemon --ovs-socket=/run/openvswitch/db.sock --bind-socket=${SOCK} $@
