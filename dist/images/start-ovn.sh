@@ -6,6 +6,8 @@ DB_NB_PORT=${1:-6641}
 DB_SB_ADDR=${1:-0.0.0.0}
 DB_SB_PORT=${1:-6642}
 
+rm -rf /var/run/openvswitch
+
 # Start ovn-northd, ovn-nb and ovn-sb
 /usr/share/openvswitch/scripts/ovn-ctl restart_northd
 

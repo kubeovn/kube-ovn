@@ -1,9 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  annotations:
-    ovn.kubernetes.io/cidr: 10.17.0.0/16
-    ovn.kubernetes.io/gateway: 10.17.0.1
-    ovn.kubernetes.io/logical_switch: ovn-test
-    ovn.kubernetes.io/exclude_ips: 10.17.0.0..10.17.0.10
-  name: ovn-test
