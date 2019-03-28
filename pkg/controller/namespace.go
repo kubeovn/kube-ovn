@@ -123,6 +123,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 		return err
 	}
 
+	// return if switch already exists
 	ss, err := c.ovnClient.ListLogicalSwitch()
 	if err != nil {
 		return err
@@ -133,6 +134,12 @@ func (c *Controller) handleAddNamespace(key string) error {
 		}
 	}
 
+	if cidr == "" || gateway == "" {
+		return fmt.Errorf("cidr and gateway are required for namespace %s", key)
+	}
+	if excludeIps == "" {
+		excludeIps = gateway
+	}
 	// If multiple namespace use same ls name, only first one will success
 	return c.ovnClient.CreateLogicalSwitch(ls, cidr, gateway, excludeIps)
 

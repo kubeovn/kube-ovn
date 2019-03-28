@@ -7,6 +7,7 @@ import (
 	"k8s.io/klog"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 type Client struct {
@@ -31,7 +32,11 @@ var GlobalUdpLb string
 func (c Client) ovnCommand(arg ...string) (string, error) {
 	cmdArgs := []string{fmt.Sprintf("--db=%s", c.OvnNbAddress)}
 	cmdArgs = append(cmdArgs, arg...)
+
+	start := time.Now()
 	raw, err := exec.Command(OvnNbCtl, cmdArgs...).CombinedOutput()
+	elapsed := float64((time.Since(start)) / time.Millisecond)
+	klog.Infof("ovn-nbctl command %s in %vms", strings.Join(cmdArgs, " "), elapsed)
 	if err != nil {
 		return "", fmt.Errorf("%s, %v", string(raw), err)
 	}
