@@ -204,7 +204,7 @@ func BridgeToNic(bridge string) error {
 	stdout, err = exec.Command("ovs-vsctl", "--", "--if-exists", "del-port", "br-int",
 		fmt.Sprintf("k8s-patch-br-int-%s", bridge)).CombinedOutput()
 	if err != nil {
-		klog.Errorf("Failed to delete patch port on br-int,  %v", string(stdout), err)
+		klog.Errorf("Failed to delete patch port on br-int, %s %v", string(stdout), err)
 		return err
 	}
 

@@ -148,7 +148,7 @@ func (c *Controller) handleAddNode(key string) error {
 	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
 	_, err = c.kubeclientset.CoreV1().Nodes().Patch(key, types.JSONPatchType, []byte(patchPayload))
 	if err != nil {
-		klog.Errorf("patch node % failed %v", key, err)
+		klog.Errorf("patch node %s failed %v", key, err)
 	}
 	return err
 }

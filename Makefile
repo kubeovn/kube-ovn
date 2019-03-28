@@ -1,6 +1,9 @@
-.PHONY: build-dev-images build-go
+GOFILES_NOVENDOR=$(shell find . -type f -name '*.go' -not -path "./vendor/*")
+GO_VERSION=1.12
 
-build-dev-images: build-go
+.PHONY: build-dev-images build-go build-bin test lint
+
+build-dev-images: build-bin
 	docker build -t index.alauda.cn/alaudak8s/kube-ovn-node:dev -f dist/images/Dockerfile.node dist/images/
 	docker push index.alauda.cn/alaudak8s/kube-ovn-node:dev
 	docker build -t index.alauda.cn/alaudak8s/kube-ovn-controller:dev -f dist/images/Dockerfile.controller dist/images/
@@ -21,3 +24,21 @@ release: build-go
 	docker push index.alauda.cn/alaudak8s/kube-ovn-controller:`cat VERSION`
 	docker build -t index.alauda.cn/alaudak8s/kube-ovn-cni:`cat VERSION` -f dist/images/Dockerfile.cni dist/images/
 	docker push index.alauda.cn/alaudak8s/kube-ovn-cni:`cat VERSION`
+
+lint:
+	@gofmt -d ${GOFILES_NOVENDOR} 
+	@gofmt -l ${GOFILES_NOVENDOR} | read && echo "Code differs from gofmt's style" 1>&2 && exit 1 || true
+	@GOOS=linux go vet ./...
+
+test:
+	go test -cover -v ./...
+
+build-bin: lint
+	docker run -e GOOS=linux -e GOCACHE=/tmp \
+		-u $(shell id -u):$(shell id -g) \
+		-v $(CURDIR):/go/src/bitbucket.org/mathildetech/kube-ovn:ro \
+		-v $(CURDIR)/dist:/go/src/bitbucket.org/mathildetech/kube-ovn/dist/ \
+		golang:$(GO_VERSION) /bin/bash -c '\
+		cd /go/src/bitbucket.org/mathildetech/kube-ovn && \
+		make test && \
+		make build-go '

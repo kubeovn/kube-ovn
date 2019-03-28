@@ -133,12 +133,12 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		if port.Protocol == v1.ProtocolTCP {
 			err = c.ovnClient.CreateLoadBalancerRule(c.config.ClusterTcpLoadBalancer, vip, convertIpToAddress(backends, targetPort))
 			if err != nil {
-				klog.Errorf("failed to update vip %s to tcp lb")
+				klog.Errorf("failed to update vip %s to tcp lb, %v", vip, err)
 			}
 		} else {
 			err = c.ovnClient.CreateLoadBalancerRule(c.config.ClusterUdpLoadBalancer, vip, convertIpToAddress(backends, targetPort))
 			if err != nil {
-				klog.Errorf("failed to update vip %s to udp lb")
+				klog.Errorf("failed to update vip %s to udp lb, %v", vip, err)
 			}
 		}
 	}
