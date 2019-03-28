@@ -172,7 +172,6 @@ func (c *Controller) handleAddPod(key string) error {
 		// The Pod resource may no longer exist, in which case we stop
 		// processing.
 		if errors.IsNotFound(err) {
-			utilruntime.HandleError(fmt.Errorf("pod '%s' in work queue no longer exists", key))
 			return nil
 		}
 		return err
