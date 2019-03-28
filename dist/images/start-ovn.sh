@@ -11,7 +11,7 @@ function quit {
     /usr/share/openvswitch/scripts/ovn-ctl stop_northd
     exit 0
 }
-trap quit SIGTERM
+trap quit EXIT
 
 # Start ovn-northd, ovn-nb and ovn-sb
 /usr/share/openvswitch/scripts/ovn-ctl restart_northd

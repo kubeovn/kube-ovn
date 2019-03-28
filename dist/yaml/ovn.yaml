@@ -184,14 +184,14 @@ spec:
           readinessProbe:
             exec:
               command:
-                - ovn-nbctl
-                - show
+                - sh
+                - /root/ovn-healthcheck.sh
             periodSeconds: 5
           livenessProbe:
             exec:
               command:
-                - ovn-nbctl
-                - show
+              - sh
+              - /root/ovn-healthcheck.sh
             initialDelaySeconds: 10
             periodSeconds: 5
             failureThreshold: 5
