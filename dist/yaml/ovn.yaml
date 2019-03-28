@@ -134,6 +134,11 @@ metadata:
       OVN components: northd, nb and sb.
 spec:
   replicas: 1
+  strategy:
+    rollingUpdate:
+      maxSurge: 0%
+      maxUnavailable: 100%
+    type: RollingUpdate
   selector:
     matchLabels:
       app: ovn-central

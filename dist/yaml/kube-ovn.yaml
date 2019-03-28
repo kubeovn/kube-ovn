@@ -12,6 +12,11 @@ spec:
   selector:
     matchLabels:
       app: kube-ovn-controller
+  strategy:
+    rollingUpdate:
+      maxSurge: 0%
+      maxUnavailable: 100%
+    type: RollingUpdate
   template:
     metadata:
       labels:

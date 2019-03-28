@@ -19,6 +19,14 @@ function wait_ovn_sb {
 }
 wait_ovn_sb
 
+function quit {
+	/usr/share/openvswitch/scripts/ovs-ctl stop
+	/usr/share/openvswitch/scripts/ovn-ctl stop_controller
+	/usr/share/openvswitch/scripts/ovn-ctl stop_controller_vtep
+	exit 0
+}
+trap quit SIGTERM
+
 # Start vswitchd
 /usr/share/openvswitch/scripts/ovs-ctl restart --no-ovs-vswitchd --system-id=random
 # Restrict the number of pthreads ovs-vswitchd creates to reduce the
@@ -43,12 +51,5 @@ ovs-vsctl set open . external-ids:ovn-remote=tcp:${OVN_SB_SERVICE_HOST}:${OVN_SB
 ovs-vsctl set open . external-ids:ovn-encap-type=geneve
 ovs-vsctl set open . external-ids:ovn-encap-ip=${POD_IP}
 
-function quit {
-	/usr/share/openvswitch/scripts/ovs-ctl stop
-	/usr/share/openvswitch/scripts/ovn-ctl stop_controller
-    /usr/share/openvswitch/scripts/ovn-ctl stop_controller_vtep
-	exit 0
-}
-trap quit SIGTERM
 
 tail -f /var/log/openvswitch/ovs-vswitchd.log
