@@ -24,6 +24,7 @@ RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /etc/cni/net.d && \
     mkdir -p /opt/cni/bin
 
+COPY ovn-healthcheck.sh /root/ovn-healthcheck.sh
 COPY start-ovs.sh /root/start-ovs.sh
 COPY start-ovn.sh /root/start-ovn.sh
 
