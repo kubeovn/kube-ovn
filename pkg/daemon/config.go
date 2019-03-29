@@ -3,12 +3,13 @@ package daemon
 import (
 	"flag"
 	"fmt"
+	"os"
+
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
-	"os"
 )
 
 type Configuration struct {
@@ -17,6 +18,12 @@ type Configuration struct {
 	KubeConfigFile string
 	KubeClient     kubernetes.Interface
 	NodeName       string
+	OvnNbHost      string
+	OvnNbPort      int
+	OvnSbHost      string
+	OvnSbPort      int
+	ClusterRouter  string
+	NodeSwitch     string
 }
 
 // TODO: validate configuration
@@ -25,10 +32,28 @@ func ParseFlags() (*Configuration, error) {
 		argBindSocket     = pflag.String("bind-socket", "/var/run/cniserver.sock", "The socket daemon bind to.")
 		argOvsSocket      = pflag.String("ovs-socket", "", "The socket to local ovs-server")
 		argKubeConfigFile = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
+		argOvnNbHost      = pflag.String("ovn-nb-host", "", "")
+		argOvnNbPort      = pflag.Int("ovn-nb-port", 6641, "")
+		argOvnSbHost      = pflag.String("ovn-sb-host", "", "")
+		argOvnSbPort      = pflag.Int("ovn-sb-port", 6642, "")
+		argClusterRouter  = pflag.String("cluster-router", "ovn-cluster", "The router name for cluster router.Default: cluster-router")
+		argNodeSwitch     = pflag.String("node-switch", "join", "The name of node gateway switch which help node to access pod network. Default: join")
 	)
+
+	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
+	klog.InitFlags(klogFlags)
+
+	// Sync the glog and klog flags.
+	flag.CommandLine.VisitAll(func(f1 *flag.Flag) {
+		f2 := klogFlags.Lookup(f1.Name)
+		if f2 != nil {
+			value := f1.Value.String()
+			f2.Value.Set(value)
+		}
+	})
+
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
-	flag.CommandLine.Parse(make([]string, 0)) // Init for glog calls in kubernetes packages
 
 	nodeName := os.Getenv("KUBE_NODE_NAME")
 	if nodeName == "" {
@@ -41,6 +66,12 @@ func ParseFlags() (*Configuration, error) {
 		OvsSocket:      *argOvsSocket,
 		KubeConfigFile: *argKubeConfigFile,
 		NodeName:       nodeName,
+		OvnNbHost:      *argOvnNbHost,
+		OvnNbPort:      *argOvnNbPort,
+		OvnSbHost:      *argOvnSbHost,
+		OvnSbPort:      *argOvnSbPort,
+		ClusterRouter:  *argClusterRouter,
+		NodeSwitch:     *argNodeSwitch,
 	}
 	err := config.initKubeClient()
 	if err != nil {

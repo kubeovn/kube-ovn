@@ -84,35 +84,41 @@ spec:
       serviceAccountName: ovn
       hostNetwork: true
       hostPID: true
+      initContainers:
+      - name: install-cni
+        image: "index.alauda.cn/alaudak8s/kube-ovn-cni:dev"
+        imagePullPolicy: Always
+        command: ["/kube-ovn/install-cni.sh"]
+        volumeMounts:
+          - mountPath: /etc/cni/net.d
+            name: cni-conf
+          - mountPath: /opt/cni/bin
+            name: cni-bin
       containers:
-        - name: kube-ovn-cni
-          image: "index.alauda.cn/alaudak8s/kube-ovn-cni:dev"
-          imagePullPolicy: Always
-          securityContext:
-            runAsUser: 0
-            privileged: true
-          env:
-            - name: POD_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
-            - name: KUBE_NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
-            - name: KUBE_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-          volumeMounts:
-            - mountPath: /run/openvswitch
-              name: host-run-ovs
-            - mountPath: /var/run/netns
-              name: host-netns
-            - mountPath:  /etc/cni/net.d
-              name: cni-conf
-            - mountPath: /opt/cni/bin
-              name: cni-bin
+      - name: cni-server
+        image: "index.alauda.cn/alaudak8s/kube-ovn-cni:dev"
+        imagePullPolicy: Always
+        securityContext:
+          runAsUser: 0
+          privileged: true
+        env:
+          - name: POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: KUBE_NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: KUBE_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+        volumeMounts:
+          - mountPath: /run/openvswitch
+            name: host-run-ovs
+          - mountPath: /var/run/netns
+            name: host-netns
       nodeSelector:
         beta.kubernetes.io/os: "linux"
       volumes:

@@ -121,7 +121,7 @@ func (c *Controller) handleAddNode(key string) error {
 	}
 
 	nodeAddr := getNodeInternalIP(node)
-	err = c.ovnClient.AddStaticRouter(nodeAddr, strings.Split(nic.IpAddress, "/")[0], c.config.ClusterRouter)
+	err = c.ovnClient.AddStaticRouter("", nodeAddr, strings.Split(nic.IpAddress, "/")[0], c.config.ClusterRouter)
 	if err != nil {
 		return err
 	}
