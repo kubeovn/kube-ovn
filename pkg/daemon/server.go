@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-var RequestLogString = "[%s] Incoming %s %s %s request from %s"
-var ResponseLogString = "[%s] Outcoming response to %s %s %s with %d status code in %vms"
+var RequestLogString = "[%s] Incoming %s %s %s request"
+var ResponseLogString = "[%s] Outcoming response %s %s with %d status code in %vms"
 
 func RunServer(config *Configuration) {
 	csh, err := createCniServerHandler(config)
@@ -75,7 +75,7 @@ func formatRequestLog(request *restful.Request) string {
 	}
 
 	return fmt.Sprintf(RequestLogString, time.Now().Format(time.RFC3339), request.Request.Proto,
-		request.Request.Method, uri, request.Request.RemoteAddr)
+		request.Request.Method, uri)
 }
 
 // formatResponseLog formats response log string.
@@ -85,5 +85,5 @@ func formatResponseLog(response *restful.Response, request *restful.Request, req
 		uri = request.Request.URL.RequestURI()
 	}
 	return fmt.Sprintf(ResponseLogString, time.Now().Format(time.RFC3339),
-		request.Request.RemoteAddr, request.Request.Method, uri, response.StatusCode(), reqTime)
+		request.Request.Method, uri, response.StatusCode(), reqTime)
 }
