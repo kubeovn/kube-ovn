@@ -1,7 +1,9 @@
 package daemon
 
 import (
+	"bitbucket.org/mathildetech/kube-ovn/pkg/ovs"
 	"fmt"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"net"
 	"time"
 
@@ -27,21 +29,35 @@ type Controller struct {
 	namespacesLister listerv1.NamespaceLister
 	namespacesSynced cache.InformerSynced
 	namespaceQueue   workqueue.RateLimitingInterface
+
+	podsLister listerv1.PodLister
+	podsSynced cache.InformerSynced
+	podQueue   workqueue.RateLimitingInterface
 }
 
 func NewController(config *Configuration, informerFactory informers.SharedInformerFactory) *Controller {
 	namespaceInformer := informerFactory.Core().V1().Namespaces()
+	podInformer := informerFactory.Core().V1().Pods()
+
 	controller := &Controller{
 		config:           config,
 		kubeclientset:    config.KubeClient,
 		namespacesLister: namespaceInformer.Lister(),
 		namespacesSynced: namespaceInformer.Informer().HasSynced,
 		namespaceQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Namespace"),
+
+		podsLister: podInformer.Lister(),
+		podsSynced: podInformer.Informer().HasSynced,
+		podQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Pod"),
 	}
 
 	namespaceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueNamespace,
 		DeleteFunc: controller.enqueueNamespace,
+	})
+
+	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: controller.enqueuePod,
 	})
 
 	return controller
@@ -159,7 +175,9 @@ func (c *Controller) reconcileRouters() error {
 			toDel = append(toDel, route.Dst.String())
 		}
 	}
-	klog.Infof("route to del %v", toDel)
+	if len(toDel) > 0 {
+		klog.Infof("route to del %v", toDel)
+	}
 
 	toAdd := []string{}
 	for _, c := range cidrs {
@@ -174,7 +192,9 @@ func (c *Controller) reconcileRouters() error {
 			toAdd = append(toAdd, c)
 		}
 	}
-	klog.Infof("route to add %v", toAdd)
+	if len(toAdd) > 0 {
+		klog.Infof("route to add %v", toAdd)
+	}
 
 	for _, r := range toDel {
 		_, cidr, _ := net.ParseCIDR(r)
@@ -197,16 +217,88 @@ func (c *Controller) reconcileRouters() error {
 	return nil
 }
 
+func (c *Controller) enqueuePod(old, new interface{}) {
+	oldPod := old.(*v1.Pod)
+	newPod := new.(*v1.Pod)
+	if newPod.Spec.NodeName != c.config.NodeName {
+		return
+	}
+	if oldPod.Annotations[util.IngressRateAnnotation] != newPod.Annotations[util.IngressRateAnnotation] ||
+		oldPod.Annotations[util.EgressRateAnnotation] != newPod.Annotations[util.EgressRateAnnotation] {
+		var key string
+		var err error
+		if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+			utilruntime.HandleError(err)
+			return
+		}
+		c.podQueue.AddRateLimited(key)
+	}
+}
+
+func (c *Controller) runPodWorker() {
+	for c.processNextPodWorkItem() {
+	}
+}
+
+func (c *Controller) processNextPodWorkItem() bool {
+	obj, shutdown := c.podQueue.Get()
+
+	if shutdown {
+		return false
+	}
+
+	err := func(obj interface{}) error {
+		defer c.podQueue.Done(obj)
+		var key string
+		var ok bool
+		if key, ok = obj.(string); !ok {
+			c.podQueue.Forget(obj)
+			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
+			return nil
+		}
+		if err := c.handlePod(key); err != nil {
+			c.podQueue.AddRateLimited(key)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		}
+		c.podQueue.Forget(obj)
+		return nil
+	}(obj)
+
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
+	return true
+}
+
+func (c *Controller) handlePod(key string) error {
+	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
+		return nil
+	}
+	klog.Infof("handle qos update for pod %s/%s", namespace, name)
+	pod, err := c.podsLister.Pods(namespace).Get(name)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	return ovs.SetPodBandwidth(pod.Name, pod.Namespace, pod.Annotations[util.IngressRateAnnotation], pod.Annotations[util.EgressRateAnnotation])
+}
+
 func (c *Controller) Run(stopCh <-chan struct{}) error {
 	defer utilruntime.HandleCrash()
 	defer c.namespaceQueue.ShutDown()
 
 	klog.Info("start watching namespace changes")
-	if ok := cache.WaitForCacheSync(stopCh, c.namespacesSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.namespacesSynced, c.podsSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
 	go wait.Until(c.runNamespaceWorker, time.Second, stopCh)
+	go wait.Until(c.runPodWorker, time.Second, stopCh)
 
 	klog.Info("Started workers")
 	<-stopCh
