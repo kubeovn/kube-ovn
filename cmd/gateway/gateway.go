@@ -26,7 +26,7 @@ func main() {
 	}
 	klog.Infof("create bridge %v for gw", bridge)
 
-	ovnClient := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.OvnSbHost, config.OvnSbPort, "", "", "")
+	ovnClient := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.OvnSbHost, config.OvnSbPort, "", "", "", "")
 
 	err = ovnClient.CreateGatewayRouter(config.EdgeRouterName, config.Chassis)
 	if err != nil {
