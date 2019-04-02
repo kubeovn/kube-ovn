@@ -2,7 +2,6 @@ package controller
 
 import (
 	"flag"
-	"github.com/oilbeater/libovsdb"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -17,7 +16,6 @@ type Configuration struct {
 	OvnNbPort      int
 	KubeConfigFile string
 	KubeClient     kubernetes.Interface
-	OvnClient      *libovsdb.OvsdbClient
 
 	DefaultLogicalSwitch string
 	DefaultCIDR          string
@@ -89,10 +87,6 @@ func ParseFlags() (*Configuration, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = config.initOvnClient()
-	if err != nil {
-		return nil, err
-	}
 
 	klog.Infof("config is  %v", config)
 
@@ -123,23 +117,5 @@ func (config *Configuration) initKubeClient() error {
 	}
 
 	config.KubeClient = kubeClient
-	return nil
-}
-
-func (config *Configuration) initOvnClient() error {
-	var ovs *libovsdb.OvsdbClient
-	var err error
-	if config.OvnNbSocket != "" {
-		ovs, err = libovsdb.ConnectWithUnixSocket(config.OvnNbSocket)
-		if err != nil {
-			return err
-		}
-	} else {
-		ovs, err = libovsdb.Connect(config.OvnNbHost, config.OvnNbPort)
-		if err != nil {
-			return err
-		}
-	}
-	config.OvnClient = ovs
 	return nil
 }

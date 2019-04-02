@@ -21,4 +21,11 @@ const (
 	ProtocolUDP = "udp"
 
 	NodeNic = "ovn0"
+
+	PrivateSwitchAnnotation = "ovn.kubernetes.io/private"
+	AllowAccessAnnotation   = "ovn.kubernetes.io/allow"
+
+	DefaultDropPriority = "1000"
+	NodeAllowPriority   = "1001"
+	SubnetAllowPriority = "1002"
 )

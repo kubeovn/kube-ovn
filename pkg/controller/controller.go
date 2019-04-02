@@ -41,6 +41,7 @@ type Controller struct {
 	namespacesSynced     cache.InformerSynced
 	addNamespaceQueue    workqueue.RateLimitingInterface
 	deleteNamespaceQueue workqueue.RateLimitingInterface
+	updateNamespaceQueue workqueue.RateLimitingInterface
 
 	nodesLister     v1.NodeLister
 	nodesSynced     cache.InformerSynced
@@ -83,7 +84,7 @@ func NewController(
 
 	controller := &Controller{
 		config:        config,
-		ovnClient:     ovs.NewClient(config.OvnNbHost, config.OvnNbPort, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer),
+		ovnClient:     ovs.NewClient(config.OvnNbHost, config.OvnNbPort, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.NodeSwitchCIDR),
 		kubeclientset: config.KubeClient,
 
 		podsLister:     podInformer.Lister(),
@@ -94,6 +95,7 @@ func NewController(
 		namespacesLister:     namespaceInformer.Lister(),
 		namespacesSynced:     namespaceInformer.Informer().HasSynced,
 		addNamespaceQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddNamespace"),
+		updateNamespaceQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateNamespace"),
 		deleteNamespaceQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteNamespace"),
 
 		nodesLister:     nodeInformer.Lister(),
@@ -120,6 +122,7 @@ func NewController(
 
 	namespaceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddNamespace,
+		UpdateFunc: controller.enqueueUpdateNamespace,
 		DeleteFunc: controller.enqueueDeleteNamespace,
 	})
 
@@ -167,6 +170,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 
 	go wait.Until(c.runAddNamespaceWorker, time.Second, stopCh)
 	go wait.Until(c.runDeleteNamespaceWorker, time.Second, stopCh)
+	go wait.Until(c.runUpdateNamespaceWorker, time.Second, stopCh)
 
 	go wait.Until(c.runAddNodeWorker, time.Second, stopCh)
 	go wait.Until(c.runDeleteNodeWorker, time.Second, stopCh)

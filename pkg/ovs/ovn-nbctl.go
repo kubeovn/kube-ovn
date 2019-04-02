@@ -16,6 +16,7 @@ type Client struct {
 	ClusterRouter          string
 	ClusterTcpLoadBalancer string
 	ClusterUdpLoadBalancer string
+	NodeSwitchCIDR         string
 }
 
 const (
@@ -48,13 +49,14 @@ func trimCommandOutput(raw []byte) string {
 	return strings.Trim(output, "\"")
 }
 
-func NewClient(ovnNbHost string, ovnNbPort int, ovnSbHost string, ovnSbPort int, ClusterRouter, ClusterTcpLoadBalancer, ClusterUdpLoadBalancer string) *Client {
+func NewClient(ovnNbHost string, ovnNbPort int, ovnSbHost string, ovnSbPort int, clusterRouter, clusterTcpLoadBalancer, clusterUdpLoadBalancer, nodeSwitchCIDR string) *Client {
 	return &Client{
 		OvnNbAddress:           fmt.Sprintf("tcp:%s:%d", ovnNbHost, ovnNbPort),
 		OvnSbAddress:           fmt.Sprintf("tcp:%s:%d", ovnSbHost, ovnSbPort),
-		ClusterRouter:          ClusterRouter,
-		ClusterTcpLoadBalancer: ClusterTcpLoadBalancer,
-		ClusterUdpLoadBalancer: ClusterUdpLoadBalancer,
+		ClusterRouter:          clusterRouter,
+		ClusterTcpLoadBalancer: clusterTcpLoadBalancer,
+		ClusterUdpLoadBalancer: clusterUdpLoadBalancer,
+		NodeSwitchCIDR:         nodeSwitchCIDR,
 	}
 }
 
@@ -190,11 +192,12 @@ func (c Client) CreateOutsideLogicalSwitch(ls, edgeLr, ip, mac string) error {
 	return nil
 }
 
-func (c Client) CreateLogicalSwitch(ls, subnet, gateway, excludeIps string) error {
+func (c Client) CreateLogicalSwitch(ls, subnet, gateway, excludeIps, namespace string) error {
 	_, err := c.ovnCommand(WaitSb, MayExist, "ls-add", ls, "--",
 		"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", subnet), "--",
 		"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
-		"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", excludeIps))
+		"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", excludeIps), "--",
+		"set", "logical_switch", ls, fmt.Sprintf("other_config:namespace=%s", namespace))
 	if err != nil {
 		klog.Errorf("create switch %s failed %v", ls, err)
 		return err
@@ -408,5 +411,28 @@ func (c Client) GetDnsRecords() (map[string]string, error) {
 
 func (c Client) AddDnsTableToLogicalSwitch(ls string) error {
 	_, err := c.ovnCommand("add", "logical_switch", ls, "dns_records", GlobalDnsTable)
+	return err
+}
+
+func (c Client) CleanLogicalSwitchAcl(ls string) error {
+	_, err := c.ovnCommand("acl-del", ls)
+	return err
+}
+
+func (c Client) SetPrivateLogicalSwitch(ls string, allow []string) error {
+	allowArgs := []string{}
+	for _, subnet := range allow {
+		match := fmt.Sprintf(`"ip4.src == %s"`, strings.TrimSpace(subnet))
+		allowArgs = append(allowArgs, "--", "acl-add", ls, "to-lport", util.SubnetAllowPriority, match, "allow-related")
+	}
+	delArgs := []string{"acl-del", ls}
+	dropArgs := []string{"--", "acl-add", ls, "to-lport", util.DefaultDropPriority, fmt.Sprintf(`inport == "%s-%s"`, ls, c.ClusterRouter), "drop"}
+	nodeSwitchArgs := []string{"--", "acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf(`"ip4.src == %s"`, c.NodeSwitchCIDR), "allow-related"}
+
+	ovnArgs := append(delArgs, dropArgs...)
+	ovnArgs = append(ovnArgs, nodeSwitchArgs...)
+	ovnArgs = append(ovnArgs, allowArgs...)
+
+	_, err := c.ovnCommand(ovnArgs...)
 	return err
 }
