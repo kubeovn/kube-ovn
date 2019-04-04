@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"bitbucket.org/mathildetech/kube-ovn/pkg/ovs"
-	"bitbucket.org/mathildetech/kube-ovn/pkg/util"
+	"github.com/alauda/kube-ovn/pkg/ovs"
+	"github.com/alauda/kube-ovn/pkg/util"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"

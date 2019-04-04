@@ -4,8 +4,8 @@ import (
 	"os"
 	"time"
 
-	"bitbucket.org/mathildetech/kube-ovn/pkg/daemon"
-	"bitbucket.org/mathildetech/kube-ovn/pkg/ovs"
+	"github.com/alauda/kube-ovn/pkg/daemon"
+	"github.com/alauda/kube-ovn/pkg/ovs"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/klog"
 	"k8s.io/sample-controller/pkg/signals"

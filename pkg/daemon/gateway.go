@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"bitbucket.org/mathildetech/kube-ovn/pkg/util"
+	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/projectcalico/felix/ipsets"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"

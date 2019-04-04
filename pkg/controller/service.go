@@ -1,8 +1,8 @@
 package controller
 
 import (
-	"bitbucket.org/mathildetech/kube-ovn/pkg/util"
 	"fmt"
+	"github.com/alauda/kube-ovn/pkg/util"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"

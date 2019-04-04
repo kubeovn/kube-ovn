@@ -9,8 +9,8 @@ import (
 
 	"github.com/juju/errors"
 
-	"bitbucket.org/mathildetech/kube-ovn/pkg/ovs"
-	"bitbucket.org/mathildetech/kube-ovn/pkg/util"
+	"github.com/alauda/kube-ovn/pkg/ovs"
+	"github.com/alauda/kube-ovn/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

@@ -32,7 +32,7 @@ spec:
       hostNetwork: true
       containers:
         - name: kube-ovn-controller
-          image: "index.alauda.cn/alaudak8s/kube-ovn-controller:dev"
+          image: "index.alauda.cn/alaudak8s/kube-ovn-controller:v0.2.0"
           imagePullPolicy: Always
           command:
           - /kube-ovn/start-controller.sh
@@ -86,7 +86,7 @@ spec:
       hostPID: true
       initContainers:
       - name: install-cni
-        image: "index.alauda.cn/alaudak8s/kube-ovn-cni:dev"
+        image: "index.alauda.cn/alaudak8s/kube-ovn-cni:v0.2.0"
         imagePullPolicy: Always
         command: ["/kube-ovn/install-cni.sh"]
         volumeMounts:
@@ -96,7 +96,7 @@ spec:
             name: cni-bin
       containers:
       - name: cni-server
-        image: "index.alauda.cn/alaudak8s/kube-ovn-cni:dev"
+        image: "index.alauda.cn/alaudak8s/kube-ovn-cni:v0.2.0"
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0

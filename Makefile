@@ -35,9 +35,9 @@ test:
 build-bin: lint
 	docker run -e GOOS=linux -e GOCACHE=/tmp \
 		-u $(shell id -u):$(shell id -g) \
-		-v $(CURDIR):/go/src/bitbucket.org/mathildetech/kube-ovn:ro \
-		-v $(CURDIR)/dist:/go/src/bitbucket.org/mathildetech/kube-ovn/dist/ \
+		-v $(CURDIR):/go/src/github.com/alauda/kube-ovn:ro \
+		-v $(CURDIR)/dist:/go/src/github.com/alauda/kube-ovn/dist/ \
 		golang:$(GO_VERSION) /bin/bash -c '\
-		cd /go/src/bitbucket.org/mathildetech/kube-ovn && \
+		cd /go/src/github.com/alauda/kube-ovn && \
 		make test && \
 		make build-go '
