@@ -98,7 +98,6 @@ func InitLoadBalancer(config *Configuration) error {
 			return err
 		}
 	} else {
-		ovs.GlobalTcpLb = tcpLb
 		klog.Infof("tcp load balancer %s exists", tcpLb)
 	}
 
@@ -114,7 +113,6 @@ func InitLoadBalancer(config *Configuration) error {
 			return err
 		}
 	} else {
-		ovs.GlobalUdpLb = udpLb
 		klog.Infof("udp load balancer %s exists", udpLb)
 	}
 	return nil
