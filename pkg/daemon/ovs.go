@@ -67,18 +67,16 @@ func (csh CniServerHandler) configureNic(podName, podNamespace, netns, container
 }
 
 func (csh CniServerHandler) deleteNic(netns, podName, podNamespace, containerID string) error {
-	err := ovs.ClearPodBandwidth(podName, podNamespace)
-	if err != nil {
-		return err
-	}
-
 	hostNicName, _ := generateNicName(containerID)
 	// Remove ovs port
 	output, err := exec.Command("ovs-vsctl", "--if-exists", "--with-iface", "del-port", "br-int", hostNicName).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to delete ovs port %v, %s", err, output)
 	}
-
+	err = ovs.ClearPodBandwidth(podName, podNamespace)
+	if err != nil {
+		return err
+	}
 	hostLink, err := netlink.LinkByName(hostNicName)
 	if err != nil {
 		// If link already not exists, return quietly

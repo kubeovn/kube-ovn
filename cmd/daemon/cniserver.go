@@ -2,6 +2,7 @@ package main
 
 import (
 	"bitbucket.org/mathildetech/kube-ovn/pkg/daemon"
+	"bitbucket.org/mathildetech/kube-ovn/pkg/ovs"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/klog"
 	"k8s.io/sample-controller/pkg/signals"
@@ -12,6 +13,7 @@ import (
 func main() {
 	klog.SetOutput(os.Stdout)
 	defer klog.Flush()
+	go gc()
 
 	config, err := daemon.ParseFlags()
 	if err != nil {
@@ -25,4 +27,11 @@ func main() {
 	kubeInformerFactory.Start(stopCh)
 	go ctl.Run(stopCh)
 	daemon.RunServer(config)
+}
+
+func gc() {
+	for {
+		ovs.CleanLostInterface()
+		time.Sleep(60 * time.Second)
+	}
 }

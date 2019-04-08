@@ -72,20 +72,6 @@ func ovsClear(table, record string, columns ...string) error {
 }
 
 func ClearPodBandwidth(podName, podNamespace string) error {
-	// interfaces will have the same name as ports
-	interfaceList, err := ovsFind("interface", "name", fmt.Sprintf("external-ids:iface-id=%s.%s", podName, podNamespace))
-	if err != nil {
-		return err
-	}
-
-	// Clear the QoS for any ports of this sandbox
-	for _, ifName := range interfaceList {
-		if err = ovsClear("port", ifName, "qos"); err != nil {
-			return err
-		}
-	}
-
-	// Now that the QoS is unused remove it
 	qosList, err := ovsFind("qos", "_uuid", fmt.Sprintf(`external-ids:iface-id="%s.%s"`, podName, podNamespace))
 	if err != nil {
 		return err
@@ -150,4 +136,46 @@ func SetPodBandwidth(podName, podNamespace, ingress, egress string) error {
 		}
 	}
 	return nil
+}
+
+// When reboot node, the ovs internal interface will be deleted.
+// We need to clean up related ovs port, interface and qos
+func CleanLostInterface() {
+	// when interface error ofport will be -1
+	interfaceList, err := ovsFind("interface", "name,error", "ofport=-1")
+	if err != nil {
+		klog.Errorf("failed to list failed interface %v", err)
+		return
+	}
+	if len(interfaceList) > 0 {
+		klog.Infof("error interfaces:\n %v", interfaceList)
+	}
+
+	for _, intf := range interfaceList {
+		name, errText := strings.Trim(strings.Split(intf, "\n")[0], "\""), strings.Split(intf, "\n")[1]
+		if strings.Contains(errText, "No such device") {
+			qosList, err := ovsFind("port", "qos", fmt.Sprintf("name=%s", name))
+			if err != nil {
+				klog.Errorf("failed to find related port %v", err)
+				return
+			}
+			klog.Infof("delete lost port %s", name)
+			output, err := exec.Command("ovs-vsctl", "--if-exists", "--with-iface", "del-port", "br-int", name).CombinedOutput()
+			if err != nil {
+				klog.Errorf("failed to delete ovs port %v, %s", err, output)
+				return
+			}
+			for _, qos := range qosList {
+				qos = strings.TrimSpace(qos)
+				if qos != "" && qos != "[]" {
+					klog.Infof("delete lost qos %s", qos)
+					err = ovsDestroy("qos", qos)
+					if err != nil {
+						klog.Errorf("failed to delete qos %s, %v", qos, err)
+						return
+					}
+				}
+			}
+		}
+	}
 }

@@ -27,8 +27,6 @@ const (
 )
 
 var GlobalDnsTable string
-var GlobalTcpLb string
-var GlobalUdpLb string
 
 func (c Client) ovnCommand(arg ...string) (string, error) {
 	cmdArgs := []string{fmt.Sprintf("--db=%s", c.OvnNbAddress)}
