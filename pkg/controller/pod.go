@@ -1,19 +1,23 @@
 package controller
 
 import (
-	"bitbucket.org/mathildetech/kube-ovn/pkg/util"
 	"encoding/json"
 	"fmt"
-	"k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	"net"
+	"strconv"
+	"strings"
+
+	"github.com/juju/errors"
+
+	"bitbucket.org/mathildetech/kube-ovn/pkg/ovs"
+	"bitbucket.org/mathildetech/kube-ovn/pkg/util"
+	v1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
-	"net"
-	"strconv"
-	"strings"
 )
 
 func (c *Controller) enqueueAddPod(obj interface{}) {
@@ -36,6 +40,21 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 	c.deletePodQueue.AddRateLimited(key)
 }
 
+func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
+	oldPod := oldObj.(*v1.Pod)
+	newPod := newObj.(*v1.Pod)
+	// assigned to a node
+	if oldPod.Spec.NodeName == "" && newPod.Spec.NodeName != "" {
+		var key string
+		var err error
+		if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
+			utilruntime.HandleError(err)
+			return
+		}
+		c.updatePodQueue.AddRateLimited(key)
+	}
+}
+
 // runWorker is a long-running function that will continually call the
 // processNextWorkItem function in order to read and process a message on the
 // workqueue.
@@ -49,6 +68,11 @@ func (c *Controller) runAddPodWorker() {
 // workqueue.
 func (c *Controller) runDeletePodWorker() {
 	for c.processNextDeletePodWorkItem() {
+	}
+}
+
+func (c *Controller) runUpdatePodWorker() {
+	for c.processNextUpdatePodWorkItem() {
 	}
 }
 
@@ -160,6 +184,58 @@ func (c *Controller) processNextDeletePodWorkItem() bool {
 	return true
 }
 
+func (c *Controller) processNextUpdatePodWorkItem() bool {
+	obj, shutdown := c.updatePodQueue.Get()
+
+	if shutdown {
+		return false
+	}
+
+	// We wrap this block in a func so we can defer c.workqueue.Done.
+	err := func(obj interface{}) error {
+		// We call Done here so the workqueue knows we have finished
+		// processing this item. We also must remember to call Forget if we
+		// do not want this work item being re-queued. For example, we do
+		// not call Forget if a transient error occurs, instead the item is
+		// put back on the workqueue and attempted again after a back-off
+		// period.
+		defer c.updatePodQueue.Done(obj)
+		var key string
+		var ok bool
+		// We expect strings to come off the workqueue. These are of the
+		// form namespace/name. We do this as the delayed nature of the
+		// workqueue means the items in the informer cache may actually be
+		// more up to date that when the item was initially put onto the
+		// workqueue.
+		if key, ok = obj.(string); !ok {
+			// As the item in the workqueue is actually invalid, we call
+			// Forget here else we'd go into a loop of attempting to
+			// process a work item that is invalid.
+			c.updatePodQueue.Forget(obj)
+			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
+			return nil
+		}
+		// Run the syncHandler, passing it the namespace/name string of the
+		// Foo resource to be synced.
+		if err := c.handleUpdatePod(key); err != nil {
+			// Put the item back on the workqueue to handle any transient errors.
+			c.updatePodQueue.AddRateLimited(key)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		}
+		// Finally, if no error occurs we Forget this item so it does not
+		// get queued again until another change happens.
+		c.updatePodQueue.Forget(obj)
+		return nil
+	}(obj)
+
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
+
+	return true
+}
+
 func (c *Controller) handleAddPod(key string) error {
 	// Convert the namespace/name string into a distinct namespace and name
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
@@ -171,7 +247,7 @@ func (c *Controller) handleAddPod(key string) error {
 	if err != nil {
 		// The Pod resource may no longer exist, in which case we stop
 		// processing.
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
@@ -238,7 +314,7 @@ func (c *Controller) handleAddPod(key string) error {
 	// pod address info may already exist in ovn
 	ip := pod.Annotations[util.IpAddressAnnotation]
 	mac := pod.Annotations[util.MacAddressAnnotation]
-	nic, err := c.ovnClient.CreatePort(ls, podNameToPortName(name, namespace), ip, mac)
+	nic, err := c.ovnClient.CreatePort(ls, ovs.PodNameToPortName(name, namespace), ip, mac)
 	if err != nil {
 		return err
 	}
@@ -280,12 +356,33 @@ func (c *Controller) handleDeletePod(key string) error {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
+	ns, err := c.namespacesLister.Get(namespace)
+	if err != nil {
+		klog.Errorf("get namespace %s failed %v", namespace, err)
+		return err
+	}
+	nsGWType := ns.Annotations[util.GWTypeAnnotation]
+	switch nsGWType {
+	case "", util.GWDistributedMode:
+		portAddr, err := c.ovnClient.GetPortAddr(ovs.PodNameToPortName(name, namespace))
+		if err != nil {
+			if strings.Contains(err.Error(), "no row") {
+				break
+			}
+			return err
+		}
+		if err := c.ovnClient.DeleteStaticRouter(portAddr[1], c.config.ClusterRouter); err != nil {
+			return err
+		}
+	case util.GWCentralizedMode:
+		// TODO:
+	}
 	pod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
 		// The Pod resource may no longer exist, in this case we stop
 		// processing.
-		if errors.IsNotFound(err) {
-			return c.ovnClient.DeletePort(podNameToPortName(name, namespace))
+		if k8serrors.IsNotFound(err) {
+			return c.ovnClient.DeletePort(ovs.PodNameToPortName(name, namespace))
 		}
 		return err
 	}
@@ -297,14 +394,64 @@ func (c *Controller) handleDeletePod(key string) error {
 
 	// for statefulset pod, names are same when updating, so double check to make sure the pod is to be deleted
 	if pod.DeletionTimestamp != nil {
-		return c.ovnClient.DeletePort(podNameToPortName(name, namespace))
+		return c.ovnClient.DeletePort(ovs.PodNameToPortName(name, namespace))
 	}
 
 	return nil
 }
 
-func podNameToPortName(pod, namespace string) string {
-	return fmt.Sprintf("%s.%s", pod, namespace)
+func (c *Controller) handleUpdatePod(key string) error {
+	// Convert the namespace/name string into a distinct namespace and name
+	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
+		return nil
+	}
+	pod, err := c.podsLister.Pods(namespace).Get(name)
+	if err != nil {
+		// The Pod resource may no longer exist, in which case we stop
+		// processing.
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	klog.Infof("update pod %s/%s", namespace, name)
+	if pod.Spec.HostNetwork {
+		klog.Infof("pod %s/%s in host network mode no need for ovn process", namespace, name)
+		return nil
+	}
+
+	ns, err := c.namespacesLister.Get(namespace)
+	if err != nil {
+		klog.Errorf("get namespace %s failed %v", namespace, err)
+		return err
+	}
+
+	node, err := c.nodesLister.Get(pod.Spec.NodeName)
+	if err != nil {
+		klog.Errorf("get node %s failed %v", pod.Spec.NodeName, err)
+		return err
+	}
+	nodeTunlIP := node.Annotations[util.IpAddressAnnotation]
+	if nodeTunlIP == "" {
+		klog.Errorf("node %s has no tunl ip annotation", pod.Spec.NodeName)
+		return nil
+	}
+	nodeTunlIPAddr, _, err := net.ParseCIDR(nodeTunlIP)
+	if err != nil {
+		return errors.Annotatef(err, "parse node tunl ip %s faield", nodeTunlIP)
+	}
+	nsGWType := ns.Annotations[util.GWTypeAnnotation]
+	switch nsGWType {
+	case "", util.GWDistributedMode:
+		if err := c.ovnClient.AddStaticRouter(ovs.PolicySrcIP, pod.Status.PodIP, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
+			return errors.Annotate(err, "add static route failed")
+		}
+	case util.GWCentralizedMode:
+		// TODO:
+	}
+	return nil
 }
 
 func isStatefulSetPod(pod *v1.Pod) bool {

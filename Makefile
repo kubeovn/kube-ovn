@@ -15,7 +15,6 @@ build-go:
 	CGO_ENABLED=0 GOOS=linux go build -o $(PWD)/dist/images/kube-ovn -ldflags "-w -s" -v ./cmd/cni
 	CGO_ENABLED=0 GOOS=linux go build -o $(PWD)/dist/images/kube-ovn-controller -ldflags "-w -s" -v ./cmd/controller
 	CGO_ENABLED=0 GOOS=linux go build -o $(PWD)/dist/images/kube-ovn-daemon -ldflags "-w -s" -v ./cmd/daemon
-	CGO_ENABLED=0 GOOS=linux go build -o $(PWD)/dist/images/kube-ovn-gateway -ldflags "-w -s" -v ./cmd/gateway
 
 release: build-go
 	docker build -t index.alauda.cn/alaudak8s/kube-ovn-node:`cat VERSION` -f dist/images/Dockerfile.node dist/images/

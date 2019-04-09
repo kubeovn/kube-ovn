@@ -28,4 +28,11 @@ const (
 	DefaultDropPriority = "1000"
 	NodeAllowPriority   = "1001"
 	SubnetAllowPriority = "1002"
+
+	GWSouth = "south"
+	GWNorth = "north"
+
+	GWTypeAnnotation  = "ovn.kubernetes.io/gateway_type"
+	GWDistributedMode = "distributed"
+	GWCentralizedMode = "centralized"
 )

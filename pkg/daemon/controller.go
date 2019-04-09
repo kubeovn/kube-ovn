@@ -1,15 +1,18 @@
 package daemon
 
 import (
-	"bitbucket.org/mathildetech/kube-ovn/pkg/ovs"
 	"fmt"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"net"
 	"time"
 
+	"bitbucket.org/mathildetech/kube-ovn/pkg/ovs"
+	"k8s.io/apimachinery/pkg/api/errors"
+
 	"bitbucket.org/mathildetech/kube-ovn/pkg/util"
+	"github.com/coreos/go-iptables/iptables"
+	"github.com/projectcalico/felix/ipsets"
 	"github.com/vishvananda/netlink"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -33,12 +36,22 @@ type Controller struct {
 	podsLister listerv1.PodLister
 	podsSynced cache.InformerSynced
 	podQueue   workqueue.RateLimitingInterface
+
+	ovnClient   *ovs.Client
+	ipSetsMgr   *ipsets.IPSets
+	iptablesMgr *iptables.IPTables
 }
 
-func NewController(config *Configuration, informerFactory informers.SharedInformerFactory) *Controller {
+func NewController(config *Configuration, informerFactory informers.SharedInformerFactory) (*Controller, error) {
 	namespaceInformer := informerFactory.Core().V1().Namespaces()
 	podInformer := informerFactory.Core().V1().Pods()
-
+	ovnClient := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.OvnSbHost, config.OvnSbPort, "", "", "", "")
+	iptablesMgr, err := iptables.New()
+	if err != nil {
+		return nil, err
+	}
+	ipsetConf := ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil)
+	ipsetsMgr := ipsets.NewIPSets(ipsetConf)
 	controller := &Controller{
 		config:           config,
 		kubeclientset:    config.KubeClient,
@@ -49,6 +62,10 @@ func NewController(config *Configuration, informerFactory informers.SharedInform
 		podsLister: podInformer.Lister(),
 		podsSynced: podInformer.Informer().HasSynced,
 		podQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Pod"),
+
+		ovnClient:   ovnClient,
+		ipSetsMgr:   ipsetsMgr,
+		iptablesMgr: iptablesMgr,
 	}
 
 	namespaceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -60,7 +77,7 @@ func NewController(config *Configuration, informerFactory informers.SharedInform
 		UpdateFunc: controller.enqueuePod,
 	})
 
-	return controller
+	return controller, nil
 }
 
 func (c *Controller) enqueueNamespace(obj interface{}) {
@@ -299,6 +316,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 
 	go wait.Until(c.runNamespaceWorker, time.Second, stopCh)
 	go wait.Until(c.runPodWorker, time.Second, stopCh)
+	go c.runGateway(stopCh)
 
 	klog.Info("Started workers")
 	<-stopCh

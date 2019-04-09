@@ -11,7 +11,6 @@ import (
 )
 
 func main() {
-	klog.SetOutput(os.Stdout)
 	defer klog.Flush()
 
 	stopCh := signals.SetupSignalHandler()

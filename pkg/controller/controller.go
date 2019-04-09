@@ -1,8 +1,10 @@
 package controller
 
 import (
-	"bitbucket.org/mathildetech/kube-ovn/pkg/ovs"
 	"fmt"
+	"time"
+
+	"bitbucket.org/mathildetech/kube-ovn/pkg/ovs"
 	corev1 "k8s.io/api/core/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -10,12 +12,11 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/client-go/listers/core/v1"
+	v1 "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
-	"time"
 )
 
 const controllerAgentName = "ovn-controller"
@@ -36,6 +37,7 @@ type Controller struct {
 	// simultaneously in two different workers.
 	addPodQueue    workqueue.RateLimitingInterface
 	deletePodQueue workqueue.RateLimitingInterface
+	updatePodQueue workqueue.RateLimitingInterface
 
 	namespacesLister     v1.NamespaceLister
 	namespacesSynced     cache.InformerSynced
@@ -91,6 +93,7 @@ func NewController(
 		podsSynced:     podInformer.Informer().HasSynced,
 		addPodQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddPod"),
 		deletePodQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeletePod"),
+		updatePodQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdatePod"),
 
 		namespacesLister:     namespaceInformer.Lister(),
 		namespacesSynced:     namespaceInformer.Informer().HasSynced,
@@ -118,6 +121,7 @@ func NewController(
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddPod,
 		DeleteFunc: controller.enqueueDeletePod,
+		UpdateFunc: controller.enqueueUpdatePod,
 	})
 
 	namespaceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -152,6 +156,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	defer utilruntime.HandleCrash()
 	defer c.addPodQueue.ShutDown()
 	defer c.deletePodQueue.ShutDown()
+	defer c.updatePodQueue.ShutDown()
 
 	// Start the informer factories to begin populating the informer caches
 	klog.Info("Starting OVN controller")
@@ -167,6 +172,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	// Launch workers to process resources
 	go wait.Until(c.runAddPodWorker, time.Second, stopCh)
 	go wait.Until(c.runDeletePodWorker, time.Second, stopCh)
+	go wait.Until(c.runUpdatePodWorker, time.Second, stopCh)
 
 	go wait.Until(c.runAddNamespaceWorker, time.Second, stopCh)
 	go wait.Until(c.runDeleteNamespaceWorker, time.Second, stopCh)
