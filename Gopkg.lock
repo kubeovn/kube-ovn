@@ -330,14 +330,6 @@
   version = "v1.0.3"
 
 [[projects]]
-  digest = "1:4c1df0afdb3834ec77c6f71f6fd9cd09c3e3a39517d324143132098a9ba2777e"
-  name = "github.com/thoas/go-funk"
-  packages = ["."]
-  pruneopts = "NUT"
-  revision = "9132db0aefe2a09565f5124e267ac9a89845d8f6"
-  version = "0.4"
-
-[[projects]]
   digest = "1:936ab0fd3f16edc83131e626594a4f4e75426e5adeb7adbe57ed203db4c1b950"
   name = "github.com/vishvananda/netlink"
   packages = [
@@ -748,7 +740,6 @@
     "github.com/parnurzeal/gorequest",
     "github.com/projectcalico/felix/ipsets",
     "github.com/spf13/pflag",
-    "github.com/thoas/go-funk",
     "github.com/vishvananda/netlink",
     "k8s.io/api/core/v1",
     "k8s.io/apimachinery/pkg/api/errors",
