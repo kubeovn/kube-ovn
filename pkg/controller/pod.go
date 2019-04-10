@@ -43,8 +43,8 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
-	// assigned to a node
-	if oldPod.Spec.NodeName == "" && newPod.Spec.NodeName != "" {
+	// pod assigned an ip
+	if oldPod.Status.PodIP == "" && newPod.Status.PodIP != "" {
 		var key string
 		var err error
 		if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
