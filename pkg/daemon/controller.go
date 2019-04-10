@@ -45,7 +45,7 @@ type Controller struct {
 func NewController(config *Configuration, informerFactory informers.SharedInformerFactory) (*Controller, error) {
 	namespaceInformer := informerFactory.Core().V1().Namespaces()
 	podInformer := informerFactory.Core().V1().Pods()
-	ovnClient := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.OvnSbHost, config.OvnSbPort, "", "", "", "")
+	ovnClient := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.OvnSbHost, config.OvnSbPort, "", "", "", "", "")
 	iptablesMgr, err := iptables.New()
 	if err != nil {
 		return nil, err
