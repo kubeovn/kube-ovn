@@ -50,7 +50,7 @@ func InitDefaultLogicalSwitch(config *Configuration) error {
 }
 
 func InitNodeSwitch(config *Configuration) error {
-	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.NodeSwitchCIDR)
+	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR)
 	ss, err := client.ListLogicalSwitch()
 	if err != nil {
 		return err
@@ -62,7 +62,7 @@ func InitNodeSwitch(config *Configuration) error {
 		}
 	}
 
-	err = client.CreateLogicalSwitch(config.NodeSwitch, config.NodeSwitchCIDR, config.NodeSwitchGateway, config.NodeSwitchGateway, "")
+	err = client.CreateLogicalSwitch(config.NodeSwitch, config.NodeSwitchCIDR, config.NodeSwitchGateway, config.NodeSwitchGateway)
 	if err != nil {
 		return err
 	}
@@ -70,7 +70,7 @@ func InitNodeSwitch(config *Configuration) error {
 }
 
 func InitClusterRouter(config *Configuration) error {
-	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.NodeSwitchCIDR)
+	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR)
 	lrs, err := client.ListLogicalRouter()
 	if err != nil {
 		return err
@@ -85,7 +85,7 @@ func InitClusterRouter(config *Configuration) error {
 }
 
 func InitLoadBalancer(config *Configuration) error {
-	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.NodeSwitchCIDR)
+	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR)
 	tcpLb, err := client.FindLoadbalancer(config.ClusterTcpLoadBalancer)
 	if err != nil {
 		return fmt.Errorf("failed to find tcp lb %v", err)
@@ -119,7 +119,7 @@ func InitLoadBalancer(config *Configuration) error {
 }
 
 func InitDnsTable(config *Configuration) error {
-	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.NodeSwitchCIDR)
+	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR)
 	uuid, err := client.CreateDnsTable()
 	if err != nil {
 		return err

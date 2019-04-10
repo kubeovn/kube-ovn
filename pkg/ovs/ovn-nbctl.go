@@ -158,12 +158,11 @@ func (c Client) CreateOutsideLogicalSwitch(ls, edgeLr, ip, mac string) error {
 	return nil
 }
 
-func (c Client) CreateLogicalSwitch(ls, subnet, gateway, excludeIps, namespace string) error {
+func (c Client) CreateLogicalSwitch(ls, subnet, gateway, excludeIps string) error {
 	_, err := c.ovnNbCommand(WaitSb, MayExist, "ls-add", ls, "--",
 		"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", subnet), "--",
 		"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
-		"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", excludeIps), "--",
-		"set", "logical_switch", ls, fmt.Sprintf("other_config:namespace=%s", namespace))
+		"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", excludeIps))
 	if err != nil {
 		klog.Errorf("create switch %s failed %v", ls, err)
 		return err
@@ -190,12 +189,16 @@ func (c Client) CreateLogicalSwitch(ls, subnet, gateway, excludeIps, namespace s
 		return err
 	}
 
-	err = c.AddDnsTableToLogicalSwitch(ls)
-	if err != nil {
-		klog.Errorf("failed to add cluster dns to %s, %v", ls, err)
-		return err
+	// DO NOT add ovn dns to node switch
+	if ls != c.NodeSwitch {
+		err = c.AddDnsTableToLogicalSwitch(ls)
+		if err != nil {
+			klog.Errorf("failed to add cluster dns to %s, %v", ls, err)
+			return err
+		}
 	}
-	return err
+
+	return nil
 }
 
 func (c Client) ListLogicalSwitch() ([]string, error) {

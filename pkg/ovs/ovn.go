@@ -16,6 +16,7 @@ type Client struct {
 	ClusterRouter          string
 	ClusterTcpLoadBalancer string
 	ClusterUdpLoadBalancer string
+	NodeSwitch             string
 	NodeSwitchCIDR         string
 }
 
@@ -32,13 +33,14 @@ const (
 
 var GlobalDnsTable string
 
-func NewClient(ovnNbHost string, ovnNbPort int, ovnSbHost string, ovnSbPort int, clusterRouter, clusterTcpLoadBalancer, clusterUdpLoadBalancer, nodeSwitchCIDR string) *Client {
+func NewClient(ovnNbHost string, ovnNbPort int, ovnSbHost string, ovnSbPort int, clusterRouter, clusterTcpLoadBalancer, clusterUdpLoadBalancer, nodeSwitch, nodeSwitchCIDR string) *Client {
 	return &Client{
 		OvnNbAddress:           fmt.Sprintf("tcp:%s:%d", ovnNbHost, ovnNbPort),
 		OvnSbAddress:           fmt.Sprintf("tcp:%s:%d", ovnSbHost, ovnSbPort),
 		ClusterRouter:          clusterRouter,
 		ClusterTcpLoadBalancer: clusterTcpLoadBalancer,
 		ClusterUdpLoadBalancer: clusterUdpLoadBalancer,
+		NodeSwitch:             nodeSwitch,
 		NodeSwitchCIDR:         nodeSwitchCIDR,
 	}
 }

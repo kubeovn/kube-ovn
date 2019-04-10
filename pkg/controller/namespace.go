@@ -198,7 +198,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 			excludeIps = gateway
 		}
 		// If multiple namespace use same ls name, only first one will success
-		err = c.ovnClient.CreateLogicalSwitch(ls, cidr, gateway, excludeIps, ns.Name)
+		err = c.ovnClient.CreateLogicalSwitch(ls, cidr, gateway, excludeIps)
 		if err != nil {
 			return err
 		}
