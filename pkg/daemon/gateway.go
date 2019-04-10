@@ -1,13 +1,12 @@
 package daemon
 
 import (
-	"fmt"
 	"os"
 	"strings"
 	"time"
 
+	"bitbucket.org/mathildetech/kube-ovn/pkg/util"
 	"github.com/projectcalico/felix/ipsets"
-	"github.com/thoas/go-funk"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
 )
@@ -111,27 +110,14 @@ func (c *Controller) getLocalPodIPs() ([]string, error) {
 
 func (c *Controller) getSubnets() ([]string, error) {
 	var subnets []string
-	output, err := c.ovnClient.ListLogicalRouterPort()
+	allNamespaces, err := c.namespacesLister.List(labels.Everything())
 	if err != nil {
-		klog.Errorf("list logical router port failed, %+v", err)
+		klog.Errorf("list namespaces failed, %+v", err)
 		return nil, err
 	}
-	outputs := funk.FilterString(strings.Split(output, "\n"), func(s string) bool {
-		return s != ""
-	})
-	/*
-		ovn-cluster-join
-		100.64.0.1/16
-
-		ovn-cluster-ovn-default
-		10.16.0.1/16
-	*/
-	chucks := funk.Chunk(outputs, 2).([][]string)
-	for _, chuck := range chucks {
-		name := chuck[0]
-		network := chuck[1]
-		if name != fmt.Sprintf("%s-%s", c.config.ClusterRouter, c.config.NodeSwitch) {
-			subnets = append(subnets, network)
+	for _, namespace := range allNamespaces {
+		if subnet := namespace.Annotations[util.CidrAnnotation]; subnet != "" {
+			subnets = append(subnets, subnet)
 		}
 	}
 	klog.V(5).Infof("subnets %v", subnets)
