@@ -13,9 +13,9 @@ import (
 
 const (
 	SubnetSet   = "subnets"
-	LocalPodSet = "local-pod-ip"
+	LocalPodSet = "local-pod-ip-nat"
 	IPSetPrefix = "ovn"
-	NATRule     = "-m set --match-set ovn40local-pod-ip src -m set ! --match-set ovn40subnets dst -j MASQUERADE"
+	NATRule     = "-m set --match-set ovn40local-pod-ip-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE"
 )
 
 func (c *Controller) runGateway(stopCh <-chan struct{}) error {
@@ -25,7 +25,7 @@ func (c *Controller) runGateway(stopCh <-chan struct{}) error {
 		klog.Errorf("get subnets failed, %+v", err)
 		return err
 	}
-	localPodIPs, err := c.getLocalPodIPs()
+	localPodIPs, err := c.getLocalPodIPsNeedNAT()
 	if err != nil {
 		klog.Errorf("get local pod ips failed, %+v", err)
 		return err
@@ -70,7 +70,7 @@ LOOP:
 			klog.Errorf("get subnets failed, %+v", err)
 			continue
 		}
-		localPodIPs, err := c.getLocalPodIPs()
+		localPodIPs, err := c.getLocalPodIPsNeedNAT()
 		if err != nil {
 			klog.Errorf("get local pod ips failed, %+v", err)
 			continue
@@ -91,7 +91,7 @@ LOOP:
 	return nil
 }
 
-func (c *Controller) getLocalPodIPs() ([]string, error) {
+func (c *Controller) getLocalPodIPsNeedNAT() ([]string, error) {
 	var localPodIPs []string
 	hostname, _ := os.Hostname()
 	allPods, err := c.podsLister.List(labels.Everything())
@@ -101,7 +101,18 @@ func (c *Controller) getLocalPodIPs() ([]string, error) {
 	}
 	for _, pod := range allPods {
 		if pod.Spec.NodeName == hostname && pod.Spec.HostNetwork != true && pod.Status.PodIP != "" {
-			localPodIPs = append(localPodIPs, pod.Status.PodIP)
+			ns, err := c.namespacesLister.Get(pod.Namespace)
+			if err != nil {
+				klog.Errorf("get ns %s failed, %+v", pod.Namespace, err)
+				continue
+			}
+			nsGWType := ns.Annotations[util.GWTypeAnnotation]
+			switch nsGWType {
+			case "", util.GWDistributedMode:
+				localPodIPs = append(localPodIPs, pod.Status.PodIP)
+			case util.GWCentralizedMode:
+				// TODO:
+			}
 		}
 	}
 	klog.V(5).Infof("local pod ips %v", localPodIPs)
@@ -109,7 +120,7 @@ func (c *Controller) getLocalPodIPs() ([]string, error) {
 }
 
 func (c *Controller) getSubnets() ([]string, error) {
-	var subnets []string
+	var subnets = []string{c.config.ServiceClusterIPRange}
 	allNamespaces, err := c.namespacesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("list namespaces failed, %+v", err)
