@@ -15,7 +15,24 @@ const (
 	SubnetSet   = "subnets"
 	LocalPodSet = "local-pod-ip-nat"
 	IPSetPrefix = "ovn"
-	NATRule     = "-m set --match-set ovn40local-pod-ip-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE"
+)
+
+var (
+	natRule = util.IPTableRule{
+		Table: "nat",
+		Chain: "POSTROUTING",
+		Rule:  strings.Split("-m set --match-set ovn40local-pod-ip-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE", " "),
+	}
+	forwardAcceptRule1 = util.IPTableRule{
+		Table: "filter",
+		Chain: "FORWARD",
+		Rule:  strings.Split("-i ovn0 -j ACCEPT", " "),
+	}
+	forwardAcceptRule2 = util.IPTableRule{
+		Table: "filter",
+		Chain: "FORWARD",
+		Rule:  strings.Split(`-o ovn0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT`, " "),
+	}
 )
 
 func (c *Controller) runGateway(stopCh <-chan struct{}) error {
@@ -42,17 +59,20 @@ func (c *Controller) runGateway(stopCh <-chan struct{}) error {
 	}, localPodIPs)
 	c.ipSetsMgr.ApplyUpdates()
 
-	exist, err := c.iptablesMgr.Exists("nat", "POSTROUTING", strings.Split(NATRule, " ")...)
-	if err != nil {
-		klog.Errorf("check iptable rule failed, %+v", err)
-		return err
-	}
-	if !exist {
-		err = c.iptablesMgr.AppendUnique("nat", "POSTROUTING", strings.Split(NATRule, " ")...)
+	for _, iptRule := range []util.IPTableRule{forwardAcceptRule1, forwardAcceptRule2, natRule} {
+		exists, err := c.iptablesMgr.Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
 		if err != nil {
-			klog.Errorf("append iptable rule failed, %+v", err)
+			klog.Errorf("check iptable rule exist failed, %+v", err)
 			return err
 		}
+		if !exists {
+			err := c.iptablesMgr.Insert(iptRule.Table, iptRule.Chain, 1, iptRule.Rule...)
+			if err != nil {
+				klog.Errorf("insert iptable rule exist failed, %+v", err)
+				return err
+			}
+		}
+
 	}
 
 	ticker := time.NewTicker(3 * time.Second)
