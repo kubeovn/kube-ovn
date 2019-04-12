@@ -17,7 +17,7 @@ RUN rpm -i https://github.com/oilbeater/ovs/releases/download/v2.10.1/openvswitc
     rpm -i https://github.com/oilbeater/ovs/releases/download/v2.10.1/openvswitch-devel-2.10.1-1.el7.centos.x86_64.rpm && \
     rpm -i https://github.com/oilbeater/ovs/releases/download/v2.10.1/openvswitch-ovn-common-2.10.1-1.el7.centos.x86_64.rpm && \
     rpm -i https://github.com/oilbeater/ovs/releases/download/v2.10.1/openvswitch-ovn-vtep-2.10.1-1.el7.centos.x86_64.rpm && \
-    rpm -i https://github.com/oilbeater/ovs/releases/download/v2.10.1/openvswitch-ovn-central-2.10.1-1.el7.centos.x86_64.rpm && \
+    rpm -i https://github.com/oilbeater/ovs/releases/download/v2.10.1/openvswitch-ovn-central-2.10.1-2.el7.centos.x86_64.rpm && \
     rpm -i https://github.com/oilbeater/ovs/releases/download/v2.10.1/openvswitch-ovn-host-2.10.1-1.el7.centos.x86_64.rpm
 
 RUN mkdir -p /var/run/openvswitch && \

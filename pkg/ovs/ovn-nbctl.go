@@ -176,21 +176,20 @@ func (c Client) CreateLogicalSwitch(ls, subnet, gateway, excludeIps string) erro
 		klog.Errorf("failed to connect switch %s to router, %v", ls, err)
 		return err
 	}
-
-	err = c.AddLoadBalancerToLogicalSwitch(c.ClusterTcpLoadBalancer, ls)
-	if err != nil {
-		klog.Errorf("failed to add cluster tcp lb to %s, %v", ls, err)
-		return err
-	}
-
-	err = c.AddLoadBalancerToLogicalSwitch(c.ClusterUdpLoadBalancer, ls)
-	if err != nil {
-		klog.Errorf("failed to add cluster udp lb to %s, %v", ls, err)
-		return err
-	}
-
-	// DO NOT add ovn dns to node switch
 	if ls != c.NodeSwitch {
+		// DO NOT add ovn dns/lb to node switch
+		err = c.AddLoadBalancerToLogicalSwitch(c.ClusterTcpLoadBalancer, ls)
+		if err != nil {
+			klog.Errorf("failed to add cluster tcp lb to %s, %v", ls, err)
+			return err
+		}
+
+		err = c.AddLoadBalancerToLogicalSwitch(c.ClusterUdpLoadBalancer, ls)
+		if err != nil {
+			klog.Errorf("failed to add cluster udp lb to %s, %v", ls, err)
+			return err
+		}
+
 		err = c.AddDnsTableToLogicalSwitch(ls)
 		if err != nil {
 			klog.Errorf("failed to add cluster dns to %s, %v", ls, err)
