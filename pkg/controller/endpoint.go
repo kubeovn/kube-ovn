@@ -131,14 +131,33 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 			targetPort = port
 		}
 		if port.Protocol == v1.ProtocolTCP {
-			err = c.ovnClient.CreateLoadBalancerRule(c.config.ClusterTcpLoadBalancer, vip, convertIpToAddress(backends, targetPort))
-			if err != nil {
-				klog.Errorf("failed to update vip %s to tcp lb, %v", vip, err)
+			// for performance reason delete lb with no backends
+			if len(backends) > 0 {
+				err = c.ovnClient.CreateLoadBalancerRule(c.config.ClusterTcpLoadBalancer, vip, convertIpToAddress(backends, targetPort))
+				if err != nil {
+					klog.Errorf("failed to update vip %s to tcp lb, %v", vip, err)
+					return err
+				}
+			} else {
+				err = c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterTcpLoadBalancer)
+				if err != nil {
+					klog.Errorf("failed to delete vip %s at tcp lb, %v", vip, err)
+					return err
+				}
 			}
 		} else {
-			err = c.ovnClient.CreateLoadBalancerRule(c.config.ClusterUdpLoadBalancer, vip, convertIpToAddress(backends, targetPort))
-			if err != nil {
-				klog.Errorf("failed to update vip %s to udp lb, %v", vip, err)
+			if len(backends) > 0 {
+				err = c.ovnClient.CreateLoadBalancerRule(c.config.ClusterUdpLoadBalancer, vip, convertIpToAddress(backends, targetPort))
+				if err != nil {
+					klog.Errorf("failed to update vip %s to udp lb, %v", vip, err)
+					return err
+				}
+			} else {
+				err = c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterUdpLoadBalancer)
+				if err != nil {
+					klog.Errorf("failed to delete vip %s at udp lb, %v", vip, err)
+					return err
+				}
 			}
 		}
 	}
