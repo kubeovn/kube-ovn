@@ -1,9 +1,9 @@
 package daemon
 
 import (
-	"bitbucket.org/mathildetech/kube-ovn/pkg/request"
-	"bitbucket.org/mathildetech/kube-ovn/pkg/util"
 	"fmt"
+	"github.com/alauda/kube-ovn/pkg/request"
+	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/emicklei/go-restful"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"

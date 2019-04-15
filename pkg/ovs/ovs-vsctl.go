@@ -8,6 +8,9 @@ import (
 	"strings"
 )
 
+// Glory belongs to openvswitch/ovn-kubernetes
+// https://github.com/openvswitch/ovn-kubernetes/blob/master/go-controller/pkg/util/ovs.go
+
 func ovsExec(args ...string) (string, error) {
 	args = append([]string{"--timeout=30"}, args...)
 	output, err := exec.Command("ovs-vsctl", args...).CombinedOutput()

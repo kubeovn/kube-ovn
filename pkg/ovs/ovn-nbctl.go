@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"bitbucket.org/mathildetech/kube-ovn/pkg/util"
+	"github.com/alauda/kube-ovn/pkg/util"
 	"k8s.io/klog"
 )
 

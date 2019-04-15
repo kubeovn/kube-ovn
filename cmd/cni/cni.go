@@ -1,10 +1,10 @@
 package main
 
 import (
-	"bitbucket.org/mathildetech/kube-ovn/pkg/request"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/alauda/kube-ovn/pkg/request"
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
 	"github.com/containernetworking/cni/pkg/types/current"

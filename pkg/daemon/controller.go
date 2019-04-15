@@ -5,10 +5,10 @@ import (
 	"net"
 	"time"
 
-	"bitbucket.org/mathildetech/kube-ovn/pkg/ovs"
+	"github.com/alauda/kube-ovn/pkg/ovs"
 	"k8s.io/apimachinery/pkg/api/errors"
 
-	"bitbucket.org/mathildetech/kube-ovn/pkg/util"
+	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/projectcalico/felix/ipsets"
 	"github.com/vishvananda/netlink"

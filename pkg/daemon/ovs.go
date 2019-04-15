@@ -1,9 +1,9 @@
 package daemon
 
 import (
-	"bitbucket.org/mathildetech/kube-ovn/pkg/ovs"
-	"bitbucket.org/mathildetech/kube-ovn/pkg/util"
 	"fmt"
+	"github.com/alauda/kube-ovn/pkg/ovs"
+	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/vishvananda/netlink"
 	"k8s.io/klog"
