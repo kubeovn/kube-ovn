@@ -1,15 +1,24 @@
 # CHANGELOG
 
+## v0.2.0 —— 2019/04/15
+### Features
+* Distributed Gateway for external connectivity
+* Dynamic QoS for pod ingress/egress bandwidth
+* Subnet isolation
+### Bug Fixes
+* Delete empty lb to improve performance
+* Delete lb at node switch
+* Delete ovn embedded dns
+* Fix ovn restart failed issue
+
+
 ## v0.1.0 —— 2019/03/12
-### 功能
-* 单机部署
-* openvswitch-2.10.1
-* Geneve 二层网络
-* 自动分配 IP/Mac IPAM
-* Pod/Workload 指定 IP
-* Namespace 指定子网
-* Namespace 共享子网
-* 主机和容器网络互通
-### 问题
-* 容器无法访问外网
-* 控制平面没有高可用
+### Features
+* IP/Mac automatic allocation
+* IP/Mac static allocation
+* Namespace bind subnet
+* Namespaces share subnet
+* Connectivity between node and pod 
+### Issues
+* Pod can not access external network
+* No HA for control plan

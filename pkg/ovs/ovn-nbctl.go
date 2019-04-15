@@ -190,11 +190,12 @@ func (c Client) CreateLogicalSwitch(ls, subnet, gateway, excludeIps string) erro
 			return err
 		}
 
-		err = c.AddDnsTableToLogicalSwitch(ls)
-		if err != nil {
-			klog.Errorf("failed to add cluster dns to %s, %v", ls, err)
-			return err
-		}
+		// DO NOT add dns table until we find the reason why we can not resolve external domains
+		//err = c.AddDnsTableToLogicalSwitch(ls)
+		//if err != nil {
+		//	klog.Errorf("failed to add cluster dns to %s, %v", ls, err)
+		//	return err
+		//}
 	}
 
 	return nil
