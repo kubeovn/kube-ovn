@@ -117,14 +117,3 @@ func InitLoadBalancer(config *Configuration) error {
 	}
 	return nil
 }
-
-func InitDnsTable(config *Configuration) error {
-	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR)
-	uuid, err := client.CreateDnsTable()
-	if err != nil {
-		return err
-	}
-	ovs.GlobalDnsTable = uuid
-	klog.Infof("dns table is %s", uuid)
-	return nil
-}
