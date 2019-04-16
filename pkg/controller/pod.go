@@ -356,26 +356,15 @@ func (c *Controller) handleDeletePod(key string) error {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
-	ns, err := c.namespacesLister.Get(namespace)
+	portAddr, err := c.ovnClient.GetPortAddr(ovs.PodNameToPortName(name, namespace))
 	if err != nil {
-		klog.Errorf("get namespace %s failed %v", namespace, err)
-		return err
-	}
-	nsGWType := ns.Annotations[util.GWTypeAnnotation]
-	switch nsGWType {
-	case "", util.GWDistributedMode:
-		portAddr, err := c.ovnClient.GetPortAddr(ovs.PodNameToPortName(name, namespace))
-		if err != nil {
-			if strings.Contains(err.Error(), "no row") {
-				break
-			}
+		if !strings.Contains(err.Error(), "no row") {
 			return err
 		}
+	} else {
 		if err := c.ovnClient.DeleteStaticRouter(portAddr[1], c.config.ClusterRouter); err != nil {
 			return err
 		}
-	case util.GWCentralizedMode:
-		// TODO:
 	}
 	pod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
@@ -427,29 +416,35 @@ func (c *Controller) handleUpdatePod(key string) error {
 		klog.Errorf("get namespace %s failed %v", namespace, err)
 		return err
 	}
-
-	node, err := c.nodesLister.Get(pod.Spec.NodeName)
-	if err != nil {
-		klog.Errorf("get node %s failed %v", pod.Spec.NodeName, err)
-		return err
-	}
-	nodeTunlIP := node.Annotations[util.IpAddressAnnotation]
-	if nodeTunlIP == "" {
-		klog.Errorf("node %s has no tunl ip annotation", pod.Spec.NodeName)
-		return nil
-	}
-	nodeTunlIPAddr, _, err := net.ParseCIDR(nodeTunlIP)
-	if err != nil {
-		return errors.Annotatef(err, "parse node tunl ip %s faield", nodeTunlIP)
-	}
 	nsGWType := ns.Annotations[util.GWTypeAnnotation]
 	switch nsGWType {
 	case "", util.GWDistributedMode:
+		node, err := c.nodesLister.Get(pod.Spec.NodeName)
+		if err != nil {
+			klog.Errorf("get node %s failed %v", pod.Spec.NodeName, err)
+			return err
+		}
+		nodeTunlIPAddr, err := getNodeTunlIP(node)
+		if err != nil {
+			return err
+		}
 		if err := c.ovnClient.AddStaticRouter(ovs.PolicySrcIP, pod.Status.PodIP, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
 			return errors.Annotate(err, "add static route failed")
 		}
 	case util.GWCentralizedMode:
-		// TODO:
+		gatewayNode := ns.Annotations[util.GWNode]
+		node, err := c.nodesLister.Get(gatewayNode)
+		if err != nil {
+			klog.Errorf("get node %s failed %v", pod.Spec.NodeName, err)
+			return err
+		}
+		nodeTunlIPAddr, err := getNodeTunlIP(node)
+		if err != nil {
+			return err
+		}
+		if err := c.ovnClient.AddStaticRouter(ovs.PolicySrcIP, pod.Status.PodIP, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
+			return errors.Annotate(err, "add static route failed")
+		}
 	}
 	return nil
 }
@@ -461,4 +456,16 @@ func isStatefulSetPod(pod *v1.Pod) bool {
 		}
 	}
 	return false
+}
+
+func getNodeTunlIP(node *v1.Node) (net.IP, error) {
+	nodeTunlIP := node.Annotations[util.IpAddressAnnotation]
+	if nodeTunlIP == "" {
+		return nil, errors.New("node has no tunl ip annotation")
+	}
+	nodeTunlIPAddr, _, err := net.ParseCIDR(nodeTunlIP)
+	if err != nil {
+		return nil, errors.Annotatef(err, "parse node tunl ip %s faield", nodeTunlIP)
+	}
+	return nodeTunlIPAddr, nil
 }
