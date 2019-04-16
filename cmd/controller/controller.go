@@ -1,7 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/alauda/kube-ovn/pkg/controller"
@@ -21,6 +24,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	go loopOvnNbctlDaemon(config)
+
 	err = controller.InitClusterRouter(config)
 	if err != nil {
 		klog.Errorf("init cluster router failed %v", err)
@@ -30,12 +35,6 @@ func main() {
 	err = controller.InitLoadBalancer(config)
 	if err != nil {
 		klog.Errorf("init load balancer failed %v", err)
-		os.Exit(1)
-	}
-
-	err = controller.InitDnsTable(config)
-	if err != nil {
-		klog.Errorf("init dns table failed %v", err)
 		os.Exit(1)
 	}
 
@@ -55,4 +54,33 @@ func main() {
 	ctl := controller.NewController(config, kubeInformerFactory)
 	kubeInformerFactory.Start(stopCh)
 	ctl.Run(stopCh)
+}
+
+func loopOvnNbctlDaemon(config *controller.Configuration) {
+	for {
+		daemonSocket := os.Getenv("OVN_NB_DAEMON")
+		time.Sleep(5 * time.Second)
+
+		if _, err := os.Stat(daemonSocket); os.IsNotExist(err) || daemonSocket == "" {
+			startOvnNbctlDaemon(config.OvnNbHost, config.OvnNbPort)
+		}
+	}
+}
+
+func startOvnNbctlDaemon(nbHost string, nbPort int) (string, error) {
+	klog.Infof("start ovn-nbctl daemon")
+	output, err := exec.Command(
+		"ovn-nbctl",
+		fmt.Sprintf("--db=tcp:%s:%d", nbHost, nbPort),
+		"--pidfile",
+		"--detach",
+	).CombinedOutput()
+	if err != nil {
+		klog.Errorf("start ovn-nbctl daemon failed, %s", string(output))
+		return "", err
+	} else {
+		daemonSocket := strings.TrimSpace(string(output))
+		os.Setenv("OVN_NB_DAEMON", daemonSocket)
+		return daemonSocket, nil
+	}
 }

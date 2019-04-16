@@ -141,8 +141,6 @@ func (c *Controller) handleAddService(key string) error {
 			svc.SetFinalizers(removeString(svc.Finalizers, util.ServiceAnnotation))
 			_, err = c.config.KubeClient.CoreV1().Services(namespace).Update(svc)
 		}
-	} else {
-		err = c.ovnClient.AddDnsRecord(svcDomain(name, namespace), []string{ip})
 	}
 
 	return err
@@ -206,12 +204,6 @@ func (c *Controller) handleUpdateService(key string) error {
 				klog.Errorf("failed to delete vip %s from udp lb, %v", vip, err)
 				return err
 			}
-		}
-
-		err = c.ovnClient.DeleteDnsRecord(svcDomain(name, namespace))
-		if err != nil {
-			klog.Errorf("failed to delete dns %s , %v", svcDomain(name, namespace), err)
-			return err
 		}
 	} else {
 		// for service update
@@ -298,8 +290,4 @@ func removeString(slice []string, s string) (result []string) {
 		result = append(result, item)
 	}
 	return
-}
-
-func svcDomain(svc, namespace string) string {
-	return fmt.Sprintf("%s.%s.svc.cluster.local", svc, namespace)
 }

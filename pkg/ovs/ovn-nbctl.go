@@ -11,11 +11,7 @@ import (
 	"k8s.io/klog"
 )
 
-func (c Client) ovnNbCommand(arg ...string) (string, error) {
-	cmdArgs := []string{fmt.Sprintf("--db=%s", c.OvnNbAddress)}
-	cmdArgs = append(cmdArgs, arg...)
-	klog.V(5).Infof("execute %s command %s", OvnNbCtl, strings.Join(cmdArgs, " "))
-
+func (c Client) ovnNbCommand(cmdArgs ...string) (string, error) {
 	start := time.Now()
 	raw, err := exec.Command(OvnNbCtl, cmdArgs...).CombinedOutput()
 	elapsed := float64((time.Since(start)) / time.Millisecond)
@@ -189,13 +185,6 @@ func (c Client) CreateLogicalSwitch(ls, subnet, gateway, excludeIps string) erro
 			klog.Errorf("failed to add cluster udp lb to %s, %v", ls, err)
 			return err
 		}
-
-		// DO NOT add dns table until we find the reason why we can not resolve external domains
-		//err = c.AddDnsTableToLogicalSwitch(ls)
-		//if err != nil {
-		//	klog.Errorf("failed to add cluster dns to %s, %v", ls, err)
-		//	return err
-		//}
 	}
 
 	return nil
@@ -336,54 +325,6 @@ func (c Client) GetLoadBalancerVips(lb string) (map[string]string, error) {
 	result := map[string]string{}
 	err = json.Unmarshal([]byte(strings.Replace(output, "=", ":", -1)), &result)
 	return result, err
-}
-
-func (c Client) CreateDnsTable() (string, error) {
-	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid", fmt.Sprintf("--db=%s", c.OvnNbAddress),
-		"find", "DNS", "external_ids:name=ovn")
-	if err != nil {
-		return "", nil
-	}
-	if output != "" {
-		return output, nil
-	} else {
-		_, err := c.ovnNbCommand("create", "DNS", "external_ids:name=ovn")
-		if err != nil {
-			return "", nil
-		}
-		output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid", fmt.Sprintf("--db=%s", c.OvnNbAddress),
-			"find", "DNS", "external_ids:name=ovn")
-		if err != nil {
-			return "", nil
-		}
-		return output, nil
-	}
-}
-
-func (c Client) AddDnsRecord(domain string, addresses []string) error {
-	_, err := c.ovnNbCommand("set", "DNS", GlobalDnsTable, fmt.Sprintf("records:%s=%s", domain, strings.Join(addresses, ",")))
-	return err
-}
-
-func (c Client) DeleteDnsRecord(domain string) error {
-	_, err := c.ovnNbCommand(IfExists, "remove", "DNS", GlobalDnsTable, "records", domain)
-	return err
-}
-
-func (c Client) GetDnsRecords() (map[string]string, error) {
-	output, err := c.ovnNbCommand("--data=bare", "--no-heading",
-		"get", "dns", GlobalDnsTable, "records")
-	if err != nil {
-		return nil, err
-	}
-	result := map[string]string{}
-	err = json.Unmarshal([]byte(strings.Replace(output, "=", ":", -1)), &result)
-	return result, err
-}
-
-func (c Client) AddDnsTableToLogicalSwitch(ls string) error {
-	_, err := c.ovnNbCommand("add", "logical_switch", ls, "dns_records", GlobalDnsTable)
-	return err
 }
 
 func (c Client) CleanLogicalSwitchAcl(ls string) error {

@@ -174,9 +174,6 @@ func (c *Controller) handleAddNamespace(key string) error {
 		klog.Infof("namespace %s use default logical switch %s", key, c.config.DefaultLogicalSwitch)
 		return nil
 	}
-	if err != nil {
-		return err
-	}
 
 	// skip creation if switch already exists
 	exist := false
