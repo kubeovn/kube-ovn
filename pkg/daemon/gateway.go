@@ -120,18 +120,24 @@ func (c *Controller) getLocalPodIPsNeedNAT() ([]string, error) {
 		return nil, err
 	}
 	for _, pod := range allPods {
-		if pod.Spec.NodeName == hostname && pod.Spec.HostNetwork != true && pod.Status.PodIP != "" {
-			ns, err := c.namespacesLister.Get(pod.Namespace)
-			if err != nil {
-				klog.Errorf("get ns %s failed, %+v", pod.Namespace, err)
-				continue
-			}
-			nsGWType := ns.Annotations[util.GWTypeAnnotation]
-			switch nsGWType {
-			case "", util.GWDistributedMode:
+		if pod.Spec.HostNetwork == true || pod.Status.PodIP == "" {
+			continue
+		}
+		ns, err := c.namespacesLister.Get(pod.Namespace)
+		if err != nil {
+			klog.Errorf("get ns %s failed, %+v", pod.Namespace, err)
+			continue
+		}
+		nsGWType := ns.Annotations[util.GWTypeAnnotation]
+		switch nsGWType {
+		case "", util.GWDistributedMode:
+			if pod.Spec.NodeName == hostname {
 				localPodIPs = append(localPodIPs, pod.Status.PodIP)
-			case util.GWCentralizedMode:
-				// TODO:
+			}
+		case util.GWCentralizedMode:
+			gwNode := ns.Annotations[util.GWNode]
+			if gwNode == hostname {
+				localPodIPs = append(localPodIPs, pod.Status.PodIP)
 			}
 		}
 	}
