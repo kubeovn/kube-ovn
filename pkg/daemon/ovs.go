@@ -164,7 +164,7 @@ func configureContainerNic(nicName, ipAddr, gateway string, macAddr net.Hardware
 	})
 }
 
-func configureNodeNic(portName, ip, mac string) error {
+func configureNodeNic(portName, ip, mac, gw string) error {
 	macAddr, err := net.ParseMAC(mac)
 	if err != nil {
 		return fmt.Errorf("failed to parse mac %s %v", macAddr, err)
@@ -210,5 +210,9 @@ func configureNodeNic(portName, ip, mac string) error {
 			return fmt.Errorf("can not set node nic %s up %v", portName, err)
 		}
 	}
+
+	// ping gw to activate the flow
+	output, _ := exec.Command("ping", "-w", "10", gw).CombinedOutput()
+	klog.Infof("ping gw result is: \n %s", string(output))
 	return nil
 }

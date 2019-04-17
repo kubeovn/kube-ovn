@@ -13,9 +13,12 @@ RUN yum install -y \
         unbound unbound-devel && \
         yum clean all
 
-RUN rpm -i https://github.com/oilbeater/ovs/releases/download/v2.10.1/openvswitch-2.10.1-1.el7.centos.x86_64.rpm && \
-    rpm -i https://github.com/oilbeater/ovs/releases/download/v2.10.1/openvswitch-ovn-common-2.10.1-1.el7.centos.x86_64.rpm && \
-    rpm -i https://github.com/oilbeater/ovs/releases/download/v2.10.1/openvswitch-ovn-host-2.10.1-1.el7.centos.x86_64.rpm
+ENV OVS_VERSION=2.10.1
+ENV OVS_SUBVERSION=2
+
+RUN rpm -i https://github.com/oilbeater/ovs/releases/download/v${OVS_VERSION}/openvswitch-${OVS_VERSION}-${OVS_SUBVERSION}.el7.centos.x86_64.rpm && \
+    rpm -i https://github.com/oilbeater/ovs/releases/download/v${OVS_VERSION}/openvswitch-ovn-common-${OVS_VERSION}-${OVS_SUBVERSION}.el7.centos.x86_64.rpm && \
+    rpm -i https://github.com/oilbeater/ovs/releases/download/v${OVS_VERSION}/openvswitch-ovn-host-${OVS_VERSION}-${OVS_SUBVERSION}.el7.centos.x86_64.rpm
 
 COPY start-cniserver.sh /kube-ovn/start-cniserver.sh
 COPY install-cni.sh /kube-ovn/install-cni.sh

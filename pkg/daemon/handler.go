@@ -103,8 +103,9 @@ func (csh CniServerHandler) initNodeGateway() error {
 	macAddr := node.Annotations[util.MacAddressAnnotation]
 	ipAddr := node.Annotations[util.IpAddressAnnotation]
 	portName := node.Annotations[util.PortNameAnnotation]
-	if macAddr == "" || ipAddr == "" || portName == "" {
-		return fmt.Errorf("can not find macAddr, ipAddr and portName")
+	gw := node.Annotations[util.GatewayAnnotation]
+	if macAddr == "" || ipAddr == "" || portName == "" || gw == "" {
+		return fmt.Errorf("can not find macAddr, ipAddr, portName and gw")
 	}
-	return configureNodeNic(portName, ipAddr, macAddr)
+	return configureNodeNic(portName, ipAddr, macAddr, gw)
 }
