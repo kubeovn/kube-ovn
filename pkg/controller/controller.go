@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/alauda/kube-ovn/pkg/ovs"
@@ -61,6 +62,8 @@ type Controller struct {
 	// recorder is an event recorder for recording Event resources to the
 	// Kubernetes API.
 	recorder record.EventRecorder
+
+	isLeader *atomic.Value
 }
 
 // NewController returns a new ovn controller
@@ -116,7 +119,10 @@ func NewController(
 		updateEndpointQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateEndpoint"),
 
 		recorder: recorder,
+
+		isLeader: &atomic.Value{},
 	}
+	controller.isLeader.Store(false)
 
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddPod,
@@ -169,6 +175,19 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 
 	klog.Info("Starting workers")
 
+	setupLeaderElection(&leaderElectionConfig{
+		Client:     c.config.KubeClient,
+		ElectionID: "ovn-config",
+		OnStartedLeading: func(stopCh chan struct{}) {
+			c.setLeader(true)
+		},
+		OnStoppedLeading: func() {
+			c.setLeader(false)
+		},
+		PodName:      c.config.PodName,
+		PodNamespace: c.config.PodNamespace,
+	})
+
 	// Launch workers to process resources
 	go wait.Until(c.runAddPodWorker, time.Second, stopCh)
 	go wait.Until(c.runDeletePodWorker, time.Second, stopCh)
@@ -191,4 +210,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	klog.Info("Shutting down workers")
 
 	return nil
+}
+
+func (c *Controller) setLeader(isLeader bool) {
+	c.isLeader.Store(isLeader)
 }

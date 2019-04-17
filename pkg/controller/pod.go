@@ -21,6 +21,9 @@ import (
 )
 
 func (c *Controller) enqueueAddPod(obj interface{}) {
+	if !c.isLeader.Load().(bool) {
+		return
+	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -31,6 +34,9 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 }
 
 func (c *Controller) enqueueDeletePod(obj interface{}) {
+	if !c.isLeader.Load().(bool) {
+		return
+	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -41,6 +47,9 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
+	if !c.isLeader.Load().(bool) {
+		return
+	}
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
 	// pod assigned an ip

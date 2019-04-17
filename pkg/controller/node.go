@@ -3,18 +3,22 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+
 	"github.com/alauda/kube-ovn/pkg/util"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
-	"strings"
 )
 
 func (c *Controller) enqueueAddNode(obj interface{}) {
+	if !c.isLeader.Load().(bool) {
+		return
+	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -25,6 +29,9 @@ func (c *Controller) enqueueAddNode(obj interface{}) {
 }
 
 func (c *Controller) enqueueDeleteNode(obj interface{}) {
+	if !c.isLeader.Load().(bool) {
+		return
+	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {

@@ -2,17 +2,21 @@ package controller
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/alauda/kube-ovn/pkg/util"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
-	"strings"
 )
 
 func (c *Controller) enqueueAddNamespace(obj interface{}) {
+	if !c.isLeader.Load().(bool) {
+		return
+	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -23,6 +27,9 @@ func (c *Controller) enqueueAddNamespace(obj interface{}) {
 }
 
 func (c *Controller) enqueueDeleteNamespace(obj interface{}) {
+	if !c.isLeader.Load().(bool) {
+		return
+	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -33,6 +40,9 @@ func (c *Controller) enqueueDeleteNamespace(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateNamespace(old, new interface{}) {
+	if !c.isLeader.Load().(bool) {
+		return
+	}
 	oldNs := old.(*v1.Namespace)
 	newNs := new.(*v1.Namespace)
 	if oldNs.Annotations[util.PrivateSwitchAnnotation] != newNs.Annotations[util.PrivateSwitchAnnotation] ||

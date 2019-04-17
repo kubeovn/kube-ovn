@@ -2,15 +2,19 @@ package controller
 
 import (
 	"fmt"
-	"k8s.io/api/core/v1"
+	"strings"
+
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
-	"strings"
 )
 
 func (c *Controller) enqueueAddEndpoint(obj interface{}) {
+	if !c.isLeader.Load().(bool) {
+		return
+	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -21,6 +25,9 @@ func (c *Controller) enqueueAddEndpoint(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateEndpoint(old, new interface{}) {
+	if !c.isLeader.Load().(bool) {
+		return
+	}
 	oldEp := old.(*v1.Endpoints)
 	newEp := new.(*v1.Endpoints)
 	if oldEp.ResourceVersion == newEp.ResourceVersion {

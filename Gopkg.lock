@@ -550,7 +550,7 @@
   version = "kubernetes-1.13.2"
 
 [[projects]]
-  digest = "1:e903dd38f020f68d7b2e23803ffd51f25a317e84da767553d034786ccd325f9b"
+  digest = "1:af0820c876809055471008cb410e0fe8411668a26605d9bd374fd2fb74b11a3b"
   name = "k8s.io/client-go"
   packages = [
     "discovery",
@@ -675,6 +675,8 @@
     "tools/clientcmd/api",
     "tools/clientcmd/api/latest",
     "tools/clientcmd/api/v1",
+    "tools/leaderelection",
+    "tools/leaderelection/resourcelock",
     "tools/metrics",
     "tools/pager",
     "tools/record",
@@ -756,6 +758,8 @@
     "k8s.io/client-go/rest",
     "k8s.io/client-go/tools/cache",
     "k8s.io/client-go/tools/clientcmd",
+    "k8s.io/client-go/tools/leaderelection",
+    "k8s.io/client-go/tools/leaderelection/resourcelock",
     "k8s.io/client-go/tools/record",
     "k8s.io/client-go/util/workqueue",
     "k8s.io/klog",

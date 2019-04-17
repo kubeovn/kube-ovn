@@ -8,7 +8,7 @@ metadata:
     kubernetes.io/description: |
       kube-ovn controller
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: kube-ovn-controller
@@ -40,6 +40,10 @@ spec:
           - --default-cidr=10.16.0.0/16
           - --node-switch-cidr=100.64.0.0/16
           env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             - name: POD_IP
               valueFrom:
                 fieldRef:

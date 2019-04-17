@@ -2,6 +2,7 @@ package controller
 
 import (
 	"flag"
+	"os"
 
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/kubernetes"
@@ -30,6 +31,9 @@ type Configuration struct {
 
 	ClusterTcpLoadBalancer string
 	ClusterUdpLoadBalancer string
+
+	PodName      string
+	PodNamespace string
 }
 
 // TODO: validate configuration
@@ -83,6 +87,8 @@ func ParseFlags() (*Configuration, error) {
 		NodeSwitchGateway:      *argNodeSwitchGateway,
 		ClusterTcpLoadBalancer: *argClusterTcpLoadBalancer,
 		ClusterUdpLoadBalancer: *argClusterUdpLoadBalancer,
+		PodName:                os.Getenv("POD_NAME"),
+		PodNamespace:           os.Getenv("KUBE_NAMESPACE"),
 	}
 	err := config.initKubeClient()
 	if err != nil {
