@@ -2,39 +2,54 @@ package controller
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/alauda/kube-ovn/pkg/util"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
-	"strings"
 )
 
 func (c *Controller) enqueueAddNamespace(obj interface{}) {
+	if !c.isLeader() {
+		return
+	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
+	klog.V(5).Infof("enqueue add namespace %s", key)
 	c.addNamespaceQueue.AddRateLimited(key)
 }
 
 func (c *Controller) enqueueDeleteNamespace(obj interface{}) {
+	if !c.isLeader() {
+		return
+	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
+	klog.V(5).Infof("enqueue delete namespace %s", key)
 	c.deleteNamespaceQueue.AddRateLimited(key)
 }
 
 func (c *Controller) enqueueUpdateNamespace(old, new interface{}) {
+	if !c.isLeader() {
+		return
+	}
 	oldNs := old.(*v1.Namespace)
 	newNs := new.(*v1.Namespace)
+	if oldNs.ResourceVersion == newNs.ResourceVersion {
+		return
+	}
 	if oldNs.Annotations[util.PrivateSwitchAnnotation] != newNs.Annotations[util.PrivateSwitchAnnotation] ||
 		oldNs.Annotations[util.AllowAccessAnnotation] != newNs.Annotations[util.AllowAccessAnnotation] {
 		var key string
@@ -43,6 +58,7 @@ func (c *Controller) enqueueUpdateNamespace(old, new interface{}) {
 			utilruntime.HandleError(err)
 			return
 		}
+		klog.V(5).Infof("enqueue update namespace %s", key)
 		c.updateNamespaceQueue.AddRateLimited(key)
 	}
 }

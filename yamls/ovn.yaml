@@ -5,6 +5,13 @@ metadata:
 
 ---
 apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ovn-config
+  namespace: kube-ovn
+
+---
+apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: ovn

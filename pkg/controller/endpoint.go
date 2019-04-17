@@ -2,25 +2,33 @@ package controller
 
 import (
 	"fmt"
-	"k8s.io/api/core/v1"
+	"strings"
+
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
-	"strings"
 )
 
 func (c *Controller) enqueueAddEndpoint(obj interface{}) {
+	if !c.isLeader() {
+		return
+	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
+	klog.V(5).Infof("enqueue add endpoint %s", key)
 	c.updateEndpointQueue.AddRateLimited(key)
 }
 
 func (c *Controller) enqueueUpdateEndpoint(old, new interface{}) {
+	if !c.isLeader() {
+		return
+	}
 	oldEp := old.(*v1.Endpoints)
 	newEp := new.(*v1.Endpoints)
 	if oldEp.ResourceVersion == newEp.ResourceVersion {
@@ -37,6 +45,7 @@ func (c *Controller) enqueueUpdateEndpoint(old, new interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
+	klog.V(5).Infof("enqueue update endpoint %s", key)
 	c.updateEndpointQueue.AddRateLimited(key)
 }
 
