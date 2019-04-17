@@ -290,7 +290,7 @@ func (c Client) DeleteStaticRouter(cidr, router string) error {
 }
 
 func (c Client) FindLoadbalancer(lb string) (string, error) {
-	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid", fmt.Sprintf("--db=%s", c.OvnNbAddress),
+	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid",
 		"find", "load_balancer", fmt.Sprintf("name=%s", lb))
 	return output, err
 }
