@@ -9,4 +9,4 @@ then
 	rm ${SOCK}
 fi
 
-./kube-ovn-daemon --ovs-socket=/run/openvswitch/db.sock --bind-socket=${SOCK} --ovn-nb-host=$OVN_NB_SERVICE_HOST --ovn-sb-host=$OVN_SB_SERVICE_HOST $@
+./kube-ovn-daemon --ovs-socket=/run/openvswitch/db.sock --bind-socket=${SOCK} $@

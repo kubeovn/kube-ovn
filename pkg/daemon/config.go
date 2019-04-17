@@ -18,12 +18,6 @@ type Configuration struct {
 	KubeConfigFile        string
 	KubeClient            kubernetes.Interface
 	NodeName              string
-	OvnNbHost             string
-	OvnNbPort             int
-	OvnSbHost             string
-	OvnSbPort             int
-	ClusterRouter         string
-	NodeSwitch            string
 	ServiceClusterIPRange string
 }
 
@@ -33,12 +27,6 @@ func ParseFlags() (*Configuration, error) {
 		argBindSocket            = pflag.String("bind-socket", "/var/run/cniserver.sock", "The socket daemon bind to.")
 		argOvsSocket             = pflag.String("ovs-socket", "", "The socket to local ovs-server")
 		argKubeConfigFile        = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
-		argOvnNbHost             = pflag.String("ovn-nb-host", "", "")
-		argOvnNbPort             = pflag.Int("ovn-nb-port", 6641, "")
-		argOvnSbHost             = pflag.String("ovn-sb-host", "", "")
-		argOvnSbPort             = pflag.Int("ovn-sb-port", 6642, "")
-		argClusterRouter         = pflag.String("cluster-router", "ovn-cluster", "The router name for cluster router.Default: cluster-router")
-		argNodeSwitch            = pflag.String("node-switch", "join", "The name of node gateway switch which help node to access pod network. Default: join")
 		argServiceClusterIPRange = pflag.String("service-cluster-ip-range", "10.96.0.0/12", "The kubernetes service cluster ip range")
 	)
 
@@ -68,12 +56,6 @@ func ParseFlags() (*Configuration, error) {
 		OvsSocket:             *argOvsSocket,
 		KubeConfigFile:        *argKubeConfigFile,
 		NodeName:              nodeName,
-		OvnNbHost:             *argOvnNbHost,
-		OvnNbPort:             *argOvnNbPort,
-		OvnSbHost:             *argOvnSbHost,
-		OvnSbPort:             *argOvnSbPort,
-		ClusterRouter:         *argClusterRouter,
-		NodeSwitch:            *argNodeSwitch,
 		ServiceClusterIPRange: *argServiceClusterIPRange,
 	}
 	err := config.initKubeClient()
