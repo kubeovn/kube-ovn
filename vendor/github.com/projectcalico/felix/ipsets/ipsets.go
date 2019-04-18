@@ -113,10 +113,10 @@ func (s *IPSets) AddOrReplaceIPSet(setMetadata IPSetMetadata, members []string) 
 	// We need to convert members to a canonical representation (which may be, for example,
 	// an ip.Addr instead of a string) so that we can compare them with members that we read
 	// back from the dataplane.  This also filters out IPs of the incorrect IP version.
-	s.logCxt.WithFields(log.Fields{
-		"setID":   setMetadata.SetID,
-		"setType": setMetadata.Type,
-	}).Info("Queueing IP set for creation")
+	//s.logCxt.WithFields(log.Fields{
+	//	"setID":   setMetadata.SetID,
+	//	"setType": setMetadata.Type,
+	//}).Info("Queueing IP set for creation")
 	canonMembers := s.filterAndCanonicaliseMembers(setMetadata.Type, members)
 
 	// Create the IP set struct and store it off.
@@ -694,7 +694,7 @@ func (s *IPSets) writeUpdates(ipSet *ipSet, w io.Writer) error {
 	// - pendingReplace is non-nil
 	// - membersInDataplane nil
 	// - pendingAdds/Deletions empty.
-	logCxt.Info("Doing full IP set rewrite")
+	//logCxt.Info("Doing full IP set rewrite")
 	return s.writeFullRewrite(ipSet, w, logCxt)
 }
 

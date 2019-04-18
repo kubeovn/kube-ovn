@@ -18,13 +18,9 @@ type CniServerHandler struct {
 	KubeClient kubernetes.Interface
 }
 
-func createCniServerHandler(config *Configuration) (*CniServerHandler, error) {
+func createCniServerHandler(config *Configuration) *CniServerHandler {
 	csh := &CniServerHandler{KubeClient: config.KubeClient, Config: config}
-	err := csh.initNodeGateway()
-	if err != nil {
-		return nil, err
-	}
-	return csh, nil
+	return csh
 }
 
 func (csh CniServerHandler) handleAdd(req *restful.Request, resp *restful.Response) {
@@ -91,21 +87,4 @@ func (csh CniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		return
 	}
 	resp.WriteHeader(http.StatusNoContent)
-}
-
-func (csh CniServerHandler) initNodeGateway() error {
-	nodeName := csh.Config.NodeName
-	node, err := csh.KubeClient.CoreV1().Nodes().Get(nodeName, v1.GetOptions{})
-	if err != nil {
-		klog.Errorf("failed to get node %s info %v", nodeName, err)
-		return err
-	}
-	macAddr := node.Annotations[util.MacAddressAnnotation]
-	ipAddr := node.Annotations[util.IpAddressAnnotation]
-	portName := node.Annotations[util.PortNameAnnotation]
-	gw := node.Annotations[util.GatewayAnnotation]
-	if macAddr == "" || ipAddr == "" || portName == "" || gw == "" {
-		return fmt.Errorf("can not find macAddr, ipAddr, portName and gw")
-	}
-	return configureNodeNic(portName, ipAddr, macAddr, gw)
 }

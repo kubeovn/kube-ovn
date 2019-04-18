@@ -21,6 +21,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	err = daemon.InitNodeGateway(config)
+	if err != nil {
+		klog.Errorf("init node gateway failed %v", err)
+		os.Exit(1)
+	}
+
 	stopCh := signals.SetupSignalHandler()
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(config.KubeClient, time.Second*30)
 	ctl, err := daemon.NewController(config, kubeInformerFactory)
