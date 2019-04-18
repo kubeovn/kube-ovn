@@ -63,7 +63,7 @@ type Controller struct {
 	// Kubernetes API.
 	recorder record.EventRecorder
 
-	isLeader *atomic.Value
+	leaderName *atomic.Value
 }
 
 // NewController returns a new ovn controller
@@ -120,9 +120,9 @@ func NewController(
 
 		recorder: recorder,
 
-		isLeader: &atomic.Value{},
+		leaderName: &atomic.Value{},
 	}
-	controller.isLeader.Store(false)
+	controller.leaderName.Store("")
 
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddPod,
@@ -167,6 +167,30 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	// Start the informer factories to begin populating the informer caches
 	klog.Info("Starting OVN controller")
 
+	// leader election
+	setupLeaderElection(&leaderElectionConfig{
+		Client:     c.config.KubeClient,
+		ElectionID: "ovn-config",
+		OnStartedLeading: func(stopCh chan struct{}) {
+			c.setLeader(c.config.PodName)
+		},
+		OnStoppedLeading: func() {
+			c.setLeader("")
+		},
+		OnNewLeader: func(identity string) {
+			c.setLeader(identity)
+		},
+		PodName:      c.config.PodName,
+		PodNamespace: c.config.PodNamespace,
+	})
+	for {
+		if c.hasLeader() {
+			break
+		}
+		klog.Info("waiting for a leader")
+		time.Sleep(1 * time.Second)
+	}
+
 	// Wait for the caches to be synced before starting workers
 	klog.Info("Waiting for informer caches to sync")
 	if ok := cache.WaitForCacheSync(stopCh, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced); !ok {
@@ -174,19 +198,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	}
 
 	klog.Info("Starting workers")
-
-	setupLeaderElection(&leaderElectionConfig{
-		Client:     c.config.KubeClient,
-		ElectionID: "ovn-config",
-		OnStartedLeading: func(stopCh chan struct{}) {
-			c.setLeader(true)
-		},
-		OnStoppedLeading: func() {
-			c.setLeader(false)
-		},
-		PodName:      c.config.PodName,
-		PodNamespace: c.config.PodNamespace,
-	})
 
 	// Launch workers to process resources
 	go wait.Until(c.runAddPodWorker, time.Second, stopCh)
@@ -212,6 +223,13 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	return nil
 }
 
-func (c *Controller) setLeader(isLeader bool) {
-	c.isLeader.Store(isLeader)
+func (c *Controller) setLeader(identity string) {
+	c.leaderName.Store(identity)
+}
+func (c *Controller) isLeader() bool {
+	return c.leaderName.Load().(string) == c.config.PodName
+}
+
+func (c *Controller) hasLeader() bool {
+	return c.leaderName.Load().(string) != ""
 }

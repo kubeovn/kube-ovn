@@ -13,7 +13,7 @@ import (
 )
 
 func (c *Controller) enqueueAddService(obj interface{}) {
-	if !c.isLeader.Load().(bool) {
+	if !c.isLeader() {
 		return
 	}
 	var key string
@@ -26,7 +26,7 @@ func (c *Controller) enqueueAddService(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateService(old, new interface{}) {
-	if !c.isLeader.Load().(bool) {
+	if !c.isLeader() {
 		return
 	}
 	oldSvc := old.(*v1.Service)

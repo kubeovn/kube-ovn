@@ -21,7 +21,7 @@ import (
 )
 
 func (c *Controller) enqueueAddPod(obj interface{}) {
-	if !c.isLeader.Load().(bool) {
+	if !c.isLeader() {
 		return
 	}
 	var key string
@@ -34,7 +34,7 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 }
 
 func (c *Controller) enqueueDeletePod(obj interface{}) {
-	if !c.isLeader.Load().(bool) {
+	if !c.isLeader() {
 		return
 	}
 	var key string
@@ -47,7 +47,7 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
-	if !c.isLeader.Load().(bool) {
+	if !c.isLeader() {
 		return
 	}
 	oldPod := oldObj.(*v1.Pod)

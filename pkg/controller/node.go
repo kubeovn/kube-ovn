@@ -16,7 +16,7 @@ import (
 )
 
 func (c *Controller) enqueueAddNode(obj interface{}) {
-	if !c.isLeader.Load().(bool) {
+	if !c.isLeader() {
 		return
 	}
 	var key string
@@ -29,7 +29,7 @@ func (c *Controller) enqueueAddNode(obj interface{}) {
 }
 
 func (c *Controller) enqueueDeleteNode(obj interface{}) {
-	if !c.isLeader.Load().(bool) {
+	if !c.isLeader() {
 		return
 	}
 	var key string

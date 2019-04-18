@@ -28,6 +28,7 @@ type leaderElectionConfig struct {
 
 	OnStartedLeading func(chan struct{})
 	OnStoppedLeading func()
+	OnNewLeader      func(identity string)
 }
 
 func setupLeaderElection(config *leaderElectionConfig) {
@@ -48,7 +49,7 @@ func setupLeaderElection(config *leaderElectionConfig) {
 	var stopCh chan struct{}
 	callbacks := leaderelection.LeaderCallbacks{
 		OnStartedLeading: func(ctx context.Context) {
-			klog.V(2).Infof("I am the new leader")
+			klog.Infof("I am the new leader")
 			stopCh = make(chan struct{})
 
 			if config.OnStartedLeading != nil {
@@ -56,7 +57,7 @@ func setupLeaderElection(config *leaderElectionConfig) {
 			}
 		},
 		OnStoppedLeading: func() {
-			klog.V(2).Info("I am not leader anymore")
+			klog.Info("I am not leader anymore")
 			close(stopCh)
 
 			// cancel the context
@@ -70,6 +71,9 @@ func setupLeaderElection(config *leaderElectionConfig) {
 		},
 		OnNewLeader: func(identity string) {
 			klog.Infof("new leader elected: %v", identity)
+			if config.OnNewLeader != nil {
+				config.OnNewLeader(identity)
+			}
 		},
 	}
 

@@ -12,7 +12,7 @@ import (
 )
 
 func (c *Controller) enqueueAddEndpoint(obj interface{}) {
-	if !c.isLeader.Load().(bool) {
+	if !c.isLeader() {
 		return
 	}
 	var key string
@@ -25,7 +25,7 @@ func (c *Controller) enqueueAddEndpoint(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateEndpoint(old, new interface{}) {
-	if !c.isLeader.Load().(bool) {
+	if !c.isLeader() {
 		return
 	}
 	oldEp := old.(*v1.Endpoints)

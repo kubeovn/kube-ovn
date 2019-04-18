@@ -14,7 +14,7 @@ import (
 )
 
 func (c *Controller) enqueueAddNamespace(obj interface{}) {
-	if !c.isLeader.Load().(bool) {
+	if !c.isLeader() {
 		return
 	}
 	var key string
@@ -27,7 +27,7 @@ func (c *Controller) enqueueAddNamespace(obj interface{}) {
 }
 
 func (c *Controller) enqueueDeleteNamespace(obj interface{}) {
-	if !c.isLeader.Load().(bool) {
+	if !c.isLeader() {
 		return
 	}
 	var key string
@@ -40,7 +40,7 @@ func (c *Controller) enqueueDeleteNamespace(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateNamespace(old, new interface{}) {
-	if !c.isLeader.Load().(bool) {
+	if !c.isLeader() {
 		return
 	}
 	oldNs := old.(*v1.Namespace)
