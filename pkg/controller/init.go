@@ -103,7 +103,7 @@ func InitLoadBalancer(config *Configuration) error {
 
 	udpLb, err := client.FindLoadbalancer(config.ClusterUdpLoadBalancer)
 	if err != nil {
-		return fmt.Errorf("failed to find tcp lb %v", err)
+		return fmt.Errorf("failed to find udp lb %v", err)
 	}
 	if udpLb == "" {
 		klog.Infof("init cluster udp load balancer %s", config.ClusterUdpLoadBalancer)

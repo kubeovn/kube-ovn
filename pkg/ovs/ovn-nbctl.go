@@ -292,6 +292,12 @@ func (c Client) DeleteStaticRouter(cidr, router string) error {
 func (c Client) FindLoadbalancer(lb string) (string, error) {
 	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid",
 		"find", "load_balancer", fmt.Sprintf("name=%s", lb))
+
+	// deal with ovn-nbctl daemon format bug
+	if strings.Contains(output, " ") {
+		part := strings.Split(output, " ")
+		output = part[len(part)-1]
+	}
 	return output, err
 }
 

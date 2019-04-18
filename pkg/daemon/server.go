@@ -15,11 +15,7 @@ var RequestLogString = "[%s] Incoming %s %s %s request"
 var ResponseLogString = "[%s] Outcoming response %s %s with %d status code in %vms"
 
 func RunServer(config *Configuration) {
-	csh, err := createCniServerHandler(config)
-	if err != nil {
-		klog.Fatalf("create cni server handler failed %v", err)
-		return
-	}
+	csh := createCniServerHandler(config)
 	server := http.Server{
 		Handler: createHandler(csh),
 	}

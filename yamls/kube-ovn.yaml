@@ -117,17 +117,12 @@ spec:
         volumeMounts:
           - mountPath: /run/openvswitch
             name: host-run-ovs
-          - mountPath: /var/run/netns
-            name: host-netns
       nodeSelector:
         beta.kubernetes.io/os: "linux"
       volumes:
         - name: host-run-ovs
           hostPath:
             path: /run/openvswitch
-        - name: host-netns
-          hostPath:
-            path: /var/run/netns
         - name: cni-conf
           hostPath:
             path: /etc/cni/net.d
