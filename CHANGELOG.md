@@ -1,6 +1,16 @@
 # CHANGELOG
 
-## v0.2.0 —— 2019/04/15
+## v0.3.0 -- 2019/04/19
+### Features
+* Namespaced Gateway for external connectivity
+* Daemon ovn-nbctl to improve performance
+### Fix
+* Daemon init node gw before running controller
+* Activate node switch by ping
+* Fix ovn-nbctl daemon output format bugs
+* ACL allow error
+
+## v0.2.0 -- 2019/04/15
 ### Features
 * Distributed Gateway for external connectivity
 * Dynamic QoS for pod ingress/egress bandwidth
@@ -12,7 +22,7 @@
 * Fix ovn restart failed issue
 
 
-## v0.1.0 —— 2019/03/12
+## v0.1.0 -- 2019/03/12
 ### Features
 * IP/Mac automatic allocation
 * IP/Mac static allocation
