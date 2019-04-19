@@ -1,10 +1,10 @@
 # QoS
 
-Kube-OVN supports dynamically change ingress and egress traffic rate control by modifying annotation to pod spec.
+Kube-OVN supports dynamically configurations of Ingress and Egress traffic rate limiting.
 
-Use following keys to define qos:
-- `ovn.kubernetes.io/ingress_rate`: traffic rate that inbound pod, unit Mbit/s
-- `ovn.kubernetes.io/egress_rate`: traffic rate that outbound pod, unit Mbit/s
+Use the following annotations to specify QoS:
+- `ovn.kubernetes.io/ingress_rate`: Rate limit for Ingress traffic, unit: Mbit/s
+- `ovn.kubernetes.io/egress_rate`: Rate limit for Egress traffic, unit: Mbit/s
 
 Example:
 
