@@ -339,17 +339,20 @@ func (c Client) CleanLogicalSwitchAcl(ls string) error {
 }
 
 func (c Client) SetPrivateLogicalSwitch(ls string, allow []string) error {
-	allowArgs := []string{}
-	for _, subnet := range allow {
-		match := fmt.Sprintf(`"ip4.src == %s"`, strings.TrimSpace(subnet))
-		allowArgs = append(allowArgs, "--", "acl-add", ls, "to-lport", util.SubnetAllowPriority, match, "allow-related")
-	}
 	delArgs := []string{"acl-del", ls}
-	dropArgs := []string{"--", "acl-add", ls, "to-lport", util.DefaultDropPriority, fmt.Sprintf(`inport == "%s-%s"`, ls, c.ClusterRouter), "drop"}
-	nodeSwitchArgs := []string{"--", "acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf(`"ip4.src == %s"`, c.NodeSwitchCIDR), "allow-related"}
+	dropArgs := []string{"--", "acl-add", ls, "to-lport", util.DefaultDropPriority, fmt.Sprintf(`inport=="%s-%s"`, ls, c.ClusterRouter), "drop"}
+	nodeSwitchArgs := []string{"--", "acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip4.src==%s", c.NodeSwitchCIDR), "allow-related"}
 
 	ovnArgs := append(delArgs, dropArgs...)
 	ovnArgs = append(ovnArgs, nodeSwitchArgs...)
+
+	allowArgs := []string{}
+	for _, subnet := range allow {
+		if strings.TrimSpace(subnet) != "" {
+			match := fmt.Sprintf("ip4.src==%s", strings.TrimSpace(subnet))
+			allowArgs = append(allowArgs, "--", "acl-add", ls, "to-lport", util.SubnetAllowPriority, match, "allow-related")
+		}
+	}
 	ovnArgs = append(ovnArgs, allowArgs...)
 
 	_, err := c.ovnNbCommand(ovnArgs...)
