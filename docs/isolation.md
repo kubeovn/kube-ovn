@@ -1,10 +1,10 @@
 # Subnet Isolation
 
-Kube-OVN supports subnet isolation and access control by modifying annotation of namespace.
+Kube-OVN supports network isolation and access control at the Subnet level.
 
-Use following keys to modify isolation policy:
-- `ovn.kubernetes.io/private`: boolean, control whether ip outside this subnet can access this subnet. Default: false.
-- `ovn.kubernetes.io/allow`: strings of cidr separated by comma, control which address can visit this subnet, if private=true.
+Use following annotations to specify the isolation policy:
+- `ovn.kubernetes.io/private`: boolean, controls whether to deny traffic from IP addresses outside of this Subnet. Default: false.
+- `ovn.kubernetes.io/allow`: strings of CIDR separated by commas, controls which addresses can access this Subnet, if `private=true`.
 
 Example:
 
