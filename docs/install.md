@@ -41,4 +41,5 @@ That's all! You can now create some pods and test connectivity.
     rm -rf /var/run/openvswitch
     rm -rf /etc/origin/openvswitch/
     rm -rf /etc/openvswitch
+    ```
 4. Reboot the Node to remove ipset/iptables rules and nics.

@@ -1,13 +1,13 @@
-# Subnet
+# Subnets
 
-Kube-OVN use annotations on namespace to create and share subnets. If a namespace has no related annotations, it will used the default subnet(10.16.0.0/16)
+Kube-OVN uses annotations on Namespaces to create and share Subnets. If a Namespace has no related annotations, it will use the default Subnet (10.16.0.0/16)
 
-Use following keys to define a subnet:
+Use the following annotations to define a Subnet:
 
-- `ovn.kubernetes.io/cidr`: The cidr of the subnet.
-- `ovn.kubernetes.io/gateway`: The gateway address for the subnet.
-- `ovn.kubernetes.io/logical_switch`: The logical switch name in OVN.
-- `ovn.kubernetes.io/exclude_ips`: Addresses that should not be allocated to Pod.
+- `ovn.kubernetes.io/cidr`: The CIDR of the Subnet.
+- `ovn.kubernetes.io/gateway`: The Gateway address for the Subnet.
+- `ovn.kubernetes.io/logical_switch`: The Logical Switch name in OVN.
+- `ovn.kubernetes.io/exclude_ips`: Addresses that should not be allocated to Pods.
 
 
 Example:
@@ -24,11 +24,11 @@ metadata:
   name: ovn-subnet
 ```
 
-This yaml will create a logical switch called ovn-subnet in OVN, cidr is 10.17.0.0/16,gateway is 10.17.0.1 and ip between 10.17.0.0 and 10.17.0.10 will not be allocated to pod.
+This YAML will create a Logical Switch named `ovn-subnet` in OVN, with CIDR 10.17.0.0/16, and Gateway 10.17.0.1. The IP addresses between 10.17.0.0 and 10.17.0.10 will not be allocated to the Pods.
 
-**NOTE**: Now we only support creating subnet by creating a new namespace. Modify annotation after namespace creation will not trigger subnet creation in OVN. Subnet dynamical configuration will be a future feature.
+**NOTE**: In the current version, we only support creating a Subnet while creating a new Namespace. Modifying annotations after Namespace creation will not trigger Subnet creation/update in OVN. Dynamic Subnet configuration is planned for a future release.
 
-To share a subnet among namespaces, create namespace with `ovn.kubernetes.io/logical_switch` point to an exist logical switch. Such as:
+To share a Subnet across multiple Namespaces, point the annotation `ovn.kubernetes.io/logical_switch` to an existing Logical Switch when creating the Namespace. For example:
 
 ```bash
 apiVersion: v1
@@ -39,4 +39,4 @@ metadata:
   name: ovn-share
 ```
 
-This yaml will create a namespace ovn-share that use same subnet with previous ovn-subnet.
+This YAML will create a Namespace ovn-share that uses the same Subnet as the previous Namespace `ovn-subnet`.
