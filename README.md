@@ -4,37 +4,37 @@
 [![Build Tag](https://img.shields.io/github/tag/alauda/kube-ovn.svg)](https://github.com/alauda/kube-ovn/releases)
 [![Go Report Card](https://goreportcard.com/badge/github.com/alauda/kube-ovn)](https://goreportcard.com/report/github.com/alauda/kube-ovn)
 
-Kube-OVN is an advanced Kubernetes network fabric designed for Enterprise container network management.
+Kube-OVN integrates the OVN-based Network Virtualization with Kubernetes. It offers an advanced Container Network Fabric for Enterprises.
 
-## Primary Features
-- **Namespaced Subnet**: Each namespace can has a unique subnet(backend by a vswitch) to allocated pod ip. Multiple namespaces can also share a same subnet.
-- **Subnet Isolation**: Control which address can visit a specific subnet.
-- **Static IP Address for Workload**: Allocate random or static IP addresses to workloads just as you wish.
-- **Dynamic QoS**: Modify pod ingress/egress traffic rate on the fly.
-- **Embedded Loadbalancer**: Replace kube-proxy by ovn embedded distributed L2 Loadbalancer.
-- **Distributed Gateway**: Every node can act as a gateway to provide external network connectivity.
-- **Namespaced Gateway**: Every namespace can have a dedicated gateway for egress traffic.
+## Features
+- **Namespaced Subnets**: Each Namespace can have a unique Subnet (backed by a Logical Switch). Pods within the Namespace will have IP addresses allocated from the Subnet. It's also possible for multiple Namespaces to share a Subnet.
+- **Subnet Isolation**: Can configure a Subnet to deny any traffic from source IP addresses not within the same Subnet. Can whitelist specific IP addresses and IP ranges.
+- **Static IP Addresses for Workloads**: Allocate random or static IP addresses to workloads.
+- **Dynamic QoS**: Configure Pod Ingress/Egress traffic rate limits on the fly.
+- **Embedded Load Balancers**: Replace kube-proxy with the OVN embedded distributed L2 Load Balancer.
+- **Distributed Gateways**: Every Node can act as a Gateway to provide external network connectivity.
+- **Namespaced Gateways**: Every Namespace can have a dedicated Gateway for Egress traffic.
 
-## Features on The Way
-- Hardware Offload and DPDK Support
+## Planned Future Work
+- Hardware Offloading and DPDK Support
 - Direct External Connectivity
-- ACL Based Network Policy
-- Policy based QoS
+- ACL-based Network Policy
+- Policy-based QoS
 - More Metrics and Traffic Graph
-- More Diagnose and Tracing Tools
+- More Diagnosis and Tracing Tools
 
 ## Quick Start
-Kube-OVN is easy to use and has a quick out of box installation. Please refer to [Installation](docs/install.md).
+Kube-OVN is easy to install with all necessary components/dependencies included. Please refer to the [Installation Guide](docs/install.md).
 
 ## Documents
-- [Namespaced Subnet](docs/subnet.md)
+- [Namespaced Subnets](docs/subnet.md)
 - [Subnet Isolation](docs/isolation.md)
 - [Static IP](docs/static-ip.md)
 - [Dynamic QoS](docs/qos.md)
 - [Gateway](docs/gateway.md)
 
 ## !!Cautions!!
-Kube-OVN is still in early stage and heavy development. Please *DO NOT* use it in production!!
+Kube-OVN is still at an early stage and undergoing rapid development. Please *DO NOT* use it in production.
 
 ## Contact
 Mail: mengxin#alauda.io
