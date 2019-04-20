@@ -1,4 +1,4 @@
-# Outgoing traffic
+# Gateways
 
 A Gateway is used to enable external network connectivity for Pods within the OVN Virtual Network. Kube-OVN supports two kinds of Gateways: the distributed Gateway and the centralized Gateway.
 
