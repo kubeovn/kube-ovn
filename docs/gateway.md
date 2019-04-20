@@ -1,15 +1,14 @@
 # Outgoing traffic
 
-A gateway is been used to offer public network access fro ovn networked pods.
-kube-ovn offers two kinds of the gateway, distributed gateway, and centralized gateway.
+A Gateway is used to enable external network connectivity for Pods within the OVN Virtual Network. Kube-OVN supports two kinds of Gateways: the distributed Gateway and the centralized Gateway.
 
-For a distributed gateway, outgoing traffic from ovn networked containers to destinations outside of ovn cidr or cluster ip range will be masqueraded with pod's host.
+For a distributed Gateway, outgoing traffic from Pods within the OVN network to external destinations will be masqueraded with the Node IP address where the Pod is hosted.
 
-For a centralized gateway, outgoing traffic from ovn networked containers to destinations outside of ovn cidr or cluster ip range will be masqueraded with pod namespace given host.
+For a centralized gateway, outgoing traffic from Pods within the OVN network to external destinations will be masqueraded with the Gateway Node IP address for the Namespace.
 
 ## Example
 
-Create the following namespace.
+Add the following annotations when creating the Namespace:
 
 ```yaml
 apiVersion: v1
@@ -18,10 +17,10 @@ metadata:
   name: testns
   annotations:
     ovn.kubernetes.io/gateway_type: centralized // or distributed by default
-    ovn.kubernetes.io/gateway_node: node1 // if using centralied gateway, a gateway_node is needed
+    ovn.kubernetes.io/gateway_node: node1 // specify this if using a centralized Gateway
 ```
 
-Creat the demo pods.
+Create some Pods:
 
 ```yaml
 apiVersion: apps/v1
@@ -45,10 +44,10 @@ spec:
         image: halfcrazy/toolbox
 ```
 
-then open two terminal, one on master
+Open two terminals, one on the master:
 
 `kubectl -n testns exec -it app1-xxxx ping 114.114.114.114`
 
-and one on node1
+And one on node1:
 
 `tcpdump -n -i eth0 icmp and host 114.114.114.114`
