@@ -23,6 +23,12 @@ Kube-OVN integrates the OVN-based Network Virtualization with Kubernetes. It off
 - More Metrics and Traffic Graph
 - More Diagnosis and Tracing Tools
 
+## Network Topology
+
+The Switch, Router, Firewall showed in the diagram below are all distributed on all Nodes. There is no single point of failure for in cluster network.
+
+![alt text](docs/ovn-network-topology.png "kube-ovn network topology")
+
 ## Quick Start
 Kube-OVN is easy to install with all necessary components/dependencies included. Please refer to the [Installation Guide](docs/install.md).
 
