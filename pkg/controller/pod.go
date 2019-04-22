@@ -21,28 +21,42 @@ import (
 )
 
 func (c *Controller) enqueueAddPod(obj interface{}) {
+	if !c.isLeader() {
+		return
+	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
+	klog.V(5).Infof("enqueue add pod %s", key)
 	c.addPodQueue.AddRateLimited(key)
 }
 
 func (c *Controller) enqueueDeletePod(obj interface{}) {
+	if !c.isLeader() {
+		return
+	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
+	klog.V(5).Infof("enqueue delete pod %s", key)
 	c.deletePodQueue.AddRateLimited(key)
 }
 
 func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
+	if !c.isLeader() {
+		return
+	}
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
+	if oldPod.ResourceVersion == newPod.ResourceVersion {
+		return
+	}
 	// pod assigned an ip
 	if oldPod.Status.PodIP == "" && newPod.Status.PodIP != "" {
 		var key string
@@ -51,6 +65,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 			utilruntime.HandleError(err)
 			return
 		}
+		klog.V(5).Infof("enqueue update pod %s", key)
 		c.updatePodQueue.AddRateLimited(key)
 	}
 }

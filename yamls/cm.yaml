@@ -1,4 +1,4 @@
-kind: Configmap
+kind: ConfigMap
 apiVersion: v1
 metadata:
   name: ovn-config

@@ -37,7 +37,6 @@ type Controller struct {
 	podsSynced cache.InformerSynced
 	podQueue   workqueue.RateLimitingInterface
 
-	ovnClient   *ovs.Client
 	ipSetsMgr   *ipsets.IPSets
 	iptablesMgr *iptables.IPTables
 }
@@ -45,7 +44,6 @@ type Controller struct {
 func NewController(config *Configuration, informerFactory informers.SharedInformerFactory) (*Controller, error) {
 	namespaceInformer := informerFactory.Core().V1().Namespaces()
 	podInformer := informerFactory.Core().V1().Pods()
-	ovnClient := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.OvnSbHost, config.OvnSbPort, "", "", "", "", "")
 	iptablesMgr, err := iptables.New()
 	if err != nil {
 		return nil, err
@@ -63,7 +61,6 @@ func NewController(config *Configuration, informerFactory informers.SharedInform
 		podsSynced: podInformer.Informer().HasSynced,
 		podQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Pod"),
 
-		ovnClient:   ovnClient,
 		ipSetsMgr:   ipsetsMgr,
 		iptablesMgr: iptablesMgr,
 	}

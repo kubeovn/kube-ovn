@@ -2,26 +2,34 @@ package controller
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/alauda/kube-ovn/pkg/util"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
-	"strings"
 )
 
 func (c *Controller) enqueueAddService(obj interface{}) {
+	if !c.isLeader() {
+		return
+	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
+	klog.V(5).Infof("enqueue add service %s", key)
 	c.addServiceQueue.AddRateLimited(key)
 }
 
 func (c *Controller) enqueueUpdateService(old, new interface{}) {
+	if !c.isLeader() {
+		return
+	}
 	oldSvc := old.(*v1.Service)
 	newSvc := new.(*v1.Service)
 	if oldSvc.ResourceVersion == newSvc.ResourceVersion {
@@ -34,6 +42,7 @@ func (c *Controller) enqueueUpdateService(old, new interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
+	klog.V(5).Infof("enqueue update service %s", key)
 	c.updateServiceQueue.AddRateLimited(key)
 }
 
