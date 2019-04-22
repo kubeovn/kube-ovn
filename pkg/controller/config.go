@@ -11,6 +11,7 @@ import (
 	"k8s.io/klog"
 )
 
+// Configuration is the controller conf
 type Configuration struct {
 	BindAddress    string
 	OvnNbSocket    string
@@ -36,6 +37,7 @@ type Configuration struct {
 	PodNamespace string
 }
 
+// ParseFlags parses cmd args then init kubeclient and conf
 // TODO: validate configuration
 func ParseFlags() (*Configuration, error) {
 	var (

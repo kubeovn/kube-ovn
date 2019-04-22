@@ -25,6 +25,7 @@ import (
 	"k8s.io/klog"
 )
 
+// Controller watch pod and namespace changes to update iptables, ipset and ovs qos
 type Controller struct {
 	config        *Configuration
 	kubeclientset kubernetes.Interface
@@ -41,6 +42,7 @@ type Controller struct {
 	iptablesMgr *iptables.IPTables
 }
 
+// NewController init a daemon controller
 func NewController(config *Configuration, informerFactory informers.SharedInformerFactory) (*Controller, error) {
 	namespaceInformer := informerFactory.Core().V1().Namespaces()
 	podInformer := informerFactory.Core().V1().Pods()
@@ -302,6 +304,7 @@ func (c *Controller) handlePod(key string) error {
 	return ovs.SetPodBandwidth(pod.Name, pod.Namespace, pod.Annotations[util.IngressRateAnnotation], pod.Annotations[util.EgressRateAnnotation])
 }
 
+// Run starts controller
 func (c *Controller) Run(stopCh <-chan struct{}) error {
 	defer utilruntime.HandleCrash()
 	defer c.namespaceQueue.ShutDown()

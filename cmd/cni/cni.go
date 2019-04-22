@@ -94,13 +94,13 @@ func cmdDel(args *skel.CmdArgs) error {
 		NetNs:        args.Netns})
 }
 
-type NetConf struct {
+type netConf struct {
 	types.NetConf
 	ServerSocket string `json:"server_socket"`
 }
 
-func loadNetConf(bytes []byte) (*NetConf, string, error) {
-	n := &NetConf{}
+func loadNetConf(bytes []byte) (*netConf, string, error) {
+	n := &netConf{}
 	if err := json.Unmarshal(bytes, n); err != nil {
 		return nil, "", fmt.Errorf("failed to load netconf: %v", err)
 	}

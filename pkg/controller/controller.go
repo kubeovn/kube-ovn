@@ -23,6 +23,7 @@ import (
 
 const controllerAgentName = "ovn-controller"
 
+// Controller is kube-ovn main controller that watch ns/pod/node/svc/ep and operate ovn
 type Controller struct {
 	config    *Configuration
 	ovnClient *ovs.Client

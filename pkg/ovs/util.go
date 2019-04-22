@@ -5,6 +5,7 @@ import (
 	"strings"
 )
 
+// PodNameToPortName return the ovn port name for a given pod
 func PodNameToPortName(pod, namespace string) string {
 	return fmt.Sprintf("%s.%s", pod, namespace)
 }

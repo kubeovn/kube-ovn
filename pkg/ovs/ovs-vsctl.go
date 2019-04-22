@@ -74,6 +74,7 @@ func ovsClear(table, record string, columns ...string) error {
 	return err
 }
 
+// ClearPodBandwidth remove qos related to this pod. Only used when remove pod.
 func ClearPodBandwidth(podName, podNamespace string) error {
 	qosList, err := ovsFind("qos", "_uuid", fmt.Sprintf(`external-ids:iface-id="%s.%s"`, podName, podNamespace))
 	if err != nil {
@@ -87,6 +88,7 @@ func ClearPodBandwidth(podName, podNamespace string) error {
 	return nil
 }
 
+// SetPodBandwidth set ingress/egress qos for given pod
 func SetPodBandwidth(podName, podNamespace, ingress, egress string) error {
 	ingressMPS, _ := strconv.Atoi(ingress)
 	ingressKPS := ingressMPS * 1000
@@ -141,8 +143,8 @@ func SetPodBandwidth(podName, podNamespace, ingress, egress string) error {
 	return nil
 }
 
+// CleanLostInterface will clean up related ovs port, interface and qos
 // When reboot node, the ovs internal interface will be deleted.
-// We need to clean up related ovs port, interface and qos
 func CleanLostInterface() {
 	// when interface error ofport will be -1
 	interfaceList, err := ovsFind("interface", "name,error", "ofport=-1")

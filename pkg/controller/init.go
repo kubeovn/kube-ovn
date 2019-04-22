@@ -12,6 +12,7 @@ import (
 	"k8s.io/klog"
 )
 
+// InitDefaultLogicalSwitch int the default logical switch for ovn network
 func InitDefaultLogicalSwitch(config *Configuration) error {
 	namespace := os.Getenv("KUBE_NAMESPACE")
 	if namespace == "" {
@@ -49,6 +50,7 @@ func InitDefaultLogicalSwitch(config *Configuration) error {
 	return err
 }
 
+// InitNodeSwitch init node switch to connect host and pod
 func InitNodeSwitch(config *Configuration) error {
 	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR)
 	ss, err := client.ListLogicalSwitch()
@@ -69,6 +71,7 @@ func InitNodeSwitch(config *Configuration) error {
 	return nil
 }
 
+// InitClusterRouter init cluster router to connect different logical switches
 func InitClusterRouter(config *Configuration) error {
 	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR)
 	lrs, err := client.ListLogicalRouter()
@@ -84,6 +87,7 @@ func InitClusterRouter(config *Configuration) error {
 	return client.CreateLogicalRouter(config.ClusterRouter)
 }
 
+// InitLoadBalancer init the default tcp and udp cluster loadbalancer
 func InitLoadBalancer(config *Configuration) error {
 	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR)
 	tcpLb, err := client.FindLoadbalancer(config.ClusterTcpLoadBalancer)
