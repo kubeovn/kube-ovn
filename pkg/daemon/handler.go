@@ -13,17 +13,17 @@ import (
 	"time"
 )
 
-type CniServerHandler struct {
+type cniServerHandler struct {
 	Config     *Configuration
 	KubeClient kubernetes.Interface
 }
 
-func createCniServerHandler(config *Configuration) *CniServerHandler {
-	csh := &CniServerHandler{KubeClient: config.KubeClient, Config: config}
+func createCniServerHandler(config *Configuration) *cniServerHandler {
+	csh := &cniServerHandler{KubeClient: config.KubeClient, Config: config}
 	return csh
 }
 
-func (csh CniServerHandler) handleAdd(req *restful.Request, resp *restful.Response) {
+func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Response) {
 	podRequest := request.PodRequest{}
 	err := req.ReadEntity(&podRequest)
 	if err != nil {
@@ -71,7 +71,7 @@ func (csh CniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	resp.WriteHeaderAndEntity(http.StatusOK, request.PodResponse{IpAddress: strings.Split(ipAddr, "/")[0], MacAddress: macAddr, CIDR: cidr, Gateway: gw})
 }
 
-func (csh CniServerHandler) handleDel(req *restful.Request, resp *restful.Response) {
+func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Response) {
 	podRequest := request.PodRequest{}
 	err := req.ReadEntity(&podRequest)
 	if err != nil {

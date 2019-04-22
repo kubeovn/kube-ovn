@@ -11,9 +11,10 @@ import (
 	"time"
 )
 
-var RequestLogString = "[%s] Incoming %s %s %s request"
-var ResponseLogString = "[%s] Outcoming response %s %s with %d status code in %vms"
+var requestLogString = "[%s] Incoming %s %s %s request"
+var responseLogString = "[%s] Outcoming response %s %s with %d status code in %vms"
 
+// RunServer runs the cniserver
 func RunServer(config *Configuration) {
 	csh := createCniServerHandler(config)
 	server := http.Server{
@@ -29,7 +30,7 @@ func RunServer(config *Configuration) {
 	klog.Fatal(server.Serve(unixListener))
 }
 
-func createHandler(csh *CniServerHandler) http.Handler {
+func createHandler(csh *cniServerHandler) http.Handler {
 	wsContainer := restful.NewContainer()
 	wsContainer.EnableContentEncoding(true)
 
@@ -70,7 +71,7 @@ func formatRequestLog(request *restful.Request) string {
 		uri = request.Request.URL.RequestURI()
 	}
 
-	return fmt.Sprintf(RequestLogString, time.Now().Format(time.RFC3339), request.Request.Proto,
+	return fmt.Sprintf(requestLogString, time.Now().Format(time.RFC3339), request.Request.Proto,
 		request.Request.Method, uri)
 }
 
@@ -80,6 +81,6 @@ func formatResponseLog(response *restful.Response, request *restful.Request, req
 	if request.Request.URL != nil {
 		uri = request.Request.URL.RequestURI()
 	}
-	return fmt.Sprintf(ResponseLogString, time.Now().Format(time.RFC3339),
+	return fmt.Sprintf(responseLogString, time.Now().Format(time.RFC3339),
 		request.Request.Method, uri, response.StatusCode(), reqTime)
 }

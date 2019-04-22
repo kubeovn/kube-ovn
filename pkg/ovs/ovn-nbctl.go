@@ -22,6 +22,7 @@ func (c Client) ovnNbCommand(cmdArgs ...string) (string, error) {
 	return trimCommandOutput(raw), nil
 }
 
+// DeletePort delete logical switch port in ovn
 func (c Client) DeletePort(port string) error {
 	_, err := c.ovnNbCommand(WaitSb, IfExists, "lsp-del", port)
 	if err != nil {
@@ -30,7 +31,8 @@ func (c Client) DeletePort(port string) error {
 	return nil
 }
 
-func (c Client) CreatePort(ls, port, ip, mac string) (*Nic, error) {
+// CreatePort create logical switch port in ovn
+func (c Client) CreatePort(ls, port, ip, mac string) (*nic, error) {
 	if ip == "" && mac == "" {
 		_, err := c.ovnNbCommand(WaitSb, MayExist, "lsp-add", ls, port,
 			"--", "set", "logical_switch_port", port, "addresses=dynamic")
@@ -39,7 +41,7 @@ func (c Client) CreatePort(ls, port, ip, mac string) (*Nic, error) {
 			return nil, err
 		}
 
-		address, err := c.GetLogicalSwitchPortDynamicAddress(port)
+		address, err := c.getLogicalSwitchPortDynamicAddress(port)
 		if err != nil {
 			klog.Errorf("get port %s dynamic-addresses failed %v", port, err)
 			return nil, err
@@ -75,85 +77,17 @@ func (c Client) CreatePort(ls, port, ip, mac string) (*Nic, error) {
 		return nil, err
 	}
 
-	return &Nic{IpAddress: fmt.Sprintf("%s/%s", ip, mask), MacAddress: mac, CIDR: cidr, Gateway: gw}, nil
+	return &nic{IpAddress: fmt.Sprintf("%s/%s", ip, mask), MacAddress: mac, CIDR: cidr, Gateway: gw}, nil
 }
 
-type Nic struct {
+type nic struct {
 	IpAddress  string
 	MacAddress string
 	CIDR       string
 	Gateway    string
 }
 
-func (c Client) CreateTransitLogicalSwitch(ls, clusterLr, edgeLr, toClusterIP, toEdgeIP string) error {
-	mac := util.GenerateMac()
-	edgeToTransit := fmt.Sprintf("%s-%s", edgeLr, ls)
-	transitToEdge := fmt.Sprintf("%s-%s", ls, edgeLr)
-	_, err := c.ovnNbCommand(WaitSb, MayExist, "ls-add", ls, "--",
-		"lrp-add", edgeLr, edgeToTransit, mac, toEdgeIP, "--",
-		"lsp-add", ls, transitToEdge, "--",
-		"lsp-set-type", transitToEdge, "router", "--",
-		"lsp-set-addresses", transitToEdge, mac, "--",
-		"lsp-set-options", transitToEdge, fmt.Sprintf("router-port=%s", edgeToTransit))
-	if err != nil {
-		klog.Errorf("connect edge to transit failed %v", err)
-		return err
-	}
-
-	mac = util.GenerateMac()
-	clusterToTransit := fmt.Sprintf("%s-%s", clusterLr, ls)
-	transitToCluster := fmt.Sprintf("%s-%s", ls, clusterLr)
-	_, err = c.ovnNbCommand("lrp-add", clusterLr, clusterToTransit, mac, toClusterIP, "--",
-		"lsp-add", ls, transitToCluster, "--",
-		"lsp-set-type", transitToCluster, "router", "--",
-		"lsp-set-addresses", transitToCluster, mac, "--",
-		"lsp-set-options", transitToCluster, fmt.Sprintf("router-port=%s", clusterToTransit))
-	if err != nil {
-		klog.Errorf("connect cluster to transit failed %v", err)
-		return err
-	}
-	return nil
-}
-
-func (c Client) CreateOutsideLogicalSwitch(ls, edgeLr, ip, mac string) error {
-	// 1. create outside logical switch
-	_, err := c.ovnNbCommand(WaitSb, MayExist, "ls-add", ls)
-	if err != nil {
-		klog.Errorf("create outside ls %s failed, %v", ls, err)
-		return err
-	}
-
-	// 2. connect outside ls with edge lr
-	outsideToEdge := fmt.Sprintf("%s-%s", ls, edgeLr)
-	edgeToOutside := fmt.Sprintf("%s-%s", edgeLr, ls)
-	_, err = c.ovnNbCommand("lrp-add", edgeLr, edgeToOutside, mac, ip)
-	if err != nil {
-		klog.Errorf("create lsp on edge failed, %v", err)
-		return err
-	}
-
-	_, err = c.ovnNbCommand(WaitSb, MayExist, "lsp-add", ls, outsideToEdge, "--",
-		"lsp-set-type", outsideToEdge, "router", "--",
-		"lsp-set-addresses", outsideToEdge, mac, "--",
-		"lsp-set-options", outsideToEdge, fmt.Sprintf("router-port=%s", edgeToOutside))
-	if err != nil {
-		klog.Errorf("failed to connect outside to edge, %v", err)
-		return err
-	}
-
-	// 3. create localnet port to connect outside to physic net
-	outsideToLocal := fmt.Sprintf("%s-localnet", ls)
-	_, err = c.ovnNbCommand(WaitSb, MayExist, "lsp-add", ls, outsideToLocal, "--",
-		"lsp-set-addresses", outsideToLocal, "unknown", "--",
-		"lsp-set-type", outsideToLocal, "localnet", "--",
-		"lsp-set-options", outsideToLocal, "network_name=dataNet")
-	if err != nil {
-		klog.Errorf("failed to create localnet port %v", err)
-		return err
-	}
-	return nil
-}
-
+// CreateLogicalSwitch create logical switch in ovn, connect it to router and apply tcp/udp lb rules
 func (c Client) CreateLogicalSwitch(ls, subnet, gateway, excludeIps string) error {
 	_, err := c.ovnNbCommand(WaitSb, MayExist, "ls-add", ls, "--",
 		"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", subnet), "--",
@@ -167,20 +101,20 @@ func (c Client) CreateLogicalSwitch(ls, subnet, gateway, excludeIps string) erro
 	mac := util.GenerateMac()
 	mask := strings.Split(subnet, "/")[1]
 	klog.Infof("create route port for switch %s", ls)
-	err = c.CreateRouterPort(ls, c.ClusterRouter, gateway+"/"+mask, mac)
+	err = c.createRouterPort(ls, c.ClusterRouter, gateway+"/"+mask, mac)
 	if err != nil {
 		klog.Errorf("failed to connect switch %s to router, %v", ls, err)
 		return err
 	}
 	if ls != c.NodeSwitch {
 		// DO NOT add ovn dns/lb to node switch
-		err = c.AddLoadBalancerToLogicalSwitch(c.ClusterTcpLoadBalancer, ls)
+		err = c.addLoadBalancerToLogicalSwitch(c.ClusterTcpLoadBalancer, ls)
 		if err != nil {
 			klog.Errorf("failed to add cluster tcp lb to %s, %v", ls, err)
 			return err
 		}
 
-		err = c.AddLoadBalancerToLogicalSwitch(c.ClusterUdpLoadBalancer, ls)
+		err = c.addLoadBalancerToLogicalSwitch(c.ClusterUdpLoadBalancer, ls)
 		if err != nil {
 			klog.Errorf("failed to add cluster udp lb to %s, %v", ls, err)
 			return err
@@ -190,6 +124,7 @@ func (c Client) CreateLogicalSwitch(ls, subnet, gateway, excludeIps string) erro
 	return nil
 }
 
+// ListLogicalSwitch list logical switch names
 func (c Client) ListLogicalSwitch() ([]string, error) {
 	output, err := c.ovnNbCommand("ls-list")
 	if err != nil {
@@ -210,6 +145,7 @@ func (c Client) ListLogicalSwitch() ([]string, error) {
 	return result, nil
 }
 
+// ListLogicalRouter list logical router names
 func (c Client) ListLogicalRouter() ([]string, error) {
 	output, err := c.ovnNbCommand("lr-list")
 	if err != nil {
@@ -229,6 +165,7 @@ func (c Client) ListLogicalRouter() ([]string, error) {
 	return result, nil
 }
 
+// DeleteLogicalSwitch delete logical switch and related router port
 func (c Client) DeleteLogicalSwitch(ls string) error {
 	_, err := c.ovnNbCommand(WaitSb, IfExists, "lrp-del", fmt.Sprintf("%s-%s", c.ClusterRouter, ls))
 	if err != nil {
@@ -244,18 +181,13 @@ func (c Client) DeleteLogicalSwitch(ls string) error {
 	return nil
 }
 
-func (c Client) CreateGatewayRouter(lr, chassis string) error {
-	_, err := c.ovnNbCommand(WaitSb, MayExist, "lr-add", lr, "--",
-		"set", "logical_router", lr, fmt.Sprintf("options:chassis=%s", chassis))
-	return err
-}
-
+// CreateLogicalRouter create logical router in ovn
 func (c Client) CreateLogicalRouter(lr string) error {
 	_, err := c.ovnNbCommand(WaitSb, MayExist, "lr-add", lr)
 	return err
 }
 
-func (c Client) CreateRouterPort(ls, lr, ip, mac string) error {
+func (c Client) createRouterPort(ls, lr, ip, mac string) error {
 	klog.Infof("add %s to %s with ip: %s, mac :%s", ls, lr, ip, mac)
 	lsTolr := fmt.Sprintf("%s-%s", ls, lr)
 	lrTols := fmt.Sprintf("%s-%s", lr, ls)
@@ -276,6 +208,7 @@ func (c Client) CreateRouterPort(ls, lr, ip, mac string) error {
 	return nil
 }
 
+// AddStaticRouter add a static route rule in ovn
 func (c Client) AddStaticRouter(policy, cidr, nextHop, router string) error {
 	if policy == "" {
 		policy = PolicyDstIP
@@ -284,11 +217,13 @@ func (c Client) AddStaticRouter(policy, cidr, nextHop, router string) error {
 	return err
 }
 
+// DeleteStaticRouter delete a static route rule in ovn
 func (c Client) DeleteStaticRouter(cidr, router string) error {
 	_, err := c.ovnNbCommand(WaitSb, IfExists, "lr-route-del", router, cidr)
 	return err
 }
 
+// FindLoadbalancer find ovn loadbalancer uuid by name
 func (c Client) FindLoadbalancer(lb string) (string, error) {
 	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid",
 		"find", "load_balancer", fmt.Sprintf("name=%s", lb))
@@ -301,27 +236,31 @@ func (c Client) FindLoadbalancer(lb string) (string, error) {
 	return output, err
 }
 
+// CreateLoadBalancer create loadbalancer in ovn
 func (c Client) CreateLoadBalancer(lb, protocol string) error {
 	_, err := c.ovnNbCommand("create", "load_balancer",
 		fmt.Sprintf("name=%s", lb), fmt.Sprintf("protocol=%s", protocol))
 	return err
 }
 
+// CreateLoadBalancerRule create loadbalancer rul in ovn
 func (c Client) CreateLoadBalancerRule(lb, vip, ips string) error {
 	_, err := c.ovnNbCommand(WaitSb, MayExist, "lb-add", lb, vip, ips)
 	return err
 }
 
-func (c Client) AddLoadBalancerToLogicalSwitch(lb, ls string) error {
+func (c Client) addLoadBalancerToLogicalSwitch(lb, ls string) error {
 	_, err := c.ovnNbCommand(WaitSb, MayExist, "ls-lb-add", ls, lb)
 	return err
 }
 
+// DeleteLoadBalancerVip delete a vip rule from loadbalancer
 func (c Client) DeleteLoadBalancerVip(vip, lb string) error {
 	_, err := c.ovnNbCommand(WaitSb, IfExists, "lb-del", lb, vip)
 	return err
 }
 
+// GetLoadBalancerVips return vips of a loadbalancer
 func (c Client) GetLoadBalancerVips(lb string) (map[string]string, error) {
 	output, err := c.ovnNbCommand("--data=bare", "--no-heading",
 		"get", "load_balancer", lb, "vips")
@@ -333,11 +272,13 @@ func (c Client) GetLoadBalancerVips(lb string) (map[string]string, error) {
 	return result, err
 }
 
+// CleanLogicalSwitchAcl clean acl of a switch
 func (c Client) CleanLogicalSwitchAcl(ls string) error {
 	_, err := c.ovnNbCommand("acl-del", ls)
 	return err
 }
 
+// SetPrivateLogicalSwitch will drop all ingress traffic except allow subnets
 func (c Client) SetPrivateLogicalSwitch(ls string, allow []string) error {
 	delArgs := []string{"acl-del", ls}
 	dropArgs := []string{"--", "acl-add", ls, "to-lport", util.DefaultDropPriority, fmt.Sprintf(`inport=="%s-%s"`, ls, c.ClusterRouter), "drop"}
@@ -359,7 +300,7 @@ func (c Client) SetPrivateLogicalSwitch(ls string, allow []string) error {
 	return err
 }
 
-func (c Client) GetLogicalSwitchPortAddress(port string) ([]string, error) {
+func (c Client) getLogicalSwitchPortAddress(port string) ([]string, error) {
 	output, err := c.ovnNbCommand("get", "logical_switch_port", port, "addresses")
 	if err != nil {
 		klog.Errorf("get port %s addresses failed %v", port, err)
@@ -377,7 +318,7 @@ func (c Client) GetLogicalSwitchPortAddress(port string) ([]string, error) {
 	return []string{mac, ip}, nil
 }
 
-func (c Client) GetLogicalSwitchPortDynamicAddress(port string) ([]string, error) {
+func (c Client) getLogicalSwitchPortDynamicAddress(port string) ([]string, error) {
 	output, err := c.ovnNbCommand("get", "logical_switch_port", port, "dynamic-addresses")
 	if err != nil {
 		klog.Errorf("get port %s dynamic_addresses failed %v", port, err)
@@ -393,24 +334,19 @@ func (c Client) GetLogicalSwitchPortDynamicAddress(port string) ([]string, error
 	return []string{mac, ip}, nil
 }
 
+// GetPortAddr return port [mac, ip]
 func (c Client) GetPortAddr(port string) ([]string, error) {
 	var address []string
 	var err error
-	address, err = c.GetLogicalSwitchPortAddress(port)
+	address, err = c.getLogicalSwitchPortAddress(port)
 	if err != nil {
 		return nil, err
 	}
 	if address == nil {
-		address, err = c.GetLogicalSwitchPortDynamicAddress(port)
+		address, err = c.getLogicalSwitchPortDynamicAddress(port)
 		if err != nil {
 			return nil, err
 		}
 	}
 	return address, nil
-}
-
-func (c Client) ListLogicalRouterPort() (string, error) {
-	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=name,networks",
-		"list", "Logical_Router_Port")
-	return output, err
 }

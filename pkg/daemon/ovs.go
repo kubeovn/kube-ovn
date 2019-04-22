@@ -11,7 +11,7 @@ import (
 	"os/exec"
 )
 
-func (csh CniServerHandler) configureNic(podName, podNamespace, netns, containerID, mac, ip, gateway, ingress, egress string) error {
+func (csh cniServerHandler) configureNic(podName, podNamespace, netns, containerID, mac, ip, gateway, ingress, egress string) error {
 	var err error
 	hostNicName, containerNicName := generateNicName(containerID)
 	// Create a veth pair, put one end to container ,the other to ovs port
@@ -66,7 +66,7 @@ func (csh CniServerHandler) configureNic(podName, podNamespace, netns, container
 	return nil
 }
 
-func (csh CniServerHandler) deleteNic(netns, podName, podNamespace, containerID string) error {
+func (csh cniServerHandler) deleteNic(netns, podName, podNamespace, containerID string) error {
 	hostNicName, _ := generateNicName(containerID)
 	// Remove ovs port
 	output, err := exec.Command("ovs-vsctl", "--if-exists", "--with-iface", "del-port", "br-int", hostNicName).CombinedOutput()

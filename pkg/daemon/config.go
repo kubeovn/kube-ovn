@@ -12,6 +12,7 @@ import (
 	"k8s.io/klog"
 )
 
+// Configuration is the daemon conf
 type Configuration struct {
 	BindSocket            string
 	OvsSocket             string
@@ -21,6 +22,7 @@ type Configuration struct {
 	ServiceClusterIPRange string
 }
 
+// ParseFlags will parse cmd args then init kubeClient and configuration
 // TODO: validate configuration
 func ParseFlags() (*Configuration, error) {
 	var (

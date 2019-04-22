@@ -219,9 +219,9 @@ func (c *Controller) handleAddNamespace(key string) error {
 
 	if private == "true" {
 		return c.ovnClient.SetPrivateLogicalSwitch(ls, strings.Split(allow, ","))
-	} else {
-		return c.ovnClient.CleanLogicalSwitchAcl(ls)
 	}
+
+	return c.ovnClient.CleanLogicalSwitchAcl(ls)
 }
 
 func (c *Controller) handleDeleteNamespace(key string) error {
@@ -281,7 +281,7 @@ func (c *Controller) handleUpdateNamespace(key string) error {
 	allow := ns.Annotations[util.AllowAccessAnnotation]
 	if private != "true" {
 		return c.ovnClient.CleanLogicalSwitchAcl(ls)
-	} else {
-		return c.ovnClient.SetPrivateLogicalSwitch(ls, strings.Split(allow, ","))
 	}
+
+	return c.ovnClient.SetPrivateLogicalSwitch(ls, strings.Split(allow, ","))
 }

@@ -75,9 +75,9 @@ func startOvnNbctlDaemon(nbHost string, nbPort int) (string, error) {
 	if err != nil {
 		klog.Errorf("start ovn-nbctl daemon failed, %s", string(output))
 		return "", err
-	} else {
-		daemonSocket := strings.TrimSpace(string(output))
-		os.Setenv("OVN_NB_DAEMON", daemonSocket)
-		return daemonSocket, nil
 	}
+
+	daemonSocket := strings.TrimSpace(string(output))
+	os.Setenv("OVN_NB_DAEMON", daemonSocket)
+	return daemonSocket, nil
 }

@@ -10,6 +10,7 @@ var (
 	ErrNotFound = errors.New("not found")
 )
 
+// Client is the ovn client
 type Client struct {
 	OvnNbAddress           string
 	OvnSbAddress           string
@@ -22,7 +23,6 @@ type Client struct {
 
 const (
 	OvnNbCtl    = "ovn-nbctl"
-	OvnSbCtl    = "ovn-sbctl"
 	MayExist    = "--may-exist"
 	IfExists    = "--if-exists"
 	WaitSb      = "--wait=sb"
@@ -31,6 +31,7 @@ const (
 	PolicySrcIP = "src-ip"
 )
 
+// NewClient init an ovn client
 func NewClient(ovnNbHost string, ovnNbPort int, ovnSbHost string, ovnSbPort int, clusterRouter, clusterTcpLoadBalancer, clusterUdpLoadBalancer, nodeSwitch, nodeSwitchCIDR string) *Client {
 	return &Client{
 		OvnNbAddress:           fmt.Sprintf("tcp:%s:%d", ovnNbHost, ovnNbPort),

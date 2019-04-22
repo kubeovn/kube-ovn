@@ -7,6 +7,7 @@ import (
 	"k8s.io/klog"
 )
 
+// InitNodeGateway init ovn0
 func InitNodeGateway(config *Configuration) error {
 	nodeName := config.NodeName
 	node, err := config.KubeClient.CoreV1().Nodes().Get(nodeName, v1.GetOptions{})
