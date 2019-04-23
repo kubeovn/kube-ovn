@@ -1,7 +1,7 @@
 GOFILES_NOVENDOR=$(shell find . -type f -name '*.go' -not -path "./vendor/*")
 GO_VERSION=1.12
 
-.PHONY: build-dev-images build-go build-bin test lint
+.PHONY: build-dev-images build-go build-bin test lint up down halt suspend resume
 
 build-dev-images: build-bin
 	docker build -t index.alauda.cn/alaudak8s/kube-ovn-node:dev -f dist/images/Dockerfile.node dist/images/
@@ -30,7 +30,7 @@ lint:
 	@GOOS=linux go vet ./...
 
 test:
-	go test -cover -v ./...
+	GOOS=linux go test -cover -v ./...
 
 build-bin: lint
 	docker run -e GOOS=linux -e GOCACHE=/tmp \
@@ -41,3 +41,18 @@ build-bin: lint
 		cd /go/src/github.com/alauda/kube-ovn && \
 		make test && \
 		make build-go '
+
+up:
+	cd vagrant && vagrant up
+
+down:
+	cd vagrant && vagrant destroy -f
+
+halt:
+	cd vagrant && vagrant halt
+
+resume:
+	cd vagrant && vagrant resume
+
+suspend:
+	cd vagrant && vagrant suspend

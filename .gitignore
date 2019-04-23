@@ -1,4 +1,7 @@
 .idea/*
+vagrant/.vagrant/*
+vagrant/kubernetes-setup/*.retry
+vagrant/kubernetes-setup/join-command
 dist/images/kube-ovn
 dist/images/kube-ovn-controller
 dist/images/kube-ovn-daemon

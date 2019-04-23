@@ -1,0 +1,36 @@
+---
+- hosts: all
+  become: true
+  tasks:
+
+  - name: common step
+    include: common.yml
+
+  - name: Initialize the Kubernetes cluster using kubeadm
+    command: "kubeadm init --apiserver-advertise-address={{ master_ip }} --apiserver-cert-extra-sans={{ master_ip }}  --node-name=k8s-master --pod-network-cidr={{ pod_network_cidr }} --service-cidr={{ cluster_service_ip_range }} --image-repository={{ image_repository }} --kubernetes-version={{ kubernetes_version }}"
+
+  - name: Setup kubeconfig for vagrant user
+    command: "{{ item }}"
+    with_items:
+     - mkdir -p /home/vagrant/.kube
+     - cp -i /etc/kubernetes/admin.conf /home/vagrant/.kube/config
+     - chown vagrant:vagrant /home/vagrant/.kube/config
+
+  - name: Copy kube-ovn related yaml to master
+    copy: src=../../yamls dest=/tmp/ mode=0777
+
+  - name: Install CNI plugin
+    become: false
+    command: "{{ item }}"
+    with_items:
+     - kubectl label node k8s-master kube-ovn/role=master
+     - kubectl apply -f /tmp/yamls/ovn.yaml
+     - kubectl apply -f /tmp/yamls/kube-ovn.yaml
+
+  - name: Generate join command
+    command: kubeadm token create --print-join-command
+    register: join_command
+
+  - name: Copy join command to local file
+    local_action: copy content="{{ join_command.stdout_lines[0] }}" dest="./join-command"
+    sudo: no 
