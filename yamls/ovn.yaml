@@ -157,9 +157,8 @@ spec:
         type: infra
     spec:
       tolerations:
-        - effect: NoSchedule
-          key: node.kubernetes.io/not-ready
-          operator: Exists
+      - operator: Exists
+        effect: NoSchedule
       serviceAccountName: ovn
       hostNetwork: true
       containers:
@@ -172,7 +171,7 @@ spec:
           resources:
             requests:
               cpu: 200m
-              memory: 600Mi
+              memory: 300Mi
             limits:
               cpu: 400m
               memory: 800Mi
@@ -242,9 +241,8 @@ spec:
         type: infra
     spec:
       tolerations:
-        - effect: NoSchedule
-          key: node.kubernetes.io/not-ready
-          operator: Exists
+      - operator: Exists
+        effect: NoSchedule
       serviceAccountName: ovn
       hostNetwork: true
       hostPID: true
