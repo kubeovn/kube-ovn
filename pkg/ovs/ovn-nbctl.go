@@ -50,7 +50,7 @@ func (c Client) CreatePort(ls, port, ip, mac string) (*nic, error) {
 		ip = address[1]
 	} else {
 		if mac == "" {
-			mac = util.GenerateMac()
+			mac = "dynamic"
 		}
 
 		// remove mask, and retrieve mask from subnet cidr later
@@ -62,6 +62,15 @@ func (c Client) CreatePort(ls, port, ip, mac string) (*nic, error) {
 		if err != nil {
 			klog.Errorf("create port %s failed %v", port, err)
 			return nil, err
+		}
+
+		if mac == "dynamic" {
+			address, err := c.getLogicalSwitchPortDynamicAddress(port)
+			if err != nil {
+				klog.Errorf("get port %s dynamic-addresses failed %v", port, err)
+				return nil, err
+			}
+			mac = address[0]
 		}
 	}
 	cidr, err := c.ovnNbCommand("get", "logical_switch", ls, "other_config:subnet")
