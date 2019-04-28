@@ -25,11 +25,11 @@ RUN rpm -ivh https://github.com/alauda/ovs/releases/download/v${OVS_VERSION}-${O
     rpm -ivh https://github.com/alauda/ovs/releases/download/v${OVS_VERSION}-${OVS_SUBVERSION}/ovn-central-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
     rpm -ivh https://github.com/alauda/ovs/releases/download/v${OVS_VERSION}-${OVS_SUBVERSION}/ovn-host-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm
 
-RUN mkdir -p /var/run/openvswitch && \
-    mkdir -p /etc/cni/net.d && \
-    mkdir -p /opt/cni/bin
+RUN mkdir -p /var/run/openvswitch
 
-COPY ovs-healthcheck.sh /root/ovs-healthcheck.sh
-COPY start-ovs.sh /root/start-ovs.sh
+COPY ovn-healthcheck.sh /root/ovn-healthcheck.sh
+COPY ovn-is-leader.sh /root/ovn-is-leader.sh
 
-CMD ["/bin/bash", "/root/start-ovs.sh"]
+COPY start-db.sh /root/start-db.sh
+
+CMD ["/bin/bash", "/root/start-db.sh"]

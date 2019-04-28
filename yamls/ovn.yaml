@@ -159,15 +159,24 @@ spec:
       tolerations:
       - operator: Exists
         effect: NoSchedule
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: ovn-central
+              topologyKey: kubernetes.io/hostname
       serviceAccountName: ovn
       hostNetwork: true
       containers:
         - name: ovn-central
-          image: "index.alauda.cn/alaudak8s/kube-ovn-node:v0.3.0"
+          image: "index.alauda.cn/alaudak8s/kube-ovn-db:v0.3.0"
           imagePullPolicy: Always
-          args:
-            - "/bin/bash"
-            - "/root/start-ovn.sh"
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
           resources:
             requests:
               cpu: 200m
@@ -191,15 +200,15 @@ spec:
             exec:
               command:
                 - sh
-                - /root/ovn-healthcheck.sh
-            periodSeconds: 5
+                - /root/ovn-is-leader.sh
+            periodSeconds: 3
           livenessProbe:
             exec:
               command:
               - sh
               - /root/ovn-healthcheck.sh
-            initialDelaySeconds: 10
-            periodSeconds: 5
+            initialDelaySeconds: 30
+            periodSeconds: 7
             failureThreshold: 5
       nodeSelector:
         beta.kubernetes.io/os: "linux"
@@ -276,14 +285,14 @@ spec:
           readinessProbe:
             exec:
               command:
-                - ovs-vsctl
-                - show
+              - sh
+              - /root/ovs-healthcheck.sh
             periodSeconds: 5
           livenessProbe:
             exec:
               command:
-                - ovs-vsctl
-                - show
+              - sh
+              - /root/ovs-healthcheck.sh
             initialDelaySeconds: 10
             periodSeconds: 5
             failureThreshold: 5

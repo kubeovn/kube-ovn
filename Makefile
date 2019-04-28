@@ -1,15 +1,18 @@
 GOFILES_NOVENDOR=$(shell find . -type f -name '*.go' -not -path "./vendor/*")
 GO_VERSION=1.12
 
+REGISTRY=index.alauda.cn/alaudak8s
+ROLES=node controller cni db
+DEV_TAG=dev
+RELEASE_TAG=$(shell cat VERSION)
+
 .PHONY: build-dev-images build-go build-bin test lint up down halt suspend resume
 
 build-dev-images: build-bin
-	docker build -t index.alauda.cn/alaudak8s/kube-ovn-node:dev -f dist/images/Dockerfile.node dist/images/
-	docker push index.alauda.cn/alaudak8s/kube-ovn-node:dev
-	docker build -t index.alauda.cn/alaudak8s/kube-ovn-controller:dev -f dist/images/Dockerfile.controller dist/images/
-	docker push index.alauda.cn/alaudak8s/kube-ovn-controller:dev
-	docker build -t index.alauda.cn/alaudak8s/kube-ovn-cni:dev -f dist/images/Dockerfile.cni dist/images/
-	docker push index.alauda.cn/alaudak8s/kube-ovn-cni:dev
+	@for role in ${ROLES} ; do \
+		docker build -t ${REGISTRY}/kube-ovn-$$role:${DEV_TAG} -f dist/images/Dockerfile.$$role dist/images/; \
+		docker push ${REGISTRY}/kube-ovn-$$role:${DEV_TAG}; \
+	done
 
 build-go:
 	CGO_ENABLED=0 GOOS=linux go build -o $(PWD)/dist/images/kube-ovn -ldflags "-w -s" -v ./cmd/cni
@@ -17,12 +20,10 @@ build-go:
 	CGO_ENABLED=0 GOOS=linux go build -o $(PWD)/dist/images/kube-ovn-daemon -ldflags "-w -s" -v ./cmd/daemon
 
 release: build-go
-	docker build -t index.alauda.cn/alaudak8s/kube-ovn-node:`cat VERSION` -f dist/images/Dockerfile.node dist/images/
-	docker push index.alauda.cn/alaudak8s/kube-ovn-node:`cat VERSION`
-	docker build -t index.alauda.cn/alaudak8s/kube-ovn-controller:`cat VERSION` -f dist/images/Dockerfile.controller dist/images/
-	docker push index.alauda.cn/alaudak8s/kube-ovn-controller:`cat VERSION`
-	docker build -t index.alauda.cn/alaudak8s/kube-ovn-cni:`cat VERSION` -f dist/images/Dockerfile.cni dist/images/
-	docker push index.alauda.cn/alaudak8s/kube-ovn-cni:`cat VERSION`
+	@for role in ${ROLES} ; do \
+		docker build -t ${REGISTRY}/kube-ovn-$$role:${RELEASE_TAG} -f dist/images/Dockerfile.$$role dist/images/; \
+		docker push ${REGISTRY}/kube-ovn-$$role:${RELEASE_TAG}; \
+	done
 
 lint:
 	@gofmt -d ${GOFILES_NOVENDOR} 
@@ -33,7 +34,7 @@ test:
 	GOOS=linux go test -cover -v ./...
 
 build-bin: lint
-	docker run -e GOOS=linux -e GOCACHE=/tmp \
+	docker run --rm -e GOOS=linux -e GOCACHE=/tmp \
 		-u $(shell id -u):$(shell id -g) \
 		-v $(CURDIR):/go/src/github.com/alauda/kube-ovn:ro \
 		-v $(CURDIR)/dist:/go/src/github.com/alauda/kube-ovn/dist/ \
