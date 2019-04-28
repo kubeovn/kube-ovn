@@ -32,6 +32,8 @@ func ParseFlags() (*Configuration, error) {
 		argServiceClusterIPRange = pflag.String("service-cluster-ip-range", "10.96.0.0/12", "The kubernetes service cluster ip range")
 	)
 
+	flag.Set("alsologtostderr", "true")
+
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
 
@@ -44,6 +46,7 @@ func ParseFlags() (*Configuration, error) {
 		}
 	})
 
+	pflag.CommandLine.AddGoFlagSet(klogFlags)
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
 

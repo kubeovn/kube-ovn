@@ -21,7 +21,7 @@ func (c *Controller) enqueueAddEndpoint(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	klog.V(5).Infof("enqueue add endpoint %s", key)
+	klog.V(3).Infof("enqueue add endpoint %s", key)
 	c.updateEndpointQueue.AddRateLimited(key)
 }
 
@@ -45,7 +45,7 @@ func (c *Controller) enqueueUpdateEndpoint(old, new interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	klog.V(5).Infof("enqueue update endpoint %s", key)
+	klog.V(3).Infof("enqueue update endpoint %s", key)
 	c.updateEndpointQueue.AddRateLimited(key)
 }
 

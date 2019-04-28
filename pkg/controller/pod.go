@@ -30,7 +30,7 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	klog.V(5).Infof("enqueue add pod %s", key)
+	klog.V(3).Infof("enqueue add pod %s", key)
 	c.addPodQueue.AddRateLimited(key)
 }
 
@@ -44,7 +44,7 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	klog.V(5).Infof("enqueue delete pod %s", key)
+	klog.V(3).Infof("enqueue delete pod %s", key)
 	c.deletePodQueue.AddRateLimited(key)
 }
 
@@ -65,7 +65,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 			utilruntime.HandleError(err)
 			return
 		}
-		klog.V(5).Infof("enqueue update pod %s", key)
+		klog.V(3).Infof("enqueue update pod %s", key)
 		c.updatePodQueue.AddRateLimited(key)
 	}
 }
