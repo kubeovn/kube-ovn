@@ -25,7 +25,7 @@ func (c *Controller) enqueueAddNode(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	klog.V(5).Infof("enqueue add node %s", key)
+	klog.V(3).Infof("enqueue add node %s", key)
 	c.addNodeQueue.AddRateLimited(key)
 }
 
@@ -39,7 +39,7 @@ func (c *Controller) enqueueDeleteNode(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	klog.V(5).Infof("enqueue delete node %s", key)
+	klog.V(3).Infof("enqueue delete node %s", key)
 	c.deleteNodeQueue.AddRateLimited(key)
 }
 

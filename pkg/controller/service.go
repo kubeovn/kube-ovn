@@ -22,7 +22,7 @@ func (c *Controller) enqueueAddService(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	klog.V(5).Infof("enqueue add service %s", key)
+	klog.V(3).Infof("enqueue add service %s", key)
 	c.addServiceQueue.AddRateLimited(key)
 }
 
@@ -42,7 +42,7 @@ func (c *Controller) enqueueUpdateService(old, new interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	klog.V(5).Infof("enqueue update service %s", key)
+	klog.V(3).Infof("enqueue update service %s", key)
 	c.updateServiceQueue.AddRateLimited(key)
 }
 

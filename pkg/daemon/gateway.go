@@ -83,7 +83,7 @@ LOOP:
 			klog.Info("exit gateway")
 			break LOOP
 		case <-ticker.C:
-			klog.V(5).Info("tick")
+			klog.V(3).Info("tick")
 		}
 		subnets, err := c.getSubnets()
 		if err != nil {
@@ -141,7 +141,7 @@ func (c *Controller) getLocalPodIPsNeedNAT() ([]string, error) {
 			}
 		}
 	}
-	klog.V(5).Infof("local pod ips %v", localPodIPs)
+	klog.V(3).Infof("local pod ips %v", localPodIPs)
 	return localPodIPs, nil
 }
 
@@ -157,6 +157,6 @@ func (c *Controller) getSubnets() ([]string, error) {
 			subnets = append(subnets, subnet)
 		}
 	}
-	klog.V(5).Infof("subnets %v", subnets)
+	klog.V(3).Infof("subnets %v", subnets)
 	return subnets, nil
 }

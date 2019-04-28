@@ -60,6 +60,8 @@ func ParseFlags() (*Configuration, error) {
 		argClusterUdpLoadBalancer = pflag.String("cluster-udp-loadbalancer", "cluster-udp-loadbalancer", "The name for cluster udp loadbalancer")
 	)
 
+	flag.Set("alsologtostderr", "true")
+
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
 
@@ -72,8 +74,10 @@ func ParseFlags() (*Configuration, error) {
 		}
 	})
 
+	pflag.CommandLine.AddGoFlagSet(klogFlags)
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
+
 	config := &Configuration{
 		OvnNbSocket:            *argOvnNbSocket,
 		OvnNbHost:              *argOvnNbHost,
