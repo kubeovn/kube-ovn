@@ -3,8 +3,10 @@ package daemon
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
 
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -31,6 +33,9 @@ func ParseFlags() (*Configuration, error) {
 		argKubeConfigFile        = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 		argServiceClusterIPRange = pflag.String("service-cluster-ip-range", "10.96.0.0/12", "The kubernetes service cluster ip range")
 	)
+
+	// mute log for ipset lib
+	logrus.SetOutput(ioutil.Discard)
 
 	flag.Set("alsologtostderr", "true")
 
