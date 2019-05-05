@@ -307,7 +307,9 @@ func (c *Controller) handlePod(key string) error {
 // Run starts controller
 func (c *Controller) Run(stopCh <-chan struct{}) error {
 	defer utilruntime.HandleCrash()
+
 	defer c.namespaceQueue.ShutDown()
+	defer c.podQueue.ShutDown()
 
 	klog.Info("start watching namespace changes")
 	if ok := cache.WaitForCacheSync(stopCh, c.namespacesSynced, c.podsSynced); !ok {

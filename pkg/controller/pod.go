@@ -30,6 +30,14 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
+
+	p := obj.(*v1.Pod)
+	if p.Annotations[util.IpPoolAnnotation] != "" && p.Annotations[util.IpAddressAnnotation] == "" {
+		klog.V(3).Infof("enqueue add ip pool address pod %s", key)
+		c.addIpPoolPodQueue.AddRateLimited(key)
+		return
+	}
+
 	klog.V(3).Infof("enqueue add pod %s", key)
 	c.addPodQueue.AddRateLimited(key)
 }
@@ -75,6 +83,11 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 // workqueue.
 func (c *Controller) runAddPodWorker() {
 	for c.processNextAddPodWorkItem() {
+	}
+}
+
+func (c *Controller) runAddIpPoolPodWorker() {
+	for c.processNextAddIpPoolPodWorkItem() {
 	}
 }
 
@@ -134,6 +147,58 @@ func (c *Controller) processNextAddPodWorkItem() bool {
 		// Finally, if no error occurs we Forget this item so it does not
 		// get queued again until another change happens.
 		c.addPodQueue.Forget(obj)
+		return nil
+	}(obj)
+
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
+
+	return true
+}
+
+func (c *Controller) processNextAddIpPoolPodWorkItem() bool {
+	obj, shutdown := c.addIpPoolPodQueue.Get()
+
+	if shutdown {
+		return false
+	}
+
+	// We wrap this block in a func so we can defer c.workqueue.Done.
+	err := func(obj interface{}) error {
+		// We call Done here so the workqueue knows we have finished
+		// processing this item. We also must remember to call Forget if we
+		// do not want this work item being re-queued. For example, we do
+		// not call Forget if a transient error occurs, instead the item is
+		// put back on the workqueue and attempted again after a back-off
+		// period.
+		defer c.addIpPoolPodQueue.Done(obj)
+		var key string
+		var ok bool
+		// We expect strings to come off the workqueue. These are of the
+		// form namespace/name. We do this as the delayed nature of the
+		// workqueue means the items in the informer cache may actually be
+		// more up to date that when the item was initially put onto the
+		// workqueue.
+		if key, ok = obj.(string); !ok {
+			// As the item in the workqueue is actually invalid, we call
+			// Forget here else we'd go into a loop of attempting to
+			// process a work item that is invalid.
+			c.addIpPoolPodQueue.Forget(obj)
+			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
+			return nil
+		}
+		// Run the syncHandler, passing it the namespace/name string of the
+		// Foo resource to be synced.
+		if err := c.handleAddIpPoolPod(key); err != nil {
+			// Put the item back on the workqueue to handle any transient errors.
+			c.addIpPoolPodQueue.AddRateLimited(key)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		}
+		// Finally, if no error occurs we Forget this item so it does not
+		// get queued again until another change happens.
+		c.addIpPoolPodQueue.Forget(obj)
 		return nil
 	}(obj)
 
@@ -268,6 +333,76 @@ func (c *Controller) handleAddPod(key string) error {
 		return err
 	}
 	klog.Infof("add pod %s/%s", namespace, name)
+	if pod.Spec.HostNetwork {
+		klog.Infof("pod %s/%s in host network mode no need for ovn process", namespace, name)
+		return nil
+	}
+
+	ns, err := c.namespacesLister.Get(namespace)
+	if err != nil {
+		klog.Errorf("get namespace %s failed %v", namespace, err)
+		return err
+	}
+	ls := ns.Annotations[util.LogicalSwitchAnnotation]
+	if ls == "" {
+		ls = c.config.DefaultLogicalSwitch
+	}
+
+	// pod address info may already exist in ovn
+	ip := pod.Annotations[util.IpAddressAnnotation]
+	mac := pod.Annotations[util.MacAddressAnnotation]
+
+	nic, err := c.ovnClient.CreatePort(ls, ovs.PodNameToPortName(name, namespace), ip, mac)
+	if err != nil {
+		return err
+	}
+
+	op := "replace"
+	if len(pod.Annotations) == 0 {
+		op = "add"
+	}
+	if pod.Annotations == nil {
+		pod.Annotations = map[string]string{}
+	}
+	pod.Annotations[util.IpAddressAnnotation] = nic.IpAddress
+	pod.Annotations[util.MacAddressAnnotation] = nic.MacAddress
+	pod.Annotations[util.CidrAnnotation] = nic.CIDR
+	pod.Annotations[util.GatewayAnnotation] = nic.Gateway
+	pod.Annotations[util.LogicalSwitchAnnotation] = ls
+
+	patchPayloadTemplate :=
+		`[{
+        "op": "%s",
+        "path": "/metadata/annotations",
+        "value": %s
+    }]`
+
+	raw, _ := json.Marshal(pod.Annotations)
+	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
+	_, err = c.kubeclientset.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, []byte(patchPayload))
+	if err != nil {
+		klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
+	}
+	return err
+}
+
+func (c *Controller) handleAddIpPoolPod(key string) error {
+	// Convert the namespace/name string into a distinct namespace and name
+	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
+		return nil
+	}
+	pod, err := c.podsLister.Pods(namespace).Get(name)
+	if err != nil {
+		// The Pod resource may no longer exist, in which case we stop
+		// processing.
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	klog.Infof("add ip pool address pod %s/%s", namespace, name)
 	if pod.Spec.HostNetwork {
 		klog.Infof("pod %s/%s in host network mode no need for ovn process", namespace, name)
 		return nil
