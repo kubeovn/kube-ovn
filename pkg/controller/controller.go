@@ -38,9 +38,10 @@ type Controller struct {
 	// means we can ensure we only process a fixed amount of resources at a
 	// time, and makes it easy to ensure we are never processing the same item
 	// simultaneously in two different workers.
-	addPodQueue    workqueue.RateLimitingInterface
-	deletePodQueue workqueue.RateLimitingInterface
-	updatePodQueue workqueue.RateLimitingInterface
+	addPodQueue       workqueue.RateLimitingInterface
+	addIpPoolPodQueue workqueue.RateLimitingInterface
+	deletePodQueue    workqueue.RateLimitingInterface
+	updatePodQueue    workqueue.RateLimitingInterface
 
 	namespacesLister     v1.NamespaceLister
 	namespacesSynced     cache.InformerSynced
@@ -95,11 +96,12 @@ func NewController(config *Configuration) *Controller {
 		ovnClient:     ovs.NewClient(config.OvnNbHost, config.OvnNbPort, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
 		kubeclientset: config.KubeClient,
 
-		podsLister:     podInformer.Lister(),
-		podsSynced:     podInformer.Informer().HasSynced,
-		addPodQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddPod"),
-		deletePodQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeletePod"),
-		updatePodQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdatePod"),
+		podsLister:        podInformer.Lister(),
+		podsSynced:        podInformer.Informer().HasSynced,
+		addPodQueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddPod"),
+		addIpPoolPodQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddIpPoolPod"),
+		deletePodQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeletePod"),
+		updatePodQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdatePod"),
 
 		namespacesLister:     namespaceInformer.Lister(),
 		namespacesSynced:     namespaceInformer.Informer().HasSynced,
@@ -162,9 +164,23 @@ func NewController(config *Configuration) *Controller {
 // workers to finish processing their current work items.
 func (c *Controller) Run(stopCh <-chan struct{}) error {
 	defer utilruntime.HandleCrash()
+
 	defer c.addPodQueue.ShutDown()
+	defer c.addIpPoolPodQueue.ShutDown()
 	defer c.deletePodQueue.ShutDown()
 	defer c.updatePodQueue.ShutDown()
+
+	defer c.addNamespaceQueue.ShutDown()
+	defer c.updateNamespaceQueue.ShutDown()
+	defer c.deleteNamespaceQueue.ShutDown()
+
+	defer c.addNodeQueue.ShutDown()
+	defer c.deleteNodeQueue.ShutDown()
+
+	defer c.addServiceQueue.ShutDown()
+	defer c.updateServiceQueue.ShutDown()
+
+	defer c.updateEndpointQueue.ShutDown()
 
 	// Start the informer factories to begin populating the informer caches
 	klog.Info("Starting OVN controller")
@@ -195,21 +211,25 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	klog.Info("Starting workers")
 
 	// Launch workers to process resources
-	go wait.Until(c.runAddPodWorker, time.Second, stopCh)
-	go wait.Until(c.runDeletePodWorker, time.Second, stopCh)
-	go wait.Until(c.runUpdatePodWorker, time.Second, stopCh)
+	go wait.Until(c.runAddIpPoolPodWorker, time.Second, stopCh)
 
-	go wait.Until(c.runAddNamespaceWorker, time.Second, stopCh)
-	go wait.Until(c.runDeleteNamespaceWorker, time.Second, stopCh)
-	go wait.Until(c.runUpdateNamespaceWorker, time.Second, stopCh)
+	for i := 0; i < c.config.WorkerNum; i++ {
+		go wait.Until(c.runAddPodWorker, time.Second, stopCh)
+		go wait.Until(c.runDeletePodWorker, time.Second, stopCh)
+		go wait.Until(c.runUpdatePodWorker, time.Second, stopCh)
 
-	go wait.Until(c.runAddNodeWorker, time.Second, stopCh)
-	go wait.Until(c.runDeleteNodeWorker, time.Second, stopCh)
+		go wait.Until(c.runAddNamespaceWorker, time.Second, stopCh)
+		go wait.Until(c.runDeleteNamespaceWorker, time.Second, stopCh)
+		go wait.Until(c.runUpdateNamespaceWorker, time.Second, stopCh)
 
-	go wait.Until(c.runUpdateServiceWorker, time.Second, stopCh)
-	go wait.Until(c.runAddServiceWorker, time.Second, stopCh)
+		go wait.Until(c.runAddNodeWorker, time.Second, stopCh)
+		go wait.Until(c.runDeleteNodeWorker, time.Second, stopCh)
 
-	go wait.Until(c.runUpdateEndpointWorker, time.Second, stopCh)
+		go wait.Until(c.runUpdateServiceWorker, time.Second, stopCh)
+		go wait.Until(c.runAddServiceWorker, time.Second, stopCh)
+
+		go wait.Until(c.runUpdateEndpointWorker, time.Second, stopCh)
+	}
 
 	klog.Info("Started workers")
 	<-stopCh

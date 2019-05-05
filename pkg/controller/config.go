@@ -35,6 +35,8 @@ type Configuration struct {
 
 	PodName      string
 	PodNamespace string
+
+	WorkerNum int
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -58,6 +60,8 @@ func ParseFlags() (*Configuration, error) {
 
 		argClusterTcpLoadBalancer = pflag.String("cluster-tcp-loadbalancer", "cluster-tcp-loadbalancer", "The name for cluster tcp loadbalancer")
 		argClusterUdpLoadBalancer = pflag.String("cluster-udp-loadbalancer", "cluster-udp-loadbalancer", "The name for cluster udp loadbalancer")
+
+		argWorkerNum = pflag.Int("worker-num", 3, "The parallelism of each worker. Default: 3")
 	)
 
 	flag.Set("alsologtostderr", "true")
@@ -93,6 +97,7 @@ func ParseFlags() (*Configuration, error) {
 		NodeSwitchGateway:      *argNodeSwitchGateway,
 		ClusterTcpLoadBalancer: *argClusterTcpLoadBalancer,
 		ClusterUdpLoadBalancer: *argClusterUdpLoadBalancer,
+		WorkerNum:              *argWorkerNum,
 		PodName:                os.Getenv("POD_NAME"),
 		PodNamespace:           os.Getenv("KUBE_NAMESPACE"),
 	}
