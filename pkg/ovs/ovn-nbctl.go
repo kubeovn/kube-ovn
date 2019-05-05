@@ -73,20 +73,14 @@ func (c Client) CreatePort(ls, port, ip, mac string) (*nic, error) {
 			mac = address[0]
 		}
 	}
-	cidr, err := c.ovnNbCommand("get", "logical_switch", ls, "other_config:subnet")
+	output, err := c.ovnNbCommand("get", "logical_switch", ls, "other_config:subnet", "other_config:gateway")
 	if err != nil {
 		klog.Errorf("get switch %s failed %v", ls, err)
 		return nil, err
 	}
-	mask := strings.Split(cidr, "/")[1]
-
-	gw, err := c.ovnNbCommand("get", "logical_switch", ls, "other_config:gateway")
-	if err != nil {
-		klog.Errorf("get switch %s failed %v", ls, err)
-		return nil, err
-	}
-
-	return &nic{IpAddress: fmt.Sprintf("%s/%s", ip, mask), MacAddress: mac, CIDR: cidr, Gateway: gw}, nil
+	subnet, gw := strings.Trim(strings.Split(output, "\n")[0], "\""), strings.Trim(strings.Split(output, "\n")[1], "\"")
+	mask := strings.Split(subnet, "/")[1]
+	return &nic{IpAddress: fmt.Sprintf("%s/%s", ip, mask), MacAddress: mac, CIDR: subnet, Gateway: gw}, nil
 }
 
 type nic struct {
