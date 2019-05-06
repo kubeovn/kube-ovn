@@ -2,4 +2,5 @@
 set -euo pipefail
 
 ovn-nbctl show
-ovn-sbctl show
+# wait 5 seconds
+ovn-sbctl -t 5 show

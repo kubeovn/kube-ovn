@@ -19,6 +19,8 @@ Kube-OVN includes two parts:
 
 That's all! You can now create some pods and test connectivity.
 
+For high-available ovn db, see [high available](high-available.md)
+
 ## More Configuration
 
 ### Controller Configuration
