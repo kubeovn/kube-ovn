@@ -124,7 +124,10 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	nic, err := c.ovnClient.CreatePort(c.config.NodeSwitch, fmt.Sprintf("node-%s", key), "", "")
+	nic, err := c.ovnClient.CreatePort(
+		c.config.NodeSwitch, fmt.Sprintf("node-%s", key),
+		node.Annotations[util.IpAddressAnnotation],
+		node.Annotations[util.MacAddressAnnotation])
 	if err != nil {
 		return err
 	}
