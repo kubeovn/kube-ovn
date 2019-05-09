@@ -1,9 +1,9 @@
 #!/bin/bash
-set -euo pipefail
+set -eu
 
 # Remove finalizers in svc
-kubectl patch svc -n kube-ovn ovn-nb --type='json' -p '[{"op": "replace", "path": "/metadata/finalizers", "value": []}]'
-kubectl patch svc -n kube-ovn ovn-sb --type='json' -p '[{"op": "replace", "path": "/metadata/finalizers", "value": []}]'
+kubectl patch svc -n kube-ovn ovn-nb --type='json' -p '[{"op": "replace", "path": "/metadata/finalizers", "value": []}]' || true
+kubectl patch svc -n kube-ovn ovn-sb --type='json' -p '[{"op": "replace", "path": "/metadata/finalizers", "value": []}]' || true
 
 # Delete Kube-OVN components
 kubectl delete ns kube-ovn

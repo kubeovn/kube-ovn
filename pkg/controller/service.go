@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"k8s.io/apimachinery/pkg/labels"
 	"strings"
 
 	"github.com/alauda/kube-ovn/pkg/util"
@@ -12,18 +13,21 @@ import (
 	"k8s.io/klog"
 )
 
-func (c *Controller) enqueueAddService(obj interface{}) {
+func (c *Controller) enqueueDeleteService(obj interface{}) {
 	if !c.isLeader() {
 		return
 	}
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
+	svc := obj.(*v1.Service)
+	klog.V(3).Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
+	if svc.Spec.ClusterIP != v1.ClusterIPNone && svc.Spec.ClusterIP != "" {
+		for _, port := range svc.Spec.Ports {
+			if port.Protocol == v1.ProtocolTCP {
+				c.deleteTcpServiceQueue.AddRateLimited(fmt.Sprintf("%s:%d", svc.Spec.ClusterIP, port.Port))
+			} else if port.Protocol == v1.ProtocolUDP {
+				c.deleteUdpServiceQueue.AddRateLimited(fmt.Sprintf("%s:%d", svc.Spec.ClusterIP, port.Port))
+			}
+		}
 	}
-	klog.V(3).Infof("enqueue add service %s", key)
-	c.addServiceQueue.AddRateLimited(key)
 }
 
 func (c *Controller) enqueueUpdateService(old, new interface{}) {
@@ -46,8 +50,13 @@ func (c *Controller) enqueueUpdateService(old, new interface{}) {
 	c.updateServiceQueue.AddRateLimited(key)
 }
 
-func (c *Controller) runAddServiceWorker() {
-	for c.processNextAddServiceWorkItem() {
+func (c *Controller) runDeleteTcpServiceWorker() {
+	for c.processNextDeleteTcpServiceWorkItem() {
+	}
+}
+
+func (c *Controller) runDeleteUdpServiceWorker() {
+	for c.processNextDeleteUdpServiceWorkItem() {
 	}
 }
 
@@ -56,27 +65,58 @@ func (c *Controller) runUpdateServiceWorker() {
 	}
 }
 
-func (c *Controller) processNextAddServiceWorkItem() bool {
-	obj, shutdown := c.addServiceQueue.Get()
+func (c *Controller) processNextDeleteTcpServiceWorkItem() bool {
+	obj, shutdown := c.deleteTcpServiceQueue.Get()
 
 	if shutdown {
 		return false
 	}
 
 	err := func(obj interface{}) error {
-		defer c.addServiceQueue.Done(obj)
+		defer c.deleteTcpServiceQueue.Done(obj)
 		var key string
 		var ok bool
 		if key, ok = obj.(string); !ok {
-			c.addServiceQueue.Forget(obj)
+			c.deleteTcpServiceQueue.Forget(obj)
 			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
 			return nil
 		}
-		if err := c.handleAddService(key); err != nil {
-			c.addServiceQueue.AddRateLimited(key)
+		if err := c.handleDeleteService(key, v1.ProtocolTCP); err != nil {
+			c.deleteTcpServiceQueue.AddRateLimited(key)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
-		c.addServiceQueue.Forget(obj)
+		c.deleteTcpServiceQueue.Forget(obj)
+		return nil
+	}(obj)
+
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
+	return true
+}
+
+func (c *Controller) processNextDeleteUdpServiceWorkItem() bool {
+	obj, shutdown := c.deleteUdpServiceQueue.Get()
+
+	if shutdown {
+		return false
+	}
+
+	err := func(obj interface{}) error {
+		defer c.deleteUdpServiceQueue.Done(obj)
+		var key string
+		var ok bool
+		if key, ok = obj.(string); !ok {
+			c.deleteUdpServiceQueue.Forget(obj)
+			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
+			return nil
+		}
+		if err := c.handleDeleteService(key, v1.ProtocolUDP); err != nil {
+			c.deleteUdpServiceQueue.AddRateLimited(key)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		}
+		c.deleteUdpServiceQueue.Forget(obj)
 		return nil
 	}(obj)
 
@@ -118,41 +158,33 @@ func (c *Controller) processNextUpdateServiceWorkItem() bool {
 	return true
 }
 
-func (c *Controller) handleAddService(key string) error {
-	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+func (c *Controller) handleDeleteService(vip string, protocol v1.Protocol) error {
+	svcs, err := c.servicesLister.Services(v1.NamespaceAll).List(labels.Everything())
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
-		return nil
-	}
-	svc, err := c.servicesLister.Services(namespace).Get(name)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return nil
-		}
+		klog.Errorf("failed to list svc, %v", err)
 		return err
 	}
+	for _, svc := range svcs {
+		if svc.Spec.ClusterIP == strings.Split(vip, ":")[0] {
+			return nil
+		}
+	}
 
-	if !containsString(svc.Finalizers, util.ServiceAnnotation) {
-		svc.SetFinalizers(append(svc.Finalizers, util.ServiceAnnotation))
-		_, err = c.config.KubeClient.CoreV1().Services(namespace).Update(svc)
+	if protocol == v1.ProtocolTCP {
+		err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterTcpLoadBalancer)
 		if err != nil {
+			klog.Errorf("failed to delete vip %s from tcp lb, %v", vip, err)
+			return err
+		}
+	} else {
+		err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterUdpLoadBalancer)
+		if err != nil {
+			klog.Errorf("failed to delete vip %s from udp lb, %v", vip, err)
 			return err
 		}
 	}
 
-	ip := svc.Spec.ClusterIP
-	if ip == "" || ip == v1.ClusterIPNone {
-		return nil
-	}
-
-	if !svc.DeletionTimestamp.IsZero() {
-		if containsString(svc.Finalizers, util.ServiceAnnotation) {
-			svc.SetFinalizers(removeString(svc.Finalizers, util.ServiceAnnotation))
-			_, err = c.config.KubeClient.CoreV1().Services(namespace).Update(svc)
-		}
-	}
-
-	return err
+	return nil
 }
 
 func (c *Controller) handleUpdateService(key string) error {

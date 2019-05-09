@@ -54,10 +54,11 @@ type Controller struct {
 	addNodeQueue    workqueue.RateLimitingInterface
 	deleteNodeQueue workqueue.RateLimitingInterface
 
-	servicesLister     v1.ServiceLister
-	serviceSynced      cache.InformerSynced
-	addServiceQueue    workqueue.RateLimitingInterface
-	updateServiceQueue workqueue.RateLimitingInterface
+	servicesLister        v1.ServiceLister
+	serviceSynced         cache.InformerSynced
+	deleteTcpServiceQueue workqueue.RateLimitingInterface
+	deleteUdpServiceQueue workqueue.RateLimitingInterface
+	updateServiceQueue    workqueue.RateLimitingInterface
 
 	endpointsLister     v1.EndpointsLister
 	endpointsSynced     cache.InformerSynced
@@ -114,10 +115,11 @@ func NewController(config *Configuration) *Controller {
 		addNodeQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddNode"),
 		deleteNodeQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteNode"),
 
-		servicesLister:     serviceInformer.Lister(),
-		serviceSynced:      serviceInformer.Informer().HasSynced,
-		addServiceQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddService"),
-		updateServiceQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteService"),
+		servicesLister:        serviceInformer.Lister(),
+		serviceSynced:         serviceInformer.Informer().HasSynced,
+		deleteTcpServiceQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteTcpService"),
+		deleteUdpServiceQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteUdpService"),
+		updateServiceQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateService"),
 
 		endpointsLister:     endpointInformer.Lister(),
 		endpointsSynced:     endpointInformer.Informer().HasSynced,
@@ -146,7 +148,7 @@ func NewController(config *Configuration) *Controller {
 	})
 
 	serviceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueAddService,
+		DeleteFunc: controller.enqueueDeleteService,
 		UpdateFunc: controller.enqueueUpdateService,
 	})
 
@@ -177,7 +179,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	defer c.addNodeQueue.ShutDown()
 	defer c.deleteNodeQueue.ShutDown()
 
-	defer c.addServiceQueue.ShutDown()
+	defer c.deleteTcpServiceQueue.ShutDown()
+	defer c.deleteUdpServiceQueue.ShutDown()
 	defer c.updateServiceQueue.ShutDown()
 
 	defer c.updateEndpointQueue.ShutDown()
@@ -226,7 +229,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 		go wait.Until(c.runDeleteNodeWorker, time.Second, stopCh)
 
 		go wait.Until(c.runUpdateServiceWorker, time.Second, stopCh)
-		go wait.Until(c.runAddServiceWorker, time.Second, stopCh)
+		go wait.Until(c.runDeleteTcpServiceWorker, time.Second, stopCh)
+		go wait.Until(c.runDeleteUdpServiceWorker, time.Second, stopCh)
 
 		go wait.Until(c.runUpdateEndpointWorker, time.Second, stopCh)
 	}
