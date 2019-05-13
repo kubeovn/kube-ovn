@@ -1,20 +1,20 @@
 #!/bin/bash
-set -euo pipefail
+set -eo pipefail
 
-DB_NB_ADDR=${1:-0.0.0.0}
-DB_NB_PORT=${1:-6641}
-DB_SB_ADDR=${1:-0.0.0.0}
-DB_SB_PORT=${1:-6642}
+DB_NB_ADDR=${DB_NB_ADDR:-0.0.0.0}
+DB_NB_PORT=${DB_NB_PORT:-6641}
+DB_SB_ADDR=${DB_SB_ADDR:-0.0.0.0}
+DB_SB_PORT=${DB_SB_PORT:-6642}
 
 function gen_conn_str {
   t=$(echo -n ${NODE_IPS} | sed 's/[[:space:]]//g' | sed 's/,/ /g')
-  x=$(for i in $t; do echo -n "tcp:$i:$1",; done| sed 's/,$//')
+  x=$(for i in ${t}; do echo -n "tcp:$i:$1",; done| sed 's/,$//')
   echo "$x"
 }
 
 function get_first_node_ip {
     t=$(echo -n ${NODE_IPS} | sed 's/[[:space:]]//g' | sed 's/,/ /g')
-    echo -n $t | cut -f 1 -d " "
+    echo -n ${t} | cut -f 1 -d " "
 }
 
 function quit {
@@ -23,13 +23,13 @@ function quit {
 }
 trap quit EXIT
 
-if [ -z "$NODE_IPS" ]; then
+if [[ -z "$NODE_IPS" ]]; then
     /usr/share/openvswitch/scripts/ovn-ctl restart_northd
 else
     /usr/share/openvswitch/scripts/ovn-ctl stop_northd
 
     first_node_ip=$(get_first_node_ip)
-    if [ "$first_node_ip" == "${POD_IP}" ]; then
+    if [[ "$first_node_ip" == "${POD_IP}" ]]; then
         # Start ovn-northd, ovn-nb and ovn-sb
         /usr/share/openvswitch/scripts/ovn-ctl \
             --db-nb-create-insecure-remote=yes \
@@ -51,8 +51,8 @@ else
             --db-sb-create-insecure-remote=yes \
             --db-nb-cluster-local-addr=${POD_IP} \
             --db-sb-cluster-local-addr=${POD_IP} \
-            --db-nb-cluster-remote-addr=$first_node_ip \
-            --db-sb-cluster-remote-addr=$first_node_ip \
+            --db-nb-cluster-remote-addr=${first_node_ip} \
+            --db-sb-cluster-remote-addr=${first_node_ip} \
             --ovn-northd-nb-db=$(gen_conn_str 6641) \
             --ovn-northd-sb-db=$(gen_conn_str 6642) \
             start_northd
