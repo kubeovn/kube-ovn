@@ -348,6 +348,12 @@ func (c *Controller) handleAddPod(key string) error {
 		ls = c.config.DefaultLogicalSwitch
 	}
 
+	if err := util.ValidatePodNetwork(pod.Annotations); err != nil {
+		klog.Errorf("validate pod %s/%s failed, %v", namespace, name, err)
+		c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", err.Error())
+		return err
+	}
+
 	// pod address info may already exist in ovn
 	ip := pod.Annotations[util.IpAddressAnnotation]
 	mac := pod.Annotations[util.MacAddressAnnotation]

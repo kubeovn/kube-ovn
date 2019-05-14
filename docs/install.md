@@ -25,10 +25,10 @@ For high-available ovn db, see [high available](high-available.md)
 
 ### Controller Configuration
 
-    ```bash
+```bash
     --default-cidr: Default CIDR for Namespaces with no logical switch annotation, default: 10.16.0.0/16
     --node-switch-cidr: The CIDR for the Node switch. Default: 100.64.0.0/16
-    ```
+```
 
 ## To uninstall
 

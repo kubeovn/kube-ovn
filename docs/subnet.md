@@ -20,7 +20,7 @@ metadata:
     ovn.kubernetes.io/cidr: 10.17.0.0/16
     ovn.kubernetes.io/gateway: 10.17.0.1
     ovn.kubernetes.io/logical_switch: ovn-subnet
-    ovn.kubernetes.io/exclude_ips: 10.17.0.0..10.17.0.10
+    ovn.kubernetes.io/exclude_ips: "192.168.0.4,192.168.0.30..192.168.0.60,192.168.0.110..192.168.0.120"
   name: ovn-subnet
 ```
 

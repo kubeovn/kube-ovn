@@ -1,7 +1,7 @@
 # High available for ovn db
 
 ovs support clustered database. If want to use high-available database in kube-ovn,
-modifie ovn-central deployment in yamls/ovn.yaml.
+modify ovn-central deployment in yamls/ovn.yaml.
 
 Change the replicas to 3, and add NODE_IPS environment var.
 ```yaml
