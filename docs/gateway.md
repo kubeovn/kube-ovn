@@ -1,10 +1,18 @@
 # Gateways
 
-A Gateway is used to enable external network connectivity for Pods within the OVN Virtual Network. Kube-OVN supports two kinds of Gateways: the distributed Gateway and the centralized Gateway.
+A Gateway is used to enable external network connectivity for Pods within the OVN Virtual Network. 
 
-For a distributed Gateway, outgoing traffic from Pods within the OVN network to external destinations will be masqueraded with the Node IP address where the Pod is hosted.
+Kube-OVN supports two kinds of Gateways: the distributed Gateway and the centralized Gateway. Also user can expose pod ip directly to external network.
 
-For a centralized gateway, outgoing traffic from Pods within the OVN network to external destinations will be masqueraded with the Gateway Node IP address for the Namespace.
+For a distributed Gateway, outgoing traffic from Pods within the OVN network to external destinations will go through the Node where the Pod is hosted.
+
+For a centralized gateway, outgoing traffic from Pods within the OVN network to external destinations will go through Gateway Node for the Namespace.
+
+Use the following annotations in namespace to configure gateway:
+
+- `ovn.kubernetes.io/gateway_type`: `distributed` or `centralized`, default is `distributed`.
+- `ovn.kubernetes.io/gateway_node`: when `ovn.kubernetes.io/gateway_type` is `centralized` used this annotation to specify which node act as the namespace gateway.
+- `ovn.kubernetes.io/gateway_nat`: `true` or `false`, whether pod ip need to be masqueraded when go through gateway. When `false`, pod ip will be exposed to external network directly, default `true`.
 
 ## Example
 
@@ -16,8 +24,9 @@ kind: Namespace
 metadata:
   name: testns
   annotations:
-    ovn.kubernetes.io/gateway_type: centralized // or distributed by default
-    ovn.kubernetes.io/gateway_node: node1 // specify this if using a centralized Gateway
+    ovn.kubernetes.io/gateway_type: centralized
+    ovn.kubernetes.io/gateway_node: node1
+    ovn.kubernetes.io/gateway_nat: "true"
 ```
 
 Create some Pods:
