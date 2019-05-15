@@ -68,6 +68,7 @@ func setupLeaderElection(config *leaderElectionConfig) *leaderelection.LeaderEle
 			if config.OnStoppedLeading != nil {
 				config.OnStoppedLeading()
 			}
+			klog.Fatalf("leaderelection lost")
 		},
 		OnNewLeader: func(identity string) {
 			klog.Infof("new leader elected: %v", identity)

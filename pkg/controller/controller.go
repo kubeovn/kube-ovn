@@ -197,8 +197,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	})
 	c.elector = elector
 	for {
-		klog.Info("waiting for a leader")
-		if c.hasLeader() {
+		klog.Info("waiting for becoming a leader")
+		if c.isLeader() {
 			break
 		}
 		time.Sleep(1 * time.Second)
