@@ -215,13 +215,13 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 
 	// Launch workers to process resources
 	go wait.Until(c.runAddIpPoolPodWorker, time.Second, stopCh)
+	go wait.Until(c.runAddNamespaceWorker, time.Second, stopCh)
 
 	for i := 0; i < c.config.WorkerNum; i++ {
 		go wait.Until(c.runAddPodWorker, time.Second, stopCh)
 		go wait.Until(c.runDeletePodWorker, time.Second, stopCh)
 		go wait.Until(c.runUpdatePodWorker, time.Second, stopCh)
 
-		go wait.Until(c.runAddNamespaceWorker, time.Second, stopCh)
 		go wait.Until(c.runDeleteNamespaceWorker, time.Second, stopCh)
 		go wait.Until(c.runUpdateNamespaceWorker, time.Second, stopCh)
 
