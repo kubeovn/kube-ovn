@@ -182,7 +182,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 	ls := ns.Annotations[util.LogicalSwitchAnnotation]
 	cidr := ns.Annotations[util.CidrAnnotation]
 	gateway := ns.Annotations[util.GatewayAnnotation]
-	excludeIps := ns.Annotations[util.ExcludeIpsAnnotation]
+	excludeIps := strings.Replace(ns.Annotations[util.ExcludeIpsAnnotation], ",", " ", -1)
 	private := ns.Annotations[util.PrivateSwitchAnnotation]
 	allow := ns.Annotations[util.AllowAccessAnnotation]
 
@@ -204,8 +204,10 @@ func (c *Controller) handleAddNamespace(key string) error {
 		}
 	}
 	if !exist {
-		if cidr == "" || gateway == "" {
-			return fmt.Errorf("cidr and gateway are required for namespace %s", key)
+		if err := util.ValidateLogicalSwitch(ns.Annotations); err != nil {
+			klog.Errorf("validate namespace %s failed, %v", key, err)
+			c.recorder.Eventf(ns, v1.EventTypeWarning, "ValidateLogicalSwitchFailed", err.Error())
+			return err
 		}
 		if excludeIps == "" {
 			excludeIps = gateway

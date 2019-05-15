@@ -5,7 +5,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"strings"
 
-	"github.com/alauda/kube-ovn/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -202,16 +201,6 @@ func (c *Controller) handleUpdateService(key string) error {
 		return err
 	}
 
-	if !svc.DeletionTimestamp.IsZero() {
-		if containsString(svc.Finalizers, util.ServiceAnnotation) {
-			svc.SetFinalizers(removeString(svc.Finalizers, util.ServiceAnnotation))
-			_, err = c.config.KubeClient.CoreV1().Services(namespace).Update(svc)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
 	ip := svc.Spec.ClusterIP
 	if ip == "" || ip == v1.ClusterIPNone {
 		return nil
@@ -227,83 +216,62 @@ func (c *Controller) handleUpdateService(key string) error {
 			udpVips = append(udpVips, fmt.Sprintf("%s:%d", ip, port.Port))
 		}
 	}
+	// for service update
+	klog.Infof("update service %s/%s", namespace, name)
+	lbUuid, err := c.ovnClient.FindLoadbalancer(c.config.ClusterTcpLoadBalancer)
+	if err != nil {
+		klog.Errorf("failed to get lb %v", err)
+	}
+	vips, err := c.ovnClient.GetLoadBalancerVips(lbUuid)
+	if err != nil {
+		klog.Errorf("failed to get tcp lb vips %v", err)
+		return err
+	}
+	klog.Infof("exist tcp vips are %v", vips)
+	for _, vip := range tcpVips {
+		if _, ok := vips[vip]; !ok {
+			klog.Infof("add vip %s to tcp lb", vip)
+			c.updateEndpointQueue.AddRateLimited(key)
+			break
+		}
+	}
 
-	if !svc.DeletionTimestamp.IsZero() {
-		// for service deletion
-		klog.Infof("delete service %s/%s", namespace, name)
-		for _, vip := range tcpVips {
+	for vip := range vips {
+		if strings.HasPrefix(vip, ip) && !containsString(tcpVips, vip) {
+			klog.Infof("remove stall vip %s", vip)
 			err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterTcpLoadBalancer)
 			if err != nil {
-				klog.Errorf("failed to delete vip %s from tcp lb, %v", vip, err)
+				klog.Errorf("failed to delete vip %s from tcp lb %v", vip, err)
 				return err
 			}
 		}
+	}
 
-		for _, vip := range udpVips {
+	lbUuid, err = c.ovnClient.FindLoadbalancer(c.config.ClusterUdpLoadBalancer)
+	if err != nil {
+		klog.Errorf("failed to get lb %v", err)
+	}
+	vips, err = c.ovnClient.GetLoadBalancerVips(lbUuid)
+	if err != nil {
+		klog.Errorf("failed to get udp lb vips %v", err)
+		return err
+	}
+	klog.Infof("exist udp vips are %v", vips)
+	for _, vip := range udpVips {
+		if _, ok := vips[vip]; !ok {
+			klog.Infof("add vip %s to udp lb", vip)
+			c.updateEndpointQueue.AddRateLimited(key)
+			break
+		}
+	}
+
+	for vip := range vips {
+		if strings.HasPrefix(vip, ip) && !containsString(udpVips, vip) {
+			klog.Infof("remove stall vip %s", vip)
 			err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterUdpLoadBalancer)
 			if err != nil {
-				klog.Errorf("failed to delete vip %s from udp lb, %v", vip, err)
+				klog.Errorf("failed to delete vip %s from udp lb %v", vip, err)
 				return err
-			}
-		}
-	} else {
-		// for service update
-		klog.Infof("update service %s/%s", namespace, name)
-		lbUuid, err := c.ovnClient.FindLoadbalancer(c.config.ClusterTcpLoadBalancer)
-		if err != nil {
-			klog.Errorf("failed to get lb %v", err)
-		}
-		vips, err := c.ovnClient.GetLoadBalancerVips(lbUuid)
-		if err != nil {
-			klog.Errorf("failed to get tcp lb vips %v", err)
-			return err
-		}
-		klog.Infof("exist tcp vips are %v", vips)
-		for _, vip := range tcpVips {
-			if _, ok := vips[vip]; !ok {
-				klog.Infof("add vip %s to tcp lb", vip)
-				c.updateEndpointQueue.AddRateLimited(key)
-				break
-			}
-		}
-
-		for vip := range vips {
-			if strings.HasPrefix(vip, ip) && !containsString(tcpVips, vip) {
-				klog.Infof("remove stall vip %s", vip)
-				err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterTcpLoadBalancer)
-				if err != nil {
-					klog.Errorf("failed to delete vip %s from tcp lb %v", vip, err)
-					return err
-				}
-			}
-		}
-
-		lbUuid, err = c.ovnClient.FindLoadbalancer(c.config.ClusterUdpLoadBalancer)
-		if err != nil {
-			klog.Errorf("failed to get lb %v", err)
-		}
-		vips, err = c.ovnClient.GetLoadBalancerVips(lbUuid)
-		if err != nil {
-			klog.Errorf("failed to get udp lb vips %v", err)
-			return err
-		}
-		klog.Infof("exist udp vips are %v", vips)
-		for _, vip := range udpVips {
-			if _, ok := vips[vip]; !ok {
-				klog.Infof("add vip %s to udp lb", vip)
-				c.updateEndpointQueue.AddRateLimited(key)
-				break
-			}
-		}
-
-		for vip := range vips {
-			if strings.HasPrefix(vip, ip) && !containsString(udpVips, vip) {
-				klog.Infof("remove stall vip %s", vip)
-				err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterUdpLoadBalancer)
-				if err != nil {
-					klog.Errorf("failed to delete vip %s from udp lb %v", vip, err)
-					return err
-				}
 			}
 		}
 	}
@@ -312,7 +280,7 @@ func (c *Controller) handleUpdateService(key string) error {
 }
 
 //
-// Helper functions to check and remove string from a slice of strings.
+// Helper functions to check string from a slice of strings.
 //
 func containsString(slice []string, s string) bool {
 	for _, item := range slice {
@@ -321,14 +289,4 @@ func containsString(slice []string, s string) bool {
 		}
 	}
 	return false
-}
-
-func removeString(slice []string, s string) (result []string) {
-	for _, item := range slice {
-		if item == s {
-			continue
-		}
-		result = append(result, item)
-	}
-	return
 }

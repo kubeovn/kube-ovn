@@ -5,6 +5,9 @@ import (
 	"net"
 	"time"
 
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/record"
+
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"k8s.io/apimachinery/pkg/api/errors"
 
@@ -19,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	listerv1 "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
@@ -38,12 +42,19 @@ type Controller struct {
 	podsSynced cache.InformerSynced
 	podQueue   workqueue.RateLimitingInterface
 
+	recorder record.EventRecorder
+
 	ipSetsMgr   *ipsets.IPSets
 	iptablesMgr *iptables.IPTables
 }
 
 // NewController init a daemon controller
 func NewController(config *Configuration, informerFactory informers.SharedInformerFactory) (*Controller, error) {
+	eventBroadcaster := record.NewBroadcaster()
+	eventBroadcaster.StartLogging(klog.Infof)
+	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: config.KubeClient.CoreV1().Events("")})
+	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: config.NodeName})
+
 	namespaceInformer := informerFactory.Core().V1().Namespaces()
 	podInformer := informerFactory.Core().V1().Pods()
 	iptablesMgr, err := iptables.New()
@@ -62,6 +73,8 @@ func NewController(config *Configuration, informerFactory informers.SharedInform
 		podsLister: podInformer.Lister(),
 		podsSynced: podInformer.Informer().HasSynced,
 		podQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Pod"),
+
+		recorder: recorder,
 
 		ipSetsMgr:   ipsetsMgr,
 		iptablesMgr: iptablesMgr,
@@ -299,6 +312,11 @@ func (c *Controller) handlePod(key string) error {
 		if errors.IsNotFound(err) {
 			return nil
 		}
+		return err
+	}
+	if err := util.ValidatePodNetwork(pod.Annotations); err != nil {
+		klog.Errorf("validate pod %s/%s failed, %v", namespace, name, err)
+		c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", err.Error())
 		return err
 	}
 	return ovs.SetPodBandwidth(pod.Name, pod.Namespace, pod.Annotations[util.IngressRateAnnotation], pod.Annotations[util.EgressRateAnnotation])
