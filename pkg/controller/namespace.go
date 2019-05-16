@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/alauda/kube-ovn/pkg/util"
@@ -209,6 +210,22 @@ func (c *Controller) handleAddNamespace(key string) error {
 			c.recorder.Eventf(ns, v1.EventTypeWarning, "ValidateLogicalSwitchFailed", err.Error())
 			return err
 		}
+
+		nsList, err := c.namespacesLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list ns")
+			return err
+		}
+
+		for _, n := range nsList {
+			if ls != n.Annotations[util.LogicalSwitchAnnotation] && cidrConflict(cidr, n.Annotations[util.CidrAnnotation]) {
+				err = fmt.Errorf("cidr %s in ns %s conflict with %s in ns %s", cidr, ns.Name, n.Annotations[util.CidrAnnotation], n.Name)
+				klog.Error(err)
+				c.recorder.Eventf(ns, v1.EventTypeWarning, "CidrConflict", err.Error())
+				return err
+			}
+		}
+
 		if excludeIps == "" {
 			excludeIps = gateway
 		}
@@ -286,4 +303,13 @@ func (c *Controller) handleUpdateNamespace(key string) error {
 	}
 
 	return c.ovnClient.SetPrivateLogicalSwitch(ls, strings.Split(allow, ","))
+}
+
+func cidrConflict(a, b string) bool {
+	aIp, aIpNet, aErr := net.ParseCIDR(a)
+	bIp, bIpNet, bErr := net.ParseCIDR(b)
+	if aErr != nil || bErr != nil {
+		return false
+	}
+	return aIpNet.Contains(bIp) || bIpNet.Contains(aIp)
 }
