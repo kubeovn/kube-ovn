@@ -31,4 +31,5 @@ const (
 	GWDistributedMode = "distributed"
 	GWCentralizedMode = "centralized"
 	GWNode            = "ovn.kubernetes.io/gateway_node"
+	GWNat             = "ovn.kubernetes.io/gateway_nat"
 )

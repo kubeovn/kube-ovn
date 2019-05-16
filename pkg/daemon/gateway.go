@@ -129,15 +129,18 @@ func (c *Controller) getLocalPodIPsNeedNAT() ([]string, error) {
 			continue
 		}
 		nsGWType := ns.Annotations[util.GWTypeAnnotation]
-		switch nsGWType {
-		case "", util.GWDistributedMode:
-			if pod.Spec.NodeName == hostname {
-				localPodIPs = append(localPodIPs, pod.Status.PodIP)
-			}
-		case util.GWCentralizedMode:
-			gwNode := ns.Annotations[util.GWNode]
-			if gwNode == hostname {
-				localPodIPs = append(localPodIPs, pod.Status.PodIP)
+		nsGWNat := ns.Annotations[util.GWNat]
+		if nsGWNat == "" || nsGWNat == "true" {
+			switch nsGWType {
+			case "", util.GWDistributedMode:
+				if pod.Spec.NodeName == hostname {
+					localPodIPs = append(localPodIPs, pod.Status.PodIP)
+				}
+			case util.GWCentralizedMode:
+				gwNode := ns.Annotations[util.GWNode]
+				if gwNode == hostname {
+					localPodIPs = append(localPodIPs, pod.Status.PodIP)
+				}
 			}
 		}
 	}
