@@ -12,10 +12,10 @@ Kube-OVN includes two parts:
     `kubectl label node <Node on which to deploy OVN DB> kube-ovn/role=master`
 2. Install native OVS and OVN components:
 
-    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v0.3.0/yamls/ovn.yaml`
+    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v0.4.0/yamls/ovn.yaml`
 3. Install the Kube-OVN Controller and CNI plugins:
 
-    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v0.3.0/yamls/kube-ovn.yaml`
+    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v0.4.0/yamls/kube-ovn.yaml`
 
 That's all! You can now create some pods and test connectivity.
 
