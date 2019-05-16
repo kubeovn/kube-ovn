@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## v0.4.0 -- 2019/05/16
+### Features
+* ovndb now support cluster ha mode
+* kube-ovn-controller now support ha mode by leader election
+* Pod IP can be exposed to external network directly
+* Update OVN to 2.11.1 to fix some known bugs
+* Parallelize kube-ovn process to improve control plane performance
+* Add vagrant files to do e2e tests
+* Use ovs-ctl and ovn-ctl to do health check
+### Bug Fixes
+* Check subnet cidr conflict
+* Validate namespace and pod annotations
+* Daemon wait for node annotations ready
+* Reuse node annotations when kube-ovn-controller restart
+
 ## v0.3.0 -- 2019/04/19
 ### Features
 * Namespaced Gateway for external connectivity

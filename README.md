@@ -14,10 +14,10 @@ Kube-OVN integrates the OVN-based Network Virtualization with Kubernetes. It off
 - **Embedded Load Balancers**: Replace kube-proxy with the OVN embedded distributed L2 Load Balancer.
 - **Distributed Gateways**: Every Node can act as a Gateway to provide external network connectivity.
 - **Namespaced Gateways**: Every Namespace can have a dedicated Gateway for Egress traffic.
+- **Direct External Connectivity**：Pod IP can be exposed to external network directly.
 
 ## Planned Future Work
 - Hardware Offloading and DPDK Support
-- Direct External Connectivity
 - ACL-based Network Policy
 - Policy-based QoS
 - More Metrics and Traffic Graph
@@ -37,10 +37,7 @@ Kube-OVN is easy to install with all necessary components/dependencies included.
 - [Subnet Isolation](docs/isolation.md)
 - [Static IP](docs/static-ip.md)
 - [Dynamic QoS](docs/qos.md)
-- [Gateway](docs/gateway.md)
-
-## !!Cautions!!
-Kube-OVN is still at an early stage and undergoing rapid development. Please *DO NOT* use it in production.
+- [Gateway and Direct connect](docs/gateway.md)
 
 ## Contact
 Mail: mengxin#alauda.io
