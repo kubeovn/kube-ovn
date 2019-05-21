@@ -50,18 +50,18 @@ func ParseFlags() (*Configuration, error) {
 
 		argDefaultLogicalSwitch = pflag.String("default-ls", "ovn-default", "The default logical switch name, default: ovn-default")
 		argDefaultCIDR          = pflag.String("default-cidr", "10.16.0.0/16", "Default cidr for namespace with no logical switch annotation, default: 10.16.0.0/16")
-		argDefaultGateway       = pflag.String("default-gateway", "10.16.0.1", "Default gateway for default subnet. Default: 10.16.0.1")
-		argDefaultExcludeIps    = pflag.String("default-exclude-ips", "10.16.0.0..10.16.0.10", "Exclude ips in default switch")
+		argDefaultGateway       = pflag.String("default-gateway", "10.16.0.1", "Default gateway for default subnet, default: 10.16.0.1")
+		argDefaultExcludeIps    = pflag.String("default-exclude-ips", "", "Exclude ips in default switch, default equals to gateway address")
 
-		argClusterRouter     = pflag.String("cluster-router", "ovn-cluster", "The router name for cluster router.Default: cluster-router")
-		argNodeSwitch        = pflag.String("node-switch", "join", "The name of node gateway switch which help node to access pod network. Default: join")
-		argNodeSwitchCIDR    = pflag.String("node-switch-cidr", "100.64.0.0/16", "The cidr for node switch. Default: 100.64.0.0/16")
-		argNodeSwitchGateway = pflag.String("node-switch-gateway", "100.64.0.1", "The gateway for node switch. Default: 100.64.0.1")
+		argClusterRouter     = pflag.String("cluster-router", "ovn-cluster", "The router name for cluster router, default: cluster-router")
+		argNodeSwitch        = pflag.String("node-switch", "join", "The name of node gateway switch which help node to access pod network, default: join")
+		argNodeSwitchCIDR    = pflag.String("node-switch-cidr", "100.64.0.0/16", "The cidr for node switch, default: 100.64.0.0/16")
+		argNodeSwitchGateway = pflag.String("node-switch-gateway", "100.64.0.1", "The gateway for node switch, default: 100.64.0.1")
 
 		argClusterTcpLoadBalancer = pflag.String("cluster-tcp-loadbalancer", "cluster-tcp-loadbalancer", "The name for cluster tcp loadbalancer")
 		argClusterUdpLoadBalancer = pflag.String("cluster-udp-loadbalancer", "cluster-udp-loadbalancer", "The name for cluster udp loadbalancer")
 
-		argWorkerNum = pflag.Int("worker-num", 3, "The parallelism of each worker. Default: 3")
+		argWorkerNum = pflag.Int("worker-num", 3, "The parallelism of each worker, default: 3")
 	)
 
 	flag.Set("alsologtostderr", "true")
@@ -81,6 +81,10 @@ func ParseFlags() (*Configuration, error) {
 	pflag.CommandLine.AddGoFlagSet(klogFlags)
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
+
+	if *argDefaultExcludeIps == "" {
+		argDefaultExcludeIps = argDefaultGateway
+	}
 
 	config := &Configuration{
 		OvnNbSocket:            *argOvnNbSocket,
