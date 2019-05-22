@@ -8,4 +8,4 @@ ovn-ctl status_ovnnb
 ovn-ctl status_ovnsb
 
 # For data consistency, only store leader address in endpoint
-echo $(cat /var/log/openvswitch/ovn-northd.log) | grep -oP "lock acquired(?!.*lock lost).*$"
+ovsdb-client query tcp:127.0.0.1:6641 "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Northbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]" | grep true
