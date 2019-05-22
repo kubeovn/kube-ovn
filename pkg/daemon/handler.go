@@ -2,15 +2,16 @@ package daemon
 
 import (
 	"fmt"
-	"github.com/alauda/kube-ovn/pkg/request"
-	"github.com/alauda/kube-ovn/pkg/util"
-	"github.com/emicklei/go-restful"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/klog"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/alauda/kube-ovn/pkg/request"
+	"github.com/alauda/kube-ovn/pkg/util"
+	"github.com/emicklei/go-restful"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/klog"
 )
 
 type cniServerHandler struct {
@@ -27,8 +28,9 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	podRequest := request.PodRequest{}
 	err := req.ReadEntity(&podRequest)
 	if err != nil {
-		klog.Errorf("parse add request failed %v", err)
-		resp.WriteHeaderAndEntity(http.StatusBadRequest, err)
+		errMsg := fmt.Errorf("parse add request failed %v", err)
+		klog.Error(errMsg)
+		resp.WriteHeaderAndEntity(http.StatusBadRequest, request.PodResponse{Err: errMsg.Error()})
 		return
 	}
 	klog.Infof("add port request %v", podRequest)
@@ -36,8 +38,9 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	for i := 0; i < 10; i++ {
 		pod, err := csh.KubeClient.CoreV1().Pods(podRequest.PodNamespace).Get(podRequest.PodName, v1.GetOptions{})
 		if err != nil {
-			klog.Errorf("get pod %s/%s failed %v", podRequest.PodNamespace, podRequest.PodName, err)
-			resp.WriteHeaderAndEntity(http.StatusInternalServerError, err)
+			errMsg := fmt.Errorf("get pod %s/%s failed %v", podRequest.PodNamespace, podRequest.PodName, err)
+			klog.Error(errMsg)
+			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: errMsg.Error()})
 			return
 		}
 		macAddr = pod.Annotations[util.MacAddressAnnotation]
@@ -56,16 +59,18 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	}
 
 	if macAddr == "" || ipAddr == "" || cidr == "" || gw == "" {
-		klog.Errorf("no available ip for pod %s/%s", podRequest.PodNamespace, podRequest.PodName)
-		resp.WriteHeaderAndEntity(http.StatusInternalServerError, fmt.Sprintf("no available ip for pod %s/%s", podRequest.PodNamespace, podRequest.PodName))
+		errMsg := fmt.Errorf("no available ip for pod %s/%s", podRequest.PodNamespace, podRequest.PodName)
+		klog.Error(errMsg)
+		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: errMsg.Error()})
 		return
 	}
 
 	klog.Infof("create container mac %s, ip %s, cidr %s, gw %s", macAddr, ipAddr, cidr, gw)
 	err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.NetNs, podRequest.ContainerID, macAddr, ipAddr, gw, ingress, egress)
 	if err != nil {
-		klog.Errorf("configure nic failed %v", err)
-		resp.WriteHeaderAndEntity(http.StatusInternalServerError, err)
+		errMsg := fmt.Errorf("configure nic failed %v", err)
+		klog.Error(errMsg)
+		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: errMsg.Error()})
 		return
 	}
 	resp.WriteHeaderAndEntity(http.StatusOK, request.PodResponse{IpAddress: strings.Split(ipAddr, "/")[0], MacAddress: macAddr, CIDR: cidr, Gateway: gw})
@@ -75,15 +80,17 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 	podRequest := request.PodRequest{}
 	err := req.ReadEntity(&podRequest)
 	if err != nil {
-		klog.Errorf("parse del request failed %v", err)
-		resp.WriteHeaderAndEntity(http.StatusBadRequest, err)
+		errMsg := fmt.Errorf("parse del request failed %v", err)
+		klog.Error(errMsg)
+		resp.WriteHeaderAndEntity(http.StatusBadRequest, request.PodResponse{Err: errMsg.Error()})
 		return
 	}
 	klog.Infof("delete port request %v", podRequest)
 	err = csh.deleteNic(podRequest.NetNs, podRequest.PodName, podRequest.PodNamespace, podRequest.ContainerID)
 	if err != nil {
-		klog.Errorf("del nic failed %v", err)
-		resp.WriteHeaderAndEntity(http.StatusInternalServerError, err)
+		errMsg := fmt.Errorf("del nic failed %v", err)
+		klog.Error(errMsg)
+		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: errMsg.Error()})
 		return
 	}
 	resp.WriteHeader(http.StatusNoContent)

@@ -3,9 +3,10 @@ package request
 import (
 	"context"
 	"fmt"
-	"github.com/parnurzeal/gorequest"
 	"net"
 	"net/http"
+
+	"github.com/parnurzeal/gorequest"
 )
 
 // CniServerClient is the client to visit cniserver
@@ -28,6 +29,7 @@ type PodResponse struct {
 	CIDR       string `json:"cidr"`
 	Gateway    string `json:"gateway"`
 	Mtu        int    `json:"mtu"`
+	Err        string `json:"error"`
 }
 
 // NewCniServerClient return a new cniserverclient
@@ -42,24 +44,25 @@ func NewCniServerClient(socketAddress string) CniServerClient {
 // Add pod request
 func (csc CniServerClient) Add(podRequest PodRequest) (*PodResponse, error) {
 	resp := PodResponse{}
-	res, body, errors := csc.Post("http://dummy/api/v1/add").Send(podRequest).EndStruct(&resp)
+	res, _, errors := csc.Post("http://dummy/api/v1/add").Send(podRequest).EndStruct(&resp)
 	if len(errors) != 0 {
 		return nil, errors[0]
 	}
 	if res.StatusCode != 200 {
-		return nil, fmt.Errorf("request ip return %d %s", res.StatusCode, body)
+		return nil, fmt.Errorf("request ip return %d %s", res.StatusCode, resp.Err)
 	}
 	return &resp, nil
 }
 
 // Del pod request
 func (csc CniServerClient) Del(podRequest PodRequest) error {
-	res, body, errors := csc.Post("http://dummy/api/v1/del").Send(podRequest).End()
+	resp := PodResponse{}
+	res, _, errors := csc.Post("http://dummy/api/v1/del").Send(podRequest).EndStruct(&resp)
 	if len(errors) != 0 {
 		return errors[0]
 	}
 	if res.StatusCode != 204 {
-		return fmt.Errorf("delete ip return %d %s", res.StatusCode, body)
+		return fmt.Errorf("delete ip return %d %s", res.StatusCode, resp.Err)
 	}
 	return nil
 }
