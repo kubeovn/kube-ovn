@@ -83,10 +83,17 @@ func ValidateLogicalSwitch(annotations map[string]string) error {
 
 func ValidatePodNetwork(annotations map[string]string) error {
 	if ip := annotations[IpAddressAnnotation]; ip != "" {
-		_, _, err := net.ParseCIDR(ip)
-		if err != nil {
-			return fmt.Errorf("%s is not a valid %s", ip, IpAddressAnnotation)
+		if strings.Contains(ip, "/") {
+			_, _, err := net.ParseCIDR(ip)
+			if err != nil {
+				return fmt.Errorf("%s is not a valid %s", ip, IpAddressAnnotation)
+			}
+		} else {
+			if net.ParseIP(ip) == nil {
+				return fmt.Errorf("%s is not a valid %s", ip, IpAddressAnnotation)
+			}
 		}
+
 	}
 
 	mac := annotations[MacAddressAnnotation]
@@ -99,7 +106,7 @@ func ValidatePodNetwork(annotations map[string]string) error {
 	ipPool := annotations[IpPoolAnnotation]
 	if ipPool != "" {
 		for _, ip := range strings.Split(ipPool, ",") {
-			if net.ParseIP(ip) == nil {
+			if net.ParseIP(strings.TrimSpace(ip)) == nil {
 				return fmt.Errorf("%s in %s is not a valid address", ip, IpPoolAnnotation)
 			}
 		}
