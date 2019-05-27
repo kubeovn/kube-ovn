@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## v0.4.1 -- 2019/05/27
+This is a bugfix version
+
+### Bug Fixes
+* manual static ip allocation and automatic allocation should use different ip validation
+* json: cannot unmarshal string into Go value of type request.PodResponse
+* use ovsdb-client to get leader info to avoid log rotation
+* use default-gw as default-exclude-ips and expose args to docs
+* to cleanup all created resources, not only kube-ovn namespace.
+
 ## v0.4.0 -- 2019/05/16
 ### Features
 * ovndb now support cluster ha mode
