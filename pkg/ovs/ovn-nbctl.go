@@ -9,6 +9,8 @@ import (
 
 	"github.com/alauda/kube-ovn/pkg/util"
 	"k8s.io/klog"
+
+	netv1 "k8s.io/api/networking/v1"
 )
 
 func (c Client) ovnNbCommand(cmdArgs ...string) (string, error) {
@@ -95,7 +97,8 @@ func (c Client) CreateLogicalSwitch(ls, subnet, gateway, excludeIps string) erro
 	_, err := c.ovnNbCommand(WaitSb, MayExist, "ls-add", ls, "--",
 		"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", subnet), "--",
 		"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
-		"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", excludeIps))
+		"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", excludeIps), "--",
+		"acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip4.src==%s", c.NodeSwitchCIDR), "allow-related")
 	if err != nil {
 		klog.Errorf("create switch %s failed %v", ls, err)
 		return err
@@ -279,10 +282,7 @@ func (c Client) CleanLogicalSwitchAcl(ls string) error {
 func (c Client) SetPrivateLogicalSwitch(ls string, allow []string) error {
 	delArgs := []string{"acl-del", ls}
 	dropArgs := []string{"--", "acl-add", ls, "to-lport", util.DefaultDropPriority, fmt.Sprintf(`inport=="%s-%s"`, ls, c.ClusterRouter), "drop"}
-	nodeSwitchArgs := []string{"--", "acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip4.src==%s", c.NodeSwitchCIDR), "allow-related"}
-
 	ovnArgs := append(delArgs, dropArgs...)
-	ovnArgs = append(ovnArgs, nodeSwitchArgs...)
 
 	allowArgs := []string{}
 	for _, subnet := range allow {
@@ -346,4 +346,104 @@ func (c Client) GetPortAddr(port string) ([]string, error) {
 		}
 	}
 	return address, nil
+}
+
+func (c Client) CreatePortGroup(pgName string) error {
+	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid", "find", "port_group", fmt.Sprintf("name=%s", pgName))
+	if err != nil {
+		klog.Errorf("failed to find port_group %s", pgName)
+		return err
+	}
+	if output != "" {
+		return nil
+	}
+	_, err = c.ovnNbCommand("pg-add", pgName)
+	return err
+}
+
+func (c Client) DeletePortGroup(pgName string) error {
+	_, err := c.ovnNbCommand(IfExists, "destroy", "port_group", pgName)
+	return err
+}
+
+func (c Client) CreateAddressSet(asName string) error {
+	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid", "find", "address_set", fmt.Sprintf("name=%s", asName))
+	if err != nil {
+		klog.Errorf("failed to find address_set %s", asName)
+		return err
+	}
+	if output != "" {
+		return nil
+	}
+	_, err = c.ovnNbCommand("create", "address_set", fmt.Sprintf("name=%s", asName))
+	return err
+}
+
+func (c Client) DeleteAddressSet(asName string) error {
+	_, err := c.ovnNbCommand(IfExists, "destroy", "address_set", asName)
+	return err
+}
+
+func (c Client) CreateIngressACL(pgName, asIngressName, asExceptName string, npp []netv1.NetworkPolicyPort) error {
+	pgAs := fmt.Sprintf("%s_ip4", pgName)
+	delArgs := []string{"--type=port-group", "acl-del", pgName, "to-lport"}
+	exceptArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressExceptDropPriority, fmt.Sprintf("ip4.src == $%s && ip4.dst == $%s", asExceptName, pgAs), "drop"}
+	defaultArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressDefaultDrop, fmt.Sprintf("ip4.dst == $%s", pgAs), "drop"}
+	ovnArgs := append(delArgs, exceptArgs...)
+	ovnArgs = append(ovnArgs, defaultArgs...)
+
+	if len(npp) == 0 {
+		allowArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("ip4.src == $%s && ip4.dst == $%s", asIngressName, pgAs), "allow-related"}
+		ovnArgs = append(ovnArgs, allowArgs...)
+	} else {
+		for _, port := range npp {
+			allowArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("ip4.src == $%s && %s.dst == %d && ip4.dst == $%s", asIngressName, strings.ToLower(string(*port.Protocol)), port.Port.IntVal, pgAs), "allow-related"}
+			ovnArgs = append(ovnArgs, allowArgs...)
+		}
+	}
+	_, err := c.ovnNbCommand(ovnArgs...)
+	return err
+}
+
+func (c Client) CreateEgressACL(pgName, asEgressName, asExceptName string, npp []netv1.NetworkPolicyPort) error {
+	pgAs := fmt.Sprintf("%s_ip4", pgName)
+	delArgs := []string{"--type=port-group", "acl-del", pgName, "from-lport"}
+	exceptArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressExceptDropPriority, fmt.Sprintf("ip4.dst == $%s && ip4.src == $%s", asExceptName, pgAs), "drop"}
+	defaultArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressDefaultDrop, fmt.Sprintf("ip4.src == $%s", pgAs), "drop"}
+	ovnArgs := append(delArgs, exceptArgs...)
+	ovnArgs = append(ovnArgs, defaultArgs...)
+
+	if len(npp) == 0 {
+		allowArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("ip4.dst == $%s && ip4.src == $%s", asEgressName, pgAs), "allow-related"}
+		ovnArgs = append(ovnArgs, allowArgs...)
+	} else {
+		for _, port := range npp {
+			allowArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("ip4.dst == $%s && %s.dst == %d && ip4.src == $%s", asEgressName, strings.ToLower(string(*port.Protocol)), port.Port.IntVal, pgAs), "allow-related"}
+			ovnArgs = append(ovnArgs, allowArgs...)
+		}
+	}
+	_, err := c.ovnNbCommand(ovnArgs...)
+	return err
+}
+
+func (c Client) DeleteACL(pgName, direction string) error {
+	_, err := c.ovnNbCommand("--type=port-group", "acl-del", pgName, direction)
+	return err
+}
+
+func (c Client) SetPortsToPortGroup(portGroup string, portNames []string) error {
+	ovnArgs := []string{"pg-set-ports", portGroup}
+	ovnArgs = append(ovnArgs, portNames...)
+	_, err := c.ovnNbCommand(ovnArgs...)
+	return err
+}
+
+func (c Client) SetAddressesToAddressSet(addresses []string, as string) error {
+	ovnArgs := []string{"clear", "address_set", as, "addresses"}
+	if len(addresses) > 0 {
+		ovnArgs = append(ovnArgs, "--", "add", "address_set", as, "addresses")
+		ovnArgs = append(ovnArgs, addresses...)
+	}
+	_, err := c.ovnNbCommand(ovnArgs...)
+	return err
 }

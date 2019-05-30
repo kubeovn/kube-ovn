@@ -23,9 +23,18 @@ const (
 	PrivateSwitchAnnotation = "ovn.kubernetes.io/private"
 	AllowAccessAnnotation   = "ovn.kubernetes.io/allow"
 
+	NodeAllowPriority = "3000"
+
+	IngressExceptDropPriority = "2002"
+	IngressAllowPriority      = "2001"
+	IngressDefaultDrop        = "2000"
+
+	EgressExceptDropPriority = "2002"
+	EgressAllowPriority      = "2001"
+	EgressDefaultDrop        = "2000"
+
+	SubnetAllowPriority = "1001"
 	DefaultDropPriority = "1000"
-	NodeAllowPriority   = "1001"
-	SubnetAllowPriority = "1002"
 
 	GWTypeAnnotation  = "ovn.kubernetes.io/gateway_type"
 	GWDistributedMode = "distributed"

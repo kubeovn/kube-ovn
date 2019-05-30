@@ -14,6 +14,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	v1 "k8s.io/client-go/listers/core/v1"
+	netv1 "k8s.io/client-go/listers/networking/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/record"
@@ -63,6 +64,11 @@ type Controller struct {
 	endpointsLister     v1.EndpointsLister
 	endpointsSynced     cache.InformerSynced
 	updateEndpointQueue workqueue.RateLimitingInterface
+
+	npsLister     netv1.NetworkPolicyLister
+	npsSynced     cache.InformerSynced
+	updateNpQueue workqueue.RateLimitingInterface
+	deleteNpQueue workqueue.RateLimitingInterface
 	// recorder is an event recorder for recording Event resources to the
 	// Kubernetes API.
 	recorder record.EventRecorder
@@ -91,6 +97,7 @@ func NewController(config *Configuration) *Controller {
 	nodeInformer := informerFactory.Core().V1().Nodes()
 	serviceInformer := informerFactory.Core().V1().Services()
 	endpointInformer := informerFactory.Core().V1().Endpoints()
+	npInformer := informerFactory.Networking().V1().NetworkPolicies()
 
 	controller := &Controller{
 		config:        config,
@@ -125,6 +132,11 @@ func NewController(config *Configuration) *Controller {
 		endpointsSynced:     endpointInformer.Informer().HasSynced,
 		updateEndpointQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateEndpoint"),
 
+		npsLister:     npInformer.Lister(),
+		npsSynced:     npInformer.Informer().HasSynced,
+		updateNpQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateNp"),
+		deleteNpQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteNp"),
+
 		recorder: recorder,
 
 		informerFactory: informerFactory,
@@ -157,6 +169,12 @@ func NewController(config *Configuration) *Controller {
 		UpdateFunc: controller.enqueueUpdateEndpoint,
 	})
 
+	npInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddNp,
+		UpdateFunc: controller.enqueueUpdateNp,
+		DeleteFunc: controller.enqueueDeleteNp,
+	})
+
 	return controller
 }
 
@@ -182,8 +200,10 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	defer c.deleteTcpServiceQueue.ShutDown()
 	defer c.deleteUdpServiceQueue.ShutDown()
 	defer c.updateServiceQueue.ShutDown()
-
 	defer c.updateEndpointQueue.ShutDown()
+
+	defer c.updateNpQueue.ShutDown()
+	defer c.deleteNpQueue.ShutDown()
 
 	// Start the informer factories to begin populating the informer caches
 	klog.Info("Starting OVN controller")
@@ -207,7 +227,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 
 	// Wait for the caches to be synced before starting workers
 	klog.Info("Waiting for informer caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced, c.npsSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
@@ -233,6 +253,9 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 		go wait.Until(c.runDeleteUdpServiceWorker, time.Second, stopCh)
 
 		go wait.Until(c.runUpdateEndpointWorker, time.Second, stopCh)
+
+		go wait.Until(c.runUpdateNpWorker, time.Second, stopCh)
+		go wait.Until(c.runDeleteNpWorker, time.Second, stopCh)
 	}
 
 	klog.Info("Started workers")

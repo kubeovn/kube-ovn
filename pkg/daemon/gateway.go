@@ -72,7 +72,6 @@ func (c *Controller) runGateway(stopCh <-chan struct{}) error {
 				return err
 			}
 		}
-
 	}
 
 	ticker := time.NewTicker(3 * time.Second)
