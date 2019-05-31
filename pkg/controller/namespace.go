@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net"
+	"reflect"
 	"strings"
 
 	"github.com/alauda/kube-ovn/pkg/util"
@@ -26,6 +27,11 @@ func (c *Controller) enqueueAddNamespace(obj interface{}) {
 	}
 	klog.V(3).Infof("enqueue add namespace %s", key)
 	c.addNamespaceQueue.AddRateLimited(key)
+
+	ns := obj.(*v1.Namespace)
+	for _, np := range c.namespaceMatchNetworkPolicies(ns) {
+		c.updateNpQueue.AddRateLimited(np)
+	}
 }
 
 func (c *Controller) enqueueDeleteNamespace(obj interface{}) {
@@ -40,6 +46,11 @@ func (c *Controller) enqueueDeleteNamespace(obj interface{}) {
 	}
 	klog.V(3).Infof("enqueue delete namespace %s", key)
 	c.deleteNamespaceQueue.AddRateLimited(key)
+
+	ns := obj.(*v1.Namespace)
+	for _, np := range c.namespaceMatchNetworkPolicies(ns) {
+		c.updateNpQueue.AddRateLimited(np)
+	}
 }
 
 func (c *Controller) enqueueUpdateNamespace(old, new interface{}) {
@@ -61,6 +72,14 @@ func (c *Controller) enqueueUpdateNamespace(old, new interface{}) {
 		}
 		klog.V(3).Infof("enqueue update namespace %s", key)
 		c.updateNamespaceQueue.AddRateLimited(key)
+	}
+
+	if !reflect.DeepEqual(oldNs.Labels, newNs.Labels) {
+		oldNp := c.namespaceMatchNetworkPolicies(oldNs)
+		newNp := c.namespaceMatchNetworkPolicies(newNs)
+		for _, np := range util.DiffStringSlice(oldNp, newNp) {
+			c.updateNpQueue.AddRateLimited(np)
+		}
 	}
 }
 

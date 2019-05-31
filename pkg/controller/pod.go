@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -40,6 +41,14 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 
 	klog.V(3).Infof("enqueue add pod %s", key)
 	c.addPodQueue.AddRateLimited(key)
+
+	// TODO: we need to find a way to reduce duplicated np added to the queue
+	if p.Status.PodIP != "" {
+		for _, np := range c.podMatchNetworkPolicies(p) {
+			c.updateNpQueue.AddRateLimited(np)
+		}
+	}
+
 }
 
 func (c *Controller) enqueueDeletePod(obj interface{}) {
@@ -54,6 +63,11 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 	}
 	klog.V(3).Infof("enqueue delete pod %s", key)
 	c.deletePodQueue.AddRateLimited(key)
+
+	p := obj.(*v1.Pod)
+	for _, np := range c.podMatchNetworkPolicies(p) {
+		c.updateNpQueue.AddRateLimited(np)
+	}
 }
 
 func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
@@ -75,6 +89,21 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		}
 		klog.V(3).Infof("enqueue update pod %s", key)
 		c.updatePodQueue.AddRateLimited(key)
+	}
+
+	if oldPod.Status.PodIP != newPod.Status.PodIP {
+		for _, np := range c.podMatchNetworkPolicies(newPod) {
+			c.updateNpQueue.AddRateLimited(np)
+		}
+		return
+	}
+
+	if !reflect.DeepEqual(oldPod.Labels, newPod.Labels) {
+		oldNp := c.podMatchNetworkPolicies(oldPod)
+		newNp := c.podMatchNetworkPolicies(newPod)
+		for _, np := range util.DiffStringSlice(oldNp, newNp) {
+			c.updateNpQueue.AddRateLimited(np)
+		}
 	}
 }
 
