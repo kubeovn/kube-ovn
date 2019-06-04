@@ -26,9 +26,28 @@ For high-available ovn db, see [high available](high-available.md)
 ### Controller Configuration
 
 ```bash
+    # Default Logical Switch
+    --default-ls: The default logical switch name, default: ovn-default
     --default-cidr: Default CIDR for Namespaces with no logical switch annotation, default: 10.16.0.0/16
-    --default-gateway: The gateway address for default cidr, default: 10.16.0.1
+    --default-gateway: Default gateway for default-cidr, default the first ip in default-cidr
     --node-switch-cidr: The CIDR for the Node switch, default: 100.64.0.0/16
+    --default-exclude-ips: Exclude ips in default switch, default equals to gateway address
+    
+    # Node Switch
+    --node-switch: The name of node gateway switch which help node to access pod network, default: join
+    --node-switch-cidr: The cidr for node switch, default: 100.64.0.0/16
+    --node-switch-gateway: The gateway for node switch, default the first ip in node-switch-cidr
+    
+    # LoadBalancer
+    --cluster-tcp-loadbalancer: The name for cluster tcp loadbalancer, default cluster-tcp-loadbalancer
+    --cluster-udp-loadbalancer: The name for cluster udp loadbalancer, default cluster-udp-loadbalancer
+    
+    # Router
+    --cluster-router: The router name for cluster router, default: ovn-cluster
+    
+    # Misc
+    --worker-num: The parallelism of each worker, default: 3
+    --kubeconfig: Path to kubeconfig file with authorization and master location information. If not set use the inCluster token
 ```
 
 ## To uninstall

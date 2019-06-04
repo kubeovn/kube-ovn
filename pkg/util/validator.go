@@ -1,8 +1,6 @@
 package util
 
 import (
-	"bytes"
-	"encoding/binary"
 	"fmt"
 	"net"
 	"strconv"
@@ -27,6 +25,7 @@ func ValidateLogicalSwitch(annotations map[string]string) error {
 	if gateway == nil {
 		return fmt.Errorf("%s  is not a valid gateway", gatewayStr)
 	}
+
 	if !cidr.Contains(gateway) {
 		return fmt.Errorf("gateway address %s not in cidr range", gatewayStr)
 	}
@@ -52,7 +51,7 @@ func ValidateLogicalSwitch(annotations map[string]string) error {
 						return fmt.Errorf("ip %s in exclude_ips is not a valid address", ip)
 					}
 				}
-				if ip2Long(ips[0]) >= ip2Long(ips[1]) {
+				if Ip2Long(ips[0]) >= Ip2Long(ips[1]) {
 					return fmt.Errorf("%s in %s is not a valid ip range", ipr, ExcludeIpsAnnotation)
 				}
 			}
@@ -127,10 +126,4 @@ func ValidatePodNetwork(annotations map[string]string) error {
 	}
 
 	return nil
-}
-
-func ip2Long(ip string) uint32 {
-	var long uint32
-	binary.Read(bytes.NewBuffer(net.ParseIP(ip).To4()), binary.BigEndian, &long)
-	return long
 }
