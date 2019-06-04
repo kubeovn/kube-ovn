@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"time"
 
@@ -36,6 +39,9 @@ func main() {
 	}
 	kubeInformerFactory.Start(stopCh)
 	go ctl.Run(stopCh)
+	go func() {
+		klog.Fatal(http.ListenAndServe(fmt.Sprintf("localhost:%d", config.PprofPort), nil))
+	}()
 	daemon.RunServer(config)
 }
 

@@ -37,6 +37,7 @@ type Configuration struct {
 	PodNamespace string
 
 	WorkerNum int
+	PprofPort int
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -62,6 +63,7 @@ func ParseFlags() (*Configuration, error) {
 		argClusterUdpLoadBalancer = pflag.String("cluster-udp-loadbalancer", "cluster-udp-loadbalancer", "The name for cluster udp loadbalancer")
 
 		argWorkerNum = pflag.Int("worker-num", 3, "The parallelism of each worker, default: 3")
+		argPprofPort = pflag.Int("pprof-port", 10660, "The port to get profiling data, default 10660")
 	)
 
 	flag.Set("alsologtostderr", "true")
@@ -102,6 +104,7 @@ func ParseFlags() (*Configuration, error) {
 		ClusterTcpLoadBalancer: *argClusterTcpLoadBalancer,
 		ClusterUdpLoadBalancer: *argClusterUdpLoadBalancer,
 		WorkerNum:              *argWorkerNum,
+		PprofPort:              *argPprofPort,
 		PodName:                os.Getenv("POD_NAME"),
 		PodNamespace:           os.Getenv("KUBE_NAMESPACE"),
 	}
