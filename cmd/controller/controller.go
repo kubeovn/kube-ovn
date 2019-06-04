@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/exec"
 	"strings"
@@ -24,6 +26,9 @@ func main() {
 	}
 
 	go loopOvnNbctlDaemon(config)
+	go func() {
+		klog.Fatal(http.ListenAndServe(fmt.Sprintf("localhost:%d", config.PprofPort), nil))
+	}()
 
 	err = controller.InitClusterRouter(config)
 	if err != nil {

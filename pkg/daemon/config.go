@@ -22,6 +22,7 @@ type Configuration struct {
 	KubeClient            kubernetes.Interface
 	NodeName              string
 	ServiceClusterIPRange string
+	PprofPort             int
 }
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
@@ -32,6 +33,7 @@ func ParseFlags() (*Configuration, error) {
 		argOvsSocket             = pflag.String("ovs-socket", "", "The socket to local ovs-server")
 		argKubeConfigFile        = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 		argServiceClusterIPRange = pflag.String("service-cluster-ip-range", "10.96.0.0/12", "The kubernetes service cluster ip range")
+		argPprofPort             = pflag.Int("pprof-port", 10665, "The port to get profiling data, default 10665")
 	)
 
 	// mute log for ipset lib
@@ -65,6 +67,7 @@ func ParseFlags() (*Configuration, error) {
 		BindSocket:            *argBindSocket,
 		OvsSocket:             *argOvsSocket,
 		KubeConfigFile:        *argKubeConfigFile,
+		PprofPort:             *argPprofPort,
 		NodeName:              nodeName,
 		ServiceClusterIPRange: *argServiceClusterIPRange,
 	}

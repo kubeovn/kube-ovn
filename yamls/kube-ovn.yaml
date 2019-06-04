@@ -38,7 +38,7 @@ spec:
       hostNetwork: true
       containers:
         - name: kube-ovn-controller
-          image: "index.alauda.cn/alaudak8s/kube-ovn-controller:v0.4.1"
+          image: "index.alauda.cn/alaudak8s/kube-ovn-controller:v0.5.0-pre"
           imagePullPolicy: Always
           command:
           - /kube-ovn/start-controller.sh
@@ -55,6 +55,26 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+          readinessProbe:
+            exec:
+              command:
+                - nc
+                - -z
+                - -w3
+                - 127.0.0.1
+                - "10660"
+            periodSeconds: 3
+          livenessProbe:
+            exec:
+              command:
+                - nc
+                - -z
+                - -w3
+                - 127.0.0.1
+                - "10660"
+            initialDelaySeconds: 30
+            periodSeconds: 7
+            failureThreshold: 5
       nodeSelector:
         beta.kubernetes.io/os: "linux"
 
@@ -88,7 +108,7 @@ spec:
       hostPID: true
       initContainers:
       - name: install-cni
-        image: "index.alauda.cn/alaudak8s/kube-ovn-cni:v0.4.1"
+        image: "index.alauda.cn/alaudak8s/kube-ovn-cni:v0.5.0-pre"
         imagePullPolicy: Always
         command: ["/kube-ovn/install-cni.sh"]
         volumeMounts:
@@ -98,7 +118,7 @@ spec:
             name: cni-bin
       containers:
       - name: cni-server
-        image: "index.alauda.cn/alaudak8s/kube-ovn-cni:v0.4.1"
+        image: "index.alauda.cn/alaudak8s/kube-ovn-cni:v0.5.0-pre"
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -115,6 +135,26 @@ spec:
         volumeMounts:
           - mountPath: /run/openvswitch
             name: host-run-ovs
+        readinessProbe:
+          exec:
+            command:
+              - nc
+              - -z
+              - -w3
+              - 127.0.0.1
+              - "10665"
+          periodSeconds: 3
+        livenessProbe:
+          exec:
+            command:
+              - nc
+              - -z
+              - -w3
+              - 127.0.0.1
+              - "10665"
+          initialDelaySeconds: 30
+          periodSeconds: 7
+          failureThreshold: 5
       nodeSelector:
         beta.kubernetes.io/os: "linux"
       volumes:
@@ -127,3 +167,4 @@ spec:
         - name: cni-bin
           hostPath:
             path: /opt/cni/bin
+
