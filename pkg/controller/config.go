@@ -2,6 +2,7 @@ package controller
 
 import (
 	"flag"
+	"github.com/alauda/kube-ovn/pkg/util"
 	"os"
 
 	"github.com/spf13/pflag"
@@ -50,14 +51,14 @@ func ParseFlags() (*Configuration, error) {
 		argKubeConfigFile = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 
 		argDefaultLogicalSwitch = pflag.String("default-ls", "ovn-default", "The default logical switch name, default: ovn-default")
-		argDefaultCIDR          = pflag.String("default-cidr", "10.16.0.0/16", "Default cidr for namespace with no logical switch annotation, default: 10.16.0.0/16")
-		argDefaultGateway       = pflag.String("default-gateway", "10.16.0.1", "Default gateway for default subnet, default: 10.16.0.1")
+		argDefaultCIDR          = pflag.String("default-cidr", "10.16.0.0/16", "Default CIDR for namespace with no logical switch annotation, default: 10.16.0.0/16")
+		argDefaultGateway       = pflag.String("default-gateway", "", "Default gateway for default-cidr, default the first ip in default-cidr")
 		argDefaultExcludeIps    = pflag.String("default-exclude-ips", "", "Exclude ips in default switch, default equals to gateway address")
 
-		argClusterRouter     = pflag.String("cluster-router", "ovn-cluster", "The router name for cluster router, default: cluster-router")
+		argClusterRouter     = pflag.String("cluster-router", "ovn-cluster", "The router name for cluster router, default: ovn-cluster")
 		argNodeSwitch        = pflag.String("node-switch", "join", "The name of node gateway switch which help node to access pod network, default: join")
 		argNodeSwitchCIDR    = pflag.String("node-switch-cidr", "100.64.0.0/16", "The cidr for node switch, default: 100.64.0.0/16")
-		argNodeSwitchGateway = pflag.String("node-switch-gateway", "100.64.0.1", "The gateway for node switch, default: 100.64.0.1")
+		argNodeSwitchGateway = pflag.String("node-switch-gateway", "", "The gateway for node switch, default the first ip in node-switch-cidr")
 
 		argClusterTcpLoadBalancer = pflag.String("cluster-tcp-loadbalancer", "cluster-tcp-loadbalancer", "The name for cluster tcp loadbalancer")
 		argClusterUdpLoadBalancer = pflag.String("cluster-udp-loadbalancer", "cluster-udp-loadbalancer", "The name for cluster udp loadbalancer")
@@ -84,10 +85,6 @@ func ParseFlags() (*Configuration, error) {
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
 
-	if *argDefaultExcludeIps == "" {
-		argDefaultExcludeIps = argDefaultGateway
-	}
-
 	config := &Configuration{
 		OvnNbSocket:            *argOvnNbSocket,
 		OvnNbHost:              *argOvnNbHost,
@@ -108,6 +105,27 @@ func ParseFlags() (*Configuration, error) {
 		PodName:                os.Getenv("POD_NAME"),
 		PodNamespace:           os.Getenv("KUBE_NAMESPACE"),
 	}
+
+	if config.DefaultGateway == "" {
+		gw, err := util.FirstSubnetIP(config.DefaultCIDR)
+		if err != nil {
+			return nil, err
+		}
+		config.DefaultGateway = gw
+	}
+
+	if config.DefaultExcludeIps == "" {
+		config.DefaultExcludeIps = config.DefaultGateway
+	}
+
+	if config.NodeSwitchGateway == "" {
+		gw, err := util.FirstSubnetIP(config.NodeSwitchCIDR)
+		if err != nil {
+			return nil, err
+		}
+		config.NodeSwitchGateway = gw
+	}
+
 	err := config.initKubeClient()
 	if err != nil {
 		return nil, err
