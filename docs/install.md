@@ -50,6 +50,15 @@ For high-available ovn db, see [high available](high-available.md)
     --kubeconfig: Path to kubeconfig file with authorization and master location information. If not set use the inCluster token
 ```
 
+### Daemon Configuration
+
+```bash
+    --iface: The iface used to inter-host pod communication, default: the default route iface
+    --mtu: The MTU used by pod iface, default: iface MTU - 55
+    --service-cluster-ip-range: The kubernetes service cluster ip range, default: 10.96.0.0/12
+    --kubeconfig: Path to kubeconfig file with authorization and master location information. If not set use the inCluster token
+```
+
 ## To uninstall
 
 1. Remove Kubernetes resources:
