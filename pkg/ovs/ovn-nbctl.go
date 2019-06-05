@@ -81,8 +81,7 @@ func (c Client) CreatePort(ls, port, ip, mac string) (*nic, error) {
 		return nil, err
 	}
 	subnet, gw := strings.Trim(strings.Split(output, "\n")[0], "\""), strings.Trim(strings.Split(output, "\n")[1], "\"")
-	mask := strings.Split(subnet, "/")[1]
-	return &nic{IpAddress: fmt.Sprintf("%s/%s", ip, mask), MacAddress: mac, CIDR: subnet, Gateway: gw}, nil
+	return &nic{IpAddress: ip, MacAddress: mac, CIDR: subnet, Gateway: gw}, nil
 }
 
 type nic struct {

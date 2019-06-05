@@ -1,15 +1,17 @@
 package daemon
 
 import (
+	"fmt"
 	"github.com/alauda/kube-ovn/pkg/util"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
+	"strings"
 	"time"
 )
 
 // InitNodeGateway init ovn0
 func InitNodeGateway(config *Configuration) error {
-	var portName, ipAddr, macAddr, gw string
+	var portName, ip, cidr, macAddr, gw, ipAddr string
 	for {
 		nodeName := config.NodeName
 		node, err := config.KubeClient.CoreV1().Nodes().Get(nodeName, v1.GetOptions{})
@@ -17,14 +19,17 @@ func InitNodeGateway(config *Configuration) error {
 			klog.Errorf("failed to get node %s info %v", nodeName, err)
 			return err
 		}
-		macAddr = node.Annotations[util.MacAddressAnnotation]
-		ipAddr = node.Annotations[util.IpAddressAnnotation]
-		portName = node.Annotations[util.PortNameAnnotation]
-		gw = node.Annotations[util.GatewayAnnotation]
-		if macAddr == "" || ipAddr == "" || portName == "" || gw == "" {
-			klog.Errorf("can not find macAddr, ipAddr, portName and gw, wait 3 seconds...")
+		if err := util.ValidatePodNetwork(node.Annotations); err != nil {
+			klog.Errorf("validate node %s failed, %v", nodeName, err)
 			time.Sleep(3 * time.Second)
+			continue
 		} else {
+			macAddr = node.Annotations[util.MacAddressAnnotation]
+			ip = node.Annotations[util.IpAddressAnnotation]
+			cidr = node.Annotations[util.CidrAnnotation]
+			portName = node.Annotations[util.PortNameAnnotation]
+			gw = node.Annotations[util.GatewayAnnotation]
+			ipAddr = fmt.Sprintf("%s/%s", ip, strings.Split(cidr, "/")[1])
 			break
 		}
 	}

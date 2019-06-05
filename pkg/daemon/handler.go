@@ -34,7 +34,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		return
 	}
 	klog.Infof("add port request %v", podRequest)
-	var macAddr, ipAddr, cidr, gw, ingress, egress string
+	var macAddr, ip, ipAddr, cidr, gw, ingress, egress string
 	for i := 0; i < 10; i++ {
 		pod, err := csh.KubeClient.CoreV1().Pods(podRequest.PodNamespace).Get(podRequest.PodName, v1.GetOptions{})
 		if err != nil {
@@ -43,28 +43,29 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: errMsg.Error()})
 			return
 		}
-		macAddr = pod.Annotations[util.MacAddressAnnotation]
-		ipAddr = pod.Annotations[util.IpAddressAnnotation]
-		cidr = pod.Annotations[util.CidrAnnotation]
-		gw = pod.Annotations[util.GatewayAnnotation]
-		ingress = pod.Annotations[util.IngressRateAnnotation]
-		egress = pod.Annotations[util.EgressRateAnnotation]
-
-		if macAddr == "" || ipAddr == "" || cidr == "" || gw == "" {
+		if err := util.ValidatePodNetwork(pod.Annotations); err != nil {
+			klog.Errorf("validate pod %s/%s failed, %v", podRequest.PodNamespace, podRequest.PodName, err)
 			// wait controller assign an address
 			time.Sleep(2 * time.Second)
 			continue
 		}
+		macAddr = pod.Annotations[util.MacAddressAnnotation]
+		ip = pod.Annotations[util.IpAddressAnnotation]
+		cidr = pod.Annotations[util.CidrAnnotation]
+		gw = pod.Annotations[util.GatewayAnnotation]
+		ingress = pod.Annotations[util.IngressRateAnnotation]
+		egress = pod.Annotations[util.EgressRateAnnotation]
 		break
 	}
 
-	if macAddr == "" || ipAddr == "" || cidr == "" || gw == "" {
+	if macAddr == "" || ip == "" || cidr == "" || gw == "" {
 		errMsg := fmt.Errorf("no available ip for pod %s/%s", podRequest.PodNamespace, podRequest.PodName)
 		klog.Error(errMsg)
 		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: errMsg.Error()})
 		return
 	}
 
+	ipAddr = fmt.Sprintf("%s/%s", ip, strings.Split(cidr, "/")[1])
 	klog.Infof("create container mac %s, ip %s, cidr %s, gw %s", macAddr, ipAddr, cidr, gw)
 	err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.NetNs, podRequest.ContainerID, macAddr, ipAddr, gw, ingress, egress)
 	if err != nil {

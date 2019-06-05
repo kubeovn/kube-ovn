@@ -648,9 +648,9 @@ func getNodeTunlIP(node *v1.Node) (net.IP, error) {
 	if nodeTunlIP == "" {
 		return nil, errors.New("node has no tunl ip annotation")
 	}
-	nodeTunlIPAddr, _, err := net.ParseCIDR(nodeTunlIP)
-	if err != nil {
-		return nil, errors.Annotatef(err, "parse node tunl ip %s faield", nodeTunlIP)
+	nodeTunlIPAddr := net.ParseIP(nodeTunlIP)
+	if nodeTunlIPAddr == nil {
+		return nil, fmt.Errorf("failed to parse node tunl ip %s", nodeTunlIP)
 	}
 	return nodeTunlIPAddr, nil
 }
