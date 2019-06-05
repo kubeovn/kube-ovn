@@ -41,4 +41,7 @@ const (
 	GWCentralizedMode = "centralized"
 	GWNode            = "ovn.kubernetes.io/gateway_node"
 	GWNat             = "ovn.kubernetes.io/gateway_nat"
+
+	// Refer to http://www.openvswitch.org/support/dist-docs/ovn-architecture.7.html "Tunnel Encapsulations"
+	GeneveHeaderLength = 55
 )

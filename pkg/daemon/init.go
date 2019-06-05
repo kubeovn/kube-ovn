@@ -33,5 +33,5 @@ func InitNodeGateway(config *Configuration) error {
 			break
 		}
 	}
-	return configureNodeNic(portName, ipAddr, macAddr, gw)
+	return configureNodeNic(portName, ipAddr, macAddr, gw, config.MTU)
 }

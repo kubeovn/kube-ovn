@@ -1,13 +1,21 @@
 package daemon
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"os"
+	"os/exec"
+	"strings"
+	"syscall"
 
+	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
+	"github.com/vishvananda/netlink"
+
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -16,6 +24,8 @@ import (
 
 // Configuration is the daemon conf
 type Configuration struct {
+	Iface                 string
+	MTU                   int
 	BindSocket            string
 	OvsSocket             string
 	KubeConfigFile        string
@@ -29,11 +39,13 @@ type Configuration struct {
 // TODO: validate configuration
 func ParseFlags() (*Configuration, error) {
 	var (
+		argIface                 = pflag.String("iface", "", "The iface used to inter-host pod communication, default: the default route iface")
+		argMTU                   = pflag.Int("mtu", 0, "The MTU used by pod iface, default: iface MTU - 55")
 		argBindSocket            = pflag.String("bind-socket", "/var/run/cniserver.sock", "The socket daemon bind to.")
 		argOvsSocket             = pflag.String("ovs-socket", "", "The socket to local ovs-server")
 		argKubeConfigFile        = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
-		argServiceClusterIPRange = pflag.String("service-cluster-ip-range", "10.96.0.0/12", "The kubernetes service cluster ip range")
-		argPprofPort             = pflag.Int("pprof-port", 10665, "The port to get profiling data, default 10665")
+		argServiceClusterIPRange = pflag.String("service-cluster-ip-range", "10.96.0.0/12", "The kubernetes service cluster ip range, default: 10.96.0.0/12")
+		argPprofPort             = pflag.Int("pprof-port", 10665, "The port to get profiling data, default: 10665")
 	)
 
 	// mute log for ipset lib
@@ -64,6 +76,8 @@ func ParseFlags() (*Configuration, error) {
 	}
 
 	config := &Configuration{
+		Iface:                 *argIface,
+		MTU:                   *argMTU,
 		BindSocket:            *argBindSocket,
 		OvsSocket:             *argOvsSocket,
 		KubeConfigFile:        *argKubeConfigFile,
@@ -71,12 +85,39 @@ func ParseFlags() (*Configuration, error) {
 		NodeName:              nodeName,
 		ServiceClusterIPRange: *argServiceClusterIPRange,
 	}
-	err := config.initKubeClient()
+
+	if config.Iface == "" {
+		iface, err := getDefaultGatewayIface()
+		if err != nil {
+			return nil, err
+		} else {
+			config.Iface = iface
+		}
+	}
+	iface, err := net.InterfaceByName(config.Iface)
 	if err != nil {
 		return nil, err
 	}
-	klog.Infof("bind socket: %s", config.BindSocket)
-	klog.Infof("ovs socket at %s", config.OvsSocket)
+	if config.MTU == 0 {
+		config.MTU = iface.MTU - util.GeneveHeaderLength
+	}
+
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get iface addr. %v", err)
+	}
+	if len(addrs) == 0 {
+		return nil, fmt.Errorf("iface %s has no ip address", config.Iface)
+	}
+	if err := setEncapIP(strings.Split(addrs[0].String(), "/")[0]); err != nil {
+		return nil, err
+	}
+
+	err = config.initKubeClient()
+	if err != nil {
+		return nil, err
+	}
+	klog.Infof("daemon config: %v", config)
 	return config, nil
 }
 
@@ -104,5 +145,36 @@ func (config *Configuration) initKubeClient() error {
 	}
 
 	config.KubeClient = kubeClient
+	return nil
+}
+
+func getDefaultGatewayIface() (string, error) {
+	routes, err := netlink.RouteList(nil, syscall.AF_INET)
+	if err != nil {
+		return "", err
+	}
+
+	for _, route := range routes {
+		if route.Dst == nil || route.Dst.String() == "0.0.0.0/0" {
+			if route.LinkIndex <= 0 {
+				return "", errors.New("found default route but could not determine interface")
+			}
+			iface, err := net.InterfaceByIndex(route.LinkIndex)
+			if err != nil {
+				return "", fmt.Errorf("failed to get iface %v", err)
+			}
+			return iface.Name, nil
+		}
+	}
+
+	return "", errors.New("unable to find default route")
+}
+
+func setEncapIP(ip string) error {
+	raw, err := exec.Command(
+		"ovs-vsctl", "set", "open", ".", fmt.Sprintf("external-ids:ovn-encap-ip=%s", ip)).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to set ovn-encap-ip, %s", string(raw))
+	}
 	return nil
 }
