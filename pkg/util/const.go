@@ -43,5 +43,6 @@ const (
 	GWNat             = "ovn.kubernetes.io/gateway_nat"
 
 	// Refer to http://www.openvswitch.org/support/dist-docs/ovn-architecture.7.html "Tunnel Encapsulations"
-	GeneveHeaderLength = 55
+	// outer IP header + outer UDP header + Geneve header + OVN header + inner eth header
+	GeneveHeaderLength = 20 + 8 + 8 + 8 + 14
 )
