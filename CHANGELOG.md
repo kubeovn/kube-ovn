@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## v0.5.0 -- 2019/06/06
+### Features
+* Support NetworkPolicy by OVN ACL
+* User can choose interface for inter-host communication
+* User can set mtu of pod interface
+* Set kernel args when start cniserver
+* Add pprof and use it as liveness/readiness probe
+* Assign default gw for default switch and node switch
+* Expose more cmd args to configure controller and daemon
+
+### Misc
+* Remove mask field from ip annotation
+
 ## v0.4.1 -- 2019/05/27
 This is a bugfix version
 

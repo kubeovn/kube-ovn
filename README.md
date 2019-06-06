@@ -9,6 +9,7 @@ Kube-OVN integrates the OVN-based Network Virtualization with Kubernetes. It off
 ## Features
 - **Namespaced Subnets**: Each Namespace can have a unique Subnet (backed by a Logical Switch). Pods within the Namespace will have IP addresses allocated from the Subnet. It's also possible for multiple Namespaces to share a Subnet.
 - **Subnet Isolation**: Can configure a Subnet to deny any traffic from source IP addresses not within the same Subnet. Can whitelist specific IP addresses and IP ranges.
+- **Network Policy**: Kube-OVN implements networking.k8s.io/NetworkPolicy API by ovn ACL.
 - **Static IP Addresses for Workloads**: Allocate random or static IP addresses to workloads.
 - **Dynamic QoS**: Configure Pod Ingress/Egress traffic rate limits on the fly.
 - **Embedded Load Balancers**: Replace kube-proxy with the OVN embedded distributed L2 Load Balancer.
@@ -18,7 +19,6 @@ Kube-OVN integrates the OVN-based Network Virtualization with Kubernetes. It off
 
 ## Planned Future Work
 - Hardware Offloading and DPDK Support
-- ACL-based Network Policy
 - Policy-based QoS
 - More Metrics and Traffic Graph
 - More Diagnosis and Tracing Tools
