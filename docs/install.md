@@ -54,7 +54,9 @@ For high-available ovn db, see [high available](high-available.md)
 
 ```bash
     --iface: The iface used to inter-host pod communication, default: the default route iface
-    --mtu: The MTU used by pod iface, default: iface MTU - 55
+    --mtu: The MTU used by pod iface, default: iface MTU - 58
+    --enable-mirror: Enable traffic mirror, default: false
+    --mirror-iface: The mirror nic name that will be created by kube-ovn, default: mirror0
     --service-cluster-ip-range: The kubernetes service cluster ip range, default: 10.96.0.0/12
     --kubeconfig: Path to kubeconfig file with authorization and master location information. If not set use the inCluster token
 ```

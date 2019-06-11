@@ -21,8 +21,7 @@ func main() {
 
 	config, err := controller.ParseFlags()
 	if err != nil {
-		klog.Errorf("parse config failed %v", err)
-		os.Exit(1)
+		klog.Fatalf("parse config failed %v", err)
 	}
 
 	go loopOvnNbctlDaemon(config)
@@ -30,28 +29,20 @@ func main() {
 		klog.Fatal(http.ListenAndServe(fmt.Sprintf("localhost:%d", config.PprofPort), nil))
 	}()
 
-	err = controller.InitClusterRouter(config)
-	if err != nil {
-		klog.Errorf("init cluster router failed %v", err)
-		os.Exit(1)
+	if err = controller.InitClusterRouter(config); err != nil {
+		klog.Fatalf("init cluster router failed %v", err)
 	}
 
-	err = controller.InitLoadBalancer(config)
-	if err != nil {
-		klog.Errorf("init load balancer failed %v", err)
-		os.Exit(1)
+	if err = controller.InitLoadBalancer(config); err != nil {
+		klog.Fatalf("init load balancer failed %v", err)
 	}
 
-	err = controller.InitNodeSwitch(config)
-	if err != nil {
-		klog.Errorf("init node switch failed %v", err)
-		os.Exit(1)
+	if err = controller.InitNodeSwitch(config); err != nil {
+		klog.Fatalf("init node switch failed %v", err)
 	}
 
-	err = controller.InitDefaultLogicalSwitch(config)
-	if err != nil {
-		klog.Errorf("init default switch failed %v", err)
-		os.Exit(1)
+	if err = controller.InitDefaultLogicalSwitch(config); err != nil {
+		klog.Fatalf("init default switch failed %v", err)
 	}
 
 	ctl := controller.NewController(config)
