@@ -26,6 +26,8 @@ import (
 type Configuration struct {
 	Iface                 string
 	MTU                   int
+	EnableMirror          bool
+	MirrorNic             string
 	BindSocket            string
 	OvsSocket             string
 	KubeConfigFile        string
@@ -41,6 +43,8 @@ func ParseFlags() (*Configuration, error) {
 	var (
 		argIface                 = pflag.String("iface", "", "The iface used to inter-host pod communication, default: the default route iface")
 		argMTU                   = pflag.Int("mtu", 0, "The MTU used by pod iface, default: iface MTU - 55")
+		argEnableMirror          = pflag.Bool("enable-mirror", false, "Enable traffic mirror, default: false")
+		argMirrorNic             = pflag.String("mirror-iface", "mirror0", "The mirror nic name that will be created by kube-ovn, default: mirror0")
 		argBindSocket            = pflag.String("bind-socket", "/var/run/cniserver.sock", "The socket daemon bind to.")
 		argOvsSocket             = pflag.String("ovs-socket", "", "The socket to local ovs-server")
 		argKubeConfigFile        = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
@@ -78,6 +82,8 @@ func ParseFlags() (*Configuration, error) {
 	config := &Configuration{
 		Iface:                 *argIface,
 		MTU:                   *argMTU,
+		EnableMirror:          *argEnableMirror,
+		MirrorNic:             *argMirrorNic,
 		BindSocket:            *argBindSocket,
 		OvsSocket:             *argOvsSocket,
 		KubeConfigFile:        *argKubeConfigFile,

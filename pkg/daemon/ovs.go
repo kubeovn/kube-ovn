@@ -201,7 +201,7 @@ func configureNodeNic(portName, ip, mac, gw string, mtu int) error {
 
 	err = netlink.LinkSetMTU(nodeLink, mtu)
 	if err != nil {
-		return fmt.Errorf("can not set mtu %v", err)
+		return fmt.Errorf("can not set node nic mtu %v", err)
 	}
 
 	if nodeLink.Attrs().OperState != netlink.OperUp {
@@ -214,5 +214,38 @@ func configureNodeNic(portName, ip, mac, gw string, mtu int) error {
 	// ping gw to activate the flow
 	output, _ := exec.Command("ping", "-w", "10", gw).CombinedOutput()
 	klog.Infof("ping gw result is: \n %s", string(output))
+	return nil
+}
+
+func configureMirror(portName string, mtu int) error {
+	raw, err := exec.Command(
+		"ovs-vsctl", "--may-exist", "add-port", "br-int", portName, "--",
+		"set", "interface", portName, "type=internal", "--",
+		"clear", "bridge", "br-int", "mirrors", "--",
+		"--id=@mirror0", "get", "port", portName, "--",
+		"--id=@m", "create", "mirror", "name=m0", "select_all=true", "output_port=@mirror0", "--",
+		"add", "bridge", "br-int", "mirrors", "@m").CombinedOutput()
+	if err != nil {
+		klog.Errorf("failed to configure mirror nic %s %s", portName, string(raw))
+		return fmt.Errorf(string(raw))
+	}
+
+	mirrorLink, err := netlink.LinkByName(portName)
+	if err != nil {
+		return fmt.Errorf("can not find mirror nic %s %v", portName, err)
+	}
+
+	err = netlink.LinkSetMTU(mirrorLink, mtu)
+	if err != nil {
+		return fmt.Errorf("can not set mirror nic mtu %v", err)
+	}
+
+	if mirrorLink.Attrs().OperState != netlink.OperUp {
+		err = netlink.LinkSetUp(mirrorLink)
+		if err != nil {
+			return fmt.Errorf("can not set mirror nic %s up %v", portName, err)
+		}
+	}
+
 	return nil
 }

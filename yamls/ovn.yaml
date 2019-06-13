@@ -170,7 +170,7 @@ spec:
       hostNetwork: true
       containers:
         - name: ovn-central
-          image: "index.alauda.cn/alaudak8s/kube-ovn-db:v0.5.0"
+          image: "index.alauda.cn/alaudak8s/kube-ovn-db:v0.6.0-pre"
           imagePullPolicy: Always
           env:
             - name: POD_IP
@@ -257,7 +257,7 @@ spec:
       hostPID: true
       containers:
         - name: openvswitch
-          image: "index.alauda.cn/alaudak8s/kube-ovn-node:v0.5.0"
+          image: "index.alauda.cn/alaudak8s/kube-ovn-node:v0.6.0-pre"
           imagePullPolicy: Always
           securityContext:
             runAsUser: 0

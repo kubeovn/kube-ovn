@@ -35,3 +35,7 @@ func InitNodeGateway(config *Configuration) error {
 	}
 	return configureNodeNic(portName, ipAddr, macAddr, gw, config.MTU)
 }
+
+func InitMirror(config *Configuration) error {
+	return configureMirror(config.MirrorNic, config.MTU)
+}

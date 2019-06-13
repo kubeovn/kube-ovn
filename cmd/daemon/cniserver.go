@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	_ "net/http/pprof"
-	"os"
 	"time"
 
 	"github.com/alauda/kube-ovn/pkg/daemon"
@@ -20,22 +19,24 @@ func main() {
 
 	config, err := daemon.ParseFlags()
 	if err != nil {
-		klog.Errorf("parse config failed %v", err)
-		os.Exit(1)
+		klog.Fatalf("parse config failed %v", err)
 	}
 
-	err = daemon.InitNodeGateway(config)
-	if err != nil {
-		klog.Errorf("init node gateway failed %v", err)
-		os.Exit(1)
+	if config.EnableMirror {
+		if err = daemon.InitMirror(config); err != nil {
+			klog.Fatalf("failed to init mirror nic, %v", err)
+		}
+	}
+
+	if err = daemon.InitNodeGateway(config); err != nil {
+		klog.Fatalf("init node gateway failed %v", err)
 	}
 
 	stopCh := signals.SetupSignalHandler()
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(config.KubeClient, time.Second*30)
 	ctl, err := daemon.NewController(config, kubeInformerFactory)
 	if err != nil {
-		klog.Errorf("create controller failed %v", err)
-		os.Exit(1)
+		klog.Fatalf("create controller failed %v", err)
 	}
 	kubeInformerFactory.Start(stopCh)
 	go ctl.Run(stopCh)
