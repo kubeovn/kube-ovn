@@ -8,7 +8,7 @@ Kube-OVN support traffic mirroring that duplicates pod nic send/receive network 
 
 Traffic mirror is disabled by default, you should add cmd args in cni-server when installing kube-ovn to enabled it.
 - `--enable-mirror=true`: enable traffic mirror
-- `--mirror-iface=mirror0`: kube-ovn will create an ovs internal port on every node to mirror pod traffic on that node. If not set will use mirror0 as the default port name
+- `--mirror-iface=mirror0`: kube-ovn will create an ovs internal port on every node to mirror pods traffic on that node. If not set will use mirror0 as the default port name
 
 Then you can use tcpdump or other tools to diagnose traffic from interface mirror0:
 
