@@ -16,6 +16,7 @@ Kube-OVN integrates the OVN-based Network Virtualization with Kubernetes. It off
 - **Distributed Gateways**: Every Node can act as a Gateway to provide external network connectivity.
 - **Namespaced Gateways**: Every Namespace can have a dedicated Gateway for Egress traffic.
 - **Direct External Connectivity**：Pod IP can be exposed to external network directly.
+- **Traffic Mirror**: Duplicated container network traffic for monitoring and diagnosing.
 
 ## Planned Future Work
 - Hardware Offloading and DPDK Support
@@ -38,6 +39,7 @@ Kube-OVN is easy to install with all necessary components/dependencies included.
 - [Static IP](docs/static-ip.md)
 - [Dynamic QoS](docs/qos.md)
 - [Gateway and Direct connect](docs/gateway.md)
+- [Traffic Mirror](docs/mirror.md)
 
 ## Contact
 Mail: mengxin#alauda.io
