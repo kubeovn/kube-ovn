@@ -176,4 +176,3 @@ spec:
         - name: cni-bin
           hostPath:
             path: /opt/cni/bin
-

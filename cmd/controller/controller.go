@@ -5,11 +5,11 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
-	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/alauda/kube-ovn/pkg/controller"
+	"github.com/alauda/kube-ovn/pkg/ovs"
+
 	"k8s.io/klog"
 	"k8s.io/sample-controller/pkg/signals"
 )
@@ -55,25 +55,7 @@ func loopOvnNbctlDaemon(config *controller.Configuration) {
 		time.Sleep(5 * time.Second)
 
 		if _, err := os.Stat(daemonSocket); os.IsNotExist(err) || daemonSocket == "" {
-			startOvnNbctlDaemon(config.OvnNbHost, config.OvnNbPort)
+			ovs.StartOvnNbctlDaemon(config.OvnNbHost, config.OvnNbPort)
 		}
 	}
-}
-
-func startOvnNbctlDaemon(nbHost string, nbPort int) (string, error) {
-	klog.Infof("start ovn-nbctl daemon")
-	output, err := exec.Command(
-		"ovn-nbctl",
-		fmt.Sprintf("--db=tcp:%s:%d", nbHost, nbPort),
-		"--pidfile",
-		"--detach",
-	).CombinedOutput()
-	if err != nil {
-		klog.Errorf("start ovn-nbctl daemon failed, %s", string(output))
-		return "", err
-	}
-
-	daemonSocket := strings.TrimSpace(string(output))
-	os.Setenv("OVN_NB_DAEMON", daemonSocket)
-	return daemonSocket, nil
 }
