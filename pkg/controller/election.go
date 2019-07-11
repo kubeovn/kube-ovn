@@ -79,7 +79,7 @@ func setupLeaderElection(config *leaderElectionConfig) *leaderelection.LeaderEle
 	}
 
 	broadcaster := record.NewBroadcaster()
-	hostname, _ := os.Hostname()
+	hostname := os.Getenv("KUBE_NODE_NAME")
 
 	recorder := broadcaster.NewRecorder(scheme.Scheme, apiv1.EventSource{
 		Component: ovnLeaderElector,

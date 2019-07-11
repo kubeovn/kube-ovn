@@ -112,7 +112,7 @@ LOOP:
 
 func (c *Controller) getLocalPodIPsNeedNAT() ([]string, error) {
 	var localPodIPs []string
-	hostname, _ := os.Hostname()
+	hostname := os.Getenv("KUBE_NODE_NAME")
 	allPods, err := c.podsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("list pods failed, %+v", err)
