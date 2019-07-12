@@ -1,74 +1,68 @@
 package controller
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"strings"
 
+	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"github.com/alauda/kube-ovn/pkg/util"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
 )
 
 // InitDefaultLogicalSwitch int the default logical switch for ovn network
 func InitDefaultLogicalSwitch(config *Configuration) error {
-	namespace := os.Getenv("KUBE_NAMESPACE")
-	if namespace == "" {
-		klog.Errorf("env KUBE_NAMESPACE not exists")
-		return fmt.Errorf("env KUBE_NAMESPACE not exists")
+	_, err := config.KubeOvnClient.KubeovnV1().Subnets().Get(config.DefaultLogicalSwitch, v1.GetOptions{})
+	if err == nil {
+		return nil
 	}
 
-	ns, err := config.KubeClient.CoreV1().Namespaces().Get(namespace, v1.GetOptions{})
-	if err != nil {
+	if !errors.IsNotFound(err) {
+		klog.Errorf("get default subnet %s failed %v", config.DefaultLogicalSwitch, err)
 		return err
 	}
-
-	patchPayloadTemplate :=
-		`[{
-        "op": "%s",
-        "path": "/metadata/annotations",
-        "value": %s
-    }]`
-	payload := map[string]string{
-		util.LogicalSwitchAnnotation: config.DefaultLogicalSwitch,
-		util.CidrAnnotation:          config.DefaultCIDR,
-		util.GatewayAnnotation:       config.DefaultGateway,
-		util.ExcludeIpsAnnotation:    config.DefaultExcludeIps,
+	defaultSubnet := kubeovnv1.Subnet{
+		ObjectMeta: v1.ObjectMeta{Name: config.DefaultLogicalSwitch},
+		Spec: kubeovnv1.SubnetSpec{
+			Default:     true,
+			CIDRBlock:   config.DefaultCIDR,
+			Gateway:     config.DefaultGateway,
+			ExcludeIps:  strings.Split(config.DefaultExcludeIps, ","),
+			NatOutgoing: true,
+			GatewayType: kubeovnv1.GWDistributedType,
+			Protocol:    kubeovnv1.ProtocolIPv4,
+		},
 	}
-	raw, _ := json.Marshal(payload)
-	op := "replace"
-	if len(ns.Annotations) == 0 {
-		op = "add"
-	}
-	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-	_, err = config.KubeClient.CoreV1().Namespaces().Patch(namespace, types.JSONPatchType, []byte(patchPayload))
-	if err != nil {
-		klog.Errorf("patch namespace %s failed %v", namespace, err)
-	}
+	_, err = config.KubeOvnClient.KubeovnV1().Subnets().Create(&defaultSubnet)
 	return err
 }
 
 // InitNodeSwitch init node switch to connect host and pod
 func InitNodeSwitch(config *Configuration) error {
-	client := ovs.NewClient(config.OvnNbHost, config.OvnNbPort, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR)
-	ss, err := client.ListLogicalSwitch()
-	if err != nil {
-		return err
-	}
-	klog.Infof("exists switches %v", ss)
-	for _, s := range ss {
-		if config.NodeSwitch == s {
-			return nil
-		}
+	_, err := config.KubeOvnClient.KubeovnV1().Subnets().Get(config.NodeSwitch, v1.GetOptions{})
+	if err == nil {
+		return nil
 	}
 
-	err = client.CreateLogicalSwitch(config.NodeSwitch, config.NodeSwitchCIDR, config.NodeSwitchGateway, config.NodeSwitchGateway)
-	if err != nil {
+	if !errors.IsNotFound(err) {
+		klog.Errorf("get node subnet %s failed %v", config.NodeSwitch, err)
 		return err
 	}
-	return nil
+	nodeSubnet := kubeovnv1.Subnet{
+		ObjectMeta: v1.ObjectMeta{Name: config.NodeSwitch},
+		Spec: kubeovnv1.SubnetSpec{
+			Default:    false,
+			CIDRBlock:  config.NodeSwitchCIDR,
+			Gateway:    config.NodeSwitchGateway,
+			ExcludeIps: []string{config.NodeSwitchGateway},
+			Protocol:   kubeovnv1.ProtocolIPv4,
+		},
+	}
+	_, err = config.KubeOvnClient.KubeovnV1().Subnets().Create(&nodeSubnet)
+
+	return err
 }
 
 // InitClusterRouter init cluster router to connect different logical switches

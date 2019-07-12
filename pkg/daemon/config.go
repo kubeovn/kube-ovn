@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/vishvananda/netlink"
 
+	clientset "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -32,6 +33,7 @@ type Configuration struct {
 	OvsSocket             string
 	KubeConfigFile        string
 	KubeClient            kubernetes.Interface
+	KubeOvnClient         clientset.Interface
 	NodeName              string
 	ServiceClusterIPRange string
 	PprofPort             int
@@ -144,13 +146,20 @@ func (config *Configuration) initKubeClient() error {
 			return err
 		}
 	}
+
 	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		klog.Errorf("init kubernetes client failed %v", err)
 		return err
 	}
-
 	config.KubeClient = kubeClient
+
+	kubeOvnClient, err := clientset.NewForConfig(cfg)
+	if err != nil {
+		klog.Errorf("init kubeovn client failed %v", err)
+		return err
+	}
+	config.KubeOvnClient = kubeOvnClient
 	return nil
 }
 

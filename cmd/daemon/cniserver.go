@@ -6,6 +6,7 @@ import (
 	_ "net/http/pprof"
 	"time"
 
+	kubeovninformer "github.com/alauda/kube-ovn/pkg/client/informers/externalversions"
 	"github.com/alauda/kube-ovn/pkg/daemon"
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	kubeinformers "k8s.io/client-go/informers"
@@ -34,11 +35,13 @@ func main() {
 
 	stopCh := signals.SetupSignalHandler()
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(config.KubeClient, time.Second*30)
-	ctl, err := daemon.NewController(config, kubeInformerFactory)
+	kubeovnInformerFactory := kubeovninformer.NewSharedInformerFactoryWithOptions(config.KubeOvnClient, time.Second*30)
+	ctl, err := daemon.NewController(config, kubeInformerFactory, kubeovnInformerFactory)
 	if err != nil {
 		klog.Fatalf("create controller failed %v", err)
 	}
 	kubeInformerFactory.Start(stopCh)
+	kubeovnInformerFactory.Start(stopCh)
 	go ctl.Run(stopCh)
 	go func() {
 		klog.Fatal(http.ListenAndServe(fmt.Sprintf("localhost:%d", config.PprofPort), nil))

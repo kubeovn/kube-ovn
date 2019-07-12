@@ -13,16 +13,11 @@ const (
 	PortNameAnnotation = "ovn.kubernetes.io/port_name"
 
 	LogicalSwitchAnnotation = "ovn.kubernetes.io/logical_switch"
-	ExcludeIpsAnnotation    = "ovn.kubernetes.io/exclude_ips"
 
 	ProtocolTCP = "tcp"
 	ProtocolUDP = "udp"
 
-	NodeNic = "ovn0"
-
-	PrivateSwitchAnnotation = "ovn.kubernetes.io/private"
-	AllowAccessAnnotation   = "ovn.kubernetes.io/allow"
-
+	NodeNic           = "ovn0"
 	NodeAllowPriority = "3000"
 
 	IngressExceptDropPriority = "2002"
@@ -35,12 +30,6 @@ const (
 
 	SubnetAllowPriority = "1001"
 	DefaultDropPriority = "1000"
-
-	GWTypeAnnotation  = "ovn.kubernetes.io/gateway_type"
-	GWDistributedMode = "distributed"
-	GWCentralizedMode = "centralized"
-	GWNode            = "ovn.kubernetes.io/gateway_node"
-	GWNat             = "ovn.kubernetes.io/gateway_nat"
 
 	// Refer to http://www.openvswitch.org/support/dist-docs/ovn-architecture.7.html "Tunnel Encapsulations"
 	// outer IP header + outer UDP header + Geneve header + OVN header + inner eth header

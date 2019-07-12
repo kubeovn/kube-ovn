@@ -8,13 +8,14 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/juju/errors"
-
+	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"github.com/alauda/kube-ovn/pkg/util"
+	"github.com/juju/errors"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
@@ -367,14 +368,20 @@ func (c *Controller) handleAddPod(key string) error {
 		return nil
 	}
 
-	ns, err := c.namespacesLister.Get(namespace)
+	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
-		klog.Errorf("get namespace %s failed %v", namespace, err)
+		klog.Errorf("failed to list subnets %v", err)
 		return err
 	}
-	ls := ns.Annotations[util.LogicalSwitchAnnotation]
-	if ls == "" {
-		ls = c.config.DefaultLogicalSwitch
+
+	ls := c.config.DefaultLogicalSwitch
+	for _, subnet := range subnets {
+		for _, ns := range subnet.Spec.Namespaces {
+			if ns == pod.Namespace {
+				ls = subnet.Name
+				break
+			}
+		}
 	}
 
 	if err := util.ValidatePodNetwork(pod.Annotations); err != nil {
@@ -414,7 +421,7 @@ func (c *Controller) handleAddPod(key string) error {
 
 	raw, _ := json.Marshal(pod.Annotations)
 	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-	_, err = c.kubeclientset.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, []byte(patchPayload))
+	_, err = c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, []byte(patchPayload))
 	if err != nil {
 		klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
 	}
@@ -443,14 +450,20 @@ func (c *Controller) handleAddIpPoolPod(key string) error {
 		return nil
 	}
 
-	ns, err := c.namespacesLister.Get(namespace)
+	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
-		klog.Errorf("get namespace %s failed %v", namespace, err)
+		klog.Errorf("failed to list subnets %v", err)
 		return err
 	}
-	ls := ns.Annotations[util.LogicalSwitchAnnotation]
-	if ls == "" {
-		ls = c.config.DefaultLogicalSwitch
+
+	ls := c.config.DefaultLogicalSwitch
+	for _, subnet := range subnets {
+		for _, ns := range subnet.Spec.Namespaces {
+			if ns == pod.Namespace {
+				ls = subnet.Name
+				break
+			}
+		}
 	}
 
 	ipPoolAnnotation := pod.Annotations[util.IpPoolAnnotation]
@@ -470,7 +483,7 @@ func (c *Controller) handleAddIpPoolPod(key string) error {
 				if net.ParseIP(ip) == nil {
 					continue
 				}
-				pods, err := c.kubeclientset.CoreV1().Pods(v1.NamespaceAll).List(metav1.ListOptions{})
+				pods, err := c.config.KubeClient.CoreV1().Pods(v1.NamespaceAll).List(metav1.ListOptions{})
 				if err != nil {
 					klog.Errorf("failed to list pod %v", err)
 					return err
@@ -526,7 +539,7 @@ func (c *Controller) handleAddIpPoolPod(key string) error {
 
 	raw, _ := json.Marshal(pod.Annotations)
 	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-	_, err = c.kubeclientset.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, []byte(patchPayload))
+	_, err = c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, []byte(patchPayload))
 	if err != nil {
 		klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
 	}
@@ -596,14 +609,28 @@ func (c *Controller) handleUpdatePod(key string) error {
 		return nil
 	}
 
-	ns, err := c.namespacesLister.Get(namespace)
+	subnet, err := c.subnetsLister.Get(c.config.DefaultLogicalSwitch)
 	if err != nil {
-		klog.Errorf("get namespace %s failed %v", namespace, err)
+		klog.Errorf("failed to get default subnet %v", err)
 		return err
 	}
-	nsGWType := ns.Annotations[util.GWTypeAnnotation]
-	switch nsGWType {
-	case "", util.GWDistributedMode:
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets %v", err)
+		return err
+	}
+
+	for _, s := range subnets {
+		for _, ns := range s.Spec.Namespaces {
+			if ns == pod.Namespace {
+				subnet = s
+				break
+			}
+		}
+	}
+
+	switch subnet.Spec.GatewayType {
+	case "", kubeovnv1.GWDistributedType:
 		node, err := c.nodesLister.Get(pod.Spec.NodeName)
 		if err != nil {
 			klog.Errorf("get node %s failed %v", pod.Spec.NodeName, err)
@@ -616,9 +643,8 @@ func (c *Controller) handleUpdatePod(key string) error {
 		if err := c.ovnClient.AddStaticRouter(ovs.PolicySrcIP, pod.Status.PodIP, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
 			return errors.Annotate(err, "add static route failed")
 		}
-	case util.GWCentralizedMode:
-		gatewayNode := ns.Annotations[util.GWNode]
-		node, err := c.nodesLister.Get(gatewayNode)
+	case kubeovnv1.GWCentralizedType:
+		node, err := c.nodesLister.Get(subnet.Spec.GatewayNode)
 		if err != nil {
 			klog.Errorf("get node %s failed %v", pod.Spec.NodeName, err)
 			return err

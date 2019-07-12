@@ -5,6 +5,7 @@ import (
 	"github.com/alauda/kube-ovn/pkg/util"
 	"os"
 
+	clientset "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -20,6 +21,7 @@ type Configuration struct {
 	OvnNbPort      int
 	KubeConfigFile string
 	KubeClient     kubernetes.Interface
+	KubeOvnClient  clientset.Interface
 
 	DefaultLogicalSwitch string
 	DefaultCIDR          string
@@ -158,7 +160,13 @@ func (config *Configuration) initKubeClient() error {
 		klog.Errorf("init kubernetes client failed %v", err)
 		return err
 	}
-
 	config.KubeClient = kubeClient
+
+	kubeOvnClient, err := clientset.NewForConfig(cfg)
+	if err != nil {
+		klog.Errorf("init kubeovn client failed %v", err)
+		return err
+	}
+	config.KubeOvnClient = kubeOvnClient
 	return nil
 }

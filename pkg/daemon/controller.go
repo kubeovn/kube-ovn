@@ -11,6 +11,8 @@ import (
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"k8s.io/apimachinery/pkg/api/errors"
 
+	kubeovninformer "github.com/alauda/kube-ovn/pkg/client/informers/externalversions"
+	kubeovnlister "github.com/alauda/kube-ovn/pkg/client/listers/kube-ovn/v1"
 	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/projectcalico/felix/ipsets"
@@ -21,7 +23,6 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	listerv1 "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -31,12 +32,11 @@ import (
 
 // Controller watch pod and namespace changes to update iptables, ipset and ovs qos
 type Controller struct {
-	config        *Configuration
-	kubeclientset kubernetes.Interface
+	config *Configuration
 
-	namespacesLister listerv1.NamespaceLister
-	namespacesSynced cache.InformerSynced
-	namespaceQueue   workqueue.RateLimitingInterface
+	subnetsLister kubeovnlister.SubnetLister
+	subnetsSynced cache.InformerSynced
+	subnetQueue   workqueue.RateLimitingInterface
 
 	podsLister listerv1.PodLister
 	podsSynced cache.InformerSynced
@@ -49,13 +49,13 @@ type Controller struct {
 }
 
 // NewController init a daemon controller
-func NewController(config *Configuration, informerFactory informers.SharedInformerFactory) (*Controller, error) {
+func NewController(config *Configuration, informerFactory informers.SharedInformerFactory, kubeovnInformerFactory kubeovninformer.SharedInformerFactory) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: config.KubeClient.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: config.NodeName})
 
-	namespaceInformer := informerFactory.Core().V1().Namespaces()
+	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	podInformer := informerFactory.Core().V1().Pods()
 	iptablesMgr, err := iptables.New()
 	if err != nil {
@@ -64,11 +64,10 @@ func NewController(config *Configuration, informerFactory informers.SharedInform
 	ipsetConf := ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil)
 	ipsetsMgr := ipsets.NewIPSets(ipsetConf)
 	controller := &Controller{
-		config:           config,
-		kubeclientset:    config.KubeClient,
-		namespacesLister: namespaceInformer.Lister(),
-		namespacesSynced: namespaceInformer.Informer().HasSynced,
-		namespaceQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Namespace"),
+		config:        config,
+		subnetsLister: subnetInformer.Lister(),
+		subnetsSynced: subnetInformer.Informer().HasSynced,
+		subnetQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Subnet"),
 
 		podsLister: podInformer.Lister(),
 		podsSynced: podInformer.Informer().HasSynced,
@@ -80,9 +79,9 @@ func NewController(config *Configuration, informerFactory informers.SharedInform
 		iptablesMgr: iptablesMgr,
 	}
 
-	namespaceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueNamespace,
-		DeleteFunc: controller.enqueueNamespace,
+	subnetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueSubnet,
+		DeleteFunc: controller.enqueueSubnet,
 	})
 
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -92,42 +91,42 @@ func NewController(config *Configuration, informerFactory informers.SharedInform
 	return controller, nil
 }
 
-func (c *Controller) enqueueNamespace(obj interface{}) {
+func (c *Controller) enqueueSubnet(obj interface{}) {
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
-	c.namespaceQueue.AddRateLimited(key)
+	c.subnetQueue.AddRateLimited(key)
 }
 
-func (c *Controller) runNamespaceWorker() {
-	for c.processNextNamespaceWorkItem() {
+func (c *Controller) runSubnetWorker() {
+	for c.processNextSubnetWorkItem() {
 	}
 }
 
-func (c *Controller) processNextNamespaceWorkItem() bool {
-	obj, shutdown := c.namespaceQueue.Get()
+func (c *Controller) processNextSubnetWorkItem() bool {
+	obj, shutdown := c.subnetQueue.Get()
 
 	if shutdown {
 		return false
 	}
 
 	err := func(obj interface{}) error {
-		defer c.namespaceQueue.Done(obj)
+		defer c.subnetQueue.Done(obj)
 		var key string
 		var ok bool
 		if key, ok = obj.(string); !ok {
-			c.namespaceQueue.Forget(obj)
+			c.subnetQueue.Forget(obj)
 			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
 			return nil
 		}
-		if err := c.handleNamespace(key); err != nil {
-			c.namespaceQueue.AddRateLimited(key)
+		if err := c.reconcileRouters(); err != nil {
+			c.subnetQueue.AddRateLimited(key)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
-		c.namespaceQueue.Forget(obj)
+		c.subnetQueue.Forget(obj)
 		return nil
 	}(obj)
 
@@ -143,30 +142,16 @@ func (c *Controller) handleNamespace(key string) error {
 }
 
 func (c *Controller) reconcileRouters() error {
-	namespaces, err := c.namespacesLister.List(labels.Everything())
+	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list namespace %v", err)
 		return err
 	}
 	cidrs := []string{}
-	for _, ns := range namespaces {
-		if ns.Status.Phase == v1.NamespaceTerminating {
-			continue
-		}
-		if cidr, ok := ns.Annotations[util.CidrAnnotation]; ok {
-			found := false
-			for _, c := range cidrs {
-				if c == cidr {
-					found = true
-					break
-				}
-			}
-			if !found {
-				cidrs = append(cidrs, cidr)
-			}
-		}
+	for _, subnet := range subnets {
+		cidrs = append(cidrs, subnet.Spec.CIDRBlock)
 	}
-	node, err := c.kubeclientset.CoreV1().Nodes().Get(c.config.NodeName, metav1.GetOptions{})
+	node, err := c.config.KubeClient.CoreV1().Nodes().Get(c.config.NodeName, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("failed to get node %s %v", c.config.NodeName, err)
 		return err
@@ -326,15 +311,15 @@ func (c *Controller) handlePod(key string) error {
 func (c *Controller) Run(stopCh <-chan struct{}) error {
 	defer utilruntime.HandleCrash()
 
-	defer c.namespaceQueue.ShutDown()
+	defer c.subnetQueue.ShutDown()
 	defer c.podQueue.ShutDown()
 
 	klog.Info("start watching namespace changes")
-	if ok := cache.WaitForCacheSync(stopCh, c.namespacesSynced, c.podsSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.subnetsSynced, c.podsSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
-	go wait.Until(c.runNamespaceWorker, time.Second, stopCh)
+	go wait.Until(c.runSubnetWorker, time.Second, stopCh)
 	go wait.Until(c.runPodWorker, time.Second, stopCh)
 	go c.runGateway(stopCh)
 
