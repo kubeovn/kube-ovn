@@ -5,10 +5,12 @@ import (
 	"net"
 	"strconv"
 	"strings"
+
+	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
-func ValidateLogicalSwitch(annotations map[string]string) error {
-	cidrStr := annotations[CidrAnnotation]
+func ValidateSubnet(subnet kubeovnv1.Subnet) error {
+	cidrStr := subnet.Spec.CIDRBlock
 	if cidrStr == "" {
 		return fmt.Errorf("cidr is required for logical switch")
 	}
@@ -17,7 +19,7 @@ func ValidateLogicalSwitch(annotations map[string]string) error {
 		return fmt.Errorf("%s is a invalid cidr %v", cidrStr, err)
 	}
 
-	gatewayStr := annotations[GatewayAnnotation]
+	gatewayStr := subnet.Spec.Gateway
 	if gatewayStr == "" {
 		return fmt.Errorf("gateway is required for logical switch")
 	}
@@ -30,51 +32,42 @@ func ValidateLogicalSwitch(annotations map[string]string) error {
 		return fmt.Errorf("gateway address %s not in cidr range", gatewayStr)
 	}
 
-	excludeIps := annotations[ExcludeIpsAnnotation]
-	if excludeIps != "" {
-		ipRanges := strings.Split(excludeIps, ",")
-		for _, ipr := range ipRanges {
-			ips := strings.Split(ipr, "..")
-			if len(ips) > 2 {
-				return fmt.Errorf("%s in %s is not a valid ip range", ipr, ExcludeIpsAnnotation)
-			}
+	excludeIps := subnet.Spec.ExcludeIps
 
-			if len(ips) == 1 {
-				if net.ParseIP(ips[0]) == nil {
-					return fmt.Errorf("ip %s in exclude_ips is not a valid address", ips[0])
+	for _, ipr := range excludeIps {
+		ips := strings.Split(ipr, "..")
+		if len(ips) > 2 {
+			return fmt.Errorf("%s in excludeIps is not a valid ip range", ipr)
+		}
+
+		if len(ips) == 1 {
+			if net.ParseIP(ips[0]) == nil {
+				return fmt.Errorf("ip %s in exclude_ips is not a valid address", ips[0])
+			}
+		}
+
+		if len(ips) == 2 {
+			for _, ip := range ips {
+				if net.ParseIP(ip) == nil {
+					return fmt.Errorf("ip %s in exclude_ips is not a valid address", ip)
 				}
 			}
-
-			if len(ips) == 2 {
-				for _, ip := range ips {
-					if net.ParseIP(ip) == nil {
-						return fmt.Errorf("ip %s in exclude_ips is not a valid address", ip)
-					}
-				}
-				if Ip2Long(ips[0]) >= Ip2Long(ips[1]) {
-					return fmt.Errorf("%s in %s is not a valid ip range", ipr, ExcludeIpsAnnotation)
-				}
+			if Ip2Long(ips[0]) >= Ip2Long(ips[1]) {
+				return fmt.Errorf("%s in excludeIps is not a valid ip range", ipr)
 			}
 		}
 	}
 
-	private := annotations[PrivateSwitchAnnotation]
-	if private != "" && private != "true" && private != "false" {
-		return fmt.Errorf("%s can only be \"true\" or \"false\"", PrivateSwitchAnnotation)
-	}
-
-	allow := annotations[AllowAccessAnnotation]
-	if allow != "" {
-		for _, cidr := range strings.Split(allow, ",") {
-			if _, _, err := net.ParseCIDR(cidr); err != nil {
-				return fmt.Errorf("%s in %s is not a valid address", cidr, AllowAccessAnnotation)
-			}
+	allow := subnet.Spec.AllowSubnets
+	for _, cidr := range allow {
+		if _, _, err := net.ParseCIDR(cidr); err != nil {
+			return fmt.Errorf("%s in allowSubnets is not a valid address", cidr)
 		}
 	}
 
-	gwType := annotations[GWTypeAnnotation]
-	if gwType != "" && gwType != GWDistributedMode && gwType != GWCentralizedMode {
-		return fmt.Errorf("%s is not a valid %s", gwType, GWTypeAnnotation)
+	gwType := subnet.Spec.GatewayType
+	if gwType != "" && gwType != kubeovnv1.GWDistributedType && gwType != kubeovnv1.GWCentralizedType {
+		return fmt.Errorf("%s is not a valid gateway type", gwType)
 	}
 
 	return nil

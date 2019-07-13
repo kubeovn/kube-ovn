@@ -158,7 +158,7 @@ func (c *Controller) handleAddNode(key string) error {
 		op = "add"
 	}
 	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-	_, err = c.kubeclientset.CoreV1().Nodes().Patch(key, types.JSONPatchType, []byte(patchPayload))
+	_, err = c.config.KubeClient.CoreV1().Nodes().Patch(key, types.JSONPatchType, []byte(patchPayload))
 	if err != nil {
 		klog.Errorf("patch node %s failed %v", key, err)
 	}
@@ -172,7 +172,7 @@ func (c *Controller) handleDeleteNode(key string) error {
 		return err
 	}
 
-	node, err := c.kubeclientset.CoreV1().Nodes().Get(key, metav1.GetOptions{})
+	node, err := c.config.KubeClient.CoreV1().Nodes().Get(key, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil

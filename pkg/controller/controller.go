@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"time"
 
+	kubeovninformer "github.com/alauda/kube-ovn/pkg/client/informers/externalversions"
+	kubeovnlister "github.com/alauda/kube-ovn/pkg/client/listers/kube-ovn/v1"
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	corev1 "k8s.io/api/core/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	kubeinformers "k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	v1 "k8s.io/client-go/listers/core/v1"
@@ -28,8 +29,6 @@ const controllerAgentName = "ovn-controller"
 type Controller struct {
 	config    *Configuration
 	ovnClient *ovs.Client
-	// kubeclientset is a standard kubernetes clientset
-	kubeclientset kubernetes.Interface
 
 	podsLister v1.PodLister
 	podsSynced cache.InformerSynced
@@ -44,11 +43,14 @@ type Controller struct {
 	deletePodQueue    workqueue.RateLimitingInterface
 	updatePodQueue    workqueue.RateLimitingInterface
 
-	namespacesLister     v1.NamespaceLister
-	namespacesSynced     cache.InformerSynced
-	addNamespaceQueue    workqueue.RateLimitingInterface
-	deleteNamespaceQueue workqueue.RateLimitingInterface
-	updateNamespaceQueue workqueue.RateLimitingInterface
+	subnetsLister     kubeovnlister.SubnetLister
+	subnetSynced      cache.InformerSynced
+	addSubnetQueue    workqueue.RateLimitingInterface
+	deleteSubnetQueue workqueue.RateLimitingInterface
+	updateSubnetQueue workqueue.RateLimitingInterface
+
+	namespacesLister v1.NamespaceLister
+	namespacesSynced cache.InformerSynced
 
 	nodesLister     v1.NodeLister
 	nodesSynced     cache.InformerSynced
@@ -73,7 +75,8 @@ type Controller struct {
 	// Kubernetes API.
 	recorder record.EventRecorder
 
-	informerFactory informers.SharedInformerFactory
+	informerFactory        informers.SharedInformerFactory
+	kubeovnInformerFactory kubeovninformer.SharedInformerFactory
 
 	elector *leaderelection.LeaderElector
 }
@@ -91,7 +94,9 @@ func NewController(config *Configuration) *Controller {
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
 
 	informerFactory := kubeinformers.NewSharedInformerFactory(config.KubeClient, time.Second*30)
+	kubeovnInformerFactory := kubeovninformer.NewSharedInformerFactoryWithOptions(config.KubeOvnClient, time.Second*30)
 
+	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	podInformer := informerFactory.Core().V1().Pods()
 	namespaceInformer := informerFactory.Core().V1().Namespaces()
 	nodeInformer := informerFactory.Core().V1().Nodes()
@@ -100,9 +105,14 @@ func NewController(config *Configuration) *Controller {
 	npInformer := informerFactory.Networking().V1().NetworkPolicies()
 
 	controller := &Controller{
-		config:        config,
-		ovnClient:     ovs.NewClient(config.OvnNbHost, config.OvnNbPort, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
-		kubeclientset: config.KubeClient,
+		config:    config,
+		ovnClient: ovs.NewClient(config.OvnNbHost, config.OvnNbPort, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
+
+		subnetsLister:     subnetInformer.Lister(),
+		subnetSynced:      subnetInformer.Informer().HasSynced,
+		addSubnetQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddSubnet"),
+		deleteSubnetQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteSubnet"),
+		updateSubnetQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateSubnet"),
 
 		podsLister:        podInformer.Lister(),
 		podsSynced:        podInformer.Informer().HasSynced,
@@ -111,11 +121,8 @@ func NewController(config *Configuration) *Controller {
 		deletePodQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeletePod"),
 		updatePodQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdatePod"),
 
-		namespacesLister:     namespaceInformer.Lister(),
-		namespacesSynced:     namespaceInformer.Informer().HasSynced,
-		addNamespaceQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddNamespace"),
-		updateNamespaceQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateNamespace"),
-		deleteNamespaceQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteNamespace"),
+		namespacesLister: namespaceInformer.Lister(),
+		namespacesSynced: namespaceInformer.Informer().HasSynced,
 
 		nodesLister:     nodeInformer.Lister(),
 		nodesSynced:     nodeInformer.Informer().HasSynced,
@@ -139,7 +146,8 @@ func NewController(config *Configuration) *Controller {
 
 		recorder: recorder,
 
-		informerFactory: informerFactory,
+		informerFactory:        informerFactory,
+		kubeovnInformerFactory: kubeovnInformerFactory,
 	}
 
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -175,6 +183,12 @@ func NewController(config *Configuration) *Controller {
 		DeleteFunc: controller.enqueueDeleteNp,
 	})
 
+	subnetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddSubnet,
+		UpdateFunc: controller.enqueueUpdateSubnet,
+		DeleteFunc: controller.enqueueDeleteSubnet,
+	})
+
 	return controller
 }
 
@@ -190,9 +204,9 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	defer c.deletePodQueue.ShutDown()
 	defer c.updatePodQueue.ShutDown()
 
-	defer c.addNamespaceQueue.ShutDown()
-	defer c.updateNamespaceQueue.ShutDown()
-	defer c.deleteNamespaceQueue.ShutDown()
+	defer c.addSubnetQueue.ShutDown()
+	defer c.updateSubnetQueue.ShutDown()
+	defer c.deleteSubnetQueue.ShutDown()
 
 	defer c.addNodeQueue.ShutDown()
 	defer c.deleteNodeQueue.ShutDown()
@@ -224,10 +238,11 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 		time.Sleep(1 * time.Second)
 	}
 	c.informerFactory.Start(stopCh)
+	c.kubeovnInformerFactory.Start(stopCh)
 
 	// Wait for the caches to be synced before starting workers
 	klog.Info("Waiting for informer caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced, c.npsSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.subnetSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced, c.npsSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
@@ -235,15 +250,15 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 
 	// Launch workers to process resources
 	go wait.Until(c.runAddIpPoolPodWorker, time.Second, stopCh)
-	go wait.Until(c.runAddNamespaceWorker, time.Second, stopCh)
+	go wait.Until(c.runAddSubnetWorker, time.Second, stopCh)
 
 	for i := 0; i < c.config.WorkerNum; i++ {
 		go wait.Until(c.runAddPodWorker, time.Second, stopCh)
 		go wait.Until(c.runDeletePodWorker, time.Second, stopCh)
 		go wait.Until(c.runUpdatePodWorker, time.Second, stopCh)
 
-		go wait.Until(c.runDeleteNamespaceWorker, time.Second, stopCh)
-		go wait.Until(c.runUpdateNamespaceWorker, time.Second, stopCh)
+		go wait.Until(c.runDeleteSubnetWorker, time.Second, stopCh)
+		go wait.Until(c.runUpdateSubnetWorker, time.Second, stopCh)
 
 		go wait.Until(c.runAddNodeWorker, time.Second, stopCh)
 		go wait.Until(c.runDeleteNodeWorker, time.Second, stopCh)

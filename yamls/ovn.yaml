@@ -26,6 +26,13 @@ metadata:
   name: system:ovn
 rules:
   - apiGroups:
+      - "kubeovn.io"
+    resources:
+      - subnets
+      - ips
+    verbs:
+      - "*"
+  - apiGroups:
       - ""
     resources:
       - pods

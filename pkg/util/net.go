@@ -34,3 +34,12 @@ func FirstSubnetIP(subnet string) (string, error) {
 	}
 	return Long2Ip(Ip2Long(cidr.IP.String()) + 1), nil
 }
+
+func CIDRConflict(a, b string) bool {
+	aIp, aIpNet, aErr := net.ParseCIDR(a)
+	bIp, bIpNet, bErr := net.ParseCIDR(b)
+	if aErr != nil || bErr != nil {
+		return false
+	}
+	return aIpNet.Contains(bIp) || bIpNet.Contains(aIp)
+}

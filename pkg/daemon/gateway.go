@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/projectcalico/felix/ipsets"
 	"k8s.io/apimachinery/pkg/labels"
@@ -37,7 +38,7 @@ var (
 
 func (c *Controller) runGateway(stopCh <-chan struct{}) error {
 	klog.Info("start gateway")
-	subnets, err := c.getSubnets()
+	subnets, err := c.getSubnetsCIDR()
 	if err != nil {
 		klog.Errorf("get subnets failed, %+v", err)
 		return err
@@ -84,7 +85,7 @@ LOOP:
 		case <-ticker.C:
 			klog.V(3).Info("tick")
 		}
-		subnets, err := c.getSubnets()
+		subnets, err := c.getSubnetsCIDR()
 		if err != nil {
 			klog.Errorf("get subnets failed, %+v", err)
 			continue
@@ -122,21 +123,22 @@ func (c *Controller) getLocalPodIPsNeedNAT() ([]string, error) {
 		if pod.Spec.HostNetwork == true || pod.Status.PodIP == "" {
 			continue
 		}
-		ns, err := c.namespacesLister.Get(pod.Namespace)
+		subnet, err := c.subnetsLister.Get(pod.Annotations[util.LogicalSwitchAnnotation])
 		if err != nil {
-			klog.Errorf("get ns %s failed, %+v", pod.Namespace, err)
+			klog.Errorf("get subnet %s failed, %+v", pod.Annotations[util.LogicalSwitchAnnotation], err)
 			continue
 		}
-		nsGWType := ns.Annotations[util.GWTypeAnnotation]
-		nsGWNat := ns.Annotations[util.GWNat]
-		if nsGWNat == "" || nsGWNat == "true" {
+
+		nsGWType := subnet.Spec.GatewayType
+		nsGWNat := subnet.Spec.NatOutgoing
+		if nsGWNat {
 			switch nsGWType {
-			case "", util.GWDistributedMode:
+			case "", kubeovnv1.GWDistributedType:
 				if pod.Spec.NodeName == hostname {
 					localPodIPs = append(localPodIPs, pod.Status.PodIP)
 				}
-			case util.GWCentralizedMode:
-				gwNode := ns.Annotations[util.GWNode]
+			case kubeovnv1.GWCentralizedType:
+				gwNode := subnet.Spec.GatewayNode
 				if gwNode == hostname {
 					localPodIPs = append(localPodIPs, pod.Status.PodIP)
 				}
@@ -147,18 +149,15 @@ func (c *Controller) getLocalPodIPsNeedNAT() ([]string, error) {
 	return localPodIPs, nil
 }
 
-func (c *Controller) getSubnets() ([]string, error) {
-	var subnets = []string{c.config.ServiceClusterIPRange}
-	allNamespaces, err := c.namespacesLister.List(labels.Everything())
+func (c *Controller) getSubnetsCIDR() ([]string, error) {
+	var ret = []string{c.config.ServiceClusterIPRange}
+	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
-		klog.Errorf("list namespaces failed, %+v", err)
+		klog.Error("failed to list subnets")
 		return nil, err
 	}
-	for _, namespace := range allNamespaces {
-		if subnet := namespace.Annotations[util.CidrAnnotation]; subnet != "" {
-			subnets = append(subnets, subnet)
-		}
+	for _, subnet := range subnets {
+		ret = append(ret, subnet.Spec.CIDRBlock)
 	}
-	klog.V(3).Infof("subnets %v", subnets)
-	return subnets, nil
+	return ret, nil
 }

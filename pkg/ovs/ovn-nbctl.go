@@ -92,11 +92,11 @@ type nic struct {
 }
 
 // CreateLogicalSwitch create logical switch in ovn, connect it to router and apply tcp/udp lb rules
-func (c Client) CreateLogicalSwitch(ls, subnet, gateway, excludeIps string) error {
+func (c Client) CreateLogicalSwitch(ls, subnet, gateway string, excludeIps []string) error {
 	_, err := c.ovnNbCommand(WaitSb, MayExist, "ls-add", ls, "--",
 		"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", subnet), "--",
 		"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
-		"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", excludeIps), "--",
+		"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")), "--",
 		"acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip4.src==%s", c.NodeSwitchCIDR), "allow-related")
 	if err != nil {
 		klog.Errorf("create switch %s failed %v", ls, err)
