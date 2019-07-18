@@ -133,8 +133,17 @@ func (c *Controller) handleAddNode(key string) error {
 	}
 
 	nodeAddr := getNodeInternalIP(node)
-	err = c.ovnClient.AddStaticRouter("", nodeAddr, strings.Split(nic.IpAddress, "/")[0], c.config.ClusterRouter)
+	if util.CheckProtocol(nodeAddr) == util.CheckProtocol(nic.IpAddress) {
+		err = c.ovnClient.AddStaticRouter("", nodeAddr, strings.Split(nic.IpAddress, "/")[0], c.config.ClusterRouter)
+		if err != nil {
+			klog.Errorf("failed to add static router from node to ovn0 %v", err)
+			return err
+		}
+	}
+
+	subnet, err := c.subnetsLister.Get(c.config.NodeSwitch)
 	if err != nil {
+		klog.Errorf("failed to get node subnet %v", err)
 		return err
 	}
 
@@ -147,8 +156,8 @@ func (c *Controller) handleAddNode(key string) error {
 	payload := map[string]string{
 		util.IpAddressAnnotation:     nic.IpAddress,
 		util.MacAddressAnnotation:    nic.MacAddress,
-		util.CidrAnnotation:          nic.CIDR,
-		util.GatewayAnnotation:       nic.Gateway,
+		util.CidrAnnotation:          subnet.Spec.CIDRBlock,
+		util.GatewayAnnotation:       subnet.Spec.Gateway,
 		util.LogicalSwitchAnnotation: c.config.NodeSwitch,
 		util.PortNameAnnotation:      fmt.Sprintf("node-%s", key),
 	}

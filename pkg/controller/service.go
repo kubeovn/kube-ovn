@@ -2,14 +2,13 @@ package controller
 
 import (
 	"fmt"
-	"k8s.io/apimachinery/pkg/labels"
-	"strings"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
+	"strings"
 )
 
 func (c *Controller) enqueueDeleteService(obj interface{}) {

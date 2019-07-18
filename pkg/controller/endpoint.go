@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/alauda/kube-ovn/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -119,7 +120,9 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	for _, subset := range ep.Subsets {
 		for _, addr := range subset.Addresses {
 			if addr.IP != "" {
-				backends = append(backends, addr.IP)
+				if util.CheckProtocol(addr.IP) == util.CheckProtocol(clusterIP) {
+					backends = append(backends, addr.IP)
+				}
 			}
 		}
 		for _, port := range subset.Ports {

@@ -194,13 +194,13 @@ func (c *Controller) handleAddSubnet(key string) error {
 		}
 	}
 	// If multiple namespace use same ls name, only first one will success
-	err = c.ovnClient.CreateLogicalSwitch(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps)
+	err = c.ovnClient.CreateLogicalSwitch(subnet.Name, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps)
 	if err != nil {
 		return err
 	}
 
 	if subnet.Spec.Private {
-		return c.ovnClient.SetPrivateLogicalSwitch(subnet.Name, subnet.Spec.AllowSubnets)
+		return c.ovnClient.SetPrivateLogicalSwitch(subnet.Name, subnet.Spec.Protocol, subnet.Spec.AllowSubnets)
 	}
 	return c.ovnClient.CleanLogicalSwitchAcl(subnet.Name)
 }
@@ -220,7 +220,7 @@ func (c *Controller) handleUpdateSubnet(key string) error {
 	}
 
 	if subnet.Spec.Private {
-		return c.ovnClient.SetPrivateLogicalSwitch(subnet.Name, subnet.Spec.AllowSubnets)
+		return c.ovnClient.SetPrivateLogicalSwitch(subnet.Name, subnet.Spec.Protocol, subnet.Spec.AllowSubnets)
 	}
 
 	return c.ovnClient.CleanLogicalSwitchAcl(subnet.Name)

@@ -4,14 +4,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"runtime"
+	"strings"
+
+	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/request"
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
 	"github.com/containernetworking/cni/pkg/types/current"
 	"github.com/containernetworking/cni/pkg/version"
-	"net"
-	"runtime"
-	"strings"
 )
 
 func init() {
@@ -58,16 +60,31 @@ func cmdAdd(args *skel.CmdArgs) error {
 func generateCNIResult(cniVersion string, podResponse *request.PodResponse) current.Result {
 	result := current.Result{CNIVersion: cniVersion}
 	_, mask, _ := net.ParseCIDR(podResponse.CIDR)
-	ip := current.IPConfig{
-		Version: "4",
-		Address: net.IPNet{IP: net.ParseIP(podResponse.IpAddress).To4(), Mask: mask.Mask},
-		Gateway: net.ParseIP(podResponse.Gateway).To4(),
+	switch podResponse.Protocol {
+	case kubeovnv1.ProtocolIPv4:
+		ip := current.IPConfig{
+			Version: "4",
+			Address: net.IPNet{IP: net.ParseIP(podResponse.IpAddress).To4(), Mask: mask.Mask},
+			Gateway: net.ParseIP(podResponse.Gateway).To4(),
+		}
+		result.IPs = []*current.IPConfig{&ip}
+		route := types.Route{}
+		route.Dst = net.IPNet{IP: net.ParseIP("0.0.0.0").To4(), Mask: net.CIDRMask(0, 32)}
+		route.GW = net.ParseIP(podResponse.Gateway).To4()
+		result.Routes = []*types.Route{&route}
+	case kubeovnv1.ProtocolIPv6:
+		ip := current.IPConfig{
+			Version: "6",
+			Address: net.IPNet{IP: net.ParseIP(podResponse.IpAddress).To16(), Mask: mask.Mask},
+			Gateway: net.ParseIP(podResponse.Gateway).To16(),
+		}
+		result.IPs = []*current.IPConfig{&ip}
+		route := types.Route{}
+		route.Dst = net.IPNet{IP: net.ParseIP("::").To16(), Mask: net.CIDRMask(0, 128)}
+		route.GW = net.ParseIP(podResponse.Gateway).To16()
+		result.Routes = []*types.Route{&route}
 	}
-	result.IPs = []*current.IPConfig{&ip}
-	route := types.Route{}
-	route.Dst = net.IPNet{IP: net.ParseIP("0.0.0.0").To4(), Mask: net.CIDRMask(0, 32)}
-	route.GW = net.ParseIP(podResponse.Gateway).To4()
-	result.Routes = []*types.Route{&route}
+
 	return result
 }
 

@@ -49,7 +49,6 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 			c.updateNpQueue.AddRateLimited(np)
 		}
 	}
-
 }
 
 func (c *Controller) enqueueDeletePod(obj interface{}) {
@@ -368,17 +367,21 @@ func (c *Controller) handleAddPod(key string) error {
 		return nil
 	}
 
+	subnet, err := c.subnetsLister.Get(c.config.DefaultLogicalSwitch)
+	if err != nil {
+		klog.Errorf("failed to get default subnet %v", err)
+		return err
+	}
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets %v", err)
 		return err
 	}
 
-	ls := c.config.DefaultLogicalSwitch
-	for _, subnet := range subnets {
-		for _, ns := range subnet.Spec.Namespaces {
+	for _, s := range subnets {
+		for _, ns := range s.Spec.Namespaces {
 			if ns == pod.Namespace {
-				ls = subnet.Name
+				subnet = s
 				break
 			}
 		}
@@ -394,7 +397,7 @@ func (c *Controller) handleAddPod(key string) error {
 	ip := pod.Annotations[util.IpAddressAnnotation]
 	mac := pod.Annotations[util.MacAddressAnnotation]
 
-	nic, err := c.ovnClient.CreatePort(ls, ovs.PodNameToPortName(name, namespace), ip, mac)
+	nic, err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, mac)
 	if err != nil {
 		return err
 	}
@@ -408,9 +411,9 @@ func (c *Controller) handleAddPod(key string) error {
 	}
 	pod.Annotations[util.IpAddressAnnotation] = nic.IpAddress
 	pod.Annotations[util.MacAddressAnnotation] = nic.MacAddress
-	pod.Annotations[util.CidrAnnotation] = nic.CIDR
-	pod.Annotations[util.GatewayAnnotation] = nic.Gateway
-	pod.Annotations[util.LogicalSwitchAnnotation] = ls
+	pod.Annotations[util.CidrAnnotation] = subnet.Spec.CIDRBlock
+	pod.Annotations[util.GatewayAnnotation] = subnet.Spec.Gateway
+	pod.Annotations[util.LogicalSwitchAnnotation] = subnet.Name
 
 	patchPayloadTemplate :=
 		`[{
@@ -450,17 +453,21 @@ func (c *Controller) handleAddIpPoolPod(key string) error {
 		return nil
 	}
 
+	subnet, err := c.subnetsLister.Get(c.config.DefaultLogicalSwitch)
+	if err != nil {
+		klog.Errorf("failed to get default subnet %v", err)
+		return err
+	}
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets %v", err)
 		return err
 	}
 
-	ls := c.config.DefaultLogicalSwitch
-	for _, subnet := range subnets {
-		for _, ns := range subnet.Spec.Namespaces {
+	for _, s := range subnets {
+		for _, ns := range s.Spec.Namespaces {
 			if ns == pod.Namespace {
-				ls = subnet.Name
+				subnet = s
 				break
 			}
 		}
@@ -512,7 +519,7 @@ func (c *Controller) handleAddIpPoolPod(key string) error {
 	// pod address info may already exist in ovn
 	ip := pod.Annotations[util.IpAddressAnnotation]
 	mac := pod.Annotations[util.MacAddressAnnotation]
-	nic, err := c.ovnClient.CreatePort(ls, ovs.PodNameToPortName(name, namespace), ip, mac)
+	nic, err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, mac)
 	if err != nil {
 		return err
 	}
@@ -526,9 +533,9 @@ func (c *Controller) handleAddIpPoolPod(key string) error {
 	}
 	pod.Annotations[util.IpAddressAnnotation] = nic.IpAddress
 	pod.Annotations[util.MacAddressAnnotation] = nic.MacAddress
-	pod.Annotations[util.CidrAnnotation] = nic.CIDR
-	pod.Annotations[util.GatewayAnnotation] = nic.Gateway
-	pod.Annotations[util.LogicalSwitchAnnotation] = ls
+	pod.Annotations[util.CidrAnnotation] = subnet.Spec.CIDRBlock
+	pod.Annotations[util.GatewayAnnotation] = subnet.Spec.Gateway
+	pod.Annotations[util.LogicalSwitchAnnotation] = subnet.Name
 
 	patchPayloadTemplate :=
 		`[{

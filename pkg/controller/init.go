@@ -32,9 +32,10 @@ func InitDefaultLogicalSwitch(config *Configuration) error {
 			ExcludeIps:  strings.Split(config.DefaultExcludeIps, ","),
 			NatOutgoing: true,
 			GatewayType: kubeovnv1.GWDistributedType,
-			Protocol:    kubeovnv1.ProtocolIPv4,
+			Protocol:    util.CheckProtocol(config.DefaultCIDR),
 		},
 	}
+
 	_, err = config.KubeOvnClient.KubeovnV1().Subnets().Create(&defaultSubnet)
 	return err
 }
@@ -57,7 +58,7 @@ func InitNodeSwitch(config *Configuration) error {
 			CIDRBlock:  config.NodeSwitchCIDR,
 			Gateway:    config.NodeSwitchGateway,
 			ExcludeIps: []string{config.NodeSwitchGateway},
-			Protocol:   kubeovnv1.ProtocolIPv4,
+			Protocol:   util.CheckProtocol(config.NodeSwitchCIDR),
 		},
 	}
 	_, err = config.KubeOvnClient.KubeovnV1().Subnets().Create(&nodeSubnet)

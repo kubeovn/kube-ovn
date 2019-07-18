@@ -11,6 +11,7 @@ import (
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"k8s.io/apimachinery/pkg/api/errors"
 
+	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/alauda/kube-ovn/pkg/client/informers/externalversions"
 	kubeovnlister "github.com/alauda/kube-ovn/pkg/client/listers/kube-ovn/v1"
 	"github.com/alauda/kube-ovn/pkg/util"
@@ -44,8 +45,11 @@ type Controller struct {
 
 	recorder record.EventRecorder
 
-	ipSetsMgr   *ipsets.IPSets
-	iptablesMgr *iptables.IPTables
+	ipSetsV4Mgr   *ipsets.IPSets
+	iptablesV4Mgr *iptables.IPTables
+
+	ipSetsV6Mgr   *ipsets.IPSets
+	iptablesV6Mgr *iptables.IPTables
 }
 
 // NewController init a daemon controller
@@ -57,12 +61,20 @@ func NewController(config *Configuration, informerFactory informers.SharedInform
 
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	podInformer := informerFactory.Core().V1().Pods()
-	iptablesMgr, err := iptables.New()
+
+	iptablesV4Mgr, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
 	if err != nil {
 		return nil, err
 	}
-	ipsetConf := ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil)
-	ipsetsMgr := ipsets.NewIPSets(ipsetConf)
+	iptablesV6Mgr, err := iptables.NewWithProtocol(iptables.ProtocolIPv6)
+	if err != nil {
+		return nil, err
+	}
+	ipsetV4Conf := ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil)
+	ipsetsV4Mgr := ipsets.NewIPSets(ipsetV4Conf)
+	ipsetV6Conf := ipsets.NewIPVersionConfig(ipsets.IPFamilyV6, IPSetPrefix, nil, nil)
+	ipsetsV6Mgr := ipsets.NewIPSets(ipsetV6Conf)
+
 	controller := &Controller{
 		config:        config,
 		subnetsLister: subnetInformer.Lister(),
@@ -75,8 +87,10 @@ func NewController(config *Configuration, informerFactory informers.SharedInform
 
 		recorder: recorder,
 
-		ipSetsMgr:   ipsetsMgr,
-		iptablesMgr: iptablesMgr,
+		ipSetsV4Mgr:   ipsetsV4Mgr,
+		iptablesV4Mgr: iptablesV4Mgr,
+		ipSetsV6Mgr:   ipsetsV6Mgr,
+		iptablesV6Mgr: iptablesV6Mgr,
 	}
 
 	subnetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -166,7 +180,13 @@ func (c *Controller) reconcileRouters() error {
 		klog.Errorf("failed to get nic %s", util.NodeNic)
 		return fmt.Errorf("failed to get nic %s", util.NodeNic)
 	}
-	routers, err := netlink.RouteList(nic, netlink.FAMILY_V4)
+
+	var routers []netlink.Route
+	if util.CheckProtocol(gateway) == kubeovnv1.ProtocolIPv4 {
+		routers, err = netlink.RouteList(nic, netlink.FAMILY_V4)
+	} else {
+		routers, err = netlink.RouteList(nic, netlink.FAMILY_V6)
+	}
 	if err != nil {
 		return err
 	}
@@ -222,7 +242,7 @@ func (c *Controller) reconcileRouters() error {
 	for _, r := range toAdd {
 		_, cidr, _ := net.ParseCIDR(r)
 		gw := net.ParseIP(gateway)
-		err := netlink.RouteAdd(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: gw})
+		err := netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: gw})
 		if err != nil {
 			klog.Errorf("failed to add route %v", err)
 			return err
@@ -321,7 +341,12 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 
 	go wait.Until(c.runSubnetWorker, time.Second, stopCh)
 	go wait.Until(c.runPodWorker, time.Second, stopCh)
-	go c.runGateway(stopCh)
+	node, err := c.config.KubeClient.CoreV1().Nodes().Get(c.config.NodeName, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("failed to get node %s info %v", c.config.NodeName, err)
+		return err
+	}
+	go c.runGateway(util.CheckProtocol(node.Annotations[util.IpAddressAnnotation]), stopCh)
 
 	klog.Info("Started workers")
 	<-stopCh

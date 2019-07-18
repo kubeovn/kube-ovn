@@ -2,9 +2,11 @@ package daemon
 
 import (
 	"fmt"
+	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/containernetworking/plugins/pkg/ns"
+	"github.com/containernetworking/plugins/pkg/utils/sysctl"
 	"github.com/vishvananda/netlink"
 	"k8s.io/klog"
 	"net"
@@ -132,11 +134,20 @@ func configureContainerNic(nicName, ipAddr, gateway string, macAddr net.Hardware
 		if err != nil {
 			return err
 		}
+		if util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolIPv6 {
+			// For docker version >=17.x the "none" network will disable ipv6 by default.
+			// We have to enable ipv6 here to add v6 address and gateway.
+			// See https://github.com/containernetworking/cni/issues/531
+			_, err = sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6", "0")
+			if err != nil {
+				return fmt.Errorf("failed to enable ipv6 on all nic %v", err)
+			}
+		}
 		addr, err := netlink.ParseAddr(ipAddr)
 		if err != nil {
 			return fmt.Errorf("can not parse %s %v", ipAddr, err)
 		}
-		err = netlink.AddrAdd(containerLink, addr)
+		err = netlink.AddrReplace(containerLink, addr)
 		if err != nil {
 			return fmt.Errorf("can not add address to container nic %v", err)
 		}
@@ -150,13 +161,25 @@ func configureContainerNic(nicName, ipAddr, gateway string, macAddr net.Hardware
 			return fmt.Errorf("can not set container nic %s up %v", nicName, err)
 		}
 
-		_, defaultNet, _ := net.ParseCIDR("0.0.0.0/0")
-		err = netlink.RouteAdd(&netlink.Route{
-			LinkIndex: containerLink.Attrs().Index,
-			Scope:     netlink.SCOPE_UNIVERSE,
-			Dst:       defaultNet,
-			Gw:        net.ParseIP(gateway),
-		})
+		switch util.CheckProtocol(ipAddr) {
+		case kubeovnv1.ProtocolIPv4:
+			_, defaultNet, _ := net.ParseCIDR("0.0.0.0/0")
+			err = netlink.RouteAdd(&netlink.Route{
+				LinkIndex: containerLink.Attrs().Index,
+				Scope:     netlink.SCOPE_UNIVERSE,
+				Dst:       defaultNet,
+				Gw:        net.ParseIP(gateway),
+			})
+		case kubeovnv1.ProtocolIPv6:
+			_, defaultNet, _ := net.ParseCIDR("::/0")
+			err = netlink.RouteAdd(&netlink.Route{
+				LinkIndex: containerLink.Attrs().Index,
+				Scope:     netlink.SCOPE_UNIVERSE,
+				Dst:       defaultNet,
+				Gw:        net.ParseIP(gateway),
+			})
+		}
+
 		if err != nil {
 			return fmt.Errorf("config gateway failed %v", err)
 		}
@@ -212,7 +235,13 @@ func configureNodeNic(portName, ip, mac, gw string, mtu int) error {
 	}
 
 	// ping gw to activate the flow
-	output, _ := exec.Command("ping", "-w", "10", gw).CombinedOutput()
+	var output []byte
+	if util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv4 {
+		output, _ = exec.Command("ping", "-w", "10", gw).CombinedOutput()
+	} else {
+		output, _ = exec.Command("ping", "-6", "-w", "10", gw).CombinedOutput()
+	}
+
 	klog.Infof("ping gw result is: \n %s", string(output))
 	return nil
 }

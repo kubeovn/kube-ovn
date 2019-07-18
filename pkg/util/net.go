@@ -1,12 +1,14 @@
 package util
 
 import (
-	"bytes"
-	"encoding/binary"
 	"fmt"
+	"math/big"
 	"math/rand"
 	"net"
+	"strings"
 	"time"
+
+	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
 // GenerateMac generates mac address.
@@ -17,14 +19,19 @@ func GenerateMac() string {
 	return mac
 }
 
-func Ip2Long(ip string) uint32 {
-	var long uint32
-	binary.Read(bytes.NewBuffer(net.ParseIP(ip).To4()), binary.BigEndian, &long)
-	return long
+func Ip2BigInt(ipStr string) *big.Int {
+	ipBigInt := big.NewInt(0)
+	if CheckProtocol(ipStr) == kubeovnv1.ProtocolIPv4 {
+		ipBigInt.SetBytes(net.ParseIP(ipStr).To4())
+	} else {
+		ipBigInt.SetBytes(net.ParseIP(ipStr).To16())
+	}
+	return ipBigInt
 }
 
-func Long2Ip(ip uint32) string {
-	return fmt.Sprintf("%d.%d.%d.%d", ip>>24, ip<<8>>24, ip<<16>>24, ip<<24>>24)
+func BigInt2Ip(ipInt *big.Int) string {
+	ip := net.IP(ipInt.Bytes())
+	return ip.String()
 }
 
 func FirstSubnetIP(subnet string) (string, error) {
@@ -32,7 +39,8 @@ func FirstSubnetIP(subnet string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%s is not a valid cidr", subnet)
 	}
-	return Long2Ip(Ip2Long(cidr.IP.String()) + 1), nil
+	ipInt := Ip2BigInt(cidr.IP.String())
+	return BigInt2Ip(ipInt.Add(ipInt, big.NewInt(1))), nil
 }
 
 func CIDRConflict(a, b string) bool {
@@ -42,4 +50,13 @@ func CIDRConflict(a, b string) bool {
 		return false
 	}
 	return aIpNet.Contains(bIp) || bIpNet.Contains(aIp)
+}
+
+func CheckProtocol(address string) string {
+	address = strings.Split(address, "/")[0]
+	ip := net.ParseIP(address)
+	if ip.To4() != nil {
+		return kubeovnv1.ProtocolIPv4
+	}
+	return kubeovnv1.ProtocolIPv6
 }
