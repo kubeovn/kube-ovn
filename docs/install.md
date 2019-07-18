@@ -5,6 +5,13 @@ Kube-OVN includes two parts:
 - Native OVS and OVN components
 - Controller and CNI plugins that integrate OVN with Kubernetes
 
+## Prerequest
+- Kubernetes >= 1.11
+- Docker >= 1.12.6
+- OS: CentOS 7.5, Ubuntu 16.04
+
+*NOTE* Ubuntu 16.04 users should build the related ovs-2.11.1 kernel module to replace the kernel built-in module 
+
 ## To install
 
 1. Add the following label to the Node which will host the OVN DB and the OVN Control Plane:
@@ -30,7 +37,6 @@ For high-available ovn db, see [high available](high-available.md)
     --default-ls: The default logical switch name, default: ovn-default
     --default-cidr: Default CIDR for Namespaces with no logical switch annotation, default: 10.16.0.0/16
     --default-gateway: Default gateway for default-cidr, default the first ip in default-cidr
-    --node-switch-cidr: The CIDR for the Node switch, default: 100.64.0.0/16
     --default-exclude-ips: Exclude ips in default switch, default equals to gateway address
     
     # Node Switch
