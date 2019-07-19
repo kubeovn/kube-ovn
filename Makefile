@@ -2,7 +2,7 @@ GOFILES_NOVENDOR=$(shell find . -type f -name '*.go' -not -path "./vendor/*")
 GO_VERSION=1.12
 
 REGISTRY=index.alauda.cn/alaudak8s
-ROLES=node controller cni db
+ROLES=node controller cni db webhook
 DEV_TAG=dev
 RELEASE_TAG=$(shell cat VERSION)
 
@@ -18,6 +18,7 @@ build-go:
 	CGO_ENABLED=0 GOOS=linux go build -o $(PWD)/dist/images/kube-ovn -ldflags "-w -s" -v ./cmd/cni
 	CGO_ENABLED=0 GOOS=linux go build -o $(PWD)/dist/images/kube-ovn-controller -ldflags "-w -s" -v ./cmd/controller
 	CGO_ENABLED=0 GOOS=linux go build -o $(PWD)/dist/images/kube-ovn-daemon -ldflags "-w -s" -v ./cmd/daemon
+	CGO_ENABLED=0 GOOS=linux go build -o $(PWD)/dist/images/kube-ovn-webhook -ldflags "-w -s" -v ./cmd/webhook
 
 release: build-go
 	@for role in ${ROLES} ; do \

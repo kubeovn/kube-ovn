@@ -3,6 +3,7 @@ package ovs
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -43,7 +44,7 @@ func (c Client) CreatePort(ls, port, ip, mac string) (*nic, error) {
 			return nil, err
 		}
 
-		address, err := c.getLogicalSwitchPortDynamicAddress(port)
+		address, err := c.GetLogicalSwitchPortDynamicAddress(port)
 		if err != nil {
 			klog.Errorf("get port %s dynamic-addresses failed %v", port, err)
 			return nil, err
@@ -67,7 +68,7 @@ func (c Client) CreatePort(ls, port, ip, mac string) (*nic, error) {
 		}
 
 		if mac == "dynamic" {
-			address, err := c.getLogicalSwitchPortDynamicAddress(port)
+			address, err := c.GetLogicalSwitchPortDynamicAddress(port)
 			if err != nil {
 				klog.Errorf("get port %s dynamic-addresses failed %v", port, err)
 				return nil, err
@@ -296,7 +297,7 @@ func (c Client) SetPrivateLogicalSwitch(ls string, allow []string) error {
 	return err
 }
 
-func (c Client) getLogicalSwitchPortAddress(port string) ([]string, error) {
+func (c Client) GetLogicalSwitchPortAddress(port string) ([]string, error) {
 	output, err := c.ovnNbCommand("get", "logical_switch_port", port, "addresses")
 	if err != nil {
 		klog.Errorf("get port %s addresses failed %v", port, err)
@@ -306,15 +307,22 @@ func (c Client) getLogicalSwitchPortAddress(port string) ([]string, error) {
 		// [dynamic]
 		return nil, nil
 	}
+	output = strings.Trim(output, `[]"`)
+	//port ovn-default-ovn-cluster
+	//  type: router
+	//  addresses: ["00:00:00:0E:C2:4B"]
+	//  router-port: ovn-cluster-ovn-default
+	if len(strings.Split(output, " ")) == 1 {
+		return nil, nil
+	}
 	// currently user may only have one fixed address
 	// ["0a:00:00:00:00:0c 10.16.0.13"]
-	output = strings.Trim(output, `[]"`)
 	mac := strings.Split(output, " ")[0]
 	ip := strings.Split(output, " ")[1]
 	return []string{mac, ip}, nil
 }
 
-func (c Client) getLogicalSwitchPortDynamicAddress(port string) ([]string, error) {
+func (c Client) GetLogicalSwitchPortDynamicAddress(port string) ([]string, error) {
 	output, err := c.ovnNbCommand("get", "logical_switch_port", port, "dynamic-addresses")
 	if err != nil {
 		klog.Errorf("get port %s dynamic_addresses failed %v", port, err)
@@ -334,12 +342,12 @@ func (c Client) getLogicalSwitchPortDynamicAddress(port string) ([]string, error
 func (c Client) GetPortAddr(port string) ([]string, error) {
 	var address []string
 	var err error
-	address, err = c.getLogicalSwitchPortAddress(port)
+	address, err = c.GetLogicalSwitchPortAddress(port)
 	if err != nil {
 		return nil, err
 	}
 	if address == nil {
-		address, err = c.getLogicalSwitchPortDynamicAddress(port)
+		address, err = c.GetLogicalSwitchPortDynamicAddress(port)
 		if err != nil {
 			return nil, err
 		}
@@ -445,4 +453,59 @@ func (c Client) SetAddressesToAddressSet(addresses []string, as string) error {
 	}
 	_, err := c.ovnNbCommand(ovnArgs...)
 	return err
+}
+
+// StartOvnNbctlDaemon start a daemon and set OVN_NB_DAEMON env
+func StartOvnNbctlDaemon(nbHost string, nbPort int) (string, error) {
+	klog.Infof("start ovn-nbctl daemon")
+	output, err := exec.Command(
+		"ovn-nbctl",
+		fmt.Sprintf("--db=tcp:%s:%d", nbHost, nbPort),
+		"--pidfile",
+		"--detach",
+	).CombinedOutput()
+	if err != nil {
+		klog.Errorf("start ovn-nbctl daemon failed, %s", string(output))
+		return "", err
+	}
+
+	daemonSocket := strings.TrimSpace(string(output))
+	os.Setenv("OVN_NB_DAEMON", daemonSocket)
+	return daemonSocket, nil
+}
+
+// GetLogicalSwitchExcludeIPS get a logical switch exclude ips
+// ovn-nbctl get logical_switch ovn-default other_config:exclude_ips => "10.17.0.1 10.17.0.2 10.17.0.3..10.17.0.5"
+func (c Client) GetLogicalSwitchExcludeIPS(logicalSwtich string) ([]string, error) {
+	output, err := c.ovnNbCommand(IfExists, "get", "logical_switch", logicalSwtich, "other_config:exclude_ips")
+	if err != nil {
+		return nil, err
+	}
+	output = strings.Trim(output, `"`)
+	if output == "" {
+		return nil, ErrNoAddr
+	}
+	return strings.Fields(output), nil
+}
+
+// SetLogicalSwitchExcludeIPS set a logical switch exclude ips
+// ovn-nbctl set logical_switch ovn-default other_config:exclude_ips="10.17.0.2 10.17.0.1"
+func (c Client) SetLogicalSwitchExcludeIPS(logicalSwtich string, excludeIPS []string) error {
+	_, err := c.ovnNbCommand("set", "logical_switch", logicalSwtich,
+		fmt.Sprintf(`other_config:exclude_ips="%s"`, strings.Join(excludeIPS, " ")))
+	return err
+}
+
+func (c Client) GetLogicalSwitchPortByLogicalSwich(logicalSwitch string) ([]string, error) {
+	output, err := c.ovnNbCommand("lsp-list", logicalSwitch)
+	if err != nil {
+		return nil, err
+	}
+	var rv []string
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		lsp := strings.Fields(line)[0]
+		rv = append(rv, lsp)
+	}
+	return rv, nil
 }

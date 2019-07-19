@@ -6,3 +6,4 @@ dist/images/kube-ovn
 dist/images/kube-ovn-controller
 dist/images/kube-ovn-daemon
 dist/images/kube-ovn-gateway
+dist/images/kube-ovn-webhook
