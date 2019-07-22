@@ -12,21 +12,23 @@ Kube-OVN includes two parts:
 
 *NOTE* Ubuntu 16.04 users should build the related ovs-2.11.1 kernel module to replace the kernel built-in module 
 
-## To install
+## To Install
 
 1. Add the following label to the Node which will host the OVN DB and the OVN Control Plane:
 
     `kubectl label node <Node on which to deploy OVN DB> kube-ovn/role=master`
 2. Install native OVS and OVN components:
 
-    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v0.5.0/yamls/ovn.yaml`
+    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v0.6.0/yamls/ovn.yaml`
 3. Install the Kube-OVN Controller and CNI plugins:
 
-    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v0.5.0/yamls/kube-ovn.yaml`
-
+    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v0.6.0/yamls/kube-ovn.yaml`
+    
 That's all! You can now create some pods and test connectivity.
 
 For high-available ovn db, see [high available](high-available.md)
+
+If you want to enable IPv6 on default subnet and node subnet, please apply https://raw.githubusercontent.com/alauda/kube-ovn/v0.6.0/yamls/kube-ovn-ipv6.yaml on Step 3.
 
 ## More Configuration
 
@@ -72,7 +74,7 @@ For high-available ovn db, see [high available](high-available.md)
 1. Remove Kubernetes resources:
 
     ```bash
-    wget https://raw.githubusercontent.com/alauda/kube-ovn/v0.5.0/dist/images/cleanup.sh
+    wget https://raw.githubusercontent.com/alauda/kube-ovn/v0.6.0/dist/images/cleanup.sh
     bash cleanup.sh
     ```
 

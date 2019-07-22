@@ -8,7 +8,7 @@ metadata:
     kubernetes.io/description: |
       kube-ovn controller
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: kube-ovn-controller
@@ -25,8 +25,8 @@ spec:
         type: infra
     spec:
       tolerations:
-      - operator: Exists
-        effect: NoSchedule
+        - operator: Exists
+          effect: NoSchedule
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -41,11 +41,12 @@ spec:
           image: "index.alauda.cn/alaudak8s/kube-ovn-controller:v0.6.0"
           imagePullPolicy: Always
           command:
-          - /kube-ovn/start-controller.sh
+            - /kube-ovn/start-controller.sh
           args:
-          - --default-cidr=10.16.0.0/16
-          - --default-gateway=10.16.0.1
-          - --node-switch-cidr=100.64.0.0/16
+            - --default-cidr=2001:db8:0000:0000::/64
+            - --default-gateway=2001:db8:0000:0000::1
+            - --node-switch-cidr=2001:db8:0000:0001::/64
+            - --node-switch-gateway=2001:db8:0000:0001::1
           env:
             - name: POD_NAME
               valueFrom:
@@ -55,10 +56,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-            - name: KUBE_NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
           readinessProbe:
             exec:
               command:
@@ -105,65 +102,64 @@ spec:
         type: infra
     spec:
       tolerations:
-      - operator: Exists
-        effect: NoSchedule
+        - operator: Exists
+          effect: NoSchedule
       serviceAccountName: ovn
       hostNetwork: true
       hostPID: true
       initContainers:
-      - name: install-cni
-        image: "index.alauda.cn/alaudak8s/kube-ovn-cni:v0.6.0"
-        imagePullPolicy: Always
-        command: ["/kube-ovn/install-cni.sh"]
-        volumeMounts:
-          - mountPath: /etc/cni/net.d
-            name: cni-conf
-          - mountPath: /opt/cni/bin
-            name: cni-bin
+        - name: install-cni
+          image: "index.alauda.cn/alaudak8s/kube-ovn-cni:v0.6.0"
+          imagePullPolicy: Always
+          command: ["/kube-ovn/install-cni.sh"]
+          volumeMounts:
+            - mountPath: /etc/cni/net.d
+              name: cni-conf
+            - mountPath: /opt/cni/bin
+              name: cni-bin
       containers:
-      - name: cni-server
-        image: "index.alauda.cn/alaudak8s/kube-ovn-cni:v0.6.0"
-        imagePullPolicy: Always
-        command:
-          - sh
-          - /kube-ovn/start-cniserver.sh
-        args:
-          - --enable-mirror=false
-        securityContext:
-          runAsUser: 0
-          privileged: true
-        env:
-          - name: POD_IP
-            valueFrom:
-              fieldRef:
-                fieldPath: status.podIP
-          - name: KUBE_NODE_NAME
-            valueFrom:
-              fieldRef:
-                fieldPath: spec.nodeName
-        volumeMounts:
-          - mountPath: /run/openvswitch
-            name: host-run-ovs
-        readinessProbe:
-          exec:
-            command:
-              - nc
-              - -z
-              - -w3
-              - 127.0.0.1
-              - "10665"
-          periodSeconds: 3
-        livenessProbe:
-          exec:
-            command:
-              - nc
-              - -z
-              - -w3
-              - 127.0.0.1
-              - "10665"
-          initialDelaySeconds: 30
-          periodSeconds: 7
-          failureThreshold: 5
+        - name: cni-server
+          image: "index.alauda.cn/alaudak8s/kube-ovn-cni:v0.6.0"
+          command: ["sh", "/kube-ovn/start-cniserver.sh"]
+          args:
+            - --enable-mirror=false
+            - --mtu=1420
+          imagePullPolicy: Always
+          securityContext:
+            runAsUser: 0
+            privileged: true
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - mountPath: /run/openvswitch
+              name: host-run-ovs
+          readinessProbe:
+            exec:
+              command:
+                - nc
+                - -z
+                - -w3
+                - 127.0.0.1
+                - "10665"
+            periodSeconds: 3
+          livenessProbe:
+            exec:
+              command:
+                - nc
+                - -z
+                - -w3
+                - 127.0.0.1
+                - "10665"
+            initialDelaySeconds: 30
+            periodSeconds: 7
+            failureThreshold: 5
       nodeSelector:
         beta.kubernetes.io/os: "linux"
       volumes:
