@@ -1,13 +1,10 @@
 #!/bin/bash
 set -eu
 
-# Remove finalizers in svc
-kubectl patch svc -n kube-ovn ovn-nb --type='json' -p '[{"op": "replace", "path": "/metadata/finalizers", "value": []}]' || true
-kubectl patch svc -n kube-ovn ovn-sb --type='json' -p '[{"op": "replace", "path": "/metadata/finalizers", "value": []}]' || true
-
 # Delete Kube-OVN components
-kubectl delete -f https://raw.githubusercontent.com/alauda/kube-ovn/master/yamls/ovn.yaml
 kubectl delete -f https://raw.githubusercontent.com/alauda/kube-ovn/master/yamls/kube-ovn.yaml
+kubectl delete -f https://raw.githubusercontent.com/alauda/kube-ovn/master/yamls/ovn.yaml
+kubectl delete -f https://raw.githubusercontent.com/alauda/kube-ovn/master/yamls/crd.yaml
 
 # Remove annotations in namespaces and nodes
 kubectl annotate no --all ovn.kubernetes.io/cidr-

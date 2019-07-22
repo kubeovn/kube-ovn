@@ -9,6 +9,10 @@ if [[ -f "/proc/sys/net/ipv4/ip_forward" ]];
     then echo 1 > /proc/sys/net/ipv4/ip_forward;
 fi
 
+if [[ -f "/proc/sys/net/ipv6/conf/all/forwarding" ]];
+    then echo 1 > /proc/sys/net/ipv6/conf/all/forwarding;
+fi
+
 if [[ -f "/proc/sys/net/ipv4/conf/all/rp_filter" ]];
     then echo 0 > /proc/sys/net/ipv4/conf/all/rp_filter;
 fi

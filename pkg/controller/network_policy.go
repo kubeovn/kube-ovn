@@ -147,6 +147,25 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 		return err
 	}
+	subnet, err := c.subnetsLister.Get(c.config.DefaultLogicalSwitch)
+	if err != nil {
+		klog.Errorf("failed to get default subnet %v", err)
+		return err
+	}
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets %v", err)
+		return err
+	}
+
+	for _, s := range subnets {
+		for _, ns := range s.Spec.Namespaces {
+			if ns == np.Namespace {
+				subnet = s
+				break
+			}
+		}
+	}
 
 	defer func() {
 		if err != nil {
@@ -226,7 +245,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return err
 		}
 
-		if err := c.ovnClient.CreateIngressACL(pgName, ingressAllowAsName, ingressExceptAsName, ingressPorts); err != nil {
+		if err := c.ovnClient.CreateIngressACL(pgName, ingressAllowAsName, ingressExceptAsName, subnet.Spec.Protocol, ingressPorts); err != nil {
 			klog.Errorf("failed to create ingress acls for np %s, %v", key, err)
 			return err
 		}
@@ -284,7 +303,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return err
 		}
 
-		if err := c.ovnClient.CreateEgressACL(pgName, egressAllowAsName, egressExceptAsName, egressPorts); err != nil {
+		if err := c.ovnClient.CreateEgressACL(pgName, egressAllowAsName, egressExceptAsName, subnet.Spec.Protocol, egressPorts); err != nil {
 			klog.Errorf("failed to create egress acls for np %s, %v", key, err)
 			return err
 		}

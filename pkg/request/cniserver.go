@@ -24,6 +24,7 @@ type PodRequest struct {
 
 // PodResponse is the cniserver response format
 type PodResponse struct {
+	Protocol   string `json:"protocol"`
 	IpAddress  string `json:"address"`
 	MacAddress string `json:"mac_address"`
 	CIDR       string `json:"cidr"`
@@ -56,13 +57,12 @@ func (csc CniServerClient) Add(podRequest PodRequest) (*PodResponse, error) {
 
 // Del pod request
 func (csc CniServerClient) Del(podRequest PodRequest) error {
-	resp := PodResponse{}
-	res, _, errors := csc.Post("http://dummy/api/v1/del").Send(podRequest).EndStruct(&resp)
+	res, body, errors := csc.Post("http://dummy/api/v1/del").Send(podRequest).End()
 	if len(errors) != 0 {
 		return errors[0]
 	}
 	if res.StatusCode != 204 {
-		return fmt.Errorf("delete ip return %d %s", res.StatusCode, resp.Err)
+		return fmt.Errorf("delete ip return %d %s", res.StatusCode, body)
 	}
 	return nil
 }

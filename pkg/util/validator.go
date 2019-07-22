@@ -52,7 +52,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 					return fmt.Errorf("ip %s in exclude_ips is not a valid address", ip)
 				}
 			}
-			if Ip2Long(ips[0]) >= Ip2Long(ips[1]) {
+			if Ip2BigInt(ips[0]).Cmp(Ip2BigInt(ips[1])) == 1 {
 				return fmt.Errorf("%s in excludeIps is not a valid ip range", ipr)
 			}
 		}

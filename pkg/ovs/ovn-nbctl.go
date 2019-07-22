@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
+	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/util"
-	"k8s.io/klog"
-
 	netv1 "k8s.io/api/networking/v1"
+	"k8s.io/klog"
 )
 
 func (c Client) ovnNbCommand(cmdArgs ...string) (string, error) {
@@ -76,29 +76,32 @@ func (c Client) CreatePort(ls, port, ip, mac string) (*nic, error) {
 			mac = address[0]
 		}
 	}
-	output, err := c.ovnNbCommand("get", "logical_switch", ls, "other_config:subnet", "other_config:gateway")
-	if err != nil {
-		klog.Errorf("get switch %s failed %v", ls, err)
-		return nil, err
-	}
-	subnet, gw := strings.Trim(strings.Split(output, "\n")[0], "\""), strings.Trim(strings.Split(output, "\n")[1], "\"")
-	return &nic{IpAddress: ip, MacAddress: mac, CIDR: subnet, Gateway: gw}, nil
+	return &nic{IpAddress: ip, MacAddress: mac}, nil
 }
 
 type nic struct {
 	IpAddress  string
 	MacAddress string
-	CIDR       string
-	Gateway    string
 }
 
 // CreateLogicalSwitch create logical switch in ovn, connect it to router and apply tcp/udp lb rules
-func (c Client) CreateLogicalSwitch(ls, subnet, gateway string, excludeIps []string) error {
-	_, err := c.ovnNbCommand(WaitSb, MayExist, "ls-add", ls, "--",
-		"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", subnet), "--",
-		"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
-		"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")), "--",
-		"acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip4.src==%s", c.NodeSwitchCIDR), "allow-related")
+func (c Client) CreateLogicalSwitch(ls, protocol, subnet, gateway string, excludeIps []string) error {
+	var err error
+	switch protocol {
+	case kubeovnv1.ProtocolIPv4:
+		_, err = c.ovnNbCommand(WaitSb, MayExist, "ls-add", ls, "--",
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", subnet), "--",
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")), "--",
+			"acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip4.src==%s", c.NodeSwitchCIDR), "allow-related")
+	case kubeovnv1.ProtocolIPv6:
+		_, err = c.ovnNbCommand(WaitSb, MayExist, "ls-add", ls, "--",
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:ipv6_prefix=%s", strings.Split(subnet, "/")[0]), "--",
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")), "--",
+			"acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip6.src==%s", c.NodeSwitchCIDR), "allow-related")
+	}
+
 	if err != nil {
 		klog.Errorf("create switch %s failed %v", ls, err)
 		return err
@@ -279,7 +282,7 @@ func (c Client) CleanLogicalSwitchAcl(ls string) error {
 }
 
 // SetPrivateLogicalSwitch will drop all ingress traffic except allow subnets
-func (c Client) SetPrivateLogicalSwitch(ls string, allow []string) error {
+func (c Client) SetPrivateLogicalSwitch(ls, protocol string, allow []string) error {
 	delArgs := []string{"acl-del", ls}
 	dropArgs := []string{"--", "acl-add", ls, "to-lport", util.DefaultDropPriority, fmt.Sprintf(`inport=="%s-%s"`, ls, c.ClusterRouter), "drop"}
 	ovnArgs := append(delArgs, dropArgs...)
@@ -287,7 +290,14 @@ func (c Client) SetPrivateLogicalSwitch(ls string, allow []string) error {
 	allowArgs := []string{}
 	for _, subnet := range allow {
 		if strings.TrimSpace(subnet) != "" {
-			match := fmt.Sprintf("ip4.src==%s", strings.TrimSpace(subnet))
+			var match string
+			switch protocol {
+			case kubeovnv1.ProtocolIPv4:
+				match = fmt.Sprintf("ip4.src==%s", strings.TrimSpace(subnet))
+			case kubeovnv1.ProtocolIPv6:
+				match = fmt.Sprintf("ip6.src==%s", strings.TrimSpace(subnet))
+			}
+
 			allowArgs = append(allowArgs, "--", "acl-add", ls, "to-lport", util.SubnetAllowPriority, match, "allow-related")
 		}
 	}
@@ -391,20 +401,24 @@ func (c Client) DeleteAddressSet(asName string) error {
 	return err
 }
 
-func (c Client) CreateIngressACL(pgName, asIngressName, asExceptName string, npp []netv1.NetworkPolicyPort) error {
-	pgAs := fmt.Sprintf("%s_ip4", pgName)
+func (c Client) CreateIngressACL(pgName, asIngressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort) error {
+	ipSuffix := "ip4"
+	if protocol == kubeovnv1.ProtocolIPv6 {
+		ipSuffix = "ip6"
+	}
+	pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
 	delArgs := []string{"--type=port-group", "acl-del", pgName, "to-lport"}
-	exceptArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressExceptDropPriority, fmt.Sprintf("ip4.src == $%s && ip4.dst == $%s", asExceptName, pgAs), "drop"}
-	defaultArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressDefaultDrop, fmt.Sprintf("ip4.dst == $%s", pgAs), "drop"}
+	exceptArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressExceptDropPriority, fmt.Sprintf("%s.src == $%s && %s.dst == $%s", ipSuffix, asExceptName, ipSuffix, pgAs), "drop"}
+	defaultArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressDefaultDrop, fmt.Sprintf("%s.dst == $%s", ipSuffix, pgAs), "drop"}
 	ovnArgs := append(delArgs, exceptArgs...)
 	ovnArgs = append(ovnArgs, defaultArgs...)
 
 	if len(npp) == 0 {
-		allowArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("ip4.src == $%s && ip4.dst == $%s", asIngressName, pgAs), "allow-related"}
+		allowArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("%s.src == $%s && %s.dst == $%s", ipSuffix, asIngressName, ipSuffix, pgAs), "allow-related"}
 		ovnArgs = append(ovnArgs, allowArgs...)
 	} else {
 		for _, port := range npp {
-			allowArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("ip4.src == $%s && %s.dst == %d && ip4.dst == $%s", asIngressName, strings.ToLower(string(*port.Protocol)), port.Port.IntVal, pgAs), "allow-related"}
+			allowArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("%s.src == $%s && %s.dst == %d && %s.dst == $%s", ipSuffix, asIngressName, strings.ToLower(string(*port.Protocol)), port.Port.IntVal, ipSuffix, pgAs), "allow-related"}
 			ovnArgs = append(ovnArgs, allowArgs...)
 		}
 	}
@@ -412,20 +426,24 @@ func (c Client) CreateIngressACL(pgName, asIngressName, asExceptName string, npp
 	return err
 }
 
-func (c Client) CreateEgressACL(pgName, asEgressName, asExceptName string, npp []netv1.NetworkPolicyPort) error {
-	pgAs := fmt.Sprintf("%s_ip4", pgName)
+func (c Client) CreateEgressACL(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort) error {
+	ipSuffix := "ip4"
+	if protocol == kubeovnv1.ProtocolIPv6 {
+		ipSuffix = "ip6"
+	}
+	pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
 	delArgs := []string{"--type=port-group", "acl-del", pgName, "from-lport"}
-	exceptArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressExceptDropPriority, fmt.Sprintf("ip4.dst == $%s && ip4.src == $%s", asExceptName, pgAs), "drop"}
-	defaultArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressDefaultDrop, fmt.Sprintf("ip4.src == $%s", pgAs), "drop"}
+	exceptArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressExceptDropPriority, fmt.Sprintf("%s.dst == $%s && %s.src == $%s", ipSuffix, asExceptName, ipSuffix, pgAs), "drop"}
+	defaultArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressDefaultDrop, fmt.Sprintf("%s.src == $%s", ipSuffix, pgAs), "drop"}
 	ovnArgs := append(delArgs, exceptArgs...)
 	ovnArgs = append(ovnArgs, defaultArgs...)
 
 	if len(npp) == 0 {
-		allowArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("ip4.dst == $%s && ip4.src == $%s", asEgressName, pgAs), "allow-related"}
+		allowArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("%s.dst == $%s && %s.src == $%s", ipSuffix, asEgressName, ipSuffix, pgAs), "allow-related"}
 		ovnArgs = append(ovnArgs, allowArgs...)
 	} else {
 		for _, port := range npp {
-			allowArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("ip4.dst == $%s && %s.dst == %d && ip4.src == $%s", asEgressName, strings.ToLower(string(*port.Protocol)), port.Port.IntVal, pgAs), "allow-related"}
+			allowArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("%s.dst == $%s && %s.dst == %d && %s.src == $%s", ipSuffix, asEgressName, strings.ToLower(string(*port.Protocol)), port.Port.IntVal, ipSuffix, pgAs), "allow-related"}
 			ovnArgs = append(ovnArgs, allowArgs...)
 		}
 	}

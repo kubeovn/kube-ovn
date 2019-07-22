@@ -19,10 +19,15 @@ const (
 )
 
 var (
-	natRule = util.IPTableRule{
+	natV4Rule = util.IPTableRule{
 		Table: "nat",
 		Chain: "POSTROUTING",
 		Rule:  strings.Split("-m set --match-set ovn40local-pod-ip-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE", " "),
+	}
+	natV6Rule = util.IPTableRule{
+		Table: "nat",
+		Chain: "POSTROUTING",
+		Rule:  strings.Split("-m set --match-set ovn60local-pod-ip-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE", " "),
 	}
 	forwardAcceptRule1 = util.IPTableRule{
 		Table: "filter",
@@ -36,41 +41,71 @@ var (
 	}
 )
 
-func (c *Controller) runGateway(stopCh <-chan struct{}) error {
+func (c *Controller) runGateway(protocol string, stopCh <-chan struct{}) error {
 	klog.Info("start gateway")
-	subnets, err := c.getSubnetsCIDR()
+	subnets, err := c.getSubnetsCIDR(protocol)
 	if err != nil {
 		klog.Errorf("get subnets failed, %+v", err)
 		return err
 	}
-	localPodIPs, err := c.getLocalPodIPsNeedNAT()
+	localPodIPs, err := c.getLocalPodIPsNeedNAT(protocol)
 	if err != nil {
 		klog.Errorf("get local pod ips failed, %+v", err)
 		return err
 	}
-	c.ipSetsMgr.AddOrReplaceIPSet(ipsets.IPSetMetadata{
-		MaxSize: 1048576,
-		SetID:   SubnetSet,
-		Type:    ipsets.IPSetTypeHashNet,
-	}, subnets)
-	c.ipSetsMgr.AddOrReplaceIPSet(ipsets.IPSetMetadata{
-		MaxSize: 1048576,
-		SetID:   LocalPodSet,
-		Type:    ipsets.IPSetTypeHashIP,
-	}, localPodIPs)
-	c.ipSetsMgr.ApplyUpdates()
 
-	for _, iptRule := range []util.IPTableRule{forwardAcceptRule1, forwardAcceptRule2, natRule} {
-		exists, err := c.iptablesMgr.Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
-		if err != nil {
-			klog.Errorf("check iptable rule exist failed, %+v", err)
-			return err
-		}
-		if !exists {
-			err := c.iptablesMgr.Insert(iptRule.Table, iptRule.Chain, 1, iptRule.Rule...)
+	if protocol == kubeovnv1.ProtocolIPv4 {
+		c.ipSetsV4Mgr.AddOrReplaceIPSet(ipsets.IPSetMetadata{
+			MaxSize: 1048576,
+			SetID:   SubnetSet,
+			Type:    ipsets.IPSetTypeHashNet,
+		}, subnets)
+		c.ipSetsV4Mgr.AddOrReplaceIPSet(ipsets.IPSetMetadata{
+			MaxSize: 1048576,
+			SetID:   LocalPodSet,
+			Type:    ipsets.IPSetTypeHashIP,
+		}, localPodIPs)
+		c.ipSetsV4Mgr.ApplyUpdates()
+
+		for _, iptRule := range []util.IPTableRule{forwardAcceptRule1, forwardAcceptRule2, natV4Rule} {
+			exists, err := c.iptablesV4Mgr.Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
 			if err != nil {
-				klog.Errorf("insert iptable rule exist failed, %+v", err)
+				klog.Errorf("check iptable rule exist failed, %+v", err)
 				return err
+			}
+			if !exists {
+				err := c.iptablesV4Mgr.Insert(iptRule.Table, iptRule.Chain, 1, iptRule.Rule...)
+				if err != nil {
+					klog.Errorf("insert iptable rule exist failed, %+v", err)
+					return err
+				}
+			}
+		}
+	} else {
+		c.ipSetsV6Mgr.AddOrReplaceIPSet(ipsets.IPSetMetadata{
+			MaxSize: 1048576,
+			SetID:   SubnetSet,
+			Type:    ipsets.IPSetTypeHashNet,
+		}, subnets)
+		c.ipSetsV6Mgr.AddOrReplaceIPSet(ipsets.IPSetMetadata{
+			MaxSize: 1048576,
+			SetID:   LocalPodSet,
+			Type:    ipsets.IPSetTypeHashIP,
+		}, localPodIPs)
+		c.ipSetsV6Mgr.ApplyUpdates()
+
+		for _, iptRule := range []util.IPTableRule{forwardAcceptRule1, forwardAcceptRule2, natV6Rule} {
+			exists, err := c.iptablesV6Mgr.Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
+			if err != nil {
+				klog.Errorf("check iptable rule exist failed, %+v", err)
+				return err
+			}
+			if !exists {
+				err := c.iptablesV6Mgr.Insert(iptRule.Table, iptRule.Chain, 1, iptRule.Rule...)
+				if err != nil {
+					klog.Errorf("insert iptable rule exist failed, %+v", err)
+					return err
+				}
 			}
 		}
 	}
@@ -85,33 +120,47 @@ LOOP:
 		case <-ticker.C:
 			klog.V(3).Info("tick")
 		}
-		subnets, err := c.getSubnetsCIDR()
+		subnets, err := c.getSubnetsCIDR(protocol)
 		if err != nil {
 			klog.Errorf("get subnets failed, %+v", err)
 			continue
 		}
-		localPodIPs, err := c.getLocalPodIPsNeedNAT()
+		localPodIPs, err := c.getLocalPodIPsNeedNAT(protocol)
 		if err != nil {
 			klog.Errorf("get local pod ips failed, %+v", err)
 			continue
 		}
+		if protocol == kubeovnv1.ProtocolIPv4 {
+			c.ipSetsV4Mgr.AddOrReplaceIPSet(ipsets.IPSetMetadata{
+				MaxSize: 1048576,
+				SetID:   SubnetSet,
+				Type:    ipsets.IPSetTypeHashNet,
+			}, subnets)
+			c.ipSetsV4Mgr.AddOrReplaceIPSet(ipsets.IPSetMetadata{
+				MaxSize: 1048576,
+				SetID:   LocalPodSet,
+				Type:    ipsets.IPSetTypeHashIP,
+			}, localPodIPs)
+			c.ipSetsV4Mgr.ApplyUpdates()
+		} else {
+			c.ipSetsV6Mgr.AddOrReplaceIPSet(ipsets.IPSetMetadata{
+				MaxSize: 1048576,
+				SetID:   SubnetSet,
+				Type:    ipsets.IPSetTypeHashNet,
+			}, subnets)
+			c.ipSetsV6Mgr.AddOrReplaceIPSet(ipsets.IPSetMetadata{
+				MaxSize: 1048576,
+				SetID:   LocalPodSet,
+				Type:    ipsets.IPSetTypeHashIP,
+			}, localPodIPs)
+			c.ipSetsV6Mgr.ApplyUpdates()
+		}
 
-		c.ipSetsMgr.AddOrReplaceIPSet(ipsets.IPSetMetadata{
-			MaxSize: 1048576,
-			SetID:   SubnetSet,
-			Type:    ipsets.IPSetTypeHashNet,
-		}, subnets)
-		c.ipSetsMgr.AddOrReplaceIPSet(ipsets.IPSetMetadata{
-			MaxSize: 1048576,
-			SetID:   LocalPodSet,
-			Type:    ipsets.IPSetTypeHashIP,
-		}, localPodIPs)
-		c.ipSetsMgr.ApplyUpdates()
 	}
 	return nil
 }
 
-func (c *Controller) getLocalPodIPsNeedNAT() ([]string, error) {
+func (c *Controller) getLocalPodIPsNeedNAT(protocol string) ([]string, error) {
 	var localPodIPs []string
 	hostname := os.Getenv("KUBE_NODE_NAME")
 	allPods, err := c.podsLister.List(labels.Everything())
@@ -135,11 +184,13 @@ func (c *Controller) getLocalPodIPsNeedNAT() ([]string, error) {
 			switch nsGWType {
 			case "", kubeovnv1.GWDistributedType:
 				if pod.Spec.NodeName == hostname {
-					localPodIPs = append(localPodIPs, pod.Status.PodIP)
+					if util.CheckProtocol(pod.Status.PodIP) == protocol {
+						localPodIPs = append(localPodIPs, pod.Status.PodIP)
+					}
 				}
 			case kubeovnv1.GWCentralizedType:
 				gwNode := subnet.Spec.GatewayNode
-				if gwNode == hostname {
+				if gwNode == hostname && util.CheckProtocol(pod.Status.PodIP) == protocol {
 					localPodIPs = append(localPodIPs, pod.Status.PodIP)
 				}
 			}
@@ -149,7 +200,7 @@ func (c *Controller) getLocalPodIPsNeedNAT() ([]string, error) {
 	return localPodIPs, nil
 }
 
-func (c *Controller) getSubnetsCIDR() ([]string, error) {
+func (c *Controller) getSubnetsCIDR(protocol string) ([]string, error) {
 	var ret = []string{c.config.ServiceClusterIPRange}
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -157,7 +208,9 @@ func (c *Controller) getSubnetsCIDR() ([]string, error) {
 		return nil, err
 	}
 	for _, subnet := range subnets {
-		ret = append(ret, subnet.Spec.CIDRBlock)
+		if subnet.Spec.Protocol == protocol {
+			ret = append(ret, subnet.Spec.CIDRBlock)
+		}
 	}
 	return ret, nil
 }
