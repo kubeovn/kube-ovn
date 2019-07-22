@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## v0.6.0 -- 2019/07/22
+### Features
+* Support traffic mirror
+* Use webhook to check ip conflict
+* Beta IPv6 support
+* Use subnet CRD to replace namespace annotation
+* Use go mod to manage dependency
+
+### Bug fixes
+* Remove RBAC dependency on cluster-admin
+* Use kubernetes nodename to replace hostname
+
 ## v0.5.0 -- 2019/06/06
 ### Features
 * Support NetworkPolicy by OVN ACL
