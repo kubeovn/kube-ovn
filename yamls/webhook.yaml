@@ -38,7 +38,7 @@ spec:
       hostNetwork: true
       containers:
         - name: kube-ovn-webhook
-          image: "index.alauda.cn/alaudak8s/kube-ovn-webhook:v0.6.0"
+          image: "index.alauda.cn/alaudak8s/kube-ovn-webhook:v0.7.0-pre"
           imagePullPolicy: Always
           command:
             - /kube-ovn/start-webhook.sh
