@@ -31,7 +31,5 @@ const (
 	SubnetAllowPriority = "1001"
 	DefaultDropPriority = "1000"
 
-	// Refer to http://www.openvswitch.org/support/dist-docs/ovn-architecture.7.html "Tunnel Encapsulations"
-	// outer IP header + outer UDP header + Geneve header + OVN header + inner eth header
-	GeneveHeaderLength = 20 + 8 + 8 + 8 + 14
+	GeneveHeaderLength = 100
 )
