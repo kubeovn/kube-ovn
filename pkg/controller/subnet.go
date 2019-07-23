@@ -49,8 +49,8 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 	newSubnet := new.(*kubeovnv1.Subnet)
 
 	if oldSubnet.Spec.Private != newSubnet.Spec.Private ||
-		reflect.DeepEqual(oldSubnet.Spec.AllowSubnets, newSubnet.Spec.AllowSubnets) ||
-		reflect.DeepEqual(oldSubnet.Spec.Namespaces, newSubnet.Spec.Namespaces) {
+		!reflect.DeepEqual(oldSubnet.Spec.AllowSubnets, newSubnet.Spec.AllowSubnets) ||
+		!reflect.DeepEqual(oldSubnet.Spec.Namespaces, newSubnet.Spec.Namespaces) {
 		var key string
 		var err error
 		if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
@@ -153,7 +153,7 @@ func (c *Controller) processNextDeleteSubnetWorkItem() bool {
 			return nil
 		}
 		if err := c.handleDeleteSubnet(key); err != nil {
-			c.updateSubnetQueue.AddRateLimited(key)
+			c.deleteSubnetQueue.AddRateLimited(key)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
 		c.deleteSubnetQueue.Forget(obj)
@@ -175,6 +175,17 @@ func (c *Controller) handleAddSubnet(key string) error {
 		}
 		return err
 	}
+	existSubnets, err := c.ovnClient.ListLogicalSwitch()
+	if err != nil {
+		klog.Errorf("failed to list exist subnet")
+		return err
+	}
+	for _, s := range existSubnets {
+		if s == subnet.Name {
+			return nil
+		}
+	}
+
 	if err = util.ValidateSubnet(*subnet); err != nil {
 		klog.Error(err)
 		c.recorder.Eventf(subnet, v1.EventTypeWarning, "ValidateLogicalSwitchFailed", err.Error())
