@@ -17,10 +17,13 @@ Kube-OVN includes two parts:
 1. Add the following label to the Node which will host the OVN DB and the OVN Control Plane:
 
     `kubectl label node <Node on which to deploy OVN DB> kube-ovn/role=master`
-2. Install native OVS and OVN components:
+2. Install Kube-OVN related CRDs
+
+    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v0.6.0/yamls/crd.yaml`
+3. Install native OVS and OVN components:
 
     `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v0.6.0/yamls/ovn.yaml`
-3. Install the Kube-OVN Controller and CNI plugins:
+4. Install the Kube-OVN Controller and CNI plugins:
 
     `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v0.6.0/yamls/kube-ovn.yaml`
     
