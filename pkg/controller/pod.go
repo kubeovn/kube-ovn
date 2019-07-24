@@ -61,12 +61,45 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	klog.V(3).Infof("enqueue delete pod %s", key)
-	c.deletePodQueue.AddRateLimited(key)
 
 	p := obj.(*v1.Pod)
+	isStateful, statefulSetName := isStatefulSetPod(p)
+	if !p.Spec.HostNetwork && !isStateful {
+		klog.V(3).Infof("enqueue delete pod %s", key)
+		c.deletePodQueue.AddRateLimited(key)
+	}
+
 	for _, np := range c.podMatchNetworkPolicies(p) {
 		c.updateNpQueue.AddRateLimited(np)
+	}
+
+	if isStateful {
+		ss, err := c.config.KubeClient.AppsV1().StatefulSets(p.Namespace).Get(statefulSetName, metav1.GetOptions{})
+		if err != nil {
+			// statefulset is deleted
+			if k8serrors.IsNotFound(err) {
+				c.deletePodQueue.AddRateLimited(key)
+				return
+			} else {
+				klog.Errorf("failed to get statefulset %v", err)
+				return
+			}
+		}
+
+		// statefulset is deleting
+		if ss.DeletionTimestamp != nil {
+			c.deletePodQueue.AddRateLimited(key)
+			return
+		}
+
+		// down scale statefulset
+		numIndex := len(strings.Split(p.Name, "-")) - 1
+		numStr := strings.Split(p.Name, "-")[numIndex]
+		index, _ := strconv.Atoi(numStr)
+		if int32(index) >= *ss.Spec.Replicas {
+			c.deletePodQueue.AddRateLimited(key)
+			return
+		}
 	}
 }
 
@@ -478,7 +511,7 @@ func (c *Controller) handleAddIpPoolPod(key string) error {
 	if ipPoolAnnotation != "" && pod.Annotations[util.IpAddressAnnotation] == "" {
 		ipPool := strings.Split(pod.Annotations[util.IpPoolAnnotation], ",")
 
-		if isStatefulSetPod(pod) {
+		if isStateful, _ := isStatefulSetPod(pod); isStateful {
 			numIndex := len(strings.Split(pod.Name, "-")) - 1
 			numStr := strings.Split(pod.Name, "-")[numIndex]
 			index, _ := strconv.Atoi(numStr)
@@ -571,27 +604,7 @@ func (c *Controller) handleDeletePod(key string) error {
 			return err
 		}
 	}
-	pod, err := c.podsLister.Pods(namespace).Get(name)
-	if err != nil {
-		// The Pod resource may no longer exist, in this case we stop
-		// processing.
-		if k8serrors.IsNotFound(err) {
-			return c.ovnClient.DeletePort(ovs.PodNameToPortName(name, namespace))
-		}
-		return err
-	}
-
-	if pod.Spec.HostNetwork {
-		klog.Infof("pod %s/%s in host network mode no need for ovn process", pod.Namespace, pod.Name)
-		return nil
-	}
-
-	// for statefulset pod, names are same when updating, so double check to make sure the pod is to be deleted
-	if pod.DeletionTimestamp != nil {
-		return c.ovnClient.DeletePort(ovs.PodNameToPortName(name, namespace))
-	}
-
-	return nil
+	return c.ovnClient.DeletePort(ovs.PodNameToPortName(name, namespace))
 }
 
 func (c *Controller) handleUpdatePod(key string) error {
@@ -647,6 +660,9 @@ func (c *Controller) handleUpdatePod(key string) error {
 		if err != nil {
 			return err
 		}
+		if err := c.ovnClient.DeleteStaticRouter(pod.Status.PodIP, c.config.ClusterRouter); err != nil {
+			return errors.Annotate(err, "del static route failed")
+		}
 		if err := c.ovnClient.AddStaticRouter(ovs.PolicySrcIP, pod.Status.PodIP, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
 			return errors.Annotate(err, "add static route failed")
 		}
@@ -660,6 +676,9 @@ func (c *Controller) handleUpdatePod(key string) error {
 		if err != nil {
 			return err
 		}
+		if err := c.ovnClient.DeleteStaticRouter(pod.Status.PodIP, c.config.ClusterRouter); err != nil {
+			return errors.Annotate(err, "del static route failed")
+		}
 		if err := c.ovnClient.AddStaticRouter(ovs.PolicySrcIP, pod.Status.PodIP, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
 			return errors.Annotate(err, "add static route failed")
 		}
@@ -667,13 +686,13 @@ func (c *Controller) handleUpdatePod(key string) error {
 	return nil
 }
 
-func isStatefulSetPod(pod *v1.Pod) bool {
+func isStatefulSetPod(pod *v1.Pod) (bool, string) {
 	for _, owner := range pod.OwnerReferences {
 		if owner.Kind == "StatefulSet" {
-			return true
+			return true, owner.Name
 		}
 	}
-	return false
+	return false, ""
 }
 
 func getNodeTunlIP(node *v1.Node) (net.IP, error) {

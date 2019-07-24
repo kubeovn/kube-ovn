@@ -49,10 +49,12 @@ rules:
   - apiGroups:
       - ""
       - networking.k8s.io
+      - apps
     resources:
       - networkpolicies
       - services
       - endpoints
+      - statefulsets
     verbs:
       - get
       - list
