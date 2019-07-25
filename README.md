@@ -1,4 +1,4 @@
-# Kube-OVN
+<img src="docs/logo-horizontal.svg" alt="kube_ovn_logo" width="500"/>
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/alauda/kube-ovn/blob/master/LICENSE)
 [![Build Tag](https://img.shields.io/github/tag/alauda/kube-ovn.svg)](https://github.com/alauda/kube-ovn/releases)
