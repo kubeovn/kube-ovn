@@ -28,6 +28,7 @@ type IP struct {
 type IPSpec struct {
 	PodName     string `json:"podName"`
 	Namespace   string `json:"namespace"`
+	Subnet      string `json:"subnet"`
 	NodeName    string `json:"nodeName"`
 	IPAddress   string `json:"ipAddress"`
 	MacAddress  string `json:"macAddress"`
