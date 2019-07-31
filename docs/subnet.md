@@ -7,6 +7,7 @@ From v0.6.0 Kube-OVN will use Subnet crd to manage subnets. If you still use a v
 ```bash
 apiVersion: kubeovn.io/v1
 kind: Subnet
+metadata:
   name: subnet-gateway
 spec:
   protocol: IPv4
