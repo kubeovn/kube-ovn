@@ -8,9 +8,11 @@ Kube-OVN includes two parts:
 ## Prerequest
 - Kubernetes >= 1.11
 - Docker >= 1.12.6
-- OS: CentOS 7.5, Ubuntu 16.04
+- OS: CentOS 7.5, Ubuntu 16.04/18.04
 
-*NOTE* Ubuntu 16.04 users should build the related ovs-2.11.1 kernel module to replace the kernel built-in module 
+*NOTE* 
+1. Ubuntu 16.04 users should build the related ovs-2.11.1 kernel module to replace the kernel built-in module 
+2. CentOS users should make sure kernel version is greater than 3.10.0-898 to avoid a kernel conntrack bug, see [here](https://bugs.launchpad.net/neutron/+bug/1776778) 
 
 ## To Install
 
