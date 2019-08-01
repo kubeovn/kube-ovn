@@ -154,6 +154,19 @@ func (c Client) ListLogicalSwitch() ([]string, error) {
 	return result, nil
 }
 
+func (c Client) LogicalSwitchExists(logicalSwitch string) (bool, error) {
+	lss, err := c.ListLogicalSwitch()
+	if err != nil {
+		return false, err
+	}
+	for _, ls := range lss {
+		if ls == logicalSwitch {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // ListLogicalRouter list logical router names
 func (c Client) ListLogicalRouter() ([]string, error) {
 	output, err := c.ovnNbCommand("lr-list")
