@@ -32,7 +32,9 @@ The Switch, Router, Firewall showed in the diagram below are all distributed on 
 ![alt text](docs/ovn-network-topology.png "kube-ovn network topology")
 
 ## Quick Start
-Kube-OVN is easy to install with all necessary components/dependencies included. Please refer to the [Installation Guide](docs/install.md).
+Kube-OVN is easy to install with all necessary components/dependencies included. If you already has a Kubernetes cluster without any cni plugin, please refer to the [Installation Guide](docs/install.md).
+
+If you want to install Kubernetes from scratch, you can try [kubespray](https://github.com/kubernetes-sigs/kubespray/blob/master/docs/kube-ovn.md) or for Chinese users try [kubeasz](https://github.com/easzlab/kubeasz/blob/master/docs/setup/network-plugin/kube-ovn.md) to deploy a production ready Kubernetes cluster with Kube-OVN embedded.
 
 ## Documents
 - [Namespaced Subnets](docs/subnet.md)
