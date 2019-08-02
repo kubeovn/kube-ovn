@@ -175,39 +175,40 @@ func (c *Controller) handleAddSubnet(key string) error {
 		}
 		return err
 	}
-	existSubnets, err := c.ovnClient.ListLogicalSwitch()
+	exist, err := c.ovnClient.LogicalSwitchExists(subnet.Name)
 	if err != nil {
-		klog.Errorf("failed to list exist subnet")
+		klog.Errorf("failed to list logical switch, %v", err)
 		return err
-	}
-	for _, s := range existSubnets {
-		if s == subnet.Name {
-			return nil
-		}
 	}
 
-	if err = util.ValidateSubnet(*subnet); err != nil {
-		klog.Error(err)
-		c.recorder.Eventf(subnet, v1.EventTypeWarning, "ValidateLogicalSwitchFailed", err.Error())
-		return err
-	}
-	subnetList, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets %v", err)
-		return err
-	}
-	for _, sub := range subnetList {
-		if sub.Name != subnet.Name && util.CIDRConflict(sub.Spec.CIDRBlock, subnet.Spec.CIDRBlock) {
-			err = fmt.Errorf("subnet %s cidr %s conflict with subnet %s cidr %s", subnet.Name, subnet.Spec.CIDRBlock, sub.Name, sub.Spec.CIDRBlock)
+	if !exist {
+		if err = util.ValidateSubnet(*subnet); err != nil {
 			klog.Error(err)
+			subnet.TypeMeta.Kind = "Subnet"
+			subnet.TypeMeta.APIVersion = "kubeovn.io/v1"
 			c.recorder.Eventf(subnet, v1.EventTypeWarning, "ValidateLogicalSwitchFailed", err.Error())
 			return err
 		}
-	}
-	// If multiple namespace use same ls name, only first one will success
-	err = c.ovnClient.CreateLogicalSwitch(subnet.Name, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps)
-	if err != nil {
-		return err
+		subnetList, err := c.subnetsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list subnets %v", err)
+			return err
+		}
+		for _, sub := range subnetList {
+			if sub.Name != subnet.Name && util.CIDRConflict(sub.Spec.CIDRBlock, subnet.Spec.CIDRBlock) {
+				err = fmt.Errorf("subnet %s cidr %s conflict with subnet %s cidr %s", subnet.Name, subnet.Spec.CIDRBlock, sub.Name, sub.Spec.CIDRBlock)
+				klog.Error(err)
+				subnet.TypeMeta.Kind = "Subnet"
+				subnet.TypeMeta.APIVersion = "kubeovn.io/v1"
+				c.recorder.Eventf(subnet, v1.EventTypeWarning, "ValidateLogicalSwitchFailed", err.Error())
+				return err
+			}
+		}
+		// If multiple namespace use same ls name, only first one will success
+		err = c.ovnClient.CreateLogicalSwitch(subnet.Name, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps)
+		if err != nil {
+			return err
+		}
 	}
 
 	if subnet.Spec.Private {
@@ -224,8 +225,19 @@ func (c *Controller) handleUpdateSubnet(key string) error {
 		}
 		return err
 	}
+	exist, err := c.ovnClient.LogicalSwitchExists(subnet.Name)
+	if err != nil {
+		klog.Errorf("failed to list logical switch, %v", err)
+		return err
+	}
+	if !exist {
+		c.addSubnetQueue.AddRateLimited(key)
+		return nil
+	}
 	if err = util.ValidateSubnet(*subnet); err != nil {
 		klog.Error(err)
+		subnet.TypeMeta.Kind = "Subnet"
+		subnet.TypeMeta.APIVersion = "kubeovn.io/v1"
 		c.recorder.Eventf(subnet, v1.EventTypeWarning, "ValidateLogicalSwitchFailed", err.Error())
 		return err
 	}
@@ -238,7 +250,16 @@ func (c *Controller) handleUpdateSubnet(key string) error {
 }
 
 func (c *Controller) handleDeleteSubnet(key string) error {
-	err := c.ovnClient.CleanLogicalSwitchAcl(key)
+	exist, err := c.ovnClient.LogicalSwitchExists(key)
+	if err != nil {
+		klog.Errorf("failed to list logical switch, %v", err)
+		return err
+	}
+	if !exist {
+		return nil
+	}
+
+	err = c.ovnClient.CleanLogicalSwitchAcl(key)
 	if err != nil {
 		klog.Errorf("failed to delete acl of logical switch %s %v", key, err)
 		return err
