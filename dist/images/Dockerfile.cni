@@ -27,7 +27,7 @@ RUN rpm -ivh https://github.com/alauda/ovs/releases/download/v${OVS_VERSION}-${O
 
 COPY start-cniserver.sh /kube-ovn/start-cniserver.sh
 COPY install-cni.sh /kube-ovn/install-cni.sh
-COPY kube-ovn.conflist /kube-ovn/kube-ovn.conflist
+COPY 00-kube-ovn.conflist /kube-ovn/00-kube-ovn.conflist
 
 WORKDIR /kube-ovn
 CMD ["sh", "start-cniserver.sh"]
