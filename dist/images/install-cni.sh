@@ -10,8 +10,8 @@ exit_with_error(){
 CNI_BIN_SRC=/kube-ovn/kube-ovn
 CNI_BIN_DST=/opt/cni/bin/kube-ovn
 
-CNI_CONF_SRC=/kube-ovn/kube-ovn.conflist
-CNI_CONF_DST=/etc/cni/net.d/kube-ovn.conflist
+CNI_CONF_SRC=/kube-ovn/00-kube-ovn.conflist
+CNI_CONF_DST=/etc/cni/net.d/00-kube-ovn.conflist
 
 LOOPBACK_BIN_SRC=/loopback
 LOOPBACK_BIN_DST=/opt/cni/bin/loopback

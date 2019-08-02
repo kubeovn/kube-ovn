@@ -89,5 +89,6 @@ If you want to enable IPv6 on default subnet and node subnet, please apply https
     rm -rf /var/run/openvswitch
     rm -rf /etc/origin/openvswitch/
     rm -rf /etc/openvswitch
+    rm -rf /etc/cni/net.d/00-kube-ovn.conflist
     ```
 3. Reboot the Node to remove ipset/iptables rules and nics.
