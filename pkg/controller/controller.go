@@ -249,9 +249,11 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	klog.Info("Starting workers")
 
 	// Launch workers to process resources
-	go wait.Until(c.runAddIpPoolPodWorker, time.Second, stopCh)
 	go wait.Until(c.runAddSubnetWorker, time.Second, stopCh)
+	// wait default/join subnet ready
+	time.Sleep(3 * time.Second)
 
+	go wait.Until(c.runAddIpPoolPodWorker, time.Second, stopCh)
 	for i := 0; i < c.config.WorkerNum; i++ {
 		go wait.Until(c.runAddPodWorker, time.Second, stopCh)
 		go wait.Until(c.runDeletePodWorker, time.Second, stopCh)
