@@ -128,7 +128,7 @@ spec:
           - sh
           - /kube-ovn/start-cniserver.sh
         args:
-          - --enable-mirror=false
+          - --enable-mirror=true
         securityContext:
           runAsUser: 0
           privileged: true

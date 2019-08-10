@@ -3,7 +3,7 @@
 OVN support clustered database. If want to use high-available database in kube-ovn,
 modify ovn-central deployment in yamls/ovn.yaml.
 
-Change the replicas to 3, and add NODE_IPS environment var points to node that has annotation `kube-ovn/role: "master"`.
+Change the replicas to 3, and add NODE_IPS environment var points to node that has label `kube-ovn/role: "master"`.
 ```yaml
       replicas: 3
       containers:
