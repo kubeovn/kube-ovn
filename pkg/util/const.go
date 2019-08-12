@@ -14,6 +14,8 @@ const (
 
 	LogicalSwitchAnnotation = "ovn.kubernetes.io/logical_switch"
 
+	SubnetNameLabel = "ovn.kubernetes.io/subnet"
+
 	ProtocolTCP = "tcp"
 	ProtocolUDP = "udp"
 
