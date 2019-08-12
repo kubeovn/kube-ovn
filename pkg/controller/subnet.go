@@ -167,6 +167,40 @@ func (c *Controller) processNextDeleteSubnetWorkItem() bool {
 	return true
 }
 
+func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
+	changed := false
+	if subnet.Spec.Protocol == "" || subnet.Spec.Protocol != util.CheckProtocol(subnet.Spec.CIDRBlock) {
+		subnet.Spec.Protocol = util.CheckProtocol(subnet.Spec.CIDRBlock)
+		changed = true
+	}
+	if subnet.Spec.GatewayType == "" {
+		subnet.Spec.GatewayType = kubeovnv1.GWDistributedType
+		changed = true
+	}
+	if subnet.Spec.Default && subnet.Name != c.config.DefaultLogicalSwitch {
+		subnet.Spec.Default = false
+		changed = true
+	}
+	if subnet.Spec.Gateway == "" {
+		gw, err := util.FirstSubnetIP(subnet.Spec.CIDRBlock)
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+		subnet.Spec.Gateway = gw
+		changed = true
+	}
+
+	if changed {
+		_, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Update(subnet)
+		if err != nil {
+			klog.Errorf("failed to update subnet %s, %v", subnet.Name, err)
+			return err
+		}
+	}
+	return nil
+}
+
 func (c *Controller) handleAddSubnet(key string) error {
 	subnet, err := c.subnetsLister.Get(key)
 	if err != nil {
@@ -175,6 +209,11 @@ func (c *Controller) handleAddSubnet(key string) error {
 		}
 		return err
 	}
+
+	if err = formatSubnet(subnet, c); err != nil {
+		return err
+	}
+
 	exist, err := c.ovnClient.LogicalSwitchExists(subnet.Name)
 	if err != nil {
 		klog.Errorf("failed to list logical switch, %v", err)
@@ -225,6 +264,11 @@ func (c *Controller) handleUpdateSubnet(key string) error {
 		}
 		return err
 	}
+
+	if err = formatSubnet(subnet, c); err != nil {
+		return err
+	}
+
 	exist, err := c.ovnClient.LogicalSwitchExists(subnet.Name)
 	if err != nil {
 		klog.Errorf("failed to list logical switch, %v", err)
