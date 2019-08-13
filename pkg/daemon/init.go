@@ -19,7 +19,8 @@ func InitNodeGateway(config *Configuration) error {
 			klog.Errorf("failed to get node %s info %v", nodeName, err)
 			return err
 		}
-		if err := util.ValidatePodNetwork(node.Annotations); err != nil {
+		if err := util.ValidatePodNetwork(node.Annotations); err != nil ||
+			node.Annotations[util.IpAddressAnnotation] == "" {
 			klog.Errorf("validate node %s failed, %v", nodeName, err)
 			time.Sleep(3 * time.Second)
 			continue
