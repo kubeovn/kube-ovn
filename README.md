@@ -4,6 +4,8 @@
 [![Build Tag](https://img.shields.io/github/tag/alauda/kube-ovn.svg)](https://github.com/alauda/kube-ovn/releases)
 [![Go Report Card](https://goreportcard.com/badge/github.com/alauda/kube-ovn)](https://goreportcard.com/report/github.com/alauda/kube-ovn)
 
+[中文教程](https://github.com/alauda/kube-ovn/wiki)
+
 Kube-OVN integrates the OVN-based Network Virtualization with Kubernetes. It offers an advanced Container Network Fabric for Enterprises.
 
 ## Features
@@ -49,4 +51,4 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
 ## Contact
 Mail: mengxin#alauda.io
 
-WeChat: liumengxinfly
+微信交流群请加 liumengxinfly，并注明 Kube-OVN
