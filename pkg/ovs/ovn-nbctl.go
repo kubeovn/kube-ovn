@@ -392,7 +392,15 @@ func (c Client) CreatePortGroup(pgName string) error {
 }
 
 func (c Client) DeletePortGroup(pgName string) error {
-	_, err := c.ovnNbCommand(IfExists, "destroy", "port_group", pgName)
+	_, err := c.ovnNbCommand("get", "port_group", pgName, "_uuid")
+	if err != nil {
+		if strings.Contains(err.Error(), "no row") {
+			return nil
+		}
+		klog.Errorf("failed to get pg %s, %v", pgName, err)
+		return err
+	}
+	_, err = c.ovnNbCommand("pg-del", pgName)
 	return err
 }
 
@@ -470,8 +478,11 @@ func (c Client) DeleteACL(pgName, direction string) error {
 }
 
 func (c Client) SetPortsToPortGroup(portGroup string, portNames []string) error {
-	ovnArgs := []string{"pg-set-ports", portGroup}
-	ovnArgs = append(ovnArgs, portNames...)
+	ovnArgs := []string{"clear", "port_group", portGroup, "ports"}
+	if len(portGroup) > 0 {
+		ovnArgs := []string{"pg-set-ports", portGroup}
+		ovnArgs = append(ovnArgs, portNames...)
+	}
 	_, err := c.ovnNbCommand(ovnArgs...)
 	return err
 }
@@ -507,8 +518,8 @@ func StartOvnNbctlDaemon(nbHost string, nbPort int) (string, error) {
 
 // GetLogicalSwitchExcludeIPS get a logical switch exclude ips
 // ovn-nbctl get logical_switch ovn-default other_config:exclude_ips => "10.17.0.1 10.17.0.2 10.17.0.3..10.17.0.5"
-func (c Client) GetLogicalSwitchExcludeIPS(logicalSwtich string) ([]string, error) {
-	output, err := c.ovnNbCommand(IfExists, "get", "logical_switch", logicalSwtich, "other_config:exclude_ips")
+func (c Client) GetLogicalSwitchExcludeIPS(logicalSwitch string) ([]string, error) {
+	output, err := c.ovnNbCommand(IfExists, "get", "logical_switch", logicalSwitch, "other_config:exclude_ips")
 	if err != nil {
 		return nil, err
 	}

@@ -338,14 +338,8 @@ func (c *Controller) handleDeleteNp(key string) error {
 	egressAllowAsName := strings.Replace(fmt.Sprintf("%s.%s.egress.allow", name, namespace), "-", ".", -1)
 	egressExceptAsName := strings.Replace(fmt.Sprintf("%s.%s.egress.except", name, namespace), "-", ".", -1)
 
-	if err := c.ovnClient.DeleteACL(pgName, "to-lport"); err != nil {
-		klog.Errorf("failed to delete np %s ingress acls, %v", key, err)
-		return err
-	}
-
-	if err := c.ovnClient.DeleteACL(pgName, "from-lport"); err != nil {
-		klog.Errorf("failed to delete np %s egress acls, %v", key, err)
-		return err
+	if err := c.ovnClient.DeletePortGroup(pgName); err != nil {
+		klog.Errorf("failed to delete np %s port group, %v", key, err)
 	}
 
 	if err := c.ovnClient.DeleteAddressSet(ingressAllowAsName); err != nil {
@@ -366,10 +360,6 @@ func (c *Controller) handleDeleteNp(key string) error {
 	if err := c.ovnClient.DeleteAddressSet(egressExceptAsName); err != nil {
 		klog.Errorf("failed to delete np %s egress except address set, %v", key, err)
 		return err
-	}
-
-	if err := c.ovnClient.DeletePortGroup(pgName); err != nil {
-		klog.Errorf("failed to delete np %s port group, %v", key, err)
 	}
 
 	return nil
