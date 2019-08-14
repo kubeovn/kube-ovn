@@ -250,6 +250,11 @@ func (c *Controller) handleAddSubnet(key string) error {
 		}
 	}
 
+	if err := c.reconcileSubnet(subnet); err != nil {
+		klog.Errorf("failed to reconcile subnet %s, %v", subnet.Name, err)
+		return err
+	}
+
 	if subnet.Spec.Private {
 		return c.ovnClient.SetPrivateLogicalSwitch(subnet.Name, subnet.Spec.Protocol, subnet.Spec.AllowSubnets)
 	}
@@ -275,14 +280,19 @@ func (c *Controller) handleUpdateSubnet(key string) error {
 		return err
 	}
 	if !exist {
-		c.addSubnetQueue.AddRateLimited(key)
 		return nil
 	}
+
 	if err = util.ValidateSubnet(*subnet); err != nil {
 		klog.Error(err)
 		subnet.TypeMeta.Kind = "Subnet"
 		subnet.TypeMeta.APIVersion = "kubeovn.io/v1"
 		c.recorder.Eventf(subnet, v1.EventTypeWarning, "ValidateLogicalSwitchFailed", err.Error())
+		return err
+	}
+
+	if err := c.reconcileSubnet(subnet); err != nil {
+		klog.Errorf("failed to reconcile subnet %s, %v", subnet.Name, err)
 		return err
 	}
 
@@ -313,5 +323,62 @@ func (c *Controller) handleDeleteSubnet(key string) error {
 		klog.Errorf("failed to delete logical switch %s %v", key, err)
 		return err
 	}
+	return nil
+}
+
+func (c *Controller) reconcileSubnet(subnet *kubeovnv1.Subnet) error {
+	// 1. unbind from previous subnet
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		return err
+	}
+
+	namespaceMap := map[string]bool{}
+	for _, ns := range subnet.Spec.Namespaces {
+		namespaceMap[ns] = true
+	}
+
+	for _, sub := range subnets {
+		if sub.Name == subnet.Name || len(sub.Spec.Namespaces) == 0 {
+			continue
+		}
+
+		changed := false
+		reservedNamespaces := []string{}
+		for _, ns := range sub.Spec.Namespaces {
+			if namespaceMap[ns] {
+				changed = true
+			} else {
+				reservedNamespaces = append(reservedNamespaces, ns)
+			}
+		}
+		if changed {
+			sub.Spec.Namespaces = reservedNamespaces
+			_, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Update(sub)
+			if err != nil {
+				klog.Errorf("failed to unbind namespace from subnet %s, %v", sub.Name, err)
+				return err
+			}
+		}
+	}
+
+	// 2. add annotations to bind namespace
+	for _, ns := range subnet.Spec.Namespaces {
+		c.addNamespaceQueue.AddRateLimited(ns)
+	}
+
+	// 3. update unbind namespace annotation
+	namespaces, err := c.namespacesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list namespaces, %v", err)
+		return err
+	}
+
+	for _, ns := range namespaces {
+		if ns.Annotations != nil && ns.Annotations[util.LogicalSwitchAnnotation] == subnet.Name && !namespaceMap[ns.Name] {
+			c.addNamespaceQueue.AddRateLimited(ns.Name)
+		}
+	}
+
 	return nil
 }

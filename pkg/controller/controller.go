@@ -49,8 +49,9 @@ type Controller struct {
 	deleteSubnetQueue workqueue.RateLimitingInterface
 	updateSubnetQueue workqueue.RateLimitingInterface
 
-	namespacesLister v1.NamespaceLister
-	namespacesSynced cache.InformerSynced
+	namespacesLister  v1.NamespaceLister
+	namespacesSynced  cache.InformerSynced
+	addNamespaceQueue workqueue.RateLimitingInterface
 
 	nodesLister     v1.NodeLister
 	nodesSynced     cache.InformerSynced
@@ -121,8 +122,9 @@ func NewController(config *Configuration) *Controller {
 		deletePodQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeletePod"),
 		updatePodQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdatePod"),
 
-		namespacesLister: namespaceInformer.Lister(),
-		namespacesSynced: namespaceInformer.Informer().HasSynced,
+		namespacesLister:  namespaceInformer.Lister(),
+		namespacesSynced:  namespaceInformer.Informer().HasSynced,
+		addNamespaceQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddNamespace"),
 
 		nodesLister:     nodeInformer.Lister(),
 		nodesSynced:     nodeInformer.Informer().HasSynced,
@@ -204,6 +206,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	defer c.deletePodQueue.ShutDown()
 	defer c.updatePodQueue.ShutDown()
 
+	defer c.addNamespaceQueue.ShutDown()
+
 	defer c.addSubnetQueue.ShutDown()
 	defer c.updateSubnetQueue.ShutDown()
 	defer c.deleteSubnetQueue.ShutDown()
@@ -254,6 +258,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	time.Sleep(3 * time.Second)
 
 	go wait.Until(c.runAddIpPoolPodWorker, time.Second, stopCh)
+	go wait.Until(c.runAddNamespaceWorker, time.Second, stopCh)
 	for i := 0; i < c.config.WorkerNum; i++ {
 		go wait.Until(c.runAddPodWorker, time.Second, stopCh)
 		go wait.Until(c.runDeletePodWorker, time.Second, stopCh)
