@@ -21,7 +21,7 @@ package v1
 import (
 	v1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/client/clientset/versioned/scheme"
-	"k8s.io/client-go/rest"
+	rest "k8s.io/client-go/rest"
 )
 
 type KubeovnV1Interface interface {

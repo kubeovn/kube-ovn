@@ -19,10 +19,12 @@ limitations under the License.
 package versioned
 
 import (
+	"fmt"
+
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
-	"k8s.io/client-go/discovery"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/util/flowcontrol"
+	discovery "k8s.io/client-go/discovery"
+	rest "k8s.io/client-go/rest"
+	flowcontrol "k8s.io/client-go/util/flowcontrol"
 )
 
 type Interface interface {
@@ -51,9 +53,14 @@ func (c *Clientset) Discovery() discovery.DiscoveryInterface {
 }
 
 // NewForConfig creates a new Clientset for the given config.
+// If config's RateLimiter is not set and QPS and Burst are acceptable,
+// NewForConfig will generate a rate-limiter in configShallowCopy.
 func NewForConfig(c *rest.Config) (*Clientset, error) {
 	configShallowCopy := *c
 	if configShallowCopy.RateLimiter == nil && configShallowCopy.QPS > 0 {
+		if configShallowCopy.Burst <= 0 {
+			return nil, fmt.Errorf("Burst is required to be greater than 0 when RateLimiter is not set and QPS is set to greater than 0")
+		}
 		configShallowCopy.RateLimiter = flowcontrol.NewTokenBucketRateLimiter(configShallowCopy.QPS, configShallowCopy.Burst)
 	}
 	var cs Clientset
