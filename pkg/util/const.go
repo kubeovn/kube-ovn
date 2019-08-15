@@ -6,6 +6,7 @@ const (
 	CidrAnnotation       = "ovn.kubernetes.io/cidr"
 	GatewayAnnotation    = "ovn.kubernetes.io/gateway"
 	IpPoolAnnotation     = "ovn.kubernetes.io/ip_pool"
+	ExcludeIpsAnnotation = "ovn.kubernetes.io/exclude_ips"
 
 	IngressRateAnnotation = "ovn.kubernetes.io/ingress_rate"
 	EgressRateAnnotation  = "ovn.kubernetes.io/egress_rate"

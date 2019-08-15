@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/alauda/kube-ovn/pkg/util"
 	v1 "k8s.io/api/core/v1"
@@ -132,13 +133,15 @@ func (c *Controller) handleAddNamespace(key string) error {
 		namespace.Annotations = map[string]string{}
 	} else {
 		if namespace.Annotations[util.LogicalSwitchAnnotation] == subnet.Name &&
-			namespace.Annotations[util.CidrAnnotation] == subnet.Spec.CIDRBlock {
+			namespace.Annotations[util.CidrAnnotation] == subnet.Spec.CIDRBlock &&
+			namespace.Annotations[util.ExcludeIpsAnnotation] == strings.Join(subnet.Spec.ExcludeIps, ",") {
 			return nil
 		}
 	}
 
 	namespace.Annotations[util.LogicalSwitchAnnotation] = subnet.Name
 	namespace.Annotations[util.CidrAnnotation] = subnet.Spec.CIDRBlock
+	namespace.Annotations[util.ExcludeIpsAnnotation] = strings.Join(subnet.Spec.ExcludeIps, ",")
 	patchPayloadTemplate :=
 		`[{
         "op": "%s",
