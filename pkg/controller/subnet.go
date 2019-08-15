@@ -256,7 +256,7 @@ func (c *Controller) handleAddSubnet(key string) error {
 	}
 
 	if subnet.Spec.Private {
-		return c.ovnClient.SetPrivateLogicalSwitch(subnet.Name, subnet.Spec.Protocol, subnet.Spec.AllowSubnets)
+		return c.ovnClient.SetPrivateLogicalSwitch(subnet.Name, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.AllowSubnets)
 	}
 	return c.ovnClient.CleanLogicalSwitchAcl(subnet.Name)
 }
@@ -297,7 +297,7 @@ func (c *Controller) handleUpdateSubnet(key string) error {
 	}
 
 	if subnet.Spec.Private {
-		return c.ovnClient.SetPrivateLogicalSwitch(subnet.Name, subnet.Spec.Protocol, subnet.Spec.AllowSubnets)
+		return c.ovnClient.SetPrivateLogicalSwitch(subnet.Name, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.AllowSubnets)
 	}
 
 	return c.ovnClient.CleanLogicalSwitchAcl(subnet.Name)

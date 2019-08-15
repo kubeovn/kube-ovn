@@ -295,9 +295,15 @@ func (c Client) CleanLogicalSwitchAcl(ls string) error {
 }
 
 // SetPrivateLogicalSwitch will drop all ingress traffic except allow subnets
-func (c Client) SetPrivateLogicalSwitch(ls, protocol string, allow []string) error {
+func (c Client) SetPrivateLogicalSwitch(ls, protocol, cidr string, allow []string) error {
 	delArgs := []string{"acl-del", ls}
-	dropArgs := []string{"--", "acl-add", ls, "to-lport", util.DefaultDropPriority, fmt.Sprintf(`inport=="%s-%s"`, ls, c.ClusterRouter), "drop"}
+	var dropArgs []string
+	if protocol == kubeovnv1.ProtocolIPv4 {
+		dropArgs = []string{"--", "acl-add", ls, "to-lport", util.DefaultDropPriority, fmt.Sprintf(`ip4.src!=%s || ip4.dst!=%s`, cidr, cidr), "drop"}
+	} else {
+		dropArgs = []string{"--", "acl-add", ls, "to-lport", util.DefaultDropPriority, fmt.Sprintf(`ip6.src!=%s || ip6.dst!=%s`, cidr, cidr), "drop"}
+
+	}
 	ovnArgs := append(delArgs, dropArgs...)
 
 	allowArgs := []string{}
@@ -306,9 +312,9 @@ func (c Client) SetPrivateLogicalSwitch(ls, protocol string, allow []string) err
 			var match string
 			switch protocol {
 			case kubeovnv1.ProtocolIPv4:
-				match = fmt.Sprintf("ip4.src==%s", strings.TrimSpace(subnet))
+				match = fmt.Sprintf("ip4.src==%s || ip4.dst==%s", strings.TrimSpace(subnet), strings.TrimSpace(subnet))
 			case kubeovnv1.ProtocolIPv6:
-				match = fmt.Sprintf("ip6.src==%s", strings.TrimSpace(subnet))
+				match = fmt.Sprintf("ip6.src==%s || ip6.dst==%s", strings.TrimSpace(subnet), strings.TrimSpace(subnet))
 			}
 
 			allowArgs = append(allowArgs, "--", "acl-add", ls, "to-lport", util.SubnetAllowPriority, match, "allow-related")
@@ -479,8 +485,8 @@ func (c Client) DeleteACL(pgName, direction string) error {
 
 func (c Client) SetPortsToPortGroup(portGroup string, portNames []string) error {
 	ovnArgs := []string{"clear", "port_group", portGroup, "ports"}
-	if len(portGroup) > 0 {
-		ovnArgs := []string{"pg-set-ports", portGroup}
+	if len(portNames) > 0 {
+		ovnArgs = []string{"pg-set-ports", portGroup}
 		ovnArgs = append(ovnArgs, portNames...)
 	}
 	_, err := c.ovnNbCommand(ovnArgs...)
