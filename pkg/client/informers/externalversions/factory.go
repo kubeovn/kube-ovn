@@ -19,17 +19,17 @@ limitations under the License.
 package externalversions
 
 import (
-	"reflect"
-	"sync"
-	"time"
+	reflect "reflect"
+	sync "sync"
+	time "time"
 
-	"github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
-	"github.com/alauda/kube-ovn/pkg/client/informers/externalversions/internalinterfaces"
-	"github.com/alauda/kube-ovn/pkg/client/informers/externalversions/kubeovn"
+	versioned "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
+	internalinterfaces "github.com/alauda/kube-ovn/pkg/client/informers/externalversions/internalinterfaces"
+	kubeovn "github.com/alauda/kube-ovn/pkg/client/informers/externalversions/kubeovn"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/tools/cache"
+	runtime "k8s.io/apimachinery/pkg/runtime"
+	schema "k8s.io/apimachinery/pkg/runtime/schema"
+	cache "k8s.io/client-go/tools/cache"
 )
 
 // SharedInformerOption defines the functional option type for SharedInformerFactory.
