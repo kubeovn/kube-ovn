@@ -40,8 +40,6 @@ spec:
     kind: Subnet
     shortNames:
       - subnet
-  subresources:
-    status: {}
   additionalPrinterColumns:
     - name: Protocol
       type: string

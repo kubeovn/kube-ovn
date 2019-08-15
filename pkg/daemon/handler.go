@@ -70,17 +70,12 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: errMsg.Error()})
 		return
 	}
-	subnetCr, err := csh.KubeOvnClient.KubeovnV1().Subnets().Get(subnet, metav1.GetOptions{})
-	if err != nil {
-		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: err.Error()})
-		return
-	}
-	ipName := fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace)
-	ipCr, err := csh.KubeOvnClient.KubeovnV1().IPs().Get(ipName, metav1.GetOptions{})
+
+	ipCrd, err := csh.KubeOvnClient.KubeovnV1().IPs().Get(fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace), metav1.GetOptions{})
 	if err != nil && k8serrors.IsNotFound(err) {
 		_, err := csh.KubeOvnClient.KubeovnV1().IPs().Create(&kubeovnv1.IP{
 			ObjectMeta: v1.ObjectMeta{
-				Name: ipName,
+				Name: fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace),
 				Labels: map[string]string{
 					util.SubnetNameLabel: subnet,
 				},
@@ -101,25 +96,23 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: errMsg.Error()})
 			return
 		}
-		subnetCr.Status.AcquireIP()
-		csh.KubeOvnClient.KubeovnV1().Subnets().UpdateStatus(subnetCr)
 	} else {
 		if err != nil {
-			if ipCr.Labels != nil {
-				ipCr.Labels[util.SubnetNameLabel] = subnet
+			if ipCrd.Labels != nil {
+				ipCrd.Labels[util.SubnetNameLabel] = subnet
 			} else {
-				ipCr.Labels = map[string]string{
+				ipCrd.Labels = map[string]string{
 					util.SubnetNameLabel: subnet,
 				}
 			}
-			ipCr.Spec.PodName = podRequest.PodName
-			ipCr.Spec.Namespace = podRequest.PodNamespace
-			ipCr.Spec.Subnet = subnet
-			ipCr.Spec.NodeName = csh.Config.NodeName
-			ipCr.Spec.IPAddress = ip
-			ipCr.Spec.MacAddress = macAddr
-			ipCr.Spec.ContainerID = podRequest.ContainerID
-			_, err := csh.KubeOvnClient.KubeovnV1().IPs().Update(ipCr)
+			ipCrd.Spec.PodName = podRequest.PodName
+			ipCrd.Spec.Namespace = podRequest.PodNamespace
+			ipCrd.Spec.Subnet = subnet
+			ipCrd.Spec.NodeName = csh.Config.NodeName
+			ipCrd.Spec.IPAddress = ip
+			ipCrd.Spec.MacAddress = macAddr
+			ipCrd.Spec.ContainerID = podRequest.ContainerID
+			_, err := csh.KubeOvnClient.KubeovnV1().IPs().Update(ipCrd)
 			if err != nil {
 				errMsg := fmt.Errorf("failed to create ip crd for %s, %v", ip, err)
 				klog.Error(errMsg)
@@ -163,29 +156,12 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: errMsg.Error()})
 		return
 	}
-	ipName := fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace)
-	ipCr, err := csh.KubeOvnClient.KubeovnV1().IPs().Get(ipName, metav1.GetOptions{})
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			resp.WriteHeader(http.StatusNoContent)
-		} else {
-			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: err.Error()})
-			return
-		}
-	}
-	err = csh.KubeOvnClient.KubeovnV1().IPs().Delete(ipName, &metav1.DeleteOptions{})
+	err = csh.KubeOvnClient.KubeovnV1().IPs().Delete(fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace), &metav1.DeleteOptions{})
 	if err != nil && !k8serrors.IsNotFound(err) {
-		errMsg := fmt.Errorf("del ipcrd for %s failed %v", ipName, err)
+		errMsg := fmt.Errorf("del ipcrd for %s failed %v", fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace), err)
 		klog.Error(errMsg)
 		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: errMsg.Error()})
 		return
 	}
-	subnet, err := csh.KubeOvnClient.KubeovnV1().Subnets().Get(ipCr.Spec.Subnet, metav1.GetOptions{})
-	if err != nil && !k8serrors.IsNotFound(err) {
-		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: err.Error()})
-		return
-	}
-	subnet.Status.ReleaseIP()
-	csh.KubeOvnClient.KubeovnV1().Subnets().UpdateStatus(subnet)
 	resp.WriteHeader(http.StatusNoContent)
 }

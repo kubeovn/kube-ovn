@@ -2,21 +2,15 @@ package controller
 
 import (
 	"fmt"
-	"net"
-	"reflect"
-
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/alauda/kube-ovn/pkg/ovs"
 	"github.com/alauda/kube-ovn/pkg/util"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
+	"reflect"
 )
 
 func (c *Controller) enqueueAddSubnet(obj interface{}) {
@@ -223,27 +217,15 @@ func (c *Controller) handleAddSubnet(key string) error {
 	exist, err := c.ovnClient.LogicalSwitchExists(subnet.Name)
 	if err != nil {
 		klog.Errorf("failed to list logical switch, %v", err)
-		subnet.Status.SetError("ListLogicalSwitchFailed", err.Error())
-		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().UpdateStatus(subnet); err != nil {
-			klog.Error(err)
-		}
 		return err
 	}
 
 	if !exist {
-		if err := initSubnetStatus(subnet, c); err != nil {
-			klog.Error("init subnet status failed", err)
-		}
-		subnet.Status.EnsureStandardConditions()
 		if err = util.ValidateSubnet(*subnet); err != nil {
 			klog.Error(err)
 			subnet.TypeMeta.Kind = "Subnet"
 			subnet.TypeMeta.APIVersion = "kubeovn.io/v1"
 			c.recorder.Eventf(subnet, v1.EventTypeWarning, "ValidateLogicalSwitchFailed", err.Error())
-			subnet.Status.NotValidated("ValidateLogicalSwitchFailed", err.Error())
-			if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().UpdateStatus(subnet); err != nil {
-				klog.Error(err)
-			}
 			return err
 		}
 		subnetList, err := c.subnetsLister.List(labels.Everything())
@@ -258,10 +240,6 @@ func (c *Controller) handleAddSubnet(key string) error {
 				subnet.TypeMeta.Kind = "Subnet"
 				subnet.TypeMeta.APIVersion = "kubeovn.io/v1"
 				c.recorder.Eventf(subnet, v1.EventTypeWarning, "ValidateLogicalSwitchFailed", err.Error())
-				subnet.Status.NotValidated("ValidateLogicalSwitchFailed", err.Error())
-				if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().UpdateStatus(subnet); err != nil {
-					klog.Error(err)
-				}
 				return err
 			}
 		}
@@ -274,20 +252,11 @@ func (c *Controller) handleAddSubnet(key string) error {
 
 	if err := c.reconcileSubnet(subnet); err != nil {
 		klog.Errorf("failed to reconcile subnet %s, %v", subnet.Name, err)
-		subnet.Status.SetError("ReconcileSubnetFailed", err.Error())
-		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().UpdateStatus(subnet); err != nil {
-			klog.Error(err)
-		}
 		return err
 	}
 
 	if subnet.Spec.Private {
 		return c.ovnClient.SetPrivateLogicalSwitch(subnet.Name, subnet.Spec.Protocol, subnet.Spec.AllowSubnets)
-	}
-
-	subnet.Status.Ready("LogicalSwitchCreateSuccess", "")
-	if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().UpdateStatus(subnet); err != nil {
-		klog.Error(err)
 	}
 	return c.ovnClient.CleanLogicalSwitchAcl(subnet.Name)
 }
@@ -308,47 +277,27 @@ func (c *Controller) handleUpdateSubnet(key string) error {
 	exist, err := c.ovnClient.LogicalSwitchExists(subnet.Name)
 	if err != nil {
 		klog.Errorf("failed to list logical switch, %v", err)
-		subnet.Status.SetError("ListLogicalSwitchFailed", err.Error())
-		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().UpdateStatus(subnet); err != nil {
-			klog.Error(err)
-		}
 		return err
 	}
-
 	if !exist {
 		return nil
 	}
 
-	if err := initSubnetStatus(subnet, c); err != nil {
-		klog.Error("init subnet status failed", err)
-	}
 	if err = util.ValidateSubnet(*subnet); err != nil {
 		klog.Error(err)
 		subnet.TypeMeta.Kind = "Subnet"
 		subnet.TypeMeta.APIVersion = "kubeovn.io/v1"
 		c.recorder.Eventf(subnet, v1.EventTypeWarning, "ValidateLogicalSwitchFailed", err.Error())
-		subnet.Status.NotValidated("ValidateLogicalSwitchFailed", err.Error())
-		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().UpdateStatus(subnet); err != nil {
-			klog.Error("update subnet status failed", err)
-		}
 		return err
 	}
 
 	if err := c.reconcileSubnet(subnet); err != nil {
 		klog.Errorf("failed to reconcile subnet %s, %v", subnet.Name, err)
-		subnet.Status.SetError("ReconcileSubnetFailed", err.Error())
-		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().UpdateStatus(subnet); err != nil {
-			klog.Error(err)
-		}
 		return err
 	}
 
 	if subnet.Spec.Private {
 		return c.ovnClient.SetPrivateLogicalSwitch(subnet.Name, subnet.Spec.Protocol, subnet.Spec.AllowSubnets)
-	}
-	subnet.Status.Ready("LogicalSwitchUpdateSuccess", "")
-	if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().UpdateStatus(subnet); err != nil {
-		klog.Error("update subnet status failed", err)
 	}
 
 	return c.ovnClient.CleanLogicalSwitchAcl(subnet.Name)
@@ -432,26 +381,4 @@ func (c *Controller) reconcileSubnet(subnet *kubeovnv1.Subnet) error {
 	}
 
 	return nil
-}
-
-func initSubnetStatus(subnet *kubeovnv1.Subnet, c *Controller) error {
-	_, cidr, err := net.ParseCIDR(subnet.Spec.CIDRBlock)
-	if err != nil {
-		return err
-	}
-	podUsedIPs, err := c.config.KubeOvnClient.KubeovnV1().IPs().List(metav1.ListOptions{
-		LabelSelector: fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name).String(),
-	})
-	if err != nil {
-		return err
-	}
-	// gateway always in excludeIPs
-	toSubIPs := ovs.ExpandExcludeIPs(subnet.Spec.ExcludeIps)
-	for _, podUsedIP := range podUsedIPs.Items {
-		toSubIPs = append(toSubIPs, podUsedIP.Spec.IPAddress)
-	}
-	subnet.Status.AvailableIPs = util.AddressCount(cidr) - uint64(len(util.UniqString(toSubIPs)))
-	subnet.Status.UsingIPs = uint64(len(podUsedIPs.Items))
-	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().UpdateStatus(subnet)
-	return err
 }
