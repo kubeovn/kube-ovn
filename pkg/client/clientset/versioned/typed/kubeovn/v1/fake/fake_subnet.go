@@ -21,11 +21,11 @@ package fake
 import (
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/testing"
+	labels "k8s.io/apimachinery/pkg/labels"
+	schema "k8s.io/apimachinery/pkg/runtime/schema"
+	types "k8s.io/apimachinery/pkg/types"
+	watch "k8s.io/apimachinery/pkg/watch"
+	testing "k8s.io/client-go/testing"
 )
 
 // FakeSubnets implements SubnetInterface
@@ -88,6 +88,17 @@ func (c *FakeSubnets) Create(subnet *kubeovnv1.Subnet) (result *kubeovnv1.Subnet
 func (c *FakeSubnets) Update(subnet *kubeovnv1.Subnet) (result *kubeovnv1.Subnet, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootUpdateAction(subnetsResource, subnet), &kubeovnv1.Subnet{})
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*kubeovnv1.Subnet), err
+}
+
+// UpdateStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
+func (c *FakeSubnets) UpdateStatus(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, error) {
+	obj, err := c.Fake.
+		Invokes(testing.NewRootUpdateSubresourceAction(subnetsResource, "status", subnet), &kubeovnv1.Subnet{})
 	if obj == nil {
 		return nil, err
 	}
