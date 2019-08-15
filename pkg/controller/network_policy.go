@@ -221,14 +221,20 @@ func (c *Controller) handleUpdateNp(key string) error {
 		allows := []string{}
 		excepts := []string{}
 		for _, npr := range np.Spec.Ingress {
-			for _, npp := range npr.From {
-				allow, except, err := c.fetchPolicySelectedAddresses(np.Namespace, npp)
-				if err != nil {
-					klog.Errorf("failed to fetch policy selected addresses, %v", err)
-					return err
+			if len(np.Spec.Ingress) == 0 {
+				allows = []string{"0.0.0.0/0"}
+				excepts = []string{}
+				break
+			} else {
+				for _, npp := range npr.From {
+					allow, except, err := c.fetchPolicySelectedAddresses(np.Namespace, npp)
+					if err != nil {
+						klog.Errorf("failed to fetch policy selected addresses, %v", err)
+						return err
+					}
+					allows = append(allows, allow...)
+					excepts = append(excepts, except...)
 				}
-				allows = append(allows, allow...)
-				excepts = append(excepts, except...)
 			}
 		}
 
@@ -279,14 +285,20 @@ func (c *Controller) handleUpdateNp(key string) error {
 		allows := []string{}
 		excepts := []string{}
 		for _, npr := range np.Spec.Egress {
-			for _, npp := range npr.To {
-				allow, except, err := c.fetchPolicySelectedAddresses(np.Namespace, npp)
-				if err != nil {
-					klog.Errorf("failed to fetch policy selected addresses, %v", err)
-					return err
+			if len(npr.To) == 0 {
+				allows = []string{"0.0.0.0/0"}
+				excepts = []string{}
+				break
+			} else {
+				for _, npp := range npr.To {
+					allow, except, err := c.fetchPolicySelectedAddresses(np.Namespace, npp)
+					if err != nil {
+						klog.Errorf("failed to fetch policy selected addresses, %v", err)
+						return err
+					}
+					allows = append(allows, allow...)
+					excepts = append(excepts, except...)
 				}
-				allows = append(allows, allow...)
-				excepts = append(excepts, except...)
 			}
 		}
 
