@@ -29,6 +29,7 @@ rules:
       - "kubeovn.io"
     resources:
       - subnets
+      - subnets/status
       - ips
     verbs:
       - "*"
