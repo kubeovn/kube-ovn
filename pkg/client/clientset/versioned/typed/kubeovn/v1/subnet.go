@@ -22,11 +22,11 @@ import (
 	"time"
 
 	v1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	scheme "github.com/alauda/kube-ovn/pkg/client/clientset/versioned/scheme"
+	"github.com/alauda/kube-ovn/pkg/client/clientset/versioned/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	types "k8s.io/apimachinery/pkg/types"
-	watch "k8s.io/apimachinery/pkg/watch"
-	rest "k8s.io/client-go/rest"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/rest"
 )
 
 // SubnetsGetter has a method to return a SubnetInterface.
@@ -39,7 +39,6 @@ type SubnetsGetter interface {
 type SubnetInterface interface {
 	Create(*v1.Subnet) (*v1.Subnet, error)
 	Update(*v1.Subnet) (*v1.Subnet, error)
-	UpdateStatus(*v1.Subnet) (*v1.Subnet, error)
 	Delete(name string, options *metav1.DeleteOptions) error
 	DeleteCollection(options *metav1.DeleteOptions, listOptions metav1.ListOptions) error
 	Get(name string, options metav1.GetOptions) (*v1.Subnet, error)
@@ -120,21 +119,6 @@ func (c *subnets) Update(subnet *v1.Subnet) (result *v1.Subnet, err error) {
 	err = c.client.Put().
 		Resource("subnets").
 		Name(subnet.Name).
-		Body(subnet).
-		Do().
-		Into(result)
-	return
-}
-
-// UpdateStatus was generated because the type contains a Status member.
-// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-
-func (c *subnets) UpdateStatus(subnet *v1.Subnet) (result *v1.Subnet, err error) {
-	result = &v1.Subnet{}
-	err = c.client.Put().
-		Resource("subnets").
-		Name(subnet.Name).
-		SubResource("status").
 		Body(subnet).
 		Do().
 		Into(result)

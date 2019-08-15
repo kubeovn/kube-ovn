@@ -22,11 +22,11 @@ import (
 	"time"
 
 	v1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	scheme "github.com/alauda/kube-ovn/pkg/client/clientset/versioned/scheme"
+	"github.com/alauda/kube-ovn/pkg/client/clientset/versioned/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	types "k8s.io/apimachinery/pkg/types"
-	watch "k8s.io/apimachinery/pkg/watch"
-	rest "k8s.io/client-go/rest"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/rest"
 )
 
 // IPsGetter has a method to return a IPInterface.

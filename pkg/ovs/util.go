@@ -19,7 +19,6 @@ func trimCommandOutput(raw []byte) string {
 }
 
 // ExpandExcludeIPs parse ovn exclude_ips to ip slice
-// TODO: add ipv6 support
 func ExpandExcludeIPs(excludeIPs []string) []string {
 	rv := []string{}
 	for _, excludeIP := range excludeIPs {
