@@ -43,11 +43,14 @@ type Controller struct {
 	deletePodQueue    workqueue.RateLimitingInterface
 	updatePodQueue    workqueue.RateLimitingInterface
 
-	subnetsLister     kubeovnlister.SubnetLister
-	subnetSynced      cache.InformerSynced
-	addSubnetQueue    workqueue.RateLimitingInterface
-	deleteSubnetQueue workqueue.RateLimitingInterface
-	updateSubnetQueue workqueue.RateLimitingInterface
+	subnetsLister           kubeovnlister.SubnetLister
+	subnetSynced            cache.InformerSynced
+	addSubnetQueue          workqueue.RateLimitingInterface
+	deleteSubnetQueue       workqueue.RateLimitingInterface
+	updateSubnetQueue       workqueue.RateLimitingInterface
+	updateSubnetStatusQueue workqueue.RateLimitingInterface
+
+	ipSynced cache.InformerSynced
 
 	namespacesLister  v1.NamespaceLister
 	namespacesSynced  cache.InformerSynced
@@ -98,6 +101,7 @@ func NewController(config *Configuration) *Controller {
 	kubeovnInformerFactory := kubeovninformer.NewSharedInformerFactoryWithOptions(config.KubeOvnClient, time.Second*30)
 
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
+	ipInformer := kubeovnInformerFactory.Kubeovn().V1().IPs()
 	podInformer := informerFactory.Core().V1().Pods()
 	namespaceInformer := informerFactory.Core().V1().Namespaces()
 	nodeInformer := informerFactory.Core().V1().Nodes()
@@ -109,11 +113,14 @@ func NewController(config *Configuration) *Controller {
 		config:    config,
 		ovnClient: ovs.NewClient(config.OvnNbHost, config.OvnNbPort, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
 
-		subnetsLister:     subnetInformer.Lister(),
-		subnetSynced:      subnetInformer.Informer().HasSynced,
-		addSubnetQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddSubnet"),
-		deleteSubnetQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteSubnet"),
-		updateSubnetQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateSubnet"),
+		subnetsLister:           subnetInformer.Lister(),
+		subnetSynced:            subnetInformer.Informer().HasSynced,
+		addSubnetQueue:          workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddSubnet"),
+		deleteSubnetQueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteSubnet"),
+		updateSubnetQueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateSubnet"),
+		updateSubnetStatusQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateSubnetStatus"),
+
+		ipSynced: ipInformer.Informer().HasSynced,
 
 		podsLister:        podInformer.Lister(),
 		podsSynced:        podInformer.Informer().HasSynced,
@@ -191,6 +198,11 @@ func NewController(config *Configuration) *Controller {
 		DeleteFunc: controller.enqueueDeleteSubnet,
 	})
 
+	ipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddOrDelIP,
+		DeleteFunc: controller.enqueueAddOrDelIP,
+	})
+
 	return controller
 }
 
@@ -211,6 +223,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	defer c.addSubnetQueue.ShutDown()
 	defer c.updateSubnetQueue.ShutDown()
 	defer c.deleteSubnetQueue.ShutDown()
+	defer c.updateSubnetStatusQueue.ShutDown()
 
 	defer c.addNodeQueue.ShutDown()
 	defer c.deleteNodeQueue.ShutDown()
@@ -246,7 +259,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 
 	// Wait for the caches to be synced before starting workers
 	klog.Info("Waiting for informer caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.subnetSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced, c.npsSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.subnetSynced, c.ipSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced, c.npsSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
@@ -266,6 +279,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 
 		go wait.Until(c.runDeleteSubnetWorker, time.Second, stopCh)
 		go wait.Until(c.runUpdateSubnetWorker, time.Second, stopCh)
+		go wait.Until(c.runUpdateSubnetStatusWorker, time.Second, stopCh)
 
 		go wait.Until(c.runAddNodeWorker, time.Second, stopCh)
 		go wait.Until(c.runDeleteNodeWorker, time.Second, stopCh)
