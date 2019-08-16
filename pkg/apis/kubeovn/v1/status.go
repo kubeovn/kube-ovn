@@ -3,6 +3,8 @@ package v1
 import (
 	"encoding/json"
 	"fmt"
+
+	"k8s.io/klog"
 )
 
 func (ss *SubnetStatus) Bytes() ([]byte, error) {
@@ -12,5 +14,6 @@ func (ss *SubnetStatus) Bytes() ([]byte, error) {
 		return nil, err
 	}
 	newStr := fmt.Sprintf(`{"status": %s}`, string(bytes))
+	klog.V(5).Info("status body", newStr)
 	return []byte(newStr), nil
 }
