@@ -1,9 +1,9 @@
 #!/bin/bash
 set -eo pipefail
 
-DB_NB_ADDR=${DB_NB_ADDR:-0.0.0.0}
+DB_NB_ADDR=${DB_NB_ADDR:-::}
 DB_NB_PORT=${DB_NB_PORT:-6641}
-DB_SB_ADDR=${DB_SB_ADDR:-0.0.0.0}
+DB_SB_ADDR=${DB_SB_ADDR:-::}
 DB_SB_PORT=${DB_SB_PORT:-6642}
 
 function gen_conn_str {
@@ -60,7 +60,7 @@ else
 fi
 
 # ovn-nb and ovn-sb listen on tcp ports for ovn-controller to connect
-ovn-nbctl set-connection ptcp:${DB_NB_PORT}:${DB_NB_ADDR}
-ovn-sbctl set-connection ptcp:${DB_SB_PORT}:${DB_SB_ADDR}
+ovn-nbctl set-connection ptcp:${DB_NB_PORT}:[${DB_NB_ADDR}]
+ovn-sbctl set-connection ptcp:${DB_SB_PORT}:[${DB_SB_ADDR}]
 
 tail -f /var/log/openvswitch/ovn-northd.log

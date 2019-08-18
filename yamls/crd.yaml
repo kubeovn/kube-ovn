@@ -61,6 +61,12 @@ spec:
     - name: GatewayType
       type: string
       JSONPath: .spec.gatewayType
+    - name: Used
+      type: integer
+      JSONPath: .status.usingIPs
+    - name: Available
+      type: integer
+      JSONPath: .status.availableIPs
   validation:
     openAPIV3Schema:
       properties:
