@@ -2,12 +2,11 @@ package controller
 
 import (
 	"fmt"
-	"net"
-	"reflect"
-
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"github.com/alauda/kube-ovn/pkg/util"
+	"net"
+	"reflect"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -232,6 +231,23 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		}
 		subnet.Spec.Gateway = gw
 		changed = true
+	}
+
+	if len(subnet.Spec.ExcludeIps) == 0 {
+		subnet.Spec.ExcludeIps = []string{subnet.Spec.Gateway}
+		changed = true
+	} else {
+		gwExists := false
+		for _, ip := range ovs.ExpandExcludeIPs(subnet.Spec.ExcludeIps) {
+			if ip == subnet.Spec.Gateway {
+				gwExists = true
+				break
+			}
+		}
+		if !gwExists {
+			subnet.Spec.ExcludeIps = append(subnet.Spec.ExcludeIps, subnet.Spec.Gateway)
+			changed = true
+		}
 	}
 
 	if changed {

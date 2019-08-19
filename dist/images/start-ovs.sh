@@ -1,6 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
+# https://bugs.launchpad.net/neutron/+bug/1776778
+if grep -q "3.10.0-862" /proc/version
+then
+    echo "kernel version 3.10.0-862 has a nat related bug that will affect ovs function, please update to a version grate than 3.10.0-898"
+    exit 1
+fi
+
 # wait for ovn-sb ready
 function wait_ovn_sb {
     if [[ -z "${OVN_SB_SERVICE_HOST}}" ]]; then
