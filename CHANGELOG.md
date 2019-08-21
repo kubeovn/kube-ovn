@@ -1,5 +1,34 @@
 # CHANGELOG
 
+## v0.7.0 -- 2019/08/21
+
+### IPAM
+* Reserve vNic for statefulset pods, statefulset pod will reuse previous nic info during statefulset lifetime
+* New IP CRD, now you can use `kubectl get ip` to obtain ip allocation info
+
+### Subnet
+* Check logical switch existence before related operations
+* Calculate default values for custom subnet
+* Auto unbind previous subnet when namespace bind to a new subnet
+* Subnet CRD now has status field to show ip allocation statistic and subnet condition
+* Write subnet annotations back to bind namespace
+
+### Security
+* Enable traffic mirror by default
+* Support select all type NetworkPolicy rules
+* Private subnet now applies acl to all ports not only gateway ports
+
+### IPv6
+* Control plan components now can communicate with IPv6 protocol
+
+### Misc
+* New logo
+* [中文文档](https://github.com/alauda/kube-ovn/wiki)
+* Test Kube-OVN compatible on CentOS 7.5/Ubuntu 16.04 and Ubuntu 18.04
+* Add support for Kubespray and kubeasz installation tools
+* Rename cni conf to `00-kube-ovn.conflist` to improve kubelet priority
+* Basic TCP [performance test](https://github.com/alauda/kube-ovn/wiki/%E9%98%BF%E9%87%8C%E4%BA%91%E6%B5%8B%E8%AF%95) on aliyun.
+
 ## v0.6.0 -- 2019/07/22
 ### Features
 * Support traffic mirror
