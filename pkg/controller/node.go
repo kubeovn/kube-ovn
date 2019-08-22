@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"strings"
 
+	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -170,7 +172,60 @@ func (c *Controller) handleAddNode(key string) error {
 	_, err = c.config.KubeClient.CoreV1().Nodes().Patch(key, types.JSONPatchType, []byte(patchPayload))
 	if err != nil {
 		klog.Errorf("patch node %s failed %v", key, err)
+		return err
 	}
+
+	ipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(key, metav1.GetOptions{})
+	if err != nil && k8serrors.IsNotFound(err) {
+		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Create(&kubeovnv1.IP{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: key,
+				Labels: map[string]string{
+					util.SubnetNameLabel: c.config.NodeSwitch,
+				},
+			},
+			Spec: kubeovnv1.IPSpec{
+				PodName:    key,
+				Subnet:     c.config.NodeSwitch,
+				NodeName:   key,
+				IPAddress:  nic.IpAddress,
+				MacAddress: nic.MacAddress,
+			},
+		})
+		if err != nil {
+			errMsg := fmt.Errorf("failed to create ip crd for %s, %v", nic.IpAddress, err)
+			klog.Error(errMsg)
+			return errMsg
+		}
+	} else {
+		if err != nil {
+			if ipCr.Labels != nil {
+				ipCr.Labels[util.SubnetNameLabel] = c.config.NodeSwitch
+			} else {
+				ipCr.Labels = map[string]string{
+					util.SubnetNameLabel: c.config.NodeSwitch,
+				}
+			}
+			ipCr.Spec.PodName = key
+			ipCr.Spec.Namespace = ""
+			ipCr.Spec.Subnet = c.config.NodeSwitch
+			ipCr.Spec.NodeName = key
+			ipCr.Spec.IPAddress = nic.IpAddress
+			ipCr.Spec.MacAddress = nic.MacAddress
+			ipCr.Spec.ContainerID = ""
+			_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(ipCr)
+			if err != nil {
+				errMsg := fmt.Errorf("failed to create ip crd for %s, %v", nic.IpAddress, err)
+				klog.Error(errMsg)
+				return errMsg
+			}
+		} else {
+			errMsg := fmt.Errorf("failed to get ip crd for %s, %v", nic.IpAddress, err)
+			klog.Error(errMsg)
+			return errMsg
+		}
+	}
+
 	return err
 }
 
@@ -181,16 +236,26 @@ func (c *Controller) handleDeleteNode(key string) error {
 		return err
 	}
 
-	node, err := c.config.KubeClient.CoreV1().Nodes().Get(key, metav1.GetOptions{})
+	ipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(key, metav1.GetOptions{})
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
 
-	nodeAddr := getNodeInternalIP(node)
-	return c.ovnClient.DeleteStaticRouter(nodeAddr, c.config.ClusterRouter)
+	if err := c.ovnClient.DeleteStaticRouter(ipCr.Spec.IPAddress, c.config.ClusterRouter); err != nil {
+		return err
+	}
+
+	err = c.config.KubeOvnClient.KubeovnV1().IPs().Delete(key, &metav1.DeleteOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 func getNodeInternalIP(node *v1.Node) string {
