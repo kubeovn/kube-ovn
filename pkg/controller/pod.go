@@ -430,7 +430,7 @@ func (c *Controller) handleAddPod(key string) error {
 	ip := pod.Annotations[util.IpAddressAnnotation]
 	mac := pod.Annotations[util.MacAddressAnnotation]
 
-	nic, err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, mac)
+	nic, err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, subnet.Spec.CIDRBlock, mac)
 	if err != nil {
 		return err
 	}
@@ -552,7 +552,7 @@ func (c *Controller) handleAddIpPoolPod(key string) error {
 	// pod address info may already exist in ovn
 	ip := pod.Annotations[util.IpAddressAnnotation]
 	mac := pod.Annotations[util.MacAddressAnnotation]
-	nic, err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, mac)
+	nic, err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, subnet.Spec.CIDRBlock, mac)
 	if err != nil {
 		return err
 	}
