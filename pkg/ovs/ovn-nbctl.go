@@ -35,7 +35,7 @@ func (c Client) DeletePort(port string) error {
 }
 
 // CreatePort create logical switch port in ovn
-func (c Client) CreatePort(ls, port, ip, mac string) (*nic, error) {
+func (c Client) CreatePort(ls, port, ip, cidr, mac string) (*nic, error) {
 	if ip == "" && mac == "" {
 		_, err := c.ovnNbCommand(WaitSb, MayExist, "lsp-add", ls, port,
 			"--", "set", "logical_switch_port", port, "addresses=dynamic")
@@ -76,6 +76,15 @@ func (c Client) CreatePort(ls, port, ip, mac string) (*nic, error) {
 			mac = address[0]
 		}
 	}
+
+	if ls != c.NodeSwitch {
+		_, err := c.ovnNbCommand("lsp-set-port-security", port, fmt.Sprintf("%s %s/%s", mac, ip, strings.Split(cidr, "/")[1]))
+		if err != nil {
+			klog.Errorf("failed to set port security for %s, %v", port, err)
+			return nil, err
+		}
+	}
+
 	return &nic{IpAddress: ip, MacAddress: mac}, nil
 }
 

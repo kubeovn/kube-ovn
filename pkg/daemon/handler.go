@@ -73,47 +73,25 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	}
 
 	ipCrd, err := csh.KubeOvnClient.KubeovnV1().IPs().Get(fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace), metav1.GetOptions{})
-	if err != nil && k8serrors.IsNotFound(err) {
-		_, err := csh.KubeOvnClient.KubeovnV1().IPs().Create(&kubeovnv1.IP{
-			ObjectMeta: v1.ObjectMeta{
-				Name: fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace),
-				Labels: map[string]string{
-					util.SubnetNameLabel: subnet,
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			_, err := csh.KubeOvnClient.KubeovnV1().IPs().Create(&kubeovnv1.IP{
+				ObjectMeta: v1.ObjectMeta{
+					Name: fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace),
+					Labels: map[string]string{
+						util.SubnetNameLabel: subnet,
+					},
 				},
-			},
-			Spec: kubeovnv1.IPSpec{
-				PodName:     podRequest.PodName,
-				Namespace:   podRequest.PodNamespace,
-				Subnet:      subnet,
-				NodeName:    csh.Config.NodeName,
-				IPAddress:   ip,
-				MacAddress:  macAddr,
-				ContainerID: podRequest.ContainerID,
-			},
-		})
-		if err != nil {
-			errMsg := fmt.Errorf("failed to create ip crd for %s, %v", ip, err)
-			klog.Error(errMsg)
-			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: errMsg.Error()})
-			return
-		}
-	} else {
-		if err != nil {
-			if ipCrd.Labels != nil {
-				ipCrd.Labels[util.SubnetNameLabel] = subnet
-			} else {
-				ipCrd.Labels = map[string]string{
-					util.SubnetNameLabel: subnet,
-				}
-			}
-			ipCrd.Spec.PodName = podRequest.PodName
-			ipCrd.Spec.Namespace = podRequest.PodNamespace
-			ipCrd.Spec.Subnet = subnet
-			ipCrd.Spec.NodeName = csh.Config.NodeName
-			ipCrd.Spec.IPAddress = ip
-			ipCrd.Spec.MacAddress = macAddr
-			ipCrd.Spec.ContainerID = podRequest.ContainerID
-			_, err := csh.KubeOvnClient.KubeovnV1().IPs().Update(ipCrd)
+				Spec: kubeovnv1.IPSpec{
+					PodName:     podRequest.PodName,
+					Namespace:   podRequest.PodNamespace,
+					Subnet:      subnet,
+					NodeName:    csh.Config.NodeName,
+					IPAddress:   ip,
+					MacAddress:  macAddr,
+					ContainerID: podRequest.ContainerID,
+				},
+			})
 			if err != nil {
 				errMsg := fmt.Errorf("failed to create ip crd for %s, %v", ip, err)
 				klog.Error(errMsg)
@@ -122,6 +100,28 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			}
 		} else {
 			errMsg := fmt.Errorf("failed to get ip crd for %s, %v", ip, err)
+			klog.Error(errMsg)
+			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: errMsg.Error()})
+			return
+		}
+	} else {
+		if ipCrd.Labels != nil {
+			ipCrd.Labels[util.SubnetNameLabel] = subnet
+		} else {
+			ipCrd.Labels = map[string]string{
+				util.SubnetNameLabel: subnet,
+			}
+		}
+		ipCrd.Spec.PodName = podRequest.PodName
+		ipCrd.Spec.Namespace = podRequest.PodNamespace
+		ipCrd.Spec.Subnet = subnet
+		ipCrd.Spec.NodeName = csh.Config.NodeName
+		ipCrd.Spec.IPAddress = ip
+		ipCrd.Spec.MacAddress = macAddr
+		ipCrd.Spec.ContainerID = podRequest.ContainerID
+		_, err := csh.KubeOvnClient.KubeovnV1().IPs().Update(ipCrd)
+		if err != nil {
+			errMsg := fmt.Errorf("failed to create ip crd for %s, %v", ip, err)
 			klog.Error(errMsg)
 			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: errMsg.Error()})
 			return

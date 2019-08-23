@@ -129,6 +129,7 @@ func (c *Controller) handleAddNode(key string) error {
 	nic, err := c.ovnClient.CreatePort(
 		c.config.NodeSwitch, fmt.Sprintf("node-%s", key),
 		node.Annotations[util.IpAddressAnnotation],
+		node.Annotations[util.CidrAnnotation],
 		node.Annotations[util.MacAddressAnnotation])
 	if err != nil {
 		return err
@@ -176,44 +177,23 @@ func (c *Controller) handleAddNode(key string) error {
 	}
 
 	ipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(key, metav1.GetOptions{})
-	if err != nil && k8serrors.IsNotFound(err) {
-		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Create(&kubeovnv1.IP{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: key,
-				Labels: map[string]string{
-					util.SubnetNameLabel: c.config.NodeSwitch,
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Create(&kubeovnv1.IP{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: key,
+					Labels: map[string]string{
+						util.SubnetNameLabel: c.config.NodeSwitch,
+					},
 				},
-			},
-			Spec: kubeovnv1.IPSpec{
-				PodName:    key,
-				Subnet:     c.config.NodeSwitch,
-				NodeName:   key,
-				IPAddress:  nic.IpAddress,
-				MacAddress: nic.MacAddress,
-			},
-		})
-		if err != nil {
-			errMsg := fmt.Errorf("failed to create ip crd for %s, %v", nic.IpAddress, err)
-			klog.Error(errMsg)
-			return errMsg
-		}
-	} else {
-		if err != nil {
-			if ipCr.Labels != nil {
-				ipCr.Labels[util.SubnetNameLabel] = c.config.NodeSwitch
-			} else {
-				ipCr.Labels = map[string]string{
-					util.SubnetNameLabel: c.config.NodeSwitch,
-				}
-			}
-			ipCr.Spec.PodName = key
-			ipCr.Spec.Namespace = ""
-			ipCr.Spec.Subnet = c.config.NodeSwitch
-			ipCr.Spec.NodeName = key
-			ipCr.Spec.IPAddress = nic.IpAddress
-			ipCr.Spec.MacAddress = nic.MacAddress
-			ipCr.Spec.ContainerID = ""
-			_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(ipCr)
+				Spec: kubeovnv1.IPSpec{
+					PodName:    key,
+					Subnet:     c.config.NodeSwitch,
+					NodeName:   key,
+					IPAddress:  nic.IpAddress,
+					MacAddress: nic.MacAddress,
+				},
+			})
 			if err != nil {
 				errMsg := fmt.Errorf("failed to create ip crd for %s, %v", nic.IpAddress, err)
 				klog.Error(errMsg)
@@ -221,6 +201,27 @@ func (c *Controller) handleAddNode(key string) error {
 			}
 		} else {
 			errMsg := fmt.Errorf("failed to get ip crd for %s, %v", nic.IpAddress, err)
+			klog.Error(errMsg)
+			return errMsg
+		}
+	} else {
+		if ipCr.Labels != nil {
+			ipCr.Labels[util.SubnetNameLabel] = c.config.NodeSwitch
+		} else {
+			ipCr.Labels = map[string]string{
+				util.SubnetNameLabel: c.config.NodeSwitch,
+			}
+		}
+		ipCr.Spec.PodName = key
+		ipCr.Spec.Namespace = ""
+		ipCr.Spec.Subnet = c.config.NodeSwitch
+		ipCr.Spec.NodeName = key
+		ipCr.Spec.IPAddress = nic.IpAddress
+		ipCr.Spec.MacAddress = nic.MacAddress
+		ipCr.Spec.ContainerID = ""
+		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(ipCr)
+		if err != nil {
+			errMsg := fmt.Errorf("failed to create ip crd for %s, %v", nic.IpAddress, err)
 			klog.Error(errMsg)
 			return errMsg
 		}
