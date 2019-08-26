@@ -1,9 +1,16 @@
 {
-    "name": "kube-ovn",
-    "cniVersion": "0.3.1",
+    "name":"kube-ovn",
+    "cniVersion":"0.3.1",
     "plugins":[
-    {
-      "type":"kube-ovn",
-      "server_socket": "/run/openvswitch/kube-ovn-daemon.sock"
-    }]
+        {
+            "type":"kube-ovn",
+            "server_socket":"/run/openvswitch/kube-ovn-daemon.sock"
+        },
+        {
+            "type":"portmap",
+            "capabilities":{
+                "portMappings":true
+            }
+        }
+    ]
 }
