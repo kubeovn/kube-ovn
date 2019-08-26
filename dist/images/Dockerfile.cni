@@ -17,7 +17,7 @@ ENV OVS_VERSION=2.11.1
 ENV OVS_SUBVERSION=1
 ENV CNI_VERSION=v0.7.5
 
-RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-amd64-${CNI_VERSION}.tgz | tar -xz -C . ./loopback
+RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-amd64-${CNI_VERSION}.tgz | tar -xz -C . ./loopback ./portmap
 
 RUN rpm -ivh https://github.com/alauda/ovs/releases/download/v${OVS_VERSION}-${OVS_SUBVERSION}/openvswitch-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
     rpm -ivh https://github.com/alauda/ovs/releases/download/v${OVS_VERSION}-${OVS_SUBVERSION}/openvswitch-ipsec-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \

@@ -137,7 +137,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: errMsg.Error()})
 		return
 	}
-	resp.WriteHeaderAndEntity(http.StatusOK, request.PodResponse{IpAddress: strings.Split(ipAddr, "/")[0], MacAddress: macAddr, CIDR: cidr, Gateway: gw})
+	resp.WriteHeaderAndEntity(http.StatusOK, request.PodResponse{Protocol: util.CheckProtocol(ipAddr), IpAddress: strings.Split(ipAddr, "/")[0], MacAddress: macAddr, CIDR: cidr, Gateway: gw})
 }
 
 func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Response) {
