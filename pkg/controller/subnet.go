@@ -382,11 +382,11 @@ func (c *Controller) handleAddSubnet(key string) error {
 		return err
 	}
 
-	err = c.ovnClient.CleanLogicalSwitchAcl(subnet.Name)
+	err = c.ovnClient.ResetLogicalSwitchAcl(subnet.Name, subnet.Spec.Protocol)
 	if err != nil {
-		subnet.Status.SetError("CleanLogicalSwitchAclFailed", err.Error())
+		subnet.Status.SetError("ResetLogicalSwitchAclFailed", err.Error())
 	} else {
-		subnet.Status.Ready("CleanLogicalSwitchAclSuccess", "")
+		subnet.Status.Ready("ResetLogicalSwitchAclSuccess", "")
 	}
 	bytes, err1 := subnet.Status.Bytes()
 	if err1 != nil {
@@ -491,11 +491,11 @@ func (c *Controller) handleUpdateSubnet(key string) error {
 		}
 		return err
 	}
-	err = c.ovnClient.CleanLogicalSwitchAcl(subnet.Name)
+	err = c.ovnClient.ResetLogicalSwitchAcl(subnet.Name, subnet.Spec.Protocol)
 	if err != nil {
-		subnet.Status.SetError("CleanLogicalSwitchAclFailed", err.Error())
+		subnet.Status.SetError("ResetLogicalSwitchAclFailed", err.Error())
 	} else {
-		subnet.Status.Ready("CleanLogicalSwitchAclSuccess", "")
+		subnet.Status.Ready("ResetLogicalSwitchAclSuccess", "")
 	}
 	bytes, err1 := subnet.Status.Bytes()
 	if err1 != nil {
