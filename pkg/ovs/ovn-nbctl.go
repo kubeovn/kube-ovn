@@ -303,6 +303,19 @@ func (c Client) CleanLogicalSwitchAcl(ls string) error {
 	return err
 }
 
+// ResetLogicalSwitchAcl reset acl of a switch
+func (c Client) ResetLogicalSwitchAcl(ls, protocol string) error {
+	var err error
+	if protocol == kubeovnv1.ProtocolIPv6 {
+		_, err = c.ovnNbCommand("acl-del", ls, "--",
+			"acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip6.src==%s", c.NodeSwitchCIDR), "allow-related")
+	} else {
+		_, err = c.ovnNbCommand("acl-del", ls, "--",
+			"acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip4.src==%s", c.NodeSwitchCIDR), "allow-related")
+	}
+	return err
+}
+
 // SetPrivateLogicalSwitch will drop all ingress traffic except allow subnets
 func (c Client) SetPrivateLogicalSwitch(ls, protocol, cidr string, allow []string) error {
 	delArgs := []string{"acl-del", ls}
