@@ -161,7 +161,7 @@ func (c *Controller) reconcileRouters() error {
 		klog.Errorf("failed to list namespace %v", err)
 		return err
 	}
-	cidrs := []string{}
+	cidrs := []string{c.config.ServiceClusterIPRange}
 	for _, subnet := range subnets {
 		cidrs = append(cidrs, subnet.Spec.CIDRBlock)
 	}
