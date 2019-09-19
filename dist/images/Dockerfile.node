@@ -10,14 +10,13 @@ RUN yum install -y  \
         libpcap \
         hostname \
         iproute strace socat nc \
-        unbound unbound-devel python-openvswitch libreswan && \
+        unbound unbound-devel && \
         yum clean all
 
 ENV OVS_VERSION=2.11.1
 ENV OVS_SUBVERSION=1
 
 RUN rpm -ivh https://github.com/alauda/ovs/releases/download/v${OVS_VERSION}-${OVS_SUBVERSION}/openvswitch-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
-    rpm -ivh https://github.com/alauda/ovs/releases/download/v${OVS_VERSION}-${OVS_SUBVERSION}/openvswitch-ipsec-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
     rpm -ivh https://github.com/alauda/ovs/releases/download/v${OVS_VERSION}-${OVS_SUBVERSION}/openvswitch-devel-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
     rpm -ivh https://github.com/alauda/ovs/releases/download/v${OVS_VERSION}-${OVS_SUBVERSION}/ovn-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
     rpm -ivh https://github.com/alauda/ovs/releases/download/v${OVS_VERSION}-${OVS_SUBVERSION}/ovn-common-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
@@ -28,9 +27,6 @@ RUN rpm -ivh https://github.com/alauda/ovs/releases/download/v${OVS_VERSION}-${O
 RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /etc/cni/net.d && \
     mkdir -p /opt/cni/bin
-
-RUN yum install -y tcpdump && \
-        yum clean all
 
 COPY ovs-healthcheck.sh /root/ovs-healthcheck.sh
 COPY start-ovs.sh /root/start-ovs.sh

@@ -1,5 +1,5 @@
 GOFILES_NOVENDOR=$(shell find . -type f -name '*.go' -not -path "./vendor/*")
-GO_VERSION=1.12
+GO_VERSION=1.13
 
 REGISTRY=index.alauda.cn/alaudak8s
 ROLES=node controller cni db webhook

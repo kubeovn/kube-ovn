@@ -4,7 +4,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -54,8 +53,8 @@ func ParseFlags() (*Configuration, error) {
 		argPprofPort             = pflag.Int("pprof-port", 10665, "The port to get profiling data, default: 10665")
 	)
 
-	// mute log for ipset lib
-	logrus.SetOutput(ioutil.Discard)
+	// mute info log for ipset lib
+	logrus.SetLevel(logrus.WarnLevel)
 
 	flag.Set("alsologtostderr", "true")
 
