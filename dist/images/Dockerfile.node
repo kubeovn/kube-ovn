@@ -29,6 +29,9 @@ RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /etc/cni/net.d && \
     mkdir -p /opt/cni/bin
 
+RUN yum install -y tcpdump && \
+        yum clean all
+
 COPY ovs-healthcheck.sh /root/ovs-healthcheck.sh
 COPY start-ovs.sh /root/start-ovs.sh
 

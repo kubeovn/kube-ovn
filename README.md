@@ -20,6 +20,7 @@ Kube-OVN integrates the OVN-based Network Virtualization with Kubernetes. It off
 - **Direct External Connectivity**：Pod IP can be exposed to external network directly.
 - **Traffic Mirror**: Duplicated container network traffic for monitoring and diagnosing.
 - **IPv6 support**: Kube-OVN support ipv6-only mode pod network.
+- **Kubectl Plugin**: Handy tools to diagnose container network.
 
 ## Planned Future Work
 - Hardware Offloading and DPDK Support
@@ -47,6 +48,7 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
 - [Traffic Mirror](docs/mirror.md)
 - [Webhook](docs/webhook.md)
 - [IPv6](docs/ipv6.md)
+- [Kubectl Plugin](docs/kubectl-plugin.md)
 
 ## Kube-OVN vs. Other CNI Implementation
 
