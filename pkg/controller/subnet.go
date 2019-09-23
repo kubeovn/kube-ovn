@@ -2,14 +2,17 @@ package controller
 
 import (
 	"fmt"
+	"net"
+	"reflect"
+	"strings"
+
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"github.com/alauda/kube-ovn/pkg/util"
-	"net"
-	"reflect"
+	"github.com/juju/errors"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
@@ -45,6 +48,10 @@ func (c *Controller) enqueueDeleteSubnet(obj interface{}) {
 	}
 	klog.V(3).Infof("enqueue delete subnet %s", key)
 	c.deleteSubnetQueue.AddRateLimited(key)
+	subnet := obj.(*kubeovnv1.Subnet)
+	if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType {
+		c.deleteRouteQueue.AddRateLimited(subnet.Spec.CIDRBlock)
+	}
 }
 
 func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
@@ -56,7 +63,9 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 
 	if oldSubnet.Spec.Private != newSubnet.Spec.Private ||
 		!reflect.DeepEqual(oldSubnet.Spec.AllowSubnets, newSubnet.Spec.AllowSubnets) ||
-		!reflect.DeepEqual(oldSubnet.Spec.Namespaces, newSubnet.Spec.Namespaces) {
+		!reflect.DeepEqual(oldSubnet.Spec.Namespaces, newSubnet.Spec.Namespaces) ||
+		oldSubnet.Spec.GatewayType != newSubnet.Spec.GatewayType ||
+		oldSubnet.Spec.GatewayNode != newSubnet.Spec.GatewayNode {
 		var key string
 		var err error
 		if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
@@ -80,6 +89,12 @@ func (c *Controller) runUpdateSubnetWorker() {
 
 func (c *Controller) runUpdateSubnetStatusWorker() {
 	for c.processNextUpdateSubnetStatusWorkItem() {
+	}
+}
+
+func (c *Controller) runDeleteRouteWorker() {
+	for c.processNextDeleteRoutePodWorkItem() {
+
 	}
 }
 
@@ -138,6 +153,36 @@ func (c *Controller) processNextUpdateSubnetWorkItem() bool {
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
 		c.updateSubnetQueue.Forget(obj)
+		return nil
+	}(obj)
+
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
+	return true
+}
+
+func (c *Controller) processNextDeleteRoutePodWorkItem() bool {
+	obj, shutdown := c.deleteRouteQueue.Get()
+	if shutdown {
+		return false
+	}
+
+	err := func(obj interface{}) error {
+		defer c.deleteRouteQueue.Done(obj)
+		var key string
+		var ok bool
+		if key, ok = obj.(string); !ok {
+			c.deleteRouteQueue.Forget(obj)
+			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
+			return nil
+		}
+		if err := c.handleDeleteRoute(key); err != nil {
+			c.deleteRouteQueue.AddRateLimited(key)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		}
+		c.deleteRouteQueue.Forget(obj)
 		return nil
 	}(obj)
 
@@ -251,7 +296,7 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 	}
 
 	if changed {
-		subnet, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(subnet)
+		_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(subnet)
 		if err != nil {
 			klog.Errorf("failed to update subnet %s, %v", subnet.Name, err)
 			return err
@@ -263,7 +308,7 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 func (c *Controller) handleAddSubnet(key string) error {
 	subnet, err := c.subnetsLister.Get(key)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
@@ -364,6 +409,20 @@ func (c *Controller) handleAddSubnet(key string) error {
 		return err
 	}
 
+	if err := c.reconcileCentralizedGateway(subnet); err != nil {
+		klog.Errorf("failed to reconcile gateway %s, %v", subnet.Name, err)
+		subnet.Status.SetError("ReconcileGatewayFailed", err.Error())
+		bytes, err := subnet.Status.Bytes()
+		if err != nil {
+			klog.Error(err)
+		} else {
+			if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(subnet.Name, types.MergePatchType, bytes, "status"); err != nil {
+				klog.Error("patch subnet status failed", err)
+			}
+		}
+		return err
+	}
+
 	if subnet.Spec.Private {
 		err = c.ovnClient.SetPrivateLogicalSwitch(subnet.Name, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.AllowSubnets)
 		if err != nil {
@@ -396,13 +455,85 @@ func (c *Controller) handleAddSubnet(key string) error {
 			klog.Error("patch subnet status failed", err)
 		}
 	}
+
+	return err
+}
+
+func (c *Controller) reconcileCentralizedGateway(subnet *kubeovnv1.Subnet) error {
+	// if gw is distributed remove activateGateway field
+	if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
+		if subnet.Status.ActivateGateway == "" {
+			return nil
+		}
+		subnet.Status.ActivateGateway = ""
+		bytes, err := subnet.Status.Bytes()
+		if err != nil {
+			return err
+		}
+		_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(subnet.Name, types.MergePatchType, bytes, "status")
+		return err
+	}
+	klog.Infof("start to init centralized gateway for subnet %s", subnet.Name)
+
+	// check if activateGateway still ready
+	if subnet.Status.ActivateGateway != "" {
+		node, err := c.nodesLister.Get(subnet.Status.ActivateGateway)
+		if err == nil && nodeReady(node) {
+			klog.Infof("subnet %s uses the old activate gw %s", subnet.Name, node.Name)
+			return nil
+		}
+	}
+
+	klog.Info("find a new activate node")
+	// need a new activate gateway
+	newActivateNode := ""
+	var nodeTunlIPAddr net.IP
+	for _, gw := range strings.Split(subnet.Spec.GatewayNode, ",") {
+		gw = strings.TrimSpace(gw)
+		node, err := c.nodesLister.Get(gw)
+		if err == nil && nodeReady(node) {
+			newActivateNode = node.Name
+			nodeTunlIPAddr, err = getNodeTunlIP(node)
+			if err != nil {
+				return err
+			}
+			klog.Infof("subnet %s uses a new activate gw %s", subnet.Name, node.Name)
+			break
+		}
+	}
+	if newActivateNode == "" {
+		klog.Warningf("all subnet %s gws are not ready", subnet.Name)
+		subnet.Status.ActivateGateway = newActivateNode
+		subnet.Status.NotReady("NoReadyGateway", "")
+		bytes, err := subnet.Status.Bytes()
+		if err != nil {
+			return err
+		}
+		_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(subnet.Name, types.MergePatchType, bytes, "status")
+		return err
+	}
+
+	if err := c.ovnClient.DeleteStaticRouter(subnet.Spec.CIDRBlock, c.config.ClusterRouter); err != nil {
+		return errors.Annotate(err, "del static route failed")
+	}
+	if err := c.ovnClient.AddStaticRouter(ovs.PolicySrcIP, subnet.Spec.CIDRBlock, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
+		return errors.Annotate(err, "add static route failed")
+	}
+
+	subnet.Status.ActivateGateway = newActivateNode
+	bytes, err := subnet.Status.Bytes()
+	subnet.Status.Ready("ReconcileCentralizedGatewaySuccess", "")
+	if err != nil {
+		return err
+	}
+	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(subnet.Name, types.MergePatchType, bytes, "status")
 	return err
 }
 
 func (c *Controller) handleUpdateSubnet(key string) error {
 	subnet, err := c.subnetsLister.Get(key)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
@@ -474,6 +605,20 @@ func (c *Controller) handleUpdateSubnet(key string) error {
 		return err
 	}
 
+	if err := c.reconcileCentralizedGateway(subnet); err != nil {
+		klog.Errorf("failed to reconcile gateway %s, %v", subnet.Name, err)
+		subnet.Status.SetError("ReconcileGatewayFailed", err.Error())
+		bytes, err := subnet.Status.Bytes()
+		if err != nil {
+			klog.Error(err)
+		} else {
+			if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(subnet.Name, types.MergePatchType, bytes, "status"); err != nil {
+				klog.Error("patch subnet status failed", err)
+			}
+		}
+		return err
+	}
+
 	if subnet.Spec.Private {
 		err = c.ovnClient.SetPrivateLogicalSwitch(subnet.Name, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.AllowSubnets)
 		if err != nil {
@@ -511,12 +656,20 @@ func (c *Controller) handleUpdateSubnet(key string) error {
 func (c *Controller) handleUpdateSubnetStatus(key string) error {
 	subnet, err := c.subnetsLister.Get(key)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
 	return calcSubnetStatusIP(subnet, c)
+}
+
+func (c *Controller) handleDeleteRoute(key string) error {
+	if _, _, err := net.ParseCIDR(key); err != nil {
+		return nil
+	}
+
+	return c.ovnClient.DeleteStaticRouter(key, c.config.ClusterRouter)
 }
 
 func (c *Controller) handleDeleteSubnet(key string) error {
@@ -529,16 +682,15 @@ func (c *Controller) handleDeleteSubnet(key string) error {
 		return nil
 	}
 
-	err = c.ovnClient.CleanLogicalSwitchAcl(key)
-	if err != nil {
+	if err = c.ovnClient.CleanLogicalSwitchAcl(key); err != nil {
 		klog.Errorf("failed to delete acl of logical switch %s %v", key, err)
 		return err
 	}
-	err = c.ovnClient.DeleteLogicalSwitch(key)
-	if err != nil {
+	if err = c.ovnClient.DeleteLogicalSwitch(key); err != nil {
 		klog.Errorf("failed to delete logical switch %s %v", key, err)
 		return err
 	}
+
 	return nil
 }
 

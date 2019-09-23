@@ -649,25 +649,8 @@ func (c *Controller) handleUpdatePod(key string) error {
 		}
 	}
 
-	switch subnet.Spec.GatewayType {
-	case "", kubeovnv1.GWDistributedType:
+	if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
 		node, err := c.nodesLister.Get(pod.Spec.NodeName)
-		if err != nil {
-			klog.Errorf("get node %s failed %v", pod.Spec.NodeName, err)
-			return err
-		}
-		nodeTunlIPAddr, err := getNodeTunlIP(node)
-		if err != nil {
-			return err
-		}
-		if err := c.ovnClient.DeleteStaticRouter(pod.Status.PodIP, c.config.ClusterRouter); err != nil {
-			return errors.Annotate(err, "del static route failed")
-		}
-		if err := c.ovnClient.AddStaticRouter(ovs.PolicySrcIP, pod.Status.PodIP, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
-			return errors.Annotate(err, "add static route failed")
-		}
-	case kubeovnv1.GWCentralizedType:
-		node, err := c.nodesLister.Get(subnet.Spec.GatewayNode)
 		if err != nil {
 			klog.Errorf("get node %s failed %v", pod.Spec.NodeName, err)
 			return err
