@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
@@ -31,6 +32,35 @@ func (c *Controller) enqueueAddNode(obj interface{}) {
 	c.addNodeQueue.AddRateLimited(key)
 }
 
+func nodeReady(node *v1.Node) bool {
+	for _, con := range node.Status.Conditions {
+		if con.Type == v1.NodeReady && con.Status == v1.ConditionTrue {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Controller) enqueueUpdateNode(oldObj, newObj interface{}) {
+	if !c.isLeader() {
+		return
+	}
+
+	oldNode := oldObj.(*v1.Node)
+	newNode := newObj.(*v1.Node)
+
+	if nodeReady(oldNode) != nodeReady(newNode) {
+		var key string
+		var err error
+		if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
+			utilruntime.HandleError(err)
+			return
+		}
+		klog.V(3).Infof("enqueue update node %s", key)
+		c.updateNodeQueue.AddRateLimited(key)
+	}
+}
+
 func (c *Controller) enqueueDeleteNode(obj interface{}) {
 	if !c.isLeader() {
 		return
@@ -47,6 +77,11 @@ func (c *Controller) enqueueDeleteNode(obj interface{}) {
 
 func (c *Controller) runAddNodeWorker() {
 	for c.processNextAddNodeWorkItem() {
+	}
+}
+
+func (c *Controller) runUpdateNodeWorker() {
+	for c.processNextUpdateNodeWorkItem() {
 	}
 }
 
@@ -76,6 +111,37 @@ func (c *Controller) processNextAddNodeWorkItem() bool {
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
 		c.addNodeQueue.Forget(obj)
+		return nil
+	}(obj)
+
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
+	return true
+}
+
+func (c *Controller) processNextUpdateNodeWorkItem() bool {
+	obj, shutdown := c.updateNodeQueue.Get()
+
+	if shutdown {
+		return false
+	}
+
+	err := func(obj interface{}) error {
+		defer c.updateNodeQueue.Done(obj)
+		var key string
+		var ok bool
+		if key, ok = obj.(string); !ok {
+			c.updateNodeQueue.Forget(obj)
+			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
+			return nil
+		}
+		if err := c.handleUpdateNode(key); err != nil {
+			c.updateNodeQueue.AddRateLimited(key)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		}
+		c.updateNodeQueue.Forget(obj)
 		return nil
 	}(obj)
 
@@ -257,6 +323,50 @@ func (c *Controller) handleDeleteNode(key string) error {
 		return err
 	}
 	return nil
+}
+
+func (c *Controller) handleUpdateNode(key string) error {
+	node, err := c.nodesLister.Get(key)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to get subnets %v", err)
+		return err
+	}
+
+	if nodeReady(node) {
+		for _, subnet := range subnets {
+			if subnet.Status.ActivateGateway == "" && gatewayContains(subnet.Spec.GatewayNode, node.Name) {
+				if err := c.reconcileCentralizedGateway(subnet); err != nil {
+					return err
+				}
+			}
+		}
+	} else {
+		for _, subnet := range subnets {
+			if subnet.Status.ActivateGateway == node.Name {
+				if err := c.reconcileCentralizedGateway(subnet); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func gatewayContains(gatewayNodeStr, gateway string) bool {
+	for _, gw := range strings.Split(gatewayNodeStr, ",") {
+		gw = strings.TrimSpace(gw)
+		if gw == gateway {
+			return true
+		}
+	}
+	return false
 }
 
 func getNodeInternalIP(node *v1.Node) string {

@@ -47,6 +47,7 @@ type Controller struct {
 	subnetSynced            cache.InformerSynced
 	addSubnetQueue          workqueue.RateLimitingInterface
 	deleteSubnetQueue       workqueue.RateLimitingInterface
+	deleteRouteQueue        workqueue.RateLimitingInterface
 	updateSubnetQueue       workqueue.RateLimitingInterface
 	updateSubnetStatusQueue workqueue.RateLimitingInterface
 
@@ -59,6 +60,7 @@ type Controller struct {
 	nodesLister     v1.NodeLister
 	nodesSynced     cache.InformerSynced
 	addNodeQueue    workqueue.RateLimitingInterface
+	updateNodeQueue workqueue.RateLimitingInterface
 	deleteNodeQueue workqueue.RateLimitingInterface
 
 	servicesLister        v1.ServiceLister
@@ -117,6 +119,7 @@ func NewController(config *Configuration) *Controller {
 		subnetSynced:            subnetInformer.Informer().HasSynced,
 		addSubnetQueue:          workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddSubnet"),
 		deleteSubnetQueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteSubnet"),
+		deleteRouteQueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteRoute"),
 		updateSubnetQueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateSubnet"),
 		updateSubnetStatusQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateSubnetStatus"),
 
@@ -136,6 +139,7 @@ func NewController(config *Configuration) *Controller {
 		nodesLister:     nodeInformer.Lister(),
 		nodesSynced:     nodeInformer.Informer().HasSynced,
 		addNodeQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddNode"),
+		updateNodeQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateNode"),
 		deleteNodeQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteNode"),
 
 		servicesLister:        serviceInformer.Lister(),
@@ -173,6 +177,7 @@ func NewController(config *Configuration) *Controller {
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddNode,
+		UpdateFunc: controller.enqueueUpdateNode,
 		DeleteFunc: controller.enqueueDeleteNode,
 	})
 
@@ -223,9 +228,11 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	defer c.addSubnetQueue.ShutDown()
 	defer c.updateSubnetQueue.ShutDown()
 	defer c.deleteSubnetQueue.ShutDown()
+	defer c.deleteRouteQueue.ShutDown()
 	defer c.updateSubnetStatusQueue.ShutDown()
 
 	defer c.addNodeQueue.ShutDown()
+	defer c.updateNodeQueue.ShutDown()
 	defer c.deleteNodeQueue.ShutDown()
 
 	defer c.deleteTcpServiceQueue.ShutDown()
@@ -279,9 +286,11 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 
 		go wait.Until(c.runDeleteSubnetWorker, time.Second, stopCh)
 		go wait.Until(c.runUpdateSubnetWorker, time.Second, stopCh)
+		go wait.Until(c.runDeleteRouteWorker, time.Second, stopCh)
 		go wait.Until(c.runUpdateSubnetStatusWorker, time.Second, stopCh)
 
 		go wait.Until(c.runAddNodeWorker, time.Second, stopCh)
+		go wait.Until(c.runUpdateNodeWorker, time.Second, stopCh)
 		go wait.Until(c.runDeleteNodeWorker, time.Second, stopCh)
 
 		go wait.Until(c.runUpdateServiceWorker, time.Second, stopCh)

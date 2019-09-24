@@ -87,22 +87,22 @@ func (m *SubnetStatus) ConditionReason(ctype ConditionType) string {
 	return ""
 }
 
-// Ready - shortcut to set ready contition to true
+// Ready - shortcut to set ready condition to true
 func (m *SubnetStatus) Ready(reason, message string) {
 	m.SetCondition(Ready, reason, message)
 }
 
-// NotReady - shortcut to set ready contition to false
+// NotReady - shortcut to set ready condition to false
 func (m *SubnetStatus) NotReady(reason, message string) {
 	m.ClearCondition(Ready, reason, message)
 }
 
-// Validated - shortcut to set validated contition to true
+// Validated - shortcut to set validated condition to true
 func (m *SubnetStatus) Validated(reason, message string) {
 	m.SetCondition(Validated, reason, message)
 }
 
-// NotValidated - shortcut to set validated contition to false
+// NotValidated - shortcut to set validated condition to false
 func (m *SubnetStatus) NotValidated(reason, message string) {
 	m.ClearCondition(Validated, reason, message)
 }
