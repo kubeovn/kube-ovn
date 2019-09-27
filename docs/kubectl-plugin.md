@@ -38,4 +38,5 @@ Available Subcommands:
   sbctl [ovn-sbctl options ...]    invoke ovn-sbctl
   tcpdump {namespace/podname} [tcpdump options ...] capture pod traffic
   trace {namespace/podname} {target ip address} {icmp|tcp|udp} [target tcp or udp port]
+  diagnose {all|node} [nodename]    diagnose connectivity of all nodes or a specific node
 ```
