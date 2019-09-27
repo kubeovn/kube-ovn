@@ -11,6 +11,7 @@ showHelp(){
   echo "  sbctl [ovn-sbctl options ...]    invoke ovn-sbctl"
   echo "  tcpdump {namespace/podname} [tcpdump options ...]     capture pod traffic"
   echo "  trace {namespace/podname} {target ip address} {icmp|tcp|udp} [target tcp or udp port]    trace ovn microflow of specific packet"
+  echo "  diagnose {all|node} [nodename]    diagnose connectivity of all nodes or a specific node"
 }
 
 tcpdump(){
@@ -36,7 +37,7 @@ tcpdump(){
      exit 1
   fi
 
-  ovnCni=$(kubectl get pod -n $KUBE_OVN_NS -o wide| grep kube-ovn-cni| grep "$nodeName" | awk '{print $1}')
+  ovnCni=$(kubectl get pod -n $KUBE_OVN_NS -o wide| grep kube-ovn-cni| grep " $nodeName " | awk '{print $1}')
   if [ -z "$ovnCni" ]; then
     echo "kube-ovn-cni not exist on node $nodeName"
     exit 1
@@ -111,6 +112,35 @@ trace(){
   esac
 }
 
+diagnose(){
+  type="$1"
+  case $type in
+    all)
+      pingers=$(kubectl get pod -n $KUBE_OVN_NS | grep kube-ovn-pinger | awk '{print $1}')
+      for pinger in $pingers
+      do
+        nodeName=$(kubectl get pod "$pinger" -n "$KUBE_OVN_NS" -o jsonpath={.spec.nodeName})
+        echo "### start to diagnose node $nodeName"
+        kubectl exec -n $KUBE_OVN_NS -it "$pinger" -- /kube-ovn/kube-ovn-pinger --mode=job
+        echo "### finish diagnose node $nodeName"
+        echo ""
+      done
+      ;;
+    node)
+      node="$2"
+      pinger=$(kubectl get pod -n $KUBE_OVN_NS -o wide | grep kube-ovn-pinger | grep " $node " | awk '{print $1}')
+      echo "### start to diagnose node $node"
+      kubectl exec -n $KUBE_OVN_NS -it "$pinger" -- /kube-ovn/kube-ovn-pinger --mode=job
+      echo "### finish diagnose node $node"
+      echo ""
+      ;;
+    *)
+      echo "type $type not supported"
+      echo "kubectl ko diagnose {all|node} [nodename]"
+      ;;
+    esac
+}
+
 getOvnCentralPod(){
     centralPod=$(kubectl get pod -n $KUBE_OVN_NS | grep ovn-central | head -n 1 | awk '{print $1}')
     if [ -z "$centralPod" ]; then
@@ -141,6 +171,9 @@ case $subcommand in
     ;;
   trace)
     trace "$@"
+    ;;
+  diagnose)
+    diagnose "$@"
     ;;
   *)
     showHelp
