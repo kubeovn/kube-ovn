@@ -5,7 +5,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog"
 	"net"
 	"os/exec"
@@ -15,8 +14,8 @@ import (
 
 func StartPinger(config *Configuration) {
 	for {
-		checkOvs()
-		checkOvnController()
+		checkOvs(config)
+		checkOvnController(config)
 		ping(config)
 		if config.Mode != "server" {
 			break
@@ -26,14 +25,14 @@ func StartPinger(config *Configuration) {
 }
 
 func ping(config *Configuration) {
-	pingNodes(config.KubeClient)
-	pingPods(config.KubeClient, config.DaemonSetNamespace, config.DaemonSetName)
-	nslookup(config.DNS)
+	pingNodes(config)
+	pingPods(config)
+	nslookup(config)
 }
 
-func pingNodes(client kubernetes.Interface) {
+func pingNodes(config *Configuration) {
 	klog.Infof("start to check node connectivity")
-	nodes, err := client.CoreV1().Nodes().List(metav1.ListOptions{})
+	nodes, err := config.KubeClient.CoreV1().Nodes().List(metav1.ListOptions{})
 	if err != nil {
 		klog.Errorf("failed to list nodes, %v", err)
 		return
@@ -56,6 +55,7 @@ func pingNodes(client kubernetes.Interface) {
 					stats := pinger.Statistics()
 					klog.Infof("ping node: %s %s, count: %d, loss rate %.2f%%, average rtt %.2fms",
 						nodeName, nodeIP, pinger.Count, stats.PacketLoss*100, float64(stats.AvgRtt)/float64(time.Millisecond))
+					SetNodePingMetrics(config.NodeName, config.HostIP, config.PodName, no.Name, addr.Address, float64(stats.AvgRtt)/float64(time.Millisecond), stats.PacketsSent-stats.PacketsRecv)
 				}(addr.Address, no.Name)
 			}
 		}
@@ -63,14 +63,14 @@ func pingNodes(client kubernetes.Interface) {
 	wg.Wait()
 }
 
-func pingPods(client kubernetes.Interface, dsNamespace, dsName string) {
+func pingPods(config *Configuration) {
 	klog.Infof("start to check pod connectivity")
-	ds, err := client.AppsV1().DaemonSets(dsNamespace).Get(dsName, metav1.GetOptions{})
+	ds, err := config.KubeClient.AppsV1().DaemonSets(config.DaemonSetNamespace).Get(config.DaemonSetName, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("failed to get peer ds: %v", err)
 		return
 	}
-	pods, err := client.CoreV1().Pods(dsNamespace).List(metav1.ListOptions{LabelSelector: labels.Set(ds.Spec.Selector.MatchLabels).String()})
+	pods, err := config.KubeClient.CoreV1().Pods(config.DaemonSetNamespace).List(metav1.ListOptions{LabelSelector: labels.Set(ds.Spec.Selector.MatchLabels).String()})
 	if err != nil {
 		klog.Errorf("failed to list peer pods: %v", err)
 		return
@@ -80,7 +80,7 @@ func pingPods(client kubernetes.Interface, dsNamespace, dsName string) {
 	for _, pod := range pods.Items {
 		if pod.Status.PodIP != "" {
 			wg.Add(1)
-			go func(podIp, podName, podNamespace string) {
+			go func(podIp, podName, nodeIP, nodeName string) {
 				defer wg.Done()
 				pinger, err := goping.NewPinger(podIp)
 				if err != nil {
@@ -91,38 +91,48 @@ func pingPods(client kubernetes.Interface, dsNamespace, dsName string) {
 				pinger.Count = 5
 				pinger.Run()
 				stats := pinger.Statistics()
-				klog.Infof("ping pod: %s/%s %s, count: %d, loss rate %.2f, average rtt %.2fms",
-					podNamespace, podName, podIp, pinger.Count, stats.PacketLoss*100, float64(stats.AvgRtt)/float64(time.Millisecond))
-			}(pod.Status.PodIP, pod.Name, pod.Namespace)
+				klog.Infof("ping pod: %s %s, count: %d, loss rate %.2f, average rtt %.2fms",
+					podName, podIp, pinger.Count, stats.PacketLoss*100, float64(stats.AvgRtt)/float64(time.Millisecond))
+				SetPodPingMetrics(config.NodeName, config.HostIP, config.PodName, nodeName, nodeIP, podIp, float64(stats.AvgRtt)/float64(time.Millisecond), stats.PacketsSent-stats.PacketsRecv)
+			}(pod.Status.PodIP, pod.Name, pod.Spec.NodeName, pod.Status.HostIP)
 		}
 	}
 	wg.Wait()
 }
 
-func nslookup(dns string) {
+func nslookup(config *Configuration) {
 	klog.Infof("start to check dns connectivity")
 	t1 := time.Now()
-	addrs, err := net.LookupHost(dns)
+	addrs, err := net.LookupHost(config.DNS)
 	elpased := time.Since(t1)
 	if err != nil {
-		klog.Errorf("failed to resolve dns %s, %v", dns, err)
+		klog.Errorf("failed to resolve dns %s, %v", config.DNS, err)
+		SetDnsUnhealthyMetrics(config.NodeName)
 		return
 	}
-	klog.Infof("resolve dns %s to %v in %.2fms", dns, addrs, float64(elpased)/float64(time.Millisecond))
+	SetDnsHealthyMetrics(config.NodeName, float64(elpased)/float64(time.Millisecond))
+	klog.Infof("resolve dns %s to %v in %.2fms", config.DNS, addrs, float64(elpased)/float64(time.Millisecond))
 }
 
-func checkOvs() {
+func checkOvs(config *Configuration) {
 	output, err := exec.Command("/usr/share/openvswitch/scripts/ovs-ctl", "status").CombinedOutput()
 	if err != nil {
 		klog.Errorf("check ovs status failed %v, %s", err, string(output))
+		SetOvsDownMetrics(config.NodeName)
+		return
 	}
 	klog.Infof("ovs-vswitchd and ovsdb are up")
+	SetOvsUpMetrics(config.NodeName)
+	return
 }
 
-func checkOvnController() {
+func checkOvnController(config *Configuration) {
 	output, err := exec.Command("/usr/share/openvswitch/scripts/ovn-ctl", "status_controller").CombinedOutput()
 	if err != nil {
 		klog.Errorf("check ovn_controller status failed %v, %s", err, string(output))
+		SetOvnControllerDownMetrics(config.NodeName)
+		return
 	}
 	klog.Infof("ovn_controller is up")
+	SetOvnControllerUpMetrics(config.NodeName)
 }

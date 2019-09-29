@@ -7,6 +7,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
+	"os"
 )
 
 type Configuration struct {
@@ -18,6 +19,10 @@ type Configuration struct {
 	Interval           int
 	Mode               string
 	DNS                string
+	NodeName           string
+	HostIP             string
+	PodName            string
+	PodIP              string
 }
 
 func ParseFlags() (*Configuration, error) {
@@ -56,6 +61,10 @@ func ParseFlags() (*Configuration, error) {
 		Interval:           *argInterval,
 		Mode:               *argMode,
 		DNS:                *argDns,
+		PodIP:              os.Getenv("POD_IP"),
+		HostIP:             os.Getenv("HOST_IP"),
+		NodeName:           os.Getenv("NODE_NAME"),
+		PodName:            os.Getenv("POD_NAME"),
 	}
 	if err := config.initKubeClient(); err != nil {
 		return nil, err
