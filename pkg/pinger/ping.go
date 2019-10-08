@@ -6,6 +6,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
+	"math"
 	"net"
 	"os/exec"
 	"sync"
@@ -54,8 +55,14 @@ func pingNodes(config *Configuration) {
 					pinger.Run()
 					stats := pinger.Statistics()
 					klog.Infof("ping node: %s %s, count: %d, loss rate %.2f%%, average rtt %.2fms",
-						nodeName, nodeIP, pinger.Count, stats.PacketLoss*100, float64(stats.AvgRtt)/float64(time.Millisecond))
-					SetNodePingMetrics(config.NodeName, config.HostIP, config.PodName, no.Name, addr.Address, float64(stats.AvgRtt)/float64(time.Millisecond), stats.PacketsSent-stats.PacketsRecv)
+						nodeName, nodeIP, pinger.Count, math.Abs(stats.PacketLoss)*100, float64(stats.AvgRtt)/float64(time.Millisecond))
+					SetNodePingMetrics(
+						config.NodeName,
+						config.HostIP,
+						config.PodName,
+						no.Name, addr.Address,
+						float64(stats.AvgRtt)/float64(time.Millisecond),
+						int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))))
 				}(addr.Address, no.Name)
 			}
 		}
@@ -92,8 +99,16 @@ func pingPods(config *Configuration) {
 				pinger.Run()
 				stats := pinger.Statistics()
 				klog.Infof("ping pod: %s %s, count: %d, loss rate %.2f, average rtt %.2fms",
-					podName, podIp, pinger.Count, stats.PacketLoss*100, float64(stats.AvgRtt)/float64(time.Millisecond))
-				SetPodPingMetrics(config.NodeName, config.HostIP, config.PodName, nodeName, nodeIP, podIp, float64(stats.AvgRtt)/float64(time.Millisecond), stats.PacketsSent-stats.PacketsRecv)
+					podName, podIp, pinger.Count, math.Abs(stats.PacketLoss)*100, float64(stats.AvgRtt)/float64(time.Millisecond))
+				SetPodPingMetrics(
+					config.NodeName,
+					config.HostIP,
+					config.PodName,
+					nodeName,
+					nodeIP,
+					podIp,
+					float64(stats.AvgRtt)/float64(time.Millisecond),
+					int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))))
 			}(pod.Status.PodIP, pod.Name, pod.Spec.NodeName, pod.Status.HostIP)
 		}
 	}
