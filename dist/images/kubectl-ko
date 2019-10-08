@@ -16,7 +16,8 @@ showHelp(){
 
 tcpdump(){
   namespacedPod="$1"; shift
-  namespace=$(echo "$namespacedPod" | cut -d "/" -f2)
+  namespace=$(echo "$namespacedPod" | cut -d "/" -f1)
+  podName=$(echo "$namespacedPod" | cut -d "/" -f2)
   if [ "$podName" = "$namespacedPod" ]; then
     nodeName=$(kubectl get pod "$podName" -o jsonpath={.spec.nodeName})
     mac=$(kubectl get pod "$podName" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/mac_address})
@@ -81,7 +82,7 @@ trace(){
     exit 1
   fi
 
-  gwMac=$(kubectl exec -it ovn-central-8ddc7dd8-fm2c4 -n $KUBE_OVN_NS -- ovn-nbctl --data=bare --no-heading --columns=mac find logical_router_port name=ovn-cluster-"$ls" | tr -d '\r')
+  gwMac=$(kubectl exec -it $CENTRAL_POD -n $KUBE_OVN_NS -- ovn-nbctl --data=bare --no-heading --columns=mac find logical_router_port name=ovn-cluster-"$ls" | tr -d '\r')
 
   if [ -z "$gwMac" ]; then
     echo "get gw mac failed"
