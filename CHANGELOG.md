@@ -1,5 +1,26 @@
 # CHANGELOG
 
+## v0.8.0 -- 2019/10/08
+
+### Gateway
+* Support active-backup mode centralized gateway high available
+
+### Diagnose Tools
+* Kubectl plugin to trace/tcpdump/diagnose pod network traffic
+* Pinger to test cluster network quality and expose metrics to Prometheus
+
+### IPAM
+* Join subnet ip now can be displayed by `kubectl get ip`
+
+### Security
+* Enable port security to prevent Mac and IP spoofing
+* Allow nodes to pods traffic for private subnet
+
+### Mics
+* Support hostport
+* Update OVN/OVS to 2.11.3
+* Update Go to 1.13 
+
 ## v0.7.0 -- 2019/08/21
 
 ### IPAM
