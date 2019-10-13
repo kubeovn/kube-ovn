@@ -29,22 +29,6 @@ func main() {
 		klog.Fatal(http.ListenAndServe(fmt.Sprintf("localhost:%d", config.PprofPort), nil))
 	}()
 
-	if err = controller.InitClusterRouter(config); err != nil {
-		klog.Fatalf("init cluster router failed %v", err)
-	}
-
-	if err = controller.InitLoadBalancer(config); err != nil {
-		klog.Fatalf("init load balancer failed %v", err)
-	}
-
-	if err = controller.InitNodeSwitch(config); err != nil {
-		klog.Fatalf("init node switch failed %v", err)
-	}
-
-	if err = controller.InitDefaultLogicalSwitch(config); err != nil {
-		klog.Fatalf("init default switch failed %v", err)
-	}
-
 	ctl := controller.NewController(config)
 	ctl.Run(stopCh)
 }

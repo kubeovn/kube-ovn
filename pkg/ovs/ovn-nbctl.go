@@ -566,7 +566,7 @@ func (c Client) SetLogicalSwitchExcludeIPS(logicalSwtich string, excludeIPS []st
 	return err
 }
 
-func (c Client) GetLogicalSwitchPortByLogicalSwich(logicalSwitch string) ([]string, error) {
+func (c Client) GetLogicalSwitchPortByLogicalSwitch(logicalSwitch string) ([]string, error) {
 	output, err := c.ovnNbCommand("lsp-list", logicalSwitch)
 	if err != nil {
 		return nil, err
