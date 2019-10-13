@@ -98,7 +98,7 @@ func (v *ValidatingHook) PodCreateHook(ctx context.Context, req admission.Reques
 		}
 	}
 	// Get all logical switch port address
-	lsps, err := v.ovnClient.GetLogicalSwitchPortByLogicalSwich(lsName)
+	lsps, err := v.ovnClient.GetLogicalSwitchPortByLogicalSwitch(lsName)
 	if err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
@@ -294,7 +294,7 @@ func (v *ValidatingHook) podControllerCreate(ctx context.Context, staticIPSAnno,
 		}
 	}
 	// Get all logical switch port address
-	lsps, err := v.ovnClient.GetLogicalSwitchPortByLogicalSwich(lsName)
+	lsps, err := v.ovnClient.GetLogicalSwitchPortByLogicalSwitch(lsName)
 	if err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}

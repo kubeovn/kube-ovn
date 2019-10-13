@@ -261,6 +261,23 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 		}
 		time.Sleep(1 * time.Second)
 	}
+
+	if err := InitClusterRouter(c.config); err != nil {
+		klog.Fatalf("init cluster router failed %v", err)
+	}
+
+	if err := InitLoadBalancer(c.config); err != nil {
+		klog.Fatalf("init load balancer failed %v", err)
+	}
+
+	if err := InitNodeSwitch(c.config); err != nil {
+		klog.Fatalf("init node switch failed %v", err)
+	}
+
+	if err := InitDefaultLogicalSwitch(c.config); err != nil {
+		klog.Fatalf("init default switch failed %v", err)
+	}
+
 	c.informerFactory.Start(stopCh)
 	c.kubeovnInformerFactory.Start(stopCh)
 
