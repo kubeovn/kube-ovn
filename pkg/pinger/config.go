@@ -8,6 +8,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
 	"os"
+	"time"
 )
 
 type Configuration struct {
@@ -88,7 +89,7 @@ func (config *Configuration) initKubeClient() error {
 			return err
 		}
 	}
-
+	cfg.Timeout = 15 * time.Second
 	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		klog.Errorf("init kubernetes client failed %v", err)

@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"context"
+	"time"
 
 	clientset "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/alauda/kube-ovn/pkg/ovs"
@@ -39,6 +40,7 @@ func NewValidatingHook(c cache.Cache, opt *WebhookOptions) (*ValidatingHook, err
 		klog.Errorf("use in cluster config failed %v", err)
 		return nil, err
 	}
+	cfg.Timeout = 15 * time.Second
 	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		klog.Errorf("init kubernetes client failed %v", err)

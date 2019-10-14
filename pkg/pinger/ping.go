@@ -17,6 +17,7 @@ func StartPinger(config *Configuration) {
 	for {
 		checkOvs(config)
 		checkOvnController(config)
+		checkApiServer(config)
 		ping(config)
 		if config.Mode != "server" {
 			break
@@ -150,4 +151,19 @@ func checkOvnController(config *Configuration) {
 	}
 	klog.Infof("ovn_controller is up")
 	SetOvnControllerUpMetrics(config.NodeName)
+}
+
+func checkApiServer(config *Configuration) {
+	klog.Infof("start to check apiserver connectivity")
+	t1 := time.Now()
+	_, err := config.KubeClient.Discovery().ServerVersion()
+	elpased := time.Since(t1)
+	if err != nil {
+		klog.Errorf("failed to connect to apiserver: %v", err)
+		SetApiserverUnhealthyMetrics(config.NodeName)
+		return
+	}
+	klog.Infof("connect to apiserver success in %.2fms", float64(elpased)/float64(time.Millisecond))
+	SetApiserverHealthyMetrics(config.NodeName, float64(elpased)/float64(time.Millisecond))
+	return
 }
