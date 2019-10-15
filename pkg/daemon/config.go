@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/sirupsen/logrus"
@@ -145,6 +146,7 @@ func (config *Configuration) initKubeClient() error {
 			return err
 		}
 	}
+	cfg.Timeout = 15 * time.Second
 
 	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {

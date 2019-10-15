@@ -35,6 +35,31 @@ var (
 		[]string{
 			"nodeName",
 		})
+	apiserverHealthyGauge = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "pinger_apiserver_healthy",
+			Help: "if the apiserver request is healthy on this node",
+		},
+		[]string{
+			"nodeName",
+		})
+	apiserverUnhealthyGauge = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "pinger_apiserver_unhealthy",
+			Help: "if the apiserver request is unhealthy on this node",
+		},
+		[]string{
+			"nodeName",
+		})
+	apiserverRequestLatencyHistogram = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "pinger_apiserver_latency_ms",
+			Help:    "the latency ms histogram the node request apiserver",
+			Buckets: []float64{.5, 1, 2, 5, 10, 30},
+		},
+		[]string{
+			"nodeName",
+		})
 	dnsHealthyGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "pinger_dns_healthy",
@@ -54,7 +79,7 @@ var (
 	dnsRequestLatencyHistogram = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "pinger_dns_latency_ms",
-			Help:    "the latency ms histogram the node request dsn",
+			Help:    "the latency ms histogram the node request dns",
 			Buckets: []float64{.5, 1, 2, 5, 10, 30},
 		},
 		[]string{
@@ -117,6 +142,9 @@ func init() {
 	prometheus.MustRegister(ovsDownGauge)
 	prometheus.MustRegister(ovnControllerUpGauge)
 	prometheus.MustRegister(ovnControllerDownGauge)
+	prometheus.MustRegister(apiserverHealthyGauge)
+	prometheus.MustRegister(apiserverUnhealthyGauge)
+	prometheus.MustRegister(apiserverRequestLatencyHistogram)
 	prometheus.MustRegister(dnsHealthyGauge)
 	prometheus.MustRegister(dnsUnhealthyGauge)
 	prometheus.MustRegister(dnsRequestLatencyHistogram)
@@ -144,6 +172,17 @@ func SetOvnControllerUpMetrics(nodeName string) {
 func SetOvnControllerDownMetrics(nodeName string) {
 	ovnControllerUpGauge.WithLabelValues(nodeName).Set(0)
 	ovnControllerDownGauge.WithLabelValues(nodeName).Set(1)
+}
+
+func SetApiserverHealthyMetrics(nodeName string, latency float64) {
+	apiserverHealthyGauge.WithLabelValues(nodeName).Set(1)
+	apiserverRequestLatencyHistogram.WithLabelValues(nodeName).Observe(latency)
+	apiserverUnhealthyGauge.WithLabelValues(nodeName).Set(0)
+}
+
+func SetApiserverUnhealthyMetrics(nodeName string) {
+	apiserverHealthyGauge.WithLabelValues(nodeName).Set(0)
+	apiserverUnhealthyGauge.WithLabelValues(nodeName).Set(1)
 }
 
 func SetDnsHealthyMetrics(nodeName string, latency float64) {
