@@ -242,12 +242,12 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	ipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(key, metav1.GetOptions{})
+	ipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(fmt.Sprintf("node-%s", key), metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Create(&kubeovnv1.IP{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: key,
+					Name: fmt.Sprintf("node-%s", key),
 					Labels: map[string]string{
 						util.SubnetNameLabel: c.config.NodeSwitch,
 					},

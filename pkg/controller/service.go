@@ -220,6 +220,7 @@ func (c *Controller) handleUpdateService(key string) error {
 	lbUuid, err := c.ovnClient.FindLoadbalancer(c.config.ClusterTcpLoadBalancer)
 	if err != nil {
 		klog.Errorf("failed to get lb %v", err)
+		return err
 	}
 	vips, err := c.ovnClient.GetLoadBalancerVips(lbUuid)
 	if err != nil {
@@ -249,6 +250,7 @@ func (c *Controller) handleUpdateService(key string) error {
 	lbUuid, err = c.ovnClient.FindLoadbalancer(c.config.ClusterUdpLoadBalancer)
 	if err != nil {
 		klog.Errorf("failed to get lb %v", err)
+		return err
 	}
 	vips, err = c.ovnClient.GetLoadBalancerVips(lbUuid)
 	if err != nil {
