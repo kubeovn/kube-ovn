@@ -2,11 +2,10 @@ package controller
 
 import (
 	"flag"
-	"github.com/alauda/kube-ovn/pkg/util"
 	"os"
-	"time"
 
 	clientset "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
+	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -156,7 +155,6 @@ func (config *Configuration) initKubeClient() error {
 			return err
 		}
 	}
-	cfg.Timeout = 15 * time.Second
 	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		klog.Errorf("init kubernetes client failed %v", err)

@@ -9,14 +9,12 @@ import (
 	"os/exec"
 	"strings"
 	"syscall"
-	"time"
 
+	clientset "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	"github.com/vishvananda/netlink"
-
-	clientset "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -146,7 +144,6 @@ func (config *Configuration) initKubeClient() error {
 			return err
 		}
 	}
-	cfg.Timeout = 15 * time.Second
 
 	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
