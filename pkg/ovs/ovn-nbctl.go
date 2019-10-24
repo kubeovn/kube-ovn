@@ -176,6 +176,23 @@ func (c Client) LogicalSwitchExists(logicalSwitch string) (bool, error) {
 	return false, nil
 }
 
+func (c Client) ListLogicalSwitchPort() ([]string, error) {
+	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=name", "list", "logical_switch_port")
+	if err != nil {
+		klog.Errorf("failed to list logical switch port, %v", err)
+		return nil, err
+	}
+	lines := strings.Split(output, "\n")
+	result := make([]string, 0, len(lines))
+	for _, l := range lines {
+		if len(strings.TrimSpace(l)) == 0 {
+			continue
+		}
+		result = append(result, strings.TrimSpace(l))
+	}
+	return result, nil
+}
+
 // ListLogicalRouter list logical router names
 func (c Client) ListLogicalRouter() ([]string, error) {
 	output, err := c.ovnNbCommand("lr-list")
@@ -406,8 +423,9 @@ func (c Client) GetPortAddr(port string) ([]string, error) {
 	return address, nil
 }
 
-func (c Client) CreatePortGroup(pgName string) error {
-	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid", "find", "port_group", fmt.Sprintf("name=%s", pgName))
+func (c Client) CreatePortGroup(pgName, npNs, npName string) error {
+	output, err := c.ovnNbCommand(
+		"--data=bare", "--no-heading", "--columns=_uuid", "find", "port_group", fmt.Sprintf("name=%s", pgName))
 	if err != nil {
 		klog.Errorf("failed to find port_group %s", pgName)
 		return err
@@ -415,7 +433,10 @@ func (c Client) CreatePortGroup(pgName string) error {
 	if output != "" {
 		return nil
 	}
-	_, err = c.ovnNbCommand("pg-add", pgName)
+	_, err = c.ovnNbCommand(
+		"pg-add", pgName,
+		"--", "set", "port_group", pgName, fmt.Sprintf("external_ids:np=%s/%s", npNs, npName),
+	)
 	return err
 }
 
@@ -430,6 +451,38 @@ func (c Client) DeletePortGroup(pgName string) error {
 	}
 	_, err = c.ovnNbCommand("pg-del", pgName)
 	return err
+}
+
+type portGroup struct {
+	Name        string
+	NpName      string
+	NpNamespace string
+}
+
+func (c Client) ListPortGroup() ([]portGroup, error) {
+	output, err := c.ovnNbCommand("--data=bare", "--format=csv", "--no-heading", "--columns=name,external_ids", "list", "port_group")
+	if err != nil {
+		klog.Errorf("failed to list logical port-group, %v", err)
+		return nil, err
+	}
+	lines := strings.Split(output, "\n")
+	result := make([]portGroup, 0, len(lines))
+	for _, l := range lines {
+		if len(strings.TrimSpace(l)) == 0 {
+			continue
+		}
+		parts := strings.Split(strings.TrimSpace(l), ",")
+		if len(parts) != 2 {
+			continue
+		}
+		name := strings.TrimSpace(parts[0])
+		np := strings.Split(strings.TrimSpace(parts[1]), "/")
+		if len(np) != 2 {
+			continue
+		}
+		result = append(result, portGroup{Name: name, NpNamespace: np[0], NpName: np[1]})
+	}
+	return result, nil
 }
 
 func (c Client) CreateAddressSet(asName string) error {
@@ -560,8 +613,8 @@ func (c Client) GetLogicalSwitchExcludeIPS(logicalSwitch string) ([]string, erro
 
 // SetLogicalSwitchExcludeIPS set a logical switch exclude ips
 // ovn-nbctl set logical_switch ovn-default other_config:exclude_ips="10.17.0.2 10.17.0.1"
-func (c Client) SetLogicalSwitchExcludeIPS(logicalSwtich string, excludeIPS []string) error {
-	_, err := c.ovnNbCommand("set", "logical_switch", logicalSwtich,
+func (c Client) SetLogicalSwitchExcludeIPS(logicalSwitch string, excludeIPS []string) error {
+	_, err := c.ovnNbCommand("set", "logical_switch", logicalSwitch,
 		fmt.Sprintf(`other_config:exclude_ips="%s"`, strings.Join(excludeIPS, " ")))
 	return err
 }

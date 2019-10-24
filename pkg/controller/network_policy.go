@@ -190,7 +190,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 	egressAllowAsName := strings.Replace(fmt.Sprintf("%s.%s.egress.allow", np.Name, np.Namespace), "-", ".", -1)
 	egressExceptAsName := strings.Replace(fmt.Sprintf("%s.%s.egress.except", np.Name, np.Namespace), "-", ".", -1)
 
-	if err := c.ovnClient.CreatePortGroup(pgName); err != nil {
+	if err := c.ovnClient.CreatePortGroup(pgName, np.Namespace, np.Name); err != nil {
 		klog.Errorf("failed to create port group for np %s, %v", key, err)
 		return err
 	}
