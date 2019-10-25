@@ -295,6 +295,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	c.gcLogicalSwitch()
 	c.gcNode()
 	c.gcLogicalSwitchPort()
+	c.gcLoadBalancer()
 	c.gcPortGroup()
 
 	klog.Info("Starting workers")
