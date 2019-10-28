@@ -32,10 +32,13 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, netns, container
 		return fmt.Errorf("failed to crate veth for %s %v", podName, err)
 	}
 
+	ifaceID := fmt.Sprintf("%s.%s", podName, podNamespace)
+	ovs.CleanDuplicatePort(ifaceID)
+
 	// Add veth pair host end to ovs port
 	output, err := exec.Command(
 		"ovs-vsctl", "--may-exist", "add-port", "br-int", hostNicName, "--",
-		"set", "interface", hostNicName, fmt.Sprintf("external_ids:iface-id=%s.%s", podName, podNamespace)).CombinedOutput()
+		"set", "interface", hostNicName, fmt.Sprintf("external_ids:iface-id=%s", ifaceID)).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("add nic to ovs failed %v: %s", err, output)
 	}
