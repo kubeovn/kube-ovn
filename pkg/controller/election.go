@@ -96,13 +96,12 @@ func setupLeaderElection(config *leaderElectionConfig) *leaderelection.LeaderEle
 	}
 
 	var err error
-	ttl := 8 * time.Second
 
 	elector, err = leaderelection.NewLeaderElector(leaderelection.LeaderElectionConfig{
 		Lock:          &lock,
-		LeaseDuration: ttl,
-		RenewDeadline: ttl / 2,
-		RetryPeriod:   ttl / 4,
+		LeaseDuration: 15 * time.Second,
+		RenewDeadline: 10 * time.Second,
+		RetryPeriod:   2 * time.Second,
 
 		Callbacks: callbacks,
 	})
