@@ -584,11 +584,16 @@ func (c *Controller) handleAddIpPoolPod(key string) error {
 
 	raw, _ := json.Marshal(pod.Annotations)
 	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-	_, err = c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, []byte(patchPayload))
-	if err != nil {
+	if _, err = c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, []byte(patchPayload)); err != nil {
 		klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
+		return err
 	}
-	return err
+
+	// In case update event might lost during leader election
+	if pod.Spec.NodeName != "" {
+		return c.handleUpdatePod(key)
+	}
+	return nil
 }
 
 func (c *Controller) handleDeletePod(key string) error {
