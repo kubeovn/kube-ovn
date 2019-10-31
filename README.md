@@ -21,7 +21,7 @@ Kube-OVN integrates the OVN-based Network Virtualization with Kubernetes. It off
 - **Traffic Mirror**: Duplicated container network traffic for monitoring and diagnosing.
 - **IPv6 Support**: Kube-OVN supports ipv6-only mode pod network.
 - **TroubleShooting Tools**: Handy tools to diagnose, trace, monitor and dump container network traffic to help troubleshooting complicate network issues.
-- **Prometheus Integration**: Exposing network quality metrics like pod/node/service/dns connectivity/latency in Prometheus format.
+- **Prometheus & Grafana Integration**: Exposing network quality metrics like pod/node/service/dns connectivity/latency in Prometheus format.
 
 ## Planned Future Work
 - Hardware Offloading and DPDK Support

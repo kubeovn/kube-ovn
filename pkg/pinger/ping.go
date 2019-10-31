@@ -9,7 +9,6 @@ import (
 	"math"
 	"net"
 	"os/exec"
-	"sync"
 	"time"
 )
 
@@ -39,20 +38,19 @@ func pingNodes(config *Configuration) {
 		klog.Errorf("failed to list nodes, %v", err)
 		return
 	}
-	wg := sync.WaitGroup{}
 	for _, no := range nodes.Items {
 		for _, addr := range no.Status.Addresses {
 			if addr.Type == v1.NodeInternalIP {
-				wg.Add(1)
-				go func(nodeIP, nodeName string) {
-					defer wg.Done()
+				func(nodeIP, nodeName string) {
 					pinger, err := goping.NewPinger(nodeIP)
 					if err != nil {
 						klog.Errorf("failed to init pinger, %v", err)
 						return
 					}
 					pinger.SetPrivileged(true)
-					pinger.Count = 5
+					pinger.Timeout = 1 * time.Second
+					pinger.Count = 3
+					pinger.Interval = 1 * time.Millisecond
 					pinger.Run()
 					stats := pinger.Statistics()
 					klog.Infof("ping node: %s %s, count: %d, loss rate %.2f%%, average rtt %.2fms",
@@ -68,7 +66,6 @@ func pingNodes(config *Configuration) {
 			}
 		}
 	}
-	wg.Wait()
 }
 
 func pingPods(config *Configuration) {
@@ -84,19 +81,18 @@ func pingPods(config *Configuration) {
 		return
 	}
 
-	wg := sync.WaitGroup{}
 	for _, pod := range pods.Items {
 		if pod.Status.PodIP != "" {
-			wg.Add(1)
-			go func(podIp, podName, nodeIP, nodeName string) {
-				defer wg.Done()
+			func(podIp, podName, nodeIP, nodeName string) {
 				pinger, err := goping.NewPinger(podIp)
 				if err != nil {
 					klog.Errorf("failed to init pinger, %v", err)
 					return
 				}
 				pinger.SetPrivileged(true)
-				pinger.Count = 5
+				pinger.Timeout = 1 * time.Second
+				pinger.Count = 3
+				pinger.Interval = 1 * time.Millisecond
 				pinger.Run()
 				stats := pinger.Statistics()
 				klog.Infof("ping pod: %s %s, count: %d, loss rate %.2f, average rtt %.2fms",
@@ -110,10 +106,9 @@ func pingPods(config *Configuration) {
 					podIp,
 					float64(stats.AvgRtt)/float64(time.Millisecond),
 					int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))))
-			}(pod.Status.PodIP, pod.Name, pod.Spec.NodeName, pod.Status.HostIP)
+			}(pod.Status.PodIP, pod.Name, pod.Status.HostIP, pod.Spec.NodeName)
 		}
 	}
-	wg.Wait()
 }
 
 func nslookup(config *Configuration) {
