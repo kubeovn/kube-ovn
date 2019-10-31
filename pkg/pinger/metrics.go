@@ -55,7 +55,7 @@ var (
 		prometheus.HistogramOpts{
 			Name:    "pinger_apiserver_latency_ms",
 			Help:    "the latency ms histogram the node request apiserver",
-			Buckets: []float64{.5, 1, 2, 5, 10, 30},
+			Buckets: []float64{2, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50},
 		},
 		[]string{
 			"nodeName",
@@ -80,7 +80,7 @@ var (
 		prometheus.HistogramOpts{
 			Name:    "pinger_dns_latency_ms",
 			Help:    "the latency ms histogram the node request dns",
-			Buckets: []float64{.5, 1, 2, 5, 10, 30},
+			Buckets: []float64{2, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50},
 		},
 		[]string{
 			"nodeName",

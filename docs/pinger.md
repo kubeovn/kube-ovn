@@ -17,3 +17,11 @@ pinger_pod_ping_lost_total
 pinger_node_ping_latency_ms
 pinger_node_ping_lost_total
 ```
+
+## Grafana Dashboard
+
+Grafana Dashboard config can be found [here](grafana.json).
+
+![alt text](grafana.png "kube-ovn grafana dashboard")
+
+
