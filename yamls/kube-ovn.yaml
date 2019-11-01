@@ -281,4 +281,18 @@ spec:
     app: kube-ovn-pinger
   ports:
     - port: 8080
-      name: http
+      name: metrics
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: kube-ovn-controller
+  namespace: kube-ovn
+  labels:
+    app: kube-ovn-controller
+spec:
+  selector:
+    app: kube-ovn-controller
+  ports:
+    - port: 10660
+      name: metrics

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -26,7 +27,8 @@ func main() {
 
 	go loopOvnNbctlDaemon(config)
 	go func() {
-		klog.Fatal(http.ListenAndServe(fmt.Sprintf("localhost:%d", config.PprofPort), nil))
+		http.Handle("/metrics", promhttp.Handler())
+		klog.Fatal(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.PprofPort), nil))
 	}()
 
 	ctl := controller.NewController(config)
