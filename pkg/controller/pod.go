@@ -112,6 +112,9 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	if oldPod.ResourceVersion == newPod.ResourceVersion {
 		return
 	}
+	if newPod.Spec.HostNetwork == true {
+		return
+	}
 	// pod assigned an ip
 	if oldPod.Status.PodIP == "" && newPod.Status.PodIP != "" {
 		var key string
@@ -634,10 +637,11 @@ func (c *Controller) handleUpdatePod(key string) error {
 		return err
 	}
 	klog.Infof("update pod %s/%s", namespace, name)
-	if pod.Spec.HostNetwork {
-		klog.Infof("pod %s/%s in host network mode no need for ovn process", namespace, name)
-		return nil
+	portAddr, err := c.ovnClient.GetPortAddr(ovs.PodNameToPortName(name, namespace))
+	if err != nil {
+		return err
 	}
+	podIP := portAddr[1]
 
 	subnet, err := c.subnetsLister.Get(c.config.DefaultLogicalSwitch)
 	if err != nil {
@@ -669,10 +673,10 @@ func (c *Controller) handleUpdatePod(key string) error {
 		if err != nil {
 			return err
 		}
-		if err := c.ovnClient.DeleteStaticRouter(pod.Status.PodIP, c.config.ClusterRouter); err != nil {
+		if err := c.ovnClient.DeleteStaticRouter(podIP, c.config.ClusterRouter); err != nil {
 			return errors.Annotate(err, "del static route failed")
 		}
-		if err := c.ovnClient.AddStaticRouter(ovs.PolicySrcIP, pod.Status.PodIP, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
+		if err := c.ovnClient.AddStaticRouter(ovs.PolicySrcIP, podIP, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
 			return errors.Annotate(err, "add static route failed")
 		}
 	}
