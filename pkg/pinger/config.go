@@ -90,6 +90,10 @@ func (config *Configuration) initKubeClient() error {
 		}
 	}
 	cfg.Timeout = 15 * time.Second
+	cfg.QPS = 1000
+	cfg.Burst = 2000
+	cfg.ContentType = "application/vnd.kubernetes.protobuf"
+	cfg.AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
 	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		klog.Errorf("init kubernetes client failed %v", err)

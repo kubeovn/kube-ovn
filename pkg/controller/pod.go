@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/ovs"
@@ -177,6 +178,7 @@ func (c *Controller) processNextAddPodWorkItem() bool {
 	if shutdown {
 		return false
 	}
+	now := time.Now()
 
 	// We wrap this block in a func so we can defer c.workqueue.Done.
 	err := func(obj interface{}) error {
@@ -219,7 +221,8 @@ func (c *Controller) processNextAddPodWorkItem() bool {
 		utilruntime.HandleError(err)
 		return true
 	}
-
+	last := time.Since(now)
+	klog.Infof("take %d ms to deal with add pod", last.Milliseconds())
 	return true
 }
 
@@ -284,6 +287,7 @@ func (c *Controller) processNextDeletePodWorkItem() bool {
 		return false
 	}
 
+	now := time.Now()
 	// We wrap this block in a func so we can defer c.workqueue.Done.
 	err := func(obj interface{}) error {
 		// We call Done here so the workqueue knows we have finished
@@ -325,7 +329,8 @@ func (c *Controller) processNextDeletePodWorkItem() bool {
 		utilruntime.HandleError(err)
 		return true
 	}
-
+	last := time.Since(now)
+	klog.Infof("take %d ms to deal with delete pod", last.Milliseconds())
 	return true
 }
 
@@ -438,31 +443,41 @@ func (c *Controller) handleAddPod(key string) error {
 		return err
 	}
 
-	op := "replace"
-	if len(pod.Annotations) == 0 {
-		op = "add"
-	}
-	if pod.Annotations == nil {
-		pod.Annotations = map[string]string{}
-	}
-	pod.Annotations[util.IpAddressAnnotation] = nic.IpAddress
-	pod.Annotations[util.MacAddressAnnotation] = nic.MacAddress
-	pod.Annotations[util.CidrAnnotation] = subnet.Spec.CIDRBlock
-	pod.Annotations[util.GatewayAnnotation] = subnet.Spec.Gateway
-	pod.Annotations[util.LogicalSwitchAnnotation] = subnet.Name
+	if pod.Annotations == nil ||
+		pod.Annotations[util.IpAddressAnnotation] != nic.IpAddress ||
+		pod.Annotations[util.MacAddressAnnotation] != nic.MacAddress ||
+		pod.Annotations[util.CidrAnnotation] != subnet.Spec.CIDRBlock ||
+		pod.Annotations[util.GatewayAnnotation] != subnet.Spec.Gateway ||
+		pod.Annotations[util.LogicalSwitchAnnotation] != subnet.Name {
 
-	patchPayloadTemplate :=
-		`[{
+		op := "replace"
+		if len(pod.Annotations) == 0 {
+			op = "add"
+		}
+		if pod.Annotations == nil {
+			pod.Annotations = map[string]string{}
+		}
+		pod.Annotations[util.IpAddressAnnotation] = nic.IpAddress
+		pod.Annotations[util.MacAddressAnnotation] = nic.MacAddress
+		pod.Annotations[util.CidrAnnotation] = subnet.Spec.CIDRBlock
+		pod.Annotations[util.GatewayAnnotation] = subnet.Spec.Gateway
+		pod.Annotations[util.LogicalSwitchAnnotation] = subnet.Name
+
+		patchPayloadTemplate :=
+			`[{
         "op": "%s",
         "path": "/metadata/annotations",
         "value": %s
-    }]`
+          }]`
 
-	raw, _ := json.Marshal(pod.Annotations)
-	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-	if _, err = c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, []byte(patchPayload)); err != nil {
-		klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
-		return err
+		raw, _ := json.Marshal(pod.Annotations)
+		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
+		go func() {
+			if _, err = c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, []byte(patchPayload)); err != nil {
+				klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
+				c.addPodQueue.AddRateLimited(key)
+			}
+		}()
 	}
 
 	// In case update event might lost during leader election
@@ -565,31 +580,41 @@ func (c *Controller) handleAddIpPoolPod(key string) error {
 		return err
 	}
 
-	op := "replace"
-	if len(pod.Annotations) == 0 {
-		op = "add"
-	}
-	if pod.Annotations == nil {
-		pod.Annotations = map[string]string{}
-	}
-	pod.Annotations[util.IpAddressAnnotation] = nic.IpAddress
-	pod.Annotations[util.MacAddressAnnotation] = nic.MacAddress
-	pod.Annotations[util.CidrAnnotation] = subnet.Spec.CIDRBlock
-	pod.Annotations[util.GatewayAnnotation] = subnet.Spec.Gateway
-	pod.Annotations[util.LogicalSwitchAnnotation] = subnet.Name
+	if pod.Annotations == nil ||
+		pod.Annotations[util.IpAddressAnnotation] != nic.IpAddress ||
+		pod.Annotations[util.MacAddressAnnotation] != nic.MacAddress ||
+		pod.Annotations[util.CidrAnnotation] != subnet.Spec.CIDRBlock ||
+		pod.Annotations[util.GatewayAnnotation] != subnet.Spec.Gateway ||
+		pod.Annotations[util.LogicalSwitchAnnotation] != subnet.Name {
 
-	patchPayloadTemplate :=
-		`[{
+		op := "replace"
+		if len(pod.Annotations) == 0 {
+			op = "add"
+		}
+		if pod.Annotations == nil {
+			pod.Annotations = map[string]string{}
+		}
+		pod.Annotations[util.IpAddressAnnotation] = nic.IpAddress
+		pod.Annotations[util.MacAddressAnnotation] = nic.MacAddress
+		pod.Annotations[util.CidrAnnotation] = subnet.Spec.CIDRBlock
+		pod.Annotations[util.GatewayAnnotation] = subnet.Spec.Gateway
+		pod.Annotations[util.LogicalSwitchAnnotation] = subnet.Name
+
+		patchPayloadTemplate :=
+			`[{
         "op": "%s",
         "path": "/metadata/annotations",
         "value": %s
-    }]`
+          }]`
 
-	raw, _ := json.Marshal(pod.Annotations)
-	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-	if _, err = c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, []byte(patchPayload)); err != nil {
-		klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
-		return err
+		raw, _ := json.Marshal(pod.Annotations)
+		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
+		go func() {
+			if _, err = c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, []byte(patchPayload)); err != nil {
+				klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
+				c.addPodQueue.AddRateLimited(key)
+			}
+		}()
 	}
 
 	// In case update event might lost during leader election

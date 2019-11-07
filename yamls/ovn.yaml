@@ -167,10 +167,10 @@ spec:
                   fieldPath: status.podIP
           resources:
             requests:
-              cpu: 200m
+              cpu: 500m
               memory: 300Mi
             limits:
-              cpu: 400m
+              cpu: 1
               memory: 800Mi
           volumeMounts:
             - mountPath: /run/openvswitch

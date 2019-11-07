@@ -144,13 +144,8 @@ func (config *Configuration) initKubeClient() error {
 			return err
 		}
 	}
-
-	kubeClient, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		klog.Errorf("init kubernetes client failed %v", err)
-		return err
-	}
-	config.KubeClient = kubeClient
+	cfg.QPS = 1000
+	cfg.Burst = 2000
 
 	kubeOvnClient, err := clientset.NewForConfig(cfg)
 	if err != nil {
@@ -158,6 +153,15 @@ func (config *Configuration) initKubeClient() error {
 		return err
 	}
 	config.KubeOvnClient = kubeOvnClient
+
+	cfg.ContentType = "application/vnd.kubernetes.protobuf"
+	cfg.AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
+	kubeClient, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		klog.Errorf("init kubernetes client failed %v", err)
+		return err
+	}
+	config.KubeClient = kubeClient
 	return nil
 }
 
