@@ -22,7 +22,7 @@ func (c *Controller) enqueueAddNamespace(obj interface{}) {
 	}
 	ns := obj.(*v1.Namespace)
 	for _, np := range c.namespaceMatchNetworkPolicies(ns) {
-		c.updateNpQueue.AddRateLimited(np)
+		c.updateNpQueue.Add(np)
 	}
 	var key string
 	var err error
@@ -30,7 +30,7 @@ func (c *Controller) enqueueAddNamespace(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	c.addNamespaceQueue.AddRateLimited(key)
+	c.addNamespaceQueue.Add(key)
 }
 
 func (c *Controller) enqueueDeleteNamespace(obj interface{}) {
@@ -40,7 +40,7 @@ func (c *Controller) enqueueDeleteNamespace(obj interface{}) {
 
 	ns := obj.(*v1.Namespace)
 	for _, np := range c.namespaceMatchNetworkPolicies(ns) {
-		c.updateNpQueue.AddRateLimited(np)
+		c.updateNpQueue.Add(np)
 	}
 }
 
@@ -58,7 +58,7 @@ func (c *Controller) enqueueUpdateNamespace(old, new interface{}) {
 		oldNp := c.namespaceMatchNetworkPolicies(oldNs)
 		newNp := c.namespaceMatchNetworkPolicies(newNs)
 		for _, np := range util.DiffStringSlice(oldNp, newNp) {
-			c.updateNpQueue.AddRateLimited(np)
+			c.updateNpQueue.Add(np)
 		}
 	}
 }

@@ -51,6 +51,7 @@ func pingNodes(config *Configuration) {
 					pinger.Timeout = 1 * time.Second
 					pinger.Count = 3
 					pinger.Interval = 1 * time.Millisecond
+					pinger.Debug = true
 					pinger.Run()
 					stats := pinger.Statistics()
 					klog.Infof("ping node: %s %s, count: %d, loss rate %.2f%%, average rtt %.2fms",
@@ -91,6 +92,7 @@ func pingPods(config *Configuration) {
 				}
 				pinger.SetPrivileged(true)
 				pinger.Timeout = 1 * time.Second
+				pinger.Debug = true
 				pinger.Count = 3
 				pinger.Interval = 1 * time.Millisecond
 				pinger.Run()

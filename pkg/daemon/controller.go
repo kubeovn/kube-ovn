@@ -112,7 +112,7 @@ func (c *Controller) enqueueSubnet(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	c.subnetQueue.AddRateLimited(key)
+	c.subnetQueue.Add(key)
 }
 
 func (c *Controller) runSubnetWorker() {
@@ -265,7 +265,7 @@ func (c *Controller) enqueuePod(old, new interface{}) {
 			utilruntime.HandleError(err)
 			return
 		}
-		c.podQueue.AddRateLimited(key)
+		c.podQueue.Add(key)
 	}
 }
 

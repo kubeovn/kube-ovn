@@ -36,17 +36,17 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 	p := obj.(*v1.Pod)
 	if p.Annotations[util.IpPoolAnnotation] != "" && p.Annotations[util.IpAddressAnnotation] == "" {
 		klog.V(3).Infof("enqueue add ip pool address pod %s", key)
-		c.addIpPoolPodQueue.AddRateLimited(key)
+		c.addIpPoolPodQueue.Add(key)
 		return
 	}
 
 	klog.V(3).Infof("enqueue add pod %s", key)
-	c.addPodQueue.AddRateLimited(key)
+	c.addPodQueue.Add(key)
 
 	// TODO: we need to find a way to reduce duplicated np added to the queue
 	if p.Status.PodIP != "" {
 		for _, np := range c.podMatchNetworkPolicies(p) {
-			c.updateNpQueue.AddRateLimited(np)
+			c.updateNpQueue.Add(np)
 		}
 	}
 }
@@ -66,11 +66,11 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 	isStateful, statefulSetName := isStatefulSetPod(p)
 	if !p.Spec.HostNetwork && !isStateful {
 		klog.V(3).Infof("enqueue delete pod %s", key)
-		c.deletePodQueue.AddRateLimited(key)
+		c.deletePodQueue.Add(key)
 	}
 
 	for _, np := range c.podMatchNetworkPolicies(p) {
-		c.updateNpQueue.AddRateLimited(np)
+		c.updateNpQueue.Add(np)
 	}
 
 	if isStateful {
@@ -78,7 +78,7 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 		if err != nil {
 			// statefulset is deleted
 			if k8serrors.IsNotFound(err) {
-				c.deletePodQueue.AddRateLimited(key)
+				c.deletePodQueue.Add(key)
 				return
 			} else {
 				klog.Errorf("failed to get statefulset %v", err)
@@ -88,7 +88,7 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 
 		// statefulset is deleting
 		if ss.DeletionTimestamp != nil {
-			c.deletePodQueue.AddRateLimited(key)
+			c.deletePodQueue.Add(key)
 			return
 		}
 
@@ -97,7 +97,7 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 		numStr := strings.Split(p.Name, "-")[numIndex]
 		index, _ := strconv.Atoi(numStr)
 		if int32(index) >= *ss.Spec.Replicas {
-			c.deletePodQueue.AddRateLimited(key)
+			c.deletePodQueue.Add(key)
 			return
 		}
 	}
@@ -124,12 +124,12 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 			return
 		}
 		klog.V(3).Infof("enqueue update pod %s", key)
-		c.updatePodQueue.AddRateLimited(key)
+		c.updatePodQueue.Add(key)
 	}
 
 	if oldPod.Status.PodIP != newPod.Status.PodIP {
 		for _, np := range c.podMatchNetworkPolicies(newPod) {
-			c.updateNpQueue.AddRateLimited(np)
+			c.updateNpQueue.Add(np)
 		}
 		return
 	}
@@ -138,7 +138,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		oldNp := c.podMatchNetworkPolicies(oldPod)
 		newNp := c.podMatchNetworkPolicies(newPod)
 		for _, np := range util.DiffStringSlice(oldNp, newNp) {
-			c.updateNpQueue.AddRateLimited(np)
+			c.updateNpQueue.Add(np)
 		}
 	}
 }

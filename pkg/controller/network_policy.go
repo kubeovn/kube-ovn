@@ -26,7 +26,7 @@ func (c *Controller) enqueueAddNp(obj interface{}) {
 		return
 	}
 	klog.V(3).Infof("enqueue add np %s", key)
-	c.updateNpQueue.AddRateLimited(key)
+	c.updateNpQueue.Add(key)
 }
 
 func (c *Controller) enqueueDeleteNp(obj interface{}) {
@@ -40,7 +40,7 @@ func (c *Controller) enqueueDeleteNp(obj interface{}) {
 		return
 	}
 	klog.V(3).Infof("enqueue delete np %s", key)
-	c.deleteNpQueue.AddRateLimited(key)
+	c.deleteNpQueue.Add(key)
 }
 
 func (c *Controller) enqueueUpdateNp(old, new interface{}) {
@@ -57,7 +57,7 @@ func (c *Controller) enqueueUpdateNp(old, new interface{}) {
 			return
 		}
 		klog.V(3).Infof("enqueue update np %s", key)
-		c.updateNpQueue.AddRateLimited(key)
+		c.updateNpQueue.Add(key)
 	}
 }
 

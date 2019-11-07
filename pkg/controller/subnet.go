@@ -33,7 +33,7 @@ func (c *Controller) enqueueAddSubnet(obj interface{}) {
 		return
 	}
 	klog.V(3).Infof("enqueue add subnet %s", key)
-	c.addSubnetQueue.AddRateLimited(key)
+	c.addSubnetQueue.Add(key)
 }
 
 func (c *Controller) enqueueDeleteSubnet(obj interface{}) {
@@ -47,10 +47,10 @@ func (c *Controller) enqueueDeleteSubnet(obj interface{}) {
 		return
 	}
 	klog.V(3).Infof("enqueue delete subnet %s", key)
-	c.deleteSubnetQueue.AddRateLimited(key)
+	c.deleteSubnetQueue.Add(key)
 	subnet := obj.(*kubeovnv1.Subnet)
 	if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType {
-		c.deleteRouteQueue.AddRateLimited(subnet.Spec.CIDRBlock)
+		c.deleteRouteQueue.Add(subnet.Spec.CIDRBlock)
 	}
 }
 
@@ -73,7 +73,7 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 			return
 		}
 		klog.V(3).Infof("enqueue update subnet %s", key)
-		c.updateSubnetQueue.AddRateLimited(key)
+		c.updateSubnetQueue.Add(key)
 	}
 }
 
@@ -733,7 +733,7 @@ func (c *Controller) reconcileSubnet(subnet *kubeovnv1.Subnet) error {
 
 	// 2. add annotations to bind namespace
 	for _, ns := range subnet.Spec.Namespaces {
-		c.addNamespaceQueue.AddRateLimited(ns)
+		c.addNamespaceQueue.Add(ns)
 	}
 
 	// 3. update unbind namespace annotation
@@ -745,7 +745,7 @@ func (c *Controller) reconcileSubnet(subnet *kubeovnv1.Subnet) error {
 
 	for _, ns := range namespaces {
 		if ns.Annotations != nil && ns.Annotations[util.LogicalSwitchAnnotation] == subnet.Name && !namespaceMap[ns.Name] {
-			c.addNamespaceQueue.AddRateLimited(ns.Name)
+			c.addNamespaceQueue.Add(ns.Name)
 		}
 	}
 

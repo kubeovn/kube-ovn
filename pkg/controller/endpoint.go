@@ -23,7 +23,7 @@ func (c *Controller) enqueueAddEndpoint(obj interface{}) {
 		return
 	}
 	klog.V(3).Infof("enqueue add endpoint %s", key)
-	c.updateEndpointQueue.AddRateLimited(key)
+	c.updateEndpointQueue.Add(key)
 }
 
 func (c *Controller) enqueueUpdateEndpoint(old, new interface{}) {
@@ -47,7 +47,7 @@ func (c *Controller) enqueueUpdateEndpoint(old, new interface{}) {
 		return
 	}
 	klog.V(3).Infof("enqueue update endpoint %s", key)
-	c.updateEndpointQueue.AddRateLimited(key)
+	c.updateEndpointQueue.Add(key)
 }
 
 func (c *Controller) runUpdateEndpointWorker() {

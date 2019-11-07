@@ -12,5 +12,5 @@ func (c *Controller) enqueueAddOrDelIP(obj interface{}) {
 	}
 	ipObj := obj.(*kubeovnv1.IP)
 	klog.V(3).Infof("enqueue update status subnet %s", ipObj.Spec.Subnet)
-	c.updateSubnetStatusQueue.AddRateLimited(ipObj.Spec.Subnet)
+	c.updateSubnetStatusQueue.Add(ipObj.Spec.Subnet)
 }

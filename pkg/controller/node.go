@@ -29,7 +29,7 @@ func (c *Controller) enqueueAddNode(obj interface{}) {
 		return
 	}
 	klog.V(3).Infof("enqueue add node %s", key)
-	c.addNodeQueue.AddRateLimited(key)
+	c.addNodeQueue.Add(key)
 }
 
 func nodeReady(node *v1.Node) bool {
@@ -57,7 +57,7 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj interface{}) {
 			return
 		}
 		klog.V(3).Infof("enqueue update node %s", key)
-		c.updateNodeQueue.AddRateLimited(key)
+		c.updateNodeQueue.Add(key)
 	}
 }
 
@@ -72,7 +72,7 @@ func (c *Controller) enqueueDeleteNode(obj interface{}) {
 		return
 	}
 	klog.V(3).Infof("enqueue delete node %s", key)
-	c.deleteNodeQueue.AddRateLimited(key)
+	c.deleteNodeQueue.Add(key)
 }
 
 func (c *Controller) runAddNodeWorker() {

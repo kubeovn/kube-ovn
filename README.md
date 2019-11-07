@@ -50,7 +50,7 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
 - [Webhook](docs/webhook.md)
 - [IPv6](docs/ipv6.md)
 - [Tracing/Diagnose/Dump Traffic with Kubectl Plugin](docs/kubectl-plugin.md)
-- [Prometheus Integration](docs/pinger.md)
+- [Prometheus Integration](docs/prometheus.md)
 
 ## Kube-OVN vs. Other CNI Implementation
 
