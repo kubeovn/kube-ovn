@@ -62,5 +62,6 @@ fi
 # ovn-nb and ovn-sb listen on tcp ports for ovn-controller to connect
 ovn-nbctl set-connection ptcp:${DB_NB_PORT}:[${DB_NB_ADDR}]
 ovn-sbctl set-connection ptcp:${DB_SB_PORT}:[${DB_SB_ADDR}]
+ovn-sbctl set Connection . inactivity_probe=0
 
 tail -f /var/log/openvswitch/ovn-northd.log
