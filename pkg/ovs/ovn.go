@@ -25,7 +25,6 @@ const (
 	OvnNbCtl    = "ovn-nbctl"
 	MayExist    = "--may-exist"
 	IfExists    = "--if-exists"
-	WaitSb      = "--wait=sb"
 	Policy      = "--policy"
 	PolicyDstIP = "dst-ip"
 	PolicySrcIP = "src-ip"
