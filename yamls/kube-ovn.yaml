@@ -115,6 +115,9 @@ spec:
         image: "index.alauda.cn/alaudak8s/kube-ovn-cni:v0.9.0-pre"
         imagePullPolicy: Always
         command: ["/kube-ovn/install-cni.sh"]
+        securityContext:
+          runAsUser: 0
+          privileged: true
         volumeMounts:
           - mountPath: /etc/cni/net.d
             name: cni-conf
@@ -130,8 +133,8 @@ spec:
         args:
           - --enable-mirror=true
         securityContext:
-          runAsUser: 0
-          privileged: true
+          capabilities:
+            add: ["NET_ADMIN", "SYS_ADMIN"]
         env:
           - name: POD_IP
             valueFrom:
