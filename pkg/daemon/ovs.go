@@ -116,6 +116,11 @@ func configureHostNic(nicName string, macAddr net.HardwareAddr) error {
 	if err != nil {
 		return fmt.Errorf("can not set host nic %s up %v", nicName, err)
 	}
+	err = netlink.LinkSetTxQLen(hostLink, 1000)
+	if err != nil {
+		return fmt.Errorf("can not set host nic %s qlen %v", nicName, err)
+	}
+
 	return nil
 }
 
