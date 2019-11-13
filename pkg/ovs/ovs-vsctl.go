@@ -99,7 +99,7 @@ func SetPodBandwidth(podName, podNamespace, ingress, egress string) error {
 
 	for _, ifName := range interfaceList {
 		// ingress_policing_rate is in Kbps
-		err := ovsSet("interface", ifName, fmt.Sprintf("ingress_policing_rate=%d", ingressKPS))
+		err := ovsSet("interface", ifName, fmt.Sprintf("ingress_policing_rate=%d", ingressKPS), fmt.Sprintf("ingress_policing_burst=%d", ingressKPS*10/8))
 		if err != nil {
 			return err
 		}
