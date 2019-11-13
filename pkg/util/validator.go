@@ -113,8 +113,8 @@ func ValidatePodNetwork(annotations map[string]string) error {
 
 	egress := annotations[EgressRateAnnotation]
 	if egress != "" {
-		if _, err := strconv.Atoi(ingress); err != nil {
-			return fmt.Errorf("%s is not a valid %s", ingress, EgressRateAnnotation)
+		if _, err := strconv.Atoi(egress); err != nil {
+			return fmt.Errorf("%s is not a valid %s", egress, EgressRateAnnotation)
 		}
 	}
 
