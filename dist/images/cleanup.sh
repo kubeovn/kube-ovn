@@ -2,9 +2,9 @@
 set -eu
 
 # Delete Kube-OVN components
-kubectl delete -f https://raw.githubusercontent.com/alauda/kube-ovn/master/yamls/kube-ovn.yaml
-kubectl delete -f https://raw.githubusercontent.com/alauda/kube-ovn/master/yamls/ovn.yaml
-kubectl delete -f https://raw.githubusercontent.com/alauda/kube-ovn/master/yamls/crd.yaml
+kubectl delete -f https://raw.githubusercontent.com/alauda/kube-ovn/master/yamls/kube-ovn.yaml --ignore-not-found=true
+kubectl delete -f https://raw.githubusercontent.com/alauda/kube-ovn/master/yamls/ovn.yaml --ignore-not-found=true
+kubectl delete -f https://raw.githubusercontent.com/alauda/kube-ovn/master/yamls/crd.yaml --ignore-not-found=true
 
 # Remove annotations in all pods of all namespaces
 for ns in $(kubectl get ns -o name |cut -c 11-); do

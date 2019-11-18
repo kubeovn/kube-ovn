@@ -93,7 +93,7 @@ spec:
     matchLabels:
       app: kube-ovn-cni
   updateStrategy:
-    type: RollingUpdate
+    type: OnDelete
   template:
     metadata:
       labels:
