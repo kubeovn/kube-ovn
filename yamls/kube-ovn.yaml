@@ -134,7 +134,7 @@ spec:
           - --enable-mirror=true
         securityContext:
           capabilities:
-            add: ["NET_ADMIN", "SYS_ADMIN"]
+            add: ["NET_ADMIN", "SYS_ADMIN", "SYS_PTRACE"]
         env:
           - name: POD_IP
             valueFrom:

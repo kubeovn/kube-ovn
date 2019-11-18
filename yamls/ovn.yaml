@@ -249,7 +249,7 @@ spec:
           imagePullPolicy: Always
           securityContext:
             capabilities:
-              add: ["NET_ADMIN", "SYS_MODULE"]
+              add: ["NET_ADMIN", "SYS_MODULE", "SYS_NICE"]
           env:
             - name: POD_IP
               valueFrom:
