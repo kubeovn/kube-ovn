@@ -229,7 +229,7 @@ spec:
     matchLabels:
       app: ovs
   updateStrategy:
-    type: RollingUpdate
+    type: OnDelete
   template:
     metadata:
       labels:
@@ -286,11 +286,11 @@ spec:
             failureThreshold: 5
           resources:
             requests:
-              cpu: 100m
+              cpu: 200m
               memory: 300Mi
             limits:
-              cpu: 200m
-              memory: 400Mi
+              cpu: 1000m
+              memory: 800Mi
       nodeSelector:
         beta.kubernetes.io/os: "linux"
       volumes:
