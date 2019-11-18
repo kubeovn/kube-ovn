@@ -691,6 +691,22 @@ func (c *Controller) handleDeleteSubnet(key string) error {
 		return err
 	}
 
+	nss, err := c.namespacesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list namespaces, %v", err)
+		return err
+	}
+
+	// re-annotate namespace
+	for _, ns := range nss {
+		annotations := ns.GetAnnotations()
+		if annotations == nil {
+			continue
+		}
+		if annotations[util.LogicalSwitchAnnotation] == key {
+			c.enqueueAddNamespace(ns)
+		}
+	}
 	return nil
 }
 
