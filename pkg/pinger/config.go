@@ -34,7 +34,7 @@ func ParseFlags() (*Configuration, error) {
 		argDaemonSetName      = pflag.String("ds-name", "kube-ovn-pinger", "kube-ovn-pinger daemonset name")
 		argInterval           = pflag.Int("interval", 5, "interval seconds between consecutive pings")
 		argMode               = pflag.String("mode", "server", "server or job Mode")
-		argDns                = pflag.String("dns", "kubernetes.default.svc.cluster.local", "check dns from pod")
+		argDns                = pflag.String("dns", "kubernetes.default", "check dns from pod")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
