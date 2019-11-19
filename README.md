@@ -6,7 +6,7 @@
 
 [中文教程](https://github.com/alauda/kube-ovn/wiki)
 
-Kube-OVN integrates the OVN-based Network Virtualization with Kubernetes. It offers an advanced Container Network Fabric for Enterprises.
+Kube-OVN integrates the OVN-based Network Virtualization with Kubernetes. It offers an advanced Container Network Fabric for Enterprises. It provides the most functions and very easy to use and operate.
 
 ## Features
 - **Namespaced Subnets**: Each Namespace can have a unique Subnet (backed by a Logical Switch). Pods within the Namespace will have IP addresses allocated from the Subnet. It's also possible for multiple Namespaces to share a Subnet.
@@ -33,7 +33,13 @@ Kube-OVN integrates the OVN-based Network Virtualization with Kubernetes. It off
 
 The Switch, Router, Firewall showed in the diagram below are all distributed on all Nodes. There is no single point of failure for in cluster network.
 
-![alt text](docs/ovn-network-topology.png "kube-ovn network topology")
+![topology](docs/ovn-network-topology.png "kube-ovn network topology")
+
+## Monitoring Dashboard
+
+Kube-OVN offers prometheus integration with grafana dashboards to visualise network quality.
+
+![dashboard](docs/pinger-grafana.png)
 
 ## Quick Start
 Kube-OVN is easy to install with all necessary components/dependencies included. If you already has a Kubernetes cluster without any cni plugin, please refer to the [Installation Guide](docs/install.md).

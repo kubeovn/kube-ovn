@@ -1093,7 +1093,7 @@
       }
     }
   ],
-  "refresh": false,
+  "refresh": "5s",
   "schemaVersion": 18,
   "style": "dark",
   "tags": [],
@@ -1101,8 +1101,8 @@
     "list": []
   },
   "time": {
-    "from": "2019-11-05T09:16:00.725Z",
-    "to": "2019-11-05T13:32:13.967Z"
+    "from": "now-1h",
+    "to": "now"
   },
   "timepicker": {
     "refresh_intervals": [

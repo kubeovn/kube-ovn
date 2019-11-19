@@ -15,7 +15,6 @@ for ns in $(kubectl get ns -o name |cut -c 11-); do
             kubectl annotate pod  --all ovn.kubernetes.io/logical_switch- -n "$ns"
             kubectl annotate pod  --all ovn.kubernetes.io/mac_address- -n "$ns"
             kubectl annotate pod  --all ovn.kubernetes.io/port_name- -n "$ns"
-
     done
   
 # Remove annotations in namespaces and nodes
@@ -31,5 +30,3 @@ kubectl annotate ns --all ovn.kubernetes.io/gateway-
 kubectl annotate ns --all ovn.kubernetes.io/logical_switch-
 kubectl annotate ns --all ovn.kubernetes.io/private-
 kubectl annotate ns --all ovn.kubernetes.io/allow-
-
-
