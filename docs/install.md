@@ -37,6 +37,9 @@ If you want to enable IPv6 on default subnet and node subnet, please apply https
 
 ## More Configuration
 
+Kube-OVN will use subnet to manage pod ip address allocation, so the kube-controller-manager flag `cluster-cidr` will not take effect.
+You can use `--default-cidr` flags below to config default Pod CIDR or create a new subnet with desired CIDR later.
+
 ### Controller Configuration
 
 ```bash

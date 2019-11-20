@@ -26,7 +26,7 @@ spec:
 
 **Note**:
 
-1. The address **SHOULD** be in the CIDR of related switch.
+1. The address **SHOULD** be in the CIDR of related subnet.
 2. The address **SHOULD NOT** conflict with addresses already allocated.
 3. The static MAC address is optional.
 
@@ -65,5 +65,6 @@ spec:
 
 1. The address **SHOULD** be in the CIDR of the related switch.
 2. The address **SHOULD NOT** conflict with addresses already allocated.
-3. If the `ip_pool` size is smaller than the replica count, some Pods will not start.
-2. Care should be taken for scaling and updates to ensure there are addresses available for new Pods.
+3. If the address size is larger than replica count, the unused address might be acquired by other Pods.
+4. If the `ip_pool` size is smaller than the replica count, some Pods will not start.
+5. Care should be taken for scaling and updates to ensure there are addresses available for new Pods.
