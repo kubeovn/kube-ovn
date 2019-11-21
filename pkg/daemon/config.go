@@ -34,6 +34,7 @@ type Configuration struct {
 	KubeOvnClient         clientset.Interface
 	NodeName              string
 	ServiceClusterIPRange string
+	NodeLocalDNSIP        string
 	PprofPort             int
 }
 
@@ -49,6 +50,7 @@ func ParseFlags() (*Configuration, error) {
 		argOvsSocket             = pflag.String("ovs-socket", "", "The socket to local ovs-server")
 		argKubeConfigFile        = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 		argServiceClusterIPRange = pflag.String("service-cluster-ip-range", "10.96.0.0/12", "The kubernetes service cluster ip range, default: 10.96.0.0/12")
+		argNodeLocalDnsIP        = pflag.String("node-local-dns-ip", "", "if use nodelocaldns the local dns server ip should be set here, default empty.")
 		argPprofPort             = pflag.Int("pprof-port", 10665, "The port to get profiling data, default: 10665")
 	)
 
@@ -90,6 +92,7 @@ func ParseFlags() (*Configuration, error) {
 		PprofPort:             *argPprofPort,
 		NodeName:              nodeName,
 		ServiceClusterIPRange: *argServiceClusterIPRange,
+		NodeLocalDNSIP:        *argNodeLocalDnsIP,
 	}
 
 	if config.Iface == "" {

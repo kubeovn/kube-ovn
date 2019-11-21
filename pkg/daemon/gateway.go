@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"net"
 	"os"
 	"strings"
 	"time"
@@ -251,6 +252,9 @@ func (c *Controller) getSubnetsNeedNAT(protocol string) ([]string, error) {
 
 func (c *Controller) getSubnetsCIDR(protocol string) ([]string, error) {
 	var ret = []string{c.config.ServiceClusterIPRange}
+	if c.config.NodeLocalDNSIP != "" && net.ParseIP(c.config.NodeLocalDNSIP) != nil {
+		ret = append(ret, c.config.NodeLocalDNSIP)
+	}
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Error("failed to list subnets")
