@@ -147,6 +147,9 @@ spec:
         volumeMounts:
           - mountPath: /run/openvswitch
             name: host-run-ovs
+          - mountPath: /var/run/netns
+            name: host-ns
+            mountPropagation: HostToContainer
         readinessProbe:
           exec:
             command:
@@ -179,6 +182,9 @@ spec:
         - name: cni-bin
           hostPath:
             path: /opt/cni/bin
+        - name: host-ns
+          hostPath:
+            path: /var/run/netns
 
 ---
 kind: DaemonSet
