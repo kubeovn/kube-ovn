@@ -1,5 +1,36 @@
 # CHANGELOG
 
+## v0.9.0 -- 2019/11/21
+
+This release is mainly about controller performance, stability and bugfix
+
+## Monitoring
+* Improve kube-ovn-pinger metrics to check apiserver and dns
+* Add kube-ovn-controller metrics to show the controller status
+* Add grafana templates to visualize metrics
+
+## Performance
+* Adjust client-go param to increase parallelism
+* Adjust ovn-db and ovn-controller resource
+* Merge some ovn-nb requests and remove most wait=ovn-nb params
+
+## Stability and Bugfix
+* LB init conflict when use multiple kube-ovn-controller
+* Static Route might lost during leader election
+* If pod have not a status.PodIP skip add/del static route
+* Add keepalive to ovn-controller
+* Add qlen when set egress QoS
+* Add ingress_policing_burst to accurate limit ingress bandwidth
+* GC resources when kube-ovn-controller starts
+* Re-annotate related namespaces when subnet deleted.
+* Check the short name of kubernetes services which is independent of the cluster domain name
+* Daemonset updateStrategy changes to OnDelete for grace update
+* Use new upstream ovn with some kube-ovn related modification
+
+## Misc
+* Remove most privilege container
+* When use nodelocaldns, do not nat the local dns server ip
+
 ## v0.8.0 -- 2019/10/08
 
 ### Gateway
