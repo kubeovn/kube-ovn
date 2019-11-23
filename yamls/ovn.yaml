@@ -248,8 +248,8 @@ spec:
           image: "index.alauda.cn/alaudak8s/kube-ovn-node:v0.9.0"
           imagePullPolicy: Always
           securityContext:
-            capabilities:
-              add: ["NET_ADMIN", "SYS_MODULE", "SYS_NICE"]
+            runAsUser: 0
+            privileged: true
           env:
             - name: POD_IP
               valueFrom:
