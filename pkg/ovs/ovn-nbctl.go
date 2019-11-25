@@ -400,8 +400,13 @@ func (c Client) GetLogicalSwitchPortDynamicAddress(port string) ([]string, error
 	if output == "[]" {
 		return nil, ErrNoAddr
 	}
-	// "0a:00:00:00:00:02 100.64.0.3"
 	output = strings.Trim(output, `"`)
+	// "0a:00:00:00:00:02"
+	if len(strings.Split(output, " ")) == 1 {
+		klog.Error("Subnet address space has been exhausted")
+		return nil, ErrNoAddr
+	}
+	// "0a:00:00:00:00:02 100.64.0.3"
 	mac := strings.Split(output, " ")[0]
 	ip := strings.Split(output, " ")[1]
 	return []string{mac, ip}, nil
