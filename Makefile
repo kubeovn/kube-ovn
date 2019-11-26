@@ -60,7 +60,7 @@ resume:
 suspend:
 	cd vagrant && vagrant suspend
 
-kind:
+kind-init:
 	kind create cluster --config yamls/kind.yaml
 	@for role in ${ROLES} ; do \
 		kind load docker-image ${REGISTRY}/kube-ovn-$$role:${RELEASE_TAG}; \
@@ -69,3 +69,9 @@ kind:
 	kubectl apply -f yamls/crd.yaml
 	kubectl apply -f yamls/ovn.yaml
 	kubectl apply -f yamls/kube-ovn.yaml
+
+kind-reload:
+	@for role in ${ROLES} ; do \
+		kind load docker-image ${REGISTRY}/kube-ovn-$$role:${RELEASE_TAG}; \
+	done
+	kubectl delete pod -n kube-ovn --all
