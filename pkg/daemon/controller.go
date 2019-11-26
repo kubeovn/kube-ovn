@@ -254,9 +254,7 @@ func (c *Controller) reconcileRouters() error {
 func (c *Controller) enqueuePod(old, new interface{}) {
 	oldPod := old.(*v1.Pod)
 	newPod := new.(*v1.Pod)
-	if newPod.Spec.NodeName != c.config.NodeName {
-		return
-	}
+
 	if oldPod.Annotations[util.IngressRateAnnotation] != newPod.Annotations[util.IngressRateAnnotation] ||
 		oldPod.Annotations[util.EgressRateAnnotation] != newPod.Annotations[util.EgressRateAnnotation] {
 		var key string
