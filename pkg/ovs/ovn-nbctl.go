@@ -376,13 +376,10 @@ func (c Client) GetLogicalSwitchPortAddress(port string) ([]string, error) {
 		return nil, nil
 	}
 	output = strings.Trim(output, `[]"`)
-	//port ovn-default-ovn-cluster
-	//  type: router
-	//  addresses: ["00:00:00:0E:C2:4B"]
-	//  router-port: ovn-cluster-ovn-default
-	if len(strings.Split(output, " ")) == 1 {
+	if len(strings.Split(output, " ")) != 2 {
 		return nil, nil
 	}
+
 	// currently user may only have one fixed address
 	// ["0a:00:00:00:00:0c 10.16.0.13"]
 	mac := strings.Split(output, " ")[0]
@@ -402,7 +399,7 @@ func (c Client) GetLogicalSwitchPortDynamicAddress(port string) ([]string, error
 	}
 	output = strings.Trim(output, `"`)
 	// "0a:00:00:00:00:02"
-	if len(strings.Split(output, " ")) == 1 {
+	if len(strings.Split(output, " ")) != 2 {
 		klog.Error("Subnet address space has been exhausted")
 		return nil, ErrNoAddr
 	}

@@ -634,7 +634,7 @@ func (c *Controller) handleDeletePod(key string) error {
 	}
 	portAddr, err := c.ovnClient.GetPortAddr(ovs.PodNameToPortName(name, namespace))
 	if err != nil {
-		if !strings.Contains(err.Error(), "no row") {
+		if !strings.Contains(err.Error(), "no row") && !strings.Contains(err.Error(), "no address") {
 			return err
 		}
 	} else {
