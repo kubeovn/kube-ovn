@@ -38,7 +38,7 @@ spec:
       hostNetwork: true
       containers:
         - name: kube-ovn-controller
-          image: "index.alauda.cn/alaudak8s/kube-ovn-controller:v0.9.0-pre"
+          image: "index.alauda.cn/alaudak8s/kube-ovn-controller:v0.9.0"
           imagePullPolicy: Always
           command:
           - /kube-ovn/start-controller.sh
