@@ -35,6 +35,20 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 	}
 
 	p := obj.(*v1.Pod)
+	// TODO: we need to find a way to reduce duplicated np added to the queue
+	if p.Status.PodIP != "" {
+		for _, np := range c.podMatchNetworkPolicies(p) {
+			c.updateNpQueue.Add(np)
+		}
+	}
+
+	if p.Spec.HostNetwork {
+		return
+	}
+	if p.Status.Phase == v1.PodFailed && p.Status.Reason == "Evicted" {
+		return
+	}
+
 	if p.Annotations[util.IpPoolAnnotation] != "" && p.Annotations[util.IpAddressAnnotation] == "" {
 		klog.V(3).Infof("enqueue add ip pool address pod %s", key)
 		c.addIpPoolPodQueue.Add(key)
@@ -43,13 +57,6 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 
 	klog.V(3).Infof("enqueue add pod %s", key)
 	c.addPodQueue.Add(key)
-
-	// TODO: we need to find a way to reduce duplicated np added to the queue
-	if p.Status.PodIP != "" {
-		for _, np := range c.podMatchNetworkPolicies(p) {
-			c.updateNpQueue.Add(np)
-		}
-	}
 }
 
 func (c *Controller) enqueueDeletePod(obj interface{}) {
@@ -113,7 +120,25 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	if oldPod.ResourceVersion == newPod.ResourceVersion {
 		return
 	}
+
+	if !reflect.DeepEqual(oldPod.Labels, newPod.Labels) {
+		oldNp := c.podMatchNetworkPolicies(oldPod)
+		newNp := c.podMatchNetworkPolicies(newPod)
+		for _, np := range util.DiffStringSlice(oldNp, newNp) {
+			c.updateNpQueue.Add(np)
+		}
+	}
+
+	if oldPod.Status.PodIP != newPod.Status.PodIP {
+		for _, np := range c.podMatchNetworkPolicies(newPod) {
+			c.updateNpQueue.Add(np)
+		}
+	}
+
 	if newPod.Spec.HostNetwork == true {
+		return
+	}
+	if newPod.Status.Phase == v1.PodFailed && newPod.Status.Reason == "Evicted" {
 		return
 	}
 	// pod assigned an ip
@@ -126,21 +151,6 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		}
 		klog.V(3).Infof("enqueue update pod %s", key)
 		c.updatePodQueue.Add(key)
-	}
-
-	if oldPod.Status.PodIP != newPod.Status.PodIP {
-		for _, np := range c.podMatchNetworkPolicies(newPod) {
-			c.updateNpQueue.Add(np)
-		}
-		return
-	}
-
-	if !reflect.DeepEqual(oldPod.Labels, newPod.Labels) {
-		oldNp := c.podMatchNetworkPolicies(oldPod)
-		newNp := c.podMatchNetworkPolicies(newPod)
-		for _, np := range util.DiffStringSlice(oldNp, newNp) {
-			c.updateNpQueue.Add(np)
-		}
 	}
 }
 
@@ -402,11 +412,6 @@ func (c *Controller) handleAddPod(key string) error {
 		}
 		return err
 	}
-	klog.Infof("add pod %s/%s", namespace, name)
-	if pod.Spec.HostNetwork {
-		klog.Infof("pod %s/%s in host network mode no need for ovn process", namespace, name)
-		return nil
-	}
 
 	subnet, err := c.subnetsLister.Get(c.config.DefaultLogicalSwitch)
 	if err != nil {
@@ -502,11 +507,6 @@ func (c *Controller) handleAddIpPoolPod(key string) error {
 			return nil
 		}
 		return err
-	}
-	klog.Infof("add ip pool address pod %s/%s", namespace, name)
-	if pod.Spec.HostNetwork {
-		klog.Infof("pod %s/%s in host network mode no need for ovn process", namespace, name)
-		return nil
 	}
 
 	subnet, err := c.subnetsLister.Get(c.config.DefaultLogicalSwitch)
@@ -612,7 +612,7 @@ func (c *Controller) handleAddIpPoolPod(key string) error {
 		go func() {
 			if _, err = c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, []byte(patchPayload)); err != nil {
 				klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
-				c.addPodQueue.AddRateLimited(key)
+				c.addIpPoolPodQueue.AddRateLimited(key)
 			}
 		}()
 	}
