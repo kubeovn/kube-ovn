@@ -10,11 +10,11 @@ fi
 
 # wait for ovn-sb ready
 function wait_ovn_sb {
-    if [[ -z "${OVN_SB_SERVICE_HOST}}" ]]; then
+    if [[ -z "${OVN_SB_SERVICE_HOST}" ]]; then
         echo "env OVN_SB_SERVICE_HOST not exists"
         exit 1
     fi
-    if [[ -z "${OVN_SB_SERVICE_PORT}}" ]]; then
+    if [[ -z "${OVN_SB_SERVICE_PORT}" ]]; then
         echo "env OVN_SB_SERVICE_PORT not exists"
         exit 1
     fi
