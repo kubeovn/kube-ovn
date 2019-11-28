@@ -715,9 +715,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 		if err != nil {
 			return err
 		}
-		if err := c.ovnClient.DeleteStaticRoute(podIP, c.config.ClusterRouter); err != nil {
-			return errors.Annotate(err, "del static route failed")
-		}
+
 		if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
 			return errors.Annotate(err, "add static route failed")
 		}
