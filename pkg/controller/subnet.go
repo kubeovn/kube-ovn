@@ -513,10 +513,10 @@ func (c *Controller) reconcileCentralizedGateway(subnet *kubeovnv1.Subnet) error
 		return err
 	}
 
-	if err := c.ovnClient.DeleteStaticRouter(subnet.Spec.CIDRBlock, c.config.ClusterRouter); err != nil {
+	if err := c.ovnClient.DeleteStaticRoute(subnet.Spec.CIDRBlock, c.config.ClusterRouter); err != nil {
 		return errors.Annotate(err, "del static route failed")
 	}
-	if err := c.ovnClient.AddStaticRouter(ovs.PolicySrcIP, subnet.Spec.CIDRBlock, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
+	if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, subnet.Spec.CIDRBlock, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
 		return errors.Annotate(err, "add static route failed")
 	}
 
@@ -669,7 +669,7 @@ func (c *Controller) handleDeleteRoute(key string) error {
 		return nil
 	}
 
-	return c.ovnClient.DeleteStaticRouter(key, c.config.ClusterRouter)
+	return c.ovnClient.DeleteStaticRoute(key, c.config.ClusterRouter)
 }
 
 func (c *Controller) handleDeleteSubnet(key string) error {

@@ -203,7 +203,7 @@ func (c *Controller) handleAddNode(key string) error {
 
 	nodeAddr := getNodeInternalIP(node)
 	if util.CheckProtocol(nodeAddr) == util.CheckProtocol(nic.IpAddress) {
-		err = c.ovnClient.AddStaticRouter("", nodeAddr, strings.Split(nic.IpAddress, "/")[0], c.config.ClusterRouter)
+		err = c.ovnClient.AddStaticRoute("", nodeAddr, strings.Split(nic.IpAddress, "/")[0], c.config.ClusterRouter)
 		if err != nil {
 			klog.Errorf("failed to add static router from node to ovn0 %v", err)
 			return err
@@ -297,13 +297,14 @@ func (c *Controller) handleAddNode(key string) error {
 }
 
 func (c *Controller) handleDeleteNode(key string) error {
-	err := c.ovnClient.DeletePort(fmt.Sprintf("node-%s", key))
+	portName := fmt.Sprintf("node-%s", key)
+	err := c.ovnClient.DeletePort(portName)
 	if err != nil {
-		klog.Infof("failed to delete node switch port node-%s %v", key, err)
+		klog.Errorf("failed to delete node switch port node-%s %v", key, err)
 		return err
 	}
 
-	ipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(key, metav1.GetOptions{})
+	ipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(portName, metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -311,11 +312,11 @@ func (c *Controller) handleDeleteNode(key string) error {
 		return err
 	}
 
-	if err := c.ovnClient.DeleteStaticRouter(ipCr.Spec.IPAddress, c.config.ClusterRouter); err != nil {
+	if err := c.ovnClient.DeleteStaticRouteByNextHop(ipCr.Spec.IPAddress); err != nil {
 		return err
 	}
 
-	err = c.config.KubeOvnClient.KubeovnV1().IPs().Delete(key, &metav1.DeleteOptions{})
+	err = c.config.KubeOvnClient.KubeovnV1().IPs().Delete(portName, &metav1.DeleteOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
