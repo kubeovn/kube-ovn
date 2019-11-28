@@ -638,11 +638,22 @@ func (c *Controller) handleDeletePod(key string) error {
 			return err
 		}
 	} else {
-		if err := c.ovnClient.DeleteStaticRouter(portAddr[1], c.config.ClusterRouter); err != nil {
+		if err := c.ovnClient.DeleteStaticRoute(portAddr[1], c.config.ClusterRouter); err != nil {
 			return err
 		}
 	}
-	return c.ovnClient.DeletePort(ovs.PodNameToPortName(name, namespace))
+	if err := c.ovnClient.DeletePort(ovs.PodNameToPortName(name, namespace)); err != nil {
+		klog.Errorf("failed to delete lsp %s, %v", ovs.PodNameToPortName(name, namespace), err)
+		return err
+	}
+
+	err = c.config.KubeOvnClient.KubeovnV1().IPs().Delete(ovs.PodNameToPortName(name, namespace), &metav1.DeleteOptions{})
+	if err == nil || k8serrors.IsNotFound(err) {
+		return nil
+	}
+
+	klog.Errorf("failed to delete ip %s, %v", ovs.PodNameToPortName(name, namespace), err)
+	return err
 }
 
 func (c *Controller) handleUpdatePod(key string) error {
@@ -698,10 +709,10 @@ func (c *Controller) handleUpdatePod(key string) error {
 		if err != nil {
 			return err
 		}
-		if err := c.ovnClient.DeleteStaticRouter(podIP, c.config.ClusterRouter); err != nil {
+		if err := c.ovnClient.DeleteStaticRoute(podIP, c.config.ClusterRouter); err != nil {
 			return errors.Annotate(err, "del static route failed")
 		}
-		if err := c.ovnClient.AddStaticRouter(ovs.PolicySrcIP, podIP, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
+		if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
 			return errors.Annotate(err, "add static route failed")
 		}
 	}

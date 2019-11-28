@@ -256,8 +256,8 @@ func (c Client) createRouterPort(ls, lr, ip, mac string) error {
 	return nil
 }
 
-// AddStaticRouter add a static route rule in ovn
-func (c Client) AddStaticRouter(policy, cidr, nextHop, router string) error {
+// AddStaticRoute add a static route rule in ovn
+func (c Client) AddStaticRoute(policy, cidr, nextHop, router string) error {
 	if policy == "" {
 		policy = PolicyDstIP
 	}
@@ -265,10 +265,26 @@ func (c Client) AddStaticRouter(policy, cidr, nextHop, router string) error {
 	return err
 }
 
-// DeleteStaticRouter delete a static route rule in ovn
-func (c Client) DeleteStaticRouter(cidr, router string) error {
+// DeleteStaticRoute delete a static route rule in ovn
+func (c Client) DeleteStaticRoute(cidr, router string) error {
 	_, err := c.ovnNbCommand(IfExists, "lr-route-del", router, cidr)
 	return err
+}
+
+func (c Client) DeleteStaticRouteByNextHop(nextHop string) error {
+	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=ip_prefix", "find", "Logical_Router_Static_Route", fmt.Sprintf("nexthop=%s", nextHop))
+	if err != nil {
+		klog.Errorf("failed to list static route %s, %v", nextHop, err)
+		return err
+	}
+	ipPrefixes := strings.Split(output, "\n")
+	for _, ipPre := range ipPrefixes {
+		if err := c.DeleteStaticRoute(ipPre, c.ClusterRouter); err != nil {
+			klog.Errorf("failed to delete route %s, %v", ipPre, err)
+			return err
+		}
+	}
+	return nil
 }
 
 // FindLoadbalancer find ovn loadbalancer uuid by name
