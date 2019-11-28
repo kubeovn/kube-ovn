@@ -413,80 +413,84 @@ func (c *Controller) handleAddPod(key string) error {
 		return err
 	}
 
-	subnet, err := c.subnetsLister.Get(c.config.DefaultLogicalSwitch)
-	if err != nil {
-		klog.Errorf("failed to get default subnet %v", err)
-		return err
-	}
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets %v", err)
-		return err
-	}
+	// Avoid create lsp for already running pod in ovn-nb when controller restart
+	if needCreateLogicalSwitchPort(pod) {
+		subnet, err := c.subnetsLister.Get(c.config.DefaultLogicalSwitch)
+		if err != nil {
+			klog.Errorf("failed to get default subnet %v", err)
+			return err
+		}
+		subnets, err := c.subnetsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list subnets %v", err)
+			return err
+		}
 
-	for _, s := range subnets {
-		for _, ns := range s.Spec.Namespaces {
-			if ns == pod.Namespace {
-				subnet = s
-				break
+		for _, s := range subnets {
+			for _, ns := range s.Spec.Namespaces {
+				if ns == pod.Namespace {
+					subnet = s
+					break
+				}
 			}
 		}
-	}
 
-	if err := util.ValidatePodNetwork(pod.Annotations); err != nil {
-		klog.Errorf("validate pod %s/%s failed, %v", namespace, name, err)
-		c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", err.Error())
-		return err
-	}
-
-	// pod address info may already exist in ovn
-	ip := pod.Annotations[util.IpAddressAnnotation]
-	mac := pod.Annotations[util.MacAddressAnnotation]
-
-	nic, err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, subnet.Spec.CIDRBlock, mac)
-	if err != nil {
-		return err
-	}
-
-	if pod.Annotations == nil ||
-		pod.Annotations[util.IpAddressAnnotation] != nic.IpAddress ||
-		pod.Annotations[util.MacAddressAnnotation] != nic.MacAddress ||
-		pod.Annotations[util.CidrAnnotation] != subnet.Spec.CIDRBlock ||
-		pod.Annotations[util.GatewayAnnotation] != subnet.Spec.Gateway ||
-		pod.Annotations[util.LogicalSwitchAnnotation] != subnet.Name {
-
-		op := "replace"
-		if len(pod.Annotations) == 0 {
-			op = "add"
+		if err := util.ValidatePodNetwork(pod.Annotations); err != nil {
+			klog.Errorf("validate pod %s/%s failed, %v", namespace, name, err)
+			c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", err.Error())
+			return err
 		}
-		if pod.Annotations == nil {
-			pod.Annotations = map[string]string{}
-		}
-		pod.Annotations[util.IpAddressAnnotation] = nic.IpAddress
-		pod.Annotations[util.MacAddressAnnotation] = nic.MacAddress
-		pod.Annotations[util.CidrAnnotation] = subnet.Spec.CIDRBlock
-		pod.Annotations[util.GatewayAnnotation] = subnet.Spec.Gateway
-		pod.Annotations[util.LogicalSwitchAnnotation] = subnet.Name
 
-		patchPayloadTemplate :=
-			`[{
+		// pod address info may already exist in ovn
+		ip := pod.Annotations[util.IpAddressAnnotation]
+		mac := pod.Annotations[util.MacAddressAnnotation]
+
+		nic, err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, subnet.Spec.CIDRBlock, mac)
+		if err != nil {
+			return err
+		}
+
+		if pod.Annotations == nil ||
+			pod.Annotations[util.IpAddressAnnotation] != nic.IpAddress ||
+			pod.Annotations[util.MacAddressAnnotation] != nic.MacAddress ||
+			pod.Annotations[util.CidrAnnotation] != subnet.Spec.CIDRBlock ||
+			pod.Annotations[util.GatewayAnnotation] != subnet.Spec.Gateway ||
+			pod.Annotations[util.LogicalSwitchAnnotation] != subnet.Name {
+
+			op := "replace"
+			if len(pod.Annotations) == 0 {
+				op = "add"
+			}
+			if pod.Annotations == nil {
+				pod.Annotations = map[string]string{}
+			}
+			pod.Annotations[util.IpAddressAnnotation] = nic.IpAddress
+			pod.Annotations[util.MacAddressAnnotation] = nic.MacAddress
+			pod.Annotations[util.CidrAnnotation] = subnet.Spec.CIDRBlock
+			pod.Annotations[util.GatewayAnnotation] = subnet.Spec.Gateway
+			pod.Annotations[util.LogicalSwitchAnnotation] = subnet.Name
+			pod.Annotations[util.AllocatedAnnotation] = "true"
+
+			patchPayloadTemplate :=
+				`[{
         "op": "%s",
         "path": "/metadata/annotations",
         "value": %s
           }]`
 
-		raw, _ := json.Marshal(pod.Annotations)
-		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-		go func() {
-			if _, err = c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, []byte(patchPayload)); err != nil {
-				klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
-				c.addPodQueue.AddRateLimited(key)
-			}
-		}()
+			raw, _ := json.Marshal(pod.Annotations)
+			patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
+			go func() {
+				if _, err = c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, []byte(patchPayload)); err != nil {
+					klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
+					c.addPodQueue.AddRateLimited(key)
+				}
+			}()
+		}
 	}
 
 	// In case update event might lost during leader election
-	if pod.Spec.NodeName != "" {
+	if pod.Spec.NodeName != "" && pod.Status.PodIP != "" {
 		return c.handleUpdatePod(key)
 	}
 	return nil
@@ -509,116 +513,118 @@ func (c *Controller) handleAddIpPoolPod(key string) error {
 		return err
 	}
 
-	subnet, err := c.subnetsLister.Get(c.config.DefaultLogicalSwitch)
-	if err != nil {
-		klog.Errorf("failed to get default subnet %v", err)
-		return err
-	}
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets %v", err)
-		return err
-	}
-
-	for _, s := range subnets {
-		for _, ns := range s.Spec.Namespaces {
-			if ns == pod.Namespace {
-				subnet = s
-				break
-			}
+	if needCreateLogicalSwitchPort(pod) {
+		subnet, err := c.subnetsLister.Get(c.config.DefaultLogicalSwitch)
+		if err != nil {
+			klog.Errorf("failed to get default subnet %v", err)
+			return err
 		}
-	}
+		subnets, err := c.subnetsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list subnets %v", err)
+			return err
+		}
 
-	ipPoolAnnotation := pod.Annotations[util.IpPoolAnnotation]
-
-	if ipPoolAnnotation != "" && pod.Annotations[util.IpAddressAnnotation] == "" {
-		ipPool := strings.Split(pod.Annotations[util.IpPoolAnnotation], ",")
-
-		if isStateful, _ := isStatefulSetPod(pod); isStateful {
-			numIndex := len(strings.Split(pod.Name, "-")) - 1
-			numStr := strings.Split(pod.Name, "-")[numIndex]
-			index, _ := strconv.Atoi(numStr)
-			if index < len(ipPool) {
-				pod.Annotations[util.IpAddressAnnotation] = ipPool[index]
-			}
-		} else {
-			for _, ip := range ipPool {
-				if net.ParseIP(ip) == nil {
-					continue
-				}
-				pods, err := c.config.KubeClient.CoreV1().Pods(v1.NamespaceAll).List(metav1.ListOptions{})
-				if err != nil {
-					klog.Errorf("failed to list pod %v", err)
-					return err
-				}
-				used := false
-				for _, existPod := range pods.Items {
-					// use annotation to get exist ips, as podIp may not exist in this interval
-					if strings.Split(existPod.Annotations[util.IpAddressAnnotation], "/")[0] == ip {
-						used = true
-						break
-					}
-				}
-				if !used {
-					pod.Annotations[util.IpAddressAnnotation] = ip
+		for _, s := range subnets {
+			for _, ns := range s.Spec.Namespaces {
+				if ns == pod.Namespace {
+					subnet = s
 					break
 				}
 			}
 		}
-		if pod.Annotations[util.IpAddressAnnotation] == "" {
-			klog.Errorf("no unused ip for pod %s", key)
-			c.recorder.Event(pod, v1.EventTypeWarning, "FailedAllocateIP", "no unused ip")
-			return fmt.Errorf("no unused ip for pod %s", key)
+
+		ipPoolAnnotation := pod.Annotations[util.IpPoolAnnotation]
+
+		if ipPoolAnnotation != "" && pod.Annotations[util.IpAddressAnnotation] == "" {
+			ipPool := strings.Split(pod.Annotations[util.IpPoolAnnotation], ",")
+
+			if isStateful, _ := isStatefulSetPod(pod); isStateful {
+				numIndex := len(strings.Split(pod.Name, "-")) - 1
+				numStr := strings.Split(pod.Name, "-")[numIndex]
+				index, _ := strconv.Atoi(numStr)
+				if index < len(ipPool) {
+					pod.Annotations[util.IpAddressAnnotation] = ipPool[index]
+				}
+			} else {
+				for _, ip := range ipPool {
+					if net.ParseIP(ip) == nil {
+						continue
+					}
+					pods, err := c.config.KubeClient.CoreV1().Pods(v1.NamespaceAll).List(metav1.ListOptions{})
+					if err != nil {
+						klog.Errorf("failed to list pod %v", err)
+						return err
+					}
+					used := false
+					for _, existPod := range pods.Items {
+						// use annotation to get exist ips, as podIp may not exist in this interval
+						if strings.Split(existPod.Annotations[util.IpAddressAnnotation], "/")[0] == ip {
+							used = true
+							break
+						}
+					}
+					if !used {
+						pod.Annotations[util.IpAddressAnnotation] = ip
+						break
+					}
+				}
+			}
+			if pod.Annotations[util.IpAddressAnnotation] == "" {
+				klog.Errorf("no unused ip for pod %s", key)
+				c.recorder.Event(pod, v1.EventTypeWarning, "FailedAllocateIP", "no unused ip")
+				return fmt.Errorf("no unused ip for pod %s", key)
+			}
 		}
-	}
 
-	// pod address info may already exist in ovn
-	ip := pod.Annotations[util.IpAddressAnnotation]
-	mac := pod.Annotations[util.MacAddressAnnotation]
-	nic, err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, subnet.Spec.CIDRBlock, mac)
-	if err != nil {
-		return err
-	}
-
-	if pod.Annotations == nil ||
-		pod.Annotations[util.IpAddressAnnotation] != nic.IpAddress ||
-		pod.Annotations[util.MacAddressAnnotation] != nic.MacAddress ||
-		pod.Annotations[util.CidrAnnotation] != subnet.Spec.CIDRBlock ||
-		pod.Annotations[util.GatewayAnnotation] != subnet.Spec.Gateway ||
-		pod.Annotations[util.LogicalSwitchAnnotation] != subnet.Name {
-
-		op := "replace"
-		if len(pod.Annotations) == 0 {
-			op = "add"
+		// pod address info may already exist in ovn
+		ip := pod.Annotations[util.IpAddressAnnotation]
+		mac := pod.Annotations[util.MacAddressAnnotation]
+		nic, err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, subnet.Spec.CIDRBlock, mac)
+		if err != nil {
+			return err
 		}
-		if pod.Annotations == nil {
-			pod.Annotations = map[string]string{}
-		}
-		pod.Annotations[util.IpAddressAnnotation] = nic.IpAddress
-		pod.Annotations[util.MacAddressAnnotation] = nic.MacAddress
-		pod.Annotations[util.CidrAnnotation] = subnet.Spec.CIDRBlock
-		pod.Annotations[util.GatewayAnnotation] = subnet.Spec.Gateway
-		pod.Annotations[util.LogicalSwitchAnnotation] = subnet.Name
 
-		patchPayloadTemplate :=
-			`[{
+		if pod.Annotations == nil ||
+			pod.Annotations[util.IpAddressAnnotation] != nic.IpAddress ||
+			pod.Annotations[util.MacAddressAnnotation] != nic.MacAddress ||
+			pod.Annotations[util.CidrAnnotation] != subnet.Spec.CIDRBlock ||
+			pod.Annotations[util.GatewayAnnotation] != subnet.Spec.Gateway ||
+			pod.Annotations[util.LogicalSwitchAnnotation] != subnet.Name {
+
+			op := "replace"
+			if len(pod.Annotations) == 0 {
+				op = "add"
+			}
+			if pod.Annotations == nil {
+				pod.Annotations = map[string]string{}
+			}
+			pod.Annotations[util.IpAddressAnnotation] = nic.IpAddress
+			pod.Annotations[util.MacAddressAnnotation] = nic.MacAddress
+			pod.Annotations[util.CidrAnnotation] = subnet.Spec.CIDRBlock
+			pod.Annotations[util.GatewayAnnotation] = subnet.Spec.Gateway
+			pod.Annotations[util.LogicalSwitchAnnotation] = subnet.Name
+			pod.Annotations[util.AllocatedAnnotation] = "true"
+
+			patchPayloadTemplate :=
+				`[{
         "op": "%s",
         "path": "/metadata/annotations",
         "value": %s
           }]`
 
-		raw, _ := json.Marshal(pod.Annotations)
-		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-		go func() {
-			if _, err = c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, []byte(patchPayload)); err != nil {
-				klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
-				c.addIpPoolPodQueue.AddRateLimited(key)
-			}
-		}()
+			raw, _ := json.Marshal(pod.Annotations)
+			patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
+			go func() {
+				if _, err = c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, []byte(patchPayload)); err != nil {
+					klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
+					c.addIpPoolPodQueue.AddRateLimited(key)
+				}
+			}()
+		}
 	}
-
 	// In case update event might lost during leader election
-	if pod.Spec.NodeName != "" {
+	if pod.Spec.NodeName != "" && pod.Status.PodIP != "" {
 		return c.handleUpdatePod(key)
 	}
 	return nil
@@ -738,4 +744,14 @@ func getNodeTunlIP(node *v1.Node) (net.IP, error) {
 		return nil, fmt.Errorf("failed to parse node tunl ip %s", nodeTunlIP)
 	}
 	return nodeTunlIPAddr, nil
+}
+
+func needCreateLogicalSwitchPort(pod *v1.Pod) bool {
+	if pod.Status.Phase == v1.PodRunning ||
+		pod.Status.Phase == v1.PodSucceeded ||
+		pod.Status.Phase == v1.PodFailed ||
+		pod.Annotations != nil && pod.Annotations[util.AllocatedAnnotation] == "true" {
+		return false
+	}
+	return true
 }
