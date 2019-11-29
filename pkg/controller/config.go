@@ -19,6 +19,7 @@ type Configuration struct {
 	OvnNbSocket    string
 	OvnNbHost      string
 	OvnNbPort      int
+	OvnNbTimeout   int
 	KubeConfigFile string
 	KubeClient     kubernetes.Interface
 	KubeOvnClient  clientset.Interface
@@ -50,6 +51,7 @@ func ParseFlags() (*Configuration, error) {
 		argOvnNbSocket    = pflag.String("ovn-nb-socket", "", "The ovn-nb socket file. (If not set use ovn-nb-address)")
 		argOvnNbHost      = pflag.String("ovn-nb-host", "0.0.0.0", "The ovn-nb host address. (If not set use ovn-nb-socket)")
 		argOvnNbPort      = pflag.Int("ovn-nb-port", 6641, "")
+		argOvnNbTimeout   = pflag.Int("ovn-nb-timeout", 30, "")
 		argKubeConfigFile = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 
 		argDefaultLogicalSwitch = pflag.String("default-ls", "ovn-default", "The default logical switch name, default: ovn-default")
@@ -91,6 +93,7 @@ func ParseFlags() (*Configuration, error) {
 		OvnNbSocket:            *argOvnNbSocket,
 		OvnNbHost:              *argOvnNbHost,
 		OvnNbPort:              *argOvnNbPort,
+		OvnNbTimeout:           *argOvnNbTimeout,
 		KubeConfigFile:         *argKubeConfigFile,
 		DefaultLogicalSwitch:   *argDefaultLogicalSwitch,
 		DefaultCIDR:            *argDefaultCIDR,

@@ -13,6 +13,7 @@ var (
 // Client is the ovn client
 type Client struct {
 	OvnNbAddress           string
+	OvnNbTimeout           int
 	OvnSbAddress           string
 	ClusterRouter          string
 	ClusterTcpLoadBalancer string
@@ -31,10 +32,11 @@ const (
 )
 
 // NewClient init an ovn client
-func NewClient(ovnNbHost string, ovnNbPort int, ovnSbHost string, ovnSbPort int, clusterRouter, clusterTcpLoadBalancer, clusterUdpLoadBalancer, nodeSwitch, nodeSwitchCIDR string) *Client {
+func NewClient(ovnNbHost string, ovnNbPort int, ovnNbTimeout int, ovnSbHost string, ovnSbPort int, clusterRouter, clusterTcpLoadBalancer, clusterUdpLoadBalancer, nodeSwitch, nodeSwitchCIDR string) *Client {
 	return &Client{
 		OvnNbAddress:           fmt.Sprintf("tcp:%s:%d", ovnNbHost, ovnNbPort),
 		OvnSbAddress:           fmt.Sprintf("tcp:%s:%d", ovnSbHost, ovnSbPort),
+		OvnNbTimeout:           ovnNbTimeout,
 		ClusterRouter:          clusterRouter,
 		ClusterTcpLoadBalancer: clusterTcpLoadBalancer,
 		ClusterUdpLoadBalancer: clusterUdpLoadBalancer,

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net/http"
 	_ "net/http/pprof"
 	"time"
@@ -34,8 +35,12 @@ func main() {
 	}
 
 	stopCh := signals.SetupSignalHandler()
-	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(config.KubeClient, time.Second*30)
-	kubeovnInformerFactory := kubeovninformer.NewSharedInformerFactoryWithOptions(config.KubeOvnClient, time.Second*30)
+	kubeInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
+		kubeinformers.WithTweakListOptions(func(listOption *v1.ListOptions) {
+			listOption.FieldSelector = fmt.Sprintf("spec.nodeName=%s", config.NodeName)
+			listOption.AllowWatchBookmarks = true
+		}))
+	kubeovnInformerFactory := kubeovninformer.NewSharedInformerFactoryWithOptions(config.KubeOvnClient, 0)
 	ctl, err := daemon.NewController(config, kubeInformerFactory, kubeovnInformerFactory)
 	if err != nil {
 		klog.Fatalf("create controller failed %v", err)

@@ -29,9 +29,10 @@ type ValidatingHook struct {
 }
 
 type WebhookOptions struct {
-	OvnNbHost string
-	OvnNbPort int
-	DefaultLS string
+	OvnNbHost    string
+	OvnNbPort    int
+	OvnNbTimeout int
+	DefaultLS    string
 }
 
 func NewValidatingHook(c cache.Cache, opt *WebhookOptions) (*ValidatingHook, error) {
@@ -49,7 +50,7 @@ func NewValidatingHook(c cache.Cache, opt *WebhookOptions) (*ValidatingHook, err
 
 	return &ValidatingHook{
 		kubeclientset: kubeClient,
-		ovnClient:     ovs.NewClient(opt.OvnNbHost, opt.OvnNbPort, "", 0, "", "", "", "", ""),
+		ovnClient:     ovs.NewClient(opt.OvnNbHost, opt.OvnNbPort, opt.OvnNbTimeout, "", 0, "", "", "", "", ""),
 		opt:           opt,
 		cache:         c,
 	}, nil
