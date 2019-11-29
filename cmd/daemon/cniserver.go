@@ -36,7 +36,7 @@ func main() {
 
 	stopCh := signals.SetupSignalHandler()
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
-		kubeinformers.WithTweakListOptions(func(listOption *v1.ListOptions){
+		kubeinformers.WithTweakListOptions(func(listOption *v1.ListOptions) {
 			listOption.FieldSelector = fmt.Sprintf("spec.nodeName=%s", config.NodeName)
 			listOption.AllowWatchBookmarks = true
 		}))
