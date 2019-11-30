@@ -9,6 +9,7 @@ showHelp(){
   echo "Available Subcommands:"
   echo "  nbctl [ovn-nbctl options ...]    invoke ovn-nbctl"
   echo "  sbctl [ovn-sbctl options ...]    invoke ovn-sbctl"
+  echo "  vsctl {nodeName} [ovs-vsctl options ...]   invoke ovs-vsctl on selected node"
   echo "  tcpdump {namespace/podname} [tcpdump options ...]     capture pod traffic"
   echo "  trace {namespace/podname} {target ip address} {icmp|tcp|udp} [target tcp or udp port]    trace ovn microflow of specific packet"
   echo "  diagnose {all|node} [nodename]    diagnose connectivity of all nodes or a specific node"
@@ -113,6 +114,17 @@ trace(){
   esac
 }
 
+vsctl(){
+  nodeName="$1"; shift
+  kubectl get no "$nodeName" > /dev/null
+  ovsPod=$(kubectl get pod -n $KUBE_OVN_NS -o wide | grep " $nodeName " | grep ovs-ovn | awk '{print $1}')
+  if [ -z "$ovsPod" ]; then
+      echo "ovs pod  doesn't exist on node $nodeName"
+      exit 1
+    fi
+  kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-vsctl "$@"
+}
+
 diagnose(){
   type="$1"
   case $type in
@@ -128,11 +140,12 @@ diagnose(){
       done
       ;;
     node)
-      node="$2"
-      pinger=$(kubectl get pod -n $KUBE_OVN_NS -o wide | grep kube-ovn-pinger | grep " $node " | awk '{print $1}')
-      echo "### start to diagnose node $node"
+      nodeName="$2"
+      kubectl get no "$nodeName" > /dev/null
+      pinger=$(kubectl get pod -n $KUBE_OVN_NS -o wide | grep kube-ovn-pinger | grep " $nodeName " | awk '{print $1}')
+      echo "### start to diagnose node nodeName"
       kubectl exec -n $KUBE_OVN_NS -it "$pinger" -- /kube-ovn/kube-ovn-pinger --mode=job
-      echo "### finish diagnose node $node"
+      echo "### finish diagnose node nodeName"
       echo ""
       ;;
     *)
@@ -166,6 +179,9 @@ case $subcommand in
     ;;
   sbctl)
     kubectl exec "$CENTRAL_POD" -n $KUBE_OVN_NS -- ovn-sbctl "$@"
+    ;;
+  vsctl)
+    vsctl "$@"
     ;;
   tcpdump)
     tcpdump "$@"
