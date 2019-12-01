@@ -1,6 +1,7 @@
 package util
 
 const (
+	ControllerName       = "kube-ovn-controller"
 	AllocatedAnnotation  = "ovn.kubernetes.io/allocated"
 	MacAddressAnnotation = "ovn.kubernetes.io/mac_address"
 	IpAddressAnnotation  = "ovn.kubernetes.io/ip_address"
