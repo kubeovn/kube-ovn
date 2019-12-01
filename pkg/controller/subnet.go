@@ -61,17 +61,23 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 	oldSubnet := old.(*kubeovnv1.Subnet)
 	newSubnet := new.(*kubeovnv1.Subnet)
 
+	var key string
+	var err error
+	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+		utilruntime.HandleError(err)
+		return
+	}
+
+	if !newSubnet.DeletionTimestamp.IsZero() && newSubnet.Status.UsingIPs == 0 {
+		c.updateSubnetQueue.Add(key)
+		return
+	}
+
 	if oldSubnet.Spec.Private != newSubnet.Spec.Private ||
 		!reflect.DeepEqual(oldSubnet.Spec.AllowSubnets, newSubnet.Spec.AllowSubnets) ||
 		!reflect.DeepEqual(oldSubnet.Spec.Namespaces, newSubnet.Spec.Namespaces) ||
 		oldSubnet.Spec.GatewayType != newSubnet.Spec.GatewayType ||
 		oldSubnet.Spec.GatewayNode != newSubnet.Spec.GatewayNode {
-		var key string
-		var err error
-		if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
-			utilruntime.HandleError(err)
-			return
-		}
 		klog.V(3).Infof("enqueue update subnet %s", key)
 		c.updateSubnetQueue.Add(key)
 	}
@@ -314,6 +320,24 @@ func (c *Controller) handleAddSubnet(key string) error {
 		return err
 	}
 
+	if subnet.DeletionTimestamp.IsZero() && !util.ContainsString(subnet.Finalizers, util.ControllerName) {
+		subnet.Finalizers = append(subnet.Finalizers, util.ControllerName)
+		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Update(subnet); err != nil {
+			klog.Errorf("failed to add finalizer to subnet %s, %v", key, err)
+			return err
+		}
+	}
+
+	if !subnet.DeletionTimestamp.IsZero() && subnet.Status.UsingIPs == 0 {
+		subnet.Finalizers = util.RemoveString(subnet.Finalizers, util.ControllerName)
+		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Update(subnet); err != nil {
+			klog.Errorf("failed to remove finalizer from subnet %s, %v", key, err)
+			return err
+		}
+		// subnet will be deleted, no need for other reconcile works
+		return nil
+	}
+
 	if err = formatSubnet(subnet, c); err != nil {
 		return err
 	}
@@ -541,6 +565,16 @@ func (c *Controller) handleUpdateSubnet(key string) error {
 
 	if err = formatSubnet(subnet, c); err != nil {
 		return err
+	}
+
+	if !subnet.DeletionTimestamp.IsZero() && subnet.Status.UsingIPs == 0 {
+		subnet.Finalizers = util.RemoveString(subnet.Finalizers, util.ControllerName)
+		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Update(subnet); err != nil {
+			klog.Errorf("failed to remove finalizer from subnet %s, %v", key, err)
+			return err
+		}
+		// subnet will be deleted, no need for other reconcile works
+		return nil
 	}
 
 	exist, err := c.ovnClient.LogicalSwitchExists(subnet.Name)
