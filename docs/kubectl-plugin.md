@@ -36,6 +36,7 @@ kubectl ko {subcommand} [option...]
 Available Subcommands:
   nbctl [ovn-nbctl options ...]    invoke ovn-nbctl
   sbctl [ovn-sbctl options ...]    invoke ovn-sbctl
+  vsctl {nodeName} [ovs-vsctl options ...]   invoke ovs-vsctl on selected node
   tcpdump {namespace/podname} [tcpdump options ...] capture pod traffic
   trace {namespace/podname} {target ip address} {icmp|tcp|udp} [target tcp or udp port]
   diagnose {all|node} [nodename]    diagnose connectivity of all nodes or a specific node

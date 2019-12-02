@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## v0.9.1 -- 2019/12/02
+
+This release fix bugs found in v0.9.0
+
+## Bugfix
+* When all ip in subnet is used create lsp will panic with index out of range err
+* Mount /var/run/netns into kube-ovn-cniserver for kind
+* Use ep.subset.port.name to infer target port number
+* Typo in start-ovs.sh
+* When delete node recycle related ip/route resource
+* Nbctl need timeout to avoid hang infinitely
+* Block subnet deletion when there any ip in use
+
 ## v0.9.0 -- 2019/11/21
 
 This release is mainly about controller performance, stability and bugfix
