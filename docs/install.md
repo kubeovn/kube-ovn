@@ -21,13 +21,13 @@ Kube-OVN includes two parts:
     `kubectl label node <Node on which to deploy OVN DB> kube-ovn/role=master`
 2. Install Kube-OVN related CRDs
 
-    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v0.9.0/yamls/crd.yaml`
+    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v0.9.1/yamls/crd.yaml`
 3. Install native OVS and OVN components:
 
-    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v0.9.0/yamls/ovn.yaml`
+    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v0.9.1/yamls/ovn.yaml`
 4. Install the Kube-OVN Controller and CNI plugins:
 
-    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v0.9.0/yamls/kube-ovn.yaml`
+    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v0.9.1/yamls/kube-ovn.yaml`
     
 That's all! You can now create some pods and test connectivity.
 
@@ -82,7 +82,7 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
 1. Remove Kubernetes resources:
 
     ```bash
-    wget https://raw.githubusercontent.com/alauda/kube-ovn/v0.9.0/dist/images/cleanup.sh
+    wget https://raw.githubusercontent.com/alauda/kube-ovn/v0.9.1/dist/images/cleanup.sh
     bash cleanup.sh
     ```
 
