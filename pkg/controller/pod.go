@@ -615,12 +615,10 @@ func (c *Controller) handleAddIpPoolPod(key string) error {
 
 			raw, _ := json.Marshal(pod.Annotations)
 			patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-			go func() {
-				if _, err = c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, []byte(patchPayload)); err != nil {
-					klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
-					c.addIpPoolPodQueue.AddRateLimited(key)
-				}
-			}()
+			if _, err = c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, []byte(patchPayload)); err != nil {
+				klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
+				c.addIpPoolPodQueue.AddRateLimited(key)
+			}
 		}
 	}
 	// In case update event might lost during leader election
