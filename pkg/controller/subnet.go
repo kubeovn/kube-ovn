@@ -77,7 +77,8 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		!reflect.DeepEqual(oldSubnet.Spec.AllowSubnets, newSubnet.Spec.AllowSubnets) ||
 		!reflect.DeepEqual(oldSubnet.Spec.Namespaces, newSubnet.Spec.Namespaces) ||
 		oldSubnet.Spec.GatewayType != newSubnet.Spec.GatewayType ||
-		oldSubnet.Spec.GatewayNode != newSubnet.Spec.GatewayNode {
+		oldSubnet.Spec.GatewayNode != newSubnet.Spec.GatewayNode ||
+		!reflect.DeepEqual(oldSubnet.Spec.ExcludeIps, newSubnet.Spec.ExcludeIps) {
 		klog.V(3).Infof("enqueue update subnet %s", key)
 		c.updateSubnetQueue.Add(key)
 	}
@@ -460,27 +461,30 @@ func (c *Controller) handleAddSubnet(key string) error {
 		} else {
 			if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(subnet.Name, types.MergePatchType, bytes, "status"); err != nil {
 				klog.Error("patch subnet status failed", err)
+				return err
 			}
 		}
-		return err
-	}
-
-	err = c.ovnClient.ResetLogicalSwitchAcl(subnet.Name, subnet.Spec.Protocol)
-	if err != nil {
-		subnet.Status.SetError("ResetLogicalSwitchAclFailed", err.Error())
+		if err != nil {
+			return err
+		}
 	} else {
-		subnet.Status.Ready("ResetLogicalSwitchAclSuccess", "")
-	}
-	bytes, err1 := subnet.Status.Bytes()
-	if err1 != nil {
-		klog.Error(err1)
-	} else {
-		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(subnet.Name, types.MergePatchType, bytes, "status"); err != nil {
-			klog.Error("patch subnet status failed", err)
+		err = c.ovnClient.ResetLogicalSwitchAcl(subnet.Name, subnet.Spec.Protocol)
+		if err != nil {
+			subnet.Status.SetError("ResetLogicalSwitchAclFailed", err.Error())
+		} else {
+			subnet.Status.Ready("ResetLogicalSwitchAclSuccess", "")
+		}
+		bytes, err1 := subnet.Status.Bytes()
+		if err1 != nil {
+			klog.Error(err1)
+		} else {
+			if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(subnet.Name, types.MergePatchType, bytes, "status"); err != nil {
+				klog.Error("patch subnet status failed", err)
+			}
 		}
 	}
 
-	return err
+	return c.ovnClient.UpdateLogicalSwitchExcludeIPs(subnet.Name, subnet.Spec.ExcludeIps)
 }
 
 func (c *Controller) reconcileCentralizedGateway(subnet *kubeovnv1.Subnet) error {
@@ -666,25 +670,31 @@ func (c *Controller) handleUpdateSubnet(key string) error {
 		} else {
 			if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(subnet.Name, types.MergePatchType, bytes, "status"); err != nil {
 				klog.Error("patch subnet status failed", err)
+				return err
 			}
 		}
-		return err
-	}
-	err = c.ovnClient.ResetLogicalSwitchAcl(subnet.Name, subnet.Spec.Protocol)
-	if err != nil {
-		subnet.Status.SetError("ResetLogicalSwitchAclFailed", err.Error())
+		if err != nil {
+			return err
+		}
 	} else {
-		subnet.Status.Ready("ResetLogicalSwitchAclSuccess", "")
-	}
-	bytes, err1 := subnet.Status.Bytes()
-	if err1 != nil {
-		klog.Error(err1)
-	} else {
-		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(subnet.Name, types.MergePatchType, bytes, "status"); err != nil {
-			klog.Error("patch subnet status failed", err)
+		err = c.ovnClient.ResetLogicalSwitchAcl(subnet.Name, subnet.Spec.Protocol)
+		klog.Info("finish reset acl")
+		if err != nil {
+			subnet.Status.SetError("ResetLogicalSwitchAclFailed", err.Error())
+		} else {
+			subnet.Status.Ready("ResetLogicalSwitchAclSuccess", "")
+		}
+		bytes, err1 := subnet.Status.Bytes()
+		if err1 != nil {
+			klog.Error(err1)
+		} else {
+			if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(subnet.Name, types.MergePatchType, bytes, "status"); err != nil {
+				klog.Error("patch subnet status failed", err)
+			}
 		}
 	}
-	return err
+
+	return c.ovnClient.UpdateLogicalSwitchExcludeIPs(subnet.Name, subnet.Spec.ExcludeIps)
 }
 
 func (c *Controller) handleUpdateSubnetStatus(key string) error {

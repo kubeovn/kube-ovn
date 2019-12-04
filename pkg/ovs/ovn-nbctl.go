@@ -631,6 +631,11 @@ func (c Client) GetLogicalSwitchExcludeIPS(logicalSwitch string) ([]string, erro
 	return strings.Fields(output), nil
 }
 
+func (c Client) UpdateLogicalSwitchExcludeIPs(ls string, excludeIPs []string) error {
+	_, err := c.ovnNbCommand("set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIPs, " ")))
+	return err
+}
+
 // SetLogicalSwitchExcludeIPS set a logical switch exclude ips
 // ovn-nbctl set logical_switch ovn-default other_config:exclude_ips="10.17.0.2 10.17.0.1"
 func (c Client) SetLogicalSwitchExcludeIPS(logicalSwitch string, excludeIPS []string) error {
