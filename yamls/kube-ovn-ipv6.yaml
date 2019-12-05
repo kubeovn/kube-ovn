@@ -39,7 +39,7 @@ spec:
       containers:
         - name: kube-ovn-controller
           image: "index.alauda.cn/alaudak8s/kube-ovn-controller:v1.0.0-pre"
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           command:
             - /kube-ovn/start-controller.sh
           args:
@@ -110,7 +110,7 @@ spec:
       initContainers:
         - name: install-cni
           image: "index.alauda.cn/alaudak8s/kube-ovn-cni:vv1.0.0-pre"
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           command: ["/kube-ovn/install-cni.sh"]
           securityContext:
             runAsUser: 0
@@ -127,7 +127,7 @@ spec:
           args:
             - --enable-mirror=false
             - --mtu=1420
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           securityContext:
             capabilities:
               add: ["NET_ADMIN", "SYS_ADMIN"]
@@ -206,7 +206,7 @@ spec:
       containers:
         - name: pinger
           image: "index.alauda.cn/alaudak8s/kube-ovn-pinger:v1.0.0-pre"
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           securityContext:
             runAsUser: 0
             privileged: false

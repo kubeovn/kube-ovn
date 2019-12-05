@@ -40,6 +40,9 @@ trap quit EXIT
 
 if [[ -z "$NODE_IPS" ]]; then
     /usr/share/openvswitch/scripts/ovn-ctl restart_northd
+    ovn-nbctl set-connection ptcp:"${DB_NB_PORT}":["${DB_NB_ADDR}"]
+    ovn-sbctl set-connection ptcp:"${DB_SB_PORT}":["${DB_SB_ADDR}"]
+    ovn-sbctl set Connection . inactivity_probe=0
 else
     /usr/share/openvswitch/scripts/ovn-ctl stop_northd
 
