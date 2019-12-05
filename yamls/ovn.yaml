@@ -161,7 +161,7 @@ spec:
       containers:
         - name: ovn-central
           image: "index.alauda.cn/alaudak8s/kube-ovn-db:v1.0.0-pre"
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           securityContext:
             capabilities:
               add: ["SYS_NICE"]
@@ -256,7 +256,7 @@ spec:
       containers:
         - name: openvswitch
           image: "index.alauda.cn/alaudak8s/kube-ovn-node:v1.0.0-pre"
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           securityContext:
             runAsUser: 0
             privileged: true

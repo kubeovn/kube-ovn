@@ -39,7 +39,7 @@ spec:
       containers:
         - name: kube-ovn-webhook
           image: "index.alauda.cn/alaudak8s/kube-ovn-webhook:v0.9.0"
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           command:
             - /kube-ovn/start-webhook.sh
           args:
