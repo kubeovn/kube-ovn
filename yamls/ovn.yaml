@@ -99,7 +99,7 @@ spec:
   type: ClusterIP
   selector:
     app: ovn-central
-    ovn-db-leader: "true"
+    ovn-nb-leader: "true"
   sessionAffinity: None
 
 ---
@@ -117,7 +117,7 @@ spec:
   type: ClusterIP
   selector:
     app: ovn-central
-    ovn-db-leader: "true"
+    ovn-sb-leader: "true"
   sessionAffinity: None
 
 ---
@@ -162,6 +162,9 @@ spec:
         - name: ovn-central
           image: "index.alauda.cn/alaudak8s/kube-ovn-db:v1.0.0-pre"
           imagePullPolicy: Always
+          securityContext:
+            capabilities:
+              add: ["SYS_NICE"]
           env:
             - name: POD_IP
               valueFrom:
@@ -179,9 +182,6 @@ spec:
             requests:
               cpu: 500m
               memory: 300Mi
-            limits:
-              cpu: 1
-              memory: 800Mi
           volumeMounts:
             - mountPath: /run/openvswitch
               name: host-run-ovs
