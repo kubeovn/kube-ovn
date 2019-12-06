@@ -419,14 +419,22 @@ func (c *Controller) gcNode() error {
 
 func (c *Controller) gcLogicalSwitchPort() error {
 	klog.Infof("start to gc logical switch ports")
-	ips, err := c.ipsLister.List(labels.Everything())
+	pods, err := c.podsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list ip, %v", err)
 		return err
 	}
-	ipNames := make([]string, 0, len(ips))
-	for _, ip := range ips {
-		ipNames = append(ipNames, ip.Name)
+	nodes, err := c.nodesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list node, %v", err)
+		return err
+	}
+	ipNames := make([]string, 0, len(pods) + len(nodes))
+	for _, pod := range pods {
+		ipNames = append(ipNames, fmt.Sprintf("%s.%s", pod.Name, pod.Namespace))
+	}
+	for _, node := range nodes {
+		ipNames = append(ipNames, fmt.Sprintf("node-%s", node.Name))
 	}
 	lsps, err := c.ovnClient.ListLogicalSwitchPort()
 	if err != nil {
