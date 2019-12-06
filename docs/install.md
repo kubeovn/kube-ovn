@@ -93,5 +93,6 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
     rm -rf /etc/origin/openvswitch/
     rm -rf /etc/openvswitch
     rm -rf /etc/cni/net.d/00-kube-ovn.conflist
+    rm -rf /var/log/openvswitch
     ```
 3. Reboot the Node to remove ipset/iptables rules and nics.
