@@ -71,6 +71,17 @@ kind-init:
 	kubectl apply -f yamls/ovn.yaml
 	kubectl apply -f yamls/kube-ovn.yaml
 
+kind-init-ha:
+	kind delete cluster --name=kube-ovn
+	kind create cluster --config yamls/kind.yaml --name kube-ovn
+	@for role in ${ROLES} ; do \
+		kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn-$$role:${RELEASE_TAG}; \
+	done
+	kubectl label node --all kube-ovn/role=master
+	kubectl apply -f yamls/crd.yaml
+	kubectl apply -f yamls/ovn-ha.yaml
+	kubectl apply -f yamls/kube-ovn.yaml
+
 kind-reload:
 	@for role in ${ROLES} ; do \
 		kind load docker-image ${REGISTRY}/kube-ovn-$$role:${RELEASE_TAG}; \
