@@ -18,7 +18,7 @@ function wait_ovn_sb {
         echo "env OVN_SB_SERVICE_PORT not exists"
         exit 1
     fi
-    while ! nc -z ${OVN_SB_SERVICE_HOST} ${OVN_SB_SERVICE_PORT} </dev/null;
+    while ! nc -z "${OVN_SB_SERVICE_HOST}" "${OVN_SB_SERVICE_PORT}" </dev/null;
     do
         echo "sleep 10 seconds, waiting for ovn-sb ${OVN_SB_SERVICE_HOST}:${OVN_SB_SERVICE_PORT} ready "
         sleep 10;
@@ -54,7 +54,7 @@ fi
 /usr/share/openvswitch/scripts/ovn-ctl restart_controller_vtep
 
 # Set remote ovn-sb for ovn-controller to connect to
-ovs-vsctl set open . external-ids:ovn-remote=tcp:${OVN_SB_SERVICE_HOST}:${OVN_SB_SERVICE_PORT}
+ovs-vsctl set open . external-ids:ovn-remote=tcp:"${OVN_SB_SERVICE_HOST}":"${OVN_SB_SERVICE_PORT}"
 ovs-vsctl set open . external-ids:ovn-remote-probe-interval=10000
 ovs-vsctl set open . external-ids:ovn-encap-type=geneve
 
