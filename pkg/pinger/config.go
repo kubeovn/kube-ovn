@@ -24,6 +24,7 @@ type Configuration struct {
 	HostIP             string
 	PodName            string
 	PodIP              string
+	ExternalAddress    string
 }
 
 func ParseFlags() (*Configuration, error) {
@@ -35,6 +36,7 @@ func ParseFlags() (*Configuration, error) {
 		argInterval           = pflag.Int("interval", 5, "interval seconds between consecutive pings")
 		argMode               = pflag.String("mode", "server", "server or job Mode")
 		argDns                = pflag.String("dns", "kubernetes.default", "check dns from pod")
+		argExternalAddress    = pflag.String("external-address", "", "check ping connection to an external address, default empty that will disable external check")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -66,6 +68,7 @@ func ParseFlags() (*Configuration, error) {
 		HostIP:             os.Getenv("HOST_IP"),
 		NodeName:           os.Getenv("NODE_NAME"),
 		PodName:            os.Getenv("POD_NAME"),
+		ExternalAddress:    *argExternalAddress,
 	}
 	if err := config.initKubeClient(); err != nil {
 		return nil, err

@@ -135,6 +135,28 @@ var (
 			"target_node_name",
 			"target_node_ip",
 		})
+	externalPingLatencyHistogram = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "pinger_external_ping_latency_ms",
+			Help:    "the latency ms histogram for pod ping external address",
+			Buckets: []float64{.25, .5, 1, 2, 5, 10, 30, 50, 100},
+		},
+		[]string{
+			"src_node_name",
+			"src_node_ip",
+			"src_pod_ip",
+			"target_address",
+		})
+	externalPingLostCounter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "pinger_node_external_lost_total",
+			Help: "the lost count for pod ping external address",
+		}, []string{
+			"src_node_name",
+			"src_node_ip",
+			"src_pod_ip",
+			"target_address",
+		})
 )
 
 func init() {
@@ -152,6 +174,8 @@ func init() {
 	prometheus.MustRegister(podPingLostCounter)
 	prometheus.MustRegister(nodePingLatencyHistogram)
 	prometheus.MustRegister(nodePingLostCounter)
+	prometheus.MustRegister(externalPingLatencyHistogram)
+	prometheus.MustRegister(externalPingLostCounter)
 }
 
 func SetOvsUpMetrics(nodeName string) {
@@ -229,5 +253,20 @@ func SetNodePingMetrics(srcNodeName, srcNodeIP, srcPodIP, targetNodeName, target
 		srcPodIP,
 		targetNodeName,
 		targetNodeIP,
+	).Add(float64(lost))
+}
+
+func SetExternalPingMetrics(srcNodeName, srcNodeIP, srcPodIP, targetAddress string, latency float64, lost int) {
+	externalPingLatencyHistogram.WithLabelValues(
+		srcNodeName,
+		srcNodeIP,
+		srcPodIP,
+		targetAddress,
+	).Observe(latency)
+	externalPingLostCounter.WithLabelValues(
+		srcNodeName,
+		srcNodeIP,
+		srcPodIP,
+		targetAddress,
 	).Add(float64(lost))
 }

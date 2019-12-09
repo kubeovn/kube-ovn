@@ -29,6 +29,7 @@ func ping(config *Configuration) {
 	pingNodes(config)
 	pingPods(config)
 	nslookup(config)
+	pingExternal(config)
 }
 
 func pingNodes(config *Configuration) {
@@ -111,6 +112,34 @@ func pingPods(config *Configuration) {
 			}(pod.Status.PodIP, pod.Name, pod.Status.HostIP, pod.Spec.NodeName)
 		}
 	}
+}
+
+func pingExternal(config *Configuration) {
+	if config.ExternalAddress == "" {
+		return
+	}
+	klog.Infof("start to check ping external to %s", config.ExternalAddress)
+	pinger, err := goping.NewPinger(config.ExternalAddress)
+	if err != nil {
+		klog.Errorf("failed to init pinger, %v", err)
+		return
+	}
+	pinger.SetPrivileged(true)
+	pinger.Timeout = 5 * time.Second
+	pinger.Debug = true
+	pinger.Count = 3
+	pinger.Interval = 1 * time.Millisecond
+	pinger.Run()
+	stats := pinger.Statistics()
+	klog.Infof("ping external address: %s, count: %d, loss rate %.2f, average rtt %.2fms",
+		config.ExternalAddress, pinger.Count, math.Abs(stats.PacketLoss)*100, float64(stats.AvgRtt)/float64(time.Millisecond))
+	SetExternalPingMetrics(
+		config.NodeName,
+		config.HostIP,
+		config.PodIP,
+		config.ExternalAddress,
+		float64(stats.AvgRtt)/float64(time.Millisecond),
+		int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))))
 }
 
 func nslookup(config *Configuration) {
