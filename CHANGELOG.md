@@ -1,10 +1,37 @@
 # CHANGELOG
 
+## v0.10.0 -- 2019/12/12
+
+### Performance
+* Update ovn to 2.12.0 and pick performance and raft bugfix from upstream
+* CniServer filter pod in informer list-watch and disable resync
+* Skip evicted pod when enqueueAddPod and enqueueUpdatePod
+* When controller restart skip pod already create lsp
+* As lr-route-add with --may-exist will replace exist route, no need for another delete
+
+### Monitoring
+* Pinger support to check external address
+
+### Bugfix
+* When all ip in subnet is used create lsp will panic with index out of range err
+* Mount /var/run/netns into kube-ovn-cniserver for kind
+* Use ep.subset.port.name to infer target port number
+* Typo in start-ovs.sh
+* When delete node recycle related ip/route resource
+* Nbctl need timeout to avoid hang infinitely
+* Block subnet deletion when there is any ip in use
+* IP conflict when use ippool
+* GC logical_switch_port form listing pods and nodes
+
+### Mics
+* Support kind installation
+* Use label to select leader to avoid pod status misleading
+
 ## v0.9.1 -- 2019/12/02
 
 This release fix bugs found in v0.9.0
 
-## Bugfix
+### Bugfix
 * When all ip in subnet is used create lsp will panic with index out of range err
 * Mount /var/run/netns into kube-ovn-cniserver for kind
 * Use ep.subset.port.name to infer target port number
@@ -17,17 +44,17 @@ This release fix bugs found in v0.9.0
 
 This release is mainly about controller performance, stability and bugfix
 
-## Monitoring
+### Monitoring
 * Improve kube-ovn-pinger metrics to check apiserver and dns
 * Add kube-ovn-controller metrics to show the controller status
 * Add grafana templates to visualize metrics
 
-## Performance
+### Performance
 * Adjust client-go param to increase parallelism
 * Adjust ovn-db and ovn-controller resource
 * Merge some ovn-nb requests and remove most wait=ovn-nb params
 
-## Stability and Bugfix
+### Stability and Bugfix
 * LB init conflict when use multiple kube-ovn-controller
 * Static Route might lost during leader election
 * If pod have not a status.PodIP skip add/del static route
@@ -40,7 +67,7 @@ This release is mainly about controller performance, stability and bugfix
 * Daemonset updateStrategy changes to OnDelete for grace update
 * Use new upstream ovn with some kube-ovn related modification
 
-## Misc
+### Misc
 * Remove most privilege container
 * When use nodelocaldns, do not nat the local dns server ip
 
