@@ -479,7 +479,7 @@ func (c *Controller) podMatchNetworkPolicies(pod *corev1.Pod) []string {
 
 func isPodMatchNetworkPolicy(pod *corev1.Pod, podNs *corev1.Namespace, policy *netv1.NetworkPolicy, policyNs string) bool {
 	sel, _ := metav1.LabelSelectorAsSelector(&policy.Spec.PodSelector)
-	if sel.Matches(labels.Set(pod.Labels)) {
+	if podNs.Name == policyNs && sel.Matches(labels.Set(pod.Labels)) {
 		return true
 	}
 	for _, npr := range policy.Spec.Ingress {
