@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"github.com/alauda/kube-ovn/pkg/util"
 	"reflect"
 	"strings"
 
@@ -389,7 +390,7 @@ func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.Label
 
 	ports := make([]string, 0, len(pods))
 	for _, pod := range pods {
-		if !pod.Spec.HostNetwork {
+		if !pod.Spec.HostNetwork && pod.Annotations[util.AllocatedAnnotation] == "true" {
 			ports = append(ports, fmt.Sprintf("%s.%s", pod.Name, pod.Namespace))
 		}
 	}
