@@ -310,7 +310,18 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	// Launch workers to process resources
 	go wait.Until(c.runAddSubnetWorker, time.Second, stopCh)
 	// wait default/join subnet ready
-	time.Sleep(3 * time.Second)
+	for {
+		klog.Infof("wait for %s and %s ready", c.config.DefaultLogicalSwitch, c.config.NodeSwitch)
+		time.Sleep(3 * time.Second)
+		lss, err := c.ovnClient.ListLogicalSwitch()
+		if err != nil {
+			klog.Fatal("failed to list logical switch")
+		}
+
+		if util.IsStringIn(c.config.DefaultLogicalSwitch, lss) && util.IsStringIn(c.config.NodeSwitch, lss) {
+			break
+		}
+	}
 
 	go wait.Until(c.runAddIpPoolPodWorker, time.Second, stopCh)
 	go wait.Until(c.runAddNamespaceWorker, time.Second, stopCh)
