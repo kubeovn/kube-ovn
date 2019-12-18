@@ -1,0 +1,84 @@
+FROM centos:7
+
+ENV PYTHONDONTWRITEBYTECODE yes
+
+RUN yum install -y wget \
+        numactl-devel \
+        kernel-devel \
+        libpcap-devel \
+        libmnl-devel \
+        libibumad \
+        libibverbs-devel \
+        libibverbs \
+        libmlx5 \
+        libibverbs-utils \
+        dpdk-devel
+
+RUN yum groupinstall -y 'Development Tools'
+
+RUN yum install -y  \
+        PyYAML bind-utils \
+        openssl \
+        numactl-libs \
+        firewalld-filesystem \
+        libpcap \
+        hostname \
+        iproute strace socat nc \
+        unbound unbound-devel && \
+        yum clean all
+
+ENV DPDK_VERSION=18.11.2
+ENV DPDK_DIR=/usr/src/dpdk-stable-$DPDK_VERSION
+ENV DPDK_TARGET=x86_64-native-linuxapp-gcc
+ENV DPDK_BUILD=$DPDK_DIR/$DPDK_TARGET
+ENV OVS_VERSION=2.11.4
+ENV OVS_SUBVERSION=2
+
+# Note - Change KERNEL_MOD to your host version under /lib/modules/
+#        For this reason I'm not sure built image will be portable
+#        User must build locally against their local version
+ENV KERNEL_MOD 3.10.0-1062.9.1.el7.x86_64
+
+RUN mkdir /lib/modules/$KERNEL_MOD/
+RUN ln -sfn /usr/src/kernels/$KERNEL_MOD /lib/modules/$KERNEL_MOD/build
+
+RUN cd /usr/src/ && \
+    wget http://fast.dpdk.org/rel/dpdk-$DPDK_VERSION.tar.xz && \
+    tar xf dpdk-$DPDK_VERSION.tar.xz && \
+    rm -f dpdk-$DPDK_VERSION.tar.xz
+
+
+RUN cd $DPDK_DIR && \
+    make install T=$DPDK_TARGET DESTDIR=install
+
+# Note - Could not find an OVS 2.11.4 tar gz on OVS releases, only 2.11.1
+#        The RPMs on github.com/alauda/ovs/releases are OVS 2.11.4, there is no 2.11.1
+#        This is why there is mixed and hardcoded OVS versions at the moment 
+RUN cd ~ && \
+    wget https://www.openvswitch.org/releases/openvswitch-2.11.1.tar.gz && \
+    tar xf openvswitch-2.11.1.tar.gz && \
+    rm -f openvswitch-2.11.1.tar.gz && \
+    cd openvswitch-2.11.1 && \
+    sed -e 's/@VERSION@/0.0.1/' rhel/openvswitch-fedora.spec.in > /tmp/ovs.spec && \
+    yum-builddep -y /tmp/ovs.spec && \
+    ./boot.sh && \
+    ./configure --prefix=/usr/ --with-dpdk=$DPDK_BUILD && \
+    make rpm-fedora RPMBUILD_OPT="--with dpdk --without check" && \
+    make install
+
+RUN rpm -ivh ~/openvswitch-2.11.1/rpm/rpmbuild/RPMS/x86_64/openvswitch-2.11.1-1.el7.x86_64.rpm && \
+    rpm -ivh ~/openvswitch-2.11.1/rpm/rpmbuild/RPMS/x86_64/openvswitch-devel-2.11.1-1.el7.x86_64.rpm && \
+    rpm -ivh https://github.com/alauda/ovs/releases/download/${OVS_VERSION}-${OVS_SUBVERSION}/ovn-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
+    rpm -ivh https://github.com/alauda/ovs/releases/download/${OVS_VERSION}-${OVS_SUBVERSION}/ovn-common-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
+    rpm -ivh https://github.com/alauda/ovs/releases/download/${OVS_VERSION}-${OVS_SUBVERSION}/ovn-vtep-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
+    rpm -ivh https://github.com/alauda/ovs/releases/download/${OVS_VERSION}-${OVS_SUBVERSION}/ovn-central-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
+    rpm -ivh https://github.com/alauda/ovs/releases/download/${OVS_VERSION}-${OVS_SUBVERSION}/ovn-host-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm
+
+RUN mkdir -p /var/run/openvswitch && \
+    mkdir -p /etc/cni/net.d && \
+    mkdir -p /opt/cni/bin
+
+COPY ovs-dpdk-healthcheck.sh /root/ovs-dpdk-healthcheck.sh
+COPY start-ovs-dpdk.sh /root/start-ovs-dpdk.sh
+
+CMD ["/bin/bash", "/root/start-ovs-dpdk.sh"]
