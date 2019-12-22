@@ -1,12 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SOCK=/run/openvswitch/kube-ovn-daemon.sock
+CNI_SOCK=/run/openvswitch/kube-ovn-daemon.sock
+OVS_SOCK=/run/openvswitch/db.sock
 
-if [[ -e "$SOCK" ]]
+if [[ -e "$CNI_SOCK" ]]
 then
     echo "previous socket exists, remove and continue"
-	rm ${SOCK}
+	rm ${CNI_SOCK}
 fi
 
-./kube-ovn-daemon --ovs-socket=/run/openvswitch/db.sock --bind-socket=${SOCK} $@
+while true
+do
+  sleep 5
+  if [[ -e "$OVS_SOCK" ]]
+  then
+    break
+  else
+    echo "waiting for ovs ready"
+  fi
+done
+
+./kube-ovn-daemon --ovs-socket=${OVS_SOCK} --bind-socket=${CNI_SOCK} $@
