@@ -303,8 +303,8 @@ func (c Client) CreateLoadBalancer(lb, protocol string) error {
 }
 
 // CreateLoadBalancerRule create loadbalancer rul in ovn
-func (c Client) CreateLoadBalancerRule(lb, vip, ips string) error {
-	_, err := c.ovnNbCommand(MayExist, "lb-add", lb, vip, ips)
+func (c Client) CreateLoadBalancerRule(lb, vip, ips, protocol string) error {
+	_, err := c.ovnNbCommand(MayExist, "lb-add", lb, vip, ips, strings.ToLower(protocol))
 	return err
 }
 
@@ -315,7 +315,12 @@ func (c Client) addLoadBalancerToLogicalSwitch(lb, ls string) error {
 
 // DeleteLoadBalancerVip delete a vip rule from loadbalancer
 func (c Client) DeleteLoadBalancerVip(vip, lb string) error {
-	_, err := c.ovnNbCommand(IfExists, "lb-del", lb, vip)
+	existVips, err := c.GetLoadBalancerVips(lb)
+	// vip is empty or delete last rule will destroy the loadbalancer
+	if vip == "" || len(existVips) == 1 || existVips[vip] == "" {
+		return nil
+	}
+	_, err = c.ovnNbCommand(IfExists, "lb-del", lb, vip)
 	return err
 }
 
@@ -496,7 +501,7 @@ func (c Client) ListPortGroup() ([]portGroup, error) {
 			continue
 		}
 		name := strings.TrimSpace(parts[0])
-		np := strings.Split(strings.TrimSpace(parts[1]), "/")
+		np := strings.Split(strings.TrimPrefix(strings.TrimSpace(parts[1]), "np="), "/")
 		if len(np) != 2 {
 			continue
 		}

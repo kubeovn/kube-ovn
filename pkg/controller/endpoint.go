@@ -121,7 +121,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		if port.Protocol == v1.ProtocolTCP {
 			// for performance reason delete lb with no backends
 			if len(backends) > 0 {
-				err = c.ovnClient.CreateLoadBalancerRule(c.config.ClusterTcpLoadBalancer, vip, getServicePortBackends(ep, port, clusterIP))
+				err = c.ovnClient.CreateLoadBalancerRule(c.config.ClusterTcpLoadBalancer, vip, getServicePortBackends(ep, port, clusterIP), string(port.Protocol))
 				if err != nil {
 					klog.Errorf("failed to update vip %s to tcp lb, %v", vip, err)
 					return err
@@ -135,7 +135,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 			}
 		} else {
 			if len(backends) > 0 {
-				err = c.ovnClient.CreateLoadBalancerRule(c.config.ClusterUdpLoadBalancer, vip, getServicePortBackends(ep, port, clusterIP))
+				err = c.ovnClient.CreateLoadBalancerRule(c.config.ClusterUdpLoadBalancer, vip, getServicePortBackends(ep, port, clusterIP), string(port.Protocol))
 				if err != nil {
 					klog.Errorf("failed to update vip %s to udp lb, %v", vip, err)
 					return err
