@@ -325,6 +325,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 
 	go wait.Until(c.runAddIpPoolPodWorker, time.Second, stopCh)
 	go wait.Until(c.runAddNamespaceWorker, time.Second, stopCh)
+	go wait.Until(c.runDeleteTcpServiceWorker, time.Second, stopCh)
+	go wait.Until(c.runDeleteUdpServiceWorker, time.Second, stopCh)
 	for i := 0; i < c.config.WorkerNum; i++ {
 		go wait.Until(c.runAddPodWorker, time.Second, stopCh)
 		go wait.Until(c.runDeletePodWorker, time.Second, stopCh)
@@ -340,9 +342,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 		go wait.Until(c.runDeleteNodeWorker, time.Second, stopCh)
 
 		go wait.Until(c.runUpdateServiceWorker, time.Second, stopCh)
-		go wait.Until(c.runDeleteTcpServiceWorker, time.Second, stopCh)
-		go wait.Until(c.runDeleteUdpServiceWorker, time.Second, stopCh)
-
 		go wait.Until(c.runUpdateEndpointWorker, time.Second, stopCh)
 
 		go wait.Until(c.runUpdateNpWorker, time.Second, stopCh)
@@ -497,7 +496,7 @@ func (c *Controller) gcLoadBalancer() error {
 		klog.Errorf("failed to get udp lb vips %v", err)
 		return err
 	}
-	for _, vip := range vips {
+	for vip := range vips {
 		if !util.IsStringIn(vip, tcpVips) {
 			err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterTcpLoadBalancer)
 			if err != nil {
@@ -517,7 +516,7 @@ func (c *Controller) gcLoadBalancer() error {
 		klog.Errorf("failed to get udp lb vips %v", err)
 		return err
 	}
-	for _, vip := range vips {
+	for vip := range vips {
 		if !util.IsStringIn(vip, udpVips) {
 			err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterUdpLoadBalancer)
 			if err != nil {
