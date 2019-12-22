@@ -13,23 +13,26 @@ function gen_conn_str {
 }
 
 function get_leader_ip {
-  while true; do
-    leader=$(kubectl get ep -n "${POD_NAMESPACE}" | grep ovn-"$1" | awk '{print $2}' | cut -d ":" -f1)
-    if [ "$leader" == "<none>" ]; then
+  while true;
+  do
+    leader=$(kubectl get ep -n "${POD_NAMESPACE}" ovn-"$1" -o jsonpath={.subsets\[0\].addresses\[0\].ip})
+    if [ "$leader" == "" ]; then
+      # no available leader
       break
     else
       if [[ "$leader" != "${POD_IP}" ]]; then
         echo "$leader"
         return
       else
-        echo "leader cannot be self, waiting new leader"
+        # "leader cannot be self, waiting new leader"
         sleep 5
       fi
     fi
   done
-    # If no available leader the first ip will be the leader
-    t=$(echo -n "${NODE_IPS}" | sed 's/[[:space:]]//g' | sed 's/,/ /g')
-    echo -n "${t}" | cut -f 1 -d " "
+
+  # If no available leader the first ip will be the leader
+  t=$(echo -n "${NODE_IPS}" | sed 's/[[:space:]]//g' | sed 's/,/ /g')
+  echo -n "${t}" | cut -f 1 -d " "
 }
 
 function quit {
