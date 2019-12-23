@@ -1,9 +1,10 @@
 # CHANGELOG
 
-## v0.10.0 -- 2019/12/12
+## v0.10.0 -- 2019/12/23
 
 ### Performance
 * Update ovn to 2.12.0 and pick performance and raft bugfix from upstream
+* Modify upstream ovn to reduce memory footprint
 * CniServer filter pod in informer list-watch and disable resync
 * Skip evicted pod when enqueueAddPod and enqueueUpdatePod
 * When controller restart skip pod already create lsp
@@ -22,10 +23,13 @@
 * Block subnet deletion when there is any ip in use
 * IP conflict when use ippool
 * GC logical_switch_port form listing pods and nodes
+* Do not add unallocated pod to port-group
+* PodSelector in networkpolicy should only consider pods in the same ns
 
 ### Mics
 * Support kind installation
 * Use label to select leader to avoid pod status misleading
+* Add wait in cniserver and controller to reduce errors and restarts
 
 ## v0.9.1 -- 2019/12/02
 
