@@ -1,4 +1,5 @@
 .idea/*
+.DS_Store
 vagrant/.vagrant/*
 vagrant/kubernetes-setup/*.retry
 vagrant/kubernetes-setup/join-command

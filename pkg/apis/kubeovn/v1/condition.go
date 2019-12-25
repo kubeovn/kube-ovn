@@ -79,6 +79,12 @@ func (m *SubnetStatus) IsReady() bool { return m.IsConditionTrue(Ready) }
 // IsNotReady returns true if ready condition is set
 func (m *SubnetStatus) IsNotReady() bool { return !m.IsConditionTrue(Ready) }
 
+// IsValidated returns true if ready condition is set
+func (m *SubnetStatus) IsValidated() bool { return m.IsConditionTrue(Validated) }
+
+// IsNotValidated returns true if ready condition is set
+func (m *SubnetStatus) IsNotValidated() bool { return !m.IsConditionTrue(Validated) }
+
 // ConditionReason - return condition reason
 func (m *SubnetStatus) ConditionReason(ctype ConditionType) string {
 	if c := m.GetCondition(ctype); c != nil {

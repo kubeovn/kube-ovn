@@ -90,3 +90,6 @@ kind-reload:
 
 kind-clean:
 	kind delete cluster --name=kube-ovn
+
+e2e:
+	ginkgo -p --slowSpecThreshold=30 --flakeAttempts=3 test/e2e

@@ -2,14 +2,13 @@ package controller
 
 import (
 	"fmt"
-	"net"
-	"reflect"
-	"strings"
-
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/juju/errors"
+	"net"
+	"reflect"
+	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -323,7 +322,7 @@ func (c *Controller) handleAddSubnet(key string) error {
 
 	if subnet.DeletionTimestamp.IsZero() && !util.ContainsString(subnet.Finalizers, util.ControllerName) {
 		subnet.Finalizers = append(subnet.Finalizers, util.ControllerName)
-		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Update(subnet); err != nil {
+		if subnet, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(subnet); err != nil {
 			klog.Errorf("failed to add finalizer to subnet %s, %v", key, err)
 			return err
 		}
