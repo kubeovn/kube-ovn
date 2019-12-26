@@ -37,7 +37,7 @@ var _ = Describe("[IP Allocation]", func() {
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
-						corev1.Container{
+						{
 							Name:  name,
 							Image: "nginx:alpine",
 						},
