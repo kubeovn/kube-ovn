@@ -1,6 +1,7 @@
 package pinger
 
 import (
+	"context"
 	goping "github.com/sparrc/go-ping"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -145,7 +146,10 @@ func pingExternal(config *Configuration) {
 func nslookup(config *Configuration) {
 	klog.Infof("start to check dns connectivity")
 	t1 := time.Now()
-	addrs, err := net.LookupHost(config.DNS)
+	ctx, cancel := context.WithTimeout(context.TODO(), 10 * time.Second)
+	defer cancel()
+	var r net.Resolver
+	addrs, err := r.LookupHost(ctx, config.DNS)
 	elpased := time.Since(t1)
 	if err != nil {
 		klog.Errorf("failed to resolve dns %s, %v", config.DNS, err)
