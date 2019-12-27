@@ -86,6 +86,7 @@ func (f *Framework) WaitPodReady(pod, namespace string) error {
 		case Initing, Pending, PodInitializing, ContainerCreating, Terminating:
 			continue
 		default:
+			fmt.Printf("%v", p.String())
 			return fmt.Errorf("pod status failed")
 		}
 	}
