@@ -39,7 +39,7 @@ var _ = Describe("[IP Allocation]", func() {
 					Containers: []corev1.Container{
 						{
 							Name:  name,
-							Image: "nginx:alpine",
+							Image: "index.alauda.cn/library/nginx:alpine",
 						},
 					},
 					AutomountServiceAccountToken: &autoMount,

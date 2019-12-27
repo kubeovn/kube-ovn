@@ -163,7 +163,12 @@ func (c *Controller) reconcileRouters() error {
 	}
 	cidrs := []string{}
 	for _, subnet := range subnets {
-		cidrs = append(cidrs, subnet.Spec.CIDRBlock)
+		_, ipNet, err := net.ParseCIDR(subnet.Spec.CIDRBlock)
+		if err != nil {
+			klog.Errorf("%s is not a valid cidr block", subnet.Spec.CIDRBlock)
+		} else {
+			cidrs = append(cidrs, ipNet.String())
+		}
 	}
 	node, err := c.config.KubeClient.CoreV1().Nodes().Get(c.config.NodeName, metav1.GetOptions{})
 	if err != nil {

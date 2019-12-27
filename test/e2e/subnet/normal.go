@@ -148,4 +148,30 @@ var _ = Describe("[Subnet]", func() {
 
 		})
 	})
+
+	Describe("cidr with nonstandard style", func() {
+		It("cidr ends with nonzero", func() {
+			name := f.GetName()
+			By("create subnet")
+			s := &kubeovn.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: name,
+					Labels: map[string]string{"e2e": "true"},
+				},
+				Spec: kubeovn.SubnetSpec{
+					CIDRBlock: "11.14.0.1/16",
+				},
+			}
+
+			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(s)
+			Expect(err).NotTo(HaveOccurred())
+
+			err = f.WaitSubnetReady(name)
+			Expect(err).NotTo(HaveOccurred())
+
+			s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(name, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(s.Spec.CIDRBlock).To(Equal("11.14.0.0/16"))
+		})
+	})
 })
