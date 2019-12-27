@@ -263,6 +263,14 @@ func (c *Controller) processNextDeleteSubnetWorkItem() bool {
 func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 	var err error
 	changed := false
+	_, ipNet, err := net.ParseCIDR(subnet.Spec.CIDRBlock)
+	if err != nil {
+		return fmt.Errorf("subnet %s cidr %s is not a valid cidrblock", subnet.Name, subnet.Spec.CIDRBlock )
+	}
+	if ipNet.String() != subnet.Spec.CIDRBlock {
+		subnet.Spec.CIDRBlock = ipNet.String()
+		changed = true
+	}
 	if subnet.Spec.Protocol == "" || subnet.Spec.Protocol != util.CheckProtocol(subnet.Spec.CIDRBlock) {
 		subnet.Spec.Protocol = util.CheckProtocol(subnet.Spec.CIDRBlock)
 		changed = true
