@@ -162,6 +162,19 @@ LOOP:
 			continue
 		}
 		if protocol == kubeovnv1.ProtocolIPv4 {
+			for _, iptRule := range []util.IPTableRule{forwardAcceptRule1, forwardAcceptRule2, podNatV4Rule, subnetNatV4Rule} {
+				exists, err := c.iptablesV4Mgr.Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
+				if err != nil {
+					klog.Errorf("check iptable rule exist failed, %+v", err)
+				}
+				if !exists {
+					klog.Info("iptables rules not exist, recreate iptables rules")
+					err := c.iptablesV4Mgr.Insert(iptRule.Table, iptRule.Chain, 1, iptRule.Rule...)
+					if err != nil {
+						klog.Errorf("insert iptable rule exist failed, %+v", err)
+					}
+				}
+			}
 			c.ipSetsV4Mgr.AddOrReplaceIPSet(ipsets.IPSetMetadata{
 				MaxSize: 1048576,
 				SetID:   SubnetSet,
@@ -179,6 +192,19 @@ LOOP:
 			}, subnetsNeedNat)
 			c.ipSetsV4Mgr.ApplyUpdates()
 		} else {
+			for _, iptRule := range []util.IPTableRule{forwardAcceptRule1, forwardAcceptRule2, podNatV6Rule, subnetNatV6Rule} {
+				exists, err := c.iptablesV6Mgr.Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
+				if err != nil {
+					klog.Errorf("check iptable rule exist failed, %+v", err)
+				}
+				if !exists {
+					klog.Info("iptables rules not exist, recreate iptables rules")
+					err := c.iptablesV6Mgr.Insert(iptRule.Table, iptRule.Chain, 1, iptRule.Rule...)
+					if err != nil {
+						klog.Errorf("insert iptable rule exist failed, %+v", err)
+					}
+				}
+			}
 			c.ipSetsV6Mgr.AddOrReplaceIPSet(ipsets.IPSetMetadata{
 				MaxSize: 1048576,
 				SetID:   SubnetSet,
