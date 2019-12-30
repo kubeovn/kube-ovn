@@ -2,6 +2,8 @@ package pinger
 
 import (
 	"context"
+	"fmt"
+	"github.com/alauda/kube-ovn/pkg/util"
 	goping "github.com/sparrc/go-ping"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -9,7 +11,9 @@ import (
 	"k8s.io/klog"
 	"math"
 	"net"
+	"os"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -17,6 +21,7 @@ func StartPinger(config *Configuration) {
 	for {
 		checkOvs(config)
 		checkOvnController(config)
+		checkPortBindings(config)
 		checkApiServer(config)
 		ping(config)
 		if config.Mode != "server" {
@@ -196,4 +201,87 @@ func checkApiServer(config *Configuration) {
 	klog.Infof("connect to apiserver success in %.2fms", float64(elpased)/float64(time.Millisecond))
 	SetApiserverHealthyMetrics(config.NodeName, float64(elpased)/float64(time.Millisecond))
 	return
+}
+
+func checkPortBindings(config *Configuration) error {
+	klog.Infof("start to check por binding")
+	ovsBindings, err := checkOvsBindings()
+	if err != nil {
+		return err
+	}
+
+	sbBindings, err := checkSBBindings(config)
+	if err != nil {
+		return err
+	}
+	klog.Infof("port in sb is %v", sbBindings)
+	misMatch := []string{}
+	for _, port := range ovsBindings {
+		if !util.IsStringIn(port, sbBindings) {
+			misMatch = append(misMatch, port)
+		}
+	}
+	if len(misMatch) > 0 {
+		klog.Errorf("%d port %v not exist in sb-bindings", len(misMatch), misMatch)
+		inconsistentPortBindingGauge.WithLabelValues(config.NodeName).Set(float64(len(misMatch)))
+	} else {
+		klog.Infof("ovs and ovn-sb binding check passed")
+		inconsistentPortBindingGauge.WithLabelValues(config.NodeName).Set(0)
+	}
+	return nil
+}
+
+func checkOvsBindings() ([]string, error) {
+	output, err := exec.Command("ovs-vsctl", "--no-heading", "--data=bare", "--format=csv", "--columns=external_ids", "find", "interface", "external_ids:iface-id!=\"\"").CombinedOutput()
+	if err != nil {
+		klog.Errorf("failed to get ovs interface %v", err)
+		return nil, err
+	}
+	result := make([]string, 0, len(strings.Split(string(output), "\n")))
+	for _, line := range strings.Split(string(output), "\n") {
+		result = append(result, strings.TrimPrefix(line, "iface-id="))
+	}
+	return result, nil
+}
+
+func checkSBBindings(config *Configuration) ([]string, error) {
+	sbHost := os.Getenv("OVN_SB_SERVICE_HOST")
+	sbPort := os.Getenv("OVN_SB_SERVICE_PORT")
+	output, err := exec.Command(
+		"ovn-sbctl",
+		fmt.Sprintf("--db=tcp:%s:%s", sbHost, sbPort),
+		"--format=csv",
+		"--no-heading",
+		"--data=bare",
+		"--columns=_uuid",
+		"find",
+		"chassis",
+		fmt.Sprintf("hostname=%s", config.NodeName)).CombinedOutput()
+	if err != nil {
+		klog.Errorf("failed to find chassis %v", err)
+		return nil, err
+	}
+	if len(output) == 0 {
+		klog.Errorf("chassis for node %s not exist", config.NodeName)
+		return nil, fmt.Errorf("chassis for node %s not exist", config.NodeName)
+	}
+
+	chassis := strings.TrimSpace(string(output))
+	klog.Infof("chassis id is %s", chassis)
+	output, err = exec.Command(
+		"ovn-sbctl",
+		fmt.Sprintf("--db=tcp:%s:%s", sbHost, sbPort),
+		"--format=csv",
+		"--no-heading",
+		"--data=bare",
+		"--columns=logical_port",
+		"find",
+		"port_binding",
+		fmt.Sprintf("chassis=%s", chassis)).CombinedOutput()
+	if err != nil {
+		klog.Errorf("failed to list port_binding in ovn-sb %v", err)
+		return nil, err
+	}
+
+	return strings.Split(string(output), "\n"), nil
 }
