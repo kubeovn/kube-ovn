@@ -35,6 +35,14 @@ var (
 		[]string{
 			"nodeName",
 		})
+	inconsistentPortBindingGauge = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "pinger_inconsistent_port_binding",
+			Help: "The number of mismatch port bindings between ovs and ovn-sb",
+		},
+		[]string{
+			"nodeName",
+		})
 	apiserverHealthyGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "pinger_apiserver_healthy",
@@ -164,6 +172,7 @@ func init() {
 	prometheus.MustRegister(ovsDownGauge)
 	prometheus.MustRegister(ovnControllerUpGauge)
 	prometheus.MustRegister(ovnControllerDownGauge)
+	prometheus.MustRegister(inconsistentPortBindingGauge)
 	prometheus.MustRegister(apiserverHealthyGauge)
 	prometheus.MustRegister(apiserverUnhealthyGauge)
 	prometheus.MustRegister(apiserverRequestLatencyHistogram)
