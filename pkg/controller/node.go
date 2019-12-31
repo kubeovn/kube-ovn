@@ -293,7 +293,7 @@ func (c *Controller) handleAddNode(key string) error {
 		}
 	}
 
-	return err
+	return nil
 }
 
 func (c *Controller) handleDeleteNode(key string) error {
