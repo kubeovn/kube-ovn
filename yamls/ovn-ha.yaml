@@ -1,21 +1,15 @@
 apiVersion: v1
-kind: Namespace
-metadata:
-  name: kube-ovn
-
----
-apiVersion: v1
 kind: ConfigMap
 metadata:
   name: ovn-config
-  namespace: kube-ovn
+  namespace: kube-system
 
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: ovn
-  namespace: kube-ovn
+  namespace: kube-system
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -82,14 +76,14 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: ovn
-    namespace: kube-ovn
+    namespace: kube-system
 
 ---
 kind: Service
 apiVersion: v1
 metadata:
   name: ovn-nb
-  namespace: kube-ovn
+  namespace: kube-system
 spec:
   ports:
     - name: ovn-nb
@@ -107,7 +101,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: ovn-sb
-  namespace: kube-ovn
+  namespace: kube-system
 spec:
   ports:
     - name: ovn-sb
@@ -125,7 +119,7 @@ kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: ovn-central
-  namespace: kube-ovn
+  namespace: kube-system
   annotations:
     kubernetes.io/description: |
       OVN components: northd, nb and sb.
@@ -156,6 +150,7 @@ spec:
                 matchLabels:
                   app: ovn-central
               topologyKey: kubernetes.io/hostname
+      priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       hostNetwork: true
       containers:
@@ -232,7 +227,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: ovs-ovn
-  namespace: kube-ovn
+  namespace: kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the openvswitch daemon.
@@ -252,6 +247,7 @@ spec:
       tolerations:
       - operator: Exists
         effect: NoSchedule
+      priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       hostNetwork: true
       hostPID: true

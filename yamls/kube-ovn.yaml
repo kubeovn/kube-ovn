@@ -3,7 +3,7 @@ kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-controller
-  namespace: kube-ovn
+  namespace: kube-system
   annotations:
     kubernetes.io/description: |
       kube-ovn controller
@@ -34,6 +34,7 @@ spec:
                 matchLabels:
                   app: kube-ovn-controller
               topologyKey: kubernetes.io/hostname
+      priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       hostNetwork: true
       containers:
@@ -87,7 +88,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-cni
-  namespace: kube-ovn
+  namespace: kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the kube-ovn cni daemon.
@@ -107,6 +108,7 @@ spec:
       tolerations:
       - operator: Exists
         effect: NoSchedule
+      priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       hostNetwork: true
       hostPID: true
@@ -191,7 +193,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-pinger
-  namespace: kube-ovn
+  namespace: kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the openvswitch daemon.
@@ -282,7 +284,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-pinger
-  namespace: kube-ovn
+  namespace: kube-system
   labels:
     app: kube-ovn-pinger
 spec:
@@ -296,7 +298,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-controller
-  namespace: kube-ovn
+  namespace: kube-system
   labels:
     app: kube-ovn-controller
 spec:
