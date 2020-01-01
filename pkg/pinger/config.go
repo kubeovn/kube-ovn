@@ -31,7 +31,7 @@ func ParseFlags() (*Configuration, error) {
 	var (
 		argPort               = pflag.Int("port", 8080, "metrics port")
 		argKubeConfigFile     = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
-		argDaemonSetNameSpace = pflag.String("ds-namespace", "kube-ovn", "kube-ovn-pinger daemonset namespace")
+		argDaemonSetNameSpace = pflag.String("ds-namespace", "kube-system", "kube-ovn-pinger daemonset namespace")
 		argDaemonSetName      = pflag.String("ds-name", "kube-ovn-pinger", "kube-ovn-pinger daemonset name")
 		argInterval           = pflag.Int("interval", 5, "interval seconds between consecutive pings")
 		argMode               = pflag.String("mode", "server", "server or job Mode")

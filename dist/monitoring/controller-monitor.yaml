@@ -10,7 +10,7 @@ spec:
       port: metrics
   namespaceSelector:
     matchNames:
-      - kube-ovn
+      - kube-system
   selector:
     matchLabels:
       app: kube-ovn-controller
