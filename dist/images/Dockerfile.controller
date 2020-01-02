@@ -29,4 +29,5 @@ WORKDIR /kube-ovn
 CMD ["sh", "start-controller.sh"]
 
 COPY start-controller.sh /kube-ovn/start-controller.sh
+COPY kube-ovn-controller-healthcheck.sh /kube-ovn/kube-ovn-controller-healthcheck.sh
 COPY kube-ovn-controller /kube-ovn/kube-ovn-controller

@@ -607,10 +607,21 @@ func (c Client) SetAddressesToAddressSet(addresses []string, as string) error {
 func StartOvnNbctlDaemon(nbHost string, nbPort int) (string, error) {
 	klog.Infof("start ovn-nbctl daemon")
 	output, err := exec.Command(
+		"pkill",
+		"-f",
+		"ovn-nbctl",
+		).CombinedOutput()
+	if err != nil {
+		klog.Errorf("failed to kill old ovn-nbctl daemon: %v", string(output))
+		return "", err
+	}
+
+	output, err = exec.Command(
 		"ovn-nbctl",
 		fmt.Sprintf("--db=tcp:%s:%d", nbHost, nbPort),
 		"--pidfile",
 		"--detach",
+		"--overwrite-pidfile",
 	).CombinedOutput()
 	if err != nil {
 		klog.Errorf("start ovn-nbctl daemon failed, %s", string(output))
@@ -620,6 +631,21 @@ func StartOvnNbctlDaemon(nbHost string, nbPort int) (string, error) {
 	daemonSocket := strings.TrimSpace(string(output))
 	os.Setenv("OVN_NB_DAEMON", daemonSocket)
 	return daemonSocket, nil
+}
+
+// CheckAlive check if kube-ovn-controller can access ovn-nb from nbctl-daemon
+func CheckAlive() error {
+	output, err := exec.Command(
+		"ovn-nbctl",
+		"--timeout=10",
+		"show",
+	).CombinedOutput()
+
+	if err != nil {
+		klog.Errorf("failed to access ovn-nb from daemon, %s", string(output))
+		return err
+	}
+	return nil
 }
 
 // GetLogicalSwitchExcludeIPS get a logical switch exclude ips
