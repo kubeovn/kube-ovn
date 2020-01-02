@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## v0.10.1 --2020/01/02
+
+This release fix bugs found in v0.10.0. 
+
+If you previously used v0.10.0 you can update the image tag of kube-ovn-controller, kube-ovn-cni and kube-ovn-pinger to v0.10.1 and delete daemonset pods manually to update to the new release.
+
+### Bugfix
+* If cidr block not ends with zero, reformat it to avoid add route failure
+* Resync iptables to prevent rules deleted by other software
+* Set ovn-openflow-probe-interval to prevent ovn-controller consumes all cpu
+* Do not return not found error when first add node
+
+### Monitoring
+* pinger checks port bindings between local ovs and onv-sb
+
 ## v0.10.0 -- 2019/12/23
 
 ### Performance
