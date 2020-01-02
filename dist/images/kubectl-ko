@@ -130,11 +130,17 @@ diagnose(){
   type="$1"
   case $type in
     all)
+      echo "### kube-ovn-controller recent log"
+      kubectl logs -n $KUBE_OVN_NS -l app=kube-ovn-controller --tail=15
+      echo ""
       pingers=$(kubectl get pod -n $KUBE_OVN_NS | grep kube-ovn-pinger | awk '{print $1}')
       for pinger in $pingers
       do
         nodeName=$(kubectl get pod "$pinger" -n "$KUBE_OVN_NS" -o jsonpath={.spec.nodeName})
         echo "### start to diagnose node $nodeName"
+        echo "#### ovn-controller log:"
+        kubectl exec -n $KUBE_OVN_NS -it "$pinger" -- tail /var/log/openvswitch/ovn-controller.log
+        echo ""
         kubectl exec -n $KUBE_OVN_NS -it "$pinger" -- /kube-ovn/kube-ovn-pinger --mode=job
         echo "### finish diagnose node $nodeName"
         echo ""
@@ -145,6 +151,9 @@ diagnose(){
       kubectl get no "$nodeName" > /dev/null
       pinger=$(kubectl get pod -n $KUBE_OVN_NS -o wide | grep kube-ovn-pinger | grep " $nodeName " | awk '{print $1}')
       echo "### start to diagnose node nodeName"
+      echo "#### ovn-controller log:"
+      kubectl exec -n $KUBE_OVN_NS -it "$pinger" -- tail /var/log/openvswitch/ovn-controller.log
+      echo ""
       kubectl exec -n $KUBE_OVN_NS -it "$pinger" -- /kube-ovn/kube-ovn-pinger --mode=job
       echo "### finish diagnose node nodeName"
       echo ""
