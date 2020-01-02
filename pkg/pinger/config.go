@@ -25,6 +25,7 @@ type Configuration struct {
 	PodName            string
 	PodIP              string
 	ExternalAddress    string
+	NetworkMode        string
 }
 
 func ParseFlags() (*Configuration, error) {
@@ -37,6 +38,7 @@ func ParseFlags() (*Configuration, error) {
 		argMode               = pflag.String("mode", "server", "server or job Mode")
 		argDns                = pflag.String("dns", "kubernetes.default", "check dns from pod")
 		argExternalAddress    = pflag.String("external-address", "", "check ping connection to an external address, default empty that will disable external check")
+		argNetworkMode        = pflag.String("network-mode", "kube-ovn", "The cni plugin current cluster used, default: kube-ovn")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -69,6 +71,7 @@ func ParseFlags() (*Configuration, error) {
 		NodeName:           os.Getenv("NODE_NAME"),
 		PodName:            os.Getenv("POD_NAME"),
 		ExternalAddress:    *argExternalAddress,
+		NetworkMode:        *argNetworkMode,
 	}
 	if err := config.initKubeClient(); err != nil {
 		return nil, err
