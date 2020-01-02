@@ -43,5 +43,12 @@ func loopOvnNbctlDaemon(config *controller.Configuration) {
 		if _, err := os.Stat(daemonSocket); os.IsNotExist(err) || daemonSocket == "" {
 			ovs.StartOvnNbctlDaemon(config.OvnNbHost, config.OvnNbPort)
 		}
+
+		// ovn-nbctl daemon may hang and cannot precess further request.
+		// In case of that, we need to start a new daemon.
+		if  err := ovs.CheckAlive(); err != nil {
+			klog.Warningf("ovn-nbctl daemon doesn't return, start a new daemon")
+			ovs.StartOvnNbctlDaemon(config.OvnNbHost, config.OvnNbPort)
+		}
 	}
 }

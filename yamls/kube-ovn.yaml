@@ -63,20 +63,14 @@ spec:
           readinessProbe:
             exec:
               command:
-                - nc
-                - -z
-                - -w3
-                - 127.0.0.1
-                - "10660"
+                - sh
+                - /kube-ovn/kube-ovn-controller-healthcheck.sh
             periodSeconds: 3
           livenessProbe:
             exec:
               command:
-                - nc
-                - -z
-                - -w3
-                - 127.0.0.1
-                - "10660"
+                - sh
+                - /kube-ovn/kube-ovn-controller-healthcheck.sh
             initialDelaySeconds: 30
             periodSeconds: 7
             failureThreshold: 5
