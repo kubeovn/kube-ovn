@@ -50,6 +50,8 @@ type Controller struct {
 
 	ipSetsV6Mgr   *ipsets.IPSets
 	iptablesV6Mgr *iptables.IPTables
+
+	protocol      string
 }
 
 // NewController init a daemon controller
@@ -149,10 +151,6 @@ func (c *Controller) processNextSubnetWorkItem() bool {
 		return true
 	}
 	return true
-}
-
-func (c *Controller) handleNamespace(key string) error {
-	return c.reconcileRouters()
 }
 
 func (c *Controller) reconcileRouters() error {
@@ -349,7 +347,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 		klog.Errorf("failed to get node %s info %v", c.config.NodeName, err)
 		return err
 	}
-	go c.runGateway(util.CheckProtocol(node.Annotations[util.IpAddressAnnotation]), stopCh)
+	c.protocol = util.CheckProtocol(node.Annotations[util.IpAddressAnnotation])
+	go wait.Until(c.runGateway, 3 * time.Second, stopCh)
 
 	klog.Info("Started workers")
 	<-stopCh
