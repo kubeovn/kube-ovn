@@ -409,12 +409,14 @@ func (c *Controller) handleAddSubnet(key string) error {
 				subnet.TypeMeta.APIVersion = "kubeovn.io/v1"
 				c.recorder.Eventf(subnet, v1.EventTypeWarning, "ValidateLogicalSwitchFailed", err.Error())
 				subnet.Status.NotValidated("ValidateLogicalSwitchFailed", err.Error())
-				bytes, err := subnet.Status.Bytes()
-				if err != nil {
-					klog.Error(err)
+				bytes, err1 := subnet.Status.Bytes()
+				if err1 != nil {
+					klog.Error(err1)
+					return err1
 				} else {
-					if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(subnet.Name, types.MergePatchType, bytes, "status"); err != nil {
-						klog.Error("patch subnet status failed", err)
+					if _, err2 := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(subnet.Name, types.MergePatchType, bytes, "status"); err2 != nil {
+						klog.Error("patch subnet status failed", err2)
+						return err2
 					}
 				}
 				return err
