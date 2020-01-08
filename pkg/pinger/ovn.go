@@ -33,7 +33,7 @@ func checkOvnController(config *Configuration) {
 }
 
 func checkPortBindings(config *Configuration) {
-	klog.Infof("start to check por binding")
+	klog.Infof("start to check port binding")
 	ovsBindings, err := checkOvsBindings()
 	if err != nil {
 		return
@@ -61,7 +61,16 @@ func checkPortBindings(config *Configuration) {
 }
 
 func checkOvsBindings() ([]string, error) {
-	output, err := exec.Command("ovs-vsctl", "--no-heading", "--data=bare", "--format=csv", "--columns=external_ids", "find", "interface", "external_ids:iface-id!=\"\"").CombinedOutput()
+	output, err := exec.Command(
+		"ovs-vsctl",
+		"--no-heading",
+		"--data=bare",
+		"--format=csv",
+		"--columns=external_ids",
+		"--timeout=10",
+		"find",
+		"interface",
+		"external_ids:iface-id!=\"\"").CombinedOutput()
 	if err != nil {
 		klog.Errorf("failed to get ovs interface %v", err)
 		return nil, err
@@ -83,6 +92,7 @@ func checkSBBindings(config *Configuration) ([]string, error) {
 		"--no-heading",
 		"--data=bare",
 		"--columns=_uuid",
+		"--timeout=10",
 		"find",
 		"chassis",
 		fmt.Sprintf("hostname=%s", config.NodeName)).CombinedOutput()
@@ -104,6 +114,7 @@ func checkSBBindings(config *Configuration) ([]string, error) {
 		"--no-heading",
 		"--data=bare",
 		"--columns=logical_port",
+		"--timeout=10",
 		"find",
 		"port_binding",
 		fmt.Sprintf("chassis=%s", chassis)).CombinedOutput()
