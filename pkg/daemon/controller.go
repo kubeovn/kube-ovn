@@ -3,6 +3,7 @@ package daemon
 import (
 	"fmt"
 	"net"
+	"os/exec"
 	"time"
 
 	"k8s.io/client-go/kubernetes/scheme"
@@ -348,6 +349,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 		return err
 	}
 	c.protocol = util.CheckProtocol(node.Annotations[util.IpAddressAnnotation])
+	go wait.Until(recompute, 10 * time.Minute, stopCh)
 	go wait.Until(c.runGateway, 3 * time.Second, stopCh)
 
 	klog.Info("Started workers")
@@ -355,4 +357,11 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	klog.Info("Shutting down workers")
 
 	return nil
+}
+
+func recompute() {
+	output, err := exec.Command("ovs-appctl", "-t", "ovn-controller", "recompute").CombinedOutput()
+	if err != nil {
+		klog.Errorf("failed to recompute ovn-controller %s", string(output))
+	}
 }
