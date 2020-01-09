@@ -38,7 +38,7 @@ spec:
       hostNetwork: true
       containers:
         - name: kube-ovn-controller
-          image: "index.alauda.cn/alaudak8s/kube-ovn-controller:v0.10.1"
+          image: "index.alauda.cn/alaudak8s/kube-ovn-controller:v0.10.2"
           imagePullPolicy: IfNotPresent
           command:
           - /kube-ovn/start-controller.sh
@@ -106,7 +106,7 @@ spec:
       hostPID: true
       initContainers:
       - name: install-cni
-        image: "index.alauda.cn/alaudak8s/kube-ovn-cni:v0.10.1"
+        image: "index.alauda.cn/alaudak8s/kube-ovn-cni:v0.10.2"
         imagePullPolicy: IfNotPresent
         command: ["/kube-ovn/install-cni.sh"]
         securityContext:
@@ -119,7 +119,7 @@ spec:
             name: cni-bin
       containers:
       - name: cni-server
-        image: "index.alauda.cn/alaudak8s/kube-ovn-cni:v0.10.1"
+        image: "index.alauda.cn/alaudak8s/kube-ovn-cni:v0.10.2"
         imagePullPolicy: IfNotPresent
         command:
           - sh
@@ -209,7 +209,7 @@ spec:
       hostPID: true
       containers:
         - name: pinger
-          image: "index.alauda.cn/alaudak8s/kube-ovn-pinger:v0.10.1"
+          image: "index.alauda.cn/alaudak8s/kube-ovn-pinger:v0.10.2"
           imagePullPolicy: IfNotPresent
           securityContext:
             runAsUser: 0

@@ -1,6 +1,16 @@
 # CHANGELOG
 
-## v0.10.1 --2020/01/02
+## v0.10.2 -- 2020/01/09
+
+This release fix bugs found in v0.10.0. 
+
+### Bugfix
+* restart nbctl-daemon if not response
+* runGateway may fail when init
+* requeue subnet add event when conflict with exist subnet
+* periodically recompute ovn-controller to avoid inconsistency
+
+## v0.10.1 -- 2020/01/02
 
 This release fix bugs found in v0.10.0. 
 
