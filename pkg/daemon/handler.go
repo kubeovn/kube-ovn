@@ -31,12 +31,12 @@ func createCniServerHandler(config *Configuration) *cniServerHandler {
 }
 
 func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Response) {
-	podRequest := request.PodRequest{}
+	podRequest := request.CniRequest{}
 	err := req.ReadEntity(&podRequest)
 	if err != nil {
 		errMsg := fmt.Errorf("parse add request failed %v", err)
 		klog.Error(errMsg)
-		resp.WriteHeaderAndEntity(http.StatusBadRequest, request.PodResponse{Err: errMsg.Error()})
+		resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()})
 		return
 	}
 	klog.Infof("add port request %v", podRequest)
@@ -46,7 +46,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		if err != nil {
 			errMsg := fmt.Errorf("get pod %s/%s failed %v", podRequest.PodNamespace, podRequest.PodName, err)
 			klog.Error(errMsg)
-			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: errMsg.Error()})
+			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
 			return
 		}
 
@@ -76,7 +76,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	if macAddr == "" || ip == "" || cidr == "" || gw == "" {
 		errMsg := fmt.Errorf("no available ip for pod %s/%s", podRequest.PodNamespace, podRequest.PodName)
 		klog.Error(errMsg)
-		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: errMsg.Error()})
+		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
 		return
 	}
 
@@ -103,13 +103,13 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			if err != nil {
 				errMsg := fmt.Errorf("failed to create ip crd for %s, %v", ip, err)
 				klog.Error(errMsg)
-				resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: errMsg.Error()})
+				resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
 				return
 			}
 		} else {
 			errMsg := fmt.Errorf("failed to get ip crd for %s, %v", ip, err)
 			klog.Error(errMsg)
-			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: errMsg.Error()})
+			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
 			return
 		}
 	} else {
@@ -131,7 +131,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		if err != nil {
 			errMsg := fmt.Errorf("failed to create ip crd for %s, %v", ip, err)
 			klog.Error(errMsg)
-			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: errMsg.Error()})
+			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
 			return
 		}
 	}
@@ -142,34 +142,34 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	if err != nil {
 		errMsg := fmt.Errorf("configure nic failed %v", err)
 		klog.Error(errMsg)
-		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: errMsg.Error()})
+		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
 		return
 	}
-	resp.WriteHeaderAndEntity(http.StatusOK, request.PodResponse{Protocol: util.CheckProtocol(ipAddr), IpAddress: strings.Split(ipAddr, "/")[0], MacAddress: macAddr, CIDR: cidr, Gateway: gw})
+	resp.WriteHeaderAndEntity(http.StatusOK, request.CniResponse{Protocol: util.CheckProtocol(ipAddr), IpAddress: strings.Split(ipAddr, "/")[0], MacAddress: macAddr, CIDR: cidr, Gateway: gw})
 }
 
 func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Response) {
-	podRequest := request.PodRequest{}
+	podRequest := request.CniRequest{}
 	err := req.ReadEntity(&podRequest)
 	if err != nil {
 		errMsg := fmt.Errorf("parse del request failed %v", err)
 		klog.Error(errMsg)
-		resp.WriteHeaderAndEntity(http.StatusBadRequest, request.PodResponse{Err: errMsg.Error()})
+		resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()})
 		return
 	}
 	klog.Infof("delete port request %v", podRequest)
-	err = csh.deleteNic(podRequest.NetNs, podRequest.PodName, podRequest.PodNamespace, podRequest.ContainerID)
+	err = csh.deleteNic(podRequest.PodName, podRequest.PodNamespace, podRequest.ContainerID)
 	if err != nil {
 		errMsg := fmt.Errorf("del nic failed %v", err)
 		klog.Error(errMsg)
-		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: errMsg.Error()})
+		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
 		return
 	}
 	err = csh.KubeOvnClient.KubeovnV1().IPs().Delete(fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace), &metav1.DeleteOptions{})
 	if err != nil && !k8serrors.IsNotFound(err) {
 		errMsg := fmt.Errorf("del ipcrd for %s failed %v", fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace), err)
 		klog.Error(errMsg)
-		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.PodResponse{Err: errMsg.Error()})
+		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
 		return
 	}
 	resp.WriteHeader(http.StatusNoContent)

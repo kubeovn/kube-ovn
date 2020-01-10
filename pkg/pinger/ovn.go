@@ -24,7 +24,7 @@ func checkOvs(config *Configuration) {
 func checkOvnController(config *Configuration) {
 	output, err := exec.Command("/usr/share/openvswitch/scripts/ovn-ctl", "status_controller").CombinedOutput()
 	if err != nil {
-		klog.Errorf("check ovn_controller status failed %v, %s", err, string(output))
+		klog.Errorf("check ovn_controller status failed %v, %q", err, output)
 		SetOvnControllerDownMetrics(config.NodeName)
 		return
 	}

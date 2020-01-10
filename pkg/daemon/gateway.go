@@ -53,80 +53,57 @@ var (
 
 func (c *Controller) runGateway() {
 	klog.Info("reconcile gateway")
-	protocol := c.protocol
-	subnets, err := c.getSubnetsCIDR(protocol)
+	subnets, err := c.getSubnetsCIDR(c.protocol)
 	if err != nil {
 		klog.Errorf("get subnets failed, %+v", err)
 		return
 	}
-	localPodIPs, err := c.getLocalPodIPsNeedNAT(protocol)
+	localPodIPs, err := c.getLocalPodIPsNeedNAT(c.protocol)
 	if err != nil {
 		klog.Errorf("get local pod ips failed, %+v", err)
 		return
 	}
-	subnetsNeedNat, err := c.getSubnetsNeedNAT(protocol)
+	subnetsNeedNat, err := c.getSubnetsNeedNAT(c.protocol)
 	if err != nil {
 		klog.Errorf("get need nat subnets failed, %+v", err)
 		return
 	}
-	if protocol == kubeovnv1.ProtocolIPv4 {
-		c.ipSetsV4Mgr.AddOrReplaceIPSet(ipsets.IPSetMetadata{
-			MaxSize: 1048576,
-			SetID:   SubnetSet,
-			Type:    ipsets.IPSetTypeHashNet,
-		}, subnets)
-		c.ipSetsV4Mgr.AddOrReplaceIPSet(ipsets.IPSetMetadata{
-			MaxSize: 1048576,
-			SetID:   LocalPodSet,
-			Type:    ipsets.IPSetTypeHashIP,
-		}, localPodIPs)
-		c.ipSetsV4Mgr.AddOrReplaceIPSet(ipsets.IPSetMetadata{
-			MaxSize: 1048576,
-			SetID:   SubnetNatSet,
-			Type:    ipsets.IPSetTypeHashNet,
-		}, subnetsNeedNat)
-		c.ipSetsV4Mgr.ApplyUpdates()
-		for _, iptRule := range []util.IPTableRule{forwardAcceptRule1, forwardAcceptRule2, podNatV4Rule, subnetNatV4Rule} {
-			exists, err := c.iptablesV4Mgr.Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
-			if err != nil {
-				klog.Errorf("check iptable rule exist failed, %+v", err)
-			}
-			if !exists {
-				klog.Info("iptables rules not exist, recreate iptables rules")
-				err := c.iptablesV4Mgr.Insert(iptRule.Table, iptRule.Chain, 1, iptRule.Rule...)
-				if err != nil {
-					klog.Errorf("insert iptable rule exist failed, %+v", err)
-				}
-			}
-		}
+	c.ipset.AddOrReplaceIPSet(ipsets.IPSetMetadata{
+		MaxSize: 1048576,
+		SetID:   SubnetSet,
+		Type:    ipsets.IPSetTypeHashNet,
+	}, subnets)
+	c.ipset.AddOrReplaceIPSet(ipsets.IPSetMetadata{
+		MaxSize: 1048576,
+		SetID:   LocalPodSet,
+		Type:    ipsets.IPSetTypeHashIP,
+	}, localPodIPs)
+	c.ipset.AddOrReplaceIPSet(ipsets.IPSetMetadata{
+		MaxSize: 1048576,
+		SetID:   SubnetNatSet,
+		Type:    ipsets.IPSetTypeHashNet,
+	}, subnetsNeedNat)
+	c.ipset.ApplyUpdates()
+
+	var podNatRule, subnetNatRule util.IPTableRule
+	if c.protocol == kubeovnv1.ProtocolIPv4 {
+		podNatRule = podNatV4Rule
+		subnetNatRule = subnetNatV4Rule
 	} else {
-		c.ipSetsV6Mgr.AddOrReplaceIPSet(ipsets.IPSetMetadata{
-			MaxSize: 1048576,
-			SetID:   SubnetSet,
-			Type:    ipsets.IPSetTypeHashNet,
-		}, subnets)
-		c.ipSetsV6Mgr.AddOrReplaceIPSet(ipsets.IPSetMetadata{
-			MaxSize: 1048576,
-			SetID:   LocalPodSet,
-			Type:    ipsets.IPSetTypeHashIP,
-		}, localPodIPs)
-		c.ipSetsV6Mgr.AddOrReplaceIPSet(ipsets.IPSetMetadata{
-			MaxSize: 1048576,
-			SetID:   SubnetNatSet,
-			Type:    ipsets.IPSetTypeHashNet,
-		}, subnetsNeedNat)
-		c.ipSetsV6Mgr.ApplyUpdates()
-		for _, iptRule := range []util.IPTableRule{forwardAcceptRule1, forwardAcceptRule2, podNatV6Rule, subnetNatV6Rule} {
-			exists, err := c.iptablesV6Mgr.Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
-			if err != nil {
-				klog.Errorf("check iptable rule exist failed, %+v", err)
-			}
-			if !exists {
-				klog.Info("iptables rules not exist, recreate iptables rules")
-				err := c.iptablesV6Mgr.Insert(iptRule.Table, iptRule.Chain, 1, iptRule.Rule...)
-				if err != nil {
-					klog.Errorf("insert iptable rule exist failed, %+v", err)
-				}
+		podNatRule = podNatV6Rule
+		subnetNatRule = subnetNatV6Rule
+	}
+	for _, iptRule := range []util.IPTableRule{forwardAcceptRule1, forwardAcceptRule2, podNatRule, subnetNatRule} {
+		exists, err := c.iptable.Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
+		if err != nil {
+			klog.Errorf("check iptable rule exist failed, %+v", err)
+			return
+		}
+		if !exists {
+			klog.Info("iptables rules not exist, recreate iptables rules")
+			if err := c.iptable.Insert(iptRule.Table, iptRule.Chain, 1, iptRule.Rule...); err != nil {
+				klog.Errorf("insert iptable rule %v failed, %+v", iptRule.Rule, err)
+				return
 			}
 		}
 	}

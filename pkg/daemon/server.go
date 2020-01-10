@@ -12,7 +12,7 @@ import (
 )
 
 var requestLogString = "[%s] Incoming %s %s %s request"
-var responseLogString = "[%s] Outcoming response %s %s with %d status code in %vms"
+var responseLogString = "[%s] Outgoing response %s %s with %d status code in %vms"
 
 // RunServer runs the cniserver
 func RunServer(config *Configuration) {
@@ -43,11 +43,11 @@ func createHandler(csh *cniServerHandler) http.Handler {
 	ws.Route(
 		ws.POST("/add").
 			To(csh.handleAdd).
-			Reads(request.PodRequest{}))
+			Reads(request.CniRequest{}))
 	ws.Route(
 		ws.POST("/del").
 			To(csh.handleDel).
-			Reads(request.PodRequest{}))
+			Reads(request.CniRequest{}))
 
 	ws.Filter(requestAndResponseLogger)
 

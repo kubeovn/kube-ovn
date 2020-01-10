@@ -21,7 +21,7 @@ func (c Client) ovnNbCommand(cmdArgs ...string) (string, error) {
 	elapsed := float64((time.Since(start)) / time.Millisecond)
 	klog.Infof("%s command %s in %vms", OvnNbCtl, strings.Join(cmdArgs, " "), elapsed)
 	if err != nil {
-		return "", fmt.Errorf("%s, %v", string(raw), err)
+		return "", fmt.Errorf("%s, %q", raw, err)
 	}
 	return trimCommandOutput(raw), nil
 }
@@ -612,7 +612,7 @@ func StartOvnNbctlDaemon(nbHost string, nbPort int) (string, error) {
 		"ovn-nbctl",
 		).CombinedOutput()
 	if err != nil {
-		klog.Errorf("failed to kill old ovn-nbctl daemon: %v", string(output))
+		klog.Errorf("failed to kill old ovn-nbctl daemon: %q", output)
 		return "", err
 	}
 
@@ -624,7 +624,7 @@ func StartOvnNbctlDaemon(nbHost string, nbPort int) (string, error) {
 		"--overwrite-pidfile",
 	).CombinedOutput()
 	if err != nil {
-		klog.Errorf("start ovn-nbctl daemon failed, %s", string(output))
+		klog.Errorf("start ovn-nbctl daemon failed, %q", output)
 		return "", err
 	}
 
@@ -642,7 +642,7 @@ func CheckAlive() error {
 	).CombinedOutput()
 
 	if err != nil {
-		klog.Errorf("failed to access ovn-nb from daemon, %s", string(output))
+		klog.Errorf("failed to access ovn-nb from daemon, %q", output)
 		return err
 	}
 	return nil

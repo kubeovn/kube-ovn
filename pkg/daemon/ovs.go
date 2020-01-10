@@ -27,20 +27,18 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, netns, container
 			netlink.LinkDel(&veth)
 		}
 	}()
-	err = netlink.LinkAdd(&veth)
-	if err != nil {
+	if err = netlink.LinkAdd(&veth); err != nil {
 		return fmt.Errorf("failed to crate veth for %s %v", podName, err)
 	}
 
 	ifaceID := fmt.Sprintf("%s.%s", podName, podNamespace)
 	ovs.CleanDuplicatePort(ifaceID)
-
 	// Add veth pair host end to ovs port
 	output, err := exec.Command(
 		"ovs-vsctl", "--may-exist", "add-port", "br-int", hostNicName, "--",
 		"set", "interface", hostNicName, fmt.Sprintf("external_ids:iface-id=%s", ifaceID)).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("add nic to ovs failed %v: %s", err, output)
+		return fmt.Errorf("add nic to ovs failed %v: %q", err, output)
 	}
 
 	// host and container nic must use same mac address, otherwise ovn will reject these packets by default
@@ -48,14 +46,10 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, netns, container
 	if err != nil {
 		return fmt.Errorf("failed to parse mac %s %v", macAddr, err)
 	}
-
-	err = configureHostNic(hostNicName, macAddr)
-	if err != nil {
+	if err = configureHostNic(hostNicName, macAddr); err != nil {
 		return err
 	}
-
-	err = ovs.SetPodBandwidth(podName, podNamespace, ingress, egress)
-	if err != nil {
+	if err = ovs.SetPodBandwidth(podName, podNamespace, ingress, egress); err != nil {
 		return err
 	}
 
@@ -63,25 +57,24 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, netns, container
 	if err != nil {
 		return fmt.Errorf("failed to open netns %q: %v", netns, err)
 	}
-	err = configureContainerNic(containerNicName, ip, gateway, macAddr, podNS)
-	if err != nil {
+	if err = configureContainerNic(containerNicName, ip, gateway, macAddr, podNS, csh.Config.MTU); err != nil {
 		return err
 	}
-
 	return nil
 }
 
-func (csh cniServerHandler) deleteNic(netns, podName, podNamespace, containerID string) error {
+func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID string) error {
 	hostNicName, _ := generateNicName(containerID)
 	// Remove ovs port
 	output, err := exec.Command("ovs-vsctl", "--if-exists", "--with-iface", "del-port", "br-int", hostNicName).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to delete ovs port %v, %s", err, output)
+		return fmt.Errorf("failed to delete ovs port %v, %q", err, output)
 	}
-	err = ovs.ClearPodBandwidth(podName, podNamespace)
-	if err != nil {
+
+	if err = ovs.ClearPodBandwidth(podName, podNamespace); err != nil {
 		return err
 	}
+
 	hostLink, err := netlink.LinkByName(hostNicName)
 	if err != nil {
 		// If link already not exists, return quietly
@@ -90,8 +83,7 @@ func (csh cniServerHandler) deleteNic(netns, podName, podNamespace, containerID 
 		}
 		return fmt.Errorf("find host link %s failed %v", hostNicName, err)
 	}
-	err = netlink.LinkDel(hostLink)
-	if err != nil {
+	if err = netlink.LinkDel(hostLink); err != nil {
 		return fmt.Errorf("delete host link %s failed %v", hostLink, err)
 	}
 
@@ -108,65 +100,48 @@ func configureHostNic(nicName string, macAddr net.HardwareAddr) error {
 		return fmt.Errorf("can not find host nic %s %v", nicName, err)
 	}
 
-	err = netlink.LinkSetHardwareAddr(hostLink, macAddr)
-	if err != nil {
+	if err = netlink.LinkSetHardwareAddr(hostLink, macAddr); err != nil {
 		return fmt.Errorf("can not set mac address to host nic %s %v", nicName, err)
 	}
-	err = netlink.LinkSetUp(hostLink)
-	if err != nil {
-		return fmt.Errorf("can not set host nic %s up %v", nicName, err)
+	if hostLink.Attrs().OperState != netlink.OperUp {
+		if err = netlink.LinkSetUp(hostLink); err != nil {
+			return fmt.Errorf("can not set host nic %s up %v", nicName, err)
+		}
 	}
-	err = netlink.LinkSetTxQLen(hostLink, 1000)
-	if err != nil {
+	if err = netlink.LinkSetTxQLen(hostLink, 1000); err != nil {
 		return fmt.Errorf("can not set host nic %s qlen %v", nicName, err)
 	}
 
 	return nil
 }
 
-func configureContainerNic(nicName, ipAddr, gateway string, macAddr net.HardwareAddr, netns ns.NetNS) error {
+func configureContainerNic(nicName, ipAddr, gateway string, macAddr net.HardwareAddr, netns ns.NetNS, mtu int) error {
 	containerLink, err := netlink.LinkByName(nicName)
 	if err != nil {
 		return fmt.Errorf("can not find container nic %s %v", nicName, err)
 	}
 
-	err = netlink.LinkSetNsFd(containerLink, int(netns.Fd()))
-	if err != nil {
+	if err = netlink.LinkSetNsFd(containerLink, int(netns.Fd())); err != nil {
 		return fmt.Errorf("failed to link netns %v", err)
 	}
 
 	// TODO: use github.com/containernetworking/plugins/pkg/ipam.ConfigureIface to refactor this logical
 	return ns.WithNetNSPath(netns.Path(), func(_ ns.NetNS) error {
 		// Container nic name MUST be 'eth0', otherwise kubelet will recreate the pod
-		err = netlink.LinkSetName(containerLink, "eth0")
-		if err != nil {
+		if err = netlink.LinkSetName(containerLink, "eth0"); err != nil {
 			return err
 		}
 		if util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolIPv6 {
 			// For docker version >=17.x the "none" network will disable ipv6 by default.
 			// We have to enable ipv6 here to add v6 address and gateway.
 			// See https://github.com/containernetworking/cni/issues/531
-			_, err = sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6", "0")
-			if err != nil {
+			if _, err = sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6", "0"); err != nil {
 				return fmt.Errorf("failed to enable ipv6 on all nic %v", err)
 			}
 		}
-		addr, err := netlink.ParseAddr(ipAddr)
-		if err != nil {
-			return fmt.Errorf("can not parse %s %v", ipAddr, err)
-		}
-		err = netlink.AddrReplace(containerLink, addr)
-		if err != nil {
-			return fmt.Errorf("can not add address to container nic %v", err)
-		}
 
-		err = netlink.LinkSetHardwareAddr(containerLink, macAddr)
-		if err != nil {
-			return fmt.Errorf("can not set mac address to container nic %v", err)
-		}
-		err = netlink.LinkSetUp(containerLink)
-		if err != nil {
-			return fmt.Errorf("can not set container nic %s up %v", nicName, err)
+		if err = configureNic("eth0", ipAddr, macAddr, mtu); err != nil {
+			return err
 		}
 
 		switch util.CheckProtocol(ipAddr) {
@@ -195,51 +170,18 @@ func configureContainerNic(nicName, ipAddr, gateway string, macAddr net.Hardware
 	})
 }
 
-func configureNodeNic(portName, ip, mac, gw string, mtu int) error {
-	macAddr, err := net.ParseMAC(mac)
-	if err != nil {
-		return fmt.Errorf("failed to parse mac %s %v", macAddr, err)
-	}
-
+func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int) error {
 	raw, err := exec.Command(
 		"ovs-vsctl", "--may-exist", "add-port", "br-int", util.NodeNic, "--",
 		"set", "interface", util.NodeNic, "type=internal", "--",
 		"set", "interface", util.NodeNic, fmt.Sprintf("external_ids:iface-id=%s", portName)).CombinedOutput()
 	if err != nil {
-		klog.Errorf("failed to configure node nic %s %s", portName, string(raw))
+		klog.Errorf("failed to configure node nic %s %q", portName, raw)
 		return fmt.Errorf(string(raw))
 	}
 
-	nodeLink, err := netlink.LinkByName(util.NodeNic)
-	if err != nil {
-		return fmt.Errorf("can not find node nic %s %v", portName, err)
-	}
-
-	ipAddr, err := netlink.ParseAddr(ip)
-	if err != nil {
-		return fmt.Errorf("can not parse %s %v", ip, err)
-	}
-
-	err = netlink.AddrReplace(nodeLink, ipAddr)
-	if err != nil {
-		return fmt.Errorf("can not add address to node nic %v", err)
-	}
-
-	err = netlink.LinkSetHardwareAddr(nodeLink, macAddr)
-	if err != nil {
-		return fmt.Errorf("can not set mac address to node nic %v", err)
-	}
-
-	err = netlink.LinkSetMTU(nodeLink, mtu)
-	if err != nil {
-		return fmt.Errorf("can not set node nic mtu %v", err)
-	}
-
-	if nodeLink.Attrs().OperState != netlink.OperUp {
-		err = netlink.LinkSetUp(nodeLink)
-		if err != nil {
-			return fmt.Errorf("can not set node nic %s up %v", portName, err)
-		}
+	if err = configureNic(util.NodeNic, ip, macAddr, mtu); err != nil {
+		return err
 	}
 
 	// ping gw to activate the flow
@@ -250,7 +192,7 @@ func configureNodeNic(portName, ip, mac, gw string, mtu int) error {
 		output, _ = exec.Command("ping", "-6", "-w", "10", gw).CombinedOutput()
 	}
 
-	klog.Infof("ping gw result is: \n %s", string(output))
+	klog.Infof("ping gw result is: \n %q", output)
 	return nil
 }
 
@@ -263,7 +205,7 @@ func configureMirror(portName string, mtu int) error {
 		"--id=@m", "create", "mirror", "name=m0", "select_all=true", "output_port=@mirror0", "--",
 		"add", "bridge", "br-int", "mirrors", "@m").CombinedOutput()
 	if err != nil {
-		klog.Errorf("failed to configure mirror nic %s %s", portName, string(raw))
+		klog.Errorf("failed to configure mirror nic %s %q", portName, raw)
 		return fmt.Errorf(string(raw))
 	}
 
@@ -272,17 +214,46 @@ func configureMirror(portName string, mtu int) error {
 		return fmt.Errorf("can not find mirror nic %s %v", portName, err)
 	}
 
-	err = netlink.LinkSetMTU(mirrorLink, mtu)
-	if err != nil {
+	if err = netlink.LinkSetMTU(mirrorLink, mtu); err != nil {
 		return fmt.Errorf("can not set mirror nic mtu %v", err)
 	}
 
 	if mirrorLink.Attrs().OperState != netlink.OperUp {
-		err = netlink.LinkSetUp(mirrorLink)
-		if err != nil {
+		if err = netlink.LinkSetUp(mirrorLink); err != nil {
 			return fmt.Errorf("can not set mirror nic %s up %v", portName, err)
 		}
 	}
 
+	return nil
+}
+
+func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int) error {
+	nodeLink, err := netlink.LinkByName(link)
+	if err != nil {
+		return fmt.Errorf("can not find nic %s %v", link, err)
+	}
+
+	ipAddr, err := netlink.ParseAddr(ip)
+	if err != nil {
+		return fmt.Errorf("can not parse %s %v", ip, err)
+	}
+
+	if err = netlink.AddrReplace(nodeLink, ipAddr); err != nil {
+		return fmt.Errorf("can not add address to nic %s, %v", link, err)
+	}
+
+	if err = netlink.LinkSetHardwareAddr(nodeLink, macAddr); err != nil {
+		return fmt.Errorf("can not set mac address to nic %s %v", link, err)
+	}
+
+	if err = netlink.LinkSetMTU(nodeLink, mtu); err != nil {
+		return fmt.Errorf("can not set nic %s mtu %v", link, err)
+	}
+
+	if nodeLink.Attrs().OperState != netlink.OperUp {
+		if err = netlink.LinkSetUp(nodeLink); err != nil {
+			return fmt.Errorf("can not set node nic %s up %v", link, err)
+		}
+	}
 	return nil
 }
