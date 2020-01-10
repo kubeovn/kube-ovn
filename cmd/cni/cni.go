@@ -30,7 +30,7 @@ func main() {
 func cmdAdd(args *skel.CmdArgs) error {
 	var err error
 
-	n, cniVersion, err := loadNetConf(args.StdinData)
+	netConf, cniVersion, err := loadNetConf(args.StdinData)
 	if err != nil {
 		return err
 	}
@@ -43,9 +43,9 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return err
 	}
 
-	client := request.NewCniServerClient(n.ServerSocket)
+	client := request.NewCniServerClient(netConf.ServerSocket)
 
-	res, err := client.Add(request.PodRequest{
+	response, err := client.Add(request.CniRequest{
 		PodName:      podName,
 		PodNamespace: podNamespace,
 		ContainerID:  args.ContainerID,
@@ -53,35 +53,39 @@ func cmdAdd(args *skel.CmdArgs) error {
 	if err != nil {
 		return err
 	}
-	result := generateCNIResult(cniVersion, res)
+	result := generateCNIResult(cniVersion, response)
 	return types.PrintResult(&result, cniVersion)
 }
 
-func generateCNIResult(cniVersion string, podResponse *request.PodResponse) current.Result {
+func generateCNIResult(cniVersion string, cniResponse *request.CniResponse) current.Result {
 	result := current.Result{CNIVersion: cniVersion}
-	_, mask, _ := net.ParseCIDR(podResponse.CIDR)
-	switch podResponse.Protocol {
+	_, mask, _ := net.ParseCIDR(cniResponse.CIDR)
+	switch cniResponse.Protocol {
 	case kubeovnv1.ProtocolIPv4:
 		ip := current.IPConfig{
 			Version: "4",
-			Address: net.IPNet{IP: net.ParseIP(podResponse.IpAddress).To4(), Mask: mask.Mask},
-			Gateway: net.ParseIP(podResponse.Gateway).To4(),
+			Address: net.IPNet{IP: net.ParseIP(cniResponse.IpAddress).To4(), Mask: mask.Mask},
+			Gateway: net.ParseIP(cniResponse.Gateway).To4(),
 		}
 		result.IPs = []*current.IPConfig{&ip}
-		route := types.Route{}
-		route.Dst = net.IPNet{IP: net.ParseIP("0.0.0.0").To4(), Mask: net.CIDRMask(0, 32)}
-		route.GW = net.ParseIP(podResponse.Gateway).To4()
+
+		route := types.Route{
+			Dst: net.IPNet{IP: net.ParseIP("0.0.0.0").To4(), Mask: net.CIDRMask(0, 32)},
+			GW: net.ParseIP(cniResponse.Gateway).To4(),
+		}
 		result.Routes = []*types.Route{&route}
 	case kubeovnv1.ProtocolIPv6:
 		ip := current.IPConfig{
 			Version: "6",
-			Address: net.IPNet{IP: net.ParseIP(podResponse.IpAddress).To16(), Mask: mask.Mask},
-			Gateway: net.ParseIP(podResponse.Gateway).To16(),
+			Address: net.IPNet{IP: net.ParseIP(cniResponse.IpAddress).To16(), Mask: mask.Mask},
+			Gateway: net.ParseIP(cniResponse.Gateway).To16(),
 		}
 		result.IPs = []*current.IPConfig{&ip}
-		route := types.Route{}
-		route.Dst = net.IPNet{IP: net.ParseIP("::").To16(), Mask: net.CIDRMask(0, 128)}
-		route.GW = net.ParseIP(podResponse.Gateway).To16()
+
+		route := types.Route{
+			Dst: net.IPNet{IP: net.ParseIP("::").To16(), Mask: net.CIDRMask(0, 128)},
+			GW: net.ParseIP(cniResponse.Gateway).To16(),
+		}
 		result.Routes = []*types.Route{&route}
 	}
 
@@ -89,12 +93,12 @@ func generateCNIResult(cniVersion string, podResponse *request.PodResponse) curr
 }
 
 func cmdDel(args *skel.CmdArgs) error {
-	n, _, err := loadNetConf(args.StdinData)
+	netConf, _, err := loadNetConf(args.StdinData)
 	if err != nil {
 		return err
 	}
 
-	client := request.NewCniServerClient(n.ServerSocket)
+	client := request.NewCniServerClient(netConf.ServerSocket)
 	podName, err := parseValueFromArgs("K8S_POD_NAME", args.Args)
 	if err != nil {
 		return err
@@ -104,7 +108,7 @@ func cmdDel(args *skel.CmdArgs) error {
 		return err
 	}
 
-	return client.Del(request.PodRequest{
+	return client.Del(request.CniRequest{
 		PodName:      podName,
 		PodNamespace: podNamespace,
 		ContainerID:  args.ContainerID,

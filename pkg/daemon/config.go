@@ -58,7 +58,6 @@ func ParseFlags() (*Configuration, error) {
 	logrus.SetLevel(logrus.WarnLevel)
 
 	flag.Set("alsologtostderr", "true")
-
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
 
@@ -80,7 +79,6 @@ func ParseFlags() (*Configuration, error) {
 		klog.Errorf("env KUBE_NODE_NAME not exists")
 		return nil, fmt.Errorf("env KUBE_NODE_NAME not exists")
 	}
-
 	config := &Configuration{
 		Iface:                 *argIface,
 		MTU:                   *argMTU,
@@ -95,17 +93,31 @@ func ParseFlags() (*Configuration, error) {
 		NodeLocalDNSIP:        *argNodeLocalDnsIP,
 	}
 
+	if err := config.initNicConfig(); err != nil {
+		return nil, err
+	}
+
+	if err := config.initKubeClient(); err != nil {
+		return nil, err
+	}
+
+	klog.Infof("daemon config: %v", config)
+	return config, nil
+}
+
+func (config *Configuration) initNicConfig() error {
 	if config.Iface == "" {
-		iface, err := getDefaultGatewayIface()
+		i, err := getDefaultGatewayIface()
 		if err != nil {
-			return nil, err
+			return err
 		} else {
-			config.Iface = iface
+			config.Iface = i
 		}
 	}
+
 	iface, err := net.InterfaceByName(config.Iface)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if config.MTU == 0 {
 		config.MTU = iface.MTU - util.GeneveHeaderLength
@@ -113,21 +125,12 @@ func ParseFlags() (*Configuration, error) {
 
 	addrs, err := iface.Addrs()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get iface addr. %v", err)
+		return fmt.Errorf("failed to get iface addr. %v", err)
 	}
 	if len(addrs) == 0 {
-		return nil, fmt.Errorf("iface %s has no ip address", config.Iface)
+		return fmt.Errorf("iface %s has no ip address", config.Iface)
 	}
-	if err := setEncapIP(strings.Split(addrs[0].String(), "/")[0]); err != nil {
-		return nil, err
-	}
-
-	err = config.initKubeClient()
-	if err != nil {
-		return nil, err
-	}
-	klog.Infof("daemon config: %v", config)
-	return config, nil
+	return setEncapIP(strings.Split(addrs[0].String(), "/")[0])
 }
 
 func (config *Configuration) initKubeClient() error {

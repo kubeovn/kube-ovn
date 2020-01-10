@@ -16,7 +16,7 @@ func ovsExec(args ...string) (string, error) {
 	output, err := exec.Command("ovs-vsctl", args...).CombinedOutput()
 
 	if err != nil {
-		return "", fmt.Errorf("failed to run 'ovs-vsctl %s': %v\n  %q", strings.Join(args, " "), err, string(output))
+		return "", fmt.Errorf("failed to run 'ovs-vsctl %s': %v\n  %q", strings.Join(args, " "), err, output)
 	}
 
 	outStr := string(output)

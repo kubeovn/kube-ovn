@@ -14,16 +14,16 @@ type CniServerClient struct {
 	*gorequest.SuperAgent
 }
 
-// PodRequest is the cniserver request format
-type PodRequest struct {
+// CniRequest is the cniserver request format
+type CniRequest struct {
 	PodName      string `json:"pod_name"`
 	PodNamespace string `json:"pod_namespace"`
 	ContainerID  string `json:"container_id"`
 	NetNs        string `json:"net_ns"`
 }
 
-// PodResponse is the cniserver response format
-type PodResponse struct {
+// CniResponse is the cniserver response format
+type CniResponse struct {
 	Protocol   string `json:"protocol"`
 	IpAddress  string `json:"address"`
 	MacAddress string `json:"mac_address"`
@@ -33,7 +33,7 @@ type PodResponse struct {
 	Err        string `json:"error"`
 }
 
-// NewCniServerClient return a new cniserverclient
+// NewCniServerClient return a new cniserver client
 func NewCniServerClient(socketAddress string) CniServerClient {
 	request := gorequest.New()
 	request.Transport = &http.Transport{DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
@@ -43,8 +43,8 @@ func NewCniServerClient(socketAddress string) CniServerClient {
 }
 
 // Add pod request
-func (csc CniServerClient) Add(podRequest PodRequest) (*PodResponse, error) {
-	resp := PodResponse{}
+func (csc CniServerClient) Add(podRequest CniRequest) (*CniResponse, error) {
+	resp := CniResponse{}
 	res, _, errors := csc.Post("http://dummy/api/v1/add").Send(podRequest).EndStruct(&resp)
 	if len(errors) != 0 {
 		return nil, errors[0]
@@ -56,7 +56,7 @@ func (csc CniServerClient) Add(podRequest PodRequest) (*PodResponse, error) {
 }
 
 // Del pod request
-func (csc CniServerClient) Del(podRequest PodRequest) error {
+func (csc CniServerClient) Del(podRequest CniRequest) error {
 	res, body, errors := csc.Post("http://dummy/api/v1/del").Send(podRequest).End()
 	if len(errors) != 0 {
 		return errors[0]
