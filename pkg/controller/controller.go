@@ -2,16 +2,17 @@ package controller
 
 import (
 	"fmt"
-	"github.com/alauda/kube-ovn/pkg/util"
-	"k8s.io/apimachinery/pkg/labels"
 	"strings"
 	"time"
 
+	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/alauda/kube-ovn/pkg/client/informers/externalversions"
 	kubeovnlister "github.com/alauda/kube-ovn/pkg/client/listers/kube-ovn/v1"
 	"github.com/alauda/kube-ovn/pkg/ovs"
+	"github.com/alauda/kube-ovn/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
@@ -97,7 +98,7 @@ func NewController(config *Configuration) *Controller {
 	// Create event broadcaster
 	// Add ovn-controller types to the default Kubernetes Scheme so Events can be
 	// logged for ovn-controller types.
-	utilruntime.Must(scheme.AddToScheme(scheme.Scheme))
+	utilruntime.Must(kubeovnv1.AddToScheme(scheme.Scheme))
 	klog.V(4).Info("Creating event broadcaster")
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
