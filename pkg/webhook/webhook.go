@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"context"
+	"time"
 
 	clientset "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/alauda/kube-ovn/pkg/ovs"
@@ -28,9 +29,10 @@ type ValidatingHook struct {
 }
 
 type WebhookOptions struct {
-	OvnNbHost string
-	OvnNbPort int
-	DefaultLS string
+	OvnNbHost    string
+	OvnNbPort    int
+	OvnNbTimeout int
+	DefaultLS    string
 }
 
 func NewValidatingHook(c cache.Cache, opt *WebhookOptions) (*ValidatingHook, error) {
@@ -39,6 +41,7 @@ func NewValidatingHook(c cache.Cache, opt *WebhookOptions) (*ValidatingHook, err
 		klog.Errorf("use in cluster config failed %v", err)
 		return nil, err
 	}
+	cfg.Timeout = 15 * time.Second
 	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		klog.Errorf("init kubernetes client failed %v", err)
@@ -47,7 +50,7 @@ func NewValidatingHook(c cache.Cache, opt *WebhookOptions) (*ValidatingHook, err
 
 	return &ValidatingHook{
 		kubeclientset: kubeClient,
-		ovnClient:     ovs.NewClient(opt.OvnNbHost, opt.OvnNbPort, "", 0, "", "", "", "", ""),
+		ovnClient:     ovs.NewClient(opt.OvnNbHost, opt.OvnNbPort, opt.OvnNbTimeout, "", 0, "", "", "", "", ""),
 		opt:           opt,
 		cache:         c,
 	}, nil

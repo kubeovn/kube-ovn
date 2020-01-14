@@ -2,13 +2,12 @@ package main
 
 import (
 	"fmt"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net/http"
 	_ "net/http/pprof"
-	"time"
 
 	kubeovninformer "github.com/alauda/kube-ovn/pkg/client/informers/externalversions"
 	"github.com/alauda/kube-ovn/pkg/daemon"
-	"github.com/alauda/kube-ovn/pkg/ovs"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/klog"
 	"k8s.io/sample-controller/pkg/signals"
@@ -16,7 +15,6 @@ import (
 
 func main() {
 	defer klog.Flush()
-	go gc()
 
 	config, err := daemon.ParseFlags()
 	if err != nil {
@@ -34,8 +32,12 @@ func main() {
 	}
 
 	stopCh := signals.SetupSignalHandler()
-	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(config.KubeClient, time.Second*30)
-	kubeovnInformerFactory := kubeovninformer.NewSharedInformerFactoryWithOptions(config.KubeOvnClient, time.Second*30)
+	kubeInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
+		kubeinformers.WithTweakListOptions(func(listOption *v1.ListOptions) {
+			listOption.FieldSelector = fmt.Sprintf("spec.nodeName=%s", config.NodeName)
+			listOption.AllowWatchBookmarks = true
+		}))
+	kubeovnInformerFactory := kubeovninformer.NewSharedInformerFactoryWithOptions(config.KubeOvnClient, 0)
 	ctl, err := daemon.NewController(config, kubeInformerFactory, kubeovnInformerFactory)
 	if err != nil {
 		klog.Fatalf("create controller failed %v", err)
@@ -47,11 +49,4 @@ func main() {
 		klog.Fatal(http.ListenAndServe(fmt.Sprintf("localhost:%d", config.PprofPort), nil))
 	}()
 	daemon.RunServer(config)
-}
-
-func gc() {
-	for {
-		ovs.CleanLostInterface()
-		time.Sleep(60 * time.Second)
-	}
 }

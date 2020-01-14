@@ -16,7 +16,7 @@ func ovsExec(args ...string) (string, error) {
 	output, err := exec.Command("ovs-vsctl", args...).CombinedOutput()
 
 	if err != nil {
-		return "", fmt.Errorf("failed to run 'ovs-vsctl %s': %v\n  %q", strings.Join(args, " "), err, string(output))
+		return "", fmt.Errorf("failed to run 'ovs-vsctl %s': %v\n  %q", strings.Join(args, " "), err, output)
 	}
 
 	outStr := string(output)
@@ -62,7 +62,7 @@ func ovsFind(table, column, condition string) ([]string, error) {
 	ret := make([]string, 0, len(values))
 	for _, val := range values {
 		if strings.TrimSpace(val) != "" {
-			ret = append(ret, strings.TrimSpace(val))
+			ret = append(ret, strings.Trim(strings.TrimSpace(val), "\""))
 		}
 	}
 	return ret, nil
@@ -99,7 +99,7 @@ func SetPodBandwidth(podName, podNamespace, ingress, egress string) error {
 
 	for _, ifName := range interfaceList {
 		// ingress_policing_rate is in Kbps
-		err := ovsSet("interface", ifName, fmt.Sprintf("ingress_policing_rate=%d", ingressKPS))
+		err := ovsSet("interface", ifName, fmt.Sprintf("ingress_policing_rate=%d", ingressKPS), fmt.Sprintf("ingress_policing_burst=%d", ingressKPS*10/8))
 		if err != nil {
 			return err
 		}
@@ -181,6 +181,19 @@ func CleanLostInterface() {
 					}
 				}
 			}
+		}
+	}
+}
+
+// Find and remove any existing OVS port with this iface-id. Pods can
+// have multiple sandboxes if some are waiting for garbage collection,
+// but only the latest one should have the iface-id set.
+// See: https://github.com/ovn-org/ovn-kubernetes/pull/869
+func CleanDuplicatePort(ifaceID string) {
+	uuids, _ := ovsFind("Interface", "_uuid", "external-ids:iface-id="+ifaceID)
+	for _, uuid := range uuids {
+		if out, err := ovsExec("remove", "Interface", uuid, "external-ids", "iface-id"); err != nil {
+			klog.Errorf("failed to clear stale OVS port %q iface-id %q: %v\n  %q", uuid, ifaceID, err, out)
 		}
 	}
 }

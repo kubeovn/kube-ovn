@@ -1,6 +1,7 @@
 package v1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -11,6 +12,18 @@ const (
 
 	GWDistributedType = "distributed"
 	GWCentralizedType = "centralized"
+)
+
+// Constants for condition
+const (
+	// Ready => controller considers this resource Ready
+	Ready = "Ready"
+	// Validated => Spec passed validating
+	Validated = "Validated"
+	// Error => last recorded error
+	Error = "Error"
+
+	ReasonInit = "Init"
 )
 
 // +genclient
@@ -45,7 +58,6 @@ type IPList struct {
 }
 
 // +genclient
-// +genclient:noStatus
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
 
@@ -53,7 +65,8 @@ type Subnet struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec SubnetSpec `json:"spec"`
+	Spec   SubnetSpec   `json:"spec"`
+	Status SubnetStatus `json:"status,omitempty"`
 }
 
 type SubnetSpec struct {
@@ -70,6 +83,42 @@ type SubnetSpec struct {
 
 	Private      bool     `json:"private"`
 	AllowSubnets []string `json:"allowSubnets,omitempty"`
+}
+
+// ConditionType encodes information on the condition
+type ConditionType string
+
+// Condition describes the state of an object at a certain point.
+// +k8s:deepcopy-gen=true
+type SubnetCondition struct {
+	// Type of condition.
+	Type ConditionType `json:"type"`
+	// Status of the condition, one of True, False, Unknown.
+	Status corev1.ConditionStatus `json:"status"`
+	// The reason for the condition's last transition.
+	// +optional
+	Reason string `json:"reason,omitempty"`
+	// A human readable message indicating details about the transition.
+	// +optional
+	Message string `json:"message,omitempty"`
+	// Last time the condition was probed
+	// +optional
+	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
+	// Last time the condition transitioned from one status to another.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+}
+
+type SubnetStatus struct {
+	// Conditions represents the latest state of the object
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	Conditions []SubnetCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
+	AvailableIPs    uint64 `json:"availableIPs"`
+	UsingIPs        uint64 `json:"usingIPs"`
+	ActivateGateway string `json:"activateGateway"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

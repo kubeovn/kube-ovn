@@ -56,5 +56,5 @@ For a distributed Gateway, outgoing traffic from Pods within the OVN network to 
 For a centralized gateway, outgoing traffic from Pods within the OVN network to external destinations will go through Gateway Node for the Namespace.
 
 - `gatewayType`: `distributed` or `centralized`, default is `distributed`.
-- `gatewayNode`: when `gatewayType` is `centralized` used this field to specify which node act as the namespace gateway.
+- `gatewayNode`: when `gatewayType` is `centralized` used this field to specify which node act as the namespace gateway. This field can be a comma separated string, like `node1,node2` and kube-ovn will automatically apply an active-backup failover strategy.
 - `natOutgoing`: `true` or `false`, whether pod ip need to be masqueraded when go through gateway. When `false`, pod ip will be exposed to external network directly, default `false`.

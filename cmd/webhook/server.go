@@ -34,13 +34,15 @@ func init() {
 
 func main() {
 	var (
-		port      int
-		ovnNbHost string
-		ovnNbPort int
-		defaultLS string
+		port         int
+		ovnNbHost    string
+		ovnNbPort    int
+		ovnNbTimeout int
+		defaultLS    string
 	)
 	flag.IntVar(&port, "port", 8443, "The port webhook listen on.")
 	flag.IntVar(&ovnNbPort, "ovn-nb-port", 6641, "OVN nb port")
+	flag.IntVar(&ovnNbTimeout, "ovn-nb-timeout", 30, "OVN nb timeout")
 	flag.StringVar(&ovnNbHost, "ovn-nb-host", "0.0.0.0", "OVN nb host")
 	flag.StringVar(&defaultLS, "default-ls", "ovn-default", "The default logical switch name, default: ovn-default")
 
@@ -66,9 +68,10 @@ func main() {
 	}
 
 	opt := &ovnwebhook.WebhookOptions{
-		OvnNbHost: ovnNbHost,
-		OvnNbPort: ovnNbPort,
-		DefaultLS: defaultLS,
+		OvnNbHost:    ovnNbHost,
+		OvnNbPort:    ovnNbPort,
+		OvnNbTimeout: ovnNbTimeout,
+		DefaultLS:    defaultLS,
 	}
 	validatingHook, err := ovnwebhook.NewValidatingHook(mgr.GetCache(), opt)
 	if err != nil {
@@ -95,6 +98,11 @@ func loopOvnNbctlDaemon(ovnNbHost string, ovnNbPort int) {
 		time.Sleep(5 * time.Second)
 
 		if _, err := os.Stat(daemonSocket); os.IsNotExist(err) || daemonSocket == "" {
+			ovs.StartOvnNbctlDaemon(ovnNbHost, ovnNbPort)
+		}
+
+		if  err := ovs.CheckAlive(); err != nil {
+			klog.Warningf("ovn-nbctl daemon doesn't return, start a new daemon")
 			ovs.StartOvnNbctlDaemon(ovnNbHost, ovnNbPort)
 		}
 	}

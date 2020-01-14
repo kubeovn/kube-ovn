@@ -20,9 +20,9 @@ func (c *Controller) enqueueDeleteService(obj interface{}) {
 	if svc.Spec.ClusterIP != v1.ClusterIPNone && svc.Spec.ClusterIP != "" {
 		for _, port := range svc.Spec.Ports {
 			if port.Protocol == v1.ProtocolTCP {
-				c.deleteTcpServiceQueue.AddRateLimited(fmt.Sprintf("%s:%d", svc.Spec.ClusterIP, port.Port))
+				c.deleteTcpServiceQueue.Add(fmt.Sprintf("%s:%d", svc.Spec.ClusterIP, port.Port))
 			} else if port.Protocol == v1.ProtocolUDP {
-				c.deleteUdpServiceQueue.AddRateLimited(fmt.Sprintf("%s:%d", svc.Spec.ClusterIP, port.Port))
+				c.deleteUdpServiceQueue.Add(fmt.Sprintf("%s:%d", svc.Spec.ClusterIP, port.Port))
 			}
 		}
 	}
@@ -45,7 +45,7 @@ func (c *Controller) enqueueUpdateService(old, new interface{}) {
 		return
 	}
 	klog.V(3).Infof("enqueue update service %s", key)
-	c.updateServiceQueue.AddRateLimited(key)
+	c.updateServiceQueue.Add(key)
 }
 
 func (c *Controller) runDeleteTcpServiceWorker() {
@@ -220,6 +220,7 @@ func (c *Controller) handleUpdateService(key string) error {
 	lbUuid, err := c.ovnClient.FindLoadbalancer(c.config.ClusterTcpLoadBalancer)
 	if err != nil {
 		klog.Errorf("failed to get lb %v", err)
+		return err
 	}
 	vips, err := c.ovnClient.GetLoadBalancerVips(lbUuid)
 	if err != nil {
@@ -230,7 +231,7 @@ func (c *Controller) handleUpdateService(key string) error {
 	for _, vip := range tcpVips {
 		if _, ok := vips[vip]; !ok {
 			klog.Infof("add vip %s to tcp lb", vip)
-			c.updateEndpointQueue.AddRateLimited(key)
+			c.updateEndpointQueue.Add(key)
 			break
 		}
 	}
@@ -249,6 +250,7 @@ func (c *Controller) handleUpdateService(key string) error {
 	lbUuid, err = c.ovnClient.FindLoadbalancer(c.config.ClusterUdpLoadBalancer)
 	if err != nil {
 		klog.Errorf("failed to get lb %v", err)
+		return err
 	}
 	vips, err = c.ovnClient.GetLoadBalancerVips(lbUuid)
 	if err != nil {
@@ -259,7 +261,7 @@ func (c *Controller) handleUpdateService(key string) error {
 	for _, vip := range udpVips {
 		if _, ok := vips[vip]; !ok {
 			klog.Infof("add vip %s to udp lb", vip)
-			c.updateEndpointQueue.AddRateLimited(key)
+			c.updateEndpointQueue.Add(key)
 			break
 		}
 	}

@@ -19,16 +19,16 @@ limitations under the License.
 package v1
 
 import (
-	"time"
+	time "time"
 
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
-	"github.com/alauda/kube-ovn/pkg/client/informers/externalversions/internalinterfaces"
+	versioned "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
+	internalinterfaces "github.com/alauda/kube-ovn/pkg/client/informers/externalversions/internalinterfaces"
 	v1 "github.com/alauda/kube-ovn/pkg/client/listers/kubeovn/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/tools/cache"
+	runtime "k8s.io/apimachinery/pkg/runtime"
+	watch "k8s.io/apimachinery/pkg/watch"
+	cache "k8s.io/client-go/tools/cache"
 )
 
 // IPInformer provides access to a shared informer and lister for

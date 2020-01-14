@@ -3,6 +3,7 @@ package daemon
 import (
 	"fmt"
 	"net"
+	"os/exec"
 	"time"
 
 	"k8s.io/client-go/kubernetes/scheme"
@@ -45,11 +46,10 @@ type Controller struct {
 
 	recorder record.EventRecorder
 
-	ipSetsV4Mgr   *ipsets.IPSets
-	iptablesV4Mgr *iptables.IPTables
+	iptable *iptables.IPTables
+	ipset   *ipsets.IPSets
 
-	ipSetsV6Mgr   *ipsets.IPSets
-	iptablesV6Mgr *iptables.IPTables
+	protocol string
 }
 
 // NewController init a daemon controller
@@ -62,19 +62,6 @@ func NewController(config *Configuration, informerFactory informers.SharedInform
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	podInformer := informerFactory.Core().V1().Pods()
 
-	iptablesV4Mgr, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
-	if err != nil {
-		return nil, err
-	}
-	iptablesV6Mgr, err := iptables.NewWithProtocol(iptables.ProtocolIPv6)
-	if err != nil {
-		return nil, err
-	}
-	ipsetV4Conf := ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil)
-	ipsetsV4Mgr := ipsets.NewIPSets(ipsetV4Conf)
-	ipsetV6Conf := ipsets.NewIPVersionConfig(ipsets.IPFamilyV6, IPSetPrefix, nil, nil)
-	ipsetsV6Mgr := ipsets.NewIPSets(ipsetV6Conf)
-
 	controller := &Controller{
 		config:        config,
 		subnetsLister: subnetInformer.Lister(),
@@ -86,18 +73,35 @@ func NewController(config *Configuration, informerFactory informers.SharedInform
 		podQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Pod"),
 
 		recorder: recorder,
+	}
 
-		ipSetsV4Mgr:   ipsetsV4Mgr,
-		iptablesV4Mgr: iptablesV4Mgr,
-		ipSetsV6Mgr:   ipsetsV6Mgr,
-		iptablesV6Mgr: iptablesV6Mgr,
+	node, err := config.KubeClient.CoreV1().Nodes().Get(config.NodeName, metav1.GetOptions{})
+	if err != nil {
+		klog.Fatalf("failed to get node %s info %v", config.NodeName, err)
+		return nil, err
+	}
+	controller.protocol = util.CheckProtocol(node.Annotations[util.IpAddressAnnotation])
+
+	if controller.protocol == kubeovnv1.ProtocolIPv4 {
+		iptable, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
+		if err != nil {
+			return nil, err
+		}
+		controller.iptable = iptable
+		controller.ipset = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil))
+	} else {
+		iptable, err := iptables.NewWithProtocol(iptables.ProtocolIPv6)
+		if err != nil {
+			return nil, err
+		}
+		controller.iptable = iptable
+		controller.ipset = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV6, IPSetPrefix, nil, nil))
 	}
 
 	subnetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueSubnet,
 		DeleteFunc: controller.enqueueSubnet,
 	})
-
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: controller.enqueuePod,
 	})
@@ -112,7 +116,7 @@ func (c *Controller) enqueueSubnet(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	c.subnetQueue.AddRateLimited(key)
+	c.subnetQueue.Add(key)
 }
 
 func (c *Controller) runSubnetWorker() {
@@ -151,19 +155,22 @@ func (c *Controller) processNextSubnetWorkItem() bool {
 	return true
 }
 
-func (c *Controller) handleNamespace(key string) error {
-	return c.reconcileRouters()
-}
-
 func (c *Controller) reconcileRouters() error {
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list namespace %v", err)
 		return err
 	}
-	cidrs := []string{}
+	cidrs := make([]string, 0, len(subnets))
 	for _, subnet := range subnets {
-		cidrs = append(cidrs, subnet.Spec.CIDRBlock)
+		if !subnet.Status.IsReady() {
+			continue
+		}
+		if _, ipNet, err := net.ParseCIDR(subnet.Spec.CIDRBlock); err != nil {
+			klog.Errorf("%s is not a valid cidr block", subnet.Spec.CIDRBlock)
+		} else {
+			cidrs = append(cidrs, ipNet.String())
+		}
 	}
 	node, err := c.config.KubeClient.CoreV1().Nodes().Get(c.config.NodeName, metav1.GetOptions{})
 	if err != nil {
@@ -181,19 +188,36 @@ func (c *Controller) reconcileRouters() error {
 		return fmt.Errorf("failed to get nic %s", util.NodeNic)
 	}
 
-	var routers []netlink.Route
+	var existRoutes []netlink.Route
 	if util.CheckProtocol(gateway) == kubeovnv1.ProtocolIPv4 {
-		routers, err = netlink.RouteList(nic, netlink.FAMILY_V4)
+		existRoutes, err = netlink.RouteList(nic, netlink.FAMILY_V4)
 	} else {
-		routers, err = netlink.RouteList(nic, netlink.FAMILY_V6)
+		existRoutes, err = netlink.RouteList(nic, netlink.FAMILY_V6)
 	}
 	if err != nil {
 		return err
 	}
 
-	toDel := []string{}
-	for _, route := range routers {
+	toAdd, toDel := routeDiff(existRoutes, cidrs)
+	for _, r := range toDel {
+		_, cidr, _ := net.ParseCIDR(r)
+		if err = netlink.RouteDel(&netlink.Route{Dst: cidr}); err != nil {
+			klog.Errorf("failed to del route %v", err)
+		}
+	}
 
+	for _, r := range toAdd {
+		_, cidr, _ := net.ParseCIDR(r)
+		gw := net.ParseIP(gateway)
+		if err = netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: gw}); err != nil {
+			klog.Errorf("failed to add route %v", err)
+		}
+	}
+	return err
+}
+
+func routeDiff(existRoutes []netlink.Route, cidrs []string) (toAdd []string, toDel []string) {
+	for _, route := range existRoutes {
 		if route.Scope == netlink.SCOPE_LINK {
 			continue
 		}
@@ -213,10 +237,9 @@ func (c *Controller) reconcileRouters() error {
 		klog.Infof("route to del %v", toDel)
 	}
 
-	toAdd := []string{}
 	for _, c := range cidrs {
 		found := false
-		for _, r := range routers {
+		for _, r := range existRoutes {
 			if r.Dst.String() == c {
 				found = true
 				break
@@ -229,34 +252,13 @@ func (c *Controller) reconcileRouters() error {
 	if len(toAdd) > 0 {
 		klog.Infof("route to add %v", toAdd)
 	}
-
-	for _, r := range toDel {
-		_, cidr, _ := net.ParseCIDR(r)
-		err := netlink.RouteDel(&netlink.Route{Dst: cidr})
-		if err != nil {
-			klog.Errorf("failed to del route %v", err)
-		}
-		return err
-	}
-
-	for _, r := range toAdd {
-		_, cidr, _ := net.ParseCIDR(r)
-		gw := net.ParseIP(gateway)
-		err := netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: gw})
-		if err != nil {
-			klog.Errorf("failed to add route %v", err)
-			return err
-		}
-	}
-	return nil
+	return
 }
 
 func (c *Controller) enqueuePod(old, new interface{}) {
 	oldPod := old.(*v1.Pod)
 	newPod := new.(*v1.Pod)
-	if newPod.Spec.NodeName != c.config.NodeName {
-		return
-	}
+
 	if oldPod.Annotations[util.IngressRateAnnotation] != newPod.Annotations[util.IngressRateAnnotation] ||
 		oldPod.Annotations[util.EgressRateAnnotation] != newPod.Annotations[util.EgressRateAnnotation] {
 		var key string
@@ -265,7 +267,7 @@ func (c *Controller) enqueuePod(old, new interface{}) {
 			utilruntime.HandleError(err)
 			return
 		}
-		c.podQueue.AddRateLimited(key)
+		c.podQueue.Add(key)
 	}
 }
 
@@ -328,29 +330,31 @@ func (c *Controller) handlePod(key string) error {
 }
 
 // Run starts controller
-func (c *Controller) Run(stopCh <-chan struct{}) error {
+func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
-
 	defer c.subnetQueue.ShutDown()
 	defer c.podQueue.ShutDown()
 
+	go wait.Until(ovs.CleanLostInterface, time.Minute, stopCh)
+	go wait.Until(recompute, 10*time.Minute, stopCh)
+
 	klog.Info("start watching namespace changes")
 	if ok := cache.WaitForCacheSync(stopCh, c.subnetsSynced, c.podsSynced); !ok {
-		return fmt.Errorf("failed to wait for caches to sync")
+		klog.Fatalf("failed to wait for caches to sync")
+		return
 	}
-
-	go wait.Until(c.runSubnetWorker, time.Second, stopCh)
-	go wait.Until(c.runPodWorker, time.Second, stopCh)
-	node, err := c.config.KubeClient.CoreV1().Nodes().Get(c.config.NodeName, metav1.GetOptions{})
-	if err != nil {
-		klog.Errorf("failed to get node %s info %v", c.config.NodeName, err)
-		return err
-	}
-	go c.runGateway(util.CheckProtocol(node.Annotations[util.IpAddressAnnotation]), stopCh)
 
 	klog.Info("Started workers")
+	go wait.Until(c.runSubnetWorker, time.Second, stopCh)
+	go wait.Until(c.runPodWorker, time.Second, stopCh)
+	go wait.Until(c.runGateway, 3*time.Second, stopCh)
 	<-stopCh
 	klog.Info("Shutting down workers")
+}
 
-	return nil
+func recompute() {
+	output, err := exec.Command("ovs-appctl", "-t", "ovn-controller", "recompute").CombinedOutput()
+	if err != nil {
+		klog.Errorf("failed to recompute ovn-controller %q", output)
+	}
 }

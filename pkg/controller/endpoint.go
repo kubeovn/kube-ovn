@@ -23,7 +23,7 @@ func (c *Controller) enqueueAddEndpoint(obj interface{}) {
 		return
 	}
 	klog.V(3).Infof("enqueue add endpoint %s", key)
-	c.updateEndpointQueue.AddRateLimited(key)
+	c.updateEndpointQueue.Add(key)
 }
 
 func (c *Controller) enqueueUpdateEndpoint(old, new interface{}) {
@@ -47,7 +47,7 @@ func (c *Controller) enqueueUpdateEndpoint(old, new interface{}) {
 		return
 	}
 	klog.V(3).Infof("enqueue update endpoint %s", key)
-	c.updateEndpointQueue.AddRateLimited(key)
+	c.updateEndpointQueue.Add(key)
 }
 
 func (c *Controller) runUpdateEndpointWorker() {
@@ -115,37 +115,13 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		return nil
 	}
 
-	backends := []string{}
-	nameToPort := map[string]int32{}
-	for _, subset := range ep.Subsets {
-		for _, addr := range subset.Addresses {
-			if addr.IP != "" {
-				if util.CheckProtocol(addr.IP) == util.CheckProtocol(clusterIP) {
-					backends = append(backends, addr.IP)
-				}
-			}
-		}
-		for _, port := range subset.Ports {
-			nameToPort[port.Name] = port.Port
-		}
-	}
-
 	for _, port := range svc.Spec.Ports {
 		vip := fmt.Sprintf("%s:%d", clusterIP, port.Port)
-		var targetPort int32
-		if port.TargetPort.IntVal != 0 {
-			targetPort = port.TargetPort.IntVal
-		} else {
-			port, ok := nameToPort[port.TargetPort.StrVal]
-			if !ok {
-				continue
-			}
-			targetPort = port
-		}
+		backends := getServicePortBackends(ep, port, clusterIP)
 		if port.Protocol == v1.ProtocolTCP {
 			// for performance reason delete lb with no backends
 			if len(backends) > 0 {
-				err = c.ovnClient.CreateLoadBalancerRule(c.config.ClusterTcpLoadBalancer, vip, convertIpToAddress(backends, targetPort))
+				err = c.ovnClient.CreateLoadBalancerRule(c.config.ClusterTcpLoadBalancer, vip, getServicePortBackends(ep, port, clusterIP), string(port.Protocol))
 				if err != nil {
 					klog.Errorf("failed to update vip %s to tcp lb, %v", vip, err)
 					return err
@@ -159,7 +135,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 			}
 		} else {
 			if len(backends) > 0 {
-				err = c.ovnClient.CreateLoadBalancerRule(c.config.ClusterUdpLoadBalancer, vip, convertIpToAddress(backends, targetPort))
+				err = c.ovnClient.CreateLoadBalancerRule(c.config.ClusterUdpLoadBalancer, vip, getServicePortBackends(ep, port, clusterIP), string(port.Protocol))
 				if err != nil {
 					klog.Errorf("failed to update vip %s to udp lb, %v", vip, err)
 					return err
@@ -176,11 +152,25 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	return nil
 }
 
-func convertIpToAddress(backends []string, targetPort int32) string {
-	addresses := make([]string, 0, len(backends))
-	for _, backend := range backends {
-		address := fmt.Sprintf("%s:%d", backend, targetPort)
-		addresses = append(addresses, address)
+func getServicePortBackends(endpoints *v1.Endpoints, servicePort v1.ServicePort, serviceIP string) string {
+	backends := []string{}
+	for _, subset := range endpoints.Subsets {
+		var targetPort int32
+		for _, port := range subset.Ports {
+			if port.Name == servicePort.Name {
+				targetPort = port.Port
+				break
+			}
+		}
+		if targetPort == 0 {
+			continue
+		}
+
+		for _, address := range subset.Addresses {
+			if util.CheckProtocol(serviceIP) == util.CheckProtocol(address.IP) {
+				backends = append(backends, fmt.Sprintf("%s:%d", address.IP, targetPort))
+			}
+		}
 	}
-	return strings.Join(addresses, ",")
+	return strings.Join(backends, ",")
 }

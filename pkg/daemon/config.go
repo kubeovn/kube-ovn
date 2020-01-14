@@ -4,19 +4,17 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
 	"strings"
 	"syscall"
 
+	clientset "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	"github.com/vishvananda/netlink"
-
-	clientset "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -36,6 +34,7 @@ type Configuration struct {
 	KubeOvnClient         clientset.Interface
 	NodeName              string
 	ServiceClusterIPRange string
+	NodeLocalDNSIP        string
 	PprofPort             int
 }
 
@@ -51,14 +50,14 @@ func ParseFlags() (*Configuration, error) {
 		argOvsSocket             = pflag.String("ovs-socket", "", "The socket to local ovs-server")
 		argKubeConfigFile        = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 		argServiceClusterIPRange = pflag.String("service-cluster-ip-range", "10.96.0.0/12", "The kubernetes service cluster ip range, default: 10.96.0.0/12")
+		argNodeLocalDnsIP        = pflag.String("node-local-dns-ip", "", "if use nodelocaldns the local dns server ip should be set here, default empty.")
 		argPprofPort             = pflag.Int("pprof-port", 10665, "The port to get profiling data, default: 10665")
 	)
 
-	// mute log for ipset lib
-	logrus.SetOutput(ioutil.Discard)
+	// mute info log for ipset lib
+	logrus.SetLevel(logrus.WarnLevel)
 
 	flag.Set("alsologtostderr", "true")
-
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
 
@@ -80,7 +79,6 @@ func ParseFlags() (*Configuration, error) {
 		klog.Errorf("env KUBE_NODE_NAME not exists")
 		return nil, fmt.Errorf("env KUBE_NODE_NAME not exists")
 	}
-
 	config := &Configuration{
 		Iface:                 *argIface,
 		MTU:                   *argMTU,
@@ -92,19 +90,34 @@ func ParseFlags() (*Configuration, error) {
 		PprofPort:             *argPprofPort,
 		NodeName:              nodeName,
 		ServiceClusterIPRange: *argServiceClusterIPRange,
+		NodeLocalDNSIP:        *argNodeLocalDnsIP,
 	}
 
+	if err := config.initNicConfig(); err != nil {
+		return nil, err
+	}
+
+	if err := config.initKubeClient(); err != nil {
+		return nil, err
+	}
+
+	klog.Infof("daemon config: %v", config)
+	return config, nil
+}
+
+func (config *Configuration) initNicConfig() error {
 	if config.Iface == "" {
-		iface, err := getDefaultGatewayIface()
+		i, err := getDefaultGatewayIface()
 		if err != nil {
-			return nil, err
+			return err
 		} else {
-			config.Iface = iface
+			config.Iface = i
 		}
 	}
+
 	iface, err := net.InterfaceByName(config.Iface)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if config.MTU == 0 {
 		config.MTU = iface.MTU - util.GeneveHeaderLength
@@ -112,21 +125,12 @@ func ParseFlags() (*Configuration, error) {
 
 	addrs, err := iface.Addrs()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get iface addr. %v", err)
+		return fmt.Errorf("failed to get iface addr. %v", err)
 	}
 	if len(addrs) == 0 {
-		return nil, fmt.Errorf("iface %s has no ip address", config.Iface)
+		return fmt.Errorf("iface %s has no ip address", config.Iface)
 	}
-	if err := setEncapIP(strings.Split(addrs[0].String(), "/")[0]); err != nil {
-		return nil, err
-	}
-
-	err = config.initKubeClient()
-	if err != nil {
-		return nil, err
-	}
-	klog.Infof("daemon config: %v", config)
-	return config, nil
+	return setEncapIP(strings.Split(addrs[0].String(), "/")[0])
 }
 
 func (config *Configuration) initKubeClient() error {
@@ -146,13 +150,8 @@ func (config *Configuration) initKubeClient() error {
 			return err
 		}
 	}
-
-	kubeClient, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		klog.Errorf("init kubernetes client failed %v", err)
-		return err
-	}
-	config.KubeClient = kubeClient
+	cfg.QPS = 1000
+	cfg.Burst = 2000
 
 	kubeOvnClient, err := clientset.NewForConfig(cfg)
 	if err != nil {
@@ -160,6 +159,15 @@ func (config *Configuration) initKubeClient() error {
 		return err
 	}
 	config.KubeOvnClient = kubeOvnClient
+
+	cfg.ContentType = "application/vnd.kubernetes.protobuf"
+	cfg.AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
+	kubeClient, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		klog.Errorf("init kubernetes client failed %v", err)
+		return err
+	}
+	config.KubeClient = kubeClient
 	return nil
 }
 

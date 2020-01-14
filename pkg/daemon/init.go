@@ -5,6 +5,7 @@ import (
 	"github.com/alauda/kube-ovn/pkg/util"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
+	"net"
 	"strings"
 	"time"
 )
@@ -19,7 +20,8 @@ func InitNodeGateway(config *Configuration) error {
 			klog.Errorf("failed to get node %s info %v", nodeName, err)
 			return err
 		}
-		if err := util.ValidatePodNetwork(node.Annotations); err != nil {
+		if err := util.ValidatePodNetwork(node.Annotations); err != nil ||
+			node.Annotations[util.IpAddressAnnotation] == "" {
 			klog.Errorf("validate node %s failed, %v", nodeName, err)
 			time.Sleep(3 * time.Second)
 			continue
@@ -33,7 +35,11 @@ func InitNodeGateway(config *Configuration) error {
 			break
 		}
 	}
-	return configureNodeNic(portName, ipAddr, macAddr, gw, config.MTU)
+	mac, err := net.ParseMAC(macAddr)
+	if err != nil {
+		return fmt.Errorf("failed to parse mac %s %v", mac, err)
+	}
+	return configureNodeNic(portName, ipAddr, gw, mac, config.MTU)
 }
 
 func InitMirror(config *Configuration) error {

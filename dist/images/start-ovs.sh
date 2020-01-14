@@ -1,17 +1,24 @@
 #!/bin/bash
 set -euo pipefail
 
+# https://bugs.launchpad.net/neutron/+bug/1776778
+if grep -q "3.10.0-862" /proc/version
+then
+    echo "kernel version 3.10.0-862 has a nat related bug that will affect ovs function, please update to a version greater than 3.10.0-898"
+    exit 1
+fi
+
 # wait for ovn-sb ready
 function wait_ovn_sb {
-    if [[ -z "${OVN_SB_SERVICE_HOST}}" ]]; then
+    if [[ -z "${OVN_SB_SERVICE_HOST}" ]]; then
         echo "env OVN_SB_SERVICE_HOST not exists"
         exit 1
     fi
-    if [[ -z "${OVN_SB_SERVICE_PORT}}" ]]; then
+    if [[ -z "${OVN_SB_SERVICE_PORT}" ]]; then
         echo "env OVN_SB_SERVICE_PORT not exists"
         exit 1
     fi
-    while ! nc -z ${OVN_SB_SERVICE_HOST} ${OVN_SB_SERVICE_PORT} </dev/null;
+    while ! nc -z "${OVN_SB_SERVICE_HOST}" "${OVN_SB_SERVICE_PORT}" </dev/null;
     do
         echo "sleep 10 seconds, waiting for ovn-sb ${OVN_SB_SERVICE_HOST}:${OVN_SB_SERVICE_PORT} ready "
         sleep 10;
@@ -47,7 +54,9 @@ fi
 /usr/share/openvswitch/scripts/ovn-ctl restart_controller_vtep
 
 # Set remote ovn-sb for ovn-controller to connect to
-ovs-vsctl set open . external-ids:ovn-remote=tcp:${OVN_SB_SERVICE_HOST}:${OVN_SB_SERVICE_PORT}
+ovs-vsctl set open . external-ids:ovn-remote=tcp:"${OVN_SB_SERVICE_HOST}":"${OVN_SB_SERVICE_PORT}"
+ovs-vsctl set open . external-ids:ovn-remote-probe-interval=10000
+ovs-vsctl set open . external-ids:ovn-openflow-probe-interval=180
 ovs-vsctl set open . external-ids:ovn-encap-type=geneve
 
 tail -f /var/log/openvswitch/ovs-vswitchd.log

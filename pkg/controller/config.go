@@ -2,10 +2,10 @@ package controller
 
 import (
 	"flag"
-	"github.com/alauda/kube-ovn/pkg/util"
 	"os"
 
 	clientset "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
+	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -19,6 +19,7 @@ type Configuration struct {
 	OvnNbSocket    string
 	OvnNbHost      string
 	OvnNbPort      int
+	OvnNbTimeout   int
 	KubeConfigFile string
 	KubeClient     kubernetes.Interface
 	KubeOvnClient  clientset.Interface
@@ -50,6 +51,7 @@ func ParseFlags() (*Configuration, error) {
 		argOvnNbSocket    = pflag.String("ovn-nb-socket", "", "The ovn-nb socket file. (If not set use ovn-nb-address)")
 		argOvnNbHost      = pflag.String("ovn-nb-host", "0.0.0.0", "The ovn-nb host address. (If not set use ovn-nb-socket)")
 		argOvnNbPort      = pflag.Int("ovn-nb-port", 6641, "")
+		argOvnNbTimeout   = pflag.Int("ovn-nb-timeout", 30, "")
 		argKubeConfigFile = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 
 		argDefaultLogicalSwitch = pflag.String("default-ls", "ovn-default", "The default logical switch name, default: ovn-default")
@@ -91,6 +93,7 @@ func ParseFlags() (*Configuration, error) {
 		OvnNbSocket:            *argOvnNbSocket,
 		OvnNbHost:              *argOvnNbHost,
 		OvnNbPort:              *argOvnNbPort,
+		OvnNbTimeout:           *argOvnNbTimeout,
 		KubeConfigFile:         *argKubeConfigFile,
 		DefaultLogicalSwitch:   *argDefaultLogicalSwitch,
 		DefaultCIDR:            *argDefaultCIDR,
@@ -155,18 +158,22 @@ func (config *Configuration) initKubeClient() error {
 			return err
 		}
 	}
-	kubeClient, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		klog.Errorf("init kubernetes client failed %v", err)
-		return err
-	}
-	config.KubeClient = kubeClient
-
+	cfg.QPS = 1000
+	cfg.Burst = 2000
 	kubeOvnClient, err := clientset.NewForConfig(cfg)
 	if err != nil {
 		klog.Errorf("init kubeovn client failed %v", err)
 		return err
 	}
 	config.KubeOvnClient = kubeOvnClient
+
+	cfg.ContentType = "application/vnd.kubernetes.protobuf"
+	cfg.AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
+	kubeClient, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		klog.Errorf("init kubernetes client failed %v", err)
+		return err
+	}
+	config.KubeClient = kubeClient
 	return nil
 }

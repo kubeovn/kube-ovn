@@ -1,6 +1,6 @@
 # Webhook
 
-Kube-OVN supports allocation static IP addresss along with dynamical addresss which means we should hold static IP addresses don't allow others using it.
+Kube-OVN supports allocation static IP addresses along with dynamical addresses which means we should hold static IP addresses don't allow others using it.
 
 ## Pre-request
 

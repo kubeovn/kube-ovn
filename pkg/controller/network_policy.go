@@ -2,11 +2,11 @@ package controller
 
 import (
 	"fmt"
+	"github.com/alauda/kube-ovn/pkg/util"
 	"reflect"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/api/networking/v1"
 	netv1 "k8s.io/api/networking/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -27,7 +27,7 @@ func (c *Controller) enqueueAddNp(obj interface{}) {
 		return
 	}
 	klog.V(3).Infof("enqueue add np %s", key)
-	c.updateNpQueue.AddRateLimited(key)
+	c.updateNpQueue.Add(key)
 }
 
 func (c *Controller) enqueueDeleteNp(obj interface{}) {
@@ -41,15 +41,15 @@ func (c *Controller) enqueueDeleteNp(obj interface{}) {
 		return
 	}
 	klog.V(3).Infof("enqueue delete np %s", key)
-	c.deleteNpQueue.AddRateLimited(key)
+	c.deleteNpQueue.Add(key)
 }
 
 func (c *Controller) enqueueUpdateNp(old, new interface{}) {
 	if !c.isLeader() {
 		return
 	}
-	oldNp := old.(*v1.NetworkPolicy)
-	newNp := new.(*v1.NetworkPolicy)
+	oldNp := old.(*netv1.NetworkPolicy)
+	newNp := new.(*netv1.NetworkPolicy)
 	if !reflect.DeepEqual(oldNp.Spec, newNp.Spec) {
 		var key string
 		var err error
@@ -58,7 +58,7 @@ func (c *Controller) enqueueUpdateNp(old, new interface{}) {
 			return
 		}
 		klog.V(3).Infof("enqueue update np %s", key)
-		c.updateNpQueue.AddRateLimited(key)
+		c.updateNpQueue.Add(key)
 	}
 }
 
@@ -191,7 +191,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 	egressAllowAsName := strings.Replace(fmt.Sprintf("%s.%s.egress.allow", np.Name, np.Namespace), "-", ".", -1)
 	egressExceptAsName := strings.Replace(fmt.Sprintf("%s.%s.egress.except", np.Name, np.Namespace), "-", ".", -1)
 
-	if err := c.ovnClient.CreatePortGroup(pgName); err != nil {
+	if err := c.ovnClient.CreatePortGroup(pgName, np.Namespace, np.Name); err != nil {
 		klog.Errorf("failed to create port group for np %s, %v", key, err)
 		return err
 	}
@@ -222,14 +222,20 @@ func (c *Controller) handleUpdateNp(key string) error {
 		allows := []string{}
 		excepts := []string{}
 		for _, npr := range np.Spec.Ingress {
-			for _, npp := range npr.From {
-				allow, except, err := c.fetchPolicySelectedAddresses(np.Namespace, npp)
-				if err != nil {
-					klog.Errorf("failed to fetch policy selected addresses, %v", err)
-					return err
+			if len(np.Spec.Ingress) == 0 {
+				allows = []string{"0.0.0.0/0"}
+				excepts = []string{}
+				break
+			} else {
+				for _, npp := range npr.From {
+					allow, except, err := c.fetchPolicySelectedAddresses(np.Namespace, npp)
+					if err != nil {
+						klog.Errorf("failed to fetch policy selected addresses, %v", err)
+						return err
+					}
+					allows = append(allows, allow...)
+					excepts = append(excepts, except...)
 				}
-				allows = append(allows, allow...)
-				excepts = append(excepts, except...)
 			}
 		}
 
@@ -280,14 +286,20 @@ func (c *Controller) handleUpdateNp(key string) error {
 		allows := []string{}
 		excepts := []string{}
 		for _, npr := range np.Spec.Egress {
-			for _, npp := range npr.To {
-				allow, except, err := c.fetchPolicySelectedAddresses(np.Namespace, npp)
-				if err != nil {
-					klog.Errorf("failed to fetch policy selected addresses, %v", err)
-					return err
+			if len(npr.To) == 0 {
+				allows = []string{"0.0.0.0/0"}
+				excepts = []string{}
+				break
+			} else {
+				for _, npp := range npr.To {
+					allow, except, err := c.fetchPolicySelectedAddresses(np.Namespace, npp)
+					if err != nil {
+						klog.Errorf("failed to fetch policy selected addresses, %v", err)
+						return err
+					}
+					allows = append(allows, allow...)
+					excepts = append(excepts, except...)
 				}
-				allows = append(allows, allow...)
-				excepts = append(excepts, except...)
 			}
 		}
 
@@ -339,14 +351,8 @@ func (c *Controller) handleDeleteNp(key string) error {
 	egressAllowAsName := strings.Replace(fmt.Sprintf("%s.%s.egress.allow", name, namespace), "-", ".", -1)
 	egressExceptAsName := strings.Replace(fmt.Sprintf("%s.%s.egress.except", name, namespace), "-", ".", -1)
 
-	if err := c.ovnClient.DeleteACL(pgName, "to-lport"); err != nil {
-		klog.Errorf("failed to delete np %s ingress acls, %v", key, err)
-		return err
-	}
-
-	if err := c.ovnClient.DeleteACL(pgName, "from-lport"); err != nil {
-		klog.Errorf("failed to delete np %s egress acls, %v", key, err)
-		return err
+	if err := c.ovnClient.DeletePortGroup(pgName); err != nil {
+		klog.Errorf("failed to delete np %s port group, %v", key, err)
 	}
 
 	if err := c.ovnClient.DeleteAddressSet(ingressAllowAsName); err != nil {
@@ -369,10 +375,6 @@ func (c *Controller) handleDeleteNp(key string) error {
 		return err
 	}
 
-	if err := c.ovnClient.DeletePortGroup(pgName); err != nil {
-		klog.Errorf("failed to delete np %s port group, %v", key, err)
-	}
-
 	return nil
 }
 
@@ -388,7 +390,7 @@ func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.Label
 
 	ports := make([]string, 0, len(pods))
 	for _, pod := range pods {
-		if !pod.Spec.HostNetwork {
+		if !pod.Spec.HostNetwork && pod.Annotations[util.AllocatedAnnotation] == "true" {
 			ports = append(ports, fmt.Sprintf("%s.%s", pod.Name, pod.Namespace))
 		}
 	}
@@ -477,7 +479,7 @@ func (c *Controller) podMatchNetworkPolicies(pod *corev1.Pod) []string {
 
 func isPodMatchNetworkPolicy(pod *corev1.Pod, podNs *corev1.Namespace, policy *netv1.NetworkPolicy, policyNs string) bool {
 	sel, _ := metav1.LabelSelectorAsSelector(&policy.Spec.PodSelector)
-	if sel.Matches(labels.Set(pod.Labels)) {
+	if podNs.Name == policyNs && sel.Matches(labels.Set(pod.Labels)) {
 		return true
 	}
 	for _, npr := range policy.Spec.Ingress {

@@ -1,29 +1,31 @@
 FROM centos:7
 
-RUN yum install -y \
-        PyYAML \
-        bind-utils \
+ENV PYTHONDONTWRITEBYTECODE yes
+
+RUN yum install -y  \
+        PyYAML bind-utils \
         openssl \
         numactl-libs \
         firewalld-filesystem \
         libpcap \
         hostname \
-        ipset \
         iproute strace socat nc \
-        unbound unbound-devel python-openvswitch libreswan && \
+        unbound unbound-devel&& \
         yum clean all
 
-ENV OVS_VERSION=2.11.1
-ENV OVS_SUBVERSION=1
+ENV OVS_VERSION=2.12.0
+ENV OVS_SUBVERSION=4
+
+RUN rpm -ivh https://github.com/alauda/ovs/releases/download/${OVS_VERSION}-${OVS_SUBVERSION}/openvswitch-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
+    rpm -ivh https://github.com/alauda/ovs/releases/download/${OVS_VERSION}-${OVS_SUBVERSION}/ovn-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
+    rpm -ivh https://github.com/alauda/ovs/releases/download/${OVS_VERSION}-${OVS_SUBVERSION}/ovn-host-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm
+
+
+RUN yum install -y tcpdump ipset && \
+        yum clean all
+
 ENV CNI_VERSION=v0.7.5
-
-RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-amd64-${CNI_VERSION}.tgz | tar -xz -C . ./loopback
-
-RUN rpm -ivh https://github.com/alauda/ovs/releases/download/v${OVS_VERSION}-${OVS_SUBVERSION}/openvswitch-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
-    rpm -ivh https://github.com/alauda/ovs/releases/download/v${OVS_VERSION}-${OVS_SUBVERSION}/openvswitch-ipsec-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
-    rpm -ivh https://github.com/alauda/ovs/releases/download/v${OVS_VERSION}-${OVS_SUBVERSION}/ovn-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
-    rpm -ivh https://github.com/alauda/ovs/releases/download/v${OVS_VERSION}-${OVS_SUBVERSION}/ovn-common-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
-    rpm -ivh https://github.com/alauda/ovs/releases/download/v${OVS_VERSION}-${OVS_SUBVERSION}/ovn-host-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm
+RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-amd64-${CNI_VERSION}.tgz | tar -xz -C . ./loopback ./portmap
 
 COPY start-cniserver.sh /kube-ovn/start-cniserver.sh
 COPY install-cni.sh /kube-ovn/install-cni.sh

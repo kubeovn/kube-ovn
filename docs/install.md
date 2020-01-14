@@ -21,21 +21,24 @@ Kube-OVN includes two parts:
     `kubectl label node <Node on which to deploy OVN DB> kube-ovn/role=master`
 2. Install Kube-OVN related CRDs
 
-    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v0.6.0/yamls/crd.yaml`
+    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v0.10.2/yamls/crd.yaml`
 3. Install native OVS and OVN components:
 
-    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v0.6.0/yamls/ovn.yaml`
+    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v0.10.2/yamls/ovn.yaml`
 4. Install the Kube-OVN Controller and CNI plugins:
 
-    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v0.6.0/yamls/kube-ovn.yaml`
+    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v0.10.2/yamls/kube-ovn.yaml`
     
 That's all! You can now create some pods and test connectivity.
 
 For high-available ovn db, see [high available](high-available.md)
 
-If you want to enable IPv6 on default subnet and node subnet, please apply https://raw.githubusercontent.com/alauda/kube-ovn/v0.6.0/yamls/kube-ovn-ipv6.yaml on Step 3.
+If you want to enable IPv6 on default subnet and node subnet, please apply https://raw.githubusercontent.com/alauda/kube-ovn/v0.10.2/yamls/kube-ovn-ipv6.yaml on Step 3.
 
 ## More Configuration
+
+Kube-OVN will use subnet to manage pod ip address allocation, so the kube-controller-manager flag `cluster-cidr` will not take effect.
+You can use `--default-cidr` flags below to config default Pod CIDR or create a new subnet with desired CIDR later.
 
 ### Controller Configuration
 
@@ -67,7 +70,7 @@ If you want to enable IPv6 on default subnet and node subnet, please apply https
 
 ```bash
     --iface: The iface used to inter-host pod communication, default: the default route iface
-    --mtu: The MTU used by pod iface, default: iface MTU - 58
+    --mtu: The MTU used by pod iface, default: iface MTU - 100
     --enable-mirror: Enable traffic mirror, default: false
     --mirror-iface: The mirror nic name that will be created by kube-ovn, default: mirror0
     --service-cluster-ip-range: The kubernetes service cluster ip range, default: 10.96.0.0/12
@@ -79,7 +82,7 @@ If you want to enable IPv6 on default subnet and node subnet, please apply https
 1. Remove Kubernetes resources:
 
     ```bash
-    wget https://raw.githubusercontent.com/alauda/kube-ovn/v0.6.0/dist/images/cleanup.sh
+    wget https://raw.githubusercontent.com/alauda/kube-ovn/v0.10.2/dist/images/cleanup.sh
     bash cleanup.sh
     ```
 
@@ -90,5 +93,6 @@ If you want to enable IPv6 on default subnet and node subnet, please apply https
     rm -rf /etc/origin/openvswitch/
     rm -rf /etc/openvswitch
     rm -rf /etc/cni/net.d/00-kube-ovn.conflist
+    rm -rf /var/log/openvswitch
     ```
 3. Reboot the Node to remove ipset/iptables rules and nics.
