@@ -548,6 +548,9 @@ func (c *Controller) handleAddIpPoolPod(key string) error {
 				}
 			} else {
 				for _, ip := range ipPool {
+					for i, ip := range ipPool {
+						ipPool[i] = strings.TrimSpace(ip)
+					}
 					if net.ParseIP(ip) == nil {
 						continue
 					}
