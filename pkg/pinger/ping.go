@@ -59,8 +59,8 @@ func pingNodes(config *Configuration) {
 					pinger.Debug = true
 					pinger.Run()
 					stats := pinger.Statistics()
-					klog.Infof("ping node: %s %s, count: %d, loss rate %.2f%%, average rtt %.2fms",
-						nodeName, nodeIP, pinger.Count, math.Abs(stats.PacketLoss)*100, float64(stats.AvgRtt)/float64(time.Millisecond))
+					klog.Infof("ping node: %s %s, count: %d, loss count %d, average rtt %.2fms",
+						nodeName, nodeIP, pinger.Count, int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))), float64(stats.AvgRtt)/float64(time.Millisecond))
 					SetNodePingMetrics(
 						config.NodeName,
 						config.HostIP,
@@ -102,8 +102,8 @@ func pingPods(config *Configuration) {
 				pinger.Interval = 1 * time.Millisecond
 				pinger.Run()
 				stats := pinger.Statistics()
-				klog.Infof("ping pod: %s %s, count: %d, loss rate %.2f, average rtt %.2fms",
-					podName, podIp, pinger.Count, math.Abs(stats.PacketLoss)*100, float64(stats.AvgRtt)/float64(time.Millisecond))
+				klog.Infof("ping pod: %s %s, count: %d, loss count %d, average rtt %.2fms",
+					podName, podIp, pinger.Count, int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))), float64(stats.AvgRtt)/float64(time.Millisecond))
 				SetPodPingMetrics(
 					config.NodeName,
 					config.HostIP,
@@ -135,8 +135,8 @@ func pingExternal(config *Configuration) {
 	pinger.Interval = 1 * time.Millisecond
 	pinger.Run()
 	stats := pinger.Statistics()
-	klog.Infof("ping external address: %s, count: %d, loss rate %.2f, average rtt %.2fms",
-		config.ExternalAddress, pinger.Count, math.Abs(stats.PacketLoss)*100, float64(stats.AvgRtt)/float64(time.Millisecond))
+	klog.Infof("ping external address: %s, total count: %d, loss count %d, average rtt %.2fms",
+		config.ExternalAddress, pinger.Count, int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))), float64(stats.AvgRtt)/float64(time.Millisecond))
 	SetExternalPingMetrics(
 		config.NodeName,
 		config.HostIP,
@@ -177,4 +177,3 @@ func checkApiServer(config *Configuration) {
 	SetApiserverHealthyMetrics(config.NodeName, float64(elpased)/float64(time.Millisecond))
 	return
 }
-
