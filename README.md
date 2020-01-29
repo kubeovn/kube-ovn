@@ -6,32 +6,33 @@
 
 [中文教程](https://github.com/alauda/kube-ovn/wiki)
 
-Kube-OVN integrates the OVN-based Network Virtualization with Kubernetes. It offers an advanced Container Network Fabric for Enterprises. It provides the most functions and very easy to use and operate.
+Kube-OVN integrates the OVN-based Network Virtualization with Kubernetes. It offers an advanced Container Network Fabric for Enterprises with the most functions and the easiest operation.
 
 ## Features
 - **Namespaced Subnets**: Each Namespace can have a unique Subnet (backed by a Logical Switch). Pods within the Namespace will have IP addresses allocated from the Subnet. It's also possible for multiple Namespaces to share a Subnet.
 - **Subnet Isolation**: Can configure a Subnet to deny any traffic from source IP addresses not within the same Subnet. Can whitelist specific IP addresses and IP ranges.
-- **Network Policy**: Kube-OVN implements networking.k8s.io/NetworkPolicy API by ovn ACL.
+- **Network Policy**: Implementing networking.k8s.io/NetworkPolicy API by high performance ovn ACL.
 - **Static IP Addresses for Workloads**: Allocate random or static IP addresses to workloads.
 - **Dynamic QoS**: Configure Pod Ingress/Egress traffic rate limits on the fly.
-- **Embedded Load Balancers**: Replace kube-proxy with the OVN embedded distributed L2 Load Balancer.
+- **Embedded Load Balancers**: Replace kube-proxy with the OVN embedded high performance distributed L2 Load Balancer.
 - **Distributed Gateways**: Every Node can act as a Gateway to provide external network connectivity.
 - **Namespaced Gateways**: Every Namespace can have a dedicated Gateway for Egress traffic.
 - **Direct External Connectivity**：Pod IP can be exposed to external network directly.
-- **Traffic Mirror**: Duplicated container network traffic for monitoring and diagnosing.
+- **Traffic Mirror**: Duplicated container network traffic for monitoring, diagnosing and replay.
 - **IPv6 Support**: Kube-OVN supports ipv6-only mode pod network.
 - **TroubleShooting Tools**: Handy tools to diagnose, trace, monitor and dump container network traffic to help troubleshooting complicate network issues.
 - **Prometheus & Grafana Integration**: Exposing network quality metrics like pod/node/service/dns connectivity/latency in Prometheus format.
 
 ## Planned Future Work
 - Hardware Offloading and DPDK Support
+- Multi-Cluster Network
 - Policy-based QoS
 - More Metrics and Traffic Graph
 - More Diagnosis and Tracing Tools
 
 ## Network Topology
 
-The Switch, Router, Firewall showed in the diagram below are all distributed on all Nodes. There is no single point of failure for in cluster network.
+The Switch, Router, Firewall showed in the diagram below are all distributed on all Nodes. There is no single point of failure for in-cluster network.
 
 ![topology](docs/ovn-network-topology.png "kube-ovn network topology")
 
@@ -42,7 +43,7 @@ Kube-OVN offers prometheus integration with grafana dashboards to visualise netw
 ![dashboard](docs/pinger-grafana.png)
 
 ## Quick Start
-Kube-OVN is easy to install with all necessary components/dependencies included. If you already has a Kubernetes cluster without any cni plugin, please refer to the [Installation Guide](docs/install.md).
+Kube-OVN is easy to install with all necessary components/dependencies included. If you already have a Kubernetes cluster without any cni plugin, please refer to the [Installation Guide](docs/install.md).
 
 If you want to install Kubernetes from scratch, you can try [kubespray](https://github.com/kubernetes-sigs/kubespray/blob/master/docs/kube-ovn.md) or for Chinese users try [kubeasz](https://github.com/easzlab/kubeasz/blob/master/docs/setup/network-plugin/kube-ovn.md) to deploy a production ready Kubernetes cluster with Kube-OVN embedded.
 
@@ -71,13 +72,13 @@ ovn-kubernetes implements a subnet-per-node network topology.
 That means each node will have a fixed cidr range and the ip allocation is fulfilled by each node when the pod has been invoked by kubelet. 
 
 Kube-OVN implements a subnet-per-namespace network topology.
-That means a cidr can spread the entire cluster nodes, and the ip allocation is done by kube-ovn-controller at a central place. And then kube-ovn can apply lots of network configurations at subnet level, like cidr, gw, exclede_ips, nat and so on. This topology also gives Kube-OVN more ability to control how ip should be allocated, on top of this topology, Kube-OVN can allocate static ip for workloads.
+That means a cidr can spread the entire cluster nodes, and the ip allocation is done by kube-ovn-controller at a central place. And then kube-ovn can apply lots of network configurations at subnet level, like cidr, gw, exclude_ips, nat and so on. This topology also gives Kube-OVN more ability to control how ip should be allocated, on top of this topology, Kube-OVN can allocate static ip for workloads.
 
 We believe the subnet-per-namespace topology will give more flexibility to evolve the network.
 
-On the gateway side, ovn-kubernetes uses native ovn gateway concept to control the traffic. The native ovn gateway relies on a dedicated nic or needs to transfer the nic ip to another device to bind the nic to the ovs bridge. This implementation can reach better performance, however not all environments meet the network requirement,s especially in the cloud. 
+On the gateway side, ovn-kubernetes uses native ovn gateway concept to control the traffic. The native ovn gateway relies on a dedicated nic or needs to transfer the nic ip to another device to bind the nic to the ovs bridge. This implementation can reach better performance, however not all environments meet the network requirements especially in the cloud. 
 
-Kube-OVN uses policy-route, ipset, and iptables to implement the gateway functions that all by software, which can fit more infrastructure and give more flexibility to more function.
+Kube-OVN uses policy-route, ipset and iptables to implement the gateway functions that all by software, which can fit more infrastructure and give more flexibility to more function.
 
 ### Kube-OVN vs. Calico
 
