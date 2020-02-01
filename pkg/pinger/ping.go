@@ -53,9 +53,9 @@ func pingNodes(config *Configuration) {
 						return
 					}
 					pinger.SetPrivileged(true)
-					pinger.Timeout = 1 * time.Second
+					pinger.Timeout = 30 * time.Second
 					pinger.Count = 3
-					pinger.Interval = 1 * time.Millisecond
+					pinger.Interval = 100 * time.Millisecond
 					pinger.Debug = true
 					pinger.Run()
 					stats := pinger.Statistics()
