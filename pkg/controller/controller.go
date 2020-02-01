@@ -324,8 +324,13 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 		}
 	}
 
+	// run in a single worker to avoid ip conflict
 	go wait.Until(c.runAddIpPoolPodWorker, time.Second, stopCh)
+
+	// run in a single worker to avoid subnet cidr conflict
 	go wait.Until(c.runAddNamespaceWorker, time.Second, stopCh)
+
+	// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
 	go wait.Until(c.runDeleteTcpServiceWorker, time.Second, stopCh)
 	go wait.Until(c.runDeleteUdpServiceWorker, time.Second, stopCh)
 	for i := 0; i < c.config.WorkerNum; i++ {
