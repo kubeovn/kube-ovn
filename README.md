@@ -3,10 +3,17 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/alauda/kube-ovn/blob/master/LICENSE)
 [![Build Tag](https://img.shields.io/github/tag/alauda/kube-ovn.svg)](https://github.com/alauda/kube-ovn/releases)
 [![Go Report Card](https://goreportcard.com/badge/github.com/alauda/kube-ovn)](https://goreportcard.com/report/github.com/alauda/kube-ovn)
+[![Slack Card](https://kube-ovn-slackin.herokuapp.com/badge.svg)](https://kube-ovn-slackin.herokuapp.com/badge.svg)
 
 [中文教程](https://github.com/alauda/kube-ovn/wiki)
 
 Kube-OVN integrates the OVN-based Network Virtualization with Kubernetes. It offers an advanced Container Network Fabric for Enterprises with the most functions and the easiest operation.
+
+## Community
+The Kube-OVN community is waiting for you participation!
+- Follow us at [Twitter](https://twitter.com/KubeOvn)
+- Chat with us at [Slack](https://kube-ovn-slackin.herokuapp.com/)
+- For Chinese users WeChat group is also available, please send request to WeChat id:liumengxinfly with your information 
 
 ## Features
 - **Namespaced Subnets**: Each Namespace can have a unique Subnet (backed by a Logical Switch). Pods within the Namespace will have IP addresses allocated from the Subnet. It's also possible for multiple Namespaces to share a Subnet.
@@ -91,6 +98,4 @@ Use encapsulation can lower the requirement on network, and isolate container an
 From the function set, Kube-OVN can offer some more abilities like static ip, QoS and traffic mirror. The subnet in Kube-OVN and ippool in Calico share some same function set.
 
 ## Contact
-Mail: mengxin#alauda.io
-
-微信交流群请加 liumengxinfly，并注明 Kube-OVN
+微信交流群请加 liumengxinfly，并注明 Kube-OVN 和个人信息
