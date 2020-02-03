@@ -15,10 +15,10 @@ import (
 )
 
 type Framework struct {
-	BaseName string
+	BaseName         string
 	KubeOvnNamespace string
-	KubeClientSet kubernetes.Interface
-	OvnClientSet  clientset.Interface
+	KubeClientSet    kubernetes.Interface
+	OvnClientSet     clientset.Interface
 }
 
 func NewFramework(baseName, kubeConfig string) *Framework {
@@ -76,7 +76,6 @@ func (f *Framework) WaitPodReady(pod, namespace string) error {
 		if p.Status.Phase == "Running" && p.Status.Reason != "" {
 			return nil
 		}
-
 
 		switch getPodStatus(p) {
 		case Completed:

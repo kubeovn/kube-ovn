@@ -149,7 +149,7 @@ func pingExternal(config *Configuration) {
 func nslookup(config *Configuration) {
 	klog.Infof("start to check dns connectivity")
 	t1 := time.Now()
-	ctx, cancel := context.WithTimeout(context.TODO(), 10 * time.Second)
+	ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
 	defer cancel()
 	var r net.Resolver
 	addrs, err := r.LookupHost(ctx, config.DNS)

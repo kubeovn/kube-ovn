@@ -29,7 +29,7 @@ var _ = Describe("[Subnet]", func() {
 			By("create subnet")
 			s := kubeovn.Subnet{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: name,
+					Name:   name,
 					Labels: map[string]string{"e2e": "true"},
 				},
 				Spec: kubeovn.SubnetSpec{
@@ -68,11 +68,11 @@ var _ = Describe("[Subnet]", func() {
 			By("create subnet")
 			s := kubeovn.Subnet{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: name,
+					Name:   name,
 					Labels: map[string]string{"e2e": "true"},
 				},
 				Spec: kubeovn.SubnetSpec{
-					CIDRBlock: "11.11.0.0/16",
+					CIDRBlock:   "11.11.0.0/16",
 					GatewayType: kubeovn.GWCentralizedType,
 					GatewayNode: "kube-ovn-control-plane,kube-ovn-worker,kube-ovn-worker2",
 				},
@@ -97,7 +97,7 @@ var _ = Describe("[Subnet]", func() {
 			By("create subnet")
 			s := &kubeovn.Subnet{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: name,
+					Name:   name,
 					Labels: map[string]string{"e2e": "true"},
 				},
 				Spec: kubeovn.SubnetSpec{
@@ -132,7 +132,7 @@ var _ = Describe("[Subnet]", func() {
 			By("create subnet")
 			s := kubeovn.Subnet{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: name,
+					Name:   name,
 					Labels: map[string]string{"e2e": "true"},
 				},
 				Spec: kubeovn.SubnetSpec{
@@ -155,7 +155,7 @@ var _ = Describe("[Subnet]", func() {
 			By("create subnet")
 			s := &kubeovn.Subnet{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: name,
+					Name:   name,
 					Labels: map[string]string{"e2e": "true"},
 				},
 				Spec: kubeovn.SubnetSpec{

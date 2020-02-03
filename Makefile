@@ -6,11 +6,15 @@ ROLES=node controller cni db webhook pinger
 DEV_TAG=dev
 RELEASE_TAG=$(shell cat VERSION)
 
-.PHONY: build-dev-images build-go build-bin test lint up down halt suspend resume kind
+.PHONY: build-dev-images build-go build-bin test lint up down halt suspend resume kind push-dev push-release
 
 build-dev-images: build-bin
 	@for role in ${ROLES} ; do \
 		docker build -t ${REGISTRY}/kube-ovn-$$role:${DEV_TAG} -f dist/images/Dockerfile.$$role dist/images/; \
+	done
+
+push-dev:
+	@for role in ${ROLES} ; do \
 		docker push ${REGISTRY}/kube-ovn-$$role:${DEV_TAG}; \
 	done
 
@@ -21,9 +25,13 @@ build-go:
 	CGO_ENABLED=0 GOOS=linux go build -o $(PWD)/dist/images/kube-ovn-webhook -ldflags "-w -s" -v ./cmd/webhook
 	CGO_ENABLED=0 GOOS=linux go build -o $(PWD)/dist/images/kube-ovn-pinger -ldflags "-w -s" -v ./cmd/pinger
 
-release: build-go
+release: lint build-go
 	@for role in ${ROLES} ; do \
 		docker build -t ${REGISTRY}/kube-ovn-$$role:${RELEASE_TAG} -f dist/images/Dockerfile.$$role dist/images/; \
+	done
+
+push-release:
+	@for role in ${ROLES} ; do \
 		docker push ${REGISTRY}/kube-ovn-$$role:${RELEASE_TAG}; \
 	done
 
@@ -35,14 +43,13 @@ lint:
 test:
 	GOOS=linux go test -cover -v ./...
 
-build-bin: lint
+build-bin:
 	docker run --rm -e GOOS=linux -e GOCACHE=/tmp \
 		-u $(shell id -u):$(shell id -g) \
 		-v $(CURDIR):/go/src/github.com/alauda/kube-ovn:ro \
 		-v $(CURDIR)/dist:/go/src/github.com/alauda/kube-ovn/dist/ \
 		golang:$(GO_VERSION) /bin/bash -c '\
 		cd /go/src/github.com/alauda/kube-ovn && \
-		make test && \
 		make build-go '
 
 up:
