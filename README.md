@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/alauda/kube-ovn/blob/master/LICENSE)
 [![Build Tag](https://img.shields.io/github/tag/alauda/kube-ovn.svg)](https://github.com/alauda/kube-ovn/releases)
 [![Go Report Card](https://goreportcard.com/badge/github.com/alauda/kube-ovn)](https://goreportcard.com/report/github.com/alauda/kube-ovn)
-[![Slack Card](https://kube-ovn-slackin.herokuapp.com/badge.svg)](https://kube-ovn-slackin.herokuapp.com/badge.svg)
+[![Slack Card](https://kube-ovn-slackin.herokuapp.com/badge.svg)](https://kube-ovn-slackin.herokuapp.com)
 
 [中文教程](https://github.com/alauda/kube-ovn/wiki)
 
@@ -13,7 +13,8 @@ Kube-OVN integrates the OVN-based Network Virtualization with Kubernetes. It off
 The Kube-OVN community is waiting for you participation!
 - Follow us at [Twitter](https://twitter.com/KubeOvn)
 - Chat with us at [Slack](https://kube-ovn-slackin.herokuapp.com/)
-- For Chinese users WeChat group is also available, please send request to WeChat id:liumengxinfly with your information 
+- For Chinese users WeChat group is also available, please send request to WeChatID: liumengxinfly with your information 
+- Other issues please send email to [mengxin@alauda.io](mailto:mengxin@alauda.io)
 
 ## Features
 - **Namespaced Subnets**: Each Namespace can have a unique Subnet (backed by a Logical Switch). Pods within the Namespace will have IP addresses allocated from the Subnet. It's also possible for multiple Namespaces to share a Subnet.
@@ -66,6 +67,12 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
 - [Tracing/Diagnose/Dump Traffic with Kubectl Plugin](docs/kubectl-plugin.md)
 - [Prometheus Integration](docs/prometheus.md)
 
+## Companies using Kube-OVN
+
+Not in the list? Open a pull request and add yourself!
+
+- [Alauda](http://www.alauda.cn/)
+
 ## Kube-OVN vs. Other CNI Implementation
 
 Different CNI Implementation has different function scope and network topology. There is no single implementation that can resolve all network problems. In this section, we compare Kube-OVN
@@ -96,6 +103,3 @@ The main difference from the design point is the encapsulation method. Calico us
 Use encapsulation can lower the requirement on network, and isolate container and underlay network from logical. We can use the overlay technology to build a much complex network concept, like router, gateway, and vpc. For performance, ovs can make use of hardware offload and DPDK to enhance throughput and latency.
 
 From the function set, Kube-OVN can offer some more abilities like static ip, QoS and traffic mirror. The subnet in Kube-OVN and ippool in Calico share some same function set.
-
-## Contact
-微信交流群请加 liumengxinfly，并注明 Kube-OVN 和个人信息
