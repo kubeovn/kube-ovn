@@ -17,8 +17,6 @@ import (
 	_ "github.com/alauda/kube-ovn/test/e2e/subnet"
 )
 
-
-
 func TestE2e(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Kube-OVN E2E Suite")

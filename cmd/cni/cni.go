@@ -71,7 +71,7 @@ func generateCNIResult(cniVersion string, cniResponse *request.CniResponse) curr
 
 		route := types.Route{
 			Dst: net.IPNet{IP: net.ParseIP("0.0.0.0").To4(), Mask: net.CIDRMask(0, 32)},
-			GW: net.ParseIP(cniResponse.Gateway).To4(),
+			GW:  net.ParseIP(cniResponse.Gateway).To4(),
 		}
 		result.Routes = []*types.Route{&route}
 	case kubeovnv1.ProtocolIPv6:
@@ -84,7 +84,7 @@ func generateCNIResult(cniVersion string, cniResponse *request.CniResponse) curr
 
 		route := types.Route{
 			Dst: net.IPNet{IP: net.ParseIP("::").To16(), Mask: net.CIDRMask(0, 128)},
-			GW: net.ParseIP(cniResponse.Gateway).To16(),
+			GW:  net.ParseIP(cniResponse.Gateway).To16(),
 		}
 		result.Routes = []*types.Route{&route}
 	}

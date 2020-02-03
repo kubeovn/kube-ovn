@@ -101,7 +101,7 @@ func loopOvnNbctlDaemon(ovnNbHost string, ovnNbPort int) {
 			ovs.StartOvnNbctlDaemon(ovnNbHost, ovnNbPort)
 		}
 
-		if  err := ovs.CheckAlive(); err != nil {
+		if err := ovs.CheckAlive(); err != nil {
 			klog.Warningf("ovn-nbctl daemon doesn't return, start a new daemon")
 			ovs.StartOvnNbctlDaemon(ovnNbHost, ovnNbPort)
 		}

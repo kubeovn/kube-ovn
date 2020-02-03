@@ -600,7 +600,7 @@ func StartOvnNbctlDaemon(nbHost string, nbPort int) (string, error) {
 		"pkill",
 		"-f",
 		"ovn-nbctl",
-		).CombinedOutput()
+	).CombinedOutput()
 	if err != nil {
 		klog.Errorf("failed to kill old ovn-nbctl daemon: %q", output)
 		return "", err

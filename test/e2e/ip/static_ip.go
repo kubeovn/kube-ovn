@@ -28,10 +28,10 @@ var _ = Describe("[IP Allocation]", func() {
 			autoMount := false
 			pod := &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        name,
-					Namespace:   namespace,
+					Name:      name,
+					Namespace: namespace,
 					Annotations: map[string]string{
-						util.IpAddressAnnotation: "12.10.0.10",
+						util.IpAddressAnnotation:  "12.10.0.10",
 						util.MacAddressAnnotation: "00:00:00:53:6B:B6",
 					},
 				},
