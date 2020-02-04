@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"github.com/alauda/kube-ovn/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -237,7 +238,7 @@ func (c *Controller) handleUpdateService(key string) error {
 	}
 
 	for vip := range vips {
-		if strings.HasPrefix(vip, ip) && !containsString(tcpVips, vip) {
+		if strings.HasPrefix(vip, ip) && !util.IsStringIn(vip, tcpVips) {
 			klog.Infof("remove stall vip %s", vip)
 			err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterTcpLoadBalancer)
 			if err != nil {
@@ -267,7 +268,7 @@ func (c *Controller) handleUpdateService(key string) error {
 	}
 
 	for vip := range vips {
-		if strings.HasPrefix(vip, ip) && !containsString(udpVips, vip) {
+		if strings.HasPrefix(vip, ip) && !util.IsStringIn(vip, udpVips) {
 			klog.Infof("remove stall vip %s", vip)
 			err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterUdpLoadBalancer)
 			if err != nil {
@@ -278,16 +279,4 @@ func (c *Controller) handleUpdateService(key string) error {
 	}
 
 	return nil
-}
-
-//
-// Helper functions to check string from a slice of strings.
-//
-func containsString(slice []string, s string) bool {
-	for _, item := range slice {
-		if item == s {
-			return true
-		}
-	}
-	return false
 }
