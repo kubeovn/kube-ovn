@@ -14,7 +14,7 @@ RUN yum install -y  \
         yum clean all
 
 ENV OVS_VERSION=2.12.0
-ENV OVS_SUBVERSION=4
+ENV OVS_SUBVERSION=5
 
 RUN rpm -ivh https://github.com/alauda/ovs/releases/download/${OVS_VERSION}-${OVS_SUBVERSION}/openvswitch-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
     rpm -ivh https://github.com/alauda/ovs/releases/download/${OVS_VERSION}-${OVS_SUBVERSION}/openvswitch-devel-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
