@@ -31,6 +31,31 @@ type leaderElectionConfig struct {
 	OnNewLeader      func(identity string)
 }
 
+func (c *Controller) isLeader() bool {
+	return c.elector.IsLeader()
+}
+
+func (c *Controller) hasLeader() bool {
+	return c.elector.GetLeader() != ""
+}
+
+func (c *Controller) leaderElection() {
+	elector := setupLeaderElection(&leaderElectionConfig{
+		Client:       c.config.KubeClient,
+		ElectionID:   "ovn-config",
+		PodName:      c.config.PodName,
+		PodNamespace: c.config.PodNamespace,
+	})
+	c.elector = elector
+	for {
+		if c.isLeader() {
+			return
+		}
+		klog.Info("waiting for becoming a leader")
+		time.Sleep(5 * time.Second)
+	}
+}
+
 func setupLeaderElection(config *leaderElectionConfig) *leaderelection.LeaderElector {
 	var elector *leaderelection.LeaderElector
 

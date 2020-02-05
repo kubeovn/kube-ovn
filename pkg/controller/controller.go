@@ -1,8 +1,6 @@
 package controller
 
 import (
-	"fmt"
-	"strings"
 	"time"
 
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
@@ -12,7 +10,6 @@ import (
 	"github.com/alauda/kube-ovn/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
@@ -38,11 +35,6 @@ type Controller struct {
 	podsLister v1.PodLister
 	podsSynced cache.InformerSynced
 
-	// workqueue is a rate limited work queue. This is used to queue work to be
-	// processed instead of performing it as soon as a change happens. This
-	// means we can ensure we only process a fixed amount of resources at a
-	// time, and makes it easy to ensure we are never processing the same item
-	// simultaneously in two different workers.
 	addPodQueue       workqueue.RateLimitingInterface
 	addIpPoolPodQueue workqueue.RateLimitingInterface
 	deletePodQueue    workqueue.RateLimitingInterface
@@ -83,21 +75,15 @@ type Controller struct {
 	npsSynced     cache.InformerSynced
 	updateNpQueue workqueue.RateLimitingInterface
 	deleteNpQueue workqueue.RateLimitingInterface
-	// recorder is an event recorder for recording Event resources to the
-	// Kubernetes API.
-	recorder record.EventRecorder
 
+	recorder               record.EventRecorder
 	informerFactory        informers.SharedInformerFactory
 	kubeovnInformerFactory kubeovninformer.SharedInformerFactory
-
-	elector *leaderelection.LeaderElector
+	elector                *leaderelection.LeaderElector
 }
 
 // NewController returns a new ovn controller
 func NewController(config *Configuration) *Controller {
-	// Create event broadcaster
-	// Add ovn-controller types to the default Kubernetes Scheme so Events can be
-	// logged for ovn-controller types.
 	utilruntime.Must(kubeovnv1.AddToScheme(scheme.Scheme))
 	klog.V(4).Info("Creating event broadcaster")
 	eventBroadcaster := record.NewBroadcaster()
@@ -228,67 +214,15 @@ func NewController(config *Configuration) *Controller {
 // as syncing informer caches and starting workers. It will block until stopCh
 // is closed, at which point it will shutdown the workqueue and wait for
 // workers to finish processing their current work items.
-func (c *Controller) Run(stopCh <-chan struct{}) error {
-	defer utilruntime.HandleCrash()
-
-	defer c.addPodQueue.ShutDown()
-	defer c.addIpPoolPodQueue.ShutDown()
-	defer c.deletePodQueue.ShutDown()
-	defer c.updatePodQueue.ShutDown()
-
-	defer c.addNamespaceQueue.ShutDown()
-
-	defer c.addSubnetQueue.ShutDown()
-	defer c.updateSubnetQueue.ShutDown()
-	defer c.deleteSubnetQueue.ShutDown()
-	defer c.deleteRouteQueue.ShutDown()
-	defer c.updateSubnetStatusQueue.ShutDown()
-
-	defer c.addNodeQueue.ShutDown()
-	defer c.updateNodeQueue.ShutDown()
-	defer c.deleteNodeQueue.ShutDown()
-
-	defer c.deleteTcpServiceQueue.ShutDown()
-	defer c.deleteUdpServiceQueue.ShutDown()
-	defer c.updateServiceQueue.ShutDown()
-	defer c.updateEndpointQueue.ShutDown()
-
-	defer c.updateNpQueue.ShutDown()
-	defer c.deleteNpQueue.ShutDown()
-
-	// Start the informer factories to begin populating the informer caches
+func (c *Controller) Run(stopCh <-chan struct{}) {
+	defer c.shutdown()
 	klog.Info("Starting OVN controller")
 
-	// leader election
-	elector := setupLeaderElection(&leaderElectionConfig{
-		Client:       c.config.KubeClient,
-		ElectionID:   "ovn-config",
-		PodName:      c.config.PodName,
-		PodNamespace: c.config.PodNamespace,
-	})
-	c.elector = elector
-	for {
-		klog.Info("waiting for becoming a leader")
-		if c.isLeader() {
-			break
-		}
-		time.Sleep(5 * time.Second)
-	}
+	// wait for becoming a leader
+	c.leaderElection()
 
-	if err := InitClusterRouter(c.config); err != nil {
-		klog.Fatalf("init cluster router failed %v", err)
-	}
-
-	if err := InitLoadBalancer(c.config); err != nil {
-		klog.Fatalf("init load balancer failed %v", err)
-	}
-
-	if err := InitNodeSwitch(c.config); err != nil {
-		klog.Fatalf("init node switch failed %v", err)
-	}
-
-	if err := InitDefaultLogicalSwitch(c.config); err != nil {
-		klog.Fatalf("init default switch failed %v", err)
+	if err := c.InitOVN(); err != nil {
+		klog.Fatalf("failed to init ovn resource %v", err)
 	}
 
 	c.informerFactory.Start(stopCh)
@@ -297,20 +231,54 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	// Wait for the caches to be synced before starting workers
 	klog.Info("Waiting for informer caches to sync")
 	if ok := cache.WaitForCacheSync(stopCh, c.subnetSynced, c.ipSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced, c.npsSynced); !ok {
-		return fmt.Errorf("failed to wait for caches to sync")
+		klog.Fatalf("failed to wait for caches to sync")
 	}
 
-	c.gcLogicalSwitch()
-	c.gcNode()
-	c.gcLogicalSwitchPort()
-	c.gcLoadBalancer()
-	c.gcPortGroup()
+	// remove resources in ovndb that not exist any more in kubernetes resources
+	if err := c.gc(); err != nil {
+		klog.Fatalf("gc failed %v", err)
+	}
 
+	// start workers to do all the network operations
+	c.startWorkers(stopCh)
+	<-stopCh
+	klog.Info("Shutting down workers")
+}
+
+func (c *Controller) shutdown() {
+	utilruntime.HandleCrash()
+
+	c.addPodQueue.ShutDown()
+	c.addIpPoolPodQueue.ShutDown()
+	c.deletePodQueue.ShutDown()
+	c.updatePodQueue.ShutDown()
+
+	c.addNamespaceQueue.ShutDown()
+
+	c.addSubnetQueue.ShutDown()
+	c.updateSubnetQueue.ShutDown()
+	c.deleteSubnetQueue.ShutDown()
+	c.deleteRouteQueue.ShutDown()
+	c.updateSubnetStatusQueue.ShutDown()
+
+	c.addNodeQueue.ShutDown()
+	c.updateNodeQueue.ShutDown()
+	c.deleteNodeQueue.ShutDown()
+
+	c.deleteTcpServiceQueue.ShutDown()
+	c.deleteUdpServiceQueue.ShutDown()
+	c.updateServiceQueue.ShutDown()
+	c.updateEndpointQueue.ShutDown()
+
+	c.updateNpQueue.ShutDown()
+	c.deleteNpQueue.ShutDown()
+}
+
+func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	klog.Info("Starting workers")
 
-	// Launch workers to process resources
+	// add default/join subnet and wait them ready
 	go wait.Until(c.runAddSubnetWorker, time.Second, stopCh)
-	// wait default/join subnet ready
 	for {
 		klog.Infof("wait for %s and %s ready", c.config.DefaultLogicalSwitch, c.config.NodeSwitch)
 		time.Sleep(3 * time.Second)
@@ -353,211 +321,4 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 		go wait.Until(c.runUpdateNpWorker, time.Second, stopCh)
 		go wait.Until(c.runDeleteNpWorker, time.Second, stopCh)
 	}
-
-	klog.Info("Started workers")
-	<-stopCh
-	klog.Info("Shutting down workers")
-
-	return nil
-}
-
-func (c *Controller) isLeader() bool {
-	return c.elector.IsLeader()
-}
-
-func (c *Controller) hasLeader() bool {
-	return c.elector.GetLeader() != ""
-}
-
-func (c *Controller) gcLogicalSwitch() error {
-	klog.Infof("start to gc logical switch")
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnet, %v", err)
-		return err
-	}
-	subnetNames := make([]string, 0, len(subnets))
-	for _, s := range subnets {
-		subnetNames = append(subnetNames, s.Name)
-	}
-	lss, err := c.ovnClient.ListLogicalSwitch()
-	if err != nil {
-		klog.Errorf("failed to list logical switch, %v", err)
-		return err
-	}
-	klog.Infof("ls in ovn %v", lss)
-	klog.Infof("subnet in kubernetes %v", subnetNames)
-	for _, ls := range lss {
-		if !util.IsStringIn(ls, subnetNames) {
-			klog.Infof("gc subnet %s", ls)
-			if err := c.handleDeleteSubnet(ls); err != nil {
-				klog.Errorf("failed to gc subnet %s, %v", ls, err)
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func (c *Controller) gcNode() error {
-	klog.Infof("start to gc nodes")
-	nodes, err := c.nodesLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list node, %v", err)
-		return err
-	}
-	nodeNames := make([]string, 0, len(nodes))
-	for _, no := range nodes {
-		nodeNames = append(nodeNames, no.Name)
-	}
-	ips, err := c.ipsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list ip, %v", err)
-		return err
-	}
-	ipNodeNames := make([]string, 0, len(ips))
-	for _, ip := range ips {
-		if !strings.Contains(ip.Name, ".") {
-			ipNodeNames = append(ipNodeNames, strings.TrimPrefix(ip.Name, "node-"))
-		}
-	}
-	for _, no := range ipNodeNames {
-		if !util.IsStringIn(no, nodeNames) {
-			klog.Infof("gc node %s", no)
-			if err := c.handleDeleteNode(no); err != nil {
-				klog.Errorf("failed to gc node %s, %v", no, err)
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func (c *Controller) gcLogicalSwitchPort() error {
-	klog.Infof("start to gc logical switch ports")
-	pods, err := c.podsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list ip, %v", err)
-		return err
-	}
-	nodes, err := c.nodesLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list node, %v", err)
-		return err
-	}
-	ipNames := make([]string, 0, len(pods)+len(nodes))
-	for _, pod := range pods {
-		ipNames = append(ipNames, fmt.Sprintf("%s.%s", pod.Name, pod.Namespace))
-	}
-	for _, node := range nodes {
-		ipNames = append(ipNames, fmt.Sprintf("node-%s", node.Name))
-	}
-	lsps, err := c.ovnClient.ListLogicalSwitchPort()
-	if err != nil {
-		klog.Errorf("failed to list logical switch port, %v", err)
-		return err
-	}
-	for _, lsp := range lsps {
-		if !util.IsStringIn(lsp, ipNames) {
-			if strings.Contains(lsp, ".") {
-				klog.Infof("gc logical switch port %s", lsp)
-				podName := strings.Split(lsp, ".")[0]
-				podNameSpace := strings.Split(lsp, ".")[1]
-				if err := c.handleDeletePod(fmt.Sprintf("%s/%s", podNameSpace, podName)); err != nil {
-					klog.Errorf("failed to gc port %s, %v", lsp, err)
-					return err
-				}
-			}
-		}
-	}
-	return nil
-}
-
-func (c *Controller) gcLoadBalancer() error {
-	klog.Infof("start to gc loadbalancers")
-	svcs, err := c.servicesLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list svc, %v", err)
-		return err
-	}
-	tcpVips := []string{}
-	udpVips := []string{}
-	for _, svc := range svcs {
-		ip := svc.Spec.ClusterIP
-		for _, port := range svc.Spec.Ports {
-			if port.Protocol == corev1.ProtocolTCP {
-				tcpVips = append(tcpVips, fmt.Sprintf("%s:%d", ip, port.Port))
-			} else {
-				udpVips = append(udpVips, fmt.Sprintf("%s:%d", ip, port.Port))
-			}
-		}
-	}
-
-	lbUuid, err := c.ovnClient.FindLoadbalancer(c.config.ClusterTcpLoadBalancer)
-	if err != nil {
-		klog.Errorf("failed to get lb %v", err)
-	}
-	vips, err := c.ovnClient.GetLoadBalancerVips(lbUuid)
-	if err != nil {
-		klog.Errorf("failed to get udp lb vips %v", err)
-		return err
-	}
-	for vip := range vips {
-		if !util.IsStringIn(vip, tcpVips) {
-			err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterTcpLoadBalancer)
-			if err != nil {
-				klog.Errorf("failed to delete vip %s from tcp lb, %v", vip, err)
-				return err
-			}
-		}
-	}
-
-	lbUuid, err = c.ovnClient.FindLoadbalancer(c.config.ClusterUdpLoadBalancer)
-	if err != nil {
-		klog.Errorf("failed to get lb %v", err)
-		return err
-	}
-	vips, err = c.ovnClient.GetLoadBalancerVips(lbUuid)
-	if err != nil {
-		klog.Errorf("failed to get udp lb vips %v", err)
-		return err
-	}
-	for vip := range vips {
-		if !util.IsStringIn(vip, udpVips) {
-			err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterUdpLoadBalancer)
-			if err != nil {
-				klog.Errorf("failed to delete vip %s from tcp lb, %v", vip, err)
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func (c *Controller) gcPortGroup() error {
-	klog.Infof("start to gc network policy")
-	nps, err := c.npsLister.List(labels.Everything())
-	npNames := make([]string, 0, len(nps))
-	for _, np := range nps {
-		npNames = append(npNames, fmt.Sprintf("%s/%s", np.Namespace, np.Name))
-	}
-	if err != nil {
-		klog.Errorf("failed to list network policy, %v", err)
-		return err
-	}
-	pgs, err := c.ovnClient.ListPortGroup()
-	if err != nil {
-		klog.Errorf("failed to list port-group, %v", err)
-		return err
-	}
-	for _, pg := range pgs {
-		if !util.IsStringIn(fmt.Sprintf("%s/%s", pg.NpNamespace, pg.NpName), npNames) {
-			klog.Infof("gc port group %s", pg.Name)
-			if err := c.handleDeleteNp(fmt.Sprintf("%s/%s", pg.NpNamespace, pg.NpName)); err != nil {
-				klog.Errorf("failed to gc np %s/%s, %v", pg.NpNamespace, pg.NpName, err)
-				return err
-			}
-		}
-	}
-	return nil
 }
