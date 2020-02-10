@@ -52,7 +52,6 @@ var (
 )
 
 func (c *Controller) runGateway() {
-	klog.Info("reconcile gateway")
 	subnets, err := c.getSubnetsCIDR(c.protocol)
 	if err != nil {
 		klog.Errorf("get subnets failed, %+v", err)

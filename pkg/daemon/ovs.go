@@ -7,10 +7,12 @@ import (
 	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/utils/sysctl"
+	goping "github.com/sparrc/go-ping"
 	"github.com/vishvananda/netlink"
 	"k8s.io/klog"
 	"net"
 	"os/exec"
+	"time"
 )
 
 func (csh cniServerHandler) configureNic(podName, podNamespace, netns, containerID, mac, ip, gateway, ingress, egress string) error {
@@ -166,8 +168,32 @@ func configureContainerNic(nicName, ipAddr, gateway string, macAddr net.Hardware
 		if err != nil {
 			return fmt.Errorf("config gateway failed %v", err)
 		}
-		return nil
+		return waiteNetworkReady(gateway)
 	})
+}
+
+func waiteNetworkReady(gateway string) error {
+	pinger, err := goping.NewPinger(gateway)
+	if err != nil {
+		return fmt.Errorf("failed to init pinger, %v", err)
+	}
+	pinger.SetPrivileged(true)
+	pinger.Count = 600
+	pinger.Timeout = 600 * time.Second
+	pinger.Interval = 1 * time.Second
+
+	success := false
+	pinger.OnRecv = func(p *goping.Packet) {
+		success = true
+		pinger.Stop()
+	}
+	pinger.Run()
+
+	if !success {
+		return fmt.Errorf("network not ready after 600 ping")
+	}
+	klog.Infof("network ready after %d ping", pinger.PacketsSent)
+	return nil
 }
 
 func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int) error {
