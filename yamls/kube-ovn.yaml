@@ -71,7 +71,7 @@ spec:
               command:
                 - sh
                 - /kube-ovn/kube-ovn-controller-healthcheck.sh
-            initialDelaySeconds: 30
+            initialDelaySeconds: 300
             periodSeconds: 7
             failureThreshold: 5
       nodeSelector:
