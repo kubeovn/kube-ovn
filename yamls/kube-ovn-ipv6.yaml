@@ -74,7 +74,7 @@ spec:
                 - -w3
                 - 127.0.0.1
                 - "10660"
-            initialDelaySeconds: 30
+            initialDelaySeconds: 300
             periodSeconds: 7
             failureThreshold: 5
       nodeSelector:
