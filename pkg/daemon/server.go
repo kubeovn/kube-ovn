@@ -17,6 +17,7 @@ var responseLogString = "[%s] Outgoing response %s %s with %d status code in %vm
 
 // RunServer runs the cniserver
 func RunServer(config *Configuration) {
+	nodeName = config.NodeName
 	csh := createCniServerHandler(config)
 	server := http.Server{
 		Handler: createHandler(csh),
@@ -62,6 +63,10 @@ func requestAndResponseLogger(request *restful.Request, response *restful.Respon
 	start := time.Now()
 	chain.ProcessFilter(request, response)
 	elapsed := float64((time.Since(start)) / time.Millisecond)
+	cniOperationHistogram.WithLabelValues(
+		nodeName,
+		getRequestURI(request),
+		fmt.Sprintf("%d", response.StatusCode())).Observe(elapsed / 1000)
 	klog.Infof(formatResponseLog(response, request, elapsed))
 }
 
