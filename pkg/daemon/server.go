@@ -2,13 +2,14 @@ package daemon
 
 import (
 	"fmt"
-	"github.com/alauda/kube-ovn/pkg/request"
-	"github.com/emicklei/go-restful"
-	"k8s.io/klog"
 	"net"
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/alauda/kube-ovn/pkg/request"
+	"github.com/emicklei/go-restful"
+	"k8s.io/klog"
 )
 
 var requestLogString = "[%s] Incoming %s %s %s request"
@@ -66,21 +67,20 @@ func requestAndResponseLogger(request *restful.Request, response *restful.Respon
 
 // formatRequestLog formats request log string.
 func formatRequestLog(request *restful.Request) string {
-	uri := ""
-	if request.Request.URL != nil {
-		uri = request.Request.URL.RequestURI()
-	}
-
 	return fmt.Sprintf(requestLogString, time.Now().Format(time.RFC3339), request.Request.Proto,
-		request.Request.Method, uri)
+		request.Request.Method, getRequestURI(request))
 }
 
 // formatResponseLog formats response log string.
 func formatResponseLog(response *restful.Response, request *restful.Request, reqTime float64) string {
-	uri := ""
+	return fmt.Sprintf(responseLogString, time.Now().Format(time.RFC3339),
+		request.Request.Method, getRequestURI(request), response.StatusCode(), reqTime)
+}
+
+// getRequestURI get the request uri
+func getRequestURI(request *restful.Request) (uri string) {
 	if request.Request.URL != nil {
 		uri = request.Request.URL.RequestURI()
 	}
-	return fmt.Sprintf(responseLogString, time.Now().Format(time.RFC3339),
-		request.Request.Method, uri, response.StatusCode(), reqTime)
+	return
 }
