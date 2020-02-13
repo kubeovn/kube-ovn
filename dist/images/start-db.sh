@@ -36,25 +36,25 @@ function get_leader_ip {
 }
 
 function quit {
-    /usr/share/openvswitch/scripts/ovn-ctl stop_northd
+    /usr/share/ovn/scripts/ovn-ctl stop_northd
     exit 0
 }
 trap quit EXIT
 
 if [[ -z "$NODE_IPS" ]]; then
-    /usr/share/openvswitch/scripts/ovn-ctl restart_northd
+    /usr/share/ovn/scripts/ovn-ctl restart_northd
     ovn-nbctl set-connection ptcp:"${DB_NB_PORT}":["${DB_NB_ADDR}"]
     ovn-nbctl set Connection . inactivity_probe=0
     ovn-sbctl set-connection ptcp:"${DB_SB_PORT}":["${DB_SB_ADDR}"]
     ovn-sbctl set Connection . inactivity_probe=0
 else
-    /usr/share/openvswitch/scripts/ovn-ctl stop_northd
+    /usr/share/ovn/scripts/ovn-ctl stop_northd
 
     nb_leader_ip=$(get_leader_ip nb)
     sb_leader_ip=$(get_leader_ip sb)
     if [[ "$nb_leader_ip" == "${POD_IP}" ]]; then
         # Start ovn-northd, ovn-nb and ovn-sb
-        /usr/share/openvswitch/scripts/ovn-ctl \
+        /usr/share/ovn/scripts/ovn-ctl \
             --db-nb-create-insecure-remote=yes \
             --db-sb-create-insecure-remote=yes \
             --db-nb-cluster-local-addr="${POD_IP}" \
@@ -75,7 +75,7 @@ else
         done
 
         # Start ovn-northd, ovn-nb and ovn-sb
-        /usr/share/openvswitch/scripts/ovn-ctl \
+        /usr/share/ovn/scripts/ovn-ctl \
             --db-nb-create-insecure-remote=yes \
             --db-sb-create-insecure-remote=yes \
             --db-nb-cluster-local-addr="${POD_IP}" \
@@ -88,4 +88,4 @@ else
     fi
 fi
 
-tail -f /var/log/openvswitch/ovn-northd.log
+tail -f /var/log/ovn/ovn-northd.log

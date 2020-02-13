@@ -156,7 +156,7 @@ spec:
       hostNetwork: true
       containers:
         - name: ovn-central
-          image: "index.alauda.cn/alaudak8s/kube-ovn-db:v1.0.0"
+          image: "index.alauda.cn/alaudak8s/kube-ovn-db:v1.1.0-pre"
           imagePullPolicy: IfNotPresent
           securityContext:
             capabilities:
@@ -179,17 +179,19 @@ spec:
               cpu: 500m
               memory: 300Mi
           volumeMounts:
-            - mountPath: /run/openvswitch
-              name: host-run-ovs
             - mountPath: /var/run/openvswitch
               name: host-run-ovs
+            - mountPath: /var/run/ovn
+              name: host-run-ovn
             - mountPath: /sys
               name: host-sys
               readOnly: true
             - mountPath: /etc/openvswitch
               name: host-config-openvswitch
             - mountPath: /var/log/openvswitch
-              name: host-log
+              name: host-log-ovs
+            - mountPath: /var/log/ovn
+              name: host-log-ovn
           readinessProbe:
             exec:
               command:
@@ -211,15 +213,21 @@ spec:
         - name: host-run-ovs
           hostPath:
             path: /run/openvswitch
+        - name: host-run-ovn
+          hostPath:
+            path: /run/ovn
         - name: host-sys
           hostPath:
             path: /sys
         - name: host-config-openvswitch
           hostPath:
             path: /etc/origin/openvswitch
-        - name: host-log
+        - name: host-log-ovs
           hostPath:
             path: /var/log/openvswitch
+        - name: host-log-ovn
+          hostPath:
+            path: /var/log/ovn
 
 ---
 kind: DaemonSet
@@ -252,7 +260,7 @@ spec:
       hostPID: true
       containers:
         - name: openvswitch
-          image: "index.alauda.cn/alaudak8s/kube-ovn-node:v1.0.0"
+          image: "index.alauda.cn/alaudak8s/kube-ovn-node:v1.1.0-pre"
           imagePullPolicy: IfNotPresent
           securityContext:
             runAsUser: 0
@@ -266,17 +274,19 @@ spec:
             - mountPath: /lib/modules
               name: host-modules
               readOnly: true
-            - mountPath: /run/openvswitch
-              name: host-run-ovs
             - mountPath: /var/run/openvswitch
               name: host-run-ovs
+            - mountPath: /var/run/ovn
+              name: host-run-ovn
             - mountPath: /sys
               name: host-sys
               readOnly: true
             - mountPath: /etc/openvswitch
               name: host-config-openvswitch
             - mountPath: /var/log/openvswitch
-              name: host-log
+              name: host-log-ovs
+            - mountPath: /var/log/ovn
+              name: host-log-ovn
           readinessProbe:
             exec:
               command:
@@ -307,12 +317,18 @@ spec:
         - name: host-run-ovs
           hostPath:
             path: /run/openvswitch
+        - name: host-run-ovn
+          hostPath:
+            path: /run/ovn
         - name: host-sys
           hostPath:
             path: /sys
         - name: host-config-openvswitch
           hostPath:
             path: /etc/origin/openvswitch
-        - name: host-log
+        - name: host-log-ovs
           hostPath:
             path: /var/log/openvswitch
+        - name: host-log-ovn
+          hostPath:
+            path: /var/log/ovn
