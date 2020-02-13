@@ -309,7 +309,7 @@ func (c Client) addLoadBalancerToLogicalSwitch(lb, ls string) error {
 func (c Client) DeleteLoadBalancerVip(vip, lb string) error {
 	existVips, err := c.GetLoadBalancerVips(lb)
 	// vip is empty or delete last rule will destroy the loadbalancer
-	if vip == "" || len(existVips) == 1 || existVips[vip] == "" {
+	if vip == "" || len(existVips) == 1 {
 		return nil
 	}
 	_, err = c.ovnNbCommand(IfExists, "lb-del", lb, vip)
