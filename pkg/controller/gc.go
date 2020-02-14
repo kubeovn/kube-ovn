@@ -10,7 +10,13 @@ import (
 )
 
 func (c *Controller) gc() error {
-	gcFunctions := []func() error{c.gcLogicalSwitch, c.gcNode, c.gcLogicalSwitch, c.gcLoadBalancer, c.gcPortGroup}
+	gcFunctions := []func() error{
+		c.gcLogicalSwitch,
+		c.gcNode,
+		c.gcLogicalSwitch,
+		c.gcLogicalSwitchPort,
+		c.gcLoadBalancer,
+		c.gcPortGroup}
 	for _, gcFunc := range gcFunctions {
 		if err := gcFunc(); err != nil {
 			return err
