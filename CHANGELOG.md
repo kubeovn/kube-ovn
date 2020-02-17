@@ -1,5 +1,38 @@
 # CHANGELOG
 
+## v1.0.0 -- 2020/xx/xx
+
+Kube-OVN has evolved a year from the first release and the core function set is stable with lots of tests and community feedback. 
+It's time to run Kube-OVN in production!
+
+### Performance
+* Disable ovn-nb inactivity_probe to enhance ovn-nbctl daemon performance
+* Config ovn-openflow-probe-interval to prevent disconnection when cluster is large
+* Pick ovn upstream patch to enhance ovn-controller performance
+
+### Monitoring
+* Display controller logs in kubectl-ko diagnose
+* Expose cni operation metrics
+* Pinger check portbindings between local ovs and ovs-sb
+* Pinger add timeout for dns/ovs/ovn check
+
+### Mics
+* Add e2e test framework
+* Move all components to kube-system namespace to use a higher priorityClass
+* Refactor code for better readability
+
+### Bugfix
+* If cidr block not ends with zero, reformat the cidr block
+* CniServer will resync iptables to avoid manually or other software change the iptable
+* Do not return not found error when first add node
+* Restart ovn-nbctl daemon when it hangs
+* RunGateway will restart in case init failed.
+* When subnet cidr conflict requeue the subnet
+* Recompute ovn-controller periodically to avoid inconsistency
+* Wait for flow installed before cni return
+* Add back missing lsp gc
+* Delete lb if it has no backends
+
 ## v0.10.0 -- 2019/12/23
 
 ### Performance
