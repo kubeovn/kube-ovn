@@ -57,9 +57,6 @@ func main() {
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                  scheme,
-		LeaderElection:          true,
-		LeaderElectionNamespace: os.Getenv("KUBE_NAMESPACE"),
-		LeaderElectionID:        os.Getenv("POD_NAME"),
 		// disable metrics to avoid port conflict
 		MetricsBindAddress: "0",
 	})
