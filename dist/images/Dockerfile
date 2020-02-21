@@ -25,15 +25,24 @@ RUN rpm -ivh --nodeps https://github.com/alauda/ovs/releases/download/${OVS_VERS
     rpm -ivh --nodeps https://github.com/alauda/ovs/releases/download/${OVS_VERSION}-${OVS_SUBVERSION}/ovn-central-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
     rpm -ivh --nodeps https://github.com/alauda/ovs/releases/download/${OVS_VERSION}-${OVS_SUBVERSION}/ovn-host-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm
 
-RUN mkdir -p /var/run/openvswitch
+RUN mkdir -p /var/run/openvswitch && \
+    mkdir -p /var/run/ovn && \
+    mkdir -p /etc/cni/net.d && \
+    mkdir -p /opt/cni/bin
+
+ENV CNI_VERSION=v0.7.5
+RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-amd64-${CNI_VERSION}.tgz | tar -xz -C . ./loopback ./portmap
 
 ENV KUBE_VERSION="v1.13.2"
 RUN curl -L https://storage.googleapis.com/kubernetes-release/release/${KUBE_VERSION}/bin/linux/amd64/kubectl -o /usr/bin/kubectl \
  && chmod +x /usr/bin/kubectl
 
-COPY ovn-healthcheck.sh /root/ovn-healthcheck.sh
-COPY ovn-is-leader.sh /root/ovn-is-leader.sh
+COPY *.sh /kube-ovn/
+COPY 00-kube-ovn.conflist /kube-ovn/00-kube-ovn.conflist
 
-COPY start-db.sh /root/start-db.sh
+WORKDIR /kube-ovn
 
-CMD ["/bin/bash", "/root/start-db.sh"]
+COPY kube-ovn /kube-ovn/kube-ovn
+COPY kube-ovn-daemon /kube-ovn/kube-ovn-daemon
+COPY kube-ovn-pinger /kube-ovn/kube-ovn-pinger
+COPY kube-ovn-controller /kube-ovn/kube-ovn-controller
