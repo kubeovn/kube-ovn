@@ -18,6 +18,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
+var (
+	createHooks = make(map[metav1.GroupVersionKind]admission.HandlerFunc)
+	updateHooks = make(map[metav1.GroupVersionKind]admission.HandlerFunc)
+	deleteHooks = make(map[metav1.GroupVersionKind]admission.HandlerFunc)
+)
+
 type ValidatingHook struct {
 	client        client.Client
 	decoder       *admission.Decoder
@@ -48,28 +54,14 @@ func NewValidatingHook(c cache.Cache, opt *WebhookOptions) (*ValidatingHook, err
 		return nil, err
 	}
 
-	return &ValidatingHook{
+	v := &ValidatingHook{
 		kubeclientset: kubeClient,
 		ovnClient:     ovs.NewClient(opt.OvnNbHost, opt.OvnNbPort, opt.OvnNbTimeout, "", 0, "", "", "", "", ""),
 		opt:           opt,
 		cache:         c,
-	}, nil
-}
+	}
 
-func (v *ValidatingHook) Handle(ctx context.Context, req admission.Request) (resp admission.Response) {
-	var (
-		createHooks = make(map[metav1.GroupVersionKind]admission.HandlerFunc)
-		updateHooks = make(map[metav1.GroupVersionKind]admission.HandlerFunc)
-		deleteHooks = make(map[metav1.GroupVersionKind]admission.HandlerFunc)
-	)
-	defer func() {
-		if resp.AdmissionResponse.Allowed {
-			klog.V(3).Info("result: allowed")
-		} else {
-			klog.V(3).Infof("result: reject, reason: %s", resp.AdmissionResponse.Result.Reason)
-		}
-	}()
-
+	// initialize hook handlers mapping
 	createHooks[deploymentGVK] = v.DeploymentCreateHook
 	createHooks[statefulSetGVK] = v.StatefulSetCreateHook
 	createHooks[daemonSetGVK] = v.DaemonSetCreateHook
@@ -83,6 +75,18 @@ func (v *ValidatingHook) Handle(ctx context.Context, req admission.Request) (res
 	deleteHooks[statefulSetGVK] = v.StatefulSetDeleteHook
 	deleteHooks[daemonSetGVK] = v.DaemonSetDeleteHook
 	deleteHooks[podGVK] = v.PodDeleteHook
+
+	return v, nil
+}
+
+func (v *ValidatingHook) Handle(ctx context.Context, req admission.Request) (resp admission.Response) {
+	defer func() {
+		if resp.AdmissionResponse.Allowed {
+			klog.V(3).Info("result: allowed")
+		} else {
+			klog.V(3).Infof("result: reject, reason: %s", resp.AdmissionResponse.Result.Reason)
+		}
+	}()
 
 	switch req.Operation {
 	case admissionv1beta1.Create:
