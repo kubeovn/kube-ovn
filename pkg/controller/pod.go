@@ -547,14 +547,14 @@ func (c *Controller) handleAddIpPoolPod(key string) error {
 					pod.Annotations[util.IpAddressAnnotation] = ipPool[index]
 				}
 			} else {
+				pods, err := c.config.KubeClient.CoreV1().Pods(v1.NamespaceAll).List(metav1.ListOptions{})
+				if err != nil {
+					klog.Errorf("failed to list pod %v", err)
+					return err
+				}
 				for _, ip := range ipPool {
 					if net.ParseIP(ip) == nil {
 						continue
-					}
-					pods, err := c.config.KubeClient.CoreV1().Pods(v1.NamespaceAll).List(metav1.ListOptions{})
-					if err != nil {
-						klog.Errorf("failed to list pod %v", err)
-						return err
 					}
 					used := false
 					for _, existPod := range pods.Items {
