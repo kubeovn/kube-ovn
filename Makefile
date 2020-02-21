@@ -5,7 +5,7 @@ REGISTRY=index.alauda.cn/alaudak8s
 DEV_TAG=dev
 RELEASE_TAG=$(shell cat VERSION)
 
-.PHONY: build-dev-images build-go build-bin test lint up down halt suspend resume kind push-dev push-release
+.PHONY: build-dev-images build-go build-bin lint up down halt suspend resume kind push-dev push-release
 
 build-dev-images: build-bin
 	docker build -t ${REGISTRY}/kube-ovn:${DEV_TAG} -f dist/images/Dockerfile dist/images/
@@ -24,15 +24,12 @@ release: lint build-go
 	docker build -t ${REGISTRY}/kube-ovn:${RELEASE_TAG} -f dist/images/Dockerfile dist/images/
 
 push-release:
-    docker push ${REGISTRY}/kube-ovn:${RELEASE_TAG}
+	docker push ${REGISTRY}/kube-ovn:${RELEASE_TAG}
 
 lint:
 	@gofmt -d ${GOFILES_NOVENDOR} 
 	@gofmt -l ${GOFILES_NOVENDOR} | read && echo "Code differs from gofmt's style" 1>&2 && exit 1 || true
 	@GOOS=linux go vet ./...
-
-test:
-	GOOS=linux go test -cover -v ./...
 
 build-bin:
 	docker run --rm -e GOOS=linux -e GOCACHE=/tmp \
@@ -84,4 +81,4 @@ kind-clean:
 	kind delete cluster --name=kube-ovn
 
 e2e:
-	ginkgo -p --slowSpecThreshold=30 --flakeAttempts=3 test/e2e
+	ginkgo -p --slowSpecThreshold=60 test/e2e

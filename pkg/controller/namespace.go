@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -128,7 +127,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 	}
 
 	op := "replace"
-	if namespace.Annotations == nil {
+	if namespace.Annotations == nil || len(namespace.Annotations) == 0 {
 		op = "add"
 		namespace.Annotations = map[string]string{}
 	} else {
@@ -142,17 +141,8 @@ func (c *Controller) handleAddNamespace(key string) error {
 	namespace.Annotations[util.LogicalSwitchAnnotation] = subnet.Name
 	namespace.Annotations[util.CidrAnnotation] = subnet.Spec.CIDRBlock
 	namespace.Annotations[util.ExcludeIpsAnnotation] = strings.Join(subnet.Spec.ExcludeIps, ",")
-	patchPayloadTemplate :=
-		`[{
-        "op": "%s",
-        "path": "/metadata/annotations",
-        "value": %s
-    }]`
 
-	raw, _ := json.Marshal(namespace.Annotations)
-	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-	_, err = c.config.KubeClient.CoreV1().Namespaces().Patch(key, types.JSONPatchType, []byte(patchPayload))
-	if err != nil {
+	if _, err = c.config.KubeClient.CoreV1().Namespaces().Patch(key, types.JSONPatchType, generatePatchPayload(namespace.Annotations, op)); err != nil {
 		klog.Errorf("patch namespace %s failed %v", key, err)
 	}
 	return err
