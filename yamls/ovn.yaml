@@ -156,8 +156,9 @@ spec:
       hostNetwork: true
       containers:
         - name: ovn-central
-          image: "index.alauda.cn/alaudak8s/kube-ovn-db:v1.1.0-pre"
+          image: "index.alauda.cn/alaudak8s/kube-ovn:v1.1.0-pre"
           imagePullPolicy: IfNotPresent
+          command: ["/kube-ovn/start-db.sh"]
           securityContext:
             capabilities:
               add: ["SYS_NICE"]
@@ -196,13 +197,13 @@ spec:
             exec:
               command:
                 - sh
-                - /root/ovn-is-leader.sh
+                - /kube-ovn/ovn-is-leader.sh
             periodSeconds: 3
           livenessProbe:
             exec:
               command:
               - sh
-              - /root/ovn-healthcheck.sh
+              - /kube-ovn/ovn-healthcheck.sh
             initialDelaySeconds: 30
             periodSeconds: 7
             failureThreshold: 5
@@ -260,8 +261,9 @@ spec:
       hostPID: true
       containers:
         - name: openvswitch
-          image: "index.alauda.cn/alaudak8s/kube-ovn-node:v1.1.0-pre"
+          image: "index.alauda.cn/alaudak8s/kube-ovn:v1.1.0-pre"
           imagePullPolicy: IfNotPresent
+          command: ["/kube-ovn/start-ovs.sh"]
           securityContext:
             runAsUser: 0
             privileged: true
@@ -291,13 +293,13 @@ spec:
             exec:
               command:
               - sh
-              - /root/ovs-healthcheck.sh
+              - /kube-ovn/ovs-healthcheck.sh
             periodSeconds: 5
           livenessProbe:
             exec:
               command:
               - sh
-              - /root/ovs-healthcheck.sh
+              - /kube-ovn/ovs-healthcheck.sh
             initialDelaySeconds: 10
             periodSeconds: 5
             failureThreshold: 5

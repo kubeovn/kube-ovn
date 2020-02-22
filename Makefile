@@ -2,21 +2,16 @@ GOFILES_NOVENDOR=$(shell find . -type f -name '*.go' -not -path "./vendor/*")
 GO_VERSION=1.13
 
 REGISTRY=index.alauda.cn/alaudak8s
-ROLES=node controller cni db webhook pinger
 DEV_TAG=dev
 RELEASE_TAG=$(shell cat VERSION)
 
 .PHONY: build-dev-images build-go build-bin test lint up down halt suspend resume kind push-dev push-release
 
 build-dev-images: build-bin
-	@for role in ${ROLES} ; do \
-		docker build -t ${REGISTRY}/kube-ovn-$$role:${DEV_TAG} -f dist/images/Dockerfile.$$role dist/images/; \
-	done
+	docker build -t ${REGISTRY}/kube-ovn:${DEV_TAG} -f dist/images/Dockerfile dist/images/
 
 push-dev:
-	@for role in ${ROLES} ; do \
-		docker push ${REGISTRY}/kube-ovn-$$role:${DEV_TAG}; \
-	done
+	docker push ${REGISTRY}/kube-ovn:${DEV_TAG}
 
 build-go:
 	CGO_ENABLED=0 GOOS=linux go build -o $(PWD)/dist/images/kube-ovn -ldflags "-w -s" -v ./cmd/cni
@@ -26,14 +21,10 @@ build-go:
 	CGO_ENABLED=0 GOOS=linux go build -o $(PWD)/dist/images/kube-ovn-pinger -ldflags "-w -s" -v ./cmd/pinger
 
 release: lint build-go
-	@for role in ${ROLES} ; do \
-		docker build -t ${REGISTRY}/kube-ovn-$$role:${RELEASE_TAG} -f dist/images/Dockerfile.$$role dist/images/; \
-	done
+	docker build -t ${REGISTRY}/kube-ovn:${RELEASE_TAG} -f dist/images/Dockerfile dist/images/
 
 push-release:
-	@for role in ${ROLES} ; do \
-		docker push ${REGISTRY}/kube-ovn-$$role:${RELEASE_TAG}; \
-	done
+    docker push ${REGISTRY}/kube-ovn:${RELEASE_TAG}
 
 lint:
 	@gofmt -d ${GOFILES_NOVENDOR} 
@@ -70,9 +61,7 @@ suspend:
 kind-init:
 	kind delete cluster --name=kube-ovn
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
-	@for role in ${ROLES} ; do \
-		kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn-$$role:${RELEASE_TAG}; \
-	done
+	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
 	kubectl label node kube-ovn-control-plane kube-ovn/role=master
 	kubectl apply -f yamls/crd.yaml
 	kubectl apply -f yamls/ovn.yaml
@@ -81,18 +70,14 @@ kind-init:
 kind-init-ha:
 	kind delete cluster --name=kube-ovn
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
-	@for role in ${ROLES} ; do \
-		kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn-$$role:${RELEASE_TAG}; \
-	done
+	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
 	kubectl label node --all kube-ovn/role=master
 	kubectl apply -f yamls/crd.yaml
 	kubectl apply -f yamls/ovn-ha.yaml
 	kubectl apply -f yamls/kube-ovn.yaml
 
 kind-reload:
-	@for role in ${ROLES} ; do \
-		kind load docker-image ${REGISTRY}/kube-ovn-$$role:${RELEASE_TAG}; \
-	done
+    kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
 	kubectl delete pod -n kube-ovn --all
 
 kind-clean:
