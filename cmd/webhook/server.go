@@ -56,7 +56,7 @@ func main() {
 	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:                  scheme,
+		Scheme: scheme,
 		// disable metrics to avoid port conflict
 		MetricsBindAddress: "0",
 	})

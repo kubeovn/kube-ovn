@@ -131,13 +131,11 @@ func ParseFlags() (*Configuration, error) {
 		config.NodeSwitchGateway = gw
 	}
 
-	err := config.initKubeClient()
-	if err != nil {
+	if err := config.initKubeClient(); err != nil {
 		return nil, err
 	}
 
-	klog.Infof("config is  %v", config)
-
+	klog.Infof("config is  %+v", config)
 	return config, nil
 }
 
@@ -147,19 +145,16 @@ func (config *Configuration) initKubeClient() error {
 	if config.KubeConfigFile == "" {
 		klog.Infof("no --kubeconfig, use in-cluster kubernetes config")
 		cfg, err = rest.InClusterConfig()
-		if err != nil {
-			klog.Errorf("use in cluster config failed %v", err)
-			return err
-		}
 	} else {
 		cfg, err = clientcmd.BuildConfigFromFlags("", config.KubeConfigFile)
-		if err != nil {
-			klog.Errorf("use --kubeconfig %s failed %v", config.KubeConfigFile, err)
-			return err
-		}
+	}
+	if err != nil {
+		klog.Errorf("failed to build kubeconfig %v", err)
+		return err
 	}
 	cfg.QPS = 1000
 	cfg.Burst = 2000
+
 	kubeOvnClient, err := clientset.NewForConfig(cfg)
 	if err != nil {
 		klog.Errorf("init kubeovn client failed %v", err)
