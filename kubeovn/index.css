@@ -1,0 +1,315 @@
+*{
+    margin: 0;
+    padding: 0;
+    font-family: Arial;
+}
+body{
+    min-width: 1440px;
+}
+li{list-style:none}
+.clearfix:after{/*伪元素是行内元素 正常浏览器清除浮动方法*/
+    content: "";
+    display: block;
+    height: 0;
+    clear:both;
+    visibility: hidden;
+}
+.clearfix{
+    *zoom: 1;/*ie6清除浮动的方式 *号只有IE6-IE7执行，其他浏览器不执行*/
+}
+.block{
+    display: block;
+    margin: 0 auto;
+    width: 100px;
+    height: 6px;
+    background-color: #3baee4;
+}
+.banner{
+    padding-top: 178px;
+    width: 100%;
+    height: 603px;
+    background-image: url('./backerground/banner copy1.png');
+    background-position: center -3px;
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    background-attachment:fixed;
+    box-sizing: border-box;
+}
+.banner h2{
+    color: #3baee4;
+    font-size: 72px;
+    margin-bottom: 10px;
+    text-align: center;
+}
+.banner h2 span{
+    color: #ffffff;
+}
+.banner p{
+    text-align: center;
+    color: #ffffff;
+    font-size: 24px;
+}
+.banner .btn{
+    display: block;
+    margin: 130px auto 0 ;
+    width: 167px;
+    height: 60px;
+    line-height: 60px;
+    text-align: center;
+    background-color: #3baee4;
+    font-size: 24px;
+    color: #ffffff;
+    text-decoration: none;
+}
+.banner .btn:hover{
+    color: #0a3db3;
+}
+.screenoOne{
+    width: 100%;
+    height: 373px;
+    background-color: #ffffff;
+    padding-top: 120px;
+    box-sizing: border-box;
+}
+.screenoOne h2{
+    text-align: center;
+    font-size: 48px;
+    color: #03051e;
+    margin-top: 30px;
+}
+.screenoOne p{
+    width: 1240px;
+    margin-top: 20px;
+    text-align: center;
+    font-size: 20px;
+    color: #666666;
+    margin: 0 auto;
+    margin-top:30px;
+}
+.screenoTwo{
+    width: 100%;
+    height: 788px;
+    padding-top: 120px;
+    box-sizing: border-box;
+    background-color: #060932;
+}
+.screenoTwo h2{
+    color: #ffffff;
+    font-size: 48px;
+    text-align: center;
+    margin-top: 20px;
+}
+.screenoTwo>p{
+    width: 1240px;
+    font-size: 20px;
+    color: #ffffff;
+    text-align: center;
+    margin-top: 20px;
+    margin:  0 auto;
+    margin-top:30px;
+}
+.screenoTwo .main ul{
+    display: flex;
+    flex-wrap: wrap;
+    width: 1240px;
+    margin:  52px auto 0;
+}
+.screenoTwo .main ul li{
+    width: 400px;
+    margin-bottom: 50px;
+    display: flex;
+    justify-content: center;
+}
+.screenoTwo .main ul li svg{
+    vertical-align: top;
+    margin-right: 8px;
+}
+.screenoTwo .main ul li div{
+    display: inline-block;
+}
+.screenoTwo .main ul li div h5{
+    font-size: 18px;
+    color: #3baee4;
+    vertical-align: top;
+}
+.screenoTwo .main ul li div p{
+    margin-top: 8px;
+    width: 263px;
+    font-size: 12px;
+    color:#ffffff;
+}
+.screenThree{
+    width: 100%;
+    height: 558px;
+    padding-top: 120px;
+    box-sizing: border-box;
+}
+.screenThree h2{
+    color: #03051e;
+    font-size: 48px;
+    text-align: center;
+    margin-top: 30px;
+}
+.screenThree .btnWarp{
+    font-size: 0;
+    display: inline-block;
+    transform: translate(-50%,0);
+    margin-left: 50%;
+}
+.screenThree .btnWarp a{
+    display: inline-block;
+    width: 245px;
+    height: 58px;
+    line-height: 58px;
+    text-align: center;
+    font-size: 24px;
+    text-decoration: none;
+    box-sizing: border-box;
+    vertical-align: top;
+}
+.screenThree .btnWarp .en{
+    color: #ffffff;
+    background-color: #3baee4;
+    margin-right: 20px;
+}
+.screenThree .btnWarp .zh{
+    color: #3baee4;
+    border: solid 2px #cccccc;
+    background-color: #ffffff;
+}
+.screenThree .main ul {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 30px;
+}
+.screenThree .main ul li {
+    width: 100%;
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 30px;
+}
+.screenThree .main ul li span{
+    width: 60px;
+    height: 60px;
+    background-color: #ff9900;
+    border-radius: 50%;
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+}
+.screenThree .main ul li p{
+    display: inline-block;
+    width: 1030px;
+    font-size: 20px;
+    color: #666666;
+    margin-left: 20px;
+}
+.screenThree .main ul li:nth-child(2) span{
+    background-color: #0088f5;
+}
+.screenFour{
+    width: 100%;
+    height: 653px;
+    padding-top: 120px;
+    background-image: url('./backerground/Documents Copy1.png');
+    background-position: center center;
+    background-repeat: no-repeat;
+    background-attachment:fixed;
+    background-size: 100% 100%;
+    box-sizing: border-box;
+}
+.screenFour h2{
+    font-size: 48px;
+    color: #ffffff;
+    margin-top: 20px;
+    text-align: center;
+    margin-bottom: 20px;
+}
+.screenFour ul {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    padding:0 75px;
+}
+.screenFour ul li{
+    width: 228px;
+    height: 152px;
+    border-radius: 10px;
+    border: solid 3px rgba(255,255,255,0.4);
+    margin: 0 15px 30px;
+}
+.screenFour ul li:hover{
+    background-color: #46a9f9;
+    border: solid 3px #46a9f9;
+}
+.screenFour ul li:hover svg:nth-child(1){
+    display: none;
+}
+.screenFour ul li:hover svg:nth-child(2){
+    display: block;
+}
+.screenFour ul li div svg{
+    margin: 35px auto 12px;
+    display: block;
+}
+.screenFour ul li div svg:nth-child(2){
+    margin: 35px auto 12px;
+    display: none;
+}
+.screenFour ul li p{
+    font-size: 18px;
+    color: #ffffff;
+    text-align: center;
+}
+.screenFive{
+    width: 100%;
+    height: 985px;
+    padding-top: 120px;
+    box-sizing: border-box;
+}
+.screenFive h2{
+    font-size: 48px;
+    color: #03051e;
+    text-align: center;
+    margin-top: 30px;
+    margin-bottom: 32px;
+}
+.screenFive .main{
+    display: flex;
+    justify-content: center;
+}
+.screenFive .main div{
+    margin-right: 60px;
+}
+.screenFive .main div img{
+    width: 378px;
+    height: 252px;
+}
+.screenFive .main div p{
+    margin-top: 20px;
+    width: 378px;
+    font-size: 24px;
+    color: #666666;
+    font-family: PingFangSC;
+}
+.screenFive .main ul li{
+    list-style: none;
+    width: 734px;
+    border-bottom: 1px solid #dedede;
+    padding: 30px 0;
+}
+.screenFive .main ul li:nth-child(1){
+    padding-top: 0px;
+}
+.screenFive .main ul li h5{
+    font-size: 24px;
+    color: #333333;
+    margin-bottom: 20px;
+}
+.screenFive .main ul li p{
+    font-size: 24px;
+    color: #666666;
+}
