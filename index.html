@@ -11,29 +11,27 @@
 </head>
 <body>
     <div class="header">
-        <div><a ><img src="./icon/logo.svg" alt=""></a> </div>
-        <div><p><a href="./index.html">About kube-OVN</a> &nbsp;&nbsp;<img src="./icon/bottom.svg" alt=""></p> 
+        <div><a href="."><img src="./icon/logo.svg" alt=""></a> </div>
+        <div><p><a href="./index.html">&nbsp;&nbsp;About&nbsp;&nbsp;&nbsp;&nbsp;</a> &nbsp;&nbsp;<img src="./icon/bottom.svg" alt=""></p>
             <ul>
-                <li><a href="#intro">Intro</a> </li>
                 <li><a href="#Features">Features</a></li>
-                <li><a href="#Quick">Quick Start</a></li>
-                <li><a href="#Documents">Documents</a></li>
+                <li><a href="#Quick">Quick Start&nbsp;&nbsp;</a></li>
+                <li><a href="#Documents">Documents&nbsp;&nbsp;</a></li>
             </ul>
         </div>
-        <div><a href="./kubeOVN.html">Commmunity</a> &nbsp;&nbsp;<img src="./icon/bottom.svg" alt="">
+        <div><a href="./kubeOVN.html">Community</a> &nbsp;&nbsp;<img src="./icon/bottom.svg" alt="">
             <ul>
                 <li><a href="./kubeOVN.html#Team">Team</a> </li>
                 <li><a href="./kubeOVN.html#Contribution">Contribution</a> </li>
-                <li><a href="./kubeOVN.html#using">Compaies using Kube-OVN</a> </li>
+                <li><a href="./kubeOVN.html#Contact">Contact</a></li>
             </ul>
         </div>
-        <div><a href="http://www.alauda.cn/open/detail/id/377.html#hash-1" target="_bank">Blog</a> </div>
     </div>
     <!-- banner -->
-    <div class="banner">
+    <div class="banner" id="About">
         <h2>Kube-<span>OVN</span></h2>
-        <p>A Kubernetes Network Fabric for Enterprises that Rich in Functions and Easy in Operations</p>
-        <a href="https://github.com/alauda/kube-ovn/releases"  target="_blank" class="btn">Download</a>
+        <p>A Kubernetes Network Fabric for Enterprises that Rich in Functions and Easy in Operations.</p>
+        <a href="https://github.com/alauda/kube-ovn"  target="_blank" class="btn">Github</a>
     </div>
     <!-- 第一屏 -->
     <div class="screenoOne">
@@ -52,14 +50,14 @@
                     <?xml version="1.0" standalone="no"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg t="1581764353143" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2033" xmlns:xlink="http://www.w3.org/1999/xlink" width="32" height="32"><defs><style type="text/css"></style></defs><path d="M571.463 73.349v126.24h-126.24v-126.24h126.24M634.58 10.229h-252.475v252.475h252.475v-252.475z" fill="#3baee4" p-id="2034"></path><path d="M950.175 830.777v126.24h-126.24v-126.24h126.24M571.463 830.777v126.24h-126.24v-126.24h126.24M192.748 830.777v126.24h-126.24v-126.24h126.24M539.902 262.705h-63.117v189.358h-378.713v315.597h-94.679v252.475h252.475v-252.475h-94.679v-252.475h315.597v252.475h-94.679v252.475h252.475v-252.475h-94.679v-252.475h315.597v252.475h-94.679v252.475h252.475v-252.475h-94.679v-315.597h-378.713v-189.358z"  fill="#3baee4" p-id="2035"></path></svg>
                     <div>
                         <h5>Namespaced Subnets</h5>
-                        <p>Each Namespace can have a unique Subnet (backed by a Logical Switch). Pods within…</p>
+                        <p>Each Namespace can have a unique Subnet (backed by a Logical Switch). Pods within the Namespace will have IP addresses allocated from the Subnet. It's also possible for multiple Namespaces to share a Subnet.</p>
                     </div>
                 </li>
                 <li class="clearfix">
                     <?xml version="1.0" standalone="no"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg t="1582010471486" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="6271" xmlns:xlink="http://www.w3.org/1999/xlink" width="32" height="32"><defs><style type="text/css"></style></defs><path d="M64 256l704 0 0 128 64 0L832 256 832 192 832 0 0 0l0 192 0 64 0 704 320 0 0-64L64 896 64 256zM64 64l704 0 0 128L64 192 64 64zM384 448l0 256 0 64 0 256 256 0 64 0 256 0L960 448 384 448zM640 960 448 960l0-192 192 0L640 960zM640 704 448 704 448 512l192 0L640 704zM896 960l-192 0 0-192 192 0L896 960zM896 704l-192 0L704 512l192 0L896 704z" fill="#3baee4" p-id="6272"></path></svg>
                     <div>
                         <h5>Subnet Isolation</h5>
-                        <p>Can configure a Subnet to deny any traffic from source IP addresses not within the same Subn…</p>
+                        <p>Can configure a Subnet to deny any traffic from source IP addresses not within the same Subnet. Can whitelist specific IP addresses and IP ranges.</p>
                     </div>
                 </li>
                 <li class="clearfix">
@@ -72,7 +70,7 @@
                 <li class="clearfix">
                     <?xml version="1.0" standalone="no"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg t="1581766031230" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="11699" xmlns:xlink="http://www.w3.org/1999/xlink" width="32" height="32"><defs><style type="text/css"></style></defs><path d="M901.122 881.08H139.148V249.835H187.7c13.41 0 24.28-10.87 24.28-24.28 0-13.41-10.869-24.28-24.28-24.28h-72.832c-13.41 0-24.28 10.869-24.28 24.28v679.8c0 13.411 10.87 24.282 24.28 24.282h786.255c13.41 0 24.28-10.87 24.28-24.281 0-13.409-10.87-24.276-24.28-24.276zM350.182 251.7h313.76c14.435 0 26.143-11.705 26.143-26.146 0-14.44-11.707-26.146-26.142-26.146h-313.76c-14.435 0-26.147 11.707-26.147 26.146 0 14.441 11.71 26.147 26.147 26.147z m549.074-52.292c14.439 0 26.146 11.707 26.146 26.146V903.49c0 14.44-11.707 26.147-26.146 26.147-14.44 0-26.147-11.707-26.147-26.147V251.7h-52.293c-14.435 0-26.146-11.705-26.146-26.146 0-14.44 11.71-26.146 26.146-26.146h78.44zM271.742 330.14c14.44 0 26.147-11.706 26.147-26.146v-156.88c0-14.44-11.707-26.146-26.147-26.146-14.435 0-26.146 11.707-26.146 26.147v156.879c0 14.44 11.711 26.146 26.146 26.146z m470.635 0c14.439 0 26.146-11.706 26.146-26.146v-156.88c0-14.44-11.706-26.146-26.146-26.146-14.436 0-26.147 11.707-26.147 26.147v156.879c0 14.44 11.711 26.146 26.147 26.146z m-375.872 82.123c-13.19 0-23.886 10.693-23.886 23.886v334.482c0 13.19 10.697 23.886 23.886 23.886 13.197 0 23.893-10.696 23.893-23.886V436.15c0-13.193-10.696-23.886-23.893-23.886z m215.023 0h-95.563c-13.197 0-23.893 10.693-23.893 23.886v334.482c0 13.19 10.696 23.886 23.893 23.886 13.194 0 23.89-10.696 23.89-23.886V651.175h71.673c65.976 0 119.455-53.486 119.455-119.456 0-65.977-53.479-119.456-119.455-119.456z m0 191.125h-71.673V460.043h71.673c39.586 0 71.672 32.09 71.672 71.676 0 39.58-32.086 71.67-71.672 71.67z" fill="#3baee4" p-id="11700"></path></svg><div>
                         <h5>Static IP Addresses for Workloads</h5>
-                        <p> Allocate random or static IP addresses to workloads.</p>
+                        <p> Allocate random or static IP addresses to workloads. StatefulSet Pods own static ip by default.</p>
                     </div>
                 </li>
                 <li class="clearfix">
@@ -86,14 +84,14 @@
                     <?xml version="1.0" standalone="no"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg t="1581849966320" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="3643" xmlns:xlink="http://www.w3.org/1999/xlink" width="32" height="32"><defs><style type="text/css"></style></defs><path d="M78.955789 613.861053l53.894737-53.894737c-37.187368-21.288421-57.936842-43.924211-57.936842-63.326316 0-56.858947 170.307368-139.587368 437.086316-139.587368h19.132632l71.949473-73.027369c-30.181053-2.155789-60.901053-3.503158-91.082105-3.503158-248.185263 0-512 75.452632-512 215.578948 0.538947 46.08 30.181053 85.692632 78.955789 117.76z" fill="#3baee4" p-id="3644"></path><path d="M512.538947 74.913684c56.32 0 136.623158 149.018947 146.863158 386.964211l80.842106-19.941053C724.614737 215.578947 647.275789 0 512.538947 0c-101.591579 0-171.115789 123.418947-204.8 280.791579l87.309474-21.827368c29.911579-116.412632 78.686316-184.050526 117.490526-184.050527zM636.227368 736.741053c-30.181053 134.736842-83.536842 212.345263-124.496842 212.345263s-91.890526-75.452632-122.341052-203.991579l-77.608421 19.402105C347.082105 911.36 414.989474 1024 512.538947 1024c107.789474 0 178.930526-138.24 210.458948-308.816842z" fill="#3baee4"p-id="3645"></path><path d="M686.08 582.063158l115.604211-199.949474h-230.938948l115.334737 199.949474zM130.694737 603.351579l161.414737 165.187368 62.517894-222.315789-223.932631 57.128421z" fill="#3baee4" p-id="3646"></path><path d="M920.522105 361.633684l-55.781052 56.589474c53.894737 25.061053 84.884211 53.894737 84.88421 77.338947 0 56.858947-170.307368 139.587368-437.086316 139.587369a1115.351579 1115.351579 0 0 1-197.793684-16.976842L251.957895 681.768421A1153.077895 1153.077895 0 0 0 512.538947 710.871579c248.185263 0 512-75.452632 512-215.578947 0-54.703158-40.421053-99.435789-104.016842-133.658948z" fill="#3baee4" p-id="3647"></path></svg>
                     <div>
                         <h5>Dynamic QoS</h5>
-                        <p>Configure Pod Ingress/Egress traffic rate limits on the fly</p>
+                        <p>Configure Pod Ingress/Egress traffic rate limits on the fly.</p>
                     </div>
                 </li>
                 <li class="clearfix">
                     <?xml version="1.0" standalone="no"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg t="1581778078620" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="11840" xmlns:xlink="http://www.w3.org/1999/xlink" width="32" height="32"><defs><style type="text/css"></style></defs><path d="M165.174303 632.025212a72.486788 72.486788 0 0 1 72.393697 72.393697 72.486788 72.486788 0 0 1-72.393697 72.424727 72.486788 72.486788 0 0 1-72.393697-72.424727 72.486788 72.486788 0 0 1 72.393697-72.393697m-31.030303 202.938182v153.910303a31.030303 31.030303 0 0 0 62.060606 0v-153.910303c59.174788-14.118788 103.424-67.118545 103.424-130.544485 0-63.394909-44.249212-116.363636-103.424-130.482424V55.420121a31.030303 31.030303 0 1 0-62.060606 0v518.516364C75.000242 588.024242 30.72 641.024 30.72 704.418909c0 63.425939 44.280242 116.425697 103.424 130.513455M774.454303 704.449939a72.486788 72.486788 0 0 1 72.393697-72.393697 72.486788 72.486788 0 0 1 72.424727 72.393697 72.486788 72.486788 0 0 1-72.424727 72.393697 72.486788 72.486788 0 0 1-72.393697-72.393697z m103.424 130.513455c59.174788-14.118788 103.45503-67.087515 103.45503-130.513455 0-63.425939-44.280242-116.394667-103.45503-130.513454V55.389091a31.030303 31.030303 0 1 0-62.060606 0v518.516364c-59.143758 14.149818-103.424 67.118545-103.424 130.544484s44.280242 116.363636 103.424 130.513455v153.910303a31.030303 31.030303 0 0 0 62.060606 0v-153.910303zM434.238061 339.843879a72.486788 72.486788 0 0 1 72.393697-72.393697 72.486788 72.486788 0 0 1 72.424727 72.393697 72.486788 72.486788 0 0 1-72.424727 72.393697 72.486788 72.486788 0 0 1-72.393697-72.393697z m103.424 130.513454c59.174788-14.118788 103.45503-67.087515 103.45503-130.513454 0-63.425939-44.280242-116.394667-103.45503-130.513455V55.389091a31.030303 31.030303 0 1 0-62.060606 0v153.910303c-59.143758 14.149818-103.424 67.118545-103.424 130.544485s44.280242 116.363636 103.424 130.513454v518.516364a31.030303 31.030303 0 0 0 62.060606 0v-518.516364z" fill="#3baee4" p-id="11841"></path></svg>
                     <div>
                         <h5>Embedded Load Balancers</h5>
-                        <p>Replace kube-proxy with the OVN embedded high performance distributed L2 Load Balancer…</p>
+                        <p>Replace kube-proxy with the OVN embedded high performance distributed L2 Load Balancer.</p>
                     </div>
                 </li>
                 <li class="clearfix">
@@ -121,7 +119,7 @@
                     <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="32px" height="32PX" viewBox="0 0 115.333 114" enable-background="new 0 0 115.333 114" xml:space="preserve"><g id="Layer_2"></g><g><path fill="#3baee4" d="M56.667,0.667C25.372,0.667,0,26.036,0,57.332c0,31.295,25.372,56.666,56.667,56.666s56.666-25.371,56.666-56.666C113.333,26.036,87.961,0.667,56.667,0.667z M56.667,106.722c-8.904,0-16.123-5.948-16.123-13.283H72.79C72.79,100.773,65.571,106.722,56.667,106.722z M83.297,89.04H30.034v-9.658h53.264V89.04z M83.106,74.411h-52.92c-0.176-0.203-0.356-0.403-0.526-0.609c-5.452-6.62-6.736-10.076-7.983-13.598c-0.021-0.116,6.611,1.355,11.314,2.413c0,0,2.42,0.56,5.958,1.205c-3.397-3.982-5.414-9.044-5.414-14.218c0-11.359,8.712-21.285,5.569-29.308c3.059,0.249,6.331,6.456,6.552,16.161c3.252-4.494,4.613-12.701,4.613-17.733c0-5.21,3.433-11.262,6.867-11.469c-3.061,5.045,0.793,9.37,4.219,20.099c1.285,4.03,1.121,10.812,2.113,15.113C63.797,33.534,65.333,20.5,71,16c-2.5,5.667,0.37,12.758,2.333,16.167c3.167,5.5,5.087,9.667,5.087,17.548c0,5.284-1.951,10.259-5.242,14.148c3.742-0.702,6.326-1.335,6.326-1.335l12.152-2.371C91.657,60.156,89.891,67.418,83.106,74.411z"/></g></svg>
                     <div>
                         <h5>Prometheus & Grafana Integration</h5>
-                        <p>Exposing network quality metrics like pod/node/service/dns connectivity/latency in Prometheus… </p>
+                        <p>Exposing network quality metrics like pod/node/service/dns connectivity/latency in Prometheus format.</p>
                     </div>
                 </li>
                 <li class="clearfix">
@@ -235,7 +233,7 @@
                     <?xml version="1.0" standalone="no"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg t="1582015517992" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="9297" xmlns:xlink="http://www.w3.org/1999/xlink" width="50" height="50"><defs><style type="text/css"></style></defs><path d="M512 128C264.96 128 64 328.96 64 576c0 100.544 32.544 195.52 94.08 274.688a31.968 31.968 0 1 0 50.528-39.232A380.384 380.384 0 0 1 128 576C128 364.256 300.256 192 512 192s384 172.256 384 384c0 86.144-27.872 167.584-80.64 235.456a31.904 31.904 0 0 0 5.632 44.864 31.84 31.84 0 0 0 44.864-5.632A443.264 443.264 0 0 0 960 576c0-247.04-200.96-448-448-448z"  fill="#3baee4" p-id="9298"></path><path d="M512 352a32 32 0 0 0 32-32V256a32 32 0 1 0-64 0v64a32 32 0 0 0 32 32zM241.888 421.472a32 32 0 1 0-35.776 53.056l53.056 35.776a31.936 31.936 0 0 0 44.416-8.64 32 32 0 0 0-8.64-44.416l-53.056-35.776zM810.848 423.936a32 32 0 0 0-45.152-3.168l-48.32 41.984a32 32 0 0 0 41.984 48.32l48.32-41.984a32 32 0 0 0 3.168-45.152zM607.392 736c0-2.592 0.288-5.12-0.352-7.744l-64-256c-0.352-1.44-1.28-2.496-1.824-3.84-0.864-2.144-1.632-4.256-2.944-6.176-1.12-1.664-2.528-2.944-3.904-4.352-1.504-1.536-2.912-3.008-4.704-4.224-1.76-1.184-3.712-1.888-5.664-2.688-1.44-0.608-2.624-1.6-4.224-1.984-0.512-0.128-0.992 0.032-1.504-0.064-2.048-0.416-4.128-0.288-6.272-0.288-2.112 0-4.192-0.128-6.24 0.288-0.512 0.096-1.024-0.064-1.536 0.064-1.632 0.416-2.848 1.44-4.352 2.08-1.888 0.8-3.744 1.472-5.472 2.592-1.888 1.248-3.36 2.816-4.928 4.384-1.344 1.344-2.656 2.592-3.744 4.192-1.312 1.92-2.08 4-2.944 6.144-0.544 1.344-1.472 2.432-1.856 3.872l-64 256c-0.672 2.624-0.352 5.184-0.352 7.744H416c0 1.408 0.352 2.688 0.416 4.096l0.128 1.312C419.424 791.776 460.928 832 512 832s92.576-40.224 95.456-90.592l0.128-1.312c0.064-1.376 0.416-2.688 0.416-4.096h-0.608zM512 768a31.808 31.808 0 0 1-31.552-29.824L512 611.904l31.552 126.24A31.776 31.776 0 0 1 512 768z"  fill="#3baee4" p-id="9299"></path></svg>
                     <?xml version="1.0" standalone="no"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg t="1582015517992" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="9297" xmlns:xlink="http://www.w3.org/1999/xlink" width="50" height="50"><defs><style type="text/css"></style></defs><path d="M512 128C264.96 128 64 328.96 64 576c0 100.544 32.544 195.52 94.08 274.688a31.968 31.968 0 1 0 50.528-39.232A380.384 380.384 0 0 1 128 576C128 364.256 300.256 192 512 192s384 172.256 384 384c0 86.144-27.872 167.584-80.64 235.456a31.904 31.904 0 0 0 5.632 44.864 31.84 31.84 0 0 0 44.864-5.632A443.264 443.264 0 0 0 960 576c0-247.04-200.96-448-448-448z"  fill="#ffffff" p-id="9298"></path><path d="M512 352a32 32 0 0 0 32-32V256a32 32 0 1 0-64 0v64a32 32 0 0 0 32 32zM241.888 421.472a32 32 0 1 0-35.776 53.056l53.056 35.776a31.936 31.936 0 0 0 44.416-8.64 32 32 0 0 0-8.64-44.416l-53.056-35.776zM810.848 423.936a32 32 0 0 0-45.152-3.168l-48.32 41.984a32 32 0 0 0 41.984 48.32l48.32-41.984a32 32 0 0 0 3.168-45.152zM607.392 736c0-2.592 0.288-5.12-0.352-7.744l-64-256c-0.352-1.44-1.28-2.496-1.824-3.84-0.864-2.144-1.632-4.256-2.944-6.176-1.12-1.664-2.528-2.944-3.904-4.352-1.504-1.536-2.912-3.008-4.704-4.224-1.76-1.184-3.712-1.888-5.664-2.688-1.44-0.608-2.624-1.6-4.224-1.984-0.512-0.128-0.992 0.032-1.504-0.064-2.048-0.416-4.128-0.288-6.272-0.288-2.112 0-4.192-0.128-6.24 0.288-0.512 0.096-1.024-0.064-1.536 0.064-1.632 0.416-2.848 1.44-4.352 2.08-1.888 0.8-3.744 1.472-5.472 2.592-1.888 1.248-3.36 2.816-4.928 4.384-1.344 1.344-2.656 2.592-3.744 4.192-1.312 1.92-2.08 4-2.944 6.144-0.544 1.344-1.472 2.432-1.856 3.872l-64 256c-0.672 2.624-0.352 5.184-0.352 7.744H416c0 1.408 0.352 2.688 0.416 4.096l0.128 1.312C419.424 791.776 460.928 832 512 832s92.576-40.224 95.456-90.592l0.128-1.312c0.064-1.376 0.416-2.688 0.416-4.096h-0.608zM512 768a31.808 31.808 0 0 1-31.552-29.824L512 611.904l31.552 126.24A31.776 31.776 0 0 1 512 768z"  fill="#ffffff" p-id="9299"></path></svg>
                 </div>
-                <p>ITracing/Diagnose</p>
+                <p>Tracing/Diagnose</p>
                 </a>
             </li>
             <li>	
@@ -282,7 +280,7 @@
         <div>
             <ul>
                 <li>
-                    <a href="http://www.alauda.cn/open/detail/id/377.html#hash-1" target="_bank"><img src="./icon/logo.svg" alt=""></a> 
+                    <img src="./icon/logo.svg" alt="">
                 </li>
                 <li><p>2020 Project Kube-OVN © Copyright</p></li>
             </ul>
@@ -296,8 +294,8 @@
                 <li><p>Community</p></li>
                 <li><a href="https://twitter.com/KubeOvn" target="_bank">Twitter</a></li>
                 <li><a href="https://kube-ovn-slackin.herokuapp.com/" target="_bank">Slack</a></li>
-                <li><a href="https://login.live.com/login.srf?wa=wsignin1.0&rpsnv=13&ct=1582633696&rver=7.0.6737.0&wp=MBI_SSL&wreply=https%3a%2f%2foutlook.live.com%2fowa%2f%3fnlp%3d1%26RpsCsrfState%3d5a1b337b-213b-6f88-f02d-f9cb5094b6b8&id=292841&aadredir=1&CBCXT=out&lw=1&fl=dob%2cflname%2cwld&cobrandid=90015" target="_bank">Email</a></li>
-                <li><a href="avascript:void(0);" title="WeChat ID: Liumengxinfly">WeChat</a></li>
+                <li><a href="mailto:mengxin@alauda.io" target="_bank">Email</a></li>
+                <li><a href="javascript:void(0);" title="WeChat ID: liumengxinfly">WeChat</a></li>
             </ul>
         </div>
     </div>
