@@ -1,7 +1,7 @@
 *{
-    margin:0;padding:0;
-    font-size: 16px;
-
+    margin:0;
+    padding:0;
+    font-family: Arial;
 }
 li{list-style:none}
 
@@ -175,8 +175,9 @@ img{vertical-align:top;border:none}
     justify-content: center;
     align-items: center;
 }
-.companies-using>div>img{
+.companies-using>div>a>img{
     width: 220px;
+    height: 85px;
 }
 
 
