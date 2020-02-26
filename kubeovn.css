@@ -41,7 +41,7 @@ img{vertical-align:top;border:none}
 
 .people{
     min-width: 1440px;
-    height:693px;
+    height:993px;
     overflow: hidden;
 }
 .people-top{
@@ -102,7 +102,7 @@ img{vertical-align:top;border:none}
 .contribution{
     height: 464px;
     width:100%;
-    background: url("backerground/Contribution copy.png") no-repeat;
+    background: url("backerground/Contribution.png") no-repeat;
     padding-top: 120px;
     box-sizing: border-box;
     background-size:100% 100%; background-attachment:fixed;
