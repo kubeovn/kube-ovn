@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## v1.0.0 -- 2020/xx/xx
+## v1.0.0 -- 2020/02/27
 
 Kube-OVN has evolved a year from the first release and the core function set is stable with lots of tests and community feedback. 
 It's time to run Kube-OVN in production!
