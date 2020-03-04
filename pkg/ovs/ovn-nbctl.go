@@ -284,6 +284,11 @@ func (c Client) DeleteStaticRouteByNextHop(nextHop string) error {
 func (c Client) FindLoadbalancer(lb string) (string, error) {
 	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid",
 		"find", "load_balancer", fmt.Sprintf("name=%s", lb))
+	count := len(strings.Split(output, "/n"))
+	if count > 1 {
+		klog.Errorf("%s has %d lb entries", lb, count)
+		return "", fmt.Errorf("%s has %d lb entries", lb, count)
+	}
 	return output, err
 }
 
@@ -307,7 +312,17 @@ func (c Client) addLoadBalancerToLogicalSwitch(lb, ls string) error {
 
 // DeleteLoadBalancerVip delete a vip rule from loadbalancer
 func (c Client) DeleteLoadBalancerVip(vip, lb string) error {
-	existVips, err := c.GetLoadBalancerVips(lb)
+	lbUuid, err := c.FindLoadbalancer(lb)
+	if err != nil {
+		klog.Errorf("failed to get lb %v", err)
+		return err
+	}
+
+	existVips, err := c.GetLoadBalancerVips(lbUuid)
+	if err != nil {
+		klog.Errorf("failed to list lb %s vips, %v", lb, err)
+		return err
+	}
 	// vip is empty or delete last rule will destroy the loadbalancer
 	if vip == "" || len(existVips) == 1 {
 		return nil
