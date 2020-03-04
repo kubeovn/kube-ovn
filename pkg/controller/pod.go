@@ -47,6 +47,7 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 		return
 	}
 	if p.Status.Phase == v1.PodFailed && p.Status.Reason == "Evicted" {
+		c.deletePodQueue.Add(key)
 		return
 	}
 
@@ -139,17 +140,20 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	if newPod.Spec.HostNetwork {
 		return
 	}
+
+	var key string
+	var err error
+	if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
+		utilruntime.HandleError(err)
+		return
+	}
+
 	if newPod.Status.Phase == v1.PodFailed && newPod.Status.Reason == "Evicted" {
+		c.deletePodQueue.Add(key)
 		return
 	}
 	// pod assigned an ip
 	if oldPod.Status.PodIP != newPod.Status.PodIP {
-		var key string
-		var err error
-		if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
-			utilruntime.HandleError(err)
-			return
-		}
 		klog.V(3).Infof("enqueue update pod %s", key)
 		c.updatePodQueue.Add(key)
 	}
