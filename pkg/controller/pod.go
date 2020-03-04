@@ -3,6 +3,7 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/alauda/kube-ovn/pkg/ipam"
 	"net"
 	"reflect"
 	"strconv"
@@ -307,7 +308,6 @@ func (c *Controller) processNextUpdatePodWorkItem() bool {
 }
 
 func (c *Controller) handleAddPod(key string) error {
-	// Convert the namespace/name string into a distinct namespace and name
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
@@ -315,8 +315,6 @@ func (c *Controller) handleAddPod(key string) error {
 	}
 	pod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
-		// The Pod resource may no longer exist, in which case we stop
-		// processing.
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
@@ -330,45 +328,37 @@ func (c *Controller) handleAddPod(key string) error {
 
 	// Avoid create lsp for already running pod in ovn-nb when controller restart
 	if needCreateLogicalSwitchPort(pod) {
-		if pod.Annotations[util.IpPoolAnnotation] != "" {
-			if err := c.setPodStaticIP(pod); err != nil {
-				return err
-			}
-		}
-
-		// pod address info may already exist in ovn
-		ip, mac := pod.Annotations[util.IpAddressAnnotation], pod.Annotations[util.MacAddressAnnotation]
 		subnet, err := c.getPodSubnet(pod)
 		if err != nil {
 			return err
 		}
-		nic, err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, subnet.Spec.CIDRBlock, mac)
+
+		op := "replace"
+		if pod.Annotations == nil || len(pod.Annotations) == 0 {
+			op = "add"
+			pod.Annotations = map[string]string{}
+		}
+
+		ip, mac, err := c.acquireAddress(pod)
 		if err != nil {
+			c.recorder.Eventf(pod, v1.EventTypeWarning, "AcquireAddressFailed", err.Error())
 			return err
 		}
-		if pod.Annotations == nil ||
-			pod.Annotations[util.IpAddressAnnotation] != nic.IpAddress ||
-			pod.Annotations[util.MacAddressAnnotation] != nic.MacAddress ||
-			pod.Annotations[util.CidrAnnotation] != subnet.Spec.CIDRBlock ||
-			pod.Annotations[util.GatewayAnnotation] != subnet.Spec.Gateway ||
-			pod.Annotations[util.LogicalSwitchAnnotation] != subnet.Name {
 
-			op := "replace"
-			if pod.Annotations == nil || len(pod.Annotations) == 0 {
-				op = "add"
-				pod.Annotations = map[string]string{}
-			}
-			pod.Annotations[util.IpAddressAnnotation] = nic.IpAddress
-			pod.Annotations[util.MacAddressAnnotation] = nic.MacAddress
-			pod.Annotations[util.CidrAnnotation] = subnet.Spec.CIDRBlock
-			pod.Annotations[util.GatewayAnnotation] = subnet.Spec.Gateway
-			pod.Annotations[util.LogicalSwitchAnnotation] = subnet.Name
-			pod.Annotations[util.AllocatedAnnotation] = "true"
+		if err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, subnet.Spec.CIDRBlock, mac); err != nil {
+			c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
+			return err
+		}
 
-			if _, err = c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, generatePatchPayload(pod.Annotations, op)); err != nil {
-				klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
-				return err
-			}
+		pod.Annotations[util.IpAddressAnnotation] = ip
+		pod.Annotations[util.MacAddressAnnotation] = mac
+		pod.Annotations[util.CidrAnnotation] = subnet.Spec.CIDRBlock
+		pod.Annotations[util.GatewayAnnotation] = subnet.Spec.Gateway
+		pod.Annotations[util.LogicalSwitchAnnotation] = subnet.Name
+		pod.Annotations[util.AllocatedAnnotation] = "true"
+		if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, generatePatchPayload(pod.Annotations, op)); err != nil {
+			klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
+			return err
 		}
 	}
 
@@ -380,29 +370,30 @@ func (c *Controller) handleAddPod(key string) error {
 }
 
 func (c *Controller) handleDeletePod(key string) error {
+	ip, _, exist := c.ipam.GetPodAddress(key)
+	if !exist {
+		return nil
+	}
+
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	klog.Infof("delete pod %s/%s", namespace, name)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
-	portAddr, err := c.ovnClient.GetPortAddr(ovs.PodNameToPortName(name, namespace))
-	if err != nil {
-		if !strings.Contains(err.Error(), "no row") && !strings.Contains(err.Error(), "no address") {
-			return err
-		}
-	} else {
-		if err := c.ovnClient.DeleteStaticRoute(portAddr[1], c.config.ClusterRouter); err != nil {
-			return err
-		}
+
+	if err = c.ovnClient.DeleteStaticRoute(ip, c.config.ClusterRouter); err != nil {
+		return err
 	}
-	if err := c.ovnClient.DeletePort(ovs.PodNameToPortName(name, namespace)); err != nil {
+
+	if err = c.ovnClient.DeletePort(ovs.PodNameToPortName(name, namespace)); err != nil {
 		klog.Errorf("failed to delete lsp %s, %v", ovs.PodNameToPortName(name, namespace), err)
 		return err
 	}
 
 	err = c.config.KubeOvnClient.KubeovnV1().IPs().Delete(ovs.PodNameToPortName(name, namespace), &metav1.DeleteOptions{})
 	if err == nil || k8serrors.IsNotFound(err) {
+		c.ipam.ReleaseAddressByPod(key)
 		return nil
 	}
 
@@ -424,11 +415,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 		return err
 	}
 	klog.Infof("update pod %s/%s", namespace, name)
-	portAddr, err := c.ovnClient.GetPortAddr(ovs.PodNameToPortName(name, namespace))
-	if err != nil {
-		return err
-	}
-	podIP := portAddr[1]
+	podIP := pod.Annotations[util.IpAddressAnnotation]
 
 	subnet, err := c.getPodSubnet(pod)
 	if err != nil {
@@ -508,54 +495,45 @@ func (c *Controller) getPodSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error) {
 	return subnet, nil
 }
 
-func (c *Controller) setPodStaticIP(pod *v1.Pod) error {
-	if pod.Annotations[util.IpAddressAnnotation] != "" {
-		return nil
+func (c *Controller) acquireAddress(pod *v1.Pod) (string, string, error) {
+	subnet, err := c.getPodSubnet(pod)
+	if err != nil {
+		return "", "", err
+	}
+	key := fmt.Sprintf("%s/%s", pod.Name, pod.Namespace)
+
+	// Random allocate
+	if pod.Annotations[util.IpAddressAnnotation] == "" && pod.Annotations[util.IpPoolAnnotation] == "" {
+		return c.ipam.GetRandomAddress(key, subnet.Name)
 	}
 
-	var staticIP string
+	// Static allocate
+	if pod.Annotations[util.IpAddressAnnotation] != "" {
+		return c.ipam.GetStaticAddress(key, pod.Annotations[util.IpAddressAnnotation], pod.Annotations[util.MacAddressAnnotation], subnet.Name)
+	}
+
+	// IPPool allocate
 	ipPool := strings.Split(pod.Annotations[util.IpPoolAnnotation], ",")
 	for i, ip := range ipPool {
 		ipPool[i] = strings.TrimSpace(ip)
 	}
-	if isStateful, _ := isStatefulSetPod(pod); isStateful {
+
+	if ok, _ := isStatefulSetPod(pod); !ok {
+		for _, staticIP := range ipPool {
+			if ip, mac, err := c.ipam.GetStaticAddress(key, staticIP, pod.Annotations[util.MacAddressAnnotation], subnet.Name); err == nil {
+				return ip, mac, nil
+			}
+		}
+		return "", "", ipam.NoAvailableError
+	} else {
 		numIndex := len(strings.Split(pod.Name, "-")) - 1
 		numStr := strings.Split(pod.Name, "-")[numIndex]
 		index, _ := strconv.Atoi(numStr)
 		if index < len(ipPool) {
-			staticIP = ipPool[index]
-		}
-	} else {
-		for _, ip := range ipPool {
-			cache.WaitForCacheSync(nil, c.podsSynced)
-			existPods, err := c.podsLister.List(labels.Everything())
-			if err != nil {
-				klog.Errorf("failed to list pod %v", err)
-				return err
-			}
-			used := false
-			for _, p := range existPods {
-				// use annotation to get exist ips, as podIp may not exist in this interval
-				if strings.Split(p.Annotations[util.IpAddressAnnotation], "/")[0] == ip {
-					used = true
-					break
-				}
-			}
-			if !used {
-				staticIP = ip
-				break
-			}
+			return c.ipam.GetStaticAddress(key, ipPool[index], pod.Annotations[util.MacAddressAnnotation], subnet.Name)
 		}
 	}
-
-	if staticIP == "" {
-		klog.Errorf("no available ip for pod %s/%s", pod.Namespace, pod.Name)
-		c.recorder.Event(pod, v1.EventTypeWarning, "FailedAllocateIP", "no unused ip")
-		return fmt.Errorf("no available ip for pod %s/%s", pod.Namespace, pod.Name)
-	} else {
-		pod.Annotations[util.IpAddressAnnotation] = staticIP
-	}
-	return nil
+	return "", "", ipam.NoAvailableError
 }
 
 func generatePatchPayload(annotations map[string]string, op string) []byte {

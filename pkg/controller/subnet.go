@@ -350,6 +350,10 @@ func (c *Controller) handleAddSubnet(key string) error {
 		return err
 	}
 
+	if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.ExcludeIps); err != nil {
+		return err
+	}
+
 	exist, err := c.ovnClient.LogicalSwitchExists(subnet.Name)
 	if err != nil {
 		klog.Errorf("failed to list logical switch, %v", err)
@@ -590,6 +594,10 @@ func (c *Controller) handleUpdateSubnet(key string) error {
 		return nil
 	}
 
+	if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.ExcludeIps); err != nil {
+		return err
+	}
+
 	exist, err := c.ovnClient.LogicalSwitchExists(subnet.Name)
 	if err != nil {
 		klog.Errorf("failed to list logical switch, %v", err)
@@ -726,6 +734,8 @@ func (c *Controller) handleDeleteRoute(key string) error {
 }
 
 func (c *Controller) handleDeleteSubnet(key string) error {
+	c.ipam.DeleteSubnet(key)
+
 	exist, err := c.ovnClient.LogicalSwitchExists(key)
 	if err != nil {
 		klog.Errorf("failed to list logical switch, %v", err)

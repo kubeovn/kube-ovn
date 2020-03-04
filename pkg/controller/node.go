@@ -192,28 +192,33 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	nic, err := c.ovnClient.CreatePort(
-		c.config.NodeSwitch, fmt.Sprintf("node-%s", key),
-		node.Annotations[util.IpAddressAnnotation],
-		node.Annotations[util.CidrAnnotation],
-		node.Annotations[util.MacAddressAnnotation])
-	if err != nil {
-		return err
-	}
-
-	nodeAddr := getNodeInternalIP(node)
-	if util.CheckProtocol(nodeAddr) == util.CheckProtocol(nic.IpAddress) {
-		err = c.ovnClient.AddStaticRoute("", nodeAddr, strings.Split(nic.IpAddress, "/")[0], c.config.ClusterRouter)
-		if err != nil {
-			klog.Errorf("failed to add static router from node to ovn0 %v", err)
-			return err
-		}
-	}
-
 	subnet, err := c.subnetsLister.Get(c.config.NodeSwitch)
 	if err != nil {
 		klog.Errorf("failed to get node subnet %v", err)
 		return err
+	}
+
+	var ip, mac string
+	portName := fmt.Sprintf("node-%s", key)
+	if node.Annotations[util.AllocatedAnnotation] == "true" {
+		return nil
+	} else {
+		ip, mac, err = c.ipam.GetRandomAddress(portName, c.config.NodeSwitch)
+		if err != nil {
+			return err
+		}
+	}
+	if err := c.ovnClient.CreatePort(c.config.NodeSwitch, portName, ip, subnet.Spec.CIDRBlock, mac); err != nil {
+		return err
+	}
+
+	nodeAddr := getNodeInternalIP(node)
+	if util.CheckProtocol(nodeAddr) == util.CheckProtocol(ip) {
+		err = c.ovnClient.AddStaticRoute("", nodeAddr, strings.Split(ip, "/")[0], c.config.ClusterRouter)
+		if err != nil {
+			klog.Errorf("failed to add static router from node to ovn0 %v", err)
+			return err
+		}
 	}
 
 	patchPayloadTemplate :=
@@ -223,11 +228,12 @@ func (c *Controller) handleAddNode(key string) error {
         "value": %s
     }]`
 	payload := map[string]string{
-		util.IpAddressAnnotation:     nic.IpAddress,
-		util.MacAddressAnnotation:    nic.MacAddress,
+		util.IpAddressAnnotation:     ip,
+		util.MacAddressAnnotation:    mac,
 		util.CidrAnnotation:          subnet.Spec.CIDRBlock,
 		util.GatewayAnnotation:       subnet.Spec.Gateway,
 		util.LogicalSwitchAnnotation: c.config.NodeSwitch,
+		util.AllocatedAnnotation:     "true",
 		util.PortNameAnnotation:      fmt.Sprintf("node-%s", key),
 	}
 	raw, _ := json.Marshal(payload)
@@ -256,17 +262,17 @@ func (c *Controller) handleAddNode(key string) error {
 					PodName:    key,
 					Subnet:     c.config.NodeSwitch,
 					NodeName:   key,
-					IPAddress:  nic.IpAddress,
-					MacAddress: nic.MacAddress,
+					IPAddress:  ip,
+					MacAddress: mac,
 				},
 			})
 			if err != nil {
-				errMsg := fmt.Errorf("failed to create ip crd for %s, %v", nic.IpAddress, err)
+				errMsg := fmt.Errorf("failed to create ip crd for %s, %v", ip, err)
 				klog.Error(errMsg)
 				return errMsg
 			}
 		} else {
-			errMsg := fmt.Errorf("failed to get ip crd for %s, %v", nic.IpAddress, err)
+			errMsg := fmt.Errorf("failed to get ip crd for %s, %v", ip, err)
 			klog.Error(errMsg)
 			return errMsg
 		}
@@ -282,12 +288,12 @@ func (c *Controller) handleAddNode(key string) error {
 		ipCr.Spec.Namespace = ""
 		ipCr.Spec.Subnet = c.config.NodeSwitch
 		ipCr.Spec.NodeName = key
-		ipCr.Spec.IPAddress = nic.IpAddress
-		ipCr.Spec.MacAddress = nic.MacAddress
+		ipCr.Spec.IPAddress = ip
+		ipCr.Spec.MacAddress = mac
 		ipCr.Spec.ContainerID = ""
 		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(ipCr)
 		if err != nil {
-			errMsg := fmt.Errorf("failed to create ip crd for %s, %v", nic.IpAddress, err)
+			errMsg := fmt.Errorf("failed to create ip crd for %s, %v", ip, err)
 			klog.Error(errMsg)
 			return errMsg
 		}
@@ -298,31 +304,23 @@ func (c *Controller) handleAddNode(key string) error {
 
 func (c *Controller) handleDeleteNode(key string) error {
 	portName := fmt.Sprintf("node-%s", key)
-	err := c.ovnClient.DeletePort(portName)
-	if err != nil {
+	if err := c.ovnClient.DeletePort(portName); err != nil {
 		klog.Errorf("failed to delete node switch port node-%s %v", key, err)
 		return err
 	}
 
-	ipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(portName, metav1.GetOptions{})
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
+	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(portName, &metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
 		return err
 	}
 
-	if err := c.ovnClient.DeleteStaticRouteByNextHop(ipCr.Spec.IPAddress); err != nil {
-		return err
+	ip, _, exist := c.ipam.GetPodAddress(portName)
+	if exist {
+		if err := c.ovnClient.DeleteStaticRouteByNextHop(ip); err != nil {
+			return err
+		}
 	}
 
-	err = c.config.KubeOvnClient.KubeovnV1().IPs().Delete(portName, &metav1.DeleteOptions{})
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
+	c.ipam.ReleaseAddressByPod(portName)
 	return nil
 }
 
