@@ -1,6 +1,7 @@
 package controller
 
 import (
+	ovnipam "github.com/alauda/kube-ovn/pkg/ipam"
 	"time"
 
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
@@ -31,6 +32,7 @@ const controllerAgentName = "ovn-controller"
 type Controller struct {
 	config    *Configuration
 	ovnClient *ovs.Client
+	ipam      *ovnipam.IPAM
 
 	podsLister v1.PodLister
 	podsSynced cache.InformerSynced
@@ -112,6 +114,7 @@ func NewController(config *Configuration) *Controller {
 	controller := &Controller{
 		config:    config,
 		ovnClient: ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.OvnNbTimeout, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
+		ipam:      ovnipam.NewIPAM(),
 
 		subnetsLister:           subnetInformer.Lister(),
 		subnetSynced:            subnetInformer.Informer().HasSynced,
@@ -223,6 +226,10 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 
 	if err := c.InitOVN(); err != nil {
 		klog.Fatalf("failed to init ovn resource %v", err)
+	}
+
+	if err := c.InitIPAM(); err != nil {
+		klog.Fatalf("failed to init ipam %v", err)
 	}
 
 	c.informerFactory.Start(stopCh)

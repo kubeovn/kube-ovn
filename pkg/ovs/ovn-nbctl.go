@@ -35,61 +35,20 @@ func (c Client) DeletePort(port string) error {
 }
 
 // CreatePort create logical switch port in ovn
-func (c Client) CreatePort(ls, port, ip, cidr, mac string) (*nic, error) {
-	if ip == "" && mac == "" {
-		_, err := c.ovnNbCommand(MayExist, "lsp-add", ls, port,
-			"--", "set", "logical_switch_port", port, "addresses=dynamic")
-		if err != nil {
-			klog.Errorf("create port %s failed %v", port, err)
-			return nil, err
-		}
-
-		address, err := c.GetLogicalSwitchPortDynamicAddress(port)
-		if err != nil {
-			klog.Errorf("get port %s dynamic-addresses failed %v", port, err)
-			return nil, err
-		}
-		mac, ip = address[0], address[1]
-	} else {
-		if mac == "" {
-			mac = "dynamic"
-		}
-
-		// remove mask, and retrieve mask from subnet cidr later
-		// in this way we can deal with static ip with/without mask
-		ip = strings.Split(ip, "/")[0]
-
-		_, err := c.ovnNbCommand(MayExist, "lsp-add", ls, port, "--",
-			"lsp-set-addresses", port, fmt.Sprintf("%s %s", mac, ip))
-		if err != nil {
-			klog.Errorf("create port %s failed %v", port, err)
-			return nil, err
-		}
-
-		if mac == "dynamic" {
-			address, err := c.GetLogicalSwitchPortDynamicAddress(port)
-			if err != nil {
-				klog.Errorf("get port %s dynamic-addresses failed %v", port, err)
-				return nil, err
-			}
-			mac = address[0]
-		}
-	}
+func (c Client) CreatePort(ls, port, ip, cidr, mac string) error {
+	ovnCommand := []string{MayExist, "lsp-add", ls, port, "--",
+		"lsp-set-addresses", port, fmt.Sprintf("%s %s", mac, ip), "--"}
 
 	if ls != c.NodeSwitch {
-		_, err := c.ovnNbCommand("lsp-set-port-security", port, fmt.Sprintf("%s %s/%s", mac, ip, strings.Split(cidr, "/")[1]))
-		if err != nil {
-			klog.Errorf("failed to set port security for %s, %v", port, err)
-			return nil, err
-		}
+		ovnCommand = append(ovnCommand,
+			"lsp-set-port-security", port, fmt.Sprintf("%s %s/%s", mac, ip, strings.Split(cidr, "/")[1]))
 	}
 
-	return &nic{IpAddress: ip, MacAddress: mac}, nil
-}
-
-type nic struct {
-	IpAddress  string
-	MacAddress string
+	if _, err := c.ovnNbCommand(ovnCommand...); err != nil {
+		klog.Errorf("create port %s failed %v", port, err)
+		return err
+	}
+	return nil
 }
 
 // CreateLogicalSwitch create logical switch in ovn, connect it to router and apply tcp/udp lb rules

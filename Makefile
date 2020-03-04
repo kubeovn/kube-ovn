@@ -5,7 +5,7 @@ REGISTRY=index.alauda.cn/alaudak8s
 DEV_TAG=dev
 RELEASE_TAG=$(shell cat VERSION)
 
-.PHONY: build-dev-images build-go build-bin lint up down halt suspend resume kind push-dev push-release
+.PHONY: build-dev-images build-go build-bin lint up down halt suspend resume kind-init kind-init-ha kind-reload push-dev push-release e2e ut
 
 build-dev-images: build-bin
 	docker build -t ${REGISTRY}/kube-ovn:${DEV_TAG} -f dist/images/Dockerfile dist/images/
@@ -74,11 +74,14 @@ kind-init-ha:
 	kubectl apply -f yamls/kube-ovn.yaml
 
 kind-reload:
-    kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
-	kubectl delete pod -n kube-ovn --all
+	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
+	kubectl delete pod -n kube-system -l app=kube-ovn-controller
 
 kind-clean:
 	kind delete cluster --name=kube-ovn
 
 e2e:
 	ginkgo -p --slowSpecThreshold=60 test/e2e
+
+ut:
+	ginkgo -p --slowSpecThreshold=60 test/unittest
