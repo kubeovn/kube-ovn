@@ -37,10 +37,9 @@ type Controller struct {
 	podsLister v1.PodLister
 	podsSynced cache.InformerSynced
 
-	addPodQueue       workqueue.RateLimitingInterface
-	addIpPoolPodQueue workqueue.RateLimitingInterface
-	deletePodQueue    workqueue.RateLimitingInterface
-	updatePodQueue    workqueue.RateLimitingInterface
+	addPodQueue    workqueue.RateLimitingInterface
+	deletePodQueue workqueue.RateLimitingInterface
+	updatePodQueue workqueue.RateLimitingInterface
 
 	subnetsLister           kubeovnlister.SubnetLister
 	subnetSynced            cache.InformerSynced
@@ -127,12 +126,11 @@ func NewController(config *Configuration) *Controller {
 		ipsLister: ipInformer.Lister(),
 		ipSynced:  ipInformer.Informer().HasSynced,
 
-		podsLister:        podInformer.Lister(),
-		podsSynced:        podInformer.Informer().HasSynced,
-		addPodQueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddPod"),
-		addIpPoolPodQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddIpPoolPod"),
-		deletePodQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeletePod"),
-		updatePodQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdatePod"),
+		podsLister:     podInformer.Lister(),
+		podsSynced:     podInformer.Informer().HasSynced,
+		addPodQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddPod"),
+		deletePodQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeletePod"),
+		updatePodQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdatePod"),
 
 		namespacesLister:  namespaceInformer.Lister(),
 		namespacesSynced:  namespaceInformer.Informer().HasSynced,
@@ -256,7 +254,6 @@ func (c *Controller) shutdown() {
 	utilruntime.HandleCrash()
 
 	c.addPodQueue.ShutDown()
-	c.addIpPoolPodQueue.ShutDown()
 	c.deletePodQueue.ShutDown()
 	c.updatePodQueue.ShutDown()
 
@@ -298,9 +295,6 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 			break
 		}
 	}
-
-	// run in a single worker to avoid ip conflict
-	go wait.Until(c.runAddIpPoolPodWorker, time.Second, stopCh)
 
 	// run in a single worker to avoid subnet cidr conflict
 	go wait.Until(c.runAddNamespaceWorker, time.Second, stopCh)
