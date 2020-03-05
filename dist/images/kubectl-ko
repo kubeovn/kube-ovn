@@ -127,6 +127,10 @@ vsctl(){
 }
 
 diagnose(){
+  checkDeployment ovn-central
+  checkDeployment kube-ovn-controller
+  checkDaemonSet kube-ovn-cni
+  checkDaemonSet ovs-ovn
   type="$1"
   case $type in
     all)
@@ -178,6 +182,34 @@ getOvnCentralPod(){
       exit 1
     fi
     OVN_SB_POD=$SB_POD
+}
+
+checkDaemonSet(){
+  name="$1"
+  currentScheduled=$(kubectl get ds -n $KUBE_OVN_NS "$name" -o jsonpath={.status.currentNumberScheduled})
+  desiredScheduled=$(kubectl get ds -n $KUBE_OVN_NS "$name" -o jsonpath={.status.desiredNumberScheduled})
+  available=$(kubectl get ds -n $KUBE_OVN_NS "$name" -o jsonpath={.status.numberAvailable})
+  ready=$(kubectl get ds -n $KUBE_OVN_NS "$name" -o jsonpath={.status.numberReady})
+  if [ "$currentScheduled" = "$desiredScheduled" ] && [ "$desiredScheduled" = "$available" ] && [ "$available" = "$ready" ]; then
+    echo "ds $name ready"
+  else
+    echo "Error ds $name not ready"
+    exit 1
+  fi
+}
+
+checkDeployment(){
+  name="$1"
+  ready=$(kubectl get deployment -n $KUBE_OVN_NS "$name" -o jsonpath={.status.readyReplicas})
+  updated=$(kubectl get deployment -n $KUBE_OVN_NS "$name" -o jsonpath={.status.updatedReplicas})
+  desire=$(kubectl get deployment -n $KUBE_OVN_NS "$name" -o jsonpath={.status.replicas})
+  available=$(kubectl get deployment -n $KUBE_OVN_NS "$name" -o jsonpath={.status.availableReplicas})
+  if [ "$ready" = "$updated" ] && [ "$updated" = "$desire" ] && [ "$desire" = "$available" ]; then
+    echo "deployment $name ready"
+  else
+    echo "Error deployment $name not ready"
+    exit 1
+  fi
 }
 
 if [ $# -lt 1 ]; then
