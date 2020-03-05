@@ -51,12 +51,6 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 		return
 	}
 
-	if p.Annotations[util.IpPoolAnnotation] != "" && p.Annotations[util.IpAddressAnnotation] == "" {
-		klog.V(3).Infof("enqueue add ip pool address pod %s", key)
-		c.addIpPoolPodQueue.Add(key)
-		return
-	}
-
 	klog.V(3).Infof("enqueue add pod %s", key)
 	c.addPodQueue.Add(key)
 }
@@ -164,11 +158,6 @@ func (c *Controller) runAddPodWorker() {
 	}
 }
 
-func (c *Controller) runAddIpPoolPodWorker() {
-	for c.processNextAddIpPoolPodWorkItem() {
-	}
-}
-
 func (c *Controller) runDeletePodWorker() {
 	for c.processNextDeletePodWorkItem() {
 	}
@@ -210,38 +199,6 @@ func (c *Controller) processNextAddPodWorkItem() bool {
 	}
 	last := time.Since(now)
 	klog.Infof("take %d ms to deal with add pod", last.Milliseconds())
-	return true
-}
-
-func (c *Controller) processNextAddIpPoolPodWorkItem() bool {
-	obj, shutdown := c.addIpPoolPodQueue.Get()
-
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.addIpPoolPodQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.addIpPoolPodQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleAddPod(key); err != nil {
-			c.addIpPoolPodQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		c.addIpPoolPodQueue.Forget(obj)
-		return nil
-	}(obj)
-
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-
 	return true
 }
 
