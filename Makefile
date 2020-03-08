@@ -68,10 +68,7 @@ kind-init-ha:
 	kind delete cluster --name=kube-ovn
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
 	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
-	kubectl label node --all kube-ovn/role=master --overwrite
-	kubectl apply -f yamls/crd.yaml
-	kubectl apply -f yamls/ovn-ha.yaml
-	kubectl apply -f yamls/kube-ovn.yaml
+	bash dist/images/install.sh
 
 kind-reload:
 	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
