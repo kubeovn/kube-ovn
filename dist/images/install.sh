@@ -13,7 +13,7 @@ echo "-------------------------------"
 echo ""
 
 echo "[Step 2] Install OVN components"
-count=$(kubectl get no  --no-headers -o wide | awk '{print $6}' | wc -l)
+count=$(kubectl get no -lkube-ovn/role=master --no-headers -o wide | wc -l)
 addresses=$(kubectl get no -lkube-ovn/role=master --no-headers -o wide | awk '{print $6}' | tr \\n ',')
 echo "Install OVN DB in $addresses"
 
