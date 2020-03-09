@@ -350,7 +350,7 @@ func (c *Controller) handleDeletePod(key string) error {
 		return err
 	}
 
-	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(ovs.PodNameToPortName(name, namespace), &metav1.DeleteOptions{}); err != nil{
+	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(ovs.PodNameToPortName(name, namespace), &metav1.DeleteOptions{}); err != nil {
 		if !k8serrors.IsNotFound(err) {
 			klog.Errorf("failed to delete ip %s, %v", ovs.PodNameToPortName(name, namespace), err)
 			return err

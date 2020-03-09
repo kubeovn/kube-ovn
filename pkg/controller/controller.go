@@ -222,21 +222,21 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	// wait for becoming a leader
 	c.leaderElection()
 
+	// Wait for the caches to be synced before starting workers
+	c.informerFactory.Start(stopCh)
+	c.kubeovnInformerFactory.Start(stopCh)
+
+	klog.Info("Waiting for informer caches to sync")
+	if ok := cache.WaitForCacheSync(stopCh, c.subnetSynced, c.ipSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced, c.npsSynced); !ok {
+		klog.Fatalf("failed to wait for caches to sync")
+	}
+
 	if err := c.InitOVN(); err != nil {
 		klog.Fatalf("failed to init ovn resource %v", err)
 	}
 
 	if err := c.InitIPAM(); err != nil {
 		klog.Fatalf("failed to init ipam %v", err)
-	}
-
-	c.informerFactory.Start(stopCh)
-	c.kubeovnInformerFactory.Start(stopCh)
-
-	// Wait for the caches to be synced before starting workers
-	klog.Info("Waiting for informer caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.subnetSynced, c.ipSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced, c.npsSynced); !ok {
-		klog.Fatalf("failed to wait for caches to sync")
 	}
 
 	// remove resources in ovndb that not exist any more in kubernetes resources

@@ -208,6 +208,28 @@ func (c Client) createRouterPort(ls, lr, ip, mac string) error {
 	return nil
 }
 
+type StaticRoute struct {
+	Policy  string
+	CIDR    string
+	NextHop string
+}
+
+func (c Client) ListStaticRoute() ([]StaticRoute, error) {
+	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=ip_prefix,nexthop,policy", "list", "Logical_Router_Static_Route")
+	if err != nil {
+		return nil, err
+	}
+	entries := strings.Split(output, "\n")
+	staticRoutes := make([]StaticRoute, 0, len(entries))
+	for _, entry := range strings.Split(output, "\n") {
+		if len(strings.Split(entry, ",")) == 3 {
+			t := strings.Split(entry, ",")
+			staticRoutes = append(staticRoutes, StaticRoute{CIDR: t[0], NextHop: t[1], Policy: t[2]})
+		}
+	}
+	return staticRoutes, nil
+}
+
 // AddStaticRoute add a static route rule in ovn
 func (c Client) AddStaticRoute(policy, cidr, nextHop, router string) error {
 	if policy == "" {
