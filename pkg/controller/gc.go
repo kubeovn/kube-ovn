@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"github.com/alauda/kube-ovn/pkg/ovs"
 	"github.com/alauda/kube-ovn/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -16,7 +17,9 @@ func (c *Controller) gc() error {
 		c.gcLogicalSwitch,
 		c.gcLogicalSwitchPort,
 		c.gcLoadBalancer,
-		c.gcPortGroup}
+		c.gcPortGroup,
+		c.gcStaticRoute,
+	}
 	for _, gcFunc := range gcFunctions {
 		if err := gcFunc(); err != nil {
 			return err
@@ -212,6 +215,32 @@ func (c *Controller) gcPortGroup() error {
 			if err := c.handleDeleteNp(fmt.Sprintf("%s/%s", pg.NpNamespace, pg.NpName)); err != nil {
 				klog.Errorf("failed to gc np %s/%s, %v", pg.NpNamespace, pg.NpName, err)
 				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (c *Controller) gcStaticRoute() error {
+	routes, err := c.ovnClient.ListStaticRoute()
+	if err != nil {
+		klog.Errorf("failed to list static route %v", err)
+		return err
+	}
+	for _, route := range routes {
+		if route.Policy == ovs.PolicyDstIP {
+			if !c.ipam.ContainAddress(route.NextHop) {
+				klog.Infof("gc static route %s %s %s", route.Policy, route.CIDR, route.NextHop)
+				if err := c.ovnClient.DeleteStaticRouteByNextHop(route.NextHop); err != nil {
+					klog.Errorf("failed to delete stale nexthop route %s, %v", route.NextHop, err)
+				}
+			}
+		} else {
+			if !c.ipam.ContainAddress(route.CIDR) {
+				klog.Infof("gc static route %s %s %s", route.Policy, route.CIDR, route.NextHop)
+				if err := c.ovnClient.DeleteStaticRoute(route.CIDR, c.config.ClusterRouter); err != nil {
+					klog.Errorf("failed to delete stale route %s, %v", route.NextHop, err)
+				}
 			}
 		}
 	}

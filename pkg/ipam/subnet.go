@@ -161,6 +161,15 @@ func (subnet *Subnet) ReleaseAddress(podName string) (IP, string) {
 	return ip, mac
 }
 
+func (subnet *Subnet) ContainAddress(address IP) bool {
+	subnet.mutex.RLock()
+	defer subnet.mutex.RUnlock()
+	if _, ok := subnet.IPToPod[address]; ok {
+		return true
+	}
+	return false
+}
+
 func (subnet *Subnet) joinFreeWithReserve() {
 	for _, reserveIpr := range subnet.ReservedIPList {
 		newFreeList := IPRangeList{}

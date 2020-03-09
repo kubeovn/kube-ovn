@@ -109,3 +109,14 @@ func (ipam *IPAM) GetPodAddress(podName string) (string, string, bool) {
 	}
 	return "", "", false
 }
+
+func (ipam *IPAM) ContainAddress(address string) bool {
+	ipam.mutex.RLock()
+	defer ipam.mutex.RUnlock()
+	for _, subnet := range ipam.Subnets {
+		if subnet.ContainAddress(IP(address)) {
+			return true
+		}
+	}
+	return false
+}
