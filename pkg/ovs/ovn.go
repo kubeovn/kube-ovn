@@ -13,7 +13,7 @@ var (
 // Client is the ovn client
 type Client struct {
 	OvnNbAddress           string
-	OvnNbTimeout           int
+	OvnTimeout             int
 	OvnSbAddress           string
 	ClusterRouter          string
 	ClusterTcpLoadBalancer string
@@ -24,6 +24,7 @@ type Client struct {
 
 const (
 	OvnNbCtl    = "ovn-nbctl"
+	OvnSbCtl    = "ovn-sbctl"
 	MayExist    = "--may-exist"
 	IfExists    = "--if-exists"
 	Policy      = "--policy"
@@ -36,7 +37,7 @@ func NewClient(ovnNbHost string, ovnNbPort int, ovnNbTimeout int, ovnSbHost stri
 	return &Client{
 		OvnNbAddress:           fmt.Sprintf("tcp:%s:%d", ovnNbHost, ovnNbPort),
 		OvnSbAddress:           fmt.Sprintf("tcp:%s:%d", ovnSbHost, ovnSbPort),
-		OvnNbTimeout:           ovnNbTimeout,
+		OvnTimeout:             ovnNbTimeout,
 		ClusterRouter:          clusterRouter,
 		ClusterTcpLoadBalancer: clusterTcpLoadBalancer,
 		ClusterUdpLoadBalancer: clusterUdpLoadBalancer,
