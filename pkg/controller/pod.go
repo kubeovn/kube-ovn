@@ -332,34 +332,33 @@ func (c *Controller) handleAddPod(key string) error {
 
 func (c *Controller) handleDeletePod(key string) error {
 	ip, _, exist := c.ipam.GetPodAddress(key)
-	if !exist {
-		return nil
+	if exist {
+		if err := c.ovnClient.DeleteStaticRoute(ip, c.config.ClusterRouter); err != nil {
+			return err
+		}
 	}
 
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	klog.Infof("delete pod %s/%s", namespace, name)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
-		return nil
-	}
-
-	if err = c.ovnClient.DeleteStaticRoute(ip, c.config.ClusterRouter); err != nil {
 		return err
 	}
 
-	if err = c.ovnClient.DeletePort(ovs.PodNameToPortName(name, namespace)); err != nil {
+	if err := c.ovnClient.DeletePort(ovs.PodNameToPortName(name, namespace)); err != nil {
 		klog.Errorf("failed to delete lsp %s, %v", ovs.PodNameToPortName(name, namespace), err)
 		return err
 	}
 
-	err = c.config.KubeOvnClient.KubeovnV1().IPs().Delete(ovs.PodNameToPortName(name, namespace), &metav1.DeleteOptions{})
-	if err == nil || k8serrors.IsNotFound(err) {
-		c.ipam.ReleaseAddressByPod(key)
-		return nil
+	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(ovs.PodNameToPortName(name, namespace), &metav1.DeleteOptions{}); err != nil{
+		if !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to delete ip %s, %v", ovs.PodNameToPortName(name, namespace), err)
+			return err
+		}
 	}
 
-	klog.Errorf("failed to delete ip %s, %v", ovs.PodNameToPortName(name, namespace), err)
-	return err
+	c.ipam.ReleaseAddressByPod(key)
+	return nil
 }
 
 func (c *Controller) handleUpdatePod(key string) error {
