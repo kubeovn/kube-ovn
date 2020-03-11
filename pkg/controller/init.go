@@ -156,7 +156,8 @@ func (c *Controller) InitIPAM() error {
 		return err
 	}
 	for _, pod := range pods {
-		if pod.Annotations[util.AllocatedAnnotation] == "true" &&
+		if isPodAlive(pod) &&
+			pod.Annotations[util.AllocatedAnnotation] == "true" &&
 			pod.Annotations[util.LogicalSwitchAnnotation] != "" {
 			_, _, err := c.ipam.GetStaticAddress(
 				fmt.Sprintf("%s/%s", pod.Namespace, pod.Name),
