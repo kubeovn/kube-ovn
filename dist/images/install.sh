@@ -926,6 +926,8 @@ vsctl(){
 }
 
 diagnose(){
+  kubectl get crd subnets.kubeovn.io
+  kubectl get crd ips.kubeovn.io
   checkDeployment ovn-central
   checkDeployment kube-ovn-controller
   checkDaemonSet kube-ovn-cni
