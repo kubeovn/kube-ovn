@@ -24,6 +24,21 @@ import (
 	"k8s.io/klog"
 )
 
+func isPodAlive(p *v1.Pod) bool {
+	if p.Status.Phase == v1.PodSucceeded && p.Spec.RestartPolicy != v1.RestartPolicyAlways {
+		return false
+	}
+
+	if p.Status.Phase == v1.PodFailed && p.Spec.RestartPolicy == v1.RestartPolicyNever {
+		return false
+	}
+
+	if p.Status.Phase == v1.PodFailed && p.Status.Reason == "Evicted" {
+		return false
+	}
+	return true
+}
+
 func (c *Controller) enqueueAddPod(obj interface{}) {
 	if !c.isLeader() {
 		return
@@ -46,7 +61,8 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 	if p.Spec.HostNetwork {
 		return
 	}
-	if p.Status.Phase == v1.PodFailed && p.Status.Reason == "Evicted" {
+
+	if !isPodAlive(p) {
 		c.deletePodQueue.Add(key)
 		return
 	}
@@ -142,10 +158,11 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		return
 	}
 
-	if newPod.Status.Phase == v1.PodFailed && newPod.Status.Reason == "Evicted" {
+	if !isPodAlive(newPod) {
 		c.deletePodQueue.Add(key)
 		return
 	}
+
 	// pod assigned an ip
 	if oldPod.Status.PodIP != newPod.Status.PodIP {
 		klog.V(3).Infof("enqueue update pod %s", key)
