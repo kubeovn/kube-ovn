@@ -796,6 +796,7 @@ for ns in $(kubectl get ns --no-headers -o  custom-columns=NAME:.metadata.name);
 done
 
 kubectl rollout status daemonset/kube-ovn-pinger -n kube-system
+kubectl rollout status deployment/coredns -n kube-system
 echo "-------------------------------"
 echo ""
 
@@ -933,10 +934,14 @@ vsctl(){
 diagnose(){
   kubectl get crd subnets.kubeovn.io
   kubectl get crd ips.kubeovn.io
+
+  checkDaemonSet kube-proxy
   checkDeployment ovn-central
   checkDeployment kube-ovn-controller
   checkDaemonSet kube-ovn-cni
   checkDaemonSet ovs-ovn
+  checkDeployment coredns
+
   type="$1"
   case $type in
     all)
