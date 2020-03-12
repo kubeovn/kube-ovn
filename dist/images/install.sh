@@ -5,15 +5,20 @@ REGISTRY="index.alauda.cn/alaudak8s"
 POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
 SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR
 JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
+LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
 VERSION="v1.1.0-pre"
 
 echo "[Step 1] Label kube-ovn-master node"
-kubectl label no -lnode-role.kubernetes.io/master kube-ovn/role=master --overwrite
+count=$(kubectl get no -l$LABEL --no-headers -o wide | wc -l | sed 's/ //g')
+if [ "$count" = "0" ]; then
+  echo "ERROR: No node with label $LABEL"
+  exit 1
+fi
+kubectl label no -l$LABEL kube-ovn/role=master --overwrite
 echo "-------------------------------"
 echo ""
 
 echo "[Step 2] Install OVN components"
-count=$(kubectl get no -lkube-ovn/role=master --no-headers -o wide | wc -l)
 addresses=$(kubectl get no -lkube-ovn/role=master --no-headers -o wide | awk '{print $6}' | tr \\n ',')
 echo "Install OVN DB in $addresses"
 
