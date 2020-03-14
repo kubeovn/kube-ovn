@@ -790,7 +790,7 @@ echo ""
 
 echo "[Step 4] Delete pod that not in host network mode"
 for ns in $(kubectl get ns --no-headers -o  custom-columns=NAME:.metadata.name); do
-  for pod in $(kubectl get pod --no-headers -n "$ns" -o custom-columns=NAME:.metadata.name,HOST:spec.hostNetwork | awk '{if ($2!="true") print $1}'); do
+  for pod in $(kubectl get pod --no-headers -n "$ns" --field-selector spec.restartPolicy=Always -o custom-columns=NAME:.metadata.name,HOST:spec.hostNetwork | awk '{if ($2!="true") print $1}'); do
     kubectl delete pod "$pod" -n "$ns"
   done
 done
