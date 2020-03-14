@@ -164,7 +164,9 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	}
 
 	// pod assigned an ip
-	if oldPod.Status.PodIP != newPod.Status.PodIP {
+	if newPod.Annotations[util.AllocatedAnnotation] == "true" &&
+		newPod.Annotations[util.RoutedAnnotation] != "true" &&
+		newPod.Spec.NodeName != "" {
 		klog.V(3).Infof("enqueue update pod %s", key)
 		c.updatePodQueue.Add(key)
 	}
@@ -341,7 +343,9 @@ func (c *Controller) handleAddPod(key string) error {
 	}
 
 	// In case update event might lost during leader election
-	if pod.Spec.NodeName != "" && pod.Status.PodIP != "" {
+	if pod.Annotations[util.AllocatedAnnotation] == "true" &&
+		pod.Annotations[util.RoutedAnnotation] != "true" &&
+		pod.Spec.NodeName != "" {
 		return c.handleUpdatePod(key)
 	}
 	return nil
@@ -414,6 +418,12 @@ func (c *Controller) handleUpdatePod(key string) error {
 		if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
 			return errors.Annotate(err, "add static route failed")
 		}
+	}
+
+	pod.Annotations[util.RoutedAnnotation] = "true"
+	if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, generatePatchPayload(pod.Annotations, "replace")); err != nil {
+		klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
+		return err
 	}
 	return nil
 }
