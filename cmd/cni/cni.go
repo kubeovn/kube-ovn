@@ -24,7 +24,7 @@ func init() {
 }
 
 func main() {
-	skel.PluginMain(cmdAdd, cmdDel, version.All)
+	skel.PluginMain(cmdAdd, nil, cmdDel, version.All, "")
 }
 
 func cmdAdd(args *skel.CmdArgs) error {

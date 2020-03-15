@@ -317,9 +317,9 @@ func (c *Controller) handleDeleteNode(key string) error {
 		return err
 	}
 
-	ip, _, exist := c.ipam.GetPodAddress(portName)
-	if exist {
-		if err := c.ovnClient.DeleteStaticRouteByNextHop(ip); err != nil {
+	ips, _ := c.ipam.GetPodAddress(portName)
+	if len(ips) > 0 {
+		if err := c.ovnClient.DeleteStaticRouteByNextHop(ips[0]); err != nil {
 			return err
 		}
 	}

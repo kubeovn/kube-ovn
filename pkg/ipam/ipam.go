@@ -99,15 +99,17 @@ func (ipam *IPAM) DeleteSubnet(subnetName string) {
 	delete(ipam.Subnets, subnetName)
 }
 
-func (ipam *IPAM) GetPodAddress(podName string) (string, string, bool) {
+func (ipam *IPAM) GetPodAddress(podName string) ([]string, []string) {
 	ipam.mutex.RLock()
 	defer ipam.mutex.RUnlock()
+	ips, macs := []string{}, []string{}
 	for _, subnet := range ipam.Subnets {
 		if ip, mac, exist := subnet.GetPodAddress(podName); exist {
-			return string(ip), mac, exist
+			ips = append(ips, string(ip))
+			macs = append(macs, mac)
 		}
 	}
-	return "", "", false
+	return ips, macs
 }
 
 func (ipam *IPAM) ContainAddress(address string) bool {

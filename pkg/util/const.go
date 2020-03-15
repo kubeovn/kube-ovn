@@ -1,7 +1,8 @@
 package util
 
 const (
-	ControllerName       = "kube-ovn-controller"
+	ControllerName = "kube-ovn-controller"
+
 	AllocatedAnnotation  = "ovn.kubernetes.io/allocated"
 	RoutedAnnotation     = "ovn.kubernetes.io/routed"
 	MacAddressAnnotation = "ovn.kubernetes.io/mac_address"
@@ -9,13 +10,21 @@ const (
 	CidrAnnotation       = "ovn.kubernetes.io/cidr"
 	GatewayAnnotation    = "ovn.kubernetes.io/gateway"
 	IpPoolAnnotation     = "ovn.kubernetes.io/ip_pool"
+
+	AllocatedAnnotationTemplate     = "%s.kubernetes.io/allocated"
+	MacAddressAnnotationTemplate    = "%s.kubernetes.io/mac_address"
+	IpAddressAnnotationTemplate     = "%s.kubernetes.io/ip_address"
+	CidrAnnotationTemplate          = "%s.kubernetes.io/cidr"
+	GatewayAnnotationTemplate       = "%s.kubernetes.io/gateway"
+	IpPoolAnnotationTemplate        = "%s.kubernetes.io/ip_pool"
+	LogicalSwitchAnnotationTemplate = "%s.kubernetes.io/logical_switch"
+
 	ExcludeIpsAnnotation = "ovn.kubernetes.io/exclude_ips"
 
 	IngressRateAnnotation = "ovn.kubernetes.io/ingress_rate"
 	EgressRateAnnotation  = "ovn.kubernetes.io/egress_rate"
 
-	PortNameAnnotation = "ovn.kubernetes.io/port_name"
-
+	PortNameAnnotation      = "ovn.kubernetes.io/port_name"
 	LogicalSwitchAnnotation = "ovn.kubernetes.io/logical_switch"
 
 	SubnetNameLabel = "ovn.kubernetes.io/subnet"
@@ -38,4 +47,7 @@ const (
 	DefaultDropPriority = "1000"
 
 	GeneveHeaderLength = 100
+
+	OvnProvider                 = "ovn"
+	AttachmentNetworkAnnotation = "k8s.v1.cni.cncf.io/networks"
 )

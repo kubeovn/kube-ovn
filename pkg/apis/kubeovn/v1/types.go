@@ -76,6 +76,7 @@ type SubnetSpec struct {
 	CIDRBlock  string   `json:"cidrBlock"`
 	Gateway    string   `json:"gateway"`
 	ExcludeIps []string `json:"excludeIps,omitempty"`
+	Provider   string   `json:"provider,omitempty"`
 
 	GatewayType string `json:"gatewayType"`
 	GatewayNode string `json:"gatewayNode"`
