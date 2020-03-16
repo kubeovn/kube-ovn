@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"os"
+	"time"
 )
 
 var _ = Describe("[IP Allocation]", func() {
@@ -53,6 +54,7 @@ var _ = Describe("[IP Allocation]", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(pod.Annotations[util.AllocatedAnnotation]).To(Equal("true"))
 
+			time.Sleep(1 * time.Second)
 			ip, err := f.OvnClientSet.KubeovnV1().IPs().Get(fmt.Sprintf("%s.%s", name, namespace), metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ip.Spec.IPAddress).To(Equal("12.10.0.10"))

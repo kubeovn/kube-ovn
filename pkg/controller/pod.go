@@ -526,7 +526,7 @@ func (c *Controller) getPodAttachmentSubnet(pod *v1.Pod) ([]*kubeovnv1.Subnet, e
 }
 
 func (c *Controller) acquireAddress(pod *v1.Pod, subnet *kubeovnv1.Subnet) (string, string, error) {
-	key := fmt.Sprintf("%s/%s", pod.Name, pod.Namespace)
+	key := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
 
 	// Random allocate
 	if pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, subnet.Spec.Provider)] == "" &&

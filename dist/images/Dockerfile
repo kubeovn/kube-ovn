@@ -38,7 +38,7 @@ RUN curl -L https://storage.googleapis.com/kubernetes-release/release/${KUBE_VER
  && chmod +x /usr/bin/kubectl
 
 COPY *.sh /kube-ovn/
-COPY 00-kube-ovn.conflist /kube-ovn/00-kube-ovn.conflist
+COPY 01-kube-ovn.conflist /kube-ovn/01-kube-ovn.conflist
 
 WORKDIR /kube-ovn
 

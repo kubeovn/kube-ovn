@@ -56,7 +56,9 @@ func (ipam *IPAM) ReleaseAddressByPod(podName string) {
 	defer ipam.mutex.RUnlock()
 	for _, subnet := range ipam.Subnets {
 		ip, mac := subnet.ReleaseAddress(podName)
-		klog.Infof("release %s %s for %s", ip, mac, podName)
+		if ip != "" {
+			klog.Infof("release %s %s for %s", ip, mac, podName)
+		}
 	}
 	return
 }
@@ -89,6 +91,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr string, excludeIps []string) e
 	if err != nil {
 		return err
 	}
+	klog.Infof("adding new subnet %s", name)
 	ipam.Subnets[name] = subnet
 	return nil
 }
@@ -96,6 +99,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr string, excludeIps []string) e
 func (ipam *IPAM) DeleteSubnet(subnetName string) {
 	ipam.mutex.Lock()
 	defer ipam.mutex.Unlock()
+	klog.Infof("delete subnet %s", subnetName)
 	delete(ipam.Subnets, subnetName)
 }
 

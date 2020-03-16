@@ -50,7 +50,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			return
 		}
 
-		if pod.Annotations[util.AllocatedAnnotation] != "true" {
+		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podRequest.Provider)] != "true" {
 			klog.Infof("wait address for  pod %s/%s ", podRequest.PodNamespace, podRequest.PodName)
 			// wait controller assign an address
 			time.Sleep(1 * time.Second)
@@ -63,11 +63,11 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			time.Sleep(1 * time.Second)
 			continue
 		}
-		macAddr = pod.Annotations[util.MacAddressAnnotation]
-		ip = pod.Annotations[util.IpAddressAnnotation]
-		cidr = pod.Annotations[util.CidrAnnotation]
-		gw = pod.Annotations[util.GatewayAnnotation]
-		subnet = pod.Annotations[util.LogicalSwitchAnnotation]
+		macAddr = pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podRequest.Provider)]
+		ip = pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podRequest.Provider)]
+		cidr = pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, podRequest.Provider)]
+		gw = pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, podRequest.Provider)]
+		subnet = pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podRequest.Provider)]
 		ingress = pod.Annotations[util.IngressRateAnnotation]
 		egress = pod.Annotations[util.EgressRateAnnotation]
 		break
@@ -137,13 +137,15 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	}
 
 	ipAddr = fmt.Sprintf("%s/%s", ip, strings.Split(cidr, "/")[1])
-	klog.Infof("create container mac %s, ip %s, cidr %s, gw %s", macAddr, ipAddr, cidr, gw)
-	err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.NetNs, podRequest.ContainerID, macAddr, ipAddr, gw, ingress, egress)
-	if err != nil {
-		errMsg := fmt.Errorf("configure nic failed %v", err)
-		klog.Error(errMsg)
-		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
-		return
+	if podRequest.Provider == util.OvnProvider {
+		klog.Infof("create container mac %s, ip %s, cidr %s, gw %s", macAddr, ipAddr, cidr, gw)
+		err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.NetNs, podRequest.ContainerID, macAddr, ipAddr, gw, ingress, egress)
+		if err != nil {
+			errMsg := fmt.Errorf("configure nic failed %v", err)
+			klog.Error(errMsg)
+			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
+			return
+		}
 	}
 	resp.WriteHeaderAndEntity(http.StatusOK, request.CniResponse{Protocol: util.CheckProtocol(ipAddr), IpAddress: strings.Split(ipAddr, "/")[0], MacAddress: macAddr, CIDR: cidr, Gateway: gw})
 }
@@ -157,14 +159,18 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()})
 		return
 	}
+
 	klog.Infof("delete port request %v", podRequest)
-	err = csh.deleteNic(podRequest.PodName, podRequest.PodNamespace, podRequest.ContainerID)
-	if err != nil {
-		errMsg := fmt.Errorf("del nic failed %v", err)
-		klog.Error(errMsg)
-		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
-		return
+	if podRequest.Provider == util.OvnProvider {
+		err = csh.deleteNic(podRequest.PodName, podRequest.PodNamespace, podRequest.ContainerID)
+		if err != nil {
+			errMsg := fmt.Errorf("del nic failed %v", err)
+			klog.Error(errMsg)
+			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
+			return
+		}
 	}
+
 	err = csh.KubeOvnClient.KubeovnV1().IPs().Delete(fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace), &metav1.DeleteOptions{})
 	if err != nil && !k8serrors.IsNotFound(err) {
 		errMsg := fmt.Errorf("del ipcrd for %s failed %v", fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace), err)
