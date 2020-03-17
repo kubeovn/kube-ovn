@@ -43,6 +43,9 @@ spec:
   subresources:
     status: {}
   additionalPrinterColumns:
+    - name: Provider
+      type: string
+      JSONPath: .spec.provider
     - name: Protocol
       type: string
       JSONPath: .spec.protocol

@@ -38,6 +38,9 @@ spec:
     shortNames:
       - ip
   additionalPrinterColumns:
+    - name: Provider
+      type: string
+      JSONPath: .spec.provider
     - name: IP
       type: string
       JSONPath: .spec.ipAddress

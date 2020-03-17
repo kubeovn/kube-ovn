@@ -354,12 +354,16 @@ func (c *Controller) handleAddSubnet(key string) error {
 		return err
 	}
 
-	if !isOvnSubnet(subnet) {
-		return nil
-	}
-
 	if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.ExcludeIps); err != nil {
 		return err
+	}
+
+	if err := calcSubnetStatusIP(subnet, c); err != nil {
+		klog.Error("init subnet status failed", err)
+	}
+
+	if !isOvnSubnet(subnet) {
+		return nil
 	}
 
 	exist, err := c.ovnClient.LogicalSwitchExists(subnet.Name)
@@ -378,9 +382,6 @@ func (c *Controller) handleAddSubnet(key string) error {
 	}
 
 	if !exist {
-		if err := calcSubnetStatusIP(subnet, c); err != nil {
-			klog.Error("init subnet status failed", err)
-		}
 		subnet.Status.EnsureStandardConditions()
 		if err = util.ValidateSubnet(*subnet); err != nil {
 			klog.Error(err)
@@ -606,6 +607,10 @@ func (c *Controller) handleUpdateSubnet(key string) error {
 		return err
 	}
 
+	if err := calcSubnetStatusIP(subnet, c); err != nil {
+		klog.Error("init subnet status failed", err)
+	}
+
 	if !isOvnSubnet(subnet) {
 		return nil
 	}
@@ -628,9 +633,6 @@ func (c *Controller) handleUpdateSubnet(key string) error {
 		return nil
 	}
 
-	if err := calcSubnetStatusIP(subnet, c); err != nil {
-		klog.Error("init subnet status failed", err)
-	}
 	if err = util.ValidateSubnet(*subnet); err != nil {
 		klog.Error(err)
 		subnet.TypeMeta.Kind = "Subnet"
@@ -849,7 +851,7 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		return err
 	}
 	podUsedIPs, err := c.config.KubeOvnClient.KubeovnV1().IPs().List(metav1.ListOptions{
-		LabelSelector: fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name).String(),
+		LabelSelector: fields.OneTermEqualSelector(subnet.Name, "").String(),
 	})
 	if err != nil {
 		return err

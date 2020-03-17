@@ -205,6 +205,7 @@ func NewController(config *Configuration) *Controller {
 
 	ipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddOrDelIP,
+		UpdateFunc: controller.enqueueUpdateIP,
 		DeleteFunc: controller.enqueueAddOrDelIP,
 	})
 
