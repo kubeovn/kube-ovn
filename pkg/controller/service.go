@@ -217,7 +217,6 @@ func (c *Controller) handleUpdateService(key string) error {
 		}
 	}
 	// for service update
-	klog.Infof("update service %s/%s", namespace, name)
 	lbUuid, err := c.ovnClient.FindLoadbalancer(c.config.ClusterTcpLoadBalancer)
 	if err != nil {
 		klog.Errorf("failed to get lb %v", err)
@@ -238,7 +237,7 @@ func (c *Controller) handleUpdateService(key string) error {
 	}
 
 	for vip := range vips {
-		if strings.HasPrefix(vip, ip) && !util.IsStringIn(vip, tcpVips) {
+		if strings.Split(vip, ":")[0] == ip && !util.IsStringIn(vip, tcpVips) {
 			klog.Infof("remove stall vip %s", vip)
 			err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterTcpLoadBalancer)
 			if err != nil {
@@ -268,7 +267,7 @@ func (c *Controller) handleUpdateService(key string) error {
 	}
 
 	for vip := range vips {
-		if strings.HasPrefix(vip, ip) && !util.IsStringIn(vip, udpVips) {
+		if strings.Split(vip, ":")[0] == ip && !util.IsStringIn(vip, udpVips) {
 			klog.Infof("remove stall vip %s", vip)
 			err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterUdpLoadBalancer)
 			if err != nil {
