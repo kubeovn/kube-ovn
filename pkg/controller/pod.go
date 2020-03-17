@@ -306,40 +306,48 @@ func (c *Controller) handleAddPod(key string) error {
 		return err
 	}
 
+	defaultSubnet, err := c.getPodDefaultSubnet(pod)
+	if err != nil {
+		return err
+	}
+
+	attachmentSubnets, err := c.getPodAttachmentSubnet(pod)
+	if err != nil {
+		return err
+	}
+
+	op := "replace"
+	if pod.Annotations == nil || len(pod.Annotations) == 0 {
+		op = "add"
+		pod.Annotations = map[string]string{}
+	}
+
 	// Avoid create lsp for already running pod in ovn-nb when controller restart
-	if needCreateLogicalSwitchPort(pod) {
-		subnet, err := c.getPodSubnet(pod)
-		if err != nil {
-			return err
-		}
-
-		op := "replace"
-		if pod.Annotations == nil || len(pod.Annotations) == 0 {
-			op = "add"
-			pod.Annotations = map[string]string{}
-		}
-
-		ip, mac, err := c.acquireAddress(pod)
+	for _, subnet := range needAllocateSubnets(pod, append(attachmentSubnets, defaultSubnet)) {
+		ip, mac, err := c.acquireAddress(pod, subnet)
 		if err != nil {
 			c.recorder.Eventf(pod, v1.EventTypeWarning, "AcquireAddressFailed", err.Error())
 			return err
 		}
 
-		if err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, subnet.Spec.CIDRBlock, mac); err != nil {
-			c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
-			return err
-		}
+		pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, subnet.Spec.Provider)] = ip
+		pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, subnet.Spec.Provider)] = mac
+		pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, subnet.Spec.Provider)] = subnet.Spec.CIDRBlock
+		pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, subnet.Spec.Provider)] = subnet.Spec.Gateway
+		pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, subnet.Spec.Provider)] = subnet.Name
+		pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, subnet.Spec.Provider)] = "true"
 
-		pod.Annotations[util.IpAddressAnnotation] = ip
-		pod.Annotations[util.MacAddressAnnotation] = mac
-		pod.Annotations[util.CidrAnnotation] = subnet.Spec.CIDRBlock
-		pod.Annotations[util.GatewayAnnotation] = subnet.Spec.Gateway
-		pod.Annotations[util.LogicalSwitchAnnotation] = subnet.Name
-		pod.Annotations[util.AllocatedAnnotation] = "true"
-		if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, generatePatchPayload(pod.Annotations, op)); err != nil {
-			klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
-			return err
+		if isOvnSubnet(subnet) {
+			if err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, subnet.Spec.CIDRBlock, mac); err != nil {
+				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
+				return err
+			}
 		}
+	}
+
+	if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, generatePatchPayload(pod.Annotations, op)); err != nil {
+		klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
+		return err
 	}
 
 	// In case update event might lost during leader election
@@ -348,12 +356,13 @@ func (c *Controller) handleAddPod(key string) error {
 		pod.Spec.NodeName != "" {
 		return c.handleUpdatePod(key)
 	}
+
 	return nil
 }
 
 func (c *Controller) handleDeletePod(key string) error {
-	ip, _, exist := c.ipam.GetPodAddress(key)
-	if exist {
+	ips, _ := c.ipam.GetPodAddress(key)
+	for _, ip := range ips {
 		if err := c.ovnClient.DeleteStaticRoute(ip, c.config.ClusterRouter); err != nil {
 			return err
 		}
@@ -398,7 +407,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 	klog.Infof("update pod %s/%s", namespace, name)
 	podIP := pod.Annotations[util.IpAddressAnnotation]
 
-	subnet, err := c.getPodSubnet(pod)
+	subnet, err := c.getPodDefaultSubnet(pod)
 	if err != nil {
 		klog.Errorf("failed to get subnet %v", err)
 		return err
@@ -449,17 +458,28 @@ func getNodeTunlIP(node *v1.Node) (net.IP, error) {
 	return nodeTunlIPAddr, nil
 }
 
-func needCreateLogicalSwitchPort(pod *v1.Pod) bool {
+func needAllocateSubnets(pod *v1.Pod, subnets []*kubeovnv1.Subnet) []*kubeovnv1.Subnet {
 	if pod.Status.Phase == v1.PodRunning ||
 		pod.Status.Phase == v1.PodSucceeded ||
-		pod.Status.Phase == v1.PodFailed ||
-		pod.Annotations != nil && pod.Annotations[util.AllocatedAnnotation] == "true" {
-		return false
+		pod.Status.Phase == v1.PodFailed {
+		return nil
 	}
-	return true
+
+	if pod.Annotations == nil {
+		return subnets
+	}
+
+	result := make([]*kubeovnv1.Subnet, 0, len(subnets))
+	for _, subnet := range subnets {
+		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, subnet.Spec.Provider)] != "true" {
+			result = append(result, subnet)
+		}
+	}
+
+	return result
 }
 
-func (c *Controller) getPodSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error) {
+func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error) {
 	subnet, err := c.subnetsLister.Get(c.config.DefaultLogicalSwitch)
 	if err != nil {
 		klog.Errorf("failed to get default subnet %v", err)
@@ -482,32 +502,53 @@ func (c *Controller) getPodSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error) {
 	return subnet, nil
 }
 
-func (c *Controller) acquireAddress(pod *v1.Pod) (string, string, error) {
-	subnet, err := c.getPodSubnet(pod)
+func (c *Controller) getPodAttachmentSubnet(pod *v1.Pod) ([]*kubeovnv1.Subnet, error) {
+	attachments, err := util.ParsePodNetworkAnnotation(pod.Annotations[util.AttachmentNetworkAnnotation], pod.Namespace)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
-	key := fmt.Sprintf("%s/%s", pod.Name, pod.Namespace)
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*kubeovnv1.Subnet, 0, len(attachments))
+	for _, attach := range attachments {
+		provider := fmt.Sprintf("%s.%s", attach.Name, attach.Namespace)
+		for _, subnet := range subnets {
+			if subnet.Spec.Provider == provider {
+				result = append(result, subnet)
+				break
+			}
+		}
+	}
+	return result, nil
+}
+
+func (c *Controller) acquireAddress(pod *v1.Pod, subnet *kubeovnv1.Subnet) (string, string, error) {
+	key := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
 
 	// Random allocate
-	if pod.Annotations[util.IpAddressAnnotation] == "" && pod.Annotations[util.IpPoolAnnotation] == "" {
+	if pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, subnet.Spec.Provider)] == "" &&
+		pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, subnet.Spec.Provider)] == "" {
 		return c.ipam.GetRandomAddress(key, subnet.Name)
 	}
 
 	// Static allocate
-	if pod.Annotations[util.IpAddressAnnotation] != "" {
-		return c.ipam.GetStaticAddress(key, pod.Annotations[util.IpAddressAnnotation], pod.Annotations[util.MacAddressAnnotation], subnet.Name)
+	if pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, subnet.Spec.Provider)] != "" {
+		return c.ipam.GetStaticAddress(key, pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, subnet.Spec.Provider)],
+			pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, subnet.Spec.Provider)], subnet.Name)
 	}
 
 	// IPPool allocate
-	ipPool := strings.Split(pod.Annotations[util.IpPoolAnnotation], ",")
+	ipPool := strings.Split(pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, subnet.Spec.Provider)], ",")
 	for i, ip := range ipPool {
 		ipPool[i] = strings.TrimSpace(ip)
 	}
 
 	if ok, _ := isStatefulSetPod(pod); !ok {
 		for _, staticIP := range ipPool {
-			if ip, mac, err := c.ipam.GetStaticAddress(key, staticIP, pod.Annotations[util.MacAddressAnnotation], subnet.Name); err == nil {
+			if ip, mac, err := c.ipam.GetStaticAddress(key, staticIP, pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, subnet.Spec.Provider)], subnet.Name); err == nil {
 				return ip, mac, nil
 			}
 		}
@@ -517,7 +558,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod) (string, string, error) {
 		numStr := strings.Split(pod.Name, "-")[numIndex]
 		index, _ := strconv.Atoi(numStr)
 		if index < len(ipPool) {
-			return c.ipam.GetStaticAddress(key, ipPool[index], pod.Annotations[util.MacAddressAnnotation], subnet.Name)
+			return c.ipam.GetStaticAddress(key, ipPool[index], pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, subnet.Spec.Provider)], subnet.Name)
 		}
 	}
 	return "", "", ipam.NoAvailableError

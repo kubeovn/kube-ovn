@@ -20,6 +20,7 @@ type CniRequest struct {
 	PodNamespace string `json:"pod_namespace"`
 	ContainerID  string `json:"container_id"`
 	NetNs        string `json:"net_ns"`
+	Provider     string `json:"provider"`
 }
 
 // CniResponse is the cniserver response format

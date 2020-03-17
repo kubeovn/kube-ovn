@@ -270,6 +270,10 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		subnet.Spec.CIDRBlock = ipNet.String()
 		changed = true
 	}
+	if subnet.Spec.Provider == "" {
+		subnet.Spec.Provider = util.OvnProvider
+		changed = true
+	}
 	if subnet.Spec.Protocol == "" || subnet.Spec.Protocol != util.CheckProtocol(subnet.Spec.CIDRBlock) {
 		subnet.Spec.Protocol = util.CheckProtocol(subnet.Spec.CIDRBlock)
 		changed = true
@@ -348,6 +352,10 @@ func (c *Controller) handleAddSubnet(key string) error {
 
 	if err = formatSubnet(subnet, c); err != nil {
 		return err
+	}
+
+	if !isOvnSubnet(subnet) {
+		return nil
 	}
 
 	if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.ExcludeIps); err != nil {
@@ -596,6 +604,10 @@ func (c *Controller) handleUpdateSubnet(key string) error {
 
 	if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.ExcludeIps); err != nil {
 		return err
+	}
+
+	if !isOvnSubnet(subnet) {
+		return nil
 	}
 
 	exist, err := c.ovnClient.LogicalSwitchExists(subnet.Name)
@@ -857,4 +869,11 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	}
 	subnet, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(subnet.Name, types.MergePatchType, bytes, "status")
 	return err
+}
+
+func isOvnSubnet(subnet *kubeovnv1.Subnet) bool {
+	if subnet.Spec.Provider == util.OvnProvider || subnet.Spec.Provider == "" {
+		return true
+	}
+	return false
 }

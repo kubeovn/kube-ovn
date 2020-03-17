@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/alauda/kube-ovn/pkg/util"
 	"net"
 	"runtime"
 	"strings"
@@ -24,7 +25,7 @@ func init() {
 }
 
 func main() {
-	skel.PluginMain(cmdAdd, cmdDel, version.All)
+	skel.PluginMain(cmdAdd, nil, cmdDel, version.All, "")
 }
 
 func cmdAdd(args *skel.CmdArgs) error {
@@ -49,7 +50,9 @@ func cmdAdd(args *skel.CmdArgs) error {
 		PodName:      podName,
 		PodNamespace: podNamespace,
 		ContainerID:  args.ContainerID,
-		NetNs:        args.Netns})
+		NetNs:        args.Netns,
+		Provider:     netConf.Provider,
+	})
 	if err != nil {
 		return err
 	}
@@ -112,12 +115,21 @@ func cmdDel(args *skel.CmdArgs) error {
 		PodName:      podName,
 		PodNamespace: podNamespace,
 		ContainerID:  args.ContainerID,
-		NetNs:        args.Netns})
+		NetNs:        args.Netns,
+		Provider:     netConf.Provider,
+	})
+}
+
+type ipamConf struct {
+	ServerSocket string `json:"server_socket"`
+	Provider     string `json:"provider"`
 }
 
 type netConf struct {
 	types.NetConf
-	ServerSocket string `json:"server_socket"`
+	ServerSocket string    `json:"server_socket"`
+	Provider     string    `json:"provider"`
+	IPAM         *ipamConf `json:"ipam"`
 }
 
 func loadNetConf(bytes []byte) (*netConf, string, error) {
@@ -125,9 +137,20 @@ func loadNetConf(bytes []byte) (*netConf, string, error) {
 	if err := json.Unmarshal(bytes, n); err != nil {
 		return nil, "", fmt.Errorf("failed to load netconf: %v", err)
 	}
-	if n.ServerSocket == "" {
-		return nil, "", fmt.Errorf("server_socket is required in cni.conf")
+
+	if n.IPAM != nil {
+		n.Provider = n.IPAM.Provider
+		n.ServerSocket = n.IPAM.ServerSocket
 	}
+
+	if n.ServerSocket == "" {
+		return nil, "", fmt.Errorf("server_socket is required in cni.conf, %+v", n)
+	}
+
+	if n.Provider == "" {
+		n.Provider = util.OvnProvider
+	}
+
 	return n, n.CNIVersion, nil
 }
 

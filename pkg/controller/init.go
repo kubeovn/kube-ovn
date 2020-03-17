@@ -50,6 +50,7 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 		ObjectMeta: v1.ObjectMeta{Name: c.config.DefaultLogicalSwitch},
 		Spec: kubeovnv1.SubnetSpec{
 			Default:     true,
+			Provider:    util.OvnProvider,
 			CIDRBlock:   c.config.DefaultCIDR,
 			Gateway:     c.config.DefaultGateway,
 			ExcludeIps:  strings.Split(c.config.DefaultExcludeIps, ","),
@@ -78,6 +79,7 @@ func (c *Controller) initNodeSwitch() error {
 		ObjectMeta: v1.ObjectMeta{Name: c.config.NodeSwitch},
 		Spec: kubeovnv1.SubnetSpec{
 			Default:    false,
+			Provider:   util.OvnProvider,
 			CIDRBlock:  c.config.NodeSwitchCIDR,
 			Gateway:    c.config.NodeSwitchGateway,
 			ExcludeIps: []string{c.config.NodeSwitchGateway},
