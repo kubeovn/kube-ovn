@@ -21,6 +21,7 @@ The Kube-OVN community is waiting for you participation!
 - **Subnet Isolation**: Can configure a Subnet to deny any traffic from source IP addresses not within the same Subnet. Can whitelist specific IP addresses and IP ranges.
 - **Network Policy**: Implementing networking.k8s.io/NetworkPolicy API by high performance ovn ACL.
 - **Static IP Addresses for Workloads**: Allocate random or static IP addresses to workloads.
+- **IPAM for Multi NIC**: A cluster-wide IPAM for CNI plugins other than Kube-OVN, such as macvlan/vlan/host-device to take advantage of subnet and static ip allocation functions in Kube-OVN.
 - **Dynamic QoS**: Configure Pod Ingress/Egress traffic rate limits on the fly.
 - **Embedded Load Balancers**: Replace kube-proxy with the OVN embedded high performance distributed L2 Load Balancer.
 - **Distributed Gateways**: Every Node can act as a Gateway to provide external network connectivity.
@@ -40,7 +41,7 @@ The Kube-OVN community is waiting for you participation!
 
 ## Network Topology
 
-The Switch, Router, Firewall showed in the diagram below are all distributed on all Nodes. There is no single point of failure for in-cluster network.
+The Switch, Router and Firewall showed in the diagram below are all distributed on all Nodes. There is no single point of failure for in-cluster network.
 
 ![topology](docs/ovn-network-topology.png "kube-ovn network topology")
 
@@ -61,6 +62,7 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
 - [Static IP](docs/static-ip.md)
 - [Dynamic QoS](docs/qos.md)
 - [Gateway and Direct connect](docs/subnet.md#gateway)
+- [Multi NIC Support](docs/multi-nic.md)
 - [Traffic Mirror](docs/mirror.md)
 - [Webhook](docs/webhook.md)
 - [IPv6](docs/ipv6.md)

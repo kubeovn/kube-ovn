@@ -256,7 +256,7 @@ func (c *Controller) handleAddNode(key string) error {
 					Name: fmt.Sprintf("node-%s", key),
 					Labels: map[string]string{
 						util.SubnetNameLabel: c.config.NodeSwitch,
-						c.config.NodeSwitch: "",
+						c.config.NodeSwitch:  "",
 					},
 				},
 				Spec: kubeovnv1.IPSpec{
