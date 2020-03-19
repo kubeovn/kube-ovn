@@ -353,7 +353,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 }
 
 func recompute() {
-	output, err := exec.Command("ovs-appctl", "-t", "ovn-controller", "recompute").CombinedOutput()
+	output, err := exec.Command("ovn-appctl", "-t", "ovn-controller", "recompute").CombinedOutput()
 	if err != nil {
 		klog.Errorf("failed to recompute ovn-controller %q", output)
 	}

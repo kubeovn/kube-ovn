@@ -601,6 +601,8 @@ spec:
         volumeMounts:
           - mountPath: /run/openvswitch
             name: host-run-ovs
+          - mountPath: /run/ovn
+            name: host-run-ovn
           - mountPath: /var/run/netns
             name: host-ns
             mountPropagation: HostToContainer
@@ -630,6 +632,9 @@ spec:
         - name: host-run-ovs
           hostPath:
             path: /run/openvswitch
+        - name: host-run-ovn
+          hostPath:
+            path: /run/ovn
         - name: cni-conf
           hostPath:
             path: /etc/cni/net.d
