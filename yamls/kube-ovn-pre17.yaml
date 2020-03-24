@@ -75,7 +75,7 @@ spec:
             periodSeconds: 7
             failureThreshold: 5
       nodeSelector:
-        kubernetes.io/os: "linux"
+        beta.kubernetes.io/os: "linux"
 
 ---
 kind: DaemonSet
@@ -169,7 +169,7 @@ spec:
           periodSeconds: 7
           failureThreshold: 5
       nodeSelector:
-        kubernetes.io/os: "linux"
+        beta.kubernetes.io/os: "linux"
       volumes:
         - name: host-run-ovs
           hostPath:
@@ -266,7 +266,7 @@ spec:
               cpu: 200m
               memory: 400Mi
       nodeSelector:
-        kubernetes.io/os: "linux"
+        beta.kubernetes.io/os: "linux"
       volumes:
         - name: host-modules
           hostPath:
