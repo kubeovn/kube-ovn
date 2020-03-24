@@ -319,7 +319,7 @@ spec:
             periodSeconds: 7
             failureThreshold: 5
       nodeSelector:
-        beta.kubernetes.io/os: "linux"
+        kubernetes.io/os: "linux"
         kube-ovn/role: "master"
       volumes:
         - name: host-run-ovs
@@ -422,7 +422,7 @@ spec:
               cpu: 1000m
               memory: 800Mi
       nodeSelector:
-        beta.kubernetes.io/os: "linux"
+        kubernetes.io/os: "linux"
       volumes:
         - name: host-modules
           hostPath:
@@ -532,7 +532,7 @@ spec:
             periodSeconds: 7
             failureThreshold: 5
       nodeSelector:
-        beta.kubernetes.io/os: "linux"
+        kubernetes.io/os: "linux"
 
 ---
 kind: DaemonSet
@@ -627,7 +627,7 @@ spec:
           periodSeconds: 7
           failureThreshold: 5
       nodeSelector:
-        beta.kubernetes.io/os: "linux"
+        kubernetes.io/os: "linux"
       volumes:
         - name: host-run-ovs
           hostPath:
@@ -724,7 +724,7 @@ spec:
               cpu: 200m
               memory: 400Mi
       nodeSelector:
-        beta.kubernetes.io/os: "linux"
+        kubernetes.io/os: "linux"
       volumes:
         - name: host-modules
           hostPath:
