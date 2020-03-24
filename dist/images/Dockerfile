@@ -3,18 +3,14 @@ FROM centos:7
 ENV PYTHONDONTWRITEBYTECODE yes
 
 RUN yum install -y  \
-        PyYAML bind-utils \
-        openssl \
+        bind-utils \
         numactl-libs \
         firewalld-filesystem \
         libpcap \
         hostname \
         iproute strace socat nc \
         unbound unbound-devel \
-        tcpdump ipset \
-        epel-release https://centos7.iuscommunity.org/ius-release.rpm
-
-RUN yum install python34 -y && ln -s /bin/python3.4 /bin/python3 && yum clean all
+        tcpdump ipset && yum clean all
 
 ENV OVS_VERSION=20.03.0
 ENV OVS_SUBVERSION=1
