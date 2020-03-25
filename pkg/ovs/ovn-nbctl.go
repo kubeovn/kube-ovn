@@ -272,6 +272,9 @@ func (c Client) DeleteStaticRouteByNextHop(nextHop string) error {
 	}
 	ipPrefixes := strings.Split(output, "\n")
 	for _, ipPre := range ipPrefixes {
+		if strings.TrimSpace(ipPre) == "" {
+			continue
+		}
 		if err := c.DeleteStaticRoute(ipPre, c.ClusterRouter); err != nil {
 			klog.Errorf("failed to delete route %s, %v", ipPre, err)
 			return err
