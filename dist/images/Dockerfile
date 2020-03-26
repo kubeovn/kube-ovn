@@ -1,25 +1,4 @@
-FROM centos:7
-
-ENV PYTHONDONTWRITEBYTECODE yes
-
-RUN yum install -y  \
-        bind-utils \
-        numactl-libs \
-        firewalld-filesystem \
-        libpcap \
-        hostname \
-        iproute strace socat nc \
-        unbound unbound-devel \
-        tcpdump ipset && yum clean all
-
-ENV OVS_VERSION=20.03.0
-ENV OVS_SUBVERSION=1
-
-RUN rpm -ivh --nodeps https://github.com/alauda/ovs/releases/download/${OVS_VERSION}-${OVS_SUBVERSION}/openvswitch-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
-    rpm -ivh --nodeps https://github.com/alauda/ovs/releases/download/${OVS_VERSION}-${OVS_SUBVERSION}/openvswitch-devel-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
-    rpm -ivh --nodeps https://github.com/alauda/ovs/releases/download/${OVS_VERSION}-${OVS_SUBVERSION}/ovn-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
-    rpm -ivh --nodeps https://github.com/alauda/ovs/releases/download/${OVS_VERSION}-${OVS_SUBVERSION}/ovn-central-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
-    rpm -ivh --nodeps https://github.com/alauda/ovs/releases/download/${OVS_VERSION}-${OVS_SUBVERSION}/ovn-host-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm
+FROM ovs:latest
 
 RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /var/run/ovn && \
