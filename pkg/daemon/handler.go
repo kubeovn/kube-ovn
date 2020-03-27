@@ -2,7 +2,12 @@ package daemon
 
 import (
 	"fmt"
+	"github.com/alauda/kube-ovn/pkg/ovs"
+	"github.com/vishvananda/netlink"
+	"net"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -39,17 +44,19 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()})
 		return
 	}
-	klog.Infof("add port request %v", podRequest)
-	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress string
-	for i := 0; i < 10; i++ {
-		pod, err := csh.KubeClient.CoreV1().Pods(podRequest.PodNamespace).Get(podRequest.PodName, v1.GetOptions{})
-		if err != nil {
-			errMsg := fmt.Errorf("get pod %s/%s failed %v", podRequest.PodNamespace, podRequest.PodName, err)
-			klog.Error(errMsg)
-			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
-			return
-		}
 
+	klog.Infof("add port request %v", podRequest)
+
+	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, networkType, vlanID, providerInterfaceName, hostInterfaceName string
+	pod, err := csh.KubeClient.CoreV1().Pods(podRequest.PodNamespace).Get(podRequest.PodName, v1.GetOptions{})
+	if err != nil {
+		errMsg := fmt.Errorf("get pod %s/%s failed %v", podRequest.PodNamespace, podRequest.PodName, err)
+		klog.Error(errMsg)
+		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
+		return
+	}
+
+	for i := 0; i < 10; i++ {
 		if pod.Annotations[util.AllocatedAnnotation] != "true" {
 			klog.Infof("wait address for  pod %s/%s ", podRequest.PodNamespace, podRequest.PodName)
 			// wait controller assign an address
@@ -70,6 +77,11 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		subnet = pod.Annotations[util.LogicalSwitchAnnotation]
 		ingress = pod.Annotations[util.IngressRateAnnotation]
 		egress = pod.Annotations[util.EgressRateAnnotation]
+		vlanID = pod.Annotations[util.VlanIdAnnotation]
+		networkType = pod.Annotations[util.NetworkType]
+		providerInterfaceName = pod.Annotations[util.ProviderInterfaceName]
+		hostInterfaceName = pod.Annotations[util.HostInterfaceName]
+
 		break
 	}
 
@@ -127,9 +139,10 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		ipCrd.Spec.IPAddress = ip
 		ipCrd.Spec.MacAddress = macAddr
 		ipCrd.Spec.ContainerID = podRequest.ContainerID
+
 		_, err := csh.KubeOvnClient.KubeovnV1().IPs().Update(ipCrd)
 		if err != nil {
-			errMsg := fmt.Errorf("failed to create ip crd for %s, %v", ip, err)
+			errMsg := fmt.Errorf("failed to update ip crd for %s, %v", ip, err)
 			klog.Error(errMsg)
 			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
 			return
@@ -138,6 +151,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 
 	ipAddr = fmt.Sprintf("%s/%s", ip, strings.Split(cidr, "/")[1])
 	klog.Infof("create container mac %s, ip %s, cidr %s, gw %s", macAddr, ipAddr, cidr, gw)
+
 	err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.NetNs, podRequest.ContainerID, macAddr, ipAddr, gw, ingress, egress)
 	if err != nil {
 		errMsg := fmt.Errorf("configure nic failed %v", err)
@@ -145,18 +159,75 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
 		return
 	}
+
+	//create patch port
+	if networkType != util.NetworkTypeGeneve && providerInterfaceName != "" {
+		//create br-provider
+		if err = configProviderPort(providerInterfaceName); err != nil {
+			errMsg := fmt.Errorf("configure patch port br-provider failed %v", err)
+			klog.Error(errMsg)
+			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
+			return
+		}
+
+		//add a host nic to br-provider
+		ifName := csh.getInterfaceName(hostInterfaceName)
+		if ifName == "" {
+			errMsg := fmt.Errorf("failed get host nic to add ovs br-provider")
+			klog.Error(errMsg)
+			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
+			return
+		}
+
+		if err = configHostNic("br-provider", ifName); err != nil {
+			errMsg := fmt.Errorf("add nic %s to port br-provider failed %v", ifName, err)
+			klog.Error(errMsg)
+			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
+			return
+		}
+
+		if err = csh.addRouter(ipAddr); err != nil {
+			errMsg := fmt.Errorf("add pod route failed, %v", err)
+			klog.Error(errMsg)
+			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
+			return
+		}
+	}
+
+	//set ovs port tag
+	if networkType != util.NetworkTypeGeneve && vlanID != "" {
+		//validate vlan id is in between 0-4095
+		if tag, err := strconv.Atoi(vlanID); err != nil || tag < 0 || tag > 4095 {
+			errMsg := fmt.Errorf("the vlan id not between 0-4095 %v", err)
+			klog.Error(errMsg)
+			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
+			return
+		}
+
+		//set vlan id
+		hostNicName, _ := generateNicName(podRequest.ContainerID)
+		if err := ovs.SetPortTag(hostNicName, vlanID); err != nil {
+			errMsg := fmt.Errorf("configure port tag failed %v", err)
+			klog.Error(errMsg)
+			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
+			return
+		}
+	}
+
 	resp.WriteHeaderAndEntity(http.StatusOK, request.CniResponse{Protocol: util.CheckProtocol(ipAddr), IpAddress: strings.Split(ipAddr, "/")[0], MacAddress: macAddr, CIDR: cidr, Gateway: gw})
 }
 
 func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Response) {
 	podRequest := request.CniRequest{}
 	err := req.ReadEntity(&podRequest)
+
 	if err != nil {
 		errMsg := fmt.Errorf("parse del request failed %v", err)
 		klog.Error(errMsg)
 		resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()})
 		return
 	}
+
 	klog.Infof("delete port request %v", podRequest)
 	err = csh.deleteNic(podRequest.PodName, podRequest.PodNamespace, podRequest.ContainerID)
 	if err != nil {
@@ -165,6 +236,7 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
 		return
 	}
+
 	err = csh.KubeOvnClient.KubeovnV1().IPs().Delete(fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace), &metav1.DeleteOptions{})
 	if err != nil && !k8serrors.IsNotFound(err) {
 		errMsg := fmt.Errorf("del ipcrd for %s failed %v", fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace), err)
@@ -172,5 +244,85 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
 		return
 	}
+
 	resp.WriteHeader(http.StatusNoContent)
+}
+
+//get host nic name
+func (csh cniServerHandler) getInterfaceName(hostInterfaceName string) string {
+	var interfaceName string
+
+	node, err := csh.Config.KubeClient.CoreV1().Nodes().Get(csh.Config.NodeName, metav1.GetOptions{})
+	if err == nil {
+		labels := node.GetLabels()
+		interfaceName = labels[util.HostInterfaceName]
+	}
+
+	if interfaceName != "" {
+		return interfaceName
+	}
+
+	if hostInterfaceName != "" {
+		return hostInterfaceName
+	}
+
+	if csh.Config.Iface != "" {
+		return csh.Config.Iface
+	}
+
+	hostIfName := util.GetHostInterface()
+	IfName := []string{}
+	for ifname, address := range hostIfName {
+		if address == os.Getenv("POD_IP") {
+			continue
+		}
+
+		IfName = append(IfName, ifname)
+	}
+
+	if len(IfName) > 0 {
+		return IfName[0]
+	}
+
+	return ""
+}
+
+//add a static route. If it is not added, the pod will not receive packets from the host nic
+func (csh cniServerHandler) addRouter(ipAddr string) error {
+	nic, err := netlink.LinkByName(util.NodeNic)
+	if err != nil {
+		klog.Errorf("failed to get nic %s", util.NodeNic)
+		return fmt.Errorf("failed to get nic %s", util.NodeNic)
+	}
+
+	existRoutes, err := netlink.RouteList(nic, netlink.FAMILY_V4)
+	if err != nil {
+		return err
+	}
+
+	_, cidr, _ := net.ParseCIDR(ipAddr)
+	for _, route := range existRoutes {
+		if route.Dst == cidr {
+			return nil
+		}
+	}
+
+	node, err := csh.Config.KubeClient.CoreV1().Nodes().Get(csh.Config.NodeName, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("failed to get node %s %v", csh.Config.NodeName, err)
+		return err
+	}
+
+	gateway, ok := node.Annotations[util.GatewayAnnotation]
+	if !ok {
+		klog.Errorf("annotation for node %s ovn.kubernetes.io/gateway not exists", node.Name)
+		return fmt.Errorf("annotation for node ovn.kubernetes.io/gateway not exists")
+	}
+
+	gw := net.ParseIP(gateway)
+	if err = netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: gw}); err != nil {
+		klog.Errorf("failed to add route %v", err)
+	}
+
+	return err
 }

@@ -311,11 +311,25 @@ func (c *Controller) handleAddPod(key string) error {
 			return err
 		}
 
+		//set port tag, get vlan id, update pod annotation
+		if c.config.NetworkType != util.NetworkTypeGeneve && subnet.Spec.Vlan != "" {
+			if err := c.addPortVlan(ovs.PodNameToPortName(name, namespace), ip, mac, subnet.Spec.Vlan); err != nil {
+				return err
+			}
+
+			if vlan, err := c.vlansLister.Get(subnet.Spec.Vlan); err == nil {
+				pod.Annotations[util.HostInterfaceName] = c.config.DefaultHostInterface
+				pod.Annotations[util.VlanIdAnnotation] = strconv.Itoa(vlan.Spec.VlanId)
+				pod.Annotations[util.ProviderInterfaceName] = c.config.DefaultProviderName
+			}
+		}
+
 		pod.Annotations[util.IpAddressAnnotation] = ip
 		pod.Annotations[util.MacAddressAnnotation] = mac
 		pod.Annotations[util.CidrAnnotation] = subnet.Spec.CIDRBlock
 		pod.Annotations[util.GatewayAnnotation] = subnet.Spec.Gateway
 		pod.Annotations[util.LogicalSwitchAnnotation] = subnet.Name
+		pod.Annotations[util.NetworkType] = c.config.NetworkType
 		pod.Annotations[util.AllocatedAnnotation] = "true"
 		if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, generatePatchPayload(pod.Annotations, op)); err != nil {
 			klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
@@ -375,8 +389,11 @@ func (c *Controller) handleUpdatePod(key string) error {
 		}
 		return err
 	}
+
 	klog.Infof("update pod %s/%s", namespace, name)
 	podIP := pod.Annotations[util.IpAddressAnnotation]
+	ovnNetworkType := pod.Annotations[util.NetworkType]
+	vlanID := pod.Annotations[util.VlanIdAnnotation]
 
 	subnet, err := c.getPodSubnet(pod)
 	if err != nil {
@@ -399,6 +416,14 @@ func (c *Controller) handleUpdatePod(key string) error {
 			return errors.Annotate(err, "add static route failed")
 		}
 	}
+
+	//update ovn vlan tag
+	if ovnNetworkType != util.NetworkTypeGeneve && vlanID != "" {
+		if err := c.updatePortVlan(ovs.PodNameToPortName(name, namespace), vlanID); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

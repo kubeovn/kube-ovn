@@ -22,6 +22,12 @@ const (
 	ProtocolTCP = "tcp"
 	ProtocolUDP = "udp"
 
+	VlanIdAnnotation      = "ovn.kubernetes.io/vlan_id"
+	NetworkType           = "ovn.kubernetes.io/network_types"
+	NetworkTypeGeneve     = "geneve"
+	ProviderInterfaceName = "ovn.kubernetes.io/provider_interface_name"
+	HostInterfaceName     = "ovn.kubernetes.io/network"
+
 	NodeNic           = "ovn0"
 	NodeAllowPriority = "3000"
 
@@ -37,4 +43,5 @@ const (
 	DefaultDropPriority = "1000"
 
 	GeneveHeaderLength = 100
+	TcpIpHeaderLength  = 40
 )

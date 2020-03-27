@@ -283,3 +283,35 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int) error {
 	}
 	return nil
 }
+
+func configProviderPort(providerInterfaceName string) error {
+	output, err := exec.Command("ovs-vsctl", "--may-exist", "add-br", "br-provider", "--",
+		"set", "open", ".", fmt.Sprintf("external-ids:ovn-bridge-mappings=%s:br-provider", providerInterfaceName)).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to create bridge br-provider, %v: %q", err, output)
+	}
+
+	output, err = exec.Command(
+		"ovs-vsctl", "--may-exist", "add-port", "br-provider", "provider-int", "--",
+		"set", "interface", "provider-int", "type=patch", "options:peer=int-provider").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to create patch port provider-int, %v: %q", err, output)
+	}
+
+	output, err = exec.Command(
+		"ovs-vsctl", "--may-exist", "add-port", "br-int", "int-provider", "--",
+		"set", "interface", "int-provider", "type=patch", "options:peer=provider-int").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to create patch port int-provider, %v: %q", err, output)
+	}
+
+	return nil
+}
+
+// Add host nic to br-provider
+// A physical Ethernet device that is part of an Open vSwitch bridge should not have an IP address. If one does, then that IP address will not be fully functional.
+// More info refer http://docs.openvswitch.org/en/latest/faq/issues
+func configHostNic(br, nicName string) error {
+	_, err := exec.Command("ovs-vsctl", "--may-exist", "add-port", br, nicName).CombinedOutput()
+	return err
+}

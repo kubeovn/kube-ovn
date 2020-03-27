@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"strconv"
 	"time"
 
 	"k8s.io/client-go/kubernetes/scheme"
@@ -14,7 +15,7 @@ import (
 
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/alauda/kube-ovn/pkg/client/informers/externalversions"
-	kubeovnlister "github.com/alauda/kube-ovn/pkg/client/listers/kube-ovn/v1"
+	kubeovnlister "github.com/alauda/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/projectcalico/felix/ipsets"
@@ -313,7 +314,9 @@ func (c *Controller) handlePod(key string) error {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
+
 	klog.Infof("handle qos update for pod %s/%s", namespace, name)
+
 	pod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -321,12 +324,83 @@ func (c *Controller) handlePod(key string) error {
 		}
 		return err
 	}
+
 	if err := util.ValidatePodNetwork(pod.Annotations); err != nil {
 		klog.Errorf("validate pod %s/%s failed, %v", namespace, name, err)
 		c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", err.Error())
 		return err
 	}
-	return ovs.SetPodBandwidth(pod.Name, pod.Namespace, pod.Annotations[util.IngressRateAnnotation], pod.Annotations[util.EgressRateAnnotation])
+
+	if err := ovs.SetPodBandwidth(pod.Name, pod.Namespace, pod.Annotations[util.IngressRateAnnotation], pod.Annotations[util.EgressRateAnnotation]); err != nil {
+		return err
+	}
+
+	var containerID, networkType, vlanID string
+	for i := 0; i < 10; i++ {
+		if pod.Annotations[util.AllocatedAnnotation] != "true" {
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
+		networkType = pod.Annotations[util.NetworkType]
+		vlanID = pod.Annotations[util.VlanIdAnnotation]
+		break
+	}
+
+	//get ip crd
+	//@todo can't get ip crd, No sync?
+	ipName := fmt.Sprintf("%s.%s", name, namespace)
+	ipCrd, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(ipName, metav1.GetOptions{})
+	if err != nil {
+		klog.Infof("get ip crd failed: %v", err)
+		ipList, err := c.config.KubeOvnClient.KubeovnV1().IPs().List(metav1.ListOptions{})
+		if err != nil {
+			klog.Errorf("list ip crd failed: %v", err)
+			return err
+		}
+		for _, v := range ipList.Items {
+			if v.ObjectMeta.Name == ipName {
+				ipCrd = &v
+				break
+			}
+		}
+	}
+
+	klog.Infof("get ip crd:%+v", ipCrd)
+	if ipCrd == nil {
+		return err
+	}
+
+	containerID = ipCrd.Spec.ContainerID
+
+	//update vlan tag
+	if networkType != util.NetworkTypeGeneve && vlanID != "" && containerID != "" {
+		if err := c.updateVlan(vlanID, containerID); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *Controller) updateVlan(vlanID, containerID string) error {
+	hostNicName, _ := generateNicName(containerID)
+	tags, err := ovs.GetPortTag(hostNicName)
+	if err != nil {
+		return err
+	}
+
+	if tag, err := strconv.Atoi(vlanID); err != nil || tag < 0 || tag > 4095 {
+		return fmt.Errorf("vlan tag is invalid, %v", err)
+	}
+
+	if !util.IsStringIn(vlanID, tags) {
+		if err = ovs.SetPortTag(hostNicName, vlanID); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Run starts controller

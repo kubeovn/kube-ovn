@@ -77,7 +77,8 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		!reflect.DeepEqual(oldSubnet.Spec.Namespaces, newSubnet.Spec.Namespaces) ||
 		oldSubnet.Spec.GatewayType != newSubnet.Spec.GatewayType ||
 		oldSubnet.Spec.GatewayNode != newSubnet.Spec.GatewayNode ||
-		!reflect.DeepEqual(oldSubnet.Spec.ExcludeIps, newSubnet.Spec.ExcludeIps) {
+		!reflect.DeepEqual(oldSubnet.Spec.ExcludeIps, newSubnet.Spec.ExcludeIps) ||
+		!reflect.DeepEqual(oldSubnet.Spec.Vlan, newSubnet.Spec.Vlan) {
 		klog.V(3).Infof("enqueue update subnet %s", key)
 		c.updateSubnetQueue.Add(key)
 	}
@@ -461,6 +462,21 @@ func (c *Controller) handleAddSubnet(key string) error {
 		return err
 	}
 
+	//reconcile vlan, update vlan subnet spec.
+	if err := c.reconcileVlan(subnet); err != nil {
+		klog.Errorf("failed to reconcile vlan %s, %v", subnet.Name, err)
+		subnet.Status.SetError("ReconcileVlanFailed", err.Error())
+		bytes, err := subnet.Status.Bytes()
+		if err != nil {
+			klog.Error(err)
+		} else {
+			if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(subnet.Name, types.MergePatchType, bytes, "status"); err != nil {
+				klog.Error("patch subnet status failed", err)
+			}
+		}
+		return err
+	}
+
 	if subnet.Spec.Private {
 		err = c.ovnClient.SetPrivateLogicalSwitch(subnet.Name, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.AllowSubnets)
 		if err != nil {
@@ -674,6 +690,21 @@ func (c *Controller) handleUpdateSubnet(key string) error {
 		return err
 	}
 
+	if err := c.reconcileVlan(subnet); err != nil {
+		klog.Errorf("failed to reconcile vlan %s, %v", subnet.Name, err)
+		subnet.Status.SetError("ReconcileVlanFailed", err.Error())
+		bytes, err := subnet.Status.Bytes()
+		if err != nil {
+			klog.Error(err)
+		} else {
+			if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(subnet.Name, types.MergePatchType, bytes, "status"); err != nil {
+				klog.Error("patch subnet status failed", err)
+			}
+		}
+
+		return err
+	}
+
 	if subnet.Spec.Private {
 		err = c.ovnClient.SetPrivateLogicalSwitch(subnet.Name, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.AllowSubnets)
 		if err != nil {
@@ -770,6 +801,27 @@ func (c *Controller) handleDeleteSubnet(key string) error {
 			c.enqueueAddNamespace(ns)
 		}
 	}
+
+	// re-annotate vlan subnet
+	if c.config.NetworkType != util.NetworkTypeGeneve {
+		if err = c.delLocalnet(key); err != nil {
+			return err
+		}
+
+		vlans, err := c.vlansLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list vlan, %v", err)
+			return err
+		}
+
+		for _, vlan := range vlans {
+			subnet := strings.Split(vlan.Spec.Subnet, ",")
+			if util.IsStringIn(key, subnet) {
+				c.enqueueAddVlan(vlan)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -825,6 +877,40 @@ func (c *Controller) reconcileSubnet(subnet *kubeovnv1.Subnet) error {
 	for _, ns := range namespaces {
 		if ns.Annotations != nil && ns.Annotations[util.LogicalSwitchAnnotation] == subnet.Name && !namespaceMap[ns.Name] {
 			c.addNamespaceQueue.Add(ns.Name)
+		}
+	}
+
+	return nil
+}
+
+func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
+	if c.config.NetworkType == util.NetworkTypeGeneve {
+		return nil
+	}
+
+	klog.Infof("reconcile vlan, %v", subnet.Spec.Vlan)
+
+	if subnet.Spec.Vlan != "" {
+		//create subnet localnet
+		if err := c.addLocalnet(subnet); err != nil {
+			klog.Errorf("failed add localnet to subnet, %v", err)
+			return err
+		}
+
+		c.updateVlanQueue.Add(subnet.Spec.Vlan)
+	}
+
+	//update unbind vlan
+	vlanLists, err := c.vlansLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vlans, %v", err)
+		return err
+	}
+
+	for _, vlan := range vlanLists {
+		subnets := strings.Split(vlan.Spec.Subnet, ",")
+		if util.IsStringIn(subnet.Name, subnets) {
+			c.updateVlanQueue.Add(vlan.Name)
 		}
 	}
 
