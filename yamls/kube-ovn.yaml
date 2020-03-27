@@ -47,6 +47,7 @@ spec:
           - --default-cidr=10.16.0.0/16
           - --default-gateway=10.16.0.1
           - --node-switch-cidr=100.64.0.0/16
+          - --network-type=vlan
           env:
             - name: POD_NAME
               valueFrom:

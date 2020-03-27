@@ -255,7 +255,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 
 	// Wait for the caches to be synced before starting workers
 	klog.Info("Waiting for informer caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.subnetSynced, c.ipSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced, c.npsSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.subnetSynced, c.ipSynced, c.vlanSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced, c.npsSynced); !ok {
 		klog.Fatalf("failed to wait for caches to sync")
 	}
 
