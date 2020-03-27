@@ -25,6 +25,7 @@ import (
 type Configuration struct {
 	Iface                 string
 	MTU                   int
+	MSS                   int
 	EnableMirror          bool
 	MirrorNic             string
 	BindSocket            string
@@ -122,6 +123,8 @@ func (config *Configuration) initNicConfig() error {
 	if config.MTU == 0 {
 		config.MTU = iface.MTU - util.GeneveHeaderLength
 	}
+
+	config.MSS = config.MTU - util.TcpIpHeaderLength
 
 	addrs, err := iface.Addrs()
 	if err != nil {
