@@ -168,6 +168,7 @@ func configureContainerNic(nicName, ipAddr, gateway string, macAddr net.Hardware
 		if err != nil {
 			return fmt.Errorf("config gateway failed %v", err)
 		}
+
 		return waiteNetworkReady(gateway)
 	})
 }

@@ -58,23 +58,19 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 		return err
 	}
 
-	spec := kubeovnv1.SubnetSpec{
-		Default:     true,
-		CIDRBlock:   c.config.DefaultCIDR,
-		Gateway:     c.config.DefaultGateway,
-		ExcludeIps:  strings.Split(c.config.DefaultExcludeIps, ","),
-		NatOutgoing: true,
-		GatewayType: kubeovnv1.GWDistributedType,
-		Protocol:    util.CheckProtocol(c.config.DefaultCIDR),
-	}
-
-	if c.config.NetworkType != util.NetworkTypeGeneve {
-		spec.Vlan = c.config.DefaultVlanName
-	}
-
 	defaultSubnet := kubeovnv1.Subnet{
 		ObjectMeta: v1.ObjectMeta{Name: c.config.DefaultLogicalSwitch},
-		Spec:       spec,
+		Spec: kubeovnv1.SubnetSpec{
+			Default:     true,
+			Provider:    util.OvnProvider,
+			CIDRBlock:   c.config.DefaultCIDR,
+			Gateway:     c.config.DefaultGateway,
+			ExcludeIps:  strings.Split(c.config.DefaultExcludeIps, ","),
+			NatOutgoing: true,
+			GatewayType: kubeovnv1.GWDistributedType,
+			Protocol:    util.CheckProtocol(c.config.DefaultCIDR),
+			Vlan:        c.config.DefaultVlanName,
+		},
 	}
 
 	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(&defaultSubnet)
@@ -93,21 +89,17 @@ func (c *Controller) initNodeSwitch() error {
 		return err
 	}
 
-	spec := kubeovnv1.SubnetSpec{
-		Default:    false,
-		CIDRBlock:  c.config.NodeSwitchCIDR,
-		Gateway:    c.config.NodeSwitchGateway,
-		ExcludeIps: []string{c.config.NodeSwitchGateway},
-		Protocol:   util.CheckProtocol(c.config.NodeSwitchCIDR),
-	}
-
-	if c.config.NetworkType != util.NetworkTypeGeneve {
-		spec.Vlan = c.config.DefaultVlanName
-	}
-
 	nodeSubnet := kubeovnv1.Subnet{
 		ObjectMeta: v1.ObjectMeta{Name: c.config.NodeSwitch},
-		Spec:       spec,
+		Spec: kubeovnv1.SubnetSpec{
+			Default:    false,
+			Provider:   util.OvnProvider,
+			CIDRBlock:  c.config.NodeSwitchCIDR,
+			Gateway:    c.config.NodeSwitchGateway,
+			ExcludeIps: []string{c.config.NodeSwitchGateway},
+			Protocol:   util.CheckProtocol(c.config.NodeSwitchCIDR),
+			Vlan:       c.config.DefaultVlanName,
+		},
 	}
 	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(&nodeSubnet)
 
@@ -181,7 +173,8 @@ func (c *Controller) InitIPAM() error {
 		return err
 	}
 	for _, pod := range pods {
-		if pod.Annotations[util.AllocatedAnnotation] == "true" &&
+		if isPodAlive(pod) &&
+			pod.Annotations[util.AllocatedAnnotation] == "true" &&
 			pod.Annotations[util.LogicalSwitchAnnotation] != "" {
 			_, _, err := c.ipam.GetStaticAddress(
 				fmt.Sprintf("%s/%s", pod.Namespace, pod.Name),

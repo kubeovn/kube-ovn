@@ -1,20 +1,30 @@
 package util
 
 const (
-	ControllerName       = "kube-ovn-controller"
+	ControllerName = "kube-ovn-controller"
+
 	AllocatedAnnotation  = "ovn.kubernetes.io/allocated"
+	RoutedAnnotation     = "ovn.kubernetes.io/routed"
 	MacAddressAnnotation = "ovn.kubernetes.io/mac_address"
 	IpAddressAnnotation  = "ovn.kubernetes.io/ip_address"
 	CidrAnnotation       = "ovn.kubernetes.io/cidr"
 	GatewayAnnotation    = "ovn.kubernetes.io/gateway"
 	IpPoolAnnotation     = "ovn.kubernetes.io/ip_pool"
+
+	AllocatedAnnotationTemplate     = "%s.kubernetes.io/allocated"
+	MacAddressAnnotationTemplate    = "%s.kubernetes.io/mac_address"
+	IpAddressAnnotationTemplate     = "%s.kubernetes.io/ip_address"
+	CidrAnnotationTemplate          = "%s.kubernetes.io/cidr"
+	GatewayAnnotationTemplate       = "%s.kubernetes.io/gateway"
+	IpPoolAnnotationTemplate        = "%s.kubernetes.io/ip_pool"
+	LogicalSwitchAnnotationTemplate = "%s.kubernetes.io/logical_switch"
+
 	ExcludeIpsAnnotation = "ovn.kubernetes.io/exclude_ips"
 
 	IngressRateAnnotation = "ovn.kubernetes.io/ingress_rate"
 	EgressRateAnnotation  = "ovn.kubernetes.io/egress_rate"
 
-	PortNameAnnotation = "ovn.kubernetes.io/port_name"
-
+	PortNameAnnotation      = "ovn.kubernetes.io/port_name"
 	LogicalSwitchAnnotation = "ovn.kubernetes.io/logical_switch"
 
 	SubnetNameLabel = "ovn.kubernetes.io/subnet"
@@ -26,7 +36,7 @@ const (
 	NetworkType           = "ovn.kubernetes.io/network_types"
 	NetworkTypeGeneve     = "geneve"
 	ProviderInterfaceName = "ovn.kubernetes.io/provider_interface_name"
-	HostInterfaceName     = "ovn.kubernetes.io/network"
+	HostInterfaceName     = "ovn.kubernetes.io/host_interface_name"
 
 	NodeNic           = "ovn0"
 	NodeAllowPriority = "3000"
@@ -44,4 +54,7 @@ const (
 
 	GeneveHeaderLength = 100
 	TcpIpHeaderLength  = 40
+
+	OvnProvider                 = "ovn"
+	AttachmentNetworkAnnotation = "k8s.v1.cni.cncf.io/networks"
 )

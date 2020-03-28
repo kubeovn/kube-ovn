@@ -16,7 +16,7 @@ import (
 
 func (c Client) ovnNbCommand(cmdArgs ...string) (string, error) {
 	start := time.Now()
-	cmdArgs = append([]string{fmt.Sprintf("--timeout=%d", c.OvnNbTimeout)}, cmdArgs...)
+	cmdArgs = append([]string{fmt.Sprintf("--timeout=%d", c.OvnTimeout)}, cmdArgs...)
 	raw, err := exec.Command(OvnNbCtl, cmdArgs...).CombinedOutput()
 	elapsed := float64((time.Since(start)) / time.Millisecond)
 	klog.Infof("%s command %s in %vms", OvnNbCtl, strings.Join(cmdArgs, " "), elapsed)
@@ -208,6 +208,28 @@ func (c Client) createRouterPort(ls, lr, ip, mac string) error {
 	return nil
 }
 
+type StaticRoute struct {
+	Policy  string
+	CIDR    string
+	NextHop string
+}
+
+func (c Client) ListStaticRoute() ([]StaticRoute, error) {
+	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=ip_prefix,nexthop,policy", "list", "Logical_Router_Static_Route")
+	if err != nil {
+		return nil, err
+	}
+	entries := strings.Split(output, "\n")
+	staticRoutes := make([]StaticRoute, 0, len(entries))
+	for _, entry := range strings.Split(output, "\n") {
+		if len(strings.Split(entry, ",")) == 3 {
+			t := strings.Split(entry, ",")
+			staticRoutes = append(staticRoutes, StaticRoute{CIDR: t[0], NextHop: t[1], Policy: t[2]})
+		}
+	}
+	return staticRoutes, nil
+}
+
 // AddStaticRoute add a static route rule in ovn
 func (c Client) AddStaticRoute(policy, cidr, nextHop, router string) error {
 	if policy == "" {
@@ -231,6 +253,9 @@ func (c Client) DeleteStaticRouteByNextHop(nextHop string) error {
 	}
 	ipPrefixes := strings.Split(output, "\n")
 	for _, ipPre := range ipPrefixes {
+		if strings.TrimSpace(ipPre) == "" {
+			continue
+		}
 		if err := c.DeleteStaticRoute(ipPre, c.ClusterRouter); err != nil {
 			klog.Errorf("failed to delete route %s, %v", ipPre, err)
 			return err

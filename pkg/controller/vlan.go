@@ -191,12 +191,6 @@ func (c *Controller) handleAddVlan(key string) error {
 		return err
 	}
 
-	subnets := []string{}
-	subnetNames := strings.Split(vlan.Spec.Subnet, ",")
-	if len(subnets) == 0 {
-		return nil
-	}
-
 	if vlan.Spec.ProviderInterfaceName == "" {
 		vlan.Spec.ProviderInterfaceName = c.config.DefaultProviderName
 	}
@@ -205,6 +199,8 @@ func (c *Controller) handleAddVlan(key string) error {
 		vlan.Spec.LogicalInterfaceName = c.config.DefaultHostInterface
 	}
 
+	subnets := []string{}
+	subnetNames := strings.Split(vlan.Spec.Subnet, ",")
 	for key, subnet := range subnetNames {
 		s, err := c.subnetsLister.Get(subnet)
 		if err != nil {
@@ -235,7 +231,7 @@ func (c *Controller) handleAddVlan(key string) error {
 				klog.Error(err)
 			} else {
 				if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(vlan.Name, types.MergePatchType, bytes, "status"); err != nil {
-					klog.Error("patch vlan status failed", err)
+					klog.Errorf("patch vlan status failed, %v", err)
 				}
 			}
 
@@ -246,6 +242,7 @@ func (c *Controller) handleAddVlan(key string) error {
 	}
 
 	vlan.Spec.Subnet = strings.Join(subnets, ",")
+
 	_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(vlan)
 	if err != nil {
 		klog.Errorf("failed to update vlan %s, %v", vlan.Name, err)
@@ -382,8 +379,7 @@ func (c *Controller) addPortVlan(port, ip, mac, vlan string) error {
 	}
 
 	if !found {
-		klog.Errorf("failed to find logical switch port: %s, %v", port, err)
-		return err
+		return fmt.Errorf("failed to find logical switch port: %s", port)
 	}
 
 	if err = c.ovnClient.SetLogicSwitchPortTag(port, strconv.Itoa(vlanCrd.Spec.VlanId)); err != nil {

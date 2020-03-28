@@ -1,29 +1,4 @@
-FROM centos:7
-
-ENV PYTHONDONTWRITEBYTECODE yes
-
-RUN yum install -y  \
-        PyYAML bind-utils \
-        openssl \
-        numactl-libs \
-        firewalld-filesystem \
-        libpcap \
-        hostname \
-        iproute strace socat nc \
-        unbound unbound-devel \
-        tcpdump ipset \
-        epel-release https://centos7.iuscommunity.org/ius-release.rpm
-
-RUN yum install python34 -y && ln -s /bin/python3.4 /bin/python3 && yum clean all
-
-ENV OVS_VERSION=20.03.0
-ENV OVS_SUBVERSION=1
-
-RUN rpm -ivh --nodeps https://github.com/alauda/ovs/releases/download/${OVS_VERSION}-${OVS_SUBVERSION}/openvswitch-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
-    rpm -ivh --nodeps https://github.com/alauda/ovs/releases/download/${OVS_VERSION}-${OVS_SUBVERSION}/openvswitch-devel-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
-    rpm -ivh --nodeps https://github.com/alauda/ovs/releases/download/${OVS_VERSION}-${OVS_SUBVERSION}/ovn-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
-    rpm -ivh --nodeps https://github.com/alauda/ovs/releases/download/${OVS_VERSION}-${OVS_SUBVERSION}/ovn-central-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm && \
-    rpm -ivh --nodeps https://github.com/alauda/ovs/releases/download/${OVS_VERSION}-${OVS_SUBVERSION}/ovn-host-${OVS_VERSION}-${OVS_SUBVERSION}.el7.x86_64.rpm
+FROM ovs:latest
 
 RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /var/run/ovn && \
@@ -38,7 +13,7 @@ RUN curl -L https://storage.googleapis.com/kubernetes-release/release/${KUBE_VER
  && chmod +x /usr/bin/kubectl
 
 COPY *.sh /kube-ovn/
-COPY 00-kube-ovn.conflist /kube-ovn/00-kube-ovn.conflist
+COPY 01-kube-ovn.conflist /kube-ovn/01-kube-ovn.conflist
 
 WORKDIR /kube-ovn
 

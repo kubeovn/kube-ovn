@@ -39,13 +39,16 @@ type IP struct {
 }
 
 type IPSpec struct {
-	PodName     string `json:"podName"`
-	Namespace   string `json:"namespace"`
-	Subnet      string `json:"subnet"`
-	NodeName    string `json:"nodeName"`
-	IPAddress   string `json:"ipAddress"`
-	MacAddress  string `json:"macAddress"`
-	ContainerID string `json:"containerID"`
+	PodName       string   `json:"podName"`
+	Namespace     string   `json:"namespace"`
+	Subnet        string   `json:"subnet"`
+	AttachSubnets []string `json:"attach_subnets"`
+	NodeName      string   `json:"nodeName"`
+	IPAddress     string   `json:"ipAddress"`
+	AttachIPs     []string `json:"attach_ips"`
+	MacAddress    string   `json:"macAddress"`
+	AttachMacs    []string `json:"attach_macs"`
+	ContainerID   string   `json:"containerID"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -76,6 +79,7 @@ type SubnetSpec struct {
 	CIDRBlock  string   `json:"cidrBlock"`
 	Gateway    string   `json:"gateway"`
 	ExcludeIps []string `json:"excludeIps,omitempty"`
+	Provider   string   `json:"provider,omitempty"`
 
 	GatewayType string `json:"gatewayType"`
 	GatewayNode string `json:"gatewayNode"`

@@ -26,8 +26,6 @@ rules:
       - subnets
       - subnets/status
       - ips
-      - vlans
-      - networks
     verbs:
       - "*"
   - apiGroups:
@@ -210,7 +208,7 @@ spec:
             periodSeconds: 7
             failureThreshold: 5
       nodeSelector:
-        beta.kubernetes.io/os: "linux"
+        kubernetes.io/os: "linux"
         kube-ovn/role: "master"
       volumes:
         - name: host-run-ovs
@@ -313,7 +311,7 @@ spec:
               cpu: 1000m
               memory: 800Mi
       nodeSelector:
-        beta.kubernetes.io/os: "linux"
+        kubernetes.io/os: "linux"
       volumes:
         - name: host-modules
           hostPath:

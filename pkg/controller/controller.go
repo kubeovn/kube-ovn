@@ -120,7 +120,7 @@ func NewController(config *Configuration) *Controller {
 
 	controller := &Controller{
 		config:    config,
-		ovnClient: ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.OvnNbTimeout, "", 0, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
+		ovnClient: ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.OvnTimeout, config.OvnSbHost, config.OvnSbPort, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
 		ipam:      ovnipam.NewIPAM(),
 
 		subnetsLister:           subnetInformer.Lister(),
@@ -219,6 +219,7 @@ func NewController(config *Configuration) *Controller {
 
 	ipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddOrDelIP,
+		UpdateFunc: controller.enqueueUpdateIP,
 		DeleteFunc: controller.enqueueAddOrDelIP,
 	})
 
@@ -242,21 +243,21 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	// wait for becoming a leader
 	c.leaderElection()
 
+	// Wait for the caches to be synced before starting workers
+	c.informerFactory.Start(stopCh)
+	c.kubeovnInformerFactory.Start(stopCh)
+
+	klog.Info("Waiting for informer caches to sync")
+	if ok := cache.WaitForCacheSync(stopCh, c.subnetSynced, c.ipSynced, c.vlanSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced, c.npsSynced); !ok {
+		klog.Fatalf("failed to wait for caches to sync")
+	}
+
 	if err := c.InitOVN(); err != nil {
 		klog.Fatalf("failed to init ovn resource %v", err)
 	}
 
 	if err := c.InitIPAM(); err != nil {
 		klog.Fatalf("failed to init ipam %v", err)
-	}
-
-	c.informerFactory.Start(stopCh)
-	c.kubeovnInformerFactory.Start(stopCh)
-
-	// Wait for the caches to be synced before starting workers
-	klog.Info("Waiting for informer caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.subnetSynced, c.ipSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced, c.npsSynced); !ok {
-		klog.Fatalf("failed to wait for caches to sync")
 	}
 
 	// remove resources in ovndb that not exist any more in kubernetes resources
@@ -299,6 +300,7 @@ func (c *Controller) shutdown() {
 
 	c.addVlanQueue.ShutDown()
 	c.delVlanQueue.ShutDown()
+	c.updateVlanQueue.ShutDown()
 }
 
 func (c *Controller) startWorkers(stopCh <-chan struct{}) {

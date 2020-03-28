@@ -263,6 +263,7 @@ func (c *Controller) handleAddNode(key string) error {
 					Name: fmt.Sprintf("node-%s", key),
 					Labels: map[string]string{
 						util.SubnetNameLabel: c.config.NodeSwitch,
+						c.config.NodeSwitch:  "",
 					},
 				},
 				Spec: kubeovnv1.IPSpec{
@@ -315,14 +316,18 @@ func (c *Controller) handleDeleteNode(key string) error {
 		klog.Errorf("failed to delete node switch port node-%s %v", key, err)
 		return err
 	}
+	if err := c.ovnClient.DeleteChassis(key); err != nil {
+		klog.Errorf("failed to delete chassis for node %s %v", key, err)
+		return err
+	}
 
 	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(portName, &metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
 		return err
 	}
 
-	ip, _, exist := c.ipam.GetPodAddress(portName)
-	if exist {
-		if err := c.ovnClient.DeleteStaticRouteByNextHop(ip); err != nil {
+	ips, _ := c.ipam.GetPodAddress(portName)
+	if len(ips) > 0 {
+		if err := c.ovnClient.DeleteStaticRouteByNextHop(ips[0]); err != nil {
 			return err
 		}
 	}

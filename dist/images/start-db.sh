@@ -62,6 +62,10 @@ else
             --ovn-northd-nb-db=$(gen_conn_str 6641) \
             --ovn-northd-sb-db=$(gen_conn_str 6642) \
             start_northd
+        ovn-nbctl set-connection ptcp:"${DB_NB_PORT}":0.0.0.0
+        ovn-nbctl set Connection . inactivity_probe=0
+        ovn-sbctl set-connection ptcp:"${DB_SB_PORT}":0.0.0.0
+        ovn-sbctl set Connection . inactivity_probe=0
     else
         while ! nc -z "${nb_leader_ip}" "${DB_NB_PORT}" >/dev/null;
         do

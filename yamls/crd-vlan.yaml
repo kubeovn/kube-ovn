@@ -19,9 +19,6 @@ spec:
     - name: ProviderInterfaceName
       type: string
       JSONPath: .spec.providerInterfaceName
-    - name: LogicalInterfaceName
-      type: string
-      JSONPath: .spec.logicalInterfaceName
     - name: Subnet
       type: string
       JSONPath: .spec.subnet

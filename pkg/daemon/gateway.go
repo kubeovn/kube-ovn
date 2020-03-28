@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"fmt"
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/projectcalico/felix/ipsets"
@@ -8,7 +9,6 @@ import (
 	"k8s.io/klog"
 	"net"
 	"os"
-	"fmt"
 	"strings"
 )
 
@@ -50,6 +50,26 @@ var (
 		Chain: "FORWARD",
 		Rule:  strings.Split(`-o ovn0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT`, " "),
 	}
+	inputAcceptV4Rule1 = util.IPTableRule{
+		Table: "filter",
+		Chain: "INPUT",
+		Rule:  strings.Split(`-m set --match-set ovn40subnets src -j ACCEPT`, " "),
+	}
+	inputAcceptV4Rule2 = util.IPTableRule{
+		Table: "filter",
+		Chain: "INPUT",
+		Rule:  strings.Split(`-m set --match-set ovn40subnets dst -j ACCEPT`, " "),
+	}
+	inputAcceptV6Rule1 = util.IPTableRule{
+		Table: "filter",
+		Chain: "INPUT",
+		Rule:  strings.Split(`-m set --match-set ovn60subnets src -j ACCEPT`, " "),
+	}
+	inputAcceptV6Rule2 = util.IPTableRule{
+		Table: "filter",
+		Chain: "INPUT",
+		Rule:  strings.Split(`-m set --match-set ovn60subnets dst -j ACCEPT`, " "),
+	}
 )
 
 func (c *Controller) runGateway() {
@@ -85,15 +105,19 @@ func (c *Controller) runGateway() {
 	}, subnetsNeedNat)
 	c.ipset.ApplyUpdates()
 
-	var podNatRule, subnetNatRule util.IPTableRule
+	var podNatRule, subnetNatRule, input1, input2 util.IPTableRule
 	if c.protocol == kubeovnv1.ProtocolIPv4 {
 		podNatRule = podNatV4Rule
 		subnetNatRule = subnetNatV4Rule
+		input1 = inputAcceptV4Rule1
+		input2 = inputAcceptV4Rule2
 	} else {
 		podNatRule = podNatV6Rule
 		subnetNatRule = subnetNatV6Rule
+		input1 = inputAcceptV6Rule1
+		input2 = inputAcceptV6Rule2
 	}
-	for _, iptRule := range []util.IPTableRule{forwardAcceptRule1, forwardAcceptRule2, podNatRule, subnetNatRule} {
+	for _, iptRule := range []util.IPTableRule{forwardAcceptRule1, forwardAcceptRule2, podNatRule, subnetNatRule, input1, input2} {
 		exists, err := c.iptable.Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
 		if err != nil {
 			klog.Errorf("check iptable rule exist failed, %+v", err)
