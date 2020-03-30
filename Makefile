@@ -4,6 +4,7 @@ GO_VERSION=1.13
 REGISTRY=index.alauda.cn/alaudak8s
 DEV_TAG=dev
 RELEASE_TAG=$(shell cat VERSION)
+OVS_TAG=200330
 
 .PHONY: build-dev-images build-go build-bin lint up down halt suspend resume kind-init kind-init-ha kind-reload push-dev push-release e2e ut
 
@@ -21,7 +22,7 @@ build-go:
 	CGO_ENABLED=0 GOOS=linux go build -o $(PWD)/dist/images/kube-ovn-pinger -ldflags "-w -s" -v ./cmd/pinger
 
 ovs:
-	docker build -t ovs:latest -f dist/ovs/Dockerfile dist/ovs/
+	docker build -t ovs:${OVS_TAG} -f dist/ovs/Dockerfile dist/ovs/
 
 release: lint build-go
 	docker build -t ${REGISTRY}/kube-ovn:${RELEASE_TAG} -f dist/images/Dockerfile dist/images/
