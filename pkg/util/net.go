@@ -2,12 +2,10 @@ package util
 
 import (
 	"fmt"
-	"github.com/vishvananda/netlink"
 	"math/big"
 	"math/rand"
 	"net"
 	"strings"
-	"syscall"
 	"time"
 
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
@@ -84,34 +82,4 @@ func CheckProtocol(address string) string {
 func AddressCount(network *net.IPNet) uint64 {
 	prefixLen, bits := network.Mask.Size()
 	return 1 << (uint64(bits) - uint64(prefixLen))
-}
-
-func GetHostInterface() map[string]string {
-	var IfName map[string]string
-	routes, err := netlink.RouteList(nil, syscall.AF_INET)
-	if err != nil {
-		return IfName
-	}
-
-	for _, route := range routes {
-		if route.Dst == nil || route.Dst.String() == "0.0.0.0/0" {
-			if route.LinkIndex <= 0 {
-				continue
-			}
-
-			iface, err := net.InterfaceByIndex(route.LinkIndex)
-			if err != nil {
-				continue
-			}
-
-			addr, err := iface.Addrs()
-			if err != nil && len(addr) > 0 {
-				IfName[iface.Name] = strings.Split(addr[0].String(), "/")[0]
-			} else {
-				IfName[iface.Name] = "false"
-			}
-		}
-	}
-
-	return IfName
 }

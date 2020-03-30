@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
-	"strconv"
 	"time"
 
 	"k8s.io/client-go/kubernetes/scheme"
@@ -272,7 +271,8 @@ func (c *Controller) enqueuePod(old, new interface{}) {
 	newPod := new.(*v1.Pod)
 
 	if oldPod.Annotations[util.IngressRateAnnotation] != newPod.Annotations[util.IngressRateAnnotation] ||
-		oldPod.Annotations[util.EgressRateAnnotation] != newPod.Annotations[util.EgressRateAnnotation] {
+		oldPod.Annotations[util.EgressRateAnnotation] != newPod.Annotations[util.EgressRateAnnotation] ||
+		oldPod.Annotations[util.VlanIdAnnotation] != newPod.Annotations[util.VlanIdAnnotation] {
 		var key string
 		var err error
 		if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
@@ -342,76 +342,7 @@ func (c *Controller) handlePod(key string) error {
 		return err
 	}
 
-	if err := ovs.SetPodBandwidth(pod.Name, pod.Namespace, pod.Annotations[util.IngressRateAnnotation], pod.Annotations[util.EgressRateAnnotation]); err != nil {
-		return err
-	}
-
-	var containerID, networkType, vlanID string
-	for i := 0; i < 10; i++ {
-		if pod.Annotations[util.AllocatedAnnotation] != "true" {
-			time.Sleep(1 * time.Second)
-			continue
-		}
-
-		networkType = pod.Annotations[util.NetworkType]
-		vlanID = pod.Annotations[util.VlanIdAnnotation]
-		break
-	}
-
-	//get ip crd
-	//@todo can't get ip crd, No sync?
-	ipName := fmt.Sprintf("%s.%s", name, namespace)
-	ipCrd, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(ipName, metav1.GetOptions{})
-	if err != nil {
-		klog.Infof("get ip crd failed: %v", err)
-		ipList, err := c.config.KubeOvnClient.KubeovnV1().IPs().List(metav1.ListOptions{})
-		if err != nil {
-			klog.Errorf("list ip crd failed: %v", err)
-			return err
-		}
-		for _, v := range ipList.Items {
-			if v.ObjectMeta.Name == ipName {
-				ipCrd = &v
-				break
-			}
-		}
-	}
-
-	klog.Infof("get ip crd:%+v", ipCrd)
-	if ipCrd == nil {
-		return err
-	}
-
-	containerID = ipCrd.Spec.ContainerID
-
-	//update vlan tag
-	if networkType != util.NetworkTypeGeneve && vlanID != "" && containerID != "" {
-		if err := c.updateVlan(vlanID, containerID); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (c *Controller) updateVlan(vlanID, containerID string) error {
-	hostNicName, _ := generateNicName(containerID)
-	tags, err := ovs.GetPortTag(hostNicName)
-	if err != nil {
-		return err
-	}
-
-	if tag, err := strconv.Atoi(vlanID); err != nil || tag < 0 || tag > 4095 {
-		return fmt.Errorf("vlan tag is invalid, %v", err)
-	}
-
-	if !util.IsStringIn(vlanID, tags) {
-		if err = ovs.SetPortTag(hostNicName, vlanID); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return ovs.SetPodBandwidth(pod.Name, pod.Namespace, pod.Annotations[util.IngressRateAnnotation], pod.Annotations[util.EgressRateAnnotation])
 }
 
 // Run starts controller

@@ -6,8 +6,6 @@ import (
 	"github.com/vishvananda/netlink"
 	"net"
 	"net/http"
-	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -47,7 +45,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 
 	klog.Infof("add port request %v", podRequest)
 
-	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, networkType, vlanID, providerInterfaceName, hostInterfaceName string
+	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, networkType, vlanID, vlanRange, providerInterfaceName, hostInterfaceName string
 	pod, err := csh.KubeClient.CoreV1().Pods(podRequest.PodNamespace).Get(podRequest.PodName, v1.GetOptions{})
 	if err != nil {
 		errMsg := fmt.Errorf("get pod %s/%s failed %v", podRequest.PodNamespace, podRequest.PodName, err)
@@ -81,6 +79,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		networkType = pod.Annotations[util.NetworkType]
 		providerInterfaceName = pod.Annotations[util.ProviderInterfaceName]
 		hostInterfaceName = pod.Annotations[util.HostInterfaceName]
+		vlanRange = pod.Annotations[util.VlanRangeAnnotation]
 
 		break
 	}
@@ -151,33 +150,43 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		}
 	}
 
-	//create patch port
-	if networkType != util.NetworkTypeGeneve && providerInterfaceName != "" {
-		//create br-provider
-		if err = configProviderPort(providerInterfaceName); err != nil {
-			errMsg := fmt.Errorf("configure patch port br-provider failed %v", err)
+	if util.IsProviderVlan(networkType, providerInterfaceName) {
+		//create patch port
+		exists, err := providerBridgeExists()
+		if err != nil {
+			errMsg := fmt.Errorf("check provider bridge exists failed, %v", err)
 			klog.Error(errMsg)
 			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
 			return
 		}
 
-		//add a host nic to br-provider
-		ifName := csh.getInterfaceName(hostInterfaceName)
-		if ifName == "" {
-			errMsg := fmt.Errorf("failed get host nic to add ovs br-provider")
-			klog.Error(errMsg)
-			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
-			return
+		if !exists {
+			//create br-provider
+			if err = configProviderPort(providerInterfaceName); err != nil {
+				errMsg := fmt.Errorf("configure patch port br-provider failed %v", err)
+				klog.Error(errMsg)
+				resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
+				return
+			}
+
+			//add a host nic to br-provider
+			ifName := csh.getInterfaceName(hostInterfaceName)
+			if ifName == "" {
+				errMsg := fmt.Errorf("failed get host nic to add ovs br-provider")
+				klog.Error(errMsg)
+				resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
+				return
+			}
+
+			if err = configProviderNic(ifName); err != nil {
+				errMsg := fmt.Errorf("add nic %s to port br-provider failed %v", ifName, err)
+				klog.Error(errMsg)
+				resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
+				return
+			}
 		}
 
-		if err = configHostNic("br-provider", ifName); err != nil {
-			errMsg := fmt.Errorf("add nic %s to port br-provider failed %v", ifName, err)
-			klog.Error(errMsg)
-			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
-			return
-		}
-
-		if err = csh.addRouter(ipAddr); err != nil {
+		if err = csh.addRoute(ipAddr); err != nil {
 			errMsg := fmt.Errorf("add pod route failed, %v", err)
 			klog.Error(errMsg)
 			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
@@ -186,16 +195,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	}
 
 	//set ovs port tag
-	if networkType != util.NetworkTypeGeneve && vlanID != "" {
-		//validate vlan id is in between 0-4095
-		if tag, err := strconv.Atoi(vlanID); err != nil || tag < 0 || tag > 4095 {
-			errMsg := fmt.Errorf("the vlan id not between 0-4095 %v", err)
-			klog.Error(errMsg)
-			resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()})
-			return
-		}
-
-		//set vlan id
+	if util.IsNetworkVlan(networkType, vlanID, vlanRange) {
 		hostNicName, _ := generateNicName(podRequest.ContainerID)
 		if err := ovs.SetPortTag(hostNicName, vlanID); err != nil {
 			errMsg := fmt.Errorf("configure port tag failed %v", err)
@@ -263,25 +263,11 @@ func (csh cniServerHandler) getInterfaceName(hostInterfaceName string) string {
 		return csh.Config.Iface
 	}
 
-	hostIfName := util.GetHostInterface()
-	IfName := []string{}
-	for ifname, address := range hostIfName {
-		if address == os.Getenv("POD_IP") {
-			continue
-		}
-
-		IfName = append(IfName, ifname)
-	}
-
-	if len(IfName) > 0 {
-		return IfName[0]
-	}
-
 	return ""
 }
 
 //add a static route. If it is not added, the pod will not receive packets from the host nic
-func (csh cniServerHandler) addRouter(ipAddr string) error {
+func (csh cniServerHandler) addRoute(ipAddr string) error {
 	nic, err := netlink.LinkByName(util.NodeNic)
 	if err != nil {
 		klog.Errorf("failed to get nic %s", util.NodeNic)

@@ -118,13 +118,6 @@ func ValidatePodNetwork(annotations map[string]string) error {
 		}
 	}
 
-	vlan := annotations[VlanIdAnnotation]
-	if vlan != "" {
-		if id, err := strconv.Atoi(vlan); err != nil || id < 0 || id > 4095 {
-			return fmt.Errorf("vlan id %s is not a valid %s", vlan, VlanIdAnnotation)
-		}
-	}
-
 	return nil
 }
 
@@ -135,6 +128,10 @@ func ValidateVlan(vlan int, vlanRange string) error {
 	}
 
 	min, err := strconv.Atoi(vlans[0])
+	if err != nil {
+		return err
+	}
+
 	max, err := strconv.Atoi(vlans[1])
 	if err != nil {
 		return err

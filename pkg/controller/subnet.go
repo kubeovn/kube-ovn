@@ -825,7 +825,7 @@ func (c *Controller) handleDeleteSubnet(key string) error {
 	}
 
 	// re-annotate vlan subnet
-	if c.config.NetworkType != util.NetworkTypeGeneve {
+	if c.config.NetworkType == util.NetworkTypeVlan {
 		if err = c.delLocalnet(key); err != nil {
 			return err
 		}
@@ -906,7 +906,7 @@ func (c *Controller) reconcileSubnet(subnet *kubeovnv1.Subnet) error {
 }
 
 func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
-	if c.config.NetworkType == util.NetworkTypeGeneve {
+	if c.config.NetworkType != util.NetworkTypeVlan {
 		return nil
 	}
 
@@ -919,7 +919,7 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 			return err
 		}
 
-		c.updateVlanQueue.Add(subnet.Spec.Vlan)
+		c.enqueueAddVlan(subnet.Spec.Vlan)
 	}
 
 	//update unbind vlan

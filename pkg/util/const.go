@@ -33,8 +33,9 @@ const (
 	ProtocolUDP = "udp"
 
 	VlanIdAnnotation      = "ovn.kubernetes.io/vlan_id"
+	VlanRangeAnnotation   = "ovn.kubernetes.io/vlan_range"
 	NetworkType           = "ovn.kubernetes.io/network_types"
-	NetworkTypeGeneve     = "geneve"
+	NetworkTypeVlan       = "vlan"
 	ProviderInterfaceName = "ovn.kubernetes.io/provider_interface_name"
 	HostInterfaceName     = "ovn.kubernetes.io/host_interface_name"
 

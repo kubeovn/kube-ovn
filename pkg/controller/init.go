@@ -210,6 +210,11 @@ func (c *Controller) InitIPAM() error {
 //InitNetwork save the cluster default network
 func (c *Controller) initNetwork() error {
 	networkCrd, err := c.config.KubeOvnClient.KubeovnV1().Networks().Get("config", v1.GetOptions{})
+	if err != nil && !errors.IsNotFound(err) {
+		klog.Errorf("get network config failed %v", err)
+		return err
+	}
+
 	networkSpec := kubeovnv1.NetworkSpec{
 		NetworkType:   c.config.NetworkType,
 		DefaultSubnet: c.config.DefaultLogicalSwitch,
@@ -217,41 +222,29 @@ func (c *Controller) initNetwork() error {
 		PprofPort:     c.config.PprofPort,
 		InterfaceName: c.config.DefaultHostInterface,
 	}
-
-	if c.config.NetworkType != util.NetworkTypeGeneve {
+	if c.config.NetworkType == util.NetworkTypeVlan {
 		networkSpec.ProviderName = c.config.DefaultProviderName
 		networkSpec.DefaultVlan = c.config.DefaultVlanName
 		networkSpec.VlanRange = c.config.DefaultVlanRange
 	}
 
-	if err == nil {
-		networkCrd.Spec = networkSpec
-		_, err := c.config.KubeOvnClient.KubeovnV1().Networks().Update(networkCrd)
-		if err != nil {
-			klog.Errorf("update cluster config failed %v", err)
-			return err
+	if errors.IsNotFound(err) {
+		networkConfig := kubeovnv1.Network{
+			ObjectMeta: v1.ObjectMeta{Name: "config"},
+			Spec:       networkSpec,
 		}
-
-		return nil
-	}
-
-	if !errors.IsNotFound(err) {
-		klog.Errorf("get network config failed %v", err)
+		_, err = c.config.KubeOvnClient.KubeovnV1().Networks().Create(&networkConfig)
 		return err
 	}
 
-	networkConfig := kubeovnv1.Network{
-		ObjectMeta: v1.ObjectMeta{Name: "config"},
-		Spec:       networkSpec,
-	}
-	_, err = c.config.KubeOvnClient.KubeovnV1().Networks().Create(&networkConfig)
-
+	networkCrd.Spec = networkSpec
+	_, err = c.config.KubeOvnClient.KubeovnV1().Networks().Update(networkCrd)
 	return err
 }
 
 //InitDefaultVlan init the default vlan when network type is vlan or xvlan
 func (c *Controller) initDefaultVlan() error {
-	if c.config.NetworkType == util.NetworkTypeGeneve {
+	if c.config.NetworkType != util.NetworkTypeVlan {
 		return nil
 	}
 

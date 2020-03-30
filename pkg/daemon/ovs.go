@@ -12,6 +12,7 @@ import (
 	"k8s.io/klog"
 	"net"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -309,10 +310,27 @@ func configProviderPort(providerInterfaceName string) error {
 	return nil
 }
 
+func providerBridgeExists() (bool, error) {
+	output, err := exec.Command("ovs-vsctl", "list-br").CombinedOutput()
+	if err != nil {
+		klog.Errorf("failed to list bridge %v", err)
+		return false, err
+	}
+
+	lines := strings.Split(string(output), "\n")
+	for _, l := range lines {
+		if l == "br-provider" {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 // Add host nic to br-provider
 // A physical Ethernet device that is part of an Open vSwitch bridge should not have an IP address. If one does, then that IP address will not be fully functional.
 // More info refer http://docs.openvswitch.org/en/latest/faq/issues
-func configHostNic(br, nicName string) error {
-	_, err := exec.Command("ovs-vsctl", "--may-exist", "add-port", br, nicName).CombinedOutput()
+func configProviderNic(nicName string) error {
+	_, err := exec.Command("ovs-vsctl", "--may-exist", "add-port", "br-provider", nicName).CombinedOutput()
 	return err
 }

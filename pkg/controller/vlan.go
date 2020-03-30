@@ -201,7 +201,7 @@ func (c *Controller) handleAddVlan(key string) error {
 
 	subnets := []string{}
 	subnetNames := strings.Split(vlan.Spec.Subnet, ",")
-	for key, subnet := range subnetNames {
+	for _, subnet := range subnetNames {
 		s, err := c.subnetsLister.Get(subnet)
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
@@ -234,11 +234,10 @@ func (c *Controller) handleAddVlan(key string) error {
 					klog.Errorf("patch vlan status failed, %v", err)
 				}
 			}
-
 			return err
 		}
 
-		subnets[key] = subnet
+		subnets = append(subnets, subnet)
 	}
 
 	vlan.Spec.Subnet = strings.Join(subnets, ",")
@@ -279,7 +278,6 @@ func (c *Controller) handleUpdateVlan(key string) error {
 		}
 	}
 
-	klog.Infof("get subnets, %v", subnets)
 	vlan.Spec.Subnet = strings.Join(subnets, ",")
 	_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(vlan)
 	if err != nil {

@@ -345,7 +345,7 @@ func (c *Controller) handleAddPod(key string) error {
 			}
 
 			//set port tag, get vlan id, update pod annotation
-			if c.config.NetworkType != util.NetworkTypeGeneve && subnet.Spec.Vlan != "" {
+			if c.config.NetworkType == util.NetworkTypeVlan && subnet.Spec.Vlan != "" {
 				if err := c.addPortVlan(ovs.PodNameToPortName(name, namespace), ip, mac, subnet.Spec.Vlan); err != nil {
 					c.recorder.Eventf(pod, v1.EventTypeWarning, "SetPortVlanFailed", err.Error())
 					return err
@@ -355,6 +355,7 @@ func (c *Controller) handleAddPod(key string) error {
 					pod.Annotations[util.HostInterfaceName] = c.config.DefaultHostInterface
 					pod.Annotations[util.VlanIdAnnotation] = strconv.Itoa(vlan.Spec.VlanId)
 					pod.Annotations[util.ProviderInterfaceName] = c.config.DefaultProviderName
+					pod.Annotations[util.VlanRangeAnnotation] = c.config.DefaultVlanRange
 				}
 			}
 		}
@@ -422,8 +423,6 @@ func (c *Controller) handleUpdatePod(key string) error {
 
 	klog.Infof("update pod %s/%s", namespace, name)
 	podIP := pod.Annotations[util.IpAddressAnnotation]
-	networkType := pod.Annotations[util.NetworkType]
-	vlanID := pod.Annotations[util.VlanIdAnnotation]
 
 	subnet, err := c.getPodDefaultSubnet(pod)
 	if err != nil {
@@ -444,13 +443,6 @@ func (c *Controller) handleUpdatePod(key string) error {
 
 		if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
 			return errors.Annotate(err, "add static route failed")
-		}
-	}
-
-	//update ovn vlan tag
-	if networkType != util.NetworkTypeGeneve && vlanID != "" {
-		if err := c.updatePortVlan(ovs.PodNameToPortName(name, namespace), vlanID); err != nil {
-			return err
 		}
 	}
 
