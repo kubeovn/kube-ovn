@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## v1.0.1 -- 2020/03/31
+
+This release fix bugs found in v1.0.0
+
+### Bugfix
+* Use uuid to fetch lb vips
+* Add inactivity_probe back
+* Update svc might remove other svc that with same prefix
+* IP prefix might be empty
+* Enqueue subnet update to add route
+
 ## v1.0.0 -- 2020/02/27
 
 Kube-OVN has evolved a year from the first release and the core function set is stable with lots of tests and community feedback. 
