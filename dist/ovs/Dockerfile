@@ -23,7 +23,7 @@ RUN yum install -y  \
         firewalld-filesystem \
         iptables \
         libpcap \
-        hostname \
+        hostname ethtool \
         iproute strace socat nc \
         unbound unbound-devel \
         tcpdump ipset && yum clean all
