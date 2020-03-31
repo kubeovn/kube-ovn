@@ -585,7 +585,9 @@ spec:
           - /kube-ovn/start-cniserver.sh
         args:
           - --enable-mirror=true
+          - --checksum-offload=auto
           - --service-cluster-ip-range=$SVC_CIDR
+          - --iface=
         securityContext:
           capabilities:
             add: ["NET_ADMIN", "SYS_ADMIN", "SYS_PTRACE"]
