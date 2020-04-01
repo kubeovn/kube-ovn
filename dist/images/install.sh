@@ -585,7 +585,7 @@ spec:
           - /kube-ovn/start-cniserver.sh
         args:
           - --enable-mirror=true
-          - --checksum-offload=auto
+          - --encap-checksum=true
           - --service-cluster-ip-range=$SVC_CIDR
           - --iface=
         securityContext:

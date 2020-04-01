@@ -35,7 +35,7 @@ type Configuration struct {
 	NodeName              string
 	ServiceClusterIPRange string
 	NodeLocalDNSIP        string
-	ChecksumOffload       string
+	EncapChecksum         bool
 	PprofPort             int
 }
 
@@ -52,7 +52,7 @@ func ParseFlags() (*Configuration, error) {
 		argKubeConfigFile        = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 		argServiceClusterIPRange = pflag.String("service-cluster-ip-range", "10.96.0.0/12", "The kubernetes service cluster ip range, default: 10.96.0.0/12")
 		argNodeLocalDnsIP        = pflag.String("node-local-dns-ip", "", "If use nodelocaldns the local dns server ip should be set here, default empty.")
-		argChecksumOffload       = pflag.String("checksum-offload", "auto", "Enable checksum offload (auto, true, false) default: auto")
+		argEncapChecksum         = pflag.Bool("encap-checksum", true, "Enable checksum, default: true")
 		argPprofPort             = pflag.Int("pprof-port", 10665, "The port to get profiling data, default: 10665")
 	)
 
@@ -93,7 +93,7 @@ func ParseFlags() (*Configuration, error) {
 		NodeName:              nodeName,
 		ServiceClusterIPRange: *argServiceClusterIPRange,
 		NodeLocalDNSIP:        *argNodeLocalDnsIP,
-		ChecksumOffload:       *argChecksumOffload,
+		EncapChecksum:         *argEncapChecksum,
 	}
 
 	if err := config.initNicConfig(); err != nil {
@@ -126,8 +126,8 @@ func (config *Configuration) initNicConfig() error {
 		config.MTU = iface.MTU - util.GeneveHeaderLength
 	}
 
-	if config.ChecksumOffload == "true" || config.ChecksumOffload == "auto" && nicCanOffload(config.Iface) {
-		if err := setChecksumOffload(); err != nil {
+	if !config.EncapChecksum {
+		if err := disableChecksum(); err != nil {
 			klog.Errorf("failed to set checksum offload, %v", err)
 		}
 	}
@@ -211,27 +211,9 @@ func setEncapIP(ip string) error {
 	return nil
 }
 
-func nicCanOffload(nic string) bool {
-	raw, err := exec.Command("ethtool", "-k", nic).CombinedOutput()
-	if err != nil {
-		klog.Errorf("failed to get nic attributes, %v", err)
-		return false
-	}
-	tx, rx := false, false
-	for _, line := range strings.Split(string(raw), "\n") {
-		if strings.Contains(line, "rx-checksumming") && strings.Contains(line, "on") {
-			rx = true
-		}
-		if strings.Contains(line, "tx-checksumming") && strings.Contains(line, "on") {
-			tx = true
-		}
-	}
-	return tx && rx
-}
-
-func setChecksumOffload() error {
+func disableChecksum() error {
 	raw, err := exec.Command(
-		"ovs-vsctl", "set", "open", ".", fmt.Sprintf("external-ids:ovn-encap-csum=false")).CombinedOutput()
+		"ovs-vsctl", "set", "open", ".", "external-ids:ovn-encap-csum=false").CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to set ovn-encap-csum, %s", string(raw))
 	}

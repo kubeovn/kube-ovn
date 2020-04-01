@@ -74,6 +74,7 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
     --enable-mirror: Enable traffic mirror, default: false
     --mirror-iface: The mirror nic name that will be created by kube-ovn, default: mirror0
     --service-cluster-ip-range: The kubernetes service cluster ip range, default: 10.96.0.0/12
+    --encap-checksum: Enable encapsulation checksums, default: true
     --kubeconfig: Path to kubeconfig file with authorization and master location information. If not set use the inCluster token
 ```
 
