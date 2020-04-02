@@ -337,7 +337,7 @@ func (c *Controller) handlePod(key string) error {
 		c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", err.Error())
 		return err
 	}
-	return ovs.SetPodBandwidth(pod.Name, pod.Namespace, pod.Annotations[util.IngressRateAnnotation], pod.Annotations[util.EgressRateAnnotation])
+	return ovs.SetPodBandwidth(pod.Name, pod.Namespace, pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation])
 }
 
 // Run starts controller
