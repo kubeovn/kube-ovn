@@ -4,7 +4,7 @@ GO_VERSION=1.13
 REGISTRY=index.alauda.cn/alaudak8s
 DEV_TAG=dev
 RELEASE_TAG=$(shell cat VERSION)
-OVS_TAG=200330
+OVS_TAG=200403
 
 .PHONY: build-dev-images build-go build-bin lint up down halt suspend resume kind-init kind-init-ha kind-reload push-dev push-release e2e ut
 
@@ -72,7 +72,6 @@ kind-init-ha:
 	kind delete cluster --name=kube-ovn
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
 	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
-	kind load docker-image --name kube-ovn nfvpe/multus:v3.4
 	bash dist/images/install.sh
 
 kind-reload:
