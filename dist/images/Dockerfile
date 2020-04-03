@@ -1,4 +1,4 @@
-FROM ovs:200330
+FROM ovs:200403
 
 RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /var/run/ovn && \
