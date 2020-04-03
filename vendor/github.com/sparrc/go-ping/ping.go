@@ -144,7 +144,6 @@ type Pinger struct {
 
 	// stop chan bool
 	done chan bool
-	once sync.Once
 
 	ipaddr *net.IPAddr
 	addr   string
@@ -300,7 +299,6 @@ func (p *Pinger) run() {
 	defer close(recv)
 	wg.Add(1)
 	go p.recvICMP(conn, recv, &wg)
-        time.Sleep(500*time.Millisecond)
 
 	err := p.sendICMP(conn)
 	if err != nil {
@@ -318,7 +316,7 @@ func (p *Pinger) run() {
 			wg.Wait()
 			return
 		case <-timeout.C:
-			p.once.Do(func() {close(p.done)})
+			close(p.done)
 			wg.Wait()
 			return
 		case <-interval.C:
@@ -335,8 +333,8 @@ func (p *Pinger) run() {
 				fmt.Println("FATAL: ", err.Error())
 			}
 		}
-		if p.Count > 0 && p.PacketsRecv >= p.Count && p.PacketsSent >= p.Count {
-			p.once.Do(func() {close(p.done)})
+		if p.Count > 0 && p.PacketsRecv >= p.Count {
+			close(p.done)
 			wg.Wait()
 			return
 		}
@@ -344,7 +342,7 @@ func (p *Pinger) run() {
 }
 
 func (p *Pinger) Stop() {
-	p.once.Do(func() {close(p.done)})
+	close(p.done)
 }
 
 func (p *Pinger) finish() {
@@ -428,10 +426,9 @@ func (p *Pinger) recvICMP(
 				if neterr, ok := err.(*net.OpError); ok {
 					if neterr.Timeout() {
 						// Read timeout
-                                      
 						continue
 					} else {
-						p.once.Do(func() {close(p.done)})
+						close(p.done)
 						return
 					}
 				}
@@ -563,7 +560,7 @@ func (p *Pinger) listen(netProto string) *icmp.PacketConn {
 	conn, err := icmp.ListenPacket(netProto, p.Source)
 	if err != nil {
 		fmt.Printf("Error listening for ICMP packets: %s\n", err.Error())
-		p.once.Do(func() {close(p.done)})
+		close(p.done)
 		return nil
 	}
 	return conn
@@ -603,4 +600,3 @@ func intToBytes(tracker int64) []byte {
 	binary.BigEndian.PutUint64(b, uint64(tracker))
 	return b
 }
-
