@@ -53,6 +53,7 @@ var _ = Describe("[IP Allocation]", func() {
 			pod, err = f.KubeClientSet.CoreV1().Pods(namespace).Get(name, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(pod.Annotations[util.AllocatedAnnotation]).To(Equal("true"))
+			Expect(pod.Annotations[util.RoutedAnnotation]).To(Equal("true"))
 
 			time.Sleep(1 * time.Second)
 			ip, err := f.OvnClientSet.KubeovnV1().IPs().Get(fmt.Sprintf("%s.%s", name, namespace), metav1.GetOptions{})
