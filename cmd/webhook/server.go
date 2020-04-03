@@ -14,6 +14,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog"
+	"k8s.io/klog/klogr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 )
@@ -48,6 +49,9 @@ func main() {
 
 	klog.InitFlags(nil)
 	flag.Parse()
+
+	// set logger for controller-runtime framework
+	ctrl.SetLogger(klogr.New())
 
 	// Create a webhook server.
 	hookServer := &ctrlwebhook.Server{
