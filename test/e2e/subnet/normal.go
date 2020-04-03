@@ -61,6 +61,14 @@ var _ = Describe("[Subnet]", func() {
 			Expect(subnet.Status.ActivateGateway).To(BeEmpty())
 			Expect(subnet.Status.AvailableIPs).To(Equal(uint64(65535)))
 			Expect(subnet.Status.UsingIPs).To(BeZero())
+
+			pods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(metav1.ListOptions{LabelSelector: "app=ovs"})
+			Expect(err).NotTo(HaveOccurred())
+			for _, pod := range pods.Items {
+				stdout, _, err := f.ExecToPodThroughAPI(fmt.Sprintf("ip route list root %s", subnet.Spec.CIDRBlock), "openvswitch", pod.Name, pod.Namespace, nil)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(stdout).To(ContainSubstring("ovn0"))
+			}
 		})
 
 		It("centralized gateway", func() {
@@ -146,6 +154,13 @@ var _ = Describe("[Subnet]", func() {
 			err = f.OvnClientSet.KubeovnV1().Subnets().Delete(name, &metav1.DeleteOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
+			pods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(metav1.ListOptions{LabelSelector: "app=ovs"})
+			Expect(err).NotTo(HaveOccurred())
+			for _, pod := range pods.Items {
+				stdout, _, err := f.ExecToPodThroughAPI("ip route", "openvswitch", pod.Name, pod.Namespace, nil)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(stdout).NotTo(ContainSubstring(s.Spec.CIDRBlock))
+			}
 		})
 	})
 

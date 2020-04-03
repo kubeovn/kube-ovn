@@ -10,7 +10,7 @@ import (
 )
 
 func ValidateSubnet(subnet kubeovnv1.Subnet) error {
-	if !CIDRContainIP(subnet.Spec.CIDRBlock, subnet.Spec.Gateway){
+	if !CIDRContainIP(subnet.Spec.CIDRBlock, subnet.Spec.Gateway) {
 		return fmt.Errorf(" gateway %s is not in cidr %s", subnet.Spec.Gateway, subnet.Spec.CIDRBlock)
 	}
 
