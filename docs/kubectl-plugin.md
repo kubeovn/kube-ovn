@@ -8,7 +8,7 @@ To enable kubectl plugin, kubectl version of 1.12 or later is recommended. You c
 
 1. Get the `kubectl-ko` file
 ```bash
-wget https://raw.githubusercontent.com/alauda/kube-ovn/master/dist/images/kubectl-ko
+wget https://raw.githubusercontent.com/alauda/kube-ovn/v1.1.0/dist/images/kubectl-ko
 ```
 
 2. Move the file to one of $PATH directories

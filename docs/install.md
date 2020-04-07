@@ -16,24 +16,52 @@ Kube-OVN includes two parts:
 
 ## To Install
 
+### One Script Installer
+
+Kube-OVN provides a one script install to easily install Kube-OVN
+
+1. Download the installer scripts
+`wget https://raw.githubusercontent.com/alauda/kube-ovn/v1.1.0/dist/images/install.sh`
+
+2. Use vim to edit the script variables to meet your requirement
+```bash
+ REGISTRY="index.alauda.cn/alaudak8s"
+ NAMESPACE="kube-system"                # The ns to deploy kube-ovn
+ POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
+ SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR
+ JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
+ LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
+ IFACE=""                               # The nic to support container network, if empty will use the nic that the default route use
+ VERSION="v1.1.0"
+```
+
+3. Execute the script
+`bash install.sh`
+
+### Step by Step Install
+
+If you want to know the detail steps to install Kube-OVN, please follow the steps.
+
+For Kubernetes version before 1.17 please use the following command to add the node label 
+
 1. Add the following label to the Node which will host the OVN DB and the OVN Control Plane:
 
     `kubectl label node <Node on which to deploy OVN DB> kube-ovn/role=master`
 2. Install Kube-OVN related CRDs
 
-    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v1.0.1/yamls/crd.yaml`
+    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v1.1.0/yamls/crd.yaml`
 3. Install native OVS and OVN components:
 
-    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v1.0.1/yamls/ovn.yaml`
+    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v1.1.0/yamls/ovn.yaml`
 4. Install the Kube-OVN Controller and CNI plugins:
 
-    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v1.0.1/yamls/kube-ovn.yaml`
+    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/v1.1.0/yamls/kube-ovn.yaml`
     
 That's all! You can now create some pods and test connectivity.
 
 For high-available ovn db, see [high available](high-available.md)
 
-If you want to enable IPv6 on default subnet and node subnet, please apply https://raw.githubusercontent.com/alauda/kube-ovn/v1.0.1/yamls/kube-ovn-ipv6.yaml on Step 3.
+If you want to enable IPv6 on default subnet and node subnet, please apply https://raw.githubusercontent.com/alauda/kube-ovn/v1.1.0/yamls/kube-ovn-ipv6.yaml on Step 3.
 
 ## More Configuration
 
@@ -83,9 +111,11 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
 1. Remove Kubernetes resources:
 
     ```bash
-    wget https://raw.githubusercontent.com/alauda/kube-ovn/v1.0.1/dist/images/cleanup.sh
+    wget https://raw.githubusercontent.com/alauda/kube-ovn/v1.1.0/dist/images/cleanup.sh
     bash cleanup.sh
     ```
+
+For version before v1.1 you need the following steps
 
 2. Delete OVN/OVS DB and config files on every Node:
 
@@ -94,6 +124,7 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
     rm -rf /etc/origin/openvswitch/
     rm -rf /etc/openvswitch
     rm -rf /etc/cni/net.d/00-kube-ovn.conflist
+   rm -rf /etc/cni/net.d/01-kube-ovn.conflist
     rm -rf /var/log/openvswitch
     ```
 3. Reboot the Node to remove ipset/iptables rules and nics.
