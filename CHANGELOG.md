@@ -1,5 +1,45 @@
 # CHANGELOG
 
+## v1.1.0 -- 2020/04/07
+
+In this version, we refactor IPAM to separate IP allocation logical from OVN. 
+On top of that we provide a general cluster wide IPAM utility for other CNI plugins. 
+Now other CNI plugins like macvlan/host-device/vlan etc can take advantage of subnet and static ip allocation functions in Kube-OVN.
+Please check [this document](docs/multi-nic.md) to see how we combine Kube-OVN and Multus-CNI to provide multi-nic container network.
+
+### IPAM
+* Separate IPAM logical form OVN
+* Add support for Multus-CNI
+
+### Performance
+* Recycle address if pod is in failed or succeeded phase
+* Delete chassis form ovn-sb when node deleted
+* Only enqueue updatePod when needed
+* Add x86 optimization CFLAGS
+* Add support to disable encapsulation checksum
+
+### Monitor
+* Diagnose will check Kube-OVN components status
+* Diagnose will check crd status
+* Diagnose will check kube-proxy and coredns status
+
+### Bugfix
+* Use uuid to fetch lb vips
+* Add inactivity_probe back
+* Update svc might remove other svc that with same prefix
+* IP prefix might be empty
+* Enqueue subnet update to add route
+* Add iptables to accept container traffic
+
+### Chore
+* Update OVN to 20.03 and OVS to 2.13
+* Add support for Kubernetes 1.17
+* Put all component in one image to reduce distribute burden
+* Add scripts to build ovs
+* Add one script installer
+* Add uninstall script
+* Add more e2e tests
+
 ## v1.0.1 -- 2020/03/31
 
 This release fix bugs found in v1.0.0
