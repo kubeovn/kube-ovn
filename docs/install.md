@@ -21,6 +21,7 @@ Kube-OVN includes two parts:
 Kube-OVN provides a one script install to easily install Kube-OVN
 
 1. Download the installer scripts
+
 `wget https://raw.githubusercontent.com/alauda/kube-ovn/v1.1.0/dist/images/install.sh`
 
 2. Use vim to edit the script variables to meet your requirement
@@ -36,6 +37,7 @@ Kube-OVN provides a one script install to easily install Kube-OVN
 ```
 
 3. Execute the script
+
 `bash install.sh`
 
 ### Step by Step Install
