@@ -20,9 +20,13 @@ func InitNodeGateway(config *Configuration) error {
 			klog.Errorf("failed to get node %s info %v", nodeName, err)
 			return err
 		}
-		if err := util.ValidatePodNetwork(node.Annotations); err != nil ||
-			node.Annotations[util.IpAddressAnnotation] == "" {
-			klog.Errorf("validate node %s failed, %v", nodeName, err)
+		if node.Annotations[util.IpAddressAnnotation] == "" {
+			klog.Errorf("no ovn0 address for node %s, please check kube-ovn-controller logs", nodeName)
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		if err := util.ValidatePodNetwork(node.Annotations); err != nil {
+			klog.Errorf("validate node %s address annotation failed, %v", nodeName, err)
 			time.Sleep(3 * time.Second)
 			continue
 		} else {
