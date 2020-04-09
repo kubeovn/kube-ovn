@@ -17,7 +17,7 @@ curl https://github.com/alauda/ovs/commit/238003290766808ba310e1875157b3d4142456
 sed -i 's/2.13.1/2.13.0/g' configure.ac
 sed -i 's/sphinx-build-3/sphinx-build/g' rhel/openvswitch-fedora.spec.in
 ./boot.sh
-./configure LIBS=-ljemalloc CFLAGS="-O2 -g -msse4.2 -mpopcnt"
+./configure LIBS=-ljemalloc
 make rpm-fedora
 cd ..
 
@@ -26,5 +26,5 @@ cd ovn
 curl https://github.com/alauda/ovn/commit/19e802b80c866089af8f7a21512f68decc75a874.patch | git apply
 sed -i 's/20.03.1/20.03.0/g' configure.ac
 ./boot.sh
-./configure LIBS=-ljemalloc CFLAGS="-O2 -g -msse4.2 -mpopcnt" --with-ovs-source=/ovs
+./configure LIBS=-ljemalloc --with-ovs-source=/ovs
 make rpm-fedora
