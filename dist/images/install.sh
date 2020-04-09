@@ -953,6 +953,8 @@ vsctl(){
 diagnose(){
   kubectl get crd subnets.kubeovn.io
   kubectl get crd ips.kubeovn.io
+  kubectl get svc kube-dns -n kube-system
+  kubectl get svc kubernetes -n default
 
   checkDaemonSet kube-proxy
   checkDeployment ovn-central
