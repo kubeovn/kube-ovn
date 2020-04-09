@@ -25,6 +25,7 @@ import (
 type Configuration struct {
 	Iface                 string
 	MTU                   int
+	MSS                   int
 	EnableMirror          bool
 	MirrorNic             string
 	BindSocket            string
@@ -126,6 +127,7 @@ func (config *Configuration) initNicConfig() error {
 		config.MTU = iface.MTU - util.GeneveHeaderLength
 	}
 
+	config.MSS = config.MTU - util.TcpIpHeaderLength
 	if !config.EncapChecksum {
 		if err := disableChecksum(); err != nil {
 			klog.Errorf("failed to set checksum offload, %v", err)

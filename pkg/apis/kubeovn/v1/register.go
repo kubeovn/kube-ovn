@@ -35,6 +35,9 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&IPList{},
 		&Subnet{},
 		&SubnetList{},
+		&Vlan{},
+		&VlanList{},
+		&Network{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

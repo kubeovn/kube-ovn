@@ -159,3 +159,51 @@ func (m *SubnetStatus) ClearAllConditions() {
 		m.Conditions[i].Status = corev1.ConditionFalse
 	}
 }
+
+// SetError - shortcut to set error condition
+func (v *VlanStatus) SetVlanError(reason, message string) {
+	v.SetVlanCondition(Error, reason, message)
+}
+
+// SetCondition updates or creates a new condition
+func (v *VlanStatus) SetVlanCondition(ctype ConditionType, reason, message string) {
+	v.setVlanConditionValue(ctype, corev1.ConditionTrue, reason, message)
+}
+
+func (v *VlanStatus) setVlanConditionValue(ctype ConditionType, status corev1.ConditionStatus, reason, message string) {
+	var c *VlanCondition
+	for i := range v.Conditions {
+		if v.Conditions[i].Type == ctype {
+			c = &v.Conditions[i]
+		}
+	}
+	if c == nil {
+		v.addVlanCondition(ctype, status, reason, message)
+	} else {
+		// check message ?
+		if c.Status == status && c.Reason == reason && c.Message == message {
+			return
+		}
+		now := metav1.Now()
+		c.LastUpdateTime = now
+		if c.Status != status {
+			c.LastTransitionTime = now
+		}
+		c.Status = status
+		c.Reason = reason
+		c.Message = message
+	}
+}
+
+func (v *VlanStatus) addVlanCondition(ctype ConditionType, status corev1.ConditionStatus, reason, message string) {
+	now := metav1.Now()
+	c := &VlanCondition{
+		Type:               ctype,
+		LastUpdateTime:     now,
+		LastTransitionTime: now,
+		Status:             status,
+		Reason:             reason,
+		Message:            message,
+	}
+	v.Conditions = append(v.Conditions, *c)
+}

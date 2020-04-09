@@ -221,6 +221,13 @@ func (c *Controller) handleAddNode(key string) error {
 		}
 	}
 
+	//set node port tag and set address
+	if c.config.NetworkType != util.NetworkTypeVlan && subnet.Spec.Vlan != "" {
+		if err := c.addPortVlan(portName, ip, mac, subnet.Spec.Vlan); err != nil {
+			return err
+		}
+	}
+
 	patchPayloadTemplate :=
 		`[{
         "op": "%s",

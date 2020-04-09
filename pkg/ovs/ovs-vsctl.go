@@ -197,3 +197,7 @@ func CleanDuplicatePort(ifaceID string) {
 		}
 	}
 }
+
+func SetPortTag(port, tag string) error {
+	return ovsSet("port", port, fmt.Sprintf("tag=%s", tag))
+}

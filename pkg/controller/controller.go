@@ -6,7 +6,7 @@ import (
 
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/alauda/kube-ovn/pkg/client/informers/externalversions"
-	kubeovnlister "github.com/alauda/kube-ovn/pkg/client/listers/kube-ovn/v1"
+	kubeovnlister "github.com/alauda/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"github.com/alauda/kube-ovn/pkg/util"
 	corev1 "k8s.io/api/core/v1"
@@ -51,6 +51,13 @@ type Controller struct {
 
 	ipsLister kubeovnlister.IPLister
 	ipSynced  cache.InformerSynced
+
+	vlansLister kubeovnlister.VlanLister
+	vlanSynced  cache.InformerSynced
+
+	addVlanQueue    workqueue.RateLimitingInterface
+	delVlanQueue    workqueue.RateLimitingInterface
+	updateVlanQueue workqueue.RateLimitingInterface
 
 	namespacesLister  v1.NamespaceLister
 	namespacesSynced  cache.InformerSynced
@@ -103,6 +110,7 @@ func NewController(config *Configuration) *Controller {
 
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	ipInformer := kubeovnInformerFactory.Kubeovn().V1().IPs()
+	vlanInformer := kubeovnInformerFactory.Kubeovn().V1().Vlans()
 	podInformer := informerFactory.Core().V1().Pods()
 	namespaceInformer := informerFactory.Core().V1().Namespaces()
 	nodeInformer := informerFactory.Core().V1().Nodes()
@@ -125,6 +133,12 @@ func NewController(config *Configuration) *Controller {
 
 		ipsLister: ipInformer.Lister(),
 		ipSynced:  ipInformer.Informer().HasSynced,
+
+		vlansLister:     vlanInformer.Lister(),
+		vlanSynced:      vlanInformer.Informer().HasSynced,
+		addVlanQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddVlan"),
+		delVlanQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DelVlan"),
+		updateVlanQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVlan"),
 
 		podsLister:     podInformer.Lister(),
 		podsSynced:     podInformer.Informer().HasSynced,
@@ -209,6 +223,12 @@ func NewController(config *Configuration) *Controller {
 		DeleteFunc: controller.enqueueAddOrDelIP,
 	})
 
+	vlanInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddVlan,
+		DeleteFunc: controller.enqueueDelVlan,
+		UpdateFunc: controller.enqueueUpdateVlan,
+	})
+
 	return controller
 }
 
@@ -228,7 +248,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	c.kubeovnInformerFactory.Start(stopCh)
 
 	klog.Info("Waiting for informer caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.subnetSynced, c.ipSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced, c.npsSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.subnetSynced, c.ipSynced, c.vlanSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced, c.npsSynced); !ok {
 		klog.Fatalf("failed to wait for caches to sync")
 	}
 
@@ -277,6 +297,10 @@ func (c *Controller) shutdown() {
 
 	c.updateNpQueue.ShutDown()
 	c.deleteNpQueue.ShutDown()
+
+	c.addVlanQueue.ShutDown()
+	c.delVlanQueue.ShutDown()
+	c.updateVlanQueue.ShutDown()
 }
 
 func (c *Controller) startWorkers(stopCh <-chan struct{}) {
@@ -322,5 +346,9 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 
 		go wait.Until(c.runUpdateNpWorker, time.Second, stopCh)
 		go wait.Until(c.runDeleteNpWorker, time.Second, stopCh)
+
+		go wait.Until(c.runAddVlanWorker, time.Second, stopCh)
+		go wait.Until(c.runDelVlanWorker, time.Second, stopCh)
+		go wait.Until(c.runUpdateVlanWorker, time.Second, stopCh)
 	}
 }

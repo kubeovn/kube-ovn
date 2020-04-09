@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"fmt"
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/projectcalico/felix/ipsets"
@@ -198,4 +199,31 @@ func (c *Controller) getSubnetsCIDR(protocol string) ([]string, error) {
 		}
 	}
 	return ret, nil
+}
+
+//Generally, the MTU of the interface is set to 1400. But in special cases, a special pod (docker indocker) will introduce the docker0 interface to the pod. The MTU of docker0 is 1500.
+//The network application in pod will calculate the TCP MSS according to the MTU of docker0, and then initiate communication with others. After the other party sends a response, the kernel protocol stack of Linux host will send ICMP unreachable message to the other party, indicating that IP fragmentation is needed, which is not supported by the other party, resulting in communication failure.
+func (c *Controller) appendMssRule() {
+	if c.config.Iface != "" && c.config.MSS > 0 {
+		rule := fmt.Sprintf("-p tcp --tcp-flags SYN,RST SYN -o %s -j TCPMSS --set-mss %d", c.config.Iface, c.config.MSS)
+		MssMangleRule := util.IPTableRule{
+			Table: "mangle",
+			Chain: "POSTROUTING",
+			Rule:  strings.Split(rule, " "),
+		}
+
+		exists, err := c.iptable.Exists(MssMangleRule.Table, MssMangleRule.Chain, MssMangleRule.Rule...)
+		if err != nil {
+			klog.Errorf("check iptable rule %v failed, %+v", MssMangleRule.Rule, err)
+			return
+		}
+
+		if !exists {
+			klog.Info("iptables rules not exist, append iptables rules")
+			if err := c.iptable.Append(MssMangleRule.Table, MssMangleRule.Chain, MssMangleRule.Rule...); err != nil {
+				klog.Errorf("append iptable rule %v failed, %+v", MssMangleRule.Rule, err)
+				return
+			}
+		}
+	}
 }

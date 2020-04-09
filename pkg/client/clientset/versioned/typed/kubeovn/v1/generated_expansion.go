@@ -20,4 +20,8 @@ package v1
 
 type IPExpansion interface{}
 
+type NetworkExpansion interface{}
+
 type SubnetExpansion interface{}
+
+type VlanExpansion interface{}

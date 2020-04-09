@@ -23,6 +23,16 @@ func (c *Controller) InitOVN() error {
 		return err
 	}
 
+	if err := c.initDefaultVlan(); err != nil {
+		klog.Errorf("init default vlan failed %v", err)
+		return err
+	}
+
+	if err := c.initNetwork(); err != nil {
+		klog.Errorf("init cluster network config failed %v", err)
+		return err
+	}
+
 	if err := c.initNodeSwitch(); err != nil {
 		klog.Errorf("init node switch failed %v", err)
 		return err
@@ -32,6 +42,7 @@ func (c *Controller) InitOVN() error {
 		klog.Errorf("init default switch failed %v", err)
 		return err
 	}
+
 	return nil
 }
 
@@ -46,6 +57,7 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 		klog.Errorf("get default subnet %s failed %v", c.config.DefaultLogicalSwitch, err)
 		return err
 	}
+
 	defaultSubnet := kubeovnv1.Subnet{
 		ObjectMeta: v1.ObjectMeta{Name: c.config.DefaultLogicalSwitch},
 		Spec: kubeovnv1.SubnetSpec{
@@ -58,6 +70,9 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 			GatewayType: kubeovnv1.GWDistributedType,
 			Protocol:    util.CheckProtocol(c.config.DefaultCIDR),
 		},
+	}
+	if c.config.NetworkType == util.NetworkTypeVlan {
+		defaultSubnet.Spec.Vlan = c.config.DefaultVlanName
 	}
 
 	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(&defaultSubnet)
@@ -75,6 +90,7 @@ func (c *Controller) initNodeSwitch() error {
 		klog.Errorf("get node subnet %s failed %v", c.config.NodeSwitch, err)
 		return err
 	}
+
 	nodeSubnet := kubeovnv1.Subnet{
 		ObjectMeta: v1.ObjectMeta{Name: c.config.NodeSwitch},
 		Spec: kubeovnv1.SubnetSpec{
@@ -86,8 +102,11 @@ func (c *Controller) initNodeSwitch() error {
 			Protocol:   util.CheckProtocol(c.config.NodeSwitchCIDR),
 		},
 	}
-	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(&nodeSubnet)
+	if c.config.NetworkType == util.NetworkTypeVlan {
+		nodeSubnet.Spec.Vlan = c.config.DefaultVlanName
+	}
 
+	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(&nodeSubnet)
 	return err
 }
 
@@ -190,4 +209,72 @@ func (c *Controller) InitIPAM() error {
 	}
 
 	return nil
+}
+
+//InitNetwork save the cluster default network
+func (c *Controller) initNetwork() error {
+	networkCrd, err := c.config.KubeOvnClient.KubeovnV1().Networks().Get("config", v1.GetOptions{})
+	if err != nil && !errors.IsNotFound(err) {
+		klog.Errorf("get network config failed %v", err)
+		return err
+	}
+
+	networkSpec := kubeovnv1.NetworkSpec{
+		NetworkType:   c.config.NetworkType,
+		DefaultSubnet: c.config.DefaultLogicalSwitch,
+		NodeSubnet:    c.config.NodeSwitch,
+		PprofPort:     c.config.PprofPort,
+		InterfaceName: c.config.DefaultHostInterface,
+	}
+	if c.config.NetworkType == util.NetworkTypeVlan {
+		networkSpec.ProviderName = c.config.DefaultProviderName
+		networkSpec.DefaultVlan = c.config.DefaultVlanName
+		networkSpec.VlanRange = c.config.DefaultVlanRange
+	}
+
+	if errors.IsNotFound(err) {
+		networkConfig := kubeovnv1.Network{
+			ObjectMeta: v1.ObjectMeta{Name: "config"},
+			Spec:       networkSpec,
+		}
+		_, err = c.config.KubeOvnClient.KubeovnV1().Networks().Create(&networkConfig)
+		return err
+	}
+
+	networkCrd.Spec = networkSpec
+	_, err = c.config.KubeOvnClient.KubeovnV1().Networks().Update(networkCrd)
+	return err
+}
+
+//InitDefaultVlan init the default vlan when network type is vlan or xvlan
+func (c *Controller) initDefaultVlan() error {
+	if c.config.NetworkType != util.NetworkTypeVlan {
+		return nil
+	}
+
+	_, err := c.config.KubeOvnClient.KubeovnV1().Vlans().Get(c.config.DefaultVlanName, v1.GetOptions{})
+	if err == nil {
+		return nil
+	}
+
+	if !errors.IsNotFound(err) {
+		klog.Errorf("get default vlan %s failed %v", c.config.DefaultVlanName, err)
+		return err
+	}
+
+	if c.config.DefaultVlanID < 0 || c.config.DefaultVlanID > 4095 {
+		return fmt.Errorf("the default vlan id is not between 1-4095")
+	}
+
+	defaultVlan := kubeovnv1.Vlan{
+		ObjectMeta: v1.ObjectMeta{Name: c.config.DefaultVlanName},
+		Spec: kubeovnv1.VlanSpec{
+			VlanId:                c.config.DefaultVlanID,
+			ProviderInterfaceName: c.config.DefaultProviderName,
+			LogicalInterfaceName:  c.config.DefaultHostInterface,
+		},
+	}
+
+	_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Create(&defaultVlan)
+	return err
 }

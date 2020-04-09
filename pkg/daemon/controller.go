@@ -14,7 +14,7 @@ import (
 
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/alauda/kube-ovn/pkg/client/informers/externalversions"
-	kubeovnlister "github.com/alauda/kube-ovn/pkg/client/listers/kube-ovn/v1"
+	kubeovnlister "github.com/alauda/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/projectcalico/felix/ipsets"
@@ -271,7 +271,8 @@ func (c *Controller) enqueuePod(old, new interface{}) {
 	newPod := new.(*v1.Pod)
 
 	if oldPod.Annotations[util.IngressRateAnnotation] != newPod.Annotations[util.IngressRateAnnotation] ||
-		oldPod.Annotations[util.EgressRateAnnotation] != newPod.Annotations[util.EgressRateAnnotation] {
+		oldPod.Annotations[util.EgressRateAnnotation] != newPod.Annotations[util.EgressRateAnnotation] ||
+		oldPod.Annotations[util.VlanIdAnnotation] != newPod.Annotations[util.VlanIdAnnotation] {
 		var key string
 		var err error
 		if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
@@ -324,7 +325,9 @@ func (c *Controller) handlePod(key string) error {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
+
 	klog.Infof("handle qos update for pod %s/%s", namespace, name)
+
 	pod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -332,11 +335,13 @@ func (c *Controller) handlePod(key string) error {
 		}
 		return err
 	}
+
 	if err := util.ValidatePodNetwork(pod.Annotations); err != nil {
 		klog.Errorf("validate pod %s/%s failed, %v", namespace, name, err)
 		c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", err.Error())
 		return err
 	}
+
 	return ovs.SetPodBandwidth(pod.Name, pod.Namespace, pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation])
 }
 
