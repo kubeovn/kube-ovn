@@ -1,4 +1,4 @@
-FROM ovs:200403
+FROM ovs:latest
 
 RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /var/run/ovn && \

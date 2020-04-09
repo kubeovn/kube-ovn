@@ -1,4 +1,3 @@
-# syntax = docker/dockerfile:experimental
 FROM centos:8 as ovs-rpm
 
 RUN yum install dnf-plugins-core -y && \
@@ -20,11 +19,13 @@ FROM centos:8
 
 RUN yum install -y  \
         bind-utils \
+        numactl-libs \
         firewalld-filesystem \
         iptables \
         libpcap \
-        hostname ethtool \
-        iproute nc \
+        hostname \
+        iproute strace socat nc \
         unbound unbound-devel \
         tcpdump ipset && yum clean all
-RUN --mount=type=bind,target=/rpms,from=ovs-rpm,source=/rpms rpm -ivh --nodeps /rpms/*.rpm
+COPY --from=ovs-rpm /rpms/* /rpms/
+RUN rpm -ivh --nodeps /rpms/*

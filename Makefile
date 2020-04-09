@@ -22,7 +22,7 @@ build-go:
 	CGO_ENABLED=0 GOOS=linux go build -o $(PWD)/dist/images/kube-ovn-pinger -ldflags "-w -s" -v ./cmd/pinger
 
 ovs:
-	docker build -t ovs:${OVS_TAG} -f dist/ovs/Dockerfile dist/ovs/
+	docker build -t ovs:latest -f dist/ovs/Dockerfile dist/ovs/
 
 release: lint build-go
 	docker build -t ${REGISTRY}/kube-ovn:${RELEASE_TAG} -f dist/images/Dockerfile dist/images/
@@ -72,6 +72,7 @@ kind-init-ha:
 	kind delete cluster --name=kube-ovn
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
 	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
+	kind load docker-image --name kube-ovn nfvpe/multus:v3.4
 	bash dist/images/install.sh
 
 kind-reload:

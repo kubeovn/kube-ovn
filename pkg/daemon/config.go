@@ -128,11 +128,6 @@ func (config *Configuration) initNicConfig() error {
 	}
 
 	config.MSS = config.MTU - util.TcpIpHeaderLength
-	if !config.EncapChecksum {
-		if err := disableChecksum(); err != nil {
-			klog.Errorf("failed to set checksum offload, %v", err)
-		}
-	}
 
 	addrs, err := iface.Addrs()
 	if err != nil {

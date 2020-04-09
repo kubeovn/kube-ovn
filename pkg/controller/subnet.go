@@ -919,7 +919,7 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 			return err
 		}
 
-		c.updateVlanQueue.Add(subnet.Spec.Vlan)
+		c.enqueueAddVlan(subnet.Spec.Vlan)
 	}
 
 	//update unbind vlan

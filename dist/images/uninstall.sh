@@ -8,5 +8,4 @@ rm -rf /etc/openvswitch/*
 rm -rf /etc/ovn/*
 rm -rf /var/log/openvswitch/*
 rm -rf /var/log/ovn/*
-rm -rf /etc/cni/net.d/00-kube-ovn.conflist
 rm -rf /etc/cni/net.d/01-kube-ovn.conflist

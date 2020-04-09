@@ -241,6 +241,7 @@ func (c *Controller) handleAddVlan(key string) error {
 	}
 
 	vlan.Spec.Subnet = strings.Join(subnets, ",")
+
 	_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(vlan)
 	if err != nil {
 		klog.Errorf("failed to update vlan %s, %v", vlan.Name, err)

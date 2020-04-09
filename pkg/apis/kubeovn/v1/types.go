@@ -211,10 +211,10 @@ type NetworkSpec struct {
 	NodeSubnet    string `json:"nodeSubnet,omitempty"`
 	MasterNode    string `json:"masterNode,omitempty"`
 	PprofPort     int    `json:"pprofPort,omitempty"`
-	ProviderName  string `json:"providerName,omitempty"`
-	InterfaceName string `json:"interfaceName,omitempty"`
-	DefaultVlan   string `json:"defaultVlan,omitempty"`
-	VlanRange     string `json:"vlanRange,omitempty"`
+	ProviderName  string `json:"providerName, omitempty"`
+	InterfaceName string `json:"interfaceName, omitempty"`
+	DefaultVlan   string `json:"defaultVlan, omitempty"`
+	VlanRange     string `json:"vlanRange, omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

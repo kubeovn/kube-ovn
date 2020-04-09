@@ -342,7 +342,7 @@ func (c *Controller) handlePod(key string) error {
 		return err
 	}
 
-	return ovs.SetPodBandwidth(pod.Name, pod.Namespace, pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation])
+	return ovs.SetPodBandwidth(pod.Name, pod.Namespace, pod.Annotations[util.IngressRateAnnotation], pod.Annotations[util.EgressRateAnnotation])
 }
 
 // Run starts controller

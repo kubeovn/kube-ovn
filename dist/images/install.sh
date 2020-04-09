@@ -2,13 +2,11 @@
 set -euo pipefail
 
 REGISTRY="index.alauda.cn/alaudak8s"
-NAMESPACE="kube-system"                # The ns to deploy kube-ovn
 POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
 SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR
 JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
 LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
-IFACE=""                               # The nic to support container network, if empty will use the nic that the default route use
-VERSION="v1.1.0"
+VERSION="v1.1.0-pre"
 
 echo "[Step 1] Label kube-ovn-master node"
 count=$(kubectl get no -l$LABEL --no-headers -o wide | wc -l | sed 's/ //g')
@@ -16,7 +14,6 @@ if [ "$count" = "0" ]; then
   echo "ERROR: No node with label $LABEL"
   exit 1
 fi
-kubectl label no -lbeta.kubernetes.io/os=linux kubernetes.io/os=linux --overwrite
 kubectl label no -l$LABEL kube-ovn/role=master --overwrite
 echo "-------------------------------"
 echo ""
@@ -115,14 +112,14 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: ovn-config
-  namespace: ${NAMESPACE}
+  namespace: kube-system
 
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: ovn
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -189,14 +186,14 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: ovn
-    namespace:  ${NAMESPACE}
+    namespace: kube-system
 
 ---
 kind: Service
 apiVersion: v1
 metadata:
   name: ovn-nb
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
 spec:
   ports:
     - name: ovn-nb
@@ -214,7 +211,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: ovn-sb
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
 spec:
   ports:
     - name: ovn-sb
@@ -232,7 +229,7 @@ kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: ovn-central
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
   annotations:
     kubernetes.io/description: |
       OVN components: northd, nb and sb.
@@ -303,8 +300,6 @@ spec:
               readOnly: true
             - mountPath: /etc/openvswitch
               name: host-config-openvswitch
-            - mountPath: /etc/ovn
-              name: host-config-ovn
             - mountPath: /var/log/openvswitch
               name: host-log-ovs
             - mountPath: /var/log/ovn
@@ -339,9 +334,6 @@ spec:
         - name: host-config-openvswitch
           hostPath:
             path: /etc/origin/openvswitch
-        - name: host-config-ovn
-          hostPath:
-            path: /etc/origin/ovn
         - name: host-log-ovs
           hostPath:
             path: /var/log/openvswitch
@@ -354,7 +346,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: ovs-ovn
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the openvswitch daemon.
@@ -457,7 +449,7 @@ EOF
 
 kubectl apply -f kube-ovn-crd.yaml
 kubectl apply -f ovn.yaml
-kubectl rollout status deployment/ovn-central -n ${NAMESPACE}
+kubectl rollout status deployment/ovn-central -n kube-system
 echo "-------------------------------"
 echo ""
 
@@ -469,7 +461,7 @@ kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-controller
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
   annotations:
     kubernetes.io/description: |
       kube-ovn controller
@@ -547,7 +539,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-cni
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the kube-ovn cni daemon.
@@ -593,9 +585,7 @@ spec:
           - /kube-ovn/start-cniserver.sh
         args:
           - --enable-mirror=true
-          - --encap-checksum=true
           - --service-cluster-ip-range=$SVC_CIDR
-          - --iface=${IFACE}
         securityContext:
           capabilities:
             add: ["NET_ADMIN", "SYS_ADMIN", "SYS_PTRACE"]
@@ -660,7 +650,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-pinger
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the openvswitch daemon.
@@ -762,7 +752,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-pinger
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
   labels:
     app: kube-ovn-pinger
 spec:
@@ -776,7 +766,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-controller
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
   labels:
     app: kube-ovn-controller
 spec:
@@ -790,7 +780,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-cni
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
   labels:
     app: kube-ovn-cni
 spec:
@@ -802,7 +792,7 @@ spec:
 EOF
 
 kubectl apply -f kube-ovn.yaml
-kubectl rollout status deployment/kube-ovn-controller -n ${NAMESPACE}
+kubectl rollout status deployment/kube-ovn-controller -n kube-system
 echo "-------------------------------"
 echo ""
 
@@ -813,7 +803,7 @@ for ns in $(kubectl get ns --no-headers -o  custom-columns=NAME:.metadata.name);
   done
 done
 
-kubectl rollout status daemonset/kube-ovn-pinger -n ${NAMESPACE}
+kubectl rollout status daemonset/kube-ovn-pinger -n kube-system
 kubectl rollout status deployment/coredns -n kube-system
 echo "-------------------------------"
 echo ""
