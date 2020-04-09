@@ -6,7 +6,10 @@ POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
 SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR
 JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
 LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
-VERSION="v1.1.0-pre"
+
+IFACE=""                               # The nic to support container network, if empty will use the nic that the default route use
+VERSION="v1.2.0-pre"
+
 
 echo "[Step 1] Label kube-ovn-master node"
 count=$(kubectl get no -l$LABEL --no-headers -o wide | wc -l | sed 's/ //g')
@@ -852,6 +855,7 @@ tcpdump(){
      echo "pod mac address not ready"
      exit 1
   fi
+  mac=$(echo "$mac" | tr '[:upper:]' '[:lower:]')
 
   ovnCni=$(kubectl get pod -n $KUBE_OVN_NS -o wide| grep kube-ovn-cni| grep " $nodeName " | awk '{print $1}')
   if [ -z "$ovnCni" ]; then
@@ -942,6 +946,8 @@ vsctl(){
 diagnose(){
   kubectl get crd subnets.kubeovn.io
   kubectl get crd ips.kubeovn.io
+  kubectl get svc kube-dns -n kube-system
+  kubectl get svc kubernetes -n default
 
   checkDaemonSet kube-proxy
   checkDeployment ovn-central

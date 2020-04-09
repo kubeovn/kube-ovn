@@ -39,6 +39,7 @@ tcpdump(){
      echo "pod mac address not ready"
      exit 1
   fi
+  mac=$(echo "$mac" | tr '[:upper:]' '[:lower:]')
 
   ovnCni=$(kubectl get pod -n $KUBE_OVN_NS -o wide| grep kube-ovn-cni| grep " $nodeName " | awk '{print $1}')
   if [ -z "$ovnCni" ]; then
@@ -129,6 +130,8 @@ vsctl(){
 diagnose(){
   kubectl get crd subnets.kubeovn.io
   kubectl get crd ips.kubeovn.io
+  kubectl get svc kube-dns -n kube-system
+  kubectl get svc kubernetes -n default
 
   checkDaemonSet kube-proxy
   checkDeployment ovn-central
