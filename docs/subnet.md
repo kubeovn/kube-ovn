@@ -15,10 +15,10 @@ spec:
   namespaces:
   - ns1
   - ns2
-  cidrBlock: 100.64.0.0/16
-  gateway: 100.64.0.1
+  cidrBlock: 10.10.0.0/16
+  gateway: 10.10.0.1
   excludeIps:
-  - 100.64.0.1
+  - 10.10.0.1
   private: true
   allowSubnets:
   - 10.16.0.0/16
