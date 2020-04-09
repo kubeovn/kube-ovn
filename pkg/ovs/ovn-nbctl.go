@@ -349,15 +349,17 @@ func (c Client) ResetLogicalSwitchAcl(ls, protocol string) error {
 // SetPrivateLogicalSwitch will drop all ingress traffic except allow subnets
 func (c Client) SetPrivateLogicalSwitch(ls, protocol, cidr string, allow []string) error {
 	delArgs := []string{"acl-del", ls}
+	allowArgs := []string{}
 	var dropArgs []string
 	if protocol == kubeovnv1.ProtocolIPv4 {
 		dropArgs = []string{"--", "acl-add", ls, "to-lport", util.DefaultDropPriority, fmt.Sprintf(`ip4.src!=%s || ip4.dst!=%s`, cidr, cidr), "drop"}
+		allowArgs = append(allowArgs, "--", "acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip4.src==%s", c.NodeSwitchCIDR), "allow-related")
 	} else {
 		dropArgs = []string{"--", "acl-add", ls, "to-lport", util.DefaultDropPriority, fmt.Sprintf(`ip6.src!=%s || ip6.dst!=%s`, cidr, cidr), "drop"}
+		allowArgs = append(allowArgs, "--", "acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip6.src==%s", c.NodeSwitchCIDR), "allow-related")
 	}
 	ovnArgs := append(delArgs, dropArgs...)
 
-	allowArgs := []string{}
 	for _, subnet := range allow {
 		if strings.TrimSpace(subnet) != "" {
 			var match string

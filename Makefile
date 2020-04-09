@@ -4,6 +4,7 @@ GO_VERSION=1.13
 REGISTRY=index.alauda.cn/alaudak8s
 DEV_TAG=dev
 RELEASE_TAG=$(shell cat VERSION)
+OVS_TAG=200403
 
 .PHONY: build-dev-images build-go build-bin lint up down halt suspend resume kind-init kind-init-ha kind-reload push-dev push-release e2e ut
 

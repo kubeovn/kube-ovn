@@ -70,6 +70,18 @@ func CIDRConflict(a, b string) bool {
 	return aIpNet.Contains(bIp) || bIpNet.Contains(aIp)
 }
 
+func CIDRContainIP(cidrStr, ipStr string) bool {
+	_, cidr, err := net.ParseCIDR(cidrStr)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
+	}
+	return cidr.Contains(ip)
+}
+
 func CheckProtocol(address string) string {
 	address = strings.Split(address, "/")[0]
 	ip := net.ParseIP(address)

@@ -72,6 +72,9 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 			Vlan:        c.config.DefaultVlanName,
 		},
 	}
+	if c.config.NetworkType == util.NetworkTypeVlan {
+		defaultSubnet.Spec.Vlan = c.config.DefaultVlanName
+	}
 
 	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(&defaultSubnet)
 	return err
@@ -101,8 +104,11 @@ func (c *Controller) initNodeSwitch() error {
 			Vlan:       c.config.DefaultVlanName,
 		},
 	}
-	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(&nodeSubnet)
+	if c.config.NetworkType == util.NetworkTypeVlan {
+		nodeSubnet.Spec.Vlan = c.config.DefaultVlanName
+	}
 
+	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(&nodeSubnet)
 	return err
 }
 
