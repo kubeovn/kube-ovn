@@ -27,7 +27,9 @@ import (
 type KubeovnV1Interface interface {
 	RESTClient() rest.Interface
 	IPsGetter
+	NetworksGetter
 	SubnetsGetter
+	VlansGetter
 }
 
 // KubeovnV1Client is used to interact with features provided by the kubeovn.io group.
@@ -39,8 +41,16 @@ func (c *KubeovnV1Client) IPs() IPInterface {
 	return newIPs(c)
 }
 
+func (c *KubeovnV1Client) Networks() NetworkInterface {
+	return newNetworks(c)
+}
+
 func (c *KubeovnV1Client) Subnets() SubnetInterface {
 	return newSubnets(c)
+}
+
+func (c *KubeovnV1Client) Vlans() VlanInterface {
+	return newVlans(c)
 }
 
 // NewForConfig creates a new KubeovnV1Client for the given config.

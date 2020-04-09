@@ -26,8 +26,12 @@ import (
 type Interface interface {
 	// IPs returns a IPInformer.
 	IPs() IPInformer
+	// Networks returns a NetworkInformer.
+	Networks() NetworkInformer
 	// Subnets returns a SubnetInformer.
 	Subnets() SubnetInformer
+	// Vlans returns a VlanInformer.
+	Vlans() VlanInformer
 }
 
 type version struct {
@@ -46,7 +50,17 @@ func (v *version) IPs() IPInformer {
 	return &iPInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
+// Networks returns a NetworkInformer.
+func (v *version) Networks() NetworkInformer {
+	return &networkInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
 // Subnets returns a SubnetInformer.
 func (v *version) Subnets() SubnetInformer {
 	return &subnetInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// Vlans returns a VlanInformer.
+func (v *version) Vlans() VlanInformer {
+	return &vlanInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }

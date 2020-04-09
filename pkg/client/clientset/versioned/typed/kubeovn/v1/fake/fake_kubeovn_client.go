@@ -32,8 +32,16 @@ func (c *FakeKubeovnV1) IPs() v1.IPInterface {
 	return &FakeIPs{c}
 }
 
+func (c *FakeKubeovnV1) Networks() v1.NetworkInterface {
+	return &FakeNetworks{c}
+}
+
 func (c *FakeKubeovnV1) Subnets() v1.SubnetInterface {
 	return &FakeSubnets{c}
+}
+
+func (c *FakeKubeovnV1) Vlans() v1.VlanInterface {
+	return &FakeVlans{c}
 }
 
 // RESTClient returns a RESTClient that is used to communicate
