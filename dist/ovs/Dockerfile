@@ -21,10 +21,10 @@ FROM centos:8
 RUN yum install -y  \
         bind-utils \
         firewalld-filesystem \
-        iptables \
         libpcap \
         hostname ethtool \
         iproute nc \
         unbound unbound-devel \
         tcpdump ipset && yum clean all
+RUN rpm -ivh --nodeps https://download-ib01.fedoraproject.org/pub/fedora/linux/releases/30/Everything/x86_64/os/Packages/i/iptables-1.8.0-5.fc30.x86_64.rpm
 RUN --mount=type=bind,target=/rpms,from=ovs-rpm,source=/rpms rpm -ivh --nodeps /rpms/*.rpm
