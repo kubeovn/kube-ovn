@@ -9,7 +9,6 @@ To minimize image size we use docker experiment buildx features, please enable i
 ```
 git clone https://github.com/alauda/kube-ovn.git
 cd kube-ovn
-make ovs
 make release
 ```
 
@@ -24,3 +23,10 @@ make kind-init
 
 make e2e
 ```
+
+## ARM support
+
+If you want to run Kube-OVN on arm64 platform, you need to build the arm64 images with following steps.
+
+1. Edit the Makefile, change `ARCH=amd64` to `ARCH=arm64` and `RPM_ARCH=x86_64` to `RPM_ARCH=aarch64`
+2. Run `make release` to build the images for arm64 platform
