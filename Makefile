@@ -4,7 +4,11 @@ GO_VERSION=1.13
 REGISTRY=index.alauda.cn/alaudak8s
 DEV_TAG=dev
 RELEASE_TAG=$(shell cat VERSION)
-OVS_TAG=200403
+
+# ARCH could be amd64,arm64
+ARCH=amd64
+# RPM_ARCH could be x86_64,aarch64
+RPM_ARCH=x86_64
 
 .PHONY: build-dev-images build-go build-bin lint up down halt suspend resume kind-init kind-init-ha kind-reload push-dev push-release e2e ut
 
@@ -15,17 +19,14 @@ push-dev:
 	docker push ${REGISTRY}/kube-ovn:${DEV_TAG}
 
 build-go:
-	CGO_ENABLED=0 GOOS=linux go build -o $(PWD)/dist/images/kube-ovn -ldflags "-w -s" -v ./cmd/cni
-	CGO_ENABLED=0 GOOS=linux go build -o $(PWD)/dist/images/kube-ovn-controller -ldflags "-w -s" -v ./cmd/controller
-	CGO_ENABLED=0 GOOS=linux go build -o $(PWD)/dist/images/kube-ovn-daemon -ldflags "-w -s" -v ./cmd/daemon
-	CGO_ENABLED=0 GOOS=linux go build -o $(PWD)/dist/images/kube-ovn-webhook -ldflags "-w -s" -v ./cmd/webhook
-	CGO_ENABLED=0 GOOS=linux go build -o $(PWD)/dist/images/kube-ovn-pinger -ldflags "-w -s" -v ./cmd/pinger
-
-ovs:
-	docker build -t ovs:${OVS_TAG} -f dist/ovs/Dockerfile dist/ovs/
+	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} go build -o $(PWD)/dist/images/kube-ovn -ldflags "-w -s" -v ./cmd/cni
+	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} go build -o $(PWD)/dist/images/kube-ovn-controller -ldflags "-w -s" -v ./cmd/controller
+	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} go build -o $(PWD)/dist/images/kube-ovn-daemon -ldflags "-w -s" -v ./cmd/daemon
+	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} go build -o $(PWD)/dist/images/kube-ovn-pinger -ldflags "-w -s" -v ./cmd/pinger
+	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} go build -o $(PWD)/dist/images/kube-ovn-webhook -ldflags "-w -s" -v ./cmd/webhook
 
 release: lint build-go
-	docker build -t ${REGISTRY}/kube-ovn:${RELEASE_TAG} -f dist/images/Dockerfile dist/images/
+	docker buildx build --platform linux/${ARCH} --build-arg ARCH=${ARCH} --build-arg RPM_ARCH=${RPM_ARCH} -t ${REGISTRY}/kube-ovn:${RELEASE_TAG} -o type=docker -f dist/images/Dockerfile dist/images/
 
 push-release:
 	docker push ${REGISTRY}/kube-ovn:${RELEASE_TAG}
@@ -36,7 +37,7 @@ lint:
 	@GOOS=linux go vet ./...
 
 build-bin:
-	docker run --rm -e GOOS=linux -e GOCACHE=/tmp \
+	docker run --rm -e GOOS=linux -e GOCACHE=/tmp -e GOARCH=${ARCH} -e GOPROXY=https://goproxy.cn \
 		-u $(shell id -u):$(shell id -g) \
 		-v $(CURDIR):/go/src/github.com/alauda/kube-ovn:ro \
 		-v $(CURDIR)/dist:/go/src/github.com/alauda/kube-ovn/dist/ \
