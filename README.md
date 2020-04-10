@@ -29,6 +29,7 @@ The Kube-OVN community is waiting for you participation!
 - **Direct External Connectivity**：Pod IP can be exposed to external network directly.
 - **Traffic Mirror**: Duplicated container network traffic for monitoring, diagnosing and replay.
 - **IPv6 Support**: Kube-OVN supports ipv6-only mode pod network.
+- **ARM Support**: Kube-OVN can run on x86_64 and arm64 platforms.
 - **TroubleShooting Tools**: Handy tools to diagnose, trace, monitor and dump container network traffic to help troubleshooting complicate network issues.
 - **Prometheus & Grafana Integration**: Exposing network quality metrics like pod/node/service/dns connectivity/latency in Prometheus format.
 
