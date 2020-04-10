@@ -20,8 +20,8 @@ require (
 	github.com/kelseyhightower/envconfig v1.4.0 // indirect
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
 	github.com/moul/http2curl v1.0.0 // indirect
-	github.com/onsi/ginkgo v1.10.1
-	github.com/onsi/gomega v1.7.0
+	github.com/onsi/ginkgo v1.12.0
+	github.com/onsi/gomega v1.9.0
 	github.com/parnurzeal/gorequest v0.2.15
 	github.com/projectcalico/felix v3.6.1+incompatible
 	github.com/projectcalico/go-json v0.0.0-20161128004156-6219dc7339ba // indirect
