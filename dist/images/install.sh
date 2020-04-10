@@ -404,6 +404,8 @@ spec:
               readOnly: true
             - mountPath: /etc/openvswitch
               name: host-config-openvswitch
+            - mountPath: /etc/ovn
+              name: host-config-ovn
             - mountPath: /var/log/openvswitch
               name: host-log-ovs
             - mountPath: /var/log/ovn
@@ -447,6 +449,9 @@ spec:
         - name: host-config-openvswitch
           hostPath:
             path: /etc/origin/openvswitch
+        - name: host-config-ovn
+          hostPath:
+            path: /etc/origin/ovn
         - name: host-log-ovs
           hostPath:
             path: /var/log/openvswitch
