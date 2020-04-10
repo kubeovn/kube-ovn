@@ -115,16 +115,14 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
     bash cleanup.sh
     ```
 
-For version before v1.1 you need the following steps
-
 2. Delete OVN/OVS DB and config files on every Node:
 
     ```bash
     rm -rf /var/run/openvswitch
     rm -rf /etc/origin/openvswitch/
-    rm -rf /etc/openvswitch
+    rm -rf /etc/origin/ovn/
     rm -rf /etc/cni/net.d/00-kube-ovn.conflist
-   rm -rf /etc/cni/net.d/01-kube-ovn.conflist
+    rm -rf /etc/cni/net.d/01-kube-ovn.conflist
     rm -rf /var/log/openvswitch
     ```
 3. Reboot the Node to remove ipset/iptables rules and nics.
