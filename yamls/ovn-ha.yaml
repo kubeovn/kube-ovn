@@ -226,7 +226,7 @@ spec:
         - name: host-config-openvswitch
           hostPath:
             path: /etc/origin/openvswitch
-      - name: host-config-ovn
+        - name: host-config-ovn
           hostPath:
             path: /etc/origin/ovn
         - name: host-log-ovs
