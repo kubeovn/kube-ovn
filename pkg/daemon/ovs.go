@@ -7,7 +7,7 @@ import (
 	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/utils/sysctl"
-	goping "github.com/sparrc/go-ping"
+	goping "github.com/oilbeater/go-ping"
 	"github.com/vishvananda/netlink"
 	"k8s.io/klog"
 	"net"
