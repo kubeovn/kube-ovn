@@ -13,8 +13,8 @@ Kube-OVN integrates the OVN-based Network Virtualization with Kubernetes. It off
 The Kube-OVN community is waiting for you participation!
 - Follow us at [Twitter](https://twitter.com/KubeOvn)
 - Chat with us at [Slack](https://kube-ovn-slackin.herokuapp.com/)
-- For Chinese users WeChat group is also available, please send request to WeChatID: liumengxinfly with your information 
 - Other issues please send email to [mengxin@alauda.io](mailto:mengxin@alauda.io)
+- 微信用户加 liumengxinfly 进入 "Kube-OVN 开源交流群"，请注明 Kube-OVN 和个人信息
 
 ## Features
 - **Namespaced Subnets**: Each Namespace can have a unique Subnet (backed by a Logical Switch). Pods within the Namespace will have IP addresses allocated from the Subnet. It's also possible for multiple Namespaces to share a Subnet.
