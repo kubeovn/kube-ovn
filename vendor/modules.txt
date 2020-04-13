@@ -78,6 +78,8 @@ github.com/modern-go/concurrent
 github.com/modern-go/reflect2
 # github.com/moul/http2curl v1.0.0
 github.com/moul/http2curl
+# github.com/oilbeater/go-ping v0.0.0-20200413021620-332b7197c5b5
+github.com/oilbeater/go-ping
 # github.com/onsi/ginkgo v1.12.0
 github.com/onsi/ginkgo
 github.com/onsi/ginkgo/config
@@ -150,8 +152,6 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 # github.com/sirupsen/logrus v1.4.2
 github.com/sirupsen/logrus
-# github.com/sparrc/go-ping v0.0.0-20190613174326-4e5b6552494c
-github.com/sparrc/go-ping
 # github.com/spf13/pflag v1.0.5
 github.com/spf13/pflag
 # github.com/vishvananda/netlink v1.0.0
