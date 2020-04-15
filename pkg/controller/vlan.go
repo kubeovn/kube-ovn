@@ -222,8 +222,7 @@ func (c *Controller) handleAddVlan(key string) error {
 		}
 
 		s.Spec.Vlan = vlan.Name
-		_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(s)
-		if err != nil {
+		if _, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(s); err != nil {
 			vlan.Status.SetVlanError("UpdateSubnetVlanFailed", err.Error())
 			bytes, err := vlan.Status.Bytes()
 
@@ -241,8 +240,7 @@ func (c *Controller) handleAddVlan(key string) error {
 	}
 
 	vlan.Spec.Subnet = strings.Join(subnets, ",")
-	_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(vlan)
-	if err != nil {
+	if _, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(vlan); err != nil {
 		klog.Errorf("failed to update vlan %s, %v", vlan.Name, err)
 		return err
 	}
@@ -321,12 +319,12 @@ func (c *Controller) addLocalnet(subnet *kubeovnv1.Subnet) error {
 
 	for _, port := range ports {
 		if port == localnetPort {
-			klog.Infof("has exists localnet port %s", localnetPort)
+			klog.Infof("localnet port %s exists", localnetPort)
 			return nil
 		}
 	}
 
-	vlan, err := c.config.KubeOvnClient.KubeovnV1().Vlans().Get(subnet.Spec.Vlan, metav1.GetOptions{})
+	vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
 	if err != nil {
 		klog.Errorf("failed get vlan object %v", err)
 		return err
@@ -344,60 +342,6 @@ func (c *Controller) delLocalnet(key string) error {
 
 	if err := c.ovnClient.DeletePort(localnetPort); err != nil {
 		klog.Errorf("failed to delete localnet port %s, %v", localnetPort, err)
-		return err
-	}
-
-	return nil
-}
-
-func (c *Controller) addPortVlan(port, ip, mac, vlan string) error {
-	vlanCrd, err := c.vlansLister.Get(vlan)
-	if err != nil {
-		klog.Errorf("failed get vlan crd, %v", err)
-		return err
-	}
-
-	if err := util.ValidateVlan(vlanCrd.Spec.VlanId, c.config.DefaultVlanRange); err != nil {
-		return err
-	}
-
-	lsps, err := c.ovnClient.ListLogicalSwitchPort()
-	if err != nil {
-		klog.Errorf("failed to list logical switch port, %v", err)
-		return err
-	}
-
-	found := false
-	for _, lsp := range lsps {
-		if lsp == port {
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		return fmt.Errorf("failed to find logical switch port: %s", port)
-	}
-
-	if err = c.ovnClient.SetLogicSwitchPortTag(port, strconv.Itoa(vlanCrd.Spec.VlanId)); err != nil {
-		klog.Errorf("failed set port %s tag, %v", port, err)
-		return err
-	}
-
-	if ip != "" || mac != "" {
-		if err = c.ovnClient.SetLogicalSwitchPortAddress(port, ip, mac); err != nil {
-			klog.Errorf("failed set port %s address, %v", port, err)
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (c *Controller) updatePortVlan(port, vlanID string) error {
-	err := c.ovnClient.SetLogicSwitchPortTag(port, vlanID)
-	if err != nil {
-		klog.Errorf("failed to update ovn port: %s tag: %s, %v", port, vlanID, err)
 		return err
 	}
 

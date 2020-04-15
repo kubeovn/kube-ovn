@@ -208,7 +208,13 @@ func (c *Controller) handleAddNode(key string) error {
 			return err
 		}
 	}
-	if err := c.ovnClient.CreatePort(c.config.NodeSwitch, portName, ip, subnet.Spec.CIDRBlock, mac); err != nil {
+
+	tag, err := c.getSubnetVlanTag(subnet)
+	if err != nil {
+		return err
+	}
+
+	if err := c.ovnClient.CreatePort(c.config.NodeSwitch, portName, ip, subnet.Spec.CIDRBlock, mac, tag); err != nil {
 		return err
 	}
 
@@ -217,13 +223,6 @@ func (c *Controller) handleAddNode(key string) error {
 		err = c.ovnClient.AddStaticRoute("", nodeAddr, strings.Split(ip, "/")[0], c.config.ClusterRouter)
 		if err != nil {
 			klog.Errorf("failed to add static router from node to ovn0 %v", err)
-			return err
-		}
-	}
-
-	//set node port tag and set address
-	if c.config.NetworkType != util.NetworkTypeVlan && subnet.Spec.Vlan != "" {
-		if err := c.addPortVlan(portName, ip, mac, subnet.Spec.Vlan); err != nil {
 			return err
 		}
 	}

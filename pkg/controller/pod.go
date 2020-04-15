@@ -339,24 +339,25 @@ func (c *Controller) handleAddPod(key string) error {
 		pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, subnet.Spec.Provider)] = "true"
 
 		if isOvnSubnet(subnet) {
-			if err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, subnet.Spec.CIDRBlock, mac); err != nil {
-				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
-				return err
-			}
-
-			//set port tag, get vlan id, update pod annotation
-			if c.config.NetworkType == util.NetworkTypeVlan && subnet.Spec.Vlan != "" {
-				if err := c.addPortVlan(ovs.PodNameToPortName(name, namespace), ip, mac, subnet.Spec.Vlan); err != nil {
-					c.recorder.Eventf(pod, v1.EventTypeWarning, "SetPortVlanFailed", err.Error())
+			if subnet.Spec.Vlan != "" {
+				vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
+				if err != nil {
+					c.recorder.Eventf(pod, v1.EventTypeWarning, "GetVlanInfoFailed", err.Error())
 					return err
 				}
+				pod.Annotations[util.HostInterfaceName] = c.config.DefaultHostInterface
+				pod.Annotations[util.VlanIdAnnotation] = strconv.Itoa(vlan.Spec.VlanId)
+				pod.Annotations[util.ProviderInterfaceName] = c.config.DefaultProviderName
+				pod.Annotations[util.VlanRangeAnnotation] = c.config.DefaultVlanRange
+			}
 
-				if vlan, err := c.vlansLister.Get(subnet.Spec.Vlan); err == nil {
-					pod.Annotations[util.HostInterfaceName] = c.config.DefaultHostInterface
-					pod.Annotations[util.VlanIdAnnotation] = strconv.Itoa(vlan.Spec.VlanId)
-					pod.Annotations[util.ProviderInterfaceName] = c.config.DefaultProviderName
-					pod.Annotations[util.VlanRangeAnnotation] = c.config.DefaultVlanRange
-				}
+			tag, err := c.getSubnetVlanTag(subnet)
+			if err != nil {
+				return err
+			}
+			if err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, subnet.Spec.CIDRBlock, mac, tag); err != nil {
+				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
+				return err
 			}
 		}
 	}

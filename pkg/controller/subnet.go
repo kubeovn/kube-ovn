@@ -8,6 +8,7 @@ import (
 	"github.com/juju/errors"
 	"net"
 	"reflect"
+	"strconv"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
@@ -314,8 +315,13 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		}
 	}
 
+	if c.config.NetworkType == util.NetworkTypeVlan && subnet.Spec.Vlan == "" {
+		subnet.Spec.Vlan = c.config.DefaultVlanName
+		changed = true
+	}
+
 	if subnet.Spec.Vlan != "" {
-		if _, err := c.config.KubeOvnClient.KubeovnV1().Vlans().Get(subnet.Spec.Vlan, metav1.GetOptions{}); err != nil {
+		if _, err := c.vlansLister.Get(subnet.Spec.Vlan); err != nil {
 			subnet.Spec.Vlan = ""
 			changed = true
 		}
@@ -972,4 +978,16 @@ func isOvnSubnet(subnet *kubeovnv1.Subnet) bool {
 		return true
 	}
 	return false
+}
+
+func (c *Controller) getSubnetVlanTag(subnet *kubeovnv1.Subnet) (string, error) {
+	tag := ""
+	if subnet.Spec.Vlan != "" {
+		vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
+		if err != nil {
+			return "", err
+		}
+		tag = strconv.Itoa(vlan.Spec.VlanId)
+	}
+	return tag, nil
 }

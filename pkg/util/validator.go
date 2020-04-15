@@ -107,9 +107,9 @@ func ValidatePodNetwork(annotations map[string]string) error {
 }
 
 func ValidateVlan(vlan int, vlanRange string) error {
-	vlans := strings.SplitN(vlanRange, ",", 2)
+	vlans := strings.Split(vlanRange, ",")
 	if len(vlans) != 2 {
-		return fmt.Errorf("the vlan range %s is in valid", vlanRange)
+		return fmt.Errorf("the vlan range %s is invalid", vlanRange)
 	}
 
 	min, err := strconv.Atoi(vlans[0])

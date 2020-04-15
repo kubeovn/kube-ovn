@@ -215,8 +215,12 @@ func (c *Controller) InitIPAM() error {
 
 //InitNetwork save the cluster default network
 func (c *Controller) initNetwork() error {
-	networkCrd, err := c.config.KubeOvnClient.KubeovnV1().Networks().Get("config", v1.GetOptions{})
-	if err != nil && !errors.IsNotFound(err) {
+	_, err := c.config.KubeOvnClient.KubeovnV1().Networks().Get("config", v1.GetOptions{})
+	if err == nil {
+		return nil
+	}
+
+	if !errors.IsNotFound(err) {
 		klog.Errorf("get network config failed %v", err)
 		return err
 	}
@@ -234,21 +238,15 @@ func (c *Controller) initNetwork() error {
 		networkSpec.VlanRange = c.config.DefaultVlanRange
 	}
 
-	if errors.IsNotFound(err) {
-		networkConfig := kubeovnv1.Network{
-			ObjectMeta: v1.ObjectMeta{Name: "config"},
-			Spec:       networkSpec,
-		}
-		_, err = c.config.KubeOvnClient.KubeovnV1().Networks().Create(&networkConfig)
-		return err
+	networkConfig := kubeovnv1.Network{
+		ObjectMeta: v1.ObjectMeta{Name: "config"},
+		Spec:       networkSpec,
 	}
-
-	networkCrd.Spec = networkSpec
-	_, err = c.config.KubeOvnClient.KubeovnV1().Networks().Update(networkCrd)
+	_, err = c.config.KubeOvnClient.KubeovnV1().Networks().Create(&networkConfig)
 	return err
 }
 
-//InitDefaultVlan init the default vlan when network type is vlan or xvlan
+//InitDefaultVlan init the default vlan when network type is vlan or vxlan
 func (c *Controller) initDefaultVlan() error {
 	if c.config.NetworkType != util.NetworkTypeVlan {
 		return nil
