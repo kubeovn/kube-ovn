@@ -4,11 +4,20 @@ set -euo pipefail
 REGISTRY="index.alauda.cn/alaudak8s"
 NAMESPACE="kube-system"                # The ns to deploy kube-ovn
 POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
+EXCLUDE_IPS=""                         # EXCLUDE_IPS for default subnet
 SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR
 JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
 LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
 IFACE=""                               # The nic to support container network, if empty will use the nic that the default route use
+NETWORK_TYPE="geneve"                  # geneve or vlan
 VERSION="v1.2.0-pre"
+
+# VLAN Config only take effect when NETWORK_TYPE is vlan
+PROVIDER_NAME="provider"
+VLAN_INTERFACE_NAME=""
+VLAN_NAME="ovn-vlan"
+VLAN_ID="1"
+VLAN_RANGE="1,4095"
 
 echo "[Step 1] Label kube-ovn-master node"
 count=$(kubectl get no -l$LABEL --no-headers -o wide | wc -l | sed 's/ //g')
@@ -108,6 +117,65 @@ spec:
               type: "string"
             gateway:
               type: "string"
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: vlans.kubeovn.io
+spec:
+  group: kubeovn.io
+  version: v1
+  scope: Cluster
+  names:
+    plural: vlans
+    singular: vlan
+    kind: Vlan
+    shortNames:
+      - vlan
+  additionalPrinterColumns:
+    - name: VlanID
+      type: string
+      JSONPath: .spec.vlanId
+    - name: ProviderInterfaceName
+      type: string
+      JSONPath: .spec.providerInterfaceName
+    - name: Subnet
+      type: string
+      JSONPath: .spec.subnet
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: networks.kubeovn.io
+spec:
+  group: kubeovn.io
+  version: v1
+  scope: Cluster
+  names:
+    plural: networks
+    singular: network
+    kind: Network
+    shortNames:
+      - network
+  additionalPrinterColumns:
+    - name: NetworkType
+      type: string
+      JSONPath: .spec.networkType
+    - name: DefaultSubnet
+      type: string
+      JSONPath: .spec.defaultSubnet
+    - name: NodeSubnet
+      type: string
+      JSONPath: .spec.nodeSubnet
+    - name: MasterNode
+      type: string
+      JSONPath: .spec.masterNode
+    - name: PprofPort
+      type: integer
+      JSONPath: .spec.pprofPort
+    - name: ProviderName
+      type: string
+      JSONPath: .spec.providerName
 EOF
 
 cat <<EOF > ovn.yaml
@@ -138,6 +206,8 @@ rules:
       - subnets
       - subnets/status
       - ips
+      - vlans
+      - networks
     verbs:
       - "*"
   - apiGroups:
@@ -516,7 +586,11 @@ spec:
           - /kube-ovn/start-controller.sh
           args:
           - --default-cidr=$POD_CIDR
+          - --default-exclude-ips=$EXCLUDE_IPS
           - --node-switch-cidr=$JOIN_CIDR
+          - --network-type=$NETWORK_TYPE
+          - --default-interface-name=$VLAN_INTERFACE_NAME
+          - --default-vlan-id=$VLAN_ID
           env:
             - name: POD_NAME
               valueFrom:

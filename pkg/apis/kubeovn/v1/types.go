@@ -8,7 +8,7 @@ import (
 const (
 	ProtocolIPv4 = "IPv4"
 	ProtocolIPv6 = "IPv6"
-	PrtotcolDual = "Dual"
+	ProtocolDual = "Dual"
 
 	GWDistributedType = "distributed"
 	GWCentralizedType = "centralized"
