@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/alauda/kube-ovn/pkg/util"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net/http"
 	_ "net/http/pprof"
@@ -30,6 +31,12 @@ func main() {
 
 	if err = daemon.InitNodeGateway(config); err != nil {
 		klog.Fatalf("init node gateway failed %v", err)
+	}
+
+	if config.NetworkType == util.NetworkTypeVlan {
+		if err = daemon.InitVlan(config); err != nil {
+			klog.Fatalf("init vlan config failed %v", err)
+		}
 	}
 
 	stopCh := signals.SetupSignalHandler()

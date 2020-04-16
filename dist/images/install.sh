@@ -675,6 +675,8 @@ spec:
           - --encap-checksum=true
           - --service-cluster-ip-range=$SVC_CIDR
           - --iface=${IFACE}
+          - --network-type=$NETWORK_TYPE
+          - --default-interface-name=$VLAN_INTERFACE_NAME
         securityContext:
           capabilities:
             add: ["NET_ADMIN", "SYS_ADMIN", "SYS_PTRACE"]

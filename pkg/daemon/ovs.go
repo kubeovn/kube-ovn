@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, netns, containerID, mac, ip, gateway, ingress, egress string) error {
+func (csh cniServerHandler) configureNic(podName, podNamespace, netns, containerID, mac, ip, gateway, ingress, egress, vlanID string) error {
 	var err error
 	hostNicName, containerNicName := generateNicName(containerID)
 	// Create a veth pair, put one end to container ,the other to ovs port
@@ -49,7 +49,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, netns, container
 	if err != nil {
 		return fmt.Errorf("failed to parse mac %s %v", macAddr, err)
 	}
-	if err = configureHostNic(hostNicName, macAddr); err != nil {
+	if err = configureHostNic(hostNicName, vlanID, macAddr); err != nil {
 		return err
 	}
 	if err = ovs.SetPodBandwidth(podName, podNamespace, ingress, egress); err != nil {
@@ -97,7 +97,7 @@ func generateNicName(containerID string) (string, string) {
 	return fmt.Sprintf("%s_h", containerID[0:12]), fmt.Sprintf("%s_c", containerID[0:12])
 }
 
-func configureHostNic(nicName string, macAddr net.HardwareAddr) error {
+func configureHostNic(nicName, vlanID string, macAddr net.HardwareAddr) error {
 	hostLink, err := netlink.LinkByName(nicName)
 	if err != nil {
 		return fmt.Errorf("can not find host nic %s %v", nicName, err)
@@ -113,6 +113,12 @@ func configureHostNic(nicName string, macAddr net.HardwareAddr) error {
 	}
 	if err = netlink.LinkSetTxQLen(hostLink, 1000); err != nil {
 		return fmt.Errorf("can not set host nic %s qlen %v", nicName, err)
+	}
+
+	if vlanID != "" {
+		if err := ovs.SetPortTag(nicName, vlanID); err != nil {
+			return fmt.Errorf("failed to add vlan tag, %v", err)
+		}
 	}
 
 	return nil

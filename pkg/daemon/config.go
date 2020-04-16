@@ -38,6 +38,9 @@ type Configuration struct {
 	NodeLocalDNSIP        string
 	EncapChecksum         bool
 	PprofPort             int
+	NetworkType           string
+	DefaultProviderName   string
+	DefaultInterfaceName  string
 }
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
@@ -55,6 +58,10 @@ func ParseFlags() (*Configuration, error) {
 		argNodeLocalDnsIP        = pflag.String("node-local-dns-ip", "", "If use nodelocaldns the local dns server ip should be set here, default empty.")
 		argEncapChecksum         = pflag.Bool("encap-checksum", true, "Enable checksum, default: true")
 		argPprofPort             = pflag.Int("pprof-port", 10665, "The port to get profiling data, default: 10665")
+
+		argsNetworkType          = pflag.String("network-type", "geneve", "The ovn network type, default: geneve")
+		argsDefaultProviderName  = pflag.String("default-provider-name", "provider", "The vlan or xvlan type default provider interface name, default: provider")
+		argsDefaultInterfaceName = pflag.String("default-interface-name", "", "The default host interface name in the vlan/xvlan type")
 	)
 
 	// mute info log for ipset lib
@@ -95,6 +102,9 @@ func ParseFlags() (*Configuration, error) {
 		ServiceClusterIPRange: *argServiceClusterIPRange,
 		NodeLocalDNSIP:        *argNodeLocalDnsIP,
 		EncapChecksum:         *argEncapChecksum,
+		NetworkType:           *argsNetworkType,
+		DefaultProviderName:   *argsDefaultProviderName,
+		DefaultInterfaceName:  *argsDefaultInterfaceName,
 	}
 
 	if err := config.initNicConfig(); err != nil {
