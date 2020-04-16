@@ -44,6 +44,13 @@ type Configuration struct {
 
 	WorkerNum int
 	PprofPort int
+
+	NetworkType          string
+	DefaultProviderName  string
+	DefaultHostInterface string
+	DefaultVlanName      string
+	DefaultVlanRange     string
+	DefaultVlanID        int
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -73,6 +80,13 @@ func ParseFlags() (*Configuration, error) {
 
 		argWorkerNum = pflag.Int("worker-num", 3, "The parallelism of each worker, default: 3")
 		argPprofPort = pflag.Int("pprof-port", 10660, "The port to get profiling data, default 10660")
+
+		argsNetworkType          = pflag.String("network-type", "geneve", "The ovn network type, default: geneve")
+		argsDefaultProviderName  = pflag.String("default-provider-name", "provider", "The vlan or xvlan type default provider interface name, default: provider")
+		argsDefaultInterfaceName = pflag.String("default-interface-name", "", "The default host interface name in the vlan/xvlan type")
+		argsDefaultVlanName      = pflag.String("default-vlan-name", "ovn-vlan", "The default vlan name, default: ovn-vlan")
+		argsDefaultVlanID        = pflag.Int("default-vlan-id", 1, "The default vlan id, default: 1")
+		argsDefaultVlanRange     = pflag.String("default-vlan-range", "1,4095", "The default vlan range, default: 1-4095")
 	)
 
 	flag.Set("alsologtostderr", "true")
@@ -113,6 +127,12 @@ func ParseFlags() (*Configuration, error) {
 		ClusterUdpLoadBalancer: *argClusterUdpLoadBalancer,
 		WorkerNum:              *argWorkerNum,
 		PprofPort:              *argPprofPort,
+		NetworkType:            *argsNetworkType,
+		DefaultVlanID:          *argsDefaultVlanID,
+		DefaultProviderName:    *argsDefaultProviderName,
+		DefaultHostInterface:   *argsDefaultInterfaceName,
+		DefaultVlanName:        *argsDefaultVlanName,
+		DefaultVlanRange:       *argsDefaultVlanRange,
 		PodName:                os.Getenv("POD_NAME"),
 		PodNamespace:           os.Getenv("KUBE_NAMESPACE"),
 	}

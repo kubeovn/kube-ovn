@@ -22,6 +22,14 @@ package v1
 // IPLister.
 type IPListerExpansion interface{}
 
+// NetworkListerExpansion allows custom methods to be added to
+// NetworkLister.
+type NetworkListerExpansion interface{}
+
 // SubnetListerExpansion allows custom methods to be added to
 // SubnetLister.
 type SubnetListerExpansion interface{}
+
+// VlanListerExpansion allows custom methods to be added to
+// VlanLister.
+type VlanListerExpansion interface{}

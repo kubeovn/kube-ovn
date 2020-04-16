@@ -18,7 +18,7 @@ do
   kubectl exec -n kube-system "$ovs" -- bash /kube-ovn/uninstall.sh
 done
 kubectl delete ds ovs-ovn kube-ovn-cni kube-ovn-pinger -n kube-system --ignore-not-found=true
-kubectl delete crd ips.kubeovn.io subnets.kubeovn.io --ignore-not-found=true
+kubectl delete crd ips.kubeovn.io subnets.kubeovn.io vlans.kubeovn.io networks.kubeovn.io --ignore-not-found=true
 
 # Remove annotations/labels in namespaces and nodes
 kubectl annotate no --all ovn.kubernetes.io/cidr-
@@ -51,4 +51,10 @@ for ns in $(kubectl get ns -o name |cut -c 11-); do
   kubectl annotate pod  --all ovn.kubernetes.io/mac_address- -n "$ns"
   kubectl annotate pod  --all ovn.kubernetes.io/port_name- -n "$ns"
   kubectl annotate pod  --all ovn.kubernetes.io/allocated- -n "$ns"
+  kubectl annotate pod  --all ovn.kubernetes.io/routed- -n "$ns"
+  kubectl annotate pod  --all ovn.kubernetes.io/vlan_id- -n "$ns"
+  kubectl annotate pod  --all ovn.kubernetes.io/vlan_range- -n "$ns"
+  kubectl annotate pod  --all ovn.kubernetes.io/network_types- -n "$ns"
+  kubectl annotate pod  --all ovn.kubernetes.io/provider_interface_name- -n "$ns"
+  kubectl annotate pod  --all ovn.kubernetes.io/host_interface_name- -n "$ns"
 done

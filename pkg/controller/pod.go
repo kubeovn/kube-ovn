@@ -330,6 +330,7 @@ func (c *Controller) handleAddPod(key string) error {
 			return err
 		}
 
+		pod.Annotations[util.NetworkType] = c.config.NetworkType
 		pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, subnet.Spec.Provider)] = ip
 		pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, subnet.Spec.Provider)] = mac
 		pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, subnet.Spec.Provider)] = subnet.Spec.CIDRBlock
@@ -338,7 +339,23 @@ func (c *Controller) handleAddPod(key string) error {
 		pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, subnet.Spec.Provider)] = "true"
 
 		if isOvnSubnet(subnet) {
-			if err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, subnet.Spec.CIDRBlock, mac); err != nil {
+			if subnet.Spec.Vlan != "" {
+				vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
+				if err != nil {
+					c.recorder.Eventf(pod, v1.EventTypeWarning, "GetVlanInfoFailed", err.Error())
+					return err
+				}
+				pod.Annotations[util.HostInterfaceName] = c.config.DefaultHostInterface
+				pod.Annotations[util.VlanIdAnnotation] = strconv.Itoa(vlan.Spec.VlanId)
+				pod.Annotations[util.ProviderInterfaceName] = c.config.DefaultProviderName
+				pod.Annotations[util.VlanRangeAnnotation] = c.config.DefaultVlanRange
+			}
+
+			tag, err := c.getSubnetVlanTag(subnet)
+			if err != nil {
+				return err
+			}
+			if err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, subnet.Spec.CIDRBlock, mac, tag); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
 				return err
 			}
@@ -404,6 +421,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 		}
 		return err
 	}
+
 	klog.Infof("update pod %s/%s", namespace, name)
 	podIP := pod.Annotations[util.IpAddressAnnotation]
 
