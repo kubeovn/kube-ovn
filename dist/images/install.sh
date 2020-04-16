@@ -11,12 +11,13 @@ LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
 IFACE=""                               # The nic to support container network, if empty will use the nic that the default route use
 NETWORK_TYPE="geneve"                  # geneve or vlan
 VERSION="v1.2.0-pre"
+IMAGE_PULL_POLICY="IfNotPresent"
 
 # VLAN Config only take effect when NETWORK_TYPE is vlan
 PROVIDER_NAME="provider"
 VLAN_INTERFACE_NAME=""
 VLAN_NAME="ovn-vlan"
-VLAN_ID="1"
+VLAN_ID="100"
 VLAN_RANGE="1,4095"
 
 echo "[Step 1] Label kube-ovn-master node"
@@ -339,7 +340,7 @@ spec:
       containers:
         - name: ovn-central
           image: "$REGISTRY/kube-ovn:$VERSION"
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: $IMAGE_PULL_POLICY
           command: ["/kube-ovn/start-db.sh"]
           securityContext:
             capabilities:
@@ -451,7 +452,7 @@ spec:
       containers:
         - name: openvswitch
           image: "$REGISTRY/kube-ovn:$VERSION"
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: $IMAGE_PULL_POLICY
           command: ["/kube-ovn/start-ovs.sh"]
           securityContext:
             runAsUser: 0
@@ -581,7 +582,7 @@ spec:
       containers:
         - name: kube-ovn-controller
           image: "$REGISTRY/kube-ovn:$VERSION"
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: $IMAGE_PULL_POLICY
           command:
           - /kube-ovn/start-controller.sh
           args:
@@ -653,7 +654,7 @@ spec:
       initContainers:
       - name: install-cni
         image: "$REGISTRY/kube-ovn:$VERSION"
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: $IMAGE_PULL_POLICY
         command: ["/kube-ovn/install-cni.sh"]
         securityContext:
           runAsUser: 0
@@ -666,7 +667,7 @@ spec:
       containers:
       - name: cni-server
         image: "$REGISTRY/kube-ovn:$VERSION"
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: $IMAGE_PULL_POLICY
         command:
           - sh
           - /kube-ovn/start-cniserver.sh
@@ -767,7 +768,7 @@ spec:
         - name: pinger
           image: "$REGISTRY/kube-ovn:$VERSION"
           command: ["/kube-ovn/kube-ovn-pinger", "--external-address=114.114.114.114"]
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: $IMAGE_PULL_POLICY
           securityContext:
             runAsUser: 0
             privileged: false
