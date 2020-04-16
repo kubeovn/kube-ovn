@@ -2,6 +2,14 @@
 /usr/share/openvswitch/scripts/ovs-ctl stop
 ovs-dpctl del-dp ovs-system
 
+iptables -t nat -D POSTROUTING -m set --match-set ovn40subnets-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE
+iptables -t nat -D POSTROUTING -m set --match-set ovn40local-pod-ip-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE
+iptables -t filter -D INPUT -m set --match-set ovn40subnets dst -j ACCEPT
+iptables -t filter -D INPUT -m set --match-set ovn40subnets src -j ACCEPT
+ipset destroy ovn40subnets-nat
+ipset destroy ovn40subnets
+ipset destroy ovn40local-pod-ip-nat
+
 rm -rf /var/run/openvswitch/*
 rm -rf /var/run/ovn/*
 rm -rf /etc/openvswitch/*

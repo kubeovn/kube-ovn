@@ -11,13 +11,13 @@ kubectl delete sa ovn -n kube-system --ignore-not-found=true
 kubectl delete clusterrole system:ovn --ignore-not-found=true
 kubectl delete clusterrolebinding ovn --ignore-not-found=true
 kubectl delete svc ovn-nb ovn-sb kube-ovn-pinger kube-ovn-controller kube-ovn-cni -n kube-system --ignore-not-found=true
-
+kubectl delete ds kube-ovn-cni -n kube-system --ignore-not-found=true
 kubectl delete deployment ovn-central kube-ovn-controller -n kube-system --ignore-not-found=true
 for ovs in $(kubectl get pod --no-headers -n kube-system -lapp=ovs | awk '{print $1}')
 do
   kubectl exec -n kube-system "$ovs" -- bash /kube-ovn/uninstall.sh
 done
-kubectl delete ds ovs-ovn kube-ovn-cni kube-ovn-pinger -n kube-system --ignore-not-found=true
+kubectl delete ds ovs-ovn kube-ovn-pinger -n kube-system --ignore-not-found=true
 kubectl delete crd ips.kubeovn.io subnets.kubeovn.io vlans.kubeovn.io networks.kubeovn.io --ignore-not-found=true
 
 # Remove annotations/labels in namespaces and nodes
