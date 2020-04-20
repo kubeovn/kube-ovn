@@ -1,19 +1,29 @@
-## How to use it
+## Vlan Support
 
-When you install vlan, you host need at least two ifname, and the second ifname can reconnection
+**The Vlan support is still in early stage, the usage might change later**
 
-### Label host interface name in every node
-```bash
-kubectl label node <Node on which to deploy OVN DB> ovn.kubernetes.io/host_interface_name=<host_interface_name>
-```
+By default, Kube-OVN use Geneve to encapsulate packets between hosts, which will build an overlay network above your infrastructure.
+Kube-OVN also support underlay Vlan mode network for better performance and throughput. 
+In Vlan mode, the packets will send directly to physical switches with vlan tags.
 
-### Install vlan
+To enable Vlan mode, a dedicated network interface is required by container network.
+The related switch port must work in trunk mode to accept 802.1q packets.
 
-```bash
-cd kube-ovn && sh dist/images/install-vlan.sh
-```
+By now, Geneve or Vlan network mode is a global install option, all container must work in the same network mode.
+We are working at combine two networks in one cluster.
+
+### Install Vlan mode
+
+1. Get the installation script
+
+`wget https://raw.githubusercontent.com/alauda/kube-ovn/master/dist/images/install.sh`
+
+2. Edit the `install.sh`, modify `NETWORK_TYPE` to `vlan`, `VLAN_INTERFACE_NAME` to related host interface.
+
+3. Install Kube-OVN
 
 ### Create vlan cr
+
 ```bash
 apiVersion: kubeovn.io/v1
 kind: Vlan
@@ -34,6 +44,9 @@ metadata:
 ```
 
 ### Create subnet
+
+Multiple Subnets can bind to one Vlan
+
 ```bash
 apiVersion: kubeovn.io/v1
 kind: Subnet
@@ -50,7 +63,7 @@ spec:
     - product
 ```
 
-### Create samplepod
+### Create sample pod
 ```bash
 kubectl run samplepod --image=nginx --namespace=product
 ```

@@ -28,6 +28,7 @@ The Kube-OVN community is waiting for you participation!
 - **Namespaced Gateways**: Every Namespace can have a dedicated Gateway for Egress traffic.
 - **Direct External Connectivity**：Pod IP can be exposed to external network directly.
 - **Traffic Mirror**: Duplicated container network traffic for monitoring, diagnosing and replay.
+- **Vlan Support**: Kube-OVN also support underlay Vlan mode network for better performance and throughput.
 - **IPv6 Support**: Kube-OVN supports ipv6-only mode pod network.
 - **ARM Support**: Kube-OVN can run on x86_64 and arm64 platforms.
 - **TroubleShooting Tools**: Handy tools to diagnose, trace, monitor and dump container network traffic to help troubleshooting complicate network issues.
@@ -64,12 +65,12 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
 - [Dynamic QoS](docs/qos.md)
 - [Gateway and Direct connect](docs/subnet.md#gateway)
 - [Multi NIC Support](docs/multi-nic.md)
+- [Vlan Support](docs/vlan.md)
 - [Traffic Mirror](docs/mirror.md)
 - [Webhook](docs/webhook.md)
 - [IPv6](docs/ipv6.md)
 - [Tracing/Diagnose/Dump Traffic with Kubectl Plugin](docs/kubectl-plugin.md)
 - [Prometheus Integration](docs/prometheus.md)
-
 
 ## Contribution
 We are looking forwards to your PR!
