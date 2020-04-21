@@ -768,7 +768,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "(sum(delta(pinger_apiserver_latency_ms_sum[10m])) by (nodeName))/(sum(delta(pinger_apiserver_latency_ms_count[10m])) by (nodeName))",
+          "expr": "(sum(delta(pinger_apiserver_latency_ms_sum[5m])) by (nodeName))/(sum(delta(pinger_apiserver_latency_ms_count[5m])) by (nodeName))",
           "format": "time_series",
           "interval": "",
           "intervalFactor": 1,
@@ -855,7 +855,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "(sum(delta(pinger_dns_latency_ms_sum[10m])) by (nodeName))/(sum(delta(pinger_dns_latency_ms_count[10m])) by (nodeName))",
+          "expr": "(sum(delta(pinger_dns_latency_ms_sum[5m])) by (nodeName))/(sum(delta(pinger_dns_latency_ms_count[5m])) by (nodeName))",
           "format": "time_series",
           "intervalFactor": 1,
           "legendFormat": "{{nodeName}}",
@@ -941,7 +941,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(delta(pinger_pod_ping_lost_total[5m])) by (src_node_name)",
+          "expr": "sum(delta(pinger_pod_ping_lost_total[1m])) by (src_node_name)",
           "format": "time_series",
           "interval": "",
           "intervalFactor": 1,
@@ -949,7 +949,7 @@
           "refId": "A"
         },
         {
-          "expr": "sum(delta(pinger_pod_ping_lost_total[5m])) by (target_node_name)",
+          "expr": "sum(delta(pinger_pod_ping_lost_total[1m])) by (target_node_name)",
           "format": "time_series",
           "interval": "",
           "intervalFactor": 1,
