@@ -226,7 +226,7 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 		output, _ = exec.Command("ping", "-6", "-w", "10", gw).CombinedOutput()
 	}
 
-	klog.Infof("ping gw result is: \n %q", output)
+	klog.Infof("ping gw result is: \n %s", output)
 	return nil
 }
 
