@@ -24,6 +24,7 @@ build-go:
 	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} go build -o $(PWD)/dist/images/kube-ovn-daemon -ldflags "-w -s" -v ./cmd/daemon
 	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} go build -o $(PWD)/dist/images/kube-ovn-pinger -ldflags "-w -s" -v ./cmd/pinger
 	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} go build -o $(PWD)/dist/images/kube-ovn-webhook -ldflags "-w -s" -v ./cmd/webhook
+	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} go build -o $(PWD)/dist/images/kube-ovn-speaker -ldflags "-w -s" -v ./cmd/speaker
 
 release: lint build-go
 	docker buildx build --platform linux/${ARCH} --build-arg ARCH=${ARCH} --build-arg RPM_ARCH=${RPM_ARCH} -t ${REGISTRY}/kube-ovn:${RELEASE_TAG} -o type=docker -f dist/images/Dockerfile dist/images/
