@@ -10,6 +10,7 @@ const (
 	CidrAnnotation       = "ovn.kubernetes.io/cidr"
 	GatewayAnnotation    = "ovn.kubernetes.io/gateway"
 	IpPoolAnnotation     = "ovn.kubernetes.io/ip_pool"
+	BgpAnnotation        = "ovn.kubernetes.io/bgp"
 
 	AllocatedAnnotationTemplate     = "%s.kubernetes.io/allocated"
 	MacAddressAnnotationTemplate    = "%s.kubernetes.io/mac_address"

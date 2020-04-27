@@ -27,6 +27,7 @@ The Kube-OVN community is waiting for you participation!
 - **Distributed Gateways**: Every Node can act as a Gateway to provide external network connectivity.
 - **Namespaced Gateways**: Every Namespace can have a dedicated Gateway for Egress traffic.
 - **Direct External Connectivity**：Pod IP can be exposed to external network directly.
+- **BGP Support**: Pod IP can be exposed to external by BGP router protocol.
 - **Traffic Mirror**: Duplicated container network traffic for monitoring, diagnosing and replay.
 - **Vlan Support**: Kube-OVN also support underlay Vlan mode network for better performance and throughput.
 - **IPv6 Support**: Kube-OVN supports ipv6-only mode pod network.
@@ -64,6 +65,7 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
 - [Static IP](docs/static-ip.md)
 - [Dynamic QoS](docs/qos.md)
 - [Gateway and Direct connect](docs/subnet.md#gateway)
+- [BGP support](docs/bgp.md)
 - [Multi NIC Support](docs/multi-nic.md)
 - [Vlan Support](docs/vlan.md)
 - [Traffic Mirror](docs/mirror.md)

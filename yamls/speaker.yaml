@@ -1,0 +1,56 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: kube-ovn-speaker
+  namespace: kube-system
+spec:
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxSurge: 0%
+      maxUnavailable: 100%
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: kube-ovn-speaker
+  template:
+    metadata:
+      labels:
+        app: kube-ovn-speaker
+        component: network
+        type: infra
+    spec:
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: kube-ovn-speaker
+              topologyKey: kubernetes.io/hostname
+      priorityClassName: system-cluster-critical
+      serviceAccountName: ovn
+      hostNetwork: true
+      containers:
+        - name: ovn-central
+          image: "index.alauda.cn/alaudak8s/kube-ovn:v1.2.0-pre"
+          imagePullPolicy: IfNotPresent
+          command:
+            - /kube-ovn/kube-ovn-speaker
+          args:
+            - --neighbor-address=10.32.32.1
+            - --neighbor-as=65030
+            - --cluster-as=65000
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          resources:
+            requests:
+              cpu: 500m
+              memory: 300Mi
+      nodeSelector:
+        kubernetes.io/os: "linux"
