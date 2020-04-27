@@ -266,7 +266,7 @@ spec:
       hostPID: true
       containers:
         - name: openvswitch
-          image: "index.alauda.cn/alaudak8s/kube-ovn:v1.1.0"
+          image: "index.alauda.cn/alaudak8s/kube-ovn:v1.1.1"
           imagePullPolicy: IfNotPresent
           command: ["/kube-ovn/start-ovs.sh"]
           securityContext:

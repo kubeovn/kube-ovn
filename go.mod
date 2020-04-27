@@ -35,7 +35,6 @@ require (
 	github.com/prometheus/procfs v0.0.0-20190328153300-af7bedc223fb // indirect
 	github.com/sirupsen/logrus v1.4.2
 	github.com/smartystreets/goconvey v0.0.0-20190330032615-68dc04aab96a // indirect
-	github.com/sparrc/go-ping v0.0.0-20190613174326-4e5b6552494c
 	github.com/spf13/pflag v1.0.5
 	github.com/vishvananda/netlink v1.0.0
 	go.uber.org/zap v1.10.0 // indirect
