@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## v1.1.1 -- 2020/04/27
+
+This release fix bugs found in v1.1.0.
+
+### Bugfix
+* Use legacy iptables to replace default iptables in centos:8 image
+* Mount etc/origin/ovn to ovs-ovn
+* Fix bugs in go-ping
+* Fix yaml indent error
+* Fix panic when handles networkpolicy
+
+### Monitoring
+* Make graph more sensitive to changes
+
 ## v1.1.0 -- 2020/04/07
 
 In this version, we refactor IPAM to separate IP allocation logical from OVN. 
@@ -12,7 +26,7 @@ Please check [this document](docs/multi-nic.md) to see how we combine Kube-OVN a
 * Add support for Multus-CNI
 
 ### Performance
-* Recycle address if pod is in failed or succeeded phase
+* Recycle address if pod in failed or succeeded phase
 * Delete chassis form ovn-sb when node deleted
 * Only enqueue updatePod when needed
 * Add x86 optimization CFLAGS
