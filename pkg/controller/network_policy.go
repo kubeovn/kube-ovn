@@ -479,6 +479,9 @@ func (c *Controller) podMatchNetworkPolicies(pod *corev1.Pod) []string {
 
 func isPodMatchNetworkPolicy(pod *corev1.Pod, podNs *corev1.Namespace, policy *netv1.NetworkPolicy, policyNs string) bool {
 	sel, _ := metav1.LabelSelectorAsSelector(&policy.Spec.PodSelector)
+	if pod.Labels == nil {
+		pod.Labels = map[string]string{}
+	}
 	if podNs.Name == policyNs && sel.Matches(labels.Set(pod.Labels)) {
 		return true
 	}
@@ -510,6 +513,9 @@ func isPodMatchPolicyPeer(pod *corev1.Pod, podNs *corev1.Namespace, policyPeer *
 
 	} else {
 		nsSel, _ := metav1.LabelSelectorAsSelector(policyPeer.NamespaceSelector)
+		if podNs.Labels == nil {
+			podNs.Labels = map[string]string{}
+		}
 		if !nsSel.Matches(labels.Set(podNs.Labels)) {
 			return false
 		}
@@ -520,6 +526,9 @@ func isPodMatchPolicyPeer(pod *corev1.Pod, podNs *corev1.Namespace, policyPeer *
 	}
 
 	sel, _ := metav1.LabelSelectorAsSelector(policyPeer.PodSelector)
+	if pod.Labels == nil {
+		pod.Labels = map[string]string{}
+	}
 	return sel.Matches(labels.Set(pod.Labels))
 }
 
@@ -539,6 +548,9 @@ func isNamespaceMatchNetworkPolicy(ns *corev1.Namespace, policy *netv1.NetworkPo
 		for _, npp := range npr.From {
 			if npp.NamespaceSelector != nil {
 				nsSel, _ := metav1.LabelSelectorAsSelector(npp.NamespaceSelector)
+				if ns.Labels == nil {
+					ns.Labels = map[string]string{}
+				}
 				if nsSel.Matches(labels.Set(ns.Labels)) {
 					return true
 				}
@@ -550,6 +562,9 @@ func isNamespaceMatchNetworkPolicy(ns *corev1.Namespace, policy *netv1.NetworkPo
 		for _, npp := range npr.To {
 			if npp.NamespaceSelector != nil {
 				nsSel, _ := metav1.LabelSelectorAsSelector(npp.NamespaceSelector)
+				if ns.Labels == nil {
+					ns.Labels = map[string]string{}
+				}
 				if nsSel.Matches(labels.Set(ns.Labels)) {
 					return true
 				}
