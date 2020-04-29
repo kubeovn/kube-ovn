@@ -354,7 +354,7 @@ func (c *Controller) handleAddPod(key string) error {
 	if pod.Annotations[util.AllocatedAnnotation] == "true" &&
 		pod.Annotations[util.RoutedAnnotation] != "true" &&
 		pod.Spec.NodeName != "" {
-		return c.handleUpdatePod(key)
+		c.updatePodQueue.Add(key)
 	}
 
 	return nil
