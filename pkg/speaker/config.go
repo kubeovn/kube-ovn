@@ -41,7 +41,6 @@ func ParseFlags() (*Configuration, error) {
 		argNeighborAs      = pflag.Uint32("neighbor-as", 65001, "The router as number, default 65001")
 		argPprofPort       = pflag.Uint32("pprof-port", 10667, "The port to get profiling data, default: 10667")
 		argKubeConfigFile  = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
-
 	)
 
 	flag.Set("alsologtostderr", "true")
