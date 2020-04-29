@@ -67,6 +67,19 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 		return
 	}
 
+	// In case update event might lost during leader election
+	if p.Annotations != nil &&
+		p.Annotations[util.AllocatedAnnotation] == "true" &&
+		p.Annotations[util.RoutedAnnotation] != "true" &&
+		p.Status.HostIP != "" && p.Status.PodIP != "" {
+		c.updatePodQueue.Add(key)
+		return
+	}
+
+	if p.Annotations != nil && p.Annotations[util.AllocatedAnnotation] == "true" {
+		return
+	}
+
 	klog.V(3).Infof("enqueue add pod %s", key)
 	c.addPodQueue.Add(key)
 }
@@ -366,14 +379,6 @@ func (c *Controller) handleAddPod(key string) error {
 		klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
 		return err
 	}
-
-	// In case update event might lost during leader election
-	if pod.Annotations[util.AllocatedAnnotation] == "true" &&
-		pod.Annotations[util.RoutedAnnotation] != "true" &&
-		pod.Spec.NodeName != "" {
-		c.updatePodQueue.Add(key)
-	}
-
 	return nil
 }
 

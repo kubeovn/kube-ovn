@@ -142,7 +142,9 @@ func (c *Controller) getLocalPodIPsNeedNAT(protocol string) ([]string, error) {
 		return nil, err
 	}
 	for _, pod := range allPods {
-		if pod.Spec.HostNetwork == true || pod.Status.PodIP == "" {
+		if pod.Spec.HostNetwork == true ||
+			pod.Status.PodIP == "" ||
+			pod.Annotations[util.LogicalSwitchAnnotation] == "" {
 			continue
 		}
 		subnet, err := c.subnetsLister.Get(pod.Annotations[util.LogicalSwitchAnnotation])
