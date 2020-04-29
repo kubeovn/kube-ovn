@@ -491,7 +491,7 @@ func (c *Controller) handleAddPod(key string) error {
 
 	// In case update event might lost during leader election
 	if pod.Spec.NodeName != "" && pod.Status.PodIP != "" {
-		return c.handleUpdatePod(key)
+		c.updatePodQueue.Add(key)
 	}
 	return nil
 }
