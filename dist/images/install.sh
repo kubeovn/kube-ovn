@@ -229,12 +229,14 @@ rules:
       - ""
       - networking.k8s.io
       - apps
+      - extensions
     resources:
       - networkpolicies
       - services
       - endpoints
       - statefulsets
       - daemonsets
+      - deployments
     verbs:
       - get
       - list

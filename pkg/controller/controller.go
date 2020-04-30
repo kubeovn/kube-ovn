@@ -1,16 +1,16 @@
 package controller
 
 import (
-	ovnipam "github.com/alauda/kube-ovn/pkg/ipam"
-	"time"
-
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/alauda/kube-ovn/pkg/client/informers/externalversions"
 	kubeovnlister "github.com/alauda/kube-ovn/pkg/client/listers/kubeovn/v1"
+	ovnipam "github.com/alauda/kube-ovn/pkg/ipam"
+
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"github.com/alauda/kube-ovn/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
@@ -24,6 +24,8 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
+
+	"time"
 )
 
 const controllerAgentName = "ovn-controller"
@@ -313,12 +315,33 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		time.Sleep(3 * time.Second)
 		lss, err := c.ovnClient.ListLogicalSwitch()
 		if err != nil {
-			klog.Fatal("failed to list logical switch")
+			klog.Fatalf("failed to list logical switch, %v", err)
 		}
 
 		if util.IsStringIn(c.config.DefaultLogicalSwitch, lss) && util.IsStringIn(c.config.NodeSwitch, lss) {
 			break
 		}
+	}
+
+	// run node worker before handle any pods
+	for i := 0; i < c.config.WorkerNum; i++ {
+		go wait.Until(c.runAddNodeWorker, time.Second, stopCh)
+		go wait.Until(c.runUpdateNodeWorker, time.Second, stopCh)
+		go wait.Until(c.runDeleteNodeWorker, time.Second, stopCh)
+	}
+	for {
+		time.Sleep(3 * time.Second)
+		nodes, err := c.nodesLister.List(labels.Everything())
+		if err != nil {
+			klog.Fatalf("failed to list nodes, %v", err)
+		}
+		for _, node := range nodes {
+			if node.Annotations[util.AllocatedAnnotation] != "true" {
+				klog.Infof("wait node %s annotation ready", node.Name)
+				continue
+			}
+		}
+		break
 	}
 
 	// run in a single worker to avoid subnet cidr conflict
@@ -336,10 +359,6 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		go wait.Until(c.runUpdateSubnetWorker, time.Second, stopCh)
 		go wait.Until(c.runDeleteRouteWorker, time.Second, stopCh)
 		go wait.Until(c.runUpdateSubnetStatusWorker, time.Second, stopCh)
-
-		go wait.Until(c.runAddNodeWorker, time.Second, stopCh)
-		go wait.Until(c.runUpdateNodeWorker, time.Second, stopCh)
-		go wait.Until(c.runDeleteNodeWorker, time.Second, stopCh)
 
 		go wait.Until(c.runUpdateServiceWorker, time.Second, stopCh)
 		go wait.Until(c.runUpdateEndpointWorker, time.Second, stopCh)
