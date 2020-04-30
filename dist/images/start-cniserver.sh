@@ -21,4 +21,7 @@ do
   fi
 done
 
+kubectl rollout status deployment/kube-ovn-controller -n $(cat /run/secrets/kubernetes.io/serviceaccount/namespace)
+sleep 5
+
 ./kube-ovn-daemon --ovs-socket=${OVS_SOCK} --bind-socket=${CNI_SOCK} $@
