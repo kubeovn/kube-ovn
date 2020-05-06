@@ -409,6 +409,7 @@ func (c *Controller) handleAddSubnet(key string) error {
 				}
 			}
 		}
+
 		subnetList, err := c.subnetsLister.List(labels.Everything())
 		if err != nil {
 			klog.Errorf("failed to list subnets %v", err)
@@ -433,6 +434,35 @@ func (c *Controller) handleAddSubnet(key string) error {
 					}
 				}
 				return err
+			}
+		}
+
+		nodes, err := c.nodesLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list nodes %v", err)
+			return err
+		}
+		for _, node := range nodes {
+			for _, addr := range node.Status.Addresses {
+				if addr.Type == v1.NodeInternalIP && util.CIDRContainIP(subnet.Spec.CIDRBlock, addr.Address) {
+					err = fmt.Errorf("subnet %s cidr %s conflict with node %s address %s", subnet.Name, subnet.Spec.CIDRBlock, node.Name, addr.Address)
+					klog.Error(err)
+					subnet.TypeMeta.Kind = "Subnet"
+					subnet.TypeMeta.APIVersion = "kubeovn.io/v1"
+					c.recorder.Eventf(subnet, v1.EventTypeWarning, "ValidateLogicalSwitchFailed", err.Error())
+					subnet.Status.NotValidated("ValidateLogicalSwitchFailed", err.Error())
+					bytes, err1 := subnet.Status.Bytes()
+					if err1 != nil {
+						klog.Error(err1)
+						return err1
+					} else {
+						if _, err2 := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(subnet.Name, types.MergePatchType, bytes, "status"); err2 != nil {
+							klog.Error("patch subnet status failed", err2)
+							return err2
+						}
+					}
+					return err
+				}
 			}
 		}
 		// If multiple namespace use same ls name, only first one will success
