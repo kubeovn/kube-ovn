@@ -3,6 +3,7 @@ package util
 import (
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 
@@ -49,6 +50,11 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 	gwType := subnet.Spec.GatewayType
 	if gwType != "" && gwType != kubeovnv1.GWDistributedType && gwType != kubeovnv1.GWCentralizedType {
 		return fmt.Errorf("%s is not a valid gateway type", gwType)
+	}
+
+	k8sApiServer := os.Getenv("KUBERNETES_SERVICE_HOST")
+	if k8sApiServer != "" && CIDRContainIP(subnet.Spec.CIDRBlock, k8sApiServer) {
+		return fmt.Errorf("subnet %s cidr %s conflicts with k8s apiserver svc ip %s", subnet.Name, subnet.Spec.CIDRBlock, k8sApiServer)
 	}
 
 	return nil
