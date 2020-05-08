@@ -116,7 +116,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	}
 
 	for _, port := range svc.Spec.Ports {
-		vip := fmt.Sprintf("%s:%d", clusterIP, port.Port)
+		vip := fmt.Sprintf("[%s]:%d", clusterIP, port.Port)
 		backends := getServicePortBackends(ep, port, clusterIP)
 		if port.Protocol == v1.ProtocolTCP {
 			// for performance reason delete lb with no backends
@@ -168,7 +168,7 @@ func getServicePortBackends(endpoints *v1.Endpoints, servicePort v1.ServicePort,
 
 		for _, address := range subset.Addresses {
 			if util.CheckProtocol(serviceIP) == util.CheckProtocol(address.IP) {
-				backends = append(backends, fmt.Sprintf("%s:%d", address.IP, targetPort))
+				backends = append(backends, fmt.Sprintf("[%s]:%d", address.IP, targetPort))
 			}
 		}
 	}

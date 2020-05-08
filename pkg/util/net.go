@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"math/rand"
 	"net"
@@ -91,7 +92,10 @@ func CheckProtocol(address string) string {
 	return kubeovnv1.ProtocolIPv6
 }
 
-func AddressCount(network *net.IPNet) uint64 {
+func AddressCount(network *net.IPNet) float64 {
 	prefixLen, bits := network.Mask.Size()
-	return 1 << (uint64(bits) - uint64(prefixLen))
+	if bits-prefixLen < 2 {
+		return 0
+	}
+	return math.Pow(2, float64(bits-prefixLen)) - 2
 }
