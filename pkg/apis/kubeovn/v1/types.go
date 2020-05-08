@@ -122,9 +122,9 @@ type SubnetStatus struct {
 	// +patchStrategy=merge
 	Conditions []SubnetCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
-	AvailableIPs    uint64 `json:"availableIPs"`
-	UsingIPs        uint64 `json:"usingIPs"`
-	ActivateGateway string `json:"activateGateway"`
+	AvailableIPs    float64 `json:"availableIPs"`
+	UsingIPs        float64 `json:"usingIPs"`
+	ActivateGateway string  `json:"activateGateway"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

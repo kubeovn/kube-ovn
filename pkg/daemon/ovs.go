@@ -144,8 +144,14 @@ func configureContainerNic(nicName, ipAddr, gateway string, macAddr net.Hardware
 			// For docker version >=17.x the "none" network will disable ipv6 by default.
 			// We have to enable ipv6 here to add v6 address and gateway.
 			// See https://github.com/containernetworking/cni/issues/531
-			if _, err = sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6", "0"); err != nil {
-				return fmt.Errorf("failed to enable ipv6 on all nic %v", err)
+			value, err := sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6")
+			if err != nil {
+				return fmt.Errorf("failed to get sysctl net.ipv6.conf.all.disable_ipv6 %v", err)
+			}
+			if value != "0" {
+				if _, err = sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6", "0"); err != nil {
+					return fmt.Errorf("failed to enable ipv6 on all nic %v", err)
+				}
 			}
 		}
 

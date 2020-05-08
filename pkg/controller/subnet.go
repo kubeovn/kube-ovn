@@ -991,8 +991,8 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	for _, podUsedIP := range podUsedIPs.Items {
 		toSubIPs = append(toSubIPs, podUsedIP.Spec.IPAddress)
 	}
-	availableIPs := util.AddressCount(cidr) - uint64(len(util.UniqString(toSubIPs)))
-	usingIPs := uint64(len(podUsedIPs.Items))
+	availableIPs := util.AddressCount(cidr) - float64(len(util.UniqString(toSubIPs)))
+	usingIPs := float64(len(podUsedIPs.Items))
 	subnet.Status.AvailableIPs = availableIPs
 	subnet.Status.UsingIPs = usingIPs
 	bytes, err := subnet.Status.Bytes()

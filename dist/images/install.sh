@@ -103,10 +103,10 @@ spec:
       type: string
       JSONPath: .spec.gatewayType
     - name: Used
-      type: integer
+      type: number
       JSONPath: .status.usingIPs
     - name: Available
-      type: integer
+      type: number
       JSONPath: .status.availableIPs
   validation:
     openAPIV3Schema:

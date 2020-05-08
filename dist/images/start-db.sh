@@ -8,7 +8,7 @@ DB_SB_PORT=${DB_SB_PORT:-6642}
 
 function gen_conn_str {
   t=$(echo -n "${NODE_IPS}" | sed 's/[[:space:]]//g' | sed 's/,/ /g')
-  x=$(for i in ${t}; do echo -n "tcp:$i:$1",; done| sed 's/,$//')
+  x=$(for i in ${t}; do echo -n "tcp:[$i]:$1",; done| sed 's/,$//')
   echo "$x"
 }
 
@@ -57,14 +57,16 @@ else
         /usr/share/ovn/scripts/ovn-ctl \
             --db-nb-create-insecure-remote=yes \
             --db-sb-create-insecure-remote=yes \
-            --db-nb-cluster-local-addr="${POD_IP}" \
-            --db-sb-cluster-local-addr="${POD_IP}" \
+            --db-nb-cluster-local-addr="[${POD_IP}]" \
+            --db-sb-cluster-local-addr="[${POD_IP}]" \
+            --db-nb-addr=[::] \
+            --db-sb-addr=[::] \
             --ovn-northd-nb-db=$(gen_conn_str 6641) \
             --ovn-northd-sb-db=$(gen_conn_str 6642) \
             start_northd
-        ovn-nbctl set-connection ptcp:"${DB_NB_PORT}":0.0.0.0
+        ovn-nbctl set-connection ptcp:"${DB_NB_PORT}":[::]
         ovn-nbctl set Connection . inactivity_probe=0
-        ovn-sbctl set-connection ptcp:"${DB_SB_PORT}":0.0.0.0
+        ovn-sbctl set-connection ptcp:"${DB_SB_PORT}":[::]
         ovn-sbctl set Connection . inactivity_probe=0
     else
         while ! nc -z "${nb_leader_ip}" "${DB_NB_PORT}" >/dev/null;
@@ -82,10 +84,10 @@ else
         /usr/share/ovn/scripts/ovn-ctl \
             --db-nb-create-insecure-remote=yes \
             --db-sb-create-insecure-remote=yes \
-            --db-nb-cluster-local-addr="${POD_IP}" \
-            --db-sb-cluster-local-addr="${POD_IP}" \
-            --db-nb-cluster-remote-addr="${nb_leader_ip}" \
-            --db-sb-cluster-remote-addr="${sb_leader_ip}" \
+            --db-nb-cluster-local-addr="[${POD_IP}]" \
+            --db-sb-cluster-local-addr="[${POD_IP}]" \
+            --db-nb-cluster-remote-addr="[${nb_leader_ip}]" \
+            --db-sb-cluster-remote-addr="[${sb_leader_ip}]" \
             --ovn-northd-nb-db=$(gen_conn_str 6641) \
             --ovn-northd-sb-db=$(gen_conn_str 6642) \
             start_northd
