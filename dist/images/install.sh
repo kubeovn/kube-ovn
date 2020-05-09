@@ -1051,7 +1051,7 @@ diagnose(){
   case $type in
     all)
       echo "### kube-ovn-controller recent log"
-      kubectl logs -n $KUBE_OVN_NS -l app=kube-ovn-controller --tail=15
+      kubectl logs -n $KUBE_OVN_NS -l app=kube-ovn-controller --tail=100 | grep E$(date +%m%d)
       echo ""
       pingers=$(kubectl get pod -n $KUBE_OVN_NS | grep kube-ovn-pinger | awk '{print $1}')
       for pinger in $pingers
