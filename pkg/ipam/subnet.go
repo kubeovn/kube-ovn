@@ -183,6 +183,8 @@ func (subnet *Subnet) joinFreeWithReserve() {
 }
 
 func (subnet *Subnet) GetPodAddress(podName string) (IP, string, bool) {
+	subnet.mutex.RLock()
+	defer subnet.mutex.RUnlock()
 	ip, mac := subnet.PodToIP[podName], subnet.PodToMac[podName]
 	return ip, mac, (ip != "" && mac != "")
 }
