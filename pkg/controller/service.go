@@ -227,7 +227,7 @@ func (c *Controller) handleUpdateService(key string) error {
 		klog.Errorf("failed to get tcp lb vips %v", err)
 		return err
 	}
-	klog.Infof("exist tcp vips are %v", vips)
+	klog.V(3).Infof("exist tcp vips are %v", vips)
 	for _, vip := range tcpVips {
 		if _, ok := vips[vip]; !ok {
 			klog.Infof("add vip %s to tcp lb", vip)

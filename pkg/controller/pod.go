@@ -376,6 +376,9 @@ func (c *Controller) handleAddPod(key string) error {
 	}
 
 	if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, generatePatchPayload(pod.Annotations, op)); err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
 		klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
 		return err
 	}
