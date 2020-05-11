@@ -302,7 +302,7 @@ func (c *Controller) handleDelVlan(key string) error {
 
 	for _, s := range subnet {
 		if s.Spec.Vlan == vlan.Name {
-			c.updateSubnetQueue.Add(s.Name)
+			c.addOrUpdateSubnetQueue.Add(s.Name)
 		}
 	}
 
