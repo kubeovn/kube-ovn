@@ -61,6 +61,18 @@ var _ = Describe("[IPAM]", func() {
 			Expect(ips).To(HaveLen(1))
 			Expect(ips[0]).To(Equal("10.16.0.1"))
 		})
+
+		It("change cidr", func() {
+			im := ipam.NewIPAM()
+			err := im.AddOrUpdateSubnet(subnetName, cidrStr, excludeIps)
+			Expect(err).ShouldNot(HaveOccurred())
+
+			im.AddOrUpdateSubnet(subnetName, "10.17.0.0/16", []string{"10.17.0.1"})
+			ip, _, err := im.GetRandomAddress("pod5.ns", subnetName)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(ip).To(Equal("10.17.0.2"))
+
+		})
 	})
 
 	Describe("[IP]", func() {

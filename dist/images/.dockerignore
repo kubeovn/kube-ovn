@@ -1,0 +1,4 @@
+install.sh
+cleanup.sh
+kubectl-ko
+*.yaml

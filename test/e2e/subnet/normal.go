@@ -59,7 +59,7 @@ var _ = Describe("[Subnet]", func() {
 
 			By("validate status")
 			Expect(subnet.Status.ActivateGateway).To(BeEmpty())
-			Expect(subnet.Status.AvailableIPs).To(Equal(uint64(65535)))
+			Expect(subnet.Status.AvailableIPs).To(Equal(float64(65533)))
 			Expect(subnet.Status.UsingIPs).To(BeZero())
 
 			pods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(metav1.ListOptions{LabelSelector: "app=ovs"})
@@ -91,6 +91,7 @@ var _ = Describe("[Subnet]", func() {
 			By("validate subnet")
 			err = f.WaitSubnetReady(name)
 			Expect(err).NotTo(HaveOccurred())
+			time.Sleep(5 * time.Second)
 
 			subnet, err := f.OvnClientSet.KubeovnV1().Subnets().Get(name, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
@@ -154,6 +155,7 @@ var _ = Describe("[Subnet]", func() {
 			err = f.OvnClientSet.KubeovnV1().Subnets().Delete(name, &metav1.DeleteOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
+			time.Sleep(5 * time.Second)
 			pods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(metav1.ListOptions{LabelSelector: "app=ovs"})
 			Expect(err).NotTo(HaveOccurred())
 			for _, pod := range pods.Items {

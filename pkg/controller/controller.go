@@ -45,10 +45,9 @@ type Controller struct {
 
 	subnetsLister           kubeovnlister.SubnetLister
 	subnetSynced            cache.InformerSynced
-	addSubnetQueue          workqueue.RateLimitingInterface
+	addOrUpdateSubnetQueue  workqueue.RateLimitingInterface
 	deleteSubnetQueue       workqueue.RateLimitingInterface
 	deleteRouteQueue        workqueue.RateLimitingInterface
-	updateSubnetQueue       workqueue.RateLimitingInterface
 	updateSubnetStatusQueue workqueue.RateLimitingInterface
 
 	ipsLister kubeovnlister.IPLister
@@ -127,10 +126,9 @@ func NewController(config *Configuration) *Controller {
 
 		subnetsLister:           subnetInformer.Lister(),
 		subnetSynced:            subnetInformer.Informer().HasSynced,
-		addSubnetQueue:          workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddSubnet"),
+		addOrUpdateSubnetQueue:  workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddSubnet"),
 		deleteSubnetQueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteSubnet"),
 		deleteRouteQueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteRoute"),
-		updateSubnetQueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateSubnet"),
 		updateSubnetStatusQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateSubnetStatus"),
 
 		ipsLister: ipInformer.Lister(),
@@ -282,8 +280,7 @@ func (c *Controller) shutdown() {
 
 	c.addNamespaceQueue.ShutDown()
 
-	c.addSubnetQueue.ShutDown()
-	c.updateSubnetQueue.ShutDown()
+	c.addOrUpdateSubnetQueue.ShutDown()
 	c.deleteSubnetQueue.ShutDown()
 	c.deleteRouteQueue.ShutDown()
 	c.updateSubnetStatusQueue.ShutDown()
@@ -356,7 +353,6 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		go wait.Until(c.runUpdatePodWorker, time.Second, stopCh)
 
 		go wait.Until(c.runDeleteSubnetWorker, time.Second, stopCh)
-		go wait.Until(c.runUpdateSubnetWorker, time.Second, stopCh)
 		go wait.Until(c.runDeleteRouteWorker, time.Second, stopCh)
 		go wait.Until(c.runUpdateSubnetStatusWorker, time.Second, stopCh)
 

@@ -56,6 +56,31 @@ func (c Client) CreatePort(ls, port, ip, cidr, mac, tag string) error {
 	return nil
 }
 
+func (c Client) SetLogicalSwitchConfig(ls, protocol, subnet, gateway string, excludeIps []string) error {
+	var err error
+	mask := strings.Split(subnet, "/")[1]
+	switch protocol {
+	case kubeovnv1.ProtocolIPv4:
+		_, err = c.ovnNbCommand(MayExist, "ls-add", ls, "--",
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", subnet), "--",
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")), "--",
+			"set", "logical_router_port", fmt.Sprintf("%s-%s", c.ClusterRouter, ls), fmt.Sprintf("networks=%s/%s", gateway, mask))
+	case kubeovnv1.ProtocolIPv6:
+		_, err = c.ovnNbCommand(MayExist, "ls-add", ls, "--",
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:ipv6_prefix=%s", strings.Split(subnet, "/")[0]), "--",
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")), "--",
+			"set", "logical_router_port", fmt.Sprintf("%s-%s", c.ClusterRouter, ls), fmt.Sprintf("networks=%s/%s", gateway, mask))
+	}
+
+	if err != nil {
+		klog.Errorf("set switch config for %s failed %v", ls, err)
+		return err
+	}
+	return nil
+}
+
 // CreateLogicalSwitch create logical switch in ovn, connect it to router and apply tcp/udp lb rules
 func (c Client) CreateLogicalSwitch(ls, protocol, subnet, gateway string, excludeIps []string) error {
 	var err error
@@ -656,11 +681,6 @@ func (c Client) GetLogicalSwitchExcludeIPS(logicalSwitch string) ([]string, erro
 		return nil, ErrNoAddr
 	}
 	return strings.Fields(output), nil
-}
-
-func (c Client) UpdateLogicalSwitchExcludeIPs(ls string, excludeIPs []string) error {
-	_, err := c.ovnNbCommand("set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIPs, " ")))
-	return err
 }
 
 // SetLogicalSwitchExcludeIPS set a logical switch exclude ips
