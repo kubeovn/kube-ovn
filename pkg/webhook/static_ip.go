@@ -84,15 +84,17 @@ func (v *ValidatingHook) PodCreateHook(ctx context.Context, req admission.Reques
 	}
 	// Get logical switch name
 	lsName := v.opt.DefaultLS
+	var subnet *ovnv1.Subnet
 	subnetList := &ovnv1.SubnetList{}
 	err := v.cache.List(ctx, subnetList)
 	if err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
-	for _, subnet := range subnetList.Items {
-		for _, ns := range subnet.Spec.Namespaces {
+	for _, s := range subnetList.Items {
+		for _, ns := range s.Spec.Namespaces {
 			if ns == o.GetNamespace() {
-				lsName = subnet.Name
+				lsName = s.Name
+				subnet = &s
 				break
 			}
 		}
@@ -118,7 +120,7 @@ func (v *ValidatingHook) PodCreateHook(ctx context.Context, req admission.Reques
 	if err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
-	parsedExcludeIPs := ovs.ExpandExcludeIPs(excludeIPs)
+	parsedExcludeIPs := ovs.ExpandExcludeIPs(excludeIPs, subnet.Spec.CIDRBlock)
 	usedIPs = append(usedIPs, parsedExcludeIPs...)
 	// Check static ips overlap
 	if util.IsStringsOverlap([]string{staticIP}, usedIPs) {
@@ -281,14 +283,16 @@ func (v *ValidatingHook) podControllerCreate(ctx context.Context, staticIPSAnno,
 	// Get logical switch name
 	lsName := v.opt.DefaultLS
 	subnetList := &ovnv1.SubnetList{}
+	var subnet *ovnv1.Subnet
 	err := v.cache.List(ctx, subnetList)
 	if err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
-	for _, subnet := range subnetList.Items {
-		for _, ns := range subnet.Spec.Namespaces {
+	for _, s := range subnetList.Items {
+		for _, ns := range s.Spec.Namespaces {
 			if ns == namespace {
-				lsName = subnet.Name
+				lsName = s.Name
+				subnet = &s
 				break
 			}
 		}
@@ -314,7 +318,7 @@ func (v *ValidatingHook) podControllerCreate(ctx context.Context, staticIPSAnno,
 	if err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
-	parsedExcludeIPs := ovs.ExpandExcludeIPs(excludeIPs)
+	parsedExcludeIPs := ovs.ExpandExcludeIPs(excludeIPs, subnet.Spec.CIDRBlock)
 	usedIPs = append(usedIPs, parsedExcludeIPs...)
 	// Check static ips overlap
 	if util.IsStringsOverlap(staticIPs, usedIPs) {
@@ -359,15 +363,17 @@ func (v *ValidatingHook) podControllerUpdate(ctx context.Context, oldStaticIPSAn
 	}
 	// Get logical switch name
 	lsName := v.opt.DefaultLS
+	var subnet *ovnv1.Subnet
 	subnetList := &ovnv1.SubnetList{}
 	err := v.cache.List(ctx, subnetList)
 	if err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
-	for _, subnet := range subnetList.Items {
-		for _, ns := range subnet.Spec.Namespaces {
+	for _, s := range subnetList.Items {
+		for _, ns := range s.Spec.Namespaces {
 			if ns == namespace {
-				lsName = subnet.Name
+				lsName = s.Name
+				subnet = &s
 				break
 			}
 		}
@@ -377,7 +383,7 @@ func (v *ValidatingHook) podControllerUpdate(ctx context.Context, oldStaticIPSAn
 	if err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
-	parsedExcludeIPs := ovs.ExpandExcludeIPs(excludeIPs)
+	parsedExcludeIPs := ovs.ExpandExcludeIPs(excludeIPs, subnet.Spec.CIDRBlock)
 	// Check static ips overlap
 	if util.IsStringsOverlap(toAdd, parsedExcludeIPs) {
 		return ctrlwebhook.Denied("overlap")
