@@ -352,7 +352,7 @@ func (c *Controller) handleUpdateNode(key string) error {
 	if nodeReady(node) {
 		for _, subnet := range subnets {
 			if subnet.Status.ActivateGateway == "" && gatewayContains(subnet.Spec.GatewayNode, node.Name) {
-				if err := c.reconcileCentralizedGateway(subnet); err != nil {
+				if err := c.reconcileGateway(subnet); err != nil {
 					return err
 				}
 			}
@@ -360,7 +360,7 @@ func (c *Controller) handleUpdateNode(key string) error {
 	} else {
 		for _, subnet := range subnets {
 			if subnet.Status.ActivateGateway == node.Name {
-				if err := c.reconcileCentralizedGateway(subnet); err != nil {
+				if err := c.reconcileGateway(subnet); err != nil {
 					return err
 				}
 			}

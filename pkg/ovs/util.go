@@ -23,7 +23,7 @@ func trimCommandOutput(raw []byte) string {
 }
 
 // ExpandExcludeIPs parse ovn exclude_ips to ip slice
-func ExpandExcludeIPs(excludeIPs []string) []string {
+func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
 	rv := []string{}
 	for _, excludeIP := range excludeIPs {
 		if strings.Index(excludeIP, "..") != -1 {
@@ -31,7 +31,10 @@ func ExpandExcludeIPs(excludeIPs []string) []string {
 			s := util.Ip2BigInt(parts[0])
 			e := util.Ip2BigInt(parts[1])
 			for s.Cmp(e) <= 0 {
-				rv = append(rv, util.BigInt2Ip(s))
+				ipStr := util.BigInt2Ip(s)
+				if util.CIDRContainIP(cidr, ipStr) {
+					rv = append(rv, ipStr)
+				}
 				s.Add(s, big.NewInt(1))
 			}
 		} else {
