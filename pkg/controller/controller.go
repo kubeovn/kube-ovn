@@ -256,13 +256,13 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		klog.Fatalf("failed to init ovn resource %v", err)
 	}
 
-	if err := c.InitIPAM(); err != nil {
-		klog.Fatalf("failed to init ipam %v", err)
-	}
-
 	// remove resources in ovndb that not exist any more in kubernetes resources
 	if err := c.gc(); err != nil {
 		klog.Fatalf("gc failed %v", err)
+	}
+
+	if err := c.InitIPAM(); err != nil {
+		klog.Fatalf("failed to init ipam %v", err)
 	}
 
 	// start workers to do all the network operations

@@ -117,15 +117,15 @@ func (c *Controller) gcLogicalSwitchPort() error {
 		return err
 	}
 	for _, lsp := range lsps {
+		if !strings.Contains(lsp, ".") {
+			// ignore router ports
+			continue
+		}
 		if !util.IsStringIn(lsp, ipNames) {
-			if strings.Contains(lsp, ".") {
-				klog.Infof("gc logical switch port %s", lsp)
-				podName := strings.Split(lsp, ".")[0]
-				podNameSpace := strings.Split(lsp, ".")[1]
-				if err := c.handleDeletePod(fmt.Sprintf("%s/%s", podNameSpace, podName)); err != nil {
-					klog.Errorf("failed to gc port %s, %v", lsp, err)
-					return err
-				}
+			klog.Infof("gc logical switch port %s", lsp)
+			if err := c.ovnClient.DeletePort(lsp); err != nil {
+				klog.Errorf("failed to delete lsp %s, %v", lsp, err)
+				return err
 			}
 		}
 	}
