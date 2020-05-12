@@ -326,10 +326,14 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) error {
 func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason string, errStr string) {
 	if errStr != "" {
 		subnet.Status.SetError(reason, errStr)
+		subnet.Status.NotValidated(reason, errStr)
 		subnet.Status.NotReady(reason, errStr)
 		c.recorder.Eventf(subnet, v1.EventTypeWarning, reason, errStr)
 	} else {
-		subnet.Status.Ready(reason, "")
+		subnet.Status.Validated(reason, "")
+		if reason == "SetPrivateLogicalSwitchSuccess" || reason == "ResetLogicalSwitchAclSuccess" {
+			subnet.Status.Ready(reason, "")
+		}
 	}
 
 	bytes, err := subnet.Status.Bytes()
@@ -372,6 +376,14 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return nil
 	}
 
+	if err = util.ValidateSubnet(*subnet); err != nil {
+		klog.Errorf("failed to validate subnet %s, %v", subnet.Name, err)
+		c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error())
+		return err
+	} else {
+		c.patchSubnetStatus(subnet, "ValidateLogicalSwitchSuccess", "")
+	}
+
 	subnetList, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets %v", err)
@@ -411,13 +423,6 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 
 	if !exist {
 		subnet.Status.EnsureStandardConditions()
-		if err = util.ValidateSubnet(*subnet); err != nil {
-			klog.Errorf("failed to validate subnet %s, %v", subnet.Name, err)
-			c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error())
-			return err
-		} else {
-			c.patchSubnetStatus(subnet, "ValidateLogicalSwitchSuccess", "")
-		}
 		// If multiple namespace use same ls name, only first one will success
 		if err := c.ovnClient.CreateLogicalSwitch(subnet.Name, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
 			c.patchSubnetStatus(subnet, "CreateLogicalSwitchFailed", err.Error())
@@ -425,13 +430,6 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	} else {
 		// logical switch exists, only update other_config
-		if err = util.ValidateSubnet(*subnet); err != nil {
-			klog.Errorf("failed to validate subnet %s, %v", subnet.Name, err)
-			c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error())
-			return err
-		} else {
-			c.patchSubnetStatus(subnet, "ValidateLogicalSwitchSuccess", "")
-		}
 		if err := c.ovnClient.SetLogicalSwitchConfig(subnet.Name, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
 			c.patchSubnetStatus(subnet, "SetLogicalSwitchConfigFailed", err.Error())
 			return err
@@ -455,7 +453,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclFailed", err.Error())
 			return err
 		} else {
-			c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclFailed", "")
+			c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclSuccess", "")
 		}
 	}
 
