@@ -74,16 +74,13 @@ suspend:
 
 kind-init:
 	kind delete cluster --name=kube-ovn
-	kind create cluster --config yamls/kind.yaml --name kube-ovn
+	kind create cluster --config yamls/kind-single.yaml --name kube-ovn
 	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
-	kubectl label node kube-ovn-control-plane kube-ovn/role=master --overwrite
-	kubectl apply -f yamls/crd.yaml
-	kubectl apply -f yamls/ovn.yaml
-	kubectl apply -f yamls/kube-ovn.yaml
+	bash dist/images/install.sh
 
 kind-init-ha:
 	kind delete cluster --name=kube-ovn
-	kind create cluster --config yamls/kind.yaml --name kube-ovn
+	kind create cluster --config yamls/kind-ha.yaml --name kube-ovn
 	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
 	bash dist/images/install.sh
 
@@ -98,8 +95,6 @@ uninstall:
 	bash dist/images/cleanup.sh
 
 e2e:
-	docker pull index.alauda.cn/claas/pause:3.1
-	kind load docker-image --name kube-ovn index.alauda.cn/claas/pause:3.1
 	ginkgo -p --slowSpecThreshold=60 test/e2e
 
 ut:
