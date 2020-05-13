@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"strings"
 
 	"github.com/alauda/kube-ovn/pkg/util"
@@ -116,7 +117,13 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	}
 
 	for _, port := range svc.Spec.Ports {
-		vip := fmt.Sprintf("[%s]:%d", clusterIP, port.Port)
+		var vip string
+		if util.CheckProtocol(clusterIP) == kubeovnv1.ProtocolIPv6 {
+			vip = fmt.Sprintf("[%s]:%d", clusterIP, port.Port)
+		} else {
+			vip = fmt.Sprintf("%s:%d", clusterIP, port.Port)
+		}
+
 		backends := getServicePortBackends(ep, port, clusterIP)
 		if port.Protocol == v1.ProtocolTCP {
 			// for performance reason delete lb with no backends
@@ -168,7 +175,11 @@ func getServicePortBackends(endpoints *v1.Endpoints, servicePort v1.ServicePort,
 
 		for _, address := range subset.Addresses {
 			if util.CheckProtocol(serviceIP) == util.CheckProtocol(address.IP) {
-				backends = append(backends, fmt.Sprintf("[%s]:%d", address.IP, targetPort))
+				if util.CheckProtocol(address.IP) == kubeovnv1.ProtocolIPv6 {
+					backends = append(backends, fmt.Sprintf("[%s]:%d", address.IP, targetPort))
+				} else {
+					backends = append(backends, fmt.Sprintf("%s:%d", address.IP, targetPort))
+				}
 			}
 		}
 	}
