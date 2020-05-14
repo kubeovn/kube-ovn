@@ -26,7 +26,6 @@ rules:
       - subnets/status
       - ips
       - vlans
-      - networks
     verbs:
       - "*"
   - apiGroups:

@@ -5,3 +5,5 @@ networking:
 nodes:
   - role: control-plane
     image: kindest/node:v1.18.0
+  - role: worker
+    image: kindest/node:v1.18.0

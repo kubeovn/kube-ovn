@@ -143,40 +143,6 @@ spec:
     - name: Subnet
       type: string
       JSONPath: .spec.subnet
----
-apiVersion: apiextensions.k8s.io/v1beta1
-kind: CustomResourceDefinition
-metadata:
-  name: networks.kubeovn.io
-spec:
-  group: kubeovn.io
-  version: v1
-  scope: Cluster
-  names:
-    plural: networks
-    singular: network
-    kind: Network
-    shortNames:
-      - network
-  additionalPrinterColumns:
-    - name: NetworkType
-      type: string
-      JSONPath: .spec.networkType
-    - name: DefaultSubnet
-      type: string
-      JSONPath: .spec.defaultSubnet
-    - name: NodeSubnet
-      type: string
-      JSONPath: .spec.nodeSubnet
-    - name: MasterNode
-      type: string
-      JSONPath: .spec.masterNode
-    - name: PprofPort
-      type: integer
-      JSONPath: .spec.pprofPort
-    - name: ProviderName
-      type: string
-      JSONPath: .spec.providerName
 EOF
 
 cat <<EOF > ovn.yaml
@@ -208,7 +174,6 @@ rules:
       - subnets/status
       - ips
       - vlans
-      - networks
     verbs:
       - "*"
   - apiGroups:
