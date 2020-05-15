@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/emicklei/go-restful"
+	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog"
 
@@ -41,8 +41,10 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 
 	klog.Infof("add port request %v", podRequest)
 	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, vlanID string
+	var pod *v1.Pod
+	var err error
 	for i := 0; i < 10; i++ {
-		pod, err := csh.KubeClient.CoreV1().Pods(podRequest.PodNamespace).Get(podRequest.PodName, v1.GetOptions{})
+		pod, err = csh.KubeClient.CoreV1().Pods(podRequest.PodNamespace).Get(podRequest.PodName, metav1.GetOptions{})
 		if err != nil {
 			errMsg := fmt.Errorf("get pod %s/%s failed %v", podRequest.PodNamespace, podRequest.PodName, err)
 			klog.Error(errMsg)
@@ -74,6 +76,13 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		break
 	}
 
+	if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podRequest.Provider)] != "true" {
+		err := fmt.Errorf("no address allocated to this pod, please see kube-ovn-controller logs to find errors")
+		klog.Error(err)
+		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()})
+		return
+	}
+
 	if err := csh.createOrUpdateIPCr(podRequest, subnet, ip, macAddr); err != nil {
 		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()})
 		return
@@ -98,7 +107,7 @@ func (csh cniServerHandler) createOrUpdateIPCr(podRequest request.CniRequest, su
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			_, err := csh.KubeOvnClient.KubeovnV1().IPs().Create(&kubeovnv1.IP{
-				ObjectMeta: v1.ObjectMeta{
+				ObjectMeta: metav1.ObjectMeta{
 					Name: fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace),
 					Labels: map[string]string{
 						util.SubnetNameLabel: subnet,
