@@ -192,36 +192,3 @@ type VlanList struct {
 
 	Items []Vlan `json:"items"`
 }
-
-// +genclient
-// +genclient:noStatus
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +genclient:nonNamespaced
-
-type Network struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	Spec NetworkSpec `json:"spec"`
-}
-
-type NetworkSpec struct {
-	NetworkType   string `json:"networkType"`
-	DefaultSubnet string `json:"defaultSubnet,omitempty"`
-	NodeSubnet    string `json:"nodeSubnet,omitempty"`
-	MasterNode    string `json:"masterNode,omitempty"`
-	PprofPort     int    `json:"pprofPort,omitempty"`
-	ProviderName  string `json:"providerName,omitempty"`
-	InterfaceName string `json:"interfaceName,omitempty"`
-	DefaultVlan   string `json:"defaultVlan,omitempty"`
-	VlanRange     string `json:"vlanRange,omitempty"`
-}
-
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
-type NetworkList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata"`
-
-	Items []Network `json:"items"`
-}

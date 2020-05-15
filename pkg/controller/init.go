@@ -28,11 +28,6 @@ func (c *Controller) InitOVN() error {
 		return err
 	}
 
-	if err := c.initNetwork(); err != nil {
-		klog.Errorf("init cluster network config failed %v", err)
-		return err
-	}
-
 	if err := c.initNodeSwitch(); err != nil {
 		klog.Errorf("init node switch failed %v", err)
 		return err
@@ -210,39 +205,6 @@ func (c *Controller) InitIPAM() error {
 	}
 
 	return nil
-}
-
-//InitNetwork save the cluster default network
-func (c *Controller) initNetwork() error {
-	_, err := c.config.KubeOvnClient.KubeovnV1().Networks().Get("config", v1.GetOptions{})
-	if err == nil {
-		return nil
-	}
-
-	if !errors.IsNotFound(err) {
-		klog.Errorf("get network config failed %v", err)
-		return err
-	}
-
-	networkSpec := kubeovnv1.NetworkSpec{
-		NetworkType:   c.config.NetworkType,
-		DefaultSubnet: c.config.DefaultLogicalSwitch,
-		NodeSubnet:    c.config.NodeSwitch,
-		PprofPort:     c.config.PprofPort,
-		InterfaceName: c.config.DefaultHostInterface,
-	}
-	if c.config.NetworkType == util.NetworkTypeVlan {
-		networkSpec.ProviderName = c.config.DefaultProviderName
-		networkSpec.DefaultVlan = c.config.DefaultVlanName
-		networkSpec.VlanRange = c.config.DefaultVlanRange
-	}
-
-	networkConfig := kubeovnv1.Network{
-		ObjectMeta: v1.ObjectMeta{Name: "config"},
-		Spec:       networkSpec,
-	}
-	_, err = c.config.KubeOvnClient.KubeovnV1().Networks().Create(&networkConfig)
-	return err
 }
 
 //InitDefaultVlan init the default vlan when network type is vlan or vxlan
