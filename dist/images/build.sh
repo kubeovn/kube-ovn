@@ -24,6 +24,7 @@ cd ..
 git clone -b branch-20.03 --depth=1 https://github.com/ovn-org/ovn.git
 cd ovn
 curl https://github.com/alauda/ovn/commit/19e802b80c866089af8f7a21512f68decc75a874.patch | git apply
+curl https://github.com/oilbeater/ovn/commit/7e49a662d9a9d23d673958564048eee71dc941f0.patch | git apply
 curl https://github.com/oilbeater/ovn/commit/1e0d051acb355ca835e07f87be402cfb5d68f5b2.patch | git apply
 sed -i 's/20.03.1/20.03.0/g' configure.ac
 ./boot.sh
