@@ -28,7 +28,7 @@ wait_ovn_sb
 
 function quit {
 	/usr/share/openvswitch/scripts/ovs-ctl stop
-	/usr/share/openvswitch/scripts/ovn-ctl stop_controller
+	/usr/share/ovn/scripts/ovn-ctl stop_controller
 	exit 0
 }
 trap quit EXIT

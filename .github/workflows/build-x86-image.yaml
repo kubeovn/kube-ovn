@@ -42,15 +42,15 @@ jobs:
       - name: Build
         run: make release
 
-      - name: Init Kind
-        run: |
-          sudo make kind-init
-
-      - name: Run E2E
-        run: |
-          sudo kubectl cluster-info
-          sudo chmod 666 /home/runner/.kube/config
-          make e2e
+#      - name: Init Kind
+#        run: |
+#          sudo make kind-init
+#
+#      - name: Run E2E
+#        run: |
+#          sudo kubectl cluster-info
+#          sudo chmod 666 /home/runner/.kube/config
+#          make e2e
 
       - name: Push
         env:
