@@ -338,9 +338,19 @@ func (c *Controller) handleAddPod(key string) error {
 		pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, subnet.Spec.Provider)] = "true"
 
 		if isOvnSubnet(subnet) {
-			if err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, subnet.Spec.CIDRBlock, mac); err != nil {
-				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
-				return err
+			portSecurity := pod.Annotations[util.PortSecurityAnnotation]
+			if portSecurity == "false" {
+				klog.Infof("handleAddPod %s createPort noSecurity", pod.Name)
+				if err := c.ovnClient.CreatePortNoSecurity(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, subnet.Spec.CIDRBlock, mac); err != nil {
+					c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
+					return err
+				}
+			} else {
+				klog.Infof("handleAddPod %s createPort Security", pod.Name)
+				if err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, subnet.Spec.CIDRBlock, mac); err != nil {
+					c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
+					return err
+				}
 			}
 		}
 	}
@@ -423,9 +433,17 @@ func (c *Controller) handleUpdatePod(key string) error {
 		if err != nil {
 			return err
 		}
-
-		if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
-			return errors.Annotate(err, "add static route failed")
+		nextHopIP := pod.Annotations[util.NorthGatewayAnnotation]
+		if nextHopIP != "" && util.CIDRContainIP(subnet.Spec.CIDRBlock, nextHopIP) {
+			klog.Infof("handleUpdatePod set %s nextHop NorthGateway: %s", pod.Name, nextHopIP)
+			if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nextHopIP, c.config.ClusterRouter); err != nil {
+				return errors.Annotate(err, "add static route failed")
+			}
+		} else {
+			klog.Infof("handleUpdatePod set %s nextHop nodeTunlIP: %s", pod.Name, nodeTunlIPAddr.String())
+			if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
+				return errors.Annotate(err, "add static route failed")
+			}
 		}
 	}
 

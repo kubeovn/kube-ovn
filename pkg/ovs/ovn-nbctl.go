@@ -43,6 +43,17 @@ func (c Client) CreatePort(ls, port, ip, cidr, mac string) error {
 		ovnCommand = append(ovnCommand,
 			"lsp-set-port-security", port, fmt.Sprintf("%s %s/%s", mac, ip, strings.Split(cidr, "/")[1]))
 	}
+	if _, err := c.ovnNbCommand(ovnCommand...); err != nil {
+		klog.Errorf("create port %s failed %v", port, err)
+		return err
+	}
+	return nil
+}
+
+// CreatePort create logical switch port in ovn
+func (c Client) CreatePortNoSecurity(ls, port, ip, cidr, mac string) error {
+	ovnCommand := []string{MayExist, "lsp-add", ls, port, "--",
+		"lsp-set-addresses", port, fmt.Sprintf("%s %s", mac, ip), "--"}
 
 	if _, err := c.ovnNbCommand(ovnCommand...); err != nil {
 		klog.Errorf("create port %s failed %v", port, err)
