@@ -1,6 +1,9 @@
 # syntax = docker/dockerfile:experimental
 FROM centos:8 as ovs-rpm
 
+ARG RPM_ARCH
+ARG ARCH
+
 RUN yum install dnf-plugins-core -y && \
     yum config-manager --set-enabled PowerTools && \
     yum install python36 git wget openssl-devel gcc \
@@ -10,7 +13,6 @@ RUN yum install dnf-plugins-core -y && \
     desktop-file-utils graphviz groff python3-sphinx -y
 COPY build.sh /root/build.sh
 RUN bash /root/build.sh
-ARG RPM_ARCH
 RUN mkdir /rpms/ && \
     cp /ovs/rpm/rpmbuild/RPMS/${RPM_ARCH}/* /ovn/rpm/rpmbuild/RPMS/${RPM_ARCH}/* /rpms && \
     cd /rpms && rm -f *debug* *docker* *vtep* *ipsec*
