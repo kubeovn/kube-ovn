@@ -228,7 +228,7 @@ func (c *Controller) gcStaticRoute() error {
 		return err
 	}
 	for _, route := range routes {
-		if route.Policy == ovs.PolicyDstIP {
+		if route.Policy == ovs.PolicyDstIP || route.Policy == "" {
 			if !c.ipam.ContainAddress(route.NextHop) {
 				klog.Infof("gc static route %s %s %s", route.Policy, route.CIDR, route.NextHop)
 				if err := c.ovnClient.DeleteStaticRouteByNextHop(route.NextHop); err != nil {

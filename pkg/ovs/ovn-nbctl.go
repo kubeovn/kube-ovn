@@ -256,7 +256,8 @@ func (c Client) ListStaticRoute() ([]StaticRoute, error) {
 	for _, entry := range strings.Split(output, "\n") {
 		if len(strings.Split(entry, ",")) == 3 {
 			t := strings.Split(entry, ",")
-			staticRoutes = append(staticRoutes, StaticRoute{CIDR: t[0], NextHop: t[1], Policy: t[2]})
+			staticRoutes = append(staticRoutes,
+				StaticRoute{CIDR: strings.TrimSpace(t[0]), NextHop: strings.TrimSpace(t[1]), Policy: strings.TrimSpace(t[2])})
 		}
 	}
 	return staticRoutes, nil
