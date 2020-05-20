@@ -59,6 +59,7 @@ spec:
   gatewayType: distributed
   natOutgoing: true
   vlan: product
+  underlayGateway: true # If the gateway exist in physical switch please set underlayGateway to true, otherwise kube-ovn will create a virtual one
   namespaces:
     - product
 ```

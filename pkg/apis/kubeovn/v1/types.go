@@ -88,7 +88,8 @@ type SubnetSpec struct {
 	Private      bool     `json:"private"`
 	AllowSubnets []string `json:"allowSubnets,omitempty"`
 
-	Vlan string `json:"vlan,omitempty"`
+	Vlan            string `json:"vlan,omitempty"`
+	UnderlayGateway bool   `json:"underlayGateway"`
 }
 
 // ConditionType encodes information on the condition

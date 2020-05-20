@@ -82,7 +82,7 @@ func (c Client) SetLogicalSwitchConfig(ls, protocol, subnet, gateway string, exc
 }
 
 // CreateLogicalSwitch create logical switch in ovn, connect it to router and apply tcp/udp lb rules
-func (c Client) CreateLogicalSwitch(ls, protocol, subnet, gateway string, excludeIps []string) error {
+func (c Client) CreateLogicalSwitch(ls, protocol, subnet, gateway string, excludeIps []string, underlayGateway bool) error {
 	var err error
 	switch protocol {
 	case kubeovnv1.ProtocolIPv4:
@@ -107,9 +107,11 @@ func (c Client) CreateLogicalSwitch(ls, protocol, subnet, gateway string, exclud
 	mac := util.GenerateMac()
 	mask := strings.Split(subnet, "/")[1]
 	klog.Infof("create route port for switch %s", ls)
-	if err := c.createRouterPort(ls, c.ClusterRouter, gateway+"/"+mask, mac); err != nil {
-		klog.Errorf("failed to connect switch %s to router, %v", ls, err)
-		return err
+	if !underlayGateway {
+		if err := c.createRouterPort(ls, c.ClusterRouter, gateway+"/"+mask, mac); err != nil {
+			klog.Errorf("failed to connect switch %s to router, %v", ls, err)
+			return err
+		}
 	}
 	if ls != c.NodeSwitch {
 		// DO NOT add ovn dns/lb to node switch
