@@ -10,7 +10,7 @@ ARCH=amd64
 # RPM_ARCH could be x86_64,aarch64
 RPM_ARCH=x86_64
 
-.PHONY: build-dev-images build-go build-bin lint up down halt suspend resume kind-init kind-init-ha kind-reload push-dev push-release e2e ut
+.PHONY: build-dev-images build-go build-bin lint kind-init kind-init-ha kind-reload push-dev push-release e2e ut
 
 build-dev-images: build-bin
 	docker build -t ${REGISTRY}/kube-ovn:${DEV_TAG} -f dist/images/Dockerfile dist/images/
@@ -56,21 +56,6 @@ build-bin:
 		golang:$(GO_VERSION) /bin/bash -c '\
 		cd /go/src/github.com/alauda/kube-ovn && \
 		make build-go '
-
-up:
-	cd vagrant && vagrant up
-
-down:
-	cd vagrant && vagrant destroy -f
-
-halt:
-	cd vagrant && vagrant halt
-
-resume:
-	cd vagrant && vagrant resume
-
-suspend:
-	cd vagrant && vagrant suspend
 
 kind-init:
 	kind delete cluster --name=kube-ovn
