@@ -115,7 +115,7 @@ func configureHostNic(nicName, vlanID string, macAddr net.HardwareAddr) error {
 		return fmt.Errorf("can not set host nic %s qlen %v", nicName, err)
 	}
 
-	if vlanID != "" {
+	if vlanID != "" && vlanID != "0" {
 		if err := ovs.SetPortTag(nicName, vlanID); err != nil {
 			return fmt.Errorf("failed to add vlan tag, %v", err)
 		}

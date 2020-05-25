@@ -44,7 +44,7 @@ func (c Client) CreatePort(ls, port, ip, cidr, mac, tag string) error {
 			"--", "lsp-set-port-security", port, fmt.Sprintf("%s %s/%s", mac, ip, strings.Split(cidr, "/")[1]))
 	}
 
-	if tag != "" {
+	if tag != "" && tag != "0" {
 		ovnCommand = append(ovnCommand,
 			"--", "set", "logical_switch_port", port, fmt.Sprintf("tag=%s", tag))
 	}
@@ -709,12 +709,18 @@ func (c Client) GetLogicalSwitchPortByLogicalSwitch(logicalSwitch string) ([]str
 }
 
 func (c Client) CreateLocalnetPort(ls, port, providerName, vlanID string) error {
-	_, err := c.ovnNbCommand(MayExist, "lsp-add", ls, port, "--",
+	cmdArg := []string{
+		MayExist, "lsp-add", ls, port, "--",
 		"lsp-set-addresses", port, "unknown", "--",
 		"lsp-set-type", port, "localnet", "--",
-		"lsp-set-options", port, fmt.Sprintf("network_name=%s", providerName), "--",
-		"set", "logical_switch_port", port, fmt.Sprintf("tag=%s", vlanID))
-	if err != nil {
+		"lsp-set-options", port, fmt.Sprintf("network_name=%s", providerName),
+	}
+	if vlanID != "" && vlanID != "0" {
+		cmdArg = append(cmdArg,
+			"--", "set", "logical_switch_port", port, fmt.Sprintf("tag=%s", vlanID))
+	}
+
+	if _, err := c.ovnNbCommand(cmdArg...); err != nil {
 		klog.Errorf("create localnet port %s failed, %v", port, err)
 		return err
 	}
