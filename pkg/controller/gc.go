@@ -117,10 +117,6 @@ func (c *Controller) gcLogicalSwitchPort() error {
 		return err
 	}
 	for _, lsp := range lsps {
-		if !strings.Contains(lsp, ".") {
-			// ignore router ports
-			continue
-		}
 		if !util.IsStringIn(lsp, ipNames) {
 			klog.Infof("gc logical switch port %s", lsp)
 			if err := c.ovnClient.DeletePort(lsp); err != nil {
