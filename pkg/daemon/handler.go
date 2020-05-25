@@ -43,7 +43,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, vlanID string
 	var pod *v1.Pod
 	var err error
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 15; i++ {
 		pod, err = csh.KubeClient.CoreV1().Pods(podRequest.PodNamespace).Get(podRequest.PodName, metav1.GetOptions{})
 		if err != nil {
 			errMsg := fmt.Errorf("get pod %s/%s failed %v", podRequest.PodNamespace, podRequest.PodName, err)
@@ -77,7 +77,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	}
 
 	if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podRequest.Provider)] != "true" {
-		err := fmt.Errorf("no address allocated to this pod, please see kube-ovn-controller logs to find errors")
+		err := fmt.Errorf("no address allocated to pod %s/%s, please see kube-ovn-controller logs to find errors", pod.Name, pod.Name)
 		klog.Error(err)
 		resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()})
 		return
