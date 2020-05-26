@@ -365,7 +365,8 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	if err := calcSubnetStatusIP(subnet, c); err != nil {
-		klog.Error("init subnet status failed", err)
+		klog.Errorf("calculate subnet %s used ip failed, %v", subnet.Name, err)
+		return err
 	}
 
 	if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.ExcludeIps); err != nil {
