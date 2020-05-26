@@ -5,6 +5,8 @@ import (
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"github.com/alauda/kube-ovn/pkg/util"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
 	"strings"
@@ -106,7 +108,9 @@ func (c *Controller) gcLogicalSwitchPort() error {
 	}
 	ipNames := make([]string, 0, len(pods)+len(nodes))
 	for _, pod := range pods {
-		ipNames = append(ipNames, fmt.Sprintf("%s.%s", pod.Name, pod.Namespace))
+		if isPodAlive(pod) && pod.Annotations[util.AllocatedAnnotation] == "true" {
+			ipNames = append(ipNames, fmt.Sprintf("%s.%s", pod.Name, pod.Namespace))
+		}
 	}
 	for _, node := range nodes {
 		ipNames = append(ipNames, fmt.Sprintf("node-%s", node.Name))
@@ -122,6 +126,12 @@ func (c *Controller) gcLogicalSwitchPort() error {
 			if err := c.ovnClient.DeletePort(lsp); err != nil {
 				klog.Errorf("failed to delete lsp %s, %v", lsp, err)
 				return err
+			}
+			if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(lsp, &metav1.DeleteOptions{}); err != nil {
+				if !k8serrors.IsNotFound(err) {
+					klog.Errorf("failed to delete ip %s, %v", lsp, err)
+					return err
+				}
 			}
 		}
 	}
