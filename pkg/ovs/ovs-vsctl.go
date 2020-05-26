@@ -6,15 +6,18 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Glory belongs to openvswitch/ovn-kubernetes
 // https://github.com/openvswitch/ovn-kubernetes/blob/master/go-controller/pkg/util/ovs.go
 
-func ovsExec(args ...string) (string, error) {
+func Exec(args ...string) (string, error) {
+	start := time.Now()
 	args = append([]string{"--timeout=30"}, args...)
 	output, err := exec.Command("ovs-vsctl", args...).CombinedOutput()
-
+	elapsed := float64((time.Since(start)) / time.Millisecond)
+	klog.Infof("command ovs-vsctl %s in %vms", strings.Join(args, " "), elapsed)
 	if err != nil {
 		return "", fmt.Errorf("failed to run 'ovs-vsctl %s': %v\n  %q", strings.Join(args, " "), err, output)
 	}
@@ -30,23 +33,23 @@ func ovsExec(args ...string) (string, error) {
 
 func ovsCreate(table string, values ...string) (string, error) {
 	args := append([]string{"create", table}, values...)
-	return ovsExec(args...)
+	return Exec(args...)
 }
 
 func ovsDestroy(table, record string) error {
-	_, err := ovsExec("--if-exists", "destroy", table, record)
+	_, err := Exec("--if-exists", "destroy", table, record)
 	return err
 }
 
 func ovsSet(table, record string, values ...string) error {
 	args := append([]string{"set", table, record}, values...)
-	_, err := ovsExec(args...)
+	_, err := Exec(args...)
 	return err
 }
 
 // Returns the given column of records that match the condition
 func ovsFind(table, column, condition string) ([]string, error) {
-	output, err := ovsExec("--no-heading", "--columns="+column, "find", table, condition)
+	output, err := Exec("--no-heading", "--columns="+column, "find", table, condition)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +73,7 @@ func ovsFind(table, column, condition string) ([]string, error) {
 
 func ovsClear(table, record string, columns ...string) error {
 	args := append([]string{"--if-exists", "clear", table, record}, columns...)
-	_, err := ovsExec(args...)
+	_, err := Exec(args...)
 	return err
 }
 
@@ -165,7 +168,7 @@ func CleanLostInterface() {
 				return
 			}
 			klog.Infof("delete lost port %s", name)
-			output, err := exec.Command("ovs-vsctl", "--if-exists", "--with-iface", "del-port", "br-int", name).CombinedOutput()
+			output, err := Exec("--if-exists", "--with-iface", "del-port", "br-int", name)
 			if err != nil {
 				klog.Errorf("failed to delete ovs port %v, %s", err, output)
 				return
@@ -192,7 +195,7 @@ func CleanLostInterface() {
 func CleanDuplicatePort(ifaceID string) {
 	uuids, _ := ovsFind("Interface", "_uuid", "external-ids:iface-id="+ifaceID)
 	for _, uuid := range uuids {
-		if out, err := ovsExec("remove", "Interface", uuid, "external-ids", "iface-id"); err != nil {
+		if out, err := Exec("remove", "Interface", uuid, "external-ids", "iface-id"); err != nil {
 			klog.Errorf("failed to clear stale OVS port %q iface-id %q: %v\n  %q", uuid, ifaceID, err, out)
 		}
 	}
