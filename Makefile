@@ -40,7 +40,7 @@ release: lint build-go
 release-arm: lint build-go-arm
 	docker buildx build --platform linux/arm64 --build-arg ARCH=arm64 --build-arg RPM_ARCH=aarch64 -t ${REGISTRY}/kube-ovn:${RELEASE_TAG} -o type=docker -f dist/images/Dockerfile dist/images/
 
-push-release:
+push-release: release
 	docker push ${REGISTRY}/kube-ovn:${RELEASE_TAG}
 
 lint:
