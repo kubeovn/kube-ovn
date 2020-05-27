@@ -302,25 +302,25 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 	return nil
 }
 
-func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) error {
+func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, error) {
 	if subnet.DeletionTimestamp.IsZero() && !util.ContainsString(subnet.Finalizers, util.ControllerName) {
 		subnet.Finalizers = append(subnet.Finalizers, util.ControllerName)
 		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Update(subnet); err != nil {
 			klog.Errorf("failed to add finalizer to subnet %s, %v", subnet.Name, err)
-			return err
+			return false, err
 		}
-		return nil
+		return false, nil
 	}
 
 	if !subnet.DeletionTimestamp.IsZero() && subnet.Status.UsingIPs == 0 {
 		subnet.Finalizers = util.RemoveString(subnet.Finalizers, util.ControllerName)
 		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Update(subnet); err != nil {
 			klog.Errorf("failed to remove finalizer from subnet %s, %v", subnet.Name, err)
-			return err
+			return false, err
 		}
-		return nil
+		return true, nil
 	}
-	return nil
+	return false, nil
 }
 
 func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason string, errStr string) {
@@ -355,9 +355,13 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
-	if err := c.handleSubnetFinalizer(subnet); err != nil {
+	deleted, err := c.handleSubnetFinalizer(subnet)
+	if err != nil {
 		klog.Errorf("handle subnet finalizer failed %v", err)
 		return err
+	}
+	if deleted {
+		return nil
 	}
 
 	if err := formatSubnet(subnet, c); err != nil {

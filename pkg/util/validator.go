@@ -128,6 +128,10 @@ func ValidateVlan(vlan int, vlanRange string) error {
 		return err
 	}
 
+	if vlan == 0 {
+		return nil
+	}
+
 	if vlan < min || vlan > max {
 		return fmt.Errorf("the vlan is not in vlan range %s", vlanRange)
 	}
