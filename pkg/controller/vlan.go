@@ -6,7 +6,6 @@ import (
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"github.com/alauda/kube-ovn/pkg/util"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -286,14 +285,6 @@ func (c *Controller) handleUpdateVlan(key string) error {
 }
 
 func (c *Controller) handleDelVlan(key string) error {
-	vlan, err := c.vlansLister.Get(key)
-
-	err = c.config.KubeOvnClient.KubeovnV1().Vlans().Delete(key, &metav1.DeleteOptions{})
-	if err != nil {
-		klog.Errorf("failed to delete vlan %s, %v", vlan.Name, err)
-		return err
-	}
-
 	subnet, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets %v", err)
@@ -301,7 +292,7 @@ func (c *Controller) handleDelVlan(key string) error {
 	}
 
 	for _, s := range subnet {
-		if s.Spec.Vlan == vlan.Name {
+		if s.Spec.Vlan == key {
 			c.addOrUpdateSubnetQueue.Add(s.Name)
 		}
 	}
