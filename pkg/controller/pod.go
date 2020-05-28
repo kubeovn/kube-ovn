@@ -377,6 +377,9 @@ func (c *Controller) handleAddPod(key string) error {
 
 	if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, generatePatchPayload(pod.Annotations, op)); err != nil {
 		if k8serrors.IsNotFound(err) {
+			// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.
+			// Then we need to recycle the resource again.
+			c.deletePodQueue.AddRateLimited(key)
 			return nil
 		}
 		klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
@@ -459,6 +462,12 @@ func (c *Controller) handleUpdatePod(key string) error {
 
 	pod.Annotations[util.RoutedAnnotation] = "true"
 	if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, generatePatchPayload(pod.Annotations, "replace")); err != nil {
+		if k8serrors.IsNotFound(err) {
+			// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.
+			// Then we need to recycle the resource again.
+			c.deletePodQueue.AddRateLimited(key)
+			return nil
+		}
 		klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
 		return err
 	}
