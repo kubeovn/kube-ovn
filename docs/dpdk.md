@@ -7,6 +7,29 @@ This document describes how to run Kube-OVN with OVS-DPDK.
 - Kubernetes >= 1.11
 - Docker >= 1.12.6
 - OS: CentOS 7.5/7.6/7.7, Ubuntu 16.04/18.04
+- 1GB Hugepages on the host
+
+#### Hugepages Setup:
+- On the host, modify the file /etc/default/grub
+- Append the following to the setting GRUB_CMDLINE_LINUX:
+`default_hugepagesz=1GB hugepagesz=1G hugepages=X`
+Where X is the number of 1GB hugepages you wish to create on your system. Your usecases will determine the number of hugepages required and system memory available will determine the maximum possible.
+- Update Grub:
+	- On legacy boot systems run: `grub2-mkconfig -o /boot/grub2/grub.cfg`
+	- On EFI boot systems run: `grub2-mkconfig -o /boot/efi/EFI/centos/grub.cfg`
+	**NOTE:** This filepath is an example from a CentOS system, it will differ on other distros.
+- Reboot the system
+- To confirm hugepages configured run: `grep Huge /proc/meminfo`
+
+Example Output:
+```
+AnonHugePages:   2105344 kB
+HugePages_Total:      32
+HugePages_Free:       30
+HugePages_Rsvd:        0
+HugePages_Surp:        0
+Hugepagesize:    1048576 kB
+```
 
 
 ## To Install
@@ -25,7 +48,7 @@ TODO: Update once PR is merged.
 2. Navigate to the directory containing the install script
 `cd kube-ovn/dist/images/`
 
-3. Run the install script making sure to include the flag --with-dpdk= followed by the required DPDK version.  
+3. Run the install script making sure to include the flag --with-dpdk= followed by the required DPDK version.
 `bash install.sh --with-dpdk=19.11`
 >**Note:** Current supported version is DPDK 19.11
 
@@ -38,11 +61,13 @@ To install Multus follow the [Multus quick start guide](https://github.com/intel
 > **Note:** Multus determines the existing default network as the lexicographically (alphabetically) first configuration file in the /etc/cni/net.d directory.
 > If another plugin has the lexicographically first config file at this location, it will be considered the default network. Rename configuration files accordingly before Multus installation.
 
-With Multus installed, additional Network interfaces can now be requested within a pod spec. 
- 
- 
+With Multus installed, additional Network interfaces can now be requested within a pod spec.
+
+
+
 ## Userspace CNI
-There is now a containerized instance of OVS-DPDK running on the node. Kube-OVN can provide all of its regular (kernal) functionality. Multus is in place to enable pods request the additional OVS-DPDK interfaces. However, OVS-DPDK does provide regular Netdev interfaces, but vhost-user sockets. These sockets cannot be attached to a pod in the usual manner where the Netdev is moved to the pod network namespace. These sockets must be mounted into the pod. Kube-OVN (at least currently) does not have this socket-mounting ability. For this functionality we can use the [Userspace CNI Network Plugin](https://github.com/intel/userspace-cni-network-plugin). 
+There is now a containerized instance of OVS-DPDK running on the node. Kube-OVN can provide all of its regular (kernal) functionality. Multus is in place to enable pods request the additional OVS-DPDK interfaces. However, OVS-DPDK does provide regular Netdev interfaces, but vhost-user sockets. These sockets cannot be attached to a pod in the usual manner where the Netdev is moved to the pod network namespace. These sockets must be mounted into the pod. Kube-OVN (at least currently) does not have this socket-mounting ability. For this functionality we can use the [Userspace CNI Network Plugin](https://github.com/intel/userspace-cni-network-plugin).
+
 
 ### Download, build and install Userspace CNI
 >**Note:** These steps assume Go is already installed and the GOPATH env var is set.
@@ -52,6 +77,7 @@ There is now a containerized instance of OVS-DPDK running on the node. Kube-OVN 
 5. `make install`
 6. `make`
 7. `cp userspace/userspace /opt/cni/bin`
+
 
 ### Userspace Network Attachment Definition
 A NetworkAttachmentDefinition is used to represent the network attachments. In this case we need a NAD to represent the network interfaces provided by Userspace CNI, i.e. the OVS-DPDK interfaces. It will then be possible to request this network attachment within a pod spec and Multus will attach these to the pod as secondary interfaces in addition to the preconfigured default network, i.e. the Kube-OVN provided OVS (Kernel) interfaces.
@@ -115,8 +141,15 @@ EOF
 ```
 `chmod +x /usr/local/bin/ovs-vsctl`
 
+
+## CPU Mask
+CPU masking is not necessary, but some advanced users may wish to use this feature in OVS-DPDK. When starting OVS-DPDK ovs-vsctl has the ability to configure a CPU mask. This should be used with something like [CPU-Manager-for-Kubernetes](https://github.com/intel/CPU-Manager-for-Kubernetes). Configuration of such a setup is complex and specific to each system. It is out of the scope of this document. Please consult OVS-DPDK and CMK documentation.
+
+
 # Example DPDK Pod
 A sample Kubernetes pod running a DPDK enabled Docker image.
+
+
 ### Dockerfile
 Create the Dockerfile, name it Dockerfile.dpdk
 ```
@@ -141,6 +174,7 @@ RUN cd /usr/src/ && \
 ```
 Build the Docker image and tag it as dpdk:19.11. This build will take some time.
 `docker build -t dpdk:19.11 -f Dockerfile.dpdk .`
+
 
 ### Pod Spec
 Create the Pod Spec, name it pod.yaml
@@ -191,4 +225,5 @@ Run the pod.
 The pod will be created with a kernel OVS interface provided by Kube-OVN, as the default network. In addition two secondary interfaces will be available within the pod as socket files located under /vhu/ .
 
 ### TestPMD
-Steps to use the DPDK test application TestPMD appear to have changed slightly with the latest versions of OVS and DPDK. Updated instructions to follow shortly.
+To run TestPMD:
+`testpmd -m 1024 -c 0xC --file-prefix=testpmd_ --vdev=net_virtio_user0,path=<path-to-socket-file1> --vdev=net_virtio_user1,path=<path-to-socket-file2> --no-pci -- --no-lsc-interrupt --auto-start --tx-first --stats-period 1`

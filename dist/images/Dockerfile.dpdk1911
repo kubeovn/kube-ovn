@@ -18,22 +18,17 @@ ENV DPDK_DIR=/usr/src/dpdk-stable-${DPDK_VERSION}
 ENV PATH=${PATH}:/usr/share/openvswitch/scripts
 ENV PATH=${PATH}:/usr/share/ovn/scripts/
 
-RUN dnf install -y wget xz git make numactl-devel diffutils dnf-plugins-core dpdk-devel libcap-ng-devel libpcap-devel nc iptables ipset hostname && dnf clean all
-
+RUN dnf install -y make numactl-devel diffutils dnf-plugins-core dpdk-devel libcap-ng-devel libpcap-devel nc iptables ipset hostname \
 # NOTE: Fedora 32 comes with gcc version 10. This caused LD linker issues during DPDK build.
 # Install gcc version 9 and its dependencies.
-RUN mkdir /rpms && cd /rpms
-RUN wget https://kojipkgs.fedoraproject.org//packages/gcc/9.2.1/1.fc32.3/x86_64/cpp-9.2.1-1.fc32.3.x86_64.rpm \
-         https://kojipkgs.fedoraproject.org//packages/gcc/9.2.1/1.fc32.3/x86_64/libgomp-9.2.1-1.fc32.3.x86_64.rpm \
-         https://kojipkgs.fedoraproject.org//packages/gcc/9.2.1/1.fc32.3/x86_64/gcc-9.2.1-1.fc32.3.x86_64.rpm
-RUN dnf install -y cpp-9.2.1-1.fc32.3.x86_64.rpm libgomp-9.2.1-1.fc32.3.x86_64.rpm gcc-9.2.1-1.fc32.3.x86_64.rpm
-RUN rm -f cpp-9.2.1-1.fc32.3.x86_64.rpm libgomp-9.2.1-1.fc32.3.x86_64.rpm gcc-9.2.1-1.fc32.3.x86_64.rpm
+  https://kojipkgs.fedoraproject.org//packages/gcc/9.2.1/1.fc32.3/x86_64/cpp-9.2.1-1.fc32.3.x86_64.rpm \
+  https://kojipkgs.fedoraproject.org//packages/gcc/9.2.1/1.fc32.3/x86_64/libgomp-9.2.1-1.fc32.3.x86_64.rpm \
+  https://kojipkgs.fedoraproject.org//packages/gcc/9.2.1/1.fc32.3/x86_64/gcc-9.2.1-1.fc32.3.x86_64.rpm && \
+  dnf clean all
 
 # Install DPDK
 RUN cd /usr/src/ && \
-  wget http://fast.dpdk.org/rel/dpdk-${DPDK_VERSION}.tar.xz && \
-  tar xf dpdk-${DPDK_VERSION}.tar.xz && \
-  rm -f dpdk-${DPDK_VERSION}.tar.xz && \
+  curl http://fast.dpdk.org/rel/dpdk-${DPDK_VERSION}.tar.gz | tar xz && \
   cd ${DPDK_DIR} && \
   sed -i s/CONFIG_RTE_EAL_IGB_UIO=y/CONFIG_RTE_EAL_IGB_UIO=n/ config/common_linux && \
   sed -i s/CONFIG_RTE_LIBRTE_KNI=y/CONFIG_RTE_LIBRTE_KNI=n/ config/common_linux && \
@@ -42,11 +37,9 @@ RUN cd /usr/src/ && \
 
 # Install OVS-DPDK
 # NOTE: rpm-build is installed here, as installing it earlier conflicts with the workaround to roll back the gcc version.
-RUN dnf install -y rpm-build
-RUN cd /usr/src/ && \
-  wget https://www.openvswitch.org/releases/openvswitch-${OVS_VERSION}.tar.gz && \
-  tar xf openvswitch-${OVS_VERSION}.tar.gz && \
-  rm -f openvswitch-${OVS_VERSION}.tar.gz && \
+RUN dnf install -y rpm-build && \
+  cd /usr/src/ && \
+  curl https://www.openvswitch.org/releases/openvswitch-${OVS_VERSION}.tar.gz | tar xz && \
   cd ${OVS_DIR} && \
   sed -e 's/@VERSION@/0.0.1/' rhel/openvswitch-fedora.spec.in > /tmp/ovs.spec && \
   dnf builddep -y /tmp/ovs.spec && \
@@ -56,17 +49,20 @@ RUN cd /usr/src/ && \
 
 # Install OVN
 RUN cd /usr/src/ && \
-  git clone -b branch-${OVN_VERSION} --depth=1 https://github.com/ovn-org/ovn.git && \
+  cd /usr/src/ && \
+  curl -L https://github.com/ovn-org/ovn/tarball/branch-${OVN_VERSION} > ovn.tar.gz && \
+  mkdir ovn && tar -xf ovn.tar.gz -C ovn --strip-components 1 && \
+  rm -f ovn.tar.gz && \
   cd ovn && \
   ./boot.sh && \
   ./configure --with-ovs-source=${OVS_DIR} && \
   make rpm-fedora
 
-RUN cp ${OVS_DIR}/rpm/rpmbuild/RPMS/${RPM_ARCH}/* ${OVN_DIR}/rpm/rpmbuild/RPMS/${RPM_ARCH}/* /rpms
-
 RUN mkdir -p /var/run/openvswitch && \
-    mkdir -p /var/run/ovn
-
-RUN rpm -ivh --nodeps /rpms/*.rpm
+  mkdir -p /var/run/ovn && \
+  mkdir -p /rpms && \
+  cp ${OVS_DIR}/rpm/rpmbuild/RPMS/${RPM_ARCH}/* ${OVN_DIR}/rpm/rpmbuild/RPMS/${RPM_ARCH}/* /rpms && \
+  rpm -ivh --nodeps /rpms/*.rpm && \
+  rm -rf ${OVN_DIR} ${OVS_DIR} ${DPDK_DIR}
 
 COPY *.sh /kube-ovn/
