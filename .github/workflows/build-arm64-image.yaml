@@ -30,6 +30,5 @@ jobs:
         run: |
           TAG=$(cat VERSION)
           docker login -u "$DOCKER_USERNAME" -p "$DOCKER_PASSWORD"
-          docker tag index.alauda.cn/alaudak8s/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-arm
           docker images
           docker push kubeovn/kube-ovn:$TAG-arm

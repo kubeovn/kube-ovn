@@ -22,7 +22,7 @@ Kube-OVN provides a one script install to easily install a high-available, produ
 
 1. Download the installer scripts
 
-`wget https://raw.githubusercontent.com/alauda/kube-ovn/release/1.1/dist/images/install.sh`
+`wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.2/dist/images/install.sh`
 
 2. Use vim to edit the script variables to meet your requirement
 ```bash
@@ -113,7 +113,7 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
 1. Remove Kubernetes resources:
 
     ```bash
-    wget https://raw.githubusercontent.com/alauda/kube-ovn/release/1.1/dist/images/cleanup.sh
+    wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.2/dist/images/cleanup.sh
     bash cleanup.sh
     ```
 
