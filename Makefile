@@ -1,7 +1,7 @@
 GOFILES_NOVENDOR=$(shell find . -type f -name '*.go' -not -path "./vendor/*")
 GO_VERSION=1.14
 
-REGISTRY=index.alauda.cn/alaudak8s
+REGISTRY=kubeovn
 DEV_TAG=dev
 RELEASE_TAG=$(shell cat VERSION)
 

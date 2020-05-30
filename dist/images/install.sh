@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REGISTRY="index.alauda.cn/alaudak8s"
+REGISTRY="kubeovn"
 NAMESPACE="kube-system"                # The ns to deploy kube-ovn
 POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
 EXCLUDE_IPS=""                         # EXCLUDE_IPS for default subnet
@@ -188,10 +188,6 @@ spec:
 EOF
 
 if $DPDK; then
-# TODO: Once kube-ovn-dpdk image is built and hosted on the registry
-# update the pod image 
-# from: "garyloug/kube-ovn-dpdk:$DPDK_VERSION"
-# to: "$REGISTRY/kube-ovn-dpdk:$DPDK_VERSION" 
   cat <<EOF > ovn.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -465,7 +461,7 @@ spec:
       hostPID: true
       containers:
         - name: openvswitch
-          image: "garyloug/kube-ovn-dpdk:$DPDK_VERSION"
+          image: "kubeovn/kube-ovn-dpdk:$DPDK_VERSION"
           imagePullPolicy: $IMAGE_PULL_POLICY
           command: ["/kube-ovn/start-ovs-dpdk.sh"]
           securityContext:

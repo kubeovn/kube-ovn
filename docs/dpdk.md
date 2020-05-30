@@ -34,21 +34,22 @@ Hugepagesize:    1048576 kB
 
 ## To Install
 
-<!---
-NOTE: Once  PR is merged, it should no longer be necessary to clone the repo.
-It should be possible to wget and run the install script as described in the Kube-OVN install document:
-https://github.com/alauda/kube-ovn/blob/master/docs/install.md
+1. Download the installation script:
+`wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.2/dist/images/install.sh`
 
-TODO: Update once PR is merged.
--->
+2. Use vim to edit the script variables to meet your requirement
+```bash
+ REGISTRY="index.alauda.cn/alaudak8s"
+ NAMESPACE="kube-system"                # The ns to deploy kube-ovn
+ POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
+ SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR
+ JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
+ LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
+ IFACE=""                               # The nic to support container network, if empty will use the nic that the default route use
+ VERSION="v1.1.0"
+```
 
-1. Clone the Kube-OVN repo
-`git clone https://github.com/alauda/kube-ovn.git`
-
-2. Navigate to the directory containing the install script
-`cd kube-ovn/dist/images/`
-
-3. Run the install script making sure to include the flag --with-dpdk= followed by the required DPDK version.
+3. Run the installation script making sure to include the flag --with-dpdk= followed by the required DPDK version.
 `bash install.sh --with-dpdk=19.11`
 >**Note:** Current supported version is DPDK 19.11
 
@@ -70,7 +71,7 @@ There is now a containerized instance of OVS-DPDK running on the node. Kube-OVN 
 
 
 ### Download, build and install Userspace CNI
->**Note:** These steps assume Go is already installed and the GOPATH env var is set.
+>**Note:** These steps assume Go has already been installed, and the GOPATH env var has been set.
 1. `go get github.com/intel/userspace-cni-network-plugin`
 2. `cd $GOPATH/src/github.com/intel/userspace-cni-network-plugin`
 4. `make clean`
