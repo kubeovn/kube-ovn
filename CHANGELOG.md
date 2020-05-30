@@ -1,6 +1,13 @@
 # CHANGELOG
 
 ## v1.2.0 -- 2020/05/30
+In this version, Kube-OVN support vlan and dpdk type network interfaces for higher performance requirement.
+Thanks for Intel and Ruijie Networks guys who contribute these features.
+
+Previously to expose Pod IP to external network, admins have to manually add static routes. 
+Now admins can try the new BGP features to dynamically announce routes to external network.
+
+From this version, subnet CIDR can be changed after creation, and routes will be changed if gateway type is modified.
 
 ### New Feature
 * Kube-OVN now supports OVS-DPDK, high performance dpdk application can run in pod
