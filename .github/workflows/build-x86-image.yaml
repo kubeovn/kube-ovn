@@ -41,15 +41,15 @@ jobs:
       - name: Build
         run: make release
 
-#      - name: Init Kind
-#        run: |
-#          sudo make kind-init
-#
-#      - name: Run E2E
-#        run: |
-#          sudo kubectl cluster-info
-#          sudo chmod 666 /home/runner/.kube/config
-#          make e2e
+      - name: Init Kind
+        run: |
+          sudo make kind-init
+
+      - name: Run E2E
+        run: |
+          sudo kubectl cluster-info
+          sudo chmod 666 /home/runner/.kube/config
+          make e2e
 
       - name: Push
         env:
@@ -61,6 +61,5 @@ jobs:
           cat VERSION
           TAG=$(cat VERSION)
           docker login -u "$DOCKER_USERNAME" -p "$DOCKER_PASSWORD"
-          docker tag index.alauda.cn/alaudak8s/kube-ovn:$TAG kubeovn/kube-ovn:$TAG
           docker images
           docker push kubeovn/kube-ovn:$TAG

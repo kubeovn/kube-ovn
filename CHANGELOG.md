@@ -1,5 +1,37 @@
 # CHANGELOG
 
+## v1.2.0 -- 2020/05/30
+
+### New Feature
+* Kube-OVN now supports OVS-DPDK, high performance dpdk application can run in pod
+* Kube-OVN now supports vlan underlay network to achieve better network performance
+* Kube—OVN now supports using BGP to announce Pod IP routes to external network
+* Subnet validator will check if subnet CIDR conflicts with svc or node CIDR
+* Subnet CIDR can be changed after creation
+* When subnet gateway changed, routes will aromatically changed
+ 
+
+### Monitoring
+* Check if dns and kubernetes svc exist
+* Make grafana dashboard more sensitive to changes 
+
+### Misc
+* Patch upstream ovn to reduce lflow count
+* Add support for arm64 platform
+* Add support for kubernetes 1.18
+* Use github action to perform CI tasks
+* Optimize some log information
+* Move image to dockerhub
+
+
+### Bugfix:
+* OVS local interface table mac_in_use row is lower case, but pod annotation store mac in Upper case
+* fork go-ping to fix ping lost issues
+* Networkpolicy controller will panic if label is nil
+* Some concurrent panic when handle pod and subnet update
+* Some IPv6 break issues
+* Use kubectl version to avoid handshake errors in apiserver
+
 ## v1.1.1 -- 2020/04/27
 
 This release fix bugs found in v1.1.0.
