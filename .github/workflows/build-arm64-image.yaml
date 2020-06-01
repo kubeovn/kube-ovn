@@ -31,4 +31,5 @@ jobs:
           TAG=$(cat VERSION)
           docker login -u "$DOCKER_USERNAME" -p "$DOCKER_PASSWORD"
           docker images
+          docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-arm
           docker push kubeovn/kube-ovn:$TAG-arm
