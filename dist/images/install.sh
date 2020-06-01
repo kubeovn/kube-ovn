@@ -10,7 +10,7 @@ JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
 LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
 IFACE=""                               # The nic to support container network, if empty will use the nic that the default route use
 NETWORK_TYPE="geneve"                  # geneve or vlan
-VERSION="v1.2.0-pre"
+VERSION="v1.2.0"
 IMAGE_PULL_POLICY="IfNotPresent"
 
 # VLAN Config only take effect when NETWORK_TYPE is vlan
