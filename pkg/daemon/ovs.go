@@ -39,9 +39,8 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, netns, container
 	ifaceID := fmt.Sprintf("%s.%s", podName, podNamespace)
 	ovs.CleanDuplicatePort(ifaceID)
 	// Add veth pair host end to ovs port
-	output, err := exec.Command(
-		"ovs-vsctl", "--may-exist", "add-port", "br-int", hostNicName, "--",
-		"set", "interface", hostNicName, fmt.Sprintf("external_ids:iface-id=%s", ifaceID)).CombinedOutput()
+	output, err := ovs.Exec("--may-exist", "add-port", "br-int", hostNicName, "--",
+		"set", "interface", hostNicName, fmt.Sprintf("external_ids:iface-id=%s", ifaceID))
 	if err != nil {
 		return fmt.Errorf("add nic to ovs failed %v: %q", err, output)
 	}
@@ -71,7 +70,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, netns, container
 func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID string) error {
 	hostNicName, _ := generateNicName(containerID)
 	// Remove ovs port
-	output, err := exec.Command("ovs-vsctl", "--if-exists", "--with-iface", "del-port", "br-int", hostNicName).CombinedOutput()
+	output, err := ovs.Exec("--if-exists", "--with-iface", "del-port", "br-int", hostNicName)
 	if err != nil {
 		return fmt.Errorf("failed to delete ovs port %v, %q", err, output)
 	}
@@ -213,10 +212,9 @@ func waiteNetworkReady(gateway string) error {
 }
 
 func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int) error {
-	raw, err := exec.Command(
-		"ovs-vsctl", "--may-exist", "add-port", "br-int", util.NodeNic, "--",
+	raw, err := ovs.Exec("--may-exist", "add-port", "br-int", util.NodeNic, "--",
 		"set", "interface", util.NodeNic, "type=internal", "--",
-		"set", "interface", util.NodeNic, fmt.Sprintf("external_ids:iface-id=%s", portName)).CombinedOutput()
+		"set", "interface", util.NodeNic, fmt.Sprintf("external_ids:iface-id=%s", portName))
 	if err != nil {
 		klog.Errorf("failed to configure node nic %s %q", portName, raw)
 		return fmt.Errorf(string(raw))
@@ -239,13 +237,12 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 }
 
 func configureMirror(portName string, mtu int) error {
-	raw, err := exec.Command(
-		"ovs-vsctl", "--may-exist", "add-port", "br-int", portName, "--",
+	raw, err := ovs.Exec("--may-exist", "add-port", "br-int", portName, "--",
 		"set", "interface", portName, "type=internal", "--",
 		"clear", "bridge", "br-int", "mirrors", "--",
 		"--id=@mirror0", "get", "port", portName, "--",
 		"--id=@m", "create", "mirror", "name=m0", "select_all=true", "output_port=@mirror0", "--",
-		"add", "bridge", "br-int", "mirrors", "@m").CombinedOutput()
+		"add", "bridge", "br-int", "mirrors", "@m")
 	if err != nil {
 		klog.Errorf("failed to configure mirror nic %s %q", portName, raw)
 		return fmt.Errorf(string(raw))
@@ -301,22 +298,20 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int) error {
 }
 
 func configProviderPort(providerInterfaceName string) error {
-	output, err := exec.Command("ovs-vsctl", "--may-exist", "add-br", "br-provider", "--",
-		"set", "open", ".", fmt.Sprintf("external-ids:ovn-bridge-mappings=%s:br-provider", providerInterfaceName)).CombinedOutput()
+	output, err := ovs.Exec("--may-exist", "add-br", "br-provider", "--",
+		"set", "open", ".", fmt.Sprintf("external-ids:ovn-bridge-mappings=%s:br-provider", providerInterfaceName))
 	if err != nil {
 		return fmt.Errorf("failed to create bridge br-provider, %v: %q", err, output)
 	}
 
-	output, err = exec.Command(
-		"ovs-vsctl", "--may-exist", "add-port", "br-provider", "provider-int", "--",
-		"set", "interface", "provider-int", "type=patch", "options:peer=int-provider").CombinedOutput()
+	output, err = ovs.Exec("--may-exist", "add-port", "br-provider", "provider-int", "--",
+		"set", "interface", "provider-int", "type=patch", "options:peer=int-provider")
 	if err != nil {
 		return fmt.Errorf("failed to create patch port provider-int, %v: %q", err, output)
 	}
 
-	output, err = exec.Command(
-		"ovs-vsctl", "--may-exist", "add-port", "br-int", "int-provider", "--",
-		"set", "interface", "int-provider", "type=patch", "options:peer=provider-int").CombinedOutput()
+	output, err = ovs.Exec("--may-exist", "add-port", "br-int", "int-provider", "--",
+		"set", "interface", "int-provider", "type=patch", "options:peer=provider-int")
 	if err != nil {
 		return fmt.Errorf("failed to create patch port int-provider, %v: %q", err, output)
 	}
@@ -325,13 +320,13 @@ func configProviderPort(providerInterfaceName string) error {
 }
 
 func providerBridgeExists() (bool, error) {
-	output, err := exec.Command("ovs-vsctl", "list-br").CombinedOutput()
+	output, err := ovs.Exec("list-br")
 	if err != nil {
 		klog.Errorf("failed to list bridge %v", err)
 		return false, err
 	}
 
-	lines := strings.Split(string(output), "\n")
+	lines := strings.Split(output, "\n")
 	for _, l := range lines {
 		if l == "br-provider" {
 			return true, nil
@@ -345,6 +340,6 @@ func providerBridgeExists() (bool, error) {
 // A physical Ethernet device that is part of an Open vSwitch bridge should not have an IP address. If one does, then that IP address will not be fully functional.
 // More info refer http://docs.openvswitch.org/en/latest/faq/issues
 func configProviderNic(nicName string) error {
-	_, err := exec.Command("ovs-vsctl", "--may-exist", "add-port", "br-provider", nicName).CombinedOutput()
+	_, err := ovs.Exec("--may-exist", "add-port", "br-provider", nicName)
 	return err
 }
