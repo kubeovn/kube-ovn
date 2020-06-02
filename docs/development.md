@@ -30,7 +30,9 @@ make e2e
 
 ## ARM support
 
-If you want to run Kube-OVN on arm64 platform, you need to build the arm64 images with following steps.
+If you want to run Kube-OVN on arm64 platform, you need to build the arm64 images with docker multi-platform build.
 
-1. Edit the Makefile, change `ARCH=amd64` to `ARCH=arm64` and `RPM_ARCH=x86_64` to `RPM_ARCH=aarch64`
-2. Run `make release` to build the images for arm64 platform
+```bash
+make release-arm
+```
+
