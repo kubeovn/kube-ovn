@@ -84,7 +84,7 @@ func (v *ValidatingHook) PodCreateHook(ctx context.Context, req admission.Reques
 	}
 	// Get logical switch name
 	lsName := v.opt.DefaultLS
-	var subnet *ovnv1.Subnet
+	var subnet ovnv1.Subnet
 	subnetList := &ovnv1.SubnetList{}
 	err := v.cache.List(ctx, subnetList)
 	if err != nil {
@@ -94,7 +94,7 @@ func (v *ValidatingHook) PodCreateHook(ctx context.Context, req admission.Reques
 		for _, ns := range s.Spec.Namespaces {
 			if ns == o.GetNamespace() {
 				lsName = s.Name
-				subnet = &s
+				subnet = s
 				break
 			}
 		}
@@ -283,7 +283,7 @@ func (v *ValidatingHook) podControllerCreate(ctx context.Context, staticIPSAnno,
 	// Get logical switch name
 	lsName := v.opt.DefaultLS
 	subnetList := &ovnv1.SubnetList{}
-	var subnet *ovnv1.Subnet
+	var subnet ovnv1.Subnet
 	err := v.cache.List(ctx, subnetList)
 	if err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
@@ -292,7 +292,7 @@ func (v *ValidatingHook) podControllerCreate(ctx context.Context, staticIPSAnno,
 		for _, ns := range s.Spec.Namespaces {
 			if ns == namespace {
 				lsName = s.Name
-				subnet = &s
+				subnet = s
 				break
 			}
 		}
@@ -363,7 +363,7 @@ func (v *ValidatingHook) podControllerUpdate(ctx context.Context, oldStaticIPSAn
 	}
 	// Get logical switch name
 	lsName := v.opt.DefaultLS
-	var subnet *ovnv1.Subnet
+	var subnet ovnv1.Subnet
 	subnetList := &ovnv1.SubnetList{}
 	err := v.cache.List(ctx, subnetList)
 	if err != nil {
@@ -373,7 +373,7 @@ func (v *ValidatingHook) podControllerUpdate(ctx context.Context, oldStaticIPSAn
 		for _, ns := range s.Spec.Namespaces {
 			if ns == namespace {
 				lsName = s.Name
-				subnet = &s
+				subnet = s
 				break
 			}
 		}

@@ -89,8 +89,6 @@ func ParseFlags() (*Configuration, error) {
 		argsDefaultVlanRange     = pflag.String("default-vlan-range", "1,4095", "The default vlan range, default: 1-4095")
 	)
 
-	flag.Set("alsologtostderr", "true")
-
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
 
@@ -99,7 +97,9 @@ func ParseFlags() (*Configuration, error) {
 		f2 := klogFlags.Lookup(f1.Name)
 		if f2 != nil {
 			value := f1.Value.String()
-			f2.Value.Set(value)
+			if err := f2.Value.Set(value); err != nil {
+				klog.Fatalf("failed to set flag, %v", err)
+			}
 		}
 	})
 

@@ -27,7 +27,9 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, netns, container
 	defer func() {
 		// Remove veth link in case any error during creating pod network.
 		if err != nil {
-			netlink.LinkDel(&veth)
+			if err := netlink.LinkDel(&veth); err != nil {
+				klog.Errorf("failed to delete veth, %v", err)
+			}
 		}
 	}()
 	if err = netlink.LinkAdd(&veth); err != nil {

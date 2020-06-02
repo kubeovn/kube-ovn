@@ -2,7 +2,7 @@ package main
 
 import (
 	"flag"
-	_ "net/http/pprof"
+	_ "net/http/pprof" // #nosec
 	"os"
 	"time"
 
@@ -28,9 +28,15 @@ var (
 )
 
 func init() {
-	corev1.AddToScheme(scheme)
-	appsv1.AddToScheme(scheme)
-	ovnv1.AddToScheme(scheme)
+	if err := corev1.AddToScheme(scheme); err != nil {
+		klog.Fatalf("failed to add scheme, %v", err)
+	}
+	if err := appsv1.AddToScheme(scheme); err != nil {
+		klog.Fatalf("failed to add scheme, %v", err)
+	}
+	if err := ovnv1.AddToScheme(scheme); err != nil {
+		klog.Fatalf("failed to add scheme, %v", err)
+	}
 }
 
 func main() {
@@ -99,12 +105,16 @@ func loopOvnNbctlDaemon(ovnNbHost string, ovnNbPort int) {
 		time.Sleep(5 * time.Second)
 
 		if _, err := os.Stat(daemonSocket); os.IsNotExist(err) || daemonSocket == "" {
-			ovs.StartOvnNbctlDaemon(ovnNbHost, ovnNbPort)
+			if err := ovs.StartOvnNbctlDaemon(ovnNbHost, ovnNbPort); err != nil {
+				klog.Errorf("failed to start ovn-nbctl daemon, %v", err)
+			}
 		}
 
 		if err := ovs.CheckAlive(); err != nil {
 			klog.Warningf("ovn-nbctl daemon doesn't return, start a new daemon")
-			ovs.StartOvnNbctlDaemon(ovnNbHost, ovnNbPort)
+			if err := ovs.StartOvnNbctlDaemon(ovnNbHost, ovnNbPort); err != nil {
+				klog.Errorf("failed to start ovn-nbctl daemon, %v", err)
+			}
 		}
 	}
 }

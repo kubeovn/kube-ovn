@@ -43,7 +43,9 @@ func ParseFlags() (*Configuration, error) {
 		argKubeConfigFile  = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 	)
 
-	flag.Set("alsologtostderr", "true")
+	if err := flag.Set("alsologtostderr", "true"); err != nil {
+		klog.Fatalf("failed to set flag, %v", err)
+	}
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
 
@@ -52,7 +54,9 @@ func ParseFlags() (*Configuration, error) {
 		f2 := klogFlags.Lookup(f1.Name)
 		if f2 != nil {
 			value := f1.Value.String()
-			f2.Value.Set(value)
+			if err := f2.Value.Set(value); err != nil {
+				klog.Fatalf("failed to set flag, %v", err)
+			}
 		}
 	})
 

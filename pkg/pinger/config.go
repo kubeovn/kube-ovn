@@ -49,7 +49,9 @@ func ParseFlags() (*Configuration, error) {
 		f2 := klogFlags.Lookup(f1.Name)
 		if f2 != nil {
 			value := f1.Value.String()
-			f2.Value.Set(value)
+			if err := f2.Value.Set(value); err != nil {
+				klog.Fatalf("failed to set flag %v", err)
+			}
 		}
 	})
 

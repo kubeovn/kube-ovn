@@ -5,7 +5,7 @@ import (
 	"github.com/alauda/kube-ovn/pkg/util"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net/http"
-	_ "net/http/pprof"
+	_ "net/http/pprof" // #nosec
 
 	kubeovninformer "github.com/alauda/kube-ovn/pkg/client/informers/externalversions"
 	"github.com/alauda/kube-ovn/pkg/daemon"

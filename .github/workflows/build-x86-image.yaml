@@ -39,7 +39,9 @@ jobs:
           make ut
 
       - name: Build
-        run: make release
+        run: |
+          go get -u github.com/securego/gosec/cmd/gosec
+          make release
 
       - name: Init Kind
         run: |

@@ -22,7 +22,9 @@ jobs:
       - name: Docker Buildx
         uses: crazy-max/ghaction-docker-buildx@v1.4.0
       - name: Build
-        run: make release-arm
+        run: |
+          go get -u github.com/securego/gosec/cmd/gosec
+          make release-arm
       - name: Push
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
