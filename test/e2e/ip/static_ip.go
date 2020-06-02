@@ -35,7 +35,7 @@ var _ = Describe("[IP Allocation]", func() {
 					Containers: []corev1.Container{
 						{
 							Name:            name,
-							Image:           "index.alauda.cn/claas/pause:3.1",
+							Image:           "nginx:alpine",
 							ImagePullPolicy: corev1.PullIfNotPresent,
 						},
 					},
@@ -85,7 +85,7 @@ var _ = Describe("[IP Allocation]", func() {
 							Containers: []corev1.Container{
 								{
 									Name:            name,
-									Image:           "index.alauda.cn/claas/pause:3.1",
+									Image:           "nginx:alpine",
 									ImagePullPolicy: corev1.PullIfNotPresent,
 								},
 							},
@@ -138,7 +138,7 @@ var _ = Describe("[IP Allocation]", func() {
 							Containers: []corev1.Container{
 								{
 									Name:            name,
-									Image:           "index.alauda.cn/claas/pause:3.1",
+									Image:           "nginx:alpine",
 									ImagePullPolicy: corev1.PullIfNotPresent,
 								},
 							},

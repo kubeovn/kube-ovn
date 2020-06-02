@@ -470,14 +470,14 @@ func (c *Controller) podMatchNetworkPolicies(pod *corev1.Pod) []string {
 	nps, _ := c.npsLister.NetworkPolicies(corev1.NamespaceAll).List(labels.Everything())
 	match := []string{}
 	for _, np := range nps {
-		if isPodMatchNetworkPolicy(pod, podNs, np, np.Namespace) {
+		if isPodMatchNetworkPolicy(pod, *podNs, np, np.Namespace) {
 			match = append(match, fmt.Sprintf("%s/%s", np.Namespace, np.Name))
 		}
 	}
 	return match
 }
 
-func isPodMatchNetworkPolicy(pod *corev1.Pod, podNs *corev1.Namespace, policy *netv1.NetworkPolicy, policyNs string) bool {
+func isPodMatchNetworkPolicy(pod *corev1.Pod, podNs corev1.Namespace, policy *netv1.NetworkPolicy, policyNs string) bool {
 	sel, _ := metav1.LabelSelectorAsSelector(&policy.Spec.PodSelector)
 	if pod.Labels == nil {
 		pod.Labels = map[string]string{}
@@ -487,14 +487,14 @@ func isPodMatchNetworkPolicy(pod *corev1.Pod, podNs *corev1.Namespace, policy *n
 	}
 	for _, npr := range policy.Spec.Ingress {
 		for _, npp := range npr.From {
-			if isPodMatchPolicyPeer(pod, podNs, &npp, policyNs) {
+			if isPodMatchPolicyPeer(pod, podNs, npp, policyNs) {
 				return true
 			}
 		}
 	}
 	for _, npr := range policy.Spec.Egress {
 		for _, npp := range npr.To {
-			if isPodMatchPolicyPeer(pod, podNs, &npp, policyNs) {
+			if isPodMatchPolicyPeer(pod, podNs, npp, policyNs) {
 				return true
 			}
 		}
@@ -502,7 +502,7 @@ func isPodMatchNetworkPolicy(pod *corev1.Pod, podNs *corev1.Namespace, policy *n
 	return false
 }
 
-func isPodMatchPolicyPeer(pod *corev1.Pod, podNs *corev1.Namespace, policyPeer *netv1.NetworkPolicyPeer, policyNs string) bool {
+func isPodMatchPolicyPeer(pod *corev1.Pod, podNs corev1.Namespace, policyPeer netv1.NetworkPolicyPeer, policyNs string) bool {
 	if policyPeer.IPBlock != nil {
 		return false
 	}

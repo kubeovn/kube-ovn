@@ -128,7 +128,12 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 		// down scale statefulset
 		numIndex := len(strings.Split(p.Name, "-")) - 1
 		numStr := strings.Split(p.Name, "-")[numIndex]
-		index, _ := strconv.Atoi(numStr)
+		index, err := strconv.ParseInt(numStr, 10, 0)
+		if err != nil {
+			klog.Errorf("failed to parse %s to int", numStr)
+			return
+		}
+
 		if int32(index) >= *ss.Spec.Replicas {
 			c.deletePodQueue.Add(key)
 			return

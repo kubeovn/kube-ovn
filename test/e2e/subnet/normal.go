@@ -7,7 +7,9 @@ import (
 	"github.com/alauda/kube-ovn/test/e2e/framework"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog"
 	"os"
 	"time"
 )
@@ -15,12 +17,30 @@ import (
 var _ = Describe("[Subnet]", func() {
 	f := framework.NewFramework("subnet", fmt.Sprintf("%s/.kube/config", os.Getenv("HOME")))
 	BeforeEach(func() {
-		f.OvnClientSet.KubeovnV1().Subnets().Delete(f.GetName(), &metav1.DeleteOptions{})
-		f.KubeClientSet.CoreV1().Namespaces().Delete(f.GetName(), &metav1.DeleteOptions{})
+		if err := f.OvnClientSet.KubeovnV1().Subnets().Delete(f.GetName(), &metav1.DeleteOptions{}); err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Fatalf("failed to delete subnet %s, %v", f.GetName(), err)
+
+			}
+		}
+		if err := f.KubeClientSet.CoreV1().Namespaces().Delete(f.GetName(), &metav1.DeleteOptions{}); err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Fatalf("failed to delete ns %s, %v", f.GetName(), err)
+			}
+		}
 	})
 	AfterEach(func() {
-		f.OvnClientSet.KubeovnV1().Subnets().Delete(f.GetName(), &metav1.DeleteOptions{})
-		f.KubeClientSet.CoreV1().Namespaces().Delete(f.GetName(), &metav1.DeleteOptions{})
+		if err := f.OvnClientSet.KubeovnV1().Subnets().Delete(f.GetName(), &metav1.DeleteOptions{}); err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Fatalf("failed to delete subnet %s, %v", f.GetName(), err)
+
+			}
+		}
+		if err := f.KubeClientSet.CoreV1().Namespaces().Delete(f.GetName(), &metav1.DeleteOptions{}); err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Fatalf("failed to delete ns %s, %v", f.GetName(), err)
+			}
+		}
 	})
 
 	Describe("Create", func() {

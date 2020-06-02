@@ -628,7 +628,7 @@ func (c Client) SetAddressesToAddressSet(addresses []string, as string) error {
 }
 
 // StartOvnNbctlDaemon start a daemon and set OVN_NB_DAEMON env
-func StartOvnNbctlDaemon(nbHost string, nbPort int) (string, error) {
+func StartOvnNbctlDaemon(nbHost string, nbPort int) error {
 	klog.Infof("start ovn-nbctl daemon")
 	output, err := exec.Command(
 		"pkill",
@@ -637,7 +637,7 @@ func StartOvnNbctlDaemon(nbHost string, nbPort int) (string, error) {
 	).CombinedOutput()
 	if err != nil {
 		klog.Errorf("failed to kill old ovn-nbctl daemon: %q", output)
-		return "", err
+		return err
 	}
 
 	output, err = exec.Command(
@@ -649,12 +649,15 @@ func StartOvnNbctlDaemon(nbHost string, nbPort int) (string, error) {
 	).CombinedOutput()
 	if err != nil {
 		klog.Errorf("start ovn-nbctl daemon failed, %q", output)
-		return "", err
+		return err
 	}
 
 	daemonSocket := strings.TrimSpace(string(output))
-	os.Setenv("OVN_NB_DAEMON", daemonSocket)
-	return daemonSocket, nil
+	if err := os.Setenv("OVN_NB_DAEMON", daemonSocket); err != nil {
+		klog.Errorf("failed to set env OVN_NB_DAEMON, %v", err)
+		return err
+	}
+	return nil
 }
 
 // CheckAlive check if kube-ovn-controller can access ovn-nb from nbctl-daemon

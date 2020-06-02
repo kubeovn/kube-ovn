@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"net/http"
-	_ "net/http/pprof"
+	_ "net/http/pprof" // #nosec
 	"os"
 	"time"
 
@@ -28,7 +28,7 @@ func main() {
 	go loopOvnNbctlDaemon(config)
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
-		klog.Fatal(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.PprofPort), nil))
+		klog.Fatal(http.ListenAndServe(fmt.Sprintf("localhost:%d", config.PprofPort), nil))
 	}()
 
 	ctl := controller.NewController(config)
@@ -41,14 +41,18 @@ func loopOvnNbctlDaemon(config *controller.Configuration) {
 		time.Sleep(5 * time.Second)
 
 		if _, err := os.Stat(daemonSocket); os.IsNotExist(err) || daemonSocket == "" {
-			ovs.StartOvnNbctlDaemon(config.OvnNbHost, config.OvnNbPort)
+			if err := ovs.StartOvnNbctlDaemon(config.OvnNbHost, config.OvnNbPort); err != nil {
+				klog.Errorf("failed to start ovn-nbctl daemon %v", err)
+			}
 		}
 
 		// ovn-nbctl daemon may hang and cannot precess further request.
 		// In case of that, we need to start a new daemon.
 		if err := ovs.CheckAlive(); err != nil {
 			klog.Warningf("ovn-nbctl daemon doesn't return, start a new daemon")
-			ovs.StartOvnNbctlDaemon(config.OvnNbHost, config.OvnNbPort)
+			if err := ovs.StartOvnNbctlDaemon(config.OvnNbHost, config.OvnNbPort); err != nil {
+				klog.Errorf("failed to start ovn-nbctl daemon %v", err)
+			}
 		}
 	}
 }

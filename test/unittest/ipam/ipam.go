@@ -67,7 +67,8 @@ var _ = Describe("[IPAM]", func() {
 			err := im.AddOrUpdateSubnet(subnetName, cidrStr, excludeIps)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			im.AddOrUpdateSubnet(subnetName, "10.17.0.0/16", []string{"10.17.0.1"})
+			err = im.AddOrUpdateSubnet(subnetName, "10.17.0.0/16", []string{"10.17.0.1"})
+			Expect(err).ShouldNot(HaveOccurred())
 			ip, _, err := im.GetRandomAddress("pod5.ns", subnetName)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(ip).To(Equal("10.17.0.2"))

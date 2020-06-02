@@ -244,9 +244,11 @@ func (c *Controller) handleDeletePod(key string) error {
 			attrInterfaces, _ := apiutil.UnmarshalPathAttributes(path.Pattrs)
 			nextHop := getNextHopFromPathAttributes(attrInterfaces)
 			if nextHop.String() == host {
-				c.config.BgpServer.DeletePath(context.Background(), &api.DeletePathRequest{
+				if err := c.config.BgpServer.DeletePath(context.Background(), &api.DeletePathRequest{
 					Path: path,
-				})
+				}); err != nil {
+					klog.Errorf("failed to delete path %s, %v", path, err)
+				}
 			}
 		}
 	}

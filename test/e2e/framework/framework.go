@@ -86,7 +86,7 @@ func (f *Framework) WaitPodReady(pod, namespace string) error {
 			return nil
 		}
 
-		switch getPodStatus(p) {
+		switch getPodStatus(*p) {
 		case Completed:
 			return fmt.Errorf("pod already completed")
 		case Running:
@@ -118,7 +118,7 @@ func (f *Framework) WaitDeploymentReady(deployment, namespace string) error {
 
 		ready := true
 		for _, pod := range pods.Items {
-			switch getPodStatus(&pod) {
+			switch getPodStatus(pod) {
 			case Completed:
 				return fmt.Errorf("pod already completed")
 			case Running:
@@ -155,7 +155,7 @@ func (f *Framework) WaitStatefulsetReady(statefulset, namespace string) error {
 
 		ready := true
 		for _, pod := range pods.Items {
-			switch getPodStatus(&pod) {
+			switch getPodStatus(pod) {
 			case Completed:
 				return fmt.Errorf("pod already completed")
 			case Running:
@@ -224,7 +224,7 @@ const (
 	Initing           = "Initing"
 )
 
-func getPodContainerStatus(pod *corev1.Pod, reason string) string {
+func getPodContainerStatus(pod corev1.Pod, reason string) string {
 	for i := len(pod.Status.ContainerStatuses) - 1; i >= 0; i-- {
 		container := pod.Status.ContainerStatuses[i]
 
@@ -243,7 +243,7 @@ func getPodContainerStatus(pod *corev1.Pod, reason string) string {
 	return reason
 }
 
-func getPodStatus(pod *corev1.Pod) string {
+func getPodStatus(pod corev1.Pod) string {
 	reason := string(pod.Status.Phase)
 	if pod.Status.Reason != "" {
 		reason = pod.Status.Reason
@@ -261,7 +261,7 @@ func getPodStatus(pod *corev1.Pod) string {
 	return reason
 }
 
-func getPodInitStatus(pod *corev1.Pod, reason string) (bool, string) {
+func getPodInitStatus(pod corev1.Pod, reason string) (bool, string) {
 	initializing := false
 	for i := range pod.Status.InitContainerStatuses {
 		container := pod.Status.InitContainerStatuses[i]
