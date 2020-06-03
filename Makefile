@@ -85,3 +85,6 @@ e2e:
 
 ut:
 	ginkgo -p --slowSpecThreshold=60 test/unittest
+
+scan:
+	trivy image --exit-code=1 --severity=HIGH --ignore-unfixed kubeovn/kube-ovn:${RELEASE_TAG}
