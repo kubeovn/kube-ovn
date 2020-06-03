@@ -8,12 +8,36 @@ function quit {
 }
 trap quit EXIT
 
-# Start ovsdb and vswitchd
-ovs-ctl --no-ovs-vswitchd start
-ovs-vsctl --no-wait set Open_vSwitch . other_config:dpdk-socket-mem="1024"
-ovs-vsctl --no-wait set Open_vSwitch . other_config:dpdk-init=true
-ovs-vsctl --no-wait set Open_vSwitch . other_config:dpdk-hugepage-dir=/dev/hugepages
-ovs-ctl --no-ovsdb-server start
+CONFIG_FILE=/opt/ovs-config/config.cfg
+
+# Check if config file exists, create default one if not
+if ! test -f "$CONFIG_FILE"; then
+	printf %s\\n {dpdk-socket-mem=\"1024\",dpdk-init=true,dpdk-hugepage-dir=/dev/hugepages} > $CONFIG_FILE
+fi
+
+# Start ovsdb
+ovs-ctl restart --no-ovs-vswitchd --system-id=random
+
+# Restrict the number of pthreads ovs-vswitchd creates to reduce the
+# amount of RSS it uses on hosts with many cores
+# https://bugzilla.redhat.com/show_bug.cgi?id=1571379
+# https://bugzilla.redhat.com/show_bug.cgi?id=1572797
+if [[ `nproc` -gt 12 ]]; then
+    ovs-vsctl --no-wait set Open_vSwitch . other_config:n-revalidator-threads=4
+    ovs-vsctl --no-wait set Open_vSwitch . other_config:n-handler-threads=10
+fi
+
+# Read the config and setup OVS
+while IFS= read -r config_line
+do
+	if [[ $config_line ]] && [[ $config_line != \#* ]] ; then
+		ovs-vsctl --no-wait set Open_vSwitch . other_config:$config_line
+	fi
+done < "$CONFIG_FILE"
+
+# Start vswitchd
+ovs-ctl restart --no-ovsdb-server --system-id=random
+ovs-ctl --protocol=udp --dport=6081 enable-protocol
 
 # Start ovn-controller
 ovn-ctl restart_controller
