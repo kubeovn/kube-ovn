@@ -491,6 +491,8 @@ spec:
               name: host-log-ovs
             - mountPath: /var/log/ovn
               name: host-log-ovn
+            - mountPath: /opt/ovs-config
+              name: host-config-ovs
             - mountPath: /dev/hugepages
               name: hugepage
           readinessProbe:
@@ -542,6 +544,10 @@ spec:
         - name: host-log-ovn
           hostPath:
             path: /var/log/ovn
+        - name: host-config-ovs
+          hostPath:
+            path: /opt/ovs-config
+            type: DirectoryOrCreate
         - name: hugepage
           emptyDir:
             medium: HugePages

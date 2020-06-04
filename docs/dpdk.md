@@ -32,6 +32,33 @@ Hugepagesize:    1048576 kB
 ```
 
 
+## Optional configuration
+
+Open vSwitch is highly configurable using `other_config` options as described in [Open vSwitch Manual](http://www.openvswitch.org/support/dist-docs/ovs-vswitchd.conf.db.5.txt).
+All of those configs can be configured using simple config file `/opt/ovs-config/config.cfg`. This file is being mounted in `ovs-ovn` pod. It contains list of `other_config` options. Each option should be placed in new line.
+
+Example:
+
+```
+dpdk-socket-mem="1024,1024"
+dpdk-init=true
+pmd-cpu-mask=0x4
+dpdk-lcore-mask=0x2
+dpdk-hugepage-dir=/dev/hugepages
+```
+
+This example config will enable DPDK support with 1024MB of hugepages for both NUMA node 0 and NUMA node 1, PMD CPU mask 0x4, lcore mask 0x2 and hugepages in /dev/hugepages.
+
+If file will not exist upon OVS initialization, the default configuration file will be created with values:
+
+```
+dpdk-socket-mem="1024"
+dpdk-init=true
+dpdk-hugepage-dir=/dev/hugepages
+```
+>**Note:** Please remember, that if you would like to initialize Open vSwitch with more socket memory than 1024MB, you will have to reserve this memory for `ovs-ovn` pod by editing the value `hugepages-1G` of `ovs-ovn` pod in `install.sh` script. For example, to initialize Open vSwitch using `dpdk-socket-mem="1024,1024"` the minimal value will be `hugepages-1G: 2Gi`.
+
+
 ## To Install
 
 1. Download the installation script:
