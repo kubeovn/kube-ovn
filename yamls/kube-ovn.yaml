@@ -129,8 +129,8 @@ spec:
         args:
           - --enable-mirror=true
         securityContext:
-          capabilities:
-            add: ["NET_ADMIN", "SYS_ADMIN", "SYS_PTRACE"]
+          runAsUser: 0
+          privileged: true
         env:
           - name: POD_IP
             valueFrom:
