@@ -1044,8 +1044,8 @@ spec:
           - --network-type=$NETWORK_TYPE
           - --default-interface-name=$VLAN_INTERFACE_NAME
         securityContext:
-          capabilities:
-            add: ["NET_ADMIN", "SYS_ADMIN", "SYS_PTRACE"]
+          runAsUser: 0
+          privileged: true
         env:
           - name: POD_IP
             valueFrom:
