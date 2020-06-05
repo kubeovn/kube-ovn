@@ -130,8 +130,8 @@ spec:
             - --mtu=1420
           imagePullPolicy: IfNotPresent
           securityContext:
-            capabilities:
-              add: ["NET_ADMIN", "SYS_ADMIN"]
+            runAsUser: 0
+            privileged: true
           env:
             - name: POD_IP
               valueFrom:
