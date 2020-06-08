@@ -39,8 +39,8 @@ RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /opt/cni/bin
 
 ARG ARCH
-ENV CNI_VERSION=v0.7.5
-RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-${ARCH}-${CNI_VERSION}.tgz | tar -xz -C . ./loopback ./portmap
+ENV CNI_VERSION=v0.8.6
+RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz | tar -xz -C . ./loopback ./portmap
 
 ENV KUBE_VERSION="v1.13.2"
 RUN curl -L https://storage.googleapis.com/kubernetes-release/release/${KUBE_VERSION}/bin/linux/${ARCH}/kubectl -o /usr/bin/kubectl \
