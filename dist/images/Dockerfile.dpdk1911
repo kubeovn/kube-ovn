@@ -18,14 +18,12 @@ ENV PATH=${PATH}:/usr/share/ovn/scripts/
 RUN dnf install -y --setopt=install_weak_deps=False \
   make numactl-devel dpdk-devel meson \
   unbound nc iptables ipset hostname \
-
 # NOTE: Fedora 32 comes with gcc version 10. This caused LD linker issues during DPDK build.
 # Install gcc version 9 and its dependencies.
   https://kojipkgs.fedoraproject.org/packages/gcc/9.2.1/1.fc32.3/x86_64/cpp-9.2.1-1.fc32.3.x86_64.rpm \
   https://kojipkgs.fedoraproject.org/packages/gcc/9.2.1/1.fc32.3/x86_64/libgomp-9.2.1-1.fc32.3.x86_64.rpm \
   https://kojipkgs.fedoraproject.org/packages/gcc/9.2.1/1.fc32.3/x86_64/gcc-9.2.1-1.fc32.3.x86_64.rpm && \
   dnf clean all && \
-
 # Install DPDK
   cd /usr/src/ && \
   curl http://fast.dpdk.org/rel/dpdk-${DPDK_VERSION}.tar.gz | tar xz && \
@@ -33,7 +31,7 @@ RUN dnf install -y --setopt=install_weak_deps=False \
   meson builddir && cd builddir && \
   meson configure -Dexamples='' -Dtests=false -Denable_kmods=false -Denable_docs=false && \
   ninja && ninja install && \
-
+# Clean Up
   dnf remove -y make meson gcc cpp && \
   dnf clean all
 
