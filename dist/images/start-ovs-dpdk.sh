@@ -12,6 +12,7 @@ CONFIG_FILE=/opt/ovs-config/config.cfg
 
 # Check if config file exists, create default one if not
 if ! test -f "$CONFIG_FILE"; then
+	mkdir -p $(dirname ${CONFIG_FILE})
 	printf %s\\n {dpdk-socket-mem=\"1024\",dpdk-init=true,dpdk-hugepage-dir=/dev/hugepages} > $CONFIG_FILE
 fi
 

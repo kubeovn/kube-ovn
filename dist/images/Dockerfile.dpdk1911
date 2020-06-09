@@ -1,56 +1,59 @@
 # NOTE: At time of writing, CentOS 8 does not have dpdk-devel v19.11 in the Yum repo.
 # This package is required to build the OVS-DPDK RPMs and is available in Fedora 32.
-FROM fedora:32
+FROM fedora:32 as dpdk
 
 ENV RPM_ARCH=x86_64
-ENV ARCH=amd64
-
-ENV OVN_VERSION=20.03
-ENV OVS_VERSION=2.13.0
 
 ENV DPDK_VERSION=19.11.1
-ENV DPDK_TARGET=x86_64-native-linuxapp-gcc
+ENV OVS_VERSION=2.13.0
+ENV OVN_VERSION=20.03
 
-ENV OVN_DIR=/usr/src/ovn
-ENV OVS_DIR=/usr/src/openvswitch-${OVS_VERSION}
 ENV DPDK_DIR=/usr/src/dpdk-stable-${DPDK_VERSION}
+ENV OVS_DIR=/usr/src/openvswitch-${OVS_VERSION}
+ENV OVN_DIR=/usr/src/ovn
 
 ENV PATH=${PATH}:/usr/share/openvswitch/scripts
 ENV PATH=${PATH}:/usr/share/ovn/scripts/
 
-RUN dnf install -y make numactl-devel diffutils dnf-plugins-core dpdk-devel libcap-ng-devel libpcap-devel nc iptables ipset hostname \
+RUN dnf install -y --setopt=install_weak_deps=False \
+  make numactl-devel dpdk-devel meson \
+  unbound nc iptables ipset hostname \
 # NOTE: Fedora 32 comes with gcc version 10. This caused LD linker issues during DPDK build.
 # Install gcc version 9 and its dependencies.
-  https://kojipkgs.fedoraproject.org//packages/gcc/9.2.1/1.fc32.3/x86_64/cpp-9.2.1-1.fc32.3.x86_64.rpm \
-  https://kojipkgs.fedoraproject.org//packages/gcc/9.2.1/1.fc32.3/x86_64/libgomp-9.2.1-1.fc32.3.x86_64.rpm \
-  https://kojipkgs.fedoraproject.org//packages/gcc/9.2.1/1.fc32.3/x86_64/gcc-9.2.1-1.fc32.3.x86_64.rpm && \
-  dnf clean all
-
+  https://kojipkgs.fedoraproject.org/packages/gcc/9.2.1/1.fc32.3/x86_64/cpp-9.2.1-1.fc32.3.x86_64.rpm \
+  https://kojipkgs.fedoraproject.org/packages/gcc/9.2.1/1.fc32.3/x86_64/libgomp-9.2.1-1.fc32.3.x86_64.rpm \
+  https://kojipkgs.fedoraproject.org/packages/gcc/9.2.1/1.fc32.3/x86_64/gcc-9.2.1-1.fc32.3.x86_64.rpm && \
+  dnf clean all && \
 # Install DPDK
-RUN cd /usr/src/ && \
+  cd /usr/src/ && \
   curl http://fast.dpdk.org/rel/dpdk-${DPDK_VERSION}.tar.gz | tar xz && \
   cd ${DPDK_DIR} && \
-  sed -i s/CONFIG_RTE_EAL_IGB_UIO=y/CONFIG_RTE_EAL_IGB_UIO=n/ config/common_linux && \
-  sed -i s/CONFIG_RTE_LIBRTE_KNI=y/CONFIG_RTE_LIBRTE_KNI=n/ config/common_linux && \
-  sed -i s/CONFIG_RTE_KNI_KMOD=y/CONFIG_RTE_KNI_KMOD=n/ config/common_linux && \
-  make install T=${DPDK_TARGET} DESTDIR=install
+  meson builddir && cd builddir && \
+  meson configure -Dexamples='' -Dtests=false -Denable_kmods=false -Denable_docs=false && \
+  ninja && ninja install && \
+# Clean Up
+  dnf remove -y make meson gcc cpp && \
+  dnf clean all
 
-# Install OVS-DPDK
-# NOTE: rpm-build is installed here, as installing it earlier conflicts with the workaround to roll back the gcc version.
-RUN dnf install -y rpm-build && \
-  cd /usr/src/ && \
+
+
+FROM dpdk as rpm-builder
+
+RUN dnf install -y dnf-plugins-core rpm-build libcap-ng-devel libpcap-devel
+
+# Build OVS-DPDK
+RUN cd /usr/src/ && \
   curl https://www.openvswitch.org/releases/openvswitch-${OVS_VERSION}.tar.gz | tar xz && \
   cd ${OVS_DIR} && \
   sed -e 's/@VERSION@/0.0.1/' rhel/openvswitch-fedora.spec.in > /tmp/ovs.spec && \
   dnf builddep -y /tmp/ovs.spec && \
   ./boot.sh && \
-  ./configure --prefix=/usr/ --with-dpdk=${DPDK_DIR}/${DPDK_TARGET} && \
+  ./configure --prefix=/usr/ --with-dpdk=${DPDK_DIR}/builddir && \
   make rpm-fedora RPMBUILD_OPT="--with dpdk --without check"
 
-# Install OVN
+# Build OVN
 RUN cd /usr/src/ && \
-  cd /usr/src/ && \
-  curl -L https://github.com/ovn-org/ovn/tarball/branch-${OVN_VERSION} > ovn.tar.gz && \
+  curl -L https://github.com/ovn-org/ovn/tarball/branch-20.03 > ovn.tar.gz && \
   mkdir ovn && tar -xf ovn.tar.gz -C ovn --strip-components 1 && \
   rm -f ovn.tar.gz && \
   cd ovn && \
@@ -58,11 +61,17 @@ RUN cd /usr/src/ && \
   ./configure --with-ovs-source=${OVS_DIR} && \
   make rpm-fedora
 
-RUN mkdir -p /var/run/openvswitch && \
-  mkdir -p /var/run/ovn && \
-  mkdir -p /rpms && \
+RUN mkdir -p /rpms && \
   cp ${OVS_DIR}/rpm/rpmbuild/RPMS/${RPM_ARCH}/* ${OVN_DIR}/rpm/rpmbuild/RPMS/${RPM_ARCH}/* /rpms && \
-  rpm -ivh --nodeps /rpms/*.rpm && \
-  rm -rf ${OVN_DIR} ${OVS_DIR} ${DPDK_DIR}
+  cd /rpms && rm -f *debug* *docker* *vtep* *ipsec*
 
-COPY *.sh /kube-ovn/
+
+
+FROM dpdk
+
+COPY --from=rpm-builder /rpms/* /rpms/
+COPY start-ovs-dpdk.sh ovs-dpdk-healthcheck.sh uninstall.sh /kube-ovn/
+
+RUN  rpm -ivh --nodeps /rpms/*.rpm && \
+  rm -rf ${DPDK_DIR} /rpms && \
+  unset DPDK_DIR OVS_DIR OVN_DIR 
