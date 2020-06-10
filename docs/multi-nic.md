@@ -11,7 +11,7 @@ We extend the Subnet to network providers other than ovn, so other CNI plugins c
 
 ### Work Flow
 
-The diagram below shows how Kube-OVN allocate address for other CNI plugins. The default ovn eht0 network still goes the same way as before. 
+The diagram below shows how Kube-OVN allocate address for other CNI plugins. The default ovn eth0 network still goes the same way as before. 
 The net1 network comes from the NetworkAttachmentDefinition defined by multus-cni. 
 When a new pod appears, the kube-ovn-controller will read the pod annotations and find an available address then write it to the pod annotations.
 Then on the CNI side, the attached CNI plugins can chain kube-ovn-ipam as the ipam plugin, which will read the pod annotations above and return the allocated address to the attached CNI plugins.
