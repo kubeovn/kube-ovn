@@ -214,12 +214,13 @@ metadata:
   annotations:
     k8s.v1.cni.cncf.io/networks: ovs-dpdk-br0, ovs-dpdk-br0
 spec:
-  tolerations:
-  - operator: "Exists"
-    key: cmk
   containers:
   - name: testpmd-dpdk
     image: dpdk:19.11
+    imagePullPolicy: Never
+    securityContext:
+        privileged: true
+    command: ["tail", "-f", "/dev/null"]
     resources:
       requests:
         hugepages-1Gi: 2Gi
@@ -227,30 +228,72 @@ spec:
       limits:
         hugepages-1Gi: 2Gi
         memory: 2Gi
-    command: ["tail", "-f", "/dev/null"]
     volumeMounts:
     - mountPath: /hugepages
       name: hugepages
     - mountPath: /vhu
       name: vhu
-    securityContext:
-        privileged: true
-        runAsUser: 0
   volumes:
+  - name: vhu
+    hostPath:
+      path: /var/run/openvswitch/
   - name: hugepages
     emptyDir:
       medium: HugePages
-  - name: vhu
-    hostPath:
-      path: /var/run/openvswitch
-  securityContext:
-    runAsUser: 0
   restartPolicy: Never
 ```
 Run the pod.
 `kubectl create -f pod.yaml`
 
-The pod will be created with a kernel OVS interface provided by Kube-OVN, as the default network. In addition two secondary interfaces will be available within the pod as socket files located under /vhu/ .
+The pod will be created with a kernel OVS interface provided by Kube-OVN, as the default network. In addition two secondary interfaces will be available within the pod as socket files located under `/vhu/` .
+
+### Private socket file directory (optional)
+The above pod spec will mount the directory `/var/run/openvswitch/` into the pod. This is the default location where OVS-DPDK creates it's socket files, meaning with this configuration all socket files are visible to all pods. It may be desirable to ensure that only the socket files created for a pod are visible within that pod. Userspace-CNI provides the option of mounting a unique directory containing only the relevant socket files.
+
+The pod spec needs to be updated as shown below. The name of the volumeMount needs to be `shared-dir`  and the hostPath needs to be updated to include the unique directory for this pod. In this case we call the unique directory `pod1/`. When this pod is created, a new directory `pod1/` will be created under `/var/run/openvswitch/`. Userspace-CNI will then place only the relevant socket files in this directory and this directory is then mounted into the pod where it will appear as `/vhu/`.
+
+<pre><code>apiVersion: v1
+kind: Pod
+metadata:
+  generateName: testpmd-dpdk-
+  annotations:
+    k8s.v1.cni.cncf.io/networks: ovs-dpdk-br0, ovs-dpdk-br0
+spec:
+  containers:
+  - name: testpmd-dpdk
+    image: dpdk:19.11
+    imagePullPolicy: Never
+    securityContext:
+        privileged: true
+    command: ["tail", "-f", "/dev/null"]
+    resources:
+      requests:
+        hugepages-1Gi: 2Gi
+        memory: 2Gi
+      limits:
+        hugepages-1Gi: 2Gi
+        memory: 2Gi
+    volumeMounts:
+    - mountPath: /hugepages
+      name: hugepages
+    - mountPath: /vhu
+      <b>name: shared-dir</b>
+  volumes:
+  <b>- name: shared-dir</b>
+    hostPath:
+      <b>path: /var/run/openvswitch/pod1/</b>
+  - name: hugepages
+    emptyDir:
+      medium: HugePages
+  restartPolicy: Never
+</code></pre>
+
+Finally, we need to tell Userspace-CNI where it can find the newly generated socket files, as this default location can be configured and changed. For a Kube-OVN install, this location will be `/var/run/openvswitch/`. This location is provided to Userspace-CNI as an environment variable. Set this environment variable and restart Kubelet:
+```
+echo "OVS_SOCKDIR=\"/var/run/openvswitch/\"" >> /var/lib/kubelet/kubeadm-flags.env
+systemctl daemon-reload && systemctl restart kubelet
+```
+
 
 ### TestPMD
 To run TestPMD:
