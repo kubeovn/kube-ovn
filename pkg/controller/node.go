@@ -233,20 +233,18 @@ func (c *Controller) handleAddNode(key string) error {
         "path": "/metadata/annotations",
         "value": %s
     }]`
-	payload := map[string]string{
-		util.IpAddressAnnotation:     ip,
-		util.MacAddressAnnotation:    mac,
-		util.CidrAnnotation:          subnet.Spec.CIDRBlock,
-		util.GatewayAnnotation:       subnet.Spec.Gateway,
-		util.LogicalSwitchAnnotation: c.config.NodeSwitch,
-		util.AllocatedAnnotation:     "true",
-		util.PortNameAnnotation:      fmt.Sprintf("node-%s", key),
-	}
-	raw, _ := json.Marshal(payload)
 	op := "replace"
 	if len(node.Annotations) == 0 {
 		op = "add"
 	}
+	node.Annotations[util.IpAddressAnnotation] = ip
+	node.Annotations[util.MacAddressAnnotation] = mac
+	node.Annotations[util.CidrAnnotation] = subnet.Spec.CIDRBlock
+	node.Annotations[util.GatewayAnnotation] = subnet.Spec.Gateway
+	node.Annotations[util.LogicalSwitchAnnotation] = c.config.NodeSwitch
+	node.Annotations[util.AllocatedAnnotation] = "true"
+	node.Annotations[util.PortNameAnnotation] = fmt.Sprintf("node-%s", key)
+	raw, _ := json.Marshal(node.Annotations)
 	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
 	_, err = c.config.KubeClient.CoreV1().Nodes().Patch(key, types.JSONPatchType, []byte(patchPayload))
 	if err != nil {
