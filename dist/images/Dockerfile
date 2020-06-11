@@ -19,17 +19,17 @@ RUN mkdir /rpms/ && \
 
 
 FROM centos:8
-
-RUN yum upgrade -y sqlite-libs libarchive systemd && \
-    yum remove -y bind-export-libs
-
-RUN yum install -y  \
+RUN sed -i 's/$releasever/8-stream/g' /etc/yum.repos.d/CentOS-AppStream.repo && \
+    sed -i 's/$releasever/8-stream/g' /etc/yum.repos.d/CentOS-Base.repo
+RUN yum remove -y bind-export-libs && yum update -y && \
+    yum install -y \
         firewalld-filesystem \
         libpcap \
         hostname ethtool \
         iproute nc \
         unbound-devel \
-        tcpdump ipset && yum clean all
+        tcpdump ipset && \
+    yum clean all
 ARG RPM_ARCH
 RUN rpm -ivh --nodeps https://download-ib01.fedoraproject.org/pub/fedora/linux/releases/30/Everything/${RPM_ARCH}/os/Packages/i/iptables-1.8.0-5.fc30.${RPM_ARCH}.rpm
 
