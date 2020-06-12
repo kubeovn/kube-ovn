@@ -26,12 +26,13 @@ jobs:
           go get -u github.com/securego/gosec/cmd/gosec
           make release-arm
       - name: Push
+        if: ${{ github.ref == 'refs/heads/master' }}
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
         run: |
           TAG=$(cat VERSION)
-          docker login -u "$DOCKER_USERNAME" -p "$DOCKER_PASSWORD"
+          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
           docker images
           docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-arm
           docker push kubeovn/kube-ovn:$TAG-arm
