@@ -3,7 +3,7 @@
 **The Vlan support is still in early stage, the usage might change later**
 
 By default, Kube-OVN use Geneve to encapsulate packets between hosts, which will build an overlay network above your infrastructure.
-Kube-OVN also support underlay Vlan mode network for better performance and throughput. 
+Kube-OVN also support underlay Vlan mode network for better performance and throughput.
 In Vlan mode, the packets will send directly to physical switches with vlan tags.
 
 To enable Vlan mode, a dedicated network interface is required by container network.

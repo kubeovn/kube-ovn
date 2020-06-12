@@ -74,4 +74,4 @@ COPY start-ovs-dpdk.sh ovs-dpdk-healthcheck.sh uninstall.sh /kube-ovn/
 
 RUN  rpm -ivh --nodeps /rpms/*.rpm && \
   rm -rf ${DPDK_DIR} /rpms && \
-  unset DPDK_DIR OVS_DIR OVN_DIR 
+  unset DPDK_DIR OVS_DIR OVN_DIR

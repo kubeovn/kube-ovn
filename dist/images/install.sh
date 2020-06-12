@@ -51,7 +51,7 @@ then
           exit 1
         fi
       ;;
-      -?*) 
+      -?*)
         echo "Unknown argument $1"
         exit 1
       ;;
