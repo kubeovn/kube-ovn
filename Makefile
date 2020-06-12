@@ -44,7 +44,7 @@ push-release: release
 	docker push ${REGISTRY}/kube-ovn:${RELEASE_TAG}
 
 lint:
-	@gofmt -d ${GOFILES_NOVENDOR} 
+	@gofmt -d ${GOFILES_NOVENDOR}
 	@gofmt -l ${GOFILES_NOVENDOR} | read && echo "Code differs from gofmt's style" 1>&2 && exit 1 || true
 	@GOOS=linux go vet ./...
 	@GOOS=linux gosec -exclude=G204 ./...

@@ -29,7 +29,7 @@ spec:
 ```
 ## Basic Configuration
 
-- `protocol`: The ip protocol ,can be IPv4 or IPv6. *Note*: Through kube-ovn support both protocol subnets coexist in a cluster, kubernetes control plan now only support one protocol. So you will lost some ability like probe and  service discovery if you use a protocol other than the kubernetes control plan. 
+- `protocol`: The ip protocol ,can be IPv4 or IPv6. *Note*: Through kube-ovn support both protocol subnets coexist in a cluster, kubernetes control plan now only support one protocol. So you will lost some ability like probe and  service discovery if you use a protocol other than the kubernetes control plan.
 - `default`: If set true, all namespaces that not bind to any subnets will use this subnet to allocate pod ip and share other network configuration. Note: Kube-OVN will create a default subnet and set this field to true. There can only be one default subnet in a cluster.
 - `namespaces`: List of namespaces that bind to this subnet. If you want to bind a namespace to this subnet, edit and add the namespace name to this field.
 - `cidrBlock`: The cidr of this subnet.
@@ -38,7 +38,7 @@ spec:
 
 ## Isolation
 
-Besides standard NetworkPolicy，Kube-OVN also supports network isolation and access control at the Subnet level to simplify the use of access control. 
+Besides standard NetworkPolicy，Kube-OVN also supports network isolation and access control at the Subnet level to simplify the use of access control.
 
 *Note*: NetworkPolicy take a higher priority than subnet isolation rules.
 
@@ -47,7 +47,7 @@ Besides standard NetworkPolicy，Kube-OVN also supports network isolation and ac
 
 ## Gateway
 
-Gateway is used to enable external network connectivity for Pods within the OVN Virtual Network. 
+Gateway is used to enable external network connectivity for Pods within the OVN Virtual Network.
 
 Kube-OVN supports two kinds of Gateways: the distributed Gateway and the centralized Gateway. Also user can expose pod ip directly to external network.
 

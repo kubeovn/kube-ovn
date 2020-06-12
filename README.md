@@ -96,15 +96,15 @@ to some other options to give users a better understanding to assess which netwo
 
 [ovn-kubernetes](https://github.com/ovn-org/ovn-kubernetes) is developed by the ovn community to integration ovn for Kubernetes. As both projects use OVN/OVS as the data plane, they have some same function sets and architecture. The main differences come from the network topology and gateway implementation.
 
-ovn-kubernetes implements a subnet-per-node network topology. 
-That means each node will have a fixed cidr range, and the ip allocation is fulfilled by each node when the pod has been invoked by kubelet. 
+ovn-kubernetes implements a subnet-per-node network topology.
+That means each node will have a fixed cidr range, and the ip allocation is fulfilled by each node when the pod has been invoked by kubelet.
 
 Kube-OVN implements a subnet-per-namespace network topology.
 That means a cidr can spread the entire cluster nodes, and the ip allocation is fulfilled by kube-ovn-controller at a central place. And then kube-ovn can apply lots of network configurations at subnet level, like cidr, gw, exclude_ips, nat and so on. This topology also gives Kube-OVN more ability to control how ip should be allocated, on top of this topology, Kube-OVN can allocate static ip for workloads.
 
 We believe the subnet-per-namespace topology will give more flexibility to evolve the network.
 
-On the gateway side, ovn-kubernetes uses native ovn gateway concept to control the traffic. The native ovn gateway relies on a dedicated nic or needs to transfer the nic ip to another device to bind the nic to the ovs bridge. This implementation can reach better performance, however not all environments meet the network requirements especially in the cloud. 
+On the gateway side, ovn-kubernetes uses native ovn gateway concept to control the traffic. The native ovn gateway relies on a dedicated nic or needs to transfer the nic ip to another device to bind the nic to the ovs bridge. This implementation can reach better performance, however not all environments meet the network requirements especially in the cloud.
 
 Kube-OVN uses policy-route, ipset and iptables to implement the gateway functions that all by software, which can fit more infrastructure and give more flexibility to more function.
 

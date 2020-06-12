@@ -1,24 +1,24 @@
 # IPAM for Multi Network Interface
 
-From version 1.1, the IPAM part of Kube-OVN can provides subnet and static ip allocation functions to other CNI plugins, such as macvlan/vlan/host-device. 
+From version 1.1, the IPAM part of Kube-OVN can provides subnet and static ip allocation functions to other CNI plugins, such as macvlan/vlan/host-device.
 
 ## How it works
 
-By using [Intel Multus CNI](https://github.com/intel/multus-cni), we can attach multiple network interfaces into a Kubernetes Pod. 
+By using [Intel Multus CNI](https://github.com/intel/multus-cni), we can attach multiple network interfaces into a Kubernetes Pod.
 However, we still need some cluster-wide IPAM utilities to manage IP addresses for multi network to better mange other CNI plugins.
-In Kube-OVN we already has CRDs like Subnet and IP and functions for advanced IPAM like ip reservation, random allocation, static allocation and so on. 
+In Kube-OVN we already has CRDs like Subnet and IP and functions for advanced IPAM like ip reservation, random allocation, static allocation and so on.
 We extend the Subnet to network providers other than ovn, so other CNI plugins can take use all the IPAM functions already exist in Kube-OVN.
 
 ### Work Flow
 
-The diagram below shows how Kube-OVN allocate address for other CNI plugins. The default ovn eth0 network still goes the same way as before. 
-The net1 network comes from the NetworkAttachmentDefinition defined by multus-cni. 
+The diagram below shows how Kube-OVN allocate address for other CNI plugins. The default ovn eth0 network still goes the same way as before.
+The net1 network comes from the NetworkAttachmentDefinition defined by multus-cni.
 When a new pod appears, the kube-ovn-controller will read the pod annotations and find an available address then write it to the pod annotations.
 Then on the CNI side, the attached CNI plugins can chain kube-ovn-ipam as the ipam plugin, which will read the pod annotations above and return the allocated address to the attached CNI plugins.
 
 ### Limitation
-Kube-OVN now uses ovn network as the pod default network, other network can only act as network attachments. 
-We will fully separate the IPAM functions to provide a more general IPAM later. 
+Kube-OVN now uses ovn network as the pod default network, other network can only act as network attachments.
+We will fully separate the IPAM functions to provide a more general IPAM later.
 
 ![topology](multi-nic.png "kube-ovn network topology")
 

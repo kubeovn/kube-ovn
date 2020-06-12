@@ -4,7 +4,7 @@
 In this version, Kube-OVN support vlan and dpdk type network interfaces for higher performance requirement.
 Thanks for Intel and Ruijie Networks guys who contribute these features.
 
-Previously to expose Pod IP to external network, admins have to manually add static routes. 
+Previously to expose Pod IP to external network, admins have to manually add static routes.
 Now admins can try the new BGP features to dynamically announce routes to external network.
 
 From this version, subnet CIDR can be changed after creation, and routes will be changed if gateway type is modified.
@@ -16,11 +16,11 @@ From this version, subnet CIDR can be changed after creation, and routes will be
 * Subnet validator will check if subnet CIDR conflicts with svc or node CIDR
 * Subnet CIDR can be changed after creation
 * When subnet gateway changed, routes will aromatically changed
- 
+
 
 ### Monitoring
 * Check if dns and kubernetes svc exist
-* Make grafana dashboard more sensitive to changes 
+* Make grafana dashboard more sensitive to changes
 
 ### Misc
 * Patch upstream ovn to reduce lflow count
@@ -55,8 +55,8 @@ This release fix bugs found in v1.1.0.
 
 ## v1.1.0 -- 2020/04/07
 
-In this version, we refactor IPAM to separate IP allocation logical from OVN. 
-On top of that we provide a general cluster wide IPAM utility for other CNI plugins. 
+In this version, we refactor IPAM to separate IP allocation logical from OVN.
+On top of that we provide a general cluster wide IPAM utility for other CNI plugins.
 Now other CNI plugins like macvlan/host-device/vlan etc can take advantage of subnet and static ip allocation functions in Kube-OVN.
 Please check [this document](docs/multi-nic.md) to see how we combine Kube-OVN and Multus-CNI to provide multi-nic container network.
 
@@ -106,7 +106,7 @@ This release fix bugs found in v1.0.0
 
 ## v1.0.0 -- 2020/02/27
 
-Kube-OVN has evolved a year from the first release and the core function set is stable with lots of tests and community feedback. 
+Kube-OVN has evolved a year from the first release and the core function set is stable with lots of tests and community feedback.
 It's time to run Kube-OVN in production!
 
 ### Performance
@@ -231,7 +231,7 @@ This release is mainly about controller performance, stability and bugfix
 ### Mics
 * Support hostport
 * Update OVN/OVS to 2.11.3
-* Update Go to 1.13 
+* Update Go to 1.13
 
 ## v0.7.0 -- 2019/08/21
 
@@ -340,7 +340,7 @@ This is a bugfix version
 * IP/Mac static allocation
 * Namespace bind subnet
 * Namespaces share subnet
-* Connectivity between node and pod 
+* Connectivity between node and pod
 ### Issues
 * Pod can not access external network
 * No HA for control plan

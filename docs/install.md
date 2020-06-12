@@ -10,9 +10,9 @@ Kube-OVN includes two parts:
 - Docker >= 1.12.6
 - OS: CentOS 7.5/7.6/7.7, Ubuntu 16.04/18.04
 
-*NOTE* 
-1. Ubuntu 16.04 users should build the related ovs-2.11.1 kernel module to replace the kernel built-in module 
-2. CentOS users should make sure kernel version is greater than 3.10.0-898 to avoid a kernel conntrack bug, see [here](https://bugs.launchpad.net/neutron/+bug/1776778) 
+*NOTE*
+1. Ubuntu 16.04 users should build the related ovs-2.11.1 kernel module to replace the kernel built-in module
+2. CentOS users should make sure kernel version is greater than 3.10.0-898 to avoid a kernel conntrack bug, see [here](https://bugs.launchpad.net/neutron/+bug/1776778)
 
 ## To Install
 
@@ -44,7 +44,7 @@ Kube-OVN provides a one script install to easily install a high-available, produ
 
 If you want to know the detail steps to install Kube-OVN, please follow the steps.
 
-For Kubernetes version before 1.17 please use the following command to add the node label 
+For Kubernetes version before 1.17 please use the following command to add the node label
 
 1. Add the following label to the Node which will host the OVN DB and the OVN Control Plane:
 
@@ -58,7 +58,7 @@ For Kubernetes version before 1.17 please use the following command to add the n
 4. Install the Kube-OVN Controller and CNI plugins:
 
     `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/release/1.1/yamls/kube-ovn.yaml`
-    
+
 That's all! You can now create some pods and test connectivity.
 
 For high-available ovn db, see [high available](high-available.md)
@@ -78,19 +78,19 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
     --default-cidr: Default CIDR for Namespaces with no logical switch annotation, default: 10.16.0.0/16
     --default-gateway: Default gateway for default-cidr, default the first ip in default-cidr
     --default-exclude-ips: Exclude ips in default switch, default equals to gateway address
-    
+
     # Node Switch
     --node-switch: The name of node gateway switch which help node to access pod network, default: join
     --node-switch-cidr: The cidr for node switch, default: 100.64.0.0/16
     --node-switch-gateway: The gateway for node switch, default the first ip in node-switch-cidr
-    
+
     # LoadBalancer
     --cluster-tcp-loadbalancer: The name for cluster tcp loadbalancer, default cluster-tcp-loadbalancer
     --cluster-udp-loadbalancer: The name for cluster udp loadbalancer, default cluster-udp-loadbalancer
-    
+
     # Router
     --cluster-router: The router name for cluster router, default: ovn-cluster
-    
+
     # Misc
     --worker-num: The parallelism of each worker, default: 3
     --kubeconfig: Path to kubeconfig file with authorization and master location information. If not set use the inCluster token
