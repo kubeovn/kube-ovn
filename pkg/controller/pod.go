@@ -389,18 +389,22 @@ func (c *Controller) handleAddPod(key string) error {
 }
 
 func (c *Controller) handleDeletePod(key string) error {
+	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
+		return nil
+	}
+	pod, err := c.podsLister.Pods(namespace).Get(name)
+	if pod != nil && isPodAlive(pod) {
+		// Pod with same name exists, just return here
+		return nil
+	}
+
 	ips, _ := c.ipam.GetPodAddress(key)
 	for _, ip := range ips {
 		if err := c.ovnClient.DeleteStaticRoute(ip, c.config.ClusterRouter); err != nil {
 			return err
 		}
-	}
-
-	namespace, name, err := cache.SplitMetaNamespaceKey(key)
-	klog.Infof("delete pod %s/%s", namespace, name)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
-		return err
 	}
 
 	if err := c.ovnClient.DeletePort(ovs.PodNameToPortName(name, namespace)); err != nil {
