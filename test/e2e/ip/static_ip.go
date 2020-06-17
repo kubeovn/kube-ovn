@@ -113,6 +113,25 @@ var _ = Describe("[IP Allocation]", func() {
 			Expect([]string{"12.10.0.20", "12.10.0.21", "12.10.0.22"}).To(ContainElement(pod1.Status.PodIP))
 			Expect([]string{"12.10.0.20", "12.10.0.21", "12.10.0.22"}).To(ContainElement(pod2.Status.PodIP))
 			Expect([]string{"12.10.0.20", "12.10.0.21", "12.10.0.22"}).To(ContainElement(pod3.Status.PodIP))
+
+			By("Delete pods and recreate")
+			err = f.KubeClientSet.CoreV1().Pods(namespace).DeleteCollection(&metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: labels.SelectorFromSet(deployment.Spec.Template.Labels).String()})
+			Expect(err).NotTo(HaveOccurred())
+
+			err = f.WaitDeploymentReady(name, namespace)
+			Expect(err).NotTo(HaveOccurred())
+
+			pods, err = f.KubeClientSet.CoreV1().Pods(namespace).List(metav1.ListOptions{LabelSelector: labels.SelectorFromSet(deployment.Spec.Template.Labels).String()})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(pods.Items).To(HaveLen(3))
+
+			pod1, pod2, pod3 = pods.Items[0], pods.Items[1], pods.Items[2]
+			Expect(pod1.Status.PodIP).NotTo(Equal(pod2.Status.PodIP))
+			Expect(pod2.Status.PodIP).NotTo(Equal(pod3.Status.PodIP))
+			Expect(pod1.Status.PodIP).NotTo(Equal(pod3.Status.PodIP))
+			Expect([]string{"12.10.0.20", "12.10.0.21", "12.10.0.22"}).To(ContainElement(pod1.Status.PodIP))
+			Expect([]string{"12.10.0.20", "12.10.0.21", "12.10.0.22"}).To(ContainElement(pod2.Status.PodIP))
+			Expect([]string{"12.10.0.20", "12.10.0.21", "12.10.0.22"}).To(ContainElement(pod3.Status.PodIP))
 		})
 
 		It("statefulset with ippool", func() {
