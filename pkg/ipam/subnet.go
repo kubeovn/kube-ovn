@@ -11,6 +11,7 @@ type Subnet struct {
 	mutex          sync.RWMutex
 	CIDR           *net.IPNet
 	FreeIPList     IPRangeList
+	ReleasedIPList IPRangeList
 	ReservedIPList IPRangeList
 	PodToIP        map[string]IP
 	IPToPod        map[IP]string
@@ -32,6 +33,7 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 		mutex:          sync.RWMutex{},
 		CIDR:           cidr,
 		FreeIPList:     IPRangeList{&IPRange{Start: IP(firstIP), End: IP(lastIP)}},
+		ReleasedIPList: IPRangeList{},
 		ReservedIPList: convertExcludeIps(excludeIps),
 		PodToIP:        map[string]IP{},
 		IPToPod:        map[IP]string{},
@@ -72,7 +74,12 @@ func (subnet *Subnet) GetRandomAddress(podName string) (IP, string, error) {
 		return ip, subnet.PodToMac[podName], nil
 	}
 	if len(subnet.FreeIPList) == 0 {
-		return "", "", NoAvailableError
+		if len(subnet.ReleasedIPList) != 0 {
+			subnet.FreeIPList = subnet.ReleasedIPList
+			subnet.ReleasedIPList = IPRangeList{}
+		} else {
+			return "", "", NoAvailableError
+		}
 	}
 	freeList := subnet.FreeIPList
 	ipr := freeList[0]
@@ -128,6 +135,12 @@ func (subnet *Subnet) GetStaticAddress(podName string, ip IP, mac string, force 
 		subnet.IPToPod[ip] = podName
 		return ip, mac, nil
 	} else {
+		if split, newReleasedList := splitIPRangeList(subnet.ReleasedIPList, ip); split {
+			subnet.ReleasedIPList = newReleasedList
+			subnet.PodToIP[podName] = ip
+			subnet.IPToPod[ip] = podName
+			return ip, mac, nil
+		}
 		return ip, mac, NoAvailableError
 	}
 }
@@ -153,8 +166,8 @@ func (subnet *Subnet) ReleaseAddress(podName string) (IP, string) {
 			return ip, mac
 		}
 
-		if merged, newFreeList := mergeIPRangeList(subnet.FreeIPList, ip); merged {
-			subnet.FreeIPList = newFreeList
+		if merged, newFreeList := mergeIPRangeList(subnet.ReleasedIPList, ip); merged {
+			subnet.ReleasedIPList = newFreeList
 			return ip, mac
 		}
 	}

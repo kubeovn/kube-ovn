@@ -74,6 +74,27 @@ var _ = Describe("[IPAM]", func() {
 			Expect(ip).To(Equal("10.17.0.2"))
 
 		})
+
+		It("reuse released address when no unused address", func() {
+			im := ipam.NewIPAM()
+			err := im.AddOrUpdateSubnet("test", "10.16.0.0/30", []string{})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			ip, _, err := im.GetRandomAddress("pod1.ns", "test")
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(ip).To(Equal("10.16.0.1"))
+
+			im.ReleaseAddressByPod("pod1.ns")
+			ip, _, err = im.GetRandomAddress("pod1.ns", "test")
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(ip).To(Equal("10.16.0.2"))
+
+			im.ReleaseAddressByPod("pod1.ns")
+			ip, _, err = im.GetRandomAddress("pod1.ns", "test")
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(ip).To(Equal("10.16.0.1"))
+
+		})
 	})
 
 	Describe("[IP]", func() {
@@ -141,7 +162,6 @@ var _ = Describe("[IPAM]", func() {
 			subnet.ReleaseAddress("pod3.ns")
 			Expect(subnet.FreeIPList).To(Equal(
 				ipam.IPRangeList{
-					&ipam.IPRange{Start: "10.16.0.2", End: "10.16.0.3"},
 					&ipam.IPRange{Start: "10.16.0.5", End: "10.16.0.9"},
 					&ipam.IPRange{Start: "10.16.0.24", End: "10.16.255.254"},
 				}))
@@ -177,6 +197,8 @@ var _ = Describe("[IPAM]", func() {
 			subnet.ReleaseAddress("pod1.ns")
 			subnet.ReleaseAddress("pod2.ns")
 			Expect(subnet.FreeIPList).To(Equal(
+				ipam.IPRangeList{}))
+			Expect(subnet.ReleasedIPList).To(Equal(
 				ipam.IPRangeList{
 					&ipam.IPRange{Start: "10.16.0.1", End: "10.16.0.2"},
 				}))
