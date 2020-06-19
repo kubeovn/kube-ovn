@@ -166,8 +166,8 @@ func (subnet *Subnet) ReleaseAddress(podName string) (IP, string) {
 			return ip, mac
 		}
 
-		if merged, newFreeList := mergeIPRangeList(subnet.ReleasedIPList, ip); merged {
-			subnet.ReleasedIPList = newFreeList
+		if merged, newReleasedList := mergeIPRangeList(subnet.ReleasedIPList, ip); merged {
+			subnet.ReleasedIPList = newReleasedList
 			return ip, mac
 		}
 	}
