@@ -26,17 +26,13 @@ fi
 make rpm-fedora
 cd ..
 
-git clone -b branch-20.03 --depth=1 https://github.com/ovn-org/ovn.git
+git clone -b branch-20.06 --depth=1 https://github.com/ovn-org/ovn.git
 cd ovn
 
-# src-route priority
-curl https://github.com/alauda/ovn/commit/19e802b80c866089af8f7a21512f68decc75a874.patch | git apply
-# change route priority
-curl https://github.com/oilbeater/ovn/commit/7e49a662d9a9d23d673958564048eee71dc941f0.patch | git apply
-#ovn-northd: Do not generate logical flows if lsp is not up
-curl https://github.com/oilbeater/ovn/commit/9a4460caa1bffe8686c91309248a05f854fc1345.patch | git apply
+# kube-ovn related patches
+curl https://github.com/alauda/ovn/commit/2a01da436826de0afe0cda94628dcef7849b380a.patch | git apply
 
-sed -i 's/20.03.1/20.03.0/g' configure.ac
+sed -i 's/20.06.1/20.06.0/g' configure.ac
 ./boot.sh
 if [ "$ARCH" = "amd64" ]; then
   ./configure LIBS=-ljemalloc --with-ovs-source=/ovs CFLAGS="-O2 -g -msse4.2 -mpopcnt"
