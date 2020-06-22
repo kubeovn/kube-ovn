@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## v1.2.1 -- 2020/06/22
+This release fix bugs found in v1.2.0
+
+### Bugfix
+* Add back privilege for IPv6
+* Update loopback cni to fix CVE issues
+* Node annotations overwrite incorrectly
+* Create/Delete order might lead to ip conflict
+
 ## v1.2.0 -- 2020/05/30
 In this version, Kube-OVN support vlan and dpdk type network interfaces for higher performance requirement.
 Thanks for Intel and Ruijie Networks guys who contribute these features.
