@@ -8,7 +8,7 @@ Change the replicas to 3, and add NODE_IPS environment var points to node that h
       replicas: 3
       containers:
         - name: ovn-central
-          image: "kubeovn/kube-ovn:v1.2.0"
+          image: "kubeovn/kube-ovn:v1.2.1"
           imagePullPolicy: Always
           env:
             - name: POD_IP

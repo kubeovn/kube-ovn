@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## v1.2.1 -- 2020/06/22
+This release fix bugs found in v1.2.0
+
+### Bugfix
+* Add back privilege for IPv6
+* Update loopback cni to fix CVE issues
+* Node annotations overwrite incorrectly
+* Create/Delete order might lead to ip conflict
+
 ## v1.2.0 -- 2020/05/30
 In this version, Kube-OVN support vlan and dpdk type network interfaces for higher performance requirement.
 Thanks for Intel and Ruijie Networks guys who contribute these features.
@@ -277,7 +286,7 @@ This release is mainly about controller performance, stability and bugfix
 ## v0.5.0 -- 2019/06/06
 ### Features
 * Support NetworkPolicy by OVN ACL
-* User can choose interface for inter-host communication
+* User can choose a interface for inter-host communication
 * User can set mtu of pod interface
 * Set kernel args when start cniserver
 * Add pprof and use it as liveness/readiness probe
@@ -340,7 +349,7 @@ This is a bugfix version
 * IP/Mac static allocation
 * Namespace bind subnet
 * Namespaces share subnet
-* Connectivity between node and pod 
+* Connectivity between nodes and pods 
 ### Issues
 * Pod can not access external network
 * No HA for control plan
