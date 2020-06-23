@@ -37,7 +37,7 @@ func parsePodNetworkObjectName(podnetwork string) (string, string, string, error
 	}
 
 	// Check and see if each item matches the specification for valid attachment name.
-	// "Valid attachment names must be comprised of units of the DNS-1123 label format"
+	// "Valid attachment names must be comprised of units of the InternalDNS-1123 label format"
 	// [a-z0-9]([-a-z0-9]*[a-z0-9])?
 	// And we allow at (@), and forward slash (/) (units separated by commas)
 	// It must start and end alphanumerically.

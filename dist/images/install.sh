@@ -1138,7 +1138,7 @@ spec:
       containers:
         - name: pinger
           image: "$REGISTRY/kube-ovn:$VERSION"
-          command: ["/kube-ovn/kube-ovn-pinger", "--external-address=114.114.114.114"]
+          command: ["/kube-ovn/kube-ovn-pinger", "--external-address=114.114.114.114", "--external-dns=alauda.cn"]
           imagePullPolicy: $IMAGE_PULL_POLICY
           securityContext:
             runAsUser: 0

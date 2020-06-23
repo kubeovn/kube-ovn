@@ -32,8 +32,15 @@ func ping(config *Configuration) {
 	checkApiServer(config)
 	pingNodes(config)
 	pingPods(config)
-	nslookup(config)
-	pingExternal(config)
+	internalNslookup(config)
+
+	if config.ExternalDNS != "" {
+		externalNslookup(config)
+	}
+
+	if config.ExternalAddress != "" {
+		pingExternal(config)
+	}
 }
 
 func pingNodes(config *Configuration) {
@@ -146,21 +153,38 @@ func pingExternal(config *Configuration) {
 		int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))))
 }
 
-func nslookup(config *Configuration) {
+func internalNslookup(config *Configuration) {
 	klog.Infof("start to check dns connectivity")
 	t1 := time.Now()
 	ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
 	defer cancel()
 	var r net.Resolver
-	addrs, err := r.LookupHost(ctx, config.DNS)
+	addrs, err := r.LookupHost(ctx, config.InternalDNS)
 	elpased := time.Since(t1)
 	if err != nil {
-		klog.Errorf("failed to resolve dns %s, %v", config.DNS, err)
-		SetDnsUnhealthyMetrics(config.NodeName)
+		klog.Errorf("failed to resolve dns %s, %v", config.InternalDNS, err)
+		SetInternalDnsUnhealthyMetrics(config.NodeName)
 		return
 	}
-	SetDnsHealthyMetrics(config.NodeName, float64(elpased)/float64(time.Millisecond))
-	klog.Infof("resolve dns %s to %v in %.2fms", config.DNS, addrs, float64(elpased)/float64(time.Millisecond))
+	SetInternalDnsHealthyMetrics(config.NodeName, float64(elpased)/float64(time.Millisecond))
+	klog.Infof("resolve dns %s to %v in %.2fms", config.InternalDNS, addrs, float64(elpased)/float64(time.Millisecond))
+}
+
+func externalNslookup(config *Configuration) {
+	klog.Infof("start to check dns connectivity")
+	t1 := time.Now()
+	ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
+	defer cancel()
+	var r net.Resolver
+	addrs, err := r.LookupHost(ctx, config.ExternalDNS)
+	elpased := time.Since(t1)
+	if err != nil {
+		klog.Errorf("failed to resolve dns %s, %v", config.ExternalDNS, err)
+		SetExternalDnsUnhealthyMetrics(config.NodeName)
+		return
+	}
+	SetExternalDnsHealthyMetrics(config.NodeName, float64(elpased)/float64(time.Millisecond))
+	klog.Infof("resolve dns %s to %v in %.2fms", config.ExternalDNS, addrs, float64(elpased)/float64(time.Millisecond))
 }
 
 func checkApiServer(config *Configuration) {

@@ -68,25 +68,50 @@ var (
 		[]string{
 			"nodeName",
 		})
-	dnsHealthyGauge = prometheus.NewGaugeVec(
+	internalDnsHealthyGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "pinger_dns_healthy",
+			Name: "pinger_internal_dns_healthy",
 			Help: "if the dns request is healthy on this node",
 		},
 		[]string{
 			"nodeName",
 		})
-	dnsUnhealthyGauge = prometheus.NewGaugeVec(
+	internalDnsUnhealthyGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "pinger_dns_unhealthy",
+			Name: "pinger_internal_dns_unhealthy",
 			Help: "if the dns request is unhealthy on this node",
 		},
 		[]string{
 			"nodeName",
 		})
-	dnsRequestLatencyHistogram = prometheus.NewHistogramVec(
+	internalDnsRequestLatencyHistogram = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "pinger_dns_latency_ms",
+			Name:    "pinger_internal_dns_latency_ms",
+			Help:    "the latency ms histogram the node request dns",
+			Buckets: []float64{2, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50},
+		},
+		[]string{
+			"nodeName",
+		})
+	externalDnsHealthyGauge = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "pinger_external_dns_healthy",
+			Help: "if the dns request is healthy on this node",
+		},
+		[]string{
+			"nodeName",
+		})
+	externalDnsUnhealthyGauge = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "pinger_external_dns_unhealthy",
+			Help: "if the dns request is unhealthy on this node",
+		},
+		[]string{
+			"nodeName",
+		})
+	externalDnsRequestLatencyHistogram = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "pinger_external_dns_latency_ms",
 			Help:    "the latency ms histogram the node request dns",
 			Buckets: []float64{2, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50},
 		},
@@ -176,9 +201,12 @@ func init() {
 	prometheus.MustRegister(apiserverHealthyGauge)
 	prometheus.MustRegister(apiserverUnhealthyGauge)
 	prometheus.MustRegister(apiserverRequestLatencyHistogram)
-	prometheus.MustRegister(dnsHealthyGauge)
-	prometheus.MustRegister(dnsUnhealthyGauge)
-	prometheus.MustRegister(dnsRequestLatencyHistogram)
+	prometheus.MustRegister(internalDnsHealthyGauge)
+	prometheus.MustRegister(internalDnsUnhealthyGauge)
+	prometheus.MustRegister(internalDnsRequestLatencyHistogram)
+	prometheus.MustRegister(externalDnsHealthyGauge)
+	prometheus.MustRegister(externalDnsUnhealthyGauge)
+	prometheus.MustRegister(externalDnsRequestLatencyHistogram)
 	prometheus.MustRegister(podPingLatencyHistogram)
 	prometheus.MustRegister(podPingLostCounter)
 	prometheus.MustRegister(nodePingLatencyHistogram)
@@ -218,15 +246,26 @@ func SetApiserverUnhealthyMetrics(nodeName string) {
 	apiserverUnhealthyGauge.WithLabelValues(nodeName).Set(1)
 }
 
-func SetDnsHealthyMetrics(nodeName string, latency float64) {
-	dnsHealthyGauge.WithLabelValues(nodeName).Set(1)
-	dnsRequestLatencyHistogram.WithLabelValues(nodeName).Observe(latency)
-	dnsUnhealthyGauge.WithLabelValues(nodeName).Set(0)
+func SetInternalDnsHealthyMetrics(nodeName string, latency float64) {
+	internalDnsHealthyGauge.WithLabelValues(nodeName).Set(1)
+	internalDnsRequestLatencyHistogram.WithLabelValues(nodeName).Observe(latency)
+	internalDnsUnhealthyGauge.WithLabelValues(nodeName).Set(0)
 }
 
-func SetDnsUnhealthyMetrics(nodeName string) {
-	dnsHealthyGauge.WithLabelValues(nodeName).Set(0)
-	dnsUnhealthyGauge.WithLabelValues(nodeName).Set(1)
+func SetInternalDnsUnhealthyMetrics(nodeName string) {
+	internalDnsHealthyGauge.WithLabelValues(nodeName).Set(0)
+	internalDnsUnhealthyGauge.WithLabelValues(nodeName).Set(1)
+}
+
+func SetExternalDnsHealthyMetrics(nodeName string, latency float64) {
+	externalDnsHealthyGauge.WithLabelValues(nodeName).Set(1)
+	externalDnsRequestLatencyHistogram.WithLabelValues(nodeName).Observe(latency)
+	externalDnsUnhealthyGauge.WithLabelValues(nodeName).Set(0)
+}
+
+func SetExternalDnsUnhealthyMetrics(nodeName string) {
+	externalDnsHealthyGauge.WithLabelValues(nodeName).Set(0)
+	externalDnsUnhealthyGauge.WithLabelValues(nodeName).Set(1)
 }
 
 func SetPodPingMetrics(srcNodeName, srcNodeIP, srcPodIP, targetNodeName, targetNodeIP, targetPodIP string, latency float64, lost int) {

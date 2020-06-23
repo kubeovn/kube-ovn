@@ -456,7 +456,7 @@
       "tableColumn": "",
       "targets": [
         {
-          "expr": "sum(pinger_dns_healthy)",
+          "expr": "sum(pinger_internal_dns_healthy)",
           "format": "time_series",
           "instant": true,
           "intervalFactor": 1,
@@ -540,7 +540,7 @@
       "tableColumn": "",
       "targets": [
         {
-          "expr": "sum(pinger_dns_unhealthy)",
+          "expr": "sum(pinger_internal_dns_unhealthy)",
           "format": "time_series",
           "instant": true,
           "intervalFactor": 1,
@@ -855,7 +855,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "(sum(delta(pinger_dns_latency_ms_sum[5m])) by (nodeName))/(sum(delta(pinger_dns_latency_ms_count[5m])) by (nodeName))",
+          "expr": "(sum(delta(pinger_internal_dns_latency_ms_sum[5m])) by (nodeName))/(sum(delta(pinger_internal_dns_latency_ms_count[5m])) by (nodeName))",
           "format": "time_series",
           "intervalFactor": 1,
           "legendFormat": "{{nodeName}}",
