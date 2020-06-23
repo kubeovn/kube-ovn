@@ -19,7 +19,8 @@ type Configuration struct {
 	DaemonSetName      string
 	Interval           int
 	Mode               string
-	DNS                string
+	InternalDNS        string
+	ExternalDNS        string
 	NodeName           string
 	HostIP             string
 	PodName            string
@@ -36,8 +37,9 @@ func ParseFlags() (*Configuration, error) {
 		argDaemonSetName      = pflag.String("ds-name", "kube-ovn-pinger", "kube-ovn-pinger daemonset name")
 		argInterval           = pflag.Int("interval", 5, "interval seconds between consecutive pings")
 		argMode               = pflag.String("mode", "server", "server or job Mode")
-		argDns                = pflag.String("dns", "kubernetes.default", "check dns from pod")
-		argExternalAddress    = pflag.String("external-address", "", "check ping connection to an external address, default empty that will disable external check")
+		argInternalDns        = pflag.String("internal-dns", "kubernetes.default", "check dns from pod")
+		argExternalDns        = pflag.String("external-dns", "alauda.cn", "check external dns resolve from pod")
+		argExternalAddress    = pflag.String("external-address", "114.114.114.114", "check ping connection to an external address, default empty that will disable external check")
 		argNetworkMode        = pflag.String("network-mode", "kube-ovn", "The cni plugin current cluster used, default: kube-ovn")
 	)
 
@@ -67,7 +69,8 @@ func ParseFlags() (*Configuration, error) {
 		DaemonSetName:      *argDaemonSetName,
 		Interval:           *argInterval,
 		Mode:               *argMode,
-		DNS:                *argDns,
+		InternalDNS:        *argInternalDns,
+		ExternalDNS:        *argExternalDns,
 		PodIP:              os.Getenv("POD_IP"),
 		HostIP:             os.Getenv("HOST_IP"),
 		NodeName:           os.Getenv("NODE_NAME"),
