@@ -127,13 +127,16 @@ func (csh cniServerHandler) createOrUpdateIPCr(podRequest request.CniRequest, su
 					},
 				},
 				Spec: kubeovnv1.IPSpec{
-					PodName:     podRequest.PodName,
-					Namespace:   podRequest.PodNamespace,
-					Subnet:      subnet,
-					NodeName:    csh.Config.NodeName,
-					IPAddress:   ip,
-					MacAddress:  macAddr,
-					ContainerID: podRequest.ContainerID,
+					PodName:       podRequest.PodName,
+					Namespace:     podRequest.PodNamespace,
+					Subnet:        subnet,
+					NodeName:      csh.Config.NodeName,
+					IPAddress:     ip,
+					MacAddress:    macAddr,
+					ContainerID:   podRequest.ContainerID,
+					AttachIPs:     []string{},
+					AttachMacs:    []string{},
+					AttachSubnets: []string{},
 				},
 			})
 			if err != nil {

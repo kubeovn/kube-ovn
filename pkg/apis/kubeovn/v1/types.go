@@ -42,12 +42,12 @@ type IPSpec struct {
 	PodName       string   `json:"podName"`
 	Namespace     string   `json:"namespace"`
 	Subnet        string   `json:"subnet"`
-	AttachSubnets []string `json:"attach_subnets"`
+	AttachSubnets []string `json:"attachSubnets"`
 	NodeName      string   `json:"nodeName"`
 	IPAddress     string   `json:"ipAddress"`
-	AttachIPs     []string `json:"attach_ips"`
+	AttachIPs     []string `json:"attachIps"`
 	MacAddress    string   `json:"macAddress"`
-	AttachMacs    []string `json:"attach_macs"`
+	AttachMacs    []string `json:"attachMacs"`
 	ContainerID   string   `json:"containerID"`
 }
 

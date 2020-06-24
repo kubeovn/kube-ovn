@@ -264,11 +264,14 @@ func (c *Controller) handleAddNode(key string) error {
 					},
 				},
 				Spec: kubeovnv1.IPSpec{
-					PodName:    key,
-					Subnet:     c.config.NodeSwitch,
-					NodeName:   key,
-					IPAddress:  ip,
-					MacAddress: mac,
+					PodName:       key,
+					Subnet:        c.config.NodeSwitch,
+					NodeName:      key,
+					IPAddress:     ip,
+					MacAddress:    mac,
+					AttachIPs:     []string{},
+					AttachMacs:    []string{},
+					AttachSubnets: []string{},
 				},
 			})
 			if err != nil {
