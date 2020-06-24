@@ -1350,6 +1350,7 @@ trace(){
   mac=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/mac_address})
   ls=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/logical_switch})
   hostNetwork=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.hostNetwork})
+  nodeName=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.nodeName})
 
   if [ "$hostNetwork" = "true" ]; then
     echo "Can not trace host network pod"
@@ -1388,6 +1389,36 @@ trace(){
     *)
       echo "type $type not supported"
       echo "kubectl ko trace {namespace/podname} {target ip address} {icmp|tcp|udp} [target tcp or udp port]"
+      exit 1
+      ;;
+  esac
+
+  set +x
+  echo "--------"
+  echo "Start OVS Tracing"
+  echo ""
+  echo ""
+
+  ovsPod=$(kubectl get pod -n $KUBE_OVN_NS -o wide | grep " $nodeName " | grep ovs-ovn | awk '{print $1}')
+  if [ -z "$ovsPod" ]; then
+      echo "ovs pod  doesn't exist on node $nodeName"
+      exit 1
+  fi
+
+  inPort=$(kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-vsctl --format=csv --data=bare --no-heading --columns=ofport find interface external_id:iface-id="$podName"."$namespace")
+    case $type in
+    icmp)
+      set -x
+      kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-appctl ofproto/trace br-int in_port="$inPort",icmp,nw_src="$podIP",nw_dst="$dst",dl_src="$mac",dl_dst="$gwMac"
+      ;;
+    tcp|udp)
+      set -x
+      kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-appctl ofproto/trace br-int in_port="$inPort",$type,nw_src="$podIP",nw_dst="$dst",dl_src="$mac",dl_dst="$gwMac",tp_src=1000,tp_dst="$4"
+      ;;
+    *)
+      echo "type $type not supported"
+      echo "kubectl ko trace {namespace/podname} {target ip address} {icmp|tcp|udp} [target tcp or udp port]"
+      exit 1
       ;;
   esac
 }
