@@ -12,16 +12,16 @@ RUN yum install dnf-plugins-core -y && \
     checkpolicy selinux-policy-devel unbound unbound-devel gcc-c++ \
     desktop-file-utils graphviz groff python3-sphinx -y
 COPY build.sh /root/build.sh
-RUN bash /root/build.sh
-RUN mkdir /rpms/ && \
+RUN bash /root/build.sh && \
+    mkdir /rpms/ && \
     cp /ovs/rpm/rpmbuild/RPMS/${RPM_ARCH}/* /ovn/rpm/rpmbuild/RPMS/${RPM_ARCH}/* /rpms && \
-    cd /rpms && rm -f *debug* *docker* *vtep* *ipsec*
+    cd /rpms && rm -f *debug* *docker* *vtep* *ipsec* && \
+    rm -rf /ovs /ovn /jemalloc-5.2.1
 
 
 FROM centos:8
 RUN yum remove -y bind-export-libs && yum update -y && \
     yum install -y \
-        gnutls \
         firewalld-filesystem \
         libpcap \
         hostname ethtool \
