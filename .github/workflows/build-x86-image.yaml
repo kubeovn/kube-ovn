@@ -10,6 +10,7 @@ on:
   push:
     branches:
     - master
+    - release-*
     paths-ignore:
     - 'docs/**'
     - 'yamls/**'
@@ -62,15 +63,16 @@ jobs:
           make e2e
 
       - name: Push
-        if: ${{ github.ref == 'refs/heads/master' }}
+        if: ${{ github.ref == 'refs/heads/master' || contains(github.ref, 'release') }}
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-          ALAUDA_USERNAME: ${{ secrets.ALAUDA_USERNAME }}
-          ALAUDA_PASSWORD: ${{ secrets.ALAUDA_PASSWORD }}
+          COMMIT: ${{ github.sha }}
         run: |
           cat VERSION
           TAG=$(cat VERSION)
           echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+          docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$COMMIT
           docker images
           docker push kubeovn/kube-ovn:$TAG
+          docker push kubeovn/kube-ovn:$COMMIT
