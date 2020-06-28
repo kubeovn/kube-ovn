@@ -23,6 +23,7 @@ RUN yum remove -y bind-export-libs && yum update -y && \
     yum install -y \
         gnutls \
         firewalld-filesystem \
+        libatomic \
         libpcap \
         hostname ethtool \
         iproute nc \
