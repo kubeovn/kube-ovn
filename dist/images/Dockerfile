@@ -23,6 +23,7 @@ FROM centos:8
 RUN yum install -y  \
         bind-utils \
         firewalld-filesystem \
+        libatomic \
         libpcap \
         hostname ethtool \
         iproute nc \
