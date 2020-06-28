@@ -3,6 +3,7 @@ on:
   push:
     branches:
     - master
+    - release-*
     paths-ignore:
     - 'docs/**'
     - 'yamls/**'
@@ -26,13 +27,15 @@ jobs:
           go get -u github.com/securego/gosec/cmd/gosec
           make release-arm
       - name: Push
-        if: ${{ github.ref == 'refs/heads/master' }}
+        if: ${{ github.ref == 'refs/heads/master' || contains(github.ref, 'release') }}
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
         run: |
           TAG=$(cat VERSION)
           echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-          docker images
           docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-arm
+          docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$COMMIT-arm
+          docker images
           docker push kubeovn/kube-ovn:$TAG-arm
+          docker push kubeovn/kube-ovn:$COMMIT-arm
