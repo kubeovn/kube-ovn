@@ -70,9 +70,8 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 	// In case update event might lost during leader election
 	if p.Annotations != nil &&
 		p.Annotations[util.AllocatedAnnotation] == "true" &&
-		p.Annotations[util.RoutedAnnotation] != "true" &&
 		p.Status.HostIP != "" && p.Status.PodIP != "" {
-		c.updatePodQueue.Add(key)
+		c.updatePodRouteQueue.Add(p.Spec.NodeName)
 		return
 	}
 
@@ -96,6 +95,8 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 	}
 
 	p := obj.(*v1.Pod)
+	c.updatePodRouteQueue.Add(p.Spec.NodeName)
+
 	for _, np := range c.podMatchNetworkPolicies(p) {
 		c.updateNpQueue.Add(np)
 	}
@@ -183,10 +184,9 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 
 	// pod assigned an ip
 	if newPod.Annotations[util.AllocatedAnnotation] == "true" &&
-		newPod.Annotations[util.RoutedAnnotation] != "true" &&
 		newPod.Spec.NodeName != "" {
 		klog.V(3).Infof("enqueue update pod %s", key)
-		c.updatePodQueue.Add(key)
+		c.updatePodRouteQueue.Add(newPod.Spec.NodeName)
 	}
 }
 
@@ -274,26 +274,26 @@ func (c *Controller) processNextDeletePodWorkItem() bool {
 }
 
 func (c *Controller) processNextUpdatePodWorkItem() bool {
-	obj, shutdown := c.updatePodQueue.Get()
+	obj, shutdown := c.updatePodRouteQueue.Get()
 
 	if shutdown {
 		return false
 	}
 
 	err := func(obj interface{}) error {
-		defer c.updatePodQueue.Done(obj)
+		defer c.updatePodRouteQueue.Done(obj)
 		var key string
 		var ok bool
 		if key, ok = obj.(string); !ok {
-			c.updatePodQueue.Forget(obj)
+			c.updatePodRouteQueue.Forget(obj)
 			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
 			return nil
 		}
-		if err := c.handleUpdatePod(key); err != nil {
-			c.updatePodQueue.AddRateLimited(key)
+		if err := c.reconcileNodeLocalAddressSet(key); err != nil {
+			c.updatePodRouteQueue.AddRateLimited(key)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
-		c.updatePodQueue.Forget(obj)
+		c.updatePodRouteQueue.Forget(obj)
 		return nil
 	}(obj)
 
@@ -393,6 +393,33 @@ func (c *Controller) handleAddPod(key string) error {
 	return nil
 }
 
+func (c *Controller) reconcileNodeLocalAddressSet(node string) error {
+	if node == "" {
+		return nil
+	}
+
+	pods, err := c.podsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("list pods failed %v", err)
+		return err
+	}
+
+	addressSet := []string{}
+	for _, pod := range pods {
+		if pod.Annotations[util.IpAddressAnnotation] != "" &&
+			pod.Spec.NodeName == node {
+			addressSet = append(addressSet, pod.Annotations[util.IpAddressAnnotation])
+		}
+	}
+	if err := c.ovnClient.SetAddressesToAddressSet(addressSet,
+		fmt.Sprintf(util.NodeLocalAddressSetTemplate, strings.Replace(node, "-", ".", -1))); err != nil {
+		klog.Errorf("failed to set node local address set for %s, %v", node, err)
+		return err
+	}
+
+	return nil
+}
+
 func (c *Controller) handleDeletePod(key string) error {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -403,13 +430,6 @@ func (c *Controller) handleDeletePod(key string) error {
 	if pod != nil && isPodAlive(pod) {
 		// Pod with same name exists, just return here
 		return nil
-	}
-
-	ips, _ := c.ipam.GetPodAddress(key)
-	for _, ip := range ips {
-		if err := c.ovnClient.DeleteStaticRoute(ip, c.config.ClusterRouter); err != nil {
-			return err
-		}
 	}
 
 	if err := c.ovnClient.DeletePort(ovs.PodNameToPortName(name, namespace)); err != nil {
@@ -425,61 +445,6 @@ func (c *Controller) handleDeletePod(key string) error {
 	}
 
 	c.ipam.ReleaseAddressByPod(key)
-	return nil
-}
-
-func (c *Controller) handleUpdatePod(key string) error {
-	namespace, name, err := cache.SplitMetaNamespaceKey(key)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
-		return nil
-	}
-	pod, err := c.podsLister.Pods(namespace).Get(name)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-
-	klog.Infof("update pod %s/%s", namespace, name)
-	podIP := pod.Annotations[util.IpAddressAnnotation]
-
-	subnet, err := c.getPodDefaultSubnet(pod)
-	if err != nil {
-		klog.Errorf("failed to get subnet %v", err)
-		return err
-	}
-
-	if !subnet.Spec.UnderlayGateway {
-		if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
-			node, err := c.nodesLister.Get(pod.Spec.NodeName)
-			if err != nil {
-				klog.Errorf("get node %s failed %v", pod.Spec.NodeName, err)
-				return err
-			}
-			nodeTunlIPAddr, err := getNodeTunlIP(node)
-			if err != nil {
-				return err
-			}
-
-			if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
-				return errors.Annotate(err, "add static route failed")
-			}
-		}
-	}
-
-	pod.Annotations[util.RoutedAnnotation] = "true"
-	if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, generatePatchPayload(pod.Annotations, "replace")); err != nil {
-		if k8serrors.IsNotFound(err) {
-			// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.
-			// Then we need to recycle the resource again.
-			c.deletePodQueue.AddRateLimited(key)
-			return nil
-		}
-		klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
-		return err
-	}
 	return nil
 }
 
