@@ -226,6 +226,17 @@ func (c *Controller) handleAddNode(key string) error {
 			return err
 		}
 	}
+	nodeLocalAddressSet := fmt.Sprintf(util.NodeLocalAddressSetTemplate, strings.Replace(key, "-", ".", -1))
+	if err := c.ovnClient.CreateAddressSet(nodeLocalAddressSet); err != nil {
+		klog.Errorf("failed to create node local address set for node %s, %v", key, err)
+		return err
+	}
+
+	match := fmt.Sprintf("ip4.src==$%s && ip4.dst!=$%s", nodeLocalAddressSet, util.SubnetAddressSet)
+	if err := c.ovnClient.CreatePolicyRoute(c.config.ClusterRouter, match, ip, util.DistributedGatewayPolicyRoutePriority); err != nil {
+		klog.Errorf("failed to create policy route for node %s, %v", key, err)
+		return err
+	}
 
 	patchPayloadTemplate :=
 		`[{
@@ -311,6 +322,16 @@ func (c *Controller) handleAddNode(key string) error {
 }
 
 func (c *Controller) handleDeleteNode(key string) error {
+	if _, err := c.nodesLister.Get(key); err != nil {
+		// node still exists
+		return nil
+	}
+
+	if err := c.ovnClient.DeleteAddressSet(fmt.Sprintf(util.NodeLocalAddressSetTemplate, strings.Replace(key, "-", ".", -1))); err != nil {
+		klog.Errorf("failed to delete node local address set for node %s, %v", key, err)
+		return err
+	}
+
 	portName := fmt.Sprintf("node-%s", key)
 	if err := c.ovnClient.DeletePort(portName); err != nil {
 		klog.Errorf("failed to delete node switch port node-%s %v", key, err)

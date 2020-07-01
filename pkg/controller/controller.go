@@ -39,15 +39,15 @@ type Controller struct {
 	podsLister v1.PodLister
 	podsSynced cache.InformerSynced
 
-	addPodQueue    workqueue.RateLimitingInterface
-	deletePodQueue workqueue.RateLimitingInterface
-	updatePodQueue workqueue.RateLimitingInterface
+	addPodQueue         workqueue.RateLimitingInterface
+	deletePodQueue      workqueue.RateLimitingInterface
+	updatePodRouteQueue workqueue.RateLimitingInterface
 
 	subnetsLister           kubeovnlister.SubnetLister
 	subnetSynced            cache.InformerSynced
 	addOrUpdateSubnetQueue  workqueue.RateLimitingInterface
 	deleteSubnetQueue       workqueue.RateLimitingInterface
-	deleteRouteQueue        workqueue.RateLimitingInterface
+	deleteSubnetRouteQueue  workqueue.RateLimitingInterface
 	updateSubnetStatusQueue workqueue.RateLimitingInterface
 
 	ipsLister kubeovnlister.IPLister
@@ -128,7 +128,7 @@ func NewController(config *Configuration) *Controller {
 		subnetSynced:            subnetInformer.Informer().HasSynced,
 		addOrUpdateSubnetQueue:  workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddSubnet"),
 		deleteSubnetQueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteSubnet"),
-		deleteRouteQueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteRoute"),
+		deleteSubnetRouteQueue:  workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteRoute"),
 		updateSubnetStatusQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateSubnetStatus"),
 
 		ipsLister: ipInformer.Lister(),
@@ -140,11 +140,11 @@ func NewController(config *Configuration) *Controller {
 		delVlanQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DelVlan"),
 		updateVlanQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVlan"),
 
-		podsLister:     podInformer.Lister(),
-		podsSynced:     podInformer.Informer().HasSynced,
-		addPodQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddPod"),
-		deletePodQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeletePod"),
-		updatePodQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdatePod"),
+		podsLister:          podInformer.Lister(),
+		podsSynced:          podInformer.Informer().HasSynced,
+		addPodQueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddPod"),
+		deletePodQueue:      workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeletePod"),
+		updatePodRouteQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdatePod"),
 
 		namespacesLister:  namespaceInformer.Lister(),
 		namespacesSynced:  namespaceInformer.Informer().HasSynced,
@@ -276,13 +276,13 @@ func (c *Controller) shutdown() {
 
 	c.addPodQueue.ShutDown()
 	c.deletePodQueue.ShutDown()
-	c.updatePodQueue.ShutDown()
+	c.updatePodRouteQueue.ShutDown()
 
 	c.addNamespaceQueue.ShutDown()
 
 	c.addOrUpdateSubnetQueue.ShutDown()
 	c.deleteSubnetQueue.ShutDown()
-	c.deleteRouteQueue.ShutDown()
+	c.deleteSubnetRouteQueue.ShutDown()
 	c.updateSubnetStatusQueue.ShutDown()
 
 	c.addNodeQueue.ShutDown()

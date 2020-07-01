@@ -23,6 +23,11 @@ func (c *Controller) InitOVN() error {
 		return err
 	}
 
+	if err := c.initSubnetAddressSet(); err != nil {
+		klog.Errorf("init subnet address set failed %v", err)
+		return err
+	}
+
 	if err := c.initDefaultVlan(); err != nil {
 		klog.Errorf("init default vlan failed %v", err)
 		return err
@@ -102,8 +107,19 @@ func (c *Controller) initNodeSwitch() error {
 		nodeSubnet.Spec.Vlan = c.config.DefaultVlanName
 	}
 
-	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(&nodeSubnet)
-	return err
+	if _, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(&nodeSubnet); err != nil {
+		return err
+	}
+
+	allCidr := "0.0.0.0/0"
+	if util.CheckProtocol(c.config.NodeSwitchCIDR) == kubeovnv1.ProtocolIPv6 {
+		allCidr = "::/0"
+	}
+	if err := c.ovnClient.AddStaticRoute("", allCidr, c.config.NodeSwitchGateway, c.config.ClusterRouter); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // InitClusterRouter init cluster router to connect different logical switches
@@ -153,6 +169,10 @@ func (c *Controller) initLoadBalancer() error {
 		klog.Infof("udp load balancer %s exists", udpLb)
 	}
 	return nil
+}
+
+func (c *Controller) initSubnetAddressSet() error {
+	return c.ovnClient.CreateAddressSet(util.SubnetAddressSet)
 }
 
 func (c *Controller) InitIPAM() error {
