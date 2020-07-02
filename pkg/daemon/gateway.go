@@ -3,8 +3,10 @@ package daemon
 import (
 	"fmt"
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/alauda/kube-ovn/pkg/ovs"
 	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/projectcalico/felix/ipsets"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
 	"net"
@@ -131,6 +133,21 @@ func (c *Controller) runGateway() {
 			}
 		}
 	}
+
+	if err := c.setGatewayBandwidth(); err != nil {
+		klog.Errorf("failed to set gw bandwidth, %v", err)
+	}
+}
+
+func (c *Controller) setGatewayBandwidth() error {
+	node, err := c.config.KubeClient.CoreV1().Nodes().Get(c.config.NodeName, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("failed to get node, %v", err)
+		return err
+	}
+	ingress, egress := node.Annotations[util.IngressRateAnnotation], node.Annotations[util.EgressRateAnnotation]
+	ifaceId := fmt.Sprintf("node-%s", c.config.NodeName)
+	return ovs.SetInterfaceBandwidth(ifaceId, ingress, egress)
 }
 
 func (c *Controller) getLocalPodIPsNeedNAT(protocol string) ([]string, error) {

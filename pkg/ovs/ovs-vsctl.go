@@ -91,11 +91,11 @@ func ClearPodBandwidth(podName, podNamespace string) error {
 	return nil
 }
 
-// SetPodBandwidth set ingress/egress qos for given pod
-func SetPodBandwidth(podName, podNamespace, ingress, egress string) error {
+// SetInterfaceBandwidth set ingress/egress qos for given pod
+func SetInterfaceBandwidth(iface, ingress, egress string) error {
 	ingressMPS, _ := strconv.Atoi(ingress)
 	ingressKPS := ingressMPS * 1000
-	interfaceList, err := ovsFind("interface", "name", fmt.Sprintf("external-ids:iface-id=%s.%s", podName, podNamespace))
+	interfaceList, err := ovsFind("interface", "name", fmt.Sprintf("external-ids:iface-id=%s", iface))
 	if err != nil {
 		return err
 	}
@@ -110,13 +110,13 @@ func SetPodBandwidth(podName, podNamespace, ingress, egress string) error {
 		egressMPS, _ := strconv.Atoi(egress)
 		egressBPS := egressMPS * 1000 * 1000
 
-		qosList, err := ovsFind("qos", "_uuid", fmt.Sprintf("external-ids:iface-id=%s.%s", podName, podNamespace))
+		qosList, err := ovsFind("qos", "_uuid", fmt.Sprintf("external-ids:iface-id=%s", iface))
 		if err != nil {
 			return err
 		}
 		if egressBPS > 0 {
 			if len(qosList) == 0 {
-				qos, err := ovsCreate("qos", "type=linux-htb", fmt.Sprintf("other-config:max-rate=%d", egressBPS), fmt.Sprintf("external-ids:iface-id=%s.%s", podName, podNamespace))
+				qos, err := ovsCreate("qos", "type=linux-htb", fmt.Sprintf("other-config:max-rate=%d", egressBPS), fmt.Sprintf("external-ids:iface-id=%s", iface))
 				if err != nil {
 					return err
 				}
