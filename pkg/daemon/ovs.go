@@ -53,7 +53,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, netns, container
 	if err = configureHostNic(hostNicName, vlanID, macAddr); err != nil {
 		return err
 	}
-	if err = ovs.SetPodBandwidth(podName, podNamespace, ingress, egress); err != nil {
+	if err = ovs.SetInterfaceBandwidth(fmt.Sprintf("%s.%s", podName, podNamespace), ingress, egress); err != nil {
 		return err
 	}
 
