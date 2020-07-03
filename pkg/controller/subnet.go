@@ -702,6 +702,9 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 	}
 
 	match := fmt.Sprintf("ip4.src==%s && ip4.dst!=$%s", subnet.Spec.CIDRBlock, util.SubnetAddressSet)
+	if subnet.Spec.Protocol == kubeovnv1.ProtocolIPv6 {
+		match = fmt.Sprintf("ip6.src==$%s && ip6.dst!=$%s", subnet.Spec.CIDRBlock, util.SubnetAddressSet)
+	}
 	if err := c.ovnClient.CreatePolicyRoute(c.config.ClusterRouter, match, nodeTunlIPAddr.String(), util.CentralGatewayPolicyRoutePriority); err != nil {
 		klog.Errorf("failed to create policy route for subnet %s, %v", subnet.Name, err)
 		return err

@@ -233,6 +233,9 @@ func (c *Controller) handleAddNode(key string) error {
 	}
 
 	match := fmt.Sprintf("ip4.src==$%s && ip4.dst!=$%s", nodeLocalAddressSet, util.SubnetAddressSet)
+	if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 {
+		match = fmt.Sprintf("ip6.src==$%s && ip6.dst!=$%s", nodeLocalAddressSet, util.SubnetAddressSet)
+	}
 	if err := c.ovnClient.CreatePolicyRoute(c.config.ClusterRouter, match, ip, util.DistributedGatewayPolicyRoutePriority); err != nil {
 		klog.Errorf("failed to create policy route for node %s, %v", key, err)
 		return err
