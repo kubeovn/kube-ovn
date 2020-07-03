@@ -485,7 +485,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 
 func isStatefulSetPod(pod *v1.Pod) (bool, string) {
 	for _, owner := range pod.OwnerReferences {
-		if owner.Kind == "StatefulSet" && owner.APIVersion == "apps" {
+		if owner.Kind == "StatefulSet" && strings.HasPrefix(owner.APIVersion, "apps/") {
 			return true, owner.Name
 		}
 	}
