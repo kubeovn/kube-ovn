@@ -179,5 +179,61 @@ var _ = Describe("[IP Allocation]", func() {
 				Expect(pod.Status.PodIP).To(Equal([]string{"12.10.0.31", "12.10.0.32", "12.10.0.30"}[i]))
 			}
 		})
+
+		It("statefulset without ippool", func() {
+			name := f.GetName()
+			var replicas int32 = 3
+			autoMount := false
+			ss := appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: namespace,
+				},
+				Spec: appsv1.StatefulSetSpec{
+					Replicas: &replicas,
+					Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"apps": name}},
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{"apps": name},
+						},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name:            name,
+									Image:           "nginx:alpine",
+									ImagePullPolicy: corev1.PullIfNotPresent,
+								},
+							},
+							AutomountServiceAccountToken: &autoMount,
+						},
+					},
+				},
+			}
+
+			By("Create statefulset")
+			_, err := f.KubeClientSet.AppsV1().StatefulSets(namespace).Create(&ss)
+			Expect(err).NotTo(HaveOccurred())
+
+			err = f.WaitStatefulsetReady(name, namespace)
+			Expect(err).NotTo(HaveOccurred())
+
+			ips := make([]string, 0, 3)
+			for i := 0; i < 3; i++ {
+				pod, err := f.KubeClientSet.CoreV1().Pods(namespace).Get(fmt.Sprintf("%s-%d", name, i), metav1.GetOptions{})
+				Expect(err).NotTo(HaveOccurred())
+				ips = append(ips, pod.Status.PodIP)
+			}
+
+			err = f.KubeClientSet.CoreV1().Pods(namespace).DeleteCollection(&metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: labels.SelectorFromSet(ss.Spec.Template.Labels).String()})
+			Expect(err).NotTo(HaveOccurred())
+
+			err = f.WaitStatefulsetReady(name, namespace)
+			Expect(err).NotTo(HaveOccurred())
+			for i := 0; i < 3; i++ {
+				pod, err := f.KubeClientSet.CoreV1().Pods(namespace).Get(fmt.Sprintf("%s-%d", name, i), metav1.GetOptions{})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(pod.Status.PodIP).To(Equal(ips[i]))
+			}
+		})
 	})
 })
