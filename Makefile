@@ -81,6 +81,8 @@ uninstall:
 	bash dist/images/cleanup.sh
 
 e2e:
+	docker pull nginx:alpine
+	kind load docker-image --name kube-ovn nginx:alpine
 	ginkgo -p --slowSpecThreshold=60 test/e2e
 
 ut:
