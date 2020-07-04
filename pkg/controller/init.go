@@ -129,7 +129,7 @@ func (c *Controller) initLoadBalancer() error {
 	}
 	if tcpLb == "" {
 		klog.Infof("init cluster tcp load balancer %s", c.config.ClusterTcpLoadBalancer)
-		err := c.ovnClient.CreateLoadBalancer(c.config.ClusterTcpLoadBalancer, util.ProtocolTCP)
+		err := c.ovnClient.CreateLoadBalancer(c.config.ClusterTcpLoadBalancer, util.ProtocolTCP, "")
 		if err != nil {
 			klog.Errorf("failed to crate cluster tcp load balancer %v", err)
 			return err
@@ -138,13 +138,28 @@ func (c *Controller) initLoadBalancer() error {
 		klog.Infof("tcp load balancer %s exists", tcpLb)
 	}
 
+	tcpSessionLb, err := c.ovnClient.FindLoadbalancer(c.config.ClusterTcpSessionLoadBalancer)
+	if err != nil {
+		return fmt.Errorf("failed to find tcp session lb %v", err)
+	}
+	if tcpSessionLb == "" {
+		klog.Infof("init cluster tcp session load balancer %s", c.config.ClusterTcpSessionLoadBalancer)
+		err := c.ovnClient.CreateLoadBalancer(c.config.ClusterTcpSessionLoadBalancer, util.ProtocolTCP, "ip_src")
+		if err != nil {
+			klog.Errorf("failed to crate cluster tcp session load balancer %v", err)
+			return err
+		}
+	} else {
+		klog.Infof("tcp session load balancer %s exists", tcpSessionLb)
+	}
+
 	udpLb, err := c.ovnClient.FindLoadbalancer(c.config.ClusterUdpLoadBalancer)
 	if err != nil {
 		return fmt.Errorf("failed to find udp lb %v", err)
 	}
 	if udpLb == "" {
 		klog.Infof("init cluster udp load balancer %s", c.config.ClusterUdpLoadBalancer)
-		err := c.ovnClient.CreateLoadBalancer(c.config.ClusterUdpLoadBalancer, util.ProtocolUDP)
+		err := c.ovnClient.CreateLoadBalancer(c.config.ClusterUdpLoadBalancer, util.ProtocolUDP, "")
 		if err != nil {
 			klog.Errorf("failed to crate cluster udp load balancer %v", err)
 			return err
@@ -152,6 +167,22 @@ func (c *Controller) initLoadBalancer() error {
 	} else {
 		klog.Infof("udp load balancer %s exists", udpLb)
 	}
+
+	udpSessionLb, err := c.ovnClient.FindLoadbalancer(c.config.ClusterUdpSessionLoadBalancer)
+	if err != nil {
+		return fmt.Errorf("failed to find udp session lb %v", err)
+	}
+	if udpSessionLb == "" {
+		klog.Infof("init cluster udp session load balancer %s", c.config.ClusterUdpSessionLoadBalancer)
+		err := c.ovnClient.CreateLoadBalancer(c.config.ClusterUdpSessionLoadBalancer, util.ProtocolUDP, "ip_src")
+		if err != nil {
+			klog.Errorf("failed to crate cluster udp session load balancer %v", err)
+			return err
+		}
+	} else {
+		klog.Infof("udp session load balancer %s exists", udpSessionLb)
+	}
+
 	return nil
 }
 

@@ -170,15 +170,17 @@ func (c *Controller) handleDeleteService(vip string, protocol v1.Protocol) error
 	}
 
 	if protocol == v1.ProtocolTCP {
-		err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterTcpLoadBalancer)
-		if err != nil {
+		if err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterTcpLoadBalancer); err != nil {
 			klog.Errorf("failed to delete vip %s from tcp lb, %v", vip, err)
 			return err
 		}
+		if err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterTcpSessionLoadBalancer); err != nil {
+			klog.Errorf("failed to delete vip %s from tcp session lb, %v", vip, err)
+			return err
+		}
 	} else {
-		err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterUdpLoadBalancer)
-		if err != nil {
-			klog.Errorf("failed to delete vip %s from udp lb, %v", vip, err)
+		if err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterUdpSessionLoadBalancer); err != nil {
+			klog.Errorf("failed to delete vip %s from udp session lb, %v", vip, err)
 			return err
 		}
 	}
@@ -208,6 +210,13 @@ func (c *Controller) handleUpdateService(key string) error {
 
 	tcpVips := []string{}
 	udpVips := []string{}
+	tcpLb, udpLb := c.config.ClusterTcpLoadBalancer, c.config.ClusterUdpLoadBalancer
+	oTcpLb, oUdpLb := c.config.ClusterTcpSessionLoadBalancer, c.config.ClusterUdpSessionLoadBalancer
+	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
+		tcpLb, udpLb = c.config.ClusterTcpSessionLoadBalancer, c.config.ClusterUdpSessionLoadBalancer
+		oTcpLb, oUdpLb = c.config.ClusterTcpLoadBalancer, c.config.ClusterUdpLoadBalancer
+
+	}
 
 	for _, port := range svc.Spec.Ports {
 		if port.Protocol == v1.ProtocolTCP {
@@ -217,7 +226,7 @@ func (c *Controller) handleUpdateService(key string) error {
 		}
 	}
 	// for service update
-	lbUuid, err := c.ovnClient.FindLoadbalancer(c.config.ClusterTcpLoadBalancer)
+	lbUuid, err := c.ovnClient.FindLoadbalancer(tcpLb)
 	if err != nil {
 		klog.Errorf("failed to get lb %v", err)
 		return err
@@ -229,6 +238,10 @@ func (c *Controller) handleUpdateService(key string) error {
 	}
 	klog.V(3).Infof("exist tcp vips are %v", vips)
 	for _, vip := range tcpVips {
+		if err := c.ovnClient.DeleteLoadBalancerVip(vip, oTcpLb); err != nil {
+			klog.Errorf("failed to delete lb %s form %s, %v", vip, oTcpLb, err)
+			return err
+		}
 		if _, ok := vips[vip]; !ok {
 			klog.Infof("add vip %s to tcp lb", vip)
 			c.updateEndpointQueue.Add(key)
@@ -239,7 +252,7 @@ func (c *Controller) handleUpdateService(key string) error {
 	for vip := range vips {
 		if strings.Split(vip, ":")[0] == ip && !util.IsStringIn(vip, tcpVips) {
 			klog.Infof("remove stall vip %s", vip)
-			err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterTcpLoadBalancer)
+			err := c.ovnClient.DeleteLoadBalancerVip(vip, tcpLb)
 			if err != nil {
 				klog.Errorf("failed to delete vip %s from tcp lb %v", vip, err)
 				return err
@@ -247,7 +260,7 @@ func (c *Controller) handleUpdateService(key string) error {
 		}
 	}
 
-	lbUuid, err = c.ovnClient.FindLoadbalancer(c.config.ClusterUdpLoadBalancer)
+	lbUuid, err = c.ovnClient.FindLoadbalancer(udpLb)
 	if err != nil {
 		klog.Errorf("failed to get lb %v", err)
 		return err
@@ -259,6 +272,10 @@ func (c *Controller) handleUpdateService(key string) error {
 	}
 	klog.Infof("exist udp vips are %v", vips)
 	for _, vip := range udpVips {
+		if err := c.ovnClient.DeleteLoadBalancerVip(vip, oUdpLb); err != nil {
+			klog.Errorf("failed to delete lb %s form %s, %v", vip, oUdpLb, err)
+			return err
+		}
 		if _, ok := vips[vip]; !ok {
 			klog.Infof("add vip %s to udp lb", vip)
 			c.updateEndpointQueue.Add(key)
@@ -269,7 +286,7 @@ func (c *Controller) handleUpdateService(key string) error {
 	for vip := range vips {
 		if strings.Split(vip, ":")[0] == ip && !util.IsStringIn(vip, udpVips) {
 			klog.Infof("remove stall vip %s", vip)
-			err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterUdpLoadBalancer)
+			err := c.ovnClient.DeleteLoadBalancerVip(vip, udpLb)
 			if err != nil {
 				klog.Errorf("failed to delete vip %s from udp lb %v", vip, err)
 				return err

@@ -36,8 +36,10 @@ type Configuration struct {
 	NodeSwitchCIDR    string
 	NodeSwitchGateway string
 
-	ClusterTcpLoadBalancer string
-	ClusterUdpLoadBalancer string
+	ClusterTcpLoadBalancer        string
+	ClusterUdpLoadBalancer        string
+	ClusterTcpSessionLoadBalancer string
+	ClusterUdpSessionLoadBalancer string
 
 	PodName      string
 	PodNamespace string
@@ -75,8 +77,10 @@ func ParseFlags() (*Configuration, error) {
 		argNodeSwitchCIDR    = pflag.String("node-switch-cidr", "100.64.0.0/16", "The cidr for node switch, default: 100.64.0.0/16")
 		argNodeSwitchGateway = pflag.String("node-switch-gateway", "", "The gateway for node switch, default the first ip in node-switch-cidr")
 
-		argClusterTcpLoadBalancer = pflag.String("cluster-tcp-loadbalancer", "cluster-tcp-loadbalancer", "The name for cluster tcp loadbalancer")
-		argClusterUdpLoadBalancer = pflag.String("cluster-udp-loadbalancer", "cluster-udp-loadbalancer", "The name for cluster udp loadbalancer")
+		argClusterTcpLoadBalancer        = pflag.String("cluster-tcp-loadbalancer", "cluster-tcp-loadbalancer", "The name for cluster tcp loadbalancer")
+		argClusterUdpLoadBalancer        = pflag.String("cluster-udp-loadbalancer", "cluster-udp-loadbalancer", "The name for cluster udp loadbalancer")
+		argClusterTcpSessionLoadBalancer = pflag.String("cluster-tcp-session-loadbalancer", "cluster-tcp-session-loadbalancer", "The name for cluster tcp session loadbalancer")
+		argClusterUdpSessionLoadBalancer = pflag.String("cluster-udp-session-loadbalancer", "cluster-udp-session-loadbalancer", "The name for cluster udp session loadbalancer")
 
 		argWorkerNum = pflag.Int("worker-num", 3, "The parallelism of each worker, default: 3")
 		argPprofPort = pflag.Int("pprof-port", 10660, "The port to get profiling data, default 10660")
@@ -108,33 +112,35 @@ func ParseFlags() (*Configuration, error) {
 	pflag.Parse()
 
 	config := &Configuration{
-		OvnNbSocket:            *argOvnNbSocket,
-		OvnNbHost:              *argOvnNbHost,
-		OvnNbPort:              *argOvnNbPort,
-		OvnSbHost:              *argOvnSbHost,
-		OvnSbPort:              *argOvnSbPort,
-		OvnTimeout:             *argOvnTimeout,
-		KubeConfigFile:         *argKubeConfigFile,
-		DefaultLogicalSwitch:   *argDefaultLogicalSwitch,
-		DefaultCIDR:            *argDefaultCIDR,
-		DefaultGateway:         *argDefaultGateway,
-		DefaultExcludeIps:      *argDefaultExcludeIps,
-		ClusterRouter:          *argClusterRouter,
-		NodeSwitch:             *argNodeSwitch,
-		NodeSwitchCIDR:         *argNodeSwitchCIDR,
-		NodeSwitchGateway:      *argNodeSwitchGateway,
-		ClusterTcpLoadBalancer: *argClusterTcpLoadBalancer,
-		ClusterUdpLoadBalancer: *argClusterUdpLoadBalancer,
-		WorkerNum:              *argWorkerNum,
-		PprofPort:              *argPprofPort,
-		NetworkType:            *argsNetworkType,
-		DefaultVlanID:          *argsDefaultVlanID,
-		DefaultProviderName:    *argsDefaultProviderName,
-		DefaultHostInterface:   *argsDefaultInterfaceName,
-		DefaultVlanName:        *argsDefaultVlanName,
-		DefaultVlanRange:       *argsDefaultVlanRange,
-		PodName:                os.Getenv("POD_NAME"),
-		PodNamespace:           os.Getenv("KUBE_NAMESPACE"),
+		OvnNbSocket:                   *argOvnNbSocket,
+		OvnNbHost:                     *argOvnNbHost,
+		OvnNbPort:                     *argOvnNbPort,
+		OvnSbHost:                     *argOvnSbHost,
+		OvnSbPort:                     *argOvnSbPort,
+		OvnTimeout:                    *argOvnTimeout,
+		KubeConfigFile:                *argKubeConfigFile,
+		DefaultLogicalSwitch:          *argDefaultLogicalSwitch,
+		DefaultCIDR:                   *argDefaultCIDR,
+		DefaultGateway:                *argDefaultGateway,
+		DefaultExcludeIps:             *argDefaultExcludeIps,
+		ClusterRouter:                 *argClusterRouter,
+		NodeSwitch:                    *argNodeSwitch,
+		NodeSwitchCIDR:                *argNodeSwitchCIDR,
+		NodeSwitchGateway:             *argNodeSwitchGateway,
+		ClusterTcpLoadBalancer:        *argClusterTcpLoadBalancer,
+		ClusterUdpLoadBalancer:        *argClusterUdpLoadBalancer,
+		ClusterTcpSessionLoadBalancer: *argClusterTcpSessionLoadBalancer,
+		ClusterUdpSessionLoadBalancer: *argClusterUdpSessionLoadBalancer,
+		WorkerNum:                     *argWorkerNum,
+		PprofPort:                     *argPprofPort,
+		NetworkType:                   *argsNetworkType,
+		DefaultVlanID:                 *argsDefaultVlanID,
+		DefaultProviderName:           *argsDefaultProviderName,
+		DefaultHostInterface:          *argsDefaultInterfaceName,
+		DefaultVlanName:               *argsDefaultVlanName,
+		DefaultVlanRange:              *argsDefaultVlanRange,
+		PodName:                       os.Getenv("POD_NAME"),
+		PodNamespace:                  os.Getenv("KUBE_NAMESPACE"),
 	}
 
 	if config.DefaultGateway == "" {
