@@ -3,9 +3,9 @@ module github.com/alauda/kube-ovn
 go 1.12
 
 require (
-	github.com/containernetworking/cni v0.7.1
-	github.com/containernetworking/plugins v0.8.2
-	github.com/coreos/go-iptables v0.4.2
+	github.com/containernetworking/cni v0.8.0
+	github.com/containernetworking/plugins v0.8.6
+	github.com/coreos/go-iptables v0.4.5
 	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13 // indirect
 	github.com/elazarl/goproxy v0.0.0-20190630181448-f1e96bc0f4c5 // indirect
 	github.com/elazarl/goproxy/ext v0.0.0-20190630181448-f1e96bc0f4c5 // indirect
