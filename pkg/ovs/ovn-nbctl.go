@@ -246,6 +246,23 @@ type StaticRoute struct {
 	NextHop string
 }
 
+func (c Client) ListStaticRoute() ([]StaticRoute, error) {
+	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=ip_prefix,nexthop,policy", "list", "Logical_Router_Static_Route")
+	if err != nil {
+		return nil, err
+	}
+	entries := strings.Split(output, "\n")
+	staticRoutes := make([]StaticRoute, 0, len(entries))
+	for _, entry := range strings.Split(output, "\n") {
+		if len(strings.Split(entry, ",")) == 3 {
+			t := strings.Split(entry, ",")
+			staticRoutes = append(staticRoutes,
+				StaticRoute{CIDR: strings.TrimSpace(t[0]), NextHop: strings.TrimSpace(t[1]), Policy: strings.TrimSpace(t[2])})
+		}
+	}
+	return staticRoutes, nil
+}
+
 // AddStaticRoute add a static route rule in ovn
 func (c Client) AddStaticRoute(policy, cidr, nextHop, router string) error {
 	if policy == "" {
@@ -515,16 +532,6 @@ func (c Client) ListPortGroup() ([]portGroup, error) {
 		result = append(result, portGroup{Name: name, NpNamespace: np[0], NpName: np[1]})
 	}
 	return result, nil
-}
-
-func (c Client) CreatePolicyRoute(router, match, nextHop, priority string) error {
-	_, err := c.ovnNbCommand("lr-policy-add", router, priority, match, "reroute", nextHop)
-	return err
-}
-
-func (c Client) DeletePolicyRoute(router, match, priority string) error {
-	_, err := c.ovnNbCommand("lr-policy-del", router, priority, match)
-	return err
 }
 
 func (c Client) CreateAddressSet(asName string) error {
