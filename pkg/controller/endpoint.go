@@ -116,6 +116,11 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		return nil
 	}
 
+	tcpLb, udpLb := c.config.ClusterTcpLoadBalancer, c.config.ClusterUdpLoadBalancer
+	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
+		tcpLb, udpLb = c.config.ClusterTcpSessionLoadBalancer, c.config.ClusterUdpSessionLoadBalancer
+	}
+
 	for _, port := range svc.Spec.Ports {
 		var vip string
 		if util.CheckProtocol(clusterIP) == kubeovnv1.ProtocolIPv6 {
@@ -128,13 +133,13 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		if port.Protocol == v1.ProtocolTCP {
 			// for performance reason delete lb with no backends
 			if len(backends) > 0 {
-				err = c.ovnClient.CreateLoadBalancerRule(c.config.ClusterTcpLoadBalancer, vip, getServicePortBackends(ep, port, clusterIP), string(port.Protocol))
+				err = c.ovnClient.CreateLoadBalancerRule(tcpLb, vip, getServicePortBackends(ep, port, clusterIP), string(port.Protocol))
 				if err != nil {
 					klog.Errorf("failed to update vip %s to tcp lb, %v", vip, err)
 					return err
 				}
 			} else {
-				err = c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterTcpLoadBalancer)
+				err = c.ovnClient.DeleteLoadBalancerVip(vip, tcpLb)
 				if err != nil {
 					klog.Errorf("failed to delete vip %s at tcp lb, %v", vip, err)
 					return err
@@ -142,13 +147,13 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 			}
 		} else {
 			if len(backends) > 0 {
-				err = c.ovnClient.CreateLoadBalancerRule(c.config.ClusterUdpLoadBalancer, vip, getServicePortBackends(ep, port, clusterIP), string(port.Protocol))
+				err = c.ovnClient.CreateLoadBalancerRule(udpLb, vip, getServicePortBackends(ep, port, clusterIP), string(port.Protocol))
 				if err != nil {
 					klog.Errorf("failed to update vip %s to udp lb, %v", vip, err)
 					return err
 				}
 			} else {
-				err = c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterUdpLoadBalancer)
+				err = c.ovnClient.DeleteLoadBalancerVip(vip, udpLb)
 				if err != nil {
 					klog.Errorf("failed to delete vip %s at udp lb, %v", vip, err)
 					return err

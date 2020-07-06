@@ -310,9 +310,16 @@ func (c Client) FindLoadbalancer(lb string) (string, error) {
 }
 
 // CreateLoadBalancer create loadbalancer in ovn
-func (c Client) CreateLoadBalancer(lb, protocol string) error {
-	_, err := c.ovnNbCommand("create", "load_balancer",
-		fmt.Sprintf("name=%s", lb), fmt.Sprintf("protocol=%s", protocol))
+func (c Client) CreateLoadBalancer(lb, protocol, selectFields string) error {
+	var err error
+	if selectFields == "" {
+		_, err = c.ovnNbCommand("create", "load_balancer",
+			fmt.Sprintf("name=%s", lb), fmt.Sprintf("protocol=%s", protocol))
+	} else {
+		_, err = c.ovnNbCommand("create", "load_balancer",
+			fmt.Sprintf("name=%s", lb), fmt.Sprintf("protocol=%s", protocol), fmt.Sprintf("selection_fields=%s", selectFields))
+	}
+
 	return err
 }
 
