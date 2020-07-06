@@ -557,21 +557,6 @@ func (c *Controller) handleDeleteSubnet(key string) error {
 		}
 	}
 
-	subnetList, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets %v", err)
-		return err
-	}
-	cidrs := make([]string, 0, len(subnetList))
-	for _, sub := range subnetList {
-		if sub.Status.IsReady() {
-			cidrs = append(cidrs, sub.Spec.CIDRBlock)
-		}
-	}
-	if err := c.ovnClient.SetAddressesToAddressSet(cidrs, util.SubnetAddressSet); err != nil {
-		klog.Errorf("failed to set subnet address set, %v", err)
-		return err
-	}
 	return nil
 }
 
