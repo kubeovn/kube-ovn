@@ -48,6 +48,7 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 	p := obj.(*v1.Pod)
 	if p.Annotations[util.BgpAnnotation] != "true" ||
 		p.Annotations[util.AllocatedAnnotation] != "true" ||
+		p.Annotations[util.RoutedAnnotation] != "true" ||
 		p.Status.PodIP == "" ||
 		p.Status.HostIP == "" {
 		return
@@ -73,6 +74,7 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 	p := obj.(*v1.Pod)
 	if p.Annotations[util.BgpAnnotation] != "true" ||
 		p.Annotations[util.AllocatedAnnotation] != "true" ||
+		p.Annotations[util.RoutedAnnotation] != "true" ||
 		p.Status.PodIP == "" ||
 		p.Status.HostIP == "" {
 		return
@@ -97,6 +99,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	}
 
 	if newPod.Annotations[util.AllocatedAnnotation] != "true" ||
+		newPod.Annotations[util.RoutedAnnotation] != "true" ||
 		newPod.Status.PodIP == "" ||
 		newPod.Status.HostIP == "" {
 		return

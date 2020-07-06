@@ -4,6 +4,7 @@ const (
 	ControllerName = "kube-ovn-controller"
 
 	AllocatedAnnotation  = "ovn.kubernetes.io/allocated"
+	RoutedAnnotation     = "ovn.kubernetes.io/routed"
 	MacAddressAnnotation = "ovn.kubernetes.io/mac_address"
 	IpAddressAnnotation  = "ovn.kubernetes.io/ip_address"
 	CidrAnnotation       = "ovn.kubernetes.io/cidr"
@@ -58,9 +59,4 @@ const (
 
 	OvnProvider                 = "ovn"
 	AttachmentNetworkAnnotation = "k8s.v1.cni.cncf.io/networks"
-
-	SubnetAddressSet                      = "globalSubnetAddressSet"
-	NodeLocalAddressSetTemplate           = "%s.localAddressSet"
-	DistributedGatewayPolicyRoutePriority = "100"
-	CentralGatewayPolicyRoutePriority     = "110"
 )
