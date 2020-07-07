@@ -68,6 +68,7 @@ kind-init-ha:
 	kind delete cluster --name=kube-ovn
 	kind create cluster --config yamls/kind-ha.yaml --name kube-ovn
 	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
+	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
 	bash dist/images/install.sh
 
 kind-reload:
