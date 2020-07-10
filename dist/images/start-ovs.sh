@@ -33,7 +33,7 @@ function quit {
 }
 trap quit EXIT
 
-# Start vswitchd
+# Start ovsdb
 /usr/share/openvswitch/scripts/ovs-ctl restart --no-ovs-vswitchd --system-id=random
 # Restrict the number of pthreads ovs-vswitchd creates to reduce the
 # amount of RSS it uses on hosts with many cores
@@ -44,7 +44,11 @@ if [[ `nproc` -gt 12 ]]; then
     ovs-vsctl --no-wait set Open_vSwitch . other_config:n-handler-threads=10
 fi
 
-# Start ovsdb
+if [ "$HW_OFFLOAD" = "true" ]; then
+  ovs-vsctl --no-wait set open_vswitch . other_config:hw-offload=true
+fi
+
+# Start vswitchd
 /usr/share/openvswitch/scripts/ovs-ctl restart --no-ovsdb-server  --system-id=random
 /usr/share/openvswitch/scripts/ovs-ctl --protocol=udp --dport=6081 enable-protocol
 
