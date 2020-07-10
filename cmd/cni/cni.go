@@ -52,6 +52,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 		ContainerID:  args.ContainerID,
 		NetNs:        args.Netns,
 		Provider:     netConf.Provider,
+		DeviceID:     netConf.DeviceID,
 	})
 	if err != nil {
 		return err
@@ -130,6 +131,8 @@ type netConf struct {
 	ServerSocket string    `json:"server_socket"`
 	Provider     string    `json:"provider"`
 	IPAM         *ipamConf `json:"ipam"`
+	// PciAddrs in case of using sriov
+	DeviceID string `json:"deviceID"`
 }
 
 func loadNetConf(bytes []byte) (*netConf, string, error) {

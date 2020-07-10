@@ -21,6 +21,8 @@ type CniRequest struct {
 	ContainerID  string `json:"container_id"`
 	NetNs        string `json:"net_ns"`
 	Provider     string `json:"provider"`
+	// PciAddrs in case of using sriov
+	DeviceID string `json:"deviceID"`
 }
 
 // CniResponse is the cniserver response format

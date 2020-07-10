@@ -12,6 +12,7 @@ IFACE=""                               # The nic to support container network, i
 NETWORK_TYPE="geneve"                  # geneve or vlan
 VERSION="v1.3.0-pre"
 IMAGE_PULL_POLICY="IfNotPresent"
+HW_OFFLOAD="false"
 
 # VLAN Config only take effect when NETWORK_TYPE is vlan
 PROVIDER_NAME="provider"
@@ -587,6 +588,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            - name: HW_OFFLOAD
+              value: "$HW_OFFLOAD"
           volumeMounts:
             - mountPath: /lib/modules
               name: host-modules
@@ -947,6 +950,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            - name: HW_OFFLOAD
+              value: "$HW_OFFLOAD"
           volumeMounts:
             - mountPath: /lib/modules
               name: host-modules

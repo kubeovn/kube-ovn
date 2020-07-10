@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"fmt"
+	"github.com/Mellanox/sriovnet"
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"github.com/alauda/kube-ovn/pkg/util"
@@ -16,24 +17,21 @@ import (
 	"time"
 )
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, netns, containerID, mac, ip, gateway, ingress, egress, vlanID string) error {
+func (csh cniServerHandler) configureNic(podName, podNamespace, netns, containerID, mac, ip, gateway, ingress, egress, vlanID, DeviceID string) error {
 	var err error
-	hostNicName, containerNicName := generateNicName(containerID)
-	// Create a veth pair, put one end to container ,the other to ovs port
-	// NOTE: DO NOT use ovs internal type interface for container.
-	// Kubernetes will detect 'eth0' nic in pod, so the nic name in pod must be 'eth0'.
-	// When renaming internal interface to 'eth0', ovs will delete and recreate this interface.
-	veth := netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: hostNicName, MTU: csh.Config.MTU}, PeerName: containerNicName}
-	defer func() {
-		// Remove veth link in case any error during creating pod network.
+	var hostNicName, containerNicName string
+	if DeviceID == "" {
+		hostNicName, containerNicName, err = setupVethPair(containerID, csh.Config.MTU)
 		if err != nil {
-			if err := netlink.LinkDel(&veth); err != nil {
-				klog.Errorf("failed to delete veth, %v", err)
-			}
+			klog.Errorf("failed to create veth pair %v", err)
+			return err
 		}
-	}()
-	if err = netlink.LinkAdd(&veth); err != nil {
-		return fmt.Errorf("failed to crate veth for %s %v", podName, err)
+	} else {
+		hostNicName, containerNicName, err = setupSriovInterface(containerID, DeviceID, csh.Config.MTU)
+		if err != nil {
+			klog.Errorf("failed to create sriov interfaces %v", err)
+			return err
+		}
 	}
 
 	ifaceID := fmt.Sprintf("%s.%s", podName, podNamespace)
@@ -342,4 +340,94 @@ func providerBridgeExists() (bool, error) {
 func configProviderNic(nicName string) error {
 	_, err := ovs.Exec("--may-exist", "add-port", "br-provider", nicName)
 	return err
+}
+
+func setupVethPair(containerID string, mtu int) (string, string, error) {
+	var err error
+	hostNicName, containerNicName := generateNicName(containerID)
+	// Create a veth pair, put one end to container ,the other to ovs port
+	// NOTE: DO NOT use ovs internal type interface for container.
+	// Kubernetes will detect 'eth0' nic in pod, so the nic name in pod must be 'eth0'.
+	// When renaming internal interface to 'eth0', ovs will delete and recreate this interface.
+	veth := netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: hostNicName, MTU: mtu}, PeerName: containerNicName}
+	if err = netlink.LinkAdd(&veth); err != nil {
+		if err := netlink.LinkDel(&veth); err != nil {
+			klog.Errorf("failed to delete veth %v", err)
+			return "", "", err
+		}
+		return "", "", fmt.Errorf("failed to crate veth for %v", err)
+	}
+	return hostNicName, containerNicName, nil
+}
+
+// Setup sriov interface in the pod
+// https://github.com/ovn-org/ovn-kubernetes/commit/6c96467d0d3e58cab05641293d1c1b75e5914795
+func setupSriovInterface(containerID, deviceID string, mtu int) (string, string, error) {
+	// 1. get VF netdevice from PCI
+	vfNetdevices, err := sriovnet.GetNetDevicesFromPci(deviceID)
+	if err != nil {
+		return "", "", err
+	}
+
+	// Make sure we have 1 netdevice per pci address
+	if len(vfNetdevices) != 1 {
+		return "", "", fmt.Errorf("failed to get one netdevice interface per %s", deviceID)
+	}
+	vfNetdevice := vfNetdevices[0]
+
+	// 2. get Uplink netdevice
+	uplink, err := sriovnet.GetUplinkRepresentor(deviceID)
+	if err != nil {
+		return "", "", err
+	}
+
+	// 3. get VF index from PCI
+	vfIndex, err := sriovnet.GetVfIndexByPciAddress(deviceID)
+	if err != nil {
+		return "", "", err
+	}
+
+	// 4. lookup representor
+	rep, err := sriovnet.GetVfRepresentor(uplink, vfIndex)
+	if err != nil {
+		return "", "", err
+	}
+	oldHostRepName := rep
+
+	// 5. rename the host VF representor
+	hostNicName, _ := generateNicName(containerID)
+	if err = renameLink(oldHostRepName, hostNicName); err != nil {
+		return "", "", fmt.Errorf("failed to rename %s to %s: %v", oldHostRepName, hostNicName, err)
+	}
+
+	link, err := netlink.LinkByName(hostNicName)
+	if err != nil {
+		return "", "", err
+	}
+
+	// 6. set MTU on VF representor
+	if err = netlink.LinkSetMTU(link, mtu); err != nil {
+		return "", "", fmt.Errorf("failed to set MTU on %s: %v", hostNicName, err)
+	}
+
+	return hostNicName, vfNetdevice, nil
+}
+
+func renameLink(curName, newName string) error {
+	link, err := netlink.LinkByName(curName)
+	if err != nil {
+		return err
+	}
+
+	if err := netlink.LinkSetDown(link); err != nil {
+		return err
+	}
+	if err := netlink.LinkSetName(link, newName); err != nil {
+		return err
+	}
+	if err := netlink.LinkSetUp(link); err != nil {
+		return err
+	}
+
+	return nil
 }
