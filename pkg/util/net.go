@@ -35,6 +35,26 @@ func BigInt2Ip(ipInt *big.Int) string {
 	return ip.String()
 }
 
+func SubnetNumber(subnet string) string {
+	_, cidr, _ := net.ParseCIDR(subnet)
+	return cidr.IP.String()
+}
+
+func SubnetBroadCast(subnet string) string {
+	_, cidr, _ := net.ParseCIDR(subnet)
+	var length uint
+	if CheckProtocol(subnet) == kubeovnv1.ProtocolIPv4 {
+		length = 32
+	} else {
+		length = 128
+	}
+	maskLength, _ := cidr.Mask.Size()
+	ipInt := Ip2BigInt(cidr.IP.String())
+	size := big.NewInt(0).Lsh(big.NewInt(1), length-uint(maskLength))
+	size = big.NewInt(0).Sub(size, big.NewInt(1))
+	return BigInt2Ip(ipInt.Add(ipInt, size))
+}
+
 func FirstSubnetIP(subnet string) (string, error) {
 	_, cidr, err := net.ParseCIDR(subnet)
 	if err != nil {
@@ -44,7 +64,7 @@ func FirstSubnetIP(subnet string) (string, error) {
 	return BigInt2Ip(ipInt.Add(ipInt, big.NewInt(1))), nil
 }
 
-func LastSubnetIP(subnet string) (string, error) {
+func LastIP(subnet string) (string, error) {
 	_, cidr, err := net.ParseCIDR(subnet)
 	if err != nil {
 		return "", fmt.Errorf("%s is not a valid cidr", subnet)

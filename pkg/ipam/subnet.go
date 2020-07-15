@@ -26,7 +26,7 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 	}
 
 	firstIP, _ := util.FirstSubnetIP(cidrStr)
-	lastIP, _ := util.LastSubnetIP(cidrStr)
+	lastIP, _ := util.LastIP(cidrStr)
 
 	subnet := Subnet{
 		Name:           name,
