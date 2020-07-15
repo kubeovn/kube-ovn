@@ -75,7 +75,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr string, excludeIps []string) e
 	if subnet, ok := ipam.Subnets[name]; ok {
 		subnet.ReservedIPList = convertExcludeIps(excludeIps)
 		firstIP, _ := util.FirstSubnetIP(cidrStr)
-		lastIP, _ := util.LastSubnetIP(cidrStr)
+		lastIP, _ := util.LastIP(cidrStr)
 		subnet.FreeIPList = IPRangeList{&IPRange{Start: IP(firstIP), End: IP(lastIP)}}
 		subnet.joinFreeWithReserve()
 		for podName, ip := range subnet.PodToIP {

@@ -33,7 +33,6 @@ var _ = Describe("[Subnet]", func() {
 		if err := f.OvnClientSet.KubeovnV1().Subnets().Delete(f.GetName(), &metav1.DeleteOptions{}); err != nil {
 			if !k8serrors.IsNotFound(err) {
 				klog.Fatalf("failed to delete subnet %s, %v", f.GetName(), err)
-
 			}
 		}
 		if err := f.KubeClientSet.CoreV1().Namespaces().Delete(f.GetName(), &metav1.DeleteOptions{}); err != nil {
@@ -209,6 +208,77 @@ var _ = Describe("[Subnet]", func() {
 			s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(name, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(s.Spec.CIDRBlock).To(Equal("11.14.0.0/16"))
+		})
+	})
+
+	Describe("available ip calculation", func() {
+		It("no available cidr", func() {
+			name := f.GetName()
+			s := &kubeovn.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   name,
+					Labels: map[string]string{"e2e": "true"},
+				},
+				Spec: kubeovn.SubnetSpec{
+					CIDRBlock:  "19.0.0.0/31",
+					ExcludeIps: []string{"179.17.0.0..179.17.0.10"},
+				},
+			}
+			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(s)
+			Expect(err).NotTo(HaveOccurred())
+
+			err = f.WaitSubnetReady(name)
+			Expect(err).NotTo(HaveOccurred())
+
+			s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(name, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(s.Status.AvailableIPs).To(Equal(float64(0)))
+		})
+
+		It("small cidr", func() {
+			name := f.GetName()
+			s := &kubeovn.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   name,
+					Labels: map[string]string{"e2e": "true"},
+				},
+				Spec: kubeovn.SubnetSpec{
+					CIDRBlock:  "29.0.0.0/30",
+					ExcludeIps: []string{"179.17.0.0..179.17.0.10"},
+				},
+			}
+			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(s)
+			Expect(err).NotTo(HaveOccurred())
+
+			err = f.WaitSubnetReady(name)
+			Expect(err).NotTo(HaveOccurred())
+
+			s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(name, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(s.Status.AvailableIPs).To(Equal(float64(1)))
+		})
+
+		It("with excludeips", func() {
+			name := f.GetName()
+			s := &kubeovn.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   name,
+					Labels: map[string]string{"e2e": "true"},
+				},
+				Spec: kubeovn.SubnetSpec{
+					CIDRBlock:  "179.17.0.0/24",
+					ExcludeIps: []string{"179.17.0.0..179.17.0.10"},
+				},
+			}
+			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(s)
+			Expect(err).NotTo(HaveOccurred())
+
+			err = f.WaitSubnetReady(name)
+			Expect(err).NotTo(HaveOccurred())
+
+			s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(name, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(s.Status.AvailableIPs).To(Equal(float64(244)))
 		})
 	})
 })

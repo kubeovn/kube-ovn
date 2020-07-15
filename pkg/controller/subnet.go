@@ -74,6 +74,7 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 	}
 
 	if oldSubnet.Spec.Private != newSubnet.Spec.Private ||
+		oldSubnet.Spec.CIDRBlock != newSubnet.Spec.CIDRBlock ||
 		!reflect.DeepEqual(oldSubnet.Spec.AllowSubnets, newSubnet.Spec.AllowSubnets) ||
 		!reflect.DeepEqual(oldSubnet.Spec.Namespaces, newSubnet.Spec.Namespaces) ||
 		oldSubnet.Spec.GatewayType != newSubnet.Spec.GatewayType ||
@@ -781,6 +782,9 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		toSubIPs = append(toSubIPs, podUsedIP.Spec.IPAddress)
 	}
 	availableIPs := util.AddressCount(cidr) - float64(len(util.UniqString(toSubIPs)))
+	if availableIPs < 0 {
+		availableIPs = 0
+	}
 	usingIPs := float64(len(podUsedIPs.Items))
 	subnet.Status.AvailableIPs = availableIPs
 	subnet.Status.UsingIPs = usingIPs
