@@ -16,7 +16,7 @@ make release
 
 ## How to run e2e tests
 
-Kube-OVN uses [KIND](https://kind.sigs.k8s.io/) to setup a local Kubernetes cluster
+Kube-OVN uses [KIND](https://kind.sigs.k8s.io/) to setup a local Kubernetes cluster and [j2cli](https://github.com/kolypto/j2cli) to render template 
 and [Ginkgo](https://onsi.github.io/ginkgo/) as the test framework to run the e2e tests.
 
 ```

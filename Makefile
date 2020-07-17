@@ -60,14 +60,16 @@ build-bin:
 
 kind-init:
 	kind delete cluster --name=kube-ovn
-	kind create cluster --config yamls/kind-single.yaml --name kube-ovn
+	ip_family=ipv4 ha=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
+	kind create cluster --config yamls/kind.yaml --name kube-ovn
 	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
 	bash dist/images/install.sh
 
 kind-init-ha:
 	kind delete cluster --name=kube-ovn
-	kind create cluster --config yamls/kind-ha.yaml --name kube-ovn
+	ip_family=ipv4 ha=true j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
+	kind create cluster --config yamls/kind.yaml --name kube-ovn
 	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
 	bash dist/images/install.sh
