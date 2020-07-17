@@ -222,6 +222,15 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 		return err
 	}
 
+	hostLink, err := netlink.LinkByName(util.NodeNic)
+	if err != nil {
+		return fmt.Errorf("can not find nic %s %v", util.NodeNic, err)
+	}
+
+	if err = netlink.LinkSetTxQLen(hostLink, 1000); err != nil {
+		return fmt.Errorf("can not set host nic %s qlen %v", util.NodeNic, err)
+	}
+
 	// ping gw to activate the flow
 	var output []byte
 	if util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv4 {
