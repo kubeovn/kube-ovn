@@ -54,7 +54,9 @@ jobs:
 
       - name: Init Kind
         run: |
-          sudo make kind-init
+          pip install j2cli --user
+          pip install "j2cli[yaml]" --user
+          sudo PATH=~/.local/bin:$PATH make kind-init
 
       - name: Run E2E
         run: |

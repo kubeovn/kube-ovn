@@ -2,6 +2,8 @@ kind: Cluster
 apiVersion: kind.sigs.k8s.io/v1alpha3
 networking:
   disableDefaultCNI: true
+  ipFamily: {{ ip_family }}
+
 kubeadmConfigPatches:
   - |
     kind: ClusterConfiguration
@@ -16,7 +18,12 @@ kubeadmConfigPatches:
 nodes:
   - role: control-plane
     image: kindest/node:v1.18.2
+  {%- if ha is equalto "true" %}
   - role: control-plane
     image: kindest/node:v1.18.2
   - role: control-plane
     image: kindest/node:v1.18.2
+  {%- else %}
+  - role: worker
+    image: kindest/node:v1.18.2
+  {%- endif %}
