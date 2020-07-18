@@ -10,7 +10,7 @@ ARCH=amd64
 # RPM_ARCH could be x86_64,aarch64
 RPM_ARCH=x86_64
 
-.PHONY: build-dev-images build-go build-bin lint kind-init kind-init-ha kind-reload push-dev push-release e2e ut
+.PHONY: build-dev-images build-go build-bin lint kind-init kind-init-ha kind-install kind-reload push-dev push-release e2e ut
 
 build-dev-images: build-bin
 	docker build -t ${REGISTRY}/kube-ovn:${DEV_TAG} -f dist/images/Dockerfile dist/images/
@@ -35,10 +35,13 @@ build-go-arm:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn-speaker -ldflags "-w -s" -v ./cmd/speaker
 
 release: lint build-go
-	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 --build-arg RPM_ARCH=x86_64 -t ${REGISTRY}/kube-ovn:${RELEASE_TAG} -o type=docker -f dist/images/Dockerfile dist/images/
+	docker buildx build --cache-from "type=local,src=/tmp/.buildx-cache" --cache-to "type=local,dest=/tmp/.buildx-cache" --platform linux/amd64 --build-arg ARCH=amd64 --build-arg RPM_ARCH=x86_64 -t ${REGISTRY}/kube-ovn:${RELEASE_TAG} -o type=docker -f dist/images/Dockerfile dist/images/
 
 release-arm: lint build-go-arm
 	docker buildx build --platform linux/arm64 --build-arg ARCH=arm64 --build-arg RPM_ARCH=aarch64 -t ${REGISTRY}/kube-ovn:${RELEASE_TAG} -o type=docker -f dist/images/Dockerfile dist/images/
+
+tar:
+	docker save ${REGISTRY}/kube-ovn:${RELEASE_TAG} > image.tar
 
 push-release: release
 	docker push ${REGISTRY}/kube-ovn:${RELEASE_TAG}
@@ -62,6 +65,8 @@ kind-init:
 	kind delete cluster --name=kube-ovn
 	ip_family=ipv4 ha=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
+
+kind-install:
 	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
 	bash dist/images/install.sh
@@ -70,9 +75,6 @@ kind-init-ha:
 	kind delete cluster --name=kube-ovn
 	ip_family=ipv4 ha=true j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
-	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
-	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
-	bash dist/images/install.sh
 
 kind-reload:
 	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
