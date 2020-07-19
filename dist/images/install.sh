@@ -588,8 +588,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
-            - name: HW_OFFLOAD
-              value: "$HW_OFFLOAD"
           volumeMounts:
             - mountPath: /lib/modules
               name: host-modules
