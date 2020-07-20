@@ -10,7 +10,10 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
 	"strings"
+	"time"
 )
+
+var lastNoPodLSP map[string]bool
 
 func (c *Controller) gc() error {
 	gcFunctions := []func() error{
@@ -95,6 +98,14 @@ func (c *Controller) gcNode() error {
 }
 
 func (c *Controller) gcLogicalSwitchPort() error {
+	if err := c.markAndCleanLSP(); err != nil {
+		return err
+	}
+	time.Sleep(3 * time.Second)
+	return c.markAndCleanLSP()
+}
+
+func (c *Controller) markAndCleanLSP() error {
 	klog.Infof("start to gc logical switch ports")
 	pods, err := c.podsLister.List(labels.Everything())
 	if err != nil {
@@ -120,21 +131,29 @@ func (c *Controller) gcLogicalSwitchPort() error {
 		klog.Errorf("failed to list logical switch port, %v", err)
 		return err
 	}
+
+	noPodLSP := map[string]bool{}
 	for _, lsp := range lsps {
 		if !util.IsStringIn(lsp, ipNames) {
-			klog.Infof("gc logical switch port %s", lsp)
-			if err := c.ovnClient.DeletePort(lsp); err != nil {
-				klog.Errorf("failed to delete lsp %s, %v", lsp, err)
-				return err
-			}
-			if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(lsp, &metav1.DeleteOptions{}); err != nil {
-				if !k8serrors.IsNotFound(err) {
-					klog.Errorf("failed to delete ip %s, %v", lsp, err)
+			if lastNoPodLSP[lsp] == false {
+				noPodLSP[lsp] = true
+			} else {
+				klog.Infof("gc logical switch port %s", lsp)
+				if err := c.ovnClient.DeletePort(lsp); err != nil {
+					klog.Errorf("failed to delete lsp %s, %v", lsp, err)
 					return err
+				}
+				if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(lsp, &metav1.DeleteOptions{}); err != nil {
+					if !k8serrors.IsNotFound(err) {
+						klog.Errorf("failed to delete ip %s, %v", lsp, err)
+						return err
+					}
 				}
 			}
 		}
 	}
+
+	lastNoPodLSP = noPodLSP
 	return nil
 }
 
