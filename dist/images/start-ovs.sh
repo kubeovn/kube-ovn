@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-DB_SB_PORT=${DB_SB_PORT:-false}
+HW_OFFLOAD=${HW_OFFLOAD:-false}
 # https://bugs.launchpad.net/neutron/+bug/1776778
 if grep -q "3.10.0-862" /proc/version
 then
