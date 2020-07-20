@@ -32,6 +32,14 @@ jobs:
       - name: Docker Buildx
         uses: crazy-max/ghaction-docker-buildx@v3
 
+      - name: Go Build Cache
+        uses: actions/cache@v2
+        with:
+          path: /home/runner/.cache/go-build
+          key: ${{ runner.os }}-go-x86-build-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-x86-build-
+
       - name: Go Mod Cache
         uses: actions/cache@v2
         with:
@@ -67,7 +75,7 @@ jobs:
           name: image
           path: image.tar
 
-  singlee2e:
+  single-e2e:
     needs: build
     name: 1-master-e2e
     runs-on: ubuntu-latest
@@ -105,7 +113,7 @@ jobs:
           sudo chmod 666 /home/runner/.kube/config
           make e2e
 
-  hae2e:
+  ha-e2e:
     needs: build
     name: 3-master-e2e
     runs-on: ubuntu-latest
@@ -143,8 +151,37 @@ jobs:
           sudo chmod 666 /home/runner/.kube/config
           make e2e
 
+
+  ipv6-e2e:
+    needs: build
+    name: ipv6-e2e
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v2
+
+      - name: Init Kind
+        run: |
+          pip install j2cli --user
+          pip install "j2cli[yaml]" --user
+          sudo PATH=~/.local/bin:$PATH make kind-init-ipv6
+
+      - name: Download image
+        uses: actions/download-artifact@v2
+        with:
+          name: image
+
+      - name: Load Image
+        run: |
+          docker load --input image.tar
+
+      - name: Install Kube-OVN
+        run: |
+          docker load --input image.tar
+          sudo make kind-install-ipv6
+
   push:
-    needs: [singlee2e, hae2e]
+    needs: [single-e2e, ha-e2e, ipv6-e2e]
     name: push
     runs-on: ubuntu-latest
     steps:
