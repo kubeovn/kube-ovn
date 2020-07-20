@@ -147,7 +147,7 @@ func (c *Controller) setGatewayBandwidth() error {
 	}
 	ingress, egress := node.Annotations[util.IngressRateAnnotation], node.Annotations[util.EgressRateAnnotation]
 	ifaceId := fmt.Sprintf("node-%s", c.config.NodeName)
-	return ovs.SetInterfaceBandwidth(ifaceId, ingress, egress)
+	return ovs.SetInterfaceBandwidth(ifaceId, egress, ingress)
 }
 
 func (c *Controller) getLocalPodIPsNeedNAT(protocol string) ([]string, error) {
