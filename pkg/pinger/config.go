@@ -81,6 +81,7 @@ func ParseFlags() (*Configuration, error) {
 	if err := config.initKubeClient(); err != nil {
 		return nil, err
 	}
+	klog.Infof("pinger config is %+v", config)
 	return config, nil
 }
 

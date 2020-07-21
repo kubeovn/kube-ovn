@@ -1,12 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+IPv6=${IPv6:-false}
+
 REGISTRY="kubeovn"
 NAMESPACE="kube-system"                # The ns to deploy kube-ovn
 POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
-EXCLUDE_IPS=""                         # EXCLUDE_IPS for default subnet
 SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR
 JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
+PINGER_EXTERNAL_ADDRESS="114.114.114.114"  # Pinger check external ip probe
+PINGER_EXTERNAL_DOMAIN="alauda.cn"         # Pinger check external domain probe
+if [ "$IPv6" = "true" ]; then
+  POD_CIDR="fd00:10:16::/64"                # Do NOT overlap with NODE/SVC/JOIN CIDR
+  SVC_CIDR="fd00:10:96::/112"                # Do NOT overlap with NODE/POD/JOIN CIDR
+  JOIN_CIDR="fd00:100:64::/64"              # Do NOT overlap with NODE/POD/SVC CIDR
+  PINGER_EXTERNAL_ADDRESS="2400:3200::1"
+  PINGER_EXTERNAL_DOMAIN="google.com"
+fi
+
+EXCLUDE_IPS=""                         # EXCLUDE_IPS for default subnet
 LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
 IFACE=""                               # The nic to support container network, if empty will use the nic that the default route use
 NETWORK_TYPE="geneve"                  # geneve or vlan
@@ -1256,7 +1268,7 @@ spec:
       containers:
         - name: pinger
           image: "$REGISTRY/kube-ovn:$VERSION"
-          command: ["/kube-ovn/kube-ovn-pinger", "--external-address=114.114.114.114", "--external-dns=alauda.cn"]
+          command: ["/kube-ovn/kube-ovn-pinger", "--external-address=$PINGER_EXTERNAL_ADDRESS", "--external-dns=$PINGER_EXTERNAL_DOMAIN"]
           imagePullPolicy: $IMAGE_PULL_POLICY
           securityContext:
             runAsUser: 0
