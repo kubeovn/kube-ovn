@@ -1,5 +1,11 @@
 name: Build arm64 Image
 on:
+  pull_request:
+    branches:
+      - master
+    paths-ignore:
+      - 'docs/**'
+      - 'yamls/**'
   push:
     branches:
     - master
