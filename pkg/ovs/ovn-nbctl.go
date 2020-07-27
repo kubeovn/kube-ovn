@@ -35,11 +35,11 @@ func (c Client) DeletePort(port string) error {
 }
 
 // CreatePort create logical switch port in ovn
-func (c Client) CreatePort(ls, port, ip, cidr, mac, tag string) error {
+func (c Client) CreatePort(ls, port, ip, cidr, mac, tag string, portSecurity bool) error {
 	ovnCommand := []string{MayExist, "lsp-add", ls, port, "--",
 		"lsp-set-addresses", port, fmt.Sprintf("%s %s", mac, ip)}
 
-	if ls != c.NodeSwitch {
+	if portSecurity {
 		ovnCommand = append(ovnCommand,
 			"--", "lsp-set-port-security", port, fmt.Sprintf("%s %s/%s", mac, ip, strings.Split(cidr, "/")[1]))
 	}

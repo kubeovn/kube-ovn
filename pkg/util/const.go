@@ -12,6 +12,9 @@ const (
 	IpPoolAnnotation     = "ovn.kubernetes.io/ip_pool"
 	BgpAnnotation        = "ovn.kubernetes.io/bgp"
 
+	PortSecurityAnnotation = "ovn.kubernetes.io/port_security"
+	NorthGatewayAnnotation = "ovn.kubernetes.io/north_gateway"
+
 	AllocatedAnnotationTemplate     = "%s.kubernetes.io/allocated"
 	MacAddressAnnotationTemplate    = "%s.kubernetes.io/mac_address"
 	IpAddressAnnotationTemplate     = "%s.kubernetes.io/ip_address"

@@ -311,6 +311,9 @@ func (c *Controller) gcStaticRoute() error {
 				}
 			}
 		} else {
+			if strings.Contains(route.CIDR, "/") {
+				continue
+			}
 			if !c.ipam.ContainAddress(route.CIDR) {
 				klog.Infof("gc static route %s %s %s", route.Policy, route.CIDR, route.NextHop)
 				if err := c.ovnClient.DeleteStaticRoute(route.CIDR, c.config.ClusterRouter); err != nil {

@@ -625,9 +625,9 @@ func (c *Controller) reconcileNamespaces(subnet *kubeovnv1.Subnet) error {
 }
 
 func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
-	ips, err := c.config.KubeOvnClient.KubeovnV1().IPs().List(metav1.ListOptions{LabelSelector: fmt.Sprintf("%s=%s", util.SubnetNameLabel, subnet.Name)})
+	pods, err := c.podsLister.Pods(metav1.NamespaceAll).List(labels.Everything())
 	if err != nil {
-		klog.Errorf("failed to list ip of subnet %s, %v", subnet.Name, err)
+		klog.Errorf("failed to list pods %v", err)
 		return err
 	}
 
@@ -646,22 +646,32 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 			return err
 		}
 
-		for _, ip := range ips.Items {
-			node, err := c.nodesLister.Get(ip.Spec.NodeName)
+		for _, pod := range pods {
+			if !isPodAlive(pod) || pod.Annotations[util.IpAddressAnnotation] == "" || pod.Annotations[util.LogicalSwitchAnnotation] != subnet.Name {
+				continue
+			}
+
+			node, err := c.nodesLister.Get(pod.Spec.NodeName)
 			if err != nil {
 				if k8serrors.IsNotFound(err) {
 					continue
 				} else {
-					klog.Errorf("failed to get node %s, %v", ip.Spec.NodeName, err)
+					klog.Errorf("failed to get node %s, %v", pod.Spec.NodeName, err)
 					return err
 				}
 			}
-			nextHop, err := getNodeTunlIP(node)
+			gw, err := getNodeTunlIP(node)
 			if err != nil {
 				klog.Errorf("failed to get node %s tunl ip, %v", node.Name, err)
 				return err
 			}
-			if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, ip.Spec.IPAddress, nextHop.String(), c.config.ClusterRouter); err != nil {
+			nextHop := gw.String()
+
+			if pod.Annotations[util.NorthGatewayAnnotation] != "" {
+				nextHop = pod.Annotations[util.NorthGatewayAnnotation]
+			}
+
+			if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, pod.Annotations[util.IpAddressAnnotation], nextHop, c.config.ClusterRouter); err != nil {
 				return errors.Annotate(err, "add static route failed")
 			}
 		}
@@ -714,10 +724,12 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 	if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, subnet.Spec.CIDRBlock, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
 		return errors.Annotate(err, "add static route failed")
 	}
-	for _, ip := range ips.Items {
-		if err := c.ovnClient.DeleteStaticRoute(ip.Spec.IPAddress, c.config.ClusterRouter); err != nil {
-			klog.Errorf("failed to delete static route, %v", err)
-			return err
+	for _, pod := range pods {
+		if isPodAlive(pod) && pod.Annotations[util.IpAddressAnnotation] != "" && pod.Annotations[util.LogicalSwitchAnnotation] == subnet.Name && pod.Annotations[util.NorthGatewayAnnotation] == "" {
+			if err := c.ovnClient.DeleteStaticRoute(pod.Annotations[util.IpAddressAnnotation], c.config.ClusterRouter); err != nil {
+				klog.Errorf("failed to delete static route, %v", err)
+				return err
+			}
 		}
 	}
 
