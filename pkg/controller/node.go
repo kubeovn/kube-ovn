@@ -214,7 +214,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	if err := c.ovnClient.CreatePort(c.config.NodeSwitch, portName, ip, subnet.Spec.CIDRBlock, mac, tag); err != nil {
+	if err := c.ovnClient.CreatePort(c.config.NodeSwitch, portName, ip, subnet.Spec.CIDRBlock, mac, tag, false); err != nil {
 		return err
 	}
 

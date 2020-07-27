@@ -373,7 +373,12 @@ func (c *Controller) handleAddPod(key string) error {
 			if err != nil {
 				return err
 			}
-			if err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, subnet.Spec.CIDRBlock, mac, tag); err != nil {
+
+			portSecurity := false
+			if pod.Annotations[util.PortSecurityAnnotation] == "true" {
+				portSecurity = true
+			}
+			if err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, subnet.Spec.CIDRBlock, mac, tag, portSecurity); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
 				return err
 			}
@@ -445,26 +450,32 @@ func (c *Controller) handleUpdatePod(key string) error {
 	klog.Infof("update pod %s/%s", namespace, name)
 	podIP := pod.Annotations[util.IpAddressAnnotation]
 
-	subnet, err := c.getPodDefaultSubnet(pod)
-	if err != nil {
-		klog.Errorf("failed to get subnet %v", err)
-		return err
-	}
+	if pod.Annotations[util.NorthGatewayAnnotation] != "" {
+		if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], c.config.ClusterRouter); err != nil {
+			return errors.Annotate(err, "add static route failed")
+		}
+	} else {
+		subnet, err := c.getPodDefaultSubnet(pod)
+		if err != nil {
+			klog.Errorf("failed to get subnet %v", err)
+			return err
+		}
 
-	if !subnet.Spec.UnderlayGateway {
-		if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
-			node, err := c.nodesLister.Get(pod.Spec.NodeName)
-			if err != nil {
-				klog.Errorf("get node %s failed %v", pod.Spec.NodeName, err)
-				return err
-			}
-			nodeTunlIPAddr, err := getNodeTunlIP(node)
-			if err != nil {
-				return err
-			}
+		if !subnet.Spec.UnderlayGateway {
+			if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
+				node, err := c.nodesLister.Get(pod.Spec.NodeName)
+				if err != nil {
+					klog.Errorf("get node %s failed %v", pod.Spec.NodeName, err)
+					return err
+				}
+				nodeTunlIPAddr, err := getNodeTunlIP(node)
+				if err != nil {
+					return err
+				}
 
-			if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
-				return errors.Annotate(err, "add static route failed")
+				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
+					return errors.Annotate(err, "add static route failed")
+				}
 			}
 		}
 	}
