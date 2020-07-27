@@ -8,6 +8,7 @@ import (
 
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"github.com/alauda/kube-ovn/pkg/util"
+	"github.com/neverlee/keymutex"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -36,12 +37,12 @@ type Controller struct {
 	ovnClient *ovs.Client
 	ipam      *ovnipam.IPAM
 
-	podsLister v1.PodLister
-	podsSynced cache.InformerSynced
-
+	podsLister     v1.PodLister
+	podsSynced     cache.InformerSynced
 	addPodQueue    workqueue.RateLimitingInterface
 	deletePodQueue workqueue.RateLimitingInterface
 	updatePodQueue workqueue.RateLimitingInterface
+	podKeyMutex    *keymutex.KeyMutex
 
 	subnetsLister           kubeovnlister.SubnetLister
 	subnetSynced            cache.InformerSynced
@@ -145,6 +146,7 @@ func NewController(config *Configuration) *Controller {
 		addPodQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddPod"),
 		deletePodQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeletePod"),
 		updatePodQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdatePod"),
+		podKeyMutex:    keymutex.New(97),
 
 		namespacesLister:  namespaceInformer.Lister(),
 		namespacesSynced:  namespaceInformer.Informer().HasSynced,
