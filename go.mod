@@ -22,6 +22,7 @@ require (
 	github.com/kelseyhightower/envconfig v1.4.0 // indirect
 	github.com/kubesphere/porter v0.1.1
 	github.com/moul/http2curl v1.0.0 // indirect
+	github.com/neverlee/keymutex v0.0.0-20171121013845-f593aa834bf9
 	github.com/oilbeater/go-ping v0.0.0-20200413021620-332b7197c5b5
 	github.com/onsi/ginkgo v1.12.0
 	github.com/onsi/gomega v1.9.0

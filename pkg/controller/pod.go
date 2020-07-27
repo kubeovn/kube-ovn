@@ -222,10 +222,13 @@ func (c *Controller) processNextAddPodWorkItem() bool {
 			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
 			return nil
 		}
+		klog.Infof("handle add pod %s", key)
 		if err := c.handleAddPod(key); err != nil {
 			c.addPodQueue.AddRateLimited(key)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
+		last := time.Since(now)
+		klog.Infof("take %d ms to handle add pod %s", last.Milliseconds(), key)
 		c.addPodQueue.Forget(obj)
 		return nil
 	}(obj)
@@ -234,8 +237,6 @@ func (c *Controller) processNextAddPodWorkItem() bool {
 		utilruntime.HandleError(err)
 		return true
 	}
-	last := time.Since(now)
-	klog.Infof("take %d ms to deal with add pod", last.Milliseconds())
 	return true
 }
 
@@ -256,11 +257,14 @@ func (c *Controller) processNextDeletePodWorkItem() bool {
 			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
 			return nil
 		}
+		klog.Infof("handle delete pod %s", key)
 		if err := c.handleDeletePod(key); err != nil {
 			c.deletePodQueue.AddRateLimited(key)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
 		c.deletePodQueue.Forget(obj)
+		last := time.Since(now)
+		klog.Infof("take %d ms to handle delete pod %s", last.Milliseconds(), key)
 		return nil
 	}(obj)
 
@@ -268,8 +272,6 @@ func (c *Controller) processNextDeletePodWorkItem() bool {
 		utilruntime.HandleError(err)
 		return true
 	}
-	last := time.Since(now)
-	klog.Infof("take %d ms to deal with delete pod", last.Milliseconds())
 	return true
 }
 
@@ -306,6 +308,8 @@ func (c *Controller) processNextUpdatePodWorkItem() bool {
 }
 
 func (c *Controller) handleAddPod(key string) error {
+	c.podKeyMutex.Lock(key)
+	defer c.podKeyMutex.Unlock(key)
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
@@ -399,6 +403,8 @@ func (c *Controller) handleAddPod(key string) error {
 }
 
 func (c *Controller) handleDeletePod(key string) error {
+	c.podKeyMutex.Lock(key)
+	defer c.podKeyMutex.Unlock(key)
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
@@ -434,6 +440,8 @@ func (c *Controller) handleDeletePod(key string) error {
 }
 
 func (c *Controller) handleUpdatePod(key string) error {
+	c.podKeyMutex.Lock(key)
+	defer c.podKeyMutex.Unlock(key)
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
