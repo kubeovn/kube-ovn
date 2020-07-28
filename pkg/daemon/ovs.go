@@ -65,7 +65,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, netns, container
 	return nil
 }
 
-func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID string) error {
+func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, deviceID string) error {
 	hostNicName, _ := generateNicName(containerID)
 	// Remove ovs port
 	output, err := ovs.Exec("--if-exists", "--with-iface", "del-port", "br-int", hostNicName)
@@ -77,18 +77,19 @@ func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID string)
 		return err
 	}
 
-	hostLink, err := netlink.LinkByName(hostNicName)
-	if err != nil {
-		// If link already not exists, return quietly
-		if _, ok := err.(netlink.LinkNotFoundError); ok {
-			return nil
+	if deviceID == "" {
+		hostLink, err := netlink.LinkByName(hostNicName)
+		if err != nil {
+			// If link already not exists, return quietly
+			if _, ok := err.(netlink.LinkNotFoundError); ok {
+				return nil
+			}
+			return fmt.Errorf("find host link %s failed %v", hostNicName, err)
 		}
-		return fmt.Errorf("find host link %s failed %v", hostNicName, err)
+		if err = netlink.LinkDel(hostLink); err != nil {
+			return fmt.Errorf("delete host link %s failed %v", hostLink, err)
+		}
 	}
-	if err = netlink.LinkDel(hostLink); err != nil {
-		return fmt.Errorf("delete host link %s failed %v", hostLink, err)
-	}
-
 	return nil
 }
 
