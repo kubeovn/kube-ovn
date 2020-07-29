@@ -118,6 +118,7 @@ func cmdDel(args *skel.CmdArgs) error {
 		ContainerID:  args.ContainerID,
 		NetNs:        args.Netns,
 		Provider:     netConf.Provider,
+		DeviceID:     netConf.DeviceID,
 	})
 }
 
