@@ -175,6 +175,21 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		}
 		return
 	}
+	pod, err := csh.KubeClient.CoreV1().Pods(podRequest.PodNamespace).Get(podRequest.PodName, metav1.GetOptions{})
+	if err != nil && !k8serrors.IsNotFound(err) {
+		errMsg := fmt.Errorf("parse del request failed %v", err)
+		klog.Error(errMsg)
+		if err := resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()}); err != nil {
+			klog.Errorf("failed to write response, %v", err)
+		}
+		return
+	}
+	// check if it's a sriov device
+	for _, container := range pod.Spec.Containers {
+		if _, ok := container.Resources.Requests[util.SRIOVResourceName]; ok {
+			podRequest.DeviceID = util.SRIOVResourceName
+		}
+	}
 
 	klog.Infof("delete port request %v", podRequest)
 	if podRequest.Provider == util.OvnProvider {

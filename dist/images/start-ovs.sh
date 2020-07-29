@@ -47,6 +47,8 @@ fi
 
 if [ "$HW_OFFLOAD" = "true" ]; then
   ovs-vsctl --no-wait set open_vswitch . other_config:hw-offload=true
+else
+  ovs-vsctl --no-wait set open_vswitch . other_config:hw-offload=false
 fi
 
 # Start vswitchd
