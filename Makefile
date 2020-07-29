@@ -16,7 +16,7 @@ build-dev-images: build-bin
 	docker build -t ${REGISTRY}/kube-ovn:${DEV_TAG} -f dist/images/Dockerfile dist/images/
 
 build-dpdk:
-	docker buildx build --cache-from "type=local,src=/tmp/.buildx-cache" --cache-to "type=local,dest=/tmp/.buildx-cache" --platform linux/amd64 -t ${REGISTRY}/kube-ovn-dpdk:19.11-${DEV_TAG} -o type=docker -f dist/images/Dockerfile.dpdk1911 dist/images/
+	docker buildx build --cache-from "type=local,src=/tmp/.buildx-cache" --cache-to "type=local,dest=/tmp/.buildx-cache" --platform linux/amd64 -t ${REGISTRY}/kube-ovn-dpdk:19.11-${RELEASE_TAG} -o type=docker -f dist/images/Dockerfile.dpdk1911 dist/images/
 
 push-dev:
 	docker push ${REGISTRY}/kube-ovn:${DEV_TAG}

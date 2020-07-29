@@ -36,7 +36,6 @@ jobs:
 
       - name: Build
         run: |
-          go get -u github.com/securego/gosec/cmd/gosec
           make build-dpdk
       - name: Push
         if: ${{ github.ref == 'refs/heads/master' || contains(github.ref, 'release') }}
@@ -47,8 +46,7 @@ jobs:
         run: |
           TAG=$(cat VERSION)
           echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-          docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn-dpdk:19.11-$TAG
-          docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn-dpdk:19.11-$COMMIT
           docker images
-          docker push kubeovn/kube-ovn:$TAG kubeovn/kube-ovn-dpdk:19.11-$TAG
-          docker push kubeovn/kube-ovn:$TAG kubeovn/kube-ovn-dpdk:19.11-$COMMIT
+          docker tag kubeovn/kube-ovn-dpdk:19.11-$TAG kubeovn/kube-ovn-dpdk:19.11-$COMMIT
+          docker push kubeovn/kube-ovn-dpdk:19.11-$TAG
+          docker push kubeovn/kube-ovn-dpdk:19.11-$COMMIT
