@@ -27,7 +27,7 @@
 * CRD version upgrade to v1
 * Refactor ovs cmd with ovs.Exec
 * OVS-DPDK support config file
-* Reduce image size of ovs-dpdk
+* Reduce image size of OVS-DPDK
 
 ## v1.2.1 -- 2020/06/22
 This release fix bugs found in v1.2.0

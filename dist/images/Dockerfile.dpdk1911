@@ -6,7 +6,7 @@ ENV RPM_ARCH=x86_64
 
 ENV DPDK_VERSION=19.11.1
 ENV OVS_VERSION=2.13.0
-ENV OVN_VERSION=20.03
+ENV OVN_VERSION=20.06
 
 ENV DPDK_DIR=/usr/src/dpdk-stable-${DPDK_VERSION}
 ENV OVS_DIR=/usr/src/openvswitch-${OVS_VERSION}
@@ -53,7 +53,7 @@ RUN cd /usr/src/ && \
 
 # Build OVN
 RUN cd /usr/src/ && \
-  curl -L https://github.com/ovn-org/ovn/tarball/branch-20.03 > ovn.tar.gz && \
+  curl -L https://github.com/ovn-org/ovn/tarball/branch-${OVN_VERSION} > ovn.tar.gz && \
   mkdir ovn && tar -xf ovn.tar.gz -C ovn --strip-components 1 && \
   rm -f ovn.tar.gz && \
   cd ovn && \

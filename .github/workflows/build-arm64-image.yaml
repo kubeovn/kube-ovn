@@ -16,7 +16,7 @@ on:
 
 jobs:
   build:
-    name: Build
+    name: Build arm64
     runs-on: ubuntu-latest
     steps:
       - name: Set up Go 1.x
