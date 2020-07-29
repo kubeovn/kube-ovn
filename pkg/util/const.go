@@ -62,4 +62,6 @@ const (
 
 	OvnProvider                 = "ovn"
 	AttachmentNetworkAnnotation = "k8s.v1.cni.cncf.io/networks"
+
+	SRIOVResourceName = "mellanox.com/cx5_sriov_switchdev"
 )
