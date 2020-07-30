@@ -137,6 +137,8 @@ func (c *Controller) runGateway() {
 	if err := c.setGatewayBandwidth(); err != nil {
 		klog.Errorf("failed to set gw bandwidth, %v", err)
 	}
+
+	c.appendMssRule()
 }
 
 func (c *Controller) setGatewayBandwidth() error {
