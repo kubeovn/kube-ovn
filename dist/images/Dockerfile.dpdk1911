@@ -29,7 +29,7 @@ RUN dnf install -y --setopt=install_weak_deps=False \
   curl http://fast.dpdk.org/rel/dpdk-${DPDK_VERSION}.tar.gz | tar xz && \
   cd ${DPDK_DIR} && \
   meson builddir && cd builddir && \
-  meson configure -Dexamples='' -Dtests=false -Denable_kmods=false -Denable_docs=false && \
+  meson configure -Dapps='pdump proc-info' -Dexamples='' -Dtests=false -Denable_kmods=false -Denable_docs=false && \
   ninja && ninja install && \
 # Clean Up
   dnf remove -y make meson gcc cpp && \
@@ -69,6 +69,7 @@ RUN mkdir -p /rpms && \
 
 FROM dpdk
 
+RUN dnf install -y kmod && dnf clean all
 COPY --from=rpm-builder /rpms/* /rpms/
 COPY start-ovs-dpdk.sh ovs-dpdk-healthcheck.sh uninstall.sh /kube-ovn/
 
