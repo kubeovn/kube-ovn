@@ -1,7 +1,7 @@
 # NOTE: At time of writing, CentOS 8 does not have dpdk-devel v19.11 in the Yum repo.
 # This package is required to build the OVS-DPDK RPMs and is available in Fedora 32.
 FROM fedora:32 as dpdk
-
+ENV BUILD_DATE 20200731
 ENV RPM_ARCH=x86_64
 
 ENV DPDK_VERSION=19.11.1
