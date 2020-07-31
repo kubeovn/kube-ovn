@@ -7,6 +7,7 @@ By taking use of SR-IOV technology we can achieve low network latency and high t
 ## Prerequisites
 - Mellanox ConnectX-5 Card with OVS-Kernel ASAP² Packages
 - Linux Kernel 5.7 or above
+- MLNX-OFED 5.1
 - SR-IOV Device Plugin
 - Multus-CNI
 
@@ -80,6 +81,14 @@ echo 0000:42:00.3 > /sys/bus/pci/drivers/mlx5_core/bind
 echo 0000:42:00.4 > /sys/bus/pci/drivers/mlx5_core/bind
 echo 0000:42:00.5 > /sys/bus/pci/drivers/mlx5_core/bind
 ```
+
+10. Disable NetworkManager if it's running
+
+```bash
+systemctl stop NetworkManager
+systemctl disable NetworkManager
+```
+
 ### Install SR-IOV Device Plugin
 1. Create a ConfigMap that defines SR-IOV resource pool configuration
 ```yaml
@@ -179,3 +188,11 @@ spec:
       limits:
         mellanox.com/cx5_sriov_switchdev: '1'
 ```
+### Verify If Offload Works
+```bash
+ovs-appctl dpctl/dump-flows -m type=offloaded
+ufid:91cc45de-e7e9-4935-8f82-1890430b0f66, skb_priority(0/0),skb_mark(0/0),ct_state(0/0x23),ct_zone(0/0),ct_mark(0/0),ct_label(0/0x1),recirc_id(0),dp_hash(0/0),in_port(5b45c61b307e_h),packet_type(ns=0/0,id=0/0),eth(src=00:00:00:c5:6d:4e,dst=00:00:00:e7:16:ce),eth_type(0x0800),ipv4(src=0.0.0.0/0.0.0.0,dst=0.0.0.0/0.0.0.0,proto=0/0,tos=0/0,ttl=0/0,frag=no), packets:941539, bytes:62142230, used:0.260s, offloaded:yes, dp:tc, actions:54235e5753b8_h
+ufid:e00768d7-e652-4d79-8182-3291d852b791, skb_priority(0/0),skb_mark(0/0),ct_state(0/0x23),ct_zone(0/0),ct_mark(0/0),ct_label(0/0x1),recirc_id(0),dp_hash(0/0),in_port(54235e5753b8_h),packet_type(ns=0/0,id=0/0),eth(src=00:00:00:e7:16:ce,dst=00:00:00:c5:6d:4e),eth_type(0x0800),ipv4(src=0.0.0.0/0.0.0.0,dst=0.0.0.0/0.0.0.0,proto=0/0,tos=0/0,ttl=0/0,frag=no), packets:82386659, bytes:115944854173, used:0.260s, offloaded:yes, dp:tc, actions:5b45c61b307e_h
+```
+
+You can find `offloaded:yes, dp:tc` if all works well.

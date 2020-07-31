@@ -22,13 +22,14 @@ The Kube-OVN community is waiting for you participation!
 - **Network Policy**: Implementing networking.k8s.io/NetworkPolicy API by high performance ovn ACL.
 - **Static IP Addresses for Workloads**: Allocate random or static IP addresses to workloads.
 - **IPAM for Multi NIC**: A cluster-wide IPAM for CNI plugins other than Kube-OVN, such as macvlan/vlan/host-device to take advantage of subnet and static ip allocation functions in Kube-OVN.
-- **Dynamic QoS**: Configure Pod Ingress/Egress traffic rate limits on the fly.
+- **Dynamic QoS**: Configure Pod/Gateway Ingress/Egress traffic rate limits on the fly.
 - **Embedded Load Balancers**: Replace kube-proxy with the OVN embedded high performance distributed L2 Load Balancer.
 - **Distributed Gateways**: Every Node can act as a Gateway to provide external network connectivity.
 - **Namespaced Gateways**: Every Namespace can have a dedicated Gateway for Egress traffic.
 - **Direct External Connectivity**：Pod IP can be exposed to external network directly.
 - **BGP Support**: Pod IP can be exposed to external by BGP router protocol.
 - **Traffic Mirror**: Duplicated container network traffic for monitoring, diagnosing and replay.
+- **Hardware Offload**: Boost network performance and save CPU resource by offloading OVS flow table to hardware.
 - **Vlan Support**: Kube-OVN also support underlay Vlan mode network for better performance and throughput.
 - **DPDK Support**: DPDK application now can run in Pod with OVS-DPDK.
 - **IPv6 Support**: Kube-OVN supports ipv6-only mode pod network.
@@ -37,7 +38,6 @@ The Kube-OVN community is waiting for you participation!
 - **Prometheus & Grafana Integration**: Exposing network quality metrics like pod/node/service/dns connectivity/latency in Prometheus format.
 
 ## Planned Future Work
-- Hardware Offloading and DPDK Support
 - Multi-Cluster Network
 - Policy-based QoS
 - More Metrics and Traffic Graph
@@ -65,9 +65,11 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
 - [Subnet Isolation](docs/subnet.md#isolation)
 - [Static IP](docs/static-ip.md)
 - [Dynamic QoS](docs/qos.md)
-- [Gateway and Direct connect](docs/subnet.md#gateway)
+- [Subnet Gateway and Direct connect](docs/subnet.md#gateway)
+- [Pod Gateway](docs/pod-gw.md)
 - [BGP support](docs/bgp.md)
 - [Multi NIC Support](docs/multi-nic.md)
+- [Hardware Offload](docs/hw-offload.md)
 - [Vlan Support](docs/vlan.md)
 - [DPDK Support](docs/dpdk.md)
 - [Traffic Mirror](docs/mirror.md)
@@ -115,5 +117,7 @@ Kube-OVN uses policy-route, ipset and iptables to implement the gateway function
 The main difference from the design point is the encapsulation method. Calico use no encapsulation or lightweight IPIP encapsulation and Kube-OVN uses geneve to encapsulate packets. No encapsulation can achieve better network performance for both throughput and latency. However, as this method will expose pod network directly to the underlay network with it comes with the burden on deploy and maintain. In some managed network environment where BGP and IPIP is not allowed, encapsulation is a must.
 
 Use encapsulation can lower the requirement on networking, and isolate containers and underlay network from logical. We can use the overlay technology to build a much complex network concept, like router, gateway, and vpc. For performance, ovs can make use of hardware offload and DPDK to enhance throughput and latency.
+
+Kube-OVN can also work in non-encapsulation mode, that take use of underlay switches to switch the packets or use hardware offload to achieve better performance than kernel datapath.
 
 From the function set, Kube-OVN can offer some more abilities like static ip, QoS and traffic mirror. The subnet in Kube-OVN and ippool in Calico share some same function set.
