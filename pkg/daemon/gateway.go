@@ -42,15 +42,25 @@ var (
 		Chain: "POSTROUTING",
 		Rule:  strings.Split("-m set --match-set ovn60subnets-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE", " "),
 	}
-	forwardAcceptRule1 = util.IPTableRule{
+	forwardAcceptV4Rule1 = util.IPTableRule{
 		Table: "filter",
 		Chain: "FORWARD",
-		Rule:  strings.Split("-i ovn0 -j ACCEPT", " "),
+		Rule:  strings.Split(`-m set --match-set ovn40subnets src -j ACCEPT`, " "),
 	}
-	forwardAcceptRule2 = util.IPTableRule{
+	forwardAcceptV4Rule2 = util.IPTableRule{
 		Table: "filter",
 		Chain: "FORWARD",
-		Rule:  strings.Split(`-o ovn0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT`, " "),
+		Rule:  strings.Split(`-m set --match-set ovn40subnets dst -j ACCEPT`, " "),
+	}
+	forwardAcceptV6Rule1 = util.IPTableRule{
+		Table: "filter",
+		Chain: "FORWARD",
+		Rule:  strings.Split(`-m set --match-set ovn60subnets src -j ACCEPT`, " "),
+	}
+	forwardAcceptV6Rule2 = util.IPTableRule{
+		Table: "filter",
+		Chain: "FORWARD",
+		Rule:  strings.Split(`-m set --match-set ovn60subnets dst -j ACCEPT`, " "),
 	}
 	inputAcceptV4Rule1 = util.IPTableRule{
 		Table: "filter",
@@ -107,19 +117,23 @@ func (c *Controller) runGateway() {
 	}, subnetsNeedNat)
 	c.ipset.ApplyUpdates()
 
-	var podNatRule, subnetNatRule, input1, input2 util.IPTableRule
+	var podNatRule, subnetNatRule, forward1, forward2, input1, input2 util.IPTableRule
 	if c.protocol == kubeovnv1.ProtocolIPv4 {
 		podNatRule = podNatV4Rule
 		subnetNatRule = subnetNatV4Rule
+		forward1 = forwardAcceptV4Rule1
+		forward2 = forwardAcceptV4Rule2
 		input1 = inputAcceptV4Rule1
 		input2 = inputAcceptV4Rule2
 	} else {
 		podNatRule = podNatV6Rule
 		subnetNatRule = subnetNatV6Rule
+		forward1 = forwardAcceptV6Rule1
+		forward2 = forwardAcceptV6Rule2
 		input1 = inputAcceptV6Rule1
 		input2 = inputAcceptV6Rule2
 	}
-	for _, iptRule := range []util.IPTableRule{forwardAcceptRule1, forwardAcceptRule2, podNatRule, subnetNatRule, input1, input2} {
+	for _, iptRule := range []util.IPTableRule{forward1, forward2, podNatRule, subnetNatRule, input1, input2} {
 		exists, err := c.iptable.Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
 		if err != nil {
 			klog.Errorf("check iptable rule exist failed, %+v", err)
