@@ -315,6 +315,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 
 	// add default/join subnet and wait them ready
 	go wait.Until(c.runAddSubnetWorker, time.Second, stopCh)
+	go wait.Until(c.runAddVlanWorker, time.Second, stopCh)
 	for {
 		klog.Infof("wait for %s and %s ready", c.config.DefaultLogicalSwitch, c.config.NodeSwitch)
 		time.Sleep(3 * time.Second)
@@ -370,7 +371,6 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		go wait.Until(c.runUpdateNpWorker, time.Second, stopCh)
 		go wait.Until(c.runDeleteNpWorker, time.Second, stopCh)
 
-		go wait.Until(c.runAddVlanWorker, time.Second, stopCh)
 		go wait.Until(c.runDelVlanWorker, time.Second, stopCh)
 		go wait.Until(c.runUpdateVlanWorker, time.Second, stopCh)
 	}

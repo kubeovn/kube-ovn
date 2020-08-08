@@ -365,6 +365,14 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return nil
 	}
 
+	subnet, err = c.subnetsLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
 	if err := formatSubnet(subnet, c); err != nil {
 		return err
 	}
