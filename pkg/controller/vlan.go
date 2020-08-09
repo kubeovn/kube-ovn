@@ -331,7 +331,7 @@ func (c *Controller) addLocalnet(subnet *kubeovnv1.Subnet) error {
 func (c *Controller) delLocalnet(key string) error {
 	localnetPort := ovs.PodNameToLocalnetName(key)
 
-	if err := c.ovnClient.DeletePort(localnetPort); err != nil {
+	if err := c.ovnClient.DeleteLogicalSwitchPort(localnetPort); err != nil {
 		klog.Errorf("failed to delete localnet port %s, %v", localnetPort, err)
 		return err
 	}

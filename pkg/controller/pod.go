@@ -423,7 +423,7 @@ func (c *Controller) handleDeletePod(key string) error {
 		}
 	}
 
-	if err := c.ovnClient.DeletePort(ovs.PodNameToPortName(name, namespace)); err != nil {
+	if err := c.ovnClient.DeleteLogicalSwitchPort(ovs.PodNameToPortName(name, namespace)); err != nil {
 		klog.Errorf("failed to delete lsp %s, %v", ovs.PodNameToPortName(name, namespace), err)
 		return err
 	}
@@ -458,18 +458,17 @@ func (c *Controller) handleUpdatePod(key string) error {
 	klog.Infof("update pod %s/%s", namespace, name)
 	podIP := pod.Annotations[util.IpAddressAnnotation]
 
-	if pod.Annotations[util.NorthGatewayAnnotation] != "" {
-		if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], c.config.ClusterRouter); err != nil {
-			return errors.Annotate(err, "add static route failed")
-		}
-	} else {
-		subnet, err := c.getPodDefaultSubnet(pod)
-		if err != nil {
-			klog.Errorf("failed to get subnet %v", err)
-			return err
-		}
-
-		if !subnet.Spec.UnderlayGateway {
+	subnet, err := c.getPodDefaultSubnet(pod)
+	if err != nil {
+		klog.Errorf("failed to get subnet %v", err)
+		return err
+	}
+	if !subnet.Spec.UnderlayGateway {
+		if pod.Annotations[util.NorthGatewayAnnotation] != "" {
+			if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], c.config.ClusterRouter); err != nil {
+				return errors.Annotate(err, "add static route failed")
+			}
+		} else {
 			if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
 				node, err := c.nodesLister.Get(pod.Spec.NodeName)
 				if err != nil {
