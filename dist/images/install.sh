@@ -22,7 +22,7 @@ EXCLUDE_IPS=""                         # EXCLUDE_IPS for default subnet
 LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
 IFACE=""                               # The nic to support container network, if empty will use the nic that the default route use
 NETWORK_TYPE="geneve"                  # geneve or vlan
-VERSION="v1.3.0"
+VERSION="v1.4.0"
 IMAGE_PULL_POLICY="IfNotPresent"
 HW_OFFLOAD="false"
 

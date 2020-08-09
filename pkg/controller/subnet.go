@@ -5,7 +5,6 @@ import (
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"github.com/alauda/kube-ovn/pkg/util"
-	"github.com/juju/errors"
 	"net"
 	"reflect"
 	"strconv"
@@ -639,116 +638,147 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 		return err
 	}
 
-	// if gw is distributed remove activateGateway field
-	if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
-		if subnet.Status.ActivateGateway == "" {
-			return nil
-		}
-		subnet.Status.ActivateGateway = ""
-		bytes, err := subnet.Status.Bytes()
-		if err != nil {
-			return err
-		}
-		_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(subnet.Name, types.MergePatchType, bytes, "status")
-		if err != nil {
-			return err
-		}
-
+	if subnet.Spec.UnderlayGateway {
 		for _, pod := range pods {
-			if !isPodAlive(pod) || pod.Annotations[util.IpAddressAnnotation] == "" || pod.Annotations[util.LogicalSwitchAnnotation] != subnet.Name {
-				continue
-			}
-
-			node, err := c.nodesLister.Get(pod.Spec.NodeName)
-			if err != nil {
-				if k8serrors.IsNotFound(err) {
-					continue
-				} else {
-					klog.Errorf("failed to get node %s, %v", pod.Spec.NodeName, err)
+			if pod.Annotations[util.LogicalSwitchAnnotation] == subnet.Name && pod.Annotations[util.IpAddressAnnotation] != "" {
+				if err := c.ovnClient.DeleteStaticRoute(pod.Annotations[util.IpAddressAnnotation], c.config.ClusterRouter); err != nil {
+					klog.Errorf("failed to delete route %s, %v", pod.Annotations[util.IpAddressAnnotation], err)
 					return err
 				}
 			}
-			gw, err := getNodeTunlIP(node)
-			if err != nil {
-				klog.Errorf("failed to get node %s tunl ip, %v", node.Name, err)
-				return err
-			}
-			nextHop := gw.String()
-
-			if pod.Annotations[util.NorthGatewayAnnotation] != "" {
-				nextHop = pod.Annotations[util.NorthGatewayAnnotation]
-			}
-
-			if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, pod.Annotations[util.IpAddressAnnotation], nextHop, c.config.ClusterRouter); err != nil {
-				return errors.Annotate(err, "add static route failed")
-			}
 		}
 		if err := c.ovnClient.DeleteStaticRoute(subnet.Spec.CIDRBlock, c.config.ClusterRouter); err != nil {
-			klog.Errorf("failed to delete static route %s, %v", subnet.Spec.CIDRBlock, err)
+			klog.Errorf("failed to delete route %s, %v", subnet.Spec.CIDRBlock, err)
 			return err
 		}
-		return nil
-	}
-	klog.Infof("start to init centralized gateway for subnet %s", subnet.Name)
 
-	// check if activateGateway still ready
-	if subnet.Status.ActivateGateway != "" {
-		node, err := c.nodesLister.Get(subnet.Status.ActivateGateway)
-		if err == nil && nodeReady(node) {
-			klog.Infof("subnet %s uses the old activate gw %s", subnet.Name, node.Name)
-			return nil
+		if err := c.ovnClient.DeleteLogicalSwitchPort(fmt.Sprintf("%s-%s", subnet.Name, c.config.ClusterRouter)); err != nil {
+			klog.Errorf("failed to delete lsp %s-%s, %v", subnet.Name, c.config.ClusterRouter, err)
+			return err
 		}
-	}
-
-	klog.Info("find a new activate node")
-	// need a new activate gateway
-	newActivateNode := ""
-	var nodeTunlIPAddr net.IP
-	for _, gw := range strings.Split(subnet.Spec.GatewayNode, ",") {
-		gw = strings.TrimSpace(gw)
-		node, err := c.nodesLister.Get(gw)
-		if err == nil && nodeReady(node) {
-			newActivateNode = node.Name
-			nodeTunlIPAddr, err = getNodeTunlIP(node)
+		if err := c.ovnClient.DeleteLogicalRouterPort(fmt.Sprintf("%s-%s", c.config.ClusterRouter, subnet.Name)); err != nil {
+			klog.Errorf("failed to delete lrp %s-%s, %v", c.config.ClusterRouter, subnet.Name, err)
+			return err
+		}
+	} else {
+		// if gw is distributed remove activateGateway field
+		if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
+			if subnet.Status.ActivateGateway == "" {
+				return nil
+			}
+			subnet.Status.ActivateGateway = ""
+			bytes, err := subnet.Status.Bytes()
 			if err != nil {
 				return err
 			}
-			klog.Infof("subnet %s uses a new activate gw %s", subnet.Name, node.Name)
-			break
-		}
-	}
-	if newActivateNode == "" {
-		klog.Warningf("all subnet %s gws are not ready", subnet.Name)
-		subnet.Status.ActivateGateway = newActivateNode
-		subnet.Status.NotReady("NoReadyGateway", "")
-		bytes, err := subnet.Status.Bytes()
-		if err != nil {
-			return err
-		}
-		_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(subnet.Name, types.MergePatchType, bytes, "status")
-		return err
-	}
-
-	if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, subnet.Spec.CIDRBlock, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
-		return errors.Annotate(err, "add static route failed")
-	}
-	for _, pod := range pods {
-		if isPodAlive(pod) && pod.Annotations[util.IpAddressAnnotation] != "" && pod.Annotations[util.LogicalSwitchAnnotation] == subnet.Name && pod.Annotations[util.NorthGatewayAnnotation] == "" {
-			if err := c.ovnClient.DeleteStaticRoute(pod.Annotations[util.IpAddressAnnotation], c.config.ClusterRouter); err != nil {
-				klog.Errorf("failed to delete static route, %v", err)
+			_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(subnet.Name, types.MergePatchType, bytes, "status")
+			if err != nil {
 				return err
 			}
+
+			for _, pod := range pods {
+				if !isPodAlive(pod) || pod.Annotations[util.IpAddressAnnotation] == "" || pod.Annotations[util.LogicalSwitchAnnotation] != subnet.Name {
+					continue
+				}
+
+				node, err := c.nodesLister.Get(pod.Spec.NodeName)
+				if err != nil {
+					if k8serrors.IsNotFound(err) {
+						continue
+					} else {
+						klog.Errorf("failed to get node %s, %v", pod.Spec.NodeName, err)
+						return err
+					}
+				}
+				gw, err := getNodeTunlIP(node)
+				if err != nil {
+					klog.Errorf("failed to get node %s tunl ip, %v", node.Name, err)
+					return err
+				}
+				nextHop := gw.String()
+
+				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
+					nextHop = pod.Annotations[util.NorthGatewayAnnotation]
+				}
+
+				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, pod.Annotations[util.IpAddressAnnotation], nextHop, c.config.ClusterRouter); err != nil {
+					klog.Errorf("add static route failed, %v", err)
+					return err
+				}
+			}
+			if err := c.ovnClient.DeleteStaticRoute(subnet.Spec.CIDRBlock, c.config.ClusterRouter); err != nil {
+				klog.Errorf("failed to delete static route %s, %v", subnet.Spec.CIDRBlock, err)
+				return err
+			}
+			return nil
+		} else {
+			klog.Infof("start to init centralized gateway for subnet %s", subnet.Name)
+
+			// check if activateGateway still ready
+			if subnet.Status.ActivateGateway != "" {
+				node, err := c.nodesLister.Get(subnet.Status.ActivateGateway)
+				if err == nil && nodeReady(node) {
+					klog.Infof("subnet %s uses the old activate gw %s", subnet.Name, node.Name)
+					return nil
+				}
+			}
+
+			klog.Info("find a new activate node")
+			// need a new activate gateway
+			newActivateNode := ""
+			var nodeTunlIPAddr net.IP
+			for _, gw := range strings.Split(subnet.Spec.GatewayNode, ",") {
+				gw = strings.TrimSpace(gw)
+				node, err := c.nodesLister.Get(gw)
+				if err == nil && nodeReady(node) {
+					newActivateNode = node.Name
+					nodeTunlIPAddr, err = getNodeTunlIP(node)
+					if err != nil {
+						return err
+					}
+					klog.Infof("subnet %s uses a new activate gw %s", subnet.Name, node.Name)
+					break
+				}
+			}
+			if newActivateNode == "" {
+				klog.Warningf("all subnet %s gws are not ready", subnet.Name)
+				subnet.Status.ActivateGateway = newActivateNode
+				subnet.Status.NotReady("NoReadyGateway", "")
+				bytes, err := subnet.Status.Bytes()
+				if err != nil {
+					return err
+				}
+				_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(subnet.Name, types.MergePatchType, bytes, "status")
+				return err
+			}
+
+			if !subnet.Spec.UnderlayGateway {
+				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, subnet.Spec.CIDRBlock, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
+					klog.Errorf("failed to add static route, %v", err)
+					return err
+				}
+			}
+
+			for _, pod := range pods {
+				if isPodAlive(pod) && pod.Annotations[util.IpAddressAnnotation] != "" && pod.Annotations[util.LogicalSwitchAnnotation] == subnet.Name && pod.Annotations[util.NorthGatewayAnnotation] == "" {
+					if err := c.ovnClient.DeleteStaticRoute(pod.Annotations[util.IpAddressAnnotation], c.config.ClusterRouter); err != nil {
+						klog.Errorf("failed to delete static route, %v", err)
+						return err
+					}
+				}
+			}
+
+			subnet.Status.ActivateGateway = newActivateNode
+			bytes, err := subnet.Status.Bytes()
+			subnet.Status.Ready("ReconcileCentralizedGatewaySuccess", "")
+			if err != nil {
+				return err
+			}
+			_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(subnet.Name, types.MergePatchType, bytes, "status")
+			return err
 		}
 	}
-
-	subnet.Status.ActivateGateway = newActivateNode
-	bytes, err := subnet.Status.Bytes()
-	subnet.Status.Ready("ReconcileCentralizedGatewaySuccess", "")
-	if err != nil {
-		return err
-	}
-	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(subnet.Name, types.MergePatchType, bytes, "status")
-	return err
+	return nil
 }
 
 func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {

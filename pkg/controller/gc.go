@@ -139,7 +139,7 @@ func (c *Controller) markAndCleanLSP() error {
 				noPodLSP[lsp] = true
 			} else {
 				klog.Infof("gc logical switch port %s", lsp)
-				if err := c.ovnClient.DeletePort(lsp); err != nil {
+				if err := c.ovnClient.DeleteLogicalSwitchPort(lsp); err != nil {
 					klog.Errorf("failed to delete lsp %s, %v", lsp, err)
 					return err
 				}

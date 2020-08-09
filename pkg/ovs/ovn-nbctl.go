@@ -26,10 +26,18 @@ func (c Client) ovnNbCommand(cmdArgs ...string) (string, error) {
 	return trimCommandOutput(raw), nil
 }
 
-// DeletePort delete logical switch port in ovn
-func (c Client) DeletePort(port string) error {
+// DeleteLogicalSwitchPort delete logical switch port in ovn
+func (c Client) DeleteLogicalSwitchPort(port string) error {
 	if _, err := c.ovnNbCommand(IfExists, "lsp-del", port); err != nil {
-		return fmt.Errorf("failed to delete port %s, %v", port, err)
+		return fmt.Errorf("failed to delete logical switch port %s, %v", port, err)
+	}
+	return nil
+}
+
+// DeleteLogicalRouterPort delete logical switch port in ovn
+func (c Client) DeleteLogicalRouterPort(port string) error {
+	if _, err := c.ovnNbCommand(IfExists, "lrp-del", port); err != nil {
+		return fmt.Errorf("failed to delete logical router port %s, %v", port, err)
 	}
 	return nil
 }
@@ -274,6 +282,9 @@ func (c Client) AddStaticRoute(policy, cidr, nextHop, router string) error {
 
 // DeleteStaticRoute delete a static route rule in ovn
 func (c Client) DeleteStaticRoute(cidr, router string) error {
+	if cidr == "" {
+		return nil
+	}
 	_, err := c.ovnNbCommand(IfExists, "lr-route-del", router, cidr)
 	return err
 }
