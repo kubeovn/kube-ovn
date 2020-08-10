@@ -403,11 +403,13 @@ func (c Client) SetPrivateLogicalSwitch(ls, protocol, cidr string, allow []strin
 	allowArgs := []string{}
 	var dropArgs []string
 	if protocol == kubeovnv1.ProtocolIPv4 {
-		dropArgs = []string{"--", "--log", fmt.Sprintf("--name=%s", ls), fmt.Sprintf("--severity=%s", "warning"), "acl-add", ls, "to-lport", util.DefaultDropPriority, fmt.Sprintf(`ip4.src!=%s || ip4.dst!=%s`, cidr, cidr), "drop"}
+		dropArgs = []string{"--", "--log", fmt.Sprintf("--name=%s", ls), fmt.Sprintf("--severity=%s", "warning"), "acl-add", ls, "to-lport", util.DefaultDropPriority, "ip", "drop"}
 		allowArgs = append(allowArgs, "--", "acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip4.src==%s", c.NodeSwitchCIDR), "allow-related")
+		allowArgs = append(allowArgs, "--", "acl-add", ls, "to-lport", util.SubnetAllowPriority, fmt.Sprintf(`ip4.src==%s && ip4.dst==%s`, cidr, cidr), "allow-related")
 	} else {
-		dropArgs = []string{"--", "--log", fmt.Sprintf("--name=%s", ls), fmt.Sprintf("--severity=%s", "warning"), "acl-add", ls, "to-lport", util.DefaultDropPriority, fmt.Sprintf(`ip6.src!=%s || ip6.dst!=%s`, cidr, cidr), "drop"}
+		dropArgs = []string{"--", "--log", fmt.Sprintf("--name=%s", ls), fmt.Sprintf("--severity=%s", "warning"), "acl-add", ls, "to-lport", util.DefaultDropPriority, "ip", "drop"}
 		allowArgs = append(allowArgs, "--", "acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip6.src==%s", c.NodeSwitchCIDR), "allow-related")
+		allowArgs = append(allowArgs, "--", "acl-add", ls, "to-lport", util.SubnetAllowPriority, fmt.Sprintf(`ip6.src==%s && ip6.dst==%s`, cidr, cidr), "allow-related")
 	}
 	ovnArgs := append(delArgs, dropArgs...)
 
@@ -416,9 +418,9 @@ func (c Client) SetPrivateLogicalSwitch(ls, protocol, cidr string, allow []strin
 			var match string
 			switch protocol {
 			case kubeovnv1.ProtocolIPv4:
-				match = fmt.Sprintf("ip4.src==%s || ip4.dst==%s", strings.TrimSpace(subnet), strings.TrimSpace(subnet))
+				match = fmt.Sprintf("(ip4.src==%s && ip4.dst==%s) || (ip4.src==%s && ip4.dst==%s)", strings.TrimSpace(subnet), cidr, cidr, strings.TrimSpace(subnet))
 			case kubeovnv1.ProtocolIPv6:
-				match = fmt.Sprintf("ip6.src==%s || ip6.dst==%s", strings.TrimSpace(subnet), strings.TrimSpace(subnet))
+				match = fmt.Sprintf("(ip6.src==%s && ip6.dst==%s) || (ip6.src==%s && ip6.dst==%s)", strings.TrimSpace(subnet), cidr, cidr, strings.TrimSpace(subnet))
 			}
 
 			allowArgs = append(allowArgs, "--", "acl-add", ls, "to-lport", util.SubnetAllowPriority, match, "allow-related")
