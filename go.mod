@@ -17,7 +17,6 @@ require (
 	github.com/hashicorp/go-version v1.2.0 // indirect
 	github.com/imdario/mergo v0.3.7 // indirect
 	github.com/intel/multus-cni v0.0.0-20200313031649-eaf6ff6e20bb
-	github.com/juju/errors v0.0.0-20190207033735-e65537c515d7
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/kelseyhightower/envconfig v1.4.0 // indirect
 	github.com/kubesphere/porter v0.1.1

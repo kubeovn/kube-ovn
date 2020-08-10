@@ -13,7 +13,6 @@ import (
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"github.com/alauda/kube-ovn/pkg/util"
-	"github.com/juju/errors"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -466,7 +465,8 @@ func (c *Controller) handleUpdatePod(key string) error {
 	if !subnet.Spec.UnderlayGateway {
 		if pod.Annotations[util.NorthGatewayAnnotation] != "" {
 			if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], c.config.ClusterRouter); err != nil {
-				return errors.Annotate(err, "add static route failed")
+				klog.Errorf("failed to add static route, %v", err)
+				return err
 			}
 		} else {
 			if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
@@ -481,7 +481,8 @@ func (c *Controller) handleUpdatePod(key string) error {
 				}
 
 				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
-					return errors.Annotate(err, "add static route failed")
+					klog.Errorf("failed to add static route, %v", err)
+					return err
 				}
 			}
 		}
@@ -513,7 +514,7 @@ func isStatefulSetPod(pod *v1.Pod) (bool, string) {
 func getNodeTunlIP(node *v1.Node) (net.IP, error) {
 	nodeTunlIP := node.Annotations[util.IpAddressAnnotation]
 	if nodeTunlIP == "" {
-		return nil, errors.New("node has no tunl ip annotation")
+		return nil, fmt.Errorf("node has no tunl ip annotation")
 	}
 	nodeTunlIPAddr := net.ParseIP(nodeTunlIP)
 	if nodeTunlIPAddr == nil {
