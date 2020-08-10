@@ -92,8 +92,6 @@ github.com/intel/multus-cni/logging
 github.com/intel/multus-cni/types
 # github.com/json-iterator/go v1.1.9
 github.com/json-iterator/go
-# github.com/juju/errors v0.0.0-20190207033735-e65537c515d7
-github.com/juju/errors
 # github.com/konsorten/go-windows-terminal-sequences v1.0.2
 github.com/konsorten/go-windows-terminal-sequences
 # github.com/kubesphere/porter v0.1.1
