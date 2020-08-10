@@ -251,7 +251,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return err
 		}
 
-		if err := c.ovnClient.CreateIngressACL(pgName, ingressAllowAsName, ingressExceptAsName, subnet.Spec.Protocol, ingressPorts); err != nil {
+		if err := c.ovnClient.CreateIngressACL(fmt.Sprintf("%s/%s", np.Namespace, np.Name), pgName, ingressAllowAsName, ingressExceptAsName, subnet.Spec.Protocol, ingressPorts); err != nil {
 			klog.Errorf("failed to create ingress acls for np %s, %v", key, err)
 			return err
 		}
@@ -315,7 +315,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return err
 		}
 
-		if err := c.ovnClient.CreateEgressACL(pgName, egressAllowAsName, egressExceptAsName, subnet.Spec.Protocol, egressPorts); err != nil {
+		if err := c.ovnClient.CreateEgressACL(fmt.Sprintf("%s/%s", np.Namespace, np.Name), pgName, egressAllowAsName, egressExceptAsName, subnet.Spec.Protocol, egressPorts); err != nil {
 			klog.Errorf("failed to create egress acls for np %s, %v", key, err)
 			return err
 		}
