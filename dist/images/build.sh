@@ -11,7 +11,7 @@ echo "/usr/local/lib" > /etc/ld.so.conf.d/other.conf
 /sbin/ldconfig
 cd ..
 
-git clone -b branch-2.13 --depth=1 https://github.com/openvswitch/ovs.git
+git clone -b v2.13.1 --depth=1 https://github.com/openvswitch/ovs.git
 cd ovs
 # change compact interval to reduce resource usage
 curl https://github.com/alauda/ovs/commit/238003290766808ba310e1875157b3d414245603.patch | git apply
