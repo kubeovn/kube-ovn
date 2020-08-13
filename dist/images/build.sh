@@ -15,7 +15,7 @@ git clone -b branch-2.13 --depth=1 https://github.com/openvswitch/ovs.git
 cd ovs
 # change compact interval to reduce resource usage
 curl https://github.com/alauda/ovs/commit/238003290766808ba310e1875157b3d414245603.patch | git apply
-sed -i 's/2.13.1/2.13.0/g' configure.ac
+sed -i 's/2.13.2/2.13.1/g' configure.ac
 sed -i 's/sphinx-build-3/sphinx-build/g' rhel/openvswitch-fedora.spec.in
 ./boot.sh
 if [ "$ARCH" = "amd64" ]; then
@@ -30,7 +30,7 @@ git clone -b branch-20.06 --depth=1 https://github.com/ovn-org/ovn.git
 cd ovn
 
 # kube-ovn related patches
-curl https://github.com/alauda/ovn/commit/2a01da436826de0afe0cda94628dcef7849b380a.patch | git apply
+curl https://github.com/alauda/ovn/commit/1aa47202c3e09f610ebefe00ab23a0723059bbf3.patch | git apply
 
 sed -i 's/20.06.2/20.06.1/g' configure.ac
 ./boot.sh
