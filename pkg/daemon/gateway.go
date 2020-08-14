@@ -22,65 +22,37 @@ const (
 )
 
 var (
-	podNatV4Rule = util.IPTableRule{
-		Table: "nat",
-		Chain: "POSTROUTING",
-		Rule:  strings.Split("-m set --match-set ovn40local-pod-ip-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE", " "),
+	v4Rules = []util.IPTableRule{
+		// This rule makes sure we don't NAT traffic within overlay network
+		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn40subnets src -m set --match-set ovn40subnets dst -j MASQUERADE`, " ")},
+		// Prevent performing Masquerade on external traffic which arrives from a Node that owns the Pod/Subnet IP
+		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn40subnets src -m set --match-set ovn40local-pod-ip-nat dst -j RETURN`, " ")},
+		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn40subnets src -m set --match-set ovn40subnets-nat dst -j RETURN`, " ")},
+		// NAT if pod/subnet to external address
+		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn40local-pod-ip-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE`, " ")},
+		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn40subnets-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE`, " ")},
+		// Input Accept
+		{Table: "filter", Chain: "FORWARD", Rule: strings.Split(`-m set --match-set ovn40subnets src -j ACCEPT`, " ")},
+		{Table: "filter", Chain: "FORWARD", Rule: strings.Split(`-m set --match-set ovn40subnets dst -j ACCEPT`, " ")},
+		// Forward Accept
+		{Table: "filter", Chain: "INPUT", Rule: strings.Split(`-m set --match-set ovn40subnets src -j ACCEPT`, " ")},
+		{Table: "filter", Chain: "INPUT", Rule: strings.Split(`-m set --match-set ovn40subnets dst -j ACCEPT`, " ")},
 	}
-	subnetNatV4Rule = util.IPTableRule{
-		Table: "nat",
-		Chain: "POSTROUTING",
-		Rule:  strings.Split("-m set --match-set ovn40subnets-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE", " "),
-	}
-	podNatV6Rule = util.IPTableRule{
-		Table: "nat",
-		Chain: "POSTROUTING",
-		Rule:  strings.Split("-m set --match-set ovn60local-pod-ip-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE", " "),
-	}
-	subnetNatV6Rule = util.IPTableRule{
-		Table: "nat",
-		Chain: "POSTROUTING",
-		Rule:  strings.Split("-m set --match-set ovn60subnets-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE", " "),
-	}
-	forwardAcceptV4Rule1 = util.IPTableRule{
-		Table: "filter",
-		Chain: "FORWARD",
-		Rule:  strings.Split(`-m set --match-set ovn40subnets src -j ACCEPT`, " "),
-	}
-	forwardAcceptV4Rule2 = util.IPTableRule{
-		Table: "filter",
-		Chain: "FORWARD",
-		Rule:  strings.Split(`-m set --match-set ovn40subnets dst -j ACCEPT`, " "),
-	}
-	forwardAcceptV6Rule1 = util.IPTableRule{
-		Table: "filter",
-		Chain: "FORWARD",
-		Rule:  strings.Split(`-m set --match-set ovn60subnets src -j ACCEPT`, " "),
-	}
-	forwardAcceptV6Rule2 = util.IPTableRule{
-		Table: "filter",
-		Chain: "FORWARD",
-		Rule:  strings.Split(`-m set --match-set ovn60subnets dst -j ACCEPT`, " "),
-	}
-	inputAcceptV4Rule1 = util.IPTableRule{
-		Table: "filter",
-		Chain: "INPUT",
-		Rule:  strings.Split(`-m set --match-set ovn40subnets src -j ACCEPT`, " "),
-	}
-	inputAcceptV4Rule2 = util.IPTableRule{
-		Table: "filter",
-		Chain: "INPUT",
-		Rule:  strings.Split(`-m set --match-set ovn40subnets dst -j ACCEPT`, " "),
-	}
-	inputAcceptV6Rule1 = util.IPTableRule{
-		Table: "filter",
-		Chain: "INPUT",
-		Rule:  strings.Split(`-m set --match-set ovn60subnets src -j ACCEPT`, " "),
-	}
-	inputAcceptV6Rule2 = util.IPTableRule{
-		Table: "filter",
-		Chain: "INPUT",
-		Rule:  strings.Split(`-m set --match-set ovn60subnets dst -j ACCEPT`, " "),
+	v6Rules = []util.IPTableRule{
+		// This rule makes sure we don't NAT traffic within overlay network
+		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn60subnets src -m set --match-set ovn60subnets dst -j MASQUERADE`, " ")},
+		// Prevent performing Masquerade on external traffic which arrives from a Node that owns the Pod/Subnet IP
+		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn40subnets src -m set --match-set ovn60local-pod-ip-nat dst -j RETURN`, " ")},
+		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn40subnets src -m set --match-set ovn60subnets-nat dst -j RETURN`, " ")},
+		// NAT if pod/subnet to external address
+		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn60local-pod-ip-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE`, " ")},
+		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn60subnets-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE`, " ")},
+		// Input Accept
+		{Table: "filter", Chain: "FORWARD", Rule: strings.Split(`-m set --match-set ovn60subnets src -j ACCEPT`, " ")},
+		{Table: "filter", Chain: "FORWARD", Rule: strings.Split(`-m set --match-set ovn60subnets dst -j ACCEPT`, " ")},
+		// Forward Accept
+		{Table: "filter", Chain: "INPUT", Rule: strings.Split(`-m set --match-set ovn60subnets src -j ACCEPT`, " ")},
+		{Table: "filter", Chain: "INPUT", Rule: strings.Split(`-m set --match-set ovn60subnets dst -j ACCEPT`, " ")},
 	}
 )
 
@@ -117,23 +89,13 @@ func (c *Controller) runGateway() {
 	}, subnetsNeedNat)
 	c.ipset.ApplyUpdates()
 
-	var podNatRule, subnetNatRule, forward1, forward2, input1, input2 util.IPTableRule
+	var iptableRules []util.IPTableRule
 	if c.protocol == kubeovnv1.ProtocolIPv4 {
-		podNatRule = podNatV4Rule
-		subnetNatRule = subnetNatV4Rule
-		forward1 = forwardAcceptV4Rule1
-		forward2 = forwardAcceptV4Rule2
-		input1 = inputAcceptV4Rule1
-		input2 = inputAcceptV4Rule2
+		iptableRules = v4Rules
 	} else {
-		podNatRule = podNatV6Rule
-		subnetNatRule = subnetNatV6Rule
-		forward1 = forwardAcceptV6Rule1
-		forward2 = forwardAcceptV6Rule2
-		input1 = inputAcceptV6Rule1
-		input2 = inputAcceptV6Rule2
+		iptableRules = v6Rules
 	}
-	for _, iptRule := range []util.IPTableRule{forward1, forward2, podNatRule, subnetNatRule, input1, input2} {
+	for _, iptRule := range iptableRules {
 		exists, err := c.iptable.Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
 		if err != nil {
 			klog.Errorf("check iptable rule exist failed, %+v", err)

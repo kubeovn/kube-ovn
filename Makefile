@@ -96,6 +96,9 @@ kind-install-ipv6:
 kind-reload:
 	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
 	kubectl delete pod -n kube-system -l app=kube-ovn-controller
+	kubectl delete pod -n kube-system -l app=kube-ovn-cni
+	kubectl delete pod -n kube-system -l app=kube-ovn-pinger
+
 
 kind-clean:
 	kind delete cluster --name=kube-ovn
