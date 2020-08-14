@@ -26,6 +26,27 @@ func (c Client) ovnNbCommand(cmdArgs ...string) (string, error) {
 	return trimCommandOutput(raw), nil
 }
 
+func (c Client) SetAzName(azName string) error {
+	if _, err := c.ovnNbCommand("set", "NB_Global", ".", fmt.Sprintf("name=%s", azName)); err != nil {
+		return fmt.Errorf("failed to set az name, %v", err)
+	}
+	return nil
+}
+
+func (c Client) SetICAutoRoute(enable bool) error {
+	if enable {
+		if _, err := c.ovnNbCommand("set", "NB_Global", ".", "options:ic-route-adv=true", "options:ic-route-learn=true"); err != nil {
+			return fmt.Errorf("failed to enable ovn-ic auto route, %v", err)
+		}
+		return nil
+	} else {
+		if _, err := c.ovnNbCommand("set", "NB_Global", ".", "options:ic-route-adv=false", "options:ic-route-learn=false"); err != nil {
+			return fmt.Errorf("failed to disable ovn-ic auto route, %v", err)
+		}
+		return nil
+	}
+}
+
 // DeleteLogicalSwitchPort delete logical switch port in ovn
 func (c Client) DeleteLogicalSwitchPort(port string) error {
 	if _, err := c.ovnNbCommand(IfExists, "lsp-del", port); err != nil {
@@ -38,6 +59,34 @@ func (c Client) DeleteLogicalSwitchPort(port string) error {
 func (c Client) DeleteLogicalRouterPort(port string) error {
 	if _, err := c.ovnNbCommand(IfExists, "lrp-del", port); err != nil {
 		return fmt.Errorf("failed to delete logical router port %s, %v", port, err)
+	}
+	return nil
+}
+
+func (c Client) CreateICLogicalRouterPort(az, mac, subnet string, chassises []string) error {
+	if _, err := c.ovnNbCommand(MayExist, "lrp-add", c.ClusterRouter, fmt.Sprintf("%s-ts", az), mac, subnet); err != nil {
+		return fmt.Errorf("failed to crate ovn-ic lrp, %v", err)
+	}
+	if _, err := c.ovnNbCommand(MayExist, "lsp-add", "ts", fmt.Sprintf("ts-%s", az), "--",
+		"lsp-set-addresses", fmt.Sprintf("ts-%s", az), "router", "--",
+		"lsp-set-type", fmt.Sprintf("ts-%s", az), "router", "--",
+		"lsp-set-options", fmt.Sprintf("ts-%s", az), fmt.Sprintf("router-port=%s-ts", az)); err != nil {
+		return fmt.Errorf("failed to create ovn-ic lsp, %v", err)
+	}
+	for _, chassis := range chassises {
+		if _, err := c.ovnNbCommand("lrp-set-gateway-chassis", fmt.Sprintf("%s-ts", az), chassis, "100"); err != nil {
+			return fmt.Errorf("failed to set gateway chassis, %v", err)
+		}
+	}
+	return nil
+}
+
+func (c Client) DeleteICLogicalRouterPort(az string) error {
+	if err := c.DeleteLogicalRouterPort(fmt.Sprintf("%s-ts", az)); err != nil {
+		return fmt.Errorf("failed to delete ovn-ic logical router port. %v", err)
+	}
+	if err := c.DeleteLogicalSwitchPort(fmt.Sprintf("ts-%s", az)); err != nil {
+		return fmt.Errorf("failed to delete ovn-ic logical switch port. %v", err)
 	}
 	return nil
 }
@@ -184,6 +233,26 @@ func (c Client) ListLogicalSwitchPort() ([]string, error) {
 			continue
 		}
 		result = append(result, strings.TrimSpace(l))
+	}
+	return result, nil
+}
+
+func (c Client) ListRemoteLogicalSwitchPortAddress() ([]string, error) {
+	output, err := c.ovnNbCommand("--format=csv", "--data=bare", "--no-heading", "--columns=addresses", "find", "logical_switch_port", "type=remote")
+	if err != nil {
+		return nil, fmt.Errorf("failed to list ic remote addresses, %v", err)
+	}
+	lines := strings.Split(output, "\n")
+	result := make([]string, 0, len(lines))
+	for _, l := range lines {
+		if len(strings.TrimSpace(l)) == 0 {
+			continue
+		}
+		if len(strings.Split(l, " ")) != 2 {
+			continue
+		}
+		cidr := strings.Split(l, " ")[1]
+		result = append(result, strings.TrimSpace(cidr))
 	}
 	return result, nil
 }

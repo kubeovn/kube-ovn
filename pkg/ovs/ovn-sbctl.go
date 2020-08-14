@@ -36,3 +36,11 @@ func (c Client) DeleteChassis(node string) error {
 	}
 	return nil
 }
+
+func (c Client) GetChassis(node string) (string, error) {
+	output, err := c.ovnSbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=name", "find", "chassis", fmt.Sprintf("hostname=%s", node))
+	if err != nil {
+		return "", fmt.Errorf("failed to find node chassis %s, %v", node, err)
+	}
+	return strings.TrimSpace(output), nil
+}

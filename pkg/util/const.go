@@ -11,6 +11,7 @@ const (
 	GatewayAnnotation    = "ovn.kubernetes.io/gateway"
 	IpPoolAnnotation     = "ovn.kubernetes.io/ip_pool"
 	BgpAnnotation        = "ovn.kubernetes.io/bgp"
+	ICGatewayAnnotation  = "ovn.kubernetes.io/ic-gw"
 
 	PortSecurityAnnotation = "ovn.kubernetes.io/port_security"
 	NorthGatewayAnnotation = "ovn.kubernetes.io/north_gateway"

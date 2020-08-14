@@ -269,12 +269,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 
 	// start workers to do all the network operations
 	c.startWorkers(stopCh)
-
-	go wait.Until(func() {
-		if err := c.markAndCleanLSP(); err != nil {
-			klog.Errorf("gc lsp error %v", err)
-		}
-	}, 30*time.Second, stopCh)
 	<-stopCh
 	klog.Info("Shutting down workers")
 }
@@ -374,4 +368,14 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		go wait.Until(c.runDelVlanWorker, time.Second, stopCh)
 		go wait.Until(c.runUpdateVlanWorker, time.Second, stopCh)
 	}
+
+	go wait.Until(func() {
+		c.resyncInterConnection()
+	}, 30*time.Second, stopCh)
+
+	go wait.Until(func() {
+		if err := c.markAndCleanLSP(); err != nil {
+			klog.Errorf("gc lsp error %v", err)
+		}
+	}, 30*time.Second, stopCh)
 }

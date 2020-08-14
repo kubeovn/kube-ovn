@@ -21,6 +21,7 @@ The Kube-OVN community is waiting for you participation!
 - **Subnet Isolation**: Can configure a Subnet to deny any traffic from source IP addresses not within the same Subnet. Can whitelist specific IP addresses and IP ranges.
 - **Network Policy**: Implementing networking.k8s.io/NetworkPolicy API by high performance ovn ACL.
 - **Static IP Addresses for Workloads**: Allocate random or static IP addresses to workloads.
+- **Multi-Cluster Network**: Connect different clusters into one L3 network.
 - **IPAM for Multi NIC**: A cluster-wide IPAM for CNI plugins other than Kube-OVN, such as macvlan/vlan/host-device to take advantage of subnet and static ip allocation functions in Kube-OVN.
 - **Dynamic QoS**: Configure Pod/Gateway Ingress/Egress traffic rate limits on the fly.
 - **Embedded Load Balancers**: Replace kube-proxy with the OVN embedded high performance distributed L2 Load Balancer.
@@ -67,6 +68,7 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
 - [Dynamic QoS](docs/qos.md)
 - [Subnet Gateway and Direct connect](docs/subnet.md#gateway)
 - [Pod Gateway](docs/pod-gw.md)
+- [Multi-Cluster Network](docs/cluster-interconnection.md)
 - [BGP support](docs/bgp.md)
 - [Multi NIC Support](docs/multi-nic.md)
 - [Hardware Offload](docs/hw-offload.md)
@@ -82,12 +84,6 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
 We are looking forwards to your PR!
 
 - [Development Guide](docs/development.md)
-
-## Companies using Kube-OVN
-
-Not in the list? Open a pull request and add yourself!
-
-- [Alauda](http://www.alauda.cn/)
 
 ## Kube-OVN vs. Other CNI Implementation
 
