@@ -1,22 +1,27 @@
 package util
 
 import (
+	"crypto/rand"
 	"fmt"
 	"math"
 	"math/big"
-	"math/rand"
 	"net"
 	"strings"
-	"time"
 
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
+	"k8s.io/klog"
 )
 
 // GenerateMac generates mac address.
 func GenerateMac() string {
 	prefix := "00:00:00"
-	newRand := rand.New(rand.NewSource(time.Now().UnixNano()))
-	mac := fmt.Sprintf("%s:%02X:%02X:%02X", prefix, newRand.Intn(255), newRand.Intn(255), newRand.Intn(255))
+	b := make([]byte, 3)
+	_, err := rand.Read(b)
+	if err != nil {
+		klog.Errorf("generate mac error: %v", err)
+	}
+
+	mac := fmt.Sprintf("%s:%02X:%02X:%02X", prefix, b[0], b[1], b[2])
 	return mac
 }
 
