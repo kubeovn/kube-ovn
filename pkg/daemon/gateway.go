@@ -113,6 +113,9 @@ func (c *Controller) runGateway() {
 	if err := c.setGatewayBandwidth(); err != nil {
 		klog.Errorf("failed to set gw bandwidth, %v", err)
 	}
+	if err := c.setICGateway(); err != nil {
+		klog.Errorf("failed to set ic gateway, %v", err)
+	}
 
 	c.appendMssRule()
 }
@@ -126,6 +129,25 @@ func (c *Controller) setGatewayBandwidth() error {
 	ingress, egress := node.Annotations[util.IngressRateAnnotation], node.Annotations[util.EgressRateAnnotation]
 	ifaceId := fmt.Sprintf("node-%s", c.config.NodeName)
 	return ovs.SetInterfaceBandwidth(ifaceId, egress, ingress)
+}
+
+func (c *Controller) setICGateway() error {
+	node, err := c.config.KubeClient.CoreV1().Nodes().Get(c.config.NodeName, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("failed to get node, %v", err)
+		return err
+	}
+	enable := node.Labels[util.ICGatewayAnnotation]
+	if enable == "true" {
+		if _, err := ovs.Exec("set", "open_vswitch", ".", "external_ids:ovn-is-interconn=true"); err != nil {
+			return fmt.Errorf("failed to enable ic gateway, %v", err)
+		}
+	} else {
+		if _, err := ovs.Exec("set", "open_vswitch", ".", "external_ids:ovn-is-interconn=false"); err != nil {
+			return fmt.Errorf("failed to disable ic gateway, %v", err)
+		}
+	}
+	return nil
 }
 
 func (c *Controller) getLocalPodIPsNeedNAT(protocol string) ([]string, error) {

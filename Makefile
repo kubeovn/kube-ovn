@@ -99,7 +99,6 @@ kind-reload:
 	kubectl delete pod -n kube-system -l app=kube-ovn-cni
 	kubectl delete pod -n kube-system -l app=kube-ovn-pinger
 
-
 kind-clean:
 	kind delete cluster --name=kube-ovn
 

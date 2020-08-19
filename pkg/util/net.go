@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/big"
 	"net"
+	"strconv"
 	"strings"
 
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
@@ -123,4 +124,16 @@ func AddressCount(network *net.IPNet) float64 {
 		return 0
 	}
 	return math.Pow(2, float64(bits-prefixLen)) - 2
+}
+
+func GenerateRandomV4IP(cidr string) string {
+	ip := strings.Split(cidr, "/")[0]
+	netMask, _ := strconv.Atoi(strings.Split(cidr, "/")[1])
+	hostNum := 32 - netMask
+	add, err := rand.Int(rand.Reader, big.NewInt(1<<(uint(hostNum)-1)))
+	if err != nil {
+		klog.Fatalf("failed to generate random ip, %v", err)
+	}
+	t := big.NewInt(0).Add(Ip2BigInt(ip), add)
+	return fmt.Sprintf("%s/%d", BigInt2Ip(t), netMask)
 }

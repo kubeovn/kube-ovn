@@ -15,6 +15,7 @@ type Client struct {
 	OvnNbAddress           string
 	OvnTimeout             int
 	OvnSbAddress           string
+	OVNIcNBAddress         string
 	ClusterRouter          string
 	ClusterTcpLoadBalancer string
 	ClusterUdpLoadBalancer string
@@ -25,6 +26,7 @@ type Client struct {
 const (
 	OvnNbCtl    = "ovn-nbctl"
 	OvnSbCtl    = "ovn-sbctl"
+	OVNIcNbCtl  = "ovn-ic-nbctl"
 	MayExist    = "--may-exist"
 	IfExists    = "--if-exists"
 	Policy      = "--policy"
