@@ -122,7 +122,7 @@ func NewController(config *Configuration) *Controller {
 
 	controller := &Controller{
 		config:    config,
-		ovnClient: ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.OvnTimeout, config.OvnSbHost, config.OvnSbPort, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
+		ovnClient: ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.OvnTimeout, config.OvnSbHost, config.OvnSbPort, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
 		ipam:      ovnipam.NewIPAM(),
 
 		subnetsLister:           subnetInformer.Lister(),

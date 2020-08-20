@@ -181,6 +181,16 @@ func (c Client) CreateLogicalSwitch(ls, protocol, subnet, gateway string, exclud
 			klog.Errorf("failed to add cluster udp lb to %s, %v", ls, err)
 			return err
 		}
+
+		if err := c.addLoadBalancerToLogicalSwitch(c.ClusterTcpSessionLoadBalancer, ls); err != nil {
+			klog.Errorf("failed to add cluster tcp session lb to %s, %v", ls, err)
+			return err
+		}
+
+		if err := c.addLoadBalancerToLogicalSwitch(c.ClusterUdpSessionLoadBalancer, ls); err != nil {
+			klog.Errorf("failed to add cluster udp lb to %s, %v", ls, err)
+			return err
+		}
 	}
 
 	return nil
