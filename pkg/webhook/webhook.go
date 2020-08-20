@@ -56,7 +56,7 @@ func NewValidatingHook(c cache.Cache, opt *WebhookOptions) (*ValidatingHook, err
 
 	v := &ValidatingHook{
 		kubeclientset: kubeClient,
-		ovnClient:     ovs.NewClient(opt.OvnNbHost, opt.OvnNbPort, opt.OvnNbTimeout, "", 0, "", "", "", "", ""),
+		ovnClient:     ovs.NewClient(opt.OvnNbHost, opt.OvnNbPort, opt.OvnNbTimeout, "", 0, "", "", "", "", "", "", ""),
 		opt:           opt,
 		cache:         c,
 	}

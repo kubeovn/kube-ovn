@@ -12,15 +12,17 @@ var (
 
 // Client is the ovn client
 type Client struct {
-	OvnNbAddress           string
-	OvnTimeout             int
-	OvnSbAddress           string
-	OVNIcNBAddress         string
-	ClusterRouter          string
-	ClusterTcpLoadBalancer string
-	ClusterUdpLoadBalancer string
-	NodeSwitch             string
-	NodeSwitchCIDR         string
+	OvnNbAddress                  string
+	OvnTimeout                    int
+	OvnSbAddress                  string
+	OVNIcNBAddress                string
+	ClusterRouter                 string
+	ClusterTcpLoadBalancer        string
+	ClusterUdpLoadBalancer        string
+	ClusterTcpSessionLoadBalancer string
+	ClusterUdpSessionLoadBalancer string
+	NodeSwitch                    string
+	NodeSwitchCIDR                string
 }
 
 const (
@@ -35,15 +37,17 @@ const (
 )
 
 // NewClient init an ovn client
-func NewClient(ovnNbHost string, ovnNbPort int, ovnNbTimeout int, ovnSbHost string, ovnSbPort int, clusterRouter, clusterTcpLoadBalancer, clusterUdpLoadBalancer, nodeSwitch, nodeSwitchCIDR string) *Client {
+func NewClient(ovnNbHost string, ovnNbPort int, ovnNbTimeout int, ovnSbHost string, ovnSbPort int, clusterRouter, clusterTcpLoadBalancer, clusterUdpLoadBalancer, clusterTcpSessionLoadBalancer, clusterUdpSessionLoadBalancer, nodeSwitch, nodeSwitchCIDR string) *Client {
 	return &Client{
-		OvnNbAddress:           fmt.Sprintf("tcp:%s:%d", ovnNbHost, ovnNbPort),
-		OvnSbAddress:           fmt.Sprintf("tcp:%s:%d", ovnSbHost, ovnSbPort),
-		OvnTimeout:             ovnNbTimeout,
-		ClusterRouter:          clusterRouter,
-		ClusterTcpLoadBalancer: clusterTcpLoadBalancer,
-		ClusterUdpLoadBalancer: clusterUdpLoadBalancer,
-		NodeSwitch:             nodeSwitch,
-		NodeSwitchCIDR:         nodeSwitchCIDR,
+		OvnNbAddress:                  fmt.Sprintf("tcp:%s:%d", ovnNbHost, ovnNbPort),
+		OvnSbAddress:                  fmt.Sprintf("tcp:%s:%d", ovnSbHost, ovnSbPort),
+		OvnTimeout:                    ovnNbTimeout,
+		ClusterRouter:                 clusterRouter,
+		ClusterTcpLoadBalancer:        clusterTcpLoadBalancer,
+		ClusterUdpLoadBalancer:        clusterUdpLoadBalancer,
+		ClusterTcpSessionLoadBalancer: clusterTcpSessionLoadBalancer,
+		ClusterUdpSessionLoadBalancer: clusterUdpSessionLoadBalancer,
+		NodeSwitch:                    nodeSwitch,
+		NodeSwitchCIDR:                nodeSwitchCIDR,
 	}
 }
