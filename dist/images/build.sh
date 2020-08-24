@@ -31,8 +31,9 @@ cd ovn
 
 # kube-ovn related patches
 curl https://github.com/alauda/ovn/commit/1aa47202c3e09f610ebefe00ab23a0723059bbf3.patch | git apply
+curl https://github.com/alauda/ovn/commit/b75eb1f231da55d1b8a29f386dc56234e2eb9d35.patch | git apply
 
-sed -i 's/20.06.2/20.06.1/g' configure.ac
+sed -i 's/20.06.3/20.06.2/g' configure.ac
 ./boot.sh
 if [ "$ARCH" = "amd64" ]; then
   ./configure LIBS=-ljemalloc --with-ovs-source=/ovs CFLAGS="-O2 -g -msse4.2 -mpopcnt"
