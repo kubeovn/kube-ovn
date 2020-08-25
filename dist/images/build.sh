@@ -11,11 +11,11 @@ echo "/usr/local/lib" > /etc/ld.so.conf.d/other.conf
 /sbin/ldconfig
 cd ..
 
-git clone -b branch-2.13 --depth=1 https://github.com/openvswitch/ovs.git
+git clone -b branch-2.14 --depth=1 https://github.com/openvswitch/ovs.git
 cd ovs
 # change compact interval to reduce resource usage
 curl https://github.com/alauda/ovs/commit/238003290766808ba310e1875157b3d414245603.patch | git apply
-sed -i 's/2.13.2/2.13.1/g' configure.ac
+sed -i 's/2.14.1/2.14.0/g' configure.ac
 sed -i 's/sphinx-build-3/sphinx-build/g' rhel/openvswitch-fedora.spec.in
 ./boot.sh
 if [ "$ARCH" = "amd64" ]; then
