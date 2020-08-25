@@ -17,7 +17,6 @@ var lastNoPodLSP map[string]bool
 
 func (c *Controller) gc() error {
 	gcFunctions := []func() error{
-		c.gcLogicalSwitch,
 		c.gcNode,
 		c.gcLogicalSwitch,
 		c.gcLogicalSwitchPort,
