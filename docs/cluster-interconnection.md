@@ -26,8 +26,8 @@ data:
   az-name: "az1"                # AZ name for cluster, every cluster should be different
   ic-db-host: "192.168.65.3"    # The Interconnection Controller host IP address
   ic-nb-port: "6645"            # The ic-nb port, default 6645
-  ic-sb-port: "6646"            # The ic-sb port, default 6645
-  gw-nodes: "az1-gw"   # The node name which acts as the interconnection gateway
+  ic-sb-port: "6646"            # The ic-sb port, default 6646
+  gw-nodes: "az1-gw"            # The node name which acts as the interconnection gateway
   auto-route: "true"            # Auto announce route to all clusters. If set false, you can select announced routes later manually
 ```
 

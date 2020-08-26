@@ -73,39 +73,76 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
 ### Controller Configuration
 
 ```bash
-    # Default Logical Switch
-    --default-ls: The default logical switch name, default: ovn-default
-    --default-cidr: Default CIDR for Namespaces with no logical switch annotation, default: 10.16.0.0/16
-    --default-gateway: Default gateway for default-cidr, default the first ip in default-cidr
-    --default-exclude-ips: Exclude ips in default switch, default equals to gateway address
-
-    # Node Switch
-    --node-switch: The name of node gateway switch which help node to access pod network, default: join
-    --node-switch-cidr: The cidr for node switch, default: 100.64.0.0/16
-    --node-switch-gateway: The gateway for node switch, default the first ip in node-switch-cidr
-
-    # LoadBalancer
-    --cluster-tcp-loadbalancer: The name for cluster tcp loadbalancer, default cluster-tcp-loadbalancer
-    --cluster-udp-loadbalancer: The name for cluster udp loadbalancer, default cluster-udp-loadbalancer
-
-    # Router
-    --cluster-router: The router name for cluster router, default: ovn-cluster
-
-    # Misc
-    --worker-num: The parallelism of each worker, default: 3
-    --kubeconfig: Path to kubeconfig file with authorization and master location information. If not set use the inCluster token
+      --add_dir_header                            If true, adds the file directory to the header
+      --alsologtostderr                           log to standard error as well as files
+      --cluster-router string                     The router name for cluster router, default: ovn-cluster (default "ovn-cluster")
+      --cluster-tcp-loadbalancer string           The name for cluster tcp loadbalancer (default "cluster-tcp-loadbalancer")
+      --cluster-tcp-session-loadbalancer string   The name for cluster tcp session loadbalancer (default "cluster-tcp-session-loadbalancer")
+      --cluster-udp-loadbalancer string           The name for cluster udp loadbalancer (default "cluster-udp-loadbalancer")
+      --cluster-udp-session-loadbalancer string   The name for cluster udp session loadbalancer (default "cluster-udp-session-loadbalancer")
+      --default-cidr string                       Default CIDR for namespace with no logical switch annotation, default: 10.16.0.0/16 (default "10.16.0.0/16")
+      --default-exclude-ips string                Exclude ips in default switch, default equals to gateway address
+      --default-gateway string                    Default gateway for default-cidr, default the first ip in default-cidr
+      --default-interface-name string             The default host interface name in the vlan/xvlan type
+      --default-ls string                         The default logical switch name, default: ovn-default (default "ovn-default")
+      --default-provider-name string              The vlan or xvlan type default provider interface name, default: provider (default "provider")
+      --default-vlan-id int                       The default vlan id, default: 1 (default 1)
+      --default-vlan-name string                  The default vlan name, default: ovn-vlan (default "ovn-vlan")
+      --default-vlan-range string                 The default vlan range, default: 1-4095 (default "1,4095")
+      --kubeconfig string                         Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.
+      --log_backtrace_at traceLocation            when logging hits line file:N, emit a stack trace (default :0)
+      --log_dir string                            If non-empty, write log files in this directory
+      --log_file string                           If non-empty, use this log file
+      --log_file_max_size uint                    Defines the maximum size a log file can grow to. Unit is megabytes. If the value is 0, the maximum file size is unlimited. (default 1800)
+      --logtostderr                               log to standard error instead of files (default true)
+      --network-type string                       The ovn network type, default: geneve (default "geneve")
+      --node-switch string                        The name of node gateway switch which help node to access pod network, default: join (default "join")
+      --node-switch-cidr string                   The cidr for node switch, default: 100.64.0.0/16 (default "100.64.0.0/16")
+      --node-switch-gateway string                The gateway for node switch, default the first ip in node-switch-cidr
+      --ovn-nb-host string                        The ovn-nb host address. (If not set use ovn-nb-socket) (default "0.0.0.0")
+      --ovn-nb-port int                            (default 6641)
+      --ovn-nb-socket string                      The ovn-nb socket file. (If not set use ovn-nb-address)
+      --ovn-sb-host string                        The ovn-sb host address. (default "0.0.0.0")
+      --ovn-sb-port int                            (default 6642)
+      --ovn-timeout int                            (default 30)
+      --pprof-port int                            The port to get profiling data, default 10660 (default 10660)
+      --skip_headers                              If true, avoid header prefixes in the log messages
+      --skip_log_headers                          If true, avoid headers when opening log files
+      --stderrthreshold severity                  logs at or above this threshold go to stderr (default 2)
+  -v, --v Level                                   number for the log level verbosity
+      --vmodule moduleSpec                        comma-separated list of pattern=N settings for file-filtered logging
+      --worker-num int                            The parallelism of each worker, default: 3 (default 3)
 ```
 
 ### Daemon Configuration
 
 ```bash
-    --iface: The iface used to inter-host pod communication, default: the default route iface
-    --mtu: The MTU used by pod iface, default: iface MTU - 100
-    --enable-mirror: Enable traffic mirror, default: false
-    --mirror-iface: The mirror nic name that will be created by kube-ovn, default: mirror0
-    --service-cluster-ip-range: The kubernetes service cluster ip range, default: 10.96.0.0/12
-    --encap-checksum: Enable encapsulation checksums, default: true
-    --kubeconfig: Path to kubeconfig file with authorization and master location information. If not set use the inCluster token
+      --add_dir_header                    If true, adds the file directory to the header
+      --alsologtostderr                   log to standard error as well as files
+      --bind-socket string                The socket daemon bind to. (default "/var/run/cniserver.sock")
+      --default-interface-name string     The default host interface name in the vlan/xvlan type
+      --default-provider-name string      The vlan or xvlan type default provider interface name, default: provider (default "provider")
+      --enable-mirror                     Enable traffic mirror, default: false
+      --encap-checksum                    Enable checksum, default: true (default true)
+      --iface string                      The iface used to inter-host pod communication, default: the default route iface
+      --kubeconfig string                 Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.
+      --log_backtrace_at traceLocation    when logging hits line file:N, emit a stack trace (default :0)
+      --log_dir string                    If non-empty, write log files in this directory
+      --log_file string                   If non-empty, use this log file
+      --log_file_max_size uint            Defines the maximum size a log file can grow to. Unit is megabytes. If the value is 0, the maximum file size is unlimited. (default 1800)
+      --logtostderr                       log to standard error instead of files (default true)
+      --mirror-iface string               The mirror nic name that will be created by kube-ovn, default: mirror0 (default "mirror0")
+      --mtu int                           The MTU used by pod iface, default: iface MTU - 55
+      --network-type string               The ovn network type, default: geneve (default "geneve")
+      --node-local-dns-ip string          If use nodelocaldns the local dns server ip should be set here, default empty.
+      --ovs-socket string                 The socket to local ovs-server
+      --pprof-port int                    The port to get profiling data, default: 10665 (default 10665)
+      --service-cluster-ip-range string   The kubernetes service cluster ip range, default: 10.96.0.0/12 (default "10.96.0.0/12")
+      --skip_headers                      If true, avoid header prefixes in the log messages
+      --skip_log_headers                  If true, avoid headers when opening log files
+      --stderrthreshold severity          logs at or above this threshold go to stderr (default 2)
+  -v, --v Level                           number for the log level verbosity
+      --vmodule moduleSpec                comma-separated list of pattern=N settings for file-filtered logging
 ```
 
 ## To uninstall
