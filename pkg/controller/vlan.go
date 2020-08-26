@@ -302,19 +302,6 @@ func (c *Controller) handleDelVlan(key string) error {
 
 func (c *Controller) addLocalnet(subnet *kubeovnv1.Subnet) error {
 	localnetPort := ovs.PodNameToLocalnetName(subnet.Name)
-	ports, err := c.ovnClient.ListLogicalSwitchPort()
-	if err != nil {
-		klog.Errorf("failed list logical switch port, %v", err)
-		return err
-	}
-
-	for _, port := range ports {
-		if port == localnetPort {
-			klog.Infof("localnet port %s exists", localnetPort)
-			return nil
-		}
-	}
-
 	vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
 	if err != nil {
 		klog.Errorf("failed get vlan object %v", err)
