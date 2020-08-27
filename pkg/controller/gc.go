@@ -100,6 +100,7 @@ func (c *Controller) gcNode() error {
 }
 
 func (c *Controller) gcLogicalSwitchPort() error {
+	klog.Info("start to gc logical switch port")
 	if err := c.markAndCleanLSP(); err != nil {
 		return err
 	}
@@ -108,7 +109,7 @@ func (c *Controller) gcLogicalSwitchPort() error {
 }
 
 func (c *Controller) markAndCleanLSP() error {
-	klog.Infof("start to gc logical switch ports")
+	klog.V(4).Infof("start to gc logical switch ports")
 	pods, err := c.podsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list ip, %v", err)

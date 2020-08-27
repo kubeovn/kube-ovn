@@ -14,7 +14,11 @@ func (c Client) ovnSbCommand(cmdArgs ...string) (string, error) {
 	cmdArgs = append([]string{fmt.Sprintf("--timeout=%d", c.OvnTimeout), fmt.Sprintf("--db=%s", c.OvnSbAddress)}, cmdArgs...)
 	raw, err := exec.Command(OvnSbCtl, cmdArgs...).CombinedOutput()
 	elapsed := float64((time.Since(start)) / time.Millisecond)
-	klog.Infof("%s command %s in %vms", OvnSbCtl, strings.Join(cmdArgs, " "), elapsed)
+	klog.V(4).Infof("%s command %s in %vms", OvnSbCtl, strings.Join(cmdArgs, " "), elapsed)
+	if err != nil || elapsed > 500 {
+		klog.Warning("ovn-sbctl command error or took too long")
+		klog.Warningf("%s %s in %vms", OvnSbCtl, strings.Join(cmdArgs, " "), elapsed)
+	}
 	if err != nil {
 		return "", fmt.Errorf("%s, %q", raw, err)
 	}
