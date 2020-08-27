@@ -330,6 +330,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		go wait.Until(c.runDeleteNodeWorker, time.Second, stopCh)
 	}
 	for {
+		flag := false
 		time.Sleep(3 * time.Second)
 		nodes, err := c.nodesLister.List(labels.Everything())
 		if err != nil {
@@ -338,10 +339,12 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		for _, node := range nodes {
 			if node.Annotations[util.AllocatedAnnotation] != "true" {
 				klog.Infof("wait node %s annotation ready", node.Name)
-				continue
+				flag = true
 			}
 		}
-		break
+		if flag == false {
+			break
+		}
 	}
 
 	// run in a single worker to avoid subnet cidr conflict
