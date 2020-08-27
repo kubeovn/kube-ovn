@@ -330,7 +330,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		go wait.Until(c.runDeleteNodeWorker, time.Second, stopCh)
 	}
 	for {
-		flag := false
+		notReady := false
 		time.Sleep(3 * time.Second)
 		nodes, err := c.nodesLister.List(labels.Everything())
 		if err != nil {
@@ -339,10 +339,10 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		for _, node := range nodes {
 			if node.Annotations[util.AllocatedAnnotation] != "true" {
 				klog.Infof("wait node %s annotation ready", node.Name)
-				flag = true
+				notReady = true
 			}
 		}
-		if flag == false {
+		if notReady == false {
 			break
 		}
 	}
