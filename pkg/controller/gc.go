@@ -2,6 +2,9 @@ package controller
 
 import (
 	"fmt"
+	"strings"
+	"time"
+
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"github.com/alauda/kube-ovn/pkg/util"
 	corev1 "k8s.io/api/core/v1"
@@ -9,8 +12,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
-	"strings"
-	"time"
 )
 
 var lastNoPodLSP map[string]bool
@@ -182,9 +183,9 @@ func (c *Controller) gcLoadBalancer() error {
 				}
 			} else {
 				if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
-					tcpSessionVips = append(udpSessionVips, fmt.Sprintf("%s:%d", ip, port.Port))
+					udpSessionVips = append(udpSessionVips, fmt.Sprintf("%s:%d", ip, port.Port))
 				} else {
-					tcpVips = append(udpVips, fmt.Sprintf("%s:%d", ip, port.Port))
+					udpVips = append(udpVips, fmt.Sprintf("%s:%d", ip, port.Port))
 				}
 			}
 		}
