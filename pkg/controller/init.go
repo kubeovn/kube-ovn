@@ -41,7 +41,7 @@ func (c *Controller) InitOVN() error {
 	return nil
 }
 
-// InitDefaultLogicalSwitch int the default logical switch for ovn network
+// InitDefaultLogicalSwitch init the default logical switch for ovn network
 func (c *Controller) initDefaultLogicalSwitch() error {
 	_, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(c.config.DefaultLogicalSwitch, v1.GetOptions{})
 	if err == nil {
