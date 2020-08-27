@@ -198,21 +198,19 @@ func (c Client) CreateLogicalSwitch(ls, protocol, subnet, gateway string, exclud
 
 // ListLogicalSwitch list logical switch names
 func (c Client) ListLogicalSwitch() ([]string, error) {
-	output, err := c.ovnNbCommand("ls-list")
+	output, err := c.ovnNbCommand("--format=csv", "--data=bare", "--no-heading", "--columns=name", "find", "logical_switch")
 	if err != nil {
 		klog.Errorf("failed to list logical switch %v", err)
 		return nil, err
 	}
-
 	lines := strings.Split(output, "\n")
 	result := make([]string, 0, len(lines))
 	for _, l := range lines {
-		if len(l) == 0 || !strings.Contains(l, " ") {
-			continue
+
+		l = strings.TrimSpace(l)
+		if len(l) > 0 {
+			result = append(result, l)
 		}
-		tmp := strings.Split(l, " ")[1]
-		tmp = strings.Trim(tmp, "()")
-		result = append(result, tmp)
 	}
 	return result, nil
 }

@@ -51,6 +51,9 @@ func (c *Controller) gcLogicalSwitch() error {
 	klog.Infof("ls in ovn %v", lss)
 	klog.Infof("subnet in kubernetes %v", subnetNames)
 	for _, ls := range lss {
+		if ls == "ts" {
+			continue
+		}
 		if !util.IsStringIn(ls, subnetNames) {
 			klog.Infof("gc subnet %s", ls)
 			if err := c.handleDeleteSubnet(ls); err != nil {
