@@ -13,7 +13,11 @@ func (c Client) ovnIcNbCommand(cmdArgs ...string) (string, error) {
 	cmdArgs = append([]string{fmt.Sprintf("--timeout=%d", c.OvnTimeout), fmt.Sprintf("--db=tcp:%s", c.OVNIcNBAddress)}, cmdArgs...)
 	raw, err := exec.Command(OVNIcNbCtl, cmdArgs...).CombinedOutput()
 	elapsed := float64((time.Since(start)) / time.Millisecond)
-	klog.Infof("%s command %s in %vms", OVNIcNbCtl, strings.Join(cmdArgs, " "), elapsed)
+	klog.V(4).Infof("%s command %s in %vms", OVNIcNbCtl, strings.Join(cmdArgs, " "), elapsed)
+	if err != nil || elapsed > 500 {
+		klog.Warning("ovn-ic-nbctl command error or took too long")
+		klog.Warningf("%s %s in %vms", OVNIcNbCtl, strings.Join(cmdArgs, " "), elapsed)
+	}
 	if err != nil {
 		return "", fmt.Errorf("%s, %q", raw, err)
 	}

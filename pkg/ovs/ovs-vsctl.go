@@ -17,7 +17,11 @@ func Exec(args ...string) (string, error) {
 	args = append([]string{"--timeout=30"}, args...)
 	output, err := exec.Command("ovs-vsctl", args...).CombinedOutput()
 	elapsed := float64((time.Since(start)) / time.Millisecond)
-	klog.Infof("command ovs-vsctl %s in %vms", strings.Join(args, " "), elapsed)
+	klog.V(4).Infof("command ovs-vsctl %s in %vms", strings.Join(args, " "), elapsed)
+	if err != nil || elapsed > 500 {
+		klog.Warning("ovs-vsctl command error or took too long")
+		klog.Warningf("ovs-vsctl %s in %vms", strings.Join(args, " "), elapsed)
+	}
 	if err != nil {
 		return "", fmt.Errorf("failed to run 'ovs-vsctl %s': %v\n  %q", strings.Join(args, " "), err, output)
 	}
