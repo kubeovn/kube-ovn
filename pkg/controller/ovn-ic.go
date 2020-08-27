@@ -205,15 +205,14 @@ func (c *Controller) startOVNIC(icHost, icNbPort, icSbPort string) error {
 }
 
 func (c *Controller) waitTsReady() error {
-	lss, err := c.ovnClient.ListLogicalSwitch()
-	if err != nil {
-		klog.Errorf("failed to list logical switch, %v", err)
-		return err
-	}
-
 	retry := 6
 	for retry > 0 {
-		if util.ContainsString(lss, "ts") {
+		exists, err := c.ovnClient.LogicalSwitchExists("ts")
+		if err != nil {
+			klog.Errorf("failed to list logical switch, %v", err)
+			return err
+		}
+		if exists {
 			return nil
 		}
 		klog.Info("wait for ts logical switch ready")
