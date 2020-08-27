@@ -231,7 +231,7 @@ func (c Client) LogicalSwitchExists(logicalSwitch string) (bool, error) {
 }
 
 func (c Client) ListLogicalSwitchPort() ([]string, error) {
-	output, err := c.ovnNbCommand("--format=csv", "--data=bare", "--no-heading", "--columns=name", "find", "logical_switch_port", "type!=router")
+	output, err := c.ovnNbCommand("--format=csv", "--data=bare", "--no-heading", "--columns=name", "find", "logical_switch_port", "type=\"\"")
 	if err != nil {
 		klog.Errorf("failed to list logical switch port, %v", err)
 		return nil, err
