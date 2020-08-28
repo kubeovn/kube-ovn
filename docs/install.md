@@ -1,6 +1,5 @@
 # Installation
 
-
 Kube-OVN includes two parts:
 - Native OVS and OVN components
 - Controller and CNI plugins that integrate OVN with Kubernetes
@@ -22,7 +21,11 @@ Kube-OVN provides a one script install to easily install a high-available, produ
 
 1. Download the installer scripts
 
+For Kubernetes version>=1.16
 `wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.3/dist/images/install.sh`
+
+For Kubernetes version<1.16
+`wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.3/dist/images/install-pre-1.16.sh`
 
 2. Use vim to edit the script variables to meet your requirement
 ```bash

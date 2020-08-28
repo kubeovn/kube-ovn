@@ -1,17 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+IPv6=${IPv6:-false}
+
 REGISTRY="kubeovn"
 NAMESPACE="kube-system"                # The ns to deploy kube-ovn
 POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
-EXCLUDE_IPS=""                         # EXCLUDE_IPS for default subnet
 SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR
 JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
+PINGER_EXTERNAL_ADDRESS="114.114.114.114"  # Pinger check external ip probe
+PINGER_EXTERNAL_DOMAIN="alauda.cn"         # Pinger check external domain probe
+if [ "$IPv6" = "true" ]; then
+  POD_CIDR="fd00:10:16::/64"                # Do NOT overlap with NODE/SVC/JOIN CIDR
+  SVC_CIDR="fd00:10:96::/112"                # Do NOT overlap with NODE/POD/JOIN CIDR
+  JOIN_CIDR="fd00:100:64::/64"              # Do NOT overlap with NODE/POD/SVC CIDR
+  PINGER_EXTERNAL_ADDRESS="2400:3200::1"
+  PINGER_EXTERNAL_DOMAIN="google.com"
+fi
+
+EXCLUDE_IPS=""                         # EXCLUDE_IPS for default subnet
 LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
 IFACE=""                               # The nic to support container network, if empty will use the nic that the default route use
 NETWORK_TYPE="geneve"                  # geneve or vlan
 VERSION="v1.4.0"
 IMAGE_PULL_POLICY="IfNotPresent"
+HW_OFFLOAD="false"
 
 # VLAN Config only take effect when NETWORK_TYPE is vlan
 PROVIDER_NAME="provider"
@@ -396,6 +409,7 @@ spec:
                 - sh
                 - /kube-ovn/ovn-is-leader.sh
             periodSeconds: 3
+            timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
@@ -404,6 +418,7 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 7
             failureThreshold: 5
+            timeoutSeconds: 45
       nodeSelector:
         kubernetes.io/os: "linux"
         kube-ovn/role: "master"
@@ -461,7 +476,7 @@ spec:
       hostPID: true
       containers:
         - name: openvswitch
-          image: "kubeovn/kube-ovn-dpdk:$DPDK_VERSION"
+          image: "kubeovn/kube-ovn-dpdk:$DPDK_VERSION-$VERSION"
           imagePullPolicy: $IMAGE_PULL_POLICY
           command: ["/kube-ovn/start-ovs-dpdk.sh"]
           securityContext:
@@ -501,6 +516,7 @@ spec:
                 - sh
                 - /kube-ovn/ovs-dpdk-healthcheck.sh
             periodSeconds: 5
+            timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
@@ -509,6 +525,7 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 5
             failureThreshold: 5
+            timeoutSeconds: 45
           resources:
             requests:
               cpu: 500m
@@ -757,6 +774,7 @@ spec:
                 - sh
                 - /kube-ovn/ovn-is-leader.sh
             periodSeconds: 3
+            timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
@@ -765,6 +783,7 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 7
             failureThreshold: 5
+            timeoutSeconds: 45
       nodeSelector:
         kubernetes.io/os: "linux"
         kube-ovn/role: "master"
@@ -832,6 +851,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            - name: HW_OFFLOAD
+              value: "$HW_OFFLOAD"
           volumeMounts:
             - mountPath: /lib/modules
               name: host-modules
@@ -857,6 +878,7 @@ spec:
                 - sh
                 - /kube-ovn/ovs-healthcheck.sh
             periodSeconds: 5
+            timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
@@ -865,6 +887,7 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 5
             failureThreshold: 5
+            timeoutSeconds: 45
           resources:
             requests:
               cpu: 200m
@@ -982,6 +1005,7 @@ spec:
                 - sh
                 - /kube-ovn/kube-ovn-controller-healthcheck.sh
             periodSeconds: 3
+            timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
@@ -990,6 +1014,7 @@ spec:
             initialDelaySeconds: 300
             periodSeconds: 7
             failureThreshold: 5
+            timeoutSeconds: 45
       nodeSelector:
         kubernetes.io/os: "linux"
 
@@ -1138,7 +1163,7 @@ spec:
       containers:
         - name: pinger
           image: "$REGISTRY/kube-ovn:$VERSION"
-          command: ["/kube-ovn/kube-ovn-pinger", "--external-address=114.114.114.114", "--external-dns=alauda.cn"]
+          command: ["/kube-ovn/kube-ovn-pinger", "--external-address=$PINGER_EXTERNAL_ADDRESS", "--external-dns=$PINGER_EXTERNAL_DOMAIN"]
           imagePullPolicy: $IMAGE_PULL_POLICY
           securityContext:
             runAsUser: 0
