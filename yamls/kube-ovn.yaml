@@ -66,6 +66,7 @@ spec:
                 - sh
                 - /kube-ovn/kube-ovn-controller-healthcheck.sh
             periodSeconds: 3
+            timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
@@ -74,6 +75,7 @@ spec:
             initialDelaySeconds: 300
             periodSeconds: 7
             failureThreshold: 5
+            timeoutSeconds: 45
       nodeSelector:
         kubernetes.io/os: "linux"
 

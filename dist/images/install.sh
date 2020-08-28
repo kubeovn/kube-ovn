@@ -524,6 +524,7 @@ spec:
                 - sh
                 - /kube-ovn/ovn-is-leader.sh
             periodSeconds: 3
+            timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
@@ -532,6 +533,7 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 7
             failureThreshold: 5
+            timeoutSeconds: 45
       nodeSelector:
         kubernetes.io/os: "linux"
         kube-ovn/role: "master"
@@ -629,6 +631,7 @@ spec:
                 - sh
                 - /kube-ovn/ovs-dpdk-healthcheck.sh
             periodSeconds: 5
+            timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
@@ -637,6 +640,7 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 5
             failureThreshold: 5
+            timeoutSeconds: 45
           resources:
             requests:
               cpu: 500m
@@ -885,6 +889,7 @@ spec:
                 - sh
                 - /kube-ovn/ovn-is-leader.sh
             periodSeconds: 3
+            timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
@@ -893,6 +898,7 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 7
             failureThreshold: 5
+            timeoutSeconds: 45
       nodeSelector:
         kubernetes.io/os: "linux"
         kube-ovn/role: "master"
@@ -987,6 +993,7 @@ spec:
                 - sh
                 - /kube-ovn/ovs-healthcheck.sh
             periodSeconds: 5
+            timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
@@ -995,6 +1002,7 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 5
             failureThreshold: 5
+            timeoutSeconds: 45
           resources:
             requests:
               cpu: 200m
@@ -1112,6 +1120,7 @@ spec:
                 - sh
                 - /kube-ovn/kube-ovn-controller-healthcheck.sh
             periodSeconds: 3
+            timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
@@ -1120,6 +1129,7 @@ spec:
             initialDelaySeconds: 300
             periodSeconds: 7
             failureThreshold: 5
+            timeoutSeconds: 45
       nodeSelector:
         kubernetes.io/os: "linux"
 
