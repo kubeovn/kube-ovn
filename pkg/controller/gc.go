@@ -301,6 +301,7 @@ func (c *Controller) gcPortGroup() error {
 }
 
 func (c *Controller) gcStaticRoute() error {
+	klog.Infof("start to gc static routes")
 	routes, err := c.ovnClient.ListStaticRoute()
 	if err != nil {
 		klog.Errorf("failed to list static route %v", err)
