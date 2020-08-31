@@ -14,7 +14,7 @@ cd ..
 git clone -b branch-2.14 --depth=1 https://github.com/openvswitch/ovs.git
 cd ovs
 # change compact interval to reduce resource usage
-curl https://github.com/alauda/ovs/commit/238003290766808ba310e1875157b3d414245603.patch | git apply
+curl https://github.com/alauda/ovs/commit/df1c802f568be2af84aa81372fec46f5b09b4366.patch | git apply
 sed -i 's/2.14.1/2.14.0/g' configure.ac
 sed -i 's/sphinx-build-3/sphinx-build/g' rhel/openvswitch-fedora.spec.in
 ./boot.sh
