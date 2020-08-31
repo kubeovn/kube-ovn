@@ -336,7 +336,7 @@ type StaticRoute struct {
 }
 
 func (c Client) ListStaticRoute() ([]StaticRoute, error) {
-	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=ip_prefix,nexthop,policy", "list", "Logical_Router_Static_Route")
+	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=ip_prefix,nexthop,policy", "find", "Logical_Router_Static_Route", "external_ids{=}{}")
 	if err != nil {
 		return nil, err
 	}
