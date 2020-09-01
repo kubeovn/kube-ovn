@@ -168,7 +168,7 @@ Update ovs-ovn daemonset and set the HW_OFFLOAD env to true and delete exist pod
               fieldPath: status.podIP
         - name: HW_OFFLOAD
           value: "true"
-        image: kubeovn/kube-ovn:v1.3.0
+        image: kubeovn/kube-ovn:v1.4.0
 ```
 ### Create Pod with SR-IOV
 ```yaml

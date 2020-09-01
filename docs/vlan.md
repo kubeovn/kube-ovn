@@ -16,7 +16,7 @@ We are working at combine two networks in one cluster.
 
 1. Get the installation script
 
-`wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.3/dist/images/install.sh`
+`wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.4/dist/images/install.sh`
 
 2. Edit the `install.sh`, modify `NETWORK_TYPE` to `vlan`, `VLAN_INTERFACE_NAME` to related host interface.
 

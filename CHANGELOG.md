@@ -1,5 +1,28 @@
 # CHANGELOG
 
+## 1.4.0 -- 2020/9/1
+
+### New Feature
+* Integrate OVN-IC to support multi-cluster networking
+* Enable ACL log to record networkpolicy drop packets
+* Reserve source ip for NodePort service to local pod
+* Support vlan subnet switch to underlay gateway
+
+### Bugfix
+* Add forward accept rules
+* kubectl-ko cannot find nic
+* Prevent vlan/subnet init error logs
+* Subnet ACL might conflict if allSubnets and subnet cidr overlap
+* Missing session lb
+
+### Misc
+* Update ovs to 2.14
+* Update golang to 1.15
+* Suppress logs
+* Add psp rules
+* Remove juju log dependency
+
+
 ## 1.3.0 -- 2020/7/31
 
 ### New Feature
