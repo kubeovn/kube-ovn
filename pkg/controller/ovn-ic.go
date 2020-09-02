@@ -147,6 +147,9 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 			klog.Errorf("failed to get gw %s chassisID, %v", gw, err)
 			return err
 		}
+		if chassisID == "" {
+			return fmt.Errorf("no chassisID for gw %s", gw)
+		}
 		chassises = append(chassises, chassisID)
 	}
 
