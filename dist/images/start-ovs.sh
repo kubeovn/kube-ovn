@@ -55,13 +55,14 @@ fi
 /usr/share/openvswitch/scripts/ovs-ctl restart --no-ovsdb-server  --system-id=random
 /usr/share/openvswitch/scripts/ovs-ctl --protocol=udp --dport=6081 enable-protocol
 
-# Start ovn-controller
-/usr/share/ovn/scripts/ovn-ctl restart_controller
-
 # Set remote ovn-sb for ovn-controller to connect to
 ovs-vsctl set open . external-ids:ovn-remote=tcp:"[${OVN_SB_SERVICE_HOST}]":"${OVN_SB_SERVICE_PORT}"
 ovs-vsctl set open . external-ids:ovn-remote-probe-interval=10000
 ovs-vsctl set open . external-ids:ovn-openflow-probe-interval=180
 ovs-vsctl set open . external-ids:ovn-encap-type=geneve
+ovs-vsctl set open . external-ids:hostname="${KUBE_NODE_NAME}"
+
+# Start ovn-controller
+/usr/share/ovn/scripts/ovn-ctl restart_controller
 
 tail -f /var/log/ovn/ovn-controller.log

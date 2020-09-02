@@ -317,6 +317,10 @@ spec:
                   fieldPath: status.podIP
             - name: HW_OFFLOAD
               value: "false"
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
           volumeMounts:
             - mountPath: /lib/modules
               name: host-modules

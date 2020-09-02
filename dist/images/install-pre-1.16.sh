@@ -521,6 +521,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
           volumeMounts:
             - mountPath: /lib/modules
               name: host-modules
@@ -921,6 +925,10 @@ spec:
                   fieldPath: status.podIP
             - name: HW_OFFLOAD
               value: "$HW_OFFLOAD"
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
           volumeMounts:
             - mountPath: /lib/modules
               name: host-modules
