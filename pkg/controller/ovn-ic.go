@@ -92,6 +92,11 @@ func (c *Controller) removeInterConnection(config map[string]string) error {
 		return err
 	}
 
+	if err := c.stopOVNIC(); err != nil {
+		klog.Errorf("failed to stop ovn-ic, %v", err)
+		return err
+	}
+
 	return nil
 }
 
@@ -200,6 +205,15 @@ func (c *Controller) startOVNIC(icHost, icNbPort, icSbPort string) error {
 		fmt.Sprintf("--ovn-northd-nb-db=tcp:%s:%d", c.config.OvnNbHost, c.config.OvnNbPort),
 		fmt.Sprintf("--ovn-northd-sb-db=tcp:%s:%d", c.config.OvnSbHost, c.config.OvnSbPort),
 		"start_ic")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s", output)
+	}
+	return nil
+}
+
+func (c *Controller) stopOVNIC() error {
+	cmd := exec.Command("/usr/share/ovn/scripts/ovn-ctl", "stop_ic")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%s", output)
