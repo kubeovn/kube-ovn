@@ -86,8 +86,12 @@ type Controller struct {
 	updateNpQueue workqueue.RateLimitingInterface
 	deleteNpQueue workqueue.RateLimitingInterface
 
+	configMapsLister v1.ConfigMapLister
+	configMapsSynced cache.InformerSynced
+
 	recorder               record.EventRecorder
 	informerFactory        informers.SharedInformerFactory
+	cmInformerFactory      informers.SharedInformerFactory
 	kubeovnInformerFactory kubeovninformer.SharedInformerFactory
 	elector                *leaderelection.LeaderElector
 }
@@ -105,6 +109,10 @@ func NewController(config *Configuration) *Controller {
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}))
+	cmInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
+		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
+			listOption.AllowWatchBookmarks = true
+		}), kubeinformers.WithNamespace(config.PodNamespace))
 	kubeovnInformerFactory := kubeovninformer.NewSharedInformerFactoryWithOptions(config.KubeOvnClient, 0,
 		kubeovninformer.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
@@ -119,6 +127,7 @@ func NewController(config *Configuration) *Controller {
 	serviceInformer := informerFactory.Core().V1().Services()
 	endpointInformer := informerFactory.Core().V1().Endpoints()
 	npInformer := informerFactory.Networking().V1().NetworkPolicies()
+	configMapInformer := cmInformerFactory.Core().V1().ConfigMaps()
 
 	controller := &Controller{
 		config:    config,
@@ -173,9 +182,13 @@ func NewController(config *Configuration) *Controller {
 		updateNpQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateNp"),
 		deleteNpQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteNp"),
 
+		configMapsLister: configMapInformer.Lister(),
+		configMapsSynced: configMapInformer.Informer().HasSynced,
+
 		recorder: recorder,
 
 		informerFactory:        informerFactory,
+		cmInformerFactory:      cmInformerFactory,
 		kubeovnInformerFactory: kubeovnInformerFactory,
 	}
 
@@ -247,10 +260,11 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 
 	// Wait for the caches to be synced before starting workers
 	c.informerFactory.Start(stopCh)
+	c.cmInformerFactory.Start(stopCh)
 	c.kubeovnInformerFactory.Start(stopCh)
 
 	klog.Info("Waiting for informer caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.subnetSynced, c.ipSynced, c.vlanSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced, c.npsSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.subnetSynced, c.ipSynced, c.vlanSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced, c.npsSynced, c.configMapsSynced); !ok {
 		klog.Fatalf("failed to wait for caches to sync")
 	}
 
@@ -375,6 +389,10 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 
 	go wait.Until(func() {
 		c.resyncInterConnection()
+	}, 30*time.Second, stopCh)
+
+	go wait.Until(func() {
+		c.resyncExternalGateway()
 	}, 30*time.Second, stopCh)
 
 	go wait.Until(func() {
