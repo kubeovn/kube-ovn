@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ovn-external-gw-config
+  namespace: kube-system
+data:
+  enable-external-gw: "true"
+  external-gw-nodes: "kube-ovn-worker"  # NodeName in kubernetes
+  external-gw-nic: "eth1"               # The nic that will be bridged into ovs and act as gw
+  nic-ip: "172.56.0.100/16"             # The ip and mask of the nic
+  nic-mac: "16:52:f3:13:6a:25"          # The mac of the nic

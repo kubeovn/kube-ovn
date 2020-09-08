@@ -11,7 +11,8 @@ const (
 	GatewayAnnotation    = "ovn.kubernetes.io/gateway"
 	IpPoolAnnotation     = "ovn.kubernetes.io/ip_pool"
 	BgpAnnotation        = "ovn.kubernetes.io/bgp"
-	ICGatewayAnnotation  = "ovn.kubernetes.io/ic-gw"
+	SnatAnnotation       = "ovn.kubernetes.io/snat"
+	EipAnnotation        = "ovn.kubernetes.io/eip"
 
 	PortSecurityAnnotation = "ovn.kubernetes.io/port_security"
 	NorthGatewayAnnotation = "ovn.kubernetes.io/north_gateway"
@@ -33,6 +34,8 @@ const (
 	LogicalSwitchAnnotation = "ovn.kubernetes.io/logical_switch"
 
 	SubnetNameLabel = "ovn.kubernetes.io/subnet"
+	ICGatewayLabel  = "ovn.kubernetes.io/ic-gw"
+	ExGatewayLabel  = "ovn.kubernetes.io/external-gw"
 
 	ProtocolTCP = "tcp"
 	ProtocolUDP = "udp"
@@ -65,4 +68,9 @@ const (
 	AttachmentNetworkAnnotation = "k8s.v1.cni.cncf.io/networks"
 
 	SRIOVResourceName = "mellanox.com/cx5_sriov_switchdev"
+
+	InterconnectionConfig = "ovn-ic-config"
+	ExternalGatewayConfig = "ovn-external-gw-config"
+	InterconnectionSwitch = "ts"
+	ExternalGatewaySwitch = "ovn-external"
 )

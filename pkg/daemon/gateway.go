@@ -6,6 +6,8 @@ import (
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/projectcalico/felix/ipsets"
+	"github.com/vishvananda/netlink"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
@@ -116,6 +118,9 @@ func (c *Controller) runGateway() {
 	if err := c.setICGateway(); err != nil {
 		klog.Errorf("failed to set ic gateway, %v", err)
 	}
+	if err := c.setExGateway(); err != nil {
+		klog.Errorf("failed to set ex gateway, %v", err)
+	}
 
 	c.appendMssRule()
 }
@@ -137,7 +142,7 @@ func (c *Controller) setICGateway() error {
 		klog.Errorf("failed to get node, %v", err)
 		return err
 	}
-	enable := node.Labels[util.ICGatewayAnnotation]
+	enable := node.Labels[util.ICGatewayLabel]
 	if enable == "true" {
 		if _, err := ovs.Exec("set", "open_vswitch", ".", "external_ids:ovn-is-interconn=true"); err != nil {
 			return fmt.Errorf("failed to enable ic gateway, %v", err)
@@ -145,6 +150,46 @@ func (c *Controller) setICGateway() error {
 	} else {
 		if _, err := ovs.Exec("set", "open_vswitch", ".", "external_ids:ovn-is-interconn=false"); err != nil {
 			return fmt.Errorf("failed to disable ic gateway, %v", err)
+		}
+	}
+	return nil
+}
+
+func (c *Controller) setExGateway() error {
+	node, err := c.config.KubeClient.CoreV1().Nodes().Get(c.config.NodeName, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("failed to get node, %v", err)
+		return err
+	}
+	enable := node.Labels[util.ExGatewayLabel]
+	if enable == "true" {
+		cm, err := c.config.KubeClient.CoreV1().ConfigMaps("kube-system").Get(util.ExternalGatewayConfig, metav1.GetOptions{})
+		if err != nil && !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to get ovn-external-gw-config, %v", err)
+			return err
+		}
+		link, err := netlink.LinkByName(cm.Data["external-gw-nic"])
+		if err != nil {
+			klog.Errorf("failed to get nic %s, %v", cm.Data["external-gw-nic"], err)
+			return err
+		}
+		if err := netlink.LinkSetUp(link); err != nil {
+			klog.Errorf("failed to set gateway nic %s up, %v", cm.Data["external-gw-nic"], err)
+			return err
+		}
+		if _, err := ovs.Exec(
+			"set", "open", ".", "external-ids:ovn-bridge-mappings=external:br-external", "--",
+			ovs.MayExist, "add-br", "br-external", "--",
+			ovs.MayExist, "add-port", "br-external", cm.Data["external-gw-nic"],
+		); err != nil {
+			return fmt.Errorf("failed to enable external gateway, %v", err)
+		}
+	} else {
+		if _, err := ovs.Exec(
+			ovs.IfExists, "del-br", "br-external", "--",
+			"remove", "open", ".", "external-ids", "ovn-bridge-mappings",
+		); err != nil {
+			return fmt.Errorf("failed to disable external gateway, %v", err)
 		}
 	}
 	return nil

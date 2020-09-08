@@ -52,7 +52,7 @@ func (c *Controller) gcLogicalSwitch() error {
 	klog.Infof("ls in ovn %v", lss)
 	klog.Infof("subnet in kubernetes %v", subnetNames)
 	for _, ls := range lss {
-		if ls == "ts" {
+		if ls == util.InterconnectionSwitch || ls == util.ExternalGatewaySwitch {
 			continue
 		}
 		if !util.IsStringIn(ls, subnetNames) {

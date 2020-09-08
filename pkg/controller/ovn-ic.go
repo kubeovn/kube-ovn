@@ -15,35 +15,40 @@ import (
 )
 
 var (
-	icEnabled                   = false
-	lastCM    map[string]string = nil
+	icEnabled                   = "unknown"
+	lastICCM  map[string]string = nil
 )
 
 func (c *Controller) resyncInterConnection() {
-	cm, err := c.config.KubeClient.CoreV1().ConfigMaps("kube-system").Get("ovn-ic-config", metav1.GetOptions{})
+	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.InterconnectionConfig)
 	if err != nil && !k8serrors.IsNotFound(err) {
 		klog.Errorf("failed to get ovn-ic-config, %v", err)
 		return
 	}
 
 	if k8serrors.IsNotFound(err) || cm.Data["enable-ic"] == "false" {
-		if icEnabled == false {
+		if icEnabled == "false" {
 			return
 		}
 		klog.Info("start to remove ovn-ic")
-		if err := c.removeInterConnection(cm.Data); err != nil {
+		azName := ""
+		if cm != nil {
+			azName = cm.Data["az-name"]
+		}
+		if err := c.removeInterConnection(azName); err != nil {
 			klog.Errorf("failed to remove ovn-ic, %v", err)
 			return
 		}
-		icEnabled = false
-		lastCM = nil
+		icEnabled = "false"
+		lastICCM = nil
+		klog.Info("finish removing ovn-ic")
 		return
 	} else {
-		if icEnabled && lastCM != nil && reflect.DeepEqual(cm.Data, lastCM) {
+		if icEnabled == "true" && lastICCM != nil && reflect.DeepEqual(cm.Data, lastICCM) {
 			return
 		}
 
-		if err := c.removeInterConnection(cm.Data); err != nil {
+		if err := c.removeInterConnection(cm.Data["az-name"]); err != nil {
 			klog.Errorf("failed to remove ovn-ic, %v", err)
 			return
 		}
@@ -53,14 +58,15 @@ func (c *Controller) resyncInterConnection() {
 			klog.Errorf("failed to establish ovn-ic, %v", err)
 			return
 		}
-		icEnabled = true
-		lastCM = cm.Data
+		icEnabled = "true"
+		lastICCM = cm.Data
+		klog.Info("finish establishing ovn-ic")
 		return
 	}
 }
 
-func (c *Controller) removeInterConnection(config map[string]string) error {
-	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.ICGatewayAnnotation: "true"}})
+func (c *Controller) removeInterConnection(azName string) error {
+	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.ICGatewayLabel: "true"}})
 	nodes, err := c.nodesLister.List(sel)
 	if err != nil {
 		klog.Errorf("failed to list nodes, %v", err)
@@ -77,19 +83,21 @@ func (c *Controller) removeInterConnection(config map[string]string) error {
 		if len(no.Labels) == 0 {
 			op = "add"
 		}
-		no.Labels[util.ICGatewayAnnotation] = "false"
+		no.Labels[util.ICGatewayLabel] = "false"
 		raw, _ := json.Marshal(no.Labels)
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
 		_, err = c.config.KubeClient.CoreV1().Nodes().Patch(no.Name, types.JSONPatchType, []byte(patchPayload))
 		if err != nil {
-			klog.Errorf("patch gw node %s failed %v", no.Name, err)
+			klog.Errorf("patch ic gw node %s failed %v", no.Name, err)
 			return err
 		}
 	}
 
-	if err := c.ovnClient.DeleteICLogicalRouterPort(config["az-name"]); err != nil {
-		klog.Errorf("failed to delete ovn-ic lrp, %v", err)
-		return err
+	if azName != "" {
+		if err := c.ovnClient.DeleteICLogicalRouterPort(azName); err != nil {
+			klog.Errorf("failed to delete ovn-ic lrp, %v", err)
+			return err
+		}
 	}
 
 	if err := c.stopOVNIC(); err != nil {
@@ -126,7 +134,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 		gw = strings.TrimSpace(gw)
 		node, err := c.nodesLister.Get(gw)
 		if err != nil {
-			klog.Errorf("failed to get gw %s, %v", gw, err)
+			klog.Errorf("failed to get gw node %s, %v", gw, err)
 			return err
 		}
 		patchPayloadTemplate :=
@@ -139,7 +147,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 		if len(node.Labels) == 0 {
 			op = "add"
 		}
-		node.Labels[util.ICGatewayAnnotation] = "true"
+		node.Labels[util.ICGatewayLabel] = "true"
 		raw, _ := json.Marshal(node.Labels)
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
 		_, err = c.config.KubeClient.CoreV1().Nodes().Patch(gw, types.JSONPatchType, []byte(patchPayload))
@@ -157,13 +165,16 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 		}
 		chassises = append(chassises, chassisID)
 	}
-
+	if len(chassises) == 0 {
+		klog.Error("no available ic gw")
+		return fmt.Errorf("noavailable ic gw")
+	}
 	if err := c.waitTsReady(); err != nil {
 		klog.Errorf("failed to wait ts ready, %v", err)
 		return err
 	}
 
-	subnet, err := c.acquireLrpAddress("ts")
+	subnet, err := c.acquireLrpAddress(util.InterconnectionSwitch)
 	if err != nil {
 		klog.Errorf("failed to acquire lrp address, %v", err)
 		return err
@@ -224,7 +235,7 @@ func (c *Controller) stopOVNIC() error {
 func (c *Controller) waitTsReady() error {
 	retry := 6
 	for retry > 0 {
-		exists, err := c.ovnClient.LogicalSwitchExists("ts")
+		exists, err := c.ovnClient.LogicalSwitchExists(util.InterconnectionSwitch)
 		if err != nil {
 			klog.Errorf("failed to list logical switch, %v", err)
 			return err

@@ -71,14 +71,14 @@ func (c Client) CreateICLogicalRouterPort(az, mac, subnet string, chassises []st
 	if _, err := c.ovnNbCommand(MayExist, "lrp-add", c.ClusterRouter, fmt.Sprintf("%s-ts", az), mac, subnet); err != nil {
 		return fmt.Errorf("failed to crate ovn-ic lrp, %v", err)
 	}
-	if _, err := c.ovnNbCommand(MayExist, "lsp-add", "ts", fmt.Sprintf("ts-%s", az), "--",
+	if _, err := c.ovnNbCommand(MayExist, "lsp-add", util.InterconnectionSwitch, fmt.Sprintf("ts-%s", az), "--",
 		"lsp-set-addresses", fmt.Sprintf("ts-%s", az), "router", "--",
 		"lsp-set-type", fmt.Sprintf("ts-%s", az), "router", "--",
 		"lsp-set-options", fmt.Sprintf("ts-%s", az), fmt.Sprintf("router-port=%s-ts", az)); err != nil {
 		return fmt.Errorf("failed to create ovn-ic lsp, %v", err)
 	}
-	for _, chassis := range chassises {
-		if _, err := c.ovnNbCommand("lrp-set-gateway-chassis", fmt.Sprintf("%s-ts", az), chassis, "100"); err != nil {
+	for index, chassis := range chassises {
+		if _, err := c.ovnNbCommand("lrp-set-gateway-chassis", fmt.Sprintf("%s-ts", az), chassis, fmt.Sprintf("%d", 100-index)); err != nil {
 			return fmt.Errorf("failed to set gateway chassis, %v", err)
 		}
 	}
@@ -198,6 +198,43 @@ func (c Client) CreateLogicalSwitch(ls, protocol, subnet, gateway string, exclud
 	}
 
 	return nil
+}
+
+func (c Client) CreateGatewaySwitch(name, ip, mac string, chassises []string) error {
+	lsTolr := fmt.Sprintf("%s-%s", name, c.ClusterRouter)
+	lrTols := fmt.Sprintf("%s-%s", c.ClusterRouter, name)
+	localnetPort := fmt.Sprintf("ln-%s", name)
+	_, err := c.ovnNbCommand(
+		MayExist, "ls-add", name, "--",
+		MayExist, "lsp-add", name, localnetPort, "--",
+		"lsp-set-type", localnetPort, "localnet", "--",
+		"lsp-set-addresses", localnetPort, "unknown", "--",
+		"lsp-set-options", localnetPort, "network_name=external", "--",
+		MayExist, "lrp-add", c.ClusterRouter, lrTols, mac, ip, "--",
+		MayExist, "lsp-add", name, lsTolr, "--",
+		"lsp-set-type", lsTolr, "router", "--",
+		"lsp-set-addresses", lsTolr, "router", "--",
+		"lsp-set-options", lsTolr, fmt.Sprintf("router-port=%s", lrTols),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create external gateway switch, %v", err)
+	}
+
+	for index, chassis := range chassises {
+		if _, err := c.ovnNbCommand("lrp-set-gateway-chassis", lrTols, chassis, fmt.Sprintf("%d", 100-index)); err != nil {
+			return fmt.Errorf("failed to set gateway chassis, %v", err)
+		}
+	}
+	return nil
+}
+
+func (c Client) DeleteGatewaySwitch(name string) error {
+	lrTols := fmt.Sprintf("%s-%s", c.ClusterRouter, name)
+	_, err := c.ovnNbCommand(
+		IfExists, "ls-del", name, "--",
+		IfExists, "lrp-del", lrTols,
+	)
+	return err
 }
 
 // ListLogicalSwitch list logical switch names
@@ -358,6 +395,39 @@ func (c Client) AddStaticRoute(policy, cidr, nextHop, router string) error {
 		policy = PolicyDstIP
 	}
 	_, err := c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "lr-route-add", router, cidr, nextHop)
+	return err
+}
+
+func (c Client) AddNatRule(policy, logicalIP, externalIP, router string) error {
+	_, err := c.ovnNbCommand(MayExist, "lr-nat-add", router, policy, externalIP, logicalIP)
+	return err
+}
+
+func (c Client) DeleteNatRule(logicalIP, router string) error {
+	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=type,external_ip", "find", "NAT", fmt.Sprintf("logical_ip=%s", logicalIP))
+	if err != nil {
+		klog.Errorf("failed to list nat rules, %v", err)
+		return err
+	}
+	rules := strings.Split(output, "\n")
+	for _, rule := range rules {
+		if len(strings.Split(rule, ",")) != 2 {
+			continue
+		}
+		policy, externalIP := strings.Split(rule, ",")[0], strings.Split(rule, ",")[1]
+		if policy == "snat" {
+			if _, err := c.ovnNbCommand(IfExists, "lr-nat-del", router, "snat", logicalIP); err != nil {
+				klog.Errorf("failed to delete nat rule, %v", err)
+				return err
+			}
+		} else if policy == "dnat_and_snat" {
+			if _, err := c.ovnNbCommand(IfExists, "lr-nat-del", router, "dnat_and_snat", externalIP); err != nil {
+				klog.Errorf("failed to delete nat rule, %v", err)
+				return err
+			}
+		}
+	}
+
 	return err
 }
 
