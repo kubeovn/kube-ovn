@@ -21,6 +21,7 @@ The Kube-OVN community is waiting for you participation!
 - **Subnet Isolation**: Can configure a Subnet to deny any traffic from source IP addresses not within the same Subnet. Can whitelist specific IP addresses and IP ranges.
 - **Network Policy**: Implementing networking.k8s.io/NetworkPolicy API by high performance ovn ACL.
 - **Static IP Addresses for Workloads**: Allocate random or static IP addresses to workloads.
+- **Pod NAT and EIP**: Manage the pod external traffic and external ip like tradition VM.
 - **Multi-Cluster Network**: Connect different clusters into one L3 network.
 - **IPAM for Multi NIC**: A cluster-wide IPAM for CNI plugins other than Kube-OVN, such as macvlan/vlan/host-device to take advantage of subnet and static ip allocation functions in Kube-OVN.
 - **Dynamic QoS**: Configure Pod/Gateway Ingress/Egress traffic rate limits on the fly.
@@ -65,6 +66,7 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
 - [Namespaced Subnets](docs/subnet.md)
 - [Subnet Isolation](docs/subnet.md#isolation)
 - [Static IP](docs/static-ip.md)
+- [Pod NAT and EIP](docs/snat-and-eip.md)
 - [Dynamic QoS](docs/qos.md)
 - [Subnet Gateway and Direct connect](docs/subnet.md#gateway)
 - [Pod Gateway](docs/pod-gw.md)

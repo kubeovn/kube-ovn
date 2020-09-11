@@ -6,15 +6,16 @@ only L3 connectivity for gateway nodes is required.
 
 ## Prerequest
 * To use route auto advertise, subnet CIDRs in different clusters *MUST NOT* be overlapped with each other，including ovn-default and join subnets CIDRs. Otherwise, you should disable the auto route and add routes mannually.
-* The Interconnection Controller *Should* be deployed in a region that every cluster can access by IP.
-* Every cluster *Should* have at least one node(work as gateway later) that can access other gateway nodes in different clusters by IP.
+* The Interconnection Controller *SHOULD* be deployed in a region that every cluster can access by IP.
+* Every cluster *SHOULD* have at least one node(work as gateway later) that can access other gateway nodes in different clusters by IP.
+* Cluster interconnection network now *CANNOT* work together with SNAT and EIP functions.
 
 ## Auto Route Step
 1. Run Interconnection Controller in a region that can be accessed by other cluster
 ```bash
 docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn kubeovn/kube-ovn:v1.4.0 bash start-ic-db.sh
 ```
-2. Create `ic-config` ConfigMap in each cluster. Edit and apply the yaml below in each cluster.
+2. Create `ovn-ic-config` ConfigMap in each cluster `kube-system` namespace. Edit and apply the yaml below in each cluster.
 ```yaml
 apiVersion: v1
 kind: ConfigMap

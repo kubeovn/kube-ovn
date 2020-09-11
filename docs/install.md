@@ -19,13 +19,16 @@ Kube-OVN includes two parts:
 
 Kube-OVN provides a one script install to easily install a high-available, production-ready Kube-OVN
 
-1. Download the installer scripts
+1. Download the stable release installer scripts
 
 For Kubernetes version>=1.16
 `wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.4/dist/images/install.sh`
 
 For Kubernetes version<1.16
 `wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.4/dist/images/install-pre-1.16.sh`
+
+If you want to try the latest developing Kube-OVN, try the script below
+`wget https://raw.githubusercontent.com/alauda/kube-ovn/master/dist/images/install.sh`
 
 2. Use vim to edit the script variables to meet your requirement
 ```bash
