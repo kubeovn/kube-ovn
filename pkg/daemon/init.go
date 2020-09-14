@@ -47,7 +47,12 @@ func InitNodeGateway(config *Configuration) error {
 }
 
 func InitMirror(config *Configuration) error {
-	return configureMirror(config.MirrorNic, config.MTU)
+	if config.EnableMirror {
+		return configureMirror(config.MirrorNic, config.MTU)
+	} else {
+		return removeMirror(config.MirrorNic)
+	}
+
 }
 
 func InitVlan(config *Configuration) error {
