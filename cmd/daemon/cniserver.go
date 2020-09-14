@@ -23,10 +23,8 @@ func main() {
 		klog.Fatalf("parse config failed %v", err)
 	}
 
-	if config.EnableMirror {
-		if err = daemon.InitMirror(config); err != nil {
-			klog.Fatalf("failed to init mirror nic, %v", err)
-		}
+	if err = daemon.InitMirror(config); err != nil {
+		klog.Fatalf("failed to init mirror nic, %v", err)
 	}
 
 	if err = daemon.InitNodeGateway(config); err != nil {
