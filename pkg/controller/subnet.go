@@ -78,6 +78,7 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		!reflect.DeepEqual(oldSubnet.Spec.Namespaces, newSubnet.Spec.Namespaces) ||
 		oldSubnet.Spec.GatewayType != newSubnet.Spec.GatewayType ||
 		oldSubnet.Spec.GatewayNode != newSubnet.Spec.GatewayNode ||
+		oldSubnet.Spec.UnderlayGateway != newSubnet.Spec.UnderlayGateway ||
 		!reflect.DeepEqual(oldSubnet.Spec.ExcludeIps, newSubnet.Spec.ExcludeIps) ||
 		!reflect.DeepEqual(oldSubnet.Spec.Vlan, newSubnet.Spec.Vlan) {
 		klog.V(3).Infof("enqueue update subnet %s", key)
@@ -446,6 +447,12 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		if err := c.ovnClient.SetLogicalSwitchConfig(subnet.Name, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
 			c.patchSubnetStatus(subnet, "SetLogicalSwitchConfigFailed", err.Error())
 			return err
+		}
+		if subnet.Spec.UnderlayGateway {
+			if err := c.ovnClient.RemoveRouterPort(subnet.Name); err != nil {
+				klog.Errorf("failed to remove router port from %s, %v", subnet.Name, err)
+				return err
+			}
 		}
 	}
 

@@ -346,6 +346,18 @@ func (c Client) CreateLogicalRouter(lr string) error {
 	return err
 }
 
+func (c Client) RemoveRouterPort(ls string) error {
+	lsTolr := fmt.Sprintf("%s-%s", ls, c.ClusterRouter)
+	lrTols := fmt.Sprintf("%s-%s", c.ClusterRouter, ls)
+	_, err := c.ovnNbCommand(IfExists, "lsp-del", lsTolr, "--",
+		IfExists, "lrp-del", lrTols)
+	if err != nil {
+		klog.Errorf("failed to remove router port, %v", err)
+		return err
+	}
+	return nil
+}
+
 func (c Client) createRouterPort(ls, lr, ip, mac string) error {
 	klog.Infof("add %s to %s with ip: %s, mac :%s", ls, lr, ip, mac)
 	lsTolr := fmt.Sprintf("%s-%s", ls, lr)
