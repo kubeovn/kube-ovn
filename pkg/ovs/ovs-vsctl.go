@@ -25,14 +25,7 @@ func Exec(args ...string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to run 'ovs-vsctl %s': %v\n  %q", strings.Join(args, " "), err, output)
 	}
-
-	outStr := string(output)
-	trimmed := strings.TrimSpace(outStr)
-	// If output is a single line, strip the trailing newline
-	if strings.Count(trimmed, "\n") == 0 {
-		outStr = trimmed
-	}
-	return outStr, nil
+	return trimCommandOutput(output), nil
 }
 
 func ovsCreate(table string, values ...string) (string, error) {

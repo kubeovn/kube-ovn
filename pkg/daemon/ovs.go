@@ -314,22 +314,22 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int) error {
 }
 
 func configProviderPort(providerInterfaceName string) error {
-	output, err := ovs.Exec(ovs.MayExist, "add-br", "br-provider", "--",
-		"set", "open", ".", fmt.Sprintf("external-ids:ovn-bridge-mappings=%s:br-provider", providerInterfaceName))
+	output, err := ovs.Exec(ovs.MayExist, "add-br", "br-provider")
 	if err != nil {
 		return fmt.Errorf("failed to create bridge br-provider, %v: %q", err, output)
 	}
-
-	output, err = ovs.Exec(ovs.MayExist, "add-port", "br-provider", "provider-int", "--",
-		"set", "interface", "provider-int", "type=patch", "options:peer=int-provider")
+	output, err = ovs.Exec(ovs.IfExists, "get", "open", ".", "external-ids:ovn-bridge-mappings")
 	if err != nil {
-		return fmt.Errorf("failed to create patch port provider-int, %v: %q", err, output)
+		return fmt.Errorf("failed to get external-ids, %v", err)
+	}
+	bridgeMappings := fmt.Sprintf("%s:br-provider", providerInterfaceName)
+	if output != "" && !util.IsStringIn(bridgeMappings, strings.Split(output, ",")) {
+		bridgeMappings = fmt.Sprintf("%s,%s", output, bridgeMappings)
 	}
 
-	output, err = ovs.Exec(ovs.MayExist, "add-port", "br-int", "int-provider", "--",
-		"set", "interface", "int-provider", "type=patch", "options:peer=provider-int")
+	output, err = ovs.Exec("set", "open", ".", fmt.Sprintf("external-ids:ovn-bridge-mappings=%s", bridgeMappings))
 	if err != nil {
-		return fmt.Errorf("failed to create patch port int-provider, %v: %q", err, output)
+		return fmt.Errorf("failed to set bridg-mappings, %v: %q", err, output)
 	}
 
 	return nil
