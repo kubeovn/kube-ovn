@@ -52,6 +52,7 @@ RUN curl -L https://storage.googleapis.com/kubernetes-release/release/${KUBE_VER
 RUN --mount=type=bind,target=/rpms,from=ovs-rpm,source=/rpms rpm -ivh --nodeps /rpms/*.rpm
 
 COPY *.sh /kube-ovn/
+COPY grace_stop_ovn_controller /usr/share/ovn/scripts/grace_stop_ovn_controller
 COPY 01-kube-ovn.conflist /kube-ovn/01-kube-ovn.conflist
 
 WORKDIR /kube-ovn

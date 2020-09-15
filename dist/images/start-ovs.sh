@@ -28,8 +28,8 @@ function wait_ovn_sb {
 wait_ovn_sb
 
 function quit {
+	/usr/share/ovn/scripts/grace_stop_ovn_controller
 	/usr/share/openvswitch/scripts/ovs-ctl stop
-	/usr/share/ovn/scripts/ovn-ctl stop_controller
 	exit 0
 }
 trap quit EXIT
