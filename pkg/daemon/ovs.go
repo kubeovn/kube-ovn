@@ -38,7 +38,10 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, netns, container
 	ovs.CleanDuplicatePort(ifaceID)
 	// Add veth pair host end to ovs port
 	output, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", hostNicName, "--",
-		"set", "interface", hostNicName, fmt.Sprintf("external_ids:iface-id=%s", ifaceID))
+		"set", "interface", hostNicName, fmt.Sprintf("external_ids:iface-id=%s", ifaceID),
+		fmt.Sprintf("external_ids:pod_name=%s", podName),
+		fmt.Sprintf("external_ids:pod_namespace=%s", podNamespace),
+		fmt.Sprintf("external_ids:ip=%s", strings.Split(ip, "/")[0]))
 	if err != nil {
 		return fmt.Errorf("add nic to ovs failed %v: %q", err, output)
 	}
@@ -210,7 +213,8 @@ func waiteNetworkReady(gateway string) error {
 func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int) error {
 	raw, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", util.NodeNic, "--",
 		"set", "interface", util.NodeNic, "type=internal", "--",
-		"set", "interface", util.NodeNic, fmt.Sprintf("external_ids:iface-id=%s", portName))
+		"set", "interface", util.NodeNic, fmt.Sprintf("external_ids:iface-id=%s", portName),
+		fmt.Sprintf("external_ids:ip=%s", strings.Split(ip, "/")[0]))
 	if err != nil {
 		klog.Errorf("failed to configure node nic %s %q", portName, raw)
 		return fmt.Errorf(raw)
