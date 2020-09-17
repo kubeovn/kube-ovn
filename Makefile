@@ -69,6 +69,8 @@ kind-init:
 	ip_family=ipv4 ha=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
 	kubectl get no -o wide
+	docker exec kube-ovn-control-plane ip link add link eth0 mac1 type macvlan
+	docker exec kube-ovn-worker ip link add link eth0 mac1 type macvlan
 
 kind-install:
 	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
