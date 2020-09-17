@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -283,6 +284,9 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 
 	if c.config.NetworkType == util.NetworkTypeVlan && subnet.Spec.Vlan == "" {
 		subnet.Spec.Vlan = c.config.DefaultVlanName
+		if c.config.DefaultVlanID == 0 {
+			subnet.Spec.UnderlayGateway = true
+		}
 		changed = true
 	}
 
@@ -310,6 +314,8 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, erro
 			klog.Errorf("failed to add finalizer to subnet %s, %v", subnet.Name, err)
 			return false, err
 		}
+		// wait local cache ready
+		time.Sleep(1 * time.Second)
 		return false, nil
 	}
 
@@ -417,13 +423,15 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		klog.Errorf("failed to list nodes %v", err)
 		return err
 	}
-	for _, node := range nodes {
-		for _, addr := range node.Status.Addresses {
-			if addr.Type == v1.NodeInternalIP && util.CIDRContainIP(subnet.Spec.CIDRBlock, addr.Address) {
-				err = fmt.Errorf("subnet %s cidr %s conflict with node %s address %s", subnet.Name, subnet.Spec.CIDRBlock, node.Name, addr.Address)
-				klog.Error(err)
-				c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error())
-				return err
+	if subnet.Spec.Vlan != "" && !subnet.Spec.UnderlayGateway {
+		for _, node := range nodes {
+			for _, addr := range node.Status.Addresses {
+				if addr.Type == v1.NodeInternalIP && util.CIDRContainIP(subnet.Spec.CIDRBlock, addr.Address) {
+					err = fmt.Errorf("subnet %s cidr %s conflict with node %s address %s", subnet.Name, subnet.Spec.CIDRBlock, node.Name, addr.Address)
+					klog.Error(err)
+					c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error())
+					return err
+				}
 			}
 		}
 	}

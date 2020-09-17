@@ -2,6 +2,7 @@ package controller
 
 import (
 	"flag"
+	"fmt"
 	"os"
 
 	clientset "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
@@ -141,6 +142,10 @@ func ParseFlags() (*Configuration, error) {
 		DefaultVlanRange:              *argsDefaultVlanRange,
 		PodName:                       os.Getenv("POD_NAME"),
 		PodNamespace:                  os.Getenv("KUBE_NAMESPACE"),
+	}
+
+	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {
+		return nil, fmt.Errorf("no host nic for vlan")
 	}
 
 	if config.DefaultGateway == "" {
