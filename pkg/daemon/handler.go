@@ -58,6 +58,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podRequest.Provider)] != "true" {
 			klog.Infof("wait address for  pod %s/%s ", podRequest.PodNamespace, podRequest.PodName)
 			// wait controller assign an address
+			cniWaitAddressResult.WithLabelValues(nodeName).Inc()
 			time.Sleep(1 * time.Second)
 			continue
 		}
@@ -65,6 +66,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		if err := util.ValidatePodNetwork(pod.Annotations); err != nil {
 			klog.Errorf("validate pod %s/%s failed, %v", podRequest.PodNamespace, podRequest.PodName, err)
 			// wait controller assign an address
+			cniWaitAddressResult.WithLabelValues(nodeName).Inc()
 			time.Sleep(1 * time.Second)
 			continue
 		}

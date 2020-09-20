@@ -203,6 +203,7 @@ func waiteNetworkReady(gateway string) error {
 	}
 	pinger.Run()
 
+	cniConnectivityResult.WithLabelValues(nodeName).Add(float64(pinger.PacketsSent))
 	if !success {
 		return fmt.Errorf("network not ready after 600 ping")
 	}
