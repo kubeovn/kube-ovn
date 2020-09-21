@@ -3,13 +3,14 @@ package main
 import (
 	"fmt"
 	"github.com/alauda/kube-ovn/pkg/util"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"io/ioutil"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net/http"
 	_ "net/http/pprof" // #nosec
 
 	kubeovninformer "github.com/alauda/kube-ovn/pkg/client/informers/externalversions"
 	"github.com/alauda/kube-ovn/pkg/daemon"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/klog"
 	"k8s.io/sample-controller/pkg/signals"
@@ -51,9 +52,18 @@ func main() {
 	kubeInformerFactory.Start(stopCh)
 	kubeovnInformerFactory.Start(stopCh)
 	go ctl.Run(stopCh)
-	go func() {
-		http.Handle("/metrics", promhttp.Handler())
-		klog.Fatal(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.PprofPort), nil))
-	}()
-	daemon.RunServer(config)
+	go daemon.RunServer(config)
+	if err := mvCNIConf(); err != nil {
+		klog.Fatalf("failed to mv cni conf, %v", err)
+	}
+	http.Handle("/metrics", promhttp.Handler())
+	klog.Fatal(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.PprofPort), nil))
+}
+
+func mvCNIConf() error {
+	data, err := ioutil.ReadFile("/kube-ovn/01-kube-ovn.conflist")
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile("/etc/cni/net.d/01-kube-ovn.conflist", data, 0444)
 }
