@@ -114,6 +114,7 @@ var (
 
 func init() {
 	registerReflectorMetrics()
+	registerClientMetrics()
 	prometheus.MustRegister(cniOperationHistogram)
 	prometheus.MustRegister(cniWaitAddressResult)
 	prometheus.MustRegister(cniConnectivityResult)
@@ -129,7 +130,7 @@ func registerClientMetrics() {
 	clientmetrics.Register(&latencyAdapter{metric: requestLatency}, &resultAdapter{metric: requestResult})
 }
 
-// registerReflectorMetrics sets up reflector (reconile) loop metrics
+// registerReflectorMetrics sets up reflector (reconcile) loop metrics
 func registerReflectorMetrics() {
 	prometheus.MustRegister(listsTotal)
 	prometheus.MustRegister(listsDuration)
