@@ -115,10 +115,8 @@ spec:
             runAsUser: 0
             privileged: true
           volumeMounts:
-            - mountPath: /etc/cni/net.d
-              name: cni-conf
-            - mountPath: /opt/cni/bin
-              name: cni-bin
+          - mountPath: /opt/cni/bin
+            name: cni-bin
       containers:
         - name: cni-server
           image: "kubeovn/kube-ovn:v1.4.0"
@@ -140,8 +138,15 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
           volumeMounts:
-            - mountPath: /run/openvswitch
-              name: host-run-ovs
+          - mountPath: /etc/cni/net.d
+            name: cni-conf
+          - mountPath: /run/openvswitch
+            name: host-run-ovs
+          - mountPath: /run/ovn
+            name: host-run-ovn
+          - mountPath: /var/run/netns
+            name: host-ns
+            mountPropagation: HostToContainer
           readinessProbe:
             exec:
               command:
@@ -165,15 +170,21 @@ spec:
       nodeSelector:
         beta.kubernetes.io/os: "linux"
       volumes:
-        - name: host-run-ovs
-          hostPath:
-            path: /run/openvswitch
-        - name: cni-conf
-          hostPath:
-            path: /etc/cni/net.d
-        - name: cni-bin
-          hostPath:
-            path: /opt/cni/bin
+      - name: host-run-ovs
+        hostPath:
+          path: /run/openvswitch
+      - name: host-run-ovn
+        hostPath:
+          path: /run/ovn
+      - name: cni-conf
+        hostPath:
+          path: /etc/cni/net.d
+      - name: cni-bin
+        hostPath:
+          path: /opt/cni/bin
+      - name: host-ns
+        hostPath:
+          path: /var/run/netns
 
 ---
 kind: DaemonSet

@@ -1247,8 +1247,6 @@ spec:
           runAsUser: 0
           privileged: true
         volumeMounts:
-          - mountPath: /etc/cni/net.d
-            name: cni-conf
           - mountPath: /opt/cni/bin
             name: cni-bin
       containers:
@@ -1278,6 +1276,8 @@ spec:
               fieldRef:
                 fieldPath: spec.nodeName
         volumeMounts:
+          - mountPath: /etc/cni/net.d
+            name: cni-conf
           - mountPath: /run/openvswitch
             name: host-run-ovs
           - mountPath: /run/ovn
@@ -1472,6 +1472,7 @@ EOF
 
 kubectl apply -f kube-ovn.yaml
 kubectl rollout status deployment/kube-ovn-controller -n ${NAMESPACE}
+kubectl rollout status daemonset/kube-ovn-cni -n ${NAMESPACE}
 echo "-------------------------------"
 echo ""
 

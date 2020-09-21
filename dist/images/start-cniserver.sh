@@ -4,6 +4,12 @@ set -euo pipefail
 CNI_SOCK=/run/openvswitch/kube-ovn-daemon.sock
 OVS_SOCK=/run/openvswitch/db.sock
 
+function quit {
+    rm -rf CNI_CONF
+    exit 0
+}
+trap quit EXIT
+
 if [[ -e "$CNI_SOCK" ]]
 then
     echo "previous socket exists, remove and continue"
@@ -12,7 +18,7 @@ fi
 
 while true
 do
-  sleep 5
+  sleep 1
   if [[ -e "$OVS_SOCK" ]]
   then
     break
@@ -21,7 +27,8 @@ do
   fi
 done
 
-kubectl rollout status deployment/kube-ovn-controller -n $(cat /run/secrets/kubernetes.io/serviceaccount/namespace)
-sleep 5
+# wait kube-ovn-controller ready
+kubectl rollout status deployment/kube-ovn-controller -n "$(cat /run/secrets/kubernetes.io/serviceaccount/namespace)"
+sleep 1
 
-./kube-ovn-daemon --ovs-socket=${OVS_SOCK} --bind-socket=${CNI_SOCK} $@
+./kube-ovn-daemon --ovs-socket=${OVS_SOCK} --bind-socket=${CNI_SOCK} "$@"
