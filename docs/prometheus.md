@@ -32,3 +32,6 @@ Pinger grafana dashboard config can be found [here](../dist/monitoring/pinger-gr
 Kube-OVN-Controller grafana dashboard config can be found [here](../dist/monitoring/controller-grafana.json)
 
 ![alt text](controller-grafana.png "kube-ovn-controller grafana dashboard")
+
+Kube-OVN-CNI grafana dashboard config can be found [here](../dist/monitoring/cni-grafana.json)
+![alt text](cni-grafana.png "kube-ovn-controller grafana dashboard")
