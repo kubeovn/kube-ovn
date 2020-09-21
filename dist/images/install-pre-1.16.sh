@@ -1107,8 +1107,6 @@ spec:
   selector:
     matchLabels:
       app: kube-ovn-cni
-  updateStrategy:
-    type: OnDelete
   template:
     metadata:
       labels:
