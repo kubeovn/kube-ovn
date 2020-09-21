@@ -87,7 +87,7 @@ func checkSBBindings(config *Configuration) ([]string, error) {
 	sbPort := os.Getenv("OVN_SB_SERVICE_PORT")
 	output, err := exec.Command(
 		"ovn-sbctl",
-		fmt.Sprintf("--db=tcp:%s:%s", sbHost, sbPort),
+		fmt.Sprintf("--db=tcp:[%s]:%s", sbHost, sbPort),
 		"--format=csv",
 		"--no-heading",
 		"--data=bare",
