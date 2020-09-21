@@ -77,7 +77,12 @@ func checkOvsBindings() ([]string, error) {
 	}
 	result := make([]string, 0, len(strings.Split(string(output), "\n")))
 	for _, line := range strings.Split(string(output), "\n") {
-		result = append(result, strings.TrimPrefix(line, "iface-id="))
+		for _, id := range strings.Split(line, " ") {
+			if strings.Contains(id, "iface-id") {
+				result = append(result, strings.TrimPrefix(id, "iface-id="))
+				break
+			}
+		}
 	}
 	return result, nil
 }
@@ -109,7 +114,7 @@ func checkSBBindings(config *Configuration) ([]string, error) {
 	klog.Infof("chassis id is %s", chassis)
 	output, err = exec.Command(
 		"ovn-sbctl",
-		fmt.Sprintf("--db=tcp:%s:%s", sbHost, sbPort),
+		fmt.Sprintf("--db=tcp:[%s]:%s", sbHost, sbPort),
 		"--format=csv",
 		"--no-heading",
 		"--data=bare",
