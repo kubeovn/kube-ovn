@@ -3,11 +3,13 @@ package pinger
 import (
 	"flag"
 	"github.com/spf13/pflag"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -80,6 +82,22 @@ func ParseFlags() (*Configuration, error) {
 	}
 	if err := config.initKubeClient(); err != nil {
 		return nil, err
+	}
+
+	if config.Mode == "job" {
+		ds, err := config.KubeClient.AppsV1().DaemonSets(config.DaemonSetNamespace).Get(config.DaemonSetName, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+		for _, arg := range ds.Spec.Template.Spec.Containers[0].Command {
+			arg = strings.Trim(arg, "\"")
+			if strings.HasPrefix(arg, "--external-address=") {
+				config.ExternalAddress = strings.TrimPrefix(arg, "--external-address=")
+			}
+			if strings.HasPrefix(arg, "--external-dns=") {
+				config.ExternalDNS = strings.TrimPrefix(arg, "--external-dns=")
+			}
+		}
 	}
 	klog.Infof("pinger config is %+v", config)
 	return config, nil
