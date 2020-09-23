@@ -157,6 +157,10 @@ diagnose(){
   kubectl get svc kube-dns -n kube-system
   kubectl get svc kubernetes -n default
 
+  kubectl get no -o wide
+  kubectl ko nbctl show
+  kubectl ko sbctl show
+
   checkDaemonSet kube-proxy
   checkDeployment ovn-central
   checkDeployment kube-ovn-controller
