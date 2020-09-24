@@ -2,6 +2,7 @@
 set -euo pipefail
 
 HW_OFFLOAD=${HW_OFFLOAD:-false}
+ENABLE_SSL=${ENABLE_SSL:-false}
 # https://bugs.launchpad.net/neutron/+bug/1776778
 if grep -q "3.10.0-862" /proc/version
 then
@@ -56,13 +57,21 @@ fi
 /usr/share/openvswitch/scripts/ovs-ctl --protocol=udp --dport=6081 enable-protocol
 
 # Set remote ovn-sb for ovn-controller to connect to
-ovs-vsctl set open . external-ids:ovn-remote=tcp:"[${OVN_SB_SERVICE_HOST}]":"${OVN_SB_SERVICE_PORT}"
+if [[ "$ENABLE_SSL" == "false" ]]; then
+  ovs-vsctl set open . external-ids:ovn-remote=tcp:"[${OVN_SB_SERVICE_HOST}]":"${OVN_SB_SERVICE_PORT}"
+else
+  ovs-vsctl set open . external-ids:ovn-remote=ssl:"[${OVN_SB_SERVICE_HOST}]":"${OVN_SB_SERVICE_PORT}"
+fi
 ovs-vsctl set open . external-ids:ovn-remote-probe-interval=10000
 ovs-vsctl set open . external-ids:ovn-openflow-probe-interval=180
 ovs-vsctl set open . external-ids:ovn-encap-type=geneve
 ovs-vsctl set open . external-ids:hostname="${KUBE_NODE_NAME}"
 
 # Start ovn-controller
-/usr/share/ovn/scripts/ovn-ctl restart_controller
+if [[ "$ENABLE_SSL" == "false" ]]; then
+  /usr/share/ovn/scripts/ovn-ctl restart_controller
+else
+  /usr/share/ovn/scripts/ovn-ctl --ovn-controller-ssl-key=/var/run/tls/key --ovn-controller-ssl-cert=/var/run/tls/cert --ovn-controller-ssl-ca-cert=/var/run/tls/cacert restart_controller
+fi
 
 tail -f /var/log/ovn/ovn-controller.log

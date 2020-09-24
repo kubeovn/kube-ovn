@@ -1,6 +1,7 @@
 install.sh
 install-pre-1.16.sh
 ovn-ic-db-docker.sh
+generate-ssl-docker.sh
 cleanup.sh
 kubectl-ko
 *.yaml

@@ -822,14 +822,25 @@ func StartOvnNbctlDaemon(nbHost string, nbPort int) error {
 		klog.Errorf("failed to kill old ovn-nbctl daemon: %q", output)
 		return err
 	}
-
-	output, err = exec.Command(
+	command := []string{
 		"ovn-nbctl",
 		fmt.Sprintf("--db=tcp:%s:%d", nbHost, nbPort),
 		"--pidfile",
 		"--detach",
 		"--overwrite-pidfile",
-	).CombinedOutput()
+	}
+	if os.Getenv("ENABLE_SSL") == "true" {
+		command = []string{
+			"-p", "/var/run/tls/key",
+			"-c", "/var/run/tls/cert",
+			"-C", "/var/run/tls/cacert",
+			fmt.Sprintf("--db=ssl:%s:%d", nbHost, nbPort),
+			"--pidfile",
+			"--detach",
+			"--overwrite-pidfile",
+		}
+	}
+	output, err = exec.Command("ovn-nbctl", command...).CombinedOutput()
 	if err != nil {
 		klog.Errorf("start ovn-nbctl daemon failed, %q", output)
 		return err

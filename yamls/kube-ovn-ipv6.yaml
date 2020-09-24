@@ -3,7 +3,7 @@ kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-controller
-  namespace: kube-system
+  namespace:  kube-system
   annotations:
     kubernetes.io/description: |
       kube-ovn controller
@@ -39,7 +39,7 @@ spec:
       hostNetwork: true
       containers:
         - name: kube-ovn-controller
-          image: "kubeovn/kube-ovn:v1.4.0"
+          image: "kubeovn/kube-ovn:v1.5.0"
           imagePullPolicy: IfNotPresent
           command:
             - /kube-ovn/start-controller.sh
@@ -49,6 +49,8 @@ spec:
             - --node-switch-cidr=2001:db8:0000:0001::/64
             - --node-switch-gateway=2001:db8:0000:0001::1
           env:
+            - name: ENABLE_SSL
+              value: "false"
             - name: POD_NAME
               valueFrom:
                 fieldRef:
@@ -57,35 +59,43 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
           readinessProbe:
             exec:
               command:
-                - nc
-                - -z
-                - -w3
-                - 127.0.0.1
-                - "10660"
+                - sh
+                - /kube-ovn/kube-ovn-controller-healthcheck.sh
             periodSeconds: 3
+            timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
-                - nc
-                - -z
-                - -w3
-                - 127.0.0.1
-                - "10660"
+                - sh
+                - /kube-ovn/kube-ovn-controller-healthcheck.sh
             initialDelaySeconds: 300
             periodSeconds: 7
             failureThreshold: 5
+            timeoutSeconds: 45
       nodeSelector:
-        beta.kubernetes.io/os: "linux"
+        kubernetes.io/os: "linux"
+      volumes:
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
 
 ---
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-cni
-  namespace: kube-system
+  namespace:  kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the kube-ovn cni daemon.
@@ -103,32 +113,41 @@ spec:
       tolerations:
         - operator: Exists
           effect: NoSchedule
+      priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       hostNetwork: true
       hostPID: true
       initContainers:
         - name: install-cni
-          image: "kubeovn/kube-ovn:v1.4.0"
+          image: "kubeovn/kube-ovn:v1.5.0"
           imagePullPolicy: IfNotPresent
           command: ["/kube-ovn/install-cni.sh"]
           securityContext:
             runAsUser: 0
             privileged: true
           volumeMounts:
-          - mountPath: /opt/cni/bin
-            name: cni-bin
+            - mountPath: /opt/cni/bin
+              name: cni-bin
       containers:
         - name: cni-server
-          image: "kubeovn/kube-ovn:v1.4.0"
-          command: ["sh", "/kube-ovn/start-cniserver.sh"]
+          image: "kubeovn/kube-ovn:v1.5.0"
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - /kube-ovn/start-cniserver.sh
           args:
             - --enable-mirror=false
-            - --mtu=1420
-          imagePullPolicy: IfNotPresent
+            - --encap-checksum=true
+            - --service-cluster-ip-range=10.96.0.0/12
+            - --iface=
+            - --network-type=geneve
+            - --default-interface-name=
           securityContext:
             runAsUser: 0
             privileged: true
           env:
+            - name: ENABLE_SSL
+              value: "false"
             - name: POD_IP
               valueFrom:
                 fieldRef:
@@ -138,15 +157,15 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
           volumeMounts:
-          - mountPath: /etc/cni/net.d
-            name: cni-conf
-          - mountPath: /run/openvswitch
-            name: host-run-ovs
-          - mountPath: /run/ovn
-            name: host-run-ovn
-          - mountPath: /var/run/netns
-            name: host-ns
-            mountPropagation: HostToContainer
+            - mountPath: /etc/cni/net.d
+              name: cni-conf
+            - mountPath: /run/openvswitch
+              name: host-run-ovs
+            - mountPath: /run/ovn
+              name: host-run-ovn
+            - mountPath: /var/run/netns
+              name: host-ns
+              mountPropagation: HostToContainer
           readinessProbe:
             exec:
               command:
@@ -168,30 +187,30 @@ spec:
             periodSeconds: 7
             failureThreshold: 5
       nodeSelector:
-        beta.kubernetes.io/os: "linux"
+        kubernetes.io/os: "linux"
       volumes:
-      - name: host-run-ovs
-        hostPath:
-          path: /run/openvswitch
-      - name: host-run-ovn
-        hostPath:
-          path: /run/ovn
-      - name: cni-conf
-        hostPath:
-          path: /etc/cni/net.d
-      - name: cni-bin
-        hostPath:
-          path: /opt/cni/bin
-      - name: host-ns
-        hostPath:
-          path: /var/run/netns
+        - name: host-run-ovs
+          hostPath:
+            path: /run/openvswitch
+        - name: host-run-ovn
+          hostPath:
+            path: /run/ovn
+        - name: cni-conf
+          hostPath:
+            path: /etc/cni/net.d
+        - name: cni-bin
+          hostPath:
+            path: /opt/cni/bin
+        - name: host-ns
+          hostPath:
+            path: /var/run/netns
 
 ---
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-pinger
-  namespace: kube-system
+  namespace:  kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the openvswitch daemon.
@@ -215,13 +234,15 @@ spec:
       hostPID: true
       containers:
         - name: pinger
-          image: "kubeovn/kube-ovn:v1.4.0"
+          image: "kubeovn/kube-ovn:v1.5.0"
+          command: ["/kube-ovn/kube-ovn-pinger", "--external-address=114.114.114.114", "--external-dns=alauda.cn"]
           imagePullPolicy: IfNotPresent
-          command: ["/kube-ovn/kube-ovn-pinger"]
           securityContext:
             runAsUser: 0
             privileged: false
           env:
+            - name: ENABLE_SSL
+              value: "false"
             - name: POD_IP
               valueFrom:
                 fieldRef:
@@ -257,6 +278,8 @@ spec:
               name: host-log-ovs
             - mountPath: /var/log/ovn
               name: host-log-ovn
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
           resources:
             requests:
               cpu: 100m
@@ -265,7 +288,7 @@ spec:
               cpu: 200m
               memory: 400Mi
       nodeSelector:
-        beta.kubernetes.io/os: "linux"
+        kubernetes.io/os: "linux"
       volumes:
         - name: host-modules
           hostPath:
@@ -288,12 +311,16 @@ spec:
         - name: host-log-ovn
           hostPath:
             path: /var/log/ovn
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
 ---
 kind: Service
 apiVersion: v1
 metadata:
-  name: pinger
-  namespace: kube-system
+  name: kube-ovn-pinger
+  namespace:  kube-system
   labels:
     app: kube-ovn-pinger
 spec:
@@ -301,4 +328,32 @@ spec:
     app: kube-ovn-pinger
   ports:
     - port: 8080
-      name: http
+      name: metrics
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: kube-ovn-controller
+  namespace:  kube-system
+  labels:
+    app: kube-ovn-controller
+spec:
+  selector:
+    app: kube-ovn-controller
+  ports:
+    - port: 10660
+      name: metrics
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: kube-ovn-cni
+  namespace:  kube-system
+  labels:
+    app: kube-ovn-cni
+spec:
+  selector:
+    app: kube-ovn-cni
+  ports:
+    - port: 10665
+      name: metrics

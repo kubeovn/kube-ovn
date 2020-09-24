@@ -90,8 +90,7 @@ func checkOvsBindings() ([]string, error) {
 func checkSBBindings(config *Configuration) ([]string, error) {
 	sbHost := os.Getenv("OVN_SB_SERVICE_HOST")
 	sbPort := os.Getenv("OVN_SB_SERVICE_PORT")
-	output, err := exec.Command(
-		"ovn-sbctl",
+	command := []string{
 		fmt.Sprintf("--db=tcp:[%s]:%s", sbHost, sbPort),
 		"--format=csv",
 		"--no-heading",
@@ -100,7 +99,25 @@ func checkSBBindings(config *Configuration) ([]string, error) {
 		"--timeout=10",
 		"find",
 		"chassis",
-		fmt.Sprintf("hostname=%s", config.NodeName)).CombinedOutput()
+		fmt.Sprintf("hostname=%s", config.NodeName),
+	}
+	if os.Getenv("ENABLE_SSL") == "true" {
+		command = []string{
+			"-p", "/var/run/tls/key",
+			"-c", "/var/run/tls/cert",
+			"-C", "/var/run/tls/cacert",
+			fmt.Sprintf("--db=ssl:[%s]:%s", sbHost, sbPort),
+			"--format=csv",
+			"--no-heading",
+			"--data=bare",
+			"--columns=_uuid",
+			"--timeout=10",
+			"find",
+			"chassis",
+			fmt.Sprintf("hostname=%s", config.NodeName),
+		}
+	}
+	output, err := exec.Command("ovn-sbctl", command...).CombinedOutput()
 	if err != nil {
 		klog.Errorf("failed to find chassis %v", err)
 		return nil, err
@@ -112,8 +129,7 @@ func checkSBBindings(config *Configuration) ([]string, error) {
 
 	chassis := strings.TrimSpace(string(output))
 	klog.Infof("chassis id is %s", chassis)
-	output, err = exec.Command(
-		"ovn-sbctl",
+	command = []string{
 		fmt.Sprintf("--db=tcp:[%s]:%s", sbHost, sbPort),
 		"--format=csv",
 		"--no-heading",
@@ -122,7 +138,24 @@ func checkSBBindings(config *Configuration) ([]string, error) {
 		"--timeout=10",
 		"find",
 		"port_binding",
-		fmt.Sprintf("chassis=%s", chassis)).CombinedOutput()
+		fmt.Sprintf("chassis=%s", chassis)}
+	if os.Getenv("ENABLE_SSL") == "true" {
+		command = []string{
+			"-p", "/var/run/tls/key",
+			"-c", "/var/run/tls/cert",
+			"-C", "/var/run/tls/cacert",
+			fmt.Sprintf("--db=ssl:[%s]:%s", sbHost, sbPort),
+			"--format=csv",
+			"--no-heading",
+			"--data=bare",
+			"--columns=logical_port",
+			"--timeout=10",
+			"find",
+			"port_binding",
+			fmt.Sprintf("chassis=%s", chassis),
+		}
+	}
+	output, err = exec.Command("ovn-sbctl", command...).CombinedOutput()
 	if err != nil {
 		klog.Errorf("failed to list port_binding in ovn-sb %v", err)
 		return nil, err

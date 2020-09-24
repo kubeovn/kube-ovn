@@ -2,6 +2,8 @@
 set -euo pipefail
 
 IPv6=${IPv6:-false}
+ENABLE_SSL=${ENABLE_SSL:-false}
+ENABLE_MIRROR=${ENABLE_MIRROR:-false}
 
 REGISTRY="kubeovn"
 NAMESPACE="kube-system"                # The ns to deploy kube-ovn
@@ -73,6 +75,13 @@ then
     shift
   done
   set -u
+fi
+
+if [[ $ENABLE_SSL = "true" ]];then
+  echo "[Step 0] Generate SSL key and cert"
+  bash dist/images/generate-ssl-docker.sh
+  echo "-------------------------------"
+  echo ""
 fi
 
 echo "[Step 1] Label kube-ovn-master node"
@@ -519,6 +528,8 @@ spec:
             capabilities:
               add: ["SYS_NICE"]
           env:
+            - name: ENABLE_SSL
+              value: "$ENABLE_SSL"
             - name: NODE_IPS
               value: $addresses
             - name: POD_IP
@@ -553,6 +564,8 @@ spec:
               name: host-log-ovs
             - mountPath: /var/log/ovn
               name: host-log-ovn
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
           readinessProbe:
             exec:
               command:
@@ -594,6 +607,10 @@ spec:
         - name: host-log-ovn
           hostPath:
             path: /var/log/ovn
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
 
 ---
 kind: DaemonSet
@@ -633,6 +650,8 @@ spec:
             runAsUser: 0
             privileged: true
           env:
+            - name: ENABLE_SSL
+              value: "$ENABLE_SSL"
             - name: POD_IP
               valueFrom:
                 fieldRef:
@@ -664,6 +683,8 @@ spec:
               name: host-config-ovs
             - mountPath: /dev/hugepages
               name: hugepage
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
           readinessProbe:
             exec:
               command:
@@ -722,6 +743,10 @@ spec:
         - name: hugepage
           emptyDir:
             medium: HugePages
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
 EOF
 
 else
@@ -923,6 +948,8 @@ spec:
             capabilities:
               add: ["SYS_NICE"]
           env:
+            - name: ENABLE_SSL
+              value: "$ENABLE_SSL"
             - name: NODE_IPS
               value: $addresses
             - name: POD_IP
@@ -957,6 +984,8 @@ spec:
               name: host-log-ovs
             - mountPath: /var/log/ovn
               name: host-log-ovn
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
           readinessProbe:
             exec:
               command:
@@ -998,6 +1027,10 @@ spec:
         - name: host-log-ovn
           hostPath:
             path: /var/log/ovn
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
 ---
 kind: DaemonSet
 apiVersion: apps/v1
@@ -1036,6 +1069,8 @@ spec:
             runAsUser: 0
             privileged: true
           env:
+            - name: ENABLE_SSL
+              value: "$ENABLE_SSL"
             - name: POD_IP
               valueFrom:
                 fieldRef:
@@ -1065,6 +1100,8 @@ spec:
               name: host-log-ovs
             - mountPath: /var/log/ovn
               name: host-log-ovn
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
           readinessProbe:
             exec:
               command:
@@ -1115,6 +1152,10 @@ spec:
         - name: host-log-ovn
           hostPath:
             path: /var/log/ovn
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
 EOF
 fi
 
@@ -1180,6 +1221,8 @@ spec:
           - --default-interface-name=$VLAN_INTERFACE_NAME
           - --default-vlan-id=$VLAN_ID
           env:
+            - name: ENABLE_SSL
+              value: "$ENABLE_SSL"
             - name: POD_NAME
               valueFrom:
                 fieldRef:
@@ -1192,6 +1235,9 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+          volumeMounts:
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
           readinessProbe:
             exec:
               command:
@@ -1210,6 +1256,11 @@ spec:
             timeoutSeconds: 45
       nodeSelector:
         kubernetes.io/os: "linux"
+      volumes:
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
 
 ---
 kind: DaemonSet
@@ -1257,7 +1308,7 @@ spec:
           - sh
           - /kube-ovn/start-cniserver.sh
         args:
-          - --enable-mirror=true
+          - --enable-mirror=$ENABLE_MIRROR
           - --encap-checksum=true
           - --service-cluster-ip-range=$SVC_CIDR
           - --iface=${IFACE}
@@ -1267,6 +1318,8 @@ spec:
           runAsUser: 0
           privileged: true
         env:
+          - name: ENABLE_SSL
+            value: "$ENABLE_SSL"
           - name: POD_IP
             valueFrom:
               fieldRef:
@@ -1360,6 +1413,8 @@ spec:
             runAsUser: 0
             privileged: false
           env:
+            - name: ENABLE_SSL
+              value: "$ENABLE_SSL"
             - name: POD_IP
               valueFrom:
                 fieldRef:
@@ -1395,6 +1450,8 @@ spec:
               name: host-log-ovs
             - mountPath: /var/log/ovn
               name: host-log-ovn
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
           resources:
             requests:
               cpu: 100m
@@ -1426,6 +1483,10 @@ spec:
         - name: host-log-ovn
           hostPath:
             path: /var/log/ovn
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
 ---
 kind: Service
 apiVersion: v1
