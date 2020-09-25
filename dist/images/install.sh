@@ -4,6 +4,8 @@ set -euo pipefail
 IPv6=${IPv6:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
 ENABLE_MIRROR=${ENABLE_MIRROR:-false}
+HW_OFFLOAD=${HW_OFFLOAD:-false}
+IFACE=""                               # The nic to support container network, if empty will use the nic that the default route use
 
 REGISTRY="kubeovn"
 NAMESPACE="kube-system"                # The ns to deploy kube-ovn
@@ -22,11 +24,9 @@ fi
 
 EXCLUDE_IPS=""                         # EXCLUDE_IPS for default subnet
 LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
-IFACE=""                               # The nic to support container network, if empty will use the nic that the default route use
 NETWORK_TYPE="geneve"                  # geneve or vlan
 VERSION="v1.5.0"
 IMAGE_PULL_POLICY="IfNotPresent"
-HW_OFFLOAD="false"
 
 # VLAN Config only take effect when NETWORK_TYPE is vlan
 PROVIDER_NAME="provider"
