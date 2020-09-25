@@ -73,5 +73,5 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
 else
   /usr/share/ovn/scripts/ovn-ctl --ovn-controller-ssl-key=/var/run/tls/key --ovn-controller-ssl-cert=/var/run/tls/cert --ovn-controller-ssl-ca-cert=/var/run/tls/cacert restart_controller
 fi
-
+chmod 600 /etc/openvswitch/*
 tail -f /var/log/ovn/ovn-controller.log
