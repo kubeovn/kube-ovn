@@ -176,4 +176,5 @@ else
       fi
   fi
 fi
+chmod 600 /etc/ovn/*
 tail -f /var/log/ovn/ovn-northd.log
