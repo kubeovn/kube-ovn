@@ -1,4 +1,33 @@
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: kube-ovn
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: '*'
+spec:
+  privileged: true
+  allowPrivilegeEscalation: true
+  allowedCapabilities:
+    - '*'
+  volumes:
+    - '*'
+  hostNetwork: true
+  hostPorts:
+    - min: 0
+      max: 65535
+  hostIPC: true
+  hostPID: true
+  runAsUser:
+    rule: 'RunAsAny'
+  seLinux:
+    rule: 'RunAsAny'
+  supplementalGroups:
+    rule: 'RunAsAny'
+  fsGroup:
+    rule: 'RunAsAny'
+
 ---
+
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -20,6 +49,11 @@ metadata:
     rbac.authorization.k8s.io/system-only: "true"
   name: system:ovn
 rules:
+  - apiGroups: ['policy']
+    resources: ['podsecuritypolicies']
+    verbs:     ['use']
+    resourceNames:
+      - kube-ovn
   - apiGroups:
       - "kubeovn.io"
     resources:
@@ -27,6 +61,7 @@ rules:
       - subnets/status
       - ips
       - vlans
+      - networks
     verbs:
       - "*"
   - apiGroups:
@@ -67,7 +102,6 @@ rules:
       - create
       - patch
       - update
-
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -87,7 +121,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: ovn-nb
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
 spec:
   ports:
     - name: ovn-nb
@@ -99,7 +133,6 @@ spec:
     app: ovn-central
     ovn-nb-leader: "true"
   sessionAffinity: None
-
 ---
 kind: Service
 apiVersion: v1
@@ -117,7 +150,6 @@ spec:
     app: ovn-central
     ovn-sb-leader: "true"
   sessionAffinity: None
-
 ---
 kind: Deployment
 apiVersion: apps/v1
@@ -145,8 +177,8 @@ spec:
         type: infra
     spec:
       tolerations:
-      - operator: Exists
-        effect: NoSchedule
+        - operator: Exists
+          effect: NoSchedule
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -166,8 +198,8 @@ spec:
             capabilities:
               add: ["SYS_NICE"]
           env:
-            - name: NODE_IPS
-              value: $addresses
+            - name: ENABLE_SSL
+              value: "false"
             - name: POD_IP
               valueFrom:
                 fieldRef:
@@ -200,12 +232,15 @@ spec:
               name: host-log-ovs
             - mountPath: /var/log/ovn
               name: host-log-ovn
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
           readinessProbe:
             exec:
               command:
                 - sh
                 - /kube-ovn/ovn-is-leader.sh
             periodSeconds: 3
+            timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
@@ -214,6 +249,7 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 7
             failureThreshold: 5
+            timeoutSeconds: 45
       nodeSelector:
         kubernetes.io/os: "linux"
         kube-ovn/role: "master"
@@ -239,7 +275,10 @@ spec:
         - name: host-log-ovn
           hostPath:
             path: /var/log/ovn
-
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
 ---
 kind: DaemonSet
 apiVersion: apps/v1
@@ -263,8 +302,8 @@ spec:
         type: infra
     spec:
       tolerations:
-      - operator: Exists
-        effect: NoSchedule
+        - operator: Exists
+          effect: NoSchedule
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       hostNetwork: true
@@ -278,10 +317,16 @@ spec:
             runAsUser: 0
             privileged: true
           env:
+            - name: NODE_IPS
+              value: $addresses
+            - name: ENABLE_SSL
+              value: "false"
             - name: POD_IP
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            - name: HW_OFFLOAD
+              value: "false"
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
@@ -315,6 +360,7 @@ spec:
                 - sh
                 - /kube-ovn/ovs-dpdk-healthcheck.sh
             periodSeconds: 5
+            timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
@@ -323,6 +369,7 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 5
             failureThreshold: 5
+            timeoutSeconds: 45
           resources:
             requests:
               cpu: 500m

@@ -27,19 +27,18 @@ spec:
     rule: 'RunAsAny'
 
 ---
+
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: ovn-config
   namespace: kube-system
-
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: ovn
-  namespace: kube-system
-
+  namespace:  kube-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -60,6 +59,7 @@ rules:
       - subnets/status
       - ips
       - vlans
+      - networks
     verbs:
       - "*"
   - apiGroups:
@@ -100,7 +100,6 @@ rules:
       - create
       - patch
       - update
-
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -113,14 +112,13 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: ovn
-    namespace: kube-system
-
+    namespace:  kube-system
 ---
 kind: Service
 apiVersion: v1
 metadata:
   name: ovn-nb
-  namespace: kube-system
+  namespace:  kube-system
 spec:
   ports:
     - name: ovn-nb
@@ -132,13 +130,12 @@ spec:
     app: ovn-central
     ovn-nb-leader: "true"
   sessionAffinity: None
-
 ---
 kind: Service
 apiVersion: v1
 metadata:
   name: ovn-sb
-  namespace: kube-system
+  namespace:  kube-system
 spec:
   ports:
     - name: ovn-sb
@@ -150,13 +147,12 @@ spec:
     app: ovn-central
     ovn-sb-leader: "true"
   sessionAffinity: None
-
 ---
 kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: ovn-central
-  namespace: kube-system
+  namespace:  kube-system
   annotations:
     kubernetes.io/description: |
       OVN components: northd, nb and sb.
@@ -178,8 +174,8 @@ spec:
         type: infra
     spec:
       tolerations:
-      - operator: Exists
-        effect: NoSchedule
+        - operator: Exists
+          effect: NoSchedule
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -192,7 +188,7 @@ spec:
       hostNetwork: true
       containers:
         - name: ovn-central
-          image: "kubeovn/kube-ovn:v1.4.0"
+          image: "kubeovn/kube-ovn:v1.5.0"
           imagePullPolicy: IfNotPresent
           command: ["/kube-ovn/start-db.sh"]
           securityContext:
@@ -201,6 +197,8 @@ spec:
           env:
             - name: NODE_IPS
               value: 172.17.0.2,172.17.0.3,172.17.0.4
+            - name: ENABLE_SSL
+              value: "false"
             - name: POD_IP
               valueFrom:
                 fieldRef:
@@ -233,12 +231,15 @@ spec:
               name: host-log-ovs
             - mountPath: /var/log/ovn
               name: host-log-ovn
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
           readinessProbe:
             exec:
               command:
                 - sh
                 - /kube-ovn/ovn-is-leader.sh
             periodSeconds: 3
+            timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
@@ -247,6 +248,7 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 7
             failureThreshold: 5
+            timeoutSeconds: 45
       nodeSelector:
         kubernetes.io/os: "linux"
         kube-ovn/role: "master"
@@ -272,13 +274,16 @@ spec:
         - name: host-log-ovn
           hostPath:
             path: /var/log/ovn
-
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
 ---
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: ovs-ovn
-  namespace: kube-system
+  namespace:  kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the openvswitch daemon.
@@ -296,21 +301,23 @@ spec:
         type: infra
     spec:
       tolerations:
-      - operator: Exists
-        effect: NoSchedule
+        - operator: Exists
+          effect: NoSchedule
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       hostNetwork: true
       hostPID: true
       containers:
         - name: openvswitch
-          image: "kubeovn/kube-ovn:v1.4.0"
+          image: "kubeovn/kube-ovn:v1.5.0"
           imagePullPolicy: IfNotPresent
           command: ["/kube-ovn/start-ovs.sh"]
           securityContext:
             runAsUser: 0
             privileged: true
           env:
+            - name: ENABLE_SSL
+              value: "false"
             - name: POD_IP
               valueFrom:
                 fieldRef:
@@ -340,12 +347,15 @@ spec:
               name: host-log-ovs
             - mountPath: /var/log/ovn
               name: host-log-ovn
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
           readinessProbe:
             exec:
               command:
                 - sh
                 - /kube-ovn/ovs-healthcheck.sh
             periodSeconds: 5
+            timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
@@ -354,6 +364,7 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 5
             failureThreshold: 5
+            timeoutSeconds: 45
           resources:
             requests:
               cpu: 200m
@@ -388,3 +399,7 @@ spec:
         - name: host-log-ovn
           hostPath:
             path: /var/log/ovn
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
