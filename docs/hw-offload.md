@@ -13,6 +13,24 @@ By taking use of SR-IOV technology we can achieve low network latency and high t
 
 ## Installation Guide
 
+### Install Kube-OVN with hw-offload mode enabled
+1. Download latest install script
+```bash
+`wget https://raw.githubusercontent.com/alauda/kube-ovn/master/dist/images/install.sh`
+```
+2. Edit the install script, enable hw-offload, disable traffic mirror and set the IFACE to the PF.
+Make sure that there is a ip address bind to the PF.
+```bash
+ENABLE_MIRROR=${ENABLE_MIRROR:-false}
+HW_OFFLOAD=${HW_OFFLOAD:-true}
+IFACE="ensp01"
+```
+
+3. Install Kube-OVN
+```bash
+bash install.sh
+```
+
 ### Setting Up SR-IOV
 1. Find the device id of ConnectX-5 device, below is `42:00.0`
 ```bash
@@ -114,6 +132,9 @@ data:
 ```
 
 2. Follow [SR-IOV Device Plugin](https://github.com/intel/sriov-network-device-plugin) to deploy device plugin.
+```bash
+kubectl apply -f https://raw.githubusercontent.com/intel/sriov-network-device-plugin/master/deployments/k8s-v1.16/sriovdp-daemonset.yaml
+```
 
 3. Check if SR-IOV devices have been discovered by device plugin
 ```bash
@@ -125,6 +146,9 @@ mellanox.com/cx5_sriov_switchdev  0           0
 ```
 ### Install Multus-CNI
 1. Follow [Multus-CNI](https://github.com/intel/multus-cni/) to deploy Multus-CNI
+```bash
+kubectl apply -f https://raw.githubusercontent.com/intel/multus-cni/master/images/multus-daemonset.yml
+```
 
 2. Create a NetworkAttachmentDefinition
 ```yaml
@@ -152,24 +176,7 @@ spec:
     ]
 }'
 ```
-### Enable HardwareOffload in Kube-OVN
-Update ovs-ovn daemonset and set the HW_OFFLOAD env to true and delete exist pods to redeploy.
 
-```yaml
-    spec:
-      containers:
-      - command:
-        - /kube-ovn/start-ovs.sh
-        env:
-        - name: POD_IP
-          valueFrom:
-            fieldRef:
-              apiVersion: v1
-              fieldPath: status.podIP
-        - name: HW_OFFLOAD
-          value: "true"
-        image: kubeovn/kube-ovn:v1.4.0
-```
 ### Create Pod with SR-IOV
 ```yaml
 apiVersion: v1
