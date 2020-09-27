@@ -52,6 +52,8 @@ If you want to know the detail steps to install Kube-OVN, please follow the step
 
 For Kubernetes version before 1.17 please use the following command to add the node label
 
+    `kubectl label no -lbeta.kubernetes.io/os=linux kubernetes.io/os=linux --overwrite`
+
 1. Add the following label to the Node which will host the OVN DB and the OVN Control Plane:
 
     `kubectl label node <Node on which to deploy OVN DB> kube-ovn/role=master`

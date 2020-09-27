@@ -6,7 +6,8 @@ for subnet in $(kubectl get subnet -o name); do
 done
 
 # Delete Kube-OVN components
-kubectl delete cm ovn-config -n kube-system --ignore-not-found=true
+kubectl delete cm ovn-config ovn-ic-config ovn-external-gw-config -n kube-system --ignore-not-found=true
+kubectl delete secret kube-ovn-tls -n kube-system --ignore-not-found=ture
 kubectl delete sa ovn -n kube-system --ignore-not-found=true
 kubectl delete clusterrole system:ovn --ignore-not-found=true
 kubectl delete clusterrolebinding ovn --ignore-not-found=true
