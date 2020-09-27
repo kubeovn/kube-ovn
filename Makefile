@@ -10,7 +10,7 @@ ARCH=amd64
 # RPM_ARCH could be x86_64,aarch64
 RPM_ARCH=x86_64
 
-.PHONY: build-dev-images build-dpdk build-go build-bin lint kind-init kind-init-ha kind-install kind-reload push-dev push-release e2e ut
+.PHONY: build-dev-images build-dpdk build-go build-bin lint kind-init kind-init-ha kind-install kind-install-ipv6 kind-reload push-dev push-release e2e ut
 
 build-dev-images: build-bin
 	docker build -t ${REGISTRY}/kube-ovn:${DEV_TAG} -f dist/images/Dockerfile dist/images/
@@ -75,7 +75,7 @@ kind-init:
 kind-install:
 	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
-	dist/images/install.sh
+	ENABLE_SSL=true dist/images/install.sh
 	kubectl get no -o wide
 
 kind-init-ha:
@@ -93,7 +93,7 @@ kind-init-ipv6:
 kind-install-ipv6:
 	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
-	IPv6=true dist/images/install.sh
+	ENABLE_SSL=true IPv6=true dist/images/install.sh
 
 kind-reload:
 	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
@@ -116,4 +116,4 @@ ut:
 	ginkgo -p --slowSpecThreshold=60 test/unittest
 
 scan:
-	trivy image --exit-code=1 --severity=HIGH --ignore-unfixed kubeovn/kube-ovn:${RELEASE_TAG}
+	trivy image --light --exit-code=1 --severity=HIGH --ignore-unfixed kubeovn/kube-ovn:${RELEASE_TAG}

@@ -8,6 +8,8 @@ HW_OFFLOAD=${HW_OFFLOAD:-false}
 IFACE=""                               # The nic to support container network, if empty will use the nic that the default route use
 
 REGISTRY="kubeovn"
+VERSION="v1.5.0"
+IMAGE_PULL_POLICY="IfNotPresent"
 NAMESPACE="kube-system"                # The ns to deploy kube-ovn
 POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
 SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR
@@ -25,8 +27,6 @@ fi
 EXCLUDE_IPS=""                         # EXCLUDE_IPS for default subnet
 LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
 NETWORK_TYPE="geneve"                  # geneve or vlan
-VERSION="v1.5.0"
-IMAGE_PULL_POLICY="IfNotPresent"
 
 # VLAN Config only take effect when NETWORK_TYPE is vlan
 PROVIDER_NAME="provider"
@@ -79,7 +79,12 @@ fi
 
 if [[ $ENABLE_SSL = "true" ]];then
   echo "[Step 0] Generate SSL key and cert"
-  bash dist/images/generate-ssl-docker.sh
+  exist=$(kubectl get secret -n kube-system kube-ovn-tls --ignore-not-found)
+  if [[ $exist == "" ]];then
+    docker run --rm -v $PWD:/etc/ovn $REGISTRY/kube-ovn:$VERSION bash generate-ssl.sh
+    kubectl create secret generic -n kube-system kube-ovn-tls --from-file=cacert=cacert.pem --from-file=cert=ovn-cert.pem --from-file=key=ovn-privkey.pem
+    rm -rf cacert.pem ovn-cert.pem ovn-privkey.pem ovn-req.pem
+  fi
   echo "-------------------------------"
   echo ""
 fi
