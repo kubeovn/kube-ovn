@@ -35,7 +35,7 @@ spec:
       hostNetwork: true
       containers:
         - name: ovn-central
-          image: "kubeovn/kube-ovn:v1.4.0"
+          image: "kubeovn/kube-ovn:v1.5.0"
           imagePullPolicy: IfNotPresent
           command:
             - /kube-ovn/kube-ovn-speaker

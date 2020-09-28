@@ -22,10 +22,10 @@ Kube-OVN provides a one script install to easily install a high-available, produ
 1. Download the stable release installer scripts
 
 For Kubernetes version>=1.16
-`wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.4/dist/images/install.sh`
+`wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.5/dist/images/install.sh`
 
 For Kubernetes version<1.16
-`wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.4/dist/images/install-pre-1.16.sh`
+`wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.5/dist/images/install-pre-1.16.sh`
 
 If you want to try the latest developing Kube-OVN, try the script below
 `wget https://raw.githubusercontent.com/alauda/kube-ovn/master/dist/images/install.sh`
@@ -39,7 +39,7 @@ If you want to try the latest developing Kube-OVN, try the script below
  JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
  LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
  IFACE=""                               # The nic to support container network, if empty will use the nic that the default route use
- VERSION="v1.4.0"
+ VERSION="v1.5.0"
 ```
 
 3. Execute the script
@@ -59,19 +59,19 @@ For Kubernetes version before 1.17 please use the following command to add the n
     `kubectl label node <Node on which to deploy OVN DB> kube-ovn/role=master`
 2. Install Kube-OVN related CRDs
 
-    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/release-1.4/yamls/crd.yaml`
+    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/release-1.5/yamls/crd.yaml`
 3. Install native OVS and OVN components:
 
-    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/release-1.4/yamls/ovn.yaml`
+    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/release-1.5/yamls/ovn.yaml`
 4. Install the Kube-OVN Controller and CNI plugins:
 
-    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/release-1.4/yamls/kube-ovn.yaml`
+    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/release-1.5/yamls/kube-ovn.yaml`
 
 That's all! You can now create some pods and test connectivity.
 
 For high-available ovn db, see [high available](high-available.md)
 
-If you want to enable IPv6 on default subnet and node subnet, please apply https://raw.githubusercontent.com/alauda/kube-ovn/release-1.4/yamls/kube-ovn-ipv6.yaml on Step 3.
+If you want to enable IPv6 on default subnet and node subnet, please apply https://raw.githubusercontent.com/alauda/kube-ovn/release-1.5/yamls/kube-ovn-ipv6.yaml on Step 3.
 
 ## More Configuration
 
@@ -158,7 +158,7 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
 1. Remove Kubernetes resources:
 
     ```bash
-    wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.4/dist/images/cleanup.sh
+    wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.5/dist/images/cleanup.sh
     bash cleanup.sh
     ```
 

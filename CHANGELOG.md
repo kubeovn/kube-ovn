@@ -1,5 +1,36 @@
 # CHANGELOG
 
+## 1.5.0 -- 2020/9/28
+
+### New Feature
+* Pod level SNAT and EIP support
+* Integrate SFC function into OVN
+* OVN-Controller graceful stop
+* Mirror config can be updated dynamically
+* Set more metadata to interface external-ids
+
+### Security
+* Support TLS connection between components
+* Change DB file access mode
+
+### Monitoring
+* Add more metrics to pinger dashboard
+* Add more metrics to kube-ovn-cni and a new Grafana dashboard
+* Diagnose show ovn-nb and ovn-sb overview
+
+### Mics
+* Update CI k8s to 1.19
+* Change kube-ovn-cni updateStrategy
+* Move CNI conf when kube-ovn-cni ready
+
+### Bugfix
+* Use NodeName as OVN chassis name
+* Stop OVN-IC if disabled
+* Uninstall scripts will clean up ipv6 iptables and ipset
+* Bridging-mapping may conflict, if enable vlan and external gateway 
+* Pinger ipv6 mode fetch portmaping failed
+* Pinger diagnose should reuse cmd args
+
 ## 1.4.0 -- 2020/9/1
 
 ### New Feature
@@ -28,7 +59,7 @@
 ### New Feature
 * Hardware offload to boost performance in Bare-Metal environment
 * Assigning a specific pod as gateway
-* Central gateway QoS
+* Support QoS of the central gateway 
 * Session affinity service
 * Round-robbin IP allocation to relieve IP conflict
 
@@ -142,7 +173,7 @@ Please check [this document](docs/multi-nic.md) to see how we combine Kube-OVN a
 * Diagnose will check kube-proxy and coredns status
 
 ### Bugfix
-* Use uuid to fetch lb vips
+* Use uuid to fetch the lb vips
 * Add inactivity_probe back
 * Update svc might remove other svc that with same prefix
 * IP prefix might be empty
@@ -163,7 +194,7 @@ Please check [this document](docs/multi-nic.md) to see how we combine Kube-OVN a
 This release fix bugs found in v1.0.0
 
 ### Bugfix
-* Use uuid to fetch lb vips
+* Use uuid to fetch the lb vips
 * Add inactivity_probe back
 * Update svc might remove other svc that with same prefix
 * IP prefix might be empty
@@ -200,14 +231,14 @@ It's time to run Kube-OVN in production!
 * Recompute ovn-controller periodically to avoid inconsistency
 * Wait for flow installed before cni return
 * Add back missing lsp gc
-* Delete lb if it has no backends
+* Delete the lb if it has no backends
 
 ## v0.10.0 -- 2019/12/23
 
 ### Performance
 * Update ovn to 2.12.0 and pick performance and raft bugfix from upstream
 * Modify upstream ovn to reduce memory footprint
-* CniServer filter pod in informer list-watch and disable resync
+* CniServer filter pod in the informer list-watch and disable resync
 * Skip evicted pod when enqueueAddPod and enqueueUpdatePod
 * When controller restart skip pod already create lsp
 * As lr-route-add with --may-exist will replace exist route, no need for another delete
@@ -216,12 +247,12 @@ It's time to run Kube-OVN in production!
 * Pinger support to check external address
 
 ### Bugfix
-* When all ip in subnet is used create lsp will panic with index out of range err
+* When all ip in a subnet is used up, creating lsp will panic with an index out of range err
 * Mount /var/run/netns into kube-ovn-cniserver for kind
 * Use ep.subset.port.name to infer target port number
 * Typo in start-ovs.sh
 * When delete node recycle related ip/route resource
-* Nbctl need timeout to avoid hang infinitely
+* Nbctl need timeout to avoid the infinitely hang
 * Block subnet deletion when there is any ip in use
 * IP conflict when use ippool
 * GC logical_switch_port form listing pods and nodes
@@ -238,12 +269,12 @@ It's time to run Kube-OVN in production!
 This release fix bugs found in v0.9.0
 
 ### Bugfix
-* When all ip in subnet is used create lsp will panic with index out of range err
+* When all ip in a subnet is used up, create lsp will panic with an index out of range err
 * Mount /var/run/netns into kube-ovn-cniserver for kind
 * Use ep.subset.port.name to infer target port number
 * Typo in start-ovs.sh
 * When delete node recycle related ip/route resource
-* Nbctl need timeout to avoid hang infinitely
+* Nbctl need timeout to avoid the infinitely hang
 * Block subnet deletion when there any ip in use
 
 ## v0.9.0 -- 2019/11/21
@@ -307,14 +338,14 @@ This release is mainly about controller performance, stability and bugfix
 ### Subnet
 * Check logical switch existence before related operations
 * Calculate default values for custom subnet
-* Auto unbind previous subnet when namespace bind to a new subnet
+* Auto unbinds the previous subnet when namespace bind to a new subnet
 * Subnet CRD now has status field to show ip allocation statistic and subnet condition
 * Write subnet annotations back to bind namespace
 
 ### Security
 * Enable traffic mirror by default
 * Support select all type NetworkPolicy rules
-* Private subnet now applies acl to all ports not only gateway ports
+* Private subnets now apply acl to all ports not only gateway ports
 
 ### IPv6
 * Control plan components now can communicate with IPv6 protocol
@@ -325,7 +356,7 @@ This release is mainly about controller performance, stability and bugfix
 * Test Kube-OVN compatible on CentOS 7.5/Ubuntu 16.04 and Ubuntu 18.04
 * Add support for Kubespray and kubeasz installation tools
 * Rename cni conf to `00-kube-ovn.conflist` to improve kubelet priority
-* Basic TCP [performance test](https://github.com/alauda/kube-ovn/wiki/%E9%98%BF%E9%87%8C%E4%BA%91%E6%B5%8B%E8%AF%95) on aliyun.
+* Basic TCP [performance test](https://github.com/alauda/kube-ovn/wiki/%E9%98%BF%E9%87%8C%E4%BA%91%E6%B5%8B%E8%AF%95) on Aliyun.
 
 ## v0.6.0 -- 2019/07/22
 ### Features
@@ -342,7 +373,7 @@ This release is mainly about controller performance, stability and bugfix
 ## v0.5.0 -- 2019/06/06
 ### Features
 * Support NetworkPolicy by OVN ACL
-* User can choose interface for inter-host communication
+* User can choose the interface for inter-host communication
 * User can set mtu of pod interface
 * Set kernel args when start cniserver
 * Add pprof and use it as liveness/readiness probe
@@ -360,7 +391,7 @@ This is a bugfix version
 * json: cannot unmarshal string into Go value of type request.PodResponse
 * use ovsdb-client to get leader info to avoid log rotation
 * use default-gw as default-exclude-ips and expose args to docs
-* to cleanup all created resources, not only kube-ovn namespace.
+* to clean up all created resources, not only kube-ovn namespace.
 
 ## v0.4.0 -- 2019/05/16
 ### Features
@@ -405,7 +436,7 @@ This is a bugfix version
 * IP/Mac static allocation
 * Namespace bind subnet
 * Namespaces share subnet
-* Connectivity between node and pod
+* Connectivity between nodes and pods
 ### Issues
-* Pod can not access external network
+* Pod cannot access external network
 * No HA for control plan
