@@ -52,7 +52,7 @@ func main() {
 	kubeInformerFactory.Start(stopCh)
 	kubeovnInformerFactory.Start(stopCh)
 	go ctl.Run(stopCh)
-	go daemon.RunServer(config)
+	go daemon.RunServer(config, ctl)
 	if err := mvCNIConf(); err != nil {
 		klog.Fatalf("failed to mv cni conf, %v", err)
 	}

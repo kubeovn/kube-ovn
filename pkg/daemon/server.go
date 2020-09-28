@@ -16,9 +16,9 @@ var requestLogString = "[%s] Incoming %s %s %s request"
 var responseLogString = "[%s] Outgoing response %s %s with %d status code in %vms"
 
 // RunServer runs the cniserver
-func RunServer(config *Configuration) {
+func RunServer(config *Configuration, controller *Controller) {
 	nodeName = config.NodeName
-	csh := createCniServerHandler(config)
+	csh := createCniServerHandler(config, controller)
 	server := http.Server{
 		Handler: createHandler(csh),
 	}
