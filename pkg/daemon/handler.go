@@ -23,10 +23,11 @@ type cniServerHandler struct {
 	Config        *Configuration
 	KubeClient    kubernetes.Interface
 	KubeOvnClient clientset.Interface
+	Controller    *Controller
 }
 
-func createCniServerHandler(config *Configuration) *cniServerHandler {
-	csh := &cniServerHandler{KubeClient: config.KubeClient, KubeOvnClient: config.KubeOvnClient, Config: config}
+func createCniServerHandler(config *Configuration, controller *Controller) *cniServerHandler {
+	csh := &cniServerHandler{KubeClient: config.KubeClient, KubeOvnClient: config.KubeOvnClient, Config: config, Controller: controller}
 	return csh
 }
 
@@ -46,7 +47,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	var pod *v1.Pod
 	var err error
 	for i := 0; i < 15; i++ {
-		pod, err = csh.KubeClient.CoreV1().Pods(podRequest.PodNamespace).Get(podRequest.PodName, metav1.GetOptions{})
+		pod, err = csh.Controller.podsLister.Pods(podRequest.PodNamespace).Get(podRequest.PodName)
 		if err != nil {
 			errMsg := fmt.Errorf("get pod %s/%s failed %v", podRequest.PodNamespace, podRequest.PodName, err)
 			klog.Error(errMsg)
@@ -177,7 +178,7 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		}
 		return
 	}
-	pod, err := csh.KubeClient.CoreV1().Pods(podRequest.PodNamespace).Get(podRequest.PodName, metav1.GetOptions{})
+	pod, err := csh.Controller.podsLister.Pods(podRequest.PodNamespace).Get(podRequest.PodName)
 	if err != nil && !k8serrors.IsNotFound(err) {
 		errMsg := fmt.Errorf("parse del request failed %v", err)
 		klog.Error(errMsg)
