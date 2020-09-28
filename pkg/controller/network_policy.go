@@ -390,6 +390,9 @@ func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.Label
 
 	ports := make([]string, 0, len(pods))
 	for _, pod := range pods {
+		if !isPodAlive(pod) {
+			continue
+		}
 		if !pod.Spec.HostNetwork && pod.Annotations[util.AllocatedAnnotation] == "true" {
 			ports = append(ports, fmt.Sprintf("%s.%s", pod.Name, pod.Namespace))
 		}
