@@ -49,7 +49,19 @@ type Controller struct {
 	iptable *iptables.IPTables
 	ipset   *ipsets.IPSets
 
-	protocol string
+	protocol   string
+	internalIP string
+}
+
+func getNodeInternalIP(node *v1.Node) string {
+	var nodeAddr string
+	for _, addr := range node.Status.Addresses {
+		if addr.Type == v1.NodeInternalIP {
+			nodeAddr = addr.Address
+			break
+		}
+	}
+	return nodeAddr
 }
 
 // NewController init a daemon controller
@@ -81,6 +93,7 @@ func NewController(config *Configuration, informerFactory informers.SharedInform
 		return nil, err
 	}
 	controller.protocol = util.CheckProtocol(node.Annotations[util.IpAddressAnnotation])
+	controller.internalIP = getNodeInternalIP(node)
 
 	if controller.protocol == kubeovnv1.ProtocolIPv4 {
 		iptable, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
@@ -120,7 +133,7 @@ func (c *Controller) enqueueSubnet(obj interface{}) {
 	c.subnetQueue.Add(key)
 }
 
-func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
+func (c *Controller) enqueueUpdateSubnet(_, new interface{}) {
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
@@ -220,7 +233,8 @@ func (c *Controller) reconcileRouters() error {
 	for _, r := range toAdd {
 		_, cidr, _ := net.ParseCIDR(r)
 		gw := net.ParseIP(gateway)
-		if err = netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: gw}); err != nil {
+		src := net.ParseIP(c.internalIP)
+		if err = netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: gw, Src: src}); err != nil {
 			klog.Errorf("failed to add route %v", err)
 		}
 	}
