@@ -180,6 +180,16 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		return
 	}
 
+	if newPod.DeletionTimestamp != nil {
+		go func() {
+			// In case node get lost and pod can not be deleted,
+			// the ipaddress will not be recycled
+			time.Sleep(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second)
+			c.deletePodQueue.Add(key)
+		}()
+		return
+	}
+
 	// pod assigned an ip
 	if newPod.Annotations[util.AllocatedAnnotation] == "true" &&
 		newPod.Annotations[util.RoutedAnnotation] != "true" &&
@@ -410,7 +420,7 @@ func (c *Controller) handleDeletePod(key string) error {
 		return nil
 	}
 	pod, err := c.podsLister.Pods(namespace).Get(name)
-	if pod != nil && isPodAlive(pod) {
+	if pod != nil && pod.DeletionTimestamp == nil && isPodAlive(pod) {
 		// Pod with same name exists, just return here
 		return nil
 	}
