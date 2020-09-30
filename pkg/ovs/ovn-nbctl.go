@@ -39,7 +39,7 @@ func (c Client) SetAzName(azName string) error {
 
 func (c Client) SetICAutoRoute(enable bool) error {
 	if enable {
-		if _, err := c.ovnNbCommand("set", "NB_Global", ".", "options:ic-route-adv=true", "options:ic-route-learn=true"); err != nil {
+		if _, err := c.ovnNbCommand("set", "NB_Global", ".", "options:ic-route-adv=true", "options:ic-route-learn=true", fmt.Sprintf("options:ic-route-blacklist=%s", c.NodeSwitchCIDR)); err != nil {
 			return fmt.Errorf("failed to enable ovn-ic auto route, %v", err)
 		}
 		return nil
