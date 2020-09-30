@@ -1,6 +1,6 @@
 # syntax = docker/dockerfile:experimental
 FROM centos:8 as ovs-rpm
-ENV BUILD_DATE 20200824
+ENV BUILD_DATE 20200930
 ARG RPM_ARCH
 ARG ARCH
 
@@ -20,7 +20,7 @@ RUN bash /root/build.sh && \
 
 
 FROM centos:8
-ENV BUILD_DATE 20200824
+ENV BUILD_DATE 20200930
 RUN sed -i s/\$releasever/8-stream/g /etc/yum.repos.d/CentOS-Base.repo && \
     sed -i s/\$releasever/8-stream/g /etc/yum.repos.d/CentOS-AppStream.repo
 RUN yum remove -y bind-export-libs && yum update -y && \

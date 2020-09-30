@@ -8,7 +8,7 @@ HW_OFFLOAD=${HW_OFFLOAD:-false}
 IFACE=""                               # The nic to support container network, if empty will use the nic that the default route use
 
 REGISTRY="kubeovn"
-VERSION="v1.5.0"
+VERSION="v1.6.0"
 IMAGE_PULL_POLICY="IfNotPresent"
 NAMESPACE="kube-system"                # The ns to deploy kube-ovn
 POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
