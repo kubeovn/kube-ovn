@@ -34,7 +34,7 @@ RUN yum remove -y bind-export-libs && yum update -y && \
         tcpdump ipset && \
     yum clean all
 ARG RPM_ARCH
-RUN rpm -ivh --nodeps https://download-ib01.fedoraproject.org/pub/fedora/linux/releases/30/Everything/${RPM_ARCH}/os/Packages/i/iptables-1.8.0-5.fc30.${RPM_ARCH}.rpm
+RUN rpm -ivh --nodeps https://archives.fedoraproject.org/pub/archive/fedora/linux/releases/30/Everything/${RPM_ARCH}/os/Packages/i/iptables-1.8.0-5.fc30.${RPM_ARCH}.rpm
 
 RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /var/run/ovn && \
@@ -62,3 +62,4 @@ COPY kube-ovn-pinger /kube-ovn/kube-ovn-pinger
 COPY kube-ovn /kube-ovn/kube-ovn
 COPY kube-ovn-daemon /kube-ovn/kube-ovn-daemon
 COPY kube-ovn-controller /kube-ovn/kube-ovn-controller
+COPY kube-ovn-monitor /kube-ovn/kube-ovn-monitor
