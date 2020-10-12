@@ -130,7 +130,7 @@ trace(){
       ;;
     tcp|udp)
       set -x
-      kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-appctl ofproto/trace br-int in_port="$inPort",$type,nw_src="$podIP",nw_dst="$dst",dl_src="$mac",dl_dst="$gwMac",tp_src=1000,tp_dst="$4"
+      kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-appctl ofproto/trace br-int in_port="$inPort","$type",nw_src="$podIP",nw_dst="$dst",dl_src="$mac",dl_dst="$gwMac","$type"_src=1000,"$type"_dst="$4"
       ;;
     *)
       echo "type $type not supported"
