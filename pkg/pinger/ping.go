@@ -2,22 +2,24 @@ package pinger
 
 import (
 	"context"
+	"math"
+	"net"
+	"time"
+
 	goping "github.com/oilbeater/go-ping"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
-	"math"
-	"net"
-	"time"
 )
 
-func StartPinger(config *Configuration) {
+func StartPinger(config *Configuration, e *Exporter) {
 	for {
 		if config.NetworkMode == "kube-ovn" {
 			checkOvs(config)
 			checkOvnController(config)
 			checkPortBindings(config)
+			e.ovsMetricsUpdate()
 		}
 
 		ping(config)

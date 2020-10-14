@@ -14,6 +14,7 @@ require (
 	github.com/go-ini/ini v1.42.0 // indirect
 	github.com/go-logr/zapr v0.1.1 // indirect
 	github.com/golang/protobuf v1.3.2
+	github.com/greenpau/ovsdb v0.0.0-20181114004433-3582b85e8968
 	github.com/hashicorp/go-version v1.2.0 // indirect
 	github.com/imdario/mergo v0.3.7 // indirect
 	github.com/intel/multus-cni v0.0.0-20200313031649-eaf6ff6e20bb
@@ -33,6 +34,7 @@ require (
 	github.com/projectcalico/go-yaml-wrapper v0.0.0-20161127220527-598e54215bee // indirect
 	github.com/projectcalico/libcalico-go v0.0.0-20190305235709-3d935c3b8b86 // indirect
 	github.com/prometheus/client_golang v1.1.0
+	github.com/prometheus/common v0.6.0
 	github.com/sirupsen/logrus v1.4.2
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.6.3 // indirect

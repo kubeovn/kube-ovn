@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
+	"net/http"
+
 	"github.com/alauda/kube-ovn/pkg/pinger"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/klog"
-	"net/http"
 )
 
 func main() {
@@ -19,5 +20,6 @@ func main() {
 			klog.Fatal(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.Port), nil))
 		}()
 	}
-	pinger.StartPinger(config)
+	e := pinger.NewExporter(config)
+	pinger.StartPinger(config, e)
 }
