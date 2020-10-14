@@ -16,7 +16,7 @@ By taking use of SR-IOV technology we can achieve low network latency and high t
 ### Install Kube-OVN with hw-offload mode enabled
 1. Download latest install script
 ```bash
-`wget https://raw.githubusercontent.com/alauda/kube-ovn/master/dist/images/install.sh`
+wget https://raw.githubusercontent.com/alauda/kube-ovn/master/dist/images/install.sh
 ```
 2. Edit the install script, enable hw-offload, disable traffic mirror and set the IFACE to the PF.
 Make sure that there is a ip address bind to the PF.
