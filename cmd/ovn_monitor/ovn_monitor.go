@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/alauda/kube-ovn/versions"
 	"net/http"
 
 	ovn "github.com/alauda/kube-ovn/pkg/ovnmonitor"
@@ -9,6 +10,9 @@ import (
 )
 
 func main() {
+	defer klog.Flush()
+
+	klog.Infof(versions.String())
 	config, err := ovn.ParseFlags()
 	if err != nil {
 		klog.Fatalf("parse config failed %v", err)
