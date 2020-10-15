@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/alauda/kube-ovn/pkg/util"
+	"github.com/alauda/kube-ovn/versions"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"io/ioutil"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -19,6 +20,7 @@ import (
 func main() {
 	defer klog.Flush()
 
+	klog.Infof(versions.String())
 	config, err := daemon.ParseFlags()
 	if err != nil {
 		klog.Fatalf("parse config failed %v", err)

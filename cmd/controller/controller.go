@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/alauda/kube-ovn/versions"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"net/http"
 	_ "net/http/pprof" // #nosec
@@ -19,6 +20,7 @@ func main() {
 	defer klog.Flush()
 
 	stopCh := signals.SetupSignalHandler()
+	klog.Infof(versions.String())
 
 	config, err := controller.ParseFlags()
 	if err != nil {

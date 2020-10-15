@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/alauda/kube-ovn/versions"
 	"net/http"
 
 	"github.com/alauda/kube-ovn/pkg/pinger"
@@ -10,6 +11,9 @@ import (
 )
 
 func main() {
+	defer klog.Flush()
+
+	klog.Infof(versions.String())
 	config, err := pinger.ParseFlags()
 	if err != nil {
 		klog.Fatalf("parse config failed %v", err)
