@@ -18,6 +18,18 @@ func (c Client) ovnIcNbCommand(cmdArgs ...string) (string, error) {
 		klog.Warning("ovn-ic-nbctl command error or took too long")
 		klog.Warningf("%s %s in %vms", OVNIcNbCtl, strings.Join(cmdArgs, " "), elapsed)
 	}
+	method := ""
+	for _, arg := range cmdArgs {
+		if !strings.HasPrefix(arg, "--") {
+			method = arg
+			break
+		}
+	}
+	code := "0"
+	if err != nil {
+		code = "1"
+	}
+	ovsClientRequestLatency.WithLabelValues("ovn-ic-nb", method, code).Observe(elapsed)
 	if err != nil {
 		return "", fmt.Errorf("%s, %q", raw, err)
 	}

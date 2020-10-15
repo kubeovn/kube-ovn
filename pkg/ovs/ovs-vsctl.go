@@ -22,6 +22,18 @@ func Exec(args ...string) (string, error) {
 		klog.Warning("ovs-vsctl command error or took too long")
 		klog.Warningf("ovs-vsctl %s in %vms", strings.Join(args, " "), elapsed)
 	}
+	method := ""
+	for _, arg := range args {
+		if !strings.HasPrefix(arg, "--") {
+			method = arg
+			break
+		}
+	}
+	code := "0"
+	if err != nil {
+		code = "1"
+	}
+	ovsClientRequestLatency.WithLabelValues("ovsdb", method, code).Observe(elapsed)
 	if err != nil {
 		return "", fmt.Errorf("failed to run 'ovs-vsctl %s': %v\n  %q", strings.Join(args, " "), err, output)
 	}
