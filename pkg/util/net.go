@@ -37,7 +37,11 @@ func Ip2BigInt(ipStr string) *big.Int {
 }
 
 func BigInt2Ip(ipInt *big.Int) string {
-	ip := net.IP(ipInt.Bytes())
+	buf := make([]byte, 4)
+	if len(ipInt.Bytes()) > 4 {
+		buf = make([]byte, 16)
+	}
+	ip := net.IP(ipInt.FillBytes(buf))
 	return ip.String()
 }
 
