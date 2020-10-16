@@ -67,6 +67,7 @@ func (c Client) SetLogicalSwitchConfig(ls, protocol, subnet, gateway string, exc
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")), "--",
 			"set", "logical_router_port", fmt.Sprintf("%s-%s", c.ClusterRouter, ls), fmt.Sprintf("networks=%s/%s", gateway, mask))
 	case kubeovnv1.ProtocolIPv6:
+		gateway := strings.ReplaceAll(gateway, ":", "\\:")
 		_, err = c.ovnNbCommand(MayExist, "ls-add", ls, "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:ipv6_prefix=%s", strings.Split(subnet, "/")[0]), "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
