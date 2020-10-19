@@ -1,11 +1,10 @@
-# OVN/OVS Monitor Statistics
+# Kube-OVN Monitor Metrics
 
-This document shows monitor metrics about OVN and OVS.
-
+This document shows Kube-OVN monitor metrics.
 
 Type | Metric | Description
 ---|---|---
-OVN_Monitor |  | 
+OVN_Monitor | | OVN NB/SB/Northd metrics
  1 | ovn_status | OVN Health Status. The values are: health(1), unhealth(0).
  2 | ovn_info | This metric provides basic information about OVN. It is always set to 1.
  3 | failed_req_count | The number of failed requests to OVN stack.
@@ -34,7 +33,7 @@ OVN_Monitor |  |
  26 | cluster_outbound_connections_total | The total number of outbound connections from the server.
  27 | cluster_inbound_connections_error_total | The total number of failed inbound connections to the server.
  28 | cluster_outbound_connections_error_total | The total number of failed outbound connections from the server.
-OVS_Monitor | | 
+OVS_Monitor | | ovsdb/vswitchd metrics
  1 | ovs_status | OVS Health Status. The values are: health(1), unhealth(0).
  2 | ovs_info | This metric provides basic information about OVS. It is always set to 1.
  3 | failed_req_count | The number of failed requests to OVS stack.
@@ -71,3 +70,51 @@ OVS_Monitor | |
  34 | interface_tx_dropped | Represents the number of output packets dropped by OVS interface.
  35 | interface_tx_errors | Represents the total number of transmit errors by OVS interface.
  36 | interface_collisions | Represents the number of collisions on OVS interface.
+ Kube-OVN-Pinger | | Network quality metrics
+ 1 | pinger_ovs_up | If the ovs on the node is up
+ 2 | pinger_ovs_down | If the ovs on the node is down
+ 3 | pinger_ovn_controller_up | If the ovn_controller on the node is up
+ 4 | pinger_ovn_controller_down | If the ovn_controller on the node is down
+ 5 | pinger_inconsistent_port_binding | The number of mismatch port bindings between ovs and ovn-sb
+ 6 | pinger_apiserver_healthy | If the apiserver request is healthy on this node
+ 7 | pinger_apiserver_unhealthy | If the apiserver request is unhealthy on this node
+ 8 | pinger_apiserver_latency_ms | The latency ms histogram the node request apiserver
+ 9 | pinger_internal_dns_healthy | If the internal dns request is unhealthy on this node
+ 10 | pinger_internal_dns_unhealthy | If the internal dns request is unhealthy on this node
+ 11 | pinger_internal_dns_latency_ms | The latency ms histogram the node request internal dns
+ 12 | pinger_external_dns_health | If the external dns request is healthy on this node
+ 13 | pinger_external_dns_unhealthy | If the external dns request is unhealthy on this node
+ 14 | pinger_external_dns_latency_ms | The latency ms histogram the node request external dns
+ 15 | pinger_pod_ping_latency_ms | The latency ms histogram for pod peer ping
+ 16 | pinger_pod_ping_lost_total | The lost count for pod peer ping
+ 17 | pinger_node_ping_latency_ms | The latency ms histogram for pod ping node
+ 18 | pinger_node_ping_lost_total | The lost count for pod ping node
+ 19 | pinger_external_ping_latency_ms | The latency ms histogram for pod ping external address
+ 20 | pinger_node_external_lost_total | The lost count for pod ping external address
+ Kube-OVN-Controller | | Controller metrics
+ 1 | rest_client_request_latency_seconds | Request latency in seconds. Broken down by verb and URL
+ 2 | rest_client_requests_total | Number of HTTP requests, partitioned by status code, method, and host
+ 3 | lists_total | Total number of API lists done by the reflectors
+ 4 | list_duration_seconds | How long an API list takes to return and decode for the reflectors
+ 5 | items_per_list | How many items an API list returns to the reflectors
+ 6 | watches_total | Total number of API watches done by the reflectors
+ 7 | short_watches_total | Total number of short API watches done by the reflectors
+ 8 | watch_duration_seconds | How long an API watch takes to return and decode for the reflectors
+ 9 | items_per_watch | How many items an API watch returns to the reflectors
+ 10 | last_resource_version | Last resource version seen for the reflectors
+ 11 | ovs_client_request_latency_milliseconds | The latency histogram for ovs request 
+ Kube-OVN-CNI | | CNI metrics
+ 1 | cni_op_latency_seconds | The latency seconds for cni operations
+ 2 | cni_wait_address_seconds_total | Latency that cni wait controller to assign an address
+ 3 | cni_wait_connectivity_seconds_total | Latency that cni wait address ready in overlay network
+ 4 | rest_client_request_latency_seconds | Request latency in seconds. Broken down by verb and URL
+ 5 | rest_client_requests_total | Number of HTTP requests, partitioned by status code, method, and host
+ 6 | lists_total | Total number of API lists done by the reflectors
+ 7 | list_duration_seconds | How long an API list takes to return and decode for the reflectors
+ 8 | items_per_list | How many items an API list returns to the reflectors
+ 9 | watches_total | Total number of API watches done by the reflectors
+ 10 | short_watches_total | Total number of short API watches done by the reflectors
+ 11 | watch_duration_seconds | How long an API watch takes to return and decode for the reflectors
+ 12 | items_per_watch | How many items an API watch returns to the reflectors
+ 13 | last_resource_version | Last resource version seen for the reflectors
+ 14 | ovs_client_request_latency_milliseconds | The latency histogram for ovs request 
