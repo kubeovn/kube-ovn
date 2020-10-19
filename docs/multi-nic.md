@@ -72,9 +72,9 @@ spec:
   excludeIps:
   - 172.17.0.0..172.17.0.10
 ```
-Other options like gateway, private, nat are not available for attachment network.
+Other options like gatewayType, gatewayNode, private, allowSubnets, vlan, underlayGateway, natOutgoing are not available for attachment network.
 
-### Create pod with multi network
+### Create Pod with multi network
 
 For random allocation, just add the `k8s.v1.cni.cncf.io/networks`:
 
