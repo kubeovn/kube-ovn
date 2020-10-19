@@ -46,7 +46,7 @@ var (
 	apiserverHealthyGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "pinger_apiserver_healthy",
-			Help: "if the apiserver request is healthy on this node",
+			Help: "If the apiserver request is healthy on this node",
 		},
 		[]string{
 			"nodeName",
@@ -54,7 +54,7 @@ var (
 	apiserverUnhealthyGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "pinger_apiserver_unhealthy",
-			Help: "if the apiserver request is unhealthy on this node",
+			Help: "If the apiserver request is unhealthy on this node",
 		},
 		[]string{
 			"nodeName",
@@ -62,7 +62,7 @@ var (
 	apiserverRequestLatencyHistogram = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "pinger_apiserver_latency_ms",
-			Help:    "the latency ms histogram the node request apiserver",
+			Help:    "The latency ms histogram the node request apiserver",
 			Buckets: []float64{2, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50},
 		},
 		[]string{
@@ -71,7 +71,7 @@ var (
 	internalDnsHealthyGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "pinger_internal_dns_healthy",
-			Help: "if the dns request is healthy on this node",
+			Help: "If the internal dns request is healthy on this node",
 		},
 		[]string{
 			"nodeName",
@@ -79,7 +79,7 @@ var (
 	internalDnsUnhealthyGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "pinger_internal_dns_unhealthy",
-			Help: "if the dns request is unhealthy on this node",
+			Help: "If the internal dns request is unhealthy on this node",
 		},
 		[]string{
 			"nodeName",
@@ -87,7 +87,7 @@ var (
 	internalDnsRequestLatencyHistogram = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "pinger_internal_dns_latency_ms",
-			Help:    "the latency ms histogram the node request dns",
+			Help:    "The latency ms histogram the node request internal dns",
 			Buckets: []float64{2, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50},
 		},
 		[]string{
@@ -96,7 +96,7 @@ var (
 	externalDnsHealthyGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "pinger_external_dns_healthy",
-			Help: "if the dns request is healthy on this node",
+			Help: "If the external dns request is healthy on this node",
 		},
 		[]string{
 			"nodeName",
@@ -104,7 +104,7 @@ var (
 	externalDnsUnhealthyGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "pinger_external_dns_unhealthy",
-			Help: "if the dns request is unhealthy on this node",
+			Help: "If the external dns request is unhealthy on this node",
 		},
 		[]string{
 			"nodeName",
@@ -112,7 +112,7 @@ var (
 	externalDnsRequestLatencyHistogram = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "pinger_external_dns_latency_ms",
-			Help:    "the latency ms histogram the node request dns",
+			Help:    "The latency ms histogram the node request external dns",
 			Buckets: []float64{2, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50},
 		},
 		[]string{
@@ -121,7 +121,7 @@ var (
 	podPingLatencyHistogram = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "pinger_pod_ping_latency_ms",
-			Help:    "the latency ms histogram for pod peer ping",
+			Help:    "The latency ms histogram for pod peer ping",
 			Buckets: []float64{.25, .5, 1, 2, 5, 10, 30},
 		},
 		[]string{
@@ -135,7 +135,7 @@ var (
 	podPingLostCounter = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "pinger_pod_ping_lost_total",
-			Help: "the lost count for pod peer ping",
+			Help: "The lost count for pod peer ping",
 		}, []string{
 			"src_node_name",
 			"src_node_ip",
@@ -147,7 +147,7 @@ var (
 	nodePingLatencyHistogram = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "pinger_node_ping_latency_ms",
-			Help:    "the latency ms histogram for pod ping node",
+			Help:    "The latency ms histogram for pod ping node",
 			Buckets: []float64{.25, .5, 1, 2, 5, 10, 30},
 		},
 		[]string{
@@ -160,7 +160,7 @@ var (
 	nodePingLostCounter = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "pinger_node_ping_lost_total",
-			Help: "the lost count for pod ping node",
+			Help: "The lost count for pod ping node",
 		}, []string{
 			"src_node_name",
 			"src_node_ip",
@@ -171,7 +171,7 @@ var (
 	externalPingLatencyHistogram = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "pinger_external_ping_latency_ms",
-			Help:    "the latency ms histogram for pod ping external address",
+			Help:    "The latency ms histogram for pod ping external address",
 			Buckets: []float64{.25, .5, 1, 2, 5, 10, 30, 50, 100},
 		},
 		[]string{
@@ -183,7 +183,7 @@ var (
 	externalPingLostCounter = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "pinger_node_external_lost_total",
-			Help: "the lost count for pod ping external address",
+			Help: "The lost count for pod ping external address",
 		}, []string{
 			"src_node_name",
 			"src_node_ip",

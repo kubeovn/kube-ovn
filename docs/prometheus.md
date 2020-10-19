@@ -2,25 +2,9 @@ Pinger makes network requests between pods/nodes/services/dns to test the connec
 
 ## Prometheus Integration
 
-Pinger exposes metrics at `:8080/metrics`, it will show following metrics
+Kube-OVN will expose metrics of its own components and network quality. All exposed metrics can be found [here](ovn-ovs-monitor.md).
 
-```bash
-pinger_ovs_up
-pinger_ovs_down
-pinger_ovn_controller_up
-pinger_ovn_controller_down
-pinger_dns_healthy
-pinger_dns_unhealthy
-pinger_dns_latency_ms
-pinger_pod_ping_latency_ms
-pinger_pod_ping_lost_total
-pinger_node_ping_latency_ms
-pinger_node_ping_lost_total
-```
-
-Kube-OVN-Controller expose metrics at `10660/metrics`, it will show controller runtime metrics.
-
-You can use kube-prometheus to scrape the metrics. The related ServiceMonitor yaml can be found [here](../dist/monitoring)
+You can use kube-prometheus to scrape the metrics. The related ServiceMonitor yaml can be found [here](../dist/monitoring).
 
 ## Grafana Dashboard
 
