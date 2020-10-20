@@ -21,11 +21,9 @@ RUN bash /root/build.sh && \
 
 FROM centos:8
 ENV BUILD_DATE 20200930
-RUN sed -i s/\$releasever/8-stream/g /etc/yum.repos.d/CentOS-Base.repo && \
-    sed -i s/\$releasever/8-stream/g /etc/yum.repos.d/CentOS-AppStream.repo
 RUN yum remove -y bind-export-libs && yum update -y && \
     yum install -y \
-        firewalld-filesystem \
+        firewalld-filesystem openssl \
         libatomic \
         libpcap \
         hostname ethtool \
@@ -57,7 +55,6 @@ COPY 01-kube-ovn.conflist /kube-ovn/01-kube-ovn.conflist
 
 WORKDIR /kube-ovn
 
-COPY kube-ovn-speaker /kube-ovn/kube-ovn-speaker
 COPY kube-ovn-pinger /kube-ovn/kube-ovn-pinger
 COPY kube-ovn /kube-ovn/kube-ovn
 COPY kube-ovn-daemon /kube-ovn/kube-ovn-daemon

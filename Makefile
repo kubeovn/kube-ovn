@@ -5,7 +5,8 @@ REGISTRY=kubeovn
 DEV_TAG=dev
 RELEASE_TAG=$(shell cat VERSION)
 COMMIT=git-$(shell git rev-parse HEAD)
-GOLDFLAGS="-w -s -X github.com/alauda/kube-ovn/versions.COMMIT=${COMMIT} -X github.com/alauda/kube-ovn/versions.VERSION=${RELEASE_TAG}"
+DATA=$(shell date)
+GOLDFLAGS="-w -s -X github.com/alauda/kube-ovn/versions.COMMIT=${COMMIT} -X github.com/alauda/kube-ovn/versions.VERSION=${RELEASE_TAG} -X github.com/alauda/kube-ovn/versions.BUILDDATE=${DATE}"
 
 # ARCH could be amd64,arm64
 ARCH=amd64
@@ -28,8 +29,6 @@ build-go:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn-controller -ldflags $(GOLDFLAGS) -v ./cmd/controller
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn-daemon -ldflags $(GOLDFLAGS) -v ./cmd/daemon
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn-pinger -ldflags $(GOLDFLAGS) -v ./cmd/pinger
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn-webhook -ldflags $(GOLDFLAGS) -v ./cmd/webhook
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn-speaker -ldflags $(GOLDFLAGS) -v ./cmd/speaker
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn-monitor -ldflags $(GOLDFLAGS) -v ./cmd/ovn_monitor
 
 build-go-arm:
@@ -37,8 +36,6 @@ build-go-arm:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn-controller -ldflags $(GOLDFLAGS) -v ./cmd/controller
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn-daemon -ldflags $(GOLDFLAGS) -v ./cmd/daemon
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn-pinger -ldflags $(GOLDFLAGS) -v ./cmd/pinger
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn-webhook -ldflags $(GOLDFLAGS) -v ./cmd/webhook
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn-speaker -ldflags $(GOLDFLAGS) -v ./cmd/speaker
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn-monitor -ldflags $(GOLDFLAGS) -v ./cmd/ovn_monitor
 
 release: lint build-go
@@ -60,7 +57,6 @@ lint:
 	@GOOS=linux gosec -exclude=G204 ./...
 
 build-bin:
-
 	docker run --rm -e GOOS=linux -e GOCACHE=/tmp -e GOARCH=${ARCH} -e GOPROXY=https://goproxy.cn \
 		-u $(shell id -u):$(shell id -g) \
 		-v $(CURDIR):/go/src/github.com/alauda/kube-ovn:ro \

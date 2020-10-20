@@ -3,12 +3,12 @@ package versions
 import (
 	"fmt"
 	"runtime"
-	"time"
 )
 
 var (
-	COMMIT  = "unknown"
-	VERSION = "unknown"
+	COMMIT    = "unknown"
+	VERSION   = "unknown"
+	BUILDDATE = "unknown"
 )
 
 func String() string {
@@ -21,5 +21,5 @@ Kube-OVN:
   Go Version:    %v
   Arch:          %v
 -------------------------------------------------------------------------------
-`, VERSION, time.Now().String(), COMMIT, runtime.Version(), runtime.GOARCH)
+`, VERSION, BUILDDATE, COMMIT, runtime.Version(), runtime.GOARCH)
 }
