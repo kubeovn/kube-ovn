@@ -26,7 +26,7 @@ const (
 var (
 	v4Rules = []util.IPTableRule{
 		// This rule makes sure we don't NAT traffic within overlay network
-		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn40subnets src -m set --match-set ovn40subnets dst -j MASQUERADE`, " ")},
+		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn40subnets src -m set --match-set ovn40subnets dst -j RETURN`, " ")},
 		// Prevent performing Masquerade on external traffic which arrives from a Node that owns the Pod/Subnet IP
 		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn40subnets src -m set --match-set ovn40local-pod-ip-nat dst -j RETURN`, " ")},
 		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn40subnets src -m set --match-set ovn40subnets-nat dst -j RETURN`, " ")},
@@ -42,7 +42,7 @@ var (
 	}
 	v6Rules = []util.IPTableRule{
 		// This rule makes sure we don't NAT traffic within overlay network
-		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn60subnets src -m set --match-set ovn60subnets dst -j MASQUERADE`, " ")},
+		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn60subnets src -m set --match-set ovn60subnets dst -j RETURN`, " ")},
 		// Prevent performing Masquerade on external traffic which arrives from a Node that owns the Pod/Subnet IP
 		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn40subnets src -m set --match-set ovn60local-pod-ip-nat dst -j RETURN`, " ")},
 		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn40subnets src -m set --match-set ovn60subnets-nat dst -j RETURN`, " ")},
@@ -97,6 +97,8 @@ func (c *Controller) runGateway() {
 	} else {
 		iptableRules = v6Rules
 	}
+	iptableRules[0], iptableRules[1], iptableRules[3], iptableRules[4] =
+		iptableRules[4], iptableRules[3], iptableRules[1], iptableRules[0]
 	for _, iptRule := range iptableRules {
 		exists, err := c.iptable.Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
 		if err != nil {
