@@ -7,6 +7,7 @@ iptables -t nat -D POSTROUTING -m set --match-set ovn40local-pod-ip-nat src -m s
 iptables -t nat -D POSTROUTING -m set ! --match-set ovn40subnets src -m set --match-set ovn40subnets-nat dst -j RETURN
 iptables -t nat -D POSTROUTING -m set ! --match-set ovn40subnets src -m set --match-set ovn40local-pod-ip-nat dst -j RETURN
 iptables -t nat -D POSTROUTING -m set --match-set ovn40subnets src -m set --match-set ovn40subnets dst -j MASQUERADE
+iptables -t nat -D POSTROUTING -m set --match-set ovn40subnets src -m set --match-set ovn40subnets dst -j RETURN
 iptables -t filter -D INPUT -m set --match-set ovn40subnets dst -j ACCEPT
 iptables -t filter -D INPUT -m set --match-set ovn40subnets src -j ACCEPT
 iptables -t filter -D FORWARD -m set --match-set ovn40subnets dst -j ACCEPT
@@ -21,6 +22,7 @@ ip6tables -t nat -D POSTROUTING -m set --match-set ovn60local-pod-ip-nat src -m 
 ip6tables -t nat -D POSTROUTING -m set ! --match-set ovn60subnets src -m set --match-set ovn60subnets-nat dst -j RETURN
 ip6tables -t nat -D POSTROUTING -m set ! --match-set ovn60subnets src -m set --match-set ovn60local-pod-ip-nat dst -j RETURN
 ip6tables -t nat -D POSTROUTING -m set --match-set ovn60subnets src -m set --match-set ovn60subnets dst -j MASQUERADE
+ip6tables -t nat -D POSTROUTING -m set --match-set ovn60subnets src -m set --match-set ovn60subnets dst -j RETURN
 ip6tables -t filter -D INPUT -m set --match-set ovn60subnets dst -j ACCEPT
 ip6tables -t filter -D INPUT -m set --match-set ovn60subnets src -j ACCEPT
 ip6tables -t filter -D FORWARD -m set --match-set ovn60subnets dst -j ACCEPT
