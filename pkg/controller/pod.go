@@ -613,7 +613,11 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 		return nil, err
 	}
 
+	lsName, lsExist := pod.Annotations[util.LogicalSwitchAnnotation]
 	for _, s := range subnets {
+		if lsExist && lsName == s.Name {
+			return s, nil
+		}
 		for _, ns := range s.Spec.Namespaces {
 			if ns == pod.Namespace {
 				subnet = s
