@@ -613,7 +613,11 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 		return nil, err
 	}
 
+	lsName, lsExist := pod.Annotations[util.LogicalSwitchAnnotation]
 	for _, s := range subnets {
+		if lsExist && lsName != s.Name {
+			continue
+		}
 		for _, ns := range s.Spec.Namespaces {
 			if ns == pod.Namespace {
 				subnet = s
@@ -634,10 +638,15 @@ func (c *Controller) getPodAttachmentSubnet(pod *v1.Pod) ([]*kubeovnv1.Subnet, e
 		return nil, err
 	}
 
+	lsName, lsExist := pod.Annotations[util.LogicalSwitchAnnotation]
 	result := make([]*kubeovnv1.Subnet, 0, len(attachments))
 	for _, attach := range attachments {
 		provider := fmt.Sprintf("%s.%s", attach.Name, attach.Namespace)
+
 		for _, subnet := range subnets {
+			if lsExist && lsName != subnet.Name {
+				continue
+			}
 			if subnet.Spec.Provider == provider {
 				result = append(result, subnet)
 				break
