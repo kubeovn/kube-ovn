@@ -133,7 +133,7 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 			return
 		}
 
-		if int32(index) >= *ss.Spec.Replicas {
+		if index >= int64(*ss.Spec.Replicas) {
 			c.deletePodQueue.Add(key)
 			return
 		}
