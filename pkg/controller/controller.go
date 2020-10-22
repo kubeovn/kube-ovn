@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"sync"
+
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/alauda/kube-ovn/pkg/client/informers/externalversions"
 	kubeovnlister "github.com/alauda/kube-ovn/pkg/client/listers/kubeovn/v1"
@@ -34,6 +36,7 @@ const controllerAgentName = "ovn-controller"
 // Controller is kube-ovn main controller that watch ns/pod/node/svc/ep and operate ovn
 type Controller struct {
 	config    *Configuration
+	vpcs      *sync.Map
 	ovnClient *ovs.Client
 	ipam      *ovnipam.IPAM
 
@@ -131,6 +134,7 @@ func NewController(config *Configuration) *Controller {
 
 	controller := &Controller{
 		config:    config,
+		vpcs:      &sync.Map{},
 		ovnClient: ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.OvnTimeout, config.OvnSbHost, config.OvnSbPort, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
 		ipam:      ovnipam.NewIPAM(),
 
@@ -191,6 +195,12 @@ func NewController(config *Configuration) *Controller {
 		cmInformerFactory:      cmInformerFactory,
 		kubeovnInformerFactory: kubeovnInformerFactory,
 	}
+
+	controller.vpcs.Store("default", &Vpc{
+		Default:              true,
+		Name:                 "default",
+		DefaultLogicalSwitch: config.DefaultLogicalSwitch,
+		Router:               config.ClusterRouter})
 
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddPod,

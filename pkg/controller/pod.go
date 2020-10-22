@@ -3,12 +3,13 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/alauda/kube-ovn/pkg/ipam"
 	"net"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/alauda/kube-ovn/pkg/ipam"
 
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/ovs"
@@ -425,12 +426,23 @@ func (c *Controller) handleDeletePod(key string) error {
 		return nil
 	}
 
+	subnet, err := c.getPodDefaultSubnet(pod)
+	if err != nil {
+		klog.Errorf("failed to get pod subnet, %v", err)
+		return err
+	}
+	vpc, err := c.parseSubnetVpc(subnet)
+	if err != nil {
+		klog.Errorf("failed to get vpc ubnet, %v", err)
+		return err
+	}
+
 	ips, _ := c.ipam.GetPodAddress(key)
 	for _, ip := range ips {
-		if err := c.ovnClient.DeleteStaticRoute(ip, c.config.ClusterRouter); err != nil {
+		if err := c.ovnClient.DeleteStaticRoute(ip, vpc.Router); err != nil {
 			return err
 		}
-		if err := c.ovnClient.DeleteNatRule(ip, c.config.ClusterRouter); err != nil {
+		if err := c.ovnClient.DeleteNatRule(ip, vpc.Router); err != nil {
 			return err
 		}
 	}
@@ -475,8 +487,14 @@ func (c *Controller) handleUpdatePod(key string) error {
 		klog.Errorf("failed to get subnet %v", err)
 		return err
 	}
+	vpc, err := c.parseSubnetVpc(subnet)
+	if err != nil {
+		klog.Errorf("failed to get vpc %v", err)
+		return err
+	}
+
 	if !subnet.Spec.UnderlayGateway {
-		if pod.Annotations[util.EipAnnotation] != "" {
+		if pod.Annotations[util.EipAnnotation] != "" && vpc.Default {
 			cm, err := c.configMapsLister.ConfigMaps("kube-system").Get(util.ExternalGatewayConfig)
 			if err != nil {
 				klog.Errorf("failed to get ex-gateway config, %v", err)
@@ -498,7 +516,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 				klog.Errorf("failed to add nat rules, %v", err)
 				return err
 			}
-		} else if pod.Annotations[util.SnatAnnotation] != "" {
+		} else if pod.Annotations[util.SnatAnnotation] != "" && vpc.Default {
 			cm, err := c.configMapsLister.ConfigMaps("kube-system").Get(util.ExternalGatewayConfig)
 			if err != nil {
 				klog.Errorf("failed to get ex-gateway config, %v", err)
@@ -521,11 +539,11 @@ func (c *Controller) handleUpdatePod(key string) error {
 				return err
 			}
 		} else if pod.Annotations[util.NorthGatewayAnnotation] != "" {
-			if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], c.config.ClusterRouter); err != nil {
+			if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], vpc.Router); err != nil {
 				klog.Errorf("failed to add static route, %v", err)
 				return err
 			}
-		} else {
+		} else if vpc.Default {
 			if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
 				node, err := c.nodesLister.Get(pod.Spec.NodeName)
 				if err != nil {
