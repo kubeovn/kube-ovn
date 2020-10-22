@@ -1,33 +1,27 @@
-# NOTE: At time of writing, CentOS 8 does not have dpdk-devel v19.11 in the Yum repo.
-# This package is required to build the OVS-DPDK RPMs and is available in Fedora 32.
-FROM fedora:32 as dpdk
-ENV BUILD_DATE 20200731
+FROM centos:8 as dpdk
+ENV BUILD_DATE 20201021
 ENV RPM_ARCH=x86_64
 
-ENV DPDK_VERSION=19.11.1
-ENV OVS_VERSION=2.13.0
+ENV DPDK_VERSION=19.11
+ENV DPDK_SUBVERSION=4
+ENV OVS_VERSION=2.14
 ENV OVN_VERSION=20.06
 
-ENV DPDK_DIR=/usr/src/dpdk-stable-${DPDK_VERSION}
+ENV DPDK_DIR=/usr/src/dpdk-stable-${DPDK_VERSION}.${DPDK_SUBVERSION}
 ENV OVS_DIR=/usr/src/openvswitch-${OVS_VERSION}
 ENV OVN_DIR=/usr/src/ovn
 
 ENV PATH=${PATH}:/usr/share/openvswitch/scripts
 ENV PATH=${PATH}:/usr/share/ovn/scripts/
 
-RUN dnf install -y --setopt=install_weak_deps=False \
-  make numactl-devel dpdk-devel meson \
-  unbound nc iptables ipset hostname \
-# NOTE: Fedora 32 comes with gcc version 10. This caused LD linker issues during DPDK build.
-# Install gcc version 9 and its dependencies.
-  https://kojipkgs.fedoraproject.org/packages/gcc/9.2.1/1.fc32.3/x86_64/cpp-9.2.1-1.fc32.3.x86_64.rpm \
-  https://kojipkgs.fedoraproject.org/packages/gcc/9.2.1/1.fc32.3/x86_64/libgomp-9.2.1-1.fc32.3.x86_64.rpm \
-  https://kojipkgs.fedoraproject.org/packages/gcc/9.2.1/1.fc32.3/x86_64/gcc-9.2.1-1.fc32.3.x86_64.rpm && \
-  dnf clean all && \
+RUN yum -y install dpdk-devel-${DPDK_VERSION}-${DPDK_SUBVERSION}.el8 && \
+  dnf install -y --enablerepo=PowerTools \
+  gcc make numactl-devel meson \
+  unbound nc iptables ipset hostname && \
 # Install DPDK
   cd /usr/src/ && \
-  curl http://fast.dpdk.org/rel/dpdk-${DPDK_VERSION}.tar.gz | tar xz && \
-  cd ${DPDK_DIR} && \
+  curl http://fast.dpdk.org/rel/dpdk-${DPDK_VERSION}.${DPDK_SUBVERSION}.tar.gz | tar xz && \
+  cd dpdk-stable-${DPDK_VERSION}.${DPDK_SUBVERSION} && \
   meson builddir && cd builddir && \
   meson configure -Dapps='pdump proc-info' -Dexamples='' -Dtests=false -Denable_kmods=false -Denable_docs=false && \
   ninja && ninja install && \
@@ -39,12 +33,13 @@ RUN dnf install -y --setopt=install_weak_deps=False \
 
 FROM dpdk as rpm-builder
 
-RUN dnf install -y dnf-plugins-core rpm-build libcap-ng-devel libpcap-devel
+RUN dnf install -y --enablerepo=PowerTools 'dnf-command(builddep)' python3-sphinx groff rpm-build libpcap-devel libibverbs-devel
 
 # Build OVS-DPDK
 RUN cd /usr/src/ && \
-  curl https://www.openvswitch.org/releases/openvswitch-${OVS_VERSION}.tar.gz | tar xz && \
-  cd ${OVS_DIR} && \
+  curl -L https://github.com/openvswitch/ovs/tarball/branch-${OVS_VERSION} > ovs.tar.gz && \
+  mkdir ${OVS_DIR} && tar -xf ovs.tar.gz -C ${OVS_DIR} --strip-components 1 && \
+  rm -f ovs.tar.gz && cd ${OVS_DIR} && \
   sed -e 's/@VERSION@/0.0.1/' rhel/openvswitch-fedora.spec.in > /tmp/ovs.spec && \
   dnf builddep -y /tmp/ovs.spec && \
   ./boot.sh && \
@@ -73,6 +68,6 @@ RUN dnf install -y kmod && dnf clean all
 COPY --from=rpm-builder /rpms/* /rpms/
 COPY start-ovs-dpdk.sh ovs-dpdk-healthcheck.sh uninstall.sh /kube-ovn/
 
-RUN  rpm -ivh --nodeps /rpms/*.rpm && \
+RUN rpm -ivh --nodeps /rpms/*.rpm && \
   rm -rf ${DPDK_DIR} /rpms && \
   unset DPDK_DIR OVS_DIR OVN_DIR
