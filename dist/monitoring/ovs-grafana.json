@@ -43,7 +43,7 @@
   "gnetId": null,
   "graphTooltip": 0,
   "id": null,
-  "iteration": 1603354441220,
+  "iteration": 1603433642550,
   "links": [],
   "panels": [
     {
@@ -449,7 +449,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "kube_ovn_db_file_size{instance=~\"$instance\", hostname!=\"localhost\"}",
+          "expr": "kube_ovn_db_file_size_bytes{instance=~\"$instance\", hostname!=\"localhost\"}",
           "interval": "",
           "legendFormat": "{{instance}}",
           "refId": "A"
@@ -541,7 +541,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "kube_ovn_log_file_size{instance=~\"$instance\", hostname!=\"localhost\"}",
+          "expr": "kube_ovn_log_file_size_bytes{instance=~\"$instance\", hostname!=\"localhost\"}",
           "interval": "",
           "legendFormat": "{{instance}} {{component}}",
           "refId": "A"
@@ -1124,7 +1124,7 @@
     ]
   },
   "time": {
-    "from": "now-1h",
+    "from": "now-6h",
     "to": "now"
   },
   "timepicker": {
@@ -1143,5 +1143,5 @@
   "timezone": "",
   "title": "Kube-OVN / OVS",
   "uid": "xI0I5dpMk",
-  "version": 6
+  "version": 7
 }
