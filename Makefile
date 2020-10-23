@@ -5,7 +5,7 @@ REGISTRY=kubeovn
 DEV_TAG=dev
 RELEASE_TAG=$(shell cat VERSION)
 COMMIT=git-$(shell git rev-parse HEAD)
-DATA=$(shell date)
+DATE=$(shell date +"%Y-%m-%d_%H:%M:%S")
 GOLDFLAGS="-w -s -X github.com/alauda/kube-ovn/versions.COMMIT=${COMMIT} -X github.com/alauda/kube-ovn/versions.VERSION=${RELEASE_TAG} -X github.com/alauda/kube-ovn/versions.BUILDDATE=${DATE}"
 
 # ARCH could be amd64,arm64
