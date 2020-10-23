@@ -32,8 +32,7 @@ If you want to try the latest developing Kube-OVN, try the script below
 
 2. Use vim to edit the script variables to meet your requirement
 ```bash
- REGISTRY="index.alauda.cn/alaudak8s"
- NAMESPACE="kube-system"                # The ns to deploy kube-ovn
+ REGISTRY="kubeovn"
  POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
  SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR
  JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR

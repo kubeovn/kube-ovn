@@ -10,7 +10,6 @@ IFACE=""                               # The nic to support container network, i
 REGISTRY="kubeovn"
 VERSION="v1.6.0"
 IMAGE_PULL_POLICY="IfNotPresent"
-NAMESPACE="kube-system"                # The ns to deploy kube-ovn
 POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
 SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR
 JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
@@ -250,14 +249,14 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: ovn-config
-  namespace: ${NAMESPACE}
+  namespace: kube-system
 
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: ovn
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -332,14 +331,14 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: ovn
-    namespace:  ${NAMESPACE}
+    namespace:  kube-system
 
 ---
 kind: Service
 apiVersion: v1
 metadata:
   name: ovn-nb
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
 spec:
   ports:
     - name: ovn-nb
@@ -357,7 +356,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: ovn-sb
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
 spec:
   ports:
     - name: ovn-sb
@@ -375,7 +374,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-monitor
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
   labels:
     app: kube-ovn-monitor
 spec:
@@ -391,7 +390,7 @@ kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: ovn-central
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
   annotations:
     kubernetes.io/description: |
       OVN components: northd, nb and sb.
@@ -583,7 +582,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: ovs-ovn
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the openvswitch daemon.
@@ -751,13 +750,13 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: ovn-config
-  namespace: ${NAMESPACE}
+  namespace: kube-system
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: ovn
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -831,13 +830,13 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: ovn
-    namespace:  ${NAMESPACE}
+    namespace:  kube-system
 ---
 kind: Service
 apiVersion: v1
 metadata:
   name: ovn-nb
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
 spec:
   ports:
     - name: ovn-nb
@@ -854,7 +853,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: ovn-sb
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
 spec:
   ports:
     - name: ovn-sb
@@ -871,7 +870,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-monitor
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
   labels:
     app: kube-ovn-monitor
 spec:
@@ -887,7 +886,7 @@ kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: ovn-central
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
   annotations:
     kubernetes.io/description: |
       OVN components: northd, nb and sb.
@@ -1078,7 +1077,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: ovs-ovn
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the openvswitch daemon.
@@ -1203,7 +1202,7 @@ fi
 
 kubectl apply -f kube-ovn-crd.yaml
 kubectl apply -f ovn.yaml
-kubectl rollout status deployment/ovn-central -n ${NAMESPACE}
+kubectl rollout status deployment/ovn-central -n kube-system
 echo "-------------------------------"
 echo ""
 
@@ -1215,7 +1214,7 @@ kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-controller
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
   annotations:
     kubernetes.io/description: |
       kube-ovn controller
@@ -1309,7 +1308,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-cni
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the kube-ovn cni daemon.
@@ -1424,7 +1423,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-pinger
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the openvswitch daemon.
@@ -1534,7 +1533,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-pinger
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
   labels:
     app: kube-ovn-pinger
 spec:
@@ -1548,7 +1547,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-controller
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
   labels:
     app: kube-ovn-controller
 spec:
@@ -1562,7 +1561,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-cni
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
   labels:
     app: kube-ovn-cni
 spec:
@@ -1574,8 +1573,8 @@ spec:
 EOF
 
 kubectl apply -f kube-ovn.yaml
-kubectl rollout status deployment/kube-ovn-controller -n ${NAMESPACE}
-kubectl rollout status daemonset/kube-ovn-cni -n ${NAMESPACE}
+kubectl rollout status deployment/kube-ovn-controller -n kube-system
+kubectl rollout status daemonset/kube-ovn-cni -n kube-system
 echo "-------------------------------"
 echo ""
 
@@ -1586,7 +1585,7 @@ for ns in $(kubectl get ns --no-headers -o  custom-columns=NAME:.metadata.name);
   done
 done
 
-kubectl rollout status daemonset/kube-ovn-pinger -n ${NAMESPACE}
+kubectl rollout status daemonset/kube-ovn-pinger -n kube-system
 kubectl rollout status deployment/coredns -n kube-system
 echo "-------------------------------"
 echo ""
