@@ -106,6 +106,9 @@ func CIDRContainIP(cidrStr, ipStr string) bool {
 	if err != nil {
 		return false
 	}
+	if CheckProtocol(cidrStr) != CheckProtocol(ipStr) {
+		return false
+	}
 	ip := net.ParseIP(ipStr)
 	if ip == nil {
 		return false
