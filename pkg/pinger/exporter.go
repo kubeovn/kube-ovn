@@ -123,7 +123,10 @@ func (e *Exporter) exportOvsStatusGauge() {
 }
 
 func (e *Exporter) exportOvsInfoGauge() {
-	// All parameters should be filled in GetSystemInfo when calls NewExporter
+	if err := e.Client.GetSystemInfo(); err != nil {
+		klog.Errorf("Failed to get System Info")
+		return
+	}
 	metricOvsInfo.WithLabelValues(e.Client.System.ID, e.Client.System.RunDir, e.Client.System.Hostname,
 		e.Client.System.Type, e.Client.System.Version, e.Client.Database.Vswitch.Version,
 		e.Client.Database.Vswitch.Schema.Version).Set(1)

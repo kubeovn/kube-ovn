@@ -540,6 +540,7 @@ spec:
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       hostNetwork: true
+      shareProcessNamespace: true
       containers:
         - name: ovn-central
           image: "$REGISTRY/kube-ovn:$VERSION"
@@ -1035,6 +1036,7 @@ spec:
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       hostNetwork: true
+      shareProcessNamespace: true
       containers:
         - name: ovn-central
           image: "$REGISTRY/kube-ovn:$VERSION"

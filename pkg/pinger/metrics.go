@@ -228,8 +228,8 @@ var (
 	metricLogFileSize = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: metricNamespace,
-			Name:      "log_file_size",
-			Help:      "The size of a log file associated with an OVS component.",
+			Name:      "log_file_size_bytes",
+			Help:      "The size of a log file associated with an OVS component. The unit is Bytes.",
 		},
 		[]string{
 			"hostname",
@@ -240,8 +240,8 @@ var (
 	metricDbFileSize = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: metricNamespace,
-			Name:      "db_file_size",
-			Help:      "The size of a database file associated with an OVS component.",
+			Name:      "db_file_size_bytes",
+			Help:      "The size of a database file associated with an OVS component. The unit is Bytes.",
 		},
 		[]string{
 			"hostname",
