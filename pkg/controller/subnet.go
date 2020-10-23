@@ -580,6 +580,12 @@ func (c *Controller) handleDeleteSubnet(key string) error {
 			// The default VPC subnet should be removed last
 			return fmt.Errorf("the default VPC subnet should be removed last")
 		}
+
+		err = c.deleteCustomVpc(vpc.Name)
+		if err != nil {
+			klog.Errorf("failed to delete vpc %v", err)
+			return err
+		}
 	}
 
 	c.ipam.DeleteSubnet(key)

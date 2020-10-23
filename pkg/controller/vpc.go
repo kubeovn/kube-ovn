@@ -51,6 +51,7 @@ func (c *Controller) deleteCustomVpc(name string) error {
 		klog.Errorf("delete router failed %v", err)
 		return err
 	}
+	c.vpcs.Delete(vpc.Name)
 	return nil
 }
 
