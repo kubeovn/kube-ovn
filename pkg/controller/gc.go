@@ -86,7 +86,7 @@ func (c *Controller) gcCustomLogicalRouter() error {
 		}
 		if !util.IsStringIn(lr, routerNames) {
 			klog.Infof("gc router %s", lr)
-			if err := c.handleDeleteSubnet(lr); err != nil {
+			if err := c.handleDeleteLogicRouter(lr); err != nil {
 				klog.Errorf("failed to gc router %s, %v", lr, err)
 				return err
 			}

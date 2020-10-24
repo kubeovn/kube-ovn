@@ -542,6 +542,10 @@ func (c *Controller) handleDeleteRoute(subnet *kubeovnv1.Subnet) error {
 	return c.ovnClient.DeleteStaticRoute(subnet.Spec.CIDRBlock, vpc.Router)
 }
 
+func (c *Controller) handleDeleteLogicRouter(key string) error {
+	return c.ovnClient.DeleteLogicalRouter(key)
+}
+
 func (c *Controller) handleDeleteSubnet(key string) error {
 	subnet, err := c.subnetsLister.Get(key)
 	if err != nil {
