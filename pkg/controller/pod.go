@@ -431,9 +431,9 @@ func (c *Controller) handleDeletePod(key string) error {
 		klog.Errorf("failed to get pod subnet, %v", err)
 		return err
 	}
-	vpc, err := c.parseSubnetVpc(subnet)
-	if err != nil {
-		klog.Errorf("failed to get vpc ubnet, %v", err)
+	vpc, vpcFound := c.parseSubnetVpc(subnet)
+	if !vpcFound {
+		klog.Errorf("failed to get vpc of subnet, %v", err)
 		return err
 	}
 
@@ -487,8 +487,8 @@ func (c *Controller) handleUpdatePod(key string) error {
 		klog.Errorf("failed to get subnet %v", err)
 		return err
 	}
-	vpc, err := c.parseSubnetVpc(subnet)
-	if err != nil {
+	vpc, vpcFound := c.parseSubnetVpc(subnet)
+	if !vpcFound {
 		klog.Errorf("failed to get vpc %v", err)
 		return err
 	}

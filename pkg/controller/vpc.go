@@ -85,17 +85,21 @@ func (c *Controller) deleteVpcRouter(lr string) error {
 	return c.ovnClient.DeleteLogicalRouter(lr)
 }
 
-func (c *Controller) parseSubnetVpc(subnet *v1.Subnet) (*Vpc, error) {
-	vpcName, customVpc := subnet.Annotations[util.CustomVpcAnnotation]
-	if !customVpc {
+func (c *Controller) parseSubnetVpc(subnet *v1.Subnet) (*Vpc, bool) {
+	var vpcName string
+	var customVpc bool
+	if 0 == len(subnet.Annotations) {
 		vpcName = "default"
+	} else {
+		vpcName, customVpc = subnet.Annotations[util.CustomVpcAnnotation]
+		if !customVpc {
+			vpcName = "default"
+		}
 	}
-
 	vpc, ok := c.vpcs.Load(vpcName)
 	if !ok {
-		err := fmt.Errorf("vpc %s not found", vpcName)
-		klog.Error(err)
-		return nil, err
+		klog.Infof("vpc %s not found", vpcName)
+		return nil, false
 	}
-	return vpc.(*Vpc), nil
+	return vpc.(*Vpc), true
 }

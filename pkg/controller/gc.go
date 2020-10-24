@@ -20,6 +20,7 @@ func (c *Controller) gc() error {
 	gcFunctions := []func() error{
 		c.gcNode,
 		c.gcLogicalSwitch,
+		c.gcCustomLogicalRouter,
 		c.gcLogicalSwitchPort,
 		c.gcLoadBalancer,
 		c.gcPortGroup,
@@ -59,6 +60,34 @@ func (c *Controller) gcLogicalSwitch() error {
 			klog.Infof("gc subnet %s", ls)
 			if err := c.handleDeleteSubnet(ls); err != nil {
 				klog.Errorf("failed to gc subnet %s, %v", ls, err)
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (c *Controller) gcCustomLogicalRouter() error {
+	klog.Infof("start to gc logical router")
+	var routerNames []string
+	c.vpcs.Range(func(key, value interface{}) bool {
+		routerNames = append(routerNames, value.(*Vpc).Router)
+		return true
+	})
+	lrs, err := c.ovnClient.ListLogicalRouter()
+	if err != nil {
+		klog.Errorf("failed to list logical router, %v", err)
+		return err
+	}
+	klog.Infof("lr in ovn %v", lrs)
+	for _, lr := range lrs {
+		if lr == c.config.ClusterRouter {
+			continue
+		}
+		if !util.IsStringIn(lr, routerNames) {
+			klog.Infof("gc router %s", lr)
+			if err := c.handleDeleteSubnet(lr); err != nil {
+				klog.Errorf("failed to gc router %s, %v", lr, err)
 				return err
 			}
 		}

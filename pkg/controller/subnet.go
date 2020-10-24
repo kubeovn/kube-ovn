@@ -51,7 +51,7 @@ func (c *Controller) enqueueDeleteSubnet(obj interface{}) {
 	c.deleteSubnetQueue.Add(key)
 	subnet := obj.(*kubeovnv1.Subnet)
 	if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType {
-		c.deleteRouteQueue.Add(subnet.Spec.CIDRBlock)
+		c.deleteRouteQueue.Add(obj)
 	}
 }
 
@@ -147,16 +147,16 @@ func (c *Controller) processNextDeleteRoutePodWorkItem() bool {
 
 	err := func(obj interface{}) error {
 		defer c.deleteRouteQueue.Done(obj)
-		var key string
+		var subnet *kubeovnv1.Subnet
 		var ok bool
-		if key, ok = obj.(string); !ok {
+		if subnet, ok = obj.(*kubeovnv1.Subnet); !ok {
 			c.deleteRouteQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
+			utilruntime.HandleError(fmt.Errorf("expected subnet in workqueue but got %#v", obj))
 			return nil
 		}
-		if err := c.handleDeleteRoute(key); err != nil {
-			c.deleteRouteQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		if err := c.handleDeleteRoute(subnet); err != nil {
+			c.deleteRouteQueue.AddRateLimited(subnet)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", subnet.Name, err.Error())
 		}
 		c.deleteRouteQueue.Forget(obj)
 		return nil
@@ -252,11 +252,25 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		subnet.Spec.GatewayType = kubeovnv1.GWDistributedType
 		changed = true
 	}
-	vpc, err := c.parseSubnetVpc(subnet)
-	if err == nil && vpc.Default {
-		if subnet.Spec.Default && subnet.Name != vpc.DefaultLogicalSwitch {
+	vpc, vpcFound := c.parseSubnetVpc(subnet)
+	if vpcFound && vpc.Default {
+		// Some features only work in the default VPC
+		if subnet.Spec.Default && subnet.Name != c.config.DefaultLogicalSwitch {
 			subnet.Spec.Default = false
 			changed = true
+		}
+		if c.config.NetworkType == util.NetworkTypeVlan && subnet.Spec.Vlan == "" {
+			subnet.Spec.Vlan = c.config.DefaultVlanName
+			if c.config.DefaultVlanID == 0 {
+				subnet.Spec.UnderlayGateway = true
+			}
+			changed = true
+		}
+		if subnet.Spec.Vlan != "" {
+			if _, err := c.vlansLister.Get(subnet.Spec.Vlan); err != nil {
+				subnet.Spec.Vlan = ""
+				changed = true
+			}
 		}
 	}
 	if subnet.Spec.Gateway == "" {
@@ -286,21 +300,6 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		}
 	}
 
-	if c.config.NetworkType == util.NetworkTypeVlan && subnet.Spec.Vlan == "" {
-		subnet.Spec.Vlan = c.config.DefaultVlanName
-		if c.config.DefaultVlanID == 0 {
-			subnet.Spec.UnderlayGateway = true
-		}
-		changed = true
-	}
-
-	if subnet.Spec.Vlan != "" {
-		if _, err := c.vlansLister.Get(subnet.Spec.Vlan); err != nil {
-			subnet.Spec.Vlan = ""
-			changed = true
-		}
-	}
-
 	if len(subnet.Labels) == 0 {
 		subnet.Labels = make(map[string]string)
 	}
@@ -310,14 +309,6 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 
 		}
 		subnet.Labels[util.VpcNameLabel] = "default"
-		changed = true
-	}
-
-	if _, labelSet := subnet.Labels[util.VpcDefaultSubnetLabel]; !labelSet {
-		if vpcDefaultSubnet, ok := subnet.Annotations[util.CustomVpcDefaultSubnetAnnotation]; ok {
-			subnet.Labels[util.VpcDefaultSubnetLabel] = vpcDefaultSubnet
-		}
-		subnet.Labels[util.VpcDefaultSubnetLabel] = c.config.DefaultLogicalSwitch
 		changed = true
 	}
 
@@ -428,22 +419,15 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		c.patchSubnetStatus(subnet, "ValidateLogicalSwitchSuccess", "")
 	}
 
-	// init and check vpc
-	vpc, err := c.parseSubnetVpc(subnet)
-	if err != nil {
+	// check and init custom vpc
+	vpc, vpcFound := c.parseSubnetVpc(subnet)
+	if !vpcFound {
 		vpcName, customVpc := subnet.Annotations[util.CustomVpcAnnotation]
-		_, isVpcDefaultSubnet := subnet.Annotations[util.CustomVpcDefaultSubnetAnnotation]
 		if customVpc {
-			if isVpcDefaultSubnet {
-				// init vpc
-				vpc, err = c.initCustomVpc(vpcName, subnet.Name)
-				if err != nil {
-					klog.Errorf("failed to init vpc %v", err)
-					return err
-				}
-			} else {
-				err = fmt.Errorf("vpc default subnet not found")
-				klog.Error(err)
+			// init vpc
+			vpc, err = c.initCustomVpc(vpcName, subnet.Name)
+			if err != nil {
+				klog.Errorf("failed to init vpc %v", err)
 				return err
 			}
 		}
@@ -470,7 +454,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		klog.Errorf("failed to list nodes %v", err)
 		return err
 	}
-	if subnet.Spec.Vlan != "" && !subnet.Spec.UnderlayGateway {
+	if vpc.Default && subnet.Spec.Vlan != "" && !subnet.Spec.UnderlayGateway {
 		for _, node := range nodes {
 			for _, addr := range node.Status.Addresses {
 				if addr.Type == v1.NodeInternalIP && util.CIDRContainIP(subnet.Spec.CIDRBlock, addr.Address) {
@@ -546,12 +530,16 @@ func (c *Controller) handleUpdateSubnetStatus(key string) error {
 	return calcSubnetStatusIP(subnet, c)
 }
 
-func (c *Controller) handleDeleteRoute(key string) error {
-	if _, _, err := net.ParseCIDR(key); err != nil {
+func (c *Controller) handleDeleteRoute(subnet *kubeovnv1.Subnet) error {
+	vpc, vpcFound := c.parseSubnetVpc(subnet)
+	if !vpcFound {
+		return fmt.Errorf("faild to delete route, vpc not found")
+	}
+	if _, _, err := net.ParseCIDR(subnet.Spec.CIDRBlock); err != nil {
 		return nil
 	}
 
-	return c.ovnClient.DeleteStaticRoute(key, c.config.ClusterRouter)
+	return c.ovnClient.DeleteStaticRoute(subnet.Spec.CIDRBlock, vpc.Router)
 }
 
 func (c *Controller) handleDeleteSubnet(key string) error {
@@ -563,28 +551,21 @@ func (c *Controller) handleDeleteSubnet(key string) error {
 		return err
 	}
 
-	vpc, err := c.parseSubnetVpc(subnet)
-	isCustomVpcDefaultSubnet := false
-	if err == nil && !vpc.Default && vpc.DefaultLogicalSwitch == subnet.Name {
-		isCustomVpcDefaultSubnet = true
-	}
-
-	if isCustomVpcDefaultSubnet {
+	vpc, vpcFound := c.parseSubnetVpc(subnet)
+	if vpcFound {
 		labelSelector := labels.SelectorFromSet(labels.Set{util.VpcNameLabel: vpc.Name})
 		subnetList, err := c.subnetsLister.List(labelSelector)
 		if err != nil {
 			klog.Errorf("failed to list subnets %v", err)
 			return err
 		}
-		if len(subnetList) > 1 {
-			// The default VPC subnet should be removed last
-			return fmt.Errorf("the default VPC subnet should be removed last")
-		}
-
-		err = c.deleteCustomVpc(vpc.Name)
-		if err != nil {
-			klog.Errorf("failed to delete vpc %v", err)
-			return err
+		if len(subnetList) == 1 {
+			// delete vpc
+			err = c.deleteCustomVpc(vpc.Name)
+			if err != nil {
+				klog.Errorf("failed to delete vpc %v", err)
+				return err
+			}
 		}
 	}
 

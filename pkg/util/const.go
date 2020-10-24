@@ -17,8 +17,7 @@ const (
 	PortSecurityAnnotation = "ovn.kubernetes.io/port_security"
 	NorthGatewayAnnotation = "ovn.kubernetes.io/north_gateway"
 
-	CustomVpcAnnotation              = "ovn.kubernetes.io/vpc"
-	CustomVpcDefaultSubnetAnnotation = "ovn.kubernetes.io/vpc_default_subnet"
+	CustomVpcAnnotation = "ovn.kubernetes.io/vpc"
 
 	AllocatedAnnotationTemplate     = "%s.kubernetes.io/allocated"
 	MacAddressAnnotationTemplate    = "%s.kubernetes.io/mac_address"
