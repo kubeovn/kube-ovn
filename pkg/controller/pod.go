@@ -426,23 +426,13 @@ func (c *Controller) handleDeletePod(key string) error {
 		return nil
 	}
 
-	subnet, err := c.getPodDefaultSubnet(pod)
-	if err != nil {
-		klog.Errorf("failed to get pod subnet, %v", err)
-		return err
-	}
-	vpc, vpcFound := c.parseSubnetVpc(subnet)
-	if !vpcFound {
-		klog.Errorf("failed to get vpc of subnet, %v", err)
-		return err
-	}
-
-	ips, _ := c.ipam.GetPodAddress(key)
-	for _, ip := range ips {
-		if err := c.ovnClient.DeleteStaticRoute(ip, vpc.Router); err != nil {
+	addresses := c.ipam.GetPodAddress(key)
+	for _, address := range addresses {
+		obj, _ := c.subnetVpcMap.Load(address.Subnet.Name)
+		if err := c.ovnClient.DeleteStaticRoute(address.Ip, obj.(*Vpc).Router); err != nil {
 			return err
 		}
-		if err := c.ovnClient.DeleteNatRule(ip, vpc.Router); err != nil {
+		if err := c.ovnClient.DeleteNatRule(address.Ip, obj.(*Vpc).Router); err != nil {
 			return err
 		}
 	}

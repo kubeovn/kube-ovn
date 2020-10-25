@@ -100,7 +100,11 @@ func (c *Controller) runUpdateSubnetStatusWorker() {
 
 func (c *Controller) runDeleteRouteWorker() {
 	for c.processNextDeleteRoutePodWorkItem() {
+	}
+}
 
+func (c *Controller) runCheckVpcResourceWorker() {
+	for c.processNextCheckVpcResourceWorkItem() {
 	}
 }
 
@@ -425,13 +429,14 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		vpcName, customVpc := subnet.Annotations[util.CustomVpcAnnotation]
 		if customVpc {
 			// init vpc
-			vpc, err = c.initCustomVpc(vpcName, subnet.Name)
+			vpc, err = c.createCustomVpc(vpcName, subnet.Name)
 			if err != nil {
 				klog.Errorf("failed to init vpc %v", err)
 				return err
 			}
 		}
 	}
+	c.subnetVpcMap.Store(key, vpc)
 
 	labelSelector := labels.SelectorFromSet(map[string]string{util.VpcNameLabel: vpc.Name})
 	subnetList, err := c.subnetsLister.List(labelSelector)
@@ -533,7 +538,7 @@ func (c *Controller) handleUpdateSubnetStatus(key string) error {
 func (c *Controller) handleDeleteRoute(subnet *kubeovnv1.Subnet) error {
 	vpc, vpcFound := c.parseSubnetVpc(subnet)
 	if !vpcFound {
-		return fmt.Errorf("faild to delete route, vpc not found")
+		return nil
 	}
 	if _, _, err := net.ParseCIDR(subnet.Spec.CIDRBlock); err != nil {
 		return nil
@@ -546,33 +551,24 @@ func (c *Controller) handleDeleteLogicRouter(key string) error {
 	return c.ovnClient.DeleteLogicalRouter(key)
 }
 
-func (c *Controller) handleDeleteSubnet(key string) error {
-	subnet, err := c.subnetsLister.Get(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
+func (c *Controller) handleCheckVpcResource(key string) error {
+	var subnetNum int
+	c.subnetVpcMap.Range(func(subnetName, obj interface{}) bool {
+		if obj.(*Vpc).Name == key {
+			subnetNum++
 		}
-		return err
-	}
-
-	vpc, vpcFound := c.parseSubnetVpc(subnet)
-	if vpcFound {
-		labelSelector := labels.SelectorFromSet(labels.Set{util.VpcNameLabel: vpc.Name})
-		subnetList, err := c.subnetsLister.List(labelSelector)
+		return true
+	})
+	if subnetNum == 0 {
+		err := c.deleteCustomVpc(key)
 		if err != nil {
-			klog.Errorf("failed to list subnets %v", err)
 			return err
 		}
-		if len(subnetList) == 1 {
-			// delete vpc
-			err = c.deleteCustomVpc(vpc.Name)
-			if err != nil {
-				klog.Errorf("failed to delete vpc %v", err)
-				return err
-			}
-		}
 	}
+	return nil
+}
 
+func (c *Controller) handleDeleteSubnet(key string) error {
 	c.ipam.DeleteSubnet(key)
 
 	exist, err := c.ovnClient.LogicalSwitchExists(key)
@@ -588,10 +584,18 @@ func (c *Controller) handleDeleteSubnet(key string) error {
 		klog.Errorf("failed to delete acl of logical switch %s %v", key, err)
 		return err
 	}
-	if err = c.ovnClient.DeleteLogicalSwitch(key); err != nil {
+
+	obj, found := c.subnetVpcMap.Load(key)
+	if !found {
+		err = fmt.Errorf("subnet vpc not found")
+		klog.Errorf("failed to get vpc of subnet '%s' %v", key, err)
+	}
+	if err = c.ovnClient.DeleteLogicalSwitch(obj.(*Vpc).Router, key); err != nil {
 		klog.Errorf("failed to delete logical switch %s %v", key, err)
 		return err
 	}
+	c.subnetVpcMap.Delete(key)
+	c.checkVpcResourceQueue.Add(obj.(*Vpc).Name)
 
 	nss, err := c.namespacesLister.List(labels.Everything())
 	if err != nil {

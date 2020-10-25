@@ -35,10 +35,12 @@ const controllerAgentName = "ovn-controller"
 
 // Controller is kube-ovn main controller that watch ns/pod/node/svc/ep and operate ovn
 type Controller struct {
-	config    *Configuration
-	vpcs      *sync.Map
-	ovnClient *ovs.Client
-	ipam      *ovnipam.IPAM
+	config       *Configuration
+	vpcs         *sync.Map
+	subnetVpcMap *sync.Map
+	podSubnetMap *sync.Map
+	ovnClient    *ovs.Client
+	ipam         *ovnipam.IPAM
 
 	podsLister     v1.PodLister
 	podsSynced     cache.InformerSynced
@@ -52,6 +54,7 @@ type Controller struct {
 	addOrUpdateSubnetQueue  workqueue.RateLimitingInterface
 	deleteSubnetQueue       workqueue.RateLimitingInterface
 	deleteRouteQueue        workqueue.RateLimitingInterface
+	checkVpcResourceQueue   workqueue.RateLimitingInterface
 	updateSubnetStatusQueue workqueue.RateLimitingInterface
 
 	ipsLister kubeovnlister.IPLister
@@ -133,10 +136,12 @@ func NewController(config *Configuration) *Controller {
 	configMapInformer := cmInformerFactory.Core().V1().ConfigMaps()
 
 	controller := &Controller{
-		config:    config,
-		vpcs:      &sync.Map{},
-		ovnClient: ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.OvnTimeout, config.OvnSbHost, config.OvnSbPort, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
-		ipam:      ovnipam.NewIPAM(),
+		config:       config,
+		vpcs:         &sync.Map{},
+		subnetVpcMap: &sync.Map{},
+		podSubnetMap: &sync.Map{},
+		ovnClient:    ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.OvnTimeout, config.OvnSbHost, config.OvnSbPort, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
+		ipam:         ovnipam.NewIPAM(),
 
 		subnetsLister:           subnetInformer.Lister(),
 		subnetSynced:            subnetInformer.Informer().HasSynced,
@@ -144,6 +149,7 @@ func NewController(config *Configuration) *Controller {
 		deleteSubnetQueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteSubnet"),
 		deleteRouteQueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteRoute"),
 		updateSubnetStatusQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateSubnetStatus"),
+		checkVpcResourceQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "CheckVpcResource"),
 
 		ipsLister: ipInformer.Lister(),
 		ipSynced:  ipInformer.Informer().HasSynced,
@@ -195,12 +201,6 @@ func NewController(config *Configuration) *Controller {
 		cmInformerFactory:      cmInformerFactory,
 		kubeovnInformerFactory: kubeovnInformerFactory,
 	}
-
-	controller.vpcs.Store("default", &Vpc{
-		Default:              true,
-		Name:                 "default",
-		DefaultLogicalSwitch: config.DefaultLogicalSwitch,
-		Router:               config.ClusterRouter})
 
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddPod,
@@ -282,6 +282,10 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		klog.Fatalf("failed to init ovn resource %v", err)
 	}
 
+	if err := c.InitVpc(); err != nil {
+		klog.Fatalf("failed to init vpc %v", err)
+	}
+
 	if err := c.InitIPAM(); err != nil {
 		klog.Fatalf("failed to init ipam %v", err)
 	}
@@ -326,6 +330,8 @@ func (c *Controller) shutdown() {
 	c.addVlanQueue.ShutDown()
 	c.delVlanQueue.ShutDown()
 	c.updateVlanQueue.ShutDown()
+
+	c.checkVpcResourceQueue.ShutDown()
 }
 
 func (c *Controller) startWorkers(stopCh <-chan struct{}) {
@@ -374,6 +380,9 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 
 	// run in a single worker to avoid subnet cidr conflict
 	go wait.Until(c.runAddNamespaceWorker, time.Second, stopCh)
+
+	// run in a single worker to avoid delete the vpc before last subnet deleted
+	go wait.Until(c.runCheckVpcResourceWorker, time.Second, stopCh)
 
 	// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
 	go wait.Until(c.runDeleteTcpServiceWorker, time.Second, stopCh)

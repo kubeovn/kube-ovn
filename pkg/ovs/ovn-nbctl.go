@@ -339,9 +339,9 @@ func (c Client) ListLogicalRouter() ([]string, error) {
 }
 
 // DeleteLogicalSwitch delete logical switch and related router port
-func (c Client) DeleteLogicalSwitch(ls string) error {
-	if _, err := c.ovnNbCommand(IfExists, "lrp-del", fmt.Sprintf("%s-%s", c.ClusterRouter, ls)); err != nil {
-		klog.Errorf("failed to del lrp %s-%s, %v", c.ClusterRouter, ls, err)
+func (c Client) DeleteLogicalSwitch(lr, ls string) error {
+	if _, err := c.ovnNbCommand(IfExists, "lrp-del", fmt.Sprintf("%s-%s", lr, ls)); err != nil {
+		klog.Errorf("failed to del lrp %s-%s, %v", lr, ls, err)
 		return err
 	}
 
@@ -360,7 +360,7 @@ func (c Client) CreateLogicalRouter(lr string) error {
 
 // DeleteLogicalRouter create logical router in ovn
 func (c Client) DeleteLogicalRouter(lr string) error {
-	_, err := c.ovnNbCommand(MayExist, "lr-del", lr)
+	_, err := c.ovnNbCommand(IfExists, "lr-del", lr)
 	return err
 }
 

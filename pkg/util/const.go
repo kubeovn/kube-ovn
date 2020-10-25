@@ -35,11 +35,10 @@ const (
 	PortNameAnnotation      = "ovn.kubernetes.io/port_name"
 	LogicalSwitchAnnotation = "ovn.kubernetes.io/logical_switch"
 
-	SubnetNameLabel       = "ovn.kubernetes.io/subnet"
-	ICGatewayLabel        = "ovn.kubernetes.io/ic-gw"
-	ExGatewayLabel        = "ovn.kubernetes.io/external-gw"
-	VpcNameLabel          = "ovn.kubernetes.io/vpc_name"
-	VpcDefaultSubnetLabel = "ovn.kubernetes.io/vpc_default_subnet"
+	SubnetNameLabel = "ovn.kubernetes.io/subnet"
+	ICGatewayLabel  = "ovn.kubernetes.io/ic-gw"
+	ExGatewayLabel  = "ovn.kubernetes.io/external-gw"
+	VpcNameLabel    = "ovn.kubernetes.io/vpc_name"
 
 	ProtocolTCP = "tcp"
 	ProtocolUDP = "udp"

@@ -2,13 +2,14 @@ package controller
 
 import (
 	"fmt"
+	"strings"
+
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
-	"strings"
 
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/util"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 )
 
@@ -38,6 +39,40 @@ func (c *Controller) InitOVN() error {
 		return err
 	}
 
+	return nil
+}
+
+func (c *Controller) InitVpc() error {
+	defaultVpc := &Vpc{
+		Default:              true,
+		Name:                 "default",
+		DefaultLogicalSwitch: c.config.DefaultLogicalSwitch,
+		Router:               c.config.ClusterRouter}
+
+	c.vpcs.Store("default", defaultVpc)
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("list subnets failed %v", err)
+	}
+
+	vpc := defaultVpc
+	var found bool
+	for _, subnet := range subnets {
+		vpc, found = c.parseSubnetVpc(subnet)
+		if !found {
+			vpcName, customVpc := subnet.Annotations[util.CustomVpcAnnotation]
+			if customVpc {
+				vpc, err = c.createCustomVpc(vpcName, "")
+				if err != nil {
+					klog.Errorf("init vpc of subnet %s failed %v", subnet.Name, err)
+					return err
+				}
+				c.vpcs.Store(vpc.Name, vpc)
+			}
+		}
+		klog.Infof("subnet '%s' in vpc '%s'", subnet.Name, vpc.Name)
+		c.subnetVpcMap.Store(subnet.Name, vpc)
+	}
 	return nil
 }
 
