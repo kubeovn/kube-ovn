@@ -1,5 +1,28 @@
 # CHANGELOG
 
+## 1.5.1 -- 2020/10/26
+
+### New Feature
+* Support binding pod to subnet
+
+### Bugfix
+* Remove not alive pod in networkpolicy portGroup
+* Delete Pod when marked with deletionTimestamp
+* Use internal IP when node try to connect to pod
+* Do not advertise node switch cidr when enable ovn-ic
+* Wrong proto str for udp diagnose
+* Wrong ipv6 network format when update subnet
+* Broken RPM link
+* Default SSL var for compatibility
+* Wrong iptable order
+* Check multicast and loopback subnet
+* CodeQL scan warnings
+
+### Mics
+* CI: change to official docker buildx action
+* Perf: remove default acl rules
+* Perf: accelerate ic and ex gw update
+
 ## 1.5.0 -- 2020/9/28
 
 ### New Feature
