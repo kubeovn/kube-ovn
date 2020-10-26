@@ -389,11 +389,11 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 
 	go wait.Until(func() {
 		c.resyncInterConnection()
-	}, 30*time.Second, stopCh)
+	}, time.Second, stopCh)
 
 	go wait.Until(func() {
 		c.resyncExternalGateway()
-	}, 30*time.Second, stopCh)
+	}, time.Second, stopCh)
 
 	go wait.Until(func() {
 		if err := c.markAndCleanLSP(); err != nil {
