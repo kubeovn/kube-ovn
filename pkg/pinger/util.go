@@ -37,8 +37,6 @@ func (e *Exporter) getOvsStatus() (bool, error) {
 			e.IncrementErrorCounter()
 			return false, err
 		}
-
-		klog.Infof("%s: getOvsStatus() completed GetProcessInfo(%s)", e.Client.System.ID, component)
 	}
 
 	return true, nil
