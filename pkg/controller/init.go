@@ -92,12 +92,13 @@ func (c *Controller) initNodeSwitch() error {
 	nodeSubnet := kubeovnv1.Subnet{
 		ObjectMeta: v1.ObjectMeta{Name: c.config.NodeSwitch},
 		Spec: kubeovnv1.SubnetSpec{
-			Default:    false,
-			Provider:   util.OvnProvider,
-			CIDRBlock:  c.config.NodeSwitchCIDR,
-			Gateway:    c.config.NodeSwitchGateway,
-			ExcludeIps: []string{c.config.NodeSwitchGateway},
-			Protocol:   util.CheckProtocol(c.config.NodeSwitchCIDR),
+			Default:                false,
+			Provider:               util.OvnProvider,
+			CIDRBlock:              c.config.NodeSwitchCIDR,
+			Gateway:                c.config.NodeSwitchGateway,
+			ExcludeIps:             []string{c.config.NodeSwitchGateway},
+			Protocol:               util.CheckProtocol(c.config.NodeSwitchCIDR),
+			DisableInterConnection: true,
 		},
 	}
 

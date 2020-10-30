@@ -6,6 +6,7 @@ import (
 	"github.com/alauda/kube-ovn/pkg/util"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
 	"os/exec"
@@ -123,7 +124,18 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 	if config["auto-route"] == "true" {
 		autoRoute = true
 	}
-	if err := c.ovnClient.SetICAutoRoute(autoRoute); err != nil {
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets, %v", err)
+		return err
+	}
+	blackList := []string{}
+	for _, subnet := range subnets {
+		if subnet.Spec.DisableInterConnection || subnet.Name == c.config.NodeSwitch {
+			blackList = append(blackList, subnet.Spec.CIDRBlock)
+		}
+	}
+	if err := c.ovnClient.SetICAutoRoute(autoRoute, blackList); err != nil {
 		klog.Errorf("failed to config auto route, %v", err)
 		return nil
 	}

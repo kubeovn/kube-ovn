@@ -90,6 +90,8 @@ type SubnetSpec struct {
 
 	Vlan            string `json:"vlan,omitempty"`
 	UnderlayGateway bool   `json:"underlayGateway"`
+
+	DisableInterConnection bool `json:"disableInterConnection"`
 }
 
 // ConditionType encodes information on the condition
