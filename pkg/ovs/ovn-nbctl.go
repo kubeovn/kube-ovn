@@ -49,9 +49,9 @@ func (c Client) SetAzName(azName string) error {
 	return nil
 }
 
-func (c Client) SetICAutoRoute(enable bool) error {
+func (c Client) SetICAutoRoute(enable bool, blackList []string) error {
 	if enable {
-		if _, err := c.ovnNbCommand("set", "NB_Global", ".", "options:ic-route-adv=true", "options:ic-route-learn=true", fmt.Sprintf("options:ic-route-blacklist=%s", c.NodeSwitchCIDR)); err != nil {
+		if _, err := c.ovnNbCommand("set", "NB_Global", ".", "options:ic-route-adv=true", "options:ic-route-learn=true", fmt.Sprintf("options:ic-route-blacklist=%s", strings.Join(blackList, ","))); err != nil {
 			return fmt.Errorf("failed to enable ovn-ic auto route, %v", err)
 		}
 		return nil
@@ -559,7 +559,7 @@ func (c Client) CleanLogicalSwitchAcl(ls string) error {
 }
 
 // ResetLogicalSwitchAcl reset acl of a switch
-func (c Client) ResetLogicalSwitchAcl(ls, protocol string) error {
+func (c Client) ResetLogicalSwitchAcl(ls string) error {
 	_, err := c.ovnNbCommand("acl-del", ls)
 	return err
 }

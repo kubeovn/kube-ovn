@@ -477,7 +477,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchSuccess", "")
 		}
 	} else {
-		if err := c.ovnClient.ResetLogicalSwitchAcl(subnet.Name, subnet.Spec.Protocol); err != nil {
+		if err := c.ovnClient.ResetLogicalSwitchAcl(subnet.Name); err != nil {
 			c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclFailed", err.Error())
 			return err
 		} else {
