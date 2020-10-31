@@ -23,3 +23,5 @@ type IPExpansion interface{}
 type SubnetExpansion interface{}
 
 type VlanExpansion interface{}
+
+type VpcExpansion interface{}

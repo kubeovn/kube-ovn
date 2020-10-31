@@ -6,6 +6,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/util"
@@ -42,36 +43,35 @@ func (c *Controller) InitOVN() error {
 	return nil
 }
 
-func (c *Controller) InitVpc() error {
-	defaultVpc := &Vpc{
-		Default:              true,
-		Name:                 "default",
-		DefaultLogicalSwitch: c.config.DefaultLogicalSwitch,
-		Router:               c.config.ClusterRouter}
-
-	c.vpcs.Store("default", defaultVpc)
-	subnets, err := c.subnetsLister.List(labels.Everything())
+func (c *Controller) InitDefaultVpc() error {
+	vpc, err := c.vpcsLister.Get(util.DefaultVpc)
 	if err != nil {
-		klog.Errorf("list subnets failed %v", err)
+		vpc = &kubeovnv1.Vpc{}
+		vpc.Name = util.DefaultVpc
+		vpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Create(vpc)
+		if err != nil {
+			klog.Errorf("init default vpc failed %v", err)
+			return err
+		}
 	}
 
-	vpc := defaultVpc
-	var found bool
-	for _, subnet := range subnets {
-		vpc, found = c.parseSubnetVpc(subnet)
-		if !found {
-			vpcName, customVpc := subnet.Annotations[util.CustomVpcAnnotation]
-			if customVpc {
-				vpc, err = c.createCustomVpc(vpcName, "")
-				if err != nil {
-					klog.Errorf("init vpc of subnet %s failed %v", subnet.Name, err)
-					return err
-				}
-				c.vpcs.Store(vpc.Name, vpc)
-			}
-		}
-		klog.Infof("subnet '%s' in vpc '%s'", subnet.Name, vpc.Name)
-		c.subnetVpcMap.Store(subnet.Name, vpc)
+	vpc.Status.DefaultLogicalSwitch = c.config.DefaultLogicalSwitch
+	vpc.Status.Router = c.config.ClusterRouter
+	vpc.Status.TcpLoadBalancer = c.config.ClusterTcpLoadBalancer
+	vpc.Status.TcpSessionLoadBalancer = c.config.ClusterTcpSessionLoadBalancer
+	vpc.Status.UdpLoadBalancer = c.config.ClusterUdpLoadBalancer
+	vpc.Status.UdpSessionLoadBalancer = c.config.ClusterUdpSessionLoadBalancer
+	vpc.Status.Standby = true
+	vpc.Status.Default = true
+
+	bytes, err := vpc.Status.Bytes()
+	if err != nil {
+		return err
+	}
+	vpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(vpc.Name, types.MergePatchType, bytes, "status")
+	if err != nil {
+		klog.Errorf("init default vpc failed %v", err)
+		return err
 	}
 	return nil
 }

@@ -14,10 +14,11 @@ const (
 	SnatAnnotation       = "ovn.kubernetes.io/snat"
 	EipAnnotation        = "ovn.kubernetes.io/eip"
 
+	LogicalRouterAnnotation = "ovn.kubernetes.io/logical_router"
+	VpcAnnotation           = "ovn.kubernetes.io/vpc"
+
 	PortSecurityAnnotation = "ovn.kubernetes.io/port_security"
 	NorthGatewayAnnotation = "ovn.kubernetes.io/north_gateway"
-
-	CustomVpcAnnotation = "ovn.kubernetes.io/vpc"
 
 	AllocatedAnnotationTemplate     = "%s.kubernetes.io/allocated"
 	MacAddressAnnotationTemplate    = "%s.kubernetes.io/mac_address"
@@ -38,7 +39,6 @@ const (
 	SubnetNameLabel = "ovn.kubernetes.io/subnet"
 	ICGatewayLabel  = "ovn.kubernetes.io/ic-gw"
 	ExGatewayLabel  = "ovn.kubernetes.io/external-gw"
-	VpcNameLabel    = "ovn.kubernetes.io/vpc_name"
 
 	ProtocolTCP = "tcp"
 	ProtocolUDP = "udp"
@@ -76,4 +76,6 @@ const (
 	ExternalGatewayConfig = "ovn-external-gw-config"
 	InterconnectionSwitch = "ts"
 	ExternalGatewaySwitch = "ovn-external"
+
+	DefaultVpc = "ovn-cluster"
 )

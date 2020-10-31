@@ -338,13 +338,8 @@ func (c Client) ListLogicalRouter() ([]string, error) {
 	return result, nil
 }
 
-// DeleteLogicalSwitch delete logical switch and related router port
-func (c Client) DeleteLogicalSwitch(lr, ls string) error {
-	if _, err := c.ovnNbCommand(IfExists, "lrp-del", fmt.Sprintf("%s-%s", lr, ls)); err != nil {
-		klog.Errorf("failed to del lrp %s-%s, %v", lr, ls, err)
-		return err
-	}
-
+// DeleteLogicalSwitch delete logical switch
+func (c Client) DeleteLogicalSwitch(ls string) error {
 	if _, err := c.ovnNbCommand(IfExists, "ls-del", ls); err != nil {
 		klog.Errorf("failed to del ls %s, %v", ls, err)
 		return err

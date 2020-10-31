@@ -107,40 +107,52 @@ func (c *Controller) handleAddNamespace(key string) error {
 		}
 		return err
 	}
-	subnet, err := c.subnetsLister.Get(c.config.DefaultLogicalSwitch)
+
+	vpc, err := c.vpcsLister.Get(c.config.ClusterRouter)
 	if err != nil {
-		klog.Errorf("failed to get default subnet %v", err)
+		klog.Errorf("failed to get default vpc %v", err)
 		return err
 	}
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets %v", err)
-		return err
-	}
-	for _, s := range subnets {
-		for _, ns := range s.Spec.Namespaces {
-			if ns == key {
-				subnet = s
-				break
-			}
+
+	vpcs, err := c.vpcsLister.List(labels.Everything())
+	for _, v := range vpcs {
+		if util.ContainsString(v.Spec.Namespaces, key) {
+			vpc = v
+			break
 		}
 	}
 
+	var ls, cidr string
+	var excludeIps []string
+	if vpc.Status.DefaultLogicalSwitch != "" {
+		subnet, err := c.subnetsLister.Get(vpc.Status.DefaultLogicalSwitch)
+		if err != nil {
+			klog.Errorf("failed to get default subnet %v", err)
+			return err
+		}
+		ls = subnet.Name
+		cidr = subnet.Spec.CIDRBlock
+		excludeIps = subnet.Spec.ExcludeIps
+	}
 	op := "replace"
 	if namespace.Annotations == nil || len(namespace.Annotations) == 0 {
 		op = "add"
 		namespace.Annotations = map[string]string{}
 	} else {
-		if namespace.Annotations[util.LogicalSwitchAnnotation] == subnet.Name &&
-			namespace.Annotations[util.CidrAnnotation] == subnet.Spec.CIDRBlock &&
-			namespace.Annotations[util.ExcludeIpsAnnotation] == strings.Join(subnet.Spec.ExcludeIps, ",") {
+		if namespace.Annotations[util.VpcAnnotation] == vpc.Name &&
+			namespace.Annotations[util.LogicalRouterAnnotation] == vpc.Status.Router &&
+			namespace.Annotations[util.LogicalSwitchAnnotation] == ls &&
+			namespace.Annotations[util.CidrAnnotation] == cidr &&
+			namespace.Annotations[util.ExcludeIpsAnnotation] == strings.Join(excludeIps, ",") {
 			return nil
 		}
 	}
 
-	namespace.Annotations[util.LogicalSwitchAnnotation] = subnet.Name
-	namespace.Annotations[util.CidrAnnotation] = subnet.Spec.CIDRBlock
-	namespace.Annotations[util.ExcludeIpsAnnotation] = strings.Join(subnet.Spec.ExcludeIps, ",")
+	namespace.Annotations[util.VpcAnnotation] = vpc.Name
+	namespace.Annotations[util.LogicalRouterAnnotation] = vpc.Status.Router
+	namespace.Annotations[util.LogicalSwitchAnnotation] = ls
+	namespace.Annotations[util.CidrAnnotation] = cidr
+	namespace.Annotations[util.ExcludeIpsAnnotation] = strings.Join(excludeIps, ",")
 
 	if _, err = c.config.KubeClient.CoreV1().Namespaces().Patch(key, types.JSONPatchType, generatePatchPayload(namespace.Annotations, op)); err != nil {
 		klog.Errorf("patch namespace %s failed %v", key, err)
