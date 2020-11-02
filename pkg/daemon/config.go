@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"syscall"
 
@@ -130,8 +131,9 @@ func (config *Configuration) initNicConfig() error {
 		}
 	}
 
-	iface, err := net.InterfaceByName(config.Iface)
+	iface, err := findInterface(config.Iface)
 	if err != nil {
+		klog.Errorf("failed to find iface %s, %v", config.Iface, err)
 		return err
 	}
 	if config.MTU == 0 {
@@ -153,6 +155,27 @@ func (config *Configuration) initNicConfig() error {
 		return fmt.Errorf("iface %s has no ip address", config.Iface)
 	}
 	return setEncapIP(strings.Split(addrs[0].String(), "/")[0])
+}
+
+func findInterface(ifaceStr string) (*net.Interface, error) {
+	ifaceRegex, err := regexp.Compile("(" + strings.Join(strings.Split(ifaceStr, ","), ")|(") + ")")
+	if err != nil {
+		klog.Errorf("Invalid interface regex %s", ifaceStr)
+		return nil, err
+	}
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		klog.Errorf("failed to list interfaces, %v", err)
+		return nil, err
+	}
+	for _, iface := range ifaces {
+		if ifaceRegex.MatchString(iface.Name) {
+			klog.Infof("use %s as tunnel interface", iface.Name)
+			return &iface, nil
+		}
+	}
+	klog.Errorf("network interface %s not exist", ifaceStr)
+	return nil, fmt.Errorf("network interface %s not exist", ifaceStr)
 }
 
 func (config *Configuration) initKubeClient() error {
