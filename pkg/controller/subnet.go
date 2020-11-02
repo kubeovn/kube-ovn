@@ -402,15 +402,35 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
 	if err != nil {
 		klog.Errorf("failed to get subnet's vpc '%s', %v", subnet.Spec.Vpc, err)
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
 		return err
 	}
 	if !vpc.Status.Standby {
 		err = fmt.Errorf("the vpc '%s' not standby yet", vpc.Name)
 		klog.Error(err)
 		return err
+	}
+
+	if !vpc.Status.Default {
+		for _, ns := range subnet.Spec.Namespaces {
+			if !util.ContainsString(vpc.Spec.Namespaces, ns) {
+				err = fmt.Errorf("namespace '%s' is out of range to custom vpc '%s'", ns, vpc.Name)
+				klog.Error(err)
+				return err
+			}
+		}
+	} else {
+		vpcs, err := c.vpcsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list vpc, %v", err)
+			return err
+		}
+		for _, vpc := range vpcs {
+			if subnet.Spec.Vpc != vpc.Name && !vpc.Status.Default && util.IsStringsOverlap(vpc.Spec.Namespaces, subnet.Spec.Namespaces) {
+				err = fmt.Errorf("namespaces %v are overlap with vpc '%s'", subnet.Spec.Namespaces, vpc.Name)
+				klog.Error(err)
+				return err
+			}
+		}
 	}
 
 	if err := calcSubnetStatusIP(subnet, c); err != nil {
