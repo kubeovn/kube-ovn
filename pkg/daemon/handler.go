@@ -188,9 +188,11 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		return
 	}
 	// check if it's a sriov device
-	for _, container := range pod.Spec.Containers {
-		if _, ok := container.Resources.Requests[util.SRIOVResourceName]; ok {
-			podRequest.DeviceID = util.SRIOVResourceName
+	if pod != nil {
+		for _, container := range pod.Spec.Containers {
+			if _, ok := container.Resources.Requests[util.SRIOVResourceName]; ok {
+				podRequest.DeviceID = util.SRIOVResourceName
+			}
 		}
 	}
 
