@@ -60,7 +60,6 @@ type Controller struct {
 	addOrUpdateSubnetQueue  workqueue.RateLimitingInterface
 	deleteSubnetQueue       workqueue.RateLimitingInterface
 	deleteRouteQueue        workqueue.RateLimitingInterface
-	checkVpcResourceQueue   workqueue.RateLimitingInterface
 	updateSubnetStatusQueue workqueue.RateLimitingInterface
 
 	ipsLister kubeovnlister.IPLister
@@ -348,7 +347,9 @@ func (c *Controller) shutdown() {
 	c.delVlanQueue.ShutDown()
 	c.updateVlanQueue.ShutDown()
 
-	c.checkVpcResourceQueue.ShutDown()
+	c.addOrUpdateVpcQueue.ShutDown()
+	c.updateVpcStatusQueue.ShutDown()
+	c.delVpcQueue.ShutDown()
 }
 
 func (c *Controller) startWorkers(stopCh <-chan struct{}) {
