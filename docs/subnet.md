@@ -58,3 +58,22 @@ For a centralized gateway, outgoing traffic from Pods within the OVN network to 
 - `gatewayType`: `distributed` or `centralized`, default is `distributed`.
 - `gatewayNode`: when `gatewayType` is `centralized` used this field to specify which node act as the namespace gateway. This field can be a comma separated string, like `node1,node2` and kube-ovn will automatically apply an active-backup failover strategy.
 - `natOutgoing`: `true` or `false`, whether pod ip need to be masqueraded when go through gateway. When `false`, pod ip will be exposed to external network directly, default `false`.
+
+## Advance Options
+
+- `vlan`: if enable vlan network, use this field to specific which vlan the subnet should bind to.
+- `underlayGateway`: if enable vlan network, use this field to use underlay network gateway directly, instead of ovs virtual gateway
+- `disableInterConnection`: if enable cluster-interconnection, use this field to disable auto route.
+
+## Bind Pod to Subnet
+
+By default, Pod will automatically inherit subnet from Namespace, From 1.5.1 users can bind Pod to another Subnet by manually setup the `logical_switch` annotation for a Pod.
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    ovn.kubernetes.io/logical_switch: another-subnet
+  namespace: default
+  name: another-subnet-pod
+```

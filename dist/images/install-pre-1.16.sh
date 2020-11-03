@@ -5,7 +5,7 @@ IPv6=${IPv6:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
 ENABLE_MIRROR=${ENABLE_MIRROR:-false}
 HW_OFFLOAD=${HW_OFFLOAD:-false}
-IFACE=""                               # The nic to support container network, if empty will use the nic that the default route use
+IFACE=""                               # The nic to support container network can be a nic name or a group of regex separated by comma, if empty will use the nic that the default route use
 
 REGISTRY="kubeovn"
 VERSION="v1.6.0"

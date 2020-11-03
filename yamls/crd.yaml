@@ -174,6 +174,8 @@ spec:
                   type: string
                 underlayGateway:
                   type: boolean
+                disableInterConnection:
+                  type: boolean
   scope: Cluster
   names:
     plural: subnets
