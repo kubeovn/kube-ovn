@@ -461,7 +461,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	for _, sub := range subnetList {
-		if sub.Name != subnet.Name && sub.Spec.Vpc == sub.Spec.Vpc && util.CIDRConflict(sub.Spec.CIDRBlock, subnet.Spec.CIDRBlock) {
+		if sub.Spec.Vpc == subnet.Spec.Vpc && sub.Name != subnet.Name && util.CIDRConflict(sub.Spec.CIDRBlock, subnet.Spec.CIDRBlock) {
 			err = fmt.Errorf("subnet %s cidr %s conflict with subnet %s cidr %s", subnet.Name, subnet.Spec.CIDRBlock, sub.Name, sub.Spec.CIDRBlock)
 			klog.Error(err)
 			c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error())
