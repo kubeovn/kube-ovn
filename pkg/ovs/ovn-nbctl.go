@@ -185,7 +185,7 @@ func (c Client) CreateLogicalSwitch(ls, lr, protocol, subnet, gateway string, ex
 			return err
 		}
 	}
-	if ls != c.NodeSwitch && !defaultVpc {
+	if ls != c.NodeSwitch && defaultVpc {
 		// DO NOT add ovn dns/lb to node switch
 		// TODO: custom vpc not support dns/lb now
 		if err := c.addLoadBalancerToLogicalSwitch(c.ClusterTcpLoadBalancer, ls); err != nil {

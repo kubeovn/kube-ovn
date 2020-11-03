@@ -91,6 +91,7 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 	defaultSubnet := kubeovnv1.Subnet{
 		ObjectMeta: v1.ObjectMeta{Name: c.config.DefaultLogicalSwitch},
 		Spec: kubeovnv1.SubnetSpec{
+			Vpc:         util.DefaultVpc,
 			Default:     true,
 			Provider:    util.OvnProvider,
 			CIDRBlock:   c.config.DefaultCIDR,
@@ -127,6 +128,7 @@ func (c *Controller) initNodeSwitch() error {
 	nodeSubnet := kubeovnv1.Subnet{
 		ObjectMeta: v1.ObjectMeta{Name: c.config.NodeSwitch},
 		Spec: kubeovnv1.SubnetSpec{
+			Vpc:        util.DefaultVpc,
 			Default:                false,
 			Provider:               util.OvnProvider,
 			CIDRBlock:              c.config.NodeSwitchCIDR,

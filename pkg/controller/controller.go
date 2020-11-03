@@ -294,12 +294,12 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		klog.Fatalf("failed to wait for caches to sync")
 	}
 
-	if err := c.InitOVN(); err != nil {
-		klog.Fatalf("failed to init ovn resource %v", err)
-	}
-
 	if err := c.InitDefaultVpc(); err != nil {
 		klog.Fatalf("failed to init default vpc %v", err)
+	}
+
+	if err := c.InitOVN(); err != nil {
+		klog.Fatalf("failed to init ovn resource %v", err)
 	}
 
 	if err := c.InitIPAM(); err != nil {
