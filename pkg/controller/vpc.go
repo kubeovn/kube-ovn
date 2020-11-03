@@ -90,6 +90,12 @@ func (c *Controller) handleUpdateVpcStatus(key string) error {
 	if err != nil {
 		return err
 	}
+
+	change := false
+	if vpc.Status.DefaultLogicalSwitch != defaultSubnet {
+		change = true
+	}
+
 	vpc.Status.DefaultLogicalSwitch = defaultSubnet
 	vpc.Status.Subnets = subnets
 	bytes, err := vpc.Status.Bytes()
@@ -98,7 +104,15 @@ func (c *Controller) handleUpdateVpcStatus(key string) error {
 	}
 
 	vpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(vpc.Name, types.MergePatchType, bytes, "status")
-	return err
+	if err != nil {
+		return err
+	}
+	if change {
+		for _, ns := range vpc.Spec.Namespaces {
+			c.addNamespaceQueue.Add(ns)
+		}
+	}
+	return nil
 }
 
 func (c *Controller) handleAddOrUpdateVpc(key string) error {

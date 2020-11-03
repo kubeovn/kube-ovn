@@ -515,8 +515,6 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
-	c.updateVpcStatusQueue.Add(subnet.Spec.Vpc)
-
 	if err := c.reconcileSubnet(subnet); err != nil {
 		klog.Errorf("reconcile subnet for %s failed, %v", subnet.Name, err)
 		return err
@@ -538,6 +536,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
+	c.updateVpcStatusQueue.Add(subnet.Spec.Vpc)
 	return nil
 }
 
@@ -628,6 +627,7 @@ func (c *Controller) handleDeleteLogicalSwitch(key string) error {
 }
 
 func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
+	c.updateVpcStatusQueue.Add(subnet.Spec.Vpc)
 	err := c.handleDeleteLogicalSwitch(subnet.Name)
 	if err != nil {
 		klog.Errorf("failed to delete logical switch %s %v", subnet.Name, err)
@@ -640,7 +640,6 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 			klog.Errorf("failed to delete router port %s %v", subnet.Name, err)
 			return err
 		}
-		c.updateVpcStatusQueue.Add(subnet.Spec.Vpc)
 	}
 
 	return nil
