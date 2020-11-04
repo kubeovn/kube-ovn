@@ -69,6 +69,17 @@ IPv4 Routes
 
 If Pods cannot communicate with each other, please check the log of kube-ovn-controller.
 
+For some specific subnet that you don't want to advertise to another cluster, you can disable the auto route advertise on the specific subnet by editing the subnet spec.
+```
+apiVersion: kubeovn.io/v1
+kind: Subnet
+metadata:
+  name: no-advertise
+spec:
+  cidrBlock: 10.199.0.0/16
+  disableInterConnection: false
+```
+
 For manually adding routes, you need to find the 
 
 ## Manually Route Step
