@@ -27,3 +27,13 @@ func (vs *VlanStatus) Bytes() ([]byte, error) {
 	klog.V(5).Info("status body", newStr)
 	return []byte(newStr), nil
 }
+
+func (vs *VpcStatus) Bytes() ([]byte, error) {
+	bytes, err := json.Marshal(vs)
+	if err != nil {
+		return nil, err
+	}
+	newStr := fmt.Sprintf(`{"status": %s}`, string(bytes))
+	klog.V(5).Info("status body", newStr)
+	return []byte(newStr), nil
+}

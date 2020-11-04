@@ -57,9 +57,9 @@ var _ = Describe("[IPAM]", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(ip).To(Equal("10.16.0.1"))
 
-			ips, _ := im.GetPodAddress("pod5.ns")
-			Expect(ips).To(HaveLen(1))
-			Expect(ips[0]).To(Equal("10.16.0.1"))
+			addresses := im.GetPodAddress("pod5.ns")
+			Expect(addresses).To(HaveLen(1))
+			Expect(addresses[0].Ip).To(Equal("10.16.0.1"))
 		})
 
 		It("change cidr", func() {

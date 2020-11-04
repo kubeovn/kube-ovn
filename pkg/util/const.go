@@ -14,6 +14,9 @@ const (
 	SnatAnnotation       = "ovn.kubernetes.io/snat"
 	EipAnnotation        = "ovn.kubernetes.io/eip"
 
+	LogicalRouterAnnotation = "ovn.kubernetes.io/logical_router"
+	VpcAnnotation           = "ovn.kubernetes.io/vpc"
+
 	PortSecurityAnnotation = "ovn.kubernetes.io/port_security"
 	NorthGatewayAnnotation = "ovn.kubernetes.io/north_gateway"
 
@@ -73,4 +76,6 @@ const (
 	ExternalGatewayConfig = "ovn-external-gw-config"
 	InterconnectionSwitch = "ts"
 	ExternalGatewaySwitch = "ovn-external"
+
+	DefaultVpc = "ovn-cluster"
 )

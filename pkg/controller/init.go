@@ -2,13 +2,15 @@ package controller
 
 import (
 	"fmt"
+	"strings"
+
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
-	"strings"
+	"k8s.io/apimachinery/pkg/types"
 
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/util"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 )
 
@@ -41,6 +43,39 @@ func (c *Controller) InitOVN() error {
 	return nil
 }
 
+func (c *Controller) InitDefaultVpc() error {
+	vpc, err := c.vpcsLister.Get(util.DefaultVpc)
+	if err != nil {
+		vpc = &kubeovnv1.Vpc{}
+		vpc.Name = util.DefaultVpc
+		vpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Create(vpc)
+		if err != nil {
+			klog.Errorf("init default vpc failed %v", err)
+			return err
+		}
+	}
+
+	vpc.Status.DefaultLogicalSwitch = c.config.DefaultLogicalSwitch
+	vpc.Status.Router = c.config.ClusterRouter
+	vpc.Status.TcpLoadBalancer = c.config.ClusterTcpLoadBalancer
+	vpc.Status.TcpSessionLoadBalancer = c.config.ClusterTcpSessionLoadBalancer
+	vpc.Status.UdpLoadBalancer = c.config.ClusterUdpLoadBalancer
+	vpc.Status.UdpSessionLoadBalancer = c.config.ClusterUdpSessionLoadBalancer
+	vpc.Status.Standby = true
+	vpc.Status.Default = true
+
+	bytes, err := vpc.Status.Bytes()
+	if err != nil {
+		return err
+	}
+	vpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(vpc.Name, types.MergePatchType, bytes, "status")
+	if err != nil {
+		klog.Errorf("init default vpc failed %v", err)
+		return err
+	}
+	return nil
+}
+
 // InitDefaultLogicalSwitch init the default logical switch for ovn network
 func (c *Controller) initDefaultLogicalSwitch() error {
 	_, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(c.config.DefaultLogicalSwitch, v1.GetOptions{})
@@ -56,6 +91,7 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 	defaultSubnet := kubeovnv1.Subnet{
 		ObjectMeta: v1.ObjectMeta{Name: c.config.DefaultLogicalSwitch},
 		Spec: kubeovnv1.SubnetSpec{
+			Vpc:         util.DefaultVpc,
 			Default:     true,
 			Provider:    util.OvnProvider,
 			CIDRBlock:   c.config.DefaultCIDR,
@@ -92,6 +128,7 @@ func (c *Controller) initNodeSwitch() error {
 	nodeSubnet := kubeovnv1.Subnet{
 		ObjectMeta: v1.ObjectMeta{Name: c.config.NodeSwitch},
 		Spec: kubeovnv1.SubnetSpec{
+			Vpc:        util.DefaultVpc,
 			Default:                false,
 			Provider:               util.OvnProvider,
 			CIDRBlock:              c.config.NodeSwitchCIDR,

@@ -3,12 +3,13 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/alauda/kube-ovn/pkg/ipam"
 	"net"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/alauda/kube-ovn/pkg/ipam"
 
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/ovs"
@@ -425,12 +426,20 @@ func (c *Controller) handleDeletePod(key string) error {
 		return nil
 	}
 
-	ips, _ := c.ipam.GetPodAddress(key)
-	for _, ip := range ips {
-		if err := c.ovnClient.DeleteStaticRoute(ip, c.config.ClusterRouter); err != nil {
+	addresses := c.ipam.GetPodAddress(key)
+	for _, address := range addresses {
+		subnet, err := c.subnetsLister.Get(address.Subnet.Name)
+		if err != nil {
 			return err
 		}
-		if err := c.ovnClient.DeleteNatRule(ip, c.config.ClusterRouter); err != nil {
+		vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
+		if err != nil {
+			return err
+		}
+		if err := c.ovnClient.DeleteStaticRoute(address.Ip, vpc.Status.Router); err != nil {
+			return err
+		}
+		if err := c.ovnClient.DeleteNatRule(address.Ip, vpc.Status.Router); err != nil {
 			return err
 		}
 	}
@@ -475,57 +484,62 @@ func (c *Controller) handleUpdatePod(key string) error {
 		klog.Errorf("failed to get subnet %v", err)
 		return err
 	}
+
+	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
+	if err != nil {
+		klog.Errorf("failed to get vpc %v", err)
+		return err
+	}
+
 	if !subnet.Spec.UnderlayGateway {
-		if pod.Annotations[util.EipAnnotation] != "" {
-			cm, err := c.configMapsLister.ConfigMaps("kube-system").Get(util.ExternalGatewayConfig)
-			if err != nil {
-				klog.Errorf("failed to get ex-gateway config, %v", err)
-				return err
-			}
-			nextHop := cm.Data["nic-ip"]
-			if nextHop == "" {
-				klog.Errorf("no available gateway nic address")
-				return fmt.Errorf("no available gateway nic address")
-			}
-			nextHop = strings.Split(nextHop, "/")[0]
+		if vpc.Status.Default {
+			if pod.Annotations[util.EipAnnotation] != "" {
+				cm, err := c.configMapsLister.ConfigMaps("kube-system").Get(util.ExternalGatewayConfig)
+				if err != nil {
+					klog.Errorf("failed to get ex-gateway config, %v", err)
+					return err
+				}
+				nextHop := cm.Data["nic-ip"]
+				if nextHop == "" {
+					klog.Errorf("no available gateway nic address")
+					return fmt.Errorf("no available gateway nic address")
+				}
+				nextHop = strings.Split(nextHop, "/")[0]
 
-			if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nextHop, c.config.ClusterRouter); err != nil {
-				klog.Errorf("failed to add static route, %v", err)
-				return err
+				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nextHop, c.config.ClusterRouter); err != nil {
+					klog.Errorf("failed to add static route, %v", err)
+					return err
+				}
+
+				if err := c.ovnClient.AddNatRule("dnat_and_snat", podIP, pod.Annotations[util.EipAnnotation], c.config.ClusterRouter); err != nil {
+					klog.Errorf("failed to add nat rules, %v", err)
+					return err
+				}
+
+			} else if pod.Annotations[util.SnatAnnotation] != "" {
+				cm, err := c.configMapsLister.ConfigMaps("kube-system").Get(util.ExternalGatewayConfig)
+				if err != nil {
+					klog.Errorf("failed to get ex-gateway config, %v", err)
+					return err
+				}
+				nextHop := cm.Data["nic-ip"]
+				if nextHop == "" {
+					klog.Errorf("no available gateway nic address")
+					return fmt.Errorf("no available gateway nic address")
+				}
+				nextHop = strings.Split(nextHop, "/")[0]
+
+				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nextHop, c.config.ClusterRouter); err != nil {
+					klog.Errorf("failed to add static route, %v", err)
+					return err
+				}
+
+				if err := c.ovnClient.AddNatRule("snat", podIP, pod.Annotations[util.SnatAnnotation], c.config.ClusterRouter); err != nil {
+					klog.Errorf("failed to add nat rules, %v", err)
+					return err
+				}
 			}
 
-			if err := c.ovnClient.AddNatRule("dnat_and_snat", podIP, pod.Annotations[util.EipAnnotation], c.config.ClusterRouter); err != nil {
-				klog.Errorf("failed to add nat rules, %v", err)
-				return err
-			}
-		} else if pod.Annotations[util.SnatAnnotation] != "" {
-			cm, err := c.configMapsLister.ConfigMaps("kube-system").Get(util.ExternalGatewayConfig)
-			if err != nil {
-				klog.Errorf("failed to get ex-gateway config, %v", err)
-				return err
-			}
-			nextHop := cm.Data["nic-ip"]
-			if nextHop == "" {
-				klog.Errorf("no available gateway nic address")
-				return fmt.Errorf("no available gateway nic address")
-			}
-			nextHop = strings.Split(nextHop, "/")[0]
-
-			if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nextHop, c.config.ClusterRouter); err != nil {
-				klog.Errorf("failed to add static route, %v", err)
-				return err
-			}
-
-			if err := c.ovnClient.AddNatRule("snat", podIP, pod.Annotations[util.SnatAnnotation], c.config.ClusterRouter); err != nil {
-				klog.Errorf("failed to add nat rules, %v", err)
-				return err
-			}
-		} else if pod.Annotations[util.NorthGatewayAnnotation] != "" {
-			if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], c.config.ClusterRouter); err != nil {
-				klog.Errorf("failed to add static route, %v", err)
-				return err
-			}
-		} else {
 			if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
 				node, err := c.nodesLister.Get(pod.Spec.NodeName)
 				if err != nil {
@@ -541,6 +555,12 @@ func (c *Controller) handleUpdatePod(key string) error {
 					klog.Errorf("failed to add static route, %v", err)
 					return err
 				}
+			}
+		}
+		if pod.Annotations[util.NorthGatewayAnnotation] != "" {
+			if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], vpc.Status.Router); err != nil {
+				klog.Errorf("failed to add static route, %v", err)
+				return err
 			}
 		}
 	}
@@ -602,28 +622,35 @@ func needAllocateSubnets(pod *v1.Pod, subnets []*kubeovnv1.Subnet) []*kubeovnv1.
 }
 
 func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error) {
-	subnet, err := c.subnetsLister.Get(c.config.DefaultLogicalSwitch)
-	if err != nil {
-		klog.Errorf("failed to get default subnet %v", err)
-		return nil, err
-	}
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets %v", err)
-		return nil, err
+	var subnetName string
+	// 1. check annotation subnet
+	lsName, lsExist := pod.Annotations[util.LogicalSwitchAnnotation]
+	if lsExist {
+		subnetName = lsName
+	} else {
+		ns, err := c.namespacesLister.Get(pod.Namespace)
+		if err != nil {
+			klog.Errorf("failed to get namespace %v", err)
+			return nil, err
+		}
+		if ns.Annotations == nil {
+			err = fmt.Errorf("namespace network annotations is nil")
+			klog.Error(err)
+			return nil, err
+		}
+
+		subnetName, _ = ns.Annotations[util.LogicalSwitchAnnotation]
+		if subnetName == "" {
+			err = fmt.Errorf("namespace default logical switch is not found")
+			klog.Error(err)
+			return nil, err
+		}
 	}
 
-	lsName, lsExist := pod.Annotations[util.LogicalSwitchAnnotation]
-	for _, s := range subnets {
-		if lsExist && lsName == s.Name {
-			return s, nil
-		}
-		for _, ns := range s.Spec.Namespaces {
-			if ns == pod.Namespace {
-				subnet = s
-				break
-			}
-		}
+	subnet, err := c.subnetsLister.Get(subnetName)
+	if err != nil {
+		klog.Errorf("failed to get subnet %v", err)
+		return nil, err
 	}
 	return subnet, nil
 }
