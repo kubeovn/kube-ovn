@@ -25,8 +25,6 @@ const (
 
 var (
 	v4Rules = []util.IPTableRule{
-		// This rule makes sure we don't NAT traffic within overlay network
-		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn40subnets src -m set --match-set ovn40subnets dst -j RETURN`, " ")},
 		// Prevent performing Masquerade on external traffic which arrives from a Node that owns the Pod/Subnet IP
 		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn40subnets src -m set --match-set ovn40local-pod-ip-nat dst -j RETURN`, " ")},
 		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn40subnets src -m set --match-set ovn40subnets-nat dst -j RETURN`, " ")},
@@ -41,8 +39,6 @@ var (
 		{Table: "filter", Chain: "INPUT", Rule: strings.Split(`-m set --match-set ovn40subnets dst -j ACCEPT`, " ")},
 	}
 	v6Rules = []util.IPTableRule{
-		// This rule makes sure we don't NAT traffic within overlay network
-		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn60subnets src -m set --match-set ovn60subnets dst -j RETURN`, " ")},
 		// Prevent performing Masquerade on external traffic which arrives from a Node that owns the Pod/Subnet IP
 		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn40subnets src -m set --match-set ovn60local-pod-ip-nat dst -j RETURN`, " ")},
 		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn40subnets src -m set --match-set ovn60subnets-nat dst -j RETURN`, " ")},
