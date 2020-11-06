@@ -246,13 +246,10 @@ func (c *Controller) processNextDeleteSubnetWorkItem() bool {
 func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 	var err error
 	changed := false
-	_, ipNet, err := net.ParseCIDR(subnet.Spec.CIDRBlock)
+
+	changed, err = checkAndUpdateCIDR(subnet)
 	if err != nil {
-		return fmt.Errorf("subnet %s cidr %s is not a valid cidrblock", subnet.Name, subnet.Spec.CIDRBlock)
-	}
-	if ipNet.String() != subnet.Spec.CIDRBlock {
-		subnet.Spec.CIDRBlock = ipNet.String()
-		changed = true
+		return err
 	}
 	if subnet.Spec.Provider == "" {
 		subnet.Spec.Provider = util.OvnProvider
@@ -286,32 +283,11 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 			}
 		}
 	}
-	if subnet.Spec.Gateway == "" {
-		gw, err := util.FirstSubnetIP(subnet.Spec.CIDRBlock)
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
-		subnet.Spec.Gateway = gw
-		changed = true
+	changed, err = checkAndUpdateGateway(subnet)
+	if err != nil {
+		return err
 	}
-
-	if len(subnet.Spec.ExcludeIps) == 0 {
-		subnet.Spec.ExcludeIps = []string{subnet.Spec.Gateway}
-		changed = true
-	} else {
-		gwExists := false
-		for _, ip := range ovs.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock) {
-			if ip == subnet.Spec.Gateway {
-				gwExists = true
-				break
-			}
-		}
-		if !gwExists {
-			subnet.Spec.ExcludeIps = append(subnet.Spec.ExcludeIps, subnet.Spec.Gateway)
-			changed = true
-		}
-	}
+	changed = checkAndUpdateExcludeIps(subnet)
 
 	if changed {
 		_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(subnet)
@@ -321,6 +297,134 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		}
 	}
 	return nil
+}
+
+func checkAndUpdateCIDR(subnet *kubeovnv1.Subnet) (bool, error) {
+	changed := false
+	if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual {
+		cidrBlocks := strings.Split(subnet.Spec.CIDRBlock, ",")
+		_, v4IpNet, err := net.ParseCIDR(cidrBlocks[0])
+		if err != nil {
+			return false, fmt.Errorf("subnet %s cidr %s is not a valid cidrblock", subnet.Name, cidrBlocks[0])
+		}
+		if v4IpNet.String() != cidrBlocks[0] {
+			changed = true
+		}
+
+		_, v6IpNet, err := net.ParseCIDR(cidrBlocks[1])
+		if err != nil {
+			return false, fmt.Errorf("subnet %s cidr %s is not a valid cidrblock", subnet.Name, cidrBlocks[1])
+		}
+		if v6IpNet.String() != cidrBlocks[1] {
+			changed = true
+		}
+
+		if changed {
+			subnet.Spec.CIDRBlock = v4IpNet.String() + "," + v6IpNet.String()
+		}
+	} else {
+		_, ipNet, err := net.ParseCIDR(subnet.Spec.CIDRBlock)
+		if err != nil {
+			return false, fmt.Errorf("subnet %s cidr %s is not a valid cidrblock", subnet.Name, subnet.Spec.CIDRBlock)
+		}
+		if ipNet.String() != subnet.Spec.CIDRBlock {
+			subnet.Spec.CIDRBlock = ipNet.String()
+			changed = true
+		}
+	}
+
+	return changed, nil
+}
+
+func checkAndUpdateGateway(subnet *kubeovnv1.Subnet) (bool, error) {
+	changed := false
+	if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual {
+		cidrBlocks := strings.Split(subnet.Spec.CIDRBlock, ",")
+		if subnet.Spec.Gateway == "" {
+			v4gw, err := util.FirstSubnetIP(cidrBlocks[0])
+			if err != nil {
+				klog.Error(err)
+				return false, err
+			}
+			v6gw, err := util.FirstSubnetIP(cidrBlocks[1])
+			if err != nil {
+				klog.Error(err)
+				return false, err
+			}
+			subnet.Spec.Gateway = v4gw + "," + v6gw
+			changed = true
+		}
+	} else {
+		if subnet.Spec.Gateway == "" {
+			gw, err := util.FirstSubnetIP(subnet.Spec.CIDRBlock)
+			if err != nil {
+				klog.Error(err)
+				return false, err
+			}
+			subnet.Spec.Gateway = gw
+			changed = true
+		}
+	}
+
+	return changed, nil
+}
+
+// this func must be called after subnet.Spec.Gateway is valued
+func checkAndUpdateExcludeIps(subnet *kubeovnv1.Subnet) bool {
+	changed := false
+	if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual {
+		excludeIps := strings.Split(subnet.Spec.Gateway, ",")
+		if len(subnet.Spec.ExcludeIps) == 0 {
+			subnet.Spec.ExcludeIps = append(subnet.Spec.ExcludeIps, excludeIps[0], excludeIps[1])
+			changed = true
+		} else {
+			// check ipv4 cidr
+			gwExists := false
+			cidrBlocks := strings.Split(subnet.Spec.CIDRBlock, ",")
+			for _, ip := range ovs.ExpandExcludeIPs(subnet.Spec.ExcludeIps, cidrBlocks[0]) {
+				if ip == excludeIps[0] {
+					gwExists = true
+					break
+				}
+			}
+			if !gwExists {
+				subnet.Spec.ExcludeIps = append(subnet.Spec.ExcludeIps, excludeIps[0])
+				changed = true
+			}
+
+			// check ipv6 cidr
+			gwExists = false
+			for _, ip := range ovs.ExpandExcludeIPs(subnet.Spec.ExcludeIps, cidrBlocks[1]) {
+				if ip == excludeIps[1] {
+					gwExists = true
+					break
+				}
+			}
+			if !gwExists {
+				subnet.Spec.ExcludeIps = append(subnet.Spec.ExcludeIps, excludeIps[1])
+				changed = true
+			}
+		}
+	} else {
+		if len(subnet.Spec.ExcludeIps) == 0 {
+			subnet.Spec.ExcludeIps = []string{subnet.Spec.Gateway}
+			changed = true
+		} else {
+			gwExists := false
+			for _, ip := range ovs.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock) {
+				if ip == subnet.Spec.Gateway {
+					gwExists = true
+					break
+				}
+			}
+			if !gwExists {
+				subnet.Spec.ExcludeIps = append(subnet.Spec.ExcludeIps, subnet.Spec.Gateway)
+				changed = true
+			}
+		}
+	}
+
+	return changed
 }
 
 func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, error) {
@@ -370,6 +474,7 @@ func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason string, e
 }
 
 func (c *Controller) handleAddOrUpdateSubnet(key string) error {
+	var err error
 	subnet, err := c.subnetsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -433,7 +538,12 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
-	if err := calcSubnetStatusIP(subnet, c); err != nil {
+	if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual {
+		err = calcDualSubnetStatusIP(subnet, c)
+	} else {
+		err = calcSubnetStatusIP(subnet, c)
+	}
+	if err != nil {
 		klog.Errorf("calculate subnet %s used ip failed, %v", subnet.Name, err)
 		return err
 	}
@@ -548,7 +658,11 @@ func (c *Controller) handleUpdateSubnetStatus(key string) error {
 		}
 		return err
 	}
-	return calcSubnetStatusIP(subnet, c)
+	if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual {
+		return calcDualSubnetStatusIP(subnet, c)
+	} else {
+		return calcSubnetStatusIP(subnet, c)
+	}
 }
 
 func (c *Controller) handleDeleteRoute(subnet *kubeovnv1.Subnet) error {
@@ -907,6 +1021,66 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 	return nil
 }
 
+func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
+	cidrBlocks := strings.Split(subnet.Spec.CIDRBlock, ",")
+	_, v4cidr, err := net.ParseCIDR(cidrBlocks[0])
+	if err != nil {
+		return err
+	}
+	_, v6cidr, err := net.ParseCIDR(cidrBlocks[1])
+	if err != nil {
+		return err
+	}
+	// 返回Pod的数量 这个赋值的地方，需要确认下
+	podUsedIPs, err := c.config.KubeOvnClient.KubeovnV1().IPs().List(metav1.ListOptions{
+		LabelSelector: fields.OneTermEqualSelector(subnet.Name, "").String(),
+	})
+	if err != nil {
+		return err
+	}
+
+	// subnet.Spec.ExcludeIps contains both v4 and v6 addresses
+	var v4ExcludeIps, v6ExcludeIps []string
+	for _, ip := range subnet.Spec.ExcludeIps {
+		if net.ParseIP(ip).To4() != nil {
+			v4ExcludeIps = append(v4ExcludeIps, ip)
+		} else {
+			v6ExcludeIps = append(v6ExcludeIps, ip)
+		}
+	}
+	// gateway always in excludeIPs
+	v4toSubIPs := ovs.ExpandExcludeIPs(v4ExcludeIps, cidrBlocks[0])
+	v6toSubIPs := ovs.ExpandExcludeIPs(v6ExcludeIps, cidrBlocks[1])
+	for _, podUsedIP := range podUsedIPs.Items {
+		// The format of podUsedIP.Spec.IPAddress is 10.244.0.0/16,fd00:10:244::/64 when protocol is dualstack
+		splitIPs := strings.Split(podUsedIP.Spec.IPAddress, ",")
+		v4toSubIPs = append(v4toSubIPs, splitIPs[0])
+		v6toSubIPs = append(v6toSubIPs, splitIPs[1])
+	}
+	v4availableIPs := util.AddressCount(v4cidr) - float64(len(util.UniqString(v4toSubIPs)))
+	if v4availableIPs < 0 {
+		v4availableIPs = 0
+	}
+	v6availableIPs := util.AddressCount(v6cidr) - float64(len(util.UniqString(v6toSubIPs)))
+	if v6availableIPs < 0 {
+		v6availableIPs = 0
+	}
+	usingIPs := float64(len(podUsedIPs.Items))
+	subnet.Status.V4AvailableIPs = v4availableIPs
+	subnet.Status.V6AvailableIPs = v6availableIPs
+	subnet.Status.AvailableIPs = v4availableIPs + v6availableIPs
+	subnet.Status.V4UsingIPs = usingIPs
+	subnet.Status.V6UsingIPs = usingIPs
+	subnet.Status.UsingIPs = usingIPs * 2
+
+	bytes, err := subnet.Status.Bytes()
+	if err != nil {
+		return err
+	}
+	subnet, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(subnet.Name, types.MergePatchType, bytes, "status")
+	return err
+}
+
 func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	_, cidr, err := net.ParseCIDR(subnet.Spec.CIDRBlock)
 	if err != nil {
@@ -930,6 +1104,14 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	usingIPs := float64(len(podUsedIPs.Items))
 	subnet.Status.AvailableIPs = availableIPs
 	subnet.Status.UsingIPs = usingIPs
+	if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolIPv4 {
+		subnet.Status.V4AvailableIPs = availableIPs
+		subnet.Status.V4UsingIPs = usingIPs
+	} else if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolIPv6 {
+		subnet.Status.V6AvailableIPs = availableIPs
+		subnet.Status.V6UsingIPs = usingIPs
+	}
+
 	bytes, err := subnet.Status.Bytes()
 	if err != nil {
 		return err

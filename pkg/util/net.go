@@ -117,6 +117,10 @@ func CIDRContainIP(cidrStr, ipStr string) bool {
 }
 
 func CheckProtocol(address string) string {
+	if strings.Contains(address, ",") && (strings.Count(address, "/") == 2) {
+		return kubeovnv1.ProtocolDual
+	}
+
 	address = strings.Split(address, "/")[0]
 	ip := net.ParseIP(address)
 	if ip.To4() != nil {
@@ -143,4 +147,11 @@ func GenerateRandomV4IP(cidr string) string {
 	}
 	t := big.NewInt(0).Add(Ip2BigInt(ip), add)
 	return fmt.Sprintf("%s/%d", BigInt2Ip(t), netMask)
+}
+
+func IsValidIP(ip string) bool {
+	if net.ParseIP(ip) != nil {
+		return true
+	}
+	return false
 }

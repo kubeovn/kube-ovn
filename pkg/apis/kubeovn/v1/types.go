@@ -128,6 +128,10 @@ type SubnetStatus struct {
 
 	AvailableIPs    float64 `json:"availableIPs"`
 	UsingIPs        float64 `json:"usingIPs"`
+	V4AvailableIPs  float64 `json:"v4availableIPs"`
+	V4UsingIPs      float64 `json:"v4usingIPs"`
+	V6AvailableIPs  float64 `json:"v6availableIPs"`
+	V6UsingIPs      float64 `json:"v6usingIPs"`
 	ActivateGateway string  `json:"activateGateway"`
 }
 
