@@ -21,6 +21,7 @@ type Configuration struct {
 	DaemonSetName      string
 	Interval           int
 	Mode               string
+	ExitCode           int
 	InternalDNS        string
 	ExternalDNS        string
 	NodeName           string
@@ -54,6 +55,7 @@ func ParseFlags() (*Configuration, error) {
 		argDaemonSetName      = pflag.String("ds-name", "kube-ovn-pinger", "kube-ovn-pinger daemonset name")
 		argInterval           = pflag.Int("interval", 5, "interval seconds between consecutive pings")
 		argMode               = pflag.String("mode", "server", "server or job Mode")
+		argExitCode           = pflag.Int("exit-code", 0, "exit code when failure happens")
 		argInternalDns        = pflag.String("internal-dns", "kubernetes.default", "check dns from pod")
 		argExternalDns        = pflag.String("external-dns", "alauda.cn", "check external dns resolve from pod")
 		argExternalAddress    = pflag.String("external-address", "114.114.114.114", "check ping connection to an external address, default empty that will disable external check")
@@ -101,6 +103,7 @@ func ParseFlags() (*Configuration, error) {
 		DaemonSetName:      *argDaemonSetName,
 		Interval:           *argInterval,
 		Mode:               *argMode,
+		ExitCode:           *argExitCode,
 		InternalDNS:        *argInternalDns,
 		ExternalDNS:        *argExternalDns,
 		PodIP:              os.Getenv("POD_IP"),
@@ -136,10 +139,10 @@ func ParseFlags() (*Configuration, error) {
 		}
 		for _, arg := range ds.Spec.Template.Spec.Containers[0].Command {
 			arg = strings.Trim(arg, "\"")
-			if strings.HasPrefix(arg, "--external-address=") {
+			if config.ExternalAddress == "114.114.114.114" && strings.HasPrefix(arg, "--external-address=") {
 				config.ExternalAddress = strings.TrimPrefix(arg, "--external-address=")
 			}
-			if strings.HasPrefix(arg, "--external-dns=") {
+			if config.ExternalDNS == "alauda.cn" && strings.HasPrefix(arg, "--external-dns=") {
 				config.ExternalDNS = strings.TrimPrefix(arg, "--external-dns=")
 			}
 		}

@@ -9,39 +9,40 @@ import (
 	"strings"
 )
 
-func checkOvs(config *Configuration) {
+func checkOvs(config *Configuration) error {
 	output, err := exec.Command("/usr/share/openvswitch/scripts/ovs-ctl", "status").CombinedOutput()
 	if err != nil {
 		klog.Errorf("check ovs status failed %v, %s", err, string(output))
 		SetOvsDownMetrics(config.NodeName)
-		return
+		return err
 	}
 	klog.Infof("ovs-vswitchd and ovsdb are up")
 	SetOvsUpMetrics(config.NodeName)
-	return
+	return nil
 }
 
-func checkOvnController(config *Configuration) {
+func checkOvnController(config *Configuration) error {
 	output, err := exec.Command("/usr/share/ovn/scripts/ovn-ctl", "status_controller").CombinedOutput()
 	if err != nil {
 		klog.Errorf("check ovn_controller status failed %v, %q", err, output)
 		SetOvnControllerDownMetrics(config.NodeName)
-		return
+		return err
 	}
 	klog.Infof("ovn_controller is up")
 	SetOvnControllerUpMetrics(config.NodeName)
+	return nil
 }
 
-func checkPortBindings(config *Configuration) {
+func checkPortBindings(config *Configuration) error {
 	klog.Infof("start to check port binding")
 	ovsBindings, err := checkOvsBindings()
 	if err != nil {
-		return
+		return err
 	}
 
 	sbBindings, err := checkSBBindings(config)
 	if err != nil {
-		return
+		return err
 	}
 	klog.Infof("port in sb is %v", sbBindings)
 	misMatch := []string{}
@@ -53,11 +54,12 @@ func checkPortBindings(config *Configuration) {
 	if len(misMatch) > 0 {
 		klog.Errorf("%d port %v not exist in sb-bindings", len(misMatch), misMatch)
 		inconsistentPortBindingGauge.WithLabelValues(config.NodeName).Set(float64(len(misMatch)))
+		return fmt.Errorf("%d port %v not exist in sb-bindings", len(misMatch), misMatch)
 	} else {
 		klog.Infof("ovs and ovn-sb binding check passed")
 		inconsistentPortBindingGauge.WithLabelValues(config.NodeName).Set(0)
 	}
-	return
+	return nil
 }
 
 func checkOvsBindings() ([]string, error) {
