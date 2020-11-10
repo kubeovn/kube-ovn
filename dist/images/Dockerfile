@@ -54,6 +54,7 @@ COPY 01-kube-ovn.conflist /kube-ovn/01-kube-ovn.conflist
 
 WORKDIR /kube-ovn
 
+RUN rpm -e --nodeps sqlite-libs
 COPY kube-ovn-speaker /kube-ovn/kube-ovn-speaker
 COPY kube-ovn-pinger /kube-ovn/kube-ovn-pinger
 COPY kube-ovn /kube-ovn/kube-ovn
