@@ -11,9 +11,6 @@ import (
 
 	"github.com/alauda/kube-ovn/pkg/ipam"
 
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/alauda/kube-ovn/pkg/ovs"
-	"github.com/alauda/kube-ovn/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -22,6 +19,10 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
+
+	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/alauda/kube-ovn/pkg/ovs"
+	"github.com/alauda/kube-ovn/pkg/util"
 )
 
 func isPodAlive(p *v1.Pod) bool {
@@ -556,11 +557,11 @@ func (c *Controller) handleUpdatePod(key string) error {
 					return err
 				}
 			}
-		}
-		if pod.Annotations[util.NorthGatewayAnnotation] != "" {
-			if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], vpc.Status.Router); err != nil {
-				klog.Errorf("failed to add static route, %v", err)
-				return err
+			if pod.Annotations[util.NorthGatewayAnnotation] != "" {
+				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], vpc.Status.Router); err != nil {
+					klog.Errorf("failed to add static route, %v", err)
+					return err
+				}
 			}
 		}
 	}
