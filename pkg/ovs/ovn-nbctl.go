@@ -5,13 +5,15 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/alauda/kube-ovn/pkg/util"
 	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/klog"
+
+	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/alauda/kube-ovn/pkg/util"
 )
 
 func (c Client) ovnNbCommand(cmdArgs ...string) (string, error) {
@@ -421,6 +423,36 @@ func (c Client) AddStaticRoute(policy, cidr, nextHop, router string) error {
 	}
 	_, err := c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "lr-route-add", router, cidr, nextHop)
 	return err
+}
+
+func (c Client) GetStaticRouteList(router string) (routeList []*StaticRoute, err error) {
+	output, err := c.ovnNbCommand("lr-route-list", router)
+	if err != nil {
+		klog.Errorf("failed to list logical router route %v", err)
+		return nil, err
+	}
+	return parseLrRouteListOutput(output)
+}
+
+func parseLrRouteListOutput(output string) (routeList []*StaticRoute, err error) {
+	lines := strings.Split(output, "\n")
+	routeList = make([]*StaticRoute, 0, len(lines))
+	for _, l := range lines {
+		if len(l) == 0 {
+			continue
+		}
+		reg := regexp.MustCompile(`(\d+.\d+.\d+.\d+(/\d+)*)\s+(\d+.\d+.\d+.\d+)\s+(dst-ip|src-ip)`)
+		sm := reg.FindStringSubmatch(l)
+		if len(sm) == 0 {
+			continue
+		}
+		routeList = append(routeList, &StaticRoute{
+			Policy:  sm[4],
+			CIDR:    sm[1],
+			NextHop: sm[3],
+		})
+	}
+	return routeList, nil
 }
 
 func (c Client) AddNatRule(policy, logicalIP, externalIP, router string) error {
