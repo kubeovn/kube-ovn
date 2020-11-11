@@ -19,10 +19,10 @@ metadata:
   namespace: kube-system
 data:
   enable-external-gw: "true"
-  external-gw-nodes: "kube-ovn-worker"  # NodeName in kubernetes which will act the gateway functions
-  external-gw-nic: "eth1"               # The nic that will be bridged into ovs and act as gw
-  nic-ip: "172.56.0.100/16"             # The ip and mask of the nic
-  nic-mac: "16:52:f3:13:6a:25"          # The mac of the nic
+  external-gw-nodes: "kube-ovn-worker"  # NodeName in kubernetes which will act the overlay to underlay gateway functions
+  external-gw-nic: "eth1"               # The nic that will be bridged into ovs and act as overlay to underlay gateway
+  nic-ip: "172.56.0.1/16"               # The ip and mask of the underlay physical gateway
+  nic-mac: "16:52:f3:13:6a:25"          # The mac of the underlay physical gateway
 ```
 
 2. Wait about one minute for gateway installation get ready and check the status.
