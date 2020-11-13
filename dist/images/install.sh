@@ -625,7 +625,6 @@ spec:
     spec:
       tolerations:
       - operator: Exists
-        effect: NoSchedule
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -813,7 +812,6 @@ spec:
     spec:
       tolerations:
       - operator: Exists
-        effect: NoSchedule
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       hostNetwork: true
@@ -1123,7 +1121,6 @@ spec:
     spec:
       tolerations:
       - operator: Exists
-        effect: NoSchedule
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -1310,7 +1307,6 @@ spec:
     spec:
       tolerations:
       - operator: Exists
-        effect: NoSchedule
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       hostNetwork: true
@@ -1451,7 +1447,6 @@ spec:
     spec:
       tolerations:
       - operator: Exists
-        effect: NoSchedule
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -1539,7 +1534,6 @@ spec:
     spec:
       tolerations:
       - operator: Exists
-        effect: NoSchedule
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       hostNetwork: true
@@ -1656,7 +1650,6 @@ spec:
     spec:
       tolerations:
         - operator: Exists
-          effect: NoSchedule
       serviceAccountName: ovn
       hostPID: true
       containers:
