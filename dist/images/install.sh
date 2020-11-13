@@ -128,6 +128,17 @@ spec:
                   items:
                     type: string
                   type: array
+                staticRoutes:
+                  items:
+                    properties:
+                      policy:
+                        type: string
+                      cidr:
+                        type: string
+                      nextHopIP:
+                        type: string
+                    type: object
+                  type: array
               type: object
             status:
               properties:

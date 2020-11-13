@@ -2,15 +2,19 @@ package controller
 
 import (
 	"fmt"
+	"net"
 	"reflect"
+	"strings"
 
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
+
+	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/alauda/kube-ovn/pkg/ovs"
 )
 
 func (c *Controller) enqueueAddVpc(obj interface{}) {
@@ -42,13 +46,14 @@ func (c *Controller) enqueueUpdateVpc(old, new interface{}) {
 	}
 
 	if !newVpc.DeletionTimestamp.IsZero() {
-		c.addOrUpdateSubnetQueue.Add(key)
+		c.addOrUpdateVpcQueue.Add(key)
 		return
 	}
 
-	if !reflect.DeepEqual(oldVpc.Spec.Namespaces, newVpc.Spec.Namespaces) {
+	if !reflect.DeepEqual(oldVpc.Spec.Namespaces, newVpc.Spec.Namespaces) ||
+		!reflect.DeepEqual(oldVpc.Spec.StaticRoutes, newVpc.Spec.StaticRoutes) {
 		klog.V(3).Infof("enqueue update vpc %s", key)
-		c.addOrUpdateSubnetQueue.Add(key)
+		c.addOrUpdateVpcQueue.Add(key)
 	}
 }
 
@@ -123,9 +128,39 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 		return err
 	}
+	if err := formatVpc(vpc, c); err != nil {
+		klog.Errorf("failed to format vpc, err: %v", err)
+		return err
+	}
 
 	if err := c.createVpcRouter(key); err != nil {
 		return err
+	}
+
+	// handle route
+	existRoute, err := c.ovnClient.GetStaticRouteList(vpc.Name)
+	if err != nil {
+		klog.Errorf("failed to get vpc %s static route list, %v", vpc.Name, err)
+		return err
+	}
+
+	routeNeedDel, routeNeedAdd, err := diffRoute(existRoute, vpc.Spec.StaticRoutes)
+	if err != nil {
+		klog.Errorf("failed to diff vpc %s static route, %v", vpc.Name, err)
+		return err
+	}
+	for _, item := range routeNeedDel {
+		if err = c.ovnClient.DeleteStaticRoute(item.CIDR, vpc.Name); err != nil {
+			klog.Errorf("del vpc %s static route failed, %v", vpc.Name, err)
+			return err
+		}
+	}
+
+	for _, item := range routeNeedAdd {
+		if err = c.ovnClient.AddStaticRoute(convertPolicy(item.Policy), item.CIDR, item.NextHopIP, vpc.Name); err != nil {
+			klog.Errorf("add static route to vpc %s failed, %v", vpc.Name, err)
+			return err
+		}
 	}
 
 	vpc.Status.Router = key
@@ -139,6 +174,99 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 	return nil
+}
+
+func diffRoute(exist []*ovs.StaticRoute, target []*kubeovnv1.StaticRoute) (routeNeedDel []*kubeovnv1.StaticRoute, routeNeedAdd []*kubeovnv1.StaticRoute, err error) {
+	existV1 := make([]*kubeovnv1.StaticRoute, 0, len(exist))
+	for _, item := range exist {
+		policy := kubeovnv1.PolicyDst
+		if item.Policy == ovs.PolicySrcIP {
+			policy = kubeovnv1.PolicySrc
+		}
+		existV1 = append(existV1, &kubeovnv1.StaticRoute{
+			Policy:    policy,
+			CIDR:      item.CIDR,
+			NextHopIP: item.NextHop,
+		})
+	}
+
+	existRouteMap := make(map[string]*kubeovnv1.StaticRoute, len(exist))
+	for _, item := range existV1 {
+		existRouteMap[getRouteItemKey(item)] = item
+	}
+
+	for _, item := range target {
+		key := getRouteItemKey(item)
+		if _, ok := existRouteMap[key]; ok {
+			delete(existRouteMap, key)
+		} else {
+			routeNeedAdd = append(routeNeedAdd, item)
+		}
+	}
+	for _, item := range existRouteMap {
+		routeNeedDel = append(routeNeedDel, item)
+	}
+	return
+}
+
+func getRouteItemKey(item *kubeovnv1.StaticRoute) (key string) {
+	if item.Policy == kubeovnv1.PolicyDst {
+		return fmt.Sprintf("dst:%s=>%s", item.CIDR, item.NextHopIP)
+	} else {
+		return fmt.Sprintf("src:%s=>%s", item.CIDR, item.NextHopIP)
+	}
+}
+
+func formatVpc(vpc *kubeovnv1.Vpc, c *Controller) (err error) {
+	changed := false
+	// default vpc does not support custom route
+	if vpc.Status.Default {
+		if len(vpc.Spec.StaticRoutes) > 0 {
+			changed = true
+			vpc.Spec.StaticRoutes = nil
+		}
+	} else {
+		for _, item := range vpc.Spec.StaticRoutes {
+			// check policy
+			if item.Policy == "" {
+				item.Policy = kubeovnv1.PolicyDst
+				changed = true
+			}
+			if item.Policy != kubeovnv1.PolicyDst && item.Policy != kubeovnv1.PolicySrc {
+				return fmt.Errorf("unknown policy type: %s", item.Policy)
+			}
+			// check cidr
+			if strings.Contains(item.CIDR, "/") {
+				if _, _, err = net.ParseCIDR(item.CIDR); err != nil {
+					return fmt.Errorf("bad cidr: %s, err: %w", item.CIDR, err)
+				}
+			} else {
+				if ip := net.ParseIP(item.CIDR); ip == nil {
+					return fmt.Errorf("bad cidr: %s, err: %w", item.CIDR, err)
+				}
+			}
+			// check next hop ip
+			if ip := net.ParseIP(item.NextHopIP); ip == nil {
+				return fmt.Errorf("bad next hop ip: %s, err: %w", item.NextHopIP, err)
+			}
+
+		}
+	}
+	if changed {
+		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(vpc); err != nil {
+			klog.Errorf("failed to update vpc %s, %v", vpc.Name, err)
+			return err
+		}
+	}
+	return
+}
+
+func convertPolicy(origin kubeovnv1.RoutePolicy) string {
+	if origin == kubeovnv1.PolicyDst {
+		return ovs.PolicyDstIP
+	} else {
+		return ovs.PolicySrcIP
+	}
 }
 
 func (c *Controller) processNextUpdateStatusVpcWorkItem() bool {

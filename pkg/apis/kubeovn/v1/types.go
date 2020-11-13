@@ -210,7 +210,21 @@ type Vpc struct {
 }
 
 type VpcSpec struct {
-	Namespaces []string `json:"namespaces,omitempty"`
+	Namespaces   []string       `json:"namespaces,omitempty"`
+	StaticRoutes []*StaticRoute `json:"staticRoutes,omitempty"`
+}
+
+type RoutePolicy string
+
+const (
+	PolicySrc RoutePolicy = "policySrc"
+	PolicyDst RoutePolicy = "policyDst"
+)
+
+type StaticRoute struct {
+	Policy    RoutePolicy `json:"policy,omitempty"`
+	CIDR      string      `json:"cidr"`
+	NextHopIP string      `json:"nextHopIP"`
 }
 
 type VpcStatus struct {
