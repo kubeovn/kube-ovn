@@ -1,5 +1,5 @@
 GOFILES_NOVENDOR=$(shell find . -type f -name '*.go' -not -path "./vendor/*")
-GO_VERSION=1.14
+GO_VERSION=1.15
 
 REGISTRY=kubeovn
 DEV_TAG=dev
