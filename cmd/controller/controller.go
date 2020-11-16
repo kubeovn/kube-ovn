@@ -28,7 +28,7 @@ func main() {
 	go loopOvnNbctlDaemon(config)
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
-		klog.Fatal(http.ListenAndServe(fmt.Sprintf("localhost:%d", config.PprofPort), nil))
+		klog.Fatal(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.PprofPort), nil))
 	}()
 
 	ctl := controller.NewController(config)
