@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"sync"
+
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/alauda/kube-ovn/pkg/client/informers/externalversions"
 	kubeovnlister "github.com/alauda/kube-ovn/pkg/client/listers/kubeovn/v1"
@@ -33,9 +35,12 @@ const controllerAgentName = "ovn-controller"
 
 // Controller is kube-ovn main controller that watch ns/pod/node/svc/ep and operate ovn
 type Controller struct {
-	config    *Configuration
-	ovnClient *ovs.Client
-	ipam      *ovnipam.IPAM
+	config *Configuration
+	vpcs   *sync.Map
+	//subnetVpcMap *sync.Map
+	podSubnetMap *sync.Map
+	ovnClient    *ovs.Client
+	ipam         *ovnipam.IPAM
 
 	podsLister     v1.PodLister
 	podsSynced     cache.InformerSynced
@@ -43,6 +48,12 @@ type Controller struct {
 	deletePodQueue workqueue.RateLimitingInterface
 	updatePodQueue workqueue.RateLimitingInterface
 	podKeyMutex    *keymutex.KeyMutex
+
+	vpcsLister           kubeovnlister.VpcLister
+	vpcSynced            cache.InformerSynced
+	addOrUpdateVpcQueue  workqueue.RateLimitingInterface
+	delVpcQueue          workqueue.RateLimitingInterface
+	updateVpcStatusQueue workqueue.RateLimitingInterface
 
 	subnetsLister           kubeovnlister.SubnetLister
 	subnetSynced            cache.InformerSynced
@@ -118,6 +129,7 @@ func NewController(config *Configuration) *Controller {
 			listOption.AllowWatchBookmarks = true
 		}))
 
+	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	ipInformer := kubeovnInformerFactory.Kubeovn().V1().IPs()
 	vlanInformer := kubeovnInformerFactory.Kubeovn().V1().Vlans()
@@ -130,9 +142,17 @@ func NewController(config *Configuration) *Controller {
 	configMapInformer := cmInformerFactory.Core().V1().ConfigMaps()
 
 	controller := &Controller{
-		config:    config,
-		ovnClient: ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.OvnTimeout, config.OvnSbHost, config.OvnSbPort, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
-		ipam:      ovnipam.NewIPAM(),
+		config:       config,
+		vpcs:         &sync.Map{},
+		podSubnetMap: &sync.Map{},
+		ovnClient:    ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.OvnTimeout, config.OvnSbHost, config.OvnSbPort, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
+		ipam:         ovnipam.NewIPAM(),
+
+		vpcsLister:           vpcInformer.Lister(),
+		vpcSynced:            vpcInformer.Informer().HasSynced,
+		addOrUpdateVpcQueue:  workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddOrUpdateVpc"),
+		delVpcQueue:          workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteVpc"),
+		updateVpcStatusQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVpcStatus"),
 
 		subnetsLister:           subnetInformer.Lister(),
 		subnetSynced:            subnetInformer.Informer().HasSynced,
@@ -226,6 +246,12 @@ func NewController(config *Configuration) *Controller {
 		DeleteFunc: controller.enqueueDeleteNp,
 	})
 
+	vpcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddVpc,
+		UpdateFunc: controller.enqueueUpdateVpc,
+		DeleteFunc: controller.enqueueDelVpc,
+	})
+
 	subnetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddSubnet,
 		UpdateFunc: controller.enqueueUpdateSubnet,
@@ -264,8 +290,12 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	c.kubeovnInformerFactory.Start(stopCh)
 
 	klog.Info("Waiting for informer caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.subnetSynced, c.ipSynced, c.vlanSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced, c.npsSynced, c.configMapsSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.vpcSynced, c.subnetSynced, c.ipSynced, c.vlanSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced, c.npsSynced, c.configMapsSynced); !ok {
 		klog.Fatalf("failed to wait for caches to sync")
+	}
+
+	if err := c.InitDefaultVpc(); err != nil {
+		klog.Fatalf("failed to init default vpc %v", err)
 	}
 
 	if err := c.InitOVN(); err != nil {
@@ -316,10 +346,16 @@ func (c *Controller) shutdown() {
 	c.addVlanQueue.ShutDown()
 	c.delVlanQueue.ShutDown()
 	c.updateVlanQueue.ShutDown()
+
+	c.addOrUpdateVpcQueue.ShutDown()
+	c.updateVpcStatusQueue.ShutDown()
+	c.delVpcQueue.ShutDown()
 }
 
 func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	klog.Info("Starting workers")
+
+	go wait.Until(c.runAddVpcWorker, time.Second, stopCh)
 
 	// add default/join subnet and wait them ready
 	go wait.Until(c.runAddSubnetWorker, time.Second, stopCh)
@@ -365,6 +401,9 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	// run in a single worker to avoid subnet cidr conflict
 	go wait.Until(c.runAddNamespaceWorker, time.Second, stopCh)
 
+	go wait.Until(c.runDelVpcWorker, time.Second, stopCh)
+	go wait.Until(c.runUpdateVpcStatusWorker, time.Second, stopCh)
+
 	// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
 	go wait.Until(c.runDeleteTcpServiceWorker, time.Second, stopCh)
 	go wait.Until(c.runDeleteUdpServiceWorker, time.Second, stopCh)
@@ -389,11 +428,11 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 
 	go wait.Until(func() {
 		c.resyncInterConnection()
-	}, 30*time.Second, stopCh)
+	}, time.Second, stopCh)
 
 	go wait.Until(func() {
 		c.resyncExternalGateway()
-	}, 30*time.Second, stopCh)
+	}, time.Second, stopCh)
 
 	go wait.Until(func() {
 		if err := c.markAndCleanLSP(); err != nil {

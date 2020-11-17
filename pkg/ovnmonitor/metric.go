@@ -40,8 +40,8 @@ var (
 	metricLogFileSize = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: metricNamespace,
-			Name:      "log_file_size",
-			Help:      "The size of a log file associated with an OVN component.",
+			Name:      "log_file_size_bytes",
+			Help:      "The size of a log file associated with an OVN component. The unit is Bytes.",
 		},
 		[]string{
 			"hostname",
@@ -52,8 +52,8 @@ var (
 	metricDBFileSize = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: metricNamespace,
-			Name:      "db_file_size",
-			Help:      "The size of a database file associated with an OVN component.",
+			Name:      "db_file_size_bytes",
+			Help:      "The size of a database file associated with an OVN component. The unit is Bytes.",
 		},
 		[]string{
 			"hostname",
@@ -65,7 +65,7 @@ var (
 		prometheus.GaugeOpts{
 			Namespace: metricNamespace,
 			Name:      "chassis_info",
-			Help:      "Whether the OVN chassis is up (1) or down (0), together with additional information about the chassis.",
+			Help:      "The information about the chassis. This metric is always up (1).",
 		},
 		[]string{
 			"hostname",
@@ -97,6 +97,7 @@ var (
 			"uuid",
 			"key",
 			"value",
+			"logical_switch_name",
 		})
 
 	metricLogicalSwitchPortBinding = prometheus.NewGaugeVec(
@@ -109,6 +110,7 @@ var (
 			"hostname",
 			"uuid",
 			"port",
+			"logical_switch_name",
 		})
 
 	metricLogicalSwitchTunnelKey = prometheus.NewGaugeVec(
@@ -120,6 +122,7 @@ var (
 		[]string{
 			"hostname",
 			"uuid",
+			"logical_switch_name",
 		})
 
 	metricLogicalSwitchPortsNum = prometheus.NewGaugeVec(
@@ -131,6 +134,7 @@ var (
 		[]string{
 			"hostname",
 			"uuid",
+			"logical_switch_name",
 		})
 
 	metricLogicalSwitchPortInfo = prometheus.NewGaugeVec(
@@ -144,7 +148,7 @@ var (
 			"uuid",
 			"name",
 			"chassis",
-			"logical_switch",
+			"logical_switch_name",
 			"datapath",
 			"port_binding",
 			"mac_address",
@@ -160,6 +164,8 @@ var (
 		[]string{
 			"hostname",
 			"uuid",
+			"logical_switch_name",
+			"port_name",
 		})
 
 	// OVN Cluster basic info metrics

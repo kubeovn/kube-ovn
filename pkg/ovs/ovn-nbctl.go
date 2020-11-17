@@ -5,13 +5,15 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/alauda/kube-ovn/pkg/util"
 	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/klog"
+
+	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/alauda/kube-ovn/pkg/util"
 )
 
 func (c Client) ovnNbCommand(cmdArgs ...string) (string, error) {
@@ -49,9 +51,9 @@ func (c Client) SetAzName(azName string) error {
 	return nil
 }
 
-func (c Client) SetICAutoRoute(enable bool) error {
+func (c Client) SetICAutoRoute(enable bool, blackList []string) error {
 	if enable {
-		if _, err := c.ovnNbCommand("set", "NB_Global", ".", "options:ic-route-adv=true", "options:ic-route-learn=true", fmt.Sprintf("options:ic-route-blacklist=%s", c.NodeSwitchCIDR)); err != nil {
+		if _, err := c.ovnNbCommand("set", "NB_Global", ".", "options:ic-route-adv=true", "options:ic-route-learn=true", fmt.Sprintf("options:ic-route-blacklist=%s", strings.Join(blackList, ","))); err != nil {
 			return fmt.Errorf("failed to enable ovn-ic auto route, %v", err)
 		}
 		return nil
@@ -129,7 +131,7 @@ func (c Client) CreatePort(ls, port, ip, cidr, mac, tag string, portSecurity boo
 	return nil
 }
 
-func (c Client) SetLogicalSwitchConfig(ls, protocol, subnet, gateway string, excludeIps []string) error {
+func (c Client) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway string, excludeIps []string) error {
 	var err error
 	mask := strings.Split(subnet, "/")[1]
 	switch protocol {
@@ -138,13 +140,14 @@ func (c Client) SetLogicalSwitchConfig(ls, protocol, subnet, gateway string, exc
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", subnet), "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")), "--",
-			"set", "logical_router_port", fmt.Sprintf("%s-%s", c.ClusterRouter, ls), fmt.Sprintf("networks=%s/%s", gateway, mask))
+			"set", "logical_router_port", fmt.Sprintf("%s-%s", lr, ls), fmt.Sprintf("networks=%s/%s", gateway, mask))
 	case kubeovnv1.ProtocolIPv6:
+		gateway := strings.ReplaceAll(gateway, ":", "\\:")
 		_, err = c.ovnNbCommand(MayExist, "ls-add", ls, "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:ipv6_prefix=%s", strings.Split(subnet, "/")[0]), "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")), "--",
-			"set", "logical_router_port", fmt.Sprintf("%s-%s", c.ClusterRouter, ls), fmt.Sprintf("networks=%s/%s", gateway, mask))
+			"set", "logical_router_port", fmt.Sprintf("%s-%s", lr, ls), fmt.Sprintf("networks=%s/%s", gateway, mask))
 	}
 
 	if err != nil {
@@ -155,7 +158,7 @@ func (c Client) SetLogicalSwitchConfig(ls, protocol, subnet, gateway string, exc
 }
 
 // CreateLogicalSwitch create logical switch in ovn, connect it to router and apply tcp/udp lb rules
-func (c Client) CreateLogicalSwitch(ls, protocol, subnet, gateway string, excludeIps []string, underlayGateway bool) error {
+func (c Client) CreateLogicalSwitch(ls, lr, protocol, subnet, gateway string, excludeIps []string, underlayGateway, defaultVpc bool) error {
 	var err error
 	switch protocol {
 	case kubeovnv1.ProtocolIPv4:
@@ -179,13 +182,14 @@ func (c Client) CreateLogicalSwitch(ls, protocol, subnet, gateway string, exclud
 	mask := strings.Split(subnet, "/")[1]
 	klog.Infof("create route port for switch %s", ls)
 	if !underlayGateway {
-		if err := c.createRouterPort(ls, c.ClusterRouter, gateway+"/"+mask, mac); err != nil {
+		if err := c.createRouterPort(ls, lr, gateway+"/"+mask, mac); err != nil {
 			klog.Errorf("failed to connect switch %s to router, %v", ls, err)
 			return err
 		}
 	}
-	if ls != c.NodeSwitch {
+	if ls != c.NodeSwitch && defaultVpc {
 		// DO NOT add ovn dns/lb to node switch
+		// TODO: custom vpc not support dns/lb now
 		if err := c.addLoadBalancerToLogicalSwitch(c.ClusterTcpLoadBalancer, ls); err != nil {
 			klog.Errorf("failed to add cluster tcp lb to %s, %v", ls, err)
 			return err
@@ -336,13 +340,8 @@ func (c Client) ListLogicalRouter() ([]string, error) {
 	return result, nil
 }
 
-// DeleteLogicalSwitch delete logical switch and related router port
+// DeleteLogicalSwitch delete logical switch
 func (c Client) DeleteLogicalSwitch(ls string) error {
-	if _, err := c.ovnNbCommand(IfExists, "lrp-del", fmt.Sprintf("%s-%s", c.ClusterRouter, ls)); err != nil {
-		klog.Errorf("failed to del lrp %s-%s, %v", c.ClusterRouter, ls, err)
-		return err
-	}
-
 	if _, err := c.ovnNbCommand(IfExists, "ls-del", ls); err != nil {
 		klog.Errorf("failed to del ls %s, %v", ls, err)
 		return err
@@ -350,15 +349,21 @@ func (c Client) DeleteLogicalSwitch(ls string) error {
 	return nil
 }
 
-// CreateLogicalRouter create logical router in ovn
+// CreateLogicalRouter delete logical router in ovn
 func (c Client) CreateLogicalRouter(lr string) error {
 	_, err := c.ovnNbCommand(MayExist, "lr-add", lr)
 	return err
 }
 
-func (c Client) RemoveRouterPort(ls string) error {
-	lsTolr := fmt.Sprintf("%s-%s", ls, c.ClusterRouter)
-	lrTols := fmt.Sprintf("%s-%s", c.ClusterRouter, ls)
+// DeleteLogicalRouter create logical router in ovn
+func (c Client) DeleteLogicalRouter(lr string) error {
+	_, err := c.ovnNbCommand(IfExists, "lr-del", lr)
+	return err
+}
+
+func (c Client) RemoveRouterPort(ls, lr string) error {
+	lsTolr := fmt.Sprintf("%s-%s", ls, lr)
+	lrTols := fmt.Sprintf("%s-%s", lr, ls)
 	_, err := c.ovnNbCommand(IfExists, "lsp-del", lsTolr, "--",
 		IfExists, "lrp-del", lrTols)
 	if err != nil {
@@ -418,6 +423,36 @@ func (c Client) AddStaticRoute(policy, cidr, nextHop, router string) error {
 	}
 	_, err := c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "lr-route-add", router, cidr, nextHop)
 	return err
+}
+
+func (c Client) GetStaticRouteList(router string) (routeList []*StaticRoute, err error) {
+	output, err := c.ovnNbCommand("lr-route-list", router)
+	if err != nil {
+		klog.Errorf("failed to list logical router route %v", err)
+		return nil, err
+	}
+	return parseLrRouteListOutput(output)
+}
+
+func parseLrRouteListOutput(output string) (routeList []*StaticRoute, err error) {
+	lines := strings.Split(output, "\n")
+	routeList = make([]*StaticRoute, 0, len(lines))
+	for _, l := range lines {
+		if len(l) == 0 {
+			continue
+		}
+		reg := regexp.MustCompile(`(\d+.\d+.\d+.\d+(/\d+)*)\s+(\d+.\d+.\d+.\d+)\s+(dst-ip|src-ip)`)
+		sm := reg.FindStringSubmatch(l)
+		if len(sm) == 0 {
+			continue
+		}
+		routeList = append(routeList, &StaticRoute{
+			Policy:  sm[4],
+			CIDR:    sm[1],
+			NextHop: sm[3],
+		})
+	}
+	return routeList, nil
 }
 
 func (c Client) AddNatRule(policy, logicalIP, externalIP, router string) error {
@@ -558,7 +593,7 @@ func (c Client) CleanLogicalSwitchAcl(ls string) error {
 }
 
 // ResetLogicalSwitchAcl reset acl of a switch
-func (c Client) ResetLogicalSwitchAcl(ls, protocol string) error {
+func (c Client) ResetLogicalSwitchAcl(ls string) error {
 	_, err := c.ovnNbCommand("acl-del", ls)
 	return err
 }

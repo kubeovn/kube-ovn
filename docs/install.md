@@ -32,15 +32,16 @@ If you want to try the latest developing Kube-OVN, try the script below
 
 2. Use vim to edit the script variables to meet your requirement
 ```bash
- REGISTRY="index.alauda.cn/alaudak8s"
- NAMESPACE="kube-system"                # The ns to deploy kube-ovn
+ REGISTRY="kubeovn"
  POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
  SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR
  JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
  LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
- IFACE=""                               # The nic to support container network, if empty will use the nic that the default route use
+ IFACE=""                               # The nic to support container network can be a nic name or a group of regex separated by comma, if empty will use the nic that the default route use
  VERSION="v1.5.0"
 ```
+
+After v1.6.0 `IFACE` support regex, e.g. `IFACE=enp6s0f0,eth.*`
 
 3. Execute the script
 
@@ -132,7 +133,7 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
       --default-provider-name string      The vlan or xvlan type default provider interface name, default: provider (default "provider")
       --enable-mirror                     Enable traffic mirror, default: false
       --encap-checksum                    Enable checksum, default: true (default true)
-      --iface string                      The iface used to inter-host pod communication, default: the default route iface
+      --iface string                      The iface used to inter-host pod communication, can be a nic name or a group of regex separated by comma, default: the default route iface
       --kubeconfig string                 Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.
       --log_backtrace_at traceLocation    when logging hits line file:N, emit a stack trace (default :0)
       --log_dir string                    If non-empty, write log files in this directory

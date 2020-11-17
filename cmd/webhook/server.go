@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"github.com/alauda/kube-ovn/versions"
 	_ "net/http/pprof" // #nosec
 	"os"
 	"time"
@@ -47,6 +48,8 @@ func main() {
 		ovnNbTimeout int
 		defaultLS    string
 	)
+	klog.Infof(versions.String())
+
 	flag.IntVar(&port, "port", 8443, "The port webhook listen on.")
 	flag.IntVar(&ovnNbPort, "ovn-nb-port", 6641, "OVN nb port")
 	flag.IntVar(&ovnNbTimeout, "ovn-nb-timeout", 30, "OVN nb timeout")

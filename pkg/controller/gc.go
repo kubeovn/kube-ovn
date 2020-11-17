@@ -5,13 +5,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alauda/kube-ovn/pkg/ovs"
-	"github.com/alauda/kube-ovn/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
+
+	"github.com/alauda/kube-ovn/pkg/ovs"
+	"github.com/alauda/kube-ovn/pkg/util"
 )
 
 var lastNoPodLSP map[string]bool
@@ -20,6 +21,7 @@ func (c *Controller) gc() error {
 	gcFunctions := []func() error{
 		c.gcNode,
 		c.gcLogicalSwitch,
+		c.gcCustomLogicalRouter,
 		c.gcLogicalSwitchPort,
 		c.gcLoadBalancer,
 		c.gcPortGroup,
@@ -57,8 +59,41 @@ func (c *Controller) gcLogicalSwitch() error {
 		}
 		if !util.IsStringIn(ls, subnetNames) {
 			klog.Infof("gc subnet %s", ls)
-			if err := c.handleDeleteSubnet(ls); err != nil {
+			if err := c.handleDeleteLogicalSwitch(ls); err != nil {
 				klog.Errorf("failed to gc subnet %s, %v", ls, err)
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (c *Controller) gcCustomLogicalRouter() error {
+	klog.Infof("start to gc logical router")
+	vpcs, err := c.vpcsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vpc, %v", err)
+		return err
+	}
+	vpcNames := make([]string, 0, len(vpcs))
+	for _, s := range vpcs {
+		vpcNames = append(vpcNames, s.Name)
+	}
+	lrs, err := c.ovnClient.ListLogicalRouter()
+	if err != nil {
+		klog.Errorf("failed to list logical router, %v", err)
+		return err
+	}
+	klog.Infof("lr in ovn %v", lrs)
+	klog.Infof("vpc in kubernetes %v", vpcNames)
+	for _, lr := range lrs {
+		if lr == util.DefaultVpc {
+			continue
+		}
+		if !util.IsStringIn(lr, vpcNames) {
+			klog.Infof("gc router %s", lr)
+			if err := c.deleteVpcRouter(lr); err != nil {
+				klog.Errorf("failed to delete router %s, %v", lr, err)
 				return err
 			}
 		}
@@ -302,7 +337,7 @@ func (c *Controller) gcPortGroup() error {
 
 func (c *Controller) gcStaticRoute() error {
 	klog.Infof("start to gc static routes")
-	routes, err := c.ovnClient.ListStaticRoute()
+	routes, err := c.ovnClient.GetStaticRouteList(util.DefaultVpc)
 	if err != nil {
 		klog.Errorf("failed to list static route %v", err)
 		return err

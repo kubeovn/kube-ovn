@@ -30,6 +30,8 @@ type Interface interface {
 	Subnets() SubnetInformer
 	// Vlans returns a VlanInformer.
 	Vlans() VlanInformer
+	// Vpcs returns a VpcInformer.
+	Vpcs() VpcInformer
 }
 
 type version struct {
@@ -56,4 +58,9 @@ func (v *version) Subnets() SubnetInformer {
 // Vlans returns a VlanInformer.
 func (v *version) Vlans() VlanInformer {
 	return &vlanInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// Vpcs returns a VpcInformer.
+func (v *version) Vpcs() VpcInformer {
+	return &vpcInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }

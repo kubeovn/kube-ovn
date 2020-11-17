@@ -52,7 +52,7 @@
   "gnetId": null,
   "graphTooltip": 0,
   "id": null,
-  "iteration": 1600656183315,
+  "iteration": 1603351293438,
   "links": [],
   "panels": [
     {
@@ -546,6 +546,190 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "fill": 1,
+      "fillGradient": 0,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 29
+      },
+      "hiddenSeries": false,
+      "id": 15,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": true,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "percentage": false,
+      "pluginVersion": "7.1.0",
+      "pointradius": 2,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "expr": "sum(delta(ovs_client_request_latency_milliseconds_count{job=\"kube-ovn-controller\", instance=~\"$instance\"}[1m])) by (instance, db, code )",
+          "interval": "",
+          "legendFormat": "{{instance}} {{db}} {{code}}",
+          "refId": "A"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "OVS Client Request Count",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "fill": 1,
+      "fillGradient": 0,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 29
+      },
+      "hiddenSeries": false,
+      "id": 17,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": true,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "percentage": false,
+      "pluginVersion": "7.1.0",
+      "pointradius": 2,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "expr": "(sum(delta(ovs_client_request_latency_milliseconds_sum{job=\"kube-ovn-controller\", instance=~\"$instance\"}[1m])) by (instance, db, code))/(sum(delta(ovs_client_request_latency_milliseconds_count{job=\"kube-ovn-controller\", instance=~\"$instance\"}[1m])) by (instance, db, code))",
+          "interval": "",
+          "legendFormat": "{{instance}} {{db}} {{code}}",
+          "refId": "A"
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "OVS Client Request Latency",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "ms",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
       "datasource": "$datasource",
       "fieldConfig": {
         "defaults": {
@@ -559,7 +743,7 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 29
+        "y": 37
       },
       "hiddenSeries": false,
       "id": 6,
@@ -678,7 +862,7 @@
         "h": 7,
         "w": 16,
         "x": 8,
-        "y": 29
+        "y": 37
       },
       "hiddenSeries": false,
       "id": 7,
@@ -778,7 +962,7 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 36
+        "y": 44
       },
       "hiddenSeries": false,
       "id": 9,
@@ -876,7 +1060,7 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 36
+        "y": 44
       },
       "hiddenSeries": false,
       "id": 10,
@@ -974,7 +1158,7 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 36
+        "y": 44
       },
       "hiddenSeries": false,
       "id": 11,
@@ -1103,12 +1287,11 @@
     ]
   },
   "time": {
-    "from": "now-3h",
+    "from": "now-1h",
     "to": "now"
   },
   "timepicker": {
     "refresh_intervals": [
-      "5s",
       "10s",
       "30s",
       "1m",
@@ -1132,7 +1315,7 @@
     ]
   },
   "timezone": "",
-  "title": "Kube-OVN / Controller Manager",
+  "title": "Kube-OVN / Controller",
   "uid": "GWoNlLAWz",
   "version": 4
 }

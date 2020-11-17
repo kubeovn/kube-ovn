@@ -10,11 +10,36 @@ import (
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
+const (
+	V6Multicast = "ff00::/8"
+	V4Multicast = "224.0.0.0/4"
+	V4Loopback  = "127.0.0.1/8"
+	V6Loopback  = "::1/128"
+)
+
+func cidrConflict(cidr string) error {
+	if CIDRConflict(cidr, V6Multicast) {
+		return fmt.Errorf("%s conflict with v6 multicast cidr %s", cidr, V6Multicast)
+	}
+	if CIDRConflict(cidr, V4Multicast) {
+		return fmt.Errorf("%s conflict with v4 multicast cidr %s", cidr, V4Multicast)
+	}
+	if CIDRConflict(cidr, V6Loopback) {
+		return fmt.Errorf("%s conflict with v6 loopback cidr %s", cidr, V6Loopback)
+	}
+	if CIDRConflict(cidr, V4Loopback) {
+		return fmt.Errorf("%s conflict with v4 multicast cidr %s", cidr, V4Loopback)
+	}
+	return nil
+}
+
 func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 	if !CIDRContainIP(subnet.Spec.CIDRBlock, subnet.Spec.Gateway) {
 		return fmt.Errorf(" gateway %s is not in cidr %s", subnet.Spec.Gateway, subnet.Spec.CIDRBlock)
 	}
-
+	if err := cidrConflict(subnet.Spec.CIDRBlock); err != nil {
+		return err
+	}
 	excludeIps := subnet.Spec.ExcludeIps
 	for _, ipr := range excludeIps {
 		ips := strings.Split(ipr, "..")

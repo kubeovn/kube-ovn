@@ -38,8 +38,6 @@ func (e *Exporter) getOvnStatus() (bool, error) {
 			e.IncrementErrorCounter()
 			return false, err
 		}
-
-		klog.Infof("%s: getOvnStatus() completed GetProcessInfo(%s)", e.Client.System.ID, component)
 	}
 
 	return true, nil
@@ -63,18 +61,18 @@ func (e *Exporter) setLogicalSwitchInfoMetric() {
 	} else {
 		for _, lsw := range lsws {
 			metricLogicalSwitchInfo.WithLabelValues(e.Client.System.Hostname, lsw.UUID, lsw.Name).Set(1)
-			metricLogicalSwitchPortsNum.WithLabelValues(e.Client.System.Hostname, lsw.UUID).Set(float64(len(lsw.Ports)))
+			metricLogicalSwitchPortsNum.WithLabelValues(e.Client.System.Hostname, lsw.UUID, lsw.Name).Set(float64(len(lsw.Ports)))
 			if len(lsw.Ports) > 0 {
 				for _, p := range lsw.Ports {
-					metricLogicalSwitchPortBinding.WithLabelValues(e.Client.System.Hostname, lsw.UUID, p).Set(1)
+					metricLogicalSwitchPortBinding.WithLabelValues(e.Client.System.Hostname, lsw.UUID, p, lsw.Name).Set(1)
 				}
 			}
 			if len(lsw.ExternalIDs) > 0 {
 				for k, v := range lsw.ExternalIDs {
-					metricLogicalSwitchExternalIDs.WithLabelValues(e.Client.System.Hostname, lsw.UUID, k, v).Set(1)
+					metricLogicalSwitchExternalIDs.WithLabelValues(e.Client.System.Hostname, lsw.UUID, k, v, lsw.Name).Set(1)
 				}
 			}
-			metricLogicalSwitchTunnelKey.WithLabelValues(e.Client.System.Hostname, lsw.UUID).Set(float64(lsw.TunnelKey))
+			metricLogicalSwitchTunnelKey.WithLabelValues(e.Client.System.Hostname, lsw.UUID, lsw.Name).Set(float64(lsw.TunnelKey))
 		}
 	}
 }
@@ -88,7 +86,7 @@ func (e *Exporter) setLogicalSwitchPortInfoMetric() {
 		for _, port := range lswps {
 			metricLogicalSwitchPortInfo.WithLabelValues(e.Client.System.Hostname, port.UUID, port.Name, port.ChassisUUID,
 				port.LogicalSwitchName, port.DatapathUUID, port.PortBindingUUID, port.MacAddress.String(), port.IPAddress.String()).Set(1)
-			metricLogicalSwitchPortTunnelKey.WithLabelValues(e.Client.System.Hostname, port.UUID).Set(float64(port.TunnelKey))
+			metricLogicalSwitchPortTunnelKey.WithLabelValues(e.Client.System.Hostname, port.UUID, port.LogicalSwitchName, port.Name).Set(float64(port.TunnelKey))
 		}
 	}
 }

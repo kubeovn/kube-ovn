@@ -3,6 +3,7 @@ set -euo pipefail
 
 CNI_SOCK=/run/openvswitch/kube-ovn-daemon.sock
 OVS_SOCK=/run/openvswitch/db.sock
+ENABLE_SSL=${ENABLE_SSL:-false}
 
 function quit {
     rm -rf CNI_CONF

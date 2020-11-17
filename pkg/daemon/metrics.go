@@ -14,7 +14,7 @@ var (
 	cniOperationHistogram = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "cni_op_latency_seconds",
-			Help:    "the latency seconds for cni operations",
+			Help:    "The latency seconds for cni operations",
 			Buckets: prometheus.ExponentialBuckets(0.001, 2, 10),
 		}, []string{
 			"node_name",

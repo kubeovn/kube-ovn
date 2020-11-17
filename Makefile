@@ -1,9 +1,12 @@
 GOFILES_NOVENDOR=$(shell find . -type f -name '*.go' -not -path "./vendor/*")
-GO_VERSION=1.14
+GO_VERSION=1.15
 
 REGISTRY=kubeovn
 DEV_TAG=dev
 RELEASE_TAG=$(shell cat VERSION)
+COMMIT=git-$(shell git rev-parse HEAD)
+DATE=$(shell date +"%Y-%m-%d_%H:%M:%S")
+GOLDFLAGS="-w -s -X github.com/alauda/kube-ovn/versions.COMMIT=${COMMIT} -X github.com/alauda/kube-ovn/versions.VERSION=${RELEASE_TAG} -X github.com/alauda/kube-ovn/versions.BUILDDATE=${DATE}"
 
 # ARCH could be amd64,arm64
 ARCH=amd64
@@ -22,22 +25,18 @@ push-dev:
 	docker push ${REGISTRY}/kube-ovn:${DEV_TAG}
 
 build-go:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn -ldflags "-w -s" -v ./cmd/cni
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn-controller -ldflags "-w -s" -v ./cmd/controller
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn-daemon -ldflags "-w -s" -v ./cmd/daemon
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn-pinger -ldflags "-w -s" -v ./cmd/pinger
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn-webhook -ldflags "-w -s" -v ./cmd/webhook
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn-speaker -ldflags "-w -s" -v ./cmd/speaker
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn-monitor -ldflags "-w -s" -v ./cmd/ovn_monitor
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn -ldflags $(GOLDFLAGS) -v ./cmd/cni
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn-controller -ldflags $(GOLDFLAGS) -v ./cmd/controller
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn-daemon -ldflags $(GOLDFLAGS) -v ./cmd/daemon
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn-pinger -ldflags $(GOLDFLAGS) -v ./cmd/pinger
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn-monitor -ldflags $(GOLDFLAGS) -v ./cmd/ovn_monitor
 
 build-go-arm:
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn -ldflags "-w -s" -v ./cmd/cni
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn-controller -ldflags "-w -s" -v ./cmd/controller
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn-daemon -ldflags "-w -s" -v ./cmd/daemon
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn-pinger -ldflags "-w -s" -v ./cmd/pinger
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn-webhook -ldflags "-w -s" -v ./cmd/webhook
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn-speaker -ldflags "-w -s" -v ./cmd/speaker
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn-monitor -ldflags "-w -s" -v ./cmd/ovn_monitor
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn -ldflags $(GOLDFLAGS) -v ./cmd/cni
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn-controller -ldflags $(GOLDFLAGS) -v ./cmd/controller
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn-daemon -ldflags $(GOLDFLAGS) -v ./cmd/daemon
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn-pinger -ldflags $(GOLDFLAGS) -v ./cmd/pinger
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn-monitor -ldflags $(GOLDFLAGS) -v ./cmd/ovn_monitor
 
 release: lint build-go
 	docker buildx build --cache-from "type=local,src=/tmp/.buildx-cache" --cache-to "type=local,dest=/tmp/.buildx-cache" --platform linux/amd64 --build-arg ARCH=amd64 --build-arg RPM_ARCH=x86_64 -t ${REGISTRY}/kube-ovn:${RELEASE_TAG} -o type=docker -f dist/images/Dockerfile dist/images/
@@ -68,7 +67,15 @@ build-bin:
 
 kind-init:
 	kind delete cluster --name=kube-ovn
-	ip_family=ipv4 ha=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
+	kube_proxy_mode=ipvs ip_family=ipv4 ha=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
+	kind create cluster --config yamls/kind.yaml --name kube-ovn
+	kubectl get no -o wide
+	docker exec kube-ovn-control-plane ip link add link eth0 mac1 type macvlan
+	docker exec kube-ovn-worker ip link add link eth0 mac1 type macvlan
+
+kind-init-iptables:
+	kind delete cluster --name=kube-ovn
+	kube_proxy_mode=iptables ip_family=ipv4 ha=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
 	kubectl get no -o wide
 	docker exec kube-ovn-control-plane ip link add link eth0 mac1 type macvlan
@@ -82,13 +89,13 @@ kind-install:
 
 kind-init-ha:
 	kind delete cluster --name=kube-ovn
-	ip_family=ipv4 ha=true j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
+	kube_proxy_mode=ipvs ip_family=ipv4 ha=true j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
 	kubectl get no -o wide
 
 kind-init-ipv6:
 	kind delete cluster --name=kube-ovn
-	ip_family=ipv6 ha=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
+	kube_proxy_mode=iptables ip_family=ipv6 ha=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
 	kubectl get no -o wide
 

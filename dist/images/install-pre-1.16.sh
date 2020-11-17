@@ -5,12 +5,11 @@ IPv6=${IPv6:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
 ENABLE_MIRROR=${ENABLE_MIRROR:-false}
 HW_OFFLOAD=${HW_OFFLOAD:-false}
-IFACE=""                               # The nic to support container network, if empty will use the nic that the default route use
+IFACE=""                               # The nic to support container network can be a nic name or a group of regex separated by comma, if empty will use the nic that the default route use
 
 REGISTRY="kubeovn"
 VERSION="v1.6.0"
 IMAGE_PULL_POLICY="IfNotPresent"
-NAMESPACE="kube-system"                # The ns to deploy kube-ovn
 POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
 SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR
 JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
@@ -250,14 +249,14 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: ovn-config
-  namespace: ${NAMESPACE}
+  namespace: kube-system
 
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: ovn
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -332,14 +331,14 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: ovn
-    namespace:  ${NAMESPACE}
+    namespace:  kube-system
 
 ---
 kind: Service
 apiVersion: v1
 metadata:
   name: ovn-nb
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
 spec:
   ports:
     - name: ovn-nb
@@ -357,7 +356,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: ovn-sb
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
 spec:
   ports:
     - name: ovn-sb
@@ -371,11 +370,27 @@ spec:
   sessionAffinity: None
 
 ---
+kind: Service
+apiVersion: v1
+metadata:
+  name: kube-ovn-monitor
+  namespace:  kube-system
+  labels:
+    app: kube-ovn-monitor
+spec:
+  ports:
+    - name: metrics
+      port: 10661
+  type: ClusterIP
+  selector:
+    app: ovn-central
+  sessionAffinity: None
+---
 kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: ovn-central
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
   annotations:
     kubernetes.io/description: |
       OVN components: northd, nb and sb.
@@ -398,7 +413,6 @@ spec:
     spec:
       tolerations:
       - operator: Exists
-        effect: NoSchedule
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -409,6 +423,7 @@ spec:
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       hostNetwork: true
+      shareProcessNamespace: true
       containers:
         - name: ovn-central
           image: "$REGISTRY/kube-ovn:$VERSION"
@@ -472,6 +487,65 @@ spec:
             periodSeconds: 7
             failureThreshold: 5
             timeoutSeconds: 45
+        - name: ovn-monitor
+          image: "$REGISTRY/kube-ovn:$VERSION"
+          imagePullPolicy: $IMAGE_PULL_POLICY
+          command: ["/kube-ovn/start-ovn-monitor.sh"]
+          env:
+            - name: ENABLE_SSL
+              value: "$ENABLE_SSL"
+            - name: NODE_IPS
+              value: $addresses
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: 500m
+              memory: 300Mi
+          volumeMounts:
+            - mountPath: /var/run/openvswitch
+              name: host-run-ovs
+            - mountPath: /var/run/ovn
+              name: host-run-ovn
+            - mountPath: /sys
+              name: host-sys
+              readOnly: true
+            - mountPath: /etc/openvswitch
+              name: host-config-openvswitch
+            - mountPath: /etc/ovn
+              name: host-config-ovn
+            - mountPath: /var/log/openvswitch
+              name: host-log-ovs
+            - mountPath: /var/log/ovn
+              name: host-log-ovn
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
+          readinessProbe:
+            exec:
+              command:
+              - cat
+              - /var/run/ovn/ovnnb_db.pid
+            periodSeconds: 3
+            timeoutSeconds: 45
+          livenessProbe:
+            exec:
+              command:
+              - cat
+              - /var/run/ovn/ovn-nbctl.pid
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 5
+            timeoutSeconds: 45
       nodeSelector:
         kubernetes.io/os: "linux"
         kube-ovn/role: "master"
@@ -507,7 +581,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: ovs-ovn
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the openvswitch daemon.
@@ -526,7 +600,6 @@ spec:
     spec:
       tolerations:
       - operator: Exists
-        effect: NoSchedule
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       hostNetwork: true
@@ -675,13 +748,13 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: ovn-config
-  namespace: ${NAMESPACE}
+  namespace: kube-system
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: ovn
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -755,13 +828,13 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: ovn
-    namespace:  ${NAMESPACE}
+    namespace:  kube-system
 ---
 kind: Service
 apiVersion: v1
 metadata:
   name: ovn-nb
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
 spec:
   ports:
     - name: ovn-nb
@@ -778,7 +851,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: ovn-sb
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
 spec:
   ports:
     - name: ovn-sb
@@ -791,11 +864,27 @@ spec:
     ovn-sb-leader: "true"
   sessionAffinity: None
 ---
+kind: Service
+apiVersion: v1
+metadata:
+  name: kube-ovn-monitor
+  namespace:  kube-system
+  labels:
+    app: kube-ovn-monitor
+spec:
+  ports:
+    - name: metrics
+      port: 10661
+  type: ClusterIP
+  selector:
+    app: ovn-central
+  sessionAffinity: None
+---
 kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: ovn-central
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
   annotations:
     kubernetes.io/description: |
       OVN components: northd, nb and sb.
@@ -818,7 +907,6 @@ spec:
     spec:
       tolerations:
       - operator: Exists
-        effect: NoSchedule
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -829,6 +917,7 @@ spec:
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       hostNetwork: true
+      shareProcessNamespace: true
       containers:
         - name: ovn-central
           image: "$REGISTRY/kube-ovn:$VERSION"
@@ -892,6 +981,65 @@ spec:
             periodSeconds: 7
             failureThreshold: 5
             timeoutSeconds: 45
+        - name: ovn-monitor
+          image: "$REGISTRY/kube-ovn:$VERSION"
+          imagePullPolicy: $IMAGE_PULL_POLICY
+          command: ["/kube-ovn/start-ovn-monitor.sh"]
+          env:
+            - name: ENABLE_SSL
+              value: "$ENABLE_SSL"
+            - name: NODE_IPS
+              value: $addresses
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: 500m
+              memory: 300Mi
+          volumeMounts:
+            - mountPath: /var/run/openvswitch
+              name: host-run-ovs
+            - mountPath: /var/run/ovn
+              name: host-run-ovn
+            - mountPath: /sys
+              name: host-sys
+              readOnly: true
+            - mountPath: /etc/openvswitch
+              name: host-config-openvswitch
+            - mountPath: /etc/ovn
+              name: host-config-ovn
+            - mountPath: /var/log/openvswitch
+              name: host-log-ovs
+            - mountPath: /var/log/ovn
+              name: host-log-ovn
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
+          readinessProbe:
+            exec:
+              command:
+              - cat
+              - /var/run/ovn/ovnnb_db.pid
+            periodSeconds: 3
+            timeoutSeconds: 45
+          livenessProbe:
+            exec:
+              command:
+              - cat
+              - /var/run/ovn/ovn-nbctl.pid
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 5
+            timeoutSeconds: 45
       nodeSelector:
         kubernetes.io/os: "linux"
         kube-ovn/role: "master"
@@ -926,7 +1074,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: ovs-ovn
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the openvswitch daemon.
@@ -945,7 +1093,6 @@ spec:
     spec:
       tolerations:
       - operator: Exists
-        effect: NoSchedule
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       hostNetwork: true
@@ -1051,7 +1198,7 @@ fi
 
 kubectl apply -f kube-ovn-crd.yaml
 kubectl apply -f ovn.yaml
-kubectl rollout status deployment/ovn-central -n ${NAMESPACE}
+kubectl rollout status deployment/ovn-central -n kube-system
 echo "-------------------------------"
 echo ""
 
@@ -1063,7 +1210,7 @@ kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-controller
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
   annotations:
     kubernetes.io/description: |
       kube-ovn controller
@@ -1086,7 +1233,6 @@ spec:
     spec:
       tolerations:
       - operator: Exists
-        effect: NoSchedule
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -1157,7 +1303,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-cni
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the kube-ovn cni daemon.
@@ -1174,7 +1320,6 @@ spec:
     spec:
       tolerations:
       - operator: Exists
-        effect: NoSchedule
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       hostNetwork: true
@@ -1272,7 +1417,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-pinger
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the openvswitch daemon.
@@ -1291,7 +1436,6 @@ spec:
     spec:
       tolerations:
         - operator: Exists
-          effect: NoSchedule
       serviceAccountName: ovn
       hostPID: true
       containers:
@@ -1382,7 +1526,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-pinger
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
   labels:
     app: kube-ovn-pinger
 spec:
@@ -1396,7 +1540,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-controller
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
   labels:
     app: kube-ovn-controller
 spec:
@@ -1410,7 +1554,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-cni
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
   labels:
     app: kube-ovn-cni
 spec:
@@ -1422,8 +1566,8 @@ spec:
 EOF
 
 kubectl apply -f kube-ovn.yaml
-kubectl rollout status deployment/kube-ovn-controller -n ${NAMESPACE}
-kubectl rollout status daemonset/kube-ovn-cni -n ${NAMESPACE}
+kubectl rollout status deployment/kube-ovn-controller -n kube-system
+kubectl rollout status daemonset/kube-ovn-cni -n kube-system
 echo "-------------------------------"
 echo ""
 
@@ -1434,7 +1578,7 @@ for ns in $(kubectl get ns --no-headers -o  custom-columns=NAME:.metadata.name);
   done
 done
 
-kubectl rollout status daemonset/kube-ovn-pinger -n ${NAMESPACE}
+kubectl rollout status daemonset/kube-ovn-pinger -n kube-system
 kubectl rollout status deployment/coredns -n kube-system
 echo "-------------------------------"
 echo ""

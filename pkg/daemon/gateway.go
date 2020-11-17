@@ -25,8 +25,6 @@ const (
 
 var (
 	v4Rules = []util.IPTableRule{
-		// This rule makes sure we don't NAT traffic within overlay network
-		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn40subnets src -m set --match-set ovn40subnets dst -j MASQUERADE`, " ")},
 		// Prevent performing Masquerade on external traffic which arrives from a Node that owns the Pod/Subnet IP
 		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn40subnets src -m set --match-set ovn40local-pod-ip-nat dst -j RETURN`, " ")},
 		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn40subnets src -m set --match-set ovn40subnets-nat dst -j RETURN`, " ")},
@@ -41,8 +39,6 @@ var (
 		{Table: "filter", Chain: "INPUT", Rule: strings.Split(`-m set --match-set ovn40subnets dst -j ACCEPT`, " ")},
 	}
 	v6Rules = []util.IPTableRule{
-		// This rule makes sure we don't NAT traffic within overlay network
-		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn60subnets src -m set --match-set ovn60subnets dst -j MASQUERADE`, " ")},
 		// Prevent performing Masquerade on external traffic which arrives from a Node that owns the Pod/Subnet IP
 		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn40subnets src -m set --match-set ovn60local-pod-ip-nat dst -j RETURN`, " ")},
 		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn40subnets src -m set --match-set ovn60subnets-nat dst -j RETURN`, " ")},
@@ -97,6 +93,8 @@ func (c *Controller) runGateway() {
 	} else {
 		iptableRules = v6Rules
 	}
+	iptableRules[0], iptableRules[1], iptableRules[3], iptableRules[4] =
+		iptableRules[4], iptableRules[3], iptableRules[1], iptableRules[0]
 	for _, iptRule := range iptableRules {
 		exists, err := c.iptable.Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
 		if err != nil {
@@ -104,9 +102,9 @@ func (c *Controller) runGateway() {
 			return
 		}
 		if !exists {
-			klog.Info("iptables rules not exist, recreate iptables rules")
+			klog.Infof("iptables rules %s not exist, recreate iptables rules", strings.Join(iptRule.Rule, " "))
 			if err := c.iptable.Insert(iptRule.Table, iptRule.Chain, 1, iptRule.Rule...); err != nil {
-				klog.Errorf("insert iptable rule %v failed, %+v", iptRule.Rule, err)
+				klog.Errorf("insert iptable rule %s failed, %+v", strings.Join(iptRule.Rule, " "), err)
 				return
 			}
 		}
@@ -294,7 +292,7 @@ func (c *Controller) appendMssRule() {
 		}
 
 		if !exists {
-			klog.Info("iptables rules not exist, append iptables rules")
+			klog.Infof("iptables rules %s not exist, append iptables rules", strings.Join(MssMangleRule.Rule, " "))
 			if err := c.iptable.Append(MssMangleRule.Table, MssMangleRule.Chain, MssMangleRule.Rule...); err != nil {
 				klog.Errorf("append iptable rule %v failed, %+v", MssMangleRule.Rule, err)
 				return

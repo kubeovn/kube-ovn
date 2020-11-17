@@ -206,7 +206,10 @@ func (e *Exporter) exportOvnStatusGauge() {
 }
 
 func (e *Exporter) exportOvnInfoGauge() {
-	// All parameters should be filled in GetSystemInfo when calls NewExporter
+	if err := e.Client.GetSystemInfo(); err != nil {
+		klog.Errorf("Failed to get System Info")
+		return
+	}
 	metricOvnInfo.WithLabelValues(e.Client.System.ID, e.Client.System.RunDir, e.Client.System.Hostname,
 		e.Client.System.Type, e.Client.System.Version, e.Client.Database.Vswitch.Version,
 		e.Client.Database.Vswitch.Schema.Version).Set(1)
@@ -256,7 +259,7 @@ func (e *Exporter) exportOvnChassisGauge() {
 		e.IncrementErrorCounter()
 	} else {
 		for _, vtep := range vteps {
-			metricChassisInfo.WithLabelValues(e.Client.System.Hostname, vtep.UUID, vtep.Name, vtep.IPAddress.String()).Set(float64(vtep.Up))
+			metricChassisInfo.WithLabelValues(e.Client.System.Hostname, vtep.UUID, vtep.Name, vtep.IPAddress.String()).Set(1)
 		}
 	}
 }

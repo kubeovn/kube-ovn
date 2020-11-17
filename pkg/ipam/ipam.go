@@ -2,10 +2,11 @@ package ipam
 
 import (
 	"errors"
-	"github.com/alauda/kube-ovn/pkg/util"
-	"k8s.io/klog"
 	"net"
 	"sync"
+
+	"github.com/alauda/kube-ovn/pkg/util"
+	"k8s.io/klog"
 )
 
 var (
@@ -18,6 +19,12 @@ var (
 type IPAM struct {
 	mutex   sync.RWMutex
 	Subnets map[string]*Subnet
+}
+
+type SubnetAddress struct {
+	Subnet *Subnet
+	Ip     string
+	Mac    string
 }
 
 func NewIPAM() *IPAM {
@@ -103,17 +110,16 @@ func (ipam *IPAM) DeleteSubnet(subnetName string) {
 	delete(ipam.Subnets, subnetName)
 }
 
-func (ipam *IPAM) GetPodAddress(podName string) ([]string, []string) {
+func (ipam *IPAM) GetPodAddress(podName string) []*SubnetAddress {
 	ipam.mutex.RLock()
 	defer ipam.mutex.RUnlock()
-	ips, macs := []string{}, []string{}
+	addresses := []*SubnetAddress{}
 	for _, subnet := range ipam.Subnets {
 		if ip, mac, exist := subnet.GetPodAddress(podName); exist {
-			ips = append(ips, string(ip))
-			macs = append(macs, mac)
+			addresses = append(addresses, &SubnetAddress{Subnet: subnet, Ip: string(ip), Mac: mac})
 		}
 	}
-	return ips, macs
+	return addresses
 }
 
 func (ipam *IPAM) ContainAddress(address string) bool {

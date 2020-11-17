@@ -1,9 +1,10 @@
 package ipam
 
 import (
-	"github.com/alauda/kube-ovn/pkg/util"
 	"net"
 	"sync"
+
+	"github.com/alauda/kube-ovn/pkg/util"
 )
 
 type Subnet struct {
@@ -97,13 +98,13 @@ func (subnet *Subnet) GetRandomAddress(podName string) (IP, string, error) {
 
 func (subnet *Subnet) GetStaticAddress(podName string, ip IP, mac string, force bool) (IP, string, error) {
 	subnet.mutex.Lock()
-	subnet.mutex.Unlock()
+	defer subnet.mutex.Unlock()
 	if !subnet.CIDR.Contains(net.ParseIP(string(ip))) {
 		return ip, mac, OutOfRangeError
 	}
 
 	if mac == "" {
-		if m, ok := subnet.PodToMac[mac]; ok {
+		if m, ok := subnet.PodToMac[podName]; ok {
 			mac = m
 		} else {
 			mac = subnet.GetRandomMac(podName)
