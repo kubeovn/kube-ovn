@@ -128,7 +128,7 @@ func (c *Controller) initNodeSwitch() error {
 	nodeSubnet := kubeovnv1.Subnet{
 		ObjectMeta: v1.ObjectMeta{Name: c.config.NodeSwitch},
 		Spec: kubeovnv1.SubnetSpec{
-			Vpc:        util.DefaultVpc,
+			Vpc:                    util.DefaultVpc,
 			Default:                false,
 			Provider:               util.OvnProvider,
 			CIDRBlock:              c.config.NodeSwitchCIDR,
