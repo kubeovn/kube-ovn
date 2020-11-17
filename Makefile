@@ -67,7 +67,15 @@ build-bin:
 
 kind-init:
 	kind delete cluster --name=kube-ovn
-	ip_family=ipv4 ha=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
+	kube_proxy_mode=ipvs ip_family=ipv4 ha=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
+	kind create cluster --config yamls/kind.yaml --name kube-ovn
+	kubectl get no -o wide
+	docker exec kube-ovn-control-plane ip link add link eth0 mac1 type macvlan
+	docker exec kube-ovn-worker ip link add link eth0 mac1 type macvlan
+
+kind-init-iptables:
+	kind delete cluster --name=kube-ovn
+	kube_proxy_mode=iptables ip_family=ipv4 ha=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
 	kubectl get no -o wide
 	docker exec kube-ovn-control-plane ip link add link eth0 mac1 type macvlan
@@ -81,13 +89,13 @@ kind-install:
 
 kind-init-ha:
 	kind delete cluster --name=kube-ovn
-	ip_family=ipv4 ha=true j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
+	kube_proxy_mode=ipvs ip_family=ipv4 ha=true j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
 	kubectl get no -o wide
 
 kind-init-ipv6:
 	kind delete cluster --name=kube-ovn
-	ip_family=ipv6 ha=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
+	kube_proxy_mode=iptables ip_family=ipv6 ha=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
 	kubectl get no -o wide
 
