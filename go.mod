@@ -37,6 +37,7 @@ require (
 	github.com/sirupsen/logrus v1.4.2
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.6.3 // indirect
+	github.com/stretchr/testify v1.5.1
 	github.com/vishvananda/netlink v1.1.0
 	google.golang.org/grpc v1.23.0
 	k8s.io/api v0.0.0-20190703205437-39734b2a72fe
