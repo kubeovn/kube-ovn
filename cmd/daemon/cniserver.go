@@ -39,17 +39,25 @@ func main() {
 	}
 
 	stopCh := signals.SetupSignalHandler()
-	kubeInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
+	podInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
 		kubeinformers.WithTweakListOptions(func(listOption *v1.ListOptions) {
 			listOption.FieldSelector = fmt.Sprintf("spec.nodeName=%s", config.NodeName)
 			listOption.AllowWatchBookmarks = true
 		}))
-	kubeovnInformerFactory := kubeovninformer.NewSharedInformerFactoryWithOptions(config.KubeOvnClient, 0)
-	ctl, err := daemon.NewController(config, kubeInformerFactory, kubeovnInformerFactory)
+	nodeInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
+		kubeinformers.WithTweakListOptions(func(listOption *v1.ListOptions) {
+			listOption.AllowWatchBookmarks = true
+		}))
+	kubeovnInformerFactory := kubeovninformer.NewSharedInformerFactoryWithOptions(config.KubeOvnClient, 0,
+		kubeovninformer.WithTweakListOptions(func(listOption *v1.ListOptions) {
+			listOption.AllowWatchBookmarks = true
+		}))
+	ctl, err := daemon.NewController(config, podInformerFactory, nodeInformerFactory, kubeovnInformerFactory)
 	if err != nil {
 		klog.Fatalf("create controller failed %v", err)
 	}
-	kubeInformerFactory.Start(stopCh)
+	podInformerFactory.Start(stopCh)
+	nodeInformerFactory.Start(stopCh)
 	kubeovnInformerFactory.Start(stopCh)
 	go ctl.Run(stopCh)
 	go daemon.RunServer(config, ctl)

@@ -44,6 +44,9 @@ type Controller struct {
 	podsSynced cache.InformerSynced
 	podQueue   workqueue.RateLimitingInterface
 
+	nodesLister listerv1.NodeLister
+	nodesSynced cache.InformerSynced
+
 	recorder record.EventRecorder
 
 	iptable *iptables.IPTables
@@ -65,14 +68,15 @@ func getNodeInternalIP(node *v1.Node) string {
 }
 
 // NewController init a daemon controller
-func NewController(config *Configuration, informerFactory informers.SharedInformerFactory, kubeovnInformerFactory kubeovninformer.SharedInformerFactory) (*Controller, error) {
+func NewController(config *Configuration, podInformerFactory informers.SharedInformerFactory, nodeInformerFactory informers.SharedInformerFactory, kubeovnInformerFactory kubeovninformer.SharedInformerFactory) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: config.KubeClient.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: config.NodeName})
 
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
-	podInformer := informerFactory.Core().V1().Pods()
+	podInformer := podInformerFactory.Core().V1().Pods()
+	nodeInformer := nodeInformerFactory.Core().V1().Nodes()
 
 	controller := &Controller{
 		config:        config,
@@ -83,6 +87,9 @@ func NewController(config *Configuration, informerFactory informers.SharedInform
 		podsLister: podInformer.Lister(),
 		podsSynced: podInformer.Informer().HasSynced,
 		podQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Pod"),
+
+		nodesLister: nodeInformer.Lister(),
+		nodesSynced: nodeInformer.Informer().HasSynced,
 
 		recorder: recorder,
 	}
@@ -197,7 +204,8 @@ func (c *Controller) reconcileRouters() error {
 			cidrs = append(cidrs, ipNet.String())
 		}
 	}
-	node, err := c.config.KubeClient.CoreV1().Nodes().Get(c.config.NodeName, metav1.GetOptions{})
+
+	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
 		klog.Errorf("failed to get node %s %v", c.config.NodeName, err)
 		return err
@@ -376,7 +384,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(recompute, 10*time.Minute, stopCh)
 
 	klog.Info("start watching namespace changes")
-	if ok := cache.WaitForCacheSync(stopCh, c.subnetsSynced, c.podsSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.subnetsSynced, c.podsSynced, c.nodesSynced); !ok {
 		klog.Fatalf("failed to wait for caches to sync")
 		return
 	}
