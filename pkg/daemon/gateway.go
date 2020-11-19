@@ -2,6 +2,10 @@ package daemon
 
 import (
 	"fmt"
+	"net"
+	"os"
+	"strings"
+
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"github.com/alauda/kube-ovn/pkg/util"
@@ -12,9 +16,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
-	"net"
-	"os"
-	"strings"
 )
 
 const (
@@ -239,6 +240,7 @@ func (c *Controller) getLocalPodIPsNeedNAT(protocol string) ([]string, error) {
 		nsGWType := subnet.Spec.GatewayType
 		nsGWNat := subnet.Spec.NatOutgoing
 		if nsGWNat &&
+			subnet.Spec.Vpc == util.DefaultVpc &&
 			nsGWType == kubeovnv1.GWDistributedType &&
 			pod.Spec.NodeName == hostname &&
 			util.CheckProtocol(pod.Status.PodIP) == protocol {
@@ -258,7 +260,8 @@ func (c *Controller) getSubnetsNeedNAT(protocol string) ([]string, error) {
 		return nil, err
 	}
 	for _, subnet := range subnets {
-		if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType &&
+		if subnet.Spec.Vpc == util.DefaultVpc &&
+			subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType &&
 			subnet.Status.ActivateGateway == c.config.NodeName &&
 			subnet.Spec.Protocol == protocol &&
 			subnet.Spec.NatOutgoing {
@@ -279,7 +282,7 @@ func (c *Controller) getSubnetsCIDR(protocol string) ([]string, error) {
 		return nil, err
 	}
 	for _, subnet := range subnets {
-		if subnet.Spec.Protocol == protocol {
+		if subnet.Spec.Protocol == protocol && subnet.Spec.Vpc == util.DefaultVpc {
 			ret = append(ret, subnet.Spec.CIDRBlock)
 		}
 	}
