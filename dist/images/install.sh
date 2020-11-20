@@ -2010,6 +2010,10 @@ diagnose(){
         echo "#### ovn-controller log:"
         kubectl exec -n $KUBE_OVN_NS -it "$pinger" -- tail /var/log/ovn/ovn-controller.log
         echo ""
+        echo "#### ovs-vsctl show results:"
+        kubectl exec -n $KUBE_OVN_NS -it "$pinger" -- ovs-vsctl show
+        echo ""
+        echo "#### pinger diagnose results:"
         kubectl exec -n $KUBE_OVN_NS -it "$pinger" -- /kube-ovn/kube-ovn-pinger --mode=job
         echo "### finish diagnose node $nodeName"
         echo ""
