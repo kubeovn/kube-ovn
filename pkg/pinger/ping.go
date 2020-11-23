@@ -103,7 +103,8 @@ func pingNodes(config *Configuration) error {
 						config.PodName,
 						no.Name, addr.Address,
 						float64(stats.AvgRtt)/float64(time.Millisecond),
-						int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))))
+						int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))),
+						int(float64(stats.PacketsSent)))
 				}(addr.Address, no.Name)
 			}
 		}
@@ -154,7 +155,8 @@ func pingPods(config *Configuration) error {
 					nodeIP,
 					podIp,
 					float64(stats.AvgRtt)/float64(time.Millisecond),
-					int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))))
+					int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))),
+					int(float64(stats.PacketsSent)))
 			}(pod.Status.PodIP, pod.Name, pod.Status.HostIP, pod.Spec.NodeName)
 		}
 	}

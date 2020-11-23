@@ -144,6 +144,18 @@ var (
 			"target_node_ip",
 			"target_pod_ip",
 		})
+	podPingTotalCounter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "pinger_pod_ping_count_total",
+			Help: "The total count for pod peer ping",
+		}, []string{
+			"src_node_name",
+			"src_node_ip",
+			"src_pod_ip",
+			"target_node_name",
+			"target_node_ip",
+			"target_pod_ip",
+		})
 	nodePingLatencyHistogram = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "pinger_node_ping_latency_ms",
@@ -161,6 +173,17 @@ var (
 		prometheus.CounterOpts{
 			Name: "pinger_node_ping_lost_total",
 			Help: "The lost count for pod ping node",
+		}, []string{
+			"src_node_name",
+			"src_node_ip",
+			"src_pod_ip",
+			"target_node_name",
+			"target_node_ip",
+		})
+	nodePingTotalCounter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "pinger_node_ping_count_total",
+			Help: "The total count for pod ping node",
 		}, []string{
 			"src_node_name",
 			"src_node_ip",
@@ -617,8 +640,10 @@ func init() {
 	prometheus.MustRegister(externalDnsRequestLatencyHistogram)
 	prometheus.MustRegister(podPingLatencyHistogram)
 	prometheus.MustRegister(podPingLostCounter)
+	prometheus.MustRegister(podPingTotalCounter)
 	prometheus.MustRegister(nodePingLatencyHistogram)
 	prometheus.MustRegister(nodePingLostCounter)
+	prometheus.MustRegister(nodePingTotalCounter)
 	prometheus.MustRegister(externalPingLatencyHistogram)
 	prometheus.MustRegister(externalPingLostCounter)
 
@@ -720,7 +745,7 @@ func SetExternalDnsUnhealthyMetrics(nodeName string) {
 	externalDnsUnhealthyGauge.WithLabelValues(nodeName).Set(1)
 }
 
-func SetPodPingMetrics(srcNodeName, srcNodeIP, srcPodIP, targetNodeName, targetNodeIP, targetPodIP string, latency float64, lost int) {
+func SetPodPingMetrics(srcNodeName, srcNodeIP, srcPodIP, targetNodeName, targetNodeIP, targetPodIP string, latency float64, lost, total int) {
 	podPingLatencyHistogram.WithLabelValues(
 		srcNodeName,
 		srcNodeIP,
@@ -737,9 +762,17 @@ func SetPodPingMetrics(srcNodeName, srcNodeIP, srcPodIP, targetNodeName, targetN
 		targetNodeIP,
 		targetPodIP,
 	).Add(float64(lost))
+	podPingTotalCounter.WithLabelValues(
+		srcNodeName,
+		srcNodeIP,
+		srcPodIP,
+		targetNodeName,
+		targetNodeIP,
+		targetPodIP,
+	).Add(float64(total))
 }
 
-func SetNodePingMetrics(srcNodeName, srcNodeIP, srcPodIP, targetNodeName, targetNodeIP string, latency float64, lost int) {
+func SetNodePingMetrics(srcNodeName, srcNodeIP, srcPodIP, targetNodeName, targetNodeIP string, latency float64, lost, total int) {
 	nodePingLatencyHistogram.WithLabelValues(
 		srcNodeName,
 		srcNodeIP,
@@ -754,6 +787,13 @@ func SetNodePingMetrics(srcNodeName, srcNodeIP, srcPodIP, targetNodeName, target
 		targetNodeName,
 		targetNodeIP,
 	).Add(float64(lost))
+	nodePingTotalCounter.WithLabelValues(
+		srcNodeName,
+		srcNodeIP,
+		srcPodIP,
+		targetNodeName,
+		targetNodeIP,
+	).Add(float64(total))
 }
 
 func SetExternalPingMetrics(srcNodeName, srcNodeIP, srcPodIP, targetAddress string, latency float64, lost int) {

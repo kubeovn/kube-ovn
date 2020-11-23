@@ -87,10 +87,12 @@ OVS_Monitor | | ovsdb/vswitchd metrics
  14 | pinger_external_dns_latency_ms | The latency ms histogram the node request external dns
  15 | pinger_pod_ping_latency_ms | The latency ms histogram for pod peer ping
  16 | pinger_pod_ping_lost_total | The lost count for pod peer ping
- 17 | pinger_node_ping_latency_ms | The latency ms histogram for pod ping node
- 18 | pinger_node_ping_lost_total | The lost count for pod ping node
- 19 | pinger_external_ping_latency_ms | The latency ms histogram for pod ping external address
- 20 | pinger_node_external_lost_total | The lost count for pod ping external address
+ 17 | pinger_pod_ping_count_total | The total count for pod peer ping
+ 18 | pinger_node_ping_latency_ms | The latency ms histogram for pod ping node
+ 19 | pinger_node_ping_lost_total | The lost count for pod ping node
+ 20 | pinger_node_ping_count_total | The total count for pod ping node
+ 21 | pinger_external_ping_latency_ms | The latency ms histogram for pod ping external address
+ 22 | pinger_node_external_lost_total | The lost count for pod ping external address
  Kube-OVN-Controller | | Controller metrics
  1 | rest_client_request_latency_seconds | Request latency in seconds. Broken down by verb and URL
  2 | rest_client_requests_total | Number of HTTP requests, partitioned by status code, method, and host
