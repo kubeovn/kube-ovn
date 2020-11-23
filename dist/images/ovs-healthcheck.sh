@@ -2,6 +2,9 @@
 set -euo pipefail
 shopt -s expand_aliases
 
+logrotate /etc/logrotate.d/openvswitch
+logrotate /etc/logrotate.d/ovn
+
 echo Connecting OVN SB "${OVN_SB_SERVICE_HOST}":"${OVN_SB_SERVICE_PORT}"
 if [[ "$ENABLE_SSL" == "false" ]]; then
   ovn-sbctl --db=tcp:["${OVN_SB_SERVICE_HOST}"]:"${OVN_SB_SERVICE_PORT}" --timeout=15 show

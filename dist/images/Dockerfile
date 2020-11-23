@@ -29,7 +29,7 @@ RUN yum remove -y bind-export-libs && yum update -y && \
         hostname ethtool \
         iproute nc \
         unbound-devel \
-        tcpdump ipset && \
+        tcpdump ipset logrotate && \
     yum clean all
 ARG RPM_ARCH
 RUN rpm -ivh --nodeps https://archives.fedoraproject.org/pub/archive/fedora/linux/releases/30/Everything/${RPM_ARCH}/os/Packages/i/iptables-1.8.0-5.fc30.${RPM_ARCH}.rpm
@@ -47,7 +47,8 @@ ENV KUBE_VERSION="v1.13.2"
 RUN curl -L https://storage.googleapis.com/kubernetes-release/release/${KUBE_VERSION}/bin/linux/${ARCH}/kubectl -o /usr/bin/kubectl \
  && chmod +x /usr/bin/kubectl
 
-RUN --mount=type=bind,target=/rpms,from=ovs-rpm,source=/rpms rpm -ivh --nodeps /rpms/*.rpm
+RUN --mount=type=bind,target=/rpms,from=ovs-rpm,source=/rpms rpm -ivh --nodeps /rpms/*.rpm && \
+    sed '/su ovn ovn/d' /etc/logrotate.d/ovn
 
 COPY *.sh /kube-ovn/
 COPY grace_stop_ovn_controller /usr/share/ovn/scripts/grace_stop_ovn_controller
