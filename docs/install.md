@@ -8,10 +8,12 @@ Kube-OVN includes two parts:
 - Kubernetes >= 1.11
 - Docker >= 1.12.6
 - OS: CentOS 7.5/7.6/7.7, Ubuntu 16.04/18.04
+- Kernel boot with `ipv6.disable=0`
 
 *NOTE*
 1. Ubuntu 16.04 users should build the related ovs-2.11.1 kernel module to replace the kernel built-in module
 2. CentOS users should make sure kernel version is greater than 3.10.0-898 to avoid a kernel conntrack bug, see [here](https://bugs.launchpad.net/neutron/+bug/1776778)
+3. Kernel must boot with ipv6 enabled, otherwise geneve tunnel will not be established due to a kernel bug, see [here](https://bugs.launchpad.net/ubuntu/+source/linux/+bug/1794232)
 
 ## To Install
 
