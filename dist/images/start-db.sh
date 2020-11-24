@@ -72,6 +72,10 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
       ovn-sbctl set-connection ptcp:"${DB_SB_PORT}":["${DB_SB_ADDR}"]
       ovn-sbctl set Connection . inactivity_probe=0
   else
+      if [[ ! "$NODE_IPS" =~ "$POD_IP" ]]; then
+        echo "ERROR! host ip $POD_IP not in env NODE_IPS $NODE_IPS"
+        exit 1
+      fi
       /usr/share/ovn/scripts/ovn-ctl stop_northd
 
       nb_leader_ip=$(get_leader_ip nb)
@@ -135,6 +139,10 @@ else
       ovn-sbctl -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set-connection pssl:"${DB_SB_PORT}":["${DB_SB_ADDR}"]
       ovn-sbctl -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set Connection . inactivity_probe=0
   else
+      if [[ ! "$NODE_IPS" =~ "$POD_IP" ]]; then
+        echo "ERROR! host ip $POD_IP not in env NODE_IPS $NODE_IPS"
+        exit 1
+      fi
       /usr/share/ovn/scripts/ovn-ctl stop_northd
 
       nb_leader_ip=$(get_leader_ip nb)
