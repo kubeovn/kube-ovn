@@ -134,6 +134,38 @@ spec:
     - name: Subnet
       type: string
       JSONPath: .spec.subnet
+  validation:
+    openAPIV3Schema:
+      properties:
+        spec:
+          type: object
+          properties:
+            podName:
+              type: string
+            namespace:
+              type: string
+            subnet:
+              type: string
+            attachSubnets:
+              type: array
+              items:
+                type: string
+            nodeName:
+              type: string
+            ipAddress:
+              type: string
+            attachIps:
+              type: array
+              items:
+                type: string
+            macAddress:
+              type: string
+            attachMacs:
+              type: array
+              items:
+                type: string
+            containerID:
+              type: string
 ---
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
@@ -152,6 +184,12 @@ spec:
   subresources:
     status: {}
   additionalPrinterColumns:
+    - name: Provider
+      type: string
+      JSONPath: .spec.provider
+    - name: Vpc
+      type: string
+      JSONPath: .spec.vpc
     - name: Protocol
       type: string
       JSONPath: .spec.protocol
@@ -179,13 +217,73 @@ spec:
   validation:
     openAPIV3Schema:
       properties:
-        spec:
-          required: ["cidrBlock"]
+        status:
+          type: object
           properties:
+            availableIPs:
+              type: number
+            usingIPs:
+              type: number
+            activateGateway:
+              type: string
+            conditions:
+              type: array
+              items:
+                type: object
+                properties:
+                  type:
+                    type: string
+                  status:
+                    type: string
+                  reason:
+                    type: string
+                  message:
+                    type: string
+                  lastUpdateTime:
+                    type: string
+                  lastTransitionTime:
+                    type: string
+        spec:
+          type: object
+          properties:
+            vpc:
+              type: string
+            default:
+              type: boolean
+            protocol:
+              type: string
             cidrBlock:
-              type: "string"
+              type: string
+            namespaces:
+              type: array
+              items:
+                type: string
             gateway:
-              type: "string"
+              type: string
+            provider:
+              type: string
+            excludeIps:
+              type: array
+              items:
+                type: string
+            gatewayType:
+              type: string
+            allowSubnets:
+              type: array
+              items:
+                type: string
+            gatewayNode:
+              type: string
+            natOutgoing:
+              type: boolean
+            private:
+              type: boolean
+            vlan:
+              type: string
+            underlayGateway:
+              type: boolean
+            disableInterConnection:
+              type: boolean
 ---
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
@@ -211,6 +309,107 @@ spec:
     - name: Subnet
       type: string
       JSONPath: .spec.subnet
+  validation:
+    openAPIV3Schema:
+      properties:
+        spec:
+          type: object
+          properties:
+            vlanId:
+              type: integer
+            providerInterfaceName:
+              type: string
+            logicalInterfaceName:
+              type: string
+            subnet:
+              type: string
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: vpcs.kubeovn.io
+spec:
+  group: kubeovn.io
+  version: v1
+  scope: Cluster
+  names:
+    plural: vpcs
+    singular: vpc
+    kind: Vpc
+    listKind: VpcList
+    shortNames:
+    - vpc
+  subresources:
+    status: {}
+  additionalPrinterColumns:
+    - JSONPath: .status.standby
+      name: Standby
+      type: boolean
+    - JSONPath: .status.subnets
+      name: Subnets
+      type: string
+  validation:
+    openAPIV3Schema:
+      properties:
+        spec:
+          properties:
+            namespaces:
+              items:
+                type: string
+              type: array
+            staticRoutes:
+              items:
+                properties:
+                  policy:
+                    type: string
+                  cidr:
+                    type: string
+                  nextHopIP:
+                    type: string
+                type: object
+              type: array
+          type: object
+        status:
+          properties:
+            conditions:
+              items:
+                properties:
+                  lastTransitionTime:
+                    type: string
+                  lastUpdateTime:
+                    type: string
+                  message:
+                    type: string
+                  reason:
+                    type: string
+                  status:
+                    type: string
+                  type:
+                    type: string
+                type: object
+              type: array
+            default:
+              type: boolean
+            defaultLogicalSwitch:
+              type: string
+            router:
+              type: string
+            standby:
+              type: boolean
+            subnets:
+              items:
+                type: string
+              type: array
+            tcpLoadBalancer:
+              type: string
+            tcpSessionLoadBalancer:
+              type: string
+            udpLoadBalancer:
+              type: string
+            udpSessionLoadBalancer:
+              type: string
+          type: object
+      type: object
 EOF
 
 if $DPDK; then
