@@ -229,9 +229,6 @@ spec:
       served: true
       storage: true
       additionalPrinterColumns:
-      - name: Provider
-        type: string
-        jsonPath: .spec.provider
       - name: IP
         type: string
         jsonPath: .spec.ipAddress
@@ -298,6 +295,9 @@ spec:
       subresources:
         status: {}
       additionalPrinterColumns:
+      - name: Provider
+        type: string
+        jsonPath: .spec.provider
       - name: Vpc
         type: string
         jsonPath: .spec.vpc
