@@ -9,9 +9,6 @@ spec:
       served: true
       storage: true
       additionalPrinterColumns:
-      - name: Provider
-        type: string
-        jsonPath: .spec.provider
       - name: IP
         type: string
         jsonPath: .spec.ipAddress
@@ -78,6 +75,9 @@ spec:
       subresources:
         status: {}
       additionalPrinterColumns:
+      - name: Provider
+        type: string
+        jsonPath: .spec.provider
       - name: Protocol
         type: string
         jsonPath: .spec.protocol
@@ -168,6 +168,8 @@ spec:
                 vlan:
                   type: string
                 underlayGateway:
+                  type: boolean
+                disableInterConnection:
                   type: boolean
   scope: Cluster
   names:
