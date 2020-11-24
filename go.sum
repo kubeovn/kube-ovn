@@ -312,6 +312,7 @@ github.com/onsi/gomega v1.9.0/go.mod h1:Ho0h+IUsWyvy1OpqCwxlQ/21gkhVunqlU8fDGcoT
 github.com/opencontainers/go-digest v1.0.0-rc1/go.mod h1:cMLVZDEM3+U2I4VmLI6N8jQYUd2OVphdqWwCJHrFt2s=
 github.com/osrg/gobgp v0.0.0-20190401195721-805d02fdfbc5 h1:ZFqHsIsRU5o6JY4HrCrkBYOEEHe3QqF1XR7f0FwAJn4=
 github.com/osrg/gobgp v0.0.0-20190401195721-805d02fdfbc5/go.mod h1:CM+XMF5H4FfrlOm3OCFsOXJkVmWB7sx1AfoS+EKA47g=
+github.com/osrg/gobgp v2.0.0+incompatible h1:91ARQbE1AtO0U4TIxHPJ7wYVZIqduyBwS1+FjlHlmrY=
 github.com/parnurzeal/gorequest v0.2.15 h1:oPjDCsF5IkD4gUk6vIgsxYNaSgvAnIh1EJeROn3HdJU=
 github.com/parnurzeal/gorequest v0.2.15/go.mod h1:3Kh2QUMJoqw3icWAecsyzkpY7UzRfDhbRdTjtNwNiUE=
 github.com/pborman/uuid v0.0.0-20170612153648-e790cca94e6c/go.mod h1:VyrYX9gd7irzKovcSS6BIIEwPRkP2Wm2m9ufcdFSJ34=
@@ -330,6 +331,7 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/projectcalico/felix v3.6.1+incompatible h1:5MZ74sn4ELALVQxAyDDbUW4H0TYIvtg2LqHa2oAJu6w=
 github.com/projectcalico/felix v3.6.1+incompatible/go.mod h1:sXkI80qPUY4Nyon/P0JUD7ziCjHTg6HI6rxczHG3AY8=
+github.com/projectcalico/felix v3.8.9+incompatible h1:hvw0CuS1lXwNqmU+Wb3sM5aGTAwPzL3fsdIs3fQMlpo=
 github.com/projectcalico/go-json v0.0.0-20161128004156-6219dc7339ba h1:aaF2byUCZhzszHsfPEr2M3qcU4ibtD/yk/il2R7T1PU=
 github.com/projectcalico/go-json v0.0.0-20161128004156-6219dc7339ba/go.mod h1:q8EdCgBdMQzgiX/uk4GXLWLk+gIHd1a7mWUAamJKDb4=
 github.com/projectcalico/go-yaml v0.0.0-20161201183616-955bc3e451ef h1:Di9BaA9apb6DEstin8RdhKmlzQG76UMbmjPzjCVkMpc=
@@ -658,6 +660,7 @@ k8s.io/apimachinery v0.0.0-20190404173353-6a84e37a896d/go.mod h1:ccL7Eh7zubPUSh9
 k8s.io/apimachinery v0.0.0-20190612205821-1799e75a0719/go.mod h1:I4A+glKBHiTgiEjQiCCQfCAIcIMFGt291SmsvcrFzJA=
 k8s.io/apimachinery v0.0.0-20190703205208-4cfb76a8bf76 h1:vxMYBaJgczGAIpJAOBco2eHuFYIyDdNIebt60jxLauA=
 k8s.io/apimachinery v0.0.0-20190703205208-4cfb76a8bf76/go.mod h1:M2fZgZL9DbLfeJaPBCDqSqNsdsmLN+V29knYJnIXlMA=
+k8s.io/apimachinery v0.19.3 h1:bpIQXlKjB4cB/oNpnNnV+BybGPR7iP5oYpsOTEJ4hgc=
 k8s.io/client-go v0.0.0-20190620085101-78d2af792bab h1:E8Fecph0qbNsAbijJJQryKu4Oi9QTp5cVpjTE+nqg6g=
 k8s.io/client-go v0.0.0-20190620085101-78d2af792bab/go.mod h1:E95RaSlHr79aHaX0aGSwcPNfygDiPKOVXdmivCIZT0k=
 k8s.io/code-generator v0.0.0-20181114232248-ae218e241252/go.mod h1:IPqxl/YHk05nodzupwjke6ctMjyNRdV2zZ5/j3/F204=

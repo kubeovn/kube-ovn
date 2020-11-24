@@ -18,18 +18,48 @@ const (
 )
 
 func cidrConflict(cidr string) error {
-	if CIDRConflict(cidr, V6Multicast) {
-		return fmt.Errorf("%s conflict with v6 multicast cidr %s", cidr, V6Multicast)
+	protocol := CheckProtocol(cidr)
+	if protocol == kubeovnv1.ProtocolDual {
+		cidrBlocks := strings.Split(cidr, ",")
+		if CIDRConflict(cidrBlocks[0], V6Multicast) {
+			return fmt.Errorf("%s conflict with v6 multicast cidr %s", cidrBlocks[0], V6Multicast)
+		}
+		if CIDRConflict(cidrBlocks[0], V4Multicast) {
+			return fmt.Errorf("%s conflict with v4 multicast cidr %s", cidrBlocks[0], V4Multicast)
+		}
+		if CIDRConflict(cidrBlocks[0], V6Loopback) {
+			return fmt.Errorf("%s conflict with v6 loopback cidr %s", cidrBlocks[0], V6Loopback)
+		}
+		if CIDRConflict(cidrBlocks[0], V4Loopback) {
+			return fmt.Errorf("%s conflict with v4 multicast cidr %s", cidrBlocks[0], V4Loopback)
+		}
+		if CIDRConflict(cidrBlocks[1], V6Multicast) {
+			return fmt.Errorf("%s conflict with v6 multicast cidr %s", cidrBlocks[1], V6Multicast)
+		}
+		if CIDRConflict(cidrBlocks[1], V4Multicast) {
+			return fmt.Errorf("%s conflict with v4 multicast cidr %s", cidrBlocks[1], V4Multicast)
+		}
+		if CIDRConflict(cidrBlocks[1], V6Loopback) {
+			return fmt.Errorf("%s conflict with v6 loopback cidr %s", cidrBlocks[1], V6Loopback)
+		}
+		if CIDRConflict(cidrBlocks[1], V4Loopback) {
+			return fmt.Errorf("%s conflict with v4 multicast cidr %s", cidrBlocks[1], V4Loopback)
+		}
+	} else {
+		if CIDRConflict(cidr, V6Multicast) {
+			return fmt.Errorf("%s conflict with v6 multicast cidr %s", cidr, V6Multicast)
+		}
+		if CIDRConflict(cidr, V4Multicast) {
+			return fmt.Errorf("%s conflict with v4 multicast cidr %s", cidr, V4Multicast)
+		}
+		if CIDRConflict(cidr, V6Loopback) {
+			return fmt.Errorf("%s conflict with v6 loopback cidr %s", cidr, V6Loopback)
+		}
+		if CIDRConflict(cidr, V4Loopback) {
+			return fmt.Errorf("%s conflict with v4 multicast cidr %s", cidr, V4Loopback)
+		}
 	}
-	if CIDRConflict(cidr, V4Multicast) {
-		return fmt.Errorf("%s conflict with v4 multicast cidr %s", cidr, V4Multicast)
-	}
-	if CIDRConflict(cidr, V6Loopback) {
-		return fmt.Errorf("%s conflict with v6 loopback cidr %s", cidr, V6Loopback)
-	}
-	if CIDRConflict(cidr, V4Loopback) {
-		return fmt.Errorf("%s conflict with v4 multicast cidr %s", cidr, V4Loopback)
-	}
+
 	return nil
 }
 
@@ -86,20 +116,48 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 }
 
 func ValidatePodNetwork(annotations map[string]string) error {
-	if ip := annotations[IpAddressAnnotation]; ip != "" {
-		if strings.Contains(ip, "/") {
-			_, _, err := net.ParseCIDR(ip)
-			if err != nil {
-				return fmt.Errorf("%s is not a valid %s", ip, IpAddressAnnotation)
+	if ipAddress := annotations[IpAddressAnnotation]; ipAddress != "" {
+		// The format of IP Annotation in dualstack is 10.244.0.0/16,fd00:10:244:0:2::/80
+		for _, ip := range strings.Split(ipAddress, ",") {
+			if strings.Contains(ip, "/") {
+				_, _, err := net.ParseCIDR(ip)
+				if err != nil {
+					return fmt.Errorf("%s is not a valid %s", ip, IpAddressAnnotation)
+				}
+			} else {
+				if net.ParseIP(ip) == nil {
+					return fmt.Errorf("%s is not a valid %s", ip, IpAddressAnnotation)
+				}
 			}
-		} else {
-			if net.ParseIP(ip) == nil {
-				return fmt.Errorf("%s is not a valid %s", ip, IpAddressAnnotation)
-			}
-		}
-		if cidr := annotations[CidrAnnotation]; cidr != "" {
-			if !CIDRContainIP(cidr, ip) {
-				return fmt.Errorf("%s not in cidr %s", ip, cidr)
+
+			if cidrStr := annotations[CidrAnnotation]; cidrStr != "" {
+				protocol := CheckProtocol(cidrStr)
+				if protocol == kubeovnv1.ProtocolDual {
+					cidrBlocks := strings.Split(cidrStr, ",")
+
+					_, _, err := net.ParseCIDR(cidrBlocks[0])
+					if err != nil {
+						return fmt.Errorf("invalid cidr %s", cidrBlocks[0])
+					}
+					_, _, err = net.ParseCIDR(cidrBlocks[1])
+					if err != nil {
+						return fmt.Errorf("invalid cidr %s", cidrBlocks[1])
+					}
+					v4CIDR := cidrBlocks[0]
+					v6CIDR := cidrBlocks[1]
+
+					if !CIDRContainIP(v4CIDR, ip) && !CIDRContainIP(v6CIDR, ip) {
+						return fmt.Errorf("%s not in cidr %s", ip, cidrStr)
+					}
+				} else {
+					_, _, err := net.ParseCIDR(cidrStr)
+					if err != nil {
+						return fmt.Errorf("invalid cidr %s", cidrStr)
+					}
+					if !CIDRContainIP(cidrStr, ip) {
+						return fmt.Errorf("%s not in cidr %s", ip, cidrStr)
+					}
+				}
 			}
 		}
 	}

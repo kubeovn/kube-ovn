@@ -71,6 +71,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			time.Sleep(1 * time.Second)
 			continue
 		}
+		// The format of ip/cidr/gw in dualstack is like 10.244.0.0/16,fd00:10:244:0:2::/80
 		macAddr = pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podRequest.Provider)]
 		ip = pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podRequest.Provider)]
 		cidr = pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, podRequest.Provider)]
@@ -79,7 +80,16 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		ingress = pod.Annotations[util.IngressRateAnnotation]
 		egress = pod.Annotations[util.EgressRateAnnotation]
 		vlanID = pod.Annotations[util.VlanIdAnnotation]
-		ipAddr = fmt.Sprintf("%s/%s", ip, strings.Split(cidr, "/")[1])
+
+		if util.CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
+			cidrBlocks := strings.Split(cidr, ",")
+			ips := strings.Split(ip, ",")
+			v4IP := fmt.Sprintf("%s/%s", ips[0], strings.Split(cidrBlocks[0], "/")[1])
+			v6IP := fmt.Sprintf("%s/%s", ips[1], strings.Split(cidrBlocks[1], "/")[1])
+			ipAddr = v4IP + "," + v6IP
+		} else {
+			ipAddr = fmt.Sprintf("%s/%s", ip, strings.Split(cidr, "/")[1])
+		}
 		break
 	}
 
@@ -112,7 +122,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		}
 	}
 
-	if err := resp.WriteHeaderAndEntity(http.StatusOK, request.CniResponse{Protocol: util.CheckProtocol(ipAddr), IpAddress: strings.Split(ipAddr, "/")[0], MacAddress: macAddr, CIDR: cidr, Gateway: gw}); err != nil {
+	if err := resp.WriteHeaderAndEntity(http.StatusOK, request.CniResponse{Protocol: util.CheckProtocol(cidr), IpAddress: ip, MacAddress: macAddr, CIDR: cidr, Gateway: gw}); err != nil {
 		klog.Errorf("failed to write response, %v", err)
 	}
 }
@@ -121,6 +131,7 @@ func (csh cniServerHandler) createOrUpdateIPCr(podRequest request.CniRequest, su
 	ipCr, err := csh.KubeOvnClient.KubeovnV1().IPs().Get(fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace), metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
+			// There is no need to process ip specially. The IPs is used for display, and the format of ip is right in dualstack
 			_, err := csh.KubeOvnClient.KubeovnV1().IPs().Create(&kubeovnv1.IP{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace),
@@ -153,9 +164,15 @@ func (csh cniServerHandler) createOrUpdateIPCr(podRequest request.CniRequest, su
 			return errMsg
 		}
 	} else {
+		ips := strings.Split(ip, ",")
+		if len(ips) == 2 {
+			ipCr.Spec.AttachIPs = append(ipCr.Spec.AttachIPs, ips[0])
+			ipCr.Spec.AttachIPs = append(ipCr.Spec.AttachIPs, ips[1])
+		} else {
+			ipCr.Spec.AttachIPs = append(ipCr.Spec.AttachIPs, ip)
+		}
 		ipCr.Labels[subnet] = ""
 		ipCr.Spec.AttachSubnets = append(ipCr.Spec.AttachSubnets, subnet)
-		ipCr.Spec.AttachIPs = append(ipCr.Spec.AttachIPs, ip)
 		ipCr.Spec.AttachMacs = append(ipCr.Spec.AttachMacs, macAddr)
 		if _, err := csh.KubeOvnClient.KubeovnV1().IPs().Update(ipCr); err != nil {
 			errMsg := fmt.Errorf("failed to update ip crd for %s, %v", ip, err)

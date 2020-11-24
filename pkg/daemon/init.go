@@ -2,12 +2,14 @@ package daemon
 
 import (
 	"fmt"
-	"github.com/alauda/kube-ovn/pkg/util"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/klog"
 	"net"
 	"strings"
 	"time"
+
+	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/alauda/kube-ovn/pkg/util"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog"
 )
 
 // InitNodeGateway init ovn0
@@ -43,7 +45,23 @@ func InitNodeGateway(config *Configuration) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse mac %s %v", mac, err)
 	}
-	return configureNodeNic(portName, ipAddr, gw, mac, config.MTU)
+
+	if util.CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
+		// The format of ip/cidr/gw in dualstack is "10.244.0.0/24,fd00:10:244::/80"
+		cidrBlocks := strings.Split(cidr, ",")
+		ips := strings.Split(ip, ",")
+
+		v4IP := fmt.Sprintf("%s/%s", ips[0], strings.Split(cidrBlocks[0], "/")[1])
+		v6IP := fmt.Sprintf("%s/%s", ips[1], strings.Split(cidrBlocks[1], "/")[1])
+		ipAddr = v4IP + "," + v6IP
+		if err := configureNodeNic(portName, ipAddr, gw, mac, config.MTU); err != nil {
+			return err
+		}
+	} else {
+		return configureNodeNic(portName, ipAddr, gw, mac, config.MTU)
+	}
+
+	return nil
 }
 
 func InitMirror(config *Configuration) error {

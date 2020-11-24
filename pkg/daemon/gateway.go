@@ -101,7 +101,7 @@ func (c *Controller) runGateway() {
 	c.ipset.ApplyUpdates()
 
 	var iptableRules []util.IPTableRule
-	if c.protocol == kubeovnv1.ProtocolIPv4 {
+	if c.protocol == kubeovnv1.ProtocolIPv4 || c.protocol == kubeovnv1.ProtocolDual {
 		iptableRules = v4Rules
 	} else {
 		iptableRules = v6Rules
@@ -237,13 +237,14 @@ func (c *Controller) getLocalPodIPsNeedNAT(protocol string) ([]string, error) {
 			continue
 		}
 
+		// should check pod.Status.PodIPs.
 		nsGWType := subnet.Spec.GatewayType
 		nsGWNat := subnet.Spec.NatOutgoing
 		if nsGWNat &&
 			subnet.Spec.Vpc == util.DefaultVpc &&
 			nsGWType == kubeovnv1.GWDistributedType &&
 			pod.Spec.NodeName == hostname &&
-			util.CheckProtocol(pod.Status.PodIP) == protocol {
+			util.CheckProtocol(pod.Status.PodIP) == protocol { // This can not be satisfied by dualstack
 			localPodIPs = append(localPodIPs, pod.Status.PodIP)
 		}
 	}
@@ -265,7 +266,7 @@ func (c *Controller) getSubnetsNeedNAT(protocol string) ([]string, error) {
 			subnet.Status.ActivateGateway == c.config.NodeName &&
 			subnet.Spec.Protocol == protocol &&
 			subnet.Spec.NatOutgoing {
-			subnetsNeedNat = append(subnetsNeedNat, subnet.Spec.CIDRBlock)
+			subnetsNeedNat = append(subnetsNeedNat, strings.Split(subnet.Spec.CIDRBlock, ",")...)
 		}
 	}
 	return subnetsNeedNat, nil
@@ -283,7 +284,7 @@ func (c *Controller) getSubnetsCIDR(protocol string) ([]string, error) {
 	}
 	for _, subnet := range subnets {
 		if subnet.Spec.Protocol == protocol && subnet.Spec.Vpc == util.DefaultVpc {
-			ret = append(ret, subnet.Spec.CIDRBlock)
+			ret = append(ret, strings.Split(subnet.Spec.CIDRBlock, ",")...)
 		}
 	}
 	return ret, nil

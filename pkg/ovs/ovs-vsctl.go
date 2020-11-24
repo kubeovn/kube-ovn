@@ -2,11 +2,12 @@ package ovs
 
 import (
 	"fmt"
-	"k8s.io/klog"
 	"os/exec"
 	"strconv"
 	"strings"
 	"time"
+
+	"k8s.io/klog"
 )
 
 // Glory belongs to openvswitch/ovn-kubernetes

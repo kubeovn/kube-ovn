@@ -2,6 +2,11 @@ package daemon
 
 import (
 	"fmt"
+	"net"
+	"os/exec"
+	"strings"
+	"time"
+
 	"github.com/Mellanox/sriovnet"
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/ovs"
@@ -11,10 +16,6 @@ import (
 	goping "github.com/oilbeater/go-ping"
 	"github.com/vishvananda/netlink"
 	"k8s.io/klog"
-	"net"
-	"os/exec"
-	"strings"
-	"time"
 )
 
 func (csh cniServerHandler) configureNic(podName, podNamespace, netns, containerID, mac, ip, gateway, ingress, egress, vlanID, DeviceID string) error {
@@ -34,6 +35,16 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, netns, container
 		}
 	}
 
+	// How to adapt dualstack for ovs config
+	var ipStr string
+	if util.CheckProtocol(gateway) == kubeovnv1.ProtocolDual {
+		ips := strings.Split(ip, ",")
+		// ipStr = strings.Split(ips[0], "/")[0] + "," + strings.Split(ips[1], "/")[0]
+		ipStr = strings.Split(ips[0], "/")[0]
+	} else {
+		ipStr = strings.Split(ip, "/")[0]
+	}
+
 	ifaceID := fmt.Sprintf("%s.%s", podName, podNamespace)
 	ovs.CleanDuplicatePort(ifaceID)
 	// Add veth pair host end to ovs port
@@ -41,7 +52,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, netns, container
 		"set", "interface", hostNicName, fmt.Sprintf("external_ids:iface-id=%s", ifaceID),
 		fmt.Sprintf("external_ids:pod_name=%s", podName),
 		fmt.Sprintf("external_ids:pod_namespace=%s", podNamespace),
-		fmt.Sprintf("external_ids:ip=%s", strings.Split(ip, "/")[0]))
+		fmt.Sprintf("external_ids:ip=%s", ipStr))
 	if err != nil {
 		return fmt.Errorf("add nic to ovs failed %v: %q", err, output)
 	}
@@ -140,7 +151,7 @@ func configureContainerNic(nicName, ipAddr, gateway string, macAddr net.Hardware
 		if err = netlink.LinkSetName(containerLink, "eth0"); err != nil {
 			return err
 		}
-		if util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolIPv6 {
+		if util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolDual || util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolIPv6 {
 			// For docker version >=17.x the "none" network will disable ipv6 by default.
 			// We have to enable ipv6 here to add v6 address and gateway.
 			// See https://github.com/containernetworking/cni/issues/531
@@ -176,6 +187,27 @@ func configureContainerNic(nicName, ipAddr, gateway string, macAddr net.Hardware
 				Dst:       defaultNet,
 				Gw:        net.ParseIP(gateway),
 			})
+		case kubeovnv1.ProtocolDual:
+			gws := strings.Split(gateway, ",")
+			_, defaultNet, _ := net.ParseCIDR("0.0.0.0/0")
+			// add v4 route for pod not hostnetwork
+			err = netlink.RouteAdd(&netlink.Route{
+				LinkIndex: containerLink.Attrs().Index,
+				Scope:     netlink.SCOPE_UNIVERSE,
+				Dst:       defaultNet,
+				Gw:        net.ParseIP(gws[0]),
+			})
+			if err != nil {
+				return fmt.Errorf("config v4 gateway failed %v", err)
+			}
+			// add v6 route for pod not hostnetwork
+			_, defaultNet, _ = net.ParseCIDR("::/0")
+			err = netlink.RouteAdd(&netlink.Route{
+				LinkIndex: containerLink.Attrs().Index,
+				Scope:     netlink.SCOPE_UNIVERSE,
+				Dst:       defaultNet,
+				Gw:        net.ParseIP(gws[1]),
+			})
 		}
 
 		if err != nil {
@@ -187,7 +219,15 @@ func configureContainerNic(nicName, ipAddr, gateway string, macAddr net.Hardware
 }
 
 func waiteNetworkReady(gateway string) error {
-	pinger, err := goping.NewPinger(gateway)
+	var gw string
+	if util.CheckProtocol(gateway) == kubeovnv1.ProtocolDual {
+		// Just test ipv4 ping in dualstack
+		gw = strings.Split(gateway, ",")[0]
+	} else {
+		gw = gateway
+	}
+
+	pinger, err := goping.NewPinger(gw)
 	if err != nil {
 		return fmt.Errorf("failed to init pinger, %v", err)
 	}
@@ -212,16 +252,28 @@ func waiteNetworkReady(gateway string) error {
 }
 
 func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int) error {
+	var ipStr, ipAddr string
+	if util.CheckProtocol(ip) == kubeovnv1.ProtocolDual {
+		ips := strings.Split(ip, ",")
+		ipStr = strings.Split(ips[0], "/")[0] + "," + strings.Split(ips[1], "/")[0]
+		// Do not adapt dualstack for node, just use v4 address now
+		ipAddr = ips[0]
+	} else {
+		ipStr = strings.Split(ip, "/")[0]
+		ipAddr = ip
+	}
+
 	raw, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", util.NodeNic, "--",
 		"set", "interface", util.NodeNic, "type=internal", "--",
 		"set", "interface", util.NodeNic, fmt.Sprintf("external_ids:iface-id=%s", portName),
-		fmt.Sprintf("external_ids:ip=%s", strings.Split(ip, "/")[0]))
+		fmt.Sprintf("external_ids:ip=%s", ipStr))
 	if err != nil {
 		klog.Errorf("failed to configure node nic %s %q", portName, raw)
 		return fmt.Errorf(raw)
 	}
 
-	if err = configureNic(util.NodeNic, ip, macAddr, mtu); err != nil {
+	// Do not adapt dualstack for node, because there is no environment to test now
+	if err = configureNic(util.NodeNic, ipAddr, macAddr, mtu); err != nil {
 		return err
 	}
 
@@ -236,13 +288,24 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 
 	// ping gw to activate the flow
 	var output []byte
-	if util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv4 {
+	protocol := util.CheckProtocol(gw)
+	if protocol == kubeovnv1.ProtocolDual {
+		gwStr := strings.Split(gw, ",")[0]
+		output, _ = exec.Command("ping", "-w", "10", gwStr).CombinedOutput()
+		klog.Infof("ping v4 gw result is: \n %s", output)
+
+		gwStr = strings.Split(gw, ",")[1]
+		output, _ = exec.Command("ping", "-6", "-w", "10", gwStr).CombinedOutput()
+		klog.Infof("ping v6 gw result is: \n %s", output)
+	} else if protocol == kubeovnv1.ProtocolIPv4 {
 		output, _ = exec.Command("ping", "-w", "10", gw).CombinedOutput()
+		klog.Infof("ping gw result is: \n %s", output)
 	} else {
+		// Since node does not adapt dualstack, so v6 ping will be 100% lost
 		output, _ = exec.Command("ping", "-6", "-w", "10", gw).CombinedOutput()
+		klog.Infof("ping gw result is: \n %s", output)
 	}
 
-	klog.Infof("ping gw result is: \n %s", output)
 	return nil
 }
 
@@ -293,13 +356,30 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int) error {
 		return fmt.Errorf("can not find nic %s %v", link, err)
 	}
 
-	ipAddr, err := netlink.ParseAddr(ip)
+	// It's an err to call AddrReplace twice for ovn0. So how to adjust?
+	var ipAddr, v4Addr, v6Addr *netlink.Addr
+	if util.CheckProtocol(ip) == kubeovnv1.ProtocolDual {
+		ips := strings.Split(ip, ",")
+		v4Addr, err = netlink.ParseAddr(ips[0])
+		v6Addr, err = netlink.ParseAddr(ips[1])
+	} else {
+		ipAddr, err = netlink.ParseAddr(ip)
+	}
 	if err != nil {
 		return fmt.Errorf("can not parse %s %v", ip, err)
 	}
 
-	if err = netlink.AddrReplace(nodeLink, ipAddr); err != nil {
-		return fmt.Errorf("can not add address to nic %s, %v", link, err)
+	if util.CheckProtocol(ip) == kubeovnv1.ProtocolDual {
+		if err = netlink.AddrAdd(nodeLink, v4Addr); err != nil {
+			return fmt.Errorf("can not add v4 address to nic %s, %v", link, err)
+		}
+		if err = netlink.AddrAdd(nodeLink, v6Addr); err != nil {
+			return fmt.Errorf("can not add v6 address to nic %s, %v", link, err)
+		}
+	} else {
+		if err = netlink.AddrReplace(nodeLink, ipAddr); err != nil {
+			return fmt.Errorf("can not add address to nic %s, %v", link, err)
+		}
 	}
 
 	if err = netlink.LinkSetHardwareAddr(nodeLink, macAddr); err != nil {

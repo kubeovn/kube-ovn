@@ -102,21 +102,71 @@ func CIDRConflict(a, b string) bool {
 }
 
 func CIDRContainIP(cidrStr, ipStr string) bool {
-	_, cidr, err := net.ParseCIDR(cidrStr)
-	if err != nil {
-		return false
+	protocol := CheckProtocol(cidrStr)
+	if protocol == kubeovnv1.ProtocolDual {
+		v4CIDRStr := cidrStr
+		v6CIDRStr := cidrStr
+		v4IPStr := ipStr
+		v6IPStr := ipStr
+
+		cidrBlocks := strings.Split(cidrStr, ",")
+		_, v4CIDR, err := net.ParseCIDR(cidrBlocks[0])
+		if err != nil {
+			return false
+		}
+		_, v6CIDR, err := net.ParseCIDR(cidrBlocks[1])
+		if err != nil {
+			return false
+		}
+		v4CIDRStr = cidrBlocks[0]
+		v6CIDRStr = cidrBlocks[1]
+
+		ips := strings.Split(ipStr, ",")
+		if len(ips) == 2 {
+			v4IPStr = ips[0]
+			v6IPStr = ips[1]
+			if CheckProtocol(v4CIDRStr) != CheckProtocol(v4IPStr) || CheckProtocol(v6CIDRStr) != CheckProtocol(v6IPStr) {
+				return false
+			}
+
+			v4IP := net.ParseIP(v4IPStr)
+			v6IP := net.ParseIP(v6IPStr)
+			if v4IP == nil || v6IP == nil {
+				return false
+			}
+			return v4CIDR.Contains(v4IP) && v6CIDR.Contains(v6IP)
+		} else {
+			if CheckProtocol(v4CIDRStr) != CheckProtocol(ipStr) && CheckProtocol(v6CIDRStr) != CheckProtocol(ipStr) {
+				return false
+			}
+
+			ip := net.ParseIP(ipStr)
+			if ip == nil {
+				return false
+			}
+			return v4CIDR.Contains(ip) || v6CIDR.Contains(ip)
+		}
+	} else {
+		_, cidr, err := net.ParseCIDR(cidrStr)
+		if err != nil {
+			return false
+		}
+		if CheckProtocol(cidrStr) != CheckProtocol(ipStr) {
+			return false
+		}
+		ip := net.ParseIP(ipStr)
+		if ip == nil {
+			return false
+		}
+		return cidr.Contains(ip)
 	}
-	if CheckProtocol(cidrStr) != CheckProtocol(ipStr) {
-		return false
-	}
-	ip := net.ParseIP(ipStr)
-	if ip == nil {
-		return false
-	}
-	return cidr.Contains(ip)
 }
 
 func CheckProtocol(address string) string {
+	if strings.Contains(address, ",") {
+		return kubeovnv1.ProtocolDual
+	}
+
 	address = strings.Split(address, "/")[0]
 	ip := net.ParseIP(address)
 	if ip.To4() != nil {
@@ -143,4 +193,11 @@ func GenerateRandomV4IP(cidr string) string {
 	}
 	t := big.NewInt(0).Add(Ip2BigInt(ip), add)
 	return fmt.Sprintf("%s/%d", BigInt2Ip(t), netMask)
+}
+
+func IsValidIP(ip string) bool {
+	if net.ParseIP(ip) != nil {
+		return true
+	}
+	return false
 }

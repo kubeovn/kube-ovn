@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"strings"
 	"time"
 
 	"k8s.io/client-go/kubernetes/scheme"
@@ -102,7 +103,8 @@ func NewController(config *Configuration, podInformerFactory informers.SharedInf
 	controller.protocol = util.CheckProtocol(node.Annotations[util.IpAddressAnnotation])
 	controller.internalIP = getNodeInternalIP(node)
 
-	if controller.protocol == kubeovnv1.ProtocolIPv4 {
+	// how to adjust dualstack for iptables
+	if controller.protocol == kubeovnv1.ProtocolIPv4 || controller.protocol == kubeovnv1.ProtocolDual {
 		iptable, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
 		if err != nil {
 			return nil, err
@@ -198,10 +200,21 @@ func (c *Controller) reconcileRouters() error {
 		if !subnet.Status.IsReady() || subnet.Spec.UnderlayGateway {
 			continue
 		}
-		if _, ipNet, err := net.ParseCIDR(subnet.Spec.CIDRBlock); err != nil {
-			klog.Errorf("%s is not a valid cidr block", subnet.Spec.CIDRBlock)
+		if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual {
+			cidrBlocks := strings.Split(subnet.Spec.CIDRBlock, ",")
+			for i := 0; i < len(cidrBlocks); i++ {
+				if _, ipNet, err := net.ParseCIDR(cidrBlocks[i]); err != nil {
+					klog.Errorf("%s is not a valid cidr block", cidrBlocks[i])
+				} else {
+					cidrs = append(cidrs, ipNet.String())
+				}
+			}
 		} else {
-			cidrs = append(cidrs, ipNet.String())
+			if _, ipNet, err := net.ParseCIDR(subnet.Spec.CIDRBlock); err != nil {
+				klog.Errorf("%s is not a valid cidr block", subnet.Spec.CIDRBlock)
+			} else {
+				cidrs = append(cidrs, ipNet.String())
+			}
 		}
 	}
 
@@ -222,9 +235,20 @@ func (c *Controller) reconcileRouters() error {
 	}
 
 	var existRoutes []netlink.Route
-	if util.CheckProtocol(gateway) == kubeovnv1.ProtocolIPv4 {
+	if util.CheckProtocol(gateway) == kubeovnv1.ProtocolDual {
+		v4ExistRoutes, err := netlink.RouteList(nic, netlink.FAMILY_V4)
+		if err != nil {
+			klog.Errorf("reconcileRouters v4 get RouteList error %v", err)
+			return err
+		}
+		existRoutes = append(existRoutes, v4ExistRoutes...)
+		V6ExistRoutes, err := netlink.RouteList(nic, netlink.FAMILY_V6)
+		if err == nil {
+			existRoutes = append(existRoutes, V6ExistRoutes...)
+		}
+	} else if util.CheckProtocol(gateway) == kubeovnv1.ProtocolIPv4 {
 		existRoutes, err = netlink.RouteList(nic, netlink.FAMILY_V4)
-	} else {
+	} else if util.CheckProtocol(gateway) == kubeovnv1.ProtocolIPv6 {
 		existRoutes, err = netlink.RouteList(nic, netlink.FAMILY_V6)
 	}
 	if err != nil {
@@ -244,12 +268,47 @@ func (c *Controller) reconcileRouters() error {
 		gw := net.ParseIP(gateway)
 		src := net.ParseIP(c.internalIP)
 		if r == c.config.ServiceClusterIPRange {
-			if err = netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: gw}); err != nil {
-				klog.Errorf("failed to add route %v", err)
+			// svc for dualstack should be modified
+			if util.CheckProtocol(gateway) == kubeovnv1.ProtocolDual {
+				gws := strings.Split(gateway, ",")
+				v4gw := net.ParseIP(gws[0])
+				v6gw := net.ParseIP(gws[1])
+				if util.CheckProtocol(c.internalIP) == kubeovnv1.ProtocolIPv4 {
+					if err = netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: v4gw}); err != nil {
+						klog.Errorf("failed to add v4 svc route %v", err)
+					}
+				} else {
+					if err = netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: v6gw}); err != nil {
+						klog.Errorf("failed to add v6 svc route %v", err)
+					}
+				}
+			} else {
+				if err = netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: gw}); err != nil {
+					klog.Errorf("failed to add route %v", err)
+				}
 			}
 		} else {
-			if err = netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: gw, Src: src}); err != nil {
-				klog.Errorf("failed to add route %v", err)
+			// Since node's internalIP is IPv4 type, so skip v6 route for node. This check should be deleted when node support dualstack
+			if util.CheckProtocol(c.internalIP) != util.CheckProtocol(r) {
+				continue
+			}
+			if util.CheckProtocol(gateway) == kubeovnv1.ProtocolDual {
+				gws := strings.Split(gateway, ",")
+				v4gw := net.ParseIP(gws[0])
+				v6gw := net.ParseIP(gws[1])
+				if util.CheckProtocol(c.internalIP) == kubeovnv1.ProtocolIPv4 {
+					if err = netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: v4gw, Src: src}); err != nil {
+						klog.Errorf("v4 failed to add route %v", err)
+					}
+				} else {
+					if err = netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: v6gw, Src: src}); err != nil {
+						klog.Errorf("v6 failed to add route %v", err)
+					}
+				}
+			} else {
+				if err = netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: gw, Src: src}); err != nil {
+					klog.Errorf("failed to add route %v", err)
+				}
 			}
 		}
 	}

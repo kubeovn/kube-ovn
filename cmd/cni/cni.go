@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/alauda/kube-ovn/pkg/util"
 	"net"
 	"runtime"
 	"strings"
+
+	"github.com/alauda/kube-ovn/pkg/util"
 
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/request"
@@ -91,6 +92,39 @@ func generateCNIResult(cniVersion string, cniResponse *request.CniResponse) curr
 			GW:  net.ParseIP(cniResponse.Gateway).To16(),
 		}
 		result.Routes = []*types.Route{&route}
+	case kubeovnv1.ProtocolDual:
+		cidrBlocks := strings.Split(cniResponse.CIDR, ",")
+		_, v4Mask, _ := net.ParseCIDR(cidrBlocks[0])
+		// _, v6Mask, _ := net.ParseCIDR(cidrBlocks[1])
+		ips := strings.Split(cniResponse.IpAddress, ",")
+		gws := strings.Split(cniResponse.Gateway, ",")
+
+		ip := current.IPConfig{
+			Version: "4",
+			Address: net.IPNet{IP: net.ParseIP(ips[0]).To4(), Mask: v4Mask.Mask},
+			Gateway: net.ParseIP(gws[0]).To4(),
+		}
+		result.IPs = append(result.IPs, &ip)
+
+		route := types.Route{
+			Dst: net.IPNet{IP: net.ParseIP("0.0.0.0").To4(), Mask: net.CIDRMask(0, 32)},
+			GW:  net.ParseIP(gws[0]).To4(),
+		}
+		result.Routes = append(result.Routes, &route)
+
+		// // This should be added when K8S support dualstack
+		// ip = current.IPConfig{
+		// 	Version: "6",
+		// 	Address: net.IPNet{IP: net.ParseIP(ips[1]).To16(), Mask: v6Mask.Mask},
+		// 	Gateway: net.ParseIP(gws[1]).To16(),
+		// }
+		// result.IPs = append(result.IPs, &ip)
+
+		// route = types.Route{
+		// 	Dst: net.IPNet{IP: net.ParseIP("::").To16(), Mask: net.CIDRMask(0, 128)},
+		// 	GW:  net.ParseIP(gws[1]).To16(),
+		// }
+		// result.Routes = append(result.Routes, &route)
 	}
 
 	return result

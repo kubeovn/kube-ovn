@@ -21,7 +21,8 @@ func (c Client) ovnNbCommand(cmdArgs ...string) (string, error) {
 	cmdArgs = append([]string{fmt.Sprintf("--timeout=%d", c.OvnTimeout)}, cmdArgs...)
 	raw, err := exec.Command(OvnNbCtl, cmdArgs...).CombinedOutput()
 	elapsed := float64((time.Since(start)) / time.Millisecond)
-	klog.V(4).Infof("command %s %s in %vms", OvnNbCtl, strings.Join(cmdArgs, " "), elapsed)
+	// klog.V(4).Infof("command %s %s in %vms", OvnNbCtl, strings.Join(cmdArgs, " "), elapsed)
+	klog.Infof("command %s %s in %vms", OvnNbCtl, strings.Join(cmdArgs, " "), elapsed)
 	if err != nil || elapsed > 500 {
 		klog.Warning("ovn-nbctl command error or took too long")
 		klog.Warningf("%s %s in %vms", OvnNbCtl, strings.Join(cmdArgs, " "), elapsed)
@@ -111,12 +112,31 @@ func (c Client) DeleteICLogicalRouterPort(az string) error {
 
 // CreatePort create logical switch port in ovn
 func (c Client) CreatePort(ls, port, ip, cidr, mac, tag string, portSecurity bool) error {
-	ovnCommand := []string{MayExist, "lsp-add", ls, port, "--",
-		"lsp-set-addresses", port, fmt.Sprintf("%s %s", mac, ip)}
 
-	if portSecurity {
-		ovnCommand = append(ovnCommand,
-			"--", "lsp-set-port-security", port, fmt.Sprintf("%s %s/%s", mac, ip, strings.Split(cidr, "/")[1]))
+	var ovnCommand []string
+	if util.CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
+		cidrBlocks := strings.Split(cidr, ",")
+		ips := strings.Split(ip, ",")
+		v4Mask := strings.Split(cidrBlocks[0], "/")[1]
+		v6Mask := strings.Split(cidrBlocks[1], "/")[1]
+		v4Net := ips[0] + "/" + v4Mask
+		v6Net := ips[1] + "/" + v6Mask
+
+		ovnCommand = []string{MayExist, "lsp-add", ls, port, "--",
+			"lsp-set-addresses", port, fmt.Sprintf("%s %s %s", mac, ips[0], ips[1])}
+
+		if portSecurity {
+			ovnCommand = append(ovnCommand,
+				"--", "lsp-set-port-security", port, fmt.Sprintf("%s %s %s", mac, v4Net, v6Net))
+		}
+	} else {
+		ovnCommand = []string{MayExist, "lsp-add", ls, port, "--",
+			"lsp-set-addresses", port, fmt.Sprintf("%s %s", mac, ip)}
+
+		if portSecurity {
+			ovnCommand = append(ovnCommand,
+				"--", "lsp-set-port-security", port, fmt.Sprintf("%s %s/%s", mac, ip, strings.Split(cidr, "/")[1]))
+		}
 	}
 
 	if tag != "" && tag != "0" {
@@ -148,6 +168,22 @@ func (c Client) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway string,
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")), "--",
 			"set", "logical_router_port", fmt.Sprintf("%s-%s", lr, ls), fmt.Sprintf("networks=%s/%s", gateway, mask))
+	case kubeovnv1.ProtocolDual:
+		var ip string
+		cidrBlocks := strings.Split(subnet, ",")
+		gws := strings.Split(gateway, ",")
+		v4Mask := strings.Split(cidrBlocks[0], "/")[1]
+		v6Mask := strings.Split(cidrBlocks[1], "/")[1]
+		ip = gws[0] + "/" + v4Mask + "," + gws[1] + "/" + v6Mask
+		// ipStr := strings.Join(strings.Split(ip, ","), " ")
+		ipStr := strings.Split(ip, ",")
+		// networks should be modified to satisfy dual stack
+		_, err = c.ovnNbCommand(MayExist, "ls-add", ls, "--",
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", cidrBlocks[0]), "--",
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")), "--",
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:ipv6_prefix=%s", strings.Split(cidrBlocks[1], "/")[0]), "--",
+			"set", "logical_router_port", fmt.Sprintf("%s-%s", lr, ls), fmt.Sprintf("networks=%s", ipStr[0]))
 	}
 
 	if err != nil {
@@ -171,6 +207,13 @@ func (c Client) CreateLogicalSwitch(ls, lr, protocol, subnet, gateway string, ex
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:ipv6_prefix=%s", strings.Split(subnet, "/")[0]), "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")))
+	case kubeovnv1.ProtocolDual:
+		cidrBlocks := strings.Split(subnet, ",")
+		_, err = c.ovnNbCommand(MayExist, "ls-add", ls, "--",
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", cidrBlocks[0]), "--",
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:ipv6_prefix=%s", strings.Split(cidrBlocks[1], "/")[0]), "--",
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")))
 	}
 
 	if err != nil {
@@ -178,11 +221,21 @@ func (c Client) CreateLogicalSwitch(ls, lr, protocol, subnet, gateway string, ex
 		return err
 	}
 
+	var ip string
+	if protocol == kubeovnv1.ProtocolDual {
+		cidrBlocks := strings.Split(subnet, ",")
+		gws := strings.Split(gateway, ",")
+		v4Mask := strings.Split(cidrBlocks[0], "/")[1]
+		v6Mask := strings.Split(cidrBlocks[1], "/")[1]
+		ip = gws[0] + "/" + v4Mask + "," + gws[1] + "/" + v6Mask
+	} else {
+		mask := strings.Split(subnet, "/")[1]
+		ip = gateway + "/" + mask
+	}
 	mac := util.GenerateMac()
-	mask := strings.Split(subnet, "/")[1]
 	klog.Infof("create route port for switch %s", ls)
 	if !underlayGateway {
-		if err := c.createRouterPort(ls, lr, gateway+"/"+mask, mac); err != nil {
+		if err := c.createRouterPort(ls, lr, ip, mac); err != nil {
 			klog.Errorf("failed to connect switch %s to router, %v", ls, err)
 			return err
 		}
@@ -386,7 +439,13 @@ func (c Client) createRouterPort(ls, lr, ip, mac string) error {
 		return err
 	}
 
-	if _, err := c.ovnNbCommand(MayExist, "lrp-add", lr, lrTols, mac, ip); err != nil {
+	ipStr := strings.Split(ip, ",")
+	if len(ipStr) == 2 {
+		_, err = c.ovnNbCommand(MayExist, "lrp-add", lr, lrTols, mac, ipStr[0], ipStr[1])
+	} else {
+		_, err = c.ovnNbCommand(MayExist, "lrp-add", lr, lrTols, mac, ipStr[0])
+	}
+	if err != nil {
 		klog.Errorf("failed to create router port %s %v", lrTols, err)
 		return err
 	}
@@ -421,7 +480,21 @@ func (c Client) AddStaticRoute(policy, cidr, nextHop, router string) error {
 	if policy == "" {
 		policy = PolicyDstIP
 	}
-	_, err := c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "lr-route-add", router, cidr, nextHop)
+	var err error
+	if util.CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
+		cidrBlocks := strings.Split(cidr, ",")
+		gws := strings.Split(nextHop, ",")
+		_, err = c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "lr-route-add", router, cidrBlocks[0], gws[0])
+		if err != nil {
+			return err
+		}
+		// The nextHop maybe one ip when node only support IPv4
+		if len(gws) == 2 {
+			_, err = c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "lr-route-add", router, cidrBlocks[1], gws[1])
+		}
+	} else {
+		_, err = c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "lr-route-add", router, cidr, nextHop)
+	}
 	return err
 }
 
@@ -456,7 +529,13 @@ func parseLrRouteListOutput(output string) (routeList []*StaticRoute, err error)
 }
 
 func (c Client) AddNatRule(policy, logicalIP, externalIP, router string) error {
-	_, err := c.ovnNbCommand(MayExist, "lr-nat-add", router, policy, externalIP, logicalIP)
+	var err error
+	if util.CheckProtocol(logicalIP) == kubeovnv1.ProtocolDual {
+		ips := strings.Split(logicalIP, ",")
+		_, err = c.ovnNbCommand(MayExist, "lr-nat-add", router, policy, externalIP, ips[0])
+	} else {
+		_, err = c.ovnNbCommand(MayExist, "lr-nat-add", router, policy, externalIP, logicalIP)
+	}
 	return err
 }
 
