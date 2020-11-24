@@ -225,8 +225,8 @@ func (c *Controller) startOVNIC(icHost, icNbPort, icSbPort string) error {
 	cmd := exec.Command("/usr/share/ovn/scripts/ovn-ctl",
 		fmt.Sprintf("--ovn-ic-nb-db=tcp:%s:%s", icHost, icNbPort),
 		fmt.Sprintf("--ovn-ic-sb-db=tcp:%s:%s", icHost, icSbPort),
-		fmt.Sprintf("--ovn-northd-nb-db=tcp:%s:%d", c.config.OvnNbHost, c.config.OvnNbPort),
-		fmt.Sprintf("--ovn-northd-sb-db=tcp:%s:%d", c.config.OvnSbHost, c.config.OvnSbPort),
+		fmt.Sprintf("--ovn-northd-nb-db=%s", c.config.OvnNbAddr),
+		fmt.Sprintf("--ovn-northd-sb-db=%s", c.config.OvnSbAddr),
 		"start_ic")
 	output, err := cmd.CombinedOutput()
 	if err != nil {

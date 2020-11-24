@@ -110,11 +110,8 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
       --node-switch string                        The name of node gateway switch which help node to access pod network, default: join (default "join")
       --node-switch-cidr string                   The cidr for node switch, default: 100.64.0.0/16 (default "100.64.0.0/16")
       --node-switch-gateway string                The gateway for node switch, default the first ip in node-switch-cidr
-      --ovn-nb-host string                        The ovn-nb host address. (If not set use ovn-nb-socket) (default "0.0.0.0")
-      --ovn-nb-port int                            (default 6641)
-      --ovn-nb-socket string                      The ovn-nb socket file. (If not set use ovn-nb-address)
-      --ovn-sb-host string                        The ovn-sb host address. (default "0.0.0.0")
-      --ovn-sb-port int                            (default 6642)
+      --ovn-nb-addr string                        ovn-nb address
+      --ovn-sb-addr string                        ovn-sb address
       --ovn-timeout int                            (default 30)
       --pprof-port int                            The port to get profiling data, default 10660 (default 10660)
       --skip_headers                              If true, avoid header prefixes in the log messages

@@ -849,7 +849,7 @@ func (c Client) SetAddressesToAddressSet(addresses []string, as string) error {
 }
 
 // StartOvnNbctlDaemon start a daemon and set OVN_NB_DAEMON env
-func StartOvnNbctlDaemon(nbHost string, nbPort int) error {
+func StartOvnNbctlDaemon(ovnNbAddr string) error {
 	klog.Infof("start ovn-nbctl daemon")
 	output, err := exec.Command(
 		"pkill",
@@ -862,7 +862,7 @@ func StartOvnNbctlDaemon(nbHost string, nbPort int) error {
 	}
 	command := []string{
 		"ovn-nbctl",
-		fmt.Sprintf("--db=tcp:%s:%d", nbHost, nbPort),
+		fmt.Sprintf("--db=%s", ovnNbAddr),
 		"--pidfile",
 		"--detach",
 		"--overwrite-pidfile",
@@ -872,7 +872,7 @@ func StartOvnNbctlDaemon(nbHost string, nbPort int) error {
 			"-p", "/var/run/tls/key",
 			"-c", "/var/run/tls/cert",
 			"-C", "/var/run/tls/cacert",
-			fmt.Sprintf("--db=ssl:%s:%d", nbHost, nbPort),
+			fmt.Sprintf("--db=%s", ovnNbAddr),
 			"--pidfile",
 			"--detach",
 			"--overwrite-pidfile",

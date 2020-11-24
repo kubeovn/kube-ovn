@@ -43,7 +43,7 @@ func loopOvnNbctlDaemon(config *controller.Configuration) {
 		time.Sleep(5 * time.Second)
 
 		if _, err := os.Stat(daemonSocket); os.IsNotExist(err) || daemonSocket == "" {
-			if err := ovs.StartOvnNbctlDaemon(config.OvnNbHost, config.OvnNbPort); err != nil {
+			if err := ovs.StartOvnNbctlDaemon(config.OvnNbAddr); err != nil {
 				klog.Errorf("failed to start ovn-nbctl daemon %v", err)
 			}
 		}
@@ -52,7 +52,7 @@ func loopOvnNbctlDaemon(config *controller.Configuration) {
 		// In case of that, we need to start a new daemon.
 		if err := ovs.CheckAlive(); err != nil {
 			klog.Warningf("ovn-nbctl daemon doesn't return, start a new daemon")
-			if err := ovs.StartOvnNbctlDaemon(config.OvnNbHost, config.OvnNbPort); err != nil {
+			if err := ovs.StartOvnNbctlDaemon(config.OvnNbAddr); err != nil {
 				klog.Errorf("failed to start ovn-nbctl daemon %v", err)
 			}
 		}

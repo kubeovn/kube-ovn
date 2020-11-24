@@ -865,6 +865,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: OVN_DB_IPS
+              value: $addresses
           volumeMounts:
             - mountPath: /lib/modules
               name: host-modules
@@ -1368,6 +1370,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: OVN_DB_IPS
+              value: $addresses
           volumeMounts:
             - mountPath: /lib/modules
               name: host-modules
@@ -1521,6 +1525,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: OVN_DB_IPS
+              value: $addresses
           volumeMounts:
             - mountPath: /var/run/tls
               name: kube-ovn-tls

@@ -108,14 +108,14 @@ func loopOvnNbctlDaemon(ovnNbHost string, ovnNbPort int) {
 		time.Sleep(5 * time.Second)
 
 		if _, err := os.Stat(daemonSocket); os.IsNotExist(err) || daemonSocket == "" {
-			if err := ovs.StartOvnNbctlDaemon(ovnNbHost, ovnNbPort); err != nil {
+			if err := ovs.StartOvnNbctlDaemon(ovnNbHost); err != nil {
 				klog.Errorf("failed to start ovn-nbctl daemon, %v", err)
 			}
 		}
 
 		if err := ovs.CheckAlive(); err != nil {
 			klog.Warningf("ovn-nbctl daemon doesn't return, start a new daemon")
-			if err := ovs.StartOvnNbctlDaemon(ovnNbHost, ovnNbPort); err != nil {
+			if err := ovs.StartOvnNbctlDaemon(ovnNbHost); err != nil {
 				klog.Errorf("failed to start ovn-nbctl daemon, %v", err)
 			}
 		}

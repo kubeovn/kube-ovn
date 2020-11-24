@@ -145,7 +145,7 @@ func NewController(config *Configuration) *Controller {
 		config:       config,
 		vpcs:         &sync.Map{},
 		podSubnetMap: &sync.Map{},
-		ovnClient:    ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.OvnTimeout, config.OvnSbHost, config.OvnSbPort, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
+		ovnClient:    ovs.NewClient(config.OvnNbAddr, config.OvnTimeout, config.OvnSbAddr, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
 		ipam:         ovnipam.NewIPAM(),
 
 		vpcsLister:           vpcInformer.Lister(),
