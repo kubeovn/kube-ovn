@@ -77,11 +77,12 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 		return fmt.Errorf("%s is not a valid gateway type", gwType)
 	}
 
-	k8sApiServer := os.Getenv("KUBERNETES_SERVICE_HOST")
-	if k8sApiServer != "" && CIDRContainIP(subnet.Spec.CIDRBlock, k8sApiServer) {
-		return fmt.Errorf("subnet %s cidr %s conflicts with k8s apiserver svc ip %s", subnet.Name, subnet.Spec.CIDRBlock, k8sApiServer)
+	if subnet.Spec.Vpc == DefaultVpc {
+		k8sApiServer := os.Getenv("KUBERNETES_SERVICE_HOST")
+		if k8sApiServer != "" && CIDRContainIP(subnet.Spec.CIDRBlock, k8sApiServer) {
+			return fmt.Errorf("subnet %s cidr %s conflicts with k8s apiserver svc ip %s", subnet.Name, subnet.Spec.CIDRBlock, k8sApiServer)
+		}
 	}
-
 	return nil
 }
 
