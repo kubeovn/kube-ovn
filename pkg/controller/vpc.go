@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/alauda/kube-ovn/pkg/util"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
@@ -137,29 +138,31 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 
-	// handle route
-	existRoute, err := c.ovnClient.GetStaticRouteList(vpc.Name)
-	if err != nil {
-		klog.Errorf("failed to get vpc %s static route list, %v", vpc.Name, err)
-		return err
-	}
-
-	routeNeedDel, routeNeedAdd, err := diffRoute(existRoute, vpc.Spec.StaticRoutes)
-	if err != nil {
-		klog.Errorf("failed to diff vpc %s static route, %v", vpc.Name, err)
-		return err
-	}
-	for _, item := range routeNeedDel {
-		if err = c.ovnClient.DeleteStaticRoute(item.CIDR, vpc.Name); err != nil {
-			klog.Errorf("del vpc %s static route failed, %v", vpc.Name, err)
+	if vpc.Name != util.DefaultVpc {
+		// handle route
+		existRoute, err := c.ovnClient.GetStaticRouteList(vpc.Name)
+		if err != nil {
+			klog.Errorf("failed to get vpc %s static route list, %v", vpc.Name, err)
 			return err
 		}
-	}
 
-	for _, item := range routeNeedAdd {
-		if err = c.ovnClient.AddStaticRoute(convertPolicy(item.Policy), item.CIDR, item.NextHopIP, vpc.Name); err != nil {
-			klog.Errorf("add static route to vpc %s failed, %v", vpc.Name, err)
+		routeNeedDel, routeNeedAdd, err := diffRoute(existRoute, vpc.Spec.StaticRoutes)
+		if err != nil {
+			klog.Errorf("failed to diff vpc %s static route, %v", vpc.Name, err)
 			return err
+		}
+		for _, item := range routeNeedDel {
+			if err = c.ovnClient.DeleteStaticRoute(item.CIDR, vpc.Name); err != nil {
+				klog.Errorf("del vpc %s static route failed, %v", vpc.Name, err)
+				return err
+			}
+		}
+
+		for _, item := range routeNeedAdd {
+			if err = c.ovnClient.AddStaticRoute(convertPolicy(item.Policy), item.CIDR, item.NextHopIP, vpc.Name); err != nil {
+				klog.Errorf("add static route to vpc %s failed, %v", vpc.Name, err)
+				return err
+			}
 		}
 	}
 
