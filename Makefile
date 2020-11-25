@@ -68,7 +68,7 @@ kind-init:
 	kind delete cluster --name=kube-ovn
 	ip_family=ipv4 ha=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
-	kubectl get no -o wide
+	kubectl describe no
 	docker exec kube-ovn-control-plane ip link add link eth0 mac1 type macvlan
 	docker exec kube-ovn-worker ip link add link eth0 mac1 type macvlan
 
@@ -76,19 +76,19 @@ kind-install:
 	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
 	ENABLE_SSL=true dist/images/install.sh
-	kubectl get no -o wide
+	kubectl describe no
 
 kind-init-ha:
 	kind delete cluster --name=kube-ovn
 	ip_family=ipv4 ha=true j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
-	kubectl get no -o wide
+	kubectl describe no
 
 kind-init-ipv6:
 	kind delete cluster --name=kube-ovn
 	ip_family=ipv6 ha=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
-	kubectl get no -o wide
+	kubectl describe no
 
 kind-install-ipv6:
 	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}

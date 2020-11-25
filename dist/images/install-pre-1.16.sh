@@ -10,7 +10,6 @@ IFACE=""                               # The nic to support container network, i
 REGISTRY="kubeovn"
 VERSION="v1.5.1"
 IMAGE_PULL_POLICY="IfNotPresent"
-NAMESPACE="kube-system"                # The ns to deploy kube-ovn
 POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
 SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR
 JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
@@ -39,12 +38,16 @@ VLAN_RANGE="1,4095"
 DPDK="false"
 DPDK_SUPPORTED_VERSIONS=("19.11")
 DPDK_VERSION=""
+DPDK_CPU="1000m"                        # Default CPU configuration for if --dpdk-cpu flag is not included
+DPDK_MEMORY="2Gi"                       # Default Memory configuration for it --dpdk-memory flag is not included
 
 display_help() {
     echo "Usage: $0 [option...]"
     echo
     echo "  -h, --help               Print Help (this message) and exit"
     echo "  --with-dpdk=<version>    Install Kube-OVN with OVS-DPDK instead of kernel OVS"
+    echo "  --dpdk-cpu=<amount>m     Configure DPDK to use a specific amount of CPU"
+    echo "  --dpdk-memory=<amount>Gi Configure DPDK to use a specific amount of memory"
     echo
     exit 0
 }
@@ -64,6 +67,26 @@ then
           echo "Unsupported DPDK version: ${DPDK_VERSION}"
           echo "Supported DPDK versions: ${DPDK_SUPPORTED_VERSIONS[*]}"
           exit 1
+        fi
+      ;;
+      --dpdk-cpu=*)
+        DPDK_CPU="${1#*=}"
+        if [[ $DPDK_CPU =~ ^[0-9]+(m)$ ]]
+        then
+           echo "CPU $DPDK_CPU"
+        else
+           echo "$DPDK_CPU is not valid, please use the format --dpdk-cpu=<amount>m"
+           exit 1
+        fi
+      ;;
+      --dpdk-memory=*)
+        DPDK_MEMORY="${1#*=}"
+        if [[ $DPDK_MEMORY =~ ^[0-9]+(Gi)$ ]]
+        then
+           echo "MEMORY $DPDK_MEMORY"
+        else
+           echo "$DPDK_MEMORY is not valid, please use the format --dpdk-memory=<amount>Gi"
+           exit 1
         fi
       ;;
       -?*)
@@ -357,14 +380,14 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: ovn-config
-  namespace: ${NAMESPACE}
+  namespace: kube-system
 
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: ovn
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -439,14 +462,14 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: ovn
-    namespace:  ${NAMESPACE}
+    namespace: kube-system
 
 ---
 kind: Service
 apiVersion: v1
 metadata:
   name: ovn-nb
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
 spec:
   ports:
     - name: ovn-nb
@@ -464,7 +487,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: ovn-sb
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
 spec:
   ports:
     - name: ovn-sb
@@ -482,7 +505,7 @@ kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: ovn-central
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
   annotations:
     kubernetes.io/description: |
       OVN components: northd, nb and sb.
@@ -542,8 +565,11 @@ spec:
                   fieldPath: metadata.namespace
           resources:
             requests:
-              cpu: 500m
+              cpu: 300m
               memory: 300Mi
+            limits:
+              cpu: 3
+              memory: 3Gi
           volumeMounts:
             - mountPath: /var/run/openvswitch
               name: host-run-ovs
@@ -613,7 +639,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: ovs-ovn
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the openvswitch daemon.
@@ -698,11 +724,11 @@ spec:
             timeoutSeconds: 45
           resources:
             requests:
-              cpu: 500m
-              memory: 2Gi
+              cpu: $DPDK_CPU
+              memory: $DPDK_MEMORY
             limits:
-              cpu: 1000m
-              memory: 2Gi
+              cpu: $DPDK_CPU
+              memory: $DPDK_MEMORY
               hugepages-1Gi: 1Gi
       nodeSelector:
         kubernetes.io/os: "linux"
@@ -780,13 +806,13 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: ovn-config
-  namespace: ${NAMESPACE}
+  namespace: kube-system
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: ovn
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -860,13 +886,13 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: ovn
-    namespace:  ${NAMESPACE}
+    namespace: kube-system
 ---
 kind: Service
 apiVersion: v1
 metadata:
   name: ovn-nb
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
 spec:
   ports:
     - name: ovn-nb
@@ -883,7 +909,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: ovn-sb
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
 spec:
   ports:
     - name: ovn-sb
@@ -900,7 +926,7 @@ kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: ovn-central
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
   annotations:
     kubernetes.io/description: |
       OVN components: northd, nb and sb.
@@ -960,8 +986,11 @@ spec:
                   fieldPath: metadata.namespace
           resources:
             requests:
-              cpu: 500m
-              memory: 300Mi
+              cpu: 300m
+              memory: 200Mi
+            limits:
+              cpu: 3
+              memory: 3Gi
           volumeMounts:
             - mountPath: /var/run/openvswitch
               name: host-run-ovs
@@ -1030,7 +1059,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: ovs-ovn
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the openvswitch daemon.
@@ -1114,7 +1143,7 @@ spec:
           resources:
             requests:
               cpu: 200m
-              memory: 300Mi
+              memory: 200Mi
             limits:
               cpu: 1000m
               memory: 800Mi
@@ -1154,7 +1183,7 @@ fi
 
 kubectl apply -f kube-ovn-crd.yaml
 kubectl apply -f ovn.yaml
-kubectl rollout status deployment/ovn-central -n ${NAMESPACE}
+kubectl rollout status deployment/ovn-central -n kube-system
 echo "-------------------------------"
 echo ""
 
@@ -1166,7 +1195,7 @@ kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-controller
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
   annotations:
     kubernetes.io/description: |
       kube-ovn controller
@@ -1246,6 +1275,13 @@ spec:
             periodSeconds: 7
             failureThreshold: 5
             timeoutSeconds: 45
+          resources:
+            requests:
+              cpu: 200m
+              memory: 200Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
@@ -1259,7 +1295,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-cni
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the kube-ovn cni daemon.
@@ -1349,6 +1385,13 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 7
           failureThreshold: 5
+        resources:
+          requests:
+            cpu: 100m
+            memory: 100Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
@@ -1373,7 +1416,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-pinger
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the openvswitch daemon.
@@ -1445,7 +1488,7 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 300Mi
+              memory: 100Mi
             limits:
               cpu: 200m
               memory: 400Mi
@@ -1482,7 +1525,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-pinger
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
   labels:
     app: kube-ovn-pinger
 spec:
@@ -1496,7 +1539,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-controller
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
   labels:
     app: kube-ovn-controller
 spec:
@@ -1510,7 +1553,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-cni
-  namespace:  ${NAMESPACE}
+  namespace: kube-system
   labels:
     app: kube-ovn-cni
 spec:
@@ -1522,19 +1565,19 @@ spec:
 EOF
 
 kubectl apply -f kube-ovn.yaml
-kubectl rollout status deployment/kube-ovn-controller -n ${NAMESPACE}
-kubectl rollout status daemonset/kube-ovn-cni -n ${NAMESPACE}
+kubectl rollout status deployment/kube-ovn-controller -n kube-system
+kubectl rollout status daemonset/kube-ovn-cni -n kube-system
 echo "-------------------------------"
 echo ""
 
 echo "[Step 4] Delete pod that not in host network mode"
 for ns in $(kubectl get ns --no-headers -o  custom-columns=NAME:.metadata.name); do
   for pod in $(kubectl get pod --no-headers -n "$ns" --field-selector spec.restartPolicy=Always -o custom-columns=NAME:.metadata.name,HOST:spec.hostNetwork | awk '{if ($2!="true") print $1}'); do
-    kubectl delete pod "$pod" -n "$ns"
+    kubectl delete pod "$pod" -n "$ns" --ignore-not-found
   done
 done
 
-kubectl rollout status daemonset/kube-ovn-pinger -n ${NAMESPACE}
+kubectl rollout status daemonset/kube-ovn-pinger -n kube-system
 kubectl rollout status deployment/coredns -n kube-system
 echo "-------------------------------"
 echo ""

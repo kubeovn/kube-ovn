@@ -83,6 +83,13 @@ spec:
             periodSeconds: 7
             failureThreshold: 5
             timeoutSeconds: 45
+          resources:
+            requests:
+              cpu: 200m
+              memory: 200Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
@@ -186,6 +193,13 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 7
             failureThreshold: 5
+          resources:
+            requests:
+              cpu: 200m
+              memory: 200Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
@@ -282,7 +296,7 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 300Mi
+              memory: 200Mi
             limits:
               cpu: 200m
               memory: 400Mi
