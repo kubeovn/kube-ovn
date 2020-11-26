@@ -18,7 +18,7 @@ on:
 jobs:
   build:
     name: Build x86
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-18.04
     steps:
       - name: Set up Go 1.x
         uses: actions/setup-go@v2
@@ -78,7 +78,7 @@ jobs:
   single-e2e:
     needs: build
     name: 1-master-e2e
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-18.04
     steps:
       - name: Check out code
         uses: actions/checkout@v2
@@ -124,7 +124,7 @@ jobs:
   ha-e2e:
     needs: build
     name: 3-master-e2e
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-18.04
     steps:
       - name: Check out code
         uses: actions/checkout@v2
@@ -171,7 +171,7 @@ jobs:
   ipv6-e2e:
     needs: build
     name: ipv6-e2e
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-18.04
     steps:
       - name: Check out code
         uses: actions/checkout@v2
@@ -207,7 +207,7 @@ jobs:
   push:
     needs: [single-e2e, ha-e2e, ipv6-e2e]
     name: push
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-18.04
     steps:
       - name: Check out code
         uses: actions/checkout@v2
