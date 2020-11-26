@@ -2,7 +2,6 @@ package ovs
 
 import (
 	"errors"
-	"fmt"
 )
 
 var (
@@ -37,10 +36,10 @@ const (
 )
 
 // NewClient init an ovn client
-func NewClient(ovnNbHost string, ovnNbPort int, ovnNbTimeout int, ovnSbHost string, ovnSbPort int, clusterRouter, clusterTcpLoadBalancer, clusterUdpLoadBalancer, clusterTcpSessionLoadBalancer, clusterUdpSessionLoadBalancer, nodeSwitch, nodeSwitchCIDR string) *Client {
+func NewClient(ovnNbAddr string, ovnNbTimeout int, ovnSbAddr, clusterRouter, clusterTcpLoadBalancer, clusterUdpLoadBalancer, clusterTcpSessionLoadBalancer, clusterUdpSessionLoadBalancer, nodeSwitch, nodeSwitchCIDR string) *Client {
 	return &Client{
-		OvnNbAddress:                  fmt.Sprintf("tcp:%s:%d", ovnNbHost, ovnNbPort),
-		OvnSbAddress:                  fmt.Sprintf("tcp:%s:%d", ovnSbHost, ovnSbPort),
+		OvnNbAddress:                  ovnNbAddr,
+		OvnSbAddress:                  ovnSbAddr,
 		OvnTimeout:                    ovnNbTimeout,
 		ClusterRouter:                 clusterRouter,
 		ClusterTcpLoadBalancer:        clusterTcpLoadBalancer,

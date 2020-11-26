@@ -3,6 +3,7 @@ set -euo pipefail
 
 HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
+OVN_DB_IPS=${OVN_DB_IPS:-}
 
 # https://bugs.launchpad.net/neutron/+bug/1776778
 if grep -q "3.10.0-862" /proc/version
@@ -66,15 +67,28 @@ else
 fi
 
 # Start vswitchd
-/usr/share/openvswitch/scripts/ovs-ctl restart --no-ovsdb-server  --system-id=random
+/usr/share/openvswitch/scripts/ovs-ctl restart --no-ovsdb-server --system-id=random
 /usr/share/openvswitch/scripts/ovs-ctl --protocol=udp --dport=6081 enable-protocol
 
+function gen_conn_str {
+  if [[ -z "${OVN_DB_IPS}" ]]; then
+    if [[ "$ENABLE_SSL" == "false" ]]; then
+      x="tcp:[${OVN_SB_SERVICE_HOST}]:${OVN_SB_SERVICE_PORT}"
+    else
+      x="ssl:[${OVN_SB_SERVICE_HOST}]:${OVN_SB_SERVICE_PORT}"
+    fi
+  else
+    t=$(echo -n "${OVN_DB_IPS}" | sed 's/[[:space:]]//g' | sed 's/,/ /g')
+    if [[ "$ENABLE_SSL" == "false" ]]; then
+      x=$(for i in ${t}; do echo -n "tcp:[$i]:$1",; done| sed 's/,$//')
+    else
+      x=$(for i in ${t}; do echo -n "ssl:[$i]:$1",; done| sed 's/,$//')
+    fi
+  fi
+  echo "$x"
+}
 # Set remote ovn-sb for ovn-controller to connect to
-if [[ "$ENABLE_SSL" == "false" ]]; then
-  ovs-vsctl set open . external-ids:ovn-remote=tcp:"[${OVN_SB_SERVICE_HOST}]":"${OVN_SB_SERVICE_PORT}"
-else
-  ovs-vsctl set open . external-ids:ovn-remote=ssl:"[${OVN_SB_SERVICE_HOST}]":"${OVN_SB_SERVICE_PORT}"
-fi
+ovs-vsctl set open . external-ids:ovn-remote="$(gen_conn_str 6642)"
 ovs-vsctl set open . external-ids:ovn-remote-probe-interval=10000
 ovs-vsctl set open . external-ids:ovn-openflow-probe-interval=180
 ovs-vsctl set open . external-ids:ovn-encap-type=geneve

@@ -17,11 +17,8 @@ import (
 // Configuration is the controller conf
 type Configuration struct {
 	BindAddress    string
-	OvnNbSocket    string
-	OvnNbHost      string
-	OvnNbPort      int
-	OvnSbHost      string
-	OvnSbPort      int
+	OvnNbAddr      string
+	OvnSbAddr      string
 	OvnTimeout     int
 	KubeConfigFile string
 	KubeClient     kubernetes.Interface
@@ -60,11 +57,8 @@ type Configuration struct {
 // TODO: validate configuration
 func ParseFlags() (*Configuration, error) {
 	var (
-		argOvnNbSocket    = pflag.String("ovn-nb-socket", "", "The ovn-nb socket file. (If not set use ovn-nb-address)")
-		argOvnNbHost      = pflag.String("ovn-nb-host", "0.0.0.0", "The ovn-nb host address. (If not set use ovn-nb-socket)")
-		argOvnNbPort      = pflag.Int("ovn-nb-port", 6641, "")
-		argOvnSbHost      = pflag.String("ovn-sb-host", "0.0.0.0", "The ovn-sb host address.")
-		argOvnSbPort      = pflag.Int("ovn-sb-port", 6642, "")
+		argOvnNbAddr      = pflag.String("ovn-nb-addr", "", "ovn-nb address")
+		argOvnSbAddr      = pflag.String("ovn-sb-addr", "", "ovn-sb address")
 		argOvnTimeout     = pflag.Int("ovn-timeout", 30, "")
 		argKubeConfigFile = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 
@@ -113,11 +107,8 @@ func ParseFlags() (*Configuration, error) {
 	pflag.Parse()
 
 	config := &Configuration{
-		OvnNbSocket:                   *argOvnNbSocket,
-		OvnNbHost:                     *argOvnNbHost,
-		OvnNbPort:                     *argOvnNbPort,
-		OvnSbHost:                     *argOvnSbHost,
-		OvnSbPort:                     *argOvnSbPort,
+		OvnNbAddr:                     *argOvnNbAddr,
+		OvnSbAddr:                     *argOvnSbAddr,
 		OvnTimeout:                    *argOvnTimeout,
 		KubeConfigFile:                *argKubeConfigFile,
 		DefaultLogicalSwitch:          *argDefaultLogicalSwitch,
