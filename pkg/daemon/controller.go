@@ -192,8 +192,7 @@ func (c *Controller) reconcileRouters() error {
 		klog.Errorf("failed to list namespace %v", err)
 		return err
 	}
-	cidrs := make([]string, 0, len(subnets)+1)
-	cidrs = append(cidrs, c.config.ServiceClusterIPRange)
+	cidrs := make([]string, 0, len(subnets))
 	for _, subnet := range subnets {
 		if !subnet.Status.IsReady() || subnet.Spec.UnderlayGateway {
 			continue
@@ -243,14 +242,8 @@ func (c *Controller) reconcileRouters() error {
 		_, cidr, _ := net.ParseCIDR(r)
 		gw := net.ParseIP(gateway)
 		src := net.ParseIP(c.internalIP)
-		if r == c.config.ServiceClusterIPRange {
-			if err = netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: gw}); err != nil {
-				klog.Errorf("failed to add route %v", err)
-			}
-		} else {
-			if err = netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: gw, Src: src}); err != nil {
-				klog.Errorf("failed to add route %v", err)
-			}
+		if err = netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: gw, Src: src}); err != nil {
+			klog.Errorf("failed to add route %v", err)
 		}
 	}
 	return err
