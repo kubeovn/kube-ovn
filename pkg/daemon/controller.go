@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"strings"
 	"time"
 
 	"k8s.io/client-go/kubernetes/scheme"
@@ -49,10 +50,10 @@ type Controller struct {
 
 	recorder record.EventRecorder
 
-	iptable *iptables.IPTables
-	ipset   *ipsets.IPSets
+	iptable map[kubeovnv1.Protocol]*iptables.IPTables
+	ipset   map[kubeovnv1.Protocol]*ipsets.IPSets
 
-	protocol   string
+	protocol kubeovnv1.Protocol
 	internalIP string
 }
 
@@ -99,24 +100,36 @@ func NewController(config *Configuration, podInformerFactory informers.SharedInf
 		klog.Fatalf("failed to get node %s info %v", config.NodeName, err)
 		return nil, err
 	}
-	controller.protocol = util.CheckProtocol(node.Annotations[util.IpAddressAnnotation])
 	controller.internalIP = getNodeInternalIP(node)
 
-	if controller.protocol == kubeovnv1.ProtocolIPv4 {
+	nodeDual, err := util.StringToDualStack(node.Annotations[util.IpAddressAnnotation])
+	if err != nil {
+		klog.Fatalf("failed to trans node %s annotation %s to dual %v", config.NodeName, node.Annotations[util.IpAddressAnnotation], err)
+		return nil, err
+	}
+
+	controller.protocol = util.CheckProtocolDual(nodeDual)
+
+	var iptableDual = make(map[kubeovnv1.Protocol]*iptables.IPTables)
+	var ipsetDual = make(map[kubeovnv1.Protocol]*ipsets.IPSets)
+	if controller.protocol == kubeovnv1.ProtocolIPv4 || controller.protocol == kubeovnv1.ProtocolDual {
 		iptable, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
 		if err != nil {
 			return nil, err
 		}
-		controller.iptable = iptable
-		controller.ipset = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil))
-	} else {
+		iptableDual[kubeovnv1.ProtocolIPv4] = iptable
+		ipsetDual[kubeovnv1.ProtocolIPv4] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil))
+    }
+	if controller.protocol == kubeovnv1.ProtocolIPv6 || controller.protocol == kubeovnv1.ProtocolDual {
 		iptable, err := iptables.NewWithProtocol(iptables.ProtocolIPv6)
 		if err != nil {
 			return nil, err
 		}
-		controller.iptable = iptable
-		controller.ipset = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV6, IPSetPrefix, nil, nil))
+		iptableDual[kubeovnv1.ProtocolIPv6] = iptable
+		ipsetDual[kubeovnv1.ProtocolIPv6] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV6, IPSetPrefix, nil, nil))
 	}
+	controller.iptable = iptableDual
+	controller.ipset = ipsetDual
 
 	subnetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueSubnet,
@@ -192,25 +205,29 @@ func (c *Controller) reconcileRouters() error {
 		klog.Errorf("failed to list namespace %v", err)
 		return err
 	}
-	cidrs := make([]string, 0, len(subnets)+1)
+	cidrs := make([]string, 0, 2*(len(subnets)+1))
 	cidrs = append(cidrs, c.config.ServiceClusterIPRange)
 	for _, subnet := range subnets {
 		if !subnet.Status.IsReady() || subnet.Spec.UnderlayGateway {
 			continue
 		}
-		if _, ipNet, err := net.ParseCIDR(subnet.Spec.CIDRBlock); err != nil {
-			klog.Errorf("%s is not a valid cidr block", subnet.Spec.CIDRBlock)
-		} else {
-			cidrs = append(cidrs, ipNet.String())
-		}
+		for _, cidr := range subnet.Spec.CIDRBlock {
+			if _, ipNet, err := net.ParseCIDR(cidr); err != nil {
+				klog.Errorf("%s is not a valid cidr block", subnet.Spec.CIDRBlock)
+			} else {
+				cidrs = append(cidrs, ipNet.String())
+			}
+        }
 	}
 
+	cidrsDual, _ := util.StringToDualStackList(strings.Join(cidrs, ","))
 	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
 		klog.Errorf("failed to get node %s %v", c.config.NodeName, err)
 		return err
 	}
 	gateway, ok := node.Annotations[util.GatewayAnnotation]
+	gwDual, _ := util.StringToDualStack(gateway)
 	if !ok {
 		klog.Errorf("annotation for node %s ovn.kubernetes.io/gateway not exists", node.Name)
 		return fmt.Errorf("annotation for node ovn.kubernetes.io/gateway not exists")
@@ -221,34 +238,30 @@ func (c *Controller) reconcileRouters() error {
 		return fmt.Errorf("failed to get nic %s", util.NodeNic)
 	}
 
-	var existRoutes []netlink.Route
-	if util.CheckProtocol(gateway) == kubeovnv1.ProtocolIPv4 {
-		existRoutes, err = netlink.RouteList(nic, netlink.FAMILY_V4)
-	} else {
-		existRoutes, err = netlink.RouteList(nic, netlink.FAMILY_V6)
-	}
-	if err != nil {
-		return err
-	}
 
-	toAdd, toDel := routeDiff(existRoutes, cidrs)
-	for _, r := range toDel {
-		_, cidr, _ := net.ParseCIDR(r)
-		if err = netlink.RouteDel(&netlink.Route{Dst: cidr}); err != nil {
-			klog.Errorf("failed to del route %v", err)
-		}
-	}
-
-	for _, r := range toAdd {
-		_, cidr, _ := net.ParseCIDR(r)
-		gw := net.ParseIP(gateway)
-		src := net.ParseIP(c.internalIP)
-		if r == c.config.ServiceClusterIPRange {
-			if err = netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: gw}); err != nil {
-				klog.Errorf("failed to add route %v", err)
-			}
+	for proto, gateway := range gwDual {
+		var existRoutes []netlink.Route
+		if util.CheckProtocol(gateway) == kubeovnv1.ProtocolIPv4 {
+			existRoutes, err = netlink.RouteList(nic, netlink.FAMILY_V4)
 		} else {
-			if err = netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: gw, Src: src}); err != nil {
+			existRoutes, err = netlink.RouteList(nic, netlink.FAMILY_V6)
+		}
+		if err != nil {
+			return err
+		}
+
+		toAdd, toDel := routeDiff(existRoutes, cidrsDual[proto])
+		for _, r := range toDel {
+			_, cidr, _ := net.ParseCIDR(r)
+			if err = netlink.RouteDel(&netlink.Route{Dst: cidr}); err != nil {
+				klog.Errorf("failed to del route %v", err)
+			}
+		}
+
+		for _, r := range toAdd {
+			_, cidr, _ := net.ParseCIDR(r)
+			gw := net.ParseIP(gateway)
+			if err = netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: gw}); err != nil {
 				klog.Errorf("failed to add route %v", err)
 			}
 		}

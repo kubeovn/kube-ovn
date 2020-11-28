@@ -364,10 +364,10 @@ func (c *Controller) handleAddPod(key string) error {
 		}
 
 		pod.Annotations[util.NetworkType] = c.config.NetworkType
-		pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, subnet.Spec.Provider)] = ip
+		pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, subnet.Spec.Provider)] = util.DualStackToString(ip)
 		pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, subnet.Spec.Provider)] = mac
-		pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, subnet.Spec.Provider)] = subnet.Spec.CIDRBlock
-		pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, subnet.Spec.Provider)] = subnet.Spec.Gateway
+		pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, subnet.Spec.Provider)] = util.DualStackToString(subnet.Spec.CIDRBlock)
+		pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, subnet.Spec.Provider)] = util.DualStackToString(subnet.Spec.Gateway)
 		pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, subnet.Spec.Provider)] = subnet.Name
 		pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, subnet.Spec.Provider)] = "true"
 
@@ -393,7 +393,7 @@ func (c *Controller) handleAddPod(key string) error {
 			if pod.Annotations[util.PortSecurityAnnotation] == "true" {
 				portSecurity = true
 			}
-			if err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, subnet.Spec.CIDRBlock, mac, tag, portSecurity); err != nil {
+			if err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), mac, tag, ip, subnet.Spec.CIDRBlock); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
 				return err
 			}
@@ -479,6 +479,11 @@ func (c *Controller) handleUpdatePod(key string) error {
 
 	klog.Infof("update pod %s/%s", namespace, name)
 	podIP := pod.Annotations[util.IpAddressAnnotation]
+	podIPDual, err := util.StringToDualStack(podIP)
+	if err != nil {
+		klog.Errorf("failed to get transfer string to dual %v", err)
+		return err
+	}
 
 	subnet, err := c.getPodDefaultSubnet(pod)
 	if err != nil {
@@ -547,16 +552,24 @@ func (c *Controller) handleUpdatePod(key string) error {
 					klog.Errorf("get node %s failed %v", pod.Spec.NodeName, err)
 					return err
 				}
-				nodeTunlIPAddr, err := getNodeTunlIP(node)
+                nodeTunlIPAddrDual, err := getNodeTunlIP(node)
 				if err != nil {
 					return err
 				}
 
-				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nodeTunlIPAddr.String(), c.config.ClusterRouter); err != nil {
-					klog.Errorf("failed to add static route, %v", err)
-					return err
+			}
+			// node ovn0 protocol must support pod protocol
+			if util.CheckProtocolDual(nodeTunlIPAddrDual) != kubeovnv1.ProtocolDual &&
+				util.CheckProtocolDual(podIPDual) != util.CheckProtocolDual(nodeTunlIPAddrDual) {
+				return fmt.Errorf("node %v don't support pod %v protocol, trying update node", nodeTunlIPAddrDual, podIPDual)
+			}
+
+			for proto, ip := range podIPDual {
+				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, ip, nodeTunlIPAddrDual[proto], c.config.ClusterRouter); err != nil {
+					return errors.Annotate(err, "add static route failed")
 				}
 			}
+
 			if pod.Annotations[util.NorthGatewayAnnotation] != "" {
 				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], vpc.Status.Router); err != nil {
 					klog.Errorf("failed to add static route, %v", err)
@@ -589,16 +602,24 @@ func isStatefulSetPod(pod *v1.Pod) (bool, string) {
 	return false, ""
 }
 
-func getNodeTunlIP(node *v1.Node) (net.IP, error) {
+func getNodeTunlIP(node *v1.Node) (kubeovnv1.DualStack, error) {
 	nodeTunlIP := node.Annotations[util.IpAddressAnnotation]
 	if nodeTunlIP == "" {
 		return nil, fmt.Errorf("node has no tunl ip annotation")
 	}
-	nodeTunlIPAddr := net.ParseIP(nodeTunlIP)
-	if nodeTunlIPAddr == nil {
-		return nil, fmt.Errorf("failed to parse node tunl ip %s", nodeTunlIP)
+
+	ipDual, err := util.StringToDualStack(nodeTunlIP)
+	if err != nil {
+		return nil, err
 	}
-	return nodeTunlIPAddr, nil
+
+	for _, ip := range ipDual {
+		i := net.ParseIP(ip)
+		if i == nil {
+			return nil, fmt.Errorf("failed to parse node tunl ip %s", nodeTunlIP)
+		}
+	}
+	return ipDual, nil
 }
 
 func needAllocateSubnets(pod *v1.Pod, subnets []*kubeovnv1.Subnet) []*kubeovnv1.Subnet {
@@ -679,7 +700,7 @@ func (c *Controller) getPodAttachmentSubnet(pod *v1.Pod) ([]*kubeovnv1.Subnet, e
 	return result, nil
 }
 
-func (c *Controller) acquireAddress(pod *v1.Pod, subnet *kubeovnv1.Subnet) (string, string, error) {
+func (c *Controller) acquireAddress(pod *v1.Pod, subnet *kubeovnv1.Subnet) (kubeovnv1.DualStack, string, error) {
 	key := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
 
 	// Random allocate
@@ -706,7 +727,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, subnet *kubeovnv1.Subnet) (stri
 				return ip, mac, nil
 			}
 		}
-		return "", "", ipam.NoAvailableError
+		return nil, "", ipam.NoAvailableError
 	} else {
 		numIndex := len(strings.Split(pod.Name, "-")) - 1
 		numStr := strings.Split(pod.Name, "-")[numIndex]
@@ -715,7 +736,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, subnet *kubeovnv1.Subnet) (stri
 			return c.ipam.GetStaticAddress(key, ipPool[index], pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, subnet.Spec.Provider)], subnet.Name)
 		}
 	}
-	return "", "", ipam.NoAvailableError
+	return nil, "", ipam.NoAvailableError
 }
 
 func generatePatchPayload(annotations map[string]string, op string) []byte {

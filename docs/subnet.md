@@ -20,7 +20,7 @@ spec:
   excludeIps:
   - 10.10.0.1
   private: true
-  allowSubnets:
+  allowCidrs:
   - 10.16.0.0/16
   - 10.18.0.0/16
   gatewayType: centralized

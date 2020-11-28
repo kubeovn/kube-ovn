@@ -120,8 +120,12 @@ func (v *ValidatingHook) PodCreateHook(ctx context.Context, req admission.Reques
 	if err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
-	parsedExcludeIPs := ovs.ExpandExcludeIPs(excludeIPs, subnet.Spec.CIDRBlock)
-	usedIPs = append(usedIPs, parsedExcludeIPs...)
+
+	for _, cidr := range subnet.Spec.CIDRBlock {
+		parsedExcludeIPs := ovs.ExpandExcludeIPs(excludeIPs, cidr)
+		usedIPs = append(usedIPs, parsedExcludeIPs...)
+	}
+
 	// Check static ips overlap
 	if util.IsStringsOverlap([]string{staticIP}, usedIPs) {
 		return ctrlwebhook.Denied("overlap")
@@ -318,8 +322,10 @@ func (v *ValidatingHook) podControllerCreate(ctx context.Context, staticIPSAnno,
 	if err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
-	parsedExcludeIPs := ovs.ExpandExcludeIPs(excludeIPs, subnet.Spec.CIDRBlock)
-	usedIPs = append(usedIPs, parsedExcludeIPs...)
+	for _, cidr := range subnet.Spec.CIDRBlock {
+		parsedExcludeIPs := ovs.ExpandExcludeIPs(excludeIPs, cidr)
+		usedIPs = append(usedIPs, parsedExcludeIPs...)
+	}
 	// Check static ips overlap
 	if util.IsStringsOverlap(staticIPs, usedIPs) {
 		return ctrlwebhook.Denied("overlap")
@@ -383,11 +389,14 @@ func (v *ValidatingHook) podControllerUpdate(ctx context.Context, oldStaticIPSAn
 	if err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
-	parsedExcludeIPs := ovs.ExpandExcludeIPs(excludeIPs, subnet.Spec.CIDRBlock)
-	// Check static ips overlap
-	if util.IsStringsOverlap(toAdd, parsedExcludeIPs) {
-		return ctrlwebhook.Denied("overlap")
+	for _, cidr := range subnet.Spec.CIDRBlock {
+		parsedExcludeIPs := ovs.ExpandExcludeIPs(excludeIPs, cidr)
+		// Check static ips overlap
+		if util.IsStringsOverlap(toAdd, parsedExcludeIPs) {
+			return ctrlwebhook.Denied("overlap")
+		}
 	}
+
 	newExcludeIPs := []string{}
 	for _, excludeIP := range excludeIPs {
 		found := false

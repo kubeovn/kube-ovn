@@ -2,6 +2,8 @@ package ipam
 
 import (
 	"errors"
+	"fmt"
+	v1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"net"
 	"sync"
 
@@ -17,8 +19,8 @@ var (
 )
 
 type IPAM struct {
-	mutex   sync.RWMutex
-	Subnets map[string]*Subnet
+	mutex      sync.RWMutex
+	Subnets    map[string]*Subnet
 }
 
 type SubnetAddress struct {
@@ -34,27 +36,31 @@ func NewIPAM() *IPAM {
 	}
 }
 
-func (ipam *IPAM) GetRandomAddress(podName string, subnetName string) (string, string, error) {
+func (ipam *IPAM) GetRandomAddress(podName string, subnetName string) (v1.DualStack, string, error) {
 	ipam.mutex.RLock()
 	defer ipam.mutex.RUnlock()
 	if subnet, ok := ipam.Subnets[subnetName]; !ok {
-		return "", "", NoAvailableError
+		return nil, "", NoAvailableError
 	} else {
 		ip, mac, err := subnet.GetRandomAddress(podName)
 		klog.Infof("allocate %s %s for %s", ip, mac, podName)
-		return string(ip), mac, err
+		return ip, mac, err
 	}
 }
 
-func (ipam *IPAM) GetStaticAddress(podName string, ip, mac string, subnetName string) (string, string, error) {
+func (ipam *IPAM) GetStaticAddress(podName, ip, mac, subnetName string) (v1.DualStack, string, error) {
 	ipam.mutex.RLock()
 	defer ipam.mutex.RUnlock()
-	if subnet, ok := ipam.Subnets[subnetName]; !ok {
-		return "", "", NoAvailableError
+	if subnet, ok := ipam.Subnets[subnetName]; !ok  {
+		return nil, "", NoAvailableError
 	} else {
-		ip, mac, err := subnet.GetStaticAddress(podName, IP(ip), mac, false)
+		ipDual, _ := util.StringToDualStack(ip)
+		ip, mac, err := subnet.GetStaticAddress(podName, ipDual, mac, false)
+		if err != nil {
+			return nil, "", err
+		}
 		klog.Infof("allocate %s %s for %s", ip, mac, podName)
-		return string(ip), mac, err
+		return ip, mac, err
 	}
 }
 
@@ -63,43 +69,35 @@ func (ipam *IPAM) ReleaseAddressByPod(podName string) {
 	defer ipam.mutex.RUnlock()
 	for _, subnet := range ipam.Subnets {
 		ip, mac := subnet.ReleaseAddress(podName)
-		if ip != "" {
+		if ip != nil {
 			klog.Infof("release %s %s for %s", ip, mac, podName)
 		}
 	}
 	return
 }
 
-func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr string, excludeIps []string) error {
+func (ipam *IPAM) AddOrUpdateSubnet(name string, cidrBlock v1.DualStack, excludeIps v1.DualStackList) error {
 	ipam.mutex.Lock()
 	defer ipam.mutex.Unlock()
 
-	_, _, err := net.ParseCIDR(cidrStr)
-	if err != nil {
-		return InvalidCIDRError
-	}
-
-	if subnet, ok := ipam.Subnets[name]; ok {
-		subnet.ReservedIPList = convertExcludeIps(excludeIps)
-		firstIP, _ := util.FirstSubnetIP(cidrStr)
-		lastIP, _ := util.LastIP(cidrStr)
-		subnet.FreeIPList = IPRangeList{&IPRange{Start: IP(firstIP), End: IP(lastIP)}}
-		subnet.joinFreeWithReserve()
-		for podName, ip := range subnet.PodToIP {
-			mac := subnet.PodToMac[podName]
-			if _, _, err := subnet.GetStaticAddress(podName, ip, mac, true); err != nil {
-				klog.Errorf("%s address not in subnet %s new cidr %s", podName, name, cidrStr)
-			}
-		}
-		return nil
-	}
-
-	subnet, err := NewSubnet(name, cidrStr, excludeIps)
+	subnetNew, err := NewSubnet(name, cidrBlock, excludeIps)
 	if err != nil {
 		return err
 	}
-	klog.Infof("adding new subnet %s", name)
-	ipam.Subnets[name] = subnet
+
+	if subnet, ok := ipam.Subnets[name]; ok {
+		// subnet update, populate pod ip&mac
+		for podName, ip := range subnet.PodToIP {
+			mac := subnet.PodToMac[podName]
+			if _, _, err := subnetNew.GetStaticAddress(podName, ip, mac, true); err != nil {
+				klog.Errorf("%s address not in subnet %s new cidr %s", podName, name, cidrBlock)
+				return fmt.Errorf("update subnet fail, ip %s not in %s new cidr %s", podName, name, cidrBlock)
+			}
+		}
+	}
+
+	klog.Infof("adding/updating subnet %s", name)
+	ipam.Subnets[name] = subnetNew
 	return nil
 }
 
@@ -115,8 +113,10 @@ func (ipam *IPAM) GetPodAddress(podName string) []*SubnetAddress {
 	defer ipam.mutex.RUnlock()
 	addresses := []*SubnetAddress{}
 	for _, subnet := range ipam.Subnets {
-		if ip, mac, exist := subnet.GetPodAddress(podName); exist {
-			addresses = append(addresses, &SubnetAddress{Subnet: subnet, Ip: string(ip), Mac: mac})
+		if ipDual, mac, exist := subnet.GetPodAddress(podName); exist {
+			for _, ip := range ipDual {
+			    addresses = append(addresses, &SubnetAddress{Subnet: subnet, Ip: string(ip), Mac: mac})
+			}
 		}
 	}
 	return addresses

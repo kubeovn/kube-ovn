@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"context"
+	v1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"time"
 
 	clientset "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
@@ -56,7 +57,7 @@ func NewValidatingHook(c cache.Cache, opt *WebhookOptions) (*ValidatingHook, err
 
 	v := &ValidatingHook{
 		kubeclientset: kubeClient,
-		ovnClient:     ovs.NewClient(opt.OvnNbHost, opt.OvnNbPort, opt.OvnNbTimeout, "", 0, "", "", "", "", "", "", ""),
+		ovnClient:     ovs.NewClient(opt.OvnNbHost, opt.OvnNbPort, opt.OvnNbTimeout, "", 0, "", "", "", "", v1.DualStack{}),
 		opt:           opt,
 		cache:         c,
 	}

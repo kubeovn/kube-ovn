@@ -3,6 +3,7 @@ package request
 import (
 	"context"
 	"fmt"
+	v1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"net"
 	"net/http"
 
@@ -27,13 +28,13 @@ type CniRequest struct {
 
 // CniResponse is the cniserver response format
 type CniResponse struct {
-	Protocol   string `json:"protocol"`
-	IpAddress  string `json:"address"`
-	MacAddress string `json:"mac_address"`
-	CIDR       string `json:"cidr"`
-	Gateway    string `json:"gateway"`
-	Mtu        int    `json:"mtu"`
-	Err        string `json:"error"`
+	Protocol   v1.Protocol  `json:"protocol"`
+	IpAddress  v1.DualStack `json:"address"`
+	MacAddress string       `json:"mac_address"`
+	CIDR       v1.DualStack `json:"cidr"`
+	Gateway    v1.DualStack `json:"gateway"`
+	Mtu        int          `json:"mtu"`
+	Err        string       `json:"error"`
 }
 
 // NewCniServerClient return a new cniserver client

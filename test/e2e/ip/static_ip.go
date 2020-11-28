@@ -2,6 +2,7 @@ package ip
 
 import (
 	"fmt"
+	"github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/alauda/kube-ovn/test/e2e/framework"
 	. "github.com/onsi/ginkgo"
@@ -27,8 +28,9 @@ var _ = Describe("[IP Allocation]", func() {
 					Name:      name,
 					Namespace: namespace,
 					Annotations: map[string]string{
-						util.IpAddressAnnotation:  "12.10.0.10",
-						util.MacAddressAnnotation: "00:00:00:53:6B:B6",
+						util.IpAddressAnnotation:     "12.10.0.10",
+						util.MacAddressAnnotation:    "00:00:00:53:6B:B6",
+						util.LogicalSwitchAnnotation: "static-ip",
 					},
 				},
 				Spec: corev1.PodSpec{
@@ -58,7 +60,7 @@ var _ = Describe("[IP Allocation]", func() {
 			time.Sleep(1 * time.Second)
 			ip, err := f.OvnClientSet.KubeovnV1().IPs().Get(fmt.Sprintf("%s.%s", name, namespace), metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(ip.Spec.IPAddress).To(Equal("12.10.0.10"))
+			Expect(ip.Spec.IPAddress[v1.ProtocolIPv4]).To(Equal("12.10.0.10"))
 			Expect(ip.Spec.MacAddress).To(Equal("00:00:00:53:6B:B6"))
 		})
 
@@ -78,7 +80,8 @@ var _ = Describe("[IP Allocation]", func() {
 						ObjectMeta: metav1.ObjectMeta{
 							Labels: map[string]string{"apps": name},
 							Annotations: map[string]string{
-								util.IpPoolAnnotation: "12.10.0.20, 12.10.0.21, 12.10.0.22",
+								util.IpPoolAnnotation:        "12.10.0.20, 12.10.0.21, 12.10.0.22",
+								util.LogicalSwitchAnnotation: "static-ip",
 							},
 						},
 						Spec: corev1.PodSpec{
@@ -150,7 +153,8 @@ var _ = Describe("[IP Allocation]", func() {
 						ObjectMeta: metav1.ObjectMeta{
 							Labels: map[string]string{"apps": name},
 							Annotations: map[string]string{
-								util.IpPoolAnnotation: "12.10.0.31, 12.10.0.32, 12.10.0.30",
+								util.IpPoolAnnotation:        "12.10.0.31, 12.10.0.32, 12.10.0.30",
+								util.LogicalSwitchAnnotation: "static-ip",
 							},
 						},
 						Spec: corev1.PodSpec{

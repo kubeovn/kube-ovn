@@ -110,13 +110,18 @@ func (c Client) DeleteICLogicalRouterPort(az string) error {
 }
 
 // CreatePort create logical switch port in ovn
-func (c Client) CreatePort(ls, port, ip, cidr, mac, tag string, portSecurity bool) error {
+func (c Client) CreatePort(ls, port, mac, tag string, ip, cidr kubeovnv1.DualStack) error {
+	ipStr := strings.ReplaceAll(util.DualStackToString(ip), ",", " ")
 	ovnCommand := []string{MayExist, "lsp-add", ls, port, "--",
-		"lsp-set-addresses", port, fmt.Sprintf("%s %s", mac, ip)}
+		"lsp-set-addresses", port, fmt.Sprintf("%s %s", mac, ipStr)}
 
+    var ipCidr []string
+    for p, i := range ip {
+        ipCidr = append(ipCidr, fmt.Sprintf("%s/%s", i, strings.Split(cidr[p], "/")[1]))
+    }
 	if portSecurity {
 		ovnCommand = append(ovnCommand,
-			"--", "lsp-set-port-security", port, fmt.Sprintf("%s %s/%s", mac, ip, strings.Split(cidr, "/")[1]))
+			"--", "lsp-set-port-security", port, fmt.Sprintf("%s %s", mac, strings.Join(ipCidr, " ")))
 	}
 
 	if tag != "" && tag != "0" {
@@ -131,23 +136,26 @@ func (c Client) CreatePort(ls, port, ip, cidr, mac, tag string, portSecurity boo
 	return nil
 }
 
-func (c Client) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway string, excludeIps []string) error {
+func (c Client) SetLogicalSwitchConfig(ls string, protocol kubeovnv1.Protocol, subnet, gateway kubeovnv1.DualStack, excludeIps kubeovnv1.DualStackList) error {
 	var err error
-	mask := strings.Split(subnet, "/")[1]
-	switch protocol {
-	case kubeovnv1.ProtocolIPv4:
+	if protocol == kubeovnv1.ProtocolIPv4 || protocol == kubeovnv1.ProtocolDual {
+        "set", "logical_switch", ls,
+        fmt.Sprintf("other_config:subnet=%s", subnet[kubeovnv1.ProtocolIPv4]), "--",
+        "set", "logical_switch", ls,
+        fmt.Sprintf("other_config:gateway=%s", strings.ReplaceAll(util.DualStackToString(gateway), ",", " ")), "--",
+        "set", "logical_switch", ls,
+        fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps[kubeovnv1.ProtocolIPv4], " ")), "--",
+        "set", "logical_router_port",
+        fmt.Sprintf("%s-%s", c.ClusterRouter, ls), fmt.Sprintf("networks=%s", util.GenerateRouterGW(gateway, subnet)))
+	}
+	if protocol == kubeovnv1.ProtocolIPv6 || protocol == kubeovnv1.ProtocolDual {
 		_, err = c.ovnNbCommand(MayExist, "ls-add", ls, "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", subnet), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")), "--",
-			"set", "logical_router_port", fmt.Sprintf("%s-%s", lr, ls), fmt.Sprintf("networks=%s/%s", gateway, mask))
-	case kubeovnv1.ProtocolIPv6:
-		gateway := strings.ReplaceAll(gateway, ":", "\\:")
-		_, err = c.ovnNbCommand(MayExist, "ls-add", ls, "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:ipv6_prefix=%s", strings.Split(subnet, "/")[0]), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")), "--",
-			"set", "logical_router_port", fmt.Sprintf("%s-%s", lr, ls), fmt.Sprintf("networks=%s/%s", gateway, mask))
+        "set", "logical_switch", ls,
+        fmt.Sprintf("other_config:ipv6_prefix=%s", strings.Split(subnet[kubeovnv1.ProtocolIPv6], "/")[0]), "--",
+        "set", "logical_switch", ls,
+        fmt.Sprintf("other_config:gateway=%s", strings.ReplaceAll(strings.ReplaceAll(util.DualStackToString(gateway), ",", " "), ":", "\\:")), "--",
+        "set", "logical_router_port",
+        fmt.Sprintf("%s-%s", c.ClusterRouter, ls), fmt.Sprintf("networks=%s", strings.ReplaceAll(util.GenerateRouterGW(gateway, subnet), ":", "\\:")))
 	}
 
 	if err != nil {
@@ -158,19 +166,23 @@ func (c Client) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway string,
 }
 
 // CreateLogicalSwitch create logical switch in ovn, connect it to router and apply tcp/udp lb rules
-func (c Client) CreateLogicalSwitch(ls, lr, protocol, subnet, gateway string, excludeIps []string, underlayGateway, defaultVpc bool) error {
+func (c Client) CreateLogicalSwitch(ls, lr string, protocol kubeovnv1.Protocol, subnet, gateway kubeovnv1.DualStack, excludeIps kubeovnv1.DualStackList, underlayGateway, defaultVpc bool) error {
 	var err error
-	switch protocol {
-	case kubeovnv1.ProtocolIPv4:
+	if protocol == kubeovnv1.ProtocolIPv4 || protocol == kubeovnv1.ProtocolDual {
 		_, err = c.ovnNbCommand(MayExist, "ls-add", ls, "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", subnet), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")))
-	case kubeovnv1.ProtocolIPv6:
+			"set", "logical_switch", ls,
+			fmt.Sprintf("other_config:subnet=%s", subnet[kubeovnv1.ProtocolIPv4]), "--",
+			"set", "logical_switch", ls,
+			fmt.Sprintf("other_config:gateway=%s", strings.ReplaceAll(util.DualStackToString(gateway), ",", " ")), "--",
+			"set", "logical_switch", ls,
+			fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps[kubeovnv1.ProtocolIPv4], " ")))
+	}
+	if protocol == kubeovnv1.ProtocolIPv6 || protocol == kubeovnv1.ProtocolDual {
 		_, err = c.ovnNbCommand(MayExist, "ls-add", ls, "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:ipv6_prefix=%s", strings.Split(subnet, "/")[0]), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")))
+			"set", "logical_switch", ls,
+			fmt.Sprintf("other_config:ipv6_prefix=%s", strings.Split(subnet[kubeovnv1.ProtocolIPv6], "/")[0]), "--",
+			"set", "logical_switch", ls,
+			fmt.Sprintf("other_config:gateway=%s", strings.ReplaceAll(util.DualStackToString(gateway), ",", " ")))
 	}
 
 	if err != nil {
@@ -179,10 +191,14 @@ func (c Client) CreateLogicalSwitch(ls, lr, protocol, subnet, gateway string, ex
 	}
 
 	mac := util.GenerateMac()
-	mask := strings.Split(subnet, "/")[1]
+	for proto, cidr := range subnet {
+		mask := strings.Split(cidr, "/")[1]
+		gatewayList = append(gatewayList, gateway[proto]+"/"+mask)
+	}
 	klog.Infof("create route port for switch %s", ls)
+
 	if !underlayGateway {
-		if err := c.createRouterPort(ls, lr, gateway+"/"+mask, mac); err != nil {
+		if err := c.createRouterPort(ls, lr, gatewayList, mac); err != nil {
 			klog.Errorf("failed to connect switch %s to router, %v", ls, err)
 			return err
 		}
@@ -373,7 +389,7 @@ func (c Client) RemoveRouterPort(ls, lr string) error {
 	return nil
 }
 
-func (c Client) createRouterPort(ls, lr, ip, mac string) error {
+func (c Client) createRouterPort(ls, lr string, ip []string, mac string) error {
 	klog.Infof("add %s to %s with ip: %s, mac :%s", ls, lr, ip, mac)
 	lsTolr := fmt.Sprintf("%s-%s", ls, lr)
 	lrTols := fmt.Sprintf("%s-%s", lr, ls)
@@ -386,7 +402,7 @@ func (c Client) createRouterPort(ls, lr, ip, mac string) error {
 		return err
 	}
 
-	if _, err := c.ovnNbCommand(MayExist, "lrp-add", lr, lrTols, mac, ip); err != nil {
+	if _, err := c.ovnNbCommand(append([]string{MayExist, "lrp-add", lr, lrTols, mac}, ip...)...); err != nil {
 		klog.Errorf("failed to create router port %s %v", lrTols, err)
 		return err
 	}
@@ -599,38 +615,48 @@ func (c Client) ResetLogicalSwitchAcl(ls string) error {
 }
 
 // SetPrivateLogicalSwitch will drop all ingress traffic except allow subnets
-func (c Client) SetPrivateLogicalSwitch(ls, protocol, cidr string, allow []string) error {
-	delArgs := []string{"acl-del", ls}
-	allowArgs := []string{}
-	var dropArgs []string
-	if protocol == kubeovnv1.ProtocolIPv4 {
-		dropArgs = []string{"--", "--log", fmt.Sprintf("--name=%s", ls), fmt.Sprintf("--severity=%s", "warning"), "acl-add", ls, "to-lport", util.DefaultDropPriority, "ip", "drop"}
-		allowArgs = append(allowArgs, "--", "acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip4.src==%s", c.NodeSwitchCIDR), "allow-related")
-		allowArgs = append(allowArgs, "--", "acl-add", ls, "to-lport", util.SubnetAllowPriority, fmt.Sprintf(`ip4.src==%s && ip4.dst==%s`, cidr, cidr), "allow-related")
-	} else {
-		dropArgs = []string{"--", "--log", fmt.Sprintf("--name=%s", ls), fmt.Sprintf("--severity=%s", "warning"), "acl-add", ls, "to-lport", util.DefaultDropPriority, "ip", "drop"}
-		allowArgs = append(allowArgs, "--", "acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip6.src==%s", c.NodeSwitchCIDR), "allow-related")
-		allowArgs = append(allowArgs, "--", "acl-add", ls, "to-lport", util.SubnetAllowPriority, fmt.Sprintf(`ip6.src==%s && ip6.dst==%s`, cidr, cidr), "allow-related")
+func (c Client) SetPrivateLogicalSwitch(ls string, cidrBlock kubeovnv1.DualStack, allow []string) error {
+	var err error
+	if err = c.CleanLogicalSwitchAcl(ls); err != nil {
+		return err
 	}
-	ovnArgs := append(delArgs, dropArgs...)
 
-	for _, subnet := range allow {
-		if strings.TrimSpace(subnet) != "" {
-			var match string
-			switch protocol {
-			case kubeovnv1.ProtocolIPv4:
-				match = fmt.Sprintf("(ip4.src==%s && ip4.dst==%s) || (ip4.src==%s && ip4.dst==%s)", strings.TrimSpace(subnet), cidr, cidr, strings.TrimSpace(subnet))
-			case kubeovnv1.ProtocolIPv6:
-				match = fmt.Sprintf("(ip6.src==%s && ip6.dst==%s) || (ip6.src==%s && ip6.dst==%s)", strings.TrimSpace(subnet), cidr, cidr, strings.TrimSpace(subnet))
+	for protocol, cidr := range cidrBlock {
+		allowArgs := []string{}
+		var dropArgs []string
+		if protocol == kubeovnv1.ProtocolIPv4 {
+			dropArgs = []string{"--", "acl-add", ls, "to-lport", util.DefaultDropPriority, fmt.Sprintf(`ip4.src!=%s || ip4.dst!=%s`, cidr, cidr), "drop"}
+			allowArgs = append(allowArgs, "--", "acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip4.src==%s", c.NodeSwitchCIDR[protocol]), "allow-related")
+		} else {
+			dropArgs = []string{"--", "acl-add", ls, "to-lport", util.DefaultDropPriority, fmt.Sprintf(`ip6.src!=%s || ip6.dst!=%s`, cidr, cidr), "drop"}
+			allowArgs = append(allowArgs, "--", "acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip6.src==%s", c.NodeSwitchCIDR[protocol]), "allow-related")
+		}
+
+		for _, subnet := range allow {
+			if strings.TrimSpace(subnet) != "" {
+				if protocol != util.CheckProtocol(subnet) {
+					continue
+				}
+
+				var match string
+				switch protocol {
+				case kubeovnv1.ProtocolIPv4:
+					match = fmt.Sprintf("ip4.src==%s || ip4.dst==%s", strings.TrimSpace(subnet), strings.TrimSpace(subnet))
+				case kubeovnv1.ProtocolIPv6:
+					match = fmt.Sprintf("ip6.src==%s || ip6.dst==%s", strings.TrimSpace(subnet), strings.TrimSpace(subnet))
+				}
+
+				allowArgs = append(allowArgs, "--", "acl-add", ls, "to-lport", util.SubnetAllowPriority, match, "allow-related")
 			}
-
-			allowArgs = append(allowArgs, "--", "acl-add", ls, "to-lport", util.SubnetAllowPriority, match, "allow-related")
+		}
+		ovnArgs := append(dropArgs, allowArgs...)
+		if _, err = c.ovnNbCommand(ovnArgs...); err != nil {
+			return err
+		}
+		continue
 		}
 	}
-	ovnArgs = append(ovnArgs, allowArgs...)
-
-	_, err := c.ovnNbCommand(ovnArgs...)
-	return err
+    return nil
 }
 
 func (c Client) GetLogicalSwitchPortAddress(port string) ([]string, error) {
@@ -644,15 +670,13 @@ func (c Client) GetLogicalSwitchPortAddress(port string) ([]string, error) {
 		return nil, nil
 	}
 	output = strings.Trim(output, `[]"`)
-	if len(strings.Split(output, " ")) != 2 {
+	if len(strings.Split(output, " ")) > 3 {
 		return nil, nil
 	}
 
 	// currently user may only have one fixed address
 	// ["0a:00:00:00:00:0c 10.16.0.13"]
-	mac := strings.Split(output, " ")[0]
-	ip := strings.Split(output, " ")[1]
-	return []string{mac, ip}, nil
+	return strings.Split(output, " "), nil
 }
 
 func (c Client) GetLogicalSwitchPortDynamicAddress(port string) ([]string, error) {
@@ -667,14 +691,12 @@ func (c Client) GetLogicalSwitchPortDynamicAddress(port string) ([]string, error
 	}
 	output = strings.Trim(output, `"`)
 	// "0a:00:00:00:00:02"
-	if len(strings.Split(output, " ")) != 2 {
+	if len(strings.Split(output, " ")) > 3 {
 		klog.Error("Subnet address space has been exhausted")
 		return nil, ErrNoAddr
 	}
 	// "0a:00:00:00:00:02 100.64.0.3"
-	mac := strings.Split(output, " ")[0]
-	ip := strings.Split(output, " ")[1]
-	return []string{mac, ip}, nil
+	return strings.Split(output, " "), nil
 }
 
 // GetPortAddr return port [mac, ip]
@@ -773,7 +795,7 @@ func (c Client) DeleteAddressSet(asName string) error {
 	return err
 }
 
-func (c Client) CreateIngressACL(npName, pgName, asIngressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort) error {
+func (c Client) CreateIngressACL(npName, pgName, asIngressName, asExceptName, protocol kubeovnv1.Protocol, npp []netv1.NetworkPolicyPort) error {
 	ipSuffix := "ip4"
 	if protocol == kubeovnv1.ProtocolIPv6 {
 		ipSuffix = "ip6"
@@ -798,7 +820,7 @@ func (c Client) CreateIngressACL(npName, pgName, asIngressName, asExceptName, pr
 	return err
 }
 
-func (c Client) CreateEgressACL(npName, pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort) error {
+func (c Client) CreateEgressACL(npName, pgName, asEgressName, asExceptName, protocol kubeovnv1.Protocol, npp []netv1.NetworkPolicyPort) error {
 	ipSuffix := "ip4"
 	if protocol == kubeovnv1.ProtocolIPv6 {
 		ipSuffix = "ip6"

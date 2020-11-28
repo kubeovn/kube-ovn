@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"fmt"
+	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/util"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
@@ -12,7 +13,8 @@ import (
 
 // InitNodeGateway init ovn0
 func InitNodeGateway(config *Configuration) error {
-	var portName, ip, cidr, macAddr, gw, ipAddr string
+	var portName, ip, cidr, macAddr, gw string
+	var ipDual, cidrDual, gwDual kubeovnv1.DualStack
 	for {
 		nodeName := config.NodeName
 		node, err := config.KubeClient.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{})
@@ -35,7 +37,12 @@ func InitNodeGateway(config *Configuration) error {
 			cidr = node.Annotations[util.CidrAnnotation]
 			portName = node.Annotations[util.PortNameAnnotation]
 			gw = node.Annotations[util.GatewayAnnotation]
-			ipAddr = fmt.Sprintf("%s/%s", ip, strings.Split(cidr, "/")[1])
+			ipDual, _ = util.StringToDualStack(ip)
+			cidrDual, _ = util.StringToDualStack(cidr)
+			gwDual, _ = util.StringToDualStack(gw)
+			for p, _ := range ipDual {
+				ipDual[p] = ipDual[p] + "/" + strings.Split(cidrDual[p], "/")[1]
+			}
 			break
 		}
 	}
@@ -43,7 +50,7 @@ func InitNodeGateway(config *Configuration) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse mac %s %v", mac, err)
 	}
-	return configureNodeNic(portName, ipAddr, gw, mac, config.MTU)
+	return configureNodeNic(portName, ipDual, gwDual, mac, config.MTU)
 }
 
 func InitMirror(config *Configuration) error {

@@ -198,29 +198,45 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	var ip, mac string
-	portName := fmt.Sprintf("node-%s", key)
 	if node.Annotations[util.AllocatedAnnotation] == "true" {
-		return nil
-	} else {
-		ip, mac, err = c.ipam.GetRandomAddress(portName, c.config.NodeSwitch)
-		if err != nil {
-			return err
-		}
+		nodeIpDual, _ := util.StringToDualStack(node.Annotations[util.IpAddressAnnotation])
+		if util.CheckProtocolDual(nodeIpDual) == util.CheckProtocolDual(subnet.Spec.CIDRBlock) {
+			return nil
 	}
+
+	portName := fmt.Sprintf("node-%s", key)
+	var (
+        ipDual	kubeovnv1.DualStack
+		mac	    string
+	)
+
+	if node.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, subnet.Spec.Provider)] == "" &&
+		node.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, subnet.Spec.Provider)] == "" {
+		// Random allocate
+		ipDual, mac, err = c.ipam.GetRandomAddress(portName, subnet.Name)
+	} else {
+		// Static allocate
+		ipDual, mac, err = c.ipam.GetStaticAddress(portName, node.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, subnet.Spec.Provider)],
+			node.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, subnet.Spec.Provider)], subnet.Name)
+	}
+	if err != nil {
+		return err
+	}
+
 
 	tag, err := c.getSubnetVlanTag(subnet)
 	if err != nil {
 		return err
 	}
 
-	if err := c.ovnClient.CreatePort(c.config.NodeSwitch, portName, ip, subnet.Spec.CIDRBlock, mac, tag, false); err != nil {
+	if err := c.ovnClient.CreatePort(c.config.NodeSwitch, portName, mac, tag, ipDual, subnet.Spec.CIDRBlock); err != nil {
 		return err
 	}
 
 	nodeAddr := getNodeInternalIP(node)
-	if util.CheckProtocol(nodeAddr) == util.CheckProtocol(ip) {
-		err = c.ovnClient.AddStaticRoute("", nodeAddr, strings.Split(ip, "/")[0], c.config.ClusterRouter)
+	if ipDual[util.CheckProtocol(nodeAddr)] != "" {
+		err = c.ovnClient.AddStaticRoute("", nodeAddr,
+			strings.Split(ipDual[util.CheckProtocol(nodeAddr)], "/")[0], c.config.ClusterRouter)
 		if err != nil {
 			klog.Errorf("failed to add static router from node to ovn0 %v", err)
 			return err
@@ -237,10 +253,10 @@ func (c *Controller) handleAddNode(key string) error {
 	if len(node.Annotations) == 0 {
 		op = "add"
 	}
-	node.Annotations[util.IpAddressAnnotation] = ip
+	node.Annotations[util.IpAddressAnnotation] = util.DualStackToString(ipDual)
 	node.Annotations[util.MacAddressAnnotation] = mac
-	node.Annotations[util.CidrAnnotation] = subnet.Spec.CIDRBlock
-	node.Annotations[util.GatewayAnnotation] = subnet.Spec.Gateway
+	node.Annotations[util.CidrAnnotation] = util.DualStackToString(subnet.Spec.CIDRBlock)
+	node.Annotations[util.GatewayAnnotation] = util.DualStackToString(subnet.Spec.Gateway)
 	node.Annotations[util.LogicalSwitchAnnotation] = c.config.NodeSwitch
 	node.Annotations[util.AllocatedAnnotation] = "true"
 	node.Annotations[util.PortNameAnnotation] = fmt.Sprintf("node-%s", key)
@@ -267,7 +283,7 @@ func (c *Controller) handleAddNode(key string) error {
 					PodName:       key,
 					Subnet:        c.config.NodeSwitch,
 					NodeName:      key,
-					IPAddress:     ip,
+					IPAddress:     ipDual,
 					MacAddress:    mac,
 					AttachIPs:     []string{},
 					AttachMacs:    []string{},
@@ -275,12 +291,12 @@ func (c *Controller) handleAddNode(key string) error {
 				},
 			})
 			if err != nil {
-				errMsg := fmt.Errorf("failed to create ip crd for %s, %v", ip, err)
+				errMsg := fmt.Errorf("failed to create ip crd for %s, %v", ipDual, err)
 				klog.Error(errMsg)
 				return errMsg
 			}
 		} else {
-			errMsg := fmt.Errorf("failed to get ip crd for %s, %v", ip, err)
+			errMsg := fmt.Errorf("failed to get ip crd for %s, %v", ipDual, err)
 			klog.Error(errMsg)
 			return errMsg
 		}
@@ -296,12 +312,12 @@ func (c *Controller) handleAddNode(key string) error {
 		ipCr.Spec.Namespace = ""
 		ipCr.Spec.Subnet = c.config.NodeSwitch
 		ipCr.Spec.NodeName = key
-		ipCr.Spec.IPAddress = ip
+		ipCr.Spec.IPAddress = ipDual
 		ipCr.Spec.MacAddress = mac
 		ipCr.Spec.ContainerID = ""
 		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(ipCr)
 		if err != nil {
-			errMsg := fmt.Errorf("failed to create ip crd for %s, %v", ip, err)
+			errMsg := fmt.Errorf("failed to create ip crd for %s, %v", ipDual, err)
 			klog.Error(errMsg)
 			return errMsg
 		}
@@ -366,6 +382,16 @@ func (c *Controller) handleUpdateNode(key string) error {
 				}
 			}
 		}
+	}
+
+	subnet, err := c.subnetsLister.Get(c.config.NodeSwitch)
+	if err != nil {
+		klog.Errorf("failed to get node subnet %v", err)
+		return err
+	}
+	nodeProto, _ := util.StringToDualStack(node.Annotations[util.IpAddressAnnotation])
+	if util.CheckProtocolDual(nodeProto) != subnet.Spec.Protocol {
+		c.addNodeQueue.Add(key)
 	}
 	return nil
 }

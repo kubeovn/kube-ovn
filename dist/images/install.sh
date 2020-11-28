@@ -229,9 +229,12 @@ spec:
       served: true
       storage: true
       additionalPrinterColumns:
-      - name: IP
+      - name: IPv4
         type: string
-        jsonPath: .spec.ipAddress
+        jsonPath: .spec.ipAddress.IPv4
+      - name: IPv6
+        type: string
+        jsonPath: .spec.ipAddress.IPv6
       - name: Mac
         type: string
         jsonPath: .spec.macAddress
@@ -304,9 +307,12 @@ spec:
       - name: Protocol
         type: string
         jsonPath: .spec.protocol
-      - name: CIDR
+      - name: CIDRv4
         type: string
-        jsonPath: .spec.cidrBlock
+        jsonPath: .spec.cidrBlock.IPv4
+      - name: CIDRv6
+        type: string
+        jsonPath: .spec.cidrBlock.IPv6
       - name: Private
         type: boolean
         jsonPath: .spec.private

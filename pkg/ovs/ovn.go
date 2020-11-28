@@ -3,6 +3,7 @@ package ovs
 import (
 	"errors"
 	"fmt"
+	v1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
 var (
@@ -22,7 +23,7 @@ type Client struct {
 	ClusterTcpSessionLoadBalancer string
 	ClusterUdpSessionLoadBalancer string
 	NodeSwitch                    string
-	NodeSwitchCIDR                string
+	NodeSwitchCIDR         v1.DualStack
 }
 
 const (
@@ -37,7 +38,7 @@ const (
 )
 
 // NewClient init an ovn client
-func NewClient(ovnNbHost string, ovnNbPort int, ovnNbTimeout int, ovnSbHost string, ovnSbPort int, clusterRouter, clusterTcpLoadBalancer, clusterUdpLoadBalancer, clusterTcpSessionLoadBalancer, clusterUdpSessionLoadBalancer, nodeSwitch, nodeSwitchCIDR string) *Client {
+func NewClient(ovnNbHost string, ovnNbPort int, ovnNbTimeout int, ovnSbHost string, ovnSbPort int, clusterRouter, clusterTcpLoadBalancer, clusterUdpLoadBalancer, nodeSwitch string, nodeSwitchCIDR v1.DualStack) *Client {
 	return &Client{
 		OvnNbAddress:                  fmt.Sprintf("tcp:%s:%d", ovnNbHost, ovnNbPort),
 		OvnSbAddress:                  fmt.Sprintf("tcp:%s:%d", ovnSbHost, ovnSbPort),

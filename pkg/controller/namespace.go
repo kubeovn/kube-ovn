@@ -3,7 +3,6 @@ package controller
 import (
 	"fmt"
 	"reflect"
-	"strings"
 
 	"github.com/alauda/kube-ovn/pkg/util"
 	v1 "k8s.io/api/core/v1"
@@ -171,15 +170,15 @@ func (c *Controller) handleAddNamespace(key string) error {
 		namespace.Annotations = map[string]string{}
 	} else {
 		if namespace.Annotations[util.LogicalSwitchAnnotation] == ls &&
-			namespace.Annotations[util.CidrAnnotation] == cidr &&
-			namespace.Annotations[util.ExcludeIpsAnnotation] == strings.Join(excludeIps, ",") {
+			namespace.Annotations[util.CidrAnnotation] == util.DualStackToString(subnet.Spec.CIDRBlock) &&
+			namespace.Annotations[util.ExcludeIpsAnnotation] == util.DualStackListToString(subnet.Spec.ExcludeIps) {
 			return nil
 		}
 	}
 
 	namespace.Annotations[util.LogicalSwitchAnnotation] = ls
-	namespace.Annotations[util.CidrAnnotation] = cidr
-	namespace.Annotations[util.ExcludeIpsAnnotation] = strings.Join(excludeIps, ",")
+	namespace.Annotations[util.CidrAnnotation] = util.DualStackToString(subnet.Spec.CIDRBlock)
+	namespace.Annotations[util.ExcludeIpsAnnotation] = util.DualStackListToString(subnet.Spec.ExcludeIps)
 
 	if _, err = c.config.KubeClient.CoreV1().Namespaces().Patch(key, types.JSONPatchType, generatePatchPayload(namespace.Annotations, op)); err != nil {
 		klog.Errorf("patch namespace %s failed %v", key, err)

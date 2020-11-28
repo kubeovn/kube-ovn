@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
++	v1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	clientset "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/spf13/pflag"
@@ -12,6 +13,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
+	"os"
 )
 
 // Configuration is the controller conf
@@ -28,14 +30,14 @@ type Configuration struct {
 	KubeOvnClient  clientset.Interface
 
 	DefaultLogicalSwitch string
-	DefaultCIDR          string
-	DefaultGateway       string
-	DefaultExcludeIps    string
+	DefaultCIDR          v1.DualStack
+	DefaultGateway       v1.DualStack
+	DefaultExcludeIps    v1.DualStackList
 
 	ClusterRouter     string
 	NodeSwitch        string
-	NodeSwitchCIDR    string
-	NodeSwitchGateway string
+	NodeSwitchCIDR    v1.DualStack
+	NodeSwitchGateway v1.DualStack
 
 	ClusterTcpLoadBalancer        string
 	ClusterUdpLoadBalancer        string
@@ -48,12 +50,13 @@ type Configuration struct {
 	WorkerNum int
 	PprofPort int
 
-	NetworkType          string
-	DefaultProviderName  string
-	DefaultHostInterface string
-	DefaultVlanName      string
-	DefaultVlanRange     string
-	DefaultVlanID        int
+	NetworkType           string
+	DefaultProviderName   string
+	DefaultHostInterface  string
+	DefaultVlanName       string
+	DefaultVlanRange      string
+	DefaultVlanID         int
+	DualStackIpConsistent bool
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -69,13 +72,13 @@ func ParseFlags() (*Configuration, error) {
 		argKubeConfigFile = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 
 		argDefaultLogicalSwitch = pflag.String("default-ls", "ovn-default", "The default logical switch name, default: ovn-default")
-		argDefaultCIDR          = pflag.String("default-cidr", "10.16.0.0/16", "Default CIDR for namespace with no logical switch annotation, default: 10.16.0.0/16")
+		argDefaultCIDR          = pflag.String("default-cidr", "10.16.0.0/16,FDBD:DC03:4:FFFF::/64", "Default CIDR for namespace with no logical switch annotation, default: 10.16.0.0/16")
 		argDefaultGateway       = pflag.String("default-gateway", "", "Default gateway for default-cidr, default the first ip in default-cidr")
 		argDefaultExcludeIps    = pflag.String("default-exclude-ips", "", "Exclude ips in default switch, default equals to gateway address")
 
 		argClusterRouter     = pflag.String("cluster-router", "ovn-cluster", "The router name for cluster router, default: ovn-cluster")
 		argNodeSwitch        = pflag.String("node-switch", "join", "The name of node gateway switch which help node to access pod network, default: join")
-		argNodeSwitchCIDR    = pflag.String("node-switch-cidr", "100.64.0.0/16", "The cidr for node switch, default: 100.64.0.0/16")
+		argNodeSwitchCIDR    = pflag.String("node-switch-cidr", "100.64.0.0/16,fd00:100:64::10/64", "The cidr for node switch, default: 100.64.0.0/16")
 		argNodeSwitchGateway = pflag.String("node-switch-gateway", "", "The gateway for node switch, default the first ip in node-switch-cidr")
 
 		argClusterTcpLoadBalancer        = pflag.String("cluster-tcp-loadbalancer", "cluster-tcp-loadbalancer", "The name for cluster tcp loadbalancer")
@@ -92,6 +95,8 @@ func ParseFlags() (*Configuration, error) {
 		argsDefaultVlanName      = pflag.String("default-vlan-name", "ovn-vlan", "The default vlan name, default: ovn-vlan")
 		argsDefaultVlanID        = pflag.Int("default-vlan-id", 1, "The default vlan id, default: 1")
 		argsDefaultVlanRange     = pflag.String("default-vlan-range", "1,4095", "The default vlan range, default: 1-4095")
+
+		argsDualStackIpConsistent = pflag.Bool("dual-ip-consistent", true, "IPv6/IPv4 address postfix consistent")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -112,6 +117,15 @@ func ParseFlags() (*Configuration, error) {
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
 
+	defaultCIDR, err := util.StringToDualStack(*argDefaultCIDR)
+	defaultGateway, err := util.StringToDualStack(*argDefaultGateway)
+	nodeSwitchCIDR, err := util.StringToDualStack(*argNodeSwitchCIDR)
+	nodeSwitchGateway, err := util.StringToDualStack(*argNodeSwitchGateway)
+	defaultExcludeIps, err := util.StringToDualStackList(*argDefaultExcludeIps)
+	if err != nil {
+		return nil, err
+	}
+
 	config := &Configuration{
 		OvnNbSocket:                   *argOvnNbSocket,
 		OvnNbHost:                     *argOvnNbHost,
@@ -124,10 +138,15 @@ func ParseFlags() (*Configuration, error) {
 		DefaultCIDR:                   *argDefaultCIDR,
 		DefaultGateway:                *argDefaultGateway,
 		DefaultExcludeIps:             *argDefaultExcludeIps,
+		DefaultCIDR:            defaultCIDR,
+		DefaultGateway:         defaultGateway,
+		DefaultExcludeIps:      defaultExcludeIps,
 		ClusterRouter:                 *argClusterRouter,
 		NodeSwitch:                    *argNodeSwitch,
 		NodeSwitchCIDR:                *argNodeSwitchCIDR,
 		NodeSwitchGateway:             *argNodeSwitchGateway,
+		NodeSwitchCIDR:         nodeSwitchCIDR,
+		NodeSwitchGateway:      nodeSwitchGateway,
 		ClusterTcpLoadBalancer:        *argClusterTcpLoadBalancer,
 		ClusterUdpLoadBalancer:        *argClusterUdpLoadBalancer,
 		ClusterTcpSessionLoadBalancer: *argClusterTcpSessionLoadBalancer,
@@ -148,7 +167,7 @@ func ParseFlags() (*Configuration, error) {
 		return nil, fmt.Errorf("no host nic for vlan")
 	}
 
-	if config.DefaultGateway == "" {
+	if len(config.DefaultGateway) != len(config.DefaultCIDR) {
 		gw, err := util.FirstSubnetIP(config.DefaultCIDR)
 		if err != nil {
 			return nil, err
@@ -156,11 +175,11 @@ func ParseFlags() (*Configuration, error) {
 		config.DefaultGateway = gw
 	}
 
-	if config.DefaultExcludeIps == "" {
-		config.DefaultExcludeIps = config.DefaultGateway
+	if len(config.DefaultExcludeIps) == 0 {
+		config.DefaultExcludeIps, _ = util.StringToDualStackList(util.DualStackToString(config.DefaultGateway))
 	}
 
-	if config.NodeSwitchGateway == "" {
+	if len(config.NodeSwitchGateway) != len(config.NodeSwitchCIDR) {
 		gw, err := util.FirstSubnetIP(config.NodeSwitchCIDR)
 		if err != nil {
 			return nil, err
@@ -172,7 +191,7 @@ func ParseFlags() (*Configuration, error) {
 		return nil, err
 	}
 
-	klog.Infof("config is  %+v", config)
+	klog.Infof("config is %+v", config)
 	return config, nil
 }
 

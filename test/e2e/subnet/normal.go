@@ -52,7 +52,7 @@ var _ = Describe("[Subnet]", func() {
 					Labels: map[string]string{"e2e": "true"},
 				},
 				Spec: kubeovn.SubnetSpec{
-					CIDRBlock: "11.10.0.0/16",
+					CIDRBlock: kubeovn.DualStack{kubeovn.ProtocolIPv4: "11.10.0.0/16"},
 				},
 			}
 			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(&s)
@@ -67,13 +67,13 @@ var _ = Describe("[Subnet]", func() {
 			Expect(subnet.Spec.Default).To(BeFalse())
 			Expect(subnet.Spec.Protocol).To(Equal(kubeovn.ProtocolIPv4))
 			Expect(subnet.Spec.Namespaces).To(BeEmpty())
-			Expect(subnet.Spec.ExcludeIps).To(ContainElement("11.10.0.1"))
-			Expect(subnet.Spec.Gateway).To(Equal("11.10.0.1"))
+			Expect(subnet.Spec.ExcludeIps[kubeovn.ProtocolIPv4]).To(ContainElement("11.10.0.1"))
+			Expect(subnet.Spec.Gateway[kubeovn.ProtocolIPv4]).To(Equal("11.10.0.1"))
 			Expect(subnet.Spec.GatewayType).To(Equal(kubeovn.GWDistributedType))
 			Expect(subnet.Spec.GatewayNode).To(BeEmpty())
 			Expect(subnet.Spec.NatOutgoing).To(BeFalse())
 			Expect(subnet.Spec.Private).To(BeFalse())
-			Expect(subnet.Spec.AllowSubnets).To(BeEmpty())
+			Expect(subnet.Spec.AllowCidrs).To(BeEmpty())
 			Expect(subnet.ObjectMeta.Finalizers).To(ContainElement(util.ControllerName))
 
 			By("validate status")
@@ -84,7 +84,7 @@ var _ = Describe("[Subnet]", func() {
 			pods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(metav1.ListOptions{LabelSelector: "app=ovs"})
 			Expect(err).NotTo(HaveOccurred())
 			for _, pod := range pods.Items {
-				stdout, _, err := f.ExecToPodThroughAPI(fmt.Sprintf("ip route list root %s", subnet.Spec.CIDRBlock), "openvswitch", pod.Name, pod.Namespace, nil)
+				stdout, _, err := f.ExecToPodThroughAPI(fmt.Sprintf("ip route list root %s", subnet.Spec.CIDRBlock[kubeovn.ProtocolIPv4]), "openvswitch", pod.Name, pod.Namespace, nil)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(stdout).To(ContainSubstring("ovn0"))
 			}
@@ -99,7 +99,7 @@ var _ = Describe("[Subnet]", func() {
 					Labels: map[string]string{"e2e": "true"},
 				},
 				Spec: kubeovn.SubnetSpec{
-					CIDRBlock:   "11.11.0.0/16",
+					CIDRBlock:   kubeovn.DualStack{kubeovn.ProtocolIPv4: "11.11.0.0/16"},
 					GatewayType: kubeovn.GWCentralizedType,
 					GatewayNode: "kube-ovn-control-plane,kube-ovn-worker,kube-ovn-worker2",
 				},
@@ -129,7 +129,7 @@ var _ = Describe("[Subnet]", func() {
 					Labels: map[string]string{"e2e": "true"},
 				},
 				Spec: kubeovn.SubnetSpec{
-					CIDRBlock: "11.12.0.0/16",
+					CIDRBlock: kubeovn.DualStack{kubeovn.ProtocolIPv4: "11.12.0.0/16"},
 				},
 			}
 			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(s)
@@ -164,7 +164,7 @@ var _ = Describe("[Subnet]", func() {
 					Labels: map[string]string{"e2e": "true"},
 				},
 				Spec: kubeovn.SubnetSpec{
-					CIDRBlock: "11.13.0.0/16",
+					CIDRBlock: kubeovn.DualStack{kubeovn.ProtocolIPv4: "11.13.0.0/16"},
 				},
 			}
 			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(&s)
@@ -180,7 +180,7 @@ var _ = Describe("[Subnet]", func() {
 			for _, pod := range pods.Items {
 				stdout, _, err := f.ExecToPodThroughAPI("ip route", "openvswitch", pod.Name, pod.Namespace, nil)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(stdout).NotTo(ContainSubstring(s.Spec.CIDRBlock))
+				Expect(stdout).NotTo(ContainSubstring(s.Spec.CIDRBlock[kubeovn.ProtocolIPv4]))
 			}
 		})
 	})
@@ -195,7 +195,7 @@ var _ = Describe("[Subnet]", func() {
 					Labels: map[string]string{"e2e": "true"},
 				},
 				Spec: kubeovn.SubnetSpec{
-					CIDRBlock: "11.14.0.1/16",
+					CIDRBlock: kubeovn.DualStack{kubeovn.ProtocolIPv4: "11.14.0.0/16"},
 				},
 			}
 
@@ -207,7 +207,7 @@ var _ = Describe("[Subnet]", func() {
 
 			s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(name, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(s.Spec.CIDRBlock).To(Equal("11.14.0.0/16"))
+			Expect(s.Spec.CIDRBlock[kubeovn.ProtocolIPv4]).To(Equal("11.14.0.0/16"))
 		})
 	})
 

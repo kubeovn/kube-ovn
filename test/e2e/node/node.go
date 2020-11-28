@@ -20,11 +20,15 @@ var _ = Describe("[Node Init]", func() {
 		Expect(err).NotTo(HaveOccurred())
 		for _, no := range nodes.Items {
 			annotations := no.Annotations
+			ipDual, _ := util.StringToDualStack(annotations[util.IpAddressAnnotation])
+			cidrDual, _ := util.StringToDualStack(annotations[util.CidrAnnotation])
 			Expect(annotations[util.AllocatedAnnotation]).To(Equal("true"))
-			Expect(annotations[util.CidrAnnotation]).To(Equal(subnet.Spec.CIDRBlock))
-			Expect(annotations[util.GatewayAnnotation]).To(Equal(subnet.Spec.Gateway))
+			Expect(annotations[util.CidrAnnotation]).To(Equal(util.DualStackToString(subnet.Spec.CIDRBlock)))
+			Expect(annotations[util.GatewayAnnotation]).To(Equal(util.DualStackToString(subnet.Spec.Gateway)))
 			Expect(annotations[util.IpAddressAnnotation]).NotTo(BeEmpty())
-			Expect(util.CIDRContainIP(annotations[util.CidrAnnotation], annotations[util.IpAddressAnnotation])).To(BeTrue())
+			for _, ip := range ipDual {
+				Expect(util.SubnetContainIp(cidrDual, ip)).To(BeTrue())
+			}
 			Expect(annotations[util.MacAddressAnnotation]).NotTo(BeEmpty())
 			Expect(annotations[util.PortNameAnnotation]).NotTo(BeEmpty())
 			Expect(annotations[util.LogicalSwitchAnnotation]).To(Equal(subnet.Name))

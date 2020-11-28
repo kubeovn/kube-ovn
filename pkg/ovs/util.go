@@ -24,7 +24,7 @@ func trimCommandOutput(raw []byte) string {
 
 // ExpandExcludeIPs parse ovn exclude_ips to ip slice
 func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
-	rv := []string{}
+	var rv = []string
 	subnetNum := util.SubnetNumber(cidr)
 	broadcast := util.SubnetBroadCast(cidr)
 	for _, excludeIP := range excludeIPs {

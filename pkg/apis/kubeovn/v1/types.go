@@ -5,11 +5,21 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-const (
-	ProtocolIPv4 = "IPv4"
-	ProtocolIPv6 = "IPv6"
-	ProtocolDual = "Dual"
+// Protocol represents the IP Family (IPv4 or IPv6 or Dual). This type is used
+// to express the family of an IP expressed by a type (i.e. service.Spec.IPFamily)
+type Protocol string
 
+const (
+	ProtocolIPv4 Protocol = "IPv4"
+	ProtocolIPv6 Protocol = "IPv6"
+	ProtocolDual Protocol = "Dual"
+)
+
+// DualStack represents the v4&v6 info for the resource
+type DualStack map[Protocol]string
+type DualStackList map[Protocol][]string
+
+const (
 	GWDistributedType = "distributed"
 	GWCentralizedType = "centralized"
 )
@@ -39,16 +49,16 @@ type IP struct {
 }
 
 type IPSpec struct {
-	PodName       string   `json:"podName"`
-	Namespace     string   `json:"namespace"`
-	Subnet        string   `json:"subnet"`
-	AttachSubnets []string `json:"attachSubnets"`
-	NodeName      string   `json:"nodeName"`
-	IPAddress     string   `json:"ipAddress"`
-	AttachIPs     []string `json:"attachIps"`
-	MacAddress    string   `json:"macAddress"`
-	AttachMacs    []string `json:"attachMacs"`
-	ContainerID   string   `json:"containerID"`
+	PodName       string    `json:"podName"`
+	Namespace     string    `json:"namespace"`
+	Subnet        string    `json:"subnet"`
+	AttachSubnets []string  `json:"attach_subnets"`
+	NodeName      string    `json:"nodeName"`
+	IPAddress     DualStack `json:"ipAddress"`
+	AttachIPs     []string  `json:"attach_ips"`
+	MacAddress    string    `json:"macAddress"`
+	AttachMacs    []string  `json:"attach_macs"`
+	ContainerID   string    `json:"containerID"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -73,21 +83,20 @@ type Subnet struct {
 }
 
 type SubnetSpec struct {
-	Default    bool     `json:"default"`
-	Vpc        string   `json:"vpc,omitempty"`
-	Protocol   string   `json:"protocol"`
-	Namespaces []string `json:"namespaces,omitempty"`
-	CIDRBlock  string   `json:"cidrBlock"`
-	Gateway    string   `json:"gateway"`
-	ExcludeIps []string `json:"excludeIps,omitempty"`
-	Provider   string   `json:"provider,omitempty"`
+	Default    bool          `json:"default"`
+	Protocol   Protocol      `json:"protocol"`
+	Namespaces []string      `json:"namespaces,omitempty"`
+	CIDRBlock  DualStack     `json:"cidrBlock"`
+	Gateway    DualStack     `json:"gateway"`
+	ExcludeIps DualStackList `json:"excludeIps,omitempty"`
+	Provider   string `json:"provider,omitempty"`
 
 	GatewayType string `json:"gatewayType"`
 	GatewayNode string `json:"gatewayNode"`
 	NatOutgoing bool   `json:"natOutgoing"`
 
-	Private      bool     `json:"private"`
-	AllowSubnets []string `json:"allowSubnets,omitempty"`
+	Private     bool     `json:"private"`
+	AllowCidrs  []string `json:"allowSubnets,omitempty"`
 
 	Vlan            string `json:"vlan,omitempty"`
 	UnderlayGateway bool   `json:"underlayGateway"`
@@ -128,6 +137,8 @@ type SubnetStatus struct {
 
 	AvailableIPs    float64 `json:"availableIPs"`
 	UsingIPs        float64 `json:"usingIPs"`
+	AvailableIPv6s  float64 `json:"availableIPv6s"`
+	UsingIPv6s      float64 `json:"usingIPv6s"`
 	ActivateGateway string  `json:"activateGateway"`
 }
 

@@ -64,7 +64,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 			Labels: map[string]string{"e2e": "true"},
 		},
 		Spec: kubeovn.SubnetSpec{
-			CIDRBlock:  "12.10.0.0/16",
+			CIDRBlock:  kubeovn.DualStack{kubeovn.ProtocolIPv4: "12.10.0.0/16"},
 			Namespaces: []string{namespace},
 		},
 	}

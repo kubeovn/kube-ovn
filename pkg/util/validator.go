@@ -34,41 +34,48 @@ func cidrConflict(cidr string) error {
 }
 
 func ValidateSubnet(subnet kubeovnv1.Subnet) error {
-	if !CIDRContainIP(subnet.Spec.CIDRBlock, subnet.Spec.Gateway) {
-		return fmt.Errorf(" gateway %s is not in cidr %s", subnet.Spec.Gateway, subnet.Spec.CIDRBlock)
-	}
-	if err := cidrConflict(subnet.Spec.CIDRBlock); err != nil {
-		return err
-	}
-	excludeIps := subnet.Spec.ExcludeIps
-	for _, ipr := range excludeIps {
-		ips := strings.Split(ipr, "..")
-		if len(ips) > 2 {
-			return fmt.Errorf("%s in excludeIps is not a valid ip range", ipr)
-		}
+    for _, cidr := range subnet.Spec.CIDRBlock {
+        if err := cidrConflict(cidr); err != nil {
+            return err
+        }
+    }
 
-		if len(ips) == 1 {
-			if net.ParseIP(ips[0]) == nil {
-				return fmt.Errorf("ip %s in exclude_ips is not a valid address", ips[0])
-			}
+	for _, gw := range subnet.Spec.Gateway {
+		if !SubnetContainIp(subnet.Spec.CIDRBlock, gw) {
+			return fmt.Errorf(" gateway %s is not in cidr %s", subnet.Spec.Gateway, subnet.Spec.CIDRBlock)
 		}
+    }
 
-		if len(ips) == 2 {
-			for _, ip := range ips {
-				if net.ParseIP(ip) == nil {
-					return fmt.Errorf("ip %s in exclude_ips is not a valid address", ip)
-				}
-			}
-			if Ip2BigInt(ips[0]).Cmp(Ip2BigInt(ips[1])) == 1 {
+	for _, excludeIps := range subnet.Spec.ExcludeIps {
+		for _, ipr := range excludeIps {
+			ips := strings.Split(ipr, "..")
+			if len(ips) > 2 {
 				return fmt.Errorf("%s in excludeIps is not a valid ip range", ipr)
 			}
+
+			if len(ips) == 1 {
+				if net.ParseIP(ips[0]) == nil {
+					return fmt.Errorf("ip %s in exclude_ips is not a valid address", ips[0])
+				}
+			}
+
+			if len(ips) == 2 {
+				for _, ip := range ips {
+					if net.ParseIP(ip) == nil {
+						return fmt.Errorf("ip %s in exclude_ips is not a valid address", ip)
+					}
+				}
+				if Ip2BigInt(ips[0]).Cmp(Ip2BigInt(ips[1])) == 1 {
+					return fmt.Errorf("%s in excludeIps is not a valid ip range", ipr)
+				}
+			}
 		}
 	}
 
-	allow := subnet.Spec.AllowSubnets
+	allow := subnet.Spec.AllowCidrs
 	for _, cidr := range allow {
 		if _, _, err := net.ParseCIDR(cidr); err != nil {
-			return fmt.Errorf("%s in allowSubnets is not a valid address", cidr)
+			return fmt.Errorf("%s in allowCidrs is not a valid address", cidr)
 		}
 	}
 
@@ -79,7 +86,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 
 	if subnet.Spec.Vpc == DefaultVpc {
 		k8sApiServer := os.Getenv("KUBERNETES_SERVICE_HOST")
-		if k8sApiServer != "" && CIDRContainIP(subnet.Spec.CIDRBlock, k8sApiServer) {
+		if k8sApiServer != "" && SubnetContainIP(subnet.Spec.CIDRBlock, k8sApiServer) {
 			return fmt.Errorf("subnet %s cidr %s conflicts with k8s apiserver svc ip %s", subnet.Name, subnet.Spec.CIDRBlock, k8sApiServer)
 		}
 	}
@@ -88,19 +95,23 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 
 func ValidatePodNetwork(annotations map[string]string) error {
 	if ip := annotations[IpAddressAnnotation]; ip != "" {
-		if strings.Contains(ip, "/") {
-			_, _, err := net.ParseCIDR(ip)
-			if err != nil {
-				return fmt.Errorf("%s is not a valid %s", ip, IpAddressAnnotation)
+		ipDual, _ := StringToDualStack(ip)
+		for proto, ipStr := range ipDual {
+			if strings.Contains(ipStr, "/") {
+				_, _, err := net.ParseCIDR(ipStr)
+				if err != nil {
+					return fmt.Errorf("%s is not a valid %s", ip, IpAddressAnnotation)
+				}
+			} else {
+				if net.ParseIP(ipStr) == nil {
+					return fmt.Errorf("%s is not a valid %s", ipStr, IpAddressAnnotation)
+				}
 			}
-		} else {
-			if net.ParseIP(ip) == nil {
-				return fmt.Errorf("%s is not a valid %s", ip, IpAddressAnnotation)
-			}
-		}
-		if cidr := annotations[CidrAnnotation]; cidr != "" {
-			if !CIDRContainIP(cidr, ip) {
-				return fmt.Errorf("%s not in cidr %s", ip, cidr)
+			if cidr := annotations[CidrAnnotation]; cidr != "" {
+				cidrDual, _ := StringToDualStack(annotations[CidrAnnotation])
+				if !CIDRContainIP(cidrDual[proto], ipStr) {
+					return fmt.Errorf("%s not in cidr %s", ipStr, cidr)
+				}
 			}
 		}
 	}

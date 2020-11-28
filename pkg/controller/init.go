@@ -10,7 +10,9 @@ import (
 
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/util"
+	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
 )
 
@@ -96,10 +98,10 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 			Provider:    util.OvnProvider,
 			CIDRBlock:   c.config.DefaultCIDR,
 			Gateway:     c.config.DefaultGateway,
-			ExcludeIps:  strings.Split(c.config.DefaultExcludeIps, ","),
+			ExcludeIps:  excludeIps,
+			Protocol:    util.CheckProtocolDual(c.config.NodeSwitchCIDR),
 			NatOutgoing: true,
 			GatewayType: kubeovnv1.GWDistributedType,
-			Protocol:    util.CheckProtocol(c.config.DefaultCIDR),
 		},
 	}
 	if c.config.NetworkType == util.NetworkTypeVlan {
@@ -122,6 +124,12 @@ func (c *Controller) initNodeSwitch() error {
 
 	if !errors.IsNotFound(err) {
 		klog.Errorf("get node subnet %s failed %v", c.config.NodeSwitch, err)
+		return err
+	}
+
+	excludeIps, err := util.StringToDualStackList(util.DualStackToString(c.config.NodeSwitchGateway))
+	if err != nil {
+		klog.Errorf("get subnet %s exclude ips failed %v", c.config.NodeSwitch, err)
 		return err
 	}
 

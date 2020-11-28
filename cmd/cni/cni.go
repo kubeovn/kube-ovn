@@ -63,34 +63,39 @@ func cmdAdd(args *skel.CmdArgs) error {
 
 func generateCNIResult(cniVersion string, cniResponse *request.CniResponse) current.Result {
 	result := current.Result{CNIVersion: cniVersion}
-	_, mask, _ := net.ParseCIDR(cniResponse.CIDR)
-	switch cniResponse.Protocol {
-	case kubeovnv1.ProtocolIPv4:
-		ip := current.IPConfig{
-			Version: "4",
-			Address: net.IPNet{IP: net.ParseIP(cniResponse.IpAddress).To4(), Mask: mask.Mask},
-			Gateway: net.ParseIP(cniResponse.Gateway).To4(),
-		}
-		result.IPs = []*current.IPConfig{&ip}
+	for proto, ip := range cniResponse.IpAddress {
+		var (
+			ipConfig current.IPConfig
+			route    types.Route
+		)
 
-		route := types.Route{
-			Dst: net.IPNet{IP: net.ParseIP("0.0.0.0").To4(), Mask: net.CIDRMask(0, 32)},
-			GW:  net.ParseIP(cniResponse.Gateway).To4(),
-		}
-		result.Routes = []*types.Route{&route}
-	case kubeovnv1.ProtocolIPv6:
-		ip := current.IPConfig{
-			Version: "6",
-			Address: net.IPNet{IP: net.ParseIP(cniResponse.IpAddress).To16(), Mask: mask.Mask},
-			Gateway: net.ParseIP(cniResponse.Gateway).To16(),
-		}
-		result.IPs = []*current.IPConfig{&ip}
+		_, mask, _ := net.ParseCIDR(cniResponse.CIDR[proto])
+		if proto == kubeovnv1.ProtocolIPv4 {
+			ipConfig = current.IPConfig{
+				Version: "4",
+				Address: net.IPNet{IP: net.ParseIP(ip).To4(), Mask: mask.Mask},
+				Gateway: net.ParseIP(cniResponse.Gateway[proto]).To4(),
+			}
 
-		route := types.Route{
-			Dst: net.IPNet{IP: net.ParseIP("::").To16(), Mask: net.CIDRMask(0, 128)},
-			GW:  net.ParseIP(cniResponse.Gateway).To16(),
+			route = types.Route{
+				Dst: net.IPNet{IP: net.ParseIP("0.0.0.0").To4(), Mask: net.CIDRMask(0, 32)},
+				GW:  net.ParseIP(cniResponse.Gateway[proto]).To4(),
+			}
+		} else if proto == kubeovnv1.ProtocolIPv6 {
+			ipConfig = current.IPConfig{
+				Version: "6",
+				Address: net.IPNet{IP: net.ParseIP(ip).To16(), Mask: mask.Mask},
+				Gateway: net.ParseIP(cniResponse.Gateway[proto]).To16(),
+			}
+
+			route = types.Route{
+				Dst: net.IPNet{IP: net.ParseIP("::").To16(), Mask: net.CIDRMask(0, 128)},
+				GW:  net.ParseIP(cniResponse.Gateway[proto]).To16(),
+			}
 		}
-		result.Routes = []*types.Route{&route}
+
+		result.IPs = append(result.IPs, &ipConfig)
+		result.Routes = append(result.Routes, &route)
 	}
 
 	return result
