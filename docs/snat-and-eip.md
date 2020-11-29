@@ -85,6 +85,13 @@ spec:
     image: nginx:alpine
 ```
 
+4. Change eip or snat ip
+```bash
+# ovn.kubernetes.io/routed annotation need to be removed to trigger control plan update
+kubectl annotate pod pod-gw ovn.kubernetes.io/eip=172.56.0.221 --overwrite
+kubectl annotate pod pod-gw ovn.kubernetes.io/routed-
+```
+
 ## Limitations
 * No IP conflict detection for now, users should control the nat address allocation by themselves.
 

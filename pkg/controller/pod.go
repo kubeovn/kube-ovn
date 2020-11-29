@@ -476,7 +476,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 		return err
 	}
 	if !subnet.Spec.UnderlayGateway {
-		if pod.Annotations[util.EipAnnotation] != "" {
+		if pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "" {
 			cm, err := c.configMapsLister.ConfigMaps("kube-system").Get(util.ExternalGatewayConfig)
 			if err != nil {
 				klog.Errorf("failed to get ex-gateway config, %v", err)
@@ -490,43 +490,11 @@ func (c *Controller) handleUpdatePod(key string) error {
 			nextHop = strings.Split(nextHop, "/")[0]
 
 			if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nextHop, c.config.ClusterRouter); err != nil {
-				klog.Errorf("failed to add static route, %v", err)
-				return err
-			}
-
-			if err := c.ovnClient.AddNatRule("dnat_and_snat", podIP, pod.Annotations[util.EipAnnotation], c.config.ClusterRouter); err != nil {
-				klog.Errorf("failed to add nat rules, %v", err)
-				return err
-			}
-		} else if pod.Annotations[util.SnatAnnotation] != "" {
-			cm, err := c.configMapsLister.ConfigMaps("kube-system").Get(util.ExternalGatewayConfig)
-			if err != nil {
-				klog.Errorf("failed to get ex-gateway config, %v", err)
-				return err
-			}
-			nextHop := cm.Data["nic-ip"]
-			if nextHop == "" {
-				klog.Errorf("no available gateway nic address")
-				return fmt.Errorf("no available gateway nic address")
-			}
-			nextHop = strings.Split(nextHop, "/")[0]
-
-			if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nextHop, c.config.ClusterRouter); err != nil {
-				klog.Errorf("failed to add static route, %v", err)
-				return err
-			}
-
-			if err := c.ovnClient.AddNatRule("snat", podIP, pod.Annotations[util.SnatAnnotation], c.config.ClusterRouter); err != nil {
-				klog.Errorf("failed to add nat rules, %v", err)
-				return err
-			}
-		} else if pod.Annotations[util.NorthGatewayAnnotation] != "" {
-			if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], c.config.ClusterRouter); err != nil {
 				klog.Errorf("failed to add static route, %v", err)
 				return err
 			}
 		} else {
-			if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
+			if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType && pod.Annotations[util.NorthGatewayAnnotation] == "" {
 				node, err := c.nodesLister.Get(pod.Spec.NodeName)
 				if err != nil {
 					klog.Errorf("get node %s failed %v", pod.Spec.NodeName, err)
@@ -542,6 +510,23 @@ func (c *Controller) handleUpdatePod(key string) error {
 					return err
 				}
 			}
+
+			if pod.Annotations[util.NorthGatewayAnnotation] != "" {
+				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], c.config.ClusterRouter); err != nil {
+					klog.Errorf("failed to add static route, %v", err)
+					return err
+				}
+			}
+		}
+
+		if err := c.ovnClient.UpdateNatRule("dnat_and_snat", podIP, pod.Annotations[util.EipAnnotation], c.config.ClusterRouter); err != nil {
+			klog.Errorf("failed to add nat rules, %v", err)
+			return err
+		}
+
+		if err := c.ovnClient.UpdateNatRule("snat", podIP, pod.Annotations[util.SnatAnnotation], c.config.ClusterRouter); err != nil {
+			klog.Errorf("failed to add nat rules, %v", err)
+			return err
 		}
 	}
 

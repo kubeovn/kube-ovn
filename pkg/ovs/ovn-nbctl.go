@@ -409,9 +409,38 @@ func (c Client) AddStaticRoute(policy, cidr, nextHop, router string) error {
 	return err
 }
 
-func (c Client) AddNatRule(policy, logicalIP, externalIP, router string) error {
-	_, err := c.ovnNbCommand(MayExist, "lr-nat-add", router, policy, externalIP, logicalIP)
-	return err
+func (c Client) UpdateNatRule(policy, logicalIP, externalIP, router string) error {
+	if policy == "snat" {
+		if externalIP == "" {
+			_, err := c.ovnNbCommand(IfExists, "lr-nat-del", router, "snat", logicalIP)
+			return err
+		}
+		_, err := c.ovnNbCommand(IfExists, "lr-nat-del", router, "snat", logicalIP, "--",
+			MayExist, "lr-nat-add", router, policy, externalIP, logicalIP)
+		return err
+	} else {
+		output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=external_ip", "find", "NAT", fmt.Sprintf("logical_ip=%s", logicalIP), "type=dnat_and_snat")
+		if err != nil {
+			klog.Errorf("failed to list nat rules, %v", err)
+			return err
+		}
+		eips := strings.Split(output, "\n")
+		for _, eip := range eips {
+			eip = strings.TrimSpace(eip)
+			if eip == "" || eip == externalIP {
+				continue
+			}
+			if _, err := c.ovnNbCommand(IfExists, "lr-nat-del", router, "dnat_and_snat", eip); err != nil {
+				klog.Errorf("failed to delete nat rule, %v", err)
+				return err
+			}
+		}
+		if externalIP != "" {
+			_, err = c.ovnNbCommand(MayExist, "lr-nat-add", router, policy, externalIP, logicalIP)
+			return err
+		}
+	}
+	return nil
 }
 
 func (c Client) DeleteNatRule(logicalIP, router string) error {
