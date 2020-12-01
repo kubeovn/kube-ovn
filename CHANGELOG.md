@@ -1,5 +1,32 @@
 # CHANGELOG
 
+## 1.5.2 -- 2020/12/01
+
+### New Feature
+* Iface now support regex
+* `install.sh` supports DPDK resource configuration
+* Masquerade other nodes to local pod to avoid NodePort triangle traffic
+
+### Monitoring
+* Add ping total count metric
+* Add `ovs-vsctl` show to diagnose results
+* Add `kubectl describe no` to diagnose results
+
+### Bugfix
+* Fix cleanup scripts
+* Update Go to 1.15
+* Check ipv6 requirement before start
+* Check if ovn-central ip exists in `NODE_IPS` before start
+* Fix external-address config description
+* Fix the problem of confusion between old and new versions of crd
+* Add resources limits to avoid eviction
+* NAT rules can be modified
+
+### Mics
+* Refactor iptable logs
+* Tolerate all taints
+* OVN/OVS log rotation
+
 ## 1.5.1 -- 2020/10/26
 
 ### New Feature
