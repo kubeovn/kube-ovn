@@ -111,12 +111,31 @@ func (c Client) DeleteICLogicalRouterPort(az string) error {
 
 // CreatePort create logical switch port in ovn
 func (c Client) CreatePort(ls, port, ip, cidr, mac, tag string, portSecurity bool) error {
-	ovnCommand := []string{MayExist, "lsp-add", ls, port, "--",
-		"lsp-set-addresses", port, fmt.Sprintf("%s %s", mac, ip)}
 
-	if portSecurity {
-		ovnCommand = append(ovnCommand,
-			"--", "lsp-set-port-security", port, fmt.Sprintf("%s %s/%s", mac, ip, strings.Split(cidr, "/")[1]))
+	var ovnCommand []string
+	if util.CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
+		cidrBlocks := strings.Split(cidr, ",")
+		ips := strings.Split(ip, ",")
+		v4Mask := strings.Split(cidrBlocks[0], "/")[1]
+		v6Mask := strings.Split(cidrBlocks[1], "/")[1]
+		v4Net := ips[0] + "/" + v4Mask
+		v6Net := ips[1] + "/" + v6Mask
+
+		ovnCommand = []string{MayExist, "lsp-add", ls, port, "--",
+			"lsp-set-addresses", port, fmt.Sprintf("%s %s %s", mac, ips[0], ips[1])}
+
+		if portSecurity {
+			ovnCommand = append(ovnCommand,
+				"--", "lsp-set-port-security", port, fmt.Sprintf("%s %s %s", mac, v4Net, v6Net))
+		}
+	} else {
+		ovnCommand = []string{MayExist, "lsp-add", ls, port, "--",
+			"lsp-set-addresses", port, fmt.Sprintf("%s %s", mac, ip)}
+
+		if portSecurity {
+			ovnCommand = append(ovnCommand,
+				"--", "lsp-set-port-security", port, fmt.Sprintf("%s %s/%s", mac, ip, strings.Split(cidr, "/")[1]))
+		}
 	}
 
 	if tag != "" && tag != "0" {
@@ -421,7 +440,21 @@ func (c Client) AddStaticRoute(policy, cidr, nextHop, router string) error {
 	if policy == "" {
 		policy = PolicyDstIP
 	}
-	_, err := c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "lr-route-add", router, cidr, nextHop)
+	var err error
+	if util.CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
+		cidrBlocks := strings.Split(cidr, ",")
+		gws := strings.Split(nextHop, ",")
+		_, err = c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "lr-route-add", router, cidrBlocks[0], gws[0])
+		if err != nil {
+			return err
+		}
+		// The nextHop maybe one ip when node only support IPv4
+		if len(gws) == 2 {
+			_, err = c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "lr-route-add", router, cidrBlocks[1], gws[1])
+		}
+	} else {
+		_, err = c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "lr-route-add", router, cidr, nextHop)
+	}
 	return err
 }
 
