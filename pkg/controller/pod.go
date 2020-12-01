@@ -339,25 +339,19 @@ func (c *Controller) handleAddPod(key string) error {
 		return err
 	}
 
-	var podSubnets []*kubeovnv1.Subnet
 	defaultSubnet, err := c.getPodDefaultSubnet(pod)
 	if err != nil {
 		return err
-	}
-	if defaultSubnet != nil {
-		podSubnets = append(podSubnets, defaultSubnet)
 	}
 
 	attachmentSubnets, err := c.getPodAttachmentSubnet(pod)
 	if err != nil {
 		return err
 	}
-	if defaultSubnet != nil {
-		podSubnets = append(podSubnets, attachmentSubnets...)
-	}
 
-	if len(podSubnets) == 0 {
-		return nil
+	podSubnets := attachmentSubnets
+	if _, hasOtherDefaultNet := pod.Annotations[util.DefaultNetworkAnnotation]; !hasOtherDefaultNet {
+		podSubnets = append(attachmentSubnets, defaultSubnet)
 	}
 
 	op := "replace"
@@ -488,6 +482,10 @@ func (c *Controller) handleUpdatePod(key string) error {
 		return err
 	}
 
+	if _, hasOtherDefaultNet := pod.Annotations[util.DefaultNetworkAnnotation]; hasOtherDefaultNet {
+		return nil
+	}
+
 	klog.Infof("update pod %s/%s", namespace, name)
 	podIP := pod.Annotations[util.IpAddressAnnotation]
 
@@ -495,10 +493,6 @@ func (c *Controller) handleUpdatePod(key string) error {
 	if err != nil {
 		klog.Errorf("failed to get subnet %v", err)
 		return err
-	}
-
-	if subnet == nil {
-		return nil
 	}
 
 	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
@@ -621,10 +615,6 @@ func needAllocateSubnets(pod *v1.Pod, subnets []*kubeovnv1.Subnet) []*kubeovnv1.
 }
 
 func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error) {
-	if pod.Annotations[util.DefaultNetworkAnnotation] != "" {
-		return nil, nil
-	}
-
 	var subnetName string
 	// 1. check annotation subnet
 	lsName, lsExist := pod.Annotations[util.LogicalSwitchAnnotation]
