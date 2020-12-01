@@ -25,7 +25,6 @@ spec:
 ```
 
 ## Gateway QoS
-*This feature is still in master branch*
 
 Kube-OVN will create an `ovn0` interface on each host to route traffic from cluster pod network 
 to external network. Kube-OVN control gateway QoS by modify the QoS config of `ovn0` interface.
