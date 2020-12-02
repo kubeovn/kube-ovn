@@ -349,6 +349,11 @@ func (c *Controller) handleAddPod(key string) error {
 		return err
 	}
 
+	podSubnets := attachmentSubnets
+	if _, hasOtherDefaultNet := pod.Annotations[util.DefaultNetworkAnnotation]; !hasOtherDefaultNet {
+		podSubnets = append(attachmentSubnets, defaultSubnet)
+	}
+
 	op := "replace"
 	if pod.Annotations == nil || len(pod.Annotations) == 0 {
 		op = "add"
@@ -356,7 +361,7 @@ func (c *Controller) handleAddPod(key string) error {
 	}
 
 	// Avoid create lsp for already running pod in ovn-nb when controller restart
-	for _, subnet := range needAllocateSubnets(pod, append(attachmentSubnets, defaultSubnet)) {
+	for _, subnet := range needAllocateSubnets(pod, podSubnets) {
 		ip, mac, err := c.acquireAddress(pod, subnet)
 		if err != nil {
 			c.recorder.Eventf(pod, v1.EventTypeWarning, "AcquireAddressFailed", err.Error())
@@ -475,6 +480,10 @@ func (c *Controller) handleUpdatePod(key string) error {
 			return nil
 		}
 		return err
+	}
+
+	if _, hasOtherDefaultNet := pod.Annotations[util.DefaultNetworkAnnotation]; hasOtherDefaultNet {
+		return nil
 	}
 
 	klog.Infof("update pod %s/%s", namespace, name)
