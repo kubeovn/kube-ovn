@@ -4,6 +4,7 @@
 [![Build Tag](https://img.shields.io/github/tag/alauda/kube-ovn.svg)](https://github.com/alauda/kube-ovn/releases)
 [![Go Report Card](https://goreportcard.com/badge/github.com/alauda/kube-ovn)](https://goreportcard.com/report/github.com/alauda/kube-ovn)
 [![Slack Card](https://kube-ovn-slackin.herokuapp.com/badge.svg)](https://kube-ovn-slackin.herokuapp.com)
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Falauda%2Fkube-ovn.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Falauda%2Fkube-ovn?ref=badge_shield)
 
 [中文教程](https://github.com/alauda/kube-ovn/wiki)
 
@@ -120,3 +121,7 @@ Use encapsulation can lower the requirement on networking, and isolate container
 Kube-OVN can also work in non-encapsulation mode, that take use of underlay switches to switch the packets or use hardware offload to achieve better performance than kernel datapath.
 
 From the function set, Kube-OVN can offer some more abilities like static ip, QoS and traffic mirror. The subnet in Kube-OVN and ippool in Calico share some same function set.
+
+
+## License
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Falauda%2Fkube-ovn.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Falauda%2Fkube-ovn?ref=badge_large)
