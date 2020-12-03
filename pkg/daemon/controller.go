@@ -12,12 +12,12 @@ import (
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"k8s.io/apimachinery/pkg/api/errors"
 
+	"github.com/alauda/felix/ipsets"
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/alauda/kube-ovn/pkg/client/informers/externalversions"
 	kubeovnlister "github.com/alauda/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/coreos/go-iptables/iptables"
-	"github.com/projectcalico/felix/ipsets"
 	"github.com/vishvananda/netlink"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
