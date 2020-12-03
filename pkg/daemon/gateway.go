@@ -6,10 +6,10 @@ import (
 	"os"
 	"strings"
 
+	"github.com/alauda/felix/ipsets"
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"github.com/alauda/kube-ovn/pkg/util"
-	"github.com/projectcalico/felix/ipsets"
 	"github.com/vishvananda/netlink"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"

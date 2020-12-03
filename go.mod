@@ -4,6 +4,7 @@ go 1.12
 
 require (
 	github.com/Mellanox/sriovnet v1.0.1
+	github.com/alauda/felix v3.6.6-0.20201203091904-2408da9f0710+incompatible
 	github.com/containernetworking/cni v0.8.0
 	github.com/containernetworking/plugins v0.8.6
 	github.com/coreos/go-iptables v0.4.5
@@ -28,7 +29,7 @@ require (
 	github.com/onsi/gomega v1.9.0
 	github.com/osrg/gobgp v0.0.0-20190401195721-805d02fdfbc5
 	github.com/parnurzeal/gorequest v0.2.15
-	github.com/projectcalico/felix v3.6.1+incompatible
+	github.com/projectcalico/felix v0.0.0-00010101000000-000000000000 // indirect
 	github.com/projectcalico/go-json v0.0.0-20161128004156-6219dc7339ba // indirect
 	github.com/projectcalico/go-yaml v0.0.0-20161201183616-955bc3e451ef // indirect
 	github.com/projectcalico/go-yaml-wrapper v0.0.0-20161127220527-598e54215bee // indirect
@@ -50,6 +51,7 @@ require (
 )
 
 replace (
+	github.com/projectcalico/felix => github.com/alauda/felix v3.6.6-0.20201203093205-12a6f33baca3+incompatible
 	k8s.io/client-go => k8s.io/client-go v0.0.0-20190620085101-78d2af792bab
 	sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.2.0-beta.4
 )
