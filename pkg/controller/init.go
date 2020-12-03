@@ -133,7 +133,7 @@ func (c *Controller) initNodeSwitch() error {
 			Provider:               util.OvnProvider,
 			CIDRBlock:              c.config.NodeSwitchCIDR,
 			Gateway:                c.config.NodeSwitchGateway,
-			ExcludeIps:             []string{c.config.NodeSwitchGateway},
+			ExcludeIps:             strings.Split(c.config.NodeSwitchGateway, ","),
 			Protocol:               util.CheckProtocol(c.config.NodeSwitchCIDR),
 			DisableInterConnection: true,
 		},
@@ -244,7 +244,7 @@ func (c *Controller) InitIPAM() error {
 		if isPodAlive(pod) &&
 			pod.Annotations[util.AllocatedAnnotation] == "true" &&
 			pod.Annotations[util.LogicalSwitchAnnotation] != "" {
-			_, _, err := c.ipam.GetStaticAddress(
+			_, _, _, err := c.ipam.GetStaticAddress(
 				fmt.Sprintf("%s/%s", pod.Namespace, pod.Name),
 				pod.Annotations[util.IpAddressAnnotation],
 				pod.Annotations[util.MacAddressAnnotation],
@@ -263,7 +263,7 @@ func (c *Controller) InitIPAM() error {
 	for _, node := range nodes {
 		if node.Annotations[util.AllocatedAnnotation] == "true" {
 			portName := fmt.Sprintf("node-%s", node.Name)
-			_, _, err := c.ipam.GetStaticAddress(portName, node.Annotations[util.IpAddressAnnotation],
+			_, _, _, err := c.ipam.GetStaticAddress(portName, node.Annotations[util.IpAddressAnnotation],
 				node.Annotations[util.MacAddressAnnotation],
 				node.Annotations[util.LogicalSwitchAnnotation])
 			if err != nil {

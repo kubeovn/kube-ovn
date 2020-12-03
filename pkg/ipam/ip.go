@@ -1,9 +1,10 @@
 package ipam
 
 import (
-	"github.com/alauda/kube-ovn/pkg/util"
 	"math/big"
 	"strings"
+
+	"github.com/alauda/kube-ovn/pkg/util"
 )
 
 type IP string
