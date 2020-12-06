@@ -138,6 +138,17 @@ func ValidatePodNetwork(annotations map[string]string) error {
 	return nil
 }
 
+func ValidatePodCidr(cidrStr, ipStr string) error {
+	if SubnetBroadCast(cidrStr) == ipStr {
+		return fmt.Errorf("%s is the broadcast ip in cidr %s", ipStr, cidrStr)
+	}
+	if SubnetNumber(cidrStr) == ipStr {
+		return fmt.Errorf("%s is the network number ip in cidr %s", ipStr, cidrStr)
+	}
+
+	return nil
+}
+
 func ValidateVlan(vlan int, vlanRange string) error {
 	vlans := strings.Split(vlanRange, ",")
 	if len(vlans) != 2 {

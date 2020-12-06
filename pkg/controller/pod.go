@@ -376,6 +376,12 @@ func (c *Controller) handleAddPod(key string) error {
 		pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, subnet.Spec.Provider)] = subnet.Name
 		pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, subnet.Spec.Provider)] = "true"
 
+		if err := util.ValidatePodCidr(subnet.Spec.CIDRBlock, ip); err != nil {
+			klog.Errorf("validate pod %s/%s failed, %v", namespace, name, err)
+			c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", err.Error())
+			return err
+		}
+
 		if isOvnSubnet(subnet) {
 			if subnet.Spec.Vlan != "" {
 				vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
