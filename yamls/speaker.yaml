@@ -1,15 +1,9 @@
-kind: Deployment
+kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-speaker
   namespace: kube-system
 spec:
-  replicas: 1
-  strategy:
-    rollingUpdate:
-      maxSurge: 0%
-      maxUnavailable: 100%
-    type: RollingUpdate
   selector:
     matchLabels:
       app: kube-ovn-speaker
@@ -35,7 +29,7 @@ spec:
       hostNetwork: true
       containers:
         - name: ovn-central
-          image: "kubeovn/kube-ovn:v1.5.0"
+          image: "kubeovn/kube-ovn:v1.6.0"
           imagePullPolicy: IfNotPresent
           command:
             - /kube-ovn/kube-ovn-speaker
@@ -54,3 +48,4 @@ spec:
               memory: 300Mi
       nodeSelector:
         kubernetes.io/os: "linux"
+        ovn.kubernetes.io/bgp: "true"

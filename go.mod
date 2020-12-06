@@ -21,7 +21,6 @@ require (
 	github.com/intel/multus-cni v0.0.0-20200313031649-eaf6ff6e20bb
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/kelseyhightower/envconfig v1.4.0 // indirect
-	github.com/kubesphere/porter v0.1.1
 	github.com/moul/http2curl v1.0.0 // indirect
 	github.com/neverlee/keymutex v0.0.0-20171121013845-f593aa834bf9
 	github.com/oilbeater/go-ping v0.0.0-20200413021620-332b7197c5b5
