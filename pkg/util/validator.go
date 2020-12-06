@@ -138,12 +138,13 @@ func ValidatePodNetwork(annotations map[string]string) error {
 	return nil
 }
 
-func ValidatePodCidr(cidrStr, ipStr string) error {
-	if SubnetBroadCast(cidrStr) == ipStr {
-		return fmt.Errorf("%s is the broadcast ip in cidr %s", ipStr, cidrStr)
+func ValidatePodCidr(cidr, ip string) error {
+	ipStr := IPToString(ip)
+	if SubnetBroadCast(cidr) == ipStr {
+		return fmt.Errorf("%s is the broadcast ip in cidr %s", ipStr, cidr)
 	}
-	if SubnetNumber(cidrStr) == ipStr {
-		return fmt.Errorf("%s is the network number ip in cidr %s", ipStr, cidrStr)
+	if SubnetNumber(cidr) == ipStr {
+		return fmt.Errorf("%s is the network number ip in cidr %s", ipStr, cidr)
 	}
 
 	return nil

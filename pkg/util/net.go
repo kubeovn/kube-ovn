@@ -144,3 +144,15 @@ func GenerateRandomV4IP(cidr string) string {
 	t := big.NewInt(0).Add(Ip2BigInt(ip), add)
 	return fmt.Sprintf("%s/%d", BigInt2Ip(t), netMask)
 }
+
+func IPToString(ip string) string {
+	ipNet, _, err := net.ParseCIDR(ip)
+	if err == nil {
+		return ipNet.String()
+	}
+	ipNet = net.ParseIP(ip)
+	if ipNet != nil {
+		return ipNet.String()
+	}
+	return ""
+}
