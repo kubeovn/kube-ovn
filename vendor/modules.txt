@@ -1,8 +1,11 @@
 # github.com/Mellanox/sriovnet v1.0.1
 github.com/Mellanox/sriovnet
 github.com/Mellanox/sriovnet/pkg/utils/filesystem
-# github.com/alauda/felix v3.6.6-0.20201203091904-2408da9f0710+incompatible
+# github.com/alauda/felix v3.6.6-0.20201207121355-187332daf314+incompatible
+github.com/alauda/felix/dispatcher
+github.com/alauda/felix/ip
 github.com/alauda/felix/ipsets
+github.com/alauda/felix/labelindex
 # github.com/armon/go-radix v0.0.0-20170727155443-1fca145dffbc
 github.com/armon/go-radix
 # github.com/beorn7/perks v1.0.1
@@ -165,10 +168,6 @@ github.com/pelletier/go-toml
 github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0
 github.com/pmezard/go-difflib/difflib
-# github.com/projectcalico/felix v0.0.0-00010101000000-000000000000 => github.com/alauda/felix v3.6.6-0.20201203093205-12a6f33baca3+incompatible
-github.com/projectcalico/felix/dispatcher
-github.com/projectcalico/felix/ip
-github.com/projectcalico/felix/labelindex
 # github.com/projectcalico/libcalico-go v0.0.0-20190305235709-3d935c3b8b86
 github.com/projectcalico/libcalico-go/lib/apis/v1
 github.com/projectcalico/libcalico-go/lib/apis/v1/unversioned
