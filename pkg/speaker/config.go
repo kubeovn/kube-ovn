@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	clientset "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
 	api "github.com/osrg/gobgp/api"
 	gobgp "github.com/osrg/gobgp/pkg/server"
 	"github.com/spf13/pflag"
@@ -23,10 +24,12 @@ type Configuration struct {
 	RouterId        string
 	NeighborAddress string
 	NeighborAs      uint32
+	AuthPassword    string
 	BgpServer       *gobgp.BgpServer
 
 	KubeConfigFile string
 	KubeClient     kubernetes.Interface
+	KubeOvnClient  clientset.Interface
 
 	PprofPort uint32
 }
@@ -39,13 +42,11 @@ func ParseFlags() (*Configuration, error) {
 		argRouterId        = pflag.String("router-id", "", "The address for the speaker to use as router id, default the node ip")
 		argNeighborAddress = pflag.String("neighbor-address", "", "The router address the speaker connects to.")
 		argNeighborAs      = pflag.Uint32("neighbor-as", 65001, "The router as number, default 65001")
+		argAuthPassword    = pflag.String("auth-password", "", "bgp peer auth password")
 		argPprofPort       = pflag.Uint32("pprof-port", 10667, "The port to get profiling data, default: 10667")
 		argKubeConfigFile  = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 	)
 
-	if err := flag.Set("alsologtostderr", "true"); err != nil {
-		klog.Fatalf("failed to set flag, %v", err)
-	}
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
 
@@ -71,6 +72,7 @@ func ParseFlags() (*Configuration, error) {
 		RouterId:        *argRouterId,
 		NeighborAddress: *argNeighborAddress,
 		NeighborAs:      *argNeighborAs,
+		AuthPassword:    *argAuthPassword,
 		PprofPort:       *argPprofPort,
 		KubeConfigFile:  *argKubeConfigFile,
 	}
@@ -113,6 +115,13 @@ func (config *Configuration) initKubeClient() error {
 	cfg.QPS = 1000
 	cfg.Burst = 2000
 
+	kubeOvnClient, err := clientset.NewForConfig(cfg)
+	if err != nil {
+		klog.Errorf("init kubeovn client failed %v", err)
+		return err
+	}
+	config.KubeOvnClient = kubeOvnClient
+
 	cfg.ContentType = "application/vnd.kubernetes.protobuf"
 	cfg.AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
 	kubeClient, err := kubernetes.NewForConfig(cfg)
@@ -148,6 +157,9 @@ func (config *Configuration) initBgpServer() error {
 			NeighborAddress: config.NeighborAddress,
 			PeerAs:          config.NeighborAs,
 		},
+	}
+	if config.AuthPassword != "" {
+		peer.Conf.AuthPassword = config.AuthPassword
 	}
 
 	if err := s.AddPeer(context.Background(), &api.AddPeerRequest{

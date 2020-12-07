@@ -62,3 +62,4 @@ COPY kube-ovn /kube-ovn/kube-ovn
 COPY kube-ovn-daemon /kube-ovn/kube-ovn-daemon
 COPY kube-ovn-controller /kube-ovn/kube-ovn-controller
 COPY kube-ovn-monitor /kube-ovn/kube-ovn-monitor
+COPY kube-ovn-speaker /kube-ovn/kube-ovn-speaker

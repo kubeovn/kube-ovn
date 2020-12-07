@@ -1,7 +1,7 @@
 # BGP support
 
-Kube-OVN supports broadcast pod ips to external networks by BGP protocol.
-To enable BGP announce function, you need to install kube-ovn-speaker and annotate pods that need to be exposed.
+Kube-OVN supports advertise pod/subnet ips to external networks by BGP protocol.
+To enable BGP advertise function, you need to install kube-ovn-speaker and annotate pods/subnets that need to be exposed.
 
 ## Install kube-ovn-speaker
 
@@ -25,12 +25,24 @@ wget https://github.com/alauda/kube-ovn/blob/master/yamls/speaker.yaml
 kubectl apply -f speaker.yaml
 ```
 
-## Annotate pods that need to be exposed
+4. Label nodes that host the BGP speaker and act as overlay to underlay gateway
+```bash
+kubectl label nodes speaker-node-1 ovn.kubernetes.io/bgp=true
+kubectl label nodes speaker-node-2 ovn.kubernetes.io/bgp=true
+```
+
+*NOTE*: When more than one node host speaker, the upstream router need to support multiple path routes to act ECMP.
+
+## Annotate pods/subnet that need to be exposed
+
+The subnet of pods and subnets need to be advertised should set `natOutgoing` to `false`
 
 ```bash
-# Enable BGP
+# Enable BGP advertise
 kubectl annotate pod sample ovn.kubernetes.io/bgp=true
+kubectl annotate subnet ovn-default ovn.kubernetes.io/bgp=true
 
-# Disable BGP
+# Disable BGP advertise
 kubectl annotate pod perf-ovn-xzvd4 ovn.kubernetes.io/bgp-
+kubectl annotate subnet ovn-default ovn.kubernetes.io/bgp-
 ```

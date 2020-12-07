@@ -3,7 +3,7 @@ github.com/Mellanox/sriovnet
 github.com/Mellanox/sriovnet/pkg/utils/filesystem
 # github.com/alauda/felix v3.6.6-0.20201203091904-2408da9f0710+incompatible
 github.com/alauda/felix/ipsets
-# github.com/armon/go-radix v1.0.0
+# github.com/armon/go-radix v0.0.0-20170727155443-1fca145dffbc
 github.com/armon/go-radix
 # github.com/beorn7/perks v1.0.1
 github.com/beorn7/perks/quantile
@@ -30,7 +30,7 @@ github.com/docker/spdystream
 github.com/docker/spdystream/spdy
 # github.com/eapache/channels v1.1.0
 github.com/eapache/channels
-# github.com/eapache/queue v1.1.0
+# github.com/eapache/queue v1.0.2
 github.com/eapache/queue
 # github.com/emicklei/go-restful v2.11.1+incompatible
 github.com/emicklei/go-restful
@@ -69,7 +69,7 @@ github.com/googleapis/gnostic/compiler
 github.com/googleapis/gnostic/extensions
 # github.com/greenpau/ovsdb v0.0.0-20181114004433-3582b85e8968
 github.com/greenpau/ovsdb
-# github.com/hashicorp/golang-lru v0.5.3
+# github.com/hashicorp/golang-lru v0.5.0
 github.com/hashicorp/golang-lru
 github.com/hashicorp/golang-lru/simplelru
 # github.com/hashicorp/hcl v1.0.0
@@ -96,10 +96,8 @@ github.com/intel/multus-cni/logging
 github.com/intel/multus-cni/types
 # github.com/json-iterator/go v1.1.9
 github.com/json-iterator/go
-# github.com/konsorten/go-windows-terminal-sequences v1.0.2
+# github.com/konsorten/go-windows-terminal-sequences v1.0.1
 github.com/konsorten/go-windows-terminal-sequences
-# github.com/kubesphere/porter v0.1.1
-github.com/kubesphere/porter/pkg/bgp/apiutil
 # github.com/magiconair/properties v1.8.1
 github.com/magiconair/properties
 # github.com/matttproud/golang_protobuf_extensions v1.0.1
@@ -161,7 +159,7 @@ github.com/osrg/gobgp/pkg/packet/rtr
 github.com/osrg/gobgp/pkg/server
 # github.com/parnurzeal/gorequest v0.2.15
 github.com/parnurzeal/gorequest
-# github.com/pelletier/go-toml v1.4.0
+# github.com/pelletier/go-toml v1.2.0
 github.com/pelletier/go-toml
 # github.com/pkg/errors v0.8.1
 github.com/pkg/errors
@@ -192,7 +190,7 @@ github.com/projectcalico/libcalico-go/lib/set
 github.com/prometheus/client_golang/prometheus
 github.com/prometheus/client_golang/prometheus/internal
 github.com/prometheus/client_golang/prometheus/promhttp
-# github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4
+# github.com/prometheus/client_model v0.0.0-20190129233127-fd36f4220a90
 github.com/prometheus/client_model/go
 # github.com/prometheus/common v0.6.0
 github.com/prometheus/common/expfmt
@@ -210,7 +208,7 @@ github.com/spf13/afero
 github.com/spf13/afero/mem
 # github.com/spf13/cast v1.3.0
 github.com/spf13/cast
-# github.com/spf13/jwalterweatherman v1.1.0
+# github.com/spf13/jwalterweatherman v1.0.0
 github.com/spf13/jwalterweatherman
 # github.com/spf13/pflag v1.0.5
 github.com/spf13/pflag
@@ -246,7 +244,7 @@ golang.org/x/net/ipv4
 golang.org/x/net/ipv6
 golang.org/x/net/publicsuffix
 golang.org/x/net/trace
-# golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45
+# golang.org/x/oauth2 v0.0.0-20190402181905-9f3314589c9a
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
 # golang.org/x/sys v0.0.0-20191120155948-bd437916bb0e
@@ -280,7 +278,7 @@ golang.org/x/xerrors
 golang.org/x/xerrors/internal
 # gomodules.xyz/jsonpatch/v2 v2.0.0
 gomodules.xyz/jsonpatch/v2
-# google.golang.org/appengine v1.6.1
+# google.golang.org/appengine v1.5.0
 google.golang.org/appengine/internal
 google.golang.org/appengine/internal/base
 google.golang.org/appengine/internal/datastore
@@ -288,7 +286,7 @@ google.golang.org/appengine/internal/log
 google.golang.org/appengine/internal/remote_api
 google.golang.org/appengine/internal/urlfetch
 google.golang.org/appengine/urlfetch
-# google.golang.org/genproto v0.0.0-20190819201941-24fa4b261c55
+# google.golang.org/genproto v0.0.0-20180817151627-c66870c02cf8
 google.golang.org/genproto/googleapis/rpc/status
 # google.golang.org/grpc v1.23.0
 google.golang.org/grpc
