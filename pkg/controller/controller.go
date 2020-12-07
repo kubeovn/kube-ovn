@@ -281,6 +281,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		klog.Fatalf("gc failed %v", err)
 	}
 
+	c.registerSubnetMetrics()
+
 	// start workers to do all the network operations
 	c.startWorkers(stopCh)
 	<-stopCh
@@ -400,4 +402,6 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 			klog.Errorf("gc lsp error %v", err)
 		}
 	}, 30*time.Second, stopCh)
+
+	go wait.Until(c.resyncSubnetMetrics, 30*time.Second, stopCh)
 }
