@@ -18,18 +18,21 @@ const (
 )
 
 func cidrConflict(cidr string) error {
-	if CIDRConflict(cidr, V6Multicast) {
-		return fmt.Errorf("%s conflict with v6 multicast cidr %s", cidr, V6Multicast)
+	for _, cidrBlock := range strings.Split(cidr, ",") {
+		if CIDRConflict(cidrBlock, V6Multicast) {
+			return fmt.Errorf("%s conflict with v6 multicast cidr %s", cidr, V6Multicast)
+		}
+		if CIDRConflict(cidrBlock, V4Multicast) {
+			return fmt.Errorf("%s conflict with v4 multicast cidr %s", cidr, V4Multicast)
+		}
+		if CIDRConflict(cidrBlock, V6Loopback) {
+			return fmt.Errorf("%s conflict with v6 loopback cidr %s", cidr, V6Loopback)
+		}
+		if CIDRConflict(cidrBlock, V4Loopback) {
+			return fmt.Errorf("%s conflict with v4 multicast cidr %s", cidr, V4Loopback)
+		}
 	}
-	if CIDRConflict(cidr, V4Multicast) {
-		return fmt.Errorf("%s conflict with v4 multicast cidr %s", cidr, V4Multicast)
-	}
-	if CIDRConflict(cidr, V6Loopback) {
-		return fmt.Errorf("%s conflict with v6 loopback cidr %s", cidr, V6Loopback)
-	}
-	if CIDRConflict(cidr, V4Loopback) {
-		return fmt.Errorf("%s conflict with v4 multicast cidr %s", cidr, V4Loopback)
-	}
+
 	return nil
 }
 
@@ -87,20 +90,27 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 }
 
 func ValidatePodNetwork(annotations map[string]string) error {
-	if ip := annotations[IpAddressAnnotation]; ip != "" {
-		if strings.Contains(ip, "/") {
-			_, _, err := net.ParseCIDR(ip)
-			if err != nil {
-				return fmt.Errorf("%s is not a valid %s", ip, IpAddressAnnotation)
+	if ipAddress := annotations[IpAddressAnnotation]; ipAddress != "" {
+		// The format of IP Annotation in dualstack is 10.244.0.0/16,fd00:10:244:0:2::/80
+		for _, ip := range strings.Split(ipAddress, ",") {
+			if strings.Contains(ip, "/") {
+				if _, _, err := net.ParseCIDR(ip); err != nil {
+					return fmt.Errorf("%s is not a valid %s", ip, IpAddressAnnotation)
+				}
+			} else {
+				if net.ParseIP(ip) == nil {
+					return fmt.Errorf("%s is not a valid %s", ip, IpAddressAnnotation)
+				}
 			}
-		} else {
-			if net.ParseIP(ip) == nil {
-				return fmt.Errorf("%s is not a valid %s", ip, IpAddressAnnotation)
-			}
-		}
-		if cidr := annotations[CidrAnnotation]; cidr != "" {
-			if !CIDRContainIP(cidr, ip) {
-				return fmt.Errorf("%s not in cidr %s", ip, cidr)
+
+			if cidrStr := annotations[CidrAnnotation]; cidrStr != "" {
+				if err := CheckCidrs(cidrStr); err != nil {
+					return fmt.Errorf("invalid cidr %s", cidrStr)
+				}
+
+				if !CIDRContainIP(cidrStr, ip) {
+					return fmt.Errorf("%s not in cidr %s", ip, cidrStr)
+				}
 			}
 		}
 	}
@@ -139,14 +149,21 @@ func ValidatePodNetwork(annotations map[string]string) error {
 }
 
 func ValidatePodCidr(cidr, ip string) error {
-	ipStr := IPToString(ip)
-	if SubnetBroadCast(cidr) == ipStr {
-		return fmt.Errorf("%s is the broadcast ip in cidr %s", ipStr, cidr)
-	}
-	if SubnetNumber(cidr) == ipStr {
-		return fmt.Errorf("%s is the network number ip in cidr %s", ipStr, cidr)
-	}
+	for _, cidrBlock := range strings.Split(cidr, ",") {
+		for _, ipAddr := range strings.Split(ip, ",") {
+			if CheckProtocol(cidrBlock) != CheckProtocol(ipAddr) {
+				continue
+			}
 
+			ipStr := IPToString(ipAddr)
+			if SubnetBroadCast(cidrBlock) == ipStr {
+				return fmt.Errorf("%s is the broadcast ip in cidr %s", ipStr, cidrBlock)
+			}
+			if SubnetNumber(cidrBlock) == ipStr {
+				return fmt.Errorf("%s is the network number ip in cidr %s", ipStr, cidrBlock)
+			}
+		}
+	}
 	return nil
 }
 

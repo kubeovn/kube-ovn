@@ -3,8 +3,10 @@ package ipam
 import (
 	"errors"
 	"net"
+	"strings"
 	"sync"
 
+	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/util"
 	"k8s.io/klog"
 )
@@ -34,38 +36,55 @@ func NewIPAM() *IPAM {
 	}
 }
 
-func (ipam *IPAM) GetRandomAddress(podName string, subnetName string) (string, string, error) {
+func (ipam *IPAM) GetRandomAddress(podName string, subnetName string) (string, string, string, error) {
 	ipam.mutex.RLock()
 	defer ipam.mutex.RUnlock()
 	if subnet, ok := ipam.Subnets[subnetName]; !ok {
-		return "", "", NoAvailableError
+		return "", "", "", NoAvailableError
 	} else {
-		ip, mac, err := subnet.GetRandomAddress(podName)
-		klog.Infof("allocate %s %s for %s", ip, mac, podName)
-		return string(ip), mac, err
+		v4IP, v6IP, mac, err := subnet.GetRandomAddress(podName)
+		klog.Infof("allocate v4 %s v6 %s mac %s for %s", v4IP, v6IP, mac, podName)
+		return string(v4IP), string(v6IP), mac, err
 	}
 }
 
-func (ipam *IPAM) GetStaticAddress(podName string, ip, mac string, subnetName string) (string, string, error) {
+func (ipam *IPAM) GetStaticAddress(podName string, ip, mac string, subnetName string) (string, string, string, error) {
 	ipam.mutex.RLock()
 	defer ipam.mutex.RUnlock()
 	if subnet, ok := ipam.Subnets[subnetName]; !ok {
-		return "", "", NoAvailableError
+		return "", "", "", NoAvailableError
 	} else {
-		ip, mac, err := subnet.GetStaticAddress(podName, IP(ip), mac, false)
-		klog.Infof("allocate %s %s for %s", ip, mac, podName)
-		return string(ip), mac, err
+		var ips []IP
+		var err error
+		var ipAddr IP
+		for _, ipStr := range strings.Split(ip, ",") {
+			ipAddr, mac, err = subnet.GetStaticAddress(podName, IP(ipStr), mac, false)
+			if err != nil {
+				return "", "", "", err
+			}
+			ips = append(ips, ipAddr)
+		}
+
+		switch util.CheckProtocol(ip) {
+		case kubeovnv1.ProtocolIPv4:
+			klog.Infof("allocate v4 %s mac %s for %s", ip, mac, podName)
+			return ip, "", mac, err
+		case kubeovnv1.ProtocolIPv6:
+			klog.Infof("allocate v6 %s mac %s for %s", ip, mac, podName)
+			return "", ip, mac, err
+		case kubeovnv1.ProtocolDual:
+			klog.Infof("allocate v4 %s v6 %s mac %s for %s", string(ips[0]), string(ips[1]), mac, podName)
+			return string(ips[0]), string(ips[1]), mac, err
+		}
 	}
+	return "", "", "", NoAvailableError
 }
 
 func (ipam *IPAM) ReleaseAddressByPod(podName string) {
 	ipam.mutex.RLock()
 	defer ipam.mutex.RUnlock()
 	for _, subnet := range ipam.Subnets {
-		ip, mac := subnet.ReleaseAddress(podName)
-		if ip != "" {
-			klog.Infof("release %s %s for %s", ip, mac, podName)
-		}
+		subnet.ReleaseAddress(podName)
 	}
 	return
 }
@@ -74,21 +93,55 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr string, excludeIps []string) e
 	ipam.mutex.Lock()
 	defer ipam.mutex.Unlock()
 
-	_, _, err := net.ParseCIDR(cidrStr)
-	if err != nil {
-		return InvalidCIDRError
+	var v4cidrStr, v6cidrStr string
+	var cidrs []*net.IPNet
+	for _, cidrBlock := range strings.Split(cidrStr, ",") {
+		if _, cidr, err := net.ParseCIDR(cidrBlock); err != nil {
+			return InvalidCIDRError
+		} else {
+			cidrs = append(cidrs, cidr)
+		}
+	}
+	protocol := util.CheckProtocol(cidrStr)
+	switch protocol {
+	case kubeovnv1.ProtocolDual:
+		v4cidrStr = cidrs[0].String()
+		v6cidrStr = cidrs[1].String()
+	case kubeovnv1.ProtocolIPv4:
+		v4cidrStr = cidrs[0].String()
+	case kubeovnv1.ProtocolIPv6:
+		v6cidrStr = cidrs[0].String()
 	}
 
+	// subnet.Spec.ExcludeIps contains both v4 and v6 addresses
+	v4ExcludeIps, v6ExcludeIps := util.SplitIpsByProtocol(excludeIps)
+
 	if subnet, ok := ipam.Subnets[name]; ok {
-		subnet.ReservedIPList = convertExcludeIps(excludeIps)
-		firstIP, _ := util.FirstSubnetIP(cidrStr)
-		lastIP, _ := util.LastIP(cidrStr)
-		subnet.FreeIPList = IPRangeList{&IPRange{Start: IP(firstIP), End: IP(lastIP)}}
-		subnet.joinFreeWithReserve()
-		for podName, ip := range subnet.PodToIP {
-			mac := subnet.PodToMac[podName]
-			if _, _, err := subnet.GetStaticAddress(podName, ip, mac, true); err != nil {
-				klog.Errorf("%s address not in subnet %s new cidr %s", podName, name, cidrStr)
+		subnet.Protocol = protocol
+		if protocol == kubeovnv1.ProtocolDual || protocol == kubeovnv1.ProtocolIPv4 {
+			subnet.V4ReservedIPList = convertExcludeIps(v4ExcludeIps)
+			firstIP, _ := util.FirstSubnetIP(v4cidrStr)
+			lastIP, _ := util.LastIP(v4cidrStr)
+			subnet.V4FreeIPList = IPRangeList{&IPRange{Start: IP(firstIP), End: IP(lastIP)}}
+			subnet.joinFreeWithReserve()
+			for podName, ip := range subnet.V4PodToIP {
+				mac := subnet.PodToMac[podName]
+				if _, _, err := subnet.GetStaticAddress(podName, ip, mac, true); err != nil {
+					klog.Errorf("%s address not in subnet %s new cidr %s", podName, name, cidrStr)
+				}
+			}
+		}
+		if protocol == kubeovnv1.ProtocolDual || protocol == kubeovnv1.ProtocolIPv6 {
+			subnet.V6ReservedIPList = convertExcludeIps(v6ExcludeIps)
+			firstIP, _ := util.FirstSubnetIP(v6cidrStr)
+			lastIP, _ := util.LastIP(v6cidrStr)
+			subnet.V6FreeIPList = IPRangeList{&IPRange{Start: IP(firstIP), End: IP(lastIP)}}
+			subnet.joinFreeWithReserve()
+			for podName, ip := range subnet.V6PodToIP {
+				mac := subnet.PodToMac[podName]
+				if _, _, err := subnet.GetStaticAddress(podName, ip, mac, true); err != nil {
+					klog.Errorf("%s address not in subnet %s new cidr %s", podName, name, cidrStr)
+				}
 			}
 		}
 		return nil
@@ -115,8 +168,15 @@ func (ipam *IPAM) GetPodAddress(podName string) []*SubnetAddress {
 	defer ipam.mutex.RUnlock()
 	addresses := []*SubnetAddress{}
 	for _, subnet := range ipam.Subnets {
-		if ip, mac, exist := subnet.GetPodAddress(podName); exist {
-			addresses = append(addresses, &SubnetAddress{Subnet: subnet, Ip: string(ip), Mac: mac})
+		v4IP, v6IP, mac, protocol := subnet.GetPodAddress(podName)
+		switch protocol {
+		case kubeovnv1.ProtocolIPv4:
+			addresses = append(addresses, &SubnetAddress{Subnet: subnet, Ip: string(v4IP), Mac: mac})
+		case kubeovnv1.ProtocolIPv6:
+			addresses = append(addresses, &SubnetAddress{Subnet: subnet, Ip: string(v6IP), Mac: mac})
+		case kubeovnv1.ProtocolDual:
+			addresses = append(addresses, &SubnetAddress{Subnet: subnet, Ip: string(v4IP), Mac: mac})
+			addresses = append(addresses, &SubnetAddress{Subnet: subnet, Ip: string(v6IP), Mac: mac})
 		}
 	}
 	return addresses

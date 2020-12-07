@@ -2,6 +2,7 @@ package util
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -102,21 +103,43 @@ func CIDRConflict(a, b string) bool {
 }
 
 func CIDRContainIP(cidrStr, ipStr string) bool {
-	_, cidr, err := net.ParseCIDR(cidrStr)
-	if err != nil {
-		return false
+	var containFlag bool
+	for _, cidr := range strings.Split(cidrStr, ",") {
+		_, cidrNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			return false
+		}
+
+		for _, ip := range strings.Split(ipStr, ",") {
+			if CheckProtocol(cidr) != CheckProtocol(ip) {
+				continue
+			}
+			ipAddr := net.ParseIP(ip)
+			if ipAddr == nil {
+				return false
+			}
+
+			if cidrNet.Contains(ipAddr) {
+				containFlag = true
+			} else {
+				containFlag = false
+			}
+		}
 	}
-	if CheckProtocol(cidrStr) != CheckProtocol(ipStr) {
-		return false
-	}
-	ip := net.ParseIP(ipStr)
-	if ip == nil {
-		return false
-	}
-	return cidr.Contains(ip)
+	// v4 and v6 address should be both matched for dualstack check
+	return containFlag
 }
 
 func CheckProtocol(address string) string {
+	ips := strings.Split(address, ",")
+	if len(ips) == 2 {
+		v4IP := net.ParseIP(strings.Split(ips[0], "/")[0])
+		v6IP := net.ParseIP(strings.Split(ips[1], "/")[0])
+		if v4IP.To4() != nil && v6IP.To16() != nil {
+			return kubeovnv1.ProtocolDual
+		}
+	}
+
 	address = strings.Split(address, "/")[0]
 	ip := net.ParseIP(address)
 	if ip.To4() != nil {
@@ -155,4 +178,89 @@ func IPToString(ip string) string {
 		return ipNet.String()
 	}
 	return ""
+}
+
+func IsValidIP(ip string) bool {
+	if net.ParseIP(ip) != nil {
+		return true
+	}
+	return false
+}
+
+func CheckCidrs(cidr string) error {
+	for _, cidrBlock := range strings.Split(cidr, ",") {
+		if _, _, err := net.ParseCIDR(cidrBlock); err != nil {
+			return errors.New("CIDRInvalid")
+		}
+	}
+	return nil
+}
+
+func GetGwByCidr(cidrStr string) (string, error) {
+	var gws []string
+	for _, cidr := range strings.Split(cidrStr, ",") {
+		gw, err := FirstSubnetIP(cidr)
+		if err != nil {
+			return "", err
+		}
+		gws = append(gws, gw)
+	}
+
+	return strings.Join(gws, ","), nil
+}
+
+func SplitIpsByProtocol(excludeIps []string) ([]string, []string) {
+	var v4ExcludeIps, v6ExcludeIps []string
+	for _, ex := range excludeIps {
+		ips := strings.Split(ex, "..")
+		if len(ips) == 1 {
+			if net.ParseIP(ips[0]).To4() != nil {
+				v4ExcludeIps = append(v4ExcludeIps, ips[0])
+			} else {
+				v6ExcludeIps = append(v6ExcludeIps, ips[0])
+			}
+		} else {
+			if net.ParseIP(ips[0]).To4() != nil {
+				v4ExcludeIps = append(v4ExcludeIps, ex)
+			} else {
+				v6ExcludeIps = append(v6ExcludeIps, ex)
+			}
+		}
+	}
+
+	return v4ExcludeIps, v6ExcludeIps
+}
+
+func GetStringIP(v4IP, v6IP string) string {
+	var ipStr string
+	if IsValidIP(v4IP) && IsValidIP(v6IP) {
+		ipStr = v4IP + "," + v6IP
+	} else if IsValidIP(v4IP) {
+		ipStr = v4IP
+	} else if IsValidIP(v6IP) {
+		ipStr = v6IP
+	}
+	return ipStr
+}
+
+func GetIpAddrWithMask(ip, cidr string) string {
+	var ipAddr string
+	if CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
+		cidrBlocks := strings.Split(cidr, ",")
+		ips := strings.Split(ip, ",")
+		v4IP := fmt.Sprintf("%s/%s", ips[0], strings.Split(cidrBlocks[0], "/")[1])
+		v6IP := fmt.Sprintf("%s/%s", ips[1], strings.Split(cidrBlocks[1], "/")[1])
+		ipAddr = v4IP + "," + v6IP
+	} else {
+		ipAddr = fmt.Sprintf("%s/%s", ip, strings.Split(cidr, "/")[1])
+	}
+	return ipAddr
+}
+
+func GetIpWithoutMask(ipStr string) string {
+	var ips []string
+	for _, ip := range strings.Split(ipStr, ",") {
+		ips = append(ips, strings.Split(ip, "/")[0])
+	}
+	return strings.Join(ips, ",")
 }

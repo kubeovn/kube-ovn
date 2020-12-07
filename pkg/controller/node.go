@@ -198,12 +198,12 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	var ip, mac string
+	var v4IP, v6IP, mac string
 	portName := fmt.Sprintf("node-%s", key)
 	if node.Annotations[util.AllocatedAnnotation] == "true" {
 		return nil
 	} else {
-		ip, mac, err = c.ipam.GetRandomAddress(portName, c.config.NodeSwitch)
+		v4IP, v6IP, mac, err = c.ipam.GetRandomAddress(portName, c.config.NodeSwitch)
 		if err != nil {
 			return err
 		}
@@ -214,16 +214,20 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	if err := c.ovnClient.CreatePort(c.config.NodeSwitch, portName, ip, subnet.Spec.CIDRBlock, mac, tag, false); err != nil {
+	ipStr := util.GetStringIP(v4IP, v6IP)
+	if err := c.ovnClient.CreatePort(c.config.NodeSwitch, portName, ipStr, subnet.Spec.CIDRBlock, mac, tag, false); err != nil {
 		return err
 	}
 
+	// There is only one nodeAddr temp
 	nodeAddr := getNodeInternalIP(node)
-	if util.CheckProtocol(nodeAddr) == util.CheckProtocol(ip) {
-		err = c.ovnClient.AddStaticRoute("", nodeAddr, strings.Split(ip, "/")[0], c.config.ClusterRouter)
-		if err != nil {
-			klog.Errorf("failed to add static router from node to ovn0 %v", err)
-			return err
+	for _, ip := range strings.Split(ipStr, ",") {
+		if util.CheckProtocol(nodeAddr) == util.CheckProtocol(ip) {
+			err = c.ovnClient.AddStaticRoute("", nodeAddr, ip, c.config.ClusterRouter)
+			if err != nil {
+				klog.Errorf("failed to add static router from node to ovn0 %v", err)
+				return err
+			}
 		}
 	}
 
@@ -237,7 +241,8 @@ func (c *Controller) handleAddNode(key string) error {
 	if len(node.Annotations) == 0 {
 		op = "add"
 	}
-	node.Annotations[util.IpAddressAnnotation] = ip
+
+	node.Annotations[util.IpAddressAnnotation] = ipStr
 	node.Annotations[util.MacAddressAnnotation] = mac
 	node.Annotations[util.CidrAnnotation] = subnet.Spec.CIDRBlock
 	node.Annotations[util.GatewayAnnotation] = subnet.Spec.Gateway
@@ -252,59 +257,9 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	ipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(fmt.Sprintf("node-%s", key), metav1.GetOptions{})
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Create(&kubeovnv1.IP{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: fmt.Sprintf("node-%s", key),
-					Labels: map[string]string{
-						util.SubnetNameLabel: c.config.NodeSwitch,
-						c.config.NodeSwitch:  "",
-					},
-				},
-				Spec: kubeovnv1.IPSpec{
-					PodName:       key,
-					Subnet:        c.config.NodeSwitch,
-					NodeName:      key,
-					IPAddress:     ip,
-					MacAddress:    mac,
-					AttachIPs:     []string{},
-					AttachMacs:    []string{},
-					AttachSubnets: []string{},
-				},
-			})
-			if err != nil {
-				errMsg := fmt.Errorf("failed to create ip crd for %s, %v", ip, err)
-				klog.Error(errMsg)
-				return errMsg
-			}
-		} else {
-			errMsg := fmt.Errorf("failed to get ip crd for %s, %v", ip, err)
-			klog.Error(errMsg)
-			return errMsg
-		}
-	} else {
-		if ipCr.Labels != nil {
-			ipCr.Labels[util.SubnetNameLabel] = c.config.NodeSwitch
-		} else {
-			ipCr.Labels = map[string]string{
-				util.SubnetNameLabel: c.config.NodeSwitch,
-			}
-		}
-		ipCr.Spec.PodName = key
-		ipCr.Spec.Namespace = ""
-		ipCr.Spec.Subnet = c.config.NodeSwitch
-		ipCr.Spec.NodeName = key
-		ipCr.Spec.IPAddress = ip
-		ipCr.Spec.MacAddress = mac
-		ipCr.Spec.ContainerID = ""
-		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(ipCr)
-		if err != nil {
-			errMsg := fmt.Errorf("failed to create ip crd for %s, %v", ip, err)
-			klog.Error(errMsg)
-			return errMsg
-		}
+	if err := c.createOrUpdateCrdIPs(key, ipStr, mac); err != nil {
+		klog.Errorf("failed to create or update IPs node-%s %v", key, err)
+		return err
 	}
 
 	return nil
@@ -326,8 +281,8 @@ func (c *Controller) handleDeleteNode(key string) error {
 	}
 
 	addresses := c.ipam.GetPodAddress(portName)
-	if len(addresses) > 0 {
-		if err := c.ovnClient.DeleteStaticRouteByNextHop(addresses[0].Ip); err != nil {
+	for _, addr := range addresses {
+		if err := c.ovnClient.DeleteStaticRouteByNextHop(addr.Ip); err != nil {
 			return err
 		}
 	}
@@ -389,4 +344,63 @@ func getNodeInternalIP(node *v1.Node) string {
 		}
 	}
 	return nodeAddr
+}
+
+func (c *Controller) createOrUpdateCrdIPs(key, ip, mac string) error {
+	ipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(fmt.Sprintf("node-%s", key), metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Create(&kubeovnv1.IP{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf("node-%s", key),
+					Labels: map[string]string{
+						util.SubnetNameLabel: c.config.NodeSwitch,
+						c.config.NodeSwitch:  "",
+					},
+				},
+				Spec: kubeovnv1.IPSpec{
+					PodName:       key,
+					Subnet:        c.config.NodeSwitch,
+					NodeName:      key,
+					IPAddress:     ip,
+					MacAddress:    mac,
+					AttachIPs:     []string{},
+					AttachMacs:    []string{},
+					AttachSubnets: []string{},
+				},
+			})
+			if err != nil {
+				errMsg := fmt.Errorf("failed to create ip crd for %s, %v", ip, err)
+				klog.Error(errMsg)
+				return errMsg
+			}
+		} else {
+			errMsg := fmt.Errorf("failed to get ip crd for %s, %v", ip, err)
+			klog.Error(errMsg)
+			return errMsg
+		}
+	} else {
+		if ipCr.Labels != nil {
+			ipCr.Labels[util.SubnetNameLabel] = c.config.NodeSwitch
+		} else {
+			ipCr.Labels = map[string]string{
+				util.SubnetNameLabel: c.config.NodeSwitch,
+			}
+		}
+		ipCr.Spec.PodName = key
+		ipCr.Spec.Namespace = ""
+		ipCr.Spec.Subnet = c.config.NodeSwitch
+		ipCr.Spec.NodeName = key
+		ipCr.Spec.IPAddress = ip
+		ipCr.Spec.MacAddress = mac
+		ipCr.Spec.ContainerID = ""
+		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(ipCr)
+		if err != nil {
+			errMsg := fmt.Errorf("failed to create ip crd for %s, %v", ip, err)
+			klog.Error(errMsg)
+			return errMsg
+		}
+	}
+
+	return nil
 }

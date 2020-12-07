@@ -140,7 +140,7 @@ func ParseFlags() (*Configuration, error) {
 	}
 
 	if config.DefaultGateway == "" {
-		gw, err := util.FirstSubnetIP(config.DefaultCIDR)
+		gw, err := util.GetGwByCidr(config.DefaultCIDR)
 		if err != nil {
 			return nil, err
 		}
@@ -152,7 +152,7 @@ func ParseFlags() (*Configuration, error) {
 	}
 
 	if config.NodeSwitchGateway == "" {
-		gw, err := util.FirstSubnetIP(config.NodeSwitchCIDR)
+		gw, err := util.GetGwByCidr(config.NodeSwitchCIDR)
 		if err != nil {
 			return nil, err
 		}
