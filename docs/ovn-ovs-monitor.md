@@ -104,7 +104,9 @@ OVS_Monitor | | ovsdb/vswitchd metrics
  8 | watch_duration_seconds | How long an API watch takes to return and decode for the reflectors
  9 | items_per_watch | How many items an API watch returns to the reflectors
  10 | last_resource_version | Last resource version seen for the reflectors
- 11 | ovs_client_request_latency_milliseconds | The latency histogram for ovs request 
+ 11 | ovs_client_request_latency_milliseconds | The latency histogram for ovs request
+ 12 | subnet_available_ip_count | The available num of ip address in subnet
+ 13 | subnet_used_ip_count | The used num of ip address in subnet
  Kube-OVN-CNI | | CNI metrics
  1 | cni_op_latency_seconds | The latency seconds for cni operations
  2 | cni_wait_address_seconds_total | Latency that cni wait controller to assign an address
