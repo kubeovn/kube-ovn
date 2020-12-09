@@ -58,69 +58,11 @@ var (
 )
 
 func (c *Controller) runGateway() {
-	subnets, err := c.getSubnetsCIDR(c.protocol)
-	if err != nil {
-		klog.Errorf("get subnets failed, %+v", err)
-		return
+	if err := c.setIPSet(); err != nil {
+		klog.Errorf("failed to set gw ipsets")
 	}
-	localPodIPs, err := c.getLocalPodIPsNeedNAT(c.protocol)
-	if err != nil {
-		klog.Errorf("get local pod ips failed, %+v", err)
-		return
-	}
-	subnetsNeedNat, err := c.getSubnetsNeedNAT(c.protocol)
-	if err != nil {
-		klog.Errorf("get need nat subnets failed, %+v", err)
-		return
-	}
-	otherNode, err := c.getOtherNodes(c.protocol)
-	if err != nil {
-		klog.Errorf("failed to get node, %+v", err)
-		return
-	}
-	c.ipset.AddOrReplaceIPSet(ipsets.IPSetMetadata{
-		MaxSize: 1048576,
-		SetID:   SubnetSet,
-		Type:    ipsets.IPSetTypeHashNet,
-	}, subnets)
-	c.ipset.AddOrReplaceIPSet(ipsets.IPSetMetadata{
-		MaxSize: 1048576,
-		SetID:   LocalPodSet,
-		Type:    ipsets.IPSetTypeHashIP,
-	}, localPodIPs)
-	c.ipset.AddOrReplaceIPSet(ipsets.IPSetMetadata{
-		MaxSize: 1048576,
-		SetID:   SubnetNatSet,
-		Type:    ipsets.IPSetTypeHashNet,
-	}, subnetsNeedNat)
-	c.ipset.AddOrReplaceIPSet(ipsets.IPSetMetadata{
-		MaxSize: 1048576,
-		SetID:   OtherNodeSet,
-		Type:    ipsets.IPSetTypeHashNet,
-	}, otherNode)
-	c.ipset.ApplyUpdates()
-
-	var iptableRules []util.IPTableRule
-	if c.protocol == kubeovnv1.ProtocolIPv4 {
-		iptableRules = v4Rules
-	} else {
-		iptableRules = v6Rules
-	}
-	iptableRules[0], iptableRules[1], iptableRules[3], iptableRules[4] =
-		iptableRules[4], iptableRules[3], iptableRules[1], iptableRules[0]
-	for _, iptRule := range iptableRules {
-		exists, err := c.iptable.Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
-		if err != nil {
-			klog.Errorf("check iptable rule exist failed, %+v", err)
-			return
-		}
-		if !exists {
-			klog.Infof("iptables rules %s not exist, recreate iptables rules", strings.Join(iptRule.Rule, " "))
-			if err := c.iptable.Insert(iptRule.Table, iptRule.Chain, 1, iptRule.Rule...); err != nil {
-				klog.Errorf("insert iptable rule %s failed, %+v", strings.Join(iptRule.Rule, " "), err)
-				return
-			}
-		}
+	if err := c.setIptables(); err != nil {
+		klog.Errorf("failed to set gw iptables")
 	}
 
 	if err := c.setGatewayBandwidth(); err != nil {
@@ -134,6 +76,103 @@ func (c *Controller) runGateway() {
 	}
 
 	c.appendMssRule()
+}
+
+func (c *Controller) setIPSet() error {
+	protocols := make([]string, 2)
+	if c.protocol == kubeovnv1.ProtocolDual {
+		protocols[0] = kubeovnv1.ProtocolIPv4
+		protocols[1] = kubeovnv1.ProtocolIPv6
+	} else {
+		protocols[0] = c.protocol
+	}
+
+	for _, protocol := range protocols {
+		if c.ipset[protocol] == nil {
+			continue
+		}
+		subnets, err := c.getSubnetsCIDR(protocol)
+		if err != nil {
+			klog.Errorf("get subnets failed, %+v", err)
+			return err
+		}
+		localPodIPs, err := c.getLocalPodIPsNeedNAT(protocol)
+		if err != nil {
+			klog.Errorf("get local pod ips failed, %+v", err)
+			return err
+		}
+		subnetsNeedNat, err := c.getSubnetsNeedNAT(protocol)
+		if err != nil {
+			klog.Errorf("get need nat subnets failed, %+v", err)
+			return err
+		}
+		otherNode, err := c.getOtherNodes(protocol)
+		if err != nil {
+			klog.Errorf("failed to get node, %+v", err)
+			return err
+		}
+		c.ipset[protocol].AddOrReplaceIPSet(ipsets.IPSetMetadata{
+			MaxSize: 1048576,
+			SetID:   SubnetSet,
+			Type:    ipsets.IPSetTypeHashNet,
+		}, subnets)
+		c.ipset[protocol].AddOrReplaceIPSet(ipsets.IPSetMetadata{
+			MaxSize: 1048576,
+			SetID:   LocalPodSet,
+			Type:    ipsets.IPSetTypeHashIP,
+		}, localPodIPs)
+		c.ipset[protocol].AddOrReplaceIPSet(ipsets.IPSetMetadata{
+			MaxSize: 1048576,
+			SetID:   SubnetNatSet,
+			Type:    ipsets.IPSetTypeHashNet,
+		}, subnetsNeedNat)
+		c.ipset[protocol].AddOrReplaceIPSet(ipsets.IPSetMetadata{
+			MaxSize: 1048576,
+			SetID:   OtherNodeSet,
+			Type:    ipsets.IPSetTypeHashNet,
+		}, otherNode)
+		c.ipset[protocol].ApplyUpdates()
+	}
+	return nil
+}
+
+func (c *Controller) setIptables() error {
+	protocols := make([]string, 2)
+	if c.protocol == kubeovnv1.ProtocolDual {
+		protocols[0] = kubeovnv1.ProtocolIPv4
+		protocols[1] = kubeovnv1.ProtocolIPv6
+	} else {
+		protocols[0] = c.protocol
+	}
+
+	for _, protocol := range protocols {
+		if c.iptable[protocol] == nil {
+			continue
+		}
+		iptableRules := make([]util.IPTableRule, len(v4Rules))
+		if protocol == kubeovnv1.ProtocolIPv4 {
+			iptableRules = v4Rules
+		} else {
+			iptableRules = v6Rules
+		}
+		iptableRules[0], iptableRules[1], iptableRules[3], iptableRules[4] =
+			iptableRules[4], iptableRules[3], iptableRules[1], iptableRules[0]
+		for _, iptRule := range iptableRules {
+			exists, err := c.iptable[protocol].Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
+			if err != nil {
+				klog.Errorf("check iptable rule exist failed, %+v", err)
+				return err
+			}
+			if !exists {
+				klog.Infof("iptables rules %s not exist, recreate iptables rules", strings.Join(iptRule.Rule, " "))
+				if err := c.iptable[protocol].Insert(iptRule.Table, iptRule.Chain, 1, iptRule.Rule...); err != nil {
+					klog.Errorf("insert iptable rule %s failed, %+v", strings.Join(iptRule.Rule, " "), err)
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (c *Controller) setGatewayBandwidth() error {
@@ -259,13 +298,15 @@ func (c *Controller) getSubnetsNeedNAT(protocol string) ([]string, error) {
 		klog.Errorf("list subnets failed, %v", err)
 		return nil, err
 	}
+
 	for _, subnet := range subnets {
 		if subnet.Spec.Vpc == util.DefaultVpc &&
 			subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType &&
 			subnet.Status.ActivateGateway == c.config.NodeName &&
 			subnet.Spec.Protocol == protocol &&
 			subnet.Spec.NatOutgoing {
-			subnetsNeedNat = append(subnetsNeedNat, subnet.Spec.CIDRBlock)
+			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
+			subnetsNeedNat = append(subnetsNeedNat, cidrBlock)
 		}
 	}
 	return subnetsNeedNat, nil
@@ -282,8 +323,9 @@ func (c *Controller) getSubnetsCIDR(protocol string) ([]string, error) {
 		return nil, err
 	}
 	for _, subnet := range subnets {
-		if subnet.Spec.Protocol == protocol && subnet.Spec.Vpc == util.DefaultVpc {
-			ret = append(ret, subnet.Spec.CIDRBlock)
+		if subnet.Spec.Vpc == util.DefaultVpc {
+			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
+			ret = append(ret, cidrBlock)
 		}
 	}
 	return ret, nil
@@ -322,18 +364,45 @@ func (c *Controller) appendMssRule() {
 			Rule:  strings.Split(rule, " "),
 		}
 
-		exists, err := c.iptable.Exists(MssMangleRule.Table, MssMangleRule.Chain, MssMangleRule.Rule...)
-		if err != nil {
-			klog.Errorf("check iptable rule %v failed, %+v", MssMangleRule.Rule, err)
-			return
-		}
-
-		if !exists {
-			klog.Infof("iptables rules %s not exist, append iptables rules", strings.Join(MssMangleRule.Rule, " "))
-			if err := c.iptable.Append(MssMangleRule.Table, MssMangleRule.Chain, MssMangleRule.Rule...); err != nil {
-				klog.Errorf("append iptable rule %v failed, %+v", MssMangleRule.Rule, err)
-				return
-			}
+		switch c.protocol {
+		case kubeovnv1.ProtocolIPv4:
+			c.updateMssRuleByProtocol(c.protocol, MssMangleRule)
+		case kubeovnv1.ProtocolIPv6:
+			c.updateMssRuleByProtocol(c.protocol, MssMangleRule)
+		case kubeovnv1.ProtocolDual:
+			c.updateMssRuleByProtocol(kubeovnv1.ProtocolIPv4, MssMangleRule)
+			c.updateMssRuleByProtocol(kubeovnv1.ProtocolIPv6, MssMangleRule)
 		}
 	}
+}
+
+func (c *Controller) updateMssRuleByProtocol(protocol string, MssMangleRule util.IPTableRule) {
+	exists, err := c.iptable[protocol].Exists(MssMangleRule.Table, MssMangleRule.Chain, MssMangleRule.Rule...)
+	if err != nil {
+		klog.Errorf("check iptable rule %v failed, %+v", MssMangleRule.Rule, err)
+		return
+	}
+
+	if !exists {
+		klog.Infof("iptables rules %s not exist, append iptables rules", strings.Join(MssMangleRule.Rule, " "))
+		if err := c.iptable[protocol].Append(MssMangleRule.Table, MssMangleRule.Chain, MssMangleRule.Rule...); err != nil {
+			klog.Errorf("append iptable rule %v failed, %+v", MssMangleRule.Rule, err)
+			return
+		}
+	}
+}
+
+func getCidrByProtocol(cidr, protocol string) string {
+	var cidrStr string
+	if util.CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
+		cidrBlocks := strings.Split(cidr, ",")
+		if protocol == kubeovnv1.ProtocolIPv4 {
+			cidrStr = cidrBlocks[0]
+		} else if protocol == kubeovnv1.ProtocolIPv6 {
+			cidrStr = cidrBlocks[1]
+		}
+	} else {
+		cidrStr = cidr
+	}
+	return cidrStr
 }

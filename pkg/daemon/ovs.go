@@ -2,6 +2,11 @@ package daemon
 
 import (
 	"fmt"
+	"net"
+	"os/exec"
+	"strings"
+	"time"
+
 	"github.com/Mellanox/sriovnet"
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/ovs"
@@ -11,10 +16,6 @@ import (
 	goping "github.com/oilbeater/go-ping"
 	"github.com/vishvananda/netlink"
 	"k8s.io/klog"
-	"net"
-	"os/exec"
-	"strings"
-	"time"
 )
 
 func (csh cniServerHandler) configureNic(podName, podNamespace, netns, containerID, mac, ip, gateway, ingress, egress, vlanID, DeviceID string) error {
@@ -34,6 +35,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, netns, container
 		}
 	}
 
+	ipStr := util.GetIpWithoutMask(ip)
 	ifaceID := fmt.Sprintf("%s.%s", podName, podNamespace)
 	ovs.CleanDuplicatePort(ifaceID)
 	// Add veth pair host end to ovs port
@@ -41,7 +43,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, netns, container
 		"set", "interface", hostNicName, fmt.Sprintf("external_ids:iface-id=%s", ifaceID),
 		fmt.Sprintf("external_ids:pod_name=%s", podName),
 		fmt.Sprintf("external_ids:pod_namespace=%s", podNamespace),
-		fmt.Sprintf("external_ids:ip=%s", strings.Split(ip, "/")[0]))
+		fmt.Sprintf("external_ids:ip=%s", ipStr))
 	if err != nil {
 		return fmt.Errorf("add nic to ovs failed %v: %q", err, output)
 	}
@@ -140,7 +142,7 @@ func configureContainerNic(nicName, ipAddr, gateway string, macAddr net.Hardware
 		if err = netlink.LinkSetName(containerLink, "eth0"); err != nil {
 			return err
 		}
-		if util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolIPv6 {
+		if util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolDual || util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolIPv6 {
 			// For docker version >=17.x the "none" network will disable ipv6 by default.
 			// We have to enable ipv6 here to add v6 address and gateway.
 			// See https://github.com/containernetworking/cni/issues/531
@@ -176,6 +178,26 @@ func configureContainerNic(nicName, ipAddr, gateway string, macAddr net.Hardware
 				Dst:       defaultNet,
 				Gw:        net.ParseIP(gateway),
 			})
+		case kubeovnv1.ProtocolDual:
+			gws := strings.Split(gateway, ",")
+			_, defaultNet, _ := net.ParseCIDR("0.0.0.0/0")
+			err = netlink.RouteAdd(&netlink.Route{
+				LinkIndex: containerLink.Attrs().Index,
+				Scope:     netlink.SCOPE_UNIVERSE,
+				Dst:       defaultNet,
+				Gw:        net.ParseIP(gws[0]),
+			})
+			if err != nil {
+				return fmt.Errorf("config v4 gateway failed %v", err)
+			}
+
+			_, defaultNet, _ = net.ParseCIDR("::/0")
+			err = netlink.RouteAdd(&netlink.Route{
+				LinkIndex: containerLink.Attrs().Index,
+				Scope:     netlink.SCOPE_UNIVERSE,
+				Dst:       defaultNet,
+				Gw:        net.ParseIP(gws[1]),
+			})
 		}
 
 		if err != nil {
@@ -187,35 +209,38 @@ func configureContainerNic(nicName, ipAddr, gateway string, macAddr net.Hardware
 }
 
 func waiteNetworkReady(gateway string) error {
-	pinger, err := goping.NewPinger(gateway)
-	if err != nil {
-		return fmt.Errorf("failed to init pinger, %v", err)
-	}
-	pinger.SetPrivileged(true)
-	pinger.Count = 600
-	pinger.Timeout = 600 * time.Second
-	pinger.Interval = 1 * time.Second
+	for _, gw := range strings.Split(gateway, ",") {
+		pinger, err := goping.NewPinger(gw)
+		if err != nil {
+			return fmt.Errorf("failed to init pinger, %v", err)
+		}
+		pinger.SetPrivileged(true)
+		pinger.Count = 600
+		pinger.Timeout = 600 * time.Second
+		pinger.Interval = 1 * time.Second
 
-	success := false
-	pinger.OnRecv = func(p *goping.Packet) {
-		success = true
-		pinger.Stop()
-	}
-	pinger.Run()
+		success := false
+		pinger.OnRecv = func(p *goping.Packet) {
+			success = true
+			pinger.Stop()
+		}
+		pinger.Run()
 
-	cniConnectivityResult.WithLabelValues(nodeName).Add(float64(pinger.PacketsSent))
-	if !success {
-		return fmt.Errorf("network not ready after 600 ping")
+		cniConnectivityResult.WithLabelValues(nodeName).Add(float64(pinger.PacketsSent))
+		if !success {
+			return fmt.Errorf("network not ready after 600 ping")
+		}
+		klog.Infof("network ready after %d ping, gw %v", pinger.PacketsSent, gw)
 	}
-	klog.Infof("network ready after %d ping", pinger.PacketsSent)
 	return nil
 }
 
 func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int) error {
+	ipStr := util.GetIpWithoutMask(ip)
 	raw, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", util.NodeNic, "--",
 		"set", "interface", util.NodeNic, "type=internal", "--",
 		"set", "interface", util.NodeNic, fmt.Sprintf("external_ids:iface-id=%s", portName),
-		fmt.Sprintf("external_ids:ip=%s", strings.Split(ip, "/")[0]))
+		fmt.Sprintf("external_ids:ip=%s", ipStr))
 	if err != nil {
 		klog.Errorf("failed to configure node nic %s %q", portName, raw)
 		return fmt.Errorf(raw)
@@ -236,7 +261,14 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 
 	// ping gw to activate the flow
 	var output []byte
-	if util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv4 {
+	protocol := util.CheckProtocol(gw)
+	if protocol == kubeovnv1.ProtocolDual {
+		gws := strings.Split(gw, ",")
+		output, _ = exec.Command("ping", "-w", "10", gws[0]).CombinedOutput()
+		klog.Infof("ping v4 gw result is: \n %s", output)
+
+		output, _ = exec.Command("ping", "-6", "-w", "10", gws[1]).CombinedOutput()
+	} else if protocol == kubeovnv1.ProtocolIPv4 {
 		output, _ = exec.Command("ping", "-w", "10", gw).CombinedOutput()
 	} else {
 		output, _ = exec.Command("ping", "-6", "-w", "10", gw).CombinedOutput()
@@ -293,13 +325,44 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int) error {
 		return fmt.Errorf("can not find nic %s %v", link, err)
 	}
 
-	ipAddr, err := netlink.ParseAddr(ip)
+	ipDelMap := make(map[string]netlink.Addr)
+	ipAddMap := make(map[string]netlink.Addr)
+	ipAddrs, err := netlink.AddrList(nodeLink, 0x0)
 	if err != nil {
-		return fmt.Errorf("can not parse %s %v", ip, err)
+		return fmt.Errorf("can not get addr %s %v", nodeLink, err)
+	}
+	for _, ipAddr := range ipAddrs {
+		if strings.HasPrefix(ipAddr.IP.String(), "fe80::") {
+			continue
+		}
+		ipDelMap[ipAddr.IP.String()+"/"+ipAddr.Mask.String()] = ipAddr
 	}
 
-	if err = netlink.AddrReplace(nodeLink, ipAddr); err != nil {
-		return fmt.Errorf("can not add address to nic %s, %v", link, err)
+	for _, ipStr := range strings.Split(ip, ",") {
+		// Do not reassign same address for link
+		if _, ok := ipDelMap[ipStr]; ok {
+			delete(ipDelMap, ipStr)
+			continue
+		}
+
+		ipAddr, err := netlink.ParseAddr(ipStr)
+		if err != nil {
+			return fmt.Errorf("can not parse %s %v", ipStr, err)
+		}
+		ipAddMap[ipStr] = *ipAddr
+	}
+
+	for _, addr := range ipDelMap {
+		ipDel := addr
+		if err = netlink.AddrDel(nodeLink, &ipDel); err != nil {
+			return fmt.Errorf("delete address %s %v", addr, err)
+		}
+	}
+	for _, addr := range ipAddMap {
+		ipAdd := addr
+		if err = netlink.AddrAdd(nodeLink, &ipAdd); err != nil {
+			return fmt.Errorf("can not add address %v to nic %s, %v", addr, link, err)
+		}
 	}
 
 	if err = netlink.LinkSetHardwareAddr(nodeLink, macAddr); err != nil {

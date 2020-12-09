@@ -360,7 +360,6 @@ func (c *Controller) handleAddPod(key string) error {
 	}
 
 	// Avoid create lsp for already running pod in ovn-nb when controller restart
-
 	for _, subnet := range needAllocateSubnets(pod, podSubnets) {
 		v4IP, v6IP, mac, err := c.acquireAddress(pod, subnet)
 		if err != nil {

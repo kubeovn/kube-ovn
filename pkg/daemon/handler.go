@@ -57,7 +57,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			return
 		}
 		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podRequest.Provider)] != "true" {
-			klog.Infof("wait address for  pod %s/%s ", podRequest.PodNamespace, podRequest.PodName)
+			klog.Infof("wait address for pod %s/%s ", podRequest.PodNamespace, podRequest.PodName)
 			// wait controller assign an address
 			cniWaitAddressResult.WithLabelValues(nodeName).Inc()
 			time.Sleep(1 * time.Second)
@@ -79,7 +79,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		ingress = pod.Annotations[util.IngressRateAnnotation]
 		egress = pod.Annotations[util.EgressRateAnnotation]
 		vlanID = pod.Annotations[util.VlanIdAnnotation]
-		ipAddr = fmt.Sprintf("%s/%s", ip, strings.Split(cidr, "/")[1])
+		ipAddr = util.GetIpAddrWithMask(ip, cidr)
 		break
 	}
 
@@ -112,7 +112,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		}
 	}
 
-	if err := resp.WriteHeaderAndEntity(http.StatusOK, request.CniResponse{Protocol: util.CheckProtocol(ipAddr), IpAddress: strings.Split(ipAddr, "/")[0], MacAddress: macAddr, CIDR: cidr, Gateway: gw}); err != nil {
+	if err := resp.WriteHeaderAndEntity(http.StatusOK, request.CniResponse{Protocol: util.CheckProtocol(cidr), IpAddress: ip, MacAddress: macAddr, CIDR: cidr, Gateway: gw}); err != nil {
 		klog.Errorf("failed to write response, %v", err)
 	}
 }
@@ -153,9 +153,11 @@ func (csh cniServerHandler) createOrUpdateIPCr(podRequest request.CniRequest, su
 			return errMsg
 		}
 	} else {
+		for _, ipStr := range strings.Split(ip, ",") {
+			ipCr.Spec.AttachIPs = append(ipCr.Spec.AttachIPs, ipStr)
+		}
 		ipCr.Labels[subnet] = ""
 		ipCr.Spec.AttachSubnets = append(ipCr.Spec.AttachSubnets, subnet)
-		ipCr.Spec.AttachIPs = append(ipCr.Spec.AttachIPs, ip)
 		ipCr.Spec.AttachMacs = append(ipCr.Spec.AttachMacs, macAddr)
 		if _, err := csh.KubeOvnClient.KubeovnV1().IPs().Update(ipCr); err != nil {
 			errMsg := fmt.Errorf("failed to update ip crd for %s, %v", ip, err)

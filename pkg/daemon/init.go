@@ -2,12 +2,13 @@ package daemon
 
 import (
 	"fmt"
-	"github.com/alauda/kube-ovn/pkg/util"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/klog"
 	"net"
 	"strings"
 	"time"
+
+	"github.com/alauda/kube-ovn/pkg/util"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog"
 )
 
 // InitNodeGateway init ovn0
@@ -43,6 +44,8 @@ func InitNodeGateway(config *Configuration) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse mac %s %v", mac, err)
 	}
+
+	ipAddr = util.GetIpAddrWithMask(ip, cidr)
 	return configureNodeNic(portName, ipAddr, gw, mac, config.MTU)
 }
 
