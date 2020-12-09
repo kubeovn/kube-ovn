@@ -623,7 +623,7 @@ var (
 		})
 )
 
-func init() {
+func InitPingerMetrics() {
 	prometheus.MustRegister(ovsUpGauge)
 	prometheus.MustRegister(ovsDownGauge)
 	prometheus.MustRegister(ovnControllerUpGauge)

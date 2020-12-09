@@ -1,4 +1,4 @@
-package main
+package controller
 
 import (
 	"fmt"
@@ -16,12 +16,14 @@ import (
 	"k8s.io/sample-controller/pkg/signals"
 )
 
-func main() {
+func CmdMain() {
 	defer klog.Flush()
 
 	stopCh := signals.SetupSignalHandler()
 	klog.Infof(versions.String())
 
+	controller.InitClientGoMetrics()
+	controller.InitWorkQueueMetrics()
 	config, err := controller.ParseFlags()
 	if err != nil {
 		klog.Fatalf("parse config failed %v", err)

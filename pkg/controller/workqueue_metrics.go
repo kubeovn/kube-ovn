@@ -27,7 +27,7 @@ import (
 // which registers metrics to the default prometheus Registry. We require very
 // similar functionality, but must register metrics to a different Registry.
 
-func init() {
+func InitWorkQueueMetrics() {
 	workqueue.SetProvider(workqueueMetricsProvider{})
 }
 
