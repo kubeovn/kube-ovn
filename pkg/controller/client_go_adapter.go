@@ -107,7 +107,7 @@ var (
 	}, []string{"name"})
 )
 
-func init() {
+func InitClientGoMetrics() {
 	registerClientMetrics()
 	registerReflectorMetrics()
 }

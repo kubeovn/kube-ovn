@@ -26,20 +26,11 @@ push-dev:
 
 build-go:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn -ldflags $(GOLDFLAGS) -v ./cmd/cni
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn-controller -ldflags $(GOLDFLAGS) -v ./cmd/controller
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn-daemon -ldflags $(GOLDFLAGS) -v ./cmd/daemon
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn-pinger -ldflags $(GOLDFLAGS) -v ./cmd/pinger
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn-monitor -ldflags $(GOLDFLAGS) -v ./cmd/ovn_monitor
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn-speaker -ldflags $(GOLDFLAGS) -v ./cmd/speaker
-
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(PWD)/dist/images/kube-ovn-cmd -ldflags $(GOLDFLAGS) -v ./cmd
 
 build-go-arm:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn -ldflags $(GOLDFLAGS) -v ./cmd/cni
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn-controller -ldflags $(GOLDFLAGS) -v ./cmd/controller
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn-daemon -ldflags $(GOLDFLAGS) -v ./cmd/daemon
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn-pinger -ldflags $(GOLDFLAGS) -v ./cmd/pinger
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn-monitor -ldflags $(GOLDFLAGS) -v ./cmd/ovn_monitor
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn-speaker -ldflags $(GOLDFLAGS) -v ./cmd/speaker
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(PWD)/dist/images/kube-ovn-cmd -ldflags $(GOLDFLAGS) -v ./cmd
 
 release: lint build-go
 	docker buildx build --cache-from "type=local,src=/tmp/.buildx-cache" --cache-to "type=local,dest=/tmp/.buildx-cache" --platform linux/amd64 --build-arg ARCH=amd64 --build-arg RPM_ARCH=x86_64 -t ${REGISTRY}/kube-ovn:${RELEASE_TAG} -o type=docker -f dist/images/Dockerfile dist/images/

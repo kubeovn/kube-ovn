@@ -1,4 +1,4 @@
-package main
+package speaker
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 	"net/http"
 )
 
-func main() {
+func CmdMain() {
 	defer klog.Flush()
 
 	klog.Infof(versions.String())

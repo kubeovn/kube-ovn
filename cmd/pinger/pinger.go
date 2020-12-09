@@ -1,4 +1,4 @@
-package main
+package pinger
 
 import (
 	"fmt"
@@ -10,10 +10,11 @@ import (
 	"k8s.io/klog"
 )
 
-func main() {
+func CmdMain() {
 	defer klog.Flush()
 
 	klog.Infof(versions.String())
+	pinger.InitPingerMetrics()
 	config, err := pinger.ParseFlags()
 	if err != nil {
 		klog.Fatalf("parse config failed %v", err)

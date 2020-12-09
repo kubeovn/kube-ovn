@@ -1,4 +1,4 @@
-package main
+package daemon
 
 import (
 	"fmt"
@@ -17,10 +17,11 @@ import (
 	"k8s.io/sample-controller/pkg/signals"
 )
 
-func main() {
+func CmdMain() {
 	defer klog.Flush()
 
 	klog.Infof(versions.String())
+	daemon.InitMetrics()
 	config, err := daemon.ParseFlags()
 	if err != nil {
 		klog.Fatalf("parse config failed %v", err)

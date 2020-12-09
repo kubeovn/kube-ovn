@@ -53,13 +53,13 @@ RUN --mount=type=bind,target=/rpms,from=ovs-rpm,source=/rpms rpm -ivh --nodeps /
 COPY *.sh /kube-ovn/
 COPY grace_stop_ovn_controller /usr/share/ovn/scripts/grace_stop_ovn_controller
 COPY 01-kube-ovn.conflist /kube-ovn/01-kube-ovn.conflist
+RUN rpm -e --nodeps sqlite-libs
 
 WORKDIR /kube-ovn
-
-RUN rpm -e --nodeps sqlite-libs
-COPY kube-ovn-pinger /kube-ovn/kube-ovn-pinger
 COPY kube-ovn /kube-ovn/kube-ovn
-COPY kube-ovn-daemon /kube-ovn/kube-ovn-daemon
-COPY kube-ovn-controller /kube-ovn/kube-ovn-controller
-COPY kube-ovn-monitor /kube-ovn/kube-ovn-monitor
-COPY kube-ovn-speaker /kube-ovn/kube-ovn-speaker
+COPY kube-ovn-cmd /kube-ovn/kube-ovn-cmd
+RUN ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-controller && \
+    ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-daemon && \
+    ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-monitor && \
+    ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-pinger && \
+    ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-speaker

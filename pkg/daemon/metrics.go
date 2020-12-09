@@ -112,7 +112,7 @@ var (
 	}, []string{"name"})
 )
 
-func init() {
+func InitMetrics() {
 	registerReflectorMetrics()
 	registerClientMetrics()
 	prometheus.MustRegister(cniOperationHistogram)

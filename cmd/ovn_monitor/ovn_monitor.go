@@ -1,4 +1,4 @@
-package main
+package ovn_monitor
 
 import (
 	"github.com/alauda/kube-ovn/versions"
@@ -9,7 +9,7 @@ import (
 	"k8s.io/klog"
 )
 
-func main() {
+func CmdMain() {
 	defer klog.Flush()
 
 	klog.Infof(versions.String())
