@@ -19,6 +19,7 @@ metadata:
   namespace: kube-system
 data:
   enable-external-gw: "true"
+  type: "centralized"                   # centralized or distributed, when centralized external-gw-nodes config below will take effect. When distributed, every node in cluster must have a same nic and eip function will perform in distributed way.
   external-gw-nodes: "kube-ovn-worker"  # NodeName in kubernetes which will act the overlay to underlay gateway functions
   external-gw-nic: "eth1"               # The nic that will be bridged into ovs and act as overlay to underlay gateway
   nic-ip: "172.56.0.1/16"               # The ip and mask of the underlay physical gateway

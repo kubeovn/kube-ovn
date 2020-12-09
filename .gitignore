@@ -11,6 +11,7 @@ dist/images/kube-ovn-webhook
 dist/images/kube-ovn-pinger
 dist/images/kube-ovn-speaker
 dist/images/kube-ovn-monitor
+dist/images/kube-ovn-cmd
 kube-ovn.yaml
 kube-ovn-crd.yaml
 ovn.yaml

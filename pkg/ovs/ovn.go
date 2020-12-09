@@ -22,6 +22,7 @@ type Client struct {
 	ClusterUdpSessionLoadBalancer string
 	NodeSwitch                    string
 	NodeSwitchCIDR                string
+	ExternalGatewayType           string
 }
 
 const (
