@@ -5,7 +5,7 @@ ARG RPM_ARCH
 ARG ARCH
 
 RUN yum install dnf-plugins-core -y && \
-    yum config-manager --set-enabled PowerTools && \
+    yum config-manager --set-enabled powertools && \
     yum install python36 git wget openssl-devel gcc \
     make python3-devel openssl-devel kernel-devel kernel-debug-devel \
     autoconf automake rpm-build redhat-rpm-config libtool libcap-ng-devel \
