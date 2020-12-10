@@ -14,3 +14,4 @@ dist/images/kube-ovn-monitor
 kube-ovn.yaml
 kube-ovn-crd.yaml
 ovn.yaml
+kind.yaml

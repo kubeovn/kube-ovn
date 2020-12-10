@@ -834,13 +834,13 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 						return err
 					}
 				}
-				gw, err := getNodeTunlIP(node)
+				nodeIP, err := getNodeTunlIP(node)
 				if err != nil {
 					klog.Errorf("failed to get node %s tunl ip, %v", node.Name, err)
 					return err
 				}
 
-				nextHop := getNextHopByTunnelIP(gw)
+				nextHop := getNextHopByTunnelIP(nodeIP)
 				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
 					nextHop = pod.Annotations[util.NorthGatewayAnnotation]
 				}

@@ -94,12 +94,22 @@ func LastIP(subnet string) (string, error) {
 }
 
 func CIDRConflict(a, b string) bool {
-	aIp, aIpNet, aErr := net.ParseCIDR(a)
-	bIp, bIpNet, bErr := net.ParseCIDR(b)
-	if aErr != nil || bErr != nil {
-		return false
+	for _, cidra := range strings.Split(a, ",") {
+		for _, cidrb := range strings.Split(b, ",") {
+			if CheckProtocol(cidra) != CheckProtocol(cidrb) {
+				continue
+			}
+			aIp, aIpNet, aErr := net.ParseCIDR(cidra)
+			bIp, bIpNet, bErr := net.ParseCIDR(cidrb)
+			if aErr != nil || bErr != nil {
+				return false
+			}
+			if aIpNet.Contains(bIp) || bIpNet.Contains(aIp) {
+				return true
+			}
+		}
 	}
-	return aIpNet.Contains(bIp) || bIpNet.Contains(aIp)
+	return false
 }
 
 func CIDRContainIP(cidrStr, ipStr string) bool {

@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/alauda/kube-ovn/pkg/util"
 	"net"
 	"runtime"
 	"strings"
+
+	"github.com/alauda/kube-ovn/pkg/util"
 
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/request"
@@ -66,31 +67,33 @@ func generateCNIResult(cniVersion string, cniResponse *request.CniResponse) curr
 	_, mask, _ := net.ParseCIDR(cniResponse.CIDR)
 	switch cniResponse.Protocol {
 	case kubeovnv1.ProtocolIPv4:
-		ip := current.IPConfig{
-			Version: "4",
-			Address: net.IPNet{IP: net.ParseIP(cniResponse.IpAddress).To4(), Mask: mask.Mask},
-			Gateway: net.ParseIP(cniResponse.Gateway).To4(),
-		}
+		ip, route := assignV4Address(cniResponse.IpAddress, cniResponse.Gateway, mask)
 		result.IPs = []*current.IPConfig{&ip}
-
-		route := types.Route{
-			Dst: net.IPNet{IP: net.ParseIP("0.0.0.0").To4(), Mask: net.CIDRMask(0, 32)},
-			GW:  net.ParseIP(cniResponse.Gateway).To4(),
-		}
 		result.Routes = []*types.Route{&route}
 	case kubeovnv1.ProtocolIPv6:
-		ip := current.IPConfig{
-			Version: "6",
-			Address: net.IPNet{IP: net.ParseIP(cniResponse.IpAddress).To16(), Mask: mask.Mask},
-			Gateway: net.ParseIP(cniResponse.Gateway).To16(),
-		}
+		ip, route := assignV6Address(cniResponse.IpAddress, cniResponse.Gateway, mask)
 		result.IPs = []*current.IPConfig{&ip}
-
-		route := types.Route{
-			Dst: net.IPNet{IP: net.ParseIP("::").To16(), Mask: net.CIDRMask(0, 128)},
-			GW:  net.ParseIP(cniResponse.Gateway).To16(),
-		}
 		result.Routes = []*types.Route{&route}
+	case kubeovnv1.ProtocolDual:
+		var netMask *net.IPNet
+		for _, cidrBlock := range strings.Split(cniResponse.CIDR, ",") {
+			_, netMask, _ = net.ParseCIDR(cidrBlock)
+			if util.CheckProtocol(cidrBlock) == kubeovnv1.ProtocolIPv4 {
+				ipStr := strings.Split(cniResponse.IpAddress, ",")[0]
+				gwStr := strings.Split(cniResponse.Gateway, ",")[0]
+
+				ip, route := assignV4Address(ipStr, gwStr, netMask)
+				result.IPs = append(result.IPs, &ip)
+				result.Routes = append(result.Routes, &route)
+			} else if util.CheckProtocol(cidrBlock) == kubeovnv1.ProtocolIPv6 {
+				ipStr := strings.Split(cniResponse.IpAddress, ",")[1]
+				gwStr := strings.Split(cniResponse.Gateway, ",")[1]
+
+				ip, route := assignV6Address(ipStr, gwStr, netMask)
+				result.IPs = append(result.IPs, &ip)
+				result.Routes = append(result.Routes, &route)
+			}
+		}
 	}
 
 	return result
@@ -172,4 +175,34 @@ func parseValueFromArgs(key, argString string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("%s is required in CNI_ARGS", key)
+}
+
+func assignV4Address(ipAddress, gateway string, mask *net.IPNet) (current.IPConfig, types.Route) {
+	ip := current.IPConfig{
+		Version: "4",
+		Address: net.IPNet{IP: net.ParseIP(ipAddress).To4(), Mask: mask.Mask},
+		Gateway: net.ParseIP(gateway).To4(),
+	}
+
+	route := types.Route{
+		Dst: net.IPNet{IP: net.ParseIP("0.0.0.0").To4(), Mask: net.CIDRMask(0, 32)},
+		GW:  net.ParseIP(gateway).To4(),
+	}
+
+	return ip, route
+}
+
+func assignV6Address(ipAddress, gateway string, mask *net.IPNet) (current.IPConfig, types.Route) {
+	ip := current.IPConfig{
+		Version: "6",
+		Address: net.IPNet{IP: net.ParseIP(ipAddress).To16(), Mask: mask.Mask},
+		Gateway: net.ParseIP(gateway).To16(),
+	}
+
+	route := types.Route{
+		Dst: net.IPNet{IP: net.ParseIP("::").To16(), Mask: net.CIDRMask(0, 128)},
+		GW:  net.ParseIP(gateway).To16(),
+	}
+
+	return ip, route
 }
