@@ -2,6 +2,9 @@ package ip
 
 import (
 	"fmt"
+	"os"
+	"time"
+
 	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/alauda/kube-ovn/test/e2e/framework"
 	. "github.com/onsi/ginkgo"
@@ -10,8 +13,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"os"
-	"time"
 )
 
 var _ = Describe("[IP Allocation]", func() {

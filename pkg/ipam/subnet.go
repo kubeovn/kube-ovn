@@ -460,3 +460,13 @@ func (subnet *Subnet) GetPodAddress(podName string) (IP, IP, string, string) {
 		return v4IP, v6IP, mac, kubeovnv1.ProtocolDual
 	}
 }
+
+func (subnet *Subnet) isIPAssignedToPod(ip string) bool {
+	if _, ok := subnet.V4IPToPod[IP(ip)]; ok {
+		return true
+	}
+	if _, ok := subnet.V6IPToPod[IP(ip)]; ok {
+		return true
+	}
+	return false
+}

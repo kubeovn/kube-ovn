@@ -98,6 +98,22 @@ kind-install-ipv6:
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
 	ENABLE_SSL=true IPv6=true dist/images/install.sh
 
+kind-init-dual:
+	kind delete cluster --name=kube-ovn
+	kube_proxy_mode=iptables ip_family=DualStack ha=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
+	kind create cluster --config yamls/kind.yaml --name kube-ovn
+	kubectl describe no
+	docker exec kube-ovn-control-plane ip link add link eth0 mac1 type macvlan
+	docker exec kube-ovn-worker ip link add link eth0 mac1 type macvlan
+	docker exec kube-ovn-worker sysctl -w net.ipv6.conf.all.disable_ipv6=0
+	docker exec kube-ovn-control-plane sysctl -w net.ipv6.conf.all.disable_ipv6=0
+
+kind-install-dual:
+	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
+	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
+	ENABLE_SSL=true DualStack=true dist/images/install.sh
+	kubectl describe no
+
 kind-reload:
 	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
 	kubectl delete pod -n kube-system -l app=kube-ovn-controller

@@ -281,9 +281,12 @@ func (c *Controller) getLocalPodIPsNeedNAT(protocol string) ([]string, error) {
 		if nsGWNat &&
 			subnet.Spec.Vpc == util.DefaultVpc &&
 			nsGWType == kubeovnv1.GWDistributedType &&
-			pod.Spec.NodeName == hostname &&
-			util.CheckProtocol(pod.Status.PodIP) == protocol {
-			localPodIPs = append(localPodIPs, pod.Status.PodIP)
+			pod.Spec.NodeName == hostname {
+			if len(pod.Status.PodIPs) == 2 && protocol == kubeovnv1.ProtocolIPv6 {
+				localPodIPs = append(localPodIPs, pod.Status.PodIPs[1].IP)
+			} else if util.CheckProtocol(pod.Status.PodIP) == protocol {
+				localPodIPs = append(localPodIPs, pod.Status.PodIP)
+			}
 		}
 	}
 
@@ -303,7 +306,7 @@ func (c *Controller) getSubnetsNeedNAT(protocol string) ([]string, error) {
 		if subnet.Spec.Vpc == util.DefaultVpc &&
 			subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType &&
 			subnet.Status.ActivateGateway == c.config.NodeName &&
-			subnet.Spec.Protocol == protocol &&
+			(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) &&
 			subnet.Spec.NatOutgoing {
 			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
 			subnetsNeedNat = append(subnetsNeedNat, cidrBlock)
@@ -313,14 +316,20 @@ func (c *Controller) getSubnetsNeedNAT(protocol string) ([]string, error) {
 }
 
 func (c *Controller) getSubnetsCIDR(protocol string) ([]string, error) {
-	var ret = []string{c.config.ServiceClusterIPRange}
-	if c.config.NodeLocalDNSIP != "" && net.ParseIP(c.config.NodeLocalDNSIP) != nil {
-		ret = append(ret, c.config.NodeLocalDNSIP)
-	}
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Error("failed to list subnets")
 		return nil, err
+	}
+
+	ret := make([]string, 0, len(subnets)+3)
+	if c.config.NodeLocalDNSIP != "" && net.ParseIP(c.config.NodeLocalDNSIP) != nil && util.CheckProtocol(c.config.NodeLocalDNSIP) == protocol {
+		ret = append(ret, c.config.NodeLocalDNSIP)
+	}
+	for _, sip := range strings.Split(c.config.ServiceClusterIPRange, ",") {
+		if util.CheckProtocol(sip) == protocol {
+			ret = append(ret, sip)
+		}
 	}
 	for _, subnet := range subnets {
 		if subnet.Spec.Vpc == util.DefaultVpc {

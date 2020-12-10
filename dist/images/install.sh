@@ -2,6 +2,7 @@
 set -euo pipefail
 
 IPv6=${IPv6:-false}
+DualStack=${DualStack:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
 ENABLE_MIRROR=${ENABLE_MIRROR:-false}
 HW_OFFLOAD=${HW_OFFLOAD:-false}
@@ -17,9 +18,16 @@ PINGER_EXTERNAL_ADDRESS="114.114.114.114"  # Pinger check external ip probe
 PINGER_EXTERNAL_DOMAIN="alauda.cn"         # Pinger check external domain probe
 if [ "$IPv6" = "true" ]; then
   POD_CIDR="fd00:10:16::/64"                # Do NOT overlap with NODE/SVC/JOIN CIDR
-  SVC_CIDR="fd00:10:96::/112"                # Do NOT overlap with NODE/POD/JOIN CIDR
+  SVC_CIDR="fd00:10:96::/112"               # Do NOT overlap with NODE/POD/JOIN CIDR
   JOIN_CIDR="fd00:100:64::/64"              # Do NOT overlap with NODE/POD/SVC CIDR
   PINGER_EXTERNAL_ADDRESS="2400:3200::1"
+  PINGER_EXTERNAL_DOMAIN="google.com"
+fi
+if [ "$DualStack" = "true" ]; then
+  POD_CIDR="10.16.0.0/16,fd00:10:16::/64"                # Do NOT overlap with NODE/SVC/JOIN CIDR
+  SVC_CIDR="10.96.0.0/12"                                # Do NOT overlap with NODE/POD/JOIN CIDR
+  JOIN_CIDR="100.64.0.0/16,fd00:100:64::/64"             # Do NOT overlap with NODE/POD/SVC CIDR
+  PINGER_EXTERNAL_ADDRESS="114.114.114.114"
   PINGER_EXTERNAL_DOMAIN="google.com"
 fi
 
