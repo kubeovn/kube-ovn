@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"strings"
 	"time"
 
 	"k8s.io/client-go/kubernetes/scheme"
@@ -49,8 +50,8 @@ type Controller struct {
 
 	recorder record.EventRecorder
 
-	iptable *iptables.IPTables
-	ipset   *ipsets.IPSets
+	iptable map[string]*iptables.IPTables
+	ipset   map[string]*ipsets.IPSets
 
 	protocol   string
 	internalIP string
@@ -102,20 +103,23 @@ func NewController(config *Configuration, podInformerFactory informers.SharedInf
 	controller.protocol = util.CheckProtocol(node.Annotations[util.IpAddressAnnotation])
 	controller.internalIP = getNodeInternalIP(node)
 
-	if controller.protocol == kubeovnv1.ProtocolIPv4 {
+	controller.iptable = make(map[string]*iptables.IPTables)
+	controller.ipset = make(map[string]*ipsets.IPSets)
+	if controller.protocol == kubeovnv1.ProtocolIPv4 || controller.protocol == kubeovnv1.ProtocolDual {
 		iptable, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
 		if err != nil {
 			return nil, err
 		}
-		controller.iptable = iptable
-		controller.ipset = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil))
-	} else {
+		controller.iptable[kubeovnv1.ProtocolIPv4] = iptable
+		controller.ipset[kubeovnv1.ProtocolIPv4] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil))
+	}
+	if controller.protocol == kubeovnv1.ProtocolIPv6 || controller.protocol == kubeovnv1.ProtocolDual {
 		iptable, err := iptables.NewWithProtocol(iptables.ProtocolIPv6)
 		if err != nil {
 			return nil, err
 		}
-		controller.iptable = iptable
-		controller.ipset = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV6, IPSetPrefix, nil, nil))
+		controller.iptable[kubeovnv1.ProtocolIPv6] = iptable
+		controller.ipset[kubeovnv1.ProtocolIPv6] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV6, IPSetPrefix, nil, nil))
 	}
 
 	subnetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -157,7 +161,6 @@ func (c *Controller) runSubnetWorker() {
 
 func (c *Controller) processNextSubnetWorkItem() bool {
 	obj, shutdown := c.subnetQueue.Get()
-
 	if shutdown {
 		return false
 	}
@@ -192,15 +195,18 @@ func (c *Controller) reconcileRouters() error {
 		klog.Errorf("failed to list namespace %v", err)
 		return err
 	}
-	cidrs := make([]string, 0, len(subnets))
+	cidrs := make([]string, 0, len(subnets)*2)
 	for _, subnet := range subnets {
 		if !subnet.Status.IsReady() || subnet.Spec.UnderlayGateway {
 			continue
 		}
-		if _, ipNet, err := net.ParseCIDR(subnet.Spec.CIDRBlock); err != nil {
-			klog.Errorf("%s is not a valid cidr block", subnet.Spec.CIDRBlock)
-		} else {
-			cidrs = append(cidrs, ipNet.String())
+
+		for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+			if _, ipNet, err := net.ParseCIDR(cidrBlock); err != nil {
+				klog.Errorf("%s is not a valid cidr block", cidrBlock)
+			} else {
+				cidrs = append(cidrs, ipNet.String())
+			}
 		}
 	}
 
@@ -220,12 +226,7 @@ func (c *Controller) reconcileRouters() error {
 		return fmt.Errorf("failed to get nic %s", util.NodeNic)
 	}
 
-	var existRoutes []netlink.Route
-	if util.CheckProtocol(gateway) == kubeovnv1.ProtocolIPv4 {
-		existRoutes, err = netlink.RouteList(nic, netlink.FAMILY_V4)
-	} else {
-		existRoutes, err = netlink.RouteList(nic, netlink.FAMILY_V6)
-	}
+	existRoutes, err := getNicExistRoutes(nic, gateway)
 	if err != nil {
 		return err
 	}
@@ -240,13 +241,33 @@ func (c *Controller) reconcileRouters() error {
 
 	for _, r := range toAdd {
 		_, cidr, _ := net.ParseCIDR(r)
-		gw := net.ParseIP(gateway)
-		src := net.ParseIP(c.internalIP)
-		if err = netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: gw, Src: src}); err != nil {
-			klog.Errorf("failed to add route %v", err)
+		for _, gw := range strings.Split(gateway, ",") {
+			if util.CheckProtocol(gw) != util.CheckProtocol(r) {
+				continue
+			}
+			if err = netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: net.ParseIP(gw)}); err != nil {
+				klog.Errorf("failed to add route %v", err)
+			}
 		}
 	}
-	return err
+	return nil
+}
+
+func getNicExistRoutes(nic netlink.Link, gateway string) ([]netlink.Route, error) {
+	var routes, existRoutes []netlink.Route
+	var err error
+	for _, gw := range strings.Split(gateway, ",") {
+		if util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv4 {
+			routes, err = netlink.RouteList(nic, netlink.FAMILY_V4)
+		} else {
+			routes, err = netlink.RouteList(nic, netlink.FAMILY_V6)
+		}
+		if err != nil {
+			return nil, err
+		}
+		existRoutes = append(existRoutes, routes...)
+	}
+	return existRoutes, nil
 }
 
 func routeDiff(existRoutes []netlink.Route, cidrs []string) (toAdd []string, toDel []string) {
