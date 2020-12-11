@@ -6,6 +6,7 @@ import (
 	"github.com/alauda/kube-ovn/pkg/util"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
 	"reflect"
@@ -48,6 +49,7 @@ func (c *Controller) resyncExternalGateway() {
 		}
 		exGwEnabled = "true"
 		lastExGwCM = cm.Data
+		c.ovnClient.ExternalGatewayType = cm.Data["type"]
 		klog.Info("finish establishing ovn external gw")
 	}
 }
@@ -89,7 +91,18 @@ func (c *Controller) removeExternalGateway() error {
 
 func (c *Controller) establishExternalGateway(config map[string]string) error {
 	chassises := []string{}
-	gwNodes := strings.Split(config["external-gw-nodes"], ",")
+	nodes, err := c.nodesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list nodes, %v", err)
+		return err
+	}
+	gwNodes := make([]string, 0, len(nodes))
+	for _, node := range nodes {
+		gwNodes = append(gwNodes, node.Name)
+	}
+	if config["type"] != "distributed" {
+		gwNodes = strings.Split(config["external-gw-nodes"], ",")
+	}
 	for _, gw := range gwNodes {
 		gw = strings.TrimSpace(gw)
 		node, err := c.nodesLister.Get(gw)

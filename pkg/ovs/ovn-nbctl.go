@@ -507,7 +507,7 @@ func parseLrRouteListOutput(output string) (routeList []*StaticRoute, err error)
 	return routeList, nil
 }
 
-func (c Client) UpdateNatRule(policy, logicalIP, externalIP, router string) error {
+func (c Client) UpdateNatRule(policy, logicalIP, externalIP, router, logicalMac, port string) error {
 	if policy == "snat" {
 		if externalIP == "" {
 			_, err := c.ovnNbCommand(IfExists, "lr-nat-del", router, "snat", logicalIP)
@@ -534,8 +534,13 @@ func (c Client) UpdateNatRule(policy, logicalIP, externalIP, router string) erro
 			}
 		}
 		if externalIP != "" {
-			_, err = c.ovnNbCommand(MayExist, "lr-nat-add", router, policy, externalIP, logicalIP)
-			return err
+			if c.ExternalGatewayType == "distributed" {
+				_, err = c.ovnNbCommand(MayExist, "--stateless", "lr-nat-add", router, policy, externalIP, logicalIP, port, logicalMac)
+				return err
+			} else {
+				_, err = c.ovnNbCommand(MayExist, "lr-nat-add", router, policy, externalIP, logicalIP)
+				return err
+			}
 		}
 	}
 	return nil
