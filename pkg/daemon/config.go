@@ -122,20 +122,39 @@ func ParseFlags() (*Configuration, error) {
 }
 
 func (config *Configuration) initNicConfig() error {
+	var (
+		iface   *net.Interface
+		err     error
+		encapIP string
+	)
+
 	if config.Iface == "" {
-		i, err := getDefaultGatewayIface()
-		if err != nil {
-			return err
-		} else {
-			config.Iface = i
+		podIP, ok := os.LookupEnv("POD_IP")
+		if !ok || podIP == "" {
+			return errors.New("failed to lookup env POD_IP")
 		}
+		iface, err = getIfaceOwnPodIP(podIP)
+		if err != nil {
+			klog.Errorf("failed to find POD_IP iface %v", err)
+			return err
+		}
+		encapIP = podIP
+	} else {
+		iface, err = findInterface(config.Iface)
+		if err != nil {
+			klog.Errorf("failed to find iface %s, %v", config.Iface, err)
+			return err
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			return fmt.Errorf("failed to get iface addr. %v", err)
+		}
+		if len(addrs) == 0 {
+			return fmt.Errorf("iface %s has no ip address", config.Iface)
+		}
+		encapIP = strings.Split(addrs[0].String(), "/")[0]
 	}
 
-	iface, err := findInterface(config.Iface)
-	if err != nil {
-		klog.Errorf("failed to find iface %s, %v", config.Iface, err)
-		return err
-	}
 	if config.MTU == 0 {
 		config.MTU = iface.MTU - util.GeneveHeaderLength
 	}
@@ -147,14 +166,7 @@ func (config *Configuration) initNicConfig() error {
 		}
 	}
 
-	addrs, err := iface.Addrs()
-	if err != nil {
-		return fmt.Errorf("failed to get iface addr. %v", err)
-	}
-	if len(addrs) == 0 {
-		return fmt.Errorf("iface %s has no ip address", config.Iface)
-	}
-	return setEncapIP(strings.Split(addrs[0].String(), "/")[0])
+	return setEncapIP(encapIP)
 }
 
 func findInterface(ifaceStr string) (*net.Interface, error) {
@@ -236,6 +248,33 @@ func getDefaultGatewayIface() (string, error) {
 	}
 
 	return "", errors.New("unable to find default route")
+}
+
+func getIfaceOwnPodIP(podIP string) (*net.Interface, error) {
+	links, err := netlink.LinkList()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, link := range links {
+		addrs, err := netlink.AddrList(link, netlink.FAMILY_ALL)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get a list of IP addresses %v", err)
+		}
+		for _, addr := range addrs {
+			if addr.IPNet.Contains(net.ParseIP(podIP)) && addr.IP.String() == podIP {
+				return &net.Interface{
+					Index:        link.Attrs().Index,
+					MTU:          link.Attrs().MTU,
+					Name:         link.Attrs().Name,
+					HardwareAddr: link.Attrs().HardwareAddr,
+					Flags:        link.Attrs().Flags,
+				}, nil
+			}
+		}
+	}
+
+	return nil, errors.New("unable to find podIP interface")
 }
 
 func setEncapIP(ip string) error {
