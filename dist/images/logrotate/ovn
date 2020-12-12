@@ -1,0 +1,21 @@
+# Copyright (C) 2019 Red Hat, Inc.
+#
+# Copying and distribution of this file, with or without modification,
+# are permitted in any medium without royalty provided the copyright
+# notice and this notice are preserved.  This file is offered as-is,
+# without warranty of any kind.
+
+/var/log/ovn/*.log {
+    daily
+    compress
+    sharedscripts
+    missingok
+    postrotate
+        # Tell OVN daemons to reopen their log files
+        if [ -d /var/run/ovn ]; then
+            for ctl in /var/run/ovn/*.ctl; do
+                ovs-appctl -t "$ctl" vlog/reopen 2>/dev/null || :
+            done
+        fi
+    endscript
+}
