@@ -722,6 +722,9 @@ func (c *Controller) acquireAddress(pod *v1.Pod, subnet *kubeovnv1.Subnet) (stri
 
 	if ok, _ := isStatefulSetPod(pod); !ok {
 		for _, staticIP := range ipPool {
+			if c.ipam.IsIPAssignedToPod(staticIP, subnet.Name) {
+				continue
+			}
 			if v4IP, v6IP, mac, err := c.acquireStaticAddress(key, staticIP, macStr, subnet.Name); err == nil {
 				return v4IP, v6IP, mac, nil
 			}
@@ -759,7 +762,7 @@ func (c *Controller) acquireStaticAddress(key, ip, mac, subnet string) (string, 
 	}
 
 	if v4IP, v6IP, mac, err = c.ipam.GetStaticAddress(key, ip, mac, subnet); err != nil {
-		klog.Errorf("failed to get static ip, %v", err)
+		klog.Errorf("failed to get static ip %v, mac %v, err %v", ip, mac, err)
 		return "", "", "", err
 	}
 	return v4IP, v6IP, mac, nil
