@@ -219,7 +219,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return err
 		}
 
-		allows := []string{}
+		allows := []string{subnet.Spec.Gateway}
 		excepts := []string{}
 		for _, npr := range np.Spec.Ingress {
 			if len(np.Spec.Ingress) == 0 {
@@ -283,7 +283,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return err
 		}
 
-		allows := []string{}
+		allows := []string{subnet.Spec.Gateway}
 		excepts := []string{}
 		for _, npr := range np.Spec.Egress {
 			if len(npr.To) == 0 {
