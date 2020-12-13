@@ -12,6 +12,7 @@ kubeadmConfigPatches:
     etcd:
       local:
         dataDir: "/tmp/lib/etcd"
+
 nodes:
   - role: control-plane
     image: kindest/node:v1.19.1

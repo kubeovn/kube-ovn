@@ -5,14 +5,12 @@ on:
       - master
     paths-ignore:
       - 'docs/**'
-      - 'yamls/**'
   push:
     branches:
     - master
     - release-*
     paths-ignore:
     - 'docs/**'
-    - 'yamls/**'
 
 jobs:
   build:
