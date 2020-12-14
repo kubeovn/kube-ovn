@@ -2005,6 +2005,9 @@ diagnose(){
 
   kubectl get no -o wide
   kubectl ko nbctl show
+  kubectl ko nbctl lr-route-list ovn-cluster
+  kubectl ko nbctl ls-lb-list ovn-default
+  kubectl ko nbctl list acl
   kubectl ko sbctl show
 
   checkDaemonSet kube-proxy
@@ -2029,6 +2032,9 @@ diagnose(){
         echo "#### ovn-controller log:"
         kubectl exec -n $KUBE_OVN_NS -it "$pinger" -- tail /var/log/ovn/ovn-controller.log
         echo ""
+        echo "#### ovs-vswitchd log:"
+        kubectl exec -n $KUBE_OVN_NS -it "$pinger" -- tail /var/log/openvswitch/ovs-vswitchd.log
+        echo ""
         echo "#### ovs-vsctl show results:"
         kubectl exec -n $KUBE_OVN_NS -it "$pinger" -- ovs-vsctl show
         echo ""
@@ -2045,6 +2051,9 @@ diagnose(){
       echo "### start to diagnose node nodeName"
       echo "#### ovn-controller log:"
       kubectl exec -n $KUBE_OVN_NS -it "$pinger" -- tail /var/log/ovn/ovn-controller.log
+      echo ""
+      echo "#### ovs-vswitchd log:"
+      kubectl exec -n $KUBE_OVN_NS -it "$pinger" -- tail /var/log/openvswitch/ovs-vswitchd.log
       echo ""
       kubectl exec -n $KUBE_OVN_NS -it "$pinger" -- /kube-ovn/kube-ovn-pinger --mode=job
       echo "### finish diagnose node nodeName"
@@ -2139,6 +2148,7 @@ echo "-------------------------------"
 echo ""
 
 echo "[Step 6] Run network diagnose"
+sleep 60
 kubectl ko diagnose all
 
 echo "-------------------------------"

@@ -19,9 +19,13 @@ func StartPinger(config *Configuration, e *Exporter) {
 	errHappens := false
 	for {
 		if config.NetworkMode == "kube-ovn" {
-			if checkOvs(config) != nil ||
-				checkOvnController(config) != nil ||
-				checkPortBindings(config) != nil {
+			if checkOvs(config) != nil {
+				errHappens = true
+			}
+			if checkOvnController(config) != nil {
+				errHappens = true
+			}
+			if checkPortBindings(config) != nil {
 				errHappens = true
 			}
 			e.ovsMetricsUpdate()
@@ -42,10 +46,16 @@ func StartPinger(config *Configuration, e *Exporter) {
 
 func ping(config *Configuration) error {
 	errHappens := false
-	if checkApiServer(config) != nil ||
-		pingNodes(config) != nil ||
-		pingPods(config) != nil ||
-		internalNslookup(config) != nil {
+	if checkApiServer(config) != nil {
+		errHappens = true
+	}
+	if pingPods(config) != nil {
+		errHappens = true
+	}
+	if pingNodes(config) != nil {
+		errHappens = true
+	}
+	if internalNslookup(config) != nil {
 		errHappens = true
 	}
 
