@@ -48,7 +48,7 @@ RUN curl -L https://storage.googleapis.com/kubernetes-release/release/${KUBE_VER
  && chmod +x /usr/bin/kubectl
 
 RUN --mount=type=bind,target=/rpms,from=ovs-rpm,source=/rpms rpm -ivh --nodeps /rpms/*.rpm && \
-    sed '/su ovn ovn/d' /etc/logrotate.d/ovn
+    sed -i '/su ovn ovn/d' /etc/logrotate.d/ovn
 
 COPY *.sh /kube-ovn/
 COPY grace_stop_ovn_controller /usr/share/ovn/scripts/grace_stop_ovn_controller
