@@ -7,7 +7,7 @@ import (
 	clientset "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/alauda/kube-ovn/pkg/ovs"
 
-	admissionv1beta1 "k8s.io/api/admission/v1beta1"
+	admissionv1 "k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -89,19 +89,19 @@ func (v *ValidatingHook) Handle(ctx context.Context, req admission.Request) (res
 	}()
 
 	switch req.Operation {
-	case admissionv1beta1.Create:
+	case admissionv1.Create:
 		if createHooks[req.Kind] != nil {
 			klog.Infof("handle create %s %s@%s", req.Kind, req.Name, req.Namespace)
 			resp = createHooks[req.Kind](ctx, req)
 			return
 		}
-	case admissionv1beta1.Update:
+	case admissionv1.Update:
 		if updateHooks[req.Kind] != nil {
 			klog.Infof("handle update %s %s@%s", req.Kind, req.Name, req.Namespace)
 			resp = updateHooks[req.Kind](ctx, req)
 			return
 		}
-	case admissionv1beta1.Delete:
+	case admissionv1.Delete:
 		if deleteHooks[req.Kind] != nil {
 			klog.Infof("handle delete %s %s@%s", req.Kind, req.Name, req.Namespace)
 			resp = deleteHooks[req.Kind](ctx, req)

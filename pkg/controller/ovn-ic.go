@@ -1,19 +1,21 @@
 package controller
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
+	"reflect"
+	"strings"
+	"time"
+
 	"github.com/alauda/kube-ovn/pkg/util"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
-	"os"
-	"os/exec"
-	"reflect"
-	"strings"
-	"time"
 )
 
 var (
@@ -88,7 +90,7 @@ func (c *Controller) removeInterConnection(azName string) error {
 		no.Labels[util.ICGatewayLabel] = "false"
 		raw, _ := json.Marshal(no.Labels)
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-		_, err = c.config.KubeClient.CoreV1().Nodes().Patch(no.Name, types.JSONPatchType, []byte(patchPayload))
+		_, err = c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), no.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}, "")
 		if err != nil {
 			klog.Errorf("patch ic gw node %s failed %v", no.Name, err)
 			return err
@@ -163,7 +165,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 		node.Labels[util.ICGatewayLabel] = "true"
 		raw, _ := json.Marshal(node.Labels)
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-		_, err = c.config.KubeClient.CoreV1().Nodes().Patch(gw, types.JSONPatchType, []byte(patchPayload))
+		_, err = c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), gw, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}, "")
 		if err != nil {
 			klog.Errorf("patch gw node %s failed %v", gw, err)
 			return err

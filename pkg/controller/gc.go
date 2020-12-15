@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -182,7 +183,7 @@ func (c *Controller) markAndCleanLSP() error {
 					klog.Errorf("failed to delete lsp %s, %v", lsp, err)
 					return err
 				}
-				if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(lsp, &metav1.DeleteOptions{}); err != nil {
+				if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), lsp, metav1.DeleteOptions{}); err != nil {
 					if !k8serrors.IsNotFound(err) {
 						klog.Errorf("failed to delete ip %s, %v", lsp, err)
 						return err

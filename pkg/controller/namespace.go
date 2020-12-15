@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"github.com/alauda/kube-ovn/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -181,7 +183,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 	namespace.Annotations[util.CidrAnnotation] = cidr
 	namespace.Annotations[util.ExcludeIpsAnnotation] = strings.Join(excludeIps, ",")
 
-	if _, err = c.config.KubeClient.CoreV1().Namespaces().Patch(key, types.JSONPatchType, generatePatchPayload(namespace.Annotations, op)); err != nil {
+	if _, err = c.config.KubeClient.CoreV1().Namespaces().Patch(context.Background(), key, types.JSONPatchType, generatePatchPayload(namespace.Annotations, op), metav1.PatchOptions{}, ""); err != nil {
 		klog.Errorf("patch namespace %s failed %v", key, err)
 	}
 	return err

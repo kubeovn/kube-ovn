@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -118,10 +119,10 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 }
 
 func (csh cniServerHandler) createOrUpdateIPCr(podRequest request.CniRequest, subnet, ip, macAddr string) error {
-	ipCr, err := csh.KubeOvnClient.KubeovnV1().IPs().Get(fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace), metav1.GetOptions{})
+	ipCr, err := csh.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace), metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			_, err := csh.KubeOvnClient.KubeovnV1().IPs().Create(&kubeovnv1.IP{
+			_, err := csh.KubeOvnClient.KubeovnV1().IPs().Create(context.Background(), &kubeovnv1.IP{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace),
 					Labels: map[string]string{
@@ -141,7 +142,7 @@ func (csh cniServerHandler) createOrUpdateIPCr(podRequest request.CniRequest, su
 					AttachMacs:    []string{},
 					AttachSubnets: []string{},
 				},
-			})
+			}, metav1.CreateOptions{})
 			if err != nil {
 				errMsg := fmt.Errorf("failed to create ip crd for %s, %v", ip, err)
 				klog.Error(errMsg)
@@ -159,7 +160,7 @@ func (csh cniServerHandler) createOrUpdateIPCr(podRequest request.CniRequest, su
 		ipCr.Labels[subnet] = ""
 		ipCr.Spec.AttachSubnets = append(ipCr.Spec.AttachSubnets, subnet)
 		ipCr.Spec.AttachMacs = append(ipCr.Spec.AttachMacs, macAddr)
-		if _, err := csh.KubeOvnClient.KubeovnV1().IPs().Update(ipCr); err != nil {
+		if _, err := csh.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), ipCr, metav1.UpdateOptions{}); err != nil {
 			errMsg := fmt.Errorf("failed to update ip crd for %s, %v", ip, err)
 			klog.Error(errMsg)
 			return errMsg
@@ -211,7 +212,7 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		}
 	}
 
-	err = csh.KubeOvnClient.KubeovnV1().IPs().Delete(fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace), &metav1.DeleteOptions{})
+	err = csh.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace), metav1.DeleteOptions{})
 	if err != nil && !k8serrors.IsNotFound(err) {
 		errMsg := fmt.Errorf("del ipcrd for %s failed %v", fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace), err)
 		klog.Error(errMsg)

@@ -127,7 +127,11 @@ func registerClientMetrics() {
 	prometheus.MustRegister(requestResult)
 
 	// register the metrics with client-go
-	clientmetrics.Register(&latencyAdapter{metric: requestLatency}, &resultAdapter{metric: requestResult})
+	opts := clientmetrics.RegisterOpts{
+		RequestLatency: clientmetrics.LatencyMetric(&latencyAdapter{metric: requestLatency}),
+		RequestResult:  clientmetrics.ResultMetric(&resultAdapter{metric: requestResult}),
+	}
+	clientmetrics.Register(opts)
 }
 
 // registerReflectorMetrics sets up reflector (reconcile) loop metrics

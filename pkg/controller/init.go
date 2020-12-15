@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -48,7 +49,7 @@ func (c *Controller) InitDefaultVpc() error {
 	if err != nil {
 		vpc = &kubeovnv1.Vpc{}
 		vpc.Name = util.DefaultVpc
-		vpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Create(vpc)
+		vpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Create(context.Background(), vpc, v1.CreateOptions{})
 		if err != nil {
 			klog.Errorf("init default vpc failed %v", err)
 			return err
@@ -68,7 +69,7 @@ func (c *Controller) InitDefaultVpc() error {
 	if err != nil {
 		return err
 	}
-	vpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(vpc.Name, types.MergePatchType, bytes, "status")
+	vpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.MergePatchType, bytes, v1.PatchOptions{}, "status")
 	if err != nil {
 		klog.Errorf("init default vpc failed %v", err)
 		return err
@@ -78,7 +79,7 @@ func (c *Controller) InitDefaultVpc() error {
 
 // InitDefaultLogicalSwitch init the default logical switch for ovn network
 func (c *Controller) initDefaultLogicalSwitch() error {
-	_, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(c.config.DefaultLogicalSwitch, v1.GetOptions{})
+	_, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), c.config.DefaultLogicalSwitch, v1.GetOptions{})
 	if err == nil {
 		return nil
 	}
@@ -109,13 +110,13 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 		}
 	}
 
-	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(&defaultSubnet)
+	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(context.Background(), &defaultSubnet, v1.CreateOptions{})
 	return err
 }
 
 // InitNodeSwitch init node switch to connect host and pod
 func (c *Controller) initNodeSwitch() error {
-	_, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(c.config.NodeSwitch, v1.GetOptions{})
+	_, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), c.config.NodeSwitch, v1.GetOptions{})
 	if err == nil {
 		return nil
 	}
@@ -139,7 +140,7 @@ func (c *Controller) initNodeSwitch() error {
 		},
 	}
 
-	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(&nodeSubnet)
+	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(context.Background(), &nodeSubnet, v1.CreateOptions{})
 	return err
 }
 
@@ -281,7 +282,7 @@ func (c *Controller) initDefaultVlan() error {
 		return nil
 	}
 
-	_, err := c.config.KubeOvnClient.KubeovnV1().Vlans().Get(c.config.DefaultVlanName, v1.GetOptions{})
+	_, err := c.config.KubeOvnClient.KubeovnV1().Vlans().Get(context.Background(), c.config.DefaultVlanName, v1.GetOptions{})
 	if err == nil {
 		return nil
 	}
@@ -304,6 +305,6 @@ func (c *Controller) initDefaultVlan() error {
 		},
 	}
 
-	_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Create(&defaultVlan)
+	_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Create(context.Background(), &defaultVlan, v1.CreateOptions{})
 	return err
 }

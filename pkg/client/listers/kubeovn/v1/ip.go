@@ -26,10 +26,13 @@ import (
 )
 
 // IPLister helps list IPs.
+// All objects returned here must be treated as read-only.
 type IPLister interface {
 	// List lists all IPs in the indexer.
+	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.IP, err error)
 	// Get retrieves the IP from the index for a given name.
+	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1.IP, error)
 	IPListerExpansion
 }

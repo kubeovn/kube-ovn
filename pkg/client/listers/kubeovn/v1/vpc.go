@@ -26,10 +26,13 @@ import (
 )
 
 // VpcLister helps list Vpcs.
+// All objects returned here must be treated as read-only.
 type VpcLister interface {
 	// List lists all Vpcs in the indexer.
+	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.Vpc, err error)
 	// Get retrieves the Vpc from the index for a given name.
+	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1.Vpc, error)
 	VpcListerExpansion
 }

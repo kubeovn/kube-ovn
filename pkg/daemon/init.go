@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strings"
@@ -16,7 +17,7 @@ func InitNodeGateway(config *Configuration) error {
 	var portName, ip, cidr, macAddr, gw, ipAddr string
 	for {
 		nodeName := config.NodeName
-		node, err := config.KubeClient.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{})
+		node, err := config.KubeClient.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
 		if err != nil {
 			klog.Errorf("failed to get node %s info %v", nodeName, err)
 			return err
@@ -99,7 +100,7 @@ func InitVlan(config *Configuration) error {
 func (config *Configuration) getInterfaceName() string {
 	var interfaceName string
 
-	node, err := config.KubeClient.CoreV1().Nodes().Get(config.NodeName, metav1.GetOptions{})
+	node, err := config.KubeClient.CoreV1().Nodes().Get(context.Background(), config.NodeName, metav1.GetOptions{})
 	if err == nil {
 		labels := node.GetLabels()
 		interfaceName = labels[util.HostInterfaceName]

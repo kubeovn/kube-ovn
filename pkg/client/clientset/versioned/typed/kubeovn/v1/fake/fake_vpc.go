@@ -19,6 +19,8 @@ limitations under the License.
 package fake
 
 import (
+	"context"
+
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
@@ -38,7 +40,7 @@ var vpcsResource = schema.GroupVersionResource{Group: "kubeovn.io", Version: "v1
 var vpcsKind = schema.GroupVersionKind{Group: "kubeovn.io", Version: "v1", Kind: "Vpc"}
 
 // Get takes name of the vpc, and returns the corresponding vpc object, and an error if there is any.
-func (c *FakeVpcs) Get(name string, options v1.GetOptions) (result *kubeovnv1.Vpc, err error) {
+func (c *FakeVpcs) Get(ctx context.Context, name string, options v1.GetOptions) (result *kubeovnv1.Vpc, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootGetAction(vpcsResource, name), &kubeovnv1.Vpc{})
 	if obj == nil {
@@ -48,7 +50,7 @@ func (c *FakeVpcs) Get(name string, options v1.GetOptions) (result *kubeovnv1.Vp
 }
 
 // List takes label and field selectors, and returns the list of Vpcs that match those selectors.
-func (c *FakeVpcs) List(opts v1.ListOptions) (result *kubeovnv1.VpcList, err error) {
+func (c *FakeVpcs) List(ctx context.Context, opts v1.ListOptions) (result *kubeovnv1.VpcList, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootListAction(vpcsResource, vpcsKind, opts), &kubeovnv1.VpcList{})
 	if obj == nil {
@@ -69,13 +71,13 @@ func (c *FakeVpcs) List(opts v1.ListOptions) (result *kubeovnv1.VpcList, err err
 }
 
 // Watch returns a watch.Interface that watches the requested vpcs.
-func (c *FakeVpcs) Watch(opts v1.ListOptions) (watch.Interface, error) {
+func (c *FakeVpcs) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
 		InvokesWatch(testing.NewRootWatchAction(vpcsResource, opts))
 }
 
 // Create takes the representation of a vpc and creates it.  Returns the server's representation of the vpc, and an error, if there is any.
-func (c *FakeVpcs) Create(vpc *kubeovnv1.Vpc) (result *kubeovnv1.Vpc, err error) {
+func (c *FakeVpcs) Create(ctx context.Context, vpc *kubeovnv1.Vpc, opts v1.CreateOptions) (result *kubeovnv1.Vpc, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootCreateAction(vpcsResource, vpc), &kubeovnv1.Vpc{})
 	if obj == nil {
@@ -85,7 +87,7 @@ func (c *FakeVpcs) Create(vpc *kubeovnv1.Vpc) (result *kubeovnv1.Vpc, err error)
 }
 
 // Update takes the representation of a vpc and updates it. Returns the server's representation of the vpc, and an error, if there is any.
-func (c *FakeVpcs) Update(vpc *kubeovnv1.Vpc) (result *kubeovnv1.Vpc, err error) {
+func (c *FakeVpcs) Update(ctx context.Context, vpc *kubeovnv1.Vpc, opts v1.UpdateOptions) (result *kubeovnv1.Vpc, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootUpdateAction(vpcsResource, vpc), &kubeovnv1.Vpc{})
 	if obj == nil {
@@ -96,7 +98,7 @@ func (c *FakeVpcs) Update(vpc *kubeovnv1.Vpc) (result *kubeovnv1.Vpc, err error)
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeVpcs) UpdateStatus(vpc *kubeovnv1.Vpc) (*kubeovnv1.Vpc, error) {
+func (c *FakeVpcs) UpdateStatus(ctx context.Context, vpc *kubeovnv1.Vpc, opts v1.UpdateOptions) (*kubeovnv1.Vpc, error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootUpdateSubresourceAction(vpcsResource, "status", vpc), &kubeovnv1.Vpc{})
 	if obj == nil {
@@ -106,22 +108,22 @@ func (c *FakeVpcs) UpdateStatus(vpc *kubeovnv1.Vpc) (*kubeovnv1.Vpc, error) {
 }
 
 // Delete takes name of the vpc and deletes it. Returns an error if one occurs.
-func (c *FakeVpcs) Delete(name string, options *v1.DeleteOptions) error {
+func (c *FakeVpcs) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
 		Invokes(testing.NewRootDeleteAction(vpcsResource, name), &kubeovnv1.Vpc{})
 	return err
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *FakeVpcs) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(vpcsResource, listOptions)
+func (c *FakeVpcs) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+	action := testing.NewRootDeleteCollectionAction(vpcsResource, listOpts)
 
 	_, err := c.Fake.Invokes(action, &kubeovnv1.VpcList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched vpc.
-func (c *FakeVpcs) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *kubeovnv1.Vpc, err error) {
+func (c *FakeVpcs) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *kubeovnv1.Vpc, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootPatchSubresourceAction(vpcsResource, name, pt, data, subresources...), &kubeovnv1.Vpc{})
 	if obj == nil {

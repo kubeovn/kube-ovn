@@ -19,6 +19,7 @@ limitations under the License.
 package v1
 
 import (
+	"context"
 	"time"
 
 	v1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
@@ -37,15 +38,15 @@ type VlansGetter interface {
 
 // VlanInterface has methods to work with Vlan resources.
 type VlanInterface interface {
-	Create(*v1.Vlan) (*v1.Vlan, error)
-	Update(*v1.Vlan) (*v1.Vlan, error)
-	UpdateStatus(*v1.Vlan) (*v1.Vlan, error)
-	Delete(name string, options *metav1.DeleteOptions) error
-	DeleteCollection(options *metav1.DeleteOptions, listOptions metav1.ListOptions) error
-	Get(name string, options metav1.GetOptions) (*v1.Vlan, error)
-	List(opts metav1.ListOptions) (*v1.VlanList, error)
-	Watch(opts metav1.ListOptions) (watch.Interface, error)
-	Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1.Vlan, err error)
+	Create(ctx context.Context, vlan *v1.Vlan, opts metav1.CreateOptions) (*v1.Vlan, error)
+	Update(ctx context.Context, vlan *v1.Vlan, opts metav1.UpdateOptions) (*v1.Vlan, error)
+	UpdateStatus(ctx context.Context, vlan *v1.Vlan, opts metav1.UpdateOptions) (*v1.Vlan, error)
+	Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error
+	DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error
+	Get(ctx context.Context, name string, opts metav1.GetOptions) (*v1.Vlan, error)
+	List(ctx context.Context, opts metav1.ListOptions) (*v1.VlanList, error)
+	Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error)
+	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.Vlan, err error)
 	VlanExpansion
 }
 
@@ -62,19 +63,19 @@ func newVlans(c *KubeovnV1Client) *vlans {
 }
 
 // Get takes name of the vlan, and returns the corresponding vlan object, and an error if there is any.
-func (c *vlans) Get(name string, options metav1.GetOptions) (result *v1.Vlan, err error) {
+func (c *vlans) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.Vlan, err error) {
 	result = &v1.Vlan{}
 	err = c.client.Get().
 		Resource("vlans").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // List takes label and field selectors, and returns the list of Vlans that match those selectors.
-func (c *vlans) List(opts metav1.ListOptions) (result *v1.VlanList, err error) {
+func (c *vlans) List(ctx context.Context, opts metav1.ListOptions) (result *v1.VlanList, err error) {
 	var timeout time.Duration
 	if opts.TimeoutSeconds != nil {
 		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
@@ -84,13 +85,13 @@ func (c *vlans) List(opts metav1.ListOptions) (result *v1.VlanList, err error) {
 		Resource("vlans").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // Watch returns a watch.Interface that watches the requested vlans.
-func (c *vlans) Watch(opts metav1.ListOptions) (watch.Interface, error) {
+func (c *vlans) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	var timeout time.Duration
 	if opts.TimeoutSeconds != nil {
 		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
@@ -100,81 +101,84 @@ func (c *vlans) Watch(opts metav1.ListOptions) (watch.Interface, error) {
 		Resource("vlans").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Watch()
+		Watch(ctx)
 }
 
 // Create takes the representation of a vlan and creates it.  Returns the server's representation of the vlan, and an error, if there is any.
-func (c *vlans) Create(vlan *v1.Vlan) (result *v1.Vlan, err error) {
+func (c *vlans) Create(ctx context.Context, vlan *v1.Vlan, opts metav1.CreateOptions) (result *v1.Vlan, err error) {
 	result = &v1.Vlan{}
 	err = c.client.Post().
 		Resource("vlans").
+		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(vlan).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // Update takes the representation of a vlan and updates it. Returns the server's representation of the vlan, and an error, if there is any.
-func (c *vlans) Update(vlan *v1.Vlan) (result *v1.Vlan, err error) {
+func (c *vlans) Update(ctx context.Context, vlan *v1.Vlan, opts metav1.UpdateOptions) (result *v1.Vlan, err error) {
 	result = &v1.Vlan{}
 	err = c.client.Put().
 		Resource("vlans").
 		Name(vlan.Name).
+		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(vlan).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-
-func (c *vlans) UpdateStatus(vlan *v1.Vlan) (result *v1.Vlan, err error) {
+func (c *vlans) UpdateStatus(ctx context.Context, vlan *v1.Vlan, opts metav1.UpdateOptions) (result *v1.Vlan, err error) {
 	result = &v1.Vlan{}
 	err = c.client.Put().
 		Resource("vlans").
 		Name(vlan.Name).
 		SubResource("status").
+		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(vlan).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // Delete takes name of the vlan and deletes it. Returns an error if one occurs.
-func (c *vlans) Delete(name string, options *metav1.DeleteOptions) error {
+func (c *vlans) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
 	return c.client.Delete().
 		Resource("vlans").
 		Name(name).
-		Body(options).
-		Do().
+		Body(&opts).
+		Do(ctx).
 		Error()
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *vlans) DeleteCollection(options *metav1.DeleteOptions, listOptions metav1.ListOptions) error {
+func (c *vlans) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	var timeout time.Duration
-	if listOptions.TimeoutSeconds != nil {
-		timeout = time.Duration(*listOptions.TimeoutSeconds) * time.Second
+	if listOpts.TimeoutSeconds != nil {
+		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
 	}
 	return c.client.Delete().
 		Resource("vlans").
-		VersionedParams(&listOptions, scheme.ParameterCodec).
+		VersionedParams(&listOpts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Body(options).
-		Do().
+		Body(&opts).
+		Do(ctx).
 		Error()
 }
 
 // Patch applies the patch and returns the patched vlan.
-func (c *vlans) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1.Vlan, err error) {
+func (c *vlans) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.Vlan, err error) {
 	result = &v1.Vlan{}
 	err = c.client.Patch(pt).
 		Resource("vlans").
-		SubResource(subresources...).
 		Name(name).
+		SubResource(subresources...).
+		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(data).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }

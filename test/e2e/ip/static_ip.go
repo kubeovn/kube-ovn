@@ -1,6 +1,7 @@
 package ip
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
@@ -45,19 +46,19 @@ var _ = Describe("[IP Allocation]", func() {
 			}
 
 			By("Create pod")
-			_, err := f.KubeClientSet.CoreV1().Pods(namespace).Create(pod)
+			_, err := f.KubeClientSet.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
 			err = f.WaitPodReady(name, namespace)
 			Expect(err).NotTo(HaveOccurred())
 
-			pod, err = f.KubeClientSet.CoreV1().Pods(namespace).Get(name, metav1.GetOptions{})
+			pod, err = f.KubeClientSet.CoreV1().Pods(namespace).Get(context.Background(), name, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(pod.Annotations[util.AllocatedAnnotation]).To(Equal("true"))
 			Expect(pod.Annotations[util.RoutedAnnotation]).To(Equal("true"))
 
 			time.Sleep(1 * time.Second)
-			ip, err := f.OvnClientSet.KubeovnV1().IPs().Get(fmt.Sprintf("%s.%s", name, namespace), metav1.GetOptions{})
+			ip, err := f.OvnClientSet.KubeovnV1().IPs().Get(context.Background(), fmt.Sprintf("%s.%s", name, namespace), metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ip.Spec.IPAddress).To(Equal("12.10.0.10"))
 			Expect(ip.Spec.MacAddress).To(Equal("00:00:00:53:6B:B6"))
@@ -97,13 +98,13 @@ var _ = Describe("[IP Allocation]", func() {
 			}
 
 			By("Create deployment")
-			_, err := f.KubeClientSet.AppsV1().Deployments(namespace).Create(&deployment)
+			_, err := f.KubeClientSet.AppsV1().Deployments(namespace).Create(context.Background(), &deployment, metav1.CreateOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
 			err = f.WaitDeploymentReady(name, namespace)
 			Expect(err).NotTo(HaveOccurred())
 
-			pods, err := f.KubeClientSet.CoreV1().Pods(namespace).List(metav1.ListOptions{LabelSelector: labels.SelectorFromSet(deployment.Spec.Template.Labels).String()})
+			pods, err := f.KubeClientSet.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.SelectorFromSet(deployment.Spec.Template.Labels).String()})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(pods.Items).To(HaveLen(3))
 
@@ -116,13 +117,13 @@ var _ = Describe("[IP Allocation]", func() {
 			Expect([]string{"12.10.0.20", "12.10.0.21", "12.10.0.22"}).To(ContainElement(pod3.Status.PodIP))
 
 			By("Delete pods and recreate")
-			err = f.KubeClientSet.CoreV1().Pods(namespace).DeleteCollection(&metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: labels.SelectorFromSet(deployment.Spec.Template.Labels).String()})
+			err = f.KubeClientSet.CoreV1().Pods(namespace).DeleteCollection(context.Background(), metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: labels.SelectorFromSet(deployment.Spec.Template.Labels).String()})
 			Expect(err).NotTo(HaveOccurred())
 
 			err = f.WaitDeploymentReady(name, namespace)
 			Expect(err).NotTo(HaveOccurred())
 
-			pods, err = f.KubeClientSet.CoreV1().Pods(namespace).List(metav1.ListOptions{LabelSelector: labels.SelectorFromSet(deployment.Spec.Template.Labels).String()})
+			pods, err = f.KubeClientSet.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.SelectorFromSet(deployment.Spec.Template.Labels).String()})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(pods.Items).To(HaveLen(3))
 
@@ -169,14 +170,14 @@ var _ = Describe("[IP Allocation]", func() {
 			}
 
 			By("Create statefulset")
-			_, err := f.KubeClientSet.AppsV1().StatefulSets(namespace).Create(&ss)
+			_, err := f.KubeClientSet.AppsV1().StatefulSets(namespace).Create(context.Background(), &ss, metav1.CreateOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
 			err = f.WaitStatefulsetReady(name, namespace)
 			Expect(err).NotTo(HaveOccurred())
 
 			for i := 0; i < 3; i++ {
-				pod, err := f.KubeClientSet.CoreV1().Pods(namespace).Get(fmt.Sprintf("%s-%d", name, i), metav1.GetOptions{})
+				pod, err := f.KubeClientSet.CoreV1().Pods(namespace).Get(context.Background(), fmt.Sprintf("%s-%d", name, i), metav1.GetOptions{})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(pod.Status.PodIP).To(Equal([]string{"12.10.0.31", "12.10.0.32", "12.10.0.30"}[i]))
 			}
@@ -213,7 +214,7 @@ var _ = Describe("[IP Allocation]", func() {
 			}
 
 			By("Create statefulset")
-			_, err := f.KubeClientSet.AppsV1().StatefulSets(namespace).Create(&ss)
+			_, err := f.KubeClientSet.AppsV1().StatefulSets(namespace).Create(context.Background(), &ss, metav1.CreateOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
 			err = f.WaitStatefulsetReady(name, namespace)
@@ -221,18 +222,18 @@ var _ = Describe("[IP Allocation]", func() {
 
 			ips := make([]string, 0, 3)
 			for i := 0; i < 3; i++ {
-				pod, err := f.KubeClientSet.CoreV1().Pods(namespace).Get(fmt.Sprintf("%s-%d", name, i), metav1.GetOptions{})
+				pod, err := f.KubeClientSet.CoreV1().Pods(namespace).Get(context.Background(), fmt.Sprintf("%s-%d", name, i), metav1.GetOptions{})
 				Expect(err).NotTo(HaveOccurred())
 				ips = append(ips, pod.Status.PodIP)
 			}
 
-			err = f.KubeClientSet.CoreV1().Pods(namespace).DeleteCollection(&metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: labels.SelectorFromSet(ss.Spec.Template.Labels).String()})
+			err = f.KubeClientSet.CoreV1().Pods(namespace).DeleteCollection(context.Background(), metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: labels.SelectorFromSet(ss.Spec.Template.Labels).String()})
 			Expect(err).NotTo(HaveOccurred())
 
 			err = f.WaitStatefulsetReady(name, namespace)
 			Expect(err).NotTo(HaveOccurred())
 			for i := 0; i < 3; i++ {
-				pod, err := f.KubeClientSet.CoreV1().Pods(namespace).Get(fmt.Sprintf("%s-%d", name, i), metav1.GetOptions{})
+				pod, err := f.KubeClientSet.CoreV1().Pods(namespace).Get(context.Background(), fmt.Sprintf("%s-%d", name, i), metav1.GetOptions{})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(pod.Status.PodIP).To(Equal(ips[i]))
 			}

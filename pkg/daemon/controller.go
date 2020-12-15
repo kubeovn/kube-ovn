@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os/exec"
@@ -95,7 +96,7 @@ func NewController(config *Configuration, podInformerFactory informers.SharedInf
 		recorder: recorder,
 	}
 
-	node, err := config.KubeClient.CoreV1().Nodes().Get(config.NodeName, metav1.GetOptions{})
+	node, err := config.KubeClient.CoreV1().Nodes().Get(context.Background(), config.NodeName, metav1.GetOptions{})
 	if err != nil {
 		klog.Fatalf("failed to get node %s info %v", config.NodeName, err)
 		return nil, err
