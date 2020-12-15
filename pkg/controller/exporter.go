@@ -20,8 +20,7 @@ func (c *Controller) registerSubnetMetrics() {
 
 // resyncSubnetMetrics start to update subnet metrics
 func (c *Controller) resyncSubnetMetrics() {
-	for c.exportSubnetMetrics() {
-	}
+	c.exportSubnetMetrics()
 }
 
 func (c *Controller) exportSubnetMetrics() bool {
