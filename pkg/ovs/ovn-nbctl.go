@@ -738,7 +738,7 @@ func (c Client) ListPortGroup() ([]portGroup, error) {
 	return result, nil
 }
 
-func (c Client) CreateAddressSet(asName string) error {
+func (c Client) CreateAddressSet(asName, npNamespace, npName, direction string) error {
 	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid", "find", "address_set", fmt.Sprintf("name=%s", asName))
 	if err != nil {
 		klog.Errorf("failed to find address_set %s", asName)
@@ -747,8 +747,17 @@ func (c Client) CreateAddressSet(asName string) error {
 	if output != "" {
 		return nil
 	}
-	_, err = c.ovnNbCommand("create", "address_set", fmt.Sprintf("name=%s", asName))
+	_, err = c.ovnNbCommand("create", "address_set", fmt.Sprintf("name=%s", asName), fmt.Sprintf("external_ids:np=%s/%s/%s", npNamespace, npName, direction))
 	return err
+}
+
+func (c Client) ListAddressSet(npNamespace, npName, direction string) ([]string, error) {
+	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=name", "find", "address_set", fmt.Sprintf("external_ids:np=%s/%s/%s", npNamespace, npName, direction))
+	if err != nil {
+		klog.Errorf("failed to list address_set of %s/%s/%s", npNamespace, npName, direction)
+		return nil, err
+	}
+	return strings.Split(output, "\n"), nil
 }
 
 func (c Client) DeleteAddressSet(asName string) error {
@@ -762,11 +771,9 @@ func (c Client) CreateIngressACL(npName, pgName, asIngressName, asExceptName, pr
 		ipSuffix = "ip6"
 	}
 	pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
-	delArgs := []string{"--type=port-group", "acl-del", pgName, "to-lport"}
-	exceptArgs := []string{"--", MayExist, "--type=port-group", "--log", fmt.Sprintf("--name=%s", npName), fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "to-lport", util.IngressExceptDropPriority, fmt.Sprintf("%s.src == $%s && %s.dst == $%s", ipSuffix, asExceptName, ipSuffix, pgAs), "drop"}
+	exceptArgs := []string{MayExist, "--type=port-group", "--log", fmt.Sprintf("--name=%s", npName), fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "to-lport", util.IngressExceptDropPriority, fmt.Sprintf("%s.src == $%s && %s.dst == $%s", ipSuffix, asExceptName, ipSuffix, pgAs), "drop"}
 	defaultArgs := []string{"--", MayExist, "--type=port-group", "--log", fmt.Sprintf("--name=%s", npName), fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "to-lport", util.IngressDefaultDrop, fmt.Sprintf("%s.dst == $%s", ipSuffix, pgAs), "drop"}
-	ovnArgs := append(delArgs, exceptArgs...)
-	ovnArgs = append(ovnArgs, defaultArgs...)
+	ovnArgs := append(exceptArgs, defaultArgs...)
 
 	if len(npp) == 0 {
 		allowArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("%s.src == $%s && %s.dst == $%s", ipSuffix, asIngressName, ipSuffix, pgAs), "allow-related"}
@@ -787,11 +794,9 @@ func (c Client) CreateEgressACL(npName, pgName, asEgressName, asExceptName, prot
 		ipSuffix = "ip6"
 	}
 	pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
-	delArgs := []string{"--type=port-group", "acl-del", pgName, "from-lport"}
-	exceptArgs := []string{"--", MayExist, "--type=port-group", "--log", fmt.Sprintf("--name=%s", npName), fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "from-lport", util.EgressExceptDropPriority, fmt.Sprintf("%s.dst == $%s && %s.src == $%s", ipSuffix, asExceptName, ipSuffix, pgAs), "drop"}
+	exceptArgs := []string{MayExist, "--type=port-group", "--log", fmt.Sprintf("--name=%s", npName), fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "from-lport", util.EgressExceptDropPriority, fmt.Sprintf("%s.dst == $%s && %s.src == $%s", ipSuffix, asExceptName, ipSuffix, pgAs), "drop"}
 	defaultArgs := []string{"--", MayExist, "--type=port-group", "--log", fmt.Sprintf("--name=%s", npName), fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "from-lport", util.EgressDefaultDrop, fmt.Sprintf("%s.src == $%s", ipSuffix, pgAs), "drop"}
-	ovnArgs := append(delArgs, exceptArgs...)
-	ovnArgs = append(ovnArgs, defaultArgs...)
+	ovnArgs := append(exceptArgs, defaultArgs...)
 
 	if len(npp) == 0 {
 		allowArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("%s.dst == $%s && %s.src == $%s", ipSuffix, asEgressName, ipSuffix, pgAs), "allow-related"}
@@ -808,6 +813,18 @@ func (c Client) CreateEgressACL(npName, pgName, asEgressName, asExceptName, prot
 
 func (c Client) DeleteACL(pgName, direction string) error {
 	_, err := c.ovnNbCommand("--type=port-group", "acl-del", pgName, direction)
+	return err
+}
+
+func (c Client) CreateGatewayACL(pgName, gateway, protocol string) error {
+	ipSuffix := "ip4"
+	if protocol == kubeovnv1.ProtocolIPv6 {
+		ipSuffix = "ip6"
+	}
+	ingressArgs := []string{MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("%s.src == $%s && icmp", ipSuffix, gateway), "allow-related"}
+	egressArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("%s.dst == $%s && icmp", ipSuffix, gateway), "allow-related"}
+	ovnArgs := append(ingressArgs, egressArgs...)
+	_, err := c.ovnNbCommand(ovnArgs...)
 	return err
 }
 
