@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/alauda/kube-ovn/pkg/util"
 	"reflect"
+	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -173,23 +174,14 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}()
 
-	ingressPorts := []netv1.NetworkPolicyPort{}
-	egressPorts := []netv1.NetworkPolicyPort{}
-	for _, npr := range np.Spec.Ingress {
-		ingressPorts = append(ingressPorts, npr.Ports...)
-	}
-	for _, npr := range np.Spec.Egress {
-		egressPorts = append(egressPorts, npr.Ports...)
-	}
-
 	// TODO: ovn acl doesn't support address_set name with '-', now we replace '-' by '.'.
 	// This may cause conflict if two np with name test-np and test.np. Maybe hash is a better solution,
 	// but we do not want to lost the readability now.
 	pgName := strings.Replace(fmt.Sprintf("%s.%s", np.Name, np.Namespace), "-", ".", -1)
-	ingressAllowAsName := strings.Replace(fmt.Sprintf("%s.%s.ingress.allow", np.Name, np.Namespace), "-", ".", -1)
-	ingressExceptAsName := strings.Replace(fmt.Sprintf("%s.%s.ingress.except", np.Name, np.Namespace), "-", ".", -1)
-	egressAllowAsName := strings.Replace(fmt.Sprintf("%s.%s.egress.allow", np.Name, np.Namespace), "-", ".", -1)
-	egressExceptAsName := strings.Replace(fmt.Sprintf("%s.%s.egress.except", np.Name, np.Namespace), "-", ".", -1)
+	ingressAllowAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.ingress.allow", np.Name, np.Namespace), "-", ".", -1)
+	ingressExceptAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.ingress.except", np.Name, np.Namespace), "-", ".", -1)
+	egressAllowAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.egress.allow", np.Name, np.Namespace), "-", ".", -1)
+	egressExceptAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.egress.except", np.Name, np.Namespace), "-", ".", -1)
 
 	if err := c.ovnClient.CreatePortGroup(pgName, np.Namespace, np.Name); err != nil {
 		klog.Errorf("failed to create port group for np %s, %v", key, err)
@@ -209,20 +201,22 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 
 	if hasIngressRule(np) {
-		if err := c.ovnClient.CreateAddressSet(ingressAllowAsName); err != nil {
-			klog.Errorf("failed to create address_set %s, %v", ingressAllowAsName, err)
-			return err
-		}
+		for idx, npr := range np.Spec.Ingress {
+			ingressAllowAsName := fmt.Sprintf("%s.%d", ingressAllowAsNamePrefix, idx)
+			ingressExceptAsName := fmt.Sprintf("%s.%d", ingressExceptAsNamePrefix, idx)
+			if err := c.ovnClient.CreateAddressSet(ingressAllowAsName, np.Namespace, np.Name, "ingress"); err != nil {
+				klog.Errorf("failed to create address_set %s, %v", ingressAllowAsName, err)
+				return err
+			}
 
-		if err := c.ovnClient.CreateAddressSet(ingressExceptAsName); err != nil {
-			klog.Errorf("failed to create address_set %s, %v", ingressExceptAsName, err)
-			return err
-		}
+			if err := c.ovnClient.CreateAddressSet(ingressExceptAsName, np.Namespace, np.Name, "ingress"); err != nil {
+				klog.Errorf("failed to create address_set %s, %v", ingressExceptAsName, err)
+				return err
+			}
 
-		allows := []string{subnet.Spec.Gateway}
-		excepts := []string{}
-		for _, npr := range np.Spec.Ingress {
-			if len(np.Spec.Ingress) == 0 {
+			allows := []string{}
+			excepts := []string{}
+			if len(npr.From) == 0 {
 				allows = []string{"0.0.0.0/0"}
 				excepts = []string{}
 				break
@@ -237,23 +231,38 @@ func (c *Controller) handleUpdateNp(key string) error {
 					excepts = append(excepts, except...)
 				}
 			}
+			if err := c.ovnClient.SetAddressesToAddressSet(allows, ingressAllowAsName); err != nil {
+				klog.Errorf("failed to set ingress allow address_set, %v", err)
+				return err
+			}
+
+			if err := c.ovnClient.SetAddressesToAddressSet(excepts, ingressExceptAsName); err != nil {
+				klog.Errorf("failed to set ingress except address_set, %v", err)
+				return err
+			}
+			if err := c.ovnClient.CreateIngressACL(fmt.Sprintf("%s/%s", np.Namespace, np.Name), pgName, ingressAllowAsName, ingressExceptAsName, subnet.Spec.Protocol, npr.Ports); err != nil {
+				klog.Errorf("failed to create ingress acls for np %s, %v", key, err)
+				return err
+			}
 		}
 
-		err = c.ovnClient.SetAddressesToAddressSet(allows, ingressAllowAsName)
+		asNames, err := c.ovnClient.ListAddressSet(np.Namespace, np.Name, "ingress")
 		if err != nil {
-			klog.Errorf("failed to set ingress allow address_set, %v", err)
+			klog.Errorf("failed to list address_set, %v", err)
 			return err
 		}
-
-		err = c.ovnClient.SetAddressesToAddressSet(excepts, ingressExceptAsName)
-		if err != nil {
-			klog.Errorf("failed to set ingress except address_set, %v", err)
-			return err
-		}
-
-		if err := c.ovnClient.CreateIngressACL(fmt.Sprintf("%s/%s", np.Namespace, np.Name), pgName, ingressAllowAsName, ingressExceptAsName, subnet.Spec.Protocol, ingressPorts); err != nil {
-			klog.Errorf("failed to create ingress acls for np %s, %v", key, err)
-			return err
+		for _, asName := range asNames {
+			if len(strings.Split(asName, "/")) != 3 {
+				continue
+			}
+			idxStr := strings.Split(asName, "/")[2]
+			idx, _ := strconv.Atoi(idxStr)
+			if idx >= len(np.Spec.Ingress) {
+				if err := c.ovnClient.DeleteAddressSet(asName); err != nil {
+					klog.Errorf("failed to delete np %s address set, %v", key, err)
+					return err
+				}
+			}
 		}
 	} else {
 		if err := c.ovnClient.DeleteACL(pgName, "to-lport"); err != nil {
@@ -261,31 +270,35 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return err
 		}
 
-		if err := c.ovnClient.DeleteAddressSet(ingressAllowAsName); err != nil {
-			klog.Errorf("failed to delete np %s ingress allow address set, %v", key, err)
+		asNames, err := c.ovnClient.ListAddressSet(np.Namespace, np.Name, "ingress")
+		if err != nil {
+			klog.Errorf("failed to list address_set, %v", err)
 			return err
 		}
-
-		if err := c.ovnClient.DeleteAddressSet(ingressExceptAsName); err != nil {
-			klog.Errorf("failed to delete np %s ingress except address set, %v", key, err)
-			return err
+		for _, asName := range asNames {
+			if err := c.ovnClient.DeleteAddressSet(asName); err != nil {
+				klog.Errorf("failed to delete np %s address set, %v", key, err)
+				return err
+			}
 		}
 	}
 
 	if hasEgressRule(np) {
-		if err := c.ovnClient.CreateAddressSet(egressAllowAsName); err != nil {
-			klog.Errorf("failed to create address_set %s, %v", egressAllowAsName, err)
-			return err
-		}
+		for idx, npr := range np.Spec.Egress {
+			egressAllowAsName := fmt.Sprintf("%s.%d", egressAllowAsNamePrefix, idx)
+			egressExceptAsName := fmt.Sprintf("%s.%d", egressExceptAsNamePrefix, idx)
+			if err := c.ovnClient.CreateAddressSet(egressAllowAsName, np.Namespace, np.Name, "egress"); err != nil {
+				klog.Errorf("failed to create address_set %s, %v", egressAllowAsName, err)
+				return err
+			}
 
-		if err := c.ovnClient.CreateAddressSet(egressExceptAsName); err != nil {
-			klog.Errorf("failed to create address_set %s, %v", egressExceptAsName, err)
-			return err
-		}
+			if err := c.ovnClient.CreateAddressSet(egressExceptAsName, np.Namespace, np.Name, "egress"); err != nil {
+				klog.Errorf("failed to create address_set %s, %v", egressExceptAsName, err)
+				return err
+			}
 
-		allows := []string{subnet.Spec.Gateway}
-		excepts := []string{}
-		for _, npr := range np.Spec.Egress {
+			allows := []string{}
+			excepts := []string{}
 			if len(npr.To) == 0 {
 				allows = []string{"0.0.0.0/0"}
 				excepts = []string{}
@@ -301,23 +314,40 @@ func (c *Controller) handleUpdateNp(key string) error {
 					excepts = append(excepts, except...)
 				}
 			}
+
+			if err = c.ovnClient.SetAddressesToAddressSet(allows, egressAllowAsName); err != nil {
+				klog.Errorf("failed to set egress allow address_set, %v", err)
+				return err
+			}
+
+			if err = c.ovnClient.SetAddressesToAddressSet(excepts, egressExceptAsName); err != nil {
+				klog.Errorf("failed to set egress except address_set, %v", err)
+				return err
+			}
+
+			if err := c.ovnClient.CreateEgressACL(fmt.Sprintf("%s/%s", np.Namespace, np.Name), pgName, egressAllowAsName, egressExceptAsName, subnet.Spec.Protocol, npr.Ports); err != nil {
+				klog.Errorf("failed to create egress acls for np %s, %v", key, err)
+				return err
+			}
 		}
 
-		err = c.ovnClient.SetAddressesToAddressSet(allows, egressAllowAsName)
+		asNames, err := c.ovnClient.ListAddressSet(np.Namespace, np.Name, "egress")
 		if err != nil {
-			klog.Errorf("failed to set egress allow address_set, %v", err)
+			klog.Errorf("failed to list address_set, %v", err)
 			return err
 		}
-
-		err = c.ovnClient.SetAddressesToAddressSet(excepts, egressExceptAsName)
-		if err != nil {
-			klog.Errorf("failed to set egress except address_set, %v", err)
-			return err
-		}
-
-		if err := c.ovnClient.CreateEgressACL(fmt.Sprintf("%s/%s", np.Namespace, np.Name), pgName, egressAllowAsName, egressExceptAsName, subnet.Spec.Protocol, egressPorts); err != nil {
-			klog.Errorf("failed to create egress acls for np %s, %v", key, err)
-			return err
+		for _, asName := range asNames {
+			if len(strings.Split(asName, "/")) != 3 {
+				continue
+			}
+			idxStr := strings.Split(asName, "/")[2]
+			idx, _ := strconv.Atoi(idxStr)
+			if idx >= len(np.Spec.Egress) {
+				if err := c.ovnClient.DeleteAddressSet(asName); err != nil {
+					klog.Errorf("failed to delete np %s address set, %v", key, err)
+					return err
+				}
+			}
 		}
 	} else {
 		if err := c.ovnClient.DeleteACL(pgName, "from-lport"); err != nil {
@@ -325,15 +355,21 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return err
 		}
 
-		if err := c.ovnClient.DeleteAddressSet(egressAllowAsName); err != nil {
-			klog.Errorf("failed to delete np %s egress allow address set, %v", key, err)
+		asNames, err := c.ovnClient.ListAddressSet(np.Namespace, np.Name, "egress")
+		if err != nil {
+			klog.Errorf("failed to list address_set, %v", err)
 			return err
 		}
-
-		if err := c.ovnClient.DeleteAddressSet(egressExceptAsName); err != nil {
-			klog.Errorf("failed to delete np %s egress except address set, %v", key, err)
-			return err
+		for _, asName := range asNames {
+			if err := c.ovnClient.DeleteAddressSet(asName); err != nil {
+				klog.Errorf("failed to delete np %s address set, %v", key, err)
+				return err
+			}
 		}
+	}
+	if err := c.ovnClient.CreateGatewayACL(pgName, subnet.Spec.Gateway, subnet.Spec.Protocol); err != nil {
+		klog.Errorf("failed to create gateway acl, %v", err)
+		return err
 	}
 	return nil
 }
@@ -346,35 +382,33 @@ func (c *Controller) handleDeleteNp(key string) error {
 	}
 
 	pgName := strings.Replace(fmt.Sprintf("%s.%s", name, namespace), "-", ".", -1)
-	ingressAllowAsName := strings.Replace(fmt.Sprintf("%s.%s.ingress.allow", name, namespace), "-", ".", -1)
-	ingressExceptAsName := strings.Replace(fmt.Sprintf("%s.%s.ingress.except", name, namespace), "-", ".", -1)
-	egressAllowAsName := strings.Replace(fmt.Sprintf("%s.%s.egress.allow", name, namespace), "-", ".", -1)
-	egressExceptAsName := strings.Replace(fmt.Sprintf("%s.%s.egress.except", name, namespace), "-", ".", -1)
-
 	if err := c.ovnClient.DeletePortGroup(pgName); err != nil {
 		klog.Errorf("failed to delete np %s port group, %v", key, err)
 	}
 
-	if err := c.ovnClient.DeleteAddressSet(ingressAllowAsName); err != nil {
-		klog.Errorf("failed to delete np %s ingress allow address set, %v", key, err)
+	ingressAsNames, err := c.ovnClient.ListAddressSet(namespace, name, "ingress")
+	if err != nil {
+		klog.Errorf("failed to list address_set, %v", err)
 		return err
 	}
-
-	if err := c.ovnClient.DeleteAddressSet(ingressExceptAsName); err != nil {
-		klog.Errorf("failed to delete np %s ingress except address set, %v", key, err)
-		return err
+	for _, asName := range ingressAsNames {
+		if err := c.ovnClient.DeleteAddressSet(asName); err != nil {
+			klog.Errorf("failed to delete np %s address set, %v", key, err)
+			return err
+		}
 	}
 
-	if err := c.ovnClient.DeleteAddressSet(egressAllowAsName); err != nil {
-		klog.Errorf("failed to delete np %s egress allow address set, %v", key, err)
+	egressAsNames, err := c.ovnClient.ListAddressSet(namespace, name, "egress")
+	if err != nil {
+		klog.Errorf("failed to list address_set, %v", err)
 		return err
 	}
-
-	if err := c.ovnClient.DeleteAddressSet(egressExceptAsName); err != nil {
-		klog.Errorf("failed to delete np %s egress except address set, %v", key, err)
-		return err
+	for _, asName := range egressAsNames {
+		if err := c.ovnClient.DeleteAddressSet(asName); err != nil {
+			klog.Errorf("failed to delete np %s address set, %v", key, err)
+			return err
+		}
 	}
-
 	return nil
 }
 
