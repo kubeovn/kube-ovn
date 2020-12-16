@@ -17,6 +17,7 @@ limitations under the License.
 package reconcile
 
 import (
+	"context"
 	"time"
 
 	"k8s.io/apimachinery/pkg/types"
@@ -30,6 +31,14 @@ type Result struct {
 	// RequeueAfter if greater than 0, tells the Controller to requeue the reconcile key after the Duration.
 	// Implies that Requeue is true, there is no need to set Requeue to true at the same time as RequeueAfter.
 	RequeueAfter time.Duration
+}
+
+// IsZero returns true if this result is empty.
+func (r *Result) IsZero() bool {
+	if r == nil {
+		return true
+	}
+	return *r == Result{}
 }
 
 // Request contains the information necessary to reconcile a Kubernetes object.  This includes the
@@ -52,7 +61,7 @@ Deleting Kubernetes objects) or external Events (GitHub Webhooks, polling extern
 
 Example reconcile Logic:
 
-	* Reader an object and all the Pods it owns.
+	* Read an object and all the Pods it owns.
 	* Observe that the object spec specifies 5 replicas but actual cluster contains only 1 Pod replica.
 	* Create 4 Pods and set their OwnerReferences to the object.
 
@@ -81,13 +90,13 @@ type Reconciler interface {
 	// Reconciler performs a full reconciliation for the object referred to by the Request.
 	// The Controller will requeue the Request to be processed again if an error is non-nil or
 	// Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
-	Reconcile(Request) (Result, error)
+	Reconcile(context.Context, Request) (Result, error)
 }
 
 // Func is a function that implements the reconcile interface.
-type Func func(Request) (Result, error)
+type Func func(context.Context, Request) (Result, error)
 
 var _ Reconciler = Func(nil)
 
 // Reconcile implements Reconciler.
-func (r Func) Reconcile(o Request) (Result, error) { return r(o) }
+func (r Func) Reconcile(ctx context.Context, o Request) (Result, error) { return r(ctx, o) }
