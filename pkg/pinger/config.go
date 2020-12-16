@@ -1,16 +1,18 @@
 package pinger
 
 import (
+	"context"
 	"flag"
+	"os"
+	"strings"
+	"time"
+
 	"github.com/spf13/pflag"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
-	"os"
-	"strings"
-	"time"
 )
 
 type Configuration struct {
@@ -133,7 +135,7 @@ func ParseFlags() (*Configuration, error) {
 	}
 
 	if config.Mode == "job" {
-		ds, err := config.KubeClient.AppsV1().DaemonSets(config.DaemonSetNamespace).Get(config.DaemonSetName, metav1.GetOptions{})
+		ds, err := config.KubeClient.AppsV1().DaemonSets(config.DaemonSetNamespace).Get(context.Background(), config.DaemonSetName, metav1.GetOptions{})
 		if err != nil {
 			return nil, err
 		}

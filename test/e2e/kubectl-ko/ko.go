@@ -1,6 +1,7 @@
 package kubectl_ko
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -24,7 +25,7 @@ var _ = Describe("[kubectl-ko]", func() {
 	})
 
 	It("vsctl show", func() {
-		nodes, err := f.KubeClientSet.CoreV1().Nodes().List(metav1.ListOptions{})
+		nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		for _, node := range nodes.Items {
 			output, err := exec.Command("kubectl", "ko", "vsctl", node.Name, "show").CombinedOutput()
@@ -33,7 +34,7 @@ var _ = Describe("[kubectl-ko]", func() {
 	})
 
 	It("tcpdump", func() {
-		pods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(metav1.ListOptions{LabelSelector: " app=kube-ovn-pinger"})
+		pods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(context.Background(), metav1.ListOptions{LabelSelector: " app=kube-ovn-pinger"})
 		Expect(err).NotTo(HaveOccurred())
 		pod := pods.Items[0]
 		output, err := exec.Command("kubectl", "ko", "tcpdump", fmt.Sprintf("kube-system/%s", pod.Name), "-c", "1").CombinedOutput()
@@ -41,7 +42,7 @@ var _ = Describe("[kubectl-ko]", func() {
 	})
 
 	It("trace", func() {
-		pods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(metav1.ListOptions{LabelSelector: " app=kube-ovn-pinger"})
+		pods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(context.Background(), metav1.ListOptions{LabelSelector: " app=kube-ovn-pinger"})
 		Expect(err).NotTo(HaveOccurred())
 		pod := pods.Items[0]
 

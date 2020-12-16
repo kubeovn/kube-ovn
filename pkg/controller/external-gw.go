@@ -1,16 +1,18 @@
 package controller
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
+	"strings"
+
 	"github.com/alauda/kube-ovn/pkg/util"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
-	"reflect"
-	"strings"
 )
 
 var (
@@ -75,7 +77,7 @@ func (c *Controller) removeExternalGateway() error {
 		no.Labels[util.ExGatewayLabel] = "false"
 		raw, _ := json.Marshal(no.Labels)
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-		_, err = c.config.KubeClient.CoreV1().Nodes().Patch(no.Name, types.JSONPatchType, []byte(patchPayload))
+		_, err = c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), no.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}, "")
 		if err != nil {
 			klog.Errorf("patch external gw node %s failed %v", no.Name, err)
 			return err
@@ -123,7 +125,7 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 		node.Labels[util.ExGatewayLabel] = "true"
 		raw, _ := json.Marshal(node.Labels)
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-		_, err = c.config.KubeClient.CoreV1().Nodes().Patch(gw, types.JSONPatchType, []byte(patchPayload))
+		_, err = c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), gw, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}, "")
 		if err != nil {
 			klog.Errorf("patch external gw node %s failed %v", gw, err)
 			return err

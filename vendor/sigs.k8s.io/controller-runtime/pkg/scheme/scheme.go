@@ -36,17 +36,17 @@ limitations under the License.
 //  )
 //
 // This also true of the built-in Kubernetes types.  Then, in the entrypoint for
-// your manager, assemble the scheme containing exactly the types you need.
-// For instance, if our controller needs types from the core/v1 API group (e.g. Pod),
-// plus types from my.api.group/v1:
+// your manager, assemble the scheme containing exactly the types you need,
+// panicing if scheme registration failed. For instance, if our controller needs
+// types from the core/v1 API group (e.g. Pod), plus types from my.api.group/v1:
 //
 //  func init() {
-//  	myapigroupv1.AddToScheme(scheme)
-//  	kubernetesscheme.AddToScheme(scheme)
+//  	utilruntime.Must(myapigroupv1.AddToScheme(scheme))
+//  	utilruntime.Must(kubernetesscheme.AddToScheme(scheme))
 //  }
 //
 //  func main() {
-//  	mgr := controllers.NewManager(controllers.GetConfigOrDie(), manager.Options{
+//  	mgr := controllers.NewManager(context.Background(), controllers.GetConfigOrDie(), manager.Options{
 //  		Scheme: scheme,
 //  	})
 //  	// ...
@@ -66,7 +66,7 @@ type Builder struct {
 	runtime.SchemeBuilder
 }
 
-// Register adds one or objects to the SchemeBuilder so they can be added to a Scheme.  Register mutates bld.
+// Register adds one or more objects to the SchemeBuilder so they can be added to a Scheme.  Register mutates bld.
 func (bld *Builder) Register(object ...runtime.Object) *Builder {
 	bld.SchemeBuilder.Register(func(scheme *runtime.Scheme) error {
 		scheme.AddKnownTypes(bld.GroupVersion, object...)

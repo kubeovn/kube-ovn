@@ -1,18 +1,21 @@
 package controller
 
 import (
+	"context"
 	"fmt"
+	"strconv"
+	"strings"
+
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"github.com/alauda/kube-ovn/pkg/util"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
-	"strconv"
-	"strings"
 )
 
 func (c *Controller) enqueueAddVlan(obj interface{}) {
@@ -212,7 +215,7 @@ func (c *Controller) handleAddVlan(key string) error {
 			if err != nil {
 				klog.Error(err)
 			} else {
-				if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(vlan.Name, types.MergePatchType, bytes, "status"); err != nil {
+				if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), vlan.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
 					klog.Error("patch vlan status failed", err)
 				}
 			}
@@ -221,14 +224,14 @@ func (c *Controller) handleAddVlan(key string) error {
 		}
 
 		s.Spec.Vlan = vlan.Name
-		if _, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(s); err != nil {
+		if _, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), s, metav1.UpdateOptions{}); err != nil {
 			vlan.Status.SetVlanError("UpdateSubnetVlanFailed", err.Error())
 			bytes, err := vlan.Status.Bytes()
 
 			if err != nil {
 				klog.Error(err)
 			} else {
-				if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(vlan.Name, types.MergePatchType, bytes, "status"); err != nil {
+				if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), vlan.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
 					klog.Errorf("patch vlan status failed, %v", err)
 				}
 			}
@@ -239,7 +242,7 @@ func (c *Controller) handleAddVlan(key string) error {
 	}
 
 	vlan.Spec.Subnet = strings.Join(subnets, ",")
-	if _, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(vlan); err != nil {
+	if _, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(context.Background(), vlan, metav1.UpdateOptions{}); err != nil {
 		klog.Errorf("failed to update vlan %s, %v", vlan.Name, err)
 		return err
 	}
@@ -275,7 +278,7 @@ func (c *Controller) handleUpdateVlan(key string) error {
 	}
 
 	vlan.Spec.Subnet = strings.Join(subnets, ",")
-	_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(vlan)
+	_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(context.Background(), vlan, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("failed to update vlan %s, %v", vlan.Name, err)
 		return err

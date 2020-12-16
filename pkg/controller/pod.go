@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -109,7 +110,7 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 		c.deletePodQueue.Add(key)
 	} else {
 		// only delete statefulset pod lsp when statefulset deleted or down scaled
-		ss, err := c.config.KubeClient.AppsV1().StatefulSets(p.Namespace).Get(statefulSetName, metav1.GetOptions{})
+		ss, err := c.config.KubeClient.AppsV1().StatefulSets(p.Namespace).Get(context.Background(), statefulSetName, metav1.GetOptions{})
 		if err != nil {
 			// statefulset is deleted
 			if k8serrors.IsNotFound(err) {
@@ -413,7 +414,7 @@ func (c *Controller) handleAddPod(key string) error {
 		}
 	}
 
-	if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, generatePatchPayload(pod.Annotations, op)); err != nil {
+	if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(context.Background(), name, types.JSONPatchType, generatePatchPayload(pod.Annotations, op), metav1.PatchOptions{}, ""); err != nil {
 		if k8serrors.IsNotFound(err) {
 			// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.
 			// Then we need to recycle the resource again.
@@ -463,7 +464,7 @@ func (c *Controller) handleDeletePod(key string) error {
 		return err
 	}
 
-	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(ovs.PodNameToPortName(name, namespace), &metav1.DeleteOptions{}); err != nil {
+	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ovs.PodNameToPortName(name, namespace), metav1.DeleteOptions{}); err != nil {
 		if !k8serrors.IsNotFound(err) {
 			klog.Errorf("failed to delete ip %s, %v", ovs.PodNameToPortName(name, namespace), err)
 			return err
@@ -576,7 +577,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 	}
 
 	pod.Annotations[util.RoutedAnnotation] = "true"
-	if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(name, types.JSONPatchType, generatePatchPayload(pod.Annotations, "replace")); err != nil {
+	if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(context.Background(), name, types.JSONPatchType, generatePatchPayload(pod.Annotations, "replace"), metav1.PatchOptions{}, ""); err != nil {
 		if k8serrors.IsNotFound(err) {
 			// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.
 			// Then we need to recycle the resource again.

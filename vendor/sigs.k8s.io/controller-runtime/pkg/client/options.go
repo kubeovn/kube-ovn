@@ -20,7 +20,101 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 )
+
+// {{{ "Functional" Option Interfaces
+
+// CreateOption is some configuration that modifies options for a create request.
+type CreateOption interface {
+	// ApplyToCreate applies this configuration to the given create options.
+	ApplyToCreate(*CreateOptions)
+}
+
+// DeleteOption is some configuration that modifies options for a delete request.
+type DeleteOption interface {
+	// ApplyToDelete applies this configuration to the given delete options.
+	ApplyToDelete(*DeleteOptions)
+}
+
+// ListOption is some configuration that modifies options for a list request.
+type ListOption interface {
+	// ApplyToList applies this configuration to the given list options.
+	ApplyToList(*ListOptions)
+}
+
+// UpdateOption is some configuration that modifies options for a update request.
+type UpdateOption interface {
+	// ApplyToUpdate applies this configuration to the given update options.
+	ApplyToUpdate(*UpdateOptions)
+}
+
+// PatchOption is some configuration that modifies options for a patch request.
+type PatchOption interface {
+	// ApplyToPatch applies this configuration to the given patch options.
+	ApplyToPatch(*PatchOptions)
+}
+
+// DeleteAllOfOption is some configuration that modifies options for a delete request.
+type DeleteAllOfOption interface {
+	// ApplyToDeleteAllOf applies this configuration to the given deletecollection options.
+	ApplyToDeleteAllOf(*DeleteAllOfOptions)
+}
+
+// }}}
+
+// {{{ Multi-Type Options
+
+// DryRunAll sets the "dry run" option to "all", executing all
+// validation, etc without persisting the change to storage.
+var DryRunAll = dryRunAll{}
+
+type dryRunAll struct{}
+
+// ApplyToCreate applies this configuration to the given create options.
+func (dryRunAll) ApplyToCreate(opts *CreateOptions) {
+	opts.DryRun = []string{metav1.DryRunAll}
+}
+
+// ApplyToUpdate applies this configuration to the given update options.
+func (dryRunAll) ApplyToUpdate(opts *UpdateOptions) {
+	opts.DryRun = []string{metav1.DryRunAll}
+}
+
+// ApplyToPatch applies this configuration to the given patch options.
+func (dryRunAll) ApplyToPatch(opts *PatchOptions) {
+	opts.DryRun = []string{metav1.DryRunAll}
+}
+
+// ApplyToPatch applies this configuration to the given delete options.
+func (dryRunAll) ApplyToDelete(opts *DeleteOptions) {
+	opts.DryRun = []string{metav1.DryRunAll}
+}
+func (dryRunAll) ApplyToDeleteAllOf(opts *DeleteAllOfOptions) {
+	opts.DryRun = []string{metav1.DryRunAll}
+}
+
+// FieldOwner set the field manager name for the given server-side apply patch.
+type FieldOwner string
+
+// ApplyToPatch applies this configuration to the given patch options.
+func (f FieldOwner) ApplyToPatch(opts *PatchOptions) {
+	opts.FieldManager = string(f)
+}
+
+// ApplyToCreate applies this configuration to the given create options.
+func (f FieldOwner) ApplyToCreate(opts *CreateOptions) {
+	opts.FieldManager = string(f)
+}
+
+// ApplyToUpdate applies this configuration to the given update options.
+func (f FieldOwner) ApplyToUpdate(opts *UpdateOptions) {
+	opts.FieldManager = string(f)
+}
+
+// }}}
+
+// {{{ Create Options
 
 // CreateOptions contains options for create requests. It's generally a subset
 // of metav1.CreateOptions.
@@ -32,6 +126,10 @@ type CreateOptions struct {
 	// - All: all dry run stages will be processed
 	DryRun []string
 
+	// FieldManager is the name of the user or component submitting
+	// this request.  It must be set with server-side apply.
+	FieldManager string
+
 	// Raw represents raw CreateOptions, as passed to the API server.
 	Raw *metav1.CreateOptions
 }
@@ -39,7 +137,6 @@ type CreateOptions struct {
 // AsCreateOptions returns these options as a metav1.CreateOptions.
 // This may mutate the Raw field.
 func (o *CreateOptions) AsCreateOptions() *metav1.CreateOptions {
-
 	if o == nil {
 		return &metav1.CreateOptions{}
 	}
@@ -48,28 +145,37 @@ func (o *CreateOptions) AsCreateOptions() *metav1.CreateOptions {
 	}
 
 	o.Raw.DryRun = o.DryRun
+	o.Raw.FieldManager = o.FieldManager
 	return o.Raw
 }
 
-// ApplyOptions executes the given CreateOptionFuncs and returns the mutated
-// CreateOptions.
-func (o *CreateOptions) ApplyOptions(optFuncs []CreateOptionFunc) *CreateOptions {
-	for _, optFunc := range optFuncs {
-		optFunc(o)
+// ApplyOptions applies the given create options on these options,
+// and then returns itself (for convenient chaining).
+func (o *CreateOptions) ApplyOptions(opts []CreateOption) *CreateOptions {
+	for _, opt := range opts {
+		opt.ApplyToCreate(o)
 	}
 	return o
 }
 
-// CreateOptionFunc is a function that mutates a CreateOptions struct. It implements
-// the functional options pattern. See
-// https://github.com/tmrts/go-patterns/blob/master/idiom/functional-options.md.
-type CreateOptionFunc func(*CreateOptions)
-
-// CreateDryRunAll is a functional option that sets the DryRun
-// field of a CreateOptions struct to metav1.DryRunAll.
-var CreateDryRunAll CreateOptionFunc = func(opts *CreateOptions) {
-	opts.DryRun = []string{metav1.DryRunAll}
+// ApplyToCreate implements CreateOption
+func (o *CreateOptions) ApplyToCreate(co *CreateOptions) {
+	if o.DryRun != nil {
+		co.DryRun = o.DryRun
+	}
+	if o.FieldManager != "" {
+		co.FieldManager = o.FieldManager
+	}
+	if o.Raw != nil {
+		co.Raw = o.Raw
+	}
 }
+
+var _ CreateOption = &CreateOptions{}
+
+// }}}
+
+// {{{ Delete Options
 
 // DeleteOptions contains options for delete requests. It's generally a subset
 // of metav1.DeleteOptions.
@@ -96,6 +202,13 @@ type DeleteOptions struct {
 
 	// Raw represents raw DeleteOptions, as passed to the API server.
 	Raw *metav1.DeleteOptions
+
+	// When present, indicates that modifications should not be
+	// persisted. An invalid or unrecognized dryRun directive will
+	// result in an error response and no further processing of the
+	// request. Valid values are:
+	// - All: all dry run stages will be processed
+	DryRun []string
 }
 
 // AsDeleteOptions returns these options as a metav1.DeleteOptions.
@@ -111,46 +224,94 @@ func (o *DeleteOptions) AsDeleteOptions() *metav1.DeleteOptions {
 	o.Raw.GracePeriodSeconds = o.GracePeriodSeconds
 	o.Raw.Preconditions = o.Preconditions
 	o.Raw.PropagationPolicy = o.PropagationPolicy
+	o.Raw.DryRun = o.DryRun
 	return o.Raw
 }
 
-// ApplyOptions executes the given DeleteOptionFuncs and returns the mutated
-// DeleteOptions.
-func (o *DeleteOptions) ApplyOptions(optFuncs []DeleteOptionFunc) *DeleteOptions {
-	for _, optFunc := range optFuncs {
-		optFunc(o)
+// ApplyOptions applies the given delete options on these options,
+// and then returns itself (for convenient chaining).
+func (o *DeleteOptions) ApplyOptions(opts []DeleteOption) *DeleteOptions {
+	for _, opt := range opts {
+		opt.ApplyToDelete(o)
 	}
 	return o
 }
 
-// DeleteOptionFunc is a function that mutates a DeleteOptions struct. It implements
-// the functional options pattern. See
-// https://github.com/tmrts/go-patterns/blob/master/idiom/functional-options.md.
-type DeleteOptionFunc func(*DeleteOptions)
+var _ DeleteOption = &DeleteOptions{}
 
-// GracePeriodSeconds is a functional option that sets the GracePeriodSeconds
-// field of a DeleteOptions struct.
-func GracePeriodSeconds(gp int64) DeleteOptionFunc {
-	return func(opts *DeleteOptions) {
-		opts.GracePeriodSeconds = &gp
+// ApplyToDelete implements DeleteOption
+func (o *DeleteOptions) ApplyToDelete(do *DeleteOptions) {
+	if o.GracePeriodSeconds != nil {
+		do.GracePeriodSeconds = o.GracePeriodSeconds
+	}
+	if o.Preconditions != nil {
+		do.Preconditions = o.Preconditions
+	}
+	if o.PropagationPolicy != nil {
+		do.PropagationPolicy = o.PropagationPolicy
+	}
+	if o.Raw != nil {
+		do.Raw = o.Raw
+	}
+	if o.DryRun != nil {
+		do.DryRun = o.DryRun
 	}
 }
 
-// Preconditions is a functional option that sets the Preconditions field of a
-// DeleteOptions struct.
-func Preconditions(p *metav1.Preconditions) DeleteOptionFunc {
-	return func(opts *DeleteOptions) {
-		opts.Preconditions = p
-	}
+// GracePeriodSeconds sets the grace period for the deletion
+// to the given number of seconds.
+type GracePeriodSeconds int64
+
+// ApplyToDelete applies this configuration to the given delete options.
+func (s GracePeriodSeconds) ApplyToDelete(opts *DeleteOptions) {
+	secs := int64(s)
+	opts.GracePeriodSeconds = &secs
 }
 
-// PropagationPolicy is a functional option that sets the PropagationPolicy
-// field of a DeleteOptions struct.
-func PropagationPolicy(p metav1.DeletionPropagation) DeleteOptionFunc {
-	return func(opts *DeleteOptions) {
-		opts.PropagationPolicy = &p
-	}
+// ApplyToDeleteAllOf applies this configuration to the given an List options.
+func (s GracePeriodSeconds) ApplyToDeleteAllOf(opts *DeleteAllOfOptions) {
+	s.ApplyToDelete(&opts.DeleteOptions)
 }
+
+// Preconditions must be fulfilled before an operation (update, delete, etc.) is carried out.
+type Preconditions metav1.Preconditions
+
+// ApplyToDelete applies this configuration to the given delete options.
+func (p Preconditions) ApplyToDelete(opts *DeleteOptions) {
+	preconds := metav1.Preconditions(p)
+	opts.Preconditions = &preconds
+}
+
+// ApplyToDeleteAllOf applies this configuration to the given an List options.
+func (p Preconditions) ApplyToDeleteAllOf(opts *DeleteAllOfOptions) {
+	p.ApplyToDelete(&opts.DeleteOptions)
+}
+
+// PropagationPolicy determined whether and how garbage collection will be
+// performed. Either this field or OrphanDependents may be set, but not both.
+// The default policy is decided by the existing finalizer set in the
+// metadata.finalizers and the resource-specific default policy.
+// Acceptable values are: 'Orphan' - orphan the dependents; 'Background' -
+// allow the garbage collector to delete the dependents in the background;
+// 'Foreground' - a cascading policy that deletes all dependents in the
+// foreground.
+type PropagationPolicy metav1.DeletionPropagation
+
+// ApplyToDelete applies the given delete options on these options.
+// It will propagate to the dependents of the object to let the garbage collector handle it.
+func (p PropagationPolicy) ApplyToDelete(opts *DeleteOptions) {
+	policy := metav1.DeletionPropagation(p)
+	opts.PropagationPolicy = &policy
+}
+
+// ApplyToDeleteAllOf applies this configuration to the given an List options.
+func (p PropagationPolicy) ApplyToDeleteAllOf(opts *DeleteAllOfOptions) {
+	p.ApplyToDelete(&opts.DeleteOptions)
+}
+
+// }}}
+
+// {{{ List Options
 
 // ListOptions contains options for limiting or filtering results.
 // It's generally a subset of metav1.ListOptions, with support for
@@ -169,32 +330,45 @@ type ListOptions struct {
 	// non-namespaced objects, or to list across all namespaces.
 	Namespace string
 
+	// Limit specifies the maximum number of results to return from the server. The server may
+	// not support this field on all resource types, but if it does and more results remain it
+	// will set the continue field on the returned list object. This field is not supported if watch
+	// is true in the Raw ListOptions.
+	Limit int64
+	// Continue is a token returned by the server that lets a client retrieve chunks of results
+	// from the server by specifying limit. The server may reject requests for continuation tokens
+	// it does not recognize and will return a 410 error if the token can no longer be used because
+	// it has expired. This field is not supported if watch is true in the Raw ListOptions.
+	Continue string
+
 	// Raw represents raw ListOptions, as passed to the API server.  Note
 	// that these may not be respected by all implementations of interface,
-	// and the LabelSelector and FieldSelector fields are ignored.
+	// and the LabelSelector, FieldSelector, Limit and Continue fields are ignored.
 	Raw *metav1.ListOptions
 }
 
-// SetLabelSelector sets this the label selector of these options
-// from a string form of the selector.
-func (o *ListOptions) SetLabelSelector(selRaw string) error {
-	sel, err := labels.Parse(selRaw)
-	if err != nil {
-		return err
-	}
-	o.LabelSelector = sel
-	return nil
-}
+var _ ListOption = &ListOptions{}
 
-// SetFieldSelector sets this the label selector of these options
-// from a string form of the selector.
-func (o *ListOptions) SetFieldSelector(selRaw string) error {
-	sel, err := fields.ParseSelector(selRaw)
-	if err != nil {
-		return err
+// ApplyToList implements ListOption for ListOptions
+func (o *ListOptions) ApplyToList(lo *ListOptions) {
+	if o.LabelSelector != nil {
+		lo.LabelSelector = o.LabelSelector
 	}
-	o.FieldSelector = sel
-	return nil
+	if o.FieldSelector != nil {
+		lo.FieldSelector = o.FieldSelector
+	}
+	if o.Namespace != "" {
+		lo.Namespace = o.Namespace
+	}
+	if o.Raw != nil {
+		lo.Raw = o.Raw
+	}
+	if o.Limit > 0 {
+		lo.Limit = o.Limit
+	}
+	if o.Continue != "" {
+		lo.Continue = o.Continue
+	}
 }
 
 // AsListOptions returns these options as a flattened metav1.ListOptions.
@@ -212,84 +386,144 @@ func (o *ListOptions) AsListOptions() *metav1.ListOptions {
 	if o.FieldSelector != nil {
 		o.Raw.FieldSelector = o.FieldSelector.String()
 	}
+	if !o.Raw.Watch {
+		o.Raw.Limit = o.Limit
+		o.Raw.Continue = o.Continue
+	}
 	return o.Raw
 }
 
-// ApplyOptions executes the given ListOptionFuncs and returns the mutated
-// ListOptions.
-func (o *ListOptions) ApplyOptions(optFuncs []ListOptionFunc) *ListOptions {
-	for _, optFunc := range optFuncs {
-		optFunc(o)
+// ApplyOptions applies the given list options on these options,
+// and then returns itself (for convenient chaining).
+func (o *ListOptions) ApplyOptions(opts []ListOption) *ListOptions {
+	for _, opt := range opts {
+		opt.ApplyToList(o)
 	}
 	return o
 }
 
-// ListOptionFunc is a function that mutates a ListOptions struct. It implements
-// the functional options pattern. See
-// https://github.com/tmrts/go-patterns/blob/master/idiom/functional-options.md.
-type ListOptionFunc func(*ListOptions)
+// MatchingLabels filters the list/delete operation on the given set of labels.
+type MatchingLabels map[string]string
 
-// MatchingLabels is a convenience function that sets the label selector
-// to match the given labels, and then returns the options.
-// It mutates the list options.
-func (o *ListOptions) MatchingLabels(lbls map[string]string) *ListOptions {
-	sel := labels.SelectorFromSet(lbls)
-	o.LabelSelector = sel
-	return o
+// ApplyToList applies this configuration to the given list options.
+func (m MatchingLabels) ApplyToList(opts *ListOptions) {
+	// TODO(directxman12): can we avoid reserializing this over and over?
+	sel := labels.SelectorFromValidatedSet(map[string]string(m))
+	opts.LabelSelector = sel
 }
 
-// MatchingField is a convenience function that sets the field selector
-// to match the given field, and then returns the options.
-// It mutates the list options.
-func (o *ListOptions) MatchingField(name, val string) *ListOptions {
-	sel := fields.SelectorFromSet(fields.Set{name: val})
-	o.FieldSelector = sel
-	return o
+// ApplyToDeleteAllOf applies this configuration to the given an List options.
+func (m MatchingLabels) ApplyToDeleteAllOf(opts *DeleteAllOfOptions) {
+	m.ApplyToList(&opts.ListOptions)
 }
 
-// InNamespace is a convenience function that sets the namespace,
-// and then returns the options. It mutates the list options.
-func (o *ListOptions) InNamespace(ns string) *ListOptions {
-	o.Namespace = ns
-	return o
-}
+// HasLabels filters the list/delete operation checking if the set of labels exists
+// without checking their values.
+type HasLabels []string
 
-// MatchingLabels is a functional option that sets the LabelSelector field of
-// a ListOptions struct.
-func MatchingLabels(lbls map[string]string) ListOptionFunc {
-	sel := labels.SelectorFromSet(lbls)
-	return func(opts *ListOptions) {
-		opts.LabelSelector = sel
+// ApplyToList applies this configuration to the given list options.
+func (m HasLabels) ApplyToList(opts *ListOptions) {
+	sel := labels.NewSelector()
+	for _, label := range m {
+		r, err := labels.NewRequirement(label, selection.Exists, nil)
+		if err == nil {
+			sel = sel.Add(*r)
+		}
 	}
+	opts.LabelSelector = sel
 }
 
-// MatchingField is a functional option that sets the FieldSelector field of
-// a ListOptions struct.
-func MatchingField(name, val string) ListOptionFunc {
-	sel := fields.SelectorFromSet(fields.Set{name: val})
-	return func(opts *ListOptions) {
-		opts.FieldSelector = sel
-	}
+// ApplyToDeleteAllOf applies this configuration to the given an List options.
+func (m HasLabels) ApplyToDeleteAllOf(opts *DeleteAllOfOptions) {
+	m.ApplyToList(&opts.ListOptions)
 }
 
-// InNamespace is a functional option that sets the Namespace field of
-// a ListOptions struct.
-func InNamespace(ns string) ListOptionFunc {
-	return func(opts *ListOptions) {
-		opts.Namespace = ns
-	}
+// MatchingLabelsSelector filters the list/delete operation on the given label
+// selector (or index in the case of cached lists). A struct is used because
+// labels.Selector is an interface, which cannot be aliased.
+type MatchingLabelsSelector struct {
+	labels.Selector
 }
 
-// UseListOptions is a functional option that replaces the fields of a
-// ListOptions struct with those of a different ListOptions struct.
-//
-// Example:
-// cl.List(ctx, list, client.UseListOptions(lo.InNamespace(ns).MatchingLabels(labels)))
-func UseListOptions(newOpts *ListOptions) ListOptionFunc {
-	return func(opts *ListOptions) {
-		*opts = *newOpts
-	}
+// ApplyToList applies this configuration to the given list options.
+func (m MatchingLabelsSelector) ApplyToList(opts *ListOptions) {
+	opts.LabelSelector = m
 }
+
+// ApplyToDeleteAllOf applies this configuration to the given an List options.
+func (m MatchingLabelsSelector) ApplyToDeleteAllOf(opts *DeleteAllOfOptions) {
+	m.ApplyToList(&opts.ListOptions)
+}
+
+// MatchingFields filters the list/delete operation on the given field Set
+// (or index in the case of cached lists).
+type MatchingFields fields.Set
+
+// ApplyToList applies this configuration to the given list options.
+func (m MatchingFields) ApplyToList(opts *ListOptions) {
+	// TODO(directxman12): can we avoid re-serializing this?
+	sel := fields.Set(m).AsSelector()
+	opts.FieldSelector = sel
+}
+
+// ApplyToDeleteAllOf applies this configuration to the given an List options.
+func (m MatchingFields) ApplyToDeleteAllOf(opts *DeleteAllOfOptions) {
+	m.ApplyToList(&opts.ListOptions)
+}
+
+// MatchingFieldsSelector filters the list/delete operation on the given field
+// selector (or index in the case of cached lists). A struct is used because
+// fields.Selector is an interface, which cannot be aliased.
+type MatchingFieldsSelector struct {
+	fields.Selector
+}
+
+// ApplyToList applies this configuration to the given list options.
+func (m MatchingFieldsSelector) ApplyToList(opts *ListOptions) {
+	opts.FieldSelector = m
+}
+
+// ApplyToDeleteAllOf applies this configuration to the given an List options.
+func (m MatchingFieldsSelector) ApplyToDeleteAllOf(opts *DeleteAllOfOptions) {
+	m.ApplyToList(&opts.ListOptions)
+}
+
+// InNamespace restricts the list/delete operation to the given namespace.
+type InNamespace string
+
+// ApplyToList applies this configuration to the given list options.
+func (n InNamespace) ApplyToList(opts *ListOptions) {
+	opts.Namespace = string(n)
+}
+
+// ApplyToDeleteAllOf applies this configuration to the given an List options.
+func (n InNamespace) ApplyToDeleteAllOf(opts *DeleteAllOfOptions) {
+	n.ApplyToList(&opts.ListOptions)
+}
+
+// Limit specifies the maximum number of results to return from the server.
+// Limit does not implement DeleteAllOfOption interface because the server
+// does not support setting it for deletecollection operations.
+type Limit int64
+
+// ApplyToList applies this configuration to the given an list options.
+func (l Limit) ApplyToList(opts *ListOptions) {
+	opts.Limit = int64(l)
+}
+
+// Continue sets a continuation token to retrieve chunks of results when using limit.
+// Continue does not implement DeleteAllOfOption interface because the server
+// does not support setting it for deletecollection operations.
+type Continue string
+
+// ApplyToList applies this configuration to the given an List options.
+func (c Continue) ApplyToList(opts *ListOptions) {
+	opts.Continue = string(c)
+}
+
+// }}}
+
+// {{{ Update Options
 
 // UpdateOptions contains options for create requests. It's generally a subset
 // of metav1.UpdateOptions.
@@ -300,6 +534,10 @@ type UpdateOptions struct {
 	// request. Valid values are:
 	// - All: all dry run stages will be processed
 	DryRun []string
+
+	// FieldManager is the name of the user or component submitting
+	// this request.  It must be set with server-side apply.
+	FieldManager string
 
 	// Raw represents raw UpdateOptions, as passed to the API server.
 	Raw *metav1.UpdateOptions
@@ -316,28 +554,37 @@ func (o *UpdateOptions) AsUpdateOptions() *metav1.UpdateOptions {
 	}
 
 	o.Raw.DryRun = o.DryRun
+	o.Raw.FieldManager = o.FieldManager
 	return o.Raw
 }
 
-// ApplyOptions executes the given UpdateOptionFuncs and returns the mutated
-// UpdateOptions.
-func (o *UpdateOptions) ApplyOptions(optFuncs []UpdateOptionFunc) *UpdateOptions {
-	for _, optFunc := range optFuncs {
-		optFunc(o)
+// ApplyOptions applies the given update options on these options,
+// and then returns itself (for convenient chaining).
+func (o *UpdateOptions) ApplyOptions(opts []UpdateOption) *UpdateOptions {
+	for _, opt := range opts {
+		opt.ApplyToUpdate(o)
 	}
 	return o
 }
 
-// UpdateOptionFunc is a function that mutates a UpdateOptions struct. It implements
-// the functional options pattern. See
-// https://github.com/tmrts/go-patterns/blob/master/idiom/functional-options.md.
-type UpdateOptionFunc func(*UpdateOptions)
+var _ UpdateOption = &UpdateOptions{}
 
-// UpdateDryRunAll is a functional option that sets the DryRun
-// field of a UpdateOptions struct to metav1.DryRunAll.
-var UpdateDryRunAll UpdateOptionFunc = func(opts *UpdateOptions) {
-	opts.DryRun = []string{metav1.DryRunAll}
+// ApplyToUpdate implements UpdateOption
+func (o *UpdateOptions) ApplyToUpdate(uo *UpdateOptions) {
+	if o.DryRun != nil {
+		uo.DryRun = o.DryRun
+	}
+	if o.FieldManager != "" {
+		uo.FieldManager = o.FieldManager
+	}
+	if o.Raw != nil {
+		uo.Raw = o.Raw
+	}
 }
+
+// }}}
+
+// {{{ Patch Options
 
 // PatchOptions contains options for patch requests.
 type PatchOptions struct {
@@ -362,11 +609,11 @@ type PatchOptions struct {
 	Raw *metav1.PatchOptions
 }
 
-// ApplyOptions executes the given PatchOptionFuncs, mutating these PatchOptions.
-// It returns the mutated PatchOptions for convenience.
-func (o *PatchOptions) ApplyOptions(optFuncs []PatchOptionFunc) *PatchOptions {
-	for _, optFunc := range optFuncs {
-		optFunc(o)
+// ApplyOptions applies the given patch options on these options,
+// and then returns itself (for convenient chaining).
+func (o *PatchOptions) ApplyOptions(opts []PatchOption) *PatchOptions {
+	for _, opt := range opts {
+		opt.ApplyToPatch(o)
 	}
 	return o
 }
@@ -387,29 +634,64 @@ func (o *PatchOptions) AsPatchOptions() *metav1.PatchOptions {
 	return o.Raw
 }
 
-// PatchOptionFunc is a function that mutates a PatchOptions struct. It implements
-// the functional options pattern. See
-// https://github.com/tmrts/go-patterns/blob/master/idiom/functional-options.md.
-type PatchOptionFunc func(*PatchOptions)
+var _ PatchOption = &PatchOptions{}
 
-// ForceOwnership sets the Force option, indicating that
-// in case of conflicts with server-side apply, the client should
-// acquire ownership of the conflicting field.  Most controllers
-// should use this.
-var ForceOwnership PatchOptionFunc = func(opts *PatchOptions) {
+// ApplyToPatch implements PatchOptions
+func (o *PatchOptions) ApplyToPatch(po *PatchOptions) {
+	if o.DryRun != nil {
+		po.DryRun = o.DryRun
+	}
+	if o.Force != nil {
+		po.Force = o.Force
+	}
+	if o.FieldManager != "" {
+		po.FieldManager = o.FieldManager
+	}
+	if o.Raw != nil {
+		po.Raw = o.Raw
+	}
+}
+
+// ForceOwnership indicates that in case of conflicts with server-side apply,
+// the client should acquire ownership of the conflicting field.  Most
+// controllers should use this.
+var ForceOwnership = forceOwnership{}
+
+type forceOwnership struct{}
+
+func (forceOwnership) ApplyToPatch(opts *PatchOptions) {
 	definitelyTrue := true
 	opts.Force = &definitelyTrue
 }
 
-// PatchDryRunAll is a functional option that sets the DryRun
-// field of a PatchOptions struct to metav1.DryRunAll.
-var PatchDryRunAll PatchOptionFunc = func(opts *PatchOptions) {
-	opts.DryRun = []string{metav1.DryRunAll}
+// }}}
+
+// {{{ DeleteAllOf Options
+
+// these are all just delete options and list options
+
+// DeleteAllOfOptions contains options for deletecollection (deleteallof) requests.
+// It's just list and delete options smooshed together.
+type DeleteAllOfOptions struct {
+	ListOptions
+	DeleteOptions
 }
 
-// FieldOwner set the field manager name for the given server-side apply patch.
-func FieldOwner(name string) PatchOptionFunc {
-	return func(opts *PatchOptions) {
-		opts.FieldManager = name
+// ApplyOptions applies the given deleteallof options on these options,
+// and then returns itself (for convenient chaining).
+func (o *DeleteAllOfOptions) ApplyOptions(opts []DeleteAllOfOption) *DeleteAllOfOptions {
+	for _, opt := range opts {
+		opt.ApplyToDeleteAllOf(o)
 	}
+	return o
 }
+
+var _ DeleteAllOfOption = &DeleteAllOfOptions{}
+
+// ApplyToDeleteAllOf implements DeleteAllOfOption
+func (o *DeleteAllOfOptions) ApplyToDeleteAllOf(do *DeleteAllOfOptions) {
+	o.ApplyToList(&do.ListOptions)
+	o.ApplyToDelete(&do.DeleteOptions)
+}
+
+// }}}

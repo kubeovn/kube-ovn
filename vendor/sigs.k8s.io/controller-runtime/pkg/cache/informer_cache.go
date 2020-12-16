@@ -38,74 +38,107 @@ var (
 	_ Cache         = &informerCache{}
 )
 
+// ErrCacheNotStarted is returned when trying to read from the cache that wasn't started.
+type ErrCacheNotStarted struct{}
+
+func (*ErrCacheNotStarted) Error() string {
+	return "the cache is not started, can not read objects"
+}
+
 // informerCache is a Kubernetes Object cache populated from InformersMap.  informerCache wraps an InformersMap.
 type informerCache struct {
 	*internal.InformersMap
 }
 
 // Get implements Reader
-func (ip *informerCache) Get(ctx context.Context, key client.ObjectKey, out runtime.Object) error {
+func (ip *informerCache) Get(ctx context.Context, key client.ObjectKey, out client.Object) error {
 	gvk, err := apiutil.GVKForObject(out, ip.Scheme)
 	if err != nil {
 		return err
 	}
 
-	cache, err := ip.InformersMap.Get(gvk, out)
+	started, cache, err := ip.InformersMap.Get(ctx, gvk, out)
 	if err != nil {
 		return err
+	}
+
+	if !started {
+		return &ErrCacheNotStarted{}
 	}
 	return cache.Reader.Get(ctx, key, out)
 }
 
 // List implements Reader
-func (ip *informerCache) List(ctx context.Context, out runtime.Object, opts ...client.ListOptionFunc) error {
-	gvk, err := apiutil.GVKForObject(out, ip.Scheme)
+func (ip *informerCache) List(ctx context.Context, out client.ObjectList, opts ...client.ListOption) error {
+
+	gvk, cacheTypeObj, err := ip.objectTypeForListObject(out)
 	if err != nil {
 		return err
 	}
 
+	started, cache, err := ip.InformersMap.Get(ctx, *gvk, cacheTypeObj)
+	if err != nil {
+		return err
+	}
+
+	if !started {
+		return &ErrCacheNotStarted{}
+	}
+
+	return cache.Reader.List(ctx, out, opts...)
+}
+
+// objectTypeForListObject tries to find the runtime.Object and associated GVK
+// for a single object corresponding to the passed-in list type. We need them
+// because they are used as cache map key.
+func (ip *informerCache) objectTypeForListObject(list client.ObjectList) (*schema.GroupVersionKind, runtime.Object, error) {
+	gvk, err := apiutil.GVKForObject(list, ip.Scheme)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	if !strings.HasSuffix(gvk.Kind, "List") {
-		return fmt.Errorf("non-list type %T (kind %q) passed as output", out, gvk)
+		return nil, nil, fmt.Errorf("non-list type %T (kind %q) passed as output", list, gvk)
 	}
 	// we need the non-list GVK, so chop off the "List" from the end of the kind
 	gvk.Kind = gvk.Kind[:len(gvk.Kind)-4]
-	_, isUnstructured := out.(*unstructured.UnstructuredList)
+	_, isUnstructured := list.(*unstructured.UnstructuredList)
 	var cacheTypeObj runtime.Object
 	if isUnstructured {
 		u := &unstructured.Unstructured{}
 		u.SetGroupVersionKind(gvk)
 		cacheTypeObj = u
 	} else {
-		itemsPtr, err := apimeta.GetItemsPtr(out)
+		itemsPtr, err := apimeta.GetItemsPtr(list)
 		if err != nil {
-			return nil
+			return nil, nil, err
 		}
 		// http://knowyourmeme.com/memes/this-is-fine
 		elemType := reflect.Indirect(reflect.ValueOf(itemsPtr)).Type().Elem()
-		cacheTypeValue := reflect.Zero(reflect.PtrTo(elemType))
+		if elemType.Kind() != reflect.Ptr {
+			elemType = reflect.PtrTo(elemType)
+		}
+
+		cacheTypeValue := reflect.Zero(elemType)
 		var ok bool
 		cacheTypeObj, ok = cacheTypeValue.Interface().(runtime.Object)
 		if !ok {
-			return fmt.Errorf("cannot get cache for %T, its element %T is not a runtime.Object", out, cacheTypeValue.Interface())
+			return nil, nil, fmt.Errorf("cannot get cache for %T, its element %T is not a runtime.Object", list, cacheTypeValue.Interface())
 		}
 	}
 
-	cache, err := ip.InformersMap.Get(gvk, cacheTypeObj)
-	if err != nil {
-		return err
-	}
-
-	return cache.Reader.List(ctx, out, opts...)
+	return &gvk, cacheTypeObj, nil
 }
 
 // GetInformerForKind returns the informer for the GroupVersionKind
-func (ip *informerCache) GetInformerForKind(gvk schema.GroupVersionKind) (Informer, error) {
+func (ip *informerCache) GetInformerForKind(ctx context.Context, gvk schema.GroupVersionKind) (Informer, error) {
 	// Map the gvk to an object
 	obj, err := ip.Scheme.New(gvk)
 	if err != nil {
 		return nil, err
 	}
-	i, err := ip.InformersMap.Get(gvk, obj)
+
+	_, i, err := ip.InformersMap.Get(ctx, gvk, obj)
 	if err != nil {
 		return nil, err
 	}
@@ -113,16 +146,23 @@ func (ip *informerCache) GetInformerForKind(gvk schema.GroupVersionKind) (Inform
 }
 
 // GetInformer returns the informer for the obj
-func (ip *informerCache) GetInformer(obj runtime.Object) (Informer, error) {
+func (ip *informerCache) GetInformer(ctx context.Context, obj client.Object) (Informer, error) {
 	gvk, err := apiutil.GVKForObject(obj, ip.Scheme)
 	if err != nil {
 		return nil, err
 	}
-	i, err := ip.InformersMap.Get(gvk, obj)
+
+	_, i, err := ip.InformersMap.Get(ctx, gvk, obj)
 	if err != nil {
 		return nil, err
 	}
 	return i.Informer, err
+}
+
+// NeedLeaderElection implements the LeaderElectionRunnable interface
+// to indicate that this can be started without requiring the leader lock
+func (ip *informerCache) NeedLeaderElection() bool {
+	return false
 }
 
 // IndexField adds an indexer to the underlying cache, using extraction function to get
@@ -130,8 +170,8 @@ func (ip *informerCache) GetInformer(obj runtime.Object) (Informer, error) {
 // to List. For one-to-one compatibility with "normal" field selectors, only return one value.
 // The values may be anything.  They will automatically be prefixed with the namespace of the
 // given object, if present.  The objects passed are guaranteed to be objects of the correct type.
-func (ip *informerCache) IndexField(obj runtime.Object, field string, extractValue client.IndexerFunc) error {
-	informer, err := ip.GetInformer(obj)
+func (ip *informerCache) IndexField(ctx context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error {
+	informer, err := ip.GetInformer(ctx, obj)
 	if err != nil {
 		return err
 	}
@@ -141,7 +181,7 @@ func (ip *informerCache) IndexField(obj runtime.Object, field string, extractVal
 func indexByField(indexer Informer, field string, extractor client.IndexerFunc) error {
 	indexFunc := func(objRaw interface{}) ([]string, error) {
 		// TODO(directxman12): check if this is the correct type?
-		obj, isObj := objRaw.(runtime.Object)
+		obj, isObj := objRaw.(client.Object)
 		if !isObj {
 			return nil, fmt.Errorf("object of type %T is not an Object", objRaw)
 		}

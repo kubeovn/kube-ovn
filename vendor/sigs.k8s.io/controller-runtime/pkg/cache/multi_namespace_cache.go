@@ -36,7 +36,9 @@ type NewCacheFunc func(config *rest.Config, opts Options) (Cache, error)
 
 // MultiNamespacedCacheBuilder - Builder function to create a new multi-namespaced cache.
 // This will scope the cache to a list of namespaces. Listing for all namespaces
-// will list for all the namespaces that this knows about.
+// will list for all the namespaces that this knows about. Note that this is not intended
+// to be used for excluding namespaces, this is better done via a Predicate. Also note that
+// you may face performance issues when using this with a high number of namespaces.
 func MultiNamespacedCacheBuilder(namespaces []string) NewCacheFunc {
 	return func(config *rest.Config, opts Options) (Cache, error) {
 		opts, err := defaultOpts(config, opts)
@@ -68,10 +70,10 @@ type multiNamespaceCache struct {
 var _ Cache = &multiNamespaceCache{}
 
 // Methods for multiNamespaceCache to conform to the Informers interface
-func (c *multiNamespaceCache) GetInformer(obj runtime.Object) (Informer, error) {
+func (c *multiNamespaceCache) GetInformer(ctx context.Context, obj client.Object) (Informer, error) {
 	informers := map[string]Informer{}
 	for ns, cache := range c.namespaceToCache {
-		informer, err := cache.GetInformer(obj)
+		informer, err := cache.GetInformer(ctx, obj)
 		if err != nil {
 			return nil, err
 		}
@@ -80,10 +82,10 @@ func (c *multiNamespaceCache) GetInformer(obj runtime.Object) (Informer, error) 
 	return &multiNamespaceInformer{namespaceToInformer: informers}, nil
 }
 
-func (c *multiNamespaceCache) GetInformerForKind(gvk schema.GroupVersionKind) (Informer, error) {
+func (c *multiNamespaceCache) GetInformerForKind(ctx context.Context, gvk schema.GroupVersionKind) (Informer, error) {
 	informers := map[string]Informer{}
 	for ns, cache := range c.namespaceToCache {
-		informer, err := cache.GetInformerForKind(gvk)
+		informer, err := cache.GetInformerForKind(ctx, gvk)
 		if err != nil {
 			return nil, err
 		}
@@ -92,39 +94,39 @@ func (c *multiNamespaceCache) GetInformerForKind(gvk schema.GroupVersionKind) (I
 	return &multiNamespaceInformer{namespaceToInformer: informers}, nil
 }
 
-func (c *multiNamespaceCache) Start(stopCh <-chan struct{}) error {
+func (c *multiNamespaceCache) Start(ctx context.Context) error {
 	for ns, cache := range c.namespaceToCache {
 		go func(ns string, cache Cache) {
-			err := cache.Start(stopCh)
+			err := cache.Start(ctx)
 			if err != nil {
 				log.Error(err, "multinamespace cache failed to start namespaced informer", "namespace", ns)
 			}
 		}(ns, cache)
 	}
-	<-stopCh
+	<-ctx.Done()
 	return nil
 }
 
-func (c *multiNamespaceCache) WaitForCacheSync(stop <-chan struct{}) bool {
+func (c *multiNamespaceCache) WaitForCacheSync(ctx context.Context) bool {
 	synced := true
 	for _, cache := range c.namespaceToCache {
-		if s := cache.WaitForCacheSync(stop); !s {
+		if s := cache.WaitForCacheSync(ctx); !s {
 			synced = s
 		}
 	}
 	return synced
 }
 
-func (c *multiNamespaceCache) IndexField(obj runtime.Object, field string, extractValue client.IndexerFunc) error {
+func (c *multiNamespaceCache) IndexField(ctx context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error {
 	for _, cache := range c.namespaceToCache {
-		if err := cache.IndexField(obj, field, extractValue); err != nil {
+		if err := cache.IndexField(ctx, obj, field, extractValue); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (c *multiNamespaceCache) Get(ctx context.Context, key client.ObjectKey, obj runtime.Object) error {
+func (c *multiNamespaceCache) Get(ctx context.Context, key client.ObjectKey, obj client.Object) error {
 	cache, ok := c.namespaceToCache[key.Namespace]
 	if !ok {
 		return fmt.Errorf("unable to get: %v because of unknown namespace for the cache", key)
@@ -133,7 +135,7 @@ func (c *multiNamespaceCache) Get(ctx context.Context, key client.ObjectKey, obj
 }
 
 // List multi namespace cache will get all the objects in the namespaces that the cache is watching if asked for all namespaces.
-func (c *multiNamespaceCache) List(ctx context.Context, list runtime.Object, opts ...client.ListOptionFunc) error {
+func (c *multiNamespaceCache) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
 	listOpts := client.ListOptions{}
 	listOpts.ApplyOptions(opts)
 	if listOpts.Namespace != corev1.NamespaceAll {
@@ -155,7 +157,7 @@ func (c *multiNamespaceCache) List(ctx context.Context, list runtime.Object, opt
 	}
 	var resourceVersion string
 	for _, cache := range c.namespaceToCache {
-		listObj := list.DeepCopyObject()
+		listObj := list.DeepCopyObject().(client.ObjectList)
 		err = cache.List(ctx, listObj, opts...)
 		if err != nil {
 			return err

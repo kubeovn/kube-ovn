@@ -26,10 +26,13 @@ import (
 )
 
 // VlanLister helps list Vlans.
+// All objects returned here must be treated as read-only.
 type VlanLister interface {
 	// List lists all Vlans in the indexer.
+	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.Vlan, err error)
 	// Get retrieves the Vlan from the index for a given name.
+	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1.Vlan, error)
 	VlanListerExpansion
 }

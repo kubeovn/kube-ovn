@@ -78,7 +78,7 @@ func ping(config *Configuration) error {
 
 func pingNodes(config *Configuration) error {
 	klog.Infof("start to check node connectivity")
-	nodes, err := config.KubeClient.CoreV1().Nodes().List(metav1.ListOptions{})
+	nodes, err := config.KubeClient.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		klog.Errorf("failed to list nodes, %v", err)
 		return err
@@ -124,12 +124,12 @@ func pingNodes(config *Configuration) error {
 
 func pingPods(config *Configuration) error {
 	klog.Infof("start to check pod connectivity")
-	ds, err := config.KubeClient.AppsV1().DaemonSets(config.DaemonSetNamespace).Get(config.DaemonSetName, metav1.GetOptions{})
+	ds, err := config.KubeClient.AppsV1().DaemonSets(config.DaemonSetNamespace).Get(context.Background(), config.DaemonSetName, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("failed to get peer ds: %v", err)
 		return err
 	}
-	pods, err := config.KubeClient.CoreV1().Pods(config.DaemonSetNamespace).List(metav1.ListOptions{LabelSelector: labels.Set(ds.Spec.Selector.MatchLabels).String()})
+	pods, err := config.KubeClient.CoreV1().Pods(config.DaemonSetNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.Set(ds.Spec.Selector.MatchLabels).String()})
 	if err != nil {
 		klog.Errorf("failed to list peer pods: %v", err)
 		return err

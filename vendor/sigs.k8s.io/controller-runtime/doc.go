@@ -64,7 +64,7 @@ limitations under the License.
 // sources (pkg/source), like Kubernetes API object changes, to event handlers
 // (pkg/handler), like "enqueue a reconcile request for the object owner".
 // Predicates (pkg/predicate) can be used to filter which events actually
-// trigger reconciles.  There are pre-written utilies for the common cases, and
+// trigger reconciles.  There are pre-written utilities for the common cases, and
 // interfaces and helpers for advanced cases.
 //
 // Reconcilers
@@ -82,8 +82,11 @@ limitations under the License.
 // and writes directly to the API server, but clients can be constructed that
 // only talk to the API server, without a cache.  The Cache will auto-populate
 // with watched objects, as well as when other structured objects are
-// requested.  Caches may also have indexes, which can be created via a
-// FieldIndexer (pkg/client) obtained from the manager.  Indexes can used to
+// requested. The default split client does not promise to invalidate the cache
+// during writes (nor does it promise sequential create/get coherence), and code
+// should not assume a get immediately following a create/update will return
+// the updated resource. Caches may also have indexes, which can be created via
+// a FieldIndexer (pkg/client) obtained from the manager.  Indexes can used to
 // quickly and easily look up all objects with certain fields set.  Reconcilers
 // may retrieve event recorders (pkg/recorder) to emit events using the
 // manager.

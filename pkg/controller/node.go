@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -251,7 +252,7 @@ func (c *Controller) handleAddNode(key string) error {
 	node.Annotations[util.PortNameAnnotation] = fmt.Sprintf("node-%s", key)
 	raw, _ := json.Marshal(node.Annotations)
 	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-	_, err = c.config.KubeClient.CoreV1().Nodes().Patch(key, types.JSONPatchType, []byte(patchPayload))
+	_, err = c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), key, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}, "")
 	if err != nil {
 		klog.Errorf("patch node %s failed %v", key, err)
 		return err
@@ -276,7 +277,7 @@ func (c *Controller) handleDeleteNode(key string) error {
 		return err
 	}
 
-	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(portName, &metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
 		return err
 	}
 
@@ -347,10 +348,10 @@ func getNodeInternalIP(node *v1.Node) string {
 }
 
 func (c *Controller) createOrUpdateCrdIPs(key, ip, mac string) error {
-	ipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(fmt.Sprintf("node-%s", key), metav1.GetOptions{})
+	ipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), fmt.Sprintf("node-%s", key), metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Create(&kubeovnv1.IP{
+			_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Create(context.Background(), &kubeovnv1.IP{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: fmt.Sprintf("node-%s", key),
 					Labels: map[string]string{
@@ -368,7 +369,7 @@ func (c *Controller) createOrUpdateCrdIPs(key, ip, mac string) error {
 					AttachMacs:    []string{},
 					AttachSubnets: []string{},
 				},
-			})
+			}, metav1.CreateOptions{})
 			if err != nil {
 				errMsg := fmt.Errorf("failed to create ip crd for %s, %v", ip, err)
 				klog.Error(errMsg)
@@ -394,7 +395,7 @@ func (c *Controller) createOrUpdateCrdIPs(key, ip, mac string) error {
 		ipCr.Spec.IPAddress = ip
 		ipCr.Spec.MacAddress = mac
 		ipCr.Spec.ContainerID = ""
-		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(ipCr)
+		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), ipCr, metav1.UpdateOptions{})
 		if err != nil {
 			errMsg := fmt.Errorf("failed to create ip crd for %s, %v", ip, err)
 			klog.Error(errMsg)

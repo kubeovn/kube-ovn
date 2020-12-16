@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -176,7 +177,7 @@ func (c *Controller) setIptables() error {
 }
 
 func (c *Controller) setGatewayBandwidth() error {
-	node, err := c.config.KubeClient.CoreV1().Nodes().Get(c.config.NodeName, metav1.GetOptions{})
+	node, err := c.config.KubeClient.CoreV1().Nodes().Get(context.Background(), c.config.NodeName, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("failed to get node, %v", err)
 		return err
@@ -187,7 +188,7 @@ func (c *Controller) setGatewayBandwidth() error {
 }
 
 func (c *Controller) setICGateway() error {
-	node, err := c.config.KubeClient.CoreV1().Nodes().Get(c.config.NodeName, metav1.GetOptions{})
+	node, err := c.config.KubeClient.CoreV1().Nodes().Get(context.Background(), c.config.NodeName, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("failed to get node, %v", err)
 		return err
@@ -206,14 +207,14 @@ func (c *Controller) setICGateway() error {
 }
 
 func (c *Controller) setExGateway() error {
-	node, err := c.config.KubeClient.CoreV1().Nodes().Get(c.config.NodeName, metav1.GetOptions{})
+	node, err := c.config.KubeClient.CoreV1().Nodes().Get(context.Background(), c.config.NodeName, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("failed to get node, %v", err)
 		return err
 	}
 	enable := node.Labels[util.ExGatewayLabel]
 	if enable == "true" {
-		cm, err := c.config.KubeClient.CoreV1().ConfigMaps("kube-system").Get(util.ExternalGatewayConfig, metav1.GetOptions{})
+		cm, err := c.config.KubeClient.CoreV1().ConfigMaps("kube-system").Get(context.Background(), util.ExternalGatewayConfig, metav1.GetOptions{})
 		if err != nil && !k8serrors.IsNotFound(err) {
 			klog.Errorf("failed to get ovn-external-gw-config, %v", err)
 			return err

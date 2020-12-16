@@ -1,7 +1,11 @@
 package subnet
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"time"
+
 	kubeovn "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/alauda/kube-ovn/test/e2e/framework"
@@ -10,32 +14,30 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
-	"os"
-	"time"
 )
 
 var _ = Describe("[Subnet]", func() {
 	f := framework.NewFramework("subnet", fmt.Sprintf("%s/.kube/config", os.Getenv("HOME")))
 	BeforeEach(func() {
-		if err := f.OvnClientSet.KubeovnV1().Subnets().Delete(f.GetName(), &metav1.DeleteOptions{}); err != nil {
+		if err := f.OvnClientSet.KubeovnV1().Subnets().Delete(context.Background(), f.GetName(), metav1.DeleteOptions{}); err != nil {
 			if !k8serrors.IsNotFound(err) {
 				klog.Fatalf("failed to delete subnet %s, %v", f.GetName(), err)
 
 			}
 		}
-		if err := f.KubeClientSet.CoreV1().Namespaces().Delete(f.GetName(), &metav1.DeleteOptions{}); err != nil {
+		if err := f.KubeClientSet.CoreV1().Namespaces().Delete(context.Background(), f.GetName(), metav1.DeleteOptions{}); err != nil {
 			if !k8serrors.IsNotFound(err) {
 				klog.Fatalf("failed to delete ns %s, %v", f.GetName(), err)
 			}
 		}
 	})
 	AfterEach(func() {
-		if err := f.OvnClientSet.KubeovnV1().Subnets().Delete(f.GetName(), &metav1.DeleteOptions{}); err != nil {
+		if err := f.OvnClientSet.KubeovnV1().Subnets().Delete(context.Background(), f.GetName(), metav1.DeleteOptions{}); err != nil {
 			if !k8serrors.IsNotFound(err) {
 				klog.Fatalf("failed to delete subnet %s, %v", f.GetName(), err)
 			}
 		}
-		if err := f.KubeClientSet.CoreV1().Namespaces().Delete(f.GetName(), &metav1.DeleteOptions{}); err != nil {
+		if err := f.KubeClientSet.CoreV1().Namespaces().Delete(context.Background(), f.GetName(), metav1.DeleteOptions{}); err != nil {
 			if !k8serrors.IsNotFound(err) {
 				klog.Fatalf("failed to delete ns %s, %v", f.GetName(), err)
 			}
@@ -55,14 +57,14 @@ var _ = Describe("[Subnet]", func() {
 					CIDRBlock: "11.10.0.0/16",
 				},
 			}
-			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(&s)
+			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), &s, metav1.CreateOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
 			By("validate subnet")
 			err = f.WaitSubnetReady(name)
 			Expect(err).NotTo(HaveOccurred())
 
-			subnet, err := f.OvnClientSet.KubeovnV1().Subnets().Get(name, metav1.GetOptions{})
+			subnet, err := f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), name, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(subnet.Spec.Default).To(BeFalse())
 			Expect(subnet.Spec.Protocol).To(Equal(kubeovn.ProtocolIPv4))
@@ -81,7 +83,7 @@ var _ = Describe("[Subnet]", func() {
 			Expect(subnet.Status.AvailableIPs).To(Equal(float64(65533)))
 			Expect(subnet.Status.UsingIPs).To(BeZero())
 
-			pods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(metav1.ListOptions{LabelSelector: "app=ovs"})
+			pods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(context.Background(), metav1.ListOptions{LabelSelector: "app=ovs"})
 			Expect(err).NotTo(HaveOccurred())
 			for _, pod := range pods.Items {
 				stdout, _, err := f.ExecToPodThroughAPI(fmt.Sprintf("ip route list root %s", subnet.Spec.CIDRBlock), "openvswitch", pod.Name, pod.Namespace, nil)
@@ -104,7 +106,7 @@ var _ = Describe("[Subnet]", func() {
 					GatewayNode: "kube-ovn-control-plane,kube-ovn-worker,kube-ovn-worker2",
 				},
 			}
-			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(&s)
+			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), &s, metav1.CreateOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
 			By("validate subnet")
@@ -112,7 +114,7 @@ var _ = Describe("[Subnet]", func() {
 			Expect(err).NotTo(HaveOccurred())
 			time.Sleep(5 * time.Second)
 
-			subnet, err := f.OvnClientSet.KubeovnV1().Subnets().Get(name, metav1.GetOptions{})
+			subnet, err := f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), name, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(subnet.Spec.GatewayType).To(Equal(kubeovn.GWCentralizedType))
 			Expect(subnet.Status.ActivateGateway).To(Equal("kube-ovn-control-plane"))
@@ -132,21 +134,21 @@ var _ = Describe("[Subnet]", func() {
 					CIDRBlock: "11.12.0.0/16",
 				},
 			}
-			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(s)
+			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), s, metav1.CreateOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
 			err = f.WaitSubnetReady(name)
 			Expect(err).NotTo(HaveOccurred())
 
-			s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(name, metav1.GetOptions{})
+			s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), name, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			s.Spec.GatewayType = kubeovn.GWCentralizedType
 			s.Spec.GatewayNode = "kube-ovn-control-plane,kube-ovn-worker,kube-ovn-worker2"
-			_, err = f.OvnClientSet.KubeovnV1().Subnets().Update(s)
+			_, err = f.OvnClientSet.KubeovnV1().Subnets().Update(context.Background(), s, metav1.UpdateOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
 			time.Sleep(5 * time.Second)
-			s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(name, metav1.GetOptions{})
+			s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), name, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(s.Spec.GatewayType).To(Equal(kubeovn.GWCentralizedType))
@@ -167,15 +169,15 @@ var _ = Describe("[Subnet]", func() {
 					CIDRBlock: "11.13.0.0/16",
 				},
 			}
-			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(&s)
+			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), &s, metav1.CreateOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
 			time.Sleep(5 * time.Second)
-			err = f.OvnClientSet.KubeovnV1().Subnets().Delete(name, &metav1.DeleteOptions{})
+			err = f.OvnClientSet.KubeovnV1().Subnets().Delete(context.Background(), name, metav1.DeleteOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
 			time.Sleep(5 * time.Second)
-			pods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(metav1.ListOptions{LabelSelector: "app=ovs"})
+			pods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(context.Background(), metav1.ListOptions{LabelSelector: "app=ovs"})
 			Expect(err).NotTo(HaveOccurred())
 			for _, pod := range pods.Items {
 				stdout, _, err := f.ExecToPodThroughAPI("ip route", "openvswitch", pod.Name, pod.Namespace, nil)
@@ -199,13 +201,13 @@ var _ = Describe("[Subnet]", func() {
 				},
 			}
 
-			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(s)
+			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), s, metav1.CreateOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
 			err = f.WaitSubnetReady(name)
 			Expect(err).NotTo(HaveOccurred())
 
-			s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(name, metav1.GetOptions{})
+			s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), name, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(s.Spec.CIDRBlock).To(Equal("11.14.0.0/16"))
 		})
@@ -224,13 +226,13 @@ var _ = Describe("[Subnet]", func() {
 					ExcludeIps: []string{"179.17.0.0..179.17.0.10"},
 				},
 			}
-			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(s)
+			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), s, metav1.CreateOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
 			err = f.WaitSubnetReady(name)
 			Expect(err).NotTo(HaveOccurred())
 
-			s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(name, metav1.GetOptions{})
+			s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), name, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(s.Status.AvailableIPs).To(Equal(float64(0)))
 		})
@@ -247,13 +249,13 @@ var _ = Describe("[Subnet]", func() {
 					ExcludeIps: []string{"179.17.0.0..179.17.0.10"},
 				},
 			}
-			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(s)
+			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), s, metav1.CreateOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
 			err = f.WaitSubnetReady(name)
 			Expect(err).NotTo(HaveOccurred())
 
-			s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(name, metav1.GetOptions{})
+			s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), name, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(s.Status.AvailableIPs).To(Equal(float64(1)))
 		})
@@ -270,13 +272,13 @@ var _ = Describe("[Subnet]", func() {
 					ExcludeIps: []string{"179.17.0.0..179.17.0.10"},
 				},
 			}
-			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(s)
+			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), s, metav1.CreateOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
 			err = f.WaitSubnetReady(name)
 			Expect(err).NotTo(HaveOccurred())
 
-			s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(name, metav1.GetOptions{})
+			s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), name, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(s.Status.AvailableIPs).To(Equal(float64(244)))
 		})

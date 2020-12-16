@@ -2,10 +2,14 @@ package framework
 
 import (
 	"bytes"
+	"context"
 	"fmt"
+	"io"
+	"strings"
+	"time"
+
 	v1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	clientset "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
-	"io"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -14,8 +18,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/remotecommand"
-	"strings"
-	"time"
 
 	. "github.com/onsi/ginkgo"
 )
@@ -62,7 +64,7 @@ func (f *Framework) GetName() string {
 func (f *Framework) WaitSubnetReady(subnet string) error {
 	for {
 		time.Sleep(1 * time.Second)
-		s, err := f.OvnClientSet.KubeovnV1().Subnets().Get(subnet, metav1.GetOptions{})
+		s, err := f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), subnet, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -78,7 +80,7 @@ func (f *Framework) WaitSubnetReady(subnet string) error {
 func (f *Framework) WaitPodReady(pod, namespace string) error {
 	for {
 		time.Sleep(1 * time.Second)
-		p, err := f.KubeClientSet.CoreV1().Pods(namespace).Get(pod, metav1.GetOptions{})
+		p, err := f.KubeClientSet.CoreV1().Pods(namespace).Get(context.Background(), pod, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -103,7 +105,7 @@ func (f *Framework) WaitPodReady(pod, namespace string) error {
 func (f *Framework) WaitDeploymentReady(deployment, namespace string) error {
 	for {
 		time.Sleep(1 * time.Second)
-		deploy, err := f.KubeClientSet.AppsV1().Deployments(namespace).Get(deployment, metav1.GetOptions{})
+		deploy, err := f.KubeClientSet.AppsV1().Deployments(namespace).Get(context.Background(), deployment, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -111,7 +113,7 @@ func (f *Framework) WaitDeploymentReady(deployment, namespace string) error {
 			continue
 		}
 
-		pods, err := f.KubeClientSet.CoreV1().Pods(namespace).List(metav1.ListOptions{LabelSelector: labels.SelectorFromSet(deploy.Spec.Template.Labels).String()})
+		pods, err := f.KubeClientSet.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.SelectorFromSet(deploy.Spec.Template.Labels).String()})
 		if err != nil {
 			return err
 		}
@@ -140,7 +142,7 @@ func (f *Framework) WaitDeploymentReady(deployment, namespace string) error {
 func (f *Framework) WaitStatefulsetReady(statefulset, namespace string) error {
 	for {
 		time.Sleep(1 * time.Second)
-		ss, err := f.KubeClientSet.AppsV1().StatefulSets(namespace).Get(statefulset, metav1.GetOptions{})
+		ss, err := f.KubeClientSet.AppsV1().StatefulSets(namespace).Get(context.Background(), statefulset, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -148,7 +150,7 @@ func (f *Framework) WaitStatefulsetReady(statefulset, namespace string) error {
 			continue
 		}
 
-		pods, err := f.KubeClientSet.CoreV1().Pods(namespace).List(metav1.ListOptions{LabelSelector: labels.SelectorFromSet(ss.Spec.Template.Labels).String()})
+		pods, err := f.KubeClientSet.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.SelectorFromSet(ss.Spec.Template.Labels).String()})
 		if err != nil {
 			return err
 		}

@@ -19,6 +19,7 @@ limitations under the License.
 package v1
 
 import (
+	"context"
 	time "time"
 
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
@@ -60,13 +61,13 @@ func NewFilteredIPInformer(client versioned.Interface, resyncPeriod time.Duratio
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.KubeovnV1().IPs().List(options)
+				return client.KubeovnV1().IPs().List(context.TODO(), options)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.KubeovnV1().IPs().Watch(options)
+				return client.KubeovnV1().IPs().Watch(context.TODO(), options)
 			},
 		},
 		&kubeovnv1.IP{},

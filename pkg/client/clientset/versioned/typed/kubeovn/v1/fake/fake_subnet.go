@@ -19,6 +19,8 @@ limitations under the License.
 package fake
 
 import (
+	"context"
+
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
@@ -38,7 +40,7 @@ var subnetsResource = schema.GroupVersionResource{Group: "kubeovn.io", Version: 
 var subnetsKind = schema.GroupVersionKind{Group: "kubeovn.io", Version: "v1", Kind: "Subnet"}
 
 // Get takes name of the subnet, and returns the corresponding subnet object, and an error if there is any.
-func (c *FakeSubnets) Get(name string, options v1.GetOptions) (result *kubeovnv1.Subnet, err error) {
+func (c *FakeSubnets) Get(ctx context.Context, name string, options v1.GetOptions) (result *kubeovnv1.Subnet, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootGetAction(subnetsResource, name), &kubeovnv1.Subnet{})
 	if obj == nil {
@@ -48,7 +50,7 @@ func (c *FakeSubnets) Get(name string, options v1.GetOptions) (result *kubeovnv1
 }
 
 // List takes label and field selectors, and returns the list of Subnets that match those selectors.
-func (c *FakeSubnets) List(opts v1.ListOptions) (result *kubeovnv1.SubnetList, err error) {
+func (c *FakeSubnets) List(ctx context.Context, opts v1.ListOptions) (result *kubeovnv1.SubnetList, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootListAction(subnetsResource, subnetsKind, opts), &kubeovnv1.SubnetList{})
 	if obj == nil {
@@ -69,13 +71,13 @@ func (c *FakeSubnets) List(opts v1.ListOptions) (result *kubeovnv1.SubnetList, e
 }
 
 // Watch returns a watch.Interface that watches the requested subnets.
-func (c *FakeSubnets) Watch(opts v1.ListOptions) (watch.Interface, error) {
+func (c *FakeSubnets) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
 		InvokesWatch(testing.NewRootWatchAction(subnetsResource, opts))
 }
 
 // Create takes the representation of a subnet and creates it.  Returns the server's representation of the subnet, and an error, if there is any.
-func (c *FakeSubnets) Create(subnet *kubeovnv1.Subnet) (result *kubeovnv1.Subnet, err error) {
+func (c *FakeSubnets) Create(ctx context.Context, subnet *kubeovnv1.Subnet, opts v1.CreateOptions) (result *kubeovnv1.Subnet, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootCreateAction(subnetsResource, subnet), &kubeovnv1.Subnet{})
 	if obj == nil {
@@ -85,7 +87,7 @@ func (c *FakeSubnets) Create(subnet *kubeovnv1.Subnet) (result *kubeovnv1.Subnet
 }
 
 // Update takes the representation of a subnet and updates it. Returns the server's representation of the subnet, and an error, if there is any.
-func (c *FakeSubnets) Update(subnet *kubeovnv1.Subnet) (result *kubeovnv1.Subnet, err error) {
+func (c *FakeSubnets) Update(ctx context.Context, subnet *kubeovnv1.Subnet, opts v1.UpdateOptions) (result *kubeovnv1.Subnet, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootUpdateAction(subnetsResource, subnet), &kubeovnv1.Subnet{})
 	if obj == nil {
@@ -96,7 +98,7 @@ func (c *FakeSubnets) Update(subnet *kubeovnv1.Subnet) (result *kubeovnv1.Subnet
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeSubnets) UpdateStatus(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, error) {
+func (c *FakeSubnets) UpdateStatus(ctx context.Context, subnet *kubeovnv1.Subnet, opts v1.UpdateOptions) (*kubeovnv1.Subnet, error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootUpdateSubresourceAction(subnetsResource, "status", subnet), &kubeovnv1.Subnet{})
 	if obj == nil {
@@ -106,22 +108,22 @@ func (c *FakeSubnets) UpdateStatus(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet,
 }
 
 // Delete takes name of the subnet and deletes it. Returns an error if one occurs.
-func (c *FakeSubnets) Delete(name string, options *v1.DeleteOptions) error {
+func (c *FakeSubnets) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
 		Invokes(testing.NewRootDeleteAction(subnetsResource, name), &kubeovnv1.Subnet{})
 	return err
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *FakeSubnets) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(subnetsResource, listOptions)
+func (c *FakeSubnets) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+	action := testing.NewRootDeleteCollectionAction(subnetsResource, listOpts)
 
 	_, err := c.Fake.Invokes(action, &kubeovnv1.SubnetList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched subnet.
-func (c *FakeSubnets) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *kubeovnv1.Subnet, err error) {
+func (c *FakeSubnets) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *kubeovnv1.Subnet, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootPatchSubresourceAction(subnetsResource, name, pt, data, subresources...), &kubeovnv1.Subnet{})
 	if obj == nil {

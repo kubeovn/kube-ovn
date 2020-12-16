@@ -19,6 +19,8 @@ limitations under the License.
 package fake
 
 import (
+	"context"
+
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
@@ -38,7 +40,7 @@ var vlansResource = schema.GroupVersionResource{Group: "kubeovn.io", Version: "v
 var vlansKind = schema.GroupVersionKind{Group: "kubeovn.io", Version: "v1", Kind: "Vlan"}
 
 // Get takes name of the vlan, and returns the corresponding vlan object, and an error if there is any.
-func (c *FakeVlans) Get(name string, options v1.GetOptions) (result *kubeovnv1.Vlan, err error) {
+func (c *FakeVlans) Get(ctx context.Context, name string, options v1.GetOptions) (result *kubeovnv1.Vlan, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootGetAction(vlansResource, name), &kubeovnv1.Vlan{})
 	if obj == nil {
@@ -48,7 +50,7 @@ func (c *FakeVlans) Get(name string, options v1.GetOptions) (result *kubeovnv1.V
 }
 
 // List takes label and field selectors, and returns the list of Vlans that match those selectors.
-func (c *FakeVlans) List(opts v1.ListOptions) (result *kubeovnv1.VlanList, err error) {
+func (c *FakeVlans) List(ctx context.Context, opts v1.ListOptions) (result *kubeovnv1.VlanList, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootListAction(vlansResource, vlansKind, opts), &kubeovnv1.VlanList{})
 	if obj == nil {
@@ -69,13 +71,13 @@ func (c *FakeVlans) List(opts v1.ListOptions) (result *kubeovnv1.VlanList, err e
 }
 
 // Watch returns a watch.Interface that watches the requested vlans.
-func (c *FakeVlans) Watch(opts v1.ListOptions) (watch.Interface, error) {
+func (c *FakeVlans) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
 		InvokesWatch(testing.NewRootWatchAction(vlansResource, opts))
 }
 
 // Create takes the representation of a vlan and creates it.  Returns the server's representation of the vlan, and an error, if there is any.
-func (c *FakeVlans) Create(vlan *kubeovnv1.Vlan) (result *kubeovnv1.Vlan, err error) {
+func (c *FakeVlans) Create(ctx context.Context, vlan *kubeovnv1.Vlan, opts v1.CreateOptions) (result *kubeovnv1.Vlan, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootCreateAction(vlansResource, vlan), &kubeovnv1.Vlan{})
 	if obj == nil {
@@ -85,7 +87,7 @@ func (c *FakeVlans) Create(vlan *kubeovnv1.Vlan) (result *kubeovnv1.Vlan, err er
 }
 
 // Update takes the representation of a vlan and updates it. Returns the server's representation of the vlan, and an error, if there is any.
-func (c *FakeVlans) Update(vlan *kubeovnv1.Vlan) (result *kubeovnv1.Vlan, err error) {
+func (c *FakeVlans) Update(ctx context.Context, vlan *kubeovnv1.Vlan, opts v1.UpdateOptions) (result *kubeovnv1.Vlan, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootUpdateAction(vlansResource, vlan), &kubeovnv1.Vlan{})
 	if obj == nil {
@@ -96,7 +98,7 @@ func (c *FakeVlans) Update(vlan *kubeovnv1.Vlan) (result *kubeovnv1.Vlan, err er
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeVlans) UpdateStatus(vlan *kubeovnv1.Vlan) (*kubeovnv1.Vlan, error) {
+func (c *FakeVlans) UpdateStatus(ctx context.Context, vlan *kubeovnv1.Vlan, opts v1.UpdateOptions) (*kubeovnv1.Vlan, error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootUpdateSubresourceAction(vlansResource, "status", vlan), &kubeovnv1.Vlan{})
 	if obj == nil {
@@ -106,22 +108,22 @@ func (c *FakeVlans) UpdateStatus(vlan *kubeovnv1.Vlan) (*kubeovnv1.Vlan, error) 
 }
 
 // Delete takes name of the vlan and deletes it. Returns an error if one occurs.
-func (c *FakeVlans) Delete(name string, options *v1.DeleteOptions) error {
+func (c *FakeVlans) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
 		Invokes(testing.NewRootDeleteAction(vlansResource, name), &kubeovnv1.Vlan{})
 	return err
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *FakeVlans) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(vlansResource, listOptions)
+func (c *FakeVlans) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+	action := testing.NewRootDeleteCollectionAction(vlansResource, listOpts)
 
 	_, err := c.Fake.Invokes(action, &kubeovnv1.VlanList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched vlan.
-func (c *FakeVlans) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *kubeovnv1.Vlan, err error) {
+func (c *FakeVlans) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *kubeovnv1.Vlan, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootPatchSubresourceAction(vlansResource, name, pt, data, subresources...), &kubeovnv1.Vlan{})
 	if obj == nil {
