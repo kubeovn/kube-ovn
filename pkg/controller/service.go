@@ -2,6 +2,9 @@ package controller
 
 import (
 	"fmt"
+	"strings"
+
+	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -9,7 +12,6 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
-	"strings"
 )
 
 func (c *Controller) enqueueDeleteService(obj interface{}) {
@@ -164,7 +166,7 @@ func (c *Controller) handleDeleteService(vip string, protocol v1.Protocol) error
 		return err
 	}
 	for _, svc := range svcs {
-		if svc.Spec.ClusterIP == strings.Split(vip, ":")[0] {
+		if svc.Spec.ClusterIP == parseVipAddr(vip) {
 			return nil
 		}
 	}
@@ -220,9 +222,17 @@ func (c *Controller) handleUpdateService(key string) error {
 
 	for _, port := range svc.Spec.Ports {
 		if port.Protocol == v1.ProtocolTCP {
-			tcpVips = append(tcpVips, fmt.Sprintf("%s:%d", ip, port.Port))
+			if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 {
+				tcpVips = append(tcpVips, fmt.Sprintf("[%s]:%d", ip, port.Port))
+			} else {
+				tcpVips = append(tcpVips, fmt.Sprintf("%s:%d", ip, port.Port))
+			}
 		} else if port.Protocol == v1.ProtocolUDP {
-			udpVips = append(udpVips, fmt.Sprintf("%s:%d", ip, port.Port))
+			if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 {
+				udpVips = append(udpVips, fmt.Sprintf("[%s]:%d", ip, port.Port))
+			} else {
+				udpVips = append(udpVips, fmt.Sprintf("%s:%d", ip, port.Port))
+			}
 		}
 	}
 	// for service update
@@ -250,7 +260,7 @@ func (c *Controller) handleUpdateService(key string) error {
 	}
 
 	for vip := range vips {
-		if strings.Split(vip, ":")[0] == ip && !util.IsStringIn(vip, tcpVips) {
+		if parseVipAddr(vip) == ip && !util.IsStringIn(vip, tcpVips) {
 			klog.Infof("remove stall vip %s", vip)
 			err := c.ovnClient.DeleteLoadBalancerVip(vip, tcpLb)
 			if err != nil {
@@ -284,7 +294,7 @@ func (c *Controller) handleUpdateService(key string) error {
 	}
 
 	for vip := range vips {
-		if strings.Split(vip, ":")[0] == ip && !util.IsStringIn(vip, udpVips) {
+		if parseVipAddr(vip) == ip && !util.IsStringIn(vip, udpVips) {
 			klog.Infof("remove stall vip %s", vip)
 			err := c.ovnClient.DeleteLoadBalancerVip(vip, udpLb)
 			if err != nil {
@@ -295,4 +305,16 @@ func (c *Controller) handleUpdateService(key string) error {
 	}
 
 	return nil
+}
+
+// The type of vips is map, which format is like [fd00:10:96::11c9]:10665:[fc00:f853:ccd:e793::2]:10665,[fc00:f853:ccd:e793::3]:10665
+// Parse key of map, [fd00:10:96::11c9]:10665 for example
+func parseVipAddr(vipStr string) string {
+	var vip string
+	if strings.ContainsAny(vipStr, "[]") {
+		vip = strings.Trim(strings.Split(vipStr, "]")[0], "[]")
+	} else {
+		vip = strings.Split(vipStr, ":")[0]
+	}
+	return vip
 }
