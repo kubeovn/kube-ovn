@@ -11,6 +11,8 @@ import (
 
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/util"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 )
@@ -307,4 +309,53 @@ func (c *Controller) initDefaultVlan() error {
 
 	_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Create(context.Background(), &defaultVlan, v1.CreateOptions{})
 	return err
+}
+
+func (c *Controller) initSyncCrdIPs() error {
+	ips, err := c.config.KubeOvnClient.KubeovnV1().IPs().List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	for _, ipCr := range ips.Items {
+		ip := ipCr
+		v4IP, v6IP := util.SplitStringIP(ip.Spec.IPAddress)
+		if ip.Spec.V4IPAddress == v4IP && ip.Spec.V6IPAddress == v6IP {
+			continue
+		}
+		ip.Spec.V4IPAddress = v4IP
+		ip.Spec.V6IPAddress = v6IP
+
+		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), &ip, metav1.UpdateOptions{})
+		if err != nil {
+			klog.Errorf("failed to sync crd ip %s, %v", ip.Spec.IPAddress, err)
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) initSyncCrdSubnets() error {
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	for _, subnet := range subnets {
+		if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual {
+			err = calcDualSubnetStatusIP(subnet, c)
+		} else {
+			err = calcSubnetStatusIP(subnet, c)
+		}
+		if err != nil {
+			klog.Errorf("failed to calculate subnet %s used ip, %v", subnet.Name, err)
+			return err
+		}
+	}
+	return nil
 }

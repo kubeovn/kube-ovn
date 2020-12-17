@@ -237,9 +237,12 @@ spec:
       served: true
       storage: true
       additionalPrinterColumns:
-      - name: IP
+      - name: V4IP
         type: string
-        jsonPath: .spec.ipAddress
+        jsonPath: .spec.v4IpAddress
+      - name: V6IP
+        type: string
+        jsonPath: .spec.v6IpAddress
       - name: Mac
         type: string
         jsonPath: .spec.macAddress
@@ -269,6 +272,10 @@ spec:
                 nodeName:
                   type: string
                 ipAddress:
+                  type: string
+                v4IpAddress:
+                  type: string
+                v6IpAddress:
                   type: string
                 attachIps:
                   type: array
@@ -327,12 +334,18 @@ spec:
       - name: GatewayType
         type: string
         jsonPath: .spec.gatewayType
-      - name: Used
+      - name: V4Used
         type: number
-        jsonPath: .status.usingIPs
-      - name: Available
+        jsonPath: .status.v4usingIPs
+      - name: V4Available
         type: number
-        jsonPath: .status.availableIPs
+        jsonPath: .status.v4availableIPs
+      - name: V6Used
+        type: number
+        jsonPath: .status.v6usingIPs
+      - name: V6Available
+        type: number
+        jsonPath: .status.v6availableIPs
       schema:
         openAPIV3Schema:
           type: object
@@ -340,9 +353,13 @@ spec:
             status:
               type: object
               properties:
-                availableIPs:
+                v4availableIPs:
                   type: number
-                usingIPs:
+                v4usingIPs:
+                  type: number
+                v6availableIPs:
+                  type: number
+                v6usingIPs:
                   type: number
                 activateGateway:
                   type: string

@@ -274,3 +274,17 @@ func GetIpWithoutMask(ipStr string) string {
 	}
 	return strings.Join(ips, ",")
 }
+
+func SplitStringIP(ipStr string) (string, string) {
+	var v4IP, v6IP string
+	if CheckProtocol(ipStr) == kubeovnv1.ProtocolDual {
+		v4IP = strings.Split(ipStr, ",")[0]
+		v6IP = strings.Split(ipStr, ",")[1]
+	} else if CheckProtocol(ipStr) == kubeovnv1.ProtocolIPv4 {
+		v4IP = ipStr
+	} else if CheckProtocol(ipStr) == kubeovnv1.ProtocolIPv6 {
+		v6IP = ipStr
+	}
+
+	return v4IP, v6IP
+}
