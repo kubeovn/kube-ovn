@@ -591,14 +591,14 @@ spec:
           readinessProbe:
             exec:
               command:
-                - sh
+                - bash
                 - /kube-ovn/ovn-is-leader.sh
             periodSeconds: 3
             timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
-                - sh
+                - bash
                 - /kube-ovn/ovn-healthcheck.sh
             initialDelaySeconds: 30
             periodSeconds: 7
@@ -709,14 +709,14 @@ spec:
           readinessProbe:
             exec:
               command:
-                - sh
+                - bash
                 - /kube-ovn/ovs-dpdk-healthcheck.sh
             periodSeconds: 5
             timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
-                - sh
+                - bash
                 - /kube-ovn/ovs-dpdk-healthcheck.sh
             initialDelaySeconds: 10
             periodSeconds: 5
@@ -1012,14 +1012,15 @@ spec:
           readinessProbe:
             exec:
               command:
-                - sh
-                - /kube-ovn/ovn-is-leader.sh
+                - bash
+                - -c
+                - LOG_ROTATE=true /kube-ovn/ovn-is-leader.sh
             periodSeconds: 3
             timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
-                - sh
+                - bash
                 - /kube-ovn/ovn-healthcheck.sh
             initialDelaySeconds: 30
             periodSeconds: 7
@@ -1127,14 +1128,14 @@ spec:
           readinessProbe:
             exec:
               command:
-                - sh
+                - bash
                 - /kube-ovn/ovs-healthcheck.sh
             periodSeconds: 5
             timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
-                - sh
+                - bash
                 - /kube-ovn/ovs-healthcheck.sh
             initialDelaySeconds: 10
             periodSeconds: 5
@@ -1262,14 +1263,14 @@ spec:
           readinessProbe:
             exec:
               command:
-                - sh
+                - bash
                 - /kube-ovn/kube-ovn-controller-healthcheck.sh
             periodSeconds: 3
             timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
-                - sh
+                - bash
                 - /kube-ovn/kube-ovn-controller-healthcheck.sh
             initialDelaySeconds: 300
             periodSeconds: 7
@@ -1332,7 +1333,7 @@ spec:
         image: "$REGISTRY/kube-ovn:$VERSION"
         imagePullPolicy: $IMAGE_PULL_POLICY
         command:
-          - sh
+          - bash
           - /kube-ovn/start-cniserver.sh
         args:
           - --enable-mirror=$ENABLE_MIRROR

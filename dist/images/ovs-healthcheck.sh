@@ -2,8 +2,12 @@
 set -euo pipefail
 shopt -s expand_aliases
 
-#logrotate /etc/logrotate.d/openvswitch
-#logrotate /etc/logrotate.d/ovn
+ENABLE_SSL=${ENABLE_SSL:-false}
+LOG_ROTATE=${LOG_ROTATE:-false}
+if [[ "$LOG_ROTATE" == "true" ]]; then
+  logrotate /etc/logrotate.d/openvswitch
+  logrotate /etc/logrotate.d/ovn
+fi
 
 echo Connecting OVN SB "${OVN_SB_SERVICE_HOST}":"${OVN_SB_SERVICE_PORT}"
 if [[ "$ENABLE_SSL" == "false" ]]; then
