@@ -312,6 +312,12 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	}
 
 	c.registerSubnetMetrics()
+	if err := c.initSyncCrdIPs(); err != nil {
+		klog.Errorf("failed to sync crd ips %v", err)
+	}
+	if err := c.initSyncCrdSubnets(); err != nil {
+		klog.Errorf("failed to sync crd subnets %v", err)
+	}
 
 	// start workers to do all the network operations
 	c.startWorkers(stopCh)

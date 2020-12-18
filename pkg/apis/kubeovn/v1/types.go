@@ -45,6 +45,8 @@ type IPSpec struct {
 	AttachSubnets []string `json:"attachSubnets"`
 	NodeName      string   `json:"nodeName"`
 	IPAddress     string   `json:"ipAddress"`
+	V4IPAddress   string   `json:"v4IpAddress"`
+	V6IPAddress   string   `json:"v6IpAddress"`
 	AttachIPs     []string `json:"attachIps"`
 	MacAddress    string   `json:"macAddress"`
 	AttachMacs    []string `json:"attachMacs"`

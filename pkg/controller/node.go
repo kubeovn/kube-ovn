@@ -348,6 +348,7 @@ func getNodeInternalIP(node *v1.Node) string {
 }
 
 func (c *Controller) createOrUpdateCrdIPs(key, ip, mac string) error {
+	v4IP, v6IP := util.SplitStringIP(ip)
 	ipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), fmt.Sprintf("node-%s", key), metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -364,6 +365,8 @@ func (c *Controller) createOrUpdateCrdIPs(key, ip, mac string) error {
 					Subnet:        c.config.NodeSwitch,
 					NodeName:      key,
 					IPAddress:     ip,
+					V4IPAddress:   v4IP,
+					V6IPAddress:   v6IP,
 					MacAddress:    mac,
 					AttachIPs:     []string{},
 					AttachMacs:    []string{},
@@ -393,6 +396,8 @@ func (c *Controller) createOrUpdateCrdIPs(key, ip, mac string) error {
 		ipCr.Spec.Subnet = c.config.NodeSwitch
 		ipCr.Spec.NodeName = key
 		ipCr.Spec.IPAddress = ip
+		ipCr.Spec.V4IPAddress = v4IP
+		ipCr.Spec.V6IPAddress = v6IP
 		ipCr.Spec.MacAddress = mac
 		ipCr.Spec.ContainerID = ""
 		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), ipCr, metav1.UpdateOptions{})

@@ -60,7 +60,7 @@ var _ = Describe("[IP Allocation]", func() {
 			time.Sleep(1 * time.Second)
 			ip, err := f.OvnClientSet.KubeovnV1().IPs().Get(context.Background(), fmt.Sprintf("%s.%s", name, namespace), metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(ip.Spec.IPAddress).To(Equal("12.10.0.10"))
+			Expect(ip.Spec.V4IPAddress).To(Equal("12.10.0.10"))
 			Expect(ip.Spec.MacAddress).To(Equal("00:00:00:53:6B:B6"))
 		})
 

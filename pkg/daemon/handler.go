@@ -119,6 +119,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 }
 
 func (csh cniServerHandler) createOrUpdateIPCr(podRequest request.CniRequest, subnet, ip, macAddr string) error {
+	v4IP, v6IP := util.SplitStringIP(ip)
 	ipCr, err := csh.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace), metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -136,6 +137,8 @@ func (csh cniServerHandler) createOrUpdateIPCr(podRequest request.CniRequest, su
 					Subnet:        subnet,
 					NodeName:      csh.Config.NodeName,
 					IPAddress:     ip,
+					V4IPAddress:   v4IP,
+					V6IPAddress:   v6IP,
 					MacAddress:    macAddr,
 					ContainerID:   podRequest.ContainerID,
 					AttachIPs:     []string{},

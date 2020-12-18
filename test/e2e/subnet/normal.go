@@ -80,8 +80,8 @@ var _ = Describe("[Subnet]", func() {
 
 			By("validate status")
 			Expect(subnet.Status.ActivateGateway).To(BeEmpty())
-			Expect(subnet.Status.AvailableIPs).To(Equal(float64(65533)))
-			Expect(subnet.Status.UsingIPs).To(BeZero())
+			Expect(subnet.Status.V4AvailableIPs).To(Equal(float64(65533)))
+			Expect(subnet.Status.V4UsingIPs).To(BeZero())
 
 			pods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(context.Background(), metav1.ListOptions{LabelSelector: "app=ovs"})
 			Expect(err).NotTo(HaveOccurred())
@@ -234,7 +234,7 @@ var _ = Describe("[Subnet]", func() {
 
 			s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), name, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(s.Status.AvailableIPs).To(Equal(float64(0)))
+			Expect(s.Status.V4AvailableIPs).To(Equal(float64(0)))
 		})
 
 		It("small cidr", func() {
@@ -257,7 +257,7 @@ var _ = Describe("[Subnet]", func() {
 
 			s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), name, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(s.Status.AvailableIPs).To(Equal(float64(1)))
+			Expect(s.Status.V4AvailableIPs).To(Equal(float64(1)))
 		})
 
 		It("with excludeips", func() {
@@ -280,7 +280,7 @@ var _ = Describe("[Subnet]", func() {
 
 			s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), name, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(s.Status.AvailableIPs).To(Equal(float64(244)))
+			Expect(s.Status.V4AvailableIPs).To(Equal(float64(244)))
 		})
 	})
 })
