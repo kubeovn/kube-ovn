@@ -1405,7 +1405,8 @@ spec:
             exec:
               command:
                 - bash
-                - /kube-ovn/ovs-healthcheck.sh
+                - -c
+                - LOG_ROTATE=true /kube-ovn/ovs-healthcheck.sh
             periodSeconds: 5
             timeoutSeconds: 45
           livenessProbe:
@@ -2169,7 +2170,6 @@ echo "-------------------------------"
 echo ""
 
 echo "[Step 6] Run network diagnose"
-sleep 60
 kubectl ko diagnose all
 
 echo "-------------------------------"
