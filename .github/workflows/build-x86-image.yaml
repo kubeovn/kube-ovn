@@ -232,7 +232,7 @@ jobs:
 
 
       - name: Push
-        if: ${{ github.ref == 'refs/heads/master' || contains(github.ref, 'release') }}
+        if: ${{ github.ref == 'refs/heads/master' || contains(github.ref, 'release') && !contains(github.ref, 'vpc') }}
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
