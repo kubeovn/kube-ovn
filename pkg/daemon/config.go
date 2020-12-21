@@ -171,7 +171,7 @@ func (config *Configuration) initNicConfig() error {
 
 func findInterface(ifaceStr string) (*net.Interface, error) {
 	iface, err := net.InterfaceByName(ifaceStr)
-	if err != nil && iface != nil {
+	if err == nil && iface != nil {
 		return iface, nil
 	}
 	ifaceRegex, err := regexp.Compile("(" + strings.Join(strings.Split(ifaceStr, ","), ")|(") + ")")
