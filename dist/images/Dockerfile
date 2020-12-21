@@ -41,7 +41,7 @@ ARG RPM_ARCH
 
 RUN apt update && apt install ca-certificates python3 hostname libunwind8 netbase \
         ethtool iproute2 ncat libunbound-dev procps libatomic1 kmod \
-        tcpdump ipset curl uuid-runtime openssl \
+        tcpdump ipset curl uuid-runtime openssl inetutils-ping \
         logrotate -y --no-install-recommends && \
         rm -rf /var/lib/apt/lists/*
 
