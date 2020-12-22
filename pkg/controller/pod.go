@@ -3,7 +3,6 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/alauda/kube-ovn/pkg/ipam"
 	"net"
 	"reflect"
 	"strconv"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/alauda/kube-ovn/pkg/ipam"
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"github.com/alauda/kube-ovn/pkg/util"
 	v1 "k8s.io/api/core/v1"
@@ -347,6 +347,11 @@ func (c *Controller) handleAddPod(key string) error {
 		return err
 	}
 
+	podSubnets := attachmentSubnets
+	if _, hasOtherDefaultNet := pod.Annotations[util.DefaultNetworkAnnotation]; !hasOtherDefaultNet {
+		podSubnets = append(attachmentSubnets, defaultSubnet)
+	}
+
 	op := "replace"
 	if pod.Annotations == nil || len(pod.Annotations) == 0 {
 		op = "add"
@@ -354,7 +359,8 @@ func (c *Controller) handleAddPod(key string) error {
 	}
 
 	// Avoid create lsp for already running pod in ovn-nb when controller restart
-	for _, subnet := range needAllocateSubnets(pod, append(attachmentSubnets, defaultSubnet)) {
+	//for _, subnet := range needAllocateSubnets(pod, append(attachmentSubnets, defaultSubnet)) {
+	for _, subnet := range needAllocateSubnets(pod, podSubnets) {
 		ip, mac, err := c.acquireAddress(pod, subnet)
 		if err != nil {
 			c.recorder.Eventf(pod, v1.EventTypeWarning, "AcquireAddressFailed", err.Error())
@@ -425,12 +431,20 @@ func (c *Controller) handleDeletePod(key string) error {
 		return nil
 	}
 
-	ips, _ := c.ipam.GetPodAddress(key)
-	for _, ip := range ips {
-		if err := c.ovnClient.DeleteStaticRoute(ip, c.config.ClusterRouter); err != nil {
+	addresses := c.ipam.GetPodAddress(key)
+	for _, address := range addresses {
+		subnet, err := c.subnetsLister.Get(address.Subnet.Name)
+		if err != nil {
 			return err
 		}
-		if err := c.ovnClient.DeleteNatRule(ip, c.config.ClusterRouter); err != nil {
+		vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
+		if err != nil {
+			return err
+		}
+		if err := c.ovnClient.DeleteStaticRoute(address.Ip, vpc.Status.Router); err != nil {
+			return err
+		}
+		if err := c.ovnClient.DeleteNatRule(address.Ip, vpc.Status.Router); err != nil {
 			return err
 		}
 	}
@@ -465,6 +479,10 @@ func (c *Controller) handleUpdatePod(key string) error {
 			return nil
 		}
 		return err
+	}
+
+	if _, hasOtherDefaultNet := pod.Annotations[util.DefaultNetworkAnnotation]; hasOtherDefaultNet {
+		return nil
 	}
 
 	klog.Infof("update pod %s/%s", namespace, name)
