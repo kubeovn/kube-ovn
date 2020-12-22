@@ -44,6 +44,12 @@ type Controller struct {
 	updatePodQueue workqueue.RateLimitingInterface
 	podKeyMutex    *keymutex.KeyMutex
 
+	vpcsLister           kubeovnlister.VpcLister
+	vpcSynced            cache.InformerSynced
+	addOrUpdateVpcQueue  workqueue.RateLimitingInterface
+	delVpcQueue          workqueue.RateLimitingInterface
+	updateVpcStatusQueue workqueue.RateLimitingInterface
+
 	subnetsLister           kubeovnlister.SubnetLister
 	subnetSynced            cache.InformerSynced
 	addOrUpdateSubnetQueue  workqueue.RateLimitingInterface
@@ -118,6 +124,7 @@ func NewController(config *Configuration) *Controller {
 			listOption.AllowWatchBookmarks = true
 		}))
 
+	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	ipInformer := kubeovnInformerFactory.Kubeovn().V1().IPs()
 	vlanInformer := kubeovnInformerFactory.Kubeovn().V1().Vlans()
@@ -133,6 +140,12 @@ func NewController(config *Configuration) *Controller {
 		config:    config,
 		ovnClient: ovs.NewClient(config.OvnNbHost, config.OvnNbPort, config.OvnTimeout, config.OvnSbHost, config.OvnSbPort, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
 		ipam:      ovnipam.NewIPAM(),
+
+		vpcsLister:           vpcInformer.Lister(),
+		vpcSynced:            vpcInformer.Informer().HasSynced,
+		addOrUpdateVpcQueue:  workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddOrUpdateVpc"),
+		delVpcQueue:          workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteVpc"),
+		updateVpcStatusQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVpcStatus"),
 
 		subnetsLister:           subnetInformer.Lister(),
 		subnetSynced:            subnetInformer.Informer().HasSynced,
@@ -226,6 +239,12 @@ func NewController(config *Configuration) *Controller {
 		DeleteFunc: controller.enqueueDeleteNp,
 	})
 
+	vpcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddVpc,
+		UpdateFunc: controller.enqueueUpdateVpc,
+		DeleteFunc: controller.enqueueDelVpc,
+	})
+
 	subnetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddSubnet,
 		UpdateFunc: controller.enqueueUpdateSubnet,
@@ -266,6 +285,13 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	klog.Info("Waiting for informer caches to sync")
 	if ok := cache.WaitForCacheSync(stopCh, c.subnetSynced, c.ipSynced, c.vlanSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced, c.npsSynced, c.configMapsSynced); !ok {
 		klog.Fatalf("failed to wait for caches to sync")
+	}
+	if ok := cache.WaitForCacheSync(stopCh, c.vpcSynced, c.subnetSynced, c.ipSynced, c.vlanSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced, c.npsSynced, c.configMapsSynced); !ok {
+		klog.Fatalf("failed to wait for caches to sync")
+	}
+
+	if err := c.InitDefaultVpc(); err != nil {
+		klog.Fatalf("failed to init default vpc %v", err)
 	}
 
 	if err := c.InitOVN(); err != nil {
@@ -318,14 +344,21 @@ func (c *Controller) shutdown() {
 	c.addVlanQueue.ShutDown()
 	c.delVlanQueue.ShutDown()
 	c.updateVlanQueue.ShutDown()
+
+	c.addOrUpdateVpcQueue.ShutDown()
+	c.updateVpcStatusQueue.ShutDown()
+	c.delVpcQueue.ShutDown()
 }
 
 func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	klog.Info("Starting workers")
 
+	go wait.Until(c.runAddVpcWorker, time.Second, stopCh)
+
 	// add default/join subnet and wait them ready
 	go wait.Until(c.runAddSubnetWorker, time.Second, stopCh)
 	go wait.Until(c.runAddVlanWorker, time.Second, stopCh)
+
 	for {
 		klog.Infof("wait for %s and %s ready", c.config.DefaultLogicalSwitch, c.config.NodeSwitch)
 		time.Sleep(3 * time.Second)
@@ -366,6 +399,9 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 
 	// run in a single worker to avoid subnet cidr conflict
 	go wait.Until(c.runAddNamespaceWorker, time.Second, stopCh)
+
+	go wait.Until(c.runDelVpcWorker, time.Second, stopCh)
+	go wait.Until(c.runUpdateVpcStatusWorker, time.Second, stopCh)
 
 	// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
 	go wait.Until(c.runDeleteTcpServiceWorker, time.Second, stopCh)

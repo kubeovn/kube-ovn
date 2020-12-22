@@ -128,6 +128,94 @@ addresses=$(kubectl get no -lkube-ovn/role=master --no-headers -o wide | awk '{p
 echo "Install OVN DB in $addresses"
 
 cat <<EOF > kube-ovn-crd.yaml
+metadata:
+  name: vpcs.kubeovn.io
+spec:
+  group: kubeovn.io
+  versions:
+    - additionalPrinterColumns:
+        - jsonPath: .status.standby
+          name: Standby
+          type: boolean
+        - jsonPath: .status.subnets
+          name: Subnets
+          type: string
+      name: v1
+      schema:
+        openAPIV3Schema:
+          properties:
+            spec:
+              properties:
+                namespaces:
+                  items:
+                    type: string
+                  type: array
+                staticRoutes:
+                  items:
+                    properties:
+                      policy:
+                        type: string
+                      cidr:
+                        type: string
+                      nextHopIP:
+                        type: string
+                    type: object
+                  type: array
+              type: object
+            status:
+              properties:
+                conditions:
+                  items:
+                    properties:
+                      lastTransitionTime:
+                        type: string
+                      lastUpdateTime:
+                        type: string
+                      message:
+                        type: string
+                      reason:
+                        type: string
+                      status:
+                        type: string
+                      type:
+                        type: string
+                    type: object
+                  type: array
+                default:
+                  type: boolean
+                defaultLogicalSwitch:
+                  type: string
+                router:
+                  type: string
+                standby:
+                  type: boolean
+                subnets:
+                  items:
+                    type: string
+                  type: array
+                tcpLoadBalancer:
+                  type: string
+                tcpSessionLoadBalancer:
+                  type: string
+                udpLoadBalancer:
+                  type: string
+                udpSessionLoadBalancer:
+                  type: string
+              type: object
+          type: object
+      served: true
+      storage: true
+      subresources:
+        status: {}
+  names:
+    kind: Vpc
+    listKind: VpcList
+    plural: vpcs
+    shortNames:
+      - vpc
+    singular: vpc
+  scope: Cluster
+---
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
@@ -267,6 +355,8 @@ spec:
         spec:
           type: object
           properties:
+            vpc:
+              type: string
             default:
               type: boolean
             protocol:
@@ -829,6 +919,8 @@ rules:
   - apiGroups:
       - "kubeovn.io"
     resources:
+      - vpcs
+      - vpcs/status
       - subnets
       - subnets/status
       - ips
@@ -1740,6 +1832,7 @@ vsctl(){
 }
 
 diagnose(){
+  kubectl get crd vpcs.kubeovn.io
   kubectl get crd subnets.kubeovn.io
   kubectl get crd ips.kubeovn.io
   kubectl get svc kube-dns -n kube-system

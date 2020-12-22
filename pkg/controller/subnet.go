@@ -2,14 +2,15 @@ package controller
 
 import (
 	"fmt"
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/alauda/kube-ovn/pkg/ovs"
-	"github.com/alauda/kube-ovn/pkg/util"
 	"net"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
+
+	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/alauda/kube-ovn/pkg/ovs"
+	"github.com/alauda/kube-ovn/pkg/util"
 
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -251,9 +252,25 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		subnet.Spec.GatewayType = kubeovnv1.GWDistributedType
 		changed = true
 	}
-	if subnet.Spec.Default && subnet.Name != c.config.DefaultLogicalSwitch {
-		subnet.Spec.Default = false
+	if subnet.Spec.Vpc == "" {
 		changed = true
+		subnet.Spec.Vpc = util.DefaultVpc
+
+		// Some features only work in the default VPC
+		if subnet.Spec.Default && subnet.Name != c.config.DefaultLogicalSwitch {
+			subnet.Spec.Default = false
+		}
+		if c.config.NetworkType == util.NetworkTypeVlan && subnet.Spec.Vlan == "" {
+			subnet.Spec.Vlan = c.config.DefaultVlanName
+			if c.config.DefaultVlanID == 0 {
+				subnet.Spec.UnderlayGateway = true
+			}
+		}
+		if subnet.Spec.Vlan != "" {
+			if _, err := c.vlansLister.Get(subnet.Spec.Vlan); err != nil {
+				subnet.Spec.Vlan = ""
+			}
+		}
 	}
 	if subnet.Spec.Gateway == "" {
 		gw, err := util.FirstSubnetIP(subnet.Spec.CIDRBlock)
@@ -383,6 +400,40 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
+	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
+	if err != nil {
+		klog.Errorf("failed to get subnet's vpc '%s', %v", subnet.Spec.Vpc, err)
+		return err
+	}
+	if !vpc.Status.Standby {
+		err = fmt.Errorf("the vpc '%s' not standby yet", vpc.Name)
+		klog.Error(err)
+		return err
+	}
+
+	if !vpc.Status.Default {
+		for _, ns := range subnet.Spec.Namespaces {
+			if !util.ContainsString(vpc.Spec.Namespaces, ns) {
+				err = fmt.Errorf("namespace '%s' is out of range to custom vpc '%s'", ns, vpc.Name)
+				klog.Error(err)
+				return err
+			}
+		}
+	} else {
+		vpcs, err := c.vpcsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list vpc, %v", err)
+			return err
+		}
+		for _, vpc := range vpcs {
+			if subnet.Spec.Vpc != vpc.Name && !vpc.Status.Default && util.IsStringsOverlap(vpc.Spec.Namespaces, subnet.Spec.Namespaces) {
+				err = fmt.Errorf("namespaces %v are overlap with vpc '%s'", subnet.Spec.Namespaces, vpc.Name)
+				klog.Error(err)
+				return err
+			}
+		}
+	}
+
 	if err := calcSubnetStatusIP(subnet, c); err != nil {
 		klog.Errorf("calculate subnet %s used ip failed, %v", subnet.Name, err)
 		return err
@@ -409,8 +460,9 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		klog.Errorf("failed to list subnets %v", err)
 		return err
 	}
+
 	for _, sub := range subnetList {
-		if sub.Name != subnet.Name && util.CIDRConflict(sub.Spec.CIDRBlock, subnet.Spec.CIDRBlock) {
+		if sub.Spec.Vpc == subnet.Spec.Vpc && sub.Name != subnet.Name && util.CIDRConflict(sub.Spec.CIDRBlock, subnet.Spec.CIDRBlock) {
 			err = fmt.Errorf("subnet %s cidr %s conflict with subnet %s cidr %s", subnet.Name, subnet.Spec.CIDRBlock, sub.Name, sub.Spec.CIDRBlock)
 			klog.Error(err)
 			c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error())
@@ -423,7 +475,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		klog.Errorf("failed to list nodes %v", err)
 		return err
 	}
-	if subnet.Spec.Vlan != "" && !subnet.Spec.UnderlayGateway {
+	if subnet.Spec.Vpc != util.DefaultVpc && subnet.Spec.Vlan != "" && !subnet.Spec.UnderlayGateway {
 		for _, node := range nodes {
 			for _, addr := range node.Status.Addresses {
 				if addr.Type == v1.NodeInternalIP && util.CIDRContainIP(subnet.Spec.CIDRBlock, addr.Address) {
@@ -446,18 +498,18 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	if !exist {
 		subnet.Status.EnsureStandardConditions()
 		// If multiple namespace use same ls name, only first one will success
-		if err := c.ovnClient.CreateLogicalSwitch(subnet.Name, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps, subnet.Spec.UnderlayGateway); err != nil {
+		if err := c.ovnClient.CreateLogicalSwitch(subnet.Name, vpc.Status.Router, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps, subnet.Spec.UnderlayGateway, vpc.Status.Default); err != nil {
 			c.patchSubnetStatus(subnet, "CreateLogicalSwitchFailed", err.Error())
 			return err
 		}
 	} else {
 		// logical switch exists, only update other_config
-		if err := c.ovnClient.SetLogicalSwitchConfig(subnet.Name, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
+		if err := c.ovnClient.SetLogicalSwitchConfig(subnet.Name, vpc.Status.Router, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
 			c.patchSubnetStatus(subnet, "SetLogicalSwitchConfigFailed", err.Error())
 			return err
 		}
 		if subnet.Spec.UnderlayGateway {
-			if err := c.ovnClient.RemoveRouterPort(subnet.Name); err != nil {
+			if err := c.ovnClient.RemoveRouterPort(subnet.Name, vpc.Status.Router); err != nil {
 				klog.Errorf("failed to remove router port from %s, %v", subnet.Name, err)
 				return err
 			}
@@ -485,6 +537,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
+	c.updateVpcStatusQueue.Add(subnet.Spec.Vpc)
 	return nil
 }
 

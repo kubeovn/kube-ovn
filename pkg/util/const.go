@@ -73,4 +73,6 @@ const (
 	ExternalGatewayConfig = "ovn-external-gw-config"
 	InterconnectionSwitch = "ts"
 	ExternalGatewaySwitch = "ovn-external"
+
+	DefaultVpc = "ovn-cluster"
 )

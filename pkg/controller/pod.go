@@ -3,12 +3,13 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/alauda/kube-ovn/pkg/ipam"
 	"net"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/alauda/kube-ovn/pkg/ipam"
 
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/alauda/kube-ovn/pkg/ovs"
@@ -425,12 +426,20 @@ func (c *Controller) handleDeletePod(key string) error {
 		return nil
 	}
 
-	ips, _ := c.ipam.GetPodAddress(key)
-	for _, ip := range ips {
-		if err := c.ovnClient.DeleteStaticRoute(ip, c.config.ClusterRouter); err != nil {
+	addresses := c.ipam.GetPodAddress(key)
+	for _, address := range addresses {
+		subnet, err := c.subnetsLister.Get(address.Subnet.Name)
+		if err != nil {
 			return err
 		}
-		if err := c.ovnClient.DeleteNatRule(ip, c.config.ClusterRouter); err != nil {
+		vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
+		if err != nil {
+			return err
+		}
+		if err := c.ovnClient.DeleteStaticRoute(address.Ip, vpc.Status.Router); err != nil {
+			return err
+		}
+		if err := c.ovnClient.DeleteNatRule(address.Ip, vpc.Status.Router); err != nil {
 			return err
 		}
 	}
