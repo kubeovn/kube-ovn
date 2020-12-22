@@ -104,7 +104,7 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
           done
           while ! nc -z "${sb_leader_ip}" "${DB_SB_PORT}" >/dev/null;
           do
-              echo "sleep 5 seconds, waiting for ovn-sb ${sb_leader_ip}:${DB_NB_PORT} ready "
+              echo "sleep 5 seconds, waiting for ovn-sb ${sb_leader_ip}:${DB_SB_PORT} ready "
               sleep 5;
           done
 
@@ -178,7 +178,7 @@ else
           done
           while ! nc -z "${sb_leader_ip}" "${DB_SB_PORT}" >/dev/null;
           do
-              echo "sleep 5 seconds, waiting for ovn-sb ${sb_leader_ip}:${DB_NB_PORT} ready "
+              echo "sleep 5 seconds, waiting for ovn-sb ${sb_leader_ip}:${DB_SB_PORT} ready "
               sleep 5;
           done
 
