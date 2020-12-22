@@ -219,7 +219,6 @@ func (c *Controller) handleUpdateNp(key string) error {
 			if len(npr.From) == 0 {
 				allows = []string{"0.0.0.0/0"}
 				excepts = []string{}
-				break
 			} else {
 				for _, npp := range npr.From {
 					allow, except, err := c.fetchPolicySelectedAddresses(np.Namespace, npp)
