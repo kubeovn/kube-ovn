@@ -924,8 +924,8 @@ func (c Client) CreateGatewayACL(pgName, gateway, protocol string) error {
 	if protocol == kubeovnv1.ProtocolIPv6 {
 		ipSuffix = "ip6"
 	}
-	ingressArgs := []string{MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("%s.src == $%s && icmp", ipSuffix, gateway), "allow-related"}
-	egressArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("%s.dst == $%s && icmp", ipSuffix, gateway), "allow-related"}
+	ingressArgs := []string{MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("%s.src == %s && icmp", ipSuffix, gateway), "allow-related"}
+	egressArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("%s.dst == %s && icmp", ipSuffix, gateway), "allow-related"}
 	ovnArgs := append(ingressArgs, egressArgs...)
 	_, err := c.ovnNbCommand(ovnArgs...)
 	return err
