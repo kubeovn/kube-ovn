@@ -20,6 +20,7 @@ func (c *Controller) gc() error {
 	gcFunctions := []func() error{
 		c.gcNode,
 		c.gcLogicalSwitch,
+		c.gcCustomLogicalRouter,
 		c.gcLogicalSwitchPort,
 		c.gcLoadBalancer,
 		c.gcPortGroup,
@@ -59,6 +60,39 @@ func (c *Controller) gcLogicalSwitch() error {
 			klog.Infof("gc subnet %s", ls)
 			if err := c.handleDeleteSubnet(ls); err != nil {
 				klog.Errorf("failed to gc subnet %s, %v", ls, err)
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (c *Controller) gcCustomLogicalRouter() error {
+	klog.Infof("start to gc logical router")
+	vpcs, err := c.vpcsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vpc, %v", err)
+		return err
+	}
+	vpcNames := make([]string, 0, len(vpcs))
+	for _, s := range vpcs {
+		vpcNames = append(vpcNames, s.Name)
+	}
+	lrs, err := c.ovnClient.ListLogicalRouter()
+	if err != nil {
+		klog.Errorf("failed to list logical router, %v", err)
+		return err
+	}
+	klog.Infof("lr in ovn %v", lrs)
+	klog.Infof("vpc in kubernetes %v", vpcNames)
+	for _, lr := range lrs {
+		if lr == util.DefaultVpc {
+			continue
+		}
+		if !util.IsStringIn(lr, vpcNames) {
+			klog.Infof("gc router %s", lr)
+			if err := c.deleteVpcRouter(lr); err != nil {
+				klog.Errorf("failed to delete router %s, %v", lr, err)
 				return err
 			}
 		}
