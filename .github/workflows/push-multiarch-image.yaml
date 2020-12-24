@@ -1,0 +1,34 @@
+name: Push Multi Arch Image
+on:
+  workflow_run:
+    workflows: ["Build arm64 Image", "Build x86 Image"]
+    branches:
+    - master
+    - release-*
+    types:
+      - completed
+
+jobs:
+  build:
+    name: Build x86
+    runs-on: ubuntu-18.04
+    steps:
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v2
+
+      - name: Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Push
+        if: ${{ github.ref == 'refs/heads/master' || contains(github.ref, 'release') }}
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          TAG=$(cat VERSION)
+          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+          docker pull kubeovn/kube-ovn:$TAG-x86
+          docker pull kubeovn/kube-ovn:$TAG-arm
+          docker manifest create kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-x86 kubeovn/kube-ovn:$TAG-arm
+          docker manifest push kubeovn/kube-ovn:$TAG
