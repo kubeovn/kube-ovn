@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, netns, containerID, mac, ip, gateway, ingress, egress, vlanID, DeviceID string) error {
+func (csh cniServerHandler) configureNic(podName, podNamespace, netns, containerID, ifName, mac, ip, gateway, ingress, egress, vlanID, DeviceID string) error {
 	var err error
 	var hostNicName, containerNicName string
 	if DeviceID == "" {
@@ -62,7 +62,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, netns, container
 	if err != nil {
 		return fmt.Errorf("failed to open netns %q: %v", netns, err)
 	}
-	if err = configureContainerNic(containerNicName, ip, gateway, macAddr, podNS, csh.Config.MTU); err != nil {
+	if err = configureContainerNic(containerNicName, ifName, ip, gateway, macAddr, podNS, csh.Config.MTU); err != nil {
 		return err
 	}
 	return nil
@@ -124,7 +124,7 @@ func configureHostNic(nicName, vlanID string) error {
 	return nil
 }
 
-func configureContainerNic(nicName, ipAddr, gateway string, macAddr net.HardwareAddr, netns ns.NetNS, mtu int) error {
+func configureContainerNic(nicName, ifName string, ipAddr, gateway string, macAddr net.HardwareAddr, netns ns.NetNS, mtu int) error {
 	containerLink, err := netlink.LinkByName(nicName)
 	if err != nil {
 		return fmt.Errorf("can not find container nic %s %v", nicName, err)
@@ -134,10 +134,8 @@ func configureContainerNic(nicName, ipAddr, gateway string, macAddr net.Hardware
 		return fmt.Errorf("failed to link netns %v", err)
 	}
 
-	// TODO: use github.com/containernetworking/plugins/pkg/ipam.ConfigureIface to refactor this logical
 	return ns.WithNetNSPath(netns.Path(), func(_ ns.NetNS) error {
-		// Container nic name MUST be 'eth0', otherwise kubelet will recreate the pod
-		if err = netlink.LinkSetName(containerLink, "eth0"); err != nil {
+		if err = netlink.LinkSetName(containerLink, ifName); err != nil {
 			return err
 		}
 		if util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolIPv6 {
@@ -155,7 +153,7 @@ func configureContainerNic(nicName, ipAddr, gateway string, macAddr net.Hardware
 			}
 		}
 
-		if err = configureNic("eth0", ipAddr, macAddr, mtu); err != nil {
+		if err = configureNic(ifName, ipAddr, macAddr, mtu); err != nil {
 			return err
 		}
 
