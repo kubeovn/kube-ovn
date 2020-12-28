@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/alauda/kube-ovn/versions"
 	"net/http"
+	_ "net/http/pprof" // #nosec
 
 	"github.com/alauda/kube-ovn/pkg/pinger"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
