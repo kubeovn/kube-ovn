@@ -919,16 +919,26 @@ func (c Client) DeleteACL(pgName, direction string) error {
 	return err
 }
 
-func (c Client) CreateGatewayACL(pgName, gateway, protocol string) error {
-	ipSuffix := "ip4"
-	if protocol == kubeovnv1.ProtocolIPv6 {
-		ipSuffix = "ip6"
+func (c Client) CreateGatewayACL(pgName, gateway, cidr string) error {
+	for _, cidrBlock := range strings.Split(cidr, ",") {
+		for _, gw := range strings.Split(gateway, ",") {
+			if util.CheckProtocol(cidrBlock) != util.CheckProtocol(gw) {
+				continue
+			}
+			protocol := util.CheckProtocol(cidrBlock)
+			ipSuffix := "ip4"
+			if protocol == kubeovnv1.ProtocolIPv6 {
+				ipSuffix = "ip6"
+			}
+			ingressArgs := []string{MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("%s.src == %s && icmp", ipSuffix, gw), "allow-related"}
+			egressArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("%s.dst == %s && icmp", ipSuffix, gw), "allow-related"}
+			ovnArgs := append(ingressArgs, egressArgs...)
+			if _, err := c.ovnNbCommand(ovnArgs...); err != nil {
+				return err
+			}
+		}
 	}
-	ingressArgs := []string{MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("%s.src == %s && icmp", ipSuffix, gateway), "allow-related"}
-	egressArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("%s.dst == %s && icmp", ipSuffix, gateway), "allow-related"}
-	ovnArgs := append(ingressArgs, egressArgs...)
-	_, err := c.ovnNbCommand(ovnArgs...)
-	return err
+	return nil
 }
 
 func (c Client) SetPortsToPortGroup(portGroup string, portNames []string) error {
@@ -944,8 +954,17 @@ func (c Client) SetPortsToPortGroup(portGroup string, portNames []string) error 
 func (c Client) SetAddressesToAddressSet(addresses []string, as string) error {
 	ovnArgs := []string{"clear", "address_set", as, "addresses"}
 	if len(addresses) > 0 {
+		var newAddrs []string
+		for _, addr := range addresses {
+			if util.CheckProtocol(addr) == kubeovnv1.ProtocolIPv6 {
+				newAddr := strings.ReplaceAll(addr, ":", "\\:")
+				newAddrs = append(newAddrs, newAddr)
+			} else {
+				newAddrs = append(newAddrs, addr)
+			}
+		}
 		ovnArgs = append(ovnArgs, "--", "add", "address_set", as, "addresses")
-		ovnArgs = append(ovnArgs, addresses...)
+		ovnArgs = append(ovnArgs, newAddrs...)
 	}
 	_, err := c.ovnNbCommand(ovnArgs...)
 	return err
