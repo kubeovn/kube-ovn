@@ -1,5 +1,66 @@
 # CHANGELOG
 
+## 1.6.0 -- TODO
+
+### New Feature
+* Basic support for custom VPC
+* DualStack support
+* Overlay to underlay gateway through BGP
+* Support binding pod to subnet
+* Support disable interconnection for specific subnet
+* Iface now support regex
+* `install.sh` supports DPDK resource configuration
+* Remove cluster ip dependency for ovn/ovs components
+* Change base image to ubuntu
+
+### Monitoring
+* Add OVN/OVS monitor
+* Add ovs client latency metrics
+* Add ping total count metric
+* Add `ovs-vsctl` show to diagnose results
+* Add `kubectl describe no` to diagnose results
+* Add ovs-vsctl show to diagnose results
+* Add available IP metrics
+* Add more dashboard
+
+### Mics
+* CI: change to official docker buildx action
+* Perf: remove default acl rules
+* ci: add github code scan
+* Add version info
+* Reduce image size
+* Perf: accelerate ic and ex gw update
+* Refactor iptable logs
+* Tolerate all taints
+* OVN/OVS log rotation
+* Update Go to 1.15
+
+### Bugfix
+* Remove not alive pod in networkpolicy portGroup
+* Delete Pod when marked with deletionTimestamp
+* Use the internal IP when node try to connect to pod
+* Do not advertise node switch cidr when enable ovn-ic
+* Wrong proto str for udp diagnose
+* IPv6 len mismatch
+* Add default SSL var for compatibility
+* Wrong ipv6 network format when update subnet
+* Broken RPM link
+* Default SSL var for compatibility
+* Wrong iptable order
+* Check multicast and loopback subnet
+* CodeQL scan warnings
+* Fix cleanup scripts
+* Check ipv6 requirement before start
+* Check if ovn-central ip exists in `NODE_IPS` before start
+* Fix the problem of confusion between old and new versions of crd
+* Fix external-address config description
+* Add resources limits to avoid eviction
+* NAT rules can be modified
+* Masquerade other nodes to local pod to avoid NodePort triangle traffic
+* OVN-IC support SSL
+* Pod static ip validation
+* Multiple rule networkpolicy issues
+
 ## 1.5.2 -- 2020/12/01
 
 ### New Feature
@@ -35,7 +96,7 @@
 ### Bugfix
 * Remove not alive pod in networkpolicy portGroup
 * Delete Pod when marked with deletionTimestamp
-* Use internal IP when node try to connect to pod
+* Use the internal IP when node try to connect to pod
 * Do not advertise node switch cidr when enable ovn-ic
 * Wrong proto str for udp diagnose
 * Wrong ipv6 network format when update subnet
@@ -115,7 +176,7 @@
 
 ### Security
 * Use gosec to audit code security
-* Use trivy to scan and fix image CVEs
+* Use trivy to scan and fix the image CVEs
 * Update loopback plugin to fix CVEs
 
 ### Bugfix
@@ -161,7 +222,7 @@ From this version, subnet CIDR can be changed after creation, and routes will be
 * Kube—OVN now supports using BGP to announce Pod IP routes to external network
 * Subnet validator will check if subnet CIDR conflicts with svc or node CIDR
 * Subnet CIDR can be changed after creation
-* When subnet gateway changed, routes will aromatically changed
+* When subnet gateway changed, routes will aromatically be changed
 
 
 ### Monitoring
@@ -290,7 +351,7 @@ It's time to run Kube-OVN in production!
 * Modify upstream ovn to reduce memory footprint
 * CniServer filter pod in the informer list-watch and disable resync
 * Skip evicted pod when enqueueAddPod and enqueueUpdatePod
-* When controller restart skip pod already create lsp
+* When controller restart, skip pod already create lsp
 * As lr-route-add with --may-exist will replace exist route, no need for another delete
 
 ### Monitoring
@@ -306,7 +367,7 @@ It's time to run Kube-OVN in production!
 * Block subnet deletion when there is any ip in use
 * IP conflict when use ippool
 * GC logical_switch_port form listing pods and nodes
-* Do not add unallocated pod to port-group
+* Do not add the unallocated pod to port-group
 * PodSelector in networkpolicy should only consider pods in the same ns
 
 ### Mics
@@ -344,7 +405,7 @@ This release is mainly about controller performance, stability and bugfix
 ### Stability and Bugfix
 * LB init conflict when use multiple kube-ovn-controller
 * Static Route might lost during leader election
-* If pod have not a status.PodIP skip add/del static route
+* When a pod doesn't have a `status.PodIP`, skip add/del static route
 * Add keepalive to ovn-controller
 * Add qlen when set egress QoS
 * Add ingress_policing_burst to accurate limit ingress bandwidth
@@ -454,7 +515,7 @@ This is a bugfix version
 * Use ovs-ctl and ovn-ctl to do health check
 ### Bug Fixes
 * Check subnet cidr conflict
-* Validate namespace and pod annotations
+* Validate the namespace and pod annotations
 * Daemon wait for node annotations ready
 * Reuse node annotations when kube-ovn-controller restart
 

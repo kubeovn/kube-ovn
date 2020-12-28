@@ -22,6 +22,7 @@ The Kube-OVN community is waiting for you participation!
 - **Subnet Isolation**: Can configure a Subnet to deny any traffic from source IP addresses not within the same Subnet. Can whitelist specific IP addresses and IP ranges.
 - **Network Policy**: Implementing networking.k8s.io/NetworkPolicy API by high performance ovn ACL.
 - **Static IP Addresses for Workloads**: Allocate random or static IP addresses to workloads.
+- **DualStack IP Support**: Pod can run in IPv4-Only/IPv6-Only/DualStack mode.
 - **Pod NAT and EIP**: Manage the pod external traffic and external ip like tradition VM.
 - **Multi-Cluster Network**: Connect different clusters into one L3 network.
 - **IPAM for Multi NIC**: A cluster-wide IPAM for CNI plugins other than Kube-OVN, such as macvlan/vlan/host-device to take advantage of subnet and static ip allocation functions in Kube-OVN.
@@ -30,18 +31,16 @@ The Kube-OVN community is waiting for you participation!
 - **Distributed Gateways**: Every Node can act as a Gateway to provide external network connectivity.
 - **Namespaced Gateways**: Every Namespace can have a dedicated Gateway for Egress traffic.
 - **Direct External Connectivity**：Pod IP can be exposed to external network directly.
-- **BGP Support**: Pod IP can be exposed to external by BGP router protocol.
+- **BGP Support**: Pod/Subnet IP can be exposed to external by BGP router protocol.
 - **Traffic Mirror**: Duplicated container network traffic for monitoring, diagnosing and replay.
 - **Hardware Offload**: Boost network performance and save CPU resource by offloading OVS flow table to hardware.
 - **Vlan Support**: Kube-OVN also support underlay Vlan mode network for better performance and throughput.
 - **DPDK Support**: DPDK application now can run in Pod with OVS-DPDK.
-- **IPv6 Support**: Kube-OVN supports ipv6-only mode pod network.
 - **ARM Support**: Kube-OVN can run on x86_64 and arm64 platforms.
 - **TroubleShooting Tools**: Handy tools to diagnose, trace, monitor and dump container network traffic to help troubleshooting complicate network issues.
 - **Prometheus & Grafana Integration**: Exposing network quality metrics like pod/node/service/dns connectivity/latency in Prometheus format.
 
 ## Planned Future Work
-- Multi-Cluster Network
 - Policy-based QoS
 - More Metrics and Traffic Graph
 - More Diagnosis and Tracing Tools
@@ -80,6 +79,7 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
 - [Traffic Mirror](docs/mirror.md)
 - [Webhook](docs/webhook.md)
 - [IPv6](docs/ipv6.md)
+- [DualStack](docs/dual-stack.md)
 - [Tracing/Diagnose/Dump Traffic with Kubectl Plugin](docs/kubectl-plugin.md)
 - [Prometheus Integration](docs/prometheus.md)
 - [Metrics](docs/ovn-ovs-monitor.md)
