@@ -20,10 +20,12 @@ RUN cd /usr/src/ && \
     rm -rf .git && \
     DATAPATH_CONFIGURE_OPTS='--prefix=/usr --enable-shared' DEB_BUILD_OPTIONS='parallel=8 nocheck' fakeroot debian/rules binary
 
-RUN cd /usr/src/ && git clone -b branch-20.06 --depth=1 https://github.com/ovn-org/ovn.git && \
+RUN cd /usr/src/ && git clone -b branch-20.09 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
     curl https://github.com/alauda/ovn/commit/d8253981485e499979cc47c9453b6be8eebe5f0e.patch | git apply --exclude debian/changelog && \
-    curl https://github.com/alauda/ovn/commit/f2db72af17f8ad1ea721b1d02e005ed84620fde2.patch | git apply && \
+    curl https://github.com/alauda/ovn/commit/34d7031d999418a79f1f79e2a7d5ecd17fa6f84c.patch | git apply && \
+    curl https://github.com/alauda/ovn/commit/11ec3f14cebe08ce556d5a8c0ee1cc14686f953d.patch | git apply && \
+    curl https://github.com/alauda/ovn/commit/113cf2e3c10b210a410b9ef41f981d321785d8df.patch | git apply && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \
