@@ -289,7 +289,7 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		return err
 	}
 	changed = checkAndUpdateExcludeIps(subnet)
-
+	klog.Infof("format subnet %v, changed %v", subnet.Name, changed)
 	if changed {
 		_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), subnet, metav1.UpdateOptions{})
 		if err != nil {
@@ -319,7 +319,7 @@ func checkAndUpdateCIDR(subnet *kubeovnv1.Subnet) (bool, error) {
 
 func checkAndUpdateGateway(subnet *kubeovnv1.Subnet) (bool, error) {
 	changed := false
-	if subnet.Spec.Gateway == "" {
+	if subnet.Spec.Gateway == "" || util.CheckProtocol(subnet.Spec.Gateway) != util.CheckProtocol(subnet.Spec.CIDRBlock) {
 		gw, err := util.GetGwByCidr(subnet.Spec.CIDRBlock)
 		if err != nil {
 			klog.Error(err)
@@ -343,9 +343,12 @@ func checkAndUpdateExcludeIps(subnet *kubeovnv1.Subnet) bool {
 		subnet.Spec.ExcludeIps = excludeIps
 		changed = true
 	} else {
-		gwExists := false
 		for _, gw := range excludeIps {
+			gwExists := false
 			for _, ip := range ovs.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock) {
+				if util.CheckProtocol(gw) != util.CheckProtocol(ip) {
+					continue
+				}
 				if ip == gw {
 					gwExists = true
 					break

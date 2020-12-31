@@ -81,8 +81,20 @@ func (c *Controller) InitDefaultVpc() error {
 
 // InitDefaultLogicalSwitch init the default logical switch for ovn network
 func (c *Controller) initDefaultLogicalSwitch() error {
-	_, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), c.config.DefaultLogicalSwitch, v1.GetOptions{})
+	subnet, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), c.config.DefaultLogicalSwitch, v1.GetOptions{})
 	if err == nil {
+		if subnet != nil && subnet.Spec.CIDRBlock != c.config.DefaultCIDR {
+			// upgrade to dual-stack
+			if util.CheckProtocol(c.config.DefaultCIDR) == kubeovnv1.ProtocolDual {
+				subnet.Spec.CIDRBlock = c.config.DefaultCIDR
+				if err := formatSubnet(subnet, c); err != nil {
+					klog.Errorf("init format subnet %s failed %v", c.config.DefaultLogicalSwitch, err)
+					return err
+				}
+			} else {
+				return fmt.Errorf("can not modify subnet to single protocol")
+			}
+		}
 		return nil
 	}
 
@@ -118,8 +130,20 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 
 // InitNodeSwitch init node switch to connect host and pod
 func (c *Controller) initNodeSwitch() error {
-	_, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), c.config.NodeSwitch, v1.GetOptions{})
+	subnet, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), c.config.NodeSwitch, v1.GetOptions{})
 	if err == nil {
+		if subnet != nil && subnet.Spec.CIDRBlock != c.config.NodeSwitchCIDR {
+			// upgrade to dual-stack
+			if util.CheckProtocol(c.config.NodeSwitchCIDR) == kubeovnv1.ProtocolDual {
+				subnet.Spec.CIDRBlock = c.config.NodeSwitchCIDR
+				if err := formatSubnet(subnet, c); err != nil {
+					klog.Errorf("init format subnet %s failed %v", c.config.NodeSwitch, err)
+					return err
+				}
+			} else {
+				return fmt.Errorf("can not modify subnet to single protocol")
+			}
+		}
 		return nil
 	}
 
