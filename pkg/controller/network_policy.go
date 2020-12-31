@@ -261,6 +261,15 @@ func (c *Controller) handleUpdateNp(key string) error {
 					}
 				}
 			}
+			if len(np.Spec.Ingress) == 0 {
+				ingressAllowAsName := fmt.Sprintf("%s.%s.all", ingressAllowAsNamePrefix, protocol)
+				ingressExceptAsName := fmt.Sprintf("%s.%s.all", ingressExceptAsNamePrefix, protocol)
+				ingressPorts := []netv1.NetworkPolicyPort{}
+				if err := c.ovnClient.CreateIngressACL(fmt.Sprintf("%s/%s", np.Namespace, np.Name), pgName, ingressAllowAsName, ingressExceptAsName, protocol, ingressPorts); err != nil {
+					klog.Errorf("failed to create ingress acls for np %s, %v", key, err)
+					return err
+				}
+			}
 		}
 
 		asNames, err := c.ovnClient.ListAddressSet(np.Namespace, np.Name, "ingress")
@@ -359,6 +368,15 @@ func (c *Controller) handleUpdateNp(key string) error {
 						klog.Errorf("failed to create egress acls for np %s, %v", key, err)
 						return err
 					}
+				}
+			}
+			if len(np.Spec.Egress) == 0 {
+				egressAllowAsName := fmt.Sprintf("%s.%s.all", egressAllowAsNamePrefix, protocol)
+				egressExceptAsName := fmt.Sprintf("%s.%s.all", egressExceptAsNamePrefix, protocol)
+				egressPorts := []netv1.NetworkPolicyPort{}
+				if err := c.ovnClient.CreateEgressACL(fmt.Sprintf("%s/%s", np.Namespace, np.Name), pgName, egressAllowAsName, egressExceptAsName, protocol, egressPorts); err != nil {
+					klog.Errorf("failed to create egress acls for np %s, %v", key, err)
+					return err
 				}
 			}
 		}
