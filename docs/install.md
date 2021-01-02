@@ -140,7 +140,7 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
       --log_file_max_size uint            Defines the maximum size a log file can grow to. Unit is megabytes. If the value is 0, the maximum file size is unlimited. (default 1800)
       --logtostderr                       log to standard error instead of files (default true)
       --mirror-iface string               The mirror nic name that will be created by kube-ovn, default: mirror0 (default "mirror0")
-      --mtu int                           The MTU used by pod iface, default: iface MTU - 55
+      --mtu int                           The MTU used by pod iface, default: iface MTU - 100
       --network-type string               The ovn network type, default: geneve (default "geneve")
       --node-local-dns-ip string          If use nodelocaldns the local dns server ip should be set here, default empty.
       --ovs-socket string                 The socket to local ovs-server
