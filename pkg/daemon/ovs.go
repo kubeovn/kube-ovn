@@ -202,11 +202,11 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, macAd
 			return fmt.Errorf("config gateway failed %v", err)
 		}
 
-		return waiteNetworkReady(gateway)
+		return waitNetworkReady(gateway)
 	})
 }
 
-func waiteNetworkReady(gateway string) error {
+func waitNetworkReady(gateway string) error {
 	for _, gw := range strings.Split(gateway, ",") {
 		pinger, err := goping.NewPinger(gw)
 		if err != nil {
