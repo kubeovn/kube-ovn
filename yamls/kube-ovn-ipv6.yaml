@@ -68,14 +68,14 @@ spec:
           readinessProbe:
             exec:
               command:
-                - sh
+                - bash
                 - /kube-ovn/kube-ovn-controller-healthcheck.sh
             periodSeconds: 3
             timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
-                - sh
+                - bash
                 - /kube-ovn/kube-ovn-controller-healthcheck.sh
             initialDelaySeconds: 300
             periodSeconds: 7
@@ -131,7 +131,7 @@ spec:
           image: "kubeovn/kube-ovn:v1.5.2"
           imagePullPolicy: IfNotPresent
           command:
-            - sh
+            - bash
             - /kube-ovn/start-cniserver.sh
           args:
             - --enable-mirror=false

@@ -255,14 +255,14 @@ spec:
           readinessProbe:
             exec:
               command:
-                - sh
+                - bash
                 - /kube-ovn/ovn-is-leader.sh
             periodSeconds: 3
             timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
-                - sh
+                - bash
                 - /kube-ovn/ovn-healthcheck.sh
             initialDelaySeconds: 30
             periodSeconds: 7
@@ -432,14 +432,14 @@ spec:
           readinessProbe:
             exec:
               command:
-                - sh
+                - bash
                 - /kube-ovn/ovs-healthcheck.sh
             periodSeconds: 5
             timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
-                - sh
+                - bash
                 - /kube-ovn/ovs-healthcheck.sh
             initialDelaySeconds: 10
             periodSeconds: 5
