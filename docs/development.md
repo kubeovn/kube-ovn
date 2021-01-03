@@ -2,7 +2,7 @@
 
 ## How to build Kube-OVN
 
-Kube-OVN is developed by [Go](https://golang.org/) 1.14 and uses [Go Modules](https://github.com/golang/go/wiki/Modules) to manage dependency.
+Kube-OVN is developed by [Go](https://golang.org/) 1.15 and uses [Go Modules](https://github.com/golang/go/wiki/Modules) to manage dependency.
 
 To minimize image size we use docker experiment buildx features, please enable it through the [reference](https://docs.docker.com/develop/develop-images/build_enhancements/).
 
