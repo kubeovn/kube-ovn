@@ -62,7 +62,7 @@ dpdk-hugepage-dir=/dev/hugepages
 ## To Install
 
 1. Download the installation script:
-`wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.5/dist/images/install.sh`
+`wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.6/dist/images/install.sh`
 
 2. Use vim to edit the script variables to meet your requirement
 ```bash

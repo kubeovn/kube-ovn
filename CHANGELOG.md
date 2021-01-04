@@ -1,17 +1,19 @@
 # CHANGELOG
 
-## 1.6.0 -- TODO
+## 1.6.0 -- 2021/01/04
 
 ### New Feature
 * Basic support for custom VPC
 * DualStack support
 * Overlay to underlay gateway through BGP
 * Support binding pod to subnet
+* Support distributed eip
 * Support disable interconnection for specific subnet
 * Iface now support regex
 * `install.sh` supports DPDK resource configuration
 * Remove cluster ip dependency for ovn/ovs components
 * Change base image to ubuntu
+* Update OVN to 20.09
 
 ### Monitoring
 * Add OVN/OVS monitor
@@ -34,6 +36,7 @@
 * Tolerate all taints
 * OVN/OVS log rotation
 * Update Go to 1.15
+* Multi arch image
 
 ### Bugfix
 * Remove not alive pod in networkpolicy portGroup
@@ -60,6 +63,8 @@
 * OVN-IC support SSL
 * Pod static ip validation
 * Multiple rule networkpolicy issues
+* Modify service vip parse error
+* CNIServer default encap ip use node ip
 
 ## 1.5.2 -- 2020/12/01
 
