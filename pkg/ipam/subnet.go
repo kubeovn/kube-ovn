@@ -59,6 +59,8 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 			V4ReservedIPList: convertExcludeIps(v4ExcludeIps),
 			V4PodToIP:        map[string]IP{},
 			V4IPToPod:        map[IP]string{},
+			V6PodToIP:        map[string]IP{},
+			V6IPToPod:        map[IP]string{},
 			MacToPod:         map[string]string{},
 			PodToMac:         map[string]string{},
 		}
@@ -75,6 +77,8 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 			V6FreeIPList:     IPRangeList{&IPRange{Start: IP(firstIP), End: IP(lastIP)}},
 			V6ReleasedIPList: IPRangeList{},
 			V6ReservedIPList: convertExcludeIps(v6ExcludeIps),
+			V4PodToIP:        map[string]IP{},
+			V4IPToPod:        map[IP]string{},
 			V6PodToIP:        map[string]IP{},
 			V6IPToPod:        map[IP]string{},
 			MacToPod:         map[string]string{},
