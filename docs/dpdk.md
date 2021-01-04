@@ -210,7 +210,6 @@ Create the Pod Spec, name it pod.yaml
 apiVersion: v1
 kind: Pod
 metadata:
-  generateName: testpmd-dpdk-
   annotations:
     k8s.v1.cni.cncf.io/networks: ovs-dpdk-br0, ovs-dpdk-br0
 spec:
@@ -255,7 +254,6 @@ The pod spec needs to be updated as shown below. The name of the volumeMount nee
 <pre><code>apiVersion: v1
 kind: Pod
 metadata:
-  generateName: testpmd-dpdk-
   annotations:
     k8s.v1.cni.cncf.io/networks: ovs-dpdk-br0, ovs-dpdk-br0
 spec:

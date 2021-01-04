@@ -37,6 +37,7 @@ The Kube-OVN community is waiting for you participation!
 - **Vlan Support**: Kube-OVN also support underlay Vlan mode network for better performance and throughput.
 - **DPDK Support**: DPDK application now can run in Pod with OVS-DPDK.
 - **ARM Support**: Kube-OVN can run on x86_64 and arm64 platforms.
+- **VPC Support**: Multi-tenant network with overlapped address spaces.
 - **TroubleShooting Tools**: Handy tools to diagnose, trace, monitor and dump container network traffic to help troubleshooting complicate network issues.
 - **Prometheus & Grafana Integration**: Exposing network quality metrics like pod/node/service/dns connectivity/latency in Prometheus format.
 
@@ -80,6 +81,7 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
 - [Webhook](docs/webhook.md)
 - [IPv6](docs/ipv6.md)
 - [DualStack](docs/dual-stack.md)
+- [VPC](docs/vpc.md)
 - [Tracing/Diagnose/Dump Traffic with Kubectl Plugin](docs/kubectl-plugin.md)
 - [Prometheus Integration](docs/prometheus.md)
 - [Metrics](docs/ovn-ovs-monitor.md)
