@@ -64,8 +64,13 @@ func (ipam *IPAM) GetStaticAddress(podName string, ip, mac string, subnetName st
 			}
 			ips = append(ips, ipAddr)
 		}
+		ips, err = checkAndAppendIpsForDual(ips, podName, subnet)
+		if err != nil {
+			klog.Errorf("failed to append allocate ip %v mac %s for %s", ips, mac, podName)
+			return "", "", "", err
+		}
 
-		switch util.CheckProtocol(ip) {
+		switch subnet.Protocol {
 		case kubeovnv1.ProtocolIPv4:
 			klog.Infof("allocate v4 %s mac %s for %s", ip, mac, podName)
 			return ip, "", mac, err
@@ -78,6 +83,28 @@ func (ipam *IPAM) GetStaticAddress(podName string, ip, mac string, subnetName st
 		}
 	}
 	return "", "", "", NoAvailableError
+}
+
+func checkAndAppendIpsForDual(ips []IP, podName string, subnet *Subnet) ([]IP, error) {
+	// IP Address for dual-stack should be format of 'IPv4,IPv6'
+	if subnet.Protocol != kubeovnv1.ProtocolDual || len(ips) == 2 {
+		return ips, nil
+	}
+
+	var newIps []IP
+	var ipAddr IP
+	var err error
+	if util.CheckProtocol(string(ips[0])) == kubeovnv1.ProtocolIPv4 {
+		newIps = ips
+		_, ipAddr, _, err = subnet.getV6RandomAddress(podName)
+		newIps = append(newIps, ipAddr)
+	} else if util.CheckProtocol(string(ips[0])) == kubeovnv1.ProtocolIPv6 {
+		ipAddr, _, _, err = subnet.getV4RandomAddress(podName)
+		newIps = append(newIps, ipAddr)
+		newIps = append(newIps, ips...)
+	}
+
+	return newIps, err
 }
 
 func (ipam *IPAM) ReleaseAddressByPod(podName string) {
