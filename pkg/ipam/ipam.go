@@ -67,12 +67,13 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr string, excludeIps []string) e
 	ipam.mutex.Lock()
 	defer ipam.mutex.Unlock()
 
-	_, _, err := net.ParseCIDR(cidrStr)
+	_, cidr, err := net.ParseCIDR(cidrStr)
 	if err != nil {
 		return InvalidCIDRError
 	}
 
 	if subnet, ok := ipam.Subnets[name]; ok {
+		subnet.CIDR = cidr
 		subnet.ReservedIPList = convertExcludeIps(excludeIps)
 		firstIP, _ := util.FirstSubnetIP(cidrStr)
 		lastIP, _ := util.LastIP(cidrStr)
