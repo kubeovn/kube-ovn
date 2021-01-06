@@ -146,6 +146,8 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr string, excludeIps []string) e
 	if subnet, ok := ipam.Subnets[name]; ok {
 		subnet.Protocol = protocol
 		if protocol == kubeovnv1.ProtocolDual || protocol == kubeovnv1.ProtocolIPv4 {
+			_, cidr, _ := net.ParseCIDR(v4cidrStr)
+			subnet.V4CIDR = cidr
 			subnet.V4ReservedIPList = convertExcludeIps(v4ExcludeIps)
 			firstIP, _ := util.FirstSubnetIP(v4cidrStr)
 			lastIP, _ := util.LastIP(v4cidrStr)
@@ -159,6 +161,8 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr string, excludeIps []string) e
 			}
 		}
 		if protocol == kubeovnv1.ProtocolDual || protocol == kubeovnv1.ProtocolIPv6 {
+			_, cidr, _ := net.ParseCIDR(v6cidrStr)
+			subnet.V6CIDR = cidr
 			subnet.V6ReservedIPList = convertExcludeIps(v6ExcludeIps)
 			firstIP, _ := util.FirstSubnetIP(v6cidrStr)
 			lastIP, _ := util.LastIP(v6cidrStr)
