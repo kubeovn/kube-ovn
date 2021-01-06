@@ -728,6 +728,8 @@ func (c *Controller) acquireAddress(pod *v1.Pod, subnet *kubeovnv1.Subnet) (stri
 			}
 			if v4IP, v6IP, mac, err := c.acquireStaticAddress(key, staticIP, macStr, subnet.Name); err == nil {
 				return v4IP, v6IP, mac, nil
+			} else {
+				klog.Errorf("acquire address %s for %s failed, %v", staticIP, key, err)
 			}
 		}
 	} else {
