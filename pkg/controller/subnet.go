@@ -82,6 +82,7 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		oldSubnet.Spec.GatewayType != newSubnet.Spec.GatewayType ||
 		oldSubnet.Spec.GatewayNode != newSubnet.Spec.GatewayNode ||
 		oldSubnet.Spec.UnderlayGateway != newSubnet.Spec.UnderlayGateway ||
+		oldSubnet.Spec.Gateway != newSubnet.Spec.Gateway ||
 		!reflect.DeepEqual(oldSubnet.Spec.ExcludeIps, newSubnet.Spec.ExcludeIps) ||
 		!reflect.DeepEqual(oldSubnet.Spec.Vlan, newSubnet.Spec.Vlan) {
 		klog.V(3).Infof("enqueue update subnet %s", key)
@@ -248,7 +249,7 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 	var err error
 	changed := false
 
-	changed, err = checkAndUpdateCIDR(subnet)
+	changed, err = checkSubnetChanged(subnet)
 	if err != nil {
 		return err
 	}
@@ -284,11 +285,6 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 			}
 		}
 	}
-	changed, err = checkAndUpdateGateway(subnet)
-	if err != nil {
-		return err
-	}
-	changed = checkAndUpdateExcludeIps(subnet)
 	klog.Infof("format subnet %v, changed %v", subnet.Name, changed)
 	if changed {
 		_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), subnet, metav1.UpdateOptions{})
@@ -298,6 +294,33 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		}
 	}
 	return nil
+}
+
+func checkSubnetChanged(subnet *kubeovnv1.Subnet) (bool, error) {
+	var err error
+	changed := false
+	ret := false
+
+	// changed value may be overlapped, so use ret to record value
+	changed, err = checkAndUpdateCIDR(subnet)
+	if err != nil {
+		return changed, err
+	}
+	if changed {
+		ret = true
+	}
+	changed, err = checkAndUpdateGateway(subnet)
+	if err != nil {
+		return changed, err
+	}
+	if changed {
+		ret = true
+	}
+	changed = checkAndUpdateExcludeIps(subnet)
+	if changed {
+		ret = true
+	}
+	return ret, nil
 }
 
 func checkAndUpdateCIDR(subnet *kubeovnv1.Subnet) (bool, error) {
@@ -319,12 +342,12 @@ func checkAndUpdateCIDR(subnet *kubeovnv1.Subnet) (bool, error) {
 
 func checkAndUpdateGateway(subnet *kubeovnv1.Subnet) (bool, error) {
 	changed := false
-	if subnet.Spec.Gateway == "" || util.CheckProtocol(subnet.Spec.Gateway) != util.CheckProtocol(subnet.Spec.CIDRBlock) {
-		gw, err := util.GetGwByCidr(subnet.Spec.CIDRBlock)
-		if err != nil {
-			klog.Error(err)
-			return false, err
-		}
+	gw, err := util.GetGwByCidr(subnet.Spec.CIDRBlock)
+	if err != nil {
+		klog.Error(err)
+		return false, err
+	}
+	if subnet.Spec.Gateway != gw {
 		subnet.Spec.Gateway = gw
 		changed = true
 	}
@@ -990,12 +1013,16 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	v6toSubIPs := ovs.ExpandExcludeIPs(v6ExcludeIps, cidrBlocks[1])
 	_, v4CIDR, _ := net.ParseCIDR(cidrBlocks[0])
 	_, v6CIDR, _ := net.ParseCIDR(cidrBlocks[1])
+	v4UsingIPs := make([]string, 0, len(podUsedIPs.Items))
+	v6UsingIPs := make([]string, 0, len(podUsedIPs.Items))
 	for _, podUsedIP := range podUsedIPs.Items {
 		// The format of podUsedIP.Spec.IPAddress is 10.244.0.0/16,fd00:10:244::/64 when protocol is dualstack
 		splitIPs := strings.Split(podUsedIP.Spec.IPAddress, ",")
 		v4toSubIPs = append(v4toSubIPs, splitIPs[0])
+		v4UsingIPs = append(v4UsingIPs, splitIPs[0])
 		if len(splitIPs) == 2 {
 			v6toSubIPs = append(v6toSubIPs, splitIPs[1])
+			v6UsingIPs = append(v6UsingIPs, splitIPs[1])
 		}
 	}
 	v4availableIPs := util.AddressCount(v4CIDR) - float64(len(util.UniqString(v4toSubIPs)))
@@ -1006,13 +1033,13 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	if v6availableIPs < 0 {
 		v6availableIPs = 0
 	}
-	usingIPs := float64(len(podUsedIPs.Items))
+
 	subnet.Status.V4AvailableIPs = v4availableIPs
 	subnet.Status.V6AvailableIPs = v6availableIPs
 	subnet.Status.AvailableIPs = v4availableIPs + v6availableIPs
-	subnet.Status.V4UsingIPs = usingIPs
-	subnet.Status.V6UsingIPs = usingIPs
-	subnet.Status.UsingIPs = usingIPs * 2
+	subnet.Status.V4UsingIPs = float64(len(v4UsingIPs))
+	subnet.Status.V6UsingIPs = float64(len(v6UsingIPs))
+	subnet.Status.UsingIPs = subnet.Status.V4UsingIPs + subnet.Status.V6UsingIPs
 
 	bytes, err := subnet.Status.Bytes()
 	if err != nil {
