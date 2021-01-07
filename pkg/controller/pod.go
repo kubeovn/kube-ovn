@@ -443,6 +443,9 @@ func (c *Controller) handleDeletePod(key string) error {
 
 	addresses := c.ipam.GetPodAddress(key)
 	for _, address := range addresses {
+		if strings.TrimSpace(address.Ip) == "" {
+			continue
+		}
 		subnet, err := c.subnetsLister.Get(address.Subnet.Name)
 		if err != nil {
 			return err
