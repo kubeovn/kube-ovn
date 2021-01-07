@@ -237,12 +237,15 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 	// ping gw to activate the flow
 	var output []byte
 	if util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv4 {
-		output, _ = exec.Command("ping", "-w", "10", gw).CombinedOutput()
+		output, err = exec.Command("ping", "-w", "10", gw).CombinedOutput()
 	} else {
-		output, _ = exec.Command("ping", "-6", "-w", "10", gw).CombinedOutput()
+		output, err = exec.Command("ping", "-6", "-w", "10", gw).CombinedOutput()
 	}
-
 	klog.Infof("ping gw result is: \n %s", output)
+	if err != nil {
+		klog.Errorf("ovn0 failed to ping gw %s, %v", gw, err)
+		return err
+	}
 	return nil
 }
 
