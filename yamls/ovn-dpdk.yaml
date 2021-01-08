@@ -176,7 +176,7 @@ metadata:
     kubernetes.io/description: |
       OVN components: northd, nb and sb.
 spec:
-  replicas: $count
+  replicas: 1
   strategy:
     rollingUpdate:
       maxSurge: 0%
@@ -207,8 +207,8 @@ spec:
       shareProcessNamespace: true
       containers:
         - name: ovn-central
-          image: "$REGISTRY/kube-ovn:$VERSION"
-          imagePullPolicy: $IMAGE_PULL_POLICY
+          image: "kubeovn/kube-ovn:v1.6.0"
+          imagePullPolicy: IfNotPresent
           command: ["/kube-ovn/start-db.sh"]
           securityContext:
             capabilities:
@@ -269,8 +269,8 @@ spec:
             failureThreshold: 5
             timeoutSeconds: 45
         - name: ovn-monitor
-          image: "$REGISTRY/kube-ovn:$VERSION"
-          imagePullPolicy: $IMAGE_PULL_POLICY
+          image: "kubeovn/kube-ovn:v1.6.0"
+          imagePullPolicy: IfNotPresent
           command: ["/kube-ovn/start-ovn-monitor.sh"]
           env:
             - name: ENABLE_SSL
@@ -387,7 +387,7 @@ spec:
       containers:
         - name: openvswitch
           image: "kubeovn/kube-ovn-dpdk:$DPDK_VERSION"
-          imagePullPolicy: $IMAGE_PULL_POLICY
+          imagePullPolicy: IfNotPresent
           command: ["/kube-ovn/start-ovs-dpdk.sh"]
           securityContext:
             runAsUser: 0

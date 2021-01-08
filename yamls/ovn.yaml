@@ -152,7 +152,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-monitor
-  namespace:  ${NAMESPACE}
+  namespace:  kube-system
   labels:
     app: kube-ovn-monitor
 spec:
@@ -269,8 +269,8 @@ spec:
             failureThreshold: 5
             timeoutSeconds: 45
         - name: ovn-monitor
-          image: "$REGISTRY/kube-ovn:$VERSION"
-          imagePullPolicy: $IMAGE_PULL_POLICY
+          image: "kubeovn/kube-ovn:v1.6.0"
+          imagePullPolicy: IfNotPresent
           command: ["/kube-ovn/start-ovn-monitor.sh"]
           env:
             - name: ENABLE_SSL

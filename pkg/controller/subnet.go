@@ -342,7 +342,15 @@ func checkAndUpdateCIDR(subnet *kubeovnv1.Subnet) (bool, error) {
 
 func checkAndUpdateGateway(subnet *kubeovnv1.Subnet) (bool, error) {
 	changed := false
-	gw, err := util.GetGwByCidr(subnet.Spec.CIDRBlock)
+	var gw string
+	var err error
+	if subnet.Spec.Gateway == "" {
+		gw, err = util.GetGwByCidr(subnet.Spec.CIDRBlock)
+	} else if util.CheckProtocol(subnet.Spec.Gateway) != util.CheckProtocol(subnet.Spec.CIDRBlock) {
+		gw, err = util.AppendGwByCidr(subnet.Spec.Gateway, subnet.Spec.CIDRBlock)
+	} else {
+		gw = subnet.Spec.Gateway
+	}
 	if err != nil {
 		klog.Error(err)
 		return false, err
