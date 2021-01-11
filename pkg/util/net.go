@@ -219,6 +219,32 @@ func GetGwByCidr(cidrStr string) (string, error) {
 	return strings.Join(gws, ","), nil
 }
 
+func AppendGwByCidr(gateway, cidrStr string) (string, error) {
+	var gws []string
+	for _, cidr := range strings.Split(cidrStr, ",") {
+		if CheckProtocol(gateway) == CheckProtocol(cidr) {
+			gws = append(gws, gateway)
+			continue
+		} else {
+			gw, err := FirstSubnetIP(cidr)
+			if err != nil {
+				return "", err
+			}
+			var gwArray [2]string
+			if CheckProtocol(gateway) == kubeovnv1.ProtocolIPv4 {
+				gwArray[0] = gateway
+				gwArray[1] = gw
+			} else {
+				gwArray[0] = gw
+				gwArray[1] = gateway
+			}
+			gws = gwArray[:]
+		}
+	}
+
+	return strings.Join(gws, ","), nil
+}
+
 func SplitIpsByProtocol(excludeIps []string) ([]string, []string) {
 	var v4ExcludeIps, v6ExcludeIps []string
 	for _, ex := range excludeIps {
