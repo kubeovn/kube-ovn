@@ -35,10 +35,6 @@ func (c *Controller) isLeader() bool {
 	return c.elector.IsLeader()
 }
 
-func (c *Controller) hasLeader() bool {
-	return c.elector.GetLeader() != ""
-}
-
 func (c *Controller) leaderElection() {
 	elector := setupLeaderElection(&leaderElectionConfig{
 		Client:       c.config.KubeClient,

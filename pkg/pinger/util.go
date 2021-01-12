@@ -99,7 +99,7 @@ func (e *Exporter) setOvsDpIfMetric(datapathName string) error {
 }
 
 func (e *Exporter) ovsDatapathLookupsMetrics(line, datapath string) {
-	s := strings.Trim(line, "lookups:")
+	s := strings.TrimPrefix(line, "lookups:")
 	for _, field := range strings.Fields(s) {
 		elem := strings.Split(field, ":")
 		value, err := strconv.ParseFloat(elem[1], 64)
@@ -119,7 +119,7 @@ func (e *Exporter) ovsDatapathLookupsMetrics(line, datapath string) {
 }
 
 func (e *Exporter) ovsDatapathMasksMetrics(line, datapath string) {
-	s := strings.Trim(line, "masks:")
+	s := strings.TrimPrefix(line, "masks:")
 	for _, field := range strings.Fields(s) {
 		elem := strings.Split(field, ":")
 		value, err := strconv.ParseFloat(elem[1], 64)
@@ -151,9 +151,8 @@ func (e *Exporter) ovsDatapathPortMetrics(line, datapath string) {
 }
 
 func (e *Exporter) getInterfaceInfo() ([]*ovsdb.OvsInterface, error) {
-	intfs := []*ovsdb.OvsInterface{}
-	var err error
-	if intfs, err = e.Client.GetDbInterfaces(); err != nil {
+	intfs, err := e.Client.GetDbInterfaces()
+	if err != nil {
 		klog.Errorf("GetDbInterfaces error: %v", err)
 		e.IncrementErrorCounter()
 		return nil, err

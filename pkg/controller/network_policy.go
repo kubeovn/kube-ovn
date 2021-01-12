@@ -492,10 +492,7 @@ func hasIngressRule(np *netv1.NetworkPolicy) bool {
 			return true
 		}
 	}
-	if np.Spec.Ingress != nil {
-		return true
-	}
-	return false
+	return np.Spec.Ingress != nil
 }
 
 func hasEgressRule(np *netv1.NetworkPolicy) bool {
@@ -504,10 +501,7 @@ func hasEgressRule(np *netv1.NetworkPolicy) bool {
 			return true
 		}
 	}
-	if np.Spec.Egress != nil {
-		return true
-	}
-	return false
+	return np.Spec.Egress != nil
 }
 
 func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, npp netv1.NetworkPolicyPeer) ([]string, []string, error) {

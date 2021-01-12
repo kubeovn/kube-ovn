@@ -191,10 +191,7 @@ func IPToString(ip string) string {
 }
 
 func IsValidIP(ip string) bool {
-	if net.ParseIP(ip) != nil {
-		return true
-	}
-	return false
+	return net.ParseIP(ip) != nil
 }
 
 func CheckCidrs(cidr string) error {

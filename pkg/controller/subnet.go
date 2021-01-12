@@ -367,9 +367,7 @@ func checkAndUpdateGateway(subnet *kubeovnv1.Subnet) (bool, error) {
 func checkAndUpdateExcludeIps(subnet *kubeovnv1.Subnet) bool {
 	changed := false
 	var excludeIps []string
-	for _, gw := range strings.Split(subnet.Spec.Gateway, ",") {
-		excludeIps = append(excludeIps, gw)
-	}
+	excludeIps = append(excludeIps, strings.Split(subnet.Spec.Gateway, ",")...)
 	if len(subnet.Spec.ExcludeIps) == 0 {
 		subnet.Spec.ExcludeIps = excludeIps
 		changed = true
@@ -1053,7 +1051,7 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	if err != nil {
 		return err
 	}
-	subnet, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
+	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
 	return err
 }
 
@@ -1092,7 +1090,7 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	if err != nil {
 		return err
 	}
-	subnet, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
+	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
 	return err
 }
 

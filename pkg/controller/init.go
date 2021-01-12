@@ -71,7 +71,7 @@ func (c *Controller) InitDefaultVpc() error {
 	if err != nil {
 		return err
 	}
-	vpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.MergePatchType, bytes, v1.PatchOptions{}, "status")
+	_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.MergePatchType, bytes, v1.PatchOptions{}, "status")
 	if err != nil {
 		klog.Errorf("init default vpc failed %v", err)
 		return err

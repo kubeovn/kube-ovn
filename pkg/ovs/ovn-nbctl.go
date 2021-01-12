@@ -725,7 +725,7 @@ func (c Client) GetLogicalSwitchPortAddress(port string) ([]string, error) {
 		klog.Errorf("get port %s addresses failed %v", port, err)
 		return nil, err
 	}
-	if strings.Index(output, "dynamic") != -1 {
+	if strings.Contains(output, "dynamic") {
 		// [dynamic]
 		return nil, nil
 	}

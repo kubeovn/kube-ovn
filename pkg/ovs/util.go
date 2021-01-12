@@ -26,7 +26,7 @@ func trimCommandOutput(raw []byte) string {
 func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
 	rv := []string{}
 	for _, excludeIP := range excludeIPs {
-		if strings.Index(excludeIP, "..") != -1 {
+		if strings.Contains(excludeIP, "..") {
 			for _, cidrBlock := range strings.Split(cidr, ",") {
 				subnetNum := util.SubnetNumber(cidrBlock)
 				broadcast := util.SubnetBroadCast(cidrBlock)

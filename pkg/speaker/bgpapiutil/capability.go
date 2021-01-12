@@ -18,7 +18,8 @@ package apiutil
 import (
 	"fmt"
 
-	proto "github.com/golang/protobuf/proto"
+	// nolint:staticcheck
+	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/any"
 	api "github.com/osrg/gobgp/api"

@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	clientset "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/alauda/kube-ovn/pkg/ovs"
 
 	admissionv1 "k8s.io/api/admission/v1"
@@ -29,7 +28,6 @@ type ValidatingHook struct {
 	decoder       *admission.Decoder
 	ovnClient     *ovs.Client
 	kubeclientset kubernetes.Interface
-	kubeOvnClient clientset.Interface
 	opt           *WebhookOptions
 	cache         cache.Cache
 }

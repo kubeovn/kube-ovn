@@ -150,7 +150,7 @@ func (c *Controller) setIptables() error {
 		if c.iptable[protocol] == nil {
 			continue
 		}
-		iptableRules := make([]util.IPTableRule, len(v4Rules))
+		var iptableRules []util.IPTableRule
 		if protocol == kubeovnv1.ProtocolIPv4 {
 			iptableRules = v4Rules
 		} else {
@@ -266,7 +266,7 @@ func (c *Controller) getLocalPodIPsNeedNAT(protocol string) ([]string, error) {
 		return nil, err
 	}
 	for _, pod := range allPods {
-		if pod.Spec.HostNetwork == true ||
+		if pod.Spec.HostNetwork ||
 			pod.Status.PodIP == "" ||
 			pod.Annotations[util.LogicalSwitchAnnotation] == "" {
 			continue

@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net"
 
+	// nolint:staticcheck
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/any"

@@ -43,6 +43,7 @@ func parsePodNetworkObjectName(podnetwork string) (string, string, string, error
 	// It must start and end alphanumerically.
 	allItems := []string{netNsName, networkName, netIfName}
 	for i := range allItems {
+		// nolint:staticcheck
 		matched, _ := regexp.MatchString("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", allItems[i])
 		if !matched && len([]rune(allItems[i])) > 0 {
 			klog.Errorf(fmt.Sprintf("parsePodNetworkObjectName: Failed to parse: "+
@@ -66,7 +67,7 @@ func ParsePodNetworkAnnotation(podNetworks, defaultNamespace string) ([]*types.N
 		return nil, nil
 	}
 
-	if strings.IndexAny(podNetworks, "[{\"") >= 0 {
+	if strings.ContainsAny(podNetworks, "[{\"") {
 		if err := json.Unmarshal([]byte(podNetworks), &networks); err != nil {
 			klog.Errorf("parsePodNetworkAnnotation: failed to parse pod Network Attachment Selection Annotation JSON format: %v", err)
 			return nil, fmt.Errorf("parsePodNetworkAnnotation: failed to parse pod Network Attachment Selection Annotation JSON format: %v", err)
