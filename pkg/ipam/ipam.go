@@ -113,7 +113,6 @@ func (ipam *IPAM) ReleaseAddressByPod(podName string) {
 	for _, subnet := range ipam.Subnets {
 		subnet.ReleaseAddress(podName)
 	}
-	return
 }
 
 func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr string, excludeIps []string) error {

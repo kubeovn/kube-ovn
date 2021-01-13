@@ -175,7 +175,7 @@ func (c *Controller) markAndCleanLSP() error {
 	noPodLSP := map[string]bool{}
 	for _, lsp := range lsps {
 		if !util.IsStringIn(lsp, ipNames) {
-			if lastNoPodLSP[lsp] == false {
+			if !lastNoPodLSP[lsp] {
 				noPodLSP[lsp] = true
 			} else {
 				klog.Infof("gc logical switch port %s", lsp)
@@ -296,7 +296,7 @@ func (c *Controller) gcLoadBalancer() error {
 		return err
 	}
 	for vip := range vips {
-		if !util.IsStringIn(vip, udpVips) {
+		if !util.IsStringIn(vip, udpSessionVips) {
 			err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterUdpSessionLoadBalancer)
 			if err != nil {
 				klog.Errorf("failed to delete vip %s from udp session lb, %v", vip, err)

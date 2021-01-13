@@ -127,7 +127,6 @@ func (f *Framework) WaitDeploymentReady(deployment, namespace string) error {
 				continue
 			case Initing, Pending, PodInitializing, ContainerCreating, Terminating:
 				ready = false
-				break
 			default:
 				fmt.Printf("%v", pod.String())
 				return fmt.Errorf("pod status failed")
@@ -164,7 +163,6 @@ func (f *Framework) WaitStatefulsetReady(statefulset, namespace string) error {
 				continue
 			case Initing, Pending, PodInitializing, ContainerCreating, Terminating:
 				ready = false
-				break
 			default:
 				fmt.Printf("%v", pod.String())
 				return fmt.Errorf("pod status failed")

@@ -401,7 +401,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 				break
 			}
 		}
-		if ready == true {
+		if ready {
 			break
 		}
 	}

@@ -438,6 +438,9 @@ func (c *Controller) handleDeletePod(key string) error {
 		return nil
 	}
 	pod, err := c.podsLister.Pods(namespace).Get(name)
+	if err != nil {
+		return nil
+	}
 	if pod != nil && pod.DeletionTimestamp == nil && isPodAlive(pod) {
 		// Pod with same name exists, just return here
 		return nil
@@ -699,7 +702,7 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 			return nil, err
 		}
 
-		subnetName, _ = ns.Annotations[util.LogicalSwitchAnnotation]
+		subnetName = ns.Annotations[util.LogicalSwitchAnnotation]
 		if subnetName == "" {
 			err = fmt.Errorf("namespace default logical switch is not found")
 			klog.Error(err)

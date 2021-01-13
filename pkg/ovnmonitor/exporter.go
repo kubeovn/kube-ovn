@@ -30,18 +30,6 @@ type Exporter struct {
 	errorsLocker sync.RWMutex
 }
 
-// ClusterPeer contains information about a cluster peer.
-type ClusterPeer struct {
-	ID         string
-	Address    string
-	NextIndex  uint64
-	MatchIndex uint64
-	Connection struct {
-		Inbound  int
-		Outbound int
-	}
-}
-
 // OVNDBClusterStatus contains information about a cluster.
 type OVNDBClusterStatus struct {
 	cid             string
@@ -60,12 +48,6 @@ type OVNDBClusterStatus struct {
 	connOut         float64
 	connInErr       float64
 	connOutErr      float64
-
-	peers       map[string]*ClusterPeer
-	connections struct {
-		inbound  int
-		outbound int
-	}
 }
 
 // NewExporter returns an initialized Exporter.

@@ -157,9 +157,7 @@ func (csh cniServerHandler) createOrUpdateIPCr(podRequest request.CniRequest, su
 			return errMsg
 		}
 	} else {
-		for _, ipStr := range strings.Split(ip, ",") {
-			ipCr.Spec.AttachIPs = append(ipCr.Spec.AttachIPs, ipStr)
-		}
+		ipCr.Spec.AttachIPs = append(ipCr.Spec.AttachIPs, strings.Split(ip, ",")...)
 		ipCr.Labels[subnet] = ""
 		ipCr.Spec.AttachSubnets = append(ipCr.Spec.AttachSubnets, subnet)
 		ipCr.Spec.AttachMacs = append(ipCr.Spec.AttachMacs, macAddr)

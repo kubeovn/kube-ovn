@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"strings"
 	"time"
 
 	"github.com/alauda/kube-ovn/pkg/util"
@@ -37,7 +36,6 @@ func InitNodeGateway(config *Configuration) error {
 			cidr = node.Annotations[util.CidrAnnotation]
 			portName = node.Annotations[util.PortNameAnnotation]
 			gw = node.Annotations[util.GatewayAnnotation]
-			ipAddr = fmt.Sprintf("%s/%s", ip, strings.Split(cidr, "/")[1])
 			break
 		}
 	}

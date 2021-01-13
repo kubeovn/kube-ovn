@@ -105,13 +105,13 @@ func routeDiff(expected, exists []string) (toAdd []string, toDel []string) {
 	}
 
 	for e := range expectedMap {
-		if existsMap[e] == false {
+		if !existsMap[e] {
 			toAdd = append(toAdd, e)
 		}
 	}
 
 	for e := range existsMap {
-		if expectedMap[e] == false {
+		if !expectedMap[e] {
 			toDel = append(toDel, e)
 		}
 	}

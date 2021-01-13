@@ -273,10 +273,10 @@ func (subnet *Subnet) GetStaticAddress(podName string, ip IP, mac string, force 
 	} else {
 		v6 = true
 	}
-	if v4 == true && !subnet.V4CIDR.Contains(net.ParseIP(string(ip))) {
+	if v4 && !subnet.V4CIDR.Contains(net.ParseIP(string(ip))) {
 		return ip, mac, OutOfRangeError
 	}
-	if v6 == true && !subnet.V6CIDR.Contains(net.ParseIP(string(ip))) {
+	if v6 && !subnet.V6CIDR.Contains(net.ParseIP(string(ip))) {
 		return ip, mac, OutOfRangeError
 	}
 
@@ -292,7 +292,7 @@ func (subnet *Subnet) GetStaticAddress(podName string, ip IP, mac string, force 
 		}
 	}
 
-	if v4 == true {
+	if v4 {
 		if existPod, ok := subnet.V4IPToPod[ip]; ok {
 			if existPod != podName {
 				return ip, mac, ConflictError
@@ -321,7 +321,7 @@ func (subnet *Subnet) GetStaticAddress(podName string, ip IP, mac string, force 
 				return ip, mac, nil
 			}
 		}
-	} else if v6 == true {
+	} else if v6 {
 		if existPod, ok := subnet.V6IPToPod[ip]; ok {
 			if existPod != podName {
 				return ip, mac, ConflictError
@@ -408,7 +408,6 @@ func (subnet *Subnet) ReleaseAddress(podName string) {
 			klog.Infof("release v6 %s mac %s for %s, add ip to released list", ip, mac, podName)
 		}
 	}
-	return
 }
 
 func (subnet *Subnet) ContainAddress(address IP) bool {

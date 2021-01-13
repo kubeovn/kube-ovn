@@ -4,13 +4,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"net"
-	"os"
-	"os/exec"
-	"regexp"
-	"strings"
-	"syscall"
-
 	clientset "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/sirupsen/logrus"
@@ -20,6 +13,11 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
+	"net"
+	"os"
+	"os/exec"
+	"regexp"
+	"strings"
 )
 
 // Configuration is the daemon conf
@@ -230,28 +228,6 @@ func (config *Configuration) initKubeClient() error {
 	}
 	config.KubeClient = kubeClient
 	return nil
-}
-
-func getDefaultGatewayIface() (string, error) {
-	routes, err := netlink.RouteList(nil, syscall.AF_INET)
-	if err != nil {
-		return "", err
-	}
-
-	for _, route := range routes {
-		if route.Dst == nil || route.Dst.String() == "0.0.0.0/0" {
-			if route.LinkIndex <= 0 {
-				return "", errors.New("found default route but could not determine interface")
-			}
-			iface, err := net.InterfaceByIndex(route.LinkIndex)
-			if err != nil {
-				return "", fmt.Errorf("failed to get iface %v", err)
-			}
-			return iface.Name, nil
-		}
-	}
-
-	return "", errors.New("unable to find default route")
 }
 
 func getIfaceOwnPodIP(podIP string) (*net.Interface, error) {
