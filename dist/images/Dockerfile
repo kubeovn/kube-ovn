@@ -15,6 +15,7 @@ RUN cd /usr/src/ && \
     git clone -b branch-2.14 --depth=1 https://github.com/openvswitch/ovs.git && \
     cd ovs && \
     curl https://github.com/alauda/ovs/commit/df1c802f568be2af84aa81372fec46f5b09b4366.patch | git apply && \
+    curl https://github.com/alauda/ovs/commit/8dd4973bba021ce92eb9f42446d6c1c0e3474e25.patch | git apply && \
     sed -i 's/2.14.1/2.14.0/g' configure.ac && \
     ./boot.sh && \
     rm -rf .git && \
