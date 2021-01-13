@@ -264,14 +264,30 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 	protocol := util.CheckProtocol(gw)
 	if protocol == kubeovnv1.ProtocolDual {
 		gws := strings.Split(gw, ",")
-		output, _ = exec.Command("ping", "-w", "10", gws[0]).CombinedOutput()
+		output, err = exec.Command("ping", "-w", "10", gws[0]).CombinedOutput()
 		klog.Infof("ping v4 gw result is: \n %s", output)
+		if err != nil {
+			klog.Errorf("ovn0 failed to ping gw %s, %v", gws[0], err)
+			return err
+		}
 
-		output, _ = exec.Command("ping", "-6", "-w", "10", gws[1]).CombinedOutput()
+		output, err = exec.Command("ping6", "-w", "10", gws[1]).CombinedOutput()
+		if err != nil {
+			klog.Errorf("ovn0 failed to ping gw %s, %v", gws[1], err)
+			return err
+		}
 	} else if protocol == kubeovnv1.ProtocolIPv4 {
-		output, _ = exec.Command("ping", "-w", "10", gw).CombinedOutput()
+		output, err = exec.Command("ping", "-w", "10", gw).CombinedOutput()
+		if err != nil {
+			klog.Errorf("ovn0 failed to ping gw %s, %v", gw, err)
+			return err
+		}
 	} else {
-		output, _ = exec.Command("ping", "-6", "-w", "10", gw).CombinedOutput()
+		output, err = exec.Command("ping6",  "-w", "10", gw).CombinedOutput()
+		if err != nil {
+			klog.Errorf("ovn0 failed to ping gw %s, %v", gw, err)
+			return err
+		}
 	}
 
 	klog.Infof("ping gw result is: \n %s", output)
