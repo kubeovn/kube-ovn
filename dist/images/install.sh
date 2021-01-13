@@ -659,8 +659,8 @@ spec:
   replicas: $count
   strategy:
     rollingUpdate:
-      maxSurge: 0%
-      maxUnavailable: 100%
+      maxSurge: 0
+      maxUnavailable: 1
     type: RollingUpdate
   selector:
     matchLabels:
@@ -1163,8 +1163,8 @@ spec:
   replicas: $count
   strategy:
     rollingUpdate:
-      maxSurge: 0%
-      maxUnavailable: 100%
+      maxSurge: 0
+      maxUnavailable: 1
     type: RollingUpdate
   selector:
     matchLabels:
