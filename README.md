@@ -34,7 +34,7 @@ The Kube-OVN community is waiting for you participation!
 - **BGP Support**: Pod/Subnet IP can be exposed to external by BGP router protocol.
 - **Traffic Mirror**: Duplicated container network traffic for monitoring, diagnosing and replay.
 - **Hardware Offload**: Boost network performance and save CPU resource by offloading OVS flow table to hardware.
-- **Vlan Support**: Kube-OVN also support underlay Vlan mode network for better performance and throughput.
+- **Vlan/Underlay Support**: Kube-OVN also support underlay and Vlan mode network for better performance and direct connectivity with physic network.
 - **DPDK Support**: DPDK application now can run in Pod with OVS-DPDK.
 - **ARM Support**: Kube-OVN can run on x86_64 and arm64 platforms.
 - **VPC Support**: Multi-tenant network with overlapped address spaces.
@@ -75,7 +75,7 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
 - [BGP support](docs/bgp.md)
 - [Multi NIC Support](docs/multi-nic.md)
 - [Hardware Offload](docs/hw-offload.md)
-- [Vlan Support](docs/vlan.md)
+- [Vlan/Underlay Support](docs/vlan.md)
 - [DPDK Support](docs/dpdk.md)
 - [Traffic Mirror](docs/mirror.md)
 - [Webhook](docs/webhook.md)
