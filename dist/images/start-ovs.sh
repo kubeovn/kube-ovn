@@ -5,6 +5,11 @@ HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
 OVN_DB_IPS=${OVN_DB_IPS:-}
 
+
+# Check required kernel module
+modinfo openvswitch
+modinfo geneve
+
 # https://bugs.launchpad.net/neutron/+bug/1776778
 if grep -q "3.10.0-862" /proc/version
 then
