@@ -95,17 +95,24 @@ func InitVlan(config *Configuration) error {
 }
 
 //get host nic name
-func (config *Configuration) getInterfaceName() string {
-	var interfaceName string
-
+func (config *Configuration) getInterfaceName() (ifName string) {
+	defer func() {
+		if ifName == "" {
+			return
+		}
+		iface, err := findInterface(ifName)
+		if err != nil {
+			klog.Errorf("failed to find iface %s, %v", ifName, err)
+			ifName = ""
+			return
+		}
+		ifName = iface.Name
+	}()
 	node, err := config.KubeClient.CoreV1().Nodes().Get(context.Background(), config.NodeName, metav1.GetOptions{})
 	if err == nil {
-		labels := node.GetLabels()
-		interfaceName = labels[util.HostInterfaceName]
-	}
-
-	if interfaceName != "" {
-		return interfaceName
+		if interfaceName := node.GetLabels()[util.HostInterfaceName]; interfaceName != "" {
+			return interfaceName
+		}
 	}
 
 	if config.DefaultInterfaceName != "" {
