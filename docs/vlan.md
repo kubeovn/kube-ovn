@@ -20,6 +20,8 @@ We are working at combine two networks in one cluster.
 `wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.6/dist/images/install.sh`
 
 2. Edit the `install.sh`, modify `NETWORK_TYPE` to `vlan`, `VLAN_INTERFACE_NAME` to related host interface.
+> NOTE: if your nodes have different nic name for vlan device you could use regex for VLAN_INTERFACE_NAME or label those nodes with
+   own `ovn.kubernetes.io/host_interface_name`.
 
 3. Install Kube-OVN
 
