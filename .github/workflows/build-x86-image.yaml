@@ -229,7 +229,7 @@ jobs:
           make scan
 
 
-      - name: Push
+      - name: Push Official
         if: ${{ github.ref == 'refs/heads/master' || contains(github.ref, 'release') }}
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
@@ -244,3 +244,17 @@ jobs:
           docker images
           docker push kubeovn/kube-ovn:$TAG-x86
           docker push kubeovn/kube-ovn:$COMMIT-x86
+
+      - name: Push Dev
+        if: ${{ github.head_ref != '' && env.GITHUB_REPOSITORY == 'alauda/kube-ovn' }}
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          cat VERSION
+          TAG=$(cat VERSION)
+          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+          docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn-dev:$COMMIT-x86
+          docker images
+          docker push kubeovn/kube-ovn-dev:$COMMIT-x86
