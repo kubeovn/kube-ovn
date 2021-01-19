@@ -145,39 +145,44 @@ func (c Client) CreatePort(ls, port, ip, cidr, mac, tag string, portSecurity boo
 	return nil
 }
 
-func (c Client) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway string, excludeIps []string) error {
+func (c Client) SetLogicalSwitchConfig(ls string, isUnderlayGW bool, lr, protocol, subnet, gateway string, excludeIps []string) error {
 	var err error
 	cidrBlocks := strings.Split(subnet, ",")
 	mask := strings.Split(cidrBlocks[0], "/")[1]
 
+	var cmd []string
+	var networks string
 	switch protocol {
 	case kubeovnv1.ProtocolIPv4:
-		_, err = c.ovnNbCommand(MayExist, "ls-add", ls, "--",
+		networks = fmt.Sprintf("%s/%s", gateway, mask)
+		cmd = []string{MayExist, "ls-add", ls, "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", subnet), "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")), "--",
-			"set", "logical_router_port", fmt.Sprintf("%s-%s", lr, ls), fmt.Sprintf("networks=%s/%s", gateway, mask))
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " "))}
 	case kubeovnv1.ProtocolIPv6:
 		gateway := strings.ReplaceAll(gateway, ":", "\\:")
-		_, err = c.ovnNbCommand(MayExist, "ls-add", ls, "--",
+		networks = fmt.Sprintf("%s/%s", gateway, mask)
+		cmd = []string{MayExist, "ls-add", ls, "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:ipv6_prefix=%s", strings.Split(subnet, "/")[0]), "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")), "--",
-			"set", "logical_router_port", fmt.Sprintf("%s-%s", lr, ls), fmt.Sprintf("networks=%s/%s", gateway, mask))
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " "))}
 	case kubeovnv1.ProtocolDual:
 		gws := strings.Split(gateway, ",")
 		v6Mask := strings.Split(cidrBlocks[1], "/")[1]
 		gwStr := gws[0] + "/" + mask + "," + gws[1] + "/" + v6Mask
-		networks := strings.ReplaceAll(strings.Join(strings.Split(gwStr, ","), " "), ":", "\\:")
+		networks = strings.ReplaceAll(strings.Join(strings.Split(gwStr, ","), " "), ":", "\\:")
 
-		_, err = c.ovnNbCommand(MayExist, "ls-add", ls, "--",
+		cmd = []string{MayExist, "ls-add", ls, "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", cidrBlocks[0]), "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:ipv6_prefix=%s", strings.Split(cidrBlocks[1], "/")[0]), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")), "--",
-			"set", "logical_router_port", fmt.Sprintf("%s-%s", lr, ls), fmt.Sprintf("networks=%s", networks))
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " "))}
 	}
-
+	if !isUnderlayGW {
+		cmd = append(cmd, []string{"--",
+			"set", "logical_router_port", fmt.Sprintf("%s-%s", lr, ls), fmt.Sprintf("networks=%s", networks)}...)
+	}
+	_, err = c.ovnNbCommand(cmd...)
 	if err != nil {
 		klog.Errorf("set switch config for %s failed %v", ls, err)
 		return err
