@@ -554,7 +554,7 @@ func (c Client) DeleteStaticRouteByNextHop(nextHop string) error {
 func (c Client) FindLoadbalancer(lb string) (string, error) {
 	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid",
 		"find", "load_balancer", fmt.Sprintf("name=%s", lb))
-	count := len(strings.Split(output, "/n"))
+	count := len(strings.Split(output, "\n"))
 	if count > 1 {
 		klog.Errorf("%s has %d lb entries", lb, count)
 		return "", fmt.Errorf("%s has %d lb entries", lb, count)
