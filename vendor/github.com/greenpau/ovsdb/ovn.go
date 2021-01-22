@@ -112,14 +112,6 @@ func NewOvnClient() *OvnClient {
 // Connect initiates connections to OVN databases.
 func (cli *OvnClient) Connect() error {
 	errMsgs := []string{}
-	if cli.Database.Vswitch.Client == nil {
-		ovs, err := NewClient(cli.Database.Vswitch.Socket.Remote, cli.Timeout)
-		cli.Database.Vswitch.Client = &ovs
-		if err != nil {
-			cli.Database.Vswitch.Client.closed = true
-			errMsgs = append(errMsgs, fmt.Sprintf("failed connecting to %s via %s: %s", cli.Database.Vswitch.Name, cli.Database.Vswitch.Socket.Remote, err))
-		}
-	}
 	if cli.Database.Northbound.Client == nil {
 		nb, err := NewClient(cli.Database.Northbound.Socket.Remote, cli.Timeout)
 		cli.Database.Northbound.Client = &nb

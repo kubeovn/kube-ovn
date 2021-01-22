@@ -18,14 +18,6 @@ func (e *Exporter) IncrementErrorCounter() {
 }
 
 func (e *Exporter) getOvnStatus() (bool, error) {
-	var err error
-
-	if err = e.Client.GetSystemInfo(); err != nil {
-		klog.Errorf("%s: %v", e.Client.Database.Vswitch.Name, err)
-		e.IncrementErrorCounter()
-		return false, err
-	}
-
 	components := []string{
 		"ovsdb-server-southbound",
 		"ovsdb-server-northbound",

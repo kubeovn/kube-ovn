@@ -722,18 +722,10 @@ spec:
               value: "$ENABLE_SSL"
             - name: NODE_IPS
               value: $addresses
-            - name: POD_IP
+            - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
-                  fieldPath: status.podIP
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            - name: POD_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
+                  fieldPath: spec.nodeName
           resources:
             requests:
               cpu: 200m
@@ -1227,18 +1219,10 @@ spec:
               value: "$ENABLE_SSL"
             - name: NODE_IPS
               value: $addresses
-            - name: POD_IP
+            - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
-                  fieldPath: status.podIP
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            - name: POD_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
+                  fieldPath: spec.nodeName
           resources:
             requests:
               cpu: 200m
