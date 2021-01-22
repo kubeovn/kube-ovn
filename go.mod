@@ -45,4 +45,7 @@ require (
 	sigs.k8s.io/controller-runtime v0.7.0
 )
 
-replace k8s.io/client-go => k8s.io/client-go v0.20.1-rc.1
+replace (
+	k8s.io/client-go => k8s.io/client-go v0.20.1-rc.1
+	github.com/greenpau/ovsdb => github.com/alauda/ovsdb v0.0.0-20210113100339-040cf3e76c28
+)

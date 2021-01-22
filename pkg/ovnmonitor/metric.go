@@ -11,22 +11,6 @@ var (
 			Help:      "OVN Health Status. The values are: health(1), unhealth(0).",
 		})
 
-	metricOvnInfo = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Namespace: metricNamespace,
-			Name:      "ovn_info",
-			Help:      "This metric provides basic information about OVN. It is always set to 1.",
-		},
-		[]string{
-			"system_id",
-			"rundir",
-			"hostname",
-			"system_type",
-			"system_version",
-			"ovs_version",
-			"db_version",
-		})
-
 	metricRequestErrorNums = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: metricNamespace,
@@ -466,7 +450,6 @@ var (
 func registerOvnMetrics() {
 	// ovn status metrics
 	prometheus.MustRegister(metricOvnHealthyStatus)
-	prometheus.MustRegister(metricOvnInfo)
 	prometheus.MustRegister(metricRequestErrorNums)
 	prometheus.MustRegister(metricLogFileSize)
 	prometheus.MustRegister(metricDBFileSize)

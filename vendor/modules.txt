@@ -73,7 +73,7 @@ github.com/googleapis/gnostic/compiler
 github.com/googleapis/gnostic/extensions
 github.com/googleapis/gnostic/jsonschema
 github.com/googleapis/gnostic/openapiv2
-# github.com/greenpau/ovsdb v0.0.0-20181114004433-3582b85e8968
+# github.com/greenpau/ovsdb v0.0.0-20181114004433-3582b85e8968 => github.com/alauda/ovsdb v0.0.0-20210113100339-040cf3e76c28
 github.com/greenpau/ovsdb
 # github.com/hashicorp/golang-lru v0.5.4
 github.com/hashicorp/golang-lru
