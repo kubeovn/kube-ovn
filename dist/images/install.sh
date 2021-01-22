@@ -8,6 +8,9 @@ ENABLE_MIRROR=${ENABLE_MIRROR:-false}
 HW_OFFLOAD=${HW_OFFLOAD:-false}
 IFACE=""                               # The nic to support container network can be a nic name or a group of regex separated by comma, if empty will use the nic that the default route use
 
+CNI_CONF_DIR="/etc/cni/net.d"
+CNI_BIN_DIR="/opt/cni/bin"
+
 REGISTRY="kubeovn"
 VERSION="v1.7.0"
 IMAGE_PULL_POLICY="IfNotPresent"
@@ -1700,10 +1703,10 @@ spec:
             path: /run/ovn
         - name: cni-conf
           hostPath:
-            path: /etc/cni/net.d
+            path: $CNI_CONF_DIR
         - name: cni-bin
           hostPath:
-            path: /opt/cni/bin
+            path: $CNI_BIN_DIR
         - name: host-ns
           hostPath:
             path: /var/run/netns
