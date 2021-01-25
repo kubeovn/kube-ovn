@@ -55,11 +55,6 @@ func NewExporter(cfg *Configuration) *Exporter {
 	e := Exporter{}
 	e.Client = ovsdb.NewOvnClient()
 	e.initParas(cfg)
-
-	if err := e.Client.GetSystemID(); err != nil {
-		klog.Errorf("%s failed to get system id: %s", appName, err)
-	}
-
 	return &e
 }
 
@@ -68,6 +63,7 @@ func (e *Exporter) initParas(cfg *Configuration) {
 	e.pollInterval = cfg.PollInterval
 
 	e.Client.Timeout = cfg.PollTimeout
+	e.Client.System.Hostname = os.Getenv("KUBE_NODE_NAME")
 	e.Client.System.RunDir = cfg.SystemRunDir
 	e.Client.Database.Vswitch.Name = cfg.DatabaseVswitchName
 	e.Client.Database.Vswitch.Socket.Remote = cfg.DatabaseVswitchSocketRemote
@@ -107,12 +103,7 @@ func (e *Exporter) StartConnection() error {
 	if err := e.Client.Connect(); err != nil {
 		return err
 	}
-
-	if err := e.Client.GetSystemInfo(); err != nil {
-		return err
-	}
 	klog.Infof("%s: exporter connect successfully", e.Client.System.Hostname)
-
 	return nil
 }
 
@@ -128,11 +119,7 @@ func (e *Exporter) TryClientConnection() {
 			tryConnectCnt++
 			klog.Errorf("%s: ovn-monitor failed to reconnect db socket %v times", e.Client.System.Hostname, tryConnectCnt)
 		} else {
-			if err := e.Client.GetSystemID(); err != nil {
-				klog.Errorf("%s failed to get system id: %s", appName, err)
-			} else {
-				klog.Infof("%s: ovn-monitor reconnect db successfully", e.Client.System.ID)
-			}
+			klog.Infof("%s: ovn-monitor reconnect db successfully", e.Client.System.Hostname)
 			break
 		}
 
@@ -156,7 +143,6 @@ func (e *Exporter) StartOvnMetrics() {
 func (e *Exporter) ovnMetricsUpdate() {
 	for {
 		e.exportOvnStatusGauge()
-		e.exportOvnInfoGauge()
 		e.exportOvnLogFileSizeGauge()
 		e.exportOvnDBFileSizeGauge()
 		e.exportOvnRequestErrorGauge()
@@ -185,16 +171,6 @@ func (e *Exporter) exportOvnStatusGauge() {
 	} else {
 		metricOvnHealthyStatus.Set(0)
 	}
-}
-
-func (e *Exporter) exportOvnInfoGauge() {
-	if err := e.Client.GetSystemInfo(); err != nil {
-		klog.Errorf("Failed to get System Info")
-		return
-	}
-	metricOvnInfo.WithLabelValues(e.Client.System.ID, e.Client.System.RunDir, e.Client.System.Hostname,
-		e.Client.System.Type, e.Client.System.Version, e.Client.Database.Vswitch.Version,
-		e.Client.Database.Vswitch.Schema.Version).Set(1)
 }
 
 func (e *Exporter) exportOvnLogFileSizeGauge() {
