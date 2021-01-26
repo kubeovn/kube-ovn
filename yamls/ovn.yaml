@@ -57,6 +57,8 @@ rules:
     resources:
       - subnets
       - subnets/status
+      - vpcs
+      - vpcs/status
       - ips
       - vlans
       - networks
