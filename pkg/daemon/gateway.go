@@ -44,8 +44,8 @@ var (
 	}
 	v6Rules = []util.IPTableRule{
 		// Prevent performing Masquerade on external traffic which arrives from a Node that owns the Pod/Subnet IP
-		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src  -m set --match-set ovn60local-pod-ip-nat dst -j RETURN`, " ")},
-		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src  -m set --match-set ovn60subnets-nat dst -j RETURN`, " ")},
+		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src -m set --match-set ovn60local-pod-ip-nat dst -j RETURN`, " ")},
+		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src -m set --match-set ovn60subnets-nat dst -j RETURN`, " ")},
 		// NAT if pod/subnet to external address
 		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn60local-pod-ip-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE`, " ")},
 		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn60subnets-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE`, " ")},
