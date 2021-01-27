@@ -80,7 +80,7 @@ func ParseFlags() (*Configuration, error) {
 		argWorkerNum = pflag.Int("worker-num", 3, "The parallelism of each worker, default: 3")
 		argPprofPort = pflag.Int("pprof-port", 10660, "The port to get profiling data, default 10660")
 
-		argsNetworkType          = pflag.String("network-type", "geneve", "The ovn network type, default: geneve")
+		argsNetworkType          = pflag.String("network-type", util.NetworkTypeGeneve, "The ovn network type, default: geneve")
 		argsDefaultProviderName  = pflag.String("default-provider-name", "provider", "The vlan or xvlan type default provider interface name, default: provider")
 		argsDefaultInterfaceName = pflag.String("default-interface-name", "", "The default host interface name in the vlan/xvlan type")
 		argsDefaultVlanName      = pflag.String("default-vlan-name", "ovn-vlan", "The default vlan name, default: ovn-vlan")
@@ -135,7 +135,7 @@ func ParseFlags() (*Configuration, error) {
 		PodNamespace:                  os.Getenv("KUBE_NAMESPACE"),
 	}
 
-	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {
+	if util.IsNetworkVlan(config.NetworkType) && config.DefaultHostInterface == "" {
 		return nil, fmt.Errorf("no host nic for vlan")
 	}
 

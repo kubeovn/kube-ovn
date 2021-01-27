@@ -210,13 +210,8 @@ func (c *Controller) handleAddNode(key string) error {
 		}
 	}
 
-	tag, err := c.getSubnetVlanTag(subnet)
-	if err != nil {
-		return err
-	}
-
 	ipStr := util.GetStringIP(v4IP, v6IP)
-	if err := c.ovnClient.CreatePort(c.config.NodeSwitch, portName, ipStr, subnet.Spec.CIDRBlock, mac, tag, false); err != nil {
+	if err := c.ovnClient.CreatePort(c.config.NodeSwitch, portName, ipStr, subnet.Spec.CIDRBlock, mac, "", false); err != nil {
 		return err
 	}
 

@@ -47,6 +47,8 @@ const (
 	VlanRangeAnnotation   = "ovn.kubernetes.io/vlan_range"
 	NetworkType           = "ovn.kubernetes.io/network_types"
 	NetworkTypeVlan       = "vlan"
+	NetworkTypeGeneve     = "geneve"
+	NetworkTypeHybrid     = "hybrid"
 	ProviderInterfaceName = "ovn.kubernetes.io/provider_interface_name"
 	HostInterfaceName     = "ovn.kubernetes.io/host_interface_name"
 

@@ -2,11 +2,11 @@ package daemon
 
 import (
 	"fmt"
+	"github.com/alauda/kube-ovn/pkg/util"
 	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof" // #nosec
 
-	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/alauda/kube-ovn/versions"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,7 +36,7 @@ func CmdMain() {
 		klog.Fatalf("init node gateway failed %v", err)
 	}
 
-	if config.NetworkType == util.NetworkTypeVlan {
+	if util.IsNetworkVlan(config.NetworkType) {
 		if err = daemon.InitVlan(config); err != nil {
 			klog.Fatalf("init vlan config failed %v", err)
 		}

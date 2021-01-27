@@ -167,7 +167,7 @@ func ValidatePodCidr(cidr, ip string) error {
 	return nil
 }
 
-func ValidateVlan(vlan int, vlanRange string) error {
+func ValidateVlanTag(vlan int, vlanRange string) error {
 	vlans := strings.Split(vlanRange, ",")
 	if len(vlans) != 2 {
 		return fmt.Errorf("the vlan range %s is invalid", vlanRange)

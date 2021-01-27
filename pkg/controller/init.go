@@ -304,7 +304,7 @@ func (c *Controller) InitIPAM() error {
 
 //InitDefaultVlan init the default vlan when network type is vlan or vxlan
 func (c *Controller) initDefaultVlan() error {
-	if c.config.NetworkType != util.NetworkTypeVlan {
+	if !util.IsNetworkVlan(c.config.NetworkType) {
 		return nil
 	}
 

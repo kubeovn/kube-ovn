@@ -84,24 +84,9 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		oldSubnet.Spec.UnderlayGateway != newSubnet.Spec.UnderlayGateway ||
 		oldSubnet.Spec.Gateway != newSubnet.Spec.Gateway ||
 		!reflect.DeepEqual(oldSubnet.Spec.ExcludeIps, newSubnet.Spec.ExcludeIps) ||
-		!reflect.DeepEqual(oldSubnet.Spec.Vlan, newSubnet.Spec.Vlan) {
+		oldSubnet.Spec.Vlan != newSubnet.Spec.Vlan {
 		klog.V(3).Infof("enqueue update subnet %s", key)
 		c.addOrUpdateSubnetQueue.Add(key)
-	}
-}
-
-func (c *Controller) runAddVpcWorker() {
-	for c.processNextAddVpcWorkItem() {
-	}
-}
-
-func (c *Controller) runUpdateVpcStatusWorker() {
-	for c.processNextUpdateStatusVpcWorkItem() {
-	}
-}
-
-func (c *Controller) runDelVpcWorker() {
-	for c.processNextDeleteVpcWorkItem() {
 	}
 }
 
@@ -273,7 +258,7 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		if subnet.Spec.Default && subnet.Name != c.config.DefaultLogicalSwitch {
 			subnet.Spec.Default = false
 		}
-		if c.config.NetworkType == util.NetworkTypeVlan && subnet.Spec.Vlan == "" {
+		if util.IsNetworkVlan(c.config.NetworkType) && subnet.Spec.Vlan == "" {
 			subnet.Spec.Vlan = c.config.DefaultVlanName
 			if c.config.DefaultVlanID == 0 {
 				subnet.Spec.UnderlayGateway = true
@@ -281,6 +266,7 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		}
 		if subnet.Spec.Vlan != "" {
 			if _, err := c.vlansLister.Get(subnet.Spec.Vlan); err != nil {
+				klog.Warningf("subnet %s reference a none exist vlan %s", subnet.Name, subnet.Spec.Vlan)
 				subnet.Spec.Vlan = ""
 			}
 		}
@@ -681,7 +667,7 @@ func (c *Controller) handleDeleteLogicalSwitch(key string) error {
 	}
 
 	// re-annotate vlan subnet
-	if c.config.NetworkType == util.NetworkTypeVlan {
+	if util.IsNetworkVlan(c.config.NetworkType) {
 		if err = c.delLocalnet(key); err != nil {
 			return err
 		}
@@ -966,7 +952,7 @@ func (c *Controller) deleteStaticRoute(ip, router string, subnet *kubeovnv1.Subn
 }
 
 func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
-	if c.config.NetworkType != util.NetworkTypeVlan {
+	if !util.IsNetworkVlan(c.config.NetworkType) {
 		return nil
 	}
 

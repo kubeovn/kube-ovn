@@ -371,7 +371,11 @@ func (c *Controller) handleAddPod(key string) error {
 		}
 		ipStr := util.GetStringIP(v4IP, v6IP)
 
-		pod.Annotations[util.NetworkType] = c.config.NetworkType
+		if subnet.Spec.Vlan != "" {
+			pod.Annotations[util.NetworkType] = util.NetworkTypeVlan
+		} else {
+			pod.Annotations[util.NetworkType] = util.NetworkTypeGeneve
+		}
 		pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, subnet.Spec.Provider)] = ipStr
 		pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, subnet.Spec.Provider)] = mac
 		pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, subnet.Spec.Provider)] = subnet.Spec.CIDRBlock

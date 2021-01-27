@@ -223,22 +223,27 @@ func (c *Controller) handleAddVlan(key string) error {
 			return err
 		}
 
-		s.Spec.Vlan = vlan.Name
-		if _, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), s, metav1.UpdateOptions{}); err != nil {
-			vlan.Status.SetVlanError("UpdateSubnetVlanFailed", err.Error())
-			bytes, err := vlan.Status.Bytes()
+		// vlan mode we set vlan for all subnets
+		if c.config.NetworkType == util.NetworkTypeVlan && s.Spec.Vlan == "" {
+			s.Spec.Vlan = vlan.Name
+			if _, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), s, metav1.UpdateOptions{}); err != nil {
+				vlan.Status.SetVlanError("UpdateSubnetVlanFailed", err.Error())
+				bytes, err := vlan.Status.Bytes()
 
-			if err != nil {
-				klog.Error(err)
-			} else {
-				if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), vlan.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
-					klog.Errorf("patch vlan status failed, %v", err)
+				if err != nil {
+					klog.Error(err)
+				} else {
+					if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), vlan.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+						klog.Errorf("patch vlan status failed, %v", err)
+					}
 				}
+				return err
 			}
-			return err
 		}
 
-		subnets = append(subnets, subnet)
+		if s.Spec.Vlan == vlan.Name {
+			subnets = append(subnets, subnet)
+		}
 	}
 
 	vlan.Spec.Subnet = strings.Join(subnets, ",")
@@ -260,7 +265,7 @@ func (c *Controller) handleUpdateVlan(key string) error {
 		return err
 	}
 
-	if err = util.ValidateVlan(vlan.Spec.VlanId, c.config.DefaultVlanRange); err != nil {
+	if err = util.ValidateVlanTag(vlan.Spec.VlanId, c.config.DefaultVlanRange); err != nil {
 		return err
 	}
 
