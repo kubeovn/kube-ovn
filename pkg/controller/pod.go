@@ -12,10 +12,6 @@ import (
 
 	"github.com/intel/multus-cni/logging"
 	multustypes "github.com/intel/multus-cni/types"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ipam"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -25,6 +21,11 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ipam"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func isPodAlive(p *v1.Pod) bool {
@@ -395,8 +396,11 @@ func (c *Controller) handleAddPod(key string) error {
 			return err
 		}
 		ipStr := util.GetStringIP(v4IP, v6IP)
-
-		pod.Annotations[util.NetworkType] = c.config.NetworkType
+		if subnet.Spec.Vlan != "" {
+			pod.Annotations[fmt.Sprintf(util.NetworkTypeTemplate, podNet.ProviderName)] = util.NetworkTypeVlan
+		} else {
+			pod.Annotations[fmt.Sprintf(util.NetworkTypeTemplate, podNet.ProviderName)] = util.NetworkTypeGeneve
+		}
 		pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)] = ipStr
 		pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)] = mac
 		pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, podNet.ProviderName)] = subnet.Spec.CIDRBlock
@@ -420,7 +424,7 @@ func (c *Controller) handleAddPod(key string) error {
 				pod.Annotations[util.HostInterfaceName] = c.config.DefaultHostInterface
 				pod.Annotations[fmt.Sprintf(util.VlanIdAnnotationTemplate, podNet.ProviderName)] = strconv.Itoa(vlan.Spec.VlanId)
 				pod.Annotations[util.ProviderInterfaceName] = c.config.DefaultProviderName
-				pod.Annotations[util.VlanRangeAnnotation] = c.config.DefaultVlanRange
+				pod.Annotations[fmt.Sprintf(util.VlanRangeAnnotationTemplate, podNet.ProviderName)] = c.config.DefaultVlanRange
 			}
 
 			tag, err := c.getSubnetVlanTag(subnet)

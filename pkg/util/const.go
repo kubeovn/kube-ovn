@@ -40,6 +40,8 @@ const (
 	IpPoolAnnotationTemplate        = "%s.kubernetes.io/ip_pool"
 	LogicalSwitchAnnotationTemplate = "%s.kubernetes.io/logical_switch"
 	VlanIdAnnotationTemplate        = "%s.kubernetes.io/vlan_id"
+	VlanRangeAnnotationTemplate   = "%s.kubernetes.io/vlan_range"
+	NetworkTypeTemplate          = "%s.kubernetes.io/network_types"
 
 	ExcludeIpsAnnotation = "ovn.kubernetes.io/exclude_ips"
 
@@ -57,10 +59,9 @@ const (
 	ProtocolTCP = "tcp"
 	ProtocolUDP = "udp"
 
-	VlanIdAnnotation      = "ovn.kubernetes.io/vlan_id"
-	VlanRangeAnnotation   = "ovn.kubernetes.io/vlan_range"
-	NetworkType           = "ovn.kubernetes.io/network_types"
 	NetworkTypeVlan       = "vlan"
+	NetworkTypeGeneve     = "geneve"
+	NetworkTypeHybrid     = "hybrid"
 	ProviderInterfaceName = "ovn.kubernetes.io/provider_interface_name"
 	HostInterfaceName     = "ovn.kubernetes.io/host_interface_name"
 
