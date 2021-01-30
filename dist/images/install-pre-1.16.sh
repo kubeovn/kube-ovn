@@ -1998,7 +1998,7 @@ diagnose(){
   kubectl ko nbctl list acl
   kubectl ko sbctl show
 
-  checkDaemonSet kube-proxy
+  checkKubeProxy
   checkDeployment ovn-central
   checkDeployment kube-ovn-controller
   checkDaemonSet kube-ovn-cni
@@ -2079,6 +2079,14 @@ checkDaemonSet(){
     echo "ds $name ready"
   else
     echo "Error ds $name not ready"
+    exit 1
+  fi
+}
+
+checkKubeProxy(){
+  healthResult=`kubectl get node -o wide | grep -v "INTERNAL-IP" | awk '{printf "curl -sL -w %{http_code} http://%s:10256/healthz -o /dev/null | grep -v 200 \n", $6}' | bash` || true
+  if [ -n "$healthResult" ]; then
+    echo "kube-proxy's health check failed"
     exit 1
   fi
 }
