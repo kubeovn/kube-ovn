@@ -91,8 +91,12 @@ func (c *Controller) enqueueDelVpc(obj interface{}) {
 }
 
 func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
-	err := c.deleteVpcRouter(vpc.Status.Router)
-	if err != nil {
+	if err := c.deleteVpcRouter(vpc.Status.Router); err != nil {
+		return err
+	}
+
+	vpcLb := c.GenVpcLoadBalancer(vpc.Name)
+	if err := c.ovnClient.DeleteLoadBalancer(vpcLb.TcpLoadBalancer, vpcLb.UdpLoadBalancer, vpcLb.TcpSessLoadBalancer, vpcLb.UdpSessLoadBalancer); err != nil {
 		return err
 	}
 	return nil
@@ -136,6 +140,97 @@ func (c *Controller) handleUpdateVpcStatus(key string) error {
 	return nil
 }
 
+type VpcLoadBalancer struct {
+	TcpLoadBalancer     string
+	TcpSessLoadBalancer string
+	UdpLoadBalancer     string
+	UdpSessLoadBalancer string
+}
+
+func (c *Controller) GenVpcLoadBalancer(vpcKey string) *VpcLoadBalancer {
+	if vpcKey == util.DefaultVpc {
+		return &VpcLoadBalancer{
+			TcpLoadBalancer:     c.config.ClusterTcpLoadBalancer,
+			TcpSessLoadBalancer: c.config.ClusterTcpSessionLoadBalancer,
+			UdpLoadBalancer:     c.config.ClusterUdpLoadBalancer,
+			UdpSessLoadBalancer: c.config.ClusterUdpSessionLoadBalancer,
+		}
+	} else {
+		return &VpcLoadBalancer{
+			TcpLoadBalancer:     fmt.Sprintf("vpc-%s-tcp-load", vpcKey),
+			TcpSessLoadBalancer: fmt.Sprintf("vpc-%s-tcp-sess-load", vpcKey),
+			UdpLoadBalancer:     fmt.Sprintf("vpc-%s-udp-load", vpcKey),
+			UdpSessLoadBalancer: fmt.Sprintf("vpc-%s-udp-sess-load", vpcKey),
+		}
+	}
+}
+
+func (c *Controller) addLoadBalancer(vpc string) (*VpcLoadBalancer, error) {
+	vpcLbConfig := c.GenVpcLoadBalancer(vpc)
+
+	tcpLb, err := c.ovnClient.FindLoadbalancer(vpcLbConfig.TcpLoadBalancer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find tcp lb %v", err)
+	}
+	if tcpLb == "" {
+		klog.Infof("init cluster tcp load balancer %s", vpcLbConfig.TcpLoadBalancer)
+		err := c.ovnClient.CreateLoadBalancer(vpcLbConfig.TcpLoadBalancer, util.ProtocolTCP, "")
+		if err != nil {
+			klog.Errorf("failed to crate cluster tcp load balancer %v", err)
+			return nil, err
+		}
+	} else {
+		klog.Infof("tcp load balancer %s exists", tcpLb)
+	}
+
+	tcpSessionLb, err := c.ovnClient.FindLoadbalancer(vpcLbConfig.TcpSessLoadBalancer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find tcp session lb %v", err)
+	}
+	if tcpSessionLb == "" {
+		klog.Infof("init cluster tcp session load balancer %s", vpcLbConfig.TcpSessLoadBalancer)
+		err := c.ovnClient.CreateLoadBalancer(vpcLbConfig.TcpSessLoadBalancer, util.ProtocolTCP, "ip_src")
+		if err != nil {
+			klog.Errorf("failed to crate cluster tcp session load balancer %v", err)
+			return nil, err
+		}
+	} else {
+		klog.Infof("tcp session load balancer %s exists", tcpSessionLb)
+	}
+
+	udpLb, err := c.ovnClient.FindLoadbalancer(vpcLbConfig.UdpLoadBalancer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find udp lb %v", err)
+	}
+	if udpLb == "" {
+		klog.Infof("init cluster udp load balancer %s", vpcLbConfig.UdpLoadBalancer)
+		err := c.ovnClient.CreateLoadBalancer(vpcLbConfig.UdpLoadBalancer, util.ProtocolUDP, "")
+		if err != nil {
+			klog.Errorf("failed to crate cluster udp load balancer %v", err)
+			return nil, err
+		}
+	} else {
+		klog.Infof("udp load balancer %s exists", udpLb)
+	}
+
+	udpSessionLb, err := c.ovnClient.FindLoadbalancer(vpcLbConfig.UdpSessLoadBalancer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find udp session lb %v", err)
+	}
+	if udpSessionLb == "" {
+		klog.Infof("init cluster udp session load balancer %s", vpcLbConfig.UdpSessLoadBalancer)
+		err := c.ovnClient.CreateLoadBalancer(vpcLbConfig.UdpSessLoadBalancer, util.ProtocolUDP, "ip_src")
+		if err != nil {
+			klog.Errorf("failed to crate cluster udp session load balancer %v", err)
+			return nil, err
+		}
+	} else {
+		klog.Infof("udp session load balancer %s exists", udpSessionLb)
+	}
+
+	return vpcLbConfig, nil
+}
+
 func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	vpc, err := c.vpcsLister.Get(key)
 	if err != nil {
@@ -150,6 +245,11 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	}
 
 	if err := c.createVpcRouter(key); err != nil {
+		return err
+	}
+
+	vpcLb, err := c.addLoadBalancer(key)
+	if err != nil {
 		return err
 	}
 
@@ -183,6 +283,10 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 
 	vpc.Status.Router = key
 	vpc.Status.Standby = true
+	vpc.Status.TcpLoadBalancer = vpcLb.TcpLoadBalancer
+	vpc.Status.TcpSessionLoadBalancer = vpcLb.TcpSessLoadBalancer
+	vpc.Status.UdpLoadBalancer = vpcLb.UdpLoadBalancer
+	vpc.Status.UdpSessionLoadBalancer = vpcLb.UdpSessLoadBalancer
 	bytes, err := vpc.Status.Bytes()
 	if err != nil {
 		return err

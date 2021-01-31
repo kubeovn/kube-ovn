@@ -212,12 +212,21 @@ func (c *Controller) handleUpdateService(key string) error {
 
 	tcpVips := []string{}
 	udpVips := []string{}
-	tcpLb, udpLb := c.config.ClusterTcpLoadBalancer, c.config.ClusterUdpLoadBalancer
-	oTcpLb, oUdpLb := c.config.ClusterTcpSessionLoadBalancer, c.config.ClusterUdpSessionLoadBalancer
-	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
-		tcpLb, udpLb = c.config.ClusterTcpSessionLoadBalancer, c.config.ClusterUdpSessionLoadBalancer
-		oTcpLb, oUdpLb = c.config.ClusterTcpLoadBalancer, c.config.ClusterUdpLoadBalancer
+	vpcName := svc.Annotations[util.VpcNameLabel]
+	if vpcName == "" {
+		vpcName = util.DefaultVpc
+	}
+	vpc, err := c.vpcsLister.Get(vpcName)
+	if err != nil {
+		klog.Errorf("failed to get vpc %s of lb, %v", vpcName, err)
+		return err
+	}
 
+	tcpLb, udpLb := vpc.Status.TcpLoadBalancer, vpc.Status.UdpLoadBalancer
+	oTcpLb, oUdpLb := vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer
+	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
+		tcpLb, udpLb = vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer
+		oTcpLb, oUdpLb = vpc.Status.TcpLoadBalancer, vpc.Status.UdpLoadBalancer
 	}
 
 	for _, port := range svc.Spec.Ports {
@@ -253,7 +262,7 @@ func (c *Controller) handleUpdateService(key string) error {
 			return err
 		}
 		if _, ok := vips[vip]; !ok {
-			klog.Infof("add vip %s to tcp lb", vip)
+			klog.Infof("add vip %s to tcp lb %s", vip, oTcpLb)
 			c.updateEndpointQueue.Add(key)
 			break
 		}
@@ -287,7 +296,7 @@ func (c *Controller) handleUpdateService(key string) error {
 			return err
 		}
 		if _, ok := vips[vip]; !ok {
-			klog.Infof("add vip %s to udp lb", vip)
+			klog.Infof("add vip %s to udp lb %s", vip, oUdpLb)
 			c.updateEndpointQueue.Add(key)
 			break
 		}

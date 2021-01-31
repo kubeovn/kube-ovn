@@ -33,6 +33,7 @@ const (
 	PortNameAnnotation      = "ovn.kubernetes.io/port_name"
 	LogicalSwitchAnnotation = "ovn.kubernetes.io/logical_switch"
 
+	VpcNameLabel    = "ovn.kubernetes.io/vpc"
 	SubnetNameLabel = "ovn.kubernetes.io/subnet"
 	ICGatewayLabel  = "ovn.kubernetes.io/ic-gw"
 	ExGatewayLabel  = "ovn.kubernetes.io/external-gw"
