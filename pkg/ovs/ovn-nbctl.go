@@ -328,9 +328,17 @@ func (c Client) ListLogicalRouter() ([]string, error) {
 
 // DeleteLogicalSwitch delete logical switch and related router port
 func (c Client) DeleteLogicalSwitch(ls string) error {
-	if _, err := c.ovnNbCommand(IfExists, "lrp-del", fmt.Sprintf("%s-%s", c.ClusterRouter, ls)); err != nil {
-		klog.Errorf("failed to del lrp %s-%s, %v", c.ClusterRouter, ls, err)
+	routers, err := c.ListLogicalRouter()
+	if err != nil {
 		return err
+	}
+
+	// clean up lrp
+	for _, lr := range routers {
+		if _, err := c.ovnNbCommand(IfExists, "lrp-del", fmt.Sprintf("%s-%s", lr, ls)); err != nil {
+			klog.Errorf("failed to del lrp %s-%s, %v", lr, ls, err)
+			return err
+		}
 	}
 
 	if _, err := c.ovnNbCommand(IfExists, "ls-del", ls); err != nil {
@@ -365,10 +373,16 @@ func (c Client) RemoveRouterPort(ls, lr string) error {
 }
 
 func (c Client) createRouterPort(ls, lr, ip, mac string) error {
+	// make sure there is no dirty data
+	err := c.RemoveRouterPort(ls, lr)
+	if err != nil {
+		return err
+	}
+
 	klog.Infof("add %s to %s with ip: %s, mac :%s", ls, lr, ip, mac)
 	lsTolr := fmt.Sprintf("%s-%s", ls, lr)
 	lrTols := fmt.Sprintf("%s-%s", lr, ls)
-	_, err := c.ovnNbCommand(MayExist, "lsp-add", ls, lsTolr, "--",
+	_, err = c.ovnNbCommand(MayExist, "lsp-add", ls, lsTolr, "--",
 		"set", "logical_switch_port", lsTolr, "type=router", "--",
 		"set", "logical_switch_port", lsTolr, fmt.Sprintf("addresses=\"%s\"", mac), "--",
 		"set", "logical_switch_port", lsTolr, fmt.Sprintf("options:router-port=%s", lrTols))
