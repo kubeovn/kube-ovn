@@ -50,7 +50,7 @@ func loopOvnNbctlDaemon(config *controller.Configuration) {
 			}
 		}
 
-		// ovn-nbctl daemon may hang and cannot precess further request.
+		// ovn-nbctl daemon may hang and cannot process further request.
 		// In case of that, we need to start a new daemon.
 		if err := ovs.CheckAlive(); err != nil {
 			klog.Warningf("ovn-nbctl daemon doesn't return, start a new daemon")
