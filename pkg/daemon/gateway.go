@@ -13,7 +13,6 @@ import (
 	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/vishvananda/netlink"
 	v1 "k8s.io/api/core/v1"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
@@ -215,7 +214,7 @@ func (c *Controller) setExGateway() error {
 	enable := node.Labels[util.ExGatewayLabel]
 	if enable == "true" {
 		cm, err := c.config.KubeClient.CoreV1().ConfigMaps("kube-system").Get(context.Background(), util.ExternalGatewayConfig, metav1.GetOptions{})
-		if err != nil && !k8serrors.IsNotFound(err) {
+		if err != nil {
 			klog.Errorf("failed to get ovn-external-gw-config, %v", err)
 			return err
 		}
