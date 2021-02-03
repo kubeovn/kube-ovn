@@ -2084,7 +2084,7 @@ checkDaemonSet(){
 }
 
 checkKubeProxy(){
-  healthResult=`kubectl get node -o wide | grep -v "INTERNAL-IP" | awk '{printf "curl -sL -w %{http_code} http://%s:10256/healthz -o /dev/null | grep -v 200 \n", $6}' | bash` || true
+  healthResult=`kubectl get node -o wide | grep -v "INTERNAL-IP" | awk '{printf "curl -g -6 -sL -w %{http_code} http://%s:10256/healthz -o /dev/null | grep -v 200 \n", $6}' | bash` || true
   if [ -n "$healthResult" ]; then
     echo "kube-proxy's health check failed"
     exit 1
