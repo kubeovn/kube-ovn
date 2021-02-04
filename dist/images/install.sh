@@ -1882,6 +1882,9 @@ showHelp(){
   echo "  nbctl [ovn-nbctl options ...]    invoke ovn-nbctl"
   echo "  sbctl [ovn-sbctl options ...]    invoke ovn-sbctl"
   echo "  vsctl {nodeName} [ovs-vsctl options ...]   invoke ovs-vsctl on selected node"
+  echo "  ofctl {nodeName} [ovs-ofctl options ...]   invoke ovs-ofctl on selected node"
+  echo "  dpctl {nodeName} [ovs-dpctl options ...]   invoke ovs-dpctl on selected node"
+  echo "  appctl {nodeName} [ovs-appctl options ...]   invoke ovs-appctl on selected node"
   echo "  tcpdump {namespace/podname} [tcpdump options ...]     capture pod traffic"
   echo "  trace {namespace/podname} {target ip address} {icmp|tcp|udp} [target tcp or udp port]    trace ovn microflow of specific packet"
   echo "  diagnose {all|node} [nodename]    diagnose connectivity of all nodes or a specific node"
@@ -2011,7 +2014,8 @@ trace(){
   esac
 }
 
-vsctl(){
+xxctl(){
+  subcommand="$1"; shift
   nodeName="$1"; shift
   kubectl get no "$nodeName" > /dev/null
   ovsPod=$(kubectl get pod -n $KUBE_OVN_NS -o wide | grep " $nodeName " | grep ovs-ovn | awk '{print $1}')
@@ -2019,7 +2023,7 @@ vsctl(){
       echo "ovs pod  doesn't exist on node $nodeName"
       exit 1
   fi
-  kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-vsctl "$@"
+  kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-$subcommand "$@"
 }
 
 diagnose(){
@@ -2159,8 +2163,8 @@ case $subcommand in
   sbctl)
     kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-sbctl "$@"
     ;;
-  vsctl)
-    vsctl "$@"
+  vsctl|ofctl|dpctl|appctl)
+    xxctl "$subcommand" "$@"
     ;;
   tcpdump)
     tcpdump "$@"
