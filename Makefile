@@ -127,12 +127,12 @@ uninstall:
 	bash dist/images/cleanup.sh
 
 e2e:
-	docker pull nginx:alpine
-	kind load docker-image --name kube-ovn nginx:alpine
-	ginkgo -p --slowSpecThreshold=60 test/e2e
+	docker pull kubeovn/pause:3.2
+	kind load docker-image --name kube-ovn kubeovn/pause:3.2
+	ginkgo -progress -reportPassed --slowSpecThreshold=60 test/e2e
 
 ut:
-	ginkgo -p --slowSpecThreshold=60 test/unittest
+	ginkgo -progress -reportPassed --slowSpecThreshold=60 test/unittest
 
 scan:
 	trivy image --light --exit-code=1 --severity=HIGH --ignore-unfixed kubeovn/kube-ovn:${RELEASE_TAG}
