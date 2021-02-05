@@ -16,6 +16,9 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 )
 
+const (
+	TestImage =  "kubeovn/pause:3.2"
+)
 var _ = Describe("[IP Allocation]", func() {
 	namespace := "static-ip"
 	f := framework.NewFramework("ip allocation", fmt.Sprintf("%s/.kube/config", os.Getenv("HOME")))
@@ -37,7 +40,7 @@ var _ = Describe("[IP Allocation]", func() {
 					Containers: []corev1.Container{
 						{
 							Name:            name,
-							Image:           "nginx:alpine",
+							Image:           TestImage,
 							ImagePullPolicy: corev1.PullIfNotPresent,
 						},
 					},
@@ -87,7 +90,7 @@ var _ = Describe("[IP Allocation]", func() {
 							Containers: []corev1.Container{
 								{
 									Name:            name,
-									Image:           "nginx:alpine",
+									Image:           TestImage,
 									ImagePullPolicy: corev1.PullIfNotPresent,
 								},
 							},
@@ -159,7 +162,7 @@ var _ = Describe("[IP Allocation]", func() {
 							Containers: []corev1.Container{
 								{
 									Name:            name,
-									Image:           "nginx:alpine",
+									Image:           TestImage,
 									ImagePullPolicy: corev1.PullIfNotPresent,
 								},
 							},
