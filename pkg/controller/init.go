@@ -236,6 +236,16 @@ func (c *Controller) initLoadBalancer() error {
 		if err != nil {
 			return err
 		}
+
+		for _, sn := range vpc.Status.Subnets {
+			if exist, _ := c.ovnClient.LogicalSwitchExists(sn); !exist || sn == c.config.NodeSwitch {
+				continue
+			}
+			if err = c.ovnClient.AddLbToLogicalSwitch(vpcLb.TcpLoadBalancer, vpcLb.TcpSessLoadBalancer,
+				vpcLb.UdpLoadBalancer, vpcLb.UdpSessLoadBalancer, sn); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
