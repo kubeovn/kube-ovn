@@ -206,7 +206,7 @@ var _ = Describe("[IP Allocation]", func() {
 							Containers: []corev1.Container{
 								{
 									Name:            name,
-									Image:           "nginx:alpine",
+									Image:           TestImage,
 									ImagePullPolicy: corev1.PullIfNotPresent,
 								},
 							},
