@@ -33,6 +33,33 @@ var _ = Describe("[kubectl-ko]", func() {
 		}
 	})
 
+	It("ofctl show", func() {
+		nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		for _, node := range nodes.Items {
+			output, err := exec.Command("kubectl", "ko", "ofctl", node.Name, "show", "br-int").CombinedOutput()
+			Expect(err).NotTo(HaveOccurred(), string(output))
+		}
+	})
+
+	It("dpctl show", func() {
+		nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		for _, node := range nodes.Items {
+			output, err := exec.Command("kubectl", "ko", "dpctl", node.Name, "show").CombinedOutput()
+			Expect(err).NotTo(HaveOccurred(), string(output))
+		}
+	})
+
+	It("appctl list-commands", func() {
+		nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		for _, node := range nodes.Items {
+			output, err := exec.Command("kubectl", "ko", "appctl", node.Name, "list-commands").CombinedOutput()
+			Expect(err).NotTo(HaveOccurred(), string(output))
+		}
+	})
+
 	It("tcpdump", func() {
 		pods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(context.Background(), metav1.ListOptions{LabelSelector: " app=kube-ovn-pinger"})
 		Expect(err).NotTo(HaveOccurred())
