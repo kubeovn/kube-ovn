@@ -116,6 +116,8 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
               --db-sb-cluster-local-addr="[${POD_IP}]" \
               --db-nb-cluster-remote-addr="[${nb_leader_ip}]" \
               --db-sb-cluster-remote-addr="[${sb_leader_ip}]" \
+              --db-nb-addr=[::] \
+              --db-sb-addr=[::] \
               --ovn-northd-nb-db="$(gen_conn_str 6641)" \
               --ovn-northd-sb-db="$(gen_conn_str 6642)" \
               start_northd
@@ -197,6 +199,8 @@ else
               --db-sb-cluster-local-addr="[${POD_IP}]" \
               --db-nb-cluster-remote-addr="[${nb_leader_ip}]" \
               --db-sb-cluster-remote-addr="[${sb_leader_ip}]" \
+              --db-nb-addr=[::] \
+              --db-sb-addr=[::] \
               --ovn-northd-nb-db="$(gen_conn_str 6641)" \
               --ovn-northd-sb-db="$(gen_conn_str 6642)" \
               start_northd
