@@ -201,8 +201,9 @@ func (c *Controller) handleAddNode(key string) error {
 
 	var v4IP, v6IP, mac string
 	portName := fmt.Sprintf("node-%s", key)
-	if node.Annotations[util.AllocatedAnnotation] == "true" {
-		return nil
+	if node.Annotations[util.IpAddressAnnotation] != "" && node.Annotations[util.MacAddressAnnotation] != "" {
+		v4IP, v6IP = util.SplitStringIP(node.Annotations[util.IpAddressAnnotation])
+		mac = node.Annotations[util.MacAddressAnnotation]
 	} else {
 		v4IP, v6IP, mac, err = c.ipam.GetRandomAddress(portName, c.config.NodeSwitch)
 		if err != nil {

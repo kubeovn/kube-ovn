@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	TestImage =  "kubeovn/pause:3.2"
+	TestImage = "kubeovn/pause:3.2"
 )
+
 var _ = Describe("[IP Allocation]", func() {
 	namespace := "static-ip"
 	f := framework.NewFramework("ip allocation", fmt.Sprintf("%s/.kube/config", os.Getenv("HOME")))
