@@ -18,6 +18,7 @@ import (
 	_ "github.com/alauda/kube-ovn/test/e2e/ip"
 	_ "github.com/alauda/kube-ovn/test/e2e/kubectl-ko"
 	_ "github.com/alauda/kube-ovn/test/e2e/node"
+	_ "github.com/alauda/kube-ovn/test/e2e/service"
 	_ "github.com/alauda/kube-ovn/test/e2e/subnet"
 )
 
