@@ -291,3 +291,14 @@ func getPodInitStatus(pod corev1.Pod, reason string) (bool, string) {
 	}
 	return initializing, reason
 }
+
+func GetNodeInternalIP(node corev1.Node) string {
+	var nodeAddr string
+	for _, addr := range node.Status.Addresses {
+		if addr.Type == corev1.NodeInternalIP {
+			nodeAddr = addr.Address
+			break
+		}
+	}
+	return nodeAddr
+}
