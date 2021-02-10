@@ -638,6 +638,9 @@ func (c *Controller) handleUpdateSubnetStatus(key string) error {
 func (c *Controller) handleDeleteRoute(subnet *kubeovnv1.Subnet) error {
 	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
 	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
 		return err
 	}
 	return c.deleteStaticRoute(subnet.Spec.CIDRBlock, vpc.Status.Router, subnet)
