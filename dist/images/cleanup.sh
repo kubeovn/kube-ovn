@@ -14,9 +14,13 @@ kubectl delete clusterrolebinding ovn --ignore-not-found=true
 kubectl delete svc ovn-nb ovn-sb kube-ovn-pinger kube-ovn-controller kube-ovn-cni -n kube-system --ignore-not-found=true
 kubectl delete ds kube-ovn-cni -n kube-system --ignore-not-found=true
 kubectl delete deployment ovn-central kube-ovn-controller -n kube-system --ignore-not-found=true
-for ovs in $(kubectl get pod --no-headers -n kube-system -lapp=ovs | awk '{print $1}')
+for ovsstatus in $(kubectl get pod --no-headers -n kube-system -lapp=ovs | awk '{print $1"+"$3}')
 do
-  kubectl exec -n kube-system "$ovs" -- bash /kube-ovn/uninstall.sh
+  status=`echo ${ovsstatus#*+}`
+  if [ "status" = "Running" ]; then
+    ovs=`echo ${ovsstatus%+*}`
+    kubectl exec -n kube-system "$ovs" -- bash /kube-ovn/uninstall.sh
+  fi
 done
 kubectl delete ds ovs-ovn kube-ovn-pinger -n kube-system --ignore-not-found=true
 kubectl delete crd ips.kubeovn.io subnets.kubeovn.io vlans.kubeovn.io networks.kubeovn.io --ignore-not-found=true
