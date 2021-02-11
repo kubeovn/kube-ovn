@@ -17,7 +17,7 @@ kubectl delete deployment ovn-central kube-ovn-controller -n kube-system --ignor
 for ovsstatus in $(kubectl get pod --no-headers -n kube-system -lapp=ovs | awk '{print $1"+"$3}')
 do
   status=`echo ${ovsstatus#*+}`
-  if [ "status" = "Running" ]; then
+  if [  "$status" = "Running"  ]; then
     ovs=`echo ${ovsstatus%+*}`
     kubectl exec -n kube-system "$ovs" -- bash /kube-ovn/uninstall.sh
   fi
