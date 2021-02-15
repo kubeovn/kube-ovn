@@ -211,6 +211,7 @@ Create the Pod Spec, name it pod.yaml
 apiVersion: v1
 kind: Pod
 metadata:
+  name: testpmd-dpdk
   annotations:
     k8s.v1.cni.cncf.io/networks: ovs-dpdk-br0, ovs-dpdk-br0
 spec:
