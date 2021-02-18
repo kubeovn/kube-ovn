@@ -222,7 +222,7 @@ func (c *Controller) handleAddNode(key string) error {
 	}
 
 	// There is only one nodeAddr temp
-	nodeAddr := getNodeInternalIP(node)
+	nodeAddr := util.GetNodeInternalIP(node)
 	for _, ip := range strings.Split(ipStr, ",") {
 		if util.CheckProtocol(nodeAddr) == util.CheckProtocol(ip) {
 			err = c.ovnClient.AddStaticRoute("", nodeAddr, ip, c.config.ClusterRouter)
@@ -335,17 +335,6 @@ func gatewayContains(gatewayNodeStr, gateway string) bool {
 		}
 	}
 	return false
-}
-
-func getNodeInternalIP(node *v1.Node) string {
-	var nodeAddr string
-	for _, addr := range node.Status.Addresses {
-		if addr.Type == v1.NodeInternalIP {
-			nodeAddr = addr.Address
-			break
-		}
-	}
-	return nodeAddr
 }
 
 func (c *Controller) createOrUpdateCrdIPs(key, ip, mac string) error {
