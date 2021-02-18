@@ -58,17 +58,6 @@ type Controller struct {
 	internalIP string
 }
 
-func getNodeInternalIP(node *v1.Node) string {
-	var nodeAddr string
-	for _, addr := range node.Status.Addresses {
-		if addr.Type == v1.NodeInternalIP {
-			nodeAddr = addr.Address
-			break
-		}
-	}
-	return nodeAddr
-}
-
 // NewController init a daemon controller
 func NewController(config *Configuration, podInformerFactory informers.SharedInformerFactory, nodeInformerFactory informers.SharedInformerFactory, kubeovnInformerFactory kubeovninformer.SharedInformerFactory) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
@@ -102,7 +91,7 @@ func NewController(config *Configuration, podInformerFactory informers.SharedInf
 		return nil, err
 	}
 	controller.protocol = util.CheckProtocol(node.Annotations[util.IpAddressAnnotation])
-	controller.internalIP = getNodeInternalIP(node)
+	controller.internalIP = util.GetNodeInternalIP(node)
 
 	controller.iptable = make(map[string]*iptables.IPTables)
 	controller.ipset = make(map[string]*ipsets.IPSets)
