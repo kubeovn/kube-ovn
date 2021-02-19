@@ -336,6 +336,7 @@ func (c *Controller) initDefaultVlan() error {
 }
 
 func (c *Controller) initSyncCrdIPs() error {
+	klog.Info("start to sync ips")
 	ips, err := c.config.KubeOvnClient.KubeovnV1().IPs().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -363,6 +364,7 @@ func (c *Controller) initSyncCrdIPs() error {
 }
 
 func (c *Controller) initSyncCrdSubnets() error {
+	klog.Info("start to sync subnets")
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		if k8serrors.IsNotFound(err) {

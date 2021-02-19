@@ -376,11 +376,8 @@ func checkAndUpdateExcludeIps(subnet *kubeovnv1.Subnet) bool {
 	} else {
 		for _, gw := range excludeIps {
 			gwExists := false
-			for _, ip := range ovs.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock) {
-				if util.CheckProtocol(gw) != util.CheckProtocol(ip) {
-					continue
-				}
-				if ip == gw {
+			for _, excludeIP := range subnet.Spec.ExcludeIps {
+				if util.ContainsIPs(excludeIP, gw) {
 					gwExists = true
 					break
 				}
@@ -1020,8 +1017,8 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	v4ExcludeIps, v6ExcludeIps := util.SplitIpsByProtocol(subnet.Spec.ExcludeIps)
 	// gateway always in excludeIPs
 	cidrBlocks := strings.Split(subnet.Spec.CIDRBlock, ",")
-	v4toSubIPs := ovs.ExpandExcludeIPs(v4ExcludeIps, cidrBlocks[0])
-	v6toSubIPs := ovs.ExpandExcludeIPs(v6ExcludeIps, cidrBlocks[1])
+	v4toSubIPs := util.ExpandExcludeIPs(v4ExcludeIps, cidrBlocks[0])
+	v6toSubIPs := util.ExpandExcludeIPs(v6ExcludeIps, cidrBlocks[1])
 	_, v4CIDR, _ := net.ParseCIDR(cidrBlocks[0])
 	_, v6CIDR, _ := net.ParseCIDR(cidrBlocks[1])
 	v4UsingIPs := make([]string, 0, len(podUsedIPs.Items))
@@ -1036,11 +1033,11 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 			v6UsingIPs = append(v6UsingIPs, splitIPs[1])
 		}
 	}
-	v4availableIPs := util.AddressCount(v4CIDR) - float64(len(util.UniqString(v4toSubIPs)))
+	v4availableIPs := util.AddressCount(v4CIDR) - float64(util.CountIpNums(v4toSubIPs))
 	if v4availableIPs < 0 {
 		v4availableIPs = 0
 	}
-	v6availableIPs := util.AddressCount(v6CIDR) - float64(len(util.UniqString(v6toSubIPs)))
+	v6availableIPs := util.AddressCount(v6CIDR) - float64(util.CountIpNums(v6toSubIPs))
 	if v6availableIPs < 0 {
 		v6availableIPs = 0
 	}
@@ -1072,11 +1069,11 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		return err
 	}
 	// gateway always in excludeIPs
-	toSubIPs := ovs.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
+	toSubIPs := util.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
 	for _, podUsedIP := range podUsedIPs.Items {
 		toSubIPs = append(toSubIPs, podUsedIP.Spec.IPAddress)
 	}
-	availableIPs := util.AddressCount(cidr) - float64(len(util.UniqString(toSubIPs)))
+	availableIPs := util.AddressCount(cidr) - float64(util.CountIpNums(toSubIPs))
 	if availableIPs < 0 {
 		availableIPs = 0
 	}
