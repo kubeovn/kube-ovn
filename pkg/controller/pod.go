@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/client-go/kubernetes"
+
 	"github.com/alauda/kube-ovn/pkg/ipam"
 
 	v1 "k8s.io/api/core/v1"
@@ -724,6 +726,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, subnet *kubeovnv1.Subnet) (stri
 	if ok, _ := isStatefulSetPod(pod); !ok {
 		for _, staticIP := range ipPool {
 			if c.ipam.IsIPAssignedToPod(staticIP, subnet.Name) {
+				klog.Errorf("static address %s for %s has been assigned", staticIP, key)
 				continue
 			}
 			if v4IP, v6IP, mac, err := c.acquireStaticAddress(key, staticIP, macStr, subnet.Name); err == nil {
@@ -738,6 +741,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, subnet *kubeovnv1.Subnet) (stri
 			return c.acquireStaticAddress(key, ipPool[index], macStr, subnet.Name)
 		}
 	}
+	klog.Errorf("alloc address for %s failed, return NoAvailableAddress", key)
 	return "", "", "", ipam.NoAvailableError
 }
 

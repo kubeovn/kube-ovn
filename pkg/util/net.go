@@ -315,7 +315,7 @@ func SplitStringIP(ipStr string) (string, string) {
 	return v4IP, v6IP
 }
 
-// How to distinguish repeat values
+// ExpandExcludeIPs used to get exclude ips in range of subnet cidr, excludes cidr addr and broadcast addr
 func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
 	rv := []string{}
 	for _, excludeIP := range excludeIPs {

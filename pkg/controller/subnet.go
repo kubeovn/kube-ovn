@@ -10,6 +10,7 @@ import (
 	"time"
 
 	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/alauda/kube-ovn/pkg/ipam"
 	"github.com/alauda/kube-ovn/pkg/ovs"
 	"github.com/alauda/kube-ovn/pkg/util"
 
@@ -374,6 +375,7 @@ func checkAndUpdateExcludeIps(subnet *kubeovnv1.Subnet) bool {
 		subnet.Spec.ExcludeIps = excludeIps
 		changed = true
 	} else {
+		checkAndFormatsExcludeIps(subnet)
 		for _, gw := range excludeIps {
 			gwExists := false
 			for _, excludeIP := range subnet.Spec.ExcludeIps {
@@ -1113,4 +1115,75 @@ func (c *Controller) getSubnetVlanTag(subnet *kubeovnv1.Subnet) (string, error) 
 		tag = strconv.Itoa(vlan.Spec.VlanId)
 	}
 	return tag, nil
+}
+
+func checkAndFormatsExcludeIps(subnet *kubeovnv1.Subnet) {
+	var excludeIps []string
+	mapIps := make(map[string]ipam.IPRange, len(subnet.Spec.ExcludeIps))
+
+	for _, excludeIP := range subnet.Spec.ExcludeIps {
+		ips := strings.Split(excludeIP, "..")
+		if len(ips) == 1 {
+			if _, ok := mapIps[excludeIP]; !ok {
+				ipr := ipam.IPRange{Start: ipam.IP(ips[0]), End: ipam.IP(ips[0])}
+				mapIps[excludeIP] = ipr
+			}
+		} else {
+			if _, ok := mapIps[excludeIP]; !ok {
+				ipr := ipam.IPRange{Start: ipam.IP(ips[0]), End: ipam.IP(ips[1])}
+				mapIps[excludeIP] = ipr
+			}
+		}
+	}
+	newMap := filterRepeatIPRange(mapIps)
+	for _, v := range newMap {
+		if v.Start == v.End {
+			excludeIps = append(excludeIps, string(v.Start))
+		} else {
+			excludeIps = append(excludeIps, string(v.Start)+".."+string(v.End))
+		}
+	}
+	klog.V(3).Infof("excludeips before format is %v, after format is %v", subnet.Spec.ExcludeIps, excludeIps)
+	subnet.Spec.ExcludeIps = excludeIps
+}
+
+func filterRepeatIPRange(mapIps map[string]ipam.IPRange) map[string]ipam.IPRange {
+	for ka, a := range mapIps {
+		for kb, b := range mapIps {
+			if ka == kb && a == b {
+				continue
+			}
+
+			if b.End.LessThan(a.Start) || b.Start.GreaterThan(a.End) {
+				continue
+			}
+
+			if (a.Start.Equal(b.Start) || a.Start.GreaterThan(b.Start)) &&
+				(a.End.Equal(b.End) || a.End.LessThan(b.End)) {
+				delete(mapIps, ka)
+				continue
+			}
+
+			if (a.Start.Equal(b.Start) || a.Start.GreaterThan(b.Start)) &&
+				a.End.GreaterThan(b.End) {
+				ipr := ipam.IPRange{Start: b.Start, End: a.End}
+				delete(mapIps, ka)
+				mapIps[kb] = ipr
+				continue
+			}
+
+			if (a.End.Equal(b.End) || a.End.LessThan(b.End)) &&
+				a.Start.LessThan(b.Start) {
+				ipr := ipam.IPRange{Start: a.Start, End: b.End}
+				delete(mapIps, ka)
+				mapIps[kb] = ipr
+				continue
+			}
+
+			// a contains b
+			mapIps[kb] = a
+			delete(mapIps, ka)
+		}
+	}
+	return mapIps
 }
