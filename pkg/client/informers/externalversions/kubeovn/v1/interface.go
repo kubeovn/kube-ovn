@@ -32,6 +32,8 @@ type Interface interface {
 	Vlans() VlanInformer
 	// Vpcs returns a VpcInformer.
 	Vpcs() VpcInformer
+	// VpcNatGateways returns a VpcNatGatewayInformer.
+	VpcNatGateways() VpcNatGatewayInformer
 }
 
 type version struct {
@@ -63,4 +65,9 @@ func (v *version) Vlans() VlanInformer {
 // Vpcs returns a VpcInformer.
 func (v *version) Vpcs() VpcInformer {
 	return &vpcInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// VpcNatGateways returns a VpcNatGatewayInformer.
+func (v *version) VpcNatGateways() VpcNatGatewayInformer {
+	return &vpcNatGatewayInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }

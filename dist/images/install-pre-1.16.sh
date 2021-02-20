@@ -437,6 +437,84 @@ spec:
               type: string
           type: object
       type: object
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: vpc-nat-gateways.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: vpc-nat-gateways
+    singular: vpc-nat-gateway
+    shortNames:
+      - vpc-nat-gw
+    kind: VpcNatGateway
+    listKind: VpcNatGatewayList
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                dnatRules:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      eip:
+                        type: string
+                      externalPort:
+                        type: string
+                      internalIp:
+                        type: string
+                      internalPort:
+                        type: string
+                      protocol:
+                        type: string
+                eips:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      eipCIDR:
+                        type: string
+                      gateway:
+                        type: string
+                floatingIpRules:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      eip:
+                        type: string
+                      internalIp:
+                        type: string
+                lanIp:
+                  type: string
+                snatRules:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      eip:
+                        type: string
+                      internalCIDR:
+                        type: string
+                subnet:
+                  type: string
+                vpc:
+                  type: string
+      subresources:
+        status: {}
+  conversion:
+    strategy: None
 EOF
 
 if $DPDK; then
@@ -521,6 +599,16 @@ rules:
       - patch
       - update
   - apiGroups:
+      - "k8s.cni.cncf.io"
+    resources:
+      - network-attachment-definitions
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - update
+  - apiGroups:
       - ""
       - networking.k8s.io
       - apps
@@ -533,6 +621,10 @@ rules:
       - daemonsets
       - deployments
     verbs:
+      - create
+      - delete
+      - update
+      - patch
       - get
       - list
       - watch
@@ -999,6 +1091,7 @@ rules:
     resources:
       - vpcs
       - vpcs/status
+      - vpc-nat-gateways
       - subnets
       - subnets/status
       - ips
@@ -1990,6 +2083,7 @@ xxctl(){
 
 diagnose(){
   kubectl get crd vpcs.kubeovn.io
+  kubectl get crd vpc-nat-gateways.kubeovn.io
   kubectl get crd subnets.kubeovn.io
   kubectl get crd ips.kubeovn.io
   kubectl get svc kube-dns -n kube-system

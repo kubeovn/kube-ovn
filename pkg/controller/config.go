@@ -7,6 +7,7 @@ import (
 
 	clientset "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/alauda/kube-ovn/pkg/util"
+	attacnetclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -16,13 +17,15 @@ import (
 
 // Configuration is the controller conf
 type Configuration struct {
-	BindAddress    string
-	OvnNbAddr      string
-	OvnSbAddr      string
-	OvnTimeout     int
-	KubeConfigFile string
-	KubeClient     kubernetes.Interface
-	KubeOvnClient  clientset.Interface
+	BindAddress     string
+	OvnNbAddr       string
+	OvnSbAddr       string
+	OvnTimeout      int
+	KubeConfigFile  string
+	KubeRestConfig  *rest.Config
+	KubeClient      kubernetes.Interface
+	KubeOvnClient   clientset.Interface
+	AttachNetClient attacnetclientset.Interface
 
 	DefaultLogicalSwitch string
 	DefaultCIDR          string
@@ -182,6 +185,15 @@ func (config *Configuration) initKubeClient() error {
 	}
 	cfg.QPS = 1000
 	cfg.Burst = 2000
+
+	config.KubeRestConfig = cfg
+
+	AttachNetClient, err := attacnetclientset.NewForConfig(cfg)
+	if err != nil {
+		klog.Errorf("init attach network client failed %v", err)
+		return err
+	}
+	config.AttachNetClient = AttachNetClient
 
 	kubeOvnClient, err := clientset.NewForConfig(cfg)
 	if err != nil {

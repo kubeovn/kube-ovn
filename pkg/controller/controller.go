@@ -55,6 +55,18 @@ type Controller struct {
 	delVpcQueue          workqueue.RateLimitingInterface
 	updateVpcStatusQueue workqueue.RateLimitingInterface
 
+	vpcNatGatewayLister           kubeovnlister.VpcNatGatewayLister
+	vpcNatGatewaySynced           cache.InformerSynced
+	addOrUpdateVpcNatGatewayQueue workqueue.RateLimitingInterface
+	delVpcNatGatewayQueue         workqueue.RateLimitingInterface
+	initVpcNatGatewayQueue        workqueue.RateLimitingInterface
+	updateVpcEipQueue             workqueue.RateLimitingInterface
+	updateVpcFloatingIpQueue      workqueue.RateLimitingInterface
+	updateVpcDnatQueue            workqueue.RateLimitingInterface
+	updateVpcSnatQueue            workqueue.RateLimitingInterface
+	updateVpcSubnetQueue          workqueue.RateLimitingInterface
+	vpcNatGwKeyMutex              *keymutex.KeyMutex
+
 	subnetsLister           kubeovnlister.SubnetLister
 	subnetSynced            cache.InformerSynced
 	addOrUpdateSubnetQueue  workqueue.RateLimitingInterface
@@ -130,6 +142,7 @@ func NewController(config *Configuration) *Controller {
 		}))
 
 	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
+	vpcNatGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	ipInformer := kubeovnInformerFactory.Kubeovn().V1().IPs()
 	vlanInformer := kubeovnInformerFactory.Kubeovn().V1().Vlans()
@@ -153,6 +166,18 @@ func NewController(config *Configuration) *Controller {
 		addOrUpdateVpcQueue:  workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddOrUpdateVpc"),
 		delVpcQueue:          workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteVpc"),
 		updateVpcStatusQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVpcStatus"),
+
+		vpcNatGatewayLister:           vpcNatGatewayInformer.Lister(),
+		vpcNatGatewaySynced:           vpcNatGatewayInformer.Informer().HasSynced,
+		addOrUpdateVpcNatGatewayQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddOrUpdateVpcNatGw"),
+		initVpcNatGatewayQueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "InitVpcNatGw"),
+		delVpcNatGatewayQueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteVpcNatGw"),
+		updateVpcEipQueue:             workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVpcEip"),
+		updateVpcFloatingIpQueue:      workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVpcFloatingIp"),
+		updateVpcDnatQueue:            workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVpcDnat"),
+		updateVpcSnatQueue:            workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVpcSnat"),
+		updateVpcSubnetQueue:          workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVpcSubnet"),
+		vpcNatGwKeyMutex:              keymutex.New(97),
 
 		subnetsLister:           subnetInformer.Lister(),
 		subnetSynced:            subnetInformer.Informer().HasSynced,
@@ -252,6 +277,12 @@ func NewController(config *Configuration) *Controller {
 		DeleteFunc: controller.enqueueDelVpc,
 	})
 
+	vpcNatGatewayInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddVpcNatGw,
+		UpdateFunc: controller.enqueueUpdateVpcNatGw,
+		DeleteFunc: controller.enqueueDeleteVpcNatGw,
+	})
+
 	subnetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddSubnet,
 		UpdateFunc: controller.enqueueUpdateSubnet,
@@ -290,7 +321,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	c.kubeovnInformerFactory.Start(stopCh)
 
 	klog.Info("Waiting for informer caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.vpcSynced, c.subnetSynced, c.ipSynced, c.vlanSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced, c.npsSynced, c.configMapsSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.vpcNatGatewaySynced, c.vpcSynced, c.subnetSynced, c.ipSynced, c.vlanSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced, c.npsSynced, c.configMapsSynced); !ok {
 		klog.Fatalf("failed to wait for caches to sync")
 	}
 
@@ -358,12 +389,30 @@ func (c *Controller) shutdown() {
 	c.addOrUpdateVpcQueue.ShutDown()
 	c.updateVpcStatusQueue.ShutDown()
 	c.delVpcQueue.ShutDown()
+
+	c.addOrUpdateVpcNatGatewayQueue.ShutDown()
+	c.initVpcNatGatewayQueue.ShutDown()
+	c.delVpcNatGatewayQueue.ShutDown()
+	c.updateVpcEipQueue.ShutDown()
+	c.updateVpcFloatingIpQueue.ShutDown()
+	c.updateVpcDnatQueue.ShutDown()
+	c.updateVpcSnatQueue.ShutDown()
+	c.updateVpcSubnetQueue.ShutDown()
 }
 
 func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	klog.Info("Starting workers")
 
 	go wait.Until(c.runAddVpcWorker, time.Second, stopCh)
+
+	go wait.Until(c.runAddOrUpdateVpcNatGwWorker, time.Second, stopCh)
+	go wait.Until(c.runInitVpcNatGwWorker, time.Second, stopCh)
+	go wait.Until(c.runDelVpcNatGwWorker, time.Second, stopCh)
+	go wait.Until(c.runUpdateVpcEipWorker, time.Second, stopCh)
+	go wait.Until(c.runUpdateVpcFloatingIpWorker, time.Second, stopCh)
+	go wait.Until(c.runUpdateVpcDnatWorker, time.Second, stopCh)
+	go wait.Until(c.runUpdateVpcSnatWorker, time.Second, stopCh)
+	go wait.Until(c.runUpdateVpcSubnetWorker, time.Second, stopCh)
 
 	// add default/join subnet and wait them ready
 	go wait.Until(c.runAddSubnetWorker, time.Second, stopCh)
@@ -440,6 +489,10 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 
 	go wait.Until(func() {
 		c.resyncExternalGateway()
+	}, time.Second, stopCh)
+
+	go wait.Until(func() {
+		c.resyncVpcNatGwConfig()
 	}, time.Second, stopCh)
 
 	go wait.Until(func() {

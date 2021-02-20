@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"k8s.io/client-go/kubernetes"
 	"net"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
+
+	"k8s.io/client-go/kubernetes"
 
 	"github.com/alauda/kube-ovn/pkg/ipam"
 
@@ -425,6 +426,10 @@ func (c *Controller) handleAddPod(key string) error {
 		}
 		klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
 		return err
+	}
+
+	if vpcGwName, isVpcNatGw := pod.Annotations[util.VpcNatGatewayAnnotation]; isVpcNatGw {
+		c.initVpcNatGatewayQueue.Add(vpcGwName)
 	}
 	return nil
 }

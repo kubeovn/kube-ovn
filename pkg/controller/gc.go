@@ -27,10 +27,55 @@ func (c *Controller) gc() error {
 		c.gcLoadBalancer,
 		c.gcPortGroup,
 		c.gcStaticRoute,
+		c.gcVpcNatGateway,
 	}
 	for _, gcFunc := range gcFunctions {
 		if err := gcFunc(); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) gcVpcNatGateway() error {
+	klog.Infof("start to gc vpc nat gateway")
+	gws, err := c.vpcNatGatewayLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vpc nat gateway, %v", err)
+		return err
+	}
+
+	var gwDpNames []string
+	for _, gw := range gws {
+		_, err = c.vpcsLister.Get(gw.Spec.Vpc)
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get vpc, %v", err)
+				return err
+			}
+			if err = c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Delete(context.Background(), gw.Name, metav1.DeleteOptions{}); err != nil {
+				klog.Errorf("failed to delete vpc nat gateway, %v", err)
+				return err
+			}
+		}
+		gwDpNames = append(gwDpNames, genNatGwDpName(gw.Name))
+	}
+
+	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.VpcNatGatewayLabel: "true"}})
+	dps, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).List(context.Background(), metav1.ListOptions{
+		LabelSelector: sel.String(),
+	})
+	if err != nil {
+		klog.Errorf("failed to list vpc nat gateway deployment, %v", err)
+		return err
+	}
+	for _, dp := range dps.Items {
+		if !util.ContainsString(gwDpNames, dp.Name) {
+			err = c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Delete(context.Background(), dp.Name, metav1.DeleteOptions{})
+			if err != nil {
+				klog.Errorf("failed to delete vpc nat gateway deployment, %v", err)
+				return err
+			}
 		}
 	}
 	return nil
