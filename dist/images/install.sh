@@ -2142,7 +2142,7 @@ checkDeployment(){
 checkKubeProxy(){
   dsMode=`kubectl get ds -n kube-system | grep kube-proxy || true`
   if [ -z "$dsMode" ]; then
-    nodeIps=`kubectl get node -o wide | grep -v "INTERNAL-IP" | awk '{print $6}'`
+    nodeIps=`kubectl get node -o wide --no-headers | awk '{print $6}'`
     for node in $nodeIps
     do
       healthResult=`curl -g -6 -sL -w %{http_code} http://[$node]:10256/healthz -o /dev/null | grep -v 200 || true`
