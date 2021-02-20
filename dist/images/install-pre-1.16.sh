@@ -2113,10 +2113,10 @@ checkKubeProxy(){
         exit 1
       fi
     done
+    echo "kube-proxy ready"
   else
     checkDaemonSet kube-proxy
   fi
-  echo "kube-proxy ready"
 }
 
 if [ $# -lt 1 ]; then
