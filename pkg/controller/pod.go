@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/client-go/kubernetes"
-
 	"github.com/alauda/kube-ovn/pkg/ipam"
 
 	v1 "k8s.io/api/core/v1"
