@@ -90,6 +90,7 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
 We are looking forwards to your PR!
 
 - [Development Guide](docs/development.md)
+- [Architecture Guide](ARCHITECTURE.MD)
 
 ## Kube-OVN vs. Other CNI Implementation
 
