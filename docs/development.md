@@ -8,7 +8,7 @@ To minimize image size we use docker experiment buildx features, please enable i
 
 We also use [gosec](https://github.com/securego/gosec) to inspects source code for security problems.
 ```
-git clone https://github.com/alauda/kube-ovn.git
+git clone https://github.com/kubeovn/kube-ovn.git
 go get -u github.com/securego/gosec/cmd/gosec
 cd kube-ovn
 make release

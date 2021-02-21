@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 
-	"github.com/alauda/kube-ovn/pkg/util"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"

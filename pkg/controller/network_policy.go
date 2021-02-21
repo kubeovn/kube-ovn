@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/alauda/kube-ovn/pkg/util"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"

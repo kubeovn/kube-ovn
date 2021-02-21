@@ -14,10 +14,10 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog"
 
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	clientset "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
-	"github.com/alauda/kube-ovn/pkg/request"
-	"github.com/alauda/kube-ovn/pkg/util"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
+	"github.com/kubeovn/kube-ovn/pkg/request"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 type cniServerHandler struct {

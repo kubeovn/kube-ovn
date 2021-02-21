@@ -5,7 +5,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/alauda/kube-ovn/pkg/apis/kubeovn"
+	"github.com/kubeovn/kube-ovn/pkg/apis/kubeovn"
 )
 
 // SchemeGroupVersion is group version used to register these objects

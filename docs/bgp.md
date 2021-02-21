@@ -8,7 +8,7 @@ To enable BGP advertise function, you need to install kube-ovn-speaker and annot
 1. Download `kube-ovn-speaker` yaml
 
 ```bash
-wget https://github.com/alauda/kube-ovn/blob/master/yamls/speaker.yaml
+wget https://github.com/kubeovn/kube-ovn/blob/master/yamls/speaker.yaml
 ```
 
 2. Modify the args in yaml

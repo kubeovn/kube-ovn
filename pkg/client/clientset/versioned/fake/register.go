@@ -19,7 +19,7 @@ limitations under the License.
 package fake
 
 import (
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"

@@ -4,8 +4,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	clientset "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
-	"github.com/alauda/kube-ovn/pkg/util"
+	"net"
+	"os"
+	"os/exec"
+	"regexp"
+	"strings"
+
+	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	"github.com/vishvananda/netlink"
@@ -13,11 +19,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
-	"net"
-	"os"
-	"os/exec"
-	"regexp"
-	"strings"
 )
 
 // Configuration is the daemon conf

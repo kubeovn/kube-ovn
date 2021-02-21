@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alauda/kube-ovn/pkg/util"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"

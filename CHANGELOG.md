@@ -468,11 +468,11 @@ This release is mainly about controller performance, stability and bugfix
 
 ### Misc
 * New logo
-* [中文文档](https://github.com/alauda/kube-ovn/wiki)
+* [中文文档](https://github.com/kubeovn/kube-ovn/wiki)
 * Test Kube-OVN compatible on CentOS 7.5/Ubuntu 16.04 and Ubuntu 18.04
 * Add support for Kubespray and kubeasz installation tools
 * Rename cni conf to `00-kube-ovn.conflist` to improve kubelet priority
-* Basic TCP [performance test](https://github.com/alauda/kube-ovn/wiki/%E9%98%BF%E9%87%8C%E4%BA%91%E6%B5%8B%E8%AF%95) on Aliyun.
+* Basic TCP [performance test](https://github.com/kubeovn/kube-ovn/wiki/%E9%98%BF%E9%87%8C%E4%BA%91%E6%B5%8B%E8%AF%95) on Aliyun.
 
 ## v0.6.0 -- 2019/07/22
 ### Features

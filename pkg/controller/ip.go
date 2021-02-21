@@ -1,7 +1,7 @@
 package controller
 
 import (
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 
 	"k8s.io/klog"
 )

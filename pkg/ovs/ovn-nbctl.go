@@ -12,8 +12,8 @@ import (
 	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/klog"
 
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/alauda/kube-ovn/pkg/util"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (c Client) ovnNbCommand(cmdArgs ...string) (string, error) {

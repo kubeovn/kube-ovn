@@ -6,7 +6,7 @@ DEV_TAG=dev
 RELEASE_TAG=$(shell cat VERSION)
 COMMIT=git-$(shell git rev-parse HEAD)
 DATE=$(shell date +"%Y-%m-%d_%H:%M:%S")
-GOLDFLAGS="-w -s -X github.com/alauda/kube-ovn/versions.COMMIT=${COMMIT} -X github.com/alauda/kube-ovn/versions.VERSION=${RELEASE_TAG} -X github.com/alauda/kube-ovn/versions.BUILDDATE=${DATE}"
+GOLDFLAGS="-w -s -X github.com/kubeovn/kube-ovn/versions.COMMIT=${COMMIT} -X github.com/kubeovn/kube-ovn/versions.VERSION=${RELEASE_TAG} -X github.com/kubeovn/kube-ovn/versions.BUILDDATE=${DATE}"
 
 # ARCH could be amd64,arm64
 ARCH=amd64
@@ -53,10 +53,10 @@ lint:
 build-bin:
 	docker run --rm -e GOOS=linux -e GOCACHE=/tmp -e GOARCH=${ARCH} -e GOPROXY=https://goproxy.cn \
 		-u $(shell id -u):$(shell id -g) \
-		-v $(CURDIR):/go/src/github.com/alauda/kube-ovn:ro \
-		-v $(CURDIR)/dist:/go/src/github.com/alauda/kube-ovn/dist/ \
+		-v $(CURDIR):/go/src/github.com/kubeovn/kube-ovn:ro \
+		-v $(CURDIR)/dist:/go/src/github.com/kubeovn/kube-ovn/dist/ \
 		golang:$(GO_VERSION) /bin/bash -c '\
-		cd /go/src/github.com/alauda/kube-ovn && \
+		cd /go/src/github.com/kubeovn/kube-ovn && \
 		make build-go '
 
 kind-init:
