@@ -2,12 +2,13 @@ package speaker
 
 import (
 	"fmt"
-	"github.com/alauda/kube-ovn/pkg/speaker"
-	"github.com/alauda/kube-ovn/versions"
+	"net/http"
+
+	"github.com/kubeovn/kube-ovn/pkg/speaker"
+	"github.com/kubeovn/kube-ovn/versions"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/klog"
 	"k8s.io/sample-controller/pkg/signals"
-	"net/http"
 )
 
 func CmdMain() {

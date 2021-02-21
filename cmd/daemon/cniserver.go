@@ -6,13 +6,13 @@ import (
 	"net/http"
 	_ "net/http/pprof" // #nosec
 
-	"github.com/alauda/kube-ovn/pkg/util"
-	"github.com/alauda/kube-ovn/versions"
+	"github.com/kubeovn/kube-ovn/pkg/util"
+	"github.com/kubeovn/kube-ovn/versions"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	kubeovninformer "github.com/alauda/kube-ovn/pkg/client/informers/externalversions"
-	"github.com/alauda/kube-ovn/pkg/daemon"
+	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
+	"github.com/kubeovn/kube-ovn/pkg/daemon"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/klog"
 	"k8s.io/sample-controller/pkg/signals"

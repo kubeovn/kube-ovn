@@ -3,13 +3,13 @@ package controller
 import (
 	"sync"
 
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovninformer "github.com/alauda/kube-ovn/pkg/client/informers/externalversions"
-	kubeovnlister "github.com/alauda/kube-ovn/pkg/client/listers/kubeovn/v1"
-	ovnipam "github.com/alauda/kube-ovn/pkg/ipam"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
+	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	ovnipam "github.com/kubeovn/kube-ovn/pkg/ipam"
 
-	"github.com/alauda/kube-ovn/pkg/ovs"
-	"github.com/alauda/kube-ovn/pkg/util"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/neverlee/keymutex"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

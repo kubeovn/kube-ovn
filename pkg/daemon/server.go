@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/alauda/kube-ovn/pkg/request"
 	"github.com/emicklei/go-restful"
+	"github.com/kubeovn/kube-ovn/pkg/request"
 	"k8s.io/klog"
 )
 

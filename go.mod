@@ -1,4 +1,4 @@
-module github.com/alauda/kube-ovn
+module github.com/kubeovn/kube-ovn
 
 go 1.12
 
