@@ -56,10 +56,10 @@ func checkPortBindings(config *Configuration) error {
 		klog.Errorf("%d port %v not exist in sb-bindings", len(misMatch), misMatch)
 		inconsistentPortBindingGauge.WithLabelValues(config.NodeName).Set(float64(len(misMatch)))
 		return fmt.Errorf("%d port %v not exist in sb-bindings", len(misMatch), misMatch)
-	} else {
-		klog.Infof("ovs and ovn-sb binding check passed")
-		inconsistentPortBindingGauge.WithLabelValues(config.NodeName).Set(0)
 	}
+	klog.Infof("ovs and ovn-sb binding check passed")
+	inconsistentPortBindingGauge.WithLabelValues(config.NodeName).Set(0)
+
 	return nil
 }
 
@@ -93,7 +93,47 @@ func checkOvsBindings() ([]string, error) {
 func checkSBBindings(config *Configuration) ([]string, error) {
 	sbHost := os.Getenv("OVN_SB_SERVICE_HOST")
 	sbPort := os.Getenv("OVN_SB_SERVICE_PORT")
+
 	command := []string{
+		"ovn-sbctl",
+		fmt.Sprintf("--db=tcp:%s:%s", sbHost, sbPort),
+		"--format=csv",
+		"--no-heading",
+		"--data=bare",
+		"--columns=chassis_name",
+		"--timeout=10",
+		"find",
+		"encap",
+		fmt.Sprintf("ip=%s", config.HostIP),
+	}
+	if os.Getenv("ENABLE_SSL") == "true" {
+		command = []string{
+			"-p", "/var/run/tls/key",
+			"-c", "/var/run/tls/cert",
+			"-C", "/var/run/tls/cacert",
+			fmt.Sprintf("--db=ssl:[%s]:%s", sbHost, sbPort),
+			"--format=csv",
+			"--no-heading",
+			"--data=bare",
+			"--columns=chassis_name",
+			"--timeout=10",
+			"find",
+			"encap",
+			fmt.Sprintf("ip=%s", config.HostIP),
+		}
+	}
+	output, err := exec.Command("ovn-sbctl", command...).CombinedOutput()
+	if err != nil {
+		klog.Errorf("failed to find encap %v", err)
+		return nil, err
+	}
+	if len(output) == 0 {
+		klog.Errorf("encap for node %s not exist", config.HostIP)
+		return nil, fmt.Errorf("encap for node %s not exist", config.HostIP)
+	}
+	chassisName := strings.TrimSpace(string(output))
+
+	command = []string{
 		fmt.Sprintf("--db=tcp:[%s]:%s", sbHost, sbPort),
 		"--format=csv",
 		"--no-heading",
@@ -102,7 +142,7 @@ func checkSBBindings(config *Configuration) ([]string, error) {
 		"--timeout=10",
 		"find",
 		"chassis",
-		fmt.Sprintf("hostname=%s", config.NodeName),
+		fmt.Sprintf("name=%s", chassisName),
 	}
 	if os.Getenv("ENABLE_SSL") == "true" {
 		command = []string{
@@ -117,21 +157,21 @@ func checkSBBindings(config *Configuration) ([]string, error) {
 			"--timeout=10",
 			"find",
 			"chassis",
-			fmt.Sprintf("hostname=%s", config.NodeName),
+			fmt.Sprintf("name=%s", chassisName),
 		}
 	}
-	output, err := exec.Command("ovn-sbctl", command...).CombinedOutput()
+	output, err = exec.Command("ovn-sbctl", command...).CombinedOutput()
 	if err != nil {
 		klog.Errorf("failed to find chassis %v", err)
 		return nil, err
 	}
 	if len(output) == 0 {
-		klog.Errorf("chassis for node %s not exist", config.NodeName)
-		return nil, fmt.Errorf("chassis for node %s not exist", config.NodeName)
+		klog.Errorf("chassis for name %s not exist", chassisName)
+		return nil, fmt.Errorf("chassis for name %s not exist", chassisName)
 	}
-
 	chassis := strings.TrimSpace(string(output))
 	klog.Infof("chassis id is %s", chassis)
+
 	command = []string{
 		fmt.Sprintf("--db=tcp:[%s]:%s", sbHost, sbPort),
 		"--format=csv",
