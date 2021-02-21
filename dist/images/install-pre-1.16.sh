@@ -2104,19 +2104,19 @@ checkDeployment(){
 checkKubeProxy(){
   dsMode=`kubectl get ds -n kube-system | grep kube-proxy || true`
   if [ -z "$dsMode" ]; then
-    nodeIps=`kubectl get node -o wide | grep -v "INTERNAL-IP" | awk '{print $6}'`
+    nodeIps=`kubectl get node -o wide --no-headers | awk '{print $6}'`
     for node in $nodeIps
     do
-      healthResult=`curl -g -6 -sL -w %{http_code} http://[$node]:10256/healthz -o /dev/null | grep -v 200 || true`
+      healthResult=`curl -g -6 -sL --connect-timeout 5 -w %{http_code} http://[$node]:10256/healthz -o /dev/null | grep -v 200 || true`
       if [ -n "$healthResult" ]; then
         echo "$node kube-proxy's health check failed"
         exit 1
       fi
     done
+    echo "kube-proxy ready"
   else
     checkDaemonSet kube-proxy
   fi
-  echo "kube-proxy ready"
 }
 
 if [ $# -lt 1 ]; then
