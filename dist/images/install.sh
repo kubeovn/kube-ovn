@@ -15,12 +15,14 @@ REGISTRY="kubeovn"
 VERSION="v1.7.0"
 IMAGE_PULL_POLICY="IfNotPresent"
 POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
+POD_GATEWAY="10.16.0.1"
 SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR
 JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
 PINGER_EXTERNAL_ADDRESS="114.114.114.114"  # Pinger check external ip probe
 PINGER_EXTERNAL_DOMAIN="alauda.cn"         # Pinger check external domain probe
 if [ "$IPv6" = "true" ]; then
   POD_CIDR="fd00:10:16::/64"                # Do NOT overlap with NODE/SVC/JOIN CIDR
+  POD_GATEWAY="fd00:10:16::1"
   SVC_CIDR="fd00:10:96::/112"               # Do NOT overlap with NODE/POD/JOIN CIDR
   JOIN_CIDR="fd00:100:64::/64"              # Do NOT overlap with NODE/POD/SVC CIDR
   PINGER_EXTERNAL_ADDRESS="2400:3200::1"
@@ -28,6 +30,7 @@ if [ "$IPv6" = "true" ]; then
 fi
 if [ "$DualStack" = "true" ]; then
   POD_CIDR="10.16.0.0/16,fd00:10:16::/64"                # Do NOT overlap with NODE/SVC/JOIN CIDR
+  POD_GATEWAY="10.16.0.1,fd00:10:16::1"
   SVC_CIDR="10.96.0.0/12"                                # Do NOT overlap with NODE/POD/JOIN CIDR
   JOIN_CIDR="100.64.0.0/16,fd00:100:64::/64"             # Do NOT overlap with NODE/POD/SVC CIDR
   PINGER_EXTERNAL_ADDRESS="114.114.114.114"
@@ -1518,6 +1521,7 @@ spec:
           - /kube-ovn/start-controller.sh
           args:
           - --default-cidr=$POD_CIDR
+          - --default-gateway=$POD_GATEWAY
           - --default-exclude-ips=$EXCLUDE_IPS
           - --node-switch-cidr=$JOIN_CIDR
           - --network-type=$NETWORK_TYPE
