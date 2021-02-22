@@ -4,7 +4,7 @@
 # set GOPROXY you like
 GOPROXY="https://goproxy.cn"
 
-PROJECT_PACKAGE=github.com/alauda/kube-ovn
+PROJECT_PACKAGE=github.com/kubeovn/kube-ovn
 docker run -it --rm \
     -v ${PWD}:/go/src/${PROJECT_PACKAGE}\
     -e PROJECT_PACKAGE=${PROJECT_PACKAGE} \
