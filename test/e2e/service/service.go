@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -49,7 +50,7 @@ var _ = Describe("[Service]", func() {
 			nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			for _, node := range nodes.Items {
-				nodeIP := framework.GetNodeInternalIP(node)
+				nodeIP := util.GetNodeInternalIP(&node)
 				output, err := exec.Command(
 					"kubectl", "exec", "-n", "kube-system", pod.Name, "--",
 					"curl", "-s", "-w", "%{http_code}", fmt.Sprintf("%s:%d/metrics", nodeIP, hostService.Spec.Ports[0].NodePort), "-o", "/dev/null",
@@ -76,7 +77,7 @@ var _ = Describe("[Service]", func() {
 			nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			for _, node := range nodes.Items {
-				nodeIP := framework.GetNodeInternalIP(node)
+				nodeIP := util.GetNodeInternalIP(&node)
 				output, err := exec.Command(
 					"kubectl", "exec", "-n", "kube-system", pod.Name, "--",
 					"curl", "-s", "-w", "%{http_code}", fmt.Sprintf("%s:%d/metrics", nodeIP, containerService.Spec.Ports[0].NodePort), "-o", "/dev/null",
@@ -103,7 +104,7 @@ var _ = Describe("[Service]", func() {
 			nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			for _, node := range nodes.Items {
-				nodeIP := framework.GetNodeInternalIP(node)
+				nodeIP := util.GetNodeInternalIP(&node)
 				output, err := exec.Command(
 					"kubectl", "exec", "-n", "kube-system", pod.Name, "--",
 					"curl", "-s", "-w", "%{http_code}", fmt.Sprintf("%s:%d/metrics", nodeIP, containerService.Spec.Ports[0].NodePort), "-o", "/dev/null",
@@ -130,7 +131,7 @@ var _ = Describe("[Service]", func() {
 			nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			for _, node := range nodes.Items {
-				nodeIP := framework.GetNodeInternalIP(node)
+				nodeIP := util.GetNodeInternalIP(&node)
 				output, err := exec.Command(
 					"kubectl", "exec", "-n", "kube-system", pod.Name, "--",
 					"curl", "-s", "-w", "%{http_code}", fmt.Sprintf("%s:%d/metrics", nodeIP, hostService.Spec.Ports[0].NodePort), "-o", "/dev/null",
