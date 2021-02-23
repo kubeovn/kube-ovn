@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"math"
 	"net"
 	"reflect"
 	"strconv"
@@ -1046,10 +1047,10 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 
 	subnet.Status.V4AvailableIPs = v4availableIPs
 	subnet.Status.V6AvailableIPs = v6availableIPs
-	subnet.Status.AvailableIPs = v4availableIPs + v6availableIPs
+	subnet.Status.AvailableIPs = math.Min(v4availableIPs, v6availableIPs)
 	subnet.Status.V4UsingIPs = float64(len(v4UsingIPs))
 	subnet.Status.V6UsingIPs = float64(len(v6UsingIPs))
-	subnet.Status.UsingIPs = subnet.Status.V4UsingIPs + subnet.Status.V6UsingIPs
+	subnet.Status.UsingIPs = subnet.Status.V4UsingIPs
 
 	bytes, err := subnet.Status.Bytes()
 	if err != nil {
