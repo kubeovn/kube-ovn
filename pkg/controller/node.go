@@ -222,7 +222,7 @@ func (c *Controller) handleAddNode(key string) error {
 	}
 
 	// There is only one nodeAddr temp
-	nodeAddr := util.GetNodeInternalIP(node)
+	nodeAddr := util.GetNodeInternalIP(*node)
 	for _, ip := range strings.Split(ipStr, ",") {
 		if util.CheckProtocol(nodeAddr) == util.CheckProtocol(ip) {
 			err = c.ovnClient.AddStaticRoute("", nodeAddr, ip, c.config.ClusterRouter)
