@@ -113,7 +113,7 @@ func (c *Controller) setIptables() error {
 		return err
 	}
 
-	hostIP := util.GetNodeInternalIP(node)
+	hostIP := util.GetNodeInternalIP(*node)
 
 	var (
 		v4Rules = []util.IPTableRule{

@@ -91,7 +91,7 @@ func NewController(config *Configuration, podInformerFactory informers.SharedInf
 		return nil, err
 	}
 	controller.protocol = util.CheckProtocol(node.Annotations[util.IpAddressAnnotation])
-	controller.internalIP = util.GetNodeInternalIP(node)
+	controller.internalIP = util.GetNodeInternalIP(*node)
 
 	controller.iptable = make(map[string]*iptables.IPTables)
 	controller.ipset = make(map[string]*ipsets.IPSets)

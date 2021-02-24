@@ -50,7 +50,7 @@ var _ = Describe("[Service]", func() {
 			nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			for _, node := range nodes.Items {
-				nodeIP := util.GetNodeInternalIP(&node)
+				nodeIP := util.GetNodeInternalIP(node)
 				output, err := exec.Command(
 					"kubectl", "exec", "-n", "kube-system", pod.Name, "--",
 					"curl", "-s", "-w", "%{http_code}", fmt.Sprintf("%s:%d/metrics", nodeIP, hostService.Spec.Ports[0].NodePort), "-o", "/dev/null",
@@ -77,7 +77,7 @@ var _ = Describe("[Service]", func() {
 			nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			for _, node := range nodes.Items {
-				nodeIP := util.GetNodeInternalIP(&node)
+				nodeIP := util.GetNodeInternalIP(node)
 				output, err := exec.Command(
 					"kubectl", "exec", "-n", "kube-system", pod.Name, "--",
 					"curl", "-s", "-w", "%{http_code}", fmt.Sprintf("%s:%d/metrics", nodeIP, containerService.Spec.Ports[0].NodePort), "-o", "/dev/null",
@@ -104,7 +104,7 @@ var _ = Describe("[Service]", func() {
 			nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			for _, node := range nodes.Items {
-				nodeIP := util.GetNodeInternalIP(&node)
+				nodeIP := util.GetNodeInternalIP(node)
 				output, err := exec.Command(
 					"kubectl", "exec", "-n", "kube-system", pod.Name, "--",
 					"curl", "-s", "-w", "%{http_code}", fmt.Sprintf("%s:%d/metrics", nodeIP, containerService.Spec.Ports[0].NodePort), "-o", "/dev/null",
@@ -131,7 +131,7 @@ var _ = Describe("[Service]", func() {
 			nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			for _, node := range nodes.Items {
-				nodeIP := util.GetNodeInternalIP(&node)
+				nodeIP := util.GetNodeInternalIP(node)
 				output, err := exec.Command(
 					"kubectl", "exec", "-n", "kube-system", pod.Name, "--",
 					"curl", "-s", "-w", "%{http_code}", fmt.Sprintf("%s:%d/metrics", nodeIP, hostService.Spec.Ports[0].NodePort), "-o", "/dev/null",

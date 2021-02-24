@@ -27,6 +27,7 @@ RUN cd /usr/src/ && git clone -b branch-20.12 --depth=1 https://github.com/ovn-o
     curl https://github.com/kubeovn/ovn/commit/e19ff25f2464e67127c7eb1edef44803aa4a5462.patch | git apply && \
     curl https://github.com/kubeovn/ovn/commit/289c62e3fcd05901dac4b727aa59f6cba058905f.patch | git apply && \
     curl https://github.com/kubeovn/ovn/commit/e24734913d25c0bffdf1cfd79e14ef43d01e1019.patch | git apply && \
+    curl https://github.com/kubeovn/ovn/commit/afb8d70fd2488631fdd71af26c6fedf78ef9309a.patch | git apply && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \
