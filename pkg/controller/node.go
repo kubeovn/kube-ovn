@@ -201,7 +201,7 @@ func (c *Controller) handleAddNode(key string) error {
 
 	var v4IP, v6IP, mac string
 	portName := fmt.Sprintf("node-%s", key)
-	if node.Annotations[util.IpAddressAnnotation] != "" && node.Annotations[util.MacAddressAnnotation] != "" {
+	if node.Annotations[util.AllocatedAnnotation] == "true" && node.Annotations[util.IpAddressAnnotation] != "" && node.Annotations[util.MacAddressAnnotation] != "" {
 		v4IP, v6IP = util.SplitStringIP(node.Annotations[util.IpAddressAnnotation])
 		mac = node.Annotations[util.MacAddressAnnotation]
 	} else {
