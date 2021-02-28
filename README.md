@@ -92,6 +92,20 @@ We are looking forwards to your PR!
 - [Development Guide](docs/development.md)
 - [Architecture Guide](ARCHITECTURE.MD)
 
+
+## FAQ
+1. Q: How about the scalability of Kube-OVN?
+
+   A: We have simulated 200 Nodes with 10k Pods by kubemark, and it works fine. Some community users have deployed one cluster with 250+ Nodes and 3k+ Pods in production. It's still not reach the limitation, but we don't have enough resources to find the limitation.
+
+2. Q: What's the Addressing/IPAM? Node-specific or cluster-wide?
+
+   A: Kube-OVN use a cluster-wide IPAM, Pod address can float to any nodes in the cluster.
+
+3. Q: What's the encapsulation?
+
+   A: For overlay mode, Kube-OVN uses Geneve to encapsulate packets between nodes. For Vlan/Underlay mode there is no encapsulation.
+
 ## Kube-OVN vs. Other CNI Implementation
 
 Different CNI Implementation has different function scope and network topology. There is no single implementation that can resolve all network problems. In this section, we compare Kube-OVN
@@ -124,7 +138,6 @@ Use encapsulation can lower the requirement on networking, and isolate container
 Kube-OVN can also work in non-encapsulation mode, that take use of underlay switches to switch the packets or use hardware offload to achieve better performance than kernel datapath.
 
 From the function set, Kube-OVN can offer some more abilities like static ip, QoS and traffic mirror. The subnet in Kube-OVN and ippool in Calico share some same function set.
-
 
 ## License
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Falauda%2Fkube-ovn.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Falauda%2Fkube-ovn?ref=badge_large)
