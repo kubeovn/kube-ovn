@@ -14,12 +14,14 @@ REGISTRY="kubeovn"
 VERSION="v1.7.0"
 IMAGE_PULL_POLICY="IfNotPresent"
 POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
+POD_GATEWAY="10.16.0.1"
 SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR
 JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
 PINGER_EXTERNAL_ADDRESS="114.114.114.114"  # Pinger check external ip probe
 PINGER_EXTERNAL_DOMAIN="alauda.cn"         # Pinger check external domain probe
 if [ "$IPv6" = "true" ]; then
   POD_CIDR="fd00:10:16::/64"                # Do NOT overlap with NODE/SVC/JOIN CIDR
+  POD_GATEWAY="fd00:10:16::1"
   SVC_CIDR="fd00:10:96::/112"                # Do NOT overlap with NODE/POD/JOIN CIDR
   JOIN_CIDR="fd00:100:64::/64"              # Do NOT overlap with NODE/POD/SVC CIDR
   PINGER_EXTERNAL_ADDRESS="2400:3200::1"
@@ -1573,6 +1575,7 @@ spec:
           - /kube-ovn/start-controller.sh
           args:
           - --default-cidr=$POD_CIDR
+          - --default-gateway=$POD_GATEWAY
           - --default-exclude-ips=$EXCLUDE_IPS
           - --node-switch-cidr=$JOIN_CIDR
           - --network-type=$NETWORK_TYPE
@@ -2198,19 +2201,19 @@ checkDeployment(){
 checkKubeProxy(){
   dsMode=`kubectl get ds -n kube-system | grep kube-proxy || true`
   if [ -z "$dsMode" ]; then
-    nodeIps=`kubectl get node -o wide | grep -v "INTERNAL-IP" | awk '{print $6}'`
+    nodeIps=`kubectl get node -o wide --no-headers | awk '{print $6}'`
     for node in $nodeIps
     do
-      healthResult=`curl -g -6 -sL -w %{http_code} http://[$node]:10256/healthz -o /dev/null | grep -v 200 || true`
+      healthResult=`curl -g -6 -sL --connect-timeout 5 -w %{http_code} http://[$node]:10256/healthz -o /dev/null | grep -v 200 || true`
       if [ -n "$healthResult" ]; then
         echo "$node kube-proxy's health check failed"
         exit 1
       fi
     done
+    echo "kube-proxy ready"
   else
     checkDaemonSet kube-proxy
   fi
-  echo "kube-proxy ready"
 }
 
 if [ $# -lt 1 ]; then

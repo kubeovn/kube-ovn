@@ -14,8 +14,8 @@ RUN apt update && apt install build-essential git libnuma-dev autoconf curl \
 RUN cd /usr/src/ && \
     git clone -b branch-2.15 --depth=1 https://github.com/openvswitch/ovs.git && \
     cd ovs && \
-    curl https://github.com/alauda/ovs/commit/df1c802f568be2af84aa81372fec46f5b09b4366.patch | git apply && \
-    curl https://github.com/alauda/ovs/commit/8dd4973bba021ce92eb9f42446d6c1c0e3474e25.patch | git apply && \
+    curl https://github.com/kubeovn/ovs/commit/df1c802f568be2af84aa81372fec46f5b09b4366.patch | git apply && \
+    curl https://github.com/kubeovn/ovs/commit/8dd4973bba021ce92eb9f42446d6c1c0e3474e25.patch | git apply && \
 
     ./boot.sh && \
     rm -rf .git && \
@@ -23,10 +23,11 @@ RUN cd /usr/src/ && \
 
 RUN cd /usr/src/ && git clone -b branch-20.12 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
-    curl https://github.com/alauda/ovn/commit/d8253981485e499979cc47c9453b6be8eebe5f0e.patch | git apply --exclude debian/changelog && \
-    curl https://github.com/alauda/ovn/commit/e19ff25f2464e67127c7eb1edef44803aa4a5462.patch | git apply && \
-    curl https://github.com/alauda/ovn/commit/289c62e3fcd05901dac4b727aa59f6cba058905f.patch | git apply && \
-    curl https://github.com/alauda/ovn/commit/e24734913d25c0bffdf1cfd79e14ef43d01e1019.patch | git apply && \
+    curl https://github.com/kubeovn/ovn/commit/d8253981485e499979cc47c9453b6be8eebe5f0e.patch | git apply --exclude debian/changelog && \
+    curl https://github.com/kubeovn/ovn/commit/e19ff25f2464e67127c7eb1edef44803aa4a5462.patch | git apply && \
+    curl https://github.com/kubeovn/ovn/commit/289c62e3fcd05901dac4b727aa59f6cba058905f.patch | git apply && \
+    curl https://github.com/kubeovn/ovn/commit/e24734913d25c0bffdf1cfd79e14ef43d01e1019.patch | git apply && \
+    curl https://github.com/kubeovn/ovn/commit/afb8d70fd2488631fdd71af26c6fedf78ef9309a.patch | git apply && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \

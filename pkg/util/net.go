@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"k8s.io/klog"
 )
 
@@ -310,4 +310,96 @@ func SplitStringIP(ipStr string) (string, string) {
 	}
 
 	return v4IP, v6IP
+}
+
+// ExpandExcludeIPs used to get exclude ips in range of subnet cidr, excludes cidr addr and broadcast addr
+func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
+	rv := []string{}
+	for _, excludeIP := range excludeIPs {
+		if strings.Contains(excludeIP, "..") {
+			for _, cidrBlock := range strings.Split(cidr, ",") {
+				subnetNum := SubnetNumber(cidrBlock)
+				broadcast := SubnetBroadCast(cidrBlock)
+				parts := strings.Split(excludeIP, "..")
+				s := Ip2BigInt(parts[0])
+				e := Ip2BigInt(parts[1])
+
+				// limit range in cidr
+				firstIP, _ := FirstSubnetIP(cidrBlock)
+				lastIP, _ := LastIP(cidrBlock)
+				if s.Cmp(Ip2BigInt(firstIP)) < 0 {
+					s = Ip2BigInt(firstIP)
+				}
+				if e.Cmp(Ip2BigInt(lastIP)) > 0 {
+					e = Ip2BigInt(lastIP)
+				}
+
+				changed := false
+				// exclude cidr and broadcast address
+				if ContainsIPs(excludeIP, subnetNum) {
+					v := Ip2BigInt(subnetNum)
+					if s.Cmp(v) == 0 {
+						s.Add(s, big.NewInt(1))
+						rv = append(rv, BigInt2Ip(s)+".."+BigInt2Ip(e))
+					} else if e.Cmp(v) == 0 {
+						e.Sub(e, big.NewInt(1))
+						rv = append(rv, BigInt2Ip(s)+".."+BigInt2Ip(e))
+					} else {
+						var low, high big.Int
+						lowp := (&low).Sub(v, big.NewInt(1))
+						highp := (&high).Add(v, big.NewInt(1))
+						rv = append(rv, BigInt2Ip(s)+".."+BigInt2Ip(lowp))
+						rv = append(rv, BigInt2Ip(highp)+".."+BigInt2Ip(e))
+					}
+					changed = true
+				}
+				if ContainsIPs(excludeIP, broadcast) {
+					v := Ip2BigInt(broadcast)
+					v.Sub(v, big.NewInt(1))
+					rv = append(rv, BigInt2Ip(s)+".."+BigInt2Ip(v))
+					changed = true
+				}
+				if !changed && s.Cmp(e) < 0 {
+					rv = append(rv, BigInt2Ip(s)+".."+BigInt2Ip(e))
+				}
+			}
+		} else {
+			rv = append(rv, excludeIP)
+		}
+	}
+	klog.V(3).Infof("expand exclude ips %v", rv)
+	return rv
+}
+
+func ContainsIPs(excludeIP string, ip string) bool {
+	if strings.Contains(excludeIP, "..") {
+		parts := strings.Split(excludeIP, "..")
+		s := Ip2BigInt(parts[0])
+		e := Ip2BigInt(parts[1])
+		ipv := Ip2BigInt(ip)
+		if s.Cmp(ipv) <= 0 && e.Cmp(ipv) >= 0 {
+			return true
+		}
+	} else {
+		if excludeIP == ip {
+			return true
+		}
+	}
+	return false
+}
+
+func CountIpNums(excludeIPs []string) int64 {
+	var count int64
+	for _, excludeIP := range excludeIPs {
+		if strings.Contains(excludeIP, "..") {
+			var val big.Int
+			parts := strings.Split(excludeIP, "..")
+			s := Ip2BigInt(parts[0])
+			e := Ip2BigInt(parts[1])
+			count = val.Add(val.Sub(e, s), big.NewInt(1)).Int64()
+		} else {
+			count++
+		}
+	}
+	return count
 }

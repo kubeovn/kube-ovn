@@ -2,7 +2,6 @@ package controller
 
 import (
 	"sync"
-
 	"time"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"

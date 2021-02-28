@@ -14,7 +14,6 @@ import (
 	"k8s.io/klog"
 )
 
-// pod、container中执行命令的options
 type ExecOptions struct {
 	Command            []string
 	Namespace          string

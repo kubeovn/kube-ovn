@@ -6,8 +6,8 @@ import (
 	"os"
 	"testing"
 
-	kubeovn "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/alauda/kube-ovn/test/e2e/framework"
+	kubeovn "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -15,11 +15,11 @@ import (
 	. "github.com/onsi/gomega"
 
 	// tests to run
-	_ "github.com/alauda/kube-ovn/test/e2e/ip"
-	_ "github.com/alauda/kube-ovn/test/e2e/kubectl-ko"
-	_ "github.com/alauda/kube-ovn/test/e2e/node"
-	_ "github.com/alauda/kube-ovn/test/e2e/service"
-	_ "github.com/alauda/kube-ovn/test/e2e/subnet"
+	_ "github.com/kubeovn/kube-ovn/test/e2e/ip"
+	_ "github.com/kubeovn/kube-ovn/test/e2e/kubectl-ko"
+	_ "github.com/kubeovn/kube-ovn/test/e2e/node"
+	_ "github.com/kubeovn/kube-ovn/test/e2e/service"
+	_ "github.com/kubeovn/kube-ovn/test/e2e/subnet"
 )
 
 func TestE2e(t *testing.T) {

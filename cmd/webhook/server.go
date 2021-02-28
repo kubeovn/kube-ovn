@@ -2,14 +2,15 @@ package main
 
 import (
 	"flag"
-	"github.com/alauda/kube-ovn/versions"
 	_ "net/http/pprof" // #nosec
 	"os"
 	"time"
 
-	ovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/alauda/kube-ovn/pkg/ovs"
-	ovnwebhook "github.com/alauda/kube-ovn/pkg/webhook"
+	"github.com/kubeovn/kube-ovn/versions"
+
+	ovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	ovnwebhook "github.com/kubeovn/kube-ovn/pkg/webhook"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"

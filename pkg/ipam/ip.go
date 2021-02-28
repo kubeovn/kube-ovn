@@ -4,7 +4,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/alauda/kube-ovn/pkg/util"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 type IP string

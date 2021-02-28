@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	v1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	clientset "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
+	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -290,15 +290,4 @@ func getPodInitStatus(pod corev1.Pod, reason string) (bool, string) {
 		break
 	}
 	return initializing, reason
-}
-
-func GetNodeInternalIP(node corev1.Node) string {
-	var nodeAddr string
-	for _, addr := range node.Status.Addresses {
-		if addr.Type == corev1.NodeInternalIP {
-			nodeAddr = addr.Address
-			break
-		}
-	}
-	return nodeAddr
 }

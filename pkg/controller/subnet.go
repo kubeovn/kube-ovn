@@ -3,15 +3,17 @@ package controller
 import (
 	"context"
 	"fmt"
+	"math"
 	"net"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/alauda/kube-ovn/pkg/ovs"
-	"github.com/alauda/kube-ovn/pkg/util"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ipam"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -372,13 +374,11 @@ func checkAndUpdateExcludeIps(subnet *kubeovnv1.Subnet) bool {
 		subnet.Spec.ExcludeIps = excludeIps
 		changed = true
 	} else {
+		checkAndFormatsExcludeIps(subnet)
 		for _, gw := range excludeIps {
 			gwExists := false
-			for _, ip := range ovs.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock) {
-				if util.CheckProtocol(gw) != util.CheckProtocol(ip) {
-					continue
-				}
-				if ip == gw {
+			for _, excludeIP := range subnet.Spec.ExcludeIps {
+				if util.ContainsIPs(excludeIP, gw) {
 					gwExists = true
 					break
 				}
@@ -1018,8 +1018,8 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	v4ExcludeIps, v6ExcludeIps := util.SplitIpsByProtocol(subnet.Spec.ExcludeIps)
 	// gateway always in excludeIPs
 	cidrBlocks := strings.Split(subnet.Spec.CIDRBlock, ",")
-	v4toSubIPs := ovs.ExpandExcludeIPs(v4ExcludeIps, cidrBlocks[0])
-	v6toSubIPs := ovs.ExpandExcludeIPs(v6ExcludeIps, cidrBlocks[1])
+	v4toSubIPs := util.ExpandExcludeIPs(v4ExcludeIps, cidrBlocks[0])
+	v6toSubIPs := util.ExpandExcludeIPs(v6ExcludeIps, cidrBlocks[1])
 	_, v4CIDR, _ := net.ParseCIDR(cidrBlocks[0])
 	_, v6CIDR, _ := net.ParseCIDR(cidrBlocks[1])
 	v4UsingIPs := make([]string, 0, len(podUsedIPs.Items))
@@ -1034,21 +1034,21 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 			v6UsingIPs = append(v6UsingIPs, splitIPs[1])
 		}
 	}
-	v4availableIPs := util.AddressCount(v4CIDR) - float64(len(util.UniqString(v4toSubIPs)))
+	v4availableIPs := util.AddressCount(v4CIDR) - float64(util.CountIpNums(v4toSubIPs))
 	if v4availableIPs < 0 {
 		v4availableIPs = 0
 	}
-	v6availableIPs := util.AddressCount(v6CIDR) - float64(len(util.UniqString(v6toSubIPs)))
+	v6availableIPs := util.AddressCount(v6CIDR) - float64(util.CountIpNums(v6toSubIPs))
 	if v6availableIPs < 0 {
 		v6availableIPs = 0
 	}
 
 	subnet.Status.V4AvailableIPs = v4availableIPs
 	subnet.Status.V6AvailableIPs = v6availableIPs
-	subnet.Status.AvailableIPs = v4availableIPs + v6availableIPs
+	subnet.Status.AvailableIPs = math.Min(v4availableIPs, v6availableIPs)
 	subnet.Status.V4UsingIPs = float64(len(v4UsingIPs))
 	subnet.Status.V6UsingIPs = float64(len(v6UsingIPs))
-	subnet.Status.UsingIPs = subnet.Status.V4UsingIPs + subnet.Status.V6UsingIPs
+	subnet.Status.UsingIPs = subnet.Status.V4UsingIPs
 
 	bytes, err := subnet.Status.Bytes()
 	if err != nil {
@@ -1070,11 +1070,11 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		return err
 	}
 	// gateway always in excludeIPs
-	toSubIPs := ovs.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
+	toSubIPs := util.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
 	for _, podUsedIP := range podUsedIPs.Items {
 		toSubIPs = append(toSubIPs, podUsedIP.Spec.IPAddress)
 	}
-	availableIPs := util.AddressCount(cidr) - float64(len(util.UniqString(toSubIPs)))
+	availableIPs := util.AddressCount(cidr) - float64(util.CountIpNums(toSubIPs))
 	if availableIPs < 0 {
 		availableIPs = 0
 	}
@@ -1114,4 +1114,75 @@ func (c *Controller) getSubnetVlanTag(subnet *kubeovnv1.Subnet) (string, error) 
 		tag = strconv.Itoa(vlan.Spec.VlanId)
 	}
 	return tag, nil
+}
+
+func checkAndFormatsExcludeIps(subnet *kubeovnv1.Subnet) {
+	var excludeIps []string
+	mapIps := make(map[string]ipam.IPRange, len(subnet.Spec.ExcludeIps))
+
+	for _, excludeIP := range subnet.Spec.ExcludeIps {
+		ips := strings.Split(excludeIP, "..")
+		if len(ips) == 1 {
+			if _, ok := mapIps[excludeIP]; !ok {
+				ipr := ipam.IPRange{Start: ipam.IP(ips[0]), End: ipam.IP(ips[0])}
+				mapIps[excludeIP] = ipr
+			}
+		} else {
+			if _, ok := mapIps[excludeIP]; !ok {
+				ipr := ipam.IPRange{Start: ipam.IP(ips[0]), End: ipam.IP(ips[1])}
+				mapIps[excludeIP] = ipr
+			}
+		}
+	}
+	newMap := filterRepeatIPRange(mapIps)
+	for _, v := range newMap {
+		if v.Start == v.End {
+			excludeIps = append(excludeIps, string(v.Start))
+		} else {
+			excludeIps = append(excludeIps, string(v.Start)+".."+string(v.End))
+		}
+	}
+	klog.V(3).Infof("excludeips before format is %v, after format is %v", subnet.Spec.ExcludeIps, excludeIps)
+	subnet.Spec.ExcludeIps = excludeIps
+}
+
+func filterRepeatIPRange(mapIps map[string]ipam.IPRange) map[string]ipam.IPRange {
+	for ka, a := range mapIps {
+		for kb, b := range mapIps {
+			if ka == kb && a == b {
+				continue
+			}
+
+			if b.End.LessThan(a.Start) || b.Start.GreaterThan(a.End) {
+				continue
+			}
+
+			if (a.Start.Equal(b.Start) || a.Start.GreaterThan(b.Start)) &&
+				(a.End.Equal(b.End) || a.End.LessThan(b.End)) {
+				delete(mapIps, ka)
+				continue
+			}
+
+			if (a.Start.Equal(b.Start) || a.Start.GreaterThan(b.Start)) &&
+				a.End.GreaterThan(b.End) {
+				ipr := ipam.IPRange{Start: b.Start, End: a.End}
+				delete(mapIps, ka)
+				mapIps[kb] = ipr
+				continue
+			}
+
+			if (a.End.Equal(b.End) || a.End.LessThan(b.End)) &&
+				a.Start.LessThan(b.Start) {
+				ipr := ipam.IPRange{Start: a.Start, End: b.End}
+				delete(mapIps, ka)
+				mapIps[kb] = ipr
+				continue
+			}
+
+			// a contains b
+			mapIps[kb] = a
+			delete(mapIps, ka)
+		}
+	}
+	return mapIps
 }

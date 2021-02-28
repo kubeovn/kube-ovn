@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strings"
 
-	ovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/alauda/kube-ovn/pkg/ovs"
-	"github.com/alauda/kube-ovn/pkg/util"
+	ovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -120,7 +120,7 @@ func (v *ValidatingHook) PodCreateHook(ctx context.Context, req admission.Reques
 	if err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
-	parsedExcludeIPs := ovs.ExpandExcludeIPs(excludeIPs, subnet.Spec.CIDRBlock)
+	parsedExcludeIPs := util.ExpandExcludeIPs(excludeIPs, subnet.Spec.CIDRBlock)
 	usedIPs = append(usedIPs, parsedExcludeIPs...)
 	// Check static ips overlap
 	if util.IsStringsOverlap([]string{staticIP}, usedIPs) {
@@ -318,7 +318,7 @@ func (v *ValidatingHook) podControllerCreate(ctx context.Context, staticIPSAnno,
 	if err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
-	parsedExcludeIPs := ovs.ExpandExcludeIPs(excludeIPs, subnet.Spec.CIDRBlock)
+	parsedExcludeIPs := util.ExpandExcludeIPs(excludeIPs, subnet.Spec.CIDRBlock)
 	usedIPs = append(usedIPs, parsedExcludeIPs...)
 	// Check static ips overlap
 	if util.IsStringsOverlap(staticIPs, usedIPs) {
@@ -383,7 +383,7 @@ func (v *ValidatingHook) podControllerUpdate(ctx context.Context, oldStaticIPSAn
 	if err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
-	parsedExcludeIPs := ovs.ExpandExcludeIPs(excludeIPs, subnet.Spec.CIDRBlock)
+	parsedExcludeIPs := util.ExpandExcludeIPs(excludeIPs, subnet.Spec.CIDRBlock)
 	// Check static ips overlap
 	if util.IsStringsOverlap(toAdd, parsedExcludeIPs) {
 		return ctrlwebhook.Denied("overlap")

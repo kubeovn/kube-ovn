@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	clientset "github.com/alauda/kube-ovn/pkg/client/clientset/versioned"
-	"github.com/alauda/kube-ovn/pkg/util"
 	attacnetclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
+	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
