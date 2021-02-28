@@ -272,12 +272,6 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		return nil
 	}
 
-	//if _, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).
-	//	Update(context.Background(), newDp, metav1.UpdateOptions{}); err != nil {
-	//	klog.Errorf("failed to update deployment %s, err: %v", newDp.Name, err)
-	//	return err
-	//}
-
 	pod, err := c.getNatGwPod(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -337,7 +331,7 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 
 	if pod.Status.Phase != corev1.PodRunning {
 		time.Sleep(5 * 1000)
-		return nil
+		return fmt.Errorf("failed to init vpc nat gateway, pod is not ready.")
 	}
 
 	if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; hasInit {
