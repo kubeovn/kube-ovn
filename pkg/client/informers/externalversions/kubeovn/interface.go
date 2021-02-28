@@ -19,8 +19,8 @@ limitations under the License.
 package kubeovn
 
 import (
-	internalinterfaces "github.com/alauda/kube-ovn/pkg/client/informers/externalversions/internalinterfaces"
-	v1 "github.com/alauda/kube-ovn/pkg/client/informers/externalversions/kubeovn/v1"
+	internalinterfaces "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions/internalinterfaces"
+	v1 "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions/kubeovn/v1"
 )
 
 // Interface provides access to each of this group's versions.

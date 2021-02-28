@@ -6,7 +6,7 @@ DEV_TAG=dev
 RELEASE_TAG=$(shell cat VERSION)
 COMMIT=git-$(shell git rev-parse HEAD)
 DATE=$(shell date +"%Y-%m-%d_%H:%M:%S")
-GOLDFLAGS="-w -s -X github.com/alauda/kube-ovn/versions.COMMIT=${COMMIT} -X github.com/alauda/kube-ovn/versions.VERSION=${RELEASE_TAG} -X github.com/alauda/kube-ovn/versions.BUILDDATE=${DATE}"
+GOLDFLAGS="-w -s -X github.com/kubeovn/kube-ovn/versions.COMMIT=${COMMIT} -X github.com/kubeovn/kube-ovn/versions.VERSION=${RELEASE_TAG} -X github.com/kubeovn/kube-ovn/versions.BUILDDATE=${DATE}"
 
 # ARCH could be amd64,arm64
 ARCH=amd64
@@ -34,9 +34,11 @@ build-go-arm:
 
 release: lint build-go
 	docker buildx build --cache-from "type=local,src=/tmp/.buildx-cache" --cache-to "type=local,dest=/tmp/.buildx-cache" --platform linux/amd64 --build-arg ARCH=amd64 --build-arg RPM_ARCH=x86_64 -t ${REGISTRY}/kube-ovn:${RELEASE_TAG} -o type=docker -f dist/images/Dockerfile dist/images/
+	docker buildx build --cache-from "type=local,src=/tmp/.buildx-cache" --cache-to "type=local,dest=/tmp/.buildx-cache" --platform linux/amd64 --build-arg ARCH=amd64 --build-arg RPM_ARCH=x86_64 -t ${REGISTRY}/vpc-nat-gateway:${RELEASE_TAG} -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
 
 release-arm: lint build-go-arm
 	docker buildx build --cache-from "type=local,src=/tmp/.buildx-cache" --cache-to "type=local,dest=/tmp/.buildx-cache" --platform linux/arm64 --build-arg ARCH=arm64 --build-arg RPM_ARCH=aarch64 -t ${REGISTRY}/kube-ovn:${RELEASE_TAG} -o type=docker -f dist/images/Dockerfile dist/images/
+	docker buildx build --cache-from "type=local,src=/tmp/.buildx-cache" --cache-to "type=local,dest=/tmp/.buildx-cache" --platform linux/amd64 --build-arg ARCH=amd64 --build-arg RPM_ARCH=aarch64 -t ${REGISTRY}/vpc-nat-gateway:${RELEASE_TAG} -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
 
 tar:
 	docker save ${REGISTRY}/kube-ovn:${RELEASE_TAG} > image.tar
@@ -53,10 +55,10 @@ lint:
 build-bin:
 	docker run --rm -e GOOS=linux -e GOCACHE=/tmp -e GOARCH=${ARCH} -e GOPROXY=https://goproxy.cn \
 		-u $(shell id -u):$(shell id -g) \
-		-v $(CURDIR):/go/src/github.com/alauda/kube-ovn:ro \
-		-v $(CURDIR)/dist:/go/src/github.com/alauda/kube-ovn/dist/ \
+		-v $(CURDIR):/go/src/github.com/kubeovn/kube-ovn:ro \
+		-v $(CURDIR)/dist:/go/src/github.com/kubeovn/kube-ovn/dist/ \
 		golang:$(GO_VERSION) /bin/bash -c '\
-		cd /go/src/github.com/alauda/kube-ovn && \
+		cd /go/src/github.com/kubeovn/kube-ovn && \
 		make build-go '
 
 kind-init:

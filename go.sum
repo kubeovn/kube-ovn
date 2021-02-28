@@ -53,6 +53,8 @@ github.com/agnivade/levenshtein v1.0.1/go.mod h1:CURSv5d9Uaml+FovSIICkLbAUZ9S4Rq
 github.com/ajstarks/svgo v0.0.0-20180226025133-644b8db467af/go.mod h1:K08gAheRH3/J6wwsYMMT4xOr94bZjxIelGM0+d/wbFw=
 github.com/alauda/felix v3.6.6-0.20201207121355-187332daf314+incompatible h1:f8w9fTcjS9/Zdw57Law9JsFxh/sttnBor4TGkWQpSf8=
 github.com/alauda/felix v3.6.6-0.20201207121355-187332daf314+incompatible/go.mod h1:NeFJ7/fvKQ8X9styGJvh7sHmZoUprV5ZKzE2Ey82BEA=
+github.com/alauda/kube-ovn v1.6.0 h1:/4OoW/4Vzpnp5x1olQwb3ozujAhAqF6+2hGPpxoxQrQ=
+github.com/alauda/kube-ovn v1.6.0/go.mod h1:LhmXKFKj775Z1mnRFEdOFbw9NkZ+0iWK+AbXu40eOfE=
 github.com/alauda/ovsdb v0.0.0-20210113100339-040cf3e76c28 h1:FW5M3SAwSGBdtTboeV5sI7kEY6zraApSZQxTUfZ7LQY=
 github.com/alauda/ovsdb v0.0.0-20210113100339-040cf3e76c28/go.mod h1:dXpg+IAC2yp2IZQlEVmnmEc1rqEmSZzgNfu6+ai38J4=
 github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc h1:cAKDfWh5VpdgMhJosfJnn5/FoN2SRZ4p7fJNX58YPaU=
