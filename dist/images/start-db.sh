@@ -69,6 +69,8 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
       /usr/share/ovn/scripts/ovn-ctl restart_northd
       ovn-nbctl set-connection ptcp:"${DB_NB_PORT}":["${DB_NB_ADDR}"]
       ovn-nbctl set Connection . inactivity_probe=180000
+      ovn-nbctl set NB_Global . options:use_logical_dp_groups=true
+
       ovn-sbctl set-connection ptcp:"${DB_SB_PORT}":["${DB_SB_ADDR}"]
       ovn-sbctl set Connection . inactivity_probe=180000
   else
@@ -94,6 +96,8 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
               start_northd
           ovn-nbctl set-connection ptcp:"${DB_NB_PORT}":[::]
           ovn-nbctl set Connection . inactivity_probe=180000
+          ovn-nbctl set NB_Global . options:use_logical_dp_groups=true
+
           ovn-sbctl set-connection ptcp:"${DB_SB_PORT}":[::]
           ovn-sbctl set Connection . inactivity_probe=180000
       else
@@ -138,6 +142,8 @@ else
         restart_northd
       ovn-nbctl -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set-connection pssl:"${DB_NB_PORT}":["${DB_NB_ADDR}"]
       ovn-nbctl -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set Connection . inactivity_probe=180000
+      ovn-nbctl -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set NB_Global . options:use_logical_dp_groups=true
+
       ovn-sbctl -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set-connection pssl:"${DB_SB_PORT}":["${DB_SB_ADDR}"]
       ovn-sbctl -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set Connection . inactivity_probe=180000
   else
@@ -169,9 +175,11 @@ else
               --ovn-northd-sb-db="$(gen_conn_str 6642)" \
               start_northd
           ovn-nbctl -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set-connection pssl:"${DB_NB_PORT}":[::]
-          ovn-nbctl set Connection . inactivity_probe=180000
+          ovn-nbctl -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set Connection . inactivity_probe=180000
+          ovn-nbctl -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set NB_Global . options:use_logical_dp_groups=true
+
           ovn-sbctl -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set-connection pssl:"${DB_SB_PORT}":[::]
-          ovn-sbctl set Connection . inactivity_probe=180000
+          ovn-sbctl -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set Connection . inactivity_probe=180000
       else
           while ! nc -z "${nb_leader_ip}" "${DB_NB_PORT}" >/dev/null;
           do
