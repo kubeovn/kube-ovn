@@ -8,7 +8,7 @@
 
 [中文教程](https://github.com/kubeovn/kube-ovn/wiki)
 
-Kube-OVN integrates the OVN-based Network Virtualization with Kubernetes. It offers an advanced Container Network Fabric for Enterprises with the most functions and the easiest operation.
+Kube-OVN, a [CNCF Sandbox Level Project](https://www.cncf.io/sandbox-projects/), integrates the OVN-based Network Virtualization with Kubernetes. It offers an advanced Container Network Fabric for Enterprises with the most functions and the easiest operation.
 
 ## Community
 The Kube-OVN community is waiting for you participation!
