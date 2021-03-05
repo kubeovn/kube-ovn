@@ -280,3 +280,57 @@ type VpcList struct {
 
 	Items []Vpc `json:"items"`
 }
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +genclient:nonNamespaced
+// +resourceName=vpc-nat-gateways
+
+type VpcNatGateway struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec VpcNatSpec `json:"spec"`
+}
+
+type VpcNatSpec struct {
+	Vpc             string            `json:"vpc"`
+	Subnet          string            `json:"subnet"`
+	LanIp           string            `json:"lanIp"`
+	Eips            []*Eip            `json:"eips,omitempty"`
+	FloatingIpRules []*FloutingIpRule `json:"floatingIpRules,omitempty"`
+	DnatRules       []*DnatRule       `json:"dnatRules,omitempty"`
+	SnatRules       []*SnatRule       `json:"snatRules,omitempty"`
+}
+
+type Eip struct {
+	EipCIDR string `json:"eipCIDR"`
+	Gateway string `json:"gateway"`
+}
+
+type FloutingIpRule struct {
+	Eip        string `json:"eip"`
+	InternalIp string `json:"internalIp"`
+}
+
+type SnatRule struct {
+	Eip          string `json:"eip"`
+	InternalCIDR string `json:"internalCIDR"`
+}
+
+type DnatRule struct {
+	Eip          string `json:"eip"`
+	ExternalPort string `json:"externalPort"`
+	Protocol     string `json:"protocol,omitempty"`
+	InternalIp   string `json:"internalIp"`
+	InternalPort string `json:"internalPort"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type VpcNatGatewayList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []VpcNatGateway `json:"items"`
+}

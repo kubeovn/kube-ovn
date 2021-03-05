@@ -39,6 +39,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&VlanList{},
 		&Vpc{},
 		&VpcList{},
+		&VpcNatGateway{},
+		&VpcNatGatewayList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

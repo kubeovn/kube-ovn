@@ -10,22 +10,19 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/client-go/kubernetes"
-
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
-
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
-
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func isPodAlive(p *v1.Pod) bool {
@@ -426,6 +423,10 @@ func (c *Controller) handleAddPod(key string) error {
 		}
 		klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
 		return err
+	}
+
+	if vpcGwName, isVpcNatGw := pod.Annotations[util.VpcNatGatewayAnnotation]; isVpcNatGw {
+		c.initVpcNatGatewayQueue.Add(vpcGwName)
 	}
 	return nil
 }

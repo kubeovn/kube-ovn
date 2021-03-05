@@ -33,3 +33,7 @@ type VlanListerExpansion interface{}
 // VpcListerExpansion allows custom methods to be added to
 // VpcLister.
 type VpcListerExpansion interface{}
+
+// VpcNatGatewayListerExpansion allows custom methods to be added to
+// VpcNatGatewayLister.
+type VpcNatGatewayListerExpansion interface{}

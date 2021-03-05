@@ -120,6 +120,16 @@ func (c *Controller) handleUpdateVpcStatus(key string) error {
 			c.addNamespaceQueue.Add(ns)
 		}
 	}
+
+	natGws, err := c.vpcNatGatewayLister.List(labels.Everything())
+	if err != nil {
+		return err
+	}
+	for _, gw := range natGws {
+		if key == gw.Spec.Vpc {
+			c.updateVpcSubnetQueue.Add(gw.Name)
+		}
+	}
 	return nil
 }
 
@@ -320,7 +330,7 @@ func (c *Controller) processNextAddVpcWorkItem() bool {
 			return nil
 		}
 		if err := c.handleAddOrUpdateVpc(key); err != nil {
-			c.addOrUpdateVpcQueue.AddRateLimited(key)
+			//c.addOrUpdateVpcQueue.AddRateLimited(key)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
 		c.addOrUpdateVpcQueue.Forget(obj)
@@ -329,6 +339,7 @@ func (c *Controller) processNextAddVpcWorkItem() bool {
 
 	if err != nil {
 		utilruntime.HandleError(err)
+		c.addOrUpdateVpcQueue.AddRateLimited(obj)
 		return true
 	}
 	return true

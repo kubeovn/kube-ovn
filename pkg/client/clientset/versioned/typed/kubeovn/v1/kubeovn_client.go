@@ -30,6 +30,7 @@ type KubeovnV1Interface interface {
 	SubnetsGetter
 	VlansGetter
 	VpcsGetter
+	VpcNatGatewaysGetter
 }
 
 // KubeovnV1Client is used to interact with features provided by the kubeovn.io group.
@@ -51,6 +52,10 @@ func (c *KubeovnV1Client) Vlans() VlanInterface {
 
 func (c *KubeovnV1Client) Vpcs() VpcInterface {
 	return newVpcs(c)
+}
+
+func (c *KubeovnV1Client) VpcNatGateways() VpcNatGatewayInterface {
+	return newVpcNatGateways(c)
 }
 
 // NewForConfig creates a new KubeovnV1Client for the given config.
