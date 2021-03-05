@@ -215,5 +215,11 @@ else
       fi
   fi
 fi
+
+# Reclaim heap memory after compaction
+# https://www.mail-archive.com/ovs-dev@openvswitch.org/msg48853.html
+ovs-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/memory-trim-on-compaction on
+ovs-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/memory-trim-on-compaction on
+
 chmod 600 /etc/ovn/*
 tail -f /var/log/ovn/ovn-northd.log
