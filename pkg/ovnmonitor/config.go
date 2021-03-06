@@ -123,6 +123,6 @@ func ParseFlags() (*Configuration, error) {
 		ServiceNorthdFilePidPath:        *argServiceNorthdFilePidPath,
 	}
 
-	klog.Infof("ovn monnitor config is %+v", config)
+	klog.Infof("ovn monitor config is %+v", config)
 	return config, nil
 }
