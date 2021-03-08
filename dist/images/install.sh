@@ -1993,13 +1993,11 @@ tcpdump(){
   namespace=$(echo "$namespacedPod" | cut -d "/" -f1)
   podName=$(echo "$namespacedPod" | cut -d "/" -f2)
   if [ "$podName" = "$namespacedPod" ]; then
-    nodeName=$(kubectl get pod "$podName" -o jsonpath={.spec.nodeName})
-    mac=$(kubectl get pod "$podName" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/mac_address})
-    hostNetwork=$(kubectl get pod "$podName" -o jsonpath={.spec.hostNetwork})
-  else
-    nodeName=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.nodeName})
-    hostNetwork=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.hostNetwork})
+    namespace="default"
   fi
+
+  nodeName=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.nodeName})
+  hostNetwork=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.hostNetwork})
 
   if [ -z "$nodeName" ]; then
     echo "Pod $namespacedPod not exists on any node"
@@ -2031,8 +2029,7 @@ trace(){
   namespace=$(echo "$1" | cut -d "/" -f1)
   podName=$(echo "$1" | cut -d "/" -f2)
   if [ "$podName" = "$1" ]; then
-    echo "namespace is required"
-    exit 1
+    namespace="default"
   fi
 
   podIP=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/ip_address})
