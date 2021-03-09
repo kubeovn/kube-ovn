@@ -1,5 +1,31 @@
 # CHANGELOG
 
+## 1.6.1 -- 2021/03/09
+
+This release mainly fix bugs found in 1.6.0
+
+### Bugfix
+* DualStack error logs
+* IP count error in DualStack mode
+* ip6tables check error
+* Update ipam cidr when subnet changes
+* When address is empty, skip route/nat deletion
+* Waiting pod network ready takes too long
+* Add new iptables clean up commands
+* Pod terminating not recycle ip when controller not ready
+* Restart when init ping failed
+* Make sure northd leader change
+* Check required module before start
+* Underlay gateway flood logs
+* Wrong split in FindLoadbalancer function
+* Reset ovn0 addr
+* Set default db addr same with leader node to fix nb and sb error 'bind: Address already in use'
+* Masq traffic to ovn0 from other nodes
+
+### Misc
+* Update ovn to 20.12 and ovs to 2.15
+
+
 ## 1.6.0 -- 2021/01/04
 
 ### New Feature

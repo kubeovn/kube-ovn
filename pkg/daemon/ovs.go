@@ -283,7 +283,7 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 			return err
 		}
 	} else {
-		output, err = exec.Command("ping6",  "-w", "10", gw).CombinedOutput()
+		output, err = exec.Command("ping6", "-w", "10", gw).CombinedOutput()
 		if err != nil {
 			klog.Errorf("ovn0 failed to ping gw %s, %v", gw, err)
 			return err

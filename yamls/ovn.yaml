@@ -206,7 +206,7 @@ spec:
       shareProcessNamespace: true
       containers:
         - name: ovn-central
-          image: "kubeovn/kube-ovn:v1.6.0"
+          image: "kubeovn/kube-ovn:v1.6.1"
           imagePullPolicy: IfNotPresent
           command: ["/kube-ovn/start-db.sh"]
           securityContext:
@@ -271,7 +271,7 @@ spec:
             failureThreshold: 5
             timeoutSeconds: 45
         - name: ovn-monitor
-          image: "kubeovn/kube-ovn:v1.6.0"
+          image: "kubeovn/kube-ovn:v1.6.1"
           imagePullPolicy: IfNotPresent
           command: ["/kube-ovn/start-ovn-monitor.sh"]
           env:
@@ -391,7 +391,7 @@ spec:
       hostPID: true
       containers:
         - name: openvswitch
-          image: "kubeovn/kube-ovn:v1.6.0"
+          image: "kubeovn/kube-ovn:v1.6.1"
           imagePullPolicy: IfNotPresent
           command: ["/kube-ovn/start-ovs.sh"]
           securityContext:

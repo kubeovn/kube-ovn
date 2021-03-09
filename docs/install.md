@@ -40,10 +40,10 @@ If you want to try the latest developing Kube-OVN, try the script below
  JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
  LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
  IFACE=""                               # The nic to support container network can be a nic name or a group of regex separated by comma, if empty will use the nic that the default route use
- VERSION="v1.6.0"
+ VERSION="v1.6.1"
 ```
 
-After v1.6.0 `IFACE` support regex, e.g. `IFACE=enp6s0f0,eth.*`
+After v1.6.1 `IFACE` support regex, e.g. `IFACE=enp6s0f0,eth.*`
 
 3. Execute the script
 

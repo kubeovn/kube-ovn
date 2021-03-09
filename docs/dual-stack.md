@@ -1,5 +1,5 @@
 # IPv4/IPv6 dual-stack
-We provide dual-stack support for Kube-OVN from v1.6.0.
+We provide dual-stack support for Kube-OVN from v1.6.1.
 
 It's easy to apply this feature, all things need to do is just configure subnet CIDR as dual-stack format, ```cidr=<IPv4 CIDR>,<IPv6 CIDR>```. The CIDR is ordered, IPv4 CIDR should be placed before IPv6 CIDR.
 
