@@ -589,6 +589,9 @@ func (c Client) DeleteStaticRoute(cidr, router string) error {
 }
 
 func (c Client) DeleteStaticRouteByNextHop(nextHop string) error {
+	if strings.TrimSpace(nextHop) == "" {
+		return nil
+	}
 	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=ip_prefix", "find", "Logical_Router_Static_Route", fmt.Sprintf("nexthop=%s", nextHop))
 	if err != nil {
 		klog.Errorf("failed to list static route %s, %v", nextHop, err)
@@ -730,7 +733,7 @@ func (c Client) GetLogicalSwitchPortAddress(port string) ([]string, error) {
 		klog.Errorf("get port %s addresses failed %v", port, err)
 		return nil, err
 	}
-	if strings.Index(output, "dynamic") != -1 {
+	if strings.Contains(output, "dynamic") {
 		// [dynamic]
 		return nil, nil
 	}

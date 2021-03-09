@@ -57,7 +57,7 @@ func (c Client) DeleteChassis(node string) error {
 	for _, chassis := range strings.Split(output, "\n") {
 		chassis = strings.TrimSpace(chassis)
 		if len(chassis) > 0 {
-			if _, err := c.ovnSbCommand("chassis-del", strings.TrimSpace(chassis)); err != nil {
+			if _, err := c.ovnSbCommand("chassis-del", strings.TrimSpace(chassis), "--", "destroy", "chassis_private", strings.TrimSpace(chassis)); err != nil {
 				return err
 			}
 		}
