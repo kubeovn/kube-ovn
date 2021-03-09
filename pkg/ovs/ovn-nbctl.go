@@ -589,7 +589,7 @@ func (c Client) DeleteStaticRoute(cidr, router string) error {
 }
 
 func (c Client) DeleteStaticRouteByNextHop(nextHop string) error {
-	if nextHop == "" {
+	if strings.TrimSpace(nextHop) == "" {
 		return nil
 	}
 	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=ip_prefix", "find", "Logical_Router_Static_Route", fmt.Sprintf("nexthop=%s", nextHop))
