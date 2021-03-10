@@ -78,7 +78,6 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
 - [Vlan/Underlay Support](docs/vlan.md)
 - [DPDK Support](docs/dpdk.md)
 - [Traffic Mirror](docs/mirror.md)
-- [Webhook](docs/webhook.md)
 - [IPv6](docs/ipv6.md)
 - [DualStack](docs/dual-stack.md)
 - [VPC](docs/vpc.md)
