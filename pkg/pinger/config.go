@@ -1,14 +1,11 @@
 package pinger
 
 import (
-	"context"
 	"flag"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/spf13/pflag"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -134,21 +131,6 @@ func ParseFlags() (*Configuration, error) {
 		return nil, err
 	}
 
-	if config.Mode == "job" {
-		ds, err := config.KubeClient.AppsV1().DaemonSets(config.DaemonSetNamespace).Get(context.Background(), config.DaemonSetName, metav1.GetOptions{})
-		if err != nil {
-			return nil, err
-		}
-		for _, arg := range ds.Spec.Template.Spec.Containers[0].Command {
-			arg = strings.Trim(arg, "\"")
-			if config.ExternalAddress == "114.114.114.114" && strings.HasPrefix(arg, "--external-address=") {
-				config.ExternalAddress = strings.TrimPrefix(arg, "--external-address=")
-			}
-			if config.ExternalDNS == "alauda.cn" && strings.HasPrefix(arg, "--external-dns=") {
-				config.ExternalDNS = strings.TrimPrefix(arg, "--external-dns=")
-			}
-		}
-	}
 	klog.Infof("pinger config is %+v", config)
 	return config, nil
 }
