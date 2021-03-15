@@ -164,5 +164,5 @@ func checkSBBindings(config *Configuration) ([]string, error) {
 		return nil, err
 	}
 
-	return strings.Split(string(output), "\n"), nil
+	return strings.Split(strings.TrimSpace(string(output)), "\n"), nil
 }
