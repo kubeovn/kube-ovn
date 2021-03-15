@@ -518,6 +518,40 @@ func (c *Controller) handleDeletePod(key string) error {
 	return nil
 }
 
+func (c *Controller) getPodPorts(pod, namespace string) (ports []string, err error) {
+	defaultPort := ovs.PodNameToPortName(pod, namespace, util.OvnProvider)
+	if c.ovnClient.IsLogicalSwitchPortExist(defaultPort) {
+		ports = append(ports, defaultPort)
+	}
+
+	allNs, err := c.namespacesLister.List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+	for _, ns := range allNs {
+		attachNets, err := c.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(ns.Name).List(context.Background(), metav1.ListOptions{})
+		if err != nil {
+			if k8serrors.IsForbidden(err) {
+				return nil, nil
+			} else {
+				klog.Errorf("failed to list attach-net-def, %v", err)
+				return nil, err
+			}
+		}
+		for _, attachNet := range attachNets.Items {
+			netCfg, err := loadNetConf([]byte(attachNet.Spec.Config))
+			if err != nil || netCfg.Type != util.CniTypeName {
+				continue
+			}
+			port := ovs.PodNameToPortName(pod, namespace, fmt.Sprintf("%s.%s.ovn", attachNet.Name, attachNet.Namespace))
+			if c.ovnClient.IsLogicalSwitchPortExist(port) {
+				ports = append(ports, port)
+			}
+		}
+	}
+	return ports, nil
+}
+
 func (c *Controller) handleUpdatePod(key string) error {
 	c.podKeyMutex.Lock(key)
 	defer c.podKeyMutex.Unlock(key)
