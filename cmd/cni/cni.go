@@ -48,6 +48,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	client := request.NewCniServerClient(netConf.ServerSocket)
 
 	response, err := client.Add(request.CniRequest{
+		CniType:      netConf.Type,
 		PodName:      podName,
 		PodNamespace: podNamespace,
 		ContainerID:  args.ContainerID,
@@ -117,10 +118,12 @@ func cmdDel(args *skel.CmdArgs) error {
 	}
 
 	return client.Del(request.CniRequest{
+		CniType:      netConf.Type,
 		PodName:      podName,
 		PodNamespace: podNamespace,
 		ContainerID:  args.ContainerID,
 		NetNs:        args.Netns,
+		IfName:       args.IfName,
 		Provider:     netConf.Provider,
 		DeviceID:     netConf.DeviceID,
 	})
@@ -146,7 +149,7 @@ func loadNetConf(bytes []byte) (*netConf, string, error) {
 		return nil, "", fmt.Errorf("failed to load netconf: %v", err)
 	}
 
-	if n.IPAM != nil {
+	if n.Type != util.CniTypeName && n.IPAM != nil {
 		n.Provider = n.IPAM.Provider
 		n.ServerSocket = n.IPAM.ServerSocket
 	}
