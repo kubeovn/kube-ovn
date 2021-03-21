@@ -15,6 +15,7 @@ require (
 	github.com/emicklei/go-restful v2.11.1+incompatible
 	github.com/go-ini/ini v1.42.0 // indirect
 	github.com/golang/protobuf v1.4.3
+	github.com/google/go-cmp v0.5.5 // indirect
 	github.com/greenpau/ovsdb v0.0.0-20181114004433-3582b85e8968
 	github.com/hashicorp/go-version v1.2.0 // indirect
 	github.com/intel/multus-cni v0.0.0-20200313031649-eaf6ff6e20bb
@@ -39,9 +40,9 @@ require (
 	github.com/stretchr/testify v1.6.1
 	github.com/vishvananda/netlink v1.1.0
 	google.golang.org/grpc v1.27.1
-	k8s.io/api v0.20.1-rc.1
-	k8s.io/apimachinery v0.20.1-rc.1
-	k8s.io/client-go v11.0.1-0.20190409021438-1a26190bd76a+incompatible
+	k8s.io/api v0.20.4
+	k8s.io/apimachinery v0.20.4
+	k8s.io/client-go v0.20.4
 	k8s.io/klog v1.0.0
 	k8s.io/sample-controller v0.0.0-20190326030654-b8f621986e45
 	sigs.k8s.io/controller-runtime v0.7.0
@@ -49,5 +50,5 @@ require (
 
 replace (
 	github.com/greenpau/ovsdb => github.com/alauda/ovsdb v0.0.0-20210113100339-040cf3e76c28
-	k8s.io/client-go => k8s.io/client-go v0.20.1-rc.1
+	k8s.io/client-go => k8s.io/client-go v0.20.4
 )
