@@ -406,7 +406,13 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, erro
 		return false, nil
 	}
 
-	if !subnet.DeletionTimestamp.IsZero() && subnet.Status.UsingIPs == 0 {
+	var usingIps float64
+	if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolIPv6 {
+		usingIps = subnet.Status.V6UsingIPs
+	} else {
+		usingIps = subnet.Status.V4UsingIPs
+	}
+	if !subnet.DeletionTimestamp.IsZero() && usingIps == 0 {
 		subnet.Finalizers = util.RemoveString(subnet.Finalizers, util.ControllerName)
 		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), subnet, metav1.UpdateOptions{}); err != nil {
 			klog.Errorf("failed to remove finalizer from subnet %s, %v", subnet.Name, err)
