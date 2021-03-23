@@ -1718,7 +1718,7 @@ spec:
           - /kube-ovn/start-cniserver.sh
         args:
           - --enable-mirror=$ENABLE_MIRROR
-          - --encap-checksum=true
+          - --encap-checksum=false
           - --service-cluster-ip-range=$SVC_CIDR
           - --iface=${IFACE}
           - --network-type=$NETWORK_TYPE
