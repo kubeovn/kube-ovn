@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/alauda/felix/ipsets"
@@ -206,11 +207,21 @@ func (c *Controller) setICGateway() error {
 	}
 	enable := node.Labels[util.ICGatewayLabel]
 	if enable == "true" {
-		if _, err := ovs.Exec("set", "open_vswitch", ".", "external_ids:ovn-is-interconn=true"); err != nil {
-			return fmt.Errorf("failed to enable ic gateway, %v", err)
+		icEnabled, err := ovs.Exec(ovs.IfExists, "get", "open", ".", "external_ids:ovn-is-interconn")
+		if err != nil {
+			return fmt.Errorf("failed to get if ic enabled, %v", err)
+		}
+		if strings.Trim(icEnabled, "\"") != "true" {
+			if _, err := ovs.Exec("set", "open", ".", "external_ids:ovn-is-interconn=true"); err != nil {
+				return fmt.Errorf("failed to enable ic gateway, %v", err)
+			}
+			output, err := exec.Command("/usr/share/ovn/scripts/ovn-ctl", "restart_controller").CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("failed to restart ovn-controller, %v, %q", err, output)
+			}
 		}
 	} else {
-		if _, err := ovs.Exec("set", "open_vswitch", ".", "external_ids:ovn-is-interconn=false"); err != nil {
+		if _, err := ovs.Exec("set", "open", ".", "external_ids:ovn-is-interconn=false"); err != nil {
 			return fmt.Errorf("failed to disable ic gateway, %v", err)
 		}
 	}
