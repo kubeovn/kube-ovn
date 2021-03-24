@@ -333,7 +333,7 @@ func (c *Controller) getSubnetsNeedNAT(protocol string) ([]string, error) {
 	for _, subnet := range subnets {
 		if subnet.Spec.Vpc == util.DefaultVpc &&
 			subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType &&
-			subnet.Status.ActivateGateway == c.config.NodeName &&
+			util.GatewayContains(subnet.Spec.GatewayNode, c.config.NodeName) &&
 			(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) &&
 			subnet.Spec.NatOutgoing {
 			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)

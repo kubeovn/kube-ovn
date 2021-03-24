@@ -90,4 +90,7 @@ const (
 	VpcExternalNet        = "ovn-vpc-external-network"
 
 	DefaultVpc = "ovn-cluster"
+
+	EcmpRouteType   = "ecmp"
+	NormalRouteType = "normal"
 )
