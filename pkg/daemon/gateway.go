@@ -172,6 +172,11 @@ func (c *Controller) setIptables() error {
 		iptableRules[0], iptableRules[1], iptableRules[3], iptableRules[4] =
 			iptableRules[4], iptableRules[3], iptableRules[1], iptableRules[0]
 		for _, iptRule := range iptableRules {
+			if strings.Contains(strings.Join(iptRule.Rule, " "), "ovn0") && protocol != util.CheckProtocol(hostIP) {
+				klog.V(3).Infof("ignore check iptable rule, protocol %v, hostIP %v", protocol, hostIP)
+				continue
+			}
+
 			exists, err := c.iptable[protocol].Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
 			if err != nil {
 				klog.Errorf("check iptable rule exist failed, %+v", err)
