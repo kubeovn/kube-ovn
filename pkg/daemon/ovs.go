@@ -258,9 +258,15 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 	if err = netlink.LinkSetTxQLen(hostLink, 1000); err != nil {
 		return fmt.Errorf("can not set host nic %s qlen %v", util.NodeNic, err)
 	}
+	// Double nat may lead kernel udp checksum error, disable offload to prevent this issue
+	// https://github.com/kubernetes/kubernetes/pull/92035
+	output, err := exec.Command("ethtool", "-K", "ovn0", "tx", "off").CombinedOutput()
+	if err != nil {
+		klog.Errorf("failed to disable checksum offload on ovn0, %v %q", err, output)
+		return err
+	}
 
 	// ping gw to activate the flow
-	var output []byte
 	protocol := util.CheckProtocol(gw)
 	if protocol == kubeovnv1.ProtocolDual {
 		gws := strings.Split(gw, ",")
