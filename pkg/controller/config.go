@@ -6,13 +6,14 @@ import (
 	"os"
 
 	attacnetclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
-	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
+
+	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // Configuration is the controller conf

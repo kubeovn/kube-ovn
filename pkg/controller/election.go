@@ -5,8 +5,6 @@ import (
 	"os"
 	"time"
 
-	"k8s.io/klog"
-
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -14,6 +12,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/klog"
 )
 
 const ovnLeaderElector = "ovn-controller-leader-elector"
