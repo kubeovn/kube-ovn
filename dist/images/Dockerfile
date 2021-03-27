@@ -73,6 +73,7 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
 COPY *.sh /kube-ovn/
 COPY 01-kube-ovn.conflist /kube-ovn/01-kube-ovn.conflist
 COPY logrotate/* /etc/logrotate.d/
+COPY grace_stop_ovn_controller /usr/share/ovn/scripts/grace_stop_ovn_controller
 
 WORKDIR /kube-ovn
 
