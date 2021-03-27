@@ -107,7 +107,7 @@ func (c *Controller) setIPSet() error {
 }
 
 func (c *Controller) setIptables() error {
-	klog.Infoln("start to set up iptables")
+	klog.V(3).Infoln("start to set up iptables")
 	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
 		klog.Errorf("failed to get node %s, %v", c.config.NodeName, err)
