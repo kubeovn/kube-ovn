@@ -266,38 +266,70 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 		return err
 	}
 
-	// ping gw to activate the flow
+	// ping ovn0 gw to activate the flow
+	output, err = ovn0Check(gw)
+	if err != nil {
+		klog.Errorf("failed to init ovn0 check, %v, %q", err, output)
+		return err
+	}
+	klog.Infof("ping gw result is: \n %s", output)
+
+	go loopOvn0Check(gw)
+	return nil
+}
+
+// If OVS restart, the ovn0 port will down and prevent host to pod network,
+// Restart the kube-ovn-cni when this happens
+func loopOvn0Check(gw string) {
+	for {
+		time.Sleep(5 * time.Second)
+		link, err := netlink.LinkByName(util.NodeNic)
+		if err != nil {
+			klog.Fatalf("failed to get ovn0 nic, %v", err)
+		}
+
+		if link.Attrs().OperState == netlink.OperDown {
+			klog.Fatalf("ovn0 nic is down")
+		}
+
+		if output, err := ovn0Check(gw); err != nil {
+			klog.Fatalf("failed to ping ovn0 gw %v, %q", gw, output)
+		}
+	}
+}
+
+func ovn0Check(gw string) ([]byte, error) {
 	protocol := util.CheckProtocol(gw)
 	if protocol == kubeovnv1.ProtocolDual {
 		gws := strings.Split(gw, ",")
-		output, err = exec.Command("ping", "-w", "10", gws[0]).CombinedOutput()
+		output, err := exec.Command("ping", "-w", "10", gws[0]).CombinedOutput()
 		klog.Infof("ping v4 gw result is: \n %s", output)
 		if err != nil {
 			klog.Errorf("ovn0 failed to ping gw %s, %v", gws[0], err)
-			return err
+			return output, err
 		}
 
 		output, err = exec.Command("ping6", "-w", "10", gws[1]).CombinedOutput()
 		if err != nil {
 			klog.Errorf("ovn0 failed to ping gw %s, %v", gws[1], err)
-			return err
+			return output, err
 		}
+		return output, nil
 	} else if protocol == kubeovnv1.ProtocolIPv4 {
-		output, err = exec.Command("ping", "-w", "10", gw).CombinedOutput()
+		output, err := exec.Command("ping", "-w", "10", gw).CombinedOutput()
 		if err != nil {
 			klog.Errorf("ovn0 failed to ping gw %s, %v", gw, err)
-			return err
+			return output, err
 		}
+		return output, nil
 	} else {
-		output, err = exec.Command("ping6", "-w", "10", gw).CombinedOutput()
+		output, err := exec.Command("ping6", "-w", "10", gw).CombinedOutput()
 		if err != nil {
 			klog.Errorf("ovn0 failed to ping gw %s, %v", gw, err)
-			return err
+			return output, err
 		}
+		return output, nil
 	}
-
-	klog.Infof("ping gw result is: \n %s", output)
-	return nil
 }
 
 func configureMirror(portName string, mtu int) error {
