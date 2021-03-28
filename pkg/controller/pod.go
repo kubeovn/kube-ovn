@@ -432,7 +432,7 @@ func (c *Controller) handleAddPod(key string) error {
 			}
 
 			ip := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, subnet.Spec.Provider)]
-			if err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace, podNet.ProviderName), ip, subnet.Spec.CIDRBlock, mac, tag, portSecurity); err != nil {
+			if err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace, podNet.ProviderName), ip, subnet.Spec.CIDRBlock, mac, tag, pod.Name, pod.Namespace, portSecurity); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
 				return err
 			}
@@ -494,11 +494,13 @@ func (c *Controller) handleDeletePod(key string) error {
 		}
 	}
 
-	ports, err := c.getPodPorts(name, namespace)
+	ports, err := c.ovnClient.ListPodLogicalSwitchPorts(name, namespace)
 	if err != nil {
-		klog.Errorf("failed to get attachPorts of pod '%s', %v", name, err)
+		klog.Errorf("failed to list lsps of pod '%s', %v", name, err)
 		return err
 	}
+	// Add additional default ports to compatible with previous versions
+	ports = append(ports, ovs.PodNameToPortName(name, namespace, util.OvnProvider))
 
 	for _, portName := range ports {
 		if err := c.ovnClient.DeleteLogicalSwitchPort(portName); err != nil {
@@ -514,40 +516,6 @@ func (c *Controller) handleDeletePod(key string) error {
 	}
 	c.ipam.ReleaseAddressByPod(key)
 	return nil
-}
-
-func (c *Controller) getPodPorts(pod, namespace string) (ports []string, err error) {
-	defaultPort := ovs.PodNameToPortName(pod, namespace, util.OvnProvider)
-	if c.ovnClient.IsLogicalSwitchPortExist(defaultPort) {
-		ports = append(ports, defaultPort)
-	}
-
-	allNs, err := c.namespacesLister.List(labels.Everything())
-	if err != nil {
-		return nil, err
-	}
-	for _, ns := range allNs {
-		attachNets, err := c.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(ns.Name).List(context.Background(), metav1.ListOptions{})
-		if err != nil {
-			if k8serrors.IsForbidden(err) {
-				return nil, nil
-			} else {
-				klog.Errorf("failed to list attach-net-def, %v", err)
-				return nil, err
-			}
-		}
-		for _, attachNet := range attachNets.Items {
-			netCfg, err := loadNetConf([]byte(attachNet.Spec.Config))
-			if err != nil || netCfg.Type != util.CniTypeName {
-				continue
-			}
-			port := ovs.PodNameToPortName(pod, namespace, fmt.Sprintf("%s.%s.ovn", attachNet.Name, attachNet.Namespace))
-			if c.ovnClient.IsLogicalSwitchPortExist(port) {
-				ports = append(ports, port)
-			}
-		}
-	}
-	return ports, nil
 }
 
 func (c *Controller) handleUpdatePod(key string) error {
