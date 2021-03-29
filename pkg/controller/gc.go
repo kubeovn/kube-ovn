@@ -204,8 +204,15 @@ func (c *Controller) markAndCleanLSP() error {
 	}
 	ipNames := make([]string, 0, len(pods)+len(nodes))
 	for _, pod := range pods {
-		if isPodAlive(pod) && pod.Annotations[util.AllocatedAnnotation] == "true" {
-			ipNames = append(ipNames, fmt.Sprintf("%s.%s", pod.Name, pod.Namespace))
+		if !isPodAlive(pod) {
+			continue
+		}
+		for k, v := range pod.Annotations {
+			if !strings.Contains(k, util.AllocatedAnnotationSuffix) || v != "true" {
+				continue
+			}
+			providerName := strings.ReplaceAll(k, util.AllocatedAnnotationSuffix, "")
+			ipNames = append(ipNames, ovs.PodNameToPortName(pod.Name, pod.Namespace, providerName))
 		}
 	}
 	for _, node := range nodes {

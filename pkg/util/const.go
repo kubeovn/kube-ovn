@@ -1,6 +1,8 @@
 package util
 
 const (
+	CniTypeName = "kube-ovn"
+
 	ControllerName = "kube-ovn-controller"
 
 	AllocatedAnnotation  = "ovn.kubernetes.io/allocated"
@@ -28,6 +30,7 @@ const (
 	PortSecurityAnnotation = "ovn.kubernetes.io/port_security"
 	NorthGatewayAnnotation = "ovn.kubernetes.io/north_gateway"
 
+	AllocatedAnnotationSuffix       = ".kubernetes.io/allocated"
 	AllocatedAnnotationTemplate     = "%s.kubernetes.io/allocated"
 	MacAddressAnnotationTemplate    = "%s.kubernetes.io/mac_address"
 	IpAddressAnnotationTemplate     = "%s.kubernetes.io/ip_address"
@@ -35,6 +38,7 @@ const (
 	GatewayAnnotationTemplate       = "%s.kubernetes.io/gateway"
 	IpPoolAnnotationTemplate        = "%s.kubernetes.io/ip_pool"
 	LogicalSwitchAnnotationTemplate = "%s.kubernetes.io/logical_switch"
+	VlanIdAnnotationTemplate        = "%s.kubernetes.io/vlan_id"
 
 	ExcludeIpsAnnotation = "ovn.kubernetes.io/exclude_ips"
 

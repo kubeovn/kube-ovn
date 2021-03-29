@@ -110,7 +110,7 @@ func (c Client) DeleteICLogicalRouterPort(az string) error {
 }
 
 // CreatePort create logical switch port in ovn
-func (c Client) CreatePort(ls, port, ip, cidr, mac, tag string, portSecurity bool) error {
+func (c Client) CreatePort(ls, port, ip, cidr, mac, tag, pod, namespace string, portSecurity bool) error {
 	var ovnCommand []string
 	if util.CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
 		ips := strings.Split(ip, ",")
@@ -138,11 +138,33 @@ func (c Client) CreatePort(ls, port, ip, cidr, mac, tag string, portSecurity boo
 			"--", "set", "logical_switch_port", port, fmt.Sprintf("tag=%s", tag))
 	}
 
+	if pod != "" && namespace != "" {
+		ovnCommand = append(ovnCommand,
+			"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:pod=%s/%s", namespace, pod))
+	}
+
 	if _, err := c.ovnNbCommand(ovnCommand...); err != nil {
 		klog.Errorf("create port %s failed %v", port, err)
 		return err
 	}
 	return nil
+}
+
+func (c Client) ListPodLogicalSwitchPorts(pod, namespace string) ([]string, error) {
+	output, err := c.ovnNbCommand("--format=csv", "--data=bare", "--no-heading", "--columns=name", "find", "logical_switch_port", fmt.Sprintf("external_ids:pod=%s/%s", namespace, pod))
+	if err != nil {
+		klog.Errorf("failed to list logical switch port, %v", err)
+		return nil, err
+	}
+	lines := strings.Split(output, "\n")
+	result := make([]string, 0, len(lines))
+	for _, l := range lines {
+		if len(strings.TrimSpace(l)) == 0 {
+			continue
+		}
+		result = append(result, strings.TrimSpace(l))
+	}
+	return result, nil
 }
 
 func (c Client) SetLogicalSwitchConfig(ls string, isUnderlayGW bool, lr, protocol, subnet, gateway string, excludeIps []string) error {
@@ -321,6 +343,16 @@ func (c Client) LogicalSwitchExists(logicalSwitch string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+func (c Client) IsLogicalSwitchPortExist(port string) bool {
+	output, err := c.ovnNbCommand("--format=csv", "--data=bare", "--no-heading", "--columns=name", "find", "logical_switch_port", fmt.Sprintf("name=\"%s\"", port))
+	if err != nil {
+		klog.Errorf("failed to find logical switch port, %v", err)
+		return false
+	}
+	lines := strings.Split(output, "\n")
+	return len(lines) > 0
 }
 
 func (c Client) ListLogicalSwitchPort() ([]string, error) {

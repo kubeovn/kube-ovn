@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/emicklei/go-restful"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -79,7 +80,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		subnet = pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podRequest.Provider)]
 		ingress = pod.Annotations[util.IngressRateAnnotation]
 		egress = pod.Annotations[util.EgressRateAnnotation]
-		vlanID = pod.Annotations[util.VlanIdAnnotation]
+		vlanID = pod.Annotations[fmt.Sprintf(util.VlanIdAnnotationTemplate, podRequest.Provider)]
 		ipAddr = util.GetIpAddrWithMask(ip, cidr)
 		break
 	}
@@ -100,9 +101,9 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		return
 	}
 
-	if podRequest.Provider == util.OvnProvider {
+	if strings.Contains(podRequest.Provider, util.OvnProvider) && subnet != "" {
 		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s", podRequest.IfName, macAddr, ipAddr, cidr, gw)
-		err := csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.NetNs, podRequest.ContainerID, podRequest.IfName, macAddr, ipAddr, gw, ingress, egress, vlanID, podRequest.DeviceID)
+		err := csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.IfName, macAddr, ipAddr, gw, ingress, egress, vlanID, podRequest.DeviceID)
 		if err != nil {
 			errMsg := fmt.Errorf("configure nic failed %v", err)
 			klog.Error(errMsg)
@@ -120,12 +121,13 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 
 func (csh cniServerHandler) createOrUpdateIPCr(podRequest request.CniRequest, subnet, ip, macAddr string) error {
 	v4IP, v6IP := util.SplitStringIP(ip)
-	ipCr, err := csh.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace), metav1.GetOptions{})
+	ipCrName := ovs.PodNameToPortName(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider)
+	ipCr, err := csh.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), ipCrName, metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			_, err := csh.KubeOvnClient.KubeovnV1().IPs().Create(context.Background(), &kubeovnv1.IP{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace),
+					Name: ipCrName,
 					Labels: map[string]string{
 						util.SubnetNameLabel: subnet,
 						subnet:               "",
@@ -147,7 +149,7 @@ func (csh cniServerHandler) createOrUpdateIPCr(podRequest request.CniRequest, su
 				},
 			}, metav1.CreateOptions{})
 			if err != nil {
-				errMsg := fmt.Errorf("failed to create ip crd for %s, %v", ip, err)
+				errMsg := fmt.Errorf("failed to create ip crd for %s, provider '%s', %v", ip, podRequest.Provider, err)
 				klog.Error(errMsg)
 				return errMsg
 			}
@@ -201,8 +203,8 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 	}
 
 	klog.Infof("delete port request %v", podRequest)
-	if podRequest.Provider == util.OvnProvider {
-		err = csh.deleteNic(podRequest.PodName, podRequest.PodNamespace, podRequest.ContainerID, podRequest.DeviceID)
+	if podRequest.Provider == util.OvnProvider || podRequest.CniType == util.CniTypeName {
+		err = csh.deleteNic(podRequest.PodName, podRequest.PodNamespace, podRequest.ContainerID, podRequest.DeviceID, podRequest.IfName)
 		if err != nil {
 			errMsg := fmt.Errorf("del nic failed %v", err)
 			klog.Error(errMsg)
@@ -213,9 +215,10 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		}
 	}
 
-	err = csh.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace), metav1.DeleteOptions{})
+	ipCrName := ovs.PodNameToPortName(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider)
+	err = csh.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ipCrName, metav1.DeleteOptions{})
 	if err != nil && !k8serrors.IsNotFound(err) {
-		errMsg := fmt.Errorf("del ipcrd for %s failed %v", fmt.Sprintf("%s.%s", podRequest.PodName, podRequest.PodNamespace), err)
+		errMsg := fmt.Errorf("del ipcrd for %s failed %v", ipCrName, err)
 		klog.Error(errMsg)
 		if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
 			klog.Errorf("failed to write response, %v", err)
