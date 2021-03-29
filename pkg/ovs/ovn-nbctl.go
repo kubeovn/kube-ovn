@@ -22,10 +22,6 @@ func (c Client) ovnNbCommand(cmdArgs ...string) (string, error) {
 	raw, err := exec.Command(OvnNbCtl, cmdArgs...).CombinedOutput()
 	elapsed := float64((time.Since(start)) / time.Millisecond)
 	klog.V(4).Infof("command %s %s in %vms", OvnNbCtl, strings.Join(cmdArgs, " "), elapsed)
-	if err != nil || elapsed > 500 {
-		klog.Warning("ovn-nbctl command error or took too long")
-		klog.Warningf("%s %s in %vms", OvnNbCtl, strings.Join(cmdArgs, " "), elapsed)
-	}
 	method := ""
 	for _, arg := range cmdArgs {
 		if !strings.HasPrefix(arg, "--") {
@@ -34,12 +30,16 @@ func (c Client) ovnNbCommand(cmdArgs ...string) (string, error) {
 		}
 	}
 	code := "0"
+	defer func() {
+		ovsClientRequestLatency.WithLabelValues("ovn-nb", method, code).Observe(elapsed)
+	}()
+
 	if err != nil {
 		code = "1"
-	}
-	ovsClientRequestLatency.WithLabelValues("ovn-nb", method, code).Observe(elapsed)
-	if err != nil {
+		klog.Warningf("ovn-nbctl command error: %s %s in %vms", OvnNbCtl, strings.Join(cmdArgs, " "), elapsed)
 		return "", fmt.Errorf("%s, %q", raw, err)
+	} else if elapsed > 500 {
+		klog.Warningf("ovn-nbctl command took too long: %s %s in %vms", OvnNbCtl, strings.Join(cmdArgs, " "), elapsed)
 	}
 	return trimCommandOutput(raw), nil
 }
