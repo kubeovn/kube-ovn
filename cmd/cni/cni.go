@@ -172,9 +172,9 @@ func parseValueFromArgs(key, argString string) (string, error) {
 	args := strings.Split(argString, ";")
 	for _, arg := range args {
 		if strings.HasPrefix(arg, fmt.Sprintf("%s=", key)) {
-			podName := strings.TrimPrefix(arg, fmt.Sprintf("%s=", key))
-			if len(podName) > 0 {
-				return podName, nil
+			value := strings.TrimPrefix(arg, fmt.Sprintf("%s=", key))
+			if len(value) > 0 {
+				return value, nil
 			}
 		}
 	}
