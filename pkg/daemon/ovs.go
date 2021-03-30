@@ -13,7 +13,6 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	goping "github.com/oilbeater/go-ping"
 	"github.com/vishvananda/netlink"
 	"k8s.io/klog"
 )
@@ -210,37 +209,8 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, macAd
 			return fmt.Errorf("config gateway failed %v", err)
 		}
 
-		return waitNetworkReady(gateway)
+		return nil
 	})
-}
-
-func waitNetworkReady(gateway string) error {
-	for _, gw := range strings.Split(gateway, ",") {
-		pinger, err := goping.NewPinger(gw)
-		if err != nil {
-			return fmt.Errorf("failed to init pinger, %v", err)
-		}
-		pinger.SetPrivileged(true)
-		// CNITimeoutSec = 220, cannot exceed
-		count := 200
-		pinger.Count = count
-		pinger.Timeout = time.Duration(count) * time.Second
-		pinger.Interval = 1 * time.Second
-
-		success := false
-		pinger.OnRecv = func(p *goping.Packet) {
-			success = true
-			pinger.Stop()
-		}
-		pinger.Run()
-
-		cniConnectivityResult.WithLabelValues(nodeName).Add(float64(pinger.PacketsSent))
-		if !success {
-			return fmt.Errorf("network not ready after %d ping", count)
-		}
-		klog.Infof("network ready after %d ping, gw %v", pinger.PacketsSent, gw)
-	}
-	return nil
 }
 
 func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int) error {
