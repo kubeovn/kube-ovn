@@ -273,6 +273,11 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 		klog.Errorf("failed to disable checksum offload on ovn0, %v %q", err, output)
 		return err
 	}
+	output, err = exec.Command("ethtool", "-K", "genev_sys_6081", "tx", "off").CombinedOutput()
+	if err != nil {
+		klog.Errorf("failed to disable checksum offload on genev_sys_6081, %v %q", err, output)
+		return err
+	}
 
 	// ping ovn0 gw to activate the flow
 	output, err = ovn0Check(gw)
