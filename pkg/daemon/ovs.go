@@ -273,11 +273,6 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 		klog.Errorf("failed to disable checksum offload on ovn0, %v %q", err, output)
 		return err
 	}
-	output, err = exec.Command("ethtool", "-K", "genev_sys_6081", "tx", "off").CombinedOutput()
-	if err != nil {
-		klog.Errorf("failed to disable checksum offload on genev_sys_6081, %v %q", err, output)
-		return err
-	}
 
 	// ping ovn0 gw to activate the flow
 	output, err = ovn0Check(gw)
@@ -288,7 +283,25 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 	klog.Infof("ping gw result is: \n %s", output)
 
 	go loopOvn0Check(gw)
+	go loopDisableTunnelOffload()
 	return nil
+}
+
+func disableTunnelOffload() {
+	_, err := netlink.LinkByName("genev_sys_6081")
+	if err == nil {
+		output, err := exec.Command("ethtool", "-K", "genev_sys_6081", "tx", "off").CombinedOutput()
+		if err != nil {
+			klog.Errorf("failed to disable checksum offload on genev_sys_6081, %v %q", err, output)
+		}
+	}
+}
+
+func loopDisableTunnelOffload() {
+	for {
+		time.Sleep(5 * time.Second)
+		disableTunnelOffload()
+	}
 }
 
 // If OVS restart, the ovn0 port will down and prevent host to pod network,
@@ -316,7 +329,7 @@ func ovn0Check(gw string) ([]byte, error) {
 	if protocol == kubeovnv1.ProtocolDual {
 		gws := strings.Split(gw, ",")
 		output, err := exec.Command("ping", "-w", "10", gws[0]).CombinedOutput()
-		klog.Infof("ping v4 gw result is: \n %s", output)
+		klog.V(3).Infof("ping v4 gw result is: \n %s", output)
 		if err != nil {
 			klog.Errorf("ovn0 failed to ping gw %s, %v", gws[0], err)
 			return output, err
