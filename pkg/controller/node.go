@@ -206,11 +206,17 @@ func (c *Controller) handleAddNode(key string) error {
 	var v4IP, v6IP, mac string
 	portName := fmt.Sprintf("node-%s", key)
 	if node.Annotations[util.AllocatedAnnotation] == "true" && node.Annotations[util.IpAddressAnnotation] != "" && node.Annotations[util.MacAddressAnnotation] != "" {
-		v4IP, v6IP = util.SplitStringIP(node.Annotations[util.IpAddressAnnotation])
-		mac = node.Annotations[util.MacAddressAnnotation]
+		v4IP, v6IP, mac, err = c.ipam.GetStaticAddress(portName, node.Annotations[util.IpAddressAnnotation],
+			node.Annotations[util.MacAddressAnnotation],
+			node.Annotations[util.LogicalSwitchAnnotation])
+		if err != nil {
+			klog.Errorf("failed to alloc static ip addrs for node %v, err %v", node.Name, err)
+			return err
+		}
 	} else {
 		v4IP, v6IP, mac, err = c.ipam.GetRandomAddress(portName, c.config.NodeSwitch)
 		if err != nil {
+			klog.Errorf("failed to alloc random ip addrs for node %v, err %v", node.Name, err)
 			return err
 		}
 	}
@@ -473,7 +479,7 @@ func (c *Controller) checkNodeEcmpRouteExist(nodeIp, cidrBlock string) (bool, er
 			continue
 		}
 		if route.CIDR == cidrBlock && route.NextHop == nodeIp {
-			klog.Infof("src-ip static route exist for cidr %s, nexthop %v", cidrBlock, nodeIp)
+			klog.V(3).Infof("src-ip static route exist for cidr %s, nexthop %v", cidrBlock, nodeIp)
 			return true, nil
 		}
 	}

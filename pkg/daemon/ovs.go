@@ -282,12 +282,10 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 	}
 	klog.Infof("ping gw result is: \n %s", output)
 
-	go loopOvn0Check(gw)
-	go loopDisableTunnelOffload()
 	return nil
 }
 
-func disableTunnelOffload() {
+func (c *Controller) disableTunnelOffload() {
 	_, err := netlink.LinkByName("genev_sys_6081")
 	if err == nil {
 		output, err := exec.Command("ethtool", "-K", "genev_sys_6081", "tx", "off").CombinedOutput()
@@ -297,30 +295,26 @@ func disableTunnelOffload() {
 	}
 }
 
-func loopDisableTunnelOffload() {
-	for {
-		time.Sleep(5 * time.Second)
-		disableTunnelOffload()
-	}
-}
-
 // If OVS restart, the ovn0 port will down and prevent host to pod network,
 // Restart the kube-ovn-cni when this happens
-func loopOvn0Check(gw string) {
-	for {
-		time.Sleep(5 * time.Second)
-		link, err := netlink.LinkByName(util.NodeNic)
-		if err != nil {
-			klog.Fatalf("failed to get ovn0 nic, %v", err)
-		}
+func (c *Controller) loopOvn0Check() {
+	link, err := netlink.LinkByName(util.NodeNic)
+	if err != nil {
+		klog.Fatalf("failed to get ovn0 nic, %v", err)
+	}
 
-		if link.Attrs().OperState == netlink.OperDown {
-			klog.Fatalf("ovn0 nic is down")
-		}
+	if link.Attrs().OperState == netlink.OperDown {
+		klog.Fatalf("ovn0 nic is down")
+	}
 
-		if output, err := ovn0Check(gw); err != nil {
-			klog.Fatalf("failed to ping ovn0 gw %v, %q", gw, output)
-		}
+	node, err := c.nodesLister.Get(c.config.NodeName)
+	if err != nil {
+		klog.Errorf("failed to get node %s %v", c.config.NodeName, err)
+		return
+	}
+	gw := node.Annotations[util.GatewayAnnotation]
+	if output, err := ovn0Check(gw); err != nil {
+		klog.Fatalf("failed to ping ovn0 gw %v, %q", gw, output)
 	}
 }
 
