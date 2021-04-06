@@ -117,7 +117,6 @@ var _ = Describe("[Subnet]", func() {
 			subnet, err := f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), name, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(subnet.Spec.GatewayType).To(Equal(kubeovn.GWCentralizedType))
-			Expect(subnet.Status.ActivateGateway).To(Equal("kube-ovn-control-plane"))
 		})
 	})
 
@@ -152,7 +151,6 @@ var _ = Describe("[Subnet]", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(s.Spec.GatewayType).To(Equal(kubeovn.GWCentralizedType))
-			Expect(s.Status.ActivateGateway).To(Equal("kube-ovn-control-plane"))
 		})
 	})
 

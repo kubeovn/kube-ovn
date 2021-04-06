@@ -495,7 +495,7 @@ func (c Client) ListStaticRoute() ([]StaticRoute, error) {
 }
 
 // AddStaticRoute add a static route rule in ovn
-func (c Client) AddStaticRoute(policy, cidr, nextHop, router string) error {
+func (c Client) AddStaticRoute(policy, cidr, nextHop, router string, routeType string) error {
 	if policy == "" {
 		policy = PolicyDstIP
 	}
@@ -505,8 +505,14 @@ func (c Client) AddStaticRoute(policy, cidr, nextHop, router string) error {
 			if util.CheckProtocol(cidrBlock) != util.CheckProtocol(gw) {
 				continue
 			}
-			if _, err := c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "lr-route-add", router, cidrBlock, gw); err != nil {
-				return err
+			if routeType == util.EcmpRouteType {
+				if _, err := c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "--ecmp", "lr-route-add", router, cidrBlock, gw); err != nil {
+					return err
+				}
+			} else {
+				if _, err := c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "lr-route-add", router, cidrBlock, gw); err != nil {
+					return err
+				}
 			}
 		}
 	}

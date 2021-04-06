@@ -403,3 +403,13 @@ func CountIpNums(excludeIPs []string) int64 {
 	}
 	return count
 }
+
+func GatewayContains(gatewayNodeStr, gateway string) bool {
+	for _, gw := range strings.Split(gatewayNodeStr, ",") {
+		gw = strings.TrimSpace(gw)
+		if gw == gateway {
+			return true
+		}
+	}
+	return false
+}
