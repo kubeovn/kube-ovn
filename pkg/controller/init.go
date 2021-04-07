@@ -286,11 +286,14 @@ func (c *Controller) InitIPAM() error {
 	for _, node := range nodes {
 		if node.Annotations[util.AllocatedAnnotation] == "true" {
 			portName := fmt.Sprintf("node-%s", node.Name)
-			_, _, _, err := c.ipam.GetStaticAddress(portName, node.Annotations[util.IpAddressAnnotation],
+			v4IP, v6IP, _, err := c.ipam.GetStaticAddress(portName, node.Annotations[util.IpAddressAnnotation],
 				node.Annotations[util.MacAddressAnnotation],
 				node.Annotations[util.LogicalSwitchAnnotation])
 			if err != nil {
 				klog.Errorf("failed to init node %s.%s address %s, %v", node.Name, node.Namespace, node.Annotations[util.IpAddressAnnotation], err)
+			}
+			if v4IP != "" && v6IP != "" {
+				node.Annotations[util.IpAddressAnnotation] = util.GetStringIP(v4IP, v6IP)
 			}
 		}
 	}
