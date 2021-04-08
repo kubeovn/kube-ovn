@@ -1,5 +1,0 @@
-# syntax = docker/dockerfile:experimental
-FROM harbor-dev.eecos.cn:7443/kubeovn/kube-ovn:v1.5.6
-COPY kube-ovn /kube-ovn/kube-ovn
-COPY kube-ovn-daemon /kube-ovn/kube-ovn-daemon
-COPY kube-ovn-controller /kube-ovn/kube-ovn-controller

@@ -345,16 +345,6 @@ func (c Client) LogicalSwitchExists(logicalSwitch string) (bool, error) {
 	return false, nil
 }
 
-func (c Client) IsLogicalSwitchPortExist(port string) bool {
-	output, err := c.ovnNbCommand("--format=csv", "--data=bare", "--no-heading", "--columns=name", "find", "logical_switch_port", fmt.Sprintf("name=\"%s\"", port))
-	if err != nil {
-		klog.Errorf("failed to find logical switch port, %v", err)
-		return false
-	}
-	lines := strings.Split(output, "\n")
-	return len(lines) > 0
-}
-
 func (c Client) ListLogicalSwitchPort() ([]string, error) {
 	output, err := c.ovnNbCommand("--format=csv", "--data=bare", "--no-heading", "--columns=name", "find", "logical_switch_port", "type=\"\"")
 	if err != nil {

@@ -3,11 +3,12 @@ package util
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/intel/multus-cni/types"
-	"k8s.io/klog"
 	"net"
 	"regexp"
 	"strings"
+
+	"github.com/intel/multus-cni/types"
+	"k8s.io/klog"
 )
 
 func parsePodNetworkObjectName(podnetwork string) (string, string, string, error) {
@@ -125,4 +126,23 @@ func ParsePodNetworkAnnotation(podNetworks, defaultNamespace string) ([]*types.N
 	}
 
 	return networks, nil
+}
+
+func IsOvnNetwork(netCfg *types.DelegateNetConf) bool {
+	if netCfg.Conf.Type == CniTypeName {
+		return true
+	}
+	for _, item := range netCfg.ConfList.Plugins {
+		if item.Type == CniTypeName {
+			return true
+		}
+	}
+	return false
+}
+
+func IsDefaultNet(defaultNetAnnotation string, attach *types.NetworkSelectionElement) bool {
+	if defaultNetAnnotation == attach.Name || defaultNetAnnotation == fmt.Sprintf("%s/%s", attach.Namespace, attach.Name) {
+		return true
+	}
+	return false
 }

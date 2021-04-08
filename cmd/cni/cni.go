@@ -44,6 +44,9 @@ func cmdAdd(args *skel.CmdArgs) error {
 	if err != nil {
 		return err
 	}
+	if args.IfName == "eth0" {
+		netConf.Provider = util.OvnProvider
+	}
 
 	client := request.NewCniServerClient(netConf.ServerSocket)
 
@@ -115,6 +118,9 @@ func cmdDel(args *skel.CmdArgs) error {
 	podNamespace, err := parseValueFromArgs("K8S_POD_NAMESPACE", args.Args)
 	if err != nil {
 		return err
+	}
+	if args.IfName == "eth0" {
+		netConf.Provider = util.OvnProvider
 	}
 
 	return client.Del(request.CniRequest{
