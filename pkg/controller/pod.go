@@ -782,15 +782,19 @@ type kubeovnNet struct {
 }
 
 func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
-	var wholeAttachNets string
-	attachNetworks := pod.Annotations[util.AttachmentNetworkAnnotation]
+	var networkList []string
+
 	defaultAttachNetworks := pod.Annotations[util.DefaultNetworkAnnotation]
 	if defaultAttachNetworks != "" {
-		wholeAttachNets = defaultAttachNetworks
+		networkList = append(networkList, defaultAttachNetworks)
 	}
+
+	attachNetworks := pod.Annotations[util.AttachmentNetworkAnnotation]
 	if attachNetworks != "" {
-		wholeAttachNets = wholeAttachNets + "," + attachNetworks
+		networkList = append(networkList, attachNetworks)
 	}
+
+	wholeAttachNets := strings.Join(networkList, ",")
 	if wholeAttachNets == "" {
 		return nil, nil
 	}
