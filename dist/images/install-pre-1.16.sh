@@ -693,6 +693,24 @@ spec:
 kind: Service
 apiVersion: v1
 metadata:
+  name: ovn-northd
+  namespace: kube-system
+spec:
+  ports:
+    - name: ovn-northd
+      protocol: TCP
+      port: 6643
+      targetPort: 6643
+  type: ClusterIP
+  selector:
+    app: ovn-central
+    ovn-northd-leader: "true"
+  sessionAffinity: None
+
+---
+kind: Service
+apiVersion: v1
+metadata:
   name: kube-ovn-monitor
   namespace: kube-system
   labels:
@@ -1185,6 +1203,23 @@ spec:
   selector:
     app: ovn-central
     ovn-sb-leader: "true"
+  sessionAffinity: None
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: ovn-northd
+  namespace: kube-system
+spec:
+  ports:
+    - name: ovn-northd
+      protocol: TCP
+      port: 6643
+      targetPort: 6643
+  type: ClusterIP
+  selector:
+    app: ovn-central
+    ovn-northd-leader: "true"
   sessionAffinity: None
 ---
 kind: Service
