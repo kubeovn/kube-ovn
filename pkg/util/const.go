@@ -13,6 +13,7 @@ const (
 	BgpAnnotation        = "ovn.kubernetes.io/bgp"
 	SnatAnnotation       = "ovn.kubernetes.io/snat"
 	EipAnnotation        = "ovn.kubernetes.io/eip"
+	ChassisAnnotation    = "ovn.kubernetes.io/chassis"
 
 	LogicalRouterAnnotation = "ovn.kubernetes.io/logical_router"
 	VpcAnnotation           = "ovn.kubernetes.io/vpc"
@@ -79,4 +80,12 @@ const (
 	ExternalGatewaySwitch = "ovn-external"
 
 	DefaultVpc = "ovn-cluster"
+
+	EcmpRouteType   = "ecmp"
+	NormalRouteType = "normal"
+
+	ChassisLoc     = "/etc/openvswitch/system-id.conf"
+	HostnameEnv    = "KUBE_NODE_NAME"
+	ChasRetryTime  = 5
+	ChasRetryIntev = 1
 )

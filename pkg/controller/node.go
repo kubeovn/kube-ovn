@@ -50,7 +50,8 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj interface{}) {
 	oldNode := oldObj.(*v1.Node)
 	newNode := newObj.(*v1.Node)
 
-	if nodeReady(oldNode) != nodeReady(newNode) {
+	if nodeReady(oldNode) != nodeReady(newNode) ||
+		oldNode.Annotations[util.ChassisAnnotation] != newNode.Annotations[util.ChassisAnnotation] {
 		var key string
 		var err error
 		if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
@@ -199,6 +200,10 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
+	if err := c.checkChassisDupl(node); err != nil {
+		return err
+	}
+
 	var v4IP, v6IP, mac string
 	portName := fmt.Sprintf("node-%s", key)
 	if node.Annotations[util.AllocatedAnnotation] == "true" && node.Annotations[util.IpAddressAnnotation] != "" && node.Annotations[util.MacAddressAnnotation] != "" {
@@ -306,6 +311,9 @@ func (c *Controller) handleUpdateNode(key string) error {
 		klog.Errorf("failed to get subnets %v", err)
 		return err
 	}
+	if err := c.checkChassisDupl(node); err != nil {
+		return err
+	}
 
 	if nodeReady(node) {
 		for _, subnet := range subnets {
@@ -398,5 +406,26 @@ func (c *Controller) createOrUpdateCrdIPs(key, ip, mac string) error {
 		}
 	}
 
+	return nil
+}
+
+func (c *Controller) checkChassisDupl(node *v1.Node) error {
+	// notice that multiple chassises may arise and we are not prepared
+	chassisAdd, err := c.ovnClient.GetChassis(node.Name)
+	if err != nil {
+		klog.Errorf("failed to get node %s chassisID, %v", node.Name, err)
+		return err
+	}
+
+	chassisAnn := node.Annotations[util.ChassisAnnotation]
+	if chassisAnn != "" && chassisAnn != chassisAdd {
+		klog.Errorf("duplicate chassis for node %s and new chassis %s", node.Name, chassisAdd)
+		if err := c.ovnClient.DeleteChassis(node.Name); err != nil {
+			klog.Errorf("failed to delete chassis for node %s %v", node.Name, err)
+			return err
+		}
+	}
+
+	klog.V(3).Infof("finish check chassis, add %s and ann %s", chassisAdd, chassisAnn)
 	return nil
 }
