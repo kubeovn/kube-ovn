@@ -115,10 +115,13 @@ func (e *Exporter) ovsMetricsUpdate() {
 }
 
 func (e *Exporter) exportOvsStatusGauge() {
-	if up, _ := e.getOvsStatus(); up {
-		metricOvsHealthyStatus.Set(1)
-	} else {
-		metricOvsHealthyStatus.Set(0)
+	result := e.getOvsStatus()
+	for k, v := range result {
+		if v {
+			metricOvsHealthyStatus.WithLabelValues(e.Client.System.Hostname, k).Set(1)
+		} else {
+			metricOvsHealthyStatus.WithLabelValues(e.Client.System.Hostname, k).Set(0)
+		}
 	}
 }
 
