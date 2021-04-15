@@ -125,7 +125,7 @@ func initChassisAnno(cfg *daemon.Configuration) error {
 	}
 
 	chassistr := string(chassisID)
-	node.Annotations[util.ChassisAnnotation] = strings.Replace(chassistr, "\n", "", -1)
+	node.Annotations[util.ChassisAnnotation] = strings.TrimSpace(chassistr)
 	patchPayloadTemplate :=
 		`[{
         "op": "%s",
