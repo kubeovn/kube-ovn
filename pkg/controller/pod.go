@@ -4,27 +4,27 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"k8s.io/client-go/kubernetes"
 	"net"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/alauda/kube-ovn/pkg/ipam"
-
+	"github.com/intel/multus-cni/logging"
+	multustypes "github.com/intel/multus-cni/types"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ipam"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
-
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/alauda/kube-ovn/pkg/ovs"
-	"github.com/alauda/kube-ovn/pkg/util"
 )
 
 func isPodAlive(p *v1.Pod) bool {
@@ -320,6 +320,40 @@ func (c *Controller) processNextUpdatePodWorkItem() bool {
 	return true
 }
 
+func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
+	defaultSubnet, err := c.getPodDefaultSubnet(pod)
+	if err != nil {
+		return nil, err
+	}
+
+	attachmentNets, err := c.getPodAttachmentNet(pod)
+	if err != nil {
+		return nil, err
+	}
+
+	podNets := attachmentNets
+	if _, hasOtherDefaultNet := pod.Annotations[util.DefaultNetworkAnnotation]; !hasOtherDefaultNet {
+		podNets = append(attachmentNets, &kubeovnNet{
+			Type:         providerTypeOriginal,
+			ProviderName: util.OvnProvider,
+			Subnet:       defaultSubnet,
+			IsDefault:    true,
+		})
+	}
+
+	for i, net1 := range podNets {
+		if i >= len(podNets)-1 {
+			break
+		}
+		for _, net2 := range podNets[i+1:] {
+			if net1.Subnet.Name == net2.Subnet.Name {
+				return nil, fmt.Errorf("subnet conflict, the same subnet should not be attached repeatedly")
+			}
+		}
+	}
+	return podNets, nil
+}
+
 func (c *Controller) handleAddPod(key string) error {
 	c.podKeyMutex.Lock(key)
 	defer c.podKeyMutex.Unlock(key)
@@ -341,19 +375,9 @@ func (c *Controller) handleAddPod(key string) error {
 		return err
 	}
 
-	defaultSubnet, err := c.getPodDefaultSubnet(pod)
+	podNets, err := c.getPodKubeovnNets(pod)
 	if err != nil {
 		return err
-	}
-
-	attachmentSubnets, err := c.getPodAttachmentSubnet(pod)
-	if err != nil {
-		return err
-	}
-
-	podSubnets := attachmentSubnets
-	if _, hasOtherDefaultNet := pod.Annotations[util.DefaultNetworkAnnotation]; !hasOtherDefaultNet {
-		podSubnets = append(attachmentSubnets, defaultSubnet)
 	}
 
 	op := "replace"
@@ -363,8 +387,9 @@ func (c *Controller) handleAddPod(key string) error {
 	}
 
 	// Avoid create lsp for already running pod in ovn-nb when controller restart
-	for _, subnet := range needAllocateSubnets(pod, podSubnets) {
-		v4IP, v6IP, mac, err := c.acquireAddress(pod, subnet)
+	for _, podNet := range needAllocateSubnets(pod, podNets) {
+		subnet := podNet.Subnet
+		v4IP, v6IP, mac, err := c.acquireAddress(pod, podNet)
 		if err != nil {
 			c.recorder.Eventf(pod, v1.EventTypeWarning, "AcquireAddressFailed", err.Error())
 			return err
@@ -376,20 +401,20 @@ func (c *Controller) handleAddPod(key string) error {
 		} else {
 			pod.Annotations[util.NetworkType] = util.NetworkTypeGeneve
 		}
-		pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, subnet.Spec.Provider)] = ipStr
-		pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, subnet.Spec.Provider)] = mac
-		pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, subnet.Spec.Provider)] = subnet.Spec.CIDRBlock
-		pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, subnet.Spec.Provider)] = subnet.Spec.Gateway
-		pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, subnet.Spec.Provider)] = subnet.Name
-		pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, subnet.Spec.Provider)] = "true"
+		pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)] = ipStr
+		pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)] = mac
+		pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, podNet.ProviderName)] = subnet.Spec.CIDRBlock
+		pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, podNet.ProviderName)] = subnet.Spec.Gateway
+		pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)] = subnet.Name
+		pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] = "true"
 
-		if err := util.ValidatePodCidr(subnet.Spec.CIDRBlock, ipStr); err != nil {
+		if err := util.ValidatePodCidr(podNet.Subnet.Spec.CIDRBlock, ipStr); err != nil {
 			klog.Errorf("validate pod %s/%s failed, %v", namespace, name, err)
 			c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", err.Error())
 			return err
 		}
 
-		if isOvnSubnet(subnet) {
+		if podNet.Type != providerTypeIPAM {
 			if subnet.Spec.Vlan != "" {
 				vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
 				if err != nil {
@@ -397,7 +422,7 @@ func (c *Controller) handleAddPod(key string) error {
 					return err
 				}
 				pod.Annotations[util.HostInterfaceName] = c.config.DefaultHostInterface
-				pod.Annotations[util.VlanIdAnnotation] = strconv.Itoa(vlan.Spec.VlanId)
+				pod.Annotations[fmt.Sprintf(util.VlanIdAnnotationTemplate, podNet.ProviderName)] = strconv.Itoa(vlan.Spec.VlanId)
 				pod.Annotations[util.ProviderInterfaceName] = c.config.DefaultProviderName
 				pod.Annotations[util.VlanRangeAnnotation] = c.config.DefaultVlanRange
 			}
@@ -413,7 +438,7 @@ func (c *Controller) handleAddPod(key string) error {
 			}
 
 			ip := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, subnet.Spec.Provider)]
-			if err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace), ip, subnet.Spec.CIDRBlock, mac, tag, portSecurity); err != nil {
+			if err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace, podNet.ProviderName), ip, subnet.Spec.CIDRBlock, mac, tag, pod.Name, pod.Namespace, portSecurity); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
 				return err
 			}
@@ -429,6 +454,10 @@ func (c *Controller) handleAddPod(key string) error {
 		}
 		klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
 		return err
+	}
+
+	if vpcGwName, isVpcNatGw := pod.Annotations[util.VpcNatGatewayAnnotation]; isVpcNatGw {
+		c.initVpcNatGatewayQueue.Add(vpcGwName)
 	}
 	return nil
 }
@@ -471,18 +500,26 @@ func (c *Controller) handleDeletePod(key string) error {
 		}
 	}
 
-	if err := c.ovnClient.DeleteLogicalSwitchPort(ovs.PodNameToPortName(name, namespace)); err != nil {
-		klog.Errorf("failed to delete lsp %s, %v", ovs.PodNameToPortName(name, namespace), err)
+	ports, err := c.ovnClient.ListPodLogicalSwitchPorts(name, namespace)
+	if err != nil {
+		klog.Errorf("failed to list lsps of pod '%s', %v", name, err)
 		return err
 	}
 
-	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ovs.PodNameToPortName(name, namespace), metav1.DeleteOptions{}); err != nil {
-		if !k8serrors.IsNotFound(err) {
-			klog.Errorf("failed to delete ip %s, %v", ovs.PodNameToPortName(name, namespace), err)
+	// Add additional default ports to compatible with previous versions
+	ports = append(ports, ovs.PodNameToPortName(name, namespace, util.OvnProvider))
+	for _, portName := range ports {
+		if err := c.ovnClient.DeleteLogicalSwitchPort(portName); err != nil {
+			klog.Errorf("failed to delete lsp %s, %v", portName, err)
 			return err
 		}
+		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to delete ip %s, %v", portName, err)
+				return err
+			}
+		}
 	}
-
 	c.ipam.ReleaseAddressByPod(key)
 	return nil
 }
@@ -503,87 +540,86 @@ func (c *Controller) handleUpdatePod(key string) error {
 		return err
 	}
 
-	if _, hasOtherDefaultNet := pod.Annotations[util.DefaultNetworkAnnotation]; hasOtherDefaultNet {
-		return nil
-	}
-
 	klog.Infof("update pod %s/%s", namespace, name)
-	podIP := pod.Annotations[util.IpAddressAnnotation]
 
-	subnet, err := c.getPodDefaultSubnet(pod)
+	var podIP string
+	var subnet *kubeovnv1.Subnet
+	podNets, err := c.getPodKubeovnNets(pod)
 	if err != nil {
-		klog.Errorf("failed to get subnet %v", err)
+		klog.Errorf("failed to pod nets %v", err)
 		return err
 	}
 
-	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
-	if err != nil {
-		klog.Errorf("failed to get vpc %v", err)
-		return err
+	for _, podNet := range podNets {
+		// routing should be configured only if the OVN network is the default network
+		if !podNet.IsDefault || util.OvnProvider != podNet.ProviderName {
+			continue
+		}
+		podIP = pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
+		subnet = podNet.Subnet
+		break
 	}
 
-	if !subnet.Spec.UnderlayGateway {
-		if vpc.Status.Default {
-			if pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "" {
-				cm, err := c.configMapsLister.ConfigMaps("kube-system").Get(util.ExternalGatewayConfig)
+	if podIP != "" && subnet.Spec.Vpc == util.DefaultVpc && !subnet.Spec.UnderlayGateway {
+		if pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "" {
+			cm, err := c.configMapsLister.ConfigMaps("kube-system").Get(util.ExternalGatewayConfig)
+			if err != nil {
+				klog.Errorf("failed to get ex-gateway config, %v", err)
+				return err
+			}
+			nextHop := cm.Data["nic-ip"]
+			if nextHop == "" {
+				klog.Errorf("no available gateway nic address")
+				return fmt.Errorf("no available gateway nic address")
+			}
+			nextHop = strings.Split(nextHop, "/")[0]
+
+			if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nextHop, c.config.ClusterRouter, util.NormalRouteType); err != nil {
+				klog.Errorf("failed to add static route, %v", err)
+				return err
+			}
+		} else {
+			if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType && pod.Annotations[util.NorthGatewayAnnotation] == "" {
+				node, err := c.nodesLister.Get(pod.Spec.NodeName)
 				if err != nil {
-					klog.Errorf("failed to get ex-gateway config, %v", err)
+					klog.Errorf("get node %s failed %v", pod.Spec.NodeName, err)
 					return err
 				}
-				nextHop := cm.Data["nic-ip"]
-				if nextHop == "" {
-					klog.Errorf("no available gateway nic address")
-					return fmt.Errorf("no available gateway nic address")
-				}
-				nextHop = strings.Split(nextHop, "/")[0]
-
-				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nextHop, c.config.ClusterRouter); err != nil {
-					klog.Errorf("failed to add static route, %v", err)
+				nodeTunlIPAddr, err := getNodeTunlIP(node)
+				if err != nil {
 					return err
 				}
-			} else {
-				if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType && pod.Annotations[util.NorthGatewayAnnotation] == "" {
-					node, err := c.nodesLister.Get(pod.Spec.NodeName)
-					if err != nil {
-						klog.Errorf("get node %s failed %v", pod.Spec.NodeName, err)
-						return err
-					}
-					nodeTunlIPAddr, err := getNodeTunlIP(node)
-					if err != nil {
-						return err
-					}
 
-					for _, nodeAddr := range nodeTunlIPAddr {
-						for _, podAddr := range strings.Split(podIP, ",") {
-							if util.CheckProtocol(nodeAddr.String()) != util.CheckProtocol(podAddr) {
-								continue
-							}
-							if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podAddr, nodeAddr.String(), c.config.ClusterRouter); err != nil {
-								klog.Errorf("failed to add static route, %v", err)
-								return err
-							}
+				for _, nodeAddr := range nodeTunlIPAddr {
+					for _, podAddr := range strings.Split(podIP, ",") {
+						if util.CheckProtocol(nodeAddr.String()) != util.CheckProtocol(podAddr) {
+							continue
 						}
-					}
-				}
-
-				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
-					if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], vpc.Status.Router); err != nil {
-						klog.Errorf("failed to add static route, %v", err)
-						return err
+						if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podAddr, nodeAddr.String(), c.config.ClusterRouter, util.NormalRouteType); err != nil {
+							klog.Errorf("failed to add static route, %v", err)
+							return err
+						}
 					}
 				}
 			}
 
-			for _, ipStr := range strings.Split(podIP, ",") {
-				if err := c.ovnClient.UpdateNatRule("dnat_and_snat", ipStr, pod.Annotations[util.EipAnnotation], c.config.ClusterRouter, pod.Annotations[util.MacAddressAnnotation], fmt.Sprintf("%s.%s", pod.Name, pod.Namespace)); err != nil {
-					klog.Errorf("failed to add nat rules, %v", err)
+			if pod.Annotations[util.NorthGatewayAnnotation] != "" {
+				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], c.config.ClusterRouter, util.NormalRouteType); err != nil {
+					klog.Errorf("failed to add static route, %v", err)
 					return err
 				}
+			}
+		}
 
-				if err := c.ovnClient.UpdateNatRule("snat", ipStr, pod.Annotations[util.SnatAnnotation], c.config.ClusterRouter, "", ""); err != nil {
-					klog.Errorf("failed to add nat rules, %v", err)
-					return err
-				}
+		for _, ipStr := range strings.Split(podIP, ",") {
+			if err := c.ovnClient.UpdateNatRule("dnat_and_snat", ipStr, pod.Annotations[util.EipAnnotation], c.config.ClusterRouter, pod.Annotations[util.MacAddressAnnotation], fmt.Sprintf("%s.%s", pod.Name, pod.Namespace)); err != nil {
+				klog.Errorf("failed to add nat rules, %v", err)
+				return err
+			}
+
+			if err := c.ovnClient.UpdateNatRule("snat", ipStr, pod.Annotations[util.SnatAnnotation], c.config.ClusterRouter, "", ""); err != nil {
+				klog.Errorf("failed to add nat rules, %v", err)
+				return err
 			}
 		}
 	}
@@ -667,7 +703,7 @@ func getNextHopByTunnelIP(gw []net.IP) string {
 	return nextHop
 }
 
-func needAllocateSubnets(pod *v1.Pod, subnets []*kubeovnv1.Subnet) []*kubeovnv1.Subnet {
+func needAllocateSubnets(pod *v1.Pod, nets []*kubeovnNet) []*kubeovnNet {
 	if pod.Status.Phase == v1.PodRunning ||
 		pod.Status.Phase == v1.PodSucceeded ||
 		pod.Status.Phase == v1.PodFailed {
@@ -675,16 +711,15 @@ func needAllocateSubnets(pod *v1.Pod, subnets []*kubeovnv1.Subnet) []*kubeovnv1.
 	}
 
 	if pod.Annotations == nil {
-		return subnets
+		return nets
 	}
 
-	result := make([]*kubeovnv1.Subnet, 0, len(subnets))
-	for _, subnet := range subnets {
-		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, subnet.Spec.Provider)] != "true" {
-			result = append(result, subnet)
+	result := make([]*kubeovnNet, 0, len(nets))
+	for _, n := range nets {
+		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, n.ProviderName)] != "true" {
+			result = append(result, n)
 		}
 	}
-
 	return result
 }
 
@@ -722,8 +757,53 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 	return subnet, nil
 }
 
-func (c *Controller) getPodAttachmentSubnet(pod *v1.Pod) ([]*kubeovnv1.Subnet, error) {
-	attachments, err := util.ParsePodNetworkAnnotation(pod.Annotations[util.AttachmentNetworkAnnotation], pod.Namespace)
+func loadNetConf(bytes []byte) (*multustypes.DelegateNetConf, error) {
+	delegateConf := &multustypes.DelegateNetConf{}
+	if err := json.Unmarshal(bytes, &delegateConf.Conf); err != nil {
+		return nil, logging.Errorf("LoadDelegateNetConf: error unmarshalling delegate config: %v", err)
+	}
+
+	if delegateConf.Conf.Type == "" {
+		if err := multustypes.LoadDelegateNetConfList(bytes, delegateConf); err != nil {
+			return nil, logging.Errorf("LoadDelegateNetConf: failed with: %v", err)
+		}
+	}
+	return delegateConf, nil
+}
+
+type providerType int
+
+const (
+	providerTypeIPAM providerType = iota
+	providerTypeOriginal
+)
+
+type kubeovnNet struct {
+	Type         providerType
+	ProviderName string
+	Subnet       *kubeovnv1.Subnet
+	IsDefault    bool
+}
+
+func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
+	var networkList []string
+
+	defaultAttachNetworks := pod.Annotations[util.DefaultNetworkAnnotation]
+	if defaultAttachNetworks != "" {
+		networkList = append(networkList, defaultAttachNetworks)
+	}
+
+	attachNetworks := pod.Annotations[util.AttachmentNetworkAnnotation]
+	if attachNetworks != "" {
+		networkList = append(networkList, attachNetworks)
+	}
+
+	wholeAttachNets := strings.Join(networkList, ",")
+	if wholeAttachNets == "" {
+		return nil, nil
+	}
+
+	attachments, err := util.ParsePodNetworkAnnotation(wholeAttachNets, pod.Namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -732,47 +812,92 @@ func (c *Controller) getPodAttachmentSubnet(pod *v1.Pod) ([]*kubeovnv1.Subnet, e
 		return nil, err
 	}
 
-	result := make([]*kubeovnv1.Subnet, 0, len(attachments))
+	result := make([]*kubeovnNet, 0, len(attachments))
 	for _, attach := range attachments {
-		provider := fmt.Sprintf("%s.%s", attach.Name, attach.Namespace)
+		networkClient := c.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(attach.Namespace)
+		network, err := networkClient.Get(context.Background(), attach.Name, metav1.GetOptions{})
+		if err != nil {
+			klog.Errorf("failed to get net-attach-def %s, %v", attach.Name, err)
+			return nil, err
+		}
+
+		netCfg, err := loadNetConf([]byte(network.Spec.Config))
+		if err != nil {
+			klog.Errorf("failed to load config of net-attach-def %s, %v", attach.Name, err)
+			return nil, err
+		}
+
+		// allocate kubeovn network
+		var providerName string
+		if util.IsOvnNetwork(netCfg) {
+			isDefault := util.IsDefaultNet(pod.Annotations[util.DefaultNetworkAnnotation], attach)
+			if isDefault {
+				providerName = util.OvnProvider
+			} else {
+				providerName = fmt.Sprintf("%s.%s.ovn", attach.Name, attach.Namespace)
+			}
+			subnetName := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)]
+			if subnetName == "" {
+				subnetName = c.config.DefaultLogicalSwitch
+			}
+			subnet, err := c.subnetsLister.Get(subnetName)
+			if err != nil {
+				klog.Errorf("failed to get subnet %s, %v", subnetName, err)
+				return nil, err
+			}
+			result = append(result, &kubeovnNet{
+				Type:         providerTypeOriginal,
+				ProviderName: providerName,
+				Subnet:       subnet,
+			})
+
+		}
+
+		providerName = fmt.Sprintf("%s.%s", attach.Name, attach.Namespace)
 		for _, subnet := range subnets {
-			if subnet.Spec.Provider == provider {
-				result = append(result, subnet)
+			if subnet.Spec.Provider == providerName {
+				result = append(result, &kubeovnNet{
+					Type:         providerTypeIPAM,
+					ProviderName: providerName,
+					Subnet:       subnet,
+				})
 				break
 			}
 		}
+
 	}
 	return result, nil
 }
 
-func (c *Controller) acquireAddress(pod *v1.Pod, subnet *kubeovnv1.Subnet) (string, string, string, error) {
+func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, string, string, error) {
 	key := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
-	macStr := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, subnet.Spec.Provider)]
+	macStr := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
 
 	// Random allocate
-	if pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, subnet.Spec.Provider)] == "" &&
-		pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, subnet.Spec.Provider)] == "" {
-		return c.ipam.GetRandomAddress(key, subnet.Name)
+	if pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)] == "" &&
+		pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)] == "" {
+		return c.ipam.GetRandomAddress(key, podNet.Subnet.Name)
 	}
 
 	// Static allocate
-	if pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, subnet.Spec.Provider)] != "" {
-		ipStr := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, subnet.Spec.Provider)]
-		return c.acquireStaticAddress(key, ipStr, macStr, subnet.Name)
+	if pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)] != "" {
+		ipStr := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
+		return c.acquireStaticAddress(key, ipStr, macStr, podNet.Subnet.Name)
 	}
 
 	// IPPool allocate
-	ipPool := strings.Split(pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, subnet.Spec.Provider)], ",")
+	ipPool := strings.Split(pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)], ",")
 	for i, ip := range ipPool {
 		ipPool[i] = strings.TrimSpace(ip)
 	}
 
 	if ok, _ := isStatefulSetPod(pod); !ok {
 		for _, staticIP := range ipPool {
-			if c.ipam.IsIPAssignedToPod(staticIP, subnet.Name) {
+			if c.ipam.IsIPAssignedToPod(staticIP, podNet.Subnet.Name) {
+				klog.Errorf("static address %s for %s has been assigned", staticIP, key)
 				continue
 			}
-			if v4IP, v6IP, mac, err := c.acquireStaticAddress(key, staticIP, macStr, subnet.Name); err == nil {
+			if v4IP, v6IP, mac, err := c.acquireStaticAddress(key, staticIP, macStr, podNet.Subnet.Name); err == nil {
 				return v4IP, v6IP, mac, nil
 			} else {
 				klog.Errorf("acquire address %s for %s failed, %v", staticIP, key, err)
@@ -783,9 +908,10 @@ func (c *Controller) acquireAddress(pod *v1.Pod, subnet *kubeovnv1.Subnet) (stri
 		numStr := strings.Split(pod.Name, "-")[numIndex]
 		index, _ := strconv.Atoi(numStr)
 		if index < len(ipPool) {
-			return c.acquireStaticAddress(key, ipPool[index], macStr, subnet.Name)
+			return c.acquireStaticAddress(key, ipPool[index], macStr, podNet.Subnet.Name)
 		}
 	}
+	klog.Errorf("alloc address for %s failed, return NoAvailableAddress", key)
 	return "", "", "", ipam.NoAvailableError
 }
 
@@ -811,7 +937,7 @@ func (c *Controller) acquireStaticAddress(key, ip, mac, subnet string) (string, 
 	}
 
 	if v4IP, v6IP, mac, err = c.ipam.GetStaticAddress(key, ip, mac, subnet); err != nil {
-		klog.Errorf("failed to get static ip %v, mac %v, err %v", ip, mac, err)
+		klog.Errorf("failed to get static ip %v, mac %v, subnet %v, err %v", ip, mac, subnet, err)
 		return "", "", "", err
 	}
 	return v4IP, v6IP, mac, nil

@@ -5,9 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/alauda/kube-ovn/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -17,6 +16,12 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
+
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/util"
+	goping "github.com/oilbeater/go-ping"
 )
 
 func (c *Controller) enqueueAddNode(obj interface{}) {
@@ -201,25 +206,37 @@ func (c *Controller) handleAddNode(key string) error {
 
 	var v4IP, v6IP, mac string
 	portName := fmt.Sprintf("node-%s", key)
-	if node.Annotations[util.AllocatedAnnotation] == "true" {
-		return nil
+	if node.Annotations[util.AllocatedAnnotation] == "true" && node.Annotations[util.IpAddressAnnotation] != "" && node.Annotations[util.MacAddressAnnotation] != "" {
+		v4IP, v6IP, mac, err = c.ipam.GetStaticAddress(portName, node.Annotations[util.IpAddressAnnotation],
+			node.Annotations[util.MacAddressAnnotation],
+			node.Annotations[util.LogicalSwitchAnnotation])
+		if err != nil {
+			klog.Errorf("failed to alloc static ip addrs for node %v, err %v", node.Name, err)
+			return err
+		}
 	} else {
 		v4IP, v6IP, mac, err = c.ipam.GetRandomAddress(portName, c.config.NodeSwitch)
 		if err != nil {
+			klog.Errorf("failed to alloc random ip addrs for node %v, err %v", node.Name, err)
 			return err
 		}
 	}
 
+	tag, err := c.getSubnetVlanTag(subnet)
+	if err != nil {
+		return err
+	}
+
 	ipStr := util.GetStringIP(v4IP, v6IP)
-	if err := c.ovnClient.CreatePort(c.config.NodeSwitch, portName, ipStr, subnet.Spec.CIDRBlock, mac, "", false); err != nil {
+	if err := c.ovnClient.CreatePort(c.config.NodeSwitch, portName, ipStr, subnet.Spec.CIDRBlock, mac, tag, "", "", false); err != nil {
 		return err
 	}
 
 	// There is only one nodeAddr temp
-	nodeAddr := getNodeInternalIP(node)
+	nodeAddr := util.GetNodeInternalIP(*node)
 	for _, ip := range strings.Split(ipStr, ",") {
 		if util.CheckProtocol(nodeAddr) == util.CheckProtocol(ip) {
-			err = c.ovnClient.AddStaticRoute("", nodeAddr, ip, c.config.ClusterRouter)
+			err = c.ovnClient.AddStaticRoute("", nodeAddr, ip, c.config.ClusterRouter, util.NormalRouteType)
 			if err != nil {
 				klog.Errorf("failed to add static router from node to ovn0 %v", err)
 				return err
@@ -301,45 +318,15 @@ func (c *Controller) handleUpdateNode(key string) error {
 		return err
 	}
 
-	if nodeReady(node) {
-		for _, subnet := range subnets {
-			if subnet.Status.ActivateGateway == "" && gatewayContains(subnet.Spec.GatewayNode, node.Name) {
-				if err := c.reconcileGateway(subnet); err != nil {
-					return err
-				}
-			}
-		}
-	} else {
-		for _, subnet := range subnets {
-			if subnet.Status.ActivateGateway == node.Name {
-				if err := c.reconcileGateway(subnet); err != nil {
-					return err
-				}
+	for _, subnet := range subnets {
+		if util.GatewayContains(subnet.Spec.GatewayNode, node.Name) {
+			if err := c.reconcileGateway(subnet); err != nil {
+				return err
 			}
 		}
 	}
+
 	return nil
-}
-
-func gatewayContains(gatewayNodeStr, gateway string) bool {
-	for _, gw := range strings.Split(gatewayNodeStr, ",") {
-		gw = strings.TrimSpace(gw)
-		if gw == gateway {
-			return true
-		}
-	}
-	return false
-}
-
-func getNodeInternalIP(node *v1.Node) string {
-	var nodeAddr string
-	for _, addr := range node.Status.Addresses {
-		if addr.Type == v1.NodeInternalIP {
-			nodeAddr = addr.Address
-			break
-		}
-	}
-	return nodeAddr
 }
 
 func (c *Controller) createOrUpdateCrdIPs(key, ip, mac string) error {
@@ -404,4 +391,98 @@ func (c *Controller) createOrUpdateCrdIPs(key, ip, mac string) error {
 	}
 
 	return nil
+}
+
+func (c *Controller) CheckGatewayReady() {
+	if err := c.checkGatewayReady(); err != nil {
+		klog.Errorf("failed to check gateway ready %v", err)
+	}
+}
+
+func (c *Controller) checkGatewayReady() error {
+	klog.V(3).Infoln("start to check gateway status")
+	subnetList, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets %v", err)
+		return err
+	}
+	nodes, err := c.nodesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list nodes, %v", err)
+		return err
+	}
+
+	for _, subnet := range subnetList {
+		if subnet.Spec.UnderlayGateway || subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType || subnet.Spec.GatewayNode == "" {
+			continue
+		}
+
+		for _, node := range nodes {
+			if strings.Contains(subnet.Spec.GatewayNode, node.Name) {
+				ipStr := node.Annotations[util.IpAddressAnnotation]
+				for _, ip := range strings.Split(ipStr, ",") {
+					pinger, err := goping.NewPinger(ip)
+					if err != nil {
+						return fmt.Errorf("failed to init pinger, %v", err)
+					}
+					pinger.SetPrivileged(true)
+
+					count := 5
+					pinger.Count = count
+					pinger.Timeout = time.Duration(count) * time.Second
+					pinger.Interval = 1 * time.Second
+
+					success := false
+					pinger.OnRecv = func(p *goping.Packet) {
+						success = true
+						pinger.Stop()
+					}
+					pinger.Run()
+
+					exist, err := c.checkNodeEcmpRouteExist(ip, subnet.Spec.CIDRBlock)
+					if err != nil {
+						klog.Errorf("get ecmp static route for subnet %v, error %v", subnet.Name, err)
+						break
+					}
+					if !success {
+						klog.Warningf("failed to ping gw %s", ip)
+						if exist {
+							if err := c.deleteStaticRoute(ip, c.config.ClusterRouter, subnet); err != nil {
+								klog.Errorf("failed to delete static route %s for node %s, %v", ip, node.Name, err)
+								return err
+							}
+						}
+					} else {
+						klog.V(3).Infof("succeed to ping gw %s", ip)
+						if !exist {
+							if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, subnet.Spec.CIDRBlock, ip, c.config.ClusterRouter, util.EcmpRouteType); err != nil {
+								klog.Errorf("failed to add static route for node %s, %v", node.Name, err)
+								return err
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (c *Controller) checkNodeEcmpRouteExist(nodeIp, cidrBlock string) (bool, error) {
+	routes, err := c.ovnClient.GetStaticRouteList(c.config.ClusterRouter)
+	if err != nil {
+		klog.Errorf("failed to list static route %v", err)
+		return false, err
+	}
+
+	for _, route := range routes {
+		if route.Policy != ovs.PolicySrcIP {
+			continue
+		}
+		if route.CIDR == cidrBlock && route.NextHop == nodeIp {
+			klog.V(3).Infof("src-ip static route exist for cidr %s, nexthop %v", cidrBlock, nodeIp)
+			return true, nil
+		}
+	}
+	return false, nil
 }

@@ -19,7 +19,7 @@ limitations under the License.
 package fake
 
 import (
-	v1 "github.com/alauda/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
+	v1 "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/typed/kubeovn/v1"
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
 )
@@ -42,6 +42,10 @@ func (c *FakeKubeovnV1) Vlans() v1.VlanInterface {
 
 func (c *FakeKubeovnV1) Vpcs() v1.VpcInterface {
 	return &FakeVpcs{c}
+}
+
+func (c *FakeKubeovnV1) VpcNatGateways() v1.VpcNatGatewayInterface {
+	return &FakeVpcNatGateways{c}
 }
 
 // RESTClient returns a RESTClient that is used to communicate

@@ -16,6 +16,7 @@ type CniServerClient struct {
 
 // CniRequest is the cniserver request format
 type CniRequest struct {
+	CniType      string `json:"cni_type"`
 	PodName      string `json:"pod_name"`
 	PodNamespace string `json:"pod_namespace"`
 	ContainerID  string `json:"container_id"`

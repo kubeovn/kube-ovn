@@ -21,6 +21,8 @@ nodes:
     image: kindest/node:v1.19.1
   - role: control-plane
     image: kindest/node:v1.19.1
+  {%- elif single is equalto "true" %}
+
   {%- else %}
   - role: worker
     image: kindest/node:v1.19.1

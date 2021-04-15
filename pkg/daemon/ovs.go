@@ -8,27 +8,28 @@ import (
 	"time"
 
 	"github.com/Mellanox/sriovnet"
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/alauda/kube-ovn/pkg/ovs"
-	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/utils/sysctl"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	goping "github.com/oilbeater/go-ping"
 	"github.com/vishvananda/netlink"
 	"k8s.io/klog"
+
 )
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, netns, containerID, ifName, mac, ip, gateway, ingress, egress, vlanID, DeviceID string) error {
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, ifName, mac, ip, gateway, ingress, egress, vlanID, DeviceID string) error {
 	var err error
 	var hostNicName, containerNicName string
 	if DeviceID == "" {
-		hostNicName, containerNicName, err = setupVethPair(containerID, csh.Config.MTU)
+		hostNicName, containerNicName, err = setupVethPair(containerID, ifName, csh.Config.MTU)
 		if err != nil {
 			klog.Errorf("failed to create veth pair %v", err)
 			return err
 		}
 	} else {
-		hostNicName, containerNicName, err = setupSriovInterface(containerID, DeviceID, csh.Config.MTU)
+		hostNicName, containerNicName, err = setupSriovInterface(containerID, DeviceID, ifName, csh.Config.MTU)
 		if err != nil {
 			klog.Errorf("failed to create sriov interfaces %v", err)
 			return err
@@ -36,7 +37,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, netns, container
 	}
 
 	ipStr := util.GetIpWithoutMask(ip)
-	ifaceID := fmt.Sprintf("%s.%s", podName, podNamespace)
+	ifaceID := ovs.PodNameToPortName(podName, podNamespace, provider)
 	ovs.CleanDuplicatePort(ifaceID)
 	// Add veth pair host end to ovs port
 	output, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", hostNicName, "--",
@@ -70,8 +71,8 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, netns, container
 	return nil
 }
 
-func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, deviceID string) error {
-	hostNicName, _ := generateNicName(containerID)
+func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, deviceID, ifName string) error {
+	hostNicName, _ := generateNicName(containerID, ifName)
 	// Remove ovs port
 	output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", "br-int", hostNicName)
 	if err != nil {
@@ -98,8 +99,11 @@ func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, device
 	return nil
 }
 
-func generateNicName(containerID string) (string, string) {
-	return fmt.Sprintf("%s_h", containerID[0:12]), fmt.Sprintf("%s_c", containerID[0:12])
+func generateNicName(containerID, ifname string) (string, string) {
+	if ifname == "eth0" {
+		return fmt.Sprintf("%s_h", containerID[0:12]), fmt.Sprintf("%s_c", containerID[0:12])
+	}
+	return fmt.Sprintf("%s_%s_h", containerID[0:12-len(ifname)], ifname), fmt.Sprintf("%s_%s_c", containerID[0:12-len(ifname)], ifname)
 }
 
 func configureHostNic(nicName, vlanID string) error {
@@ -157,6 +161,11 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, macAd
 
 		if err = configureNic(ifName, ipAddr, macAddr, mtu); err != nil {
 			return err
+		}
+
+		if ifName != "eth0" {
+			// Only eth0 requires the default route and gateway
+			return nil
 		}
 
 		switch util.CheckProtocol(ipAddr) {
@@ -258,40 +267,90 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 	if err = netlink.LinkSetTxQLen(hostLink, 1000); err != nil {
 		return fmt.Errorf("can not set host nic %s qlen %v", util.NodeNic, err)
 	}
+	// Double nat may lead kernel udp checksum error, disable offload to prevent this issue
+	// https://github.com/kubernetes/kubernetes/pull/92035
+	output, err := exec.Command("ethtool", "-K", "ovn0", "tx", "off").CombinedOutput()
+	if err != nil {
+		klog.Errorf("failed to disable checksum offload on ovn0, %v %q", err, output)
+		return err
+	}
 
-	// ping gw to activate the flow
-	var output []byte
+	// ping ovn0 gw to activate the flow
+	output, err = ovn0Check(gw)
+	if err != nil {
+		klog.Errorf("failed to init ovn0 check, %v, %q", err, output)
+		return err
+	}
+	klog.Infof("ping gw result is: \n %s", output)
+
+	return nil
+}
+
+func (c *Controller) disableTunnelOffload() {
+	_, err := netlink.LinkByName("genev_sys_6081")
+	if err == nil {
+		output, err := exec.Command("ethtool", "-K", "genev_sys_6081", "tx", "off").CombinedOutput()
+		if err != nil {
+			klog.Errorf("failed to disable checksum offload on genev_sys_6081, %v %q", err, output)
+		}
+	}
+}
+
+// If OVS restart, the ovn0 port will down and prevent host to pod network,
+// Restart the kube-ovn-cni when this happens
+func (c *Controller) loopOvn0Check() {
+	link, err := netlink.LinkByName(util.NodeNic)
+	if err != nil {
+		klog.Fatalf("failed to get ovn0 nic, %v", err)
+	}
+
+	if link.Attrs().OperState == netlink.OperDown {
+		klog.Fatalf("ovn0 nic is down")
+	}
+
+	node, err := c.nodesLister.Get(c.config.NodeName)
+	if err != nil {
+		klog.Errorf("failed to get node %s %v", c.config.NodeName, err)
+		return
+	}
+	gw := node.Annotations[util.GatewayAnnotation]
+	if output, err := ovn0Check(gw); err != nil {
+		klog.Fatalf("failed to ping ovn0 gw %v, %q", gw, output)
+	}
+}
+
+func ovn0Check(gw string) ([]byte, error) {
 	protocol := util.CheckProtocol(gw)
 	if protocol == kubeovnv1.ProtocolDual {
 		gws := strings.Split(gw, ",")
-		output, err = exec.Command("ping", "-w", "10", gws[0]).CombinedOutput()
-		klog.Infof("ping v4 gw result is: \n %s", output)
+		output, err := exec.Command("ping", "-w", "10", gws[0]).CombinedOutput()
+		klog.V(3).Infof("ping v4 gw result is: \n %s", output)
 		if err != nil {
 			klog.Errorf("ovn0 failed to ping gw %s, %v", gws[0], err)
-			return err
+			return output, err
 		}
 
 		output, err = exec.Command("ping6", "-w", "10", gws[1]).CombinedOutput()
 		if err != nil {
 			klog.Errorf("ovn0 failed to ping gw %s, %v", gws[1], err)
-			return err
+			return output, err
 		}
+		return output, nil
 	} else if protocol == kubeovnv1.ProtocolIPv4 {
-		output, err = exec.Command("ping", "-w", "10", gw).CombinedOutput()
+		output, err := exec.Command("ping", "-w", "10", gw).CombinedOutput()
 		if err != nil {
 			klog.Errorf("ovn0 failed to ping gw %s, %v", gw, err)
-			return err
+			return output, err
 		}
+		return output, nil
 	} else {
-		output, err = exec.Command("ping6", "-w", "10", gw).CombinedOutput()
+		output, err := exec.Command("ping6", "-w", "10", gw).CombinedOutput()
 		if err != nil {
 			klog.Errorf("ovn0 failed to ping gw %s, %v", gw, err)
-			return err
+			return output, err
 		}
+		return output, nil
 	}
-
-	klog.Infof("ping gw result is: \n %s", output)
-	return nil
 }
 
 func configureMirror(portName string, mtu int) error {
@@ -444,9 +503,9 @@ func configProviderNic(nicName string) error {
 	return err
 }
 
-func setupVethPair(containerID string, mtu int) (string, string, error) {
+func setupVethPair(containerID, ifName string, mtu int) (string, string, error) {
 	var err error
-	hostNicName, containerNicName := generateNicName(containerID)
+	hostNicName, containerNicName := generateNicName(containerID, ifName)
 	// Create a veth pair, put one end to container ,the other to ovs port
 	// NOTE: DO NOT use ovs internal type interface for container.
 	// Kubernetes will detect 'eth0' nic in pod, so the nic name in pod must be 'eth0'.
@@ -464,7 +523,7 @@ func setupVethPair(containerID string, mtu int) (string, string, error) {
 
 // Setup sriov interface in the pod
 // https://github.com/ovn-org/ovn-kubernetes/commit/6c96467d0d3e58cab05641293d1c1b75e5914795
-func setupSriovInterface(containerID, deviceID string, mtu int) (string, string, error) {
+func setupSriovInterface(containerID, deviceID, ifName string, mtu int) (string, string, error) {
 	// 1. get VF netdevice from PCI
 	vfNetdevices, err := sriovnet.GetNetDevicesFromPci(deviceID)
 	if err != nil {
@@ -501,7 +560,7 @@ func setupSriovInterface(containerID, deviceID string, mtu int) (string, string,
 	oldHostRepName := rep
 
 	// 5. rename the host VF representor
-	hostNicName, _ := generateNicName(containerID)
+	hostNicName, _ := generateNicName(containerID, ifName)
 	if err = renameLink(oldHostRepName, hostNicName); err != nil {
 		return "", "", fmt.Errorf("failed to rename %s to %s: %v", oldHostRepName, hostNicName, err)
 	}

@@ -6,14 +6,18 @@ import (
 	"os"
 	"time"
 
-	"github.com/alauda/kube-ovn/pkg/util"
-	"github.com/alauda/kube-ovn/test/e2e/framework"
+	"github.com/kubeovn/kube-ovn/pkg/util"
+	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+)
+
+const (
+	TestImage = "kubeovn/pause:3.2"
 )
 
 var _ = Describe("[IP Allocation]", func() {
@@ -37,7 +41,7 @@ var _ = Describe("[IP Allocation]", func() {
 					Containers: []corev1.Container{
 						{
 							Name:            name,
-							Image:           "nginx:alpine",
+							Image:           TestImage,
 							ImagePullPolicy: corev1.PullIfNotPresent,
 						},
 					},
@@ -87,7 +91,7 @@ var _ = Describe("[IP Allocation]", func() {
 							Containers: []corev1.Container{
 								{
 									Name:            name,
-									Image:           "nginx:alpine",
+									Image:           TestImage,
 									ImagePullPolicy: corev1.PullIfNotPresent,
 								},
 							},
@@ -159,7 +163,7 @@ var _ = Describe("[IP Allocation]", func() {
 							Containers: []corev1.Container{
 								{
 									Name:            name,
-									Image:           "nginx:alpine",
+									Image:           TestImage,
 									ImagePullPolicy: corev1.PullIfNotPresent,
 								},
 							},
@@ -203,7 +207,7 @@ var _ = Describe("[IP Allocation]", func() {
 							Containers: []corev1.Container{
 								{
 									Name:            name,
-									Image:           "nginx:alpine",
+									Image:           TestImage,
 									ImagePullPolicy: corev1.PullIfNotPresent,
 								},
 							},

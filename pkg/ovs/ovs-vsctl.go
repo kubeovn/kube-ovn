@@ -16,13 +16,9 @@ import (
 func Exec(args ...string) (string, error) {
 	start := time.Now()
 	args = append([]string{"--timeout=30"}, args...)
-	output, err := exec.Command("ovs-vsctl", args...).CombinedOutput()
+	output, err := exec.Command(OvsVsCtl, args...).CombinedOutput()
 	elapsed := float64((time.Since(start)) / time.Millisecond)
-	klog.V(4).Infof("command ovs-vsctl %s in %vms", strings.Join(args, " "), elapsed)
-	if err != nil || elapsed > 500 {
-		klog.Warning("ovs-vsctl command error or took too long")
-		klog.Warningf("ovs-vsctl %s in %vms", strings.Join(args, " "), elapsed)
-	}
+	klog.V(4).Infof("command %s %s in %vms", OvsVsCtl, strings.Join(args, " "), elapsed)
 	method := ""
 	for _, arg := range args {
 		if !strings.HasPrefix(arg, "--") {
@@ -31,12 +27,16 @@ func Exec(args ...string) (string, error) {
 		}
 	}
 	code := "0"
+	defer func() {
+		ovsClientRequestLatency.WithLabelValues("ovsdb", method, code).Observe(elapsed)
+	}()
+
 	if err != nil {
 		code = "1"
-	}
-	ovsClientRequestLatency.WithLabelValues("ovsdb", method, code).Observe(elapsed)
-	if err != nil {
-		return "", fmt.Errorf("failed to run 'ovs-vsctl %s': %v\n  %q", strings.Join(args, " "), err, output)
+		klog.Warningf("ovs-vsctl command error: %s %s in %vms", OvsVsCtl, strings.Join(args, " "), elapsed)
+		return "", fmt.Errorf("failed to run '%s %s': %v\n  %q", OvsVsCtl, strings.Join(args, " "), err, output)
+	} else if elapsed > 500 {
+		klog.Warningf("ovs-vsctl command took too long: %s %s in %vms", OvsVsCtl, strings.Join(args, " "), elapsed)
 	}
 	return trimCommandOutput(output), nil
 }

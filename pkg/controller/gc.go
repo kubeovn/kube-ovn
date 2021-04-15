@@ -12,8 +12,8 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
 
-	"github.com/alauda/kube-ovn/pkg/ovs"
-	"github.com/alauda/kube-ovn/pkg/util"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 var lastNoPodLSP map[string]bool
@@ -27,10 +27,55 @@ func (c *Controller) gc() error {
 		c.gcLoadBalancer,
 		c.gcPortGroup,
 		c.gcStaticRoute,
+		c.gcVpcNatGateway,
 	}
 	for _, gcFunc := range gcFunctions {
 		if err := gcFunc(); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) gcVpcNatGateway() error {
+	klog.Infof("start to gc vpc nat gateway")
+	gws, err := c.vpcNatGatewayLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vpc nat gateway, %v", err)
+		return err
+	}
+
+	var gwDpNames []string
+	for _, gw := range gws {
+		_, err = c.vpcsLister.Get(gw.Spec.Vpc)
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get vpc, %v", err)
+				return err
+			}
+			if err = c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Delete(context.Background(), gw.Name, metav1.DeleteOptions{}); err != nil {
+				klog.Errorf("failed to delete vpc nat gateway, %v", err)
+				return err
+			}
+		}
+		gwDpNames = append(gwDpNames, genNatGwDpName(gw.Name))
+	}
+
+	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.VpcNatGatewayLabel: "true"}})
+	dps, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).List(context.Background(), metav1.ListOptions{
+		LabelSelector: sel.String(),
+	})
+	if err != nil {
+		klog.Errorf("failed to list vpc nat gateway deployment, %v", err)
+		return err
+	}
+	for _, dp := range dps.Items {
+		if !util.ContainsString(gwDpNames, dp.Name) {
+			err = c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Delete(context.Background(), dp.Name, metav1.DeleteOptions{})
+			if err != nil {
+				klog.Errorf("failed to delete vpc nat gateway deployment, %v", err)
+				return err
+			}
 		}
 	}
 	return nil
@@ -159,8 +204,15 @@ func (c *Controller) markAndCleanLSP() error {
 	}
 	ipNames := make([]string, 0, len(pods)+len(nodes))
 	for _, pod := range pods {
-		if isPodAlive(pod) && pod.Annotations[util.AllocatedAnnotation] == "true" {
-			ipNames = append(ipNames, fmt.Sprintf("%s.%s", pod.Name, pod.Namespace))
+		if !isPodAlive(pod) {
+			continue
+		}
+		for k, v := range pod.Annotations {
+			if !strings.Contains(k, util.AllocatedAnnotationSuffix) || v != "true" {
+				continue
+			}
+			providerName := strings.ReplaceAll(k, util.AllocatedAnnotationSuffix, "")
+			ipNames = append(ipNames, ovs.PodNameToPortName(pod.Name, pod.Namespace, providerName))
 		}
 	}
 	for _, node := range nodes {

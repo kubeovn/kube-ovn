@@ -2,6 +2,7 @@
 
 This document describes how to run Kube-OVN with OVS-DPDK.
 
+*Note*: Kube-OVN with OVS-DPDK provides a vhost-user raw socket to container for DPDK applications like Testpmd and L2fwd to manipulate network traffic in userspace. Regular applications like Nginx will not work.
 
 ## Prerequest
 - Kubernetes >= 1.11
@@ -210,6 +211,7 @@ Create the Pod Spec, name it pod.yaml
 apiVersion: v1
 kind: Pod
 metadata:
+  name: testpmd-dpdk
   annotations:
     k8s.v1.cni.cncf.io/networks: ovs-dpdk-br0, ovs-dpdk-br0
 spec:

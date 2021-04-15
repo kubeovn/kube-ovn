@@ -6,15 +6,15 @@ import (
 	"strings"
 
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
-
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/alauda/kube-ovn/pkg/util"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (c *Controller) InitOVN() error {
@@ -83,16 +83,14 @@ func (c *Controller) InitDefaultVpc() error {
 func (c *Controller) initDefaultLogicalSwitch() error {
 	subnet, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), c.config.DefaultLogicalSwitch, v1.GetOptions{})
 	if err == nil {
-		if subnet != nil && subnet.Spec.CIDRBlock != c.config.DefaultCIDR {
-			// upgrade to dual-stack
+		if subnet != nil && util.CheckProtocol(c.config.DefaultCIDR) != util.CheckProtocol(subnet.Spec.CIDRBlock) {
+			// single-stack upgrade to dual-stack
 			if util.CheckProtocol(c.config.DefaultCIDR) == kubeovnv1.ProtocolDual {
 				subnet.Spec.CIDRBlock = c.config.DefaultCIDR
 				if err := formatSubnet(subnet, c); err != nil {
 					klog.Errorf("init format subnet %s failed %v", c.config.DefaultLogicalSwitch, err)
 					return err
 				}
-			} else {
-				return fmt.Errorf("can not modify subnet to single protocol")
 			}
 		}
 		return nil
@@ -132,16 +130,14 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 func (c *Controller) initNodeSwitch() error {
 	subnet, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), c.config.NodeSwitch, v1.GetOptions{})
 	if err == nil {
-		if subnet != nil && subnet.Spec.CIDRBlock != c.config.NodeSwitchCIDR {
-			// upgrade to dual-stack
+		if subnet != nil && util.CheckProtocol(c.config.NodeSwitchCIDR) != util.CheckProtocol(subnet.Spec.CIDRBlock) {
+			// single-stack upgrade to dual-stack
 			if util.CheckProtocol(c.config.NodeSwitchCIDR) == kubeovnv1.ProtocolDual {
 				subnet.Spec.CIDRBlock = c.config.NodeSwitchCIDR
 				if err := formatSubnet(subnet, c); err != nil {
 					klog.Errorf("init format subnet %s failed %v", c.config.NodeSwitch, err)
 					return err
 				}
-			} else {
-				return fmt.Errorf("can not modify subnet to single protocol")
 			}
 		}
 		return nil
@@ -290,11 +286,14 @@ func (c *Controller) InitIPAM() error {
 	for _, node := range nodes {
 		if node.Annotations[util.AllocatedAnnotation] == "true" {
 			portName := fmt.Sprintf("node-%s", node.Name)
-			_, _, _, err := c.ipam.GetStaticAddress(portName, node.Annotations[util.IpAddressAnnotation],
+			v4IP, v6IP, _, err := c.ipam.GetStaticAddress(portName, node.Annotations[util.IpAddressAnnotation],
 				node.Annotations[util.MacAddressAnnotation],
 				node.Annotations[util.LogicalSwitchAnnotation])
 			if err != nil {
 				klog.Errorf("failed to init node %s.%s address %s, %v", node.Name, node.Namespace, node.Annotations[util.IpAddressAnnotation], err)
+			}
+			if v4IP != "" && v6IP != "" {
+				node.Annotations[util.IpAddressAnnotation] = util.GetStringIP(v4IP, v6IP)
 			}
 		}
 	}
@@ -336,6 +335,7 @@ func (c *Controller) initDefaultVlan() error {
 }
 
 func (c *Controller) initSyncCrdIPs() error {
+	klog.Info("start to sync ips")
 	ips, err := c.config.KubeOvnClient.KubeovnV1().IPs().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -363,6 +363,7 @@ func (c *Controller) initSyncCrdIPs() error {
 }
 
 func (c *Controller) initSyncCrdSubnets() error {
+	klog.Info("start to sync subnets")
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		if k8serrors.IsNotFound(err) {

@@ -1,4 +1,4 @@
-# Hardware Offload
+﻿# Hardware Offload
 
 The OVS software based solution is CPU intensive, affecting system performance and preventing full utilization of the available bandwidth.
 Mellanox Accelerated Switching And Packet Processing (ASAP2) technology allows OVS offloading by handling OVS data-plane in Mellanox ConnectX-5 onwards NIC hardware (Mellanox Embedded Switch or eSwitch) while maintaining OVS control-plane unmodified. As a result, we observe significantly higher OVS performance without the associated CPU load.
@@ -188,7 +188,7 @@ metadata:
 spec:
   containers:
   - name: perf
-    image: index.alauda.cn/alaudaorg/perf
+    image: kubeovn/perf
     resources:
       requests:
         mellanox.com/cx5_sriov_switchdev: '1'

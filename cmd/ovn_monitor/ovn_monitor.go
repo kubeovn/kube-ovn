@@ -1,10 +1,11 @@
 package ovn_monitor
 
 import (
-	"github.com/alauda/kube-ovn/versions"
 	"net/http"
 
-	ovn "github.com/alauda/kube-ovn/pkg/ovnmonitor"
+	"github.com/kubeovn/kube-ovn/versions"
+
+	ovn "github.com/kubeovn/kube-ovn/pkg/ovnmonitor"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/klog"
 )

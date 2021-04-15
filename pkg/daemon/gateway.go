@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/alauda/felix/ipsets"
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/alauda/kube-ovn/pkg/ovs"
-	"github.com/alauda/kube-ovn/pkg/util"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/vishvananda/netlink"
 	v1 "k8s.io/api/core/v1"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
@@ -25,37 +25,6 @@ const (
 	LocalPodSet  = "local-pod-ip-nat"
 	OtherNodeSet = "other-node"
 	IPSetPrefix  = "ovn"
-)
-
-var (
-	v4Rules = []util.IPTableRule{
-		// Prevent performing Masquerade on external traffic which arrives from a Node that owns the Pod/Subnet IP
-		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn40subnets src -m set ! --match-set ovn40other-node src -m set --match-set ovn40local-pod-ip-nat dst -j RETURN`, " ")},
-		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn40subnets src -m set ! --match-set ovn40other-node src -m set --match-set ovn40subnets-nat dst -j RETURN`, " ")},
-		// NAT if pod/subnet to external address
-		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn40local-pod-ip-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE`, " ")},
-		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn40subnets-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE`, " ")},
-		// Input Accept
-		{Table: "filter", Chain: "FORWARD", Rule: strings.Split(`-m set --match-set ovn40subnets src -j ACCEPT`, " ")},
-		{Table: "filter", Chain: "FORWARD", Rule: strings.Split(`-m set --match-set ovn40subnets dst -j ACCEPT`, " ")},
-		// Forward Accept
-		{Table: "filter", Chain: "INPUT", Rule: strings.Split(`-m set --match-set ovn40subnets src -j ACCEPT`, " ")},
-		{Table: "filter", Chain: "INPUT", Rule: strings.Split(`-m set --match-set ovn40subnets dst -j ACCEPT`, " ")},
-	}
-	v6Rules = []util.IPTableRule{
-		// Prevent performing Masquerade on external traffic which arrives from a Node that owns the Pod/Subnet IP
-		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src  -m set --match-set ovn60local-pod-ip-nat dst -j RETURN`, " ")},
-		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src  -m set --match-set ovn60subnets-nat dst -j RETURN`, " ")},
-		// NAT if pod/subnet to external address
-		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn60local-pod-ip-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE`, " ")},
-		{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn60subnets-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE`, " ")},
-		// Input Accept
-		{Table: "filter", Chain: "FORWARD", Rule: strings.Split(`-m set --match-set ovn60subnets src -j ACCEPT`, " ")},
-		{Table: "filter", Chain: "FORWARD", Rule: strings.Split(`-m set --match-set ovn60subnets dst -j ACCEPT`, " ")},
-		// Forward Accept
-		{Table: "filter", Chain: "INPUT", Rule: strings.Split(`-m set --match-set ovn60subnets src -j ACCEPT`, " ")},
-		{Table: "filter", Chain: "INPUT", Rule: strings.Split(`-m set --match-set ovn60subnets dst -j ACCEPT`, " ")},
-	}
 )
 
 func (c *Controller) runGateway() {
@@ -138,6 +107,49 @@ func (c *Controller) setIPSet() error {
 }
 
 func (c *Controller) setIptables() error {
+	klog.V(3).Infoln("start to set up iptables")
+	node, err := c.nodesLister.Get(c.config.NodeName)
+	if err != nil {
+		klog.Errorf("failed to get node %s, %v", c.config.NodeName, err)
+		return err
+	}
+
+	hostIP := util.GetNodeInternalIP(*node)
+
+	var (
+		v4Rules = []util.IPTableRule{
+			// Prevent performing Masquerade on external traffic which arrives from a Node that owns the Pod/Subnet IP
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn40subnets src -m set ! --match-set ovn40other-node src -m set --match-set ovn40local-pod-ip-nat dst -j RETURN`, " ")},
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn40subnets src -m set ! --match-set ovn40other-node src -m set --match-set ovn40subnets-nat dst -j RETURN`, " ")},
+			// NAT if pod/subnet to external address
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn40local-pod-ip-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE`, " ")},
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn40subnets-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE`, " ")},
+			// masq traffic from hostport/nodeport
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(fmt.Sprintf(`-o ovn0 ! -s %s -j MASQUERADE`, hostIP), " ")},
+			// Input Accept
+			{Table: "filter", Chain: "FORWARD", Rule: strings.Split(`-m set --match-set ovn40subnets src -j ACCEPT`, " ")},
+			{Table: "filter", Chain: "FORWARD", Rule: strings.Split(`-m set --match-set ovn40subnets dst -j ACCEPT`, " ")},
+			// Forward Accept
+			{Table: "filter", Chain: "INPUT", Rule: strings.Split(`-m set --match-set ovn40subnets src -j ACCEPT`, " ")},
+			{Table: "filter", Chain: "INPUT", Rule: strings.Split(`-m set --match-set ovn40subnets dst -j ACCEPT`, " ")},
+		}
+		v6Rules = []util.IPTableRule{
+			// Prevent performing Masquerade on external traffic which arrives from a Node that owns the Pod/Subnet IP
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src -m set --match-set ovn60local-pod-ip-nat dst -j RETURN`, " ")},
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src -m set --match-set ovn60subnets-nat dst -j RETURN`, " ")},
+			// NAT if pod/subnet to external address
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn60local-pod-ip-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE`, " ")},
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn60subnets-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE`, " ")},
+			// masq traffic from hostport/nodeport
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(fmt.Sprintf(`-o ovn0 ! -s %s -j MASQUERADE`, hostIP), " ")},
+			// Input Accept
+			{Table: "filter", Chain: "FORWARD", Rule: strings.Split(`-m set --match-set ovn60subnets src -j ACCEPT`, " ")},
+			{Table: "filter", Chain: "FORWARD", Rule: strings.Split(`-m set --match-set ovn60subnets dst -j ACCEPT`, " ")},
+			// Forward Accept
+			{Table: "filter", Chain: "INPUT", Rule: strings.Split(`-m set --match-set ovn60subnets src -j ACCEPT`, " ")},
+			{Table: "filter", Chain: "INPUT", Rule: strings.Split(`-m set --match-set ovn60subnets dst -j ACCEPT`, " ")},
+		}
+	)
 	protocols := make([]string, 2)
 	if c.protocol == kubeovnv1.ProtocolDual {
 		protocols[0] = kubeovnv1.ProtocolIPv4
@@ -159,6 +171,11 @@ func (c *Controller) setIptables() error {
 		iptableRules[0], iptableRules[1], iptableRules[3], iptableRules[4] =
 			iptableRules[4], iptableRules[3], iptableRules[1], iptableRules[0]
 		for _, iptRule := range iptableRules {
+			if strings.Contains(strings.Join(iptRule.Rule, " "), "ovn0") && protocol != util.CheckProtocol(hostIP) {
+				klog.V(3).Infof("ignore check iptable rule, protocol %v, hostIP %v", protocol, hostIP)
+				continue
+			}
+
 			exists, err := c.iptable[protocol].Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
 			if err != nil {
 				klog.Errorf("check iptable rule exist failed, %+v", err)
@@ -195,11 +212,21 @@ func (c *Controller) setICGateway() error {
 	}
 	enable := node.Labels[util.ICGatewayLabel]
 	if enable == "true" {
-		if _, err := ovs.Exec("set", "open_vswitch", ".", "external_ids:ovn-is-interconn=true"); err != nil {
-			return fmt.Errorf("failed to enable ic gateway, %v", err)
+		icEnabled, err := ovs.Exec(ovs.IfExists, "get", "open", ".", "external_ids:ovn-is-interconn")
+		if err != nil {
+			return fmt.Errorf("failed to get if ic enabled, %v", err)
+		}
+		if strings.Trim(icEnabled, "\"") != "true" {
+			if _, err := ovs.Exec("set", "open", ".", "external_ids:ovn-is-interconn=true"); err != nil {
+				return fmt.Errorf("failed to enable ic gateway, %v", err)
+			}
+			output, err := exec.Command("/usr/share/ovn/scripts/ovn-ctl", "restart_controller").CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("failed to restart ovn-controller, %v, %q", err, output)
+			}
 		}
 	} else {
-		if _, err := ovs.Exec("set", "open_vswitch", ".", "external_ids:ovn-is-interconn=false"); err != nil {
+		if _, err := ovs.Exec("set", "open", ".", "external_ids:ovn-is-interconn=false"); err != nil {
 			return fmt.Errorf("failed to disable ic gateway, %v", err)
 		}
 	}
@@ -215,7 +242,7 @@ func (c *Controller) setExGateway() error {
 	enable := node.Labels[util.ExGatewayLabel]
 	if enable == "true" {
 		cm, err := c.config.KubeClient.CoreV1().ConfigMaps("kube-system").Get(context.Background(), util.ExternalGatewayConfig, metav1.GetOptions{})
-		if err != nil && !k8serrors.IsNotFound(err) {
+		if err != nil {
 			klog.Errorf("failed to get ovn-external-gw-config, %v", err)
 			return err
 		}
@@ -306,7 +333,7 @@ func (c *Controller) getSubnetsNeedNAT(protocol string) ([]string, error) {
 	for _, subnet := range subnets {
 		if subnet.Spec.Vpc == util.DefaultVpc &&
 			subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType &&
-			subnet.Status.ActivateGateway == c.config.NodeName &&
+			util.GatewayContains(subnet.Spec.GatewayNode, c.config.NodeName) &&
 			(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) &&
 			subnet.Spec.NatOutgoing {
 			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)

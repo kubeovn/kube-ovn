@@ -1,14 +1,14 @@
-<img src="docs/logo-horizontal.svg" alt="kube_ovn_logo" width="500"/>
+<img src="https://github.com/cncf/artwork/raw/master/projects/kube-ovn/horizontal/color/kube-ovn-horizontal-color.svg" alt="kube_ovn_logo" width="500"/>
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/alauda/kube-ovn/blob/master/LICENSE)
-[![Build Tag](https://img.shields.io/github/tag/alauda/kube-ovn.svg)](https://github.com/alauda/kube-ovn/releases)
-[![Go Report Card](https://goreportcard.com/badge/github.com/alauda/kube-ovn)](https://goreportcard.com/report/github.com/alauda/kube-ovn)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/kubeovn/kube-ovn/blob/master/LICENSE)
+[![Build Tag](https://img.shields.io/github/tag/kubeovn/kube-ovn.svg)](https://github.com/kubeovn/kube-ovn/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/kubeovn/kube-ovn)](https://goreportcard.com/report/github.com/kubeovn/kube-ovn)
 [![Slack Card](https://kube-ovn-slackin.herokuapp.com/badge.svg)](https://kube-ovn-slackin.herokuapp.com)
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Falauda%2Fkube-ovn.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Falauda%2Fkube-ovn?ref=badge_shield)
 
-[中文教程](https://github.com/alauda/kube-ovn/wiki)
+[中文教程](https://github.com/kubeovn/kube-ovn/wiki)
 
-Kube-OVN integrates the OVN-based Network Virtualization with Kubernetes. It offers an advanced Container Network Fabric for Enterprises with the most functions and the easiest operation.
+Kube-OVN, a [CNCF Sandbox Level Project](https://www.cncf.io/sandbox-projects/), integrates the OVN-based Network Virtualization with Kubernetes. It offers an advanced Container Network Fabric for Enterprises with the most functions and the easiest operation.
 
 ## Community
 The Kube-OVN community is waiting for you participation!
@@ -78,7 +78,6 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
 - [Vlan/Underlay Support](docs/vlan.md)
 - [DPDK Support](docs/dpdk.md)
 - [Traffic Mirror](docs/mirror.md)
-- [Webhook](docs/webhook.md)
 - [IPv6](docs/ipv6.md)
 - [DualStack](docs/dual-stack.md)
 - [VPC](docs/vpc.md)
@@ -90,6 +89,21 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
 We are looking forwards to your PR!
 
 - [Development Guide](docs/development.md)
+- [Architecture Guide](ARCHITECTURE.MD)
+
+
+## FAQ
+1. Q: How about the scalability of Kube-OVN?
+
+   A: We have simulated 200 Nodes with 10k Pods by kubemark, and it works fine. Some community users have deployed one cluster with 250+ Nodes and 3k+ Pods in production. It's still not reach the limitation, but we don't have enough resources to find the limitation.
+
+2. Q: What's the Addressing/IPAM? Node-specific or cluster-wide?
+
+   A: Kube-OVN use a cluster-wide IPAM, Pod address can float to any nodes in the cluster.
+
+3. Q: What's the encapsulation?
+
+   A: For overlay mode, Kube-OVN uses Geneve to encapsulate packets between nodes. For Vlan/Underlay mode there is no encapsulation.
 
 ## Kube-OVN vs. Other CNI Implementation
 
@@ -123,7 +137,6 @@ Use encapsulation can lower the requirement on networking, and isolate container
 Kube-OVN can also work in non-encapsulation mode, that take use of underlay switches to switch the packets or use hardware offload to achieve better performance than kernel datapath.
 
 From the function set, Kube-OVN can offer some more abilities like static ip, QoS and traffic mirror. The subnet in Kube-OVN and ippool in Calico share some same function set.
-
 
 ## License
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Falauda%2Fkube-ovn.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Falauda%2Fkube-ovn?ref=badge_large)

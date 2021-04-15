@@ -1,5 +1,7 @@
 # Webhook
 
+*Deprecated*: Webhook is not used now.
+
 Kube-OVN supports allocation static IP addresses along with dynamical addresses which means we should hold static IP addresses don't allow others using it.
 
 ## Pre-request
@@ -9,7 +11,7 @@ Kube-OVN supports allocation static IP addresses along with dynamical addresses 
 
 ## To install
 
-The webhook needs https so we using cert-manager here to generate the certificate. Normally cert-manager doesn't use `hostNetwork`  so it needs CNI to allocate IP addresses.  As a result, we should install ovn, kube-ovn, cert-manager before webhook.
+The webhook needs https, so we use cert-manager here to generate the certificate. Normally cert-manager doesn't use `hostNetwork`  so it needs CNI to allocate IP addresses.  As a result, we should install ovn, kube-ovn, cert-manager before webhook.
 
 Example:
 Assume you have two deployments have ip conflict.

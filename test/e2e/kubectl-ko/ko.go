@@ -6,7 +6,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/alauda/kube-ovn/test/e2e/framework"
+	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,6 +29,33 @@ var _ = Describe("[kubectl-ko]", func() {
 		Expect(err).NotTo(HaveOccurred())
 		for _, node := range nodes.Items {
 			output, err := exec.Command("kubectl", "ko", "vsctl", node.Name, "show").CombinedOutput()
+			Expect(err).NotTo(HaveOccurred(), string(output))
+		}
+	})
+
+	It("ofctl show", func() {
+		nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		for _, node := range nodes.Items {
+			output, err := exec.Command("kubectl", "ko", "ofctl", node.Name, "show", "br-int").CombinedOutput()
+			Expect(err).NotTo(HaveOccurred(), string(output))
+		}
+	})
+
+	It("dpctl show", func() {
+		nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		for _, node := range nodes.Items {
+			output, err := exec.Command("kubectl", "ko", "dpctl", node.Name, "show").CombinedOutput()
+			Expect(err).NotTo(HaveOccurred(), string(output))
+		}
+	})
+
+	It("appctl list-commands", func() {
+		nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		for _, node := range nodes.Items {
+			output, err := exec.Command("kubectl", "ko", "appctl", node.Name, "list-commands").CombinedOutput()
 			Expect(err).NotTo(HaveOccurred(), string(output))
 		}
 	})

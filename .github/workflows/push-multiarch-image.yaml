@@ -10,7 +10,7 @@ on:
 
 jobs:
   build:
-    name: Build x86
+    name: Push multi arch images
     runs-on: ubuntu-18.04
     steps:
       - name: Check out code into the Go module directory

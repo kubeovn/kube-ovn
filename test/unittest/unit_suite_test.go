@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	// tests to run
-	_ "github.com/alauda/kube-ovn/test/unittest/ipam"
+	_ "github.com/kubeovn/kube-ovn/test/unittest/ipam"
 )
 
 func TestE2e(t *testing.T) {

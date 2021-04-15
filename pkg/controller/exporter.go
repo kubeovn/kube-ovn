@@ -3,10 +3,10 @@ package controller
 import (
 	"sync"
 
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
 var registerMetricsOnce sync.Once

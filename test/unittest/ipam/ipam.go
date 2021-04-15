@@ -1,7 +1,7 @@
 package ipam
 
 import (
-	"github.com/alauda/kube-ovn/pkg/ipam"
+	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )

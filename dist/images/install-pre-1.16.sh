@@ -14,12 +14,14 @@ REGISTRY="kubeovn"
 VERSION="v1.7.0"
 IMAGE_PULL_POLICY="IfNotPresent"
 POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
+POD_GATEWAY="10.16.0.1"
 SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR
 JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
 PINGER_EXTERNAL_ADDRESS="114.114.114.114"  # Pinger check external ip probe
 PINGER_EXTERNAL_DOMAIN="alauda.cn"         # Pinger check external domain probe
 if [ "$IPv6" = "true" ]; then
   POD_CIDR="fd00:10:16::/64"                # Do NOT overlap with NODE/SVC/JOIN CIDR
+  POD_GATEWAY="fd00:10:16::1"
   SVC_CIDR="fd00:10:96::/112"                # Do NOT overlap with NODE/POD/JOIN CIDR
   JOIN_CIDR="fd00:100:64::/64"              # Do NOT overlap with NODE/POD/SVC CIDR
   PINGER_EXTERNAL_ADDRESS="2400:3200::1"
@@ -437,6 +439,84 @@ spec:
               type: string
           type: object
       type: object
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: vpc-nat-gateways.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: vpc-nat-gateways
+    singular: vpc-nat-gateway
+    shortNames:
+      - vpc-nat-gw
+    kind: VpcNatGateway
+    listKind: VpcNatGatewayList
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                dnatRules:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      eip:
+                        type: string
+                      externalPort:
+                        type: string
+                      internalIp:
+                        type: string
+                      internalPort:
+                        type: string
+                      protocol:
+                        type: string
+                eips:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      eipCIDR:
+                        type: string
+                      gateway:
+                        type: string
+                floatingIpRules:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      eip:
+                        type: string
+                      internalIp:
+                        type: string
+                lanIp:
+                  type: string
+                snatRules:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      eip:
+                        type: string
+                      internalCIDR:
+                        type: string
+                subnet:
+                  type: string
+                vpc:
+                  type: string
+      subresources:
+        status: {}
+  conversion:
+    strategy: None
 EOF
 
 if $DPDK; then
@@ -521,6 +601,16 @@ rules:
       - patch
       - update
   - apiGroups:
+      - "k8s.cni.cncf.io"
+    resources:
+      - network-attachment-definitions
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - update
+  - apiGroups:
       - ""
       - networking.k8s.io
       - apps
@@ -533,6 +623,10 @@ rules:
       - daemonsets
       - deployments
     verbs:
+      - create
+      - delete
+      - update
+      - patch
       - get
       - list
       - watch
@@ -593,6 +687,24 @@ spec:
   selector:
     app: ovn-central
     ovn-sb-leader: "true"
+  sessionAffinity: None
+
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: ovn-northd
+  namespace: kube-system
+spec:
+  ports:
+    - name: ovn-northd
+      protocol: TCP
+      port: 6643
+      targetPort: 6643
+  type: ClusterIP
+  selector:
+    app: ovn-central
+    ovn-northd-leader: "true"
   sessionAffinity: None
 
 ---
@@ -999,6 +1111,7 @@ rules:
     resources:
       - vpcs
       - vpcs/status
+      - vpc-nat-gateways
       - subnets
       - subnets/status
       - ips
@@ -1043,6 +1156,16 @@ rules:
     verbs:
       - create
       - patch
+      - update
+  - apiGroups:
+      - "k8s.cni.cncf.io"
+    resources:
+      - network-attachment-definitions
+    verbs:
+      - create
+      - delete
+      - get
+      - list
       - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -1090,6 +1213,23 @@ spec:
   selector:
     app: ovn-central
     ovn-sb-leader: "true"
+  sessionAffinity: None
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: ovn-northd
+  namespace: kube-system
+spec:
+  ports:
+    - name: ovn-northd
+      protocol: TCP
+      port: 6643
+      targetPort: 6643
+  type: ClusterIP
+  selector:
+    app: ovn-central
+    ovn-northd-leader: "true"
   sessionAffinity: None
 ---
 kind: Service
@@ -1480,6 +1620,7 @@ spec:
           - /kube-ovn/start-controller.sh
           args:
           - --default-cidr=$POD_CIDR
+          - --default-gateway=$POD_GATEWAY
           - --default-exclude-ips=$EXCLUDE_IPS
           - --node-switch-cidr=$JOIN_CIDR
           - --network-type=$NETWORK_TYPE
@@ -1582,7 +1723,7 @@ spec:
           - /kube-ovn/start-cniserver.sh
         args:
           - --enable-mirror=$ENABLE_MIRROR
-          - --encap-checksum=true
+          - --encap-checksum=false
           - --service-cluster-ip-range=$SVC_CIDR
           - --iface=${IFACE}
           - --network-type=$NETWORK_TYPE
@@ -1844,6 +1985,9 @@ showHelp(){
   echo "  nbctl [ovn-nbctl options ...]    invoke ovn-nbctl"
   echo "  sbctl [ovn-sbctl options ...]    invoke ovn-sbctl"
   echo "  vsctl {nodeName} [ovs-vsctl options ...]   invoke ovs-vsctl on selected node"
+  echo "  ofctl {nodeName} [ovs-ofctl options ...]   invoke ovs-ofctl on selected node"
+  echo "  dpctl {nodeName} [ovs-dpctl options ...]   invoke ovs-dpctl on selected node"
+  echo "  appctl {nodeName} [ovs-appctl options ...]   invoke ovs-appctl on selected node"
   echo "  tcpdump {namespace/podname} [tcpdump options ...]     capture pod traffic"
   echo "  trace {namespace/podname} {target ip address} {icmp|tcp|udp} [target tcp or udp port]    trace ovn microflow of specific packet"
   echo "  diagnose {all|node} [nodename]    diagnose connectivity of all nodes or a specific node"
@@ -1854,13 +1998,11 @@ tcpdump(){
   namespace=$(echo "$namespacedPod" | cut -d "/" -f1)
   podName=$(echo "$namespacedPod" | cut -d "/" -f2)
   if [ "$podName" = "$namespacedPod" ]; then
-    nodeName=$(kubectl get pod "$podName" -o jsonpath={.spec.nodeName})
-    mac=$(kubectl get pod "$podName" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/mac_address})
-    hostNetwork=$(kubectl get pod "$podName" -o jsonpath={.spec.hostNetwork})
-  else
-    nodeName=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.nodeName})
-    hostNetwork=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.hostNetwork})
+    namespace="default"
   fi
+
+  nodeName=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.nodeName})
+  hostNetwork=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.hostNetwork})
 
   if [ -z "$nodeName" ]; then
     echo "Pod $namespacedPod not exists on any node"
@@ -1892,8 +2034,7 @@ trace(){
   namespace=$(echo "$1" | cut -d "/" -f1)
   podName=$(echo "$1" | cut -d "/" -f2)
   if [ "$podName" = "$1" ]; then
-    echo "namespace is required"
-    exit 1
+    namespace="default"
   fi
 
   podIP=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/ip_address})
@@ -1973,7 +2114,8 @@ trace(){
   esac
 }
 
-vsctl(){
+xxctl(){
+  subcommand="$1"; shift
   nodeName="$1"; shift
   kubectl get no "$nodeName" > /dev/null
   ovsPod=$(kubectl get pod -n $KUBE_OVN_NS -o wide | grep " $nodeName " | grep ovs-ovn | awk '{print $1}')
@@ -1981,11 +2123,12 @@ vsctl(){
       echo "ovs pod  doesn't exist on node $nodeName"
       exit 1
   fi
-  kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-vsctl "$@"
+  kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-$subcommand "$@"
 }
 
 diagnose(){
   kubectl get crd vpcs.kubeovn.io
+  kubectl get crd vpc-nat-gateways.kubeovn.io
   kubectl get crd subnets.kubeovn.io
   kubectl get crd ips.kubeovn.io
   kubectl get svc kube-dns -n kube-system
@@ -1998,7 +2141,7 @@ diagnose(){
   kubectl ko nbctl list acl
   kubectl ko sbctl show
 
-  checkDaemonSet kube-proxy
+  checkKubeProxy
   checkDeployment ovn-central
   checkDeployment kube-ovn-controller
   checkDaemonSet kube-ovn-cni
@@ -2097,6 +2240,24 @@ checkDeployment(){
   fi
 }
 
+checkKubeProxy(){
+  dsMode=`kubectl get ds -n kube-system | grep kube-proxy || true`
+  if [ -z "$dsMode" ]; then
+    nodeIps=`kubectl get node -o wide --no-headers | awk '{print $6}'`
+    for node in $nodeIps
+    do
+      healthResult=`curl -g -6 -sL --connect-timeout 5 -w %{http_code} http://[$node]:10256/healthz -o /dev/null | grep -v 200 || true`
+      if [ -n "$healthResult" ]; then
+        echo "$node kube-proxy's health check failed"
+        exit 1
+      fi
+    done
+    echo "kube-proxy ready"
+  else
+    checkDaemonSet kube-proxy
+  fi
+}
+
 if [ $# -lt 1 ]; then
   showHelp
   exit 0
@@ -2113,8 +2274,8 @@ case $subcommand in
   sbctl)
     kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-sbctl "$@"
     ;;
-  vsctl)
-    vsctl "$@"
+  vsctl|ofctl|dpctl|appctl)
+    xxctl "$subcommand" "$@"
     ;;
   tcpdump)
     tcpdump "$@"

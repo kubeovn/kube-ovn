@@ -12,8 +12,8 @@ import (
 	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/klog"
 
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/alauda/kube-ovn/pkg/util"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (c Client) ovnNbCommand(cmdArgs ...string) (string, error) {
@@ -22,10 +22,6 @@ func (c Client) ovnNbCommand(cmdArgs ...string) (string, error) {
 	raw, err := exec.Command(OvnNbCtl, cmdArgs...).CombinedOutput()
 	elapsed := float64((time.Since(start)) / time.Millisecond)
 	klog.V(4).Infof("command %s %s in %vms", OvnNbCtl, strings.Join(cmdArgs, " "), elapsed)
-	if err != nil || elapsed > 500 {
-		klog.Warning("ovn-nbctl command error or took too long")
-		klog.Warningf("%s %s in %vms", OvnNbCtl, strings.Join(cmdArgs, " "), elapsed)
-	}
 	method := ""
 	for _, arg := range cmdArgs {
 		if !strings.HasPrefix(arg, "--") {
@@ -34,12 +30,16 @@ func (c Client) ovnNbCommand(cmdArgs ...string) (string, error) {
 		}
 	}
 	code := "0"
+	defer func() {
+		ovsClientRequestLatency.WithLabelValues("ovn-nb", method, code).Observe(elapsed)
+	}()
+
 	if err != nil {
 		code = "1"
-	}
-	ovsClientRequestLatency.WithLabelValues("ovn-nb", method, code).Observe(elapsed)
-	if err != nil {
+		klog.Warningf("ovn-nbctl command error: %s %s in %vms", OvnNbCtl, strings.Join(cmdArgs, " "), elapsed)
 		return "", fmt.Errorf("%s, %q", raw, err)
+	} else if elapsed > 500 {
+		klog.Warningf("ovn-nbctl command took too long: %s %s in %vms", OvnNbCtl, strings.Join(cmdArgs, " "), elapsed)
 	}
 	return trimCommandOutput(raw), nil
 }
@@ -110,7 +110,7 @@ func (c Client) DeleteICLogicalRouterPort(az string) error {
 }
 
 // CreatePort create logical switch port in ovn
-func (c Client) CreatePort(ls, port, ip, cidr, mac, tag string, portSecurity bool) error {
+func (c Client) CreatePort(ls, port, ip, cidr, mac, tag, pod, namespace string, portSecurity bool) error {
 	var ovnCommand []string
 	if util.CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
 		ips := strings.Split(ip, ",")
@@ -138,11 +138,33 @@ func (c Client) CreatePort(ls, port, ip, cidr, mac, tag string, portSecurity boo
 			"--", "set", "logical_switch_port", port, fmt.Sprintf("tag=%s", tag))
 	}
 
+	if pod != "" && namespace != "" {
+		ovnCommand = append(ovnCommand,
+			"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:pod=%s/%s", namespace, pod))
+	}
+
 	if _, err := c.ovnNbCommand(ovnCommand...); err != nil {
 		klog.Errorf("create port %s failed %v", port, err)
 		return err
 	}
 	return nil
+}
+
+func (c Client) ListPodLogicalSwitchPorts(pod, namespace string) ([]string, error) {
+	output, err := c.ovnNbCommand("--format=csv", "--data=bare", "--no-heading", "--columns=name", "find", "logical_switch_port", fmt.Sprintf("external_ids:pod=%s/%s", namespace, pod))
+	if err != nil {
+		klog.Errorf("failed to list logical switch port, %v", err)
+		return nil, err
+	}
+	lines := strings.Split(output, "\n")
+	result := make([]string, 0, len(lines))
+	for _, l := range lines {
+		if len(strings.TrimSpace(l)) == 0 {
+			continue
+		}
+		result = append(result, strings.TrimSpace(l))
+	}
+	return result, nil
 }
 
 func (c Client) SetLogicalSwitchConfig(ls string, isUnderlayGW bool, lr, protocol, subnet, gateway string, excludeIps []string) error {
@@ -463,7 +485,7 @@ func (c Client) ListStaticRoute() ([]StaticRoute, error) {
 }
 
 // AddStaticRoute add a static route rule in ovn
-func (c Client) AddStaticRoute(policy, cidr, nextHop, router string) error {
+func (c Client) AddStaticRoute(policy, cidr, nextHop, router string, routeType string) error {
 	if policy == "" {
 		policy = PolicyDstIP
 	}
@@ -473,8 +495,14 @@ func (c Client) AddStaticRoute(policy, cidr, nextHop, router string) error {
 			if util.CheckProtocol(cidrBlock) != util.CheckProtocol(gw) {
 				continue
 			}
-			if _, err := c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "lr-route-add", router, cidrBlock, gw); err != nil {
-				return err
+			if routeType == util.EcmpRouteType {
+				if _, err := c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "--ecmp", "lr-route-add", router, cidrBlock, gw); err != nil {
+					return err
+				}
+			} else {
+				if _, err := c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "lr-route-add", router, cidrBlock, gw); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -589,6 +617,9 @@ func (c Client) DeleteStaticRoute(cidr, router string) error {
 }
 
 func (c Client) DeleteStaticRouteByNextHop(nextHop string) error {
+	if strings.TrimSpace(nextHop) == "" {
+		return nil
+	}
 	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=ip_prefix", "find", "Logical_Router_Static_Route", fmt.Sprintf("nexthop=%s", nextHop))
 	if err != nil {
 		klog.Errorf("failed to list static route %s, %v", nextHop, err)

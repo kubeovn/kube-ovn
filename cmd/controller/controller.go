@@ -2,15 +2,16 @@ package controller
 
 import (
 	"fmt"
-	"github.com/alauda/kube-ovn/versions"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"net/http"
 	_ "net/http/pprof" // #nosec
 	"os"
 	"time"
 
-	"github.com/alauda/kube-ovn/pkg/controller"
-	"github.com/alauda/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/versions"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"github.com/kubeovn/kube-ovn/pkg/controller"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 
 	"k8s.io/klog"
 	"k8s.io/sample-controller/pkg/signals"
@@ -50,7 +51,7 @@ func loopOvnNbctlDaemon(config *controller.Configuration) {
 			}
 		}
 
-		// ovn-nbctl daemon may hang and cannot precess further request.
+		// ovn-nbctl daemon may hang and cannot process further request.
 		// In case of that, we need to start a new daemon.
 		if err := ovs.CheckAlive(); err != nil {
 			klog.Warningf("ovn-nbctl daemon doesn't return, start a new daemon")

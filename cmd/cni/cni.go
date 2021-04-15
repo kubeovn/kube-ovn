@@ -8,14 +8,14 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/alauda/kube-ovn/pkg/util"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/alauda/kube-ovn/pkg/request"
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
 	"github.com/containernetworking/cni/pkg/types/current"
 	"github.com/containernetworking/cni/pkg/version"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/request"
 )
 
 func init() {
@@ -44,10 +44,14 @@ func cmdAdd(args *skel.CmdArgs) error {
 	if err != nil {
 		return err
 	}
+	if args.IfName == "eth0" {
+		netConf.Provider = util.OvnProvider
+	}
 
 	client := request.NewCniServerClient(netConf.ServerSocket)
 
 	response, err := client.Add(request.CniRequest{
+		CniType:      netConf.Type,
 		PodName:      podName,
 		PodNamespace: podNamespace,
 		ContainerID:  args.ContainerID,
@@ -115,12 +119,17 @@ func cmdDel(args *skel.CmdArgs) error {
 	if err != nil {
 		return err
 	}
+	if args.IfName == "eth0" {
+		netConf.Provider = util.OvnProvider
+	}
 
 	return client.Del(request.CniRequest{
+		CniType:      netConf.Type,
 		PodName:      podName,
 		PodNamespace: podNamespace,
 		ContainerID:  args.ContainerID,
 		NetNs:        args.Netns,
+		IfName:       args.IfName,
 		Provider:     netConf.Provider,
 		DeviceID:     netConf.DeviceID,
 	})
@@ -146,7 +155,7 @@ func loadNetConf(bytes []byte) (*netConf, string, error) {
 		return nil, "", fmt.Errorf("failed to load netconf: %v", err)
 	}
 
-	if n.IPAM != nil {
+	if n.Type != util.CniTypeName && n.IPAM != nil {
 		n.Provider = n.IPAM.Provider
 		n.ServerSocket = n.IPAM.ServerSocket
 	}
@@ -169,9 +178,9 @@ func parseValueFromArgs(key, argString string) (string, error) {
 	args := strings.Split(argString, ";")
 	for _, arg := range args {
 		if strings.HasPrefix(arg, fmt.Sprintf("%s=", key)) {
-			podName := strings.TrimPrefix(arg, fmt.Sprintf("%s=", key))
-			if len(podName) > 0 {
-				return podName, nil
+			value := strings.TrimPrefix(arg, fmt.Sprintf("%s=", key))
+			if len(value) > 0 {
+				return value, nil
 			}
 		}
 	}

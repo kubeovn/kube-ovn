@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"strings"
 
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-
-	"github.com/alauda/kube-ovn/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (c *Controller) enqueueAddEndpoint(obj interface{}) {
@@ -134,7 +134,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		if port.Protocol == v1.ProtocolTCP {
 			// for performance reason delete lb with no backends
 			if len(backends) > 0 {
-				err = c.ovnClient.CreateLoadBalancerRule(tcpLb, vip, getServicePortBackends(ep, port, clusterIP), string(port.Protocol))
+				err = c.ovnClient.CreateLoadBalancerRule(tcpLb, vip, backends, string(port.Protocol))
 				if err != nil {
 					klog.Errorf("failed to update vip %s to tcp lb, %v", vip, err)
 					return err
@@ -148,7 +148,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 			}
 		} else {
 			if len(backends) > 0 {
-				err = c.ovnClient.CreateLoadBalancerRule(udpLb, vip, getServicePortBackends(ep, port, clusterIP), string(port.Protocol))
+				err = c.ovnClient.CreateLoadBalancerRule(udpLb, vip, backends, string(port.Protocol))
 				if err != nil {
 					klog.Errorf("failed to update vip %s to udp lb, %v", vip, err)
 					return err

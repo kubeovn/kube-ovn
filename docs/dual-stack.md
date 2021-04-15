@@ -23,7 +23,7 @@ spec:
   protocol: Dual
 ```
 
-The fields of subnet can be found at [Subnets](https://github.com/alauda/kube-ovn/blob/master/docs/subnet.md).
+The fields of subnet can be found at [Subnets](https://github.com/kubeovn/kube-ovn/blob/master/docs/subnet.md).
 
 ## Test for dual-stack
 

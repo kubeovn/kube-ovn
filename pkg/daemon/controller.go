@@ -11,15 +11,15 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 
-	"github.com/alauda/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/alauda/felix/ipsets"
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovninformer "github.com/alauda/kube-ovn/pkg/client/informers/externalversions"
-	kubeovnlister "github.com/alauda/kube-ovn/pkg/client/listers/kubeovn/v1"
-	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/coreos/go-iptables/iptables"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
+	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/vishvananda/netlink"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -58,17 +58,6 @@ type Controller struct {
 	internalIP string
 }
 
-func getNodeInternalIP(node *v1.Node) string {
-	var nodeAddr string
-	for _, addr := range node.Status.Addresses {
-		if addr.Type == v1.NodeInternalIP {
-			nodeAddr = addr.Address
-			break
-		}
-	}
-	return nodeAddr
-}
-
 // NewController init a daemon controller
 func NewController(config *Configuration, podInformerFactory informers.SharedInformerFactory, nodeInformerFactory informers.SharedInformerFactory, kubeovnInformerFactory kubeovninformer.SharedInformerFactory) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
@@ -102,7 +91,7 @@ func NewController(config *Configuration, podInformerFactory informers.SharedInf
 		return nil, err
 	}
 	controller.protocol = util.CheckProtocol(node.Annotations[util.IpAddressAnnotation])
-	controller.internalIP = getNodeInternalIP(node)
+	controller.internalIP = util.GetNodeInternalIP(*node)
 
 	controller.iptable = make(map[string]*iptables.IPTables)
 	controller.ipset = make(map[string]*ipsets.IPSets)
@@ -405,6 +394,9 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	}
 
 	klog.Info("Started workers")
+	go wait.Until(c.loopOvn0Check, 5*time.Second, stopCh)
+	go wait.Until(c.disableTunnelOffload, 5*time.Second, stopCh)
+
 	go wait.Until(c.runSubnetWorker, time.Second, stopCh)
 	go wait.Until(c.runPodWorker, time.Second, stopCh)
 	go wait.Until(c.runGateway, 3*time.Second, stopCh)

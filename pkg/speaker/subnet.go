@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	bgpapiutil "github.com/alauda/kube-ovn/pkg/speaker/bgpapiutil"
-	"github.com/alauda/kube-ovn/pkg/util"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/any"
+	bgpapiutil "github.com/kubeovn/kube-ovn/pkg/speaker/bgpapiutil"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	bgpapi "github.com/osrg/gobgp/api"
 	"github.com/osrg/gobgp/pkg/packet/bgp"
 	v1 "k8s.io/api/core/v1"

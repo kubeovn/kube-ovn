@@ -2,11 +2,12 @@ package pinger
 
 import (
 	"fmt"
-	"github.com/alauda/kube-ovn/pkg/util"
-	"k8s.io/klog"
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
+	"k8s.io/klog"
 )
 
 func checkOvs(config *Configuration) error {
@@ -163,5 +164,5 @@ func checkSBBindings(config *Configuration) ([]string, error) {
 		return nil, err
 	}
 
-	return strings.Split(string(output), "\n"), nil
+	return strings.Split(strings.TrimSpace(string(output)), "\n"), nil
 }

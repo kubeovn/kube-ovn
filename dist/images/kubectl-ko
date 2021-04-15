@@ -11,6 +11,9 @@ showHelp(){
   echo "  nbctl [ovn-nbctl options ...]    invoke ovn-nbctl"
   echo "  sbctl [ovn-sbctl options ...]    invoke ovn-sbctl"
   echo "  vsctl {nodeName} [ovs-vsctl options ...]   invoke ovs-vsctl on selected node"
+  echo "  ofctl {nodeName} [ovs-ofctl options ...]   invoke ovs-ofctl on selected node"
+  echo "  dpctl {nodeName} [ovs-dpctl options ...]   invoke ovs-dpctl on selected node"
+  echo "  appctl {nodeName} [ovs-appctl options ...]   invoke ovs-appctl on selected node"
   echo "  tcpdump {namespace/podname} [tcpdump options ...]     capture pod traffic"
   echo "  trace {namespace/podname} {target ip address} {icmp|tcp|udp} [target tcp or udp port]    trace ovn microflow of specific packet"
   echo "  diagnose {all|node} [nodename]    diagnose connectivity of all nodes or a specific node"
@@ -21,13 +24,11 @@ tcpdump(){
   namespace=$(echo "$namespacedPod" | cut -d "/" -f1)
   podName=$(echo "$namespacedPod" | cut -d "/" -f2)
   if [ "$podName" = "$namespacedPod" ]; then
-    nodeName=$(kubectl get pod "$podName" -o jsonpath={.spec.nodeName})
-    mac=$(kubectl get pod "$podName" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/mac_address})
-    hostNetwork=$(kubectl get pod "$podName" -o jsonpath={.spec.hostNetwork})
-  else
-    nodeName=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.nodeName})
-    hostNetwork=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.hostNetwork})
+    namespace="default"
   fi
+
+  nodeName=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.nodeName})
+  hostNetwork=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.hostNetwork})
 
   if [ -z "$nodeName" ]; then
     echo "Pod $namespacedPod not exists on any node"
@@ -59,8 +60,7 @@ trace(){
   namespace=$(echo "$1" | cut -d "/" -f1)
   podName=$(echo "$1" | cut -d "/" -f2)
   if [ "$podName" = "$1" ]; then
-    echo "namespace is required"
-    exit 1
+    namespace="default"
   fi
 
   podIP=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/ip_address})
@@ -140,7 +140,8 @@ trace(){
   esac
 }
 
-vsctl(){
+xxctl(){
+  subcommand="$1"; shift
   nodeName="$1"; shift
   kubectl get no "$nodeName" > /dev/null
   ovsPod=$(kubectl get pod -n $KUBE_OVN_NS -o wide | grep " $nodeName " | grep ovs-ovn | awk '{print $1}')
@@ -148,10 +149,11 @@ vsctl(){
       echo "ovs pod  doesn't exist on node $nodeName"
       exit 1
   fi
-  kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-vsctl "$@"
+  kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-$subcommand "$@"
 }
 
 diagnose(){
+  kubectl get crd vpcs.kubeovn.io
   kubectl get crd subnets.kubeovn.io
   kubectl get crd ips.kubeovn.io
   kubectl get svc kube-dns -n kube-system
@@ -164,7 +166,7 @@ diagnose(){
   kubectl ko nbctl list acl
   kubectl ko sbctl show
 
-  checkDaemonSet kube-proxy
+  checkKubeProxy
   checkDeployment ovn-central
   checkDeployment kube-ovn-controller
   checkDaemonSet kube-ovn-cni
@@ -263,6 +265,24 @@ checkDeployment(){
   fi
 }
 
+checkKubeProxy(){
+  dsMode=`kubectl get ds -n kube-system | grep kube-proxy || true`
+  if [ -z "$dsMode" ]; then
+    nodeIps=`kubectl get node -o wide | grep -v "INTERNAL-IP" | awk '{print $6}'`
+    for node in $nodeIps
+    do
+      healthResult=`curl -g -6 -sL -w %{http_code} http://[$node]:10256/healthz -o /dev/null | grep -v 200 || true`
+      if [ -n "$healthResult" ]; then
+        echo "$node kube-proxy's health check failed"
+        exit 1
+      fi
+    done
+  else
+    checkDaemonSet kube-proxy
+  fi
+  echo "kube-proxy ready"
+}
+
 if [ $# -lt 1 ]; then
   showHelp
   exit 0
@@ -279,8 +299,8 @@ case $subcommand in
   sbctl)
     kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-sbctl "$@"
     ;;
-  vsctl)
-    vsctl "$@"
+  vsctl|ofctl|dpctl|appctl)
+    xxctl "$subcommand" "$@"
     ;;
   tcpdump)
     tcpdump "$@"

@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/alauda/kube-ovn/pkg/util"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -16,8 +15,9 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
 
-	kubeovnv1 "github.com/alauda/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/alauda/kube-ovn/pkg/ovs"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (c *Controller) enqueueAddVpc(obj interface{}) {
@@ -135,6 +135,16 @@ func (c *Controller) handleUpdateVpcStatus(key string) error {
 			c.addNamespaceQueue.Add(ns)
 		}
 	}
+
+	natGws, err := c.vpcNatGatewayLister.List(labels.Everything())
+	if err != nil {
+		return err
+	}
+	for _, gw := range natGws {
+		if key == gw.Spec.Vpc {
+			c.updateVpcSubnetQueue.Add(gw.Name)
+		}
+	}
 	return nil
 }
 
@@ -176,7 +186,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 
 		for _, item := range routeNeedAdd {
-			if err = c.ovnClient.AddStaticRoute(convertPolicy(item.Policy), item.CIDR, item.NextHopIP, vpc.Name); err != nil {
+			if err = c.ovnClient.AddStaticRoute(convertPolicy(item.Policy), item.CIDR, item.NextHopIP, vpc.Name, util.NormalRouteType); err != nil {
 				klog.Errorf("add static route to vpc %s failed, %v", vpc.Name, err)
 				return err
 			}
@@ -335,7 +345,7 @@ func (c *Controller) processNextAddVpcWorkItem() bool {
 			return nil
 		}
 		if err := c.handleAddOrUpdateVpc(key); err != nil {
-			c.addOrUpdateVpcQueue.AddRateLimited(key)
+			//c.addOrUpdateVpcQueue.AddRateLimited(key)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
 		c.addOrUpdateVpcQueue.Forget(obj)
@@ -344,6 +354,7 @@ func (c *Controller) processNextAddVpcWorkItem() bool {
 
 	if err != nil {
 		utilruntime.HandleError(err)
+		c.addOrUpdateVpcQueue.AddRateLimited(obj)
 		return true
 	}
 	return true

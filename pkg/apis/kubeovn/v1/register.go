@@ -5,7 +5,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/alauda/kube-ovn/pkg/apis/kubeovn"
+	"github.com/kubeovn/kube-ovn/pkg/apis/kubeovn"
 )
 
 // SchemeGroupVersion is group version used to register these objects
@@ -39,6 +39,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&VlanList{},
 		&Vpc{},
 		&VpcList{},
+		&VpcNatGateway{},
+		&VpcNatGatewayList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

@@ -6,7 +6,7 @@ DEV_TAG=dev
 RELEASE_TAG=$(shell cat VERSION)
 COMMIT=git-$(shell git rev-parse HEAD)
 DATE=$(shell date +"%Y-%m-%d_%H:%M:%S")
-GOLDFLAGS="-w -s -X github.com/alauda/kube-ovn/versions.COMMIT=${COMMIT} -X github.com/alauda/kube-ovn/versions.VERSION=${RELEASE_TAG} -X github.com/alauda/kube-ovn/versions.BUILDDATE=${DATE}"
+GOLDFLAGS="-w -s -X github.com/kubeovn/kube-ovn/versions.COMMIT=${COMMIT} -X github.com/kubeovn/kube-ovn/versions.VERSION=${RELEASE_TAG} -X github.com/kubeovn/kube-ovn/versions.BUILDDATE=${DATE}"
 
 # ARCH could be amd64,arm64
 ARCH=amd64
@@ -34,9 +34,11 @@ build-go-arm:
 
 release: lint build-go
 	docker buildx build --cache-from "type=local,src=/tmp/.buildx-cache" --cache-to "type=local,dest=/tmp/.buildx-cache" --platform linux/amd64 --build-arg ARCH=amd64 --build-arg RPM_ARCH=x86_64 -t ${REGISTRY}/kube-ovn:${RELEASE_TAG} -o type=docker -f dist/images/Dockerfile dist/images/
+	docker buildx build --cache-from "type=local,src=/tmp/.buildx-cache" --cache-to "type=local,dest=/tmp/.buildx-cache" --platform linux/amd64 --build-arg ARCH=amd64 --build-arg RPM_ARCH=x86_64 -t ${REGISTRY}/vpc-nat-gateway:${RELEASE_TAG} -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
 
 release-arm: lint build-go-arm
 	docker buildx build --cache-from "type=local,src=/tmp/.buildx-cache" --cache-to "type=local,dest=/tmp/.buildx-cache" --platform linux/arm64 --build-arg ARCH=arm64 --build-arg RPM_ARCH=aarch64 -t ${REGISTRY}/kube-ovn:${RELEASE_TAG} -o type=docker -f dist/images/Dockerfile dist/images/
+	docker buildx build --cache-from "type=local,src=/tmp/.buildx-cache" --cache-to "type=local,dest=/tmp/.buildx-cache" --platform linux/amd64 --build-arg ARCH=amd64 --build-arg RPM_ARCH=aarch64 -t ${REGISTRY}/vpc-nat-gateway:${RELEASE_TAG} -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
 
 tar:
 	docker save ${REGISTRY}/kube-ovn:${RELEASE_TAG} > image.tar
@@ -53,15 +55,15 @@ lint:
 build-bin:
 	docker run --rm -e GOOS=linux -e GOCACHE=/tmp -e GOARCH=${ARCH} -e GOPROXY=https://goproxy.cn \
 		-u $(shell id -u):$(shell id -g) \
-		-v $(CURDIR):/go/src/github.com/alauda/kube-ovn:ro \
-		-v $(CURDIR)/dist:/go/src/github.com/alauda/kube-ovn/dist/ \
+		-v $(CURDIR):/go/src/github.com/kubeovn/kube-ovn:ro \
+		-v $(CURDIR)/dist:/go/src/github.com/kubeovn/kube-ovn/dist/ \
 		golang:$(GO_VERSION) /bin/bash -c '\
-		cd /go/src/github.com/alauda/kube-ovn && \
+		cd /go/src/github.com/kubeovn/kube-ovn && \
 		make build-go '
 
 kind-init:
 	kind delete cluster --name=kube-ovn
-	kube_proxy_mode=ipvs ip_family=ipv4 ha=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
+	kube_proxy_mode=ipvs ip_family=ipv4 ha=false single=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
 	kubectl describe no
 	docker exec kube-ovn-control-plane ip link add link eth0 mac1 type macvlan
@@ -69,11 +71,39 @@ kind-init:
 
 kind-init-iptables:
 	kind delete cluster --name=kube-ovn
-	kube_proxy_mode=iptables ip_family=ipv4 ha=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
+	kube_proxy_mode=iptables ip_family=ipv4 ha=false single=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
 	kubectl describe no
 	docker exec kube-ovn-control-plane ip link add link eth0 mac1 type macvlan
 	docker exec kube-ovn-worker ip link add link eth0 mac1 type macvlan
+
+kind-init-ha:
+	kind delete cluster --name=kube-ovn
+	kube_proxy_mode=ipvs ip_family=ipv4 ha=true single=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
+	kind create cluster --config yamls/kind.yaml --name kube-ovn
+	kubectl describe no
+
+kind-init-single:
+	kind delete cluster --name=kube-ovn
+	kube_proxy_mode=ipvs ip_family=ipv4 ha=false single=true j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
+	kind create cluster --config yamls/kind.yaml --name kube-ovn
+	kubectl describe no
+
+kind-init-ipv6:
+	kind delete cluster --name=kube-ovn
+	kube_proxy_mode=iptables ip_family=ipv6 ha=false single=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
+	kind create cluster --config yamls/kind.yaml --name kube-ovn
+	kubectl describe no
+
+kind-init-dual:
+	kind delete cluster --name=kube-ovn
+	kube_proxy_mode=iptables ip_family=DualStack ha=false single=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
+	kind create cluster --config yamls/kind.yaml --name kube-ovn
+	kubectl describe no
+	docker exec kube-ovn-control-plane ip link add link eth0 mac1 type macvlan
+	docker exec kube-ovn-worker ip link add link eth0 mac1 type macvlan
+	docker exec kube-ovn-worker sysctl -w net.ipv6.conf.all.disable_ipv6=0
+	docker exec kube-ovn-control-plane sysctl -w net.ipv6.conf.all.disable_ipv6=0
 
 kind-install:
 	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
@@ -81,32 +111,15 @@ kind-install:
 	ENABLE_SSL=true dist/images/install.sh
 	kubectl describe no
 
-kind-init-ha:
-	kind delete cluster --name=kube-ovn
-	kube_proxy_mode=ipvs ip_family=ipv4 ha=true j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
-	kind create cluster --config yamls/kind.yaml --name kube-ovn
-	kubectl describe no
-
-kind-init-ipv6:
-	kind delete cluster --name=kube-ovn
-	kube_proxy_mode=iptables ip_family=ipv6 ha=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
-	kind create cluster --config yamls/kind.yaml --name kube-ovn
+kind-install-single:
+	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
+	ENABLE_SSL=true dist/images/install.sh
 	kubectl describe no
 
 kind-install-ipv6:
 	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
 	ENABLE_SSL=true IPv6=true dist/images/install.sh
-
-kind-init-dual:
-	kind delete cluster --name=kube-ovn
-	kube_proxy_mode=iptables ip_family=DualStack ha=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
-	kind create cluster --config yamls/kind.yaml --name kube-ovn
-	kubectl describe no
-	docker exec kube-ovn-control-plane ip link add link eth0 mac1 type macvlan
-	docker exec kube-ovn-worker ip link add link eth0 mac1 type macvlan
-	docker exec kube-ovn-worker sysctl -w net.ipv6.conf.all.disable_ipv6=0
-	docker exec kube-ovn-control-plane sysctl -w net.ipv6.conf.all.disable_ipv6=0
 
 kind-install-dual:
 	kind load docker-image --name kube-ovn ${REGISTRY}/kube-ovn:${RELEASE_TAG}
@@ -127,12 +140,12 @@ uninstall:
 	bash dist/images/cleanup.sh
 
 e2e:
-	docker pull nginx:alpine
-	kind load docker-image --name kube-ovn nginx:alpine
-	ginkgo -p --slowSpecThreshold=60 test/e2e
+	docker pull kubeovn/pause:3.2
+	kind load docker-image --name kube-ovn kubeovn/pause:3.2
+	ginkgo -progress -reportPassed --slowSpecThreshold=60 test/e2e
 
 ut:
-	ginkgo -p --slowSpecThreshold=60 test/unittest
+	ginkgo -progress -reportPassed --slowSpecThreshold=60 test/unittest
 
 scan:
 	trivy image --light --exit-code=1 --severity=HIGH --ignore-unfixed kubeovn/kube-ovn:${RELEASE_TAG}

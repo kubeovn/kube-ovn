@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/alauda/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

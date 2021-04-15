@@ -1,14 +1,15 @@
 package main
 
 import (
-	"github.com/alauda/kube-ovn/cmd/controller"
-	"github.com/alauda/kube-ovn/cmd/daemon"
-	"github.com/alauda/kube-ovn/cmd/ovn_monitor"
-	"github.com/alauda/kube-ovn/cmd/pinger"
-	"github.com/alauda/kube-ovn/cmd/speaker"
-	"k8s.io/klog"
 	"os"
 	"strings"
+
+	"github.com/kubeovn/kube-ovn/cmd/controller"
+	"github.com/kubeovn/kube-ovn/cmd/daemon"
+	"github.com/kubeovn/kube-ovn/cmd/ovn_monitor"
+	"github.com/kubeovn/kube-ovn/cmd/pinger"
+	"github.com/kubeovn/kube-ovn/cmd/speaker"
+	"k8s.io/klog"
 )
 
 const (
