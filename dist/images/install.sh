@@ -1783,6 +1783,8 @@ spec:
               fieldRef:
                 fieldPath: spec.nodeName
         volumeMounts:
+          - mountPath: /etc/openvswitch
+            name: systemid
           - mountPath: /etc/cni/net.d
             name: cni-conf
           - mountPath: /run/openvswitch
@@ -1822,6 +1824,9 @@ spec:
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
+        - name: systemid
+          hostPath:
+            path: /etc/origin/openvswitch
         - name: host-run-ovs
           hostPath:
             path: /run/openvswitch
