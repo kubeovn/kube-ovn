@@ -58,37 +58,39 @@ func InitMirror(config *Configuration) error {
 }
 
 func InitVlan(config *Configuration) error {
+	// TODO: move to flag validation
+	if config.DefaultProviderName == "" {
+		panic("provider should not be empty")
+	}
 
-	if util.IsProviderVlan(config.NetworkType, config.DefaultProviderName) {
-		//create patch port
-		exists, err := providerBridgeExists()
-		if err != nil {
-			errMsg := fmt.Errorf("check provider bridge exists failed, %v", err)
+	//create patch port
+	exists, err := providerBridgeExists()
+	if err != nil {
+		errMsg := fmt.Errorf("check provider bridge exists failed, %v", err)
+		klog.Error(errMsg)
+		return err
+	}
+
+	if !exists {
+		//create br-provider
+		if err = configProviderPort(config.DefaultProviderName); err != nil {
+			errMsg := fmt.Errorf("configure patch port br-provider failed %v", err)
 			klog.Error(errMsg)
-			return err
+			return errMsg
 		}
 
-		if !exists {
-			//create br-provider
-			if err = configProviderPort(config.DefaultProviderName); err != nil {
-				errMsg := fmt.Errorf("configure patch port br-provider failed %v", err)
-				klog.Error(errMsg)
-				return errMsg
-			}
+		//add a host nic to br-provider
+		ifName := config.getInterfaceName()
+		if ifName == "" {
+			errMsg := fmt.Errorf("failed get host nic to add ovs br-provider")
+			klog.Error(errMsg)
+			return errMsg
+		}
 
-			//add a host nic to br-provider
-			ifName := config.getInterfaceName()
-			if ifName == "" {
-				errMsg := fmt.Errorf("failed get host nic to add ovs br-provider")
-				klog.Error(errMsg)
-				return errMsg
-			}
-
-			if err = configProviderNic(ifName); err != nil {
-				errMsg := fmt.Errorf("add nic %s to port br-provider failed %v", ifName, err)
-				klog.Error(errMsg)
-				return errMsg
-			}
+		if err = configProviderNic(ifName); err != nil {
+			errMsg := fmt.Errorf("add nic %s to port br-provider failed %v", ifName, err)
+			klog.Error(errMsg)
+			return errMsg
 		}
 	}
 	return nil

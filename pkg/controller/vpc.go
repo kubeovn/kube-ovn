@@ -77,6 +77,21 @@ func (c *Controller) enqueueDelVpc(obj interface{}) {
 	}
 }
 
+func (c *Controller) runAddVpcWorker() {
+	for c.processNextAddVpcWorkItem() {
+	}
+}
+
+func (c *Controller) runUpdateVpcStatusWorker() {
+	for c.processNextUpdateStatusVpcWorkItem() {
+	}
+}
+
+func (c *Controller) runDelVpcWorker() {
+	for c.processNextDeleteVpcWorkItem() {
+	}
+}
+
 func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 	err := c.deleteVpcRouter(vpc.Status.Router)
 	if err != nil {

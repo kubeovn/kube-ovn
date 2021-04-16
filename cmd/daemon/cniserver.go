@@ -47,7 +47,7 @@ func CmdMain() {
 		klog.Fatalf("init node gateway failed %v", err)
 	}
 
-	if config.NetworkType == util.NetworkTypeVlan {
+	if util.IsNetworkVlan(config.NetworkType) {
 		if err = daemon.InitVlan(config); err != nil {
 			klog.Fatalf("init vlan config failed %v", err)
 		}
