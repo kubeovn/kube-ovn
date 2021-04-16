@@ -166,10 +166,13 @@ func GetExporterName() string {
 }
 
 func (e *Exporter) exportOvnStatusGauge() {
-	if up, _ := e.getOvnStatus(); up {
-		metricOvnHealthyStatus.Set(1)
-	} else {
-		metricOvnHealthyStatus.Set(0)
+	result := e.getOvnStatus()
+	for k, v := range result {
+		if v {
+			metricOvnHealthyStatus.WithLabelValues(e.Client.System.Hostname, k).Set(1)
+		} else {
+			metricOvnHealthyStatus.WithLabelValues(e.Client.System.Hostname, k).Set(0)
+		}
 	}
 }
 

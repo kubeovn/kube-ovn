@@ -215,11 +215,15 @@ var (
 		})
 
 	// OVS basic info
-	metricOvsHealthyStatus = prometheus.NewGauge(
+	metricOvsHealthyStatus = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: metricNamespace,
 			Name:      "ovs_status",
 			Help:      "OVS Health Status. The values are: health(1), unhealth(0).",
+		},
+		[]string{
+			"hostname",
+			"component",
 		})
 
 	metricOvsInfo = prometheus.NewGaugeVec(

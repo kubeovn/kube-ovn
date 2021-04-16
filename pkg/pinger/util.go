@@ -18,28 +18,24 @@ func (e *Exporter) IncrementErrorCounter() {
 	atomic.AddInt64(&e.errors, 1)
 }
 
-func (e *Exporter) getOvsStatus() (bool, error) {
-	if err := e.Client.GetSystemInfo(); err != nil {
-		klog.Errorf("%s: %v", e.Client.Database.Vswitch.Name, err)
-		e.IncrementErrorCounter()
-		return false, err
-	}
-	klog.Infof("%s: system-id: %s", e.Client.Database.Vswitch.Name, e.Client.System.ID)
-
+func (e *Exporter) getOvsStatus() map[string]bool {
 	components := []string{
 		"ovsdb-server",
 		"ovs-vswitchd",
 	}
+	result := make(map[string]bool)
 	for _, component := range components {
 		_, err := e.Client.GetProcessInfo(component)
 		if err != nil {
 			klog.Errorf("%s: pid-%v", component, err)
 			e.IncrementErrorCounter()
-			return false, err
+			result[component] = false
+			continue
 		}
+		result[component] = true
 	}
 
-	return true, nil
+	return result
 }
 
 func (e *Exporter) getOvsDatapath() ([]string, error) {

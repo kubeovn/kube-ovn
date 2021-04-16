@@ -17,22 +17,25 @@ func (e *Exporter) IncrementErrorCounter() {
 	atomic.AddInt64(&e.errors, 1)
 }
 
-func (e *Exporter) getOvnStatus() (bool, error) {
+func (e *Exporter) getOvnStatus() map[string]bool {
 	components := []string{
 		"ovsdb-server-southbound",
 		"ovsdb-server-northbound",
 		"ovn-northd",
 	}
+	result := make(map[string]bool)
 	for _, component := range components {
 		_, err := e.Client.GetProcessInfo(component)
 		if err != nil {
 			klog.Errorf("%s: pid-%v", component, err)
 			e.IncrementErrorCounter()
-			return false, err
+			result[component] = false
+			continue
 		}
+		result[component] = true
 	}
 
-	return true, nil
+	return result
 }
 
 func getClusterEnableState(dbName string) (bool, error) {

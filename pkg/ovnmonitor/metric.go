@@ -4,11 +4,15 @@ import "github.com/prometheus/client_golang/prometheus"
 
 var (
 	// OVN basic info
-	metricOvnHealthyStatus = prometheus.NewGauge(
+	metricOvnHealthyStatus = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: metricNamespace,
 			Name:      "ovn_status",
 			Help:      "OVN Health Status. The values are: health(1), unhealth(0).",
+		},
+		[]string{
+			"hostname",
+			"component",
 		})
 
 	metricRequestErrorNums = prometheus.NewGaugeVec(
