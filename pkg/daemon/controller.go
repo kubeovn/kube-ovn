@@ -11,15 +11,12 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"k8s.io/apimachinery/pkg/api/errors"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 
 	"github.com/alauda/felix/ipsets"
 	"github.com/coreos/go-iptables/iptables"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
-	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/vishvananda/netlink"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,6 +29,11 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
+	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // Controller watch pod and namespace changes to update iptables, ipset and ovs qos
@@ -304,8 +306,7 @@ func (c *Controller) enqueuePod(old, new interface{}) {
 	newPod := new.(*v1.Pod)
 
 	if oldPod.Annotations[util.IngressRateAnnotation] != newPod.Annotations[util.IngressRateAnnotation] ||
-		oldPod.Annotations[util.EgressRateAnnotation] != newPod.Annotations[util.EgressRateAnnotation] ||
-		oldPod.Annotations[util.VlanIdAnnotation] != newPod.Annotations[util.VlanIdAnnotation] {
+		oldPod.Annotations[util.EgressRateAnnotation] != newPod.Annotations[util.EgressRateAnnotation] {
 		var key string
 		var err error
 		if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
