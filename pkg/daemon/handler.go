@@ -44,7 +44,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	}
 
 	klog.Infof("add port request %v", podRequest)
-	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, vlanID string
+	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, vlanID, ifName string
 	var pod *v1.Pod
 	var err error
 	for i := 0; i < 15; i++ {
@@ -81,9 +81,13 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		egress = pod.Annotations[util.EgressRateAnnotation]
 		vlanID = pod.Annotations[util.VlanIdAnnotation]
 		ipAddr = util.GetIpAddrWithMask(ip, cidr)
+		ifName = podRequest.IfName
 		break
 	}
 
+	if ifName == "" {
+		ifName = "eth0"
+	}
 	if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podRequest.Provider)] != "true" {
 		err := fmt.Errorf("no address allocated to pod %s/%s, please see kube-ovn-controller logs to find errors", pod.Namespace, pod.Name)
 		klog.Error(err)
@@ -102,7 +106,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 
 	if podRequest.Provider == util.OvnProvider {
 		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s", podRequest.IfName, macAddr, ipAddr, cidr, gw)
-		err := csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.NetNs, podRequest.ContainerID, podRequest.IfName, macAddr, ipAddr, gw, ingress, egress, vlanID, podRequest.DeviceID)
+		err := csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, ipAddr, gw, ingress, egress, vlanID, podRequest.DeviceID)
 		if err != nil {
 			errMsg := fmt.Errorf("configure nic failed %v", err)
 			klog.Error(errMsg)
