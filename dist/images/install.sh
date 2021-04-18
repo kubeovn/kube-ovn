@@ -9,7 +9,7 @@ HW_OFFLOAD=${HW_OFFLOAD:-false}
 IFACE=""                               # The nic to support container network can be a nic name or a group of regex separated by comma, if empty will use the nic that the default route use
 
 REGISTRY="kubeovn"
-VERSION="v1.6.1"
+VERSION="v1.6.2"
 IMAGE_PULL_POLICY="IfNotPresent"
 POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
 SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR

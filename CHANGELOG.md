@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 1.6.2 -- 2021/04/16
+This release mainly fix bugs found in 1.6.1
+
+### Bugfix
+* udp checksum offload error
+* restart ovn-controller to force ovn-ic flows update
+* update usingips check when update finalizer for subnet
+* add node address allocate check when init
+* livenessprobe fail if ovn nb/ovn sb not running
+* ignore ip6tabels check for v4 hostIP
+* release norhtd lock when power off
+* fix chassis check for node
+* configure nic failed when ifname empty
+
 ## 1.6.1 -- 2021/03/09
 
 This release mainly fix bugs found in 1.6.0
