@@ -55,7 +55,7 @@ function quit {
 trap quit EXIT
 
 # Start ovsdb
-/usr/share/openvswitch/scripts/ovs-ctl restart --no-ovs-vswitchd --system-id=random
+/usr/share/openvswitch/scripts/ovs-ctl restart --no-ovs-vswitchd --system-id=${KUBE_NODE_NAME}
 # Restrict the number of pthreads ovs-vswitchd creates to reduce the
 # amount of RSS it uses on hosts with many cores
 # https://bugzilla.redhat.com/show_bug.cgi?id=1571379
@@ -72,7 +72,7 @@ else
 fi
 
 # Start vswitchd
-/usr/share/openvswitch/scripts/ovs-ctl restart --no-ovsdb-server --system-id=random
+/usr/share/openvswitch/scripts/ovs-ctl restart --no-ovsdb-server --system-id=${KUBE_NODE_NAME}
 /usr/share/openvswitch/scripts/ovs-ctl --protocol=udp --dport=6081 enable-protocol
 
 function gen_conn_str {
