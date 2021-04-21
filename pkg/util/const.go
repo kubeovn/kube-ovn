@@ -40,8 +40,8 @@ const (
 	IpPoolAnnotationTemplate        = "%s.kubernetes.io/ip_pool"
 	LogicalSwitchAnnotationTemplate = "%s.kubernetes.io/logical_switch"
 	VlanIdAnnotationTemplate        = "%s.kubernetes.io/vlan_id"
-	VlanRangeAnnotationTemplate   = "%s.kubernetes.io/vlan_range"
-	NetworkTypeTemplate          = "%s.kubernetes.io/network_types"
+	VlanRangeAnnotationTemplate     = "%s.kubernetes.io/vlan_range"
+	NetworkTypeTemplate             = "%s.kubernetes.io/network_types"
 
 	ExcludeIpsAnnotation = "ovn.kubernetes.io/exclude_ips"
 
