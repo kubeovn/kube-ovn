@@ -41,6 +41,7 @@ go get -u github.com/onsi/ginkgo/ginkgo
 go get -u github.com/onsi/gomega/...
 
 make kind-init
+make kind-install
 # wait all pod ready
 make e2e
 ```
