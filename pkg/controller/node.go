@@ -8,7 +8,6 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -192,7 +191,7 @@ func (c *Controller) processNextDeleteNodeWorkItem() bool {
 func (c *Controller) handleAddNode(key string) error {
 	node, err := c.nodesLister.Get(key)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
@@ -306,7 +305,7 @@ func (c *Controller) handleDeleteNode(key string) error {
 func (c *Controller) handleUpdateNode(key string) error {
 	node, err := c.nodesLister.Get(key)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err

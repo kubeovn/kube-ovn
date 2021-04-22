@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"k8s.io/apimachinery/pkg/api/errors"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
@@ -51,7 +49,7 @@ func (c *Controller) InitDefaultVpc() error {
 	if err != nil {
 		vpc = &kubeovnv1.Vpc{}
 		vpc.Name = util.DefaultVpc
-		vpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Create(context.Background(), vpc, v1.CreateOptions{})
+		vpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Create(context.Background(), vpc, metav1.CreateOptions{})
 		if err != nil {
 			klog.Errorf("init default vpc failed %v", err)
 			return err
@@ -71,7 +69,7 @@ func (c *Controller) InitDefaultVpc() error {
 	if err != nil {
 		return err
 	}
-	_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.MergePatchType, bytes, v1.PatchOptions{}, "status")
+	_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
 	if err != nil {
 		klog.Errorf("init default vpc failed %v", err)
 		return err
@@ -81,7 +79,7 @@ func (c *Controller) InitDefaultVpc() error {
 
 // InitDefaultLogicalSwitch init the default logical switch for ovn network
 func (c *Controller) initDefaultLogicalSwitch() error {
-	subnet, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), c.config.DefaultLogicalSwitch, v1.GetOptions{})
+	subnet, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), c.config.DefaultLogicalSwitch, metav1.GetOptions{})
 	if err == nil {
 		if subnet != nil && util.CheckProtocol(c.config.DefaultCIDR) != util.CheckProtocol(subnet.Spec.CIDRBlock) {
 			// single-stack upgrade to dual-stack
@@ -96,13 +94,13 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 		return nil
 	}
 
-	if !errors.IsNotFound(err) {
+	if !k8serrors.IsNotFound(err) {
 		klog.Errorf("get default subnet %s failed %v", c.config.DefaultLogicalSwitch, err)
 		return err
 	}
 
 	defaultSubnet := kubeovnv1.Subnet{
-		ObjectMeta: v1.ObjectMeta{Name: c.config.DefaultLogicalSwitch},
+		ObjectMeta: metav1.ObjectMeta{Name: c.config.DefaultLogicalSwitch},
 		Spec: kubeovnv1.SubnetSpec{
 			Vpc:         util.DefaultVpc,
 			Default:     true,
@@ -122,13 +120,13 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 		}
 	}
 
-	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(context.Background(), &defaultSubnet, v1.CreateOptions{})
+	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(context.Background(), &defaultSubnet, metav1.CreateOptions{})
 	return err
 }
 
 // InitNodeSwitch init node switch to connect host and pod
 func (c *Controller) initNodeSwitch() error {
-	subnet, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), c.config.NodeSwitch, v1.GetOptions{})
+	subnet, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), c.config.NodeSwitch, metav1.GetOptions{})
 	if err == nil {
 		if subnet != nil && util.CheckProtocol(c.config.NodeSwitchCIDR) != util.CheckProtocol(subnet.Spec.CIDRBlock) {
 			// single-stack upgrade to dual-stack
@@ -143,13 +141,13 @@ func (c *Controller) initNodeSwitch() error {
 		return nil
 	}
 
-	if !errors.IsNotFound(err) {
+	if !k8serrors.IsNotFound(err) {
 		klog.Errorf("get node subnet %s failed %v", c.config.NodeSwitch, err)
 		return err
 	}
 
 	nodeSubnet := kubeovnv1.Subnet{
-		ObjectMeta: v1.ObjectMeta{Name: c.config.NodeSwitch},
+		ObjectMeta: metav1.ObjectMeta{Name: c.config.NodeSwitch},
 		Spec: kubeovnv1.SubnetSpec{
 			Vpc:                    util.DefaultVpc,
 			Default:                false,
@@ -162,7 +160,7 @@ func (c *Controller) initNodeSwitch() error {
 		},
 	}
 
-	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(context.Background(), &nodeSubnet, v1.CreateOptions{})
+	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(context.Background(), &nodeSubnet, metav1.CreateOptions{})
 	return err
 }
 
@@ -307,12 +305,12 @@ func (c *Controller) initDefaultVlan() error {
 		return nil
 	}
 
-	_, err := c.config.KubeOvnClient.KubeovnV1().Vlans().Get(context.Background(), c.config.DefaultVlanName, v1.GetOptions{})
+	_, err := c.config.KubeOvnClient.KubeovnV1().Vlans().Get(context.Background(), c.config.DefaultVlanName, metav1.GetOptions{})
 	if err == nil {
 		return nil
 	}
 
-	if !errors.IsNotFound(err) {
+	if !k8serrors.IsNotFound(err) {
 		klog.Errorf("get default vlan %s failed %v", c.config.DefaultVlanName, err)
 		return err
 	}
@@ -322,7 +320,7 @@ func (c *Controller) initDefaultVlan() error {
 	}
 
 	defaultVlan := kubeovnv1.Vlan{
-		ObjectMeta: v1.ObjectMeta{Name: c.config.DefaultVlanName},
+		ObjectMeta: metav1.ObjectMeta{Name: c.config.DefaultVlanName},
 		Spec: kubeovnv1.VlanSpec{
 			VlanId:                c.config.DefaultVlanID,
 			ProviderInterfaceName: c.config.DefaultProviderName,
@@ -330,7 +328,7 @@ func (c *Controller) initDefaultVlan() error {
 		},
 	}
 
-	_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Create(context.Background(), &defaultVlan, v1.CreateOptions{})
+	_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Create(context.Background(), &defaultVlan, metav1.CreateOptions{})
 	return err
 }
 
