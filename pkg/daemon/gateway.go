@@ -106,6 +106,60 @@ func (c *Controller) setIPSet() error {
 	return nil
 }
 
+func (c *Controller) addIPSetMembers(setID, subnet, ip string) error {
+	podSubnet, err := c.subnetsLister.Get(subnet)
+	if err != nil {
+		klog.Errorf("get subnet %s failed, %+v", subnet, err)
+		return err
+	}
+
+	if !podSubnet.Spec.NatOutgoing ||
+		podSubnet.Spec.Vpc != util.DefaultVpc ||
+		podSubnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
+		return nil
+	}
+
+	podIPs := strings.Split(ip, ",")
+	if protocol := util.CheckProtocol(ip); protocol == kubeovnv1.ProtocolDual {
+		c.ipset[kubeovnv1.ProtocolIPv4].AddMembers(setID, []string{podIPs[0]})
+		c.ipset[kubeovnv1.ProtocolIPv6].AddMembers(setID, []string{podIPs[1]})
+		c.ipset[kubeovnv1.ProtocolIPv4].ApplyUpdates()
+		c.ipset[kubeovnv1.ProtocolIPv6].ApplyUpdates()
+	} else {
+		c.ipset[protocol].AddMembers(setID, []string{podIPs[0]})
+		c.ipset[protocol].ApplyUpdates()
+	}
+
+	return nil
+}
+
+func (c *Controller) removeIPSetMembers(setID, subnet, ip string) error {
+	podSubnet, err := c.subnetsLister.Get(subnet)
+	if err != nil {
+		klog.Errorf("get subnet %s failed, %+v", subnet, err)
+		return err
+	}
+
+	if !podSubnet.Spec.NatOutgoing ||
+		podSubnet.Spec.Vpc != util.DefaultVpc ||
+		podSubnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
+		return nil
+	}
+
+	podIPs := strings.Split(ip, ",")
+	if protocol := util.CheckProtocol(ip); protocol == kubeovnv1.ProtocolDual {
+		c.ipset[kubeovnv1.ProtocolIPv4].RemoveMembers(setID, []string{podIPs[0]})
+		c.ipset[kubeovnv1.ProtocolIPv6].RemoveMembers(setID, []string{podIPs[1]})
+		c.ipset[kubeovnv1.ProtocolIPv4].ApplyUpdates()
+		c.ipset[kubeovnv1.ProtocolIPv6].ApplyUpdates()
+	} else {
+		c.ipset[protocol].RemoveMembers(setID, []string{podIPs[0]})
+		c.ipset[protocol].ApplyUpdates()
+	}
+
+	return nil
+}
+
 func (c *Controller) setIptables() error {
 	klog.V(3).Infoln("start to set up iptables")
 	node, err := c.nodesLister.Get(c.config.NodeName)
