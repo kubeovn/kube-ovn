@@ -10,7 +10,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/informers"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -112,8 +111,8 @@ type Controller struct {
 	configMapsSynced cache.InformerSynced
 
 	recorder               record.EventRecorder
-	informerFactory        informers.SharedInformerFactory
-	cmInformerFactory      informers.SharedInformerFactory
+	informerFactory        kubeinformers.SharedInformerFactory
+	cmInformerFactory      kubeinformers.SharedInformerFactory
 	kubeovnInformerFactory kubeovninformer.SharedInformerFactory
 	elector                *leaderelection.LeaderElector
 }
