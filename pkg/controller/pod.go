@@ -437,8 +437,7 @@ func (c *Controller) handleAddPod(key string) error {
 				portSecurity = true
 			}
 
-			ip := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, subnet.Spec.Provider)]
-			if err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace, podNet.ProviderName), ip, subnet.Spec.CIDRBlock, mac, tag, pod.Name, pod.Namespace, portSecurity); err != nil {
+			if err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace, podNet.ProviderName), ipStr, subnet.Spec.CIDRBlock, mac, tag, pod.Name, pod.Namespace, portSecurity); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
 				return err
 			}
