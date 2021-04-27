@@ -440,7 +440,7 @@ spec:
           type: object
       type: object
 ---
-apiVersion: apiextensions.k8s.io/v1
+apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
   name: vpc-nat-gateways.kubeovn.io
