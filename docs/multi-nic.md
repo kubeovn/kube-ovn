@@ -26,7 +26,7 @@ We will fully separate the IPAM functions to provide a more general IPAM later.
 
 ### Install Kube-OVN and Multus-CNI
 
-Please refer to [Kube-OVN installation](install.md) and [Multus how to use](https://github.com/intel/multus-cni/blob/master/doc/how-to-use.md) to install Kube-OVN and Multus-CNI.
+Please refer to [Kube-OVN installation](install.md) and [Multus how to use](https://github.com/intel/multus-cni/blob/master/docs/how-to-use.md) to install Kube-OVN and Multus-CNI.
 
 ### Create network attachment definition
 
