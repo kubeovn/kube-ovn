@@ -420,7 +420,7 @@ func (c *Controller) checkGatewayReady() error {
 		}
 
 		for _, node := range nodes {
-			if strings.Contains(subnet.Spec.GatewayNode, node.Name) {
+			if util.GatewayContains(subnet.Spec.GatewayNode, node.Name) {
 				ipStr := node.Annotations[util.IpAddressAnnotation]
 				for _, ip := range strings.Split(ipStr, ",") {
 					pinger, err := goping.NewPinger(ip)
