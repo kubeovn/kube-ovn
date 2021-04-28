@@ -257,10 +257,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		}
 	}
 
-	newDp, err := c.genNatGwDeployment(gw)
-	if err != nil {
-		return err
-	}
+	newDp := c.genNatGwDeployment(gw)
 
 	if needToCreate {
 		_, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).
@@ -687,7 +684,7 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 	return nil
 }
 
-func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (dp *v1.Deployment, err error) {
+func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (dp *v1.Deployment) {
 	replicas := int32(1)
 	name := genNatGwDpName(gw.Name)
 	allowPrivilegeEscalation := true
