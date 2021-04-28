@@ -268,6 +268,14 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 			return err
 		}
 		return nil
+	} else {
+		_, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).
+			Update(context.Background(), newDp, metav1.UpdateOptions{})
+
+		if err != nil {
+			klog.Errorf("failed to update deployment %s, err: %v", newDp.Name, err)
+			return err
+		}
 	}
 
 	pod, err := c.getNatGwPod(key)
@@ -660,7 +668,7 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 }
 
 func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []string) error {
-	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-gat-gw",
+	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw",
 		[]string{"/bin/bash", "-c", fmt.Sprintf("bash /kube-ovn/nat-gateway.sh %s %s", operation, strings.Join(rules, " "))}...)
 
 	if err != nil {
@@ -718,7 +726,7 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (dp *v1.Dep
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:            "vpc-gat-gw",
+							Name:            "vpc-nat-gw",
 							Image:           vpcNatImage,
 							Command:         []string{"bash"},
 							Args:            []string{"-c", "while true; do sleep 10000; done"},
@@ -753,7 +761,7 @@ func (c *Controller) cleanUpVpcNatGw() error {
 
 func (c *Controller) getNatGwPod(name string) (*corev1.Pod, error) {
 	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: map[string]string{"app": genNatGwDpName(name)},
+		MatchLabels: map[string]string{"app": genNatGwDpName(name), util.VpcNatGatewayLabel: "true"},
 	})
 
 	pods, err := c.podsLister.Pods(c.config.PodNamespace).List(sel)
