@@ -706,23 +706,6 @@ spec:
     app: ovn-central
     ovn-northd-leader: "true"
   sessionAffinity: None
-
----
-kind: Service
-apiVersion: v1
-metadata:
-  name: kube-ovn-monitor
-  namespace: kube-system
-  labels:
-    app: kube-ovn-monitor
-spec:
-  ports:
-    - name: metrics
-      port: 10661
-  type: ClusterIP
-  selector:
-    app: ovn-central
-  sessionAffinity: None
 ---
 kind: Deployment
 apiVersion: apps/v1
@@ -761,7 +744,6 @@ spec:
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       hostNetwork: true
-      shareProcessNamespace: true
       containers:
         - name: ovn-central
           image: "$REGISTRY/kube-ovn:$VERSION"
@@ -826,60 +808,6 @@ spec:
                 - /kube-ovn/ovn-healthcheck.sh
             initialDelaySeconds: 30
             periodSeconds: 7
-            failureThreshold: 5
-            timeoutSeconds: 45
-        - name: ovn-monitor
-          image: "$REGISTRY/kube-ovn:$VERSION"
-          imagePullPolicy: $IMAGE_PULL_POLICY
-          command: ["/kube-ovn/start-ovn-monitor.sh"]
-          env:
-            - name: ENABLE_SSL
-              value: "$ENABLE_SSL"
-            - name: NODE_IPS
-              value: $addresses
-            - name: KUBE_NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
-          resources:
-            requests:
-              cpu: 200m
-              memory: 200Mi
-            limits:
-              cpu: 200m
-              memory: 200Mi
-          volumeMounts:
-            - mountPath: /var/run/openvswitch
-              name: host-run-ovs
-            - mountPath: /var/run/ovn
-              name: host-run-ovn
-            - mountPath: /sys
-              name: host-sys
-              readOnly: true
-            - mountPath: /etc/openvswitch
-              name: host-config-openvswitch
-            - mountPath: /etc/ovn
-              name: host-config-ovn
-            - mountPath: /var/log/openvswitch
-              name: host-log-ovs
-            - mountPath: /var/log/ovn
-              name: host-log-ovn
-            - mountPath: /var/run/tls
-              name: kube-ovn-tls
-          readinessProbe:
-            exec:
-              command:
-              - cat
-              - /var/run/ovn/ovnnb_db.pid
-            periodSeconds: 3
-            timeoutSeconds: 45
-          livenessProbe:
-            exec:
-              command:
-              - cat
-              - /var/run/ovn/ovn-nbctl.pid
-            initialDelaySeconds: 30
-            periodSeconds: 10
             failureThreshold: 5
             timeoutSeconds: 45
       nodeSelector:
@@ -1232,22 +1160,6 @@ spec:
     ovn-northd-leader: "true"
   sessionAffinity: None
 ---
-kind: Service
-apiVersion: v1
-metadata:
-  name: kube-ovn-monitor
-  namespace: kube-system
-  labels:
-    app: kube-ovn-monitor
-spec:
-  ports:
-    - name: metrics
-      port: 10661
-  type: ClusterIP
-  selector:
-    app: ovn-central
-  sessionAffinity: None
----
 kind: Deployment
 apiVersion: apps/v1
 metadata:
@@ -1285,7 +1197,6 @@ spec:
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       hostNetwork: true
-      shareProcessNamespace: true
       containers:
         - name: ovn-central
           image: "$REGISTRY/kube-ovn:$VERSION"
@@ -1351,60 +1262,6 @@ spec:
                 - /kube-ovn/ovn-healthcheck.sh
             initialDelaySeconds: 30
             periodSeconds: 7
-            failureThreshold: 5
-            timeoutSeconds: 45
-        - name: ovn-monitor
-          image: "$REGISTRY/kube-ovn:$VERSION"
-          imagePullPolicy: $IMAGE_PULL_POLICY
-          command: ["/kube-ovn/start-ovn-monitor.sh"]
-          env:
-            - name: ENABLE_SSL
-              value: "$ENABLE_SSL"
-            - name: NODE_IPS
-              value: $addresses
-            - name: KUBE_NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
-          resources:
-            requests:
-              cpu: 200m
-              memory: 200Mi
-            limits:
-              cpu: 200m
-              memory: 200Mi
-          volumeMounts:
-            - mountPath: /var/run/openvswitch
-              name: host-run-ovs
-            - mountPath: /var/run/ovn
-              name: host-run-ovn
-            - mountPath: /sys
-              name: host-sys
-              readOnly: true
-            - mountPath: /etc/openvswitch
-              name: host-config-openvswitch
-            - mountPath: /etc/ovn
-              name: host-config-ovn
-            - mountPath: /var/log/openvswitch
-              name: host-log-ovs
-            - mountPath: /var/log/ovn
-              name: host-log-ovn
-            - mountPath: /var/run/tls
-              name: kube-ovn-tls
-          readinessProbe:
-            exec:
-              command:
-              - cat
-              - /var/run/ovn/ovnnb_db.pid
-            periodSeconds: 3
-            timeoutSeconds: 45
-          livenessProbe:
-            exec:
-              command:
-              - cat
-              - /var/run/ovn/ovn-nbctl.pid
-            initialDelaySeconds: 30
-            periodSeconds: 10
             failureThreshold: 5
             timeoutSeconds: 45
       nodeSelector:
@@ -1907,6 +1764,146 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: kube-ovn-monitor
+  namespace: kube-system
+  annotations:
+    kubernetes.io/description: |
+      Metrics for OVN components: northd, nb and sb.
+spec:
+  replicas: $count
+  strategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: kube-ovn-monitor
+  template:
+    metadata:
+      labels:
+        app: kube-ovn-monitor
+        component: network
+        type: infra
+    spec:
+      tolerations:
+      - operator: Exists
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: kube-ovn-monitor
+              topologyKey: kubernetes.io/hostname
+      priorityClassName: system-cluster-critical
+      serviceAccountName: ovn
+      containers:
+        - name: kube-ovn-monitor
+          image: "$REGISTRY/kube-ovn:$VERSION"
+          imagePullPolicy: $IMAGE_PULL_POLICY
+          command: ["/kube-ovn/start-ovn-monitor.sh"]
+          securityContext:
+            runAsUser: 0
+            privileged: false
+          env:
+            - name: ENABLE_SSL
+              value: "$ENABLE_SSL"
+            - name: NODE_IPS
+              value: $addresses
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          resources:
+            requests:
+              cpu: 200m
+              memory: 200Mi
+            limits:
+              cpu: 200m
+              memory: 200Mi
+          volumeMounts:
+            - mountPath: /var/run/openvswitch
+              name: host-run-ovs
+            - mountPath: /var/run/ovn
+              name: host-run-ovn
+            - mountPath: /sys
+              name: host-sys
+              readOnly: true
+            - mountPath: /etc/openvswitch
+              name: host-config-openvswitch
+            - mountPath: /etc/ovn
+              name: host-config-ovn
+            - mountPath: /var/log/openvswitch
+              name: host-log-ovs
+            - mountPath: /var/log/ovn
+              name: host-log-ovn
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
+          readinessProbe:
+            exec:
+              command:
+              - cat
+              - /var/run/ovn/ovnnb_db.pid
+            periodSeconds: 3
+            timeoutSeconds: 45
+          livenessProbe:
+            exec:
+              command:
+              - cat
+              - /var/run/ovn/ovn-nbctl.pid
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 5
+            timeoutSeconds: 45
+      nodeSelector:
+        kubernetes.io/os: "linux"
+        kube-ovn/role: "master"
+      volumes:
+        - name: host-run-ovs
+          hostPath:
+            path: /run/openvswitch
+        - name: host-run-ovn
+          hostPath:
+            path: /run/ovn
+        - name: host-sys
+          hostPath:
+            path: /sys
+        - name: host-config-openvswitch
+          hostPath:
+            path: /etc/origin/openvswitch
+        - name: host-config-ovn
+          hostPath:
+            path: /etc/origin/ovn
+        - name: host-log-ovs
+          hostPath:
+            path: /var/log/openvswitch
+        - name: host-log-ovn
+          hostPath:
+            path: /var/log/ovn
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: kube-ovn-monitor
+  namespace: kube-system
+  labels:
+    app: kube-ovn-monitor
+spec:
+  ports:
+    - name: metrics
+      port: 10661
+  type: ClusterIP
+  selector:
+    app: kube-ovn-monitor
+  sessionAffinity: None
 ---
 kind: Service
 apiVersion: v1
