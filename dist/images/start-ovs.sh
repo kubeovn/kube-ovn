@@ -4,7 +4,7 @@ set -euo pipefail
 HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
 OVN_DB_IPS=${OVN_DB_IPS:-}
-
+TUNNEL_TYPE=${TUNNEL_TYPE:-geneve}
 
 # Check required kernel module
 modinfo openvswitch
@@ -96,7 +96,7 @@ function gen_conn_str {
 ovs-vsctl set open . external-ids:ovn-remote="$(gen_conn_str 6642)"
 ovs-vsctl set open . external-ids:ovn-remote-probe-interval=10000
 ovs-vsctl set open . external-ids:ovn-openflow-probe-interval=180
-ovs-vsctl set open . external-ids:ovn-encap-type=geneve
+ovs-vsctl set open . external-ids:ovn-encap-type="${TUNNEL_TYPE}"
 ovs-vsctl set open . external-ids:hostname="${KUBE_NODE_NAME}"
 
 # Start ovn-controller
