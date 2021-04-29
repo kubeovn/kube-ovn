@@ -168,11 +168,7 @@ func GetExporterName() string {
 func (e *Exporter) exportOvnStatusGauge() {
 	result := e.getOvnStatus()
 	for k, v := range result {
-		if v {
-			metricOvnHealthyStatus.WithLabelValues(e.Client.System.Hostname, k).Set(1)
-		} else {
-			metricOvnHealthyStatus.WithLabelValues(e.Client.System.Hostname, k).Set(0)
-		}
+		metricOvnHealthyStatus.WithLabelValues(e.Client.System.Hostname, k).Set(float64(v))
 	}
 }
 

@@ -2,6 +2,7 @@ package ovnmonitor
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -17,22 +18,53 @@ func (e *Exporter) IncrementErrorCounter() {
 	atomic.AddInt64(&e.errors, 1)
 }
 
-func (e *Exporter) getOvnStatus() map[string]bool {
-	components := []string{
-		"ovsdb-server-southbound",
-		"ovsdb-server-northbound",
-		"ovn-northd",
+func (e *Exporter) getOvnStatus() map[string]int {
+	result := make(map[string]int)
+
+	// get ovn-northbound status
+	cmdstr := "ovs-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound"
+	cmd := exec.Command("sh", "-c", cmdstr)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		klog.Errorf("get ovn-northbound status failed, err %v", err)
+		result["ovsdb-server-northbound"] = 0
 	}
-	result := make(map[string]bool)
-	for _, component := range components {
-		_, err := e.Client.GetProcessInfo(component)
+	result["ovsdb-server-northbound"] = parseDbStatus(string(output))
+
+	// get ovn-southbound status
+	cmdstr = "ovs-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status OVN_Southbound"
+	cmd = exec.Command("sh", "-c", cmdstr)
+	output, err = cmd.CombinedOutput()
+	if err != nil {
+		klog.Errorf("get ovn-southbound status failed, err %v", err)
+		result["ovsdb-server-southbound"] = 0
+	}
+	result["ovsdb-server-southbound"] = parseDbStatus(string(output))
+
+	// get ovn-northd status
+	pid, err := ioutil.ReadFile("/var/run/ovn/ovn-northd.pid")
+	if err != nil {
+		klog.Errorf("read ovn-northd pid failed, err %v", err)
+		result["ovn-northd"] = 0
+	} else {
+		cmdstr := "ovs-appctl -t /var/run/ovn/ovn-northd." + strings.Trim(string(pid), "\n") + ".ctl status"
+		klog.V(3).Infof("cmd is %v", cmdstr)
+		cmd := exec.Command("sh", "-c", cmdstr)
+		output, err := cmd.CombinedOutput()
 		if err != nil {
-			klog.Errorf("%s: pid-%v", component, err)
-			e.IncrementErrorCounter()
-			result[component] = false
-			continue
+			klog.Errorf("get ovn-northd status failed, err %v", err)
+			result["ovn-northd"] = 0
 		}
-		result[component] = true
+		if len(strings.Split(string(output), ":")) != 2 {
+			result["ovn-northd"] = 0
+		} else {
+			status := strings.TrimSpace(strings.Split(string(output), ":")[1])
+			if status == "standby" {
+				result["ovn-northd"] = 2
+			} else if status == "active" {
+				result["ovn-northd"] = 1
+			}
+		}
 	}
 
 	return result
@@ -194,4 +226,26 @@ func (e *Exporter) setOvnClusterInfoMetric(c *OVNDBClusterStatus, dbName string)
 	metricClusterOutConnTotal.WithLabelValues(e.Client.System.Hostname, dbName, c.sid, c.cid).Set(c.connOut)
 	metricClusterInConnErrTotal.WithLabelValues(e.Client.System.Hostname, dbName, c.sid, c.cid).Set(c.connInErr)
 	metricClusterOutConnErrTotal.WithLabelValues(e.Client.System.Hostname, dbName, c.sid, c.cid).Set(c.connOutErr)
+}
+
+func parseDbStatus(output string) int {
+	var status string
+	var result int
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "Role:") {
+			status = strings.TrimSpace(strings.Split(line, ":")[1])
+			break
+		}
+	}
+
+	switch status {
+	case "leader":
+		result = 1
+	case "follower":
+		result = 2
+	default:
+		result = 0
+	}
+	return result
 }
