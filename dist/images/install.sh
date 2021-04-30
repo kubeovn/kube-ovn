@@ -40,6 +40,7 @@ fi
 EXCLUDE_IPS=""                         # EXCLUDE_IPS for default subnet
 LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
 NETWORK_TYPE="geneve"                  # geneve or vlan
+TUNNEL_TYPE="geneve"                   # geneve or vxlan
 
 # VLAN Config only take effect when NETWORK_TYPE is vlan
 PROVIDER_NAME="provider"
@@ -1377,6 +1378,8 @@ spec:
                   fieldPath: status.podIP
             - name: HW_OFFLOAD
               value: "$HW_OFFLOAD"
+            - name: TUNNEL_TYPE
+              value: "$TUNNEL_TYPE"
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
