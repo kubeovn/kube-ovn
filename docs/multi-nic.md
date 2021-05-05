@@ -146,3 +146,80 @@ spec:
       - name: static-workload
         image: nginx:alpine
 ```
+# Multi kube-ovn network Interface
+Full support for multi kube-ovn networks is more than just IPAM.
+## How to use it
+### Create network attachment definition with ovn provider
+```bash
+apiVersion: "k8s.cni.cncf.io/v1"
+   kind: NetworkAttachmentDefinition
+   metadata:
+     name: attachnet
+     namespace: default
+   spec:
+     config: '{
+         "cniVersion": "0.3.0",
+         "type": "kube-ovn",
+         "server_socket": "/run/openvswitch/kube-ovn-daemon.sock",
+         "provider": "attachnet.default.ovn"
+       }'
+```
+`type`: Should be `kube-ovn` to invoke Kube-OVN plugin to fetch the ovn subnet.
+
+`server_socket`: Is the socket file that Kube-OVN plugin communicate with. Default location is /run/openvswitch/kube-ovn-daemon.sock.
+
+`provider`: The `<name>.<namespace>.ovn` of this NetworkAttachmentDefinition, The kube-OVN plug-in will use it later to determine whether a native OVN subnet should be used. *Be sure to add the OVN suffix*.
+
+### Create pod with multus ovn network
+For random allocation from ovn-default, just add the `k8s.v1.cni.cncf.io/networks`:
+
+```bash
+apiVersion: v1
+kind: Pod
+metadata:
+  name: samplepod
+  namespace: default
+  annotations:
+    k8s.v1.cni.cncf.io/networks: default/attachnet
+spec:
+  containers:
+  - name: samplepod
+    command: ["/bin/ash", "-c", "trap : TERM INT; sleep infinity & wait"]
+    image: alpine
+```
+Note that the pod cannot be assigned the same subnet, the above example assumes that kube-ovn is not the default network.
+
+### Create pod with specified subnet
+For allocation from the specified subnet:
+```bash
+apiVersion: v1
+kind: Pod
+metadata:
+  name: spec-subnet
+  namespace: default
+  annotations:
+    k8s.v1.cni.cncf.io/networks: default/attachnet
+    attachnet.default.ovn.kubernetes.io/logical_switch: my-subnet  # <name>.<namespace>.ovn.kubernetes.io/logical_switch
+spec:
+  containers:
+  - name: spec-subnet
+    command: ["/bin/ash", "-c", "trap : TERM INT; sleep infinity & wait"]
+    image: alpine
+```
+### Create pod with static IP
+```bash
+apiVersion: v1
+kind: Pod
+metadata:
+  name: static-ip
+  namespace: default
+  annotations:
+    k8s.v1.cni.cncf.io/networks: default/attachnet
+    attachnet.default.ovn.kubernetes.io/logical_switch: my-subnet
+    attachnet.default.ovn.kubernetes.io/ip_address: 172.17.0.21
+spec:
+  containers:
+  - name: static-ip
+    command: ["/bin/ash", "-c", "trap : TERM INT; sleep infinity & wait"]
+    image: alpine
+```
