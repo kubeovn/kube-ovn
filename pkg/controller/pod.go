@@ -848,6 +848,7 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 				Type:         providerTypeOriginal,
 				ProviderName: providerName,
 				Subnet:       subnet,
+				IsDefault:    isDefault,
 			})
 
 		}
