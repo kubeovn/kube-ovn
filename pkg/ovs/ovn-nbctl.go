@@ -991,7 +991,6 @@ func StartOvnNbctlDaemon(ovnNbAddr string) error {
 		return err
 	}
 	command := []string{
-		"ovn-nbctl",
 		fmt.Sprintf("--db=%s", ovnNbAddr),
 		"--pidfile",
 		"--detach",
@@ -1008,6 +1007,7 @@ func StartOvnNbctlDaemon(ovnNbAddr string) error {
 			"--overwrite-pidfile",
 		}
 	}
+	_ = os.Unsetenv("OVN_NB_DAEMON")
 	output, err = exec.Command("ovn-nbctl", command...).CombinedOutput()
 	if err != nil {
 		klog.Errorf("start ovn-nbctl daemon failed, %q", output)
