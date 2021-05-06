@@ -495,6 +495,10 @@ func parseLrRouteListOutput(output string) (routeList []*StaticRoute, err error)
 	lines := strings.Split(output, "\n")
 	routeList = make([]*StaticRoute, 0, len(lines))
 	for _, l := range lines {
+		if strings.Contains(l, "learned") {
+			continue
+		}
+
 		if len(l) == 0 {
 			continue
 		}
