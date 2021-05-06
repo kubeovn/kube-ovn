@@ -52,10 +52,6 @@ func (c *Controller) resyncInterConnection() {
 			return
 		}
 
-		if err := c.removeInterConnection(cm.Data["az-name"]); err != nil {
-			klog.Errorf("failed to remove ovn-ic, %v", err)
-			return
-		}
 		c.ovnClient.OVNIcNBAddress = fmt.Sprintf("%s:%s", cm.Data["ic-db-host"], cm.Data["ic-nb-port"])
 		klog.Info("start to establish ovn-ic")
 		if err := c.establishInterConnection(cm.Data); err != nil {
@@ -113,6 +109,17 @@ func (c *Controller) removeInterConnection(azName string) error {
 }
 
 func (c *Controller) establishInterConnection(config map[string]string) error {
+	tsPort := fmt.Sprintf("ts-%s", config["az-name"])
+	exist, err := c.ovnClient.LogicalSwitchPortExists(tsPort)
+	if err != nil {
+		klog.Errorf("failed to list logical switch ports, %v", err)
+		return err
+	}
+	if exist {
+		klog.Infof("ts port %s already exists", tsPort)
+		return nil
+	}
+
 	if err := c.startOVNIC(config["ic-db-host"], config["ic-nb-port"], config["ic-sb-port"]); err != nil {
 		klog.Errorf("failed to start ovn-ic, %v", err)
 		return err

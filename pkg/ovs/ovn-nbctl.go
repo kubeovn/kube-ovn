@@ -21,7 +21,7 @@ func (c Client) ovnNbCommand(cmdArgs ...string) (string, error) {
 	cmdArgs = append([]string{fmt.Sprintf("--timeout=%d", c.OvnTimeout)}, cmdArgs...)
 	raw, err := exec.Command(OvnNbCtl, cmdArgs...).CombinedOutput()
 	elapsed := float64((time.Since(start)) / time.Millisecond)
-	klog.V(4).Infof("command %s %s in %vms", OvnNbCtl, strings.Join(cmdArgs, " "), elapsed)
+	klog.V(4).Infof("command %s %s in %vms, output %q", OvnNbCtl, strings.Join(cmdArgs, " "), elapsed, raw)
 	if err != nil || elapsed > 500 {
 		klog.Warning("ovn-nbctl command error or took too long")
 		klog.Warningf("%s %s in %vms", OvnNbCtl, strings.Join(cmdArgs, " "), elapsed)
@@ -338,6 +338,20 @@ func (c Client) ListLogicalSwitchPort() ([]string, error) {
 		result = append(result, strings.TrimSpace(l))
 	}
 	return result, nil
+}
+
+func (c Client) LogicalSwitchPortExists(port string) (bool, error) {
+	output, err := c.ovnNbCommand("--format=csv", "--data=bare", "--no-heading", "--columns=name", "find", "logical_switch_port", fmt.Sprintf("name=%s", port))
+	if err != nil {
+		klog.Errorf("failed to find port %s", port)
+		return false, err
+	}
+
+	if output != "" {
+		return true, nil
+	}
+
+	return false, nil
 }
 
 func (c Client) ListRemoteLogicalSwitchPortAddress() ([]string, error) {
