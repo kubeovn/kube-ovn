@@ -103,7 +103,7 @@ We are looking forwards to your PR!
 
 3. Q: What's the encapsulation?
 
-   A: For overlay mode, Kube-OVN uses Geneve to encapsulate packets between nodes. For Vlan/Underlay mode there is no encapsulation.
+   A: For overlay mode, Kube-OVN uses Geneve/Vxlan to encapsulate packets between nodes. For Vlan/Underlay mode there is no encapsulation.
 
 ## Kube-OVN vs. Other CNI Implementation
 
