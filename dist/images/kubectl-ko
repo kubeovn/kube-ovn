@@ -43,15 +43,15 @@ tcpdump(){
 
   if [ "$hostNetwork" = "true" ]; then
     set -x
-    kubectl exec -it "$ovnCni" -n $KUBE_OVN_NS -- tcpdump -nn "$@"
+    kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- tcpdump -nn "$@"
   else
-    nicName=$(kubectl exec -it "$ovnCni" -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading --columns=name find interface external-ids:iface-id="$podName"."$namespace" | tr -d '\r')
+    nicName=$(kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading --columns=name find interface external-ids:iface-id="$podName"."$namespace" | tr -d '\r')
     if [ -z "$nicName" ]; then
       echo "nic doesn't exist on node $nodeName"
       exit 1
     fi
     set -x
-    kubectl exec -it "$ovnCni" -n $KUBE_OVN_NS -- tcpdump -nn -i "$nicName" "$@"
+    kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- tcpdump -nn -i "$nicName" "$@"
   fi
 }
 
@@ -79,7 +79,7 @@ trace(){
     exit 1
   fi
 
-  gwMac=$(kubectl exec -it $OVN_NB_POD -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl --data=bare --no-heading --columns=mac find logical_router_port name=ovn-cluster-"$ls" | tr -d '\r')
+  gwMac=$(kubectl exec $OVN_NB_POD -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl --data=bare --no-heading --columns=mac find logical_router_port name=ovn-cluster-"$ls" | tr -d '\r')
 
   if [ -z "$gwMac" ]; then
     echo "get gw mac failed"
@@ -186,16 +186,16 @@ diagnose(){
         nodeName=$(kubectl get pod "$pinger" -n "$KUBE_OVN_NS" -o jsonpath={.spec.nodeName})
         echo "### start to diagnose node $nodeName"
         echo "#### ovn-controller log:"
-        kubectl exec -n $KUBE_OVN_NS -it "$pinger" -- tail /var/log/ovn/ovn-controller.log
+        kubectl exec -n $KUBE_OVN_NS "$pinger" -- tail /var/log/ovn/ovn-controller.log
         echo ""
         echo "#### ovs-vswitchd log:"
-        kubectl exec -n $KUBE_OVN_NS -it "$pinger" -- tail /var/log/openvswitch/ovs-vswitchd.log
+        kubectl exec -n $KUBE_OVN_NS "$pinger" -- tail /var/log/openvswitch/ovs-vswitchd.log
         echo ""
         echo "#### ovs-vsctl show results:"
-        kubectl exec -n $KUBE_OVN_NS -it "$pinger" -- ovs-vsctl show
+        kubectl exec -n $KUBE_OVN_NS "$pinger" -- ovs-vsctl show
         echo ""
         echo "#### pinger diagnose results:"
-        kubectl exec -n $KUBE_OVN_NS -it "$pinger" -- /kube-ovn/kube-ovn-pinger --mode=job
+        kubectl exec -n $KUBE_OVN_NS "$pinger" -- /kube-ovn/kube-ovn-pinger --mode=job
         echo "### finish diagnose node $nodeName"
         echo ""
       done
@@ -206,12 +206,12 @@ diagnose(){
       pinger=$(kubectl get pod -n $KUBE_OVN_NS -o wide | grep kube-ovn-pinger | grep " $nodeName " | awk '{print $1}')
       echo "### start to diagnose node nodeName"
       echo "#### ovn-controller log:"
-      kubectl exec -n $KUBE_OVN_NS -it "$pinger" -- tail /var/log/ovn/ovn-controller.log
+      kubectl exec -n $KUBE_OVN_NS "$pinger" -- tail /var/log/ovn/ovn-controller.log
       echo ""
       echo "#### ovs-vswitchd log:"
-      kubectl exec -n $KUBE_OVN_NS -it "$pinger" -- tail /var/log/openvswitch/ovs-vswitchd.log
+      kubectl exec -n $KUBE_OVN_NS "$pinger" -- tail /var/log/openvswitch/ovs-vswitchd.log
       echo ""
-      kubectl exec -n $KUBE_OVN_NS -it "$pinger" -- /kube-ovn/kube-ovn-pinger --mode=job
+      kubectl exec -n $KUBE_OVN_NS "$pinger" -- /kube-ovn/kube-ovn-pinger --mode=job
       echo "### finish diagnose node nodeName"
       echo ""
       ;;
