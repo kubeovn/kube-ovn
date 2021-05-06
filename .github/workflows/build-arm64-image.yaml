@@ -5,12 +5,14 @@ on:
       - master
     paths-ignore:
       - 'docs/**'
+      - '**.md'
   push:
     branches:
     - master
     - release-*
     paths-ignore:
     - 'docs/**'
+    - '**.md'
 
 jobs:
   build:
