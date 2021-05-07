@@ -14,13 +14,13 @@ This document is based on Openstack *Victoria* and Kube-OVN *1.7*
 
 # One Openstack with one Kubernetes
 
-#### 1, Run Interconnection Controller in a Kubernetes node which can be accessed by an Openstack gateway node.
+#### 1. Run Interconnection Controller in a Kubernetes node which can be accessed by an Openstack gateway node.
 
 ```shell
 $ docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn kubeovn/kube-ovn:v1.6.0 bash start-ic-db.sh
 ```
 
-#### 2, Create `ovn-ic-config` for kubernetes cluster in `kube-system` namespace.
+#### 2. Create `ovn-ic-config` for kubernetes cluster in `kube-system` namespace.
 
 ```yaml
 apiVersion: v1
@@ -38,7 +38,7 @@ data:
   auto-route: "true"            # Auto announces routes to all clusters. If set false, you can select announced routes later manually
 ```
 
-#### 3, Create a router for Openstack cluster to connect with Kubernetes, or use an existing router. `router0` is created here as an example.
+#### 3. Create a router for Openstack cluster to connect with Kubernetes, or use an existing router. `router0` is created here as an example.
 
 ```shell
 $ openstack router create router0
@@ -50,7 +50,7 @@ $ openstack router list
 +--------------------------------------+---------+--------+-------+----------------------------------+
 ```
 
-#### 4, Establish ovn interconnection between Openstack and Kubernetes.
+#### 4. Establish ovn interconnection between Openstack and Kubernetes.
 
 ##### 	Set an availability zone name for Openstack at Openstack on central nodes:
 
@@ -106,7 +106,7 @@ $ ovn-nbctl lrp-set-gateway-chassis lrp-lr1-ts1 <gateway name> [priority]
 $ ovn-nbctl set NB_Global . options:ic-route-adv=true options:ic-route-learn=true
 ```
 
-#### 5, Verify
+#### 5. Verify
 
 ​	List routes in Openstack cluster.
 
