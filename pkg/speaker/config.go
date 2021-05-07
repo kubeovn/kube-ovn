@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	api "github.com/osrg/gobgp/api"
@@ -18,6 +19,14 @@ import (
 	"k8s.io/klog"
 )
 
+const (
+	DefaultBGPGrpcPort   = 50051
+	DefaultBGPClusterAs  = 65000
+	DefaultBGPNeighborAs = 65001
+	DefaultBGPHoldtime   = 90 * time.Second
+	DefaultPprofPort     = 10667
+)
+
 type Configuration struct {
 	GrpcHost        string
 	GrpcPort        uint32
@@ -26,6 +35,7 @@ type Configuration struct {
 	NeighborAddress string
 	NeighborAs      uint32
 	AuthPassword    string
+	HoldTime        float64
 	BgpServer       *gobgp.BgpServer
 
 	KubeConfigFile string
@@ -38,13 +48,14 @@ type Configuration struct {
 func ParseFlags() (*Configuration, error) {
 	var (
 		argGrpcHost        = pflag.String("grpc-host", "127.0.0.1", "The host address for grpc to listen, default: 127.0.0.1")
-		argGrpcPort        = pflag.Uint32("grpc-port", 50051, "The port for grpc to listen, default:50051")
-		argClusterAs       = pflag.Uint32("cluster-as", 65000, "The as number of container network, default 65000")
+		argGrpcPort        = pflag.Uint32("grpc-port", DefaultBGPGrpcPort, "The port for grpc to listen, default:50051")
+		argClusterAs       = pflag.Uint32("cluster-as", DefaultBGPClusterAs, "The as number of container network, default 65000")
 		argRouterId        = pflag.String("router-id", "", "The address for the speaker to use as router id, default the node ip")
 		argNeighborAddress = pflag.String("neighbor-address", "", "The router address the speaker connects to.")
-		argNeighborAs      = pflag.Uint32("neighbor-as", 65001, "The router as number, default 65001")
+		argNeighborAs      = pflag.Uint32("neighbor-as", DefaultBGPNeighborAs, "The router as number, default 65001")
 		argAuthPassword    = pflag.String("auth-password", "", "bgp peer auth password")
-		argPprofPort       = pflag.Uint32("pprof-port", 10667, "The port to get profiling data, default: 10667")
+		argHoldTime        = pflag.Duration("holdtime", DefaultBGPHoldtime, "ovn-speaker goes down abnormally, the local saving time of BGP route will be affected.Holdtime must be in the range 3s to 65536s. (default 90s)")
+		argPprofPort       = pflag.Uint32("pprof-port", DefaultPprofPort, "The port to get profiling data, default: 10667")
 		argKubeConfigFile  = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 	)
 
@@ -66,6 +77,11 @@ func ParseFlags() (*Configuration, error) {
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
 
+	ht := argHoldTime.Seconds()
+	if ht > 65536 || ht < 3 {
+		return nil, errors.New("the bgp holdtime must be in the range 3s to 65536s")
+	}
+
 	config := &Configuration{
 		GrpcHost:        *argGrpcHost,
 		GrpcPort:        *argGrpcPort,
@@ -74,6 +90,7 @@ func ParseFlags() (*Configuration, error) {
 		NeighborAddress: *argNeighborAddress,
 		NeighborAs:      *argNeighborAs,
 		AuthPassword:    *argAuthPassword,
+		HoldTime:        ht,
 		PprofPort:       *argPprofPort,
 		KubeConfigFile:  *argKubeConfigFile,
 	}
@@ -154,6 +171,7 @@ func (config *Configuration) initBgpServer() error {
 	}
 
 	peer := &api.Peer{
+		Timers: &api.Timers{Config: &api.TimersConfig{HoldTime: uint64(config.HoldTime)}},
 		Conf: &api.PeerConf{
 			NeighborAddress: config.NeighborAddress,
 			PeerAs:          config.NeighborAs,
