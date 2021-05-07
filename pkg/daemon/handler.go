@@ -206,17 +206,21 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		}
 		return
 	}
+
+	if k8serrors.IsNotFound(err) {
+		resp.WriteHeader(http.StatusNoContent)
+		return
+	}
+
 	// check if it's a sriov device
-	if pod != nil {
-		for _, container := range pod.Spec.Containers {
-			if _, ok := container.Resources.Requests[util.SRIOVResourceName]; ok {
-				podRequest.DeviceID = util.SRIOVResourceName
-			}
+	for _, container := range pod.Spec.Containers {
+		if _, ok := container.Resources.Requests[util.SRIOVResourceName]; ok {
+			podRequest.DeviceID = util.SRIOVResourceName
 		}
 	}
 
 	klog.Infof("delete port request %v", podRequest)
-	if podRequest.Provider == util.OvnProvider {
+	if pod.Annotations != nil && podRequest.Provider == util.OvnProvider {
 		subnet := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podRequest.Provider)]
 		ip := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podRequest.Provider)]
 		if err = csh.Controller.removeIPSetMembers(LocalPodSet, subnet, ip); err != nil {
