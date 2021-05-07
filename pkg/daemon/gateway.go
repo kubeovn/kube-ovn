@@ -134,6 +134,9 @@ func (c *Controller) addIPSetMembers(setID, subnet, ip string) error {
 }
 
 func (c *Controller) removeIPSetMembers(setID, subnet, ip string) error {
+	if subnet == "" || ip == "" {
+		return nil
+	}
 	podSubnet, err := c.subnetsLister.Get(subnet)
 	if err != nil {
 		klog.Errorf("get subnet %s failed, %+v", subnet, err)
