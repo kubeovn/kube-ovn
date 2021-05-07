@@ -33,6 +33,10 @@ func isPodAlive(p *v1.Pod) bool {
 	return true
 }
 
+func isClusterIP(svc *v1.Service) bool {
+	return svc.Spec.Type == "ClusterIP"
+}
+
 // TODO: ipv4 only, need ipv6/dualstack support later
 func (c *Controller) syncSubnetRoutes() {
 	bgpExpected, bgpExists := []string{}, []string{}
@@ -47,6 +51,22 @@ func (c *Controller) syncSubnetRoutes() {
 		return
 	}
 
+	if c.config.AnnounceClusterIP {
+		services, err := c.servicesLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list services, %v", err)
+			return
+		}
+		for _, svc := range services {
+
+			if isClusterIP(svc) && svc.Annotations[util.BgpAnnotation] == "true" && svc.Spec.ClusterIP != "None" &&
+				svc.Spec.ClusterIP != "" {
+				bgpExpected = append(bgpExpected, fmt.Sprintf("%s/32", svc.Spec.ClusterIP))
+			}
+
+		}
+	}
+
 	for _, subnet := range subnets {
 		if subnet.Status.IsReady() && subnet.Annotations != nil && subnet.Annotations[util.BgpAnnotation] == "true" {
 			bgpExpected = append(bgpExpected, subnet.Spec.CIDRBlock)
@@ -58,6 +78,7 @@ func (c *Controller) syncSubnetRoutes() {
 			bgpExpected = append(bgpExpected, fmt.Sprintf("%s/32", pod.Status.PodIP))
 		}
 	}
+
 	klog.V(5).Infof("expected routes %v", bgpExpected)
 	listPathRequest := &bgpapi.ListPathRequest{
 		TableType: bgpapi.TableType_GLOBAL,
