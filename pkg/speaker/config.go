@@ -28,15 +28,16 @@ const (
 )
 
 type Configuration struct {
-	GrpcHost        string
-	GrpcPort        uint32
-	ClusterAs       uint32
-	RouterId        string
-	NeighborAddress string
-	NeighborAs      uint32
-	AuthPassword    string
-	HoldTime        float64
-	BgpServer       *gobgp.BgpServer
+	GrpcHost          string
+	GrpcPort          uint32
+	ClusterAs         uint32
+	RouterId          string
+	NeighborAddress   string
+	NeighborAs        uint32
+	AuthPassword      string
+	HoldTime          float64
+	BgpServer         *gobgp.BgpServer
+	AnnounceClusterIP bool
 
 	KubeConfigFile string
 	KubeClient     kubernetes.Interface
@@ -47,16 +48,17 @@ type Configuration struct {
 
 func ParseFlags() (*Configuration, error) {
 	var (
-		argGrpcHost        = pflag.String("grpc-host", "127.0.0.1", "The host address for grpc to listen, default: 127.0.0.1")
-		argGrpcPort        = pflag.Uint32("grpc-port", DefaultBGPGrpcPort, "The port for grpc to listen, default:50051")
-		argClusterAs       = pflag.Uint32("cluster-as", DefaultBGPClusterAs, "The as number of container network, default 65000")
-		argRouterId        = pflag.String("router-id", "", "The address for the speaker to use as router id, default the node ip")
-		argNeighborAddress = pflag.String("neighbor-address", "", "The router address the speaker connects to.")
-		argNeighborAs      = pflag.Uint32("neighbor-as", DefaultBGPNeighborAs, "The router as number, default 65001")
-		argAuthPassword    = pflag.String("auth-password", "", "bgp peer auth password")
-		argHoldTime        = pflag.Duration("holdtime", DefaultBGPHoldtime, "ovn-speaker goes down abnormally, the local saving time of BGP route will be affected.Holdtime must be in the range 3s to 65536s. (default 90s)")
-		argPprofPort       = pflag.Uint32("pprof-port", DefaultPprofPort, "The port to get profiling data, default: 10667")
-		argKubeConfigFile  = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
+		argAnnounceClusterIP = pflag.BoolP("announce-cluster-ip", "", false, "The Cluster IP of the service to  announce to the BGP peers.")
+		argGrpcHost          = pflag.String("grpc-host", "127.0.0.1", "The host address for grpc to listen, default: 127.0.0.1")
+		argGrpcPort          = pflag.Uint32("grpc-port", DefaultBGPGrpcPort, "The port for grpc to listen, default:50051")
+		argClusterAs         = pflag.Uint32("cluster-as", DefaultBGPClusterAs, "The as number of container network, default 65000")
+		argRouterId          = pflag.String("router-id", "", "The address for the speaker to use as router id, default the node ip")
+		argNeighborAddress   = pflag.String("neighbor-address", "", "The router address the speaker connects to.")
+		argNeighborAs        = pflag.Uint32("neighbor-as", DefaultBGPNeighborAs, "The router as number, default 65001")
+		argAuthPassword      = pflag.String("auth-password", "", "bgp peer auth password")
+		argHoldTime          = pflag.Duration("holdtime", DefaultBGPHoldtime, "ovn-speaker goes down abnormally, the local saving time of BGP route will be affected.Holdtime must be in the range 3s to 65536s. (default 90s)")
+		argPprofPort         = pflag.Uint32("pprof-port", DefaultPprofPort, "The port to get profiling data, default: 10667")
+		argKubeConfigFile    = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -83,16 +85,17 @@ func ParseFlags() (*Configuration, error) {
 	}
 
 	config := &Configuration{
-		GrpcHost:        *argGrpcHost,
-		GrpcPort:        *argGrpcPort,
-		ClusterAs:       *argClusterAs,
-		RouterId:        *argRouterId,
-		NeighborAddress: *argNeighborAddress,
-		NeighborAs:      *argNeighborAs,
-		AuthPassword:    *argAuthPassword,
-		HoldTime:        ht,
-		PprofPort:       *argPprofPort,
-		KubeConfigFile:  *argKubeConfigFile,
+		AnnounceClusterIP: *argAnnounceClusterIP,
+		GrpcHost:          *argGrpcHost,
+		GrpcPort:          *argGrpcPort,
+		ClusterAs:         *argClusterAs,
+		RouterId:          *argRouterId,
+		NeighborAddress:   *argNeighborAddress,
+		NeighborAs:        *argNeighborAs,
+		AuthPassword:      *argAuthPassword,
+		HoldTime:          ht,
+		PprofPort:         *argPprofPort,
+		KubeConfigFile:    *argKubeConfigFile,
 	}
 
 	if config.RouterId == "" {

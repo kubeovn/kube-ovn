@@ -25,10 +25,12 @@ const controllerAgentName = "ovn-speaker"
 type Controller struct {
 	config *Configuration
 
-	podsLister    listerv1.PodLister
-	podsSynced    cache.InformerSynced
-	subnetsLister kubeovnlister.SubnetLister
-	subnetSynced  cache.InformerSynced
+	podsLister     listerv1.PodLister
+	podsSynced     cache.InformerSynced
+	subnetsLister  kubeovnlister.SubnetLister
+	subnetSynced   cache.InformerSynced
+	servicesLister listerv1.ServiceLister
+	servicesSynced cache.InformerSynced
 
 	informerFactory        kubeinformers.SharedInformerFactory
 	kubeovnInformerFactory kubeovninformer.SharedInformerFactory
@@ -54,13 +56,17 @@ func NewController(config *Configuration) *Controller {
 
 	podInformer := informerFactory.Core().V1().Pods()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
+	serviceInformer := informerFactory.Core().V1().Services()
+
 	controller := &Controller{
 		config: config,
 
-		podsLister:    podInformer.Lister(),
-		podsSynced:    podInformer.Informer().HasSynced,
-		subnetsLister: subnetInformer.Lister(),
-		subnetSynced:  subnetInformer.Informer().HasSynced,
+		podsLister:     podInformer.Lister(),
+		podsSynced:     podInformer.Informer().HasSynced,
+		subnetsLister:  subnetInformer.Lister(),
+		subnetSynced:   subnetInformer.Informer().HasSynced,
+		servicesLister: serviceInformer.Lister(),
+		servicesSynced: serviceInformer.Informer().HasSynced,
 
 		informerFactory:        informerFactory,
 		kubeovnInformerFactory: kubeovnInformerFactory,
