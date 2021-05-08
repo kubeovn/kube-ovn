@@ -216,6 +216,19 @@ func (config *Configuration) initBgpServer() error {
 			DeferralTime:    uint32(config.GracefulRestartDeferralTime.Seconds()),
 			LocalRestarting: true,
 		}
+		peer.AfiSafis = []*api.AfiSafi{
+			{
+				Config: &api.AfiSafiConfig{
+					Family:  &api.Family{Afi: api.Family_AFI_IP, Safi: api.Family_SAFI_UNICAST},
+					Enabled: true,
+				},
+				MpGracefulRestart: &api.MpGracefulRestart{
+					Config: &api.MpGracefulRestartConfig{
+						Enabled: true,
+					},
+				},
+			},
+		}
 	}
 
 	if err := s.AddPeer(context.Background(), &api.AddPeerRequest{
