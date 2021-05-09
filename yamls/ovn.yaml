@@ -268,6 +268,8 @@ spec:
               name: host-log-ovs
             - mountPath: /var/log/ovn
               name: host-log-ovn
+            - mountPath: /etc/localtime
+              name: localtime
             - mountPath: /var/run/tls
               name: kube-ovn-tls
           readinessProbe:
@@ -311,6 +313,9 @@ spec:
         - name: host-log-ovn
           hostPath:
             path: /var/log/ovn
+        - name: localtime
+          hostPath:
+            path: /etc/localtime
         - name: kube-ovn-tls
           secret:
             optional: true
@@ -383,6 +388,8 @@ spec:
               name: host-log-ovs
             - mountPath: /var/log/ovn
               name: host-log-ovn
+            - mountPath: /etc/localtime
+              name: localtime
             - mountPath: /var/run/tls
               name: kube-ovn-tls
           readinessProbe:
@@ -435,6 +442,9 @@ spec:
         - name: host-log-ovn
           hostPath:
             path: /var/log/ovn
+        - name: localtime
+          hostPath:
+            path: /etc/localtime
         - name: kube-ovn-tls
           secret:
             optional: true
