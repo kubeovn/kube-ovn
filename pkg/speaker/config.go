@@ -20,24 +20,29 @@ import (
 )
 
 const (
-	DefaultBGPGrpcPort   = 50051
-	DefaultBGPClusterAs  = 65000
-	DefaultBGPNeighborAs = 65001
-	DefaultBGPHoldtime   = 90 * time.Second
-	DefaultPprofPort     = 10667
+	DefaultBGPGrpcPort                 = 50051
+	DefaultBGPClusterAs                = 65000
+	DefaultBGPNeighborAs               = 65001
+	DefaultBGPHoldtime                 = 90 * time.Second
+	DefaultPprofPort                   = 10667
+	DefaultGracefulRestartDeferralTime = 360 * time.Second
+	DefaultGracefulRestartTime         = 90 * time.Second
 )
 
 type Configuration struct {
-	GrpcHost          string
-	GrpcPort          uint32
-	ClusterAs         uint32
-	RouterId          string
-	NeighborAddress   string
-	NeighborAs        uint32
-	AuthPassword      string
-	HoldTime          float64
-	BgpServer         *gobgp.BgpServer
-	AnnounceClusterIP bool
+	GrpcHost                    string
+	GrpcPort                    uint32
+	ClusterAs                   uint32
+	RouterId                    string
+	NeighborAddress             string
+	NeighborAs                  uint32
+	AuthPassword                string
+	HoldTime                    float64
+	BgpServer                   *gobgp.BgpServer
+	AnnounceClusterIP           bool
+	GracefulRestart             bool
+	GracefulRestartDeferralTime time.Duration
+	GracefulRestartTime         time.Duration
 
 	KubeConfigFile string
 	KubeClient     kubernetes.Interface
@@ -48,17 +53,20 @@ type Configuration struct {
 
 func ParseFlags() (*Configuration, error) {
 	var (
-		argAnnounceClusterIP = pflag.BoolP("announce-cluster-ip", "", false, "The Cluster IP of the service to  announce to the BGP peers.")
-		argGrpcHost          = pflag.String("grpc-host", "127.0.0.1", "The host address for grpc to listen, default: 127.0.0.1")
-		argGrpcPort          = pflag.Uint32("grpc-port", DefaultBGPGrpcPort, "The port for grpc to listen, default:50051")
-		argClusterAs         = pflag.Uint32("cluster-as", DefaultBGPClusterAs, "The as number of container network, default 65000")
-		argRouterId          = pflag.String("router-id", "", "The address for the speaker to use as router id, default the node ip")
-		argNeighborAddress   = pflag.String("neighbor-address", "", "The router address the speaker connects to.")
-		argNeighborAs        = pflag.Uint32("neighbor-as", DefaultBGPNeighborAs, "The router as number, default 65001")
-		argAuthPassword      = pflag.String("auth-password", "", "bgp peer auth password")
-		argHoldTime          = pflag.Duration("holdtime", DefaultBGPHoldtime, "ovn-speaker goes down abnormally, the local saving time of BGP route will be affected.Holdtime must be in the range 3s to 65536s. (default 90s)")
-		argPprofPort         = pflag.Uint32("pprof-port", DefaultPprofPort, "The port to get profiling data, default: 10667")
-		argKubeConfigFile    = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
+		argDefaultGracefulTime         = pflag.Duration("graceful-restart-time", DefaultGracefulRestartTime, "BGP Graceful restart time according to RFC4724 3, maximum 4095s.")
+		argGracefulRestartDeferralTime = pflag.Duration("graceful-restart-deferral-time", DefaultGracefulRestartDeferralTime, "BGP Graceful restart deferral time according to RFC4724 4.1, maximum 18h.")
+		argGracefulRestart             = pflag.BoolP("graceful-restart", "", false, "Enables the BGP Graceful Restart  so that routes are preserved on unexpected restarts")
+		argAnnounceClusterIP           = pflag.BoolP("announce-cluster-ip", "", false, "The Cluster IP of the service to  announce to the BGP peers.")
+		argGrpcHost                    = pflag.String("grpc-host", "127.0.0.1", "The host address for grpc to listen, default: 127.0.0.1")
+		argGrpcPort                    = pflag.Uint32("grpc-port", DefaultBGPGrpcPort, "The port for grpc to listen, default:50051")
+		argClusterAs                   = pflag.Uint32("cluster-as", DefaultBGPClusterAs, "The as number of container network, default 65000")
+		argRouterId                    = pflag.String("router-id", "", "The address for the speaker to use as router id, default the node ip")
+		argNeighborAddress             = pflag.String("neighbor-address", "", "The router address the speaker connects to.")
+		argNeighborAs                  = pflag.Uint32("neighbor-as", DefaultBGPNeighborAs, "The router as number, default 65001")
+		argAuthPassword                = pflag.String("auth-password", "", "bgp peer auth password")
+		argHoldTime                    = pflag.Duration("holdtime", DefaultBGPHoldtime, "ovn-speaker goes down abnormally, the local saving time of BGP route will be affected.Holdtime must be in the range 3s to 65536s. (default 90s)")
+		argPprofPort                   = pflag.Uint32("pprof-port", DefaultPprofPort, "The port to get profiling data, default: 10667")
+		argKubeConfigFile              = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -85,17 +93,20 @@ func ParseFlags() (*Configuration, error) {
 	}
 
 	config := &Configuration{
-		AnnounceClusterIP: *argAnnounceClusterIP,
-		GrpcHost:          *argGrpcHost,
-		GrpcPort:          *argGrpcPort,
-		ClusterAs:         *argClusterAs,
-		RouterId:          *argRouterId,
-		NeighborAddress:   *argNeighborAddress,
-		NeighborAs:        *argNeighborAs,
-		AuthPassword:      *argAuthPassword,
-		HoldTime:          ht,
-		PprofPort:         *argPprofPort,
-		KubeConfigFile:    *argKubeConfigFile,
+		AnnounceClusterIP:           *argAnnounceClusterIP,
+		GrpcHost:                    *argGrpcHost,
+		GrpcPort:                    *argGrpcPort,
+		ClusterAs:                   *argClusterAs,
+		RouterId:                    *argRouterId,
+		NeighborAddress:             *argNeighborAddress,
+		NeighborAs:                  *argNeighborAs,
+		AuthPassword:                *argAuthPassword,
+		HoldTime:                    ht,
+		PprofPort:                   *argPprofPort,
+		KubeConfigFile:              *argKubeConfigFile,
+		GracefulRestart:             *argGracefulRestart,
+		GracefulRestartDeferralTime: *argGracefulRestartDeferralTime,
+		GracefulRestartTime:         *argDefaultGracefulTime,
 	}
 
 	if config.RouterId == "" {
@@ -154,6 +165,17 @@ func (config *Configuration) initKubeClient() error {
 	return nil
 }
 
+func (config *Configuration) checkGracefulRestartOptions() error {
+	if config.GracefulRestartTime > time.Second*4095 || config.GracefulRestartTime <= 0 {
+		return errors.New("GracefuleRestartTime should be less than 4095 seconds or more than 0")
+	}
+	if config.GracefulRestartDeferralTime > time.Hour*18 || config.GracefulRestartDeferralTime <= 0 {
+		return errors.New("GracefuleRestartDeferralTime should be less than 18 hours or more than 0")
+	}
+
+	return nil
+}
+
 func (config *Configuration) initBgpServer() error {
 	maxSize := 256 << 20
 	grpcOpts := []grpc.ServerOption{grpc.MaxRecvMsgSize(maxSize), grpc.MaxSendMsgSize(maxSize)}
@@ -182,6 +204,31 @@ func (config *Configuration) initBgpServer() error {
 	}
 	if config.AuthPassword != "" {
 		peer.Conf.AuthPassword = config.AuthPassword
+	}
+	if config.GracefulRestart {
+
+		if err := config.checkGracefulRestartOptions(); err != nil {
+			return err
+		}
+		peer.GracefulRestart = &api.GracefulRestart{
+			Enabled:         true,
+			RestartTime:     uint32(config.GracefulRestartTime.Seconds()),
+			DeferralTime:    uint32(config.GracefulRestartDeferralTime.Seconds()),
+			LocalRestarting: true,
+		}
+		peer.AfiSafis = []*api.AfiSafi{
+			{
+				Config: &api.AfiSafiConfig{
+					Family:  &api.Family{Afi: api.Family_AFI_IP, Safi: api.Family_SAFI_UNICAST},
+					Enabled: true,
+				},
+				MpGracefulRestart: &api.MpGracefulRestart{
+					Config: &api.MpGracefulRestartConfig{
+						Enabled: true,
+					},
+				},
+			},
+		}
 	}
 
 	if err := s.AddPeer(context.Background(), &api.AddPeerRequest{
