@@ -572,6 +572,9 @@ func (c *Controller) handleUpdatePod(key string) error {
 				return fmt.Errorf("no available gateway nic address")
 			}
 			nextHop = strings.Split(nextHop, "/")[0]
+			if addr := cm.Data["external-gw-addr"]; addr != "" {
+				nextHop = addr
+			}
 
 			if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nextHop, c.config.ClusterRouter, util.NormalRouteType); err != nil {
 				klog.Errorf("failed to add static route, %v", err)
