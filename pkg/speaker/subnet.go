@@ -9,6 +9,7 @@ import (
 
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/any"
+	anypb "github.com/golang/protobuf/ptypes/any"
 	bgpapiutil "github.com/kubeovn/kube-ovn/pkg/speaker/bgpapiutil"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	bgpapi "github.com/osrg/gobgp/api"
@@ -155,21 +156,10 @@ func parseRoute(route string) (string, uint32, error) {
 }
 
 func (c *Controller) addRoute(route string) error {
-	prefix, prefixLen, err := parseRoute(route)
+	nlri, attrs, err := c.getNlriAndAttrs(route)
 	if err != nil {
 		return err
 	}
-	nlri, _ := ptypes.MarshalAny(&bgpapi.IPAddressPrefix{
-		Prefix:    prefix,
-		PrefixLen: prefixLen,
-	})
-	a1, _ := ptypes.MarshalAny(&bgpapi.OriginAttribute{
-		Origin: 0,
-	})
-	a2, _ := ptypes.MarshalAny(&bgpapi.NextHopAttribute{
-		NextHop: c.config.RouterId,
-	})
-	attrs := []*any.Any{a1, a2}
 	_, err = c.config.BgpServer.AddPath(context.Background(), &bgpapi.AddPathRequest{
 		Path: &bgpapi.Path{
 			Family: &bgpapi.Family{Afi: bgpapi.Family_AFI_IP, Safi: bgpapi.Family_SAFI_UNICAST},
@@ -184,10 +174,10 @@ func (c *Controller) addRoute(route string) error {
 	return nil
 }
 
-func (c *Controller) delRoute(route string) error {
+func (c *Controller) getNlriAndAttrs(route string) (*anypb.Any, []*any.Any, error) {
 	prefix, prefixLen, err := parseRoute(route)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	nlri, _ := ptypes.MarshalAny(&bgpapi.IPAddressPrefix{
 		Prefix:    prefix,
@@ -200,6 +190,14 @@ func (c *Controller) delRoute(route string) error {
 		NextHop: c.config.RouterId,
 	})
 	attrs := []*any.Any{a1, a2}
+	return nlri, attrs, err
+}
+
+func (c *Controller) delRoute(route string) error {
+	nlri, attrs, err := c.getNlriAndAttrs(route)
+	if err != nil {
+		return err
+	}
 	err = c.config.BgpServer.DeletePath(context.Background(), &bgpapi.DeletePathRequest{
 		Path: &bgpapi.Path{
 			Family: &bgpapi.Family{Afi: bgpapi.Family_AFI_IP, Safi: bgpapi.Family_SAFI_UNICAST},
