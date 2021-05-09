@@ -388,7 +388,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(ovs.CleanLostInterface, time.Minute, stopCh)
 	go wait.Until(recompute, 10*time.Minute, stopCh)
 
-	klog.Info("start watching namespace changes")
 	if ok := cache.WaitForCacheSync(stopCh, c.subnetsSynced, c.podsSynced, c.nodesSynced); !ok {
 		klog.Fatalf("failed to wait for caches to sync")
 		return
