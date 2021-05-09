@@ -8,7 +8,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"net/http"
 	_ "net/http/pprof" // #nosec
-	"os"
 	"strings"
 	"time"
 
@@ -105,18 +104,13 @@ func Retry(attempts int, sleep int, f func(configuration *daemon.Configuration) 
 }
 
 func initChassisAnno(cfg *daemon.Configuration) error {
-
 	chassisID, err := ioutil.ReadFile(util.ChassisLoc)
 	if err != nil {
 		klog.Errorf("read chassis file failed, %v", err)
 		return err
 	}
 
-	hostname := os.Getenv(util.HostnameEnv)
-	if hostname == "" {
-		klog.Errorf("env %s does not exist", util.HostnameEnv)
-		return err
-	}
+	hostname := cfg.NodeName
 	node, err := cfg.KubeClient.CoreV1().Nodes().Get(context.Background(), hostname, v1.GetOptions{})
 	if err != nil {
 		klog.Errorf("failed to get node %s %v", hostname, err)

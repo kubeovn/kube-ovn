@@ -85,7 +85,7 @@ func ParseFlags() (*Configuration, error) {
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
 
-	nodeName := os.Getenv("KUBE_NODE_NAME")
+	nodeName := os.Getenv(util.HostnameEnv)
 	if nodeName == "" {
 		klog.Errorf("env KUBE_NODE_NAME not exists")
 		return nil, fmt.Errorf("env KUBE_NODE_NAME not exists")
