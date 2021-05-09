@@ -30,13 +30,12 @@ func CmdMain() {
 	klog.Infof(versions.String())
 	daemon.InitMetrics()
 	config, err := daemon.ParseFlags()
+	if err != nil {
+		klog.Fatalf("parse config failed %v", err)
+	}
 
 	if err := Retry(util.ChasRetryTime, util.ChasRetryIntev, initChassisAnno, config); err != nil {
 		klog.Fatalf("failed to annotate chassis id, %v", err)
-	}
-
-	if err != nil {
-		klog.Fatalf("parse config failed %v", err)
 	}
 
 	if err = daemon.InitMirror(config); err != nil {
