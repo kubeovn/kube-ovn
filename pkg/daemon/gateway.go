@@ -251,7 +251,7 @@ func (c *Controller) setIptables() error {
 }
 
 func (c *Controller) setGatewayBandwidth() error {
-	node, err := c.config.KubeClient.CoreV1().Nodes().Get(context.Background(), c.config.NodeName, metav1.GetOptions{})
+	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
 		klog.Errorf("failed to get node, %v", err)
 		return err
@@ -262,7 +262,7 @@ func (c *Controller) setGatewayBandwidth() error {
 }
 
 func (c *Controller) setICGateway() error {
-	node, err := c.config.KubeClient.CoreV1().Nodes().Get(context.Background(), c.config.NodeName, metav1.GetOptions{})
+	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
 		klog.Errorf("failed to get node, %v", err)
 		return err
@@ -291,7 +291,7 @@ func (c *Controller) setICGateway() error {
 }
 
 func (c *Controller) setExGateway() error {
-	node, err := c.config.KubeClient.CoreV1().Nodes().Get(context.Background(), c.config.NodeName, metav1.GetOptions{})
+	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
 		klog.Errorf("failed to get node, %v", err)
 		return err
