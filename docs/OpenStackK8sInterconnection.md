@@ -17,7 +17,7 @@ This document is based on Openstack *Victoria* and Kube-OVN *1.7*
 #### 1. Run Interconnection Controller in a Kubernetes node which can be accessed by an Openstack gateway node.
 
 ```shell
-$ docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn kubeovn/kube-ovn:v1.6.0 bash start-ic-db.sh
+$ docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn kubeovn/kube-ovn:v1.7.0 bash start-ic-db.sh
 ```
 
 #### 2. Create `ovn-ic-config` for kubernetes cluster in `kube-system` namespace.
@@ -34,7 +34,7 @@ data:
   ic-db-host: "192.168.65.3"    # The Interconnection Controller host IP address
   ic-nb-port: "6645"            # The ic-nb port, default 6645
   ic-sb-port: "6646"            # The ic-sb port, default 6646
-  gw-nodes: "az1-gw"            # The node name which acts as the interconnection gateway
+  gw-nodes: "az1-gw"            # The node name which acts as the interconnection gateway, get from 'kubectl get  node'
   auto-route: "true"            # Auto announces routes to all clusters. If set false, you can select announced routes later manually
 ```
 
@@ -60,7 +60,7 @@ $ ovn-nbctl set NB_Global . name=<availability zone name>
 
 ​	The name should be unique across all OVN deployments, e.g. ovn-opstk0, ovn-k8s0, etc.
 
-##### 	Start the `ovn-ic` daemon.
+##### 	Start the `ovn-ic` daemon on gateway nodes.
 
 ```shell
 $ /usr/share/ovn/scripts/ovn-ctl --ovn-ic-nb-db=tcp:<ic-db-host>:6645 --ovn-ic-sb-db=tcp:<ic-db-host>:6646 --ovn-northd-nb-db=unix:/run/ovn/ovnnb_db.sock --ovn-northd-sb-db=unix:/run/ovn/ovnsb_db.sock start_ic
@@ -68,21 +68,23 @@ $ /usr/share/ovn/scripts/ovn-ctl --ovn-ic-nb-db=tcp:<ic-db-host>:6645 --ovn-ic-s
 
 ​	`<ic-db-host>` is configured in  `ovn-ic-config`  as `data:ic-db-host`.
 
-##### 	Configure gateways:
+##### 	Configure gateways on gateway nodes:
 
 ```shell
 $ ovs-vsctl set open_vswitch . external_ids:ovn-is-interconn=true
 ```
 
-##### 	Connect router0 to transit logical switch:
+##### 	Connect router0 to transit logical switch on central nodes:
 
 ​	A logical switch `ts` is already created in step 1, and `router0` is already created in step 3.
 
 ​	Thus first create a logical router port: 
 
 ```shell
-$ ovn-nbctl lrp-add router0 lrp-router0-ts 00:02:ef:11:39:4f 169.254.100.73/24
+$ ovn-nbctl lrp-add <router0> lrp-router0-ts 00:02:ef:11:39:4f 169.254.100.73/24
 ```
+
+​    <*router0*> is router-id obtained by `ovn-nbctl show`.
 
 ​	(The mac and IP are examples.)
 
@@ -92,15 +94,15 @@ $ ovn-nbctl lrp-add router0 lrp-router0-ts 00:02:ef:11:39:4f 169.254.100.73/24
 $ ovn-nbctl lsp-add ts lsp-ts-router0 -- lsp-set-addresses lsp-ts-router0 router -- lsp-set-type lsp-ts-router0 router -- lsp-set-options lsp-ts-router0  router-port=lrp-router0-ts
 ```
 
-#####  	Assign gateway(s) for the logical router port.
+#####  	Assign gateway(s) for the logical router port on central nodes.
 
 ```shell
-$ ovn-nbctl lrp-set-gateway-chassis lrp-lr1-ts1 <gateway name> [priority]
+$ ovn-nbctl lrp-set-gateway-chassis lrp-router0-ts <gateway name> [priority]
 ```
 
-​	`<gateway name>` should be the chassis id of gateway node. Chassis id could be find with `ovn-sbctl show`
+`<gateway name>` should be the chassis id of gateway node. Chassis id could be find with `ovn-sbctl show`
 
-##### 	Enabling auto route advertise.
+##### 	Enabling auto route advertise on central nodes.
 
 ```shell
 $ ovn-nbctl set NB_Global . options:ic-route-adv=true options:ic-route-learn=true
