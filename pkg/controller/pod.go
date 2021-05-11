@@ -571,6 +571,10 @@ func (c *Controller) handleUpdatePod(key string) error {
 				klog.Errorf("no available gateway nic address")
 				return fmt.Errorf("no available gateway nic address")
 			}
+			if !strings.Contains(nextHop, "/") {
+				klog.Errorf("gateway nic address's format is invalid")
+				return fmt.Errorf("gateway nic address's format is invalid")
+			}
 			nextHop = strings.Split(nextHop, "/")[0]
 			if addr := cm.Data["external-gw-addr"]; addr != "" {
 				nextHop = addr
