@@ -167,6 +167,9 @@ func AddressCount(network *net.IPNet) float64 {
 }
 
 func GenerateRandomV4IP(cidr string) string {
+	if len(strings.Split(cidr, "/")) != 2 {
+		return ""
+	}
 	ip := strings.Split(cidr, "/")[0]
 	netMask, _ := strconv.Atoi(strings.Split(cidr, "/")[1])
 	hostNum := 32 - netMask
