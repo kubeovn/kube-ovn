@@ -93,17 +93,18 @@ func (c *Controller) AnnouncePodIP() error {
 	}
 	for _, pod := range pods {
 		if isPodAlive(pod) && !pod.Spec.HostNetwork && pod.Annotations[util.BgpAnnotation] == "true" && pod.Status.PodIP != "" {
-			c.bgpIPv4Expected = append(c.bgpIPv4Expected, fmt.Sprintf("%s/32", pod.Status.PodIP))
 			for _, ip := range pod.Status.PodIPs {
-				if util.CheckProtocol(ip.String()) == kubeovnv1.ProtocolIPv4 {
-					c.bgpIPv4Expected = append(c.bgpIPv4Expected, fmt.Sprintf("%s/32", ip.String()))
-				} else {
+				if util.CheckProtocol(ip.IP) == kubeovnv1.ProtocolIPv4 {
+					c.bgpIPv4Expected = append(c.bgpIPv4Expected, fmt.Sprintf("%s/32", ip.IP))
+				}
+				if util.CheckProtocol(ip.IP) == kubeovnv1.ProtocolIPv6 {
 					//ProtocolIPv6
-					c.bgpIPv6Expected = append(c.bgpIPv6Expected, fmt.Sprintf("%s/64", ip.String()))
+					c.bgpIPv6Expected = append(c.bgpIPv6Expected, fmt.Sprintf("%s/64", ip.IP))
 				}
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -233,6 +234,21 @@ func routeDiff(expected, exists []string) (toAdd []string, toDel []string) {
 	return toAdd, toDel
 }
 
+func parseIpv6Route(route string) (string, uint32, error) {
+	var prefixLen uint32 = 64
+	prefix := route
+	if strings.Contains(route, "/") {
+		prefix = strings.Split(route, "/")[0]
+		strLen := strings.Split(route, "/")[1]
+		intLen, err := strconv.Atoi(strLen)
+		if err != nil {
+			return "", 0, err
+		}
+		prefixLen = uint32(intLen)
+	}
+	return prefix, prefixLen, nil
+}
+
 func parseRoute(route string) (string, uint32, error) {
 	var prefixLen uint32 = 32
 	prefix := route
@@ -311,7 +327,7 @@ func (c *Controller) getIPv6NlriAndAttrs(route string) (*anypb.Any, []*any.Any, 
 		Afi:  bgpapi.Family_AFI_IP6,
 		Safi: bgpapi.Family_SAFI_UNICAST,
 	}
-	prefix, prefixLen, err := parseRoute(route)
+	prefix, prefixLen, err := parseIpv6Route(route)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -328,7 +344,7 @@ func (c *Controller) getIPv6NlriAndAttrs(route string) (*anypb.Any, []*any.Any, 
 		Nlris:    []*any.Any{nlri},
 	})
 	attrs := []*any.Any{a1, v6Attrs}
-	return nlri, attrs, v6Family, err
+	return nlri, attrs, v6Family, nil
 }
 
 func (c *Controller) delRoute(route string, afi bgpapi.Family_Afi) error {
