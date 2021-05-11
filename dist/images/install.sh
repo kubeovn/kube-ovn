@@ -414,6 +414,15 @@ spec:
       - name: NAT
         type: boolean
         jsonPath: .spec.natOutgoing
+      - name: ExternalGateway
+        type: string
+        jsonPath: .spec.externalGateway
+      - name: PolicyRoutingPriority
+        type: integer
+        jsonPath: .spec.policyRoutingPriority
+      - name: PolicyRoutingTableID
+        type: integer
+        jsonPath: .spec.policyRoutingTableID
       - name: Default
         type: boolean
         jsonPath: .spec.default
@@ -499,6 +508,22 @@ spec:
                   type: string
                 natOutgoing:
                   type: boolean
+                externalGateway:
+                  type: string
+                policyRoutingPriority:
+                  type: integer
+                  minimum: 1
+                  maximum: 32765
+                policyRoutingTableID:
+                  type: integer
+                  minimum: 1
+                  maximum: 2147483647
+                  not:
+                    enum:
+                      - 252 # compat
+                      - 253 # default
+                      - 254 # main
+                      - 255 # local
                 private:
                   type: boolean
                 vlan:

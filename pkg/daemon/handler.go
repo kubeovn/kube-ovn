@@ -117,8 +117,8 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			return
 		}
 
-		if err = csh.Controller.addIPSetMembers(LocalPodSet, subnet, ip); err != nil {
-			errMsg := fmt.Errorf("add ipset members failed %v", err)
+		if err = csh.Controller.addEgressConfig(subnet, ip); err != nil {
+			errMsg := fmt.Errorf("failed to add egress configuration: %v", err)
 			klog.Error(errMsg)
 			if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
 				klog.Errorf("failed to write response, %v", err)
@@ -222,14 +222,16 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 	klog.Infof("delete port request %v", podRequest)
 	if pod.Annotations != nil && (podRequest.Provider == util.OvnProvider || podRequest.CniType == util.CniTypeName) {
 		subnet := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podRequest.Provider)]
-		ip := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podRequest.Provider)]
-		if err = csh.Controller.removeIPSetMembers(LocalPodSet, subnet, ip); err != nil {
-			errMsg := fmt.Errorf("remove ipset members failed %v", err)
-			klog.Error(errMsg)
-			if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
-				klog.Errorf("failed to write response, %v", err)
+		if subnet != "" {
+			ip := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podRequest.Provider)]
+			if err = csh.Controller.removeEgressConfig(subnet, ip); err != nil {
+				errMsg := fmt.Errorf("failed to remove egress configuration: %v", err)
+				klog.Error(errMsg)
+				if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
+					klog.Errorf("failed to write response, %v", err)
+				}
+				return
 			}
-			return
 		}
 
 		err = csh.deleteNic(podRequest.PodName, podRequest.PodNamespace, podRequest.ContainerID, podRequest.DeviceID, podRequest.IfName)

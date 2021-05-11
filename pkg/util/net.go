@@ -10,8 +10,10 @@ import (
 	"strconv"
 	"strings"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/vishvananda/netlink"
 	"k8s.io/klog"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
 // GenerateMac generates mac address.
@@ -156,6 +158,20 @@ func CheckProtocol(address string) string {
 		return kubeovnv1.ProtocolIPv4
 	}
 	return kubeovnv1.ProtocolIPv6
+}
+
+// ProtocolToFamily converts protocol string to netlink family
+func ProtocolToFamily(protocol string) (int, error) {
+	switch protocol {
+	case kubeovnv1.ProtocolDual:
+		return netlink.FAMILY_ALL, nil
+	case kubeovnv1.ProtocolIPv4:
+		return netlink.FAMILY_V4, nil
+	case kubeovnv1.ProtocolIPv6:
+		return netlink.FAMILY_V6, nil
+	default:
+		return -1, fmt.Errorf("invalid protocol: %s", protocol)
+	}
 }
 
 func AddressCount(network *net.IPNet) float64 {
