@@ -110,6 +110,11 @@ func (c *Controller) removeInterConnection(azName string) error {
 }
 
 func (c *Controller) establishInterConnection(config map[string]string) error {
+	if err := c.startOVNIC(config["ic-db-host"], config["ic-nb-port"], config["ic-sb-port"]); err != nil {
+		klog.Errorf("failed to start ovn-ic, %v", err)
+		return err
+	}
+	
 	tsPort := fmt.Sprintf("ts-%s", config["az-name"])
 	exist, err := c.ovnClient.LogicalSwitchPortExists(tsPort)
 	if err != nil {
@@ -119,11 +124,6 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 	if exist {
 		klog.Infof("ts port %s already exists", tsPort)
 		return nil
-	}
-
-	if err := c.startOVNIC(config["ic-db-host"], config["ic-nb-port"], config["ic-sb-port"]); err != nil {
-		klog.Errorf("failed to start ovn-ic, %v", err)
-		return err
 	}
 
 	if err := c.ovnClient.SetAzName(config["az-name"]); err != nil {
