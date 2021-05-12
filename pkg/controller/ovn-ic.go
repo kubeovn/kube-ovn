@@ -114,7 +114,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 		klog.Errorf("failed to start ovn-ic, %v", err)
 		return err
 	}
-	
+
 	tsPort := fmt.Sprintf("ts-%s", config["az-name"])
 	exist, err := c.ovnClient.LogicalSwitchPortExists(tsPort)
 	if err != nil {

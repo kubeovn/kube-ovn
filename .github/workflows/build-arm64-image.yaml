@@ -64,7 +64,6 @@ jobs:
 
       - name: Build
         run: |
-          go get -u github.com/securego/gosec/cmd/gosec
           make release-arm
       - name: Push
         if: ${{ github.ref == 'refs/heads/master' || contains(github.ref, 'release') }}
