@@ -390,12 +390,11 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, erro
 		return false, nil
 	}
 
-	var usingIps float64
+	usingIps := subnet.Status.V4UsingIPs
 	if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolIPv6 {
 		usingIps = subnet.Status.V6UsingIPs
-	} else {
-		usingIps = subnet.Status.V4UsingIPs
 	}
+
 	if !subnet.DeletionTimestamp.IsZero() && usingIps == 0 {
 		subnet.Finalizers = util.RemoveString(subnet.Finalizers, util.ControllerName)
 		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), subnet, metav1.UpdateOptions{}); err != nil {
@@ -593,17 +592,15 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			if err := c.ovnClient.SetPrivateLogicalSwitch(subnet.Name, protocol, cidrBlock, subnet.Spec.AllowSubnets); err != nil {
 				c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchFailed", err.Error())
 				return err
-			} else {
-				c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchSuccess", "")
 			}
+			c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchSuccess", "")
 		}
 	} else {
 		if err := c.ovnClient.ResetLogicalSwitchAcl(subnet.Name); err != nil {
 			c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclFailed", err.Error())
 			return err
-		} else {
-			c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclSuccess", "")
 		}
+		c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclSuccess", "")
 	}
 
 	c.updateVpcStatusQueue.Add(subnet.Spec.Vpc)
