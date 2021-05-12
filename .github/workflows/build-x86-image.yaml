@@ -65,6 +65,7 @@ jobs:
 
       - name: Build
         run: |
+          go mod tidy
           go get -u github.com/securego/gosec/cmd/gosec
           make release
           make tar
