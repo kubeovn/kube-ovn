@@ -297,8 +297,7 @@ func (c *Controller) handleUpdateService(key string) error {
 	for vip := range vips {
 		if parseVipAddr(vip) == ip && !util.IsStringIn(vip, udpVips) {
 			klog.Infof("remove stall vip %s", vip)
-			err := c.ovnClient.DeleteLoadBalancerVip(vip, udpLb)
-			if err != nil {
+			if err := c.ovnClient.DeleteLoadBalancerVip(vip, udpLb); err != nil {
 				klog.Errorf("failed to delete vip %s from udp lb %v", vip, err)
 				return err
 			}
@@ -311,11 +310,9 @@ func (c *Controller) handleUpdateService(key string) error {
 // The type of vips is map, which format is like [fd00:10:96::11c9]:10665:[fc00:f853:ccd:e793::2]:10665,[fc00:f853:ccd:e793::3]:10665
 // Parse key of map, [fd00:10:96::11c9]:10665 for example
 func parseVipAddr(vipStr string) string {
-	var vip string
+	vip := strings.Split(vipStr, ":")[0]
 	if strings.ContainsAny(vipStr, "[]") {
 		vip = strings.Trim(strings.Split(vipStr, "]")[0], "[]")
-	} else {
-		vip = strings.Split(vipStr, ":")[0]
 	}
 	return vip
 }
