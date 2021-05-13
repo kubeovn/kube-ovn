@@ -28,6 +28,9 @@ do
   fi
 done
 
+iptables -P FORWARD ACCEPT
+iptables-nft -P FORWARD ACCEPT
+
 # wait kube-ovn-controller ready
 kubectl rollout status deployment/kube-ovn-controller -n "$(cat /run/secrets/kubernetes.io/serviceaccount/namespace)"
 sleep 1
