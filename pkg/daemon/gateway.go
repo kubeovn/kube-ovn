@@ -2,21 +2,24 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 
 	"github.com/alauda/felix/ipsets"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/vishvananda/netlink"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const (
@@ -27,9 +30,20 @@ const (
 	IPSetPrefix  = "ovn"
 )
 
+type policyRouteMeta struct {
+	family   int
+	source   string
+	gateway  string
+	tableID  uint32
+	priority uint32
+}
+
 func (c *Controller) runGateway() {
 	if err := c.setIPSet(); err != nil {
 		klog.Errorf("failed to set gw ipsets")
+	}
+	if err := c.setPolicyRouting(); err != nil {
+		klog.Errorf("failed to set gw policy routing")
 	}
 	if err := c.setIptables(); err != nil {
 		klog.Errorf("failed to set gw iptables")
@@ -106,60 +120,261 @@ func (c *Controller) setIPSet() error {
 	return nil
 }
 
-func (c *Controller) addIPSetMembers(setID, subnet, ip string) error {
-	podSubnet, err := c.subnetsLister.Get(subnet)
-	if err != nil {
-		klog.Errorf("get subnet %s failed, %+v", subnet, err)
-		return err
-	}
-
-	if !podSubnet.Spec.NatOutgoing ||
-		podSubnet.Spec.Vpc != util.DefaultVpc ||
-		podSubnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
-		return nil
-	}
-
-	podIPs := strings.Split(ip, ",")
-	if protocol := util.CheckProtocol(ip); protocol == kubeovnv1.ProtocolDual {
-		c.ipset[kubeovnv1.ProtocolIPv4].AddMembers(setID, []string{podIPs[0]})
-		c.ipset[kubeovnv1.ProtocolIPv6].AddMembers(setID, []string{podIPs[1]})
-		c.ipset[kubeovnv1.ProtocolIPv4].ApplyUpdates()
-		c.ipset[kubeovnv1.ProtocolIPv6].ApplyUpdates()
+func (c *Controller) setPolicyRouting() error {
+	protocols := make([]string, 2)
+	if c.protocol == kubeovnv1.ProtocolDual {
+		protocols[0] = kubeovnv1.ProtocolIPv4
+		protocols[1] = kubeovnv1.ProtocolIPv6
 	} else {
-		c.ipset[protocol].AddMembers(setID, []string{podIPs[0]})
-		c.ipset[protocol].ApplyUpdates()
+		protocols[0] = c.protocol
+	}
+
+	for _, protocol := range protocols {
+		if c.ipset[protocol] == nil {
+			continue
+		}
+
+		localPodIPs, err := c.getLocalPodIPsNeedPR(protocol)
+		if err != nil {
+			klog.Errorf("failed to get local pod ips failed: %+v", err)
+			return err
+		}
+		subnetsNeedPR, err := c.getSubnetsNeedPR(protocol)
+		if err != nil {
+			klog.Errorf("failed to get subnets that need policy routing: %+v", err)
+			return err
+		}
+
+		family, err := util.ProtocolToFamily(protocol)
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+
+		for meta, ips := range localPodIPs {
+			if err = c.addPolicyRouting(family, meta.gateway, meta.priority, meta.tableID, ips...); err != nil {
+				klog.Errorf("failed to add policy routing for local pods: %+v", err)
+				return err
+			}
+		}
+		for meta, cidr := range subnetsNeedPR {
+			if err = c.addPolicyRouting(family, meta.gateway, meta.priority, meta.tableID, cidr); err != nil {
+				klog.Errorf("failed to add policy routing for subnet: %+v", err)
+				return err
+			}
+		}
 	}
 
 	return nil
 }
 
-func (c *Controller) removeIPSetMembers(setID, subnet, ip string) error {
-	if subnet == "" || ip == "" {
-		return nil
-	}
+func (c *Controller) addEgressConfig(subnet, ip string) error {
 	podSubnet, err := c.subnetsLister.Get(subnet)
 	if err != nil {
 		klog.Errorf("get subnet %s failed, %+v", subnet, err)
 		return err
 	}
 
-	if !podSubnet.Spec.NatOutgoing ||
-		podSubnet.Spec.Vpc != util.DefaultVpc ||
-		podSubnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
+	if podSubnet.Spec.GatewayType != kubeovnv1.GWDistributedType ||
+		podSubnet.Spec.Vpc != util.DefaultVpc {
 		return nil
 	}
 
 	podIPs := strings.Split(ip, ",")
-	if protocol := util.CheckProtocol(ip); protocol == kubeovnv1.ProtocolDual {
-		c.ipset[kubeovnv1.ProtocolIPv4].RemoveMembers(setID, []string{podIPs[0]})
-		c.ipset[kubeovnv1.ProtocolIPv6].RemoveMembers(setID, []string{podIPs[1]})
+	protocol := util.CheckProtocol(ip)
+	if podSubnet.Spec.NatOutgoing {
+		c.addIPSetMembers(LocalPodSet, protocol, podIPs)
+		return nil
+	}
+	if podSubnet.Spec.ExternalGateway != "" {
+		return c.addPodPolicyRouting(protocol, podSubnet.Spec.ExternalGateway, podSubnet.Spec.PolicyRoutingPriority, podSubnet.Spec.PolicyRoutingTableID, podIPs)
+	}
+
+	return nil
+}
+
+func (c *Controller) removeEgressConfig(subnet, ip string) error {
+	if subnet == "" || ip == "" {
+		return nil
+	}
+
+	podSubnet, err := c.subnetsLister.Get(subnet)
+	if err != nil {
+		klog.Errorf("failed to get subnet %s: %+v", subnet, err)
+		return err
+	}
+
+	if podSubnet.Spec.GatewayType != kubeovnv1.GWDistributedType ||
+		podSubnet.Spec.Vpc != util.DefaultVpc {
+		return nil
+	}
+
+	podIPs := strings.Split(ip, ",")
+	protocol := util.CheckProtocol(ip)
+	if podSubnet.Spec.NatOutgoing {
+		c.removeIPSetMembers(LocalPodSet, protocol, podIPs)
+		return nil
+	}
+	if podSubnet.Spec.ExternalGateway != "" {
+		return c.deletePodPolicyRouting(protocol, podSubnet.Spec.ExternalGateway, podSubnet.Spec.PolicyRoutingPriority, podSubnet.Spec.PolicyRoutingTableID, podIPs)
+	}
+
+	return nil
+}
+
+func (c *Controller) addIPSetMembers(setID, protocol string, ips []string) {
+	if protocol == kubeovnv1.ProtocolDual {
+		c.ipset[kubeovnv1.ProtocolIPv4].AddMembers(setID, []string{ips[0]})
+		c.ipset[kubeovnv1.ProtocolIPv6].AddMembers(setID, []string{ips[1]})
 		c.ipset[kubeovnv1.ProtocolIPv4].ApplyUpdates()
 		c.ipset[kubeovnv1.ProtocolIPv6].ApplyUpdates()
 	} else {
-		c.ipset[protocol].RemoveMembers(setID, []string{podIPs[0]})
+		c.ipset[protocol].AddMembers(setID, []string{ips[0]})
 		c.ipset[protocol].ApplyUpdates()
 	}
+}
 
+func (c *Controller) removeIPSetMembers(setID, protocol string, ips []string) {
+	if protocol == kubeovnv1.ProtocolDual {
+		c.ipset[kubeovnv1.ProtocolIPv4].RemoveMembers(setID, []string{ips[0]})
+		c.ipset[kubeovnv1.ProtocolIPv6].RemoveMembers(setID, []string{ips[1]})
+		c.ipset[kubeovnv1.ProtocolIPv4].ApplyUpdates()
+		c.ipset[kubeovnv1.ProtocolIPv6].ApplyUpdates()
+	} else {
+		c.ipset[protocol].RemoveMembers(setID, []string{ips[0]})
+		c.ipset[protocol].ApplyUpdates()
+	}
+}
+
+func (c *Controller) addPodPolicyRouting(podProtocol, externalGateway string, priority, tableID uint32, ips []string) error {
+	egw := strings.Split(externalGateway, ",")
+	prMetas := make([]policyRouteMeta, 0, 2)
+	if len(egw) == 1 {
+		family, _ := util.ProtocolToFamily(util.CheckProtocol(egw[0]))
+		if family == netlink.FAMILY_V4 || podProtocol != kubeovnv1.ProtocolDual {
+			prMetas = append(prMetas, policyRouteMeta{family: family, source: ips[0], gateway: egw[0]})
+		} else {
+			prMetas = append(prMetas, policyRouteMeta{family: family, source: ips[1], gateway: egw[0]})
+		}
+	} else {
+		prMetas = append(prMetas, policyRouteMeta{family: netlink.FAMILY_V4, source: ips[0], gateway: egw[0]})
+		prMetas = append(prMetas, policyRouteMeta{family: netlink.FAMILY_V6, source: ips[1], gateway: egw[1]})
+	}
+
+	for _, meta := range prMetas {
+		if err := c.addPolicyRouting(meta.family, meta.gateway, priority, tableID, meta.source); err != nil {
+			klog.Errorf("failed to add policy routing for pod: %+v", err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *Controller) deletePodPolicyRouting(podProtocol, externalGateway string, priority, tableID uint32, ips []string) error {
+	egw := strings.Split(externalGateway, ",")
+	prMetas := make([]policyRouteMeta, 0, 2)
+	if len(egw) == 1 {
+		family, _ := util.ProtocolToFamily(util.CheckProtocol(egw[0]))
+		if family == netlink.FAMILY_V4 || podProtocol != kubeovnv1.ProtocolDual {
+			prMetas = append(prMetas, policyRouteMeta{family: family, source: ips[0], gateway: egw[0]})
+		} else {
+			prMetas = append(prMetas, policyRouteMeta{family: family, source: ips[1], gateway: egw[0]})
+		}
+	} else {
+		prMetas = append(prMetas, policyRouteMeta{family: netlink.FAMILY_V4, source: ips[0], gateway: egw[0]})
+		prMetas = append(prMetas, policyRouteMeta{family: netlink.FAMILY_V6, source: ips[1], gateway: egw[1]})
+	}
+
+	for _, meta := range prMetas {
+		if err := c.deletePolicyRouting(meta.family, meta.gateway, priority, tableID, meta.source); err != nil {
+			klog.Errorf("failed to delete policy routing for pod: %+v", err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *Controller) addPolicyRouting(family int, gateway string, priority, tableID uint32, ips ...string) error {
+	route := &netlink.Route{
+		Protocol: family,
+		Gw:       net.ParseIP(gateway),
+		Table:    int(tableID),
+	}
+	if err := netlink.RouteAdd(route); err != nil && !errors.Is(err, syscall.EEXIST) {
+		err = fmt.Errorf("failed to add route in table %d: %+v", tableID, err)
+		klog.Error(err)
+		return err
+	}
+
+	maskBits := 32
+	if family == netlink.FAMILY_V6 {
+		maskBits = 128
+	}
+
+	rule := netlink.NewRule()
+	rule.Family = family
+	rule.Table = int(tableID)
+	rule.Priority = int(priority)
+	mask := net.CIDRMask(maskBits, maskBits)
+
+	for _, ip := range ips {
+		if strings.ContainsRune(ip, '/') {
+			var err error
+			if rule.Src, err = netlink.ParseIPNet(ip); err != nil {
+				klog.Errorf("unexpected CIDR: %s", ip)
+				err = fmt.Errorf("failed to add route in table %d: %+v", tableID, err)
+				klog.Error(err)
+				return err
+			}
+		} else {
+			rule.Src = &net.IPNet{IP: net.ParseIP(ip), Mask: mask}
+		}
+
+		if err := netlink.RuleAdd(rule); err != nil && !errors.Is(err, syscall.EEXIST) {
+			err = fmt.Errorf("failed to add network rule: %+v", err)
+			klog.Error(err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *Controller) deletePolicyRouting(family int, gateway string, priority, tableID uint32, ips ...string) error {
+	maskBits := 32
+	if family == netlink.FAMILY_V6 {
+		maskBits = 128
+	}
+
+	rule := netlink.NewRule()
+	rule.Family = family
+	rule.Table = int(tableID)
+	rule.Priority = int(priority)
+	mask := net.CIDRMask(maskBits, maskBits)
+
+	for _, ip := range ips {
+		if strings.ContainsRune(ip, '/') {
+			var err error
+			if rule.Src, err = netlink.ParseIPNet(ip); err != nil {
+				klog.Errorf("unexpected CIDR: %s", ip)
+				err = fmt.Errorf("failed to delete route in table %d: %+v", tableID, err)
+				klog.Error(err)
+				return err
+			}
+		} else {
+			rule.Src = &net.IPNet{IP: net.ParseIP(ip), Mask: mask}
+		}
+
+		if err := netlink.RuleDel(rule); err != nil && !errors.Is(err, syscall.ENOENT) {
+			err = fmt.Errorf("failed to delete network rule: %+v", err)
+			klog.Error(err)
+			return err
+		}
+	}
+
+	// routes may be used by other Pods so delete rules only
 	return nil
 }
 
@@ -379,6 +594,56 @@ func (c *Controller) getLocalPodIPsNeedNAT(protocol string) ([]string, error) {
 	return localPodIPs, nil
 }
 
+func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta][]string, error) {
+	allPods, err := c.podsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list pods: %+v", err)
+		return nil, err
+	}
+
+	hostname := os.Getenv("KUBE_NODE_NAME")
+	localPodIPs := make(map[policyRouteMeta][]string)
+	for _, pod := range allPods {
+		if pod.Spec.HostNetwork ||
+			pod.DeletionTimestamp != nil ||
+			pod.Status.PodIP == "" ||
+			pod.Annotations[util.LogicalSwitchAnnotation] == "" {
+			continue
+		}
+
+		subnet, err := c.subnetsLister.Get(pod.Annotations[util.LogicalSwitchAnnotation])
+		if err != nil {
+			klog.Errorf("failed to get subnet %s: %+v", pod.Annotations[util.LogicalSwitchAnnotation], err)
+			continue
+		}
+
+		if subnet.Spec.ExternalGateway != "" &&
+			subnet.Spec.Vpc == util.DefaultVpc &&
+			subnet.Spec.GatewayType == kubeovnv1.GWDistributedType &&
+			pod.Spec.NodeName == hostname {
+			meta := policyRouteMeta{
+				priority: subnet.Spec.PolicyRoutingPriority,
+				tableID:  subnet.Spec.PolicyRoutingTableID,
+			}
+
+			egw := strings.Split(subnet.Spec.ExternalGateway, ",")
+			if util.CheckProtocol(egw[0]) == protocol {
+				meta.gateway = egw[0]
+				if util.CheckProtocol(pod.Status.PodIPs[0].IP) == protocol {
+					localPodIPs[meta] = append(localPodIPs[meta], pod.Status.PodIPs[0].IP)
+				} else if len(pod.Status.PodIPs) == 2 {
+					localPodIPs[meta] = append(localPodIPs[meta], pod.Status.PodIPs[1].IP)
+				}
+			} else if len(egw) == 2 && len(pod.Status.PodIPs) == 2 {
+				meta.gateway = egw[1]
+				localPodIPs[meta] = append(localPodIPs[meta], pod.Status.PodIPs[1].IP)
+			}
+		}
+	}
+
+	return localPodIPs, nil
+}
+
 func (c *Controller) getSubnetsNeedNAT(protocol string) ([]string, error) {
 	var subnetsNeedNat []string
 	subnets, err := c.subnetsLister.List(labels.Everything())
@@ -398,6 +663,45 @@ func (c *Controller) getSubnetsNeedNAT(protocol string) ([]string, error) {
 		}
 	}
 	return subnetsNeedNat, nil
+}
+
+func (c *Controller) getSubnetsNeedPR(protocol string) (map[policyRouteMeta]string, error) {
+	subnetsNeedPR := make(map[policyRouteMeta]string)
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets: %v", err)
+		return nil, err
+	}
+
+	for _, subnet := range subnets {
+		if subnet.DeletionTimestamp == nil &&
+			subnet.Spec.Vpc == util.DefaultVpc &&
+			subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType &&
+			util.GatewayContains(subnet.Spec.GatewayNode, c.config.NodeName) &&
+			(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) &&
+			subnet.Spec.ExternalGateway != "" {
+			meta := policyRouteMeta{
+				priority: subnet.Spec.PolicyRoutingPriority,
+				tableID:  subnet.Spec.PolicyRoutingTableID,
+			}
+			egw := strings.Split(subnet.Spec.ExternalGateway, ",")
+			if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual && protocol == kubeovnv1.ProtocolIPv6 {
+				if len(egw) == 2 {
+					meta.gateway = egw[1]
+				} else if util.CheckProtocol(egw[0]) == protocol {
+					meta.gateway = egw[0]
+				}
+			} else {
+				meta.gateway = egw[0]
+			}
+			if meta.gateway != "" {
+				cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
+				subnetsNeedPR[meta] = cidrBlock
+			}
+		}
+	}
+
+	return subnetsNeedPR, nil
 }
 
 func (c *Controller) getSubnetsCIDR(protocol string) ([]string, error) {

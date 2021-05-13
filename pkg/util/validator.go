@@ -88,6 +88,26 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 			return fmt.Errorf("subnet %s cidr %s conflicts with k8s apiserver svc ip %s", subnet.Name, subnet.Spec.CIDRBlock, k8sApiServer)
 		}
 	}
+
+	if egw := subnet.Spec.ExternalGateway; egw != "" {
+		if subnet.Spec.NatOutgoing {
+			return fmt.Errorf("conflict configuration: natOutgoing and externalGateway")
+		}
+		ips := strings.Split(egw, ",")
+		if len(ips) > 2 {
+			return fmt.Errorf("invalid external gateway configuration")
+		}
+		for _, ip := range ips {
+			if net.ParseIP(ip) == nil {
+				return fmt.Errorf("external gateway %s is not a valid address", ip)
+			}
+		}
+		egwProtocol, cidrProtocol := CheckProtocol(egw), CheckProtocol(subnet.Spec.CIDRBlock)
+		if egwProtocol != cidrProtocol && cidrProtocol != kubeovnv1.ProtocolDual {
+			return fmt.Errorf("invalid external gateway configuration")
+		}
+	}
+
 	return nil
 }
 

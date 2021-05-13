@@ -527,8 +527,20 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	for _, sub := range subnetList {
-		if sub.Spec.Vpc == subnet.Spec.Vpc && sub.Name != subnet.Name && util.CIDRConflict(sub.Spec.CIDRBlock, subnet.Spec.CIDRBlock) {
-			err = fmt.Errorf("subnet %s cidr %s conflict with subnet %s cidr %s", subnet.Name, subnet.Spec.CIDRBlock, sub.Name, sub.Spec.CIDRBlock)
+		if sub.Spec.Vpc != subnet.Spec.Vpc || sub.Name == subnet.Name {
+			continue
+		}
+
+		if util.CIDRConflict(sub.Spec.CIDRBlock, subnet.Spec.CIDRBlock) {
+			err = fmt.Errorf("subnet %s cidr %s is conflict with subnet %s cidr %s", subnet.Name, subnet.Spec.CIDRBlock, sub.Name, sub.Spec.CIDRBlock)
+			klog.Error(err)
+			c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error())
+			return err
+		}
+
+		if subnet.Spec.ExternalGateway != "" && sub.Spec.ExternalGateway != "" &&
+			subnet.Spec.PolicyRoutingTableID == sub.Spec.PolicyRoutingTableID {
+			err = fmt.Errorf("subnet %s policy routing table ID %d is conflict with subnet %s policy routing table ID %d", subnet.Name, subnet.Spec.PolicyRoutingTableID, sub.Name, sub.Spec.PolicyRoutingTableID)
 			klog.Error(err)
 			c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error())
 			return err
