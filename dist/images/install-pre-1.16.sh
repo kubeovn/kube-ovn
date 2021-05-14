@@ -232,9 +232,9 @@ spec:
     - name: NAT
       type: boolean
       JSONPath: .spec.natOutgoing
-    - name: ExternalGateway
+    - name: ExternalEgressGateway
       type: string
-      JSONPath: .spec.externalGateway
+      JSONPath: .spec.externalEgressGateway
     - name: PolicyRoutingPriority
       type: integer
       JSONPath: .spec.policyRoutingPriority
@@ -315,7 +315,7 @@ spec:
               type: string
             natOutgoing:
               type: boolean
-            externalGateway:
+            externalEgressGateway:
               type: string
             policyRoutingPriority:
               type: integer

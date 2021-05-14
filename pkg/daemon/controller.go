@@ -413,7 +413,7 @@ func (c *Controller) diffPolicyRouting(oldSubnet, newSubnet *kubeovnv1.Subnet) (
 }
 
 func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule, []netlink.Route, error) {
-	if subnet == nil || subnet.Spec.ExternalGateway == "" || subnet.Spec.Vpc != util.DefaultVpc {
+	if subnet == nil || subnet.Spec.ExternalEgressGateway == "" || subnet.Spec.Vpc != util.DefaultVpc {
 		return nil, nil, nil
 	}
 	if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType && !util.GatewayContains(subnet.Spec.GatewayNode, c.config.NodeName) {
@@ -421,7 +421,7 @@ func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule,
 	}
 
 	protocols := make([]string, 1, 2)
-	if protocol := util.CheckProtocol(subnet.Spec.ExternalGateway); protocol == kubeovnv1.ProtocolDual {
+	if protocol := util.CheckProtocol(subnet.Spec.ExternalEgressGateway); protocol == kubeovnv1.ProtocolDual {
 		protocols[0] = kubeovnv1.ProtocolIPv4
 		protocols = append(protocols, kubeovnv1.ProtocolIPv6)
 	} else {
@@ -429,7 +429,7 @@ func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule,
 	}
 
 	cidr := strings.Split(subnet.Spec.CIDRBlock, ",")
-	egw := strings.Split(subnet.Spec.ExternalGateway, ",")
+	egw := strings.Split(subnet.Spec.ExternalEgressGateway, ",")
 
 	// rules
 	var rules []netlink.Rule
