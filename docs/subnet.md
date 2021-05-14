@@ -63,6 +63,8 @@ For a centralized gateway, outgoing traffic from Pods within the OVN network to 
 
 - `vlan`: if enable vlan network, use this field to specific which vlan the subnet should bind to.
 - `underlayGateway`: if enable vlan network, use this field to use underlay network gateway directly, instead of ovs virtual gateway
+- `externalEgressGateway`: External egress gateway address. When set, egress traffic is redirected to the external gateway through gateway node(s) by policy-based routing. Conflict with `natOutgoing`.
+- `policyRoutingPriority`/`policyRoutingTableID`: Priority & table ID used in policy-based routing. Required when `externalEgressGateway` is set. NOTICE: `policyRoutingTableID` MUST be unique.
 - `disableInterConnection`: if enable cluster-interconnection, use this field to disable auto route.
 
 ## Bind Pod to Subnet
