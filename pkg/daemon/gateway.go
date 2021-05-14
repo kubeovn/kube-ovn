@@ -186,8 +186,8 @@ func (c *Controller) addEgressConfig(subnet, ip string) error {
 		c.addIPSetMembers(LocalPodSet, protocol, podIPs)
 		return nil
 	}
-	if podSubnet.Spec.ExternalGateway != "" {
-		return c.addPodPolicyRouting(protocol, podSubnet.Spec.ExternalGateway, podSubnet.Spec.PolicyRoutingPriority, podSubnet.Spec.PolicyRoutingTableID, podIPs)
+	if podSubnet.Spec.ExternalEgressGateway != "" {
+		return c.addPodPolicyRouting(protocol, podSubnet.Spec.ExternalEgressGateway, podSubnet.Spec.PolicyRoutingPriority, podSubnet.Spec.PolicyRoutingTableID, podIPs)
 	}
 
 	return nil
@@ -215,8 +215,8 @@ func (c *Controller) removeEgressConfig(subnet, ip string) error {
 		c.removeIPSetMembers(LocalPodSet, protocol, podIPs)
 		return nil
 	}
-	if podSubnet.Spec.ExternalGateway != "" {
-		return c.deletePodPolicyRouting(protocol, podSubnet.Spec.ExternalGateway, podSubnet.Spec.PolicyRoutingPriority, podSubnet.Spec.PolicyRoutingTableID, podIPs)
+	if podSubnet.Spec.ExternalEgressGateway != "" {
+		return c.deletePodPolicyRouting(protocol, podSubnet.Spec.ExternalEgressGateway, podSubnet.Spec.PolicyRoutingPriority, podSubnet.Spec.PolicyRoutingTableID, podIPs)
 	}
 
 	return nil
@@ -246,8 +246,8 @@ func (c *Controller) removeIPSetMembers(setID, protocol string, ips []string) {
 	}
 }
 
-func (c *Controller) addPodPolicyRouting(podProtocol, externalGateway string, priority, tableID uint32, ips []string) error {
-	egw := strings.Split(externalGateway, ",")
+func (c *Controller) addPodPolicyRouting(podProtocol, externalEgressGateway string, priority, tableID uint32, ips []string) error {
+	egw := strings.Split(externalEgressGateway, ",")
 	prMetas := make([]policyRouteMeta, 0, 2)
 	if len(egw) == 1 {
 		family, _ := util.ProtocolToFamily(util.CheckProtocol(egw[0]))
@@ -271,8 +271,8 @@ func (c *Controller) addPodPolicyRouting(podProtocol, externalGateway string, pr
 	return nil
 }
 
-func (c *Controller) deletePodPolicyRouting(podProtocol, externalGateway string, priority, tableID uint32, ips []string) error {
-	egw := strings.Split(externalGateway, ",")
+func (c *Controller) deletePodPolicyRouting(podProtocol, externalEgressGateway string, priority, tableID uint32, ips []string) error {
+	egw := strings.Split(externalEgressGateway, ",")
 	prMetas := make([]policyRouteMeta, 0, 2)
 	if len(egw) == 1 {
 		family, _ := util.ProtocolToFamily(util.CheckProtocol(egw[0]))
@@ -617,7 +617,7 @@ func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta]
 			continue
 		}
 
-		if subnet.Spec.ExternalGateway != "" &&
+		if subnet.Spec.ExternalEgressGateway != "" &&
 			subnet.Spec.Vpc == util.DefaultVpc &&
 			subnet.Spec.GatewayType == kubeovnv1.GWDistributedType &&
 			pod.Spec.NodeName == hostname {
@@ -626,7 +626,7 @@ func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta]
 				tableID:  subnet.Spec.PolicyRoutingTableID,
 			}
 
-			egw := strings.Split(subnet.Spec.ExternalGateway, ",")
+			egw := strings.Split(subnet.Spec.ExternalEgressGateway, ",")
 			if util.CheckProtocol(egw[0]) == protocol {
 				meta.gateway = egw[0]
 				if util.CheckProtocol(pod.Status.PodIPs[0].IP) == protocol {
@@ -679,12 +679,12 @@ func (c *Controller) getSubnetsNeedPR(protocol string) (map[policyRouteMeta]stri
 			subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType &&
 			util.GatewayContains(subnet.Spec.GatewayNode, c.config.NodeName) &&
 			(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) &&
-			subnet.Spec.ExternalGateway != "" {
+			subnet.Spec.ExternalEgressGateway != "" {
 			meta := policyRouteMeta{
 				priority: subnet.Spec.PolicyRoutingPriority,
 				tableID:  subnet.Spec.PolicyRoutingTableID,
 			}
-			egw := strings.Split(subnet.Spec.ExternalGateway, ",")
+			egw := strings.Split(subnet.Spec.ExternalEgressGateway, ",")
 			if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual && protocol == kubeovnv1.ProtocolIPv6 {
 				if len(egw) == 2 {
 					meta.gateway = egw[1]

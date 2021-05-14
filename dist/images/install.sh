@@ -414,9 +414,9 @@ spec:
       - name: NAT
         type: boolean
         jsonPath: .spec.natOutgoing
-      - name: ExternalGateway
+      - name: ExternalEgressGateway
         type: string
-        jsonPath: .spec.externalGateway
+        jsonPath: .spec.externalEgressGateway
       - name: PolicyRoutingPriority
         type: integer
         jsonPath: .spec.policyRoutingPriority
@@ -508,7 +508,7 @@ spec:
                   type: string
                 natOutgoing:
                   type: boolean
-                externalGateway:
+                externalEgressGateway:
                   type: string
                 policyRoutingPriority:
                   type: integer

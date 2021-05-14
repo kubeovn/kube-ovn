@@ -538,7 +538,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			return err
 		}
 
-		if subnet.Spec.ExternalGateway != "" && sub.Spec.ExternalGateway != "" &&
+		if subnet.Spec.ExternalEgressGateway != "" && sub.Spec.ExternalEgressGateway != "" &&
 			subnet.Spec.PolicyRoutingTableID == sub.Spec.PolicyRoutingTableID {
 			err = fmt.Errorf("subnet %s policy routing table ID %d is conflict with subnet %s policy routing table ID %d", subnet.Name, subnet.Spec.PolicyRoutingTableID, sub.Name, sub.Spec.PolicyRoutingTableID)
 			klog.Error(err)

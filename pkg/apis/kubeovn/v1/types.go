@@ -88,7 +88,7 @@ type SubnetSpec struct {
 	GatewayNode string `json:"gatewayNode"`
 	NatOutgoing bool   `json:"natOutgoing"`
 
-	ExternalGateway       string `json:"externalGateway,omitempty"`
+	ExternalEgressGateway string `json:"externalEgressGateway,omitempty"`
 	PolicyRoutingPriority uint32 `json:"policyRoutingPriority,omitempty"`
 	PolicyRoutingTableID  uint32 `json:"policyRoutingTableID,omitempty"`
 
