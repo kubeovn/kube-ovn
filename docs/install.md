@@ -63,10 +63,15 @@ For Kubernetes version before 1.17 please use the following command to add the n
 2. Install Kube-OVN related CRDs
 
     `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/release-1.6/yamls/crd.yaml`
-3. Install native OVS and OVN components:
+3. Get ovn.yaml and replace `$addresses` in the file with IP address of the node that will host the OVN DB and the OVN Control Plane:
 
-    `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/release-1.6/yamls/ovn.yaml`
-4. Install the Kube-OVN Controller and CNI plugins:
+    `curl -O https://raw.githubusercontent.com/alauda/kube-ovn/release-1.6/yamls/ovn.yaml`
+
+    `sed -i 's/\$addresses/<Node IP>/g' ovn.yml`
+4. Install native OVS and OVN components:
+
+    `kubectl apply -f ovn.yaml`
+5. Install the Kube-OVN Controller and CNI plugins:
 
     `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/release-1.6/yamls/kube-ovn.yaml`
 
