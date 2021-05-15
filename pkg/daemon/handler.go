@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"k8s.io/apimachinery/pkg/labels"
 	"net/http"
 	"strings"
 	"time"
@@ -33,10 +34,32 @@ func createCniServerHandler(config *Configuration, controller *Controller) *cniS
 	return csh
 }
 
+func (csh cniServerHandler) providerExists(provider string) bool {
+	if provider == "" || strings.HasSuffix(provider, util.OvnProvider) {
+		return true
+	}
+	subnets, _ := csh.Controller.subnetsLister.List(labels.Everything())
+	for _, subnet := range subnets {
+		if subnet.Spec.Provider == provider {
+			return true
+		}
+	}
+	return false
+}
+
 func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Response) {
 	podRequest := request.CniRequest{}
 	if err := req.ReadEntity(&podRequest); err != nil {
 		errMsg := fmt.Errorf("parse add request failed %v", err)
+		klog.Error(errMsg)
+		if err := resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()}); err != nil {
+			klog.Errorf("failed to write response, %v", err)
+		}
+		return
+	}
+
+	if exist := csh.providerExists(podRequest.Provider); !exist {
+		errMsg := fmt.Errorf("provider %s not bind to any subnet", podRequest.Provider)
 		klog.Error(errMsg)
 		if err := resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()}); err != nil {
 			klog.Errorf("failed to write response, %v", err)
@@ -105,7 +128,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		return
 	}
 
-	if strings.Contains(podRequest.Provider, util.OvnProvider) && subnet != "" {
+	if strings.HasSuffix(podRequest.Provider, util.OvnProvider) && subnet != "" {
 		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s", ifName, macAddr, ipAddr, cidr, gw)
 		err := csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, ipAddr, gw, ingress, egress, vlanID, podRequest.DeviceID)
 		if err != nil {
