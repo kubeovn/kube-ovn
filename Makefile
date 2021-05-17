@@ -51,7 +51,7 @@ lint:
 	@gofmt -d ${GOFILES_NOVENDOR}
 	@gofmt -l ${GOFILES_NOVENDOR} | read && echo "Code differs from gofmt's style" 1>&2 && exit 1 || true
 	@GOOS=linux go vet ./...
-	@GOOS=linux gosec -exclude=G204 ./...
+	@GOOS=linux gosec -exclude=G204,G601 ./...
 
 build-bin:
 	docker run --rm -e GOOS=linux -e GOCACHE=/tmp -e GOARCH=${ARCH} -e GOPROXY=https://goproxy.cn \
@@ -143,10 +143,10 @@ uninstall:
 e2e:
 	docker pull kubeovn/pause:3.2
 	kind load docker-image --name kube-ovn kubeovn/pause:3.2
-	ginkgo -progress -reportPassed --slowSpecThreshold=60 test/e2e
+	ginkgo -mod=mod -progress -reportPassed --slowSpecThreshold=60 test/e2e
 
 ut:
-	ginkgo -progress -reportPassed --slowSpecThreshold=60 test/unittest
+	ginkgo -mod=mod -progress -reportPassed --slowSpecThreshold=60 test/unittest
 
 scan:
 	trivy image --light --exit-code=1 --severity=HIGH --ignore-unfixed kubeovn/kube-ovn:${RELEASE_TAG}
