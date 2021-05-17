@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 	"k8s.io/klog"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -164,11 +164,11 @@ func CheckProtocol(address string) string {
 func ProtocolToFamily(protocol string) (int, error) {
 	switch protocol {
 	case kubeovnv1.ProtocolDual:
-		return netlink.FAMILY_ALL, nil
+		return unix.AF_UNSPEC, nil
 	case kubeovnv1.ProtocolIPv4:
-		return netlink.FAMILY_V4, nil
+		return unix.AF_INET, nil
 	case kubeovnv1.ProtocolIPv6:
-		return netlink.FAMILY_V6, nil
+		return unix.AF_INET6, nil
 	default:
 		return -1, fmt.Errorf("invalid protocol: %s", protocol)
 	}
