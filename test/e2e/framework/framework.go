@@ -8,9 +8,8 @@ import (
 	"strings"
 	"time"
 
-	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -20,6 +19,9 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 
 	. "github.com/onsi/ginkgo"
+
+	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 )
 
 type Framework struct {
@@ -98,6 +100,23 @@ func (f *Framework) WaitPodReady(pod, namespace string) error {
 		default:
 			fmt.Printf("%v", p.String())
 			return fmt.Errorf("pod status failed")
+		}
+	}
+}
+
+func (f *Framework) WaitPodDeleted(pod, namespace string) error {
+	for {
+		time.Sleep(1 * time.Second)
+		p, err := f.KubeClientSet.CoreV1().Pods(namespace).Get(context.Background(), pod, metav1.GetOptions{})
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+
+		if status := getPodStatus(*p); status != Terminating {
+			return fmt.Errorf("unexpected pod status: %s", status)
 		}
 	}
 }
