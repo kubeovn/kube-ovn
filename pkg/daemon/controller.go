@@ -569,7 +569,29 @@ func (c *Controller) handlePod(key string) error {
 		return err
 	}
 
-	return ovs.SetInterfaceBandwidth(fmt.Sprintf("%s.%s", pod.Name, pod.Namespace), pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation])
+	// set default nic bandwidth
+	ifaceID := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
+	err = ovs.SetInterfaceBandwidth(pod.Name, pod.Namespace, ifaceID, pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation])
+	if err != nil {
+		return err
+	}
+
+	// set multis-nic bandwidth
+	attachNets, err := util.ParsePodNetworkAnnotation(pod.Annotations[util.AttachmentNetworkAnnotation], pod.Namespace)
+	if err != nil {
+		return err
+	}
+	for _, multiNet := range attachNets {
+		provider := fmt.Sprintf("%s.%s.ovn", multiNet.Name, multiNet.Namespace)
+		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
+			ifaceID = ovs.PodNameToPortName(pod.Name, pod.Namespace, provider)
+			err = ovs.SetInterfaceBandwidth(pod.Name, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)])
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // Run starts controller
