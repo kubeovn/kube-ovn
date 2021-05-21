@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -64,8 +65,11 @@ var _ = Describe("[kubectl-ko]", func() {
 		pods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(context.Background(), metav1.ListOptions{LabelSelector: " app=kube-ovn-pinger"})
 		Expect(err).NotTo(HaveOccurred())
 		pod := pods.Items[0]
-		output, err := exec.Command("kubectl", "ko", "tcpdump", fmt.Sprintf("kube-system/%s", pod.Name), "-c", "1").CombinedOutput()
-		Expect(err).NotTo(HaveOccurred(), string(output))
+		nicType := pod.Annotations[util.PodNicAnnotation]
+		if nicType != util.InternalType {
+			output, err := exec.Command("kubectl", "ko", "tcpdump", fmt.Sprintf("kube-system/%s", pod.Name), "-c", "1").CombinedOutput()
+			Expect(err).NotTo(HaveOccurred(), string(output))
+		}
 	})
 
 	It("trace", func() {

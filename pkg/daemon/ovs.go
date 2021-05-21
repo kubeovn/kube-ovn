@@ -76,10 +76,11 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, deviceID, ifName, nicType string) error {
 	var nicName string
 	hostNicName, containerNicName := generateNicName(containerID, ifName)
-	if nicType == util.VethType {
-		nicName = hostNicName
-	} else {
+
+	if nicType == util.InternalType {
 		nicName = containerNicName
+	} else {
+		nicName = hostNicName
 	}
 
 	// Remove ovs port
@@ -150,7 +151,8 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, macAd
 	}
 
 	return ns.WithNetNSPath(netns.Path(), func(_ ns.NetNS) error {
-		if nicType == util.VethType {
+
+		if nicType != util.InternalType {
 			if err = netlink.LinkSetName(containerLink, ifName); err != nil {
 				return err
 			}
@@ -171,18 +173,18 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, macAd
 			}
 		}
 
-		if nicType == util.VethType {
-			if err = configureNic(ifName, ipAddr, macAddr, mtu); err != nil {
-				return err
-			}
-		} else {
+		if nicType == util.InternalType {
 			if err = configureNic(nicName, ipAddr, macAddr, mtu); err != nil {
 				return err
 			}
-			if err = addStaticEth0Nic(); err != nil {
+			if err = addAdditonalNic(ifName); err != nil {
 				return err
 			}
-			if err = configureAdditonalNic("eth0", ipAddr); err != nil {
+			if err = configureAdditonalNic(ifName, ipAddr); err != nil {
+				return err
+			}
+		} else {
+			if err = configureNic(ifName, ipAddr, macAddr, mtu); err != nil {
 				return err
 			}
 		}
@@ -717,7 +719,7 @@ func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, 
 		return fmt.Errorf("failed to parse mac %s %v", macAddr, err)
 	}
 
-	if err = ovs.SetInterfaceBandwidth(fmt.Sprintf("%s.%s", podName, podNamespace), ingress, egress); err != nil {
+	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, ingress, egress); err != nil {
 		return err
 	}
 
@@ -781,19 +783,19 @@ func configureAdditonalNic(link, ip string) error {
 	return nil
 }
 
-func addStaticEth0Nic() error {
+func addAdditonalNic(ifName string) error {
 	dummy := &netlink.Dummy{
 		LinkAttrs: netlink.LinkAttrs{
-			Name: "eth0",
+			Name: ifName,
 		},
 	}
 
 	if err := netlink.LinkAdd(dummy); err != nil {
 		if err := netlink.LinkDel(dummy); err != nil {
-			klog.Errorf("failed to delete eth0 %v", err)
+			klog.Errorf("failed to delete static iface %v, err %v", ifName, err)
 			return err
 		}
-		return fmt.Errorf("failed to crate static eth0 for %v", err)
+		return fmt.Errorf("failed to crate static iface %v, err %v", ifName, err)
 	}
 	return nil
 }
