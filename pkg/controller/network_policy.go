@@ -664,3 +664,27 @@ func isNamespaceMatchNetworkPolicy(ns *corev1.Namespace, policy *netv1.NetworkPo
 	}
 	return false
 }
+
+func (c *Controller) resyncNodeACL() {
+	np, _ := c.npsLister.List(labels.Everything())
+	networkPolicyExists := len(np) != 0
+
+	subnets, _ := c.subnetsLister.List(labels.Everything())
+	for _, subnet := range subnets {
+		if subnet.Spec.Provider == util.OvnProvider || subnet.Spec.Provider == "" {
+			if subnet.Name == c.config.NodeSwitch {
+				continue
+			}
+
+			if networkPolicyExists {
+				if err := c.ovnClient.SetNodeSwitchAcl(subnet.Name); err != nil {
+					klog.Errorf("failed to set node acl, %v", err)
+				}
+			} else {
+				if err := c.ovnClient.RemoveNodeSwitchAcl(subnet.Name); err != nil {
+					klog.Errorf("failed to set node acl, %v", err)
+				}
+			}
+		}
+	}
+}
