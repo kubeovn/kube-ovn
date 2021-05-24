@@ -6,9 +6,10 @@ import (
 	"net"
 	"time"
 
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // InitNodeGateway init ovn0
@@ -74,7 +75,7 @@ func InitVlan(config *Configuration) error {
 	if !exists {
 		//create br-provider
 		if err = configProviderPort(config.DefaultProviderName); err != nil {
-			errMsg := fmt.Errorf("configure patch port br-provider failed %v", err)
+			errMsg := fmt.Errorf("configure patch port %s failed %v", util.UnderlayBridge, err)
 			klog.Error(errMsg)
 			return errMsg
 		}
@@ -82,13 +83,13 @@ func InitVlan(config *Configuration) error {
 		//add a host nic to br-provider
 		ifName := config.getInterfaceName()
 		if ifName == "" {
-			errMsg := fmt.Errorf("failed get host nic to add ovs br-provider")
+			errMsg := fmt.Errorf("failed get host nic to add ovs %s", util.UnderlayBridge)
 			klog.Error(errMsg)
 			return errMsg
 		}
 
 		if err = configProviderNic(ifName); err != nil {
-			errMsg := fmt.Errorf("add nic %s to port br-provider failed %v", ifName, err)
+			errMsg := fmt.Errorf("add nic %s to port %s failed %v", ifName, util.UnderlayBridge, err)
 			klog.Error(errMsg)
 			return errMsg
 		}
