@@ -70,6 +70,8 @@ const (
 	NodeNic           = "ovn0"
 	NodeAllowPriority = "3000"
 
+	UnderlayBridge = "br-provider"
+
 	IngressExceptDropPriority = "2002"
 	IngressAllowPriority      = "2001"
 	IngressDefaultDrop        = "2000"
