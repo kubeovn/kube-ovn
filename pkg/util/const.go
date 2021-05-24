@@ -42,8 +42,8 @@ const (
 	VlanIdAnnotationTemplate        = "%s.kubernetes.io/vlan_id"
 	VlanRangeAnnotationTemplate     = "%s.kubernetes.io/vlan_range"
 	NetworkTypeTemplate             = "%s.kubernetes.io/network_types"
-	IngressRateAnnotationTemplate   = "%s.ovn.kubernetes.io/ingress_rate"
-	EgressRateAnnotationTemplate    = "%s.ovn.kubernetes.io/egress_rate"
+	IngressRateAnnotationTemplate   = "%s.kubernetes.io/ingress_rate"
+	EgressRateAnnotationTemplate    = "%s.kubernetes.io/egress_rate"
 
 	ExcludeIpsAnnotation = "ovn.kubernetes.io/exclude_ips"
 
