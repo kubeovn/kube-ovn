@@ -227,7 +227,7 @@ func (c Client) CreateLogicalSwitch(ls, lr, protocol, subnet, gateway string, ex
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")))
 	case kubeovnv1.ProtocolDual:
-		// gateway is not offical column, which is used for private
+		// gateway is not an official column, which is used for private
 		cidrBlocks := strings.Split(subnet, ",")
 		_, err = c.ovnNbCommand(MayExist, "ls-add", ls, "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", cidrBlocks[0]), "--",
