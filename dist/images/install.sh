@@ -4,6 +4,7 @@ set -euo pipefail
 IPv6=${IPv6:-false}
 DualStack=${DualStack:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
+ENABLE_VLAN=${ENABLE_VLAN:-false}
 ENABLE_MIRROR=${ENABLE_MIRROR:-false}
 HW_OFFLOAD=${HW_OFFLOAD:-false}
 IFACE=""                               # The nic to support container network can be a nic name or a group of regex separated by comma, if empty will use the nic that the default route use
@@ -48,6 +49,13 @@ VLAN_INTERFACE_NAME=""
 VLAN_NAME="ovn-vlan"
 VLAN_ID="100"
 VLAN_RANGE="1,4095"
+
+if [ "$ENABLE_VLAN" = "true" ]; then
+  NETWORK_TYPE="vlan"
+  if [ "$VLAN_NIC" != "" ]; then
+    VLAN_INTERFACE_NAME="$VLAN_NIC"
+  fi
+fi
 
 # DPDK
 DPDK="false"
