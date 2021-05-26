@@ -21,7 +21,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, ifName, mac, ip, gateway, ingress, egress, vlanID, DeviceID string) error {
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, ifName, mac, ip, gateway, ingress, egress, vlanID, DeviceID, nicType string) error {
 	var err error
 	var hostNicName, containerNicName string
 	if DeviceID == "" {
@@ -67,16 +67,24 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	if err != nil {
 		return fmt.Errorf("failed to open netns %q: %v", netns, err)
 	}
-	if err = configureContainerNic(containerNicName, ifName, ip, gateway, macAddr, podNS, csh.Config.MTU); err != nil {
+	if err = configureContainerNic(containerNicName, ifName, ip, gateway, macAddr, podNS, csh.Config.MTU, nicType); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, deviceID, ifName string) error {
-	hostNicName, _ := generateNicName(containerID, ifName)
+func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, deviceID, ifName, nicType string) error {
+	var nicName string
+	hostNicName, containerNicName := generateNicName(containerID, ifName)
+
+	if nicType == util.InternalType {
+		nicName = containerNicName
+	} else {
+		nicName = hostNicName
+	}
+
 	// Remove ovs port
-	output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", "br-int", hostNicName)
+	output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", "br-int", nicName)
 	if err != nil {
 		return fmt.Errorf("failed to delete ovs port %v, %q", err, output)
 	}
@@ -86,13 +94,13 @@ func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, device
 	}
 
 	if deviceID == "" {
-		hostLink, err := netlink.LinkByName(hostNicName)
+		hostLink, err := netlink.LinkByName(nicName)
 		if err != nil {
 			// If link already not exists, return quietly
 			if _, ok := err.(netlink.LinkNotFoundError); ok {
 				return nil
 			}
-			return fmt.Errorf("find host link %s failed %v", hostNicName, err)
+			return fmt.Errorf("find host link %s failed %v", nicName, err)
 		}
 		if err = netlink.LinkDel(hostLink); err != nil {
 			return fmt.Errorf("delete host link %s failed %v", hostLink, err)
@@ -132,7 +140,7 @@ func configureHostNic(nicName, vlanID string) error {
 	return nil
 }
 
-func configureContainerNic(nicName, ifName string, ipAddr, gateway string, macAddr net.HardwareAddr, netns ns.NetNS, mtu int) error {
+func configureContainerNic(nicName, ifName string, ipAddr, gateway string, macAddr net.HardwareAddr, netns ns.NetNS, mtu int, nicType string) error {
 	containerLink, err := netlink.LinkByName(nicName)
 	if err != nil {
 		return fmt.Errorf("can not find container nic %s %v", nicName, err)
@@ -143,9 +151,13 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, macAd
 	}
 
 	return ns.WithNetNSPath(netns.Path(), func(_ ns.NetNS) error {
-		if err = netlink.LinkSetName(containerLink, ifName); err != nil {
-			return err
+
+		if nicType != util.InternalType {
+			if err = netlink.LinkSetName(containerLink, ifName); err != nil {
+				return err
+			}
 		}
+
 		if util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolDual || util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolIPv6 {
 			// For docker version >=17.x the "none" network will disable ipv6 by default.
 			// We have to enable ipv6 here to add v6 address and gateway.
@@ -161,8 +173,20 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, macAd
 			}
 		}
 
-		if err = configureNic(ifName, ipAddr, macAddr, mtu); err != nil {
-			return err
+		if nicType == util.InternalType {
+			if err = configureNic(nicName, ipAddr, macAddr, mtu); err != nil {
+				return err
+			}
+			if err = addAdditonalNic(ifName); err != nil {
+				return err
+			}
+			if err = configureAdditonalNic(ifName, ipAddr); err != nil {
+				return err
+			}
+		} else {
+			if err = configureNic(ifName, ipAddr, macAddr, mtu); err != nil {
+				return err
+			}
 		}
 
 		if ifName != "eth0" {
@@ -667,5 +691,111 @@ func renameLink(curName, newName string) error {
 		return err
 	}
 
+	return nil
+}
+
+func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac, ip, gateway, ingress, egress, vlanID, DeviceID, nicType string) error {
+	var err error
+
+	_, containerNicName := generateNicName(containerID, ifName)
+	ipStr := util.GetIpWithoutMask(ip)
+	ifaceID := ovs.PodNameToPortName(podName, podNamespace, provider)
+	ovs.CleanDuplicatePort(ifaceID)
+
+	// Add container iface to ovs port as internal port
+	output, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", containerNicName, "--",
+		"set", "interface", containerNicName, "type=internal", "--",
+		"set", "interface", containerNicName, fmt.Sprintf("external_ids:iface-id=%s", ifaceID),
+		fmt.Sprintf("external_ids:pod_name=%s", podName),
+		fmt.Sprintf("external_ids:pod_namespace=%s", podNamespace),
+		fmt.Sprintf("external_ids:ip=%s", ipStr))
+	if err != nil {
+		return fmt.Errorf("add nic to ovs failed %v: %q", err, output)
+	}
+
+	// container nic must use same mac address from pod annotation, otherwise ovn will reject these packets by default
+	macAddr, err := net.ParseMAC(mac)
+	if err != nil {
+		return fmt.Errorf("failed to parse mac %s %v", macAddr, err)
+	}
+
+	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, ingress, egress); err != nil {
+		return err
+	}
+
+	podNS, err := ns.GetNS(netns)
+	if err != nil {
+		return fmt.Errorf("failed to open netns %q: %v", netns, err)
+	}
+	if err = configureContainerNic(containerNicName, ifName, ip, gateway, macAddr, podNS, csh.Config.MTU, nicType); err != nil {
+		return err
+	}
+	return nil
+}
+
+// https://github.com/antrea-io/antrea/issues/1691
+func configureAdditonalNic(link, ip string) error {
+	nodeLink, err := netlink.LinkByName(link)
+	if err != nil {
+		return fmt.Errorf("can not find nic %s %v", link, err)
+	}
+
+	ipDelMap := make(map[string]netlink.Addr)
+	ipAddMap := make(map[string]netlink.Addr)
+	ipAddrs, err := netlink.AddrList(nodeLink, 0x0)
+	if err != nil {
+		return fmt.Errorf("can not get addr %s %v", nodeLink, err)
+	}
+	for _, ipAddr := range ipAddrs {
+		if strings.HasPrefix(ipAddr.IP.String(), "fe80::") {
+			continue
+		}
+		ipDelMap[ipAddr.IP.String()+"/"+ipAddr.Mask.String()] = ipAddr
+	}
+
+	for _, ipStr := range strings.Split(ip, ",") {
+		// Do not reassign same address for link
+		if _, ok := ipDelMap[ipStr]; ok {
+			delete(ipDelMap, ipStr)
+			continue
+		}
+
+		ipAddr, err := netlink.ParseAddr(ipStr)
+		if err != nil {
+			return fmt.Errorf("can not parse %s %v", ipStr, err)
+		}
+		ipAddMap[ipStr] = *ipAddr
+	}
+
+	for _, addr := range ipDelMap {
+		ipDel := addr
+		if err = netlink.AddrDel(nodeLink, &ipDel); err != nil {
+			return fmt.Errorf("delete address %s %v", addr, err)
+		}
+	}
+	for _, addr := range ipAddMap {
+		ipAdd := addr
+		if err = netlink.AddrAdd(nodeLink, &ipAdd); err != nil {
+			return fmt.Errorf("can not add address %v to nic %s, %v", addr, link, err)
+		}
+	}
+
+	return nil
+}
+
+func addAdditonalNic(ifName string) error {
+	dummy := &netlink.Dummy{
+		LinkAttrs: netlink.LinkAttrs{
+			Name: ifName,
+		},
+	}
+
+	if err := netlink.LinkAdd(dummy); err != nil {
+		if err := netlink.LinkDel(dummy); err != nil {
+			klog.Errorf("failed to delete static iface %v, err %v", ifName, err)
+			return err
+		}
+		return fmt.Errorf("failed to crate static iface %v, err %v", ifName, err)
+	}
 	return nil
 }

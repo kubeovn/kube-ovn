@@ -3,10 +3,11 @@ package daemon
 import (
 	"context"
 	"fmt"
-	"k8s.io/apimachinery/pkg/labels"
 	"net/http"
 	"strings"
 	"time"
+
+	"k8s.io/apimachinery/pkg/labels"
 
 	"github.com/emicklei/go-restful"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -68,7 +69,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	}
 
 	klog.Infof("add port request %v", podRequest)
-	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, vlanID, ifName string
+	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, vlanID, ifName, nicType string
 	var pod *v1.Pod
 	var err error
 	for i := 0; i < 15; i++ {
@@ -106,6 +107,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		vlanID = pod.Annotations[fmt.Sprintf(util.VlanIdAnnotationTemplate, podRequest.Provider)]
 		ipAddr = util.GetIpAddrWithMask(ip, cidr)
 		ifName = podRequest.IfName
+		nicType = pod.Annotations[util.PodNicAnnotation]
 		break
 	}
 
@@ -130,7 +132,11 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 
 	if strings.HasSuffix(podRequest.Provider, util.OvnProvider) && subnet != "" {
 		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s", ifName, macAddr, ipAddr, cidr, gw)
-		err := csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, ipAddr, gw, ingress, egress, vlanID, podRequest.DeviceID)
+		if nicType == util.InternalType {
+			err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, ipAddr, gw, ingress, egress, vlanID, podRequest.DeviceID, nicType)
+		} else {
+			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, ipAddr, gw, ingress, egress, vlanID, podRequest.DeviceID, nicType)
+		}
 		if err != nil {
 			errMsg := fmt.Errorf("configure nic failed %v", err)
 			klog.Error(errMsg)
@@ -257,7 +263,8 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 			}
 		}
 
-		err = csh.deleteNic(podRequest.PodName, podRequest.PodNamespace, podRequest.ContainerID, podRequest.DeviceID, podRequest.IfName)
+		nicType := pod.Annotations[util.PodNicAnnotation]
+		err = csh.deleteNic(podRequest.PodName, podRequest.PodNamespace, podRequest.ContainerID, podRequest.DeviceID, podRequest.IfName, nicType)
 		if err != nil {
 			errMsg := fmt.Errorf("del nic failed %v", err)
 			klog.Error(errMsg)
