@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	"k8s.io/klog"
 )
 
@@ -93,6 +94,12 @@ func ClearPodBandwidth(podName, podNamespace string) error {
 	if err != nil {
 		return err
 	}
+	qosListByPod, err := ovsFind("qos", "_uuid", fmt.Sprintf(`external-ids:pod="%s/%s"`, podNamespace, podName))
+	if err != nil {
+		return err
+	}
+	qosList = append(qosList, qosListByPod...)
+	qosList = util.UniqString(qosList)
 	for _, qos := range qosList {
 		if err := ovsDestroy("qos", qos); err != nil {
 			return err
@@ -102,7 +109,7 @@ func ClearPodBandwidth(podName, podNamespace string) error {
 }
 
 // SetInterfaceBandwidth set ingress/egress qos for given pod
-func SetInterfaceBandwidth(iface, ingress, egress string) error {
+func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string) error {
 	ingressMPS, _ := strconv.Atoi(ingress)
 	ingressKPS := ingressMPS * 1000
 	interfaceList, err := ovsFind("interface", "name", fmt.Sprintf("external-ids:iface-id=%s", iface))
@@ -126,7 +133,11 @@ func SetInterfaceBandwidth(iface, ingress, egress string) error {
 		}
 		if egressBPS > 0 {
 			if len(qosList) == 0 {
-				qos, err := ovsCreate("qos", "type=linux-htb", fmt.Sprintf("other-config:max-rate=%d", egressBPS), fmt.Sprintf("external-ids:iface-id=%s", iface))
+				qosCommandValues := []string{"type=linux-htb", fmt.Sprintf("other-config:max-rate=%d", egressBPS), fmt.Sprintf("external-ids:iface-id=%s", iface)}
+				if podNamespace != "" && podName != "" {
+					qosCommandValues = append(qosCommandValues, fmt.Sprintf("external-ids:pod=%s/%s", podNamespace, podName))
+				}
+				qos, err := ovsCreate("qos", qosCommandValues...)
 				if err != nil {
 					return err
 				}

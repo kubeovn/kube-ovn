@@ -1,21 +1,24 @@
 package daemon
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Mellanox/sriovnet"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/utils/sysctl"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	goping "github.com/oilbeater/go-ping"
 	"github.com/vishvananda/netlink"
 	"k8s.io/klog"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, ifName, mac, ip, gateway, ingress, egress, vlanID, DeviceID, nicType string) error {
@@ -56,7 +59,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	if err = configureHostNic(hostNicName, vlanID); err != nil {
 		return err
 	}
-	if err = ovs.SetInterfaceBandwidth(fmt.Sprintf("%s.%s", podName, podNamespace), ingress, egress); err != nil {
+	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, ingress, egress); err != nil {
 		return err
 	}
 
@@ -478,15 +481,15 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int) error {
 }
 
 func configProviderPort(providerInterfaceName string) error {
-	output, err := ovs.Exec(ovs.MayExist, "add-br", "br-provider")
+	output, err := ovs.Exec(ovs.MayExist, "add-br", util.UnderlayBridge)
 	if err != nil {
-		return fmt.Errorf("failed to create bridge br-provider, %v: %q", err, output)
+		return fmt.Errorf("failed to create bridge %s, %v: %q", util.UnderlayBridge, err, output)
 	}
 	output, err = ovs.Exec(ovs.IfExists, "get", "open", ".", "external-ids:ovn-bridge-mappings")
 	if err != nil {
 		return fmt.Errorf("failed to get external-ids, %v", err)
 	}
-	bridgeMappings := fmt.Sprintf("%s:br-provider", providerInterfaceName)
+	bridgeMappings := fmt.Sprintf("%s:%s", providerInterfaceName, util.UnderlayBridge)
 	if output != "" && !util.IsStringIn(bridgeMappings, strings.Split(output, ",")) {
 		bridgeMappings = fmt.Sprintf("%s,%s", output, bridgeMappings)
 	}
@@ -508,7 +511,7 @@ func providerBridgeExists() (bool, error) {
 
 	lines := strings.Split(output, "\n")
 	for _, l := range lines {
-		if l == "br-provider" {
+		if l == util.UnderlayBridge {
 			return true, nil
 		}
 	}
@@ -517,11 +520,82 @@ func providerBridgeExists() (bool, error) {
 }
 
 // Add host nic to br-provider
-// A physical Ethernet device that is part of an Open vSwitch bridge should not have an IP address. If one does, then that IP address will not be fully functional.
-// More info refer http://docs.openvswitch.org/en/latest/faq/issues
+// MAC, MTU, IP addresses & routes will be copied/transferred to br-provider
 func configProviderNic(nicName string) error {
-	_, err := ovs.Exec(ovs.MayExist, "add-port", "br-provider", nicName)
-	return err
+	brName := util.UnderlayBridge
+	nic, err := netlink.LinkByName(nicName)
+	if err != nil {
+		return fmt.Errorf("failed to get nic by name %s: %v", nicName, err)
+	}
+	bridge, err := netlink.LinkByName(brName)
+	if err != nil {
+		return fmt.Errorf("failed to get bridge by name %s: %v", brName, err)
+	}
+
+	sysctlDisableIPv6 := fmt.Sprintf("net.ipv6.conf.%s.disable_ipv6", brName)
+	disableIPv6, err := sysctl.Sysctl(sysctlDisableIPv6)
+	if err != nil {
+		return fmt.Errorf("failed to get sysctl %s: %v", sysctlDisableIPv6, err)
+	}
+	if disableIPv6 != "0" {
+		if _, err = sysctl.Sysctl(sysctlDisableIPv6, "0"); err != nil {
+			return fmt.Errorf("failed to enable ipv6 on OVS bridge %s: %v", brName, err)
+		}
+	}
+
+	addrs, err := netlink.AddrList(nic, netlink.FAMILY_ALL)
+	if err != nil {
+		return fmt.Errorf("failed to get addresses on nic %s: %v", nicName, err)
+	}
+	routes, err := netlink.RouteList(nic, netlink.FAMILY_ALL)
+	if err != nil {
+		return fmt.Errorf("failed to get routes on nic %s: %v", nicName, err)
+	}
+
+	if _, err = ovs.Exec(ovs.MayExist, "add-port", brName, nicName); err != nil {
+		return fmt.Errorf("failed to add %s to OVS birdge %s: %v", nicName, brName, err)
+	}
+
+	oldMac := nic.Attrs().HardwareAddr
+	newMac, err := net.ParseMAC(util.GenerateMac())
+	if err != nil {
+		return fmt.Errorf("unexpected error: MAC address generated is invalid")
+	}
+
+	for _, addr := range addrs {
+		if err = netlink.AddrDel(nic, &addr); err != nil && !errors.Is(err, syscall.ENOENT) {
+			return fmt.Errorf("failed to delete address %s on nic %s: %v", addr.String(), nicName, err)
+		}
+
+		if addr.Label != "" {
+			addr.Label = brName + strings.TrimPrefix(addr.Label, nicName)
+		}
+		if err = netlink.AddrReplace(bridge, &addr); err != nil && !errors.Is(err, syscall.EEXIST) {
+			return fmt.Errorf("failed to add address %s to OVS bridge %s: %v", addr.String(), brName, err)
+		}
+	}
+
+	if err = netlink.LinkSetHardwareAddr(nic, newMac); err != nil {
+		return fmt.Errorf("failed to set MAC address of nic %s: %v", nicName, err)
+	}
+	if _, err = ovs.Exec("set", "bridge", brName, fmt.Sprintf(`other-config:hwaddr="%s"`, oldMac.String())); err != nil {
+		return fmt.Errorf("failed to set MAC address of OVS bridge %s: %v", brName, err)
+	}
+	if err = netlink.LinkSetMTU(bridge, nic.Attrs().MTU); err != nil {
+		return fmt.Errorf("failed to set MTU of OVS bridge %s: %v", brName, err)
+	}
+	if err = netlink.LinkSetUp(bridge); err != nil {
+		return fmt.Errorf("failed to set OVS bridge %s up: %v", brName, err)
+	}
+
+	for _, route := range routes {
+		route.LinkIndex = bridge.Attrs().Index
+		if err = netlink.RouteReplace(&route); err != nil && !errors.Is(err, syscall.EEXIST) {
+			return fmt.Errorf("failed to add route %s: %v", route.String(), err)
+		}
+	}
+
+	return nil
 }
 
 func setupVethPair(containerID, ifName string, mtu int) (string, string, error) {
