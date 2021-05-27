@@ -147,7 +147,6 @@ func (e *Exporter) exportOvsLogFileSizeGauge() {
 			e.IncrementErrorCounter()
 			continue
 		}
-		klog.Infof("%s: getOvsLogFileSize() completed GetLogFileInfo(%s)", e.Client.System.ID, component)
 		metricLogFileSize.WithLabelValues(e.Client.System.Hostname, file.Component, file.Path).Set(float64(file.Info.Size()))
 	}
 }
