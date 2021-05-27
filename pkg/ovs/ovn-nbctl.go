@@ -140,7 +140,7 @@ func (c Client) CreatePort(ls, port, ip, cidr, mac, tag, pod, namespace string, 
 
 	if pod != "" && namespace != "" {
 		ovnCommand = append(ovnCommand,
-			"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:pod=%s/%s", namespace, pod))
+			"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:pod=%s/%s", namespace, pod), fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
 	}
 
 	if _, err := c.ovnNbCommand(ovnCommand...); err != nil {
@@ -346,7 +346,7 @@ func (c Client) LogicalSwitchExists(logicalSwitch string) (bool, error) {
 }
 
 func (c Client) ListLogicalSwitchPort() ([]string, error) {
-	output, err := c.ovnNbCommand("--format=csv", "--data=bare", "--no-heading", "--columns=name", "find", "logical_switch_port", "type=\"\"")
+	output, err := c.ovnNbCommand("--format=csv", "--data=bare", "--no-heading", "--columns=name", "find", "logical_switch_port", "type=\"\"", fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
 	if err != nil {
 		klog.Errorf("failed to list logical switch port, %v", err)
 		return nil, err
