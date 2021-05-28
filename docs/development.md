@@ -42,8 +42,17 @@ go get -u github.com/onsi/gomega/...
 
 make kind-init
 make kind-install
-# wait all pod ready
+# wait all pods ready
 make e2e
+```
+
+For Underlay/Vlan mode e2e tests, run following commands:
+
+```sh
+make kind-init
+make kind-install-vlan
+# wait all pods ready
+make e2e-vlan
 ```
 
 ## ARM support
