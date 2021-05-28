@@ -4,7 +4,7 @@ By default, Kube-OVN use Geneve to encapsulate packets between hosts, which will
 Kube-OVN also support underlay Vlan mode network for better performance and throughput.
 In Vlan mode, the packets will send directly to physical switches with vlan tags.
 
-To enable Vlan mode, a dedicated network interface is required by container network.
+To enable Vlan mode, a ~~dedicated~~ network interface is required by container network. Mac address, MTU, IP addresses and routes attached to the interface will be copied/transferred to an OVS bridge named `br-provider`.
 The related switch port must work in trunk mode to accept 802.1q packets. For underlay network with no vlan tag, you need
 to set the VLAN ID to 0.
 
