@@ -9,6 +9,7 @@ Kube-OVN includes two parts:
 - Docker >= 1.12.6
 - OS: CentOS 7.5/7.6/7.7, Ubuntu 16.04/18.04
 - Kernel boot with `ipv6.disable=0`
+- Kube-proxy to provide service discovery for kube-ovn to connect to apiserver
 
 *NOTE*
 1. Ubuntu 16.04 users should build the related ovs-2.11.1 kernel module to replace the kernel built-in module
@@ -156,6 +157,34 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
       --stderrthreshold severity          logs at or above this threshold go to stderr (default 2)
   -v, --v Level                           number for the log level verbosity
       --vmodule moduleSpec                comma-separated list of pattern=N settings for file-filtered logging
+```
+
+### Install with customized kubeconfig
+
+By default, Kube-OVN uses in-cluster config to init kube client. In this way, Kube-OVN relies on kube-proxy to provide service discovery to connect to Kubernetes apiserver. 
+To use an external or high available Kubernetes apiserver, users can use self customized kubeconfig to connect to apiserver.
+
+1. Generate configmap from an existed kubeconfig
+```bash
+kubectl create -n kube-system configmap admin-conf --from-file=admin.conf
+```
+
+2. Edit `kube-ovn-controller`, `kube-ovn-cni` to use previous kubeconfig
+
+```yaml
+      - args:
+           - --kubeconfig=/etc/kube/admin.conf
+
+        ...
+
+        volumeMounts:
+           - mountPath: /etc/kube
+             name: kubeconfig
+        volumes:
+           - configMap:
+                defaultMode: 420
+                name: admin-conf
+             name: kubeconfig
 ```
 
 ## To uninstall
