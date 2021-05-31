@@ -36,6 +36,7 @@ require (
 	github.com/spf13/viper v1.6.3 // indirect
 	github.com/stretchr/testify v1.6.1
 	github.com/vishvananda/netlink v1.1.0
+	golang.org/x/crypto v0.0.0-20201216223049-8b5274cf687f // indirect
 	google.golang.org/grpc v1.27.1
 	k8s.io/api v0.20.1-rc.1
 	k8s.io/apimachinery v0.20.1-rc.1
@@ -46,6 +47,6 @@ require (
 )
 
 replace (
-	k8s.io/client-go => k8s.io/client-go v0.20.1-rc.1
 	github.com/greenpau/ovsdb => github.com/alauda/ovsdb v0.0.0-20210113100339-040cf3e76c28
+	k8s.io/client-go => k8s.io/client-go v0.20.1-rc.1
 )
