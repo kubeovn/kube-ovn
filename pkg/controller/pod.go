@@ -472,7 +472,9 @@ func (c *Controller) handleDeletePod(key string) error {
 	}
 	pod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
-		return nil
+		if !k8serrors.IsNotFound(err) {
+			return err
+		}
 	}
 	if pod != nil && pod.DeletionTimestamp == nil && isPodAlive(pod) {
 		// Pod with same name exists, just return here
