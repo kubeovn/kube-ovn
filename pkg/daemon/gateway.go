@@ -183,7 +183,7 @@ func (c *Controller) setIptables() error {
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn40local-pod-ip-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE`, " ")},
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn40subnets-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE`, " ")},
 			// masq traffic from hostport/nodeport
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(fmt.Sprintf(`-o ovn0 ! -s %s -j MASQUERADE`, hostIP), " ")},
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(fmt.Sprintf(`-o ovn0 ! -s %s -m mark --mark 0x4000/0x4000 -j MASQUERADE`, hostIP), " ")},
 			// Input Accept
 			{Table: "filter", Chain: "FORWARD", Rule: strings.Split(`-m set --match-set ovn40subnets src -j ACCEPT`, " ")},
 			{Table: "filter", Chain: "FORWARD", Rule: strings.Split(`-m set --match-set ovn40subnets dst -j ACCEPT`, " ")},
@@ -199,7 +199,7 @@ func (c *Controller) setIptables() error {
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn60local-pod-ip-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE`, " ")},
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(`-m set --match-set ovn60subnets-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE`, " ")},
 			// masq traffic from hostport/nodeport
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(fmt.Sprintf(`-o ovn0 ! -s %s -j MASQUERADE`, hostIP), " ")},
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Split(fmt.Sprintf(`-o ovn0 ! -s %s -m mark --mark 0x4000/0x4000 -j MASQUERADE`, hostIP), " ")},
 			// Input Accept
 			{Table: "filter", Chain: "FORWARD", Rule: strings.Split(`-m set --match-set ovn60subnets src -j ACCEPT`, " ")},
 			{Table: "filter", Chain: "FORWARD", Rule: strings.Split(`-m set --match-set ovn60subnets dst -j ACCEPT`, " ")},
