@@ -100,9 +100,9 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
       --default-cidr string                       Default CIDR for namespace with no logical switch annotation, default: 10.16.0.0/16 (default "10.16.0.0/16")
       --default-exclude-ips string                Exclude ips in default switch, default equals to gateway address
       --default-gateway string                    Default gateway for default-cidr, default the first ip in default-cidr
-      --default-interface-name string             The default host interface name in the vlan/xvlan type
+      --default-interface-name string             The default host interface name in the vlan/vxlan type
       --default-ls string                         The default logical switch name, default: ovn-default (default "ovn-default")
-      --default-provider-name string              The vlan or xvlan type default provider interface name, default: provider (default "provider")
+      --default-provider-name string              The vlan or vxlan type default provider interface name, default: provider (default "provider")
       --default-vlan-id int                       The default vlan id, default: 1 (default 1)
       --default-vlan-name string                  The default vlan name, default: ovn-vlan (default "ovn-vlan")
       --default-vlan-range string                 The default vlan range, default: 1-4095 (default "1,4095")
@@ -134,8 +134,8 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
       --add_dir_header                    If true, adds the file directory to the header
       --alsologtostderr                   log to standard error as well as files
       --bind-socket string                The socket daemon bind to. (default "/var/run/cniserver.sock")
-      --default-interface-name string     The default host interface name in the vlan/xvlan type
-      --default-provider-name string      The vlan or xvlan type default provider interface name, default: provider (default "provider")
+      --default-interface-name string     The default host interface name in the vlan/vxlan type
+      --default-provider-name string      The vlan or vxlan type default provider interface name, default: provider (default "provider")
       --enable-mirror                     Enable traffic mirror, default: false
       --encap-checksum                    Enable checksum, default: true (default true)
       --iface string                      The iface used to inter-host pod communication, can be a nic name or a group of regex separated by comma, default: the default route iface

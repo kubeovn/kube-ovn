@@ -498,7 +498,7 @@ func configProviderPort(providerInterfaceName string) error {
 
 	output, err = ovs.Exec("set", "open", ".", fmt.Sprintf("external-ids:ovn-bridge-mappings=%s", bridgeMappings))
 	if err != nil {
-		return fmt.Errorf("failed to set bridg-mappings, %v: %q", err, output)
+		return fmt.Errorf("failed to set bridge-mappings, %v: %q", err, output)
 	}
 
 	return nil

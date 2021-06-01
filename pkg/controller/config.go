@@ -86,8 +86,8 @@ func ParseFlags() (*Configuration, error) {
 		argPprofPort = pflag.Int("pprof-port", 10660, "The port to get profiling data, default 10660")
 
 		argsNetworkType          = pflag.String("network-type", util.NetworkTypeGeneve, "The ovn network type, default: geneve")
-		argsDefaultProviderName  = pflag.String("default-provider-name", "provider", "The vlan or xvlan type default provider interface name, default: provider")
-		argsDefaultInterfaceName = pflag.String("default-interface-name", "", "The default host interface name in the vlan/xvlan type")
+		argsDefaultProviderName  = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name, default: provider")
+		argsDefaultInterfaceName = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
 		argsDefaultVlanName      = pflag.String("default-vlan-name", "ovn-vlan", "The default vlan name, default: ovn-vlan")
 		argsDefaultVlanID        = pflag.Int("default-vlan-id", 1, "The default vlan id, default: 1")
 		argsDefaultVlanRange     = pflag.String("default-vlan-range", "1,4095", "The default vlan range, default: 1-4095")
