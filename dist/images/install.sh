@@ -1579,6 +1579,7 @@ spec:
           - --network-type=$NETWORK_TYPE
           - --default-interface-name=$VLAN_INTERFACE_NAME
           - --default-vlan-id=$VLAN_ID
+          - --pod-nic-type="veth-pair"
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
