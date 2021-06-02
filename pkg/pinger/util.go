@@ -98,6 +98,9 @@ func (e *Exporter) ovsDatapathLookupsMetrics(line, datapath string) {
 	s := strings.TrimPrefix(line, "lookups:")
 	for _, field := range strings.Fields(s) {
 		elem := strings.Split(field, ":")
+		if len(elem) !=2{
+			continue
+		}
 		value, err := strconv.ParseFloat(elem[1], 64)
 		if err != nil {
 			klog.Errorf("Failed to parse value %v into float in DpFlowsLookup:(%v)", value, err)
@@ -118,6 +121,9 @@ func (e *Exporter) ovsDatapathMasksMetrics(line, datapath string) {
 	s := strings.TrimPrefix(line, "masks:")
 	for _, field := range strings.Fields(s) {
 		elem := strings.Split(field, ":")
+		if len(elem)!=2{
+			continue
+		}
 		value, err := strconv.ParseFloat(elem[1], 64)
 		if err != nil {
 			klog.Errorf("Failed to parse value %v into float in OvsDpMasks:(%v)", value, err)
