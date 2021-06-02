@@ -2251,6 +2251,9 @@ diagnose(){
   kubectl get crd ips.kubeovn.io
   kubectl get svc kube-dns -n kube-system
   kubectl get svc kubernetes -n default
+  kubectl get sa -n kube-system ovn
+  kubectl get clusterrole system:ovn
+  kubectl get clusterrolebinding ovn
 
   kubectl get no -o wide
   kubectl ko nbctl show
