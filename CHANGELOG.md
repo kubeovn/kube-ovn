@@ -1,5 +1,57 @@
 # CHANGELOG
 
+## 1.7.0 -- 2021/06/03
+
+### New Feature
+* Support configuration for cni-bin-dir and cni-conf-dir
+* Support for vpc nat gateway
+* Support for multus ovn nic
+* Support ecmp static route for centralized gateway
+* Support vxlan tunnel encapsulation
+* Support hybrid mode for geneve and vlan
+* Support external egress gateway
+* Support underlay mode with single nic
+* Support kube-ovn-speaker announce service ip
+* Support kube-ovn-speaker graceful restart
+* Support interconnection between OpenStack and Kubernetes
+
+### Bugfix
+* Restart when init ping failed
+* Make sure northd leader change
+* Wrong split in FindLoadbalancer function
+* Ip6tables check error
+* Reset ovn0 addr
+* Masq traffic to ovn0 from other nodes
+* Add missing ovn-ic-db schema
+* Update ipam cidr when subnet changes
+* Disable offload for genev_sys_6081
+* Configure nic failed when ifname empty
+* Udp checksum offload error
+* Restart ovn-controller to force ovn-ic flows update
+* Update usingips check when update finalizer for subnet
+* Livenessprobe fail if ovn nb/ovn sb not running
+* Release norhtd lock when power off
+* Fix chassis check for node
+* Pod terminating not recycle ip when controller not ready
+
+### Monitoring
+* Split ovn-monitor from ovn-central as an independent deployment
+* Optimization for ovn/ovs status metric
+* Add more command to diagnose results, such as ovs-dpctl, ovs-ofctl, ovs-appctl and so on
+
+### Performance
+* Support use ovs internal-port instead of veth pair to implement pod nic
+
+### Test
+* Add e2e for ofctl/dpctl/appctl
+* Add service e2e
+* Add single node e2e
+* Add e2e tests for external egress gateway
+
+### Mics
+* Update ovn to 20.12 and ovs to 2.15
+* Update Go to 1.16
+
 ## 1.6.0 -- 2021/01/04
 
 ### New Feature

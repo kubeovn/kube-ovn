@@ -42,6 +42,7 @@ EXCLUDE_IPS=""                         # EXCLUDE_IPS for default subnet
 LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
 NETWORK_TYPE="geneve"                  # geneve or vlan
 TUNNEL_TYPE="geneve"                   # geneve or vxlan
+POD_NIC_TYPE="veth-pair"               # veth-pair or internal-port
 
 # VLAN Config only take effect when NETWORK_TYPE is vlan
 PROVIDER_NAME="provider"
@@ -1579,6 +1580,7 @@ spec:
           - --network-type=$NETWORK_TYPE
           - --default-interface-name=$VLAN_INTERFACE_NAME
           - --default-vlan-id=$VLAN_ID
+          - --pod-nic-type=$POD_NIC_TYPE
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
