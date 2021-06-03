@@ -21,7 +21,7 @@ You can have a subnet A using Geneve encapsulation and subnet B using Vlan tag.
 
 1. Get the installation script
 
-`wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.6/dist/images/install.sh`
+`wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.7/dist/images/install.sh`
 
 2. Edit the `install.sh`, modify `NETWORK_TYPE` to `vlan`, `VLAN_INTERFACE_NAME` to related host interface.
 > NOTE: if your nodes have different nic name for vlan device you could use regex for VLAN_INTERFACE_NAME or label those nodes with
@@ -81,7 +81,7 @@ kubectl run samplepod --image=nginx --namespace=product
 
 1. Get the installation script
 
-`wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.6/dist/images/install.sh`
+`wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.7/dist/images/install.sh`
 
 2. Edit the `install.sh`, modify `NETWORK_TYPE` to `hybrid`, `VLAN_INTERFACE_NAME` to related host interface.
 > NOTE: if your nodes have different nic name for vlan device you could use regex for VLAN_INTERFACE_NAME or label those nodes with
