@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## 1.6.3 -- 2021/06/03
+This release mainly fix bugs found in 1.6.2
+
+### Bugfix
+* fix: do not nat route traffic
+* fix: release ip addresses even if pods not found
+* security: fix crypto CVE
+* fix: add address_set to avoid error message
+* fix: add node to pod allow acl
+* Handler the parse config error before used
+* fix: del might panic if duplicate delete
+* fix: do not re-generate ts port
+* fix: get_leader_ip always return fist node ip
+* fix: do not gc learned routes
+* fix: remove tty error notification
+* fix ovn nb reconnect
+* perf: reclaim heap memory after compaction
+* fix: leader may change during startup, use cluster connection to set options
+* fix SNAT on pod startup
+
 ## 1.6.2 -- 2021/04/16
 This release mainly fix bugs found in 1.6.1
 
