@@ -17,6 +17,7 @@ When a new pod appears, the kube-ovn-controller will read the pod annotations an
 Then on the CNI side, the attached CNI plugins can chain kube-ovn-ipam as the ipam plugin, which will read the pod annotations above and return the allocated address to the attached CNI plugins.
 
 ### Limitation
+
 Kube-OVN now uses ovn network as the pod default network, other network can only act as network attachments.
 We will fully separate the IPAM functions to provide a more general IPAM later.
 
@@ -31,7 +32,8 @@ Please refer to [Kube-OVN installation](install.md) and [Multus how to use](http
 ### Create network attachment definition
 
 We use macvlan as the second container network and chain it with kube-ovn ipam.
-```bash
+
+```yaml
 apiVersion: "k8s.cni.cncf.io/v1"
 kind: NetworkAttachmentDefinition
 metadata:
@@ -50,6 +52,7 @@ spec:
       }
     }'
 ```
+
 `type`: Should be `kube-ovn` to invoke Kube-OVN plugin to fetch the address
 
 `server_socket`: Is the socket file that Kube-OVN plugin communicate with. Default location is `/run/openvswitch/kube-ovn-daemon.sock`
@@ -58,8 +61,9 @@ spec:
 
 ### Create a Kube-OVN subnet
 
-Create a Kube-OVN Subnet, set the desired cidr, exclude ips and the `provider` should be the related NetworkAttachmentDefinition
-```bash
+Create a Kube-OVN Subnet, set the desired cidr, exclude ips and the `provider` should be the related NetworkAttachmentDefinition.
+
+```yaml
 apiVersion: kubeovn.io/v1
 kind: Subnet
 metadata:
@@ -72,13 +76,14 @@ spec:
   excludeIps:
   - 172.17.0.0..172.17.0.10
 ```
+
 Other options like gatewayType, gatewayNode, private, allowSubnets, vlan, underlayGateway, natOutgoing are not available for attachment network.
 
 ### Create Pod with multi network
 
 For random allocation, just add the `k8s.v1.cni.cncf.io/networks`:
 
-```bash
+```yaml
 apiVersion: v1
 kind: Pod
 metadata:
@@ -91,14 +96,13 @@ spec:
   - name: samplepod
     command: ["/bin/ash", "-c", "trap : TERM INT; sleep infinity & wait"]
     image: alpine
-
 ```
 
 ### Create Pod with static IP
 
 For static allocation, add the `<networkAttachmentName>.<networkAttachmentNamespace>.kubernetes.io/ip_address` annotations:
 
-```bash
+```yaml
 apiVersion: v1
 kind: Pod
 metadata:
@@ -120,7 +124,7 @@ spec:
 
 For workload need ippool allocation, add the `<networkAttachmentName>.<networkAttachmentNamespace>.kubernetes.io/ip_pool` annotations:
 
-```bash
+```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -146,24 +150,30 @@ spec:
       - name: static-workload
         image: nginx:alpine
 ```
+
 # Multi kube-ovn network Interface
+
 Full support for multi kube-ovn networks is more than just IPAM.
+
 ## How to use it
+
 ### Create network attachment definition with ovn provider
-```bash
+
+```yaml
 apiVersion: "k8s.cni.cncf.io/v1"
-   kind: NetworkAttachmentDefinition
-   metadata:
-     name: attachnet
-     namespace: default
-   spec:
-     config: '{
-         "cniVersion": "0.3.0",
-         "type": "kube-ovn",
-         "server_socket": "/run/openvswitch/kube-ovn-daemon.sock",
-         "provider": "attachnet.default.ovn"
-       }'
+kind: NetworkAttachmentDefinition
+metadata:
+  name: attachnet
+  namespace: default
+spec:
+  config: '{
+      "cniVersion": "0.3.0",
+      "type": "kube-ovn",
+      "server_socket": "/run/openvswitch/kube-ovn-daemon.sock",
+      "provider": "attachnet.default.ovn"
+    }'
 ```
+
 `type`: Should be `kube-ovn` to invoke Kube-OVN plugin to fetch the ovn subnet.
 
 `server_socket`: Is the socket file that Kube-OVN plugin communicate with. Default location is /run/openvswitch/kube-ovn-daemon.sock.
@@ -171,9 +181,10 @@ apiVersion: "k8s.cni.cncf.io/v1"
 `provider`: The `<name>.<namespace>.ovn` of this NetworkAttachmentDefinition, The kube-OVN plug-in will use it later to determine whether a native OVN subnet should be used. *Be sure to add the OVN suffix*.
 
 ### Create pod with multus ovn network
+
 For random allocation from ovn-default, just add the `k8s.v1.cni.cncf.io/networks`:
 
-```bash
+```yaml
 apiVersion: v1
 kind: Pod
 metadata:
@@ -187,11 +198,14 @@ spec:
     command: ["/bin/ash", "-c", "trap : TERM INT; sleep infinity & wait"]
     image: alpine
 ```
+
 Note that the pod cannot be assigned the same subnet, the above example assumes that kube-ovn is not the default network.
 
 ### Create pod with specified subnet
+
 For allocation from the specified subnet:
-```bash
+
+```yaml
 apiVersion: v1
 kind: Pod
 metadata:
@@ -206,8 +220,10 @@ spec:
     command: ["/bin/ash", "-c", "trap : TERM INT; sleep infinity & wait"]
     image: alpine
 ```
+
 ### Create pod with static IP
-```bash
+
+```yaml
 apiVersion: v1
 kind: Pod
 metadata:
