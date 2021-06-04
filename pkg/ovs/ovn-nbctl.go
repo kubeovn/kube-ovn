@@ -961,16 +961,14 @@ func (c Client) CreateIngressACL(npName, pgName, asIngressName, asExceptName, pr
 		ipSuffix = "ip6"
 	}
 	pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
-	exceptArgs := []string{MayExist, "--type=port-group", "--log", fmt.Sprintf("--name=%s", npName), fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "to-lport", util.IngressExceptDropPriority, fmt.Sprintf("%s.src == $%s && %s.dst == $%s", ipSuffix, asExceptName, ipSuffix, pgAs), "drop"}
-	defaultArgs := []string{"--", MayExist, "--type=port-group", "--log", fmt.Sprintf("--name=%s", npName), fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "to-lport", util.IngressDefaultDrop, fmt.Sprintf("%s.dst == $%s", ipSuffix, pgAs), "drop"}
-	ovnArgs := append(exceptArgs, defaultArgs...)
+	ovnArgs := []string{MayExist, "--type=port-group", "--log", fmt.Sprintf("--name=%s", npName), fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "to-lport", util.IngressDefaultDrop, fmt.Sprintf("%s.dst == $%s", ipSuffix, pgAs), "drop"}
 
 	if len(npp) == 0 {
-		allowArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("%s.src == $%s && %s.dst == $%s", ipSuffix, asIngressName, ipSuffix, pgAs), "allow-related"}
+		allowArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("%s.src == $%s && %s.src != $%s && %s.dst == $%s", ipSuffix, asIngressName, ipSuffix, asExceptName, ipSuffix, pgAs), "allow-related"}
 		ovnArgs = append(ovnArgs, allowArgs...)
 	} else {
 		for _, port := range npp {
-			allowArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("%s.src == $%s && %s.dst == %d && %s.dst == $%s", ipSuffix, asIngressName, strings.ToLower(string(*port.Protocol)), port.Port.IntVal, ipSuffix, pgAs), "allow-related"}
+			allowArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("%s.src == $%s && %s.src != $%s && %s.dst == %d && %s.dst == $%s", ipSuffix, asIngressName, ipSuffix, asExceptName, strings.ToLower(string(*port.Protocol)), port.Port.IntVal, ipSuffix, pgAs), "allow-related"}
 			ovnArgs = append(ovnArgs, allowArgs...)
 		}
 	}
@@ -984,16 +982,14 @@ func (c Client) CreateEgressACL(npName, pgName, asEgressName, asExceptName, prot
 		ipSuffix = "ip6"
 	}
 	pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
-	exceptArgs := []string{MayExist, "--type=port-group", "--log", fmt.Sprintf("--name=%s", npName), fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "from-lport", util.EgressExceptDropPriority, fmt.Sprintf("%s.dst == $%s && %s.src == $%s", ipSuffix, asExceptName, ipSuffix, pgAs), "drop"}
-	defaultArgs := []string{"--", MayExist, "--type=port-group", "--log", fmt.Sprintf("--name=%s", npName), fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "from-lport", util.EgressDefaultDrop, fmt.Sprintf("%s.src == $%s", ipSuffix, pgAs), "drop"}
-	ovnArgs := append(exceptArgs, defaultArgs...)
+	ovnArgs := []string{"--", MayExist, "--type=port-group", "--log", fmt.Sprintf("--name=%s", npName), fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "from-lport", util.EgressDefaultDrop, fmt.Sprintf("%s.src == $%s", ipSuffix, pgAs), "drop"}
 
 	if len(npp) == 0 {
-		allowArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("%s.dst == $%s && %s.src == $%s", ipSuffix, asEgressName, ipSuffix, pgAs), "allow-related"}
+		allowArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("%s.dst == $%s && %s.dst != $%s && %s.src == $%s", ipSuffix, asEgressName, ipSuffix, asExceptName, ipSuffix, pgAs), "allow-related"}
 		ovnArgs = append(ovnArgs, allowArgs...)
 	} else {
 		for _, port := range npp {
-			allowArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("%s.dst == $%s && %s.dst == %d && %s.src == $%s", ipSuffix, asEgressName, strings.ToLower(string(*port.Protocol)), port.Port.IntVal, ipSuffix, pgAs), "allow-related"}
+			allowArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("%s.dst == $%s && %s.dst == $%s && %s.dst == %d && %s.src == $%s", ipSuffix, asEgressName, ipSuffix, asExceptName, strings.ToLower(string(*port.Protocol)), port.Port.IntVal, ipSuffix, pgAs), "allow-related"}
 			ovnArgs = append(ovnArgs, allowArgs...)
 		}
 	}

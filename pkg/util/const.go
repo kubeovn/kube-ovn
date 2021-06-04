@@ -72,13 +72,11 @@ const (
 
 	UnderlayBridge = "br-provider"
 
-	IngressExceptDropPriority = "2002"
-	IngressAllowPriority      = "2001"
-	IngressDefaultDrop        = "2000"
+	IngressAllowPriority = "2001"
+	IngressDefaultDrop   = "2000"
 
-	EgressExceptDropPriority = "2002"
-	EgressAllowPriority      = "2001"
-	EgressDefaultDrop        = "2000"
+	EgressAllowPriority = "2001"
+	EgressDefaultDrop   = "2000"
 
 	SubnetAllowPriority = "1001"
 	DefaultDropPriority = "1000"
