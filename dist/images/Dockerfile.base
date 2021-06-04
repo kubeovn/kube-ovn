@@ -1,0 +1,68 @@
+# syntax = docker/dockerfile:experimental
+FROM ubuntu:20.04 as ovs-builder
+
+ARG ARCH
+ARG DEBIAN_FRONTEND=noninteractive
+ENV SRC_DIR='/usr/src'
+
+RUN apt update && apt install build-essential git libnuma-dev autoconf curl \
+    python3 libmnl-dev libpcap-dev libtool libcap-ng-dev libssl-dev pkg-config \
+    python3-six libunbound-dev libunwind-dev dh-make fakeroot debhelper dh-python \
+    flake8 python3-sphinx graphviz groff -y
+
+RUN cd /usr/src/ && \
+    git clone -b branch-2.15 --depth=1 https://github.com/openvswitch/ovs.git && \
+    cd ovs && \
+    curl https://github.com/kubeovn/ovs/commit/df1c802f568be2af84aa81372fec46f5b09b4366.patch | git apply && \
+    curl https://github.com/kubeovn/ovs/commit/8dd4973bba021ce92eb9f42446d6c1c0e3474e25.patch | git apply && \
+    ./boot.sh && \
+    rm -rf .git && \
+    DATAPATH_CONFIGURE_OPTS='--prefix=/usr --enable-shared' DEB_BUILD_OPTIONS='parallel=8 nocheck' fakeroot debian/rules binary
+
+RUN cd /usr/src/ && git clone -b branch-20.12 --depth=1 https://github.com/ovn-org/ovn.git && \
+    cd ovn && \
+    curl https://github.com/kubeovn/ovn/commit/d8253981485e499979cc47c9453b6be8eebe5f0e.patch | git apply --exclude debian/changelog && \
+    curl https://github.com/kubeovn/ovn/commit/e19ff25f2464e67127c7eb1edef44803aa4a5462.patch | git apply && \
+    curl https://github.com/kubeovn/ovn/commit/289c62e3fcd05901dac4b727aa59f6cba058905f.patch | git apply && \
+    curl https://github.com/kubeovn/ovn/commit/e24734913d25c0bffdf1cfd79e14ef43d01e1019.patch | git apply && \
+    curl https://github.com/kubeovn/ovn/commit/afb8d70fd2488631fdd71af26c6fedf78ef9309a.patch | git apply && \
+    curl https://github.com/kubeovn/ovn/commit/402049e21ce5fb2d0ea23c04843f49a4ab65f027.patch | git apply && \
+    sed -i 's/OVN/ovn/g' debian/changelog && \
+    rm -rf .git && \
+    ./boot.sh && \
+    DATAPATH_CONFIGURE_OPTS='--prefix=/usr --with-ovs-source=/usr/src/ovs' DEB_BUILD_OPTIONS='parallel=8 nocheck' fakeroot debian/rules binary
+
+RUN mkdir /packages/ && \
+     cp /usr/src/libopenvswitch*.deb /packages && \
+     cp /usr/src/openvswitch-*.deb /packages && \
+     cp /usr/src/python3-openvswitch*.deb /packages && \
+     cp /usr/src/ovn-*.deb /packages && \
+     cd /packages && rm -f *dbg* *datapath* *docker* *vtep* *ipsec* *test* *dev*
+
+FROM ubuntu:20.04
+
+RUN apt update && apt install ca-certificates python3 hostname libunwind8 netbase \
+        ethtool iproute2 ncat libunbound-dev procps libatomic1 kmod \
+        tcpdump ipset curl uuid-runtime openssl inetutils-ping \
+        logrotate -y --no-install-recommends && \
+        rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /var/run/openvswitch && \
+    mkdir -p /var/run/ovn && \
+    mkdir -p /etc/cni/net.d && \
+    mkdir -p /opt/cni/bin
+
+ARG ARCH
+ENV CNI_VERSION=v0.8.7
+RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz | tar -xz -C . ./loopback ./portmap
+
+ENV KUBE_VERSION="v1.21.1"
+
+RUN curl -L https://dl.k8s.io/${KUBE_VERSION}/kubernetes-client-linux-${ARCH}.tar.gz | tar -xz -C . && cp ./kubernetes/client/bin/kubectl /usr/bin/kubectl \
+ && chmod +x /usr/bin/kubectl && rm -rf ./kubernetes
+
+RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
+    dpkg -i /packages/libopenvswitch*.deb && \
+    dpkg -i /packages/openvswitch-*.deb && \
+    dpkg -i /packages/python3-openvswitch*.deb &&\
+    dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/ovn-*.deb
