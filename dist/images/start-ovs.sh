@@ -29,24 +29,6 @@ cat /proc/cmdline"
     exit 1
 fi
 
-# wait for ovn-sb ready
-function wait_ovn_sb {
-    if [[ -z "${OVN_SB_SERVICE_HOST}" ]]; then
-        echo "env OVN_SB_SERVICE_HOST not exists"
-        exit 1
-    fi
-    if [[ -z "${OVN_SB_SERVICE_PORT}" ]]; then
-        echo "env OVN_SB_SERVICE_PORT not exists"
-        exit 1
-    fi
-    while ! nc -z "${OVN_SB_SERVICE_HOST}" "${OVN_SB_SERVICE_PORT}" </dev/null;
-    do
-        echo "sleep 10 seconds, waiting for ovn-sb ${OVN_SB_SERVICE_HOST}:${OVN_SB_SERVICE_PORT} ready "
-        sleep 10;
-    done
-}
-wait_ovn_sb
-
 function quit {
 	/usr/share/ovn/scripts/grace_stop_ovn_controller
 	/usr/share/openvswitch/scripts/ovs-ctl stop

@@ -85,17 +85,6 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
             ovn-sbctl --no-leader-only set-connection ptcp:"${DB_SB_PORT}":[::]
             ovn-sbctl --no-leader-only set Connection . inactivity_probe=180000
         else
-            while ! nc -z "${nb_leader_ip}" "${DB_NB_PORT}" >/dev/null;
-            do
-                echo "sleep 5 seconds, waiting for ovn-nb ${nb_leader_ip}:${DB_NB_PORT} ready "
-                sleep 5;
-            done
-            while ! nc -z "${sb_leader_ip}" "${DB_SB_PORT}" >/dev/null;
-            do
-                echo "sleep 5 seconds, waiting for ovn-sb ${sb_leader_ip}:${DB_SB_PORT} ready "
-                sleep 5;
-            done
-
             # Start ovn-northd, ovn-nb and ovn-sb
             /usr/share/ovn/scripts/ovn-ctl \
                 --db-nb-create-insecure-remote=yes \
@@ -165,17 +154,6 @@ else
             ovn-sbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set-connection pssl:"${DB_SB_PORT}":[::]
             ovn-sbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set Connection . inactivity_probe=180000
         else
-            while ! nc -z "${nb_leader_ip}" "${DB_NB_PORT}" >/dev/null;
-            do
-                echo "sleep 5 seconds, waiting for ovn-nb ${nb_leader_ip}:${DB_NB_PORT} ready "
-                sleep 5;
-            done
-            while ! nc -z "${sb_leader_ip}" "${DB_SB_PORT}" >/dev/null;
-            do
-                echo "sleep 5 seconds, waiting for ovn-sb ${sb_leader_ip}:${DB_SB_PORT} ready "
-                sleep 5;
-            done
-
             # Start ovn-northd, ovn-nb and ovn-sb
             /usr/share/ovn/scripts/ovn-ctl \
                 --ovn-nb-db-ssl-key=/var/run/tls/key \
