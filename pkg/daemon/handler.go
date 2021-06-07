@@ -69,7 +69,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	}
 
 	klog.Infof("add port request %v", podRequest)
-	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, vlanID, ifName, nicType string
+	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, vlanID, ifName, nicType, netns string
 	var pod *v1.Pod
 	var err error
 	for i := 0; i < 15; i++ {
@@ -108,6 +108,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		ipAddr = util.GetIpAddrWithMask(ip, cidr)
 		ifName = podRequest.IfName
 		nicType = pod.Annotations[util.PodNicAnnotation]
+		netns = podRequest.NetNs
 		break
 	}
 
@@ -132,10 +133,12 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 
 	if strings.HasSuffix(podRequest.Provider, util.OvnProvider) && subnet != "" {
 		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s", ifName, macAddr, ipAddr, cidr, gw)
+		nsArray := strings.Split(netns, "/")
+		podNetns := nsArray[len(nsArray)-1]
 		if nicType == util.InternalType {
-			err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, ipAddr, gw, ingress, egress, vlanID, podRequest.DeviceID, nicType)
+			err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, ipAddr, gw, ingress, egress, vlanID, podRequest.DeviceID, nicType, podNetns)
 		} else {
-			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, ipAddr, gw, ingress, egress, vlanID, podRequest.DeviceID, nicType)
+			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, ipAddr, gw, ingress, egress, vlanID, podRequest.DeviceID, nicType, podNetns)
 		}
 		if err != nil {
 			errMsg := fmt.Errorf("configure nic failed %v", err)
