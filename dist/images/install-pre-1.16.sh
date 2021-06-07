@@ -2105,8 +2105,14 @@ tcpdump(){
       echo "nic doesn't exist on node $nodeName"
       exit 1
     fi
+    podNicType=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/pod_nic_type})
+    podNetNs=$(kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading get interface "$nicName" external-ids:pod_netns | tr -d '\r')
     set -x
-    kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- tcpdump -nn -i "$nicName" "$@"
+    if [ "$podNicType" = "internal-port" ]; then
+      kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- ip netns exec "$podNetNs" tcpdump -nn -i "$nicName" "$@"
+    else
+      kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- ip netns exec "$podNetNs" tcpdump -nn -i eth0 "$@"
+    fi
   fi
 }
 
