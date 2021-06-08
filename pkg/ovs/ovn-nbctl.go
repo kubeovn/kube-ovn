@@ -315,21 +315,7 @@ func (c Client) DeleteGatewaySwitch(name string) error {
 
 // ListLogicalSwitch list logical switch names
 func (c Client) ListLogicalSwitch() ([]string, error) {
-	output, err := c.ovnNbCommand("--format=csv", "--data=bare", "--no-heading", "--columns=name", "find", "logical_switch")
-	if err != nil {
-		klog.Errorf("failed to list logical switch %v", err)
-		return nil, err
-	}
-	lines := strings.Split(output, "\n")
-	result := make([]string, 0, len(lines))
-	for _, l := range lines {
-
-		l = strings.TrimSpace(l)
-		if len(l) > 0 {
-			result = append(result, l)
-		}
-	}
-	return result, nil
+	return c.ListLogicalEntity("logical_switch")
 }
 
 func (c Client) LogicalSwitchExists(logicalSwitch string) (bool, error) {
@@ -397,20 +383,24 @@ func (c Client) ListRemoteLogicalSwitchPortAddress() ([]string, error) {
 
 // ListLogicalRouter list logical router names
 func (c Client) ListLogicalRouter() ([]string, error) {
-	output, err := c.ovnNbCommand("lr-list")
+	return c.ListLogicalEntity("logical_router")
+}
+
+func (c Client) ListLogicalEntity(entity string) ([]string, error) {
+	cmd := fmt.Sprintf("\"--format=csv\", \"--no-heading\", \"--data=bare\", \"--columns=name\", \"find\", \"%s\"", entity)
+	output, err := c.ovnNbCommand(cmd)
 	if err != nil {
-		klog.Errorf("failed to list logical router %v", err)
+		klog.Errorf("failed to list logical %s %v", entity, err)
 		return nil, err
 	}
 	lines := strings.Split(output, "\n")
 	result := make([]string, 0, len(lines))
 	for _, l := range lines {
-		if len(l) == 0 || !strings.Contains(l, " ") {
-			continue
+
+		l = strings.TrimSpace(l)
+		if len(l) > 0 {
+			result = append(result, l)
 		}
-		tmp := strings.Split(l, " ")[1]
-		tmp = strings.Trim(tmp, "()")
-		result = append(result, tmp)
 	}
 	return result, nil
 }
@@ -427,6 +417,10 @@ func (c Client) DeleteLogicalSwitch(ls string) error {
 // CreateLogicalRouter delete logical router in ovn
 func (c Client) CreateLogicalRouter(lr string) error {
 	_, err := c.ovnNbCommand(MayExist, "lr-add", lr)
+	if err == nil {
+		_, err = c.ovnNbCommand("set", "Logic_Router", lr,
+			fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
+	}
 	return err
 }
 
