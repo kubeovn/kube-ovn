@@ -16,6 +16,8 @@ go get github.com/securego/gosec/v2/cmd/gosec
 
 ​	For version < Docker 19.03, please enable it manually through the [reference](https://docs.docker.com/develop/develop-images/build_enhancements/). 
 
+​    Buildx could also be installed from official [doc](https://github.com/docker/buildx/).
+
 ​	For first compilation, create a new builder instance.
 
 ```shell
