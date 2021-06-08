@@ -314,10 +314,16 @@ func (c Client) DeleteGatewaySwitch(name string) error {
 }
 
 // ListLogicalSwitch list logical switch names
-func (c Client) ListLogicalSwitch() ([]string, error) {
-	output, err := c.ovnNbCommand("--format=csv", "--data=bare", "--no-heading", "--columns=name", "find", "logical_switch")
+func (c Client) ListLogicalSwitch(args ...string) ([]string, error) {
+	return c.ListLogicalEntity("logical_switch", args...)
+}
+
+func (c Client) ListLogicalEntity(entity string, args ...string) ([]string, error) {
+	cmd := []string{"--format=csv", "--data=bare", "--no-heading", "--columns=name", "find", entity}
+	cmd = append(cmd, args...)
+	output, err := c.ovnNbCommand(cmd...)
 	if err != nil {
-		klog.Errorf("failed to list logical switch %v", err)
+		klog.Errorf("failed to list logical %s %v", entity, err)
 		return nil, err
 	}
 	lines := strings.Split(output, "\n")
@@ -331,6 +337,7 @@ func (c Client) ListLogicalSwitch() ([]string, error) {
 	}
 	return result, nil
 }
+
 
 func (c Client) LogicalSwitchExists(logicalSwitch string) (bool, error) {
 	lss, err := c.ListLogicalSwitch()
@@ -396,23 +403,8 @@ func (c Client) ListRemoteLogicalSwitchPortAddress() ([]string, error) {
 }
 
 // ListLogicalRouter list logical router names
-func (c Client) ListLogicalRouter() ([]string, error) {
-	output, err := c.ovnNbCommand("lr-list")
-	if err != nil {
-		klog.Errorf("failed to list logical router %v", err)
-		return nil, err
-	}
-	lines := strings.Split(output, "\n")
-	result := make([]string, 0, len(lines))
-	for _, l := range lines {
-		if len(l) == 0 || !strings.Contains(l, " ") {
-			continue
-		}
-		tmp := strings.Split(l, " ")[1]
-		tmp = strings.Trim(tmp, "()")
-		result = append(result, tmp)
-	}
-	return result, nil
+func (c Client) ListLogicalRouter(args ...string) ([]string, error) {
+	return c.ListLogicalEntity("logical_router", args...)
 }
 
 // DeleteLogicalSwitch delete logical switch
@@ -426,7 +418,8 @@ func (c Client) DeleteLogicalSwitch(ls string) error {
 
 // CreateLogicalRouter delete logical router in ovn
 func (c Client) CreateLogicalRouter(lr string) error {
-	_, err := c.ovnNbCommand(MayExist, "lr-add", lr)
+	_, err := c.ovnNbCommand(MayExist, "lr-add", lr, "--",
+		"set", "Logical_Router", lr, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
 	return err
 }
 
