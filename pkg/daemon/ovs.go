@@ -21,7 +21,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, ifName, mac, ip, gateway, ingress, egress, vlanID, DeviceID, nicType string) error {
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, ifName, mac, ip, gateway, ingress, egress, vlanID, DeviceID, nicType, podNetns string) error {
 	var err error
 	var hostNicName, containerNicName string
 	if DeviceID == "" {
@@ -46,7 +46,8 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		"set", "interface", hostNicName, fmt.Sprintf("external_ids:iface-id=%s", ifaceID),
 		fmt.Sprintf("external_ids:pod_name=%s", podName),
 		fmt.Sprintf("external_ids:pod_namespace=%s", podNamespace),
-		fmt.Sprintf("external_ids:ip=%s", ipStr))
+		fmt.Sprintf("external_ids:ip=%s", ipStr),
+		fmt.Sprintf("external_ids:pod_netns=%s", podNetns))
 	if err != nil {
 		return fmt.Errorf("add nic to ovs failed %v: %q", err, output)
 	}
@@ -694,7 +695,7 @@ func renameLink(curName, newName string) error {
 	return nil
 }
 
-func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac, ip, gateway, ingress, egress, vlanID, DeviceID, nicType string) error {
+func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac, ip, gateway, ingress, egress, vlanID, DeviceID, nicType, podNetns string) error {
 	var err error
 
 	_, containerNicName := generateNicName(containerID, ifName)
@@ -708,7 +709,8 @@ func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, 
 		"set", "interface", containerNicName, fmt.Sprintf("external_ids:iface-id=%s", ifaceID),
 		fmt.Sprintf("external_ids:pod_name=%s", podName),
 		fmt.Sprintf("external_ids:pod_namespace=%s", podNamespace),
-		fmt.Sprintf("external_ids:ip=%s", ipStr))
+		fmt.Sprintf("external_ids:ip=%s", ipStr),
+		fmt.Sprintf("external_ids:pod_netns=%s", podNetns))
 	if err != nil {
 		return fmt.Errorf("add nic to ovs failed %v: %q", err, output)
 	}
