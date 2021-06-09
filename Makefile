@@ -117,9 +117,18 @@ kind-install:
 
 .PHONY: kind-install-vlan
 kind-install-vlan:
+	$(eval SUBNET = $(shell docker network inspect kind -f "{{(index .IPAM.Config 0).Subnet}}"))
+	$(eval GATEWAY = $(shell docker network inspect kind -f "{{(index .IPAM.Config 0).Gateway}}"))
+	$(eval EXCLUDE_IPS = $(shell docker network inspect kind -f '{{range .Containers}},{{index (split .IPv4Address "/") 0}}{{end}}' | sed 's/^,//'))
+	sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(SUBNET)"@' \
+		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(GATEWAY)"@' \
+		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(EXCLUDE_IPS)"@' \
+		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
+		dist/images/install.sh > install-vlan.sh
+	chmod +x install-vlan.sh
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
-	ENABLE_SSL=true ENABLE_VLAN=true VLAN_NIC=eth0 dist/images/install.sh
+	ENABLE_SSL=true ENABLE_VLAN=true VLAN_NIC=eth0 ./install-vlan.sh
 	kubectl describe no
 
 .PHONY: kind-install-single
@@ -136,9 +145,23 @@ kind-install-ipv6:
 
 .PHONY: kind-install-ipv6-vlan
 kind-install-ipv6-vlan:
+	docker network inspect bridge
+	docker network inspect kind
+	$(eval SUBNET = $(shell docker network inspect kind -f "{{(index .IPAM.Config 1).Subnet}}"))
+	$(eval GATEWAY = $(shell docker network inspect kind -f "{{(index .IPAM.Config 1).Gateway}}"))
+	$(eval EXCLUDE_IPS = $(shell docker network inspect kind -f '{{range .Containers}},{{index (split .IPv6Address "/") 0}}{{end}}' | sed 's/^,//'))
+ifeq ($(GATEWAY),)
+	$(eval GATEWAY = $(shell docker exec kube-ovn-worker ip -6 route show default | awk '{print $$3}'))
+endif
+	sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(SUBNET)"@' \
+		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(GATEWAY)"@' \
+		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(EXCLUDE_IPS)"@' \
+		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
+		dist/images/install.sh > install-vlan.sh
+	chmod +x install-vlan.sh
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
-	ENABLE_SSL=true IPv6=true ENABLE_VLAN=true VLAN_NIC=eth0 dist/images/install.sh
+	ENABLE_SSL=true IPv6=true ENABLE_VLAN=true VLAN_NIC=eth0 ./install-vlan.sh
 
 .PHONY: kind-install-dual
 kind-install-dual:
@@ -185,7 +208,7 @@ e2e:
 
 .PHONY: e2e-vlan
 e2e-vlan:
-	echo "package node\n\nvar networkJSON = []byte(\`" > test/e2e-vlan/node/network.go
+	printf "package node\n\nvar networkJSON = []byte(\`" > test/e2e-vlan/node/network.go
 	docker inspect -f '{{json .NetworkSettings.Networks.kind}}' kube-ovn-control-plane >> test/e2e-vlan/node/network.go
 	echo "\`)" >> test/e2e-vlan/node/network.go
 	ginkgo -mod=mod -progress -reportPassed --slowSpecThreshold=60 test/e2e-vlan
