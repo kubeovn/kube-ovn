@@ -2,6 +2,7 @@ package ovs
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -329,11 +330,72 @@ func (c Client) ListLogicalEntity(entity string, args ...string) ([]string, erro
 	lines := strings.Split(output, "\n")
 	result := make([]string, 0, len(lines))
 	for _, l := range lines {
-
 		l = strings.TrimSpace(l)
 		if len(l) > 0 {
 			result = append(result, l)
 		}
+	}
+	return result, nil
+}
+
+func (c Client) CustomFindEntity(entity string, attris []string, args ...string) (result []map[string][]string, err error) {
+	result = []map[string][]string{}
+	var attrStr strings.Builder
+	for _, e := range attris {
+		attrStr.WriteString(e)
+		attrStr.WriteString(",")
+	}
+	// Assuming that the order of the elements in attris does not change
+	cmd := []string{"--format=csv", "--data=bare", "--no-heading", fmt.Sprintf("--columns=%s", attrStr.String()), "find", entity}
+	cmd = append(cmd, args...)
+	output, err := c.ovnNbCommand(cmd...)
+	if err != nil {
+		klog.Errorf("failed to customized list logical %s %v", entity, err)
+		return nil, err
+	}
+	if output == "" {
+		return result, nil
+	}
+	lines := strings.Split(output, "\n")
+	for _, l := range lines {
+		aResult := make(map[string][]string)
+		parts := strings.Split(strings.TrimSpace(l), ",")
+		for i, e := range attris {
+			part := strings.Split(strings.TrimSpace(parts[i]), " ")
+			if part[0] == "" {
+				aResult[e] = []string{}
+			} else {
+				aResult[e] = part
+			}
+		}
+		result = append(result, aResult)
+	}
+	return result, nil
+}
+
+func (c Client) GetEntityInfo(entity string, index string, attris []string) (result map[string]string, err error) {
+	var attrstr strings.Builder
+	for _, e := range attris {
+		attrstr.WriteString(e)
+		attrstr.WriteString(" ")
+	}
+	cmd := []string{"get", entity, index, strings.TrimSpace(attrstr.String())}
+	output, err := c.ovnNbCommand(cmd...)
+	if err != nil {
+		klog.Errorf("failed to get attributes from %s %s %v", entity, index, err)
+		return nil, err
+	}
+	result = make(map[string]string)
+	if output == "" {
+		return result, nil
+	}
+	lines := strings.Split(output, "\n")
+	if len(lines) != len(attris) {
+		klog.Errorf("failed to get attributes from %s %s %s", entity, index, attris)
+		return nil, errors.New("length abnormal")
+	}
+	for i, l := range lines {
+		result[attris[i]] = l
 	}
 	return result, nil
 }

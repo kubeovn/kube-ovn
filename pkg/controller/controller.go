@@ -499,6 +499,10 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		}
 	}, 30*time.Second, stopCh)
 
+	go wait.Until(func() {
+		c.syncExternalVpc()
+	}, 5*time.Second, stopCh)
+
 	go wait.Until(c.resyncSubnetMetrics, 30*time.Second, stopCh)
 	go wait.Until(c.CheckGatewayReady, 5*time.Second, stopCh)
 	go wait.Until(c.resyncNodeACL, 10*time.Second, stopCh)
