@@ -338,7 +338,6 @@ func (c Client) ListLogicalEntity(entity string, args ...string) ([]string, erro
 	return result, nil
 }
 
-
 func (c Client) LogicalSwitchExists(logicalSwitch string) (bool, error) {
 	lss, err := c.ListLogicalSwitch()
 	if err != nil {
