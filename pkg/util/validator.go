@@ -195,27 +195,37 @@ func ValidatePodCidr(cidr, ip string) error {
 	return nil
 }
 
-func ValidateVlanTag(vlan int, vlanRange string) error {
-	vlans := strings.Split(vlanRange, ",")
+func ValidateVlanRange(s string) (vlanRange [2]int, err error) {
+	vlans := strings.Split(s, ",")
 	if len(vlans) != 2 {
-		return fmt.Errorf("the vlan range %s is invalid", vlanRange)
+		return vlanRange, fmt.Errorf("invalid vlan range %s", s)
 	}
 
-	min, err := strconv.Atoi(vlans[0])
-	if err != nil {
-		return err
+	if vlanRange[0], err = strconv.Atoi(vlans[0]); err != nil {
+		return
+	}
+	if vlanRange[1], err = strconv.Atoi(vlans[1]); err != nil {
+		return
 	}
 
-	max, err := strconv.Atoi(vlans[1])
-	if err != nil {
-		return err
+	if vlanRange[0] > vlanRange[1] || vlanRange[0] < VlanTagMin || vlanRange[1] > VlanTagMax {
+		return vlanRange, fmt.Errorf("invalid vlan range %s", s)
 	}
 
+	return
+}
+
+func ValidateVlanTag(vlan int, vlanRange string) error {
 	if vlan == 0 {
 		return nil
 	}
 
-	if vlan < min || vlan > max {
+	vlans, err := ValidateVlanRange(vlanRange)
+	if err != nil {
+		return err
+	}
+
+	if vlan < vlans[0] || vlan > vlans[1] {
 		return fmt.Errorf("the vlan is not in vlan range %s", vlanRange)
 	}
 

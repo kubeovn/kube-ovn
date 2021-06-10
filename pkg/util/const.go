@@ -64,16 +64,14 @@ const (
 	ProtocolTCP = "tcp"
 	ProtocolUDP = "udp"
 
-	NetworkTypeVlan       = "vlan"
-	NetworkTypeGeneve     = "geneve"
-	NetworkTypeHybrid     = "hybrid"
-	ProviderInterfaceName = "ovn.kubernetes.io/provider_interface_name"
-	HostInterfaceName     = "ovn.kubernetes.io/host_interface_name"
+	NetworkTypeVlan   = "vlan"
+	NetworkTypeGeneve = "geneve"
+	NetworkTypeHybrid = "hybrid"
+	ProviderName      = "ovn.kubernetes.io/provider_name"
+	HostInterfaceName = "ovn.kubernetes.io/host_interface_name"
 
 	NodeNic           = "ovn0"
 	NodeAllowPriority = "3000"
-
-	UnderlayBridge = "br-provider"
 
 	IngressAllowPriority = "2001"
 	IngressDefaultDrop   = "2000"
@@ -114,4 +112,7 @@ const (
 	HostnameEnv    = "KUBE_NODE_NAME"
 	ChasRetryTime  = 5
 	ChasRetryIntev = 1
+
+	VlanTagMin = 1
+	VlanTagMax = 4095
 )

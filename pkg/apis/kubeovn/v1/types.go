@@ -163,10 +163,10 @@ type Vlan struct {
 }
 
 type VlanSpec struct {
-	VlanId                int    `json:"vlanId"`
-	ProviderInterfaceName string `json:"providerInterfaceName,omitempty"`
-	LogicalInterfaceName  string `json:"logicalInterfaceName,omitempty"`
-	Subnet                string `json:"subnet"`
+	VlanId        int    `json:"vlanId"`
+	Provider      string `json:"provider,omitempty"`
+	HostInterface string `json:"hostInterface,omitempty"`
+	Subnet        string `json:"subnet"`
 }
 
 type VlanStatus struct {

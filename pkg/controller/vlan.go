@@ -194,12 +194,12 @@ func (c *Controller) handleAddVlan(key string) error {
 		return err
 	}
 
-	if vlan.Spec.ProviderInterfaceName == "" {
-		vlan.Spec.ProviderInterfaceName = c.config.DefaultProviderName
+	if vlan.Spec.Provider == "" {
+		vlan.Spec.Provider = c.config.DefaultProviderName
 	}
 
-	if vlan.Spec.LogicalInterfaceName == "" {
-		vlan.Spec.LogicalInterfaceName = c.config.DefaultHostInterface
+	if vlan.Spec.HostInterface == "" {
+		vlan.Spec.HostInterface = c.config.DefaultHostInterface
 	}
 
 	subnets := []string{}
@@ -317,7 +317,7 @@ func (c *Controller) addLocalnet(subnet *kubeovnv1.Subnet) error {
 		return err
 	}
 
-	if err := c.ovnClient.CreateLocalnetPort(subnet.Name, localnetPort, vlan.Spec.ProviderInterfaceName, strconv.Itoa(vlan.Spec.VlanId)); err != nil {
+	if err := c.ovnClient.CreateLocalnetPort(subnet.Name, localnetPort, vlan.Spec.Provider, strconv.Itoa(vlan.Spec.VlanId)); err != nil {
 		return err
 	}
 

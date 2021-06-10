@@ -1,9 +1,11 @@
 package controller
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	attacnetclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 	"github.com/spf13/pflag"
@@ -56,8 +58,44 @@ type Configuration struct {
 	DefaultVlanName      string
 	DefaultVlanRange     string
 	DefaultVlanID        int
+	ExtraProviderNames   []string
+	ExtraHostInterfaces  []string
+	ExtraVlanNames       []string
+	ExtraVlanIDs         []int
+	ExtraVlanRanges      []string
+	EnableLb             bool
+}
 
-	EnableLb bool
+func (c *Configuration) validate() error {
+	if util.IsNetworkVlan(c.NetworkType) {
+		if c.DefaultHostInterface == "" {
+			return errors.New(`missing parameter "default-interface-name"`)
+		}
+		if err := util.ValidateVlanTag(c.DefaultVlanID, c.DefaultVlanRange); err != nil {
+			return err
+		}
+
+		num := len(c.ExtraProviderNames)
+		if len(c.ExtraHostInterfaces) != num {
+			return fmt.Errorf("invalid configuration: extra interface name and extra provider name count must match")
+		}
+		if len(c.ExtraVlanNames) != num {
+			return fmt.Errorf("invalid configuration: extra vlan name and extra provider name count must match")
+		}
+		if len(c.ExtraVlanIDs) != num {
+			return fmt.Errorf("invalid configuration: extra vlan tag and extra provider name count must match")
+		}
+		if len(c.ExtraVlanRanges) != num {
+			return fmt.Errorf("invalid configuration: extra vlan range and extra provider name count must match")
+		}
+		for i := range c.ExtraVlanRanges {
+			if err := util.ValidateVlanTag(c.ExtraVlanIDs[i], c.ExtraVlanRanges[i]); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -87,14 +125,19 @@ func ParseFlags() (*Configuration, error) {
 		argWorkerNum = pflag.Int("worker-num", 3, "The parallelism of each worker, default: 3")
 		argPprofPort = pflag.Int("pprof-port", 10660, "The port to get profiling data, default 10660")
 
-		argsNetworkType          = pflag.String("network-type", util.NetworkTypeGeneve, "The ovn network type, default: geneve")
-		argsDefaultProviderName  = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name, default: provider")
-		argsDefaultInterfaceName = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
-		argsDefaultVlanName      = pflag.String("default-vlan-name", "ovn-vlan", "The default vlan name, default: ovn-vlan")
-		argsDefaultVlanID        = pflag.Int("default-vlan-id", 1, "The default vlan id, default: 1")
-		argsDefaultVlanRange     = pflag.String("default-vlan-range", "1,4095", "The default vlan range, default: 1-4095")
-		argsPodNicType           = pflag.String("pod-nic-type", "veth-pair", "The default pod network nic implementation type, default: veth-pair")
-		argsEnableLb             = pflag.Bool("enable-lb", true, "Enable load balancer, default: true")
+		argsNetworkType         = pflag.String("network-type", util.NetworkTypeGeneve, "The ovn network type, default: geneve")
+		argDefaultProviderName  = pflag.String("default-provider-name", "provider", "Default provider name of the vlan/vxlan networking, default: provider")
+		argDefaultInterfaceName = pflag.String("default-interface-name", "", "Default host interface name of the vlan/vxlan networking")
+		argDefaultVlanName      = pflag.String("default-vlan-name", "ovn-vlan", "Default vlan name of the vlan networking, default: ovn-vlan")
+		argDefaultVlanID        = pflag.Int("default-vlan-id", 100, "Default vlan tag, default: 100")
+		argDefaultVlanRange     = pflag.String("default-vlan-range", fmt.Sprintf("%d,%d", util.VlanTagMin, util.VlanTagMax), fmt.Sprintf("Default vlan range, default: %d-%d", util.VlanTagMin, util.VlanTagMax))
+		argExtraProviderNames   = pflag.StringSlice("extra-provider-names", nil, "Comma separated provider names of the extra vlan networkings")
+		argExtraInterfaceNames  = pflag.StringSlice("extra-interface-names", nil, "Comma separated host interface names of the extra vlan networkings")
+		argExtraVlanNames       = pflag.StringSlice("extra-vlan-names", nil, "Comma separated vlan names of the extra vlan networkings")
+		argExtraVlanIDs         = pflag.IntSlice("extra-vlan-ids", nil, "Comma separated extra vlan tags of the extra vlan networkings")
+		argExtraVlanRanges      = pflag.StringArray("extra-vlan-ranges", nil, "Colon separated vlan ranges of the extra vlan networkings")
+		argPodNicType           = pflag.String("pod-nic-type", "veth-pair", "The default pod network nic implementation type, default: veth-pair")
+		argEnableLb             = pflag.Bool("enable-lb", true, "Enable load balancer, default: true")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -135,15 +178,24 @@ func ParseFlags() (*Configuration, error) {
 		WorkerNum:                     *argWorkerNum,
 		PprofPort:                     *argPprofPort,
 		NetworkType:                   *argsNetworkType,
-		DefaultVlanID:                 *argsDefaultVlanID,
-		DefaultProviderName:           *argsDefaultProviderName,
-		DefaultHostInterface:          *argsDefaultInterfaceName,
-		DefaultVlanName:               *argsDefaultVlanName,
-		DefaultVlanRange:              *argsDefaultVlanRange,
+		DefaultVlanID:                 *argDefaultVlanID,
+		DefaultProviderName:           *argDefaultProviderName,
+		DefaultHostInterface:          *argDefaultInterfaceName,
+		DefaultVlanName:               *argDefaultVlanName,
+		DefaultVlanRange:              *argDefaultVlanRange,
+		ExtraProviderNames:            *argExtraProviderNames,
+		ExtraHostInterfaces:           *argExtraInterfaceNames,
+		ExtraVlanNames:                *argExtraVlanNames,
+		ExtraVlanIDs:                  *argExtraVlanIDs,
 		PodName:                       os.Getenv("POD_NAME"),
 		PodNamespace:                  os.Getenv("KUBE_NAMESPACE"),
-		PodNicType:                    *argsPodNicType,
-		EnableLb:                      *argsEnableLb,
+		PodNicType:                    *argPodNicType,
+		EnableLb:                      *argEnableLb,
+	}
+	if !(len(*argExtraVlanRanges) == 1 && (*argExtraVlanRanges)[0] == "") {
+		for _, r := range *argExtraVlanRanges {
+			config.ExtraVlanRanges = append(config.ExtraVlanRanges, strings.Split(r, ":")...)
+		}
 	}
 
 	if util.IsNetworkVlan(config.NetworkType) && config.DefaultHostInterface == "" {
@@ -168,6 +220,10 @@ func ParseFlags() (*Configuration, error) {
 			return nil, err
 		}
 		config.NodeSwitchGateway = gw
+	}
+
+	if err := config.validate(); err != nil {
+		return nil, err
 	}
 
 	if err := config.initKubeClient(); err != nil {

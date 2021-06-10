@@ -137,11 +137,34 @@ kind-install-vlan:
 	sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(SUBNET)"@' \
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(GATEWAY)"@' \
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(EXCLUDE_IPS)"@' \
-		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
+		-e 's@^DEFAULT_VLAN_ID=.*@DEFAULT_VLAN_ID="0"@' \
 		dist/images/install.sh > install-vlan.sh
 	chmod +x install-vlan.sh
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
+	ENABLE_SSL=true ENABLE_VLAN=true VLAN_NIC=eth0 ./install-vlan.sh
+	kubectl describe no
+
+.PHONY: kind-install-multiple-vlan
+kind-install-multiple-vlan:
+	docker network connect bridge kube-ovn-control-plane
+	docker network connect bridge kube-ovn-worker
+	$(eval SUBNET = $(shell docker network inspect kind -f "{{(index .IPAM.Config 0).Subnet}}"))
+	$(eval GATEWAY = $(shell docker network inspect kind -f "{{(index .IPAM.Config 0).Gateway}}"))
+	$(eval EXCLUDE_IPS = $(shell docker network inspect kind -f '{{range .Containers}},{{index (split .IPv4Address "/") 0}}{{end}}' | sed 's/^,//'))
+	sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(SUBNET)"@' \
+		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(GATEWAY)"@' \
+		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(EXCLUDE_IPS)"@' \
+		-e 's@^DEFAULT_VLAN_ID=.*@DEFAULT_VLAN_ID="0"@' \
+		-e 's@^EXTRA_PROVIDER_NAMES=.*@EXTRA_PROVIDER_NAMES="extra"@' \
+		-e 's@^EXTRA_VLAN_INTERFACE_NAMES=.*@EXTRA_VLAN_INTERFACE_NAMES="eth1"@' \
+		-e 's@^EXTRA_VLAN_NAMES=.*@EXTRA_VLAN_NAMES="extra"@' \
+		-e 's@^EXTRA_VLAN_IDS=.*@EXTRA_VLAN_IDS="0"@' \
+		-e 's@^EXTRA_VLAN_RANGES=.*@EXTRA_VLAN_RANGES="1,4095"@' \
+		dist/images/install.sh > install-vlan.sh
+	chmod +x install-vlan.sh
+	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
+	# kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
 	ENABLE_SSL=true ENABLE_VLAN=true VLAN_NIC=eth0 ./install-vlan.sh
 	kubectl describe no
 
@@ -170,7 +193,7 @@ endif
 	sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(SUBNET)"@' \
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(GATEWAY)"@' \
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(EXCLUDE_IPS)"@' \
-		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
+		-e 's@^DEFAULT_VLAN_ID=.*@DEFAULT_VLAN_ID="0"@' \
 		dist/images/install.sh > install-vlan.sh
 	chmod +x install-vlan.sh
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)

@@ -33,6 +33,11 @@ func (c *Controller) InitOVN() error {
 		return err
 	}
 
+	if err := c.initExtraVlans(); err != nil {
+		klog.Errorf("init extra vlans failed %v", err)
+		return err
+	}
+
 	if err := c.initNodeSwitch(); err != nil {
 		klog.Errorf("init node switch failed %v", err)
 		return err
@@ -323,37 +328,52 @@ func (c *Controller) InitIPAM() error {
 	return nil
 }
 
+func (c *Controller) initVlan(name, provider, hostInterface string, id int) error {
+	_, err := c.config.KubeOvnClient.KubeovnV1().Vlans().Get(context.Background(), name, metav1.GetOptions{})
+	if err == nil {
+		return nil
+	}
+
+	if !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to get vlan %s: %v", name, err)
+		return err
+	}
+
+	defaultVlan := kubeovnv1.Vlan{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: kubeovnv1.VlanSpec{
+			VlanId:        id,
+			Provider:      provider,
+			HostInterface: hostInterface,
+		},
+	}
+
+	_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Create(context.Background(), &defaultVlan, metav1.CreateOptions{})
+	return err
+}
+
 //InitDefaultVlan init the default vlan when network type is vlan or vxlan
 func (c *Controller) initDefaultVlan() error {
 	if !util.IsNetworkVlan(c.config.NetworkType) {
 		return nil
 	}
 
-	_, err := c.config.KubeOvnClient.KubeovnV1().Vlans().Get(context.Background(), c.config.DefaultVlanName, metav1.GetOptions{})
-	if err == nil {
+	return c.initVlan(c.config.DefaultVlanName, c.config.DefaultProviderName, c.config.DefaultHostInterface, c.config.DefaultVlanID)
+}
+
+// initialize the extra vlans when network type is vlan
+func (c *Controller) initExtraVlans() error {
+	if !util.IsNetworkVlan(c.config.NetworkType) {
 		return nil
 	}
 
-	if !k8serrors.IsNotFound(err) {
-		klog.Errorf("get default vlan %s failed %v", c.config.DefaultVlanName, err)
-		return err
+	for i, provider := range c.config.ExtraProviderNames {
+		if err := c.initVlan(c.config.ExtraVlanNames[i], provider, c.config.ExtraHostInterfaces[i], c.config.ExtraVlanIDs[i]); err != nil {
+			return err
+		}
 	}
 
-	if c.config.DefaultVlanID < 0 || c.config.DefaultVlanID > 4095 {
-		return fmt.Errorf("the default vlan id is not between 1-4095")
-	}
-
-	defaultVlan := kubeovnv1.Vlan{
-		ObjectMeta: metav1.ObjectMeta{Name: c.config.DefaultVlanName},
-		Spec: kubeovnv1.VlanSpec{
-			VlanId:                c.config.DefaultVlanID,
-			ProviderInterfaceName: c.config.DefaultProviderName,
-			LogicalInterfaceName:  c.config.DefaultHostInterface,
-		},
-	}
-
-	_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Create(context.Background(), &defaultVlan, metav1.CreateOptions{})
-	return err
+	return nil
 }
 
 func (c *Controller) initSyncCrdIPs() error {

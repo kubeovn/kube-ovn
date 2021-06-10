@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"time"
@@ -52,48 +53,56 @@ func InitNodeGateway(config *Configuration) error {
 func InitMirror(config *Configuration) error {
 	if config.EnableMirror {
 		return configureMirror(config.MirrorNic, config.MTU)
-	} else {
-		return removeMirror(config.MirrorNic)
 	}
-
+	return removeMirror(config.MirrorNic)
 }
 
-func InitVlan(config *Configuration) error {
+func initVlan(provider, nic string) error {
 	// TODO: move to flag validation
-	if config.DefaultProviderName == "" {
-		panic("provider should not be empty")
+	if provider == "" {
+		panic("provider name must be specified")
 	}
 
-	//create patch port
-	exists, err := providerBridgeExists()
-	if err != nil {
-		errMsg := fmt.Errorf("check provider bridge exists failed, %v", err)
+	// create and configure external bridge
+	brName := util.ExternalBridgeName(provider)
+	if err := configExternalBridge(provider, brName); err != nil {
+		errMsg := fmt.Errorf("failed to create and configure external bridge %s: %v", brName, err)
 		klog.Error(errMsg)
+		return errMsg
+	}
+
+	// add host nic to the external bridge
+	if err := configProviderNic(nic, brName); err != nil {
+		errMsg := fmt.Errorf("failed to add nic %s to external bridge %s: %v", nic, brName, err)
+		klog.Error(errMsg)
+		return errMsg
+	}
+
+	return nil
+}
+
+func InitVlans(config *Configuration) error {
+	ifName := config.getInterfaceName()
+	if ifName == "" {
+		err := errors.New("failed to get default host nic")
+		klog.Error(err)
 		return err
 	}
 
-	if !exists {
-		//create br-provider
-		if err = configProviderPort(config.DefaultProviderName); err != nil {
-			errMsg := fmt.Errorf("configure patch port %s failed %v", util.UnderlayBridge, err)
-			klog.Error(errMsg)
-			return errMsg
-		}
+	if err := initVlan(config.DefaultProviderName, ifName); err != nil {
+		err = fmt.Errorf("failed to initialize vlan with provider %s: %v", config.DefaultProviderName, ifName)
+		klog.Error(err)
+		return err
+	}
 
-		//add a host nic to br-provider
-		ifName := config.getInterfaceName()
-		if ifName == "" {
-			errMsg := fmt.Errorf("failed get host nic to add ovs %s", util.UnderlayBridge)
-			klog.Error(errMsg)
-			return errMsg
-		}
-
-		if err = configProviderNic(ifName); err != nil {
-			errMsg := fmt.Errorf("add nic %s to port %s failed %v", ifName, util.UnderlayBridge, err)
-			klog.Error(errMsg)
-			return errMsg
+	for i, provider := range config.ExtraProviderNames {
+		if err := initVlan(provider, config.ExtraInterfaceNames[i]); err != nil {
+			err = fmt.Errorf("failed to initialize vlan with provider %s: %v", provider, config.ExtraInterfaceNames[i])
+			klog.Error(err)
+			return err
 		}
 	}
+
 	return nil
 }
 

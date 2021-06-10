@@ -219,9 +219,9 @@ spec:
     - name: VlanID
       type: string
       JSONPath: .spec.vlanId
-    - name: ProviderInterfaceName
+    - name: Provider
       type: string
-      JSONPath: .spec.providerInterfaceName
+      JSONPath: .spec.provider
     - name: Subnet
       type: string
       JSONPath: .spec.subnet
@@ -233,9 +233,9 @@ spec:
           properties:
             vlanId:
               type: integer
-            providerInterfaceName:
+            provider:
               type: string
-            logicalInterfaceName:
+            hostInterface:
               type: string
             subnet:
               type: string

@@ -4,9 +4,14 @@ By default, Kube-OVN use Geneve to encapsulate packets between hosts, which will
 Kube-OVN also support underlay Vlan mode network for better performance and throughput.
 In Vlan mode, the packets will send directly to physical switches with vlan tags.
 
-To enable Vlan mode, a ~~dedicated~~ network interface is required by container network. Mac address, MTU, IP addresses and routes attached to the interface will be copied/transferred to an OVS bridge named `br-provider`.
+To enable Vlan mode, at least one interface connected to the external provider network is required.
 The related switch port must work in trunk mode to accept 802.1q packets. For underlay network with no vlan tag, you need
 to set the VLAN ID to 0.
+
+From v1.7.0, Mac address, MTU, IP addresses and routes attached to each interface will be copied/transferred to an OVS bridge named `br-PROVIDER_NAME` where `PROVIDER_NAME` is the provider network name.
+This mechanism enables underlay mode on machines with only one physical network interface.
+
+> By default, the provider name is `provider`.
 
 ~~By now, Geneve or Vlan network mode is a global install option, all container must work in the same network mode.
 We are working at combine two networks in one cluster.~~
@@ -23,8 +28,8 @@ You can have a subnet A using Geneve encapsulation and subnet B using Vlan tag.
 
 `wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.7/dist/images/install.sh`
 
-2. Edit the `install.sh`, modify `NETWORK_TYPE` to `vlan`, `VLAN_INTERFACE_NAME` to related host interface.
-> NOTE: if your nodes have different nic name for vlan device you could use regex for VLAN_INTERFACE_NAME or label those nodes with
+2. Edit the `install.sh`, modify `NETWORK_TYPE` to `vlan`, `DEFAULT_VLAN_INTERFACE_NAME` to related host interface.
+> NOTE: if your nodes have different nic name for vlan device you could use regex for DEFAULT_VLAN_INTERFACE_NAME or label those nodes with
    own `ovn.kubernetes.io/host_interface_name`.
 
 3. Install Kube-OVN
@@ -83,12 +88,19 @@ kubectl run samplepod --image=nginx --namespace=product
 
 `wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.7/dist/images/install.sh`
 
-2. Edit the `install.sh`, modify `NETWORK_TYPE` to `hybrid`, `VLAN_INTERFACE_NAME` to related host interface.
-> NOTE: if your nodes have different nic name for vlan device you could use regex for VLAN_INTERFACE_NAME or label those nodes with
+2. Edit the `install.sh`, modify `NETWORK_TYPE` to `hybrid`, `DEFAULT_VLAN_INTERFACE_NAME` to related host interface.
+> NOTE: if your nodes have different nic name for vlan device you could use regex for DEFAULT_VLAN_INTERFACE_NAME or label those nodes with
    own `ovn.kubernetes.io/host_interface_name`.
 
 3. Install Kube-OVN
 
+### Multiple Vlans
+
+From v1.7.1, Kube-OVN supports multiple underlay/vlan networkings on installation.
+
+If you want to set up multiple Vlan, you can set values of `EXTRA_PROVIDER_NAMES`, `EXTRA_VLAN_INTERFACE_NAMES`, `EXTRA_VLAN_NAMES`,
+`EXTRA_VLAN_IDS` and `EXTRA_VLAN_RANGES` in `install.sh` based on your needs.
+The values must be comma separated lists (except the one of `EXTRA_VLAN_RANGES` which is colon separated) and the lengths must be the same.
 
 ### Note
 Vlan mode will auto-assign a VLAN to a subnet if the subnet doesn't specify a VLAN. 

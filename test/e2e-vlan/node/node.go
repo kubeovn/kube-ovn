@@ -17,10 +17,9 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
 
-const (
-	vlanBr  = util.UnderlayBridge
-	vlanNic = "eth0"
-)
+const vlanNic = "eth0"
+
+var vlanBr = util.ExternalBridgeName("provider")
 
 type nodeNetwork struct {
 	Gateway             string

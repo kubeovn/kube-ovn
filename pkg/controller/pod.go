@@ -426,7 +426,7 @@ func (c *Controller) handleAddPod(key string) error {
 				}
 				pod.Annotations[util.HostInterfaceName] = c.config.DefaultHostInterface
 				pod.Annotations[fmt.Sprintf(util.VlanIdAnnotationTemplate, podNet.ProviderName)] = strconv.Itoa(vlan.Spec.VlanId)
-				pod.Annotations[util.ProviderInterfaceName] = c.config.DefaultProviderName
+				pod.Annotations[util.ProviderName] = c.config.DefaultProviderName
 				pod.Annotations[fmt.Sprintf(util.VlanRangeAnnotationTemplate, podNet.ProviderName)] = c.config.DefaultVlanRange
 			}
 

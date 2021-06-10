@@ -100,12 +100,17 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
       --default-cidr string                       Default CIDR for namespace with no logical switch annotation, default: 10.16.0.0/16 (default "10.16.0.0/16")
       --default-exclude-ips string                Exclude ips in default switch, default equals to gateway address
       --default-gateway string                    Default gateway for default-cidr, default the first ip in default-cidr
-      --default-interface-name string             The default host interface name in the vlan/vxlan type
+      --default-interface-name string             Default host interface name of the vlan/vxlan networking
       --default-ls string                         The default logical switch name, default: ovn-default (default "ovn-default")
-      --default-provider-name string              The vlan or vxlan type default provider interface name, default: provider (default "provider")
-      --default-vlan-id int                       The default vlan id, default: 1 (default 1)
-      --default-vlan-name string                  The default vlan name, default: ovn-vlan (default "ovn-vlan")
-      --default-vlan-range string                 The default vlan range, default: 1-4095 (default "1,4095")
+      --default-provider-name string              Default provider name of the vlan/vxlan networking, default: provider (default "provider")
+      --default-vlan-id int                       Default vlan tag, default: 100 (default 100)
+      --default-vlan-name string                  Default vlan name of the vlan networking, default: ovn-vlan (default "ovn-vlan")
+      --default-vlan-range string                 Default vlan range, default: 1-4095 (default "1,4095")
+      --extra-interface-names strings             Comma separated host interface names of the extra vlan networkings
+      --extra-provider-names strings              Comma separated provider names of the extra vlan networkings
+      --extra-vlan-ids ints                       Comma separated extra vlan tags of the extra vlan networkings
+      --extra-vlan-names strings                  Comma separated vlan names of the extra vlan networkings
+      --extra-vlan-ranges stringArray             Colon separated vlan ranges of the extra vlan networkings
       --kubeconfig string                         Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.
       --log_backtrace_at traceLocation            when logging hits line file:N, emit a stack trace (default :0)
       --log_dir string                            If non-empty, write log files in this directory
@@ -119,6 +124,7 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
       --ovn-nb-addr string                        ovn-nb address
       --ovn-sb-addr string                        ovn-sb address
       --ovn-timeout int                            (default 30)
+      --pod-nic-type string                       The default pod network nic implementation type, default: veth-pair (default "veth-pair")
       --pprof-port int                            The port to get profiling data, default 10660 (default 10660)
       --skip_headers                              If true, avoid header prefixes in the log messages
       --skip_log_headers                          If true, avoid headers when opening log files

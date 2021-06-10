@@ -32,13 +32,43 @@ EXCLUDE_IPS=""                         # EXCLUDE_IPS for default subnet
 LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
 NETWORK_TYPE="geneve"                  # geneve or vlan
 TUNNEL_TYPE="geneve"                   # geneve or vxlan
+POD_NIC_TYPE="veth-pair"               # veth-pair or internal-port
 
 # VLAN Config only take effect when NETWORK_TYPE is vlan
-PROVIDER_NAME="provider"
-VLAN_INTERFACE_NAME=""
-VLAN_NAME="ovn-vlan"
-VLAN_ID="100"
-VLAN_RANGE="1,4095"
+DEFAULT_PROVIDER_NAME="provider"
+DEFAULT_VLAN_INTERFACE_NAME=""
+DEFAULT_VLAN_NAME="ovn-vlan"
+DEFAULT_VLAN_ID="100"
+DEFAULT_VLAN_RANGE="1,4095"
+
+EXTRA_PROVIDER_NAMES=""       # comma separated extra provider names
+EXTRA_VLAN_INTERFACE_NAMES="" # comma separated extra interface names
+EXTRA_VLAN_NAMES=""           # comma separated extra VLAN names
+EXTRA_VLAN_IDS=""             # comma separated extra VLAN IDs
+EXTRA_VLAN_RANGES=""          # colon separated extra VLAN ranges
+
+if [ "$ENABLE_VLAN" = "true" ]; then
+  NETWORK_TYPE="vlan"
+  if [ "$VLAN_NIC" != "" ]; then
+    DEFAULT_VLAN_INTERFACE_NAME="$VLAN_NIC"
+  fi
+fi
+
+# check extra VLAN configurations
+if [ $NETWORK_TYPE = "vlan" ]; then
+  IFS=',' read -r -a providers   <<< "$EXTRA_PROVIDER_NAMES"
+  IFS=',' read -r -a interfaces  <<< "$EXTRA_VLAN_INTERFACE_NAMES"
+  IFS=',' read -r -a vlan_names  <<< "$EXTRA_VLAN_NAMES"
+  IFS=',' read -r -a vlan_ids    <<< "$EXTRA_VLAN_IDS"
+  IFS=':' read -r -a vlan_ranges <<< "$EXTRA_VLAN_RANGES"
+  num=${#providers[@]}
+  for n in ${#interfaces[@]} ${#vlan_names[@]} ${#vlan_ids[@]} ${#vlan_ranges[@]}; do
+    if [ $n -ne $num ]; then
+      echo "invalid VLAN configuration!"
+      exit 1
+    fi
+  done
+fi
 
 # DPDK
 DPDK="false"
@@ -358,9 +388,9 @@ spec:
     - name: VlanID
       type: string
       JSONPath: .spec.vlanId
-    - name: ProviderInterfaceName
+    - name: Provider
       type: string
-      JSONPath: .spec.providerInterfaceName
+      JSONPath: .spec.provider
     - name: Subnet
       type: string
       JSONPath: .spec.subnet
@@ -372,9 +402,9 @@ spec:
           properties:
             vlanId:
               type: integer
-            providerInterfaceName:
+            provider:
               type: string
-            logicalInterfaceName:
+            hostInterface:
               type: string
             subnet:
               type: string
@@ -1529,8 +1559,25 @@ spec:
           - --default-exclude-ips=$EXCLUDE_IPS
           - --node-switch-cidr=$JOIN_CIDR
           - --network-type=$NETWORK_TYPE
-          - --default-interface-name=$VLAN_INTERFACE_NAME
-          - --default-vlan-id=$VLAN_ID
+          - --pod-nic-type=$POD_NIC_TYPE
+          - --default-provider-name=$DEFAULT_PROVIDER_NAME
+          - --default-interface-name=$DEFAULT_VLAN_INTERFACE_NAME
+          - --default-vlan-name=$DEFAULT_VLAN_NAME
+          - --default-vlan-id=$DEFAULT_VLAN_ID
+          - --default-vlan-range=$DEFAULT_VLAN_RANGE
+          - --extra-provider-names=$EXTRA_PROVIDER_NAMES
+          - --extra-interface-names=$EXTRA_VLAN_INTERFACE_NAMES
+          - --extra-vlan-names=$EXTRA_VLAN_NAMES
+EOF
+
+if [ "$EXTRA_VLAN_IDS" != "" ]; then
+  cat << EOF >> kube-ovn.yaml
+          - --extra-vlan-ids=$EXTRA_VLAN_IDS
+EOF
+fi
+
+cat << EOF >> kube-ovn.yaml
+          - --extra-vlan-ranges=$EXTRA_VLAN_RANGES
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
@@ -1635,9 +1682,12 @@ spec:
           - --enable-mirror=$ENABLE_MIRROR
           - --encap-checksum=false
           - --service-cluster-ip-range=$SVC_CIDR
-          - --iface=${IFACE}
+          - --iface=$IFACE
           - --network-type=$NETWORK_TYPE
-          - --default-interface-name=$VLAN_INTERFACE_NAME
+          - --default-provider-name=$DEFAULT_PROVIDER_NAME
+          - --default-interface-name=$DEFAULT_VLAN_INTERFACE_NAME
+          - --extra-provider-names=$EXTRA_PROVIDER_NAMES
+          - --extra-interface-names=$EXTRA_VLAN_INTERFACE_NAMES
         securityContext:
           runAsUser: 0
           privileged: true

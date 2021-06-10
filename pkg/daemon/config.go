@@ -12,8 +12,6 @@ import (
 	"regexp"
 	"strings"
 
-	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	"github.com/vishvananda/netlink"
@@ -21,6 +19,9 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
+
+	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // Configuration is the daemon conf
@@ -43,6 +44,21 @@ type Configuration struct {
 	NetworkType           string
 	DefaultProviderName   string
 	DefaultInterfaceName  string
+	ExtraProviderNames    []string
+	ExtraInterfaceNames   []string
+}
+
+func (c *Configuration) validate() error {
+	if util.IsNetworkVlan(c.NetworkType) {
+		if c.DefaultInterfaceName == "" {
+			return errors.New(`missing parameter "default-interface-name"`)
+		}
+		if len(c.ExtraInterfaceNames) != len(c.ExtraProviderNames) {
+			return fmt.Errorf("invalid configuration: extra interface name and extra provider name count must match")
+		}
+	}
+
+	return nil
 }
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
@@ -61,9 +77,11 @@ func ParseFlags() (*Configuration, error) {
 		argEncapChecksum         = pflag.Bool("encap-checksum", true, "Enable checksum, default: true")
 		argPprofPort             = pflag.Int("pprof-port", 10665, "The port to get profiling data, default: 10665")
 
-		argsNetworkType          = pflag.String("network-type", "geneve", "The ovn network type, default: geneve")
-		argsDefaultProviderName  = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name, default: provider")
-		argsDefaultInterfaceName = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
+		argNetworkType          = pflag.String("network-type", "geneve", "The ovn network type, default: geneve")
+		argDefaultProviderName  = pflag.String("default-provider-name", "provider", "Default provider name of the vlan/vxlan networking, default: provider")
+		argDefaultInterfaceName = pflag.String("default-interface-name", "", "Default host interface name of the vlan/vxlan networking")
+		argExtraProviderNames   = pflag.StringSlice("extra-provider-names", nil, "Comma separated provider names of the extra vlan networkings")
+		argExtraInterfaceNames  = pflag.StringSlice("extra-interface-names", nil, "Comma separated host interface names of the extra vlan networkings")
 	)
 
 	// mute info log for ipset lib
@@ -105,9 +123,14 @@ func ParseFlags() (*Configuration, error) {
 		ServiceClusterIPRange: *argServiceClusterIPRange,
 		NodeLocalDNSIP:        *argNodeLocalDnsIP,
 		EncapChecksum:         *argEncapChecksum,
-		NetworkType:           *argsNetworkType,
-		DefaultProviderName:   *argsDefaultProviderName,
-		DefaultInterfaceName:  *argsDefaultInterfaceName,
+		NetworkType:           *argNetworkType,
+		DefaultProviderName:   *argDefaultProviderName,
+		DefaultInterfaceName:  *argDefaultInterfaceName,
+		ExtraProviderNames:    *argExtraProviderNames,
+		ExtraInterfaceNames:   *argExtraInterfaceNames,
+	}
+	if err := config.validate(); err != nil {
+		return nil, err
 	}
 
 	if err := config.initKubeClient(); err != nil {
