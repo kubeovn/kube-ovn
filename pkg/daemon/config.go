@@ -1,9 +1,11 @@
 package daemon
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net"
 	"os"
 	"os/exec"
@@ -108,11 +110,11 @@ func ParseFlags() (*Configuration, error) {
 		DefaultInterfaceName:  *argsDefaultInterfaceName,
 	}
 
-	if err := config.initNicConfig(); err != nil {
+	if err := config.initKubeClient(); err != nil {
 		return nil, err
 	}
 
-	if err := config.initKubeClient(); err != nil {
+	if err := config.initNicConfig(); err != nil {
 		return nil, err
 	}
 
@@ -126,6 +128,17 @@ func (config *Configuration) initNicConfig() error {
 		err     error
 		encapIP string
 	)
+
+	//Support to specify node network card separately
+	node, err := config.KubeClient.CoreV1().Nodes().Get(context.Background(), config.NodeName, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("Failed to find node info, err: %v", err)
+		return err
+	}
+	if nodeTunnelName := node.GetAnnotations()[util.TunnelInterfaceAnnotation]; nodeTunnelName != "" {
+		config.Iface = nodeTunnelName
+		klog.Infof("Find node tunnel interface name: %v", nodeTunnelName)
+	}
 
 	if config.Iface == "" {
 		podIP, ok := os.LookupEnv("POD_IP")
