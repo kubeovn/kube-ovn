@@ -107,7 +107,11 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		vlanID = pod.Annotations[fmt.Sprintf(util.VlanIdAnnotationTemplate, podRequest.Provider)]
 		ipAddr = util.GetIpAddrWithMask(ip, cidr)
 		ifName = podRequest.IfName
-		nicType = pod.Annotations[util.PodNicAnnotation]
+		if podRequest.DeviceID != "" {
+			nicType = util.OffloadType
+		} else {
+			nicType = pod.Annotations[util.PodNicAnnotation]
+		}
 		netns = podRequest.NetNs
 		break
 	}
@@ -266,7 +270,12 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 			}
 		}
 
-		nicType := pod.Annotations[util.PodNicAnnotation]
+		var nicType string
+		if podRequest.DeviceID != "" {
+			nicType = util.OffloadType
+		} else {
+			nicType = pod.Annotations[util.PodNicAnnotation]
+		}
 		err = csh.deleteNic(podRequest.PodName, podRequest.PodNamespace, podRequest.ContainerID, podRequest.DeviceID, podRequest.IfName, nicType)
 		if err != nil {
 			errMsg := fmt.Errorf("del nic failed %v", err)

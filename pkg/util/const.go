@@ -104,6 +104,7 @@ const (
 
 	PodNicAnnotation = "ovn.kubernetes.io/pod_nic_type"
 	VethType         = "veth-pair"
+	OffloadType      = "offload-port"
 	InternalType     = "internal-port"
 
 	ChassisLoc     = "/etc/openvswitch/system-id.conf"
