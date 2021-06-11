@@ -70,15 +70,21 @@ func cmdAdd(args *skel.CmdArgs) error {
 func generateCNIResult(cniVersion string, cniResponse *request.CniResponse) current.Result {
 	result := current.Result{CNIVersion: cniVersion}
 	_, mask, _ := net.ParseCIDR(cniResponse.CIDR)
+	podIface := current.Interface{
+		Name: cniResponse.PodNicName,
+		Mac:  cniResponse.MacAddress,
+	}
 	switch cniResponse.Protocol {
 	case kubeovnv1.ProtocolIPv4:
 		ip, route := assignV4Address(cniResponse.IpAddress, cniResponse.Gateway, mask)
 		result.IPs = []*current.IPConfig{&ip}
 		result.Routes = []*types.Route{&route}
+		result.Interfaces = []*current.Interface{&podIface}
 	case kubeovnv1.ProtocolIPv6:
 		ip, route := assignV6Address(cniResponse.IpAddress, cniResponse.Gateway, mask)
 		result.IPs = []*current.IPConfig{&ip}
 		result.Routes = []*types.Route{&route}
+		result.Interfaces = []*current.Interface{&podIface}
 	case kubeovnv1.ProtocolDual:
 		var netMask *net.IPNet
 		for _, cidrBlock := range strings.Split(cniResponse.CIDR, ",") {
@@ -99,6 +105,7 @@ func generateCNIResult(cniVersion string, cniResponse *request.CniResponse) curr
 				result.Routes = append(result.Routes, &route)
 			}
 		}
+		result.Interfaces = []*current.Interface{&podIface}
 	}
 
 	return result

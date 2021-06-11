@@ -695,7 +695,7 @@ func renameLink(curName, newName string) error {
 	return nil
 }
 
-func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac, ip, gateway, ingress, egress, vlanID, DeviceID, nicType, podNetns string) error {
+func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac, ip, gateway, ingress, egress, vlanID, DeviceID, nicType, podNetns string) (string, error) {
 	var err error
 
 	_, containerNicName := generateNicName(containerID, ifName)
@@ -712,27 +712,27 @@ func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, 
 		fmt.Sprintf("external_ids:ip=%s", ipStr),
 		fmt.Sprintf("external_ids:pod_netns=%s", podNetns))
 	if err != nil {
-		return fmt.Errorf("add nic to ovs failed %v: %q", err, output)
+		return containerNicName, fmt.Errorf("add nic to ovs failed %v: %q", err, output)
 	}
 
 	// container nic must use same mac address from pod annotation, otherwise ovn will reject these packets by default
 	macAddr, err := net.ParseMAC(mac)
 	if err != nil {
-		return fmt.Errorf("failed to parse mac %s %v", macAddr, err)
+		return containerNicName, fmt.Errorf("failed to parse mac %s %v", macAddr, err)
 	}
 
 	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, ingress, egress); err != nil {
-		return err
+		return containerNicName, err
 	}
 
 	podNS, err := ns.GetNS(netns)
 	if err != nil {
-		return fmt.Errorf("failed to open netns %q: %v", netns, err)
+		return containerNicName, fmt.Errorf("failed to open netns %q: %v", netns, err)
 	}
 	if err = configureContainerNic(containerNicName, ifName, ip, gateway, macAddr, podNS, csh.Config.MTU, nicType); err != nil {
-		return err
+		return containerNicName, err
 	}
-	return nil
+	return containerNicName, nil
 }
 
 // https://github.com/antrea-io/antrea/issues/1691

@@ -35,6 +35,7 @@ type CniResponse struct {
 	CIDR       string `json:"cidr"`
 	Gateway    string `json:"gateway"`
 	Mtu        int    `json:"mtu"`
+	PodNicName string `json:"nicname"`
 	Err        string `json:"error"`
 }
 

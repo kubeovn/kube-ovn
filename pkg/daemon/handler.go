@@ -69,7 +69,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	}
 
 	klog.Infof("add port request %v", podRequest)
-	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, vlanID, ifName, nicType, netns string
+	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, vlanID, ifName, nicType, netns, podNicName string
 	var pod *v1.Pod
 	var err error
 	for i := 0; i < 15; i++ {
@@ -140,8 +140,9 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		nsArray := strings.Split(netns, "/")
 		podNetns := nsArray[len(nsArray)-1]
 		if nicType == util.InternalType {
-			err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, ipAddr, gw, ingress, egress, vlanID, podRequest.DeviceID, nicType, podNetns)
+			podNicName, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, ipAddr, gw, ingress, egress, vlanID, podRequest.DeviceID, nicType, podNetns)
 		} else {
+			podNicName = ifName
 			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, ipAddr, gw, ingress, egress, vlanID, podRequest.DeviceID, nicType, podNetns)
 		}
 		if err != nil {
@@ -163,7 +164,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		}
 	}
 
-	if err := resp.WriteHeaderAndEntity(http.StatusOK, request.CniResponse{Protocol: util.CheckProtocol(cidr), IpAddress: ip, MacAddress: macAddr, CIDR: cidr, Gateway: gw}); err != nil {
+	if err := resp.WriteHeaderAndEntity(http.StatusOK, request.CniResponse{Protocol: util.CheckProtocol(cidr), IpAddress: ip, MacAddress: macAddr, CIDR: cidr, Gateway: gw, PodNicName: podNicName}); err != nil {
 		klog.Errorf("failed to write response, %v", err)
 	}
 }
