@@ -55,7 +55,7 @@ jobs:
 
       - name: Build
         run: |
-          make release-arm
+          make release-arm || make release-arm
       - name: Push
         if: ${{ github.ref == 'refs/heads/master' || contains(github.ref, 'release') }}
         env:
