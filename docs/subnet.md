@@ -34,7 +34,7 @@ spec:
 - `namespaces`: List of namespaces that bind to this subnet. If you want to bind a namespace to this subnet, edit and add the namespace name to this field.
 - `cidrBlock`: The cidr of this subnet.
 - `gateway`: The gateway address of this subnet.
-- `excludeIps`: List of ips that you do not want to be allocated.
+- `excludeIps`: List of ips that you do not want to be allocated. The format `192.168.10.20..192.168.10.30` can be used to exclude a range of ips.
 
 ## Isolation
 
@@ -56,7 +56,9 @@ For a distributed Gateway, outgoing traffic from Pods within the OVN network to 
 For a centralized gateway, outgoing traffic from Pods within the OVN network to external destinations will go through Gateway Node for the Namespace.
 
 - `gatewayType`: `distributed` or `centralized`, default is `distributed`.
-- `gatewayNode`: when `gatewayType` is `centralized` used this field to specify which node act as the namespace gateway. This field can be a comma separated string, like `node1,node2` and kube-ovn will automatically apply an active-backup failover strategy.
+- `gatewayNode`: when `gatewayType` is `centralized` used this field to specify which node act as the namespace gateway. This field can be a comma separated string, like `node1,node2`.
+Before kube-ovn v1.6.3, kube-ovn will automatically apply an active-backup failover strategy.
+Since kube-ovn v1.7.0, kube-ovn support ecmp routes, and outgoing traffic can go through multiple gateway specified.
 - `natOutgoing`: `true` or `false`, whether pod ip need to be masqueraded when go through gateway. When `false`, pod ip will be exposed to external network directly, default `false`.
 
 ## Advance Options
