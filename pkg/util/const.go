@@ -24,6 +24,7 @@ const (
 	VpcDnatMd5Annotation        = "ovn.kubernetes.io/vpc_dnat_md5"
 	VpcSnatMd5Annotation        = "ovn.kubernetes.io/vpc_snat_md5"
 	VpcCIDRsAnnotation          = "ovn.kubernetes.io/vpc_cidrs"
+	VpcExternalLabel            = "ovn.kubernetes.io/vpc_external"
 
 	LogicalRouterAnnotation = "ovn.kubernetes.io/logical_router"
 	VpcAnnotation           = "ovn.kubernetes.io/vpc"
