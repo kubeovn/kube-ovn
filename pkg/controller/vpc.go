@@ -31,7 +31,10 @@ func (c *Controller) enqueueAddVpc(obj interface{}) {
 		return
 	}
 	klog.V(3).Infof("enqueue add vpc %s", key)
-	c.addOrUpdateVpcQueue.Add(key)
+	vpc := obj.(*kubeovnv1.Vpc)
+	if _, ok := vpc.Labels[util.VpcExternalLabel]; !ok {
+		c.addOrUpdateVpcQueue.Add(key)
+	}
 }
 
 func (c *Controller) enqueueUpdateVpc(old, new interface{}) {
@@ -48,13 +51,17 @@ func (c *Controller) enqueueUpdateVpc(old, new interface{}) {
 		return
 	}
 
-	if !newVpc.DeletionTimestamp.IsZero() {
+	_, oldOk := oldVpc.Labels[util.VpcExternalLabel]
+	_, newOk := newVpc.Labels[util.VpcExternalLabel]
+
+	if !newVpc.DeletionTimestamp.IsZero() && (!oldOk && !newOk) {
 		c.addOrUpdateVpcQueue.Add(key)
 		return
 	}
 
-	if !reflect.DeepEqual(oldVpc.Spec.Namespaces, newVpc.Spec.Namespaces) ||
-		!reflect.DeepEqual(oldVpc.Spec.StaticRoutes, newVpc.Spec.StaticRoutes) {
+	if (!reflect.DeepEqual(oldVpc.Spec.Namespaces, newVpc.Spec.Namespaces) ||
+		!reflect.DeepEqual(oldVpc.Spec.StaticRoutes, newVpc.Spec.StaticRoutes)) &&
+		(!oldOk && !newOk) {
 		klog.V(3).Infof("enqueue update vpc %s", key)
 		c.addOrUpdateVpcQueue.Add(key)
 	}
@@ -71,7 +78,8 @@ func (c *Controller) enqueueDelVpc(obj interface{}) {
 		return
 	}
 	vpc := obj.(*kubeovnv1.Vpc)
-	if !vpc.Status.Default {
+	_, ok := vpc.Labels[util.VpcExternalLabel]
+	if !vpc.Status.Default || !ok {
 		klog.V(3).Infof("enqueue delete vpc %s", key)
 		c.delVpcQueue.Add(obj)
 	}
