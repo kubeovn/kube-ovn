@@ -277,6 +277,30 @@ func (c Client) AddLbToLogicalSwitch(tcpLb, tcpSessLb, udpLb, udpSessLb, ls stri
 	return nil
 }
 
+func (c Client) RemoveLbFromLogicalSwitch(tcpLb, tcpSessLb, udpLb, udpSessLb, ls string) error {
+	if err := c.removeLoadBalancerFromLogicalSwitch(tcpLb, ls); err != nil {
+		klog.Errorf("failed to add tcp lb to %s, %v", ls, err)
+		return err
+	}
+
+	if err := c.removeLoadBalancerFromLogicalSwitch(udpLb, ls); err != nil {
+		klog.Errorf("failed to add udp lb to %s, %v", ls, err)
+		return err
+	}
+
+	if err := c.removeLoadBalancerFromLogicalSwitch(tcpSessLb, ls); err != nil {
+		klog.Errorf("failed to add tcp session lb to %s, %v", ls, err)
+		return err
+	}
+
+	if err := c.removeLoadBalancerFromLogicalSwitch(udpSessLb, ls); err != nil {
+		klog.Errorf("failed to add udp session lb to %s, %v", ls, err)
+		return err
+	}
+
+	return nil
+}
+
 // DeleteLoadBalancer delete loadbalancer in ovn
 func (c Client) DeleteLoadBalancer(lbs ...string) error {
 	for _, lb := range lbs {
@@ -777,6 +801,22 @@ func (c Client) CreateLoadBalancerRule(lb, vip, ips, protocol string) error {
 
 func (c Client) addLoadBalancerToLogicalSwitch(lb, ls string) error {
 	_, err := c.ovnNbCommand(MayExist, "ls-lb-add", ls, lb)
+	return err
+}
+
+func (c Client) removeLoadBalancerFromLogicalSwitch(lb, ls string) error {
+	if lb == "" {
+		return nil
+	}
+	lbUuid, err := c.FindLoadbalancer(lb)
+	if err != nil {
+		return err
+	}
+	if lbUuid == "" {
+		return nil
+	}
+
+	_, err = c.ovnNbCommand(IfExists, "ls-lb-del", ls, lb)
 	return err
 }
 

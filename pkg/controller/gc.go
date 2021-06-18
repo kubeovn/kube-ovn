@@ -10,6 +10,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -251,6 +252,56 @@ func (c *Controller) markAndCleanLSP() error {
 
 func (c *Controller) gcLoadBalancer() error {
 	klog.Infof("start to gc loadbalancers")
+	if !c.config.EnableLb {
+		// remove lb from logical switch
+		vpcs, err := c.vpcsLister.List(labels.Everything())
+		if err != nil {
+			return err
+		}
+		for _, vpc := range vpcs {
+			for _, subnetName := range vpc.Status.Subnets {
+				_, err := c.subnetsLister.Get(subnetName)
+				if err != nil && !k8serrors.IsNotFound(err) {
+					return err
+				}
+				err = c.ovnClient.RemoveLbFromLogicalSwitch(
+					vpc.Status.TcpLoadBalancer,
+					vpc.Status.TcpSessionLoadBalancer,
+					vpc.Status.UdpLoadBalancer,
+					vpc.Status.UdpSessionLoadBalancer,
+					subnetName)
+				if err != nil {
+					return err
+				}
+			}
+
+			vpc.Status.TcpLoadBalancer = ""
+			vpc.Status.TcpSessionLoadBalancer = ""
+			vpc.Status.UdpLoadBalancer = ""
+			vpc.Status.UdpSessionLoadBalancer = ""
+			bytes, err := vpc.Status.Bytes()
+			if err != nil {
+				return err
+			}
+			_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
+			if err != nil {
+				return err
+			}
+		}
+
+		// delete
+		ovnLbs, err := c.ovnClient.ListLoadBalancer()
+		if err != nil {
+			klog.Errorf("failed to list load balancer, %v", err)
+			return err
+		}
+		if err = c.ovnClient.DeleteLoadBalancer(ovnLbs...); err != nil {
+			klog.Errorf("failed to delete load balancer, %v", err)
+			return err
+		}
+		return nil
+	}
+
 	svcs, err := c.servicesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list svc, %v", err)

@@ -51,6 +51,7 @@ spec:
             - --default-interface-name=
             - --default-vlan-id=100
             - --pod-nic-type=veth-pair
+            - --enable-lb=true
           env:
             - name: ENABLE_SSL
               value: "false"
