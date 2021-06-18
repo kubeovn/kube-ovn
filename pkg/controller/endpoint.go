@@ -117,9 +117,19 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		return nil
 	}
 
-	tcpLb, udpLb := c.config.ClusterTcpLoadBalancer, c.config.ClusterUdpLoadBalancer
+	vpcName := svc.Annotations[util.VpcAnnotation]
+	if vpcName == "" {
+		vpcName = util.DefaultVpc
+	}
+	vpc, err := c.vpcsLister.Get(vpcName)
+	if err != nil {
+		klog.Errorf("failed to get vpc %s of lb, %v", vpcName, err)
+		return err
+	}
+
+	tcpLb, udpLb := vpc.Status.TcpLoadBalancer, vpc.Status.UdpLoadBalancer
 	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
-		tcpLb, udpLb = c.config.ClusterTcpSessionLoadBalancer, c.config.ClusterUdpSessionLoadBalancer
+		tcpLb, udpLb = vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer
 	}
 
 	for _, port := range svc.Spec.Ports {

@@ -298,65 +298,121 @@ func (c *Controller) gcLoadBalancer() error {
 		}
 	}
 
-	lbUuid, err = c.ovnClient.FindLoadbalancer(c.config.ClusterTcpSessionLoadBalancer)
+	vpcs, err := c.vpcsLister.List(labels.Everything())
 	if err != nil {
-		klog.Errorf("failed to get lb %v", err)
-	}
-	vips, err = c.ovnClient.GetLoadBalancerVips(lbUuid)
-	if err != nil {
-		klog.Errorf("failed to get tcp session lb vips %v", err)
+		klog.Errorf("failed to list vpc, %v", err)
 		return err
 	}
-	for vip := range vips {
-		if !util.IsStringIn(vip, tcpSessionVips) {
-			err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterTcpSessionLoadBalancer)
+	var vpcLbs []string
+	for _, vpc := range vpcs {
+		tcpLb, udpLb := vpc.Status.TcpLoadBalancer, vpc.Status.UdpLoadBalancer
+		tcpSessLb, udpSessLb := vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer
+		vpcLbs = append(vpcLbs, tcpLb, udpLb, tcpSessLb, udpSessLb)
+
+		if tcpLb != "" {
+			lbUuid, err := c.ovnClient.FindLoadbalancer(tcpLb)
 			if err != nil {
-				klog.Errorf("failed to delete vip %s from tcp session lb, %v", vip, err)
+				klog.Errorf("failed to get lb %v", err)
+			}
+			vips, err := c.ovnClient.GetLoadBalancerVips(lbUuid)
+			if err != nil {
+				klog.Errorf("failed to get tcp lb vips %v", err)
 				return err
+			}
+			for vip := range vips {
+				if !util.IsStringIn(vip, tcpVips) {
+					err := c.ovnClient.DeleteLoadBalancerVip(vip, tcpLb)
+					if err != nil {
+						klog.Errorf("failed to delete vip %s from tcp lb %s, %v", vip, tcpLb, err)
+						return err
+					}
+				}
+			}
+		}
+
+		if tcpSessLb != "" {
+			lbUuid, err := c.ovnClient.FindLoadbalancer(tcpSessLb)
+			if err != nil {
+				klog.Errorf("failed to get lb %v", err)
+			}
+			vips, err := c.ovnClient.GetLoadBalancerVips(lbUuid)
+			if err != nil {
+				klog.Errorf("failed to get tcp session lb vips %v", err)
+				return err
+			}
+			for vip := range vips {
+				if !util.IsStringIn(vip, tcpSessionVips) {
+					err := c.ovnClient.DeleteLoadBalancerVip(vip, tcpSessLb)
+					if err != nil {
+						klog.Errorf("failed to delete vip %s from tcp session lb %s, %v", vip, tcpSessLb, err)
+						return err
+					}
+				}
+			}
+		}
+
+		if udpLb != "" {
+			lbUuid, err := c.ovnClient.FindLoadbalancer(udpLb)
+			if err != nil {
+				klog.Errorf("failed to get lb %v", err)
+				return err
+			}
+			vips, err := c.ovnClient.GetLoadBalancerVips(lbUuid)
+			if err != nil {
+				klog.Errorf("failed to get udp lb vips %v", err)
+				return err
+			}
+			for vip := range vips {
+				if !util.IsStringIn(vip, udpVips) {
+					err := c.ovnClient.DeleteLoadBalancerVip(vip, udpLb)
+					if err != nil {
+						klog.Errorf("failed to delete vip %s from tcp lb %s, %v", vip, udpLb, err)
+						return err
+					}
+				}
+			}
+		}
+
+		if udpSessLb != "" {
+			lbUuid, err := c.ovnClient.FindLoadbalancer(udpSessLb)
+			if err != nil {
+				klog.Errorf("failed to get lb %v", err)
+				return err
+			}
+			vips, err := c.ovnClient.GetLoadBalancerVips(lbUuid)
+			if err != nil {
+				klog.Errorf("failed to get udp session lb vips %v", err)
+				return err
+			}
+			for vip := range vips {
+				if !util.IsStringIn(vip, udpSessionVips) {
+					err := c.ovnClient.DeleteLoadBalancerVip(vip, udpSessLb)
+					if err != nil {
+						klog.Errorf("failed to delete vip %s from udp session lb %s, %v", vip, udpSessLb, err)
+						return err
+					}
+				}
 			}
 		}
 	}
 
-	lbUuid, err = c.ovnClient.FindLoadbalancer(c.config.ClusterUdpLoadBalancer)
+	ovnLbs, err := c.ovnClient.ListLoadBalancer()
 	if err != nil {
-		klog.Errorf("failed to get lb %v", err)
+		klog.Errorf("failed to list load balancer, %v", err)
 		return err
-	}
-	vips, err = c.ovnClient.GetLoadBalancerVips(lbUuid)
-	if err != nil {
-		klog.Errorf("failed to get udp lb vips %v", err)
-		return err
-	}
-	for vip := range vips {
-		if !util.IsStringIn(vip, udpVips) {
-			err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterUdpLoadBalancer)
-			if err != nil {
-				klog.Errorf("failed to delete vip %s from tcp lb, %v", vip, err)
-				return err
-			}
-		}
 	}
 
-	lbUuid, err = c.ovnClient.FindLoadbalancer(c.config.ClusterUdpSessionLoadBalancer)
-	if err != nil {
-		klog.Errorf("failed to get lb %v", err)
-		return err
-	}
-	vips, err = c.ovnClient.GetLoadBalancerVips(lbUuid)
-	if err != nil {
-		klog.Errorf("failed to get udp session lb vips %v", err)
-		return err
-	}
-	for vip := range vips {
-		if !util.IsStringIn(vip, udpSessionVips) {
-			err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterUdpSessionLoadBalancer)
-			if err != nil {
-				klog.Errorf("failed to delete vip %s from udp session lb, %v", vip, err)
-				return err
-			}
+	klog.Infof("vpcLbs: %v", vpcLbs)
+	klog.Infof("ovnLbs: %v", ovnLbs)
+	for _, lb := range ovnLbs {
+		if util.ContainsString(vpcLbs, lb) {
+			continue
+		}
+		klog.Infof("start to destroy load balancer %s", lb)
+		if err := c.ovnClient.DeleteLoadBalancer(lb); err != nil {
+			return err
 		}
 	}
-
 	return nil
 }
 
