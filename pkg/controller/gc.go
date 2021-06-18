@@ -244,8 +244,14 @@ func (c *Controller) markAndCleanLSP() error {
 			}
 		}
 	}
-
 	lastNoPodLSP = noPodLSP
+
+	for _, ipName := range ipNames {
+		if !util.IsStringIn(ipName, lsps) {
+			klog.Errorf("lsp lost for pod %s, please delete the pod and retry", ipName)
+		}
+	}
+
 	return nil
 }
 
