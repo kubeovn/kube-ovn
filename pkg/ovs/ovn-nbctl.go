@@ -18,7 +18,7 @@ import (
 
 func (c Client) ovnNbCommand(cmdArgs ...string) (string, error) {
 	start := time.Now()
-	cmdArgs = append([]string{fmt.Sprintf("--timeout=%d", c.OvnTimeout)}, cmdArgs...)
+	cmdArgs = append([]string{fmt.Sprintf("--timeout=%d", c.OvnTimeout), "--wait=sb"}, cmdArgs...)
 	raw, err := exec.Command(OvnNbCtl, cmdArgs...).CombinedOutput()
 	elapsed := float64((time.Since(start)) / time.Millisecond)
 	klog.V(4).Infof("command %s %s in %vms, output %q", OvnNbCtl, strings.Join(cmdArgs, " "), elapsed, raw)
@@ -141,6 +141,9 @@ func (c Client) CreatePort(ls, port, ip, cidr, mac, tag, pod, namespace string, 
 	if pod != "" && namespace != "" {
 		ovnCommand = append(ovnCommand,
 			"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:pod=%s/%s", namespace, pod), fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
+	} else {
+		ovnCommand = append(ovnCommand,
+			"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
 	}
 
 	if _, err := c.ovnNbCommand(ovnCommand...); err != nil {
