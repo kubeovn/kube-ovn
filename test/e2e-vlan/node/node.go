@@ -146,23 +146,13 @@ var _ = Describe("[Vlan Node]", func() {
 		stdout, _, err = f.ExecToPodThroughAPI("ip addr show "+vlanNic, "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
 		Expect(err).NotTo(HaveOccurred())
 
-		var newMac, hasAddr bool
-		for i, s := range strings.Split(stdout, "\n") {
-			if i == 1 {
-				s = strings.TrimSpace(s)
-				newMac = strings.HasPrefix(s, "link/ether 00:00:00:")
-				if newMac && network != nil && network.MacAddress != "" {
-					newMac = !strings.HasPrefix(s, fmt.Sprintf("link/ether %s ", network.MacAddress))
-				}
-				continue
-			}
-
+		var hasAddr bool
+		for _, s := range strings.Split(stdout, "\n") {
 			if s = strings.TrimSpace(s); strings.HasPrefix(s, "inet ") || strings.HasPrefix(s, "inet6 ") {
 				hasAddr = true
 				break
 			}
 		}
-		Expect(newMac).To(BeTrue())
 		Expect(hasAddr).To(BeFalse())
 
 		stdout, _, err = f.ExecToPodThroughAPI("ip route show dev "+vlanBr, "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
