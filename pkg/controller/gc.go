@@ -279,25 +279,6 @@ func (c *Controller) gcLoadBalancer() error {
 		}
 	}
 
-	lbUuid, err := c.ovnClient.FindLoadbalancer(c.config.ClusterTcpLoadBalancer)
-	if err != nil {
-		klog.Errorf("failed to get lb %v", err)
-	}
-	vips, err := c.ovnClient.GetLoadBalancerVips(lbUuid)
-	if err != nil {
-		klog.Errorf("failed to get tcp lb vips %v", err)
-		return err
-	}
-	for vip := range vips {
-		if !util.IsStringIn(vip, tcpVips) {
-			err := c.ovnClient.DeleteLoadBalancerVip(vip, c.config.ClusterTcpLoadBalancer)
-			if err != nil {
-				klog.Errorf("failed to delete vip %s from tcp lb, %v", vip, err)
-				return err
-			}
-		}
-	}
-
 	vpcs, err := c.vpcsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list vpc, %v", err)

@@ -164,7 +164,7 @@ type VpcLoadBalancer struct {
 }
 
 func (c *Controller) GenVpcLoadBalancer(vpcKey string) *VpcLoadBalancer {
-	if vpcKey == util.DefaultVpc {
+	if vpcKey == util.DefaultVpc || vpcKey == "" {
 		return &VpcLoadBalancer{
 			TcpLoadBalancer:     c.config.ClusterTcpLoadBalancer,
 			TcpSessLoadBalancer: c.config.ClusterTcpSessionLoadBalancer,
