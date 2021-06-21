@@ -1,7 +1,10 @@
 package controller
 
 import (
+	"context"
 	"fmt"
+	v1 "k8s.io/api/authorization/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net/http"
 	_ "net/http/pprof" // #nosec
 	"os"
@@ -28,6 +31,10 @@ func CmdMain() {
 	config, err := controller.ParseFlags()
 	if err != nil {
 		klog.Fatalf("parse config failed %v", err)
+	}
+
+	if err := checkPermission(config); err != nil {
+		klog.Fatalf("failed to check permission %v", err)
 	}
 
 	go loopOvnNbctlDaemon(config)
@@ -60,4 +67,28 @@ func loopOvnNbctlDaemon(config *controller.Configuration) {
 			}
 		}
 	}
+}
+
+func checkPermission(config *controller.Configuration) error {
+	resources := []string{"vpcs", "subnets", "ips", "vlans", "vpc-nat-gateways"}
+	for _, res := range resources {
+		ssar := &v1.SelfSubjectAccessReview{
+			Spec: v1.SelfSubjectAccessReviewSpec{
+				ResourceAttributes: &v1.ResourceAttributes{
+					Verb:     "watch",
+					Group:    "kubeovn.io",
+					Resource: res,
+				},
+			},
+		}
+		ssar, err := config.KubeClient.AuthorizationV1().SelfSubjectAccessReviews().Create(context.Background(), ssar, metav1.CreateOptions{})
+		if err != nil {
+			klog.Errorf("failed to get permission for resource %s, %v", res, err)
+			return err
+		}
+		if !ssar.Status.Allowed {
+			return fmt.Errorf("no permission to wath resource %s, %s", res, ssar.Status.Reason)
+		}
+	}
+	return nil
 }
