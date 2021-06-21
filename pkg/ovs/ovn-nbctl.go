@@ -253,31 +253,65 @@ func (c Client) CreateLogicalSwitch(ls, lr, protocol, subnet, gateway string, ex
 			return err
 		}
 	}
-	if ls != c.NodeSwitch && defaultVpc {
-		// DO NOT add ovn dns/lb to node switch
-		// TODO: custom vpc not support dns/lb now
-		if err := c.addLoadBalancerToLogicalSwitch(c.ClusterTcpLoadBalancer, ls); err != nil {
-			klog.Errorf("failed to add cluster tcp lb to %s, %v", ls, err)
-			return err
-		}
+	return nil
+}
 
-		if err := c.addLoadBalancerToLogicalSwitch(c.ClusterUdpLoadBalancer, ls); err != nil {
-			klog.Errorf("failed to add cluster udp lb to %s, %v", ls, err)
-			return err
-		}
+func (c Client) AddLbToLogicalSwitch(tcpLb, tcpSessLb, udpLb, udpSessLb, ls string) error {
+	if err := c.addLoadBalancerToLogicalSwitch(tcpLb, ls); err != nil {
+		klog.Errorf("failed to add tcp lb to %s, %v", ls, err)
+		return err
+	}
 
-		if err := c.addLoadBalancerToLogicalSwitch(c.ClusterTcpSessionLoadBalancer, ls); err != nil {
-			klog.Errorf("failed to add cluster tcp session lb to %s, %v", ls, err)
-			return err
-		}
+	if err := c.addLoadBalancerToLogicalSwitch(udpLb, ls); err != nil {
+		klog.Errorf("failed to add udp lb to %s, %v", ls, err)
+		return err
+	}
 
-		if err := c.addLoadBalancerToLogicalSwitch(c.ClusterUdpSessionLoadBalancer, ls); err != nil {
-			klog.Errorf("failed to add cluster udp lb to %s, %v", ls, err)
-			return err
-		}
+	if err := c.addLoadBalancerToLogicalSwitch(tcpSessLb, ls); err != nil {
+		klog.Errorf("failed to add tcp session lb to %s, %v", ls, err)
+		return err
+	}
+
+	if err := c.addLoadBalancerToLogicalSwitch(udpSessLb, ls); err != nil {
+		klog.Errorf("failed to add udp session lb to %s, %v", ls, err)
+		return err
 	}
 
 	return nil
+}
+
+// DeleteLoadBalancer delete loadbalancer in ovn
+func (c Client) DeleteLoadBalancer(lbs ...string) error {
+	for _, lb := range lbs {
+		lbid, err := c.FindLoadbalancer(lb)
+		if err != nil {
+			klog.Warningf("failed to find load_balancer '%s', %v", lb, err)
+			continue
+		}
+		if _, err := c.ovnNbCommand(IfExists, "destroy", "load_balancer", lbid); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ListLoadBalancer list loadbalancer names
+func (c Client) ListLoadBalancer() ([]string, error) {
+	output, err := c.ovnNbCommand("--format=csv", "--data=bare", "--no-heading", "--columns=name", "find", "load_balancer")
+	if err != nil {
+		klog.Errorf("failed to list load balancer %v", err)
+		return nil, err
+	}
+	lines := strings.Split(output, "\n")
+	result := make([]string, 0, len(lines))
+	for _, l := range lines {
+
+		l = strings.TrimSpace(l)
+		if len(l) > 0 {
+			result = append(result, l)
+		}
+	}
+	return result, nil
 }
 
 func (c Client) CreateGatewaySwitch(name, ip, mac string, chassises []string) error {

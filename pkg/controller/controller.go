@@ -92,11 +92,10 @@ type Controller struct {
 	updateNodeQueue workqueue.RateLimitingInterface
 	deleteNodeQueue workqueue.RateLimitingInterface
 
-	servicesLister        v1.ServiceLister
-	serviceSynced         cache.InformerSynced
-	deleteTcpServiceQueue workqueue.RateLimitingInterface
-	deleteUdpServiceQueue workqueue.RateLimitingInterface
-	updateServiceQueue    workqueue.RateLimitingInterface
+	servicesLister     v1.ServiceLister
+	serviceSynced      cache.InformerSynced
+	deleteServiceQueue workqueue.RateLimitingInterface
+	updateServiceQueue workqueue.RateLimitingInterface
 
 	endpointsLister     v1.EndpointsLister
 	endpointsSynced     cache.InformerSynced
@@ -210,11 +209,10 @@ func NewController(config *Configuration) *Controller {
 		updateNodeQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateNode"),
 		deleteNodeQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteNode"),
 
-		servicesLister:        serviceInformer.Lister(),
-		serviceSynced:         serviceInformer.Informer().HasSynced,
-		deleteTcpServiceQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteTcpService"),
-		deleteUdpServiceQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteUdpService"),
-		updateServiceQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateService"),
+		servicesLister:     serviceInformer.Lister(),
+		serviceSynced:      serviceInformer.Informer().HasSynced,
+		deleteServiceQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteService"),
+		updateServiceQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateService"),
 
 		endpointsLister:     endpointInformer.Lister(),
 		endpointsSynced:     endpointInformer.Informer().HasSynced,
@@ -372,8 +370,7 @@ func (c *Controller) shutdown() {
 	c.updateNodeQueue.ShutDown()
 	c.deleteNodeQueue.ShutDown()
 
-	c.deleteTcpServiceQueue.ShutDown()
-	c.deleteUdpServiceQueue.ShutDown()
+	c.deleteServiceQueue.ShutDown()
 	c.updateServiceQueue.ShutDown()
 	c.updateEndpointQueue.ShutDown()
 
@@ -460,8 +457,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	go wait.Until(c.runUpdateVpcStatusWorker, time.Second, stopCh)
 
 	// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
-	go wait.Until(c.runDeleteTcpServiceWorker, time.Second, stopCh)
-	go wait.Until(c.runDeleteUdpServiceWorker, time.Second, stopCh)
+	go wait.Until(c.runDeleteServiceWorker, time.Second, stopCh)
 	for i := 0; i < c.config.WorkerNum; i++ {
 		go wait.Until(c.runAddPodWorker, time.Second, stopCh)
 		go wait.Until(c.runDeletePodWorker, time.Second, stopCh)
