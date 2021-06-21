@@ -175,13 +175,13 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, macAd
 		}
 
 		if nicType == util.InternalType {
-			if err = configureNic(nicName, ipAddr, macAddr, mtu); err != nil {
-				return err
-			}
 			if err = addAdditonalNic(ifName); err != nil {
 				return err
 			}
 			if err = configureAdditonalNic(ifName, ipAddr); err != nil {
+				return err
+			}
+			if err = configureNic(nicName, ipAddr, macAddr, mtu); err != nil {
 				return err
 			}
 		} else {
