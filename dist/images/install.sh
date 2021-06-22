@@ -8,6 +8,7 @@ ENABLE_VLAN=${ENABLE_VLAN:-false}
 ENABLE_MIRROR=${ENABLE_MIRROR:-false}
 VLAN_NIC=${VLAN_NIC:-}
 HW_OFFLOAD=${HW_OFFLOAD:-false}
+ENABLE_LB=${ENABLE_LB:-true}
 IFACE=""                               # The nic to support container network can be a nic name or a group of regex separated by comma, if empty will use the nic that the default route use
 
 CNI_CONF_DIR="/etc/cni/net.d"
@@ -1582,6 +1583,7 @@ spec:
           - --default-interface-name=$VLAN_INTERFACE_NAME
           - --default-vlan-id=$VLAN_ID
           - --pod-nic-type=$POD_NIC_TYPE
+          - --enable-lb=$ENABLE_LB
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"

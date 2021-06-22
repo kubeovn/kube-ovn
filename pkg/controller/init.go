@@ -21,9 +21,11 @@ func (c *Controller) InitOVN() error {
 		return err
 	}
 
-	if err := c.initLoadBalancer(); err != nil {
-		klog.Errorf("init load balancer failed %v", err)
-		return err
+	if c.config.EnableLb {
+		if err := c.initLoadBalancer(); err != nil {
+			klog.Errorf("init load balancer failed %v", err)
+			return err
+		}
 	}
 
 	if err := c.initDefaultVlan(); err != nil {
@@ -58,10 +60,12 @@ func (c *Controller) InitDefaultVpc() error {
 
 	vpc.Status.DefaultLogicalSwitch = c.config.DefaultLogicalSwitch
 	vpc.Status.Router = c.config.ClusterRouter
-	vpc.Status.TcpLoadBalancer = c.config.ClusterTcpLoadBalancer
-	vpc.Status.TcpSessionLoadBalancer = c.config.ClusterTcpSessionLoadBalancer
-	vpc.Status.UdpLoadBalancer = c.config.ClusterUdpLoadBalancer
-	vpc.Status.UdpSessionLoadBalancer = c.config.ClusterUdpSessionLoadBalancer
+	if c.config.EnableLb {
+		vpc.Status.TcpLoadBalancer = c.config.ClusterTcpLoadBalancer
+		vpc.Status.TcpSessionLoadBalancer = c.config.ClusterTcpSessionLoadBalancer
+		vpc.Status.UdpLoadBalancer = c.config.ClusterUdpLoadBalancer
+		vpc.Status.UdpSessionLoadBalancer = c.config.ClusterUdpSessionLoadBalancer
+	}
 	vpc.Status.Standby = true
 	vpc.Status.Default = true
 

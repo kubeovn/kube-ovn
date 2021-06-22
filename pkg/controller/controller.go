@@ -456,8 +456,10 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	go wait.Until(c.runDelVpcWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdateVpcStatusWorker, time.Second, stopCh)
 
-	// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
-	go wait.Until(c.runDeleteServiceWorker, time.Second, stopCh)
+	if c.config.EnableLb {
+		// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
+		go wait.Until(c.runDeleteServiceWorker, time.Second, stopCh)
+	}
 	for i := 0; i < c.config.WorkerNum; i++ {
 		go wait.Until(c.runAddPodWorker, time.Second, stopCh)
 		go wait.Until(c.runDeletePodWorker, time.Second, stopCh)
@@ -467,8 +469,10 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		go wait.Until(c.runDeleteRouteWorker, time.Second, stopCh)
 		go wait.Until(c.runUpdateSubnetStatusWorker, time.Second, stopCh)
 
-		go wait.Until(c.runUpdateServiceWorker, time.Second, stopCh)
-		go wait.Until(c.runUpdateEndpointWorker, time.Second, stopCh)
+		if c.config.EnableLb {
+			go wait.Until(c.runUpdateServiceWorker, time.Second, stopCh)
+			go wait.Until(c.runUpdateEndpointWorker, time.Second, stopCh)
+		}
 
 		go wait.Until(c.runUpdateNpWorker, time.Second, stopCh)
 		go wait.Until(c.runDeleteNpWorker, time.Second, stopCh)
