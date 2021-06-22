@@ -2,6 +2,8 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/kubeovn/kube-ovn/blob/master/LICENSE)
 [![Build Tag](https://img.shields.io/github/tag/kubeovn/kube-ovn.svg)](https://github.com/kubeovn/kube-ovn/releases)
+[![Docker Tag](https://img.shields.io/docker/pulls/kubeovn/kube-ovn)](https://img.shields.io/docker/pulls/kubeovn/kube-ovn)
+![Docker Image Size (latest by date)](https://img.shields.io/docker/image-size/kubeovn/kube-ovn?sort=date)
 [![Go Report Card](https://goreportcard.com/badge/github.com/kubeovn/kube-ovn)](https://goreportcard.com/report/github.com/kubeovn/kube-ovn)
 [![Slack Card](https://kube-ovn-slackin.herokuapp.com/badge.svg)](https://kube-ovn-slackin.herokuapp.com)
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Falauda%2Fkube-ovn.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Falauda%2Fkube-ovn?ref=badge_shield)
@@ -72,6 +74,9 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
 - [Subnet Gateway and Direct connect](docs/subnet.md#gateway)
 - [Pod Gateway](docs/pod-gw.md)
 - [Multi-Cluster Network](docs/cluster-interconnection.md)
+- Network interconnection with OpenStack
+  - [Separated Kubernetes and OpenStack connected by OVN-IC](docs/OpenStackK8sInterconnection.md)
+  - [Kubernetes and OpenStack based on the same OVN deployment](docs/OpenstackOnKubernetes.md)
 - [BGP support](docs/bgp.md)
 - [Multi NIC Support](docs/multi-nic.md)
 - [Hardware Offload](docs/hw-offload.md)
