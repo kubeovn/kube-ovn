@@ -559,12 +559,6 @@ func configProviderNic(nicName string) error {
 		return fmt.Errorf("failed to add %s to OVS birdge %s: %v", nicName, brName, err)
 	}
 
-	oldMac := nic.Attrs().HardwareAddr
-	newMac, err := net.ParseMAC(util.GenerateMac())
-	if err != nil {
-		return fmt.Errorf("unexpected error: MAC address generated is invalid")
-	}
-
 	for _, addr := range addrs {
 		if err = netlink.AddrDel(nic, &addr); err != nil && !errors.Is(err, syscall.ENOENT) {
 			return fmt.Errorf("failed to delete address %s on nic %s: %v", addr.String(), nicName, err)
@@ -573,15 +567,12 @@ func configProviderNic(nicName string) error {
 		if addr.Label != "" {
 			addr.Label = brName + strings.TrimPrefix(addr.Label, nicName)
 		}
-		if err = netlink.AddrReplace(bridge, &addr); err != nil && !errors.Is(err, syscall.EEXIST) {
-			return fmt.Errorf("failed to add address %s to OVS bridge %s: %v", addr.String(), brName, err)
+		if err = netlink.AddrReplace(bridge, &addr); err != nil {
+			return fmt.Errorf("failed to replace address %s on OVS bridge %s: %v", addr.String(), brName, err)
 		}
 	}
 
-	if err = netlink.LinkSetHardwareAddr(nic, newMac); err != nil {
-		return fmt.Errorf("failed to set MAC address of nic %s: %v", nicName, err)
-	}
-	if _, err = ovs.Exec("set", "bridge", brName, fmt.Sprintf(`other-config:hwaddr="%s"`, oldMac.String())); err != nil {
+	if _, err = ovs.Exec("set", "bridge", brName, fmt.Sprintf(`other-config:hwaddr="%s"`, nic.Attrs().HardwareAddr.String())); err != nil {
 		return fmt.Errorf("failed to set MAC address of OVS bridge %s: %v", brName, err)
 	}
 	if err = netlink.LinkSetMTU(bridge, nic.Attrs().MTU); err != nil {
@@ -591,10 +582,20 @@ func configProviderNic(nicName string) error {
 		return fmt.Errorf("failed to set OVS bridge %s up: %v", brName, err)
 	}
 
-	for _, route := range routes {
-		route.LinkIndex = bridge.Attrs().Index
-		if err = netlink.RouteReplace(&route); err != nil && !errors.Is(err, syscall.EEXIST) {
-			return fmt.Errorf("failed to add route %s: %v", route.String(), err)
+	scopeOrders := [...]netlink.Scope{
+		netlink.SCOPE_HOST,
+		netlink.SCOPE_LINK,
+		netlink.SCOPE_SITE,
+		netlink.SCOPE_UNIVERSE,
+	}
+	for _, scope := range scopeOrders {
+		for _, route := range routes {
+			if route.Scope == scope {
+				route.LinkIndex = bridge.Attrs().Index
+				if err = netlink.RouteReplace(&route); err != nil {
+					return fmt.Errorf("failed to add/replace route %s: %v", route.String(), err)
+				}
+			}
 		}
 	}
 
