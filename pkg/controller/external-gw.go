@@ -45,6 +45,14 @@ func (c *Controller) resyncExternalGateway() {
 		if exGwEnabled == "true" && lastExGwCM != nil && reflect.DeepEqual(cm.Data, lastExGwCM) {
 			return
 		}
+		if (lastExGwCM["type"] == "distributed" && cm.Data["type"] == "centralized") ||
+			!reflect.DeepEqual(lastExGwCM["external-gw-nodes"], cm.Data["external-gw-nodes"]) {
+			klog.Info("external gw nodes list changed, start to remove ovn external gw")
+			if err := c.removeExternalGateway(); err != nil {
+				klog.Errorf("failed to remove old ovn external gw, %v", err)
+				return
+			}
+		}
 		klog.Info("start to establish ovn external gw")
 		if err := c.establishExternalGateway(cm.Data); err != nil {
 			klog.Errorf("failed to establish ovn-external-gw, %v", err)
