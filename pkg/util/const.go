@@ -114,4 +114,6 @@ const (
 	HostnameEnv    = "KUBE_NODE_NAME"
 	ChasRetryTime  = 5
 	ChasRetryIntev = 1
+
+	VfioSysDir = "/sys/bus/pci/drivers/vfio-pci"
 )
