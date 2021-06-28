@@ -47,6 +47,33 @@ function quit {
     /usr/share/ovn/scripts/ovn-ctl stop_northd
     exit 0
 }
+
+function is_clustered {
+  t=$(echo -n "${NODE_IPS}" | sed 's/,/ /g')
+  if [[ "$ENABLE_SSL" == "false" ]]; then
+    x=$(for i in ${t}; do echo -n "tcp:[${i}]:6641,"; done | sed 's/,/ /g')
+    for i in ${x};
+    do
+      nb_leader=$(timeout 10 ovsdb-client query ${i} "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Northbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]")
+      if [[ $nb_leader =~ "true" ]]
+      then
+        return 0
+      fi
+    done
+  else
+    x=$(for i in ${t}; do echo -n "ssl:[${i}]:6641,"; done| sed 's/,/ /g')
+    for i in ${x};
+    do
+      nb_leader=$(timeout 10 ovsdb-client -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert query ${i} "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Northbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]")
+      if [[ $nb_leader =~ "true" ]]
+      then
+        return 0
+      fi
+    done
+  fi
+  return 1
+}
+
 trap quit EXIT
 if [[ "$ENABLE_SSL" == "false" ]]; then
     if [[ -z "$NODE_IPS" ]]; then
@@ -66,7 +93,12 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
 
         nb_leader_ip=$(get_leader_ip nb)
         sb_leader_ip=$(get_leader_ip sb)
-        if [[ "$nb_leader_ip" == "${POD_IP}" ]]; then
+        set +eo pipefail
+        is_clustered
+        result=$?
+        set -eo pipefail
+        # leader up only when no cluster and on first node
+        if [[ ${result} -eq 1 &&  "$nb_leader_ip" == "${POD_IP}" ]]; then
             # Start ovn-northd, ovn-nb and ovn-sb
             /usr/share/ovn/scripts/ovn-ctl \
                 --db-nb-create-insecure-remote=yes \
@@ -85,6 +117,31 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
             ovn-sbctl --no-leader-only set-connection ptcp:"${DB_SB_PORT}":[::]
             ovn-sbctl --no-leader-only set Connection . inactivity_probe=180000
         else
+            # known leader always first
+            set +eo pipefail
+            if [ ${result} -eq 0 ]; then
+                t=$(echo -n "${NODE_IPS}" | sed 's/,/ /g')
+                for i in ${t};
+                do
+                    nb_leader=$(timeout 10 ovsdb-client query "tcp:${i}:6641" "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Northbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]")
+                    if [[ $nb_leader =~ "true" ]]
+                    then
+                        nb_leader_ip=${i}
+                        break
+                    fi
+                done
+                for i in ${t};
+                do
+                    nb_leader=$(timeout 10 ovsdb-client query "tcp:${i}:6642" "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Southbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]")
+                    if [[ $nb_leader =~ "true" ]]
+                    then
+                        sb_leader_ip=${i}
+                        break
+                    fi
+                done
+            fi
+            set -eo pipefail
+            # otherwise go to first node
             # Start ovn-northd, ovn-nb and ovn-sb
             /usr/share/ovn/scripts/ovn-ctl \
                 --db-nb-create-insecure-remote=yes \
@@ -128,7 +185,11 @@ else
 
         nb_leader_ip=$(get_leader_ip nb)
         sb_leader_ip=$(get_leader_ip sb)
-        if [[ "$nb_leader_ip" == "${POD_IP}" ]]; then
+        set +eo pipefail
+        is_clustered
+        result=$?
+        set -eo pipefail
+        if [[ ${result} -eq 1  &&  "$nb_leader_ip" == "${POD_IP}" ]]; then
             # Start ovn-northd, ovn-nb and ovn-sb
             /usr/share/ovn/scripts/ovn-ctl \
                 --ovn-nb-db-ssl-key=/var/run/tls/key \
@@ -154,6 +215,30 @@ else
             ovn-sbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set-connection pssl:"${DB_SB_PORT}":[::]
             ovn-sbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set Connection . inactivity_probe=180000
         else
+            # get leader if cluster exists
+            set +eo pipefail
+            if [[ ${result} -eq 0 ]]; then
+                t=$(echo -n "${NODE_IPS}" | sed 's/,/ /g')
+                for i in ${t};
+                do
+                    nb_leader=$(timeout 10 ovsdb-client -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert query "ssl:[${i}]:6641" "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Northbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]")
+                    if [[ $nb_leader =~ "true" ]]
+                    then
+                      nb_leader_ip=${i}
+                      break
+                    fi
+                done
+                for i in ${t};
+                do
+                    nb_leader=$(timeout 10 ovsdb-client -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert query "ssl:[${i}]:6642" "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Southbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]")
+                    if [[ $nb_leader =~ "true" ]]
+                    then
+                      sb_leader_ip=${i}
+                      break
+                    fi
+                done
+            fi
+            set -eo pipefail
             # Start ovn-northd, ovn-nb and ovn-sb
             /usr/share/ovn/scripts/ovn-ctl \
                 --ovn-nb-db-ssl-key=/var/run/tls/key \
