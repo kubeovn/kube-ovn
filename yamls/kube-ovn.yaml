@@ -157,6 +157,7 @@ spec:
             - --iface=
             - --network-type=geneve
             - --default-interface-name=
+            - --hw-offload=false
           securityContext:
             runAsUser: 0
             privileged: true

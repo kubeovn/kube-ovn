@@ -271,7 +271,7 @@ func waitNetworkReady(gateway string) error {
 	return nil
 }
 
-func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int) error {
+func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int, enableOffload bool) error {
 	ipStr := util.GetIpWithoutMask(ip)
 	raw, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", util.NodeNic, "--",
 		"set", "interface", util.NodeNic, "type=internal", "--",
@@ -294,16 +294,19 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 	if err = netlink.LinkSetTxQLen(hostLink, 1000); err != nil {
 		return fmt.Errorf("can not set host nic %s qlen %v", util.NodeNic, err)
 	}
-	// Double nat may lead kernel udp checksum error, disable offload to prevent this issue
-	// https://github.com/kubernetes/kubernetes/pull/92035
-	output, err := exec.Command("ethtool", "-K", "ovn0", "tx", "off").CombinedOutput()
-	if err != nil {
-		klog.Errorf("failed to disable checksum offload on ovn0, %v %q", err, output)
-		return err
+
+	if !enableOffload {
+		// Double nat may lead kernel udp checksum error, disable offload to prevent this issue
+		// https://github.com/kubernetes/kubernetes/pull/92035
+		output, err := exec.Command("ethtool", "-K", "ovn0", "tx", "off").CombinedOutput()
+		if err != nil {
+			klog.Errorf("failed to disable checksum offload on ovn0, %v %q", err, output)
+			return err
+		}
 	}
 
 	// ping ovn0 gw to activate the flow
-	output, err = ovn0Check(gw)
+	output, err := ovn0Check(gw)
 	if err != nil {
 		klog.Errorf("failed to init ovn0 check, %v, %q", err, output)
 		return err
