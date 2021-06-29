@@ -172,21 +172,14 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		return
 	}
 
-	if !isPodAlive(newPod) {
-		isStateful, statefulSetName := isStatefulSetPod(newPod)
-		if isStateful {
-			if isStatefulSetPodToDel(c.config.KubeClient, newPod, statefulSetName) {
-				klog.V(3).Infof("enqueue delete pod %s", key)
-				c.deletePodQueue.Add(key)
-			}
-		} else {
-			klog.V(3).Infof("enqueue delete pod %s", key)
-			c.deletePodQueue.Add(key)
-		}
+	isStateful, statefulSetName := isStatefulSetPod(newPod)
+	if !isPodAlive(newPod) && !isStateful {
+		klog.V(3).Infof("enqueue delete pod %s", key)
+		c.deletePodQueue.Add(key)
 		return
 	}
 
-	if newPod.DeletionTimestamp != nil {
+	if newPod.DeletionTimestamp != nil && !isStateful {
 		go func() {
 			// In case node get lost and pod can not be deleted,
 			// the ipaddress will not be recycled
@@ -194,6 +187,15 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 			c.deletePodQueue.Add(key)
 		}()
 		return
+	}
+
+	// do not delete statefulset pod unless ownerReferences is deleted
+	if isStateful {
+		if isStatefulSetPodToDel(c.config.KubeClient, newPod, statefulSetName) {
+			klog.V(3).Infof("enqueue delete pod %s", key)
+			c.deletePodQueue.Add(key)
+			return
+		}
 	}
 
 	// pod assigned an ip
