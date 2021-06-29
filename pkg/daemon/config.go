@@ -5,12 +5,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net"
 	"os"
 	"os/exec"
 	"regexp"
 	"strings"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -43,6 +44,7 @@ type Configuration struct {
 	NetworkType           string
 	DefaultProviderName   string
 	DefaultInterfaceName  string
+	HwOffload             bool
 }
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
@@ -60,6 +62,7 @@ func ParseFlags() (*Configuration, error) {
 		argNodeLocalDnsIP        = pflag.String("node-local-dns-ip", "", "If use nodelocaldns the local dns server ip should be set here, default empty.")
 		argEncapChecksum         = pflag.Bool("encap-checksum", true, "Enable checksum, default: true")
 		argPprofPort             = pflag.Int("pprof-port", 10665, "The port to get profiling data, default: 10665")
+		argHwOffload             = pflag.Bool("hw-offload", false, "Enable hw offload, default: false")
 
 		argsNetworkType          = pflag.String("network-type", "geneve", "The ovn network type, default: geneve")
 		argsDefaultProviderName  = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name, default: provider")
@@ -108,6 +111,7 @@ func ParseFlags() (*Configuration, error) {
 		NetworkType:           *argsNetworkType,
 		DefaultProviderName:   *argsDefaultProviderName,
 		DefaultInterfaceName:  *argsDefaultInterfaceName,
+		HwOffload:             *argHwOffload,
 	}
 
 	if err := config.initKubeClient(); err != nil {
