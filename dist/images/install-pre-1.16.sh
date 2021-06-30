@@ -3,9 +3,14 @@ set -euo pipefail
 
 IPv6=${IPv6:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
+ENABLE_VLAN=${ENABLE_VLAN:-false}
 ENABLE_MIRROR=${ENABLE_MIRROR:-false}
+VLAN_NIC=${VLAN_NIC:-}
 HW_OFFLOAD=${HW_OFFLOAD:-false}
-IFACE=""                               # The nic to support container network can be a nic name or a group of regex separated by comma, if empty will use the nic that the default route use
+ENABLE_LB=${ENABLE_LB:-true}
+# The nic to support container network can be a nic name or a group of regex
+# separated by comma, if empty will use the nic that the default route use
+IFACE=""
 
 CNI_CONF_DIR="/etc/cni/net.d"
 CNI_BIN_DIR="/opt/cni/bin"
@@ -22,7 +27,7 @@ PINGER_EXTERNAL_DOMAIN="alauda.cn"         # Pinger check external domain probe
 if [ "$IPv6" = "true" ]; then
   POD_CIDR="fd00:10:16::/64"                # Do NOT overlap with NODE/SVC/JOIN CIDR
   POD_GATEWAY="fd00:10:16::1"
-  SVC_CIDR="fd00:10:96::/112"                # Do NOT overlap with NODE/POD/JOIN CIDR
+  SVC_CIDR="fd00:10:96::/112"               # Do NOT overlap with NODE/POD/JOIN CIDR
   JOIN_CIDR="fd00:100:64::/64"              # Do NOT overlap with NODE/POD/SVC CIDR
   PINGER_EXTERNAL_ADDRESS="2400:3200::1"
   PINGER_EXTERNAL_DOMAIN="google.com"
@@ -32,6 +37,7 @@ EXCLUDE_IPS=""                         # EXCLUDE_IPS for default subnet
 LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
 NETWORK_TYPE="geneve"                  # geneve or vlan
 TUNNEL_TYPE="geneve"                   # geneve or vxlan
+POD_NIC_TYPE="veth-pair"               # veth-pair or internal-port
 
 # VLAN Config only take effect when NETWORK_TYPE is vlan
 PROVIDER_NAME="provider"
@@ -39,6 +45,13 @@ VLAN_INTERFACE_NAME=""
 VLAN_NAME="ovn-vlan"
 VLAN_ID="100"
 VLAN_RANGE="1,4095"
+
+if [ "$ENABLE_VLAN" = "true" ]; then
+  NETWORK_TYPE="vlan"
+  if [ "$VLAN_NIC" != "" ]; then
+    VLAN_INTERFACE_NAME="$VLAN_NIC"
+  fi
+fi
 
 # DPDK
 DPDK="false"
@@ -134,6 +147,172 @@ addresses=$(kubectl get no -lkube-ovn/role=master --no-headers -o wide | awk '{p
 echo "Install OVN DB in $addresses"
 
 cat <<EOF > kube-ovn-crd.yaml
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: vpc-nat-gateways.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: vpc-nat-gateways
+    singular: vpc-nat-gateway
+    shortNames:
+      - vpc-nat-gw
+    kind: VpcNatGateway
+    listKind: VpcNatGatewayList
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                dnatRules:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      eip:
+                        type: string
+                      externalPort:
+                        type: string
+                      internalIp:
+                        type: string
+                      internalPort:
+                        type: string
+                      protocol:
+                        type: string
+                eips:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      eipCIDR:
+                        type: string
+                      gateway:
+                        type: string
+                floatingIpRules:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      eip:
+                        type: string
+                      internalIp:
+                        type: string
+                lanIp:
+                  type: string
+                snatRules:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      eip:
+                        type: string
+                      internalCIDR:
+                        type: string
+                subnet:
+                  type: string
+                vpc:
+                  type: string
+      subresources:
+        status: {}
+  conversion:
+    strategy: None
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: vpcs.kubeovn.io
+spec:
+  group: kubeovn.io
+  version: v1
+  scope: Cluster
+  names:
+    plural: vpcs
+    singular: vpc
+    kind: Vpc
+    listKind: VpcList
+    shortNames:
+    - vpc
+  subresources:
+    status: {}
+  additionalPrinterColumns:
+    - JSONPath: .status.standby
+      name: Standby
+      type: boolean
+    - JSONPath: .status.subnets
+      name: Subnets
+      type: string
+  validation:
+    openAPIV3Schema:
+      properties:
+        spec:
+          properties:
+            namespaces:
+              items:
+                type: string
+              type: array
+            staticRoutes:
+              items:
+                properties:
+                  policy:
+                    type: string
+                  cidr:
+                    type: string
+                  nextHopIP:
+                    type: string
+                type: object
+              type: array
+          type: object
+        status:
+          properties:
+            conditions:
+              items:
+                properties:
+                  lastTransitionTime:
+                    type: string
+                  lastUpdateTime:
+                    type: string
+                  message:
+                    type: string
+                  reason:
+                    type: string
+                  status:
+                    type: string
+                  type:
+                    type: string
+                type: object
+              type: array
+            default:
+              type: boolean
+            defaultLogicalSwitch:
+              type: string
+            router:
+              type: string
+            standby:
+              type: boolean
+            subnets:
+              items:
+                type: string
+              type: array
+            tcpLoadBalancer:
+              type: string
+            tcpSessionLoadBalancer:
+              type: string
+            udpLoadBalancer:
+              type: string
+            udpSessionLoadBalancer:
+              type: string
+          type: object
+      type: object
+---
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
@@ -378,171 +557,6 @@ spec:
               type: string
             subnet:
               type: string
----
-apiVersion: apiextensions.k8s.io/v1beta1
-kind: CustomResourceDefinition
-metadata:
-  name: vpcs.kubeovn.io
-spec:
-  group: kubeovn.io
-  version: v1
-  scope: Cluster
-  names:
-    plural: vpcs
-    singular: vpc
-    kind: Vpc
-    listKind: VpcList
-    shortNames:
-    - vpc
-  subresources:
-    status: {}
-  additionalPrinterColumns:
-    - JSONPath: .status.standby
-      name: Standby
-      type: boolean
-    - JSONPath: .status.subnets
-      name: Subnets
-      type: string
-  validation:
-    openAPIV3Schema:
-      properties:
-        spec:
-          properties:
-            namespaces:
-              items:
-                type: string
-              type: array
-            staticRoutes:
-              items:
-                properties:
-                  policy:
-                    type: string
-                  cidr:
-                    type: string
-                  nextHopIP:
-                    type: string
-                type: object
-              type: array
-          type: object
-        status:
-          properties:
-            conditions:
-              items:
-                properties:
-                  lastTransitionTime:
-                    type: string
-                  lastUpdateTime:
-                    type: string
-                  message:
-                    type: string
-                  reason:
-                    type: string
-                  status:
-                    type: string
-                  type:
-                    type: string
-                type: object
-              type: array
-            default:
-              type: boolean
-            defaultLogicalSwitch:
-              type: string
-            router:
-              type: string
-            standby:
-              type: boolean
-            subnets:
-              items:
-                type: string
-              type: array
-            tcpLoadBalancer:
-              type: string
-            tcpSessionLoadBalancer:
-              type: string
-            udpLoadBalancer:
-              type: string
-            udpSessionLoadBalancer:
-              type: string
-          type: object
-      type: object
----
-apiVersion: apiextensions.k8s.io/v1beta1
-kind: CustomResourceDefinition
-metadata:
-  name: vpc-nat-gateways.kubeovn.io
-spec:
-  group: kubeovn.io
-  names:
-    plural: vpc-nat-gateways
-    singular: vpc-nat-gateway
-    shortNames:
-      - vpc-nat-gw
-    kind: VpcNatGateway
-    listKind: VpcNatGatewayList
-  scope: Cluster
-  versions:
-    - name: v1
-      served: true
-      storage: true
-      schema:
-        openAPIV3Schema:
-          type: object
-          properties:
-            spec:
-              type: object
-              properties:
-                dnatRules:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      eip:
-                        type: string
-                      externalPort:
-                        type: string
-                      internalIp:
-                        type: string
-                      internalPort:
-                        type: string
-                      protocol:
-                        type: string
-                eips:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      eipCIDR:
-                        type: string
-                      gateway:
-                        type: string
-                floatingIpRules:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      eip:
-                        type: string
-                      internalIp:
-                        type: string
-                lanIp:
-                  type: string
-                snatRules:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      eip:
-                        type: string
-                      internalCIDR:
-                        type: string
-                subnet:
-                  type: string
-                vpc:
-                  type: string
-      subresources:
-        status: {}
-  conversion:
-    strategy: None
 EOF
 
 if $DPDK; then
@@ -1289,8 +1303,7 @@ spec:
             exec:
               command:
                 - bash
-                - -c
-                - LOG_ROTATE=true /kube-ovn/ovn-is-leader.sh
+                - /kube-ovn/ovn-is-leader.sh
             periodSeconds: 3
             timeoutSeconds: 45
           livenessProbe:
@@ -1414,7 +1427,8 @@ spec:
             exec:
               command:
                 - bash
-                - /kube-ovn/ovs-healthcheck.sh
+                - -c
+                - LOG_ROTATE=true /kube-ovn/ovs-healthcheck.sh
             periodSeconds: 5
             timeoutSeconds: 45
           livenessProbe:
@@ -1531,6 +1545,8 @@ spec:
           - --network-type=$NETWORK_TYPE
           - --default-interface-name=$VLAN_INTERFACE_NAME
           - --default-vlan-id=$VLAN_ID
+          - --pod-nic-type=$POD_NIC_TYPE
+          - --enable-lb=$ENABLE_LB
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
@@ -2095,6 +2111,7 @@ tcpdump(){
       echo "nic doesn't exist on node $nodeName"
       exit 1
     fi
+
     podNicType=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/pod_nic_type})
     podNetNs=$(kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading get interface "$nicName" external-ids:pod_netns | tr -d '\r')
     set -x
@@ -2386,7 +2403,6 @@ if [  $? != 0  ]; then
 fi
 
 echo "[Step 6] Run network diagnose"
-sleep 60
 kubectl ko diagnose all
 
 echo "-------------------------------"

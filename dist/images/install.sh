@@ -9,7 +9,9 @@ ENABLE_MIRROR=${ENABLE_MIRROR:-false}
 VLAN_NIC=${VLAN_NIC:-}
 HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_LB=${ENABLE_LB:-true}
-IFACE=""                               # The nic to support container network can be a nic name or a group of regex separated by comma, if empty will use the nic that the default route use
+# The nic to support container network can be a nic name or a group of regex
+# separated by comma, if empty will use the nic that the default route use
+IFACE=""
 
 CNI_CONF_DIR="/etc/cni/net.d"
 CNI_BIN_DIR="/opt/cni/bin"
@@ -550,7 +552,6 @@ spec:
     kind: Subnet
     shortNames:
       - subnet
-
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
