@@ -64,36 +64,28 @@ func InitVlan(config *Configuration) error {
 		panic("provider should not be empty")
 	}
 
-	//create patch port
-	exists, err := providerBridgeExists()
-	if err != nil {
-		errMsg := fmt.Errorf("check provider bridge exists failed, %v", err)
+	ifName := config.getInterfaceName()
+	if ifName == "" {
+		errMsg := fmt.Errorf("failed get host nic to add ovs %s", util.UnderlayBridge)
 		klog.Error(errMsg)
-		return err
+		return errMsg
 	}
 
-	if !exists {
-		//create br-provider
-		if err = configProviderPort(config.DefaultProviderName); err != nil {
-			errMsg := fmt.Errorf("configure patch port %s failed %v", util.UnderlayBridge, err)
-			klog.Error(errMsg)
-			return errMsg
-		}
-
-		//add a host nic to br-provider
-		ifName := config.getInterfaceName()
-		if ifName == "" {
-			errMsg := fmt.Errorf("failed get host nic to add ovs %s", util.UnderlayBridge)
-			klog.Error(errMsg)
-			return errMsg
-		}
-
-		if err = configProviderNic(ifName); err != nil {
-			errMsg := fmt.Errorf("add nic %s to port %s failed %v", ifName, util.UnderlayBridge, err)
-			klog.Error(errMsg)
-			return errMsg
-		}
+	// create and configure external bridge
+	brName := util.UnderlayBridge
+	if err := configExternalBridge(config.DefaultProviderName, brName); err != nil {
+		errMsg := fmt.Errorf("failed to create and configure external bridge %s: %v", brName, err)
+		klog.Error(errMsg)
+		return errMsg
 	}
+
+	// add host nic to the external bridge
+	if err := configProviderNic(ifName, brName); err != nil {
+		errMsg := fmt.Errorf("failed to add nic %s to external bridge %s: %v", ifName, brName, err)
+		klog.Error(errMsg)
+		return errMsg
+	}
+
 	return nil
 }
 

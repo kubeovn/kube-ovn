@@ -482,49 +482,33 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int) error {
 	return nil
 }
 
-func configProviderPort(providerInterfaceName string) error {
-	output, err := ovs.Exec(ovs.MayExist, "add-br", util.UnderlayBridge)
+func configExternalBridge(provider, bridge string) error {
+	output, err := ovs.Exec(ovs.MayExist, "add-br", bridge)
 	if err != nil {
-		return fmt.Errorf("failed to create bridge %s, %v: %q", util.UnderlayBridge, err, output)
+		return fmt.Errorf("failed to create bridge %s, %v: %q", bridge, err, output)
 	}
 	output, err = ovs.Exec(ovs.IfExists, "get", "open", ".", "external-ids:ovn-bridge-mappings")
 	if err != nil {
 		return fmt.Errorf("failed to get external-ids, %v", err)
 	}
-	bridgeMappings := fmt.Sprintf("%s:%s", providerInterfaceName, util.UnderlayBridge)
-	if output != "" && !util.IsStringIn(bridgeMappings, strings.Split(output, ",")) {
+
+	bridgeMappings := fmt.Sprintf("%s:%s", provider, bridge)
+	if util.IsStringIn(bridgeMappings, strings.Split(output, ",")) {
+		return nil
+	}
+	if output != "" {
 		bridgeMappings = fmt.Sprintf("%s,%s", output, bridgeMappings)
 	}
-
-	output, err = ovs.Exec("set", "open", ".", fmt.Sprintf("external-ids:ovn-bridge-mappings=%s", bridgeMappings))
-	if err != nil {
+	if output, err = ovs.Exec("set", "open", ".", "external-ids:ovn-bridge-mappings="+bridgeMappings); err != nil {
 		return fmt.Errorf("failed to set bridge-mappings, %v: %q", err, output)
 	}
 
 	return nil
 }
 
-func providerBridgeExists() (bool, error) {
-	output, err := ovs.Exec("list-br")
-	if err != nil {
-		klog.Errorf("failed to list bridge %v", err)
-		return false, err
-	}
-
-	lines := strings.Split(output, "\n")
-	for _, l := range lines {
-		if l == util.UnderlayBridge {
-			return true, nil
-		}
-	}
-
-	return false, nil
-}
-
-// Add host nic to br-provider
-// MAC, MTU, IP addresses & routes will be copied/transferred to br-provider
-func configProviderNic(nicName string) error {
-	brName := util.UnderlayBridge
+// Add host nic to external bridge
+// Mac address, MTU, IP addresses & routes will be copied/transferred to the external bridge
+func configProviderNic(nicName, brName string) error {
 	nic, err := netlink.LinkByName(nicName)
 	if err != nil {
 		return fmt.Errorf("failed to get nic by name %s: %v", nicName, err)
