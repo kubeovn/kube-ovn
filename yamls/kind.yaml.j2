@@ -4,6 +4,7 @@ networking:
   kubeProxyMode: {{ kube_proxy_mode }}
   disableDefaultCNI: true
   ipFamily: {{ ip_family }}
+  apiServerAddress: 127.0.0.1
 kubeadmConfigPatches:
   - |
     kind: ClusterConfiguration
@@ -15,15 +16,15 @@ kubeadmConfigPatches:
 
 nodes:
   - role: control-plane
-    image: kindest/node:v1.19.1
+    image: kindest/node:v1.19.11
   {%- if ha is equalto "true" %}
   - role: control-plane
-    image: kindest/node:v1.19.1
+    image: kindest/node:v1.19.11
   - role: control-plane
-    image: kindest/node:v1.19.1
+    image: kindest/node:v1.19.11
   {%- elif single is equalto "true" %}
 
   {%- else %}
   - role: worker
-    image: kindest/node:v1.19.1
+    image: kindest/node:v1.19.11
   {%- endif %}
