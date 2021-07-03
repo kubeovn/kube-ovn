@@ -475,7 +475,9 @@ func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule,
 	} else {
 		for i := range protocols {
 			rule.Family, _ = util.ProtocolToFamily(protocols[i])
-			_, rule.Src, _ = net.ParseCIDR(cidr[i])
+			if len(cidr) == len(protocols) {
+				_, rule.Src, _ = net.ParseCIDR(cidr[i])
+			}
 			rules = append(rules, *rule)
 		}
 	}
