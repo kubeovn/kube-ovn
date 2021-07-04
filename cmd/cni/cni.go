@@ -59,6 +59,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 		IfName:       args.IfName,
 		Provider:     netConf.Provider,
 		DeviceID:     netConf.DeviceID,
+		VfDriver:     netConf.VfDriver,
 	})
 	if err != nil {
 		return err
@@ -154,6 +155,7 @@ type netConf struct {
 	IPAM         *ipamConf `json:"ipam"`
 	// PciAddrs in case of using sriov
 	DeviceID string `json:"deviceID"`
+	VfDriver string `json:"vf_driver"`
 }
 
 func loadNetConf(bytes []byte) (*netConf, string, error) {

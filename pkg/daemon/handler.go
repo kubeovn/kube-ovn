@@ -143,7 +143,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			podNicName, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, ipAddr, gw, ingress, egress, vlanID, podRequest.DeviceID, nicType, podNetns)
 		} else {
 			podNicName = ifName
-			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, ipAddr, gw, ingress, egress, vlanID, podRequest.DeviceID, nicType, podNetns)
+			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, ipAddr, gw, ingress, egress, vlanID, podRequest.DeviceID, nicType, podNetns)
 		}
 		if err != nil {
 			errMsg := fmt.Errorf("configure nic failed %v", err)

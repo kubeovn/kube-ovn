@@ -23,6 +23,7 @@ type CniRequest struct {
 	NetNs        string `json:"net_ns"`
 	IfName       string `json:"if_name"`
 	Provider     string `json:"provider"`
+	VfDriver     string `json:"vf_driver"`
 	// PciAddrs in case of using sriov
 	DeviceID string `json:"deviceID"`
 }
