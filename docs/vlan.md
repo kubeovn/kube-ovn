@@ -17,6 +17,23 @@ You can have a subnet A using Geneve encapsulation and subnet B using Vlan tag.
 
 ![topology](vlan-topolgy.png "vlan network topology")
 
+### Prerequisites
+
+In the Vlan/Underlay mode, OVS will send origin Pods packets directly into the physic network and use physic switch to transmit the traffic, so it's rely on the capabilities of network infrastructure.
+
+1. For K8s runs on VMs that provided by OpenStack, `PortSecuriity` on OpenStack should be `disabled`
+2. For K8s runs on VMs that provided by VMware, the switch security option `MAC Address Changes`, `Forged Transmits` and `Promiscuous Mode Operation` should be `allowed`
+3. The Vlan/Underlay mode can not run on public IaaS providers like AWS/GCE/Alibaba Cloud as their network can not provide the capability to transmit this type packets
+4. When Kube-OVN creates network it will check the connectivity to the subnet gateway through ICMP, so the gateway need to response this type messages.
+5. For SVC traffic, Kube-OVN will first set the dst mac to gateway mac and then do the dnat to transfer the dst ip, the packets will first send to the gateway, so the gateway need to be capability to transmit this type packets back to the subnet.
+
+### Comparison with Macvlan
+
+The Kube-OVN underlay mode works much like macvlan with some differences in functions and performance
+1. Macvlan has better throughput and latency performance as it has much shorter kernel path. Kube-OVN still need to move packets between bridges and do the ovs actions.
+2. Kube-OVN underlay mode provide arp-proxy functions which records all ip-mac pair within the subnet to reduce the impact of arp broadcast
+3. As the Macvlan works at very low end of kernel networks, netfilter can not take effect so the Service and NetworkPolicy functions are not exist. Kube-OVN underlay mode can use ovs to provide Service and NetworkPolicy functions.
+
 ### Install Vlan mode
 
 1. Get the installation script
@@ -89,7 +106,7 @@ kubectl run samplepod --image=nginx --namespace=product
 
 3. Install Kube-OVN
 
-
 ### Note
 Vlan mode will auto-assign a VLAN to a subnet if the subnet doesn't specify a VLAN. 
 The hybrid mode will not do the auto-assign, if your subnet doesn't specify a VLAN then the subnet will treat as Geneve mode.
+

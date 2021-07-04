@@ -166,19 +166,19 @@ To use an external or high available Kubernetes apiserver, users can use self cu
 
 1. Generate configmap from an existed kubeconfig
 ```bash
-kubectl create -n kube-system configmap admin-conf --from-file=admin.conf
+kubectl create -n kube-system configmap admin-conf --from-file=config=admin.conf
 ```
 
-2. Edit `kube-ovn-controller`, `kube-ovn-cni` to use previous kubeconfig
+2. Edit `kube-ovn-controller`, `kube-ovn-cni` to use the above kubeconfig
 
 ```yaml
       - args:
-           - --kubeconfig=/etc/kube/admin.conf
+           - --kubeconfig=/root/.kube/config
 
         ...
 
         volumeMounts:
-           - mountPath: /etc/kube
+           - mountPath: /root/.kube
              name: kubeconfig
         volumes:
            - configMap:
