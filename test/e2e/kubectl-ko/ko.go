@@ -86,4 +86,18 @@ var _ = Describe("[kubectl-ko]", func() {
 		output, err = exec.Command("kubectl", "ko", "trace", fmt.Sprintf("kube-system/%s", pod.Name), "114.114.114.114", "udp", "53").CombinedOutput()
 		Expect(err).NotTo(HaveOccurred(), string(output))
 	})
+
+	It("nb/sb operation", func() {
+		output, err := exec.Command("kubectl", "ko", "nb", "status").CombinedOutput()
+		Expect(err).NotTo(HaveOccurred(), string(output))
+
+		output, err = exec.Command("kubectl", "ko", "sb", "status").CombinedOutput()
+		Expect(err).NotTo(HaveOccurred(), string(output))
+
+		output, err = exec.Command("kubectl", "ko", "nb", "backup").CombinedOutput()
+		Expect(err).NotTo(HaveOccurred(), string(output))
+
+		output, err = exec.Command("kubectl", "ko", "sb", "backup").CombinedOutput()
+		Expect(err).NotTo(HaveOccurred(), string(output))
+	})
 })

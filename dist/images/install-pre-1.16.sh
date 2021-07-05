@@ -22,7 +22,7 @@ PINGER_EXTERNAL_DOMAIN="alauda.cn"         # Pinger check external domain probe
 if [ "$IPv6" = "true" ]; then
   POD_CIDR="fd00:10:16::/64"                # Do NOT overlap with NODE/SVC/JOIN CIDR
   POD_GATEWAY="fd00:10:16::1"
-  SVC_CIDR="fd00:10:96::/112"                # Do NOT overlap with NODE/POD/JOIN CIDR
+  SVC_CIDR="fd00:10:96::/112"               # Do NOT overlap with NODE/POD/JOIN CIDR
   JOIN_CIDR="fd00:100:64::/64"              # Do NOT overlap with NODE/POD/SVC CIDR
   PINGER_EXTERNAL_ADDRESS="2400:3200::1"
   PINGER_EXTERNAL_DOMAIN="google.com"
@@ -2062,6 +2062,7 @@ OVN_SB_POD=
 showHelp(){
   echo "kubectl ko {subcommand} [option...]"
   echo "Available Subcommands:"
+  echo "  [nb|sb] [status|kick|backup]     ovn-db operations show cluster status, kick stale server or backup database"
   echo "  nbctl [ovn-nbctl options ...]    invoke ovn-nbctl"
   echo "  sbctl [ovn-sbctl options ...]    invoke ovn-sbctl"
   echo "  vsctl {nodeName} [ovs-vsctl options ...]   invoke ovs-vsctl on selected node"
@@ -2206,11 +2207,28 @@ xxctl(){
   kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-$subcommand "$@"
 }
 
+checkLeader(){
+  component="$1"; shift
+  count=$(kubectl get ep ovn-$component -n $KUBE_OVN_NS -o yaml | grep ip | wc -l)
+  if [ $count -eq 0 ]; then
+    echo "no ovn-$component exists !!"
+    exit 1
+  fi
+
+  if [ $count -gt 1 ]; then
+    echo "ovn-$component has more than one leader !!"
+    exit 1
+  fi
+
+  echo "ovn-$component leader check ok"
+}
+
 diagnose(){
   kubectl get crd vpcs.kubeovn.io
   kubectl get crd vpc-nat-gateways.kubeovn.io
   kubectl get crd subnets.kubeovn.io
   kubectl get crd ips.kubeovn.io
+  kubectl get crd vlans.kubeovn.io
   kubectl get svc kube-dns -n kube-system
   kubectl get svc kubernetes -n default
   kubectl get sa -n kube-system ovn
@@ -2230,6 +2248,11 @@ diagnose(){
   checkDaemonSet kube-ovn-cni
   checkDaemonSet ovs-ovn
   checkDeployment coredns
+
+  checkLeader nb
+  checkLeader sb
+  checkLeader northd
+
   type="$1"
   case $type in
     all)
@@ -2339,6 +2362,53 @@ checkKubeProxy(){
   else
     checkDaemonSet kube-proxy
   fi
+  echo "kube-proxy ready"
+}
+
+dbtool(){
+  suffix=$(date +%m%d%H%M%s)
+  component="$1"; shift
+  action="$1"; shift
+  case $component in
+    nb)
+      case $action in
+        status)
+          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovs-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound
+          ;;
+        kick)
+          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovs-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/kick OVN_Northbound "$1"
+          ;;
+        backup)
+          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovsdb-tool cluster-to-standalone /etc/ovn/ovnnb_db.$suffix.backup /etc/ovn/ovnnb_db.db
+          kubectl cp $KUBE_OVN_NS/$OVN_NB_POD:/etc/ovn/ovnnb_db.$suffix.backup $(pwd)/ovnnb_db.$suffix.backup
+          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- rm -f /etc/ovn/ovnnb_db.$suffix.backup
+          echo "backup $component to $(pwd)/ovnnb_db.$suffix.backup"
+          ;;
+        *)
+          echo "unknown action $action"
+      esac
+      ;;
+    sb)
+      case $action in
+        status)
+          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovs-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status OVN_Southbound
+          ;;
+        kick)
+          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovs-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/kick OVN_Southbound "$1"
+          ;;
+        backup)
+          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovsdb-tool cluster-to-standalone /etc/ovn/ovnsb_db.$suffix.backup /etc/ovn/ovnsb_db.db
+          kubectl cp $KUBE_OVN_NS/$OVN_SB_POD:/etc/ovn/ovnsb_db.$suffix.backup $(pwd)/ovnsb_db.$suffix.backup
+          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- rm -f /etc/ovn/ovnsb_db.$suffix.backup
+          echo "backup $component to $(pwd)/ovnsb_db.$suffix.backup"
+          ;;
+        *)
+          echo "unknown action $action"
+      esac
+      ;;
+    *)
+      echo "unknown subcommand $component"
+  esac
 }
 
 if [ $# -lt 1 ]; then
@@ -2359,6 +2429,9 @@ case $subcommand in
     ;;
   vsctl|ofctl|dpctl|appctl)
     xxctl "$subcommand" "$@"
+    ;;
+  nb|sb)
+    dbtool "$subcommand" "$@"
     ;;
   tcpdump)
     tcpdump "$@"
