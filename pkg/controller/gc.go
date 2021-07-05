@@ -93,7 +93,7 @@ func (c *Controller) gcLogicalSwitch() error {
 	for _, s := range subnets {
 		subnetNames = append(subnetNames, s.Name)
 	}
-	lss, err := c.ovnClient.ListLogicalSwitch()
+	lss, err := c.ovnClient.ListLogicalSwitch(fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
 	if err != nil {
 		klog.Errorf("failed to list logical switch, %v", err)
 		return err
@@ -126,7 +126,7 @@ func (c *Controller) gcCustomLogicalRouter() error {
 	for _, s := range vpcs {
 		vpcNames = append(vpcNames, s.Name)
 	}
-	lrs, err := c.ovnClient.ListLogicalRouter()
+	lrs, err := c.ovnClient.ListLogicalRouter(fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
 	if err != nil {
 		klog.Errorf("failed to list logical router, %v", err)
 		return err
