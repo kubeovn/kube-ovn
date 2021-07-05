@@ -89,7 +89,8 @@ func (c Client) CreateICLogicalRouterPort(az, mac, subnet string, chassises []st
 	if _, err := c.ovnNbCommand(MayExist, "lsp-add", util.InterconnectionSwitch, fmt.Sprintf("ts-%s", az), "--",
 		"lsp-set-addresses", fmt.Sprintf("ts-%s", az), "router", "--",
 		"lsp-set-type", fmt.Sprintf("ts-%s", az), "router", "--",
-		"lsp-set-options", fmt.Sprintf("ts-%s", az), fmt.Sprintf("router-port=%s-ts", az)); err != nil {
+		"lsp-set-options", fmt.Sprintf("ts-%s", az), fmt.Sprintf("router-port=%s-ts", az), "--",
+		"set", "logical_switch_port", fmt.Sprintf("ts-%s", az), fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)); err != nil {
 		return fmt.Errorf("failed to create ovn-ic lsp, %v", err)
 	}
 	for index, chassis := range chassises {
@@ -208,6 +209,8 @@ func (c Client) SetLogicalSwitchConfig(ls string, isUnderlayGW bool, lr, protoco
 		cmd = append(cmd, []string{"--",
 			"set", "logical_router_port", fmt.Sprintf("%s-%s", lr, ls), fmt.Sprintf("networks=%s", networks)}...)
 	}
+	cmd = append(cmd, []string{"--",
+		"set", "logical_switch", ls, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)}...)
 	_, err = c.ovnNbCommand(cmd...)
 	if err != nil {
 		klog.Errorf("set switch config for %s failed %v", ls, err)
@@ -224,12 +227,14 @@ func (c Client) CreateLogicalSwitch(ls, lr, protocol, subnet, gateway string, ex
 		_, err = c.ovnNbCommand(MayExist, "ls-add", ls, "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", subnet), "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")))
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")), "--",
+			"set", "logical_switch", ls, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
 	case kubeovnv1.ProtocolIPv6:
 		_, err = c.ovnNbCommand(MayExist, "ls-add", ls, "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:ipv6_prefix=%s", strings.Split(subnet, "/")[0]), "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")))
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")), "--",
+			"set", "logical_switch", ls, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
 	case kubeovnv1.ProtocolDual:
 		// gateway is not an official column, which is used for private
 		cidrBlocks := strings.Split(subnet, ",")
@@ -237,7 +242,8 @@ func (c Client) CreateLogicalSwitch(ls, lr, protocol, subnet, gateway string, ex
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", cidrBlocks[0]), "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:ipv6_prefix=%s", strings.Split(cidrBlocks[1], "/")[0]), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")))
+			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")), "--",
+			"set", "logical_switch", ls, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
 	}
 
 	if err != nil {
@@ -344,6 +350,7 @@ func (c Client) CreateGatewaySwitch(name, ip, mac string, chassises []string) er
 	localnetPort := fmt.Sprintf("ln-%s", name)
 	_, err := c.ovnNbCommand(
 		MayExist, "ls-add", name, "--",
+		"set", "logical_switch", name, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName), "--",
 		MayExist, "lsp-add", name, localnetPort, "--",
 		"lsp-set-type", localnetPort, "localnet", "--",
 		"lsp-set-addresses", localnetPort, "unknown", "--",
@@ -462,7 +469,7 @@ func (c Client) GetEntityInfo(entity string, index string, attris []string) (res
 }
 
 func (c Client) LogicalSwitchExists(logicalSwitch string) (bool, error) {
-	lss, err := c.ListLogicalSwitch()
+	lss, err := c.ListLogicalSwitch(fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
 	if err != nil {
 		return false, err
 	}
@@ -570,7 +577,8 @@ func (c Client) createRouterPort(ls, lr, ip, mac string) error {
 	_, err := c.ovnNbCommand(MayExist, "lsp-add", ls, lsTolr, "--",
 		"set", "logical_switch_port", lsTolr, "type=router", "--",
 		"set", "logical_switch_port", lsTolr, fmt.Sprintf("addresses=\"%s\"", mac), "--",
-		"set", "logical_switch_port", lsTolr, fmt.Sprintf("options:router-port=%s", lrTols))
+		"set", "logical_switch_port", lsTolr, fmt.Sprintf("options:router-port=%s", lrTols), "--",
+		"set", "logical_switch", lsTolr, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
 	if err != nil {
 		klog.Errorf("failed to create switch router port %s %v", lsTolr, err)
 		return err
@@ -1284,7 +1292,8 @@ func (c Client) CreateLocalnetPort(ls, port, providerName, vlanID string) error 
 		MayExist, "lsp-add", ls, port, "--",
 		"lsp-set-addresses", port, "unknown", "--",
 		"lsp-set-type", port, "localnet", "--",
-		"lsp-set-options", port, fmt.Sprintf("network_name=%s", providerName),
+		"lsp-set-options", port, fmt.Sprintf("network_name=%s", providerName), "--",
+		"set", "logical_switch", port, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName),
 	}
 	if vlanID != "" && vlanID != "0" {
 		cmdArg = append(cmdArg,
