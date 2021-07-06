@@ -981,6 +981,8 @@ spec:
             - mountPath: /sys
               name: host-sys
               readOnly: true
+            - mountPath: /etc/cni/net.d
+              name: cni-conf
             - mountPath: /etc/openvswitch
               name: host-config-openvswitch
             - mountPath: /etc/ovn
@@ -1036,6 +1038,9 @@ spec:
         - name: host-sys
           hostPath:
             path: /sys
+        - name: cni-conf
+          hostPath:
+            path: /etc/cni/net.d
         - name: host-config-openvswitch
           hostPath:
             path: /etc/origin/openvswitch
@@ -1447,6 +1452,8 @@ spec:
             - mountPath: /sys
               name: host-sys
               readOnly: true
+            - mountPath: /etc/cni/net.d
+              name: cni-conf
             - mountPath: /etc/openvswitch
               name: host-config-openvswitch
             - mountPath: /etc/ovn
@@ -1498,6 +1505,9 @@ spec:
         - name: host-sys
           hostPath:
             path: /sys
+        - name: cni-conf
+          hostPath:
+            path: /etc/cni/net.d
         - name: host-config-openvswitch
           hostPath:
             path: /etc/origin/openvswitch
