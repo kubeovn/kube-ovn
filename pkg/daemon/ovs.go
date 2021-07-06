@@ -276,7 +276,7 @@ func waitNetworkReady(gateway string) error {
 	return nil
 }
 
-func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int, enableOffload bool) error {
+func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int) error {
 	ipStr := util.GetIpWithoutMask(ip)
 	raw, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", util.NodeNic, "--",
 		"set", "interface", util.NodeNic, "type=internal", "--",
@@ -300,16 +300,6 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 		return fmt.Errorf("can not set host nic %s qlen %v", util.NodeNic, err)
 	}
 
-	if !enableOffload {
-		// Double nat may lead kernel udp checksum error, disable offload to prevent this issue
-		// https://github.com/kubernetes/kubernetes/pull/92035
-		output, err := exec.Command("ethtool", "-K", "ovn0", "tx", "off").CombinedOutput()
-		if err != nil {
-			klog.Errorf("failed to disable checksum offload on ovn0, %v %q", err, output)
-			return err
-		}
-	}
-
 	// ping ovn0 gw to activate the flow
 	output, err := ovn0Check(gw)
 	if err != nil {
@@ -319,16 +309,6 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 	klog.Infof("ping gw result is: \n %s", output)
 
 	return nil
-}
-
-func (c *Controller) disableTunnelOffload() {
-	_, err := netlink.LinkByName("genev_sys_6081")
-	if err == nil {
-		output, err := exec.Command("ethtool", "-K", "genev_sys_6081", "tx", "off").CombinedOutput()
-		if err != nil {
-			klog.Errorf("failed to disable checksum offload on genev_sys_6081, %v %q", err, output)
-		}
-	}
 }
 
 // If OVS restart, the ovn0 port will down and prevent host to pod network,
