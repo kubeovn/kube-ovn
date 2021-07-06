@@ -475,7 +475,9 @@ func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule,
 	} else {
 		for i := range protocols {
 			rule.Family, _ = util.ProtocolToFamily(protocols[i])
-			_, rule.Src, _ = net.ParseCIDR(cidr[i])
+			if len(cidr) == len(protocols) {
+				_, rule.Src, _ = net.ParseCIDR(cidr[i])
+			}
 			rules = append(rules, *rule)
 		}
 	}
@@ -610,8 +612,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 
 	klog.Info("Started workers")
 	go wait.Until(c.loopOvn0Check, 5*time.Second, stopCh)
-	go wait.Until(c.disableTunnelOffload, 5*time.Second, stopCh)
-
 	go wait.Until(c.runSubnetWorker, time.Second, stopCh)
 	go wait.Until(c.runPodWorker, time.Second, stopCh)
 	go wait.Until(c.runGateway, 3*time.Second, stopCh)
