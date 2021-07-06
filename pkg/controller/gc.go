@@ -457,14 +457,25 @@ func (c *Controller) gcLoadBalancer() error {
 func (c *Controller) gcPortGroup() error {
 	klog.Infof("start to gc network policy")
 	nps, err := c.npsLister.List(labels.Everything())
-	npNames := make([]string, 0, len(nps))
-	for _, np := range nps {
-		npNames = append(npNames, fmt.Sprintf("%s/%s", np.Namespace, np.Name))
-	}
 	if err != nil {
 		klog.Errorf("failed to list network policy, %v", err)
 		return err
 	}
+
+	npNames := make([]string, 0, len(nps))
+	for _, np := range nps {
+		npNames = append(npNames, fmt.Sprintf("%s/%s", np.Namespace, np.Name))
+	}
+	// append node port group to npNames to avoid gc node port group
+	nodes, err := c.nodesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list nodes, %v", err)
+		return err
+	}
+	for _, node := range nodes {
+		npNames = append(npNames, fmt.Sprintf("%s/%s", "node", node.Name))
+	}
+
 	pgs, err := c.ovnClient.ListPortGroup()
 	if err != nil {
 		klog.Errorf("failed to list port-group, %v", err)

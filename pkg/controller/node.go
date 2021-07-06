@@ -273,6 +273,13 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
+	// ovn acl doesn't support address_set name with '-', so replace '-' by '.'
+	pgName := strings.Replace(node.Annotations[util.PortNameAnnotation], "-", ".", -1)
+	if err := c.ovnClient.CreatePortGroup(pgName, "node", key); err != nil {
+		klog.Errorf("failed to create port group %v for node %s, %v", portName, key, err)
+		return err
+	}
+
 	return nil
 }
 
@@ -288,6 +295,13 @@ func (c *Controller) handleDeleteNode(key string) error {
 	}
 
 	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+		return err
+	}
+
+	// ovn acl doesn't support address_set name with '-', so replace '-' by '.'
+	pgName := strings.Replace(portName, "-", ".", -1)
+	if err := c.ovnClient.DeletePortGroup(pgName); err != nil {
+		klog.Errorf("failed to delete port group %s for node, %v", portName, err)
 		return err
 	}
 
@@ -507,5 +521,130 @@ func (c *Controller) checkChassisDupl(node *v1.Node) error {
 	}
 
 	klog.V(3).Infof("finish check chassis, add %s and ann %s", chassisAdd, chassisAnn)
+	return nil
+}
+
+func (c *Controller) fetchPodsOnNode(nodeName string) ([]string, error) {
+	pods, err := c.podsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list pods, %v", err)
+		return nil, err
+	}
+
+	ports := make([]string, 0, len(pods))
+	for _, pod := range pods {
+		if !isPodAlive(pod) || pod.Spec.HostNetwork || pod.Spec.NodeName != nodeName {
+			continue
+		}
+
+		if pod.Annotations[util.AllocatedAnnotation] == "true" {
+			ports = append(ports, fmt.Sprintf("%s.%s", pod.Name, pod.Namespace))
+		}
+	}
+	return ports, nil
+}
+
+func (c *Controller) checkPodsChangedOnNode(pgName string, ports []string) (bool, error) {
+	pgPorts, err := c.ovnClient.ListPgPorts(pgName)
+	if err != nil {
+		klog.Errorf("failed to fetch ports for pg %v, %v", pgName, err)
+		return false, err
+	}
+
+	pordIds := make([]string, 0, len(ports))
+	for _, port := range ports {
+		portId, err := c.ovnClient.ConvertLspNameToUuid(port)
+		if err != nil {
+			klog.Errorf("failed to convert lsp name to uuid, %v", err)
+			continue
+		}
+		pordIds = append(pordIds, portId)
+	}
+
+	for _, portId := range pordIds {
+		if !util.IsStringIn(portId, pgPorts) {
+			klog.Infof("new added pod %v should add to node port group %v", portId, pgName)
+			return true, nil
+		}
+	}
+
+	for _, pgPort := range pgPorts {
+		if !util.IsStringIn(pgPort, pordIds) {
+			klog.Infof("can not find match pod for port %v in node port group %v", pgPort, pgName)
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func (c *Controller) CheckNodePortGroup() {
+	if err := c.checkAndUpdateNodePortGroup(); err != nil {
+		klog.Errorf("failed to check node port-group status, %v", err)
+	}
+}
+
+var lastNpExists = make(map[string]bool)
+
+func (c *Controller) checkAndUpdateNodePortGroup() error {
+	klog.V(3).Infoln("start to check node port-group status")
+	np, _ := c.npsLister.List(labels.Everything())
+	networkPolicyExists := len(np) != 0
+
+	nodes, err := c.nodesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list nodes, %v", err)
+		return err
+	}
+
+	for _, node := range nodes {
+		// ovn acl doesn't support address_set name with '-', so replace '-' by '.'
+		pgName := strings.Replace(node.Annotations[util.PortNameAnnotation], "-", ".", -1)
+		nodeIP := node.Annotations[util.IpAddressAnnotation]
+		if err := c.ovnClient.CreatePortGroup(pgName, "node", node.Name); err != nil {
+			klog.Errorf("failed to create port group %v for node %s, %v", pgName, node.Name, err)
+			return err
+		}
+
+		ports, err := c.fetchPodsOnNode(node.Name)
+		if err != nil {
+			klog.Errorf("failed to fetch pods for node %v, %v", node.Name, err)
+			return err
+		}
+
+		changed, err := c.checkPodsChangedOnNode(pgName, ports)
+		if err != nil {
+			klog.Errorf("failed to check pod status for node %v, %v", node.Name, err)
+			continue
+		}
+
+		if lastNpExists[node.Name] != networkPolicyExists {
+			klog.Infof("networkpolicy num changed when check nodepg %v", pgName)
+			changed = true
+		}
+
+		if !changed {
+			klog.V(3).Infof("pods on node %v do not changed", node.Name)
+			continue
+		}
+		lastNpExists[node.Name] = networkPolicyExists
+
+		err = c.ovnClient.SetPortsToPortGroup(pgName, ports)
+		if err != nil {
+			klog.Errorf("failed to set port group for node %v, %v", node.Name, err)
+			return err
+		}
+
+		if networkPolicyExists {
+			if err := c.ovnClient.CreateACLForNodePg(pgName, nodeIP); err != nil {
+				klog.Errorf("failed to create node acl for node pg %v, %v", pgName, err)
+			}
+		} else {
+			if err := c.ovnClient.DeleteAclForNodePg(pgName); err != nil {
+				klog.Errorf("failed to delete node acl for node pg %v, %v", pgName, err)
+			}
+		}
+	}
+
 	return nil
 }

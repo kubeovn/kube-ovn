@@ -862,40 +862,6 @@ func (c Client) CleanLogicalSwitchAcl(ls string) error {
 	return err
 }
 
-func (c Client) SetNodeSwitchAcl(ls string) error {
-	cidrs := strings.Split(c.NodeSwitchCIDR, ",")
-	for _, cidr := range cidrs {
-		var err error
-		if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv4 {
-			_, err = c.ovnNbCommand(MayExist, "acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip4.src==%s", c.NodeSwitchCIDR), "allow-related")
-		} else {
-			_, err = c.ovnNbCommand(MayExist, "acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip6.src==%s", c.NodeSwitchCIDR), "allow-related")
-		}
-		if err != nil {
-			klog.Errorf("failed to add node switch acl")
-			return err
-		}
-	}
-	return nil
-}
-
-func (c Client) RemoveNodeSwitchAcl(ls string) error {
-	cidrs := strings.Split(c.NodeSwitchCIDR, ",")
-	for _, cidr := range cidrs {
-		var err error
-		if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv4 {
-			_, err = c.ovnNbCommand("acl-del", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip4.src==%s", c.NodeSwitchCIDR))
-		} else {
-			_, err = c.ovnNbCommand("acl-del", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip6.src==%s", c.NodeSwitchCIDR))
-		}
-		if err != nil {
-			klog.Errorf("failed to delete node switch acl")
-			return err
-		}
-	}
-	return nil
-}
-
 // ResetLogicalSwitchAcl reset acl of a switch
 func (c Client) ResetLogicalSwitchAcl(ls string) error {
 	_, err := c.ovnNbCommand("acl-del", ls)
@@ -1144,8 +1110,8 @@ func (c Client) CreateGatewayACL(pgName, gateway, cidr string) error {
 			if protocol == kubeovnv1.ProtocolIPv6 {
 				ipSuffix = "ip6"
 			}
-			ingressArgs := []string{MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("%s.src == %s && icmp", ipSuffix, gw), "allow-related"}
-			egressArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("%s.dst == %s && icmp", ipSuffix, gw), "allow-related"}
+			ingressArgs := []string{MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("%s.src == %s", ipSuffix, gw), "allow-related"}
+			egressArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("%s.dst == %s", ipSuffix, gw), "allow-related"}
 			ovnArgs := append(ingressArgs, egressArgs...)
 			if _, err := c.ovnNbCommand(ovnArgs...); err != nil {
 				return err
@@ -1153,6 +1119,70 @@ func (c Client) CreateGatewayACL(pgName, gateway, cidr string) error {
 		}
 	}
 	return nil
+}
+
+func (c Client) CreateACLForNodePg(pgName, nodeIpStr string) error {
+	for _, nodeIp := range strings.Split(nodeIpStr, ",") {
+		protocol := util.CheckProtocol(nodeIp)
+		ipSuffix := "ip4"
+		if protocol == kubeovnv1.ProtocolIPv6 {
+			ipSuffix = "ip6"
+		}
+		pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
+
+		ingressArgs := []string{MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.NodeAllowPriority, fmt.Sprintf("%s.src == %s && %s.dst == $%s", ipSuffix, nodeIp, ipSuffix, pgAs), "allow-related"}
+		egressArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.NodeAllowPriority, fmt.Sprintf("%s.dst == %s && %s.src == $%s", ipSuffix, nodeIp, ipSuffix, pgAs), "allow-related"}
+		ovnArgs := append(ingressArgs, egressArgs...)
+		if _, err := c.ovnNbCommand(ovnArgs...); err != nil {
+			klog.Errorf("failed to add node port-group acl")
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c Client) DeleteAclForNodePg(pgName string) error {
+	ingressArgs := []string{"acl-del", pgName, "to-lport"}
+	if _, err := c.ovnNbCommand(ingressArgs...); err != nil {
+		klog.Errorf("failed to delete node port-group ingress acl")
+		return err
+	}
+
+	egressArgs := []string{"acl-del", pgName, "from-lport"}
+	if _, err := c.ovnNbCommand(egressArgs...); err != nil {
+		klog.Errorf("failed to delete node port-group egress acl")
+		return err
+	}
+
+	return nil
+}
+
+func (c Client) ListPgPorts(pgName string) ([]string, error) {
+	output, err := c.ovnNbCommand("--format=csv", "--data=bare", "--no-heading", "--columns=ports", "find", "port_group", fmt.Sprintf("name=%s", pgName))
+	if err != nil {
+		klog.Errorf("failed to list port-group ports, %v", err)
+		return nil, err
+	}
+	lines := strings.Split(output, "\n")
+	result := make([]string, 0, len(lines))
+	for _, l := range lines {
+		if len(strings.TrimSpace(l)) == 0 {
+			continue
+		}
+		result = append(result, strings.Split(l, " ")...)
+	}
+	return result, nil
+}
+
+func (c Client) ConvertLspNameToUuid(name string) (string, error) {
+	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid", "find", "logical_switch_port", fmt.Sprintf("name=%s", name))
+	lines := strings.Split(output, "\n")
+	if len(lines) == 0 {
+		klog.Errorf("failed to get lsp uuid by name, %v", err)
+		return "", err
+	}
+	return strings.TrimSpace(lines[0]), nil
 }
 
 func (c Client) SetPortsToPortGroup(portGroup string, portNames []string) error {

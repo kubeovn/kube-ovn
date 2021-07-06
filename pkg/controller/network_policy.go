@@ -185,6 +185,11 @@ func (c *Controller) handleUpdateNp(key string) error {
 	egressAllowAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.egress.allow", np.Name, np.Namespace), "-", ".", -1)
 	egressExceptAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.egress.except", np.Name, np.Namespace), "-", ".", -1)
 
+	// delete existed pg to update acl
+	if err := c.ovnClient.DeletePortGroup(pgName); err != nil {
+		klog.Errorf("failed to delete port group %s before networkpolicy update process, %v", pgName, err)
+	}
+
 	if err := c.ovnClient.CreatePortGroup(pgName, np.Namespace, np.Name); err != nil {
 		klog.Errorf("failed to create port group for np %s, %v", key, err)
 		return err
@@ -520,8 +525,18 @@ func hasEgressRule(np *netv1.NetworkPolicy) bool {
 }
 
 func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, npp netv1.NetworkPolicyPeer) ([]string, []string, error) {
+	selectedAddresses := []string{}
+	exceptAddresses := []string{}
+
+	// ingress.from.ipblock or egress.to.ipblock
 	if npp.IPBlock != nil && util.CheckProtocol(npp.IPBlock.CIDR) == protocol {
-		return []string{npp.IPBlock.CIDR}, npp.IPBlock.Except, nil
+		selectedAddresses = append(selectedAddresses, npp.IPBlock.CIDR)
+		if npp.IPBlock.Except != nil {
+			exceptAddresses = append(exceptAddresses, npp.IPBlock.Except...)
+		}
+	}
+	if npp.NamespaceSelector == nil && npp.PodSelector == nil {
+		return selectedAddresses, exceptAddresses, nil
 	}
 
 	selectedNs := []string{}
@@ -541,7 +556,6 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 		}
 	}
 
-	selectedAddresses := []string{}
 	var sel labels.Selector
 	if npp.PodSelector == nil {
 		sel = labels.Everything()
@@ -562,7 +576,7 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 			}
 		}
 	}
-	return selectedAddresses, nil, nil
+	return selectedAddresses, exceptAddresses, nil
 }
 
 func (c *Controller) podMatchNetworkPolicies(pod *corev1.Pod) []string {
@@ -672,28 +686,4 @@ func isNamespaceMatchNetworkPolicy(ns *corev1.Namespace, policy *netv1.NetworkPo
 		}
 	}
 	return false
-}
-
-func (c *Controller) resyncNodeACL() {
-	np, _ := c.npsLister.List(labels.Everything())
-	networkPolicyExists := len(np) != 0
-
-	subnets, _ := c.subnetsLister.List(labels.Everything())
-	for _, subnet := range subnets {
-		if subnet.Spec.Provider == util.OvnProvider || subnet.Spec.Provider == "" {
-			if subnet.Name == c.config.NodeSwitch {
-				continue
-			}
-
-			if networkPolicyExists {
-				if err := c.ovnClient.SetNodeSwitchAcl(subnet.Name); err != nil {
-					klog.Errorf("failed to set node acl, %v", err)
-				}
-			} else {
-				if err := c.ovnClient.RemoveNodeSwitchAcl(subnet.Name); err != nil {
-					klog.Errorf("failed to remove node acl, %v", err)
-				}
-			}
-		}
-	}
 }
