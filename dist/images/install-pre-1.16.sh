@@ -1654,7 +1654,6 @@ spec:
           - --iface=${IFACE}
           - --network-type=$NETWORK_TYPE
           - --default-interface-name=$VLAN_INTERFACE_NAME
-          - --hw-offload=$HW_OFFLOAD
         securityContext:
           runAsUser: 0
           privileged: true
