@@ -180,10 +180,10 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, macAd
 		}
 
 		if nicType == util.InternalType {
-			if err = addAdditonalNic(ifName); err != nil {
+			if err = addAdditionalNic(ifName); err != nil {
 				return err
 			}
-			if err = configureAdditonalNic(ifName, ipAddr); err != nil {
+			if err = configureAdditionalNic(ifName, ipAddr); err != nil {
 				return err
 			}
 			if err = configureNic(nicName, ipAddr, macAddr, mtu); err != nil {
@@ -747,7 +747,7 @@ func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, 
 }
 
 // https://github.com/antrea-io/antrea/issues/1691
-func configureAdditonalNic(link, ip string) error {
+func configureAdditionalNic(link, ip string) error {
 	nodeLink, err := netlink.LinkByName(link)
 	if err != nil {
 		return fmt.Errorf("can not find nic %s %v", link, err)
@@ -796,7 +796,7 @@ func configureAdditonalNic(link, ip string) error {
 	return nil
 }
 
-func addAdditonalNic(ifName string) error {
+func addAdditionalNic(ifName string) error {
 	dummy := &netlink.Dummy{
 		LinkAttrs: netlink.LinkAttrs{
 			Name: ifName,
