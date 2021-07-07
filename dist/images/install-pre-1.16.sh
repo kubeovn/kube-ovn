@@ -2078,6 +2078,7 @@ OVN_SB_POD=
 showHelp(){
   echo "kubectl ko {subcommand} [option...]"
   echo "Available Subcommands:"
+  echo "  [nb|sb] [status|kick|backup]     ovn-db operations show cluster status, kick stale server or backup database"
   echo "  nbctl [ovn-nbctl options ...]    invoke ovn-nbctl"
   echo "  sbctl [ovn-sbctl options ...]    invoke ovn-sbctl"
   echo "  vsctl {nodeName} [ovs-vsctl options ...]   invoke ovs-vsctl on selected node"
@@ -2120,7 +2121,6 @@ tcpdump(){
       echo "nic doesn't exist on node $nodeName"
       exit 1
     fi
-
     podNicType=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/pod_nic_type})
     podNetNs=$(kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading get interface "$nicName" external-ids:pod_netns | tr -d '\r')
     set -x
@@ -2229,6 +2229,22 @@ xxctl(){
   kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-$subcommand "$@"
 }
 
+checkLeader(){
+  component="$1"; shift
+  count=$(kubectl get ep ovn-$component -n $KUBE_OVN_NS -o yaml | grep ip | wc -l)
+  if [ $count -eq 0 ]; then
+    echo "no ovn-$component exists !!"
+    exit 1
+  fi
+
+  if [ $count -gt 1 ]; then
+    echo "ovn-$component has more than one leader !!"
+    exit 1
+  fi
+
+  echo "ovn-$component leader check ok"
+}
+
 diagnose(){
   kubectl get crd vpcs.kubeovn.io
   kubectl get crd vpc-nat-gateways.kubeovn.io
@@ -2254,6 +2270,11 @@ diagnose(){
   checkDaemonSet kube-ovn-cni
   checkDaemonSet ovs-ovn
   checkDeployment coredns
+
+  checkLeader nb
+  checkLeader sb
+  checkLeader northd
+
   type="$1"
   case $type in
     all)
@@ -2350,19 +2371,65 @@ checkDeployment(){
 checkKubeProxy(){
   dsMode=`kubectl get ds -n kube-system | grep kube-proxy || true`
   if [ -z "$dsMode" ]; then
-    nodeIps=`kubectl get node -o wide --no-headers | awk '{print $6}'`
+    nodeIps=`kubectl get node -o wide | grep -v "INTERNAL-IP" | awk '{print $6}'`
     for node in $nodeIps
     do
-      healthResult=`curl -g -6 -sL --connect-timeout 5 -w %{http_code} http://[$node]:10256/healthz -o /dev/null | grep -v 200 || true`
+      healthResult=`curl -g -6 -sL -w %{http_code} http://[$node]:10256/healthz -o /dev/null | grep -v 200 || true`
       if [ -n "$healthResult" ]; then
         echo "$node kube-proxy's health check failed"
         exit 1
       fi
     done
-    echo "kube-proxy ready"
   else
     checkDaemonSet kube-proxy
   fi
+  echo "kube-proxy ready"
+}
+
+dbtool(){
+  suffix=$(date +%m%d%H%M%s)
+  component="$1"; shift
+  action="$1"; shift
+  case $component in
+    nb)
+      case $action in
+        status)
+          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovs-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound
+          ;;
+        kick)
+          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovs-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/kick OVN_Northbound "$1"
+          ;;
+        backup)
+          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovsdb-tool cluster-to-standalone /etc/ovn/ovnnb_db.$suffix.backup /etc/ovn/ovnnb_db.db
+          kubectl cp $KUBE_OVN_NS/$OVN_NB_POD:/etc/ovn/ovnnb_db.$suffix.backup $(pwd)/ovnnb_db.$suffix.backup
+          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- rm -f /etc/ovn/ovnnb_db.$suffix.backup
+          echo "backup $component to $(pwd)/ovnnb_db.$suffix.backup"
+          ;;
+        *)
+          echo "unknown action $action"
+      esac
+      ;;
+    sb)
+      case $action in
+        status)
+          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovs-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status OVN_Southbound
+          ;;
+        kick)
+          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovs-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/kick OVN_Southbound "$1"
+          ;;
+        backup)
+          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovsdb-tool cluster-to-standalone /etc/ovn/ovnsb_db.$suffix.backup /etc/ovn/ovnsb_db.db
+          kubectl cp $KUBE_OVN_NS/$OVN_SB_POD:/etc/ovn/ovnsb_db.$suffix.backup $(pwd)/ovnsb_db.$suffix.backup
+          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- rm -f /etc/ovn/ovnsb_db.$suffix.backup
+          echo "backup $component to $(pwd)/ovnsb_db.$suffix.backup"
+          ;;
+        *)
+          echo "unknown action $action"
+      esac
+      ;;
+    *)
+      echo "unknown subcommand $component"
+  esac
 }
 
 if [ $# -lt 1 ]; then
@@ -2384,6 +2451,9 @@ case $subcommand in
   vsctl|ofctl|dpctl|appctl)
     xxctl "$subcommand" "$@"
     ;;
+  nb|sb)
+    dbtool "$subcommand" "$@"
+    ;;
   tcpdump)
     tcpdump "$@"
     ;;
@@ -2397,6 +2467,7 @@ case $subcommand in
     showHelp
     ;;
 esac
+
 EOF
 
 chmod +x /usr/local/bin/kubectl-ko
