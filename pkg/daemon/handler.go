@@ -305,16 +305,5 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		}
 	}
 
-	ipCrName := ovs.PodNameToPortName(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider)
-	err = csh.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ipCrName, metav1.DeleteOptions{})
-	if err != nil && !k8serrors.IsNotFound(err) {
-		errMsg := fmt.Errorf("del ip crd for %s failed %v", ipCrName, err)
-		klog.Error(errMsg)
-		if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
-			klog.Errorf("failed to write response, %v", err)
-		}
-		return
-	}
-
 	resp.WriteHeader(http.StatusNoContent)
 }
