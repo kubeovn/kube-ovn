@@ -31,7 +31,7 @@ func cidrConflict(cidr string) error {
 			return fmt.Errorf("%s conflict with v6 loopback cidr %s", cidr, V6Loopback)
 		}
 		if CIDRConflict(cidrBlock, V4Loopback) {
-			return fmt.Errorf("%s conflict with v4 multicast cidr %s", cidr, V4Loopback)
+			return fmt.Errorf("%s conflict with v4 loopback cidr %s", cidr, V4Loopback)
 		}
 	}
 
