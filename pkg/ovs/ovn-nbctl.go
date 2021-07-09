@@ -468,8 +468,8 @@ func (c Client) GetEntityInfo(entity string, index string, attris []string) (res
 	return result, nil
 }
 
-func (c Client) LogicalSwitchExists(logicalSwitch string) (bool, error) {
-	lss, err := c.ListLogicalSwitch(fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
+func (c Client) LogicalSwitchExists(logicalSwitch string, args ...string) (bool, error) {
+	lss, err := c.ListLogicalSwitch(args...)
 	if err != nil {
 		return false, err
 	}
