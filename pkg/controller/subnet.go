@@ -563,7 +563,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
-	exist, err := c.ovnClient.LogicalSwitchExists(subnet.Name)
+	exist, err := c.ovnClient.LogicalSwitchExists(subnet.Name, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
 	if err != nil {
 		klog.Errorf("failed to list logical switch, %v", err)
 		c.patchSubnetStatus(subnet, "ListLogicalSwitchFailed", err.Error())
@@ -653,7 +653,7 @@ func (c *Controller) handleDeleteRoute(subnet *kubeovnv1.Subnet) error {
 func (c *Controller) handleDeleteLogicalSwitch(key string) error {
 	c.ipam.DeleteSubnet(key)
 
-	exist, err := c.ovnClient.LogicalSwitchExists(key)
+	exist, err := c.ovnClient.LogicalSwitchExists(key, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
 	if err != nil {
 		klog.Errorf("failed to list logical switch, %v", err)
 		return err
