@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +16,13 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
+)
+
+type AclDirection string
+
+const (
+	SgAclIngressDirection AclDirection = "to-lport"
+	SgAclEgressDirection  AclDirection = "from-lport"
 )
 
 func (c Client) ovnNbCommand(cmdArgs ...string) (string, error) {
@@ -111,8 +119,24 @@ func (c Client) DeleteICLogicalRouterPort(az string) error {
 	return nil
 }
 
+func (c Client) SetPortExternalIds(port, key, value string) error {
+	rets, err := c.ListLogicalEntity("logical_switch_port", fmt.Sprintf("name=%s", port))
+	if err != nil {
+		return fmt.Errorf("failed to find port %s. %v", port, err)
+	}
+	if len(rets) == 0 {
+		return nil
+	}
+
+	if _, err := c.ovnNbCommand("set", "logical_switch_port", port, fmt.Sprintf("external_ids:%s=\"%s\"", key, value)); err != nil {
+		klog.Errorf("set port %s external_ids failed %v", port, err)
+		return err
+	}
+	return nil
+}
+
 // CreatePort create logical switch port in ovn
-func (c Client) CreatePort(ls, port, ip, cidr, mac, tag, pod, namespace string, portSecurity bool) error {
+func (c Client) CreatePort(ls, port, ip, cidr, mac, tag, pod, namespace string, portSecurity bool, securityGroups string) error {
 	var ovnCommand []string
 	if util.CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
 		ips := strings.Split(ip, ",")
@@ -131,7 +155,16 @@ func (c Client) CreatePort(ls, port, ip, cidr, mac, tag, pod, namespace string, 
 
 		if portSecurity {
 			ovnCommand = append(ovnCommand,
-				"--", "lsp-set-port-security", port, fmt.Sprintf("%s %s/%s", mac, ip, strings.Split(cidr, "/")[1]))
+				"--", "lsp-set-port-security", port, mac, ip)
+			if securityGroups != "" {
+				sgList := strings.Split(securityGroups, ",")
+				ovnCommand = append(ovnCommand,
+					"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:security_groups=%s", securityGroups))
+				for _, sg := range sgList {
+					ovnCommand = append(ovnCommand,
+						"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:associated_sg_%s=true", sg))
+				}
+			}
 		}
 	}
 
@@ -980,7 +1013,7 @@ func (c Client) GetPortAddr(port string) ([]string, error) {
 	return address, nil
 }
 
-func (c Client) CreatePortGroup(pgName, npNs, npName string) error {
+func (c Client) CreateNpPortGroup(pgName, npNs, npName string) error {
 	output, err := c.ovnNbCommand(
 		"--data=bare", "--no-heading", "--columns=_uuid", "find", "port_group", fmt.Sprintf("name=%s", pgName))
 	if err != nil {
@@ -1015,8 +1048,8 @@ type portGroup struct {
 	NpNamespace string
 }
 
-func (c Client) ListPortGroup() ([]portGroup, error) {
-	output, err := c.ovnNbCommand("--data=bare", "--format=csv", "--no-heading", "--columns=name,external_ids", "list", "port_group")
+func (c Client) ListNpPortGroup() ([]portGroup, error) {
+	output, err := c.ovnNbCommand("--data=bare", "--format=csv", "--no-heading", "--columns=name,external_ids", "find", "port_group", "external_ids:np!=[]")
 	if err != nil {
 		klog.Errorf("failed to list logical port-group, %v", err)
 		return nil, err
@@ -1111,8 +1144,13 @@ func (c Client) CreateEgressACL(npName, pgName, asEgressName, asExceptName, prot
 }
 
 func (c Client) DeleteACL(pgName, direction string) error {
-	_, err := c.ovnNbCommand("--type=port-group", "acl-del", pgName, direction)
-	return err
+	if direction != "" {
+		_, err := c.ovnNbCommand("--type=port-group", "acl-del", pgName, direction)
+		return err
+	} else {
+		_, err := c.ovnNbCommand("--type=port-group", "acl-del", pgName)
+		return err
+	}
 }
 
 func (c Client) CreateGatewayACL(pgName, gateway, cidr string) error {
@@ -1343,5 +1381,222 @@ func (c Client) CreateLocalnetPort(ls, port, providerName, vlanID string) error 
 		return err
 	}
 
+	return nil
+}
+
+func GetSgPortGroupName(sgName string) string {
+	return strings.Replace(fmt.Sprintf("ovn.sg.%s", sgName), "-", ".", -1)
+}
+
+func GetSgV4AssociatedName(sgName string) string {
+	return strings.Replace(fmt.Sprintf("ovn.sg.%s.associated.v4", sgName), "-", ".", -1)
+}
+
+func GetSgV6AssociatedName(sgName string) string {
+	return strings.Replace(fmt.Sprintf("ovn.sg.%s.associated.v6", sgName), "-", ".", -1)
+}
+
+func (c Client) CreateSgPortGroup(sgName string) error {
+	sgPortGroupName := GetSgPortGroupName(sgName)
+	output, err := c.ovnNbCommand(
+		"--data=bare", "--no-heading", "--columns=_uuid", "find", "port_group", fmt.Sprintf("name=%s", sgPortGroupName))
+	if err != nil {
+		klog.Errorf("failed to find port_group of sg %s", sgPortGroupName)
+		return err
+	}
+	if output != "" {
+		return nil
+	}
+	_, err = c.ovnNbCommand(
+		"pg-add", sgPortGroupName,
+		"--", "set", "port_group", sgPortGroupName, "external_ids:type=security_group",
+		fmt.Sprintf("external_ids:sg=%s", sgName),
+		fmt.Sprintf("external_ids:name=%s", sgPortGroupName))
+	return err
+}
+
+func (c Client) DeleteSgPortGroup(sgName string) error {
+	sgPortGroupName := GetSgPortGroupName(sgName)
+	// delete acl
+	if err := c.DeleteACL(sgPortGroupName, ""); err != nil {
+		return err
+	}
+
+	// delete address_set
+	asList, err := c.ListSgRuleAddressSet(sgName, "")
+	if err != nil {
+		return err
+	}
+	for _, as := range asList {
+		if err = c.DeleteAddressSet(as); err != nil {
+			return err
+		}
+	}
+
+	// delete pg
+	err = c.DeletePortGroup(sgPortGroupName)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c Client) CreateSgAssociatedAddressSet(sgName string) error {
+	v4AsName := GetSgV4AssociatedName(sgName)
+	v6AsName := GetSgV6AssociatedName(sgName)
+	outputV4, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid", "find", "address_set", fmt.Sprintf("name=%s", v4AsName))
+	if err != nil {
+		klog.Errorf("failed to find address_set for sg %s", sgName)
+		return err
+	}
+	outputV6, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid", "find", "address_set", fmt.Sprintf("name=%s", v6AsName))
+	if err != nil {
+		klog.Errorf("failed to find address_set for sg %s", sgName)
+		return err
+	}
+
+	if outputV4 == "" {
+		_, err = c.ovnNbCommand("create", "address_set", fmt.Sprintf("name=%s", v4AsName), fmt.Sprintf("external_ids:sg=%s", sgName))
+		if err != nil {
+			klog.Errorf("failed to create v4 address_set for sg %s", sgName)
+			return err
+		}
+	}
+	if outputV6 == "" {
+		_, err = c.ovnNbCommand("create", "address_set", fmt.Sprintf("name=%s", v6AsName), fmt.Sprintf("external_ids:sg=%s", sgName))
+		if err != nil {
+			klog.Errorf("failed to create v6 address_set for sg %s", sgName)
+			return err
+		}
+	}
+	return nil
+}
+
+func (c Client) ListSgRuleAddressSet(sgName string, direction AclDirection) ([]string, error) {
+	ovnCmd := []string{"--data=bare", "--no-heading", "--columns=name", "find", "address_set", fmt.Sprintf("external_ids:sg=%s", sgName)}
+	if direction != "" {
+		ovnCmd = append(ovnCmd, fmt.Sprintf("external_ids:direction=%s", direction))
+	}
+	output, err := c.ovnNbCommand(ovnCmd...)
+	if err != nil {
+		klog.Errorf("failed to list sg address_set of %s, direction %s", sgName, direction)
+		return nil, err
+	}
+	return strings.Split(output, "\n"), nil
+}
+
+func (c Client) createSgRuleACL(sgName string, direction AclDirection, rule *kubeovnv1.SgRule, index int) error {
+	ipSuffix := "ip4"
+	if rule.IPVersion == "ipv6" {
+		ipSuffix = "ip6"
+	}
+
+	sgPortGroupName := GetSgPortGroupName(sgName)
+	var matchArgs []string
+	if rule.RemoteType == kubeovnv1.SgRemoteTypeAddress {
+		if direction == SgAclIngressDirection {
+			matchArgs = append(matchArgs, fmt.Sprintf("outport==@%s && %s && %s.src==%s", sgPortGroupName, ipSuffix, ipSuffix, rule.RemoteAddress))
+		} else {
+			matchArgs = append(matchArgs, fmt.Sprintf("inport==@%s && %s && %s.dst==%s", sgPortGroupName, ipSuffix, ipSuffix, rule.RemoteAddress))
+		}
+	} else {
+		if direction == SgAclIngressDirection {
+			matchArgs = append(matchArgs, fmt.Sprintf("outport==@%s && %s && %s.src==$%s", sgPortGroupName, ipSuffix, ipSuffix, GetSgV4AssociatedName(rule.RemoteSecurityGroup)))
+		} else {
+			matchArgs = append(matchArgs, fmt.Sprintf("inport==@%s && %s && %s.dst==$%s", sgPortGroupName, ipSuffix, ipSuffix, GetSgV4AssociatedName(rule.RemoteSecurityGroup)))
+		}
+	}
+
+	if rule.Protocol == kubeovnv1.ProtocolICMP {
+		if ipSuffix == "ip4" {
+			matchArgs = append(matchArgs, "icmp4")
+		} else {
+			matchArgs = append(matchArgs, "icmp6")
+		}
+	} else if rule.Protocol == kubeovnv1.ProtocolTCP || rule.Protocol == kubeovnv1.ProtocolUDP {
+		matchArgs = append(matchArgs, fmt.Sprintf("%d<=%s.dst<=%d", rule.PortRangeMin, rule.Protocol, rule.PortRangeMax))
+	}
+
+	matchStr := strings.Join(matchArgs, " && ")
+	action := "drop"
+	if rule.Policy == kubeovnv1.PolicyAllow {
+		action = "allow-related"
+	}
+	highestPriority, err := strconv.Atoi(util.SecurityGroupHighestPriority)
+	if err != nil {
+		return err
+	}
+	_, err = c.ovnNbCommand(MayExist, "--type=port-group", "acl-add", sgPortGroupName, string(direction), strconv.Itoa(highestPriority-rule.Priority), matchStr, action)
+	return err
+}
+
+func (c Client) CreateSgDenyAllACL() error {
+	portGroupName := GetSgPortGroupName(util.DenyAllSecurityGroup)
+	if _, err := c.ovnNbCommand(MayExist, "--type=port-group", "acl-add", portGroupName, string(SgAclIngressDirection), util.SecurityGroupDropPriority,
+		fmt.Sprintf("outport==@%s && ip", portGroupName), "drop"); err != nil {
+		return err
+	}
+	if _, err := c.ovnNbCommand(MayExist, "--type=port-group", "acl-add", portGroupName, string(SgAclEgressDirection), util.SecurityGroupDropPriority,
+		fmt.Sprintf("inport==@%s && ip", portGroupName), "drop"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c Client) UpdateSgACL(sg *kubeovnv1.SecurityGroup, direction AclDirection) error {
+	sgPortGroupName := GetSgPortGroupName(sg.Name)
+	// clear acl
+	if err := c.DeleteACL(sgPortGroupName, string(direction)); err != nil {
+		return err
+	}
+
+	// clear rule address_set
+	asList, err := c.ListSgRuleAddressSet(sg.Name, direction)
+	if err != nil {
+		return err
+	}
+	for _, as := range asList {
+		if err = c.DeleteAddressSet(as); err != nil {
+			return err
+		}
+	}
+
+	// create port_group associated acl
+	if sg.Spec.AllowSameGroupTraffic {
+		v4AsName := GetSgV4AssociatedName(sg.Name)
+		v6AsName := GetSgV6AssociatedName(sg.Name)
+		if direction == SgAclIngressDirection {
+			if _, err := c.ovnNbCommand(MayExist, "--type=port-group", "acl-add", sgPortGroupName, "to-lport", util.SecurityGroupAllowPriority,
+				fmt.Sprintf("outport==@%s && ip4 && ip4.src==$%s", sgPortGroupName, v4AsName), "allow-related"); err != nil {
+				return err
+			}
+			if _, err := c.ovnNbCommand(MayExist, "--type=port-group", "acl-add", sgPortGroupName, "to-lport", util.SecurityGroupAllowPriority,
+				fmt.Sprintf("outport==@%s && ip6 && ip6.src==$%s", sgPortGroupName, v6AsName), "allow-related"); err != nil {
+				return err
+			}
+		} else {
+			if _, err := c.ovnNbCommand(MayExist, "--type=port-group", "acl-add", sgPortGroupName, "from-lport", util.SecurityGroupAllowPriority,
+				fmt.Sprintf("inport==@%s && ip4 && ip4.dst==$%s", sgPortGroupName, v4AsName), "allow-related"); err != nil {
+				return err
+			}
+			if _, err := c.ovnNbCommand(MayExist, "--type=port-group", "acl-add", sgPortGroupName, "from-lport", util.SecurityGroupAllowPriority,
+				fmt.Sprintf("inport==@%s && ip6 && ip6.dst==$%s", sgPortGroupName, v6AsName), "allow-related"); err != nil {
+				return err
+			}
+		}
+	}
+
+	// recreate rule ACL
+	var sgRules []*kubeovnv1.SgRule
+	if direction == SgAclIngressDirection {
+		sgRules = sg.Spec.IngressRules
+	} else {
+		sgRules = sg.Spec.EgressRules
+	}
+	for index, rule := range sgRules {
+		if err = c.createSgRuleACL(sg.Name, direction, rule, index); err != nil {
+			return err
+		}
+	}
 	return nil
 }

@@ -29,8 +29,9 @@ const (
 	LogicalRouterAnnotation = "ovn.kubernetes.io/logical_router"
 	VpcAnnotation           = "ovn.kubernetes.io/vpc"
 
-	PortSecurityAnnotation = "ovn.kubernetes.io/port_security"
-	NorthGatewayAnnotation = "ovn.kubernetes.io/north_gateway"
+	PortSecurityAnnotationTemplate = "%s.kubernetes.io/port_security"
+	PortSecurityAnnotation         = "ovn.kubernetes.io/port_security"
+	NorthGatewayAnnotation         = "ovn.kubernetes.io/north_gateway"
 
 	AllocatedAnnotationSuffix       = ".kubernetes.io/allocated"
 	AllocatedAnnotationTemplate     = "%s.kubernetes.io/allocated"
@@ -45,6 +46,7 @@ const (
 	NetworkTypeTemplate             = "%s.kubernetes.io/network_type"
 	IngressRateAnnotationTemplate   = "%s.kubernetes.io/ingress_rate"
 	EgressRateAnnotationTemplate    = "%s.kubernetes.io/egress_rate"
+	SecurityGroupAnnotationTemplate = "%s.kubernetes.io/security_groups"
 
 	ProviderNetworkTemplate          = "%s.kubernetes.io/provider_network"
 	ProviderNetworkReadyTemplate     = "%s.provider-network.kubernetes.io/ready"
@@ -76,6 +78,10 @@ const (
 
 	NodeNic           = "ovn0"
 	NodeAllowPriority = "3000"
+
+	SecurityGroupHighestPriority = "2300"
+	SecurityGroupAllowPriority   = "2004"
+	SecurityGroupDropPriority    = "2003"
 
 	IngressAllowPriority = "2001"
 	IngressDefaultDrop   = "2000"
@@ -122,4 +128,6 @@ const (
 
 	MirrorControlAnnotation = "ovn.kubernetes.io/mirror"
 	MirrorDefaultName       = "m0"
+
+	DenyAllSecurityGroup = "kubeovn_deny_all"
 )

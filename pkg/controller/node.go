@@ -249,7 +249,7 @@ func (c *Controller) handleAddNode(key string) error {
 	}
 
 	ipStr := util.GetStringIP(v4IP, v6IP)
-	if err := c.ovnClient.CreatePort(c.config.NodeSwitch, portName, ipStr, subnet.Spec.CIDRBlock, mac, "", "", "", false); err != nil {
+	if err := c.ovnClient.CreatePort(c.config.NodeSwitch, portName, ipStr, subnet.Spec.CIDRBlock, mac, "", "", "", false, ""); err != nil {
 		return err
 	}
 
@@ -298,7 +298,7 @@ func (c *Controller) handleAddNode(key string) error {
 
 	// ovn acl doesn't support address_set name with '-', so replace '-' by '.'
 	pgName := strings.Replace(node.Annotations[util.PortNameAnnotation], "-", ".", -1)
-	if err := c.ovnClient.CreatePortGroup(pgName, "node", key); err != nil {
+	if err := c.ovnClient.CreateNpPortGroup(pgName, "node", key); err != nil {
 		klog.Errorf("failed to create port group %v for node %s, %v", portName, key, err)
 		return err
 	}
@@ -725,7 +725,7 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 		// ovn acl doesn't support address_set name with '-', so replace '-' by '.'
 		pgName := strings.Replace(node.Annotations[util.PortNameAnnotation], "-", ".", -1)
 		nodeIP := node.Annotations[util.IpAddressAnnotation]
-		if err := c.ovnClient.CreatePortGroup(pgName, "node", node.Name); err != nil {
+		if err := c.ovnClient.CreateNpPortGroup(pgName, "node", node.Name); err != nil {
 			klog.Errorf("failed to create port group %v for node %s, %v", pgName, node.Name, err)
 			return err
 		}

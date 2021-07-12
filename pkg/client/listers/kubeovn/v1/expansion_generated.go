@@ -26,6 +26,10 @@ type IPListerExpansion interface{}
 // ProviderNetworkLister.
 type ProviderNetworkListerExpansion interface{}
 
+// SecurityGroupListerExpansion allows custom methods to be added to
+// SecurityGroupLister.
+type SecurityGroupListerExpansion interface{}
+
 // SubnetListerExpansion allows custom methods to be added to
 // SubnetLister.
 type SubnetListerExpansion interface{}

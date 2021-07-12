@@ -479,7 +479,7 @@ func (c *Controller) gcPortGroup() error {
 		}
 	}
 
-	pgs, err := c.ovnClient.ListPortGroup()
+	pgs, err := c.ovnClient.ListNpPortGroup()
 	if err != nil {
 		klog.Errorf("failed to list port-group, %v", err)
 		return err

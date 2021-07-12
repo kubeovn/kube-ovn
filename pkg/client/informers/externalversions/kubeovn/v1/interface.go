@@ -28,6 +28,8 @@ type Interface interface {
 	IPs() IPInformer
 	// ProviderNetworks returns a ProviderNetworkInformer.
 	ProviderNetworks() ProviderNetworkInformer
+	// SecurityGroups returns a SecurityGroupInformer.
+	SecurityGroups() SecurityGroupInformer
 	// Subnets returns a SubnetInformer.
 	Subnets() SubnetInformer
 	// Vlans returns a VlanInformer.
@@ -57,6 +59,11 @@ func (v *version) IPs() IPInformer {
 // ProviderNetworks returns a ProviderNetworkInformer.
 func (v *version) ProviderNetworks() ProviderNetworkInformer {
 	return &providerNetworkInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// SecurityGroups returns a SecurityGroupInformer.
+func (v *version) SecurityGroups() SecurityGroupInformer {
+	return &securityGroupInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
 // Subnets returns a SubnetInformer.
