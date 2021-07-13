@@ -22,6 +22,10 @@ package v1
 // IPLister.
 type IPListerExpansion interface{}
 
+// ProviderNetworkListerExpansion allows custom methods to be added to
+// ProviderNetworkLister.
+type ProviderNetworkListerExpansion interface{}
+
 // SubnetListerExpansion allows custom methods to be added to
 // SubnetLister.
 type SubnetListerExpansion interface{}

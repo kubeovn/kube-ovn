@@ -37,6 +37,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&SubnetList{},
 		&Vlan{},
 		&VlanList{},
+		&ProviderNetwork{},
+		&ProviderNetworkList{},
 		&Vpc{},
 		&VpcList{},
 		&VpcNatGateway{},

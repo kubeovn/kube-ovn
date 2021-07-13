@@ -163,13 +163,19 @@ type Vlan struct {
 }
 
 type VlanSpec struct {
-	VlanId                int    `json:"vlanId"`
+	// deprecated fields, use ID & Provider instead
+	VlanId                int    `json:"vlanId,omitempty"`
 	ProviderInterfaceName string `json:"providerInterfaceName,omitempty"`
-	LogicalInterfaceName  string `json:"logicalInterfaceName,omitempty"`
-	Subnet                string `json:"subnet"`
+
+	ID       int    `json:"id"`
+	Provider string `json:"provider,omitempty"`
 }
 
 type VlanStatus struct {
+	// +optional
+	// +patchStrategy=merge
+	Subnets []string `json:"subnets,omitempty" patchStrategy:"merge"`
+
 	// Conditions represents the latest state of the object
 	// +optional
 	// +patchMergeKey=type
@@ -205,6 +211,77 @@ type VlanList struct {
 	metav1.ListMeta `json:"metadata"`
 
 	Items []Vlan `json:"items"`
+}
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +genclient:nonNamespaced
+// +resourceName=provider-networks
+
+type ProviderNetwork struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   ProviderNetworkSpec   `json:"spec"`
+	Status ProviderNetworkStatus `json:"status"`
+}
+
+type CustomInterface struct {
+	Interface string   `json:"interface"`
+	Nodes     []string `json:"nodes"`
+}
+type ProviderNetworkSpec struct {
+	DefaultInterface string            `json:"defaultInterface,omitempty"`
+	CustomInterfaces []CustomInterface `json:"customInterfaces,omitempty"`
+	ExcludeNodes     []string          `json:"excludeNodes,omitempty"`
+}
+
+type ProviderNetworkStatus struct {
+	// +optional
+	// +patchStrategy=merge
+	ReadyNodes []string `json:"readyNodes,omitempty" patchStrategy:"merge"`
+
+	// +optional
+	// +patchStrategy=merge
+	Vlans []string `json:"vlans,omitempty" patchStrategy:"merge"`
+
+	// Conditions represents the latest state of the object
+	// +optional
+	// +patchMergeKey=node
+	// +patchStrategy=merge
+	Conditions []ProviderNetworkCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"node"`
+}
+
+// Condition describes the state of an object at a certain point.
+// +k8s:deepcopy-gen=true
+type ProviderNetworkCondition struct {
+	// Node name
+	Node string `json:"node"`
+	// Type of condition.
+	Type ConditionType `json:"type"`
+	// Status of the condition, one of True, False, Unknown.
+	Status corev1.ConditionStatus `json:"status"`
+	// The reason for the condition's last transition.
+	// +optional
+	Reason string `json:"reason,omitempty"`
+	// A human readable message indicating details about the transition.
+	// +optional
+	Message string `json:"message,omitempty"`
+	// Last time the condition was probed
+	// +optional
+	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
+	// Last time the condition transitioned from one status to another.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type ProviderNetworkList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []ProviderNetwork `json:"items"`
 }
 
 // +genclient

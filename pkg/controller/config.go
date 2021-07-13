@@ -54,7 +54,6 @@ type Configuration struct {
 	DefaultProviderName  string
 	DefaultHostInterface string
 	DefaultVlanName      string
-	DefaultVlanRange     string
 	DefaultVlanID        int
 
 	EnableLb bool
@@ -92,7 +91,6 @@ func ParseFlags() (*Configuration, error) {
 		argsDefaultInterfaceName = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
 		argsDefaultVlanName      = pflag.String("default-vlan-name", "ovn-vlan", "The default vlan name, default: ovn-vlan")
 		argsDefaultVlanID        = pflag.Int("default-vlan-id", 1, "The default vlan id, default: 1")
-		argsDefaultVlanRange     = pflag.String("default-vlan-range", "1,4095", "The default vlan range, default: 1-4095")
 		argsPodNicType           = pflag.String("pod-nic-type", "veth-pair", "The default pod network nic implementation type, default: veth-pair")
 		argsEnableLb             = pflag.Bool("enable-lb", true, "Enable load balancer, default: true")
 	)
@@ -139,14 +137,13 @@ func ParseFlags() (*Configuration, error) {
 		DefaultProviderName:           *argsDefaultProviderName,
 		DefaultHostInterface:          *argsDefaultInterfaceName,
 		DefaultVlanName:               *argsDefaultVlanName,
-		DefaultVlanRange:              *argsDefaultVlanRange,
 		PodName:                       os.Getenv("POD_NAME"),
 		PodNamespace:                  os.Getenv("KUBE_NAMESPACE"),
 		PodNicType:                    *argsPodNicType,
 		EnableLb:                      *argsEnableLb,
 	}
 
-	if util.IsNetworkVlan(config.NetworkType) && config.DefaultHostInterface == "" {
+	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {
 		return nil, fmt.Errorf("no host nic for vlan")
 	}
 

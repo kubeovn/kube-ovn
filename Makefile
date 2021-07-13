@@ -159,14 +159,9 @@ kind-install-ipv6:
 
 .PHONY: kind-install-ipv6-vlan
 kind-install-ipv6-vlan:
-	docker network inspect bridge
-	docker network inspect kind
 	$(eval SUBNET = $(shell docker network inspect kind -f "{{(index .IPAM.Config 1).Subnet}}"))
-	$(eval GATEWAY = $(shell docker network inspect kind -f "{{(index .IPAM.Config 1).Gateway}}"))
 	$(eval EXCLUDE_IPS = $(shell docker network inspect kind -f '{{range .Containers}},{{index (split .IPv6Address "/") 0}}{{end}}' | sed 's/^,//'))
-ifeq ($(GATEWAY),)
 	$(eval GATEWAY = $(shell docker exec kube-ovn-worker ip -6 route show default | awk '{print $$3}'))
-endif
 	sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(SUBNET)"@' \
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(GATEWAY)"@' \
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(EXCLUDE_IPS)"@' \
@@ -216,13 +211,28 @@ ut:
 
 .PHONY: e2e
 e2e:
+	$(eval NETWORK_BRIDGE = $(shell docker inspect -f '{{json .NetworkSettings.Networks.bridge}}' kube-ovn-control-plane))
+	if [ '$(NETWORK_BRIDGE)' = 'null' ]; then \
+		kind get nodes --name kube-ovn | while read node; do \
+		docker network connect bridge $$node; \
+		done; \
+	fi
+
+	printf "package underlay\n\nvar nodeNetworks = map[string]string{\n" > test/e2e/underlay/network.go
+	kind get nodes --name kube-ovn | while read node; do \
+		printf "\`$$node\`: \`" >> test/e2e/underlay/network.go; \
+		docker inspect -f '{{json .NetworkSettings.Networks.bridge}}' $$node >> test/e2e/underlay/network.go; \
+		printf "\`,\n" >> test/e2e/underlay/network.go; \
+	done
+	echo "}" >> test/e2e/underlay/network.go
+
 	docker pull kubeovn/pause:3.2
 	kind load docker-image --name kube-ovn kubeovn/pause:3.2
 	ginkgo -mod=mod -progress -reportPassed --slowSpecThreshold=60 test/e2e
 
-.PHONY: e2e-vlan
-e2e-vlan:
-	printf "package node\n\nvar networkJSON = []byte(\`" > test/e2e-vlan/node/network.go
-	docker inspect -f '{{json .NetworkSettings.Networks.kind}}' kube-ovn-control-plane >> test/e2e-vlan/node/network.go
-	echo "\`)" >> test/e2e-vlan/node/network.go
-	ginkgo -mod=mod -progress -reportPassed --slowSpecThreshold=60 test/e2e-vlan
+.PHONY: e2e-vlan-single-nic
+e2e-vlan-single-nic:
+	printf "package node\n\nvar networkJSON = []byte(\`" > test/e2e-vlan-single-nic/node/network.go
+	docker inspect -f '{{json .NetworkSettings.Networks.kind}}' kube-ovn-control-plane >> test/e2e-vlan-single-nic/node/network.go
+	echo "\`)" >> test/e2e-vlan-single-nic/node/network.go
+	ginkgo -mod=mod -progress -reportPassed --slowSpecThreshold=60 test/e2e-vlan-single-nic

@@ -426,10 +426,8 @@ func (c *Controller) handleAddPod(key string) error {
 					c.recorder.Eventf(pod, v1.EventTypeWarning, "GetVlanInfoFailed", err.Error())
 					return err
 				}
-				pod.Annotations[util.HostInterfaceName] = c.config.DefaultHostInterface
-				pod.Annotations[fmt.Sprintf(util.VlanIdAnnotationTemplate, podNet.ProviderName)] = strconv.Itoa(vlan.Spec.VlanId)
-				pod.Annotations[util.ProviderInterfaceName] = c.config.DefaultProviderName
-				pod.Annotations[fmt.Sprintf(util.VlanRangeAnnotationTemplate, podNet.ProviderName)] = c.config.DefaultVlanRange
+				pod.Annotations[fmt.Sprintf(util.VlanIdAnnotationTemplate, podNet.ProviderName)] = strconv.Itoa(vlan.Spec.ID)
+				pod.Annotations[fmt.Sprintf(util.ProviderNetworkTemplate, podNet.ProviderName)] = vlan.Spec.Provider
 			}
 
 			tag, err := c.getSubnetVlanTag(subnet)

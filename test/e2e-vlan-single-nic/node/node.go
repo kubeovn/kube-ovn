@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"strings"
 
@@ -17,10 +18,9 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
 
-const (
-	vlanBr  = util.UnderlayBridge
-	vlanNic = "eth0"
-)
+const vlanNic = "eth0"
+
+var vlanBr = util.ExternalBridgeName("provider")
 
 type nodeNetwork struct {
 	Gateway             string
@@ -45,10 +45,10 @@ var _ = Describe("[Vlan Node]", func() {
 		nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(nodes).NotTo(BeNil())
-		Expect(nodes.Items).NotTo(BeEmpty())
+		Expect(len(nodes.Items)).NotTo(BeZero())
 
-		nodeIPs := make([]string, 0, 2)
-		nodeRoutes := make([]string, 0, 2)
+		nodeIPs := make([]string, 0, len(nodes.Items))
+		nodeRoutes := make([]string, 0, len(nodes.Items))
 		if network != nil {
 			if network.IPAddress != "" {
 				nodeIPs = append(nodeIPs, fmt.Sprintf("%s/%d", network.IPAddress, network.IPPrefixLen))
@@ -149,6 +149,13 @@ var _ = Describe("[Vlan Node]", func() {
 		var hasAddr bool
 		for _, s := range strings.Split(stdout, "\n") {
 			if s = strings.TrimSpace(s); strings.HasPrefix(s, "inet ") || strings.HasPrefix(s, "inet6 ") {
+				if strings.HasPrefix(s, "inet6 ") {
+					_, ipnet, err := net.ParseCIDR(strings.Fields(s)[1])
+					Expect(err).NotTo(HaveOccurred())
+					if ipnet.String() == "fe80::/64" {
+						continue
+					}
+				}
 				hasAddr = true
 				break
 			}
@@ -182,6 +189,16 @@ var _ = Describe("[Vlan Node]", func() {
 
 		stdout, _, err = f.ExecToPodThroughAPI("ip -6 route show dev "+vlanNic, "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(strings.TrimSpace(stdout)).To(BeEmpty())
+
+		var hasRoute bool
+		for _, s := range strings.Split(stdout, "\n") {
+			if s == "" || strings.HasPrefix(s, "fe80::/64 ") {
+				continue
+			}
+
+			hasRoute = true
+			break
+		}
+		Expect(hasRoute).To(BeFalse())
 	})
 })

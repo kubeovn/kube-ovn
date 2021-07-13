@@ -61,6 +61,8 @@ rules:
       - subnets/status
       - ips
       - vlans
+      - provider-networks
+      - provider-networks/status
       - networks
     verbs:
       - "*"

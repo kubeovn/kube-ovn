@@ -26,6 +26,8 @@ import (
 type Interface interface {
 	// IPs returns a IPInformer.
 	IPs() IPInformer
+	// ProviderNetworks returns a ProviderNetworkInformer.
+	ProviderNetworks() ProviderNetworkInformer
 	// Subnets returns a SubnetInformer.
 	Subnets() SubnetInformer
 	// Vlans returns a VlanInformer.
@@ -50,6 +52,11 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 // IPs returns a IPInformer.
 func (v *version) IPs() IPInformer {
 	return &iPInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// ProviderNetworks returns a ProviderNetworkInformer.
+func (v *version) ProviderNetworks() ProviderNetworkInformer {
+	return &providerNetworkInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
 // Subnets returns a SubnetInformer.

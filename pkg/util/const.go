@@ -41,10 +41,15 @@ const (
 	IpPoolAnnotationTemplate        = "%s.kubernetes.io/ip_pool"
 	LogicalSwitchAnnotationTemplate = "%s.kubernetes.io/logical_switch"
 	VlanIdAnnotationTemplate        = "%s.kubernetes.io/vlan_id"
-	VlanRangeAnnotationTemplate     = "%s.kubernetes.io/vlan_range"
-	NetworkTypeTemplate             = "%s.kubernetes.io/network_types"
+	NetworkTypeTemplate             = "%s.kubernetes.io/network_type"
 	IngressRateAnnotationTemplate   = "%s.kubernetes.io/ingress_rate"
 	EgressRateAnnotationTemplate    = "%s.kubernetes.io/egress_rate"
+
+	ProviderNetworkTemplate          = "%s.kubernetes.io/provider_network"
+	ProviderNetworkReadyTemplate     = "%s.provider-network.kubernetes.io/ready"
+	ProviderNetworkExcludeTemplate   = "%s.provider-network.kubernetes.io/exclude"
+	ProviderNetworkInterfaceTemplate = "%s.provider-network.kubernetes.io/interface"
+	ProviderNetworkMtuTemplate       = "%s.provider-network.kubernetes.io/mtu"
 
 	ExcludeIpsAnnotation = "ovn.kubernetes.io/exclude_ips"
 
@@ -64,16 +69,11 @@ const (
 	ProtocolTCP = "tcp"
 	ProtocolUDP = "udp"
 
-	NetworkTypeVlan       = "vlan"
-	NetworkTypeGeneve     = "geneve"
-	NetworkTypeHybrid     = "hybrid"
-	ProviderInterfaceName = "ovn.kubernetes.io/provider_interface_name"
-	HostInterfaceName     = "ovn.kubernetes.io/host_interface_name"
+	NetworkTypeVlan   = "vlan"
+	NetworkTypeGeneve = "geneve"
 
 	NodeNic           = "ovn0"
 	NodeAllowPriority = "3000"
-
-	UnderlayBridge = "br-provider"
 
 	IngressAllowPriority = "2001"
 	IngressDefaultDrop   = "2000"

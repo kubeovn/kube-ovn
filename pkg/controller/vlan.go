@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"strings"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,20 +37,14 @@ func (c *Controller) enqueueUpdateVlan(old, new interface{}) {
 		return
 	}
 
-	oldVlan := old.(*kubeovnv1.Vlan)
-	newVlan := new.(*kubeovnv1.Vlan)
-
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+	key, err := cache.MetaNamespaceKeyFunc(new)
+	if err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
 
 	klog.V(3).Infof("enqueue update vlan %s", key)
-	if oldVlan.Spec.Subnet != newVlan.Spec.Subnet {
-		c.updateVlanQueue.Add(key)
-	}
+	c.updateVlanQueue.Add(key)
 }
 
 func (c *Controller) enqueueDelVlan(obj interface{}) {
@@ -194,63 +187,61 @@ func (c *Controller) handleAddVlan(key string) error {
 		return err
 	}
 
-	if vlan.Spec.ProviderInterfaceName == "" {
-		vlan.Spec.ProviderInterfaceName = c.config.DefaultProviderName
+	if vlan.Spec.Provider == "" {
+		vlan.Spec.Provider = c.config.DefaultProviderName
+		if vlan, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(context.Background(), vlan, metav1.UpdateOptions{}); err != nil {
+			klog.Errorf("failed to update vlan %s, %v", vlan.Name, err)
+			return err
+		}
 	}
 
-	if vlan.Spec.LogicalInterfaceName == "" {
-		vlan.Spec.LogicalInterfaceName = c.config.DefaultHostInterface
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets: %v", err)
+		return err
 	}
 
-	subnets := []string{}
-	subnetNames := strings.Split(vlan.Spec.Subnet, ",")
-	for _, subnet := range subnetNames {
-		s, err := c.subnetsLister.Get(subnet)
+	var needUpdate bool
+	for _, subnet := range subnets {
+		if subnet.Spec.Vlan == vlan.Name && !util.ContainsString(vlan.Status.Subnets, subnet.Name) {
+			vlan.Status.Subnets = append(vlan.Status.Subnets, subnet.Name)
+			needUpdate = true
+		}
+	}
+
+	if needUpdate {
+		bytes, err := vlan.Status.Bytes()
 		if err != nil {
-			if k8serrors.IsNotFound(err) {
-				continue
-			}
-
-			vlan.Status.SetVlanError("GetSubnetFailed", err.Error())
-			bytes, err := vlan.Status.Bytes()
-			if err != nil {
-				klog.Error(err)
-			} else {
-				if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), vlan.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
-					klog.Error("patch vlan status failed", err)
-				}
-			}
-
+			klog.Error(err)
 			return err
 		}
 
-		// vlan mode we set vlan for all subnets
-		if c.config.NetworkType == util.NetworkTypeVlan && s.Spec.Vlan == "" {
-			s.Spec.Vlan = vlan.Name
-			if _, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), s, metav1.UpdateOptions{}); err != nil {
-				vlan.Status.SetVlanError("UpdateSubnetVlanFailed", err.Error())
-				bytes, err := vlan.Status.Bytes()
-
-				if err != nil {
-					klog.Error(err)
-				} else {
-					if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), vlan.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
-						klog.Errorf("patch vlan status failed, %v", err)
-					}
-				}
-				return err
-			}
-		}
-
-		if s.Spec.Vlan == vlan.Name {
-			subnets = append(subnets, subnet)
+		vlan, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Patch(context.Background(), vlan.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
+		if err != nil {
+			klog.Errorf("failed to patch vlan %s: %v", vlan.Name, err)
+			return err
 		}
 	}
 
-	vlan.Spec.Subnet = strings.Join(subnets, ",")
-	if _, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(context.Background(), vlan, metav1.UpdateOptions{}); err != nil {
-		klog.Errorf("failed to update vlan %s, %v", vlan.Name, err)
+	pn, err := c.providerNetworksLister.Get(vlan.Spec.Provider)
+	if err != nil {
+		klog.Errorf("failed to get provider network %s: %v", vlan.Spec.Provider, err)
 		return err
+	}
+
+	if !util.ContainsString(pn.Status.Vlans, vlan.Name) {
+		pn.Status.Vlans = append(pn.Status.Vlans, vlan.Name)
+		bytes, err := pn.Status.Bytes()
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+
+		_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
+		if err != nil {
+			klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
+			return err
+		}
 	}
 
 	return nil
@@ -266,28 +257,12 @@ func (c *Controller) handleUpdateVlan(key string) error {
 		return err
 	}
 
-	if err = util.ValidateVlanTag(vlan.Spec.VlanId, c.config.DefaultVlanRange); err != nil {
-		return err
-	}
-
-	subnets := []string{}
-	subnet, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets %v", err)
-		return err
-	}
-
-	for _, s := range subnet {
-		if s.Spec.Vlan == vlan.Name {
-			subnets = append(subnets, s.Name)
+	if vlan.Spec.Provider == "" {
+		vlan.Spec.Provider = c.config.DefaultProviderName
+		if _, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(context.Background(), vlan, metav1.UpdateOptions{}); err != nil {
+			klog.Errorf("failed to update vlan %s, %v", vlan.Name, err)
+			return err
 		}
-	}
-
-	vlan.Spec.Subnet = strings.Join(subnets, ",")
-	_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(context.Background(), vlan, metav1.UpdateOptions{})
-	if err != nil {
-		klog.Errorf("failed to update vlan %s, %v", vlan.Name, err)
-		return err
 	}
 
 	return nil
@@ -306,6 +281,48 @@ func (c *Controller) handleDelVlan(key string) error {
 		}
 	}
 
+	providerNetworks, err := c.providerNetworksLister.List(labels.Everything())
+	if err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to list provider networks: %v", err)
+		return err
+	}
+
+	for _, pn := range providerNetworks {
+		if err = c.updateProviderNetworkStatusForVlanDeletion(pn, key); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *Controller) updateProviderNetworkStatusForVlanDeletion(pn *kubeovnv1.ProviderNetwork, vlan string) error {
+	if !util.ContainsString(pn.Status.Vlans, vlan) {
+		return nil
+	}
+
+	pn.Status.Vlans = util.RemoveString(pn.Status.Vlans, vlan)
+	if len(pn.Status.Vlans) == 0 {
+		bytes := []byte(`[{ "op": "remove", "path": "/status/vlans"}]`)
+		_, err := c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.JSONPatchType, bytes, metav1.PatchOptions{})
+		if err != nil {
+			klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
+			return err
+		}
+	} else {
+		bytes, err := pn.Status.Bytes()
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+
+		_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
+		if err != nil {
+			klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -317,7 +334,7 @@ func (c *Controller) addLocalnet(subnet *kubeovnv1.Subnet) error {
 		return err
 	}
 
-	if err := c.ovnClient.CreateLocalnetPort(subnet.Name, localnetPort, vlan.Spec.ProviderInterfaceName, strconv.Itoa(vlan.Spec.VlanId)); err != nil {
+	if err := c.ovnClient.CreateLocalnetPort(subnet.Name, localnetPort, vlan.Spec.Provider, strconv.Itoa(vlan.Spec.ID)); err != nil {
 		return err
 	}
 

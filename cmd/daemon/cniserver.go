@@ -5,22 +5,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"k8s.io/apimachinery/pkg/types"
 	"net/http"
 	_ "net/http/pprof" // #nosec
 	"strings"
 	"time"
 
-	"github.com/kubeovn/kube-ovn/pkg/util"
-	"github.com/kubeovn/kube-ovn/versions"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
-	"github.com/kubeovn/kube-ovn/pkg/daemon"
+	"k8s.io/apimachinery/pkg/types"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/klog"
 	"k8s.io/sample-controller/pkg/signals"
+
+	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
+	"github.com/kubeovn/kube-ovn/pkg/daemon"
+	"github.com/kubeovn/kube-ovn/pkg/util"
+	"github.com/kubeovn/kube-ovn/versions"
 )
 
 func CmdMain() {
@@ -43,12 +43,6 @@ func CmdMain() {
 
 	if err = daemon.InitNodeGateway(config); err != nil {
 		klog.Fatalf("init node gateway failed %v", err)
-	}
-
-	if util.IsNetworkVlan(config.NetworkType) {
-		if err = daemon.InitVlan(config); err != nil {
-			klog.Fatalf("init vlan config failed %v", err)
-		}
 	}
 
 	stopCh := signals.SetupSignalHandler()
