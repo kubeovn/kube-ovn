@@ -32,6 +32,10 @@ func (c *FakeKubeovnV1) IPs() v1.IPInterface {
 	return &FakeIPs{c}
 }
 
+func (c *FakeKubeovnV1) ProviderNetworks() v1.ProviderNetworkInterface {
+	return &FakeProviderNetworks{c}
+}
+
 func (c *FakeKubeovnV1) Subnets() v1.SubnetInterface {
 	return &FakeSubnets{c}
 }

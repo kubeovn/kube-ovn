@@ -13,4 +13,4 @@ docker run -it --rm \
     -e GROUPS_VERSION="kubeovn:v1" \
     -e GENERATION_TARGETS="deepcopy,client,informer,lister" \
     -e GOPROXY=${GOPROXY} \
-    quay.io/slok/kube-code-generator:v1.16.7
+    quay.io/slok/kube-code-generator:v1.19.2

@@ -20,6 +20,7 @@ import (
 	_ "github.com/kubeovn/kube-ovn/test/e2e/node"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/service"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/subnet"
+	_ "github.com/kubeovn/kube-ovn/test/e2e/underlay"
 )
 
 func TestE2e(t *testing.T) {

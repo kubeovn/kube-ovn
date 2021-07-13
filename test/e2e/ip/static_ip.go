@@ -53,7 +53,7 @@ var _ = Describe("[IP Allocation]", func() {
 			_, err := f.KubeClientSet.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
-			err = f.WaitPodReady(name, namespace)
+			_, err = f.WaitPodReady(name, namespace)
 			Expect(err).NotTo(HaveOccurred())
 
 			pod, err = f.KubeClientSet.CoreV1().Pods(namespace).Get(context.Background(), name, metav1.GetOptions{})

@@ -5,6 +5,16 @@ for subnet in $(kubectl get subnet -o name); do
   kubectl patch "$subnet" --type='json' -p '[{"op": "replace", "path": "/metadata/finalizers", "value": []}]'
 done
 
+for vlan in $(kubectl get vlan -o name); do
+  kubectl delete $vlan
+done
+
+for pn in $(kubectl get provider-network -o name); do
+  kubectl delete $pn
+done
+
+sleep 3
+
 # Delete Kube-OVN components
 kubectl delete cm ovn-config ovn-ic-config ovn-external-gw-config -n kube-system --ignore-not-found=true
 kubectl delete secret kube-ovn-tls -n kube-system --ignore-not-found=true
@@ -23,7 +33,14 @@ do
   fi
 done
 kubectl delete ds ovs-ovn kube-ovn-pinger -n kube-system --ignore-not-found=true
-kubectl delete crd ips.kubeovn.io subnets.kubeovn.io vlans.kubeovn.io networks.kubeovn.io --ignore-not-found=true
+kubectl delete crd --ignore-not-found=true \
+  ips.kubeovn.io \
+  subnets.kubeovn.io \
+  vpc-nat-gateways.kubeovn.io \
+  vpcs.kubeovn.io \
+  vlans.kubeovn.io \
+  provider-networks.kubeovn.io \
+  networks.kubeovn.io
 
 # Remove annotations/labels in namespaces and nodes
 kubectl annotate no --all ovn.kubernetes.io/cidr-
@@ -58,8 +75,6 @@ for ns in $(kubectl get ns -o name |cut -c 11-); do
   kubectl annotate pod  --all ovn.kubernetes.io/allocated- -n "$ns"
   kubectl annotate pod  --all ovn.kubernetes.io/routed- -n "$ns"
   kubectl annotate pod  --all ovn.kubernetes.io/vlan_id- -n "$ns"
-  kubectl annotate pod  --all ovn.kubernetes.io/vlan_range- -n "$ns"
-  kubectl annotate pod  --all ovn.kubernetes.io/network_types- -n "$ns"
-  kubectl annotate pod  --all ovn.kubernetes.io/provider_interface_name- -n "$ns"
-  kubectl annotate pod  --all ovn.kubernetes.io/host_interface_name- -n "$ns"
+  kubectl annotate pod  --all ovn.kubernetes.io/network_type- -n "$ns"
+  kubectl annotate pod  --all ovn.kubernetes.io/provider_network- -n "$ns"
 done
