@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"k8s.io/apimachinery/pkg/labels"
 	"os"
 	"os/exec"
 	"reflect"
@@ -12,7 +13,6 @@ import (
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
 
@@ -46,13 +46,40 @@ func (c *Controller) resyncInterConnection() {
 		}
 		icEnabled = "false"
 		lastICCM = nil
+
 		klog.Info("finish removing ovn-ic")
 		return
 	} else {
+		blackList := []string{}
+		autoRoute := false
+		if cm.Data["auto-route"] == "true" {
+			autoRoute = true
+		}
+		subnets, err := c.subnetsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list subnets, %v", err)
+			return
+		}
+		for _, subnet := range subnets {
+			if subnet.Spec.DisableInterConnection || subnet.Name == c.config.NodeSwitch {
+				blackList = append(blackList, subnet.Spec.CIDRBlock)
+			}
+		}
+		nodes, err := c.nodesLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list node, %v", err)
+			return
+		}
+		for _, node := range nodes {
+			blackList = append(blackList, util.GetNodeInternalIP(*node))
+		}
+		if err := c.ovnClient.SetICAutoRoute(autoRoute, blackList); err != nil {
+			klog.Errorf("failed to config auto route, %v", err)
+			return
+		}
 		if icEnabled == "true" && lastICCM != nil && reflect.DeepEqual(cm.Data, lastICCM) {
 			return
 		}
-
 		c.ovnClient.OVNIcNBAddress = fmt.Sprintf("%s:%s", cm.Data["ic-db-host"], cm.Data["ic-nb-port"])
 		klog.Info("start to establish ovn-ic")
 		if err := c.establishInterConnection(cm.Data); err != nil {
@@ -129,26 +156,6 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 	if err := c.ovnClient.SetAzName(config["az-name"]); err != nil {
 		klog.Errorf("failed to set az name. %v", err)
 		return err
-	}
-
-	autoRoute := false
-	if config["auto-route"] == "true" {
-		autoRoute = true
-	}
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets, %v", err)
-		return err
-	}
-	blackList := []string{}
-	for _, subnet := range subnets {
-		if subnet.Spec.DisableInterConnection || subnet.Name == c.config.NodeSwitch {
-			blackList = append(blackList, subnet.Spec.CIDRBlock)
-		}
-	}
-	if err := c.ovnClient.SetICAutoRoute(autoRoute, blackList); err != nil {
-		klog.Errorf("failed to config auto route, %v", err)
-		return nil
 	}
 
 	chassises := []string{}
