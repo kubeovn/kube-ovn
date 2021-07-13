@@ -2242,7 +2242,40 @@ trace(){
     exit 1
   fi
 
-  gwMac=$(kubectl exec $OVN_NB_POD -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl --data=bare --no-heading --columns=mac find logical_router_port name=ovn-cluster-"$ls" | tr -d '\r')
+  vlan=$(kubectl get subnet "$ls" -o jsonpath={.spec.vlan})
+  underlayGateway=$(kubectl get subnet "$ls" -o jsonpath={.spec.underlayGateway})
+
+  gwMac=""
+  if [ ! -z "$vlan" -a "$underlayGateway" = "true" ]; then
+    ovnCni=$(kubectl get pod -n $KUBE_OVN_NS -o wide | grep -w kube-ovn-cni | grep " $nodeName " | awk '{print $1}')
+    if [ -z "$ovnCni" ]; then
+      echo "No kube-ovn-cni Pod running on node $nodeName"
+      exit 1
+    fi
+
+    nicName=$(kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading --columns=name find interface external-ids:iface-id="$podName"."$namespace" | tr -d '\r')
+    if [ -z "$nicName" ]; then
+      echo "nic doesn't exist on node $nodeName"
+      exit 1
+    fi
+
+    gateway=$(kubectl get subnet "$ls" -o jsonpath={.spec.gateway})
+    podNetNs=$(kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading get interface "$nicName" external-ids:pod_netns | tr -d '\r')
+
+    podNicType=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/pod_nic_type})
+    if [ "$podNicType" != "internal-port" ]; then
+      nicName="eth0"
+    fi
+
+    output=$(kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- nsenter --net="/var/run/netns/$podNetNs" arping -c1 -i "$nicName" "$gateway")
+    if [ $? -ne 0 ]; then
+      echo "failed to run 'arping -c1 -i $nicName $gateway' in Pod netns"
+      exit 1
+    fi
+    gwMac=$(echo "$output" | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}')
+  else
+    gwMac=$(kubectl exec $OVN_NB_POD -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl --data=bare --no-heading --columns=mac find logical_router_port name=ovn-cluster-"$ls" | tr -d '\r')
+  fi
 
   if [ -z "$gwMac" ]; then
     echo "get gw mac failed"
