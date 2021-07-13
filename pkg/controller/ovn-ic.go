@@ -39,6 +39,8 @@ func (c *Controller) resyncInterConnection() {
 		azName := ""
 		if cm != nil {
 			azName = cm.Data["az-name"]
+		} else if lastICCM != nil {
+			azName = lastICCM["az-name"]
 		}
 		if err := c.removeInterConnection(azName); err != nil {
 			klog.Errorf("failed to remove ovn-ic, %v", err)
