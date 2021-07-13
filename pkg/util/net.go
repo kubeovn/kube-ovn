@@ -53,7 +53,7 @@ func SubnetNumber(subnet string) string {
 	return cidr.IP.String()
 }
 
-func SubnetBroadCast(subnet string) string {
+func SubnetBroadcast(subnet string) string {
 	_, cidr, _ := net.ParseCIDR(subnet)
 	var length uint
 	if CheckProtocol(subnet) == kubeovnv1.ProtocolIPv4 {
@@ -68,7 +68,7 @@ func SubnetBroadCast(subnet string) string {
 	return BigInt2Ip(ipInt.Add(ipInt, size))
 }
 
-func FirstSubnetIP(subnet string) (string, error) {
+func FirstIP(subnet string) (string, error) {
 	_, cidr, err := net.ParseCIDR(subnet)
 	if err != nil {
 		return "", fmt.Errorf("%s is not a valid cidr", subnet)
@@ -225,7 +225,7 @@ func CheckCidrs(cidr string) error {
 func GetGwByCidr(cidrStr string) (string, error) {
 	var gws []string
 	for _, cidr := range strings.Split(cidrStr, ",") {
-		gw, err := FirstSubnetIP(cidr)
+		gw, err := FirstIP(cidr)
 		if err != nil {
 			return "", err
 		}
@@ -242,7 +242,7 @@ func AppendGwByCidr(gateway, cidrStr string) (string, error) {
 			gws = append(gws, gateway)
 			continue
 		} else {
-			gw, err := FirstSubnetIP(cidr)
+			gw, err := FirstIP(cidr)
 			if err != nil {
 				return "", err
 			}
@@ -336,54 +336,52 @@ func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
 	rv := []string{}
 	for _, excludeIP := range excludeIPs {
 		if strings.Contains(excludeIP, "..") {
+			parts := strings.Split(excludeIP, "..")
+			if len(parts) != 2 || CheckProtocol(parts[0]) != CheckProtocol(parts[1]) {
+				klog.Errorf("invalid exlcude IP: %s", excludeIP)
+				continue
+			}
+			s := Ip2BigInt(parts[0])
+			e := Ip2BigInt(parts[1])
+			if s.Cmp(e) > 0 {
+				continue
+			}
+
 			for _, cidrBlock := range strings.Split(cidr, ",") {
-				subnetNum := SubnetNumber(cidrBlock)
-				broadcast := SubnetBroadCast(cidrBlock)
-				parts := strings.Split(excludeIP, "..")
-				s := Ip2BigInt(parts[0])
-				e := Ip2BigInt(parts[1])
+				if CheckProtocol(cidrBlock) != CheckProtocol(parts[0]) {
+					continue
+				}
 
-				// limit range in cidr
-				firstIP, _ := FirstSubnetIP(cidrBlock)
+				firstIP, err := FirstIP(cidrBlock)
+				if err != nil {
+					klog.Error(err)
+					continue
+				}
+				if firstIP == SubnetBroadcast(cidrBlock) {
+					klog.Errorf("no available IP address in CIDR %s", cidrBlock)
+					continue
+				}
 				lastIP, _ := LastIP(cidrBlock)
-				if s.Cmp(Ip2BigInt(firstIP)) < 0 {
-					s = Ip2BigInt(firstIP)
+				s1, e1 := s, e
+				if s1.Cmp(Ip2BigInt(firstIP)) < 0 {
+					s1 = Ip2BigInt(firstIP)
 				}
-				if e.Cmp(Ip2BigInt(lastIP)) > 0 {
-					e = Ip2BigInt(lastIP)
+				if e1.Cmp(Ip2BigInt(lastIP)) > 0 {
+					e1 = Ip2BigInt(lastIP)
 				}
-
-				changed := false
-				// exclude cidr and broadcast address
-				if ContainsIPs(excludeIP, subnetNum) {
-					v := Ip2BigInt(subnetNum)
-					if s.Cmp(v) == 0 {
-						s.Add(s, big.NewInt(1))
-						rv = append(rv, BigInt2Ip(s)+".."+BigInt2Ip(e))
-					} else if e.Cmp(v) == 0 {
-						e.Sub(e, big.NewInt(1))
-						rv = append(rv, BigInt2Ip(s)+".."+BigInt2Ip(e))
-					} else {
-						var low, high big.Int
-						lowp := (&low).Sub(v, big.NewInt(1))
-						highp := (&high).Add(v, big.NewInt(1))
-						rv = append(rv, BigInt2Ip(s)+".."+BigInt2Ip(lowp))
-						rv = append(rv, BigInt2Ip(highp)+".."+BigInt2Ip(e))
-					}
-					changed = true
-				}
-				if ContainsIPs(excludeIP, broadcast) {
-					v := Ip2BigInt(broadcast)
-					v.Sub(v, big.NewInt(1))
-					rv = append(rv, BigInt2Ip(s)+".."+BigInt2Ip(v))
-					changed = true
-				}
-				if !changed && s.Cmp(e) < 0 {
-					rv = append(rv, BigInt2Ip(s)+".."+BigInt2Ip(e))
+				if c := s1.Cmp(e1); c == 0 {
+					rv = append(rv, BigInt2Ip(s1))
+				} else if c < 0 {
+					rv = append(rv, BigInt2Ip(s1)+".."+BigInt2Ip(e1))
 				}
 			}
 		} else {
-			rv = append(rv, excludeIP)
+			for _, cidrBlock := range strings.Split(cidr, ",") {
+				if CIDRContainIP(cidrBlock, excludeIP) && excludeIP != SubnetNumber(cidrBlock) && excludeIP != SubnetBroadcast(cidrBlock) {
+					rv = append(rv, excludeIP)
+					break
+				}
+			}
 		}
 	}
 	klog.V(3).Infof("expand exclude ips %v", rv)
@@ -407,15 +405,16 @@ func ContainsIPs(excludeIP string, ip string) bool {
 	return false
 }
 
-func CountIpNums(excludeIPs []string) int64 {
-	var count int64
+func CountIpNums(excludeIPs []string) float64 {
+	var count float64
 	for _, excludeIP := range excludeIPs {
 		if strings.Contains(excludeIP, "..") {
 			var val big.Int
 			parts := strings.Split(excludeIP, "..")
 			s := Ip2BigInt(parts[0])
 			e := Ip2BigInt(parts[1])
-			count = val.Add(val.Sub(e, s), big.NewInt(1)).Int64()
+			v, _ := new(big.Float).SetInt(val.Add(val.Sub(e, s), big.NewInt(1))).Float64()
+			count += v
 		} else {
 			count++
 		}

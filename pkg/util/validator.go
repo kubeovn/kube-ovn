@@ -184,7 +184,7 @@ func ValidatePodCidr(cidr, ip string) error {
 			}
 
 			ipStr := IPToString(ipAddr)
-			if SubnetBroadCast(cidrBlock) == ipStr {
+			if SubnetBroadcast(cidrBlock) == ipStr {
 				return fmt.Errorf("%s is the broadcast ip in cidr %s", ipStr, cidrBlock)
 			}
 			if SubnetNumber(cidrBlock) == ipStr {

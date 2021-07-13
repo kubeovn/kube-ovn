@@ -46,7 +46,7 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 	subnet := Subnet{}
 	protocol := util.CheckProtocol(cidrStr)
 	if protocol == kubeovnv1.ProtocolIPv4 {
-		firstIP, _ := util.FirstSubnetIP(cidrStr)
+		firstIP, _ := util.FirstIP(cidrStr)
 		lastIP, _ := util.LastIP(cidrStr)
 
 		subnet = Subnet{
@@ -66,7 +66,7 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 		}
 		subnet.joinFreeWithReserve()
 	} else if protocol == kubeovnv1.ProtocolIPv6 {
-		firstIP, _ := util.FirstSubnetIP(cidrStr)
+		firstIP, _ := util.FirstIP(cidrStr)
 		lastIP, _ := util.LastIP(cidrStr)
 
 		subnet = Subnet{
@@ -87,9 +87,9 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 		subnet.joinFreeWithReserve()
 	} else {
 		cidrBlocks := strings.Split(cidrStr, ",")
-		v4FirstIP, _ := util.FirstSubnetIP(cidrBlocks[0])
+		v4FirstIP, _ := util.FirstIP(cidrBlocks[0])
 		v4LastIP, _ := util.LastIP(cidrBlocks[0])
-		v6FirstIP, _ := util.FirstSubnetIP(cidrBlocks[1])
+		v6FirstIP, _ := util.FirstIP(cidrBlocks[1])
 		v6LastIP, _ := util.LastIP(cidrBlocks[1])
 
 		subnet = Subnet{

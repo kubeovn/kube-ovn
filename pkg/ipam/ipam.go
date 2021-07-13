@@ -148,7 +148,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr string, excludeIps []string) e
 			_, cidr, _ := net.ParseCIDR(v4cidrStr)
 			subnet.V4CIDR = cidr
 			subnet.V4ReservedIPList = convertExcludeIps(v4ExcludeIps)
-			firstIP, _ := util.FirstSubnetIP(v4cidrStr)
+			firstIP, _ := util.FirstIP(v4cidrStr)
 			lastIP, _ := util.LastIP(v4cidrStr)
 			subnet.V4FreeIPList = IPRangeList{&IPRange{Start: IP(firstIP), End: IP(lastIP)}}
 			subnet.joinFreeWithReserve()
@@ -163,7 +163,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr string, excludeIps []string) e
 			_, cidr, _ := net.ParseCIDR(v6cidrStr)
 			subnet.V6CIDR = cidr
 			subnet.V6ReservedIPList = convertExcludeIps(v6ExcludeIps)
-			firstIP, _ := util.FirstSubnetIP(v6cidrStr)
+			firstIP, _ := util.FirstIP(v6cidrStr)
 			lastIP, _ := util.LastIP(v6cidrStr)
 			subnet.V6FreeIPList = IPRangeList{&IPRange{Start: IP(firstIP), End: IP(lastIP)}}
 			subnet.joinFreeWithReserve()
