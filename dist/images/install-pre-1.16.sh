@@ -38,7 +38,6 @@ PROVIDER_NAME="provider"
 VLAN_INTERFACE_NAME=""
 VLAN_NAME="ovn-vlan"
 VLAN_ID="100"
-VLAN_RANGE="1,4095"
 
 # DPDK
 DPDK="false"
@@ -355,194 +354,112 @@ spec:
     shortNames:
       - vlan
   additionalPrinterColumns:
-    - name: VlanID
+    - name: ID
       type: string
-      JSONPath: .spec.vlanId
-    - name: ProviderInterfaceName
+      JSONPath: .spec.id
+    - name: Provider
       type: string
-      JSONPath: .spec.providerInterfaceName
-    - name: Subnet
-      type: string
-      JSONPath: .spec.subnet
+      JSONPath: .spec.provider
   validation:
     openAPIV3Schema:
       properties:
         spec:
           type: object
           properties:
+            id:
+              type: integer
+              minimum: 0
+              maximum: 4095
+            provider:
+              type: string
             vlanId:
               type: integer
+              description: Deprecated in favor of id
             providerInterfaceName:
               type: string
-            logicalInterfaceName:
-              type: string
-            subnet:
-              type: string
+              description: Deprecated in favor of provider
+          required:
+            - provider
+        status:
+          type: object
+          properties:
+            subnets:
+              type: array
+              items:
+                type: string
 ---
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
-  name: vpcs.kubeovn.io
+  name: provider-networks.kubeovn.io
 spec:
   group: kubeovn.io
   version: v1
   scope: Cluster
   names:
-    plural: vpcs
-    singular: vpc
-    kind: Vpc
-    listKind: VpcList
-    shortNames:
-    - vpc
-  subresources:
-    status: {}
+    plural: provider-networks
+    singular: provider-network
+    kind: ProviderNetwork
+    listKind: ProviderNetworkList
   additionalPrinterColumns:
-    - JSONPath: .status.standby
-      name: Standby
-      type: boolean
-    - JSONPath: .status.subnets
-      name: Subnets
+    - name: DefaultInterface
       type: string
+      jsonPath: .spec.defaultInterface
   validation:
     openAPIV3Schema:
       properties:
         spec:
+          type: object
           properties:
-            namespaces:
+            defaultInterface:
+              type: string
+            customInterfaces:
+              type: array
+              items:
+                type: object
+                properties:
+                  interface:
+                    type: string
+                  nodes:
+                    type: array
+                    items:
+                      type: string
+            excludeNodes:
+              type: array
               items:
                 type: string
-              type: array
-            staticRoutes:
-              items:
-                properties:
-                  policy:
-                    type: string
-                  cidr:
-                    type: string
-                  nextHopIP:
-                    type: string
-                type: object
-              type: array
-          type: object
+          required:
+            - defaultInterface
         status:
+          type: object
           properties:
-            conditions:
+            readyNodes:
+              type: array
               items:
+                type: string
+            vlans:
+              type: array
+              items:
+                type: string
+            conditions:
+              type: array
+              items:
+                type: object
                 properties:
-                  lastTransitionTime:
-                    type: string
-                  lastUpdateTime:
-                    type: string
-                  message:
-                    type: string
-                  reason:
-                    type: string
-                  status:
+                  node:
                     type: string
                   type:
                     type: string
-                type: object
-              type: array
-            default:
-              type: boolean
-            defaultLogicalSwitch:
-              type: string
-            router:
-              type: string
-            standby:
-              type: boolean
-            subnets:
-              items:
-                type: string
-              type: array
-            tcpLoadBalancer:
-              type: string
-            tcpSessionLoadBalancer:
-              type: string
-            udpLoadBalancer:
-              type: string
-            udpSessionLoadBalancer:
-              type: string
-          type: object
-      type: object
----
-apiVersion: apiextensions.k8s.io/v1beta1
-kind: CustomResourceDefinition
-metadata:
-  name: vpc-nat-gateways.kubeovn.io
-spec:
-  group: kubeovn.io
-  names:
-    plural: vpc-nat-gateways
-    singular: vpc-nat-gateway
-    shortNames:
-      - vpc-nat-gw
-    kind: VpcNatGateway
-    listKind: VpcNatGatewayList
-  scope: Cluster
-  versions:
-    - name: v1
-      served: true
-      storage: true
-      schema:
-        openAPIV3Schema:
-          type: object
-          properties:
-            spec:
-              type: object
-              properties:
-                dnatRules:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      eip:
-                        type: string
-                      externalPort:
-                        type: string
-                      internalIp:
-                        type: string
-                      internalPort:
-                        type: string
-                      protocol:
-                        type: string
-                eips:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      eipCIDR:
-                        type: string
-                      gateway:
-                        type: string
-                floatingIpRules:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      eip:
-                        type: string
-                      internalIp:
-                        type: string
-                lanIp:
-                  type: string
-                snatRules:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      eip:
-                        type: string
-                      internalCIDR:
-                        type: string
-                subnet:
-                  type: string
-                vpc:
-                  type: string
-      subresources:
-        status: {}
-  conversion:
-    strategy: None
+                  status:
+                    type: string
+                  reason:
+                    type: string
+                  message:
+                    type: string
+                  lastUpdateTime:
+                    type: string
+                  lastTransitionTime:
+                    type: string
 EOF
 
 if $DPDK; then
@@ -610,6 +527,8 @@ rules:
       - subnets/status
       - ips
       - vlans
+      - provider-networks
+      - provider-networks/status
     verbs:
       - "*"
   - apiGroups:
@@ -1085,6 +1004,8 @@ rules:
       - subnets/status
       - ips
       - vlans
+      - provider-networks
+      - provider-networks/status
       - networks
     verbs:
       - "*"
@@ -2235,6 +2156,7 @@ diagnose(){
   kubectl get crd subnets.kubeovn.io
   kubectl get crd ips.kubeovn.io
   kubectl get crd vlans.kubeovn.io
+  kubectl get crd provider-networks.kubeovn.io
   kubectl get svc kube-dns -n kube-system
   kubectl get svc kubernetes -n default
   kubectl get sa -n kube-system ovn

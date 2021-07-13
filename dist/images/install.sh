@@ -50,7 +50,6 @@ PROVIDER_NAME="provider"
 VLAN_INTERFACE_NAME=""
 VLAN_NAME="ovn-vlan"
 VLAN_ID="100"
-VLAN_RANGE="1,4095"
 
 if [ "$ENABLE_VLAN" = "true" ]; then
   NETWORK_TYPE="vlan"
@@ -567,24 +566,34 @@ spec:
             spec:
               type: object
               properties:
+                id:
+                  type: integer
+                  minimum: 0
+                  maximum: 4095
+                provider:
+                  type: string
                 vlanId:
                   type: integer
+                  description: Deprecated in favor of id
                 providerInterfaceName:
                   type: string
-                logicalInterfaceName:
-                  type: string
-                subnet:
-                  type: string
+                  description: Deprecated in favor of provider
+              required:
+                - provider
+            status:
+              type: object
+              properties:
+                subnets:
+                  type: array
+                  items:
+                    type: string
       additionalPrinterColumns:
-      - name: VlanID
+      - name: ID
         type: string
-        jsonPath: .spec.vlanId
-      - name: ProviderInterfaceName
+        jsonPath: .spec.id
+      - name: Provider
         type: string
-        jsonPath: .spec.providerInterfaceName
-      - name: Subnet
-        type: string
-        jsonPath: .spec.subnet
+        jsonPath: .spec.provider
   scope: Cluster
   names:
     plural: vlans
@@ -592,6 +601,83 @@ spec:
     kind: Vlan
     shortNames:
       - vlan
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: provider-networks.kubeovn.io
+spec:
+  group: kubeovn.io
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                defaultInterface:
+                  type: string
+                customInterfaces:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      interface:
+                        type: string
+                      nodes:
+                        type: array
+                        items:
+                          type: string
+                excludeNodes:
+                  type: array
+                  items:
+                    type: string
+              required:
+                - defaultInterface
+            status:
+              type: object
+              properties:
+                readyNodes:
+                  type: array
+                  items:
+                    type: string
+                vlans:
+                  type: array
+                  items:
+                    type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      node:
+                        type: string
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                      lastUpdateTime:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+      additionalPrinterColumns:
+      - name: DefaultInterface
+        type: string
+        jsonPath: .spec.defaultInterface
+  scope: Cluster
+  names:
+    plural: provider-networks
+    singular: provider-network
+    kind: ProviderNetwork
+    listKind: ProviderNetworkList
 EOF
 
 if $DPDK; then
@@ -659,6 +745,8 @@ rules:
       - subnets/status
       - ips
       - vlans
+      - provider-networks
+      - provider-networks/status
     verbs:
       - "*"
   - apiGroups:
@@ -1134,6 +1222,8 @@ rules:
       - subnets/status
       - ips
       - vlans
+      - provider-networks
+      - provider-networks/status
       - networks
     verbs:
       - "*"
@@ -2286,6 +2376,7 @@ diagnose(){
   kubectl get crd subnets.kubeovn.io
   kubectl get crd ips.kubeovn.io
   kubectl get crd vlans.kubeovn.io
+  kubectl get crd provider-networks.kubeovn.io
   kubectl get svc kube-dns -n kube-system
   kubectl get svc kubernetes -n default
   kubectl get sa -n kube-system ovn

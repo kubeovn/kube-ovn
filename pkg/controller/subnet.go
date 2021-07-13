@@ -614,6 +614,30 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	c.updateVpcStatusQueue.Add(subnet.Spec.Vpc)
+
+	if subnet.Spec.Vlan != "" {
+		vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
+		if err != nil {
+			klog.Errorf("failed to get vlan %s: %v", vlan.Spec.Provider, err)
+			return err
+		}
+
+		if !util.ContainsString(vlan.Status.Subnets, subnet.Name) {
+			vlan.Status.Subnets = append(vlan.Status.Subnets, subnet.Name)
+			bytes, err := vlan.Status.Bytes()
+			if err != nil {
+				klog.Error(err)
+				return err
+			}
+
+			_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Patch(context.Background(), vlan.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
+			if err != nil {
+				klog.Errorf("failed to patch vlan %s: %v", vlan.Name, err)
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -682,27 +706,7 @@ func (c *Controller) handleDeleteLogicalSwitch(key string) error {
 		}
 	}
 
-	// re-annotate vlan subnet
-	if util.IsNetworkVlan(c.config.NetworkType) {
-		if err = c.delLocalnet(key); err != nil {
-			return err
-		}
-
-		vlans, err := c.vlansLister.List(labels.Everything())
-		if err != nil {
-			klog.Errorf("failed to list vlan, %v", err)
-			return err
-		}
-
-		for _, vlan := range vlans {
-			subnet := strings.Split(vlan.Spec.Subnet, ",")
-			if util.IsStringIn(key, subnet) {
-				c.updateVlanQueue.Add(vlan.Name)
-			}
-		}
-	}
-
-	return nil
+	return c.delLocalnet(key)
 }
 
 func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
@@ -730,6 +734,45 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 		}
 	}
 
+	vlans, err := c.vlansLister.List(labels.Everything())
+	if err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to list vlans: %v", err)
+		return err
+	}
+
+	for _, vlan := range vlans {
+		if err = c.updateVlanStatusForSubnetDeletion(vlan, subnet.Name); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *Controller) updateVlanStatusForSubnetDeletion(vlan *kubeovnv1.Vlan, subnet string) error {
+	if util.ContainsString(vlan.Status.Subnets, subnet) {
+		vlan.Status.Subnets = util.RemoveString(vlan.Status.Subnets, subnet)
+		if len(vlan.Status.Subnets) == 0 {
+			bytes := []byte(`[{ "op": "remove", "path": "/status/subnets"}]`)
+			_, err := c.config.KubeOvnClient.KubeovnV1().Vlans().Patch(context.Background(), vlan.Name, types.JSONPatchType, bytes, metav1.PatchOptions{})
+			if err != nil {
+				klog.Errorf("failed to patch vlan %s: %v", vlan.Name, err)
+				return err
+			}
+		} else {
+			bytes, err := vlan.Status.Bytes()
+			if err != nil {
+				klog.Error(err)
+				return err
+			}
+
+			_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Patch(context.Background(), vlan.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
+			if err != nil {
+				klog.Errorf("failed to patch vlan %s: %v", vlan.Name, err)
+				return err
+			}
+		}
+	}
 	return nil
 }
 
@@ -963,10 +1006,6 @@ func (c *Controller) deleteStaticRoute(ip, router string, subnet *kubeovnv1.Subn
 }
 
 func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
-	if !util.IsNetworkVlan(c.config.NetworkType) {
-		return nil
-	}
-
 	klog.Infof("reconcile vlan, %v", subnet.Spec.Vlan)
 
 	if subnet.Spec.Vlan != "" {
@@ -974,22 +1013,6 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 		if err := c.addLocalnet(subnet); err != nil {
 			klog.Errorf("failed add localnet to subnet, %v", err)
 			return err
-		}
-
-		c.updateVlanQueue.Add(subnet.Spec.Vlan)
-	}
-
-	//update unbind vlan
-	vlanLists, err := c.vlansLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list vlans, %v", err)
-		return err
-	}
-
-	for _, vlan := range vlanLists {
-		subnets := strings.Split(vlan.Spec.Subnet, ",")
-		if util.IsStringIn(subnet.Name, subnets) {
-			c.updateVlanQueue.Add(vlan.Name)
 		}
 	}
 
@@ -1105,7 +1128,7 @@ func (c *Controller) getSubnetVlanTag(subnet *kubeovnv1.Subnet) (string, error) 
 		if err != nil {
 			return "", err
 		}
-		tag = strconv.Itoa(vlan.Spec.VlanId)
+		tag = strconv.Itoa(vlan.Spec.ID)
 	}
 	return tag, nil
 }

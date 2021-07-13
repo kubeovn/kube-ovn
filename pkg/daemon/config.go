@@ -5,22 +5,23 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net"
 	"os"
 	"os/exec"
 	"regexp"
 	"strings"
 
-	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	"github.com/vishvananda/netlink"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
+
+	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // Configuration is the daemon conf
@@ -50,7 +51,7 @@ type Configuration struct {
 func ParseFlags() (*Configuration, error) {
 	var (
 		argIface                 = pflag.String("iface", "", "The iface used to inter-host pod communication can be a nic name or a group of regex separated by comma, default: the default route iface")
-		argMTU                   = pflag.Int("mtu", 0, "The MTU used by pod iface, default: iface MTU - 100")
+		argMTU                   = pflag.Int("mtu", 0, "The MTU used by pod iface in overlay networks, default: iface MTU - 100")
 		argEnableMirror          = pflag.Bool("enable-mirror", false, "Enable traffic mirror, default: false")
 		argMirrorNic             = pflag.String("mirror-iface", "mirror0", "The mirror nic name that will be created by kube-ovn, default: mirror0")
 		argBindSocket            = pflag.String("bind-socket", "/var/run/cniserver.sock", "The socket daemon bind to.")

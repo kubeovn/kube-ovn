@@ -22,6 +22,7 @@ import (
 
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 type Framework struct {
@@ -63,6 +64,36 @@ func (f *Framework) GetName() string {
 	return strings.Replace(CurrentGinkgoTestDescription().TestText, " ", "-", -1)
 }
 
+func (f *Framework) WaitProviderNetworkReady(providerNetwork string) error {
+	for {
+		time.Sleep(1 * time.Second)
+		pn, err := f.OvnClientSet.KubeovnV1().ProviderNetworks().Get(context.Background(), providerNetwork, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+		if err != nil {
+			return err
+		}
+
+		var notReady bool
+		for _, node := range nodes.Items {
+			if !util.ContainsString(pn.Spec.ExcludeNodes, node.Name) && !util.ContainsString(pn.Status.ReadyNodes, node.Name) && !pn.Status.NodeIsReady(node.Name) {
+				if c := pn.Status.GetNodeCondition(node.Name, v1.Ready); c.Reason != "" && c.Reason != v1.ReasonInit {
+					return fmt.Errorf("provider initialization failed on node %s: %s - %s", node.Name, c.Reason, c.Message)
+				}
+				notReady = true
+				break
+			}
+		}
+		if notReady {
+			continue
+		}
+
+		return nil
+	}
+}
+
 func (f *Framework) WaitSubnetReady(subnet string) error {
 	for {
 		time.Sleep(1 * time.Second)
@@ -79,27 +110,27 @@ func (f *Framework) WaitSubnetReady(subnet string) error {
 	}
 }
 
-func (f *Framework) WaitPodReady(pod, namespace string) error {
+func (f *Framework) WaitPodReady(pod, namespace string) (*corev1.Pod, error) {
 	for {
 		time.Sleep(1 * time.Second)
 		p, err := f.KubeClientSet.CoreV1().Pods(namespace).Get(context.Background(), pod, metav1.GetOptions{})
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if p.Status.Phase == "Running" && p.Status.Reason != "" {
-			return nil
+			return p, nil
 		}
 
 		switch getPodStatus(*p) {
 		case Completed:
-			return fmt.Errorf("pod already completed")
+			return nil, fmt.Errorf("pod already completed")
 		case Running:
-			return nil
+			return p, nil
 		case Initing, Pending, PodInitializing, ContainerCreating, Terminating:
 			continue
 		default:
 			fmt.Printf("%v", p.String())
-			return fmt.Errorf("pod status failed")
+			return nil, fmt.Errorf("pod status failed")
 		}
 	}
 }

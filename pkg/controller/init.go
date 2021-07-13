@@ -297,13 +297,39 @@ func (c *Controller) InitIPAM() error {
 	return nil
 }
 
-//InitDefaultVlan init the default vlan when network type is vlan or vxlan
+func (c *Controller) initDefaultProviderNetwork() error {
+	_, err := c.providerNetworksLister.Get(c.config.DefaultProviderName)
+	if err == nil {
+		return nil
+	}
+	if !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to get default provider network %s: %v", c.config.DefaultProviderName, err)
+		return err
+	}
+
+	pn := kubeovnv1.ProviderNetwork{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: c.config.DefaultProviderName,
+		},
+		Spec: kubeovnv1.ProviderNetworkSpec{
+			DefaultInterface: c.config.DefaultHostInterface,
+		},
+	}
+
+	_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Create(context.Background(), &pn, metav1.CreateOptions{})
+	return err
+}
+
 func (c *Controller) initDefaultVlan() error {
-	if !util.IsNetworkVlan(c.config.NetworkType) {
+	if c.config.NetworkType != util.NetworkTypeVlan {
 		return nil
 	}
 
-	_, err := c.config.KubeOvnClient.KubeovnV1().Vlans().Get(context.Background(), c.config.DefaultVlanName, metav1.GetOptions{})
+	if err := c.initDefaultProviderNetwork(); err != nil {
+		return err
+	}
+
+	_, err := c.vlansLister.Get(c.config.DefaultVlanName)
 	if err == nil {
 		return nil
 	}
@@ -320,9 +346,8 @@ func (c *Controller) initDefaultVlan() error {
 	defaultVlan := kubeovnv1.Vlan{
 		ObjectMeta: metav1.ObjectMeta{Name: c.config.DefaultVlanName},
 		Spec: kubeovnv1.VlanSpec{
-			VlanId:                c.config.DefaultVlanID,
-			ProviderInterfaceName: c.config.DefaultProviderName,
-			LogicalInterfaceName:  c.config.DefaultHostInterface,
+			ID:       c.config.DefaultVlanID,
+			Provider: c.config.DefaultProviderName,
 		},
 	}
 
@@ -378,5 +403,38 @@ func (c *Controller) initSyncCrdSubnets() error {
 			return err
 		}
 	}
+	return nil
+}
+
+func (c *Controller) initSyncCrdVlans() error {
+	klog.Info("start to sync vlans")
+	vlans, err := c.vlansLister.List(labels.Everything())
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	for _, vlan := range vlans {
+		var needUpdate bool
+		if vlan.Spec.VlanId != 0 && vlan.Spec.ID == 0 {
+			vlan.Spec.ID = vlan.Spec.VlanId
+			vlan.Spec.VlanId = 0
+			needUpdate = true
+		}
+		if vlan.Spec.ProviderInterfaceName != "" && vlan.Spec.Provider == "" {
+			vlan.Spec.Provider = vlan.Spec.ProviderInterfaceName
+			vlan.Spec.ProviderInterfaceName = ""
+			needUpdate = true
+		}
+		if needUpdate {
+			if _, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(context.Background(), vlan, metav1.UpdateOptions{}); err != nil {
+				klog.Errorf("failed to update spec of vlan %s: %v", vlan.Name, err)
+				return err
+			}
+		}
+	}
+
 	return nil
 }

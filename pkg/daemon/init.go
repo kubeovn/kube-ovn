@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -52,71 +54,63 @@ func InitNodeGateway(config *Configuration) error {
 func InitMirror(config *Configuration) error {
 	if config.EnableMirror {
 		return configureMirror(config.MirrorNic, config.MTU)
-	} else {
-		return removeMirror(config.MirrorNic)
 	}
-
+	return removeMirror(config.MirrorNic)
 }
 
-func InitVlan(config *Configuration) error {
-	// TODO: move to flag validation
-	if config.DefaultProviderName == "" {
-		panic("provider should not be empty")
-	}
-
-	ifName := config.getInterfaceName()
-	if ifName == "" {
-		errMsg := fmt.Errorf("failed get host nic to add ovs %s", util.UnderlayBridge)
-		klog.Error(errMsg)
-		return errMsg
-	}
-
+func ovsInitProviderNetwork(provider, nic string) (int, error) {
 	// create and configure external bridge
-	brName := util.UnderlayBridge
-	if err := configExternalBridge(config.DefaultProviderName, brName); err != nil {
+	brName := util.ExternalBridgeName(provider)
+	if err := configExternalBridge(provider, brName, nic); err != nil {
 		errMsg := fmt.Errorf("failed to create and configure external bridge %s: %v", brName, err)
 		klog.Error(errMsg)
-		return errMsg
+		return 0, errMsg
 	}
 
 	// add host nic to the external bridge
-	if err := configProviderNic(ifName, brName); err != nil {
-		errMsg := fmt.Errorf("failed to add nic %s to external bridge %s: %v", ifName, brName, err)
+	mtu, err := configProviderNic(nic, brName)
+	if err != nil {
+		errMsg := fmt.Errorf("failed to add nic %s to external bridge %s: %v", nic, brName, err)
+		klog.Error(errMsg)
+		return 0, errMsg
+	}
+
+	return mtu, nil
+}
+
+func ovsCleanProviderNetwork(provider string) error {
+	output, err := ovs.Exec("list-br")
+	if err != nil {
+		return fmt.Errorf("failed to list OVS bridge %v: %q", err, output)
+	}
+
+	brName := util.ExternalBridgeName(provider)
+	if !util.ContainsString(strings.Split(output, "\n"), brName) {
+		return nil
+	}
+
+	// get host nic
+	if output, err = ovs.Exec("list-ports", brName); err != nil {
+		return fmt.Errorf("failed to list ports of OVS birdge %s, %v: %q", brName, err, output)
+	}
+
+	// remove host nic from the external bridge
+	if output != "" {
+		for _, nic := range strings.Split(output, "\n") {
+			if err = removeProviderNic(nic, brName); err != nil {
+				errMsg := fmt.Errorf("failed to remove nic %s from external bridge %s: %v", nic, brName, err)
+				klog.Error(errMsg)
+				return errMsg
+			}
+		}
+	}
+
+	// remove external bridge
+	if err = removeExternalBridge(provider, brName); err != nil {
+		errMsg := fmt.Errorf("failed to remove external bridge %s: %v", brName, err)
 		klog.Error(errMsg)
 		return errMsg
 	}
 
 	return nil
-}
-
-//get host nic name
-func (config *Configuration) getInterfaceName() (ifName string) {
-	defer func() {
-		if ifName == "" {
-			return
-		}
-		iface, err := findInterface(ifName)
-		if err != nil {
-			klog.Errorf("failed to find iface %s, %v", ifName, err)
-			ifName = ""
-			return
-		}
-		ifName = iface.Name
-	}()
-	node, err := config.KubeClient.CoreV1().Nodes().Get(context.Background(), config.NodeName, metav1.GetOptions{})
-	if err == nil {
-		if interfaceName := node.GetLabels()[util.HostInterfaceName]; interfaceName != "" {
-			return interfaceName
-		}
-	}
-
-	if config.DefaultInterfaceName != "" {
-		return config.DefaultInterfaceName
-	}
-
-	if config.Iface != "" {
-		return config.Iface
-	}
-
-	return ""
 }

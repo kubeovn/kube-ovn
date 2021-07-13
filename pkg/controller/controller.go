@@ -78,6 +78,9 @@ type Controller struct {
 	vlansLister kubeovnlister.VlanLister
 	vlanSynced  cache.InformerSynced
 
+	providerNetworksLister kubeovnlister.ProviderNetworkLister
+	providerNetworkSynced  cache.InformerSynced
+
 	addVlanQueue    workqueue.RateLimitingInterface
 	delVlanQueue    workqueue.RateLimitingInterface
 	updateVlanQueue workqueue.RateLimitingInterface
@@ -144,6 +147,7 @@ func NewController(config *Configuration) *Controller {
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	ipInformer := kubeovnInformerFactory.Kubeovn().V1().IPs()
 	vlanInformer := kubeovnInformerFactory.Kubeovn().V1().Vlans()
+	providerNetworkInformer := kubeovnInformerFactory.Kubeovn().V1().ProviderNetworks()
 	podInformer := informerFactory.Core().V1().Pods()
 	namespaceInformer := informerFactory.Core().V1().Namespaces()
 	nodeInformer := informerFactory.Core().V1().Nodes()
@@ -192,6 +196,9 @@ func NewController(config *Configuration) *Controller {
 		addVlanQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddVlan"),
 		delVlanQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DelVlan"),
 		updateVlanQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVlan"),
+
+		providerNetworksLister: providerNetworkInformer.Lister(),
+		providerNetworkSynced:  providerNetworkInformer.Informer().HasSynced,
 
 		podsLister:     podInformer.Lister(),
 		podsSynced:     podInformer.Informer().HasSynced,
@@ -346,6 +353,9 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	}
 	if err := c.initSyncCrdSubnets(); err != nil {
 		klog.Errorf("failed to sync crd subnets %v", err)
+	}
+	if err := c.initSyncCrdVlans(); err != nil {
+		klog.Errorf("failed to sync crd vlans: %v", err)
 	}
 
 	// start workers to do all the network operations

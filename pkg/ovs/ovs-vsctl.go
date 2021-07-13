@@ -225,3 +225,9 @@ func CleanDuplicatePort(ifaceID string) {
 func SetPortTag(port, tag string) error {
 	return ovsSet("port", port, fmt.Sprintf("tag=%s", tag))
 }
+
+// ValidatePortVendor returns true if the port's external_ids:vendor=kube-ovn
+func ValidatePortVendor(port string) (bool, error) {
+	output, err := ovsFind("Port", "name", "external_ids:vendor="+util.CniTypeName)
+	return util.ContainsString(output, port), err
+}
