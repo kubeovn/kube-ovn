@@ -46,6 +46,10 @@ func (c *Controller) resyncInterConnection() {
 			klog.Errorf("failed to remove ovn-ic, %v", err)
 			return
 		}
+		if err := c.delLearnedRoute(); err != nil {
+			klog.Errorf("failed to remove learned static routes, %v", err)
+			return
+		}
 		icEnabled = "false"
 		lastICCM = nil
 
@@ -291,4 +295,44 @@ func (c *Controller) waitTsReady() error {
 		retry = retry - 1
 	}
 	return fmt.Errorf("timeout to wait ts ready")
+}
+
+func (c *Controller) delLearnedRoute() error {
+	originalPorts, err := c.ovnClient.CustomFindEntity("Logical_Router_Static_Route", []string{"_uuid", "ip_prefix"})
+	if err != nil {
+		klog.Errorf("failed to list static routes of logical router, %v", err)
+		return err
+	}
+	filteredPorts, err := c.ovnClient.CustomFindEntity("Logical_Router_Static_Route", []string{"_uuid", "ip_prefix"}, "external_ids:ic-learned-route{<=}1")
+	if err != nil {
+		klog.Errorf("failed to filter static routes of logical router, %v", err)
+		return err
+	}
+	learnedPorts := []map[string][]string{}
+	for _, aOriPort := range originalPorts {
+		isfiltered := false
+		for _, aFtPort := range filteredPorts {
+			if aFtPort["_uuid"][0] == aOriPort["_uuid"][0] {
+				isfiltered = true
+			}
+		}
+		if !isfiltered {
+			learnedPorts = append(learnedPorts, aOriPort)
+		}
+	}
+	if len(learnedPorts) != 0 {
+		for _, aLdPort := range learnedPorts {
+			itsRouter, err := c.ovnClient.CustomFindEntity("Logical_Router", []string{"name"}, fmt.Sprintf("static_routes{>}%s", aLdPort["_uuid"][0]))
+			if err != nil || len(itsRouter) != 1 {
+				klog.Errorf("failed to list logical router of static route %s, %v", aLdPort["_uuid"][0], err)
+				return err
+			}
+			if err := c.ovnClient.DeleteStaticRoute(aLdPort["ip_prefix"][0], itsRouter[0]["name"][0]); err != nil {
+				klog.Errorf("failed to delete stale route %s, %v", aLdPort["ip_prefix"][0], err)
+				return err
+			}
+		}
+		klog.V(5).Infof("finish removing learned routes")
+	}
+	return nil
 }
