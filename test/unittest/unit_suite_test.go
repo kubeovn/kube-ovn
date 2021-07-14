@@ -8,6 +8,7 @@ import (
 
 	// tests to run
 	_ "github.com/kubeovn/kube-ovn/test/unittest/ipam"
+	_ "github.com/kubeovn/kube-ovn/test/unittest/util"
 )
 
 func TestE2e(t *testing.T) {

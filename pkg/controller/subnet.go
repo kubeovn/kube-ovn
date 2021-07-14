@@ -1058,11 +1058,11 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 			v6UsingIPs = append(v6UsingIPs, splitIPs[1])
 		}
 	}
-	v4availableIPs := util.AddressCount(v4CIDR) - float64(util.CountIpNums(v4toSubIPs))
+	v4availableIPs := util.AddressCount(v4CIDR) - util.CountIpNums(v4toSubIPs)
 	if v4availableIPs < 0 {
 		v4availableIPs = 0
 	}
-	v6availableIPs := util.AddressCount(v6CIDR) - float64(util.CountIpNums(v6toSubIPs))
+	v6availableIPs := util.AddressCount(v6CIDR) - util.CountIpNums(v6toSubIPs)
 	if v6availableIPs < 0 {
 		v6availableIPs = 0
 	}
@@ -1098,7 +1098,7 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	for _, podUsedIP := range podUsedIPs.Items {
 		toSubIPs = append(toSubIPs, podUsedIP.Spec.IPAddress)
 	}
-	availableIPs := util.AddressCount(cidr) - float64(util.CountIpNums(toSubIPs))
+	availableIPs := util.AddressCount(cidr) - util.CountIpNums(toSubIPs)
 	if availableIPs < 0 {
 		availableIPs = 0
 	}
