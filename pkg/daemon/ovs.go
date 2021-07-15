@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Mellanox/sriovnet"
+	sriovutilfs "github.com/Mellanox/sriovnet/pkg/utils/filesystem"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/utils/sysctl"
 	goping "github.com/oilbeater/go-ping"
@@ -110,6 +111,16 @@ func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, device
 		}
 		if err = netlink.LinkDel(hostLink); err != nil {
 			return fmt.Errorf("delete host link %s failed %v", hostLink, err)
+		}
+	} else {
+		// Ret VF index from PCI
+		vfIndex, err := sriovnet.GetVfIndexByPciAddress(deviceID)
+		if err != nil {
+			klog.Errorf("failed to get vf %s index, %v", deviceID, err)
+			return err
+		}
+		if err = setVfMac(deviceID, vfIndex, "00:00:00:00:00:00"); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -708,17 +719,11 @@ func setupSriovInterface(containerID, deviceID, vfDriver, ifName string, mtu int
 		return "", "", fmt.Errorf("failed to set MTU on %s: %v", hostNicName, err)
 	}
 
-	// 7. set MAC address to VF
-	macAddr, err := net.ParseMAC(mac)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to parse mac %s %v", macAddr, err)
-	}
-	nicLink, err := netlink.LinkByName(uplink)
-	if err != nil {
-		return "", "", fmt.Errorf("can not find nic %s %v", uplink, err)
-	}
-	if err := netlink.LinkSetVfHardwareAddr(nicLink, vfIndex, macAddr); err != nil {
-		return "", "", fmt.Errorf("can not set mac address to vf nic:%s vf:%d %v", uplink, vfIndex, err)
+	if isVfioPciDriver {
+		// 7. set MAC address to VF
+		if err := setVfMac(deviceID, vfIndex, mac); err != nil {
+			return "", "", err
+		}
 	}
 	return hostNicName, vfNetdevice, nil
 }
@@ -845,6 +850,50 @@ func addAdditonalNic(ifName string) error {
 			return err
 		}
 		return fmt.Errorf("failed to crate static iface %v, err %v", ifName, err)
+	}
+	return nil
+}
+
+func setVfMac(deviceID string, vfIndex int, mac string) error {
+	macAddr, err := net.ParseMAC(mac)
+	if err != nil {
+		return fmt.Errorf("failed to parse mac %s %v", macAddr, err)
+	}
+
+	pfPci, err := sriovnet.GetPfPciFromVfPci(deviceID)
+	if err != nil {
+		return fmt.Errorf("failed to get pf of device %s %v", deviceID, err)
+	}
+
+	netDevs, err := sriovnet.GetNetDevicesFromPci(pfPci)
+	if err != nil {
+		return fmt.Errorf("failed to get pf of device %s %v", deviceID, err)
+	}
+
+	// get real pf
+	var pfName string
+	for _, dev := range netDevs {
+		devicePortNameFile := filepath.Join(util.NetSysDir, dev, "phys_port_name")
+		physPortName, err := sriovutilfs.Fs.ReadFile(devicePortNameFile)
+		if err != nil {
+			return err
+		}
+
+		if !strings.Contains(strings.TrimSpace(string(physPortName)), "vf") {
+			pfName = dev
+			break
+		}
+	}
+	if pfName == "" {
+		return fmt.Errorf("the PF device was not found in the device list, %v", netDevs)
+	}
+
+	pfLink, err := netlink.LinkByName(pfName)
+	if err != nil {
+		return fmt.Errorf("failed to lookup pf %s: %v", pfName, err)
+	}
+	if err := netlink.LinkSetVfHardwareAddr(pfLink, vfIndex, macAddr); err != nil {
+		return fmt.Errorf("can not set mac address to vf nic:%s vf:%d %v", pfName, vfIndex, err)
 	}
 	return nil
 }
