@@ -720,6 +720,8 @@ kind: ConfigMap
 metadata:
   name: ovn-config
   namespace: kube-system
+data:
+  defaultNetworkType: '$NETWORK_TYPE'
 
 ---
 apiVersion: v1
@@ -1196,6 +1198,8 @@ kind: ConfigMap
 metadata:
   name: ovn-config
   namespace: kube-system
+data:
+  defaultNetworkType: '$NETWORK_TYPE'
 ---
 apiVersion: v1
 kind: ServiceAccount

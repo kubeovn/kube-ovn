@@ -33,6 +33,8 @@ kind: ConfigMap
 metadata:
   name: ovn-config
   namespace: kube-system
+data:
+  defaultNetworkType: geneve
 ---
 apiVersion: v1
 kind: ServiceAccount
