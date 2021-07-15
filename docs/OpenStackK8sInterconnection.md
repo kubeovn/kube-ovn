@@ -17,7 +17,7 @@ This document is based on Openstack *Victoria* and Kube-OVN *1.7*
 #### 1. Run Interconnection Controller in a Kubernetes node which can be accessed by an Openstack gateway node.
 
 ```shell
-$ docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn kubeovn/kube-ovn:v1.7.0 bash start-ic-db.sh
+$ docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn kubeovn/kube-ovn:v1.7.1 bash start-ic-db.sh
 ```
 
 #### 2. Create `ovn-ic-config` for kubernetes cluster in `kube-system` namespace.

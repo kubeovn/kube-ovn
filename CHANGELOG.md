@@ -1,5 +1,45 @@
 # CHANGELOG
 
+## 1.7.1 -- 2021/07/15
+
+### New Feature
+- Underlay/Vlan network refactoring
+- Diagnose command 'kubectl ko' support trace in underlay networking
+- Diagnose command 'kubectl ko' support cluster operations status/kick/backup
+- Support to specify node nic name
+
+### Bugfix
+- Fix acl overlay issues
+- Fix available ips count of subnet
+- Fix lsp may lost when server pressure is high
+- Cleanup kube-ovn-monitor resource
+- Remove wait ovn sb
+- Remove kube-ovn-controller rollout check
+- Delete process of ip crd delete in cni delete request
+- Delete ecmp route when node is not ready
+- Ignore update pod nic annotation when not nil
+- Clean up gateway chassis list for external gw
+- Node route should filter out 'vpc'
+- Do not delete statefulset pod when update pod
+- Add master check when a node adding to a cluster and config sb/nb address
+- Fix IP/route transfer on node reboot
+- Fix uninstall.sh execution in OVS pods
+- Add node internal ip into ovn-ic advertise blacklist
+- Fix bug for deleting ovn-ic lrp failed
+- Keep subnet's vlan empty if not specified
+- Add field defaultNetworkType in configmap ovn-config
+
+### Performance
+- Enable tx offload again as upstream already fix it
+
+### Test
+- Correct vlan e2e testing
+- Remove dpdk ci
+
+### Security
+- Add go build security options
+- Fix CVE-2021-3121
+
 ## 1.7.0 -- 2021/06/03
 
 ### New Feature
