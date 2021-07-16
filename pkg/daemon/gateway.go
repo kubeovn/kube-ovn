@@ -387,6 +387,12 @@ func (c *Controller) setIptables() error {
 	}
 
 	hostIP := util.GetNodeInternalIP(*node)
+	subnetNatips, err := c.getEgressNatIpByNode(c.config.NodeName)
+	if err != nil {
+		klog.Errorf("failed to get centralized subnets nat ips on node %s, %v", c.config.NodeName, err)
+		return err
+	}
+	klog.V(3).Infof("centralized subnets nat ips %v", subnetNatips)
 
 	var (
 		v4Rules = []util.IPTableRule{
@@ -434,12 +440,29 @@ func (c *Controller) setIptables() error {
 		if c.iptable[protocol] == nil {
 			continue
 		}
+		var matchset string
 		var iptableRules []util.IPTableRule
 		if protocol == kubeovnv1.ProtocolIPv4 {
 			iptableRules = v4Rules
+			matchset = "ovn40subnets"
 		} else {
 			iptableRules = v6Rules
+			matchset = "ovn60subnets"
 		}
+		for cidr, natip := range subnetNatips {
+			if util.CheckProtocol(cidr) != protocol {
+				continue
+			}
+
+			ruleval := fmt.Sprintf("-s %v -m set ! --match-set %s dst -j SNAT --to-source %v", cidr, matchset, natip)
+			rule := util.IPTableRule{
+				Table: "nat",
+				Chain: "POSTROUTING",
+				Rule:  strings.Split(ruleval, " "),
+			}
+			iptableRules = append(iptableRules, rule)
+		}
+
 		iptableRules[0], iptableRules[1], iptableRules[3], iptableRules[4] =
 			iptableRules[4], iptableRules[3], iptableRules[1], iptableRules[0]
 		for _, iptRule := range iptableRules {
@@ -460,6 +483,7 @@ func (c *Controller) setIptables() error {
 					return err
 				}
 			}
+			klog.V(3).Infof("iptables rules %v, exists %v", strings.Join(iptRule.Rule, " "), exists)
 		}
 	}
 	return nil
@@ -658,6 +682,18 @@ func (c *Controller) getSubnetsNeedNAT(protocol string) ([]string, error) {
 			util.GatewayContains(subnet.Spec.GatewayNode, c.config.NodeName) &&
 			(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) &&
 			subnet.Spec.NatOutgoing {
+			// centralized subnet with gatewayNode assigned designative ip processed seperately
+			found := false
+			for _, gw := range strings.Split(subnet.Spec.GatewayNode, ",") {
+				if strings.Contains(gw, ":") && util.GatewayContains(gw, c.config.NodeName) {
+					found = true
+					break
+				}
+			}
+			if found {
+				continue
+			}
+
 			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
 			subnetsNeedNat = append(subnetsNeedNat, cidrBlock)
 		}
@@ -808,4 +844,30 @@ func getCidrByProtocol(cidr, protocol string) string {
 		cidrStr = cidr
 	}
 	return cidrStr
+}
+
+func (c *Controller) getEgressNatIpByNode(nodeName string) (map[string]string, error) {
+	var subnetsNatIp = make(map[string]string)
+	subnetList, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets %v", err)
+		return subnetsNatIp, err
+	}
+
+	for _, subnet := range subnetList {
+		if subnet.Spec.UnderlayGateway || subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType || subnet.Spec.GatewayNode == "" || !util.GatewayContains(subnet.Spec.GatewayNode, nodeName) {
+			continue
+		}
+
+		// only check format like 'kube-ovn-worker:172.18.0.2, kube-ovn-control-plane:172.18.0.3'
+		for _, cidr := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+			for _, gw := range strings.Split(subnet.Spec.GatewayNode, ",") {
+				if strings.Contains(gw, ":") && util.GatewayContains(gw, nodeName) && util.CheckProtocol(cidr) == util.CheckProtocol(strings.Split(gw, ":")[1]) {
+					subnetsNatIp[cidr] = strings.TrimSpace(strings.Split(gw, ":")[1])
+					break
+				}
+			}
+		}
+	}
+	return subnetsNatIp, nil
 }
