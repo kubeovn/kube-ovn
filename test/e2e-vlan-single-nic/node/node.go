@@ -36,10 +36,12 @@ var _ = Describe("[Vlan Node]", func() {
 	f := framework.NewFramework("node", fmt.Sprintf("%s/.kube/config", os.Getenv("HOME")))
 
 	var network *nodeNetwork
-	if len(networkJSON) != 0 {
-		network = new(nodeNetwork)
-		Expect(json.Unmarshal(networkJSON, network)).NotTo(HaveOccurred())
-	}
+	BeforeEach(func() {
+		if len(networkJSON) != 0 {
+			network = new(nodeNetwork)
+			Expect(json.Unmarshal(networkJSON, network)).NotTo(HaveOccurred())
+		}
+	})
 
 	It("Single NIC", func() {
 		nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
