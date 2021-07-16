@@ -116,4 +116,5 @@ const (
 	ChasRetryIntev = 1
 
 	VfioSysDir = "/sys/bus/pci/drivers/vfio-pci"
+	NetSysDir  = "/sys/class/net"
 )

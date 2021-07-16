@@ -3,7 +3,7 @@ module github.com/kubeovn/kube-ovn
 go 1.12
 
 require (
-	github.com/Mellanox/sriovnet v1.0.1
+	github.com/Mellanox/sriovnet v1.0.2
 	github.com/alauda/felix v3.6.6-0.20201207121355-187332daf314+incompatible
 	github.com/cnf/structhash v0.0.0-20201127153200-e1b16c1ebc08
 	github.com/containernetworking/cni v0.8.0
