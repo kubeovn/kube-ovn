@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -225,7 +226,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	if err := c.checkChassisDupl(node); err != nil {
+	if err := c.retryDelDupChassis(util.ChasRetryTime, util.ChasRetryIntev+2, c.checkChassisDupl, node); err != nil {
 		return err
 	}
 
@@ -399,7 +400,7 @@ func (c *Controller) handleUpdateNode(key string) error {
 		return err
 	}
 
-	if err := c.checkChassisDupl(node); err != nil {
+	if err := c.retryDelDupChassis(util.ChasRetryTime, util.ChasRetryIntev+2, c.checkChassisDupl, node); err != nil {
 		return err
 	}
 
@@ -590,16 +591,36 @@ func (c *Controller) checkChassisDupl(node *v1.Node) error {
 		klog.Errorf("failed to get node %s chassisID, %v", node.Name, err)
 		return err
 	}
-
 	chassisAnn := node.Annotations[util.ChassisAnnotation]
-	if chassisAnn != "" && chassisAnn != chassisAdd {
-		klog.Errorf("duplicate chassis for node %s and new chassis %s", node.Name, chassisAdd)
-		if err := c.ovnClient.DeleteChassis(node.Name); err != nil {
-			klog.Errorf("failed to delete chassis for node %s %v", node.Name, err)
-			return err
-		}
+	if chassisAnn == chassisAdd || chassisAnn == "" {
+		return nil
 	}
 
-	klog.V(3).Infof("finish check chassis, add %s and ann %s", chassisAdd, chassisAnn)
+	klog.Errorf("duplicate chassis for node %s and new chassis %s", node.Name, chassisAdd)
+	if err := c.ovnClient.DeleteChassis(node.Name); err != nil {
+		klog.Errorf("failed to delete chassis for node %s %v", node.Name, err)
+		return err
+	}
+	return errors.New("deleting dismatch chassis id")
+}
+
+func (c *Controller) retryDelDupChassis(attempts int, sleep int, f func(node *v1.Node) error, node *v1.Node) (err error) {
+	i := 0
+	for ; ; i++ {
+		err = f(node)
+		if err == nil {
+			return
+		}
+		if i >= (attempts - 1) {
+			break
+		}
+		time.Sleep(time.Duration(sleep) * time.Second)
+	}
+	if i >= (attempts - 1) {
+		errMsg := fmt.Errorf("exhausting all attempts")
+		klog.Error(errMsg)
+		return errMsg
+	}
+	klog.V(3).Infof("finish check chassis")
 	return nil
 }
