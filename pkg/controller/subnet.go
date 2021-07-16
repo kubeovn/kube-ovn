@@ -933,7 +933,6 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 			}
 			return c.deleteStaticRoute(subnet.Spec.CIDRBlock, c.config.ClusterRouter, subnet)
 		} else {
-			klog.Infof("start to init centralized gateway for subnet %s", subnet.Name)
 			if subnet.Spec.GatewayNode == "" {
 				klog.Errorf("subnet %s Spec.GatewayNode field must be specified for centralized gateway type", subnet.Name)
 				subnet.Status.NotReady("NoReadyGateway", "")
@@ -953,7 +952,13 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 
 			nodeIPs := make([]string, len(strings.Split(subnet.Spec.GatewayNode, ",")))
 			for _, gw := range strings.Split(subnet.Spec.GatewayNode, ",") {
-				gw = strings.TrimSpace(gw)
+				// the format of gatewayNodeStr can be like 'kube-ovn-worker:172.18.0.2, kube-ovn-control-plane:172.18.0.3', which consists of node name and designative egress ip
+				if strings.Contains(gw, ":") {
+					gw = strings.TrimSpace(strings.Split(gw, ":")[0])
+				} else {
+					gw = strings.TrimSpace(gw)
+				}
+
 				node, err := c.nodesLister.Get(gw)
 				if err == nil && nodeReady(node) {
 					nodeTunlIP := strings.TrimSpace(node.Annotations[util.IpAddressAnnotation])
@@ -968,7 +973,7 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 			if err != nil {
 				klog.Errorf("filter ecmp static route for subnet %v, error %v", subnet.Name, err)
 			}
-			klog.Infof("subnet %s uses centralized gw %v", subnet.Name, nodeIPs)
+			klog.Infof("subnet %s adds centralized gw %v", subnet.Name, nodeIPs)
 
 			for _, nextHop := range nodeIPs {
 				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, subnet.Spec.CIDRBlock, nextHop, c.config.ClusterRouter, util.EcmpRouteType); err != nil {
@@ -1242,7 +1247,14 @@ func (c *Controller) filterRepeatEcmpRoutes(nodeIps []string, cidrBlock string) 
 func (c *Controller) checkGwNodeExists(gatewayNode string) bool {
 	found := false
 	for _, gwName := range strings.Split(gatewayNode, ",") {
-		gwNode, err := c.nodesLister.Get(strings.TrimSpace(gwName))
+		// the format of gatewayNode can be like 'kube-ovn-worker:172.18.0.2, kube-ovn-control-plane:172.18.0.3', which consists of node name and designative egress ip
+		if strings.Contains(gwName, ":") {
+			gwName = strings.TrimSpace(strings.Split(gwName, ":")[0])
+		} else {
+			gwName = strings.TrimSpace(gwName)
+		}
+
+		gwNode, err := c.nodesLister.Get(gwName)
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
 				klog.Errorf("gw node %s does not exist, %v", gwName, err)
