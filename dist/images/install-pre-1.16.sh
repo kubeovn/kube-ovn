@@ -404,7 +404,7 @@ spec:
   additionalPrinterColumns:
     - name: DefaultInterface
       type: string
-      jsonPath: .spec.defaultInterface
+      JSONPath: .spec.defaultInterface
   validation:
     openAPIV3Schema:
       properties:
