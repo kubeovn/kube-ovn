@@ -204,13 +204,13 @@ e2e:
 		done; \
 	fi
 
-	printf "package underlay\n\nvar nodeNetworks = map[string]string{\n" > test/e2e/underlay/network.go
+	printf "package e2e\n\nvar nodeNetworks = map[string]string{\n" > test/e2e/network.go
 	kind get nodes --name kube-ovn | while read node; do \
-		printf "\`$$node\`: \`" >> test/e2e/underlay/network.go; \
-		docker inspect -f '{{json .NetworkSettings.Networks.bridge}}' $$node >> test/e2e/underlay/network.go; \
-		printf "\`,\n" >> test/e2e/underlay/network.go; \
+		printf "    \`$$node\`: \`" >> test/e2e/network.go; \
+		docker inspect -f '{{json .NetworkSettings.Networks.bridge}}' $$node >> test/e2e/network.go; \
+		printf "\`,\n" >> test/e2e/network.go; \
 	done
-	echo "}" >> test/e2e/underlay/network.go
+	echo "}" >> test/e2e/network.go
 
 	docker pull kubeovn/pause:3.2
 	kind load docker-image --name kube-ovn kubeovn/pause:3.2

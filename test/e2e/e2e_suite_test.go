@@ -1,7 +1,8 @@
-package e2e_test
+package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"testing"
@@ -20,8 +21,18 @@ import (
 	_ "github.com/kubeovn/kube-ovn/test/e2e/node"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/service"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/subnet"
-	_ "github.com/kubeovn/kube-ovn/test/e2e/underlay"
+	"github.com/kubeovn/kube-ovn/test/e2e/underlay"
 )
+
+type nodeNetwork struct {
+	Gateway             string
+	IPAddress           string
+	IPPrefixLen         int
+	IPv6Gateway         string
+	GlobalIPv6Address   string
+	GlobalIPv6PrefixLen int
+	MacAddress          string
+}
 
 func TestE2e(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -44,6 +55,16 @@ var _ = SynchronizedAfterSuite(func() {}, func() {
 	}
 
 	err = f.OvnClientSet.KubeovnV1().Subnets().DeleteCollection(context.Background(), metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: "e2e=true"})
+	if err != nil {
+		Fail(err.Error())
+	}
+
+	err = f.OvnClientSet.KubeovnV1().Vlans().DeleteCollection(context.Background(), metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: "e2e=true"})
+	if err != nil {
+		Fail(err.Error())
+	}
+
+	err = f.OvnClientSet.KubeovnV1().ProviderNetworks().DeleteCollection(context.Background(), metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: "e2e=true"})
 	if err != nil {
 		Fail(err.Error())
 	}
@@ -80,5 +101,147 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	if err != nil {
 		Fail(err.Error())
 	}
+
+	// underlay
+	var underlayNodeIPs []string
+	var underlayCIDR, underlayGateway string
+	for node, network := range nodeNetworks {
+		var info nodeNetwork
+		if err = json.Unmarshal([]byte(network), &info); err != nil {
+			Fail("invalid node network information: " + err.Error())
+		}
+
+		underlay.SetNodeMac(node, info.MacAddress)
+		if info.IPAddress != "" {
+			underlay.AddNodeIP(info.IPAddress)
+			underlayNodeIPs = append(underlayNodeIPs, info.IPAddress)
+			underlay.AddNodeAddrs(node, fmt.Sprintf("%s/%d", info.IPAddress, info.IPPrefixLen))
+			if underlayCIDR == "" {
+				underlayCIDR = fmt.Sprintf("%s/%d", info.IPAddress, info.IPPrefixLen)
+			}
+		}
+		if info.GlobalIPv6Address != "" {
+			underlay.AddNodeAddrs(node, fmt.Sprintf("%s/%d", info.GlobalIPv6Address, info.GlobalIPv6PrefixLen))
+		}
+		if info.Gateway != "" {
+			underlay.AddNodeRoutes(node, fmt.Sprintf("default via %s ", info.Gateway))
+			if underlayGateway == "" {
+				underlayGateway = info.Gateway
+			}
+		}
+		if info.IPv6Gateway != "" {
+			underlay.AddNodeRoutes(node, fmt.Sprintf("default via %s ", info.IPv6Gateway))
+		}
+	}
+	underlay.SetCIDR(underlayCIDR)
+
+	nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		Fail(err.Error())
+	}
+	cniPods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(context.Background(), metav1.ListOptions{LabelSelector: "app=kube-ovn-cni"})
+	if err != nil {
+		Fail(err.Error())
+	}
+
+	for i := range nodes.Items {
+		var nodeIP string
+		for _, addr := range nodes.Items[i].Status.Addresses {
+			if addr.Type == corev1.NodeInternalIP {
+				nodeIP = addr.Address
+				break
+			}
+		}
+		if nodeIP == "" {
+			Fail("failed to get IP of node " + nodes.Items[i].Name)
+		}
+
+		var cniPod *corev1.Pod
+		for _, pod := range cniPods.Items {
+			if pod.Status.HostIP == nodeIP {
+				cniPod = &pod
+				break
+			}
+		}
+		if cniPod == nil {
+			Fail("failed to get CNI pod on node " + nodes.Items[i].Name)
+		}
+
+		// change MTU
+		mtu := 1500 - (i+1)*5
+		cmd := fmt.Sprintf("ip link set %s mtu %d", underlay.ProviderInterface, mtu)
+		if _, _, err = f.ExecToPodThroughAPI(cmd, "cni-server", cniPod.Name, cniPod.Namespace, nil); err != nil {
+			Fail(fmt.Sprintf("failed to set MTU of %s on node %s: %v", underlay.ProviderInterface, nodes.Items[i].Name, err))
+		}
+		underlay.SetNodeMTU(nodes.Items[i].Name, mtu)
+	}
+
+	ns := corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   underlay.Namespace,
+			Labels: map[string]string{"e2e": "true"},
+		},
+	}
+	if _, err = f.KubeClientSet.CoreV1().Namespaces().Create(context.Background(), &ns, metav1.CreateOptions{}); err != nil {
+		Fail(err.Error())
+	}
+
+	// create provider network
+	pn := kubeovn.ProviderNetwork{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   underlay.ProviderNetwork,
+			Labels: map[string]string{"e2e": "true"},
+		},
+		Spec: kubeovn.ProviderNetworkSpec{
+			DefaultInterface: underlay.ProviderInterface,
+		},
+	}
+	if _, err = f.OvnClientSet.KubeovnV1().ProviderNetworks().Create(context.Background(), &pn, metav1.CreateOptions{}); err != nil {
+		Fail("failed to create provider network: " + err.Error())
+	}
+	if err = f.WaitProviderNetworkReady(pn.Name); err != nil {
+		Fail("provider network failed: " + err.Error())
+	}
+
+	// create vlan
+	vlan := kubeovn.Vlan{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   underlay.Vlan,
+			Labels: map[string]string{"e2e": "true"},
+		},
+		Spec: kubeovn.VlanSpec{
+			ID:       0,
+			Provider: pn.Name,
+		},
+	}
+	if _, err = f.OvnClientSet.KubeovnV1().Vlans().Create(context.Background(), &vlan, metav1.CreateOptions{}); err != nil {
+		Fail("failed to create vlan: " + err.Error())
+	}
+	if err = f.WaitProviderNetworkReady(pn.Name); err != nil {
+		Fail("provider network failed: " + err.Error())
+	}
+
+	// create subnet
+	subnet := kubeovn.Subnet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   underlay.Subnet,
+			Labels: map[string]string{"e2e": "true"},
+		},
+		Spec: kubeovn.SubnetSpec{
+			CIDRBlock:       underlayCIDR,
+			Gateway:         underlayGateway,
+			ExcludeIps:      underlayNodeIPs,
+			Vlan:            vlan.Name,
+			UnderlayGateway: true,
+			Namespaces:      []string{underlay.Namespace},
+		},
+	}
+	if _, err = f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), &subnet, metav1.CreateOptions{}); err != nil {
+		Fail("failed to create subnet: " + err.Error())
+	}
+	if err = f.WaitSubnetReady(subnet.Name); err != nil {
+		Fail("subnet failed: " + err.Error())
+	}
+
 	return nil
 }, func(data []byte) {})
