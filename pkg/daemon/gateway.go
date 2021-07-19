@@ -75,7 +75,7 @@ func (c *Controller) setIPSet() error {
 		if c.ipset[protocol] == nil {
 			continue
 		}
-		subnets, err := c.getSubnetsCIDR(protocol)
+		subnets, err := c.getOverlaySubnetsCIDR(protocol)
 		if err != nil {
 			klog.Errorf("get subnets failed, %+v", err)
 			return err
@@ -657,7 +657,8 @@ func (c *Controller) getSubnetsNeedNAT(protocol string) ([]string, error) {
 			subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType &&
 			util.GatewayContains(subnet.Spec.GatewayNode, c.config.NodeName) &&
 			(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) &&
-			subnet.Spec.NatOutgoing {
+			subnet.Spec.NatOutgoing &&
+			subnet.Spec.Vlan == "" {
 			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
 			subnetsNeedNat = append(subnetsNeedNat, cidrBlock)
 		}
@@ -679,7 +680,8 @@ func (c *Controller) getSubnetsNeedPR(protocol string) (map[policyRouteMeta]stri
 			subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType &&
 			util.GatewayContains(subnet.Spec.GatewayNode, c.config.NodeName) &&
 			(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) &&
-			subnet.Spec.ExternalEgressGateway != "" {
+			subnet.Spec.ExternalEgressGateway != "" &&
+			subnet.Spec.Vlan == "" {
 			meta := policyRouteMeta{
 				priority: subnet.Spec.PolicyRoutingPriority,
 				tableID:  subnet.Spec.PolicyRoutingTableID,
@@ -704,7 +706,7 @@ func (c *Controller) getSubnetsNeedPR(protocol string) (map[policyRouteMeta]stri
 	return subnetsNeedPR, nil
 }
 
-func (c *Controller) getSubnetsCIDR(protocol string) ([]string, error) {
+func (c *Controller) getOverlaySubnetsCIDR(protocol string) ([]string, error) {
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Error("failed to list subnets")
@@ -721,7 +723,7 @@ func (c *Controller) getSubnetsCIDR(protocol string) ([]string, error) {
 		}
 	}
 	for _, subnet := range subnets {
-		if subnet.Spec.Vpc == util.DefaultVpc {
+		if subnet.Spec.Vpc == util.DefaultVpc && subnet.Spec.Vlan == "" {
 			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
 			ret = append(ret, cidrBlock)
 		}
