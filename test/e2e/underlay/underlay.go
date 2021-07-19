@@ -517,6 +517,102 @@ var _ = Describe("[Underlay]", func() {
 					}
 				})
 			})
+
+			Context("[Overlay-Underlay]", func() {
+				overlayNamespace := "default"
+
+				BeforeEach(func() {
+					err := f.KubeClientSet.CoreV1().Pods(Namespace).Delete(context.Background(), f.GetName(), metav1.DeleteOptions{})
+					if err != nil && !k8serrors.IsNotFound(err) {
+						klog.Fatalf("failed to delete pod %s/%s: %v", Namespace, f.GetName(), err)
+					}
+					err = f.KubeClientSet.CoreV1().Pods(overlayNamespace).Delete(context.Background(), f.GetName(), metav1.DeleteOptions{})
+					if err != nil && !k8serrors.IsNotFound(err) {
+						klog.Fatalf("failed to delete pod %s/%s: %v", overlayNamespace, f.GetName(), err)
+					}
+				})
+				AfterEach(func() {
+					err := f.KubeClientSet.CoreV1().Pods(Namespace).Delete(context.Background(), f.GetName(), metav1.DeleteOptions{})
+					if err != nil && !k8serrors.IsNotFound(err) {
+						klog.Fatalf("failed to delete pod %s/%s: %v", Namespace, f.GetName(), err)
+					}
+					err = f.KubeClientSet.CoreV1().Pods(overlayNamespace).Delete(context.Background(), f.GetName(), metav1.DeleteOptions{})
+					if err != nil && !k8serrors.IsNotFound(err) {
+						klog.Fatalf("failed to delete pod %s/%s: %v", overlayNamespace, f.GetName(), err)
+					}
+				})
+
+				It("o2u", func() {
+					By("create underlay pod")
+					var autoMount bool
+					upod := &corev1.Pod{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      f.GetName(),
+							Namespace: Namespace,
+							Labels:    map[string]string{"e2e": "true"},
+						},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name:            f.GetName(),
+									Image:           testImage,
+									ImagePullPolicy: corev1.PullIfNotPresent,
+								},
+							},
+							AutomountServiceAccountToken: &autoMount,
+						},
+					}
+					_, err := f.KubeClientSet.CoreV1().Pods(upod.Namespace).Create(context.Background(), upod, metav1.CreateOptions{})
+					Expect(err).NotTo(HaveOccurred())
+					upod, err = f.WaitPodReady(upod.Name, upod.Namespace)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(upod.Spec.NodeName).NotTo(BeEmpty())
+
+					By("create overlay pod")
+					opod := &corev1.Pod{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      f.GetName(),
+							Namespace: overlayNamespace,
+							Labels:    map[string]string{"e2e": "true"},
+						},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name:            f.GetName(),
+									Image:           testImage,
+									ImagePullPolicy: corev1.PullIfNotPresent,
+								},
+							},
+							AutomountServiceAccountToken: &autoMount,
+						},
+					}
+					_, err = f.KubeClientSet.CoreV1().Pods(opod.Namespace).Create(context.Background(), opod, metav1.CreateOptions{})
+					Expect(err).NotTo(HaveOccurred())
+					opod, err = f.WaitPodReady(opod.Name, upod.Namespace)
+					Expect(err).NotTo(HaveOccurred())
+
+					By("get underlay pod's netns")
+					cniPod := cniPods[upod.Spec.NodeName]
+					cmd := fmt.Sprintf("ovs-vsctl --no-heading --columns=external_ids find interface external-ids:pod_name=%s external-ids:pod_namespace=%s", upod.Name, upod.Namespace)
+					stdout, _, err := f.ExecToPodThroughAPI(cmd, "cni-server", cniPod.Name, cniPod.Namespace, nil)
+					Expect(err).NotTo(HaveOccurred())
+					var netns string
+					for _, field := range strings.Fields(stdout) {
+						if strings.HasPrefix(field, "pod_netns=") {
+							netns = strings.TrimPrefix(field, "pod_netns=")
+							netns = netns[:len(netns)-1]
+							break
+						}
+					}
+					Expect(netns).NotTo(BeEmpty())
+
+					By("ping overlay pod")
+					cmd = fmt.Sprintf("nsenter --net=%s ping -c1 -W1 %s", filepath.Join("/var/run/netns", netns), opod.Status.PodIP)
+					stdout, _, err = f.ExecToPodThroughAPI(cmd, "cni-server", cniPod.Name, cniPod.Namespace, nil)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(stdout).To(ContainSubstring(" 0% packet loss"))
+				})
+			})
 		})
 	})
 
