@@ -387,6 +387,12 @@ func (c *Controller) setIptables() error {
 	}
 
 	hostIP := util.GetNodeInternalIP(*node)
+	subnetNatips, err := c.getEgressNatIpByNode(c.config.NodeName)
+	if err != nil {
+		klog.Errorf("failed to get centralized subnets nat ips on node %s, %v", c.config.NodeName, err)
+		return err
+	}
+	klog.V(3).Infof("centralized subnets nat ips %v", subnetNatips)
 
 	var (
 		v4Rules = []util.IPTableRule{
@@ -434,12 +440,36 @@ func (c *Controller) setIptables() error {
 		if c.iptable[protocol] == nil {
 			continue
 		}
+		// delete unused iptable rule when nat gw with designative ip has been changed in centralize subnet
+		if err = c.deleteUnusedIptablesRule(protocol, "nat", "POSTROUTING", subnetNatips); err != nil {
+			klog.Errorf("failed to delete iptable rule on node %s, maybe can delete manually, %v", c.config.NodeName, err)
+			return err
+		}
+
+		var matchset string
 		var iptableRules []util.IPTableRule
 		if protocol == kubeovnv1.ProtocolIPv4 {
 			iptableRules = v4Rules
+			matchset = "ovn40subnets"
 		} else {
 			iptableRules = v6Rules
+			matchset = "ovn60subnets"
 		}
+		// add iptable rule for nat gw with designative ip in centralize subnet
+		for cidr, natip := range subnetNatips {
+			if util.CheckProtocol(cidr) != protocol {
+				continue
+			}
+
+			ruleval := fmt.Sprintf("-s %v -m set ! --match-set %s dst -j SNAT --to-source %v", cidr, matchset, natip)
+			rule := util.IPTableRule{
+				Table: "nat",
+				Chain: "POSTROUTING",
+				Rule:  strings.Split(ruleval, " "),
+			}
+			iptableRules = append(iptableRules, rule)
+		}
+
 		iptableRules[0], iptableRules[1], iptableRules[3], iptableRules[4] =
 			iptableRules[4], iptableRules[3], iptableRules[1], iptableRules[0]
 		for _, iptRule := range iptableRules {
@@ -460,6 +490,7 @@ func (c *Controller) setIptables() error {
 					return err
 				}
 			}
+			klog.V(3).Infof("iptables rules %v, exists %v", strings.Join(iptRule.Rule, " "), exists)
 		}
 	}
 	return nil
@@ -659,6 +690,18 @@ func (c *Controller) getSubnetsNeedNAT(protocol string) ([]string, error) {
 			(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) &&
 			subnet.Spec.NatOutgoing &&
 			subnet.Spec.Vlan == "" {
+			// centralized subnet with gatewayNode assigned designative ip processed seperately
+			found := false
+			for _, gw := range strings.Split(subnet.Spec.GatewayNode, ",") {
+				if strings.Contains(gw, ":") && util.GatewayContains(gw, c.config.NodeName) {
+					found = true
+					break
+				}
+			}
+			if found {
+				continue
+			}
+
 			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
 			subnetsNeedNat = append(subnetsNeedNat, cidrBlock)
 		}
@@ -810,4 +853,96 @@ func getCidrByProtocol(cidr, protocol string) string {
 		cidrStr = cidr
 	}
 	return cidrStr
+}
+
+func (c *Controller) getEgressNatIpByNode(nodeName string) (map[string]string, error) {
+	var subnetsNatIp = make(map[string]string)
+	subnetList, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets %v", err)
+		return subnetsNatIp, err
+	}
+
+	for _, subnet := range subnetList {
+		if subnet.Spec.UnderlayGateway || subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType || subnet.Spec.GatewayNode == "" || !util.GatewayContains(subnet.Spec.GatewayNode, nodeName) {
+			continue
+		}
+
+		// only check format like 'kube-ovn-worker:172.18.0.2, kube-ovn-control-plane:172.18.0.3'
+		for _, cidr := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+			for _, gw := range strings.Split(subnet.Spec.GatewayNode, ",") {
+				if strings.Contains(gw, ":") && util.GatewayContains(gw, nodeName) && util.CheckProtocol(cidr) == util.CheckProtocol(strings.Split(gw, ":")[1]) {
+					subnetsNatIp[cidr] = strings.TrimSpace(strings.Split(gw, ":")[1])
+					break
+				}
+			}
+		}
+	}
+	return subnetsNatIp, nil
+}
+
+func (c *Controller) deleteUnusedIptablesRule(protocol, table, chain string, subnetsNatIps map[string]string) error {
+	rules, err := c.iptable[protocol].List(table, chain)
+	if err != nil {
+		klog.Errorf("failed to list iptable rules in table %v chain %v, %+v", table, chain, err)
+		return err
+	}
+
+	for _, rule := range rules {
+		if !strings.Contains(rule, "--to-source") {
+			continue
+		}
+		// "-A POSTROUTING -s 100.168.10.0/24 -m set ! --match-set ovn40subnets dst -j SNAT --to-source 172.17.0.3"
+		rule = strings.TrimPrefix(rule, "-A POSTROUTING ")
+		ruleval := strings.Split(rule, " ")
+		dstNatIp := ruleval[len(ruleval)-1]
+
+		found := false
+		for cidr, natip := range subnetsNatIps {
+			if util.CheckProtocol(cidr) != protocol {
+				continue
+			}
+
+			if dstNatIp == natip {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			num, err := getIptableRuleNum(table, chain, rule, dstNatIp)
+			if err != nil {
+				klog.Errorf("failed to get iptable rule num when delete rule %v, please check manually", rule)
+				continue
+			}
+
+			klog.Infof("iptable rule %v %v %s, num %v should be deleted because nat gw has been changed", table, chain, rule, num)
+			if err := c.iptable[protocol].Delete(table, chain, num); err != nil {
+				klog.Errorf("delete iptable rule %s failed, %+v", rule, err)
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func getIptableRuleNum(table, chain, rule, dstNatIp string) (string, error) {
+	var num string
+	var err error
+
+	cmdstr := fmt.Sprintf("iptables -t %v -L %v --line-numbers", table, chain)
+	cmd := exec.Command("sh", "-c", cmdstr)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return num, fmt.Errorf("Failed to get iptable rule num: %v", err)
+	}
+
+	for _, line := range strings.Split(string(output), "\n") {
+		if strings.Contains(line, dstNatIp) {
+			num = strings.Split(line, " ")[0]
+			klog.Infof("get iptable rule %v num %v", rule, num)
+			break
+		}
+	}
+	return num, nil
 }
