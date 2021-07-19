@@ -821,7 +821,7 @@ func (c *Controller) reconcileNamespaces(subnet *kubeovnv1.Subnet) error {
 		}
 		if changed {
 			sub.Spec.Namespaces = reservedNamespaces
-			subnet, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), sub, metav1.UpdateOptions{})
+			_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), sub, metav1.UpdateOptions{})
 			if err != nil {
 				klog.Errorf("failed to unbind namespace from subnet %s, %v", sub.Name, err)
 				return err
