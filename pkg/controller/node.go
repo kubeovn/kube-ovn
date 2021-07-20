@@ -518,16 +518,22 @@ func (c *Controller) checkGatewayReady() error {
 		}
 
 		for _, node := range nodes {
-			if util.GatewayContains(subnet.Spec.GatewayNode, node.Name) {
-				ipStr := node.Annotations[util.IpAddressAnnotation]
-				for _, ip := range strings.Split(ipStr, ",") {
-					var cidrBlock string
-					for _, cidrBlock = range strings.Split(subnet.Spec.CIDRBlock, ",") {
-						if util.CheckProtocol(cidrBlock) != util.CheckProtocol(ip) {
-							continue
-						}
+			ipStr := node.Annotations[util.IpAddressAnnotation]
+			for _, ip := range strings.Split(ipStr, ",") {
+				var cidrBlock string
+				for _, cidrBlock = range strings.Split(subnet.Spec.CIDRBlock, ",") {
+					if util.CheckProtocol(cidrBlock) != util.CheckProtocol(ip) {
+						continue
 					}
+				}
 
+				exist, err := c.checkNodeEcmpRouteExist(ip, cidrBlock)
+				if err != nil {
+					klog.Errorf("get ecmp static route for subnet %v, error %v", subnet.Name, err)
+					break
+				}
+
+				if util.GatewayContains(subnet.Spec.GatewayNode, node.Name) {
 					pinger, err := goping.NewPinger(ip)
 					if err != nil {
 						return fmt.Errorf("failed to init pinger, %v", err)
@@ -546,11 +552,6 @@ func (c *Controller) checkGatewayReady() error {
 					}
 					pinger.Run()
 
-					exist, err := c.checkNodeEcmpRouteExist(ip, cidrBlock)
-					if err != nil {
-						klog.Errorf("get ecmp static route for subnet %v, error %v", subnet.Name, err)
-						break
-					}
 					if !nodeReady(node) {
 						success = false
 					}
@@ -570,6 +571,14 @@ func (c *Controller) checkGatewayReady() error {
 								klog.Errorf("failed to add static route for node %s, %v", node.Name, err)
 								return err
 							}
+						}
+					}
+				} else {
+					if exist {
+						klog.Infof("subnet %v gatewayNode does not contains node %v, should delete ecmp route for node ip %s", subnet.Name, node.Name, ip)
+						if err := c.ovnClient.DeleteMatchedStaticRoute(cidrBlock, ip, c.config.ClusterRouter); err != nil {
+							klog.Errorf("failed to delete static route %s for node %s, %v", ip, node.Name, err)
+							return err
 						}
 					}
 				}
