@@ -28,7 +28,10 @@ do
   fi
 done
 
+# If nftables not exist do not exit
+set +e
 iptables -P FORWARD ACCEPT
 iptables-nft -P FORWARD ACCEPT
+set -e
 
 ./kube-ovn-daemon --ovs-socket=${OVS_SOCK} --bind-socket=${CNI_SOCK} "$@"
