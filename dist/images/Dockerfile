@@ -44,7 +44,7 @@ RUN mkdir /packages/ && \
 FROM ubuntu:20.04
 ARG RPM_ARCH
 
-RUN apt update && apt install ca-certificates python3 hostname libunwind8 netbase \
+RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
         ethtool iproute2 ncat libunbound-dev procps libatomic1 kmod \
         tcpdump ipset curl uuid-runtime openssl inetutils-ping arping \
         logrotate -y --no-install-recommends && \
