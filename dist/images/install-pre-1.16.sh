@@ -515,6 +515,8 @@ spec:
               type: string
             underlayGateway:
               type: boolean
+            disableGatewayCheck:
+              type: boolean
             disableInterConnection:
               type: boolean
 ---

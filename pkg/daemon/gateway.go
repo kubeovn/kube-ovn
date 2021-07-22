@@ -168,26 +168,20 @@ func (c *Controller) setPolicyRouting() error {
 	return nil
 }
 
-func (c *Controller) addEgressConfig(subnet, ip string) error {
-	podSubnet, err := c.subnetsLister.Get(subnet)
-	if err != nil {
-		klog.Errorf("get subnet %s failed, %+v", subnet, err)
-		return err
-	}
-
-	if podSubnet.Spec.GatewayType != kubeovnv1.GWDistributedType ||
-		podSubnet.Spec.Vpc != util.DefaultVpc {
+func (c *Controller) addEgressConfig(subnet *kubeovnv1.Subnet, ip string) error {
+	if subnet.Spec.GatewayType != kubeovnv1.GWDistributedType ||
+		subnet.Spec.Vpc != util.DefaultVpc {
 		return nil
 	}
 
 	podIPs := strings.Split(ip, ",")
 	protocol := util.CheckProtocol(ip)
-	if podSubnet.Spec.NatOutgoing {
+	if subnet.Spec.NatOutgoing {
 		c.addIPSetMembers(LocalPodSet, protocol, podIPs)
 		return nil
 	}
-	if podSubnet.Spec.ExternalEgressGateway != "" {
-		return c.addPodPolicyRouting(protocol, podSubnet.Spec.ExternalEgressGateway, podSubnet.Spec.PolicyRoutingPriority, podSubnet.Spec.PolicyRoutingTableID, podIPs)
+	if subnet.Spec.ExternalEgressGateway != "" {
+		return c.addPodPolicyRouting(protocol, subnet.Spec.ExternalEgressGateway, subnet.Spec.PolicyRoutingPriority, subnet.Spec.PolicyRoutingTableID, podIPs)
 	}
 
 	return nil

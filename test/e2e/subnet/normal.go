@@ -577,4 +577,74 @@ var _ = Describe("[Subnet]", func() {
 			}
 		})
 	})
+
+	Describe("Disable Gateway Check", func() {
+		It("disable gateway check", func() {
+			name := f.GetName()
+
+			By("create namespace")
+			namespace := &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   name,
+					Labels: map[string]string{"e2e": "true"},
+				},
+			}
+			_, err := f.KubeClientSet.CoreV1().Namespaces().Create(context.Background(), namespace, metav1.CreateOptions{})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("create subnet")
+			subnet := &kubeovn.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   name,
+					Labels: map[string]string{"e2e": "true"},
+				},
+				Spec: kubeovn.SubnetSpec{
+					CIDRBlock:           "11.17.0.0/16",
+					Namespaces:          []string{namespace.Name},
+					UnderlayGateway:     true,
+					DisableGatewayCheck: true,
+				},
+			}
+			_, err = f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), subnet, metav1.CreateOptions{})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("validate subnet")
+			err = f.WaitSubnetReady(subnet.Name)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("create pod")
+			pod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: namespace.Name,
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:            name,
+							Image:           "kubeovn/pause:3.2",
+							ImagePullPolicy: corev1.PullIfNotPresent,
+						},
+					},
+				},
+			}
+			_, err = f.KubeClientSet.CoreV1().Pods(pod.Namespace).Create(context.Background(), pod, metav1.CreateOptions{})
+			Expect(err).NotTo(HaveOccurred())
+
+			_, err = f.WaitPodReady(pod.Name, pod.Namespace)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("delete pod")
+			err = f.KubeClientSet.CoreV1().Pods(pod.Namespace).Delete(context.Background(), pod.Name, metav1.DeleteOptions{})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("delete subnet")
+			err = f.OvnClientSet.KubeovnV1().Subnets().Delete(context.Background(), subnet.Name, metav1.DeleteOptions{})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("delete namespace")
+			err = f.KubeClientSet.CoreV1().Namespaces().Delete(context.Background(), namespace.Name, metav1.DeleteOptions{})
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
 })
