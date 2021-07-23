@@ -137,6 +137,16 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	}
 
 	if strings.HasSuffix(podRequest.Provider, util.OvnProvider) && subnet != "" {
+		podSubnet, err := csh.Controller.subnetsLister.Get(subnet)
+		if err != nil {
+			errMsg := fmt.Errorf("failed to get subnet %s: %v", subnet, err)
+			klog.Error(errMsg)
+			if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
+				klog.Errorf("failed to write response: %v", err)
+			}
+			return
+		}
+
 		var mtu int
 		if providerNetwork != "" {
 			node, err := csh.Controller.nodesLister.Get(csh.Config.NodeName)
@@ -167,10 +177,10 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		nsArray := strings.Split(netns, "/")
 		podNetns := nsArray[len(nsArray)-1]
 		if nicType == util.InternalType {
-			podNicName, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, ingress, egress, vlanID, podRequest.DeviceID, nicType, podNetns)
+			podNicName, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, ingress, egress, vlanID, podRequest.DeviceID, nicType, podNetns, !podSubnet.Spec.DisableGatewayCheck)
 		} else {
 			podNicName = ifName
-			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, ingress, egress, vlanID, podRequest.DeviceID, nicType, podNetns)
+			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, ingress, egress, vlanID, podRequest.DeviceID, nicType, podNetns, !podSubnet.Spec.DisableGatewayCheck)
 		}
 		if err != nil {
 			errMsg := fmt.Errorf("configure nic failed %v", err)
@@ -181,7 +191,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			return
 		}
 
-		if err = csh.Controller.addEgressConfig(subnet, ip); err != nil {
+		if err = csh.Controller.addEgressConfig(podSubnet, ip); err != nil {
 			errMsg := fmt.Errorf("failed to add egress configuration: %v", err)
 			klog.Error(errMsg)
 			if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {

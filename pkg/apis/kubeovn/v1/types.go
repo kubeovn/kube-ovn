@@ -98,6 +98,7 @@ type SubnetSpec struct {
 	Vlan            string `json:"vlan,omitempty"`
 	UnderlayGateway bool   `json:"underlayGateway"`
 
+	DisableGatewayCheck    bool `json:"disableGatewayCheck"`
 	DisableInterConnection bool `json:"disableInterConnection"`
 }
 
