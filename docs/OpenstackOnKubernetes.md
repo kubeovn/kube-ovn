@@ -103,37 +103,18 @@ Now Kube-OVN supports adding new containers to the Openstack virtual network by 
 
 The following steps describe a way to add a container subnet to the Openstack network.
 
-1. add a namespace and the corresponding subnet. 
-
-   NOTICE that *spec.vpc* need to be specified as the name of the router to be connected to.
+1. Add a namespace. 
 
 ```yaml
 apiVersion: v1
 kind: Namespace
 metadata:
   name: net2
----
-kind: Subnet
-apiVersion: kubeovn.io/v1
-metadata:
-  name: net2
-spec:
-  vpc: neutron-22040ed5-0598-4f77-bffd-e7fd4db47e93
-  namespace:
-  - net2
-  cidrBlock: 12.0.1.0/24
-  default: false
-  gatewayType: distributed
-  natOutgoing: false
-  private: false
-  protocol: IPv4
-  provider: ovn
-  underlayGateway: false
 ```
 
-2. add the subnet to the VPC
+2. Add the namespaces to the VPC.
 
-​	NOTICE that  subnet name should be added in  *spec.namespace*.
+   NOTICE that subnet name should be added in *spec.namespace*.
 
 ```yaml
 apiVersion: kubeovn.io/v1
@@ -151,7 +132,30 @@ spec:
   - net2
 ```
 
-3. add pod and test.
+3. Add the corresponding subnet.
+
+   NOTICE that *spec.vpc* need to be specified as the name of the router to be connected to.
+
+```yaml
+kind: Subnet
+apiVersion: kubeovn.io/v1
+metadata:
+  name: net2
+spec:
+  vpc: neutron-22040ed5-0598-4f77-bffd-e7fd4db47e93
+  namespaces:
+  - net2
+  cidrBlock: 12.0.1.0/24
+  default: false
+  gatewayType: distributed
+  natOutgoing: false
+  private: false
+  protocol: IPv4
+  provider: ovn
+  underlayGateway: false
+```
+
+4. Add pod and test.
 
 ```yaml
 apiVersion: v1
@@ -222,7 +226,16 @@ router 63d6c4d8-4aa3-41e7-8128-b8917aa6c386 (neutron-22040ed5-0598-4f77-bffd-e7f
 
 2. Check *kube-ovn-controller* to ensure there is no error.
 
-3. Ping VMs in Kubernetes pods.
+3. Check CRD *vpc* to ensure subnets are attached.
+
+```shell
+# kubectl get vpc
+NAME                                           STANDBY   SUBNETS
+neutron-22040ed5-0598-4f77-bffd-e7fd4db47e93   true      ["net2"]
+ovn-cluster                                    true      ["join","ovn-default"]
+```
+
+4. Ping VMs in Kubernetes pods.
 
 ```shell
 # kubectl -n net2 get pods
