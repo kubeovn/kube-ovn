@@ -11,9 +11,12 @@ import (
 )
 
 func (c *Controller) syncExternalVpc() {
-	logicalRouters := c.getRouterStatus()
+	logicalRouters, err := c.getRouterStatus()
 	klog.V(4).Infof("sync over with %s", logicalRouters)
-
+	if err != nil {
+		klog.Error("list lr failed", err)
+		return
+	}
 	vpcs, err := c.vpcsLister.List(labels.SelectorFromSet(labels.Set{util.VpcExternalLabel: "true"}))
 	if err != nil {
 		klog.Errorf("failed to list vpc, %v", err)
@@ -76,16 +79,18 @@ func (c *Controller) syncExternalVpc() {
 	}
 }
 
-func (c *Controller) getRouterStatus() (logicalRouters map[string]util.LogicalRouter) {
+func (c *Controller) getRouterStatus() (logicalRouters map[string]util.LogicalRouter, err error) {
 	logicalRouters = make(map[string]util.LogicalRouter)
 	externalOvnRouters, err := c.ovnClient.CustomFindEntity("logical_router", []string{"name", "port"}, fmt.Sprintf("external_ids{!=}vendor=%s", util.CniTypeName))
 	if err != nil {
 		klog.Errorf("failed to list external logical router, %v", err)
-		return
+		return logicalRouters, err
 	}
+	// default ovn-default lr should exists unless list failed
 	if len(externalOvnRouters) == 0 {
-		klog.V(4).Info("sync over, no external vpc")
-		return
+		errMsg := fmt.Errorf("list lr failed with no lr exists")
+		klog.Error(errMsg)
+		return logicalRouters, errMsg
 	}
 
 	for _, aExternalRouter := range externalOvnRouters {
@@ -130,5 +135,5 @@ func (c *Controller) getRouterStatus() (logicalRouters map[string]util.LogicalRo
 		}
 		logicalRouters[routerName] = tmpRouter
 	}
-	return
+	return logicalRouters, nil
 }
