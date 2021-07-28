@@ -52,12 +52,12 @@ tcpdump(){
       exit 1
     fi
     podNicType=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/pod_nic_type})
-    podNetNs=$(kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading get interface "$nicName" external-ids:pod_netns | tr -d '\r')
+        podNetNs=$(kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading get interface "$nicName" external-ids:pod_netns | tr -d '\r' | sed -e 's/^"//' -e 's/"$//')
     set -x
     if [ "$podNicType" = "internal-port" ]; then
-      kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- ip netns exec "$podNetNs" tcpdump -nn -i "$nicName" "$@"
+      kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- nsenter --net="$podNetNs" tcpdump -nn -i "$nicName" "$@"
     else
-      kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- ip netns exec "$podNetNs" tcpdump -nn -i eth0 "$@"
+      kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- nsenter --net="$podNetNs" tcpdump -nn -i eth0 "$@"
     fi
   fi
 }
@@ -104,14 +104,14 @@ trace(){
     fi
 
     gateway=$(kubectl get subnet "$ls" -o jsonpath={.spec.gateway})
-    podNetNs=$(kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading get interface "$nicName" external-ids:pod_netns | tr -d '\r')
+    podNetNs=$(kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading get interface "$nicName" external-ids:pod_netns | tr -d '\r' | sed -e 's/^"//' -e 's/"$//')
 
     podNicType=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/pod_nic_type})
     if [ "$podNicType" != "internal-port" ]; then
       nicName="eth0"
     fi
 
-    output=$(kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- nsenter --net="/var/run/netns/$podNetNs" arping -c1 -i "$nicName" "$gateway")
+    output=$(kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- nsenter --net="$podNetNs" arping -c1 -i "$nicName" "$gateway")
     if [ $? -ne 0 ]; then
       echo "failed to run 'arping -c1 -i $nicName $gateway' in Pod netns"
       exit 1
