@@ -329,7 +329,6 @@ var _ = Describe("[Subnet]", func() {
 			By("validate subnet")
 			err = f.WaitSubnetReady(name)
 			Expect(err).NotTo(HaveOccurred())
-			time.Sleep(5 * time.Second)
 
 			subnet, err = f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), name, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
@@ -372,6 +371,7 @@ var _ = Describe("[Subnet]", func() {
 			By("delete subnet")
 			err = f.OvnClientSet.KubeovnV1().Subnets().Delete(context.Background(), name, metav1.DeleteOptions{})
 			Expect(err).NotTo(HaveOccurred())
+			time.Sleep(5 * time.Second)
 
 			for _, pod := range ovsPods.Items {
 				if nodeIPs[pod.Status.HostIP] == "" {
@@ -462,7 +462,6 @@ var _ = Describe("[Subnet]", func() {
 			By("validate subnet")
 			err = f.WaitSubnetReady(name)
 			Expect(err).NotTo(HaveOccurred())
-			time.Sleep(5 * time.Second)
 
 			subnet, err := f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), name, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
@@ -470,6 +469,7 @@ var _ = Describe("[Subnet]", func() {
 			Expect(subnet.Spec.ExternalEgressGateway).To(Equal(egw))
 			Expect(subnet.Spec.PolicyRoutingPriority).To(Equal(priority))
 			Expect(subnet.Spec.PolicyRoutingTableID).To(Equal(tableID))
+			time.Sleep(5 * time.Second)
 
 			pod := &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
@@ -565,6 +565,7 @@ var _ = Describe("[Subnet]", func() {
 			By("delete subnet")
 			err = f.OvnClientSet.KubeovnV1().Subnets().Delete(context.Background(), name, metav1.DeleteOptions{})
 			Expect(err).NotTo(HaveOccurred())
+			time.Sleep(5 * time.Second)
 
 			for _, ovsPod := range ovsPods.Items {
 				if ovsPod.Status.HostIP != selectedNode.Status.Addresses[0].Address {
