@@ -383,18 +383,35 @@ func ovn0Check(gw string) ([]byte, error) {
 	}
 }
 
-func configureMirror(portName string, mtu int) error {
+func configureGlobalMirror(portName string, mtu int) error {
 	raw, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", portName, "--",
 		"set", "interface", portName, "type=internal", "--",
 		"clear", "bridge", "br-int", "mirrors", "--",
 		"--id=@mirror0", "get", "port", portName, "--",
-		"--id=@m", "create", "mirror", "name=m0", "select_all=true", "output_port=@mirror0", "--",
+		"--id=@m", "create", "mirror", fmt.Sprintf("name=%s", util.MirrorDefaultName), "select_all=true", "output_port=@mirror0", "--",
 		"add", "bridge", "br-int", "mirrors", "@m")
 	if err != nil {
 		klog.Errorf("failed to configure mirror nic %s %q", portName, raw)
 		return fmt.Errorf(raw)
 	}
+	return configureMirrorLink(portName, mtu)
+}
 
+func configureEmptyMirror(portName string, mtu int) error {
+	raw, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", portName, "--",
+		"set", "interface", portName, "type=internal", "--",
+		"clear", "bridge", "br-int", "mirrors", "--",
+		"--id=@mirror0", "get", "port", portName, "--",
+		"--id=@m", "create", "mirror", fmt.Sprintf("name=%s", util.MirrorDefaultName), "output_port=@mirror0", "--",
+		"add", "bridge", "br-int", "mirrors", "@m")
+	if err != nil {
+		klog.Errorf("failed to configure mirror nic %s %q", portName, raw)
+		return fmt.Errorf(raw)
+	}
+	return configureMirrorLink(portName, mtu)
+}
+
+func configureMirrorLink(portName string, mtu int) error {
 	mirrorLink, err := netlink.LinkByName(portName)
 	if err != nil {
 		return fmt.Errorf("can not find mirror nic %s %v", portName, err)
@@ -410,17 +427,6 @@ func configureMirror(portName string, mtu int) error {
 		}
 	}
 
-	return nil
-}
-
-func removeMirror(portName string) error {
-	raw, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", "br-int", portName, "--",
-		"clear", "bridge", "br-int", "mirrors", "--",
-		ovs.IfExists, "destroy", "mirror", "m0")
-	if err != nil {
-		klog.Errorf("failed to remove mirror config, %v, %q", err, raw)
-		return fmt.Errorf(raw)
-	}
 	return nil
 }
 

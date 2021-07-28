@@ -53,9 +53,9 @@ func InitNodeGateway(config *Configuration) error {
 
 func InitMirror(config *Configuration) error {
 	if config.EnableMirror {
-		return configureMirror(config.MirrorNic, config.MTU)
+		return configureGlobalMirror(config.MirrorNic, config.MTU)
 	}
-	return removeMirror(config.MirrorNic)
+	return configureEmptyMirror(config.MirrorNic, config.MTU)
 }
 
 func ovsInitProviderNetwork(provider, nic string) (int, error) {

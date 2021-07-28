@@ -191,6 +191,13 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			return
 		}
 
+		ifaceID := ovs.PodNameToPortName(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider)
+		err = ovs.ConfigInterfaceMirror(csh.Config.EnableMirror, pod.Annotations[util.MirrorControlAnnotation], ifaceID)
+		if err != nil {
+			klog.Errorf("failed mirror to mirror0, %v", err)
+			return
+		}
+
 		if err = csh.Controller.addEgressConfig(podSubnet, ip); err != nil {
 			errMsg := fmt.Errorf("failed to add egress configuration: %v", err)
 			klog.Error(errMsg)
