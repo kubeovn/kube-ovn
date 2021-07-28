@@ -22,9 +22,10 @@ func (c *Controller) enqueueAddNamespace(obj interface{}) {
 	if !c.isLeader() {
 		return
 	}
-	ns := obj.(*v1.Namespace)
-	for _, np := range c.namespaceMatchNetworkPolicies(ns) {
-		c.updateNpQueue.Add(np)
+	if c.config.EnableNP {
+		for _, np := range c.namespaceMatchNetworkPolicies(obj.(*v1.Namespace)) {
+			c.updateNpQueue.Add(np)
+		}
 	}
 	var key string
 	var err error
@@ -40,9 +41,10 @@ func (c *Controller) enqueueDeleteNamespace(obj interface{}) {
 		return
 	}
 
-	ns := obj.(*v1.Namespace)
-	for _, np := range c.namespaceMatchNetworkPolicies(ns) {
-		c.updateNpQueue.Add(np)
+	if c.config.EnableNP {
+		for _, np := range c.namespaceMatchNetworkPolicies(obj.(*v1.Namespace)) {
+			c.updateNpQueue.Add(np)
+		}
 	}
 }
 
@@ -56,7 +58,7 @@ func (c *Controller) enqueueUpdateNamespace(old, new interface{}) {
 		return
 	}
 
-	if !reflect.DeepEqual(oldNs.Labels, newNs.Labels) {
+	if c.config.EnableNP && !reflect.DeepEqual(oldNs.Labels, newNs.Labels) {
 		oldNp := c.namespaceMatchNetworkPolicies(oldNs)
 		newNp := c.namespaceMatchNetworkPolicies(newNs)
 		for _, np := range util.DiffStringSlice(oldNp, newNp) {

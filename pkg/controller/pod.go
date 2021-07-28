@@ -64,7 +64,7 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 
 	p := obj.(*v1.Pod)
 	// TODO: we need to find a way to reduce duplicated np added to the queue
-	if p.Status.PodIP != "" {
+	if c.config.EnableNP && p.Status.PodIP != "" {
 		for _, np := range c.podMatchNetworkPolicies(p) {
 			c.updateNpQueue.Add(np)
 		}
@@ -117,8 +117,10 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 	}
 
 	p := obj.(*v1.Pod)
-	for _, np := range c.podMatchNetworkPolicies(p) {
-		c.updateNpQueue.Add(np)
+	if c.config.EnableNP {
+		for _, np := range c.podMatchNetworkPolicies(p) {
+			c.updateNpQueue.Add(np)
+		}
 	}
 
 	if p.Spec.HostNetwork {
@@ -147,17 +149,19 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		return
 	}
 
-	if !reflect.DeepEqual(oldPod.Labels, newPod.Labels) {
-		oldNp := c.podMatchNetworkPolicies(oldPod)
-		newNp := c.podMatchNetworkPolicies(newPod)
-		for _, np := range util.DiffStringSlice(oldNp, newNp) {
-			c.updateNpQueue.Add(np)
+	if c.config.EnableNP {
+		if !reflect.DeepEqual(oldPod.Labels, newPod.Labels) {
+			oldNp := c.podMatchNetworkPolicies(oldPod)
+			newNp := c.podMatchNetworkPolicies(newPod)
+			for _, np := range util.DiffStringSlice(oldNp, newNp) {
+				c.updateNpQueue.Add(np)
+			}
 		}
-	}
 
-	if oldPod.Status.PodIP != newPod.Status.PodIP {
-		for _, np := range c.podMatchNetworkPolicies(newPod) {
-			c.updateNpQueue.Add(np)
+		if oldPod.Status.PodIP != newPod.Status.PodIP {
+			for _, np := range c.podMatchNetworkPolicies(newPod) {
+				c.updateNpQueue.Add(np)
+			}
 		}
 	}
 

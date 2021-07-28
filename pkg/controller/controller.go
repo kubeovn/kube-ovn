@@ -152,7 +152,6 @@ func NewController(config *Configuration) *Controller {
 	nodeInformer := informerFactory.Core().V1().Nodes()
 	serviceInformer := informerFactory.Core().V1().Services()
 	endpointInformer := informerFactory.Core().V1().Endpoints()
-	npInformer := informerFactory.Networking().V1().NetworkPolicies()
 	configMapInformer := cmInformerFactory.Core().V1().ConfigMaps()
 
 	controller := &Controller{
@@ -225,11 +224,6 @@ func NewController(config *Configuration) *Controller {
 		endpointsSynced:     endpointInformer.Informer().HasSynced,
 		updateEndpointQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateEndpoint"),
 
-		npsLister:     npInformer.Lister(),
-		npsSynced:     npInformer.Informer().HasSynced,
-		updateNpQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateNp"),
-		deleteNpQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteNp"),
-
 		configMapsLister: configMapInformer.Lister(),
 		configMapsSynced: configMapInformer.Informer().HasSynced,
 
@@ -268,12 +262,6 @@ func NewController(config *Configuration) *Controller {
 		UpdateFunc: controller.enqueueUpdateEndpoint,
 	})
 
-	npInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueAddNp,
-		UpdateFunc: controller.enqueueUpdateNp,
-		DeleteFunc: controller.enqueueDeleteNp,
-	})
-
 	vpcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddVpc,
 		UpdateFunc: controller.enqueueUpdateVpc,
@@ -304,6 +292,19 @@ func NewController(config *Configuration) *Controller {
 		UpdateFunc: controller.enqueueUpdateVlan,
 	})
 
+	if config.EnableNP {
+		npInformer := informerFactory.Networking().V1().NetworkPolicies()
+		controller.npsLister = npInformer.Lister()
+		controller.npsSynced = npInformer.Informer().HasSynced
+		controller.updateNpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateNp")
+		controller.deleteNpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteNp")
+		npInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddNp,
+			UpdateFunc: controller.enqueueUpdateNp,
+			DeleteFunc: controller.enqueueDeleteNp,
+		})
+	}
+
 	return controller
 }
 
@@ -324,7 +325,15 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	c.kubeovnInformerFactory.Start(stopCh)
 
 	klog.Info("Waiting for informer caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.vpcNatGatewaySynced, c.vpcSynced, c.subnetSynced, c.ipSynced, c.vlanSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced, c.serviceSynced, c.endpointsSynced, c.npsSynced, c.configMapsSynced); !ok {
+	cacheSyncs := []cache.InformerSynced{
+		c.vpcNatGatewaySynced, c.vpcSynced, c.subnetSynced, c.ipSynced,
+		c.vlanSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced,
+		c.serviceSynced, c.endpointsSynced, c.configMapsSynced,
+	}
+	if c.config.EnableNP {
+		cacheSyncs = append(cacheSyncs, c.npsSynced)
+	}
+	if ok := cache.WaitForCacheSync(stopCh, cacheSyncs...); !ok {
 		klog.Fatalf("failed to wait for caches to sync")
 	}
 
@@ -384,9 +393,6 @@ func (c *Controller) shutdown() {
 	c.updateServiceQueue.ShutDown()
 	c.updateEndpointQueue.ShutDown()
 
-	c.updateNpQueue.ShutDown()
-	c.deleteNpQueue.ShutDown()
-
 	c.addVlanQueue.ShutDown()
 	c.delVlanQueue.ShutDown()
 	c.updateVlanQueue.ShutDown()
@@ -403,6 +409,11 @@ func (c *Controller) shutdown() {
 	c.updateVpcDnatQueue.ShutDown()
 	c.updateVpcSnatQueue.ShutDown()
 	c.updateVpcSubnetQueue.ShutDown()
+
+	if c.config.EnableNP {
+		c.updateNpQueue.ShutDown()
+		c.deleteNpQueue.ShutDown()
+	}
 }
 
 func (c *Controller) startWorkers(stopCh <-chan struct{}) {
@@ -484,8 +495,10 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 			go wait.Until(c.runUpdateEndpointWorker, time.Second, stopCh)
 		}
 
-		go wait.Until(c.runUpdateNpWorker, time.Second, stopCh)
-		go wait.Until(c.runDeleteNpWorker, time.Second, stopCh)
+		if c.config.EnableNP {
+			go wait.Until(c.runUpdateNpWorker, time.Second, stopCh)
+			go wait.Until(c.runDeleteNpWorker, time.Second, stopCh)
+		}
 
 		go wait.Until(c.runDelVlanWorker, time.Second, stopCh)
 		go wait.Until(c.runUpdateVlanWorker, time.Second, stopCh)
@@ -515,5 +528,8 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 
 	go wait.Until(c.resyncSubnetMetrics, 30*time.Second, stopCh)
 	go wait.Until(c.CheckGatewayReady, 5*time.Second, stopCh)
-	go wait.Until(c.CheckNodePortGroup, 10*time.Second, stopCh)
+
+	if c.config.EnableNP {
+		go wait.Until(c.CheckNodePortGroup, 10*time.Second, stopCh)
+	}
 }

@@ -47,6 +47,12 @@ spec:
             - --default-gateway=2001:db8:0000:0000::1
             - --node-switch-cidr=2001:db8:0000:0001::/64
             - --node-switch-gateway=2001:db8:0000:0001::1
+            - --network-type=geneve
+            - --default-interface-name=
+            - --default-vlan-id=100
+            - --pod-nic-type=veth-pair
+            - --enable-lb=true
+            - --enable-np=true
           env:
             - name: ENABLE_SSL
               value: "false"
