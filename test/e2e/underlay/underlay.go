@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -258,14 +257,14 @@ var _ = Describe("[Underlay]", func() {
 				for _, field := range strings.Fields(stdout) {
 					if strings.HasPrefix(field, "pod_netns=") {
 						netns = strings.TrimPrefix(field, "pod_netns=")
-						netns = netns[:len(netns)-1]
+						netns = strings.Trim(netns[:len(netns)-1], `"`)
 						break
 					}
 				}
 				Expect(netns).NotTo(BeEmpty())
 
 				By("validate pod's MTU")
-				cmd = fmt.Sprintf("nsenter --net=%s ip link show eth0", filepath.Join("/var/run/netns", netns))
+				cmd = fmt.Sprintf("nsenter --net=%s ip link show eth0", netns)
 				stdout, _, err = f.ExecToPodThroughAPI(cmd, "cni-server", cniPod.Name, cniPod.Namespace, nil)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(stdout).To(ContainSubstring(" mtu %d ", nodeMTU[pod.Spec.NodeName]))
@@ -322,7 +321,7 @@ var _ = Describe("[Underlay]", func() {
 					for _, field := range strings.Fields(stdout) {
 						if strings.HasPrefix(field, "pod_netns=") {
 							netns = strings.TrimPrefix(field, "pod_netns=")
-							netns = netns[:len(netns)-1]
+							netns = strings.Trim(netns[:len(netns)-1], `"`)
 							break
 						}
 					}
@@ -339,7 +338,7 @@ var _ = Describe("[Underlay]", func() {
 					Expect(hostIP).ToNot(BeEmpty())
 
 					By("ping host")
-					cmd = fmt.Sprintf("nsenter --net=%s ping -c1 -W1 %s", filepath.Join("/var/run/netns", netns), hostIP)
+					cmd = fmt.Sprintf("nsenter --net=%s ping -c1 -W1 %s", netns, hostIP)
 					stdout, _, err = f.ExecToPodThroughAPI(cmd, "cni-server", cniPod.Name, cniPod.Namespace, nil)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(stdout).To(ContainSubstring(" 0% packet loss"))
@@ -410,7 +409,7 @@ var _ = Describe("[Underlay]", func() {
 					for _, field := range strings.Fields(stdout) {
 						if strings.HasPrefix(field, "pod_netns=") {
 							netns = strings.TrimPrefix(field, "pod_netns=")
-							netns = netns[:len(netns)-1]
+							netns = strings.Trim(netns[:len(netns)-1], `"`)
 							break
 						}
 					}
@@ -427,7 +426,7 @@ var _ = Describe("[Underlay]", func() {
 					Expect(hostIP).ToNot(BeEmpty())
 
 					By("ping host")
-					cmd = fmt.Sprintf("nsenter --net=%s ping -c1 -W1 %s", filepath.Join("/var/run/netns", netns), hostIP)
+					cmd = fmt.Sprintf("nsenter --net=%s ping -c1 -W1 %s", netns, hostIP)
 					stdout, _, err = f.ExecToPodThroughAPI(cmd, "cni-server", cniPod.Name, cniPod.Namespace, nil)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(stdout).To(ContainSubstring(" 0% packet loss"))
@@ -503,14 +502,14 @@ var _ = Describe("[Underlay]", func() {
 						for _, field := range strings.Fields(stdout) {
 							if strings.HasPrefix(field, "pod_netns=") {
 								netns = strings.TrimPrefix(field, "pod_netns=")
-								netns = netns[:len(netns)-1]
+								netns = strings.Trim(netns[:len(netns)-1], `"`)
 								break
 							}
 						}
 						Expect(netns).NotTo(BeEmpty())
 
 						By("ping another pod")
-						cmd = fmt.Sprintf("nsenter --net=%s ping -c1 -W1 %s", filepath.Join("/var/run/netns", netns), pods[(i+len(pods)+1)%len(pods)].Status.PodIP)
+						cmd = fmt.Sprintf("nsenter --net=%s ping -c1 -W1 %s", netns, pods[(i+len(pods)+1)%len(pods)].Status.PodIP)
 						stdout, _, err = f.ExecToPodThroughAPI(cmd, "cni-server", cniPods[nodes[i]].Name, cniPods[nodes[i]].Namespace, nil)
 						Expect(err).NotTo(HaveOccurred())
 						Expect(stdout).To(ContainSubstring(" 0% packet loss"))
@@ -600,14 +599,14 @@ var _ = Describe("[Underlay]", func() {
 					for _, field := range strings.Fields(stdout) {
 						if strings.HasPrefix(field, "pod_netns=") {
 							netns = strings.TrimPrefix(field, "pod_netns=")
-							netns = netns[:len(netns)-1]
+							netns = strings.Trim(netns[:len(netns)-1], `"`)
 							break
 						}
 					}
 					Expect(netns).NotTo(BeEmpty())
 
 					By("ping overlay pod")
-					cmd = fmt.Sprintf("nsenter --net=%s ping -c1 -W1 %s", filepath.Join("/var/run/netns", netns), opod.Status.PodIP)
+					cmd = fmt.Sprintf("nsenter --net=%s ping -c1 -W1 %s", netns, opod.Status.PodIP)
 					stdout, _, err = f.ExecToPodThroughAPI(cmd, "cni-server", cniPod.Name, cniPod.Namespace, nil)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(stdout).To(ContainSubstring(" 0% packet loss"))
