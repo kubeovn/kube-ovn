@@ -105,7 +105,8 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
       --default-provider-name string              The vlan or vxlan type default provider interface name, default: provider (default "provider")
       --default-vlan-id int                       The default vlan id, default: 1 (default 1)
       --default-vlan-name string                  The default vlan name, default: ovn-vlan (default "ovn-vlan")
-      --default-vlan-range string                 The default vlan range, default: 1-4095 (default "1,4095")
+      --enable-lb                                 Enable load balancer, default: true (default true)
+      --enable-np                                 Enable network policy support, default: true (default true)
       --kubeconfig string                         Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.
       --log_backtrace_at traceLocation            when logging hits line file:N, emit a stack trace (default :0)
       --log_dir string                            If non-empty, write log files in this directory
@@ -119,6 +120,7 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
       --ovn-nb-addr string                        ovn-nb address
       --ovn-sb-addr string                        ovn-sb address
       --ovn-timeout int                            (default 30)
+      --pod-nic-type string                       The default pod network nic implementation type, default: veth-pair (default "veth-pair")
       --pprof-port int                            The port to get profiling data, default 10660 (default 10660)
       --skip_headers                              If true, avoid header prefixes in the log messages
       --skip_log_headers                          If true, avoid headers when opening log files
@@ -146,7 +148,7 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
       --log_file_max_size uint            Defines the maximum size a log file can grow to. Unit is megabytes. If the value is 0, the maximum file size is unlimited. (default 1800)
       --logtostderr                       log to standard error instead of files (default true)
       --mirror-iface string               The mirror nic name that will be created by kube-ovn, default: mirror0 (default "mirror0")
-      --mtu int                           The MTU used by pod iface, default: iface MTU - 100
+      --mtu int                           The MTU used by pod iface in overlay networks, default: iface MTU - 100
       --network-type string               The ovn network type, default: geneve (default "geneve")
       --node-local-dns-ip string          If use nodelocaldns the local dns server ip should be set here, default empty.
       --ovs-socket string                 The socket to local ovs-server

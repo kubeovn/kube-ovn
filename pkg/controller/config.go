@@ -57,6 +57,7 @@ type Configuration struct {
 	DefaultVlanID        int
 
 	EnableLb bool
+	EnableNP bool
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -86,13 +87,14 @@ func ParseFlags() (*Configuration, error) {
 		argWorkerNum = pflag.Int("worker-num", 3, "The parallelism of each worker, default: 3")
 		argPprofPort = pflag.Int("pprof-port", 10660, "The port to get profiling data, default 10660")
 
-		argsNetworkType          = pflag.String("network-type", util.NetworkTypeGeneve, "The ovn network type, default: geneve")
-		argsDefaultProviderName  = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name, default: provider")
-		argsDefaultInterfaceName = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
-		argsDefaultVlanName      = pflag.String("default-vlan-name", "ovn-vlan", "The default vlan name, default: ovn-vlan")
-		argsDefaultVlanID        = pflag.Int("default-vlan-id", 1, "The default vlan id, default: 1")
-		argsPodNicType           = pflag.String("pod-nic-type", "veth-pair", "The default pod network nic implementation type, default: veth-pair")
-		argsEnableLb             = pflag.Bool("enable-lb", true, "Enable load balancer, default: true")
+		argNetworkType          = pflag.String("network-type", util.NetworkTypeGeneve, "The ovn network type, default: geneve")
+		argDefaultProviderName  = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name, default: provider")
+		argDefaultInterfaceName = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
+		argDefaultVlanName      = pflag.String("default-vlan-name", "ovn-vlan", "The default vlan name, default: ovn-vlan")
+		argDefaultVlanID        = pflag.Int("default-vlan-id", 1, "The default vlan id, default: 1")
+		argPodNicType           = pflag.String("pod-nic-type", "veth-pair", "The default pod network nic implementation type, default: veth-pair")
+		argEnableLb             = pflag.Bool("enable-lb", true, "Enable load balancer, default: true")
+		argEnableNP             = pflag.Bool("enable-np", true, "Enable network policy support, default: true")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -132,15 +134,16 @@ func ParseFlags() (*Configuration, error) {
 		ClusterUdpSessionLoadBalancer: *argClusterUdpSessionLoadBalancer,
 		WorkerNum:                     *argWorkerNum,
 		PprofPort:                     *argPprofPort,
-		NetworkType:                   *argsNetworkType,
-		DefaultVlanID:                 *argsDefaultVlanID,
-		DefaultProviderName:           *argsDefaultProviderName,
-		DefaultHostInterface:          *argsDefaultInterfaceName,
-		DefaultVlanName:               *argsDefaultVlanName,
+		NetworkType:                   *argNetworkType,
+		DefaultVlanID:                 *argDefaultVlanID,
+		DefaultProviderName:           *argDefaultProviderName,
+		DefaultHostInterface:          *argDefaultInterfaceName,
+		DefaultVlanName:               *argDefaultVlanName,
 		PodName:                       os.Getenv("POD_NAME"),
 		PodNamespace:                  os.Getenv("KUBE_NAMESPACE"),
-		PodNicType:                    *argsPodNicType,
-		EnableLb:                      *argsEnableLb,
+		PodNicType:                    *argPodNicType,
+		EnableLb:                      *argEnableLb,
+		EnableNP:                      *argEnableNP,
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {

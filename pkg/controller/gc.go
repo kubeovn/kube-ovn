@@ -456,24 +456,27 @@ func (c *Controller) gcLoadBalancer() error {
 
 func (c *Controller) gcPortGroup() error {
 	klog.Infof("start to gc network policy")
-	nps, err := c.npsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list network policy, %v", err)
-		return err
-	}
+	var npNames []string
+	if c.config.EnableNP {
+		nps, err := c.npsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list network policy, %v", err)
+			return err
+		}
 
-	npNames := make([]string, 0, len(nps))
-	for _, np := range nps {
-		npNames = append(npNames, fmt.Sprintf("%s/%s", np.Namespace, np.Name))
-	}
-	// append node port group to npNames to avoid gc node port group
-	nodes, err := c.nodesLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list nodes, %v", err)
-		return err
-	}
-	for _, node := range nodes {
-		npNames = append(npNames, fmt.Sprintf("%s/%s", "node", node.Name))
+		npNames = make([]string, 0, len(nps))
+		for _, np := range nps {
+			npNames = append(npNames, fmt.Sprintf("%s/%s", np.Namespace, np.Name))
+		}
+		// append node port group to npNames to avoid gc node port group
+		nodes, err := c.nodesLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list nodes, %v", err)
+			return err
+		}
+		for _, node := range nodes {
+			npNames = append(npNames, fmt.Sprintf("%s/%s", "node", node.Name))
+		}
 	}
 
 	pgs, err := c.ovnClient.ListPortGroup()
@@ -482,7 +485,7 @@ func (c *Controller) gcPortGroup() error {
 		return err
 	}
 	for _, pg := range pgs {
-		if !util.IsStringIn(fmt.Sprintf("%s/%s", pg.NpNamespace, pg.NpName), npNames) {
+		if !c.config.EnableNP || !util.IsStringIn(fmt.Sprintf("%s/%s", pg.NpNamespace, pg.NpName), npNames) {
 			klog.Infof("gc port group %s", pg.Name)
 			if err := c.handleDeleteNp(fmt.Sprintf("%s/%s", pg.NpNamespace, pg.NpName)); err != nil {
 				klog.Errorf("failed to gc np %s/%s, %v", pg.NpNamespace, pg.NpName, err)

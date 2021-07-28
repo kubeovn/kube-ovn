@@ -8,6 +8,7 @@ ENABLE_MIRROR=${ENABLE_MIRROR:-false}
 VLAN_NIC=${VLAN_NIC:-}
 HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_LB=${ENABLE_LB:-true}
+ENABLE_NP=${ENABLE_NP:-true}
 # The nic to support container network can be a nic name or a group of regex
 # separated by comma, if empty will use the nic that the default route use
 IFACE=""
@@ -1649,6 +1650,7 @@ spec:
           - --default-vlan-id=$VLAN_ID
           - --pod-nic-type=$POD_NIC_TYPE
           - --enable-lb=$ENABLE_LB
+          - --enable-np=$ENABLE_NP
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
