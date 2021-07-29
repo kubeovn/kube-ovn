@@ -9,7 +9,7 @@ Use the following annotations to specify QoS:
 
 Example:
 
-```bash
+```yaml
 apiVersion: v1
 kind: Pod
 metadata:
@@ -26,13 +26,13 @@ spec:
 
 ## Gateway QoS
 
-Kube-OVN will create an `ovn0` interface on each host to route traffic from cluster pod network 
+Kube-OVN will create an `ovn0` interface on each host to route traffic from cluster pod network
 to external network. Kube-OVN control gateway QoS by modify the QoS config of `ovn0` interface.
 
-For a subnet with central gateway mode, only one node act as the gateway, so you can modify the 
+For a subnet with central gateway mode, only one node act as the gateway, so you can modify the
 node QoS annotation to control the QoS of the subnet to external network.
 
-```bash
+```yaml
 apiVersion: v1
 kind: Node
 metadata:
@@ -42,5 +42,5 @@ metadata:
   name: liumengxin-ovn1-192.168.16.44
 ```
 
-You can also use this annotation to control the traffic from each node to external network 
+You can also use this annotation to control the traffic from each node to external network
 through these annotations.

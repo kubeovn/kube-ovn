@@ -9,7 +9,8 @@ Use the following annotations to specify the address
 - `ovn.kubernetes.io/mac_address`: Specifies MAC address
 
 Example:
-```bash
+
+```yaml
 apiVersion: v1
 kind: Pod
 metadata:
@@ -36,7 +37,8 @@ Use the following annotation to allocate addresses for a Workload:
 -  `ovn.kubernetes.io/ip_pool`: For Deployments/DaemonSets, we will randomly choose an available IP address for a Pod. For StatefulSets, the IP allocation will follow the order specified in the list.
 
 Example:
-```bash
+
+```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:

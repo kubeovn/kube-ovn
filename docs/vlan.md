@@ -112,9 +112,9 @@ metadata:
 spec:
   defaultInterface: eth1
   customInterfaces:
-   - interface: eth2
-     nodes:
-       - node1
+  - interface: eth2
+    nodes:
+      - node1
   excludeNodes:
     - node2
 ```

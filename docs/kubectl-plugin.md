@@ -7,22 +7,26 @@ To enable kubectl plugin, kubectl version of 1.12 or later is recommended. You c
 # Install
 
 1. Get the `kubectl-ko` file
+
 ```bash
 wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.7/dist/images/kubectl-ko
 ```
 
 2. Move the file to one of $PATH directories
+
 ```bash
 mv kubectl-ko /usr/local/bin/kubectl-ko
 ```
 
 3. Add executable permission to `kubectl-ko`
+
 ```bash
 chmod +x /usr/local/bin/kubectl-ko
 ```
 
 4. Check if the plugin is ready
-```bash
+
+```shell
 [root@kube-ovn01 ~]# kubectl plugin list
 The following compatible plugins are available:
 
@@ -31,7 +35,7 @@ The following compatible plugins are available:
 
 # Usage
 
-```bash
+```text
 kubectl ko {subcommand} [option...]
 Available Subcommands:
   nbctl [ovn-nbctl options ...]    invoke ovn-nbctl
@@ -44,7 +48,7 @@ Available Subcommands:
 
 1. Show ovn-sb overview
 
-```bash
+```shell
 [root@node2 ~]# kubectl ko sbctl show
 Chassis "36f129a9-276f-4d96-964b-7d3703001b81"
     hostname: "node1.cluster.local"
@@ -78,7 +82,8 @@ Chassis "dc922a96-97d4-418d-a45f-8989d2b6dc91"
 ```
 
 2. Dump pod ICMP traffic
-```bash
+
+```shell
 [root@node2 ~]# kubectl ko tcpdump default/ds1-l6n7p icmp
 + kubectl exec -it kube-ovn-cni-wlg4s -n kube-ovn -- tcpdump -nn -i d7176fe7b4e0_h icmp
 tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
@@ -93,7 +98,7 @@ listening on d7176fe7b4e0_h, link-type EN10MB (Ethernet), capture size 262144 by
 
 3. Show ovn flow from a pod to a destination
 
-```bash
+```shell
 [root@node2 ~]# kubectl ko trace default/ds1-l6n7p 8.8.8.8 icmp
 + kubectl exec ovn-central-5bc494cb5-np9hm -n kube-ovn -- ovn-trace --ct=new ovn-default 'inport == "ds1-l6n7p.default" && ip.ttl == 64 && icmp && eth.src == 0a:00:00:10:00:05 && ip4.src == 10.16.0.4 && eth.dst == 00:00:00:B8:CA:43 && ip4.dst == 8.8.8.8'
 # icmp,reg14=0xf,vlan_tci=0x0000,dl_src=0a:00:00:10:00:05,dl_dst=00:00:00:b8:ca:43,nw_src=10.16.0.4,nw_dst=8.8.8.8,nw_tos=0,nw_ecn=0,nw_ttl=64,icmp_type=0,icmp_code=0
@@ -127,7 +132,7 @@ ct_next(ct_state=new|trk)
 
 4. Diagnose network connectivity
 
-```bash
+```shell
 [root@node2 ~]# kubectl ko diagnose all
 ### start to diagnose node node1
 I1008 07:04:40.475604   26434 ping.go:139] ovs-vswitchd and ovsdb are up

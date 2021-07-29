@@ -8,32 +8,26 @@ In this solution, Kubernetes Kube-OVN and Openstack Neutron share the same OVN p
 
 This document is based on Openstack *Victoria* and Kube-OVN *1.8.0*
 
-
-
 ## Prerequisite
 
 - Openstack neutron should build networking based on OVN.
 - Subnets CIDRs in Openstack and Kubernetes connected to the same router MUST NOT be overlapped.
 
-
-
 ## Kubernetes configuration
 
 Install Kubernetes with Kube-OVN in overlay mode normally.
 
-Record IP of the host nodes where ovn-cni is located as [IP<sub>1</sub>, IP<sub>2</sub>, ..., IP<sub>n</sub>]. 
-
-
+Record IP of the host nodes where ovn-cni is located as [IP<sub>1</sub>, IP<sub>2</sub>, ..., IP<sub>n</sub>].
 
 ## Openstack Neutron
 
 Install Neutron based on ovn as the [document](https://docs.openstack.org/neutron/victoria/install/ovn/manual_install.html).
 
-The configuration of the ovn document on the controller node could be omitted.  
+The configuration of the ovn document on the controller node could be omitted.
 
-The following configuration of Neutron in **/etc/neutron/plugins/ml2/ml2_conf.ini** should be changed 
+The following configuration of Neutron in **/etc/neutron/plugins/ml2/ml2_conf.ini** should be changed
 
-```
+```conf
 [ovn]
 ...
 ovn_nb_connection = tcp:[IP1,IP2,...,IPn]:6641
@@ -43,13 +37,11 @@ ovn_l3_scheduler = OVN_L3_SCHEDULER
 
 The following configuration of OvS on each host node should be changed.
 
-```shell
+```bash
 ovs-vsctl set open . external-ids:ovn-remote=tcp:[IP1,IP2,...,IPn]:6642
 ovs-vsctl set open . external-ids:ovn-encap-type=geneve
 ovs-vsctl set open . external-ids:ovn-encap-ip=IP_ADDRESS   # IP_ADDRESS should be accessible for all nodes
 ```
-
-
 
 ## Verification
 
@@ -103,7 +95,7 @@ Now Kube-OVN supports adding new containers to the Openstack virtual network by 
 
 The following steps describe a way to add a container subnet to the Openstack network.
 
-1. Add a namespace. 
+1. Add a namespace.
 
 ```yaml
 apiVersion: v1
@@ -183,7 +175,7 @@ There are several ways to check the correctness of the network.
 ```shell
 # kubectl ko nbctl show
 switch 0ff17729-6e8b-4fcc-9c9f-9a114cd3cc84 (neutron-cd59e36a-37db-4c27-b709-d35379a7920f) (aka provider) # check switch provider
-    port a7a2f2be-c8e2-4129-b94b-f28f566e4ea6   
+    port a7a2f2be-c8e2-4129-b94b-f28f566e4ea6
         type: router
         router-port: lrp-a7a2f2be-c8e2-4129-b94b-f28f566e4ea6  # check peer router
     port 5cb326b9-89bc-4ca1-9f03-66750f0c3efb
@@ -252,10 +244,6 @@ PING 192.168.1.61 (192.168.1.61): 56 data bytes
 round-trip min/avg/max/stddev = 0.506/1.010/1.513/0.504 ms
 ```
 
-
-
 ## Uninstall
 
 Delete pods, namespaces, subnets in order.
-
-

@@ -19,7 +19,7 @@ Change the replicas to 3, and add NODE_IPS environment var points to node that h
               value: 192.168.55.10, 192.168.55.11, 192.168.55.12
 ```
 
-```bash
+```text
 ovn-central-fbdbd9d4d-jv8cr            1/1       Running   0          19h      # waiting to become a leader
 ovn-central-fbdbd9d4d-pgvhl            1/1       Running   0          19h      # waiting to become a leader
 ovn-central-fbdbd9d4d-rk2c7            1/1       Running   0          19h      # the leader now
