@@ -15,11 +15,14 @@ By taking use of SR-IOV technology we can achieve low network latency and high t
 
 ### Install Kube-OVN with hw-offload mode enabled
 1. Download latest install script
+
 ```bash
 wget https://raw.githubusercontent.com/alauda/kube-ovn/master/dist/images/install.sh
 ```
+
 2. Edit the install script, enable hw-offload, disable traffic mirror and set the IFACE to the PF.
 Make sure that there is a ip address bind to the PF.
+
 ```bash
 ENABLE_MIRROR=${ENABLE_MIRROR:-false}
 HW_OFFLOAD=${HW_OFFLOAD:-true}
@@ -27,31 +30,36 @@ IFACE="ensp01"
 ```
 
 3. Install Kube-OVN
+
 ```bash
 bash install.sh
 ```
 
 ### Setting Up SR-IOV
 1. Find the device id of ConnectX-5 device, below is `42:00.0`
-```bash
+
+```shell
 lspci -nn | grep ConnectX-5
 42:00.0 Ethernet controller [0200]: Mellanox Technologies MT27800 Family [ConnectX-5] [15b3:1017]
 ```
 
 2. Find the related interface with device id, below is `p4p1`
-```bash
+
+```shell
 ls -l /sys/class/net/ | grep 42:00.0
 lrwxrwxrwx. 1 root root 0 Jul 22 23:16 p4p1 -> ../../devices/pci0000:40/0000:40:02.0/0000:42:00.0/net/p4p1
 ```
 
 3. Check available VF number
-```bash
+
+```shell
 cat /sys/class/net/p4p1/device/sriov_totalvfs
 8
 ```
 
 4. Create VFs
-```bash
+
+```shell
 echo '4' > /sys/class/net/p4p1/device/sriov_numvfs
 ip link show p4p1
 10: p4p1: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc mq state DOWN mode DEFAULT group default qlen 1000
@@ -64,7 +72,8 @@ ip link set p4p1 up
 ```
 
 5. Find the device ids of VFs created above
-```bash
+
+```shell
 lspci -nn | grep ConnectX-5
 42:00.0 Ethernet controller [0200]: Mellanox Technologies MT27800 Family [ConnectX-5] [15b3:1017]
 42:00.1 Ethernet controller [0200]: Mellanox Technologies MT27800 Family [ConnectX-5] [15b3:1017]
@@ -75,6 +84,7 @@ lspci -nn | grep ConnectX-5
 ```
 
 6. Unbind VFs from driver by device id found above
+
 ```bash
 echo 0000:42:00.2 > /sys/bus/pci/drivers/mlx5_core/unbind
 echo 0000:42:00.3 > /sys/bus/pci/drivers/mlx5_core/unbind
@@ -83,16 +93,19 @@ echo 0000:42:00.5 > /sys/bus/pci/drivers/mlx5_core/unbind
 ```
 
 7. Enable switchdev mode by device id of PF
+
 ```bash
 devlink dev eswitch set pci/0000:42:00.0 mode switchdev
 ```
 
 8. Enable hw-tc-offload, above step might change the interface name
+
 ```bash
 ethtool -K enp66s0f0 hw-tc-offload on
 ```
 
 9. Bind the VFs to driver again
+
 ```bash
 echo 0000:42:00.2 > /sys/bus/pci/drivers/mlx5_core/bind
 echo 0000:42:00.3 > /sys/bus/pci/drivers/mlx5_core/bind
@@ -132,12 +145,14 @@ data:
 ```
 
 2. Follow [SR-IOV Device Plugin](https://github.com/intel/sriov-network-device-plugin) to deploy device plugin.
+
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/intel/sriov-network-device-plugin/master/deployments/k8s-v1.16/sriovdp-daemonset.yaml
 ```
 
 3. Check if SR-IOV devices have been discovered by device plugin
-```bash
+
+```shell
 kubectl describe no containerserver  | grep mellanox
 
 mellanox.com/cx5_sriov_switchdev:  4
@@ -146,6 +161,7 @@ mellanox.com/cx5_sriov_switchdev  0           0
 ```
 ### Install Multus-CNI
 1. Follow [Multus-CNI](https://github.com/intel/multus-cni/) to deploy Multus-CNI
+
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/intel/multus-cni/master/images/multus-daemonset.yml
 ```
@@ -196,7 +212,8 @@ spec:
         mellanox.com/cx5_sriov_switchdev: '1'
 ```
 ### Verify If Offload Works
-```bash
+
+```shell
 ovs-appctl dpctl/dump-flows -m type=offloaded
 ufid:91cc45de-e7e9-4935-8f82-1890430b0f66, skb_priority(0/0),skb_mark(0/0),ct_state(0/0x23),ct_zone(0/0),ct_mark(0/0),ct_label(0/0x1),recirc_id(0),dp_hash(0/0),in_port(5b45c61b307e_h),packet_type(ns=0/0,id=0/0),eth(src=00:00:00:c5:6d:4e,dst=00:00:00:e7:16:ce),eth_type(0x0800),ipv4(src=0.0.0.0/0.0.0.0,dst=0.0.0.0/0.0.0.0,proto=0/0,tos=0/0,ttl=0/0,frag=no), packets:941539, bytes:62142230, used:0.260s, offloaded:yes, dp:tc, actions:54235e5753b8_h
 ufid:e00768d7-e652-4d79-8182-3291d852b791, skb_priority(0/0),skb_mark(0/0),ct_state(0/0x23),ct_zone(0/0),ct_mark(0/0),ct_label(0/0x1),recirc_id(0),dp_hash(0/0),in_port(54235e5753b8_h),packet_type(ns=0/0,id=0/0),eth(src=00:00:00:e7:16:ce,dst=00:00:00:c5:6d:4e),eth_type(0x0800),ipv4(src=0.0.0.0/0.0.0.0,dst=0.0.0.0/0.0.0.0,proto=0/0,tos=0/0,ttl=0/0,frag=no), packets:82386659, bytes:115944854173, used:0.260s, offloaded:yes, dp:tc, actions:5b45c61b307e_h

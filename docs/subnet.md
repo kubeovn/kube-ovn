@@ -4,7 +4,7 @@ From v0.6.0 Kube-OVN will use Subnet crd to manage subnets. If you still use a v
 
 ## Example
 
-```bash
+```yaml
 apiVersion: kubeovn.io/v1
 kind: Subnet
 metadata:
@@ -27,6 +27,7 @@ spec:
   gatewayNode: node1
   natOutgoing: true
 ```
+
 ## Basic Configuration
 
 - `protocol`: The ip protocol ,can be IPv4 or IPv6. *Note*: Through kube-ovn support both protocol subnets coexist in a cluster, kubernetes control plan now only support one protocol. So you will lost some ability like probe and  service discovery if you use a protocol other than the kubernetes control plan.
@@ -68,12 +69,14 @@ Since kube-ovn v1.8.0, kube-ovn support using designative egress ip on node, the
 - `underlayGateway`: if enable vlan network, use this field to use underlay network gateway directly, instead of ovs virtual gateway
 - `externalEgressGateway`: External egress gateway address. When set, egress traffic is redirected to the external gateway through gateway node(s) by policy-based routing. Conflict with `natOutgoing`.
 - `policyRoutingPriority`/`policyRoutingTableID`: Priority & table ID used in policy-based routing. Required when `externalEgressGateway` is set. NOTICE: `policyRoutingTableID` MUST be unique.
+- `disableGatewayCheck`: By default Kube-OVN checks Pod's network by sending ICMP request to the subnet's gateway. Set it to `true` if the subnet is in underlay mode and the physical gateway does not respond to ICMP requests.
 - `disableInterConnection`: if enable cluster-interconnection, use this field to disable auto route.
 
 ## Bind Pod to Subnet
 
 By default, Pod will automatically inherit subnet from Namespace, From 1.5.1 users can bind Pod to another Subnet by manually setup the `logical_switch` annotation for a Pod.
-```
+
+```yaml
 apiVersion: v1
 kind: Pod
 metadata:

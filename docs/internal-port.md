@@ -6,7 +6,8 @@ Form 1.7.0, apart from the default veth-pair type network interface, Kube-OVN al
 ### Installation options
 
 You can set the interface type in `install.sh` scripts, by default it will use veth-pair.
-```shell
+
+```bash
 POD_NIC_TYPE="internal-port"               # veth-pair or internal-port
 ```
 
@@ -26,7 +27,7 @@ containers:
 You can set the interface type in Pod annotations to change the default interface type
 
 ```yaml
-\apiVersion: v1
+apiVersion: v1
 kind: Pod
 metadata:
   annotations:

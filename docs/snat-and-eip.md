@@ -1,4 +1,4 @@
-# SNAT and EIP 
+# SNAT and EIP
 
 From v1.5.0, Kube-OVN take use of the L3 gateways from OVN to implement Pod SNAT and EIP functions.
 By using snat, a group of pods can share one same ip address to communicate with external services.
@@ -10,7 +10,9 @@ By using eip, external services can visit a pod with a stable ip and pod will vi
 * SNAT and EIP functions *CANNOT* work together with Cluster interconnection network
 
 ## Steps
+
 1. Create `ovn-external-gw-config` ConfigMap
+
 ```yaml
 apiVersion: v1
 kind: ConfigMap
@@ -29,7 +31,8 @@ data:
 2. Wait about one minute for gateway installation get ready and check the status.
 
 Check OVN-NB status, make sure ovn-external logical switch exists and ovn-cluster-ovn-external logical router port with correct address and gateway chassis
-```bash
+
+```shell
 [root@kube-ovn ~]# kubectl ko nbctl show
 switch 3de4cea7-1a71-43f3-8b62-435a57ef16a6 (ovn-external)
     port ln-ovn-external
@@ -46,7 +49,8 @@ router e1eb83ad-34be-4ed5-9a02-fcc8b1d357c4 (ovn-cluster)
 ```
 
 Check OVS status， make sure the dedicated nic is bridged into OVS
-```bash
+
+```shell
 [root@nrt1-x1 ~]# kubectl ko vsctl ${gateway node name} show
 e7d81150-7743-4d6e-9e6f-5c688232e130
     Bridge br-external
@@ -60,7 +64,9 @@ e7d81150-7743-4d6e-9e6f-5c688232e130
                 type: patch
                 options: {peer=patch-br-int-to-ln-ovn-external}
 ```
+
 3. Annotate Pod with except snat and eip address
+
 ```yaml
 apiVersion: v1
 kind: Pod
@@ -73,7 +79,6 @@ spec:
   - name: snat-pod
     image: nginx:alpine
 ---
- 
 apiVersion: v1
 kind: Pod
 metadata:
@@ -87,6 +92,7 @@ spec:
 ```
 
 4. Change eip or snat ip
+
 ```bash
 # ovn.kubernetes.io/routed annotation need to be removed to trigger control plan update
 kubectl annotate pod pod-gw ovn.kubernetes.io/eip=172.56.0.221 --overwrite
@@ -95,4 +101,3 @@ kubectl annotate pod pod-gw ovn.kubernetes.io/routed-
 
 ## Limitations
 * No IP conflict detection for now, users should control the nat address allocation by themselves.
-

@@ -23,7 +23,8 @@ Where X is the number of 1GB hugepages you wish to create on your system. Your u
 - To confirm hugepages configured run: `grep Huge /proc/meminfo`
 
 Example Output:
-```
+
+```text
 AnonHugePages:   2105344 kB
 HugePages_Total:      32
 HugePages_Free:       30
@@ -32,7 +33,6 @@ HugePages_Surp:        0
 Hugepagesize:    1048576 kB
 ```
 
-
 ## Optional configuration
 
 Open vSwitch is highly configurable using `other_config` options as described in [Open vSwitch Manual](http://www.openvswitch.org/support/dist-docs/ovs-vswitchd.conf.db.5.txt).
@@ -40,7 +40,7 @@ All of those configs can be configured using simple config file `/opt/ovs-config
 
 Example:
 
-```
+```conf
 dpdk-socket-mem="1024,1024"
 dpdk-init=true
 pmd-cpu-mask=0x4
@@ -52,13 +52,13 @@ This example config will enable DPDK support with 1024MB of hugepages for both N
 
 If file will not exist upon OVS initialization, the default configuration file will be created with values:
 
-```
+```conf
 dpdk-socket-mem="1024"
 dpdk-init=true
 dpdk-hugepage-dir=/dev/hugepages
 ```
->**Note:** Please remember, that if you would like to initialize Open vSwitch with more socket memory than 1024MB, you will have to reserve this memory for `ovs-ovn` pod by editing the value `hugepages-1G` of `ovs-ovn` pod in `install.sh` script. For example, to initialize Open vSwitch using `dpdk-socket-mem="1024,1024"` the minimal value will be `hugepages-1G: 2Gi`.
 
+>**Note:** Please remember, that if you would like to initialize Open vSwitch with more socket memory than 1024MB, you will have to reserve this memory for `ovs-ovn` pod by editing the value `hugepages-1G` of `ovs-ovn` pod in `install.sh` script. For example, to initialize Open vSwitch using `dpdk-socket-mem="1024,1024"` the minimal value will be `hugepages-1G: 2Gi`.
 
 ## To Install
 
@@ -66,15 +66,16 @@ dpdk-hugepage-dir=/dev/hugepages
 `wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.7/dist/images/install.sh`
 
 2. Use vim to edit the script variables to meet your requirement
+
 ```bash
- REGISTRY="index.alauda.cn/alaudak8s"
- NAMESPACE="kube-system"                # The ns to deploy kube-ovn
- POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
- SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR
- JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
- LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
- IFACE=""                               # The nic to support container network, if empty will use the nic that the default route use
- VERSION="v1.1.0"
+REGISTRY="index.alauda.cn/alaudak8s"
+NAMESPACE="kube-system"                # The ns to deploy kube-ovn
+POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
+SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR
+JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
+LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
+IFACE=""                               # The nic to support container network, if empty will use the nic that the default route use
+VERSION="v1.8.0"
 ```
 
 3. Run the installation script making sure to include the flag --with-dpdk= followed by the required DPDK version.
@@ -112,7 +113,8 @@ There is now a containerized instance of OVS-DPDK running on the node. Kube-OVN 
 A NetworkAttachmentDefinition is used to represent the network attachments. In this case we need a NAD to represent the network interfaces provided by Userspace CNI, i.e. the OVS-DPDK interfaces. It will then be possible to request this network attachment within a pod spec and Multus will attach these to the pod as secondary interfaces in addition to the preconfigured default network, i.e. the Kube-OVN provided OVS (Kernel) interfaces.
 
 Create the NetworkAttachmentDefinition
-```
+
+```bash
 cat <<EOF | kubectl create -f -
 apiVersion: "k8s.cni.cncf.io/v1"
 kind: NetworkAttachmentDefinition
@@ -149,8 +151,10 @@ spec:
     }
 EOF
 ```
+
 It should now be possible to request the Userspace CNI provided interfaces as annotations within a pod spec. The example below will request two OVS-DPDK interfaces, these will be in addition to the default network.
-```
+
+```yaml
 apiVersion: v1
 kind: Pod
 metadata:
@@ -161,15 +165,15 @@ metadata:
 
 ### Enable Userspace CNI to access containerized OVS-DPDK
 Userspace-CNI is intended to run in an environment where OVS-DPDK is installed directly on the host, rather than in a container. Userspace-CNI makes calls to OVS-DPDK using an application called ovs-vsctl. With a containerized OVS-DPDK, this application is no longer available on the host. The following is a workaround to take ovs-vsctl calls made from the host and direct them to the appropriate Kube-OVN container running OVS-DPDK.
-```
-cat <<'EOF' > /usr/local/bin/ovs-vsctl
+
+```bash
+cat <<EOF > /usr/local/bin/ovs-vsctl
 #!/bin/bash
 ovsCont=$(docker ps | grep kube-ovn | grep ovs-ovn | grep -v pause | awk '{print $1}')
 docker exec $ovsCont ovs-vsctl $@
 EOF
 ```
 `chmod +x /usr/local/bin/ovs-vsctl`
-
 
 ## CPU Mask
 CPU masking is not necessary, but some advanced users may wish to use this feature in OVS-DPDK. When starting OVS-DPDK ovs-vsctl has the ability to configure a CPU mask. This should be used with something like [CPU-Manager-for-Kubernetes](https://github.com/intel/CPU-Manager-for-Kubernetes). Configuration of such a setup is complex and specific to each system. It is out of the scope of this document. Please consult OVS-DPDK and CMK documentation.
@@ -181,7 +185,8 @@ A sample Kubernetes pod running a DPDK enabled Docker image.
 
 ### Dockerfile
 Create the Dockerfile, name it Dockerfile.dpdk
-```
+
+```dockerfile
 FROM centos:8
 
 ENV DPDK_VERSION=19.11.1
@@ -201,13 +206,15 @@ RUN cd /usr/src/ && \
   sed -i s/CONFIG_RTE_KNI_KMOD=y/CONFIG_RTE_KNI_KMOD=n/ config/common_linux && \
   make install T=${DPDK_TARGET} DESTDIR=install
 ```
+
 Build the Docker image and tag it as dpdk:19.11. This build will take some time.
 `docker build -t dpdk:19.11 -f Dockerfile.dpdk .`
 
 
 ### Pod Spec
 Create the Pod Spec, name it pod.yaml
-```
+
+```yaml
 apiVersion: v1
 kind: Pod
 metadata:
@@ -243,6 +250,7 @@ spec:
       medium: HugePages
   restartPolicy: Never
 ```
+
 Run the pod.
 `kubectl create -f pod.yaml`
 
@@ -289,11 +297,11 @@ spec:
 </code></pre>
 
 Finally, we need to tell Userspace-CNI where it can find the newly generated socket files, as this default location can be configured and changed. For a Kube-OVN install, this location will be `/var/run/openvswitch/`. This location is provided to Userspace-CNI as an environment variable. Set this environment variable and restart Kubelet:
-```
+
+```bash
 echo "OVS_SOCKDIR=\"/var/run/openvswitch/\"" >> /var/lib/kubelet/kubeadm-flags.env
 systemctl daemon-reload && systemctl restart kubelet
 ```
-
 
 ### TestPMD
 To run TestPMD:

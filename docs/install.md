@@ -89,7 +89,7 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
 
 ### Controller Configuration
 
-```bash
+```text
       --add_dir_header                            If true, adds the file directory to the header
       --alsologtostderr                           log to standard error as well as files
       --cluster-router string                     The router name for cluster router, default: ovn-cluster (default "ovn-cluster")
@@ -132,7 +132,7 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
 
 ### Daemon Configuration
 
-```bash
+```text
       --add_dir_header                    If true, adds the file directory to the header
       --alsologtostderr                   log to standard error as well as files
       --bind-socket string                The socket daemon bind to. (default "/var/run/cniserver.sock")
@@ -167,11 +167,12 @@ By default, Kube-OVN uses in-cluster config to init kube client. In this way, Ku
 To use an external or high available Kubernetes apiserver, users can use self customized kubeconfig to connect to apiserver.
 
 1. Generate configmap from an existed kubeconfig
+
 ```bash
 kubectl create -n kube-system configmap admin-conf --from-file=config=admin.conf
 ```
 
-2. Edit `kube-ovn-controller`, `kube-ovn-cni` to use the above kubeconfig
+1. Edit `kube-ovn-controller`, `kube-ovn-cni` to use the above kubeconfig
 
 ```yaml
       - args:
@@ -193,21 +194,22 @@ kubectl create -n kube-system configmap admin-conf --from-file=config=admin.conf
 
 1. Remove Kubernetes resources:
 
-    ```bash
-    wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.7/dist/images/cleanup.sh
-    bash cleanup.sh
-    ```
+ ```bash
+ wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.7/dist/images/cleanup.sh
+ bash cleanup.sh
+ ```
 
 2. Delete OVN/OVS DB and config files on every Node:
 
-    ```bash
-    rm -rf /var/run/openvswitch
-    rm -rf /var/run/ovn
-    rm -rf /etc/origin/openvswitch/
-    rm -rf /etc/origin/ovn/
-    # default value
-    rm -rf /etc/cni/net.d/01-kube-ovn.conflist
-    rm -rf /var/log/openvswitch
-    rm -rf /var/log/ovn
-    ```
+ ```bash
+ rm -rf /var/run/openvswitch
+ rm -rf /var/run/ovn
+ rm -rf /etc/origin/openvswitch/
+ rm -rf /etc/origin/ovn/
+ # default value
+ rm -rf /etc/cni/net.d/01-kube-ovn.conflist
+ rm -rf /var/log/openvswitch
+ rm -rf /var/log/ovn
+ ```
+
 3. Reboot the Node to remove ipset/iptables rules and nics.
