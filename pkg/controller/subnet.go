@@ -214,7 +214,7 @@ func (c *Controller) processNextDeleteSubnetWorkItem() bool {
 		var ok bool
 		if subnet, ok = obj.(*kubeovnv1.Subnet); !ok {
 			c.deleteSubnetQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
+			utilruntime.HandleError(fmt.Errorf("expected subnet in workqueue but got %#v", obj))
 			return nil
 		}
 		if err := c.handleDeleteSubnet(subnet); err != nil {
