@@ -86,11 +86,9 @@ func (c *Controller) getRouterStatus() (logicalRouters map[string]util.LogicalRo
 		klog.Errorf("failed to list external logical router, %v", err)
 		return logicalRouters, err
 	}
-	// default ovn-default lr should exists unless list failed
 	if len(externalOvnRouters) == 0 {
-		errMsg := fmt.Errorf("list lr failed with no lr exists")
-		klog.Error(errMsg)
-		return logicalRouters, errMsg
+		klog.V(4).Info("sync over, no external vpc")
+		return logicalRouters, nil
 	}
 
 	for _, aExternalRouter := range externalOvnRouters {
