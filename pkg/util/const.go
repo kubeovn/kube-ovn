@@ -40,6 +40,7 @@ const (
 	GatewayAnnotationTemplate       = "%s.kubernetes.io/gateway"
 	IpPoolAnnotationTemplate        = "%s.kubernetes.io/ip_pool"
 	LogicalSwitchAnnotationTemplate = "%s.kubernetes.io/logical_switch"
+	LogicalRouterAnnotationTemplate = "%s.kubernetes.io/logical_router"
 	VlanIdAnnotationTemplate        = "%s.kubernetes.io/vlan_id"
 	NetworkTypeTemplate             = "%s.kubernetes.io/network_type"
 	IngressRateAnnotationTemplate   = "%s.kubernetes.io/ingress_rate"
