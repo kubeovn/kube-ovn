@@ -1,11 +1,14 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
@@ -117,14 +120,56 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		return nil
 	}
 
-	vpcName := svc.Annotations[util.VpcAnnotation]
-	if vpcName == "" {
-		vpcName = util.DefaultVpc
+	pods, err := c.podsLister.Pods(namespace).List(labels.Set(svc.Spec.Selector).AsSelector())
+	if err != nil {
+		klog.Errorf("failed to get pods for service %s in namespace %s: %v", name, namespace, err)
+		return err
 	}
+
+	var vpcName string
+	for _, pod := range pods {
+		if len(pod.Annotations) == 0 {
+			continue
+		}
+
+		for _, subset := range ep.Subsets {
+			for _, addr := range subset.Addresses {
+				if addr.IP == pod.Status.PodIP {
+					if vpcName = pod.Annotations[util.LogicalRouterAnnotation]; vpcName != "" {
+						break
+					}
+				}
+			}
+			if vpcName != "" {
+				break
+			}
+		}
+		if vpcName != "" {
+			break
+		}
+	}
+
+	if vpcName == "" {
+		if vpcName = svc.Annotations[util.VpcAnnotation]; vpcName == "" {
+			vpcName = util.DefaultVpc
+		}
+	}
+
 	vpc, err := c.vpcsLister.Get(vpcName)
 	if err != nil {
 		klog.Errorf("failed to get vpc %s of lb, %v", vpcName, err)
 		return err
+	}
+
+	if svcVpc := svc.Annotations[util.VpcAnnotation]; svcVpc != vpcName {
+		if svc.Annotations == nil {
+			svc.Annotations = make(map[string]string, 1)
+		}
+		svc.Annotations[util.VpcAnnotation] = vpcName
+		if svc, err = c.config.KubeClient.CoreV1().Services(namespace).Update(context.Background(), svc, metav1.UpdateOptions{}); err != nil {
+			klog.Errorf("failed to update service %s/%s: %v", namespace, svc.Name, err)
+			return err
+		}
 	}
 
 	tcpLb, udpLb := vpc.Status.TcpLoadBalancer, vpc.Status.UdpLoadBalancer

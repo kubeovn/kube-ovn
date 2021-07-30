@@ -416,6 +416,9 @@ func (c *Controller) handleAddPod(key string) error {
 		if pod.Annotations[util.PodNicAnnotation] == "" {
 			pod.Annotations[util.PodNicAnnotation] = c.config.PodNicType
 		}
+		if subnet.Spec.Vlan == "" && subnet.Spec.Vpc != "" {
+			pod.Annotations[fmt.Sprintf(util.LogicalRouterAnnotationTemplate, podNet.ProviderName)] = subnet.Spec.Vpc
+		}
 
 		if err := util.ValidatePodCidr(podNet.Subnet.Spec.CIDRBlock, ipStr); err != nil {
 			klog.Errorf("validate pod %s/%s failed, %v", namespace, name, err)

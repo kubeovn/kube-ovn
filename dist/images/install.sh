@@ -1264,6 +1264,10 @@ rules:
       - daemonsets
       - deployments
     verbs:
+      - create
+      - delete
+      - update
+      - patch
       - get
       - list
       - watch
