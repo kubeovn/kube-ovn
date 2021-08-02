@@ -63,7 +63,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	if err = configureHostNic(hostNicName, vlanID); err != nil {
 		return err
 	}
-	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, ingress, egress); err != nil {
+	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress); err != nil {
 		return err
 	}
 
@@ -888,7 +888,7 @@ func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, 
 		return containerNicName, fmt.Errorf("failed to parse mac %s %v", macAddr, err)
 	}
 
-	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, ingress, egress); err != nil {
+	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress); err != nil {
 		return containerNicName, err
 	}
 
