@@ -113,7 +113,8 @@ func ClearPodBandwidth(podName, podNamespace string) error {
 	return nil
 }
 
-// SetInterfaceBandwidth set ingress/egress qos for given pod, from the point of pod's view
+// SetInterfaceBandwidth set ingress/egress qos for given pod, annotation values are for node/pod
+// but ingress/egress parameters here are from the point of ovs port/interface view, so reverse input parameters when call func SetInterfaceBandwidth
 func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string) error {
 	ingressMPS, _ := strconv.Atoi(ingress)
 	ingressKPS := ingressMPS * 1000
