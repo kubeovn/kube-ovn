@@ -114,7 +114,7 @@ func ClearPodBandwidth(podName, podNamespace string) error {
 	return nil
 }
 
-// SetInterfaceBandwidth set ingress/egress qos for given pod
+// SetInterfaceBandwidth set ingress/egress qos for given pod, from the point of pod's view
 func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string) error {
 	ingressMPS, _ := strconv.Atoi(ingress)
 	ingressKPS := ingressMPS * 1000
