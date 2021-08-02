@@ -51,6 +51,7 @@ const (
 	ProviderNetworkExcludeTemplate   = "%s.provider-network.kubernetes.io/exclude"
 	ProviderNetworkInterfaceTemplate = "%s.provider-network.kubernetes.io/interface"
 	ProviderNetworkMtuTemplate       = "%s.provider-network.kubernetes.io/mtu"
+	MirrorControlAnnotationTemplate  = "%s.kubernetes.io/mirror"
 
 	ExcludeIpsAnnotation = "ovn.kubernetes.io/exclude_ips"
 
@@ -118,4 +119,7 @@ const (
 
 	VfioSysDir = "/sys/bus/pci/drivers/vfio-pci"
 	NetSysDir  = "/sys/class/net"
+
+	MirrorControlAnnotation = "ovn.kubernetes.io/mirror"
+	MirrorDefaultName       = "m0"
 )

@@ -825,7 +825,8 @@ func (c *Controller) enqueuePod(old, new interface{}) {
 	newPod := new.(*v1.Pod)
 
 	if oldPod.Annotations[util.IngressRateAnnotation] != newPod.Annotations[util.IngressRateAnnotation] ||
-		oldPod.Annotations[util.EgressRateAnnotation] != newPod.Annotations[util.EgressRateAnnotation] {
+		oldPod.Annotations[util.EgressRateAnnotation] != newPod.Annotations[util.EgressRateAnnotation] ||
+		oldPod.Annotations[util.MirrorControlAnnotation] != newPod.Annotations[util.MirrorControlAnnotation] {
 		var key string
 		var err error
 		if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
@@ -898,10 +899,14 @@ func (c *Controller) handlePod(key string) error {
 	// set default nic bandwidth
 	ifaceID := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
 	err = ovs.SetInterfaceBandwidth(pod.Name, pod.Namespace, ifaceID, pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation])
+
 	if err != nil {
 		return err
 	}
-
+	err = ovs.ConfigInterfaceMirror(c.config.EnableMirror, pod.Annotations[util.MirrorControlAnnotation], ifaceID)
+	if err != nil {
+		return err
+	}
 	// set multis-nic bandwidth
 	attachNets, err := util.ParsePodNetworkAnnotation(pod.Annotations[util.AttachmentNetworkAnnotation], pod.Namespace)
 	if err != nil {
@@ -912,6 +917,10 @@ func (c *Controller) handlePod(key string) error {
 		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
 			ifaceID = ovs.PodNameToPortName(pod.Name, pod.Namespace, provider)
 			err = ovs.SetInterfaceBandwidth(pod.Name, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)])
+			if err != nil {
+				return err
+			}
+			err := ovs.ConfigInterfaceMirror(c.config.EnableMirror, pod.Annotations[fmt.Sprintf(util.MirrorControlAnnotationTemplate, provider)], ifaceID)
 			if err != nil {
 				return err
 			}

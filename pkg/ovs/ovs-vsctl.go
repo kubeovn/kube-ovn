@@ -58,6 +58,12 @@ func ovsSet(table, record string, values ...string) error {
 	return err
 }
 
+func ovsAdd(table, record string, column string, values ...string) error {
+	args := append([]string{"add", table, record, column}, values...)
+	_, err := Exec(args...)
+	return err
+}
+
 // Returns the given column of records that match the condition
 func ovsFind(table, column, condition string) ([]string, error) {
 	output, err := Exec("--no-heading", "--columns="+column, "find", table, condition)
@@ -230,4 +236,55 @@ func SetPortTag(port, tag string) error {
 func ValidatePortVendor(port string) (bool, error) {
 	output, err := ovsFind("Port", "name", "external_ids:vendor="+util.CniTypeName)
 	return util.ContainsString(output, port), err
+}
+
+//config mirror for interface by pod annotations and install param
+func ConfigInterfaceMirror(globalMirror bool, open string, iface string) error {
+	if !globalMirror {
+		//find interface name for port
+		interfaceList, err := ovsFind("interface", "name", fmt.Sprintf("external-ids:iface-id=%s", iface))
+		if err != nil {
+			return err
+		}
+		for _, ifName := range interfaceList {
+			//ifName example: xxx_h
+			//find port uuid by interface name
+			portUUIDs, err := ovsFind("port", "_uuid", fmt.Sprintf("name=%s", ifName))
+			if err != nil {
+				return err
+			}
+			if len(portUUIDs) != 1 {
+				return fmt.Errorf(fmt.Sprintf("find port failed, portName=%s", ifName))
+			}
+			portId := portUUIDs[0]
+			if open == "true" {
+				//add port to mirror
+				err = ovsAdd("mirror", util.MirrorDefaultName, "select_dst_port", portId)
+				if err != nil {
+					return err
+				}
+			} else {
+				mirrorPorts, err := ovsFind("mirror", "select_dst_port", fmt.Sprintf("name=%s", util.MirrorDefaultName))
+				if err != nil {
+					return err
+				}
+				if len(mirrorPorts) == 0 {
+					return fmt.Errorf("find mirror failed, mirror name=" + util.MirrorDefaultName)
+				}
+				if len(mirrorPorts) > 1 {
+					return fmt.Errorf("repeated mirror data, mirror name=" + util.MirrorDefaultName)
+				}
+				for _, mirrorPortIds := range mirrorPorts {
+					if strings.Contains(mirrorPortIds, portId) {
+						//remove port from mirror
+						_, err := Exec("remove", "mirror", util.MirrorDefaultName, "select_dst_port", portId)
+						if err != nil {
+							return err
+						}
+					}
+				}
+			}
+		}
+	}
+	return nil
 }
