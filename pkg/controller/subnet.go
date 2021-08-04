@@ -1002,9 +1002,8 @@ func (c *Controller) deleteStaticRoute(ip, router string, subnet *kubeovnv1.Subn
 }
 
 func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
-	klog.Infof("reconcile vlan, %v", subnet.Spec.Vlan)
-
 	if subnet.Spec.Vlan != "" {
+		klog.Infof("reconcile vlan, %v", subnet.Spec.Vlan)
 		//create subnet localnet
 		if err := c.addLocalnet(subnet); err != nil {
 			klog.Errorf("failed add localnet to subnet, %v", err)
