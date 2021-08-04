@@ -71,6 +71,7 @@ rules:
       - ""
     resources:
       - pods
+      - pods/exec
       - namespaces
       - nodes
       - configmaps
