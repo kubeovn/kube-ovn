@@ -273,6 +273,7 @@ func (c *Controller) handleAddNode(key string) error {
     }]`
 	op := "replace"
 	if len(node.Annotations) == 0 {
+		node.Annotations = map[string]string{}
 		op = "add"
 	}
 
