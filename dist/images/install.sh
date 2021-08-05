@@ -761,6 +761,7 @@ rules:
       - ""
     resources:
       - pods
+      - pods/exec
       - namespaces
       - nodes
       - configmaps
@@ -1241,6 +1242,7 @@ rules:
       - ""
     resources:
       - pods
+      - pods/exec
       - namespaces
       - nodes
       - configmaps

@@ -730,7 +730,7 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (dp *v1.Dep
 							Image:           vpcNatImage,
 							Command:         []string{"bash"},
 							Args:            []string{"-c", "while true; do sleep 10000; done"},
-							ImagePullPolicy: corev1.PullAlways,
+							ImagePullPolicy: corev1.PullIfNotPresent,
 							SecurityContext: &corev1.SecurityContext{
 								Privileged:               &privileged,
 								AllowPrivilegeEscalation: &allowPrivilegeEscalation,
