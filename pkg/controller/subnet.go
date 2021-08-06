@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"math"
 	"net"
 	"reflect"
 	"strconv"
@@ -72,7 +71,13 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		return
 	}
 
-	if !newSubnet.DeletionTimestamp.IsZero() && newSubnet.Status.UsingIPs == 0 {
+	var usingIPs float64
+	if newSubnet.Spec.Protocol == kubeovnv1.ProtocolIPv6 {
+		usingIPs = newSubnet.Status.V6UsingIPs
+	} else {
+		usingIPs = newSubnet.Status.V4UsingIPs
+	}
+	if !newSubnet.DeletionTimestamp.IsZero() && usingIPs == 0 {
 		c.addOrUpdateSubnetQueue.Add(key)
 		return
 	}
@@ -1057,10 +1062,8 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 
 	subnet.Status.V4AvailableIPs = v4availableIPs
 	subnet.Status.V6AvailableIPs = v6availableIPs
-	subnet.Status.AvailableIPs = math.Min(v4availableIPs, v6availableIPs)
 	subnet.Status.V4UsingIPs = float64(len(v4UsingIPs))
 	subnet.Status.V6UsingIPs = float64(len(v6UsingIPs))
-	subnet.Status.UsingIPs = subnet.Status.V4UsingIPs
 
 	bytes, err := subnet.Status.Bytes()
 	if err != nil {
@@ -1091,8 +1094,6 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		availableIPs = 0
 	}
 	usingIPs := float64(len(podUsedIPs.Items))
-	subnet.Status.AvailableIPs = availableIPs
-	subnet.Status.UsingIPs = usingIPs
 	if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolIPv4 {
 		subnet.Status.V4AvailableIPs = availableIPs
 		subnet.Status.V4UsingIPs = usingIPs
