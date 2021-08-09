@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"math"
 	"sync"
 
 	"k8s.io/apimachinery/pkg/labels"
@@ -38,9 +39,23 @@ func (c *Controller) exportSubnetMetrics() bool {
 }
 
 func (c *Controller) exportSubnetAvailableIPsGauge(subnet *kubeovnv1.Subnet) {
-	metricSubnetAvailableIPs.WithLabelValues(subnet.Name, subnet.Spec.Protocol, subnet.Spec.CIDRBlock).Set(subnet.Status.AvailableIPs)
+	var availableIPs float64
+	if subnet.Spec.Protocol == kubeovnv1.ProtocolIPv4 {
+		availableIPs = subnet.Status.V4AvailableIPs
+	} else if subnet.Spec.Protocol == kubeovnv1.ProtocolIPv6 {
+		availableIPs = subnet.Status.V6AvailableIPs
+	} else {
+		availableIPs = math.Min(subnet.Status.V4AvailableIPs, subnet.Status.V6AvailableIPs)
+	}
+	metricSubnetAvailableIPs.WithLabelValues(subnet.Name, subnet.Spec.Protocol, subnet.Spec.CIDRBlock).Set(availableIPs)
 }
 
 func (c *Controller) exportSubnetUsedIPsGauge(subnet *kubeovnv1.Subnet) {
-	metricSubnetUsedIPs.WithLabelValues(subnet.Name, subnet.Spec.Protocol, subnet.Spec.CIDRBlock).Set(subnet.Status.UsingIPs)
+	var usingIPs float64
+	if subnet.Spec.Protocol == kubeovnv1.ProtocolIPv6 {
+		usingIPs = subnet.Status.V6UsingIPs
+	} else {
+		usingIPs = subnet.Status.V4UsingIPs
+	}
+	metricSubnetUsedIPs.WithLabelValues(subnet.Name, subnet.Spec.Protocol, subnet.Spec.CIDRBlock).Set(usingIPs)
 }
