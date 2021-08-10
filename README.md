@@ -17,7 +17,10 @@ The Kube-OVN community is waiting for you participation!
 - Follow us at [Twitter](https://twitter.com/KubeOvn)
 - Chat with us at [Slack](https://kube-ovn-slackin.herokuapp.com/)
 - Other issues please send email to [mengxin@alauda.io](mailto:mengxin@alauda.io)
-- 微信用户点击 https://jinshuju.net/f/lyrEow 加入社区微信交流群
+- 微信用户扫码加小助手进入社区交流群，请注明 Kube-OVN
+
+
+  ![Image of wechat](./docs/wechat.png)
 
 ## Features
 - **Namespaced Subnets**: Each Namespace can have a unique Subnet (backed by a Logical Switch). Pods within the Namespace will have IP addresses allocated from the Subnet. It's also possible for multiple Namespaces to share a Subnet.
