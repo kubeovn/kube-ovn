@@ -14,6 +14,29 @@ const (
 	GWCentralizedType = "centralized"
 )
 
+type SgRemoteType string
+
+const (
+	SgRemoteTypeAddress SgRemoteType = "address"
+	SgRemoteTypeSg      SgRemoteType = "securityGroup"
+)
+
+type SgProtocol string
+
+const (
+	ProtocolALL  SgProtocol = "all"
+	ProtocolICMP SgProtocol = "icmp"
+	ProtocolTCP  SgProtocol = "tcp"
+	ProtocolUDP  SgProtocol = "udp"
+)
+
+type SgPolicy string
+
+const (
+	PolicyAllow SgPolicy = "allow"
+	PolicyDrop  SgPolicy = "drop"
+)
+
 // Constants for condition
 const (
 	// Ready => controller considers this resource Ready
@@ -415,4 +438,53 @@ type VpcNatGatewayList struct {
 	metav1.ListMeta `json:"metadata"`
 
 	Items []VpcNatGateway `json:"items"`
+}
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +genclient:nonNamespaced
+// +resourceName=security-groups
+
+type SecurityGroup struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   SecurityGroupSpec   `json:"spec"`
+	Status SecurityGroupStatus `json:"status"`
+}
+
+type SecurityGroupSpec struct {
+	IngressRules          []*SgRule `json:"ingressRules,omitempty"`
+	EgressRules           []*SgRule `json:"egressRules,omitempty"`
+	AllowSameGroupTraffic bool      `json:"allowSameGroupTraffic,omitempty"`
+}
+
+type SecurityGroupStatus struct {
+	PortGroup              string `json:"portGroup"`
+	AllowSameGroupTraffic  bool   `json:"allowSameGroupTraffic"`
+	IngressMd5             string `json:"ingressMd5"`
+	EgressMd5              string `json:"egressMd5"`
+	IngressLastSyncSuccess bool   `json:"ingressLastSyncSuccess"`
+	EgressLastSyncSuccess  bool   `json:"egressLastSyncSuccess"`
+}
+
+type SgRule struct {
+	IPVersion           string       `json:"ipVersion"`
+	Protocol            SgProtocol   `json:"protocol,omitempty"`
+	Priority            int          `json:"priority,omitempty"`
+	RemoteType          SgRemoteType `json:"remoteType"`
+	RemoteAddress       string       `json:"remoteAddress,omitempty"`
+	RemoteSecurityGroup string       `json:"remoteSecurityGroup,omitempty"`
+	PortRangeMin        int          `json:"portRangeMin,omitempty"`
+	PortRangeMax        int          `json:"portRangeMax,omitempty"`
+	Policy              SgPolicy     `json:"policy"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type SecurityGroupList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []SecurityGroup `json:"items"`
 }

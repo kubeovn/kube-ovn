@@ -40,12 +40,13 @@ type Controller struct {
 	ovnClient    *ovs.Client
 	ipam         *ovnipam.IPAM
 
-	podsLister     v1.PodLister
-	podsSynced     cache.InformerSynced
-	addPodQueue    workqueue.RateLimitingInterface
-	deletePodQueue workqueue.RateLimitingInterface
-	updatePodQueue workqueue.RateLimitingInterface
-	podKeyMutex    *keymutex.KeyMutex
+	podsLister             v1.PodLister
+	podsSynced             cache.InformerSynced
+	addPodQueue            workqueue.RateLimitingInterface
+	deletePodQueue         workqueue.RateLimitingInterface
+	updatePodQueue         workqueue.RateLimitingInterface
+	updatePodSecurityQueue workqueue.RateLimitingInterface
+	podKeyMutex            *keymutex.KeyMutex
 
 	vpcsLister           kubeovnlister.VpcLister
 	vpcSynced            cache.InformerSynced
@@ -109,6 +110,13 @@ type Controller struct {
 	updateNpQueue workqueue.RateLimitingInterface
 	deleteNpQueue workqueue.RateLimitingInterface
 
+	sgsLister          kubeovnlister.SecurityGroupLister
+	sgSynced           cache.InformerSynced
+	addOrUpdateSgQueue workqueue.RateLimitingInterface
+	delSgQueue         workqueue.RateLimitingInterface
+	syncSgPortsQueue   workqueue.RateLimitingInterface
+	sgKeyMutex         *keymutex.KeyMutex
+
 	configMapsLister v1.ConfigMapLister
 	configMapsSynced cache.InformerSynced
 
@@ -147,6 +155,7 @@ func NewController(config *Configuration) *Controller {
 	ipInformer := kubeovnInformerFactory.Kubeovn().V1().IPs()
 	vlanInformer := kubeovnInformerFactory.Kubeovn().V1().Vlans()
 	providerNetworkInformer := kubeovnInformerFactory.Kubeovn().V1().ProviderNetworks()
+	sgInformer := kubeovnInformerFactory.Kubeovn().V1().SecurityGroups()
 	podInformer := informerFactory.Core().V1().Pods()
 	namespaceInformer := informerFactory.Core().V1().Namespaces()
 	nodeInformer := informerFactory.Core().V1().Nodes()
@@ -198,12 +207,13 @@ func NewController(config *Configuration) *Controller {
 		providerNetworksLister: providerNetworkInformer.Lister(),
 		providerNetworkSynced:  providerNetworkInformer.Informer().HasSynced,
 
-		podsLister:     podInformer.Lister(),
-		podsSynced:     podInformer.Informer().HasSynced,
-		addPodQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddPod"),
-		deletePodQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeletePod"),
-		updatePodQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdatePod"),
-		podKeyMutex:    keymutex.New(97),
+		podsLister:             podInformer.Lister(),
+		podsSynced:             podInformer.Informer().HasSynced,
+		addPodQueue:            workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddPod"),
+		deletePodQueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeletePod"),
+		updatePodQueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdatePod"),
+		updatePodSecurityQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdatePodSecurity"),
+		podKeyMutex:            keymutex.New(97),
 
 		namespacesLister:  namespaceInformer.Lister(),
 		namespacesSynced:  namespaceInformer.Informer().HasSynced,
@@ -228,6 +238,13 @@ func NewController(config *Configuration) *Controller {
 		configMapsSynced: configMapInformer.Informer().HasSynced,
 
 		recorder: recorder,
+
+		sgsLister:          sgInformer.Lister(),
+		sgSynced:           sgInformer.Informer().HasSynced,
+		addOrUpdateSgQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateSg"),
+		delSgQueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteSg"),
+		syncSgPortsQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "SyncSgPorts"),
+		sgKeyMutex:         keymutex.New(97),
 
 		informerFactory:        informerFactory,
 		cmInformerFactory:      cmInformerFactory,
@@ -304,6 +321,11 @@ func NewController(config *Configuration) *Controller {
 			DeleteFunc: controller.enqueueDeleteNp,
 		})
 	}
+	sgInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddSg,
+		DeleteFunc: controller.enqueueDeleteSg,
+		UpdateFunc: controller.enqueueUpdateSg,
+	})
 
 	return controller
 }
@@ -349,6 +371,10 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		klog.Fatalf("failed to init ipam %v", err)
 	}
 
+	if err := c.initDenyAllSecurityGroup(); err != nil {
+		klog.Fatalf("failed to init 'deny_all' security group, %v", err)
+	}
+
 	// remove resources in ovndb that not exist any more in kubernetes resources
 	if err := c.gc(); err != nil {
 		klog.Fatalf("gc failed %v", err)
@@ -377,6 +403,7 @@ func (c *Controller) shutdown() {
 	c.addPodQueue.ShutDown()
 	c.deletePodQueue.ShutDown()
 	c.updatePodQueue.ShutDown()
+	c.updatePodSecurityQueue.ShutDown()
 
 	c.addNamespaceQueue.ShutDown()
 
@@ -414,6 +441,9 @@ func (c *Controller) shutdown() {
 		c.updateNpQueue.ShutDown()
 		c.deleteNpQueue.ShutDown()
 	}
+	c.addOrUpdateSgQueue.ShutDown()
+	c.delSgQueue.ShutDown()
+	c.syncSgPortsQueue.ShutDown()
 }
 
 func (c *Controller) startWorkers(stopCh <-chan struct{}) {
@@ -445,6 +475,10 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 			break
 		}
 	}
+
+	go wait.Until(c.runAddSgWorker, time.Second, stopCh)
+	go wait.Until(c.runDelSgWorker, time.Second, stopCh)
+	go wait.Until(c.runSyncSgPortsWorker, time.Second, stopCh)
 
 	// run node worker before handle any pods
 	for i := 0; i < c.config.WorkerNum; i++ {
@@ -485,6 +519,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		go wait.Until(c.runAddPodWorker, time.Second, stopCh)
 		go wait.Until(c.runDeletePodWorker, time.Second, stopCh)
 		go wait.Until(c.runUpdatePodWorker, time.Second, stopCh)
+		go wait.Until(c.runUpdatePodSecurityWorker, time.Second, stopCh)
 
 		go wait.Until(c.runDeleteSubnetWorker, time.Second, stopCh)
 		go wait.Until(c.runDeleteRouteWorker, time.Second, stopCh)

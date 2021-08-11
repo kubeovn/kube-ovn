@@ -22,6 +22,8 @@ type IPExpansion interface{}
 
 type ProviderNetworkExpansion interface{}
 
+type SecurityGroupExpansion interface{}
+
 type SubnetExpansion interface{}
 
 type VlanExpansion interface{}

@@ -36,6 +36,10 @@ func (c *FakeKubeovnV1) ProviderNetworks() v1.ProviderNetworkInterface {
 	return &FakeProviderNetworks{c}
 }
 
+func (c *FakeKubeovnV1) SecurityGroups() v1.SecurityGroupInterface {
+	return &FakeSecurityGroups{c}
+}
+
 func (c *FakeKubeovnV1) Subnets() v1.SubnetInterface {
 	return &FakeSubnets{c}
 }

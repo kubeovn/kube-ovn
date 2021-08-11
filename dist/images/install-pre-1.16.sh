@@ -642,6 +642,99 @@ spec:
                     type: string
                   lastTransitionTime:
                     type: string
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: security-groups.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: security-groups
+    singular: security-group
+    shortNames:
+      - sg
+    kind: SecurityGroup
+    listKind: SecurityGroupList
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                ingressRules:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      ipVersion:
+                        type: string
+                      protocol:
+                        type: string
+                      priority:
+                        type: integer
+                      remoteType:
+                        type: string
+                      remoteAddress:
+                        type: string
+                      remoteSecurityGroup:
+                        type: string
+                      portRangeMin:
+                        type: integer
+                      portRangeMax:
+                        type: integer
+                      policy:
+                        type: string
+                egressRules:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      ipVersion:
+                        type: string
+                      protocol:
+                        type: string
+                      priority:
+                        type: integer
+                      remoteType:
+                        type: string
+                      remoteAddress:
+                        type: string
+                      remoteSecurityGroup:
+                        type: string
+                      portRangeMin:
+                        type: integer
+                      portRangeMax:
+                        type: integer
+                      policy:
+                        type: string
+                allowSameGroupTraffic:
+                  type: boolean
+            status:
+              type: object
+              properties:
+                portGroup:
+                  type: string
+                allowSameGroupTraffic:
+                  type: boolean
+                ingressMd5:
+                  type: string
+                egressMd5:
+                  type: string
+                ingressLastSyncSuccess:
+                  type: boolean
+                egressLastSyncSuccess:
+                  type: boolean
+      subresources:
+        status: {}
+  conversion:
+    strategy: None
 EOF
 
 if $DPDK; then
@@ -713,6 +806,8 @@ rules:
       - vlans
       - provider-networks
       - provider-networks/status
+      - security-groups
+      - security-groups/status
     verbs:
       - "*"
   - apiGroups:
@@ -1193,6 +1288,8 @@ rules:
       - provider-networks
       - provider-networks/status
       - networks
+      - security-groups
+      - security-groups/status
     verbs:
       - "*"
   - apiGroups:

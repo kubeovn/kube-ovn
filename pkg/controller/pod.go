@@ -209,6 +209,22 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		klog.V(3).Infof("enqueue update pod %s", key)
 		c.updatePodQueue.Add(key)
 	}
+
+	podNets, err := c.getPodKubeovnNets(newPod)
+	if err != nil {
+		return
+	}
+	// security policy changed
+	for _, podNet := range podNets {
+		oldSecurity := oldPod.Annotations[fmt.Sprintf(util.PortSecurityAnnotationTemplate, podNet.ProviderName)]
+		newSecurity := newPod.Annotations[fmt.Sprintf(util.PortSecurityAnnotationTemplate, podNet.ProviderName)]
+		oldSg := oldPod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
+		newSg := newPod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
+		if oldSecurity != newSecurity || oldSg != newSg {
+			c.updatePodSecurityQueue.Add(key)
+			break
+		}
+	}
 }
 
 func (c *Controller) runAddPodWorker() {
@@ -223,6 +239,11 @@ func (c *Controller) runDeletePodWorker() {
 
 func (c *Controller) runUpdatePodWorker() {
 	for c.processNextUpdatePodWorkItem() {
+	}
+}
+
+func (c *Controller) runUpdatePodSecurityWorker() {
+	for c.processNextUpdatePodSecurityWorkItem() {
 	}
 }
 
@@ -324,6 +345,37 @@ func (c *Controller) processNextUpdatePodWorkItem() bool {
 		return true
 	}
 
+	return true
+}
+
+func (c *Controller) processNextUpdatePodSecurityWorkItem() bool {
+	obj, shutdown := c.updatePodSecurityQueue.Get()
+
+	if shutdown {
+		return false
+	}
+
+	err := func(obj interface{}) error {
+		defer c.updatePodSecurityQueue.Done(obj)
+		var key string
+		var ok bool
+		if key, ok = obj.(string); !ok {
+			c.updatePodSecurityQueue.Forget(obj)
+			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
+			return nil
+		}
+		if err := c.handleUpdatePodSecurity(key); err != nil {
+			c.updatePodSecurityQueue.AddRateLimited(key)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		}
+		c.updatePodSecurityQueue.Forget(obj)
+		return nil
+	}(obj)
+
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
 	return true
 }
 
@@ -443,13 +495,22 @@ func (c *Controller) handleAddPod(key string) error {
 			}
 
 			portSecurity := false
-			if pod.Annotations[util.PortSecurityAnnotation] == "true" {
+			if pod.Annotations[fmt.Sprintf(util.PortSecurityAnnotationTemplate, podNet.ProviderName)] == "true" {
 				portSecurity = true
 			}
 
-			if err := c.ovnClient.CreatePort(subnet.Name, ovs.PodNameToPortName(name, namespace, podNet.ProviderName), ipStr, subnet.Spec.CIDRBlock, mac, tag, pod.Name, pod.Namespace, portSecurity); err != nil {
+			securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
+			portName := ovs.PodNameToPortName(name, namespace, podNet.ProviderName)
+			if err := c.ovnClient.CreatePort(subnet.Name, portName, ipStr, subnet.Spec.CIDRBlock, mac, tag, pod.Name, pod.Namespace, portSecurity, securityGroupAnnotation); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
 				return err
+			}
+
+			if portSecurity {
+				sgNames := strings.Split(securityGroupAnnotation, ",")
+				for _, sgName := range sgNames {
+					c.syncSgPortsQueue.Add(sgName)
+				}
 			}
 		}
 	}
@@ -515,6 +576,10 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 	// Add additional default ports to compatible with previous versions
 	ports = append(ports, ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider))
 	for _, portName := range ports {
+		sgs, err := c.getPortSg(portName)
+		if err != nil {
+			klog.Warningf("filed to get port '%s' sg, %v", portName, err)
+		}
 		if err := c.ovnClient.DeleteLogicalSwitchPort(portName); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", portName, err)
 			return err
@@ -525,11 +590,56 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 				return err
 			}
 		}
+		for _, sg := range sgs {
+			c.syncSgPortsQueue.Add(sg)
+		}
 	}
 	if err := c.deleteAttachmentNetWorkIP(pod); err != nil {
 		klog.Errorf("failed to delete attach ip for pod %v, %v, please delete attach ip manually", pod.Name, err)
 	}
 	c.ipam.ReleaseAddressByPod(key)
+	return nil
+}
+
+func (c *Controller) handleUpdatePodSecurity(key string) error {
+	c.podKeyMutex.Lock(key)
+	defer c.podKeyMutex.Unlock(key)
+	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
+		return nil
+	}
+	pod, err := c.podsLister.Pods(namespace).Get(name)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	klog.Infof("update pod %s/%s security", namespace, name)
+
+	podNets, err := c.getPodKubeovnNets(pod)
+	if err != nil {
+		klog.Errorf("failed to pod nets %v", err)
+		return err
+	}
+
+	// associated with security group
+	for _, podNet := range podNets {
+		portSecurity := false
+		if pod.Annotations[fmt.Sprintf(util.PortSecurityAnnotationTemplate, podNet.ProviderName)] == "true" {
+			portSecurity = true
+		}
+		if portSecurity {
+			securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
+			portName := ovs.PodNameToPortName(name, namespace, podNet.ProviderName)
+			if err = c.reconcilePortSg(portName, securityGroupAnnotation); err != nil {
+				klog.Errorf("reconcilePortSg failed. %v", err)
+				return err
+			}
+		}
+	}
 	return nil
 }
 

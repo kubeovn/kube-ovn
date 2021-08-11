@@ -190,7 +190,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		klog.Errorf("failed to delete port group %s before networkpolicy update process, %v", pgName, err)
 	}
 
-	if err := c.ovnClient.CreatePortGroup(pgName, np.Namespace, np.Name); err != nil {
+	if err := c.ovnClient.CreateNpPortGroup(pgName, np.Namespace, np.Name); err != nil {
 		klog.Errorf("failed to create port group for np %s, %v", key, err)
 		return err
 	}

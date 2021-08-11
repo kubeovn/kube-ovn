@@ -28,6 +28,7 @@ type KubeovnV1Interface interface {
 	RESTClient() rest.Interface
 	IPsGetter
 	ProviderNetworksGetter
+	SecurityGroupsGetter
 	SubnetsGetter
 	VlansGetter
 	VpcsGetter
@@ -45,6 +46,10 @@ func (c *KubeovnV1Client) IPs() IPInterface {
 
 func (c *KubeovnV1Client) ProviderNetworks() ProviderNetworkInterface {
 	return newProviderNetworks(c)
+}
+
+func (c *KubeovnV1Client) SecurityGroups() SecurityGroupInterface {
+	return newSecurityGroups(c)
 }
 
 func (c *KubeovnV1Client) Subnets() SubnetInterface {

@@ -43,6 +43,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&VpcList{},
 		&VpcNatGateway{},
 		&VpcNatGatewayList{},
+		&SecurityGroup{},
+		&SecurityGroupList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil
