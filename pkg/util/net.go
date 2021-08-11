@@ -300,9 +300,11 @@ func GetIpAddrWithMask(ip, cidr string) string {
 	if CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
 		cidrBlocks := strings.Split(cidr, ",")
 		ips := strings.Split(ip, ",")
-		v4IP := fmt.Sprintf("%s/%s", ips[0], strings.Split(cidrBlocks[0], "/")[1])
-		v6IP := fmt.Sprintf("%s/%s", ips[1], strings.Split(cidrBlocks[1], "/")[1])
-		ipAddr = v4IP + "," + v6IP
+		if len(cidrBlocks) == 2 && len(ips) == 2 {
+			v4IP := fmt.Sprintf("%s/%s", ips[0], strings.Split(cidrBlocks[0], "/")[1])
+			v6IP := fmt.Sprintf("%s/%s", ips[1], strings.Split(cidrBlocks[1], "/")[1])
+			ipAddr = v4IP + "," + v6IP
+		}
 	} else {
 		ipAddr = fmt.Sprintf("%s/%s", ip, strings.Split(cidr, "/")[1])
 	}
