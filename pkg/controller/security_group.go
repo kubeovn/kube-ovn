@@ -220,45 +220,8 @@ func (c *Controller) handleAddOrUpdateSg(key string) error {
 		return err
 	}
 
-	// check sg rules
-	allRules := append(sg.Spec.IngressRules, sg.Spec.EgressRules...)
-	for _, rule := range allRules {
-		if rule.IPVersion != "ipv4" && rule.IPVersion != "ipv6" {
-			return fmt.Errorf("IPVersion should be 'ipv4' or 'ipv6'")
-		}
-
-		if rule.Priority < 1 || rule.Priority > 200 {
-			return fmt.Errorf("priority '%d' is not in the range of 1 to 200", rule.Priority)
-		}
-
-		switch rule.RemoteType {
-		case kubeovnv1.SgRemoteTypeAddress:
-			if strings.Contains(rule.RemoteAddress, "/") {
-				if _, _, err := net.ParseCIDR(rule.RemoteAddress); err != nil {
-					return fmt.Errorf("invalid CIDR '%s'", rule.RemoteAddress)
-				}
-			} else {
-				if net.ParseIP(rule.RemoteAddress) == nil {
-					return fmt.Errorf("invalid ip address '%s'", rule.RemoteAddress)
-				}
-			}
-		case kubeovnv1.SgRemoteTypeSg:
-			_, err := c.sgsLister.Get(rule.RemoteSecurityGroup)
-			if err != nil {
-				return fmt.Errorf("failed to get remote sg '%s', %v", rule.RemoteSecurityGroup, err)
-			}
-		default:
-			return fmt.Errorf("not support sgRemoteType '%s'", rule.RemoteType)
-		}
-
-		if rule.Protocol == kubeovnv1.ProtocolTCP || rule.Protocol == kubeovnv1.ProtocolUDP {
-			if rule.PortRangeMin < 1 || rule.PortRangeMin > 65535 || rule.PortRangeMax < 1 || rule.PortRangeMax > 65535 {
-				return fmt.Errorf("portRange is out of range")
-			}
-			if rule.PortRangeMin > rule.PortRangeMax {
-				return fmt.Errorf("portRange err, range Minimum value greater than maximum value")
-			}
-		}
+	if err = c.validateSgRule(sg); err != nil {
+		return err
 	}
 
 	if err = c.ovnClient.CreateSgPortGroup(sg.Name); err != nil {
@@ -317,6 +280,50 @@ func (c *Controller) handleAddOrUpdateSg(key string) error {
 	sg.Status.AllowSameGroupTraffic = sg.Spec.AllowSameGroupTraffic
 	c.patchSgStatus(sg)
 	c.syncSgPortsQueue.Add(key)
+	return nil
+}
+
+func (c *Controller) validateSgRule(sg *kubeovnv1.SecurityGroup) error {
+	// check sg rules
+	allRules := append(sg.Spec.IngressRules, sg.Spec.EgressRules...)
+	for _, rule := range allRules {
+		if rule.IPVersion != "ipv4" && rule.IPVersion != "ipv6" {
+			return fmt.Errorf("IPVersion should be 'ipv4' or 'ipv6'")
+		}
+
+		if rule.Priority < 1 || rule.Priority > 200 {
+			return fmt.Errorf("priority '%d' is not in the range of 1 to 200", rule.Priority)
+		}
+
+		switch rule.RemoteType {
+		case kubeovnv1.SgRemoteTypeAddress:
+			if strings.Contains(rule.RemoteAddress, "/") {
+				if _, _, err := net.ParseCIDR(rule.RemoteAddress); err != nil {
+					return fmt.Errorf("invalid CIDR '%s'", rule.RemoteAddress)
+				}
+			} else {
+				if net.ParseIP(rule.RemoteAddress) == nil {
+					return fmt.Errorf("invalid ip address '%s'", rule.RemoteAddress)
+				}
+			}
+		case kubeovnv1.SgRemoteTypeSg:
+			_, err := c.sgsLister.Get(rule.RemoteSecurityGroup)
+			if err != nil {
+				return fmt.Errorf("failed to get remote sg '%s', %v", rule.RemoteSecurityGroup, err)
+			}
+		default:
+			return fmt.Errorf("not support sgRemoteType '%s'", rule.RemoteType)
+		}
+
+		if rule.Protocol == kubeovnv1.ProtocolTCP || rule.Protocol == kubeovnv1.ProtocolUDP {
+			if rule.PortRangeMin < 1 || rule.PortRangeMin > 65535 || rule.PortRangeMax < 1 || rule.PortRangeMax > 65535 {
+				return fmt.Errorf("portRange is out of range")
+			}
+			if rule.PortRangeMin > rule.PortRangeMax {
+				return fmt.Errorf("portRange err, range Minimum value greater than maximum value")
+			}
+		}
+	}
 	return nil
 }
 
