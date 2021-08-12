@@ -54,7 +54,7 @@ func ParseFlags() (*Configuration, error) {
 		argMTU                   = pflag.Int("mtu", 0, "The MTU used by pod iface in overlay networks, default: iface MTU - 100")
 		argEnableMirror          = pflag.Bool("enable-mirror", false, "Enable traffic mirror, default: false")
 		argMirrorNic             = pflag.String("mirror-iface", "mirror0", "The mirror nic name that will be created by kube-ovn, default: mirror0")
-		argBindSocket            = pflag.String("bind-socket", "/var/run/cniserver.sock", "The socket daemon bind to.")
+		argBindSocket            = pflag.String("bind-socket", "/run/openvswitch/kube-ovn-daemon.sock", "The socket daemon bind to.")
 		argOvsSocket             = pflag.String("ovs-socket", "", "The socket to local ovs-server")
 		argKubeConfigFile        = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 		argServiceClusterIPRange = pflag.String("service-cluster-ip-range", "10.96.0.0/12", "The kubernetes service cluster ip range, default: 10.96.0.0/12")
