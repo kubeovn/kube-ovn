@@ -7,12 +7,52 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vishvananda/netlink"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+// InitOVSBridges initializes OVS bridges
+func InitOVSBridges() error {
+	bridges, err := ovs.Bridges()
+	if err != nil {
+		return err
+	}
+
+	for _, brName := range bridges {
+		bridge, err := netlink.LinkByName(brName)
+		if err != nil {
+			return fmt.Errorf("failed to get bridge by name %s: %v", brName, err)
+		}
+		if err = netlink.LinkSetUp(bridge); err != nil {
+			return fmt.Errorf("failed to set OVS bridge %s up: %v", brName, err)
+		}
+
+		output, err := ovs.Exec("list-ports", brName)
+		if err != nil {
+			return fmt.Errorf("failed to list ports of OVS birdge %s, %v: %q", brName, err, output)
+		}
+
+		if output != "" {
+			for _, port := range strings.Split(output, "\n") {
+				ok, err := ovs.ValidatePortVendor(port)
+				if err != nil {
+					return fmt.Errorf("failed to check vendor of port %s: %v", port, err)
+				}
+				if ok {
+					if _, err = configProviderNic(port, brName); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+
+	return nil
+}
 
 // InitNodeGateway init ovn0
 func InitNodeGateway(config *Configuration) error {
