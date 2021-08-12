@@ -94,6 +94,11 @@ func ovsClear(table, record string, columns ...string) error {
 	return err
 }
 
+// Bridges returns bridges created by Kube-OVN
+func Bridges() ([]string, error) {
+	return ovsFind("bridge", "name", fmt.Sprintf("external-ids:vendor=%s", util.CniTypeName))
+}
+
 // ClearPodBandwidth remove qos related to this pod. Only used when remove pod.
 func ClearPodBandwidth(podName, podNamespace string) error {
 	qosList, err := ovsFind("qos", "_uuid", fmt.Sprintf(`external-ids:iface-id="%s.%s"`, podName, podNamespace))

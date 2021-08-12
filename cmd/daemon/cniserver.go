@@ -28,6 +28,10 @@ func CmdMain() {
 
 	klog.Infof(versions.String())
 	daemon.InitMetrics()
+	if err := daemon.InitOVSBridges(); err != nil {
+		klog.Fatalf("failed to initialize OVS bridges: %v", err)
+	}
+
 	config, err := daemon.ParseFlags()
 	if err != nil {
 		klog.Fatalf("parse config failed %v", err)
