@@ -427,15 +427,6 @@ spec:
       - name: NAT
         type: boolean
         jsonPath: .spec.natOutgoing
-      - name: ExternalEgressGateway
-        type: string
-        jsonPath: .spec.externalEgressGateway
-      - name: PolicyRoutingPriority
-        type: integer
-        jsonPath: .spec.policyRoutingPriority
-      - name: PolicyRoutingTableID
-        type: integer
-        jsonPath: .spec.policyRoutingTableID
       - name: Default
         type: boolean
         jsonPath: .spec.default
