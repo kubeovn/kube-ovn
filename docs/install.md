@@ -135,7 +135,7 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
 ```text
       --add_dir_header                    If true, adds the file directory to the header
       --alsologtostderr                   log to standard error as well as files
-      --bind-socket string                The socket daemon bind to. (default "/var/run/cniserver.sock")
+      --bind-socket string                The socket daemon bind to. (default "/run/openvswitch/kube-ovn-daemon.sock")
       --default-interface-name string     The default host interface name in the vlan/vxlan type
       --default-provider-name string      The vlan or vxlan type default provider interface name, default: provider (default "provider")
       --enable-mirror                     Enable traffic mirror, default: false
