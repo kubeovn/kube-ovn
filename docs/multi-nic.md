@@ -57,7 +57,7 @@ spec:
 
 `server_socket`: Is the socket file that Kube-OVN plugin communicate with. Default location is `/run/openvswitch/kube-ovn-daemon.sock`
 
-`provider`: The `<namespace>.<name>` of this NetworkAttachmentDefinition, Kube-OVN plugin will later use it to find the related subnet.
+`provider`: The `<name>.<namespace>` of this NetworkAttachmentDefinition, Kube-OVN plugin will later use it to find the related subnet.
 
 ### Create a Kube-OVN subnet
 
@@ -74,7 +74,7 @@ spec:
   cidrBlock: 172.17.0.0/16
   gateway: 172.17.0.1
   excludeIps:
-  - 172.17.0.0..172.17.0.10
+  - 172.17.0.1..172.17.0.10
 ```
 
 Other options like gatewayType, gatewayNode, private, allowSubnets, vlan, underlayGateway, natOutgoing are not available for attachment network.
