@@ -183,7 +183,9 @@ uninstall:
 .PHONY: lint
 lint:
 	@gofmt -d $(GOFILES_NOVENDOR)
-	@gofmt -l $(GOFILES_NOVENDOR) | read && echo "Code differs from gofmt's style" 1>&2 && exit 1 || true
+	@if [ $$(gofmt -l $(GOFILES_NOVENDOR) | wc -l) -ne 0 ]; then \
+		echo "Code differs from gofmt's style" 1>&2 && exit 1; \
+	fi
 	@GOOS=linux go vet ./...
 	@GOOS=linux gosec -exclude=G204,G601 ./...
 
