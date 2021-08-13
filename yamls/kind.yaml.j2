@@ -1,3 +1,7 @@
+{% set nodeTag = "v1.19.11" -%}
+{% if ip_family is equalto "dual" -%}
+  {% set nodeTag = "v1.21.2" -%}
+{% endif -%}
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 networking:
@@ -16,15 +20,15 @@ kubeadmConfigPatches:
 
 nodes:
   - role: control-plane
-    image: kindest/node:v1.19.11
+    image: kindest/node:{{ nodeTag }}
   {%- if ha is equalto "true" %}
   - role: control-plane
-    image: kindest/node:v1.19.11
+    image: kindest/node:{{ nodeTag }}
   - role: control-plane
-    image: kindest/node:v1.19.11
+    image: kindest/node:{{ nodeTag }}
   {%- elif single is equalto "true" %}
 
   {%- else %}
   - role: worker
-    image: kindest/node:v1.19.11
+    image: kindest/node:{{ nodeTag }}
   {%- endif %}

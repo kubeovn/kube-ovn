@@ -116,7 +116,7 @@ kind-init-ipv6:
 .PHONY: kind-init-dual
 kind-init-dual:
 	kind delete cluster --name=kube-ovn
-	kube_proxy_mode=iptables ip_family=DualStack ha=false single=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
+	kube_proxy_mode=iptables ip_family=dual ha=false single=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
 	kubectl describe no
 	docker exec kube-ovn-worker sysctl -w net.ipv6.conf.all.disable_ipv6=0
