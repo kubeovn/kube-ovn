@@ -15,6 +15,9 @@ on:
     - 'docs/**'
     - '**.md'
 
+env:
+  KIND_VERSION: v0.11.1
+
 jobs:
   build:
     name: Build x86
@@ -77,8 +80,6 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Install Kind
-        env:
-          KIND_VERSION: v0.11.1
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
@@ -124,8 +125,6 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Install Kind
-        env:
-          KIND_VERSION: v0.11.1
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
@@ -171,8 +170,6 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Install Kind
-        env:
-          KIND_VERSION: v0.11.1
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
@@ -218,8 +215,6 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Install Kind
-        env:
-          KIND_VERSION: v0.11.1
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
@@ -265,8 +260,6 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Install Kind
-        env:
-          KIND_VERSION: v0.11.1
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
@@ -298,8 +291,6 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Install Kind
-        env:
-          KIND_VERSION: v0.11.1
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
@@ -335,8 +326,6 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Install Kind
-        env:
-          KIND_VERSION: v0.11.1
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
@@ -386,8 +375,6 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Install Kind
-        env:
-          KIND_VERSION: v0.11.1
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
@@ -435,8 +422,6 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Install Kind
-        env:
-          KIND_VERSION: v0.11.1
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
@@ -484,8 +469,6 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Install Kind
-        env:
-          KIND_VERSION: v0.11.1
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
