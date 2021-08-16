@@ -68,15 +68,15 @@ push-release: release
 
 .PHONY: tar
 tar:
-	docker save $(REGISTRY)/kube-ovn:$(RELEASE_TAG) > image.tar
+	docker save $(REGISTRY)/kube-ovn:$(RELEASE_TAG) -o image.tar
 
 .PHONY: base-tar-amd64
 base-tar-amd64:
-	docker save $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-amd64 > image-amd64.tar
+	docker save $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-amd64 -o image-amd64.tar
 
 .PHONY: base-tar-arm64
 base-tar-arm64:
-	docker save $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-arm64 > image-arm64.tar
+	docker save $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-arm64 -o image-arm64.tar
 
 .PHONY: kind-init
 kind-init:
@@ -220,7 +220,7 @@ e2e:
 
 	printf "package e2e\n\nvar nodeNetworks = map[string]string{\n" > test/e2e/network.go
 	kind get nodes --name kube-ovn | while read node; do \
-		printf "    \`$$node\`: \`" >> test/e2e/network.go; \
+		printf "\t\`$$node\`: \`" >> test/e2e/network.go; \
 		docker inspect -f '{{json .NetworkSettings.Networks.bridge}}' $$node >> test/e2e/network.go; \
 		printf "\`,\n" >> test/e2e/network.go; \
 	done
@@ -236,3 +236,11 @@ e2e-vlan-single-nic:
 	docker inspect -f '{{json .NetworkSettings.Networks.kind}}' kube-ovn-control-plane >> test/e2e-vlan-single-nic/node/network.go
 	echo "\`)" >> test/e2e-vlan-single-nic/node/network.go
 	ginkgo -mod=mod -progress -reportPassed --slowSpecThreshold=60 test/e2e-vlan-single-nic
+
+.PHONY: clean
+clean:
+	$(RM) yamls/kind.yaml
+	$(RM) ovn.yaml kube-ovn.yaml kube-ovn-crd.yaml
+	$(RM) image.tar image-amd64.tar image-arm64.tar
+	$(RM) -r test/e2e/ovnnb_db.*
+	$(RM) -r test/e2e/ovnsb_db.*

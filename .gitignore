@@ -1,4 +1,5 @@
 .idea/*
+.vscode/*
 .DS_Store
 vagrant/.vagrant/*
 vagrant/kubernetes-setup/*.retry
@@ -12,7 +13,12 @@ dist/images/kube-ovn-pinger
 dist/images/kube-ovn-speaker
 dist/images/kube-ovn-monitor
 dist/images/kube-ovn-cmd
+test/e2e/ovnnb_db.*
+test/e2e/ovnsb_db.*
 kube-ovn.yaml
 kube-ovn-crd.yaml
 ovn.yaml
 kind.yaml
+image.tar
+image-amd64.tar
+image-arm64.tar
