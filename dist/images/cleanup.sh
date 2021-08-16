@@ -24,14 +24,11 @@ kubectl delete clusterrolebinding ovn --ignore-not-found=true
 kubectl delete svc ovn-nb ovn-sb ovn-northd kube-ovn-pinger kube-ovn-controller kube-ovn-cni kube-ovn-monitor -n kube-system --ignore-not-found=true
 kubectl delete ds kube-ovn-cni -n kube-system --ignore-not-found=true
 kubectl delete deployment ovn-central kube-ovn-controller kube-ovn-monitor -n kube-system --ignore-not-found=true
-for ovsstatus in $(kubectl get pod --no-headers -n kube-system -lapp=ovs | awk '{print $1"+"$3}')
-do
-  status=`echo ${ovsstatus#*+}`
-  if [  "$status" = "Running"  ]; then
-    ovs=`echo ${ovsstatus%+*}`
-    kubectl exec -n kube-system "$ovs" -- bash /kube-ovn/uninstall.sh
-  fi
-done
+kubectl get pod --no-headers -n kube-system -lapp=ovs -o custom-columns=NAME:.metadata.name,STATUS:.status.phase,IP:.status.podIP | awk '{
+  if ($2 == "Running") {
+    system("kubectl exec -n kube-system "$1" -- bash /kube-ovn/uninstall.sh "$3)
+  }
+}'
 kubectl delete ds ovs-ovn kube-ovn-pinger -n kube-system --ignore-not-found=true
 kubectl delete crd --ignore-not-found=true \
   ips.kubeovn.io \
