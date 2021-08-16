@@ -463,7 +463,10 @@ func (c Client) createRouterPort(ls, lr, ip, mac string) error {
 		klog.Errorf("failed to create switch router port %s %v", lsTolr, err)
 		return err
 	}
-
+	if len(ip) == 0 {
+		klog.Errorf("failed to create switch router port: ip is empty")
+		return err
+	}
 	ipStr := strings.Split(ip, ",")
 	if len(ipStr) == 2 {
 		_, err = c.ovnNbCommand(MayExist, "lrp-add", lr, lrTols, mac, ipStr[0], ipStr[1])
