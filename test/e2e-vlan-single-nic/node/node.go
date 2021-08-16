@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -21,6 +22,9 @@ import (
 const vlanNic = "eth0"
 
 var vlanBr = util.ExternalBridgeName("provider")
+
+//go:embed network.json
+var networkJSON []byte
 
 type nodeNetwork struct {
 	Gateway             string

@@ -1,6 +1,6 @@
 module github.com/kubeovn/kube-ovn
 
-go 1.12
+go 1.16
 
 require (
 	github.com/Mellanox/sriovnet v1.0.2
@@ -11,11 +11,9 @@ require (
 	github.com/coreos/go-iptables v0.4.5
 	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13 // indirect
 	github.com/elazarl/goproxy v0.0.0-20190630181448-f1e96bc0f4c5 // indirect
-	github.com/elazarl/goproxy/ext v0.0.0-20190630181448-f1e96bc0f4c5 // indirect
 	github.com/emicklei/go-restful v2.11.1+incompatible
 	github.com/go-ini/ini v1.42.0 // indirect
-	github.com/golang/protobuf v1.4.3
-	github.com/google/go-cmp v0.5.5 // indirect
+	github.com/golang/protobuf v1.5.2
 	github.com/greenpau/ovsdb v0.0.0-20181114004433-3582b85e8968
 	github.com/hashicorp/go-version v1.2.0 // indirect
 	github.com/intel/multus-cni v0.0.0-20200313031649-eaf6ff6e20bb
@@ -25,8 +23,8 @@ require (
 	github.com/moul/http2curl v1.0.0 // indirect
 	github.com/neverlee/keymutex v0.0.0-20171121013845-f593aa834bf9
 	github.com/oilbeater/go-ping v0.0.0-20200413021620-332b7197c5b5
-	github.com/onsi/ginkgo v1.14.1
-	github.com/onsi/gomega v1.10.2
+	github.com/onsi/ginkgo v1.16.4
+	github.com/onsi/gomega v1.15.0
 	github.com/osrg/gobgp v0.0.0-20190401195721-805d02fdfbc5
 	github.com/parnurzeal/gorequest v0.2.15
 	github.com/projectcalico/go-json v0.0.0-20161128004156-6219dc7339ba // indirect
@@ -40,8 +38,12 @@ require (
 	github.com/stretchr/testify v1.6.1
 	github.com/vishvananda/netlink v1.1.0
 	golang.org/x/crypto v0.0.0-20201216223049-8b5274cf687f // indirect
-	golang.org/x/sys v0.0.0-20201112073958-5cba982894dd
+	golang.org/x/net v0.0.0-20210805182204-aaa1db679c0d // indirect
+	golang.org/x/sys v0.0.0-20210809222454-d867a43fc93e
+	golang.org/x/text v0.3.7 // indirect
+	golang.org/x/tools v0.1.5 // indirect
 	google.golang.org/grpc v1.27.1
+	google.golang.org/protobuf v1.27.1 // indirect
 	k8s.io/api v0.20.4
 	k8s.io/apimachinery v0.20.4
 	k8s.io/client-go v0.20.4
