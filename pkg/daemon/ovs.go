@@ -632,6 +632,10 @@ func configProviderNic(nicName, brName string) (int, error) {
 		}
 	}
 
+	if err = netlink.LinkSetUp(nic); err != nil {
+		return 0, fmt.Errorf("failed to set link %s up: %v", nicName, err)
+	}
+
 	return nic.Attrs().MTU, nil
 }
 
