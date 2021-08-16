@@ -5,14 +5,15 @@ Kube-OVN includes two parts:
 - Controller and CNI plugins that integrate OVN with Kubernetes
 
 ## Prerequest
-- Kubernetes >= 1.11
+- Kubernetes >= 1.11, version 1.16 and later is recommended
 - Docker >= 1.12.6
-- OS: CentOS 7.5/7.6/7.7, Ubuntu 16.04/18.04
+- OS: CentOS 7/8, Ubuntu 16.04/18.04 
+- Other Linux distributions with geneve and openvswitch module installed. You can use commands  `modinfo geneve` and `modinfo openvswitch` to verify
 - Kernel boot with `ipv6.disable=0`
-- Kube-proxy to provide service discovery for kube-ovn to connect to apiserver
+- Kube-proxy *MUST* be ready so that Kube-OVN can connect to apiserver
 
 *NOTE*
-1. Ubuntu 16.04 users should build the related ovs-2.11.1 kernel module to replace the kernel built-in module
+1. Users using Ubuntu 16.04 should build the OVS kernel module and replace the built-in one to avoid kernel NAT issues.
 2. CentOS users should make sure kernel version is greater than 3.10.0-898 to avoid a kernel conntrack bug, see [here](https://bugs.launchpad.net/neutron/+bug/1776778)
 3. Kernel must boot with ipv6 enabled, otherwise geneve tunnel will not be established due to a kernel bug, see [here](https://bugs.launchpad.net/ubuntu/+source/linux/+bug/1794232)
 
@@ -36,23 +37,25 @@ If you want to try the latest developing Kube-OVN, try the script below
 2. Use vim to edit the script variables to meet your requirement
 ```bash
  REGISTRY="kubeovn"
- POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
- SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR
- JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
+ POD_CIDR="10.16.0.0/16"                # Default subnet CIDR, Do NOT overlap with NODE/SVC/JOIN CIDR
+ SVC_CIDR="10.96.0.0/12"                # Should be equal with service-cluster-ip-range CIDR range which is configured for the API server
+ JOIN_CIDR="100.64.0.0/16"              # Subnet CIDR used for connectivity between nodes and Pods, Do NOT overlap with NODE/POD/SVC CIDR
  LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
- IFACE=""                               # The nic to support container network can be a nic name or a group of regex separated by comma, if empty will use the nic that the default route use
- VERSION="v1.7.0"
+ IFACE=""                               # The nic to support container network can be a nic name or a group of regex separated by comma e.g. `IFACE=enp6s0f0,eth.*`, if empty will use the nic that the default route use
+ VERSION="v1.7.1"
 ```
 
-After v1.6.0 `IFACE` support regex, e.g. `IFACE=enp6s0f0,eth.*`
+This basic setup works for default overlay network. If you are using default underlay/vlan network, please refer [Vlan/Underlay Support](vlan.md)
 
-3. Execute the script
+3. Run the script
 
 `bash install.sh`
 
+That's all! You can now create some pods and test connectivity.
+
 ### Step by Step Install
 
-If you want to know the detail steps to install Kube-OVN, please follow the steps.
+The one-script installer is recommended. If you want to change the default options, follow the steps below.
 
 For Kubernetes version before 1.17 please use the following command to add the node label
 
@@ -75,8 +78,6 @@ For Kubernetes version before 1.17 please use the following command to add the n
 5. Install the Kube-OVN Controller and CNI plugins:
 
     `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/release-1.7/yamls/kube-ovn.yaml`
-
-That's all! You can now create some pods and test connectivity.
 
 For high-available ovn db, see [high available](high-available.md)
 

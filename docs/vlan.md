@@ -27,7 +27,7 @@ In the Vlan/Underlay mode, OVS sends origin Pods packets directly to the physica
 1. For K8s running on VMs provided by OpenStack, `PortSecuriity` of the network ports MUST be `disabled`;
 2. For K8s running on VMs provided by VMware, the switch security options `MAC Address Changes`, `Forged Transmits` and `Promiscuous Mode Operation` MUST be `allowed`;
 3. The Vlan/Underlay mode can not run on public IaaS providers like AWS/GCE/Alibaba Cloud as their network can not provide the capability to transmit this type packets;
-4. When Kube-OVN creates network it checks the connectivity to the subnet gateway through ICMP, so the gateway MUST respond to the ICMP messages;
+4. When Kube-OVN creates network it checks the connectivity to the subnet gateway through ICMP, so the gateway MUST respond the ICMP messages;
 5. For in-cluster service traffic, Pods set the dst mac to gateway mac and then Kube-OVN applies DNAT to transfer the dst ip, the packets will first be sent to the gateway, so the gateway MUST be capable of transmitting the packets back to the subnet.
 
 ## Comparison with Macvlan
@@ -44,7 +44,7 @@ For Kube-OVN with version below v1.7.1, Kube-OVN MUST be deployed with vlan netw
 
 ### Deploy With Vlan Mode
 
-With default Vlan mode, Kube-OVN creates a defualt subnet named `ovn-default` which is working in underlay/vlan mode.
+With default Vlan mode, Kube-OVN creates a default subnet named `ovn-default` which is working in underlay/vlan mode.
 
 1. Get the installation script
 
@@ -119,7 +119,7 @@ spec:
     - node2
 ```
 
-Here is explaination about the fields of CRD `ProviderNetwork`:
+Here is explanation about the fields of CRD `ProviderNetwork`:
 
 | CRD Field              | Required | Usage                                                                |
 | ---------------------- | -------- | -------------------------------------------------------------------- |
