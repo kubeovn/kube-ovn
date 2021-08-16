@@ -616,7 +616,7 @@ func (c Client) createRouterPort(ls, lr, ip, mac string) error {
 		klog.Errorf("failed to create switch router port %s %v", lsTolr, err)
 		return err
 	}
-    if len(ip) == 0 {
+	if len(ip) == 0 {
 		klog.Errorf("failed to create switch router port: ip is empty")
 		return err
 	}
