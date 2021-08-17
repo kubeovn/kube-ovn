@@ -955,7 +955,7 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 				return fmt.Errorf("failed to add ecmp static route, no gateway node exists")
 			}
 
-			nodeIPs := make([]string, len(strings.Split(subnet.Spec.GatewayNode, ",")))
+			nodeIPs := make([]string, 0, len(strings.Split(subnet.Spec.GatewayNode, ",")))
 			for _, gw := range strings.Split(subnet.Spec.GatewayNode, ",") {
 				// the format of gatewayNodeStr can be like 'kube-ovn-worker:172.18.0.2, kube-ovn-control-plane:172.18.0.3', which consists of node name and designative egress ip
 				if strings.Contains(gw, ":") {

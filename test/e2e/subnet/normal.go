@@ -48,9 +48,17 @@ var _ = Describe("[Subnet]", func() {
 		}
 	})
 
+	isIPv6 := strings.EqualFold(os.Getenv("IPV6"), "true")
+
 	Describe("Create", func() {
 		It("only cidr", func() {
 			name := f.GetName()
+			af, cidr, protocol := 4, "11.10.0.0/16", kubeovn.ProtocolIPv4
+			if isIPv6 {
+				af, cidr, protocol = 6, "fd00:11:10::/112", kubeovn.ProtocolIPv6
+			}
+			gateway, _ := util.FirstIP(cidr)
+
 			By("create subnet")
 			s := kubeovn.Subnet{
 				ObjectMeta: metav1.ObjectMeta{
@@ -58,7 +66,7 @@ var _ = Describe("[Subnet]", func() {
 					Labels: map[string]string{"e2e": "true"},
 				},
 				Spec: kubeovn.SubnetSpec{
-					CIDRBlock: "11.10.0.0/16",
+					CIDRBlock: cidr,
 				},
 			}
 			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), &s, metav1.CreateOptions{})
@@ -71,10 +79,10 @@ var _ = Describe("[Subnet]", func() {
 			subnet, err := f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), name, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(subnet.Spec.Default).To(BeFalse())
-			Expect(subnet.Spec.Protocol).To(Equal(kubeovn.ProtocolIPv4))
+			Expect(subnet.Spec.Protocol).To(Equal(protocol))
 			Expect(subnet.Spec.Namespaces).To(BeEmpty())
-			Expect(subnet.Spec.ExcludeIps).To(ContainElement("11.10.0.1"))
-			Expect(subnet.Spec.Gateway).To(Equal("11.10.0.1"))
+			Expect(subnet.Spec.ExcludeIps).To(ContainElement(gateway))
+			Expect(subnet.Spec.Gateway).To(Equal(gateway))
 			Expect(subnet.Spec.GatewayType).To(Equal(kubeovn.GWDistributedType))
 			Expect(subnet.Spec.GatewayNode).To(BeEmpty())
 			Expect(subnet.Spec.NatOutgoing).To(BeFalse())
@@ -84,13 +92,18 @@ var _ = Describe("[Subnet]", func() {
 
 			By("validate status")
 			Expect(subnet.Status.ActivateGateway).To(BeEmpty())
-			Expect(subnet.Status.V4AvailableIPs).To(Equal(float64(65533)))
+			if isIPv6 {
+				Expect(subnet.Status.V6AvailableIPs).To(Equal(float64(65533)))
+			} else {
+				Expect(subnet.Status.V4AvailableIPs).To(Equal(float64(65533)))
+			}
 			Expect(subnet.Status.V4UsingIPs).To(BeZero())
+			Expect(subnet.Status.V6UsingIPs).To(BeZero())
 
 			pods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(context.Background(), metav1.ListOptions{LabelSelector: "app=ovs"})
 			Expect(err).NotTo(HaveOccurred())
 			for _, pod := range pods.Items {
-				stdout, _, err := f.ExecToPodThroughAPI(fmt.Sprintf("ip route list root %s", subnet.Spec.CIDRBlock), "openvswitch", pod.Name, pod.Namespace, nil)
+				stdout, _, err := f.ExecToPodThroughAPI(fmt.Sprintf("ip -%d route list root %s", af, subnet.Spec.CIDRBlock), "openvswitch", pod.Name, pod.Namespace, nil)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(stdout).To(ContainSubstring("ovn0"))
 			}
@@ -298,7 +311,11 @@ var _ = Describe("[Subnet]", func() {
 			}
 
 			name := f.GetName()
-			egw := nodes.Items[0].Status.Addresses[0].Address
+			af, cidr, nodeAddrPrefix := 4, "11.15.0.0/16", 16
+			if isIPv6 {
+				af, cidr, nodeAddrPrefix = 6, "fd00:11:15::/112", 64
+			}
+			egw, _ := util.FirstIP(fmt.Sprintf("%s/%d", nodes.Items[0].Status.Addresses[0].Address, nodeAddrPrefix))
 			priority, tableID := uint32(1001), uint32(1002)
 
 			gatewayNodes := make([]string, 0, 2)
@@ -315,7 +332,7 @@ var _ = Describe("[Subnet]", func() {
 					Labels: map[string]string{"e2e": "true"},
 				},
 				Spec: kubeovn.SubnetSpec{
-					CIDRBlock:             "11.15.0.0/16",
+					CIDRBlock:             cidr,
 					GatewayType:           kubeovn.GWCentralizedType,
 					GatewayNode:           strings.Join(gatewayNodes, ","),
 					ExternalEgressGateway: egw,
@@ -350,7 +367,7 @@ var _ = Describe("[Subnet]", func() {
 					continue
 				}
 
-				stdout, _, err := f.ExecToPodThroughAPI("ip rule show", "openvswitch", pod.Name, pod.Namespace, nil)
+				stdout, _, err := f.ExecToPodThroughAPI(fmt.Sprintf("ip -%d rule show", af), "openvswitch", pod.Name, pod.Namespace, nil)
 				Expect(err).NotTo(HaveOccurred())
 
 				var found bool
@@ -363,7 +380,7 @@ var _ = Describe("[Subnet]", func() {
 				}
 				Expect(found).To(BeTrue())
 
-				stdout, _, err = f.ExecToPodThroughAPI(fmt.Sprintf("ip route show table %d", tableID), "openvswitch", pod.Name, pod.Namespace, nil)
+				stdout, _, err = f.ExecToPodThroughAPI(fmt.Sprintf("ip -%d route show table %d", af, tableID), "openvswitch", pod.Name, pod.Namespace, nil)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(stdout).To(HavePrefix(routePrefix))
 			}
@@ -378,7 +395,7 @@ var _ = Describe("[Subnet]", func() {
 					continue
 				}
 
-				stdout, _, err := f.ExecToPodThroughAPI("ip rule show", "openvswitch", pod.Name, pod.Namespace, nil)
+				stdout, _, err := f.ExecToPodThroughAPI(fmt.Sprintf("ip -%d rule show", af), "openvswitch", pod.Name, pod.Namespace, nil)
 				Expect(err).NotTo(HaveOccurred())
 
 				var found bool
@@ -391,7 +408,7 @@ var _ = Describe("[Subnet]", func() {
 				}
 				Expect(found).NotTo(BeTrue())
 
-				stdout, _, err = f.ExecToPodThroughAPI(fmt.Sprintf("ip route show table %d", tableID), "openvswitch", pod.Name, pod.Namespace, nil)
+				stdout, _, err = f.ExecToPodThroughAPI(fmt.Sprintf("ip -%d route show table %d", af, tableID), "openvswitch", pod.Name, pod.Namespace, nil)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(stdout).NotTo(HavePrefix(routePrefix))
 			}
@@ -418,7 +435,11 @@ var _ = Describe("[Subnet]", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			name := f.GetName()
-			egw := nodes.Items[0].Status.Addresses[0].Address
+			af, cidr, nodeAddrPrefix := 4, "11.16.0.0/16", 16
+			if isIPv6 {
+				af, cidr, nodeAddrPrefix = 6, "fd00:11:16::/112", 64
+			}
+			egw, _ := util.FirstIP(fmt.Sprintf("%s/%d", nodes.Items[0].Status.Addresses[0].Address, nodeAddrPrefix))
 			priority, tableID := uint32(1003), uint32(1004)
 
 			var selectedNode *corev1.Node
@@ -448,7 +469,7 @@ var _ = Describe("[Subnet]", func() {
 					Labels: map[string]string{"e2e": "true"},
 				},
 				Spec: kubeovn.SubnetSpec{
-					CIDRBlock:             "11.16.0.0/16",
+					CIDRBlock:             cidr,
 					GatewayType:           kubeovn.GWDistributedType,
 					ExternalEgressGateway: egw,
 					PolicyRoutingPriority: priority,
@@ -513,7 +534,7 @@ var _ = Describe("[Subnet]", func() {
 					continue
 				}
 
-				stdout, _, err := f.ExecToPodThroughAPI("ip rule show", "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
+				stdout, _, err := f.ExecToPodThroughAPI(fmt.Sprintf("ip -%d rule show", af), "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
 				Expect(err).NotTo(HaveOccurred())
 
 				var found bool
@@ -526,7 +547,7 @@ var _ = Describe("[Subnet]", func() {
 				}
 				Expect(found).To(BeTrue())
 
-				stdout, _, err = f.ExecToPodThroughAPI(fmt.Sprintf("ip route show table %d", tableID), "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
+				stdout, _, err = f.ExecToPodThroughAPI(fmt.Sprintf("ip -%d route show table %d", af, tableID), "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(stdout).To(HavePrefix(routePrefix))
 			}
@@ -544,7 +565,7 @@ var _ = Describe("[Subnet]", func() {
 					continue
 				}
 
-				stdout, _, err := f.ExecToPodThroughAPI("ip rule show", "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
+				stdout, _, err := f.ExecToPodThroughAPI(fmt.Sprintf("ip -%d rule show", af), "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
 				Expect(err).NotTo(HaveOccurred())
 
 				var found bool
@@ -557,7 +578,7 @@ var _ = Describe("[Subnet]", func() {
 				}
 				Expect(found).NotTo(BeTrue())
 
-				stdout, _, err = f.ExecToPodThroughAPI(fmt.Sprintf("ip route show table %d", tableID), "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
+				stdout, _, err = f.ExecToPodThroughAPI(fmt.Sprintf("ip -%d route show table %d", af, tableID), "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(stdout).To(HavePrefix(routePrefix))
 			}
@@ -572,7 +593,7 @@ var _ = Describe("[Subnet]", func() {
 					continue
 				}
 
-				stdout, _, err := f.ExecToPodThroughAPI(fmt.Sprintf("ip route show table %d", tableID), "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
+				stdout, _, err := f.ExecToPodThroughAPI(fmt.Sprintf("ip -%d route show table %d", af, tableID), "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(stdout).NotTo(HavePrefix(routePrefix))
 			}
