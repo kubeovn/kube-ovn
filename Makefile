@@ -120,7 +120,7 @@ kind-install-vlan:
 	$(eval SUBNET = $(shell docker network inspect kind -f "{{(index .IPAM.Config 0).Subnet}}"))
 	$(eval GATEWAY = $(shell docker network inspect kind -f "{{(index .IPAM.Config 0).Gateway}}"))
 	$(eval EXCLUDE_IPS = $(shell docker network inspect kind -f '{{range .Containers}},{{index (split .IPv4Address "/") 0}}{{end}}' | sed 's/^,//'))
-	sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(SUBNET)"@' \
+	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(SUBNET)"@' \
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(GATEWAY)"@' \
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(EXCLUDE_IPS)"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
@@ -148,12 +148,12 @@ kind-install-ipv6-vlan:
 	$(eval SUBNET = $(shell docker network inspect kind -f "{{(index .IPAM.Config 1).Subnet}}"))
 	$(eval EXCLUDE_IPS = $(shell docker network inspect kind -f '{{range .Containers}},{{index (split .IPv6Address "/") 0}}{{end}}' | sed 's/^,//'))
 	$(eval GATEWAY = $(shell docker exec kube-ovn-worker ip -6 route show default | awk '{print $$3}'))
-	sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(SUBNET)"@' \
+	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(SUBNET)"@' \
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(GATEWAY)"@' \
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(EXCLUDE_IPS)"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		dist/images/install.sh > install-vlan.sh
-	chmod +x install-vlan.sh
+	@chmod +x install-vlan.sh
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
 	ENABLE_SSL=true IPv6=true ENABLE_VLAN=true VLAN_NIC=eth0 ./install-vlan.sh
@@ -200,27 +200,31 @@ ut:
 .PHONY: e2e
 e2e:
 	$(eval NETWORK_BRIDGE = $(shell docker inspect -f '{{json .NetworkSettings.Networks.bridge}}' kube-ovn-control-plane))
-	if [ '$(NETWORK_BRIDGE)' = 'null' ]; then \
+	@if [ '$(NETWORK_BRIDGE)' = 'null' ]; then \
 		kind get nodes --name kube-ovn | while read node; do \
 		docker network connect bridge $$node; \
 		done; \
 	fi
 
-	printf "package e2e\n\nvar nodeNetworks = map[string]string{\n" > test/e2e/network.go
-	kind get nodes --name kube-ovn | while read node; do \
-		printf "    \`$$node\`: \`" >> test/e2e/network.go; \
+	@printf "package e2e\n\nvar nodeNetworks = map[string]string{\n" > test/e2e/network.go
+	@kind get nodes --name kube-ovn | while read node; do \
+		printf "\t\`$$node\`: \`" >> test/e2e/network.go; \
 		docker inspect -f '{{json .NetworkSettings.Networks.bridge}}' $$node >> test/e2e/network.go; \
 		printf "\`,\n" >> test/e2e/network.go; \
 	done
-	echo "}" >> test/e2e/network.go
+	@echo "}" >> test/e2e/network.go
 
-	docker pull kubeovn/pause:3.2
+	@if [ ! -n "$$(docker images -q kubeovn/pause:3.2 2>/dev/null)" ]; then docker pull kubeovn/pause:3.2; fi
 	kind load docker-image --name kube-ovn kubeovn/pause:3.2
 	ginkgo -mod=mod -progress -reportPassed --slowSpecThreshold=60 test/e2e
 
+.PHONY: e2e-ipv6
+e2e-ipv6:
+	@IPV6=true $(MAKE) e2e
+
 .PHONY: e2e-vlan-single-nic
 e2e-vlan-single-nic:
-	printf "package node\n\nvar networkJSON = []byte(\`" > test/e2e-vlan-single-nic/node/network.go
-	docker inspect -f '{{json .NetworkSettings.Networks.kind}}' kube-ovn-control-plane >> test/e2e-vlan-single-nic/node/network.go
-	echo "\`)" >> test/e2e-vlan-single-nic/node/network.go
+	@printf "package node\n\nvar networkJSON = []byte(\`" > test/e2e-vlan-single-nic/node/network.go
+	@docker inspect -f '{{json .NetworkSettings.Networks.kind}}' kube-ovn-control-plane >> test/e2e-vlan-single-nic/node/network.go
+	@echo "\`)" >> test/e2e-vlan-single-nic/node/network.go
 	ginkgo -mod=mod -progress -reportPassed --slowSpecThreshold=60 test/e2e-vlan-single-nic

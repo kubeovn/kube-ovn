@@ -538,6 +538,8 @@ func (c Client) GetStaticRouteList(router string) (routeList []*StaticRoute, err
 	return parseLrRouteListOutput(output)
 }
 
+var routeRegexp = regexp.MustCompile(`^\s*((\d+(\.\d+){3})|(([a-f0-9:]*:+)+[a-f0-9]?))(/\d+)?\s+((\d+(\.\d+){3})|(([a-f0-9:]*:+)+[a-f0-9]?))\s+(dst-ip|src-ip)(\s+.+)?$`)
+
 func parseLrRouteListOutput(output string) (routeList []*StaticRoute, err error) {
 	lines := strings.Split(output, "\n")
 	routeList = make([]*StaticRoute, 0, len(lines))
@@ -549,15 +551,16 @@ func parseLrRouteListOutput(output string) (routeList []*StaticRoute, err error)
 		if len(l) == 0 {
 			continue
 		}
-		reg := regexp.MustCompile(`(\d+.\d+.\d+.\d+(/\d+)*)\s+(\d+.\d+.\d+.\d+)\s+(dst-ip|src-ip)`)
-		sm := reg.FindStringSubmatch(l)
-		if len(sm) == 0 {
+
+		if !routeRegexp.MatchString(l) {
 			continue
 		}
+
+		fields := strings.Fields(l)
 		routeList = append(routeList, &StaticRoute{
-			Policy:  sm[4],
-			CIDR:    sm[1],
-			NextHop: sm[3],
+			Policy:  fields[2],
+			CIDR:    fields[0],
+			NextHop: fields[1],
 		})
 	}
 	return routeList, nil

@@ -944,7 +944,7 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 				return fmt.Errorf("failed to add ecmp static route, no gateway node exists")
 			}
 
-			nodeIPs := make([]string, len(strings.Split(subnet.Spec.GatewayNode, ",")))
+			nodeIPs := make([]string, 0, len(strings.Split(subnet.Spec.GatewayNode, ",")))
 			for _, gw := range strings.Split(subnet.Spec.GatewayNode, ",") {
 				gw = strings.TrimSpace(gw)
 				node, err := c.nodesLister.Get(gw)

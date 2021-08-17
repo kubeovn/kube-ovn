@@ -334,6 +334,20 @@ jobs:
           docker load --input image.tar
           sudo make kind-install-ipv6
 
+      - name: Set up Go 1.x
+        uses: actions/setup-go@v2
+        with:
+          go-version: ^1.16
+        id: go
+
+      - name: Run E2E
+        run: |
+          go get -u github.com/onsi/ginkgo/ginkgo
+          go get -u github.com/onsi/gomega/...
+          sudo kubectl cluster-info
+          sudo chmod 666 /home/runner/.kube/config
+          make e2e-ipv6
+
   ipv6-vlan-e2e-single-nic:
     needs: build
     name: ipv6-vlan-e2e-single-nic

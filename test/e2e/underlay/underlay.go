@@ -630,10 +630,6 @@ var _ = Describe("[Underlay]", func() {
 		})
 
 		It("trace", func() {
-			if util.CheckProtocol(cidr) == kubeovn.ProtocolIPv6 {
-				return
-			}
-
 			By("create pod")
 			var autoMount bool
 			pod := &corev1.Pod{
@@ -658,13 +654,18 @@ var _ = Describe("[Underlay]", func() {
 			pod, err = f.WaitPodReady(pod.Name, Namespace)
 			Expect(err).NotTo(HaveOccurred())
 
-			output, err := exec.Command("kubectl", "ko", "trace", fmt.Sprintf("%s/%s", Namespace, pod.Name), "114.114.114.114", "icmp").CombinedOutput()
+			dst := "114.114.114.114"
+			if util.CheckProtocol(pod.Status.PodIP) == kubeovn.ProtocolIPv6 {
+				dst = "2400:3200::1"
+			}
+
+			output, err := exec.Command("kubectl", "ko", "trace", fmt.Sprintf("%s/%s", Namespace, pod.Name), dst, "icmp").CombinedOutput()
 			Expect(err).NotTo(HaveOccurred(), string(output))
 
-			output, err = exec.Command("kubectl", "ko", "trace", fmt.Sprintf("%s/%s", Namespace, pod.Name), "114.114.114.114", "tcp", "80").CombinedOutput()
+			output, err = exec.Command("kubectl", "ko", "trace", fmt.Sprintf("%s/%s", Namespace, pod.Name), dst, "tcp", "80").CombinedOutput()
 			Expect(err).NotTo(HaveOccurred(), string(output))
 
-			output, err = exec.Command("kubectl", "ko", "trace", fmt.Sprintf("%s/%s", Namespace, pod.Name), "114.114.114.114", "udp", "53").CombinedOutput()
+			output, err = exec.Command("kubectl", "ko", "trace", fmt.Sprintf("%s/%s", Namespace, pod.Name), dst, "udp", "53").CombinedOutput()
 			Expect(err).NotTo(HaveOccurred(), string(output))
 		})
 	})
