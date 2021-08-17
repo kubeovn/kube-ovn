@@ -155,7 +155,8 @@ func (c Client) CreatePort(ls, port, ip, cidr, mac, tag, pod, namespace string, 
 
 		if portSecurity {
 			ovnCommand = append(ovnCommand,
-				"--", "lsp-set-port-security", port, mac, ip)
+				"--", "lsp-set-port-security", port, fmt.Sprintf("%s %s", mac, ip))
+
 			if securityGroups != "" {
 				sgList := strings.Split(securityGroups, ",")
 				ovnCommand = append(ovnCommand,
