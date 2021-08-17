@@ -4,7 +4,7 @@
 
 ##### Prerequisites:
 
-1. Kube-OVN is developed by [Go](https://golang.org/) 1.15 and uses [Go Modules](https://github.com/golang/go/wiki/Modules) to manage dependency. Make sure `GO111MODULE="on"`.
+1. Kube-OVN is developed by [Go](https://golang.org/) 1.16 and uses [Go Modules](https://github.com/golang/go/wiki/Modules) to manage dependency. Make sure `GO111MODULE="on"`.
 
 2. We also use [gosec](https://github.com/securego/gosec) to inspects source code for security problems. 
 

@@ -1,12 +1,12 @@
 # IPAM for Multi Network Interface
 
-From version 1.1, the IPAM part of Kube-OVN can provides subnet and static ip allocation functions to other CNI plugins, such as macvlan/vlan/host-device.
+From v1.1, the IPAM part of Kube-OVN can provide subnet and static ip allocation functions to other CNI plugins, such as macvlan/vlan/host-device.
 
 ## How it works
 
 By using [Intel Multus CNI](https://github.com/intel/multus-cni), we can attach multiple network interfaces into a Kubernetes Pod.
 However, we still need some cluster-wide IPAM utilities to manage IP addresses for multi network to better mange other CNI plugins.
-In Kube-OVN we already has CRDs like Subnet and IP and functions for advanced IPAM like ip reservation, random allocation, static allocation and so on.
+In Kube-OVN, we already have CRDs like Subnet and IP and functions for advanced IPAM like ip reservation, random allocation, static allocation and so on.
 We extend the Subnet to network providers other than ovn, so other CNI plugins can take use all the IPAM functions already exist in Kube-OVN.
 
 ### Work Flow
@@ -57,11 +57,11 @@ spec:
 
 `server_socket`: Is the socket file that Kube-OVN plugin communicate with. Default location is `/run/openvswitch/kube-ovn-daemon.sock`
 
-`provider`: The `<name>.<namespace>` of this NetworkAttachmentDefinition, Kube-OVN plugin will later use it to find the related subnet.
+`provider`: The `<name>.<namespace>` of this NetworkAttachmentDefinition, Kube-OVN will later use it to find the related subnet.
 
 ### Create a Kube-OVN subnet
 
-Create a Kube-OVN Subnet, set the desired cidr, exclude ips and the `provider` should be the related NetworkAttachmentDefinition.
+Create a Kube-OVN Subnet, set the desired cidr, exclude ips and the `provider` should be the related NetworkAttachmentDefinition `<name>.<namespace>`.
 
 ```yaml
 apiVersion: kubeovn.io/v1
@@ -151,9 +151,9 @@ spec:
         image: nginx:alpine
 ```
 
-# Multi kube-ovn network Interface
+# Multi kube-ovn network Interfaces
 
-Full support for multi kube-ovn networks is more than just IPAM.
+Full support for multi kube-ovn networks is more than just IPAM, now the attachment network can also come from OVN.
 
 ## How to use it
 

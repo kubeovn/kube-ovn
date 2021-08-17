@@ -38,11 +38,15 @@ The following compatible plugins are available:
 ```text
 kubectl ko {subcommand} [option...]
 Available Subcommands:
+  [nb|sb] [status|kick|backup]     ovn-db operations show cluster status, kick stale server or backup database
   nbctl [ovn-nbctl options ...]    invoke ovn-nbctl
   sbctl [ovn-sbctl options ...]    invoke ovn-sbctl
-  vsctl {nodeName} [ovs-vsctl options ...]   invoke ovs-vsctl on selected node
-  tcpdump {namespace/podname} [tcpdump options ...] capture pod traffic
-  trace {namespace/podname} {target ip address} {icmp|tcp|udp} [target tcp or udp port]
+  vsctl {nodeName} [ovs-vsctl options ...]   invoke ovs-vsctl on the specified node
+  ofctl {nodeName} [ovs-ofctl options ...]   invoke ovs-ofctl on the specified node
+  dpctl {nodeName} [ovs-dpctl options ...]   invoke ovs-dpctl on the specified node
+  appctl {nodeName} [ovs-appctl options ...]   invoke ovs-appctl on the specified node
+  tcpdump {namespace/podname} [tcpdump options ...]     capture pod traffic
+  trace {namespace/podname} {target ip address} {icmp|tcp|udp} [target tcp or udp port]    trace ovn microflow of specific packet
   diagnose {all|node} [nodename]    diagnose connectivity of all nodes or a specific node
 ```
 
@@ -96,7 +100,7 @@ listening on d7176fe7b4e0_h, link-type EN10MB (Ethernet), capture size 262144 by
 06:52:38.619973 IP 10.16.0.4 > 100.64.0.3: ICMP echo reply, id 2, seq 3, length 64
 ```
 
-3. Show ovn flow from a pod to a destination
+3. Show ovn logical flow from a pod to a destination
 
 ```shell
 [root@node2 ~]# kubectl ko trace default/ds1-l6n7p 8.8.8.8 icmp
@@ -178,4 +182,43 @@ I1008 07:05:06.415317   21692 ping.go:101] ping pod: kube-ovn-pinger-8xhhv 10.16
 I1008 07:05:06.415354   21692 ping.go:119] start to check dns connectivity
 I1008 07:05:06.420595   21692 ping.go:129] resolve dns kubernetes.default.svc.cluster.local to [10.96.0.1] in 5.21ms
 ### finish diagnose node node3
+```
+
+5. Show OVN NB/SB cluster status
+```shell
+[root@node2 ~]# kubectl ko nb status
+b9be
+Name: OVN_Northbound
+Cluster ID: 033e (033e333f-5031-465f-93af-7e1b2e3a82a0)
+Server ID: b9be (b9be2f8e-3e4e-4374-93b7-297baf5724e7)
+Address: tcp:[192.168.16.44]:6643
+Status: cluster member
+Role: leader
+Term: 51
+Leader: self
+Vote: self
+
+Last Election started 16222094 ms ago, reason: timeout
+Last Election won: 16222094 ms ago
+Election timer: 5000
+Log: [50539, 50562]
+Entries not yet committed: 0
+Entries not yet applied: 0
+Connections:
+Disconnections: 0
+Servers:
+    b9be (b9be at tcp:[192.168.16.44]:6643) (self) next_index=50539 match_index=50561
+```
+
+6. Back OVN NB/SB database
+```shell
+[root@node2 ~]# kubectl ko nb backup
+backup ovn-nb db to /root/ovnnb_db.081616201629102000.backup
+[root@node2 ~]# ls -l | grep ovn_nb
+-rw-r--r--  1 root root     31875 Aug 16 16:20 ovnnb_db.081616201629102000.backup
+```
+
+7. Remove stale NB/SB cluster member
+```shell
+[root@node2 ~]# kubectl ko nb kick aedds
 ```
