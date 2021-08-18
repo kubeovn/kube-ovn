@@ -116,7 +116,7 @@ metadata:
   name: ovn-vpc-nat-gw-config
   namespace: kube-system
 data:
-  image: 'kubeovn/vpc-nat-gateway:v1.7.0'  # Docker image for vpc nat gateway
+  image: kubeovn/vpc-nat-gateway:v1.7.1  # Docker image for vpc nat gateway
   enable-vpc-nat-gw: true                  # 'true' for enable, 'false' for disable
   nic: eth1                                # The nic that connect to underlay network, use as the 'master' for macvlan
 ```
