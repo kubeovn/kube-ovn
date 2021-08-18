@@ -36,19 +36,21 @@ func NewIPAM() *IPAM {
 	}
 }
 
-func (ipam *IPAM) GetRandomAddress(podName string, subnetName string) (string, string, string, error) {
+func (ipam *IPAM) GetRandomAddress(podName, subnetName string, skippedAddrs []string) (string, string, string, error) {
 	ipam.mutex.RLock()
 	defer ipam.mutex.RUnlock()
-	if subnet, ok := ipam.Subnets[subnetName]; !ok {
+
+	subnet, ok := ipam.Subnets[subnetName]
+	if !ok {
 		return "", "", "", NoAvailableError
-	} else {
-		v4IP, v6IP, mac, err := subnet.GetRandomAddress(podName)
-		klog.Infof("allocate v4 %s v6 %s mac %s for %s", v4IP, v6IP, mac, podName)
-		return string(v4IP), string(v6IP), mac, err
 	}
+
+	v4IP, v6IP, mac, err := subnet.GetRandomAddress(podName, skippedAddrs)
+	klog.Infof("allocate v4 %s v6 %s mac %s for %s", v4IP, v6IP, mac, podName)
+	return string(v4IP), string(v6IP), mac, err
 }
 
-func (ipam *IPAM) GetStaticAddress(podName string, ip, mac string, subnetName string) (string, string, string, error) {
+func (ipam *IPAM) GetStaticAddress(podName, ip, mac, subnetName string) (string, string, string, error) {
 	ipam.mutex.RLock()
 	defer ipam.mutex.RUnlock()
 	if subnet, ok := ipam.Subnets[subnetName]; !ok {
@@ -96,10 +98,10 @@ func checkAndAppendIpsForDual(ips []IP, podName string, subnet *Subnet) ([]IP, e
 	var err error
 	if util.CheckProtocol(string(ips[0])) == kubeovnv1.ProtocolIPv4 {
 		newIps = ips
-		_, ipAddr, _, err = subnet.getV6RandomAddress(podName)
+		_, ipAddr, _, err = subnet.getV6RandomAddress(podName, nil)
 		newIps = append(newIps, ipAddr)
 	} else if util.CheckProtocol(string(ips[0])) == kubeovnv1.ProtocolIPv6 {
-		ipAddr, _, _, err = subnet.getV4RandomAddress(podName)
+		ipAddr, _, _, err = subnet.getV4RandomAddress(podName, nil)
 		newIps = append(newIps, ipAddr)
 		newIps = append(newIps, ips...)
 	}
@@ -116,6 +118,8 @@ func (ipam *IPAM) ReleaseAddressByPod(podName string) {
 }
 
 func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr string, excludeIps []string) error {
+	excludeIps = util.ExpandExcludeIPs(excludeIps, cidrStr)
+
 	ipam.mutex.Lock()
 	defer ipam.mutex.Unlock()
 

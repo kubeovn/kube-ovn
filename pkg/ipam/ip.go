@@ -30,6 +30,10 @@ func (a IP) Add(num int64) IP {
 	return IP(util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(string(a)), big.NewInt(num))))
 }
 
+func (a IP) Sub(num int64) IP {
+	return IP(util.BigInt2Ip(big.NewInt(0).Sub(util.Ip2BigInt(string(a)), big.NewInt(num))))
+}
+
 func (ipr IPRange) IPExist(ip IP) bool {
 	return (ipr.Start.LessThan(ip) || ipr.Start.Equal(ip)) &&
 		(ipr.End.GreaterThan(ip) || ipr.End.Equal(ip))
