@@ -515,8 +515,12 @@ func (c Client) LogicalSwitchExists(logicalSwitch string, args ...string) (bool,
 	return false, nil
 }
 
-func (c Client) ListLogicalSwitchPort() ([]string, error) {
-	output, err := c.ovnNbCommand("--format=csv", "--data=bare", "--no-heading", "--columns=name", "find", "logical_switch_port", "type=\"\"", fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
+func (c Client) ListLogicalSwitchPort(needVendorFilter bool) ([]string, error) {
+	cmdArg := []string{"--format=csv", "--data=bare", "--no-heading", "--columns=name", "find", "logical_switch_port", "type=\"\""}
+	if needVendorFilter {
+		cmdArg = append(cmdArg, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
+	}
+	output, err := c.ovnNbCommand(cmdArg...)
 	if err != nil {
 		klog.Errorf("failed to list logical switch port, %v", err)
 		return nil, err

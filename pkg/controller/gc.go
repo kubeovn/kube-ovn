@@ -219,7 +219,7 @@ func (c *Controller) markAndCleanLSP() error {
 	for _, node := range nodes {
 		ipNames = append(ipNames, fmt.Sprintf("node-%s", node.Name))
 	}
-	lsps, err := c.ovnClient.ListLogicalSwitchPort()
+	lsps, err := c.ovnClient.ListLogicalSwitchPort(c.config.EnableExternalVpc)
 	if err != nil {
 		klog.Errorf("failed to list logical switch port, %v", err)
 		return err

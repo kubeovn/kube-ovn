@@ -56,8 +56,9 @@ type Configuration struct {
 	DefaultVlanName      string
 	DefaultVlanID        int
 
-	EnableLb bool
-	EnableNP bool
+	EnableLb          bool
+	EnableNP          bool
+	EnableExternalVpc bool
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -95,6 +96,7 @@ func ParseFlags() (*Configuration, error) {
 		argPodNicType           = pflag.String("pod-nic-type", "veth-pair", "The default pod network nic implementation type, default: veth-pair")
 		argEnableLb             = pflag.Bool("enable-lb", true, "Enable load balancer, default: true")
 		argEnableNP             = pflag.Bool("enable-np", true, "Enable network policy support, default: true")
+		argEnableExternalVpc    = pflag.Bool("enable-external-vpc", true, "Enable external vpc support, default: true")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -144,6 +146,7 @@ func ParseFlags() (*Configuration, error) {
 		PodNicType:                    *argPodNicType,
 		EnableLb:                      *argEnableLb,
 		EnableNP:                      *argEnableNP,
+		EnableExternalVpc:             *argEnableExternalVpc,
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {
