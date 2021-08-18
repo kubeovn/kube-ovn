@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -24,6 +25,11 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/underlay"
 )
 
+//go:embed network.json
+var networkJSON []byte
+
+var nodeNetworks map[string]nodeNetwork
+
 type nodeNetwork struct {
 	Gateway             string
 	IPAddress           string
@@ -32,6 +38,12 @@ type nodeNetwork struct {
 	GlobalIPv6Address   string
 	GlobalIPv6PrefixLen int
 	MacAddress          string
+}
+
+func init() {
+	if err := json.Unmarshal(networkJSON, &nodeNetworks); err != nil {
+		panic(err)
+	}
 }
 
 func TestE2e(t *testing.T) {
@@ -106,31 +118,26 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	var underlayNodeIPs []string
 	var underlayCIDR, underlayGateway string
 	for node, network := range nodeNetworks {
-		var info nodeNetwork
-		if err = json.Unmarshal([]byte(network), &info); err != nil {
-			Fail("invalid node network information: " + err.Error())
-		}
-
-		underlay.SetNodeMac(node, info.MacAddress)
-		if info.IPAddress != "" {
-			underlay.AddNodeIP(info.IPAddress)
-			underlayNodeIPs = append(underlayNodeIPs, info.IPAddress)
-			underlay.AddNodeAddrs(node, fmt.Sprintf("%s/%d", info.IPAddress, info.IPPrefixLen))
+		underlay.SetNodeMac(node, network.MacAddress)
+		if network.IPAddress != "" {
+			underlay.AddNodeIP(network.IPAddress)
+			underlayNodeIPs = append(underlayNodeIPs, network.IPAddress)
+			underlay.AddNodeAddrs(node, fmt.Sprintf("%s/%d", network.IPAddress, network.IPPrefixLen))
 			if underlayCIDR == "" {
-				underlayCIDR = fmt.Sprintf("%s/%d", info.IPAddress, info.IPPrefixLen)
+				underlayCIDR = fmt.Sprintf("%s/%d", network.IPAddress, network.IPPrefixLen)
 			}
 		}
-		if info.GlobalIPv6Address != "" {
-			underlay.AddNodeAddrs(node, fmt.Sprintf("%s/%d", info.GlobalIPv6Address, info.GlobalIPv6PrefixLen))
+		if network.GlobalIPv6Address != "" {
+			underlay.AddNodeAddrs(node, fmt.Sprintf("%s/%d", network.GlobalIPv6Address, network.GlobalIPv6PrefixLen))
 		}
-		if info.Gateway != "" {
-			underlay.AddNodeRoutes(node, fmt.Sprintf("default via %s ", info.Gateway))
+		if network.Gateway != "" {
+			underlay.AddNodeRoutes(node, fmt.Sprintf("default via %s ", network.Gateway))
 			if underlayGateway == "" {
-				underlayGateway = info.Gateway
+				underlayGateway = network.Gateway
 			}
 		}
-		if info.IPv6Gateway != "" {
-			underlay.AddNodeRoutes(node, fmt.Sprintf("default via %s ", info.IPv6Gateway))
+		if network.IPv6Gateway != "" {
+			underlay.AddNodeRoutes(node, fmt.Sprintf("default via %s ", network.IPv6Gateway))
 		}
 	}
 	underlay.SetCIDR(underlayCIDR)
