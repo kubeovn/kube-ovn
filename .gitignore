@@ -1,17 +1,7 @@
 .idea/*
 .vscode/*
 .DS_Store
-vagrant/.vagrant/*
-vagrant/kubernetes-setup/*.retry
-vagrant/kubernetes-setup/join-command
 dist/images/kube-ovn
-dist/images/kube-ovn-controller
-dist/images/kube-ovn-daemon
-dist/images/kube-ovn-gateway
-dist/images/kube-ovn-webhook
-dist/images/kube-ovn-pinger
-dist/images/kube-ovn-speaker
-dist/images/kube-ovn-monitor
 dist/images/kube-ovn-cmd
 test/e2e/ovnnb_db.*
 test/e2e/ovnsb_db.*
@@ -22,3 +12,5 @@ kind.yaml
 image.tar
 image-amd64.tar
 image-arm64.tar
+install-vlan.sh
+test/**/*.test

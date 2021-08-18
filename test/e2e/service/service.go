@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -14,11 +15,15 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
+	kubeovn "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
 
 func curlArgs(ip string, port int32) string {
+	if util.CheckProtocol(ip) == kubeovn.ProtocolIPv6 {
+		ip = fmt.Sprintf("-g -6 [%s]", ip)
+	}
 	return fmt.Sprintf("-s -m 3 -o /dev/null -w %%{http_code} %s:%d/metrics", ip, port)
 }
 
@@ -27,6 +32,10 @@ func kubectlArgs(pod, ip string, port int32) string {
 }
 
 var _ = Describe("[Service]", func() {
+	if runtime.GOOS != "linux" {
+		return
+	}
+
 	f := framework.NewFramework("service", fmt.Sprintf("%s/.kube/config", os.Getenv("HOME")))
 	hostPods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(context.Background(), metav1.ListOptions{LabelSelector: "app=ovs"})
 	Expect(err).NotTo(HaveOccurred())
