@@ -878,6 +878,38 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 	return result, nil
 }
 
+func (c *Controller) validatePodIP(podName, subnetName, ipv4, ipv6 string) (bool, bool, error) {
+	subnet, err := c.subnetsLister.Get(subnetName)
+	if err != nil {
+		klog.Errorf("failed to get subnet %s: %v", subnetName, err)
+		return false, false, err
+	}
+
+	if subnet.Spec.Vlan == "" && subnet.Spec.Vpc == util.DefaultVpc {
+		nodes, err := c.nodesLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list nodes: %v", err)
+			return false, false, err
+		}
+
+		for _, node := range nodes {
+			if nodeIP := util.GetNodeInternalIP(*node); nodeIP != "" {
+				msg := fmt.Sprintf("IP address (%s) assigned to pod %s is the same with internal IP address of node %s, reallocating...", nodeIP, podName, node.Name)
+				if nodeIP == ipv4 {
+					klog.Error(msg)
+					return false, true, nil
+				}
+				if nodeIP == ipv6 {
+					klog.Error(msg)
+					return true, false, nil
+				}
+			}
+		}
+	}
+
+	return true, true, nil
+}
+
 func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, string, string, error) {
 	key := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
 	macStr := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
@@ -885,7 +917,28 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	// Random allocate
 	if pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)] == "" &&
 		pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)] == "" {
-		return c.ipam.GetRandomAddress(key, podNet.Subnet.Name)
+		var skippedAddrs []string
+		for {
+			ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, podNet.Subnet.Name, skippedAddrs)
+			if err != nil {
+				return "", "", "", err
+			}
+
+			ipv4OK, ipv6OK, err := c.validatePodIP(pod.Name, podNet.Subnet.Name, ipv4, ipv6)
+			if err != nil {
+				return "", "", "", err
+			}
+			if ipv4OK && ipv6OK {
+				return ipv4, ipv6, mac, nil
+			}
+
+			if !ipv4OK {
+				skippedAddrs = append(skippedAddrs, ipv4)
+			}
+			if !ipv6OK {
+				skippedAddrs = append(skippedAddrs, ipv6)
+			}
+		}
 	}
 
 	// Static allocate

@@ -198,6 +198,22 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets: %v", err)
+		return err
+	}
+
+	nodeIP := util.GetNodeInternalIP(*node)
+	for _, subnet := range subnets {
+		if subnet.Spec.Vlan == "" && subnet.Spec.Vpc == util.DefaultVpc && util.CIDRContainIP(subnet.Spec.CIDRBlock, nodeIP) {
+			msg := fmt.Sprintf("internal IP address of node %s is in CIDR of subnet %s, this may result in network issues", node.Name, subnet.Name)
+			klog.Warning(msg)
+			c.recorder.Eventf(&v1.Node{ObjectMeta: metav1.ObjectMeta{Name: node.Name, UID: types.UID(node.Name)}}, v1.EventTypeWarning, "NodeAddressConflictWithSubnet", msg)
+			break
+		}
+	}
+
 	providerNetworks, err := c.providerNetworksLister.List(labels.Everything())
 	if err != nil && !k8serrors.IsNotFound(err) {
 		klog.Errorf("failed to list provider networks: %v", err)
@@ -241,7 +257,7 @@ func (c *Controller) handleAddNode(key string) error {
 			return err
 		}
 	} else {
-		v4IP, v6IP, mac, err = c.ipam.GetRandomAddress(portName, c.config.NodeSwitch)
+		v4IP, v6IP, mac, err = c.ipam.GetRandomAddress(portName, c.config.NodeSwitch, nil)
 		if err != nil {
 			klog.Errorf("failed to alloc random ip addrs for node %v, err %v", node.Name, err)
 			return err
