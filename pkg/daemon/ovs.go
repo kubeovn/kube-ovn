@@ -485,8 +485,8 @@ func configExternalBridge(provider, bridge, nic string) error {
 					return fmt.Errorf("failed to check vendor of port %s: %v", port, err)
 				}
 				if ok {
-					if _, err = ovs.Exec(ovs.IfExists, "del-port", bridge, port); err != nil {
-						return fmt.Errorf("failed to remove %s from OVS birdge %s: %v", port, bridge, err)
+					if err = removeProviderNic(port, bridge); err != nil {
+						return fmt.Errorf("failed to remove port %s from OVS birdge %s: %v", port, bridge, err)
 					}
 				}
 			}
@@ -506,40 +506,6 @@ func configExternalBridge(provider, bridge, nic string) error {
 	}
 	if output, err = ovs.Exec("set", "open", ".", "external-ids:ovn-bridge-mappings="+bridgeMappings); err != nil {
 		return fmt.Errorf("failed to set ovn-bridge-mappings, %v: %q", err, output)
-	}
-
-	return nil
-}
-
-func removeExternalBridge(provider, bridge string) error {
-	output, err := ovs.Exec(ovs.IfExists, "get", "open", ".", "external-ids:ovn-bridge-mappings")
-	if err != nil {
-		return fmt.Errorf("failed to get ovn-bridge-mappings, %v: %q", err, output)
-	}
-
-	mappings := strings.Split(output, ",")
-	brMap := fmt.Sprintf("%s:%s", provider, bridge)
-
-	var idx int
-	for idx = range mappings {
-		if mappings[idx] == brMap {
-			break
-		}
-	}
-	if idx != len(mappings) {
-		mappings = append(mappings[:idx], mappings[idx+1:]...)
-		if len(mappings) == 0 {
-			output, err = ovs.Exec(ovs.IfExists, "remove", "open", ".", "external-ids", "ovn-bridge-mappings")
-		} else {
-			output, err = ovs.Exec("set", "open", ".", "external-ids:ovn-bridge-mappings="+strings.Join(mappings, ","))
-		}
-		if err != nil {
-			return fmt.Errorf("failed to set ovn-bridge-mappings, %v: %q", err, output)
-		}
-	}
-
-	if output, err = ovs.Exec(ovs.IfExists, "del-br", bridge); err != nil {
-		return fmt.Errorf("failed to remove OVS bridge %s, %v: %q", bridge, err, output)
 	}
 
 	return nil
