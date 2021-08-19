@@ -288,6 +288,40 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 	var mtu int
 	var err error
 	if mtu, err = ovsInitProviderNetwork(pn.Name, nic); err != nil {
+		if oldLen := len(node.Labels); oldLen != 0 {
+			delete(node.Labels, fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name))
+			delete(node.Labels, fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name))
+			delete(node.Labels, fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name))
+			if len(node.Labels) != oldLen {
+				raw, _ := json.Marshal(node.Labels)
+				patchPayload := fmt.Sprintf(`[{ "op": "replace", "path": "/metadata/labels", "value": %s }]`, raw)
+				_, err1 := c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), node.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
+				if err1 != nil {
+					klog.Errorf("failed to patch node %s: %v", node.Name, err1)
+				}
+			}
+		}
+
+		if util.ContainsString(pn.Status.ReadyNodes, node.Name) {
+			pn.Status.ReadyNodes = util.RemoveString(pn.Status.ReadyNodes, node.Name)
+			if len(pn.Status.ReadyNodes) == 0 {
+				bytes := []byte(`[{ "op": "remove", "path": "/status/readyNodes"}]`)
+				_, err1 := c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.JSONPatchType, bytes, metav1.PatchOptions{})
+				if err1 != nil {
+					klog.Errorf("failed to patch provider network %s: %v", pn.Name, err1)
+				}
+			} else {
+				bytes, err1 := pn.Status.Bytes()
+				if err1 != nil {
+					klog.Error(err1)
+				}
+				_, err1 = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
+				if err1 != nil {
+					klog.Errorf("failed to patch provider network %s: %v", pn.Name, err1)
+				}
+			}
+		}
+
 		pn.Status.SetNodeNotReady(node.Name, "InitOVSBridgeFailed", err.Error())
 		bytes, err1 := pn.Status.Bytes()
 		if err1 != nil {
@@ -298,6 +332,7 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 				klog.Errorf("failed to patch provider network %s: %v", pn.Name, err1)
 			}
 		}
+
 		return err
 	}
 
