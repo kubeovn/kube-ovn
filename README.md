@@ -91,6 +91,7 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
 - [Tracing/Diagnose/Dump Traffic with Kubectl Plugin](docs/kubectl-plugin.md)
 - [Prometheus Integration](docs/prometheus.md)
 - [Metrics](docs/ovn-ovs-monitor.md)
+- [Performance Tuning](docs/perormance-tuning.md)
 
 ## Contribution
 We are looking forwards to your PR!
