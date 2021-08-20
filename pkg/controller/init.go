@@ -119,7 +119,6 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 	}
 	if c.config.NetworkType == util.NetworkTypeVlan {
 		defaultSubnet.Spec.Vlan = c.config.DefaultVlanName
-		defaultSubnet.Spec.UnderlayGateway = true
 	}
 
 	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(context.Background(), &defaultSubnet, metav1.CreateOptions{})

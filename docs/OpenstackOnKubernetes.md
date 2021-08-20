@@ -138,13 +138,7 @@ spec:
   namespaces:
   - net2
   cidrBlock: 12.0.1.0/24
-  default: false
-  gatewayType: distributed
   natOutgoing: false
-  private: false
-  protocol: IPv4
-  provider: ovn
-  underlayGateway: false
 ```
 
 4. Add pod and test.

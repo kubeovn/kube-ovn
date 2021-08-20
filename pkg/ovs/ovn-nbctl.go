@@ -206,7 +206,7 @@ func (c Client) ListPodLogicalSwitchPorts(pod, namespace string) ([]string, erro
 	return result, nil
 }
 
-func (c Client) SetLogicalSwitchConfig(ls string, isUnderlayGW bool, lr, protocol, subnet, gateway string, excludeIps []string) error {
+func (c Client) SetLogicalSwitchConfig(ls string, underlay bool, lr, protocol, subnet, gateway string, excludeIps []string) error {
 	var err error
 	cidrBlocks := strings.Split(subnet, ",")
 	mask := strings.Split(cidrBlocks[0], "/")[1]
@@ -239,7 +239,7 @@ func (c Client) SetLogicalSwitchConfig(ls string, isUnderlayGW bool, lr, protoco
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:ipv6_prefix=%s", strings.Split(cidrBlocks[1], "/")[0]), "--",
 			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " "))}
 	}
-	if !isUnderlayGW {
+	if !underlay {
 		cmd = append(cmd, []string{"--",
 			"set", "logical_router_port", fmt.Sprintf("%s-%s", lr, ls), fmt.Sprintf("networks=%s", networks)}...)
 	}
@@ -254,7 +254,7 @@ func (c Client) SetLogicalSwitchConfig(ls string, isUnderlayGW bool, lr, protoco
 }
 
 // CreateLogicalSwitch create logical switch in ovn, connect it to router and apply tcp/udp lb rules
-func (c Client) CreateLogicalSwitch(ls, lr, protocol, subnet, gateway string, excludeIps []string, underlayGateway, defaultVpc bool) error {
+func (c Client) CreateLogicalSwitch(ls, lr, protocol, subnet, gateway string, excludeIps []string, underlay, defaultVpc bool) error {
 	var err error
 	switch protocol {
 	case kubeovnv1.ProtocolIPv4:
@@ -287,7 +287,7 @@ func (c Client) CreateLogicalSwitch(ls, lr, protocol, subnet, gateway string, ex
 
 	ip := util.GetIpAddrWithMask(gateway, subnet)
 	mac := util.GenerateMac()
-	if !underlayGateway {
+	if !underlay {
 		if err := c.createRouterPort(ls, lr, ip, mac); err != nil {
 			klog.Errorf("failed to connect switch %s to router, %v", ls, err)
 			return err

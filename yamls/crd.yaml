@@ -205,8 +205,6 @@ spec:
                   type: boolean
                 vlan:
                   type: string
-                underlayGateway:
-                  type: boolean
                 disableGatewayCheck:
                   type: boolean
                 disableInterConnection:

@@ -92,10 +92,8 @@ metadata:
   name: product
 spec:
   cidrBlock: 10.100.0.0/16
-  default: false
   gateway: 10.100.0.1
   vlan: product
-  underlayGateway: true
 ```
 
 ### Dynamical Management
@@ -150,10 +148,8 @@ metadata:
   name: subnet1
 spec:
   cidrBlock: 10.100.0.0/16
-  default: false
   gateway: 10.100.0.1
   vlan: vlan1
-  underlayGateway: true
 ```
 
 ### Install Hybrid mode

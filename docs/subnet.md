@@ -66,7 +66,6 @@ Since kube-ovn v1.8.0, kube-ovn support using designative egress ip on node, the
 ## Advance Options
 
 - `vlan`: if enable vlan network, use this field to specific which vlan the subnet should bind to.
-- `underlayGateway`: if enable vlan network, use this field to use underlay network gateway directly, instead of ovs virtual gateway
 - `externalEgressGateway`: External egress gateway address. When set, egress traffic is redirected to the external gateway through gateway node(s) by policy-based routing. Conflict with `natOutgoing`.
 - `policyRoutingPriority`/`policyRoutingTableID`: Priority & table ID used in policy-based routing. Required when `externalEgressGateway` is set. NOTICE: `policyRoutingTableID` MUST be unique.
 - `disableGatewayCheck`: By default Kube-OVN checks Pod's network by sending ICMP request to the subnet's gateway. Set it to `true` if the subnet is in underlay mode and the physical gateway does not respond to ICMP requests.

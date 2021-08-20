@@ -679,7 +679,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 		break
 	}
 
-	if podIP != "" && subnet.Spec.Vpc == util.DefaultVpc && !subnet.Spec.UnderlayGateway {
+	if podIP != "" && subnet.Spec.Vlan == "" && subnet.Spec.Vpc == util.DefaultVpc {
 		if pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "" {
 			cm, err := c.configMapsLister.ConfigMaps("kube-system").Get(util.ExternalGatewayConfig)
 			if err != nil {

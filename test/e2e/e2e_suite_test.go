@@ -235,12 +235,11 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 			Labels: map[string]string{"e2e": "true"},
 		},
 		Spec: kubeovn.SubnetSpec{
-			CIDRBlock:       underlayCIDR,
-			Gateway:         underlayGateway,
-			ExcludeIps:      underlayNodeIPs,
-			Vlan:            vlan.Name,
-			UnderlayGateway: true,
-			Namespaces:      []string{underlay.Namespace},
+			CIDRBlock:  underlayCIDR,
+			Gateway:    underlayGateway,
+			ExcludeIps: underlayNodeIPs,
+			Vlan:       vlan.Name,
+			Namespaces: []string{underlay.Namespace},
 		},
 	}
 	if _, err = f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), &subnet, metav1.CreateOptions{}); err != nil {
