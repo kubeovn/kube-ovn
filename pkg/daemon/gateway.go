@@ -641,7 +641,7 @@ func (c *Controller) setExGateway() error {
 
 func (c *Controller) getLocalPodIPsNeedNAT(protocol string) ([]string, error) {
 	var localPodIPs []string
-	hostname := os.Getenv("KUBE_NODE_NAME")
+	hostname := os.Getenv(util.HostnameEnv)
 	allPods, err := c.podsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("list pods failed, %+v", err)
@@ -684,7 +684,7 @@ func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta]
 		return nil, err
 	}
 
-	hostname := os.Getenv("KUBE_NODE_NAME")
+	hostname := os.Getenv(util.HostnameEnv)
 	localPodIPs := make(map[policyRouteMeta][]string)
 	for _, pod := range allPods {
 		if pod.Spec.HostNetwork ||
