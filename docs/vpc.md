@@ -127,6 +127,7 @@ Controller will check this configmap and create network attachment definition.
 ```yaml
 kind: VpcNatGateway
 apiVersion: kubeovn.io/v1
+metadata:
   name: ngw
 spec:
   vpc: test-vpc-1                  # Specifies which VPC the gateway belongs to
