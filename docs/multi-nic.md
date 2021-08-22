@@ -151,9 +151,9 @@ spec:
         image: nginx:alpine
 ```
 
-# Multi kube-ovn network Interfaces
+# Multiple Kube-OVN network Interfaces
 
-Full support for multi kube-ovn networks is more than just IPAM, now the attachment network can also come from OVN.
+Full support for multiple Kube-OVN networks is more than just IPAM, now the attachment network can also come from Kube-OVN.
 
 ## How to use it
 
@@ -179,6 +179,43 @@ spec:
 `server_socket`: Is the socket file that Kube-OVN plugin communicate with. Default location is /run/openvswitch/kube-ovn-daemon.sock.
 
 `provider`: The `<name>.<namespace>.ovn` of this NetworkAttachmentDefinition, The kube-OVN plug-in will use it later to determine whether a native OVN subnet should be used. *Be sure to add the OVN suffix*.
+
+In v1.8.0 we introduced support for custom routes. Here is an example:
+
+```yaml
+apiVersion: "k8s.cni.cncf.io/v1"
+kind: NetworkAttachmentDefinition
+metadata:
+  name: attachnet
+  namespace: default
+spec:
+  config: '{
+      "cniVersion": "0.3.0",
+      "type": "kube-ovn",
+      "server_socket": "/run/openvswitch/kube-ovn-daemon.sock",
+      "provider": "attachnet.default.ovn",
+      "routes": [
+        {
+          "dst": "19.10.0.0/16"
+        },
+        {
+          "dst": "19.20.0.0/16",
+          "gw": "19.10.0.1"
+        }
+      ]
+    }'
+```
+
+The specified routes will be added to the network interface:
+
+```shell
+/ # ip route
+default via 10.16.0.1 dev eth0
+10.16.0.0/16 dev eth0 scope link  src 10.16.0.2
+19.10.0.0/24 dev net1 scope link  src 19.10.0.2
+19.10.0.0/16 dev net1
+19.20.0.0/16 via 19.10.0.1 dev net1
+```
 
 ### Create pod with multus ovn network
 

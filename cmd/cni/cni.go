@@ -8,14 +8,14 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/kubeovn/kube-ovn/pkg/util"
-
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
 	"github.com/containernetworking/cni/pkg/types/current"
 	"github.com/containernetworking/cni/pkg/version"
+
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/request"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func init() {
@@ -30,8 +30,6 @@ func main() {
 }
 
 func cmdAdd(args *skel.CmdArgs) error {
-	var err error
-
 	netConf, cniVersion, err := loadNetConf(args.StdinData)
 	if err != nil {
 		return err
@@ -49,7 +47,6 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	client := request.NewCniServerClient(netConf.ServerSocket)
-
 	response, err := client.Add(request.CniRequest{
 		CniType:      netConf.Type,
 		PodName:      podName,
@@ -58,12 +55,14 @@ func cmdAdd(args *skel.CmdArgs) error {
 		NetNs:        args.Netns,
 		IfName:       args.IfName,
 		Provider:     netConf.Provider,
+		Routes:       netConf.Routes,
 		DeviceID:     netConf.DeviceID,
 		VfDriver:     netConf.VfDriver,
 	})
 	if err != nil {
 		return err
 	}
+
 	result := generateCNIResult(cniVersion, response)
 	return types.PrintResult(&result, cniVersion)
 }
@@ -150,9 +149,10 @@ type ipamConf struct {
 
 type netConf struct {
 	types.NetConf
-	ServerSocket string    `json:"server_socket"`
-	Provider     string    `json:"provider"`
-	IPAM         *ipamConf `json:"ipam"`
+	ServerSocket string          `json:"server_socket"`
+	Provider     string          `json:"provider"`
+	Routes       []request.Route `json:"routes"`
+	IPAM         *ipamConf       `json:"ipam"`
 	// PciAddrs in case of using sriov
 	DeviceID string `json:"deviceID"`
 	VfDriver string `json:"vf_driver"`

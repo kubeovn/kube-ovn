@@ -14,16 +14,23 @@ type CniServerClient struct {
 	*gorequest.SuperAgent
 }
 
+// Route represents a requested route
+type Route struct {
+	Destination string `json:"dst"`
+	Gateway     string `json:"gw"`
+}
+
 // CniRequest is the cniserver request format
 type CniRequest struct {
-	CniType      string `json:"cni_type"`
-	PodName      string `json:"pod_name"`
-	PodNamespace string `json:"pod_namespace"`
-	ContainerID  string `json:"container_id"`
-	NetNs        string `json:"net_ns"`
-	IfName       string `json:"if_name"`
-	Provider     string `json:"provider"`
-	VfDriver     string `json:"vf_driver"`
+	CniType      string  `json:"cni_type"`
+	PodName      string  `json:"pod_name"`
+	PodNamespace string  `json:"pod_namespace"`
+	ContainerID  string  `json:"container_id"`
+	NetNs        string  `json:"net_ns"`
+	IfName       string  `json:"if_name"`
+	Provider     string  `json:"provider"`
+	Routes       []Route `json:"routes"`
+	VfDriver     string  `json:"vf_driver"`
 	// PciAddrs in case of using sriov
 	DeviceID string `json:"deviceID"`
 }
