@@ -623,7 +623,6 @@ var _ = Describe("[Subnet]", func() {
 				Spec: kubeovn.SubnetSpec{
 					CIDRBlock:           "11.17.0.0/16",
 					Namespaces:          []string{namespace.Name},
-					UnderlayGateway:     true,
 					DisableGatewayCheck: true,
 				},
 			}

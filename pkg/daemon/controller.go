@@ -630,7 +630,7 @@ func (c *Controller) reconcileRouters(event subnetEvent) error {
 
 	cidrs := make([]string, 0, len(subnets)*2)
 	for _, subnet := range subnets {
-		if subnet.Spec.Vpc != util.DefaultVpc || !subnet.Status.IsReady() || subnet.Spec.UnderlayGateway {
+		if subnet.Spec.Vlan != "" || subnet.Spec.Vpc != util.DefaultVpc || !subnet.Status.IsReady() {
 			continue
 		}
 

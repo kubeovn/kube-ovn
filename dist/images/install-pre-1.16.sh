@@ -505,8 +505,6 @@ spec:
               type: boolean
             vlan:
               type: string
-            underlayGateway:
-              type: boolean
             disableGatewayCheck:
               type: boolean
             disableInterConnection:
@@ -2342,11 +2340,8 @@ trace(){
     exit 1
   fi
 
-  vlan=$(kubectl get subnet "$ls" -o jsonpath={.spec.vlan})
-  underlayGateway=$(kubectl get subnet "$ls" -o jsonpath={.spec.underlayGateway})
-
   gwMac=""
-  if [ ! -z "$vlan" -a "$underlayGateway" = "true" ]; then
+  if [ ! -z "$(kubectl get subnet $ls -o jsonpath={.spec.vlan})" ]; then
     ovnCni=$(kubectl get pod -n $KUBE_OVN_NS -o wide | grep -w kube-ovn-cni | grep " $nodeName " | awk '{print $1}')
     if [ -z "$ovnCni" ]; then
       echo "No kube-ovn-cni Pod running on node $nodeName"

@@ -921,7 +921,7 @@ func (c *Controller) getEgressNatIpByNode(nodeName string) (map[string]string, e
 	}
 
 	for _, subnet := range subnetList {
-		if subnet.Spec.UnderlayGateway || subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType || subnet.Spec.GatewayNode == "" || !util.GatewayContains(subnet.Spec.GatewayNode, nodeName) {
+		if subnet.Spec.Vlan != "" || subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType || subnet.Spec.GatewayNode == "" || !util.GatewayContains(subnet.Spec.GatewayNode, nodeName) {
 			continue
 		}
 

@@ -36,12 +36,7 @@ spec:
     - ns1
   cidrBlock: 10.0.1.0/24
   default: true
-  gatewayType: distributed
   natOutgoing: false
-  private: false
-  protocol: IPv4
-  provider: ovn
-  underlayGateway: false
 ---
 kind: Subnet
 apiVersion: kubeovn.io/v1
@@ -50,13 +45,7 @@ metadata:
 spec:
   vpc: test-vpc-2
   cidrBlock: 10.0.1.0/24
-  default: false
-  gatewayType: distributed
   natOutgoing: false
-  private: false
-  protocol: IPv4
-  provider: ovn
-  underlayGateway: false
 ```
 
 In the examples above, two subnet in different VPCs can use same IP space
@@ -70,7 +59,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   annotations:
-    ovn.kubernetes.io/logical_switch: ne1
+    ovn.kubernetes.io/logical_switch: net1
   namespace: default
   name: vpc1-pod
 ---
@@ -78,7 +67,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   annotations:
-    ovn.kubernetes.io/logical_switch: ne2
+    ovn.kubernetes.io/logical_switch: net2
   namespace: default
   name: vpc2-pod
 ```
