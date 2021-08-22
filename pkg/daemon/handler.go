@@ -173,12 +173,12 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			mtu = csh.Config.MTU
 		}
 
-		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s", ifName, macAddr, ipAddr, cidr, gw)
+		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s, custom routes %v", ifName, macAddr, ipAddr, cidr, gw, podRequest.Routes)
 		if nicType == util.InternalType {
-			podNicName, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, ingress, egress, vlanID, podRequest.DeviceID, nicType, netns, !podSubnet.Spec.DisableGatewayCheck)
+			podNicName, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, podRequest.Routes, ingress, egress, vlanID, podRequest.DeviceID, nicType, netns, !podSubnet.Spec.DisableGatewayCheck)
 		} else {
 			podNicName = ifName
-			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, ingress, egress, vlanID, podRequest.DeviceID, nicType, netns, !podSubnet.Spec.DisableGatewayCheck)
+			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, podRequest.Routes, ingress, egress, vlanID, podRequest.DeviceID, nicType, netns, !podSubnet.Spec.DisableGatewayCheck)
 		}
 		if err != nil {
 			errMsg := fmt.Errorf("configure nic failed %v", err)
