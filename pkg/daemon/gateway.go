@@ -176,7 +176,8 @@ func (c *Controller) setPolicyRouting() error {
 }
 
 func (c *Controller) addEgressConfig(subnet *kubeovnv1.Subnet, ip string) error {
-	if subnet.Spec.GatewayType != kubeovnv1.GWDistributedType ||
+	if subnet.Spec.Vlan != "" ||
+		subnet.Spec.GatewayType != kubeovnv1.GWDistributedType ||
 		subnet.Spec.Vpc != util.DefaultVpc {
 		return nil
 	}
@@ -205,7 +206,8 @@ func (c *Controller) removeEgressConfig(subnet, ip string) error {
 		return err
 	}
 
-	if podSubnet.Spec.GatewayType != kubeovnv1.GWDistributedType ||
+	if podSubnet.Spec.Vlan != "" ||
+		podSubnet.Spec.GatewayType != kubeovnv1.GWDistributedType ||
 		podSubnet.Spec.Vpc != util.DefaultVpc {
 		return nil
 	}
@@ -225,24 +227,32 @@ func (c *Controller) removeEgressConfig(subnet, ip string) error {
 
 func (c *Controller) addIPSetMembers(setID, protocol string, ips []string) {
 	if protocol == kubeovnv1.ProtocolDual {
-		c.ipset[kubeovnv1.ProtocolIPv4].AddMembers(setID, []string{ips[0]})
-		c.ipset[kubeovnv1.ProtocolIPv6].AddMembers(setID, []string{ips[1]})
-		c.ipset[kubeovnv1.ProtocolIPv4].ApplyUpdates()
-		c.ipset[kubeovnv1.ProtocolIPv6].ApplyUpdates()
-	} else {
-		c.ipset[protocol].AddMembers(setID, []string{ips[0]})
+		if c.ipset[kubeovnv1.ProtocolIPv4] != nil {
+			c.ipset[kubeovnv1.ProtocolIPv4].AddMembers(setID, ips[:1])
+			c.ipset[kubeovnv1.ProtocolIPv4].ApplyUpdates()
+		}
+		if c.ipset[kubeovnv1.ProtocolIPv6] != nil {
+			c.ipset[kubeovnv1.ProtocolIPv6].AddMembers(setID, ips[1:])
+			c.ipset[kubeovnv1.ProtocolIPv6].ApplyUpdates()
+		}
+	} else if c.ipset[protocol] != nil {
+		c.ipset[protocol].AddMembers(setID, ips[:1])
 		c.ipset[protocol].ApplyUpdates()
 	}
 }
 
 func (c *Controller) removeIPSetMembers(setID, protocol string, ips []string) {
 	if protocol == kubeovnv1.ProtocolDual {
-		c.ipset[kubeovnv1.ProtocolIPv4].RemoveMembers(setID, []string{ips[0]})
-		c.ipset[kubeovnv1.ProtocolIPv6].RemoveMembers(setID, []string{ips[1]})
-		c.ipset[kubeovnv1.ProtocolIPv4].ApplyUpdates()
-		c.ipset[kubeovnv1.ProtocolIPv6].ApplyUpdates()
-	} else {
-		c.ipset[protocol].RemoveMembers(setID, []string{ips[0]})
+		if c.ipset[kubeovnv1.ProtocolIPv4] != nil {
+			c.ipset[kubeovnv1.ProtocolIPv4].RemoveMembers(setID, ips[:1])
+			c.ipset[kubeovnv1.ProtocolIPv4].ApplyUpdates()
+		}
+		if c.ipset[kubeovnv1.ProtocolIPv6] != nil {
+			c.ipset[kubeovnv1.ProtocolIPv6].RemoveMembers(setID, ips[1:])
+			c.ipset[kubeovnv1.ProtocolIPv6].ApplyUpdates()
+		}
+	} else if c.ipset[protocol] != nil {
+		c.ipset[protocol].RemoveMembers(setID, ips[:1])
 		c.ipset[protocol].ApplyUpdates()
 	}
 }
