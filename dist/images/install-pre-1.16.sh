@@ -576,6 +576,9 @@ spec:
     - name: DefaultInterface
       type: string
       JSONPath: .spec.defaultInterface
+    - name: Ready
+      type: boolean
+      JSONPath: .status.ready
   validation:
     openAPIV3Schema:
       properties:
@@ -604,6 +607,8 @@ spec:
         status:
           type: object
           properties:
+            ready:
+              type: boolean
             readyNodes:
               type: array
               items:
