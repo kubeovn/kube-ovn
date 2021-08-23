@@ -194,7 +194,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	}
 
 	// create provider network
-	pn := kubeovn.ProviderNetwork{
+	pn := &kubeovn.ProviderNetwork{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   underlay.ProviderNetwork,
 			Labels: map[string]string{"e2e": "true"},
@@ -203,11 +203,19 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 			DefaultInterface: underlay.ProviderInterface,
 		},
 	}
-	if _, err = f.OvnClientSet.KubeovnV1().ProviderNetworks().Create(context.Background(), &pn, metav1.CreateOptions{}); err != nil {
+	if _, err = f.OvnClientSet.KubeovnV1().ProviderNetworks().Create(context.Background(), pn, metav1.CreateOptions{}); err != nil {
 		Fail("failed to create provider network: " + err.Error())
 	}
 	if err = f.WaitProviderNetworkReady(pn.Name); err != nil {
 		Fail("provider network failed: " + err.Error())
+	}
+	if pn, err = f.OvnClientSet.KubeovnV1().ProviderNetworks().Get(context.Background(), pn.Name, metav1.GetOptions{}); err != nil {
+		Fail("failed to get provider network: " + err.Error())
+	}
+	for _, node := range nodes.Items {
+		if !pn.Status.NodeIsReady(node.Name) {
+			Fail(fmt.Sprintf("provider network on node %s is not ready", node.Name))
+		}
 	}
 
 	// create vlan

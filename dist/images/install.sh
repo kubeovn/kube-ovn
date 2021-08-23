@@ -636,6 +636,8 @@ spec:
             status:
               type: object
               properties:
+                ready:
+                  type: boolean
                 readyNodes:
                   type: array
                   items:
@@ -667,6 +669,9 @@ spec:
       - name: DefaultInterface
         type: string
         jsonPath: .spec.defaultInterface
+      - name: Ready
+        type: boolean
+        jsonPath: .status.ready
   scope: Cluster
   names:
     plural: provider-networks

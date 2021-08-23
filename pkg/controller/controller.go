@@ -79,8 +79,9 @@ type Controller struct {
 	vlansLister kubeovnlister.VlanLister
 	vlanSynced  cache.InformerSynced
 
-	providerNetworksLister kubeovnlister.ProviderNetworkLister
-	providerNetworkSynced  cache.InformerSynced
+	providerNetworksLister     kubeovnlister.ProviderNetworkLister
+	providerNetworkSynced      cache.InformerSynced
+	updateProviderNetworkQueue workqueue.RateLimitingInterface
 
 	addVlanQueue    workqueue.RateLimitingInterface
 	delVlanQueue    workqueue.RateLimitingInterface
@@ -204,8 +205,9 @@ func NewController(config *Configuration) *Controller {
 		delVlanQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DelVlan"),
 		updateVlanQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVlan"),
 
-		providerNetworksLister: providerNetworkInformer.Lister(),
-		providerNetworkSynced:  providerNetworkInformer.Informer().HasSynced,
+		providerNetworksLister:     providerNetworkInformer.Lister(),
+		providerNetworkSynced:      providerNetworkInformer.Informer().HasSynced,
+		updateProviderNetworkQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateProviderNetwork"),
 
 		podsLister:             podInformer.Lister(),
 		podsSynced:             podInformer.Informer().HasSynced,
@@ -309,6 +311,10 @@ func NewController(config *Configuration) *Controller {
 		UpdateFunc: controller.enqueueUpdateVlan,
 	})
 
+	providerNetworkInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: controller.enqueueUpdateProviderNetwork,
+	})
+
 	if config.EnableNP {
 		npInformer := informerFactory.Networking().V1().NetworkPolicies()
 		controller.npsLister = npInformer.Lister()
@@ -360,32 +366,32 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	}
 
 	if err := c.InitDefaultVpc(); err != nil {
-		klog.Fatalf("failed to init default vpc %v", err)
+		klog.Fatalf("failed to init default vpc: %v", err)
 	}
 
 	if err := c.InitOVN(); err != nil {
-		klog.Fatalf("failed to init ovn resource %v", err)
+		klog.Fatalf("failed to init ovn resource: %v", err)
 	}
 
 	if err := c.InitIPAM(); err != nil {
-		klog.Fatalf("failed to init ipam %v", err)
+		klog.Fatalf("failed to init ipam: %v", err)
 	}
 
 	if err := c.initDenyAllSecurityGroup(); err != nil {
-		klog.Fatalf("failed to init 'deny_all' security group, %v", err)
+		klog.Fatalf("failed to init 'deny_all' security group: %v", err)
 	}
 
 	// remove resources in ovndb that not exist any more in kubernetes resources
 	if err := c.gc(); err != nil {
-		klog.Fatalf("gc failed %v", err)
+		klog.Fatalf("gc failed: %v", err)
 	}
 
 	c.registerSubnetMetrics()
 	if err := c.initSyncCrdIPs(); err != nil {
-		klog.Errorf("failed to sync crd ips %v", err)
+		klog.Errorf("failed to sync crd ips: %v", err)
 	}
 	if err := c.initSyncCrdSubnets(); err != nil {
-		klog.Errorf("failed to sync crd subnets %v", err)
+		klog.Errorf("failed to sync crd subnets: %v", err)
 	}
 	if err := c.initSyncCrdVlans(); err != nil {
 		klog.Errorf("failed to sync crd vlans: %v", err)
@@ -423,6 +429,8 @@ func (c *Controller) shutdown() {
 	c.addVlanQueue.ShutDown()
 	c.delVlanQueue.ShutDown()
 	c.updateVlanQueue.ShutDown()
+
+	c.updateProviderNetworkQueue.ShutDown()
 
 	c.addOrUpdateVpcQueue.ShutDown()
 	c.updateVpcStatusQueue.ShutDown()
@@ -468,7 +476,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		time.Sleep(3 * time.Second)
 		lss, err := c.ovnClient.ListLogicalSwitch()
 		if err != nil {
-			klog.Fatalf("failed to list logical switch, %v", err)
+			klog.Fatalf("failed to list logical switch: %v", err)
 		}
 
 		if util.IsStringIn(c.config.DefaultLogicalSwitch, lss) && util.IsStringIn(c.config.NodeSwitch, lss) {
@@ -491,7 +499,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		time.Sleep(3 * time.Second)
 		nodes, err := c.nodesLister.List(labels.Everything())
 		if err != nil {
-			klog.Fatalf("failed to list nodes, %v", err)
+			klog.Fatalf("failed to list nodes: %v", err)
 		}
 		for _, node := range nodes {
 			if node.Annotations[util.AllocatedAnnotation] != "true" {
@@ -510,6 +518,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 
 	go wait.Until(c.runDelVpcWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdateVpcStatusWorker, time.Second, stopCh)
+	go wait.Until(c.runUpdateProviderNetworkWorker, time.Second, stopCh)
 
 	if c.config.EnableLb {
 		// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
@@ -553,7 +562,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 
 	go wait.Until(func() {
 		if err := c.markAndCleanLSP(); err != nil {
-			klog.Errorf("gc lsp error %v", err)
+			klog.Errorf("gc lsp error: %v", err)
 		}
 	}, 6*time.Minute, stopCh)
 
