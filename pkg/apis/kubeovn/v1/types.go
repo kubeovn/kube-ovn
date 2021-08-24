@@ -239,6 +239,10 @@ type ProviderNetworkSpec struct {
 type ProviderNetworkStatus struct {
 	// +optional
 	// +patchStrategy=merge
+	Ready bool `json:"ready" patchStrategy:"merge"`
+
+	// +optional
+	// +patchStrategy=merge
 	ReadyNodes []string `json:"readyNodes,omitempty" patchStrategy:"merge"`
 
 	// +optional
