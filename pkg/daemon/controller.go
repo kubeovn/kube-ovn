@@ -993,6 +993,49 @@ func (c *Controller) handlePod(key string) error {
 	return nil
 }
 
+func (c *Controller) loopEncapIpCheck() {
+	node, err := c.nodesLister.Get(c.config.NodeName)
+	if err != nil {
+		klog.Errorf("failed to get node %s %v", c.config.NodeName, err)
+		return
+	}
+
+	if nodeTunnelName := node.GetAnnotations()[util.TunnelInterfaceAnnotation]; nodeTunnelName != "" {
+		iface, err := findInterface(nodeTunnelName)
+		if err != nil {
+			klog.Errorf("failed to find iface %s, %v", nodeTunnelName, err)
+			return
+		}
+		if iface.Flags&net.FlagUp == 0 {
+			klog.Errorf("iface %v is down", nodeTunnelName)
+			return
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			klog.Errorf("failed to get iface addr. %v", err)
+			return
+		}
+		if len(addrs) == 0 {
+			klog.Errorf("iface %s has no ip address", nodeTunnelName)
+			return
+		}
+
+		// if assigned iface in node annotation is down or with no ip, the error msg should be printed periodically
+		if c.config.Iface == nodeTunnelName {
+			klog.V(3).Infof("node tunnel interface %s not changed", nodeTunnelName)
+			return
+		}
+		c.config.Iface = nodeTunnelName
+		klog.Infof("Update node tunnel interface %v", nodeTunnelName)
+
+		encapIP := strings.Split(addrs[0].String(), "/")[0]
+		if err = setEncapIP(encapIP); err != nil {
+			klog.Errorf("failed to set encap ip %s for iface %s", encapIP, c.config.Iface)
+			return
+		}
+	}
+}
+
 // Run starts controller
 func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
@@ -1016,6 +1059,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.runSubnetWorker, time.Second, stopCh)
 	go wait.Until(c.runPodWorker, time.Second, stopCh)
 	go wait.Until(c.runGateway, 3*time.Second, stopCh)
+	go wait.Until(c.loopEncapIpCheck, 3*time.Second, stopCh)
 	<-stopCh
 	klog.Info("Shutting down workers")
 }
