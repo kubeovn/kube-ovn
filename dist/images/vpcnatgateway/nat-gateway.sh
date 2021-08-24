@@ -12,6 +12,28 @@ function exec_cmd() {
     fi
 }
 
+# return val is 1 when recv more resp msg
+# ARPING 10.140.28.1 from 10.140.28.210 net1
+# Unicast reply from 10.140.28.1 [00:00:5E:00:01:01]  2.696ms
+# Unicast reply from 10.140.28.1 [00:00:5E:00:01:01]  2.958ms
+# Unicast reply from 10.140.28.1 [00:00:5E:00:01:01]  1.296ms
+# Unicast reply from 10.140.28.1 [00:00:5E:00:01:01]  3.066ms
+# Unicast reply from 10.140.28.1 [00:00:5E:00:01:01]  1.320ms
+# Unicast reply from 10.140.28.1 [00:00:5E:00:01:01]  3.026ms
+# Sent 3 probes (1 broadcast(s))
+# Received 6 response(s)
+# cmd "arping -c 3 -s 10.140.28.210 10.140.28.1", ret "1"
+
+function exec_eip_cmd() {
+    cmd=${@:1:${#}}
+    $cmd
+    ret=$?
+    if [ $ret -ne 0 -a $ret -ne 1 ]; then
+        echo "failed to exec \"$cmd\""
+        exit $1
+    fi
+}
+
 function init() {
     ip link set net1 up
     exec_cmd "ip rule add iif net1 table $ROUTE_TABLE"
@@ -65,7 +87,7 @@ function add_eip() {
 
         exec_cmd "ip addr replace $eip dev net1"
         exec_cmd "ip ro replace default via $gateway dev net1 table $ROUTE_TABLE"
-        exec_cmd "arping -c 3 -s $eip_without_prefix $gateway"
+        exec_eip_cmd "arping -c 3 -s $eip_without_prefix $gateway"
     done
 }
 
