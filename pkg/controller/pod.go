@@ -429,7 +429,7 @@ func (c *Controller) handleAddPod(key string) error {
 		return err
 	}
 	if err := util.ValidatePodNetwork(pod.Annotations); err != nil {
-		klog.Errorf("validate pod %s/%s failed, %v", namespace, name, err)
+		klog.Errorf("validate pod %s/%s failed: %v", namespace, name, err)
 		c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", err.Error())
 		return err
 	}
@@ -473,7 +473,7 @@ func (c *Controller) handleAddPod(key string) error {
 		}
 
 		if err := util.ValidatePodCidr(podNet.Subnet.Spec.CIDRBlock, ipStr); err != nil {
-			klog.Errorf("validate pod %s/%s failed, %v", namespace, name, err)
+			klog.Errorf("validate pod %s/%s failed: %v", namespace, name, err)
 			c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", err.Error())
 			return err
 		}
@@ -489,11 +489,6 @@ func (c *Controller) handleAddPod(key string) error {
 				pod.Annotations[fmt.Sprintf(util.ProviderNetworkTemplate, podNet.ProviderName)] = vlan.Spec.Provider
 			}
 
-			tag, err := c.getSubnetVlanTag(subnet)
-			if err != nil {
-				return err
-			}
-
 			portSecurity := false
 			if pod.Annotations[fmt.Sprintf(util.PortSecurityAnnotationTemplate, podNet.ProviderName)] == "true" {
 				portSecurity = true
@@ -501,7 +496,7 @@ func (c *Controller) handleAddPod(key string) error {
 
 			securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
 			portName := ovs.PodNameToPortName(name, namespace, podNet.ProviderName)
-			if err := c.ovnClient.CreatePort(subnet.Name, portName, ipStr, subnet.Spec.CIDRBlock, mac, tag, pod.Name, pod.Namespace, portSecurity, securityGroupAnnotation); err != nil {
+			if err := c.ovnClient.CreatePort(subnet.Name, portName, ipStr, subnet.Spec.CIDRBlock, mac, pod.Name, pod.Namespace, portSecurity, securityGroupAnnotation); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
 				return err
 			}
@@ -522,7 +517,7 @@ func (c *Controller) handleAddPod(key string) error {
 			c.deletePodQueue.AddRateLimited(key)
 			return nil
 		}
-		klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
+		klog.Errorf("patch pod %s/%s failed: %v", name, namespace, err)
 		return err
 	}
 

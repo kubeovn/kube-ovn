@@ -1,4 +1,4 @@
-package e2e_vlan_single_nic_test
+package e2e_underlay_single_nic_test
 
 import (
 	"context"
@@ -11,8 +11,8 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	_ "github.com/kubeovn/kube-ovn/test/e2e-vlan-single-nic/kubectl-ko"
-	_ "github.com/kubeovn/kube-ovn/test/e2e-vlan-single-nic/node"
+	_ "github.com/kubeovn/kube-ovn/test/e2e-underlay-single-nic/kubectl-ko"
+	_ "github.com/kubeovn/kube-ovn/test/e2e-underlay-single-nic/node"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
 

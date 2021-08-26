@@ -48,13 +48,13 @@ make kind-install
 make e2e
 ```
 
-For Underlay/Vlan mode e2e tests with single nic, run following commands:
+For Underlay mode e2e tests with single nic, run following commands:
 
 ```sh
 make kind-init
-make kind-install-vlan
+make kind-install-underlay
 # wait all pods ready
-make e2e-vlan-single-nic
+make e2e-underlay-single-nic
 ```
 
 ## ARM support

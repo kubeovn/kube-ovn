@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"strconv"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -260,8 +259,21 @@ func (c *Controller) handleUpdateVlan(key string) error {
 	if vlan.Spec.Provider == "" {
 		vlan.Spec.Provider = c.config.DefaultProviderName
 		if _, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(context.Background(), vlan, metav1.UpdateOptions{}); err != nil {
-			klog.Errorf("failed to update vlan %s, %v", vlan.Name, err)
+			klog.Errorf("failed to update vlan %s: %v", vlan.Name, err)
 			return err
+		}
+	}
+
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets: %v", err)
+		return err
+	}
+	for _, subnet := range subnets {
+		if subnet.Spec.Vlan == vlan.Name {
+			if err = c.setLocalnetTag(subnet.Name, vlan.Spec.ID); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -271,7 +283,7 @@ func (c *Controller) handleUpdateVlan(key string) error {
 func (c *Controller) handleDelVlan(key string) error {
 	subnet, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
-		klog.Errorf("failed to list subnets %v", err)
+		klog.Errorf("failed to list subnets: %v", err)
 		return err
 	}
 
@@ -326,26 +338,20 @@ func (c *Controller) updateProviderNetworkStatusForVlanDeletion(pn *kubeovnv1.Pr
 	return nil
 }
 
-func (c *Controller) addLocalnet(subnet *kubeovnv1.Subnet) error {
-	localnetPort := ovs.PodNameToLocalnetName(subnet.Name)
-	vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
-	if err != nil {
-		klog.Errorf("failed get vlan object %v", err)
-		return err
-	}
-
-	if err := c.ovnClient.CreateLocalnetPort(subnet.Name, localnetPort, vlan.Spec.Provider, strconv.Itoa(vlan.Spec.ID)); err != nil {
+func (c *Controller) setLocalnetTag(subnet string, vlanID int) error {
+	localnetPort := ovs.PodNameToLocalnetName(subnet)
+	if err := c.ovnClient.SetPortTag(localnetPort, vlanID); err != nil {
+		klog.Errorf("failed to set vlan tag of localnet port %s: %v", localnetPort, err)
 		return err
 	}
 
 	return nil
 }
 
-func (c *Controller) delLocalnet(key string) error {
-	localnetPort := ovs.PodNameToLocalnetName(key)
-
+func (c *Controller) delLocalnet(subnet string) error {
+	localnetPort := ovs.PodNameToLocalnetName(subnet)
 	if err := c.ovnClient.DeleteLogicalSwitchPort(localnetPort); err != nil {
-		klog.Errorf("failed to delete localnet port %s, %v", localnetPort, err)
+		klog.Errorf("failed to delete localnet port %s: %v", localnetPort, err)
 		return err
 	}
 

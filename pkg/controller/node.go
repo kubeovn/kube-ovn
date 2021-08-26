@@ -238,7 +238,7 @@ func (c *Controller) handleAddNode(key string) error {
 
 	subnet, err := c.subnetsLister.Get(c.config.NodeSwitch)
 	if err != nil {
-		klog.Errorf("failed to get node subnet %v", err)
+		klog.Errorf("failed to get node subnet: %v", err)
 		return err
 	}
 
@@ -253,19 +253,19 @@ func (c *Controller) handleAddNode(key string) error {
 			node.Annotations[util.MacAddressAnnotation],
 			node.Annotations[util.LogicalSwitchAnnotation])
 		if err != nil {
-			klog.Errorf("failed to alloc static ip addrs for node %v, err %v", node.Name, err)
+			klog.Errorf("failed to alloc static ip addrs for node %v: %v", node.Name, err)
 			return err
 		}
 	} else {
 		v4IP, v6IP, mac, err = c.ipam.GetRandomAddress(portName, c.config.NodeSwitch, nil)
 		if err != nil {
-			klog.Errorf("failed to alloc random ip addrs for node %v, err %v", node.Name, err)
+			klog.Errorf("failed to alloc random ip addrs for node %v: %v", node.Name, err)
 			return err
 		}
 	}
 
 	ipStr := util.GetStringIP(v4IP, v6IP)
-	if err := c.ovnClient.CreatePort(c.config.NodeSwitch, portName, ipStr, subnet.Spec.CIDRBlock, mac, "", "", "", false, ""); err != nil {
+	if err := c.ovnClient.CreatePort(c.config.NodeSwitch, portName, ipStr, subnet.Spec.CIDRBlock, mac, "", "", false, ""); err != nil {
 		return err
 	}
 
@@ -275,7 +275,7 @@ func (c *Controller) handleAddNode(key string) error {
 		if util.CheckProtocol(nodeAddr) == util.CheckProtocol(ip) {
 			err = c.ovnClient.AddStaticRoute("", nodeAddr, ip, c.config.ClusterRouter, util.NormalRouteType)
 			if err != nil {
-				klog.Errorf("failed to add static router from node to ovn0 %v", err)
+				klog.Errorf("failed to add static router from node to ovn0: %v", err)
 				return err
 			}
 		}
@@ -304,12 +304,12 @@ func (c *Controller) handleAddNode(key string) error {
 	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
 	_, err = c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), key, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}, "")
 	if err != nil {
-		klog.Errorf("patch node %s failed %v", key, err)
+		klog.Errorf("patch node %s failed: %v", key, err)
 		return err
 	}
 
 	if err := c.createOrUpdateCrdIPs(key, ipStr, mac); err != nil {
-		klog.Errorf("failed to create or update IPs node-%s %v", key, err)
+		klog.Errorf("failed to create or update IPs node-%s: %v", key, err)
 		return err
 	}
 
@@ -326,11 +326,11 @@ func (c *Controller) handleAddNode(key string) error {
 func (c *Controller) handleDeleteNode(key string) error {
 	portName := fmt.Sprintf("node-%s", key)
 	if err := c.ovnClient.DeleteLogicalSwitchPort(portName); err != nil {
-		klog.Errorf("failed to delete node switch port node-%s %v", key, err)
+		klog.Errorf("failed to delete node switch port node-%s: %v", key, err)
 		return err
 	}
 	if err := c.ovnClient.DeleteChassis(key); err != nil {
-		klog.Errorf("failed to delete chassis for node %s %v", key, err)
+		klog.Errorf("failed to delete chassis for node %s: %v", key, err)
 		return err
 	}
 
