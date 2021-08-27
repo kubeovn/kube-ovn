@@ -42,22 +42,6 @@ fi
 if [[ $sb_leader =~ "true" ]]
 then
    kubectl label --overwrite pod "$POD_NAME" -n "$POD_NAMESPACE" ovn-sb-leader=true
-   set +e
-   northd_svc=$(kubectl get svc -n kube-system | grep ovn-northd)
-   if [ -z "$northd_svc" ]; then
-     echo "ovn-northd svc not exist"
-   else
-     northd_leader=$(kubectl get ep -n kube-system ovn-northd -o jsonpath={.subsets\[0\].addresses\[0\].ip})
-     if [ "$northd_leader" == "" ]; then
-        # no available northd leader try to release the lock
-        if [[ "$ENABLE_SSL" == "false" ]]; then
-          ovsdb-client -v -t 1 steal tcp:127.0.0.1:6642  ovn_northd
-        else
-          ovsdb-client -v -t 1 -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert steal ssl:127.0.0.1:6642  ovn_northd
-        fi
-      fi
-    fi
-    set -e
 else
   kubectl label pod "$POD_NAME" -n "$POD_NAMESPACE" ovn-sb-leader-
 fi
