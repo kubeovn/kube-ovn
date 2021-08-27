@@ -545,12 +545,12 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
-	nodes, err := c.nodesLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list nodes %v", err)
-		return err
-	}
-	if subnet.Spec.Vlan != "" && subnet.Spec.Vpc != util.DefaultVpc {
+	if subnet.Spec.Vlan == "" && subnet.Spec.Vpc == util.DefaultVpc {
+		nodes, err := c.nodesLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list nodes %v", err)
+			return err
+		}
 		for _, node := range nodes {
 			for _, addr := range node.Status.Addresses {
 				if addr.Type == v1.NodeInternalIP && util.CIDRContainIP(subnet.Spec.CIDRBlock, addr.Address) {
