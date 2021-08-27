@@ -15,6 +15,12 @@ only L3 connectivity for gateway nodes is required.
 ```bash
 docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn kubeovn/kube-ovn:v1.7.1 bash start-ic-db.sh
 ```
+​		If `containerd` replaces `docker` then the command is as follows:
+
+```shell
+ctr run  -d --net-host --mount="type=bind,src=/etc/ovn/,dst=/etc/ovn,options=rbind:rw" --mount="type=bind,src=/var/run/ovn,dst=/var/run/ovn,options=rbind:rw" --mount="type=bind,src=/var/log/ovn,dst=/var/log/ovn,options=rbind:rw"  kubeovn/kube-ovn:v1.7.1 ovn-ic-db bash start-ic-db.sh
+```
+
 2. Create `ovn-ic-config` ConfigMap in each cluster `kube-system` namespace. Edit and apply the yaml below in each cluster.
 ```yaml
 apiVersion: v1
