@@ -69,12 +69,11 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	}
 
 	klog.Infof("add port request %v", podRequest)
-	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, providerNetwork, vlanID, ifName, nicType, netns, podNicName string
+	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, providerNetwork, ifName, nicType, netns, podNicName string
 	var pod *v1.Pod
 	var err error
 	for i := 0; i < 15; i++ {
-		pod, err = csh.Controller.podsLister.Pods(podRequest.PodNamespace).Get(podRequest.PodName)
-		if err != nil {
+		if pod, err = csh.Controller.podsLister.Pods(podRequest.PodNamespace).Get(podRequest.PodName); err != nil {
 			errMsg := fmt.Errorf("get pod %s/%s failed %v", podRequest.PodNamespace, podRequest.PodName, err)
 			klog.Error(errMsg)
 			if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
@@ -105,7 +104,6 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		ingress = pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, podRequest.Provider)]
 		egress = pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, podRequest.Provider)]
 		providerNetwork = pod.Annotations[fmt.Sprintf(util.ProviderNetworkTemplate, podRequest.Provider)]
-		vlanID = pod.Annotations[fmt.Sprintf(util.VlanIdAnnotationTemplate, podRequest.Provider)]
 		ipAddr = util.GetIpAddrWithMask(ip, cidr)
 		ifName = podRequest.IfName
 		if podRequest.DeviceID != "" {
@@ -175,10 +173,10 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 
 		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s, custom routes %v", ifName, macAddr, ipAddr, cidr, gw, podRequest.Routes)
 		if nicType == util.InternalType {
-			podNicName, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, podRequest.Routes, ingress, egress, vlanID, podRequest.DeviceID, nicType, netns, !podSubnet.Spec.DisableGatewayCheck)
+			podNicName, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, podRequest.Routes, ingress, egress, podRequest.DeviceID, nicType, netns, !podSubnet.Spec.DisableGatewayCheck)
 		} else {
 			podNicName = ifName
-			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, podRequest.Routes, ingress, egress, vlanID, podRequest.DeviceID, nicType, netns, !podSubnet.Spec.DisableGatewayCheck)
+			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, podRequest.Routes, ingress, egress, podRequest.DeviceID, nicType, netns, !podSubnet.Spec.DisableGatewayCheck)
 		}
 		if err != nil {
 			errMsg := fmt.Errorf("configure nic failed %v", err)
@@ -190,8 +188,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		}
 
 		ifaceID := ovs.PodNameToPortName(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider)
-		err = ovs.ConfigInterfaceMirror(csh.Config.EnableMirror, pod.Annotations[util.MirrorControlAnnotation], ifaceID)
-		if err != nil {
+		if err = ovs.ConfigInterfaceMirror(csh.Config.EnableMirror, pod.Annotations[util.MirrorControlAnnotation], ifaceID); err != nil {
 			klog.Errorf("failed mirror to mirror0, %v", err)
 			return
 		}

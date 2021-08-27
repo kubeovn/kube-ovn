@@ -12,5 +12,5 @@ kind.yaml
 image.tar
 image-amd64.tar
 image-arm64.tar
-install-vlan.sh
+install-underlay.sh
 test/**/*.test

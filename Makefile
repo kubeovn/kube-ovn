@@ -129,8 +129,8 @@ kind-install:
 	ENABLE_SSL=true dist/images/install.sh
 	kubectl describe no
 
-.PHONY: kind-install-vlan
-kind-install-vlan:
+.PHONY: kind-install-underlay
+kind-install-underlay:
 	$(eval SUBNET = $(shell docker network inspect kind -f "{{(index .IPAM.Config 0).Subnet}}"))
 	$(eval GATEWAY = $(shell docker network inspect kind -f "{{(index .IPAM.Config 0).Gateway}}"))
 	$(eval EXCLUDE_IPS = $(shell docker network inspect kind -f '{{range .Containers}},{{index (split .IPv4Address "/") 0}}{{end}}' | sed 's/^,//'))
@@ -138,11 +138,11 @@ kind-install-vlan:
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(GATEWAY)"@' \
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(EXCLUDE_IPS)"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
-		dist/images/install.sh > install-vlan.sh
-	chmod +x install-vlan.sh
+		dist/images/install.sh > install-underlay.sh
+	chmod +x install-underlay.sh
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
-	ENABLE_SSL=true ENABLE_VLAN=true VLAN_NIC=eth0 ./install-vlan.sh
+	ENABLE_SSL=true ENABLE_VLAN=true VLAN_NIC=eth0 ./install-underlay.sh
 	kubectl describe no
 
 .PHONY: kind-install-single
@@ -157,8 +157,8 @@ kind-install-ipv6:
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
 	ENABLE_SSL=true IPv6=true dist/images/install.sh
 
-.PHONY: kind-install-ipv6-vlan
-kind-install-ipv6-vlan:
+.PHONY: kind-install-underlay-ipv6
+kind-install-underlay-ipv6:
 	$(eval SUBNET = $(shell docker network inspect kind -f "{{(index .IPAM.Config 1).Subnet}}"))
 	$(eval EXCLUDE_IPS = $(shell docker network inspect kind -f '{{range .Containers}},{{index (split .IPv6Address "/") 0}}{{end}}' | sed 's/^,//'))
 	$(eval GATEWAY = $(shell docker exec kube-ovn-worker ip -6 route show default | awk '{print $$3}'))
@@ -166,11 +166,11 @@ kind-install-ipv6-vlan:
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(GATEWAY)"@' \
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(EXCLUDE_IPS)"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
-		dist/images/install.sh > install-vlan.sh
-	@chmod +x install-vlan.sh
+		dist/images/install.sh > install-underlay.sh
+	@chmod +x install-underlay.sh
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
-	ENABLE_SSL=true IPv6=true ENABLE_VLAN=true VLAN_NIC=eth0 ./install-vlan.sh
+	ENABLE_SSL=true IPv6=true ENABLE_VLAN=true VLAN_NIC=eth0 ./install-underlay.sh
 
 .PHONY: kind-install-dual
 kind-install-dual:
@@ -221,6 +221,13 @@ e2e:
 		done; \
 	fi
 
+	@if [ -n "$$VLAN_ID" ]; then \
+		kind get nodes --name kube-ovn | while read node; do \
+			docker cp test/kind-vlan.sh $$node:/kind-vlan.sh; \
+			docker exec $$node sh -c "VLAN_ID=$$VLAN_ID sh /kind-vlan.sh"; \
+		done; \
+	fi
+
 	@echo "{" > test/e2e/network.json
 	@i=0; kind get nodes --name kube-ovn | while read node; do \
 	    i=$$((i+1)); \
@@ -238,10 +245,18 @@ e2e:
 e2e-ipv6:
 	@IPV6=true $(MAKE) e2e
 
-.PHONY: e2e-vlan-single-nic
-e2e-vlan-single-nic:
-	@docker inspect -f '{{json .NetworkSettings.Networks.kind}}' kube-ovn-control-plane > test/e2e-vlan-single-nic/node/network.json
-	ginkgo -mod=mod -progress -reportPassed --slowSpecThreshold=60 test/e2e-vlan-single-nic
+.PHONY: e2e-vlan
+e2e-vlan:
+	@VLAN_ID=100 $(MAKE) e2e
+
+.PHONY: e2e-vlan-ipv6
+e2e-vlan-ipv6:
+	@IPV6=true $(MAKE) e2e-vlan
+
+.PHONY: e2e-underlay-single-nic
+e2e-underlay-single-nic:
+	@docker inspect -f '{{json .NetworkSettings.Networks.kind}}' kube-ovn-control-plane > test/e2e-underlay-single-nic/node/network.json
+	ginkgo -mod=mod -progress -reportPassed --slowSpecThreshold=60 test/e2e-underlay-single-nic
 
 .PHONY: clean
 clean:
@@ -250,4 +265,4 @@ clean:
 	$(RM) ovn.yaml kube-ovn.yaml kube-ovn-crd.yaml
 	$(RM) image.tar image-amd64.tar image-arm64.tar
 	$(RM) test/e2e/ovnnb_db.* test/e2e/ovnsb_db.*
-	$(RM) install-vlan.sh
+	$(RM) install-underlay.sh

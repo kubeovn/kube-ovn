@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"reflect"
-	"strconv"
 	"strings"
 	"time"
 
@@ -548,7 +547,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	if subnet.Spec.Vlan == "" && subnet.Spec.Vpc == util.DefaultVpc {
 		nodes, err := c.nodesLister.List(labels.Everything())
 		if err != nil {
-			klog.Errorf("failed to list nodes %v", err)
+			klog.Errorf("failed to list nodes: %v", err)
 			return err
 		}
 		for _, node := range nodes {
@@ -573,13 +572,13 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	if !exist {
 		subnet.Status.EnsureStandardConditions()
 		// If multiple namespace use same ls name, only first one will success
-		if err := c.ovnClient.CreateLogicalSwitch(subnet.Name, vpc.Status.Router, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps, subnet.Spec.Vlan != "", vpc.Status.Default); err != nil {
+		if err := c.ovnClient.CreateLogicalSwitch(subnet.Name, vpc.Status.Router, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps, subnet.Spec.Vlan != ""); err != nil {
 			c.patchSubnetStatus(subnet, "CreateLogicalSwitchFailed", err.Error())
 			return err
 		}
 	} else {
 		// logical switch exists, only update other_config
-		if err := c.ovnClient.SetLogicalSwitchConfig(subnet.Name, subnet.Spec.Vlan != "", vpc.Status.Router, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
+		if err := c.ovnClient.SetLogicalSwitchConfig(subnet.Name, vpc.Status.Router, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps, subnet.Spec.Vlan != ""); err != nil {
 			c.patchSubnetStatus(subnet, "SetLogicalSwitchConfigFailed", err.Error())
 			return err
 		}
@@ -621,30 +620,6 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	c.updateVpcStatusQueue.Add(subnet.Spec.Vpc)
-
-	if subnet.Spec.Vlan != "" {
-		vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
-		if err != nil {
-			klog.Errorf("failed to get vlan %s: %v", vlan.Spec.Provider, err)
-			return err
-		}
-
-		if !util.ContainsString(vlan.Status.Subnets, subnet.Name) {
-			vlan.Status.Subnets = append(vlan.Status.Subnets, subnet.Name)
-			bytes, err := vlan.Status.Bytes()
-			if err != nil {
-				klog.Error(err)
-				return err
-			}
-
-			_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Patch(context.Background(), vlan.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
-			if err != nil {
-				klog.Errorf("failed to patch vlan %s: %v", vlan.Name, err)
-				return err
-			}
-		}
-	}
-
 	return nil
 }
 
@@ -1018,11 +993,34 @@ func (c *Controller) deleteStaticRoute(ip, router string, subnet *kubeovnv1.Subn
 }
 
 func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
-	if subnet.Spec.Vlan != "" {
-		klog.Infof("reconcile vlan, %v", subnet.Spec.Vlan)
-		//create subnet localnet
-		if err := c.addLocalnet(subnet); err != nil {
-			klog.Errorf("failed add localnet to subnet, %v", err)
+	if subnet.Spec.Vlan == "" {
+		return nil
+	}
+
+	klog.Infof("reconcile vlan %v", subnet.Spec.Vlan)
+	vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
+	if err != nil {
+		klog.Errorf("failed to get vlan %s: %v", subnet.Spec.Vlan, err)
+		return err
+	}
+
+	localnetPort := ovs.PodNameToLocalnetName(subnet.Name)
+	if err := c.ovnClient.CreateLocalnetPort(subnet.Name, localnetPort, vlan.Spec.Provider, vlan.Spec.ID); err != nil {
+		klog.Errorf("failed to create localnet port for subnet %s: %v", subnet.Name, err)
+		return err
+	}
+
+	if !util.ContainsString(vlan.Status.Subnets, subnet.Name) {
+		vlan.Status.Subnets = append(vlan.Status.Subnets, subnet.Name)
+		bytes, err := vlan.Status.Bytes()
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+
+		_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Patch(context.Background(), vlan.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
+		if err != nil {
+			klog.Errorf("failed to patch vlan %s: %v", vlan.Name, err)
 			return err
 		}
 	}
@@ -1126,18 +1124,6 @@ func isOvnSubnet(subnet *kubeovnv1.Subnet) bool {
 		return true
 	}
 	return false
-}
-
-func (c *Controller) getSubnetVlanTag(subnet *kubeovnv1.Subnet) (string, error) {
-	tag := ""
-	if subnet.Spec.Vlan != "" {
-		vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
-		if err != nil {
-			return "", err
-		}
-		tag = strconv.Itoa(vlan.Spec.ID)
-	}
-	return tag, nil
 }
 
 func checkAndFormatsExcludeIps(subnet *kubeovnv1.Subnet) {

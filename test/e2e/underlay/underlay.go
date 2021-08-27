@@ -21,17 +21,20 @@ import (
 )
 
 const (
-	ProviderInterface = "eth1"
+	UnderlayInterface = "eth1"
+	VlanInterface     = "vlan1"
 
 	ProviderNetwork = "net1"
-	Vlan            = "net1-flat"
-	Subnet          = "net1-subnet1"
+	Vlan            = "vlan-e2e"
+	Subnet          = "e2e-underlay"
 	Namespace       = "underlay"
 
 	testImage = "kubeovn/pause:3.2"
 )
 
 var (
+	VlanID = os.Getenv("VLAN_ID")
+
 	cidr    string
 	nodeIPs []string
 
@@ -62,6 +65,11 @@ func SetNodeMTU(node string, mtu int) {
 }
 
 var _ = Describe("[Underlay]", func() {
+	providerInterface := UnderlayInterface
+	if VlanID != "" {
+		providerInterface = VlanInterface
+	}
+
 	f := framework.NewFramework("underlay", fmt.Sprintf("%s/.kube/config", os.Getenv("HOME")))
 
 	Context("[Provider Network]", func() {
@@ -72,7 +80,7 @@ var _ = Describe("[Underlay]", func() {
 
 			for _, node := range nodes.Items {
 				Expect(node.Labels[fmt.Sprintf(util.ProviderNetworkExcludeTemplate, ProviderNetwork)]).To(BeEmpty())
-				Expect(node.Labels[fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, ProviderNetwork)]).To(Equal(ProviderInterface))
+				Expect(node.Labels[fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, ProviderNetwork)]).To(Equal(providerInterface))
 				Expect(node.Labels[fmt.Sprintf(util.ProviderNetworkReadyTemplate, ProviderNetwork)]).To(Equal("true"))
 				Expect(node.Labels[fmt.Sprintf(util.ProviderNetworkMtuTemplate, ProviderNetwork)]).NotTo(BeEmpty())
 			}
@@ -100,7 +108,7 @@ var _ = Describe("[Underlay]", func() {
 				}
 				Expect(ovsPod).NotTo(BeNil())
 
-				stdout, _, err := f.ExecToPodThroughAPI("ip addr show "+ProviderInterface, "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
+				stdout, _, err := f.ExecToPodThroughAPI("ip addr show "+providerInterface, "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
 				Expect(err).NotTo(HaveOccurred())
 
 				addrNotFound := make([]bool, len(nodeAddrs[node.Name]))
@@ -122,7 +130,7 @@ var _ = Describe("[Underlay]", func() {
 
 				var portFound bool
 				for _, port := range strings.Split(stdout, "\n") {
-					if port == ProviderInterface {
+					if port == providerInterface {
 						portFound = true
 						break
 					}
@@ -147,24 +155,28 @@ var _ = Describe("[Underlay]", func() {
 						}
 						continue
 					}
-					if i == 1 {
-						if mac := nodeMac[node.Name]; mac != "" {
-							Expect(strings.TrimSpace(s)).To(HavePrefix("link/ether %s ", mac))
-							continue
+					if VlanID == "" {
+						if i == 1 {
+							if mac := nodeMac[node.Name]; mac != "" {
+								Expect(strings.TrimSpace(s)).To(HavePrefix("link/ether %s ", mac))
+								continue
+							}
 						}
-					}
 
-					s = strings.TrimSpace(s)
-					for i, addr := range nodeAddrs[node.Name] {
-						if strings.HasPrefix(s, fmt.Sprintf("inet %s ", addr)) || strings.HasPrefix(s, fmt.Sprintf("inet6 %s ", addr)) {
-							addrFound[i] = true
-							break
+						s = strings.TrimSpace(s)
+						for i, addr := range nodeAddrs[node.Name] {
+							if strings.HasPrefix(s, fmt.Sprintf("inet %s ", addr)) || strings.HasPrefix(s, fmt.Sprintf("inet6 %s ", addr)) {
+								addrFound[i] = true
+								break
+							}
 						}
 					}
 				}
 				Expect(isUp).To(BeTrue())
-				for _, found := range addrFound {
-					Expect(found).To(BeTrue())
+				if VlanID == "" {
+					for _, found := range addrFound {
+						Expect(found).To(BeTrue())
+					}
 				}
 			}
 		})
@@ -273,6 +285,10 @@ var _ = Describe("[Underlay]", func() {
 
 		Context("[Connectivity]", func() {
 			Context("[Host-Pod]", func() {
+				if VlanID != "" {
+					return
+				}
+
 				BeforeEach(func() {
 					err := f.KubeClientSet.CoreV1().Pods(Namespace).Delete(context.Background(), f.GetName(), metav1.DeleteOptions{})
 					if err != nil && !k8serrors.IsNotFound(err) {
@@ -346,6 +362,10 @@ var _ = Describe("[Underlay]", func() {
 			})
 
 			Context("[Host-Host-Pod]", func() {
+				if VlanID != "" {
+					return
+				}
+
 				BeforeEach(func() {
 					err := f.KubeClientSet.CoreV1().Pods(Namespace).Delete(context.Background(), f.GetName(), metav1.DeleteOptions{})
 					if err != nil && !k8serrors.IsNotFound(err) {
@@ -518,6 +538,10 @@ var _ = Describe("[Underlay]", func() {
 			})
 
 			Context("[Overlay-Underlay]", func() {
+				if VlanID != "" {
+					return
+				}
+
 				overlayNamespace := "default"
 
 				BeforeEach(func() {

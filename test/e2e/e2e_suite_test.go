@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"testing"
 
 	kubeovn "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -115,6 +116,15 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	}
 
 	// underlay
+	var vlanID int
+	providerInterface := underlay.UnderlayInterface
+	if underlay.VlanID != "" {
+		if vlanID, err = strconv.Atoi(underlay.VlanID); err != nil || vlanID <= 0 || vlanID > 4095 {
+			Fail(underlay.VlanID + " is not an invalid VLAN id")
+		}
+		providerInterface = underlay.VlanInterface
+	}
+
 	var underlayNodeIPs []string
 	var underlayCIDR, underlayGateway string
 	for node, network := range nodeNetworks {
@@ -176,9 +186,9 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 
 		// change MTU
 		mtu := 1500 - (i+1)*5
-		cmd := fmt.Sprintf("ip link set %s mtu %d", underlay.ProviderInterface, mtu)
+		cmd := fmt.Sprintf("ip link set %s mtu %d", providerInterface, mtu)
 		if _, _, err = f.ExecToPodThroughAPI(cmd, "cni-server", cniPod.Name, cniPod.Namespace, nil); err != nil {
-			Fail(fmt.Sprintf("failed to set MTU of %s on node %s: %v", underlay.ProviderInterface, nodes.Items[i].Name, err))
+			Fail(fmt.Sprintf("failed to set MTU of %s on node %s: %v", providerInterface, nodes.Items[i].Name, err))
 		}
 		underlay.SetNodeMTU(nodes.Items[i].Name, mtu)
 	}
@@ -200,7 +210,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 			Labels: map[string]string{"e2e": "true"},
 		},
 		Spec: kubeovn.ProviderNetworkSpec{
-			DefaultInterface: underlay.ProviderInterface,
+			DefaultInterface: providerInterface,
 		},
 	}
 	if _, err = f.OvnClientSet.KubeovnV1().ProviderNetworks().Create(context.Background(), pn, metav1.CreateOptions{}); err != nil {
@@ -225,7 +235,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 			Labels: map[string]string{"e2e": "true"},
 		},
 		Spec: kubeovn.VlanSpec{
-			ID:       0,
+			ID:       vlanID,
 			Provider: pn.Name,
 		},
 	}
