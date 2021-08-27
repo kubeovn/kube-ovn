@@ -1027,6 +1027,33 @@ func (c *Controller) loopEncapIpCheck() {
 	}
 }
 
+var lastNoPodOvsPort map[string]bool
+
+func (c *Controller) markAndCleanInternalPort() error {
+	klog.V(4).Infof("start to gc ovs internal ports")
+	residualPorts := ovs.GetResidualInternalPorts()
+	if len(residualPorts) == 0 {
+		return nil
+	}
+
+	noPodOvsPort := map[string]bool{}
+	for _, portName := range residualPorts {
+		if !lastNoPodOvsPort[portName] {
+			noPodOvsPort[portName] = true
+		} else {
+			klog.Infof("gc ovs internal port %s", portName)
+			// Remove ovs port
+			output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", "br-int", portName)
+			if err != nil {
+				return fmt.Errorf("failed to delete ovs port %v, %q", err, output)
+			}
+		}
+	}
+	lastNoPodOvsPort = noPodOvsPort
+
+	return nil
+}
+
 // Run starts controller
 func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
@@ -1051,6 +1078,11 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.runPodWorker, time.Second, stopCh)
 	go wait.Until(c.runGateway, 3*time.Second, stopCh)
 	go wait.Until(c.loopEncapIpCheck, 3*time.Second, stopCh)
+	go wait.Until(func() {
+		if err := c.markAndCleanInternalPort(); err != nil {
+			klog.Errorf("gc ovs port error: %v", err)
+		}
+	}, 5*time.Minute, stopCh)
 	<-stopCh
 	klog.Info("Shutting down workers")
 }
