@@ -1079,6 +1079,11 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		return
 	}
 
+	if err := c.setIPSet(); err != nil {
+		klog.Errorf("failed to set ipsets: %v", err)
+		return
+	}
+
 	klog.Info("Started workers")
 	go wait.Until(c.loopOvn0Check, 5*time.Second, stopCh)
 	go wait.Until(c.runAddOrUpdateProviderNetworkWorker, time.Second, stopCh)
