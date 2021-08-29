@@ -294,3 +294,26 @@ func ConfigInterfaceMirror(globalMirror bool, open string, iface string) error {
 	}
 	return nil
 }
+
+func GetResidualInternalPorts() []string {
+	residualPorts := make([]string, 0)
+	interfaceList, err := ovsFind("interface", "name,external_ids", "type=internal")
+	if err != nil {
+		klog.Errorf("failed to list ovs internal interface %v", err)
+		return residualPorts
+	}
+
+	for _, intf := range interfaceList {
+		name := strings.Trim(strings.Split(intf, "\n")[0], "\"")
+		if !strings.Contains(name, "_c") {
+			continue
+		}
+
+		// iface-id field does not exist in external_ids for residual internal port
+		externaIds := strings.Split(intf, "\n")[1]
+		if !strings.Contains(externaIds, "iface-id") {
+			residualPorts = append(residualPorts, name)
+		}
+	}
+	return residualPorts
+}
