@@ -900,10 +900,11 @@ const (
 )
 
 type kubeovnNet struct {
-	Type         providerType
-	ProviderName string
-	Subnet       *kubeovnv1.Subnet
-	IsDefault    bool
+	Type               providerType
+	ProviderName       string
+	Subnet             *kubeovnv1.Subnet
+	IsDefault          bool
+	AllowLiveMigration bool
 }
 
 func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
@@ -950,11 +951,15 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 		// allocate kubeovn network
 		var providerName string
 		if util.IsOvnNetwork(netCfg) {
+			allowLiveMigration := false
 			isDefault := util.IsDefaultNet(pod.Annotations[util.DefaultNetworkAnnotation], attach)
 			if isDefault {
 				providerName = util.OvnProvider
 			} else {
 				providerName = fmt.Sprintf("%s.%s.ovn", attach.Name, attach.Namespace)
+				if pod.Annotations[fmt.Sprintf(util.LiveMigrationAnnotationTemplate, providerName)] == "true" {
+					allowLiveMigration = true
+				}
 			}
 			subnetName := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)]
 			if subnetName == "" {
@@ -966,10 +971,11 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 				return nil, err
 			}
 			result = append(result, &kubeovnNet{
-				Type:         providerTypeOriginal,
-				ProviderName: providerName,
-				Subnet:       subnet,
-				IsDefault:    isDefault,
+				Type:               providerTypeOriginal,
+				ProviderName:       providerName,
+				Subnet:             subnet,
+				IsDefault:          isDefault,
+				AllowLiveMigration: allowLiveMigration,
 			})
 
 		}
@@ -1056,7 +1062,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	// Static allocate
 	if pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)] != "" {
 		ipStr := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
-		return c.acquireStaticAddress(key, ipStr, macStr, podNet.Subnet.Name)
+		return c.acquireStaticAddress(key, ipStr, macStr, podNet.Subnet.Name, podNet.AllowLiveMigration)
 	}
 
 	// IPPool allocate
@@ -1071,7 +1077,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 				klog.Errorf("static address %s for %s has been assigned", staticIP, key)
 				continue
 			}
-			if v4IP, v6IP, mac, err := c.acquireStaticAddress(key, staticIP, macStr, podNet.Subnet.Name); err == nil {
+			if v4IP, v6IP, mac, err := c.acquireStaticAddress(key, staticIP, macStr, podNet.Subnet.Name, podNet.AllowLiveMigration); err == nil {
 				return v4IP, v6IP, mac, nil
 			} else {
 				klog.Errorf("acquire address %s for %s failed, %v", staticIP, key, err)
@@ -1082,7 +1088,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		numStr := strings.Split(pod.Name, "-")[numIndex]
 		index, _ := strconv.Atoi(numStr)
 		if index < len(ipPool) {
-			return c.acquireStaticAddress(key, ipPool[index], macStr, podNet.Subnet.Name)
+			return c.acquireStaticAddress(key, ipPool[index], macStr, podNet.Subnet.Name, podNet.AllowLiveMigration)
 		}
 	}
 	klog.Errorf("alloc address for %s failed, return NoAvailableAddress", key)
@@ -1101,7 +1107,7 @@ func generatePatchPayload(annotations map[string]string, op string) []byte {
 	return []byte(fmt.Sprintf(patchPayloadTemplate, op, raw))
 }
 
-func (c *Controller) acquireStaticAddress(key, ip, mac, subnet string) (string, string, string, error) {
+func (c *Controller) acquireStaticAddress(key, ip, mac, subnet string, liveMigration bool) (string, string, string, error) {
 	var v4IP, v6IP string
 	var err error
 	for _, ipStr := range strings.Split(ip, ",") {
@@ -1110,7 +1116,7 @@ func (c *Controller) acquireStaticAddress(key, ip, mac, subnet string) (string, 
 		}
 	}
 
-	if v4IP, v6IP, mac, err = c.ipam.GetStaticAddress(key, ip, mac, subnet); err != nil {
+	if v4IP, v6IP, mac, err = c.ipam.GetStaticAddress(key, ip, mac, subnet, !liveMigration); err != nil {
 		klog.Errorf("failed to get static ip %v, mac %v, subnet %v, err %v", ip, mac, subnet, err)
 		return "", "", "", err
 	}

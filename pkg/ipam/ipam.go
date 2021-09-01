@@ -50,7 +50,7 @@ func (ipam *IPAM) GetRandomAddress(podName, subnetName string, skippedAddrs []st
 	return string(v4IP), string(v6IP), mac, err
 }
 
-func (ipam *IPAM) GetStaticAddress(podName, ip, mac, subnetName string) (string, string, string, error) {
+func (ipam *IPAM) GetStaticAddress(podName, ip, mac, subnetName string, checkConflict bool) (string, string, string, error) {
 	ipam.mutex.RLock()
 	defer ipam.mutex.RUnlock()
 	if subnet, ok := ipam.Subnets[subnetName]; !ok {
@@ -60,7 +60,7 @@ func (ipam *IPAM) GetStaticAddress(podName, ip, mac, subnetName string) (string,
 		var err error
 		var ipAddr IP
 		for _, ipStr := range strings.Split(ip, ",") {
-			ipAddr, mac, err = subnet.GetStaticAddress(podName, IP(ipStr), mac, false)
+			ipAddr, mac, err = subnet.GetStaticAddress(podName, IP(ipStr), mac, false, checkConflict)
 			if err != nil {
 				return "", "", "", err
 			}
@@ -158,7 +158,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr string, excludeIps []string) e
 			subnet.joinFreeWithReserve()
 			for podName, ip := range subnet.V4PodToIP {
 				mac := subnet.PodToMac[podName]
-				if _, _, err := subnet.GetStaticAddress(podName, ip, mac, true); err != nil {
+				if _, _, err := subnet.GetStaticAddress(podName, ip, mac, true, true); err != nil {
 					klog.Errorf("%s address not in subnet %s new cidr %s", podName, name, cidrStr)
 				}
 			}
@@ -173,7 +173,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr string, excludeIps []string) e
 			subnet.joinFreeWithReserve()
 			for podName, ip := range subnet.V6PodToIP {
 				mac := subnet.PodToMac[podName]
-				if _, _, err := subnet.GetStaticAddress(podName, ip, mac, true); err != nil {
+				if _, _, err := subnet.GetStaticAddress(podName, ip, mac, true, true); err != nil {
 					klog.Errorf("%s address not in subnet %s new cidr %s", podName, name, cidrStr)
 				}
 			}

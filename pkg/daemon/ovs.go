@@ -25,7 +25,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, routes []request.Route, ingress, egress, DeviceID, nicType, podNetns string, checkGw bool) error {
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute bool, routes []request.Route, ingress, egress, DeviceID, nicType, podNetns string, checkGw bool) error {
 	var err error
 	var hostNicName, containerNicName string
 	if DeviceID == "" {
@@ -75,7 +75,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	if err != nil {
 		return fmt.Errorf("failed to open netns %q: %v", netns, err)
 	}
-	if err = configureContainerNic(containerNicName, ifName, ip, gateway, routes, macAddr, podNS, mtu, nicType, checkGw); err != nil {
+	if err = configureContainerNic(containerNicName, ifName, ip, gateway, isDefaultRoute, routes, macAddr, podNS, mtu, nicType, checkGw); err != nil {
 		return err
 	}
 	return nil
@@ -152,7 +152,7 @@ func configureHostNic(nicName string) error {
 	return nil
 }
 
-func configureContainerNic(nicName, ifName string, ipAddr, gateway string, routes []request.Route, macAddr net.HardwareAddr, netns ns.NetNS, mtu int, nicType string, checkGw bool) error {
+func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDefaultRoute bool, routes []request.Route, macAddr net.HardwareAddr, netns ns.NetNS, mtu int, nicType string, checkGw bool) error {
 	containerLink, err := netlink.LinkByName(nicName)
 	if err != nil {
 		return fmt.Errorf("can not find container nic %s: %v", nicName, err)
@@ -201,12 +201,12 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, route
 			}
 		}
 
-		if ifName == "eth0" {
+		if isDefaultRoute {
 			// Only eth0 requires the default route and gateway
 			switch util.CheckProtocol(ipAddr) {
 			case kubeovnv1.ProtocolIPv4:
 				_, defaultNet, _ := net.ParseCIDR("0.0.0.0/0")
-				err = netlink.RouteAdd(&netlink.Route{
+				err = netlink.RouteReplace(&netlink.Route{
 					LinkIndex: containerLink.Attrs().Index,
 					Scope:     netlink.SCOPE_UNIVERSE,
 					Dst:       defaultNet,
@@ -214,7 +214,7 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, route
 				})
 			case kubeovnv1.ProtocolIPv6:
 				_, defaultNet, _ := net.ParseCIDR("::/0")
-				err = netlink.RouteAdd(&netlink.Route{
+				err = netlink.RouteReplace(&netlink.Route{
 					LinkIndex: containerLink.Attrs().Index,
 					Scope:     netlink.SCOPE_UNIVERSE,
 					Dst:       defaultNet,
@@ -223,7 +223,7 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, route
 			case kubeovnv1.ProtocolDual:
 				gws := strings.Split(gateway, ",")
 				_, defaultNet, _ := net.ParseCIDR("0.0.0.0/0")
-				err = netlink.RouteAdd(&netlink.Route{
+				err = netlink.RouteReplace(&netlink.Route{
 					LinkIndex: containerLink.Attrs().Index,
 					Scope:     netlink.SCOPE_UNIVERSE,
 					Dst:       defaultNet,
@@ -234,7 +234,7 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, route
 				}
 
 				_, defaultNet, _ = net.ParseCIDR("::/0")
-				err = netlink.RouteAdd(&netlink.Route{
+				err = netlink.RouteReplace(&netlink.Route{
 					LinkIndex: containerLink.Attrs().Index,
 					Scope:     netlink.SCOPE_UNIVERSE,
 					Dst:       defaultNet,
@@ -850,7 +850,7 @@ func renameLink(curName, newName string) error {
 	return nil
 }
 
-func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway string, routes []request.Route, ingress, egress, DeviceID, nicType, podNetns string, checkGw bool) (string, error) {
+func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute bool, routes []request.Route, ingress, egress, DeviceID, nicType, podNetns string, checkGw bool) (string, error) {
 	_, containerNicName := generateNicName(containerID, ifName)
 	ipStr := util.GetIpWithoutMask(ip)
 	ifaceID := ovs.PodNameToPortName(podName, podNamespace, provider)
@@ -882,7 +882,7 @@ func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, 
 	if err != nil {
 		return containerNicName, fmt.Errorf("failed to open netns %q: %v", netns, err)
 	}
-	if err = configureContainerNic(containerNicName, ifName, ip, gateway, routes, macAddr, podNS, mtu, nicType, checkGw); err != nil {
+	if err = configureContainerNic(containerNicName, ifName, ip, gateway, isDefaultRoute, routes, macAddr, podNS, mtu, nicType, checkGw); err != nil {
 		return containerNicName, err
 	}
 	return containerNicName, nil

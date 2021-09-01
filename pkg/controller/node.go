@@ -251,7 +251,7 @@ func (c *Controller) handleAddNode(key string) error {
 	if node.Annotations[util.AllocatedAnnotation] == "true" && node.Annotations[util.IpAddressAnnotation] != "" && node.Annotations[util.MacAddressAnnotation] != "" {
 		v4IP, v6IP, mac, err = c.ipam.GetStaticAddress(portName, node.Annotations[util.IpAddressAnnotation],
 			node.Annotations[util.MacAddressAnnotation],
-			node.Annotations[util.LogicalSwitchAnnotation])
+			node.Annotations[util.LogicalSwitchAnnotation], true)
 		if err != nil {
 			klog.Errorf("failed to alloc static ip addrs for node %v: %v", node.Name, err)
 			return err

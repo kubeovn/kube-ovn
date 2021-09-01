@@ -139,9 +139,9 @@ func (c Client) SetPortExternalIds(port, key, value string) error {
 func (c Client) CreatePort(ls, port, ip, cidr, mac, pod, namespace string, portSecurity bool, securityGroups string) error {
 	var ovnCommand []string
 	if util.CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
-		ips := strings.Split(ip, ",")
+		//ips := strings.Split(ip, ",")
 		ovnCommand = []string{MayExist, "lsp-add", ls, port, "--",
-			"lsp-set-addresses", port, fmt.Sprintf("%s %s %s", mac, ips[0], ips[1])}
+			"lsp-set-addresses", port, mac}
 
 		ipAddr := util.GetIpAddrWithMask(ip, cidr)
 		ipAddrs := strings.Split(ipAddr, ",")
@@ -151,7 +151,7 @@ func (c Client) CreatePort(ls, port, ip, cidr, mac, pod, namespace string, portS
 		}
 	} else {
 		ovnCommand = []string{MayExist, "lsp-add", ls, port, "--",
-			"lsp-set-addresses", port, fmt.Sprintf("%s %s", mac, ip)}
+			"lsp-set-addresses", port, mac}
 
 		if portSecurity {
 			ovnCommand = append(ovnCommand,

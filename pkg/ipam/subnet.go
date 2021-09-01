@@ -1,6 +1,7 @@
 package ipam
 
 import (
+	"fmt"
 	"net"
 	"strings"
 	"sync"
@@ -132,9 +133,11 @@ func (subnet *Subnet) GetRandomMac(podName string) string {
 	}
 }
 
-func (subnet *Subnet) GetStaticMac(podName, mac string) error {
-	if p, ok := subnet.MacToPod[mac]; ok && p != podName {
-		return ConflictError
+func (subnet *Subnet) GetStaticMac(podName, mac string, checkConflict bool) error {
+	if checkConflict {
+		if p, ok := subnet.MacToPod[mac]; ok && p != podName {
+			return ConflictError
+		}
 	}
 	subnet.MacToPod[mac] = podName
 	subnet.PodToMac[podName] = mac
@@ -271,7 +274,7 @@ func (subnet *Subnet) getV6RandomAddress(podName string, skippedAddrs []string) 
 	return "", ip, subnet.GetRandomMac(podName), nil
 }
 
-func (subnet *Subnet) GetStaticAddress(podName string, ip IP, mac string, force bool) (IP, string, error) {
+func (subnet *Subnet) GetStaticAddress(podName string, ip IP, mac string, force bool, checkConflict bool) (IP, string, error) {
 	subnet.mutex.Lock()
 	defer subnet.mutex.Unlock()
 
@@ -295,14 +298,20 @@ func (subnet *Subnet) GetStaticAddress(podName string, ip IP, mac string, force 
 			mac = subnet.GetRandomMac(podName)
 		}
 	} else {
-		if err := subnet.GetStaticMac(podName, mac); err != nil {
+		if err := subnet.GetStaticMac(podName, mac, checkConflict); err != nil {
 			return ip, mac, err
 		}
 	}
 
 	if v4 {
 		if existPod, ok := subnet.V4IPToPod[ip]; ok {
-			if existPod != podName {
+			pods := strings.Split(existPod, ",")
+			if !util.ContainsString(pods, podName) {
+				if !checkConflict {
+					subnet.V4PodToIP[podName] = ip
+					subnet.V4IPToPod[ip] = fmt.Sprintf("%s,%s", subnet.V4IPToPod[ip], podName)
+					return ip, mac, nil
+				}
 				return ip, mac, ConflictError
 			}
 			if !force {
@@ -331,7 +340,13 @@ func (subnet *Subnet) GetStaticAddress(podName string, ip IP, mac string, force 
 		}
 	} else if v6 {
 		if existPod, ok := subnet.V6IPToPod[ip]; ok {
-			if existPod != podName {
+			pods := strings.Split(existPod, ",")
+			if !util.ContainsString(pods, podName) {
+				if !checkConflict {
+					subnet.V6PodToIP[podName] = ip
+					subnet.V6IPToPod[ip] = fmt.Sprintf("%s,%s", subnet.V6IPToPod[ip], podName)
+					return ip, mac, nil
+				}
 				return ip, mac, ConflictError
 			}
 			if !force {
@@ -366,52 +381,64 @@ func (subnet *Subnet) releaseAddr(podName string) {
 	ip, mac := IP(""), ""
 	var ok, changed bool
 	if ip, ok = subnet.V4PodToIP[podName]; ok {
-		delete(subnet.V4PodToIP, podName)
-		delete(subnet.V4IPToPod, ip)
-		if mac, ok = subnet.PodToMac[podName]; ok {
-			delete(subnet.PodToMac, podName)
-			delete(subnet.MacToPod, mac)
-		}
+		oldPods := strings.Split(subnet.V4IPToPod[ip], ",")
+		if len(oldPods) > 1 {
+			newPods := util.RemoveString(oldPods, podName)
+			subnet.V4IPToPod[ip] = strings.Join(newPods, ",")
+		} else {
+			delete(subnet.V4PodToIP, podName)
+			delete(subnet.V4IPToPod, ip)
+			if mac, ok = subnet.PodToMac[podName]; ok {
+				delete(subnet.PodToMac, podName)
+				delete(subnet.MacToPod, mac)
+			}
 
-		// When CIDR changed, do not relocate ip to CIDR list
-		if !subnet.V4CIDR.Contains(net.ParseIP(string(ip))) {
-			// Continue to release IPv6 address
-			klog.Infof("release v4 %s mac %s for %s, ignore ip", ip, mac, podName)
-			changed = true
-		}
+			// When CIDR changed, do not relocate ip to CIDR list
+			if !subnet.V4CIDR.Contains(net.ParseIP(string(ip))) {
+				// Continue to release IPv6 address
+				klog.Infof("release v4 %s mac %s for %s, ignore ip", ip, mac, podName)
+				changed = true
+			}
 
-		if subnet.V4ReservedIPList.Contains(ip) {
-			klog.Infof("release v4 %s mac %s for %s, ip is in reserved list", ip, mac, podName)
-			changed = true
-		}
+			if subnet.V4ReservedIPList.Contains(ip) {
+				klog.Infof("release v4 %s mac %s for %s, ip is in reserved list", ip, mac, podName)
+				changed = true
+			}
 
-		if merged, newReleasedList := mergeIPRangeList(subnet.V4ReleasedIPList, ip); !changed && merged {
-			subnet.V4ReleasedIPList = newReleasedList
-			klog.Infof("release v4 %s mac %s for %s, add ip to released list", ip, mac, podName)
+			if merged, newReleasedList := mergeIPRangeList(subnet.V4ReleasedIPList, ip); !changed && merged {
+				subnet.V4ReleasedIPList = newReleasedList
+				klog.Infof("release v4 %s mac %s for %s, add ip to released list", ip, mac, podName)
+			}
 		}
 	}
 	if ip, ok = subnet.V6PodToIP[podName]; ok {
-		delete(subnet.V6PodToIP, podName)
-		delete(subnet.V6IPToPod, ip)
-		if mac, ok = subnet.PodToMac[podName]; ok {
-			delete(subnet.PodToMac, podName)
-			delete(subnet.MacToPod, mac)
-		}
-		changed = false
-		// When CIDR changed, do not relocate ip to CIDR list
-		if !subnet.V6CIDR.Contains(net.ParseIP(string(ip))) {
-			klog.Infof("release v6 %s mac %s for %s, ignore ip", ip, mac, podName)
-			changed = true
-		}
+		oldPods := strings.Split(subnet.V4IPToPod[ip], ",")
+		if len(oldPods) > 1 {
+			newPods := util.RemoveString(oldPods, podName)
+			subnet.V4IPToPod[ip] = strings.Join(newPods, ",")
+		} else {
+			delete(subnet.V6PodToIP, podName)
+			delete(subnet.V6IPToPod, ip)
+			if mac, ok = subnet.PodToMac[podName]; ok {
+				delete(subnet.PodToMac, podName)
+				delete(subnet.MacToPod, mac)
+			}
+			changed = false
+			// When CIDR changed, do not relocate ip to CIDR list
+			if !subnet.V6CIDR.Contains(net.ParseIP(string(ip))) {
+				klog.Infof("release v6 %s mac %s for %s, ignore ip", ip, mac, podName)
+				changed = true
+			}
 
-		if subnet.V6ReservedIPList.Contains(ip) {
-			klog.Infof("release v6 %s mac %s for %s, ip is in reserved list", ip, mac, podName)
-			changed = true
-		}
+			if subnet.V6ReservedIPList.Contains(ip) {
+				klog.Infof("release v6 %s mac %s for %s, ip is in reserved list", ip, mac, podName)
+				changed = true
+			}
 
-		if merged, newReleasedList := mergeIPRangeList(subnet.V6ReleasedIPList, ip); !changed && merged {
-			subnet.V6ReleasedIPList = newReleasedList
-			klog.Infof("release v6 %s mac %s for %s, add ip to released list", ip, mac, podName)
+			if merged, newReleasedList := mergeIPRangeList(subnet.V6ReleasedIPList, ip); !changed && merged {
+				subnet.V6ReleasedIPList = newReleasedList
+				klog.Infof("release v6 %s mac %s for %s, add ip to released list", ip, mac, podName)
+			}
 		}
 	}
 }
