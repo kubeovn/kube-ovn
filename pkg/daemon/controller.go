@@ -65,8 +65,7 @@ type Controller struct {
 	iptable map[string]*iptables.IPTables
 	ipset   map[string]*ipsets.IPSets
 
-	protocol   string
-	internalIP string
+	protocol string
 }
 
 // NewController init a daemon controller
@@ -109,7 +108,6 @@ func NewController(config *Configuration, podInformerFactory informers.SharedInf
 		return nil, err
 	}
 	controller.protocol = util.CheckProtocol(node.Annotations[util.IpAddressAnnotation])
-	controller.internalIP = util.GetNodeInternalIP(*node)
 
 	controller.iptable = make(map[string]*iptables.IPTables)
 	controller.ipset = make(map[string]*ipsets.IPSets)

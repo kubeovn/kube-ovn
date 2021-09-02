@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/kubeovn/kube-ovn/pkg/speaker"
-	"github.com/kubeovn/kube-ovn/versions"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/klog"
 	"k8s.io/sample-controller/pkg/signals"
+
+	"github.com/kubeovn/kube-ovn/pkg/speaker"
+	"github.com/kubeovn/kube-ovn/versions"
 )
 
 func CmdMain() {

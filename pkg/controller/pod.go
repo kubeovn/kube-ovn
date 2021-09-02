@@ -1005,16 +1005,14 @@ func (c *Controller) validatePodIP(podName, subnetName, ipv4, ipv6 string) (bool
 		}
 
 		for _, node := range nodes {
-			if nodeIP := util.GetNodeInternalIP(*node); nodeIP != "" {
-				msg := fmt.Sprintf("IP address (%s) assigned to pod %s is the same with internal IP address of node %s, reallocating...", nodeIP, podName, node.Name)
-				if nodeIP == ipv4 {
-					klog.Error(msg)
-					return false, true, nil
-				}
-				if nodeIP == ipv6 {
-					klog.Error(msg)
-					return true, false, nil
-				}
+			nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
+			if ipv4 != "" && ipv4 == nodeIPv4 {
+				klog.Errorf("IP address (%s) assigned to pod %s is the same with internal IP address of node %s, reallocating...", ipv4, podName, node.Name)
+				return false, true, nil
+			}
+			if ipv6 != "" && ipv6 == nodeIPv6 {
+				klog.Errorf("IP address (%s) assigned to pod %s is the same with internal IP address of node %s, reallocating...", ipv6, podName, node.Name)
+				return true, false, nil
 			}
 		}
 	}

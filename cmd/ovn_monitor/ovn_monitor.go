@@ -3,11 +3,11 @@ package ovn_monitor
 import (
 	"net/http"
 
-	"github.com/kubeovn/kube-ovn/versions"
-
-	ovn "github.com/kubeovn/kube-ovn/pkg/ovnmonitor"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/klog"
+
+	ovn "github.com/kubeovn/kube-ovn/pkg/ovnmonitor"
+	"github.com/kubeovn/kube-ovn/versions"
 )
 
 func CmdMain() {

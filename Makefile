@@ -1,4 +1,3 @@
-GOFILES_NOVENDOR = $(shell find . -type f -name '*.go' -not -path "./vendor/*")
 GO_VERSION = 1.16
 
 REGISTRY = kubeovn
@@ -155,7 +154,7 @@ kind-install-single:
 kind-install-ipv6:
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
-	ENABLE_SSL=true IPv6=true dist/images/install.sh
+	ENABLE_SSL=true IPV6=true dist/images/install.sh
 
 .PHONY: kind-install-underlay-ipv6
 kind-install-underlay-ipv6:
@@ -170,13 +169,13 @@ kind-install-underlay-ipv6:
 	@chmod +x install-underlay.sh
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
-	ENABLE_SSL=true IPv6=true ENABLE_VLAN=true VLAN_NIC=eth0 ./install-underlay.sh
+	ENABLE_SSL=true IPV6=true ENABLE_VLAN=true VLAN_NIC=eth0 ./install-underlay.sh
 
 .PHONY: kind-install-dual
 kind-install-dual:
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
-	ENABLE_SSL=true DualStack=true dist/images/install.sh
+	ENABLE_SSL=true DUAL_STACK=true dist/images/install.sh
 	kubectl describe no
 
 .PHONY: kind-reload
@@ -196,8 +195,8 @@ uninstall:
 
 .PHONY: lint
 lint:
-	@gofmt -d $(GOFILES_NOVENDOR)
-	@if [ $$(gofmt -l $(GOFILES_NOVENDOR) | wc -l) -ne 0 ]; then \
+	@gofmt -d .
+	@if [ $$(gofmt -l . | wc -l) -ne 0 ]; then \
 		echo "Code differs from gofmt's style" 1>&2 && exit 1; \
 	fi
 	@GOOS=linux go vet ./...

@@ -20,6 +20,18 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
 
+func nodeIPs(node corev1.Node) []string {
+	nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(node)
+	var nodeIPs []string
+	if nodeIPv4 != "" {
+		nodeIPs = append(nodeIPs, nodeIPv4)
+	}
+	if nodeIPv6 != "" {
+		nodeIPs = append(nodeIPs, nodeIPv6)
+	}
+	return nodeIPs
+}
+
 func curlArgs(ip string, port int32) string {
 	if util.CheckProtocol(ip) == kubeovn.ProtocolIPv6 {
 		ip = fmt.Sprintf("-g -6 [%s]", ip)
@@ -71,22 +83,26 @@ var _ = Describe("[Service]", func() {
 
 	Context("service with host network endpoints", func() {
 		It("container to ClusterIP", func() {
-			ip, port := hostService.Spec.ClusterIP, hostService.Spec.Ports[0].Port
-			for _, pod := range containerPods.Items {
-				output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...).CombinedOutput()
-				outputStr := string(bytes.TrimSpace(output))
-				Expect(err).NotTo(HaveOccurred(), outputStr)
-				Expect(outputStr).To(Equal("200"))
+			port := hostService.Spec.Ports[0].Port
+			for _, ip := range hostService.Spec.ClusterIPs {
+				for _, pod := range containerPods.Items {
+					output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...).CombinedOutput()
+					outputStr := string(bytes.TrimSpace(output))
+					Expect(err).NotTo(HaveOccurred(), outputStr)
+					Expect(outputStr).To(Equal("200"))
+				}
 			}
 		})
 
 		It("host to ClusterIP", func() {
-			ip, port := hostService.Spec.ClusterIP, hostService.Spec.Ports[0].Port
-			for _, pod := range hostPods.Items {
-				output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...).CombinedOutput()
-				outputStr := string(bytes.TrimSpace(output))
-				Expect(err).NotTo(HaveOccurred(), outputStr)
-				Expect(outputStr).To(Equal("200"))
+			port := hostService.Spec.Ports[0].Port
+			for _, ip := range hostService.Spec.ClusterIPs {
+				for _, pod := range hostPods.Items {
+					output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...).CombinedOutput()
+					outputStr := string(bytes.TrimSpace(output))
+					Expect(err).NotTo(HaveOccurred(), outputStr)
+					Expect(outputStr).To(Equal("200"))
+				}
 			}
 		})
 
@@ -96,11 +112,12 @@ var _ = Describe("[Service]", func() {
 				nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 				Expect(err).NotTo(HaveOccurred())
 				for _, node := range nodes.Items {
-					nodeIP := util.GetNodeInternalIP(node)
-					output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...).CombinedOutput()
-					outputStr := string(bytes.TrimSpace(output))
-					Expect(err).NotTo(HaveOccurred(), outputStr)
-					Expect(outputStr).To(Equal("200"))
+					for _, nodeIP := range nodeIPs(node) {
+						output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...).CombinedOutput()
+						outputStr := string(bytes.TrimSpace(output))
+						Expect(err).NotTo(HaveOccurred(), outputStr)
+						Expect(outputStr).To(Equal("200"))
+					}
 				}
 			}
 		})
@@ -111,11 +128,12 @@ var _ = Describe("[Service]", func() {
 				nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 				Expect(err).NotTo(HaveOccurred())
 				for _, node := range nodes.Items {
-					nodeIP := util.GetNodeInternalIP(node)
-					output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...).CombinedOutput()
-					outputStr := string(bytes.TrimSpace(output))
-					Expect(err).NotTo(HaveOccurred(), outputStr)
-					Expect(outputStr).To(Equal("200"))
+					for _, nodeIP := range nodeIPs(node) {
+						output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...).CombinedOutput()
+						outputStr := string(bytes.TrimSpace(output))
+						Expect(err).NotTo(HaveOccurred(), outputStr)
+						Expect(outputStr).To(Equal("200"))
+					}
 				}
 			}
 		})
@@ -125,33 +143,38 @@ var _ = Describe("[Service]", func() {
 			nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			for _, node := range nodes.Items {
-				nodeIP := util.GetNodeInternalIP(node)
-				output, err := exec.Command("curl", strings.Fields(curlArgs(nodeIP, port))...).CombinedOutput()
-				outputStr := string(bytes.TrimSpace(output))
-				Expect(err).NotTo(HaveOccurred(), outputStr)
-				Expect(outputStr).To(Equal("200"))
+				for _, nodeIP := range nodeIPs(node) {
+					output, err := exec.Command("curl", strings.Fields(curlArgs(nodeIP, port))...).CombinedOutput()
+					outputStr := string(bytes.TrimSpace(output))
+					Expect(err).NotTo(HaveOccurred(), outputStr)
+					Expect(outputStr).To(Equal("200"))
+				}
 			}
 		})
 	})
 
 	Context("service with container network endpoints", func() {
 		It("container to ClusterIP", func() {
-			ip, port := hostService.Spec.ClusterIP, hostService.Spec.Ports[0].Port
-			for _, pod := range containerPods.Items {
-				output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...).CombinedOutput()
-				outputStr := string(bytes.TrimSpace(output))
-				Expect(err).NotTo(HaveOccurred(), outputStr)
-				Expect(outputStr).To(Equal("200"))
+			port := hostService.Spec.Ports[0].Port
+			for _, ip := range hostService.Spec.ClusterIPs {
+				for _, pod := range containerPods.Items {
+					output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...).CombinedOutput()
+					outputStr := string(bytes.TrimSpace(output))
+					Expect(err).NotTo(HaveOccurred(), outputStr)
+					Expect(outputStr).To(Equal("200"))
+				}
 			}
 		})
 
 		It("host to ClusterIP", func() {
-			ip, port := hostService.Spec.ClusterIP, hostService.Spec.Ports[0].Port
-			for _, pod := range hostPods.Items {
-				output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...).CombinedOutput()
-				outputStr := string(bytes.TrimSpace(output))
-				Expect(err).NotTo(HaveOccurred(), outputStr)
-				Expect(outputStr).To(Equal("200"))
+			port := hostService.Spec.Ports[0].Port
+			for _, ip := range hostService.Spec.ClusterIPs {
+				for _, pod := range hostPods.Items {
+					output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...).CombinedOutput()
+					outputStr := string(bytes.TrimSpace(output))
+					Expect(err).NotTo(HaveOccurred(), outputStr)
+					Expect(outputStr).To(Equal("200"))
+				}
 			}
 		})
 
@@ -161,11 +184,12 @@ var _ = Describe("[Service]", func() {
 				nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 				Expect(err).NotTo(HaveOccurred())
 				for _, node := range nodes.Items {
-					nodeIP := util.GetNodeInternalIP(node)
-					output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...).CombinedOutput()
-					outputStr := string(bytes.TrimSpace(output))
-					Expect(err).NotTo(HaveOccurred(), outputStr)
-					Expect(outputStr).To(Equal("200"))
+					for _, nodeIP := range nodeIPs(node) {
+						output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...).CombinedOutput()
+						outputStr := string(bytes.TrimSpace(output))
+						Expect(err).NotTo(HaveOccurred(), outputStr)
+						Expect(outputStr).To(Equal("200"))
+					}
 				}
 			}
 		})
@@ -176,11 +200,12 @@ var _ = Describe("[Service]", func() {
 				nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 				Expect(err).NotTo(HaveOccurred())
 				for _, node := range nodes.Items {
-					nodeIP := util.GetNodeInternalIP(node)
-					output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...).CombinedOutput()
-					outputStr := string(bytes.TrimSpace(output))
-					Expect(err).NotTo(HaveOccurred(), outputStr)
-					Expect(outputStr).To(Equal("200"))
+					for _, nodeIP := range nodeIPs(node) {
+						output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...).CombinedOutput()
+						outputStr := string(bytes.TrimSpace(output))
+						Expect(err).NotTo(HaveOccurred(), outputStr)
+						Expect(outputStr).To(Equal("200"))
+					}
 				}
 			}
 		})
@@ -190,33 +215,38 @@ var _ = Describe("[Service]", func() {
 			nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			for _, node := range nodes.Items {
-				nodeIP := util.GetNodeInternalIP(node)
-				output, err := exec.Command("curl", strings.Fields(curlArgs(nodeIP, port))...).CombinedOutput()
-				outputStr := string(bytes.TrimSpace(output))
-				Expect(err).NotTo(HaveOccurred(), outputStr)
-				Expect(outputStr).To(Equal("200"))
+				for _, nodeIP := range nodeIPs(node) {
+					output, err := exec.Command("curl", strings.Fields(curlArgs(nodeIP, port))...).CombinedOutput()
+					outputStr := string(bytes.TrimSpace(output))
+					Expect(err).NotTo(HaveOccurred(), outputStr)
+					Expect(outputStr).To(Equal("200"))
+				}
 			}
 		})
 	})
 
 	Context("service with local external traffic policy", func() {
 		It("container to ClusterIP", func() {
-			ip, port := hostService.Spec.ClusterIP, hostService.Spec.Ports[0].Port
-			for _, pod := range containerPods.Items {
-				output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...).CombinedOutput()
-				outputStr := string(bytes.TrimSpace(output))
-				Expect(err).NotTo(HaveOccurred(), outputStr)
-				Expect(outputStr).To(Equal("200"))
+			port := hostService.Spec.Ports[0].Port
+			for _, ip := range hostService.Spec.ClusterIPs {
+				for _, pod := range containerPods.Items {
+					output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...).CombinedOutput()
+					outputStr := string(bytes.TrimSpace(output))
+					Expect(err).NotTo(HaveOccurred(), outputStr)
+					Expect(outputStr).To(Equal("200"))
+				}
 			}
 		})
 
 		It("host to ClusterIP", func() {
-			ip, port := hostService.Spec.ClusterIP, hostService.Spec.Ports[0].Port
-			for _, pod := range hostPods.Items {
-				output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...).CombinedOutput()
-				outputStr := string(bytes.TrimSpace(output))
-				Expect(err).NotTo(HaveOccurred(), outputStr)
-				Expect(outputStr).To(Equal("200"))
+			port := hostService.Spec.Ports[0].Port
+			for _, ip := range hostService.Spec.ClusterIPs {
+				for _, pod := range hostPods.Items {
+					output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...).CombinedOutput()
+					outputStr := string(bytes.TrimSpace(output))
+					Expect(err).NotTo(HaveOccurred(), outputStr)
+					Expect(outputStr).To(Equal("200"))
+				}
 			}
 		})
 
@@ -243,15 +273,16 @@ var _ = Describe("[Service]", func() {
 						}
 					}
 
-					nodeIP := util.GetNodeInternalIP(node)
-					output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...).CombinedOutput()
-					outputStr := string(bytes.TrimSpace(output))
-					if hasEndpoint {
-						Expect(err).NotTo(HaveOccurred(), outputStr)
-						Expect(outputStr).To(Equal("200"))
-					} else {
-						Expect(err).To(HaveOccurred())
-						Expect(outputStr).To(HavePrefix("000"))
+					for _, nodeIP := range nodeIPs(node) {
+						output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...).CombinedOutput()
+						outputStr := string(bytes.TrimSpace(output))
+						if hasEndpoint {
+							Expect(err).NotTo(HaveOccurred(), outputStr)
+							Expect(outputStr).To(Equal("200"))
+						} else {
+							Expect(err).To(HaveOccurred())
+							Expect(outputStr).To(HavePrefix("000"))
+						}
 					}
 				}
 			}
@@ -282,15 +313,16 @@ var _ = Describe("[Service]", func() {
 						}
 					}
 
-					nodeIP := util.GetNodeInternalIP(node)
-					output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...).CombinedOutput()
-					outputStr := string(bytes.TrimSpace(output))
-					if shouldSucceed {
-						Expect(err).NotTo(HaveOccurred(), outputStr)
-						Expect(outputStr).To(Equal("200"))
-					} else {
-						Expect(err).To(HaveOccurred())
-						Expect(outputStr).To(HavePrefix("000"))
+					for _, nodeIP := range nodeIPs(node) {
+						output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...).CombinedOutput()
+						outputStr := string(bytes.TrimSpace(output))
+						if shouldSucceed {
+							Expect(err).NotTo(HaveOccurred(), outputStr)
+							Expect(outputStr).To(Equal("200"))
+						} else {
+							Expect(err).To(HaveOccurred())
+							Expect(outputStr).To(HavePrefix("000"))
+						}
 					}
 				}
 			}
@@ -318,15 +350,16 @@ var _ = Describe("[Service]", func() {
 					}
 				}
 
-				nodeIP := util.GetNodeInternalIP(node)
-				output, err := exec.Command("curl", strings.Fields(curlArgs(nodeIP, port))...).CombinedOutput()
-				outputStr := string(bytes.TrimSpace(output))
-				if hasEndpoint {
-					Expect(err).NotTo(HaveOccurred(), outputStr)
-					Expect(outputStr).To(Equal("200"))
-				} else {
-					Expect(err).To(HaveOccurred())
-					Expect(outputStr).To(Equal("000"))
+				for _, nodeIP := range nodeIPs(node) {
+					output, err := exec.Command("curl", strings.Fields(curlArgs(nodeIP, port))...).CombinedOutput()
+					outputStr := string(bytes.TrimSpace(output))
+					if hasEndpoint {
+						Expect(err).NotTo(HaveOccurred(), outputStr)
+						Expect(outputStr).To(Equal("200"))
+					} else {
+						Expect(err).To(HaveOccurred())
+						Expect(outputStr).To(Equal("000"))
+					}
 				}
 			}
 		})

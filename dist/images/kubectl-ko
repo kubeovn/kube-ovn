@@ -70,7 +70,22 @@ trace(){
     namespace="default"
   fi
 
-  podIP=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/ip_address})
+  dst="$2"
+  if [ -z "$dst" ]; then
+    echo "need a target ip address"
+    exit 1
+  fi
+
+  af="4"
+  nw="nw"
+  proto=""
+  if [[ "$dst" =~ .*:.* ]]; then
+    af="6"
+    nw="ipv6"
+    proto="6"
+  fi
+
+  podIPs=($(kubectl get pod "$podName" -n "$namespace" -o jsonpath="{.status.podIPs[*].ip}"))
   mac=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/mac_address})
   ls=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/logical_switch})
   hostNetwork=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.hostNetwork})
@@ -83,6 +98,24 @@ trace(){
 
   if [ -z "$ls" ]; then
     echo "pod address not ready"
+    exit 1
+  fi
+
+  podIP=""
+  for ip in ${podIPs[@]}; do
+    if [ "$af" = "4" ]; then
+      if [[ ! "$ip" =~ .*:.* ]]; then
+        podIP=$ip
+        break
+      fi
+    elif [[ "$ip" =~ .*:.* ]]; then
+      podIP=$ip
+      break
+    fi
+  done
+
+  if [ -z "$podIP" ]; then
+    echo "Pod has no IPv$af address"
     exit 1
   fi
 
@@ -128,23 +161,7 @@ trace(){
     exit 1
   fi
 
-  dst="$2"
-  if [ -z "$dst" ]; then
-    echo "need a target ip address"
-    exit 1
-  fi
-
   type="$3"
-
-  af="4"
-  nw="nw"
-  proto=""
-  if [[ "$podIP" =~ .*:.* ]]; then
-    af="6"
-    nw="ipv6"
-    proto="6"
-  fi
-
   case $type in
     icmp)
       set -x
