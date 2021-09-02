@@ -1,5 +1,58 @@
 # CHANGELOG
 
+## 1.7.2 -- 2021/09/02
+
+### Feature
+- update encap ip by node annotation periodic
+- update node labels and provider network's status.readyNodes when provider network is not initialized successfully in a node
+- add ready status for provider network
+
+### Bugfix
+- fix CRD provider-networks.kubeovn.io
+- fix ipsets, subnets using underlay networking should not be included in ipsets
+- update qos ingress_policing_burst
+- match chassis until timeout
+- delete overlapped var subnet
+- fix: if nftables not exists do no exit
+- delete ecmp route when node is deleted
+- fix cleanup.sh
+- fix image version
+- fix iptables
+- ignore empty strings when counting lbs
+- fix external_ids:pod_netns
+- delete attachment ips
+- update qos process
+- fix: panic when node has nil annotations
+- append pod/exec resource for vpc nat gw
+- fix underlay networking on node reboot
+- fix default bind socket of cni server
+- if the string of ip is empty,program will die
+- fix uninstall.sh
+- ensure provider nic is up
+- fix: bad udp checksum when access nodeport
+- fix IPv6-related issues
+- fix issues in underlay networking
+- avoid Pod IP to be the same with node internal IP
+- fix subnet conflict check for node address
+- fix ipset on pod creation/deletion
+- delete subnet AvailableIPs and UsingIPs para
+- fix: ovn-northd svc flip flop
+- delete residual ovs internal ports
+- initialize ipsets on cni server startup
+
+### Test
+- update underlay e2e testing
+- fix subnet e2e
+- fix dual stack cluster created by kind
+
+### Security
+- fix CVE-2021-33910
+
+### Chore
+- update kind to v0.11.1
+- fix gofmt lint
+- ci: use stable golang version
+
 ## 1.7.1 -- 2021/07/15
 
 ### New Feature
