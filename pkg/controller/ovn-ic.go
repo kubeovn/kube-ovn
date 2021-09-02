@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"k8s.io/apimachinery/pkg/labels"
 	"os"
 	"os/exec"
 	"reflect"
@@ -13,6 +12,7 @@ import (
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
 
@@ -77,7 +77,13 @@ func (c *Controller) resyncInterConnection() {
 			return
 		}
 		for _, node := range nodes {
-			blackList = append(blackList, util.GetNodeInternalIP(*node))
+			ipv4, ipv6 := util.GetNodeInternalIP(*node)
+			if ipv4 != "" {
+				blackList = append(blackList, ipv4)
+			}
+			if ipv6 != "" {
+				blackList = append(blackList, ipv6)
+			}
 		}
 		if err := c.ovnClient.SetICAutoRoute(autoRoute, blackList); err != nil {
 			klog.Errorf("failed to config auto route, %v", err)

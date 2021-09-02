@@ -3,21 +3,20 @@ package controller
 import (
 	"context"
 	"fmt"
-	v1 "k8s.io/api/authorization/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net/http"
 	_ "net/http/pprof" // #nosec
 	"os"
 	"time"
 
-	"github.com/kubeovn/kube-ovn/versions"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	v1 "k8s.io/api/authorization/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog"
+	"k8s.io/sample-controller/pkg/signals"
 
 	"github.com/kubeovn/kube-ovn/pkg/controller"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
-
-	"k8s.io/klog"
-	"k8s.io/sample-controller/pkg/signals"
+	"github.com/kubeovn/kube-ovn/versions"
 )
 
 func CmdMain() {
