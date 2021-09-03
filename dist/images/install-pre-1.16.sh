@@ -163,7 +163,17 @@ spec:
     listKind: VpcNatGatewayList
   scope: Cluster
   versions:
-    - name: v1
+    - additionalPrinterColumns:
+        - JSONPath: .spec.vpc
+          name: Vpc
+          type: string
+        - JSONPath: .spec.subnet
+          name: Subnet
+          type: string
+        - JSONPath: .spec.lanIp
+          name: LanIP
+          type: string
+      name: v1
       served: true
       storage: true
       schema:
@@ -249,6 +259,9 @@ spec:
       type: boolean
     - JSONPath: .status.subnets
       name: Subnets
+      type: string
+    - JSONPath: .spec.namespaces
+      name: Namespaces
       type: string
   validation:
     openAPIV3Schema:
@@ -423,6 +436,9 @@ spec:
     - name: Available
       type: number
       JSONPath: .status.availableIPs
+    - name: ExcludeIPs
+      type: string
+      JSONPath: .spec.excludeIps
   validation:
     openAPIV3Schema:
       properties:
