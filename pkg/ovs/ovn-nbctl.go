@@ -444,7 +444,10 @@ func (c Client) DeleteGatewaySwitch(name string) error {
 }
 
 // ListLogicalSwitch list logical switch names
-func (c Client) ListLogicalSwitch(args ...string) ([]string, error) {
+func (c Client) ListLogicalSwitch(needVendorFilter bool, args ...string) ([]string, error) {
+	if needVendorFilter {
+		args = append(args, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
+	}
 	return c.ListLogicalEntity("logical_switch", args...)
 }
 
@@ -526,8 +529,8 @@ func (c Client) GetEntityInfo(entity string, index string, attris []string) (res
 	return result, nil
 }
 
-func (c Client) LogicalSwitchExists(logicalSwitch string, args ...string) (bool, error) {
-	lss, err := c.ListLogicalSwitch(args...)
+func (c Client) LogicalSwitchExists(logicalSwitch string, needVendorFilter bool, args ...string) (bool, error) {
+	lss, err := c.ListLogicalSwitch(needVendorFilter, args...)
 	if err != nil {
 		return false, err
 	}
@@ -595,7 +598,7 @@ func (c Client) ListRemoteLogicalSwitchPortAddress() ([]string, error) {
 }
 
 // ListLogicalRouter list logical router names
-func (c Client) ListLogicalRouter(args ...string) ([]string, error) {
+func (c Client) ListLogicalRouter(needVendorFilter bool, args ...string) ([]string, error) {
 	return c.ListLogicalEntity("logical_router", args...)
 }
 
