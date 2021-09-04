@@ -147,6 +147,12 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, macAd
 		return fmt.Errorf("can not find container nic %s %v", nicName, err)
 	}
 
+	// Set link alias to its origin link name for fastpath to recognize and bypass netfilter
+	if err := netlink.LinkSetAlias(containerLink, nicName); err != nil {
+		klog.Errorf("failed to set link alias for container nic %s: %v", nicName, err)
+		return err
+	}
+
 	if err = netlink.LinkSetNsFd(containerLink, int(netns.Fd())); err != nil {
 		return fmt.Errorf("failed to link netns %v", err)
 	}
