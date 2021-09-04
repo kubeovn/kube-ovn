@@ -22,8 +22,8 @@ unsigned int hook_func(unsigned int hooknum,
     struct udphdr *udp_header = NULL;
 
     // For container network traffic, DO NOT traverse netfilter
-    if (NULL != in &&  in->name[13] == 'c' ) { return NF_STOP; }
-    if (NULL != out && out->name[13] == 'c' ) { return NF_STOP; }
+    if (NULL != in && NULL != in->ifalias && in->ifalias[13] == 'c' ) { return NF_STOP; }
+    if (NULL != out && NULL != out->ifalias && out->ifalias[13] == 'c' ) { return NF_STOP; }
 
     if (!skb){
         return NF_ACCEPT;
