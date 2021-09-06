@@ -629,11 +629,23 @@ spec:
         openAPIV3Schema:
           type: object
           properties:
+            metadata:
+              type: object
+              properties:
+                name:
+                  type: string
+                  maxLength: 12
+                  not:
+                    enum:
+                      - int
+                      - external
             spec:
               type: object
               properties:
                 defaultInterface:
                   type: string
+                  maxLength: 15
+                  pattern: '^[^/\s]+$'
                 customInterfaces:
                   type: array
                   items:
@@ -641,6 +653,8 @@ spec:
                     properties:
                       interface:
                         type: string
+                        maxLength: 15
+                        pattern: '^[^/\s]+$'
                       nodes:
                         type: array
                         items:
