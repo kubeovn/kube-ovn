@@ -526,7 +526,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	for _, sub := range subnetList {
-		if sub.Spec.Vpc != subnet.Spec.Vpc || sub.Name == subnet.Name {
+		if sub.Spec.Vpc != subnet.Spec.Vpc || sub.Spec.Vlan != subnet.Spec.Vlan || sub.Name == subnet.Name {
 			continue
 		}
 
