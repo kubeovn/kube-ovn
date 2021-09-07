@@ -13,12 +13,12 @@ only L3 connectivity for gateway nodes is required.
 ## Auto Route Step
 1. Run Interconnection Controller in a region that can be accessed by other cluster
 ```bash
-docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn kubeovn/kube-ovn:v1.7.1 bash start-ic-db.sh
+docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn kubeovn/kube-ovn:v1.8.0 bash start-ic-db.sh
 ```
 ​		If `containerd` replaces `docker` then the command is as follows:
 
 ```shell
-ctr run  -d --net-host --mount="type=bind,src=/etc/ovn/,dst=/etc/ovn,options=rbind:rw" --mount="type=bind,src=/var/run/ovn,dst=/var/run/ovn,options=rbind:rw" --mount="type=bind,src=/var/log/ovn,dst=/var/log/ovn,options=rbind:rw"  kubeovn/kube-ovn:v1.7.1 ovn-ic-db bash start-ic-db.sh
+ctr run  -d --net-host --mount="type=bind,src=/etc/ovn/,dst=/etc/ovn,options=rbind:rw" --mount="type=bind,src=/var/run/ovn,dst=/var/run/ovn,options=rbind:rw" --mount="type=bind,src=/var/log/ovn,dst=/var/log/ovn,options=rbind:rw"  kubeovn/kube-ovn:v1.8.0 ovn-ic-db bash start-ic-db.sh
 ```
 
 2. Create `ovn-ic-config` ConfigMap in each cluster `kube-system` namespace. Edit and apply the yaml below in each cluster.
@@ -91,7 +91,7 @@ For manually adding routes, you need to find the
 ## Manually Route Step
 1. Same as AutoRoute step 1,run Interconnection Controller in a region that can be accessed by other cluster
 ```bash
-docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn kubeovn/kube-ovn:v1.7.1 bash start-ic-db.sh
+docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn kubeovn/kube-ovn:v8.0 bash start-ic-db.sh
 ```
 2. Create `ic-config` ConfigMap in each cluster. Edit and apply the yaml below in each cluster. Note that `auto-route` is set to `false`
 ```yaml

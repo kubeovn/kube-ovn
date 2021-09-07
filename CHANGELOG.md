@@ -1,5 +1,100 @@
 # CHANGELOG
 
+## 1.8.0 -- 2021/09/07
+### New Feature
+- Underlay/Vlan network refactoring to adapt more complicate network infrastructure
+- Share same OVN infrastructure with OpenStack and run Pods in OpenStack VPC
+- Support SecurityGroup in VPCs
+- Support Service in VPCs
+- Adapt to vfio-pci driver type device
+- Use annotation to dynamic change tunnel interface
+- Pod level annotation to control traffic mirror
+- Kube-OVN ipam supports custom routes
+- Switch to enable/disable OVN network policy support
+- Switch to enable/disable OVN LB
+- Switch to enable/disable gateway connectivity check
+
+### Performance
+- New fastpath module which can reduce about 40% latency and cpu usage
+- New performance tuning guide to boost the performance and comparison for different network
+- Enable tx offload again as fix for double nat kernel issue
+
+### Monitoring
+- Diagnose command 'kubectl ko' support trace in underlay networking
+- Diagnose command 'kubectl ko' support cluster operations status/kick/backup
+
+### Security
+- fix CVE-2021-33910
+- Add go build security options
+- Fix CVE-2021-3121
+- fix CVE-2021-3538
+- Update base image to ubuntu:21.04
+
+### Mics
+- update kind to v0.11.1
+- fix gofmt lint
+- ci: use stable golang version
+- update ovn to 21.03
+
+### Test
+- update underlay e2e testing
+- fix subnet e2e
+- fix dual stack cluster created by kind
+- Correct vlan e2e testing
+- Remove dpdk ci
+
+### Bugfix
+- fix CRD provider-networks.kubeovn.io
+- fix ipsets, subnets using underlay networking should not be included in ipsets
+- update qos ingress_policing_burst
+- match chassis until timeout
+- delete overlapped var subnet
+- fix: if nftables not exists do no exit
+- delete ecmp route when node is deleted
+- fix cleanup.sh
+- fix image version
+- fix iptables
+- ignore empty strings when counting lbs
+- fix external_ids:pod_netns
+- delete attachment ips
+- update qos process
+- fix: panic when node has nil annotations
+- append pod/exec resource for vpc nat gw
+- fix underlay networking on node reboot
+- fix default bind socket of cni server
+- if the string of ip is empty,program will die
+- fix uninstall.sh
+- ensure provider nic is up
+- fix: bad udp checksum when access nodeport
+- fix IPv6-related issues
+- fix issues in underlay networking
+- avoid Pod IP to be the same with node internal IP
+- fix subnet conflict check for node address
+- fix ipset on pod creation/deletion
+- delete subnet AvailableIPs and UsingIPs para
+- fix: ovn-northd svc flip flop
+- delete residual ovs internal ports
+- initialize ipsets on cni server startup
+- Fix acl overlay issues
+- Fix available ips count of subnet
+- Fix lsp may lost when server pressure is high
+- Cleanup kube-ovn-monitor resource
+- Remove wait ovn sb
+- Remove kube-ovn-controller rollout check
+- Delete process of ip crd delete in cni delete request
+- Delete ecmp route when node is not ready
+- Ignore update pod nic annotation when not nil
+- Clean up gateway chassis list for external gw
+- Node route should filter out 'vpc'
+- Do not delete statefulset pod when update pod
+- Add master check when a node adding to a cluster and config sb/nb address
+- Fix IP/route transfer on node reboot
+- Fix uninstall.sh execution in OVS pods
+- Add node internal ip into ovn-ic advertise blacklist
+- Fix bug for deleting ovn-ic lrp failed
+- Keep subnet's vlan empty if not specified
+- Add field defaultNetworkType in configmap ovn-config
+
 ## 1.7.0 -- 2021/06/03
 
 ### New Feature
