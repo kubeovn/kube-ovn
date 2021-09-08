@@ -9,13 +9,15 @@ import (
 	"strconv"
 	"testing"
 
-	kubeovn "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
+	kubeovn "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
+	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 
 	// tests to run
 	_ "github.com/kubeovn/kube-ovn/test/e2e/ip"
@@ -162,20 +164,10 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	}
 
 	for i := range nodes.Items {
-		var nodeIP string
-		for _, addr := range nodes.Items[i].Status.Addresses {
-			if addr.Type == corev1.NodeInternalIP {
-				nodeIP = addr.Address
-				break
-			}
-		}
-		if nodeIP == "" {
-			Fail("failed to get IP of node " + nodes.Items[i].Name)
-		}
-
 		var cniPod *corev1.Pod
+		nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(nodes.Items[i])
 		for _, pod := range cniPods.Items {
-			if pod.Status.HostIP == nodeIP {
+			if pod.Status.HostIP == nodeIPv4 || pod.Status.HostIP == nodeIPv6 {
 				cniPod = &pod
 				break
 			}

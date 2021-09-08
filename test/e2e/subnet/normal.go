@@ -311,18 +311,32 @@ var _ = Describe("[Subnet]", func() {
 			}
 
 			name := f.GetName()
-			af, cidr, nodeAddrPrefix := 4, "11.15.0.0/16", 16
-			if isIPv6 {
-				af, cidr, nodeAddrPrefix = 6, "fd00:11:15::/112", 64
-			}
-			egw, _ := util.FirstIP(fmt.Sprintf("%s/%d", nodes.Items[0].Status.Addresses[0].Address, nodeAddrPrefix))
 			priority, tableID := uint32(1001), uint32(1002)
+
+			af, cidr := 4, "11.15.0.0/16"
+			if isIPv6 {
+				af, cidr = 6, "fd00:11:15::/112"
+			}
+
+			var egw string
+			nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(nodes.Items[0])
+			if isIPv6 {
+				egw, _ = util.FirstIP(fmt.Sprintf("%s/%d", nodeIPv6, 64))
+			} else {
+				egw, _ = util.FirstIP(fmt.Sprintf("%s/%d", nodeIPv4, 16))
+			}
 
 			gatewayNodes := make([]string, 0, 2)
 			nodeIPs := make(map[string]string)
 			for i := 0; i < 2 && i < len(nodes.Items); i++ {
 				gatewayNodes = append(gatewayNodes, nodes.Items[i].Name)
-				nodeIPs[nodes.Items[i].Status.Addresses[0].Address] = gatewayNodes[i]
+				nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(nodes.Items[i])
+				if nodeIPv4 != "" {
+					nodeIPs[nodeIPv4] = gatewayNodes[i]
+				}
+				if nodeIPv6 != "" {
+					nodeIPs[nodeIPv6] = gatewayNodes[i]
+				}
 			}
 
 			By("create subnet")
@@ -435,12 +449,12 @@ var _ = Describe("[Subnet]", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			name := f.GetName()
-			af, cidr, nodeAddrPrefix := 4, "11.16.0.0/16", 16
-			if isIPv6 {
-				af, cidr, nodeAddrPrefix = 6, "fd00:11:16::/112", 64
-			}
-			egw, _ := util.FirstIP(fmt.Sprintf("%s/%d", nodes.Items[0].Status.Addresses[0].Address, nodeAddrPrefix))
 			priority, tableID := uint32(1003), uint32(1004)
+
+			af, cidr := 4, "11.16.0.0/16"
+			if isIPv6 {
+				af, cidr = 6, "fd00:11:16::/112"
+			}
 
 			var selectedNode *corev1.Node
 			for i, node := range nodes.Items {
@@ -461,6 +475,14 @@ var _ = Describe("[Subnet]", func() {
 				}
 			}
 			Expect(selectedNode).NotTo(BeNil())
+
+			var egw string
+			nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*selectedNode)
+			if isIPv6 {
+				egw, _ = util.FirstIP(fmt.Sprintf("%s/%d", nodeIPv6, 64))
+			} else {
+				egw, _ = util.FirstIP(fmt.Sprintf("%s/%d", nodeIPv4, 16))
+			}
 
 			By("create subnet")
 			s := kubeovn.Subnet{
@@ -530,7 +552,7 @@ var _ = Describe("[Subnet]", func() {
 			routePrefix := fmt.Sprintf("default via %s ", egw)
 
 			for _, ovsPod := range ovsPods.Items {
-				if ovsPod.Status.HostIP != selectedNode.Status.Addresses[0].Address {
+				if ovsPod.Status.HostIP != nodeIPv4 && ovsPod.Status.HostIP != nodeIPv6 {
 					continue
 				}
 
@@ -561,7 +583,7 @@ var _ = Describe("[Subnet]", func() {
 			time.Sleep(1 * time.Second)
 
 			for _, ovsPod := range ovsPods.Items {
-				if ovsPod.Status.HostIP != selectedNode.Status.Addresses[0].Address {
+				if ovsPod.Status.HostIP != nodeIPv4 && ovsPod.Status.HostIP != nodeIPv6 {
 					continue
 				}
 
@@ -589,7 +611,7 @@ var _ = Describe("[Subnet]", func() {
 			time.Sleep(5 * time.Second)
 
 			for _, ovsPod := range ovsPods.Items {
-				if ovsPod.Status.HostIP != selectedNode.Status.Addresses[0].Address {
+				if ovsPod.Status.HostIP != nodeIPv4 && ovsPod.Status.HostIP != nodeIPv6 {
 					continue
 				}
 

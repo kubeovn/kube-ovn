@@ -945,19 +945,23 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 						klog.Errorf("gateway node %v has no ip annotation", node.Name)
 						continue
 					}
-					nodeIPs = append(nodeIPs, nodeTunlIP)
+					nodeIPs = append(nodeIPs, strings.Split(nodeTunlIP, ",")...)
 				}
 			}
-			nodeIPs, err = c.filterRepeatEcmpRoutes(nodeIPs, subnet.Spec.CIDRBlock)
-			if err != nil {
-				klog.Errorf("filter ecmp static route for subnet %v, error %v", subnet.Name, err)
-			}
-			klog.Infof("subnet %s adds centralized gw %v", subnet.Name, nodeIPs)
 
-			for _, nextHop := range nodeIPs {
-				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, subnet.Spec.CIDRBlock, nextHop, c.config.ClusterRouter, util.EcmpRouteType); err != nil {
-					klog.Errorf("failed to add static route, %v", err)
-					return err
+			for _, cidr := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+				nextHops, err := c.filterRepeatEcmpRoutes(nodeIPs, cidr)
+				if err != nil {
+					klog.Errorf("failed to filter ecmp static route for CIDR %s of subnet %s: %v", cidr, subnet.Name, err)
+					continue
+				}
+				klog.Infof("subnet %s adds centralized gw %v", subnet.Name, nextHops)
+
+				for _, nextHop := range nextHops {
+					if err = c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, cidr, nextHop, c.config.ClusterRouter, util.EcmpRouteType); err != nil {
+						klog.Errorf("failed to add static route: %v", err)
+						return err
+					}
 				}
 			}
 
@@ -1197,26 +1201,31 @@ func filterRepeatIPRange(mapIps map[string]ipam.IPRange) map[string]ipam.IPRange
 	return mapIps
 }
 
-func (c *Controller) filterRepeatEcmpRoutes(nodeIps []string, cidrBlock string) ([]string, error) {
+func (c *Controller) filterRepeatEcmpRoutes(nodeIps []string, cidr string) ([]string, error) {
 	var nextHops []string
 	routes, err := c.ovnClient.GetStaticRouteList(c.config.ClusterRouter)
 	if err != nil {
-		klog.Errorf("failed to list static route %v", err)
+		klog.Errorf("failed to list static route: %v", err)
 		return nextHops, err
 	}
 	if len(nodeIps) == 0 {
 		return nextHops, fmt.Errorf("nexthop is nil for add ecmp static route")
 	}
 
+	protocol := util.CheckProtocol(cidr)
 	for _, nodeIp := range nodeIps {
-		found := false
+		if util.CheckProtocol(nodeIp) != protocol {
+			continue
+		}
+
+		var found bool
 		for _, route := range routes {
-			if route.Policy != ovs.PolicySrcIP || route.CIDR != cidrBlock {
+			if route.Policy != ovs.PolicySrcIP || route.CIDR != cidr {
 				continue
 			}
 
 			if route.NextHop == nodeIp {
-				klog.Infof("src-ip static route exist for cidr %s, nexthop %v", cidrBlock, nodeIp)
+				klog.Infof("src-ip static route exist for cidr %s, nexthop %s", cidr, nodeIp)
 				found = true
 				break
 			}
@@ -1225,7 +1234,8 @@ func (c *Controller) filterRepeatEcmpRoutes(nodeIps []string, cidrBlock string) 
 			nextHops = append(nextHops, nodeIp)
 		}
 	}
-	klog.Infof("ecmp static route to add, cidr %s, nexthop %v", cidrBlock, nextHops)
+
+	klog.Infof("ecmp static route to add, cidr %s, nexthop %v", cidr, nextHops)
 	return nextHops, nil
 }
 
