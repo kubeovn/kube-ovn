@@ -90,18 +90,9 @@ var _ = Describe("[Underlay]", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ovsPods).NotTo(BeNil())
 			for _, node := range nodes.Items {
-				var hostIP string
-				for _, addr := range node.Status.Addresses {
-					if addr.Type == corev1.NodeInternalIP {
-						hostIP = addr.Address
-						break
-					}
-				}
-				Expect(hostIP).NotTo(BeEmpty())
-
 				var ovsPod *corev1.Pod
 				for _, pod := range ovsPods.Items {
-					if pod.Status.HostIP == hostIP {
+					if pod.Spec.NodeName == node.Name {
 						ovsPod = &pod
 						break
 					}
@@ -196,18 +187,9 @@ var _ = Describe("[Underlay]", func() {
 
 			cniPods = make(map[string]corev1.Pod)
 			for _, node := range nodeList.Items {
-				var nodeIP string
-				for _, addr := range node.Status.Addresses {
-					if addr.Type == corev1.NodeInternalIP {
-						nodeIP = addr.Address
-						break
-					}
-				}
-				Expect(nodeIP).NotTo(BeEmpty())
-
 				var cniPod *corev1.Pod
 				for _, pod := range podList.Items {
-					if pod.Status.HostIP == nodeIP {
+					if pod.Spec.NodeName == node.Name {
 						cniPod = &pod
 						break
 					}
@@ -566,6 +548,10 @@ var _ = Describe("[Underlay]", func() {
 				})
 
 				It("o2u", func() {
+					if strings.EqualFold(os.Getenv("IPV6"), "true") {
+						return
+					}
+
 					By("create underlay pod")
 					var autoMount bool
 					upod := &corev1.Pod{
@@ -611,12 +597,12 @@ var _ = Describe("[Underlay]", func() {
 					}
 					_, err = f.KubeClientSet.CoreV1().Pods(opod.Namespace).Create(context.Background(), opod, metav1.CreateOptions{})
 					Expect(err).NotTo(HaveOccurred())
-					opod, err = f.WaitPodReady(opod.Name, upod.Namespace)
+					opod, err = f.WaitPodReady(opod.Name, opod.Namespace)
 					Expect(err).NotTo(HaveOccurred())
 
-					By("get underlay pod's netns")
-					cniPod := cniPods[upod.Spec.NodeName]
-					cmd := fmt.Sprintf("ovs-vsctl --no-heading --columns=external_ids find interface external-ids:pod_name=%s external-ids:pod_namespace=%s", upod.Name, upod.Namespace)
+					By("get overlay pod's netns")
+					cniPod := cniPods[opod.Spec.NodeName]
+					cmd := fmt.Sprintf("ovs-vsctl --no-heading --columns=external_ids find interface external-ids:pod_name=%s external-ids:pod_namespace=%s", opod.Name, opod.Namespace)
 					stdout, _, err := f.ExecToPodThroughAPI(cmd, "cni-server", cniPod.Name, cniPod.Namespace, nil)
 					Expect(err).NotTo(HaveOccurred())
 					var netns string
@@ -629,8 +615,8 @@ var _ = Describe("[Underlay]", func() {
 					}
 					Expect(netns).NotTo(BeEmpty())
 
-					By("ping overlay pod")
-					cmd = fmt.Sprintf("nsenter --net=%s ping -c1 -W1 %s", netns, opod.Status.PodIP)
+					By("ping underlay pod")
+					cmd = fmt.Sprintf("nsenter --net=%s ping -c1 -W1 %s", netns, upod.Status.PodIP)
 					stdout, _, err = f.ExecToPodThroughAPI(cmd, "cni-server", cniPod.Name, cniPod.Namespace, nil)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(stdout).To(ContainSubstring(" 0% packet loss"))
