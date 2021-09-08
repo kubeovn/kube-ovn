@@ -474,7 +474,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	for {
 		klog.Infof("wait for %s and %s ready", c.config.DefaultLogicalSwitch, c.config.NodeSwitch)
 		time.Sleep(3 * time.Second)
-		lss, err := c.ovnClient.ListLogicalSwitch()
+		lss, err := c.ovnClient.ListLogicalSwitch(c.config.EnableExternalVpc)
 		if err != nil {
 			klog.Fatalf("failed to list logical switch: %v", err)
 		}
