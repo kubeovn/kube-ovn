@@ -170,7 +170,7 @@ func (c Client) ListPodLogicalSwitchPorts(pod, namespace string) ([]string, erro
 	return result, nil
 }
 
-func (c Client) SetLogicalSwitchConfig(ls string, isUnderlayGW bool, lr, protocol, subnet, gateway string, excludeIps []string) error {
+func (c Client) SetLogicalSwitchConfig(ls string, isUnderlayGW bool, lr, protocol, subnet, gateway string) error {
 	var err error
 	cidrBlocks := strings.Split(subnet, ",")
 	mask := strings.Split(cidrBlocks[0], "/")[1]
@@ -180,28 +180,18 @@ func (c Client) SetLogicalSwitchConfig(ls string, isUnderlayGW bool, lr, protoco
 	switch protocol {
 	case kubeovnv1.ProtocolIPv4:
 		networks = fmt.Sprintf("%s/%s", gateway, mask)
-		cmd = []string{MayExist, "ls-add", ls, "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", subnet), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " "))}
+		cmd = []string{MayExist, "ls-add", ls}
 	case kubeovnv1.ProtocolIPv6:
 		gateway := strings.ReplaceAll(gateway, ":", "\\:")
 		networks = fmt.Sprintf("%s/%s", gateway, mask)
-		cmd = []string{MayExist, "ls-add", ls, "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:ipv6_prefix=%s", strings.Split(subnet, "/")[0]), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " "))}
+		cmd = []string{MayExist, "ls-add", ls}
 	case kubeovnv1.ProtocolDual:
 		gws := strings.Split(gateway, ",")
 		v6Mask := strings.Split(cidrBlocks[1], "/")[1]
 		gwStr := gws[0] + "/" + mask + "," + gws[1] + "/" + v6Mask
 		networks = strings.ReplaceAll(strings.Join(strings.Split(gwStr, ","), " "), ":", "\\:")
 
-		cmd = []string{MayExist, "ls-add", ls, "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", cidrBlocks[0]), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:ipv6_prefix=%s", strings.Split(cidrBlocks[1], "/")[0]), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " "))}
+		cmd = []string{MayExist, "ls-add", ls}
 	}
 	if !isUnderlayGW {
 		cmd = append(cmd, []string{"--",
@@ -216,29 +206,9 @@ func (c Client) SetLogicalSwitchConfig(ls string, isUnderlayGW bool, lr, protoco
 }
 
 // CreateLogicalSwitch create logical switch in ovn, connect it to router and apply tcp/udp lb rules
-func (c Client) CreateLogicalSwitch(ls, lr, protocol, subnet, gateway string, excludeIps []string, underlayGateway, defaultVpc bool) error {
+func (c Client) CreateLogicalSwitch(ls, lr, subnet, gateway string, underlayGateway, defaultVpc bool) error {
 	var err error
-	switch protocol {
-	case kubeovnv1.ProtocolIPv4:
-		_, err = c.ovnNbCommand(MayExist, "ls-add", ls, "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", subnet), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")))
-	case kubeovnv1.ProtocolIPv6:
-		_, err = c.ovnNbCommand(MayExist, "ls-add", ls, "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:ipv6_prefix=%s", strings.Split(subnet, "/")[0]), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")))
-	case kubeovnv1.ProtocolDual:
-		// gateway is not an official column, which is used for private
-		cidrBlocks := strings.Split(subnet, ",")
-		_, err = c.ovnNbCommand(MayExist, "ls-add", ls, "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:subnet=%s", cidrBlocks[0]), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:gateway=%s", gateway), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:ipv6_prefix=%s", strings.Split(cidrBlocks[1], "/")[0]), "--",
-			"set", "logical_switch", ls, fmt.Sprintf("other_config:exclude_ips=%s", strings.Join(excludeIps, " ")))
-	}
-
+	_, err = c.ovnNbCommand(MayExist, "ls-add", ls)
 	if err != nil {
 		klog.Errorf("create switch %s failed %v", ls, err)
 		return err
