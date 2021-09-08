@@ -47,6 +47,8 @@ const (
 	IngressRateAnnotationTemplate   = "%s.kubernetes.io/ingress_rate"
 	EgressRateAnnotationTemplate    = "%s.kubernetes.io/egress_rate"
 	SecurityGroupAnnotationTemplate = "%s.kubernetes.io/security_groups"
+	LiveMigrationAnnotationTemplate = "%s.kubernetes.io/allow_live_migration"
+	DefaultRouteAnnotationTemplate  = "%s.kubernetes.io/default_route"
 
 	ProviderNetworkTemplate          = "%s.kubernetes.io/provider_network"
 	ProviderNetworkReadyTemplate     = "%s.provider-network.kubernetes.io/ready"

@@ -292,7 +292,7 @@ func (c *Controller) InitIPAM() error {
 				fmt.Sprintf("%s/%s", pod.Namespace, pod.Name),
 				pod.Annotations[util.IpAddressAnnotation],
 				pod.Annotations[util.MacAddressAnnotation],
-				pod.Annotations[util.LogicalSwitchAnnotation])
+				pod.Annotations[util.LogicalSwitchAnnotation], false)
 			if err != nil {
 				klog.Errorf("failed to init pod %s.%s address %s: %v", pod.Name, pod.Namespace, pod.Annotations[util.IpAddressAnnotation], err)
 			}
@@ -309,7 +309,7 @@ func (c *Controller) InitIPAM() error {
 			portName := fmt.Sprintf("node-%s", node.Name)
 			v4IP, v6IP, _, err := c.ipam.GetStaticAddress(portName, node.Annotations[util.IpAddressAnnotation],
 				node.Annotations[util.MacAddressAnnotation],
-				node.Annotations[util.LogicalSwitchAnnotation])
+				node.Annotations[util.LogicalSwitchAnnotation], true)
 			if err != nil {
 				klog.Errorf("failed to init node %s.%s address %s: %v", node.Name, node.Namespace, node.Annotations[util.IpAddressAnnotation], err)
 			}
