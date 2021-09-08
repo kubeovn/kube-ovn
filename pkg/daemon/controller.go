@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -62,8 +63,9 @@ type Controller struct {
 
 	recorder record.EventRecorder
 
-	iptable map[string]*iptables.IPTables
-	ipset   map[string]*ipsets.IPSets
+	iptable   map[string]*iptables.IPTables
+	ipset     map[string]*ipsets.IPSets
+	ipsetLock sync.Mutex
 
 	protocol string
 }
