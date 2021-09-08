@@ -12,6 +12,7 @@ require (
 	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13 // indirect
 	github.com/elazarl/goproxy v0.0.0-20190630181448-f1e96bc0f4c5 // indirect
 	github.com/emicklei/go-restful v2.11.1+incompatible
+	github.com/fsnotify/fsnotify v1.5.1 // indirect
 	github.com/go-ini/ini v1.42.0 // indirect
 	github.com/golang/protobuf v1.5.2
 	github.com/greenpau/ovsdb v0.0.0-20181114004433-3582b85e8968
@@ -24,7 +25,7 @@ require (
 	github.com/neverlee/keymutex v0.0.0-20171121013845-f593aa834bf9
 	github.com/oilbeater/go-ping v0.0.0-20200413021620-332b7197c5b5
 	github.com/onsi/ginkgo v1.16.4
-	github.com/onsi/gomega v1.15.0
+	github.com/onsi/gomega v1.16.0
 	github.com/osrg/gobgp v0.0.0-20190401195721-805d02fdfbc5
 	github.com/parnurzeal/gorequest v0.2.15
 	github.com/projectcalico/go-json v0.0.0-20161128004156-6219dc7339ba // indirect
@@ -39,8 +40,8 @@ require (
 	github.com/stretchr/testify v1.6.1
 	github.com/vishvananda/netlink v1.1.0
 	golang.org/x/crypto v0.0.0-20201216223049-8b5274cf687f // indirect
-	golang.org/x/net v0.0.0-20210805182204-aaa1db679c0d // indirect
-	golang.org/x/sys v0.0.0-20210809222454-d867a43fc93e
+	golang.org/x/net v0.0.0-20210907225631-ff17edfbf26d // indirect
+	golang.org/x/sys v0.0.0-20210906170528-6f6e22806c34
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/tools v0.1.5 // indirect
 	google.golang.org/grpc v1.27.1
