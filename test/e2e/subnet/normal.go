@@ -512,7 +512,6 @@ var _ = Describe("[Subnet]", func() {
 			Expect(subnet.Spec.ExternalEgressGateway).To(Equal(egw))
 			Expect(subnet.Spec.PolicyRoutingPriority).To(Equal(priority))
 			Expect(subnet.Spec.PolicyRoutingTableID).To(Equal(tableID))
-			time.Sleep(5 * time.Second)
 
 			pod := &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
@@ -535,14 +534,8 @@ var _ = Describe("[Subnet]", func() {
 			_, err = f.KubeClientSet.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
-			_, err = f.WaitPodReady(name, namespace)
+			pod, err = f.WaitPodReady(name, namespace)
 			Expect(err).NotTo(HaveOccurred())
-
-			pod, err = f.KubeClientSet.CoreV1().Pods(namespace).Get(context.Background(), name, metav1.GetOptions{})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(pod.Annotations[util.AllocatedAnnotation]).To(Equal("true"))
-			Expect(pod.Annotations[util.RoutedAnnotation]).To(Equal("true"))
-			time.Sleep(1 * time.Second)
 
 			ovsPods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(context.Background(), metav1.ListOptions{LabelSelector: "app=ovs"})
 			Expect(err).NotTo(HaveOccurred())
@@ -551,28 +544,31 @@ var _ = Describe("[Subnet]", func() {
 			ruleSuffix := fmt.Sprintf("from %s lookup %d", pod.Status.PodIP, tableID)
 			routePrefix := fmt.Sprintf("default via %s ", egw)
 
-			for _, ovsPod := range ovsPods.Items {
-				if ovsPod.Status.HostIP != nodeIPv4 && ovsPod.Status.HostIP != nodeIPv6 {
-					continue
+			var ovsPod *corev1.Pod
+			for i := range ovsPods.Items {
+				if ovsPods.Items[i].Spec.NodeName == selectedNode.Name {
+					ovsPod = &ovsPods.Items[i]
+					break
 				}
-
-				stdout, _, err := f.ExecToPodThroughAPI(fmt.Sprintf("ip -%d rule show", af), "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
-				Expect(err).NotTo(HaveOccurred())
-
-				var found bool
-				rules := strings.Split(stdout, "\n")
-				for _, rule := range rules {
-					if strings.HasPrefix(rule, rulePrefix) && strings.HasSuffix(rule, ruleSuffix) {
-						found = true
-						break
-					}
-				}
-				Expect(found).To(BeTrue())
-
-				stdout, _, err = f.ExecToPodThroughAPI(fmt.Sprintf("ip -%d route show table %d", af, tableID), "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(stdout).To(HavePrefix(routePrefix))
 			}
+			Expect(ovsPod).NotTo(BeNil())
+
+			stdout, _, err := f.ExecToPodThroughAPI(fmt.Sprintf("ip -%d rule show", af), "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
+			Expect(err).NotTo(HaveOccurred())
+
+			var found bool
+			rules := strings.Split(stdout, "\n")
+			for _, rule := range rules {
+				if strings.HasPrefix(rule, rulePrefix) && strings.HasSuffix(rule, ruleSuffix) {
+					found = true
+					break
+				}
+			}
+			Expect(found).To(BeTrue())
+
+			stdout, _, err = f.ExecToPodThroughAPI(fmt.Sprintf("ip -%d route show table %d", af, tableID), "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(stdout).To(HavePrefix(routePrefix))
 
 			By("delete pod")
 			err = f.KubeClientSet.CoreV1().Pods(namespace).Delete(context.Background(), name, metav1.DeleteOptions{})
@@ -580,45 +576,32 @@ var _ = Describe("[Subnet]", func() {
 
 			err = f.WaitPodDeleted(name, namespace)
 			Expect(err).NotTo(HaveOccurred())
-			time.Sleep(1 * time.Second)
 
-			for _, ovsPod := range ovsPods.Items {
-				if ovsPod.Status.HostIP != nodeIPv4 && ovsPod.Status.HostIP != nodeIPv6 {
-					continue
+			stdout, _, err = f.ExecToPodThroughAPI(fmt.Sprintf("ip -%d rule show", af), "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
+			Expect(err).NotTo(HaveOccurred())
+
+			found = false
+			rules = strings.Split(stdout, "\n")
+			for _, rule := range rules {
+				if strings.HasPrefix(rule, rulePrefix) && strings.HasSuffix(rule, ruleSuffix) {
+					found = true
+					break
 				}
-
-				stdout, _, err := f.ExecToPodThroughAPI(fmt.Sprintf("ip -%d rule show", af), "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
-				Expect(err).NotTo(HaveOccurred())
-
-				var found bool
-				rules := strings.Split(stdout, "\n")
-				for _, rule := range rules {
-					if strings.HasPrefix(rule, rulePrefix) && strings.HasSuffix(rule, ruleSuffix) {
-						found = true
-						break
-					}
-				}
-				Expect(found).NotTo(BeTrue())
-
-				stdout, _, err = f.ExecToPodThroughAPI(fmt.Sprintf("ip -%d route show table %d", af, tableID), "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(stdout).To(HavePrefix(routePrefix))
 			}
+			Expect(found).NotTo(BeTrue())
+
+			stdout, _, err = f.ExecToPodThroughAPI(fmt.Sprintf("ip -%d route show table %d", af, tableID), "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(stdout).To(HavePrefix(routePrefix))
 
 			By("delete subnet")
 			err = f.OvnClientSet.KubeovnV1().Subnets().Delete(context.Background(), name, metav1.DeleteOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			time.Sleep(5 * time.Second)
 
-			for _, ovsPod := range ovsPods.Items {
-				if ovsPod.Status.HostIP != nodeIPv4 && ovsPod.Status.HostIP != nodeIPv6 {
-					continue
-				}
-
-				stdout, _, err := f.ExecToPodThroughAPI(fmt.Sprintf("ip -%d route show table %d", af, tableID), "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(stdout).NotTo(HavePrefix(routePrefix))
-			}
+			stdout, _, err = f.ExecToPodThroughAPI(fmt.Sprintf("ip -%d route show table %d", af, tableID), "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(stdout).NotTo(HavePrefix(routePrefix))
 		})
 	})
 
