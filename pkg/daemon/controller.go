@@ -6,6 +6,7 @@ import (
 	"net"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"k8s.io/client-go/kubernetes/scheme"
@@ -51,8 +52,9 @@ type Controller struct {
 
 	recorder record.EventRecorder
 
-	iptable map[string]*iptables.IPTables
-	ipset   map[string]*ipsets.IPSets
+	iptable   map[string]*iptables.IPTables
+	ipset     map[string]*ipsets.IPSets
+	ipsetLock sync.Mutex
 
 	protocol   string
 	internalIP string
