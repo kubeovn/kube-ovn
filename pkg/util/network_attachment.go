@@ -56,7 +56,7 @@ func parsePodNetworkObjectName(podnetwork string) (string, string, string, error
 		}
 	}
 
-	klog.Infof("parsePodNetworkObjectName: parsed: %s, %s, %s", netNsName, networkName, netIfName)
+	klog.V(5).Infof("parsePodNetworkObjectName: parsed: %s, %s, %s", netNsName, networkName, netIfName)
 	return netNsName, networkName, netIfName, nil
 }
 

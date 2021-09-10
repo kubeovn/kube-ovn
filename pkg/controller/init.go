@@ -285,16 +285,43 @@ func (c *Controller) InitIPAM() error {
 		return err
 	}
 	for _, pod := range pods {
-		if isPodAlive(pod) &&
-			pod.Annotations[util.AllocatedAnnotation] == "true" &&
-			pod.Annotations[util.LogicalSwitchAnnotation] != "" {
-			_, _, _, err := c.ipam.GetStaticAddress(
-				fmt.Sprintf("%s/%s", pod.Namespace, pod.Name),
-				pod.Annotations[util.IpAddressAnnotation],
-				pod.Annotations[util.MacAddressAnnotation],
-				pod.Annotations[util.LogicalSwitchAnnotation])
-			if err != nil {
-				klog.Errorf("failed to init pod %s.%s address %s: %v", pod.Name, pod.Namespace, pod.Annotations[util.IpAddressAnnotation], err)
+		if isPodAlive(pod) && pod.Annotations[util.AllocatedAnnotation] == "true" {
+			if pod.Annotations[util.LogicalSwitchAnnotation] != "" {
+				_, _, _, err := c.ipam.GetStaticAddress(
+					fmt.Sprintf("%s/%s", pod.Namespace, pod.Name),
+					pod.Annotations[util.IpAddressAnnotation],
+					pod.Annotations[util.MacAddressAnnotation],
+					pod.Annotations[util.LogicalSwitchAnnotation])
+				if err != nil {
+					klog.Errorf("failed to init pod %s.%s address %s: %v", pod.Name, pod.Namespace, pod.Annotations[util.IpAddressAnnotation], err)
+				}
+			}
+			attachNetworks := pod.Annotations[util.AttachmentNetworkAnnotation]
+			if attachNetworks != "" {
+				attachments, err := util.ParsePodNetworkAnnotation(attachNetworks, pod.Namespace)
+				if err != nil {
+					klog.Errorf("failed to parse attach net for pod '%s', %v", pod.Name, err)
+					continue
+				}
+				for _, attach := range attachments {
+					var builder strings.Builder
+					builder.WriteString(attach.Name)
+					builder.WriteString(".")
+					if attach.Namespace == "" {
+						builder.WriteString("default")
+					} else {
+						builder.WriteString(attach.Namespace)
+					}
+
+					_, _, _, err := c.ipam.GetStaticAddress(
+						fmt.Sprintf("%s/%s", pod.Namespace, pod.Name),
+						pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, builder.String())],
+						pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, builder.String())],
+						pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, builder.String())])
+					if err != nil {
+						klog.Errorf("failed to init pod %s.%s address %s: %v", pod.Name, pod.Namespace, pod.Annotations[util.IpAddressAnnotation], err)
+					}
+				}
 			}
 		}
 	}
