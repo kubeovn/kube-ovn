@@ -17,6 +17,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/remotecommand"
+	"k8s.io/klog"
 
 	. "github.com/onsi/ginkgo"
 
@@ -112,7 +113,7 @@ func (f *Framework) WaitPodReady(pod, namespace string) (*corev1.Pod, error) {
 		case Initing, Pending, PodInitializing, ContainerCreating, Terminating:
 			continue
 		default:
-			fmt.Printf("%v", p.String())
+			klog.Info(p.String())
 			return nil, fmt.Errorf("pod status failed")
 		}
 	}
@@ -161,7 +162,7 @@ func (f *Framework) WaitDeploymentReady(deployment, namespace string) error {
 			case Initing, Pending, PodInitializing, ContainerCreating, Terminating:
 				ready = false
 			default:
-				fmt.Printf("%v", pod.String())
+				klog.Info(pod.String())
 				return fmt.Errorf("pod status failed")
 			}
 		}
@@ -197,7 +198,7 @@ func (f *Framework) WaitStatefulsetReady(statefulset, namespace string) error {
 			case Initing, Pending, PodInitializing, ContainerCreating, Terminating:
 				ready = false
 			default:
-				fmt.Printf("%v", pod.String())
+				klog.Info(pod.String())
 				return fmt.Errorf("pod status failed")
 			}
 		}

@@ -53,14 +53,13 @@ jobs:
 
       - name: Unit test
         run: |
-          go get -u github.com/onsi/ginkgo/ginkgo
-          go get -u github.com/onsi/gomega/...
+          go install github.com/onsi/ginkgo/ginkgo@latest
           make ut
 
       - name: Build
         run: |
           go mod tidy
-          go get -u github.com/securego/gosec/cmd/gosec
+          go install github.com/securego/gosec/cmd/gosec@latest
           make release
           make tar
 
@@ -109,8 +108,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go get -u github.com/onsi/ginkgo/ginkgo
-          go get -u github.com/onsi/gomega/...
+          go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
           sudo chmod 666 /home/runner/.kube/config
           make e2e
@@ -154,8 +152,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go get -u github.com/onsi/ginkgo/ginkgo
-          go get -u github.com/onsi/gomega/...
+          go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
           sudo chmod 666 /home/runner/.kube/config
           make e2e
@@ -199,8 +196,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go get -u github.com/onsi/ginkgo/ginkgo
-          go get -u github.com/onsi/gomega/...
+          go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
           sudo chmod 666 /home/runner/.kube/config
           make e2e-vlan
@@ -244,8 +240,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go get -u github.com/onsi/ginkgo/ginkgo
-          go get -u github.com/onsi/gomega/...
+          go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
           sudo chmod 666 /home/runner/.kube/config
           make e2e-underlay-single-nic
@@ -289,8 +284,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go get -u github.com/onsi/ginkgo/ginkgo
-          go get -u github.com/onsi/gomega/...
+          go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
           sudo chmod 666 /home/runner/.kube/config
           make e2e
@@ -369,8 +363,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go get -u github.com/onsi/ginkgo/ginkgo
-          go get -u github.com/onsi/gomega/...
+          go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
           sudo chmod 666 /home/runner/.kube/config
           make e2e-ipv6
@@ -418,8 +411,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go get -u github.com/onsi/ginkgo/ginkgo
-          go get -u github.com/onsi/gomega/...
+          go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
           sudo chmod 666 /home/runner/.kube/config
           make e2e-vlan-ipv6
@@ -467,8 +459,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go get -u github.com/onsi/ginkgo/ginkgo
-          go get -u github.com/onsi/gomega/...
+          go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
           sudo chmod 666 /home/runner/.kube/config
           make e2e-underlay-single-nic
@@ -516,8 +507,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go get -u github.com/onsi/ginkgo/ginkgo
-          go get -u github.com/onsi/gomega/...
+          go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
           sudo chmod 666 /home/runner/.kube/config
           make e2e
@@ -563,8 +553,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go get -u github.com/onsi/ginkgo/ginkgo
-          go get -u github.com/onsi/gomega/...
+          go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
           sudo chmod 666 /home/runner/.kube/config
           make e2e
@@ -610,8 +599,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go get -u github.com/onsi/ginkgo/ginkgo
-          go get -u github.com/onsi/gomega/...
+          go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
           sudo chmod 666 /home/runner/.kube/config
           make e2e
@@ -657,8 +645,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go get -u github.com/onsi/ginkgo/ginkgo
-          go get -u github.com/onsi/gomega/...
+          go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
           sudo chmod 666 /home/runner/.kube/config
           make e2e
