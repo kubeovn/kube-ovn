@@ -1090,7 +1090,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		}
 	}
 	klog.Errorf("alloc address for %s failed, return NoAvailableAddress", key)
-	return "", "", "", ipam.NoAvailableError
+	return "", "", "", ipam.ErrNoAvailable
 }
 
 func generatePatchPayload(annotations map[string]string, op string) []byte {

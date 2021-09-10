@@ -12,10 +12,10 @@ import (
 )
 
 var (
-	OutOfRangeError  = errors.New("AddressOutOfRange")
-	ConflictError    = errors.New("AddressConflict")
-	NoAvailableError = errors.New("NoAvailableAddress")
-	InvalidCIDRError = errors.New("CIDRInvalid")
+	ErrOutOfRange  = errors.New("AddressOutOfRange")
+	ErrConflict    = errors.New("AddressConflict")
+	ErrNoAvailable = errors.New("NoAvailableAddress")
+	ErrInvalidCIDR = errors.New("CIDRInvalid")
 )
 
 type IPAM struct {
@@ -42,7 +42,7 @@ func (ipam *IPAM) GetRandomAddress(podName, subnetName string, skippedAddrs []st
 
 	subnet, ok := ipam.Subnets[subnetName]
 	if !ok {
-		return "", "", "", NoAvailableError
+		return "", "", "", ErrNoAvailable
 	}
 
 	v4IP, v6IP, mac, err := subnet.GetRandomAddress(podName, skippedAddrs)
@@ -54,7 +54,7 @@ func (ipam *IPAM) GetStaticAddress(podName, ip, mac, subnetName string, checkCon
 	ipam.mutex.RLock()
 	defer ipam.mutex.RUnlock()
 	if subnet, ok := ipam.Subnets[subnetName]; !ok {
-		return "", "", "", NoAvailableError
+		return "", "", "", ErrNoAvailable
 	} else {
 		var ips []IP
 		var err error
@@ -84,7 +84,7 @@ func (ipam *IPAM) GetStaticAddress(podName, ip, mac, subnetName string, checkCon
 			return string(ips[0]), string(ips[1]), mac, err
 		}
 	}
-	return "", "", "", NoAvailableError
+	return "", "", "", ErrNoAvailable
 }
 
 func checkAndAppendIpsForDual(ips []IP, podName string, subnet *Subnet) ([]IP, error) {
@@ -127,7 +127,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr string, excludeIps []string) e
 	var cidrs []*net.IPNet
 	for _, cidrBlock := range strings.Split(cidrStr, ",") {
 		if _, cidr, err := net.ParseCIDR(cidrBlock); err != nil {
-			return InvalidCIDRError
+			return ErrInvalidCIDR
 		} else {
 			cidrs = append(cidrs, cidr)
 		}

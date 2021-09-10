@@ -1,3 +1,4 @@
+//nolint:staticcheck
 package speaker
 
 import (
@@ -8,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/golang/protobuf/ptypes"
-	"github.com/golang/protobuf/ptypes/any"
 	anypb "github.com/golang/protobuf/ptypes/any"
 	bgpapiutil "github.com/kubeovn/kube-ovn/pkg/speaker/bgpapiutil"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -174,7 +174,7 @@ func (c *Controller) addRoute(route string) error {
 	return nil
 }
 
-func (c *Controller) getNlriAndAttrs(route string) (*anypb.Any, []*any.Any, error) {
+func (c *Controller) getNlriAndAttrs(route string) (*anypb.Any, []*anypb.Any, error) {
 	prefix, prefixLen, err := parseRoute(route)
 	if err != nil {
 		return nil, nil, err
@@ -189,7 +189,7 @@ func (c *Controller) getNlriAndAttrs(route string) (*anypb.Any, []*any.Any, erro
 	a2, _ := ptypes.MarshalAny(&bgpapi.NextHopAttribute{
 		NextHop: c.config.RouterId,
 	})
-	attrs := []*any.Any{a1, a2}
+	attrs := []*anypb.Any{a1, a2}
 	return nlri, attrs, err
 }
 

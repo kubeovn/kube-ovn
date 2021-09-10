@@ -126,7 +126,7 @@ func getClusterInfo(direction, dbName string) (*OVNDBClusterStatus, error) {
 	cmd := exec.Command("sh", "-c", cmdstr)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("Failed to retrieve cluster/status info for database %s: %v", dbName, err)
+		return nil, fmt.Errorf("failed to retrieve cluster/status info for database %s: %v", dbName, err)
 	}
 
 	for _, line := range strings.Split(string(output), "\n") {

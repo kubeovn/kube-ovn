@@ -37,7 +37,7 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 	var cidrs []*net.IPNet
 	for _, cidrBlock := range strings.Split(cidrStr, ",") {
 		if _, cidr, err := net.ParseCIDR(cidrBlock); err != nil {
-			return nil, InvalidCIDRError
+			return nil, ErrInvalidCIDR
 		} else {
 			cidrs = append(cidrs, cidr)
 		}
@@ -136,7 +136,7 @@ func (subnet *Subnet) GetRandomMac(podName string) string {
 func (subnet *Subnet) GetStaticMac(podName, mac string, checkConflict bool) error {
 	if checkConflict {
 		if p, ok := subnet.MacToPod[mac]; ok && p != podName {
-			return ConflictError
+			return ErrConflict
 		}
 	}
 	subnet.MacToPod[mac] = podName
@@ -183,7 +183,7 @@ func (subnet *Subnet) getV4RandomAddress(podName string, skippedAddrs []string) 
 	}
 	if len(subnet.V4FreeIPList) == 0 {
 		if len(subnet.V4ReleasedIPList) == 0 {
-			return "", "", "", NoAvailableError
+			return "", "", "", ErrNoAvailable
 		}
 		subnet.V4FreeIPList = subnet.V4ReleasedIPList
 		subnet.V4ReleasedIPList = IPRangeList{}
@@ -204,7 +204,7 @@ func (subnet *Subnet) getV4RandomAddress(podName string, skippedAddrs []string) 
 		}
 	}
 	if ip == "" {
-		return "", "", "", ConflictError
+		return "", "", "", ErrConflict
 	}
 
 	ipr := subnet.V4FreeIPList[idx]
@@ -233,7 +233,7 @@ func (subnet *Subnet) getV6RandomAddress(podName string, skippedAddrs []string) 
 	}
 	if len(subnet.V6FreeIPList) == 0 {
 		if len(subnet.V6ReleasedIPList) == 0 {
-			return "", "", "", NoAvailableError
+			return "", "", "", ErrNoAvailable
 		}
 		subnet.V6FreeIPList = subnet.V6ReleasedIPList
 		subnet.V6ReleasedIPList = IPRangeList{}
@@ -254,7 +254,7 @@ func (subnet *Subnet) getV6RandomAddress(podName string, skippedAddrs []string) 
 		}
 	}
 	if ip == "" {
-		return "", "", "", ConflictError
+		return "", "", "", ErrConflict
 	}
 
 	ipr := subnet.V6FreeIPList[idx]
@@ -285,10 +285,10 @@ func (subnet *Subnet) GetStaticAddress(podName string, ip IP, mac string, force 
 		v6 = subnet.V6CIDR != nil
 	}
 	if v4 && !subnet.V4CIDR.Contains(net.ParseIP(string(ip))) {
-		return ip, mac, OutOfRangeError
+		return ip, mac, ErrOutOfRange
 	}
 	if v6 && !subnet.V6CIDR.Contains(net.ParseIP(string(ip))) {
-		return ip, mac, OutOfRangeError
+		return ip, mac, ErrOutOfRange
 	}
 
 	if mac == "" {
@@ -312,7 +312,7 @@ func (subnet *Subnet) GetStaticAddress(podName string, ip IP, mac string, force 
 					subnet.V4IPToPod[ip] = fmt.Sprintf("%s,%s", subnet.V4IPToPod[ip], podName)
 					return ip, mac, nil
 				}
-				return ip, mac, ConflictError
+				return ip, mac, ErrConflict
 			}
 			if !force {
 				return ip, mac, nil
@@ -347,7 +347,7 @@ func (subnet *Subnet) GetStaticAddress(podName string, ip IP, mac string, force 
 					subnet.V6IPToPod[ip] = fmt.Sprintf("%s,%s", subnet.V6IPToPod[ip], podName)
 					return ip, mac, nil
 				}
-				return ip, mac, ConflictError
+				return ip, mac, ErrConflict
 			}
 			if !force {
 				return ip, mac, nil
@@ -374,7 +374,7 @@ func (subnet *Subnet) GetStaticAddress(podName string, ip IP, mac string, force 
 			}
 		}
 	}
-	return ip, mac, NoAvailableError
+	return ip, mac, ErrNoAvailable
 }
 
 func (subnet *Subnet) releaseAddr(podName string) {
