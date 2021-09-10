@@ -2646,7 +2646,7 @@ diagnose(){
       nodeName="$2"
       kubectl get no "$nodeName" > /dev/null
       pinger=$(kubectl get pod -n $KUBE_OVN_NS -o wide | grep kube-ovn-pinger | grep " $nodeName " | awk '{print $1}')
-      echo "### start to diagnose node nodeName"
+      echo "### start to diagnose node $nodeName"
       echo "#### ovn-controller log:"
       kubectl exec -n $KUBE_OVN_NS "$pinger" -- tail /var/log/ovn/ovn-controller.log
       echo ""
@@ -2654,7 +2654,7 @@ diagnose(){
       kubectl exec -n $KUBE_OVN_NS "$pinger" -- tail /var/log/openvswitch/ovs-vswitchd.log
       echo ""
       kubectl exec -n $KUBE_OVN_NS "$pinger" -- /kube-ovn/kube-ovn-pinger --mode=job
-      echo "### finish diagnose node nodeName"
+      echo "### finish diagnose node $nodeName"
       echo ""
       ;;
     *)
