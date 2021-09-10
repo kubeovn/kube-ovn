@@ -4,7 +4,7 @@ Kube-OVN includes two parts:
 - Native OVS and OVN components
 - Controller and CNI plugins that integrate OVN with Kubernetes
 
-## Prerequest
+## Prerequisite
 - Kubernetes >= 1.11, version 1.16 and later is recommended
 - Docker >= 1.12.6
 - OS: CentOS 7/8, Ubuntu 16.04/18.04 
@@ -14,27 +14,27 @@ Kube-OVN includes two parts:
 
 *NOTE*
 1. Users using Ubuntu 16.04 should build the OVS kernel module and replace the built-in one to avoid kernel NAT issues.
-2. CentOS users should make sure kernel version is greater than 3.10.0-898 to avoid a kernel conntrack bug, see [here](https://bugs.launchpad.net/neutron/+bug/1776778)
-3. Kernel must boot with ipv6 enabled, otherwise geneve tunnel will not be established due to a kernel bug, see [here](https://bugs.launchpad.net/ubuntu/+source/linux/+bug/1794232)
+2. CentOS users should make sure kernel version is greater than 3.10.0-898 to avoid a kernel conntrack bug, see [here](https://bugs.launchpad.net/neutron/+bug/1776778).
+3. Kernel must boot with IPv6 enabled, otherwise geneve tunnel will not be established due to a kernel bug, see [here](https://bugs.launchpad.net/ubuntu/+source/linux/+bug/1794232).
 
 ## To Install
 
 ### One Script Installer
 
-Kube-OVN provides a one script install to easily install a high-available, production-ready Kube-OVN
+Kube-OVN provides a one script install to easily install a high-available, production-ready Kube-OVN.
 
-1. Download the stable release installer scripts
+1. Download the stable release installer scripts.
 
-For Kubernetes version>=1.16
+For Kubernetes version>=1.16:
 `wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.8/dist/images/install.sh`
 
-For Kubernetes version<1.16
+For Kubernetes version<1.16:
 `wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.8/dist/images/install-pre-1.16.sh`
 
-If you want to try the latest developing Kube-OVN, try the script below
+If you want to try the latest developing Kube-OVN, try the script below:
 `wget https://raw.githubusercontent.com/alauda/kube-ovn/master/dist/images/install.sh`
 
-2. Use vim to edit the script variables to meet your requirement
+2. Use vim to edit the script variables to meet your requirement:
 ```bash
  REGISTRY="kubeovn"
  POD_CIDR="10.16.0.0/16"                # Default subnet CIDR, Do NOT overlap with NODE/SVC/JOIN CIDR
@@ -45,7 +45,7 @@ If you want to try the latest developing Kube-OVN, try the script below
  VERSION="v1.8.0"
 ```
 
-This basic setup works for default overlay network. If you are using default underlay/vlan network, please refer [Vlan/Underlay Support](vlan.md)
+This basic setup works for default overlay network. If you are using default underlay/vlan network, please refer [Vlan/Underlay Support](vlan.md).
 
 3. Run the script
 
@@ -57,14 +57,14 @@ That's all! You can now create some pods and test connectivity.
 
 The one-script installer is recommended. If you want to change the default options, follow the steps below.
 
-For Kubernetes version before 1.17 please use the following command to add the node label
+For Kubernetes version before 1.17 please use the following command to add the node label:
 
     `kubectl label no -lbeta.kubernetes.io/os=linux kubernetes.io/os=linux --overwrite`
 
 1. Add the following label to the Node which will host the OVN DB and the OVN Control Plane:
 
     `kubectl label node <Node on which to deploy OVN DB> kube-ovn/role=master`
-2. Install Kube-OVN related CRDs
+2. Install Kube-OVN related CRDs:
 
     `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/release-1.8/yamls/crd.yaml`
 3. Get ovn.yaml and replace `$addresses` in the file with IP address of the node that will host the OVN DB and the OVN Control Plane:
@@ -79,7 +79,7 @@ For Kubernetes version before 1.17 please use the following command to add the n
 
     `kubectl apply -f https://raw.githubusercontent.com/alauda/kube-ovn/release-1.8/yamls/kube-ovn.yaml`
 
-For high-available ovn db, see [high available](high-available.md)
+For high-available ovn db, see [High Availability](high-availability.md).
 
 If you want to enable IPv6 on default subnet and node subnet, please apply https://raw.githubusercontent.com/alauda/kube-ovn/release-1.8/yamls/kube-ovn-ipv6.yaml on Step 3.
 
@@ -167,13 +167,13 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
 By default, Kube-OVN uses in-cluster config to init kube client. In this way, Kube-OVN relies on kube-proxy to provide service discovery to connect to Kubernetes apiserver. 
 To use an external or high available Kubernetes apiserver, users can use self customized kubeconfig to connect to apiserver.
 
-1. Generate configmap from an existed kubeconfig
+1. Generate configmap from an existing kubeconfig:
 
 ```bash
 kubectl create -n kube-system configmap admin-conf --from-file=config=admin.conf
 ```
 
-1. Edit `kube-ovn-controller`, `kube-ovn-cni` to use the above kubeconfig
+1. Edit `kube-ovn-controller`, `kube-ovn-cni` to use the above kubeconfig:
 
 ```yaml
       - args:

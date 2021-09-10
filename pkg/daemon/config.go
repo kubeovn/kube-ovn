@@ -38,7 +38,7 @@ type Configuration struct {
 	KubeOvnClient         clientset.Interface
 	NodeName              string
 	ServiceClusterIPRange string
-	NodeLocalDNSIP        string
+	NodeLocalDnsIP        string
 	EncapChecksum         bool
 	PprofPort             int
 	NetworkType           string
@@ -104,7 +104,7 @@ func ParseFlags() (*Configuration, error) {
 		PprofPort:             *argPprofPort,
 		NodeName:              nodeName,
 		ServiceClusterIPRange: *argServiceClusterIPRange,
-		NodeLocalDNSIP:        *argNodeLocalDnsIP,
+		NodeLocalDnsIP:        *argNodeLocalDnsIP,
 		EncapChecksum:         *argEncapChecksum,
 		NetworkType:           *argsNetworkType,
 		DefaultProviderName:   *argsDefaultProviderName,

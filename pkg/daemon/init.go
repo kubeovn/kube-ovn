@@ -33,7 +33,7 @@ func InitOVSBridges() error {
 
 		output, err := ovs.Exec("list-ports", brName)
 		if err != nil {
-			return fmt.Errorf("failed to list ports of OVS birdge %s, %v: %q", brName, err, output)
+			return fmt.Errorf("failed to list ports of OVS bridge %s, %v: %q", brName, err, output)
 		}
 
 		if output != "" {
@@ -156,7 +156,7 @@ func ovsCleanProviderNetwork(provider string) error {
 
 	// get host nic
 	if output, err = ovs.Exec("list-ports", brName); err != nil {
-		return fmt.Errorf("failed to list ports of OVS birdge %s, %v: %q", brName, err, output)
+		return fmt.Errorf("failed to list ports of OVS bridge %s, %v: %q", brName, err, output)
 	}
 
 	// remove host nic from the external bridge

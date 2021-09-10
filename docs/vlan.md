@@ -6,7 +6,7 @@ By default, Kube-OVN use Geneve to encapsulate packets between hosts, which will
 Kube-OVN also supports underlay Vlan mode networking for better performance and throughput.
 In Vlan mode, packets from pods will be sent directly to physical switches with vlan tags.
 
-![topology](vlan-topolgy.png "vlan network topology")
+![topology](vlan-topology.png "vlan network topology")
 
 To enable Vlan mode, a ~~dedicated~~ network interface is required by container network. Mac address, MTU, IP addresses and routes attached to the interface will be copied/transferred to an OVS bridge named `br-PROVIDER` where `PROVIDER` is name of the provider network.
 The related switch port must work in trunk mode to accept 802.1q packets. For underlay network with no vlan tag, you need
@@ -24,7 +24,7 @@ From v1.7.1 on, Kube-OVN supports dynamic underlay/VLAN networking management.
 
 In the Vlan/Underlay mode, OVS sends origin Pods packets directly to the physical network and uses physical switch/router to transmit the traffic, so it relies on the capabilities of network infrastructure.
 
-1. For K8s running on VMs provided by OpenStack, `PortSecuriity` of the network ports MUST be `disabled`;
+1. For K8s running on VMs provided by OpenStack, `PortSecurity` of the network ports MUST be `disabled`;
 2. For K8s running on VMs provided by VMware, the switch security options `MAC Address Changes`, `Forged Transmits` and `Promiscuous Mode Operation` MUST be `allowed`;
 3. The Vlan/Underlay mode can not run on public IaaS providers like AWS/GCE/Alibaba Cloud as their network can not provide the capability to transmit this type packets;
 4. When Kube-OVN creates network it checks the connectivity to the subnet gateway through ICMP, so the gateway MUST respond the ICMP messages;

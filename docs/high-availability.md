@@ -1,4 +1,4 @@
-# High available for ovn db
+# High availability for ovn db
 
 OVN support clustered database. If want to use high-available database in kube-ovn,
 modify ovn-central deployment in yamls/ovn.yaml.

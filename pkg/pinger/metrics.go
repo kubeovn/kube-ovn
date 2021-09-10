@@ -219,7 +219,7 @@ var (
 		prometheus.GaugeOpts{
 			Namespace: metricNamespace,
 			Name:      "ovs_status",
-			Help:      "OVS Health Status. The values are: health(1), unhealth(0).",
+			Help:      "OVS Health Status. The values are: healthy(1), unhealthy(0).",
 		},
 		[]string{
 			"hostname",

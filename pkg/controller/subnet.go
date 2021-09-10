@@ -896,7 +896,7 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 				}
 				nodeIP, err := getNodeTunlIP(node)
 				if err != nil {
-					klog.Errorf("failed to get node %s tunl ip, %v", node.Name, err)
+					klog.Errorf("failed to get node %s tunnel ip, %v", node.Name, err)
 					return err
 				}
 

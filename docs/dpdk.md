@@ -4,7 +4,7 @@ This document describes how to run Kube-OVN with OVS-DPDK.
 
 *Note*: Kube-OVN with OVS-DPDK provides a vhost-user raw socket to container for DPDK applications like Testpmd and L2fwd to manipulate network traffic in userspace. Regular applications like Nginx will not work.
 
-## Prerequest
+## Prerequisite
 - Kubernetes >= 1.11
 - Docker >= 1.12.6
 - OS: CentOS 7.5/7.6/7.7, Ubuntu 16.04/18.04
@@ -96,7 +96,7 @@ With Multus installed, additional Network interfaces can now be requested within
 
 
 ## Userspace CNI
-There is now a containerized instance of OVS-DPDK running on the node. Kube-OVN can provide all of its regular (kernal) functionality. Multus is in place to enable pods request the additional OVS-DPDK interfaces. However, OVS-DPDK does provide regular Netdev interfaces, but vhost-user sockets. These sockets cannot be attached to a pod in the usual manner where the Netdev is moved to the pod network namespace. These sockets must be mounted into the pod. Kube-OVN (at least currently) does not have this socket-mounting ability. For this functionality we can use the [Userspace CNI Network Plugin](https://github.com/intel/userspace-cni-network-plugin).
+There is now a containerized instance of OVS-DPDK running on the node. Kube-OVN can provide all of its regular (kernel) functionality. Multus is in place to enable pods request the additional OVS-DPDK interfaces. However, OVS-DPDK does provide regular Netdev interfaces, but vhost-user sockets. These sockets cannot be attached to a pod in the usual manner where the Netdev is moved to the pod network namespace. These sockets must be mounted into the pod. Kube-OVN (at least currently) does not have this socket-mounting ability. For this functionality we can use the [Userspace CNI Network Plugin](https://github.com/intel/userspace-cni-network-plugin).
 
 
 ### Download, build and install Userspace CNI
