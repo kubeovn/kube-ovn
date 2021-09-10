@@ -11,9 +11,11 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
+	"github.com/kubeovn/kube-ovn/test/e2e/framework"
+
+	// tests to run
 	_ "github.com/kubeovn/kube-ovn/test/e2e-vlan-single-nic/kubectl-ko"
 	_ "github.com/kubeovn/kube-ovn/test/e2e-vlan-single-nic/node"
-	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
 
 func TestE2e(t *testing.T) {

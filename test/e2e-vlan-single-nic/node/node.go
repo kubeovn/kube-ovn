@@ -32,7 +32,7 @@ type nodeNetwork struct {
 	MacAddress          string
 }
 
-var _ = Describe("[Vlan Node]", func() {
+var _ = Describe("[Underlay Node]", func() {
 	f := framework.NewFramework("node", fmt.Sprintf("%s/.kube/config", os.Getenv("HOME")))
 
 	var network *nodeNetwork
@@ -49,30 +49,33 @@ var _ = Describe("[Vlan Node]", func() {
 		Expect(nodes).NotTo(BeNil())
 		Expect(len(nodes.Items)).NotTo(BeZero())
 
-		nodeIPs := make([]string, 0, len(nodes.Items))
-		nodeRoutes := make([]string, 0, len(nodes.Items))
+		nodeIPs := make([]string, 0, len(nodes.Items)*2)
+		nodeRoutes := make([]string, 0, len(nodes.Items)*4)
 		if network != nil {
 			if network.IPAddress != "" {
-				nodeIPs = append(nodeIPs, fmt.Sprintf("%s/%d", network.IPAddress, network.IPPrefixLen))
+				addr := fmt.Sprintf("%s/%d", network.IPAddress, network.IPPrefixLen)
+				nodeIPs = append(nodeIPs, addr)
+				_, ipnet, err := net.ParseCIDR(addr)
+				Expect(err).NotTo(HaveOccurred())
+				nodeRoutes = append(nodeRoutes, fmt.Sprintf("%s ", ipnet.String()))
 			}
 			if network.GlobalIPv6Address != "" {
-				nodeIPs = append(nodeIPs, fmt.Sprintf("%s/%d", network.GlobalIPv6Address, network.GlobalIPv6PrefixLen))
+				addr := fmt.Sprintf("%s/%d", network.GlobalIPv6Address, network.GlobalIPv6PrefixLen)
+				nodeIPs = append(nodeIPs, addr)
+				_, ipnet, err := net.ParseCIDR(addr)
+				Expect(err).NotTo(HaveOccurred())
+				nodeRoutes = append(nodeRoutes, fmt.Sprintf("%s ", ipnet.String()))
 			}
 			if network.Gateway != "" {
 				nodeRoutes = append(nodeRoutes, fmt.Sprintf("default via %s ", network.Gateway))
 			}
 			if network.IPv6Gateway != "" {
-				nodeRoutes = append(nodeRoutes, fmt.Sprintf("default via %s ", network.Gateway))
+				nodeRoutes = append(nodeRoutes, fmt.Sprintf("default via %s ", network.IPv6Gateway))
 			}
 		} else {
 			for _, node := range nodes.Items {
 				if node.Name == "kube-ovn-control-plane" {
-					for _, addr := range node.Status.Addresses {
-						if addr.Type == corev1.NodeInternalIP {
-							nodeIPs = append(nodeIPs, addr.Address+"/")
-							break
-						}
-					}
+					nodeIPs = append(nodeIPs, util.GetNodeInternalIP(node)+"/")
 					break
 				}
 			}
@@ -100,31 +103,33 @@ var _ = Describe("[Vlan Node]", func() {
 		stdout, _, err := f.ExecToPodThroughAPI("ovs-vsctl list-ports "+vlanBr, "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
 		Expect(err).NotTo(HaveOccurred())
 
-		var portFound bool
+		var found bool
 		for _, port := range strings.Split(stdout, "\n") {
 			if port == vlanNic {
-				portFound = true
+				found = true
 				break
 			}
 		}
-		Expect(portFound).To(BeTrue())
+		Expect(found).To(BeTrue())
 
 		stdout, _, err = f.ExecToPodThroughAPI("ip addr show "+vlanBr, "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
 		Expect(err).NotTo(HaveOccurred())
+		Expect(stdout).NotTo(BeEmpty())
 
-		var isUp bool
 		ipFound := make([]bool, len(nodeIPs))
 		for i, s := range strings.Split(stdout, "\n") {
 			if i == 0 {
+				var linkUp bool
 				idx1, idx2 := strings.IndexRune(s, '<'), strings.IndexRune(s, '>')
 				if idx1 > 0 && idx2 > idx1+1 {
 					for _, state := range strings.Split(s[idx1+1:idx2], ",") {
 						if state == "UP" {
-							isUp = true
+							linkUp = true
 							break
 						}
 					}
 				}
+				Expect(linkUp).To(BeTrue())
 				continue
 			}
 			if i == 1 && network != nil && network.MacAddress != "" {
@@ -140,13 +145,13 @@ var _ = Describe("[Vlan Node]", func() {
 				}
 			}
 		}
-		Expect(isUp).To(BeTrue())
 		for _, found := range ipFound {
 			Expect(found).To(BeTrue())
 		}
 
 		stdout, _, err = f.ExecToPodThroughAPI("ip addr show "+vlanNic, "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
 		Expect(err).NotTo(HaveOccurred())
+		Expect(stdout).NotTo(BeEmpty())
 
 		var hasAddr bool
 		for _, s := range strings.Split(stdout, "\n") {
@@ -164,7 +169,7 @@ var _ = Describe("[Vlan Node]", func() {
 		}
 		Expect(hasAddr).To(BeFalse())
 
-		stdout, _, err = f.ExecToPodThroughAPI("ip route show dev "+vlanBr, "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
+		stdout, _, err = f.ExecToPodThroughAPI("ip -4 route show dev "+vlanBr, "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
 		Expect(err).NotTo(HaveOccurred())
 		routes := strings.Split(stdout, "\n")
 
@@ -185,7 +190,7 @@ var _ = Describe("[Vlan Node]", func() {
 			Expect(found).To(BeTrue())
 		}
 
-		stdout, _, err = f.ExecToPodThroughAPI("ip route show dev "+vlanNic, "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
+		stdout, _, err = f.ExecToPodThroughAPI("ip -4 route show dev "+vlanNic, "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(strings.TrimSpace(stdout)).To(BeEmpty())
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	kubeovn "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
@@ -202,6 +203,8 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	if err = f.WaitProviderNetworkReady(pn.Name); err != nil {
 		Fail("provider network failed: " + err.Error())
 	}
+	// FIXME: wait 3 seconds to ensure node conditions are up to date
+	time.Sleep(3 * time.Second)
 	if pn, err = f.OvnClientSet.KubeovnV1().ProviderNetworks().Get(context.Background(), pn.Name, metav1.GetOptions{}); err != nil {
 		Fail("failed to get provider network: " + err.Error())
 	}
@@ -224,9 +227,6 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	}
 	if _, err = f.OvnClientSet.KubeovnV1().Vlans().Create(context.Background(), &vlan, metav1.CreateOptions{}); err != nil {
 		Fail("failed to create vlan: " + err.Error())
-	}
-	if err = f.WaitProviderNetworkReady(pn.Name); err != nil {
-		Fail("provider network failed: " + err.Error())
 	}
 
 	// create subnet
