@@ -337,7 +337,7 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 
 	if pod.Status.Phase != corev1.PodRunning {
 		time.Sleep(5 * 1000)
-		return fmt.Errorf("failed to init vpc nat gateway, pod is not ready.")
+		return fmt.Errorf("failed to init vpc nat gateway, pod is not ready")
 	}
 
 	if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; hasInit {
@@ -768,7 +768,7 @@ func (c *Controller) getNatGwPod(name string) (*corev1.Pod, error) {
 	if err != nil {
 		return nil, err
 	} else if len(pods) != 1 {
-		return nil, fmt.Errorf("too many pod.")
+		return nil, fmt.Errorf("too many pod")
 	} else if pods[0].Status.Phase != "Running" {
 		return nil, fmt.Errorf("pod is not active now")
 	}
