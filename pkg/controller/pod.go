@@ -806,7 +806,7 @@ func getNodeTunlIP(node *v1.Node) ([]net.IP, error) {
 	var nodeTunlIPAddr []net.IP
 	nodeTunlIP := node.Annotations[util.IpAddressAnnotation]
 	if nodeTunlIP == "" {
-		return nil, fmt.Errorf("node has no tunl ip annotation")
+		return nil, fmt.Errorf("node has no tunnel ip annotation")
 	}
 
 	for _, ip := range strings.Split(nodeTunlIP, ",") {

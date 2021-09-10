@@ -58,7 +58,7 @@ The Switch, Router and Firewall showed in the diagram below are all distributed 
 
 ## Monitoring Dashboard
 
-Kube-OVN offers prometheus integration with grafana dashboards to visualise network quality.
+Kube-OVN offers prometheus integration with grafana dashboards to visualize network quality.
 
 ![dashboard](docs/pinger-grafana.png)
 

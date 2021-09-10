@@ -148,7 +148,7 @@ func registerReflectorMetrics() {
 	reflectormetrics.SetReflectorMetricsProvider(reflectorMetricsProvider{})
 }
 
-// this section contains adapters, implementations, and other sundry organic, artisinally
+// this section contains adapters, implementations, and other sundry organic, artisanally
 // hand-crafted syntax trees required to convince client-go that it actually wants to let
 // someone use its metrics.
 

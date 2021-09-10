@@ -212,14 +212,14 @@ func internalNslookup(config *Configuration) error {
 	defer cancel()
 	var r net.Resolver
 	addrs, err := r.LookupHost(ctx, config.InternalDNS)
-	elpased := time.Since(t1)
+	elapsed := time.Since(t1)
 	if err != nil {
 		klog.Errorf("failed to resolve dns %s, %v", config.InternalDNS, err)
 		SetInternalDnsUnhealthyMetrics(config.NodeName)
 		return err
 	}
-	SetInternalDnsHealthyMetrics(config.NodeName, float64(elpased)/float64(time.Millisecond))
-	klog.Infof("resolve dns %s to %v in %.2fms", config.InternalDNS, addrs, float64(elpased)/float64(time.Millisecond))
+	SetInternalDnsHealthyMetrics(config.NodeName, float64(elapsed)/float64(time.Millisecond))
+	klog.Infof("resolve dns %s to %v in %.2fms", config.InternalDNS, addrs, float64(elapsed)/float64(time.Millisecond))
 	return nil
 }
 
@@ -230,14 +230,14 @@ func externalNslookup(config *Configuration) error {
 	defer cancel()
 	var r net.Resolver
 	addrs, err := r.LookupHost(ctx, config.ExternalDNS)
-	elpased := time.Since(t1)
+	elapsed := time.Since(t1)
 	if err != nil {
 		klog.Errorf("failed to resolve dns %s, %v", config.ExternalDNS, err)
 		SetExternalDnsUnhealthyMetrics(config.NodeName)
 		return err
 	}
-	SetExternalDnsHealthyMetrics(config.NodeName, float64(elpased)/float64(time.Millisecond))
-	klog.Infof("resolve dns %s to %v in %.2fms", config.ExternalDNS, addrs, float64(elpased)/float64(time.Millisecond))
+	SetExternalDnsHealthyMetrics(config.NodeName, float64(elapsed)/float64(time.Millisecond))
+	klog.Infof("resolve dns %s to %v in %.2fms", config.ExternalDNS, addrs, float64(elapsed)/float64(time.Millisecond))
 	return nil
 }
 
@@ -245,13 +245,13 @@ func checkApiServer(config *Configuration) error {
 	klog.Infof("start to check apiserver connectivity")
 	t1 := time.Now()
 	_, err := config.KubeClient.Discovery().ServerVersion()
-	elpased := time.Since(t1)
+	elapsed := time.Since(t1)
 	if err != nil {
 		klog.Errorf("failed to connect to apiserver: %v", err)
 		SetApiserverUnhealthyMetrics(config.NodeName)
 		return err
 	}
-	klog.Infof("connect to apiserver success in %.2fms", float64(elpased)/float64(time.Millisecond))
-	SetApiserverHealthyMetrics(config.NodeName, float64(elpased)/float64(time.Millisecond))
+	klog.Infof("connect to apiserver success in %.2fms", float64(elapsed)/float64(time.Millisecond))
+	SetApiserverHealthyMetrics(config.NodeName, float64(elapsed)/float64(time.Millisecond))
 	return nil
 }

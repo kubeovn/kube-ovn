@@ -36,4 +36,4 @@ metadata:
 
 ## Some limitation
 - The internal port name must be unique on a host and kubelet always checks the `eth0` interface in the Pod. To bypass this issue, Kube-OVN creates a dummy interface named eth0 in the Pod's netns, assigns the same IP address(es), and sets it down. It works well for most scenarios, however if applications rely on network interface name, it will bring confusions.
-- After OVS restarts, internal ports will be deattach from the pod. Pods on the same node with internal-port interfaces should be recreated manually.
+- After OVS restarts, internal ports will be detached from the pod. Pods on the same node with internal-port interfaces should be recreated manually.

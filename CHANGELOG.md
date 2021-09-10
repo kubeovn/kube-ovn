@@ -125,7 +125,7 @@
 * Restart ovn-controller to force ovn-ic flows update
 * Update usingips check when update finalizer for subnet
 * Livenessprobe fail if ovn nb/ovn sb not running
-* Release norhtd lock when power off
+* Release northd lock when power off
 * Fix chassis check for node
 * Pod terminating not recycle ip when controller not ready
 

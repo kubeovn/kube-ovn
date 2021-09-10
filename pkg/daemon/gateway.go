@@ -76,7 +76,7 @@ func (c *Controller) setIPSet() error {
 	}
 
 	for _, protocol := range protocols {
-		if c.ipset[protocol] == nil {
+		if c.ipsets[protocol] == nil {
 			continue
 		}
 		services := c.getServicesCIDR(protocol)
@@ -100,32 +100,32 @@ func (c *Controller) setIPSet() error {
 			klog.Errorf("failed to get node, %+v", err)
 			return err
 		}
-		c.ipset[protocol].AddOrReplaceIPSet(ipsets.IPSetMetadata{
+		c.ipsets[protocol].AddOrReplaceIPSet(ipsets.IPSetMetadata{
 			MaxSize: 1048576,
 			SetID:   ServiceSet,
 			Type:    ipsets.IPSetTypeHashNet,
 		}, services)
-		c.ipset[protocol].AddOrReplaceIPSet(ipsets.IPSetMetadata{
+		c.ipsets[protocol].AddOrReplaceIPSet(ipsets.IPSetMetadata{
 			MaxSize: 1048576,
 			SetID:   SubnetSet,
 			Type:    ipsets.IPSetTypeHashNet,
 		}, subnets)
-		c.ipset[protocol].AddOrReplaceIPSet(ipsets.IPSetMetadata{
+		c.ipsets[protocol].AddOrReplaceIPSet(ipsets.IPSetMetadata{
 			MaxSize: 1048576,
 			SetID:   LocalPodSet,
 			Type:    ipsets.IPSetTypeHashIP,
 		}, localPodIPs)
-		c.ipset[protocol].AddOrReplaceIPSet(ipsets.IPSetMetadata{
+		c.ipsets[protocol].AddOrReplaceIPSet(ipsets.IPSetMetadata{
 			MaxSize: 1048576,
 			SetID:   SubnetNatSet,
 			Type:    ipsets.IPSetTypeHashNet,
 		}, subnetsNeedNat)
-		c.ipset[protocol].AddOrReplaceIPSet(ipsets.IPSetMetadata{
+		c.ipsets[protocol].AddOrReplaceIPSet(ipsets.IPSetMetadata{
 			MaxSize: 1048576,
 			SetID:   OtherNodeSet,
 			Type:    ipsets.IPSetTypeHashNet,
 		}, otherNode)
-		c.ipset[protocol].ApplyUpdates()
+		c.ipsets[protocol].ApplyUpdates()
 	}
 	return nil
 }
@@ -140,7 +140,7 @@ func (c *Controller) setPolicyRouting() error {
 	}
 
 	for _, protocol := range protocols {
-		if c.ipset[protocol] == nil {
+		if c.ipsets[protocol] == nil {
 			continue
 		}
 
@@ -233,17 +233,17 @@ func (c *Controller) addIPSetMembers(setID, protocol string, ips []string) {
 	defer c.ipsetLock.Unlock()
 
 	if protocol == kubeovnv1.ProtocolDual {
-		if c.ipset[kubeovnv1.ProtocolIPv4] != nil {
-			c.ipset[kubeovnv1.ProtocolIPv4].AddMembers(setID, ips[:1])
-			c.ipset[kubeovnv1.ProtocolIPv4].ApplyUpdates()
+		if c.ipsets[kubeovnv1.ProtocolIPv4] != nil {
+			c.ipsets[kubeovnv1.ProtocolIPv4].AddMembers(setID, ips[:1])
+			c.ipsets[kubeovnv1.ProtocolIPv4].ApplyUpdates()
 		}
-		if c.ipset[kubeovnv1.ProtocolIPv6] != nil {
-			c.ipset[kubeovnv1.ProtocolIPv6].AddMembers(setID, ips[1:])
-			c.ipset[kubeovnv1.ProtocolIPv6].ApplyUpdates()
+		if c.ipsets[kubeovnv1.ProtocolIPv6] != nil {
+			c.ipsets[kubeovnv1.ProtocolIPv6].AddMembers(setID, ips[1:])
+			c.ipsets[kubeovnv1.ProtocolIPv6].ApplyUpdates()
 		}
-	} else if c.ipset[protocol] != nil {
-		c.ipset[protocol].AddMembers(setID, ips[:1])
-		c.ipset[protocol].ApplyUpdates()
+	} else if c.ipsets[protocol] != nil {
+		c.ipsets[protocol].AddMembers(setID, ips[:1])
+		c.ipsets[protocol].ApplyUpdates()
 	}
 }
 
@@ -252,17 +252,17 @@ func (c *Controller) removeIPSetMembers(setID, protocol string, ips []string) {
 	defer c.ipsetLock.Unlock()
 
 	if protocol == kubeovnv1.ProtocolDual {
-		if c.ipset[kubeovnv1.ProtocolIPv4] != nil {
-			c.ipset[kubeovnv1.ProtocolIPv4].RemoveMembers(setID, ips[:1])
-			c.ipset[kubeovnv1.ProtocolIPv4].ApplyUpdates()
+		if c.ipsets[kubeovnv1.ProtocolIPv4] != nil {
+			c.ipsets[kubeovnv1.ProtocolIPv4].RemoveMembers(setID, ips[:1])
+			c.ipsets[kubeovnv1.ProtocolIPv4].ApplyUpdates()
 		}
-		if c.ipset[kubeovnv1.ProtocolIPv6] != nil {
-			c.ipset[kubeovnv1.ProtocolIPv6].RemoveMembers(setID, ips[1:])
-			c.ipset[kubeovnv1.ProtocolIPv6].ApplyUpdates()
+		if c.ipsets[kubeovnv1.ProtocolIPv6] != nil {
+			c.ipsets[kubeovnv1.ProtocolIPv6].RemoveMembers(setID, ips[1:])
+			c.ipsets[kubeovnv1.ProtocolIPv6].ApplyUpdates()
 		}
-	} else if c.ipset[protocol] != nil {
-		c.ipset[protocol].RemoveMembers(setID, ips[:1])
-		c.ipset[protocol].ApplyUpdates()
+	} else if c.ipsets[protocol] != nil {
+		c.ipsets[protocol].RemoveMembers(setID, ips[:1])
+		c.ipsets[protocol].ApplyUpdates()
 	}
 }
 
@@ -487,52 +487,52 @@ func (c *Controller) setIptables() error {
 	}
 
 	for _, protocol := range protocols {
-		if c.iptable[protocol] == nil {
+		if c.iptables[protocol] == nil {
 			continue
 		}
-		// delete unused iptable rule when nat gw with designative ip has been changed in centralize subnet
+		// delete unused iptables rule when nat gw with designative ip has been changed in centralized subnet
 		if err = c.deleteUnusedIptablesRule(protocol, "nat", "POSTROUTING", subnetNatips); err != nil {
-			klog.Errorf("failed to delete iptable rule on node %s, maybe can delete manually, %v", c.config.NodeName, err)
+			klog.Errorf("failed to delete iptables rule on node %s, maybe can delete manually, %v", c.config.NodeName, err)
 			return err
 		}
 
 		var matchset string
-		var abandonedRules, iptableRules []util.IPTableRule
+		var abandonedRules, iptablesRules []util.IPTableRule
 		if protocol == kubeovnv1.ProtocolIPv4 {
-			abandonedRules, iptableRules = v4AbandonedRules, v4Rules
+			abandonedRules, iptablesRules = v4AbandonedRules, v4Rules
 			matchset = "ovn40subnets"
 		} else {
-			abandonedRules, iptableRules = v6AbandonedRules, v6Rules
+			abandonedRules, iptablesRules = v6AbandonedRules, v6Rules
 			matchset = "ovn60subnets"
 		}
 
 		if nodeIP := nodeIPs[protocol]; nodeIP != "" {
 			abandonedRules = append(abandonedRules, util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`-o ovn0 ! -s %s -m mark --mark 0x4000/0x4000 -j MASQUERADE`, nodeIP))})
 
-			rules := make([]util.IPTableRule, len(iptableRules)+1)
-			copy(rules[:2], iptableRules[:2])
+			rules := make([]util.IPTableRule, len(iptablesRules)+1)
+			copy(rules[:2], iptablesRules[:2])
 			rules[2] = util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset))}
-			copy(rules[3:], iptableRules[2:])
-			iptableRules = rules
+			copy(rules[3:], iptablesRules[2:])
+			iptablesRules = rules
 		}
 
 		// delete abandoned iptables rules
 		for _, iptRule := range abandonedRules {
-			exists, err := c.iptable[protocol].Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
+			exists, err := c.iptables[protocol].Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
 			if err != nil {
 				klog.Errorf("failed to check existence of iptables rule: %v", err)
 				return err
 			}
 			if exists {
 				klog.Infof("deleting abandoned iptables rule: %s", strings.Join(iptRule.Rule, " "))
-				if err := c.iptable[protocol].Delete(iptRule.Table, iptRule.Chain, iptRule.Rule...); err != nil {
+				if err := c.iptables[protocol].Delete(iptRule.Table, iptRule.Chain, iptRule.Rule...); err != nil {
 					klog.Errorf("failed to delete iptables rule %s: %v", strings.Join(iptRule.Rule, " "), err)
 					return err
 				}
 			}
 		}
 
-		// add iptable rule for nat gw with designative ip in centralize subnet
+		// add iptables rule for nat gw with designative ip in centralized subnet
 		for cidr, natip := range subnetNatips {
 			if util.CheckProtocol(cidr) != protocol {
 				continue
@@ -544,30 +544,30 @@ func (c *Controller) setIptables() error {
 				Chain: "POSTROUTING",
 				Rule:  strings.Fields(ruleval),
 			}
-			iptableRules = append(iptableRules, rule)
+			iptablesRules = append(iptablesRules, rule)
 		}
 
 		// reverse rules in nat table
 		var idx int
-		for idx = range iptableRules {
-			if iptableRules[idx].Table != "nat" {
+		for idx = range iptablesRules {
+			if iptablesRules[idx].Table != "nat" {
 				break
 			}
 		}
 		for i := 0; i < idx/2; i++ {
-			iptableRules[i], iptableRules[idx-1-i] = iptableRules[idx-1-i], iptableRules[i]
+			iptablesRules[i], iptablesRules[idx-1-i] = iptablesRules[idx-1-i], iptablesRules[i]
 		}
 
-		for _, iptRule := range iptableRules {
-			exists, err := c.iptable[protocol].Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
+		for _, iptRule := range iptablesRules {
+			exists, err := c.iptables[protocol].Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
 			if err != nil {
-				klog.Errorf("check iptable rule exist failed, %+v", err)
+				klog.Errorf("check iptables rule exist failed, %+v", err)
 				return err
 			}
 			if !exists {
 				klog.Infof("iptables rules %s not exist, recreate iptables rules", strings.Join(iptRule.Rule, " "))
-				if err := c.iptable[protocol].Insert(iptRule.Table, iptRule.Chain, 1, iptRule.Rule...); err != nil {
-					klog.Errorf("insert iptable rule %s failed, %+v", strings.Join(iptRule.Rule, " "), err)
+				if err := c.iptables[protocol].Insert(iptRule.Table, iptRule.Chain, 1, iptRule.Rule...); err != nil {
+					klog.Errorf("insert iptables rule %s failed, %+v", strings.Join(iptRule.Rule, " "), err)
 					return err
 				}
 			}
@@ -657,7 +657,7 @@ func (c *Controller) setExGateway() error {
 
 		output, err = ovs.Exec("set", "open", ".", fmt.Sprintf("external-ids:ovn-bridge-mappings=%s", bridgeMappings))
 		if err != nil {
-			return fmt.Errorf("failed to set bridg-mappings, %v: %q", err, output)
+			return fmt.Errorf("failed to set bridge-mappings, %v: %q", err, output)
 		}
 	} else {
 		if _, err := ovs.Exec(
@@ -892,8 +892,8 @@ func (c *Controller) getOverlaySubnetsCIDR(protocol string) ([]string, error) {
 	}
 
 	ret := make([]string, 0, len(subnets)+1)
-	if c.config.NodeLocalDNSIP != "" && net.ParseIP(c.config.NodeLocalDNSIP) != nil && util.CheckProtocol(c.config.NodeLocalDNSIP) == protocol {
-		ret = append(ret, c.config.NodeLocalDNSIP)
+	if c.config.NodeLocalDnsIP != "" && net.ParseIP(c.config.NodeLocalDnsIP) != nil && util.CheckProtocol(c.config.NodeLocalDnsIP) == protocol {
+		ret = append(ret, c.config.NodeLocalDnsIP)
 	}
 	for _, subnet := range subnets {
 		if subnet.Spec.Vpc == util.DefaultVpc && subnet.Spec.Vlan == "" {
@@ -955,16 +955,16 @@ func (c *Controller) appendMssRule() {
 }
 
 func (c *Controller) updateMssRuleByProtocol(protocol string, MssMangleRule util.IPTableRule) {
-	exists, err := c.iptable[protocol].Exists(MssMangleRule.Table, MssMangleRule.Chain, MssMangleRule.Rule...)
+	exists, err := c.iptables[protocol].Exists(MssMangleRule.Table, MssMangleRule.Chain, MssMangleRule.Rule...)
 	if err != nil {
-		klog.Errorf("check iptable rule %v failed, %+v", MssMangleRule.Rule, err)
+		klog.Errorf("check iptables rule %v failed, %+v", MssMangleRule.Rule, err)
 		return
 	}
 
 	if !exists {
 		klog.Infof("iptables rules %s not exist, append iptables rules", strings.Join(MssMangleRule.Rule, " "))
-		if err := c.iptable[protocol].Append(MssMangleRule.Table, MssMangleRule.Chain, MssMangleRule.Rule...); err != nil {
-			klog.Errorf("append iptable rule %v failed, %+v", MssMangleRule.Rule, err)
+		if err := c.iptables[protocol].Append(MssMangleRule.Table, MssMangleRule.Chain, MssMangleRule.Rule...); err != nil {
+			klog.Errorf("append iptables rule %v failed, %+v", MssMangleRule.Rule, err)
 			return
 		}
 	}
@@ -1012,9 +1012,9 @@ func (c *Controller) getEgressNatIpByNode(nodeName string) (map[string]string, e
 }
 
 func (c *Controller) deleteUnusedIptablesRule(protocol, table, chain string, subnetsNatIps map[string]string) error {
-	rules, err := c.iptable[protocol].List(table, chain)
+	rules, err := c.iptables[protocol].List(table, chain)
 	if err != nil {
-		klog.Errorf("failed to list iptable rules in table %v chain %v, %+v", table, chain, err)
+		klog.Errorf("failed to list iptables rules in table %v chain %v, %+v", table, chain, err)
 		return err
 	}
 
@@ -1040,15 +1040,15 @@ func (c *Controller) deleteUnusedIptablesRule(protocol, table, chain string, sub
 		}
 
 		if !found {
-			num, err := getIptableRuleNum(table, chain, rule, dstNatIp)
+			num, err := getIptablesRuleNum(table, chain, rule, dstNatIp)
 			if err != nil {
-				klog.Errorf("failed to get iptable rule num when delete rule %v, please check manually", rule)
+				klog.Errorf("failed to get iptables rule num when delete rule %v, please check manually", rule)
 				continue
 			}
 
-			klog.Infof("iptable rule %v %v %s, num %v should be deleted because nat gw has been changed", table, chain, rule, num)
-			if err := c.iptable[protocol].Delete(table, chain, num); err != nil {
-				klog.Errorf("delete iptable rule %s failed, %+v", rule, err)
+			klog.Infof("iptables rule %v %v %s, num %v should be deleted because nat gw has been changed", table, chain, rule, num)
+			if err := c.iptables[protocol].Delete(table, chain, num); err != nil {
+				klog.Errorf("delete iptables rule %s failed, %+v", rule, err)
 				return err
 			}
 		}
@@ -1056,7 +1056,7 @@ func (c *Controller) deleteUnusedIptablesRule(protocol, table, chain string, sub
 	return nil
 }
 
-func getIptableRuleNum(table, chain, rule, dstNatIp string) (string, error) {
+func getIptablesRuleNum(table, chain, rule, dstNatIp string) (string, error) {
 	var num string
 	var err error
 
@@ -1064,13 +1064,13 @@ func getIptableRuleNum(table, chain, rule, dstNatIp string) (string, error) {
 	cmd := exec.Command("sh", "-c", cmdstr)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return num, fmt.Errorf("Failed to get iptable rule num: %v", err)
+		return num, fmt.Errorf("failed to get iptables rule num: %v", err)
 	}
 
 	for _, line := range strings.Split(string(output), "\n") {
 		if strings.Contains(line, dstNatIp) {
 			num = strings.Fields(line)[0]
-			klog.Infof("get iptable rule %v num %v", rule, num)
+			klog.Infof("get iptables rule %v num %v", rule, num)
 			break
 		}
 	}

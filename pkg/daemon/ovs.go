@@ -488,7 +488,7 @@ func configExternalBridge(provider, bridge, nic string) error {
 		return fmt.Errorf("failed to create OVS bridge %s, %v: %q", bridge, err, output)
 	}
 	if output, err = ovs.Exec("list-ports", bridge); err != nil {
-		return fmt.Errorf("failed to list ports of OVS birdge %s, %v: %q", bridge, err, output)
+		return fmt.Errorf("failed to list ports of OVS bridge %s, %v: %q", bridge, err, output)
 	}
 	if output != "" {
 		for _, port := range strings.Split(output, "\n") {
@@ -499,7 +499,7 @@ func configExternalBridge(provider, bridge, nic string) error {
 				}
 				if ok {
 					if err = removeProviderNic(port, bridge); err != nil {
-						return fmt.Errorf("failed to remove port %s from OVS birdge %s: %v", port, bridge, err)
+						return fmt.Errorf("failed to remove port %s from OVS bridge %s: %v", port, bridge, err)
 					}
 				}
 			}
@@ -558,7 +558,7 @@ func configProviderNic(nicName, brName string) (int, error) {
 
 	if _, err = ovs.Exec(ovs.MayExist, "add-port", brName, nicName,
 		"--", "set", "port", nicName, "external_ids:vendor="+util.CniTypeName); err != nil {
-		return 0, fmt.Errorf("failed to add %s to OVS birdge %s: %v", nicName, brName, err)
+		return 0, fmt.Errorf("failed to add %s to OVS bridge %s: %v", nicName, brName, err)
 	}
 
 	for _, addr := range addrs {
@@ -640,7 +640,7 @@ func removeProviderNic(nicName, brName string) error {
 	}
 
 	if _, err = ovs.Exec(ovs.IfExists, "del-port", brName, nicName); err != nil {
-		return fmt.Errorf("failed to remove %s from OVS birdge %s: %v", nicName, brName, err)
+		return fmt.Errorf("failed to remove %s from OVS bridge %s: %v", nicName, brName, err)
 	}
 
 	for _, addr := range addrs {

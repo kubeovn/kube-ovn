@@ -63,8 +63,8 @@ type Controller struct {
 
 	recorder record.EventRecorder
 
-	iptable   map[string]*iptables.IPTables
-	ipset     map[string]*ipsets.IPSets
+	iptables  map[string]*iptables.IPTables
+	ipsets    map[string]*ipsets.IPSets
 	ipsetLock sync.Mutex
 
 	protocol string
@@ -111,23 +111,23 @@ func NewController(config *Configuration, podInformerFactory informers.SharedInf
 	}
 	controller.protocol = util.CheckProtocol(node.Annotations[util.IpAddressAnnotation])
 
-	controller.iptable = make(map[string]*iptables.IPTables)
-	controller.ipset = make(map[string]*ipsets.IPSets)
+	controller.iptables = make(map[string]*iptables.IPTables)
+	controller.ipsets = make(map[string]*ipsets.IPSets)
 	if controller.protocol == kubeovnv1.ProtocolIPv4 || controller.protocol == kubeovnv1.ProtocolDual {
-		iptable, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
+		iptables, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
 		if err != nil {
 			return nil, err
 		}
-		controller.iptable[kubeovnv1.ProtocolIPv4] = iptable
-		controller.ipset[kubeovnv1.ProtocolIPv4] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil))
+		controller.iptables[kubeovnv1.ProtocolIPv4] = iptables
+		controller.ipsets[kubeovnv1.ProtocolIPv4] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil))
 	}
 	if controller.protocol == kubeovnv1.ProtocolIPv6 || controller.protocol == kubeovnv1.ProtocolDual {
-		iptable, err := iptables.NewWithProtocol(iptables.ProtocolIPv6)
+		iptables, err := iptables.NewWithProtocol(iptables.ProtocolIPv6)
 		if err != nil {
 			return nil, err
 		}
-		controller.iptable[kubeovnv1.ProtocolIPv6] = iptable
-		controller.ipset[kubeovnv1.ProtocolIPv6] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV6, IPSetPrefix, nil, nil))
+		controller.iptables[kubeovnv1.ProtocolIPv6] = iptables
+		controller.ipsets[kubeovnv1.ProtocolIPv6] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV6, IPSetPrefix, nil, nil))
 	}
 
 	providerNetworkInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -971,7 +971,7 @@ func (c *Controller) handlePod(key string) error {
 	if err != nil {
 		return err
 	}
-	// set multis-nic bandwidth
+	// set multus-nic bandwidth
 	attachNets, err := util.ParsePodNetworkAnnotation(pod.Annotations[util.AttachmentNetworkAnnotation], pod.Namespace)
 	if err != nil {
 		return err

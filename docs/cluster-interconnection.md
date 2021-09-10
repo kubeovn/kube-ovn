@@ -4,8 +4,8 @@ From v1.4.0, two or more Kubernetes clusters can be connected with each other. P
 communicate directly using Pod IP. Kub-OVN uses tunnel to encapsulate traffic between clusters gateways, 
 only L3 connectivity for gateway nodes is required.
 
-## Prerequest
-* To use route auto advertise, subnet CIDRs in different clusters *MUST NOT* be overlapped with each other，including ovn-default and join subnets CIDRs. Otherwise, you should disable the auto route and add routes mannually.
+## Prerequisite
+* To use route auto advertise, subnet CIDRs in different clusters *MUST NOT* be overlapped with each other，including ovn-default and join subnets CIDRs. Otherwise, you should disable the auto route and add routes manually.
 * The Interconnection Controller *SHOULD* be deployed in a region that every cluster can access by IP.
 * Every cluster *SHOULD* have at least one node(work as gateway later) that can access other gateway nodes in different clusters by IP.
 * Cluster interconnection network now *CANNOT* work together with SNAT and EIP functions.

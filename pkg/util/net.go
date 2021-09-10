@@ -340,7 +340,7 @@ func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
 		if strings.Contains(excludeIP, "..") {
 			parts := strings.Split(excludeIP, "..")
 			if len(parts) != 2 || CheckProtocol(parts[0]) != CheckProtocol(parts[1]) {
-				klog.Errorf("invalid exlcude IP: %s", excludeIP)
+				klog.Errorf("invalid exclude IP: %s", excludeIP)
 				continue
 			}
 			s := Ip2BigInt(parts[0])

@@ -579,7 +579,7 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 
 func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	if vpcNatEnabled != "true" {
-		return fmt.Errorf("failed to updat subnet route, vpcNatEnabled='%s'", vpcNatEnabled)
+		return fmt.Errorf("failed to update subnet route, vpcNatEnabled='%s'", vpcNatEnabled)
 	}
 	c.vpcNatGwKeyMutex.Lock(natGwKey)
 	defer c.vpcNatGwKeyMutex.Unlock(natGwKey)

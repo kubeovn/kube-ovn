@@ -86,7 +86,7 @@ func checkPermission(config *controller.Configuration) error {
 			return err
 		}
 		if !ssar.Status.Allowed {
-			return fmt.Errorf("no permission to wath resource %s, %s", res, ssar.Status.Reason)
+			return fmt.Errorf("no permission to watch resource %s, %s", res, ssar.Status.Reason)
 		}
 	}
 	return nil

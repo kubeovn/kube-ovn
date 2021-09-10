@@ -25,7 +25,7 @@ All the OVN components in Kube-OVN are packed into the docker image and can run 
 
 #### ovn-central
 
-It's a deployment that runs OVN management components including `ovn-nb`, `ovn-sb`, and `ovn-norhtd`.
+It's a deployment that runs OVN management components including `ovn-nb`, `ovn-sb`, and `ovn-northd`.
 `ovn-nb` stores the logical network and provides API for controllers to manage the logical network.
 It's the main components that the Kube-OVN controller will interact with.
 

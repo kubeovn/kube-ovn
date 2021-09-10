@@ -126,7 +126,7 @@ func registerClientMetrics() {
 	clientmetrics.Register(opts)
 }
 
-// registerReflectorMetrics sets up reflector (reconile) loop metrics
+// registerReflectorMetrics sets up reflector (reconcile) loop metrics
 func registerReflectorMetrics() {
 	prometheus.MustRegister(listsTotal)
 	prometheus.MustRegister(listsDuration)
@@ -140,7 +140,7 @@ func registerReflectorMetrics() {
 	reflectormetrics.SetReflectorMetricsProvider(reflectorMetricsProvider{})
 }
 
-// this section contains adapters, implementations, and other sundry organic, artisinally
+// this section contains adapters, implementations, and other sundry organic, artisanally
 // hand-crafted syntax trees required to convince client-go that it actually wants to let
 // someone use its metrics.
 
