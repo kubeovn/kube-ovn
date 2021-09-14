@@ -326,6 +326,7 @@ type Vpc struct {
 type VpcSpec struct {
 	Namespaces   []string       `json:"namespaces,omitempty"`
 	StaticRoutes []*StaticRoute `json:"staticRoutes,omitempty"`
+	PolicyRoutes []*PolicyRoute `json:"policyRoutes,omitempty"`
 }
 
 type RoutePolicy string
@@ -339,6 +340,23 @@ type StaticRoute struct {
 	Policy    RoutePolicy `json:"policy,omitempty"`
 	CIDR      string      `json:"cidr"`
 	NextHopIP string      `json:"nextHopIP"`
+}
+
+type PolicyRouteAction string
+
+const (
+	PolicyRouteActionAllow   PolicyRouteAction = "allow"
+	PolicyRouteActionDrop    PolicyRouteAction = "drop"
+	PolicyRouteActionReroute PolicyRouteAction = "reroute"
+)
+
+type PolicyRoute struct {
+	Priority int32             `json:"priority,omitempty"`
+	Match    string            `json:"match,omitempty"`
+	Action   PolicyRouteAction `json:"action,omitempty"`
+	// NextHopIP is an optional parameter. It needs to be provided only when 'action' is 'reroute'.
+	// +optional
+	NextHopIP string `json:"nextHopIP,omitempty"`
 }
 
 type VpcStatus struct {

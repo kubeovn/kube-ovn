@@ -265,14 +265,14 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	}
 
 	if vpc.Name != util.DefaultVpc {
-		// handle route
+		// handle static route
 		existRoute, err := c.ovnClient.GetStaticRouteList(vpc.Name)
 		if err != nil {
 			klog.Errorf("failed to get vpc %s static route list, %v", vpc.Name, err)
 			return err
 		}
 
-		routeNeedDel, routeNeedAdd, err := diffRoute(existRoute, vpc.Spec.StaticRoutes)
+		routeNeedDel, routeNeedAdd, err := diffStaticRoute(existRoute, vpc.Spec.StaticRoutes)
 		if err != nil {
 			klog.Errorf("failed to diff vpc %s static route, %v", vpc.Name, err)
 			return err
@@ -287,6 +287,30 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		for _, item := range routeNeedAdd {
 			if err = c.ovnClient.AddStaticRoute(convertPolicy(item.Policy), item.CIDR, item.NextHopIP, vpc.Name, util.NormalRouteType); err != nil {
 				klog.Errorf("add static route to vpc %s failed, %v", vpc.Name, err)
+				return err
+			}
+		}
+		// handle policy route
+		existPolicyRoute, err := c.ovnClient.GetPolicyRouteList(vpc.Name)
+		if err != nil {
+			klog.Errorf("failed to get vpc %s policy route list, %v", vpc.Name, err)
+			return err
+		}
+
+		policyRouteNeedDel, policyRouteNeedAdd, err := diffPolicyRoute(existPolicyRoute, vpc.Spec.PolicyRoutes)
+		if err != nil {
+			klog.Errorf("failed to diff vpc %s policy route, %v", vpc.Name, err)
+			return err
+		}
+		for _, item := range policyRouteNeedDel {
+			if err = c.ovnClient.DeletePolicyRoute(vpc.Name, item.Priority, item.Match); err != nil {
+				klog.Errorf("del vpc %s policy route failed, %v", vpc.Name, err)
+				return err
+			}
+		}
+		for _, item := range policyRouteNeedAdd {
+			if err = c.ovnClient.AddPolicyRoute(vpc.Name, item.Priority, item.Match, string(item.Action), item.NextHopIP); err != nil {
+				klog.Errorf("add policy route to vpc %s failed, %v", vpc.Name, err)
 				return err
 			}
 		}
@@ -315,7 +339,41 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	return nil
 }
 
-func diffRoute(exist []*ovs.StaticRoute, target []*kubeovnv1.StaticRoute) (routeNeedDel []*kubeovnv1.StaticRoute, routeNeedAdd []*kubeovnv1.StaticRoute, err error) {
+func diffPolicyRoute(exist []*ovs.PolicyRoute, target []*kubeovnv1.PolicyRoute) (routeNeedDel []*kubeovnv1.PolicyRoute, routeNeedAdd []*kubeovnv1.PolicyRoute, err error) {
+	existV1 := make([]*kubeovnv1.PolicyRoute, 0, len(exist))
+	for _, item := range exist {
+		existV1 = append(existV1, &kubeovnv1.PolicyRoute{
+			Priority:  item.Priority,
+			Match:     item.Match,
+			Action:    kubeovnv1.PolicyRouteAction(item.Action),
+			NextHopIP: item.NextHopIP,
+		})
+	}
+
+	existRouteMap := make(map[string]*kubeovnv1.PolicyRoute, len(exist))
+	for _, item := range existV1 {
+		existRouteMap[getPolicyRouteItemKey(item)] = item
+	}
+
+	for _, item := range target {
+		key := getPolicyRouteItemKey(item)
+		if _, ok := existRouteMap[key]; ok {
+			delete(existRouteMap, key)
+		} else {
+			routeNeedAdd = append(routeNeedAdd, item)
+		}
+	}
+	for _, item := range existRouteMap {
+		routeNeedDel = append(routeNeedDel, item)
+	}
+	return routeNeedDel, routeNeedAdd, nil
+}
+
+func getPolicyRouteItemKey(item *kubeovnv1.PolicyRoute) (key string) {
+	return fmt.Sprintf("%d:%s:%s:%s", item.Priority, item.Match, item.Action, item.NextHopIP)
+}
+
+func diffStaticRoute(exist []*ovs.StaticRoute, target []*kubeovnv1.StaticRoute) (routeNeedDel []*kubeovnv1.StaticRoute, routeNeedAdd []*kubeovnv1.StaticRoute, err error) {
 	existV1 := make([]*kubeovnv1.StaticRoute, 0, len(exist))
 	for _, item := range exist {
 		policy := kubeovnv1.PolicyDst
@@ -331,11 +389,11 @@ func diffRoute(exist []*ovs.StaticRoute, target []*kubeovnv1.StaticRoute) (route
 
 	existRouteMap := make(map[string]*kubeovnv1.StaticRoute, len(exist))
 	for _, item := range existV1 {
-		existRouteMap[getRouteItemKey(item)] = item
+		existRouteMap[getStaticRouteItemKey(item)] = item
 	}
 
 	for _, item := range target {
-		key := getRouteItemKey(item)
+		key := getStaticRouteItemKey(item)
 		if _, ok := existRouteMap[key]; ok {
 			delete(existRouteMap, key)
 		} else {
@@ -348,7 +406,7 @@ func diffRoute(exist []*ovs.StaticRoute, target []*kubeovnv1.StaticRoute) (route
 	return
 }
 
-func getRouteItemKey(item *kubeovnv1.StaticRoute) (key string) {
+func getStaticRouteItemKey(item *kubeovnv1.StaticRoute) (key string) {
 	if item.Policy == kubeovnv1.PolicyDst {
 		return fmt.Sprintf("dst:%s=>%s", item.CIDR, item.NextHopIP)
 	} else {
@@ -389,6 +447,16 @@ func formatVpc(vpc *kubeovnv1.Vpc, c *Controller) (err error) {
 				return fmt.Errorf("bad next hop ip: %s, err: %w", item.NextHopIP, err)
 			}
 
+		}
+
+		for _, route := range vpc.Spec.PolicyRoutes {
+			if route.Action != kubeovnv1.PolicyRouteActionReroute {
+				route.NextHopIP = ""
+			} else {
+				if ip := net.ParseIP(route.NextHopIP); ip == nil {
+					return fmt.Errorf("bad next hop ip: %s, err: %w", route.NextHopIP, err)
+				}
+			}
 		}
 	}
 	if changed {
@@ -454,7 +522,7 @@ func (c *Controller) processNextAddVpcWorkItem() bool {
 			return nil
 		}
 		if err := c.handleAddOrUpdateVpc(key); err != nil {
-			//c.addOrUpdateVpcQueue.AddRateLimited(key)
+			// c.addOrUpdateVpcQueue.AddRateLimited(key)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
 		c.addOrUpdateVpcQueue.Forget(obj)
