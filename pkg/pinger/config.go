@@ -56,8 +56,8 @@ func ParseFlags() (*Configuration, error) {
 		argMode               = pflag.String("mode", "server", "server or job Mode")
 		argExitCode           = pflag.Int("exit-code", 0, "exit code when failure happens")
 		argInternalDns        = pflag.String("internal-dns", "kubernetes.default", "check dns from pod")
-		argExternalDns        = pflag.String("external-dns", "alauda.cn", "check external dns resolve from pod")
-		argExternalAddress    = pflag.String("external-address", "114.114.114.114", "check ping connection to an external address, default: 114.114.114.114")
+		argExternalDns        = pflag.String("external-dns", "", "check external dns resolve from pod")
+		argExternalAddress    = pflag.String("external-address", "", "check ping connection to an external address, default: 114.114.114.114")
 		argNetworkMode        = pflag.String("network-mode", "kube-ovn", "The cni plugin current cluster used, default: kube-ovn")
 
 		argPollTimeout                     = pflag.Int("ovs.timeout", 2, "Timeout on JSON-RPC requests to OVS.")
