@@ -29,3 +29,15 @@ func Test_parseLrRouteListOutput(t *testing.T) {
 	ast.Nil(err)
 	ast.Equal(6, len(routeList))
 }
+
+func Test_parseLrPolicyRouteListOutput(t *testing.T) {
+	ast := assert.New(t)
+	output := `        
+		10                              ip4.src == 1.1.0.0/24         reroute                198.19.0.4
+        10     ip4.src == 1.1.0.0/24 || ip4.src == 1.1.4.0/24         reroute                198.19.0.4
+        10 ip4.src == 1.1.0.0/24 || ip4.src == 1.1.4.0/24 || Iip4.src ==1.1.5.0/24         reroute                198.19.0.4
+        10                              ip4.src == 1.1.1.0/24            drop`
+	routeList, err := parseLrPolicyRouteListOutput(output)
+	ast.Nil(err)
+	ast.Equal(6, len(routeList))
+}

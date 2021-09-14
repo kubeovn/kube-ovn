@@ -139,7 +139,7 @@ func (c Client) SetPortExternalIds(port, key, value string) error {
 func (c Client) CreatePort(ls, port, ip, cidr, mac, pod, namespace string, portSecurity bool, securityGroups string) error {
 	var ovnCommand []string
 	if util.CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
-		//ips := strings.Split(ip, ",")
+		// ips := strings.Split(ip, ",")
 		ovnCommand = []string{MayExist, "lsp-add", ls, port, "--",
 			"lsp-set-addresses", port, mac}
 
@@ -713,6 +713,76 @@ func (c Client) AddStaticRoute(policy, cidr, nextHop, router string, routeType s
 	}
 
 	return nil
+}
+
+// AddPolicyRoute add a policy route rule in ovn
+func (c Client) AddPolicyRoute(router string, priority int32, match string, action string, nextHop string) error {
+	// lr-policy-add ROUTER PRIORITY MATCH ACTION [NEXTHOP]
+	args := []string{MayExist, "lr-policy-add", strconv.Itoa(int(priority)), match, action}
+	if nextHop != "" {
+		args = append(args, nextHop)
+	}
+	if _, err := c.ovnNbCommand(args...); err != nil {
+		return err
+	}
+	return nil
+}
+
+// DeletePolicyRoute delete a policy route rule in ovn
+func (c Client) DeletePolicyRoute(router string, priority int32, match string) error {
+	var args = []string{IfExists, "lr-policy-del", router}
+	// lr-policy-del ROUTER [PRIORITY [MATCH]]
+	if priority > 0 {
+		args = append(args, strconv.Itoa(int(priority)))
+		if match != "" {
+			args = append(args, match)
+		}
+	}
+	_, err := c.ovnNbCommand(args...)
+	return err
+}
+
+type PolicyRoute struct {
+	Priority  int32
+	Match     string
+	Action    string
+	NextHopIP string
+}
+
+func (c Client) GetPolicyRouteList(router string) (routeList []*PolicyRoute, err error) {
+	output, err := c.ovnNbCommand("lr-policy-list", router)
+	if err != nil {
+		klog.Errorf("failed to list logical router policy route: %v", err)
+		return nil, err
+	}
+	return parseLrPolicyRouteListOutput(output)
+}
+
+var policyRouteRegexp = regexp.MustCompile(`^\s*(\d+)\s+(.*)\b\s+(allow|drop|reroute)\s*(.*)?$`)
+
+func parseLrPolicyRouteListOutput(output string) (routeList []*PolicyRoute, err error) {
+	lines := strings.Split(output, "\n")
+	routeList = make([]*PolicyRoute, 0, len(lines))
+	for _, l := range lines {
+		if len(l) == 0 {
+			continue
+		}
+		sm := policyRouteRegexp.FindStringSubmatch(l)
+		if len(sm) != 5 {
+			continue
+		}
+		priority, err := strconv.ParseInt(sm[1], 10, 32)
+		if err != nil {
+			return nil, fmt.Errorf("found unexpeted policy priority %s, please check", sm[1])
+		}
+		routeList = append(routeList, &PolicyRoute{
+			Priority:  int32(priority),
+			Match:     sm[2],
+			Action:    sm[3],
+			NextHopIP: sm[4],
+		})
+	}
+	return routeList, nil
 }
 
 func (c Client) GetStaticRouteList(router string) (routeList []*StaticRoute, err error) {

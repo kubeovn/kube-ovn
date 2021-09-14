@@ -284,6 +284,19 @@ spec:
                     type: string
                 type: object
               type: array
+            policyRoutes:
+              items:
+                properties:
+                  priority:
+                    type: integer
+                  action:
+                    type: string
+                  match:
+                    type: string
+                  nextHopIP:
+                    type: string
+                type: object
+              type: array
           type: object
         status:
           properties:
