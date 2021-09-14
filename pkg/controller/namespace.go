@@ -65,6 +65,12 @@ func (c *Controller) enqueueUpdateNamespace(old, new interface{}) {
 			c.updateNpQueue.Add(np)
 		}
 	}
+
+	// in case annotations are removed by other controllers
+	if newNs.Annotations == nil || newNs.Annotations[util.LogicalSwitchAnnotation] == "" {
+		klog.Warningf("no logical switch annotation for ns %s", newNs.Name)
+		c.addNamespaceQueue.Add(newNs.Name)
+	}
 }
 
 func (c *Controller) runAddNamespaceWorker() {
