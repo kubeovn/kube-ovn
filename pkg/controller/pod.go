@@ -473,7 +473,8 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 	c.podKeyMutex.Lock(key)
 	defer c.podKeyMutex.Unlock(key)
 
-	if pod != nil && pod.DeletionTimestamp == nil && isPodAlive(pod) {
+	p, _ := c.podsLister.Pods(pod.Namespace).Get(pod.Name)
+	if p != nil && p.UID != pod.UID {
 		// Pod with same name exists, just return here
 		return nil
 	}
