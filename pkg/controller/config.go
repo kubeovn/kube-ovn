@@ -63,7 +63,7 @@ func ParseFlags() (*Configuration, error) {
 	var (
 		argOvnNbAddr      = pflag.String("ovn-nb-addr", "", "ovn-nb address")
 		argOvnSbAddr      = pflag.String("ovn-sb-addr", "", "ovn-sb address")
-		argOvnTimeout     = pflag.Int("ovn-timeout", 30, "")
+		argOvnTimeout     = pflag.Int("ovn-timeout", 60, "")
 		argKubeConfigFile = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 
 		argDefaultLogicalSwitch = pflag.String("default-ls", "ovn-default", "The default logical switch name, default: ovn-default")

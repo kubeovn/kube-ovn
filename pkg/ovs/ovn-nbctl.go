@@ -1089,7 +1089,7 @@ func StartOvnNbctlDaemon(ovnNbAddr string) error {
 func CheckAlive() error {
 	output, err := exec.Command(
 		"ovn-nbctl",
-		"--timeout=10",
+		"--timeout=60",
 		"show",
 	).CombinedOutput()
 
