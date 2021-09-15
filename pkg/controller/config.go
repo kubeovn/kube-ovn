@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	attacnetclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 	"github.com/spf13/pflag"
@@ -18,15 +19,20 @@ import (
 
 // Configuration is the controller conf
 type Configuration struct {
-	BindAddress     string
-	OvnNbAddr       string
-	OvnSbAddr       string
-	OvnTimeout      int
-	KubeConfigFile  string
-	KubeRestConfig  *rest.Config
+	BindAddress    string
+	OvnNbAddr      string
+	OvnSbAddr      string
+	OvnTimeout     int
+	KubeConfigFile string
+	KubeRestConfig *rest.Config
+
 	KubeClient      kubernetes.Interface
 	KubeOvnClient   clientset.Interface
 	AttachNetClient attacnetclientset.Interface
+
+	// with no timeout
+	KubeFactoryClient    kubernetes.Interface
+	KubeOvnFactoryClient clientset.Interface
 
 	DefaultLogicalSwitch string
 	DefaultCIDR          string
@@ -177,6 +183,10 @@ func ParseFlags() (*Configuration, error) {
 		return nil, err
 	}
 
+	if err := config.initKubeFactoryClient(); err != nil {
+		return nil, err
+	}
+
 	klog.Infof("config is  %+v", config)
 	return config, nil
 }
@@ -196,8 +206,8 @@ func (config *Configuration) initKubeClient() error {
 	}
 	cfg.QPS = 1000
 	cfg.Burst = 2000
-
-	config.KubeRestConfig = cfg
+	// use cmd arg to modify timeout later
+	cfg.Timeout = 30 * time.Second
 
 	AttachNetClient, err := attacnetclientset.NewForConfig(cfg)
 	if err != nil {
@@ -221,5 +231,41 @@ func (config *Configuration) initKubeClient() error {
 		return err
 	}
 	config.KubeClient = kubeClient
+	return nil
+}
+
+func (config *Configuration) initKubeFactoryClient() error {
+	var cfg *rest.Config
+	var err error
+	if config.KubeConfigFile == "" {
+		klog.Infof("no --kubeconfig, use in-cluster kubernetes config")
+		cfg, err = rest.InClusterConfig()
+	} else {
+		cfg, err = clientcmd.BuildConfigFromFlags("", config.KubeConfigFile)
+	}
+	if err != nil {
+		klog.Errorf("failed to build kubeconfig %v", err)
+		return err
+	}
+	cfg.QPS = 1000
+	cfg.Burst = 2000
+
+	config.KubeRestConfig = cfg
+
+	kubeOvnClient, err := clientset.NewForConfig(cfg)
+	if err != nil {
+		klog.Errorf("init kubeovn client failed %v", err)
+		return err
+	}
+	config.KubeOvnFactoryClient = kubeOvnClient
+
+	cfg.ContentType = "application/vnd.kubernetes.protobuf"
+	cfg.AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
+	kubeClient, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		klog.Errorf("init kubernetes client failed %v", err)
+		return err
+	}
+	config.KubeFactoryClient = kubeClient
 	return nil
 }
