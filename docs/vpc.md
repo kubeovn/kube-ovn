@@ -9,6 +9,7 @@ By default, all subnets without VPC options belong to the default VPC. All funct
 
 ```yaml
 kind: Vpc
+apiVersion: kubeovn.io/v1
 metadata:
   name: test-vpc-1
 spec:
@@ -16,6 +17,7 @@ spec:
   - ns1
 ---
 kind: Vpc
+apiVersion: kubeovn.io/v1
 metadata:
   name: test-vpc-2
 spec: {}
@@ -78,6 +80,7 @@ VPC level policy routes to orchestrate traffic.
 
 ```yaml
 kind: Vpc
+apiVersion: kubeovn.io/v1
 metadata:
   name: test-vpc-1
 spec:
