@@ -1,5 +1,5 @@
 # syntax = docker/dockerfile:experimental
-FROM ubuntu:20.04 as ovs-builder
+FROM ubuntu:21.04 as ovs-builder
 
 ARG RPM_ARCH
 ARG ARCH
@@ -41,14 +41,17 @@ RUN mkdir /packages/ && \
      cp /usr/src/ovn-*.deb /packages && \
      cd /packages && rm -f *dbg* *datapath* *docker* *vtep* *ipsec* *test* *dev*
 
-FROM ubuntu:20.04
+FROM ubuntu:21.04
 ARG RPM_ARCH
+ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
-        ethtool iproute2 ncat libunbound-dev procps libatomic1 kmod \
+        ethtool iproute2 ncat libunbound-dev procps libatomic1 kmod iptables \
         tcpdump ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 \
         logrotate -y --no-install-recommends && \
-        rm -rf /var/lib/apt/lists/*
+        rm -rf /var/lib/apt/lists/* && \
+        ln -sf /usr/sbin/iptables-legacy iptables && \
+        rm -rf /etc/localtime
 
 RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /var/run/ovn && \
