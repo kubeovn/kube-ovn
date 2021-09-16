@@ -328,22 +328,22 @@ func (c Client) AddLbToLogicalSwitch(tcpLb, tcpSessLb, udpLb, udpSessLb, ls stri
 
 func (c Client) RemoveLbFromLogicalSwitch(tcpLb, tcpSessLb, udpLb, udpSessLb, ls string) error {
 	if err := c.removeLoadBalancerFromLogicalSwitch(tcpLb, ls); err != nil {
-		klog.Errorf("failed to add tcp lb to %s, %v", ls, err)
+		klog.Errorf("failed to remove tcp lb from %s, %v", ls, err)
 		return err
 	}
 
 	if err := c.removeLoadBalancerFromLogicalSwitch(udpLb, ls); err != nil {
-		klog.Errorf("failed to add udp lb to %s, %v", ls, err)
+		klog.Errorf("failed to remove udp lb from %s, %v", ls, err)
 		return err
 	}
 
 	if err := c.removeLoadBalancerFromLogicalSwitch(tcpSessLb, ls); err != nil {
-		klog.Errorf("failed to add tcp session lb to %s, %v", ls, err)
+		klog.Errorf("failed to remove tcp session lb from %s, %v", ls, err)
 		return err
 	}
 
 	if err := c.removeLoadBalancerFromLogicalSwitch(udpSessLb, ls); err != nil {
-		klog.Errorf("failed to add udp session lb to %s, %v", ls, err)
+		klog.Errorf("failed to remove udp session lb from %s, %v", ls, err)
 		return err
 	}
 

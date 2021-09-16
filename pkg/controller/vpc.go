@@ -575,7 +575,13 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 	}
 
 	for _, subnet := range allSubnets {
-		if subnet.Spec.Vpc == vpc.Name {
+		deleted, err := c.handleSubnetFinalizer(subnet)
+		if err != nil {
+			klog.Errorf("handle subnet finalizer failed %v", err)
+			return nil, "", err
+		}
+
+		if !deleted && subnet.Spec.Vpc == vpc.Name {
 			subnets = append(subnets, subnet.Name)
 			if subnet.Spec.Default {
 				defaultSubnet = subnet.Name
