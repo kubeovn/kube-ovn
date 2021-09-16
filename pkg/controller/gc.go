@@ -213,6 +213,13 @@ func (c *Controller) markAndCleanLSP() error {
 				continue
 			}
 			providerName := strings.ReplaceAll(k, util.AllocatedAnnotationSuffix, "")
+			isProviderovn, err := c.isOVNProvided(providerName, pod)
+			if err != nil {
+				klog.Errorf("determine if provider is ovn failed %v", err)
+			}
+			if !isProviderovn {
+				continue
+			}
 			ipNames = append(ipNames, ovs.PodNameToPortName(pod.Name, pod.Namespace, providerName))
 		}
 	}
@@ -524,4 +531,17 @@ func (c *Controller) gcStaticRoute() error {
 		}
 	}
 	return nil
+}
+
+func (c *Controller) isOVNProvided(providerName string, pod *corev1.Pod) (bool, error) {
+	ls := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)]
+	subnet, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), ls, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("parse annotation logical switch %s error %v", ls, err)
+		return false, err
+	}
+	if subnet.Spec.Provider != "ovn" {
+		return false, nil
+	}
+	return true, nil
 }
