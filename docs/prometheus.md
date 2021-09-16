@@ -21,5 +21,3 @@ Kube-OVN-CNI grafana dashboard config can be found [here](../dist/monitoring/cni
 ![alt text](cni-grafana.png "kube-ovn-controller grafana dashboard")
 
 OVN grafana dashboard config can be found [here](../dist/monitoring/ovn-grafana.json)
-
-OVN grafana dashboard config can be found [here](../dist/monitoring/ovs-grafana.json)
