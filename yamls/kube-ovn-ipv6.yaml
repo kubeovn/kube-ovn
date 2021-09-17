@@ -47,6 +47,7 @@ spec:
             - --default-gateway=2001:db8:0000:0000::1
             - --node-switch-cidr=2001:db8:0000:0001::/64
             - --node-switch-gateway=2001:db8:0000:0001::1
+            - --service-cluster-ip-range=fd00:10:96::/112
             - --network-type=geneve
             - --default-interface-name=
             - --default-vlan-id=100
@@ -142,7 +143,7 @@ spec:
           args:
             - --enable-mirror=false
             - --encap-checksum=true
-            - --service-cluster-ip-range=10.96.0.0/12
+            - --service-cluster-ip-range=fd00:10:96::/112
             - --iface=
             - --network-type=geneve
             - --default-interface-name=

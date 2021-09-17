@@ -5,6 +5,7 @@ From v1.6.0, users can create custom VPC. Each VPC has independent address space
 By default, all subnets without VPC options belong to the default VPC. All functions and usages remain unchanged for users who are not intended to use custom VPC.
 
 ## Steps
+
 1. Create a custom VPC
 
 ```yaml
@@ -94,9 +95,11 @@ spec:
 ```
 
 ## VPC external gateway
+
 To connect custom VPC network with the external network, custom gateway is needed.
 
 ### Steps to use VPC external gateway
+
 First, you need to confirm that Multus-CNI and macvlan CNI have been installed. Then we start to config the VPC nat gateway.
 
 1. Config and enable the feature
@@ -112,6 +115,7 @@ data:
   enable-vpc-nat-gw: true                  # 'true' for enable, 'false' for disable
   nic: eth1                                # The nic that connect to underlay network, use as the 'master' for macvlan
 ```
+
 Controller will check this configmap and create network attachment definition.
 
 2. Create VPC NAT gateway
@@ -157,6 +161,70 @@ spec:
       nextHopIP: 10.0.1.254     # Should be the same as the 'lanIp' for vpc gateway
       policy: policyDst
 ```
+
+## VPC LoadBalancer
+
+Allow external network to access services in custom VPCs.
+
+### Steps to use VPC LoadBalancer
+
+1. Install Multus CNI and macvlan CNI.
+
+2. Pull docker image `kubeovn/vpc-nat-gateway:v1.8.0`.
+
+3. Create an attachment network using macvlan. Replace `eth0` on necessary.
+
+```yaml
+apiVersion: "k8s.cni.cncf.io/v1"
+kind: NetworkAttachmentDefinition
+metadata:
+  name: ovn-vpc-lb
+  namespace: kube-system
+spec:
+  config: '{
+      "cniVersion": "0.3.0",
+      "type": "macvlan",
+      "master": "eth0",
+      "mode": "bridge",
+      "ipam": {
+        "type": "kube-ovn",
+        "server_socket": "/run/openvswitch/kube-ovn-daemon.sock",
+        "provider": "ovn-vpc-lb.kube-system"
+      }
+    }'
+```
+
+3. Create a subnet used to provide IPAM for the macvlan interfaces.
+
+```yaml
+apiVersion: kubeovn.io/v1
+kind: Subnet
+metadata:
+  name: ovn-vpc-lb
+spec:
+  protocol: IPv4
+  provider: ovn-vpc-lb.kube-system
+  cidrBlock: 202.120.68.0/24
+  gateway: 202.120.68.1
+  excludeIps:
+  - 202.120.68.1..202.120.68.100
+```
+
+4. Add annotations to the custom VPC.
+
+```bash
+kubectl annotate --overwrite vpc <VPC_NAME> ovn.kubernetes.io/vpc_lb=on
+```
+
+5. Access services in the custom VPC.
+
+Add static route(s) in your host or router:
+
+```bash
+ip route add <SVC_IP> via <VPC_LB_IP>
+```
+
+Replace `<VPC_LB_IP>` with the VPC LB Pod's IP address in subnet `ovn-vpc-lb`.
 
 ## Custom VPC limitation
 

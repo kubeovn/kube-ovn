@@ -47,6 +47,7 @@ spec:
             - --default-gateway=10.16.0.1
             - --default-exclude-ips=
             - --node-switch-cidr=100.64.0.0/16
+            - --service-cluster-ip-range=10.96.0.0/12
             - --network-type=geneve
             - --default-interface-name=
             - --default-vlan-id=100

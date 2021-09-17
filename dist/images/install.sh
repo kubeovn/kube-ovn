@@ -1836,6 +1836,7 @@ spec:
           - --default-gateway=$POD_GATEWAY
           - --default-exclude-ips=$EXCLUDE_IPS
           - --node-switch-cidr=$JOIN_CIDR
+          - --service-cluster-ip-range=$SVC_CIDR
           - --network-type=$NETWORK_TYPE
           - --default-interface-name=$VLAN_INTERFACE_NAME
           - --default-vlan-id=$VLAN_ID
