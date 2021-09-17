@@ -220,7 +220,9 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		newSecurity := newPod.Annotations[fmt.Sprintf(util.PortSecurityAnnotationTemplate, podNet.ProviderName)]
 		oldSg := oldPod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
 		newSg := newPod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
-		if oldSecurity != newSecurity || oldSg != newSg {
+		oldVips := oldPod.Annotations[fmt.Sprintf(util.PortVipAnnotationTemplate, podNet.ProviderName)]
+		newVips := newPod.Annotations[fmt.Sprintf(util.PortVipAnnotationTemplate, podNet.ProviderName)]
+		if oldSecurity != newSecurity || oldSg != newSg || oldVips != newVips {
 			c.updatePodSecurityQueue.Add(key)
 			break
 		}
@@ -495,8 +497,16 @@ func (c *Controller) handleAddPod(key string) error {
 			}
 
 			securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
+			vips := pod.Annotations[fmt.Sprintf(util.PortVipAnnotationTemplate, podNet.ProviderName)]
+			for _, ip := range strings.Split(vips, ",") {
+				if ip != "" && net.ParseIP(ip) == nil {
+					klog.Errorf("invalid vip address '%s' for pod %s", ip, name)
+					vips = ""
+					break
+				}
+			}
 			portName := ovs.PodNameToPortName(name, namespace, podNet.ProviderName)
-			if err := c.ovnClient.CreatePort(subnet.Name, portName, ipStr, subnet.Spec.CIDRBlock, mac, pod.Name, pod.Namespace, portSecurity, securityGroupAnnotation); err != nil {
+			if err := c.ovnClient.CreatePort(subnet.Name, portName, ipStr, mac, pod.Name, pod.Namespace, portSecurity, securityGroupAnnotation, vips); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
 				return err
 			}
@@ -504,6 +514,9 @@ func (c *Controller) handleAddPod(key string) error {
 			if portSecurity {
 				sgNames := strings.Split(securityGroupAnnotation, ",")
 				for _, sgName := range sgNames {
+					if sgName == "" {
+						continue
+					}
 					c.syncSgPortsQueue.Add(sgName)
 				}
 			}
@@ -633,6 +646,14 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 				klog.Errorf("reconcilePortSg failed. %v", err)
 				return err
 			}
+		}
+
+		mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
+		ipStr := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
+		vips := pod.Annotations[fmt.Sprintf(util.PortVipAnnotationTemplate, podNet.ProviderName)]
+		if err = c.ovnClient.SetPortSecurity(portSecurity, ovs.PodNameToPortName(name, namespace, podNet.ProviderName), mac, ipStr, vips); err != nil {
+			klog.Errorf("setPortSecurity failed. %v", err)
+			return err
 		}
 	}
 	return nil
