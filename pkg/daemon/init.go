@@ -107,6 +107,13 @@ func ovsInitProviderNetwork(provider, nic string) (int, error) {
 		return 0, errMsg
 	}
 
+	// init provider chassis mac
+	if err := initProviderChassisMac(provider); err != nil {
+		errMsg := fmt.Errorf("failed to init chassis mac for provider %s, %v", provider, err)
+		klog.Error(errMsg)
+		return 0, errMsg
+	}
+
 	// add host nic to the external bridge
 	mtu, err := configProviderNic(nic, brName)
 	if err != nil {
@@ -152,6 +159,25 @@ func ovsCleanProviderNetwork(provider string) error {
 		if err != nil {
 			return fmt.Errorf("failed to set ovn-bridge-mappings, %v: %q", err, output)
 		}
+	}
+
+	if output, err = ovs.Exec(ovs.IfExists, "get", "open", ".", "external-ids:ovn-chassis-mac-mappings"); err != nil {
+		return fmt.Errorf("failed to get ovn-chassis-mac-mappings, %v: %q", err, output)
+	}
+	macMappings := strings.Split(output, ",")
+	for _, macMap := range macMappings {
+		if len(macMap) == len(provider)+18 && strings.HasPrefix(macMap, provider) {
+			macMappings = util.RemoveString(macMappings, macMap)
+			break
+		}
+	}
+	if len(macMappings) == 0 {
+		output, err = ovs.Exec(ovs.IfExists, "remove", "open", ".", "external-ids", "ovn-chassis-mac-mappings")
+	} else {
+		output, err = ovs.Exec("set", "open", ".", "external-ids:ovn-chassis-mac-mappings="+strings.Join(macMappings, ","))
+	}
+	if err != nil {
+		return fmt.Errorf("failed to set ovn-chassis-mac-mappings, %v: %q", err, output)
 	}
 
 	// get host nic

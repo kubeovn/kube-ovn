@@ -524,6 +524,28 @@ func configExternalBridge(provider, bridge, nic string) error {
 	return nil
 }
 
+func initProviderChassisMac(provider string) error {
+	output, err := ovs.Exec(ovs.IfExists, "get", "open", ".", "external-ids:ovn-chassis-mac-mappings")
+	if err != nil {
+		return fmt.Errorf("failed to get ovn-bridge-mappings, %v", err)
+	}
+
+	for _, macMap := range strings.Split(output, ",") {
+		if len(macMap) == len(provider)+18 && strings.Contains(output, provider) {
+			return nil
+		}
+	}
+
+	macMappings := fmt.Sprintf("%s:%s", provider, util.GenerateMac())
+	if output != "" {
+		macMappings = fmt.Sprintf("%s,%s", output, macMappings)
+	}
+	if output, err = ovs.Exec("set", "open", ".", "external-ids:ovn-chassis-mac-mappings="+macMappings); err != nil {
+		return fmt.Errorf("failed to set ovn-chassis-mac-mappings, %v: %q", err, output)
+	}
+	return nil
+}
+
 // Add host nic to external bridge
 // Mac address, MTU, IP addresses & routes will be copied/transferred to the external bridge
 func configProviderNic(nicName, brName string) (int, error) {
