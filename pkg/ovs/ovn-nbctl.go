@@ -1155,3 +1155,21 @@ func (c Client) CreateLocalnetPort(ls, port, providerName, vlanID string) error 
 
 	return nil
 }
+
+func (c Client) OvnGet(table, record, column, key string) (string, error) {
+	var columnVal string
+	if key == "" {
+		columnVal = column
+	} else {
+		columnVal = column + ":" + key
+	}
+	args := []string{"get", table, record, columnVal}
+	return c.ovnNbCommand(args...)
+}
+
+func (c Client) SetLspExternalIds(cmd []string) error {
+	if _, err := c.ovnNbCommand(cmd...); err != nil {
+		return fmt.Errorf("failed to set lsp externalIds, %v", err)
+	}
+	return nil
+}
