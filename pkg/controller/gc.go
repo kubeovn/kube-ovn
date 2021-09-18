@@ -274,7 +274,10 @@ func (c *Controller) gcLoadBalancer() error {
 		for _, vpc := range vpcs {
 			for _, subnetName := range vpc.Status.Subnets {
 				_, err := c.subnetsLister.Get(subnetName)
-				if err != nil && !k8serrors.IsNotFound(err) {
+				if err != nil {
+					if k8serrors.IsNotFound(err) {
+						continue
+					}
 					return err
 				}
 				err = c.ovnClient.RemoveLbFromLogicalSwitch(
