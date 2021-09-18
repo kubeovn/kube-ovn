@@ -205,9 +205,14 @@ func (c *Controller) markAndCleanLSP() error {
 	}
 	ipNames := make([]string, 0, len(pods)+len(nodes))
 	for _, pod := range pods {
-		if !isPodAlive(pod) {
+		if isStsPod, sts := isStatefulSetPod(pod); isStsPod {
+			if isStatefulSetPodToDel(c.config.KubeClient, pod, sts) {
+				continue
+			}
+		} else if !isPodAlive(pod) {
 			continue
 		}
+
 		for k, v := range pod.Annotations {
 			if !strings.Contains(k, util.AllocatedAnnotationSuffix) || v != "true" {
 				continue
