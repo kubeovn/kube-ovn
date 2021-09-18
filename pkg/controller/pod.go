@@ -568,6 +568,11 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 		return err
 	}
 
+	var keepIpCR bool
+	if ok, sts := isStatefulSetPod(pod); ok {
+		keepIpCR = !isStatefulSetPodToDel(c.config.KubeClient, pod, sts)
+	}
+
 	// Add additional default ports to compatible with previous versions
 	ports = append(ports, ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider))
 	for _, portName := range ports {
@@ -579,18 +584,22 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 			klog.Errorf("failed to delete lsp %s, %v", portName, err)
 			return err
 		}
-		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil {
-			if !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to delete ip %s, %v", portName, err)
-				return err
+		if !keepIpCR {
+			if err = c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil {
+				if !k8serrors.IsNotFound(err) {
+					klog.Errorf("failed to delete ip %s, %v", portName, err)
+					return err
+				}
 			}
 		}
 		for _, sg := range sgs {
 			c.syncSgPortsQueue.Add(sg)
 		}
 	}
-	if err := c.deleteAttachmentNetWorkIP(pod); err != nil {
-		klog.Errorf("failed to delete attach ip for pod %v, %v, please delete attach ip manually", pod.Name, err)
+	if !keepIpCR {
+		if err = c.deleteAttachmentNetWorkIP(pod); err != nil {
+			klog.Errorf("failed to delete attach ip for pod %v, %v, please delete attach ip manually", pod.Name, err)
+		}
 	}
 	c.ipam.ReleaseAddressByPod(key)
 	return nil
