@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -12,6 +13,7 @@ import (
 	"k8s.io/klog"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -300,6 +302,9 @@ func (c *Controller) InitIPAM() error {
 					klog.Errorf("failed to init pod %s.%s address %s: %v", pod.Name, pod.Namespace, pod.Annotations[util.IpAddressAnnotation], err)
 				}
 			}
+			if err = c.initAppendPodExternalIds(pod); err != nil {
+				klog.Errorf("failed to init append pod %s.%s externalIds: %v", pod.Name, pod.Namespace, err)
+			}
 		}
 	}
 
@@ -319,6 +324,10 @@ func (c *Controller) InitIPAM() error {
 			}
 			if v4IP != "" && v6IP != "" {
 				node.Annotations[util.IpAddressAnnotation] = util.GetStringIP(v4IP, v6IP)
+			}
+
+			if err = c.initAppendNodeExternalIds(portName, node.Name); err != nil {
+				klog.Errorf("failed to init append node %s externalIds: %v", node.Name, err)
 			}
 		}
 	}
@@ -465,5 +474,50 @@ func (c *Controller) initSyncCrdVlans() error {
 		}
 	}
 
+	return nil
+}
+
+func (c *Controller) initAppendPodExternalIds(pod *v1.Pod) error {
+	podNets, err := c.getPodKubeovnNets(pod)
+	if err != nil {
+		klog.Errorf("failed to get pod nets %v", err)
+		return err
+	}
+
+	for _, podNet := range podNets {
+		portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName)
+		externalIds, err := c.ovnClient.OvnGet("logical_switch_port", portName, "external_ids", "")
+		if err != nil {
+			klog.Errorf("failed to get lsp external_ids for pod %s/%s, %v", pod.Namespace, pod.Name, err)
+			return err
+		}
+		if strings.Contains(externalIds, "pod") || strings.Contains(externalIds, "vendor") {
+			continue
+		}
+
+		ovnCommand := []string{"set", "logical_switch_port", portName, fmt.Sprintf("external_ids:pod=%s/%s", pod.Namespace, pod.Name), fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)}
+		if err = c.ovnClient.SetLspExternalIds(ovnCommand); err != nil {
+			klog.Errorf("failed to set lsp external_ids for pod %s/%s, %v", pod.Namespace, pod.Name, err)
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) initAppendNodeExternalIds(portName, nodeName string) error {
+	externalIds, err := c.ovnClient.OvnGet("logical_switch_port", portName, "external_ids", "")
+	if err != nil {
+		klog.Errorf("failed to get lsp external_ids for node %s, %v", nodeName, err)
+		return err
+	}
+	if strings.Contains(externalIds, "vendor") {
+		return nil
+	}
+
+	ovnCommand := []string{"set", "logical_switch_port", portName, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)}
+	if err = c.ovnClient.SetLspExternalIds(ovnCommand); err != nil {
+		klog.Errorf("failed to set lsp external_ids for node %s, %v", nodeName, err)
+		return err
+	}
 	return nil
 }
