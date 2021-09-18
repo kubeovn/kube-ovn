@@ -24,6 +24,7 @@ const (
 	VpcDnatMd5Annotation        = "ovn.kubernetes.io/vpc_dnat_md5"
 	VpcSnatMd5Annotation        = "ovn.kubernetes.io/vpc_snat_md5"
 	VpcCIDRsAnnotation          = "ovn.kubernetes.io/vpc_cidrs"
+	VpcLbAnnotation             = "ovn.kubernetes.io/vpc_lb"
 	VpcExternalLabel            = "ovn.kubernetes.io/vpc_external"
 
 	LogicalRouterAnnotation = "ovn.kubernetes.io/logical_router"
@@ -71,6 +72,7 @@ const (
 	ICGatewayLabel     = "ovn.kubernetes.io/ic-gw"
 	ExGatewayLabel     = "ovn.kubernetes.io/external-gw"
 	VpcNatGatewayLabel = "ovn.kubernetes.io/vpc-nat-gw"
+	VpcLbLabel         = "ovn.kubernetes.io/vpc_lb"
 
 	ProtocolTCP = "tcp"
 	ProtocolUDP = "udp"
@@ -103,12 +105,13 @@ const (
 
 	SRIOVResourceName = "mellanox.com/cx5_sriov_switchdev"
 
-	InterconnectionConfig = "ovn-ic-config"
-	ExternalGatewayConfig = "ovn-external-gw-config"
-	InterconnectionSwitch = "ts"
-	ExternalGatewaySwitch = "ovn-external"
-	VpcNatGatewayConfig   = "ovn-vpc-nat-gw-config"
-	VpcExternalNet        = "ovn-vpc-external-network"
+	InterconnectionConfig  = "ovn-ic-config"
+	ExternalGatewayConfig  = "ovn-external-gw-config"
+	InterconnectionSwitch  = "ts"
+	ExternalGatewaySwitch  = "ovn-external"
+	VpcNatGatewayConfig    = "ovn-vpc-nat-gw-config"
+	VpcExternalNet         = "ovn-vpc-external-network"
+	VpcLbNetworkAttachment = "ovn-vpc-lb"
 
 	DefaultVpc = "ovn-cluster"
 
