@@ -51,6 +51,7 @@ RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname
         tcpdump ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 \
         logrotate -y --no-install-recommends && \
         rm -rf /var/lib/apt/lists/* && \
+        cd /usr/sbin/ && \
         ln -sf /usr/sbin/iptables-legacy iptables && \
         rm -rf /etc/localtime
 
