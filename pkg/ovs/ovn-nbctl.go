@@ -135,36 +135,41 @@ func (c Client) SetPortExternalIds(port, key, value string) error {
 	return nil
 }
 
+func (c Client) SetPortSecurity(portSecurity bool, port, mac, ipStr, vips string) error {
+	var addresses []string
+	if portSecurity {
+		addresses = append(addresses, mac)
+		addresses = append(addresses, strings.Split(ipStr, ",")...)
+		addresses = append(addresses, strings.Split(vips, ",")...)
+	}
+	if _, err := c.ovnNbCommand("lsp-set-port-security", port, strings.Join(addresses, " ")); err != nil {
+		klog.Errorf("set port %s security failed: %v", port, err)
+		return err
+	}
+	return nil
+}
+
 // CreatePort create logical switch port in ovn
-func (c Client) CreatePort(ls, port, ip, cidr, mac, pod, namespace string, portSecurity bool, securityGroups string) error {
+func (c Client) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurity bool, securityGroups string, vips string) error {
 	var ovnCommand []string
-	if util.CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
-		// ips := strings.Split(ip, ",")
-		ovnCommand = []string{MayExist, "lsp-add", ls, port, "--",
-			"lsp-set-addresses", port, mac}
+	ovnCommand = []string{MayExist, "lsp-add", ls, port, "--",
+		"lsp-set-addresses", port, mac}
 
-		ipAddr := util.GetIpAddrWithMask(ip, cidr)
-		ipAddrs := strings.Split(ipAddr, ",")
-		if portSecurity {
+	if portSecurity {
+		var addresses []string
+		addresses = append(addresses, mac)
+		addresses = append(addresses, strings.Split(ip, ",")...)
+		addresses = append(addresses, strings.Split(vips, ",")...)
+		ovnCommand = append(ovnCommand,
+			"--", "lsp-set-port-security", port, strings.Join(addresses, " "))
+
+		if securityGroups != "" {
+			sgList := strings.Split(securityGroups, ",")
 			ovnCommand = append(ovnCommand,
-				"--", "lsp-set-port-security", port, fmt.Sprintf("%s %s %s", mac, ipAddrs[0], ipAddrs[1]))
-		}
-	} else {
-		ovnCommand = []string{MayExist, "lsp-add", ls, port, "--",
-			"lsp-set-addresses", port, mac}
-
-		if portSecurity {
-			ovnCommand = append(ovnCommand,
-				"--", "lsp-set-port-security", port, fmt.Sprintf("%s %s", mac, ip))
-
-			if securityGroups != "" {
-				sgList := strings.Split(securityGroups, ",")
+				"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:security_groups=%s", securityGroups))
+			for _, sg := range sgList {
 				ovnCommand = append(ovnCommand,
-					"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:security_groups=%s", securityGroups))
-				for _, sg := range sgList {
-					ovnCommand = append(ovnCommand,
-						"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:associated_sg_%s=true", sg))
-				}
+					"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:associated_sg_%s=true", sg))
 			}
 		}
 	}
