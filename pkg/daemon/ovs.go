@@ -243,11 +243,11 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, macAd
 			return fmt.Errorf("config gateway failed %v", err)
 		}
 
-		return waitNetworkReady(gateway)
+		return waitNetworkReady(ipAddr, gateway, true)
 	})
 }
 
-func waitNetworkReady(gateway string) error {
+func waitNetworkReady(src, gateway string, verbose bool) error {
 	for _, gw := range strings.Split(gateway, ",") {
 		pinger, err := goping.NewPinger(gw)
 		if err != nil {
@@ -269,9 +269,11 @@ func waitNetworkReady(gateway string) error {
 
 		cniConnectivityResult.WithLabelValues(nodeName).Add(float64(pinger.PacketsSent))
 		if !success {
-			return fmt.Errorf("network not ready after %d ping", count)
+			return fmt.Errorf("%s network not ready after %d ping %s", src, count, gw)
 		}
-		klog.Infof("network ready after %d ping, gw %v", pinger.PacketsSent, gw)
+		if verbose {
+			klog.Infof("%s network ready after %d ping, gw %s", src, pinger.PacketsSent, gw)
+		}
 	}
 	return nil
 }
@@ -301,7 +303,7 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 	}
 
 	// ping ovn0 gw to activate the flow
-	if err := waitNetworkReady(gw); err != nil {
+	if err := waitNetworkReady(util.NodeNic, gw, true); err != nil {
 		klog.Errorf("failed to init ovn0 check: %v", err)
 		return err
 	}
@@ -327,8 +329,8 @@ func (c *Controller) loopOvn0Check() {
 		return
 	}
 	gw := node.Annotations[util.GatewayAnnotation]
-	if err := waitNetworkReady(gw); err != nil {
-		klog.Fatalf("failed to ping ovn0 gw %v", gw)
+	if err := waitNetworkReady(util.NodeNic, gw, false); err != nil {
+		klog.Fatalf("failed to ping ovn0 gw: %s, %v", gw, err)
 	}
 }
 
