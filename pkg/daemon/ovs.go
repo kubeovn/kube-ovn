@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -279,14 +278,14 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, route
 		}
 
 		if checkGw {
-			return waitNetworkReady(gateway)
+			return waitNetworkReady(ipAddr, gateway, true)
 		}
 
 		return nil
 	})
 }
 
-func waitNetworkReady(gateway string) error {
+func waitNetworkReady(src, gateway string, verbose bool) error {
 	for _, gw := range strings.Split(gateway, ",") {
 		pinger, err := goping.NewPinger(gw)
 		if err != nil {
@@ -308,9 +307,11 @@ func waitNetworkReady(gateway string) error {
 
 		cniConnectivityResult.WithLabelValues(nodeName).Add(float64(pinger.PacketsSent))
 		if !success {
-			return fmt.Errorf("network not ready after %d ping", count)
+			return fmt.Errorf("%s network not ready after %d ping %s", src, count, gw)
 		}
-		klog.Infof("network ready after %d ping, gw %v", pinger.PacketsSent, gw)
+		if verbose {
+			klog.Infof("%s network ready after %d ping, gw %s", src, pinger.PacketsSent, gw)
+		}
 	}
 	return nil
 }
@@ -340,12 +341,10 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 	}
 
 	// ping ovn0 gw to activate the flow
-	output, err := ovn0Check(gw)
-	if err != nil {
-		klog.Errorf("failed to init ovn0 check: %v, %q", err, output)
+	if err := waitNetworkReady(util.NodeNic, gw, true); err != nil {
+		klog.Errorf("failed to init ovn0 check: %v", err)
 		return err
 	}
-	klog.Infof("ping gw result is: \n %s", output)
 
 	return nil
 }
@@ -368,42 +367,8 @@ func (c *Controller) loopOvn0Check() {
 		return
 	}
 	gw := node.Annotations[util.GatewayAnnotation]
-	if output, err := ovn0Check(gw); err != nil {
-		klog.Fatalf("failed to ping ovn0 gw: %v, %q", gw, output)
-	}
-}
-
-func ovn0Check(gw string) ([]byte, error) {
-	protocol := util.CheckProtocol(gw)
-	if protocol == kubeovnv1.ProtocolDual {
-		gws := strings.Split(gw, ",")
-		output, err := exec.Command("ping", "-w", "10", gws[0]).CombinedOutput()
-		klog.V(3).Infof("ping v4 gw result is: \n %s", output)
-		if err != nil {
-			klog.Errorf("ovn0 failed to ping gw %s: %v", gws[0], err)
-			return output, err
-		}
-
-		output, err = exec.Command("ping6", "-w", "10", gws[1]).CombinedOutput()
-		if err != nil {
-			klog.Errorf("ovn0 failed to ping gw %s: %v", gws[1], err)
-			return output, err
-		}
-		return output, nil
-	} else if protocol == kubeovnv1.ProtocolIPv4 {
-		output, err := exec.Command("ping", "-w", "10", gw).CombinedOutput()
-		if err != nil {
-			klog.Errorf("ovn0 failed to ping gw %s: %v", gw, err)
-			return output, err
-		}
-		return output, nil
-	} else {
-		output, err := exec.Command("ping6", "-w", "10", gw).CombinedOutput()
-		if err != nil {
-			klog.Errorf("ovn0 failed to ping gw %s: %v", gw, err)
-			return output, err
-		}
-		return output, nil
+	if err := waitNetworkReady(util.NodeNic, gw, false); err != nil {
+		klog.Fatalf("failed to ping ovn0 gw: %s, %v", gw, err)
 	}
 }
 
