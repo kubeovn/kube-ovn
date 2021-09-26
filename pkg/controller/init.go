@@ -45,6 +45,11 @@ func (c *Controller) InitOVN() error {
 		return err
 	}
 
+	if err := c.initHtbQos(); err != nil {
+		klog.Errorf("init default qos failed: %v", err)
+		return err
+	}
+
 	return nil
 }
 
@@ -546,4 +551,48 @@ func (c *Controller) initAppendNodeExternalIds(portName, nodeName string) error 
 		return err
 	}
 	return nil
+}
+
+// InitHtbQos init high/medium/low qos crd
+func (c *Controller) initHtbQos() error {
+	var err error
+	qosNames := []string{util.HtbQosHigh, util.HtbQosMedium, util.HtbQosLow}
+	var priority string
+
+	for _, qosName := range qosNames {
+		_, err = c.config.KubeOvnClient.KubeovnV1().HtbQoses().Get(context.Background(), qosName, metav1.GetOptions{})
+		if err == nil {
+			continue
+		}
+
+		if !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to get default htb qos %s: %v", qosName, err)
+			continue
+		}
+
+		switch qosName {
+		case util.HtbQosHigh:
+			priority = "100"
+		case util.HtbQosMedium:
+			priority = "200"
+		case util.HtbQosLow:
+			priority = "300"
+		default:
+			klog.Errorf("qos %s is not default defined", qosName)
+		}
+
+		htbQos := kubeovnv1.HtbQos{
+			TypeMeta:   metav1.TypeMeta{Kind: "HTBQOS"},
+			ObjectMeta: metav1.ObjectMeta{Name: qosName},
+			Spec: kubeovnv1.HtbQosSpec{
+				Priority: priority,
+			},
+		}
+
+		if _, err = c.config.KubeOvnClient.KubeovnV1().HtbQoses().Create(context.Background(), &htbQos, metav1.CreateOptions{}); err != nil {
+			klog.Errorf("create htb qos %s failed: %v", qosName, err)
+			continue
+		}
+	}
+	return err
 }

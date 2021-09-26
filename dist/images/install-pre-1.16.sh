@@ -539,6 +539,8 @@ spec:
               type: boolean
             disableInterConnection:
               type: boolean
+            htbqos:
+              type: string
 ---
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
@@ -773,6 +775,37 @@ spec:
         status: {}
   conversion:
     strategy: None
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: htbqoses.kubeovn.io
+spec:
+  group: kubeovn.io
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      additionalPrinterColumns:
+      - name: PRIORITY
+        type: string
+        jsonPath: .spec.priority
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                priority:
+                  type: string					# Value in range 0 to 4,294,967,295.
+  scope: Cluster
+  names:
+    plural: htbqoses
+    singular: htbqos
+    kind: HtbQos
+    shortNames:
+      - htbqos
 EOF
 
 if $DPDK; then
@@ -846,6 +879,7 @@ rules:
       - provider-networks/status
       - security-groups
       - security-groups/status
+      - htbqoses
     verbs:
       - "*"
   - apiGroups:
@@ -1328,6 +1362,7 @@ rules:
       - networks
       - security-groups
       - security-groups/status
+      - htbqoses
     verbs:
       - "*"
   - apiGroups:

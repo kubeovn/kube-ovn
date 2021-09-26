@@ -53,6 +53,8 @@ func (f *genericInformer) Lister() cache.GenericLister {
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
 	// Group=kubeovn.io, Version=v1
+	case v1.SchemeGroupVersion.WithResource("htbqoses"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().HtbQoses().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("ips"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().IPs().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("provider-networks"):

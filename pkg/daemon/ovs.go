@@ -24,7 +24,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute bool, routes []request.Route, ingress, egress, DeviceID, nicType, podNetns string, checkGw bool) error {
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute bool, routes []request.Route, ingress, egress, priority, DeviceID, nicType, podNetns string, checkGw bool) error {
 	var err error
 	var hostNicName, containerNicName string
 	if DeviceID == "" {
@@ -63,7 +63,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	if err = configureHostNic(hostNicName); err != nil {
 		return err
 	}
-	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress); err != nil {
+	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress, priority); err != nil {
 		return err
 	}
 
@@ -96,7 +96,10 @@ func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, device
 		return fmt.Errorf("failed to delete ovs port %v, %q", err, output)
 	}
 
-	if err = ovs.ClearPodBandwidth(podName, podNamespace); err != nil {
+	if err = ovs.ClearPodBandwidth(podName, podNamespace, ""); err != nil {
+		return err
+	}
+	if err = ovs.ClearHtbQosQueue(podName, podNamespace, ""); err != nil {
 		return err
 	}
 
@@ -843,7 +846,7 @@ func renameLink(curName, newName string) error {
 	return nil
 }
 
-func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute bool, routes []request.Route, ingress, egress, DeviceID, nicType, podNetns string, checkGw bool) (string, error) {
+func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute bool, routes []request.Route, ingress, egress, priority, DeviceID, nicType, podNetns string, checkGw bool) (string, error) {
 	_, containerNicName := generateNicName(containerID, ifName)
 	ipStr := util.GetIpWithoutMask(ip)
 	ifaceID := ovs.PodNameToPortName(podName, podNamespace, provider)
@@ -867,7 +870,7 @@ func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, 
 		return containerNicName, fmt.Errorf("failed to parse mac %s %v", macAddr, err)
 	}
 
-	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress); err != nil {
+	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress, priority); err != nil {
 		return containerNicName, err
 	}
 
