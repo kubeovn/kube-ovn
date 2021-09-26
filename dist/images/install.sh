@@ -2827,8 +2827,7 @@ chmod +x /usr/local/bin/kubectl-ko
 echo "-------------------------------"
 echo ""
 
-echo ":$PATH:" | grep -q ":/usr/local/bin:"
-if [  $? != 0  ]; then
+if ! sh -c "echo \":$PATH:\" | grep -q \":/usr/local/bin:\""; then
   echo "Tips:Please join the /usr/local/bin to your PATH. Temporarily, we do it for this execution."
   export PATH=/usr/local/bin:$PATH
   echo "-------------------------------"
