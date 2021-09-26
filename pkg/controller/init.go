@@ -314,7 +314,12 @@ func (c *Controller) InitIPAM() error {
 		return err
 	}
 	for _, ip := range ips {
-		ipamKey := fmt.Sprintf("%s/%s", ip.Spec.Namespace, ip.Spec.PodName)
+		var ipamKey string
+		if ip.Spec.Namespace != "" {
+			ipamKey = fmt.Sprintf("%s/%s", ip.Spec.Namespace, ip.Spec.PodName)
+		} else {
+			ipamKey = fmt.Sprintf("node-%s", ip.Spec.PodName)
+		}
 		if _, _, _, err = c.ipam.GetStaticAddress(ipamKey, ip.Spec.IPAddress, ip.Spec.MacAddress, ip.Spec.Subnet, false); err != nil {
 			klog.Errorf("failed to init IPAM from IP CR %s: %v", ip.Name, err)
 		}
