@@ -1326,7 +1326,11 @@ func (c Client) ConvertLspNameToUuid(name string) (string, error) {
 		klog.Errorf("failed to get lsp uuid by name, %v", err)
 		return "", err
 	}
-	return strings.TrimSpace(lines[0]), nil
+	if uuid := strings.TrimSpace(lines[0]); uuid != "" {
+		return uuid, nil
+	}
+
+	return "", fmt.Errorf("logical switch port %s not found", name)
 }
 
 func (c Client) SetPortsToPortGroup(portGroup string, portNames []string) error {
