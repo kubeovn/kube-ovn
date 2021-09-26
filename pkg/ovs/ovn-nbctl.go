@@ -703,7 +703,7 @@ func (c Client) AddStaticRoute(policy, cidr, nextHop, router string, routeType s
 // AddPolicyRoute add a policy route rule in ovn
 func (c Client) AddPolicyRoute(router string, priority int32, match string, action string, nextHop string) error {
 	// lr-policy-add ROUTER PRIORITY MATCH ACTION [NEXTHOP]
-	args := []string{MayExist, "lr-policy-add", strconv.Itoa(int(priority)), match, action}
+	args := []string{MayExist, "lr-policy-add", router, strconv.Itoa(int(priority)), match, action}
 	if nextHop != "" {
 		args = append(args, nextHop)
 	}

@@ -93,6 +93,23 @@ spec:
       nextHopIP: 10.0.1.253
       policy: policySrc
 ```
+For more, VPC provides a more powerful way to configure your Policy-based routing (PBR).you can configure permit/deny and reroute policies with priority on the router by specifying policyRoutes field in Vpc.
+```yaml
+kind: Vpc
+apiVersion: kubeovn.io/v1
+metadata:
+  name: test-vpc-1
+spec:
+  policyRoutes:
+    - action: drop
+      match: ip4.src==10.0.1.0/24 && ip4.dst==10.0.1.250
+      priority: 11
+    - action: reroute
+      match: ip4.src==10.0.1.0/24
+      nextHopIP: 10.0.1.252
+      priority: 10
+```
+
 
 ## VPC external gateway
 

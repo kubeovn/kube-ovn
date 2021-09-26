@@ -462,6 +462,7 @@ func formatVpc(vpc *kubeovnv1.Vpc, c *Controller) error {
 		for _, route := range vpc.Spec.PolicyRoutes {
 			if route.Action != kubeovnv1.PolicyRouteActionReroute {
 				route.NextHopIP = ""
+				changed = true
 			} else {
 				if ip := net.ParseIP(route.NextHopIP); ip == nil {
 					return fmt.Errorf("bad next hop ip: %s", route.NextHopIP)
