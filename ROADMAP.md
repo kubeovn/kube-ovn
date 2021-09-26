@@ -1,20 +1,27 @@
 # Kube-OVN RoadMap
 
-## v1.7.0 -- March 2021
+## v1.9.0 -- Jan 2022
 
-* HA centralized gateway
-* DualStack enhancement
-* More e2e tests
+### VPC Enhancement
+- Namespaced level VPC 
+- Security group support
+- L4 load balancer for custom VPC
+- QoS for NAT gateway
 
-## Backlog
-* VPC enhancement
-    * VPC Gateway
-    * VPC Service
-* Vlan enhancement
-    * Do not use dedicated interface
-    * Hybrid overlay and underlay network
-* Performance enhancement
-* Windows support
-* Inter-Cluster network enhancement
-* Multiple pod network
-* IPsec integration
+### Performance Optimization
+- OVN logical flow simplification
+- FastPath for 4.x kernel
+- Replace Service and Networkpolicy implement from OVN to eBPF
+- Control plan profiling
+
+### Network QoS
+- Support traffic priority for different workloads
+- Inject network loss and latency for chaos engineering
+
+### Virtualization Enhancement
+- Kubevirt live migration with static IP
+- Kubevirt/Kata high performance type nic
+
+### Monitoring and operation
+- Cilium monitoring and application level tracing integration
+- Disaster recovery when all OVN db lost

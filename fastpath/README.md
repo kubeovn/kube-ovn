@@ -1,5 +1,7 @@
 # Kube-OVN FastPath Module
 
+*NOTE*: This FastPath module relies on netfilter `NF_STOP` action, thus can ONLY work for 3.x kernel. FastPath module for 4.x kernel is in progress.
+
 After the datapath performance profile, the Netfilter hooks inside container netns and between tunnel endpoints contribute
 a large portion of the CPU time. This Kube-OVN FastPath module can help bypass the unnecessary Netfilter hooks to reduce 
 the latency and CPU and improve the throughput at the same time. With this FastPath module, about 20% latency between 
