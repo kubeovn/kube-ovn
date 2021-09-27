@@ -3,6 +3,7 @@ package framework
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -173,22 +174,46 @@ func (f *Framework) WaitDeploymentReady(deployment, namespace string) error {
 }
 
 func (f *Framework) WaitStatefulsetReady(statefulset, namespace string) error {
+	logOpt := &corev1.PodLogOptions{}
+	var count int
+
+	logFunc := func(ns, name string) error {
+		logs, err := f.KubeClientSet.CoreV1().Pods(ns).GetLogs(name, logOpt).Stream(context.Background())
+		if err != nil {
+			return err
+		}
+		defer logs.Close()
+
+		buf := new(bytes.Buffer)
+		if _, err = io.Copy(buf, logs); err != nil {
+			return err
+		}
+		klog.Infof("Pod %s/%s logs:\n%s", ns, name, buf)
+
+		return nil
+	}
+
 	for {
-		time.Sleep(1 * time.Second)
+		count++
+
+		time.Sleep(5 * time.Second)
+		klog.Infof("getting statefulset %s/%s", namespace, statefulset)
 		ss, err := f.KubeClientSet.AppsV1().StatefulSets(namespace).Get(context.Background(), statefulset, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
 		if ss.Status.ReadyReplicas != *ss.Spec.Replicas {
-			continue
+			klog.Infof("ready replicas = %d, required replicas = %d", ss.Status.ReadyReplicas, *ss.Spec.Replicas)
+			// continue
 		}
 
+		klog.Infof("getting pods of statefulset %s/%s", namespace, statefulset)
 		pods, err := f.KubeClientSet.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.SelectorFromSet(ss.Spec.Template.Labels).String()})
 		if err != nil {
 			return err
 		}
 
-		ready := true
+		ready := ss.Status.ReadyReplicas == *ss.Spec.Replicas
 		for _, pod := range pods.Items {
 			switch getPodStatus(pod) {
 			case Completed:
@@ -197,6 +222,35 @@ func (f *Framework) WaitStatefulsetReady(statefulset, namespace string) error {
 				continue
 			case Initing, Pending, PodInitializing, ContainerCreating, Terminating:
 				ready = false
+
+				if count == 20 {
+					klog.Infof("pod %s/%s is %s", namespace, pod.Name, getPodStatus(pod))
+					klog.Info(pod.String())
+					podList, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(context.Background(), metav1.ListOptions{LabelSelector: "app=kube-ovn-cni"})
+					if err != nil {
+						return err
+					}
+					for _, cniPod := range podList.Items {
+						if cniPod.Spec.NodeName == pod.Spec.NodeName {
+							if err = logFunc(cniPod.Namespace, cniPod.Name); err != nil {
+								return err
+							}
+							break
+						}
+					}
+
+					podList, err = f.KubeClientSet.CoreV1().Pods("kube-system").List(context.Background(), metav1.ListOptions{LabelSelector: "app=kube-ovn-controller"})
+					if err != nil {
+						return err
+					}
+					for _, ctlrPod := range podList.Items {
+						klog.Info(ctlrPod.String())
+						if err = logFunc(ctlrPod.Namespace, ctlrPod.Name); err != nil {
+							return err
+						}
+					}
+					return errors.New("timeout after 100s")
+				}
 			default:
 				klog.Info(pod.String())
 				return fmt.Errorf("pod status failed")

@@ -12,6 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/klog"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -175,14 +176,17 @@ var _ = Describe("[IP Allocation]", func() {
 				},
 			}
 
+			klog.Infof("creating statefulset %s/%s", sts.Namespace, sts.Name)
 			By("Create statefulset")
 			_, err := f.KubeClientSet.AppsV1().StatefulSets(namespace).Create(context.Background(), &sts, metav1.CreateOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
+			klog.Infof("waiting statefulset %s/%s to be ready", sts.Namespace, sts.Name)
 			err = f.WaitStatefulsetReady(name, namespace)
 			Expect(err).NotTo(HaveOccurred())
 
 			for i := range ips {
+				klog.Infof("getting pod %s/%s", sts.Namespace, fmt.Sprintf("%s-%d", sts.Name, i))
 				pod, err := f.KubeClientSet.CoreV1().Pods(namespace).Get(context.Background(), fmt.Sprintf("%s-%d", name, i), metav1.GetOptions{})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(pod.Status.PodIP).To(Equal(ips[i]))
@@ -219,26 +223,32 @@ var _ = Describe("[IP Allocation]", func() {
 				},
 			}
 
+			klog.Infof("creating statefulset %s/%s", sts.Namespace, sts.Name)
 			By("Create statefulset")
 			_, err := f.KubeClientSet.AppsV1().StatefulSets(namespace).Create(context.Background(), &sts, metav1.CreateOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
+			klog.Infof("waiting statefulset %s/%s to be ready", sts.Namespace, sts.Name)
 			err = f.WaitStatefulsetReady(name, namespace)
 			Expect(err).NotTo(HaveOccurred())
 
 			ips := make([]string, replicas)
 			for i := range ips {
+				klog.Infof("getting pod %s/%s", sts.Namespace, fmt.Sprintf("%s-%d", sts.Name, i))
 				pod, err := f.KubeClientSet.CoreV1().Pods(namespace).Get(context.Background(), fmt.Sprintf("%s-%d", name, i), metav1.GetOptions{})
 				Expect(err).NotTo(HaveOccurred())
 				ips[i] = pod.Status.PodIP
 			}
 
+			klog.Infof("deleting pods of statefulset %s/%s", sts.Namespace, sts.Name)
 			err = f.KubeClientSet.CoreV1().Pods(namespace).DeleteCollection(context.Background(), metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: labels.SelectorFromSet(sts.Spec.Template.Labels).String()})
 			Expect(err).NotTo(HaveOccurred())
 
+			klog.Infof("waiting statefulset %s/%s to be ready", sts.Namespace, sts.Name)
 			err = f.WaitStatefulsetReady(name, namespace)
 			Expect(err).NotTo(HaveOccurred())
 			for i := range ips {
+				klog.Infof("getting pod %s/%s", sts.Namespace, fmt.Sprintf("%s-%d", sts.Name, i))
 				pod, err := f.KubeClientSet.CoreV1().Pods(namespace).Get(context.Background(), fmt.Sprintf("%s-%d", name, i), metav1.GetOptions{})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(pod.Status.PodIP).To(Equal(ips[i]))

@@ -78,11 +78,11 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 		isStateful, statefulSetName := isStatefulSetPod(p)
 		if isStateful {
 			if isStatefulSetPodToDel(c.config.KubeClient, p, statefulSetName) {
-				klog.V(3).Infof("enqueue delete pod %s", key)
+				klog.Infof("enqueue delete pod %s", key)
 				c.deletePodQueue.Add(obj)
 			}
 		} else {
-			klog.V(3).Infof("enqueue delete pod %s", key)
+			klog.Infof("enqueue delete pod %s", key)
 			c.deletePodQueue.Add(obj)
 		}
 		return
@@ -101,7 +101,7 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 		return
 	}
 
-	klog.V(3).Infof("enqueue add pod %s", key)
+	klog.Infof("enqueue add pod %s", key)
 	c.addPodQueue.Add(key)
 }
 
@@ -177,8 +177,14 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	}
 
 	isStateful, statefulSetName := isStatefulSetPod(newPod)
+
+	if isStateful {
+		klog.Infof("old pod: %s", oldPod.String())
+		klog.Infof("new pod: %s", newPod.String())
+	}
+
 	if !isPodAlive(newPod) && !isStateful {
-		klog.V(3).Infof("enqueue delete pod %s", key)
+		klog.Infof("enqueue delete pod %s", key)
 		c.deletePodQueue.Add(newObj)
 		return
 	}
@@ -188,6 +194,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 			// In case node get lost and pod can not be deleted,
 			// the ipaddress will not be recycled
 			time.Sleep(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second)
+			klog.Infof("enqueue delete pod %s", key)
 			c.deletePodQueue.Add(newObj)
 		}()
 		return
@@ -196,20 +203,20 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	// do not delete statefulset pod unless ownerReferences is deleted
 	if isStateful {
 		if isStatefulSetPodToDel(c.config.KubeClient, newPod, statefulSetName) {
-			klog.V(3).Infof("enqueue delete pod %s", key)
+			klog.Infof("enqueue delete pod %s", key)
 			c.deletePodQueue.Add(newObj)
 			return
 		}
 	}
 
 	if newPod.Annotations == nil || newPod.Annotations[util.AllocatedAnnotation] != "true" {
-		klog.V(3).Infof("enqueue add pod %s", key)
+		klog.Infof("enqueue add pod %s", key)
 		c.addPodQueue.Add(key)
 		return
 	}
 	if newPod.Spec.NodeName != "" && newPod.Annotations[util.RoutedAnnotation] != "true" {
 		// pod assigned an ip
-		klog.V(3).Infof("enqueue update pod %s", key)
+		klog.Infof("enqueue update pod %s", key)
 		c.updatePodQueue.Add(key)
 	}
 
@@ -268,7 +275,6 @@ func (c *Controller) processNextAddPodWorkItem() bool {
 			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
 			return nil
 		}
-		klog.Infof("handle add pod %s", key)
 		if err := c.handleAddPod(key); err != nil {
 			c.addPodQueue.AddRateLimited(key)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
@@ -303,7 +309,6 @@ func (c *Controller) processNextDeletePodWorkItem() bool {
 			utilruntime.HandleError(fmt.Errorf("expected pod in workqueue but got %#v", obj))
 			return nil
 		}
-		klog.Infof("handle delete pod %s", pod.Name)
 		if err := c.handleDeletePod(pod); err != nil {
 			c.deletePodQueue.AddRateLimited(obj)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", pod.Name, err.Error())
@@ -419,13 +424,15 @@ func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
 }
 
 func (c *Controller) handleAddPod(key string) error {
-	c.podKeyMutex.Lock(key)
-	defer c.podKeyMutex.Unlock(key)
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
+
+	c.podKeyMutex.Lock(key)
+	defer c.podKeyMutex.Unlock(key)
+	klog.Infof("handle add pod %s", key)
 	pod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -455,6 +462,7 @@ func (c *Controller) handleAddPod(key string) error {
 		subnet := podNet.Subnet
 		v4IP, v6IP, mac, err := c.acquireAddress(pod, podNet)
 		if err != nil {
+			klog.Errorf("failed to get address for Pod %s/%s network %s: %v", pod.Namespace, pod.Name, podNet.ProviderName, err)
 			c.recorder.Eventf(pod, v1.EventTypeWarning, "AcquireAddressFailed", err.Error())
 			return err
 		}
@@ -487,6 +495,7 @@ func (c *Controller) handleAddPod(key string) error {
 			if subnet.Spec.Vlan != "" {
 				vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
 				if err != nil {
+					klog.Errorf("failed to get vlan %s: %v", subnet.Spec.Vlan, err)
 					c.recorder.Eventf(pod, v1.EventTypeWarning, "GetVlanInfoFailed", err.Error())
 					return err
 				}
@@ -510,6 +519,7 @@ func (c *Controller) handleAddPod(key string) error {
 			}
 			portName := ovs.PodNameToPortName(name, namespace, podNet.ProviderName)
 			if err := c.ovnClient.CreatePort(subnet.Name, portName, ipStr, mac, pod.Name, pod.Namespace, portSecurity, securityGroupAnnotation, vips); err != nil {
+				klog.Errorf("failed to create OVN LSP for Pod %s/%s network %s: %v", pod.Namespace, pod.Name, podNet.ProviderName, err)
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
 				return err
 			}
@@ -528,6 +538,7 @@ func (c *Controller) handleAddPod(key string) error {
 
 	if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(context.Background(), name, types.JSONPatchType, generatePatchPayload(pod.Annotations, op), metav1.PatchOptions{}, ""); err != nil {
 		if k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to patch pod %s/%s: not found: %v", name, namespace, err)
 			// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.
 			// Then we need to recycle the resource again.
 			c.deletePodQueue.AddRateLimited(key)
@@ -551,6 +562,7 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 	}
 	c.podKeyMutex.Lock(key)
 	defer c.podKeyMutex.Unlock(key)
+	klog.Infof("handle delete pod %s/%s", pod.Namespace, pod.Name)
 
 	p, _ := c.podsLister.Pods(pod.Namespace).Get(pod.Name)
 	if p != nil && p.UID != pod.UID {
@@ -673,13 +685,16 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 }
 
 func (c *Controller) handleUpdatePod(key string) error {
-	c.podKeyMutex.Lock(key)
-	defer c.podKeyMutex.Unlock(key)
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
+
+	c.podKeyMutex.Lock(key)
+	defer c.podKeyMutex.Unlock(key)
+	klog.Infof("handle update pod %s", key)
+
 	pod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -688,7 +703,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 		return err
 	}
 
-	klog.Infof("update pod %s/%s", namespace, name)
+	klog.Info(pod.String())
 
 	var podIP string
 	var subnet *kubeovnv1.Subnet
@@ -707,6 +722,9 @@ func (c *Controller) handleUpdatePod(key string) error {
 		subnet = podNet.Subnet
 		break
 	}
+
+	klog.Infof("default subnet of pod %s is %s", key, subnet.Name)
+	klog.Infof("IP of pod %s is %s", key, podIP)
 
 	if podIP != "" && subnet.Spec.Vlan == "" && subnet.Spec.Vpc == util.DefaultVpc {
 		if pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "" {
@@ -742,6 +760,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 				}
 				nodeTunlIPAddr, err := getNodeTunlIP(node)
 				if err != nil {
+					klog.Errorf("get node tunnel IP %s failed %v", pod.Spec.NodeName, err)
 					return err
 				}
 
@@ -829,6 +848,8 @@ func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, statefulSetName 
 		return false
 	}
 
+	klog.Infof("sts pod %s/%s index is %d", pod.Namespace, pod.Name, index)
+	klog.Infof("sts %s/%s status.replicas is %d", pod.Namespace, statefulSetName, ss.Status.Replicas)
 	return index >= int64(*ss.Spec.Replicas) && index >= int64(ss.Status.Replicas)
 }
 

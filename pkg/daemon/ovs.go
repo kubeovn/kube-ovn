@@ -296,7 +296,7 @@ func waitNetworkReady(src, gateway string, verbose bool) error {
 		}
 		pinger.SetPrivileged(true)
 		// CNITimeoutSec = 220, cannot exceed
-		count := 200
+		count := 20
 		pinger.Count = count
 		pinger.Timeout = time.Duration(count) * time.Second
 		pinger.Interval = 1 * time.Second
@@ -310,6 +310,7 @@ func waitNetworkReady(src, gateway string, verbose bool) error {
 
 		cniConnectivityResult.WithLabelValues(nodeName).Add(float64(pinger.PacketsSent))
 		if !success {
+			klog.Errorf("%s network not ready after %d ping, gw %v", src, count, gw)
 			return fmt.Errorf("%s network not ready after %d ping %s", src, count, gw)
 		}
 		if verbose {
