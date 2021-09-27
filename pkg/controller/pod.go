@@ -202,10 +202,13 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		}
 	}
 
-	// pod assigned an ip
-	if newPod.Annotations[util.AllocatedAnnotation] == "true" &&
-		newPod.Annotations[util.RoutedAnnotation] != "true" &&
-		newPod.Spec.NodeName != "" {
+	if newPod.Annotations == nil || newPod.Annotations[util.AllocatedAnnotation] != "true" {
+		klog.V(3).Infof("enqueue add pod %s", key)
+		c.addPodQueue.Add(key)
+		return
+	}
+	if newPod.Spec.NodeName != "" && newPod.Annotations[util.RoutedAnnotation] != "true" {
+		// pod assigned an ip
 		klog.V(3).Infof("enqueue update pod %s", key)
 		c.updatePodQueue.Add(key)
 	}
