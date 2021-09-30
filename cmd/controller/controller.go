@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	"net/http"
 	_ "net/http/pprof" // #nosec
 	"os"
@@ -27,6 +28,7 @@ func CmdMain() {
 
 	controller.InitClientGoMetrics()
 	controller.InitWorkQueueMetrics()
+	util.InitKlogMetrics()
 	config, err := controller.ParseFlags()
 	if err != nil {
 		klog.Fatalf("parse config failed %v", err)

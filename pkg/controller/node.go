@@ -701,7 +701,7 @@ func (c *Controller) checkPodsChangedOnNode(pgName string, ports []string) (bool
 	portIds := make([]string, 0, len(ports))
 	for _, port := range ports {
 		portId, err := c.ovnClient.ConvertLspNameToUuid(port)
-		if err != nil {
+		if err != nil && !strings.Contains(err.Error(), "not found") {
 			klog.Errorf("failed to convert lsp name to uuid, %v", err)
 			continue
 		}

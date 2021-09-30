@@ -2,6 +2,7 @@ package pinger
 
 import (
 	"fmt"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	"net/http"
 	_ "net/http/pprof" // #nosec
 
@@ -17,6 +18,7 @@ func CmdMain() {
 
 	klog.Infof(versions.String())
 	pinger.InitPingerMetrics()
+	util.InitKlogMetrics()
 	config, err := pinger.ParseFlags()
 	if err != nil {
 		klog.Fatalf("parse config failed %v", err)
