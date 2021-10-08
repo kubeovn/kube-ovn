@@ -5,6 +5,7 @@
 #include <linux/netfilter.h>
 #include <linux/netfilter_ipv4.h>
 #include <linux/udp.h>
+#include <linux/tcp.h>
 #include <linux/string.h>
 
 static struct nf_hook_ops local_in;
@@ -20,6 +21,7 @@ unsigned int hook_func(unsigned int hooknum,
 {
     struct iphdr *ip1 = NULL;
     struct udphdr *udp_header = NULL;
+    struct tcphdr *tcp_header = NULL;
 
     // For container network traffic, DO NOT traverse netfilter
     if (NULL != in && NULL != in->ifalias && in->ifalias[13] == 'c' ) { return NF_STOP; }
@@ -39,6 +41,17 @@ unsigned int hook_func(unsigned int hooknum,
             }
         }
     }
+
+    // for STT Tunnel traffic, DO NOT traverse netfilter
+    if (hooknum != NF_INET_LOCAL_IN && NULL != ip1) {
+        if (IPPROTO_TCP == ip1->protocol) {
+            tcp_header = (struct tcphdr *)skb_transport_header(skb);
+            if (ntohs(tcp_header->dest) == 7471) {
+                return NF_STOP;
+            }
+        }
+    }
+
     return NF_ACCEPT;
 }
 
