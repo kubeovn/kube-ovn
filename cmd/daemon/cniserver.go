@@ -28,6 +28,7 @@ func CmdMain() {
 
 	klog.Infof(versions.String())
 	daemon.InitMetrics()
+	util.InitKlogMetrics()
 	if err := daemon.InitOVSBridges(); err != nil {
 		klog.Fatalf("failed to initialize OVS bridges: %v", err)
 	}

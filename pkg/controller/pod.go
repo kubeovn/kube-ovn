@@ -880,18 +880,18 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 	} else {
 		ns, err := c.namespacesLister.Get(pod.Namespace)
 		if err != nil {
-			klog.Errorf("failed to get namespace %v", err)
+			klog.Errorf("failed to get namespace %s, %v", pod.Namespace, err)
 			return nil, err
 		}
 		if ns.Annotations == nil {
-			err = fmt.Errorf("namespace network annotations is nil")
+			err = fmt.Errorf("namespace %s network annotations is nil", pod.Namespace)
 			klog.Error(err)
 			return nil, err
 		}
 
 		subnetName = ns.Annotations[util.LogicalSwitchAnnotation]
 		if subnetName == "" {
-			err = fmt.Errorf("namespace default logical switch is not found")
+			err = fmt.Errorf("namespace %s default logical switch is not found", pod.Namespace)
 			klog.Error(err)
 			return nil, err
 		}
