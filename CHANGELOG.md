@@ -1,5 +1,32 @@
 # CHANGELOG
 
+## 1.7.3 -- 2021/10/09
+### Performance
+- switch's router port's addresses to "router"
+- do not diagnose external access
+- increase ovn-nb timeout
+
+### Bugfix
+- fix nat-outgoing/policy-routing on pod startup
+- fix variable reference
+- fix e2e testing
+- fix gc lsp statistic for multiple subnet
+- re-check ns annotation to avoid annotations lost
+- append externalIds for pod and node when upgrade
+- fix IPAM for StatefulSet
+- wrong link for iptables
+- fix StatefulSet down scale
+- fix getting LSP UUID by name
+- fix installation scripts
+- init node with wrong ipamkey and lead conflict
+- serialize pod add/delete order
+- kubeclient timeout
+- update base image
+
+### Refactor
+- remove ovn ipam option
+- mute ovn0 ping log and add ping details
+
 ## 1.7.2 -- 2021/09/02
 
 ### Feature
