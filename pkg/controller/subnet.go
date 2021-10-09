@@ -1124,7 +1124,7 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 }
 
 func isOvnSubnet(subnet *kubeovnv1.Subnet) bool {
-	if subnet.Spec.Provider == util.OvnProvider || subnet.Spec.Provider == "" {
+	if subnet.Spec.Provider == util.OvnProvider || subnet.Spec.Provider == "" || strings.HasSuffix(subnet.Spec.Provider, "ovn") {
 		return true
 	}
 	return false

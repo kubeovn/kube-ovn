@@ -955,13 +955,19 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 		// allocate kubeovn network
 		var providerName string
 		if util.IsOvnNetwork(netCfg) {
+			var subnetName string
 			isDefault := util.IsDefaultNet(pod.Annotations[util.DefaultNetworkAnnotation], attach)
 			if isDefault {
 				providerName = util.OvnProvider
 			} else {
 				providerName = fmt.Sprintf("%s.%s.ovn", attach.Name, attach.Namespace)
 			}
-			subnetName := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)]
+			for _, subnet := range subnets {
+				if !isDefault && subnet.Spec.Provider == providerName {
+					subnetName = subnet.Name
+					break
+				}
+			}
 			if subnetName == "" {
 				subnetName = c.config.DefaultLogicalSwitch
 			}
@@ -976,21 +982,19 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 				Subnet:       subnet,
 				IsDefault:    isDefault,
 			})
-
-		}
-
-		providerName = fmt.Sprintf("%s.%s", attach.Name, attach.Namespace)
-		for _, subnet := range subnets {
-			if subnet.Spec.Provider == providerName {
-				result = append(result, &kubeovnNet{
-					Type:         providerTypeIPAM,
-					ProviderName: providerName,
-					Subnet:       subnet,
-				})
-				break
+		} else {
+			providerName = fmt.Sprintf("%s.%s", attach.Name, attach.Namespace)
+			for _, subnet := range subnets {
+				if subnet.Spec.Provider == providerName {
+					result = append(result, &kubeovnNet{
+						Type:         providerTypeIPAM,
+						ProviderName: providerName,
+						Subnet:       subnet,
+					})
+					break
+				}
 			}
 		}
-
 	}
 	return result, nil
 }
