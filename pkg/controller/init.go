@@ -509,6 +509,9 @@ func (c *Controller) initAppendPodExternalIds(pod *v1.Pod) error {
 	}
 
 	for _, podNet := range podNets {
+		if !strings.HasSuffix(podNet.ProviderName, util.OvnProvider) {
+			continue
+		}
 		portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName)
 		externalIds, err := c.ovnClient.OvnGet("logical_switch_port", portName, "external_ids", "")
 		if err != nil {
