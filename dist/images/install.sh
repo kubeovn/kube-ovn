@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-IPv6=${IPv6:-false}
-DualStack=${DualStack:-false}
+IPV6=${IPV6:-false}
+DUAL_STACK=${DUAL_STACK:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
 ENABLE_VLAN=${ENABLE_VLAN:-false}
 ENABLE_MIRROR=${ENABLE_MIRROR:-false}
@@ -22,7 +22,8 @@ SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR
 JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
 PINGER_EXTERNAL_ADDRESS="114.114.114.114"  # Pinger check external ip probe
 PINGER_EXTERNAL_DOMAIN="alauda.cn"         # Pinger check external domain probe
-if [ "$IPv6" = "true" ]; then
+SVC_YAML_IPFAMILYPOLICY=""
+if [ "$IPV6" = "true" ]; then
   POD_CIDR="fd00:10:16::/64"                # Do NOT overlap with NODE/SVC/JOIN CIDR
   POD_GATEWAY="fd00:10:16::1"
   SVC_CIDR="fd00:10:96::/112"               # Do NOT overlap with NODE/POD/JOIN CIDR
@@ -30,13 +31,14 @@ if [ "$IPv6" = "true" ]; then
   PINGER_EXTERNAL_ADDRESS="2400:3200::1"
   PINGER_EXTERNAL_DOMAIN="google.com"
 fi
-if [ "$DualStack" = "true" ]; then
+if [ "$DUAL_STACK" = "true" ]; then
   POD_CIDR="10.16.0.0/16,fd00:10:16::/64"                # Do NOT overlap with NODE/SVC/JOIN CIDR
   POD_GATEWAY="10.16.0.1,fd00:10:16::1"
   SVC_CIDR="10.96.0.0/12"                                # Do NOT overlap with NODE/POD/JOIN CIDR
   JOIN_CIDR="100.64.0.0/16,fd00:100:64::/64"             # Do NOT overlap with NODE/POD/SVC CIDR
   PINGER_EXTERNAL_ADDRESS="114.114.114.114"
   PINGER_EXTERNAL_DOMAIN="google.com"
+  SVC_YAML_IPFAMILYPOLICY="ipFamilyPolicy: PreferDualStack"
 fi
 
 EXCLUDE_IPS=""                         # EXCLUDE_IPS for default subnet
@@ -837,6 +839,7 @@ spec:
       port: 6641
       targetPort: 6641
   type: ClusterIP
+  ${SVC_YAML_IPFAMILYPOLICY}
   selector:
     app: ovn-central
     ovn-nb-leader: "true"
@@ -855,6 +858,7 @@ spec:
       port: 6642
       targetPort: 6642
   type: ClusterIP
+  ${SVC_YAML_IPFAMILYPOLICY}
   selector:
     app: ovn-central
     ovn-sb-leader: "true"
@@ -873,6 +877,7 @@ spec:
       port: 6643
       targetPort: 6643
   type: ClusterIP
+  ${SVC_YAML_IPFAMILYPOLICY}
   selector:
     app: ovn-central
     ovn-northd-leader: "true"
@@ -1312,6 +1317,7 @@ spec:
       port: 6641
       targetPort: 6641
   type: ClusterIP
+  ${SVC_YAML_IPFAMILYPOLICY}
   selector:
     app: ovn-central
     ovn-nb-leader: "true"
@@ -1329,6 +1335,7 @@ spec:
       port: 6642
       targetPort: 6642
   type: ClusterIP
+  ${SVC_YAML_IPFAMILYPOLICY}
   selector:
     app: ovn-central
     ovn-sb-leader: "true"
@@ -1346,6 +1353,7 @@ spec:
       port: 6643
       targetPort: 6643
   type: ClusterIP
+  ${SVC_YAML_IPFAMILYPOLICY}
   selector:
     app: ovn-central
     ovn-northd-leader: "true"
@@ -2135,6 +2143,7 @@ spec:
     - name: metrics
       port: 10661
   type: ClusterIP
+  ${SVC_YAML_IPFAMILYPOLICY}
   selector:
     app: kube-ovn-monitor
   sessionAffinity: None
@@ -2147,6 +2156,7 @@ metadata:
   labels:
     app: kube-ovn-pinger
 spec:
+  ${SVC_YAML_IPFAMILYPOLICY}
   selector:
     app: kube-ovn-pinger
   ports:
@@ -2161,6 +2171,7 @@ metadata:
   labels:
     app: kube-ovn-controller
 spec:
+  ${SVC_YAML_IPFAMILYPOLICY}
   selector:
     app: kube-ovn-controller
   ports:
@@ -2175,6 +2186,7 @@ metadata:
   labels:
     app: kube-ovn-cni
 spec:
+  ${SVC_YAML_IPFAMILYPOLICY}
   selector:
     app: kube-ovn-cni
   ports:
@@ -2276,7 +2288,22 @@ trace(){
     namespace="default"
   fi
 
-  podIP=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/ip_address})
+  dst="$2"
+  if [ -z "$dst" ]; then
+    echo "need a target ip address"
+    exit 1
+  fi
+
+  af="4"
+  nw="nw"
+  proto=""
+  if [[ "$dst" =~ .*:.* ]]; then
+    af="6"
+    nw="ipv6"
+    proto="6"
+  fi
+
+  podIPs=($(kubectl get pod "$podName" -n "$namespace" -o jsonpath="{.status.podIPs[*].ip}"))
   mac=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/mac_address})
   ls=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/logical_switch})
   hostNetwork=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.hostNetwork})
@@ -2289,6 +2316,24 @@ trace(){
 
   if [ -z "$ls" ]; then
     echo "pod address not ready"
+    exit 1
+  fi
+
+  podIP=""
+  for ip in ${podIPs[@]}; do
+    if [ "$af" = "4" ]; then
+      if [[ ! "$ip" =~ .*:.* ]]; then
+        podIP=$ip
+        break
+      fi
+    elif [[ "$ip" =~ .*:.* ]]; then
+      podIP=$ip
+      break
+    fi
+  done
+
+  if [ -z "$podIP" ]; then
+    echo "Pod has no IPv$af address"
     exit 1
   fi
 
@@ -2337,23 +2382,7 @@ trace(){
     exit 1
   fi
 
-  dst="$2"
-  if [ -z "$dst" ]; then
-    echo "need a target ip address"
-    exit 1
-  fi
-
   type="$3"
-
-  af="4"
-  nw="nw"
-  proto=""
-  if [[ "$podIP" =~ .*:.* ]]; then
-    af="6"
-    nw="ipv6"
-    proto="6"
-  fi
-
   case $type in
     icmp)
       set -x

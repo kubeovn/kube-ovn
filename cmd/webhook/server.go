@@ -6,12 +6,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/kubeovn/kube-ovn/versions"
-
-	ovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	ovnwebhook "github.com/kubeovn/kube-ovn/pkg/webhook"
-
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -19,6 +13,11 @@ import (
 	"k8s.io/klog/klogr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
+
+	ovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	ovnwebhook "github.com/kubeovn/kube-ovn/pkg/webhook"
+	"github.com/kubeovn/kube-ovn/versions"
 )
 
 const (

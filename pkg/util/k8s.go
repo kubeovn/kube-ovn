@@ -1,14 +1,18 @@
 package util
 
-import v1 "k8s.io/api/core/v1"
+import (
+	"strings"
 
-func GetNodeInternalIP(node v1.Node) string {
-	var nodeAddr string
+	v1 "k8s.io/api/core/v1"
+)
+
+func GetNodeInternalIP(node v1.Node) (ipv4, ipv6 string) {
+	var ips []string
 	for _, addr := range node.Status.Addresses {
 		if addr.Type == v1.NodeInternalIP {
-			nodeAddr = addr.Address
-			break
+			ips = append(ips, addr.Address)
 		}
 	}
-	return nodeAddr
+
+	return SplitStringIP(strings.Join(ips, ","))
 }

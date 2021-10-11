@@ -7,14 +7,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/kubeovn/kube-ovn/versions"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"k8s.io/klog"
+	"k8s.io/sample-controller/pkg/signals"
 
 	"github.com/kubeovn/kube-ovn/pkg/controller"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
-
-	"k8s.io/klog"
-	"k8s.io/sample-controller/pkg/signals"
+	"github.com/kubeovn/kube-ovn/versions"
 )
 
 func CmdMain() {

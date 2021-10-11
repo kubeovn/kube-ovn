@@ -75,7 +75,13 @@ var _ = Describe("[Underlay Node]", func() {
 		} else {
 			for _, node := range nodes.Items {
 				if node.Name == "kube-ovn-control-plane" {
-					nodeIPs = append(nodeIPs, util.GetNodeInternalIP(node)+"/")
+					ipv4, ipv6 := util.GetNodeInternalIP(node)
+					if ipv4 != "" {
+						nodeIPs = append(nodeIPs, ipv4+"/")
+					}
+					if ipv6 != "" {
+						nodeIPs = append(nodeIPs, ipv6+"/")
+					}
 					break
 				}
 			}

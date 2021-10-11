@@ -204,9 +204,10 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	nodeIP := util.GetNodeInternalIP(*node)
+	nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
 	for _, subnet := range subnets {
-		if subnet.Spec.Vlan == "" && subnet.Spec.Vpc == util.DefaultVpc && util.CIDRContainIP(subnet.Spec.CIDRBlock, nodeIP) {
+		if subnet.Spec.Vlan == "" && subnet.Spec.Vpc == util.DefaultVpc &&
+			(util.CIDRContainIP(subnet.Spec.CIDRBlock, nodeIPv4) || util.CIDRContainIP(subnet.Spec.CIDRBlock, nodeIPv6)) {
 			msg := fmt.Sprintf("internal IP address of node %s is in CIDR of subnet %s, this may result in network issues", node.Name, subnet.Name)
 			klog.Warning(msg)
 			c.recorder.Eventf(&v1.Node{ObjectMeta: metav1.ObjectMeta{Name: node.Name, UID: types.UID(node.Name)}}, v1.EventTypeWarning, "NodeAddressConflictWithSubnet", msg)
@@ -269,13 +270,18 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	// There is only one nodeAddr temp
-	nodeAddr := util.GetNodeInternalIP(*node)
 	for _, ip := range strings.Split(ipStr, ",") {
-		if util.CheckProtocol(nodeAddr) == util.CheckProtocol(ip) {
-			err = c.ovnClient.AddStaticRoute("", nodeAddr, ip, c.config.ClusterRouter, util.NormalRouteType)
-			if err != nil {
-				klog.Errorf("failed to add static router from node to ovn0 %v", err)
+		if ip == "" {
+			continue
+		}
+
+		nodeIP := nodeIPv4
+		if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 {
+			nodeIP = nodeIPv6
+		}
+		if nodeIP != "" {
+			if err = c.ovnClient.AddStaticRoute("", nodeIP, ip, c.config.ClusterRouter, util.NormalRouteType); err != nil {
+				klog.Errorf("failed to add static router from node to ovn0: %v", err)
 				return err
 			}
 		}

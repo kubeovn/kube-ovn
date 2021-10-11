@@ -141,7 +141,7 @@ kind-install-single:
 kind-install-ipv6:
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
-	ENABLE_SSL=true IPv6=true dist/images/install.sh
+	ENABLE_SSL=true IPV6=true dist/images/install.sh
 
 .PHONY: kind-install-ipv6-vlan
 kind-install-ipv6-vlan:
@@ -162,7 +162,7 @@ kind-install-ipv6-vlan:
 kind-install-dual:
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
-	ENABLE_SSL=true DualStack=true dist/images/install.sh
+	ENABLE_SSL=true DUAL_STACK=true dist/images/install.sh
 	kubectl describe no
 
 .PHONY: kind-reload

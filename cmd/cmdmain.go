@@ -4,12 +4,13 @@ import (
 	"os"
 	"strings"
 
+	"k8s.io/klog"
+
 	"github.com/kubeovn/kube-ovn/cmd/controller"
 	"github.com/kubeovn/kube-ovn/cmd/daemon"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_monitor"
 	"github.com/kubeovn/kube-ovn/cmd/pinger"
 	"github.com/kubeovn/kube-ovn/cmd/speaker"
-	"k8s.io/klog"
 )
 
 const (
