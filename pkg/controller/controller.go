@@ -565,6 +565,12 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		}
 	}, 6*time.Minute, stopCh)
 
+	go wait.Until(func() {
+		if err := c.inspectPod(); err != nil {
+			klog.Errorf("inspection error: %v", err)
+		}
+	}, 20*time.Second, stopCh)
+
 	if c.config.EnableExternalVpc {
 		go wait.Until(func() {
 			c.syncExternalVpc()
