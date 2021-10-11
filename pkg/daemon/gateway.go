@@ -583,9 +583,9 @@ func (c *Controller) setGatewayBandwidth() error {
 		klog.Errorf("failed to get node, %v", err)
 		return err
 	}
-	ingress, egress := node.Annotations[util.IngressRateAnnotation], node.Annotations[util.EgressRateAnnotation]
+	ingress, egress, priority := node.Annotations[util.IngressRateAnnotation], node.Annotations[util.EgressRateAnnotation], node.Annotations[util.PriorityAnnotation]
 	ifaceId := fmt.Sprintf("node-%s", c.config.NodeName)
-	return ovs.SetInterfaceBandwidth("", "", ifaceId, egress, ingress)
+	return ovs.SetInterfaceBandwidth("", "", ifaceId, egress, ingress, priority)
 }
 
 func (c *Controller) setICGateway() error {

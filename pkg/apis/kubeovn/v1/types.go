@@ -118,7 +118,8 @@ type SubnetSpec struct {
 	Private      bool     `json:"private"`
 	AllowSubnets []string `json:"allowSubnets,omitempty"`
 
-	Vlan string `json:"vlan,omitempty"`
+	Vlan   string `json:"vlan,omitempty"`
+	HtbQos string `json:"htbqos,omitempty"`
 
 	DisableGatewayCheck    bool `json:"disableGatewayCheck"`
 	DisableInterConnection bool `json:"disableInterConnection"`
@@ -508,4 +509,29 @@ type SecurityGroupList struct {
 	metav1.ListMeta `json:"metadata"`
 
 	Items []SecurityGroup `json:"items"`
+}
+
+// +genclient
+// +genclient:noStatus
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +genclient:nonNamespaced
+
+type HtbQos struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec HtbQosSpec `json:"spec"`
+}
+
+type HtbQosSpec struct {
+	Priority string `json:"priority"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type HtbQosList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []HtbQos `json:"items"`
 }

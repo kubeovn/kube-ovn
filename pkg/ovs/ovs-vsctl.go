@@ -94,20 +94,36 @@ func ovsClear(table, record string, columns ...string) error {
 	return err
 }
 
+func ovsGet(table, record, column, key string) (string, error) {
+	var columnVal string
+	if key == "" {
+		columnVal = column
+	} else {
+		columnVal = column + ":" + key
+	}
+	args := []string{"get", table, record, columnVal}
+	return Exec(args...)
+}
+
 // Bridges returns bridges created by Kube-OVN
 func Bridges() ([]string, error) {
 	return ovsFind("bridge", "name", fmt.Sprintf("external-ids:vendor=%s", util.CniTypeName))
 }
 
-// ClearPodBandwidth remove qos related to this pod. Only used when remove pod.
-func ClearPodBandwidth(podName, podNamespace string) error {
-	qosList, err := ovsFind("qos", "_uuid", fmt.Sprintf(`external-ids:iface-id="%s.%s"`, podName, podNamespace))
-	if err != nil {
-		return err
-	}
-	qosListByPod, err := ovsFind("qos", "_uuid", fmt.Sprintf(`external-ids:pod="%s/%s"`, podNamespace, podName))
-	if err != nil {
-		return err
+// ClearPodBandwidth remove qos related to this pod.
+func ClearPodBandwidth(podName, podNamespace, ifaceID string) error {
+	var qosList, qosListByPod []string
+	var err error
+	if ifaceID != "" {
+		qosList, err = ovsFind("qos", "_uuid", fmt.Sprintf(`external-ids:iface-id="%s"`, ifaceID))
+		if err != nil {
+			return err
+		}
+	} else {
+		qosListByPod, err = ovsFind("qos", "_uuid", fmt.Sprintf(`external-ids:pod="%s/%s"`, podNamespace, podName))
+		if err != nil {
+			return err
+		}
 	}
 	qosList = append(qosList, qosListByPod...)
 	qosList = util.UniqString(qosList)
@@ -121,7 +137,7 @@ func ClearPodBandwidth(podName, podNamespace string) error {
 
 // SetInterfaceBandwidth set ingress/egress qos for given pod, annotation values are for node/pod
 // but ingress/egress parameters here are from the point of ovs port/interface view, so reverse input parameters when call func SetInterfaceBandwidth
-func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string) error {
+func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, podPriority string) error {
 	ingressMPS, _ := strconv.Atoi(ingress)
 	ingressKPS := ingressMPS * 1000
 	interfaceList, err := ovsFind("interface", "name", fmt.Sprintf("external-ids:iface-id=%s", iface))
@@ -144,36 +160,37 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string)
 			return err
 		}
 		if egressBPS > 0 {
-			if len(qosList) == 0 {
-				qosCommandValues := []string{"type=linux-htb", fmt.Sprintf("other-config:max-rate=%d", egressBPS), fmt.Sprintf("external-ids:iface-id=%s", iface)}
-				if podNamespace != "" && podName != "" {
-					qosCommandValues = append(qosCommandValues, fmt.Sprintf("external-ids:pod=%s/%s", podNamespace, podName))
-				}
-				qos, err := ovsCreate("qos", qosCommandValues...)
-				if err != nil {
-					return err
-				}
-				err = ovsSet("port", ifName, fmt.Sprintf("qos=%s", qos))
-				if err != nil {
-					return err
-				}
-			} else {
-				for _, qos := range qosList {
-					klog.Infof("qos %s already exists", qos)
-					if err := ovsSet("qos", qos, fmt.Sprintf("other-config:max-rate=%d", egressBPS)); err != nil {
-						return err
-					}
-				}
-			}
-		} else {
-			if err = ovsClear("port", ifName, "qos"); err != nil {
+			queueList, err := SetHtbQosQueueRecord(podName, podNamespace, iface, podPriority, egressBPS)
+			if err != nil {
 				return err
 			}
+
+			if err = SetQosQueueBinding(podName, podNamespace, ifName, iface, qosList, queueList); err != nil {
+				return err
+			}
+		} else {
 			for _, qos := range qosList {
-				if err := ovsDestroy("qos", qos); err != nil {
+				qosType, err := ovsGet("qos", qos, "type", "")
+				if err != nil {
 					return err
 				}
+				if qosType != util.HtbQos {
+					continue
+				}
+				queueId, err := ovsGet("qos", qos, "queues", "0")
+				if err != nil {
+					return err
+				}
+
+				// It's difficult to check if qos and queue should be destroyed here since can not get subnet info here. So leave destroy operation in loop check
+				if _, err := Exec("remove", "queue", queueId, "other_config", "max-rate"); err != nil {
+					return fmt.Errorf("failed to remove rate limit for queue in pod %v/%v, %v", podNamespace, podName, err)
+				}
 			}
+		}
+
+		if err = SetHtbQosPriority(podName, podNamespace, iface, ifName, podPriority); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -316,4 +333,288 @@ func GetResidualInternalPorts() []string {
 		}
 	}
 	return residualPorts
+}
+
+func ClearHtbQosQueue(podName, podNamespace, iface string) error {
+	var queueList []string
+	var err error
+	if iface != "" {
+		queueList, err = ovsFind("queue", "_uuid", fmt.Sprintf(`external-ids:iface-id="%s"`, iface))
+		if err != nil {
+			return err
+		}
+	} else {
+		queueList, err = ovsFind("queue", "_uuid", fmt.Sprintf(`external-ids:pod="%s/%s"`, podNamespace, podName))
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, queueId := range queueList {
+		if err := ovsDestroy("queue", queueId); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func IsHtbQos(iface string) (bool, error) {
+	qosList, err := ovsFind("qos", "_uuid", fmt.Sprintf(`external-ids:iface-id="%s"`, iface))
+	if err != nil {
+		return false, err
+	}
+
+	for _, qos := range qosList {
+		qosType, err := ovsGet("qos", qos, "type", "")
+		if err != nil {
+			return false, err
+		}
+		if qosType == util.HtbQos {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func SetHtbQosQueueRecord(podName, podNamespace, iface, priority string, maxRateBPS int) ([]string, error) {
+	queueList, err := ovsFind("queue", "_uuid", fmt.Sprintf("external-ids:iface-id=%s", iface))
+	if err != nil {
+		return queueList, err
+	}
+
+	var queueCommandValues []string
+	if maxRateBPS > 0 {
+		queueCommandValues = append(queueCommandValues, fmt.Sprintf("other_config:max-rate=%d", maxRateBPS))
+	}
+	if priority != "" {
+		queueCommandValues = append(queueCommandValues, fmt.Sprintf("other_config:priority=%s", priority))
+	}
+
+	if len(queueList) == 0 {
+		queueCommandValues = append(queueCommandValues, fmt.Sprintf("external-ids:iface-id=%s", iface))
+		if podNamespace != "" && podName != "" {
+			queueCommandValues = append(queueCommandValues, fmt.Sprintf("external-ids:pod=%s/%s", podNamespace, podName))
+		}
+
+		if _, err := ovsCreate("queue", queueCommandValues...); err != nil {
+			return queueList, err
+		}
+	} else {
+		for _, queueId := range queueList {
+			if err := ovsSet("queue", queueId, queueCommandValues...); err != nil {
+				return queueList, err
+			}
+		}
+	}
+
+	for {
+		queueList, err = ovsFind("queue", "_uuid", fmt.Sprintf("external-ids:iface-id=%s", iface))
+		if err != nil {
+			return queueList, err
+		}
+		if len(queueList) == 0 {
+			klog.Infof("queue record does not exist, please wait creating...")
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		break
+	}
+
+	return queueList, nil
+}
+
+func SetHtbQosPriority(podName, podNamespace, iface, ifName, priority string) error {
+	qosList, err := ovsFind("qos", "_uuid", fmt.Sprintf("external-ids:iface-id=%s", iface))
+	if err != nil {
+		return err
+	}
+	if priority != "" {
+		queueList, err := SetHtbQosQueueRecord(podName, podNamespace, iface, priority, 0)
+		if err != nil {
+			return err
+		}
+
+		if err = SetQosQueueBinding(podName, podNamespace, ifName, iface, qosList, queueList); err != nil {
+			return err
+		}
+	} else {
+		for _, qos := range qosList {
+			qosType, err := ovsGet("qos", qos, "type", "")
+			if err != nil {
+				return err
+			}
+			if qosType != util.HtbQos {
+				continue
+			}
+			queueId, err := ovsGet("qos", qos, "queues", "0")
+			if err != nil {
+				return err
+			}
+
+			// It's difficult to check if qos and queue should be destroyed here since can not get subnet info here. So leave destroy operation in subnet loop check
+			if _, err := Exec("remove", "queue", queueId, "other_config", "priority"); err != nil {
+				return fmt.Errorf("failed to remove priority for queue in pod %v/%v, %v", podNamespace, podName, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// SetQosQueueBinding set qos related to queue record.
+func SetQosQueueBinding(podName, podNamespace, ifName, iface string, qosList, queueList []string) error {
+	var qosCommandValues []string
+	qosCommandValues = append(qosCommandValues, fmt.Sprintf("queues:0=%s", queueList[0]))
+	if len(qosList) == 0 {
+		qosCommandValues = append(qosCommandValues, "type=linux-htb", fmt.Sprintf(`external-ids:iface-id="%s"`, iface))
+		if podNamespace != "" && podName != "" {
+			qosCommandValues = append(qosCommandValues, fmt.Sprintf("external-ids:pod=%s/%s", podNamespace, podName))
+		}
+		qos, err := ovsCreate("qos", qosCommandValues...)
+		if err != nil {
+			return err
+		}
+		err = ovsSet("port", ifName, fmt.Sprintf("qos=%s", qos))
+		if err != nil {
+			return err
+		}
+	} else {
+		for _, qos := range qosList {
+			qosType, err := ovsGet("qos", qos, "type", "")
+			if err != nil {
+				return err
+			}
+			if qosType != util.HtbQos {
+				klog.Errorf("netem qos exists for pod %s/%s, conflict with current qos, will be changed to htb qos", podNamespace, podName)
+				qosCommandValues = append(qosCommandValues, "type=linux-htb")
+			}
+
+			if qosType == util.HtbQos {
+				queueId, err := ovsGet("qos", qos, "queues", "0")
+				if err != nil {
+					return err
+				}
+				if queueId == queueList[0] {
+					return nil
+				}
+			}
+
+			if err := ovsSet("qos", qos, qosCommandValues...); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// remove qos related to this port.
+func ClearPortQosBinding(ifaceID string) error {
+	interfaceList, err := ovsFind("interface", "name", fmt.Sprintf(`external-ids:iface-id="%s"`, ifaceID))
+	if err != nil {
+		return err
+	}
+
+	for _, ifName := range interfaceList {
+		if err = ovsClear("port", ifName, "qos"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SetPodQosPriority set qos to this pod port.
+func SetPodQosPriority(podName, podNamespace, ifaceID, priority string) error {
+	interfaceList, err := ovsFind("interface", "name", fmt.Sprintf("external-ids:iface-id=%s", ifaceID))
+	if err != nil {
+		return err
+	}
+
+	for _, ifName := range interfaceList {
+		if err = SetHtbQosPriority(podName, podNamespace, ifaceID, ifName, priority); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// The latency value expressed in us.
+func SetNetemQos(podName, podNamespace, iface, latency, limit, loss string) error {
+	latencyMs, _ := strconv.Atoi(latency)
+	latencyUs := latencyMs * 1000
+	limitPkts, _ := strconv.Atoi(limit)
+	lossPercent, _ := strconv.ParseFloat(loss, 64)
+
+	interfaceList, err := ovsFind("interface", "name", fmt.Sprintf("external-ids:iface-id=%s", iface))
+	if err != nil {
+		return err
+	}
+
+	for _, ifName := range interfaceList {
+		qosList, err := ovsFind("qos", "_uuid", fmt.Sprintf("external-ids:iface-id=%s", iface))
+		if err != nil {
+			return err
+		}
+
+		var qosCommandValues []string
+		if latencyMs > 0 {
+			qosCommandValues = append(qosCommandValues, fmt.Sprintf("other_config:latency=%d", latencyUs))
+		}
+		if limitPkts > 0 {
+			qosCommandValues = append(qosCommandValues, fmt.Sprintf("other_config:limit=%d", limitPkts))
+		}
+		if lossPercent > 0 {
+			qosCommandValues = append(qosCommandValues, fmt.Sprintf("other_config:loss=%v", lossPercent))
+		}
+		if latencyMs > 0 || limitPkts > 0 || lossPercent > 0 {
+			if len(qosList) == 0 {
+				qosCommandValues = append(qosCommandValues, "type=linux-netem", fmt.Sprintf(`external-ids:iface-id="%s"`, iface))
+				if podNamespace != "" && podName != "" {
+					qosCommandValues = append(qosCommandValues, fmt.Sprintf("external-ids:pod=%s/%s", podNamespace, podName))
+				}
+
+				qos, err := ovsCreate("qos", qosCommandValues...)
+				if err != nil {
+					return err
+				}
+				err = ovsSet("port", ifName, fmt.Sprintf("qos=%s", qos))
+				if err != nil {
+					return err
+				}
+			} else {
+				for _, qos := range qosList {
+					qosType, err := ovsGet("qos", qos, "type", "")
+					if err != nil {
+						return err
+					}
+					if qosType != util.NetemQos {
+						klog.Errorf("htb qos with higher priority exists for pod %v/%v, conflict with netem qos config, please delete htb qos first", podNamespace, podName)
+						return nil
+					}
+
+					if err := ovsSet("qos", qos, qosCommandValues...); err != nil {
+						return err
+					}
+				}
+			}
+		} else {
+			for _, qos := range qosList {
+				qosType, _ := ovsGet("qos", qos, "type", "")
+				if qosType != util.NetemQos {
+					continue
+				}
+
+				if err = ClearPortQosBinding(iface); err != nil {
+					klog.Errorf("failed to delete qos bingding info for interface %s: %v", iface, err)
+					return err
+				}
+
+				// reuse this function to delete qos record
+				if err = ClearPodBandwidth(podName, podNamespace, iface); err != nil {
+					klog.Errorf("failed to delete netemqos record for pod %s/%s: %v", podNamespace, podName, err)
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }

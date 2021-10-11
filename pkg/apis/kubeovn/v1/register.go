@@ -45,6 +45,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&VpcNatGatewayList{},
 		&SecurityGroup{},
 		&SecurityGroupList{},
+		&HtbQos{},
+		&HtbQosList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

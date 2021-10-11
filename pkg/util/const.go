@@ -136,4 +136,21 @@ const (
 	MirrorDefaultName       = "m0"
 
 	DenyAllSecurityGroup = "kubeovn_deny_all"
+
+	HtbQos   = "linux-htb"
+	NetemQos = "linux-netem"
+
+	HtbQosHigh   = "htbqos-high"
+	HtbQosMedium = "htbqos-medium"
+	HtbQosLow    = "htbqos-low"
+
+	PriorityAnnotation        = "ovn.kubernetes.io/priority"
+	NetemQosLatencyAnnotation = "ovn.kubernetes.io/latency"
+	NetemQosLimitAnnotation   = "ovn.kubernetes.io/limit"
+	NetemQosLossAnnotation    = "ovn.kubernetes.io/loss"
+
+	PriorityAnnotationTemplate        = "%s.kubernetes.io/priority"
+	NetemQosLatencyAnnotationTemplate = "%s.kubernetes.io/latency"
+	NetemQosLimitAnnotationTemplate   = "%s.kubernetes.io/limit"
+	NetemQosLossAnnotationTemplate    = "%s.kubernetes.io/loss"
 )

@@ -28,6 +28,10 @@ type FakeKubeovnV1 struct {
 	*testing.Fake
 }
 
+func (c *FakeKubeovnV1) HtbQoses() v1.HtbQosInterface {
+	return &FakeHtbQoses{c}
+}
+
 func (c *FakeKubeovnV1) IPs() v1.IPInterface {
 	return &FakeIPs{c}
 }
