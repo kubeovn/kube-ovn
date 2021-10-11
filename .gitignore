@@ -9,7 +9,8 @@ kube-ovn.yaml
 kube-ovn-crd.yaml
 ovn.yaml
 kind.yaml
-image.tar
+kube-ovn.tar
+vpc-nat-gateway.tar
 image-amd64.tar
 image-arm64.tar
 install-underlay.sh
