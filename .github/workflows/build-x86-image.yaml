@@ -63,11 +63,17 @@ jobs:
           make release
           make tar
 
-      - name: Upload image to artifact
+      - name: Upload kube-ovn image to artifact
         uses: actions/upload-artifact@v2
         with:
-          name: image
-          path: image.tar
+          name: kube-ovn
+          path: kube-ovn.tar
+
+      - name: Upload vpc-nat-gateway image to artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: vpc-nat-gateway
+          path: vpc-nat-gateway.tar
 
   single-e2e:
     needs: build
@@ -93,11 +99,11 @@ jobs:
       - name: Download image
         uses: actions/download-artifact@v2
         with:
-          name: image
+          name: kube-ovn
 
       - name: Install Kube-OVN
         run: |
-          docker load --input image.tar
+          docker load --input kube-ovn.tar
           sudo make kind-install
 
       - name: Set up Go 1.x
@@ -137,11 +143,11 @@ jobs:
       - name: Download image
         uses: actions/download-artifact@v2
         with:
-          name: image
+          name: kube-ovn
 
       - name: Install Kube-OVN
         run: |
-          docker load --input image.tar
+          docker load --input kube-ovn.tar
           sudo make kind-install
 
       - name: Set up Go 1.x
@@ -181,11 +187,11 @@ jobs:
       - name: Download image
         uses: actions/download-artifact@v2
         with:
-          name: image
+          name: kube-ovn
 
       - name: Install Kube-OVN
         run: |
-          docker load --input image.tar
+          docker load --input kube-ovn.tar
           sudo make kind-install
 
       - name: Set up Go 1.x
@@ -225,11 +231,11 @@ jobs:
       - name: Download image
         uses: actions/download-artifact@v2
         with:
-          name: image
+          name: kube-ovn
 
       - name: Install Kube-OVN
         run: |
-          docker load --input image.tar
+          docker load --input kube-ovn.tar
           sudo make kind-install-underlay
 
       - name: Set up Go 1.x
@@ -269,11 +275,11 @@ jobs:
       - name: Download image
         uses: actions/download-artifact@v2
         with:
-          name: image
+          name: kube-ovn
 
       - name: Install Kube-OVN
         run: |
-          docker load --input image.tar
+          docker load --input kube-ovn.tar
           sudo make kind-install-single
 
       - name: Set up Go 1.x
@@ -313,11 +319,11 @@ jobs:
       - name: Download image
         uses: actions/download-artifact@v2
         with:
-          name: image
+          name: kube-ovn
 
       - name: Install Kube-OVN
         run: |
-          docker load --input image.tar
+          docker load --input kube-ovn.tar
           sudo make kind-install
 
   ipv6-e2e:
@@ -344,15 +350,15 @@ jobs:
       - name: Download image
         uses: actions/download-artifact@v2
         with:
-          name: image
+          name: kube-ovn
 
       - name: Load Image
         run: |
-          docker load --input image.tar
+          docker load --input kube-ovn.tar
 
       - name: Install Kube-OVN
         run: |
-          docker load --input image.tar
+          docker load --input kube-ovn.tar
           sudo make kind-install-ipv6
 
       - name: Set up Go 1.x
@@ -392,15 +398,15 @@ jobs:
       - name: Download image
         uses: actions/download-artifact@v2
         with:
-          name: image
+          name: kube-ovn
 
       - name: Load Image
         run: |
-          docker load --input image.tar
+          docker load --input kube-ovn.tar
 
       - name: Install Kube-OVN
         run: |
-          docker load --input image.tar
+          docker load --input kube-ovn.tar
           sudo make kind-install-ipv6
 
       - name: Set up Go 1.x
@@ -440,15 +446,15 @@ jobs:
       - name: Download image
         uses: actions/download-artifact@v2
         with:
-          name: image
+          name: kube-ovn
 
       - name: Load Image
         run: |
-          docker load --input image.tar
+          docker load --input kube-ovn.tar
 
       - name: Install Kube-OVN
         run: |
-          docker load --input image.tar
+          docker load --input kube-ovn.tar
           sudo make kind-install-underlay-ipv6
 
       - name: Set up Go 1.x
@@ -488,15 +494,15 @@ jobs:
       - name: Download image
         uses: actions/download-artifact@v2
         with:
-          name: image
+          name: kube-ovn
 
       - name: Load Image
         run: |
-          docker load --input image.tar
+          docker load --input kube-ovn.tar
 
       - name: Install Kube-OVN
         run: |
-          docker load --input image.tar
+          docker load --input kube-ovn.tar
           sudo make kind-install-dual
 
       - name: Set up Go 1.x
@@ -536,13 +542,13 @@ jobs:
       - name: Download image
         uses: actions/download-artifact@v2
         with:
-          name: image
+          name: kube-ovn
 
       - name: Install Kube-OVN without LoadBalancer
         env:
           ENABLE_LB: "false"
         run: |
-          docker load --input image.tar
+          docker load --input kube-ovn.tar
           sudo make kind-install
 
       - name: Set up Go 1.x
@@ -582,13 +588,13 @@ jobs:
       - name: Download image
         uses: actions/download-artifact@v2
         with:
-          name: image
+          name: kube-ovn
 
       - name: Install Kube-OVN without LoadBalancer
         env:
           ENABLE_LB: "false"
         run: |
-          docker load --input image.tar
+          docker load --input kube-ovn.tar
           sudo make kind-install
 
       - name: Set up Go 1.x
@@ -628,13 +634,13 @@ jobs:
       - name: Download image
         uses: actions/download-artifact@v2
         with:
-          name: image
+          name: kube-ovn
 
       - name: Install Kube-OVN without network policy support
         env:
           ENABLE_NP: "false"
         run: |
-          docker load --input image.tar
+          docker load --input kube-ovn.tar
           sudo make kind-install
 
       - name: Set up Go 1.x
@@ -671,14 +677,20 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v2
 
-      - name: Download image
+      - name: Download kube-ovn image
         uses: actions/download-artifact@v2
         with:
-          name: image
+          name: kube-ovn
+
+      - name: Download vpc-nat-gateway image
+        uses: actions/download-artifact@v2
+        with:
+          name: vpc-nat-gateway
 
       - name: Load Image
         run: |
-          docker load --input image.tar
+          docker load --input kube-ovn.tar
+          docker load --input vpc-nat-gateway.tar
 
       - name: Security Scan
         run: |
@@ -702,6 +714,10 @@ jobs:
           echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
           docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn-dev:$COMMIT-x86
           docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-x86
+          docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway-dev:$COMMIT-x86
+          docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway:$TAG-x86
           docker images
           docker push kubeovn/kube-ovn:$TAG-x86
           docker push kubeovn/kube-ovn-dev:$COMMIT-x86
+          docker push kubeovn/vpc-nat-gateway:$TAG-x86
+          docker push kubeovn/vpc-nat-gateway-dev:$COMMIT-x86
