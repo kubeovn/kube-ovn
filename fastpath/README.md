@@ -1,6 +1,7 @@
 # Kube-OVN FastPath Module
 
-*NOTE*: This FastPath module relies on netfilter `NF_STOP` action, thus can ONLY work for 3.x kernel. FastPath module for 4.x kernel is in progress.
+*NOTE*: This FastPath module relies on netfilter `NF_STOP` action, thus can ONLY work for 3.x kernel. 
+For 4.x kernel please use [FastPath for 4.18](4.18) to compile the module.
 
 After the datapath performance profile, the Netfilter hooks inside container netns and between tunnel endpoints contribute
 a large portion of the CPU time. This Kube-OVN FastPath module can help bypass the unnecessary Netfilter hooks to reduce 
@@ -15,7 +16,7 @@ Below is the step to compile the module on CentOS
 
 1. Install the requirement, make sure the kernel-devel version is equal to the one used on Kubernetes nodes
 ```bash
-yum install -y kernel-devel-$(uname -r) gcc
+yum install -y kernel-devel-$(uname -r) gcc elfutils-libelf-devel
 ```
 
 2. Build the module
