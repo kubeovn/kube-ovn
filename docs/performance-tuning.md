@@ -30,38 +30,38 @@ In a different environment set, we compare the performance between optimized Kub
 - Kubernetes: 1.22.0
 - OS: CentOS 7
 - Kube-OVN: 1.8.0
-- CPU: AMD EPYC 7401P 24-Core Processor
-- Network: 2*10Gbps, xmit_hash_policy=layer3+4
+- CPU: AMD EPYC 7402P 24-Core Processor
+- Network: Intel Corporation Ethernet Controller XXV710 for 25GbE SFP28
 
 `qperf -t 60 <server ip> -ub -oo msg_size:1 -vu tcp_lat tcp_bw udp_lat udp_bw`
 
 | Type               | tcp_lat (us) | udp_lat (us) | tcp_bw (Mb/s) | udp_bw(Mb/s) |
 | ------------------ | -------------| -------------| --------------| -------------|
-| Kube-OVN Overlay   | 18.5         | 18           | 20.4          | 3.02         |
-| Kube-OVN Underlay  | 18.5         | 16.3         | 20.7          | 3.92         |
-| Calico IPIP        | 26.8         | 25.2         | 20.4          | 1.15         |
-| Calico NoEncap     | 25.5         | 21.7         | 20.6          | 1.6         |
-| HOST Network       | 20.3         | 17.8         | 20.9          | 3.4          |
+| Kube-OVN Overlay   | 15.2         | 14.6         | 23.6          | 2.65         |
+| Kube-OVN Underlay  | 14.3         | 13.8         | 24.2          | 3.46         |
+| Calico IPIP        | 21.4         | 20.2         | 23.6          | 1.18         |
+| Calico NoEncap     | 19.3         | 16.9         | 23.6          | 1.76         |
+| HOST Network       | 16.6         | 15.4         | 24.8          | 2.64         |
 
 `qperf -t 60 <server ip> -ub -oo msg_size:1K -vu tcp_lat tcp_bw udp_lat udp_bw`
 
 | Type               | tcp_lat (us) | udp_lat (us) | tcp_bw (Gb/s) | udp_bw(Gb/s) |
 | ------------------ | -------------| -------------| --------------| -------------|
-| Kube-OVN Overlay   | 28.2         | 28.1         | 6.24          | 2.92         |
-| Kube-OVN Underlay  | 28           | 27.1         | 8.95          | 3.66         |
-| Calico IPIP        | 28.9         | 28.7         | 1.36          | 1.12         |
-| Calico NoEncap     | 28.9         | 27.2         | 8.38          | 1.76         |
-| HOST Network       | 28.5         | 27.1         | 9.34          | 3.2          |
+| Kube-OVN Overlay   | 16.5         | 15.8         | 10.2          | 2.77         |
+| Kube-OVN Underlay  | 15.9         | 14.5         | 9.6           | 3.22         |
+| Calico IPIP        | 22.5         | 21.5         | 1.45          | 1.14         |
+| Calico NoEncap     | 19.4         | 18.3         | 3.76          | 1.63         |
+| HOST Network       | 18.1         | 16.6         | 9.32          | 2.66         |
 
 `qperf -t 60 <server ip> -ub -oo msg_size:4K -vu tcp_lat tcp_bw udp_lat udp_bw`
 
 | Type               | tcp_lat (us) | udp_lat (us) | tcp_bw (Gb/s) | udp_bw(Gb/s) |
 | ------------------ | -------------| -------------| --------------| -------------|
-| Kube-OVN Overlay   | 85.1         | 69.3         | 7.2           | 7.41         |
-| Kube-OVN Underlay  | 52.7         | 59.5         | 9.2           | 11.8         |
-| Calico IPIP        | 61.6         | 73.2         | 3.06          | 3.27         |
-| Calico NoEncap     | 68.7         | 76.4         | 8.53          | 4.08         |
-| HOST Network       | 54           | 56.1         | 9.35          | 10.3         |
+| Kube-OVN Overlay   | 34.7         | 41.6         | 16.0          | 9.23         |
+| Kube-OVN Underlay  | 32.6         | 44           | 15.1          | 6.71         |
+| Calico IPIP        | 44.8         | 52.9         | 2.94          | 3.26         |
+| Calico NoEncap     | 40           | 49.6         | 6.56          | 4.19         |
+| HOST Network       | 35.9         | 45.9         | 14.6          | 5.59         |
 
 This benchmark is for reference only, the result may vary dramatically due to different hardware and software setups. 
 Optimization for packets with big size and underlay latency are still in progress, we will publish the optimization 
@@ -164,4 +164,19 @@ cd rpm/rpmbuild/RPMS/x86_64/
 
 # Copy the rpm to every node and install
 rpm -i openvswitch-kmod-2.15.2-1.el7.x86_64.rpm
+```
+
+### Using STT tunnel type
+
+Popular tunnel encapsulation methods like Geneve or Vxlan use udp to wrap the origin packets. 
+However，when using udp over tcp packets, lots of the tcp offloading capabilities that modern NICs provided cannot be utilized 
+and leads to degraded performance compared to non-encapsulated one.
+
+STT provides a tcp like header to encapsulate packet which can utilize all the offloading capabilities and dramatically improve the throughput of tcp traffic.
+Unfortunately, this tunnel type is not embedded in kernel, you have to compile OVS kernel module as above to use STT.
+
+```bash
+kubectl set env daemonset/ovs-ovn -n kube-system TUNNEL_TYPE=stt
+
+kubectl delete pod -n kube-system -lapp=ovs
 ```

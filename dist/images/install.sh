@@ -49,7 +49,7 @@ fi
 EXCLUDE_IPS=""                         # EXCLUDE_IPS for default subnet
 LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
 NETWORK_TYPE="geneve"                  # geneve or vlan
-TUNNEL_TYPE="geneve"                   # geneve or vxlan
+TUNNEL_TYPE="geneve"                   # geneve, vxlan or stt. ATTENTION: some networkpolicy cannot take effect when using vxlan and stt need custom compile ovs kernel module
 POD_NIC_TYPE="veth-pair"               # veth-pair or internal-port
 
 # VLAN Config only take effect when NETWORK_TYPE is vlan
