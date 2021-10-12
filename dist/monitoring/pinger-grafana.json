@@ -52,7 +52,7 @@
   "gnetId": null,
   "graphTooltip": 0,
   "id": null,
-  "iteration": 1600653852457,
+  "iteration": 1634037330659,
   "links": [],
   "panels": [
     {
@@ -157,6 +157,7 @@
         "#d44a3a"
       ],
       "datasource": "${DS_PROMETHEUS}",
+      "description": "",
       "fieldConfig": {
         "defaults": {
           "custom": {}
@@ -177,7 +178,7 @@
         "x": 3,
         "y": 0
       },
-      "id": 4,
+      "id": 31,
       "interval": null,
       "links": [],
       "mappingType": 1,
@@ -194,6 +195,7 @@
       "maxDataPoints": 100,
       "nullPointMode": "connected",
       "nullText": null,
+      "pluginVersion": "6.2.2",
       "postfix": "",
       "postfixFontSize": "50%",
       "prefix": "",
@@ -214,17 +216,18 @@
       "tableColumn": "",
       "targets": [
         {
-          "expr": "sum(pinger_ovs_down)",
+          "expr": "sum(pinger_ovs_up)",
           "format": "time_series",
           "instant": true,
           "intervalFactor": 1,
+          "legendFormat": "",
           "refId": "A"
         }
       ],
       "thresholds": "",
       "timeFrom": null,
       "timeShift": null,
-      "title": "OVS Down",
+      "title": "OVS Up",
       "type": "singlestat",
       "valueFontSize": "80%",
       "valueMaps": [
@@ -234,7 +237,7 @@
           "value": "null"
         }
       ],
-      "valueName": "avg"
+      "valueName": "total"
     },
     {
       "cacheTimeout": null,
@@ -772,6 +775,97 @@
       "valueName": "avg"
     },
     {
+      "cacheTimeout": null,
+      "colorBackground": false,
+      "colorValue": false,
+      "colors": [
+        "#299c46",
+        "rgba(237, 129, 40, 0.89)",
+        "#d44a3a"
+      ],
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "format": "none",
+      "gauge": {
+        "maxValue": 100,
+        "minValue": 0,
+        "show": false,
+        "thresholdLabels": false,
+        "thresholdMarkers": true
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 3,
+        "x": 0,
+        "y": 5
+      },
+      "id": 4,
+      "interval": null,
+      "links": [],
+      "mappingType": 1,
+      "mappingTypes": [
+        {
+          "name": "value to text",
+          "value": 1
+        },
+        {
+          "name": "range to text",
+          "value": 2
+        }
+      ],
+      "maxDataPoints": 100,
+      "nullPointMode": "connected",
+      "nullText": null,
+      "postfix": "",
+      "postfixFontSize": "50%",
+      "prefix": "",
+      "prefixFontSize": "50%",
+      "rangeMaps": [
+        {
+          "from": "null",
+          "text": "N/A",
+          "to": "null"
+        }
+      ],
+      "sparkline": {
+        "fillColor": "rgba(31, 118, 189, 0.18)",
+        "full": false,
+        "lineColor": "rgb(31, 120, 193)",
+        "show": false
+      },
+      "tableColumn": "",
+      "targets": [
+        {
+          "expr": "sum(increase(klog_lines_total{level=\"ERROR\", instance=~\"$instance\", job=\"kube-ovn-pinger\"}[10m]))",
+          "format": "time_series",
+          "instant": true,
+          "interval": "",
+          "intervalFactor": 1,
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "thresholds": "",
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Error Log in 10 Minutues",
+      "type": "singlestat",
+      "valueFontSize": "80%",
+      "valueMaps": [
+        {
+          "op": "=",
+          "text": "N/A",
+          "value": "null"
+        }
+      ],
+      "valueName": "avg"
+    },
+    {
       "aliasColors": {},
       "bars": false,
       "dashLength": 10,
@@ -787,8 +881,8 @@
       "fillGradient": 0,
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 0,
+        "w": 11,
+        "x": 3,
         "y": 5
       },
       "hiddenSeries": false,
@@ -882,8 +976,8 @@
       "fillGradient": 0,
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
+        "w": 10,
+        "x": 14,
         "y": 5
       },
       "hiddenSeries": false,
@@ -1330,7 +1424,7 @@
       },
       "yaxes": [
         {
-          "format": "short",
+          "format": "percentunit",
           "label": null,
           "logBase": 1,
           "max": null,
@@ -1523,5 +1617,5 @@
   "timezone": "",
   "title": "Kube-OVN / Pinger",
   "uid": "LIbmpK0Zk",
-  "version": 7
+  "version": 3
 }

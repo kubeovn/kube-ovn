@@ -43,7 +43,7 @@
   "gnetId": null,
   "graphTooltip": 0,
   "id": null,
-  "iteration": 1603434322713,
+  "iteration": 1634037280000,
   "links": [],
   "panels": [
     {
@@ -276,122 +276,6 @@
       "timeFrom": null,
       "timeShift": null,
       "title": "OVN SB Role",
-      "type": "stat"
-    },
-    {
-      "datasource": "$datasource",
-      "fieldConfig": {
-        "defaults": {
-          "custom": {},
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 5,
-        "x": 14,
-        "y": 0
-      },
-      "id": 24,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "mean"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "name"
-      },
-      "pluginVersion": "7.1.0",
-      "targets": [
-        {
-          "expr": "sum(kube_ovn_ovn_info{instance=~\"$instance\", db_version!=\"unknown\"}) by (ovs_version)",
-          "instant": true,
-          "interval": "",
-          "legendFormat": "{{ovs_version}}",
-          "refId": "A"
-        }
-      ],
-      "timeFrom": null,
-      "timeShift": null,
-      "title": "OVS Version",
-      "type": "stat"
-    },
-    {
-      "datasource": "$datasource",
-      "fieldConfig": {
-        "defaults": {
-          "custom": {},
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 5,
-        "x": 19,
-        "y": 0
-      },
-      "id": 22,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "mean"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "name"
-      },
-      "pluginVersion": "7.1.0",
-      "targets": [
-        {
-          "expr": "sum(kube_ovn_ovn_info{instance=~\"$instance\", db_version!=\"unknown\"}) by (db_version)",
-          "instant": true,
-          "interval": "",
-          "legendFormat": "{{db_version}}",
-          "refId": "A"
-        }
-      ],
-      "timeFrom": null,
-      "timeShift": null,
-      "title": "DB Version",
       "type": "stat"
     },
     {
@@ -834,7 +718,7 @@
       },
       "yaxes": [
         {
-          "format": "short",
+          "format": "percentunit",
           "label": null,
           "logBase": 1,
           "max": null,
@@ -847,7 +731,7 @@
           "logBase": 1,
           "max": null,
           "min": null,
-          "show": true
+          "show": false
         }
       ],
       "yaxis": {
@@ -1016,5 +900,5 @@
   "timezone": "",
   "title": "Kube-OVN / OVN",
   "uid": "c4ykUItGk",
-  "version": 22
+  "version": 3
 }
