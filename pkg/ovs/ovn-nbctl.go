@@ -60,6 +60,13 @@ func (c Client) SetAzName(azName string) error {
 	return nil
 }
 
+func (c Client) SetUseCtInvMatch() error {
+	if _, err := c.ovnNbCommand("set", "NB_Global", ".", "options:use_ct_inv_match=false"); err != nil {
+		return fmt.Errorf("failed to set NB_Global option use_ct_inv_match to false: %v", err)
+	}
+	return nil
+}
+
 func (c Client) SetICAutoRoute(enable bool, blackList []string) error {
 	if enable {
 		if _, err := c.ovnNbCommand("set", "NB_Global", ".", "options:ic-route-adv=true", "options:ic-route-learn=true", fmt.Sprintf("options:ic-route-blacklist=%s", strings.Join(blackList, ","))); err != nil {

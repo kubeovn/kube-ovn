@@ -365,6 +365,10 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		klog.Fatalf("failed to wait for caches to sync")
 	}
 
+	if err := c.ovnClient.SetUseCtInvMatch(); err != nil {
+		klog.Fatalf("failed to set NB_Global option use_ct_inv_match to false: %v", err)
+	}
+
 	if err := c.InitDefaultVpc(); err != nil {
 		klog.Fatalf("failed to init default vpc: %v", err)
 	}
