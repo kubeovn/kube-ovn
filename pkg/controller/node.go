@@ -698,17 +698,20 @@ func (c *Controller) checkPodsChangedOnNode(pgName string, ports []string) (bool
 		return false, err
 	}
 
-	pordIds := make([]string, 0, len(ports))
-	for _, port := range ports {
-		portId, err := c.ovnClient.ConvertLspNameToUuid(port)
-		if err != nil {
-			klog.Errorf("failed to convert lsp name to uuid, %v", err)
-			continue
-		}
-		pordIds = append(pordIds, portId)
+	nameIdMap, err := c.ovnClient.ListLspForNodePortgroup()
+	if err != nil {
+		klog.Errorf("failed to list lsp info, %v", err)
+		return false, err
 	}
 
-	for _, portId := range pordIds {
+	portIds := make([]string, 0, len(ports))
+	for _, port := range ports {
+		if portId, ok := nameIdMap[port]; ok {
+			portIds = append(portIds, portId)
+		}
+	}
+
+	for _, portId := range portIds {
 		if !util.IsStringIn(portId, pgPorts) {
 			klog.Infof("new added pod %v should add to node port group %v", portId, pgName)
 			return true, nil
@@ -716,7 +719,7 @@ func (c *Controller) checkPodsChangedOnNode(pgName string, ports []string) (bool
 	}
 
 	for _, pgPort := range pgPorts {
-		if !util.IsStringIn(pgPort, pordIds) {
+		if !util.IsStringIn(pgPort, portIds) {
 			klog.Infof("can not find match pod for port %v in node port group %v", pgPort, pgName)
 			return true, nil
 		}
