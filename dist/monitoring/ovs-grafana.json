@@ -43,7 +43,7 @@
   "gnetId": null,
   "graphTooltip": 0,
   "id": null,
-  "iteration": 1603433642550,
+  "iteration": 1634037258182,
   "links": [],
   "panels": [
     {
@@ -962,7 +962,7 @@
       },
       "yaxes": [
         {
-          "format": "short",
+          "format": "percentunit",
           "label": null,
           "logBase": 1,
           "max": null,
@@ -975,7 +975,7 @@
           "logBase": 1,
           "max": null,
           "min": null,
-          "show": true
+          "show": false
         }
       ],
       "yaxis": {
@@ -1143,5 +1143,5 @@
   "timezone": "",
   "title": "Kube-OVN / OVS",
   "uid": "xI0I5dpMk",
-  "version": 7
+  "version": 2
 }
