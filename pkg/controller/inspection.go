@@ -1,14 +1,15 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
-	"net"
-	"strings"
 )
 
 func (c *Controller) inspectPod() error {
@@ -42,31 +43,15 @@ func (c *Controller) inspectPod() error {
 					}
 				}
 				if !isLspExist {
-					if err := c.ovnClient.DeleteLogicalSwitchPort(portName); err != nil {
-						klog.Errorf("failed to delete lsp %s, %v", portName, err)
+					delete(pod.Annotations, fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName))
+					delete(pod.Annotations, util.RoutedAnnotation)
+					if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name, types.JSONPatchType, generatePatchPayload(pod.Annotations, "replace"), metav1.PatchOptions{}, ""); err != nil {
+						klog.Errorf("patch pod %s/%s failed %v during inspection", pod.Name, pod.Namespace, err)
 						return err
 					}
-					ipStr := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
-					mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
-					portSecurity := false
-					if pod.Annotations[fmt.Sprintf(util.PortSecurityAnnotationTemplate, podNet.ProviderName)] == "true" {
-						portSecurity = true
-					}
-					securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
-					vips := pod.Annotations[fmt.Sprintf(util.PortVipAnnotationTemplate, podNet.ProviderName)]
-					for _, ip := range strings.Split(vips, ",") {
-						if ip != "" && net.ParseIP(ip) == nil {
-							klog.Errorf("invalid vip address '%s' for pod %s", ip, pod.Name)
-							vips = ""
-							break
-						}
-					}
-					klog.Infof("start rebuild lsp %s with ip %s, mac %s", portName, ipStr, mac)
-					if err := c.ovnClient.CreatePort(podNet.Subnet.Name, portName, ipStr, mac, pod.Name, pod.Namespace,
-						portSecurity, securityGroupAnnotation, vips); err != nil {
-						c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
-						return err
-					}
+					klog.V(5).Infof("finish remove annotation for %s", portName)
+					c.addPodQueue.Add(fmt.Sprintf("%s/%s", pod.Namespace, pod.Name))
+					break
 				}
 			}
 		}
