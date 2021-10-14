@@ -33,3 +33,8 @@ jobs:
           docker pull kubeovn/kube-ovn:$TAG-arm
           docker manifest create kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-x86 kubeovn/kube-ovn:$TAG-arm
           docker manifest push kubeovn/kube-ovn:$TAG
+
+          docker pull kubeovn/vpc-nat-gateway:$TAG-x86
+          docker pull kubeovn/vpc-nat-gateway:$TAG-arm
+          docker manifest create kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway:$TAG-x86 kubeovn/vpc-nat-gateway:$TAG-arm
+          docker manifest push kubeovn/vpc-nat-gateway:$TAG
