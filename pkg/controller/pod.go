@@ -830,8 +830,7 @@ func getNextHopByTunnelIP(gw []net.IP) string {
 }
 
 func needAllocateSubnets(pod *v1.Pod, nets []*kubeovnNet) []*kubeovnNet {
-	if pod.Status.Phase == v1.PodRunning ||
-		pod.Status.Phase == v1.PodSucceeded ||
+	if pod.Status.Phase == v1.PodSucceeded ||
 		pod.Status.Phase == v1.PodFailed {
 		return nil
 	}
