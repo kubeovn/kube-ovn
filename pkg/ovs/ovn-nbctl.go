@@ -1326,18 +1326,27 @@ func (c Client) ListPgPorts(pgName string) ([]string, error) {
 	return result, nil
 }
 
-func (c Client) ConvertLspNameToUuid(name string) (string, error) {
-	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid", "find", "logical_switch_port", fmt.Sprintf("name=%s", name))
+func (c Client) ListLspForNodePortgroup() (map[string]string, error) {
+	output, err := c.ovnNbCommand("--data=bare", "--format=csv", "--no-heading", "--columns=name,_uuid", "list", "logical_switch_port")
+	if err != nil {
+		klog.Errorf("failed to list logical-switch-port, %v", err)
+		return nil, err
+	}
 	lines := strings.Split(output, "\n")
-	if len(lines) == 0 {
-		klog.Errorf("failed to get lsp uuid by name, %v", err)
-		return "", err
+	result := make(map[string]string, len(lines))
+	for _, l := range lines {
+		if len(strings.TrimSpace(l)) == 0 {
+			continue
+		}
+		parts := strings.Split(strings.TrimSpace(l), ",")
+		if len(parts) != 2 {
+			continue
+		}
+		name := strings.TrimSpace(parts[0])
+		uuid := strings.TrimSpace(parts[1])
+		result[name] = uuid
 	}
-	if uuid := strings.TrimSpace(lines[0]); uuid != "" {
-		return uuid, nil
-	}
-
-	return "", fmt.Errorf("logical switch port %s not found", name)
+	return result, nil
 }
 
 func (c Client) SetPortsToPortGroup(portGroup string, portNames []string) error {
