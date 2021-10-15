@@ -838,7 +838,7 @@ func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule,
 			return nil, nil, err
 		}
 
-		hostname := os.Getenv("KUBE_NODE_NAME")
+		hostname := os.Getenv(util.HostnameEnv)
 		for _, pod := range pods {
 			if pod.Spec.HostNetwork ||
 				pod.Status.PodIP == "" ||
