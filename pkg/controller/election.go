@@ -13,6 +13,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const ovnLeaderElector = "ovn-controller-leader-elector"
@@ -99,7 +100,7 @@ func setupLeaderElection(config *leaderElectionConfig) *leaderelection.LeaderEle
 	}
 
 	broadcaster := record.NewBroadcaster()
-	hostname := os.Getenv("KUBE_NODE_NAME")
+	hostname := os.Getenv(util.HostnameEnv)
 
 	recorder := broadcaster.NewRecorder(scheme.Scheme, apiv1.EventSource{
 		Component: ovnLeaderElector,
