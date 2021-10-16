@@ -2545,6 +2545,15 @@ trace(){
 
   gwMac=""
   if [ ! -z "$(kubectl get subnet $ls -o jsonpath={.spec.vlan})" ]; then
+    gateway=$(kubectl get subnet "$ls" -o jsonpath={.spec.gateway})
+    if [[ "$gateway" =~ .*,.* ]]; then
+      if [ "$af" = "4" ]; then
+        gateway=${gateway%%,*}
+      else
+        gateway=${gateway##*,}
+      fi
+    fi
+
     ovnCni=$(kubectl get pod -n $KUBE_OVN_NS -o wide | grep -w kube-ovn-cni | grep " $nodeName " | awk '{print $1}')
     if [ -z "$ovnCni" ]; then
       echo "No kube-ovn-cni Pod running on node $nodeName"
@@ -2557,22 +2566,22 @@ trace(){
       exit 1
     fi
 
-    gateway=$(kubectl get subnet "$ls" -o jsonpath={.spec.gateway})
-    podNetNs=$(kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading get interface "$nicName" external-ids:pod_netns | tr -d '\r' | sed -e 's/^"//' -e 's/"$//')
-
     podNicType=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/pod_nic_type})
+    podNetNs=$(kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading get interface "$nicName" external-ids:pod_netns | tr -d '\r' | sed -e 's/^"//' -e 's/"$//')
     if [ "$podNicType" != "internal-port" ]; then
       nicName="eth0"
     fi
 
     if [[ "$gateway" =~ .*:.* ]]; then
+      cmd="ndisc6 -q $gateway $nicName"
       output=$(kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- nsenter --net="$podNetNs" ndisc6 -q "$gateway" "$nicName")
     else
+      cmd="arping -c3 -C1 -i1 -I $nicName $gateway"
       output=$(kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- nsenter --net="$podNetNs" arping -c3 -C1 -i1 -I "$nicName" "$gateway")
     fi
 
     if [ $? -ne 0 ]; then
-      echo "failed to run 'arping -c1 -i $nicName $gateway' in Pod netns"
+      echo "failed to run '$cmd' in Pod's netns"
       exit 1
     fi
     gwMac=$(echo "$output" | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}')
