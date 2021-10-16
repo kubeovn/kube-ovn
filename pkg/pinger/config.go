@@ -3,6 +3,7 @@ package pinger
 import (
 	"flag"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/pflag"
@@ -10,6 +11,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 type Configuration struct {
@@ -27,6 +30,8 @@ type Configuration struct {
 	HostIP             string
 	PodName            string
 	PodIP              string
+	PodIPs             []string
+	PodProtocols       []string
 	ExternalAddress    string
 	NetworkMode        string
 
@@ -106,6 +111,7 @@ func ParseFlags() (*Configuration, error) {
 		InternalDNS:        *argInternalDns,
 		ExternalDNS:        *argExternalDns,
 		PodIP:              os.Getenv("POD_IP"),
+		PodIPs:             strings.Split(os.Getenv("POD_IPS"), ","),
 		HostIP:             os.Getenv("HOST_IP"),
 		NodeName:           os.Getenv("NODE_NAME"),
 		PodName:            os.Getenv("POD_NAME"),
@@ -127,6 +133,11 @@ func ParseFlags() (*Configuration, error) {
 		ServiceOvnControllerFileLogPath: *argServiceOvnControllerFileLogPath,
 		ServiceOvnControllerFilePidPath: *argServiceOvnControllerFilePidPath,
 	}
+	config.PodProtocols = make([]string, len(config.PodIPs))
+	for i, podIP := range config.PodIPs {
+		config.PodProtocols[i] = util.CheckProtocol(podIP)
+	}
+
 	if err := config.initKubeClient(); err != nil {
 		return nil, err
 	}
