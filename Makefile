@@ -160,8 +160,8 @@ kind-install-ipv6:
 .PHONY: kind-install-underlay-ipv6
 kind-install-underlay-ipv6:
 	$(eval SUBNET = $(shell docker network inspect kind -f "{{(index .IPAM.Config 1).Subnet}}"))
+	$(eval GATEWAY = $(shell docker exec kube-ovn-control-plane ip -6 route show default | awk '{print $$3}'))
 	$(eval EXCLUDE_IPS = $(shell docker network inspect kind -f '{{range .Containers}},{{index (split .IPv6Address "/") 0}}{{end}}' | sed 's/^,//'))
-	$(eval GATEWAY = $(shell docker exec kube-ovn-worker ip -6 route show default | awk '{print $$3}'))
 	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(SUBNET)"@' \
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(GATEWAY)"@' \
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(EXCLUDE_IPS)"@' \
@@ -178,6 +178,24 @@ kind-install-dual:
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
 	ENABLE_SSL=true DUAL_STACK=true dist/images/install.sh
 	kubectl describe no
+
+.PHONY: kind-install-underlay-dual
+kind-install-underlay-dual:
+	$(eval IPV4_SUBNET = $(shell docker network inspect kind -f "{{(index .IPAM.Config 0).Subnet}}"))
+	$(eval IPV6_SUBNET = $(shell docker network inspect kind -f "{{(index .IPAM.Config 1).Subnet}}"))
+	$(eval IPV4_GATEWAY = $(shell docker network inspect kind -f "{{(index .IPAM.Config 0).Gateway}}"))
+	$(eval IPV6_GATEWAY = $(shell docker exec kube-ovn-control-plane ip -6 route show default | awk '{print $$3}'))
+	$(eval IPV4_EXCLUDE_IPS = $(shell docker network inspect kind -f '{{range .Containers}},{{index (split .IPv4Address "/") 0}}{{end}}' | sed 's/^,//'))
+	$(eval IPV6_EXCLUDE_IPS = $(shell docker network inspect kind -f '{{range .Containers}},{{index (split .IPv6Address "/") 0}}{{end}}' | sed 's/^,//'))
+	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(IPV4_SUBNET),$(IPV6_SUBNET)"@' \
+		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(IPV4_GATEWAY),$(IPV6_GATEWAY)"@' \
+		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(IPV4_EXCLUDE_IPS),$(IPV6_EXCLUDE_IPS)"@' \
+		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
+		dist/images/install.sh > install-underlay.sh
+	@chmod +x install-underlay.sh
+	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
+	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
+	ENABLE_SSL=true DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 ./install-underlay.sh
 
 .PHONY: kind-reload
 kind-reload:
