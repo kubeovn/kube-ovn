@@ -104,12 +104,12 @@ func (c *Controller) syncSubnetRoutes() {
 	klog.V(5).Infof("exists routes %v", bgpExists)
 	toAdd, toDel := routeDiff(bgpExpected, bgpExists)
 	klog.V(5).Infof("toAdd routes %v", toAdd)
-	klog.V(5).Infof("toDel routes %v", toDel)
 	for _, route := range toAdd {
 		if err := c.addRoute(route); err != nil {
 			klog.Error(err)
 		}
 	}
+	klog.V(5).Infof("toDel routes %v", toDel)
 	for _, route := range toDel {
 		if err := c.delRoute(route); err != nil {
 			klog.Error(err)
