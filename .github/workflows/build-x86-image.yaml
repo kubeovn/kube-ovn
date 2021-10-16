@@ -512,6 +512,54 @@ jobs:
           sudo chmod 666 /home/runner/.kube/config
           make e2e
 
+  dual-stack-underlay-e2e-single-nic:
+    needs: build
+    name: dual-stack-underlay-e2e-single-nic
+    runs-on: ubuntu-18.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v2
+
+      - name: Install Kind
+        run: |
+          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
+          chmod +x ./kind
+          sudo mv kind /usr/local/bin
+
+      - name: Init Kind
+        run: |
+          pip install j2cli --user
+          pip install "j2cli[yaml]" --user
+          sudo PATH=~/.local/bin:$PATH make kind-init-dual
+
+      - name: Download image
+        uses: actions/download-artifact@v2
+        with:
+          name: image
+
+      - name: Load Image
+        run: |
+          docker load --input image.tar
+
+      - name: Install Kube-OVN
+        run: |
+          docker load --input image.tar
+          sudo make kind-install-underlay-dual
+
+      - name: Set up Go 1.x
+        uses: actions/setup-go@v2
+        with:
+          go-version: ^1.16
+        id: go
+
+      - name: Run E2E
+        run: |
+          go install github.com/onsi/ginkgo/ginkgo@latest
+          sudo kubectl cluster-info
+          sudo chmod 666 /home/runner/.kube/config
+          make e2e-underlay-single-nic
+
   no-lb-e2e:
     needs: build
     name: disable-loadbalancer-e2e
@@ -662,6 +710,7 @@ jobs:
       - ipv6-vlan-e2e
       - ipv6-underlay-e2e-single-nic
       - dual-stack-e2e
+      - dual-stack-underlay-e2e-single-nic
       - no-lb-e2e
       - no-lb-iptables-e2e
       - no-np-e2e
