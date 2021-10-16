@@ -2104,8 +2104,6 @@ spec:
         component: network
         type: infra
     spec:
-      tolerations:
-        - operator: Exists
       serviceAccountName: ovn
       hostPID: true
       containers:
@@ -2245,6 +2243,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
+      hostNetwork: true
       containers:
         - name: kube-ovn-monitor
           image: "$REGISTRY/kube-ovn:$VERSION"
