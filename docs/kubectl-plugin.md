@@ -48,6 +48,7 @@ Available Subcommands:
   tcpdump {namespace/podname} [tcpdump options ...]     capture pod traffic
   trace {namespace/podname} {target ip address} {icmp|tcp|udp} [target tcp or udp port]    trace ovn microflow of specific packet
   diagnose {all|node} [nodename]    diagnose connectivity of all nodes or a specific node
+  reload restart all kube-ovn components
 ```
 
 1. Show ovn-sb overview

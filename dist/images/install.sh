@@ -132,7 +132,7 @@ then
 fi
 
 if [[ $ENABLE_SSL = "true" ]];then
-  echo "[Step 0] Generate SSL key and cert"
+  echo "[Step 0/6] Generate SSL key and cert"
   exist=$(kubectl get secret -n kube-system kube-ovn-tls --ignore-not-found)
   if [[ $exist == "" ]];then
     docker run --rm -v "$PWD":/etc/ovn $REGISTRY/kube-ovn:$VERSION bash generate-ssl.sh
@@ -143,7 +143,7 @@ if [[ $ENABLE_SSL = "true" ]];then
   echo ""
 fi
 
-echo "[Step 1] Label kube-ovn-master node"
+echo "[Step 1/6] Label kube-ovn-master node"
 count=$(kubectl get no -l$LABEL --no-headers -o wide | wc -l | sed 's/ //g')
 if [ "$count" = "0" ]; then
   echo "ERROR: No node with label $LABEL"
@@ -154,7 +154,7 @@ kubectl label no -l$LABEL kube-ovn/role=master --overwrite
 echo "-------------------------------"
 echo ""
 
-echo "[Step 2] Install OVN components"
+echo "[Step 2/6] Install OVN components"
 addresses=$(kubectl get no -lkube-ovn/role=master --no-headers -o wide | awk '{print $6}' | tr \\n ',')
 echo "Install OVN DB in $addresses"
 
@@ -1819,7 +1819,7 @@ kubectl rollout status deployment/ovn-central -n kube-system
 echo "-------------------------------"
 echo ""
 
-echo "[Step 3] Install Kube-OVN"
+echo "[Step 3/6] Install Kube-OVN"
 
 cat <<EOF > kube-ovn.yaml
 ---
@@ -2410,7 +2410,7 @@ kubectl rollout status daemonset/kube-ovn-cni -n kube-system
 echo "-------------------------------"
 echo ""
 
-echo "[Step 4] Delete pod that not in host network mode"
+echo "[Step 4/6] Delete pod that not in host network mode"
 for ns in $(kubectl get ns --no-headers -o  custom-columns=NAME:.metadata.name); do
   for pod in $(kubectl get pod --no-headers -n "$ns" --field-selector spec.restartPolicy=Always -o custom-columns=NAME:.metadata.name,HOST:spec.hostNetwork | awk '{if ($2!="true") print $1}'); do
     kubectl delete pod "$pod" -n "$ns" --ignore-not-found
@@ -2422,7 +2422,7 @@ kubectl rollout status deployment/coredns -n kube-system
 echo "-------------------------------"
 echo ""
 
-echo "[Step 5] Install kubectl plugin"
+echo "[Step 5/6] Install kubectl plugin"
 mkdir -p /usr/local/bin
 cat <<\EOF > /usr/local/bin/kubectl-ko
 #!/bin/bash
@@ -2445,6 +2445,7 @@ showHelp(){
   echo "  tcpdump {namespace/podname} [tcpdump options ...]     capture pod traffic"
   echo "  trace {namespace/podname} {target ip address} {icmp|tcp|udp} [target tcp or udp port]    trace ovn microflow of specific packet"
   echo "  diagnose {all|node} [nodename]    diagnose connectivity of all nodes or a specific node"
+  echo "  reload restart all kube-ovn components"
 }
 
 tcpdump(){
@@ -2860,6 +2861,20 @@ dbtool(){
   esac
 }
 
+reload(){
+  kubectl delete pod -n kube-system -l app=ovn-central
+  kubectl rollout status deployment/ovn-central -n kube-system
+  kubectl delete pod -n kube-system -l app=ovs
+  kubectl delete pod -n kube-system -l app=kube-ovn-controller
+  kubectl rollout status deployment/kube-ovn-controller -n kube-system
+  kubectl delete pod -n kube-system -l app=kube-ovn-cni
+  kubectl rollout status daemonset/kube-ovn-cni -n kube-system
+  kubectl delete pod -n kube-system -l app=kube-ovn-pinger
+  kubectl rollout status daemonset/kube-ovn-pinger -n kube-system
+  kubectl delete pod -n kube-system -l app=kube-ovn-monitor
+  kubectl rollout status deployment/kube-ovn-monitor -n kube-system
+}
+
 if [ $# -lt 1 ]; then
   showHelp
   exit 0
@@ -2891,6 +2906,9 @@ case $subcommand in
   diagnose)
     diagnose "$@"
     ;;
+  reload)
+    reload
+    ;;
   *)
     showHelp
     ;;
@@ -2909,8 +2927,51 @@ if ! sh -c "echo \":$PATH:\" | grep -q \":/usr/local/bin:\""; then
   echo ""
 fi
 
-echo "[Step 6] Run network diagnose"
+echo "[Step 6/6] Run network diagnose"
 kubectl ko diagnose all
 
+
 echo "-------------------------------"
-echo ""
+echo "
+                    ,,,,
+                    ,::,
+                   ,,::,,,,
+            ,,,,,::::::::::::,,,,,
+         ,,,::::::::::::::::::::::,,,
+       ,,::::::::::::::::::::::::::::,,
+     ,,::::::::::::::::::::::::::::::::,,
+    ,::::::::::::::::::::::::::::::::::::,
+   ,:::::::::::::,,   ,,:::::,,,::::::::::,
+ ,,:::::::::::::,       ,::,     ,:::::::::,
+ ,:::::::::::::,   :x,  ,::  :,   ,:::::::::,
+,:::::::::::::::,  ,,,  ,::, ,,  ,::::::::::,
+,:::::::::::::::::,,,,,,:::::,,,,::::::::::::,    ,:,   ,:,            ,xx,                            ,:::::,   ,:,     ,:: :::,    ,x
+,::::::::::::::::::::::::::::::::::::::::::::,    :x: ,:xx:        ,   :xx,                          :xxxxxxxxx, :xx,   ,xx:,xxxx,   :x
+,::::::::::::::::::::::::::::::::::::::::::::,    :xxxxx:,  ,xx,  :x:  :xxx:x::,  ::xxxx:           :xx:,  ,:xxx  :xx, ,xx: ,xxxxx:, :x
+,::::::::::::::::::::::::::::::::::::::::::::,    :xxxxx,   :xx,  :x:  :xxx,,:xx,:xx:,:xx, ,,,,,,,,,xxx,    ,xx:   :xx:xx:  ,xxx,:xx::x
+,::::::,,::::::::,,::::::::,,:::::::,,,::::::,    :x:,xxx:  ,xx,  :xx  :xx:  ,xx,xxxxxx:, ,xxxxxxx:,xxx:,  ,xxx,    :xxx:   ,xxx, :xxxx
+,::::,    ,::::,   ,:::::,   ,,::::,    ,::::,    :x:  ,:xx,,:xx::xxxx,,xxx::xx: :xx::::x: ,,,,,,   ,xxxxxxxxx,     ,xx:    ,xxx,  :xxx
+,::::,    ,::::,    ,::::,    ,::::,    ,::::,    ,:,    ,:,  ,,::,,:,  ,::::,,   ,:::::,            ,,:::::,        ,,      :x:    ,::
+,::::,    ,::::,    ,::::,    ,::::,    ,::::,
+ ,,,,,    ,::::,    ,::::,    ,::::,    ,:::,             ,,,,,,,,,,,,,
+          ,::::,    ,::::,    ,::::,    ,:::,        ,,,:::::::::::::::,
+          ,::::,    ,::::,    ,::::,    ,::::,  ,,,,:::::::::,,,,,,,:::,
+          ,::::,    ,::::,    ,::::,     ,::::::::::::,,,,,
+           ,,,,     ,::::,     ,,,,       ,,,::::,,,,
+                    ,::::,
+                    ,,::,
+"
+echo "Thanks for choosing Kube-OVN!
+For more advanced features, please read https://github.com/kubeovn/kube-ovn#documents
+If you have any question, please file an issue https://github.com/kubeovn/kube-ovn/issues/new/choose"
+
+
+
+
+
+
+
+
+
+
+
