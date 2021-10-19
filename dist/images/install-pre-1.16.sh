@@ -2548,7 +2548,7 @@ diagnose(){
       kubectl logs -n $KUBE_OVN_NS -l app=kube-ovn-controller --tail=100 | grep E$(date +%m%d)
       set -e
       echo ""
-      pingers=$(kubectl get pod -n $KUBE_OVN_NS | grep kube-ovn-pinger | awk '{print $1}')
+      pingers=$(kubectl -n $KUBE_OVN_NS get po --no-headers -o custom-columns=NAME:.metadata.name -l app=kube-ovn-pinger)
       for pinger in $pingers
       do
         nodeName=$(kubectl get pod "$pinger" -n "$KUBE_OVN_NS" -o jsonpath={.spec.nodeName})
@@ -2571,7 +2571,11 @@ diagnose(){
     node)
       nodeName="$2"
       kubectl get no "$nodeName" > /dev/null
-      pinger=$(kubectl get pod -n $KUBE_OVN_NS -o wide | grep kube-ovn-pinger | grep " $nodeName " | awk '{print $1}')
+      pinger=$(kubectl -n $KUBE_OVN_NS get po -l app=kube-ovn-pinger -o 'jsonpath={.items[?(@.spec.nodeName=="'$nodeName'")].metadata.name}')
+      if [ ! -n "$pinger" ]; then
+        echo "Error: No kube-ovn-pinger running on node $nodeName"
+        exit 1
+      fi
       echo "### start to diagnose node $nodeName"
       echo "#### ovn-controller log:"
       kubectl exec -n $KUBE_OVN_NS "$pinger" -- tail /var/log/ovn/ovn-controller.log
