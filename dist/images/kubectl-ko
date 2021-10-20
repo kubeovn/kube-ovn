@@ -18,6 +18,7 @@ showHelp(){
   echo "  tcpdump {namespace/podname} [tcpdump options ...]     capture pod traffic"
   echo "  trace {namespace/podname} {target ip address} {icmp|tcp|udp} [target tcp or udp port]    trace ovn microflow of specific packet"
   echo "  diagnose {all|node} [nodename]    diagnose connectivity of all nodes or a specific node"
+  echo "  reload restart all kube-ovn components"
 }
 
 tcpdump(){
@@ -437,6 +438,20 @@ dbtool(){
   esac
 }
 
+reload(){
+  kubectl delete pod -n kube-system -l app=ovn-central
+  kubectl rollout status deployment/ovn-central -n kube-system
+  kubectl delete pod -n kube-system -l app=ovs
+  kubectl delete pod -n kube-system -l app=kube-ovn-controller
+  kubectl rollout status deployment/kube-ovn-controller -n kube-system
+  kubectl delete pod -n kube-system -l app=kube-ovn-cni
+  kubectl rollout status daemonset/kube-ovn-cni -n kube-system
+  kubectl delete pod -n kube-system -l app=kube-ovn-pinger
+  kubectl rollout status daemonset/kube-ovn-pinger -n kube-system
+  kubectl delete pod -n kube-system -l app=kube-ovn-monitor
+  kubectl rollout status deployment/kube-ovn-monitor -n kube-system
+}
+
 if [ $# -lt 1 ]; then
   showHelp
   exit 0
@@ -467,6 +482,9 @@ case $subcommand in
     ;;
   diagnose)
     diagnose "$@"
+    ;;
+  reload)
+    reload
     ;;
   *)
     showHelp
