@@ -960,26 +960,34 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 		// allocate kubeovn network
 		var providerName string
 		if util.IsOvnNetwork(netCfg) {
-			var subnetName string
 			isDefault := util.IsDefaultNet(pod.Annotations[util.DefaultNetworkAnnotation], attach)
 			if isDefault {
 				providerName = util.OvnProvider
 			} else {
 				providerName = fmt.Sprintf("%s.%s.ovn", attach.Name, attach.Namespace)
 			}
-			for _, subnet := range subnets {
-				if !isDefault && subnet.Spec.Provider == providerName {
-					subnetName = subnet.Name
-					break
+			subnetName := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)]
+			if !isDefault && subnetName == "" {
+				for _, subnet := range subnets {
+					if subnet.Spec.Provider == providerName {
+						subnetName = subnet.Name
+						break
+					}
 				}
 			}
+			var subnet *kubeovnv1.Subnet
 			if subnetName == "" {
-				subnetName = c.config.DefaultLogicalSwitch
-			}
-			subnet, err := c.subnetsLister.Get(subnetName)
-			if err != nil {
-				klog.Errorf("failed to get subnet %s, %v", subnetName, err)
-				return nil, err
+				subnet, err = c.getPodDefaultSubnet(pod)
+				if err != nil {
+					klog.Errorf("failed to pod default subnet, %v", err)
+					return nil, err
+				}
+			} else {
+				subnet, err = c.subnetsLister.Get(subnetName)
+				if err != nil {
+					klog.Errorf("failed to get subnet %s, %v", subnetName, err)
+					return nil, err
+				}
 			}
 			result = append(result, &kubeovnNet{
 				Type:         providerTypeOriginal,
