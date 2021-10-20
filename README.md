@@ -43,6 +43,7 @@ The Kube-OVN community is waiting for your participation!
 - **Traffic Mirror**: Duplicated container network traffic for monitoring, diagnosing and replay.
 - **Hardware Offload**: Boost network performance and save CPU resource by offloading OVS flow table to hardware.
 - **DPDK Support**: DPDK application now can run in Pod with OVS-DPDK.
+- **Cilium Integration**: Cilium can take over the work of Kube-proxy.
 
 ## Planned Future Work
 - Policy-based QoS
@@ -92,6 +93,7 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
 - [Prometheus Integration](docs/prometheus.md)
 - [Metrics](docs/ovn-ovs-monitor.md)
 - [Performance Tuning](docs/performance-tuning.md)
+- [Cilium Integration](docs/IntegrateCiliumIntoKubeOVN.md)
 
 ## Contribution
 We are looking forwards to your PR!
