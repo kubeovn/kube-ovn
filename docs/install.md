@@ -8,7 +8,7 @@ Kube-OVN includes two parts:
 - Kubernetes >= 1.11, version 1.16 and later is recommended
 - Docker >= 1.12.6
 - OS: CentOS 7/8, Ubuntu 16.04/18.04 
-- Other Linux distributions with geneve and openvswitch module installed. You can use commands  `modinfo geneve` and `modinfo openvswitch` to verify
+- Other Linux distributions with geneve, openvswitch and ip_tables module installed. You can use commands  `modinfo geneve`, `modinfo openvswitch` and `modinfo ip_tables` to verify
 - Kernel boot with `ipv6.disable=0`
 - Kube-proxy *MUST* be ready so that Kube-OVN can connect to apiserver
 
