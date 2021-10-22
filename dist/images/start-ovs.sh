@@ -9,6 +9,10 @@ TUNNEL_TYPE=${TUNNEL_TYPE:-geneve}
 # Check required kernel module
 modinfo openvswitch
 modinfo geneve
+modinfo ip_tables
+
+# CentOS 8 might not load iptables module by default, which will hurt nat function
+modprobe ip_tables
 
 # https://bugs.launchpad.net/neutron/+bug/1776778
 if grep -q "3.10.0-862" /proc/version
