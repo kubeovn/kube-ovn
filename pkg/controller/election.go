@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -99,7 +100,7 @@ func setupLeaderElection(config *leaderElectionConfig) *leaderelection.LeaderEle
 	}
 
 	broadcaster := record.NewBroadcaster()
-	hostname := os.Getenv("KUBE_NODE_NAME")
+	hostname := os.Getenv(util.HostnameEnv)
 
 	recorder := broadcaster.NewRecorder(scheme.Scheme, apiv1.EventSource{
 		Component: ovnLeaderElector,
