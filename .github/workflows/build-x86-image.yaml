@@ -123,6 +123,11 @@ jobs:
           sudo chmod 666 /home/runner/.kube/config
           make e2e
 
+      - name: Cleanup
+        run: |
+          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
+          sh dist/images/cleanup.sh
+
   single-iptables-e2e:
     needs: build
     name: 1-master-iptables-e2e
@@ -169,6 +174,11 @@ jobs:
           sudo kubectl cluster-info
           sudo chmod 666 /home/runner/.kube/config
           make e2e
+
+      - name: Cleanup
+        run: |
+          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
+          sh dist/images/cleanup.sh
 
   single-vlan-e2e-single-nic:
     needs: build
@@ -217,6 +227,27 @@ jobs:
           sudo chmod 666 /home/runner/.kube/config
           make e2e-vlan-single-nic
 
+      - name: Cleanup
+        run: |
+          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
+          sh dist/images/cleanup.sh
+
+      - name: Check Node Network
+        run: |
+          sh -c '
+            set -e
+            kubectl get no --no-headers | awk "{print \$1}" | while read node; do
+              docker inspect $node -f "{{.NetworkSettings.Networks.kind.IPAddress}}"
+            done | while read ip; do
+              docker run --rm --network kind kubeovn/kube-ovn:$(cat VERSION) ping -c1 -w1 $ip
+            done
+            kubectl get no --no-headers | awk "{print \$1}" | while read node; do
+              docker inspect $node -f "{{.NetworkSettings.Networks.kind.GlobalIPv6Address}}"
+            done | while read ip; do
+              docker run --rm --network kind kubeovn/kube-ovn:$(cat VERSION) ping6 -c1 -w1 $ip
+            done
+          '
+
   single-node-e2e:
     needs: build
     name: 1-node-e2e
@@ -263,6 +294,11 @@ jobs:
           sudo kubectl cluster-info
           sudo chmod 666 /home/runner/.kube/config
           make e2e
+
+      - name: Cleanup
+        run: |
+          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
+          sh dist/images/cleanup.sh
 
   ha-e2e:
     needs: build
@@ -348,6 +384,11 @@ jobs:
           sudo chmod 666 /home/runner/.kube/config
           make e2e-ipv6
 
+      - name: Cleanup
+        run: |
+          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
+          sh dist/images/cleanup.sh
+
   ipv6-vlan-e2e-single-nic:
     needs: build
     name: ipv6-vlan-e2e-single-nic
@@ -398,6 +439,27 @@ jobs:
           sudo kubectl cluster-info
           sudo chmod 666 /home/runner/.kube/config
           make e2e-vlan-single-nic
+
+      - name: Cleanup
+        run: |
+          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
+          sh dist/images/cleanup.sh
+
+      - name: Check Node Network
+        run: |
+          sh -c '
+            set -e
+            kubectl get no --no-headers | awk "{print \$1}" | while read node; do
+              docker inspect $node -f "{{.NetworkSettings.Networks.kind.IPAddress}}"
+            done | while read ip; do
+              docker run --rm --network kind kubeovn/kube-ovn:$(cat VERSION) ping -c1 -w1 $ip
+            done
+            kubectl get no --no-headers | awk "{print \$1}" | while read node; do
+              docker inspect $node -f "{{.NetworkSettings.Networks.kind.GlobalIPv6Address}}"
+            done | while read ip; do
+              docker run --rm --network kind kubeovn/kube-ovn:$(cat VERSION) ping6 -c1 -w1 $ip
+            done
+          '
 
   dual-stack-e2e:
     needs: build
@@ -450,6 +512,11 @@ jobs:
           sudo chmod 666 /home/runner/.kube/config
           make e2e
 
+      - name: Cleanup
+        run: |
+          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
+          sh dist/images/cleanup.sh
+
   no-lb-e2e:
     needs: build
     name: disable-loadbalancer-e2e
@@ -499,6 +566,11 @@ jobs:
           sudo chmod 666 /home/runner/.kube/config
           make e2e
 
+      - name: Cleanup
+        run: |
+          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
+          sh dist/images/cleanup.sh
+
   no-lb-iptables-e2e:
     needs: build
     name: disable-loadbalancer-iptables-e2e
@@ -547,6 +619,11 @@ jobs:
           sudo kubectl cluster-info
           sudo chmod 666 /home/runner/.kube/config
           make e2e
+
+      - name: Cleanup
+        run: |
+          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
+          sh dist/images/cleanup.sh
 
   push:
     needs:
