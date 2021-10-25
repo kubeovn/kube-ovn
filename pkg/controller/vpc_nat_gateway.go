@@ -211,14 +211,14 @@ func (c *Controller) processNextWorkItem(processName string, queue workqueue.Rat
 func (c *Controller) handleDelVpcNatGw(key string) error {
 	c.vpcNatGwKeyMutex.Lock(key)
 	defer c.vpcNatGwKeyMutex.Unlock(key)
-	gw, err := c.vpcNatGatewayLister.Get(key)
+	_, err := c.vpcNatGatewayLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			return nil
+			return c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Delete(context.Background(), genNatGwDpName(key), metav1.DeleteOptions{})
 		}
 		return err
 	}
-	return c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Delete(context.Background(), genNatGwDpName(gw.Name), metav1.DeleteOptions{})
+	return nil
 }
 
 func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
