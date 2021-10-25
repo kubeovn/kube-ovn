@@ -35,6 +35,7 @@ var _ = Describe("[IP Allocation]", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name,
 					Namespace: namespace,
+					Labels:    map[string]string{"e2e": "true"},
 					Annotations: map[string]string{
 						util.IpAddressAnnotation:  ip,
 						util.MacAddressAnnotation: mac,
@@ -69,6 +70,10 @@ var _ = Describe("[IP Allocation]", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(podIP.Spec.V4IPAddress).To(Equal(ip))
 			Expect(podIP.Spec.MacAddress).To(Equal(mac))
+
+			By("Delete pod")
+			err = f.KubeClientSet.CoreV1().Pods(namespace).Delete(context.Background(), pod.Name, metav1.DeleteOptions{})
+			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("deployment with ippool", func() {
@@ -80,13 +85,17 @@ var _ = Describe("[IP Allocation]", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name,
 					Namespace: namespace,
+					Labels:    map[string]string{"e2e": "true"},
 				},
 				Spec: appsv1.DeploymentSpec{
 					Replicas: &replicas,
 					Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"apps": name}},
 					Template: corev1.PodTemplateSpec{
 						ObjectMeta: metav1.ObjectMeta{
-							Labels: map[string]string{"apps": name},
+							Labels: map[string]string{
+								"apps": name,
+								"e2e":  "true",
+							},
 							Annotations: map[string]string{
 								util.IpPoolAnnotation: strings.Join(ips, ","),
 							},
@@ -139,6 +148,10 @@ var _ = Describe("[IP Allocation]", func() {
 			}
 			sort.Strings(podIPs)
 			Expect(podIPs).To(Equal(ips))
+
+			By("Delete deployment")
+			err = f.KubeClientSet.AppsV1().Deployments(namespace).Delete(context.Background(), deployment.Name, metav1.DeleteOptions{})
+			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("statefulset with ippool", func() {
@@ -150,13 +163,17 @@ var _ = Describe("[IP Allocation]", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name,
 					Namespace: namespace,
+					Labels:    map[string]string{"e2e": "true"},
 				},
 				Spec: appsv1.StatefulSetSpec{
 					Replicas: &replicas,
 					Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"apps": name}},
 					Template: corev1.PodTemplateSpec{
 						ObjectMeta: metav1.ObjectMeta{
-							Labels: map[string]string{"apps": name},
+							Labels: map[string]string{
+								"apps": name,
+								"e2e":  "true",
+							},
 							Annotations: map[string]string{
 								util.IpPoolAnnotation: strings.Join(ips, ","),
 							},
@@ -187,6 +204,10 @@ var _ = Describe("[IP Allocation]", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(pod.Status.PodIP).To(Equal(ips[i]))
 			}
+
+			By("Delete statefulset")
+			err = f.KubeClientSet.AppsV1().StatefulSets(namespace).Delete(context.Background(), sts.Name, metav1.DeleteOptions{})
+			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("statefulset without ippool", func() {
@@ -197,13 +218,17 @@ var _ = Describe("[IP Allocation]", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name,
 					Namespace: namespace,
+					Labels:    map[string]string{"e2e": "true"},
 				},
 				Spec: appsv1.StatefulSetSpec{
 					Replicas: &replicas,
 					Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"apps": name}},
 					Template: corev1.PodTemplateSpec{
 						ObjectMeta: metav1.ObjectMeta{
-							Labels: map[string]string{"apps": name},
+							Labels: map[string]string{
+								"apps": name,
+								"e2e":  "true",
+							},
 						},
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -243,6 +268,10 @@ var _ = Describe("[IP Allocation]", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(pod.Status.PodIP).To(Equal(ips[i]))
 			}
+
+			By("Delete statefulset")
+			err = f.KubeClientSet.AppsV1().StatefulSets(namespace).Delete(context.Background(), sts.Name, metav1.DeleteOptions{})
+			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 })
