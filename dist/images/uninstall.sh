@@ -2,6 +2,25 @@
 /usr/share/openvswitch/scripts/ovs-ctl stop
 ovs-dpctl del-dp ovs-system
 
+nodeIPv4=""
+nodeIPv6=""
+if [ -n "$1" ]; then
+    if [[ "$1" =~ .*,.* ]]; then
+        nodeIPv4=${1%%,*}
+        nodeIPv6=${1##*,}
+        if [[ "$nodeIPv4" =~ .*:.* ]]; then
+            nodeIPv4=${1##*,}
+            nodeIPv6=${1%%,*}
+        fi
+    else
+        if [[ "$1" =~ .*:.* ]]; then
+            nodeIPv6=$1
+        else
+            nodeIPv4=$1
+        fi
+    fi
+fi
+
 iptables -t nat -D POSTROUTING -m set --match-set ovn40subnets-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE
 iptables -t nat -D POSTROUTING -m set --match-set ovn40local-pod-ip-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE
 iptables -t nat -D POSTROUTING -m mark --mark 0x40000/0x40000 -j MASQUERADE
@@ -14,11 +33,13 @@ iptables -t filter -D FORWARD -m set --match-set ovn40subnets dst -j ACCEPT
 iptables -t filter -D FORWARD -m set --match-set ovn40subnets src -j ACCEPT
 iptables -t filter -D FORWARD -m set --match-set ovn40services dst -j ACCEPT
 iptables -t filter -D FORWARD -m set --match-set ovn40services src -j ACCEPT
-iptables -D OUTPUT -p udp -m udp --dport 6081 -j MARK --set-xmark 0x0
+iptables -t filter -D OUTPUT -p udp -m udp --dport 6081 -j MARK --set-xmark 0x0
 
-if [ -n "$1" ]; then
-    iptables -t nat -D POSTROUTING ! -s "$1" -m set --match-set ovn40subnets dst -j MASQUERADE
+if [ -n "$nodeIPv4" ]; then
+    iptables -t nat -D POSTROUTING ! -s "$nodeIPv4" -m set --match-set ovn40subnets dst -j MASQUERADE
 fi
+
+sleep 1
 
 ipset destroy ovn40subnets-nat
 ipset destroy ovn40subnets
@@ -38,11 +59,13 @@ ip6tables -t filter -D FORWARD -m set --match-set ovn60subnets dst -j ACCEPT
 ip6tables -t filter -D FORWARD -m set --match-set ovn60subnets src -j ACCEPT
 ip6tables -t filter -D FORWARD -m set --match-set ovn60services dst -j ACCEPT
 ip6tables -t filter -D FORWARD -m set --match-set ovn60services src -j ACCEPT
-ip6tables -D OUTPUT -p udp -m udp --dport 6081 -j MARK --set-xmark 0x0
+ip6tables -t filter -D OUTPUT -p udp -m udp --dport 6081 -j MARK --set-xmark 0x0
 
-if [ -n "$1" ]; then
-    ip6tables -t nat -D POSTROUTING ! -s "$1" -m set --match-set ovn60subnets dst -j MASQUERADE
+if [ -n "$nodeIPv6" ]; then
+    ip6tables -t nat -D POSTROUTING ! -s "$nodeIPv6" -m set --match-set ovn60subnets dst -j MASQUERADE
 fi
+
+sleep 1
 
 ipset destroy ovn6subnets-nat
 ipset destroy ovn60subnets
