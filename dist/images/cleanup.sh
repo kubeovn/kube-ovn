@@ -63,6 +63,7 @@ kubectl annotate no --all ovn.kubernetes.io/logical_switch-
 kubectl annotate no --all ovn.kubernetes.io/mac_address-
 kubectl annotate no --all ovn.kubernetes.io/port_name-
 kubectl annotate no --all ovn.kubernetes.io/allocated-
+kubectl annotate no --all ovn.kubernetes.io/chassis- 
 kubectl label node --all kube-ovn/role-
 
 kubectl get no -o name | while read node; do
