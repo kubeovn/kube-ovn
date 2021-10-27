@@ -18,7 +18,7 @@ docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/
 ​		If `containerd` replaces `docker` then the command is as follows:
 
 ```shell
-ctr run  -d --net-host --mount="type=bind,src=/etc/ovn/,dst=/etc/ovn,options=rbind:rw" --mount="type=bind,src=/var/run/ovn,dst=/var/run/ovn,options=rbind:rw" --mount="type=bind,src=/var/log/ovn,dst=/var/log/ovn,options=rbind:rw"  kubeovn/kube-ovn:v1.8.0 ovn-ic-db bash start-ic-db.sh
+ctr -n k8s.io run -d --net-host --mount="type=bind,src=/etc/ovn/,dst=/etc/ovn,options=rbind:rw" --mount="type=bind,src=/var/run/ovn,dst=/var/run/ovn,options=rbind:rw" --mount="type=bind,src=/var/log/ovn,dst=/var/log/ovn,options=rbind:rw" docker.io/kubeovn/kube-ovn:v1.8.0 ovn-ic-db bash start-ic-db.sh
 ```
 
 2. Create `ovn-ic-config` ConfigMap in each cluster `kube-system` namespace. Edit and apply the yaml below in each cluster.
@@ -147,7 +147,62 @@ In az2
  kubectl ko nbctl lr-route-add ovn-cluster 10.16.0.0/24 169.254.100.79
 ```
 
+
+
+## Interconnection Controller High Available
+
+1. Run the leader Interconnection Controller in a region that can be accessed by other cluster.  
+
+   `LEADERIP` is the IP of node where leader controller is deployed.
+
+   `NODE_IPS` is the IP of all nodes in the interconnection Controller cluster, in the format `IP1,IP2,...,IPn`.
+
+   `LOCALIP` is the IP of the node on which the container will run. For the leader, `LOCALIP` is its own IP.
+
+```bash
+docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn -e LOCAL_IP="LEADERIP"  -e NODE_IPS="IP1,IP2,IP3"   kubeovn/kube-ovn:v1.9.0 bash start-ic-db.sh
+```
+
+​        If `containerd` replaces `docker` then the command is as follows:
+
+```shell
+ctr -n k8s.io run -d --net-host --mount="type=bind,src=/etc/ovn/,dst=/etc/ovn,options=rbind:rw" --mount="type=bind,src=/var/run/ovn,dst=/var/run/ovn,options=rbind:rw" --mount="type=bind,src=/var/log/ovn,dst=/var/log/ovn,options=rbind:rw"  --env="NODE_IPS="IP1,IP2,IP3"" --env="LOCAL_IP="LEADERIP"" docker.io/kubeovn/kube-ovn:v1.9.0 ovn-ic-db bash start-ic-db.sh
+```
+
+2. Run the follower Interconnection Controller in the same region. 
+
+```bash
+docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn -e LOCAL_IP="LOCALIP"  -e NODE_IPS="IP1,IP2,IP3" -e LEADER_IP="LEADERIP"  kubeovn/kube-ovn:v1.9.0 bash start-ic-db.sh
+```
+
+​		If `containerd` replaces `docker` then the command is as follows:
+
+```shell
+ctr -n k8s.io run -d --net-host --mount="type=bind,src=/etc/ovn/,dst=/etc/ovn,options=rbind:rw" --mount="type=bind,src=/var/run/ovn,dst=/var/run/ovn,options=rbind:rw" --mount="type=bind,src=/var/log/ovn,dst=/var/log/ovn,options=rbind:rw" --env="NODE_IPS="IP1,IP2,IP3"" --env="LOCAL_IP="LEADERIP"" --env="NODE_IPS="IP1,IP2,IP3"" docker.io/kubeovn/kube-ovn:v1.9.0 ovn-ic-db bash start-ic-db.sh
+```
+
+3.  Create `ic-config` ConfigMap in each cluster as follows.
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ovn-ic-config
+  namespace: kube-system
+data:
+  enable-ic: "true"
+  az-name: "az1"                												# AZ name for cluster, every cluster should be different
+  ic-db-host: "192.168.65.3,192.168.65.2,192.168.65.1"  # The Interconnection Controller host IP addresses
+  ic-nb-port: "6645"           													# The ic-nb port, default 6645
+  ic-sb-port: "6646"            												# The ic-sb port, default 6646
+  gw-nodes: "az1-gw"            												# The node name which acts as the interconnection gateway
+  auto-route: "false"           # Auto announce route to all clusters. If set false, you can select announced routes later manually
+```
+
+
+
 ## Gateway High Available
+
 Kube-OVN now supports Active-Backup mode gateway HA. You can add more nodes name in the configmap separated by commas.
 
 Active-Active mode gateway HA is under development.
