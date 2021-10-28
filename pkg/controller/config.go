@@ -38,6 +38,7 @@ type Configuration struct {
 	DefaultCIDR          string
 	DefaultGateway       string
 	DefaultExcludeIps    string
+	DefaultGatewayCheck  bool
 
 	ClusterRouter     string
 	NodeSwitch        string
@@ -81,6 +82,7 @@ func ParseFlags() (*Configuration, error) {
 		argDefaultLogicalSwitch = pflag.String("default-ls", "ovn-default", "The default logical switch name, default: ovn-default")
 		argDefaultCIDR          = pflag.String("default-cidr", "10.16.0.0/16", "Default CIDR for namespace with no logical switch annotation, default: 10.16.0.0/16")
 		argDefaultGateway       = pflag.String("default-gateway", "", "Default gateway for default-cidr, default the first ip in default-cidr")
+		argDefaultGatewayCheck  = pflag.Bool("default-gateway-check", true, "Check switch for the default subnet's gateway, default: true")
 		argDefaultExcludeIps    = pflag.String("default-exclude-ips", "", "Exclude ips in default switch, default equals to gateway address")
 
 		argClusterRouter     = pflag.String("cluster-router", "ovn-cluster", "The router name for cluster router, default: ovn-cluster")
@@ -135,6 +137,7 @@ func ParseFlags() (*Configuration, error) {
 		DefaultLogicalSwitch:          *argDefaultLogicalSwitch,
 		DefaultCIDR:                   *argDefaultCIDR,
 		DefaultGateway:                *argDefaultGateway,
+		DefaultGatewayCheck:           *argDefaultGatewayCheck,
 		DefaultExcludeIps:             *argDefaultExcludeIps,
 		ClusterRouter:                 *argClusterRouter,
 		NodeSwitch:                    *argNodeSwitch,
