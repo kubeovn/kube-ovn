@@ -402,16 +402,6 @@ func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
 		})
 	}
 
-	for i, net1 := range podNets {
-		if i >= len(podNets)-1 {
-			break
-		}
-		for _, net2 := range podNets[i+1:] {
-			if net1.Subnet.Name == net2.Subnet.Name {
-				return nil, fmt.Errorf("subnet conflict, the same subnet should not be attached repeatedly")
-			}
-		}
-	}
 	return podNets, nil
 }
 
@@ -1073,7 +1063,8 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)] == "" {
 		var skippedAddrs []string
 		for {
-			ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, podNet.Subnet.Name, skippedAddrs)
+			nicName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName)
+			ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, nicName, podNet.Subnet.Name, skippedAddrs)
 			if err != nil {
 				return "", "", "", err
 			}
@@ -1095,10 +1086,11 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		}
 	}
 
+	nicName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName)
 	// Static allocate
 	if pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)] != "" {
 		ipStr := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
-		return c.acquireStaticAddress(key, ipStr, macStr, podNet.Subnet.Name, podNet.AllowLiveMigration)
+		return c.acquireStaticAddress(key, nicName, ipStr, macStr, podNet.Subnet.Name, podNet.AllowLiveMigration)
 	}
 
 	// IPPool allocate
@@ -1113,7 +1105,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 				klog.Errorf("static address %s for %s has been assigned", staticIP, key)
 				continue
 			}
-			if v4IP, v6IP, mac, err := c.acquireStaticAddress(key, staticIP, macStr, podNet.Subnet.Name, podNet.AllowLiveMigration); err == nil {
+			if v4IP, v6IP, mac, err := c.acquireStaticAddress(key, nicName, staticIP, macStr, podNet.Subnet.Name, podNet.AllowLiveMigration); err == nil {
 				return v4IP, v6IP, mac, nil
 			} else {
 				klog.Errorf("acquire address %s for %s failed, %v", staticIP, key, err)
@@ -1124,7 +1116,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		numStr := strings.Split(pod.Name, "-")[numIndex]
 		index, _ := strconv.Atoi(numStr)
 		if index < len(ipPool) {
-			return c.acquireStaticAddress(key, ipPool[index], macStr, podNet.Subnet.Name, podNet.AllowLiveMigration)
+			return c.acquireStaticAddress(key, nicName, ipPool[index], macStr, podNet.Subnet.Name, podNet.AllowLiveMigration)
 		}
 	}
 	klog.Errorf("alloc address for %s failed, return NoAvailableAddress", key)
@@ -1143,7 +1135,7 @@ func generatePatchPayload(annotations map[string]string, op string) []byte {
 	return []byte(fmt.Sprintf(patchPayloadTemplate, op, raw))
 }
 
-func (c *Controller) acquireStaticAddress(key, ip, mac, subnet string, liveMigration bool) (string, string, string, error) {
+func (c *Controller) acquireStaticAddress(key, nicName, ip, mac, subnet string, liveMigration bool) (string, string, string, error) {
 	var v4IP, v6IP string
 	var err error
 	for _, ipStr := range strings.Split(ip, ",") {
@@ -1152,7 +1144,7 @@ func (c *Controller) acquireStaticAddress(key, ip, mac, subnet string, liveMigra
 		}
 	}
 
-	if v4IP, v6IP, mac, err = c.ipam.GetStaticAddress(key, ip, mac, subnet, !liveMigration); err != nil {
+	if v4IP, v6IP, mac, err = c.ipam.GetStaticAddress(key, nicName, ip, mac, subnet, !liveMigration); err != nil {
 		klog.Errorf("failed to get static ip %v, mac %v, subnet %v, err %v", ip, mac, subnet, err)
 		return "", "", "", err
 	}
