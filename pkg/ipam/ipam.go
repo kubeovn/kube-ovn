@@ -159,7 +159,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr string, excludeIps []string) e
 			for podName, ip := range subnet.V4PodToIP {
 				mac := subnet.PodToMac[podName]
 				if _, _, err := subnet.GetStaticAddress(podName, ip, mac, true, true); err != nil {
-					klog.Errorf("%s address not in subnet %s new cidr %s", podName, name, cidrStr)
+					klog.Errorf("%s address not in subnet %s new cidr %s : %v", podName, name, cidrStr, err)
 				}
 			}
 		}
@@ -174,7 +174,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr string, excludeIps []string) e
 			for podName, ip := range subnet.V6PodToIP {
 				mac := subnet.PodToMac[podName]
 				if _, _, err := subnet.GetStaticAddress(podName, ip, mac, true, true); err != nil {
-					klog.Errorf("%s address not in subnet %s new cidr %s", podName, name, cidrStr)
+					klog.Errorf("%s address not in subnet %s new cidr %s : %v", podName, name, cidrStr, err)
 				}
 			}
 		}
