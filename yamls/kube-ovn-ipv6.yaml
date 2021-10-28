@@ -45,6 +45,8 @@ spec:
           args:
             - --default-cidr=2001:db8:0000:0000::/64
             - --default-gateway=2001:db8:0000:0000::1
+            - --default-gateway-check=true
+            - --default-exclude-ips=
             - --node-switch-cidr=2001:db8:0000:0001::/64
             - --node-switch-gateway=2001:db8:0000:0001::1
             - --network-type=geneve
