@@ -70,11 +70,7 @@ func (c *Controller) genVpcLbDeployment(vpc *kubeovnv1.Vpc) (*v1.Deployment, err
 		return nil, nil
 	}
 
-	defaultSubnetName := vpc.Status.DefaultLogicalSwitch
-	if defaultSubnetName == "" {
-		defaultSubnetName = c.config.DefaultLogicalSwitch
-	}
-	defaultSubnet, err := c.subnetsLister.Get(defaultSubnetName)
+	defaultSubnet, err := c.subnetsLister.Get(vpc.Status.DefaultLogicalSwitch)
 	if err != nil {
 		return nil, err
 	}
