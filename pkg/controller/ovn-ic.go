@@ -288,7 +288,7 @@ func (c *Controller) stopOVNIC() error {
 func (c *Controller) waitTsReady() error {
 	retry := 6
 	for retry > 0 {
-		exists, err := c.ovnClient.LogicalSwitchExists(util.InterconnectionSwitch, c.config.EnableExternalVpc)
+		exists, err := c.ovnClient.LogicalSwitchExists(util.InterconnectionSwitch, false)
 		if err != nil {
 			klog.Errorf("failed to list logical switch, %v", err)
 			return err
