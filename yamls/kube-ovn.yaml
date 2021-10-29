@@ -45,7 +45,6 @@ spec:
           args:
             - --default-cidr=10.16.0.0/16
             - --default-gateway=10.16.0.1
-            - --default-gateway-check=true
             - --default-exclude-ips=
             - --node-switch-cidr=100.64.0.0/16
             - --network-type=geneve

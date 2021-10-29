@@ -108,16 +108,15 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 	defaultSubnet := kubeovnv1.Subnet{
 		ObjectMeta: metav1.ObjectMeta{Name: c.config.DefaultLogicalSwitch},
 		Spec: kubeovnv1.SubnetSpec{
-			Vpc:                 util.DefaultVpc,
-			Default:             true,
-			Provider:            util.OvnProvider,
-			CIDRBlock:           c.config.DefaultCIDR,
-			Gateway:             c.config.DefaultGateway,
-			DisableGatewayCheck: !c.config.DefaultGatewayCheck,
-			ExcludeIps:          strings.Split(c.config.DefaultExcludeIps, ","),
-			NatOutgoing:         true,
-			GatewayType:         kubeovnv1.GWDistributedType,
-			Protocol:            util.CheckProtocol(c.config.DefaultCIDR),
+			Vpc:         util.DefaultVpc,
+			Default:     true,
+			Provider:    util.OvnProvider,
+			CIDRBlock:   c.config.DefaultCIDR,
+			Gateway:     c.config.DefaultGateway,
+			ExcludeIps:  strings.Split(c.config.DefaultExcludeIps, ","),
+			NatOutgoing: true,
+			GatewayType: kubeovnv1.GWDistributedType,
+			Protocol:    util.CheckProtocol(c.config.DefaultCIDR),
 		},
 	}
 	if c.config.NetworkType == util.NetworkTypeVlan {

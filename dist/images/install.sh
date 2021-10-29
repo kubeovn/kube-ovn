@@ -5,7 +5,6 @@ IPV6=${IPV6:-false}
 DUAL_STACK=${DUAL_STACK:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
 ENABLE_VLAN=${ENABLE_VLAN:-false}
-CHECK_GATEWAY=${CHECK_GATEWAY:-true}
 ENABLE_MIRROR=${ENABLE_MIRROR:-false}
 VLAN_NIC=${VLAN_NIC:-}
 HW_OFFLOAD=${HW_OFFLOAD:-false}
@@ -1822,7 +1821,6 @@ spec:
           args:
           - --default-cidr=$POD_CIDR
           - --default-gateway=$POD_GATEWAY
-          - --default-gateway-check=$CHECK_GATEWAY
           - --default-exclude-ips=$EXCLUDE_IPS
           - --node-switch-cidr=$JOIN_CIDR
           - --network-type=$NETWORK_TYPE
