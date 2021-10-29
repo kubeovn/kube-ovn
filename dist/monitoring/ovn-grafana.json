@@ -692,7 +692,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(node_namespace_pod_container:container_cpu_usage_seconds_total:sum_rate{pod=~\"ovn-central.*\", container!=\"POD\"}) by (pod, node)",
+          "expr": "sum(node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{pod=~\"ovn-central.*\", container!=\"POD\"}) by (pod, node)",
           "interval": "",
           "legendFormat": "{{node}}",
           "refId": "A"
