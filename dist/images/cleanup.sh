@@ -83,10 +83,10 @@ kubectl annotate ns --all ovn.kubernetes.io/private-
 kubectl annotate ns --all ovn.kubernetes.io/allow-
 kubectl annotate ns --all ovn.kubernetes.io/allocated-
 
-# ensure ovs-ovn has been deleted
+# ensure kube-ovn components have been deleted
 while :; do
   sleep 5
-  if [ $(kubectl get pod --no-headers -n kube-system -l app=ovs | wc -l) -eq 0 ]; then
+  if [ $(kubectl get pod --no-headers -n kube-system -l component=network | wc -l) -eq 0 ]; then
     break
   fi
 done
