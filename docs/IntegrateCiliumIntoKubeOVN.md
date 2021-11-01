@@ -2,20 +2,16 @@
 
 ![](./kube-ovn-cilium.svg) 
 
-This document introduce the reasons and steps for integrating Cilium into Kube-OVN
-
-
+This document introduces the reasons and steps for integrating Cilium into Kube-OVN
 
 ### Target
 
 We would like to integrate Cilium into Kube-OVN for the following two reasons: 
 
-1. for service IP that needs DNAT, Cilium is more efficient than Open_vSwitch.
-2. Both iptables and ipvs have some problems at the moment.
+1. For Service IP that needs DNAT, Cilium is more efficient than Open_vSwitch.
+2. Cilium has more advanced L4/L7 policy and metrics that can enhance network overall operational ability.
 
-[Cilium](https://cilium.io) is a ebpf-based networking and Security System.
-
-
+[Cilium](https://cilium.io) is an ebpf-based networking and security system.
 
 ### Prerequisite:
 
@@ -27,8 +23,7 @@ We would like to integrate Cilium into Kube-OVN for the following two reasons:
    root@cilium-small-x86-01:~# cat /proc/version
    Linux version 5.4.0-88-generic (buildd@lgw01-amd64-008) (gcc version 9.3.0 (Ubuntu 9.3.0-17ubuntu1~20.04)) #99-Ubuntu SMP Thu Sep 23 17:29:00 UTC 2021
    ```
-
-
+2. Helm is required to install Cilium, please refer [Helm Install](https://helm.sh/docs/intro/install/)
 
 ### Integration:
 
@@ -38,7 +33,7 @@ The integration solution is based on Cilium's CNI [Chaining mode for Calico](htt
 
 For [Kubernetes](https://kubernetes.io/docs/setup/production-environment/tools/) and [Kube-OVN](https://github.com/kubeovn/kube-ovn/blob/master/docs/install.md)
 
-Before installing Kube-OVN, disable Kube-OVN feature `loadbalance` and `networkpolicy ` in `install.sh` as following.
+Before installing Kube-OVN, disable Kube-OVN feature `loadbalancer` and `networkpolicy ` in `install.sh` as following.
 
 ```bash
 ENABLE_LB=${ENABLE_LB:-false}
@@ -83,13 +78,13 @@ data:
 
 ```
 
-​		Deploy this configmap
+Deploy this configmap
 
 ```bash
 kubectl apply -f ./chaining.yaml
 ```
 
-##### 3.  Delpoy Cilium
+##### 3.  Deploy Cilium
 
 ```bash
 helm repo add cilium https://helm.cilium.io/
@@ -119,7 +114,7 @@ Note: By default the configuration file of Cilium is `05-cilium.conflist`. If th
 
 Now the Cilium is installed. 
 
-The `cilium` CLI could be used to validate the installation:
+The `cilium` CLI could be used to validate the installation. It can be installed from [here](https://docs.cilium.io/en/stable/gettingstarted/k8s-install-default/#install-the-cilium-cli)
 
 ```bash
 root@cilium-small-x86-01:~# cilium  status
@@ -155,8 +150,6 @@ kube-system   coredns-78fcd69978-w92qp          1216          6428              
 kube-system   coredns-78fcd69978-whxbf          1230          6428                                                                         ready            10.16.5.62
 ```
 
-
-
 ### Replace Kube-proxy
 
 This section introduces how to transfer DNAT from `kube-proxy` to `Cilium` as Cilium [described](https://docs.cilium.io/en/v1.9/gettingstarted/kubeproxy-free/).
@@ -169,7 +162,7 @@ kubectl -n kube-system delete cm kube-proxy
 iptables-save | grep -v KUBE | iptables-restore
 ```
 
-##### 2.  Verify the availability of servies
+##### 2.  Verify the availability of services
 
 ```bash
 root@cilium-small-x86-01:~# kubectl get svc
@@ -190,9 +183,9 @@ helm upgrade cilium cilium/cilium --version 1.10.5 \
     --set k8sServicePort=REPLACE_WITH_API_SERVER_PORT
 ```
 
-eplace`REPLACE_WITH_API_SERVER_IP` and `REPLACE_WITH_API_SERVER_PORT` below with the concrete control-plane node IP address and the kube-apiserver port number reported by `kubeadm init` (usually, it is port `6443`).
+Replace`REPLACE_WITH_API_SERVER_IP` and `REPLACE_WITH_API_SERVER_PORT` below with the concrete control-plane node IP address and the kube-apiserver port number reported by `kubeadm init` (usually, it is port `6443`).
 
-##### 4.  Verify the availability of servies again
+##### 4.  Verify the availability of services again
 
 ```bash
 root@cilium-small-x86-01:~# curl 10.110.121.109:9080
