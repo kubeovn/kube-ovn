@@ -250,7 +250,7 @@ func (c *Controller) handleAddNode(key string) error {
 	var v4IP, v6IP, mac string
 	portName := fmt.Sprintf("node-%s", key)
 	if node.Annotations[util.AllocatedAnnotation] == "true" && node.Annotations[util.IpAddressAnnotation] != "" && node.Annotations[util.MacAddressAnnotation] != "" {
-		v4IP, v6IP, mac, err = c.ipam.GetStaticAddress(portName, node.Annotations[util.IpAddressAnnotation],
+		v4IP, v6IP, mac, err = c.ipam.GetStaticAddress(portName, portName, node.Annotations[util.IpAddressAnnotation],
 			node.Annotations[util.MacAddressAnnotation],
 			node.Annotations[util.LogicalSwitchAnnotation], true)
 		if err != nil {
@@ -258,7 +258,7 @@ func (c *Controller) handleAddNode(key string) error {
 			return err
 		}
 	} else {
-		v4IP, v6IP, mac, err = c.ipam.GetRandomAddress(portName, c.config.NodeSwitch, nil)
+		v4IP, v6IP, mac, err = c.ipam.GetRandomAddress(portName, portName, c.config.NodeSwitch, nil)
 		if err != nil {
 			klog.Errorf("failed to alloc random ip addrs for node %v: %v", node.Name, err)
 			return err

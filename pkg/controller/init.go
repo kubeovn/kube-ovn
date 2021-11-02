@@ -302,6 +302,7 @@ func (c *Controller) InitIPAM() error {
 			for _, podNet := range podNets {
 				_, _, _, err := c.ipam.GetStaticAddress(
 					fmt.Sprintf("%s/%s", pod.Namespace, pod.Name),
+					ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName),
 					pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)],
 					pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)],
 					pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)], false)
@@ -327,7 +328,7 @@ func (c *Controller) InitIPAM() error {
 		} else {
 			ipamKey = fmt.Sprintf("node-%s", ip.Spec.PodName)
 		}
-		if _, _, _, err = c.ipam.GetStaticAddress(ipamKey, ip.Spec.IPAddress, ip.Spec.MacAddress, ip.Spec.Subnet, false); err != nil {
+		if _, _, _, err = c.ipam.GetStaticAddress(ipamKey, ip.Name, ip.Spec.IPAddress, ip.Spec.MacAddress, ip.Spec.Subnet, false); err != nil {
 			klog.Errorf("failed to init IPAM from IP CR %s: %v", ip.Name, err)
 		}
 		for i := range ip.Spec.AttachSubnets {
@@ -335,7 +336,7 @@ func (c *Controller) InitIPAM() error {
 				klog.Errorf("attachment IP/MAC of IP CR %s is invalid", ip.Name)
 				break
 			}
-			if _, _, _, err = c.ipam.GetStaticAddress(ipamKey, ip.Spec.AttachIPs[i], ip.Spec.AttachMacs[i], ip.Spec.AttachSubnets[i], false); err != nil {
+			if _, _, _, err = c.ipam.GetStaticAddress(ipamKey, ip.Name, ip.Spec.AttachIPs[i], ip.Spec.AttachMacs[i], ip.Spec.AttachSubnets[i], false); err != nil {
 				klog.Errorf("failed to init IPAM from IP CR %s: %v", ip.Name, err)
 			}
 		}
@@ -349,7 +350,7 @@ func (c *Controller) InitIPAM() error {
 	for _, node := range nodes {
 		if node.Annotations[util.AllocatedAnnotation] == "true" {
 			portName := fmt.Sprintf("node-%s", node.Name)
-			v4IP, v6IP, _, err := c.ipam.GetStaticAddress(portName, node.Annotations[util.IpAddressAnnotation],
+			v4IP, v6IP, _, err := c.ipam.GetStaticAddress(portName, portName, node.Annotations[util.IpAddressAnnotation],
 				node.Annotations[util.MacAddressAnnotation],
 				node.Annotations[util.LogicalSwitchAnnotation], true)
 			if err != nil {

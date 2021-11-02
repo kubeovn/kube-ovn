@@ -236,8 +236,6 @@ spec:
     image: alpine
 ```
 
-Note that the pod cannot be assigned the same subnet, the above example assumes that kube-ovn is not the default network.
-
 ### Create pod with specified subnet
 
 For allocation from the specified subnet:
@@ -275,4 +273,42 @@ spec:
   - name: static-ip
     command: ["/bin/ash", "-c", "trap : TERM INT; sleep infinity & wait"]
     image: alpine
+```
+
+### Create pod with multiple interface and alloc the same subnet
+For allocation from the same subnet to multiple interface:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: spec-subnet
+  namespace: default
+  annotations:
+    k8s.v1.cni.cncf.io/networks: default/attachnet
+    attachnet.default.ovn.kubernetes.io/logical_switch: my-subnet  # <name>.<namespace>.ovn.kubernetes.io/logical_switch
+    ovn.kubernetes.io/logical_switch: my-subnet
+spec:
+  containers:
+  - name: spec-subnet
+    command: ["/bin/ash", "-c", "trap : TERM INT; sleep infinity & wait"]
+    image: alpine
+```
+
+The same subnet will be alloc to multiple interface:
+
+```shell
+/ # ip a
+995: eth0@if996: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1400 qdisc noqueue state UP group default 
+    link/ether 00:00:00:ea:74:5f brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet 10.16.0.14/16 brd 10.16.255.255 scope global eth0
+       valid_lft forever preferred_lft forever
+    inet6 fe80::200:ff:feea:745f/64 scope link 
+       valid_lft forever preferred_lft forever
+997: net1@if998: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1400 qdisc noqueue state UP group default 
+    link/ether 00:00:00:d1:d4:1b brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet 10.16.0.10/16 brd 10.16.255.255 scope global net1
+       valid_lft forever preferred_lft forever
+    inet6 fe80::200:ff:fed1:d41b/64 scope link 
+       valid_lft forever preferred_lft forever
 ```
