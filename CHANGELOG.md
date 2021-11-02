@@ -1,5 +1,28 @@
 # CHANGELOG
 
+## 1.8.2 -- 2021/11/02
+### Bugfix
+- modify kube-ovn as multus-cni problem
+- In netpol egress rules, except rule should be set to "!=" and should not be "=="
+- replace api for get lsp id by name
+- fix trace command in dual stack underlay networking
+- fix pinger and monitor in underlay networking
+- fix pinger in dual stack cluster
+- fix kubectl-ko diagnose
+- fix cleanup.sh and uninstall.sh
+- fix: check and load ip_tables module
+- add inspection
+- change inspection logic from manually adding lsp to just reading pod queue
+- fix: serialize pod add/delete order
+- fix: delete vpc-nat-gw deployment
+- remove node chassis annotation on cleanup
+- fix: ensure all kube-ovn components deleted before annotate pods
+- ix bug: logical switch ts not ready
+- fix: check allocated annotation in update handler
+
+### Test
+- add e2e testing for dual stack underlay
+
 ## 1.8.1 -- 2021/10/09
 ### Performance
 - switch's router port's addresses to "router"
