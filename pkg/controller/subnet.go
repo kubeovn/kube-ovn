@@ -733,8 +733,9 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 
 func (c *Controller) updateVlanStatusForSubnetDeletion(vlan *kubeovnv1.Vlan, subnet string) error {
 	if util.ContainsString(vlan.Status.Subnets, subnet) {
-		vlan.Status.Subnets = util.RemoveString(vlan.Status.Subnets, subnet)
-		if len(vlan.Status.Subnets) == 0 {
+		status := vlan.Status.DeepCopy()
+		status.Subnets = util.RemoveString(status.Subnets, subnet)
+		if len(status.Subnets) == 0 {
 			bytes := []byte(`[{ "op": "remove", "path": "/status/subnets"}]`)
 			_, err := c.config.KubeOvnClient.KubeovnV1().Vlans().Patch(context.Background(), vlan.Name, types.JSONPatchType, bytes, metav1.PatchOptions{})
 			if err != nil {
@@ -742,7 +743,7 @@ func (c *Controller) updateVlanStatusForSubnetDeletion(vlan *kubeovnv1.Vlan, sub
 				return err
 			}
 		} else {
-			bytes, err := vlan.Status.Bytes()
+			bytes, err := status.Bytes()
 			if err != nil {
 				klog.Error(err)
 				return err
@@ -1015,8 +1016,9 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 	}
 
 	if !util.ContainsString(vlan.Status.Subnets, subnet.Name) {
-		vlan.Status.Subnets = append(vlan.Status.Subnets, subnet.Name)
-		bytes, err := vlan.Status.Bytes()
+		status := vlan.Status.DeepCopy()
+		status.Subnets = append(status.Subnets, subnet.Name)
+		bytes, err := status.Bytes()
 		if err != nil {
 			klog.Error(err)
 			return err
