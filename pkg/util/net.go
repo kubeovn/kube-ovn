@@ -431,3 +431,7 @@ func GatewayContains(gatewayNodeStr, gateway string) bool {
 	}
 	return false
 }
+
+func JoinHostPort(host string, port int32) string {
+	return net.JoinHostPort(host, strconv.FormatInt(int64(port), 10))
+}
