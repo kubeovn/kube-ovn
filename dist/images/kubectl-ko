@@ -121,7 +121,9 @@ trace(){
   fi
 
   gwMac=""
-  if [ ! -z "$(kubectl get subnet $ls -o jsonpath={.spec.vlan})" ]; then
+  vlan=$(kubectl get subnet "$ls" -o jsonpath={.spec.vlan})
+  logicalGateway=$(kubectl get subnet "$ls" -o jsonpath={.spec.logicalGateway})
+  if [ ! -z "$vlan" -a "$logicalGateway" != "true" ]; then
     gateway=$(kubectl get subnet "$ls" -o jsonpath={.spec.gateway})
     if [[ "$gateway" =~ .*,.* ]]; then
       if [ "$af" = "4" ]; then

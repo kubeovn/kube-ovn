@@ -208,6 +208,8 @@ spec:
                   type: boolean
                 vlan:
                   type: string
+                logicalGateway:
+                  type: boolean
                 disableGatewayCheck:
                   type: boolean
                 disableInterConnection:

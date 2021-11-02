@@ -7,6 +7,7 @@ ENABLE_VLAN=${ENABLE_VLAN:-false}
 ENABLE_MIRROR=${ENABLE_MIRROR:-false}
 VLAN_NIC=${VLAN_NIC:-}
 CHECK_GATEWAY=${CHECK_GATEWAY:-true}
+LOGICAL_GATEWAY=${LOGICAL_GATEWAY:-false}
 HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_LB=${ENABLE_LB:-true}
 ENABLE_NP=${ENABLE_NP:-true}
@@ -536,6 +537,8 @@ spec:
               type: boolean
             vlan:
               type: string
+            logicalGateway:
+              type: boolean
             disableGatewayCheck:
               type: boolean
             disableInterConnection:
@@ -1819,6 +1822,7 @@ spec:
           - --default-cidr=$POD_CIDR
           - --default-gateway=$POD_GATEWAY
           - --default-gateway-check=$CHECK_GATEWAY
+          - --default-logical-gateway=$LOGICAL_GATEWAY
           - --default-exclude-ips=$EXCLUDE_IPS
           - --node-switch-cidr=$JOIN_CIDR
           - --service-cluster-ip-range=$SVC_CIDR
@@ -2428,7 +2432,9 @@ trace(){
   fi
 
   gwMac=""
-  if [ ! -z "$(kubectl get subnet $ls -o jsonpath={.spec.vlan})" ]; then
+  vlan=$(kubectl get subnet "$ls" -o jsonpath={.spec.vlan})
+  logicalGateway=$(kubectl get subnet "$ls" -o jsonpath={.spec.logicalGateway})
+  if [ ! -z "$vlan" -a "$logicalGateway" != "true" ]; then
     ovnCni=$(kubectl get pod -n $KUBE_OVN_NS -o wide | grep -w kube-ovn-cni | grep " $nodeName " | awk '{print $1}')
     if [ -z "$ovnCni" ]; then
       echo "No kube-ovn-cni Pod running on node $nodeName"

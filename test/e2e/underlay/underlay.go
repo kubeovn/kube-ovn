@@ -173,6 +173,112 @@ var _ = Describe("[Underlay]", func() {
 		})
 	})
 
+	Context("[Subnet]", func() {
+		BeforeEach(func() {
+			err := f.OvnClientSet.KubeovnV1().Subnets().Delete(context.Background(), f.GetName(), metav1.DeleteOptions{})
+			if err != nil && !k8serrors.IsNotFound(err) {
+				klog.Fatalf("failed to delete subnet %s: %v", f.GetName(), err)
+			}
+		})
+		AfterEach(func() {
+			err := f.OvnClientSet.KubeovnV1().Subnets().Delete(context.Background(), f.GetName(), metav1.DeleteOptions{})
+			if err != nil && !k8serrors.IsNotFound(err) {
+				klog.Fatalf("failed to delete subnet %s: %v", f.GetName(), err)
+			}
+		})
+
+		It("logical gateway", func() {
+			name := f.GetName()
+
+			By("create subnet")
+			subnet := &kubeovn.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   name,
+					Labels: map[string]string{"e2e": "true"},
+				},
+				Spec: kubeovn.SubnetSpec{
+					CIDRBlock:      "99.11.0.0/16",
+					Vlan:           Vlan,
+					LogicalGateway: true,
+				},
+			}
+			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), subnet, metav1.CreateOptions{})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("validate subnet")
+			err = f.WaitSubnetReady(subnet.Name)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("validate OVN logical router port")
+			ovnPods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(context.Background(), metav1.ListOptions{LabelSelector: "app=ovn-central"})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ovnPods).NotTo(BeNil())
+
+			ovnPod := ovnPods.Items[0]
+			lsp := fmt.Sprintf("%s-%s", name, util.DefaultVpc)
+			cmd := fmt.Sprintf("ovn-nbctl --no-heading --columns=_uuid find logical_switch_port name=%s", lsp)
+			uuid, _, err := f.ExecToPodThroughAPI(cmd, "ovn-central", ovnPod.Name, ovnPod.Namespace, nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(uuid).NotTo(BeEmpty())
+
+			lrp := fmt.Sprintf("%s-%s", util.DefaultVpc, name)
+			cmd = fmt.Sprintf("ovn-nbctl --no-heading --columns=_uuid find logical_router_port name=%s", lrp)
+			uuid, _, err = f.ExecToPodThroughAPI(cmd, "ovn-central", ovnPod.Name, ovnPod.Namespace, nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(uuid).NotTo(BeEmpty())
+		})
+
+		It("disable gateway check", func() {
+			name := f.GetName()
+
+			By("create subnet")
+			subnet := &kubeovn.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   name,
+					Labels: map[string]string{"e2e": "true"},
+				},
+				Spec: kubeovn.SubnetSpec{
+					CIDRBlock:           "99.12.0.0/16",
+					Vlan:                Vlan,
+					DisableGatewayCheck: true,
+				},
+			}
+			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), subnet, metav1.CreateOptions{})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("validate subnet")
+			err = f.WaitSubnetReady(subnet.Name)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("create pod")
+			pod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        name,
+					Namespace:   Namespace,
+					Annotations: map[string]string{util.LogicalSwitchAnnotation: name},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:            name,
+							Image:           "kubeovn/pause:3.2",
+							ImagePullPolicy: corev1.PullIfNotPresent,
+						},
+					},
+				},
+			}
+			_, err = f.KubeClientSet.CoreV1().Pods(pod.Namespace).Create(context.Background(), pod, metav1.CreateOptions{})
+			Expect(err).NotTo(HaveOccurred())
+
+			_, err = f.WaitPodReady(pod.Name, pod.Namespace)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("delete pod")
+			err = f.KubeClientSet.CoreV1().Pods(pod.Namespace).Delete(context.Background(), pod.Name, metav1.DeleteOptions{})
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+
 	Context("[Pod]", func() {
 		var cniPods map[string]corev1.Pod
 		BeforeEach(func() {

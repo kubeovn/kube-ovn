@@ -34,11 +34,12 @@ type Configuration struct {
 	KubeFactoryClient    kubernetes.Interface
 	KubeOvnFactoryClient clientset.Interface
 
-	DefaultLogicalSwitch string
-	DefaultCIDR          string
-	DefaultGateway       string
-	DefaultExcludeIps    string
-	DefaultGatewayCheck  bool
+	DefaultLogicalSwitch  string
+	DefaultCIDR           string
+	DefaultGateway        string
+	DefaultExcludeIps     string
+	DefaultGatewayCheck   bool
+	DefaultLogicalGateway bool
 
 	ClusterRouter     string
 	NodeSwitch        string
@@ -79,11 +80,12 @@ func ParseFlags() (*Configuration, error) {
 		argOvnTimeout     = pflag.Int("ovn-timeout", 60, "")
 		argKubeConfigFile = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 
-		argDefaultLogicalSwitch = pflag.String("default-ls", "ovn-default", "The default logical switch name, default: ovn-default")
-		argDefaultCIDR          = pflag.String("default-cidr", "10.16.0.0/16", "Default CIDR for namespace with no logical switch annotation, default: 10.16.0.0/16")
-		argDefaultGateway       = pflag.String("default-gateway", "", "Default gateway for default-cidr, default the first ip in default-cidr")
-		argDefaultGatewayCheck  = pflag.Bool("default-gateway-check", true, "Check switch for the default subnet's gateway, default: true")
-		argDefaultExcludeIps    = pflag.String("default-exclude-ips", "", "Exclude ips in default switch, default equals to gateway address")
+		argDefaultLogicalSwitch  = pflag.String("default-ls", "ovn-default", "The default logical switch name, default: ovn-default")
+		argDefaultCIDR           = pflag.String("default-cidr", "10.16.0.0/16", "Default CIDR for namespace with no logical switch annotation, default: 10.16.0.0/16")
+		argDefaultGateway        = pflag.String("default-gateway", "", "Default gateway for default-cidr, default the first ip in default-cidr")
+		argDefaultGatewayCheck   = pflag.Bool("default-gateway-check", true, "Check switch for the default subnet's gateway, default: true")
+		argDefaultLogicalGateway = pflag.Bool("default-logical-gateway", false, "Create a logical gateway for the default subnet instead of using underlay gateway. Take effect only when the default subnet is in underlay mode.")
+		argDefaultExcludeIps     = pflag.String("default-exclude-ips", "", "Exclude ips in default switch, default equals to gateway address")
 
 		argClusterRouter     = pflag.String("cluster-router", "ovn-cluster", "The router name for cluster router, default: ovn-cluster")
 		argNodeSwitch        = pflag.String("node-switch", "join", "The name of node gateway switch which help node to access pod network, default: join")
@@ -138,6 +140,7 @@ func ParseFlags() (*Configuration, error) {
 		DefaultCIDR:                   *argDefaultCIDR,
 		DefaultGateway:                *argDefaultGateway,
 		DefaultGatewayCheck:           *argDefaultGatewayCheck,
+		DefaultLogicalGateway:         *argDefaultLogicalGateway,
 		DefaultExcludeIps:             *argDefaultExcludeIps,
 		ClusterRouter:                 *argClusterRouter,
 		NodeSwitch:                    *argNodeSwitch,

@@ -6,6 +6,7 @@ DUAL_STACK=${DUAL_STACK:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
 ENABLE_VLAN=${ENABLE_VLAN:-false}
 CHECK_GATEWAY=${CHECK_GATEWAY:-true}
+LOGICAL_GATEWAY=${LOGICAL_GATEWAY:-false}
 ENABLE_MIRROR=${ENABLE_MIRROR:-false}
 VLAN_NIC=${VLAN_NIC:-}
 HW_OFFLOAD=${HW_OFFLOAD:-false}
@@ -565,6 +566,8 @@ spec:
                   type: boolean
                 vlan:
                   type: string
+                logicalGateway:
+                  type: boolean
                 disableGatewayCheck:
                   type: boolean
                 disableInterConnection:
@@ -1871,6 +1874,7 @@ spec:
           - --default-cidr=$POD_CIDR
           - --default-gateway=$POD_GATEWAY
           - --default-gateway-check=$CHECK_GATEWAY
+          - --default-logical-gateway=$LOGICAL_GATEWAY
           - --default-exclude-ips=$EXCLUDE_IPS
           - --node-switch-cidr=$JOIN_CIDR
           - --service-cluster-ip-range=$SVC_CIDR
@@ -2550,7 +2554,9 @@ trace(){
   fi
 
   gwMac=""
-  if [ ! -z "$(kubectl get subnet $ls -o jsonpath={.spec.vlan})" ]; then
+  vlan=$(kubectl get subnet "$ls" -o jsonpath={.spec.vlan})
+  logicalGateway=$(kubectl get subnet "$ls" -o jsonpath={.spec.logicalGateway})
+  if [ ! -z "$vlan" -a "$logicalGateway" != "true" ]; then
     gateway=$(kubectl get subnet "$ls" -o jsonpath={.spec.gateway})
     if [[ "$gateway" =~ .*,.* ]]; then
       if [ "$af" = "4" ]; then
