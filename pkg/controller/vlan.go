@@ -230,9 +230,9 @@ func (c *Controller) handleAddVlan(key string) error {
 	}
 
 	if !util.ContainsString(pn.Status.Vlans, vlan.Name) {
-		newPn := pn.DeepCopy()
-		newPn.Status.Vlans = append(pn.Status.Vlans, vlan.Name)
-		bytes, err := newPn.Status.Bytes()
+		status := pn.Status.DeepCopy()
+		status.Vlans = append(status.Vlans, vlan.Name)
+		bytes, err := status.Bytes()
 		if err != nil {
 			klog.Error(err)
 			return err
@@ -315,9 +315,9 @@ func (c *Controller) updateProviderNetworkStatusForVlanDeletion(pn *kubeovnv1.Pr
 		return nil
 	}
 
-	newPn := pn.DeepCopy()
-	newPn.Status.Vlans = util.RemoveString(newPn.Status.Vlans, vlan)
-	if len(newPn.Status.Vlans) == 0 {
+	status := pn.Status.DeepCopy()
+	status.Vlans = util.RemoveString(status.Vlans, vlan)
+	if len(status.Vlans) == 0 {
 		bytes := []byte(`[{ "op": "remove", "path": "/status/vlans"}]`)
 		_, err := c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.JSONPatchType, bytes, metav1.PatchOptions{})
 		if err != nil {
@@ -325,7 +325,7 @@ func (c *Controller) updateProviderNetworkStatusForVlanDeletion(pn *kubeovnv1.Pr
 			return err
 		}
 	} else {
-		bytes, err := newPn.Status.Bytes()
+		bytes, err := status.Bytes()
 		if err != nil {
 			klog.Error(err)
 			return err

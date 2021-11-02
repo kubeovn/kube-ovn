@@ -222,8 +222,9 @@ func (c *Controller) handleAddNode(key string) error {
 	}
 	for _, pn := range providerNetworks {
 		if !util.ContainsString(pn.Spec.ExcludeNodes, node.Name) {
-			if pn.Status.EnsureNodeStandardConditions(key) {
-				bytes, err := pn.Status.Bytes()
+			status := pn.Status.DeepCopy()
+			if status.EnsureNodeStandardConditions(key) {
+				bytes, err := status.Bytes()
 				if err != nil {
 					klog.Error(err)
 					return err
@@ -376,9 +377,10 @@ func (c *Controller) handleDeleteNode(key string) error {
 }
 
 func (c *Controller) updateProviderNetworkStatusForNodeDeletion(pn *kubeovnv1.ProviderNetwork, node string) error {
-	if util.ContainsString(pn.Status.ReadyNodes, node) {
-		pn.Status.ReadyNodes = util.RemoveString(pn.Status.ReadyNodes, node)
-		if len(pn.Status.ReadyNodes) == 0 {
+	status := pn.Status.DeepCopy()
+	if util.ContainsString(status.ReadyNodes, node) {
+		status.ReadyNodes = util.RemoveString(status.ReadyNodes, node)
+		if len(status.ReadyNodes) == 0 {
 			bytes := []byte(`[{ "op": "remove", "path": "/status/readyNodes"}]`)
 			_, err := c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.JSONPatchType, bytes, metav1.PatchOptions{})
 			if err != nil {
@@ -386,7 +388,7 @@ func (c *Controller) updateProviderNetworkStatusForNodeDeletion(pn *kubeovnv1.Pr
 				return err
 			}
 		} else {
-			bytes, err := pn.Status.Bytes()
+			bytes, err := status.Bytes()
 			if err != nil {
 				klog.Error(err)
 				return err
@@ -398,8 +400,8 @@ func (c *Controller) updateProviderNetworkStatusForNodeDeletion(pn *kubeovnv1.Pr
 			}
 		}
 	}
-	if pn.Status.RemoveNodeConditions(node) {
-		if len(pn.Status.Conditions) == 0 {
+	if status.RemoveNodeConditions(node) {
+		if len(status.Conditions) == 0 {
 			bytes := []byte(`[{ "op": "remove", "path": "/status/conditions"}]`)
 			_, err := c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.JSONPatchType, bytes, metav1.PatchOptions{})
 			if err != nil {
@@ -407,7 +409,7 @@ func (c *Controller) updateProviderNetworkStatusForNodeDeletion(pn *kubeovnv1.Pr
 				return err
 			}
 		} else {
-			bytes, err := pn.Status.Bytes()
+			bytes, err := status.Bytes()
 			if err != nil {
 				klog.Error(err)
 				return err
