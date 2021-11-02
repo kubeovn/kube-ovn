@@ -552,6 +552,11 @@ func (c *Controller) handleUpdatePod(key string) error {
 		return err
 	}
 
+	// in case update handler overlap the annotation when cache is not in sync
+	if pod.Annotations[util.AllocatedAnnotation] == "" {
+		return fmt.Errorf("no address has been allocated to %s/%s", namespace, name)
+	}
+
 	klog.Infof("update pod %s/%s", namespace, name)
 
 	var podIP string
