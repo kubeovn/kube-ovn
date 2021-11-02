@@ -87,6 +87,7 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		!reflect.DeepEqual(oldSubnet.Spec.Namespaces, newSubnet.Spec.Namespaces) ||
 		oldSubnet.Spec.GatewayType != newSubnet.Spec.GatewayType ||
 		oldSubnet.Spec.GatewayNode != newSubnet.Spec.GatewayNode ||
+		oldSubnet.Spec.LogicalGateway != newSubnet.Spec.LogicalGateway ||
 		oldSubnet.Spec.Gateway != newSubnet.Spec.Gateway ||
 		!reflect.DeepEqual(oldSubnet.Spec.ExcludeIps, newSubnet.Spec.ExcludeIps) ||
 		oldSubnet.Spec.Vlan != newSubnet.Spec.Vlan {
@@ -569,7 +570,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
-	needRouter := subnet.Spec.Vlan == "" || subnet.Spec.Vpc != util.DefaultVpc
+	needRouter := (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != util.DefaultVpc
 	if !exist {
 		subnet.Status.EnsureStandardConditions()
 		// If multiple namespace use same ls name, only first one will success
@@ -857,13 +858,15 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 			return err
 		}
 
-		if err := c.ovnClient.DeleteLogicalSwitchPort(fmt.Sprintf("%s-%s", subnet.Name, c.config.ClusterRouter)); err != nil {
-			klog.Errorf("failed to delete lsp %s-%s, %v", subnet.Name, c.config.ClusterRouter, err)
-			return err
-		}
-		if err := c.ovnClient.DeleteLogicalRouterPort(fmt.Sprintf("%s-%s", c.config.ClusterRouter, subnet.Name)); err != nil {
-			klog.Errorf("failed to delete lrp %s-%s, %v", c.config.ClusterRouter, subnet.Name, err)
-			return err
+		if !subnet.Spec.LogicalGateway {
+			if err := c.ovnClient.DeleteLogicalSwitchPort(fmt.Sprintf("%s-%s", subnet.Name, c.config.ClusterRouter)); err != nil {
+				klog.Errorf("failed to delete lsp %s-%s, %v", subnet.Name, c.config.ClusterRouter, err)
+				return err
+			}
+			if err := c.ovnClient.DeleteLogicalRouterPort(fmt.Sprintf("%s-%s", c.config.ClusterRouter, subnet.Name)); err != nil {
+				klog.Errorf("failed to delete lrp %s-%s, %v", c.config.ClusterRouter, subnet.Name, err)
+				return err
+			}
 		}
 	} else {
 		// if gw is distributed remove activateGateway field

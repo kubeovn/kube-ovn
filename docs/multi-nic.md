@@ -77,7 +77,7 @@ spec:
   - 172.17.0.1..172.17.0.10
 ```
 
-Other options like gatewayType, gatewayNode, private, allowSubnets, vlan, natOutgoing are not available for attachment network.
+Other options like gatewayType, gatewayNode, private, allowSubnets, vlan, logicalGateway, natOutgoing are not available for attachment network.
 
 ### Create Pod with multi network
 

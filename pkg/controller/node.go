@@ -536,7 +536,9 @@ func (c *Controller) checkGatewayReady() error {
 	}
 
 	for _, subnet := range subnetList {
-		if subnet.Spec.Vlan != "" || subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType || subnet.Spec.GatewayNode == "" {
+		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) ||
+			subnet.Spec.GatewayNode == "" ||
+			subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType {
 			continue
 		}
 
