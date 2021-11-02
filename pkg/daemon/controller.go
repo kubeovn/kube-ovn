@@ -265,9 +265,9 @@ func (c *Controller) handleAddOrUpdateProviderNetwork(key string) error {
 	}
 
 	if util.ContainsString(pn.Spec.ExcludeNodes, node.Name) {
-		return c.cleanProviderNetwork(pn, node)
+		return c.cleanProviderNetwork(pn.DeepCopy(), node.DeepCopy())
 	}
-	return c.initProviderNetwork(pn, node)
+	return c.initProviderNetwork(pn.DeepCopy(), node.DeepCopy())
 }
 
 func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1.Node) error {
@@ -277,7 +277,7 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 			klog.Error(err)
 			return err
 		}
-		pn, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
+		_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
 		if err != nil {
 			klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
 			return err
@@ -451,7 +451,7 @@ func (c *Controller) cleanProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v
 	if pn.Status.RemoveNodeConditions(node.Name) {
 		if len(pn.Status.Conditions) == 0 {
 			bytes := []byte(`[{ "op": "remove", "path": "/status/conditions"}]`)
-			pn, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.JSONPatchType, bytes, metav1.PatchOptions{})
+			_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.JSONPatchType, bytes, metav1.PatchOptions{})
 			if err != nil {
 				klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
 				return err
@@ -462,7 +462,7 @@ func (c *Controller) cleanProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v
 				klog.Error(err)
 				return err
 			}
-			pn, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
+			_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
 			if err != nil {
 				klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
 				return err
@@ -505,17 +505,17 @@ func (c *Controller) handleDeleteProviderNetwork(pn *kubeovnv1.ProviderNetwork) 
 		return nil
 	}
 
+	newNode := node.DeepCopy()
+	delete(newNode.Labels, fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name))
+	delete(newNode.Labels, fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name))
+	delete(newNode.Labels, fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name))
+	delete(newNode.Labels, fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name))
+	raw, _ := json.Marshal(newNode.Labels)
 	patchPayloadTemplate := `[{ "op": "replace", "path": "/metadata/labels", "value": %s }]`
-	delete(node.Labels, fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name))
-	delete(node.Labels, fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name))
-	delete(node.Labels, fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name))
-	delete(node.Labels, fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name))
-
-	raw, _ := json.Marshal(node.Labels)
 	patchPayload := fmt.Sprintf(patchPayloadTemplate, raw)
 	_, err = c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), node.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
 	if err != nil {
-		klog.Errorf("patch node %s failed %v", node.Name, err)
+		klog.Errorf("failed to patch node %s: %v", node.Name, err)
 		return err
 	}
 
