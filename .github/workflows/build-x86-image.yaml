@@ -76,7 +76,6 @@ jobs:
           path: vpc-nat-gateway.tar
 
   single-e2e:
-    needs: build
     name: 1-master-e2e
     runs-on: ubuntu-18.04
     timeout-minutes: 30
@@ -95,6 +94,14 @@ jobs:
           pip install j2cli --user
           pip install "j2cli[yaml]" --user
           sudo PATH=~/.local/bin:$PATH make kind-init
+
+      - name: Wait for build to succeed
+        uses: fountainhead/action-wait-for-check@v1.0.0
+        id: wait-for-build
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          checkName: Build x86
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Download image
         uses: actions/download-artifact@v2
@@ -125,7 +132,6 @@ jobs:
           sh dist/images/cleanup.sh
 
   single-iptables-e2e:
-    needs: build
     name: 1-master-iptables-e2e
     runs-on: ubuntu-18.04
     timeout-minutes: 30
@@ -144,6 +150,14 @@ jobs:
           pip install j2cli --user
           pip install "j2cli[yaml]" --user
           sudo PATH=~/.local/bin:$PATH make kind-init-iptables
+
+      - name: Wait for build to succeed
+        uses: fountainhead/action-wait-for-check@v1.0.0
+        id: wait-for-build
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          checkName: Build x86
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Download image
         uses: actions/download-artifact@v2
@@ -174,7 +188,6 @@ jobs:
           sh dist/images/cleanup.sh
 
   single-vlan-e2e:
-    needs: build
     name: 1-master-vlan-e2e
     runs-on: ubuntu-18.04
     timeout-minutes: 30
@@ -193,6 +206,14 @@ jobs:
           pip install j2cli --user
           pip install "j2cli[yaml]" --user
           sudo PATH=~/.local/bin:$PATH make kind-init
+
+      - name: Wait for build to succeed
+        uses: fountainhead/action-wait-for-check@v1.0.0
+        id: wait-for-build
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          checkName: Build x86
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Download image
         uses: actions/download-artifact@v2
@@ -223,7 +244,6 @@ jobs:
           sh dist/images/cleanup.sh
 
   single-underlay-e2e-single-nic:
-    needs: build
     name: 1-master-underlay-e2e-single-nic
     runs-on: ubuntu-18.04
     timeout-minutes: 30
@@ -242,6 +262,14 @@ jobs:
           pip install j2cli --user
           pip install "j2cli[yaml]" --user
           sudo PATH=~/.local/bin:$PATH make kind-init
+
+      - name: Wait for build to succeed
+        uses: fountainhead/action-wait-for-check@v1.0.0
+        id: wait-for-build
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          checkName: Build x86
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Download image
         uses: actions/download-artifact@v2
@@ -288,7 +316,6 @@ jobs:
           '
 
   single-node-e2e:
-    needs: build
     name: 1-node-e2e
     runs-on: ubuntu-18.04
     timeout-minutes: 30
@@ -307,6 +334,14 @@ jobs:
           pip install j2cli --user
           pip install "j2cli[yaml]" --user
           sudo PATH=~/.local/bin:$PATH make kind-init-single
+
+      - name: Wait for build to succeed
+        uses: fountainhead/action-wait-for-check@v1.0.0
+        id: wait-for-build
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          checkName: Build x86
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Download image
         uses: actions/download-artifact@v2
@@ -337,7 +372,6 @@ jobs:
           sh dist/images/cleanup.sh
 
   ha-e2e:
-    needs: build
     name: 3-master-e2e
     runs-on: ubuntu-18.04
     timeout-minutes: 30
@@ -357,6 +391,14 @@ jobs:
           pip install "j2cli[yaml]" --user
           sudo PATH=~/.local/bin:$PATH make kind-init-ha
 
+      - name: Wait for build to succeed
+        uses: fountainhead/action-wait-for-check@v1.0.0
+        id: wait-for-build
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          checkName: Build x86
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
       - name: Download image
         uses: actions/download-artifact@v2
         with:
@@ -368,7 +410,6 @@ jobs:
           sudo make kind-install
 
   ipv6-e2e:
-    needs: build
     name: ipv6-e2e
     runs-on: ubuntu-18.04
     timeout-minutes: 30
@@ -387,6 +428,14 @@ jobs:
           pip install j2cli --user
           pip install "j2cli[yaml]" --user
           sudo PATH=~/.local/bin:$PATH make kind-init-ipv6
+
+      - name: Wait for build to succeed
+        uses: fountainhead/action-wait-for-check@v1.0.0
+        id: wait-for-build
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          checkName: Build x86
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Download image
         uses: actions/download-artifact@v2
@@ -421,7 +470,6 @@ jobs:
           sh dist/images/cleanup.sh
 
   ipv6-vlan-e2e:
-    needs: build
     name: ipv6-vlan-e2e
     runs-on: ubuntu-18.04
     timeout-minutes: 30
@@ -440,6 +488,14 @@ jobs:
           pip install j2cli --user
           pip install "j2cli[yaml]" --user
           sudo PATH=~/.local/bin:$PATH make kind-init-ipv6
+
+      - name: Wait for build to succeed
+        uses: fountainhead/action-wait-for-check@v1.0.0
+        id: wait-for-build
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          checkName: Build x86
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Download image
         uses: actions/download-artifact@v2
@@ -474,7 +530,6 @@ jobs:
           sh dist/images/cleanup.sh
 
   ipv6-underlay-e2e-single-nic:
-    needs: build
     name: ipv6-underlay-e2e-single-nic
     runs-on: ubuntu-18.04
     timeout-minutes: 30
@@ -493,6 +548,14 @@ jobs:
           pip install j2cli --user
           pip install "j2cli[yaml]" --user
           sudo PATH=~/.local/bin:$PATH make kind-init-ipv6
+
+      - name: Wait for build to succeed
+        uses: fountainhead/action-wait-for-check@v1.0.0
+        id: wait-for-build
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          checkName: Build x86
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Download image
         uses: actions/download-artifact@v2
@@ -543,7 +606,6 @@ jobs:
           '
 
   dual-stack-e2e:
-    needs: build
     name: dual-stack-e2e
     runs-on: ubuntu-18.04
     timeout-minutes: 30
@@ -562,6 +624,14 @@ jobs:
           pip install j2cli --user
           pip install "j2cli[yaml]" --user
           sudo PATH=~/.local/bin:$PATH make kind-init-dual
+
+      - name: Wait for build to succeed
+        uses: fountainhead/action-wait-for-check@v1.0.0
+        id: wait-for-build
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          checkName: Build x86
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Download image
         uses: actions/download-artifact@v2
@@ -596,7 +666,6 @@ jobs:
           sh dist/images/cleanup.sh
 
   dual-stack-underlay-e2e-single-nic:
-    needs: build
     name: dual-stack-underlay-e2e-single-nic
     runs-on: ubuntu-18.04
     timeout-minutes: 30
@@ -615,6 +684,14 @@ jobs:
           pip install j2cli --user
           pip install "j2cli[yaml]" --user
           sudo PATH=~/.local/bin:$PATH make kind-init-dual
+
+      - name: Wait for build to succeed
+        uses: fountainhead/action-wait-for-check@v1.0.0
+        id: wait-for-build
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          checkName: Build x86
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Download image
         uses: actions/download-artifact@v2
@@ -665,7 +742,6 @@ jobs:
           '
 
   no-lb-e2e:
-    needs: build
     name: disable-loadbalancer-e2e
     runs-on: ubuntu-18.04
     timeout-minutes: 30
@@ -684,6 +760,14 @@ jobs:
           pip install j2cli --user
           pip install "j2cli[yaml]" --user
           sudo PATH=~/.local/bin:$PATH make kind-init
+
+      - name: Wait for build to succeed
+        uses: fountainhead/action-wait-for-check@v1.0.0
+        id: wait-for-build
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          checkName: Build x86
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Download image
         uses: actions/download-artifact@v2
@@ -716,7 +800,6 @@ jobs:
           sh dist/images/cleanup.sh
 
   no-lb-iptables-e2e:
-    needs: build
     name: disable-loadbalancer-iptables-e2e
     runs-on: ubuntu-18.04
     timeout-minutes: 30
@@ -735,6 +818,14 @@ jobs:
           pip install j2cli --user
           pip install "j2cli[yaml]" --user
           sudo PATH=~/.local/bin:$PATH make kind-init-iptables
+
+      - name: Wait for build to succeed
+        uses: fountainhead/action-wait-for-check@v1.0.0
+        id: wait-for-build
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          checkName: Build x86
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Download image
         uses: actions/download-artifact@v2
@@ -767,7 +858,6 @@ jobs:
           sh dist/images/cleanup.sh
 
   no-np-e2e:
-    needs: build
     name: disable-network-policy-e2e
     runs-on: ubuntu-18.04
     timeout-minutes: 30
@@ -786,6 +876,14 @@ jobs:
           pip install j2cli --user
           pip install "j2cli[yaml]" --user
           sudo PATH=~/.local/bin:$PATH make kind-init
+
+      - name: Wait for build to succeed
+        uses: fountainhead/action-wait-for-check@v1.0.0
+        id: wait-for-build
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          checkName: Build x86
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Download image
         uses: actions/download-artifact@v2
