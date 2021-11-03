@@ -775,6 +775,7 @@ echo "-------------------------------"
 echo ""
 
 echo "[Step 5/8] Update kube-ovn-cni"
+kubectl set image ds/kube-ovn-cni -n kube-system install-cni="$IMAGE"
 kubectl set image ds/kube-ovn-cni -n kube-system cni-server="$IMAGE"
 kubectl rollout status daemonset/kube-ovn-cni -n kube-system
 echo "-------------------------------"
@@ -945,7 +946,8 @@ trace(){
     fi
     gwMac=$(echo "$output" | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}')
   else
-    gwMac=$(kubectl exec $OVN_NB_POD -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl --data=bare --no-heading --columns=mac find logical_router_port name=ovn-cluster-"$ls" | tr -d '\r')
+    lr=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/logical_router})
+    gwMac=$(kubectl exec $OVN_NB_POD -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl --data=bare --no-heading --columns=mac find logical_router_port name="$lr"-"$ls" | tr -d '\r')
   fi
   if [ -z "$gwMac" ]; then
     echo "get gw mac failed"
