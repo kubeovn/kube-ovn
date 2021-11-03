@@ -490,19 +490,20 @@ func (c *Controller) initSyncCrdVlans() error {
 
 	for _, vlan := range vlans {
 		var needUpdate bool
-		if vlan.Spec.VlanId != 0 && vlan.Spec.ID == 0 {
-			vlan.Spec.ID = vlan.Spec.VlanId
-			vlan.Spec.VlanId = 0
+		newVlan := vlan.DeepCopy()
+		if newVlan.Spec.VlanId != 0 && newVlan.Spec.ID == 0 {
+			newVlan.Spec.ID = newVlan.Spec.VlanId
+			newVlan.Spec.VlanId = 0
 			needUpdate = true
 		}
-		if vlan.Spec.ProviderInterfaceName != "" && vlan.Spec.Provider == "" {
-			vlan.Spec.Provider = vlan.Spec.ProviderInterfaceName
-			vlan.Spec.ProviderInterfaceName = ""
+		if newVlan.Spec.ProviderInterfaceName != "" && newVlan.Spec.Provider == "" {
+			newVlan.Spec.Provider = newVlan.Spec.ProviderInterfaceName
+			newVlan.Spec.ProviderInterfaceName = ""
 			needUpdate = true
 		}
 		if needUpdate {
-			if _, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(context.Background(), vlan, metav1.UpdateOptions{}); err != nil {
-				klog.Errorf("failed to update spec of vlan %s: %v", vlan.Name, err)
+			if _, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(context.Background(), newVlan, metav1.UpdateOptions{}); err != nil {
+				klog.Errorf("failed to update spec of vlan %s: %v", newVlan.Name, err)
 				return err
 			}
 		}
