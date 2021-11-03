@@ -2,10 +2,6 @@
 
 set -u -e
 
-if [[ -f "/proc/sys/net/bridge/bridge-nf-call-iptables" ]];
-    then echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables;
-fi
-
 if [[ -f "/proc/sys/net/ipv4/ip_forward" ]];
     then echo 1 > /proc/sys/net/ipv4/ip_forward;
 fi
