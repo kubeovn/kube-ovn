@@ -1142,6 +1142,15 @@ func (c *Controller) setSubnetQosPriority(subnet *kubeovnv1.Subnet) error {
 		return err
 	}
 
+	qosIfaceUidMap, err := ovs.ListExternalIds("qos")
+	if err != nil {
+		return err
+	}
+	queueIfaceUidMap, err := ovs.ListExternalIds("queue")
+	if err != nil {
+		return err
+	}
+
 	for _, pod := range pods {
 		if pod.Spec.HostNetwork ||
 			pod.DeletionTimestamp != nil ||
@@ -1156,7 +1165,7 @@ func (c *Controller) setSubnetQosPriority(subnet *kubeovnv1.Subnet) error {
 			if pod.Annotations[util.PriorityAnnotation] != "" {
 				priority = pod.Annotations[util.PriorityAnnotation]
 			}
-			if err = ovs.SetPodQosPriority(pod.Name, pod.Namespace, ifaceID, priority); err != nil {
+			if err = ovs.SetPodQosPriority(pod.Name, pod.Namespace, ifaceID, priority, qosIfaceUidMap, queueIfaceUidMap); err != nil {
 				klog.Errorf("failed to set htbqos priority for pod %s/%s, iface %v: %v", pod.Namespace, pod.Name, ifaceID, err)
 				return err
 			}
@@ -1180,7 +1189,7 @@ func (c *Controller) setSubnetQosPriority(subnet *kubeovnv1.Subnet) error {
 					priority = pod.Annotations[fmt.Sprintf(util.PriorityAnnotationTemplate, provider)]
 				}
 
-				if err = ovs.SetPodQosPriority(pod.Name, pod.Namespace, ifaceID, priority); err != nil {
+				if err = ovs.SetPodQosPriority(pod.Name, pod.Namespace, ifaceID, priority, qosIfaceUidMap, queueIfaceUidMap); err != nil {
 					klog.Errorf("failed to set htbqos priority for pod %s/%s, iface %v: %v", pod.Namespace, pod.Name, ifaceID, err)
 					return err
 				}
