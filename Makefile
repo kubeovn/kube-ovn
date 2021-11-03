@@ -197,6 +197,24 @@ kind-install-underlay-dual:
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
 	ENABLE_SSL=true DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 ./install-underlay.sh
 
+.PHONY: kind-install-underlay-logical-gateway-dual
+kind-install-underlay-logical-gateway-dual:
+	$(eval IPV4_SUBNET = $(shell docker network inspect kind -f "{{(index .IPAM.Config 0).Subnet}}"))
+	$(eval IPV6_SUBNET = $(shell docker network inspect kind -f "{{(index .IPAM.Config 1).Subnet}}"))
+	$(eval IPV4_GATEWAY = $(shell docker network inspect kind -f "{{(index .IPAM.Config 0).Gateway}}"))
+	$(eval IPV6_GATEWAY = $(shell docker exec kube-ovn-control-plane ip -6 route show default | awk '{print $$3}'))
+	$(eval IPV4_EXCLUDE_IPS = $(shell docker network inspect kind -f '{{range .Containers}},{{index (split .IPv4Address "/") 0}}{{end}}' | sed 's/^,//'))
+	$(eval IPV6_EXCLUDE_IPS = $(shell docker network inspect kind -f '{{range .Containers}},{{index (split .IPv6Address "/") 0}}{{end}}' | sed 's/^,//'))
+	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(IPV4_SUBNET),$(IPV6_SUBNET)"@' \
+		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(IPV4_GATEWAY)9,$(IPV6_GATEWAY)f"@' \
+		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(IPV4_EXCLUDE_IPS),$(IPV6_EXCLUDE_IPS)"@' \
+		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
+		dist/images/install.sh > install-underlay.sh
+	@chmod +x install-underlay.sh
+	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
+	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
+	ENABLE_SSL=true DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 LOGICAL_GATEWAY=true ./install-underlay.sh
+
 .PHONY: kind-reload
 kind-reload:
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)

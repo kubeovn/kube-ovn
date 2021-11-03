@@ -592,6 +592,11 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
+	if err = c.updateNodeAddressSetsForSubnet(subnet, false); err != nil {
+		klog.Errorf("failed to update node address sets for addition of subnet %s: %v", subnet.Name, err)
+		return err
+	}
+
 	if c.config.EnableLb && subnet.Name != c.config.NodeSwitch {
 		if err := c.ovnClient.AddLbToLogicalSwitch(vpc.Status.TcpLoadBalancer, vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.UdpSessionLoadBalancer, subnet.Name); err != nil {
 			c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", err.Error())
@@ -622,6 +627,52 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	c.updateVpcStatusQueue.Add(subnet.Spec.Vpc)
+	return nil
+}
+
+func (c *Controller) handleNodeAddressSetForSubnet(cidr, node, nodeIP string, af int, delete bool) error {
+	if cidr == "" || nodeIP == "" || !util.CIDRContainIP(cidr, nodeIP) {
+		return nil
+	}
+
+	asName := nodeUnderlayAddressSetName(node, af)
+	if delete {
+		if err := c.ovnClient.RemoveAddressSetAddresses(asName, cidr); err != nil {
+			klog.Errorf("failed to remove CIDR %s from address set %s: %v", cidr, asName, err)
+			return err
+		}
+	} else {
+		if err := c.ovnClient.AddAddressSetAddresses(asName, cidr); err != nil {
+			klog.Errorf("failed to add CIDR %s to address set %s: %v", cidr, asName, err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *Controller) updateNodeAddressSetsForSubnet(subnet *kubeovnv1.Subnet, delete bool) error {
+	if subnet.Spec.Vlan == "" || !subnet.Spec.LogicalGateway || subnet.Spec.Vpc != util.DefaultVpc {
+		return nil
+	}
+
+	nodes, err := c.nodesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list nodes: %v", err)
+		return err
+	}
+
+	for _, node := range nodes {
+		nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
+		v4CIDR, v6CIDR := util.SplitStringIP(subnet.Spec.CIDRBlock)
+		if err := c.handleNodeAddressSetForSubnet(v4CIDR, node.Name, nodeIPv4, 4, delete); err != nil {
+			return err
+		}
+		if err := c.handleNodeAddressSetForSubnet(v6CIDR, node.Name, nodeIPv6, 6, delete); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -695,6 +746,12 @@ func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
 
 func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 	c.updateVpcStatusQueue.Add(subnet.Spec.Vpc)
+
+	if err := c.updateNodeAddressSetsForSubnet(subnet, true); err != nil {
+		klog.Errorf("failed to update node address sets for deletion of subnet %s: %v", subnet.Name, err)
+		return err
+	}
+
 	err := c.handleDeleteLogicalSwitch(subnet.Name)
 	if err != nil {
 		klog.Errorf("failed to delete logical switch %s %v", subnet.Name, err)

@@ -381,6 +381,10 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		klog.Fatalf("failed to init ipam: %v", err)
 	}
 
+	if err := c.initNodeRoutes(); err != nil {
+		klog.Fatalf("failed to initialize node routes: %v", err)
+	}
+
 	if err := c.initDenyAllSecurityGroup(); err != nil {
 		klog.Fatalf("failed to init 'deny_all' security group: %v", err)
 	}
