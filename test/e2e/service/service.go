@@ -15,7 +15,6 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	kubeovn "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
@@ -33,10 +32,7 @@ func nodeIPs(node corev1.Node) []string {
 }
 
 func curlArgs(ip string, port int32) string {
-	if util.CheckProtocol(ip) == kubeovn.ProtocolIPv6 {
-		ip = fmt.Sprintf("-g -6 [%s]", ip)
-	}
-	return fmt.Sprintf("-s -m 3 -o /dev/null -w %%{http_code} %s:%d/metrics", ip, port)
+	return fmt.Sprintf("-s -m 3 -o /dev/null -w %%{http_code} %s/metrics", util.JoinHostPort(ip, port))
 }
 
 func kubectlArgs(pod, ip string, port int32) string {
@@ -44,10 +40,6 @@ func kubectlArgs(pod, ip string, port int32) string {
 }
 
 var _ = Describe("[Service]", func() {
-	if runtime.GOOS != "linux" {
-		return
-	}
-
 	f := framework.NewFramework("service", fmt.Sprintf("%s/.kube/config", os.Getenv("HOME")))
 	hostPods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(context.Background(), metav1.ListOptions{LabelSelector: "app=ovs"})
 	Expect(err).NotTo(HaveOccurred())
@@ -139,6 +131,10 @@ var _ = Describe("[Service]", func() {
 		})
 
 		It("external to NodePort", func() {
+			if runtime.GOOS != "linux" {
+				return
+			}
+
 			port := hostService.Spec.Ports[0].Port
 			nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 			Expect(err).NotTo(HaveOccurred())
@@ -211,6 +207,10 @@ var _ = Describe("[Service]", func() {
 		})
 
 		It("external to NodePort", func() {
+			if runtime.GOOS != "linux" {
+				return
+			}
+
 			port := containerService.Spec.Ports[0].NodePort
 			nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 			Expect(err).NotTo(HaveOccurred())
@@ -329,6 +329,10 @@ var _ = Describe("[Service]", func() {
 		})
 
 		It("external to NodePort", func() {
+			if runtime.GOOS != "linux" {
+				return
+			}
+
 			port := localEtpService.Spec.Ports[0].NodePort
 
 			endpoints, err := f.KubeClientSet.CoreV1().Endpoints("kube-system").Get(context.Background(), localEtpService.Name, metav1.GetOptions{})

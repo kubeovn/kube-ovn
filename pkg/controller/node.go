@@ -189,6 +189,10 @@ func (c *Controller) processNextDeleteNodeWorkItem() bool {
 	return true
 }
 
+func nodeUnderlayAddressSetName(node string, af int) string {
+	return fmt.Sprintf("node_%s_underlay_v%d", node, af)
+}
+
 func (c *Controller) handleAddNode(key string) error {
 	node, err := c.nodesLister.Get(key)
 	if err != nil {
@@ -204,15 +208,45 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
+	var v4CIDRs, v6CIDRs []string
 	nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
 	for _, subnet := range subnets {
-		if subnet.Spec.Vlan == "" && subnet.Spec.Vpc == util.DefaultVpc &&
-			(util.CIDRContainIP(subnet.Spec.CIDRBlock, nodeIPv4) || util.CIDRContainIP(subnet.Spec.CIDRBlock, nodeIPv6)) {
+		if subnet.Spec.Vpc != util.DefaultVpc {
+			continue
+		}
+
+		var conflict bool
+		v4, v6 := util.SplitStringIP(subnet.Spec.CIDRBlock)
+		if util.CIDRContainIP(v4, nodeIPv4) {
+			if subnet.Spec.Vlan == "" {
+				conflict = true
+			} else if subnet.Spec.LogicalGateway {
+				v4CIDRs = append(v4CIDRs, v4)
+			}
+		}
+		if util.CIDRContainIP(v6, nodeIPv6) {
+			if subnet.Spec.Vlan == "" {
+				conflict = true
+			} else if subnet.Spec.LogicalGateway {
+				v6CIDRs = append(v6CIDRs, v6)
+			}
+		}
+
+		if conflict {
 			msg := fmt.Sprintf("internal IP address of node %s is in CIDR of subnet %s, this may result in network issues", node.Name, subnet.Name)
 			klog.Warning(msg)
 			c.recorder.Eventf(&v1.Node{ObjectMeta: metav1.ObjectMeta{Name: node.Name, UID: types.UID(node.Name)}}, v1.EventTypeWarning, "NodeAddressConflictWithSubnet", msg)
 			break
 		}
+	}
+
+	if err = c.ovnClient.CreateAddressSetWithAddresses(nodeUnderlayAddressSetName(node.Name, 4), v4CIDRs...); err != nil {
+		klog.Errorf("failed to create address set for node %s: %v", node.Name, err)
+		return err
+	}
+	if err = c.ovnClient.CreateAddressSetWithAddresses(nodeUnderlayAddressSetName(node.Name, 6), v6CIDRs...); err != nil {
+		klog.Errorf("failed to create address set for node %s: %v", node.Name, err)
+		return err
 	}
 
 	providerNetworks, err := c.providerNetworksLister.List(labels.Everything())
@@ -276,13 +310,14 @@ func (c *Controller) handleAddNode(key string) error {
 			continue
 		}
 
-		nodeIP := nodeIPv4
+		nodeIP, af := nodeIPv4, 4
 		if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 {
-			nodeIP = nodeIPv6
+			nodeIP, af = nodeIPv6, 6
 		}
 		if nodeIP != "" {
-			if err = c.ovnClient.AddStaticRoute("", nodeIP, ip, c.config.ClusterRouter, util.NormalRouteType); err != nil {
-				klog.Errorf("failed to add static router from node to ovn0: %v", err)
+			match := fmt.Sprintf("ip%d.dst == %s && ip%d.src != $%s", af, nodeIP, af, nodeUnderlayAddressSetName(node.Name, af))
+			if err = c.ovnClient.AddPolicyRoute(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", ip); err != nil {
+				klog.Errorf("failed to add logical router policy for node %s: %v", node.Name, err)
 				return err
 			}
 		}
@@ -354,9 +389,21 @@ func (c *Controller) handleDeleteNode(key string) error {
 
 	addresses := c.ipam.GetPodAddress(portName)
 	for _, addr := range addresses {
-		if err := c.ovnClient.DeleteStaticRouteByNextHop(addr.Ip); err != nil {
+		if addr.Ip == "" {
+			continue
+		}
+		if err := c.ovnClient.DeletePolicyRouteByNexthop(c.config.ClusterRouter, util.NodeRouterPolicyPriority, addr.Ip); err != nil {
+			klog.Errorf("failed to delete router policy for node %s: %v", key, err)
 			return err
 		}
+	}
+	if err := c.ovnClient.DeleteAddressSet(nodeUnderlayAddressSetName(key, 4)); err != nil {
+		klog.Errorf("failed to delete address set for node %s: %v", key, err)
+		return err
+	}
+	if err := c.ovnClient.DeleteAddressSet(nodeUnderlayAddressSetName(key, 6)); err != nil {
+		klog.Errorf("failed to delete address set for node %s: %v", key, err)
+		return err
 	}
 
 	c.ipam.ReleaseAddressByPod(portName)

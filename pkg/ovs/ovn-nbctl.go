@@ -734,6 +734,24 @@ func (c Client) DeletePolicyRoute(router string, priority int32, match string) e
 	return err
 }
 
+func (c Client) DeletePolicyRouteByNexthop(router string, priority int32, nexthop string) error {
+	args := []string{
+		"--no-heading", "--data=bare", "--columns=match", "find", "Logical_Router_Policy",
+		fmt.Sprintf("priority=%d", priority),
+		fmt.Sprintf(`nexthops{=}%s`, strings.ReplaceAll(nexthop, ":", `\:`)),
+	}
+	output, err := c.ovnNbCommand(args...)
+	if err != nil {
+		klog.Errorf("failed to list router policy by nexthop %s: %v", nexthop, err)
+		return err
+	}
+	if output == "" {
+		return nil
+	}
+
+	return c.DeletePolicyRoute(router, priority, output)
+}
+
 type PolicyRoute struct {
 	Priority  int32
 	Match     string
@@ -1172,7 +1190,77 @@ func (c Client) ListNpPortGroup() ([]portGroup, error) {
 	return result, nil
 }
 
-func (c Client) CreateAddressSet(asName, npNamespace, npName, direction string) error {
+func (c Client) CreateAddressSet(name string) error {
+	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid", "find", "address_set", fmt.Sprintf("name=%s", name))
+	if err != nil {
+		klog.Errorf("failed to find address_set %s: %v, %q", name, err, output)
+		return err
+	}
+	if output != "" {
+		return nil
+	}
+	_, err = c.ovnNbCommand("create", "address_set", fmt.Sprintf("name=%s", name), fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
+	return err
+}
+
+func (c Client) CreateAddressSetWithAddresses(name string, addresses ...string) error {
+	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid", "find", "address_set", fmt.Sprintf("name=%s", name))
+	if err != nil {
+		klog.Errorf("failed to find address_set %s: %v, %q", name, err, output)
+		return err
+	}
+
+	var args []string
+	argAddrs := strings.ReplaceAll(strings.Join(addresses, ","), ":", `\:`)
+	if output == "" {
+		args = []string{"create", "address_set", fmt.Sprintf("name=%s", name), fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)}
+		if argAddrs != "" {
+			args = append(args, fmt.Sprintf("addresses=%s", argAddrs))
+		}
+	} else {
+		args = []string{"clear", "address_set", name, "addresses"}
+		if argAddrs != "" {
+			args = append(args, "--", "set", "address_set", name, "addresses", argAddrs)
+		}
+	}
+
+	_, err = c.ovnNbCommand(args...)
+	return err
+}
+
+func (c Client) AddAddressSetAddresses(name string, address string) error {
+	output, err := c.ovnNbCommand("add", "address_set", name, "addresses", strings.ReplaceAll(address, ":", `\:`))
+	if err != nil {
+		klog.Errorf("failed to add address %s to address_set %s: %v, %q", address, name, err, output)
+		return err
+	}
+	return nil
+}
+
+func (c Client) RemoveAddressSetAddresses(name string, address string) error {
+	output, err := c.ovnNbCommand("remove", "address_set", name, "addresses", strings.ReplaceAll(address, ":", `\:`))
+	if err != nil {
+		klog.Errorf("failed to remove address %s from address_set %s: %v, %q", address, name, err, output)
+		return err
+	}
+	return nil
+}
+
+func (c Client) DeleteAddressSet(name string) error {
+	_, err := c.ovnNbCommand(IfExists, "destroy", "address_set", name)
+	return err
+}
+
+func (c Client) ListNpAddressSet(npNamespace, npName, direction string) ([]string, error) {
+	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=name", "find", "address_set", fmt.Sprintf("external_ids:np=%s/%s/%s", npNamespace, npName, direction))
+	if err != nil {
+		klog.Errorf("failed to list address_set of %s/%s/%s: %v, %q", npNamespace, npName, direction, err, output)
+		return nil, err
+	}
+	return strings.Split(output, "\n"), nil
+}
+
+func (c Client) CreateNpAddressSet(asName, npNamespace, npName, direction string) error {
 	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid", "find", "address_set", fmt.Sprintf("name=%s", asName))
 	if err != nil {
 		klog.Errorf("failed to find address_set %s: %v, %q", asName, err, output)
@@ -1182,20 +1270,6 @@ func (c Client) CreateAddressSet(asName, npNamespace, npName, direction string) 
 		return nil
 	}
 	_, err = c.ovnNbCommand("create", "address_set", fmt.Sprintf("name=%s", asName), fmt.Sprintf("external_ids:np=%s/%s/%s", npNamespace, npName, direction))
-	return err
-}
-
-func (c Client) ListAddressSet(npNamespace, npName, direction string) ([]string, error) {
-	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=name", "find", "address_set", fmt.Sprintf("external_ids:np=%s/%s/%s", npNamespace, npName, direction))
-	if err != nil {
-		klog.Errorf("failed to list address_set of %s/%s/%s: %v, %q", npNamespace, npName, direction, err, output)
-		return nil, err
-	}
-	return strings.Split(output, "\n"), nil
-}
-
-func (c Client) DeleteAddressSet(asName string) error {
-	_, err := c.ovnNbCommand(IfExists, "destroy", "address_set", asName)
 	return err
 }
 

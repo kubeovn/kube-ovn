@@ -741,6 +741,82 @@ jobs:
             done
           '
 
+  dual-stack-underlay-logical-gw-e2e:
+    name: dual-stack-underlay-logical-gateway-e2e
+    runs-on: ubuntu-18.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v2
+
+      - name: Install Kind
+        run: |
+          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
+          chmod +x ./kind
+          sudo mv kind /usr/local/bin
+
+      - name: Init Kind
+        run: |
+          pip install j2cli --user
+          pip install "j2cli[yaml]" --user
+          sudo PATH=~/.local/bin:$PATH make kind-init-dual
+
+      - name: Wait for build to succeed
+        uses: fountainhead/action-wait-for-check@v1.0.0
+        id: wait-for-build
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          checkName: Build x86
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Download image
+        uses: actions/download-artifact@v2
+        with:
+          name: kube-ovn
+
+      - name: Load Image
+        run: |
+          docker load --input kube-ovn.tar
+
+      - name: Install Kube-OVN
+        run: |
+          docker load --input kube-ovn.tar
+          sudo make kind-install-underlay-logical-gateway-dual
+
+      - name: Set up Go 1.x
+        uses: actions/setup-go@v2
+        with:
+          go-version: ^1.16
+        id: go
+
+      - name: Run E2E
+        run: |
+          go install github.com/onsi/ginkgo/ginkgo@latest
+          sudo kubectl cluster-info
+          sudo chmod 666 /home/runner/.kube/config
+          make e2e
+
+      - name: Cleanup
+        run: |
+          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
+          sh dist/images/cleanup.sh
+
+      - name: Check Node Network
+        run: |
+          sh -c '
+            set -e
+            kubectl get no --no-headers | awk "{print \$1}" | while read node; do
+              docker inspect $node -f "{{.NetworkSettings.Networks.kind.IPAddress}}"
+            done | while read ip; do
+              docker run --rm --network kind kubeovn/kube-ovn:$(cat VERSION) ping -c1 -w1 $ip
+            done
+            kubectl get no --no-headers | awk "{print \$1}" | while read node; do
+              docker inspect $node -f "{{.NetworkSettings.Networks.kind.GlobalIPv6Address}}"
+            done | while read ip; do
+              docker run --rm --network kind kubeovn/kube-ovn:$(cat VERSION) ping6 -c1 -w1 $ip
+            done
+          '
+
   no-lb-e2e:
     name: disable-loadbalancer-e2e
     runs-on: ubuntu-18.04
@@ -927,6 +1003,7 @@ jobs:
       - ipv6-vlan-e2e
       - ipv6-underlay-e2e-single-nic
       - dual-stack-e2e
+      - dual-stack-underlay-logical-gw-e2e
       - dual-stack-underlay-e2e-single-nic
       - no-lb-e2e
       - no-lb-iptables-e2e

@@ -2697,8 +2697,10 @@ diagnose(){
 
   kubectl get no -o wide
   kubectl ko nbctl show
+  kubectl ko nbctl lr-policy-list ovn-cluster
   kubectl ko nbctl lr-route-list ovn-cluster
   kubectl ko nbctl ls-lb-list ovn-default
+  kubectl ko nbctl list address_set
   kubectl ko nbctl list acl
   kubectl ko sbctl show
 

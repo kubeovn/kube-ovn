@@ -119,6 +119,8 @@ const (
 	EcmpRouteType   = "ecmp"
 	NormalRouteType = "normal"
 
+	NodeRouterPolicyPriority = 30000
+
 	PodNicAnnotation = "ovn.kubernetes.io/pod_nic_type"
 	VethType         = "veth-pair"
 	OffloadType      = "offload-port"
