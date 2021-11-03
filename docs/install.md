@@ -5,7 +5,7 @@ Kube-OVN includes two parts:
 - Controller and CNI plugins that integrate OVN with Kubernetes
 
 ## Prerequisite
-- Kubernetes >= 1.11, version 1.16 and later is recommended
+- Kubernetes >= 1.16
 - Docker >= 1.12.6
 - OS: CentOS 7/8, Ubuntu 16.04/18.04 
 - Other Linux distributions with geneve, openvswitch and ip_tables module installed. You can use commands  `modinfo geneve`, `modinfo openvswitch` and `modinfo ip_tables` to verify
@@ -27,9 +27,6 @@ Kube-OVN provides a one script install to easily install a high-available, produ
 
 For Kubernetes version>=1.16:
 `wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.8/dist/images/install.sh`
-
-For Kubernetes version<1.16:
-`wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.8/dist/images/install-pre-1.16.sh`
 
 If you want to try the latest developing Kube-OVN, try the script below:
 `wget https://raw.githubusercontent.com/alauda/kube-ovn/master/dist/images/install.sh`

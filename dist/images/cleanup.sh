@@ -1,6 +1,15 @@
 #!/bin/bash
 set -eu
 
+kubectl delete --ignore-not-found ds kube-ovn-pinger -n kube-system
+# ensure kube-ovn-pinger has been deleted
+while :; do
+  if [ $(kubectl get pod --no-headers -n kube-system -l app=kube-ovn-pinger | wc -l) -eq 0 ]; then
+    break
+  fi
+  sleep 5
+done
+
 for subnet in $(kubectl get subnet -o name); do
   kubectl patch "$subnet" --type='json' -p '[{"op": "replace", "path": "/metadata/finalizers", "value": []}]'
   kubectl delete "$subnet"
@@ -17,7 +26,6 @@ done
 sleep 5
 
 # Delete Kube-OVN components
-kubectl delete --ignore-not-found ds kube-ovn-pinger -n kube-system
 kubectl delete --ignore-not-found deploy kube-ovn-monitor -n kube-system
 kubectl delete --ignore-not-found cm ovn-config ovn-ic-config ovn-external-gw-config -n kube-system
 kubectl delete --ignore-not-found svc kube-ovn-pinger kube-ovn-controller kube-ovn-cni kube-ovn-monitor -n kube-system
