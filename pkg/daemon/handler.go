@@ -58,7 +58,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		}
 		return
 	}
-
+	klog.V(5).Infof("request body is %v", podRequest)
 	if exist := csh.providerExists(podRequest.Provider); !exist {
 		errMsg := fmt.Errorf("provider %s not bind to any subnet", podRequest.Provider)
 		klog.Error(errMsg)
@@ -83,7 +83,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			return
 		}
 		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podRequest.Provider)] != "true" {
-			klog.Infof("wait address for pod %s/%s ", podRequest.PodNamespace, podRequest.PodName)
+			klog.Infof("wait address for pod %s/%s provider %s", podRequest.PodNamespace, podRequest.PodName, podRequest.Provider)
 			// wait controller assign an address
 			cniWaitAddressResult.WithLabelValues(nodeName).Inc()
 			time.Sleep(1 * time.Second)
@@ -132,7 +132,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		ifName = "eth0"
 	}
 	if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podRequest.Provider)] != "true" {
-		err := fmt.Errorf("no address allocated to pod %s/%s, please see kube-ovn-controller logs to find errors", pod.Namespace, pod.Name)
+		err := fmt.Errorf("no address allocated to pod %s/%s provider %s, please see kube-ovn-controller logs to find errors", pod.Namespace, pod.Name, podRequest.Provider)
 		klog.Error(err)
 		if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()}); err != nil {
 			klog.Errorf("failed to write response, %v", err)
