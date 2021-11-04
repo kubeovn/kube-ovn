@@ -2599,6 +2599,9 @@ trace(){
     gwMac=$(echo "$output" | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}')
   else
     lr=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/logical_router})
+    if [ -z "$lr" ]; then
+      lr=$(kubectl get subnet "$ls" -o jsonpath={.spec.vpc})
+    fi
     gwMac=$(kubectl exec $OVN_NB_POD -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl --data=bare --no-heading --columns=mac find logical_router_port name="$lr"-"$ls" | tr -d '\r')
   fi
 
