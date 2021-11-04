@@ -1,7 +1,4 @@
-{% set nodeTag = "v1.19.11" -%}
-{% if ip_family is equalto "dual" -%}
-  {% set nodeTag = "v1.21.2" -%}
-{% endif -%}
+{% set nodeTag = "v1.22.2" -%}
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 networking:
