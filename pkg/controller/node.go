@@ -190,7 +190,7 @@ func (c *Controller) processNextDeleteNodeWorkItem() bool {
 }
 
 func nodeUnderlayAddressSetName(node string, af int) string {
-	return fmt.Sprintf("node_%s_underlay_v%d", node, af)
+	return fmt.Sprintf("node_%s_underlay_v%d", strings.ReplaceAll(node, "-", "_"), af)
 }
 
 func (c *Controller) handleAddNode(key string) error {
