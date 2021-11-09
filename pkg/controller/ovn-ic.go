@@ -92,7 +92,7 @@ func (c *Controller) resyncInterConnection() {
 		if icEnabled == "true" && lastICCM != nil && reflect.DeepEqual(cm.Data, lastICCM) {
 			return
 		}
-		c.ovnClient.OVNIcNBAddress = fmt.Sprintf("%s:%s", cm.Data["ic-db-host"], cm.Data["ic-nb-port"])
+		c.ovnClient.OVNIcNBAddress = genHostAddress(cm.Data["ic-db-host"], cm.Data["ic-nb-port"])
 		klog.Info("start to establish ovn-ic")
 		if err := c.establishInterConnection(cm.Data); err != nil {
 			klog.Errorf("failed to establish ovn-ic, %v", err)
@@ -255,15 +255,15 @@ func (c *Controller) acquireLrpAddress(ts string) (string, error) {
 
 func (c *Controller) startOVNIC(icHost, icNbPort, icSbPort string) error {
 	cmd := exec.Command("/usr/share/ovn/scripts/ovn-ctl",
-		fmt.Sprintf("--ovn-ic-nb-db=tcp:%s:%s", icHost, icNbPort),
-		fmt.Sprintf("--ovn-ic-sb-db=tcp:%s:%s", icHost, icSbPort),
+		fmt.Sprintf("--ovn-ic-nb-db=%s", genHostAddress(icHost, icNbPort)),
+		fmt.Sprintf("--ovn-ic-sb-db=%s", genHostAddress(icHost, icSbPort)),
 		fmt.Sprintf("--ovn-northd-nb-db=%s", c.config.OvnNbAddr),
 		fmt.Sprintf("--ovn-northd-sb-db=%s", c.config.OvnSbAddr),
 		"start_ic")
 	if os.Getenv("ENABLE_SSL") == "true" {
 		cmd = exec.Command("/usr/share/ovn/scripts/ovn-ctl",
-			fmt.Sprintf("--ovn-ic-nb-db=tcp:[%s]:%s", icHost, icNbPort),
-			fmt.Sprintf("--ovn-ic-sb-db=tcp:[%s]:%s", icHost, icSbPort),
+			fmt.Sprintf("--ovn-ic-nb-db=%s", genHostAddress(icHost, icNbPort)),
+			fmt.Sprintf("--ovn-ic-sb-db=%s", genHostAddress(icHost, icSbPort)),
 			fmt.Sprintf("--ovn-northd-nb-db=%s", c.config.OvnNbAddr),
 			fmt.Sprintf("--ovn-northd-sb-db=%s", c.config.OvnSbAddr),
 			"--ovn-ic-ssl-key=/var/run/tls/key",
@@ -343,4 +343,21 @@ func (c *Controller) delLearnedRoute() error {
 		klog.V(5).Infof("finish removing learned routes")
 	}
 	return nil
+}
+
+func genHostAddress(host string, port string) (hostaddress string) {
+	hostList := strings.Split(host, ",")
+	if len(hostList) == 1 {
+		hostaddress = fmt.Sprintf("tcp:[%s]:%s", hostList[0], port)
+	} else {
+		var blder strings.Builder
+		i := 0
+		for i < len(hostList)-1 {
+			blder.WriteString(fmt.Sprintf("tcp:[%s]:%s,", hostList[i], port))
+			i += 1
+		}
+		blder.WriteString(fmt.Sprintf("tcp:[%s]:%s", hostList[i], port))
+		hostaddress = blder.String()
+	}
+	return hostaddress
 }
