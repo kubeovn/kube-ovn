@@ -429,13 +429,14 @@ func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason string, e
 
 func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	var err error
-	subnet, err := c.subnetsLister.Get(key)
+	orisubnet, err := c.subnetsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
+	subnet := orisubnet.DeepCopy()
 
 	deleted, err := c.handleSubnetFinalizer(subnet)
 	if err != nil {
@@ -446,13 +447,14 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return nil
 	}
 
-	subnet, err = c.subnetsLister.Get(key)
+	orisubnet, err = c.subnetsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
+	subnet = orisubnet.DeepCopy()
 
 	if err := formatSubnet(subnet, c); err != nil {
 		return err
@@ -851,7 +853,8 @@ func (c *Controller) reconcileNamespaces(subnet *kubeovnv1.Subnet) error {
 		namespaceMap[ns] = true
 	}
 
-	for _, sub := range subnets {
+	for _, orisub := range subnets {
+		sub := orisub.DeepCopy()
 		if sub.Name == subnet.Name || len(sub.Spec.Namespaces) == 0 {
 			continue
 		}
@@ -896,7 +899,8 @@ func (c *Controller) reconcileNamespaces(subnet *kubeovnv1.Subnet) error {
 	return nil
 }
 
-func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
+func (c *Controller) reconcileGateway(orisubnet *kubeovnv1.Subnet) error {
+	subnet := orisubnet.DeepCopy()
 	pods, err := c.podsLister.Pods(metav1.NamespaceAll).List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list pods %v", err)
@@ -1095,7 +1099,8 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 	return nil
 }
 
-func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
+func calcDualSubnetStatusIP(orisubnet *kubeovnv1.Subnet, c *Controller) error {
+	subnet := orisubnet.DeepCopy()
 	if err := util.CheckCidrs(subnet.Spec.CIDRBlock); err != nil {
 		return err
 	}
@@ -1149,7 +1154,8 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	return err
 }
 
-func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
+func calcSubnetStatusIP(orisubnet *kubeovnv1.Subnet, c *Controller) error {
+	subnet := orisubnet.DeepCopy()
 	_, cidr, err := net.ParseCIDR(subnet.Spec.CIDRBlock)
 	if err != nil {
 		return err

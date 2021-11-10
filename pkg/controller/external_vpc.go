@@ -24,7 +24,7 @@ func (c *Controller) syncExternalVpc() {
 	}
 	vpcMaps := make(map[string]*v1.Vpc)
 	for _, vpc := range vpcs {
-		vpcMaps[vpc.Name] = vpc
+		vpcMaps[vpc.Name] = vpc.DeepCopy()
 	}
 	for vpcName, vpc := range vpcMaps {
 		if _, ok := logicalRouters[vpcName]; ok {

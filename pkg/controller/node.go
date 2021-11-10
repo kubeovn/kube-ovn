@@ -194,13 +194,14 @@ func nodeUnderlayAddressSetName(node string, af int) string {
 }
 
 func (c *Controller) handleAddNode(key string) error {
-	node, err := c.nodesLister.Get(key)
+	orinode, err := c.nodesLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
+	node := orinode.DeepCopy()
 
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -503,7 +504,7 @@ func (c *Controller) handleUpdateNode(key string) error {
 
 func (c *Controller) createOrUpdateCrdIPs(key, ip, mac string) error {
 	v4IP, v6IP := util.SplitStringIP(ip)
-	ipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), fmt.Sprintf("node-%s", key), metav1.GetOptions{})
+	oriipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), fmt.Sprintf("node-%s", key), metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Create(context.Background(), &kubeovnv1.IP{
@@ -538,6 +539,7 @@ func (c *Controller) createOrUpdateCrdIPs(key, ip, mac string) error {
 			return errMsg
 		}
 	} else {
+		ipCr := oriipCr.DeepCopy()
 		if ipCr.Labels != nil {
 			ipCr.Labels[util.SubnetNameLabel] = c.config.NodeSwitch
 		} else {
