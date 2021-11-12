@@ -47,17 +47,17 @@ func (c *Controller) InitOVN() error {
 }
 
 func (c *Controller) InitDefaultVpc() error {
-	vpc, err := c.vpcsLister.Get(util.DefaultVpc)
+	orivpc, err := c.vpcsLister.Get(util.DefaultVpc)
 	if err != nil {
-		vpc = &kubeovnv1.Vpc{}
-		vpc.Name = util.DefaultVpc
-		vpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Create(context.Background(), vpc, metav1.CreateOptions{})
+		orivpc = &kubeovnv1.Vpc{}
+		orivpc.Name = util.DefaultVpc
+		orivpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Create(context.Background(), orivpc, metav1.CreateOptions{})
 		if err != nil {
 			klog.Errorf("init default vpc failed: %v", err)
 			return err
 		}
 	}
-
+	vpc := orivpc.DeepCopy()
 	vpc.Status.DefaultLogicalSwitch = c.config.DefaultLogicalSwitch
 	vpc.Status.Router = c.config.ClusterRouter
 	vpc.Status.TcpLoadBalancer = c.config.ClusterTcpLoadBalancer
@@ -86,6 +86,7 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 		if subnet != nil && util.CheckProtocol(c.config.DefaultCIDR) != util.CheckProtocol(subnet.Spec.CIDRBlock) {
 			// single-stack upgrade to dual-stack
 			if util.CheckProtocol(c.config.DefaultCIDR) == kubeovnv1.ProtocolDual {
+				subnet := subnet.DeepCopy()
 				subnet.Spec.CIDRBlock = c.config.DefaultCIDR
 				if err := formatSubnet(subnet, c); err != nil {
 					klog.Errorf("init format subnet %s failed: %v", c.config.DefaultLogicalSwitch, err)
@@ -131,6 +132,7 @@ func (c *Controller) initNodeSwitch() error {
 		if subnet != nil && util.CheckProtocol(c.config.NodeSwitchCIDR) != util.CheckProtocol(subnet.Spec.CIDRBlock) {
 			// single-stack upgrade to dual-stack
 			if util.CheckProtocol(c.config.NodeSwitchCIDR) == kubeovnv1.ProtocolDual {
+				subnet := subnet.DeepCopy()
 				subnet.Spec.CIDRBlock = c.config.NodeSwitchCIDR
 				if err := formatSubnet(subnet, c); err != nil {
 					klog.Errorf("init format subnet %s failed: %v", c.config.NodeSwitch, err)
@@ -428,7 +430,7 @@ func (c *Controller) initSyncCrdIPs() error {
 	}
 
 	for _, ipCr := range ips.Items {
-		ip := ipCr
+		ip := ipCr.DeepCopy()
 		v4IP, v6IP := util.SplitStringIP(ip.Spec.IPAddress)
 		if ip.Spec.V4IPAddress == v4IP && ip.Spec.V6IPAddress == v6IP {
 			continue
@@ -436,7 +438,7 @@ func (c *Controller) initSyncCrdIPs() error {
 		ip.Spec.V4IPAddress = v4IP
 		ip.Spec.V6IPAddress = v6IP
 
-		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), &ip, metav1.UpdateOptions{})
+		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), ip, metav1.UpdateOptions{})
 		if err != nil {
 			klog.Errorf("failed to sync crd ip %s: %v", ip.Spec.IPAddress, err)
 			return err
@@ -454,7 +456,8 @@ func (c *Controller) initSyncCrdSubnets() error {
 		}
 		return err
 	}
-	for _, subnet := range subnets {
+	for _, orisubnet := range subnets {
+		subnet := orisubnet.DeepCopy()
 		if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual {
 			err = calcDualSubnetStatusIP(subnet, c)
 		} else {

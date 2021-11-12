@@ -327,13 +327,14 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 		return err
 	}
 
-	pod, err := c.getNatGwPod(key)
+	oripod, err := c.getNatGwPod(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
+	pod := oripod.DeepCopy()
 
 	if pod.Status.Phase != corev1.PodRunning {
 		time.Sleep(5 * 1000)
@@ -369,13 +370,14 @@ func (c *Controller) handleUpdateVpcEips(natGwKey string) error {
 		return err
 	}
 
-	pod, err := c.getNatGwPod(natGwKey)
+	oripod, err := c.getNatGwPod(natGwKey)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
+	pod := oripod.DeepCopy()
 
 	var toBeDelEips, oldEips []*kubeovnv1.Eip
 	if eipAnnotation, ok := pod.Annotations[util.VpcEipsAnnotation]; ok {
@@ -446,13 +448,14 @@ func (c *Controller) handleUpdateVpcFloatingIp(natGwKey string) error {
 		return err
 	}
 
-	pod, err := c.getNatGwPod(natGwKey)
+	oripod, err := c.getNatGwPod(natGwKey)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
+	pod := oripod.DeepCopy()
 
 	// check md5
 	newMd5 := fmt.Sprintf("%x", structhash.Md5(gw.Spec.FloatingIpRules, 1))
@@ -495,13 +498,14 @@ func (c *Controller) handleUpdateVpcSnat(natGwKey string) error {
 		return err
 	}
 
-	pod, err := c.getNatGwPod(natGwKey)
+	oripod, err := c.getNatGwPod(natGwKey)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
+	pod := oripod.DeepCopy()
 
 	// check md5
 	newMd5 := fmt.Sprintf("%x", structhash.Md5(gw.Spec.SnatRules, 1))
@@ -543,13 +547,14 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 		return err
 	}
 
-	pod, err := c.getNatGwPod(natGwKey)
+	oripod, err := c.getNatGwPod(natGwKey)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
+	pod := oripod.DeepCopy()
 
 	// check md5
 	newMd5 := fmt.Sprintf("%x", structhash.Md5(gw.Spec.DnatRules, 1))
@@ -591,13 +596,14 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 		return err
 	}
 
-	pod, err := c.getNatGwPod(natGwKey)
+	oripod, err := c.getNatGwPod(natGwKey)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
+	pod := oripod.DeepCopy()
 
 	gwSubnet, err := c.subnetsLister.Get(gw.Spec.Subnet)
 	if err != nil {

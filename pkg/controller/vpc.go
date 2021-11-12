@@ -101,13 +101,14 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 }
 
 func (c *Controller) handleUpdateVpcStatus(key string) error {
-	vpc, err := c.vpcsLister.Get(key)
+	orivpc, err := c.vpcsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
+	vpc := orivpc.DeepCopy()
 
 	subnets, defaultSubnet, err := c.getVpcSubnets(vpc)
 	if err != nil {
@@ -149,15 +150,17 @@ func (c *Controller) handleUpdateVpcStatus(key string) error {
 }
 
 func (c *Controller) handleAddOrUpdateVpc(key string) error {
-	vpc, err := c.vpcsLister.Get(key)
+	orivpc, err := c.vpcsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	if err := formatVpc(vpc, c); err != nil {
-		klog.Errorf("failed to format vpc, err: %v", err)
+	vpc := orivpc.DeepCopy()
+
+	if err = formatVpc(vpc, c); err != nil {
+		klog.Errorf("failed to format vpc: %v", err)
 		return err
 	}
 
