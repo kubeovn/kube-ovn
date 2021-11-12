@@ -106,13 +106,14 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		return err
 	}
 
-	svc, err := c.servicesLister.Services(namespace).Get(name)
+	orisvc, err := c.servicesLister.Services(namespace).Get(name)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
+	svc := orisvc.DeepCopy()
 
 	clusterIPs := svc.Spec.ClusterIPs
 	if len(clusterIPs) == 0 && svc.Spec.ClusterIP != "" && svc.Spec.ClusterIP != v1.ClusterIPNone {
@@ -168,7 +169,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 			svc.Annotations = make(map[string]string, 1)
 		}
 		svc.Annotations[util.VpcAnnotation] = vpcName
-		if svc, err = c.config.KubeClient.CoreV1().Services(namespace).Update(context.Background(), svc, metav1.UpdateOptions{}); err != nil {
+		if _, err = c.config.KubeClient.CoreV1().Services(namespace).Update(context.Background(), svc, metav1.UpdateOptions{}); err != nil {
 			klog.Errorf("failed to update service %s/%s: %v", namespace, svc.Name, err)
 			return err
 		}

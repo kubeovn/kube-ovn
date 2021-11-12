@@ -280,7 +280,8 @@ func (c *Controller) gcLoadBalancer() error {
 		if err != nil {
 			return err
 		}
-		for _, vpc := range vpcs {
+		for _, orivpc := range vpcs {
+			vpc := orivpc.DeepCopy()
 			for _, subnetName := range vpc.Status.Subnets {
 				_, err := c.subnetsLister.Get(subnetName)
 				if err != nil && !k8serrors.IsNotFound(err) {

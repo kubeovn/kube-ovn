@@ -445,13 +445,14 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return nil
 	}
 
-	subnet, err = c.subnetsLister.Get(key)
+	orisubnet, err := c.subnetsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
+	subnet = orisubnet.DeepCopy()
 
 	if err := formatSubnet(subnet, c); err != nil {
 		return err
@@ -621,7 +622,8 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 }
 
 func (c *Controller) handleUpdateSubnetStatus(key string) error {
-	subnet, err := c.subnetsLister.Get(key)
+	orisubnet, err := c.subnetsLister.Get(key)
+	subnet := orisubnet.DeepCopy()
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil

@@ -212,13 +212,14 @@ func (c *Controller) handleAddOrUpdateSg(key string) error {
 		}
 	}
 
-	sg, err := c.sgsLister.Get(key)
+	orisg, err := c.sgsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
+	sg := orisg.DeepCopy()
 
 	if err = c.validateSgRule(sg); err != nil {
 		return err

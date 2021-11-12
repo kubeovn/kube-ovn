@@ -25,7 +25,8 @@ func (c *Controller) inspectPod() error {
 		klog.Errorf("failed to list logical switch port, %v", err)
 		return err
 	}
-	for _, pod := range pods {
+	for _, oripod := range pods {
+		pod := oripod.DeepCopy()
 		if pod.Spec.HostNetwork {
 			continue
 		}

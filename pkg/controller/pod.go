@@ -424,13 +424,14 @@ func (c *Controller) handleAddPod(key string) error {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
-	pod, err := c.podsLister.Pods(namespace).Get(name)
+	oripod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
+	pod := oripod.DeepCopy()
 	if err := util.ValidatePodNetwork(pod.Annotations); err != nil {
 		klog.Errorf("validate pod %s/%s failed: %v", namespace, name, err)
 		c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", err.Error())
@@ -695,14 +696,15 @@ func (c *Controller) handleUpdatePod(key string) error {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
-	pod, err := c.podsLister.Pods(namespace).Get(name)
+	oripod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	podName := c.getNameByPod(pod)
+	podName := c.getNameByPod(oripod)
+	pod := oripod.DeepCopy()
 
 	// in case update handler overlap the annotation when cache is not in sync
 	if pod.Annotations[util.AllocatedAnnotation] == "" {
