@@ -80,7 +80,7 @@ func (c *Controller) setIPSet() error {
 			continue
 		}
 		services := c.getServicesCIDR(protocol)
-		subnets, err := c.getOverlaySubnetsCIDR(protocol)
+		subnets, err := c.getDefaultVpcSubnetsCIDR(protocol)
 		if err != nil {
 			klog.Errorf("get subnets failed, %+v", err)
 			return err
@@ -420,18 +420,10 @@ func (c *Controller) setIptables() error {
 	klog.V(3).Infof("centralized subnets nat ips %v", subnetNatips)
 
 	var (
-		v4AbandonedRules = []util.IPTableRule{
+		v4Rules = []util.IPTableRule{
+			// do not nat route traffic
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set ! --match-set ovn40subnets src -m set ! --match-set ovn40other-node src -m set --match-set ovn40local-pod-ip-nat dst -j RETURN`)},
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set ! --match-set ovn40subnets src -m set ! --match-set ovn40other-node src -m set --match-set ovn40subnets-nat dst -j RETURN`)},
-			// {Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`-o ovn0 ! -s %s -m mark --mark 0x4000/0x4000 -j MASQUERADE`, nodeIPv4))},
-		}
-		v6AbandonedRules = []util.IPTableRule{
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src -m set --match-set ovn60local-pod-ip-nat dst -j RETURN`)},
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src -m set --match-set ovn60subnets-nat dst -j RETURN`)},
-			// {Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`-o ovn0 ! -s %s -m mark --mark 0x4000/0x4000 -j MASQUERADE`, nodeIPv6))},
-		}
-
-		v4Rules = []util.IPTableRule{
 			// nat outgoing
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set --match-set ovn40subnets-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE`)},
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set --match-set ovn40local-pod-ip-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE`)},
@@ -455,6 +447,9 @@ func (c *Controller) setIptables() error {
 			{Table: "filter", Chain: "OUTPUT", Rule: strings.Fields(`-p udp -m udp --dport 6081 -j MARK --set-xmark 0x0`)},
 		}
 		v6Rules = []util.IPTableRule{
+			// do not nat route traffic
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src -m set --match-set ovn60local-pod-ip-nat dst -j RETURN`)},
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src -m set --match-set ovn60subnets-nat dst -j RETURN`)},
 			// nat outgoing
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set --match-set ovn60subnets-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE`)},
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set --match-set ovn60local-pod-ip-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE`)},
@@ -499,10 +494,10 @@ func (c *Controller) setIptables() error {
 		var matchset string
 		var abandonedRules, iptablesRules []util.IPTableRule
 		if protocol == kubeovnv1.ProtocolIPv4 {
-			abandonedRules, iptablesRules = v4AbandonedRules, v4Rules
+			iptablesRules = v4Rules
 			matchset = "ovn40subnets"
 		} else {
-			abandonedRules, iptablesRules = v6AbandonedRules, v6Rules
+			iptablesRules = v6Rules
 			matchset = "ovn60subnets"
 		}
 
@@ -510,9 +505,9 @@ func (c *Controller) setIptables() error {
 			abandonedRules = append(abandonedRules, util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`-o ovn0 ! -s %s -m mark --mark 0x4000/0x4000 -j MASQUERADE`, nodeIP))})
 
 			rules := make([]util.IPTableRule, len(iptablesRules)+1)
-			copy(rules[:2], iptablesRules[:2])
-			rules[2] = util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset))}
-			copy(rules[3:], iptablesRules[2:])
+			copy(rules[:4], iptablesRules[:4])
+			rules[4] = util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset))}
+			copy(rules[5:], iptablesRules[4:])
 			iptablesRules = rules
 		}
 
@@ -884,7 +879,7 @@ func (c *Controller) getServicesCIDR(protocol string) []string {
 	return ret
 }
 
-func (c *Controller) getOverlaySubnetsCIDR(protocol string) ([]string, error) {
+func (c *Controller) getDefaultVpcSubnetsCIDR(protocol string) ([]string, error) {
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Error("failed to list subnets")
@@ -896,7 +891,7 @@ func (c *Controller) getOverlaySubnetsCIDR(protocol string) ([]string, error) {
 		ret = append(ret, c.config.NodeLocalDnsIP)
 	}
 	for _, subnet := range subnets {
-		if subnet.Spec.Vpc == util.DefaultVpc && subnet.Spec.Vlan == "" {
+		if subnet.Spec.Vpc == util.DefaultVpc && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) {
 			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
 			ret = append(ret, cidrBlock)
 		}
