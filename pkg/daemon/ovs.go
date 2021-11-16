@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -23,6 +24,8 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+var pciAddrRegexp = regexp.MustCompile(`\b([0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}.\d{1}\S*)`)
 
 func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute bool, routes []request.Route, ingress, egress, priority, DeviceID, nicType, podNetns string, checkGw bool) error {
 	var err error
@@ -115,7 +118,7 @@ func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, device
 		if err = netlink.LinkDel(hostLink); err != nil {
 			return fmt.Errorf("delete host link %s failed %v", hostLink, err)
 		}
-	} else {
+	} else if pciAddrRegexp.MatchString(deviceID) {
 		// Ret VF index from PCI
 		vfIndex, err := sriovnet.GetVfIndexByPciAddress(deviceID)
 		if err != nil {
