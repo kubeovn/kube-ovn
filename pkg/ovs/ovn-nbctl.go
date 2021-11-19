@@ -67,6 +67,13 @@ func (c Client) SetUseCtInvMatch() error {
 	return nil
 }
 
+func (c Client) SetMulticastPrivileged(enabled bool) error {
+	if _, err := c.ovnNbCommand("set", "NB_Global", ".", fmt.Sprintf("options:mcast_privileged=%v", enabled)); err != nil {
+		return fmt.Errorf("failed to set NB_Global option mcast_privileged to %v: %v", enabled, err)
+	}
+	return nil
+}
+
 func (c Client) SetICAutoRoute(enable bool, blackList []string) error {
 	if enable {
 		if _, err := c.ovnNbCommand("set", "NB_Global", ".", "options:ic-route-adv=true", "options:ic-route-learn=true", fmt.Sprintf("options:ic-route-blacklist=%s", strings.Join(blackList, ","))); err != nil {
