@@ -88,12 +88,25 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 		return
 	}
 
+	podNets, err := c.getPodKubeovnNets(p)
+	if err != nil {
+		klog.Errorf("failed to get pod nets %v", err)
+		return
+	}
 	// In case update event might lost during leader election
 	if p.Annotations != nil &&
 		p.Annotations[util.AllocatedAnnotation] == "true" &&
-		p.Annotations[util.RoutedAnnotation] != "true" &&
 		p.Status.HostIP != "" && p.Status.PodIP != "" {
-		c.updatePodQueue.Add(key)
+		for _, podNet := range podNets {
+			if !isOvnSubnet(podNet.Subnet) {
+				continue
+			}
+
+			if p.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)] != "true" {
+				c.updatePodQueue.Add(key)
+				break
+			}
+		}
 		return
 	}
 
@@ -202,18 +215,28 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		}
 	}
 
-	// pod assigned an ip
-	if newPod.Annotations[util.AllocatedAnnotation] == "true" &&
-		newPod.Annotations[util.RoutedAnnotation] != "true" &&
-		newPod.Spec.NodeName != "" {
-		klog.V(3).Infof("enqueue update pod %s", key)
-		c.updatePodQueue.Add(key)
-	}
-
 	podNets, err := c.getPodKubeovnNets(newPod)
 	if err != nil {
+		klog.Errorf("failed to get pod nets %v", err)
 		return
 	}
+
+	// pod assigned an ip
+	if newPod.Annotations[util.AllocatedAnnotation] == "true" &&
+		newPod.Spec.NodeName != "" {
+		for _, podNet := range podNets {
+			if !isOvnSubnet(podNet.Subnet) {
+				continue
+			}
+
+			if newPod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)] != "true" {
+				klog.V(3).Infof("enqueue update pod %s", key)
+				c.updatePodQueue.Add(key)
+				break
+			}
+		}
+	}
+
 	// security policy changed
 	for _, podNet := range podNets {
 		oldSecurity := oldPod.Annotations[fmt.Sprintf(util.PortSecurityAnnotationTemplate, podNet.ProviderName)]
@@ -428,6 +451,7 @@ func (c *Controller) handleAddPod(key string) error {
 
 	podNets, err := c.getPodKubeovnNets(pod)
 	if err != nil {
+		klog.Errorf("failed to get pod nets %v", err)
 		return err
 	}
 
@@ -692,87 +716,85 @@ func (c *Controller) handleUpdatePod(key string) error {
 	}
 
 	for _, podNet := range podNets {
-		// routing should be configured only if the OVN network is the default network
-		if !podNet.IsDefault || util.OvnProvider != podNet.ProviderName {
+		if !isOvnSubnet(podNet.Subnet) {
 			continue
 		}
 		podIP = pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
 		subnet = podNet.Subnet
-		break
-	}
 
-	if podIP != "" && subnet.Spec.Vlan == "" && subnet.Spec.Vpc == util.DefaultVpc {
-		if pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "" {
-			cm, err := c.configMapsLister.ConfigMaps("kube-system").Get(util.ExternalGatewayConfig)
-			if err != nil {
-				klog.Errorf("failed to get ex-gateway config, %v", err)
-				return err
-			}
-			nextHop := cm.Data["nic-ip"]
-			if nextHop == "" {
-				klog.Errorf("no available gateway nic address")
-				return fmt.Errorf("no available gateway nic address")
-			}
-			if !strings.Contains(nextHop, "/") {
-				klog.Errorf("gateway nic address's format is invalid")
-				return fmt.Errorf("gateway nic address's format is invalid")
-			}
-			nextHop = strings.Split(nextHop, "/")[0]
-			if addr := cm.Data["external-gw-addr"]; addr != "" {
-				nextHop = addr
-			}
-
-			if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nextHop, c.config.ClusterRouter, util.NormalRouteType); err != nil {
-				klog.Errorf("failed to add static route, %v", err)
-				return err
-			}
-		} else {
-			if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType && pod.Annotations[util.NorthGatewayAnnotation] == "" {
-				node, err := c.nodesLister.Get(pod.Spec.NodeName)
+		if podIP != "" && subnet.Spec.Vlan == "" && subnet.Spec.Vpc == util.DefaultVpc {
+			if pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "" {
+				cm, err := c.configMapsLister.ConfigMaps("kube-system").Get(util.ExternalGatewayConfig)
 				if err != nil {
-					klog.Errorf("get node %s failed %v", pod.Spec.NodeName, err)
+					klog.Errorf("failed to get ex-gateway config, %v", err)
 					return err
 				}
-				nodeTunlIPAddr, err := getNodeTunlIP(node)
-				if err != nil {
-					return err
+				nextHop := cm.Data["nic-ip"]
+				if nextHop == "" {
+					klog.Errorf("no available gateway nic address")
+					return fmt.Errorf("no available gateway nic address")
+				}
+				if !strings.Contains(nextHop, "/") {
+					klog.Errorf("gateway nic address's format is invalid")
+					return fmt.Errorf("gateway nic address's format is invalid")
+				}
+				nextHop = strings.Split(nextHop, "/")[0]
+				if addr := cm.Data["external-gw-addr"]; addr != "" {
+					nextHop = addr
 				}
 
-				for _, nodeAddr := range nodeTunlIPAddr {
-					for _, podAddr := range strings.Split(podIP, ",") {
-						if util.CheckProtocol(nodeAddr.String()) != util.CheckProtocol(podAddr) {
-							continue
+				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nextHop, c.config.ClusterRouter, util.NormalRouteType); err != nil {
+					klog.Errorf("failed to add static route, %v", err)
+					return err
+				}
+			} else {
+				if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType && pod.Annotations[util.NorthGatewayAnnotation] == "" {
+					node, err := c.nodesLister.Get(pod.Spec.NodeName)
+					if err != nil {
+						klog.Errorf("get node %s failed %v", pod.Spec.NodeName, err)
+						return err
+					}
+					nodeTunlIPAddr, err := getNodeTunlIP(node)
+					if err != nil {
+						return err
+					}
+
+					for _, nodeAddr := range nodeTunlIPAddr {
+						for _, podAddr := range strings.Split(podIP, ",") {
+							if util.CheckProtocol(nodeAddr.String()) != util.CheckProtocol(podAddr) {
+								continue
+							}
+							if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podAddr, nodeAddr.String(), c.config.ClusterRouter, util.NormalRouteType); err != nil {
+								klog.Errorf("failed to add static route, %v", err)
+								return err
+							}
 						}
-						if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podAddr, nodeAddr.String(), c.config.ClusterRouter, util.NormalRouteType); err != nil {
-							klog.Errorf("failed to add static route, %v", err)
-							return err
-						}
+					}
+				}
+
+				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
+					if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], c.config.ClusterRouter, util.NormalRouteType); err != nil {
+						klog.Errorf("failed to add static route, %v", err)
+						return err
 					}
 				}
 			}
 
-			if pod.Annotations[util.NorthGatewayAnnotation] != "" {
-				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], c.config.ClusterRouter, util.NormalRouteType); err != nil {
-					klog.Errorf("failed to add static route, %v", err)
+			for _, ipStr := range strings.Split(podIP, ",") {
+				if err := c.ovnClient.UpdateNatRule("dnat_and_snat", ipStr, pod.Annotations[util.EipAnnotation], c.config.ClusterRouter, pod.Annotations[util.MacAddressAnnotation], fmt.Sprintf("%s.%s", pod.Name, pod.Namespace)); err != nil {
+					klog.Errorf("failed to add nat rules, %v", err)
+					return err
+				}
+
+				if err := c.ovnClient.UpdateNatRule("snat", ipStr, pod.Annotations[util.SnatAnnotation], c.config.ClusterRouter, "", ""); err != nil {
+					klog.Errorf("failed to add nat rules, %v", err)
 					return err
 				}
 			}
 		}
 
-		for _, ipStr := range strings.Split(podIP, ",") {
-			if err := c.ovnClient.UpdateNatRule("dnat_and_snat", ipStr, pod.Annotations[util.EipAnnotation], c.config.ClusterRouter, pod.Annotations[util.MacAddressAnnotation], fmt.Sprintf("%s.%s", pod.Name, pod.Namespace)); err != nil {
-				klog.Errorf("failed to add nat rules, %v", err)
-				return err
-			}
-
-			if err := c.ovnClient.UpdateNatRule("snat", ipStr, pod.Annotations[util.SnatAnnotation], c.config.ClusterRouter, "", ""); err != nil {
-				klog.Errorf("failed to add nat rules, %v", err)
-				return err
-			}
-		}
+		pod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)] = "true"
 	}
-
-	pod.Annotations[util.RoutedAnnotation] = "true"
 	if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(context.Background(), name, types.JSONPatchType, generatePatchPayload(pod.Annotations, "replace"), metav1.PatchOptions{}, ""); err != nil {
 		if k8serrors.IsNotFound(err) {
 			// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.

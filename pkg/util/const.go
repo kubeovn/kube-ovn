@@ -37,6 +37,7 @@ const (
 
 	AllocatedAnnotationSuffix       = ".kubernetes.io/allocated"
 	AllocatedAnnotationTemplate     = "%s.kubernetes.io/allocated"
+	RoutedAnnotationTemplate        = "%s.kubernetes.io/routed"
 	MacAddressAnnotationTemplate    = "%s.kubernetes.io/mac_address"
 	IpAddressAnnotationTemplate     = "%s.kubernetes.io/ip_address"
 	CidrAnnotationTemplate          = "%s.kubernetes.io/cidr"

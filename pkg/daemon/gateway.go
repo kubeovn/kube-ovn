@@ -713,6 +713,10 @@ func (c *Controller) getLocalPodIPsNeedNAT(protocol string) ([]string, error) {
 				}
 			}
 		}
+		attachIps, err := c.getAttachmentLocalPodIPsNeedNAT(pod, hostname, protocol)
+		if len(attachIps) != 0 && err == nil {
+			localPodIPs = append(localPodIPs, attachIps...)
+		}
 	}
 
 	klog.V(3).Infof("local pod ips %v", localPodIPs)
@@ -1070,4 +1074,38 @@ func getIptablesRuleNum(table, chain, rule, dstNatIp string) (string, error) {
 		}
 	}
 	return num, nil
+}
+
+func (c *Controller) getAttachmentLocalPodIPsNeedNAT(pod *v1.Pod, hostname, protocol string) ([]string, error) {
+	var attachPodIPs []string
+
+	attachNets, err := util.ParsePodNetworkAnnotation(pod.Annotations[util.AttachmentNetworkAnnotation], pod.Namespace)
+	if err != nil {
+		klog.Errorf("failed to parse attach net for pod '%s', %v", pod.Name, err)
+		return attachPodIPs, err
+	}
+	for _, multiNet := range attachNets {
+		provider := fmt.Sprintf("%s.%s.ovn", multiNet.Name, multiNet.Namespace)
+		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
+			subnet, err := c.subnetsLister.Get(pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider)])
+			if err != nil {
+				klog.Errorf("get subnet %s failed, %+v", pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider)], err)
+				continue
+			}
+
+			if subnet.Spec.NatOutgoing &&
+				subnet.Spec.Vpc == util.DefaultVpc &&
+				subnet.Spec.GatewayType == kubeovnv1.GWDistributedType &&
+				pod.Spec.NodeName == hostname {
+				ipv4, ipv6 := util.SplitStringIP(pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, provider)])
+				if ipv4 != "" && protocol == kubeovnv1.ProtocolIPv4 {
+					attachPodIPs = append(attachPodIPs, ipv4)
+				}
+				if ipv6 != "" && protocol == kubeovnv1.ProtocolIPv6 {
+					attachPodIPs = append(attachPodIPs, ipv6)
+				}
+			}
+		}
+	}
+	return attachPodIPs, nil
 }
