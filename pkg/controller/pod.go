@@ -814,8 +814,8 @@ func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, statefulSetName 
 	}
 
 	// down scale statefulset
-	numIndex := len(strings.Split(pod.Name, "-")) - 1
-	numStr := strings.Split(pod.Name, "-")[numIndex]
+	tempStrs := strings.Split(pod.Name, "-")
+	numStr := tempStrs[len(tempStrs)-1]
 	index, err := strconv.ParseInt(numStr, 10, 0)
 	if err != nil {
 		klog.Errorf("failed to parse %s to int", numStr)
@@ -1118,8 +1118,8 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 			}
 		}
 	} else {
-		numIndex := len(strings.Split(pod.Name, "-")) - 1
-		numStr := strings.Split(pod.Name, "-")[numIndex]
+		tempStrs := strings.Split(pod.Name, "-")
+		numStr := tempStrs[len(tempStrs)-1]
 		index, _ := strconv.Atoi(numStr)
 		if index < len(ipPool) {
 			return c.acquireStaticAddress(key, nicName, ipPool[index], macStr, podNet.Subnet.Name, podNet.AllowLiveMigration)
