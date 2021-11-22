@@ -1316,6 +1316,14 @@ func (c Client) CreateEgressACL(npName, pgName, asEgressName, asExceptName, prot
 }
 
 func (c Client) DeleteACL(pgName, direction string) (err error) {
+	if _, err := c.ovnNbCommand("get", "port_group", pgName, "_uuid"); err != nil {
+		if strings.Contains(err.Error(), "no row") {
+			return nil
+		}
+		klog.Errorf("failed to get pg %s, %v", pgName, err)
+		return err
+	}
+
 	if direction != "" {
 		_, err = c.ovnNbCommand("--type=port-group", "acl-del", pgName, direction)
 	} else {
