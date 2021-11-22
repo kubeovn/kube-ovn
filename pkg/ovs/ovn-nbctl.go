@@ -159,13 +159,13 @@ func (c Client) SetPortSecurity(portSecurity bool, port, mac, ipStr, vips string
 // CreatePort create logical switch port in ovn
 func (c Client) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurity bool, securityGroups string, vips string) error {
 	var ovnCommand []string
+	var addresses []string
+	addresses = append(addresses, mac)
+	addresses = append(addresses, strings.Split(ip, ",")...)
 	ovnCommand = []string{MayExist, "lsp-add", ls, port, "--",
-		"lsp-set-addresses", port, mac}
+		"lsp-set-addresses", port, strings.Join(addresses, " ")}
 
 	if portSecurity {
-		var addresses []string
-		addresses = append(addresses, mac)
-		addresses = append(addresses, strings.Split(ip, ",")...)
 		addresses = append(addresses, strings.Split(vips, ",")...)
 		ovnCommand = append(ovnCommand,
 			"--", "lsp-set-port-security", port, strings.Join(addresses, " "))
@@ -1147,14 +1147,17 @@ func (c Client) CreateNpPortGroup(pgName, npNs, npName string) error {
 }
 
 func (c Client) DeletePortGroup(pgName string) error {
-	if _, err := c.ovnNbCommand("get", "port_group", pgName, "_uuid"); err != nil {
-		if strings.Contains(err.Error(), "no row") {
-			return nil
-		}
-		klog.Errorf("failed to get pg %s, %v", pgName, err)
+	output, err := c.ovnNbCommand(
+		"--data=bare", "--no-heading", "--columns=_uuid", "find", "port_group", fmt.Sprintf("name=%s", pgName))
+	if err != nil {
+		klog.Errorf("failed to find port_group %s: %v, %q", pgName, err, output)
 		return err
 	}
-	_, err := c.ovnNbCommand("pg-del", pgName)
+	if output == "" {
+		return nil
+	}
+
+	_, err = c.ovnNbCommand("pg-del", pgName)
 	return err
 }
 
