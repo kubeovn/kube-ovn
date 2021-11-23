@@ -16,6 +16,7 @@ import (
 	"k8s.io/klog"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -496,11 +497,22 @@ func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.Label
 
 	ports := make([]string, 0, len(pods))
 	for _, pod := range pods {
-		if !isPodAlive(pod) {
+		if !isPodAlive(pod) || pod.Spec.HostNetwork {
 			continue
 		}
-		if !pod.Spec.HostNetwork && pod.Annotations[util.AllocatedAnnotation] == "true" {
-			ports = append(ports, fmt.Sprintf("%s.%s", pod.Name, pod.Namespace))
+		podNets, err := c.getPodKubeovnNets(pod)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get pod networks, %v", err)
+		}
+
+		for _, podNet := range podNets {
+			if !isOvnSubnet(podNet.Subnet) {
+				continue
+			}
+
+			if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
+				ports = append(ports, ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName))
+			}
 		}
 	}
 	return ports, nil

@@ -551,7 +551,7 @@ func (c *Controller) isOVNProvided(providerName string, pod *corev1.Pod) (bool, 
 		klog.Errorf("parse annotation logical switch %s error %v", ls, err)
 		return false, err
 	}
-	if subnet.Spec.Provider != "ovn" {
+	if !strings.HasSuffix(subnet.Spec.Provider, util.OvnProvider) {
 		return false, nil
 	}
 	return true, nil
