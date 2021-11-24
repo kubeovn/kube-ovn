@@ -398,7 +398,7 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 }
 
 func (c *Controller) getPortSg(portName string) ([]string, error) {
-	results, err := c.ovnClient.CustomFindEntity("logical_switch_port", []string{"name", "external_ids"}, fmt.Sprintf("name=%s", portName))
+	results, err := c.ovnClient.CustomFindEntity("logical_switch_port", []string{"external_ids"}, fmt.Sprintf("name=%s", portName))
 	if err != nil {
 		klog.Errorf("customFindEntity failed, %v", err)
 		return nil, err
@@ -409,9 +409,9 @@ func (c *Controller) getPortSg(portName string) ([]string, error) {
 	extIds := results[0]["external_ids"]
 	var sgList []string
 	for _, value := range extIds {
-		if strings.HasPrefix(value, "security_groups=") {
-			sgStr := strings.Split(value, "security_groups=")[1]
-			sgList = strings.Split(sgStr, ",")
+		if strings.HasPrefix(value, "associated_sg_") && strings.HasSuffix(value, "true") {
+			sgName := strings.ReplaceAll(strings.Split(value, "=")[0], "associated_sg_", "")
+			sgList = append(sgList, sgName)
 		}
 	}
 	return sgList, nil
@@ -442,7 +442,7 @@ func (c *Controller) reconcilePortSg(portName, securityGroups string) error {
 		c.syncSgPortsQueue.Add(sgName)
 	}
 
-	if err = c.ovnClient.SetPortExternalIds(portName, "security_groups", securityGroups); err != nil {
+	if err = c.ovnClient.SetPortExternalIds(portName, "security_groups", strings.ReplaceAll(securityGroups, ",", "/")); err != nil {
 		klog.Errorf("set port '%s' external_ids failed, %v", portName, err)
 		return err
 	}
