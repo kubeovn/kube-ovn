@@ -18,6 +18,10 @@ import (
 )
 
 func (c *Controller) InitOVN() error {
+	if err := c.ovnClient.SetMulticastPrivileged(c.config.MulticastPrivileged); err != nil {
+		return err
+	}
+
 	if err := c.initClusterRouter(); err != nil {
 		klog.Errorf("init cluster router failed: %v", err)
 		return err
