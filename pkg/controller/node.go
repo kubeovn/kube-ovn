@@ -194,13 +194,14 @@ func nodeUnderlayAddressSetName(node string, af int) string {
 }
 
 func (c *Controller) handleAddNode(key string) error {
-	node, err := c.nodesLister.Get(key)
+	orinode, err := c.nodesLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
+	node := orinode.DeepCopy()
 
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -490,7 +491,8 @@ func (c *Controller) handleUpdateNode(key string) error {
 		return err
 	}
 
-	for _, subnet := range subnets {
+	for _, orisubnet := range subnets {
+		subnet := orisubnet.DeepCopy()
 		if util.GatewayContains(subnet.Spec.GatewayNode, node.Name) {
 			if err := c.reconcileGateway(subnet); err != nil {
 				return err

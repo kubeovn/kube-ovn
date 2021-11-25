@@ -111,13 +111,14 @@ func (c *Controller) processNextAddNamespaceWorkItem() bool {
 }
 
 func (c *Controller) handleAddNamespace(key string) error {
-	namespace, err := c.namespacesLister.Get(key)
+	orinamespace, err := c.namespacesLister.Get(key)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
+	namespace := orinamespace.DeepCopy()
 
 	var ls, cidr string
 	var excludeIps []string
