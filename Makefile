@@ -85,6 +85,16 @@ kind-init:
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
 	kubectl describe no
 
+.PHONY: kind-init-cluster
+kind-init-cluster:
+	kube_proxy_mode=ipvs ip_family=ipv4 ha=false single=true j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
+	kind create cluster --config yamls/kind.yaml --name kube-ovn
+	kind create cluster --config yamls/kind.yaml --name kube-ovn1
+	kubectl config use-context kind-kube-ovn
+	kubectl get no
+	kubectl config use-context kind-kube-ovn1
+	kubectl get no
+
 .PHONY: kind-init-iptables
 kind-init-iptables:
 	kind delete cluster --name=kube-ovn
@@ -127,6 +137,18 @@ kind-install:
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
 	ENABLE_SSL=true dist/images/install.sh
+	kubectl describe no
+
+.PHONY: kind-install-cluster
+kind-install-cluster:
+	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
+	kind load docker-image --name kube-ovn1 $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
+	kubectl config use-context kind-kube-ovn
+	ENABLE_SSL=true dist/images/install.sh
+	kubectl describe no
+	kubectl config use-context kind-kube-ovn1
+	sed -e 's/10.16.0/10.18.0/g' -e 's/10.96.0/10.98.0/g' -e 's/100.64.0/100.68.0/g'  dist/images/install.sh > ./install-multi.sh
+	ENABLE_SSL=true bash ./install-multi.sh
 	kubectl describe no
 
 .PHONY: kind-install-underlay
@@ -215,6 +237,18 @@ kind-install-underlay-logical-gateway-dual:
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
 	ENABLE_SSL=true DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 LOGICAL_GATEWAY=true ./install-underlay.sh
 
+.PHONY: kind-install-ic
+kind-install-ic:
+	$(eval HOSTIP = $(shell ip -4 route get 8.8.8.8 | awk {'print $$7'} | tr -d '\n'))
+	zone=az0 host_node_ip=${HOSTIP} gateway_node_name=kube-ovn-control-plane j2 yamls/ovn-ic.yaml.j2 -o /ovn-ic-0.yaml
+	zone=az1 host_node_ip=${HOSTIP} gateway_node_name=kube-ovn1-control-plane j2 yamls/ovn-ic.yaml.j2 -o /ovn-ic-1.yaml
+	kubectl config use-context kind-kube-ovn
+	kubectl apply -f /ovn-ic-0.yaml
+	kubectl config use-context kind-kube-ovn1
+	kubectl apply -f /ovn-ic-1.yaml
+	docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG) bash start-ic-db.sh
+
+
 .PHONY: kind-reload
 kind-reload:
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
@@ -225,6 +259,12 @@ kind-reload:
 .PHONY: kind-clean
 kind-clean:
 	kind delete cluster --name=kube-ovn
+
+.PHONY: kind-clean-cluster
+kind-clean-cluster:
+	kind delete cluster --name=kube-ovn
+	kind delete cluster --name=kube-ovn1
+	docker stop ovn-ic-db && docker rm ovn-ic-db
 
 .PHONY: uninstall
 uninstall:
@@ -294,6 +334,10 @@ e2e-vlan-ipv6:
 e2e-underlay-single-nic:
 	@docker inspect -f '{{json .NetworkSettings.Networks.kind}}' kube-ovn-control-plane > test/e2e-underlay-single-nic/node/network.json
 	ginkgo -mod=mod -progress -reportPassed --slowSpecThreshold=60 test/e2e-underlay-single-nic
+
+.PHONY: e2e-ovn-ic
+e2e-ovn-ic:
+	ginkgo -mod=mod -progress -reportPassed --slowSpecThreshold=60 test/e2e-ovnic
 
 .PHONY: clean
 clean:
