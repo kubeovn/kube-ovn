@@ -622,7 +622,6 @@ func (c Client) createRouterPort(ls, lr, ip, mac string) error {
 	_, err := c.ovnNbCommand(MayExist, "lsp-add", ls, lsTolr, "--",
 		"set", "logical_switch_port", lsTolr, "type=router", "--",
 		"lsp-set-addresses", lsTolr, "router", "--",
-		"set", "logical_switch_port", lsTolr, fmt.Sprintf("addresses=\"%s\"", mac), "--",
 		"set", "logical_switch_port", lsTolr, fmt.Sprintf("options:router-port=%s", lrTols), "--",
 		"set", "logical_switch_port", lsTolr, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
 	if err != nil {
