@@ -11,6 +11,7 @@ import (
 	"github.com/kubeovn/kube-ovn/cmd/ovn_monitor"
 	"github.com/kubeovn/kube-ovn/cmd/pinger"
 	"github.com/kubeovn/kube-ovn/cmd/speaker"
+	"github.com/kubeovn/kube-ovn/cmd/webhook"
 )
 
 const (
@@ -19,6 +20,7 @@ const (
 	CmdMonitor    = "kube-ovn-monitor"
 	CmdPinger     = "kube-ovn-pinger"
 	CmdSpeaker    = "kube-ovn-speaker"
+	CmdWebHook    = "kube-ovn-webhook"
 )
 
 func main() {
@@ -35,6 +37,8 @@ func main() {
 		pinger.CmdMain()
 	case CmdSpeaker:
 		speaker.CmdMain()
+	case CmdWebHook:
+		webhook.CmdMain()
 	default:
 		klog.Fatalf("%s is an unknown command", cmd)
 	}

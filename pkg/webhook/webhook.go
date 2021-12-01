@@ -4,11 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
-
 	admissionv1 "k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -19,44 +16,24 @@ import (
 
 var (
 	createHooks = make(map[metav1.GroupVersionKind]admission.HandlerFunc)
-	updateHooks = make(map[metav1.GroupVersionKind]admission.HandlerFunc)
-	deleteHooks = make(map[metav1.GroupVersionKind]admission.HandlerFunc)
 )
 
 type ValidatingHook struct {
-	client        client.Client
-	decoder       *admission.Decoder
-	ovnClient     *ovs.Client
-	kubeclientset kubernetes.Interface
-	opt           *WebhookOptions
-	cache         cache.Cache
+	client  client.Client
+	decoder *admission.Decoder
+	cache   cache.Cache
 }
 
-type WebhookOptions struct {
-	OvnNbHost    string
-	OvnNbPort    int
-	OvnNbTimeout int
-	DefaultLS    string
-}
-
-func NewValidatingHook(c cache.Cache, opt *WebhookOptions) (*ValidatingHook, error) {
+func NewValidatingHook(c cache.Cache) (*ValidatingHook, error) {
 	cfg, err := rest.InClusterConfig()
 	if err != nil {
 		klog.Errorf("use in cluster config failed %v", err)
 		return nil, err
 	}
 	cfg.Timeout = 15 * time.Second
-	kubeClient, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		klog.Errorf("init kubernetes client failed %v", err)
-		return nil, err
-	}
 
 	v := &ValidatingHook{
-		kubeclientset: kubeClient,
-		ovnClient:     ovs.NewClient(opt.OvnNbHost, opt.OvnNbTimeout, "", "", "", "", "", "", "", ""),
-		opt:           opt,
-		cache:         c,
+		cache: c,
 	}
 
 	// initialize hook handlers mapping
@@ -64,15 +41,7 @@ func NewValidatingHook(c cache.Cache, opt *WebhookOptions) (*ValidatingHook, err
 	createHooks[statefulSetGVK] = v.StatefulSetCreateHook
 	createHooks[daemonSetGVK] = v.DaemonSetCreateHook
 	createHooks[podGVK] = v.PodCreateHook
-
-	updateHooks[deploymentGVK] = v.DeploymentUpdateHook
-	updateHooks[statefulSetGVK] = v.StatefulSetUpdateHook
-	updateHooks[daemonSetGVK] = v.DaemonSetUpdateHook
-
-	deleteHooks[deploymentGVK] = v.DeploymentDeleteHook
-	deleteHooks[statefulSetGVK] = v.StatefulSetDeleteHook
-	deleteHooks[daemonSetGVK] = v.DaemonSetDeleteHook
-	deleteHooks[podGVK] = v.PodDeleteHook
+	createHooks[subnetGVK] = v.SubnetCreateHook
 
 	return v, nil
 }
@@ -91,18 +60,6 @@ func (v *ValidatingHook) Handle(ctx context.Context, req admission.Request) (res
 		if createHooks[req.Kind] != nil {
 			klog.Infof("handle create %s %s@%s", req.Kind, req.Name, req.Namespace)
 			resp = createHooks[req.Kind](ctx, req)
-			return
-		}
-	case admissionv1.Update:
-		if updateHooks[req.Kind] != nil {
-			klog.Infof("handle update %s %s@%s", req.Kind, req.Name, req.Namespace)
-			resp = updateHooks[req.Kind](ctx, req)
-			return
-		}
-	case admissionv1.Delete:
-		if deleteHooks[req.Kind] != nil {
-			klog.Infof("handle delete %s %s@%s", req.Kind, req.Name, req.Namespace)
-			resp = deleteHooks[req.Kind](ctx, req)
 			return
 		}
 	}
