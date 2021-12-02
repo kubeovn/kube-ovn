@@ -24,6 +24,7 @@ RUN dpkg -i /usr/src/python3-openvswitch*.deb /usr/src/libopenvswitch*.deb
 RUN cd /usr/src/ && git clone -b branch-21.06 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
     curl -s https://github.com/kubeovn/ovn/commit/e24734913d25c0bffdf1cfd79e14ef43d01e1019.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/8f4e4868377afb5e980856755b9f6394f8b649e2.patch | git apply && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \
