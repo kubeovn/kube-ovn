@@ -163,6 +163,9 @@ spec:
   snatRules:
     - eip: 192.168.0.112
       internalCIDR: 10.0.1.0/24
+  selector:                        # NodeSelector for vpc-nat-gw pod, the item of array should be string type with key:value format
+    - "kubernetes.io/hostname: kube-ovn-worker"
+    - "kubernetes.io/os: linux"
 ```
 
 3. Add static route to VPC

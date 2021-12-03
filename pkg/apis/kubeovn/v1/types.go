@@ -425,6 +425,7 @@ type VpcNatSpec struct {
 	Vpc             string            `json:"vpc"`
 	Subnet          string            `json:"subnet"`
 	LanIp           string            `json:"lanIp"`
+	Selector        []string          `json:"selector"`
 	Eips            []*Eip            `json:"eips,omitempty"`
 	FloatingIpRules []*FloutingIpRule `json:"floatingIpRules,omitempty"`
 	DnatRules       []*DnatRule       `json:"dnatRules,omitempty"`

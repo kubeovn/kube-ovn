@@ -246,6 +246,10 @@ spec:
                   type: string
                 vpc:
                   type: string
+                selector:
+                  type: array
+                  items:
+                    type: string
       subresources:
         status: {}
   conversion:
