@@ -1731,13 +1731,25 @@ func (c Client) createSgRuleACL(sgName string, direction AclDirection, rule *kub
 
 func (c Client) CreateSgDenyAllACL() error {
 	portGroupName := GetSgPortGroupName(util.DenyAllSecurityGroup)
-	if _, err := c.ovnNbCommand(MayExist, "--type=port-group", "acl-add", portGroupName, string(SgAclIngressDirection), util.SecurityGroupDropPriority,
-		fmt.Sprintf("outport==@%s && ip", portGroupName), "drop"); err != nil {
+	exist, err := c.AclExists(util.SecurityGroupDropPriority, string(SgAclIngressDirection))
+	if err != nil {
 		return err
 	}
-	if _, err := c.ovnNbCommand(MayExist, "--type=port-group", "acl-add", portGroupName, string(SgAclEgressDirection), util.SecurityGroupDropPriority,
-		fmt.Sprintf("inport==@%s && ip", portGroupName), "drop"); err != nil {
+	if !exist {
+		if _, err := c.ovnNbCommand(MayExist, "--type=port-group", "acl-add", portGroupName, string(SgAclIngressDirection), util.SecurityGroupDropPriority,
+			fmt.Sprintf("outport==@%s && ip", portGroupName), "drop"); err != nil {
+			return err
+		}
+	}
+	exist, err = c.AclExists(util.SecurityGroupDropPriority, string(SgAclEgressDirection))
+	if err != nil {
 		return err
+	}
+	if !exist {
+		if _, err := c.ovnNbCommand(MayExist, "--type=port-group", "acl-add", portGroupName, string(SgAclEgressDirection), util.SecurityGroupDropPriority,
+			fmt.Sprintf("inport==@%s && ip", portGroupName), "drop"); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -1815,4 +1827,17 @@ func (c Client) SetLspExternalIds(cmd []string) error {
 		return fmt.Errorf("failed to set lsp externalIds, %v", err)
 	}
 	return nil
+}
+
+func (c *Client) AclExists(priority, direction string) (bool, error) {
+	priorityVal, _ := strconv.Atoi(priority)
+	results, err := c.CustomFindEntity("acl", []string{"match"}, fmt.Sprintf("priority=%d", priorityVal), fmt.Sprintf("direction=%s", direction))
+	if err != nil {
+		klog.Errorf("customFindEntity failed, %v", err)
+		return false, err
+	}
+	if len(results) == 0 {
+		return false, nil
+	}
+	return true, nil
 }
