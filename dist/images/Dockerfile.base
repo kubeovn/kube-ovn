@@ -1,5 +1,5 @@
 # syntax = docker/dockerfile:experimental
-FROM ubuntu:21.04 as ovs-builder
+FROM ubuntu:22.04 as ovs-builder
 
 ARG ARCH
 ARG DEBIAN_FRONTEND=noninteractive
@@ -37,7 +37,7 @@ RUN mkdir /packages/ && \
      cp /usr/src/ovn-*.deb /packages && \
      cd /packages && rm -f *dbg* *datapath* *docker* *vtep* *ipsec* *test* *dev*
 
-FROM ubuntu:21.04
+FROM ubuntu:22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
