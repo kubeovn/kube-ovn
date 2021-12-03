@@ -166,14 +166,13 @@ func (c Client) SetPortSecurity(portSecurity bool, port, mac, ipStr, vips string
 // CreatePort create logical switch port in ovn
 func (c Client) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurity bool, securityGroups string, vips string) error {
 	var ovnCommand []string
-	// It's not allowed to create duplicate lsp with same ip, which is used in vm live migration. So skip to set ip address for lsp.
+	var addresses []string
+	addresses = append(addresses, mac)
+	addresses = append(addresses, strings.Split(ip, ",")...)
 	ovnCommand = []string{MayExist, "lsp-add", ls, port, "--",
-		"lsp-set-addresses", port, mac}
+		"lsp-set-addresses", port, strings.Join(addresses, " ")}
 
 	if portSecurity {
-		var addresses []string
-		addresses = append(addresses, mac)
-		addresses = append(addresses, strings.Split(ip, ",")...)
 		addresses = append(addresses, strings.Split(vips, ",")...)
 		ovnCommand = append(ovnCommand,
 			"--", "lsp-set-port-security", port, strings.Join(addresses, " "))
