@@ -785,9 +785,6 @@ echo "[Step 6/8] Update kube-ovn-pinger"
 if [[ $(kubectl get ds -n kube-system kube-ovn-pinger -o jsonpath='{.spec.template}') =~ "tolerations" ]]; then
   kubectl patch ds/kube-ovn-pinger -n kube-system --type='json' -p='[{"op": "remove", "path": "/spec/template/spec/tolerations"}]'
 fi
-if [[ ! $(kubectl get ds -n kube-system kube-ovn-pinger -o jsonpath='{.spec.template}') =~ "POD_IPS" ]]; then
-  kubectl patch ds/kube-ovn-pinger -n kube-system --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/env/-", "value": {"name": "POD_IPS", "valueFrom": {"fieldRef": {"fieldPath": "status.podIPs"}}}}]'
-fi
 kubectl set image ds/kube-ovn-pinger -n kube-system pinger="$IMAGE"
 kubectl rollout status daemonset/kube-ovn-pinger -n kube-system
 echo "-------------------------------"

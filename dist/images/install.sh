@@ -2134,10 +2134,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
-            - name: POD_IPS
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIPs
             - name: HOST_IP
               valueFrom:
                 fieldRef:
