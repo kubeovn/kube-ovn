@@ -528,6 +528,10 @@ func (c *Controller) initSyncCrdVlans() error {
 }
 
 func (c *Controller) initAppendPodExternalIds(pod *v1.Pod) error {
+	if !isPodAlive(pod) {
+		return nil
+	}
+
 	podNets, err := c.getPodKubeovnNets(pod)
 	if err != nil {
 		klog.Errorf("failed to get pod nets %v", err)
