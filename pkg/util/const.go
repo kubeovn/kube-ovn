@@ -115,7 +115,8 @@ const (
 	VpcExternalNet         = "ovn-vpc-external-network"
 	VpcLbNetworkAttachment = "ovn-vpc-lb"
 
-	DefaultVpc = "ovn-cluster"
+	DefaultVpc    = "ovn-cluster"
+	DefaultSubnet = "ovn-default"
 
 	EcmpRouteType   = "ecmp"
 	NormalRouteType = "normal"

@@ -3,26 +3,21 @@ kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-webhook
-  namespace: kube-ovn
-  annotations:
-    kubernetes.io/description: |
-      kube-ovn webhook
+  namespace: kube-system
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: kube-ovn-webhook
   strategy:
     rollingUpdate:
-      maxSurge: 0%
+      maxSurge: 25%
       maxUnavailable: 100%
     type: RollingUpdate
   template:
     metadata:
       labels:
         app: kube-ovn-webhook
-        component: network
-        type: infra
     spec:
       tolerations:
         - operator: Exists
@@ -38,36 +33,31 @@ spec:
       hostNetwork: true
       containers:
         - name: kube-ovn-webhook
-          image: "index.alauda.cn/alaudak8s/kube-ovn-webhook:v1.5.0"
+          image: "kubeovn/kube-ovn:v1.9.0"
           imagePullPolicy: IfNotPresent
           command:
-            - /kube-ovn/start-webhook.sh
+            - /kube-ovn/kube-ovn-webhook
           args:
             - --port=8443
-            - --default-ls=ovn-default
+            - --v=3
           volumeMounts:
             - mountPath: /tmp/k8s-webhook-server/serving-certs
               name: cert
               readOnly: true
-          readinessProbe:
-            tcpSocket:
-              port: 8443
-            periodSeconds: 3
-            initialDelaySeconds: 3
       volumes:
         - name: cert
           secret:
             defaultMode: 420
-            secretName: kube-ovn-webhook-cert
+            secretName: kube-ovn-webhook-secret
       nodeSelector:
-        beta.kubernetes.io/os: "linux"
+        kubernetes.io/os: "linux"
 
 ---
 kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-webhook
-  namespace: kube-ovn
+  namespace: kube-system
 spec:
   ports:
     - name: kube-ovn-webhook
@@ -80,21 +70,19 @@ spec:
   sessionAffinity: None
 
 ---
-apiVersion: admissionregistration.k8s.io/v1beta1
+apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
   name: kube-ovn-webhook
   annotations:
-    certmanager.k8s.io/inject-ca-from: kube-ovn/kube-ovn-webhook-serving-cert
+    cert-manager.io/inject-ca-from: kube-system/kube-ovn-webhook-serving-cert
 webhooks:
 - name: pod-ip-validaing.kube-ovn.io
   rules:
     - operations:
         - CREATE
-        - UPDATE
-        - DELETE
       apiGroups:
-        - ""
+        - "apps"
       apiVersions:
         - v1
       resources:
@@ -103,46 +91,51 @@ webhooks:
         - daemonsets
     - operations:
         - CREATE
-        - DELETE
       apiGroups:
-        - "core"
+        - ""
       apiVersions:
         - v1
       resources:
         - pods
-  failurePolicy: Fail
+    - operations:
+        - CREATE
+      apiGroups:
+        - "kubeovn.io"
+      apiVersions:
+        - v1
+      resources:
+        - subnets
+  failurePolicy: Ignore
+  admissionReviewVersions: ["v1", "v1beta1"]
+  sideEffects: None
+  timeoutSeconds: 5
   clientConfig:
-    caBundle: Cg==
     service:
-      namespace: kube-ovn
+      namespace: kube-system
       name: kube-ovn-webhook
       path: /validate-ip
-
+      port: 443
 ---
-apiVersion: certmanager.k8s.io/v1alpha1
+apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  labels:
-    app: kube-ovn-webhook
   name: kube-ovn-webhook-serving-cert
-  namespace: kube-ovn
+  namespace: kube-system
 spec:
-  commonName: kube-ovn-webhook.kube-ovn.svc
   dnsNames:
-    - kube-ovn-webhook.kube-ovn.svc.cluster.local
+    - kube-ovn-webhook.kube-system
+    - kube-ovn-webhook.kube-system.svc
+    - kube-ovn-webhook.kube-system.svc.cluster.local
   issuerRef:
     kind: Issuer
     name: kube-ovn-webhook-selfsigned-issuer
-  secretName: kube-ovn-webhook-cert
-
+    group: cert-manager.io
+  secretName: kube-ovn-webhook-secret
 ---
-apiVersion: certmanager.k8s.io/v1alpha1
+apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
-  labels:
-    app: kube-ovn-webhook
   name: kube-ovn-webhook-selfsigned-issuer
-  namespace: kube-ovn
+  namespace: kube-system
 spec:
   selfSigned: {}
-
