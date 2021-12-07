@@ -1,12 +1,13 @@
 package pinger
 
 import (
+	"context"
 	"flag"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/spf13/pflag"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -30,7 +31,6 @@ type Configuration struct {
 	HostIP             string
 	PodName            string
 	PodIP              string
-	PodIPs             []string
 	PodProtocols       []string
 	ExternalAddress    string
 	NetworkMode        string
@@ -111,7 +111,6 @@ func ParseFlags() (*Configuration, error) {
 		InternalDNS:        *argInternalDns,
 		ExternalDNS:        *argExternalDns,
 		PodIP:              os.Getenv("POD_IP"),
-		PodIPs:             strings.Split(os.Getenv("POD_IPS"), ","),
 		HostIP:             os.Getenv("HOST_IP"),
 		NodeName:           os.Getenv("NODE_NAME"),
 		PodName:            os.Getenv("POD_NAME"),
@@ -133,13 +132,20 @@ func ParseFlags() (*Configuration, error) {
 		ServiceOvnControllerFileLogPath: *argServiceOvnControllerFileLogPath,
 		ServiceOvnControllerFilePidPath: *argServiceOvnControllerFilePidPath,
 	}
-	config.PodProtocols = make([]string, len(config.PodIPs))
-	for i, podIP := range config.PodIPs {
-		config.PodProtocols[i] = util.CheckProtocol(podIP)
-	}
-
 	if err := config.initKubeClient(); err != nil {
 		return nil, err
+	}
+
+	name := os.Getenv("POD_NAME")
+	pod, err := config.KubeClient.CoreV1().Pods("kube-system").Get(context.Background(), name, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("failed to get self pod kube-system/%s: %v", name, err)
+		return nil, err
+	}
+
+	config.PodProtocols = make([]string, len(pod.Status.PodIPs))
+	for i, podIP := range pod.Status.PodIPs {
+		config.PodProtocols[i] = util.CheckProtocol(podIP.IP)
 	}
 
 	klog.Infof("pinger config is %+v", config)
