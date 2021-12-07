@@ -27,7 +27,7 @@ In the Vlan/Underlay mode, OVS sends origin Pods packets directly to the physica
 1. For K8s running on VMs provided by OpenStack, `PortSecurity` of the network ports MUST be `disabled`;
 2. For K8s running on VMs provided by VMware, the switch security options `MAC Address Changes`, `Forged Transmits` and `Promiscuous Mode Operation` MUST be `allowed`;
 3. The Vlan/Underlay mode can not run on public IaaS providers like AWS/GCE/Alibaba Cloud as their network can not provide the capability to transmit this type packets;
-4. When Kube-OVN creates network it checks the connectivity to the subnet gateway through ICMP, so the gateway MUST respond the ICMP messages;
+4. In versions prior to v1.9.0, Kube-OVN checks the connectivity to the subnet gateway through ICMP, so the gateway MUST respond the ICMP messages if you are using those versions, or you can turn off the check by setting `disableGatewayCheck` to `true` which is introduced in v1.8.0;
 5. For in-cluster service traffic, Pods set the dst mac to gateway mac and then Kube-OVN applies DNAT to transfer the dst ip, the packets will first be sent to the gateway, so the gateway MUST be capable of transmitting the packets back to the subnet.
 
 ## Comparison with Macvlan

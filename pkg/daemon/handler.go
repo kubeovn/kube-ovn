@@ -23,6 +23,12 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+const (
+	gatewayModeDisabled = iota
+	gatewayCheckModePing
+	gatewayCheckModeArping
+)
+
 type cniServerHandler struct {
 	Config        *Configuration
 	KubeClient    kubernetes.Interface
@@ -69,7 +75,8 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	}
 
 	klog.Infof("add port request %v", podRequest)
-	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, providerNetwork, ifName, nicType, netns, podNicName, priority string
+	var gatewayCheckMode int
+	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, providerNetwork, ifName, nicType, podNicName, priority string
 	var isDefaultRoute bool
 	var pod *v1.Pod
 	var err error
@@ -113,7 +120,6 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		} else {
 			nicType = pod.Annotations[util.PodNicAnnotation]
 		}
-		netns = podRequest.NetNs
 
 		switch pod.Annotations[fmt.Sprintf(util.DefaultRouteAnnotationTemplate, podRequest.Provider)] {
 		case "true":
@@ -158,6 +164,14 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			return
 		}
 
+		if !podSubnet.Spec.DisableGatewayCheck {
+			if podSubnet.Spec.Vlan != "" && !podSubnet.Spec.LogicalGateway {
+				gatewayCheckMode = gatewayCheckModeArping
+			} else {
+				gatewayCheckMode = gatewayCheckModePing
+			}
+		}
+
 		var mtu int
 		if providerNetwork != "" {
 			node, err := csh.Controller.nodesLister.Get(csh.Config.NodeName)
@@ -186,10 +200,10 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 
 		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s, custom routes %v", ifName, macAddr, ipAddr, cidr, gw, podRequest.Routes)
 		if nicType == util.InternalType {
-			podNicName, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, podRequest.Routes, ingress, egress, priority, podRequest.DeviceID, nicType, netns, !podSubnet.Spec.DisableGatewayCheck)
+			podNicName, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, podRequest.Routes, ingress, egress, priority, podRequest.DeviceID, nicType, gatewayCheckMode)
 		} else {
 			podNicName = ifName
-			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, podRequest.Routes, ingress, egress, priority, podRequest.DeviceID, nicType, netns, !podSubnet.Spec.DisableGatewayCheck)
+			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, podRequest.Routes, ingress, egress, priority, podRequest.DeviceID, nicType, gatewayCheckMode)
 		}
 		if err != nil {
 			errMsg := fmt.Errorf("configure nic failed %v", err)

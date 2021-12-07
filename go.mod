@@ -21,6 +21,7 @@ require (
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.1.0
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/kelseyhightower/envconfig v1.4.0 // indirect
+	github.com/mdlayher/arp v0.0.0-20191213142603-f72070a231fc
 	github.com/moul/http2curl v1.0.0 // indirect
 	github.com/neverlee/keymutex v0.0.0-20171121013845-f593aa834bf9
 	github.com/oilbeater/go-ping v0.0.0-20200413021620-332b7197c5b5
