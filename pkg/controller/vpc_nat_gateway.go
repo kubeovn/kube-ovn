@@ -715,6 +715,16 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (dp *v1.Dep
 		util.IpAddressAnnotation:         gw.Spec.LanIp,
 	}
 
+	selectors := make(map[string]string)
+	for _, v := range gw.Spec.Selector {
+		parts := strings.Split(strings.TrimSpace(v), ":")
+		if len(parts) != 2 {
+			continue
+		}
+		selectors[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+	}
+	klog.V(3).Infof("prepare for vpc nat gateway pod, node selector: %v", selectors)
+
 	dp = &v1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -743,6 +753,7 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (dp *v1.Dep
 							},
 						},
 					},
+					NodeSelector: selectors,
 				},
 			},
 			Strategy: v1.DeploymentStrategy{
