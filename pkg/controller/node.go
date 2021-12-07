@@ -244,6 +244,10 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
+	if err := c.RemoveRedundantChassis(node); err != nil {
+		return err
+	}
+
 	if err := c.retryDelDupChassis(util.ChasRetryTime, util.ChasRetryIntev+2, c.checkChassisDupl, node); err != nil {
 		return err
 	}
@@ -798,5 +802,40 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 		}
 	}
 
+	return nil
+}
+
+func (c *Controller) RemoveRedundantChassis(node *v1.Node) error {
+	chassisAdd, err := c.ovnClient.GetChassis(node.Name)
+	if err != nil {
+		klog.Errorf("failed to get node %s chassisID, %v", node.Name, err)
+		return err
+	}
+	if chassisAdd == "" {
+		chassises, err := c.ovnClient.GetALlChassisHostname()
+		if err != nil {
+			klog.Errorf("failed to get all chassis, %v", err)
+		}
+		nodes, err := c.nodesLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list nodes, %v", err)
+			return err
+		}
+		for _, chassis := range chassises {
+			matched := true
+			for _, node := range nodes {
+				if chassis == node.Name {
+					matched = false
+				}
+			}
+			if matched {
+				if err := c.ovnClient.DeleteChassis(chassis); err != nil {
+					klog.Errorf("failed to delete chassis for node %s %v", chassis, err)
+					return err
+				}
+			}
+		}
+		return errors.New("chassis reset, reboot ovs-ovn on this node: " + node.Name)
+	}
 	return nil
 }
