@@ -118,7 +118,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	if len(clusterIPs) == 0 && svc.Spec.ClusterIP != "" && svc.Spec.ClusterIP != v1.ClusterIPNone {
 		clusterIPs = []string{svc.Spec.ClusterIP}
 	}
-	if len(clusterIPs) == 0 {
+	if len(clusterIPs) == 0 || clusterIPs[0] == v1.ClusterIPNone {
 		return nil
 	}
 
