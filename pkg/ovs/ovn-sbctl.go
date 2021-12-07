@@ -72,3 +72,19 @@ func (c Client) GetChassis(node string) (string, error) {
 	}
 	return strings.TrimSpace(output), nil
 }
+
+func (c Client) GetALlChassisHostname() ([]string, error) {
+	output, err := c.ovnSbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=hostname", "find", "chassis")
+	if err != nil {
+		return nil, fmt.Errorf("failed to find node chassis, %v", err)
+	}
+	lines := strings.Split(output, "\n")
+	result := make([]string, 0, len(lines))
+	for _, l := range lines {
+		if len(strings.TrimSpace(l)) == 0 {
+			continue
+		}
+		result = append(result, strings.TrimSpace(l))
+	}
+	return result, nil
+}
