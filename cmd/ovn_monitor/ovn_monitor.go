@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	ovn "github.com/kubeovn/kube-ovn/pkg/ovnmonitor"
 	"github.com/kubeovn/kube-ovn/versions"

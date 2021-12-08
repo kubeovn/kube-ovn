@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 func (c Client) ovnSbCommand(cmdArgs ...string) (string, error) {

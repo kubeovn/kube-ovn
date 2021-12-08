@@ -16,7 +16,7 @@ import (
 	"github.com/osrg/gobgp/pkg/packet/bgp"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 func isPodAlive(p *v1.Pod) bool {

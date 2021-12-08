@@ -8,7 +8,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 var (

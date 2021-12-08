@@ -50,6 +50,7 @@ require (
 	k8s.io/apimachinery v0.20.4
 	k8s.io/client-go v0.20.4
 	k8s.io/klog v1.0.0
+	k8s.io/klog/v2 v2.4.0
 	k8s.io/sample-controller v0.0.0-20190326030654-b8f621986e45
 	sigs.k8s.io/controller-runtime v0.7.0
 )

@@ -16,7 +16,7 @@ import (
 	"github.com/containernetworking/plugins/pkg/utils/sysctl"
 	goping "github.com/oilbeater/go-ping"
 	"github.com/vishvananda/netlink"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"

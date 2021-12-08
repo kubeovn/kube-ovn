@@ -14,7 +14,7 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kubeinformers "k8s.io/client-go/informers"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	"k8s.io/sample-controller/pkg/signals"
 
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
