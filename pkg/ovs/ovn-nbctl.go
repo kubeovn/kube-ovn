@@ -590,6 +590,9 @@ func (c Client) ListRemoteLogicalSwitchPortAddress() ([]string, error) {
 
 // ListLogicalRouter list logical router names
 func (c Client) ListLogicalRouter(needVendorFilter bool, args ...string) ([]string, error) {
+	if needVendorFilter {
+		args = append(args, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
+	}
 	return c.ListLogicalEntity("logical_router", args...)
 }
 
