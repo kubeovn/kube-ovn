@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 func checkOvs(config *Configuration) error {

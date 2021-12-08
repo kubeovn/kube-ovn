@@ -7,7 +7,7 @@ import (
 	_ "net/http/pprof" // #nosec
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/pinger"
 	"github.com/kubeovn/kube-ovn/versions"

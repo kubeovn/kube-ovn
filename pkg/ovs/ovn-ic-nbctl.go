@@ -2,7 +2,7 @@ package ovs
 
 import (
 	"fmt"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	"os/exec"
 	"strings"
 	"time"
