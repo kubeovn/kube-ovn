@@ -46,5 +46,7 @@ else
   kubectl label pod "$POD_NAME" -n "$POD_NAMESPACE" ovn-sb-leader-
 fi
 
+set +e
 ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/compact
 ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/compact
+echo ""
