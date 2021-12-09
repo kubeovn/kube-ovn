@@ -131,6 +131,11 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 			klog.V(3).Infof("enqueue delete pod %s", key)
 			c.deletePodQueue.Add(obj)
 		}
+
+		if delete, err := appendCheckStatefulSetPodToDel(c, p); delete && err == nil {
+			klog.V(3).Infof("enqueue delete pod %s", key)
+			c.deletePodQueue.Add(obj)
+		}
 	} else {
 		klog.V(3).Infof("enqueue delete pod %s", key)
 		c.deletePodQueue.Add(obj)
@@ -508,7 +513,8 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 
 	var keepIpCR bool
 	if ok, sts := isStatefulSetPod(pod); ok {
-		keepIpCR = !isStatefulSetPodToDel(c.config.KubeClient, pod, sts)
+		delete, err := appendCheckStatefulSetPodToDel(c, pod)
+		keepIpCR = !isStatefulSetPodToDel(c.config.KubeClient, pod, sts) && !delete && err == nil
 	}
 
 	// Add additional default ports to compatible with previous versions
@@ -1046,4 +1052,30 @@ func (c *Controller) deleteAttachmentNetWorkIP(pod *v1.Pod) error {
 		}
 	}
 	return nil
+}
+
+func appendCheckStatefulSetPodToDel(c *Controller, pod *v1.Pod) (bool, error) {
+	// subnet for ns has been changed, and statefulset pod's ip is not in the range of subnet's cidr anymore
+	podNs, err := c.namespacesLister.Get(pod.Namespace)
+	if err != nil {
+		klog.Errorf("failed to get namespace %s, %v", pod.Namespace, err)
+		return false, err
+	}
+	if podNs.Annotations[util.LogicalSwitchAnnotation] != "" && pod.Annotations[util.LogicalSwitchAnnotation] != "" && strings.TrimSpace(podNs.Annotations[util.LogicalSwitchAnnotation]) != strings.TrimSpace(pod.Annotations[util.LogicalSwitchAnnotation]) {
+		klog.Infof("ns %s annotation subnet is %s, which is inconstant with subnet for pod %s, delete pod", pod.Namespace, podNs.Annotations[util.LogicalSwitchAnnotation], pod.Name)
+		return true, nil
+	}
+
+	// subnet cidr has been changed, and statefulset pod's ip is not in the range of subnet's cidr anymore
+	podSubnet, err := c.subnetsLister.Get(strings.TrimSpace(pod.Annotations[util.LogicalSwitchAnnotation]))
+	if err != nil {
+		klog.Errorf("failed to get subnet %s, %v", pod.Annotations[util.LogicalSwitchAnnotation], err)
+		return false, err
+	}
+	if podSubnet != nil && !util.CIDRContainIP(podSubnet.Spec.CIDRBlock, pod.Annotations[util.IpAddressAnnotation]) {
+		klog.Infof("pod's ip %s is not in the range of subnet %s, delete pod", pod.Annotations[util.IpAddressAnnotation], podSubnet.Name)
+		return true, nil
+	}
+
+	return false, nil
 }
