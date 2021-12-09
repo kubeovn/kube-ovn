@@ -2046,6 +2046,7 @@ spec:
               - 127.0.0.1
               - "10665"
           periodSeconds: 3
+          timeoutSeconds: 5
         livenessProbe:
           exec:
             command:
@@ -2057,6 +2058,7 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 7
           failureThreshold: 5
+          timeoutSeconds: 5
         resources:
           requests:
             cpu: 100m
