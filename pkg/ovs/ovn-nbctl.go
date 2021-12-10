@@ -12,7 +12,7 @@ import (
 	"time"
 
 	netv1 "k8s.io/api/networking/v1"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"

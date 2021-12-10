@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.com/greenpau/ovsdb"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 // IncrementErrorCounter increases the counter of failed queries to OVN server.
