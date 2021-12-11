@@ -8,7 +8,6 @@ import (
 	"os"
 	"time"
 
-	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	api "github.com/osrg/gobgp/api"
 	gobgp "github.com/osrg/gobgp/pkg/server"
 	"github.com/spf13/pflag"
@@ -17,6 +16,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
+
+	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 )
 
 const (

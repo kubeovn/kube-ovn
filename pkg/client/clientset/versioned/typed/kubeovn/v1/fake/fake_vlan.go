@@ -110,7 +110,7 @@ func (c *FakeVlans) UpdateStatus(ctx context.Context, vlan *kubeovnv1.Vlan, opts
 // Delete takes name of the vlan and deletes it. Returns an error if one occurs.
 func (c *FakeVlans) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteAction(vlansResource, name), &kubeovnv1.Vlan{})
+		Invokes(testing.NewRootDeleteActionWithOptions(vlansResource, name, opts), &kubeovnv1.Vlan{})
 	return err
 }
 

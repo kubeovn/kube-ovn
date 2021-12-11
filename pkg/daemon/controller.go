@@ -882,7 +882,7 @@ func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule,
 	for i := range protocols {
 		family, _ := util.ProtocolToFamily(protocols[i])
 		routes = append(routes, netlink.Route{
-			Protocol: family,
+			Protocol: netlink.RouteProtocol(family),
 			Table:    int(subnet.Spec.PolicyRoutingTableID),
 			Gw:       net.ParseIP(egw[i]),
 		})

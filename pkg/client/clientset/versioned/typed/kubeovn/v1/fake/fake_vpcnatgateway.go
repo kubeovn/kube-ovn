@@ -99,7 +99,7 @@ func (c *FakeVpcNatGateways) Update(ctx context.Context, vpcNatGateway *kubeovnv
 // Delete takes name of the vpcNatGateway and deletes it. Returns an error if one occurs.
 func (c *FakeVpcNatGateways) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteAction(vpcnatgatewaysResource, name), &kubeovnv1.VpcNatGateway{})
+		Invokes(testing.NewRootDeleteActionWithOptions(vpcnatgatewaysResource, name, opts), &kubeovnv1.VpcNatGateway{})
 	return err
 }
 

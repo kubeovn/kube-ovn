@@ -7,8 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	"k8s.io/klog/v2"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // Glory belongs to openvswitch/ovn-kubernetes

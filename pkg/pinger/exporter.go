@@ -9,9 +9,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-const (
-	metricNamespace = "kube_ovn"
-)
+const metricNamespace = "kube_ovn"
 
 var (
 	appName       = "ovs-monitor"

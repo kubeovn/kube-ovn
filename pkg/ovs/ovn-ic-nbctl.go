@@ -2,10 +2,11 @@ package ovs
 
 import (
 	"fmt"
-	"k8s.io/klog/v2"
 	"os/exec"
 	"strings"
 	"time"
+
+	"k8s.io/klog/v2"
 )
 
 func (c Client) ovnIcNbCommand(cmdArgs ...string) (string, error) {

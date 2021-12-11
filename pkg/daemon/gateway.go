@@ -318,7 +318,7 @@ func (c *Controller) deletePodPolicyRouting(podProtocol, externalEgressGateway s
 
 func (c *Controller) addPolicyRouting(family int, gateway string, priority, tableID uint32, ips ...string) error {
 	route := &netlink.Route{
-		Protocol: family,
+		Protocol: netlink.RouteProtocol(family),
 		Gw:       net.ParseIP(gateway),
 		Table:    int(tableID),
 	}

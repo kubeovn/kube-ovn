@@ -99,7 +99,7 @@ func (c *FakeIPs) Update(ctx context.Context, iP *kubeovnv1.IP, opts v1.UpdateOp
 // Delete takes name of the iP and deletes it. Returns an error if one occurs.
 func (c *FakeIPs) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteAction(ipsResource, name), &kubeovnv1.IP{})
+		Invokes(testing.NewRootDeleteActionWithOptions(ipsResource, name, opts), &kubeovnv1.IP{})
 	return err
 }
 
