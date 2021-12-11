@@ -59,8 +59,6 @@ func (c *Controller) runGateway() {
 	if err := c.setExGateway(); err != nil {
 		klog.Errorf("failed to set ex gateway, %v", err)
 	}
-
-	c.appendMssRule()
 }
 
 func (c *Controller) setIPSet() error {
@@ -923,50 +921,6 @@ func (c *Controller) getOtherNodes(protocol string) ([]string, error) {
 		}
 	}
 	return ret, nil
-}
-
-//Generally, the MTU of the interface is set to 1400. But in special cases, a special pod (docker indocker) will introduce the docker0 interface to the pod. The MTU of docker0 is 1500.
-//The network application in pod will calculate the TCP MSS according to the MTU of docker0, and then initiate communication with others. After the other party sends a response, the kernel protocol stack of Linux host will send ICMP unreachable message to the other party, indicating that IP fragmentation is needed, which is not supported by the other party, resulting in communication failure.
-func (c *Controller) appendMssRule() {
-	if c.config.Iface != "" && c.config.MSS > 0 {
-		iface, err := findInterface(c.config.Iface)
-		if err != nil {
-			klog.Errorf("failed to findInterface, %v", err)
-			return
-		}
-		rule := fmt.Sprintf("-p tcp --tcp-flags SYN,RST SYN -o %s -j TCPMSS --set-mss %d", iface.Name, c.config.MSS)
-		MssMangleRule := util.IPTableRule{
-			Table: "mangle",
-			Chain: "POSTROUTING",
-			Rule:  strings.Fields(rule),
-		}
-
-		switch c.protocol {
-		case kubeovnv1.ProtocolIPv4:
-			c.updateMssRuleByProtocol(c.protocol, MssMangleRule)
-		case kubeovnv1.ProtocolIPv6:
-			c.updateMssRuleByProtocol(c.protocol, MssMangleRule)
-		case kubeovnv1.ProtocolDual:
-			c.updateMssRuleByProtocol(kubeovnv1.ProtocolIPv4, MssMangleRule)
-			c.updateMssRuleByProtocol(kubeovnv1.ProtocolIPv6, MssMangleRule)
-		}
-	}
-}
-
-func (c *Controller) updateMssRuleByProtocol(protocol string, MssMangleRule util.IPTableRule) {
-	exists, err := c.iptables[protocol].Exists(MssMangleRule.Table, MssMangleRule.Chain, MssMangleRule.Rule...)
-	if err != nil {
-		klog.Errorf("check iptables rule %v failed, %+v", MssMangleRule.Rule, err)
-		return
-	}
-
-	if !exists {
-		klog.Infof("iptables rules %s not exist, append iptables rules", strings.Join(MssMangleRule.Rule, " "))
-		if err := c.iptables[protocol].Append(MssMangleRule.Table, MssMangleRule.Chain, MssMangleRule.Rule...); err != nil {
-			klog.Errorf("append iptables rule %v failed, %+v", MssMangleRule.Rule, err)
-			return
-		}
-	}
 }
 
 func getCidrByProtocol(cidr, protocol string) string {

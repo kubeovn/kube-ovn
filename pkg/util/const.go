@@ -99,7 +99,6 @@ const (
 	DefaultDropPriority = "1000"
 
 	GeneveHeaderLength = 100
-	TcpIpHeaderLength  = 40
 
 	OvnProvider                 = "ovn"
 	AttachmentNetworkAnnotation = "k8s.v1.cni.cncf.io/networks"
