@@ -527,7 +527,7 @@ func (c *Controller) handleAddPod(key string) error {
 				}
 			}
 			portName := ovs.PodNameToPortName(name, namespace, podNet.ProviderName)
-			if err := c.ovnClient.CreatePort(subnet.Name, portName, ipStr, mac, pod.Name, pod.Namespace, portSecurity, securityGroupAnnotation, vips); err != nil {
+			if err := c.ovnClient.CreatePort(subnet.Name, portName, ipStr, mac, pod.Name, pod.Namespace, portSecurity, securityGroupAnnotation, vips, podNet.AllowLiveMigration); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
 				return err
 			}
@@ -1241,4 +1241,51 @@ func appendCheckStatefulSetPodToDel(c *Controller, pod *v1.Pod) (bool, error) {
 	}
 
 	return false, nil
+}
+
+// syncVmLiveMigrationPort set ip address to lsp after live migration
+func (c *Controller) syncVmLiveMigrationPort() {
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("list get subnet failed, %v", err)
+		return
+	}
+	for _, subnet := range subnets {
+		// lists pods with the 'liveMigration' flag
+		ports, err := c.ovnClient.ListLogicalEntity("logical_switch_port",
+			fmt.Sprintf("external_ids:ls=%s", subnet.Name),
+			"external_ids:liveMigration=1")
+		if err != nil {
+			klog.Errorf("list logical_switch_port failed, %v", err)
+			return
+		}
+
+		for _, port := range ports {
+			addr, err := c.ipsLister.Get(port)
+			if err != nil {
+				klog.Errorf("get port ip failed, %v", err)
+				return
+			}
+			// lists pods with the same IP address
+			vmLsps, err := c.ovnClient.ListLogicalEntity("logical_switch_port",
+				fmt.Sprintf("external_ids:ls=%s", subnet.Name),
+				fmt.Sprintf("external_ids:ip=%s", strings.ReplaceAll(addr.Spec.IPAddress, ",", "/")))
+			if err != nil {
+				klog.Errorf("list logical_switch_port failed, %v", err)
+				return
+			}
+
+			// reset addresses after live Migration
+			if len(vmLsps) == 1 {
+				if err = c.ovnClient.SetPortAddress(port, addr.Spec.MacAddress, addr.Spec.IPAddress); err != nil {
+					klog.Errorf("set port addresses failed, %v", err)
+					return
+				}
+				if err = c.ovnClient.SetPortExternalIds(port, "liveMigration", "0"); err != nil {
+					klog.Errorf("set port externalIds failed, %v", err)
+					return
+				}
+			}
+		}
+	}
 }

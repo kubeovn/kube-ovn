@@ -126,6 +126,25 @@ func (c Client) DeleteICLogicalRouterPort(az string) error {
 	return nil
 }
 
+func (c Client) SetPortAddress(port, mac, ip string) error {
+	rets, err := c.ListLogicalEntity("logical_switch_port", fmt.Sprintf("name=%s", port))
+	if err != nil {
+		return fmt.Errorf("failed to find port %s: %v", port, err)
+	}
+	if len(rets) == 0 {
+		return nil
+	}
+
+	var addresses []string
+	addresses = append(addresses, mac)
+	addresses = append(addresses, strings.Split(ip, ",")...)
+	if _, err := c.ovnNbCommand("lsp-set-addresses", port, strings.Join(addresses, " ")); err != nil {
+		klog.Errorf("set port %s addresses failed, %v", port, err)
+		return err
+	}
+	return nil
+}
+
 func (c Client) SetPortExternalIds(port, key, value string) error {
 	rets, err := c.ListLogicalEntity("logical_switch_port", fmt.Sprintf("name=%s", port))
 	if err != nil {
@@ -157,13 +176,40 @@ func (c Client) SetPortSecurity(portSecurity bool, port, mac, ipStr, vips string
 }
 
 // CreatePort create logical switch port in ovn
-func (c Client) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurity bool, securityGroups string, vips string) error {
+func (c Client) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurity bool, securityGroups string, vips string, liveMigration bool) error {
 	var ovnCommand []string
 	var addresses []string
 	addresses = append(addresses, mac)
 	addresses = append(addresses, strings.Split(ip, ",")...)
-	ovnCommand = []string{MayExist, "lsp-add", ls, port, "--",
-		"lsp-set-addresses", port, strings.Join(addresses, " ")}
+	ovnCommand = []string{MayExist, "lsp-add", ls, port}
+	isAddrConflict := false
+	if liveMigration {
+		// add external_id info as the filter of 'live Migration vm port'
+		ovnCommand = append(ovnCommand,
+			"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:ls=%s", ls),
+			"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:ip=%s", strings.ReplaceAll(ip, ",", "/")))
+
+		ports, err := c.ListLogicalEntity("logical_switch_port",
+			fmt.Sprintf("external_ids:ls=%s", ls),
+			fmt.Sprintf("external_ids:ip=%s", strings.ReplaceAll(ip, ",", "/")))
+		if err != nil {
+			klog.Errorf("list logical entity failed: %v", err)
+			return err
+		}
+		if len(ports) > 0 {
+			isAddrConflict = true
+		}
+	}
+
+	if isAddrConflict {
+		// only set mac, and set flag 'liveMigration'
+		ovnCommand = append(ovnCommand, "--", "lsp-set-addresses", port, mac, "--",
+			"set", "logical_switch_port", port, "external_ids:liveMigration=1")
+	} else {
+		// set mac and ip
+		ovnCommand = append(ovnCommand,
+			"--", "lsp-set-addresses", port, strings.Join(addresses, " "))
+	}
 
 	if portSecurity {
 		addresses = append(addresses, strings.Split(vips, ",")...)
@@ -173,7 +219,7 @@ func (c Client) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurit
 		if securityGroups != "" {
 			sgList := strings.Split(securityGroups, ",")
 			ovnCommand = append(ovnCommand,
-				"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:security_groups=%s", securityGroups))
+				"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:security_groups=%s", strings.ReplaceAll(securityGroups, ",", "/")))
 			for _, sg := range sgList {
 				ovnCommand = append(ovnCommand,
 					"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:associated_sg_%s=true", sg))
