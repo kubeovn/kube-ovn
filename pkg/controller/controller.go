@@ -591,4 +591,6 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	if c.config.EnableNP {
 		go wait.Until(c.CheckNodePortGroup, 10*time.Second, stopCh)
 	}
+
+	go wait.Until(c.syncVmLiveMigrationPort, 15*time.Second, stopCh)
 }
