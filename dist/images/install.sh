@@ -1098,7 +1098,7 @@ spec:
               command:
                 - bash
                 - /kube-ovn/ovn-is-leader.sh
-            periodSeconds: 3
+            periodSeconds: 15
             timeoutSeconds: 45
           livenessProbe:
             exec:
@@ -1106,7 +1106,7 @@ spec:
                 - bash
                 - /kube-ovn/ovn-healthcheck.sh
             initialDelaySeconds: 30
-            periodSeconds: 7
+            periodSeconds: 15
             failureThreshold: 5
             timeoutSeconds: 45
       nodeSelector:
@@ -1580,7 +1580,7 @@ spec:
               command:
                 - bash
                 - /kube-ovn/ovn-is-leader.sh
-            periodSeconds: 3
+            periodSeconds: 15
             timeoutSeconds: 45
           livenessProbe:
             exec:
@@ -1588,7 +1588,7 @@ spec:
                 - bash
                 - /kube-ovn/ovn-healthcheck.sh
             initialDelaySeconds: 30
-            periodSeconds: 7
+            periodSeconds: 15
             failureThreshold: 5
             timeoutSeconds: 45
       nodeSelector:
