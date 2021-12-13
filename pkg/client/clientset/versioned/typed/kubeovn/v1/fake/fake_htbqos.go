@@ -99,7 +99,7 @@ func (c *FakeHtbQoses) Update(ctx context.Context, htbQos *kubeovnv1.HtbQos, opt
 // Delete takes name of the htbQos and deletes it. Returns an error if one occurs.
 func (c *FakeHtbQoses) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteAction(htbqosesResource, name), &kubeovnv1.HtbQos{})
+		Invokes(testing.NewRootDeleteActionWithOptions(htbqosesResource, name, opts), &kubeovnv1.HtbQos{})
 	return err
 }
 

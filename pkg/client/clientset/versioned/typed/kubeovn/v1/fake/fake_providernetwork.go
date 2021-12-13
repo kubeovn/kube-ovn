@@ -110,7 +110,7 @@ func (c *FakeProviderNetworks) UpdateStatus(ctx context.Context, providerNetwork
 // Delete takes name of the providerNetwork and deletes it. Returns an error if one occurs.
 func (c *FakeProviderNetworks) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteAction(providernetworksResource, name), &kubeovnv1.ProviderNetwork{})
+		Invokes(testing.NewRootDeleteActionWithOptions(providernetworksResource, name, opts), &kubeovnv1.ProviderNetwork{})
 	return err
 }
 

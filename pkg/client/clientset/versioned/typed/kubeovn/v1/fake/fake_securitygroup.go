@@ -110,7 +110,7 @@ func (c *FakeSecurityGroups) UpdateStatus(ctx context.Context, securityGroup *ku
 // Delete takes name of the securityGroup and deletes it. Returns an error if one occurs.
 func (c *FakeSecurityGroups) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteAction(securitygroupsResource, name), &kubeovnv1.SecurityGroup{})
+		Invokes(testing.NewRootDeleteActionWithOptions(securitygroupsResource, name, opts), &kubeovnv1.SecurityGroup{})
 	return err
 }
 

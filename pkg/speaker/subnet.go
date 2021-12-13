@@ -10,13 +10,14 @@ import (
 
 	"github.com/golang/protobuf/ptypes"
 	anypb "github.com/golang/protobuf/ptypes/any"
-	bgpapiutil "github.com/kubeovn/kube-ovn/pkg/speaker/bgpapiutil"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	bgpapi "github.com/osrg/gobgp/api"
 	"github.com/osrg/gobgp/pkg/packet/bgp"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
+
+	bgpapiutil "github.com/kubeovn/kube-ovn/pkg/speaker/bgpapiutil"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func isPodAlive(p *v1.Pod) bool {

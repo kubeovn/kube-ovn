@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/intel/multus-cni/logging"
-	multustypes "github.com/intel/multus-cni/types"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/logging"
+	multustypes "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

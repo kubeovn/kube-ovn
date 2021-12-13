@@ -1,10 +1,11 @@
 package util
 
 import (
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/klog"
-	"time"
+	"k8s.io/klog/v2"
 )
 
 var (

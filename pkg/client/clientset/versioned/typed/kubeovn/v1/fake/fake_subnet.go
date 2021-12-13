@@ -110,7 +110,7 @@ func (c *FakeSubnets) UpdateStatus(ctx context.Context, subnet *kubeovnv1.Subnet
 // Delete takes name of the subnet and deletes it. Returns an error if one occurs.
 func (c *FakeSubnets) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteAction(subnetsResource, name), &kubeovnv1.Subnet{})
+		Invokes(testing.NewRootDeleteActionWithOptions(subnetsResource, name, opts), &kubeovnv1.Subnet{})
 	return err
 }
 

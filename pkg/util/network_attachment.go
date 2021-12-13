@@ -7,8 +7,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/intel/multus-cni/types"
-	"k8s.io/klog"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
+	"k8s.io/klog/v2"
 )
 
 func parsePodNetworkObjectName(podnetwork string) (string, string, string, error) {

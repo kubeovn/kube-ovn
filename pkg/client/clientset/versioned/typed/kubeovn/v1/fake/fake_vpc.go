@@ -110,7 +110,7 @@ func (c *FakeVpcs) UpdateStatus(ctx context.Context, vpc *kubeovnv1.Vpc, opts v1
 // Delete takes name of the vpc and deletes it. Returns an error if one occurs.
 func (c *FakeVpcs) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteAction(vpcsResource, name), &kubeovnv1.Vpc{})
+		Invokes(testing.NewRootDeleteActionWithOptions(vpcsResource, name, opts), &kubeovnv1.Vpc{})
 	return err
 }
 

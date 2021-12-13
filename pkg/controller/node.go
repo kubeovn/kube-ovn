@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	goping "github.com/oilbeater/go-ping"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -20,7 +21,6 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	goping "github.com/oilbeater/go-ping"
 )
 
 func (c *Controller) enqueueAddNode(obj interface{}) {
