@@ -132,6 +132,16 @@ args:
 
 This can reduce about 30% of the cpu time and latency in 1byte packet test.
 
+*Note*: In underlay mode, kube-proxy can not capture underlay traffic, if disable lb, svc can not be visited.
+
+*Need Kube-OVN >= 1.9.0*.
+If you are using underlay mode network and need kube-ovn to implement the svc function, you can set the svc cidr in ovn-nb
+to bypass the conntrack system for traffic that not designate to svc.
+
+```bash
+kubectl ko nbctl set nb_global . options:svc_ipv4_cidr=10.244.0.0/16
+```
+
 ### Kernel FastPath module
 
 With Profile, the netfilter hooks inside container netns and between tunnel endpoints contribute about 25% of the CPU time
