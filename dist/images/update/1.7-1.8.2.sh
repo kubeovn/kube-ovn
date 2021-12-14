@@ -1,7 +1,7 @@
 #!/bin/bash
 set -eo pipefail
 
-IMAGE=kubeovn/kube-ovn:v1.8.1
+IMAGE=kubeovn/kube-ovn:v1.8.2
 
 echo "[Step 0/8] Update CRD"
 cat <<EOF > kube-ovn-crd-1.8.yaml
@@ -749,6 +749,16 @@ echo ""
 
 echo "[Step 2/8] Update ovn-central"
 kubectl set image deployment/ovn-central -n kube-system ovn-central="$IMAGE"
+if [[ ! $(kubectl get deploy -n kube-system ovn-central -o jsonpath='{.spec.template.spec.containers[0].livenessProbe}') =~ "periodSeconds" ]]; then
+  kubectl patch deploy/ovn-central -n kube-system --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/livenessProbe/periodSeconds", "value": 15}]'
+else
+  kubectl patch deploy/ovn-central -n kube-system --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/livenessProbe/periodSeconds", "value": 15}]'
+fi
+if [[ ! $(kubectl get deploy -n kube-system ovn-central -o jsonpath='{.spec.template.spec.containers[0].readinessProbe}') =~ "periodSeconds" ]]; then
+  kubectl patch deploy/ovn-central -n kube-system --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/readinessProbe/periodSeconds", "value": 15}]'
+else
+  kubectl patch deploy/ovn-central -n kube-system --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/readinessProbe/periodSeconds", "value": 15}]'
+fi
 kubectl rollout status deployment/ovn-central -n kube-system
 nbleader=$(kubectl -n kube-system get pods -l ovn-nb-leader=true -o jsonpath='{.items[*].metadata.name}')
 echo "leader is " "${nbleader}"
@@ -777,6 +787,16 @@ echo ""
 echo "[Step 5/8] Update kube-ovn-cni"
 kubectl set image ds/kube-ovn-cni -n kube-system install-cni="$IMAGE"
 kubectl set image ds/kube-ovn-cni -n kube-system cni-server="$IMAGE"
+if [[ ! $(kubectl get ds -n kube-system kube-ovn-cni -o jsonpath='{.spec.template.spec.containers[0].livenessProbe}') =~ "timeoutSeconds" ]]; then
+  kubectl patch ds/kube-ovn-cni -n kube-system --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/livenessProbe/timeoutSeconds", "value": 5}]'
+else
+  kubectl patch ds/kube-ovn-cni -n kube-system --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/livenessProbe/timeoutSeconds", "value": 5}]'
+fi
+if [[ ! $(kubectl get ds -n kube-system kube-ovn-cni -o jsonpath='{.spec.template.spec.containers[0].readinessProbe}') =~ "timeoutSeconds" ]]; then
+  kubectl patch ds/kube-ovn-cni -n kube-system --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/readinessProbe/timeoutSeconds", "value": 5}]'
+else
+  kubectl patch ds/kube-ovn-cni -n kube-system --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/readinessProbe/timeoutSeconds", "value": 5}]'
+fi
 kubectl rollout status daemonset/kube-ovn-cni -n kube-system
 echo "-------------------------------"
 echo ""
@@ -784,6 +804,9 @@ echo ""
 echo "[Step 6/8] Update kube-ovn-pinger"
 if [[ $(kubectl get ds -n kube-system kube-ovn-pinger -o jsonpath='{.spec.template}') =~ "tolerations" ]]; then
   kubectl patch ds/kube-ovn-pinger -n kube-system --type='json' -p='[{"op": "remove", "path": "/spec/template/spec/tolerations"}]'
+fi
+if [[ $(kubectl get ds -n kube-system kube-ovn-pinger -o jsonpath='{.spec.template.spec.containers[0].env[2]}') =~ "POD_IPS" ]]; then
+  kubectl patch ds/kube-ovn-pinger -n kube-system --type='json' -p='[{"op": "remove", "path": "/spec/template/spec/containers/0/env/2"}]'
 fi
 kubectl set image ds/kube-ovn-pinger -n kube-system pinger="$IMAGE"
 kubectl rollout status daemonset/kube-ovn-pinger -n kube-system
@@ -802,9 +825,11 @@ mkdir -p /usr/local/bin
 cat <<\EOF > /usr/local/bin/kubectl-ko
 #!/bin/bash
 set -euo pipefail
+
 KUBE_OVN_NS=kube-system
 OVN_NB_POD=
 OVN_SB_POD=
+
 showHelp(){
   echo "kubectl ko {subcommand} [option...]"
   echo "Available Subcommands:"
@@ -819,6 +844,7 @@ showHelp(){
   echo "  trace {namespace/podname} {target ip address} {icmp|tcp|udp} [target tcp or udp port]    trace ovn microflow of specific packet"
   echo "  diagnose {all|node} [nodename]    diagnose connectivity of all nodes or a specific node"
 }
+
 tcpdump(){
   namespacedPod="$1"; shift
   namespace=$(echo "$namespacedPod" | cut -d "/" -f1)
@@ -826,17 +852,21 @@ tcpdump(){
   if [ "$podName" = "$namespacedPod" ]; then
     namespace="default"
   fi
+
   nodeName=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.nodeName})
   hostNetwork=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.hostNetwork})
+
   if [ -z "$nodeName" ]; then
     echo "Pod $namespacedPod not exists on any node"
     exit 1
   fi
+
   ovnCni=$(kubectl get pod -n $KUBE_OVN_NS -o wide| grep kube-ovn-cni| grep " $nodeName " | awk '{print $1}')
   if [ -z "$ovnCni" ]; then
     echo "kube-ovn-cni not exist on node $nodeName"
     exit 1
   fi
+
   if [ "$hostNetwork" = "true" ]; then
     set -x
     kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- tcpdump -nn "$@"
@@ -856,6 +886,7 @@ tcpdump(){
     fi
   fi
 }
+
 trace(){
   namespacedPod="$1"
   namespace=$(echo "$1" | cut -d "/" -f1)
@@ -863,11 +894,13 @@ trace(){
   if [ "$podName" = "$1" ]; then
     namespace="default"
   fi
+
   dst="$2"
   if [ -z "$dst" ]; then
     echo "need a target ip address"
     exit 1
   fi
+
   af="4"
   nw="nw"
   proto=""
@@ -876,19 +909,23 @@ trace(){
     nw="ipv6"
     proto="6"
   fi
+
   podIPs=($(kubectl get pod "$podName" -n "$namespace" -o jsonpath="{.status.podIPs[*].ip}"))
   mac=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/mac_address})
   ls=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/logical_switch})
   hostNetwork=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.hostNetwork})
   nodeName=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.nodeName})
+
   if [ "$hostNetwork" = "true" ]; then
     echo "Can not trace host network pod"
     exit 1
   fi
+
   if [ -z "$ls" ]; then
     echo "pod address not ready"
     exit 1
   fi
+
   podIP=""
   for ip in ${podIPs[@]}; do
     if [ "$af" = "4" ]; then
@@ -901,10 +938,12 @@ trace(){
       break
     fi
   done
+
   if [ -z "$podIP" ]; then
     echo "Pod has no IPv$af address"
     exit 1
   fi
+
   gwMac=""
   if [ ! -z "$(kubectl get subnet $ls -o jsonpath={.spec.vlan})" ]; then
     gateway=$(kubectl get subnet "$ls" -o jsonpath={.spec.gateway})
@@ -915,21 +954,25 @@ trace(){
         gateway=${gateway##*,}
       fi
     fi
+
     ovnCni=$(kubectl get pod -n $KUBE_OVN_NS -o wide | grep -w kube-ovn-cni | grep " $nodeName " | awk '{print $1}')
     if [ -z "$ovnCni" ]; then
       echo "No kube-ovn-cni Pod running on node $nodeName"
       exit 1
     fi
+
     nicName=$(kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading --columns=name find interface external-ids:iface-id="$podName"."$namespace" | tr -d '\r')
     if [ -z "$nicName" ]; then
       echo "nic doesn't exist on node $nodeName"
       exit 1
     fi
+
     podNicType=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/pod_nic_type})
     podNetNs=$(kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading get interface "$nicName" external-ids:pod_netns | tr -d '\r' | sed -e 's/^"//' -e 's/"$//')
     if [ "$podNicType" != "internal-port" ]; then
       nicName="eth0"
     fi
+
     if [[ "$gateway" =~ .*:.* ]]; then
       cmd="ndisc6 -q $gateway $nicName"
       output=$(kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- nsenter --net="$podNetNs" ndisc6 -q "$gateway" "$nicName")
@@ -937,6 +980,7 @@ trace(){
       cmd="arping -c3 -C1 -i1 -I $nicName $gateway"
       output=$(kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- nsenter --net="$podNetNs" arping -c3 -C1 -i1 -I "$nicName" "$gateway")
     fi
+
     if [ $? -ne 0 ]; then
       echo "failed to run '$cmd' in Pod's netns"
       exit 1
@@ -944,12 +988,17 @@ trace(){
     gwMac=$(echo "$output" | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}')
   else
     lr=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/logical_router})
+    if [ -z "$lr" ]; then
+      lr=$(kubectl get subnet "$ls" -o jsonpath={.spec.vpc})
+    fi
     gwMac=$(kubectl exec $OVN_NB_POD -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl --data=bare --no-heading --columns=mac find logical_router_port name="$lr"-"$ls" | tr -d '\r')
   fi
+
   if [ -z "$gwMac" ]; then
     echo "get gw mac failed"
     exit 1
   fi
+
   type="$3"
   case $type in
     icmp)
@@ -966,16 +1015,19 @@ trace(){
       exit 1
       ;;
   esac
+
   set +x
   echo "--------"
   echo "Start OVS Tracing"
   echo ""
   echo ""
+
   ovsPod=$(kubectl get pod -n $KUBE_OVN_NS -o wide | grep " $nodeName " | grep ovs-ovn | awk '{print $1}')
   if [ -z "$ovsPod" ]; then
     echo "ovs pod doesn't exist on node $nodeName"
     exit 1
   fi
+
   inPort=$(kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-vsctl --format=csv --data=bare --no-heading --columns=ofport find interface external_id:iface-id="$podName"."$namespace")
   case $type in
     icmp)
@@ -993,6 +1045,7 @@ trace(){
       ;;
   esac
 }
+
 xxctl(){
   subcommand="$1"; shift
   nodeName="$1"; shift
@@ -1004,6 +1057,7 @@ xxctl(){
   fi
   kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-$subcommand "$@"
 }
+
 checkLeader(){
   component="$1"; shift
   count=$(kubectl get ep ovn-$component -n $KUBE_OVN_NS -o yaml | grep ip | wc -l)
@@ -1011,12 +1065,15 @@ checkLeader(){
     echo "no ovn-$component exists !!"
     exit 1
   fi
+
   if [ $count -gt 1 ]; then
     echo "ovn-$component has more than one leader !!"
     exit 1
   fi
+
   echo "ovn-$component leader check ok"
 }
+
 diagnose(){
   kubectl get crd vpcs.kubeovn.io
   kubectl get crd vpc-nat-gateways.kubeovn.io
@@ -1029,21 +1086,25 @@ diagnose(){
   kubectl get sa -n kube-system ovn
   kubectl get clusterrole system:ovn
   kubectl get clusterrolebinding ovn
+
   kubectl get no -o wide
   kubectl ko nbctl show
   kubectl ko nbctl lr-route-list ovn-cluster
   kubectl ko nbctl ls-lb-list ovn-default
   kubectl ko nbctl list acl
   kubectl ko sbctl show
+
   checkKubeProxy
   checkDeployment ovn-central
   checkDeployment kube-ovn-controller
   checkDaemonSet kube-ovn-cni
   checkDaemonSet ovs-ovn
   checkDeployment coredns
+
   checkLeader nb
   checkLeader sb
   checkLeader northd
+
   type="$1"
   case $type in
     all)
@@ -1097,6 +1158,7 @@ diagnose(){
       ;;
     esac
 }
+
 getOvnCentralPod(){
     NB_POD=$(kubectl get pod -n $KUBE_OVN_NS -l ovn-nb-leader=true | grep ovn-central | head -n 1 | awk '{print $1}')
     if [ -z "$NB_POD" ]; then
@@ -1111,6 +1173,7 @@ getOvnCentralPod(){
     fi
     OVN_SB_POD=$SB_POD
 }
+
 checkDaemonSet(){
   name="$1"
   currentScheduled=$(kubectl get ds -n $KUBE_OVN_NS "$name" -o jsonpath={.status.currentNumberScheduled})
@@ -1124,6 +1187,7 @@ checkDaemonSet(){
     exit 1
   fi
 }
+
 checkDeployment(){
   name="$1"
   ready=$(kubectl get deployment -n $KUBE_OVN_NS "$name" -o jsonpath={.status.readyReplicas})
@@ -1137,6 +1201,7 @@ checkDeployment(){
     exit 1
   fi
 }
+
 checkKubeProxy(){
   dsMode=`kubectl get ds -n kube-system | grep kube-proxy || true`
   if [ -z "$dsMode" ]; then
@@ -1154,6 +1219,7 @@ checkKubeProxy(){
   fi
   echo "kube-proxy ready"
 }
+
 dbtool(){
   suffix=$(date +%m%d%H%M%s)
   component="$1"; shift
@@ -1168,10 +1234,10 @@ dbtool(){
           kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovs-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/kick OVN_Northbound "$1"
           ;;
         backup)
-          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovsdb-tool cluster-to-standalone /etc/ovn/ovnnb_db.$suffix.backup /etc/ovn/ovnnb_db.db
-          kubectl cp $KUBE_OVN_NS/$OVN_NB_POD:/etc/ovn/ovnnb_db.$suffix.backup $(pwd)/ovnnb_db.$suffix.backup
-          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- rm -f /etc/ovn/ovnnb_db.$suffix.backup
-          echo "backup $component to $(pwd)/ovnnb_db.$suffix.backup"
+          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovsdb-tool cluster-to-standalone /tmp/ovnnb_db.$suffix.backup /etc/ovn/ovnnb_db.db
+          kubectl cp $KUBE_OVN_NS/$OVN_NB_POD:/tmp/ovnnb_db.$suffix.backup $(pwd)/ovnnb_db.$suffix.backup
+          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- rm -f /tmp/ovnnb_db.$suffix.backup
+          echo "backup ovn-$component db to $(pwd)/ovnnb_db.$suffix.backup"
           ;;
         *)
           echo "unknown action $action"
@@ -1186,10 +1252,10 @@ dbtool(){
           kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovs-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/kick OVN_Southbound "$1"
           ;;
         backup)
-          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovsdb-tool cluster-to-standalone /etc/ovn/ovnsb_db.$suffix.backup /etc/ovn/ovnsb_db.db
-          kubectl cp $KUBE_OVN_NS/$OVN_SB_POD:/etc/ovn/ovnsb_db.$suffix.backup $(pwd)/ovnsb_db.$suffix.backup
-          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- rm -f /etc/ovn/ovnsb_db.$suffix.backup
-          echo "backup $component to $(pwd)/ovnsb_db.$suffix.backup"
+          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovsdb-tool cluster-to-standalone /tmp/ovnsb_db.$suffix.backup /etc/ovn/ovnsb_db.db
+          kubectl cp $KUBE_OVN_NS/$OVN_SB_POD:/tmp/ovnsb_db.$suffix.backup $(pwd)/ovnsb_db.$suffix.backup
+          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- rm -f /tmp/ovnsb_db.$suffix.backup
+          echo "backup ovn-$component db to $(pwd)/ovnsb_db.$suffix.backup"
           ;;
         *)
           echo "unknown action $action"
@@ -1199,13 +1265,16 @@ dbtool(){
       echo "unknown subcommand $component"
   esac
 }
+
 if [ $# -lt 1 ]; then
   showHelp
   exit 0
 else
   subcommand="$1"; shift
 fi
+
 getOvnCentralPod
+
 case $subcommand in
   nbctl)
     kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl "$@"
