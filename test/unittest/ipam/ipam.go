@@ -109,6 +109,23 @@ var _ = Describe("[IPAM]", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("10.16.0.1"))
 			})
+
+			It("donot reuse released address after update subnet's excludedIps", func() {
+				im := ipam.NewIPAM()
+				err := im.AddOrUpdateSubnet(subnetName, "10.16.0.0/30", nil)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				ip, _, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(ip).To(Equal("10.16.0.1"))
+
+				im.ReleaseAddressByPod("pod1.ns")
+				err = im.AddOrUpdateSubnet(subnetName, "10.16.0.0/30", []string{"10.16.0.1..10.16.0.2"})
+				Expect(err).ShouldNot(HaveOccurred())
+
+				_, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
+				Expect(err).Should(MatchError(ipam.ErrNoAvailable))
+			})
 		})
 
 		Context("[IPv6]", func() {
@@ -188,6 +205,23 @@ var _ = Describe("[IPAM]", func() {
 				_, ip, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("fd00::1"))
+			})
+
+			It("donot reuse released address after update subnet's excludedIps", func() {
+				im := ipam.NewIPAM()
+				err := im.AddOrUpdateSubnet(subnetName, "fd00::/126", nil)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				_, ip, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(ip).To(Equal("fd00::1"))
+
+				im.ReleaseAddressByPod("pod1.ns")
+				err = im.AddOrUpdateSubnet(subnetName, "fd00::/126", []string{"fd00::1..fd00::2"})
+				Expect(err).ShouldNot(HaveOccurred())
+
+				_, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
+				Expect(err).Should(MatchError(ipam.ErrNoAvailable))
 			})
 		})
 
@@ -280,6 +314,24 @@ var _ = Describe("[IPAM]", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ipv4).To(Equal("10.16.0.1"))
 				Expect(ipv6).To(Equal("fd00::1"))
+			})
+
+			It("donot reuse released address after update subnet's excludedIps", func() {
+				im := ipam.NewIPAM()
+				err := im.AddOrUpdateSubnet(subnetName, "10.16.0.2/30,fd00::/126", nil)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				ipv4, ipv6, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(ipv4).To(Equal("10.16.0.1"))
+				Expect(ipv6).To(Equal("fd00::1"))
+
+				im.ReleaseAddressByPod("pod1.ns")
+				err = im.AddOrUpdateSubnet(subnetName, "10.16.0.2/30,fd00::/126", []string{"10.16.0.1..10.16.0.2", "fd00::1..fd00::2"})
+				Expect(err).ShouldNot(HaveOccurred())
+
+				_, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
+				Expect(err).Should(MatchError(ipam.ErrNoAvailable))
 			})
 		})
 	})
