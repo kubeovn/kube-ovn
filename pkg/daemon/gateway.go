@@ -420,6 +420,15 @@ func (c *Controller) setIptables() error {
 	klog.V(3).Infof("centralized subnets nat ips %v", subnetNatips)
 
 	var (
+		v4AbandonedRules = []util.IPTableRule{
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x40000/0x40000 -j MASQUERADE`)},
+			{Table: "mangle", Chain: "PREROUTING", Rule: strings.Fields(`-i ovn0 -m set --match-set ovn40subnets src -m set --match-set ovn40services dst -j MARK --set-xmark 0x40000/0x40000`)},
+		}
+		v6AbandonedRules = []util.IPTableRule{
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x40000/0x40000 -j MASQUERADE`)},
+			{Table: "mangle", Chain: "PREROUTING", Rule: strings.Fields(`-i ovn0 -m set --match-set ovn60subnets src -m set --match-set ovn60services dst -j MARK --set-xmark 0x40000/0x40000`)},
+		}
+
 		v4Rules = []util.IPTableRule{
 			// do not nat route traffic
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set ! --match-set ovn40subnets src -m set ! --match-set ovn40other-node src -m set --match-set ovn40local-pod-ip-nat dst -j RETURN`)},
@@ -427,12 +436,6 @@ func (c *Controller) setIptables() error {
 			// nat outgoing
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set --match-set ovn40subnets-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE`)},
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set --match-set ovn40local-pod-ip-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE`)},
-			// external traffic to overlay pod or to service
-			// {Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set --match-set ovn40subnets dst -j MASQUERADE`, nodeIPv4))},
-			// masq traffic from overlay pod to service
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x40000/0x40000 -j MASQUERADE`)},
-			// mark traffic from overlay pod to service
-			{Table: "mangle", Chain: "PREROUTING", Rule: strings.Fields(`-i ovn0 -m set --match-set ovn40subnets src -m set --match-set ovn40services dst -j MARK --set-xmark 0x40000/0x40000`)},
 			// Input Accept
 			{Table: "filter", Chain: "INPUT", Rule: strings.Fields(`-m set --match-set ovn40subnets src -j ACCEPT`)},
 			{Table: "filter", Chain: "INPUT", Rule: strings.Fields(`-m set --match-set ovn40subnets dst -j ACCEPT`)},
@@ -453,12 +456,6 @@ func (c *Controller) setIptables() error {
 			// nat outgoing
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set --match-set ovn60subnets-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE`)},
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set --match-set ovn60local-pod-ip-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE`)},
-			// external traffic to overlay pod or to service
-			// {Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set --match-set ovn60subnets dst -j MASQUERADE`, nodeIPv6))},
-			// masq traffic from overlay pod to service
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x40000/0x40000 -j MASQUERADE`)},
-			// mark traffic from overlay pod to service
-			{Table: "mangle", Chain: "PREROUTING", Rule: strings.Fields(`-i ovn0 -m set --match-set ovn60subnets src -m set --match-set ovn60services dst -j MARK --set-xmark 0x40000/0x40000`)},
 			// Input Accept
 			{Table: "filter", Chain: "INPUT", Rule: strings.Fields(`-m set --match-set ovn60subnets src -j ACCEPT`)},
 			{Table: "filter", Chain: "INPUT", Rule: strings.Fields(`-m set --match-set ovn60subnets dst -j ACCEPT`)},
@@ -494,19 +491,22 @@ func (c *Controller) setIptables() error {
 		var matchset string
 		var abandonedRules, iptablesRules []util.IPTableRule
 		if protocol == kubeovnv1.ProtocolIPv4 {
-			iptablesRules = v4Rules
+			iptablesRules, abandonedRules = v4Rules, v4AbandonedRules
 			matchset = "ovn40subnets"
 		} else {
-			iptablesRules = v6Rules
+			iptablesRules, abandonedRules = v6Rules, v6AbandonedRules
 			matchset = "ovn60subnets"
 		}
 
 		if nodeIP := nodeIPs[protocol]; nodeIP != "" {
-			abandonedRules = append(abandonedRules, util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`-o ovn0 ! -s %s -m mark --mark 0x4000/0x4000 -j MASQUERADE`, nodeIP))})
+			abandonedRules = append(abandonedRules,
+				util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`-o ovn0 ! -s %s -m mark --mark 0x4000/0x4000 -j MASQUERADE`, nodeIP))},
+				util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset))},
+			)
 
 			rules := make([]util.IPTableRule, len(iptablesRules)+1)
 			copy(rules[:4], iptablesRules[:4])
-			rules[4] = util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset))}
+			rules[4] = util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set ! --match-set %s src -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset, matchset))}
 			copy(rules[5:], iptablesRules[4:])
 			iptablesRules = rules
 		}
