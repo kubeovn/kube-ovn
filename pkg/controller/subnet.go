@@ -1225,9 +1225,9 @@ func checkAndFormatsExcludeIps(subnet *kubeovnv1.Subnet) bool{
 	klog.V(3).Infof("excludeips before format is %v, after format is %v", subnet.Spec.ExcludeIps, excludeIps)
 	if !reflect.DeepEqual(subnet.Spec.ExcludeIps,excludeIps) {
 		subnet.Spec.ExcludeIps = excludeIps
-		return  true
+		return true
 	}
-	subnet.Spec.ExcludeIps = excludeIps
+	return false
 }
 
 func filterRepeatIPRange(mapIps map[string]ipam.IPRange) map[string]ipam.IPRange {
