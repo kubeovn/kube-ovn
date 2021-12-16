@@ -1196,7 +1196,7 @@ func isOvnSubnet(subnet *kubeovnv1.Subnet) bool {
 	return false
 }
 
-func checkAndFormatsExcludeIps(subnet *kubeovnv1.Subnet) bool{
+func checkAndFormatsExcludeIps(subnet *kubeovnv1.Subnet) bool {
 	var excludeIps []string
 	mapIps := make(map[string]ipam.IPRange, len(subnet.Spec.ExcludeIps))
 
