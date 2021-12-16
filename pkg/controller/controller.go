@@ -272,6 +272,7 @@ func NewController(config *Configuration) *Controller {
 	})
 
 	serviceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddService,
 		DeleteFunc: controller.enqueueDeleteService,
 		UpdateFunc: controller.enqueueUpdateService,
 	})
