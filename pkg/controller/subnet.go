@@ -358,7 +358,7 @@ func checkAndUpdateExcludeIps(subnet *kubeovnv1.Subnet) bool {
 		subnet.Spec.ExcludeIps = excludeIps
 		changed = true
 	} else {
-		checkAndFormatsExcludeIps(subnet)
+		changed = checkAndFormatsExcludeIps(subnet)
 		for _, gw := range excludeIps {
 			gwExists := false
 			for _, excludeIP := range subnet.Spec.ExcludeIps {
@@ -1196,7 +1196,7 @@ func isOvnSubnet(subnet *kubeovnv1.Subnet) bool {
 	return false
 }
 
-func checkAndFormatsExcludeIps(subnet *kubeovnv1.Subnet) {
+func checkAndFormatsExcludeIps(subnet *kubeovnv1.Subnet) bool{
 	var excludeIps []string
 	mapIps := make(map[string]ipam.IPRange, len(subnet.Spec.ExcludeIps))
 
@@ -1223,6 +1223,10 @@ func checkAndFormatsExcludeIps(subnet *kubeovnv1.Subnet) {
 		}
 	}
 	klog.V(3).Infof("excludeips before format is %v, after format is %v", subnet.Spec.ExcludeIps, excludeIps)
+	if !reflect.DeepEqual(subnet.Spec.ExcludeIps,excludeIps) {
+		subnet.Spec.ExcludeIps = excludeIps
+		return  true
+	}
 	subnet.Spec.ExcludeIps = excludeIps
 }
 
