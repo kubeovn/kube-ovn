@@ -55,6 +55,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		fmt.Sprintf("external_ids:pod_name=%s", podName),
 		fmt.Sprintf("external_ids:pod_namespace=%s", podNamespace),
 		fmt.Sprintf("external_ids:ip=%s", ipStr),
+		fmt.Sprintf("external_ids:containerid=%s", containerID),
 		fmt.Sprintf("external_ids:pod_netns=%s", netns))
 	if err != nil {
 		return fmt.Errorf("add nic to ovs failed %v: %q", err, output)
@@ -101,7 +102,7 @@ func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, device
 		return fmt.Errorf("failed to delete ovs port %v, %q", err, output)
 	}
 
-	if err = ovs.ClearPodBandwidth(podName, podNamespace, ""); err != nil {
+	if err = ovs.ClearPodBandwidth(podName, podNamespace, "", containerID); err != nil {
 		return err
 	}
 	if err = ovs.ClearHtbQosQueue(podName, podNamespace, ""); err != nil {
@@ -884,6 +885,7 @@ func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, 
 		fmt.Sprintf("external_ids:pod_name=%s", podName),
 		fmt.Sprintf("external_ids:pod_namespace=%s", podNamespace),
 		fmt.Sprintf("external_ids:ip=%s", ipStr),
+		fmt.Sprintf("external_ids:containerid=%s", containerID),
 		fmt.Sprintf("external_ids:pod_netns=%s", netns))
 	if err != nil {
 		return containerNicName, fmt.Errorf("add nic to ovs failed %v: %q", err, output)

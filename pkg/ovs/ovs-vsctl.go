@@ -106,28 +106,63 @@ func ovsGet(table, record, column, key string) (string, error) {
 	return Exec(args...)
 }
 
+func ovsRemove(table, record, column, key string) error {
+	args := []string{"remove"}
+	if key == "" {
+		args = append(args, table, record, column)
+	} else {
+		args = append(args, table, record, column, key)
+	}
+	_, err := Exec(args...)
+	return err
+}
+
 // Bridges returns bridges created by Kube-OVN
 func Bridges() ([]string, error) {
 	return ovsFind("bridge", "name", fmt.Sprintf("external-ids:vendor=%s", util.CniTypeName))
 }
 
-// ClearPodBandwidth remove qos related to this pod.
-func ClearPodBandwidth(podName, podNamespace, ifaceID string) error {
-	var qosList, qosListByPod []string
+func GetQosList(podName, podNamespace, ifaceID, containerId string) ([]string, error) {
+	var qosList []string
 	var err error
-	if ifaceID != "" {
+
+	if containerId != "" {
+		qosList, err = ovsFind("qos", "_uuid", fmt.Sprintf(`external-ids:containerid="%s"`, containerId))
+		if err != nil {
+			return qosList, err
+		}
+	} else if ifaceID != "" {
 		qosList, err = ovsFind("qos", "_uuid", fmt.Sprintf(`external-ids:iface-id="%s"`, ifaceID))
 		if err != nil {
-			return err
+			return qosList, err
 		}
 	} else {
-		qosListByPod, err = ovsFind("qos", "_uuid", fmt.Sprintf(`external-ids:pod="%s/%s"`, podNamespace, podName))
+		qosList, err = ovsFind("qos", "_uuid", fmt.Sprintf(`external-ids:pod="%s/%s"`, podNamespace, podName))
 		if err != nil {
-			return err
+			return qosList, err
 		}
 	}
-	qosList = append(qosList, qosListByPod...)
-	qosList = util.UniqString(qosList)
+
+	return qosList, nil
+}
+
+// ClearPodBandwidth remove qos related to this pod.
+func ClearPodBandwidth(podName, podNamespace, ifaceID, containerId string) error {
+	qosList, err := GetQosList(podName, podNamespace, ifaceID, containerId)
+	if err != nil {
+		return err
+	}
+
+	usedQosList, err := ovsFind("port", "qos", "qos!=[]")
+	if err != nil {
+		return err
+	}
+	for _, usedQosId := range usedQosList {
+		if util.ContainsString(qosList, usedQosId) {
+			qosList = util.RemoveString(qosList, usedQosId)
+		}
+	}
+
 	for _, qos := range qosList {
 		if err := ovsDestroy("qos", qos); err != nil {
 			return err
@@ -156,6 +191,11 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, podPri
 		return err
 	}
 
+	qosIfaceContainerIdMap, err := ListContainerIds("interface")
+	if err != nil {
+		return err
+	}
+
 	for _, ifName := range interfaceList {
 		// ingress_policing_rate is in Kbps
 		err := ovsSet("interface", ifName, fmt.Sprintf("ingress_policing_rate=%d", ingressKPS), fmt.Sprintf("ingress_policing_burst=%d", ingressKPS*8/10))
@@ -172,7 +212,7 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, podPri
 				return err
 			}
 
-			if err = SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUid, qosIfaceUidMap); err != nil {
+			if err = SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUid, qosIfaceUidMap, qosIfaceContainerIdMap); err != nil {
 				return err
 			}
 		} else {
@@ -196,7 +236,7 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, podPri
 			}
 		}
 
-		if err = SetHtbQosPriority(podName, podNamespace, iface, ifName, podPriority, qosIfaceUidMap, queueIfaceUidMap); err != nil {
+		if err = SetHtbQosPriority(podName, podNamespace, iface, ifName, podPriority, qosIfaceUidMap, queueIfaceUidMap, qosIfaceContainerIdMap); err != nil {
 			return err
 		}
 	}
@@ -413,14 +453,14 @@ func SetHtbQosQueueRecord(podName, podNamespace, iface, priority string, maxRate
 	return queueIfaceUidMap[iface], nil
 }
 
-func SetHtbQosPriority(podName, podNamespace, iface, ifName, priority string, qosIfaceUidMap, queueIfaceUidMap map[string]string) error {
+func SetHtbQosPriority(podName, podNamespace, iface, ifName, priority string, qosIfaceUidMap, queueIfaceUidMap, qosIfaceContainerIdMap map[string]string) error {
 	if priority != "" {
 		queueUid, err := SetHtbQosQueueRecord(podName, podNamespace, iface, priority, 0, queueIfaceUidMap)
 		if err != nil {
 			return err
 		}
 
-		if err = SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUid, qosIfaceUidMap); err != nil {
+		if err = SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUid, qosIfaceUidMap, qosIfaceContainerIdMap); err != nil {
 			return err
 		}
 	} else {
@@ -452,7 +492,7 @@ func SetHtbQosPriority(podName, podNamespace, iface, ifName, priority string, qo
 }
 
 // SetQosQueueBinding set qos related to queue record.
-func SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUid string, qosIfaceUidMap map[string]string) error {
+func SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUid string, qosIfaceUidMap, qosIfaceContainerIdMap map[string]string) error {
 	var qosCommandValues []string
 	qosCommandValues = append(qosCommandValues, fmt.Sprintf("queues:0=%s", queueUid))
 
@@ -461,6 +501,10 @@ func SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUid string, q
 		if podNamespace != "" && podName != "" {
 			qosCommandValues = append(qosCommandValues, fmt.Sprintf("external-ids:pod=%s/%s", podNamespace, podName))
 		}
+		if containerId, ok := qosIfaceContainerIdMap[iface]; ok {
+			qosCommandValues = append(qosCommandValues, fmt.Sprintf(`external-ids:containerid="%s"`, containerId))
+		}
+
 		qos, err := ovsCreate("qos", qosCommandValues...)
 		if err != nil {
 			return err
@@ -513,14 +557,14 @@ func ClearPortQosBinding(ifaceID string) error {
 }
 
 // SetPodQosPriority set qos to this pod port.
-func SetPodQosPriority(podName, podNamespace, ifaceID, priority string, qosIfaceUidMap, queueIfaceUidMap map[string]string) error {
+func SetPodQosPriority(podName, podNamespace, ifaceID, priority string, qosIfaceUidMap, queueIfaceUidMap, qosIfaceContainerIdMap map[string]string) error {
 	interfaceList, err := ovsFind("interface", "name", fmt.Sprintf("external-ids:iface-id=%s", ifaceID))
 	if err != nil {
 		return err
 	}
 
 	for _, ifName := range interfaceList {
-		if err = SetHtbQosPriority(podName, podNamespace, ifaceID, ifName, priority, qosIfaceUidMap, queueIfaceUidMap); err != nil {
+		if err = SetHtbQosPriority(podName, podNamespace, ifaceID, ifName, priority, qosIfaceUidMap, queueIfaceUidMap, qosIfaceContainerIdMap); err != nil {
 			return err
 		}
 	}
@@ -528,7 +572,7 @@ func SetPodQosPriority(podName, podNamespace, ifaceID, priority string, qosIface
 }
 
 // The latency value expressed in us.
-func SetNetemQos(podName, podNamespace, iface, latency, limit, loss string) error {
+func SetNetemQos(podName, podNamespace, iface, containerId, latency, limit, loss string) error {
 	latencyMs, _ := strconv.Atoi(latency)
 	latencyUs := latencyMs * 1000
 	limitPkts, _ := strconv.Atoi(limit)
@@ -540,7 +584,7 @@ func SetNetemQos(podName, podNamespace, iface, latency, limit, loss string) erro
 	}
 
 	for _, ifName := range interfaceList {
-		qosList, err := ovsFind("qos", "_uuid", fmt.Sprintf("external-ids:iface-id=%s", iface))
+		qosList, err := GetQosList(podName, podNamespace, iface, containerId)
 		if err != nil {
 			return err
 		}
@@ -560,6 +604,9 @@ func SetNetemQos(podName, podNamespace, iface, latency, limit, loss string) erro
 				qosCommandValues = append(qosCommandValues, "type=linux-netem", fmt.Sprintf(`external-ids:iface-id="%s"`, iface))
 				if podNamespace != "" && podName != "" {
 					qosCommandValues = append(qosCommandValues, fmt.Sprintf("external-ids:pod=%s/%s", podNamespace, podName))
+				}
+				if containerId != "" {
+					qosCommandValues = append(qosCommandValues, fmt.Sprintf(`external-ids:containerid="%s"`, containerId))
 				}
 
 				qos, err := ovsCreate("qos", qosCommandValues...)
@@ -584,6 +631,22 @@ func SetNetemQos(podName, podNamespace, iface, latency, limit, loss string) erro
 					if err := ovsSet("qos", qos, qosCommandValues...); err != nil {
 						return err
 					}
+
+					if latencyMs == 0 {
+						if err := ovsRemove("qos", qos, "other_config", "latency"); err != nil {
+							return err
+						}
+					}
+					if limitPkts == 0 {
+						if err := ovsRemove("qos", qos, "other_config", "limit"); err != nil {
+							return err
+						}
+					}
+					if lossPercent == 0 {
+						if err := ovsRemove("qos", qos, "other_config", "loss"); err != nil {
+							return err
+						}
+					}
 				}
 			}
 		} else {
@@ -599,7 +662,7 @@ func SetNetemQos(podName, podNamespace, iface, latency, limit, loss string) erro
 				}
 
 				// reuse this function to delete qos record
-				if err = ClearPodBandwidth(podName, podNamespace, iface); err != nil {
+				if err = ClearPodBandwidth(podName, podNamespace, iface, containerId); err != nil {
 					klog.Errorf("failed to delete netemqos record for pod %s/%s: %v", podNamespace, podName, err)
 					return err
 				}
@@ -635,6 +698,45 @@ func ListExternalIds(table string) (map[string]string, error) {
 			iface := strings.TrimPrefix(strings.TrimSpace(externalId), "iface-id=")
 			result[iface] = uuid
 			break
+		}
+	}
+	return result, nil
+}
+
+func ListContainerIds(table string) (map[string]string, error) {
+	var getIfaceId, getContainerId bool
+	var iface, containerId string
+
+	args := []string{"--data=bare", "--format=csv", "--no-heading", "--columns=external_ids", "find", table, "external_ids:iface-id!=[]"}
+	output, err := Exec(args...)
+	if err != nil {
+		klog.Errorf("failed to list %s, %v", table, err)
+		return nil, err
+	}
+	lines := strings.Split(output, "\n")
+	result := make(map[string]string, len(lines))
+	for _, l := range lines {
+		if len(strings.TrimSpace(l)) == 0 {
+			continue
+		}
+
+		getIfaceId = false
+		getContainerId = false
+		externalIds := strings.Fields(strings.TrimSpace(l))
+		for _, externalId := range externalIds {
+			if strings.Contains(externalId, "iface-id=") {
+				getIfaceId = true
+				iface = strings.TrimPrefix(strings.TrimSpace(externalId), "iface-id=")
+			}
+			if strings.Contains(externalId, "containerid=") {
+				getContainerId = true
+				containerId = strings.TrimPrefix(strings.TrimSpace(externalId), "containerid=")
+			}
+
+			if getIfaceId && getContainerId {
+				result[iface] = containerId
+				break
+			}
 		}
 	}
 	return result, nil
