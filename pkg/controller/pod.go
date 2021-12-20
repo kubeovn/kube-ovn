@@ -967,13 +967,10 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 		var providerName string
 		if util.IsOvnNetwork(netCfg) {
 			isDefault := util.IsDefaultNet(pod.Annotations[util.DefaultNetworkAnnotation], attach)
-			if isDefault {
-				providerName = util.OvnProvider
-			} else {
-				providerName = fmt.Sprintf("%s.%s.ovn", attach.Name, attach.Namespace)
-			}
+			providerName = fmt.Sprintf("%s.%s.ovn", attach.Name, attach.Namespace)
+
 			subnetName := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)]
-			if !isDefault && subnetName == "" {
+			if subnetName == "" {
 				for _, subnet := range subnets {
 					if subnet.Spec.Provider == providerName {
 						subnetName = subnet.Name
