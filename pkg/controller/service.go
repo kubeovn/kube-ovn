@@ -34,14 +34,16 @@ func (c *Controller) enqueueAddService(obj interface{}) {
 	svc := obj.(*v1.Service)
 	klog.V(3).Infof("enqueue update service %s", key)
 
-	var netpols []string
-	if netpols, err = c.svcMatchNetworkPolicies(svc); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+	if c.config.EnableNP {
+		var netpols []string
+		if netpols, err = c.svcMatchNetworkPolicies(svc); err != nil {
+			utilruntime.HandleError(err)
+			return
+		}
 
-	for _, np := range netpols {
-		c.updateNpQueue.Add(np)
+		for _, np := range netpols {
+			c.updateNpQueue.Add(np)
+		}
 	}
 }
 
@@ -54,17 +56,18 @@ func (c *Controller) enqueueDeleteService(obj interface{}) {
 	klog.Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
 	if svc.Spec.ClusterIP != v1.ClusterIPNone && svc.Spec.ClusterIP != "" {
 
-		var netpols []string
-		var err error
-		if netpols, err = c.svcMatchNetworkPolicies(svc); err != nil {
-			utilruntime.HandleError(err)
-			return
-		}
+		if c.config.EnableNP {
+			var netpols []string
+			var err error
+			if netpols, err = c.svcMatchNetworkPolicies(svc); err != nil {
+				utilruntime.HandleError(err)
+				return
+			}
 
-		for _, np := range netpols {
-			c.updateNpQueue.Add(np)
+			for _, np := range netpols {
+				c.updateNpQueue.Add(np)
+			}
 		}
-
 		for _, port := range svc.Spec.Ports {
 			vpcSvc := &vpcService{
 				Vip:      fmt.Sprintf("%s:%d", svc.Spec.ClusterIP, port.Port),
