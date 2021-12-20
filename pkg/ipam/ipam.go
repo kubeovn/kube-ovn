@@ -157,6 +157,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr string, excludeIps []string) e
 			lastIP, _ := util.LastIP(v4cidrStr)
 			subnet.V4FreeIPList = IPRangeList{&IPRange{Start: IP(firstIP), End: IP(lastIP)}}
 			subnet.joinFreeWithReserve()
+			subnet.V4ReleasedIPList = IPRangeList{}
 			for nicName, ip := range subnet.V4NicToIP {
 				mac := subnet.NicToMac[nicName]
 				podName := subnet.V4IPToPod[ip]
@@ -173,6 +174,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr string, excludeIps []string) e
 			lastIP, _ := util.LastIP(v6cidrStr)
 			subnet.V6FreeIPList = IPRangeList{&IPRange{Start: IP(firstIP), End: IP(lastIP)}}
 			subnet.joinFreeWithReserve()
+			subnet.V6ReleasedIPList = IPRangeList{}
 			for nicName, ip := range subnet.V6NicToIP {
 				mac := subnet.NicToMac[nicName]
 				podName := subnet.V6IPToPod[ip]
