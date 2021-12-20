@@ -680,15 +680,15 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 			return err
 		}
 
+		var securityGroups string
 		if portSecurity {
-			securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
-			portName := ovs.PodNameToPortName(name, namespace, podNet.ProviderName)
-			if err = c.reconcilePortSg(portName, securityGroupAnnotation); err != nil {
-				klog.Errorf("reconcilePortSg failed. %v", err)
-				return err
-			}
+			securityGroups = pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
+			securityGroups = strings.ReplaceAll(securityGroups, " ", "")
 		}
-
+		if err = c.reconcilePortSg(ovs.PodNameToPortName(name, namespace, podNet.ProviderName), securityGroups); err != nil {
+			klog.Errorf("reconcilePortSg failed. %v", err)
+			return err
+		}
 	}
 	return nil
 }
