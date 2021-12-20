@@ -163,12 +163,15 @@ func (c Client) SetPortExternalIds(port, key, value string) error {
 
 func (c Client) SetPortSecurity(portSecurity bool, port, mac, ipStr, vips string) error {
 	var addresses []string
+	ovnCommand := []string{"lsp-set-port-security", port}
 	if portSecurity {
 		addresses = append(addresses, mac)
 		addresses = append(addresses, strings.Split(ipStr, ",")...)
 		addresses = append(addresses, strings.Split(vips, ",")...)
+		ovnCommand = append(ovnCommand, strings.Join(addresses, " "))
 	}
-	if _, err := c.ovnNbCommand("lsp-set-port-security", port, strings.Join(addresses, " ")); err != nil {
+
+	if _, err := c.ovnNbCommand(ovnCommand...); err != nil {
 		klog.Errorf("set port %s security failed: %v", port, err)
 		return err
 	}
