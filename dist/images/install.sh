@@ -923,6 +923,9 @@ rules:
   - apiGroups:
       - "kubeovn.io"
     resources:
+      - vpcs
+      - vpcs/status
+      - vpc-nat-gateways
       - subnets
       - subnets/status
       - ips
@@ -1415,7 +1418,6 @@ rules:
       - vlans
       - provider-networks
       - provider-networks/status
-      - networks
       - security-groups
       - security-groups/status
       - htbqoses

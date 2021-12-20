@@ -32,7 +32,7 @@ func (c *Controller) enqueueAddService(obj interface{}) {
 		return
 	}
 	svc := obj.(*v1.Service)
-	klog.V(3).Infof("enqueue update service %s", key)
+	klog.V(3).Infof("enqueue add service %s", key)
 
 	if c.config.EnableNP {
 		var netpols []string
