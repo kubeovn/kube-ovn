@@ -863,7 +863,7 @@ func (c *Controller) RemoveRedundantChassis(node *v1.Node) error {
 		return err
 	}
 	if chassisAdd == "" {
-		chassises, err := c.ovnClient.GetALlChassisHostname()
+		chassises, err := c.ovnClient.GetAllChassisHostname()
 		if err != nil {
 			klog.Errorf("failed to get all chassis, %v", err)
 		}

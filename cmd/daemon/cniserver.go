@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof" // #nosec
+	"os"
 	"strings"
 	"time"
 
@@ -81,11 +81,11 @@ func CmdMain() {
 }
 
 func mvCNIConf() error {
-	data, err := ioutil.ReadFile("/kube-ovn/01-kube-ovn.conflist")
+	data, err := os.ReadFile("/kube-ovn/01-kube-ovn.conflist")
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile("/etc/cni/net.d/01-kube-ovn.conflist", data, 0444)
+	return os.WriteFile("/etc/cni/net.d/01-kube-ovn.conflist", data, 0444)
 }
 
 func Retry(attempts int, sleep int, f func(configuration *daemon.Configuration) error, ctrl *daemon.Configuration) (err error) {
@@ -103,7 +103,7 @@ func Retry(attempts int, sleep int, f func(configuration *daemon.Configuration) 
 }
 
 func initChassisAnno(cfg *daemon.Configuration) error {
-	chassisID, err := ioutil.ReadFile(util.ChassisLoc)
+	chassisID, err := os.ReadFile(util.ChassisLoc)
 	if err != nil {
 		klog.Errorf("read chassis file failed, %v", err)
 		return err

@@ -683,7 +683,6 @@ rules:
       - vlans
       - provider-networks
       - provider-networks/status
-      - networks
       - security-groups
       - security-groups/status
     verbs:

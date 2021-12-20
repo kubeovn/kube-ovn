@@ -18,7 +18,7 @@ You can use the command downside to install Cert-Manager
 And the help document refers to [cert-manager](https://cert-manager.io/docs/installation/).
 
 ## Webhook installation
-The wehook has not been added to the `install.sh` script. So it should be installed manullay with the command `kubectl apply -f yamls/webhook.yaml`.
+The webhook has not been added to the `install.sh` script. So it should be installed manually with the command `kubectl apply -f yamls/webhook.yaml`.
 
 After installation, you can find a pod in kube-system the same namespace as other pods.
 
