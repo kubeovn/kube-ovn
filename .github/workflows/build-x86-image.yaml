@@ -936,6 +936,64 @@ jobs:
           sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
           sh dist/images/cleanup.sh
 
+  cilium-e2e:
+    needs: build
+    name: 1-master-cilium-e2e
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v2
+
+      - name: Install Kind
+        run: |
+          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
+          chmod +x ./kind
+          sudo mv kind /usr/local/bin
+
+      - name: Init Kind
+        run: |
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH make kind-init-iptables
+
+      - name: Download image
+        uses: actions/download-artifact@v2
+        with:
+          name: kube-ovn
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v1
+        with:
+          version: v3.4.0
+
+      - name: Install Kube-OVN
+        run: |
+          docker load --input kube-ovn.tar
+          sudo PATH=~/.local/bin:$PATH make kind-install-cilium
+          docker exec kube-ovn-control-plane bash -c "ls -al /etc/cni/net.d/"
+
+      - name: Set up Go 1.x
+        uses: actions/setup-go@v2
+        with:
+          go-version: ^1.17
+        id: go
+
+      - name: Run E2E
+        run: |
+          go install github.com/onsi/ginkgo/ginkgo@latest
+          sudo kubectl cluster-info
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          docker exec kube-ovn-control-plane bash -c "ls -al /etc/cni/net.d/"
+          kubectl  rollout status -n kube-system ds cilium
+          kubectl get pods -A
+          make e2e-ovn-ebpf
+
+      - name: Cleanup
+        run: |
+          sudo sh dist/images/cleanup.sh
+
   push:
     needs:
       - single-e2e
@@ -954,6 +1012,7 @@ jobs:
       - no-lb-iptables-e2e
       - no-np-e2e
       - ovnic-e2e
+      - cilium-e2e
     name: push
     runs-on: ubuntu-18.04
     steps:

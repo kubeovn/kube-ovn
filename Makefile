@@ -248,6 +248,34 @@ kind-install-ic:
 	kubectl apply -f /ovn-ic-1.yaml
 	docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG) bash start-ic-db.sh
 
+.PHONY: kind-install-cilium
+kind-install-cilium:
+	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
+	ENABLE_SSL=true ENABLE_LB=false ENABLE_NP=false dist/images/install.sh
+	kubectl describe no
+	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
+	kubectl apply -f yamls/chaining.yaml
+	kind get nodes --name kube-ovn | while read node; do \
+    	docker exec $$node mv /etc/cni/net.d/01-kube-ovn.conflist /etc/cni/net.d/10-kube-ovn.conflist; \
+	done
+	$(eval CONTROLLERIP = $(shell kubectl get nodes kube-ovn-control-plane -ojsonpath='{.status.addresses[0].address}'))
+	helm repo add cilium https://helm.cilium.io/
+	helm install cilium cilium/cilium --version 1.10.5 \
+		--namespace=kube-system \
+		--set cni.chainingMode=generic-veth \
+		--set cni.customConf=true \
+		--set cni.configMap=cni-configuration \
+		--set tunnel=disabled \
+		--set enableIPv4Masquerade=false \
+		--set enableIdentityMark=false \
+		--set kubeProxyReplacement=strict \
+		--set k8sServiceHost=$(CONTROLLERIP) \
+		--set k8sServicePort=6443
+	kubectl -n kube-system delete ds kube-proxy
+	kubectl -n kube-system delete cm kube-proxy
+	kind get nodes --name kube-ovn | while read node; do \
+    	docker exec $$node bash -c "iptables-save | grep -v KUBE | iptables-restore"; \
+	done
 
 .PHONY: kind-reload
 kind-reload:
@@ -338,6 +366,10 @@ e2e-underlay-single-nic:
 .PHONY: e2e-ovn-ic
 e2e-ovn-ic:
 	ginkgo -mod=mod -progress -reportPassed --slowSpecThreshold=60 test/e2e-ovnic
+
+.PHONY: e2e-ovn-ebpf
+e2e-ovn-ebpf:
+	ginkgo -mod=mod -progress -reportPassed --slowSpecThreshold=60 test/e2e-ebpf
 
 .PHONY: clean
 clean:
