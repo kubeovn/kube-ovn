@@ -1007,16 +1007,14 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 		if util.IsOvnNetwork(netCfg) {
 			allowLiveMigration := false
 			isDefault := util.IsDefaultNet(pod.Annotations[util.DefaultNetworkAnnotation], attach)
-			if isDefault {
-				providerName = util.OvnProvider
-			} else {
-				providerName = fmt.Sprintf("%s.%s.ovn", attach.Name, attach.Namespace)
-				if pod.Annotations[fmt.Sprintf(util.LiveMigrationAnnotationTemplate, providerName)] == "true" {
-					allowLiveMigration = true
-				}
+
+			providerName = fmt.Sprintf("%s.%s.ovn", attach.Name, attach.Namespace)
+			if pod.Annotations[fmt.Sprintf(util.LiveMigrationAnnotationTemplate, providerName)] == "true" {
+				allowLiveMigration = true
 			}
+
 			subnetName := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)]
-			if !isDefault && subnetName == "" {
+			if subnetName == "" {
 				for _, subnet := range subnets {
 					if subnet.Spec.Provider == providerName {
 						subnetName = subnet.Name
