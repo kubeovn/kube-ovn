@@ -429,7 +429,7 @@ func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason string, e
 
 func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	var err error
-	subnet, err := c.subnetsLister.Get(key)
+	cachedSubnet, err := c.subnetsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -437,6 +437,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
+	subnet := cachedSubnet.DeepCopy()
 	deleted, err := c.handleSubnetFinalizer(subnet)
 	if err != nil {
 		klog.Errorf("handle subnet finalizer failed %v", err)
@@ -446,16 +447,15 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return nil
 	}
 
-	orisubnet, err := c.subnetsLister.Get(key)
-	if err != nil {
+	if cachedSubnet, err = c.subnetsLister.Get(key); err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	subnet = orisubnet.DeepCopy()
 
-	if err := formatSubnet(subnet, c); err != nil {
+	subnet = cachedSubnet.DeepCopy()
+	if err = formatSubnet(subnet, c); err != nil {
 		return err
 	}
 
@@ -1190,10 +1190,7 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 }
 
 func isOvnSubnet(subnet *kubeovnv1.Subnet) bool {
-	if subnet.Spec.Provider == util.OvnProvider || subnet.Spec.Provider == "" || strings.HasSuffix(subnet.Spec.Provider, "ovn") {
-		return true
-	}
-	return false
+	return subnet.Spec.Provider == "" || subnet.Spec.Provider == util.OvnProvider || strings.HasSuffix(subnet.Spec.Provider, "ovn")
 }
 
 func checkAndFormatsExcludeIps(subnet *kubeovnv1.Subnet) bool {
