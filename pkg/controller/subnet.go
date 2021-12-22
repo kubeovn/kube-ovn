@@ -598,14 +598,11 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	if subnet.Spec.Private {
-		for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
-			protocol := util.CheckProtocol(cidrBlock)
-			if err := c.ovnClient.SetPrivateLogicalSwitch(subnet.Name, protocol, cidrBlock, subnet.Spec.AllowSubnets); err != nil {
-				c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchFailed", err.Error())
-				return err
-			}
-			c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchSuccess", "")
+		if err := c.ovnClient.SetPrivateLogicalSwitch(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.AllowSubnets); err != nil {
+			c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchFailed", err.Error())
+			return err
 		}
+		c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchSuccess", "")
 	} else {
 		if err := c.ovnClient.ResetLogicalSwitchAcl(subnet.Name); err != nil {
 			c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclFailed", err.Error())
