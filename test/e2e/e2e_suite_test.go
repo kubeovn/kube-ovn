@@ -175,6 +175,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 		}
 		if cniPod == nil {
 			Fail("failed to get CNI pod on node " + nodes.Items[i].Name)
+			return nil
 		}
 
 		// change MTU
