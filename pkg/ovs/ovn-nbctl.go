@@ -938,36 +938,52 @@ func (c Client) ResetLogicalSwitchAcl(ls string) error {
 }
 
 // SetPrivateLogicalSwitch will drop all ingress traffic except allow subnets
-func (c Client) SetPrivateLogicalSwitch(ls, protocol, cidr string, allow []string) error {
-	delArgs := []string{"acl-del", ls}
-	allowArgs := []string{}
-	var dropArgs []string
-	if protocol == kubeovnv1.ProtocolIPv4 {
-		dropArgs = []string{"--", "--log", fmt.Sprintf("--name=%s", ls), fmt.Sprintf("--severity=%s", "warning"), "acl-add", ls, "to-lport", util.DefaultDropPriority, "ip", "drop"}
-		allowArgs = append(allowArgs, "--", MayExist, "acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip4.src==%s", c.NodeSwitchCIDR), "allow-related")
-		allowArgs = append(allowArgs, "--", MayExist, "acl-add", ls, "to-lport", util.SubnetAllowPriority, fmt.Sprintf(`ip4.src==%s && ip4.dst==%s`, cidr, cidr), "allow-related")
-	} else {
-		dropArgs = []string{"--", "--log", fmt.Sprintf("--name=%s", ls), fmt.Sprintf("--severity=%s", "warning"), "acl-add", ls, "to-lport", util.DefaultDropPriority, "ip", "drop"}
-		allowArgs = append(allowArgs, "--", MayExist, "acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip6.src==%s", c.NodeSwitchCIDR), "allow-related")
-		allowArgs = append(allowArgs, "--", MayExist, "acl-add", ls, "to-lport", util.SubnetAllowPriority, fmt.Sprintf(`ip6.src==%s && ip6.dst==%s`, cidr, cidr), "allow-related")
-	}
-	ovnArgs := append(delArgs, dropArgs...)
+func (c Client) SetPrivateLogicalSwitch(ls, cidr string, allow []string) error {
+	ovnArgs := []string{"acl-del", ls}
+	dropArgs := []string{"--", "--log", fmt.Sprintf("--name=%s", ls), fmt.Sprintf("--severity=%s", "warning"), "acl-add", ls, "to-lport", util.DefaultDropPriority, "ip", "drop"}
+	ovnArgs = append(ovnArgs, dropArgs...)
 
-	for _, subnet := range allow {
-		if strings.TrimSpace(subnet) != "" {
-			var match string
-			switch protocol {
-			case kubeovnv1.ProtocolIPv4:
-				match = fmt.Sprintf("(ip4.src==%s && ip4.dst==%s) || (ip4.src==%s && ip4.dst==%s)", strings.TrimSpace(subnet), cidr, cidr, strings.TrimSpace(subnet))
-			case kubeovnv1.ProtocolIPv6:
-				match = fmt.Sprintf("(ip6.src==%s && ip6.dst==%s) || (ip6.src==%s && ip6.dst==%s)", strings.TrimSpace(subnet), cidr, cidr, strings.TrimSpace(subnet))
+	for _, cidrBlock := range strings.Split(cidr, ",") {
+		allowArgs := []string{}
+		protocol := util.CheckProtocol(cidrBlock)
+		if protocol == kubeovnv1.ProtocolIPv4 {
+			allowArgs = append(allowArgs, "--", MayExist, "acl-add", ls, "to-lport", util.SubnetAllowPriority, fmt.Sprintf(`ip4.src==%s && ip4.dst==%s`, cidrBlock, cidrBlock), "allow-related")
+		} else {
+			allowArgs = append(allowArgs, "--", MayExist, "acl-add", ls, "to-lport", util.SubnetAllowPriority, fmt.Sprintf(`ip6.src==%s && ip6.dst==%s`, cidrBlock, cidrBlock), "allow-related")
+		}
+
+		for _, nodeCidrBlock := range strings.Split(c.NodeSwitchCIDR, ",") {
+			if protocol != util.CheckProtocol(nodeCidrBlock) {
+				continue
 			}
 
-			allowArgs = append(allowArgs, "--", MayExist, "acl-add", ls, "to-lport", util.SubnetAllowPriority, match, "allow-related")
+			if protocol == kubeovnv1.ProtocolIPv4 {
+				allowArgs = append(allowArgs, "--", MayExist, "acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip4.src==%s", nodeCidrBlock), "allow-related")
+			} else {
+				allowArgs = append(allowArgs, "--", MayExist, "acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip6.src==%s", nodeCidrBlock), "allow-related")
+			}
 		}
-	}
-	ovnArgs = append(ovnArgs, allowArgs...)
 
+		for _, subnet := range allow {
+			if strings.TrimSpace(subnet) != "" {
+				allowProtocol := util.CheckProtocol(strings.TrimSpace(subnet))
+				if allowProtocol != protocol {
+					continue
+				}
+
+				var match string
+				switch protocol {
+				case kubeovnv1.ProtocolIPv4:
+					match = fmt.Sprintf("(ip4.src==%s && ip4.dst==%s) || (ip4.src==%s && ip4.dst==%s)", strings.TrimSpace(subnet), cidrBlock, cidrBlock, strings.TrimSpace(subnet))
+				case kubeovnv1.ProtocolIPv6:
+					match = fmt.Sprintf("(ip6.src==%s && ip6.dst==%s) || (ip6.src==%s && ip6.dst==%s)", strings.TrimSpace(subnet), cidrBlock, cidrBlock, strings.TrimSpace(subnet))
+				}
+
+				allowArgs = append(allowArgs, "--", MayExist, "acl-add", ls, "to-lport", util.SubnetAllowPriority, match, "allow-related")
+			}
+		}
+		ovnArgs = append(ovnArgs, allowArgs...)
+	}
 	_, err := c.ovnNbCommand(ovnArgs...)
 	return err
 }

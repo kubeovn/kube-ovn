@@ -265,18 +265,10 @@ func SplitIpsByProtocol(excludeIps []string) ([]string, []string) {
 	var v4ExcludeIps, v6ExcludeIps []string
 	for _, ex := range excludeIps {
 		ips := strings.Split(ex, "..")
-		if len(ips) == 1 {
-			if net.ParseIP(ips[0]).To4() != nil {
-				v4ExcludeIps = append(v4ExcludeIps, ips[0])
-			} else {
-				v6ExcludeIps = append(v6ExcludeIps, ips[0])
-			}
+		if net.ParseIP(ips[0]).To4() != nil {
+			v4ExcludeIps = append(v4ExcludeIps, ex)
 		} else {
-			if net.ParseIP(ips[0]).To4() != nil {
-				v4ExcludeIps = append(v4ExcludeIps, ex)
-			} else {
-				v6ExcludeIps = append(v6ExcludeIps, ex)
-			}
+			v6ExcludeIps = append(v6ExcludeIps, ex)
 		}
 	}
 
