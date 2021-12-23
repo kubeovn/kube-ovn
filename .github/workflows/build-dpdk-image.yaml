@@ -1,16 +1,5 @@
 name: Build dpdk Image
-on:
-  pull_request:
-    branches:
-      - master
-    paths-ignore:
-      - 'docs/**'
-  push:
-    branches:
-      - master
-      - release-*
-    paths-ignore:
-      - 'docs/**'
+on: workflow_dispatch
 
 jobs:
   build:
