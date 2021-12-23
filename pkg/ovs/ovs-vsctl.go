@@ -93,8 +93,26 @@ func ClearPodBandwidth(podName, podNamespace string) error {
 	if err != nil {
 		return err
 	}
-	for _, qos := range qosList {
-		if err := ovsDestroy("qos", qos); err != nil {
+
+	// https://github.com/kubeovn/kube-ovn/issues/1191
+	usedQosList, err := ovsFind("port", "qos", "qos!=[]")
+	if err != nil {
+		return err
+	}
+
+	for _, qosId := range qosList {
+		found := false
+		for _, usedQosId := range usedQosList {
+			if qosId == usedQosId {
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+
+		if err := ovsDestroy("qos", qosId); err != nil {
 			return err
 		}
 	}
