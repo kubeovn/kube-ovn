@@ -687,12 +687,11 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 					if len(svcs) == 0 {
 						continue
 					}
-					klog.Infof("svc is %v", svcs)
+
 					svcIPs, err := svcMatchPods(svcs, pod, protocol)
 					if err != nil {
 						return nil, nil, err
 					}
-					klog.Infof("svcIPs is %v", svcIPs)
 					selectedAddresses = append(selectedAddresses, svcIPs...)
 				}
 			}
