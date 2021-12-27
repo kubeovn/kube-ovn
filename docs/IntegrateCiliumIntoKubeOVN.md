@@ -178,6 +178,12 @@ root@cilium-small-x86-01:~# curl 10.110.121.109:9080
 ```bash
 helm upgrade cilium cilium/cilium --version 1.10.5 \
     --namespace kube-system \
+    --set cni.chainingMode=generic-veth \
+    --set cni.customConf=true \
+    --set cni.configMap=cni-configuration \
+    --set tunnel=disabled \
+    --set enableIPv4Masquerade=false \
+    --set enableIdentityMark=false \
     --set kubeProxyReplacement=strict \
     --set k8sServiceHost=REPLACE_WITH_API_SERVER_IP \
     --set k8sServicePort=REPLACE_WITH_API_SERVER_PORT
