@@ -1,19 +1,15 @@
 package pinger
 
 import (
-	"context"
 	"flag"
 	"os"
 	"time"
 
 	"github.com/spf13/pflag"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
-
-	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 type Configuration struct {
@@ -134,18 +130,6 @@ func ParseFlags() (*Configuration, error) {
 	}
 	if err := config.initKubeClient(); err != nil {
 		return nil, err
-	}
-
-	name := os.Getenv("POD_NAME")
-	pod, err := config.KubeClient.CoreV1().Pods("kube-system").Get(context.Background(), name, metav1.GetOptions{})
-	if err != nil {
-		klog.Errorf("failed to get self pod kube-system/%s: %v", name, err)
-		return nil, err
-	}
-
-	config.PodProtocols = make([]string, len(pod.Status.PodIPs))
-	for i, podIP := range pod.Status.PodIPs {
-		config.PodProtocols[i] = util.CheckProtocol(podIP.IP)
 	}
 
 	klog.Infof("pinger config is %+v", config)
