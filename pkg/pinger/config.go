@@ -136,16 +136,32 @@ func ParseFlags() (*Configuration, error) {
 		return nil, err
 	}
 
-	name := os.Getenv("POD_NAME")
-	pod, err := config.KubeClient.CoreV1().Pods("kube-system").Get(context.Background(), name, metav1.GetOptions{})
-	if err != nil {
-		klog.Errorf("failed to get self pod kube-system/%s: %v", name, err)
-		return nil, err
+	podName := os.Getenv("POD_NAME")
+	for i := 0; i < 3; i++ {
+		pod, err := config.KubeClient.CoreV1().Pods("kube-system").Get(context.Background(), podName, metav1.GetOptions{})
+		if err != nil {
+			klog.Errorf("failed to get self pod kube-system/%s: %v", podName, err)
+			return nil, err
+		}
+
+		if len(pod.Status.PodIPs) != 0 {
+			config.PodProtocols = make([]string, len(pod.Status.PodIPs))
+			for i, podIP := range pod.Status.PodIPs {
+				config.PodProtocols[i] = util.CheckProtocol(podIP.IP)
+			}
+			break
+		}
+
+		if pod.Status.ContainerStatuses[0].Ready {
+			klog.Fatalf("failed to get IPs of Pod kube-system/%s", podName)
+		}
+
+		klog.Infof("cannot get Pod IPs now, waiting Pod to be ready")
+		time.Sleep(time.Second)
 	}
 
-	config.PodProtocols = make([]string, len(pod.Status.PodIPs))
-	for i, podIP := range pod.Status.PodIPs {
-		config.PodProtocols[i] = util.CheckProtocol(podIP.IP)
+	if len(config.PodProtocols) == 0 {
+		klog.Fatalf("failed to get IPs of Pod kube-system/%s after 3 attempts", podName)
 	}
 
 	klog.Infof("pinger config is %+v", config)
