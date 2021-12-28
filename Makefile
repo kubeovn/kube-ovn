@@ -147,8 +147,11 @@ kind-install-cluster:
 	ENABLE_SSL=true dist/images/install.sh
 	kubectl describe no
 	kubectl config use-context kind-kube-ovn1
-	sed -e 's/10.16.0/10.18.0/g' -e 's/10.96.0/10.98.0/g' -e 's/100.64.0/100.68.0/g'  dist/images/install.sh > ./install-multi.sh
-	ENABLE_SSL=true bash ./install-multi.sh
+	sed -e 's/10.16.0/10.18.0/g' \
+		-e 's/10.96.0/10.98.0/g' \
+		-e 's/100.64.0/100.68.0/g' \
+		dist/images/install.sh > install-multi.sh
+	ENABLE_SSL=true bash install-multi.sh
 	kubectl describe no
 
 .PHONY: kind-install-underlay
@@ -161,10 +164,9 @@ kind-install-underlay:
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(EXCLUDE_IPS)"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		dist/images/install.sh > install-underlay.sh
-	chmod +x install-underlay.sh
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
-	ENABLE_SSL=true ENABLE_VLAN=true VLAN_NIC=eth0 ./install-underlay.sh
+	ENABLE_SSL=true ENABLE_VLAN=true VLAN_NIC=eth0 bash install-underlay.sh
 	kubectl describe no
 
 .PHONY: kind-install-single
@@ -189,10 +191,9 @@ kind-install-underlay-ipv6:
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(EXCLUDE_IPS)"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		dist/images/install.sh > install-underlay.sh
-	@chmod +x install-underlay.sh
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
-	ENABLE_SSL=true IPV6=true ENABLE_VLAN=true VLAN_NIC=eth0 ./install-underlay.sh
+	ENABLE_SSL=true IPV6=true ENABLE_VLAN=true VLAN_NIC=eth0 bash install-underlay.sh
 
 .PHONY: kind-install-dual
 kind-install-dual:
@@ -214,10 +215,9 @@ kind-install-underlay-dual:
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(IPV4_EXCLUDE_IPS),$(IPV6_EXCLUDE_IPS)"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		dist/images/install.sh > install-underlay.sh
-	@chmod +x install-underlay.sh
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
-	ENABLE_SSL=true DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 ./install-underlay.sh
+	ENABLE_SSL=true DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 bash install-underlay.sh
 
 .PHONY: kind-install-underlay-logical-gateway-dual
 kind-install-underlay-logical-gateway-dual:
@@ -232,21 +232,21 @@ kind-install-underlay-logical-gateway-dual:
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(IPV4_EXCLUDE_IPS),$(IPV6_EXCLUDE_IPS)"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		dist/images/install.sh > install-underlay.sh
-	@chmod +x install-underlay.sh
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
-	ENABLE_SSL=true DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 LOGICAL_GATEWAY=true ./install-underlay.sh
+	ENABLE_SSL=true DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 LOGICAL_GATEWAY=true bash install-underlay.sh
 
 .PHONY: kind-install-ic
 kind-install-ic:
-	$(eval HOSTIP = $(shell ip -4 route get 8.8.8.8 | awk {'print $$7'} | tr -d '\n'))
-	zone=az0 host_node_ip=${HOSTIP} gateway_node_name=kube-ovn-control-plane j2 yamls/ovn-ic.yaml.j2 -o /ovn-ic-0.yaml
-	zone=az1 host_node_ip=${HOSTIP} gateway_node_name=kube-ovn1-control-plane j2 yamls/ovn-ic.yaml.j2 -o /ovn-ic-1.yaml
+	docker run -d --name ovn-ic-db --network kind $(REGISTRY)/kube-ovn:$(RELEASE_TAG) bash start-ic-db.sh
+	@set -e; \
+	ic_db_host=$$(docker inspect ovn-ic-db -f "{{.NetworkSettings.Networks.kind.IPAddress}}"); \
+	zone=az0 ic_db_host=$$ic_db_host gateway_node_name=kube-ovn-control-plane j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
+	zone=az1 ic_db_host=$$ic_db_host gateway_node_name=kube-ovn1-control-plane j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
 	kubectl config use-context kind-kube-ovn
-	kubectl apply -f /ovn-ic-0.yaml
+	kubectl apply -f ovn-ic-0.yaml
 	kubectl config use-context kind-kube-ovn1
-	kubectl apply -f /ovn-ic-1.yaml
-	docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG) bash start-ic-db.sh
+	kubectl apply -f ovn-ic-1.yaml
 
 .PHONY: kind-install-cilium
 kind-install-cilium:
@@ -376,6 +376,7 @@ clean:
 	$(RM) dist/images/kube-ovn dist/images/kube-ovn-cmd
 	$(RM) yamls/kind.yaml
 	$(RM) ovn.yaml kube-ovn.yaml kube-ovn-crd.yaml
+	$(RM) ovn-ic-0.yaml ovn-ic-1.yaml
 	$(RM) kube-ovn.tar vpc-nat-gateway.tar image-amd64.tar image-arm64.tar
 	$(RM) test/e2e/ovnnb_db.* test/e2e/ovnsb_db.*
 	$(RM) install-underlay.sh

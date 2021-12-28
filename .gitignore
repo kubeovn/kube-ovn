@@ -8,6 +8,8 @@ test/e2e/ovnsb_db.*
 kube-ovn.yaml
 kube-ovn-crd.yaml
 ovn.yaml
+ovn-ic-0.yaml
+ovn-ic-1.yaml
 kind.yaml
 kube-ovn.tar
 vpc-nat-gateway.tar

@@ -211,7 +211,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 	}
 	if len(chassises) == 0 {
 		klog.Error("no available ic gw")
-		return fmt.Errorf("noavailable ic gw")
+		return fmt.Errorf("no available ic gw")
 	}
 	if err := c.waitTsReady(); err != nil {
 		klog.Errorf("failed to wait ts ready, %v", err)
