@@ -279,14 +279,6 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	if err := c.RemoveRedundantChassis(node); err != nil {
-		return err
-	}
-
-	if err := c.retryDelDupChassis(util.ChasRetryTime, util.ChasRetryIntev+2, c.checkChassisDupl, node); err != nil {
-		return err
-	}
-
 	var v4IP, v6IP, mac string
 	portName := fmt.Sprintf("node-%s", key)
 	if node.Annotations[util.AllocatedAnnotation] == "true" && node.Annotations[util.IpAddressAnnotation] != "" && node.Annotations[util.MacAddressAnnotation] != "" {
@@ -364,6 +356,14 @@ func (c *Controller) handleAddNode(key string) error {
 	pgName := strings.Replace(node.Annotations[util.PortNameAnnotation], "-", ".", -1)
 	if err := c.ovnClient.CreateNpPortGroup(pgName, "node", key); err != nil {
 		klog.Errorf("failed to create port group %v for node %s, %v", portName, key, err)
+		return err
+	}
+
+	if err := c.RemoveRedundantChassis(node); err != nil {
+		return err
+	}
+
+	if err := c.retryDelDupChassis(util.ChasRetryTime, util.ChasRetryIntev+2, c.checkChassisDupl, node); err != nil {
 		return err
 	}
 
