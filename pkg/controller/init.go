@@ -323,15 +323,6 @@ func (c *Controller) InitIPAM() error {
 		if _, _, _, err = c.ipam.GetStaticAddress(ipamKey, ip.Spec.IPAddress, ip.Spec.MacAddress, ip.Spec.Subnet); err != nil {
 			klog.Errorf("failed to init IPAM from IP CR %s: %v", ip.Name, err)
 		}
-		for i := range ip.Spec.AttachSubnets {
-			if i == len(ip.Spec.AttachIPs) || i == len(ip.Spec.AttachMacs) {
-				klog.Errorf("attachment IP/MAC of IP CR %s is invalid", ip.Name)
-				break
-			}
-			if _, _, _, err = c.ipam.GetStaticAddress(ipamKey, ip.Spec.AttachIPs[i], ip.Spec.AttachMacs[i], ip.Spec.AttachSubnets[i]); err != nil {
-				klog.Errorf("failed to init IPAM from IP CR %s: %v", ip.Name, err)
-			}
-		}
 	}
 
 	nodes, err := c.nodesLister.List(labels.Everything())
