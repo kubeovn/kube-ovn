@@ -156,6 +156,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr string, excludeIps []string) e
 			lastIP, _ := util.LastIP(v4cidrStr)
 			subnet.V4FreeIPList = IPRangeList{&IPRange{Start: IP(firstIP), End: IP(lastIP)}}
 			subnet.joinFreeWithReserve()
+			subnet.V4ReleasedIPList = IPRangeList{}
 			for podName, ip := range subnet.V4PodToIP {
 				mac := subnet.PodToMac[podName]
 				if _, _, err := subnet.GetStaticAddress(podName, ip, mac, true); err != nil {
@@ -171,6 +172,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr string, excludeIps []string) e
 			lastIP, _ := util.LastIP(v6cidrStr)
 			subnet.V6FreeIPList = IPRangeList{&IPRange{Start: IP(firstIP), End: IP(lastIP)}}
 			subnet.joinFreeWithReserve()
+			subnet.V6ReleasedIPList = IPRangeList{}
 			for podName, ip := range subnet.V6PodToIP {
 				mac := subnet.PodToMac[podName]
 				if _, _, err := subnet.GetStaticAddress(podName, ip, mac, true); err != nil {
