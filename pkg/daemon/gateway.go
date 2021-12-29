@@ -412,12 +412,12 @@ func (c *Controller) setIptables() error {
 		kubeovnv1.ProtocolIPv6: nodeIPv6,
 	}
 
-	subnetNatips, err := c.getEgressNatIpByNode(c.config.NodeName)
+	centralGwNatips, err := c.getEgressNatIpByNode(c.config.NodeName)
 	if err != nil {
 		klog.Errorf("failed to get centralized subnets nat ips on node %s, %v", c.config.NodeName, err)
 		return err
 	}
-	klog.V(3).Infof("centralized subnets nat ips %v", subnetNatips)
+	klog.V(3).Infof("centralized subnets nat ips %v", centralGwNatips)
 
 	var (
 		v4AbandonedRules = []util.IPTableRule{
@@ -483,7 +483,7 @@ func (c *Controller) setIptables() error {
 			continue
 		}
 		// delete unused iptables rule when nat gw with designative ip has been changed in centralized subnet
-		if err = c.deleteUnusedIptablesRule(protocol, "nat", "POSTROUTING", subnetNatips); err != nil {
+		if err = c.deleteUnusedIptablesRule(protocol, "nat", "POSTROUTING", centralGwNatips); err != nil {
 			klog.Errorf("failed to delete iptables rule on node %s, maybe can delete manually, %v", c.config.NodeName, err)
 			return err
 		}
@@ -528,7 +528,7 @@ func (c *Controller) setIptables() error {
 		}
 
 		// add iptables rule for nat gw with designative ip in centralized subnet
-		for cidr, natip := range subnetNatips {
+		for cidr, natip := range centralGwNatips {
 			if util.CheckProtocol(cidr) != protocol {
 				continue
 			}
@@ -993,7 +993,7 @@ func (c *Controller) getEgressNatIpByNode(nodeName string) (map[string]string, e
 	}
 
 	for _, subnet := range subnetList {
-		if subnet.Spec.Vlan != "" || subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType || subnet.Spec.GatewayNode == "" || !util.GatewayContains(subnet.Spec.GatewayNode, nodeName) {
+		if subnet.Spec.Vlan != "" || subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType || !subnet.Spec.NatOutgoing || subnet.Spec.GatewayNode == "" || !util.GatewayContains(subnet.Spec.GatewayNode, nodeName) {
 			continue
 		}
 
