@@ -297,12 +297,15 @@ func (c *Controller) InitIPAM() error {
 		return err
 	}
 	for _, pod := range pods {
-		if isPodAlive(pod) && pod.Annotations[util.AllocatedAnnotation] == "true" {
-			podNets, err := c.getPodKubeovnNets(pod)
-			if err != nil {
-				klog.Errorf("failed to get pod kubeovn nets %s.%s address %s: %v", pod.Name, pod.Namespace, pod.Annotations[util.IpAddressAnnotation], err)
+		podNets, err := c.getPodKubeovnNets(pod)
+		if err != nil {
+			klog.Errorf("failed to get pod kubeovn nets %s.%s address %s: %v", pod.Name, pod.Namespace, pod.Annotations[util.IpAddressAnnotation], err)
+		}
+		for _, podNet := range podNets {
+			if !isOvnSubnet(podNet.Subnet) {
+				continue
 			}
-			for _, podNet := range podNets {
+			if isPodAlive(pod) && pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
 				_, _, _, err := c.ipam.GetStaticAddress(
 					fmt.Sprintf("%s/%s", pod.Namespace, pod.Name),
 					ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName),
@@ -310,7 +313,7 @@ func (c *Controller) InitIPAM() error {
 					pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)],
 					pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)], false)
 				if err != nil {
-					klog.Errorf("failed to init pod %s.%s address %s: %v", pod.Name, pod.Namespace, pod.Annotations[util.IpAddressAnnotation], err)
+					klog.Errorf("failed to init pod %s.%s address %s: %v", pod.Name, pod.Namespace, pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)], err)
 				}
 			}
 			if err = c.initAppendPodExternalIds(pod); err != nil {

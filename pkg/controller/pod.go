@@ -94,24 +94,23 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 		return
 	}
 	// In case update event might lost during leader election
-	if p.Annotations != nil &&
-		p.Annotations[util.AllocatedAnnotation] == "true" &&
-		p.Status.HostIP != "" && p.Status.PodIP != "" {
-		for _, podNet := range podNets {
-			if !isOvnSubnet(podNet.Subnet) {
-				continue
-			}
+	for _, podNet := range podNets {
+		if !isOvnSubnet(podNet.Subnet) {
+			continue
+		}
 
+		if p.Annotations != nil &&
+			p.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" &&
+			p.Status.HostIP != "" && p.Status.PodIP != "" {
 			if p.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)] != "true" {
 				c.updatePodQueue.Add(key)
-				break
+				return
 			}
 		}
-		return
-	}
 
-	if p.Annotations != nil && p.Annotations[util.AllocatedAnnotation] == "true" {
-		return
+		if p.Annotations != nil && p.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
+			return
+		}
 	}
 
 	klog.V(3).Infof("enqueue add pod %s", key)
@@ -227,13 +226,12 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	}
 
 	// pod assigned an ip
-	if newPod.Annotations[util.AllocatedAnnotation] == "true" &&
-		newPod.Spec.NodeName != "" {
-		for _, podNet := range podNets {
-			if !isOvnSubnet(podNet.Subnet) {
-				continue
-			}
+	for _, podNet := range podNets {
+		if !isOvnSubnet(podNet.Subnet) {
+			continue
+		}
 
+		if newPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" && newPod.Spec.NodeName != "" {
 			if newPod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)] != "true" {
 				klog.V(3).Infof("enqueue update pod %s", key)
 				c.updatePodQueue.Add(key)
@@ -487,8 +485,8 @@ func (c *Controller) handleAddPod(key string) error {
 		pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, podNet.ProviderName)] = subnet.Spec.Gateway
 		pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)] = subnet.Name
 		pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] = "true"
-		if pod.Annotations[util.PodNicAnnotation] == "" {
-			pod.Annotations[util.PodNicAnnotation] = c.config.PodNicType
+		if pod.Annotations[fmt.Sprintf(util.PodNicAnnotationTemplate, podNet.ProviderName)] == "" {
+			pod.Annotations[fmt.Sprintf(util.PodNicAnnotationTemplate, podNet.ProviderName)] = c.config.PodNicType
 		}
 
 		if err := util.ValidatePodCidr(podNet.Subnet.Spec.CIDRBlock, ipStr); err != nil {
@@ -710,11 +708,6 @@ func (c *Controller) handleUpdatePod(key string) error {
 	}
 	pod := oripod.DeepCopy()
 
-	// in case update handler overlap the annotation when cache is not in sync
-	if pod.Annotations[util.AllocatedAnnotation] == "" {
-		return fmt.Errorf("no address has been allocated to %s/%s", namespace, name)
-	}
-
 	klog.Infof("update pod %s/%s", namespace, name)
 
 	var podIP string
@@ -729,6 +722,11 @@ func (c *Controller) handleUpdatePod(key string) error {
 		if !isOvnSubnet(podNet.Subnet) {
 			continue
 		}
+		// in case update handler overlap the annotation when cache is not in sync
+		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "" {
+			return fmt.Errorf("no address has been allocated to %s/%s", namespace, name)
+		}
+
 		podIP = pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
 		subnet = podNet.Subnet
 
