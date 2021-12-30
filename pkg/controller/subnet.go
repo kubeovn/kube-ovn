@@ -944,8 +944,11 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 						continue
 					}
 					nodeIPs = append(nodeIPs, strings.Split(nodeTunlIP, ",")...)
+				} else {
+					klog.Errorf("gateway node %v is not ready", gw)
 				}
 			}
+			klog.Infof("subnet %s configure gateway node, nodeIPs %v", subnet.Name, nodeIPs)
 
 			for _, cidr := range strings.Split(subnet.Spec.CIDRBlock, ",") {
 				nextHops, err := c.filterRepeatEcmpRoutes(nodeIPs, cidr)
