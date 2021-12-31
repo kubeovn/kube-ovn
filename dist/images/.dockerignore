@@ -3,5 +3,4 @@ install.sh
 ovn-ic-db-docker.sh
 generate-ssl-docker.sh
 cleanup.sh
-kubectl-ko
 *.yaml
