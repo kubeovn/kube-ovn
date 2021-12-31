@@ -741,8 +741,20 @@ func (c *Controller) fetchPodsOnNode(nodeName string) ([]string, error) {
 			continue
 		}
 
-		if pod.Annotations[util.AllocatedAnnotation] == "true" {
-			ports = append(ports, fmt.Sprintf("%s.%s", pod.Name, pod.Namespace))
+		podNets, err := c.getPodKubeovnNets(pod)
+		if err != nil {
+			klog.Errorf("failed to get pod nets %v", err)
+			return nil, err
+		}
+
+		for _, podNet := range podNets {
+			if !isOvnSubnet(podNet.Subnet) {
+				continue
+			}
+
+			if pod.Annotations != nil && pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
+				ports = append(ports, ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName))
+			}
 		}
 	}
 	return ports, nil

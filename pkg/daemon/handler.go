@@ -118,7 +118,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		if podRequest.DeviceID != "" {
 			nicType = util.OffloadType
 		} else {
-			nicType = pod.Annotations[util.PodNicAnnotation]
+			nicType = pod.Annotations[fmt.Sprintf(util.PodNicAnnotationTemplate, podRequest.Provider)]
 		}
 
 		switch pod.Annotations[fmt.Sprintf(util.DefaultRouteAnnotationTemplate, podRequest.Provider)] {
@@ -342,7 +342,7 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		if podRequest.DeviceID != "" {
 			nicType = util.OffloadType
 		} else {
-			nicType = pod.Annotations[util.PodNicAnnotation]
+			nicType = pod.Annotations[fmt.Sprintf(util.PodNicAnnotationTemplate, podRequest.Provider)]
 		}
 		err = csh.deleteNic(podRequest.PodName, podRequest.PodNamespace, podRequest.ContainerID, podRequest.DeviceID, podRequest.IfName, nicType)
 		if err != nil {

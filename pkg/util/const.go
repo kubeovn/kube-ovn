@@ -59,6 +59,7 @@ const (
 	ProviderNetworkInterfaceTemplate = "%s.provider-network.kubernetes.io/interface"
 	ProviderNetworkMtuTemplate       = "%s.provider-network.kubernetes.io/mtu"
 	MirrorControlAnnotationTemplate  = "%s.kubernetes.io/mirror"
+	PodNicAnnotationTemplate         = "%s.kubernetes.io/pod_nic_type"
 
 	ExcludeIpsAnnotation = "ovn.kubernetes.io/exclude_ips"
 
@@ -123,10 +124,9 @@ const (
 
 	NodeRouterPolicyPriority = 30000
 
-	PodNicAnnotation = "ovn.kubernetes.io/pod_nic_type"
-	VethType         = "veth-pair"
-	OffloadType      = "offload-port"
-	InternalType     = "internal-port"
+	VethType     = "veth-pair"
+	OffloadType  = "offload-port"
+	InternalType = "internal-port"
 
 	ChassisLoc     = "/etc/openvswitch/system-id.conf"
 	HostnameEnv    = "KUBE_NODE_NAME"
