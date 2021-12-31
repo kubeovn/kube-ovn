@@ -167,7 +167,9 @@ func (c Client) SetPortSecurity(portSecurity bool, port, mac, ipStr, vips string
 	if portSecurity {
 		addresses = append(addresses, mac)
 		addresses = append(addresses, strings.Split(ipStr, ",")...)
-		addresses = append(addresses, strings.Split(vips, ",")...)
+		if vips != "" {
+			addresses = append(addresses, strings.Split(vips, ",")...)
+		}
 		ovnCommand = append(ovnCommand, strings.Join(addresses, " "))
 	}
 
@@ -215,7 +217,9 @@ func (c Client) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurit
 	}
 
 	if portSecurity {
-		addresses = append(addresses, strings.Split(vips, ",")...)
+		if vips != "" {
+			addresses = append(addresses, strings.Split(vips, ",")...)
+		}
 		ovnCommand = append(ovnCommand,
 			"--", "lsp-set-port-security", port, strings.Join(addresses, " "))
 
