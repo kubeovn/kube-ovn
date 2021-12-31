@@ -605,60 +605,60 @@ func (c *Controller) checkGatewayReady() error {
 					if util.CheckProtocol(cidrBlock) != util.CheckProtocol(ip) {
 						continue
 					}
-				}
 
-				exist, err := c.checkNodeEcmpRouteExist(ip, cidrBlock)
-				if err != nil {
-					klog.Errorf("get ecmp static route for subnet %v, error %v", subnet.Name, err)
-					break
-				}
-
-				if util.GatewayContains(subnet.Spec.GatewayNode, node.Name) {
-					pinger, err := goping.NewPinger(ip)
+					exist, err := c.checkNodeEcmpRouteExist(ip, cidrBlock)
 					if err != nil {
-						return fmt.Errorf("failed to init pinger, %v", err)
-					}
-					pinger.SetPrivileged(true)
-
-					count := 5
-					pinger.Count = count
-					pinger.Timeout = time.Duration(count) * time.Second
-					pinger.Interval = 1 * time.Second
-
-					success := false
-					pinger.OnRecv = func(p *goping.Packet) {
-						success = true
-						pinger.Stop()
-					}
-					pinger.Run()
-
-					if !nodeReady(node) {
-						success = false
+						klog.Errorf("get ecmp static route for subnet %v, error %v", subnet.Name, err)
+						break
 					}
 
-					if !success {
-						klog.Warningf("failed to ping ovn0 %s or node %v is not ready", ip, node.Name)
+					if util.GatewayContains(subnet.Spec.GatewayNode, node.Name) {
+						pinger, err := goping.NewPinger(ip)
+						if err != nil {
+							return fmt.Errorf("failed to init pinger, %v", err)
+						}
+						pinger.SetPrivileged(true)
+
+						count := 5
+						pinger.Count = count
+						pinger.Timeout = time.Duration(count) * time.Second
+						pinger.Interval = 1 * time.Second
+
+						success := false
+						pinger.OnRecv = func(p *goping.Packet) {
+							success = true
+							pinger.Stop()
+						}
+						pinger.Run()
+
+						if !nodeReady(node) {
+							success = false
+						}
+
+						if !success {
+							klog.Warningf("failed to ping ovn0 %s or node %v is not ready", ip, node.Name)
+							if exist {
+								if err := c.ovnClient.DeleteMatchedStaticRoute(cidrBlock, ip, c.config.ClusterRouter); err != nil {
+									klog.Errorf("failed to delete static route %s for node %s, %v", ip, node.Name, err)
+									return err
+								}
+							}
+						} else {
+							klog.V(3).Infof("succeed to ping gw %s", ip)
+							if !exist {
+								if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, subnet.Spec.CIDRBlock, ip, c.config.ClusterRouter, util.EcmpRouteType); err != nil {
+									klog.Errorf("failed to add static route for node %s, %v", node.Name, err)
+									return err
+								}
+							}
+						}
+					} else {
 						if exist {
+							klog.Infof("subnet %v gatewayNode does not contains node %v, should delete ecmp route for node ip %s", subnet.Name, node.Name, ip)
 							if err := c.ovnClient.DeleteMatchedStaticRoute(cidrBlock, ip, c.config.ClusterRouter); err != nil {
 								klog.Errorf("failed to delete static route %s for node %s, %v", ip, node.Name, err)
 								return err
 							}
-						}
-					} else {
-						klog.V(3).Infof("succeed to ping gw %s", ip)
-						if !exist {
-							if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, subnet.Spec.CIDRBlock, ip, c.config.ClusterRouter, util.EcmpRouteType); err != nil {
-								klog.Errorf("failed to add static route for node %s, %v", node.Name, err)
-								return err
-							}
-						}
-					}
-				} else {
-					if exist {
-						klog.Infof("subnet %v gatewayNode does not contains node %v, should delete ecmp route for node ip %s", subnet.Name, node.Name, ip)
-						if err := c.ovnClient.DeleteMatchedStaticRoute(cidrBlock, ip, c.config.ClusterRouter); err != nil {
-							klog.Errorf("failed to delete static route %s for node %s, %v", ip, node.Name, err)
-							return err
 						}
 					}
 				}

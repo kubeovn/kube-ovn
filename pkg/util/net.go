@@ -424,7 +424,7 @@ func GatewayContains(gatewayNodeStr, gateway string) bool {
 		} else {
 			gw = strings.TrimSpace(gw)
 		}
-		if gw == gateway {
+		if gw == strings.TrimSpace(gateway) {
 			return true
 		}
 	}
