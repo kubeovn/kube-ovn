@@ -2,6 +2,7 @@
 FROM kubeovn/kube-ovn-base:v1.9.0
 
 COPY *.sh /kube-ovn/
+COPY kubectl-ko /kube-ovn/kubectl-ko
 COPY 01-kube-ovn.conflist /kube-ovn/01-kube-ovn.conflist
 COPY logrotate/* /etc/logrotate.d/
 COPY grace_stop_ovn_controller /usr/share/ovn/scripts/grace_stop_ovn_controller
