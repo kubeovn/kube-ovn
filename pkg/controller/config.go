@@ -80,14 +80,14 @@ func ParseFlags() (*Configuration, error) {
 		argOvnTimeout     = pflag.Int("ovn-timeout", 60, "")
 		argKubeConfigFile = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 
-		argDefaultLogicalSwitch  = pflag.String("default-ls", "ovn-default", "The default logical switch name")
+		argDefaultLogicalSwitch  = pflag.String("default-ls", util.DefaultSubnet, "The default logical switch name")
 		argDefaultCIDR           = pflag.String("default-cidr", "10.16.0.0/16", "Default CIDR for namespace with no logical switch annotation")
 		argDefaultGateway        = pflag.String("default-gateway", "", "Default gateway for default-cidr (default the first ip in default-cidr)")
 		argDefaultGatewayCheck   = pflag.Bool("default-gateway-check", true, "Check switch for the default subnet's gateway")
 		argDefaultLogicalGateway = pflag.Bool("default-logical-gateway", false, "Create a logical gateway for the default subnet instead of using underlay gateway. Take effect only when the default subnet is in underlay mode. (default false)")
 		argDefaultExcludeIps     = pflag.String("default-exclude-ips", "", "Exclude ips in default switch (default gateway address)")
 
-		argClusterRouter     = pflag.String("cluster-router", "ovn-cluster", "The router name for cluster router")
+		argClusterRouter     = pflag.String("cluster-router", util.DefaultVpc, "The router name for cluster router")
 		argNodeSwitch        = pflag.String("node-switch", "join", "The name of node gateway switch which help node to access pod network")
 		argNodeSwitchCIDR    = pflag.String("node-switch-cidr", "100.64.0.0/16", "The cidr for node switch")
 		argNodeSwitchGateway = pflag.String("node-switch-gateway", "", "The gateway for node switch (default the first ip in node-switch-cidr)")

@@ -79,14 +79,13 @@ base-tar-arm64:
 	docker save $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-arm64 -o image-arm64.tar
 
 .PHONY: kind-init
-kind-init:
-	kind delete cluster --name=kube-ovn
+kind-init: kind-clean
 	kube_proxy_mode=ipvs ip_family=ipv4 ha=false single=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
 	kubectl describe no
 
 .PHONY: kind-init-cluster
-kind-init-cluster:
+kind-init-cluster: kind-clean-cluster
 	kube_proxy_mode=ipvs ip_family=ipv4 ha=false single=true j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
 	kind create cluster --config yamls/kind.yaml --name kube-ovn1
@@ -96,37 +95,32 @@ kind-init-cluster:
 	kubectl get no
 
 .PHONY: kind-init-iptables
-kind-init-iptables:
-	kind delete cluster --name=kube-ovn
+kind-init-iptables: kind-clean
 	kube_proxy_mode=iptables ip_family=ipv4 ha=false single=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
 	kubectl describe no
 
 .PHONY: kind-init-ha
-kind-init-ha:
-	kind delete cluster --name=kube-ovn
+kind-init-ha: kind-clean
 	kube_proxy_mode=ipvs ip_family=ipv4 ha=true single=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
 	kubectl describe no
 
 .PHONY: kind-init-single
-kind-init-single:
-	kind delete cluster --name=kube-ovn
+kind-init-single: kind-clean
 	kube_proxy_mode=ipvs ip_family=ipv4 ha=false single=true j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
 	kubectl describe no
 
 .PHONY: kind-init-ipv6
-kind-init-ipv6:
-	kind delete cluster --name=kube-ovn
-	kube_proxy_mode=iptables ip_family=ipv6 ha=false single=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
+kind-init-ipv6: kind-clean
+	kube_proxy_mode=ipvs ip_family=ipv6 ha=false single=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
 	kubectl describe no
 
 .PHONY: kind-init-dual
-kind-init-dual:
-	kind delete cluster --name=kube-ovn
-	kube_proxy_mode=iptables ip_family=dual ha=false single=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
+kind-init-dual: kind-clean
+	kube_proxy_mode=ipvs ip_family=dual ha=false single=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
 	kubectl describe no
 	docker exec kube-ovn-worker sysctl -w net.ipv6.conf.all.disable_ipv6=0
@@ -287,12 +281,13 @@ kind-reload:
 .PHONY: kind-clean
 kind-clean:
 	kind delete cluster --name=kube-ovn
+	docker ps -a -f name=kube-ovn-e2e --format "{{.ID}}" | while read c; do docker rm -f $$c; done
 
 .PHONY: kind-clean-cluster
 kind-clean-cluster:
 	kind delete cluster --name=kube-ovn
 	kind delete cluster --name=kube-ovn1
-	docker stop ovn-ic-db && docker rm ovn-ic-db
+	docker ps -a -f name=ovn-ic-db --format "{{.ID}}" | while read c; do docker rm -f $$c; done
 
 .PHONY: uninstall
 uninstall:
@@ -309,8 +304,8 @@ lint:
 
 .PHONY: scan
 scan:
-	trivy image --light --exit-code=1 --severity=HIGH --ignore-unfixed kubeovn/kube-ovn:$(RELEASE_TAG)
-	trivy image --light --exit-code=1 --severity=HIGH --ignore-unfixed kubeovn/vpc-nat-gateway:$(RELEASE_TAG)
+	trivy image --light --exit-code=1 --severity=HIGH --ignore-unfixed $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
+	trivy image --light --exit-code=1 --severity=HIGH --ignore-unfixed $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG)
 
 .PHONY: ut
 ut:
@@ -320,6 +315,7 @@ ut:
 e2e:
 	$(eval NODE_COUNT = $(shell kind get nodes --name kube-ovn | wc -l))
 	$(eval NETWORK_BRIDGE = $(shell docker inspect -f '{{json .NetworkSettings.Networks.bridge}}' kube-ovn-control-plane))
+	docker run -d --name kube-ovn-e2e --network kind --cap-add=NET_ADMIN $(REGISTRY)/kube-ovn:$(RELEASE_TAG) sleep infinity
 	@if [ '$(NETWORK_BRIDGE)' = 'null' ]; then \
 		kind get nodes --name kube-ovn | while read node; do \
 		docker network connect bridge $$node; \
@@ -369,6 +365,7 @@ e2e-ovn-ic:
 
 .PHONY: e2e-ovn-ebpf
 e2e-ovn-ebpf:
+	docker run -d --name kube-ovn-e2e --network kind --cap-add=NET_ADMIN $(REGISTRY)/kube-ovn:$(RELEASE_TAG) sleep infinity
 	ginkgo -mod=mod -progress -reportPassed --slowSpecThreshold=60 test/e2e-ebpf
 
 .PHONY: clean

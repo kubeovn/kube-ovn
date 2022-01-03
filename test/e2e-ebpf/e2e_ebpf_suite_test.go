@@ -3,17 +3,27 @@ package e2e_ebpf
 import (
 	"context"
 	"fmt"
-	kubeovn "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/test/e2e/framework"
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"os"
+	"os/exec"
+	"strings"
 	"testing"
 
-	_ "github.com/kubeovn/kube-ovn/test/e2e-ebpf/service"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sruntime "k8s.io/apimachinery/pkg/runtime"
+	kubeadmscheme "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm/scheme"
+	kubeadmapi "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm/v1beta3"
+	kubeadmconstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
+
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
+
+	kubeovn "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
+	"github.com/kubeovn/kube-ovn/test/e2e/framework"
+
 	_ "github.com/kubeovn/kube-ovn/test/e2e/ip"
+	_ "github.com/kubeovn/kube-ovn/test/e2e/service"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/subnet"
 )
 
@@ -42,6 +52,18 @@ var _ = SynchronizedAfterSuite(func() {}, func() {
 		Fail(err.Error())
 	}
 })
+
+func setExternalRoute(af int, dst, gw string) {
+	if dst == "" || gw == "" {
+		return
+	}
+
+	cmd := exec.Command("docker", "exec", "kube-ovn-e2e", "ip", fmt.Sprintf("-%d", af), "route", "replace", dst, "via", gw)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		Fail((fmt.Sprintf(`failed to execute command "%s": %v, output: %s`, cmd.String(), err, strings.TrimSpace(string(output)))))
+	}
+}
 
 var _ = SynchronizedBeforeSuite(func() []byte {
 	subnetName := "static-ip"
@@ -74,6 +96,28 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	if err != nil {
 		Fail(err.Error())
 	}
+
+	nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		Fail(err.Error())
+	}
+	kubeadmConfigMap, err := f.KubeClientSet.CoreV1().ConfigMaps(metav1.NamespaceSystem).Get(context.Background(), kubeadmconstants.KubeadmConfigConfigMap, metav1.GetOptions{})
+	if err != nil {
+		Fail(err.Error())
+	}
+
+	clusterConfig := &kubeadmapi.ClusterConfiguration{}
+	if err = k8sruntime.DecodeInto(kubeadmscheme.Codecs.UniversalDecoder(), []byte(kubeadmConfigMap.Data[kubeadmconstants.ClusterConfigurationConfigMapKey]), clusterConfig); err != nil {
+		Fail(fmt.Sprintf("failed to decode kubeadm cluster configuration from bytes: %v", err))
+	}
+
+	nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(nodes.Items[0])
+	podSubnetV4, podSubnetV6 := util.SplitStringIP(clusterConfig.Networking.PodSubnet)
+	svcSubnetV4, svcSubnetV6 := util.SplitStringIP(clusterConfig.Networking.ServiceSubnet)
+	setExternalRoute(4, podSubnetV4, nodeIPv4)
+	setExternalRoute(4, svcSubnetV4, nodeIPv4)
+	setExternalRoute(6, podSubnetV6, nodeIPv6)
+	setExternalRoute(6, svcSubnetV6, nodeIPv6)
 
 	return nil
 }, func(data []byte) {})
