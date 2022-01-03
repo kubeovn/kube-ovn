@@ -6,11 +6,16 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"runtime"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sruntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
+	kubeadmconstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
+	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/apis/config"
+	kubeproxyscheme "k8s.io/kubernetes/pkg/proxy/apis/config/scheme"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -18,6 +23,10 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
+
+const namespace = "kube-system"
+
+var dockerArgs = []string{"exec", "kube-ovn-e2e", "curl"}
 
 func nodeIPs(node corev1.Node) []string {
 	nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(node)
@@ -39,38 +48,99 @@ func kubectlArgs(pod, ip string, port int32) string {
 	return fmt.Sprintf("-n kube-system exec %s -- curl %s", pod, curlArgs(ip, port))
 }
 
+func setSvcTypeToNodePort(kubeClientSet kubernetes.Interface, name string) (*corev1.Service, error) {
+	svc, err := kubeClientSet.CoreV1().Services(namespace).Get(context.Background(), name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if svc.Spec.Type == corev1.ServiceTypeNodePort {
+		return svc, nil
+	}
+
+	newSvc := svc.DeepCopy()
+	newSvc.Spec.Type = corev1.ServiceTypeNodePort
+	return kubeClientSet.CoreV1().Services(svc.Namespace).Update(context.Background(), newSvc, metav1.UpdateOptions{})
+}
+
+func setSvcEtpToLocal(kubeClientSet kubernetes.Interface, name string) (*corev1.Service, error) {
+	svc, err := kubeClientSet.CoreV1().Services(namespace).Get(context.Background(), name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if svc.Spec.Type == corev1.ServiceTypeNodePort && svc.Spec.ExternalTrafficPolicy == corev1.ServiceExternalTrafficPolicyTypeLocal {
+		return svc, nil
+	}
+
+	newSvc := svc.DeepCopy()
+	newSvc.Spec.Type = corev1.ServiceTypeNodePort
+	newSvc.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
+	return kubeClientSet.CoreV1().Services(svc.Namespace).Update(context.Background(), newSvc, metav1.UpdateOptions{})
+}
+
+func hasEndpoint(node string, endpoints *corev1.Endpoints) bool {
+	for _, subset := range endpoints.Subsets {
+		for _, addr := range subset.Addresses {
+			if addr.NodeName != nil && *addr.NodeName == node {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func checkService(shouldSucceed bool, cmd string, args ...string) {
+	c := exec.Command(cmd, args...)
+	var stdout, stderr bytes.Buffer
+	c.Stdout, c.Stderr = &stdout, &stderr
+	err := c.Run()
+	output := strings.TrimSpace(stdout.String())
+	if shouldSucceed {
+		Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("stdout: %s, stderr: %s", output, strings.TrimSpace(stderr.String())))
+		Expect(output).To(Equal("200"))
+	} else {
+		Expect(err).To(HaveOccurred())
+		Expect(output).To(Equal("000"))
+	}
+}
+
 var _ = Describe("[Service]", func() {
 	f := framework.NewFramework("service", fmt.Sprintf("%s/.kube/config", os.Getenv("HOME")))
-	hostPods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(context.Background(), metav1.ListOptions{LabelSelector: "app=ovs"})
+	hostPods, err := f.KubeClientSet.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: "app=ovs"})
 	Expect(err).NotTo(HaveOccurred())
 
-	containerPods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(context.Background(), metav1.ListOptions{LabelSelector: "app=kube-ovn-pinger"})
+	containerPods, err := f.KubeClientSet.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: "app=kube-ovn-pinger"})
 	Expect(err).NotTo(HaveOccurred())
 
-	hostService, err := f.KubeClientSet.CoreV1().Services("kube-system").Get(context.Background(), "kube-ovn-cni", metav1.GetOptions{})
-	Expect(err).NotTo(HaveOccurred())
-	hostService.Spec.Type = corev1.ServiceTypeNodePort
-	hostService, err = f.KubeClientSet.CoreV1().Services("kube-system").Update(context.Background(), hostService, metav1.UpdateOptions{})
+	hostService, err := setSvcTypeToNodePort(f.KubeClientSet, "kube-ovn-cni")
 	Expect(err).NotTo(HaveOccurred())
 
-	containerService, err := f.KubeClientSet.CoreV1().Services("kube-system").Get(context.Background(), "kube-ovn-pinger", metav1.GetOptions{})
-	Expect(err).NotTo(HaveOccurred())
-	containerService.Spec.Type = corev1.ServiceTypeNodePort
-	containerService, err = f.KubeClientSet.CoreV1().Services("kube-system").Update(context.Background(), containerService, metav1.UpdateOptions{})
+	containerService, err := setSvcTypeToNodePort(f.KubeClientSet, "kube-ovn-pinger")
 	Expect(err).NotTo(HaveOccurred())
 
-	localEtpService, err := f.KubeClientSet.CoreV1().Services("kube-system").Get(context.Background(), "kube-ovn-monitor", metav1.GetOptions{})
-	Expect(err).NotTo(HaveOccurred())
-	localEtpService.Spec.Type = corev1.ServiceTypeNodePort
-	localEtpService.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
-	localEtpService, err = f.KubeClientSet.CoreV1().Services("kube-system").Update(context.Background(), localEtpService, metav1.UpdateOptions{})
+	localEtpHostService, err := setSvcEtpToLocal(f.KubeClientSet, "kube-ovn-monitor")
 	Expect(err).NotTo(HaveOccurred())
 
-	ipvsMode := true
-	cm, err := f.KubeClientSet.CoreV1().ConfigMaps("kube-system").Get(context.Background(), "kube-proxy", metav1.GetOptions{})
+	localEtpHostEndpoints, err := f.KubeClientSet.CoreV1().Endpoints(namespace).Get(context.Background(), localEtpHostService.Name, metav1.GetOptions{})
 	Expect(err).NotTo(HaveOccurred())
-	if cm.Data != nil {
-		ipvsMode = strings.Contains(cm.Data["config.conf"], "mode: ipvs")
+
+	nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+
+	var ciliumChaining, proxyIpvsMode bool
+	_, err = f.KubeClientSet.AppsV1().DaemonSets(namespace).Get(context.Background(), "cilium", metav1.GetOptions{})
+	if err == nil {
+		ciliumChaining = true
+	} else {
+		Expect(errors.IsNotFound(err)).To(BeTrue())
+
+		kubeProxyConfigMap, err := f.KubeClientSet.CoreV1().ConfigMaps(metav1.NamespaceSystem).Get(context.Background(), kubeadmconstants.KubeProxyConfigMap, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		kubeProxyConfig := &kubeproxyconfig.KubeProxyConfiguration{}
+		err = k8sruntime.DecodeInto(kubeproxyscheme.Codecs.UniversalDecoder(), []byte(kubeProxyConfigMap.Data[kubeadmconstants.KubeProxyConfigMapKey]), kubeProxyConfig)
+		Expect(err).NotTo(HaveOccurred())
+
+		proxyIpvsMode = kubeProxyConfig.Mode == kubeproxyconfig.ProxyModeIPVS
 	}
 
 	Context("service with host network endpoints", func() {
@@ -78,10 +148,7 @@ var _ = Describe("[Service]", func() {
 			port := hostService.Spec.Ports[0].Port
 			for _, ip := range hostService.Spec.ClusterIPs {
 				for _, pod := range containerPods.Items {
-					output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...).CombinedOutput()
-					outputStr := string(bytes.TrimSpace(output))
-					Expect(err).NotTo(HaveOccurred(), outputStr)
-					Expect(outputStr).To(Equal("200"))
+					checkService(true, "kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...)
 				}
 			}
 		})
@@ -90,60 +157,49 @@ var _ = Describe("[Service]", func() {
 			port := hostService.Spec.Ports[0].Port
 			for _, ip := range hostService.Spec.ClusterIPs {
 				for _, pod := range hostPods.Items {
-					output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...).CombinedOutput()
-					outputStr := string(bytes.TrimSpace(output))
-					Expect(err).NotTo(HaveOccurred(), outputStr)
-					Expect(outputStr).To(Equal("200"))
+					checkService(true, "kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...)
 				}
 			}
 		})
 
-		It("container to NodePort", func() {
+		It("external to ClusterIP", func() {
 			port := hostService.Spec.Ports[0].Port
+			for _, ip := range hostService.Spec.ClusterIPs {
+				checkService(true, "docker", append(dockerArgs, strings.Fields(curlArgs(ip, port))...)...)
+			}
+		})
+
+		It("container to NodePort", func() {
+			port := hostService.Spec.Ports[0].NodePort
 			for _, pod := range containerPods.Items {
-				nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
-				Expect(err).NotTo(HaveOccurred())
 				for _, node := range nodes.Items {
 					for _, nodeIP := range nodeIPs(node) {
-						output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...).CombinedOutput()
-						outputStr := string(bytes.TrimSpace(output))
-						Expect(err).NotTo(HaveOccurred(), outputStr)
-						Expect(outputStr).To(Equal("200"))
+						checkService(true, "kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...)
 					}
 				}
 			}
 		})
 
 		It("host to NodePort", func() {
-			port := hostService.Spec.Ports[0].Port
+			port := hostService.Spec.Ports[0].NodePort
 			for _, pod := range hostPods.Items {
-				nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
-				Expect(err).NotTo(HaveOccurred())
 				for _, node := range nodes.Items {
 					for _, nodeIP := range nodeIPs(node) {
-						output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...).CombinedOutput()
-						outputStr := string(bytes.TrimSpace(output))
-						Expect(err).NotTo(HaveOccurred(), outputStr)
-						Expect(outputStr).To(Equal("200"))
+						checkService(true, "kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...)
 					}
 				}
 			}
 		})
 
 		It("external to NodePort", func() {
-			if runtime.GOOS != "linux" {
+			if ciliumChaining {
 				return
 			}
 
-			port := hostService.Spec.Ports[0].Port
-			nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
-			Expect(err).NotTo(HaveOccurred())
+			port := hostService.Spec.Ports[0].NodePort
 			for _, node := range nodes.Items {
 				for _, nodeIP := range nodeIPs(node) {
-					output, err := exec.Command("curl", strings.Fields(curlArgs(nodeIP, port))...).CombinedOutput()
-					outputStr := string(bytes.TrimSpace(output))
-					Expect(err).NotTo(HaveOccurred(), outputStr)
-					Expect(outputStr).To(Equal("200"))
+					checkService(true, "docker", append(dockerArgs, strings.Fields(curlArgs(nodeIP, port))...)...)
 				}
 			}
 		})
@@ -151,40 +207,36 @@ var _ = Describe("[Service]", func() {
 
 	Context("service with container network endpoints", func() {
 		It("container to ClusterIP", func() {
-			port := hostService.Spec.Ports[0].Port
-			for _, ip := range hostService.Spec.ClusterIPs {
+			port := containerService.Spec.Ports[0].Port
+			for _, ip := range containerService.Spec.ClusterIPs {
 				for _, pod := range containerPods.Items {
-					output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...).CombinedOutput()
-					outputStr := string(bytes.TrimSpace(output))
-					Expect(err).NotTo(HaveOccurred(), outputStr)
-					Expect(outputStr).To(Equal("200"))
+					checkService(true, "kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...)
 				}
 			}
 		})
 
 		It("host to ClusterIP", func() {
-			port := hostService.Spec.Ports[0].Port
-			for _, ip := range hostService.Spec.ClusterIPs {
+			port := containerService.Spec.Ports[0].Port
+			for _, ip := range containerService.Spec.ClusterIPs {
 				for _, pod := range hostPods.Items {
-					output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...).CombinedOutput()
-					outputStr := string(bytes.TrimSpace(output))
-					Expect(err).NotTo(HaveOccurred(), outputStr)
-					Expect(outputStr).To(Equal("200"))
+					checkService(true, "kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...)
 				}
+			}
+		})
+
+		It("external to ClusterIP", func() {
+			port := containerService.Spec.Ports[0].Port
+			for _, ip := range containerService.Spec.ClusterIPs {
+				checkService(true, "docker", append(dockerArgs, strings.Fields(curlArgs(ip, port))...)...)
 			}
 		})
 
 		It("container to NodePort", func() {
 			port := containerService.Spec.Ports[0].NodePort
 			for _, pod := range containerPods.Items {
-				nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
-				Expect(err).NotTo(HaveOccurred())
 				for _, node := range nodes.Items {
 					for _, nodeIP := range nodeIPs(node) {
-						output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...).CombinedOutput()
-						outputStr := string(bytes.TrimSpace(output))
-						Expect(err).NotTo(HaveOccurred(), outputStr)
-						Expect(outputStr).To(Equal("200"))
+						checkService(true, "kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...)
 					}
 				}
 			}
@@ -193,177 +245,98 @@ var _ = Describe("[Service]", func() {
 		It("host to NodePort", func() {
 			port := containerService.Spec.Ports[0].NodePort
 			for _, pod := range hostPods.Items {
-				nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
-				Expect(err).NotTo(HaveOccurred())
 				for _, node := range nodes.Items {
 					for _, nodeIP := range nodeIPs(node) {
-						output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...).CombinedOutput()
-						outputStr := string(bytes.TrimSpace(output))
-						Expect(err).NotTo(HaveOccurred(), outputStr)
-						Expect(outputStr).To(Equal("200"))
+						checkService(true, "kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...)
 					}
 				}
 			}
 		})
 
 		It("external to NodePort", func() {
-			if runtime.GOOS != "linux" {
+			if ciliumChaining {
 				return
 			}
 
 			port := containerService.Spec.Ports[0].NodePort
-			nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
-			Expect(err).NotTo(HaveOccurred())
 			for _, node := range nodes.Items {
 				for _, nodeIP := range nodeIPs(node) {
-					output, err := exec.Command("curl", strings.Fields(curlArgs(nodeIP, port))...).CombinedOutput()
-					outputStr := string(bytes.TrimSpace(output))
-					Expect(err).NotTo(HaveOccurred(), outputStr)
-					Expect(outputStr).To(Equal("200"))
+					checkService(true, "docker", append(dockerArgs, strings.Fields(curlArgs(nodeIP, port))...)...)
 				}
 			}
 		})
 	})
 
-	Context("service with local external traffic policy", func() {
+	Context("host service with local external traffic policy", func() {
 		It("container to ClusterIP", func() {
-			port := hostService.Spec.Ports[0].Port
-			for _, ip := range hostService.Spec.ClusterIPs {
-				for _, pod := range containerPods.Items {
-					output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...).CombinedOutput()
-					outputStr := string(bytes.TrimSpace(output))
-					Expect(err).NotTo(HaveOccurred(), outputStr)
-					Expect(outputStr).To(Equal("200"))
+			port := localEtpHostService.Spec.Ports[0].Port
+			for _, pod := range containerPods.Items {
+				for _, ip := range localEtpHostService.Spec.ClusterIPs {
+					checkService(true, "kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...)
 				}
 			}
 		})
 
 		It("host to ClusterIP", func() {
-			port := hostService.Spec.Ports[0].Port
-			for _, ip := range hostService.Spec.ClusterIPs {
-				for _, pod := range hostPods.Items {
-					output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...).CombinedOutput()
-					outputStr := string(bytes.TrimSpace(output))
-					Expect(err).NotTo(HaveOccurred(), outputStr)
-					Expect(outputStr).To(Equal("200"))
+			port := localEtpHostService.Spec.Ports[0].Port
+			for _, pod := range hostPods.Items {
+				for _, ip := range localEtpHostService.Spec.ClusterIPs {
+					checkService(true, "kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...)
 				}
 			}
 		})
 
+		It("external to ClusterIP", func() {
+			port := localEtpHostService.Spec.Ports[0].Port
+			for _, ip := range localEtpHostService.Spec.ClusterIPs {
+				checkService(true, "docker", append(dockerArgs, strings.Fields(curlArgs(ip, port))...)...)
+			}
+		})
+
 		It("container to NodePort", func() {
-			port := localEtpService.Spec.Ports[0].NodePort
+			if ciliumChaining {
+				return
+			}
 
-			endpoints, err := f.KubeClientSet.CoreV1().Endpoints("kube-system").Get(context.Background(), localEtpService.Name, metav1.GetOptions{})
-			Expect(err).NotTo(HaveOccurred())
-
-			for _, pod := range containerPods.Items {
-				nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
-				Expect(err).NotTo(HaveOccurred())
-				for _, node := range nodes.Items {
-					var hasEndpoint bool
-					for _, subset := range endpoints.Subsets {
-						for _, addr := range subset.Addresses {
-							if addr.NodeName != nil && *addr.NodeName == node.Name {
-								hasEndpoint = true
-								break
-							}
-						}
-						if hasEndpoint {
-							break
-						}
-					}
-
+			port := localEtpHostService.Spec.Ports[0].NodePort
+			for _, node := range nodes.Items {
+				hasEndpoint := hasEndpoint(node.Name, localEtpHostEndpoints)
+				for _, pod := range containerPods.Items {
+					shoudSucceed := hasEndpoint || (!proxyIpvsMode && pod.Spec.NodeName == node.Name)
 					for _, nodeIP := range nodeIPs(node) {
-						output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...).CombinedOutput()
-						outputStr := string(bytes.TrimSpace(output))
-						if hasEndpoint {
-							Expect(err).NotTo(HaveOccurred(), outputStr)
-							Expect(outputStr).To(Equal("200"))
-						} else {
-							Expect(err).To(HaveOccurred())
-							Expect(outputStr).To(HavePrefix("000"))
-						}
+						checkService(shoudSucceed, "kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...)
 					}
 				}
 			}
 		})
 
 		It("host to NodePort", func() {
-			port := localEtpService.Spec.Ports[0].NodePort
+			if ciliumChaining {
+				return
+			}
 
-			endpoints, err := f.KubeClientSet.CoreV1().Endpoints("kube-system").Get(context.Background(), localEtpService.Name, metav1.GetOptions{})
-			Expect(err).NotTo(HaveOccurred())
-
-			for _, pod := range hostPods.Items {
-				nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
-				Expect(err).NotTo(HaveOccurred())
-				for _, node := range nodes.Items {
-					shouldSucceed := !ipvsMode && pod.Spec.NodeName == node.Name
-					if !shouldSucceed {
-						for _, subset := range endpoints.Subsets {
-							for _, addr := range subset.Addresses {
-								if addr.NodeName != nil && *addr.NodeName == node.Name {
-									shouldSucceed = true
-									break
-								}
-							}
-							if shouldSucceed {
-								break
-							}
-						}
-					}
-
+			port := localEtpHostService.Spec.Ports[0].NodePort
+			for _, node := range nodes.Items {
+				hasEndpoint := hasEndpoint(node.Name, localEtpHostEndpoints)
+				for _, pod := range hostPods.Items {
+					shoudSucceed := hasEndpoint || (!proxyIpvsMode && pod.Spec.NodeName == node.Name)
 					for _, nodeIP := range nodeIPs(node) {
-						output, err := exec.Command("kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...).CombinedOutput()
-						outputStr := string(bytes.TrimSpace(output))
-						if shouldSucceed {
-							Expect(err).NotTo(HaveOccurred(), outputStr)
-							Expect(outputStr).To(Equal("200"))
-						} else {
-							Expect(err).To(HaveOccurred())
-							Expect(outputStr).To(HavePrefix("000"))
-						}
+						checkService(shoudSucceed, "kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...)
 					}
 				}
 			}
 		})
 
 		It("external to NodePort", func() {
-			if runtime.GOOS != "linux" {
+			if ciliumChaining {
 				return
 			}
 
-			port := localEtpService.Spec.Ports[0].NodePort
-
-			endpoints, err := f.KubeClientSet.CoreV1().Endpoints("kube-system").Get(context.Background(), localEtpService.Name, metav1.GetOptions{})
-			Expect(err).NotTo(HaveOccurred())
-
-			nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
-			Expect(err).NotTo(HaveOccurred())
+			port := localEtpHostService.Spec.Ports[0].NodePort
 			for _, node := range nodes.Items {
-				var hasEndpoint bool
-				for _, subset := range endpoints.Subsets {
-					for _, addr := range subset.Addresses {
-						if addr.NodeName != nil && *addr.NodeName == node.Name {
-							hasEndpoint = true
-							break
-						}
-					}
-					if hasEndpoint {
-						break
-					}
-				}
-
+				shouldSucceed := hasEndpoint(node.Name, localEtpHostEndpoints)
 				for _, nodeIP := range nodeIPs(node) {
-					output, err := exec.Command("curl", strings.Fields(curlArgs(nodeIP, port))...).CombinedOutput()
-					outputStr := string(bytes.TrimSpace(output))
-					if hasEndpoint {
-						Expect(err).NotTo(HaveOccurred(), outputStr)
-						Expect(outputStr).To(Equal("200"))
-					} else {
-						Expect(err).To(HaveOccurred())
-						Expect(outputStr).To(Equal("000"))
-					}
+					checkService(shouldSucceed, "docker", append(dockerArgs, strings.Fields(curlArgs(nodeIP, port))...)...)
 				}
 			}
 		})

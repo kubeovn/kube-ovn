@@ -630,9 +630,9 @@ var _ = Describe("[Underlay]", func() {
 					return
 				}
 
-				defaultSubnet, err := f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), "ovn-default", metav1.GetOptions{})
+				defaultSubnet, err := f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), util.DefaultSubnet, metav1.GetOptions{})
 				if err != nil && !k8serrors.IsNotFound(err) {
-					klog.Fatalf("failed to get subnet ovn-default: %v", err)
+					klog.Fatalf("failed to get subnet %s: %v", util.DefaultSubnet, err)
 				}
 				if defaultSubnet.Spec.LogicalGateway {
 					return

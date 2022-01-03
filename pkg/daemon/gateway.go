@@ -500,14 +500,14 @@ func (c *Controller) setIptables() error {
 
 		if nodeIP := nodeIPs[protocol]; nodeIP != "" {
 			abandonedRules = append(abandonedRules,
-				util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`-o ovn0 ! -s %s -m mark --mark 0x4000/0x4000 -j MASQUERADE`, nodeIP))},
 				util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset))},
 			)
 
-			rules := make([]util.IPTableRule, len(iptablesRules)+1)
-			copy(rules[:4], iptablesRules[:4])
-			rules[4] = util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set ! --match-set %s src -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset, matchset))}
-			copy(rules[5:], iptablesRules[4:])
+			rules := make([]util.IPTableRule, len(iptablesRules)+2)
+			copy(rules[1:5], iptablesRules[:4])
+			rules[0] = util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m mark --mark 0x4000/0x4000 -j MASQUERADE`, nodeIP))}
+			rules[5] = util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set ! --match-set %s src -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset, matchset))}
+			copy(rules[6:], iptablesRules[4:])
 			iptablesRules = rules
 		}
 
