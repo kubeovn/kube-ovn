@@ -813,7 +813,7 @@ func (c *Controller) checkPodsChangedOnNode(pgName string, ports []string) (bool
 		return false, err
 	}
 
-	nameIdMap, err := c.ovnClient.ListLspForNodePortgroup()
+	nameIdMap, idNameMap, err := c.ovnClient.ListLspForNodePortgroup()
 	if err != nil {
 		klog.Errorf("failed to list lsp info, %v", err)
 		return false, err
@@ -828,14 +828,14 @@ func (c *Controller) checkPodsChangedOnNode(pgName string, ports []string) (bool
 
 	for _, portId := range portIds {
 		if !util.IsStringIn(portId, pgPorts) {
-			klog.Infof("new added pod %v should add to node port group %v", portId, pgName)
+			klog.Infof("pod on node changed, new added port %v should add to node port group %v", idNameMap[portId], pgName)
 			return true, nil
 		}
 	}
 
 	for _, pgPort := range pgPorts {
 		if !util.IsStringIn(pgPort, portIds) {
-			klog.Infof("can not find match pod for port %v in node port group %v", pgPort, pgName)
+			klog.Infof("pod on node changed, can not find match pod for port %v in node port group %v", pgPort, pgName)
 			return true, nil
 		}
 	}
