@@ -269,7 +269,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 				if len(npr.From) == 0 {
 					if protocol == kubeovnv1.ProtocolIPv4 {
 						allows = []string{"0.0.0.0/0"}
-					} else if protocol == kubeovnv1.ProtocolIPv6 {
+					} else {
 						allows = []string{"::/0"}
 					}
 				} else {
