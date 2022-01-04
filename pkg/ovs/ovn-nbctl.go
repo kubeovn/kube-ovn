@@ -1511,14 +1511,15 @@ func (c Client) ListPgPorts(pgName string) ([]string, error) {
 	return result, nil
 }
 
-func (c Client) ListLspForNodePortgroup() (map[string]string, error) {
+func (c Client) ListLspForNodePortgroup() (map[string]string, map[string]string, error) {
 	output, err := c.ovnNbCommand("--data=bare", "--format=csv", "--no-heading", "--columns=name,_uuid", "list", "logical_switch_port")
 	if err != nil {
 		klog.Errorf("failed to list logical-switch-port, %v", err)
-		return nil, err
+		return nil, nil, err
 	}
 	lines := strings.Split(output, "\n")
-	result := make(map[string]string, len(lines))
+	nameIdMap := make(map[string]string, len(lines))
+	idNameMap := make(map[string]string, len(lines))
 	for _, l := range lines {
 		if len(strings.TrimSpace(l)) == 0 {
 			continue
@@ -1529,9 +1530,10 @@ func (c Client) ListLspForNodePortgroup() (map[string]string, error) {
 		}
 		name := strings.TrimSpace(parts[0])
 		uuid := strings.TrimSpace(parts[1])
-		result[name] = uuid
+		nameIdMap[name] = uuid
+		idNameMap[uuid] = name
 	}
-	return result, nil
+	return nameIdMap, idNameMap, nil
 }
 
 func (c Client) SetPortsToPortGroup(portGroup string, portNames []string) error {
