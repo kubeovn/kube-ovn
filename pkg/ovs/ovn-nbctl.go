@@ -1939,3 +1939,10 @@ func (c *Client) AclExists(priority, direction string) (bool, error) {
 	}
 	return true, nil
 }
+
+func (c *Client) SetLBCIDR(svccidr string) error {
+	if _, err := c.ovnNbCommand("set", "NB_Global", ".", fmt.Sprintf("options:svc_ipv4_cidr=%s", svccidr)); err != nil {
+		return fmt.Errorf("failed to set svc cidr for lb, %v", err)
+	}
+	return nil
+}

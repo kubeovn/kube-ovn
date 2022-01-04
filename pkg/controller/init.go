@@ -28,6 +28,13 @@ func (c *Controller) InitOVN() error {
 			klog.Errorf("init load balancer failed: %v", err)
 			return err
 		}
+		v4Svc, _ := util.SplitStringIP(c.config.ServiceClusterIPRange)
+		if v4Svc != "" {
+			if err := c.ovnClient.SetLBCIDR(v4Svc); err != nil {
+				klog.Errorf("init load balancer svc cidr failed: %v", err)
+				return err
+			}
+		}
 	}
 
 	if err := c.initDefaultVlan(); err != nil {
