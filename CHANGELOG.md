@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## 1.8.2 -- 2021/11/02
+## 1.8.2 -- 2022/01/05
 ### Bugfix
 - modify kube-ovn as multus-cni problem
 - In netpol egress rules, except rule should be set to "!=" and should not be "=="
@@ -17,11 +17,47 @@
 - fix: delete vpc-nat-gw deployment
 - remove node chassis annotation on cleanup
 - fix: ensure all kube-ovn components deleted before annotate pods
-- ix bug: logical switch ts not ready
+- fix bug: logical switch ts not ready
 - fix: check allocated annotation in update handler
+- fix LB in dual stack cluster
+- fix: multus-cni subnet allocation
+- fix: trace in custom vpc
+- fix read-only pointer in vlan and provider-network
+- fix ko trace
+- fix: no need to set address for ls to lr port
+- add sg acl check when init
+- add pod in default vpc to node port-group
+- fix LB: skip service without cluster IP
+- fix pinger's compatibility for k8s v1.16
+- deleting all chassises which are not nodes
+- add vendor param for fix list LR
+- fix: add kube-ovn-cni prob timeout
+- update delete operation for statefulset pod
+- fix: add back the leader check
+- when update subnet's except ip,we should filter repeat ip
+- when netpol is added to a workload, the workload's POD can be accessed using service
+- fix: check np switch
+- filter used qos when delete qos
+- add protocol check when subnet is dual-stack
+- pinger: fix getting empty PodIPs
+- delete frequently log
+- fix: do not reuse released ip after subnet updated
+- use multus-cni as default cni to assign ip
+- use different ip crd with provider suffix for pod multus nic
+- move chassis judge to the end of node processing
+- append check for centralized subnet nat process
+- fix installation script
+- fix pod tolerations
+
+### Security
+- security: update base ubuntu image
 
 ### Test
 - add e2e testing for dual stack underlay
+
+### Performance
+- add db compact for nb and sb db
+- change nbctl args 'wait=sb' to 'no-wait'
 
 ## 1.8.1 -- 2021/10/09
 ### Performance
