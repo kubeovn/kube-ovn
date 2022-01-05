@@ -748,7 +748,7 @@ func (c Client) AddStaticRoute(policy, cidr, nextHop, router string, routeType s
 				continue
 			}
 			if routeType == util.EcmpRouteType {
-				if _, err := c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "--ecmp", "lr-route-add", router, cidrBlock, gw); err != nil {
+				if _, err := c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "--ecmp-symmetric-reply", "lr-route-add", router, cidrBlock, gw); err != nil {
 					return err
 				}
 			} else {
