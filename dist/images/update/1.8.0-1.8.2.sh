@@ -15,18 +15,21 @@ if [[ ! $(kubectl get deploy -n kube-system ovn-central -o jsonpath='{.spec.temp
 else
   kubectl patch deploy/ovn-central -n kube-system --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/readinessProbe/periodSeconds", "value": 15}]'
 fi
+kubectl patch deploy/ovn-central -n kube-system --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/tolerations", "value": [{“effect”: "NoSchedule", "operator": "Exists"}, {“effect”: "NoExecute", "operator": "Exists"}, {“effect”: "CriticalAddonsOnly", "operator": "Exists"}]}]'
 kubectl rollout status deployment/ovn-central -n kube-system
 echo "-------------------------------"
 echo ""
 
 echo "[Step 1/6] Update ovs-ovn"
 kubectl set image ds/ovs-ovn -n kube-system openvswitch="$IMAGE"
+kubectl patch ds/ovs-ovn -n kube-system --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/tolerations", "value": [{“effect”: "NoSchedule", "operator": "Exists"}, {“effect”: "NoExecute", "operator": "Exists"}, {“effect”: "CriticalAddonsOnly", "operator": "Exists"}]}]'
 kubectl delete pod -n kube-system -lapp=ovs
 echo "-------------------------------"
 echo ""
 
 echo "[Step 2/6] Update kube-ovn-controller"
 kubectl set image deployment/kube-ovn-controller -n kube-system kube-ovn-controller="$IMAGE"
+kubectl patch deployment/kube-ovn-controller -n kube-system --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/tolerations", "value": [{“effect”: "NoSchedule", "operator": "Exists"}, {“effect”: "CriticalAddonsOnly", "operator": "Exists"}]}]'
 kubectl rollout status deployment/kube-ovn-controller -n kube-system
 echo "-------------------------------"
 echo ""
@@ -43,6 +46,7 @@ if [[ ! $(kubectl get ds -n kube-system kube-ovn-cni -o jsonpath='{.spec.templat
 else
   kubectl patch ds/kube-ovn-cni -n kube-system --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/readinessProbe/timeoutSeconds", "value": 5}]'
 fi
+kubectl patch ds/kube-ovn-cni -n kube-system --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/tolerations", "value": [{“effect”: "NoSchedule", "operator": "Exists"}, {“effect”: "NoExecute", "operator": "Exists"}, {“effect”: "CriticalAddonsOnly", "operator": "Exists"}]}]'
 kubectl rollout status daemonset/kube-ovn-cni -n kube-system
 echo "-------------------------------"
 echo ""

@@ -758,6 +758,7 @@ if [[ ! $(kubectl get deploy -n kube-system ovn-central -o jsonpath='{.spec.temp
 else
   kubectl patch deploy/ovn-central -n kube-system --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/readinessProbe/periodSeconds", "value": 15}]'
 fi
+kubectl patch deploy/ovn-central -n kube-system --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/tolerations", "value": [{“effect”: "NoSchedule", "operator": "Exists"}, {“effect”: "NoExecute", "operator": "Exists"}, {“effect”: "CriticalAddonsOnly", "operator": "Exists"}]}]'
 kubectl rollout status deployment/ovn-central -n kube-system
 nbleader=$(kubectl -n kube-system get pods -l ovn-nb-leader=true -o jsonpath='{.items[*].metadata.name}')
 echo "leader is " "${nbleader}"
@@ -770,6 +771,7 @@ kubectl set image ds/ovs-ovn -n kube-system openvswitch="$IMAGE"
 if [[ ! $(kubectl get ds -n kube-system ovs-ovn -o jsonpath='{.spec.template}') =~ "cni-conf" ]]; then
   kubectl patch ds/ovs-ovn -n kube-system --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/volumeMounts/-", "value": {"name": "cni-conf", "mountPath": "/etc/cni/net.d"}}, {"op": "add", "path": "/spec/template/spec/volumes/-", "value": {"name": "cni-conf", "hostPath": {"path": "/etc/cni/net.d"}}}]'
 fi
+kubectl patch ds/ovs-ovn -n kube-system --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/tolerations", "value": [{“effect”: "NoSchedule", "operator": "Exists"}, {“effect”: "NoExecute", "operator": "Exists"}, {“effect”: "CriticalAddonsOnly", "operator": "Exists"}]}]'
 kubectl delete pod -n kube-system -lapp=ovs
 echo "-------------------------------"
 echo ""
@@ -779,6 +781,7 @@ kubectl set image deployment/kube-ovn-controller -n kube-system kube-ovn-control
 if [[ ! $(kubectl get deployment -n kube-system kube-ovn-controller -o jsonpath='{.spec.template}') =~ "enable-lb" ]] && [[ ! $(kubectl get deployment -n kube-system kube-ovn-controller -o jsonpath='{.spec.template}') =~ "enable-np" ]] && [[ ! $(kubectl get deployment -n kube-system kube-ovn-controller -o jsonpath='{.spec.template}') =~ "enable-external-vpc" ]]; then
   kubectl patch deployment/kube-ovn-controller -n kube-system --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--enable-lb=true"}, {"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--enable-np=true"}, {"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--enable-external-vpc=true"}]'
 fi
+kubectl patch deployment/kube-ovn-controller -n kube-system --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/tolerations", "value": [{“effect”: "NoSchedule", "operator": "Exists"}, {“effect”: "CriticalAddonsOnly", "operator": "Exists"}]}]'
 kubectl rollout status deployment/kube-ovn-controller -n kube-system
 echo "-------------------------------"
 echo ""
@@ -796,6 +799,7 @@ if [[ ! $(kubectl get ds -n kube-system kube-ovn-cni -o jsonpath='{.spec.templat
 else
   kubectl patch ds/kube-ovn-cni -n kube-system --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/readinessProbe/timeoutSeconds", "value": 5}]'
 fi
+kubectl patch ds/kube-ovn-cni -n kube-system --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/tolerations", "value": [{“effect”: "NoSchedule", "operator": "Exists"}, {“effect”: "NoExecute", "operator": "Exists"}, {“effect”: "CriticalAddonsOnly", "operator": "Exists"}]}]'
 kubectl rollout status daemonset/kube-ovn-cni -n kube-system
 echo "-------------------------------"
 echo ""
