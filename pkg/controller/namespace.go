@@ -71,6 +71,10 @@ func (c *Controller) enqueueUpdateNamespace(old, new interface{}) {
 		klog.Warningf("no logical switch annotation for ns %s", newNs.Name)
 		c.addNamespaceQueue.Add(newNs.Name)
 	}
+
+	if newNs.Annotations != nil && newNs.Annotations[util.LogicalSwitchAnnotation] != "" && !reflect.DeepEqual(oldNs.Annotations, newNs.Annotations) {
+		c.addNamespaceQueue.Add(newNs.Name)
+	}
 }
 
 func (c *Controller) runAddNamespaceWorker() {
@@ -119,8 +123,8 @@ func (c *Controller) handleAddNamespace(key string) error {
 		return err
 	}
 
-	var ls, cidr string
-	var excludeIps []string
+	var ls string
+	var lss []string
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets %v", err)
@@ -130,18 +134,12 @@ func (c *Controller) handleAddNamespace(key string) error {
 	for _, s := range subnets {
 		for _, ns := range s.Spec.Namespaces {
 			if ns == key {
-				ls = s.Name
-				cidr = s.Spec.CIDRBlock
-				excludeIps = s.Spec.ExcludeIps
-				break
+				lss = append(lss, s.Name)
 			}
-		}
-		if ls != "" {
-			break
 		}
 	}
 
-	if ls == "" {
+	if lss == nil {
 		// If NS does not belong to any custom VPC, then this NS belongs to the default VPC
 		vpc, err := c.vpcsLister.Get(c.config.ClusterRouter)
 		if err != nil {
@@ -170,10 +168,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 			klog.Errorf("failed to get default subnet %v", err)
 			return err
 		}
-		ls = subnet.Name
-		cidr = subnet.Spec.CIDRBlock
-		excludeIps = subnet.Spec.ExcludeIps
-
+		lss = append(lss, subnet.Name)
 	}
 
 	op := "replace"
@@ -181,16 +176,11 @@ func (c *Controller) handleAddNamespace(key string) error {
 		op = "add"
 		namespace.Annotations = map[string]string{}
 	} else {
-		if namespace.Annotations[util.LogicalSwitchAnnotation] == ls &&
-			namespace.Annotations[util.CidrAnnotation] == cidr &&
-			namespace.Annotations[util.ExcludeIpsAnnotation] == strings.Join(excludeIps, ",") {
+		if namespace.Annotations[util.LogicalSwitchAnnotation] == strings.Join(lss, ",") {
 			return nil
 		}
 	}
-
-	namespace.Annotations[util.LogicalSwitchAnnotation] = ls
-	namespace.Annotations[util.CidrAnnotation] = cidr
-	namespace.Annotations[util.ExcludeIpsAnnotation] = strings.Join(excludeIps, ",")
+	namespace.Annotations[util.LogicalSwitchAnnotation] = strings.Join(lss, ",")
 
 	if _, err = c.config.KubeClient.CoreV1().Namespaces().Patch(context.Background(), key, types.JSONPatchType, generatePatchPayload(namespace.Annotations, op), metav1.PatchOptions{}, ""); err != nil {
 		klog.Errorf("patch namespace %s failed %v", key, err)
