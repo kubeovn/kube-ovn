@@ -51,6 +51,8 @@ base-arm64:
 release: lint build-go
 	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
 	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 -t $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
+	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 -t $(REGISTRY)/centos7-compile:$(RELEASE_TAG) -o type=docker -f dist/images/compile/centos7/Dockerfile fastpath/
+	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 -t $(REGISTRY)/centos8-compile:$(RELEASE_TAG) -o type=docker -f dist/images/compile/centos8/Dockerfile fastpath/
 
 .PHONY: release-arm
 release-arm: build-go-arm
@@ -69,6 +71,8 @@ push-release: release
 tar:
 	docker save $(REGISTRY)/kube-ovn:$(RELEASE_TAG) -o kube-ovn.tar
 	docker save $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) -o vpc-nat-gateway.tar
+	docker save $(REGISTRY)/centos7-compile:$(RELEASE_TAG) -o centos7-compile.tar
+	docker save $(REGISTRY)/centos8-compile:$(RELEASE_TAG) -o centos8-compile.tar
 
 .PHONY: base-tar-amd64
 base-tar-amd64:

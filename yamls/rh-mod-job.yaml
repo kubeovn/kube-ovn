@@ -1,0 +1,113 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: centos7-ACTION
+spec:
+  ttlSecondsAfterFinished: 300
+  parallelism: NODENUMBER
+  completions: NODENUMBER
+  template:
+    metadata:
+      name: centos7-ACTION
+      labels:
+        app: centos7-ACTION
+        component: job
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - centos7-ACTION
+                  - key: component
+                    operator: In
+                    values:
+                      - job
+      containers:
+        - name: centos7-module
+          image: kubeovn/centos7-compile:v1.9.0
+          imagePullPolicy: IfNotPresent
+          command:
+            - /fastpath/entrypoint.sh
+          volumeMounts:
+            - name: configmap-volume
+              mountPath: /fastpath/entrypoint.sh
+              readOnly: true
+              subPath: entrypoint.sh
+            - mountPath: /lib/modules/
+              name: modules
+            - mountPath: /usr/src
+              name: srcs
+            - mountPath: /tmp
+              name: tmp
+          securityContext:
+            privileged: true
+      volumes:
+        - name: configmap-volume
+          configMap:
+            defaultMode: 0700
+            name: ACTION
+        - name: modules
+          hostPath:
+            path: /lib/modules/
+        - name: srcs
+          hostPath:
+            path: /usr/src
+        - name: tmp
+          hostPath:
+            path: /tmp
+      restartPolicy: Never
+  backoffLimit: 0
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: install-module
+data:
+  entrypoint.sh: |-
+    #!/bin/bash
+    yum install -y kernel-devel-$(uname -r)
+    make all
+    make install
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: install-local-module
+data:
+  entrypoint.sh: |-
+    #!/bin/bash
+    yum localinstall -y /tmp/KERNEL_HEADER
+    make all
+    make install
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: install-module-without-header
+data:
+  entrypoint.sh: |-
+    #!/bin/bash
+    make all
+    make install
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: remove-module
+data:
+  entrypoint.sh: |-
+    #!/bin/bash
+    make uninstall
