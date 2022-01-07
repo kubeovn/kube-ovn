@@ -26,7 +26,7 @@ Kube-OVN provides a one script install to easily install a high-available, produ
 1. Download the stable release installer scripts.
 
 For Kubernetes version>=1.16:
-`wget https://raw.githubusercontent.com/kubeovn/kube-ovn/release-1.8/dist/images/install.sh`
+`wget https://raw.githubusercontent.com/kubeovn/kube-ovn/release-1.9/dist/images/install.sh`
 
 If you want to try the latest developing Kube-OVN, try the script below:
 `wget https://raw.githubusercontent.com/kubeovn/kube-ovn/master/dist/images/install.sh`
@@ -39,7 +39,7 @@ If you want to try the latest developing Kube-OVN, try the script below:
  JOIN_CIDR="100.64.0.0/16"              # Subnet CIDR used for connectivity between nodes and Pods, Do NOT overlap with NODE/POD/SVC CIDR
  LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
  IFACE=""                               # The nic to support container network can be a nic name or a group of regex separated by comma e.g. `IFACE=enp6s0f0,eth.*`, if empty will use the nic that the default route use
- VERSION="v1.8.0"
+ VERSION="v1.9.0"
 ```
 
 This basic setup works for default overlay network. If you are using default underlay/vlan network, please refer [Vlan/Underlay Support](vlan.md).
@@ -63,10 +63,10 @@ For Kubernetes version before 1.17 please use the following command to add the n
     `kubectl label node <Node on which to deploy OVN DB> kube-ovn/role=master`
 2. Install Kube-OVN related CRDs:
 
-    `kubectl apply -f https://raw.githubusercontent.com/kubeovn/kube-ovn/release-1.8/yamls/crd.yaml`
+    `kubectl apply -f https://raw.githubusercontent.com/kubeovn/kube-ovn/release-1.9/yamls/crd.yaml`
 3. Get ovn.yaml and replace `$addresses` in the file with IP address of the node that will host the OVN DB and the OVN Control Plane:
 
-    `curl -O https://raw.githubusercontent.com/kubeovn/kube-ovn/release-1.8/yamls/ovn.yaml`
+    `curl -O https://raw.githubusercontent.com/kubeovn/kube-ovn/release-1.9/yamls/ovn.yaml`
 
     `sed -i 's/\$addresses/<Node IP>/g' ovn.yml`
 4. Install native OVS and OVN components:
@@ -74,11 +74,11 @@ For Kubernetes version before 1.17 please use the following command to add the n
     `kubectl apply -f ovn.yaml`
 5. Install the Kube-OVN Controller and CNI plugins:
 
-    `kubectl apply -f https://raw.githubusercontent.com/kubeovn/kube-ovn/release-1.8/yamls/kube-ovn.yaml`
+    `kubectl apply -f https://raw.githubusercontent.com/kubeovn/kube-ovn/release-1.9/yamls/kube-ovn.yaml`
 
 For high-available ovn db, see [High Availability](high-availability.md).
 
-If you want to enable IPv6 on default subnet and node subnet, please apply https://raw.githubusercontent.com/kubeovn/kube-ovn/release-1.8/yamls/kube-ovn-ipv6.yaml on Step 3.
+If you want to enable IPv6 on default subnet and node subnet, please apply https://raw.githubusercontent.com/kubeovn/kube-ovn/release-1.9/yamls/kube-ovn-ipv6.yaml on Step 3.
 
 ## More Configuration
 
@@ -198,7 +198,7 @@ kubectl create -n kube-system configmap admin-conf --from-file=config=admin.conf
 1. Remove Kubernetes resources:
 
  ```bash
- wget https://raw.githubusercontent.com/kubeovn/kube-ovn/release-1.8/dist/images/cleanup.sh
+ wget https://raw.githubusercontent.com/kubeovn/kube-ovn/release-1.9/dist/images/cleanup.sh
  bash cleanup.sh
  ```
 

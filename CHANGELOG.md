@@ -1,5 +1,128 @@
 # CHANGELOG
 
+## 1.9.0 -- 2022/01/07
+
+### New Feature
+- Policy route support in custom VPC
+- VLAN subnet support in custom VPC
+- Load balancer support in custom VPC
+- Add nodeSelector for vpc-nat-gateway pod
+- Add vpc-nat-gateway support for default VPC
+- VIP for pod support
+- Support to set HTB QoS priority
+- Integrate Cilium with Kube-OVN 
+- Pod can use multiple nic with the same subnet
+- Support using logical gateway in underlay subnet
+- Add args to configure port ln-ovn-external
+- Other CNI can be used as the default network
+- Add networkpolicy support for attachment cni
+- Add back webhook for subnet and ip validation
+- Sync live migration vm port
+- Update OVN to 21.06
+- Add macvlan CNI binary into image
+- Add kubectl-ko plugin into image
+
+### Performance
+- switch's router port's addresses to "router"
+- do not diagnose external access
+- increase ovn-nb timeout
+- add stt section and update benchmark
+- add fastpath module for 4.x kernel
+- reduce qos query with ovs-vsctl cmd
+- use logical router policy for accessing node
+- do not send multicast packets to conntrack
+- add db compact for nb and sb db
+- do not send traffic to ct if not designate to svc
+- jemalloc and ISA optimization
+- change nbctl args 'wait=sb' to 'no-wait'
+
+### Security
+- security: update base ubuntu image
+
+### Monitoring & Troubleshooting
+- kubectl-ko: support trace Pods being created
+- add dnsutils for base image
+
+### Test
+- add e2e testing for dual stack underlay
+- add ovn-ic e2e
+- add cilium e2e
+- support running ovn-ic e2e on macOS
+
+### Refactor
+- remove ovn ipam option
+- mute ovn0 ping log and add ping details
+- refactor: reuse waitNetworkReady to check ovn0 and slightly improve the installation speed
+- cleanup command flags
+- update klog to v2 which embed log rotation
+- update Go modules
+- delete frequently log
+- add healthcheck cmd to probe live and ready
+
+### Bugfix
+- fix nat-outgoing/policy-routing on pod startup
+- fix variable reference
+- fix e2e testing
+- fix gc lsp statistic for multiple subnet
+- re-check ns annotation to avoid annotations lost
+- append externalIds for pod and node when upgrade
+- fix IPAM for StatefulSet
+- wrong link for iptables
+- fix StatefulSet down scale
+- fix getting LSP UUID by name
+- fix installation scripts
+- init node with wrong ipamkey and lead conflict
+- modify kube-ovn as multus-cni problem
+- In netpol egress rules, except rule should be set to "!=" and should not be "=="
+- replace api for get lsp id by name
+- fix trace command in dual stack underlay networking
+- fix pinger and monitor in underlay networking
+- fix pinger in dual stack cluster
+- fix kubectl-ko diagnose
+- fix cleanup.sh and uninstall.sh
+- fix: check and load ip_tables module
+- add inspection
+- change inspection logic from manually adding lsp to just reading pod queue
+- fix: serialize pod add/delete order
+- fix: delete vpc-nat-gw deployment
+- remove node chassis annotation on cleanup
+- fix: ensure all kube-ovn components deleted before annotate pods
+- fix bug: logical switch ts not ready
+- fix: check allocated annotation in update handler
+- fix LB in dual stack cluster
+- fix: multus-cni subnet allocation
+- fix: trace in custom vpc
+- fix read-only pointer in vlan and provider-network
+- fix ko trace
+- fix: no need to set address for ls to lr port
+- add sg acl check when init
+- add pod in default vpc to node port-group
+- fix LB: skip service without cluster IP
+- fix pinger's compatibility for k8s v1.16
+- deleting all chassises which are not nodes
+- add vendor param for fix list LR
+- fix: add kube-ovn-cni prob timeout
+- update delete operation for statefulset pod
+- fix: add back the leader check
+- when update subnet's except ip,we should filter repeat ip
+- when netpol is added to a workload, the workload's POD can be accessed using service
+- fix: check np switch
+- filter used qos when delete qos
+- add protocol check when subnet is dual-stack
+- pinger: fix getting empty PodIPs
+- delete frequently log
+- fix: do not reuse released ip after subnet updated
+- use multus-cni as default cni to assign ip
+- use different ip crd with provider suffix for pod multus nic
+- move chassis judge to the end of node processing
+- append check for centralized subnet nat process
+- fix installation script
+- fix pod tolerations
+- modify pod's process of update for use multus cni as default cni
+- fix iptables rules and service e2e
+- update check for delete statefulset pod
+- ignore hostnetwork pod when initipam
+
 ## 1.8.0 -- 2021/09/07
 ### New Feature
 - Underlay/Vlan network refactoring to adapt more complicate network infrastructure
