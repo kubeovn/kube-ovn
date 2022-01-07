@@ -22,7 +22,7 @@ var (
 )
 
 func (c *Controller) resyncExternalGateway() {
-	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.ExternalGatewayConfig)
+	cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
 	if err != nil && !k8serrors.IsNotFound(err) {
 		klog.Errorf("failed to get ovn-external-gw-config, %v", err)
 		return
