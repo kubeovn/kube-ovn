@@ -732,7 +732,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 
 		if podIP != "" && subnet.Spec.Vlan == "" && subnet.Spec.Vpc == util.DefaultVpc {
 			if pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "" {
-				cm, err := c.configMapsLister.ConfigMaps("kube-system").Get(util.ExternalGatewayConfig)
+				cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
 				if err != nil {
 					klog.Errorf("failed to get ex-gateway config, %v", err)
 					return err

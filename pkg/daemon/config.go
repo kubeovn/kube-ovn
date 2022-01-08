@@ -26,24 +26,25 @@ import (
 
 // Configuration is the daemon conf
 type Configuration struct {
-	Iface                 string
-	MTU                   int
-	MSS                   int
-	EnableMirror          bool
-	MirrorNic             string
-	BindSocket            string
-	OvsSocket             string
-	KubeConfigFile        string
-	KubeClient            kubernetes.Interface
-	KubeOvnClient         clientset.Interface
-	NodeName              string
-	ServiceClusterIPRange string
-	NodeLocalDnsIP        string
-	EncapChecksum         bool
-	PprofPort             int
-	NetworkType           string
-	DefaultProviderName   string
-	DefaultInterfaceName  string
+	Iface                   string
+	MTU                     int
+	MSS                     int
+	EnableMirror            bool
+	MirrorNic               string
+	BindSocket              string
+	OvsSocket               string
+	KubeConfigFile          string
+	KubeClient              kubernetes.Interface
+	KubeOvnClient           clientset.Interface
+	NodeName                string
+	ServiceClusterIPRange   string
+	NodeLocalDnsIP          string
+	EncapChecksum           bool
+	PprofPort               int
+	NetworkType             string
+	DefaultProviderName     string
+	DefaultInterfaceName    string
+	ExternalGatewayConfigNS string
 }
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
@@ -62,9 +63,10 @@ func ParseFlags() (*Configuration, error) {
 		argEncapChecksum         = pflag.Bool("encap-checksum", true, "Enable checksum")
 		argPprofPort             = pflag.Int("pprof-port", 10665, "The port to get profiling data")
 
-		argsNetworkType          = pflag.String("network-type", "geneve", "The ovn network type")
-		argsDefaultProviderName  = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name")
-		argsDefaultInterfaceName = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
+		argsNetworkType            = pflag.String("network-type", "geneve", "The ovn network type")
+		argsDefaultProviderName    = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name")
+		argsDefaultInterfaceName   = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
+		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
 	)
 
 	// mute info log for ipset lib
@@ -94,21 +96,22 @@ func ParseFlags() (*Configuration, error) {
 		return nil, fmt.Errorf("env KUBE_NODE_NAME not exists")
 	}
 	config := &Configuration{
-		Iface:                 *argIface,
-		MTU:                   *argMTU,
-		EnableMirror:          *argEnableMirror,
-		MirrorNic:             *argMirrorNic,
-		BindSocket:            *argBindSocket,
-		OvsSocket:             *argOvsSocket,
-		KubeConfigFile:        *argKubeConfigFile,
-		PprofPort:             *argPprofPort,
-		NodeName:              nodeName,
-		ServiceClusterIPRange: *argServiceClusterIPRange,
-		NodeLocalDnsIP:        *argNodeLocalDnsIP,
-		EncapChecksum:         *argEncapChecksum,
-		NetworkType:           *argsNetworkType,
-		DefaultProviderName:   *argsDefaultProviderName,
-		DefaultInterfaceName:  *argsDefaultInterfaceName,
+		Iface:                   *argIface,
+		MTU:                     *argMTU,
+		EnableMirror:            *argEnableMirror,
+		MirrorNic:               *argMirrorNic,
+		BindSocket:              *argBindSocket,
+		OvsSocket:               *argOvsSocket,
+		KubeConfigFile:          *argKubeConfigFile,
+		PprofPort:               *argPprofPort,
+		NodeName:                nodeName,
+		ServiceClusterIPRange:   *argServiceClusterIPRange,
+		NodeLocalDnsIP:          *argNodeLocalDnsIP,
+		EncapChecksum:           *argEncapChecksum,
+		NetworkType:             *argsNetworkType,
+		DefaultProviderName:     *argsDefaultProviderName,
+		DefaultInterfaceName:    *argsDefaultInterfaceName,
+		ExternalGatewayConfigNS: *argExternalGatewayConfigNS,
 	}
 
 	if err := config.initKubeClient(); err != nil {

@@ -620,7 +620,7 @@ func (c *Controller) setExGateway() error {
 	}
 	enable := node.Labels[util.ExGatewayLabel]
 	if enable == "true" {
-		cm, err := c.config.KubeClient.CoreV1().ConfigMaps("kube-system").Get(context.Background(), util.ExternalGatewayConfig, metav1.GetOptions{})
+		cm, err := c.config.KubeClient.CoreV1().ConfigMaps(c.config.ExternalGatewayConfigNS).Get(context.Background(), util.ExternalGatewayConfig, metav1.GetOptions{})
 		if err != nil {
 			klog.Errorf("failed to get ovn-external-gw-config, %v", err)
 			return err
