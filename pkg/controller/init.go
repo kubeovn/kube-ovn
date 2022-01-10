@@ -304,6 +304,9 @@ func (c *Controller) InitIPAM() error {
 		return err
 	}
 	for _, pod := range pods {
+		if pod.Spec.HostNetwork {
+			continue
+		}
 		podNets, err := c.getPodKubeovnNets(pod)
 		if err != nil {
 			klog.Errorf("failed to get pod kubeovn nets %s.%s address %s: %v", pod.Name, pod.Namespace, pod.Annotations[util.IpAddressAnnotation], err)
@@ -322,9 +325,10 @@ func (c *Controller) InitIPAM() error {
 				if err != nil {
 					klog.Errorf("failed to init pod %s.%s address %s: %v", pod.Name, pod.Namespace, pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)], err)
 				}
-			}
-			if err = c.initAppendPodExternalIds(pod); err != nil {
-				klog.Errorf("failed to init append pod %s.%s externalIds: %v", pod.Name, pod.Namespace, err)
+
+				if err = c.initAppendPodExternalIds(pod); err != nil {
+					klog.Errorf("failed to init append pod %s.%s externalIds: %v", pod.Name, pod.Namespace, err)
+				}
 			}
 		}
 	}
