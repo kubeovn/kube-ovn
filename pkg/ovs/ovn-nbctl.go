@@ -449,17 +449,18 @@ func (c Client) ListLoadBalancer() ([]string, error) {
 	return result, nil
 }
 
-func (c Client) CreateGatewaySwitch(name, ip, mac string, chassises []string) error {
+func (c Client) CreateGatewaySwitch(name, externalgatewaynet string, externalgatewayvlanid int, ip, mac string, chassises []string) error {
 	lsTolr := fmt.Sprintf("%s-%s", name, c.ClusterRouter)
 	lrTols := fmt.Sprintf("%s-%s", c.ClusterRouter, name)
 	localnetPort := fmt.Sprintf("ln-%s", name)
+	portOptions := fmt.Sprintf("network_name=%s", externalgatewaynet)
 	_, err := c.ovnNbCommand(
 		MayExist, "ls-add", name, "--",
 		"set", "logical_switch", name, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName), "--",
 		MayExist, "lsp-add", name, localnetPort, "--",
 		"lsp-set-type", localnetPort, "localnet", "--",
 		"lsp-set-addresses", localnetPort, "unknown", "--",
-		"lsp-set-options", localnetPort, "network_name=external", "--",
+		"lsp-set-options", localnetPort, portOptions, "--",
 		MayExist, "lrp-add", c.ClusterRouter, lrTols, mac, ip, "--",
 		MayExist, "lsp-add", name, lsTolr, "--",
 		"lsp-set-type", lsTolr, "router", "--",
@@ -468,6 +469,14 @@ func (c Client) CreateGatewaySwitch(name, ip, mac string, chassises []string) er
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create external gateway switch, %v", err)
+	}
+
+	if externalgatewayvlanid > 0 {
+		portVlanId := fmt.Sprintf("tag=%d", externalgatewayvlanid)
+		_, err := c.ovnNbCommand("set", "logical_switch_port", localnetPort, portVlanId)
+		if err != nil {
+			return fmt.Errorf("failed to set vlanId for ,%s, %v", localnetPort, err)
+		}
 	}
 
 	for index, chassis := range chassises {
