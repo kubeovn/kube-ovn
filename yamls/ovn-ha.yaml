@@ -271,7 +271,7 @@ spec:
             exec:
               command:
                 - bash
-                - /kube-ovn/ovn-is-leader.sh
+                - /kube-ovn/ovn-healthcheck.sh
             periodSeconds: 3
             timeoutSeconds: 45
           livenessProbe:
