@@ -704,7 +704,7 @@ func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, statefulSetName 
 		return false
 	}
 
-	return index >= int64(*ss.Spec.Replicas) && index >= int64(ss.Status.Replicas)
+	return index >= int64(*ss.Spec.Replicas)
 }
 
 func getNodeTunlIP(node *v1.Node) ([]net.IP, error) {
