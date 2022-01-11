@@ -59,6 +59,10 @@ func KubeClientInit(cfg *Configuration) error {
 	} else {
 		kubecfg, err = clientcmd.BuildConfigFromFlags("", cfg.KubeConfigFile)
 	}
+	if err != nil {
+		klog.Errorf("init kubernetes cfg failed %v", err)
+		return err
+	}
 
 	kubeClient, err := kubernetes.NewForConfig(kubecfg)
 	if err != nil {
@@ -137,10 +141,7 @@ func checkNbIsLeader() bool {
 
 	klog.Infof("CheckNbIsLeader: output %s", string(output))
 	result := strings.TrimSpace(string(output))
-	if strings.Contains(result, "true") {
-		return true
-	}
-	return false
+	return strings.Contains(result, "true")
 }
 
 func checkSbIsLeader() bool {
@@ -177,10 +178,7 @@ func checkSbIsLeader() bool {
 
 	klog.Infof("CheckSbIsLeader: output %s ", string(output))
 	result := strings.TrimSpace(string(output))
-	if strings.Contains(result, "true") {
-		return true
-	}
-	return false
+	return strings.Contains(result, "true")
 }
 
 func checkNorthdActive() bool {
@@ -214,10 +212,7 @@ func checkNorthdActive() bool {
 
 	klog.Infof("checkNorthdActive: output %s  \n", string(output))
 	result := strings.TrimSpace(string(output))
-	if strings.Contains(result, "active") {
-		return true
-	}
-	return false
+	return strings.Contains(result, "active")
 }
 
 func stealLock() {
@@ -254,12 +249,10 @@ func stealLock() {
 		return
 	}
 
-	if len(output) == 0 {
-		return
+	if len(output) > 0 {
+		klog.Infof("stealLock: output %s  \n", string(output))
 	}
 
-	klog.Infof("stealLock: output %s  \n", string(output))
-	return
 }
 
 func generatePatchPayload(labels map[string]string, op string) []byte {
@@ -325,9 +318,7 @@ func compactDataBase(ctrlSock string) {
 	_, err := exec.Command("ovn-appctl", command...).CombinedOutput()
 	if err != nil {
 		klog.Errorf("compactDataBase err %v", err)
-		return
 	}
-	return
 }
 
 func OvnLeaderCheck(cfg *Configuration) error {
