@@ -625,6 +625,12 @@ func (c *Controller) setExGateway() error {
 			klog.Errorf("failed to get ovn-external-gw-config, %v", err)
 			return err
 		}
+		// enable external-gw-config without 'external-gw-nic' configured
+		// to reuse existing physical network from arg 'external-gateway-net'
+		linkname, exist := cm.Data["external-gw-nic"]
+		if !exist || len(linkname) == 0 {
+			return nil
+		}
 		link, err := netlink.LinkByName(cm.Data["external-gw-nic"])
 		if err != nil {
 			klog.Errorf("failed to get nic %s, %v", cm.Data["external-gw-nic"], err)

@@ -71,6 +71,8 @@ type Configuration struct {
 	EnableExternalVpc bool
 
 	ExternalGatewayConfigNS string
+	ExternalGatewayNet      string
+	ExternalGatewayVlanID   int
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -115,6 +117,8 @@ func ParseFlags() (*Configuration, error) {
 		argEnableExternalVpc    = pflag.Bool("enable-external-vpc", true, "Enable external vpc support")
 
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
+		argExternalGatewayNet      = pflag.String("external-gateway-net", "external", "The namespace of configmap external-gateway-config, default: external")
+		argExternalGatewayVlanID   = pflag.Int("external-gateway-vlanid", 0, "The vlanId of port ln-ovn-external, default: 0")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -169,6 +173,8 @@ func ParseFlags() (*Configuration, error) {
 		EnableNP:                      *argEnableNP,
 		EnableExternalVpc:             *argEnableExternalVpc,
 		ExternalGatewayConfigNS:       *argExternalGatewayConfigNS,
+		ExternalGatewayNet:            *argExternalGatewayNet,
+		ExternalGatewayVlanID:         *argExternalGatewayVlanID,
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {

@@ -156,7 +156,7 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 		return fmt.Errorf("no available external gw")
 	}
 
-	if err := c.ovnClient.CreateGatewaySwitch(util.ExternalGatewaySwitch, config["nic-ip"], config["nic-mac"], chassises); err != nil {
+	if err := c.ovnClient.CreateGatewaySwitch(util.ExternalGatewaySwitch, c.config.ExternalGatewayNet, c.config.ExternalGatewayVlanID, config["nic-ip"], config["nic-mac"], chassises); err != nil {
 		klog.Errorf("failed to create external gateway switch, %v", err)
 		return err
 	}
