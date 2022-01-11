@@ -196,7 +196,7 @@ func (c Client) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurit
 
 		ports, err := c.ListLogicalEntity("logical_switch_port",
 			fmt.Sprintf("external_ids:ls=%s", ls),
-			fmt.Sprintf("external_ids:ip=%s", strings.ReplaceAll(ip, ",", "/")))
+			fmt.Sprintf("external_ids:ip=\"%s\"", strings.ReplaceAll(ip, ",", "/")))
 		if err != nil {
 			klog.Errorf("list logical entity failed: %v", err)
 			return err

@@ -1271,7 +1271,7 @@ func (c *Controller) syncVmLiveMigrationPort() {
 			// lists pods with the same IP address
 			vmLsps, err := c.ovnClient.ListLogicalEntity("logical_switch_port",
 				fmt.Sprintf("external_ids:ls=%s", subnet.Name),
-				fmt.Sprintf("external_ids:ip=%s", strings.ReplaceAll(addr.Spec.IPAddress, ",", "/")))
+				fmt.Sprintf("external_ids:ip=\"%s\"", strings.ReplaceAll(addr.Spec.IPAddress, ",", "/")))
 			if err != nil {
 				klog.Errorf("list logical_switch_port failed, %v", err)
 				return
