@@ -185,7 +185,7 @@ func checkSbIsLeader() bool {
 
 func checkNorthdActive() bool {
 	var command []string
-	file, err := os.OpenFile(OvnNorthdPid, os.O_RDWR, 0666)
+	file, err := os.OpenFile(OvnNorthdPid, os.O_RDWR, 0600)
 	if err != nil {
 		klog.Errorf("failed to open %s err =  %v", OvnNorthdPid, err)
 		return false
@@ -376,7 +376,11 @@ func OvnLeaderCheck(cfg *Configuration) error {
 
 	if needUpdate {
 		klog.Infof("OvnLeaderCheck need replace labels %+v \n", modify_labels)
-		patchPodLabels(cfg, pod, modify_labels)
+		err = patchPodLabels(cfg, pod, modify_labels)
+		if err != nil {
+			klog.Errorf("patch label error %v", err)
+			return err
+		}
 	}
 
 	res = checkNorthdSvcValidIP(cfg, podNamespace, "ovn-northd")
