@@ -1988,7 +1988,7 @@ func (c *Controller) acquireIpAddress(subnetName, name, nicName string) (string,
 	var err error
 	for {
 
-		v4ip, v6ip, mac, err = c.ipam.GetRandomAddress(name, nicName, subnetName, skippedAddrs)
+		v4ip, v6ip, mac, err = c.ipam.GetRandomAddress(name, nicName, "", subnetName, skippedAddrs)
 		if err != nil {
 			return "", "", "", err
 		}

@@ -48,11 +48,11 @@ var _ = Describe("[IPAM]", func() {
 				_, _, _, err = im.GetStaticAddress("pod1.ns", "pod1.ns", "10.16.0.2", "", subnetName, true)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				ip, _, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
+				ip, _, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("10.16.0.2"))
 
-				ip, _, _, err = im.GetRandomAddress("pod2.ns", "pod2.ns", subnetName, nil)
+				ip, _, _, err = im.GetRandomAddress("pod2.ns", "pod2.ns", "", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("10.16.0.3"))
 
@@ -63,13 +63,13 @@ var _ = Describe("[IPAM]", func() {
 				_, _, _, err = im.GetStaticAddress("pod3.ns", "pod3.ns", "10.16.0.2", "", subnetName, true)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				_, _, _, err = im.GetRandomAddress("pod4.ns", "pod4.ns", "invalid_subnet", nil)
+				_, _, _, err = im.GetRandomAddress("pod4.ns", "pod4.ns", "", "invalid_subnet", nil)
 				Expect(err).Should(MatchError(ipam.ErrNoAvailable))
 
 				err = im.AddOrUpdateSubnet(subnetName, ipv4CIDR, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				ip, _, _, err = im.GetRandomAddress("pod5.ns", "pod5.ns", subnetName, nil)
+				ip, _, _, err = im.GetRandomAddress("pod5.ns", "pod5.ns", "", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("10.16.0.1"))
 
@@ -85,7 +85,7 @@ var _ = Describe("[IPAM]", func() {
 
 				err = im.AddOrUpdateSubnet(subnetName, "10.17.0.0/16", []string{"10.17.0.1"})
 				Expect(err).ShouldNot(HaveOccurred())
-				ip, _, _, err := im.GetRandomAddress("pod5.ns", "pod5.ns", subnetName, nil)
+				ip, _, _, err := im.GetRandomAddress("pod5.ns", "pod5.ns", "", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("10.17.0.2"))
 			})
@@ -95,17 +95,17 @@ var _ = Describe("[IPAM]", func() {
 				err := im.AddOrUpdateSubnet(subnetName, "10.16.0.0/30", nil)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				ip, _, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
+				ip, _, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("10.16.0.1"))
 
 				im.ReleaseAddressByPod("pod1.ns")
-				ip, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
+				ip, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("10.16.0.2"))
 
 				im.ReleaseAddressByPod("pod1.ns")
-				ip, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
+				ip, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("10.16.0.1"))
 			})
@@ -115,7 +115,7 @@ var _ = Describe("[IPAM]", func() {
 				err := im.AddOrUpdateSubnet(subnetName, "10.16.0.0/30", nil)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				ip, _, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
+				ip, _, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("10.16.0.1"))
 
@@ -123,7 +123,7 @@ var _ = Describe("[IPAM]", func() {
 				err = im.AddOrUpdateSubnet(subnetName, "10.16.0.0/30", []string{"10.16.0.1..10.16.0.2"})
 				Expect(err).ShouldNot(HaveOccurred())
 
-				_, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
+				_, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil)
 				Expect(err).Should(MatchError(ipam.ErrNoAvailable))
 			})
 		})
@@ -145,11 +145,11 @@ var _ = Describe("[IPAM]", func() {
 				_, _, _, err = im.GetStaticAddress("pod1.ns", "pod1.ns", "fd00::2", "", subnetName, true)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				_, ip, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
+				_, ip, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("fd00::2"))
 
-				_, ip, _, err = im.GetRandomAddress("pod2.ns", "pod2.ns", subnetName, nil)
+				_, ip, _, err = im.GetRandomAddress("pod2.ns", "pod2.ns", "", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("fd00::3"))
 
@@ -160,13 +160,13 @@ var _ = Describe("[IPAM]", func() {
 				_, _, _, err = im.GetStaticAddress("pod3.ns", "pod3.ns", "fd00::2", "", subnetName, true)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				_, _, _, err = im.GetRandomAddress("pod4.ns", "pod4.ns", "invalid_subnet", nil)
+				_, _, _, err = im.GetRandomAddress("pod4.ns", "pod4.ns", "", "invalid_subnet", nil)
 				Expect(err).Should(MatchError(ipam.ErrNoAvailable))
 
 				err = im.AddOrUpdateSubnet(subnetName, ipv6CIDR, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				_, ip, _, err = im.GetRandomAddress("pod5.ns", "pod5.ns", subnetName, nil)
+				_, ip, _, err = im.GetRandomAddress("pod5.ns", "pod5.ns", "", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("fd00::1"))
 
@@ -182,7 +182,7 @@ var _ = Describe("[IPAM]", func() {
 
 				err = im.AddOrUpdateSubnet(subnetName, "fe00::/112", []string{"fe00::1"})
 				Expect(err).ShouldNot(HaveOccurred())
-				_, ip, _, err := im.GetRandomAddress("pod5.ns", "pod5.ns", subnetName, nil)
+				_, ip, _, err := im.GetRandomAddress("pod5.ns", "pod5.ns", "", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("fe00::2"))
 			})
@@ -192,17 +192,17 @@ var _ = Describe("[IPAM]", func() {
 				err := im.AddOrUpdateSubnet(subnetName, "fd00::/126", nil)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				_, ip, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
+				_, ip, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("fd00::1"))
 
 				im.ReleaseAddressByPod("pod1.ns")
-				_, ip, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
+				_, ip, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("fd00::2"))
 
 				im.ReleaseAddressByPod("pod1.ns")
-				_, ip, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
+				_, ip, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("fd00::1"))
 			})
@@ -212,7 +212,7 @@ var _ = Describe("[IPAM]", func() {
 				err := im.AddOrUpdateSubnet(subnetName, "fd00::/126", nil)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				_, ip, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
+				_, ip, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip).To(Equal("fd00::1"))
 
@@ -220,7 +220,7 @@ var _ = Describe("[IPAM]", func() {
 				err = im.AddOrUpdateSubnet(subnetName, "fd00::/126", []string{"fd00::1..fd00::2"})
 				Expect(err).ShouldNot(HaveOccurred())
 
-				_, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
+				_, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil)
 				Expect(err).Should(MatchError(ipam.ErrNoAvailable))
 			})
 		})
@@ -246,12 +246,12 @@ var _ = Describe("[IPAM]", func() {
 				_, _, _, err = im.GetStaticAddress("pod1.ns", "pod1.ns", "10.16.0.2,fd00::2", "", subnetName, true)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				ipv4, ipv6, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
+				ipv4, ipv6, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ipv4).To(Equal("10.16.0.2"))
 				Expect(ipv6).To(Equal("fd00::2"))
 
-				ipv4, ipv6, _, err = im.GetRandomAddress("pod2.ns", "pod2.ns", subnetName, nil)
+				ipv4, ipv6, _, err = im.GetRandomAddress("pod2.ns", "pod2.ns", "", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ipv4).To(Equal("10.16.0.3"))
 				Expect(ipv6).To(Equal("fd00::3"))
@@ -263,13 +263,13 @@ var _ = Describe("[IPAM]", func() {
 				_, _, _, err = im.GetStaticAddress("pod3.ns", "pod3.ns", "10.16.0.2,fd00::2", "", subnetName, true)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				_, _, _, err = im.GetRandomAddress("pod4.ns", "pod4.ns", "invalid_subnet", nil)
+				_, _, _, err = im.GetRandomAddress("pod4.ns", "pod4.ns", "", "invalid_subnet", nil)
 				Expect(err).Should(MatchError(ipam.ErrNoAvailable))
 
 				err = im.AddOrUpdateSubnet(subnetName, dualCIDR, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				ipv4, ipv6, _, err = im.GetRandomAddress("pod5.ns", "pod5.ns", subnetName, nil)
+				ipv4, ipv6, _, err = im.GetRandomAddress("pod5.ns", "pod5.ns", "", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ipv4).To(Equal("10.16.0.1"))
 				Expect(ipv6).To(Equal("fd00::1"))
@@ -287,7 +287,7 @@ var _ = Describe("[IPAM]", func() {
 
 				err = im.AddOrUpdateSubnet(subnetName, "10.17.0.2/16,fe00::/112", []string{"10.17.0.1", "fe00::1"})
 				Expect(err).ShouldNot(HaveOccurred())
-				ipv4, ipv6, _, err := im.GetRandomAddress("pod5.ns", "pod5.ns", subnetName, nil)
+				ipv4, ipv6, _, err := im.GetRandomAddress("pod5.ns", "pod5.ns", "", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ipv4).To(Equal("10.17.0.2"))
 				Expect(ipv6).To(Equal("fe00::2"))
@@ -298,19 +298,19 @@ var _ = Describe("[IPAM]", func() {
 				err := im.AddOrUpdateSubnet(subnetName, "10.16.0.2/30,fd00::/126", nil)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				ipv4, ipv6, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
+				ipv4, ipv6, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ipv4).To(Equal("10.16.0.1"))
 				Expect(ipv6).To(Equal("fd00::1"))
 
 				im.ReleaseAddressByPod("pod1.ns")
-				ipv4, ipv6, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
+				ipv4, ipv6, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ipv4).To(Equal("10.16.0.2"))
 				Expect(ipv6).To(Equal("fd00::2"))
 
 				im.ReleaseAddressByPod("pod1.ns")
-				ipv4, ipv6, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
+				ipv4, ipv6, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ipv4).To(Equal("10.16.0.1"))
 				Expect(ipv6).To(Equal("fd00::1"))
@@ -321,7 +321,7 @@ var _ = Describe("[IPAM]", func() {
 				err := im.AddOrUpdateSubnet(subnetName, "10.16.0.2/30,fd00::/126", nil)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				ipv4, ipv6, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
+				ipv4, ipv6, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ipv4).To(Equal("10.16.0.1"))
 				Expect(ipv6).To(Equal("fd00::1"))
@@ -330,7 +330,7 @@ var _ = Describe("[IPAM]", func() {
 				err = im.AddOrUpdateSubnet(subnetName, "10.16.0.2/30,fd00::/126", []string{"10.16.0.1..10.16.0.2", "fd00::1..fd00::2"})
 				Expect(err).ShouldNot(HaveOccurred())
 
-				_, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", subnetName, nil)
+				_, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil)
 				Expect(err).Should(MatchError(ipam.ErrNoAvailable))
 			})
 		})
@@ -434,18 +434,18 @@ var _ = Describe("[IPAM]", func() {
 				subnet, err := ipam.NewSubnet(subnetName, "10.16.0.0/30", nil)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				ip1, _, _, err := subnet.GetRandomAddress("pod1.ns", "pod1.ns", nil)
+				ip1, _, _, err := subnet.GetRandomAddress("pod1.ns", "pod1.ns", "", nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip1).To(Equal(ipam.IP("10.16.0.1")))
-				ip1, _, _, err = subnet.GetRandomAddress("pod1.ns", "pod1.ns", nil)
+				ip1, _, _, err = subnet.GetRandomAddress("pod1.ns", "pod1.ns", "", nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip1).To(Equal(ipam.IP("10.16.0.1")))
 
-				ip2, _, _, err := subnet.GetRandomAddress("pod2.ns", "pod2.ns", nil)
+				ip2, _, _, err := subnet.GetRandomAddress("pod2.ns", "pod2.ns", "", nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip2).To(Equal(ipam.IP("10.16.0.2")))
 
-				_, _, _, err = subnet.GetRandomAddress("pod3.ns", "pod3.ns", nil)
+				_, _, _, err = subnet.GetRandomAddress("pod3.ns", "pod3.ns", "", nil)
 				Expect(err).Should(MatchError(ipam.ErrNoAvailable))
 				Expect(subnet.V4FreeIPList).To(BeEmpty())
 
@@ -522,18 +522,18 @@ var _ = Describe("[IPAM]", func() {
 				subnet, err := ipam.NewSubnet(subnetName, "fd00::/126", nil)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				_, ip1, _, err := subnet.GetRandomAddress("pod1.ns", "pod1.ns", nil)
+				_, ip1, _, err := subnet.GetRandomAddress("pod1.ns", "pod1.ns", "", nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip1).To(Equal(ipam.IP("fd00::1")))
-				_, ip1, _, err = subnet.GetRandomAddress("pod1.ns", "pod1.ns", nil)
+				_, ip1, _, err = subnet.GetRandomAddress("pod1.ns", "pod1.ns", "", nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip1).To(Equal(ipam.IP("fd00::1")))
 
-				_, ip2, _, err := subnet.GetRandomAddress("pod2.ns", "pod2.ns", nil)
+				_, ip2, _, err := subnet.GetRandomAddress("pod2.ns", "pod2.ns", "", nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ip2).To(Equal(ipam.IP("fd00::2")))
 
-				_, _, _, err = subnet.GetRandomAddress("pod3.ns", "pod3.ns", nil)
+				_, _, _, err = subnet.GetRandomAddress("pod3.ns", "pod3.ns", "", nil)
 				Expect(err).Should(MatchError(ipam.ErrNoAvailable))
 				Expect(subnet.V6FreeIPList).To(BeEmpty())
 
@@ -647,21 +647,21 @@ var _ = Describe("[IPAM]", func() {
 				subnet, err := ipam.NewSubnet(subnetName, "10.16.0.0/30,fd00::/126", nil)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				ipv4, ipv6, _, err := subnet.GetRandomAddress("pod1.ns", "pod1.ns", nil)
+				ipv4, ipv6, _, err := subnet.GetRandomAddress("pod1.ns", "pod1.ns", "", nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ipv4).To(Equal(ipam.IP("10.16.0.1")))
 				Expect(ipv6).To(Equal(ipam.IP("fd00::1")))
-				ipv4, ipv6, _, err = subnet.GetRandomAddress("pod1.ns", "pod1.ns", nil)
+				ipv4, ipv6, _, err = subnet.GetRandomAddress("pod1.ns", "pod1.ns", "", nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ipv4).To(Equal(ipam.IP("10.16.0.1")))
 				Expect(ipv6).To(Equal(ipam.IP("fd00::1")))
 
-				ipv4, ipv6, _, err = subnet.GetRandomAddress("pod2.ns", "pod2.ns", nil)
+				ipv4, ipv6, _, err = subnet.GetRandomAddress("pod2.ns", "pod2.ns", "", nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ipv4).To(Equal(ipam.IP("10.16.0.2")))
 				Expect(ipv6).To(Equal(ipam.IP("fd00::2")))
 
-				_, _, _, err = subnet.GetRandomAddress("pod3.ns", "pod3.ns", nil)
+				_, _, _, err = subnet.GetRandomAddress("pod3.ns", "pod3.ns", "", nil)
 				Expect(err).Should(MatchError(ipam.ErrNoAvailable))
 				Expect(subnet.V4FreeIPList).To(BeEmpty())
 				Expect(subnet.V6FreeIPList).To(BeEmpty())
