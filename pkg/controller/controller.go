@@ -72,6 +72,7 @@ type Controller struct {
 	deleteSubnetQueue       workqueue.RateLimitingInterface
 	deleteRouteQueue        workqueue.RateLimitingInterface
 	updateSubnetStatusQueue workqueue.RateLimitingInterface
+	syncVirtualPortsQueue   workqueue.RateLimitingInterface
 
 	ipsLister kubeovnlister.IPLister
 	ipSynced  cache.InformerSynced
@@ -195,6 +196,7 @@ func NewController(config *Configuration) *Controller {
 		deleteSubnetQueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteSubnet"),
 		deleteRouteQueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteRoute"),
 		updateSubnetStatusQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateSubnetStatus"),
+		syncVirtualPortsQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "SyncVirtualPort"),
 
 		ipsLister: ipInformer.Lister(),
 		ipSynced:  ipInformer.Informer().HasSynced,
@@ -426,6 +428,7 @@ func (c *Controller) shutdown() {
 	c.deleteSubnetQueue.ShutDown()
 	c.deleteRouteQueue.ShutDown()
 	c.updateSubnetStatusQueue.ShutDown()
+	c.syncVirtualPortsQueue.ShutDown()
 
 	c.addNodeQueue.ShutDown()
 	c.updateNodeQueue.ShutDown()
@@ -541,6 +544,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		go wait.Until(c.runDeleteSubnetWorker, time.Second, stopCh)
 		go wait.Until(c.runDeleteRouteWorker, time.Second, stopCh)
 		go wait.Until(c.runUpdateSubnetStatusWorker, time.Second, stopCh)
+		go wait.Until(c.runSyncVirtualPortsWorker, time.Second, stopCh)
 
 		if c.config.EnableLb {
 			go wait.Until(c.runUpdateServiceWorker, time.Second, stopCh)

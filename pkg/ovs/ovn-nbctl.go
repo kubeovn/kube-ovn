@@ -161,7 +161,7 @@ func (c Client) SetPortExternalIds(port, key, value string) error {
 	return nil
 }
 
-func (c Client) SetPortSecurity(portSecurity bool, port, mac, ipStr, vips string) error {
+func (c Client) SetPortSecurity(portSecurity bool, ls, port, mac, ipStr, vips string) error {
 	var addresses []string
 	ovnCommand := []string{"lsp-set-port-security", port}
 	if portSecurity {
@@ -172,12 +172,61 @@ func (c Client) SetPortSecurity(portSecurity bool, port, mac, ipStr, vips string
 		}
 		ovnCommand = append(ovnCommand, strings.Join(addresses, " "))
 	}
-
+	ovnCommand = append(ovnCommand, "--", "set", "logical_switch_port", port,
+		fmt.Sprintf("external_ids:attach-vips=%v", vips != ""),
+		fmt.Sprintf("external_ids:ls=%s", ls))
 	if _, err := c.ovnNbCommand(ovnCommand...); err != nil {
 		klog.Errorf("set port %s security failed: %v", port, err)
 		return err
 	}
 	return nil
+}
+
+// CreateVirtualPort create virtual type logical switch port in ovn
+func (c Client) CreateVirtualPort(ls, ip string) error {
+	portName := fmt.Sprintf("%s-vip-%s", ls, ip)
+	if _, err := c.ovnNbCommand(MayExist, "lsp-add", ls, portName,
+		"--", "set", "logical_switch_port", portName, "type=virtual",
+		fmt.Sprintf("options:virtual-ip=\"%s\"", ip),
+		fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName),
+		fmt.Sprintf("external_ids:ls=%s", ls)); err != nil {
+		klog.Errorf("create virtual port %s failed: %v", portName, err)
+		return err
+	}
+	return nil
+}
+
+func (c Client) SetVirtualParents(ls, ip, parents string) error {
+	portName := fmt.Sprintf("%s-vip-%s", ls, ip)
+	var cmdArg []string
+	if parents != "" {
+		cmdArg = append(cmdArg, "set", "logical_switch_port", portName, fmt.Sprintf("options:virtual-parents=%s", parents))
+	} else {
+		cmdArg = append(cmdArg, "remove", "logical_switch_port", portName, "options", "virtual-parents")
+	}
+	if _, err := c.ovnNbCommand(cmdArg...); err != nil {
+		klog.Errorf("set vip %s virtual parents failed: %v", ip, err)
+		return err
+	}
+	return nil
+}
+
+func (c Client) ListVirtualPort(ls string) ([]string, error) {
+	cmdArg := []string{"--format=csv", "--data=bare", "--no-heading", "--columns=name", "find", "logical_switch_port", "type=virtual", fmt.Sprintf("external_ids:ls=%s", ls)}
+	output, err := c.ovnNbCommand(cmdArg...)
+	if err != nil {
+		klog.Errorf("failed to list logical switch port, %v", err)
+		return nil, err
+	}
+	lines := strings.Split(output, "\n")
+	result := make([]string, 0, len(lines))
+	for _, l := range lines {
+		if len(strings.TrimSpace(l)) == 0 {
+			continue
+		}
+		result = append(result, strings.TrimSpace(l))
+	}
+	return result, nil
 }
 
 // CreatePort create logical switch port in ovn

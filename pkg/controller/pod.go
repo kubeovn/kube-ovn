@@ -636,6 +636,15 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 		}
 	}
 	c.ipam.ReleaseAddressByPod(key)
+
+	podNets, err := c.getPodKubeovnNets(pod)
+	if err != nil {
+		klog.Errorf("failed to get pod nets %v", err)
+	} else {
+		for _, podNet := range podNets {
+			c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
+		}
+	}
 	return nil
 }
 
@@ -673,10 +682,11 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 		mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
 		ipStr := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
 		vips := pod.Annotations[fmt.Sprintf(util.PortVipAnnotationTemplate, podNet.ProviderName)]
-		if err = c.ovnClient.SetPortSecurity(portSecurity, ovs.PodNameToPortName(name, namespace, podNet.ProviderName), mac, ipStr, vips); err != nil {
+		if err = c.ovnClient.SetPortSecurity(portSecurity, podNet.Subnet.Name, ovs.PodNameToPortName(name, namespace, podNet.ProviderName), mac, ipStr, vips); err != nil {
 			klog.Errorf("setPortSecurity failed. %v", err)
 			return err
 		}
+		c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
 
 		var securityGroups string
 		if portSecurity {
