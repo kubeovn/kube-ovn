@@ -2072,7 +2072,7 @@ spec:
           successThreshold: 1
           tcpSocket:
             port: 10665
-          timeoutSeconds: 1
+          timeoutSeconds: 3
         readinessProbe:
           failureThreshold: 3
           initialDelaySeconds: 30
@@ -2080,7 +2080,7 @@ spec:
           successThreshold: 1
           tcpSocket:
             port: 10665
-          timeoutSeconds: 1
+          timeoutSeconds: 3
         resources:
           requests:
             cpu: 100m
