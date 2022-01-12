@@ -48,7 +48,7 @@ With default Vlan mode, Kube-OVN creates a default subnet named `ovn-default` wh
 
 1. Get the installation script
 
-`wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.8/dist/images/install.sh`
+`wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.9/dist/images/install.sh`
 
 2. Edit the `install.sh`, set `NETWORK_TYPE` to `vlan` and `VLAN_INTERFACE_NAME` to related host interface.
 
@@ -158,7 +158,7 @@ NOTICE: From v1.7.1 on, `hybrid` mode will be no longer supported since Kube-OVN
 
 1. Get the installation script
 
-`wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.8/dist/images/install.sh`
+`wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.9/dist/images/install.sh`
 
 2. Edit the `install.sh`, modify `NETWORK_TYPE` to `hybrid`, `VLAN_INTERFACE_NAME` to related host interface.
 > NOTE: if your nodes have different nic name for vlan device you could use regex for VLAN_INTERFACE_NAME or label those nodes with

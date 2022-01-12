@@ -862,36 +862,6 @@ EOF
 
 if $DPDK; then
   cat <<EOF > ovn.yaml
-apiVersion: policy/v1beta1
-kind: PodSecurityPolicy
-metadata:
-  name: kube-ovn
-  annotations:
-    seccomp.security.alpha.kubernetes.io/allowedProfileNames: '*'
-spec:
-  privileged: true
-  allowPrivilegeEscalation: true
-  allowedCapabilities:
-    - '*'
-  volumes:
-    - '*'
-  hostNetwork: true
-  hostPorts:
-    - min: 0
-      max: 65535
-  hostIPC: true
-  hostPID: true
-  runAsUser:
-    rule: 'RunAsAny'
-  seLinux:
-    rule: 'RunAsAny'
-  supplementalGroups:
-    rule: 'RunAsAny'
-  fsGroup:
-    rule: 'RunAsAny'
-
----
-
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -1360,36 +1330,6 @@ EOF
 
 else
   cat <<EOF > ovn.yaml
-apiVersion: policy/v1beta1
-kind: PodSecurityPolicy
-metadata:
-  name: kube-ovn
-  annotations:
-    seccomp.security.alpha.kubernetes.io/allowedProfileNames: '*'
-spec:
-  privileged: true
-  allowPrivilegeEscalation: true
-  allowedCapabilities:
-    - '*'
-  volumes:
-    - '*'
-  hostNetwork: true
-  hostPorts:
-    - min: 0
-      max: 65535
-  hostIPC: true
-  hostPID: true
-  runAsUser:
-    rule: 'RunAsAny'
-  seLinux:
-    rule: 'RunAsAny'
-  supplementalGroups:
-    rule: 'RunAsAny'
-  fsGroup:
-    rule: 'RunAsAny'
-
----
-
 apiVersion: v1
 kind: ConfigMap
 metadata:

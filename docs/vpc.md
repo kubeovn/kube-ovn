@@ -128,7 +128,7 @@ metadata:
   name: ovn-vpc-nat-gw-config
   namespace: kube-system
 data:
-  image: 'kubeovn/vpc-nat-gateway:v1.8.0'  # Docker image for vpc nat gateway
+  image: 'kubeovn/vpc-nat-gateway:v1.9.0'  # Docker image for vpc nat gateway
   enable-vpc-nat-gw: true                  # 'true' for enable, 'false' for disable
   nic: eth1                                # The nic that connect to underlay network, use as the 'master' for macvlan
 ```
@@ -190,7 +190,7 @@ Allow external network to access services in custom VPCs.
 
 1. Install Multus CNI and macvlan CNI.
 
-2. Pull docker image `kubeovn/vpc-nat-gateway:v1.8.0`.
+2. Pull docker image `kubeovn/vpc-nat-gateway:v1.9.0`.
 
 3. Create an attachment network using macvlan. Replace `eth0` on necessary.
 
