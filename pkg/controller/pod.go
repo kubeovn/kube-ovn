@@ -1090,7 +1090,13 @@ func (c *Controller) validatePodIP(podName, subnetName, ipv4, ipv6 string) (bool
 
 func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, string, string, error) {
 	key := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
+
 	macStr := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
+	if macStr != "" {
+		if _, err := net.ParseMAC(macStr); err != nil {
+			return "", "", "", err
+		}
+	}
 
 	// Random allocate
 	if pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)] == "" &&
@@ -1098,11 +1104,11 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		var skippedAddrs []string
 		for {
 			nicName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName)
-			ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, nicName, podNet.Subnet.Name, skippedAddrs)
+
+			ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, nicName, macStr, podNet.Subnet.Name, skippedAddrs)
 			if err != nil {
 				return "", "", "", err
 			}
-
 			ipv4OK, ipv6OK, err := c.validatePodIP(pod.Name, podNet.Subnet.Name, ipv4, ipv6)
 			if err != nil {
 				return "", "", "", err
