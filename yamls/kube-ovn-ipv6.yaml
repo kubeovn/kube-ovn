@@ -3,7 +3,7 @@ kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-controller
-  namespace:  kube-system
+  namespace: kube-system
   annotations:
     kubernetes.io/description: |
       kube-ovn controller
@@ -105,7 +105,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-cni
-  namespace:  kube-system
+  namespace: kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the kube-ovn cni daemon.
@@ -182,26 +182,22 @@ spec:
             - mountPath: /var/run/netns
               name: host-ns
               mountPropagation: HostToContainer
-          readinessProbe:
-            exec:
-              command:
-                - nc
-                - -z
-                - -w3
-                - 127.0.0.1
-                - "10665"
-            periodSeconds: 3
           livenessProbe:
-            exec:
-              command:
-                - nc
-                - -z
-                - -w3
-                - 127.0.0.1
-                - "10665"
+            failureThreshold: 3
             initialDelaySeconds: 30
             periodSeconds: 7
-            failureThreshold: 5
+            successThreshold: 1
+            tcpSocket:
+              port: 10665
+            timeoutSeconds: 3
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 30
+            periodSeconds: 7
+            successThreshold: 1
+            tcpSocket:
+              port: 10665
+            timeoutSeconds: 3
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
@@ -229,7 +225,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-pinger
-  namespace:  kube-system
+  namespace: kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the openvswitch daemon.
@@ -422,15 +418,15 @@ spec:
           readinessProbe:
             exec:
               command:
-              - cat
-              - /var/run/ovn/ovnnb_db.pid
+                - cat
+                - /var/run/ovn/ovnnb_db.pid
             periodSeconds: 3
             timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
-              - cat
-              - /var/run/ovn/ovn-nbctl.pid
+                - cat
+                - /var/run/ovn/ovn-nbctl.pid
             initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 5
@@ -488,7 +484,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-pinger
-  namespace:  kube-system
+  namespace: kube-system
   labels:
     app: kube-ovn-pinger
 spec:
@@ -502,7 +498,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-controller
-  namespace:  kube-system
+  namespace: kube-system
   labels:
     app: kube-ovn-controller
 spec:
@@ -516,7 +512,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-cni
-  namespace:  kube-system
+  namespace: kube-system
   labels:
     app: kube-ovn-cni
 spec:
