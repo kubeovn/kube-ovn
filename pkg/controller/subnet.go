@@ -735,7 +735,8 @@ func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
 		if annotations == nil {
 			continue
 		}
-		if annotations[util.LogicalSwitchAnnotation] == key {
+
+		if util.ContainsString(strings.Split(annotations[util.LogicalSwitchAnnotation], ","), key) {
 			c.enqueueAddNamespace(ns)
 		}
 	}
@@ -839,48 +840,13 @@ func (c *Controller) reconcileSubnet(subnet *kubeovnv1.Subnet) error {
 
 func (c *Controller) reconcileNamespaces(subnet *kubeovnv1.Subnet) error {
 	var err error
-	// 1. unbind from previous subnet
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		return err
-	}
 
-	namespaceMap := map[string]bool{}
-	for _, ns := range subnet.Spec.Namespaces {
-		namespaceMap[ns] = true
-	}
-
-	for _, orisub := range subnets {
-		if orisub.Name == subnet.Name || len(orisub.Spec.Namespaces) == 0 {
-			continue
-		}
-		sub := orisub.DeepCopy()
-
-		changed := false
-		reservedNamespaces := []string{}
-		for _, ns := range sub.Spec.Namespaces {
-			if namespaceMap[ns] {
-				changed = true
-			} else {
-				reservedNamespaces = append(reservedNamespaces, ns)
-			}
-		}
-		if changed {
-			sub.Spec.Namespaces = reservedNamespaces
-			_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), sub, metav1.UpdateOptions{})
-			if err != nil {
-				klog.Errorf("failed to unbind namespace from subnet %s, %v", sub.Name, err)
-				return err
-			}
-		}
-	}
-
-	// 2. add annotations to bind namespace
+	// 1. add annotations to bind namespace
 	for _, ns := range subnet.Spec.Namespaces {
 		c.addNamespaceQueue.Add(ns)
 	}
 
-	// 3. update unbind namespace annotation
+	// 2. update unbind namespace annotation
 	namespaces, err := c.namespacesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list namespaces, %v", err)
@@ -888,7 +854,7 @@ func (c *Controller) reconcileNamespaces(subnet *kubeovnv1.Subnet) error {
 	}
 
 	for _, ns := range namespaces {
-		if ns.Annotations != nil && ns.Annotations[util.LogicalSwitchAnnotation] == subnet.Name && !namespaceMap[ns.Name] {
+		if ns.Annotations != nil && util.ContainsString(strings.Split(ns.Annotations[util.LogicalSwitchAnnotation], ","), subnet.Name) {
 			c.addNamespaceQueue.Add(ns.Name)
 		}
 	}

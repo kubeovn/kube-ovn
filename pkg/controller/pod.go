@@ -897,11 +897,16 @@ func needAllocateSubnets(pod *v1.Pod, nets []*kubeovnNet) []*kubeovnNet {
 }
 
 func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error) {
-	var subnetName string
+	var subnet *kubeovnv1.Subnet
+	var err error
 	// 1. check annotation subnet
 	lsName, lsExist := pod.Annotations[util.LogicalSwitchAnnotation]
 	if lsExist {
-		subnetName = lsName
+		subnet, err = c.subnetsLister.Get(lsName)
+		if err != nil {
+			klog.Errorf("failed to get subnet %v", err)
+			return nil, err
+		}
 	} else {
 		ns, err := c.namespacesLister.Get(pod.Namespace)
 		if err != nil {
@@ -914,18 +919,35 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 			return nil, err
 		}
 
-		subnetName = ns.Annotations[util.LogicalSwitchAnnotation]
-		if subnetName == "" {
-			err = fmt.Errorf("namespace %s default logical switch is not found", pod.Namespace)
-			klog.Error(err)
-			return nil, err
-		}
-	}
+		subnetNames := ns.Annotations[util.LogicalSwitchAnnotation]
+		for _, subnetName := range strings.Split(subnetNames, ",") {
+			if subnetName == "" {
+				err = fmt.Errorf("namespace %s default logical switch is not found", pod.Namespace)
+				klog.Error(err)
+				return nil, err
+			}
+			subnet, err = c.subnetsLister.Get(subnetName)
+			if err != nil {
+				klog.Errorf("failed to get subnet %v", err)
+				return nil, err
+			}
 
-	subnet, err := c.subnetsLister.Get(subnetName)
-	if err != nil {
-		klog.Errorf("failed to get subnet %v", err)
-		return nil, err
+			switch subnet.Spec.Protocol {
+			case kubeovnv1.ProtocolIPv4:
+				fallthrough
+			case kubeovnv1.ProtocolDual:
+				if subnet.Status.V4AvailableIPs == 0 {
+					klog.V(3).Infof("there's no available ips for subnet %v, try next subnet", subnet.Name)
+					continue
+				}
+			case kubeovnv1.ProtocolIPv6:
+				if subnet.Status.V6AvailableIPs == 0 {
+					klog.Infof("there's no available ips for subnet %v, try next subnet", subnet.Name)
+					continue
+				}
+			}
+			break
+		}
 	}
 	return subnet, nil
 }
@@ -1228,7 +1250,9 @@ func appendCheckStatefulSetPodToDel(c *Controller, pod *v1.Pod) (bool, error) {
 		klog.Errorf("failed to get namespace %s, %v", pod.Namespace, err)
 		return false, err
 	}
-	if podNs.Annotations[util.LogicalSwitchAnnotation] != "" && pod.Annotations[util.LogicalSwitchAnnotation] != "" && strings.TrimSpace(podNs.Annotations[util.LogicalSwitchAnnotation]) != strings.TrimSpace(pod.Annotations[util.LogicalSwitchAnnotation]) {
+
+	subnetNames := podNs.Annotations[util.LogicalSwitchAnnotation]
+	if subnetNames != "" && pod.Annotations[util.LogicalSwitchAnnotation] != "" && !util.ContainsString(strings.Split(subnetNames, ","), strings.TrimSpace(pod.Annotations[util.LogicalSwitchAnnotation])) {
 		klog.Infof("ns %s annotation subnet is %s, which is inconstant with subnet for pod %s, delete pod", pod.Namespace, podNs.Annotations[util.LogicalSwitchAnnotation], pod.Name)
 		return true, nil
 	}
