@@ -287,7 +287,8 @@ spec:
           readinessProbe:
             exec:
               command:
-                - /kube-ovn/kube-ovn-leader-checker
+                - bash
+                - /kube-ovn/ovn-healthcheck.sh
             periodSeconds: 15
             timeoutSeconds: 45
           livenessProbe:

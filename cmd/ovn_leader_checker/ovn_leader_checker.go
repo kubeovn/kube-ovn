@@ -16,7 +16,7 @@ func CmdMain() {
 		os.Exit(-1)
 	}
 
-	err = ovn_leader_checker.OvnLeaderCheck(cfg)
+	err = ovn_leader_checker.StartOvnLeaderCheck(cfg)
 	if err != nil {
 		os.Exit(-1)
 	}

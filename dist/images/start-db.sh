@@ -74,6 +74,12 @@ function is_clustered {
   return 1
 }
 
+#### first  try to boot ovn-leader-checker
+#### we put kube-ovn-leader-checker at the same place of ovn-cental
+#### seperate pod of is also ok
+
+/kube-ovn/kube-ovn-leader-checker &
+
 trap quit EXIT
 if [[ "$ENABLE_SSL" == "false" ]]; then
     if [[ -z "$NODE_IPS" ]]; then
