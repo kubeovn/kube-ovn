@@ -1,4 +1,4 @@
-GO_VERSION = 1.16
+GO_VERSION = 1.17
 
 REGISTRY = kubeovn
 DEV_TAG = dev
