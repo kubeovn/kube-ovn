@@ -61,6 +61,7 @@ type Configuration struct {
 	DefaultHostInterface string
 	DefaultVlanName      string
 	DefaultVlanID        int
+	EnableEcmp           bool
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -96,6 +97,7 @@ func ParseFlags() (*Configuration, error) {
 		argsDefaultVlanName      = pflag.String("default-vlan-name", "ovn-vlan", "The default vlan name, default: ovn-vlan")
 		argsDefaultVlanID        = pflag.Int("default-vlan-id", 1, "The default vlan id, default: 1")
 		argsPodNicType           = pflag.String("pod-nic-type", "veth-pair", "The default pod network nic implementation type, default: veth-pair")
+		argEnableEcmp            = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -143,6 +145,7 @@ func ParseFlags() (*Configuration, error) {
 		PodName:                       os.Getenv("POD_NAME"),
 		PodNamespace:                  os.Getenv("KUBE_NAMESPACE"),
 		PodNicType:                    *argsPodNicType,
+		EnableEcmp:                    *argEnableEcmp,
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {

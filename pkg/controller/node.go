@@ -511,6 +511,9 @@ func (c *Controller) CheckGatewayReady() {
 }
 
 func (c *Controller) checkGatewayReady() error {
+	if !c.config.EnableEcmp {
+		return nil
+	}
 	klog.V(3).Infoln("start to check gateway status")
 	subnetList, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
