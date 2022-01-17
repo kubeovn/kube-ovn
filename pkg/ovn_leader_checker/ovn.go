@@ -3,9 +3,9 @@ package ovn_leader_checker
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"github.com/spf13/pflag"
-	"flag"
 	"io/ioutil"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,14 +26,13 @@ const (
 	EnvPodName      = "POD_NAME"
 	EnvPodNameSpace = "POD_NAMESPACE"
 	OvnNorthdPid    = "/var/run/ovn/ovn-northd.pid"
- 
 )
 
 // Configuration is the controller conf
 type Configuration struct {
 	KubeConfigFile string
 	KubeClient     kubernetes.Interface
-	ProbeInterval  int   
+	ProbeInterval  int
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -43,10 +42,10 @@ func ParseFlags() (*Configuration, error) {
 		argKubeConfigFile = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 		argProbeInterval  = pflag.Int("probeInterval", 15000, "interval of probing leader: ms unit")
 	)
-	
+
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
-	
+
 	// Sync the glog and klog flags.
 	flag.CommandLine.VisitAll(func(f1 *flag.Flag) {
 		f2 := klogFlags.Lookup(f1.Name)
@@ -57,13 +56,13 @@ func ParseFlags() (*Configuration, error) {
 			}
 		}
 	})
-	
+
 	pflag.CommandLine.AddGoFlagSet(klogFlags)
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
 	config := &Configuration{
 		KubeConfigFile: *argKubeConfigFile,
-		ProbeInterval: *argProbeInterval,
+		ProbeInterval:  *argProbeInterval,
 	}
 	return config, nil
 }
@@ -293,8 +292,7 @@ func patchPodLabels(cfg *Configuration, pod *v1.Pod, labels map[string]string) e
 	return err
 }
 
-
-func checkNorthdSvcExsit(cfg *Configuration, nameSpace string, svcName  string) bool{
+func checkNorthdSvcExsit(cfg *Configuration, nameSpace string, svcName string) bool {
 	_, err := cfg.KubeClient.CoreV1().Services(nameSpace).Get(context.Background(), svcName, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("get svc %v namespace %v error %v", svcName, nameSpace, err)
@@ -345,18 +343,17 @@ func compactDataBase(ctrlSock string) {
 		ctrlSock,
 		"ovsdb-server/compact",
 	}
-	
+
 	output, err := exec.Command("ovn-appctl", command...).CombinedOutput()
 	if len(output) > 0 {
 		klog.V(5).Infof("compactDataBase output %v ", string(output))
 	}
 	if err != nil {
 		klog.Errorf("compactDataBase err %v", err)
-	}	
+	}
 }
 
-
-func doOvnLeaderCheck(cfg *Configuration,  podName string, podNamespace string) {
+func doOvnLeaderCheck(cfg *Configuration, podName string, podNamespace string) {
 	pod, err := cfg.KubeClient.CoreV1().Pods(podNamespace).Get(context.Background(), podName, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("get pod %v namespace %v error %v", podName, podNamespace, err)
@@ -366,9 +363,9 @@ func doOvnLeaderCheck(cfg *Configuration,  podName string, podNamespace string) 
 	labels := pod.ObjectMeta.Labels
 	if !checkOvnisAlive() {
 		klog.Errorf("ovn is not alive")
-		return 
+		return
 	}
-	
+
 	//clone  pod labels
 	modify_labels := make(map[string]string)
 	for k, v := range labels {
@@ -390,7 +387,7 @@ func doOvnLeaderCheck(cfg *Configuration,  podName string, podNamespace string) 
 	if tryUpdateLabel(labels, "ovn-sb-leader", isleader, modify_labels) {
 		needUpdate = true
 	}
-	
+
 	if needUpdate {
 		klog.V(5).Infof("OvnLeaderCheck need replace labels %+v \n", modify_labels)
 		err = patchPodLabels(cfg, pod, modify_labels)
@@ -398,11 +395,11 @@ func doOvnLeaderCheck(cfg *Configuration,  podName string, podNamespace string) 
 			klog.Errorf("patch label error %v", err)
 			return
 		}
-	}	
+	}
 	if checkNorthdSvcExsit(cfg, podNamespace, "ovn-northd") {
 		if !checkNorthdSvcValidIP(cfg, podNamespace, "ovn-northd") {
 			stealLock()
-		} 		
+		}
 	}
 	compactDataBase("/var/run/ovn/ovnnb_db.ctl")
 	compactDataBase("/var/run/ovn/ovnsb_db.ctl")
@@ -414,8 +411,7 @@ func StartOvnLeaderCheck(cfg *Configuration) error {
 		return fmt.Errorf("env variables POD_NAME and POD_NAMESPACE must be set")
 	}
 	for {
-		doOvnLeaderCheck(cfg, podName , podNamespace);
+		doOvnLeaderCheck(cfg, podName, podNamespace)
 		time.Sleep(time.Duration(cfg.ProbeInterval) * time.Millisecond)
 	}
 }
-
