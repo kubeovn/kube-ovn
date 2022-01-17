@@ -69,6 +69,7 @@ type Configuration struct {
 	EnableLb          bool
 	EnableNP          bool
 	EnableExternalVpc bool
+	EnableEcmp        bool
 
 	ExternalGatewayConfigNS string
 	ExternalGatewayNet      string
@@ -115,6 +116,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnableLb             = pflag.Bool("enable-lb", true, "Enable load balancer")
 		argEnableNP             = pflag.Bool("enable-np", true, "Enable network policy support")
 		argEnableExternalVpc    = pflag.Bool("enable-external-vpc", true, "Enable external vpc support")
+		argEnableEcmp           = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
 
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
 		argExternalGatewayNet      = pflag.String("external-gateway-net", "external", "The namespace of configmap external-gateway-config, default: external")
@@ -175,6 +177,7 @@ func ParseFlags() (*Configuration, error) {
 		ExternalGatewayConfigNS:       *argExternalGatewayConfigNS,
 		ExternalGatewayNet:            *argExternalGatewayNet,
 		ExternalGatewayVlanID:         *argExternalGatewayVlanID,
+		EnableEcmp:                    *argEnableEcmp,
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {
