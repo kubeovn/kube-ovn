@@ -133,7 +133,7 @@ func checkNbIsLeader() bool {
 		command = []string{
 			"query",
 			"tcp:127.0.0.1:6641",
-			"[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Northbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]",
+			"[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\",\"OVN_Northbound\"]],\"columns\":[\"leader\"],\"op\":\"select\"}]",
 		}
 	} else {
 		command = []string{
@@ -141,21 +141,22 @@ func checkNbIsLeader() bool {
 			"/var/run/tls/key",
 			"-c",
 			"/var/run/tls/cert",
-			"-C /var/run/tls/cacert",
+			"-C",
+			"/var/run/tls/cacert",
 			"query",
 			"ssl:127.0.0.1:6641",
-			"[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Northbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]",
+			"[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\",\"OVN_Northbound\"]],\"columns\":[\"leader\"],\"op\":\"select\"}]",
 		}
 	}
 
 	output, err := exec.Command("ovsdb-client", command...).CombinedOutput()
 	if err != nil {
-		klog.Errorf("CheckNbIsLeader execute err %v", err)
+		klog.Errorf("CheckNbIsLeader execute err %v errmsg %v", err, string(output))
 		return false
 	}
 
 	if len(output) == 0 {
-		klog.Errorf("CheckNbIsLeader no output %v", err)
+		klog.Errorf("CheckNbIsLeader no output")
 		return false
 	}
 
@@ -170,7 +171,7 @@ func checkSbIsLeader() bool {
 		command = []string{
 			"query",
 			"tcp:127.0.0.1:6642",
-			"[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Southbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]",
+			"[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\",\"OVN_Southbound\"]],\"columns\":[\"leader\"],\"op\":\"select\"}]",
 		}
 	} else {
 		command = []string{
@@ -178,21 +179,22 @@ func checkSbIsLeader() bool {
 			"/var/run/tls/key",
 			"-c",
 			"/var/run/tls/cert",
-			"-C /var/run/tls/cacert",
+			"-C",
+			"/var/run/tls/cacert",
 			"query",
 			"ssl:127.0.0.1:6642",
-			"[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Southbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]",
+			"[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\",\"OVN_Southbound\"]],\"columns\":[\"leader\"],\"op\":\"select\"}]",
 		}
 	}
 
 	output, err := exec.Command("ovsdb-client", command...).CombinedOutput()
 	if err != nil {
-		klog.Errorf("CheckSbIsLeader execute err %v", err)
+		klog.Errorf("CheckSbIsLeader execute err %v errmsg %v", err, string(output))
 		return false
 	}
 
 	if len(output) == 0 {
-		klog.Errorf("CheckSbIsLeader no output %v", err)
+		klog.Errorf("CheckSbIsLeader no output ")
 		return false
 	}
 
@@ -221,12 +223,12 @@ func checkNorthdActive() bool {
 	}
 	output, err := exec.Command("ovs-appctl", command...).CombinedOutput()
 	if err != nil {
-		klog.Errorf("checkNorthdActive execute err %v", err)
+		klog.Errorf("checkNorthdActive execute err %v errmsg %v", err, string(output))
 		return false
 	}
 
 	if len(output) == 0 {
-		klog.Errorf("checkNorthdActive no output %v", err)
+		klog.Errorf("checkNorthdActive no output")
 		return false
 	}
 
