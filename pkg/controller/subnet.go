@@ -987,7 +987,7 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 				}
 
 				// check if activateGateway still ready
-				if subnet.Status.ActivateGateway != "" {
+				if subnet.Status.ActivateGateway != "" && util.GatewayContains(subnet.Spec.GatewayNode, subnet.Status.ActivateGateway) {
 					node, err := c.nodesLister.Get(subnet.Status.ActivateGateway)
 					if err == nil && nodeReady(node) {
 						klog.Infof("subnet %s uses the old activate gw %s", subnet.Name, node.Name)
