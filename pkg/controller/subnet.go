@@ -1367,6 +1367,9 @@ func (c *Controller) deleteEcmpRouteForNode(subnet *kubeovnv1.Subnet) error {
 			continue
 		}
 
+		if subnet.Status.ActivateGateway != "" && subnet.Status.ActivateGateway == gw {
+			continue
+		}
 		ipStr := node.Annotations[util.IpAddressAnnotation]
 		for _, ip := range strings.Split(ipStr, ",") {
 			var cidrBlock string
@@ -1382,10 +1385,6 @@ func (c *Controller) deleteEcmpRouteForNode(subnet *kubeovnv1.Subnet) error {
 				}
 
 				if exist {
-					if subnet.Status.ActivateGateway != "" && subnet.Status.ActivateGateway == gw {
-						continue
-					}
-
 					klog.Infof("subnet %v changed to active-standby mode, delete ecmp route for node %s, ip %v", subnet.Name, node.Name, ip)
 					if err := c.ovnClient.DeleteMatchedStaticRoute(cidrBlock, ip, c.config.ClusterRouter); err != nil {
 						klog.Errorf("failed to delete static route %s for node %s, %v", ip, node.Name, err)
