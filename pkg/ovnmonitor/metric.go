@@ -449,6 +449,17 @@ var (
 			"server_id",
 			"cluster_id",
 		})
+
+	metricDBStatus = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: metricNamespace,
+			Name:      "db_status",
+			Help:      "The status of OVN NB/SB DB, (1) for healthy, (0) for unhealthy.",
+		},
+		[]string{
+			"hostname",
+			"db_name",
+		})
 )
 
 func registerOvnMetrics() {
@@ -457,6 +468,7 @@ func registerOvnMetrics() {
 	prometheus.MustRegister(metricRequestErrorNums)
 	prometheus.MustRegister(metricLogFileSize)
 	prometheus.MustRegister(metricDBFileSize)
+	prometheus.MustRegister(metricDBStatus)
 
 	// ovn chassis metrics
 	prometheus.MustRegister(metricChassisInfo)

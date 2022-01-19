@@ -2258,7 +2258,7 @@ OVN_SB_POD=
 showHelp(){
   echo "kubectl ko {subcommand} [option...]"
   echo "Available Subcommands:"
-  echo "  [nb|sb] [status|kick|backup]     ovn-db operations show cluster status, kick stale server or backup database"
+  echo "  [nb|sb] [status|kick|backup|dbstatus]     ovn-db operations show cluster status, kick stale server, backup database or get db consistency status"
   echo "  nbctl [ovn-nbctl options ...]    invoke ovn-nbctl"
   echo "  sbctl [ovn-sbctl options ...]    invoke ovn-sbctl"
   echo "  vsctl {nodeName} [ovs-vsctl options ...]   invoke ovs-vsctl on selected node"
@@ -2665,6 +2665,9 @@ dbtool(){
           kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- rm -f /etc/ovn/ovnnb_db.$suffix.backup
           echo "backup $component to $(pwd)/ovnnb_db.$suffix.backup"
           ;;
+        dbstatus)
+          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/get-db-storage-status OVN_Northbound
+          ;;
         *)
           echo "unknown action $action"
       esac
@@ -2682,6 +2685,9 @@ dbtool(){
           kubectl cp $KUBE_OVN_NS/$OVN_SB_POD:/etc/ovn/ovnsb_db.$suffix.backup $(pwd)/ovnsb_db.$suffix.backup
           kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- rm -f /etc/ovn/ovnsb_db.$suffix.backup
           echo "backup $component to $(pwd)/ovnsb_db.$suffix.backup"
+          ;;
+        dbstatus)
+          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/get-db-storage-status OVN_Southbound
           ;;
         *)
           echo "unknown action $action"
