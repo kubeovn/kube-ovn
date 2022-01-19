@@ -62,6 +62,19 @@ else
   kubectl label pod "$POD_NAME" -n "$POD_NAMESPACE" ovn-sb-leader-
 fi
 
+nb_status=$(ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/get-db-storage-status OVN_Northbound)
+echo "nb $nb_status"
+if [[ $nb_status =~ "inconsistent" ]]
+then
+   exit 1
+fi
+sb_status=$(ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/get-db-storage-status OVN_Southbound)
+echo "sb $sb_status"
+if [[ $sb_status =~ "inconsistent" ]]
+then
+   exit 1
+fi
+
 set +e
 ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/compact
 ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/compact
