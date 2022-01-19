@@ -144,6 +144,7 @@ func (e *Exporter) ovnMetricsUpdate() {
 		e.exportOvnLogFileSizeGauge()
 		e.exportOvnDBFileSizeGauge()
 		e.exportOvnRequestErrorGauge()
+		e.exportOvnDBStatusGauge()
 
 		e.exportOvnChassisGauge()
 		e.exportLogicalSwitchGauge()
@@ -251,5 +252,21 @@ func (e *Exporter) exportOvnClusterInfoGauge() {
 			return
 		}
 		e.setOvnClusterInfoMetric(clusterStatus, database)
+	}
+}
+
+func (e *Exporter) exportOvnDBStatusGauge() {
+	dbList := []string{"OVN_Northbound", "OVN_Southbound"}
+	for _, database := range dbList {
+		ok, err := getDBStatus(database)
+		if err != nil {
+			klog.Errorf("Failed to get DB status for %s: %v", database, err)
+			return
+		}
+		if ok {
+			metricDBStatus.WithLabelValues(e.Client.System.Hostname, database).Set(1)
+		} else {
+			metricDBStatus.WithLabelValues(e.Client.System.Hostname, database).Set(0)
+		}
 	}
 }
