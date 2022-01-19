@@ -249,3 +249,34 @@ func parseDbStatus(output string) int {
 	}
 	return result
 }
+
+func getDBStatus(dbName string) (bool, error) {
+	var cmdstr string
+	var result bool
+	switch dbName {
+	case "OVN_Northbound":
+		cmdstr = fmt.Sprintf("ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/get-db-storage-status %s", dbName)
+	case "OVN_Southbound":
+		cmdstr = fmt.Sprintf("ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/get-db-storage-status %s", dbName)
+	}
+
+	cmd := exec.Command("sh", "-c", cmdstr)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		klog.Errorf("get ovn-northbound status failed, err %v", err)
+		return false, err
+	}
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "status: ok") {
+			result = true
+			break
+		}
+		if strings.Contains(line, "ovsdb error") {
+			result = false
+			break
+		}
+	}
+
+	return result, nil
+}
