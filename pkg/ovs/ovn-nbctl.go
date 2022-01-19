@@ -301,7 +301,12 @@ func (c Client) ListPodLogicalSwitchPorts(pod, namespace string) ([]string, erro
 func (c Client) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway string, excludeIps []string, needRouter bool) error {
 	var err error
 	cidrBlocks := strings.Split(subnet, ",")
-	mask := strings.Split(cidrBlocks[0], "/")[1]
+	temp := strings.Split(cidrBlocks[0], "/")
+	if len(temp) != 2 {
+		klog.Errorf("cidrBlock %s is invalied", cidrBlocks[0])
+		return err
+	}
+	mask := temp[1]
 
 	var cmd []string
 	var networks string
