@@ -22,10 +22,11 @@ import (
 )
 
 const (
-	EnvSSL          = "ENABLE_SSL"
-	EnvPodName      = "POD_NAME"
-	EnvPodNameSpace = "POD_NAMESPACE"
-	OvnNorthdPid    = "/var/run/ovn/ovn-northd.pid"
+	EnvSSL                 = "ENABLE_SSL"
+	EnvPodName             = "POD_NAME"
+	EnvPodNameSpace        = "POD_NAMESPACE"
+	OvnNorthdPid           = "/var/run/ovn/ovn-northd.pid"
+	DEFAULT_PROBE_INTERVAL = 15000
 )
 
 // Configuration is the controller conf
@@ -40,10 +41,10 @@ type Configuration struct {
 func ParseFlags() (*Configuration, error) {
 	var (
 		argKubeConfigFile = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
-		argProbeInterval  = pflag.Int("probeInterval", 15000, "interval of probing leader: ms unit")
+		argProbeInterval  = pflag.Int("probeInterval", DEFAULT_PROBE_INTERVAL, "interval of probing leader: ms unit")
 	)
 
-	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
+	klogFlags := flag.NewFlagSet("klog", flag.ContinueOnError)
 	klog.InitFlags(klogFlags)
 
 	// Sync the glog and klog flags.
@@ -52,14 +53,26 @@ func ParseFlags() (*Configuration, error) {
 		if f2 != nil {
 			value := f1.Value.String()
 			if err := f2.Value.Set(value); err != nil {
-				klog.Fatalf("failed to set flag %v", err)
+				klog.Errorf("failed to set flag %v", err)
 			}
 		}
 	})
 
+	// change the behavior of cmdline
+	// not exit. not good
+	pflag.CommandLine.Init(os.Args[0], pflag.ContinueOnError)
 	pflag.CommandLine.AddGoFlagSet(klogFlags)
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
-	pflag.Parse()
+
+	err := pflag.CommandLine.Parse(os.Args[1:])
+	if err != nil {
+		defconfig := &Configuration{
+			KubeConfigFile: "",
+			ProbeInterval:  DEFAULT_PROBE_INTERVAL,
+		}
+		return defconfig, err
+	}
+
 	config := &Configuration{
 		KubeConfigFile: *argKubeConfigFile,
 		ProbeInterval:  *argProbeInterval,
@@ -73,6 +86,10 @@ func KubeClientInit(cfg *Configuration) error {
 	var kubecfg *rest.Config
 	var err error
 
+	if cfg == nil {
+		return fmt.Errorf("invalid cfg")
+	}
+
 	if cfg.KubeConfigFile == "" {
 		klog.Infof("no --kubeconfig, use in-cluster kubernetes config")
 		kubecfg, err = rest.InClusterConfig()
@@ -83,13 +100,11 @@ func KubeClientInit(cfg *Configuration) error {
 		klog.Errorf("init kubernetes cfg failed %v", err)
 		return err
 	}
-
 	kubeClient, err := kubernetes.NewForConfig(kubecfg)
 	if err != nil {
 		klog.Errorf("init kubernetes client failed %v", err)
 		return err
 	}
-
 	cfg.KubeClient = kubeClient
 	return nil
 }
@@ -356,6 +371,16 @@ func compactDataBase(ctrlSock string) {
 }
 
 func doOvnLeaderCheck(cfg *Configuration, podName string, podNamespace string) {
+	if podName == "" || podNamespace == "" {
+		klog.Errorf("env variables POD_NAME and POD_NAMESPACE must be set")
+		return
+	}
+
+	if cfg == nil || cfg.KubeClient == nil {
+		klog.Errorf("preValidChkCfg: invalid cfg")
+		return
+	}
+
 	pod, err := cfg.KubeClient.CoreV1().Pods(podNamespace).Get(context.Background(), podName, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("get pod %v namespace %v error %v", podName, podNamespace, err)
@@ -408,12 +433,11 @@ func doOvnLeaderCheck(cfg *Configuration, podName string, podNamespace string) {
 	compactDataBase("/var/run/ovn/ovnnb_db.ctl")
 	compactDataBase("/var/run/ovn/ovnsb_db.ctl")
 }
-func StartOvnLeaderCheck(cfg *Configuration) error {
+
+func StartOvnLeaderCheck(cfg *Configuration) {
 	podName := os.Getenv(EnvPodName)
 	podNamespace := os.Getenv(EnvPodNameSpace)
-	if podName == "" || podNamespace == "" {
-		return fmt.Errorf("env variables POD_NAME and POD_NAMESPACE must be set")
-	}
+
 	for {
 		doOvnLeaderCheck(cfg, podName, podNamespace)
 		time.Sleep(time.Duration(cfg.ProbeInterval) * time.Millisecond)

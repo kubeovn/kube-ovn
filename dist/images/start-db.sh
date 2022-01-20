@@ -74,12 +74,6 @@ function is_clustered {
   return 1
 }
 
-#### first  try to boot ovn-leader-checker
-#### we put kube-ovn-leader-checker at the same place of ovn-cental
-#### seperate pod of is also ok
-
-/kube-ovn/kube-ovn-leader-checker &
-
 trap quit EXIT
 if [[ "$ENABLE_SSL" == "false" ]]; then
     if [[ -z "$NODE_IPS" ]]; then
@@ -275,4 +269,5 @@ ovs-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/memory-trim-on-compaction o
 ovs-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/memory-trim-on-compaction on
 
 chmod 600 /etc/ovn/*
-tail -f /var/log/ovn/ovn-northd.log
+/kube-ovn/kube-ovn-leader-checker
+
