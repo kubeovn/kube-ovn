@@ -383,7 +383,9 @@ func doOvnLeaderCheck(cfg *Configuration, podName string, podNamespace string) {
 
 	//update pod labels
 	isleader = checkNorthdActive()
-	tryUpdateLabel(labels, "ovn-northd-leader", isleader, modify_labels)
+	if tryUpdateLabel(labels, "ovn-northd-leader", isleader, modify_labels) {
+		needUpdate = true
+	}
 
 	isleader = checkSbIsLeader()
 	if tryUpdateLabel(labels, "ovn-sb-leader", isleader, modify_labels) {
