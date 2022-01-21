@@ -124,7 +124,6 @@ const (
 
 	NodeRouterPolicyPriority = 30000
 
-	VethType     = "veth-pair"
 	OffloadType  = "offload-port"
 	InternalType = "internal-port"
 
