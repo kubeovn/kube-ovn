@@ -97,6 +97,10 @@ rules:
       - get
       - list
       - watch
+      - update
+      - create
+      - delete
+      - patch
   - apiGroups:
       - ""
     resources:
