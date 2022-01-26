@@ -44,6 +44,38 @@ func (c Client) ovnNbCommand(cmdArgs ...string) (string, error) {
 	return trimCommandOutput(raw), nil
 }
 
+func (c Client) CustomFindEntity(entity string, attris []string, args ...string) (result []map[string][]string, err error) {
+	result = []map[string][]string{}
+	var attrStr strings.Builder
+	for _, e := range attris {
+		attrStr.WriteString(e)
+		attrStr.WriteString(",")
+	}
+	// Assuming that the order of the elements in attris does not change
+	cmd := []string{"--format=csv", "--data=bare", "--no-heading", fmt.Sprintf("--columns=%s", attrStr.String()), "find", entity}
+	cmd = append(cmd, args...)
+	output, err := c.ovnNbCommand(cmd...)
+	if err != nil {
+		klog.Errorf("failed to customized list logical %s: %v", entity, err)
+		return nil, err
+	}
+	if output == "" {
+		return result, nil
+	}
+	lines := strings.Split(output, "\n")
+	for _, l := range lines {
+		aResult := make(map[string][]string)
+		parts := strings.Split(strings.TrimSpace(l), ",")
+		for i, e := range attris {
+			if aResult[e] = strings.Fields(parts[i]); aResult[e] == nil {
+				aResult[e] = []string{}
+			}
+		}
+		result = append(result, aResult)
+	}
+	return result, nil
+}
+
 func (c Client) SetAzName(azName string) error {
 	if _, err := c.ovnNbCommand("set", "NB_Global", ".", fmt.Sprintf("name=%s", azName)); err != nil {
 		return fmt.Errorf("failed to set az name, %v", err)
@@ -477,6 +509,20 @@ func (c Client) AddStaticRoute(policy, cidr, nextHop, router string, routeType s
 		policy = PolicyDstIP
 	}
 
+	var existingRoutes []string
+	if routeType != util.EcmpRouteType {
+		result, err := c.CustomFindEntity("Logical_Router", []string{"static_routes"}, fmt.Sprintf("name=%s", router))
+		if err != nil {
+			return err
+		}
+		if len(result) > 1 {
+			return fmt.Errorf("unexpected error: found %d logical router with name %s", len(result), router)
+		}
+		if len(result) != 0 {
+			existingRoutes = result[0]["static_routes"]
+		}
+	}
+
 	for _, cidrBlock := range strings.Split(cidr, ",") {
 		for _, gw := range strings.Split(nextHop, ",") {
 			if util.CheckProtocol(cidrBlock) != util.CheckProtocol(gw) {
@@ -487,6 +533,20 @@ func (c Client) AddStaticRoute(policy, cidr, nextHop, router string, routeType s
 					return err
 				}
 			} else {
+				if !strings.ContainsRune(cidrBlock, '/') {
+					filter := []string{fmt.Sprintf("policy=%s", policy), fmt.Sprintf(`ip_prefix="%s"`, cidrBlock), fmt.Sprintf(`nexthop!="%s"`, gw)}
+					result, err := c.CustomFindEntity("Logical_Router_Static_Route", []string{"_uuid"}, filter...)
+					if err != nil {
+						return err
+					}
+
+					for _, route := range result {
+						if util.ContainsString(existingRoutes, route["_uuid"][0]) {
+							return fmt.Errorf(`static route "policy=%s ip_prefix=%s" with different nexthop already exists on logical router %s`, policy, cidrBlock, router)
+						}
+					}
+				}
+
 				if _, err := c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "lr-route-add", router, cidrBlock, gw); err != nil {
 					return err
 				}

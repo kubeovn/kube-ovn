@@ -485,31 +485,33 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 		return nil
 	}
 
-	addresses := c.ipam.GetPodAddress(key)
-	for _, address := range addresses {
-		if strings.TrimSpace(address.Ip) == "" {
-			continue
-		}
-		subnet, err := c.subnetsLister.Get(address.Subnet.Name)
-		if err != nil {
-			return err
-		}
-		vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
-		if err != nil {
-			return err
-		}
-		if err := c.ovnClient.DeleteStaticRoute(address.Ip, vpc.Status.Router); err != nil {
-			return err
-		}
-		if err := c.ovnClient.DeleteNatRule(address.Ip, vpc.Status.Router); err != nil {
-			return err
-		}
-	}
-
 	ports, err := c.ovnClient.ListPodLogicalSwitchPorts(pod.Name, pod.Namespace)
 	if err != nil {
 		klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
 		return err
+	}
+
+	if len(ports) != 0 {
+		addresses := c.ipam.GetPodAddress(key)
+		for _, address := range addresses {
+			if strings.TrimSpace(address.Ip) == "" {
+				continue
+			}
+			subnet, err := c.subnetsLister.Get(address.Subnet.Name)
+			if err != nil {
+				return err
+			}
+			vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
+			if err != nil {
+				return err
+			}
+			if err := c.ovnClient.DeleteStaticRoute(address.Ip, vpc.Status.Router); err != nil {
+				return err
+			}
+			if err := c.ovnClient.DeleteNatRule(address.Ip, vpc.Status.Router); err != nil {
+				return err
+			}
+		}
 	}
 
 	var keepIpCR bool
