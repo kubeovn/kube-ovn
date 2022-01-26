@@ -114,7 +114,9 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		priority = pod.Annotations[fmt.Sprintf(util.PriorityAnnotationTemplate, podRequest.Provider)]
 		providerNetwork = pod.Annotations[fmt.Sprintf(util.ProviderNetworkTemplate, podRequest.Provider)]
 		ipAddr = util.GetIpAddrWithMask(ip, cidr)
-		ifName = podRequest.IfName
+		if ifName = podRequest.IfName; ifName == "" {
+			ifName = "eth0"
+		}
 		if podRequest.DeviceID != "" {
 			nicType = util.OffloadType
 		} else {
@@ -127,16 +129,12 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		case "false":
 			isDefaultRoute = false
 		default:
-			if ifName == "" || ifName == "eth0" {
-				isDefaultRoute = true
-			}
+			isDefaultRoute = ifName == "eth0"
 		}
+
 		break
 	}
 
-	if ifName == "" {
-		ifName = "eth0"
-	}
 	if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podRequest.Provider)] != "true" {
 		err := fmt.Errorf("no address allocated to pod %s/%s provider %s, please see kube-ovn-controller logs to find errors", pod.Namespace, pod.Name, podRequest.Provider)
 		klog.Error(err)
@@ -147,6 +145,15 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	}
 
 	if err := csh.createOrUpdateIPCr(podRequest, subnet, ip, macAddr); err != nil {
+		if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()}); err != nil {
+			klog.Errorf("failed to write response, %v", err)
+		}
+		return
+	}
+
+	if isDefaultRoute && pod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podRequest.Provider)] != "true" {
+		err := fmt.Errorf("route is not ready for pod %s/%s provider %s, please see kube-ovn-controller logs to find errors", pod.Namespace, pod.Name, podRequest.Provider)
+		klog.Error(err)
 		if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()}); err != nil {
 			klog.Errorf("failed to write response, %v", err)
 		}
