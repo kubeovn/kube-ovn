@@ -16,42 +16,44 @@ import (
 )
 
 // InitOVSBridges initializes OVS bridges
-func InitOVSBridges() error {
+func InitOVSBridges() (map[string]string, error) {
 	bridges, err := ovs.Bridges()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
+	mappings := make(map[string]string)
 	for _, brName := range bridges {
 		bridge, err := netlink.LinkByName(brName)
 		if err != nil {
-			return fmt.Errorf("failed to get bridge by name %s: %v", brName, err)
+			return nil, fmt.Errorf("failed to get bridge by name %s: %v", brName, err)
 		}
 		if err = netlink.LinkSetUp(bridge); err != nil {
-			return fmt.Errorf("failed to set OVS bridge %s up: %v", brName, err)
+			return nil, fmt.Errorf("failed to set OVS bridge %s up: %v", brName, err)
 		}
 
 		output, err := ovs.Exec("list-ports", brName)
 		if err != nil {
-			return fmt.Errorf("failed to list ports of OVS bridge %s, %v: %q", brName, err, output)
+			return nil, fmt.Errorf("failed to list ports of OVS bridge %s, %v: %q", brName, err, output)
 		}
 
 		if output != "" {
 			for _, port := range strings.Split(output, "\n") {
 				ok, err := ovs.ValidatePortVendor(port)
 				if err != nil {
-					return fmt.Errorf("failed to check vendor of port %s: %v", port, err)
+					return nil, fmt.Errorf("failed to check vendor of port %s: %v", port, err)
 				}
 				if ok {
 					if _, err = configProviderNic(port, brName); err != nil {
-						return err
+						return nil, err
 					}
+					mappings[port] = brName
 				}
 			}
 		}
 	}
 
-	return nil
+	return mappings, nil
 }
 
 // InitNodeGateway init ovn0
