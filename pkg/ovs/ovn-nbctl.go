@@ -756,6 +756,20 @@ func (c Client) AddStaticRoute(policy, cidr, nextHop, router string, routeType s
 		policy = PolicyDstIP
 	}
 
+	var existingRoutes []string
+	if routeType != util.EcmpRouteType {
+		result, err := c.CustomFindEntity("Logical_Router", []string{"static_routes"}, fmt.Sprintf("name=%s", router))
+		if err != nil {
+			return err
+		}
+		if len(result) > 1 {
+			return fmt.Errorf("unexpected error: found %d logical router with name %s", len(result), router)
+		}
+		if len(result) != 0 {
+			existingRoutes = result[0]["static_routes"]
+		}
+	}
+
 	for _, cidrBlock := range strings.Split(cidr, ",") {
 		for _, gw := range strings.Split(nextHop, ",") {
 			if util.CheckProtocol(cidrBlock) != util.CheckProtocol(gw) {
@@ -766,6 +780,20 @@ func (c Client) AddStaticRoute(policy, cidr, nextHop, router string, routeType s
 					return err
 				}
 			} else {
+				if !strings.ContainsRune(cidrBlock, '/') {
+					filter := []string{fmt.Sprintf("policy=%s", policy), fmt.Sprintf(`ip_prefix="%s"`, cidrBlock), fmt.Sprintf(`nexthop!="%s"`, gw)}
+					result, err := c.CustomFindEntity("Logical_Router_Static_Route", []string{"_uuid"}, filter...)
+					if err != nil {
+						return err
+					}
+
+					for _, route := range result {
+						if util.ContainsString(existingRoutes, route["_uuid"][0]) {
+							return fmt.Errorf(`static route "policy=%s ip_prefix=%s" with different nexthop already exists on logical router %s`, policy, cidrBlock, router)
+						}
+					}
+				}
+
 				if _, err := c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "lr-route-add", router, cidrBlock, gw); err != nil {
 					return err
 				}
