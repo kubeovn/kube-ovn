@@ -48,7 +48,7 @@ type Configuration struct {
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
 // TODO: validate configuration
-func ParseFlags() (*Configuration, error) {
+func ParseFlags(nicBridgeMappings map[string]string) (*Configuration, error) {
 	var (
 		argIface                 = pflag.String("iface", "", "The iface used to inter-host pod communication, can be a nic name or a group of regex separated by comma, default: the default route iface")
 		argMTU                   = pflag.Int("mtu", 0, "The MTU used by pod iface in overlay networks, default: iface MTU - 100")
@@ -115,7 +115,7 @@ func ParseFlags() (*Configuration, error) {
 		return nil, err
 	}
 
-	if err := config.initNicConfig(); err != nil {
+	if err := config.initNicConfig(nicBridgeMappings); err != nil {
 		return nil, err
 	}
 
@@ -123,7 +123,7 @@ func ParseFlags() (*Configuration, error) {
 	return config, nil
 }
 
-func (config *Configuration) initNicConfig() error {
+func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) error {
 	var (
 		iface   *net.Interface
 		err     error
@@ -153,9 +153,15 @@ func (config *Configuration) initNicConfig() error {
 		}
 		encapIP = podIP
 	} else {
-		iface, err = findInterface(config.Iface)
+		tunnelNic := config.Iface
+		if brName := nicBridgeMappings[tunnelNic]; brName != "" {
+			klog.Infof("nic %s has been bridged to %s, use %s as the tunnel interface instead", tunnelNic, brName, brName)
+			tunnelNic = brName
+		}
+
+		iface, err = findInterface(tunnelNic)
 		if err != nil {
-			klog.Errorf("failed to find iface %s, %v", config.Iface, err)
+			klog.Errorf("failed to find iface %s, %v", tunnelNic, err)
 			return err
 		}
 		addrs, err := iface.Addrs()
@@ -163,7 +169,7 @@ func (config *Configuration) initNicConfig() error {
 			return fmt.Errorf("failed to get iface addr. %v", err)
 		}
 		if len(addrs) == 0 {
-			return fmt.Errorf("iface %s has no ip address", config.Iface)
+			return fmt.Errorf("iface %s has no ip address", tunnelNic)
 		}
 		encapIP = strings.Split(addrs[0].String(), "/")[0]
 	}
