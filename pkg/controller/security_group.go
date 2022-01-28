@@ -197,7 +197,7 @@ func (c *Controller) updateDenyAllSgPorts() error {
 		}
 		ports = append(ports, ret["name"][0])
 	}
-	return c.ovnClient.SetPortsToPortGroup(ovs.GetSgPortGroupName(util.DenyAllSecurityGroup), ports)
+	return c.ovnClient.UpdatePortGroupPorts(ovs.SgPortGroupName(util.DenyAllSecurityGroup), ports)
 }
 
 func (c *Controller) handleAddOrUpdateSg(key string) error {
@@ -277,7 +277,7 @@ func (c *Controller) handleAddOrUpdateSg(key string) error {
 	}
 
 	// update status
-	sg.Status.PortGroup = ovs.GetSgPortGroupName(sg.Name)
+	sg.Status.PortGroup = ovs.SgPortGroupName(sg.Name)
 	sg.Status.AllowSameGroupTraffic = sg.Spec.AllowSameGroupTraffic
 	c.patchSgStatus(sg)
 	c.syncSgPortsQueue.Add(key)
@@ -382,15 +382,15 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 		}
 	}
 
-	if err = c.ovnClient.SetPortsToPortGroup(sg.Status.PortGroup, ports); err != nil {
+	if err = c.ovnClient.UpdatePortGroupPorts(sg.Status.PortGroup, ports); err != nil {
 		klog.Errorf("failed to set port to sg, %v", err)
 		return err
 	}
-	if err = c.ovnClient.SetAddressesToAddressSet(v4s, ovs.GetSgV4AssociatedName(key)); err != nil {
+	if err = c.ovnClient.UpdateAddressSetAddresses(ovs.SgV4AssociatedName(key), v4s); err != nil {
 		klog.Errorf("failed to set address_set, %v", err)
 		return err
 	}
-	if err = c.ovnClient.SetAddressesToAddressSet(v6s, ovs.GetSgV6AssociatedName(key)); err != nil {
+	if err = c.ovnClient.UpdateAddressSetAddresses(ovs.SgV6AssociatedName(key), v6s); err != nil {
 		klog.Errorf("failed to set address_set, %v", err)
 		return err
 	}
@@ -436,14 +436,14 @@ func (c *Controller) reconcilePortSg(portName, securityGroups string) error {
 		if util.ContainsString(newSgList, sgName) {
 			needAssociated = "true"
 		}
-		if err = c.ovnClient.SetPortExternalIds(portName, fmt.Sprintf("associated_sg_%s", sgName), needAssociated); err != nil {
+		if err = c.ovnClient.SetPortExternalID(portName, fmt.Sprintf("associated_sg_%s", sgName), needAssociated); err != nil {
 			klog.Errorf("set port '%s' external_ids failed, %v", portName, err)
 			return err
 		}
 		c.syncSgPortsQueue.Add(sgName)
 	}
 
-	if err = c.ovnClient.SetPortExternalIds(portName, "security_groups", strings.ReplaceAll(securityGroups, ",", "/")); err != nil {
+	if err = c.ovnClient.SetPortExternalID(portName, "security_groups", strings.ReplaceAll(securityGroups, ",", "/")); err != nil {
 		klog.Errorf("set port '%s' external_ids failed, %v", portName, err)
 		return err
 	}

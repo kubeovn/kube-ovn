@@ -126,21 +126,20 @@ func (c *Controller) gcCustomLogicalRouter() error {
 	for _, s := range vpcs {
 		vpcNames = append(vpcNames, s.Name)
 	}
-	lrs, err := c.ovnClient.ListLogicalRouter(c.config.EnableExternalVpc)
+	lrs, err := c.ovnClient.ListLogicalRouters(c.config.EnableExternalVpc)
 	if err != nil {
 		klog.Errorf("failed to list logical router, %v", err)
 		return err
 	}
-	klog.Infof("lr in ovn %v", lrs)
-	klog.Infof("vpc in kubernetes %v", vpcNames)
+
 	for _, lr := range lrs {
-		if lr == util.DefaultVpc {
+		if lr.Name == util.DefaultVpc {
 			continue
 		}
-		if !util.IsStringIn(lr, vpcNames) {
-			klog.Infof("gc router %s", lr)
-			if err := c.deleteVpcRouter(lr); err != nil {
-				klog.Errorf("failed to delete router %s, %v", lr, err)
+		if !util.IsStringIn(lr.Name, vpcNames) {
+			klog.Infof("gc router %s", lr.Name)
+			if err := c.deleteVpcRouter(lr.Name); err != nil {
+				klog.Errorf("failed to delete router %s, %v", lr.Name, err)
 				return err
 			}
 		}
@@ -234,26 +233,26 @@ func (c *Controller) markAndCleanLSP() error {
 		}
 	}
 
-	lsps, err := c.ovnClient.ListLogicalSwitchPort(c.config.EnableExternalVpc)
+	lspList, err := c.ovnClient.ListLogicalSwitchPorts(c.config.EnableExternalVpc, nil)
 	if err != nil {
 		klog.Errorf("failed to list logical switch port, %v", err)
 		return err
 	}
 
 	noPodLSP := map[string]bool{}
-	for _, lsp := range lsps {
-		if !util.IsStringIn(lsp, ipNames) {
-			if !lastNoPodLSP[lsp] {
-				noPodLSP[lsp] = true
+	for _, lsp := range lspList {
+		if !util.IsStringIn(lsp.Name, ipNames) {
+			if !lastNoPodLSP[lsp.Name] {
+				noPodLSP[lsp.Name] = true
 			} else {
-				klog.Infof("gc logical switch port %s", lsp)
-				if err := c.ovnClient.DeleteLogicalSwitchPort(lsp); err != nil {
-					klog.Errorf("failed to delete lsp %s, %v", lsp, err)
+				klog.Infof("gc logical switch port %s", lsp.Name)
+				if err := c.ovnClient.DeleteLogicalSwitchPort(lsp.Name); err != nil {
+					klog.Errorf("failed to delete lsp %s, %v", lsp.Name, err)
 					return err
 				}
-				if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), lsp, metav1.DeleteOptions{}); err != nil {
+				if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), lsp.Name, metav1.DeleteOptions{}); err != nil {
 					if !k8serrors.IsNotFound(err) {
-						klog.Errorf("failed to delete ip %s, %v", lsp, err)
+						klog.Errorf("failed to delete ip %s, %v", lsp.Name, err)
 						return err
 					}
 				}
@@ -263,7 +262,14 @@ func (c *Controller) markAndCleanLSP() error {
 	lastNoPodLSP = noPodLSP
 
 	for _, ipName := range ipNames {
-		if !util.IsStringIn(ipName, lsps) {
+		var found bool
+		for _, lsp := range lspList {
+			if lsp.Name == ipName {
+				found = true
+				break
+			}
+		}
+		if !found {
 			klog.Errorf("lsp lost for pod %s, please delete the pod and retry", ipName)
 		}
 	}
@@ -369,19 +375,22 @@ func (c *Controller) gcLoadBalancer() error {
 		if tcpLb != "" {
 			lbUuid, err := c.ovnClient.FindLoadbalancer(tcpLb)
 			if err != nil {
-				klog.Errorf("failed to get lb %v", err)
-			}
-			vips, err := c.ovnClient.GetLoadBalancerVips(lbUuid)
-			if err != nil {
-				klog.Errorf("failed to get tcp lb vips %v", err)
+				klog.Errorf("failed to get lb %s: %v", tcpLb, err)
 				return err
 			}
-			for vip := range vips {
-				if !util.IsStringIn(vip, tcpVips) {
-					err := c.ovnClient.DeleteLoadBalancerVip(vip, tcpLb)
-					if err != nil {
-						klog.Errorf("failed to delete vip %s from tcp lb %s, %v", vip, tcpLb, err)
-						return err
+			if lbUuid != "" {
+				vips, err := c.ovnClient.GetLoadBalancerVips(lbUuid)
+				if err != nil {
+					klog.Errorf("failed to get tcp lb vips %v", err)
+					return err
+				}
+				for vip := range vips {
+					if !util.IsStringIn(vip, tcpVips) {
+						err := c.ovnClient.DeleteLoadBalancerVip(vip, tcpLb)
+						if err != nil {
+							klog.Errorf("failed to delete vip %s from tcp lb %s, %v", vip, tcpLb, err)
+							return err
+						}
 					}
 				}
 			}
@@ -390,19 +399,22 @@ func (c *Controller) gcLoadBalancer() error {
 		if tcpSessLb != "" {
 			lbUuid, err := c.ovnClient.FindLoadbalancer(tcpSessLb)
 			if err != nil {
-				klog.Errorf("failed to get lb %v", err)
-			}
-			vips, err := c.ovnClient.GetLoadBalancerVips(lbUuid)
-			if err != nil {
-				klog.Errorf("failed to get tcp session lb vips %v", err)
+				klog.Errorf("failed to get lb %s: %v", tcpSessLb, err)
 				return err
 			}
-			for vip := range vips {
-				if !util.IsStringIn(vip, tcpSessionVips) {
-					err := c.ovnClient.DeleteLoadBalancerVip(vip, tcpSessLb)
-					if err != nil {
-						klog.Errorf("failed to delete vip %s from tcp session lb %s, %v", vip, tcpSessLb, err)
-						return err
+			if lbUuid != "" {
+				vips, err := c.ovnClient.GetLoadBalancerVips(lbUuid)
+				if err != nil {
+					klog.Errorf("failed to get tcp session lb vips %v", err)
+					return err
+				}
+				for vip := range vips {
+					if !util.IsStringIn(vip, tcpSessionVips) {
+						err := c.ovnClient.DeleteLoadBalancerVip(vip, tcpSessLb)
+						if err != nil {
+							klog.Errorf("failed to delete vip %s from tcp session lb %s, %v", vip, tcpSessLb, err)
+							return err
+						}
 					}
 				}
 			}
@@ -411,20 +423,22 @@ func (c *Controller) gcLoadBalancer() error {
 		if udpLb != "" {
 			lbUuid, err := c.ovnClient.FindLoadbalancer(udpLb)
 			if err != nil {
-				klog.Errorf("failed to get lb %v", err)
+				klog.Errorf("failed to get lb %s: %v", udpLb, err)
 				return err
 			}
-			vips, err := c.ovnClient.GetLoadBalancerVips(lbUuid)
-			if err != nil {
-				klog.Errorf("failed to get udp lb vips %v", err)
-				return err
-			}
-			for vip := range vips {
-				if !util.IsStringIn(vip, udpVips) {
-					err := c.ovnClient.DeleteLoadBalancerVip(vip, udpLb)
-					if err != nil {
-						klog.Errorf("failed to delete vip %s from tcp lb %s, %v", vip, udpLb, err)
-						return err
+			if lbUuid != "" {
+				vips, err := c.ovnClient.GetLoadBalancerVips(lbUuid)
+				if err != nil {
+					klog.Errorf("failed to get udp lb vips %v", err)
+					return err
+				}
+				for vip := range vips {
+					if !util.IsStringIn(vip, udpVips) {
+						err := c.ovnClient.DeleteLoadBalancerVip(vip, udpLb)
+						if err != nil {
+							klog.Errorf("failed to delete vip %s from tcp lb %s, %v", vip, udpLb, err)
+							return err
+						}
 					}
 				}
 			}
@@ -433,20 +447,22 @@ func (c *Controller) gcLoadBalancer() error {
 		if udpSessLb != "" {
 			lbUuid, err := c.ovnClient.FindLoadbalancer(udpSessLb)
 			if err != nil {
-				klog.Errorf("failed to get lb %v", err)
+				klog.Errorf("failed to get lb %s: %v", udpSessLb, err)
 				return err
 			}
-			vips, err := c.ovnClient.GetLoadBalancerVips(lbUuid)
-			if err != nil {
-				klog.Errorf("failed to get udp session lb vips %v", err)
-				return err
-			}
-			for vip := range vips {
-				if !util.IsStringIn(vip, udpSessionVips) {
-					err := c.ovnClient.DeleteLoadBalancerVip(vip, udpSessLb)
-					if err != nil {
-						klog.Errorf("failed to delete vip %s from udp session lb %s, %v", vip, udpSessLb, err)
-						return err
+			if lbUuid != "" {
+				vips, err := c.ovnClient.GetLoadBalancerVips(lbUuid)
+				if err != nil {
+					klog.Errorf("failed to get udp session lb vips %v", err)
+					return err
+				}
+				for vip := range vips {
+					if !util.IsStringIn(vip, udpSessionVips) {
+						err := c.ovnClient.DeleteLoadBalancerVip(vip, udpSessLb)
+						if err != nil {
+							klog.Errorf("failed to delete vip %s from udp session lb %s, %v", vip, udpSessLb, err)
+							return err
+						}
 					}
 				}
 			}

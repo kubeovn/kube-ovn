@@ -202,7 +202,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		return err
 	}
 
-	err = c.ovnClient.SetPortsToPortGroup(pgName, ports)
+	err = c.ovnClient.UpdatePortGroupPorts(pgName, ports)
 	if err != nil && !strings.Contains(err.Error(), "not found") {
 		klog.Errorf("failed to set port group, %v", err)
 		return err
@@ -228,7 +228,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			klog.Errorf("failed to create address_set %s, %v", svcAsNameIPv4, err)
 			return err
 		}
-		if err = c.ovnClient.SetAddressesToAddressSet(svcIPs, svcAsName); err != nil {
+		if err = c.ovnClient.UpdateAddressSetAddresses(svcAsName, svcIPs); err != nil {
 			klog.Errorf("failed to set netpol svc, %v", err)
 			return err
 		}
@@ -288,7 +288,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					klog.Errorf("failed to create address_set %s, %v", ingressAllowAsName, err)
 					return err
 				}
-				if err = c.ovnClient.SetAddressesToAddressSet(allows, ingressAllowAsName); err != nil {
+				if err = c.ovnClient.UpdateAddressSetAddresses(ingressAllowAsName, allows); err != nil {
 					klog.Errorf("failed to set ingress allow address_set, %v", err)
 					return err
 				}
@@ -297,7 +297,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					klog.Errorf("failed to create address_set %s, %v", ingressExceptAsName, err)
 					return err
 				}
-				if err = c.ovnClient.SetAddressesToAddressSet(excepts, ingressExceptAsName); err != nil {
+				if err = c.ovnClient.UpdateAddressSetAddresses(ingressExceptAsName, excepts); err != nil {
 					klog.Errorf("failed to set ingress except address_set, %v", err)
 					return err
 				}
@@ -424,7 +424,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					klog.Errorf("failed to create address_set %s, %v", egressAllowAsName, err)
 					return err
 				}
-				if err = c.ovnClient.SetAddressesToAddressSet(allows, egressAllowAsName); err != nil {
+				if err = c.ovnClient.UpdateAddressSetAddresses(egressAllowAsName, allows); err != nil {
 					klog.Errorf("failed to set egress allow address_set, %v", err)
 					return err
 				}
@@ -433,7 +433,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					klog.Errorf("failed to create address_set %s, %v", egressExceptAsName, err)
 					return err
 				}
-				if err = c.ovnClient.SetAddressesToAddressSet(excepts, egressExceptAsName); err != nil {
+				if err = c.ovnClient.UpdateAddressSetAddresses(egressExceptAsName, excepts); err != nil {
 					klog.Errorf("failed to set egress except address_set, %v", err)
 					return err
 				}

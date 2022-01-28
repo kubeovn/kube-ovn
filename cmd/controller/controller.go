@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	"net/http"
 	_ "net/http/pprof" // #nosec
 	"os"
@@ -17,6 +16,7 @@ import (
 
 	"github.com/kubeovn/kube-ovn/pkg/controller"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/versions"
 )
 
@@ -44,7 +44,11 @@ func CmdMain() {
 		klog.Fatal(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.PprofPort), nil))
 	}()
 
-	ctl := controller.NewController(config)
+	ctl, err := controller.NewController(config)
+	if err != nil {
+		klog.Fatalf("failed to create controller: %v", err)
+	}
+
 	ctl.Run(stopCh)
 }
 

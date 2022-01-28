@@ -129,7 +129,13 @@ type Controller struct {
 }
 
 // NewController returns a new ovn controller
-func NewController(config *Configuration) *Controller {
+func NewController(config *Configuration) (*Controller, error) {
+	ovnClient, err := ovs.NewClient(config.OvnNbAddr, config.OvnTimeout, config.OvnSbAddr, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR)
+	if err != nil {
+		klog.Errorf("failed to create OVN client: %v", err)
+		return nil, err
+	}
+
 	utilruntime.Must(kubeovnv1.AddToScheme(scheme.Scheme))
 	klog.V(4).Info("Creating event broadcaster")
 	eventBroadcaster := record.NewBroadcaster()
@@ -168,7 +174,7 @@ func NewController(config *Configuration) *Controller {
 		config:       config,
 		vpcs:         &sync.Map{},
 		podSubnetMap: &sync.Map{},
-		ovnClient:    ovs.NewClient(config.OvnNbAddr, config.OvnTimeout, config.OvnSbAddr, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
+		ovnClient:    ovnClient,
 		ipam:         ovnipam.NewIPAM(),
 
 		vpcsLister:           vpcInformer.Lister(),
@@ -334,7 +340,7 @@ func NewController(config *Configuration) *Controller {
 		UpdateFunc: controller.enqueueUpdateSg,
 	})
 
-	return controller
+	return controller, nil
 }
 
 // Run will set up the event handlers for types we are interested in, as well

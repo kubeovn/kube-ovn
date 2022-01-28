@@ -3,6 +3,8 @@ package v1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
 const (
@@ -344,18 +346,10 @@ type StaticRoute struct {
 	NextHopIP string      `json:"nextHopIP"`
 }
 
-type PolicyRouteAction string
-
-const (
-	PolicyRouteActionAllow   PolicyRouteAction = "allow"
-	PolicyRouteActionDrop    PolicyRouteAction = "drop"
-	PolicyRouteActionReroute PolicyRouteAction = "reroute"
-)
-
 type PolicyRoute struct {
-	Priority int32             `json:"priority,omitempty"`
-	Match    string            `json:"match,omitempty"`
-	Action   PolicyRouteAction `json:"action,omitempty"`
+	Priority int                             `json:"priority,omitempty"`
+	Match    string                          `json:"match,omitempty"`
+	Action   ovnnb.LogicalRouterPolicyAction `json:"action,omitempty"`
 	// NextHopIP is an optional parameter. It needs to be provided only when 'action' is 'reroute'.
 	// +optional
 	NextHopIP string `json:"nextHopIP,omitempty"`

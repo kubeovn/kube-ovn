@@ -272,7 +272,7 @@ func (c *Controller) handleUpdateVlan(key string) error {
 		return err
 	}
 	for _, subnet := range subnets {
-		if subnet.Spec.Vlan == vlan.Name {
+		if subnet.Spec.Vlan == vlan.Name && subnet.Status.IsReady() {
 			if err = c.setLocalnetTag(subnet.Name, vlan.Spec.ID); err != nil {
 				return err
 			}

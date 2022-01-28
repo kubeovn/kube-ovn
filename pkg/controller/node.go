@@ -20,6 +20,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -241,11 +242,11 @@ func (c *Controller) handleAddNode(key string) error {
 		}
 	}
 
-	if err = c.ovnClient.CreateAddressSetWithAddresses(nodeUnderlayAddressSetName(node.Name, 4), v4CIDRs...); err != nil {
+	if err = c.ovnClient.CreateAddressSet(nodeUnderlayAddressSetName(node.Name, 4), v4CIDRs, nil); err != nil {
 		klog.Errorf("failed to create address set for node %s: %v", node.Name, err)
 		return err
 	}
-	if err = c.ovnClient.CreateAddressSetWithAddresses(nodeUnderlayAddressSetName(node.Name, 6), v6CIDRs...); err != nil {
+	if err = c.ovnClient.CreateAddressSet(nodeUnderlayAddressSetName(node.Name, 6), v6CIDRs, nil); err != nil {
 		klog.Errorf("failed to create address set for node %s: %v", node.Name, err)
 		return err
 	}
@@ -298,7 +299,7 @@ func (c *Controller) handleAddNode(key string) error {
 	}
 
 	ipStr := util.GetStringIP(v4IP, v6IP)
-	if err := c.ovnClient.CreatePort(c.config.NodeSwitch, portName, ipStr, mac, "", "", false, "", "", false); err != nil {
+	if err := c.ovnClient.CreateLogicalSwitchPort(c.config.NodeSwitch, portName, mac, ipStr, "", "", "", false, false, ""); err != nil {
 		return err
 	}
 
@@ -313,7 +314,7 @@ func (c *Controller) handleAddNode(key string) error {
 		}
 		if nodeIP != "" {
 			match := fmt.Sprintf("ip%d.dst == %s && ip%d.src != $%s", af, nodeIP, af, nodeUnderlayAddressSetName(node.Name, af))
-			if err = c.ovnClient.AddPolicyRoute(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", ip); err != nil {
+			if err = c.ovnClient.CreateLogicalRouterPolicy(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, ovnnb.LogicalRouterPolicyActionReroute, ip); err != nil {
 				klog.Errorf("failed to add logical router policy for node %s: %v", node.Name, err)
 				return err
 			}
@@ -397,7 +398,7 @@ func (c *Controller) handleDeleteNode(key string) error {
 		if addr.Ip == "" {
 			continue
 		}
-		if err := c.ovnClient.DeletePolicyRouteByNexthop(c.config.ClusterRouter, util.NodeRouterPolicyPriority, addr.Ip); err != nil {
+		if err := c.ovnClient.DeleteLogicalRouterPolicyByNexthop(c.config.ClusterRouter, util.NodeRouterPolicyPriority, addr.Ip); err != nil {
 			klog.Errorf("failed to delete router policy for node %s: %v", key, err)
 			return err
 		}
@@ -763,17 +764,24 @@ func (c *Controller) fetchPodsOnNode(nodeName string) ([]string, error) {
 	return ports, nil
 }
 
-func (c *Controller) checkPodsChangedOnNode(pgName string, ports []string) (bool, error) {
-	pgPorts, err := c.ovnClient.ListPgPorts(pgName)
+func (c *Controller) checkPodsChangedOnNode(pg string, ports []string) (bool, error) {
+	pgPorts, err := c.ovnClient.GetPortGroupPorts(pg)
 	if err != nil {
-		klog.Errorf("failed to fetch ports for pg %v, %v", pgName, err)
+		klog.Errorf("failed to fetch ports for port group %v, %v", pg, err)
 		return false, err
 	}
 
-	nameIdMap, idNameMap, err := c.ovnClient.ListLspForNodePortgroup()
+	lspList, err := c.ovnClient.ListLogicalSwitchPorts(true, nil)
 	if err != nil {
 		klog.Errorf("failed to list lsp info, %v", err)
 		return false, err
+	}
+
+	nameIdMap := make(map[string]string, len(lspList))
+	idNameMap := make(map[string]string, len(lspList))
+	for _, lsp := range lspList {
+		nameIdMap[lsp.Name] = lsp.UUID
+		idNameMap[lsp.UUID] = lsp.Name
 	}
 
 	portIds := make([]string, 0, len(ports))
@@ -785,14 +793,14 @@ func (c *Controller) checkPodsChangedOnNode(pgName string, ports []string) (bool
 
 	for _, portId := range portIds {
 		if !util.IsStringIn(portId, pgPorts) {
-			klog.Infof("pod on node changed, new added port %v should add to node port group %v", idNameMap[portId], pgName)
+			klog.Infof("pod on node changed, new added port %v should add to node port group %v", idNameMap[portId], pg)
 			return true, nil
 		}
 	}
 
 	for _, pgPort := range pgPorts {
 		if !util.IsStringIn(pgPort, portIds) {
-			klog.Infof("pod on node changed, can not find match pod for port %v in node port group %v", pgPort, pgName)
+			klog.Infof("pod on node changed, can not find match pod for port %v in node port group %v", pgPort, pg)
 			return true, nil
 		}
 	}
@@ -851,8 +859,7 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 		}
 		lastNpExists[node.Name] = networkPolicyExists
 
-		err = c.ovnClient.SetPortsToPortGroup(pgName, ports)
-		if err != nil {
+		if err = c.ovnClient.UpdatePortGroupPorts(pgName, ports); err != nil {
 			klog.Errorf("failed to set port group for node %v, %v", node.Name, err)
 			return err
 		}

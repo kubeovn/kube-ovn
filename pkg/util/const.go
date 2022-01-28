@@ -77,9 +77,6 @@ const (
 	VpcNatGatewayLabel = "ovn.kubernetes.io/vpc-nat-gw"
 	VpcLbLabel         = "ovn.kubernetes.io/vpc_lb"
 
-	ProtocolTCP = "tcp"
-	ProtocolUDP = "udp"
-
 	NetworkTypeVlan   = "vlan"
 	NetworkTypeGeneve = "geneve"
 

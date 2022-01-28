@@ -17,6 +17,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -185,67 +186,37 @@ func (c *Controller) GenVpcLoadBalancer(vpcKey string) *VpcLoadBalancer {
 	}
 }
 
+func (c *Controller) initVpcLB(name, protocol string, selectFields ...string) error {
+	lb, err := c.ovnClient.GetLoadBalancer(name, true)
+	if err != nil {
+		return fmt.Errorf("failed to get load balancer %s: %v", name, err)
+	}
+	if lb != nil {
+		return nil
+	}
+
+	klog.Infof("creating load balancer %s", name)
+	if err := c.ovnClient.CreateLoadBalancer(name, protocol, selectFields...); err != nil {
+		klog.Errorf("failed to create load balancer %s: %v", name, err)
+		return err
+	}
+
+	return nil
+}
+
 func (c *Controller) addLoadBalancer(vpc string) (*VpcLoadBalancer, error) {
 	vpcLbConfig := c.GenVpcLoadBalancer(vpc)
-
-	tcpLb, err := c.ovnClient.FindLoadbalancer(vpcLbConfig.TcpLoadBalancer)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find tcp lb %v", err)
+	if err := c.initVpcLB(vpcLbConfig.TcpLoadBalancer, ovnnb.LoadBalancerProtocolTCP); err != nil {
+		return nil, err
 	}
-	if tcpLb == "" {
-		klog.Infof("init cluster tcp load balancer %s", vpcLbConfig.TcpLoadBalancer)
-		err := c.ovnClient.CreateLoadBalancer(vpcLbConfig.TcpLoadBalancer, util.ProtocolTCP, "")
-		if err != nil {
-			klog.Errorf("failed to crate cluster tcp load balancer %v", err)
-			return nil, err
-		}
-	} else {
-		klog.Infof("tcp load balancer %s exists", tcpLb)
+	if err := c.initVpcLB(vpcLbConfig.TcpSessLoadBalancer, ovnnb.LoadBalancerProtocolTCP, ovnnb.LoadBalancerSelectionFieldsIPSrc); err != nil {
+		return nil, err
 	}
-
-	tcpSessionLb, err := c.ovnClient.FindLoadbalancer(vpcLbConfig.TcpSessLoadBalancer)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find tcp session lb %v", err)
+	if err := c.initVpcLB(vpcLbConfig.UdpLoadBalancer, ovnnb.LoadBalancerProtocolUDP); err != nil {
+		return nil, err
 	}
-	if tcpSessionLb == "" {
-		klog.Infof("init cluster tcp session load balancer %s", vpcLbConfig.TcpSessLoadBalancer)
-		err := c.ovnClient.CreateLoadBalancer(vpcLbConfig.TcpSessLoadBalancer, util.ProtocolTCP, "ip_src")
-		if err != nil {
-			klog.Errorf("failed to crate cluster tcp session load balancer %v", err)
-			return nil, err
-		}
-	} else {
-		klog.Infof("tcp session load balancer %s exists", tcpSessionLb)
-	}
-
-	udpLb, err := c.ovnClient.FindLoadbalancer(vpcLbConfig.UdpLoadBalancer)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find udp lb %v", err)
-	}
-	if udpLb == "" {
-		klog.Infof("init cluster udp load balancer %s", vpcLbConfig.UdpLoadBalancer)
-		err := c.ovnClient.CreateLoadBalancer(vpcLbConfig.UdpLoadBalancer, util.ProtocolUDP, "")
-		if err != nil {
-			klog.Errorf("failed to crate cluster udp load balancer %v", err)
-			return nil, err
-		}
-	} else {
-		klog.Infof("udp load balancer %s exists", udpLb)
-	}
-
-	udpSessionLb, err := c.ovnClient.FindLoadbalancer(vpcLbConfig.UdpSessLoadBalancer)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find udp session lb %v", err)
-	}
-	if udpSessionLb == "" {
-		klog.Infof("init cluster udp session load balancer %s", vpcLbConfig.UdpSessLoadBalancer)
-		err := c.ovnClient.CreateLoadBalancer(vpcLbConfig.UdpSessLoadBalancer, util.ProtocolUDP, "ip_src")
-		if err != nil {
-			klog.Errorf("failed to crate cluster udp session load balancer %v", err)
-			return nil, err
-		}
-	} else {
-		klog.Infof("udp session load balancer %s exists", udpSessionLb)
+	if err := c.initVpcLB(vpcLbConfig.UdpSessLoadBalancer, ovnnb.LoadBalancerProtocolUDP, ovnnb.LoadBalancerSelectionFieldsIPSrc); err != nil {
+		return nil, err
 	}
 
 	return vpcLbConfig, nil
@@ -296,7 +267,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			}
 		}
 		// handle policy route
-		existPolicyRoute, err := c.ovnClient.GetPolicyRouteList(vpc.Name)
+		existPolicyRoute, err := c.ovnClient.ListLogicalRouterPolicy(vpc.Name, nil, "", "")
 		if err != nil {
 			klog.Errorf("failed to get vpc %s policy route list, %v", vpc.Name, err)
 			return err
@@ -308,13 +279,13 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			return err
 		}
 		for _, item := range policyRouteNeedDel {
-			if err = c.ovnClient.DeletePolicyRoute(vpc.Name, item.Priority, item.Match); err != nil {
+			if err = c.ovnClient.DeleteLogicalRouterPolicy(vpc.Name, int(item.Priority), item.Match); err != nil {
 				klog.Errorf("del vpc %s policy route failed, %v", vpc.Name, err)
 				return err
 			}
 		}
 		for _, item := range policyRouteNeedAdd {
-			if err = c.ovnClient.AddPolicyRoute(vpc.Name, item.Priority, item.Match, string(item.Action), item.NextHopIP); err != nil {
+			if err = c.ovnClient.CreateLogicalRouterPolicy(vpc.Name, item.Priority, item.Match, item.Action, item.NextHopIP); err != nil {
 				klog.Errorf("add policy route to vpc %s failed, %v", vpc.Name, err)
 				return err
 			}
@@ -353,15 +324,18 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	return nil
 }
 
-func diffPolicyRoute(exist []*ovs.PolicyRoute, target []*kubeovnv1.PolicyRoute) (routeNeedDel []*kubeovnv1.PolicyRoute, routeNeedAdd []*kubeovnv1.PolicyRoute, err error) {
+func diffPolicyRoute(exist []ovnnb.LogicalRouterPolicy, target []*kubeovnv1.PolicyRoute) (routeNeedDel []*kubeovnv1.PolicyRoute, routeNeedAdd []*kubeovnv1.PolicyRoute, err error) {
 	existV1 := make([]*kubeovnv1.PolicyRoute, 0, len(exist))
 	for _, item := range exist {
-		existV1 = append(existV1, &kubeovnv1.PolicyRoute{
-			Priority:  item.Priority,
-			Match:     item.Match,
-			Action:    kubeovnv1.PolicyRouteAction(item.Action),
-			NextHopIP: item.NextHopIP,
-		})
+		route := &kubeovnv1.PolicyRoute{
+			Priority: item.Priority,
+			Match:    item.Match,
+			Action:   item.Action,
+		}
+		if item.Nexthop != nil {
+			route.NextHopIP = *item.Nexthop
+		}
+		existV1 = append(existV1, route)
 	}
 
 	existRouteMap := make(map[string]*kubeovnv1.PolicyRoute, len(exist))
@@ -462,7 +436,7 @@ func formatVpc(vpc *kubeovnv1.Vpc, c *Controller) error {
 		}
 
 		for _, route := range vpc.Spec.PolicyRoutes {
-			if route.Action != kubeovnv1.PolicyRouteActionReroute {
+			if route.Action != ovnnb.LogicalRouterPolicyActionReroute {
 				if route.NextHopIP != "" {
 					route.NextHopIP = ""
 					changed = true
@@ -609,18 +583,8 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 }
 
 // createVpcRouter create router to connect logical switches in vpc
-func (c *Controller) createVpcRouter(lr string) error {
-	lrs, err := c.ovnClient.ListLogicalRouter(c.config.EnableExternalVpc)
-	if err != nil {
-		return err
-	}
-	klog.Infof("exists routers %v", lrs)
-	for _, r := range lrs {
-		if lr == r {
-			return nil
-		}
-	}
-	return c.ovnClient.CreateLogicalRouter(lr)
+func (c *Controller) createVpcRouter(name string) error {
+	return c.ovnClient.CreateLogicalRouter(name)
 }
 
 // deleteVpcRouter delete router to connect logical switches in vpc

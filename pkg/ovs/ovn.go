@@ -1,12 +1,10 @@
 package ovs
 
 import (
-	"errors"
-)
+	"github.com/ovn-org/libovsdb/client"
+	"k8s.io/klog/v2"
 
-var (
-	ErrNoAddr   = errors.New("no address")
-	ErrNotFound = errors.New("not found")
+	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 )
 
 // Client is the ovn client
@@ -23,6 +21,8 @@ type Client struct {
 	NodeSwitch                    string
 	NodeSwitchCIDR                string
 	ExternalGatewayType           string
+
+	nbClient client.Client
 }
 
 const (
@@ -38,8 +38,14 @@ const (
 )
 
 // NewClient init an ovn client
-func NewClient(ovnNbAddr string, ovnNbTimeout int, ovnSbAddr, clusterRouter, clusterTcpLoadBalancer, clusterUdpLoadBalancer, clusterTcpSessionLoadBalancer, clusterUdpSessionLoadBalancer, nodeSwitch, nodeSwitchCIDR string) *Client {
-	return &Client{
+func NewClient(ovnNbAddr string, ovnNbTimeout int, ovnSbAddr, clusterRouter, clusterTcpLoadBalancer, clusterUdpLoadBalancer, clusterTcpSessionLoadBalancer, clusterUdpSessionLoadBalancer, nodeSwitch, nodeSwitchCIDR string) (*Client, error) {
+	nbClient, err := ovsclient.NewNbClient(ovnNbAddr, ovnNbTimeout)
+	if err != nil {
+		klog.Errorf("failed to create OVN NB client: %v", err)
+		return nil, err
+	}
+
+	c := &Client{
 		OvnNbAddress:                  ovnNbAddr,
 		OvnSbAddress:                  ovnSbAddr,
 		OvnTimeout:                    ovnNbTimeout,
@@ -50,5 +56,7 @@ func NewClient(ovnNbAddr string, ovnNbTimeout int, ovnSbAddr, clusterRouter, clu
 		ClusterUdpSessionLoadBalancer: clusterUdpSessionLoadBalancer,
 		NodeSwitch:                    nodeSwitch,
 		NodeSwitchCIDR:                nodeSwitchCIDR,
+		nbClient:                      nbClient,
 	}
+	return c, nil
 }

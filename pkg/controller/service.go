@@ -11,7 +11,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -251,17 +250,9 @@ func (c *Controller) handleUpdateService(key string) error {
 
 	for _, port := range svc.Spec.Ports {
 		if port.Protocol == v1.ProtocolTCP {
-			if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 {
-				tcpVips = append(tcpVips, fmt.Sprintf("[%s]:%d", ip, port.Port))
-			} else {
-				tcpVips = append(tcpVips, fmt.Sprintf("%s:%d", ip, port.Port))
-			}
+			tcpVips = append(tcpVips, util.JoinHostPort(ip, port.Port))
 		} else if port.Protocol == v1.ProtocolUDP {
-			if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 {
-				udpVips = append(udpVips, fmt.Sprintf("[%s]:%d", ip, port.Port))
-			} else {
-				udpVips = append(udpVips, fmt.Sprintf("%s:%d", ip, port.Port))
-			}
+			udpVips = append(udpVips, util.JoinHostPort(ip, port.Port))
 		}
 	}
 	// for service update
@@ -278,7 +269,7 @@ func (c *Controller) handleUpdateService(key string) error {
 	klog.V(3).Infof("exist tcp vips are %v", vips)
 	for _, vip := range tcpVips {
 		if err := c.ovnClient.DeleteLoadBalancerVip(vip, oTcpLb); err != nil {
-			klog.Errorf("failed to delete lb %s form %s, %v", vip, oTcpLb, err)
+			klog.Errorf("failed to delete vip %s from %s, %v", vip, oTcpLb, err)
 			return err
 		}
 		if _, ok := vips[vip]; !ok {
@@ -312,7 +303,7 @@ func (c *Controller) handleUpdateService(key string) error {
 	klog.Infof("exist udp vips are %v", vips)
 	for _, vip := range udpVips {
 		if err := c.ovnClient.DeleteLoadBalancerVip(vip, oUdpLb); err != nil {
-			klog.Errorf("failed to delete lb %s form %s, %v", vip, oUdpLb, err)
+			klog.Errorf("failed to delete vip %s from %s, %v", vip, oUdpLb, err)
 			return err
 		}
 		if _, ok := vips[vip]; !ok {

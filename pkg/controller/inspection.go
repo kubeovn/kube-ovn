@@ -21,7 +21,7 @@ func (c *Controller) inspectPod() error {
 		klog.Errorf("failed to list ip, %v", err)
 		return err
 	}
-	lsps, err := c.ovnClient.ListLogicalSwitchPort(c.config.EnableExternalVpc)
+	lspList, err := c.ovnClient.ListLogicalSwitchPorts(c.config.EnableExternalVpc, nil)
 	if err != nil {
 		klog.Errorf("failed to list logical switch port, %v", err)
 		return err
@@ -39,13 +39,14 @@ func (c *Controller) inspectPod() error {
 		for _, podNet := range filterSubnets(pod, podNets) {
 			if podNet.Type != providerTypeIPAM {
 				portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName)
-				isLspExist := false
-				for _, lsp := range lsps {
-					if portName == lsp {
-						isLspExist = true
+				var lspExists bool
+				for _, lsp := range lspList {
+					if lsp.Name == portName {
+						lspExists = true
+						break
 					}
 				}
-				if !isLspExist {
+				if !lspExists {
 					delete(pod.Annotations, fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName))
 					delete(pod.Annotations, util.RoutedAnnotation)
 					if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name, types.JSONPatchType, generatePatchPayload(pod.Annotations, "replace"), metav1.PatchOptions{}, ""); err != nil {

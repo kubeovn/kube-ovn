@@ -14,6 +14,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -185,16 +186,6 @@ func (c *Controller) initNodeSwitch() error {
 
 // InitClusterRouter init cluster router to connect different logical switches
 func (c *Controller) initClusterRouter() error {
-	lrs, err := c.ovnClient.ListLogicalRouter(c.config.EnableExternalVpc)
-	if err != nil {
-		return err
-	}
-	klog.Infof("exists routers: %v", lrs)
-	for _, r := range lrs {
-		if c.config.ClusterRouter == r {
-			return nil
-		}
-	}
 	return c.ovnClient.CreateLogicalRouter(c.config.ClusterRouter)
 }
 
@@ -208,66 +199,9 @@ func (c *Controller) initLoadBalancer() error {
 
 	for _, orivpc := range vpcs {
 		vpc := orivpc.DeepCopy()
-		vpcLb := c.GenVpcLoadBalancer(vpc.Name)
-
-		tcpLb, err := c.ovnClient.FindLoadbalancer(vpcLb.TcpLoadBalancer)
+		vpcLb, err := c.addLoadBalancer(vpc.Name)
 		if err != nil {
-			return fmt.Errorf("failed to find tcp lb: %v", err)
-		}
-		if tcpLb == "" {
-			klog.Infof("init cluster tcp load balancer %s", vpcLb.TcpLoadBalancer)
-			err := c.ovnClient.CreateLoadBalancer(vpcLb.TcpLoadBalancer, util.ProtocolTCP, "")
-			if err != nil {
-				klog.Errorf("failed to crate cluster tcp load balancer: %v", err)
-				return err
-			}
-		} else {
-			klog.Infof("tcp load balancer %s exists", tcpLb)
-		}
-
-		tcpSessionLb, err := c.ovnClient.FindLoadbalancer(vpcLb.TcpSessLoadBalancer)
-		if err != nil {
-			return fmt.Errorf("failed to find tcp session lb: %v", err)
-		}
-		if tcpSessionLb == "" {
-			klog.Infof("init cluster tcp session load balancer %s", vpcLb.TcpSessLoadBalancer)
-			err := c.ovnClient.CreateLoadBalancer(vpcLb.TcpSessLoadBalancer, util.ProtocolTCP, "ip_src")
-			if err != nil {
-				klog.Errorf("failed to crate cluster tcp session load balancer: %v", err)
-				return err
-			}
-		} else {
-			klog.Infof("tcp session load balancer %s exists", vpcLb.TcpSessLoadBalancer)
-		}
-
-		udpLb, err := c.ovnClient.FindLoadbalancer(vpcLb.UdpLoadBalancer)
-		if err != nil {
-			return fmt.Errorf("failed to find udp lb: %v", err)
-		}
-		if udpLb == "" {
-			klog.Infof("init cluster udp load balancer %s", vpcLb.UdpLoadBalancer)
-			err := c.ovnClient.CreateLoadBalancer(vpcLb.UdpLoadBalancer, util.ProtocolUDP, "")
-			if err != nil {
-				klog.Errorf("failed to crate cluster udp load balancer: %v", err)
-				return err
-			}
-		} else {
-			klog.Infof("udp load balancer %s exists", udpLb)
-		}
-
-		udpSessionLb, err := c.ovnClient.FindLoadbalancer(vpcLb.UdpSessLoadBalancer)
-		if err != nil {
-			return fmt.Errorf("failed to find udp session lb: %v", err)
-		}
-		if udpSessionLb == "" {
-			klog.Infof("init cluster udp session load balancer %s", vpcLb.UdpSessLoadBalancer)
-			err := c.ovnClient.CreateLoadBalancer(vpcLb.UdpSessLoadBalancer, util.ProtocolUDP, "ip_src")
-			if err != nil {
-				klog.Errorf("failed to crate cluster udp session load balancer: %v", err)
-				return err
-			}
-		} else {
-			klog.Infof("udp session load balancer %s exists", vpcLb.UdpSessLoadBalancer)
+			return err
 		}
 
 		vpc.Status.TcpLoadBalancer = vpcLb.TcpLoadBalancer
@@ -528,13 +462,13 @@ func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string, cidrs []
 	}
 
 	asName := nodeUnderlayAddressSetName(node, af)
-	if err := c.ovnClient.CreateAddressSetWithAddresses(asName, cidrs...); err != nil {
+	if err := c.ovnClient.CreateAddressSet(asName, cidrs, nil); err != nil {
 		klog.Errorf("failed to create address set %s for node %s: %v", asName, node, err)
 		return err
 	}
 
 	match := fmt.Sprintf("ip%d.dst == %s && ip%d.src != $%s", af, ip, af, asName)
-	if err := c.ovnClient.AddPolicyRoute(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", nexthop); err != nil {
+	if err := c.ovnClient.CreateLogicalRouterPolicy(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, ovnnb.LogicalRouterPolicyActionReroute, nexthop); err != nil {
 		klog.Errorf("failed to add logical router policy for node %s: %v", node, err)
 		return err
 	}
@@ -602,18 +536,9 @@ func (c *Controller) initAppendPodExternalIds(pod *v1.Pod) error {
 		if !strings.HasSuffix(podNet.ProviderName, util.OvnProvider) {
 			continue
 		}
-		portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName)
-		externalIds, err := c.ovnClient.OvnGet("logical_switch_port", portName, "external_ids", "")
-		if err != nil {
-			klog.Errorf("failed to get lsp external_ids for pod %s/%s, %v", pod.Namespace, pod.Name, err)
-			return err
-		}
-		if strings.Contains(externalIds, "pod") || strings.Contains(externalIds, "vendor") {
-			continue
-		}
 
-		ovnCommand := []string{"set", "logical_switch_port", portName, fmt.Sprintf("external_ids:pod=%s/%s", pod.Namespace, pod.Name), fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)}
-		if err = c.ovnClient.SetLspExternalIds(ovnCommand); err != nil {
+		portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName)
+		if err = c.ovnClient.SetPortExternalIDs(portName, map[string]string{"pod": fmt.Sprintf("%s/%s", pod.Namespace, pod.Name), "vendor": util.CniTypeName}); err != nil {
 			klog.Errorf("failed to set lsp external_ids for pod %s/%s, %v", pod.Namespace, pod.Name, err)
 			return err
 		}
@@ -622,20 +547,11 @@ func (c *Controller) initAppendPodExternalIds(pod *v1.Pod) error {
 }
 
 func (c *Controller) initAppendNodeExternalIds(portName, nodeName string) error {
-	externalIds, err := c.ovnClient.OvnGet("logical_switch_port", portName, "external_ids", "")
-	if err != nil {
-		klog.Errorf("failed to get lsp external_ids for node %s, %v", nodeName, err)
-		return err
-	}
-	if strings.Contains(externalIds, "vendor") {
-		return nil
-	}
-
-	ovnCommand := []string{"set", "logical_switch_port", portName, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)}
-	if err = c.ovnClient.SetLspExternalIds(ovnCommand); err != nil {
+	if err := c.ovnClient.SetPortExternalID(portName, "vendor", util.CniTypeName); err != nil {
 		klog.Errorf("failed to set lsp external_ids for node %s, %v", nodeName, err)
 		return err
 	}
+
 	return nil
 }
 
