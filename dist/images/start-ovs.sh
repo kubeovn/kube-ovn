@@ -57,6 +57,76 @@ fi
 /usr/share/openvswitch/scripts/ovs-ctl restart --no-ovsdb-server --system-id=random
 /usr/share/openvswitch/scripts/ovs-ctl --protocol=udp --dport=6081 enable-protocol
 
+sleep 1
+
+function handle_underlay_bridges() {
+    bridges=($(ovs-vsctl --no-heading --columns=name find bridge external-ids:vendor=kube-ovn))
+    for br in ${bridges[@]}; do
+        echo "handle bridge $br"
+        ip link set $br up
+
+        ports=($(ovs-vsctl list-ports $br))
+        for port in ${ports[@]}; do
+            port_type=$(ovs-vsctl --no-heading --columns=type find interface name=$port)
+            if [ ! "x$port_type" = 'x""' ]; then
+              continue
+            fi
+
+            echo "handle port $port on bridge $br"
+            ipv4_routes=($(ip -4 route show dev $port | tr ' ' '#'))
+            ipv6_routes=($(ip -6 route show dev $port | tr ' ' '#'))
+
+            set +o pipefail
+            addresses=($(ip addr show dev $port | grep -E '^\s*inet[6]?\s+' | grep -w global | awk '{print $2}'))
+            set -o pipefail
+
+            # transfer IP addresses
+            for addr in ${addresses[@]}; do
+                printf "delete address $addr on $port\n"
+                ip addr del $addr dev $port || true
+                printf "add/replace address $addr to $br\n"
+                ip addr replace $addr dev $br
+            done
+
+            # transfer IPv4 routes
+            default_ipv4_routes=()
+            for route in ${ipv4_routes[@]}; do
+                r=$(echo $route | tr '#' ' ')
+                if echo $r | grep -q -w 'scope link'; then
+                    printf "add/replace IPv4 route $r to $br\n"
+                    ip -4 route replace $r dev $br
+                else
+                    default_ipv4_routes=(${default_ipv4_routes[@]} $route)
+                fi
+            done
+            for route in ${default_ipv4_routes[@]}; do
+                r=$(echo $route | tr '#' ' ')
+                printf "add/replace IPv4 route $r to $br\n"
+                ip -4 route replace $r dev $br
+            done
+
+            # transfer IPv6 routes
+            default_ipv6_routes=()
+            for route in ${ipv6_routes[@]}; do
+                r=$(echo $route | tr '#' ' ')
+                if echo $r | grep -q -w 'scope link'; then
+                    printf "add/replace IPv6 route $r to $br\n"
+                    ip -6 route replace $r dev $br
+                else
+                    default_ipv6_routes=(${default_ipv6_routes[@]} $route)
+                fi
+            done
+            for route in ${default_ipv6_routes[@]}; do
+                r=$(echo $route | tr '#' ' ')
+                printf "add/replace IPv6 route $r to $br\n"
+                ip -6 route replace $r dev $br
+            done
+        done
+    done
+}
+
+handle_underlay_bridges
+
 function gen_conn_str {
   if [[ -z "${OVN_DB_IPS}" ]]; then
     if [[ "$ENABLE_SSL" == "false" ]]; then
