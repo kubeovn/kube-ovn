@@ -101,10 +101,17 @@ jobs:
         with:
           name: kube-ovn
 
-      - name: Install Kube-OVN
+      - name: Load Image
         run: |
           docker load --input kube-ovn.tar
-          sudo make kind-install
+
+      - name: Install Kube-OVN
+        uses: nick-invision/retry@v2
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: |
+            sudo make kind-install
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v2
@@ -150,10 +157,17 @@ jobs:
         with:
           name: kube-ovn
 
-      - name: Install Kube-OVN
+      - name: Load Image
         run: |
           docker load --input kube-ovn.tar
-          sudo make kind-install
+
+      - name: Install Kube-OVN
+        uses: nick-invision/retry@v2
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: |
+            sudo make kind-install
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v2
@@ -199,10 +213,17 @@ jobs:
         with:
           name: kube-ovn
 
-      - name: Install Kube-OVN
+      - name: Load Image
         run: |
           docker load --input kube-ovn.tar
-          sudo make kind-install
+
+      - name: Install Kube-OVN
+        uses: nick-invision/retry@v2
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: |
+            sudo make kind-install
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v2
@@ -248,10 +269,17 @@ jobs:
         with:
           name: kube-ovn
 
-      - name: Install Kube-OVN
+      - name: Load Image
         run: |
           docker load --input kube-ovn.tar
-          sudo make kind-install-underlay
+
+      - name: Install Kube-OVN
+        uses: nick-invision/retry@v2
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: |
+            sudo make kind-install-underlay
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v2
@@ -313,10 +341,17 @@ jobs:
         with:
           name: kube-ovn
 
-      - name: Install Kube-OVN
+      - name: Load Image
         run: |
           docker load --input kube-ovn.tar
-          sudo make kind-install-single
+
+      - name: Install Kube-OVN
+        uses: nick-invision/retry@v2
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: |
+            sudo make kind-install-single
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v2
@@ -362,10 +397,17 @@ jobs:
         with:
           name: kube-ovn
 
-      - name: Install Kube-OVN
+      - name: Load Image
         run: |
           docker load --input kube-ovn.tar
-          sudo make kind-install
+
+      - name: Install Kube-OVN
+        uses: nick-invision/retry@v2
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: |
+            sudo make kind-install
 
   ipv6-e2e:
     needs: build
@@ -398,9 +440,12 @@ jobs:
           docker load --input kube-ovn.tar
 
       - name: Install Kube-OVN
-        run: |
-          docker load --input kube-ovn.tar
-          sudo make kind-install-ipv6
+        uses: nick-invision/retry@v2
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: |
+            sudo make kind-install-ipv6
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v2
@@ -451,9 +496,12 @@ jobs:
           docker load --input kube-ovn.tar
 
       - name: Install Kube-OVN
-        run: |
-          docker load --input kube-ovn.tar
-          sudo make kind-install-ipv6
+        uses: nick-invision/retry@v2
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: |
+            sudo make kind-install-ipv6
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v2
@@ -504,9 +552,12 @@ jobs:
           docker load --input kube-ovn.tar
 
       - name: Install Kube-OVN
-        run: |
-          docker load --input kube-ovn.tar
-          sudo make kind-install-underlay-ipv6
+        uses: nick-invision/retry@v2
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: |
+            sudo make kind-install-underlay-ipv6
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v2
@@ -573,9 +624,12 @@ jobs:
           docker load --input kube-ovn.tar
 
       - name: Install Kube-OVN
-        run: |
-          docker load --input kube-ovn.tar
-          sudo make kind-install-dual
+        uses: nick-invision/retry@v2
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: |
+            sudo make kind-install-dual
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v2
@@ -626,9 +680,12 @@ jobs:
           docker load --input kube-ovn.tar
 
       - name: Install Kube-OVN
-        run: |
-          docker load --input kube-ovn.tar
-          sudo make kind-install-underlay-dual
+        uses: nick-invision/retry@v2
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: |
+            sudo make kind-install-underlay-dual
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v2
@@ -695,9 +752,12 @@ jobs:
           docker load --input kube-ovn.tar
 
       - name: Install Kube-OVN
-        run: |
-          docker load --input kube-ovn.tar
-          sudo make kind-install-underlay-logical-gateway-dual
+        uses: nick-invision/retry@v2
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: |
+            sudo make kind-install-underlay-logical-gateway-dual
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v2
@@ -759,12 +819,19 @@ jobs:
         with:
           name: kube-ovn
 
-      - name: Install Kube-OVN without LoadBalancer
-        env:
-          ENABLE_LB: "false"
+      - name: Load Image
         run: |
           docker load --input kube-ovn.tar
-          sudo make kind-install
+
+      - name: Install Kube-OVN without LoadBalancer
+        uses: nick-invision/retry@v2
+        env:
+          ENABLE_LB: "false"
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: |
+            sudo make kind-install
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v2
@@ -810,12 +877,19 @@ jobs:
         with:
           name: kube-ovn
 
-      - name: Install Kube-OVN without LoadBalancer
-        env:
-          ENABLE_LB: "false"
+      - name: Load Image
         run: |
           docker load --input kube-ovn.tar
-          sudo make kind-install
+
+      - name: Install Kube-OVN without LoadBalancer
+        uses: nick-invision/retry@v2
+        env:
+          ENABLE_LB: "false"
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: |
+            sudo make kind-install
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v2
@@ -861,12 +935,17 @@ jobs:
         with:
           name: kube-ovn
 
-      - name: Install Kube-OVN without network policy support
-        env:
-          ENABLE_NP: "false"
+      - name: Load Image
         run: |
           docker load --input kube-ovn.tar
-          sudo make kind-install
+
+      - name: Install Kube-OVN
+        uses: nick-invision/retry@v2
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: |
+            sudo ENABLE_NP=false make kind-install
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v2
@@ -912,11 +991,18 @@ jobs:
         with:
           name: kube-ovn
 
-      - name: Install Kube-OVN
+      - name: Load Image
         run: |
           docker load --input kube-ovn.tar
-          sudo PATH=~/.local/bin:$PATH make kind-install-cluster
-          sudo PATH=~/.local/bin:$PATH make kind-install-ic
+
+      - name: Install Kube-OVN
+        uses: nick-invision/retry@v2
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: |
+            sudo PATH=~/.local/bin:$PATH make kind-install-cluster
+            sudo PATH=~/.local/bin:$PATH make kind-install-ic
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v2
@@ -967,11 +1053,18 @@ jobs:
         with:
           version: v3.4.0
 
-      - name: Install Kube-OVN
+      - name: Load Image
         run: |
           docker load --input kube-ovn.tar
-          sudo PATH=~/.local/bin:$PATH make kind-install-cilium
-          docker exec kube-ovn-control-plane bash -c "ls -al /etc/cni/net.d/"
+
+      - name: Install Kube-OVN
+        uses: nick-invision/retry@v2
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: |
+            sudo PATH=~/.local/bin:$PATH make kind-install-cilium
+            docker exec kube-ovn-control-plane bash -c "ls -al /etc/cni/net.d/"
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v2
