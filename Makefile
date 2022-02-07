@@ -129,7 +129,11 @@ kind-init-dual: kind-clean
 .PHONY: kind-install
 kind-install:
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
-	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
+	$(eval TAINTS = $(shell kubectl get no kube-ovn-control-plane -o jsonpath={.spec.taints}))
+	$(eval MASTER_TAINT = "node-role.kubernetes.io/master")
+	@if [[ "${TAINTS}" =~ .*"${MASTER_TAINT}".* ]]; then \
+		kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-; \
+	fi
 	ENABLE_SSL=true dist/images/install.sh
 	kubectl describe no
 
@@ -159,7 +163,11 @@ kind-install-underlay:
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		dist/images/install.sh > install-underlay.sh
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
-	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
+	$(eval TAINTS = $(shell kubectl get no kube-ovn-control-plane -o jsonpath={.spec.taints}))
+	$(eval MASTER_TAINT = "node-role.kubernetes.io/master")
+	@if [[ "${TAINTS}" =~ .*"${MASTER_TAINT}".* ]]; then \
+		kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-; \
+	fi
 	ENABLE_SSL=true ENABLE_VLAN=true VLAN_NIC=eth0 bash install-underlay.sh
 	kubectl describe no
 
@@ -172,7 +180,11 @@ kind-install-single:
 .PHONY: kind-install-ipv6
 kind-install-ipv6:
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
-	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
+	$(eval TAINTS = $(shell kubectl get no kube-ovn-control-plane -o jsonpath={.spec.taints}))
+	$(eval MASTER_TAINT = "node-role.kubernetes.io/master")
+	@if [[ "${TAINTS}" =~ .*"${MASTER_TAINT}".* ]]; then \
+		kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-; \
+	fi
 	ENABLE_SSL=true IPV6=true dist/images/install.sh
 
 .PHONY: kind-install-underlay-ipv6
@@ -186,13 +198,21 @@ kind-install-underlay-ipv6:
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		dist/images/install.sh > install-underlay.sh
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
-	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
+	$(eval TAINTS = $(shell kubectl get no kube-ovn-control-plane -o jsonpath={.spec.taints}))
+	$(eval MASTER_TAINT = "node-role.kubernetes.io/master")
+	@if [[ "${TAINTS}" =~ .*"${MASTER_TAINT}".* ]]; then \
+		kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-; \
+	fi
 	ENABLE_SSL=true IPV6=true ENABLE_VLAN=true VLAN_NIC=eth0 bash install-underlay.sh
 
 .PHONY: kind-install-dual
 kind-install-dual:
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
-	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
+	$(eval TAINTS = $(shell kubectl get no kube-ovn-control-plane -o jsonpath={.spec.taints}))
+	$(eval MASTER_TAINT = "node-role.kubernetes.io/master")
+	@if [[ "${TAINTS}" =~ .*"${MASTER_TAINT}".* ]]; then \
+		kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-; \
+	fi
 	ENABLE_SSL=true DUAL_STACK=true dist/images/install.sh
 	kubectl describe no
 
@@ -210,7 +230,11 @@ kind-install-underlay-dual:
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		dist/images/install.sh > install-underlay.sh
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
-	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
+	$(eval TAINTS = $(shell kubectl get no kube-ovn-control-plane -o jsonpath={.spec.taints}))
+	$(eval MASTER_TAINT = "node-role.kubernetes.io/master")
+	@if [[ "${TAINTS}" =~ .*"${MASTER_TAINT}".* ]]; then \
+		kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-; \
+	fi
 	ENABLE_SSL=true DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 bash install-underlay.sh
 
 .PHONY: kind-install-underlay-logical-gateway-dual
@@ -227,7 +251,11 @@ kind-install-underlay-logical-gateway-dual:
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		dist/images/install.sh > install-underlay.sh
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
-	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
+	$(eval TAINTS = $(shell kubectl get no kube-ovn-control-plane -o jsonpath={.spec.taints}))
+	$(eval MASTER_TAINT = "node-role.kubernetes.io/master")
+	@if [[ "${TAINTS}" =~ .*"${MASTER_TAINT}".* ]]; then \
+		kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-; \
+	fi
 	ENABLE_SSL=true DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 LOGICAL_GATEWAY=true bash install-underlay.sh
 
 .PHONY: kind-install-ic
@@ -247,7 +275,11 @@ kind-install-cilium:
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
 	ENABLE_SSL=true ENABLE_LB=false ENABLE_NP=false dist/images/install.sh
 	kubectl describe no
-	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
+	$(eval TAINTS = $(shell kubectl get no kube-ovn-control-plane -o jsonpath={.spec.taints}))
+	$(eval MASTER_TAINT = "node-role.kubernetes.io/master")
+	@if [[ "${TAINTS}" =~ .*"${MASTER_TAINT}".* ]]; then \
+		kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-; \
+	fi
 	kubectl apply -f yamls/chaining.yaml
 	kind get nodes --name kube-ovn | while read node; do \
     	docker exec $$node mv /etc/cni/net.d/01-kube-ovn.conflist /etc/cni/net.d/10-kube-ovn.conflist; \
