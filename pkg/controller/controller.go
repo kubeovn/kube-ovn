@@ -405,6 +405,14 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	if err := c.initSyncCrdVlans(); err != nil {
 		klog.Errorf("failed to sync crd vlans: %v", err)
 	}
+	if err := c.initDeleteOverlayPodsStaticRoutes(); err != nil {
+		klog.Errorf("failed to delete pod's static route in default vpc: %v", err)
+	}
+	// The static route for node gw can be deleted when gc static route, so add it after gc process
+	dstIp := "0.0.0.0/0,::/0"
+	if err := c.ovnClient.AddStaticRoute("", dstIp, c.config.NodeSwitchGateway, c.config.ClusterRouter, util.NormalRouteType); err != nil {
+		klog.Errorf("failed to add static route for node gw: %v", err)
+	}
 
 	// start workers to do all the network operations
 	c.startWorkers(stopCh)
