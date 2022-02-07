@@ -2676,7 +2676,11 @@ diagnose(){
   kubectl get crd ips.kubeovn.io
   kubectl get crd vlans.kubeovn.io
   kubectl get crd provider-networks.kubeovn.io
-  kubectl get svc kube-dns -n kube-system
+  set +eu
+  if ! kubectl get svc kube-dns -n kube-system ; then
+     echo "Warning: kube-dns doesn't exist, maybe there is coredns service."
+  fi
+  set -eu
   kubectl get svc kubernetes -n default
   kubectl get sa -n kube-system ovn
   kubectl get clusterrole system:ovn
