@@ -2009,28 +2009,22 @@ spec:
             name: kube-ovn-log
           - mountPath: /etc/localtime
             name: localtime
-        readinessProbe:
-          exec:
-            command:
-              - nc
-              - -z
-              - -w3
-              - 127.0.0.1
-              - "10665"
-          periodSeconds: 3
-          timeoutSeconds: 5
         livenessProbe:
-          exec:
-            command:
-              - nc
-              - -z
-              - -w3
-              - 127.0.0.1
-              - "10665"
+          failureThreshold: 3
           initialDelaySeconds: 30
           periodSeconds: 7
-          failureThreshold: 5
-          timeoutSeconds: 5
+          successThreshold: 1
+          tcpSocket:
+            port: 10665
+          timeoutSeconds: 3
+        readinessProbe:
+          failureThreshold: 3
+          initialDelaySeconds: 30
+          periodSeconds: 7
+          successThreshold: 1
+          tcpSocket:
+            port: 10665
+          timeoutSeconds: 3
         resources:
           requests:
             cpu: 100m
