@@ -390,29 +390,18 @@ func (c Client) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway string,
 }
 
 // CreateLogicalSwitch create logical switch in ovn, connect it to router and apply tcp/udp lb rules
-func (c Client) CreateLogicalSwitch(ls, lr, protocol, subnet, gateway string, excludeIps []string, needRouter bool) error {
-	var err error
-	switch protocol {
-	case kubeovnv1.ProtocolIPv4:
-		_, err = c.ovnNbCommand(MayExist, "ls-add", ls, "--",
-			"set", "logical_switch", ls, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
-	case kubeovnv1.ProtocolIPv6:
-		_, err = c.ovnNbCommand(MayExist, "ls-add", ls, "--",
-			"set", "logical_switch", ls, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
-	case kubeovnv1.ProtocolDual:
-		// gateway is not an official column, which is used for private
-		_, err = c.ovnNbCommand(MayExist, "ls-add", ls, "--",
-			"set", "logical_switch", ls, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
-	}
+func (c Client) CreateLogicalSwitch(ls, lr, subnet, gateway string, needRouter bool) error {
+	_, err := c.ovnNbCommand(MayExist, "ls-add", ls, "--",
+		"set", "logical_switch", ls, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
 
 	if err != nil {
 		klog.Errorf("create switch %s failed: %v", ls, err)
 		return err
 	}
 
-	ip := util.GetIpAddrWithMask(gateway, subnet)
-	mac := util.GenerateMac()
 	if needRouter {
+		ip := util.GetIpAddrWithMask(gateway, subnet)
+		mac := util.GenerateMac()
 		if err := c.createRouterPort(ls, lr, ip, mac); err != nil {
 			klog.Errorf("failed to connect switch %s to router, %v", ls, err)
 			return err
