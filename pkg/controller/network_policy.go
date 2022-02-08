@@ -783,10 +783,10 @@ func (c *Controller) svcMatchNetworkPolicies(svc *corev1.Service) ([]string, err
 		for _, np := range nps {
 			if isPodMatchNetworkPolicy(pod, *podNs, np, np.Namespace) {
 				match = append(match, fmt.Sprintf("%s/%s", np.Namespace, np.Name))
+				klog.V(3).Infof("svc %s/%s match np %s/%s", svc.Namespace, svc.Name, np.Namespace, np.Name)
 			}
 		}
 	}
-	klog.Infof("match svc is %v", match)
 	return match, nil
 }
 
