@@ -90,6 +90,7 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		oldSubnet.Spec.LogicalGateway != newSubnet.Spec.LogicalGateway ||
 		oldSubnet.Spec.Gateway != newSubnet.Spec.Gateway ||
 		!reflect.DeepEqual(oldSubnet.Spec.ExcludeIps, newSubnet.Spec.ExcludeIps) ||
+		!reflect.DeepEqual(oldSubnet.Spec.Vips, newSubnet.Spec.Vips) ||
 		oldSubnet.Spec.Vlan != newSubnet.Spec.Vlan {
 		klog.V(3).Infof("enqueue update subnet %s", key)
 		c.addOrUpdateSubnetQueue.Add(key)
@@ -114,6 +115,41 @@ func (c *Controller) runDeleteRouteWorker() {
 func (c *Controller) runDeleteSubnetWorker() {
 	for c.processNextDeleteSubnetWorkItem() {
 	}
+}
+
+func (c *Controller) runSyncVirtualPortsWorker() {
+	for c.processNextSyncVirtualPortsWorkItem() {
+	}
+}
+
+func (c *Controller) processNextSyncVirtualPortsWorkItem() bool {
+	obj, shutdown := c.syncVirtualPortsQueue.Get()
+	if shutdown {
+		return false
+	}
+
+	err := func(obj interface{}) error {
+		defer c.syncVirtualPortsQueue.Done(obj)
+		var key string
+		var ok bool
+		if key, ok = obj.(string); !ok {
+			c.syncVirtualPortsQueue.Forget(obj)
+			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
+			return nil
+		}
+		if err := c.syncVirtualPort(key); err != nil {
+			c.syncVirtualPortsQueue.AddRateLimited(key)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		}
+		c.syncVirtualPortsQueue.Forget(obj)
+		return nil
+	}(obj)
+
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
+	return true
 }
 
 func (c *Controller) processNextAddSubnetWorkItem() bool {
@@ -844,6 +880,89 @@ func (c *Controller) reconcileSubnet(subnet *kubeovnv1.Subnet) error {
 	if err := c.reconcileVlan(subnet); err != nil {
 		klog.Errorf("reconcile vlan for subnet %s failed, %v", subnet.Name, err)
 		return err
+	}
+
+	if err := c.reconcileVips(subnet); err != nil {
+		klog.Errorf("reconcile vips for subnet %s failed, %v", subnet.Name, err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) reconcileVips(subnet *kubeovnv1.Subnet) error {
+	// 1. get all vip port
+	results, err := c.ovnClient.CustomFindEntity("logical_switch_port", []string{"name", "options"}, "type=virtual", fmt.Sprintf("external_ids:ls=%s", subnet.Name))
+	if err != nil {
+		klog.Errorf("failed to find virtual port, %v", err)
+		return err
+	}
+
+	// 2. remove no need port
+	var existVips []string
+	for _, ret := range results {
+		options := ret["options"]
+		for _, value := range options {
+			if !strings.HasPrefix(value, "virtual-ip=") {
+				continue
+			}
+			vip := strings.TrimPrefix(value, "virtual-ip=")
+			if vip == "" || net.ParseIP(vip) == nil {
+				continue
+			}
+			if !util.ContainsString(subnet.Spec.Vips, vip) {
+				if err = c.ovnClient.DeleteLogicalSwitchPort(ret["name"][0]); err != nil {
+					klog.Errorf("failed to delete virtual port, %v", err)
+					return err
+				}
+			} else {
+				existVips = append(existVips, vip)
+			}
+		}
+	}
+
+	// 3. create new port
+	newVips := util.DiffStringSlice(existVips, subnet.Spec.Vips)
+	for _, vip := range newVips {
+		if err = c.ovnClient.CreateVirtualPort(subnet.Name, vip); err != nil {
+			klog.Errorf("failed to create virtual port, %v", err)
+			return err
+		}
+	}
+	c.syncVirtualPortsQueue.Add(subnet.Name)
+	return nil
+}
+
+func (c *Controller) syncVirtualPort(key string) error {
+	subnet, err := c.subnetsLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		} else {
+			klog.Errorf("failed to get subnet %s, %v", key, err)
+			return err
+		}
+	}
+	results, err := c.ovnClient.CustomFindEntity("logical_switch_port", []string{"name", "port_security"},
+		fmt.Sprintf("external_ids:ls=%s", subnet.Name), "external_ids:attach-vips=true")
+	if err != nil {
+		klog.Errorf("failed to list logical_switch_port, %v", err)
+		return err
+	}
+	for _, vip := range subnet.Spec.Vips {
+		if !util.CIDRContainIP(subnet.Spec.CIDRBlock, vip) {
+			klog.Errorf("vip %s is out of range to subnet %s", vip, subnet.Name)
+			continue
+		}
+		var virtualParents []string
+		for _, ret := range results {
+			if util.ContainsString(ret["port_security"], vip) {
+				virtualParents = append(virtualParents, ret["name"][0])
+			}
+		}
+		if err = c.ovnClient.SetVirtualParents(subnet.Name, vip, strings.Join(virtualParents, ",")); err != nil {
+			klog.Errorf("failed to set vip %s virtual parents, %v", vip, err)
+			return err
+		}
 	}
 	return nil
 }

@@ -108,6 +108,13 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 		}
 	}
 
+	if len(subnet.Spec.Vips) != 0 {
+		for _, vip := range subnet.Spec.Vips {
+			if !CIDRContainIP(subnet.Spec.CIDRBlock, vip) {
+				return fmt.Errorf("vip %s conflicts with subnet %s cidr %s", vip, subnet.Name, subnet.Spec.CIDRBlock)
+			}
+		}
+	}
 	return nil
 }
 
