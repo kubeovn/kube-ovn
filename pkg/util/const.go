@@ -123,6 +123,7 @@ const (
 	NormalRouteType = "normal"
 
 	PodRouterPolicyPriority  = 20000
+	CentralSubnetPriority    = 25000
 	NodeRouterPolicyPriority = 30000
 
 	OffloadType  = "offload-port"
