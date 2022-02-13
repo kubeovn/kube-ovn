@@ -319,6 +319,15 @@ spec:
                         type: string
                     type: object
                   type: array
+                vpcPeerings:
+                  items:
+                    properties:
+                      remoteVpc:
+                        type: string
+                      localConnectIP:
+                        type: string
+                    type: object
+                  type: array
               type: object
             status:
               properties:
@@ -348,6 +357,10 @@ spec:
                 standby:
                   type: boolean
                 subnets:
+                  items:
+                    type: string
+                  type: array
+                vpcPeerings:
                   items:
                     type: string
                   type: array
