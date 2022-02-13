@@ -60,6 +60,8 @@ func (c *Controller) enqueueUpdateVpc(old, new interface{}) {
 	if !newVpc.DeletionTimestamp.IsZero() ||
 		!reflect.DeepEqual(oldVpc.Spec.Namespaces, newVpc.Spec.Namespaces) ||
 		!reflect.DeepEqual(oldVpc.Spec.StaticRoutes, newVpc.Spec.StaticRoutes) ||
+		!reflect.DeepEqual(oldVpc.Spec.PolicyRoutes, newVpc.Spec.PolicyRoutes) ||
+		!reflect.DeepEqual(oldVpc.Spec.VpcPeerings, newVpc.Spec.VpcPeerings) ||
 		!reflect.DeepEqual(oldVpc.Annotations, newVpc.Annotations) {
 		klog.V(3).Infof("enqueue update vpc %s", key)
 		c.addOrUpdateVpcQueue.Add(key)
@@ -269,6 +271,27 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 
+	var newPeers []string
+	for _, peering := range vpc.Spec.VpcPeerings {
+		if err = util.CheckCidrs(peering.LocalConnectIP); err != nil {
+			klog.Errorf("invalid cidr %s", peering.LocalConnectIP)
+			return err
+		}
+		newPeers = append(newPeers, peering.RemoteVpc)
+		if err := c.ovnClient.CreatePeerRouterPort(vpc.Name, peering.RemoteVpc, peering.LocalConnectIP); err != nil {
+			klog.Errorf("failed to create peer router port for vpc %s, %v", vpc.Name, err)
+			return err
+		}
+	}
+	for _, oldPeer := range vpc.Status.VpcPeerings {
+		if !util.ContainsString(newPeers, oldPeer) {
+			if err = c.ovnClient.DeleteLogicalRouterPort(fmt.Sprintf("%s-%s", vpc.Name, oldPeer)); err != nil {
+				klog.Errorf("failed to delete peer router port for vpc %s, %v", vpc.Name, err)
+				return err
+			}
+		}
+	}
+
 	if vpc.Name != util.DefaultVpc {
 		// handle static route
 		existRoute, err := c.ovnLegacyClient.GetStaticRouteList(vpc.Name)
@@ -324,6 +347,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 
 	vpc.Status.Router = key
 	vpc.Status.Standby = true
+	vpc.Status.VpcPeerings = newPeers
 	if c.config.EnableLb {
 		vpcLb, err := c.addLoadBalancer(key)
 		if err != nil {
