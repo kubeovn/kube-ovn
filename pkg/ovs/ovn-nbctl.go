@@ -716,6 +716,41 @@ func (c Client) createRouterPort(ls, lr, ip, mac string) error {
 	return nil
 }
 
+func (c Client) CreatePeerRouterPort(localRouter, remoteRouter, localRouterPortIP string) error {
+	localRouterPort := fmt.Sprintf("%s-%s", localRouter, remoteRouter)
+	remoteRouterPort := fmt.Sprintf("%s-%s", remoteRouter, localRouter)
+
+	// check router port exist, because '--may-exist' may not work for router port
+	results, err := c.ListLogicalEntity("logical_router_port", fmt.Sprintf("name=%s", localRouterPort))
+	if err != nil {
+		klog.Errorf("failed to list router port %s, %v", localRouterPort, err)
+		return err
+	}
+	if len(results) == 0 {
+		ipStr := strings.Split(localRouterPortIP, ",")
+		if len(ipStr) == 2 {
+			_, err = c.ovnNbCommand(MayExist, "lrp-add", localRouter, localRouterPort, util.GenerateMac(), ipStr[0], ipStr[1], "--",
+				"set", "logical_router_port", localRouterPort, fmt.Sprintf("peer=%s", remoteRouterPort))
+		} else {
+			_, err = c.ovnNbCommand(MayExist, "lrp-add", localRouter, localRouterPort, util.GenerateMac(), ipStr[0], "--",
+				"set", "logical_router_port", localRouterPort, fmt.Sprintf("peer=%s", remoteRouterPort))
+		}
+		if err != nil {
+			klog.Errorf("failed to create router port %s: %v", localRouterPort, err)
+			return err
+		}
+	}
+
+	_, err = c.ovnNbCommand("set", "logical_router_port", localRouterPort,
+		fmt.Sprintf("networks=%s", strings.ReplaceAll(localRouterPortIP, ",", " ")))
+
+	if err != nil {
+		klog.Errorf("failed to set router port %s: %v", localRouterPort, err)
+		return err
+	}
+	return nil
+}
+
 type StaticRoute struct {
 	Policy  string
 	CIDR    string

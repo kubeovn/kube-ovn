@@ -30,10 +30,41 @@ func (c *Controller) gc() error {
 		c.gcPortGroup,
 		c.gcStaticRoute,
 		c.gcVpcNatGateway,
+		c.gcLogicalRouterPort,
 	}
 	for _, gcFunc := range gcFunctions {
 		if err := gcFunc(); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) gcLogicalRouterPort() error {
+	klog.Infof("start to gc logical router port")
+	vpcs, err := c.vpcsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vpc, %v", err)
+		return err
+	}
+
+	var exceptPeerPorts []string
+	for _, vpc := range vpcs {
+		for _, peer := range vpc.Status.VpcPeerings {
+			exceptPeerPorts = append(exceptPeerPorts, fmt.Sprintf("%s-%s", vpc.Name, peer))
+		}
+	}
+	lrps, err := c.ovnClient.ListLogicalEntity("logical_router_port", "peer!=[]")
+	if err != nil {
+		klog.Errorf("failed to list logical router port, %v", err)
+		return err
+	}
+	for _, lrp := range lrps {
+		if !util.ContainsString(exceptPeerPorts, lrp) {
+			if err = c.ovnClient.DeleteLogicalRouterPort(lrp); err != nil {
+				klog.Errorf("failed to delete logical router port %s, %v", lrp, err)
+				return err
+			}
 		}
 	}
 	return nil
