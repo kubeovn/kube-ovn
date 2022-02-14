@@ -1,4 +1,5 @@
 GO_VERSION = 1.17
+SHELL=/bin/bash
 
 REGISTRY = kubeovn
 DEV_TAG = dev

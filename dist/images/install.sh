@@ -133,6 +133,20 @@ then
   set -u
 fi
 
+echo "-------------------------------"
+echo "Kube-OVN Version:     $VERSION"
+echo "Default Network Mode: $NETWORK_TYPE"
+if [[ $NETWORK_TYPE = "vlan" ]];then
+  echo "Default Vlan Nic:     $VLAN_INTERFACE_NAME"
+  echo "Default Vlan ID:      $VLAN_ID"
+fi
+echo "Default Subnet CIDR:  $POD_CIDR"
+echo "Join Subnet CIDR:     $JOIN_CIDR"
+echo "Enable SVC LB:        $ENABLE_LB"
+echo "Enable Networkpolicy: $ENABLE_NP"
+echo "Enable Mirror:        $ENABLE_MIRROR"
+echo "-------------------------------"
+
 if [[ $ENABLE_SSL = "true" ]];then
   echo "[Step 0/6] Generate SSL key and cert"
   exist=$(kubectl get secret -n kube-system kube-ovn-tls --ignore-not-found)

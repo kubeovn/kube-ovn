@@ -110,6 +110,7 @@ jobs:
         with:
           timeout_minutes: 10
           max_attempts: 3
+          shell: bash
           command: |
             sudo make kind-install
 
@@ -166,6 +167,7 @@ jobs:
         with:
           timeout_minutes: 10
           max_attempts: 3
+          shell: bash
           command: |
             sudo make kind-install
 
@@ -222,6 +224,7 @@ jobs:
         with:
           timeout_minutes: 10
           max_attempts: 3
+          shell: bash
           command: |
             sudo make kind-install
 
@@ -278,6 +281,7 @@ jobs:
         with:
           timeout_minutes: 10
           max_attempts: 3
+          shell: bash
           command: |
             sudo make kind-install-underlay
 
@@ -350,6 +354,7 @@ jobs:
         with:
           timeout_minutes: 10
           max_attempts: 3
+          shell: bash
           command: |
             sudo make kind-install-single
 
@@ -406,6 +411,7 @@ jobs:
         with:
           timeout_minutes: 10
           max_attempts: 3
+          shell: bash
           command: |
             sudo make kind-install
 
@@ -444,6 +450,7 @@ jobs:
         with:
           timeout_minutes: 10
           max_attempts: 3
+          shell: bash
           command: |
             sudo make kind-install-ipv6
 
@@ -500,6 +507,7 @@ jobs:
         with:
           timeout_minutes: 10
           max_attempts: 3
+          shell: bash
           command: |
             sudo make kind-install-ipv6
 
@@ -556,6 +564,7 @@ jobs:
         with:
           timeout_minutes: 10
           max_attempts: 3
+          shell: bash
           command: |
             sudo make kind-install-underlay-ipv6
 
@@ -628,6 +637,7 @@ jobs:
         with:
           timeout_minutes: 10
           max_attempts: 3
+          shell: bash
           command: |
             sudo make kind-install-dual
 
@@ -684,6 +694,7 @@ jobs:
         with:
           timeout_minutes: 10
           max_attempts: 3
+          shell: bash
           command: |
             sudo make kind-install-underlay-dual
 
@@ -756,6 +767,7 @@ jobs:
         with:
           timeout_minutes: 10
           max_attempts: 3
+          shell: bash
           command: |
             sudo make kind-install-underlay-logical-gateway-dual
 
@@ -830,6 +842,7 @@ jobs:
         with:
           timeout_minutes: 10
           max_attempts: 3
+          shell: bash
           command: |
             sudo make kind-install
 
@@ -888,6 +901,7 @@ jobs:
         with:
           timeout_minutes: 10
           max_attempts: 3
+          shell: bash
           command: |
             sudo make kind-install
 
@@ -944,6 +958,7 @@ jobs:
         with:
           timeout_minutes: 10
           max_attempts: 3
+          shell: bash
           command: |
             sudo ENABLE_NP=false make kind-install
 
@@ -1000,6 +1015,7 @@ jobs:
         with:
           timeout_minutes: 10
           max_attempts: 3
+          shell: bash
           command: |
             sudo PATH=~/.local/bin:$PATH make kind-install-cluster
             sudo PATH=~/.local/bin:$PATH make kind-install-ic
@@ -1062,6 +1078,7 @@ jobs:
         with:
           timeout_minutes: 10
           max_attempts: 3
+          shell: bash
           command: |
             sudo PATH=~/.local/bin:$PATH make kind-install-cilium
             docker exec kube-ovn-control-plane bash -c "ls -al /etc/cni/net.d/"
