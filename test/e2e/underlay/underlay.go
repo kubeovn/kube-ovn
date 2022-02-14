@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -170,6 +171,45 @@ var _ = Describe("[Underlay]", func() {
 					}
 				}
 			}
+		})
+
+		It("node annotation", func() {
+			By("add exclude annotation")
+			nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+			Expect(err).NotTo(HaveOccurred())
+
+			for _, node := range nodes.Items {
+				newNode := node.DeepCopy()
+				newNode.Annotations[fmt.Sprintf(util.ProviderNetworkExcludeTemplate, ProviderNetwork)] = "true"
+				_, err = f.KubeClientSet.CoreV1().Nodes().Update(context.Background(), newNode, metav1.UpdateOptions{})
+				Expect(err).NotTo(HaveOccurred())
+			}
+
+			time.Sleep(3 * time.Second)
+
+			By("validate provider network")
+			pn, err := f.OvnClientSet.KubeovnV1().ProviderNetworks().Get(context.Background(), ProviderNetwork, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			for _, node := range nodes.Items {
+				Expect(util.ContainsString(pn.Spec.ExcludeNodes, node.Name)).To(BeTrue())
+			}
+
+			By("validate node annotation")
+			nodes, err = f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+			Expect(err).NotTo(HaveOccurred())
+
+			for _, node := range nodes.Items {
+				Expect(node.Annotations).NotTo(HaveKey(fmt.Sprintf(util.ProviderNetworkExcludeTemplate, ProviderNetwork)))
+			}
+
+			By("restore provider network")
+			pn, err = f.OvnClientSet.KubeovnV1().ProviderNetworks().Get(context.Background(), ProviderNetwork, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
+
+			newPn := pn.DeepCopy()
+			newPn.Spec.ExcludeNodes = nil
+			_, err = f.OvnClientSet.KubeovnV1().ProviderNetworks().Update(context.Background(), newPn, metav1.UpdateOptions{})
+			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 

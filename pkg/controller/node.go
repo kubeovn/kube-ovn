@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -55,7 +56,7 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj interface{}) {
 	newNode := newObj.(*v1.Node)
 
 	if nodeReady(oldNode) != nodeReady(newNode) ||
-		oldNode.Annotations[util.ChassisAnnotation] != newNode.Annotations[util.ChassisAnnotation] {
+		!reflect.DeepEqual(oldNode.Annotations, newNode.Annotations) {
 		var key string
 		var err error
 		if key, err = cache.MetaNamespaceKeyFunc(newObj); err != nil {
@@ -249,28 +250,9 @@ func (c *Controller) handleAddNode(key string) error {
 		klog.Errorf("failed to create address set for node %s: %v", node.Name, err)
 		return err
 	}
-
-	providerNetworks, err := c.providerNetworksLister.List(labels.Everything())
-	if err != nil && !k8serrors.IsNotFound(err) {
-		klog.Errorf("failed to list provider networks: %v", err)
+	if err = c.handleNodeAnnotationsForProviderNetworks(node); err != nil {
+		klog.Errorf("failed to handle annotations of node %s for provider networks: %v", node.Name, err)
 		return err
-	}
-	for _, pn := range providerNetworks {
-		if !util.ContainsString(pn.Spec.ExcludeNodes, node.Name) {
-			status := pn.Status.DeepCopy()
-			if status.EnsureNodeStandardConditions(key) {
-				bytes, err := status.Bytes()
-				if err != nil {
-					klog.Error(err)
-					return err
-				}
-				_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
-				if err != nil {
-					klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
-					return err
-				}
-			}
-		}
 	}
 
 	subnet, err := c.subnetsLister.Get(c.config.NodeSwitch)
@@ -375,6 +357,91 @@ func (c *Controller) handleAddNode(key string) error {
 	return nil
 }
 
+func (c *Controller) handleNodeAnnotationsForProviderNetworks(node *v1.Node) error {
+	providerNetworks, err := c.providerNetworksLister.List(labels.Everything())
+	if err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to list provider networks: %v", err)
+		return err
+	}
+
+	for _, pn := range providerNetworks {
+		excludeAnno := fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name)
+		interfaceAnno := fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name)
+
+		var newPn *kubeovnv1.ProviderNetwork
+		excluded := util.ContainsString(pn.Spec.ExcludeNodes, node.Name)
+		if !excluded && len(node.Annotations) != 0 && node.Annotations[excludeAnno] == "true" {
+			newPn = pn.DeepCopy()
+			newPn.Spec.ExcludeNodes = append(newPn.Spec.ExcludeNodes, node.Name)
+			excluded = true
+		}
+
+		var customInterface string
+		for _, v := range pn.Spec.CustomInterfaces {
+			if util.ContainsString(v.Nodes, node.Name) {
+				customInterface = v.Interface
+				break
+			}
+		}
+		if customInterface == "" && len(node.Annotations) != 0 {
+			if customInterface = node.Annotations[interfaceAnno]; customInterface != "" {
+				if newPn == nil {
+					newPn = pn.DeepCopy()
+				}
+				var index int
+				for index = range newPn.Spec.CustomInterfaces {
+					if newPn.Spec.CustomInterfaces[index].Interface == customInterface {
+						break
+					}
+				}
+				if index != len(newPn.Spec.CustomInterfaces) {
+					newPn.Spec.CustomInterfaces[index].Nodes = append(newPn.Spec.CustomInterfaces[index].Nodes, node.Name)
+				} else {
+					ci := kubeovnv1.CustomInterface{Interface: customInterface, Nodes: []string{node.Name}}
+					newPn.Spec.CustomInterfaces = append(newPn.Spec.CustomInterfaces, ci)
+				}
+			}
+		}
+
+		if newPn != nil {
+			if _, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Update(context.Background(), newPn, metav1.UpdateOptions{}); err != nil {
+				klog.Errorf("failed to update provider network %s: %v", pn.Name, err)
+				return err
+			}
+		}
+
+		if len(node.Annotations) != 0 {
+			newNode := node.DeepCopy()
+			delete(newNode.Annotations, excludeAnno)
+			delete(newNode.Annotations, interfaceAnno)
+			if len(newNode.Annotations) != len(node.Annotations) {
+				if _, err = c.config.KubeClient.CoreV1().Nodes().Update(context.Background(), newNode, metav1.UpdateOptions{}); err != nil {
+					klog.Errorf("failed to update node %s: %v", node.Name, err)
+					return err
+				}
+			}
+		}
+
+		if excluded {
+			status := pn.Status.DeepCopy()
+			if status.EnsureNodeStandardConditions(node.Name) {
+				bytes, err := status.Bytes()
+				if err != nil {
+					klog.Error(err)
+					return err
+				}
+				_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
+				if err != nil {
+					klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 func (c *Controller) handleDeleteNode(key string) error {
 	portName := fmt.Sprintf("node-%s", key)
 	if err := c.ovnClient.DeleteLogicalSwitchPort(portName); err != nil {
@@ -425,7 +492,7 @@ func (c *Controller) handleDeleteNode(key string) error {
 	}
 
 	for _, pn := range providerNetworks {
-		if err = c.updateProviderNetworkStatusForNodeDeletion(pn, key); err != nil {
+		if err = c.updateProviderNetworkForNodeDeletion(pn, key); err != nil {
 			return err
 		}
 	}
@@ -433,7 +500,8 @@ func (c *Controller) handleDeleteNode(key string) error {
 	return nil
 }
 
-func (c *Controller) updateProviderNetworkStatusForNodeDeletion(pn *kubeovnv1.ProviderNetwork, node string) error {
+func (c *Controller) updateProviderNetworkForNodeDeletion(pn *kubeovnv1.ProviderNetwork, node string) error {
+	// update provider network status
 	status := pn.Status.DeepCopy()
 	if util.ContainsString(status.ReadyNodes, node) {
 		status.ReadyNodes = util.RemoveString(status.ReadyNodes, node)
@@ -479,6 +547,37 @@ func (c *Controller) updateProviderNetworkStatusForNodeDeletion(pn *kubeovnv1.Pr
 		}
 	}
 
+	// update provider network spec
+	var newPn *kubeovnv1.ProviderNetwork
+	if excludeNodes := util.RemoveString(pn.Spec.ExcludeNodes, node); len(excludeNodes) != len(pn.Spec.ExcludeNodes) {
+		newPn := pn.DeepCopy()
+		newPn.Spec.ExcludeNodes = excludeNodes
+	}
+
+	var changed bool
+	customInterfaces := make([]kubeovnv1.CustomInterface, 0, len(pn.Spec.CustomInterfaces))
+	for _, ci := range pn.Spec.CustomInterfaces {
+		nodes := util.RemoveString(ci.Nodes, node)
+		if !changed {
+			changed = len(nodes) == 0 || len(nodes) != len(ci.Nodes)
+		}
+		if len(nodes) != 0 {
+			customInterfaces = append(customInterfaces, kubeovnv1.CustomInterface{Interface: ci.Interface, Nodes: nodes})
+		}
+	}
+	if changed {
+		if newPn == nil {
+			newPn = pn.DeepCopy()
+		}
+		newPn.Spec.CustomInterfaces = customInterfaces
+	}
+	if newPn != nil {
+		if _, err := c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Update(context.Background(), newPn, metav1.UpdateOptions{}); err != nil {
+			klog.Errorf("failed to update provider network %s: %v", pn.Name, err)
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -490,6 +589,12 @@ func (c *Controller) handleUpdateNode(key string) error {
 		}
 		return err
 	}
+
+	if err = c.handleNodeAnnotationsForProviderNetworks(node); err != nil {
+		klog.Errorf("failed to handle annotations of node %s for provider networks: %v", node.Name, err)
+		return err
+	}
+
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to get subnets %v", err)
