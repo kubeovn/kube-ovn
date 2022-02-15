@@ -26,8 +26,8 @@ function init() {
     iptables -t nat -N SHARED_SNAT
 
     iptables -t nat -A PREROUTING -j DNAT_FILTER
-    iptables -t nat -A DNAT_FILTER -j EXCLUSIVE_DNAT
     iptables -t nat -A DNAT_FILTER -j SHARED_DNAT
+    iptables -t nat -A DNAT_FILTER -j EXCLUSIVE_DNAT
 
     iptables -t nat -A POSTROUTING -j SNAT_FILTER
     iptables -t nat -A SNAT_FILTER -j EXCLUSIVE_SNAT
