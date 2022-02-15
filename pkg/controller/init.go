@@ -385,6 +385,12 @@ func (c *Controller) initDefaultProviderNetwork() error {
 		return err
 	}
 
+	nodes, err := c.nodesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to get nodes: %v", err)
+		return err
+	}
+
 	pn := kubeovnv1.ProviderNetwork{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: c.config.DefaultProviderName,
@@ -393,6 +399,53 @@ func (c *Controller) initDefaultProviderNetwork() error {
 			DefaultInterface: c.config.DefaultHostInterface,
 		},
 	}
+
+	excludeAnno := fmt.Sprintf(util.ProviderNetworkExcludeTemplate, c.config.DefaultProviderName)
+	interfaceAnno := fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, c.config.DefaultProviderName)
+	newNodes := make([]*v1.Node, 0, len(nodes))
+	for _, node := range nodes {
+		if len(node.Annotations) == 0 {
+			continue
+		}
+
+		var newNode *v1.Node
+		if node.Annotations[excludeAnno] == "true" {
+			pn.Spec.ExcludeNodes = append(pn.Spec.ExcludeNodes, node.Name)
+			newNode = node.DeepCopy()
+		} else if s := node.Annotations[interfaceAnno]; s != "" {
+			var index int
+			for index = range pn.Spec.CustomInterfaces {
+				if pn.Spec.CustomInterfaces[index].Interface == s {
+					break
+				}
+			}
+			if index != len(pn.Spec.CustomInterfaces) {
+				pn.Spec.CustomInterfaces[index].Nodes = append(pn.Spec.CustomInterfaces[index].Nodes, node.Name)
+			} else {
+				ci := kubeovnv1.CustomInterface{Interface: s, Nodes: []string{node.Name}}
+				pn.Spec.CustomInterfaces = append(pn.Spec.CustomInterfaces, ci)
+			}
+			newNode = node.DeepCopy()
+		}
+		if newNode != nil {
+			delete(newNode.Annotations, excludeAnno)
+			delete(newNode.Annotations, interfaceAnno)
+			newNodes = append(newNodes, newNode)
+		}
+	}
+
+	defer func() {
+		if err == nil {
+			return
+		}
+
+		// update nodes only when provider network has been created successfully
+		for _, node := range newNodes {
+			if _, err := c.config.KubeClient.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{}); err != nil {
+				klog.Errorf("failed to update node %s: %v", node.Name, err)
+			}
+		}
+	}()
 
 	_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Create(context.Background(), &pn, metav1.CreateOptions{})
 	return err
