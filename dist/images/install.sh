@@ -1906,6 +1906,7 @@ spec:
           - --logtostderr=false
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
+          - --log_file_max_size=0
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
@@ -2024,6 +2025,7 @@ spec:
           - --logtostderr=false
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-cni.log
+          - --log_file_max_size=0
         securityContext:
           runAsUser: 0
           privileged: true
@@ -2056,6 +2058,10 @@ spec:
             mountPropagation: HostToContainer
           - mountPath: /var/log/kube-ovn
             name: kube-ovn-log
+          - mountPath: /var/log/openvswitch
+            name: host-log-ovs
+          - mountPath: /var/log/ovn
+            name: host-log-ovn
           - mountPath: /etc/localtime
             name: localtime
           - mountPath: /tmp
@@ -2104,9 +2110,15 @@ spec:
         - name: host-ns
           hostPath:
             path: /var/run/netns
+        - name: host-log-ovs
+          hostPath:
+            path: /var/log/openvswitch
         - name: kube-ovn-log
           hostPath:
             path: /var/log/kube-ovn
+        - name: host-log-ovn
+          hostPath:
+            path: /var/log/ovn
         - name: localtime
           hostPath:
             path: /etc/localtime
@@ -2149,6 +2161,7 @@ spec:
           - --logtostderr=false
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-pinger.log
+          - --log_file_max_size=0
           imagePullPolicy: $IMAGE_PULL_POLICY
           securityContext:
             runAsUser: 0
