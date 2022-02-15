@@ -4,12 +4,6 @@ shopt -s expand_aliases
 
 OVN_DB_IPS=${OVN_DB_IPS:-}
 ENABLE_SSL=${ENABLE_SSL:-false}
-LOG_ROTATE=${LOG_ROTATE:-false}
-
-if [[ "$LOG_ROTATE" == "true" ]]; then
-  logrotate /etc/logrotate.d/openvswitch
-  logrotate /etc/logrotate.d/ovn
-fi
 
 function gen_conn_str {
   if [[ -z "${OVN_DB_IPS}" ]]; then

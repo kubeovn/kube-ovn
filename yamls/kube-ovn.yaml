@@ -194,6 +194,12 @@ spec:
             - mountPath: /var/run/netns
               name: host-ns
               mountPropagation: HostToContainer
+            - mountPath: /var/log/kube-ovn
+              name: kube-ovn-log
+            - mountPath: /var/log/openvswitch
+              name: host-log-ovs
+            - mountPath: /var/log/ovn
+              name: host-log-ovn
             - mountPath: /etc/localtime
               name: localtime
           livenessProbe:
@@ -240,6 +246,15 @@ spec:
         - name: host-ns
           hostPath:
             path: /var/run/netns
+        - name: host-log-ovs
+          hostPath:
+            path: /var/log/openvswitch
+        - name: kube-ovn-log
+          hostPath:
+            path: /var/log/kube-ovn
+        - name: host-log-ovn
+          hostPath:
+            path: /var/log/ovn
         - name: localtime
           hostPath:
             path: /etc/localtime
