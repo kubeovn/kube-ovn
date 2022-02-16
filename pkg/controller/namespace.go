@@ -125,7 +125,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 	namespace := orinamespace.DeepCopy()
 
 	var ls string
-	var lss []string
+	var lss, cidrs, excludeIps []string
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets %v", err)
@@ -136,6 +136,9 @@ func (c *Controller) handleAddNamespace(key string) error {
 		for _, ns := range s.Spec.Namespaces {
 			if ns == key {
 				lss = append(lss, s.Name)
+				cidrs = append(cidrs, s.Spec.CIDRBlock)
+				excludeIps = append(excludeIps, strings.Join(s.Spec.ExcludeIps, ","))
+				break
 			}
 		}
 	}
@@ -170,6 +173,8 @@ func (c *Controller) handleAddNamespace(key string) error {
 			return err
 		}
 		lss = append(lss, subnet.Name)
+		cidrs = append(cidrs, subnet.Spec.CIDRBlock)
+		excludeIps = append(excludeIps, strings.Join(subnet.Spec.ExcludeIps, ","))
 	}
 
 	op := "replace"
@@ -182,6 +187,8 @@ func (c *Controller) handleAddNamespace(key string) error {
 		}
 	}
 	namespace.Annotations[util.LogicalSwitchAnnotation] = strings.Join(lss, ",")
+	namespace.Annotations[util.CidrAnnotation] = strings.Join(cidrs, ";")
+	namespace.Annotations[util.ExcludeIpsAnnotation] = strings.Join(excludeIps, ";")
 
 	if _, err = c.config.KubeClient.CoreV1().Namespaces().Patch(context.Background(), key, types.JSONPatchType, generatePatchPayload(namespace.Annotations, op), metav1.PatchOptions{}, ""); err != nil {
 		klog.Errorf("patch namespace %s failed %v", key, err)
