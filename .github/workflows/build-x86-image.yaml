@@ -75,6 +75,18 @@ jobs:
           name: vpc-nat-gateway
           path: vpc-nat-gateway.tar
 
+      - name: Upload centos7-compile image to artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: centos7-compile
+          path: centos7-compile.tar
+
+      - name: Upload centos8-compile image to artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: centos8-compile
+          path: centos8-compile.tar
+
   single-e2e:
     needs: build
     name: 1-master-e2e
@@ -1139,10 +1151,22 @@ jobs:
         with:
           name: vpc-nat-gateway
 
+      - name: Download centos7-compile image
+        uses: actions/Download-artifact@v2
+        with:
+          name: centos7-compile
+
+      - name: Download centos8-compile image
+        uses: actions/Download-artifact@v2
+        with:
+          name: centos8-compile
+
       - name: Load Image
         run: |
           docker load --input kube-ovn.tar
           docker load --input vpc-nat-gateway.tar
+          docker load --input centos7-compile.tar
+          docker load --input centos8-compile.tar
 
       - name: Security Scan
         run: |
@@ -1168,8 +1192,16 @@ jobs:
           docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-x86
           docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway-dev:$COMMIT-x86
           docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway:$TAG-x86
+          docker tag kubeovn/centos7-compile:$TAG kubeovn/centos7-compile-dev:$TAG-x86
+          docker tag kubeovn/centos7-compile:$TAG kubeovn/centos7-compile:$TAG-x86
+          docker tag kubeovn/centos8-compile:$TAG kubeovn/centos8-compile-dev:$TAG-x86
+          docker tag kubeovn/centos8-compile:$TAG kubeovn/centos8-compile:$TAG-x86
           docker images
           docker push kubeovn/kube-ovn:$TAG-x86
           docker push kubeovn/kube-ovn-dev:$COMMIT-x86
           docker push kubeovn/vpc-nat-gateway:$TAG-x86
           docker push kubeovn/vpc-nat-gateway-dev:$COMMIT-x86
+          docker push kubeovn/centos7-compile:$TAG-x86
+          docker push kubeovn/centos7-compile-dev:$TAG-x86
+          docker push kubeovn/centos8-compile:$TAG-x86
+          docker push kubeovn/centos8-compile-dev:$TAG-x86

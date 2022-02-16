@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -1270,6 +1273,32 @@ func (c *Controller) deleteSubnetQos(subnet *kubeovnv1.Subnet) error {
 	return nil
 }
 
+func (c *Controller) operateMod() {
+	modules, ok := os.LookupEnv(util.KoENV)
+	if !ok || modules == "" {
+		err := removeAllMods(util.KoDir)
+		if err != nil {
+			klog.Errorf("remove all module in %s failed", util.KoDir)
+		}
+		return
+	}
+	for _, module := range strings.Split(modules, ",") {
+		isFileExist, _ := isFile(module, util.KoDir)
+		if !isFileExist && isMod(module) {
+			err := removeKo(module)
+			if err != nil {
+				klog.Errorf("remove module %s failed %v", module, err)
+			}
+		} else if !isMod(module) && isFileExist {
+			err := insertKo(module)
+			if err != nil {
+				klog.Errorf("insert module %s failed: %v", module, err)
+			}
+			klog.Infof("insert module %s", module)
+		}
+	}
+}
+
 // Run starts controller
 func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
@@ -1280,6 +1309,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 
 	go wait.Until(ovs.CleanLostInterface, time.Minute, stopCh)
 	go wait.Until(recompute, 10*time.Minute, stopCh)
+	go wait.Until(c.operateMod, 10*time.Second, stopCh)
 
 	if ok := cache.WaitForCacheSync(stopCh, c.providerNetworksSynced, c.subnetsSynced, c.podsSynced, c.nodesSynced, c.htbQosSynced); !ok {
 		klog.Fatalf("failed to wait for caches to sync")
@@ -1314,4 +1344,93 @@ func recompute() {
 	if err != nil {
 		klog.Errorf("failed to recompute ovn-controller %q", output)
 	}
+}
+
+func isMod(modName string) bool {
+	out, err := exec.Command("lsmod").CombinedOutput()
+	if err != nil {
+		klog.Errorf("list module %s failed: %v", modName, err)
+	}
+	names := strings.Split(modName, ".")
+	return strings.Contains(string(out), names[0])
+}
+
+func insertKo(koName string) error {
+	file := util.KoDir + koName
+	out, err := exec.Command("insmod", file).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("insert module %s failed: %v", koName, err)
+	}
+	if string(out) != "" {
+		return fmt.Errorf("insert module %s failed: %v", koName, string(out))
+	}
+	return nil
+}
+
+func removeAllMods(dir string) error {
+	kos, err := readKos(dir)
+	if err != nil {
+		return fmt.Errorf("access kos in %s failed: %v", dir, err)
+	}
+	for _, ko := range *kos {
+		err := removeKo(ko)
+		if err != nil {
+			return fmt.Errorf("remove module %s failed: %v", ko, err)
+		}
+	}
+	return nil
+}
+
+func removeKo(koName string) error {
+	out, err := exec.Command("rmmod", koName).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("remove module %s failed: %v", koName, err)
+	}
+	if string(out) != "" {
+		return fmt.Errorf("remove module %s faied: %v", koName, string(out))
+	}
+	return nil
+}
+
+func readKos(dir string) (*[]string, error) {
+	kos := new([]string)
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			klog.Errorf("failed to access path %q: %v", path, err)
+		}
+		if d.IsDir() {
+			return nil
+		}
+		isMatch, _ := regexp.MatchString(".[.]ko$", d.Name())
+		if isMatch {
+			*kos = append(*kos, d.Name())
+		}
+		return nil
+	})
+	if err != nil {
+		return kos, fmt.Errorf("error when walking the path %q: %v", dir, err)
+	}
+	return kos, nil
+}
+
+func isFile(filename string, dir string) (bool, string) {
+	isFile := false
+	fileFullName := ""
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			klog.Errorf("failed to access path %q: %v", path, err)
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if strings.Contains(d.Name(), filename) {
+			isFile = true
+			fileFullName = filename
+		}
+		return nil
+	})
+	if err != nil {
+		klog.Errorf("error when walking the path %q: %v", dir, err)
+	}
+	return isFile, fileFullName
 }
