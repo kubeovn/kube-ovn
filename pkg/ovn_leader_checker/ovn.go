@@ -22,11 +22,11 @@ import (
 )
 
 const (
-	EnvSSL                 = "ENABLE_SSL"
-	EnvPodName             = "POD_NAME"
-	EnvPodNameSpace        = "POD_NAMESPACE"
-	OvnNorthdPid           = "/var/run/ovn/ovn-northd.pid"
-	DEFAULT_PROBE_INTERVAL = 15000
+	EnvSSL               = "ENABLE_SSL"
+	EnvPodName           = "POD_NAME"
+	EnvPodNameSpace      = "POD_NAMESPACE"
+	OvnNorthdPid         = "/var/run/ovn/ovn-northd.pid"
+	DefaultProbeInterval = 15000
 )
 
 // Configuration is the controller conf
@@ -41,7 +41,7 @@ type Configuration struct {
 func ParseFlags() (*Configuration, error) {
 	var (
 		argKubeConfigFile = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
-		argProbeInterval  = pflag.Int("probeInterval", DEFAULT_PROBE_INTERVAL, "interval of probing leader: ms unit")
+		argProbeInterval  = pflag.Int("probeInterval", DefaultProbeInterval, "interval of probing leader: ms unit")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ContinueOnError)
@@ -68,7 +68,7 @@ func ParseFlags() (*Configuration, error) {
 	if err != nil {
 		defconfig := &Configuration{
 			KubeConfigFile: "",
-			ProbeInterval:  DEFAULT_PROBE_INTERVAL,
+			ProbeInterval:  DefaultProbeInterval,
 		}
 		return defconfig, err
 	}
@@ -80,7 +80,7 @@ func ParseFlags() (*Configuration, error) {
 	return config, nil
 }
 
-// funcs to check apiserver alive
+// KubeClientInit funcs to check apiserver alive
 func KubeClientInit(cfg *Configuration) error {
 	// init kubeconfig here
 	var kubecfg *rest.Config
