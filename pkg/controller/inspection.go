@@ -31,6 +31,7 @@ func (c *Controller) inspectPod() error {
 		if pod.Spec.HostNetwork {
 			continue
 		}
+		podName := c.getNameByPod(pod)
 		podNets, err := c.getPodKubeovnNets(pod)
 		if err != nil {
 			klog.Errorf("failed to list pod subnets, %v", err)
@@ -38,7 +39,7 @@ func (c *Controller) inspectPod() error {
 		}
 		for _, podNet := range filterSubnets(pod, podNets) {
 			if podNet.Type != providerTypeIPAM {
-				portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName)
+				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 				isLspExist := false
 				for _, lsp := range lsps {
 					if portName == lsp {

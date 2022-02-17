@@ -15,6 +15,7 @@ import (
 
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/kubeovn/kube-ovn/pkg/util"
+	"kubevirt.io/client-go/kubecli"
 )
 
 // Configuration is the controller conf
@@ -29,6 +30,7 @@ type Configuration struct {
 	KubeClient      kubernetes.Interface
 	KubeOvnClient   clientset.Interface
 	AttachNetClient attacnetclientset.Interface
+	KubevirtClient  kubecli.KubevirtClient
 
 	// with no timeout
 	KubeFactoryClient    kubernetes.Interface
@@ -70,6 +72,7 @@ type Configuration struct {
 	EnableNP          bool
 	EnableExternalVpc bool
 	EnableEcmp        bool
+	EnableKeepVmIP    bool
 
 	ExternalGatewayConfigNS string
 	ExternalGatewayNet      string
@@ -117,6 +120,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnableNP             = pflag.Bool("enable-np", true, "Enable network policy support")
 		argEnableExternalVpc    = pflag.Bool("enable-external-vpc", true, "Enable external vpc support")
 		argEnableEcmp           = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
+		argKeepVmIP             = pflag.Bool("keep-vm-ip", false, "Whether to keep ip for kubevirt pod when pod is rebuild")
 
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
 		argExternalGatewayNet      = pflag.String("external-gateway-net", "external", "The namespace of configmap external-gateway-config, default: external")
@@ -127,12 +131,12 @@ func ParseFlags() (*Configuration, error) {
 	klog.InitFlags(klogFlags)
 
 	// Sync the glog and klog flags.
-	flag.CommandLine.VisitAll(func(f1 *flag.Flag) {
+	pflag.CommandLine.VisitAll(func(f1 *pflag.Flag) {
 		f2 := klogFlags.Lookup(f1.Name)
 		if f2 != nil {
 			value := f1.Value.String()
 			if err := f2.Value.Set(value); err != nil {
-				klog.Fatalf("failed to set flag, %v", err)
+				klog.Fatalf("failed to set pflag, %v", err)
 			}
 		}
 	})
@@ -178,6 +182,7 @@ func ParseFlags() (*Configuration, error) {
 		ExternalGatewayNet:            *argExternalGatewayNet,
 		ExternalGatewayVlanID:         *argExternalGatewayVlanID,
 		EnableEcmp:                    *argEnableEcmp,
+		EnableKeepVmIP:                *argKeepVmIP,
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {
@@ -240,6 +245,14 @@ func (config *Configuration) initKubeClient() error {
 		return err
 	}
 	config.AttachNetClient = AttachNetClient
+
+	// get the kubevirt client, using which kubevirt resources can be managed.
+	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(cfg)
+	if err != nil {
+		klog.Errorf("init kubevirt client failed %v", err)
+		return err
+	}
+	config.KubevirtClient = virtClient
 
 	kubeOvnClient, err := clientset.NewForConfig(cfg)
 	if err != nil {
