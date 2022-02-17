@@ -740,6 +740,14 @@ rules:
       - get
       - list
       - update
+  - apiGroups:
+      - "kubevirt.io"
+    resources:
+      - virtualmachines
+      - virtualmachineinstances
+    verbs:
+      - get
+      - list
 EOF
 
 kubectl apply -f kube-ovn-cluster-role-1.8.yaml

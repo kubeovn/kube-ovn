@@ -998,9 +998,14 @@ func (c *Controller) handlePod(key string) error {
 		return err
 	}
 
+	podName := pod.Name
+	if pod.Annotations[fmt.Sprintf(util.VmTemplate, util.OvnProvider)] != "" {
+		podName = pod.Annotations[fmt.Sprintf(util.VmTemplate, util.OvnProvider)]
+	}
+
 	// set default nic bandwidth
-	ifaceID := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
-	err = ovs.SetInterfaceBandwidth(pod.Name, pod.Namespace, ifaceID, pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation], pod.Annotations[util.PriorityAnnotation])
+	ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
+	err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation], pod.Annotations[util.PriorityAnnotation])
 	if err != nil {
 		return err
 	}
@@ -1009,7 +1014,7 @@ func (c *Controller) handlePod(key string) error {
 		return err
 	}
 	// set linux-netem qos
-	err = ovs.SetNetemQos(pod.Name, pod.Namespace, ifaceID, pod.Annotations[util.NetemQosLatencyAnnotation], pod.Annotations[util.NetemQosLimitAnnotation], pod.Annotations[util.NetemQosLossAnnotation])
+	err = ovs.SetNetemQos(podName, pod.Namespace, ifaceID, pod.Annotations[util.NetemQosLatencyAnnotation], pod.Annotations[util.NetemQosLimitAnnotation], pod.Annotations[util.NetemQosLossAnnotation])
 	if err != nil {
 		return err
 	}
@@ -1021,9 +1026,12 @@ func (c *Controller) handlePod(key string) error {
 	}
 	for _, multiNet := range attachNets {
 		provider := fmt.Sprintf("%s.%s.ovn", multiNet.Name, multiNet.Namespace)
+		if pod.Annotations[fmt.Sprintf(util.VmTemplate, provider)] != "" {
+			podName = pod.Annotations[fmt.Sprintf(util.VmTemplate, provider)]
+		}
 		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
-			ifaceID = ovs.PodNameToPortName(pod.Name, pod.Namespace, provider)
-			err = ovs.SetInterfaceBandwidth(pod.Name, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.PriorityAnnotationTemplate, provider)])
+			ifaceID = ovs.PodNameToPortName(podName, pod.Namespace, provider)
+			err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.PriorityAnnotationTemplate, provider)])
 			if err != nil {
 				return err
 			}
@@ -1031,7 +1039,7 @@ func (c *Controller) handlePod(key string) error {
 			if err != nil {
 				return err
 			}
-			err = ovs.SetNetemQos(pod.Name, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.NetemQosLatencyAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, provider)])
+			err = ovs.SetNetemQos(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.NetemQosLatencyAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, provider)])
 			if err != nil {
 				return err
 			}
@@ -1160,15 +1168,19 @@ func (c *Controller) setSubnetQosPriority(subnet *kubeovnv1.Subnet) error {
 			pod.Status.PodIP == "" {
 			continue
 		}
+		podName := pod.Name
+		if pod.Annotations[fmt.Sprintf(util.VmTemplate, util.OvnProvider)] != "" {
+			podName = pod.Annotations[fmt.Sprintf(util.VmTemplate, util.OvnProvider)]
+		}
 
 		// set priority for eth0 interface in pod
 		if pod.Annotations[util.LogicalSwitchAnnotation] == subnet.Name {
-			ifaceID := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
+			ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
 			priority := htbQos.Spec.Priority
 			if pod.Annotations[util.PriorityAnnotation] != "" {
 				priority = pod.Annotations[util.PriorityAnnotation]
 			}
-			if err = ovs.SetPodQosPriority(pod.Name, pod.Namespace, ifaceID, priority, qosIfaceUidMap, queueIfaceUidMap); err != nil {
+			if err = ovs.SetPodQosPriority(podName, pod.Namespace, ifaceID, priority, qosIfaceUidMap, queueIfaceUidMap); err != nil {
 				klog.Errorf("failed to set htbqos priority for pod %s/%s, iface %v: %v", pod.Namespace, pod.Name, ifaceID, err)
 				return err
 			}
@@ -1184,15 +1196,18 @@ func (c *Controller) setSubnetQosPriority(subnet *kubeovnv1.Subnet) error {
 			if subnet.Spec.Provider != provider {
 				continue
 			}
+			if pod.Annotations[fmt.Sprintf(util.VmTemplate, provider)] != "" {
+				podName = pod.Annotations[fmt.Sprintf(util.VmTemplate, provider)]
+			}
 
 			if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
-				ifaceID := ovs.PodNameToPortName(pod.Name, pod.Namespace, provider)
+				ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, provider)
 				priority := htbQos.Spec.Priority
 				if pod.Annotations[fmt.Sprintf(util.PriorityAnnotationTemplate, provider)] != "" {
 					priority = pod.Annotations[fmt.Sprintf(util.PriorityAnnotationTemplate, provider)]
 				}
 
-				if err = ovs.SetPodQosPriority(pod.Name, pod.Namespace, ifaceID, priority, qosIfaceUidMap, queueIfaceUidMap); err != nil {
+				if err = ovs.SetPodQosPriority(podName, pod.Namespace, ifaceID, priority, qosIfaceUidMap, queueIfaceUidMap); err != nil {
 					klog.Errorf("failed to set htbqos priority for pod %s/%s, iface %v: %v", pod.Namespace, pod.Name, ifaceID, err)
 					return err
 				}
@@ -1236,6 +1251,7 @@ func (c *Controller) deleteSubnetQos(subnet *kubeovnv1.Subnet) error {
 			pod.DeletionTimestamp != nil {
 			continue
 		}
+		podName := pod.Name
 
 		if pod.Annotations[util.LogicalSwitchAnnotation] == subnet.Name {
 			// if pod's annotation for ingress-rate or priority exists, should keep qos for pod
@@ -1243,8 +1259,11 @@ func (c *Controller) deleteSubnetQos(subnet *kubeovnv1.Subnet) error {
 				pod.Annotations[util.PriorityAnnotation] != "" {
 				continue
 			}
-			ifaceID := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
-			if err := c.clearQos(pod.Name, pod.Namespace, ifaceID); err != nil {
+			if pod.Annotations[fmt.Sprintf(util.VmTemplate, util.OvnProvider)] != "" {
+				podName = pod.Annotations[fmt.Sprintf(util.VmTemplate, util.OvnProvider)]
+			}
+			ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
+			if err := c.clearQos(podName, pod.Namespace, ifaceID); err != nil {
 				return err
 			}
 		}
@@ -1261,10 +1280,13 @@ func (c *Controller) deleteSubnetQos(subnet *kubeovnv1.Subnet) error {
 				pod.Annotations[fmt.Sprintf(util.PriorityAnnotationTemplate, provider)] != "" {
 				continue
 			}
+			if pod.Annotations[fmt.Sprintf(util.VmTemplate, provider)] != "" {
+				podName = pod.Annotations[fmt.Sprintf(util.VmTemplate, provider)]
+			}
 
 			if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
-				ifaceID := ovs.PodNameToPortName(pod.Name, pod.Namespace, provider)
-				if err := c.clearQos(pod.Name, pod.Namespace, ifaceID); err != nil {
+				ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, provider)
+				if err := c.clearQos(podName, pod.Namespace, ifaceID); err != nil {
 					return err
 				}
 			}

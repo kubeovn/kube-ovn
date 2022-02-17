@@ -312,6 +312,7 @@ func (c *Controller) InitIPAM() error {
 		if pod.Spec.HostNetwork {
 			continue
 		}
+		podName := c.getNameByPod(pod)
 		podNets, err := c.getPodKubeovnNets(pod)
 		if err != nil {
 			klog.Errorf("failed to get pod kubeovn nets %s.%s address %s: %v", pod.Name, pod.Namespace, pod.Annotations[util.IpAddressAnnotation], err)
@@ -322,17 +323,17 @@ func (c *Controller) InitIPAM() error {
 			}
 			if isPodAlive(pod) && pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
 				_, _, _, err := c.ipam.GetStaticAddress(
-					fmt.Sprintf("%s/%s", pod.Namespace, pod.Name),
-					ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName),
+					fmt.Sprintf("%s/%s", pod.Namespace, podName),
+					ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName),
 					pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)],
 					pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)],
 					pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)], false)
 				if err != nil {
-					klog.Errorf("failed to init pod %s.%s address %s: %v", pod.Name, pod.Namespace, pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)], err)
+					klog.Errorf("failed to init pod %s.%s address %s: %v", podName, pod.Namespace, pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)], err)
 				}
 
 				if err = c.initAppendPodExternalIds(pod); err != nil {
-					klog.Errorf("failed to init append pod %s.%s externalIds: %v", pod.Name, pod.Namespace, err)
+					klog.Errorf("failed to init append pod %s.%s externalIds: %v", podName, pod.Namespace, err)
 				}
 			}
 		}
@@ -656,23 +657,24 @@ func (c *Controller) initAppendPodExternalIds(pod *v1.Pod) error {
 		return err
 	}
 
+	podName := c.getNameByPod(pod)
 	for _, podNet := range podNets {
 		if !strings.HasSuffix(podNet.ProviderName, util.OvnProvider) {
 			continue
 		}
-		portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName)
+		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 		externalIds, err := c.ovnClient.OvnGet("logical_switch_port", portName, "external_ids", "")
 		if err != nil {
-			klog.Errorf("failed to get lsp external_ids for pod %s/%s, %v", pod.Namespace, pod.Name, err)
+			klog.Errorf("failed to get lsp external_ids for pod %s/%s, %v", pod.Namespace, podName, err)
 			return err
 		}
 		if strings.Contains(externalIds, "pod") || strings.Contains(externalIds, "vendor") {
 			continue
 		}
 
-		ovnCommand := []string{"set", "logical_switch_port", portName, fmt.Sprintf("external_ids:pod=%s/%s", pod.Namespace, pod.Name), fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)}
+		ovnCommand := []string{"set", "logical_switch_port", portName, fmt.Sprintf("external_ids:pod=%s/%s", pod.Namespace, podName), fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)}
 		if err = c.ovnClient.SetLspExternalIds(ovnCommand); err != nil {
-			klog.Errorf("failed to set lsp external_ids for pod %s/%s, %v", pod.Namespace, pod.Name, err)
+			klog.Errorf("failed to set lsp external_ids for pod %s/%s, %v", pod.Namespace, podName, err)
 			return err
 		}
 	}
