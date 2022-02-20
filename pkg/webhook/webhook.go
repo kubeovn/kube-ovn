@@ -16,6 +16,7 @@ import (
 
 var (
 	createHooks = make(map[metav1.GroupVersionKind]admission.HandlerFunc)
+	updateHooks = make(map[metav1.GroupVersionKind]admission.HandlerFunc)
 )
 
 type ValidatingHook struct {
@@ -43,6 +44,8 @@ func NewValidatingHook(c cache.Cache) (*ValidatingHook, error) {
 	createHooks[podGVK] = v.PodCreateHook
 	createHooks[subnetGVK] = v.SubnetCreateHook
 
+	updateHooks[subnetGVK] = v.SubnetUpdateHook
+
 	return v, nil
 }
 
@@ -60,6 +63,12 @@ func (v *ValidatingHook) Handle(ctx context.Context, req admission.Request) (res
 		if createHooks[req.Kind] != nil {
 			klog.Infof("handle create %s %s@%s", req.Kind, req.Name, req.Namespace)
 			resp = createHooks[req.Kind](ctx, req)
+			return
+		}
+	case admissionv1.Update:
+		if updateHooks[req.Kind] != nil {
+			klog.Infof("handle update %s %s@%s", req.Kind, req.Name, req.Namespace)
+			resp = updateHooks[req.Kind](ctx, req)
 			return
 		}
 	}
