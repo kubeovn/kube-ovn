@@ -99,6 +99,7 @@ webhooks:
         - pods
     - operations:
         - CREATE
+        - UPDATE
       apiGroups:
         - "kubeovn.io"
       apiVersions:

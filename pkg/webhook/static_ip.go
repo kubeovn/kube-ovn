@@ -107,6 +107,36 @@ func (v *ValidatingHook) SubnetCreateHook(ctx context.Context, req admission.Req
 	return ctrlwebhook.Allowed("by pass")
 }
 
+func (v *ValidatingHook) SubnetUpdateHook(ctx context.Context, req admission.Request) admission.Response {
+	o := ovnv1.Subnet{}
+	if err := v.decoder.Decode(req, &o); err != nil {
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+
+	oldSubnet := ovnv1.Subnet{}
+	if err := v.decoder.DecodeRaw(req.OldObject, &oldSubnet); err != nil {
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+	if (o.Spec.Gateway != oldSubnet.Spec.Gateway) && (0 != o.Status.V4UsingIPs || 0 != o.Status.V6UsingIPs) {
+		err := fmt.Errorf("can't update gateway of cidr when any IPs in Using")
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+
+	if err := util.ValidateSubnet(o); err != nil {
+		return ctrlwebhook.Denied(err.Error())
+	}
+
+	subnetList := &ovnv1.SubnetList{}
+	if err := v.cache.List(ctx, subnetList); err != nil {
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+	if err := util.ValidateCidrConflict(o, subnetList.Items); err != nil {
+		return ctrlwebhook.Denied(err.Error())
+	}
+
+	return ctrlwebhook.Allowed("by pass")
+}
+
 func (v *ValidatingHook) validateIp(ctx context.Context, annotations map[string]string, kind, name, namespace string) admission.Response {
 	if err := util.ValidatePodNetwork(annotations); err != nil {
 		klog.Errorf("validate %s %s/%s failed: %v", kind, namespace, name, err)
