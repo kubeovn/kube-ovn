@@ -218,19 +218,22 @@ func (c *Controller) markAndCleanLSP() error {
 				continue
 			}
 			providerName := strings.ReplaceAll(k, util.AllocatedAnnotationSuffix, "")
-			isProviderovn, err := c.isOVNProvided(providerName, pod)
+			isProviderOvn, err := c.isOVNProvided(providerName, pod)
 			if err != nil {
 				klog.Errorf("determine if provider is ovn failed %v", err)
 			}
-			if !isProviderovn {
+			if !isProviderOvn {
 				continue
 			}
 			ipNames = append(ipNames, ovs.PodNameToPortName(pod.Name, pod.Namespace, providerName))
 		}
 	}
 	for _, node := range nodes {
-		ipNames = append(ipNames, fmt.Sprintf("node-%s", node.Name))
+		if node.Annotations[util.AllocatedAnnotation] == "true" {
+			ipNames = append(ipNames, fmt.Sprintf("node-%s", node.Name))
+		}
 	}
+
 	lsps, err := c.ovnClient.ListLogicalSwitchPort(c.config.EnableExternalVpc)
 	if err != nil {
 		klog.Errorf("failed to list logical switch port, %v", err)

@@ -202,7 +202,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 
 	err = c.ovnClient.SetPortsToPortGroup(pgName, ports)
-	if err != nil {
+	if err != nil && !strings.Contains(err.Error(), "not found") {
 		klog.Errorf("failed to set port group, %v", err)
 		return err
 	}

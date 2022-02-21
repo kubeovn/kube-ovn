@@ -472,6 +472,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	// add default/join subnet and wait them ready
 	go wait.Until(c.runAddSubnetWorker, time.Second, stopCh)
 	go wait.Until(c.runAddVlanWorker, time.Second, stopCh)
+	go wait.Until(c.runAddNamespaceWorker, time.Second, stopCh)
 	for {
 		klog.Infof("wait for %s and %s ready", c.config.DefaultLogicalSwitch, c.config.NodeSwitch)
 		time.Sleep(3 * time.Second)
@@ -480,7 +481,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 			klog.Fatalf("failed to list logical switch: %v", err)
 		}
 
-		if util.IsStringIn(c.config.DefaultLogicalSwitch, lss) && util.IsStringIn(c.config.NodeSwitch, lss) {
+		if util.IsStringIn(c.config.DefaultLogicalSwitch, lss) && util.IsStringIn(c.config.NodeSwitch, lss) && c.addNamespaceQueue.Len() == 0 {
 			break
 		}
 	}
@@ -514,9 +515,6 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		}
 	}
 
-	// run in a single worker to avoid subnet cidr conflict
-	go wait.Until(c.runAddNamespaceWorker, time.Second, stopCh)
-
 	go wait.Until(c.runDelVpcWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdateVpcStatusWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdateProviderNetworkWorker, time.Second, stopCh)
@@ -525,6 +523,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
 		go wait.Until(c.runDeleteServiceWorker, time.Second, stopCh)
 	}
+
 	for i := 0; i < c.config.WorkerNum; i++ {
 		go wait.Until(c.runAddPodWorker, time.Second, stopCh)
 		go wait.Until(c.runDeletePodWorker, time.Second, stopCh)

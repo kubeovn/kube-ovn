@@ -1853,6 +1853,9 @@ spec:
           - --enable-lb=$ENABLE_LB
           - --enable-np=$ENABLE_NP
           - --enable-external-vpc=$ENABLE_EXTERNAL_VPC
+          - --logtostderr=false
+          - --alsologtostderr=true
+          - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
@@ -1873,6 +1876,8 @@ spec:
           volumeMounts:
             - mountPath: /etc/localtime
               name: localtime
+            - mountPath: /var/log/kube-ovn
+              name: kube-ovn-log
             - mountPath: /var/run/tls
               name: kube-ovn-tls
           readinessProbe:
@@ -1904,6 +1909,9 @@ spec:
         - name: localtime
           hostPath:
             path: /etc/localtime
+        - name: kube-ovn-log
+          hostPath:
+            path: /var/log/kube-ovn
         - name: kube-ovn-tls
           secret:
             optional: true
@@ -1965,6 +1973,9 @@ spec:
           - --iface=${IFACE}
           - --network-type=$NETWORK_TYPE
           - --default-interface-name=$VLAN_INTERFACE_NAME
+          - --logtostderr=false
+          - --alsologtostderr=true
+          - --log_file=/var/log/kube-ovn/kube-ovn-cni.log
         securityContext:
           runAsUser: 0
           privileged: true
@@ -1991,6 +2002,8 @@ spec:
           - mountPath: /var/run/netns
             name: host-ns
             mountPropagation: HostToContainer
+          - mountPath: /var/log/kube-ovn
+            name: kube-ovn-log
           - mountPath: /etc/localtime
             name: localtime
         readinessProbe:
@@ -2043,6 +2056,9 @@ spec:
         - name: host-ns
           hostPath:
             path: /var/run/netns
+        - name: kube-ovn-log
+          hostPath:
+            path: /var/log/kube-ovn
         - name: localtime
           hostPath:
             path: /etc/localtime
@@ -2074,7 +2090,14 @@ spec:
       containers:
         - name: pinger
           image: "$REGISTRY/kube-ovn:$VERSION"
-          command: ["/kube-ovn/kube-ovn-pinger", "--external-address=$PINGER_EXTERNAL_ADDRESS", "--external-dns=$PINGER_EXTERNAL_DOMAIN"]
+          command:
+          - /kube-ovn/kube-ovn-pinger
+          args:
+          - --external-address=$PINGER_EXTERNAL_ADDRESS
+          - --external-dns=$PINGER_EXTERNAL_DOMAIN
+          - --logtostderr=false
+          - --alsologtostderr=true
+          - --log_file=/var/log/kube-ovn/kube-ovn-pinger.log
           imagePullPolicy: $IMAGE_PULL_POLICY
           securityContext:
             runAsUser: 0
@@ -2117,6 +2140,8 @@ spec:
               name: host-log-ovs
             - mountPath: /var/log/ovn
               name: host-log-ovn
+            - mountPath: /var/log/kube-ovn
+              name: kube-ovn-log
             - mountPath: /etc/localtime
               name: localtime
             - mountPath: /var/run/tls
@@ -2149,6 +2174,9 @@ spec:
         - name: host-log-ovs
           hostPath:
             path: /var/log/openvswitch
+        - name: kube-ovn-log
+          hostPath:
+            path: /var/log/kube-ovn
         - name: host-log-ovn
           hostPath:
             path: /var/log/ovn
