@@ -80,12 +80,11 @@ func ParseFlags() (*Configuration, error) {
 		argServiceOvnControllerFileLogPath = pflag.String("service.ovncontroller.file.log.path", "/var/log/ovn/ovn-controller.log", "OVN controller daemon log file.")
 		argServiceOvnControllerFilePidPath = pflag.String("service.ovncontroller.file.pid.path", "/var/run/ovn/ovn-controller.pid", "OVN controller daemon process id file.")
 	)
-
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
 
 	// Sync the glog and klog flags.
-	flag.CommandLine.VisitAll(func(f1 *flag.Flag) {
+	pflag.CommandLine.VisitAll(func(f1 *pflag.Flag) {
 		f2 := klogFlags.Lookup(f1.Name)
 		if f2 != nil {
 			value := f1.Value.String()

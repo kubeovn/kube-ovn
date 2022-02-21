@@ -212,6 +212,7 @@ func (c *Controller) markAndCleanLSP() error {
 		} else if !isPodAlive(pod) {
 			continue
 		}
+		podName := c.getNameByPod(pod)
 
 		for k, v := range pod.Annotations {
 			if !strings.Contains(k, util.AllocatedAnnotationSuffix) || v != "true" {
@@ -225,7 +226,7 @@ func (c *Controller) markAndCleanLSP() error {
 			if !isProviderOvn {
 				continue
 			}
-			ipNames = append(ipNames, ovs.PodNameToPortName(pod.Name, pod.Namespace, providerName))
+			ipNames = append(ipNames, ovs.PodNameToPortName(podName, pod.Namespace, providerName))
 		}
 	}
 	for _, node := range nodes {

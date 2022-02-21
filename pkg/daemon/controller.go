@@ -960,9 +960,14 @@ func (c *Controller) handlePod(key string) error {
 		return err
 	}
 
+	podName := pod.Name
+	if pod.Annotations[fmt.Sprintf(util.VmTemplate, util.OvnProvider)] != "" {
+		podName = pod.Annotations[fmt.Sprintf(util.VmTemplate, util.OvnProvider)]
+	}
+
 	// set default nic bandwidth
-	ifaceID := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
-	err = ovs.SetInterfaceBandwidth(pod.Name, pod.Namespace, ifaceID, pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation])
+	ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
+	err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation])
 
 	if err != nil {
 		return err
@@ -978,9 +983,12 @@ func (c *Controller) handlePod(key string) error {
 	}
 	for _, multiNet := range attachNets {
 		provider := fmt.Sprintf("%s.%s.ovn", multiNet.Name, multiNet.Namespace)
+		if pod.Annotations[fmt.Sprintf(util.VmTemplate, provider)] != "" {
+			podName = pod.Annotations[fmt.Sprintf(util.VmTemplate, provider)]
+		}
 		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
-			ifaceID = ovs.PodNameToPortName(pod.Name, pod.Namespace, provider)
-			err = ovs.SetInterfaceBandwidth(pod.Name, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)])
+			ifaceID = ovs.PodNameToPortName(podName, pod.Namespace, provider)
+			err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)])
 			if err != nil {
 				return err
 			}
