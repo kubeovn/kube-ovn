@@ -500,6 +500,10 @@ spec:
                   type: number
                 activateGateway:
                   type: string
+                dhcpV4OptionsUUID:
+                  type: string
+                dhcpV6OptionsUUID:
+                  type: string
                 conditions:
                   type: array
                   items:
@@ -581,6 +585,14 @@ spec:
                 disableInterConnection:
                   type: boolean
                 htbqos:
+                  type: string
+                enableDHCP:
+                  type: boolean
+                dhcpV4Options:
+                  type: string
+                enableIPv6RA:
+                  type: boolean
+                ipv6RAConfigs:
                   type: string
   scope: Cluster
   names:

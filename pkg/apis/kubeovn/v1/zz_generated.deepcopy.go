@@ -677,6 +677,11 @@ func (in *SubnetSpec) DeepCopyInto(out *SubnetSpec) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.Vips != nil {
+		in, out := &in.Vips, &out.Vips
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	return
 }
 
