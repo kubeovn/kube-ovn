@@ -308,7 +308,6 @@ func (c *Controller) syncVpcNatGwRules(key string) error {
 	c.updateVpcFloatingIpQueue.Add(key)
 	c.updateVpcDnatQueue.Add(key)
 	c.updateVpcSnatQueue.Add(key)
-	c.updateVpcSnatQueue.Add(key)
 	c.updateVpcSubnetQueue.Add(key)
 	return nil
 }
