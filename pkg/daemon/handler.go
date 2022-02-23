@@ -261,10 +261,11 @@ func (csh cniServerHandler) createOrUpdateIPCr(podRequest request.CniRequest, su
 		}
 	} else {
 		ipCr := oriIpCr.DeepCopy()
-		ipCr.Spec.AttachIPs = append(ipCr.Spec.AttachIPs, ip)
+		ipCr.Spec.NodeName = csh.Config.NodeName
+		ipCr.Spec.AttachIPs = []string{}
 		ipCr.Labels[subnet] = ""
-		ipCr.Spec.AttachSubnets = append(ipCr.Spec.AttachSubnets, subnet)
-		ipCr.Spec.AttachMacs = append(ipCr.Spec.AttachMacs, macAddr)
+		ipCr.Spec.AttachSubnets = []string{}
+		ipCr.Spec.AttachMacs = []string{}
 		if _, err := csh.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), ipCr, metav1.UpdateOptions{}); err != nil {
 			errMsg := fmt.Errorf("failed to update ip crd for %s, %v", ip, err)
 			klog.Error(errMsg)
