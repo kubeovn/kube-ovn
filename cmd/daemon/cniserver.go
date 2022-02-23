@@ -75,19 +75,21 @@ func CmdMain() {
 	kubeovnInformerFactory.Start(stopCh)
 	go ctl.Run(stopCh)
 	go daemon.RunServer(config, ctl)
-	if err := mvCNIConf(); err != nil {
+	if err := mvCNIConf(config.CniConfName); err != nil {
 		klog.Fatalf("failed to mv cni conf, %v", err)
 	}
 	http.Handle("/metrics", promhttp.Handler())
 	klog.Fatal(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.PprofPort), nil))
 }
 
-func mvCNIConf() error {
+func mvCNIConf(confName string) error {
 	data, err := os.ReadFile("/kube-ovn/01-kube-ovn.conflist")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile("/etc/cni/net.d/01-kube-ovn.conflist", data, 0444)
+
+	cniConfPath := fmt.Sprintf("/etc/cni/net.d/%s", confName)
+	return os.WriteFile(cniConfPath, data, 0444)
 }
 
 func Retry(attempts int, sleep int, f func(configuration *daemon.Configuration) error, ctrl *daemon.Configuration) (err error) {
