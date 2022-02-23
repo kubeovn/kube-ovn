@@ -246,7 +246,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 
 	// check or create deployment
 	needToCreate := false
-	_, err = c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).
+	oldDp, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).
 		Get(context.Background(), genNatGwDpName(gw.Name), metav1.GetOptions{})
 
 	if err != nil {
@@ -257,7 +257,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		}
 	}
 
-	newDp := c.genNatGwDeployment(gw)
+	newDp := c.genNatGwDeployment(gw, oldDp.DeepCopy())
 
 	if needToCreate {
 		_, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).
@@ -697,7 +697,7 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 	return nil
 }
 
-func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (dp *v1.Deployment) {
+func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway, oldDeploy *v1.Deployment) (dp *v1.Deployment) {
 	replicas := int32(1)
 	name := genNatGwDpName(gw.Name)
 	allowPrivilegeEscalation := true
@@ -706,12 +706,19 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (dp *v1.Dep
 		"app":                   name,
 		util.VpcNatGatewayLabel: "true",
 	}
+	newPodAnnotations := map[string]string{}
+	if oldDeploy != nil && len(oldDeploy.Annotations) != 0 {
+		newPodAnnotations = oldDeploy.Annotations
+	}
 
 	podAnnotations := map[string]string{
 		util.VpcNatGatewayAnnotation:     gw.Name,
 		util.AttachmentNetworkAnnotation: fmt.Sprintf("%s/%s", c.config.PodNamespace, util.VpcExternalNet),
 		util.LogicalSwitchAnnotation:     gw.Spec.Subnet,
 		util.IpAddressAnnotation:         gw.Spec.LanIp,
+	}
+	for key, value := range podAnnotations {
+		newPodAnnotations[key] = value
 	}
 
 	selectors := make(map[string]string)
@@ -736,7 +743,7 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (dp *v1.Dep
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels:      labels,
-					Annotations: podAnnotations,
+					Annotations: newPodAnnotations,
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
