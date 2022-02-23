@@ -42,6 +42,7 @@ type Configuration struct {
 	EncapChecksum           bool
 	PprofPort               int
 	NetworkType             string
+	CniConfName             string
 	DefaultProviderName     string
 	DefaultInterfaceName    string
 	ExternalGatewayConfigNS string
@@ -64,6 +65,7 @@ func ParseFlags(nicBridgeMappings map[string]string) (*Configuration, error) {
 		argPprofPort             = pflag.Int("pprof-port", 10665, "The port to get profiling data")
 
 		argsNetworkType            = pflag.String("network-type", "geneve", "The ovn network type")
+		argsCniConfName            = pflag.String("cni-conf-name", "01-kube-ovn.conflist", "Specify the name of kube ovn conflist name in dir /etc/cni/net.d/, default: 01-kube-ovn.conflist")
 		argsDefaultProviderName    = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name")
 		argsDefaultInterfaceName   = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
@@ -109,6 +111,7 @@ func ParseFlags(nicBridgeMappings map[string]string) (*Configuration, error) {
 		NodeLocalDnsIP:          *argNodeLocalDnsIP,
 		EncapChecksum:           *argEncapChecksum,
 		NetworkType:             *argsNetworkType,
+		CniConfName:             *argsCniConfName,
 		DefaultProviderName:     *argsDefaultProviderName,
 		DefaultInterfaceName:    *argsDefaultInterfaceName,
 		ExternalGatewayConfigNS: *argExternalGatewayConfigNS,
