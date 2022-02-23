@@ -87,7 +87,7 @@ func mvCNIConf(confName string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	cniConfPath := fmt.Sprintf("/etc/cni/net.d/%s", confName)
 	return os.WriteFile(cniConfPath, data, 0444)
 }
