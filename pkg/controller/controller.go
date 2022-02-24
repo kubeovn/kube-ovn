@@ -578,6 +578,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		}, 5*time.Second, stopCh)
 	}
 
+	go wait.Until(c.resyncProviderNetworkStatus, 30*time.Second, stopCh)
 	go wait.Until(c.resyncSubnetMetrics, 30*time.Second, stopCh)
 	go wait.Until(c.CheckGatewayReady, 5*time.Second, stopCh)
 
