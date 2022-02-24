@@ -273,5 +273,74 @@ var _ = Describe("[IP Allocation]", func() {
 			err = f.KubeClientSet.AppsV1().StatefulSets(namespace).Delete(context.Background(), sts.Name, metav1.DeleteOptions{})
 			Expect(err).NotTo(HaveOccurred())
 		})
+
+		It("force delete statefulset pod", func() {
+			name := f.GetName()
+			var replicas int32 = 3
+			autoMount := false
+			sts := appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: namespace,
+					Labels:    map[string]string{"e2e": "true"},
+				},
+				Spec: appsv1.StatefulSetSpec{
+					Replicas: &replicas,
+					Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"apps": name}},
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{
+								"apps": name,
+								"e2e":  "true",
+							},
+						},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name:            name,
+									Image:           testImage,
+									ImagePullPolicy: corev1.PullIfNotPresent,
+								},
+							},
+							AutomountServiceAccountToken: &autoMount,
+						},
+					},
+				},
+			}
+
+			By("Create statefulset")
+			_, err := f.KubeClientSet.AppsV1().StatefulSets(namespace).Create(context.Background(), &sts, metav1.CreateOptions{})
+			Expect(err).NotTo(HaveOccurred())
+
+			err = f.WaitStatefulsetReady(name, namespace)
+			Expect(err).NotTo(HaveOccurred())
+
+			ips := make([]string, replicas)
+			for i := range ips {
+				pod, err := f.KubeClientSet.CoreV1().Pods(namespace).Get(context.Background(), fmt.Sprintf("%s-%d", name, i), metav1.GetOptions{})
+				Expect(err).NotTo(HaveOccurred())
+				ips[i] = pod.Status.PodIP
+			}
+
+			err = f.KubeClientSet.CoreV1().Pods(namespace).DeleteCollection(context.Background(), metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: labels.SelectorFromSet(sts.Spec.Template.Labels).String()})
+			Expect(err).NotTo(HaveOccurred())
+
+			err = f.WaitStatefulsetReady(name, namespace)
+			Expect(err).NotTo(HaveOccurred())
+			for i := range ips {
+				pod, err := f.KubeClientSet.CoreV1().Pods(namespace).Get(context.Background(), fmt.Sprintf("%s-%d", name, i), metav1.GetOptions{})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(pod.Status.PodIP).To(Equal(ips[i]))
+			}
+
+			By("Force delete statefulset Pod")
+			var gracePeriodSeconds int64
+			for i := 0; i < int(replicas); i++ {
+				err = f.KubeClientSet.CoreV1().Pods(namespace).Delete(context.Background(), fmt.Sprintf("%s-%d", name, i), metav1.DeleteOptions{GracePeriodSeconds: &gracePeriodSeconds})
+				Expect(err).NotTo(HaveOccurred())
+			}
+			err = f.WaitStatefulsetReady(name, namespace)
+			Expect(err).NotTo(HaveOccurred())
+		})
 	})
 })

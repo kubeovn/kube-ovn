@@ -139,21 +139,8 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 		return
 	}
 
-	isStateful, statefulSetName := isStatefulSetPod(p)
-	if isStateful {
-		if isStatefulSetPodToDel(c.config.KubeClient, p, statefulSetName) {
-			klog.V(3).Infof("enqueue delete pod %s", key)
-			c.deletePodQueue.Add(obj)
-		}
-
-		if delete, err := appendCheckStatefulSetPodToDel(c, p); delete && err == nil {
-			klog.V(3).Infof("enqueue delete pod %s", key)
-			c.deletePodQueue.Add(obj)
-		}
-	} else {
-		klog.V(3).Infof("enqueue delete pod %s", key)
-		c.deletePodQueue.Add(obj)
-	}
+	klog.V(3).Infof("enqueue delete pod %s", key)
+	c.deletePodQueue.Add(obj)
 }
 
 func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
@@ -570,7 +557,34 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 
 	p, _ := c.podsLister.Pods(pod.Namespace).Get(pod.Name)
 	if p != nil && p.UID != pod.UID {
-		// Pod with same name exists, just return here
+		// Pod with same name exists, check OVN static route
+		if pod.Spec.NodeName == "" || pod.Spec.NodeName == p.Spec.NodeName {
+			return nil
+		}
+		if pod.DeletionTimestamp == nil {
+			// ignore add/update events
+			return nil
+		}
+
+		addresses := c.ipam.GetPodAddress(key)
+		for _, address := range addresses {
+			if strings.TrimSpace(address.Ip) == "" {
+				continue
+			}
+
+			subnet, err := c.subnetsLister.Get(address.Subnet.Name)
+			if err != nil {
+				return err
+			}
+			vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
+			if err != nil {
+				return err
+			}
+			if err := c.ovnClient.DeleteStaticRoute(address.Ip, vpc.Status.Router); err != nil {
+				return err
+			}
+		}
+
 		return nil
 	}
 
@@ -605,8 +619,22 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 
 	var keepIpCR bool
 	if ok, sts := isStatefulSetPod(pod); ok {
+		toDel := isStatefulSetPodToDel(c.config.KubeClient, pod, sts)
 		delete, err := appendCheckStatefulSetPodToDel(c, pod)
-		keepIpCR = !isStatefulSetPodToDel(c.config.KubeClient, pod, sts) && !delete && err == nil
+		if pod.DeletionTimestamp != nil {
+			// handle delete event
+			var needHandle bool
+			if toDel {
+				needHandle = true
+			}
+			if delete && err == nil {
+				needHandle = true
+			}
+			if !needHandle {
+				return nil
+			}
+		}
+		keepIpCR = !toDel && !delete && err == nil
 	}
 
 	// Add additional default ports to compatible with previous versions
