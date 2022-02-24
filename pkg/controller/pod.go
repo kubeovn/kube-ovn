@@ -127,21 +127,8 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 		return
 	}
 
-	isStateful, statefulSetName := isStatefulSetPod(p)
-	if isStateful {
-		if isStatefulSetPodToDel(c.config.KubeClient, p, statefulSetName) {
-			klog.V(3).Infof("enqueue delete pod %s", key)
-			c.deletePodQueue.Add(obj)
-		}
-
-		if delete, err := appendCheckStatefulSetPodToDel(c, p); delete && err == nil {
-			klog.V(3).Infof("enqueue delete pod %s", key)
-			c.deletePodQueue.Add(obj)
-		}
-	} else {
-		klog.V(3).Infof("enqueue delete pod %s", key)
-		c.deletePodQueue.Add(obj)
-	}
+	klog.V(3).Infof("enqueue delete pod %s", key)
+	c.deletePodQueue.Add(obj)
 }
 
 func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
@@ -543,8 +530,17 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 
 	p, _ := c.podsLister.Pods(pod.Namespace).Get(pod.Name)
 	if p != nil && p.UID != pod.UID {
-		// Pod with same name exists, just return here
-		return nil
+		// The existing OVN static route with a different nexthop will block creation of the new Pod,
+		// so we need to check the node names
+		if pod.Spec.NodeName == "" || pod.Spec.NodeName == p.Spec.NodeName {
+			// the old Pod has not been scheduled,
+			// or the new Pod and the old one are scheduled to the same node
+			return nil
+		}
+		if pod.DeletionTimestamp == nil {
+			// triggered by add/update events, ignore
+			return nil
+		}
 	}
 
 	ports, err := c.ovnClient.ListPodLogicalSwitchPorts(pod.Name, pod.Namespace)
@@ -578,8 +574,15 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 
 	var keepIpCR bool
 	if ok, sts := isStatefulSetPod(pod); ok {
+		toDel := isStatefulSetPodToDel(c.config.KubeClient, pod, sts)
 		delete, err := appendCheckStatefulSetPodToDel(c, pod)
-		keepIpCR = !isStatefulSetPodToDel(c.config.KubeClient, pod, sts) && !delete && err == nil
+		if pod.DeletionTimestamp != nil {
+			// triggered by delete event
+			if !(toDel || (delete && err == nil)) {
+				return nil
+			}
+		}
+		keepIpCR = !toDel && !delete && err == nil
 	}
 
 	// Add additional default ports to compatible with previous versions
