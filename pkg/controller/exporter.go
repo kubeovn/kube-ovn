@@ -1,13 +1,16 @@
 package controller
 
 import (
+	"context"
 	"math"
 	"sync"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 var registerMetricsOnce sync.Once
@@ -17,6 +20,38 @@ func (c *Controller) registerSubnetMetrics() {
 	registerMetricsOnce.Do(func() {
 		registerMetrics()
 	})
+}
+
+func (c *Controller) resyncProviderNetworkStatus() {
+	nodeList, err := c.nodesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to get nodes %v", err)
+		return
+	}
+	pnList, err := c.providerNetworksLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to get provider networks %v", err)
+		return
+	}
+
+	for _, pn := range pnList {
+		ready := true
+		for _, node := range nodeList {
+			if !util.ContainsString(pn.Spec.ExcludeNodes, node.Name) &&
+				!util.ContainsString(pn.Status.ReadyNodes, node.Name) {
+				ready = false
+				break
+			}
+		}
+		if ready != pn.Status.Ready {
+			newPn := pn.DeepCopy()
+			newPn.Status.Ready = ready
+			_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Update(context.Background(), newPn, metav1.UpdateOptions{})
+			if err != nil {
+				klog.Errorf("failed to update provider network %s: %v", pn.Name, err)
+			}
+		}
+	}
 }
 
 // resyncSubnetMetrics start to update subnet metrics
