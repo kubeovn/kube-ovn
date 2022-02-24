@@ -162,4 +162,8 @@ const (
 	KoDir  = "/tmp/"
 	KoENV  = "MODULES"
 	RpmENV = "RPMS"
+
+	POD_IP             = "POD_IP"
+	ContentType        = "application/vnd.kubernetes.protobuf"
+	AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
 )

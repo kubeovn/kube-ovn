@@ -148,7 +148,7 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 	}
 
 	if config.Iface == "" {
-		podIP, ok := os.LookupEnv("POD_IP")
+		podIP, ok := os.LookupEnv(util.POD_IP)
 		if !ok || podIP == "" {
 			return errors.New("failed to lookup env POD_IP")
 		}
@@ -246,8 +246,8 @@ func (config *Configuration) initKubeClient() error {
 	}
 	config.KubeOvnClient = kubeOvnClient
 
-	cfg.ContentType = "application/vnd.kubernetes.protobuf"
-	cfg.AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
+	cfg.ContentType = util.ContentType
+	cfg.AcceptContentTypes = util.AcceptContentTypes
 	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		klog.Errorf("init kubernetes client failed %v", err)
