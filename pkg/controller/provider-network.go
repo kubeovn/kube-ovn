@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -12,6 +13,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -80,16 +82,8 @@ func (c *Controller) handleUpdateProviderNetwork(key string) error {
 		return err
 	}
 
-	ready := true
-	for _, node := range nodes {
-		if !util.ContainsString(pn.Spec.ExcludeNodes, node.Name) && !util.ContainsString(pn.Status.ReadyNodes, node.Name) {
-			ready = false
-			break
-		}
-	}
-
-	if pn.Status.Ready != ready {
-		patchPayload := []byte(fmt.Sprintf(`[{ "op": "replace", "path": "/status/ready", "value": %t }]`, ready))
+	if providerNetworkIsReady(pn, nodes) != pn.Status.Ready {
+		patchPayload := []byte(fmt.Sprintf(`[{ "op": "replace", "path": "/status/ready", "value": %t }]`, !pn.Status.Ready))
 		_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.JSONPatchType, patchPayload, metav1.PatchOptions{})
 		if err != nil {
 			klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
@@ -98,4 +92,38 @@ func (c *Controller) handleUpdateProviderNetwork(key string) error {
 	}
 
 	return nil
+}
+
+func (c *Controller) resyncProviderNetworkStatus() {
+	nodeList, err := c.nodesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to get nodes %v", err)
+		return
+	}
+	pnList, err := c.providerNetworksLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to get provider networks %v", err)
+		return
+	}
+
+	for _, pn := range pnList {
+		if providerNetworkIsReady(pn, nodeList) != pn.Status.Ready {
+			newPn := pn.DeepCopy()
+			newPn.Status.Ready = !newPn.Status.Ready
+			_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().UpdateStatus(context.Background(), newPn, metav1.UpdateOptions{})
+			if err != nil {
+				klog.Errorf("failed to update status of provider network %s: %v", pn.Name, err)
+			}
+		}
+	}
+}
+
+func providerNetworkIsReady(pn *kubeovnv1.ProviderNetwork, nodes []*corev1.Node) bool {
+	for _, node := range nodes {
+		if !util.ContainsString(pn.Spec.ExcludeNodes, node.Name) &&
+			!util.ContainsString(pn.Status.ReadyNodes, node.Name) {
+			return false
+		}
+	}
+	return true
 }
