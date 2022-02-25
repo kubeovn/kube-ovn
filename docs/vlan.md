@@ -9,6 +9,9 @@ In Vlan mode, packets from pods will be sent directly to physical switches with 
 ![topology](vlan-topology.png "vlan network topology")
 
 To enable Vlan mode, a ~~dedicated~~ network interface is required by container network. Mac address, MTU, IP addresses and routes attached to the interface will be copied/transferred to an OVS bridge named `br-PROVIDER` where `PROVIDER` is name of the provider network.
+
+> NOTICE: If the provided interface is a bond device in mode 6 (a.k.a. balance-alb or adaptive load balancing), the OVS bridge will NOT contain the same Mac address. Instead, Kube-OVN assigns a generated Mac address with prefix `00:00:00` to the bridge.
+
 The related switch port must work in trunk mode to accept 802.1q packets. For underlay network with no vlan tag, you need
 to set the VLAN ID to 0.
 
