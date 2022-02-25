@@ -962,7 +962,7 @@ func (c Client) UpdateNatRule(policy, logicalIP, externalIP, router, logicalMac,
 			return err
 		}
 		_, err := c.ovnNbCommand(IfExists, "lr-nat-del", router, "snat", logicalIP, "--",
-			MayExist, "lr-nat-add", router, policy, externalIP, logicalIP)
+			"lr-nat-add", router, policy, externalIP, logicalIP)
 		return err
 	} else {
 		output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=external_ip", "find", "NAT", fmt.Sprintf("logical_ip=%s", logicalIP), "type=dnat_and_snat")
