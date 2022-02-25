@@ -556,11 +556,15 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 				continue
 			}
 			subnet, err := c.subnetsLister.Get(address.Subnet.Name)
-			if err != nil {
+			if k8serrors.IsNotFound(err) {
+				continue
+			} else if err != nil {
 				return err
 			}
 			vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
-			if err != nil {
+			if k8serrors.IsNotFound(err) {
+				continue
+			} else if err != nil {
 				return err
 			}
 			if err := c.ovnClient.DeleteStaticRoute(address.Ip, vpc.Status.Router); err != nil {
