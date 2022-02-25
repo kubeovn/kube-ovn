@@ -12,6 +12,7 @@ import (
 
 	"github.com/alauda/felix/ipsets"
 	"github.com/vishvananda/netlink"
+        k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -204,7 +205,9 @@ func (c *Controller) removeEgressConfig(subnet, ip string) error {
 	}
 
 	podSubnet, err := c.subnetsLister.Get(subnet)
-	if err != nil {
+	if k8serrors.IsNotFound(err) {
+		return nil
+	} else if err != nil {
 		klog.Errorf("failed to get subnet %s: %+v", subnet, err)
 		return err
 	}
