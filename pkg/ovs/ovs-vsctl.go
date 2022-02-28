@@ -99,6 +99,15 @@ func Bridges() ([]string, error) {
 	return ovsFind("bridge", "name", fmt.Sprintf("external-ids:vendor=%s", util.CniTypeName))
 }
 
+// BridgeExists checks whether the bridge already exists
+func BridgeExists(name string) (bool, error) {
+	bridges, err := Bridges()
+	if err != nil {
+		return false, err
+	}
+	return util.ContainsString(bridges, name), nil
+}
+
 // ClearPodBandwidth remove qos related to this pod. Only used when remove pod.
 func ClearPodBandwidth(podName, podNamespace string) error {
 	qosList, err := ovsFind("qos", "_uuid", fmt.Sprintf(`external-ids:iface-id="%s.%s"`, podName, podNamespace))

@@ -484,10 +484,21 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int) error {
 }
 
 func configExternalBridge(provider, bridge, nic string) error {
+	brExists, err := ovs.BridgeExists(bridge)
+	if err != nil {
+		return fmt.Errorf("failed to check OVS bridge existence: %v", err)
+	}
 	output, err := ovs.Exec(ovs.MayExist, "add-br", bridge,
 		"--", "set", "bridge", bridge, "external_ids:vendor="+util.CniTypeName)
 	if err != nil {
 		return fmt.Errorf("failed to create OVS bridge %s, %v: %q", bridge, err, output)
+	}
+	if !brExists {
+		// assign a new generated mac address only when the bridge is newly created
+		output, err = ovs.Exec("set", "bridge", bridge, fmt.Sprintf(`other-config:hwaddr="%s"`, util.GenerateMac()))
+		if err != nil {
+			return fmt.Errorf("failed to set hwaddr of OVS bridge %s, %v: %q", bridge, err, output)
+		}
 	}
 	if output, err = ovs.Exec("list-ports", bridge); err != nil {
 		return fmt.Errorf("failed to list ports of OVS birdge %s, %v: %q", bridge, err, output)
@@ -583,9 +594,18 @@ func configProviderNic(nicName, brName string) (int, error) {
 		}
 	}
 
-	if _, err = ovs.Exec("set", "bridge", brName, fmt.Sprintf(`other-config:hwaddr="%s"`, nic.Attrs().HardwareAddr.String())); err != nil {
-		return 0, fmt.Errorf("failed to set MAC address of OVS bridge %s: %v", brName, err)
+	// keep mac address the same with the provider nic,
+	// unless the provider nic is a bond in mode 6, or a vlan interface of a bond in mode 6
+	albBond, err := linkIsAlbBond(nic)
+	if err != nil {
+		return 0, err
 	}
+	if !albBond {
+		if _, err = ovs.Exec("set", "bridge", brName, fmt.Sprintf(`other-config:hwaddr="%s"`, nic.Attrs().HardwareAddr.String())); err != nil {
+			return 0, fmt.Errorf("failed to set MAC address of OVS bridge %s: %v", brName, err)
+		}
+	}
+
 	if err = netlink.LinkSetMTU(bridge, nic.Attrs().MTU); err != nil {
 		return 0, fmt.Errorf("failed to set MTU of OVS bridge %s: %v", brName, err)
 	}
@@ -618,6 +638,29 @@ func configProviderNic(nicName, brName string) (int, error) {
 	}
 
 	return nic.Attrs().MTU, nil
+}
+
+func linkIsAlbBond(link netlink.Link) (bool, error) {
+	check := func(link netlink.Link) bool {
+		bond, ok := link.(*netlink.Bond)
+		return ok && bond.Mode == netlink.BOND_MODE_BALANCE_ALB
+	}
+
+	if check(link) {
+		return true, nil
+	}
+
+	vlan, ok := link.(*netlink.Vlan)
+	if !ok {
+		return false, nil
+	}
+	parent, err := netlink.LinkByIndex(vlan.ParentIndex)
+	if err != nil {
+		klog.Errorf("failed to get link by index %d: %v", vlan.ParentIndex, err)
+		return false, err
+	}
+
+	return check(parent), nil
 }
 
 // Remove host nic from external bridge
