@@ -877,6 +877,7 @@ func (c *Controller) fetchPodsOnNode(nodeName string) ([]string, error) {
 		if !isPodAlive(pod) || pod.Spec.HostNetwork || pod.Spec.NodeName != nodeName || pod.Annotations[util.LogicalRouterAnnotation] != util.DefaultVpc {
 			continue
 		}
+		podName := c.getNameByPod(pod)
 
 		podNets, err := c.getPodKubeovnNets(pod)
 		if err != nil {
@@ -890,7 +891,7 @@ func (c *Controller) fetchPodsOnNode(nodeName string) ([]string, error) {
 			}
 
 			if pod.Annotations != nil && pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
-				ports = append(ports, ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName))
+				ports = append(ports, ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName))
 			}
 		}
 	}

@@ -232,6 +232,8 @@ spec:
                   type: boolean
                 ipv6RAConfigs:
                   type: string
+                htbqos:
+                  type: string
   scope: Cluster
   names:
     plural: subnets
