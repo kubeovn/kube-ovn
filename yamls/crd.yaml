@@ -214,6 +214,8 @@ spec:
                   type: boolean
                 disableInterConnection:
                   type: boolean
+                htbqos:
+                  type: string
   scope: Cluster
   names:
     plural: subnets
