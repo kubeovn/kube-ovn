@@ -798,9 +798,10 @@ func (c *Controller) fetchPodsOnNode(nodeName string) ([]string, error) {
 		if !isPodAlive(pod) || pod.Spec.HostNetwork || pod.Spec.NodeName != nodeName || pod.Annotations[util.LogicalRouterAnnotation] != util.DefaultVpc {
 			continue
 		}
+		podName := c.getNameByPod(pod)
 
 		if pod.Annotations[util.AllocatedAnnotation] == "true" {
-			ports = append(ports, fmt.Sprintf("%s.%s", pod.Name, pod.Namespace))
+			ports = append(ports, fmt.Sprintf("%s.%s", podName, pod.Namespace))
 		}
 	}
 	return ports, nil

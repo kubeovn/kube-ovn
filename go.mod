@@ -36,7 +36,6 @@ require (
 	github.com/satori/go.uuid v1.2.1-0.20181028125025-b2ce2384e17b // indirect
 	github.com/sirupsen/logrus v1.6.0
 	github.com/spf13/pflag v1.0.5
-	github.com/spf13/viper v1.6.3 // indirect
 	github.com/stretchr/testify v1.6.1
 	github.com/vishvananda/netlink v1.1.0
 	golang.org/x/crypto v0.0.0-20201216223049-8b5274cf687f // indirect
@@ -48,15 +47,22 @@ require (
 	google.golang.org/protobuf v1.27.1 // indirect
 	k8s.io/api v0.20.4
 	k8s.io/apimachinery v0.20.4
-	k8s.io/client-go v0.20.4
+	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.4.0
 	k8s.io/sample-controller v0.0.0-20190326030654-b8f621986e45
-	sigs.k8s.io/controller-runtime v0.7.0
+	kubevirt.io/client-go v0.49.0
+	sigs.k8s.io/controller-runtime v0.8.3
 )
 
 replace (
 	github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
 	github.com/greenpau/ovsdb => github.com/alauda/ovsdb v0.0.0-20210113100339-040cf3e76c28
+	github.com/openshift/api => github.com/openshift/api v0.0.0-20210428205234-a8389931bee7
+	github.com/openshift/client-go => github.com/openshift/client-go v0.0.0-20210112165513-ebc401615f47
+	github.com/openshift/library-go => github.com/mhenriks/library-go v0.0.0-20210511195009-51ba86622560
 	k8s.io/client-go => k8s.io/client-go v0.20.4
+	kubevirt.io/api => kubevirt.io/api v0.49.0
+	kubevirt.io/client-go => kubevirt.io/client-go v0.49.0
+	kubevirt.io/containerized-data-importer => kubevirt.io/kubevirt-containerized-data-importer v1.42.1
 )

@@ -566,8 +566,9 @@ func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.Label
 		if !isPodAlive(pod) {
 			continue
 		}
+		podName := c.getNameByPod(pod)
 		if !pod.Spec.HostNetwork && pod.Annotations[util.AllocatedAnnotation] == "true" {
-			ports = append(ports, fmt.Sprintf("%s.%s", pod.Name, pod.Namespace))
+			ports = append(ports, fmt.Sprintf("%s.%s", podName, pod.Namespace))
 		}
 	}
 	return ports, nil

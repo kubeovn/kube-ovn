@@ -54,6 +54,7 @@ const (
 	ProviderNetworkInterfaceTemplate = "%s.provider-network.kubernetes.io/interface"
 	ProviderNetworkMtuTemplate       = "%s.provider-network.kubernetes.io/mtu"
 	MirrorControlAnnotationTemplate  = "%s.kubernetes.io/mirror"
+	VmTemplate                       = "%s.kubernetes.io/virtualmachine"
 
 	ExcludeIpsAnnotation = "ovn.kubernetes.io/exclude_ips"
 
@@ -122,6 +123,7 @@ const (
 	HostnameEnv    = "KUBE_NODE_NAME"
 	ChasRetryTime  = 5
 	ChasRetryIntev = 1
+	VmInstance     = "VirtualMachineInstance"
 
 	VfioSysDir = "/sys/bus/pci/drivers/vfio-pci"
 	NetSysDir  = "/sys/class/net"

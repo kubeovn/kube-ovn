@@ -8,7 +8,6 @@ import (
 	"os"
 	"time"
 
-	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	api "github.com/osrg/gobgp/api"
 	gobgp "github.com/osrg/gobgp/pkg/server"
 	"github.com/spf13/pflag"
@@ -17,6 +16,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
+
+	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 )
 
 const (
@@ -68,12 +69,11 @@ func ParseFlags() (*Configuration, error) {
 		argPprofPort                   = pflag.Uint32("pprof-port", DefaultPprofPort, "The port to get profiling data, default: 10667")
 		argKubeConfigFile              = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 	)
-
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
 
 	// Sync the glog and klog flags.
-	flag.CommandLine.VisitAll(func(f1 *flag.Flag) {
+	pflag.CommandLine.VisitAll(func(f1 *pflag.Flag) {
 		f2 := klogFlags.Lookup(f1.Name)
 		if f2 != nil {
 			value := f1.Value.String()
