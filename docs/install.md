@@ -44,9 +44,12 @@ If you want to try the latest developing Kube-OVN, try the script below:
 
 This basic setup works for default overlay network. If you are using default underlay/vlan network, please refer [Vlan/Underlay Support](vlan.md).
 
-3. Run the script
+3. Init kubeadm and Run the script
 
-`bash install.sh`
+```bash
+kubeadm init --service-cidr=10.96.0.0/12
+bash install.sh
+```
 
 That's all! You can now create some pods and test connectivity.
 
