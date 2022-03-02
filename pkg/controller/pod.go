@@ -1227,7 +1227,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		for {
 			nicName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 
-			ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, nicName, macStr, podNet.Subnet.Name, skippedAddrs)
+			ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, nicName, macStr, podNet.Subnet.Name, skippedAddrs, !podNet.AllowLiveMigration)
 			if err != nil {
 				return "", "", "", err
 			}

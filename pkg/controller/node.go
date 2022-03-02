@@ -272,7 +272,7 @@ func (c *Controller) handleAddNode(key string) error {
 			return err
 		}
 	} else {
-		v4IP, v6IP, mac, err = c.ipam.GetRandomAddress(portName, portName, "", c.config.NodeSwitch, nil)
+		v4IP, v6IP, mac, err = c.ipam.GetRandomAddress(portName, portName, "", c.config.NodeSwitch, nil, true)
 		if err != nil {
 			klog.Errorf("failed to alloc random ip addrs for node %v: %v", node.Name, err)
 			return err
