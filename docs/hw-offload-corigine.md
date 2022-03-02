@@ -161,7 +161,7 @@ apiVersion: "k8s.cni.cncf.io/v1"
 kind: NetworkAttachmentDefinition
 metadata:
   name: default
-  namespace: kube-system
+  namespace: default
   annotations:
     k8s.v1.cni.cncf.io/resourceName: corigine.com/agilio_sriov
 spec:
@@ -171,7 +171,8 @@ spec:
     "plugins":[
         {
             "type":"kube-ovn",
-            "server_socket":"/run/openvswitch/kube-ovn-daemon.sock"
+            "server_socket":"/run/openvswitch/kube-ovn-daemon.sock",
+            "provider": "default.default.ovn"
         },
         {
             "type":"portmap",
@@ -189,8 +190,9 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: nginx
+  namespace: default
   annotations:
-    v1.multus-cni.io/default-network: default
+    v1.multus-cni.io/default-network: default/default
 spec:
   containers:
   - name: nginx
