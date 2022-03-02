@@ -33,7 +33,7 @@ spec:
       hostNetwork: true
       containers:
         - name: kube-ovn-webhook
-          image: "kubeovn/kube-ovn:v1.9.0"
+          image: "kubeovn/kube-ovn:v1.10.0"
           imagePullPolicy: IfNotPresent
           command:
             - /kube-ovn/kube-ovn-webhook

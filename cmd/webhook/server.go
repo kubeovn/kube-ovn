@@ -14,6 +14,7 @@ import (
 	ovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	ovnwebhook "github.com/kubeovn/kube-ovn/pkg/webhook"
 	"github.com/kubeovn/kube-ovn/versions"
+	"github.com/spf13/pflag"
 )
 
 const (
@@ -40,9 +41,25 @@ func CmdMain() {
 	var port int
 	klog.Infof(versions.String())
 
-	flag.IntVar(&port, "port", 8443, "The port webhook listen on.")
-	klog.InitFlags(nil)
-	flag.Parse()
+	port = *pflag.Int("port", 8443, "The port webhook listen on.")
+
+	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
+	klog.InitFlags(klogFlags)
+
+	// Sync the glog and klog flags.
+	pflag.CommandLine.VisitAll(func(f1 *pflag.Flag) {
+		f2 := klogFlags.Lookup(f1.Name)
+		if f2 != nil {
+			value := f1.Value.String()
+			if err := f2.Value.Set(value); err != nil {
+				klog.Fatalf("failed to set flag, %v", err)
+			}
+		}
+	})
+
+	pflag.CommandLine.AddGoFlagSet(klogFlags)
+	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+	pflag.Parse()
 
 	// set logger for controller-runtime framework
 	ctrl.SetLogger(klogr.New())
