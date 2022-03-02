@@ -67,6 +67,9 @@ if [ "$ENABLE_VLAN" = "true" ]; then
   fi
 fi
 
+# hybrid dpdk
+HYBRID_DPDK="false"
+
 # DPDK
 DPDK="false"
 DPDK_SUPPORTED_VERSIONS=("19.11")
@@ -82,6 +85,7 @@ display_help() {
     echo "Usage: $0 [option...]"
     echo
     echo "  -h, --help               Print Help (this message) and exit"
+    echo "  --with-hybrid-dpdk       Install Kube-OVN with nodes which run ovs-dpdk or ovs-kernel"
     echo "  --with-dpdk=<version>    Install Kube-OVN with OVS-DPDK instead of kernel OVS"
     echo "  --dpdk-cpu=<amount>m     Configure DPDK to use a specific amount of CPU"
     echo "  --dpdk-memory=<amount>Gi Configure DPDK to use a specific amount of memory"
@@ -96,6 +100,9 @@ then
     case $1 in
       -h|--help)
         display_help
+      ;;
+      --with-hybrid-dpdk)
+      HYBRID_DPDK="true"
       ;;
       --with-dpdk=*)
         DPDK=true
@@ -163,7 +170,7 @@ if [[ $ENABLE_SSL = "true" ]];then
   echo ""
 fi
 
-echo "[Step 1/6] Label kube-ovn-master node"
+echo "[Step 1/6] Label kube-ovn-master node and label datapath type"
 count=$(kubectl get no -l$LABEL --no-headers -o wide | wc -l | sed 's/ //g')
 if [ "$count" = "0" ]; then
   echo "ERROR: No node with label $LABEL"
@@ -171,6 +178,9 @@ if [ "$count" = "0" ]; then
 fi
 kubectl label no -lbeta.kubernetes.io/os=linux kubernetes.io/os=linux --overwrite
 kubectl label no -l$LABEL kube-ovn/role=master --overwrite
+
+kubectl label no -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel  --overwrite
+
 echo "-------------------------------"
 echo ""
 
@@ -1319,6 +1329,7 @@ spec:
               hugepages-1Gi: 1Gi
       nodeSelector:
         kubernetes.io/os: "linux"
+        ovn.kubernetes.io/ovs_dp_type: "kernel"
       volumes:
         - name: host-modules
           hostPath:
@@ -1780,6 +1791,7 @@ spec:
               memory: 800Mi
       nodeSelector:
         kubernetes.io/os: "linux"
+        ovn.kubernetes.io/ovs_dp_type: kernel
       volumes:
         - name: host-modules
           hostPath:
@@ -1820,6 +1832,172 @@ fi
 
 kubectl apply -f kube-ovn-crd.yaml
 kubectl apply -f ovn.yaml
+
+if $HYBRID_DPDK; then
+
+cat <<EOF > ovn-dpdk.yaml
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: ovs-ovn-dpdk
+  namespace: kube-system
+  annotations:
+    kubernetes.io/description: |
+      This daemon set launches the openvswitch daemon.
+spec:
+  selector:
+    matchLabels:
+      app: ovs-dpdk
+  updateStrategy:
+    type: OnDelete
+  template:
+    metadata:
+      labels:
+        app: ovs-dpdk
+        component: network
+        type: infra
+    spec:
+      tolerations:
+      - operator: Exists
+      priorityClassName: system-cluster-critical
+      serviceAccountName: ovn
+      hostNetwork: true
+      hostPID: true
+      containers:
+        - name: openvswitch
+          image: "$REGISTRY/kube-ovn:${VERSION}-dpdk"
+          imagePullPolicy: $IMAGE_PULL_POLICY
+          command: ["/kube-ovn/start-ovs-dpdk-v2.sh"]
+          securityContext:
+            runAsUser: 0
+            privileged: true
+          env:
+            - name: ENABLE_SSL
+              value: "$ENABLE_SSL"
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: HW_OFFLOAD
+              value: "$HW_OFFLOAD"
+            - name: TUNNEL_TYPE
+              value: "$TUNNEL_TYPE"
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: OVN_DB_IPS
+              value: $addresses
+          volumeMounts:
+            - mountPath: /opt/ovs-config
+              name: host-config-ovs
+            - name: shareddir
+              mountPath: /var/lib/kubelet/pods
+            - name: hugepage
+              mountPath: /dev/hugepages
+            - mountPath: /lib/modules
+              name: host-modules
+              readOnly: true
+            - mountPath: /var/run/openvswitch
+              name: host-run-ovs
+              mountPropagation: HostToContainer
+            - mountPath: /var/run/ovn
+              name: host-run-ovn
+            - mountPath: /sys
+              name: host-sys
+              readOnly: true
+            - mountPath: /etc/cni/net.d
+              name: cni-conf
+            - mountPath: /etc/openvswitch
+              name: host-config-openvswitch
+            - mountPath: /etc/ovn
+              name: host-config-ovn
+            - mountPath: /var/log/openvswitch
+              name: host-log-ovs
+            - mountPath: /var/log/ovn
+              name: host-log-ovn
+            - mountPath: /etc/localtime
+              name: localtime
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
+          readinessProbe:
+            exec:
+              command:
+                - bash
+                - -c
+                - LOG_ROTATE=true /kube-ovn/ovs-healthcheck.sh
+            periodSeconds: 5
+            timeoutSeconds: 45
+          livenessProbe:
+            exec:
+              command:
+                - bash
+                - /kube-ovn/ovs-healthcheck.sh
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 5
+            timeoutSeconds: 45
+          resources:
+            requests:
+              cpu: 200m
+              hugepages-2Mi: 1Gi
+              memory: 200Mi
+            limits:
+              cpu: 1000m
+              hugepages-2Mi: 1Gi
+              memory: 800Mi
+      nodeSelector:
+        kubernetes.io/os: "linux"
+        ovn.kubernetes.io/ovs_dp_type: "userspace"
+      volumes:
+        - name: host-config-ovs
+          hostPath:
+            path: /opt/ovs-config
+            type: DirectoryOrCreate
+        - name: shareddir
+          hostPath:
+            path: /var/lib/kubelet/pods
+            type: ''
+        - name: hugepage
+          emptyDir:
+            medium: HugePages
+        - name: host-modules
+          hostPath:
+            path: /lib/modules
+        - name: host-run-ovs
+          hostPath:
+            path: /run/openvswitch
+        - name: host-run-ovn
+          hostPath:
+            path: /run/ovn
+        - name: host-sys
+          hostPath:
+            path: /sys
+        - name: cni-conf
+          hostPath:
+            path: /etc/cni/net.d
+        - name: host-config-openvswitch
+          hostPath:
+            path: /etc/origin/openvswitch
+        - name: host-config-ovn
+          hostPath:
+            path: /etc/origin/ovn
+        - name: host-log-ovs
+          hostPath:
+            path: /var/log/openvswitch
+        - name: host-log-ovn
+          hostPath:
+            path: /var/log/ovn
+        - name: localtime
+          hostPath:
+            path: /etc/localtime
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
+EOF
+kubectl apply -f ovn-dpdk.yaml
+fi
 kubectl rollout status deployment/ovn-central -n kube-system --timeout 300s
 echo "-------------------------------"
 echo ""
@@ -2029,12 +2207,15 @@ spec:
           - name: RPMS
             value: $RPMS
         volumeMounts:
+          - name: shared-dir
+            mountPath: /var/lib/kubelet/pods
           - mountPath: /etc/openvswitch
             name: systemid
           - mountPath: /etc/cni/net.d
             name: cni-conf
           - mountPath: /run/openvswitch
             name: host-run-ovs
+            mountPropagation: Bidirectional
           - mountPath: /run/ovn
             name: host-run-ovn
           - mountPath: /var/run/netns
@@ -2072,6 +2253,9 @@ spec:
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
+        - name: shared-dir
+          hostPath:
+            path: /var/lib/kubelet/pods
         - name: systemid
           hostPath:
             path: /etc/origin/openvswitch
