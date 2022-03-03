@@ -17,6 +17,7 @@ import (
 var (
 	createHooks = make(map[metav1.GroupVersionKind]admission.HandlerFunc)
 	updateHooks = make(map[metav1.GroupVersionKind]admission.HandlerFunc)
+	deleteHooks = make(map[metav1.GroupVersionKind]admission.HandlerFunc)
 )
 
 type ValidatingHook struct {
@@ -46,6 +47,8 @@ func NewValidatingHook(c cache.Cache) (*ValidatingHook, error) {
 
 	updateHooks[subnetGVK] = v.SubnetUpdateHook
 
+	deleteHooks[subnetGVK] = v.SubnetDeleteHook
+
 	return v, nil
 }
 
@@ -69,6 +72,12 @@ func (v *ValidatingHook) Handle(ctx context.Context, req admission.Request) (res
 		if updateHooks[req.Kind] != nil {
 			klog.Infof("handle update %s %s@%s", req.Kind, req.Name, req.Namespace)
 			resp = updateHooks[req.Kind](ctx, req)
+			return
+		}
+	case admissionv1.Delete:
+		if deleteHooks[req.Kind] != nil {
+			klog.Infof("handle delete %s %s@%s", req.Kind, req.Name, req.Namespace)
+			resp = deleteHooks[req.Kind](ctx, req)
 			return
 		}
 	}

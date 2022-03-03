@@ -100,6 +100,7 @@ webhooks:
     - operations:
         - CREATE
         - UPDATE
+        - DELETE
       apiGroups:
         - "kubeovn.io"
       apiVersions:
