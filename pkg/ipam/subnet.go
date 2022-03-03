@@ -434,10 +434,10 @@ func (subnet *Subnet) releaseAddr(podName, nicName string) {
 		}
 	}
 	if ip, ok = subnet.V6NicToIP[nicName]; ok {
-		oldPods := strings.Split(subnet.V4IPToPod[ip], ",")
+		oldPods := strings.Split(subnet.V6IPToPod[ip], ",")
 		if len(oldPods) > 1 {
 			newPods := util.RemoveString(oldPods, podName)
-			subnet.V4IPToPod[ip] = strings.Join(newPods, ",")
+			subnet.V6IPToPod[ip] = strings.Join(newPods, ",")
 		} else {
 			delete(subnet.V6NicToIP, nicName)
 			delete(subnet.V6IPToPod, ip)
