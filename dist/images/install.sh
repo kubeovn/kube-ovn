@@ -2222,10 +2222,10 @@ metadata:
     kubernetes.io/description: |
       Metrics for OVN components: northd, nb and sb.
 spec:
-  replicas: $count
+  replicas: 1
   strategy:
     rollingUpdate:
-      maxSurge: 0
+      maxSurge: 1
       maxUnavailable: 1
     type: RollingUpdate
   selector:
@@ -2266,8 +2266,6 @@ spec:
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
-            - name: NODE_IPS
-              value: $addresses
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
@@ -2284,9 +2282,6 @@ spec:
               name: host-run-ovs
             - mountPath: /var/run/ovn
               name: host-run-ovn
-            - mountPath: /sys
-              name: host-sys
-              readOnly: true
             - mountPath: /etc/openvswitch
               name: host-config-openvswitch
             - mountPath: /etc/ovn
@@ -2304,13 +2299,13 @@ spec:
               command:
               - cat
               - /var/run/ovn/ovnnb_db.pid
-            periodSeconds: 3
+            periodSeconds: 10
             timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
               - cat
-              - /var/run/ovn/ovn-nbctl.pid
+              - /var/run/ovn/ovnnb_db.pid
             initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 5
@@ -2325,9 +2320,6 @@ spec:
         - name: host-run-ovn
           hostPath:
             path: /run/ovn
-        - name: host-sys
-          hostPath:
-            path: /sys
         - name: host-config-openvswitch
           hostPath:
             path: /etc/origin/openvswitch
