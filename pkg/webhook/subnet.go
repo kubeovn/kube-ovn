@@ -74,4 +74,3 @@ func (v *ValidatingHook) SubnetDeleteHook(ctx context.Context, req admission.Req
 	}
 	return ctrlwebhook.Allowed("by pass")
 }
-
