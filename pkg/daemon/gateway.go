@@ -648,7 +648,7 @@ func (c *Controller) setExGateway() error {
 
 func (c *Controller) getLocalPodIPsNeedNAT(protocol string) ([]string, error) {
 	var localPodIPs []string
-	hostname := os.Getenv("KUBE_NODE_NAME")
+	nodeName := os.Getenv("KUBE_NODE_NAME")
 	allPods, err := c.podsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("list pods failed, %+v", err)
@@ -657,6 +657,7 @@ func (c *Controller) getLocalPodIPsNeedNAT(protocol string) ([]string, error) {
 	for _, pod := range allPods {
 		if pod.Spec.HostNetwork ||
 			pod.DeletionTimestamp != nil ||
+			pod.Spec.NodeName != nodeName ||
 			pod.Annotations[util.LogicalSwitchAnnotation] == "" ||
 			pod.Annotations[util.IpAddressAnnotation] == "" {
 			continue
@@ -667,33 +668,26 @@ func (c *Controller) getLocalPodIPsNeedNAT(protocol string) ([]string, error) {
 			continue
 		}
 
-		if subnet.Spec.NatOutgoing &&
-			subnet.Spec.Vpc == util.DefaultVpc &&
-			subnet.Spec.GatewayType == kubeovnv1.GWDistributedType &&
-			pod.Spec.NodeName == hostname {
-			if pod.Status.Phase == v1.PodPending {
-				var containerCreating bool
-				for _, s := range pod.Status.ContainerStatuses {
-					if s.State.Waiting != nil && s.State.Waiting.Reason == "ContainerCreating" {
-						containerCreating = true
-						break
-					}
-				}
-				if containerCreating {
-					ipv4, ipv6 := util.SplitStringIP(pod.Annotations[util.IpAddressAnnotation])
-					if ipv4 != "" && protocol == kubeovnv1.ProtocolIPv4 {
-						localPodIPs = append(localPodIPs, ipv4)
-					}
-					if ipv6 != "" && protocol == kubeovnv1.ProtocolIPv6 {
-						localPodIPs = append(localPodIPs, ipv6)
-					}
-				}
-			} else if len(pod.Status.PodIPs) != 0 {
-				if len(pod.Status.PodIPs) == 2 && protocol == kubeovnv1.ProtocolIPv6 {
-					localPodIPs = append(localPodIPs, pod.Status.PodIPs[1].IP)
-				} else if util.CheckProtocol(pod.Status.PodIP) == protocol {
-					localPodIPs = append(localPodIPs, pod.Status.PodIP)
-				}
+		if !subnet.Spec.NatOutgoing ||
+			subnet.Spec.Vlan != "" ||
+			subnet.Spec.Vpc != util.DefaultVpc ||
+			subnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
+			continue
+		}
+
+		if len(pod.Status.PodIPs) != 0 {
+			if len(pod.Status.PodIPs) == 2 && protocol == kubeovnv1.ProtocolIPv6 {
+				localPodIPs = append(localPodIPs, pod.Status.PodIPs[1].IP)
+			} else if util.CheckProtocol(pod.Status.PodIP) == protocol {
+				localPodIPs = append(localPodIPs, pod.Status.PodIP)
+			}
+		} else {
+			ipv4, ipv6 := util.SplitStringIP(pod.Annotations[util.IpAddressAnnotation])
+			if ipv4 != "" && protocol == kubeovnv1.ProtocolIPv4 {
+				localPodIPs = append(localPodIPs, ipv4)
+			}
+			if ipv6 != "" && protocol == kubeovnv1.ProtocolIPv6 {
+				localPodIPs = append(localPodIPs, ipv6)
 			}
 		}
 	}
@@ -709,11 +703,12 @@ func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta]
 		return nil, err
 	}
 
-	hostname := os.Getenv("KUBE_NODE_NAME")
+	nodeName := os.Getenv("KUBE_NODE_NAME")
 	localPodIPs := make(map[policyRouteMeta][]string)
 	for _, pod := range allPods {
 		if pod.Spec.HostNetwork ||
 			pod.DeletionTimestamp != nil ||
+			pod.Spec.NodeName != nodeName ||
 			pod.Annotations[util.LogicalSwitchAnnotation] == "" ||
 			pod.Annotations[util.IpAddressAnnotation] == "" {
 			continue
@@ -725,52 +720,47 @@ func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta]
 			continue
 		}
 
-		if subnet.Spec.ExternalEgressGateway != "" &&
-			subnet.Spec.Vpc == util.DefaultVpc &&
-			subnet.Spec.GatewayType == kubeovnv1.GWDistributedType &&
-			pod.Spec.NodeName == hostname {
-			ips := make([]string, 0, 2)
-			if pod.Status.Phase == v1.PodPending {
-				var containerCreating bool
-				for _, s := range pod.Status.ContainerStatuses {
-					if s.State.Waiting != nil && s.State.Waiting.Reason == "ContainerCreating" {
-						containerCreating = true
-						break
-					}
-				}
-				if containerCreating {
-					ipv4, ipv6 := util.SplitStringIP(pod.Annotations[util.IpAddressAnnotation])
-					if ipv4 != "" && protocol == kubeovnv1.ProtocolIPv4 {
-						ips = append(ips, ipv4)
-					}
-					if ipv6 != "" && protocol == kubeovnv1.ProtocolIPv6 {
-						ips = append(ips, ipv6)
-					}
-				}
-			} else if len(pod.Status.PodIPs) != 0 {
-				for _, ip := range pod.Status.PodIPs {
-					ips = append(ips, ip.IP)
-				}
+		if !subnet.Spec.NatOutgoing ||
+			subnet.Spec.Vlan != "" ||
+			subnet.Spec.Vpc != util.DefaultVpc ||
+			subnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
+			continue
+		}
+
+		ips := make([]string, 0, 2)
+		if len(pod.Status.PodIPs) != 0 {
+			if len(pod.Status.PodIPs) == 2 && protocol == kubeovnv1.ProtocolIPv6 {
+				ips = append(ips, pod.Status.PodIPs[1].IP)
+			} else if util.CheckProtocol(pod.Status.PodIP) == protocol {
+				ips = append(ips, pod.Status.PodIP)
+			}
+		} else {
+			ipv4, ipv6 := util.SplitStringIP(pod.Annotations[util.IpAddressAnnotation])
+			if ipv4 != "" && protocol == kubeovnv1.ProtocolIPv4 {
+				ips = append(ips, ipv4)
+			}
+			if ipv6 != "" && protocol == kubeovnv1.ProtocolIPv6 {
+				ips = append(ips, ipv6)
+			}
+		}
+
+		if len(ips) != 0 {
+			meta := policyRouteMeta{
+				priority: subnet.Spec.PolicyRoutingPriority,
+				tableID:  subnet.Spec.PolicyRoutingTableID,
 			}
 
-			if len(ips) != 0 {
-				meta := policyRouteMeta{
-					priority: subnet.Spec.PolicyRoutingPriority,
-					tableID:  subnet.Spec.PolicyRoutingTableID,
-				}
-
-				egw := strings.Split(subnet.Spec.ExternalEgressGateway, ",")
-				if util.CheckProtocol(egw[0]) == protocol {
-					meta.gateway = egw[0]
-					if util.CheckProtocol(ips[0]) == protocol {
-						localPodIPs[meta] = append(localPodIPs[meta], ips[0])
-					} else {
-						localPodIPs[meta] = append(localPodIPs[meta], ips[1])
-					}
-				} else if len(egw) == 2 && len(ips) == 2 {
-					meta.gateway = egw[1]
+			egw := strings.Split(subnet.Spec.ExternalEgressGateway, ",")
+			if util.CheckProtocol(egw[0]) == protocol {
+				meta.gateway = egw[0]
+				if util.CheckProtocol(ips[0]) == protocol {
+					localPodIPs[meta] = append(localPodIPs[meta], ips[0])
+				} else {
 					localPodIPs[meta] = append(localPodIPs[meta], ips[1])
 				}
+			} else if len(egw) == 2 && len(ips) == 2 {
+				meta.gateway = egw[1]
+				localPodIPs[meta] = append(localPodIPs[meta], ips[1])
 			}
 		}
 	}
@@ -787,12 +777,13 @@ func (c *Controller) getSubnetsNeedNAT(protocol string) ([]string, error) {
 	}
 
 	for _, subnet := range subnets {
-		if subnet.Spec.Vpc == util.DefaultVpc &&
+		if subnet.DeletionTimestamp == nil &&
+			subnet.Spec.NatOutgoing &&
+			subnet.Spec.Vlan == "" &&
 			subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType &&
 			util.GatewayContains(subnet.Spec.GatewayNode, c.config.NodeName) &&
-			(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) &&
-			subnet.Spec.NatOutgoing &&
-			subnet.Spec.Vlan == "" {
+			subnet.Spec.Vpc == util.DefaultVpc &&
+			(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) {
 			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
 			subnetsNeedNat = append(subnetsNeedNat, cidrBlock)
 		}
@@ -810,12 +801,12 @@ func (c *Controller) getSubnetsNeedPR(protocol string) (map[policyRouteMeta]stri
 
 	for _, subnet := range subnets {
 		if subnet.DeletionTimestamp == nil &&
-			subnet.Spec.Vpc == util.DefaultVpc &&
+			subnet.Spec.ExternalEgressGateway != "" &&
+			subnet.Spec.Vlan == "" &&
 			subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType &&
 			util.GatewayContains(subnet.Spec.GatewayNode, c.config.NodeName) &&
-			(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) &&
-			subnet.Spec.ExternalEgressGateway != "" &&
-			subnet.Spec.Vlan == "" {
+			subnet.Spec.Vpc == util.DefaultVpc &&
+			(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) {
 			meta := policyRouteMeta{
 				priority: subnet.Spec.PolicyRoutingPriority,
 				tableID:  subnet.Spec.PolicyRoutingTableID,
