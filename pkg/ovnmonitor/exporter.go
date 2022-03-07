@@ -2,6 +2,7 @@ package ovnmonitor
 
 import (
 	"os"
+	"os/exec"
 	"sync"
 	"time"
 
@@ -17,6 +18,8 @@ var (
 	appName          = "ovn-monitor"
 	isClusterEnabled = true
 	tryConnectCnt    = 0
+	checkNbDbCnt     = 0
+	checkSbDbCnt     = 0
 )
 
 // Exporter collects OVN data from the given server and exports them using
@@ -269,6 +272,33 @@ func (e *Exporter) exportOvnDBStatusGauge() {
 			metricDBStatus.WithLabelValues(e.Client.System.Hostname, database).Set(1)
 		} else {
 			metricDBStatus.WithLabelValues(e.Client.System.Hostname, database).Set(0)
+
+			switch database {
+			case "OVN_Northbound":
+				checkNbDbCnt++
+				if checkNbDbCnt < 6 {
+					klog.Warningf("Failed to get OVN NB DB status for %v times", checkNbDbCnt)
+					return
+				} else {
+					klog.Warningf("Failed to get OVN NB DB status for %v times, ready to restore OVN DB", checkNbDbCnt)
+					checkNbDbCnt = 0
+				}
+			case "OVN_Southbound":
+				checkSbDbCnt++
+				if checkSbDbCnt < 6 {
+					klog.Warningf("Failed to get OVN SB DB status for %v times", checkSbDbCnt)
+					return
+				} else {
+					klog.Warningf("Failed to get OVN SB DB status for %v times, ready to restore OVN DB", checkSbDbCnt)
+					checkSbDbCnt = 0
+				}
+			}
+
+			output, err := exec.Command("/bin/bash", "/kube-ovn/restore-ovn-nb-db.sh").CombinedOutput()
+			if err != nil {
+				klog.Errorf("Failed to restore OVN DB, err %v", err)
+			}
+			klog.Infof("restore OVN DB %v, process output %v", database, string(output))
 		}
 	}
 }
