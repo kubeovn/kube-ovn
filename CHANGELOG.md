@@ -1,5 +1,37 @@
 # CHANGELOG
 
+## 1.8.3 -- 2022/03/09
+### Bugfix
+- update check for delete statefulset pod
+- update networkpolicy port process
+- add back centralized subnet active-standby mode
+- add gateway check after update subnet
+- fix clusterrole in ovn-ha.yaml
+- set up tunnel correctly in hybrid mode
+- check static route conflict
+- transfer IP/route earlier in OVS startup
+- fix only log matched svc with np (#1287)
+- fix statefulset Pod deletion
+- ignore cilint
+- Fix usage of ovn commands
+- fix continue of deletion for del pod failed when can't found vpc or subnet
+- fix OVS bridge with bond port in mode 6
+- fix replace ecmp dp_hash with hash by src_ip (#1289)
+- fix cni deepcopy
+- fix ips update
+- add check for pod update process
+- fix SNAT/PR on Pod startup
+- optimize log for node port-group
+
+### New Feature
+- support to add multiple subnets for a namespace
+- append add cidr and excludeIps annotation for namespace
+- feat optimize log
+- resync provider network status periodically
+- add metric for ovn nb/sb db status
+- feat update provider network via node annotation
+- keep ip for kubevirt pod
+
 ## 1.8.2 -- 2022/01/05
 ### Bugfix
 - modify kube-ovn as multus-cni problem
