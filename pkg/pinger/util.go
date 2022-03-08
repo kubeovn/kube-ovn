@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.com/greenpau/ovsdb"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"k8s.io/klog/v2"
 )
 
@@ -152,18 +153,101 @@ func (e *Exporter) ovsDatapathPortMetrics(line, datapath string) {
 	metricOvsDpIf.WithLabelValues(e.Client.System.Hostname, datapath, portName, portType, portNumber).Set(1)
 }
 
-func (e *Exporter) getInterfaceInfo() ([]*ovsdb.OvsInterface, error) {
-	intfs, err := e.Client.GetDbInterfaces()
+func (e *Exporter) getInterfaceInfo() ([]ovsdb.OvsInterface, error) {
+	var intfs []ovsdb.OvsInterface
+
+	result, err := ovs.CustomFindEntity("Interface", []string{"_uuid", "name", "admin_state", "link_state", "mac_in_use", "mtu", "ofport", "ifindex", "statistics"})
 	if err != nil {
-		klog.Errorf("GetDbInterfaces error: %v", err)
-		e.IncrementErrorCounter()
-		return nil, err
+		klog.Errorf("customFindEntity failed, %v", err)
+		return intfs, err
+	}
+	if len(result) == 0 {
+		return nil, nil
 	}
 
+	for _, line := range result {
+		var intf ovsdb.OvsInterface
+		if intf.Statistics == nil {
+			intf.Statistics = make(map[string]int, 13)
+		}
+
+		if _, ok := line["_uuid"]; ok {
+			intf.UUID = line["_uuid"][0]
+		}
+		if _, ok := line["name"]; ok {
+			intf.Name = line["name"][0]
+		}
+		if _, ok := line["admin_state"]; ok {
+			intf.AdminState = line["admin_state"][0]
+		}
+		if _, ok := line["link_state"]; ok {
+			intf.LinkState = line["link_state"][0]
+		}
+		if _, ok := line["mac_in_use"]; ok {
+			intf.MacInUse = line["mac_in_use"][0]
+		}
+		if _, ok := line["mtu"]; ok {
+			if len(line["mtu"]) != 0 {
+				mtu, _ := strconv.ParseFloat(line["mtu"][0], 64)
+				intf.Mtu = mtu
+			}
+		}
+		if _, ok := line["ofport"]; ok {
+			ofport, _ := strconv.ParseFloat(line["ofport"][0], 64)
+			intf.OfPort = ofport
+		}
+		if _, ok := line["ifindex"]; ok {
+			ifindex, _ := strconv.ParseFloat(line["ifindex"][0], 64)
+			intf.IfIndex = ifindex
+		}
+
+		if stsValues, ok := line["statistics"]; ok {
+			for _, l := range stsValues {
+				if len(strings.TrimSpace(l)) == 0 {
+					continue
+				}
+				parts := strings.Split(strings.TrimSpace(l), "=")
+				if len(parts) != 2 {
+					continue
+				}
+				value, _ := strconv.Atoi(parts[1])
+
+				switch parts[0] {
+				case "rx_crc_err":
+					intf.Statistics["rx_crc_err"] = value
+				case "rx_dropped":
+					intf.Statistics["rx_dropped"] = value
+				case "rx_frame_err":
+					intf.Statistics["rx_frame_err"] = value
+				case "rx_missed_errors":
+					intf.Statistics["rx_missed_errors"] = value
+				case "rx_over_err":
+					intf.Statistics["rx_over_err"] = value
+				case "rx_errors":
+					intf.Statistics["rx_errors"] = value
+				case "rx_packets":
+					intf.Statistics["rx_packets"] = value
+				case "rx_bytes":
+					intf.Statistics["rx_bytes"] = value
+				case "tx_packets":
+					intf.Statistics["tx_packets"] = value
+				case "tx_bytes":
+					intf.Statistics["tx_bytes"] = value
+				case "tx_dropped":
+					intf.Statistics["tx_dropped"] = value
+				case "tx_errors":
+					intf.Statistics["tx_errors"] = value
+				case "collisions":
+					intf.Statistics["collisions"] = value
+				}
+			}
+		}
+		intfs = append(intfs, intf)
+	}
 	return intfs, nil
 }
 
-func (e *Exporter) setOvsInterfaceMetric(intf *ovsdb.OvsInterface) {
+func (e *Exporter) setOvsInterfaceMetric(intf ovsdb.OvsInterface) {
 	interfaceMain.WithLabelValues(e.Client.System.Hostname, intf.UUID, intf.Name).Set(1)
 	e.setOvsInterfaceStateMetric(intf)
 	interfaceMacInUse.WithLabelValues(e.Client.System.Hostname, intf.Name, intf.MacInUse).Set(1)
@@ -173,7 +257,7 @@ func (e *Exporter) setOvsInterfaceMetric(intf *ovsdb.OvsInterface) {
 	e.setOvsInterfaceStatisticsMetric(intf)
 }
 
-func (e *Exporter) setOvsInterfaceStateMetric(intf *ovsdb.OvsInterface) {
+func (e *Exporter) setOvsInterfaceStateMetric(intf ovsdb.OvsInterface) {
 	var adminState float64
 	switch intf.AdminState {
 	case "down":
@@ -197,7 +281,7 @@ func (e *Exporter) setOvsInterfaceStateMetric(intf *ovsdb.OvsInterface) {
 	interfaceLinkState.WithLabelValues(e.Client.System.Hostname, intf.Name).Set(linkState)
 }
 
-func (e *Exporter) setOvsInterfaceStatisticsMetric(intf *ovsdb.OvsInterface) {
+func (e *Exporter) setOvsInterfaceStatisticsMetric(intf ovsdb.OvsInterface) {
 	for key, value := range intf.Statistics {
 		switch key {
 		case "rx_crc_err":
@@ -230,4 +314,29 @@ func (e *Exporter) setOvsInterfaceStatisticsMetric(intf *ovsdb.OvsInterface) {
 			klog.Errorf("OVS interface statistics has unsupported key: %s, value: %d", key, value)
 		}
 	}
+}
+
+func resetOvsInterfaceMetrics() {
+	interfaceMain.Reset()
+	interfaceAdminState.Reset()
+	interfaceLinkState.Reset()
+	interfaceMacInUse.Reset()
+	interfaceMtu.Reset()
+	interfaceOfPort.Reset()
+	interfaceIfIndex.Reset()
+
+	interfaceStatRxCrcError.Reset()
+	interfaceStatRxDropped.Reset()
+	interfaceStatRxFrameError.Reset()
+	interfaceStatRxMissedError.Reset()
+	interfaceStatRxOverrunError.Reset()
+	interfaceStatRxErrorsTotal.Reset()
+	interfaceStatRxPackets.Reset()
+	interfaceStatRxBytes.Reset()
+
+	interfaceStatTxPackets.Reset()
+	interfaceStatTxBytes.Reset()
+	interfaceStatTxDropped.Reset()
+	interfaceStatTxErrorsTotal.Reset()
+	interfaceStatCollisions.Reset()
 }

@@ -185,6 +185,7 @@ func (e *Exporter) exportOvsInterfaceGauge() {
 		return
 	}
 
+	resetOvsInterfaceMetrics()
 	for _, intf := range intfs {
 		e.setOvsInterfaceMetric(intf)
 	}

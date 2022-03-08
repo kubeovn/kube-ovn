@@ -57,7 +57,7 @@ func ParseFlags() (*Configuration, error) {
 		argKubeConfigFile     = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 		argDaemonSetNameSpace = pflag.String("ds-namespace", "kube-system", "kube-ovn-pinger daemonset namespace")
 		argDaemonSetName      = pflag.String("ds-name", "kube-ovn-pinger", "kube-ovn-pinger daemonset name")
-		argInterval           = pflag.Int("interval", 5, "interval seconds between consecutive pings")
+		argInterval           = pflag.Int("interval", 15, "interval seconds between consecutive pings")
 		argMode               = pflag.String("mode", "server", "server or job Mode")
 		argExitCode           = pflag.Int("exit-code", 0, "exit code when failure happens")
 		argInternalDns        = pflag.String("internal-dns", "kubernetes.default", "check dns from pod")

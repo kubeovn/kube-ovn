@@ -745,3 +745,35 @@ func ListQosQueueIds() (map[string]string, error) {
 	}
 	return result, nil
 }
+
+func CustomFindEntity(entity string, attris []string, args ...string) (result []map[string][]string, err error) {
+	result = []map[string][]string{}
+	var attrStr strings.Builder
+	for _, e := range attris {
+		attrStr.WriteString(e)
+		attrStr.WriteString(",")
+	}
+	// Assuming that the order of the elements in attris does not change
+	cmd := []string{"--format=csv", "--data=bare", "--no-heading", fmt.Sprintf("--columns=%s", attrStr.String()), "find", entity}
+	cmd = append(cmd, args...)
+	output, err := Exec(cmd...)
+	if err != nil {
+		klog.Errorf("failed to customized find %s: %v", entity, err)
+		return nil, err
+	}
+	if output == "" {
+		return result, nil
+	}
+	lines := strings.Split(output, "\n")
+	for _, l := range lines {
+		aResult := make(map[string][]string)
+		parts := strings.Split(strings.TrimSpace(l), ",")
+		for i, e := range attris {
+			if aResult[e] = strings.Fields(parts[i]); aResult[e] == nil {
+				aResult[e] = []string{}
+			}
+		}
+		result = append(result, aResult)
+	}
+	return result, nil
+}
