@@ -42,6 +42,7 @@ type Configuration struct {
 	EncapChecksum           bool
 	PprofPort               int
 	NetworkType             string
+	CniConfName             string
 	DefaultProviderName     string
 	DefaultInterfaceName    string
 	ExternalGatewayConfigNS string
@@ -64,6 +65,7 @@ func ParseFlags(nicBridgeMappings map[string]string) (*Configuration, error) {
 		argPprofPort             = pflag.Int("pprof-port", 10665, "The port to get profiling data")
 
 		argsNetworkType            = pflag.String("network-type", "geneve", "The ovn network type")
+		argsCniConfName            = pflag.String("cni-conf-name", "01-kube-ovn.conflist", "Specify the name of kube ovn conflist name in dir /etc/cni/net.d/, default: 01-kube-ovn.conflist")
 		argsDefaultProviderName    = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name")
 		argsDefaultInterfaceName   = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
@@ -76,7 +78,7 @@ func ParseFlags(nicBridgeMappings map[string]string) (*Configuration, error) {
 	klog.InitFlags(klogFlags)
 
 	// Sync the glog and klog flags.
-	flag.CommandLine.VisitAll(func(f1 *flag.Flag) {
+	pflag.CommandLine.VisitAll(func(f1 *pflag.Flag) {
 		f2 := klogFlags.Lookup(f1.Name)
 		if f2 != nil {
 			value := f1.Value.String()
@@ -109,6 +111,7 @@ func ParseFlags(nicBridgeMappings map[string]string) (*Configuration, error) {
 		NodeLocalDnsIP:          *argNodeLocalDnsIP,
 		EncapChecksum:           *argEncapChecksum,
 		NetworkType:             *argsNetworkType,
+		CniConfName:             *argsCniConfName,
 		DefaultProviderName:     *argsDefaultProviderName,
 		DefaultInterfaceName:    *argsDefaultInterfaceName,
 		ExternalGatewayConfigNS: *argExternalGatewayConfigNS,
@@ -145,7 +148,7 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 	}
 
 	if config.Iface == "" {
-		podIP, ok := os.LookupEnv("POD_IP")
+		podIP, ok := os.LookupEnv(util.POD_IP)
 		if !ok || podIP == "" {
 			return errors.New("failed to lookup env POD_IP")
 		}
@@ -243,8 +246,8 @@ func (config *Configuration) initKubeClient() error {
 	}
 	config.KubeOvnClient = kubeOvnClient
 
-	cfg.ContentType = "application/vnd.kubernetes.protobuf"
-	cfg.AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
+	cfg.ContentType = util.ContentType
+	cfg.AcceptContentTypes = util.AcceptContentTypes
 	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		klog.Errorf("init kubernetes client failed %v", err)

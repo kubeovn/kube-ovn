@@ -72,6 +72,27 @@ Since kube-ovn v1.8.0, kube-ovn support using designative egress ip on node, the
 - `disableGatewayCheck`: By default Kube-OVN checks Pod's network by sending ICMP request to the subnet's gateway. Set it to `true` if the subnet is in underlay mode and the physical gateway does not respond to ICMP requests.
 - `disableInterConnection`: if enable cluster-interconnection, use this field to disable auto route.
 
+## DHCP Options
+
+OVN implements native DHCPv4 and DHCPv6 support which provides stateless replies to DHCPv4 and DHCPv6 requests. 
+
+Now kube-ovn support [DHCP feature](https://github.com/kubeovn/kube-ovn/pull/1320) too, you can enable it in the spec of subnet. It will create DHCPv4 options or DHCPv6 options, and patch the UUIDs into the status of subnet.
+
+When a pod created, the logical switch port will associate with the DHCP options to use DHCP feature. 
+
+If you want to use DHCPv6, you may need ipv6 router advertisement too. It will send the prefix, default gateway and other infos to the DHCPv6 client.
+
+- `enableDHCP`: Boolean, set true to enable DHCP feature for the subnet. If it's a `Dual` subnet, both DHCPv4 and DHCPv6 will be enabled. Default: false.
+- `dhcpV4Options`: String, the DHCP options setting of IPv4, it works only when `enableDHCP` is true. If not set, the default configuration is: `"lease_time=3600, router=$ipv4_gateway, server_id=169.254.0.254, server_mac=$random_mac1"`.
+- `dhcpV6Options`: String, the DHCP options setting of IPv6, it works only when `enableDHCP` is true. If not set, the default configuration is: `"server_id=$random_mac1"`.
+- `enableIPv6RA`: Boolean, set true to enable IPv6 router advertisement. Default: false.
+- `ipv6RAConfigs`: String, the ipv6_ra_configs of the logical_router_port, it works only when `enableIPv6RA` is true. If not set, the default configuration is: `"address_mode=dhcpv6_stateful, max_interval=30, min_interval=5, send_periodic=true"`.
+
+For more information about configuration of DHCP options, please see [docs](https://www.ovn.org/support/dist-docs/ovn-nb.5.html) and [example](https://blog.oddbit.com/post/2019-12-19-ovn-and-dhcp/).
+
+> Tips: DHCP options is very useful for the pod which implement VirtualMachines to get an ip address by DHCP, such as [KubeVirt](https://github.com/kubevirt/kubevirt) scheme will manage VM in the pod.
+
+
 ## Bind Pod to Subnet
 
 By default, Pod will automatically inherit subnet from Namespace, From 1.5.1 users can bind Pod to another Subnet by manually setup the `logical_switch` annotation for a Pod.

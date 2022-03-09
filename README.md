@@ -83,7 +83,7 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
   - [Kubernetes and OpenStack based on the same OVN deployment](docs/OpenstackOnKubernetes.md)
 - [BGP support](docs/bgp.md)
 - [Multi NIC Support](docs/multi-nic.md)
-- [Hardware Offload](docs/hw-offload.md)
+- Hardware Offload for [Mellanox](docs/hw-offload-mellanox.md) and [Corigine](docs/hw-offload-corigine.md)
 - [Vlan/Underlay Support](docs/vlan.md)
 - [DPDK Support](docs/dpdk.md)
 - [Traffic Mirror](docs/mirror.md)

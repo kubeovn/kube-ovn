@@ -91,7 +91,12 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		oldSubnet.Spec.Gateway != newSubnet.Spec.Gateway ||
 		!reflect.DeepEqual(oldSubnet.Spec.ExcludeIps, newSubnet.Spec.ExcludeIps) ||
 		!reflect.DeepEqual(oldSubnet.Spec.Vips, newSubnet.Spec.Vips) ||
-		oldSubnet.Spec.Vlan != newSubnet.Spec.Vlan {
+		oldSubnet.Spec.Vlan != newSubnet.Spec.Vlan ||
+		oldSubnet.Spec.EnableDHCP != newSubnet.Spec.EnableDHCP ||
+		oldSubnet.Spec.DHCPv4Options != newSubnet.Spec.DHCPv4Options ||
+		oldSubnet.Spec.DHCPv6Options != newSubnet.Spec.DHCPv6Options ||
+		oldSubnet.Spec.EnableIPv6RA != newSubnet.Spec.EnableIPv6RA ||
+		oldSubnet.Spec.IPv6RAConfigs != newSubnet.Spec.IPv6RAConfigs {
 		klog.V(3).Infof("enqueue update subnet %s", key)
 		c.addOrUpdateSubnetQueue.Add(key)
 	}
@@ -607,7 +612,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
-	needRouter := (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != util.DefaultVpc
+	needRouter := subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway
 	if !exist {
 		subnet.Status.EnsureStandardConditions()
 		// If multiple namespace use same ls name, only first one will success
@@ -624,6 +629,35 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		if !needRouter {
 			if err := c.ovnClient.RemoveRouterPort(subnet.Name, vpc.Status.Router); err != nil {
 				klog.Errorf("failed to remove router port from %s, %v", subnet.Name, err)
+				return err
+			}
+		}
+	}
+
+	var dhcpOptionsUUIDs *ovs.DHCPOptionsUUIDs
+	dhcpOptionsUUIDs, err = c.ovnClient.UpdateDHCPOptions(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.DHCPv4Options, subnet.Spec.DHCPv6Options, subnet.Spec.EnableDHCP)
+	if err != nil {
+		klog.Errorf("failed to update dhcp options for switch %s, %v", subnet.Name, err)
+		return err
+	}
+
+	if needRouter {
+		if err := c.ovnClient.UpdateRouterPortIPv6RA(subnet.Name, vpc.Status.Router, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.IPv6RAConfigs, subnet.Spec.EnableIPv6RA); err != nil {
+			klog.Errorf("failed to update ipv6 ra configs for router port %s-%s, %v", vpc.Status.Router, subnet.Name, err)
+			return err
+		}
+	}
+
+	if subnet.Status.DHCPv4OptionsUUID != dhcpOptionsUUIDs.DHCPv4OptionsUUID || subnet.Status.DHCPv6OptionsUUID != dhcpOptionsUUIDs.DHCPv6OptionsUUID {
+		subnet.Status.DHCPv4OptionsUUID = dhcpOptionsUUIDs.DHCPv4OptionsUUID
+		subnet.Status.DHCPv6OptionsUUID = dhcpOptionsUUIDs.DHCPv6OptionsUUID
+		bytes, err := subnet.Status.Bytes()
+		if err != nil {
+			klog.Error(err)
+			return err
+		} else {
+			if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+				klog.Error("patch subnet %s dhcp options failed: %v", subnet.Name, err)
 				return err
 			}
 		}
@@ -756,6 +790,11 @@ func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
 
 	if err = c.ovnClient.CleanLogicalSwitchAcl(key); err != nil {
 		klog.Errorf("failed to delete acl of logical switch %s %v", key, err)
+		return err
+	}
+
+	if err = c.ovnClient.DeleteDHCPOptions(key, kubeovnv1.ProtocolDual); err != nil {
+		klog.Errorf("failed to delete dhcp options of logical switch %s %v", key, err)
 		return err
 	}
 
@@ -1056,6 +1095,7 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 				if !isPodAlive(pod) || pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "" {
 					continue
 				}
+				podName := c.getNameByPod(pod)
 
 				node, err := c.nodesLister.Get(pod.Spec.NodeName)
 				if err != nil {
@@ -1111,7 +1151,7 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 							return err
 						}
 					} else {
-						portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName)
+						portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 						if !util.IsStringIn(portName, pgPorts) {
 							klog.Infof("new port %v should add to port group %v", portName, pgName)
 							pgPorts = append(pgPorts, portName)
@@ -1688,7 +1728,7 @@ func (c *Controller) updatePolicyRouteForCentralizedSubnet(subnetName, cidr stri
 		return err
 	}
 
-	// It's hard to delete policy route when delete node, add map nodeName:nodeIP to external_ids to help process when delete node
+	// It's difficult to delete policy route when delete node, add map nodeName:nodeIP to external_ids to help process when delete node
 	if err := c.ovnClient.SetPolicyRouteExternalIds(util.CentralSubnetPriority, match, nameIpMap); err != nil {
 		klog.Errorf("failed to set policy route external_ids for subnet %s: %v", subnetName, err)
 		return err

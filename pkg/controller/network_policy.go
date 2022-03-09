@@ -405,7 +405,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 				if len(npr.To) == 0 {
 					if protocol == kubeovnv1.ProtocolIPv4 {
 						allows = []string{"0.0.0.0/0"}
-					} else if protocol == kubeovnv1.ProtocolIPv6 {
+					} else {
 						allows = []string{"::/0"}
 					}
 				} else {
@@ -563,6 +563,7 @@ func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.Label
 		if !isPodAlive(pod) || pod.Spec.HostNetwork {
 			continue
 		}
+		podName := c.getNameByPod(pod)
 		podNets, err := c.getPodKubeovnNets(pod)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get pod networks, %v", err)
@@ -574,7 +575,7 @@ func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.Label
 			}
 
 			if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
-				ports = append(ports, ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName))
+				ports = append(ports, ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName))
 			}
 		}
 	}

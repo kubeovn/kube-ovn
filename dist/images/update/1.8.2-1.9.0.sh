@@ -768,6 +768,7 @@ rules:
       - statefulsets
       - daemonsets
       - deployments
+      - deployments/scale
     verbs:
       - create
       - delete
@@ -794,6 +795,14 @@ rules:
       - get
       - list
       - update
+  - apiGroups:
+      - "kubevirt.io"
+    resources:
+      - virtualmachines
+      - virtualmachineinstances
+    verbs:
+      - get
+      - list
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -838,7 +847,7 @@ echo ""
 echo "[Step 5/8] Update kube-ovn-cni"
 kubectl set image ds/kube-ovn-cni -n kube-system cni-server="$IMAGE"
 if [[ ! $(kubectl get ds -n kube-system kube-ovn-cni -o jsonpath='{.spec.template.spec.containers[0].args}') =~ "logtostderr" ]]; then
-  kubectl patch ds/kube-ovn-cni -n kube-system --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--logtostderr=false"}, {"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--alsologtostderr=true"}, {"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--log_file=/var/log/kube-ovn/kube-ovn-controller.log"}, {"op": "add", "path": "/spec/template/spec/containers/0/volumeMounts/-", "value": {"mountPath": "/var/log/kube-ovn", "name": "kube-ovn-log"}}, {"op": "add", "path": "/spec/template/spec/volumes/-", "value": {"hostPath": {"path": "/var/log/kube-ovn"}, "name": "kube-ovn-log"}}]'
+  kubectl patch ds/kube-ovn-cni -n kube-system --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--logtostderr=false"}, {"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--alsologtostderr=true"}, {"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--log_file=/var/log/kube-ovn/kube-ovn-cni.log"}, {"op": "add", "path": "/spec/template/spec/containers/0/volumeMounts/-", "value": {"mountPath": "/var/log/kube-ovn", "name": "kube-ovn-log"}}, {"op": "add", "path": "/spec/template/spec/volumes/-", "value": {"hostPath": {"path": "/var/log/kube-ovn"}, "name": "kube-ovn-log"}}]'
 fi
 kubectl rollout status daemonset/kube-ovn-cni -n kube-system
 echo "-------------------------------"

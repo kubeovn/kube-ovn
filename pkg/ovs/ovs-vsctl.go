@@ -122,6 +122,15 @@ func Bridges() ([]string, error) {
 	return ovsFind("bridge", "name", fmt.Sprintf("external-ids:vendor=%s", util.CniTypeName))
 }
 
+// BridgeExists checks whether the bridge already exists
+func BridgeExists(name string) (bool, error) {
+	bridges, err := Bridges()
+	if err != nil {
+		return false, err
+	}
+	return util.ContainsString(bridges, name), nil
+}
+
 func GetQosList(podName, podNamespace, ifaceID string) ([]string, error) {
 	var qosList []string
 	var err error

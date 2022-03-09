@@ -5,8 +5,14 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/spf13/pflag"
 	"io/ioutil"
+	"os"
+	exec "os/exec"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/spf13/pflag"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -14,11 +20,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
-	"os"
-	exec "os/exec"
-	"strings"
-	"syscall"
-	"time"
 )
 
 const (
@@ -48,7 +49,7 @@ func ParseFlags() (*Configuration, error) {
 	klog.InitFlags(klogFlags)
 
 	// Sync the glog and klog flags.
-	flag.CommandLine.VisitAll(func(f1 *flag.Flag) {
+	pflag.CommandLine.VisitAll(func(f1 *pflag.Flag) {
 		f2 := klogFlags.Lookup(f1.Name)
 		if f2 != nil {
 			value := f1.Value.String()

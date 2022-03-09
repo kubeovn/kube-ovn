@@ -86,27 +86,6 @@ func (v *ValidatingHook) PodCreateHook(ctx context.Context, req admission.Reques
 	return v.validateIp(ctx, o.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
 
-func (v *ValidatingHook) SubnetCreateHook(ctx context.Context, req admission.Request) admission.Response {
-	o := ovnv1.Subnet{}
-	if err := v.decoder.Decode(req, &o); err != nil {
-		return ctrlwebhook.Errored(http.StatusBadRequest, err)
-	}
-
-	if err := util.ValidateSubnet(o); err != nil {
-		return ctrlwebhook.Denied(err.Error())
-	}
-
-	subnetList := &ovnv1.SubnetList{}
-	if err := v.cache.List(ctx, subnetList); err != nil {
-		return ctrlwebhook.Errored(http.StatusBadRequest, err)
-	}
-	if err := util.ValidateCidrConflict(o, subnetList.Items); err != nil {
-		return ctrlwebhook.Denied(err.Error())
-	}
-
-	return ctrlwebhook.Allowed("by pass")
-}
-
 func (v *ValidatingHook) validateIp(ctx context.Context, annotations map[string]string, kind, name, namespace string) admission.Response {
 	if err := util.ValidatePodNetwork(annotations); err != nil {
 		klog.Errorf("validate %s %s/%s failed: %v", kind, namespace, name, err)

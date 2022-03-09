@@ -1,4 +1,4 @@
-﻿# Hardware Offload
+﻿# Hardware Offload for Mellanox 
 
 The OVS software based solution is CPU intensive, affecting system performance and preventing full utilization of the available bandwidth.
 Mellanox Accelerated Switching And Packet Processing (ASAP2) technology allows OVS offloading by handling OVS data-plane in Mellanox ConnectX-5 onwards NIC hardware (Mellanox Embedded Switch or eSwitch) while maintaining OVS control-plane unmodified. As a result, we observe significantly higher OVS performance without the associated CPU load.
@@ -6,10 +6,16 @@ By taking use of SR-IOV technology we can achieve low network latency and high t
 
 ## Prerequisites
 - Mellanox ConnectX-5 Card with OVS-Kernel ASAP² Packages
-- Linux Kernel 5.7 or above
-- MLNX-OFED 5.1
+- Centos 8 Stream or upstream Linux Kernel 5.7+
+- MLNX-OFED 5.1+
 - SR-IOV Device Plugin
 - Multus-CNI
+
+## Some known limitation
+
+The `dp_hash` and `hash` which are used by OVN LB can not be offloaded now.
+If using OVN LB it will block all acceleration as the LB flows will affect all traffic.
+So when install Kube-OVN LB functions should be disabled and fall back to use kube-proxy.
 
 ## Installation Guide
 
@@ -21,11 +27,12 @@ wget https://raw.githubusercontent.com/alauda/kube-ovn/master/dist/images/instal
 ```
 
 2. Edit the install script, enable hw-offload, disable traffic mirror and set the IFACE to the PF.
-Make sure that there is a ip address bind to the PF.
+Make sure that there is an IP address bind to the PF.
 
 ```bash
 ENABLE_MIRROR=${ENABLE_MIRROR:-false}
 HW_OFFLOAD=${HW_OFFLOAD:-true}
+ENABLE_LB=${ENABLE_LB:-false}
 IFACE="ensp01"
 ```
 
@@ -160,10 +167,10 @@ mellanox.com/cx5_sriov_switchdev:  4
 mellanox.com/cx5_sriov_switchdev  0           0
 ```
 ### Install Multus-CNI
-1. Follow [Multus-CNI](https://github.com/intel/multus-cni/) to deploy Multus-CNI
+1. Follow [Multus-CNI](https://github.com/k8snetworkplumbingwg/multus-cni) to deploy Multus-CNI
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/intel/multus-cni/master/images/multus-daemonset.yml
+kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset.yml
 ```
 
 2. Create a NetworkAttachmentDefinition
@@ -172,6 +179,7 @@ apiVersion: "k8s.cni.cncf.io/v1"
 kind: NetworkAttachmentDefinition
 metadata:
   name: default
+  namespace: default
   annotations:
     k8s.v1.cni.cncf.io/resourceName: mellanox.com/cx5_sriov_switchdev
 spec:
@@ -181,7 +189,8 @@ spec:
     "plugins":[
         {
             "type":"kube-ovn",
-            "server_socket":"/run/openvswitch/kube-ovn-daemon.sock"
+            "server_socket":"/run/openvswitch/kube-ovn-daemon.sock",
+            "provider": "default.default.ovn"
         },
         {
             "type":"portmap",
@@ -198,13 +207,13 @@ spec:
 apiVersion: v1
 kind: Pod
 metadata:
-  name: perf
+  name: nginx
   annotations:
-    v1.multus-cni.io/default-network: default
+    v1.multus-cni.io/default-network: default/default
 spec:
   containers:
-  - name: perf
-    image: kubeovn/perf
+  - name: nginx
+    image: nginx:alpine
     resources:
       requests:
         mellanox.com/cx5_sriov_switchdev: '1'

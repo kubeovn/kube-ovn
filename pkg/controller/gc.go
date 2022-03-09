@@ -144,6 +144,27 @@ func (c *Controller) gcLogicalSwitch() error {
 			}
 		}
 	}
+
+	klog.Infof("start to gc dhcp options")
+	dhcpOptions, err := c.ovnClient.ListDHCPOptions(c.config.EnableExternalVpc, "", "")
+	if err != nil {
+		klog.Errorf("failed to list dhcp options, %v", err)
+		return err
+	}
+	var uuidToDeleteList = []string{}
+	for _, item := range dhcpOptions {
+		ls := item.ExternalIds["ls"]
+		if !util.IsStringIn(ls, subnetNames) {
+			uuidToDeleteList = append(uuidToDeleteList, item.UUID)
+		}
+	}
+	klog.Infof("gc dhcp options %v", uuidToDeleteList)
+	if len(uuidToDeleteList) > 0 {
+		if err = c.ovnClient.DeleteDHCPOptionsByUUIDs(uuidToDeleteList); err != nil {
+			klog.Errorf("failed to delete dhcp options by uuids, %v", err)
+			return err
+		}
+	}
 	return nil
 }
 
@@ -244,6 +265,7 @@ func (c *Controller) markAndCleanLSP() error {
 		} else if !isPodAlive(pod) {
 			continue
 		}
+		podName := c.getNameByPod(pod)
 
 		for k, v := range pod.Annotations {
 			if !strings.Contains(k, util.AllocatedAnnotationSuffix) || v != "true" {
@@ -257,7 +279,7 @@ func (c *Controller) markAndCleanLSP() error {
 			if !isProviderOvn {
 				continue
 			}
-			ipNames = append(ipNames, ovs.PodNameToPortName(pod.Name, pod.Namespace, providerName))
+			ipNames = append(ipNames, ovs.PodNameToPortName(podName, pod.Namespace, providerName))
 		}
 	}
 	for _, node := range nodes {

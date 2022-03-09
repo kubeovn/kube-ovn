@@ -272,7 +272,7 @@ func (c *Controller) handleAddNode(key string) error {
 			return err
 		}
 	} else {
-		v4IP, v6IP, mac, err = c.ipam.GetRandomAddress(portName, portName, "", c.config.NodeSwitch, nil)
+		v4IP, v6IP, mac, err = c.ipam.GetRandomAddress(portName, portName, "", c.config.NodeSwitch, nil, true)
 		if err != nil {
 			klog.Errorf("failed to alloc random ip addrs for node %v: %v", node.Name, err)
 			return err
@@ -280,7 +280,7 @@ func (c *Controller) handleAddNode(key string) error {
 	}
 
 	ipStr := util.GetStringIP(v4IP, v6IP)
-	if err := c.ovnClient.CreatePort(c.config.NodeSwitch, portName, ipStr, mac, "", "", false, "", "", false); err != nil {
+	if err := c.ovnClient.CreatePort(c.config.NodeSwitch, portName, ipStr, mac, "", "", false, "", "", false, false, nil); err != nil {
 		return err
 	}
 
@@ -877,6 +877,7 @@ func (c *Controller) fetchPodsOnNode(nodeName string) ([]string, error) {
 		if !isPodAlive(pod) || pod.Spec.HostNetwork || pod.Spec.NodeName != nodeName || pod.Annotations[util.LogicalRouterAnnotation] != util.DefaultVpc {
 			continue
 		}
+		podName := c.getNameByPod(pod)
 
 		podNets, err := c.getPodKubeovnNets(pod)
 		if err != nil {
@@ -890,7 +891,7 @@ func (c *Controller) fetchPodsOnNode(nodeName string) ([]string, error) {
 			}
 
 			if pod.Annotations != nil && pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
-				ports = append(ports, ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName))
+				ports = append(ports, ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName))
 			}
 		}
 	}

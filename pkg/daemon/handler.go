@@ -76,7 +76,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 
 	klog.Infof("add port request %v", podRequest)
 	var gatewayCheckMode int
-	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, providerNetwork, ifName, nicType, podNicName, priority string
+	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, providerNetwork, ifName, nicType, podNicName, priority, vmName string
 	var isDefaultRoute bool
 	var pod *v1.Pod
 	var err error
@@ -113,6 +113,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		egress = pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, podRequest.Provider)]
 		priority = pod.Annotations[fmt.Sprintf(util.PriorityAnnotationTemplate, podRequest.Provider)]
 		providerNetwork = pod.Annotations[fmt.Sprintf(util.ProviderNetworkTemplate, podRequest.Provider)]
+		vmName = pod.Annotations[fmt.Sprintf(util.VmTemplate, podRequest.Provider)]
 		ipAddr = util.GetIpAddrWithMask(ip, cidr)
 		if ifName = podRequest.IfName; ifName == "" {
 			ifName = "eth0"
@@ -130,6 +131,10 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			isDefaultRoute = false
 		default:
 			isDefaultRoute = ifName == "eth0"
+		}
+
+		if vmName != "" {
+			podRequest.PodName = vmName
 		}
 
 		break
@@ -171,11 +176,14 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			return
 		}
 
-		if !podSubnet.Spec.DisableGatewayCheck {
-			if podSubnet.Spec.Vlan != "" && !podSubnet.Spec.LogicalGateway {
-				gatewayCheckMode = gatewayCheckModeArping
-			} else {
-				gatewayCheckMode = gatewayCheckModePing
+		//skip ping check gateway for pods during live migration
+		if pod.Annotations[fmt.Sprintf(util.LiveMigrationAnnotationTemplate, podRequest.Provider)] != "true" {
+			if !podSubnet.Spec.DisableGatewayCheck {
+				if podSubnet.Spec.Vlan != "" && !podSubnet.Spec.LogicalGateway {
+					gatewayCheckMode = gatewayCheckModeArping
+				} else {
+					gatewayCheckMode = gatewayCheckModePing
+				}
 			}
 		}
 
@@ -283,10 +291,11 @@ func (csh cniServerHandler) createOrUpdateIPCr(podRequest request.CniRequest, su
 		}
 	} else {
 		ipCr := oriIpCr.DeepCopy()
-		ipCr.Spec.AttachIPs = append(ipCr.Spec.AttachIPs, ip)
+		ipCr.Spec.NodeName = csh.Config.NodeName
+		ipCr.Spec.AttachIPs = []string{}
 		ipCr.Labels[subnet] = ""
-		ipCr.Spec.AttachSubnets = append(ipCr.Spec.AttachSubnets, subnet)
-		ipCr.Spec.AttachMacs = append(ipCr.Spec.AttachMacs, macAddr)
+		ipCr.Spec.AttachSubnets = []string{}
+		ipCr.Spec.AttachMacs = []string{}
 		if _, err := csh.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), ipCr, metav1.UpdateOptions{}); err != nil {
 			errMsg := fmt.Errorf("failed to update ip crd for %s, %v", ip, err)
 			klog.Error(errMsg)
@@ -351,6 +360,11 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		} else {
 			nicType = pod.Annotations[fmt.Sprintf(util.PodNicAnnotationTemplate, podRequest.Provider)]
 		}
+		vmName := pod.Annotations[fmt.Sprintf(util.VmTemplate, podRequest.Provider)]
+		if vmName != "" {
+			podRequest.PodName = vmName
+		}
+
 		err = csh.deleteNic(podRequest.PodName, podRequest.PodNamespace, podRequest.ContainerID, podRequest.DeviceID, podRequest.IfName, nicType)
 		if err != nil {
 			errMsg := fmt.Errorf("del nic failed %v", err)
