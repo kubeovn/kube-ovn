@@ -231,3 +231,44 @@ func (e *Exporter) setOvsInterfaceStatisticsMetric(intf *ovsdb.OvsInterface) {
 		}
 	}
 }
+
+func resetOvsDatapathMetrics() {
+	metricOvsDpFlowsTotal.Reset()
+	metricOvsDpFlowsLookupHit.Reset()
+	metricOvsDpFlowsLookupMissed.Reset()
+	metricOvsDpFlowsLookupLost.Reset()
+
+	metricOvsDpMasksHit.Reset()
+	metricOvsDpMasksTotal.Reset()
+	metricOvsDpMasksHitRatio.Reset()
+
+	metricOvsDp.Reset()
+	metricOvsDpTotal.Reset()
+	metricOvsDpIf.Reset()
+	metricOvsDpIfTotal.Reset()
+}
+
+func resetOvsInterfaceMetrics() {
+	interfaceMain.Reset()
+	interfaceAdminState.Reset()
+	interfaceLinkState.Reset()
+	interfaceMacInUse.Reset()
+	interfaceMtu.Reset()
+	interfaceOfPort.Reset()
+	interfaceIfIndex.Reset()
+
+	interfaceStatRxCrcError.Reset()
+	interfaceStatRxDropped.Reset()
+	interfaceStatRxFrameError.Reset()
+	interfaceStatRxMissedError.Reset()
+	interfaceStatRxOverrunError.Reset()
+	interfaceStatRxErrorsTotal.Reset()
+	interfaceStatRxPackets.Reset()
+	interfaceStatRxBytes.Reset()
+
+	interfaceStatTxPackets.Reset()
+	interfaceStatTxBytes.Reset()
+	interfaceStatTxDropped.Reset()
+	interfaceStatTxErrorsTotal.Reset()
+	interfaceStatCollisions.Reset()
+}
