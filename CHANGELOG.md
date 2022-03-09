@@ -1,5 +1,47 @@
 # CHANGELOG
 
+## 1.9.1 -- 2022/03/09
+
+### New Feature
+- Add new arg to configure ns of ExternalGatewayConfig
+- add dnsutils for base image
+- kubectl-ko: support trace Pods being created
+- Add args to configure port ln-ovn-external
+- add back centralized subnet active-standby mode
+- add metric for ovn nb/sb db status
+- update provider network via node annotation
+- support to add multiple subnets for a namespace
+- append add cidr and excludeIps annotation for namespace
+- keep ip for kubevirt pod
+- add webhook for subnet update validation
+
+### Bugfix
+- ignore hostnetwork pod when initipam
+- update check for delete statefulset pod
+- liveMigration with IPv6
+- validate statefulset pod by name
+- add gateway check after update subnet
+- fix clusterrole in ovn-ha.yaml
+- set up tunnel correctly in hybrid mode
+- check static route conflict
+- transfer IP/route earlier in OVS startup
+- only log matched svc with np (#1287)
+- fix underlay subnet in custom VPC
+- resync provider network status periodically
+- fix statefulset Pod deletion
+- Fix usage of ovn commands
+- continue of deletion for del pod failed when can't found vpc or subnet
+- fix OVS bridge with bond port in mode 6
+- replace ecmp dp_hash with hash by src_ip (#1289)
+- fix ips update
+- add check for pod update process
+- skip ping gateway for pods during live migration
+- modify ipam v6 release ip problem
+- fix SNAT/PR on Pod startup
+- update networkpolicy port process
+- append htbqos para in crd yaml
+- update flag parse in webhook
+
 ## 1.9.0 -- 2022/01/07
 
 ### New Feature
