@@ -33,14 +33,14 @@ var (
 )
 
 const (
-	NAT_GW_INIT             = "init"
-	NAT_GW_FLOATING_IP_SYNC = "floating-ip-sync"
-	NAT_GW_EIP_ADD          = "eip-add"
-	NAT_GW_EIP_DEL          = "eip-del"
-	NAT_GW_SNAT_SYNC        = "snat-sync"
-	NAT_GW_DNAT_SYNC        = "dnat-sync"
-	NAT_GW_SUBNET_ROUTE_ADD = "subnet-route-add"
-	NAT_GW_SUBNET_ROUTE_DEL = "subnet-route-del"
+	natGwInit           = "init"
+	natGwFloatingIpSync = "floating-ip-sync"
+	natGwEipAdd         = "eip-add"
+	natGwEipDel         = "eip-del"
+	natGwSnatSync       = "snat-sync"
+	natGwDnatSync       = "dnat-sync"
+	natGwSubnetRouteAdd = "subnet-route-add"
+	natGwSubnetRouteDel = "subnet-route-del"
 )
 
 func genNatGwDpName(name string) string {
@@ -343,7 +343,7 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 	if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; hasInit {
 		return nil
 	}
-	if err = c.execNatGwRules(pod, NAT_GW_INIT, nil); err != nil {
+	if err = c.execNatGwRules(pod, natGwInit, nil); err != nil {
 		klog.Errorf("failed to init vpc nat gateway, err: %v", err)
 		return err
 	}
@@ -404,7 +404,7 @@ func (c *Controller) handleUpdateVpcEips(natGwKey string) error {
 		for _, rule := range toBeDelEips {
 			delRules = append(delRules, rule.EipCIDR)
 		}
-		if err = c.execNatGwRules(pod, NAT_GW_EIP_DEL, delRules); err != nil {
+		if err = c.execNatGwRules(pod, natGwEipDel, delRules); err != nil {
 			klog.Errorf("failed to exec nat gateway rule, err: %v", err)
 			return err
 		}
@@ -415,7 +415,7 @@ func (c *Controller) handleUpdateVpcEips(natGwKey string) error {
 		for _, rule := range gw.Spec.Eips {
 			addRules = append(addRules, fmt.Sprintf("%s,%s", rule.EipCIDR, rule.Gateway))
 		}
-		if err = c.execNatGwRules(pod, NAT_GW_EIP_ADD, addRules); err != nil {
+		if err = c.execNatGwRules(pod, natGwEipAdd, addRules); err != nil {
 			return err
 		}
 	}
@@ -468,7 +468,7 @@ func (c *Controller) handleUpdateVpcFloatingIp(natGwKey string) error {
 	for _, rule := range gw.Spec.FloatingIpRules {
 		rules = append(rules, fmt.Sprintf("%s,%s", rule.Eip, rule.InternalIp))
 	}
-	if err = c.execNatGwRules(pod, NAT_GW_FLOATING_IP_SYNC, rules); err != nil {
+	if err = c.execNatGwRules(pod, natGwFloatingIpSync, rules); err != nil {
 		klog.Errorf("failed to exec nat gateway rule, err: %v", err)
 		return err
 	}
@@ -518,7 +518,7 @@ func (c *Controller) handleUpdateVpcSnat(natGwKey string) error {
 	for _, rule := range gw.Spec.SnatRules {
 		rules = append(rules, fmt.Sprintf("%s,%s", rule.Eip, rule.InternalCIDR))
 	}
-	if err = c.execNatGwRules(pod, NAT_GW_SNAT_SYNC, rules); err != nil {
+	if err = c.execNatGwRules(pod, natGwSnatSync, rules); err != nil {
 		klog.Errorf("failed to exec nat gateway rule, err: %v", err)
 		return err
 	}
@@ -567,7 +567,7 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 	for _, rule := range gw.Spec.DnatRules {
 		rules = append(rules, fmt.Sprintf("%s,%s,%s,%s,%s", rule.Eip, rule.ExternalPort, rule.Protocol, rule.InternalIp, rule.InternalPort))
 	}
-	if err = c.execNatGwRules(pod, NAT_GW_DNAT_SYNC, rules); err != nil {
+	if err = c.execNatGwRules(pod, natGwDnatSync, rules); err != nil {
 		klog.Errorf("failed to exec nat gateway rule, err: %v", err)
 		return err
 	}
@@ -643,7 +643,7 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 		for _, cidr := range newCIDRS {
 			rules = append(rules, fmt.Sprintf("%s,%s", cidr, gwSubnet.Spec.Gateway))
 		}
-		if err = c.execNatGwRules(pod, NAT_GW_SUBNET_ROUTE_ADD, rules); err != nil {
+		if err = c.execNatGwRules(pod, natGwSubnetRouteAdd, rules); err != nil {
 			klog.Errorf("failed to exec nat gateway rule, err: %v", err)
 			return err
 		}
@@ -651,7 +651,7 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 
 	if len(toBeDelCIDRs) > 0 {
 		for _, cidr := range toBeDelCIDRs {
-			if err = c.execNatGwRules(pod, NAT_GW_SUBNET_ROUTE_DEL, []string{cidr}); err != nil {
+			if err = c.execNatGwRules(pod, natGwSubnetRouteDel, []string{cidr}); err != nil {
 				klog.Errorf("failed to exec nat gateway rule, err: %v", err)
 				return err
 			}
