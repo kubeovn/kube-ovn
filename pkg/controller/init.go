@@ -187,7 +187,6 @@ func (c *Controller) initNodeSwitch() error {
 	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(context.Background(), &nodeSubnet, metav1.CreateOptions{})
 	if err != nil {
 		klog.Errorf("failed to create subnet %s: %v", c.config.NodeSwitch, err)
-		
 		return err
 	}
 	return err
