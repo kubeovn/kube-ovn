@@ -185,6 +185,10 @@ func (c *Controller) initNodeSwitch() error {
 	}
 
 	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(context.Background(), &nodeSubnet, metav1.CreateOptions{})
+	if err != nil {
+		klog.Errorf("failed to create subnet %s: %v", c.config.NodeSwitch, err)
+		return err
+	}
 	return err
 }
 
@@ -456,6 +460,10 @@ func (c *Controller) initDefaultProviderNetwork() error {
 	}()
 
 	_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Create(context.Background(), &pn, metav1.CreateOptions{})
+	if err != nil {
+		klog.Errorf("failed to create provider network %s: %v", c.config.DefaultProviderName, err)
+		return err
+	}
 	return err
 }
 
@@ -491,6 +499,10 @@ func (c *Controller) initDefaultVlan() error {
 	}
 
 	_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Create(context.Background(), &defaultVlan, metav1.CreateOptions{})
+	if err != nil {
+		klog.Errorf("failed to create vlan %s: %v", defaultVlan, err)
+		return err
+	}
 	return err
 }
 
