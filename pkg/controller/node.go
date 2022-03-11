@@ -349,14 +349,15 @@ func (c *Controller) handleNodeAnnotationsForProviderNetworks(node *v1.Node) err
 				if newPn == nil {
 					newPn = pn.DeepCopy()
 				}
-				var index int
-				for index = range newPn.Spec.CustomInterfaces {
-					if newPn.Spec.CustomInterfaces[index].Interface == customInterface {
+				var index *int
+				for i := range newPn.Spec.CustomInterfaces {
+					if newPn.Spec.CustomInterfaces[i].Interface == customInterface {
+						index = &i
 						break
 					}
 				}
-				if index != len(newPn.Spec.CustomInterfaces) {
-					newPn.Spec.CustomInterfaces[index].Nodes = append(newPn.Spec.CustomInterfaces[index].Nodes, node.Name)
+				if index != nil {
+					newPn.Spec.CustomInterfaces[*index].Nodes = append(newPn.Spec.CustomInterfaces[*index].Nodes, node.Name)
 				} else {
 					ci := kubeovnv1.CustomInterface{Interface: customInterface, Nodes: []string{node.Name}}
 					newPn.Spec.CustomInterfaces = append(newPn.Spec.CustomInterfaces, ci)
