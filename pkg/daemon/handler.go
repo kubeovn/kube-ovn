@@ -4,15 +4,19 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/emicklei/go-restful/v3"
+	"golang.org/x/sys/unix"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
@@ -120,6 +124,15 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		}
 		if podRequest.DeviceID != "" {
 			nicType = util.OffloadType
+		} else if podRequest.VhostUserSocketVolumeName != "" {
+			nicType = util.DpdkType
+			if err = createShortSharedDir(pod, podRequest.VhostUserSocketVolumeName); err != nil {
+				klog.Error(err.Error())
+				if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()}); err != nil {
+					klog.Errorf("failed to write response: %v", err)
+				}
+				return
+			}
 		} else {
 			nicType = pod.Annotations[fmt.Sprintf(util.PodNicAnnotationTemplate, podRequest.Provider)]
 		}
@@ -216,6 +229,8 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s, custom routes %v", ifName, macAddr, ipAddr, cidr, gw, podRequest.Routes)
 		if nicType == util.InternalType {
 			podNicName, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, podRequest.Routes, ingress, egress, priority, podRequest.DeviceID, nicType, gatewayCheckMode)
+		} else if nicType == util.DpdkType {
+			err = csh.configureDpdkNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, ingress, egress, priority, path.Join("/var", getShortSharedDir(pod.UID, podRequest.VhostUserSocketVolumeName)), podRequest.VhostUserSocketName)
 		} else {
 			podNicName = ifName
 			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, podRequest.Routes, ingress, egress, priority, podRequest.DeviceID, nicType, gatewayCheckMode)
@@ -248,6 +263,66 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	if err := resp.WriteHeaderAndEntity(http.StatusOK, request.CniResponse{Protocol: util.CheckProtocol(cidr), IpAddress: ip, MacAddress: macAddr, CIDR: cidr, Gateway: gw, PodNicName: podNicName}); err != nil {
 		klog.Errorf("failed to write response, %v", err)
 	}
+}
+
+func createShortSharedDir(pod *v1.Pod, volumeName string) (err error) {
+	var volume *v1.Volume
+	for index, v := range pod.Spec.Volumes {
+		if v.Name == volumeName {
+			volume = &pod.Spec.Volumes[index]
+			break
+		}
+	}
+	if volume == nil {
+		return fmt.Errorf("can not found volume %s in pod %s", volumeName, pod.Name)
+	}
+	if volume.EmptyDir == nil {
+		return fmt.Errorf("volume %s is not empty dir", volume.Name)
+	}
+	originSharedDir := fmt.Sprintf("/var/lib/kubelet/pods/%s/volumes/kubernetes.io~empty-dir/%s", pod.UID, volumeName)
+	newSharedDir := getShortSharedDir(pod.UID, volumeName)
+	if _, err = os.Stat(newSharedDir); os.IsNotExist(err) {
+		err = os.MkdirAll(newSharedDir, 0750)
+		if err != nil {
+			return fmt.Errorf("createSharedDir: Failed to create dir (%s): %v", newSharedDir, err)
+		}
+
+		if strings.Contains(newSharedDir, util.DefaultHostVhostuserBaseDir) {
+			klog.Infof("createSharedDir: Mount from %s to %s", originSharedDir, newSharedDir)
+			err = unix.Mount(originSharedDir, newSharedDir, "", unix.MS_BIND, "")
+			if err != nil {
+				return fmt.Errorf("createSharedDir: Failed to bind mount: %s", err)
+			}
+		}
+		return nil
+
+	}
+	return err
+
+}
+
+func removeShortSharedDir(pod *v1.Pod, volumeName string) (err error) {
+	sharedDir := getShortSharedDir(pod.UID, volumeName)
+	if _, err = os.Stat(sharedDir); os.IsNotExist(err) {
+		klog.Errorf("shared directory %s does not exist to unmount, %s", sharedDir, err)
+		return nil
+	}
+	err = unix.Unmount(sharedDir, 0)
+	if err != nil {
+		klog.Errorf("Failed to unmount dir: %v", err)
+		return err
+	}
+	err = os.Remove(sharedDir)
+	if err != nil {
+		klog.Errorf("Failed to remove dir: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+func getShortSharedDir(uid types.UID, volumeName string) string {
+	return path.Join(util.DefaultHostVhostuserBaseDir, string(uid), volumeName)
 }
 
 func (csh cniServerHandler) createOrUpdateIPCr(podRequest request.CniRequest, subnet, ip, macAddr string) error {
@@ -357,6 +432,16 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		var nicType string
 		if podRequest.DeviceID != "" {
 			nicType = util.OffloadType
+		} else if podRequest.VhostUserSocketVolumeName != "" {
+			nicType = util.DpdkType
+			if err = removeShortSharedDir(pod, podRequest.VhostUserSocketVolumeName); err != nil {
+				klog.Error(err.Error())
+				if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()}); err != nil {
+					klog.Errorf("failed to write response: %v", err)
+				}
+				return
+			}
+
 		} else {
 			nicType = pod.Annotations[fmt.Sprintf(util.PodNicAnnotationTemplate, podRequest.Provider)]
 		}

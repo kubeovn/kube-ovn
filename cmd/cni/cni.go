@@ -48,16 +48,18 @@ func cmdAdd(args *skel.CmdArgs) error {
 
 	client := request.NewCniServerClient(netConf.ServerSocket)
 	response, err := client.Add(request.CniRequest{
-		CniType:      netConf.Type,
-		PodName:      podName,
-		PodNamespace: podNamespace,
-		ContainerID:  args.ContainerID,
-		NetNs:        args.Netns,
-		IfName:       args.IfName,
-		Provider:     netConf.Provider,
-		Routes:       netConf.Routes,
-		DeviceID:     netConf.DeviceID,
-		VfDriver:     netConf.VfDriver,
+		CniType:                   netConf.Type,
+		PodName:                   podName,
+		PodNamespace:              podNamespace,
+		ContainerID:               args.ContainerID,
+		NetNs:                     args.Netns,
+		IfName:                    args.IfName,
+		Provider:                  netConf.Provider,
+		Routes:                    netConf.Routes,
+		DeviceID:                  netConf.DeviceID,
+		VfDriver:                  netConf.VfDriver,
+		VhostUserSocketVolumeName: netConf.VhostUserSocketVolumeName,
+		VhostUserSocketName:       netConf.VhostUserSocketName,
 	})
 	if err != nil {
 		return err
@@ -131,14 +133,15 @@ func cmdDel(args *skel.CmdArgs) error {
 	}
 
 	return client.Del(request.CniRequest{
-		CniType:      netConf.Type,
-		PodName:      podName,
-		PodNamespace: podNamespace,
-		ContainerID:  args.ContainerID,
-		NetNs:        args.Netns,
-		IfName:       args.IfName,
-		Provider:     netConf.Provider,
-		DeviceID:     netConf.DeviceID,
+		CniType:                   netConf.Type,
+		PodName:                   podName,
+		PodNamespace:              podNamespace,
+		ContainerID:               args.ContainerID,
+		NetNs:                     args.Netns,
+		IfName:                    args.IfName,
+		Provider:                  netConf.Provider,
+		DeviceID:                  netConf.DeviceID,
+		VhostUserSocketVolumeName: netConf.VhostUserSocketVolumeName,
 	})
 }
 
@@ -156,6 +159,9 @@ type netConf struct {
 	// PciAddrs in case of using sriov
 	DeviceID string `json:"deviceID"`
 	VfDriver string `json:"vf_driver"`
+	// for dpdk
+	VhostUserSocketVolumeName string `json:"vhost_user_socket_volume_name"`
+	VhostUserSocketName       string `json:"vhost_user_socket_name"`
 }
 
 func loadNetConf(bytes []byte) (*netConf, string, error) {

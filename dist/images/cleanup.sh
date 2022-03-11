@@ -49,6 +49,7 @@ done
 kubectl delete --ignore-not-found svc ovn-nb ovn-sb ovn-northd -n kube-system
 kubectl delete --ignore-not-found deploy ovn-central -n kube-system
 kubectl delete --ignore-not-found ds ovs-ovn -n kube-system
+kubectl delete --ignore-not-found ds ovs-ovn-dpdk -n kube-system
 kubectl delete --ignore-not-found secret kube-ovn-tls -n kube-system
 kubectl delete --ignore-not-found sa ovn -n kube-system
 kubectl delete --ignore-not-found clusterrole system:ovn

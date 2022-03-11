@@ -314,17 +314,17 @@ func ValidatePortVendor(port string) (bool, error) {
 	return util.ContainsString(output, port), err
 }
 
-//config mirror for interface by pod annotations and install param
+// config mirror for interface by pod annotations and install param
 func ConfigInterfaceMirror(globalMirror bool, open string, iface string) error {
 	if !globalMirror {
-		//find interface name for port
+		// find interface name for port
 		interfaceList, err := ovsFind("interface", "name", fmt.Sprintf("external-ids:iface-id=%s", iface))
 		if err != nil {
 			return err
 		}
 		for _, ifName := range interfaceList {
-			//ifName example: xxx_h
-			//find port uuid by interface name
+			// ifName example: xxx_h
+			// find port uuid by interface name
 			portUUIDs, err := ovsFind("port", "_uuid", fmt.Sprintf("name=%s", ifName))
 			if err != nil {
 				return err
@@ -334,7 +334,7 @@ func ConfigInterfaceMirror(globalMirror bool, open string, iface string) error {
 			}
 			portId := portUUIDs[0]
 			if open == "true" {
-				//add port to mirror
+				// add port to mirror
 				err = ovsAdd("mirror", util.MirrorDefaultName, "select_dst_port", portId)
 				if err != nil {
 					return err
@@ -352,7 +352,7 @@ func ConfigInterfaceMirror(globalMirror bool, open string, iface string) error {
 				}
 				for _, mirrorPortIds := range mirrorPorts {
 					if strings.Contains(mirrorPortIds, portId) {
-						//remove port from mirror
+						// remove port from mirror
 						_, err := Exec("remove", "mirror", util.MirrorDefaultName, "select_dst_port", portId)
 						if err != nil {
 							return err
@@ -744,4 +744,12 @@ func ListQosQueueIds() (map[string]string, error) {
 		result[qosId] = queueId
 	}
 	return result, nil
+}
+
+func IsUserspaceDataPath() (is bool, err error) {
+	dp, err := ovsFind("bridge", "datapath_type", "name=br-int")
+	if err != nil {
+		return false, err
+	}
+	return len(dp) > 0 && dp[0] == "netdev", nil
 }

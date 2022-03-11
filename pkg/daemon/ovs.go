@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -28,6 +30,31 @@ import (
 const gatewayCheckMaxRetry = 200
 
 var pciAddrRegexp = regexp.MustCompile(`\b([0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}.\d{1}\S*)`)
+
+func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway, ingress, egress, priority, sharedDir, socketName string) error {
+	hostNicName, _ := generateNicName(containerID, ifName)
+
+	ipStr := util.GetIpWithoutMask(ip)
+	ifaceID := ovs.PodNameToPortName(podName, podNamespace, provider)
+	ovs.CleanDuplicatePort(ifaceID)
+	// Add veth pair host end to ovs port
+	output, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", hostNicName, "--",
+		"set", "interface", hostNicName,
+		"type=dpdkvhostuserclient",
+		fmt.Sprintf("options:vhost-server-path=%s", path.Join(sharedDir, socketName)),
+		fmt.Sprintf("external_ids:iface-id=%s", ifaceID),
+		fmt.Sprintf("external_ids:pod_name=%s", podName),
+		fmt.Sprintf("external_ids:pod_namespace=%s", podNamespace),
+		fmt.Sprintf("external_ids:ip=%s", ipStr),
+		fmt.Sprintf("external_ids:pod_netns=%s", netns))
+	if err != nil {
+		return fmt.Errorf("add nic to ovs failed %v: %q", err, output)
+	}
+	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress, priority); err != nil {
+		return err
+	}
+	return nil
+}
 
 func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute bool, routes []request.Route, ingress, egress, priority, DeviceID, nicType string, gwCheckMode int) error {
 	var err error
@@ -75,6 +102,17 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	if containerNicName == "" {
 		return nil
 	}
+	isUserspaceDP, err := ovs.IsUserspaceDataPath()
+	if err != nil {
+		return err
+	}
+	if isUserspaceDP {
+		// turn off tx checksum
+		if err = turnOffNicTxChecksum(containerNicName); err != nil {
+			return err
+		}
+	}
+
 	podNS, err := ns.GetNS(netns)
 	if err != nil {
 		return fmt.Errorf("failed to open netns %q: %v", netns, err)
@@ -1059,6 +1097,18 @@ func setVfMac(deviceID string, vfIndex int, mac string) error {
 	}
 	if err := netlink.LinkSetVfHardwareAddr(pfLink, vfIndex, macAddr); err != nil {
 		return fmt.Errorf("can not set mac address to vf nic:%s vf:%d %v", pfName, vfIndex, err)
+	}
+	return nil
+}
+
+func turnOffNicTxChecksum(nicName string) (err error) {
+	start := time.Now()
+	args := []string{"-K", nicName, "tx", "off"}
+	output, err := exec.Command("ethtool", args...).CombinedOutput()
+	elapsed := float64((time.Since(start)) / time.Millisecond)
+	klog.V(4).Infof("command %s %s in %vms", "ethtool", strings.Join(args, " "), elapsed)
+	if err != nil {
+		return fmt.Errorf("failed to turn off nic tx checksum, output %s, err %s", string(output), err.Error())
 	}
 	return nil
 }
