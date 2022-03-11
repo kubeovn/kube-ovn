@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+DPDK_TUNNEL_IFACE=${DPDK_TUNNEL_IFACE:-br-phy}
+
 OVS_DPDK_CONFIG_FILE=/opt/ovs-config/ovs-dpdk-config
 if ! test -f "$OVS_DPDK_CONFIG_FILE"; then
     echo "missing ovs dpdk config"
@@ -54,19 +56,19 @@ ovs-ctl --protocol=udp --dport=6081 enable-protocol
 
 
 
-if ! ovs-vsctl br-exists br-phy; then
-ovs-vsctl --may-exist add-br br-phy \
-    -- set Bridge br-phy datapath_type=netdev \
-    -- br-set-external-id br-phy bridge-id br-phy \
-    -- set bridge br-phy fail-mode=standalone
+if ! ovs-vsctl br-exists ${DPDK_TUNNEL_IFACE}; then
+ovs-vsctl --may-exist add-br ${DPDK_TUNNEL_IFACE} \
+    -- set Bridge ${DPDK_TUNNEL_IFACE} datapath_type=netdev \
+    -- br-set-external-id ${DPDK_TUNNEL_IFACE} bridge-id ${DPDK_TUNNEL_IFACE} \
+    -- set bridge ${DPDK_TUNNEL_IFACE} fail-mode=standalone
 
-ovs-vsctl --timeout 10 add-port br-phy dpdk0 \
+ovs-vsctl --timeout 10 add-port ${DPDK_TUNNEL_IFACE} dpdk0 \
   -- set Interface dpdk0 type=dpdk options:dpdk-devargs=${DPDK_DEV}
 
-ip addr add ${ENCAP_IP} dev br-phy
+ip addr add ${ENCAP_IP} dev ${DPDK_TUNNEL_IFACE}
 fi
 
-ip link set br-phy up
+ip link set ${DPDK_TUNNEL_IFACE} up
 
 ovs-vsctl --may-exist add-br br-int \
   -- set Bridge br-int datapath_type=netdev \

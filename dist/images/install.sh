@@ -16,6 +16,8 @@ ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-true}
 # The nic to support container network can be a nic name or a group of regex
 # separated by comma, if empty will use the nic that the default route use
 IFACE=${IFACE:-}
+# Specifies the name of the dpdk tunnel iface.
+DPDK_TUNNEL_IFACE=${DPDK_TUNNEL_IFACE:-br-phy}
 
 CNI_CONF_DIR="/etc/cni/net.d"
 CNI_BIN_DIR="/opt/cni/bin"
@@ -1882,6 +1884,8 @@ spec:
               value: "$HW_OFFLOAD"
             - name: TUNNEL_TYPE
               value: "$TUNNEL_TYPE"
+            - name: DPDK_TUNNEL_IFACE
+              value: "$DPDK_TUNNEL_IFACE"
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
@@ -2183,6 +2187,7 @@ spec:
           - --encap-checksum=true
           - --service-cluster-ip-range=$SVC_CIDR
           - --iface=${IFACE}
+          - --dpdk-tunnel-iface=${DPDK_TUNNEL_IFACE}
           - --network-type=$NETWORK_TYPE
           - --default-interface-name=$VLAN_INTERFACE_NAME
           - --logtostderr=false

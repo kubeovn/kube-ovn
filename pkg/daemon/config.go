@@ -27,6 +27,7 @@ import (
 // Configuration is the daemon conf
 type Configuration struct {
 	Iface                   string
+	DPDKTunnelIface         string
 	MTU                     int
 	MSS                     int
 	EnableMirror            bool
@@ -52,6 +53,7 @@ type Configuration struct {
 func ParseFlags(nicBridgeMappings map[string]string) (*Configuration, error) {
 	var (
 		argIface                 = pflag.String("iface", "", "The iface used to inter-host pod communication, can be a nic name or a group of regex separated by comma (default the default route iface)")
+		argDPDKTunnelIface       = pflag.String("dpdk-tunnel-iface", "br-phy", "Specifies the name of the dpdk tunnel iface.")
 		argMTU                   = pflag.Int("mtu", 0, "The MTU used by pod iface in overlay networks (default iface MTU - 100)")
 		argEnableMirror          = pflag.Bool("enable-mirror", false, "Enable traffic mirror (default false)")
 		argMirrorNic             = pflag.String("mirror-iface", "mirror0", "The mirror nic name that will be created by kube-ovn")
@@ -97,6 +99,7 @@ func ParseFlags(nicBridgeMappings map[string]string) (*Configuration, error) {
 	}
 	config := &Configuration{
 		Iface:                   *argIface,
+		DPDKTunnelIface:         *argDPDKTunnelIface,
 		MTU:                     *argMTU,
 		EnableMirror:            *argEnableMirror,
 		MirrorNic:               *argMirrorNic,
@@ -147,7 +150,7 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 	isDPDKNode := node.GetLabels()[util.OvsDpTypeLabel] == "userspace"
 
 	if isDPDKNode {
-		config.Iface = "br-phy"
+		config.Iface = config.DPDKTunnelIface
 	}
 	if config.Iface == "" {
 		podIP, ok := os.LookupEnv("POD_IP")
