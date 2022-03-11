@@ -3,22 +3,22 @@
 This document describes how to run Kube-OVN with nodes which run ovs-dpdk or ovs-kernel
 
 ## Prerequisite
-Node which run ovs-dpdk must have a net card bound to the dpdk driver.
-Hugepages on the host.
-## Label nodes used run ovs-dpdk
+* Node which runs ovs-dpdk must have a net card bound to the dpdk driver.
+* Hugepages on the host.
+## Label nodes that need to run ovs-dpdk
 ```bash
 kubectl label nodes <node> ovn.kubernetes.io/ovs_dp_type="userspace"
 ```
 ## Set up net card
-We use driverctl to persist the device driver configuration.
+We use `driverctl`                                                                                           to persist the device driver configuration.
 Here is an example to bind dpdk driver to a net card.
 ```bash
 driverctl set-override 0000:00:0b.0 uio_pci_generic
 ```
-For other drivers, please refer to https://www.dpdk.org/
+For other drivers, please refer to https://www.dpdk.org/.
 
 ## configrue node
-Edit the configuration file named ovs-dpdk-config on the node that needs to run ovs-dpdk. The configuration file needs to be placed in the /opt/ovs-config directory.
+Edit the configuration file named `ovs-dpdk-config` on the node that needs to run ovs-dpdk. The configuration file needs to be placed in the `/opt/ovs-config` directory.
 ```bash
 # specify encap IP
 ENCAP_IP=192.168.122.193/24
@@ -28,7 +28,7 @@ DPDK_DEV=0000:00:0b.0
 
 
 ## Set up Kube-OVN
-Just run install.sh --with-hybrid-dpdk
+Just run `install.sh --with-hybrid-dpdk`
 
 ## How to use
 Here is an example to create a vhost-user app to use userspace datapath. We create a virtual machine using vhostuser and test if it can access the Internet. 

@@ -125,8 +125,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			nicType = util.OffloadType
 		} else if podRequest.VhostUserSocketVolumeName != "" {
 			nicType = util.DpdkType
-			err = createShortSharedDir(pod, podRequest.VhostUserSocketVolumeName)
-			if err != nil {
+			if err = createShortSharedDir(pod, podRequest.VhostUserSocketVolumeName); err != nil {
 				klog.Error(err.Error())
 				if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()}); err != nil {
 					klog.Errorf("failed to write response: %v", err)
@@ -267,15 +266,14 @@ func createShortSharedDir(pod *v1.Pod, volumeName string) (err error) {
 		}
 	}
 	if volume == nil {
-		return fmt.Errorf("can not fount volume %s in pod %s", volumeName, pod.Name)
+		return fmt.Errorf("can not found volume %s in pod %s", volumeName, pod.Name)
 	}
 	if volume.EmptyDir == nil {
 		return fmt.Errorf("volume %s is not empty dir", volume.Name)
 	}
 	originSharedDir := fmt.Sprintf("/var/lib/kubelet/pods/%s/volumes/kubernetes.io~empty-dir/%s", pod.UID, volumeName)
 	newSharedDir := getShortSharedDir(pod.UID, volumeName)
-	_, err = os.Stat(newSharedDir)
-	if os.IsNotExist(err) {
+	if _, err = os.Stat(newSharedDir); os.IsNotExist(err) {
 		err = os.MkdirAll(newSharedDir, 0750)
 		if err != nil {
 			return fmt.Errorf("createSharedDir: Failed to create dir (%s): %v", newSharedDir, err)
@@ -297,9 +295,8 @@ func createShortSharedDir(pod *v1.Pod, volumeName string) (err error) {
 
 func removeShortSharedDir(pod *v1.Pod, volumeName string) (err error) {
 	sharedDir := getShortSharedDir(pod.UID, volumeName)
-	_, err = os.Stat(sharedDir)
-	if os.IsNotExist(err) {
-		klog.Errorf("shared directory %s does not exist to unmount", sharedDir)
+	if _, err = os.Stat(sharedDir); os.IsNotExist(err) {
+		klog.Errorf("shared directory %s does not exist to unmount, %s", sharedDir, err)
 		return nil
 	}
 	err = unix.Unmount(sharedDir, 0)
@@ -428,8 +425,7 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 			nicType = util.OffloadType
 		} else if podRequest.VhostUserSocketVolumeName != "" {
 			nicType = util.DpdkType
-			err = removeShortSharedDir(pod, podRequest.VhostUserSocketVolumeName)
-			if err != nil {
+			if err = removeShortSharedDir(pod, podRequest.VhostUserSocketVolumeName); err != nil {
 				klog.Error(err.Error())
 				if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()}); err != nil {
 					klog.Errorf("failed to write response: %v", err)
