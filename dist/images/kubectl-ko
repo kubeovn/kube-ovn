@@ -462,7 +462,7 @@ dbtool(){
           done
 
           echo "backup nb db file"
-          docker run -it -v /etc/origin/ovn:/etc/ovn $REGISTRY/kube-ovn:$VERSION bash -c "ovsdb-tool cluster-to-standalone  /etc/ovn/ovnnb_db_standalone.db  /etc/ovn/ovnnb_db.db"
+          docker run -it -v /etc/origin/ovn:/etc/ovn $REGISTRY/kube-ovn:$KUBE_OVN_VERSION bash -c "ovsdb-tool cluster-to-standalone  /etc/ovn/ovnnb_db_standalone.db  /etc/ovn/ovnnb_db.db"
 
           # mv all db files
           for pod in ${podNameArray[@]}

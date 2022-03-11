@@ -1,7 +1,7 @@
 #!/bin/bash
 set -eo pipefail
 
-IMAGE=kubeovn/kube-ovn:v1.9.0
+IMAGE=kubeovn/kube-ovn:v1.9.1
 
 echo "[Step 0/8] Update CRD"
 cat <<EOF > kube-ovn-crd-1.9.yaml
@@ -874,11 +874,13 @@ set -euo pipefail
 KUBE_OVN_NS=kube-system
 OVN_NB_POD=
 OVN_SB_POD=
+KUBE_OVN_VERSION=
+REGISTRY="kubeovn"
 
 showHelp(){
   echo "kubectl ko {subcommand} [option...]"
   echo "Available Subcommands:"
-  echo "  [nb|sb] [status|kick|backup]     ovn-db operations show cluster status, kick stale server or backup database"
+  echo "  [nb|sb] [status|kick|backup|dbstatus|restore]     ovn-db operations show cluster status, kick stale server, backup database, get db consistency status or restore ovn nb db when met 'inconsistent data' error"
   echo "  nbctl [ovn-nbctl options ...]    invoke ovn-nbctl"
   echo "  sbctl [ovn-sbctl options ...]    invoke ovn-sbctl"
   echo "  vsctl {nodeName} [ovs-vsctl options ...]   invoke ovs-vsctl on the specified node"
@@ -1137,7 +1139,11 @@ diagnose(){
   kubectl get crd ips.kubeovn.io
   kubectl get crd vlans.kubeovn.io
   kubectl get crd provider-networks.kubeovn.io
-  kubectl get svc kube-dns -n kube-system
+  set +eu
+  if ! kubectl get svc kube-dns -n kube-system ; then
+     echo "Warning: kube-dns doesn't exist, maybe there is coredns service."
+  fi
+  set -eu
   kubectl get svc kubernetes -n default
   kubectl get sa -n kube-system ovn
   kubectl get clusterrole system:ovn
@@ -1230,6 +1236,12 @@ getOvnCentralPod(){
       exit 1
     fi
     OVN_SB_POD=$SB_POD
+    VERSION=$(kubectl  -n kube-system get pods -l ovn-sb-leader=true -o yaml | grep  "image: $REGISTRY/kube-ovn:" | head -n 1 | awk -F ':' '{print $3}')
+    if [ -z "$VERSION" ]; then
+          echo "kubeovn version not exists"
+          exit 1
+        fi
+    KUBE_OVN_VERSION=$VERSION
 }
 
 checkDaemonSet(){
@@ -1293,10 +1305,59 @@ dbtool(){
           kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovs-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/kick OVN_Northbound "$1"
           ;;
         backup)
-          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovsdb-tool cluster-to-standalone /tmp/ovnnb_db.$suffix.backup /etc/ovn/ovnnb_db.db
-          kubectl cp $KUBE_OVN_NS/$OVN_NB_POD:/tmp/ovnnb_db.$suffix.backup $(pwd)/ovnnb_db.$suffix.backup
-          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- rm -f /tmp/ovnnb_db.$suffix.backup
+          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovsdb-tool cluster-to-standalone /etc/ovn/ovnnb_db.$suffix.backup /etc/ovn/ovnnb_db.db
+          kubectl cp $KUBE_OVN_NS/$OVN_NB_POD:/etc/ovn/ovnnb_db.$suffix.backup $(pwd)/ovnnb_db.$suffix.backup
+          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- rm -f /etc/ovn/ovnnb_db.$suffix.backup
           echo "backup ovn-$component db to $(pwd)/ovnnb_db.$suffix.backup"
+          ;;
+        dbstatus)
+          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/get-db-storage-status OVN_Northbound
+          ;;
+        restore)
+          # set ovn-central replicas to 0
+          replicas=$(kubectl get deployment -n $KUBE_OVN_NS ovn-central -o jsonpath={.spec.replicas})
+          kubectl scale deployment -n $KUBE_OVN_NS ovn-central --replicas=0
+          echo "ovn-central original replicas is $replicas"
+
+          # backup ovn-nb db
+          declare nodeIpArray
+          declare podNameArray
+          nodeIps=`kubectl get node -lkube-ovn/role=master -o wide | grep -v "INTERNAL-IP" | awk '{print $6}'`
+          firstIP=${nodeIps[0]}
+          podNames=`kubectl get pod -n $KUBE_OVN_NS | grep ovs-ovn | awk '{print $1}'`
+          echo "first nodeIP is $firstIP"
+
+          i=0
+          for nodeIp in $nodeIps
+          do
+            for pod in $podNames
+            do
+              hostip=$(kubectl get pod -n $KUBE_OVN_NS $pod -o jsonpath={.status.hostIP})
+              if [ $nodeIp = $hostip ]; then
+                nodeIpArray[$i]=$nodeIp
+                podNameArray[$i]=$pod
+                i=`expr $i + 1`
+                echo "ovs-ovn pod on node $nodeIp is $pod"
+                break
+              fi
+            done
+          done
+
+          echo "backup nb db file"
+          docker run -it -v /etc/origin/ovn:/etc/ovn $REGISTRY/kube-ovn:$KUBE_OVN_VERSION bash -c "ovsdb-tool cluster-to-standalone  /etc/ovn/ovnnb_db_standalone.db  /etc/ovn/ovnnb_db.db"
+
+          # mv all db files
+          for pod in ${podNameArray[@]}
+          do
+            kubectl exec -it -n $KUBE_OVN_NS $pod -- mv /etc/ovn/ovnnb_db.db /tmp
+            kubectl exec -it -n $KUBE_OVN_NS $pod -- mv /etc/ovn/ovnsb_db.db /tmp
+          done
+
+          # restore db and replicas
+          echo "restore nb db file, operate in pod ${podNameArray[0]}"
+          kubectl exec -it -n $KUBE_OVN_NS ${podNameArray[0]} -- mv /etc/ovn/ovnnb_db_standalone.db /etc/ovn/ovnnb_db.db
+          kubectl scale deployment -n $KUBE_OVN_NS ovn-central --replicas=$replicas
+          echo "finish restore nb db file and ovn-central replicas"
           ;;
         *)
           echo "unknown action $action"
@@ -1312,10 +1373,16 @@ dbtool(){
           kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovs-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/kick OVN_Southbound "$1"
           ;;
         backup)
-          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovsdb-tool cluster-to-standalone /tmp/ovnsb_db.$suffix.backup /etc/ovn/ovnsb_db.db
-          kubectl cp $KUBE_OVN_NS/$OVN_SB_POD:/tmp/ovnsb_db.$suffix.backup $(pwd)/ovnsb_db.$suffix.backup
-          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- rm -f /tmp/ovnsb_db.$suffix.backup
+          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovsdb-tool cluster-to-standalone /etc/ovn/ovnsb_db.$suffix.backup /etc/ovn/ovnsb_db.db
+          kubectl cp $KUBE_OVN_NS/$OVN_SB_POD:/etc/ovn/ovnsb_db.$suffix.backup $(pwd)/ovnsb_db.$suffix.backup
+          kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- rm -f /etc/ovn/ovnsb_db.$suffix.backup
           echo "backup ovn-$component db to $(pwd)/ovnsb_db.$suffix.backup"
+          ;;
+        dbstatus)
+          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/get-db-storage-status OVN_Southbound
+          ;;
+        restore)
+          echo "restore cmd is only used for nb db"
           ;;
         *)
           echo "unknown action $action"
