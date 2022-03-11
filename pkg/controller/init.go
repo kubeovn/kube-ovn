@@ -425,14 +425,15 @@ func (c *Controller) initDefaultProviderNetwork() error {
 			pn.Spec.ExcludeNodes = append(pn.Spec.ExcludeNodes, node.Name)
 			newNode = node.DeepCopy()
 		} else if s := node.Annotations[interfaceAnno]; s != "" {
-			var index int
-			for index = range pn.Spec.CustomInterfaces {
-				if pn.Spec.CustomInterfaces[index].Interface == s {
+			var index *int
+			for i := range pn.Spec.CustomInterfaces {
+				if pn.Spec.CustomInterfaces[i].Interface == s {
+					index = &i
 					break
 				}
 			}
-			if index != len(pn.Spec.CustomInterfaces) {
-				pn.Spec.CustomInterfaces[index].Nodes = append(pn.Spec.CustomInterfaces[index].Nodes, node.Name)
+			if index != nil {
+				pn.Spec.CustomInterfaces[*index].Nodes = append(pn.Spec.CustomInterfaces[*index].Nodes, node.Name)
 			} else {
 				ci := kubeovnv1.CustomInterface{Interface: s, Nodes: []string{node.Name}}
 				pn.Spec.CustomInterfaces = append(pn.Spec.CustomInterfaces, ci)
