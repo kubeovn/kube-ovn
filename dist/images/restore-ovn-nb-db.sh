@@ -9,13 +9,20 @@ echo "ovn-central original replicas is $replicas"
 # backup ovn-nb db
 declare nodeIpArray
 declare podNameArray
-nodeIps=`kubectl get node -lkube-ovn/role=master -o wide | grep -v "INTERNAL-IP" | awk '{print $6}'`
+declare nodeIps
+
+if [[ $(kubectl get deployment -n kube-system ovn-central -o jsonpath='{.spec.template.spec.containers[0].env[1]}') =~ "NODE_IPS" ]]; then
+  nodeIpVals=`kubectl get deployment -n kube-system ovn-central -o jsonpath='{.spec.template.spec.containers[0].env[1].value}'`
+  nodeIps=(${nodeIpVals//,/ })
+else
+  nodeIps=`kubectl get node -lkube-ovn/role=master -o wide | grep -v "INTERNAL-IP" | awk '{print $6}'`
+fi
 firstIP=${nodeIps[0]}
 podNames=`kubectl get pod -n $KUBE_OVN_NS | grep ovs-ovn | awk '{print $1}'`
 echo "first nodeIP is $firstIP"
 
 i=0
-for nodeIp in $nodeIps
+for nodeIp in ${nodeIps[@]}
 do
   for pod in $podNames
   do
