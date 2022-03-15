@@ -13,9 +13,15 @@ function exec_cmd() {
 }
 
 function init() {
+    lanCIDR=$1
     ip link set net1 up
-    exec_cmd "ip rule add iif net1 table $ROUTE_TABLE"
-    exec_cmd "ip rule add iif eth0 table $ROUTE_TABLE"
+    if [ $(ip rule show iif net1 | wc -l) -eq 0 ]; then
+        exec_cmd "ip rule add iif net1 table $ROUTE_TABLE"
+    fi
+    if [ $(ip rule show iif eth0 | wc -l) -eq 0 ]; then
+        exec_cmd "ip rule add iif eth0 table $ROUTE_TABLE"
+    fi
+    exec_cmd "ip route replace $lanCIDR dev eth0 table $ROUTE_TABLE"
 
     # add static chain
     iptables -t nat -N DNAT_FILTER
@@ -41,7 +47,7 @@ function add_vpc_internal_route() {
         cidr=${arr[0]}
         nextHop=${arr[1]}
 
-        exec_cmd "ip ro replace $cidr via $nextHop dev eth0 table $ROUTE_TABLE"
+        exec_cmd "ip route replace $cidr via $nextHop dev eth0 table $ROUTE_TABLE"
     done
 }
 
@@ -51,7 +57,7 @@ function del_vpc_internal_route() {
         arr=(${rule//,/ })
         cidr=${arr[0]}
 
-        exec_cmd "ip ro del $cidr table $ROUTE_TABLE"
+        exec_cmd "ip route del $cidr table $ROUTE_TABLE"
     done
 }
 
@@ -61,10 +67,13 @@ function add_eip() {
         arr=(${rule//,/ })
         eip=${arr[0]}
         eip_without_prefix=(${eip//\// })
+        eip_network=$(ipcalc -n $eip | awk -F '=' '{print $2}')
+        eip_prefix=$(ipcalc -p $eip | awk -F '=' '{print $2}')
         gateway=${arr[1]}
 
         exec_cmd "ip addr replace $eip dev net1"
-        exec_cmd "ip ro replace default via $gateway dev net1 table $ROUTE_TABLE"
+        exec_cmd "ip route replace $eip_network/$eip_prefix dev net1 table $ROUTE_TABLE"
+        exec_cmd "ip route replace default via $gateway dev net1 table $ROUTE_TABLE"
         exec_cmd "arping -c 3 -s $eip_without_prefix $gateway"
     done
 }
@@ -78,7 +87,6 @@ function del_eip() {
         if [ -n "$lines" ]; then
             exec_cmd "ip addr del $eip dev net1"
         fi
-
     done
 }
 
@@ -128,7 +136,7 @@ opt=$1
 case $opt in
  init)
         echo "init"
-        init
+        init $rules
         ;;
  subnet-route-add)
         echo "subnet-route-add $rules"
