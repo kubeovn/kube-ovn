@@ -1123,7 +1123,7 @@ spec:
               memory: 300Mi
             limits:
               cpu: 3
-              memory: 3Gi
+              memory: 4Gi
           volumeMounts:
             - mountPath: /var/run/openvswitch
               name: host-run-ovs
@@ -1594,7 +1594,7 @@ spec:
               memory: 200Mi
             limits:
               cpu: 3
-              memory: 3Gi
+              memory: 4Gi
           volumeMounts:
             - mountPath: /var/run/openvswitch
               name: host-run-ovs
