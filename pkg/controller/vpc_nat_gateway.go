@@ -318,12 +318,17 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 	}
 	c.vpcNatGwKeyMutex.Lock(key)
 	defer c.vpcNatGwKeyMutex.Unlock(key)
-	_, err := c.vpcNatGatewayLister.Get(key)
+	gw, err := c.vpcNatGatewayLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
+	}
+	subnet, err := c.subnetsLister.Get(gw.Spec.Subnet)
+	if err != nil {
+		klog.Errorf("failed to get subnet %s: %v", gw.Spec.Subnet, err)
+		return fmt.Errorf("failed to initialize vpc nat gateway %s: %v", key, err)
 	}
 
 	oripod, err := c.getNatGwPod(key)
@@ -343,7 +348,7 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 	if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; hasInit {
 		return nil
 	}
-	if err = c.execNatGwRules(pod, natGwInit, nil); err != nil {
+	if err = c.execNatGwRules(pod, natGwInit, []string{subnet.Spec.CIDRBlock}); err != nil {
 		klog.Errorf("failed to init vpc nat gateway, err: %v", err)
 		return err
 	}
@@ -641,7 +646,9 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	if len(newCIDRS) > 0 {
 		var rules []string
 		for _, cidr := range newCIDRS {
-			rules = append(rules, fmt.Sprintf("%s,%s", cidr, gwSubnet.Spec.Gateway))
+			if !util.CIDRContainIP(cidr, gwSubnet.Spec.Gateway) {
+				rules = append(rules, fmt.Sprintf("%s,%s", cidr, gwSubnet.Spec.Gateway))
+			}
 		}
 		if err = c.execNatGwRules(pod, natGwSubnetRouteAdd, rules); err != nil {
 			klog.Errorf("failed to exec nat gateway rule, err: %v", err)
