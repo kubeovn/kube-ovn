@@ -527,13 +527,20 @@ dbtool(){
           # backup ovn-nb db
           declare nodeIpArray
           declare podNameArray
-          nodeIps=`kubectl get node -lkube-ovn/role=master -o wide | grep -v "INTERNAL-IP" | awk '{print $6}'`
+          declare nodeIps
+
+          if [[ $(kubectl get deployment -n kube-system ovn-central -o jsonpath='{.spec.template.spec.containers[0].env[1]}') =~ "NODE_IPS" ]]; then
+            nodeIpVals=`kubectl get deployment -n kube-system ovn-central -o jsonpath='{.spec.template.spec.containers[0].env[1].value}'`
+            nodeIps=(${nodeIpVals//,/ })
+          else
+            nodeIps=`kubectl get node -lkube-ovn/role=master -o wide | grep -v "INTERNAL-IP" | awk '{print $6}'`
+          fi
           firstIP=${nodeIps[0]}
           podNames=`kubectl get pod -n $KUBE_OVN_NS | grep ovs-ovn | awk '{print $1}'`
           echo "first nodeIP is $firstIP"
 
           i=0
-          for nodeIp in $nodeIps
+          for nodeIp in ${nodeIps[@]}
           do
             for pod in $podNames
             do
@@ -549,7 +556,7 @@ dbtool(){
           done
 
           echo "backup nb db file"
-          docker run -it -v /etc/origin/ovn:/etc/ovn $REGISTRY/kube-ovn:$KUBE_OVN_VERSION bash -c "ovsdb-tool cluster-to-standalone  /etc/ovn/ovnnb_db_standalone.db  /etc/ovn/ovnnb_db.db"
+          kubectl exec -it -n $KUBE_OVN_NS ${podNameArray[0]} -- ovsdb-tool cluster-to-standalone  /etc/ovn/ovnnb_db_standalone.db  /etc/ovn/ovnnb_db.db
 
           # mv all db files
           for pod in ${podNameArray[@]}
