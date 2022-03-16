@@ -752,7 +752,7 @@ func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta]
 			continue
 		}
 
-		if !subnet.Spec.NatOutgoing ||
+		if subnet.Spec.ExternalEgressGateway == "" ||
 			subnet.Spec.Vpc != util.DefaultVpc ||
 			subnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
 			continue
