@@ -17,7 +17,7 @@ driverctl set-override 0000:00:0b.0 uio_pci_generic
 ```
 For other drivers, please refer to https://www.dpdk.org/.
 
-## configrue node
+## Configure node
 Edit the configuration file named `ovs-dpdk-config` on the node that needs to run ovs-dpdk. The configuration file needs to be placed in the `/opt/ovs-config` directory.
 ```bash
 # specify encap IP
@@ -57,7 +57,7 @@ Create a virtual machine image and tag it as vm-vhostuser:latest
 docker build . -t  vm-vhostuser:latest
 ```
 ```dockerfile
-From quay.io/kubevirt/virt-launcher:v0.46.1
+FROM quay.io/kubevirt/virt-launcher:v0.46.1
 
 # wget http://cloud.centos.org/centos/7/images/CentOS-7-x86_64-GenericCloud.qcow2
 COPY CentOS-7-x86_64-GenericCloud.qcow2 /var/lib/libvirt/images/CentOS-7-x86_64-GenericCloud.qcow2
