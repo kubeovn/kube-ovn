@@ -1,5 +1,5 @@
 # syntax = docker/dockerfile:experimental
-FROM kubeovn/kube-ovn-base:v1.10.0
+FROM kubeovn/kube-ovn-base:v1.10.0-amd64
 
 COPY *.sh /kube-ovn/
 COPY kubectl-ko /kube-ovn/kubectl-ko
@@ -9,9 +9,9 @@ COPY grace_stop_ovn_controller /usr/share/ovn/scripts/grace_stop_ovn_controller
 
 WORKDIR /kube-ovn
 
-COPY kube-ovn /kube-ovn/kube-ovn
 COPY kube-ovn-cmd /kube-ovn/kube-ovn-cmd
-RUN ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-controller && \
+RUN ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn && \
+    ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-controller && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-daemon && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-monitor && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-pinger && \
