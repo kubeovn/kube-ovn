@@ -1,27 +1,44 @@
 # Kube-OVN RoadMap
 
-## v1.9.0 -- Jan 2022
+## v1.10.0 -- April 2022
+
+### Subnet Enhancement
+- Support to add multiple subnets for one namespace
+- Use lr-policy to optimize ovn flows
 
 ### VPC Enhancement
-- Namespaced level VPC 
-- Security group support
-- L4 load balancer for custom VPC
-- QoS for NAT gateway
-
-### Performance Optimization
-- OVN logical flow simplification
-- FastPath for 4.x kernel
-- Replace Service and Networkpolicy implement from OVN to eBPF
-- Control plan profiling
-
-### Network QoS
-- Support traffic priority for different workloads
-- Inject network loss and latency for chaos engineering
+- VPC peering
 
 ### Virtualization Enhancement
-- Kubevirt live migration with static IP
-- Kubevirt/Kata high performance type nic
+- OVS-DPDK support
+- Static IP for VM lifecycle
 
-### Monitoring and operation
-- Cilium monitoring and application level tracing integration
-- Disaster recovery when all OVN db lost
+### Monitoring and Operation
+- Command for restore ovn db
+- Metrics for db storage status
+
+## Planned features
+
+### DataCenter Network
+- Namespaced VPC and Subnet
+- Integrate DPU to support bare metal
+- Integrate SDN switches to support bare metal
+
+### Application Network
+- Traffic visualization and application level analyzing
+- Windows network support
+- Multi cluster network
+- Fine-grained ACL
+- Load balancer type Service
+
+### Performance Enhancement
+- eBPF to accelerate intra-node communication
+- Tools for automatically profile
+- OVN/OVS tailor
+- SR-IOV and OVS-DPDK integration
+
+### User Experience Enhancement
+- New document website and optimized for new beginners
+- Helm/Operator to automate daily operations
+- Troubleshooting tools
+- Integrated with other projects
