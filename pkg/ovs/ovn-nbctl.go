@@ -173,8 +173,16 @@ func (c Client) SetPortSecurity(portSecurity bool, ls, port, mac, ipStr, vips st
 		ovnCommand = append(ovnCommand, strings.Join(addresses, " "))
 	}
 	ovnCommand = append(ovnCommand, "--", "set", "logical_switch_port", port,
-		fmt.Sprintf("external_ids:attach-vips=%v", vips != ""),
 		fmt.Sprintf("external_ids:ls=%s", ls))
+
+	if vips != "" {
+		ovnCommand = append(ovnCommand, "--", "set", "logical_switch_port", port,
+			fmt.Sprintf("external_ids:vips=%s", strings.ReplaceAll(vips, ",", "/")), "external_ids:attach-vips=true")
+
+	} else {
+		ovnCommand = append(ovnCommand, "--", "remove", "logical_switch_port", port, "external_ids", "attach-vips", "vips")
+	}
+
 	if _, err := c.ovnNbCommand(ovnCommand...); err != nil {
 		klog.Errorf("set port %s security failed: %v", port, err)
 		return err
@@ -281,6 +289,12 @@ func (c Client) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurit
 					"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:associated_sg_%s=true", sg))
 			}
 		}
+	}
+
+	// set vip tag to external_id
+	if vips != "" {
+		ovnCommand = append(ovnCommand, "--", "set", "logical_switch_port", port,
+			fmt.Sprintf("external_ids:vips=%s", strings.ReplaceAll(vips, ",", "/")), "external_ids:attach-vips=true")
 	}
 
 	if pod != "" && namespace != "" {
