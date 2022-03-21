@@ -986,7 +986,7 @@ func (c *Controller) syncVirtualPort(key string) error {
 			return err
 		}
 	}
-	results, err := c.ovnClient.CustomFindEntity("logical_switch_port", []string{"name", "port_security"},
+	results, err := c.ovnClient.CustomFindEntity("logical_switch_port", []string{"name", "external_ids"},
 		fmt.Sprintf("external_ids:ls=%s", subnet.Name), "external_ids:attach-vips=true")
 	if err != nil {
 		klog.Errorf("failed to list logical_switch_port, %v", err)
@@ -999,7 +999,15 @@ func (c *Controller) syncVirtualPort(key string) error {
 		}
 		var virtualParents []string
 		for _, ret := range results {
-			if util.ContainsString(ret["port_security"], vip) {
+			var associatedVips []string
+			for _, value := range ret["external_ids"] {
+				if strings.HasPrefix(value, "vips") {
+					vips := strings.Split(value, "=")[1]
+					associatedVips = strings.Split(strings.ReplaceAll(vips, " ", ""), "/")
+				}
+			}
+			klog.Infof("associatedVips %v", associatedVips)
+			if util.ContainsString(associatedVips, vip) {
 				virtualParents = append(virtualParents, ret["name"][0])
 			}
 		}
