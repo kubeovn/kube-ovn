@@ -152,12 +152,16 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 			c.deletePodQueue.Add(obj)
 		}
 
-		if delete, err := appendCheckStatefulSetPodToDel(c, p); delete && err == nil {
+		if delete, err := appendCheckPodToDel(c, p); delete && err == nil {
 			klog.V(3).Infof("enqueue delete pod %s", key)
 			c.deletePodQueue.Add(obj)
 		}
 	} else if isVmPod && c.config.EnableKeepVmIP {
 		if c.isVmPodToDel(p, vmName) {
+			klog.V(3).Infof("enqueue delete pod %s", key)
+			c.deletePodQueue.Add(obj)
+		}
+		if delete, err := appendCheckPodToDel(c, p); delete && err == nil {
 			klog.V(3).Infof("enqueue delete pod %s", key)
 			c.deletePodQueue.Add(obj)
 		}
@@ -636,7 +640,7 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 
 	var keepIpCR bool
 	if ok, sts := isStatefulSetPod(pod); ok {
-		delete, err := appendCheckStatefulSetPodToDel(c, pod)
+		delete, err := appendCheckPodToDel(c, pod)
 		keepIpCR = !isStatefulSetPodToDel(c.config.KubeClient, pod, sts) && !delete && err == nil
 	}
 
@@ -1344,7 +1348,7 @@ func (c *Controller) deleteAttachmentNetWorkIP(pod *v1.Pod) error {
 	return nil
 }
 
-func appendCheckStatefulSetPodToDel(c *Controller, pod *v1.Pod) (bool, error) {
+func appendCheckPodToDel(c *Controller, pod *v1.Pod) (bool, error) {
 	// subnet for ns has been changed, and statefulset pod's ip is not in the range of subnet's cidr anymore
 	podNs, err := c.namespacesLister.Get(pod.Namespace)
 	if err != nil {
