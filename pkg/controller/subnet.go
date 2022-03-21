@@ -96,7 +96,8 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		oldSubnet.Spec.DHCPv4Options != newSubnet.Spec.DHCPv4Options ||
 		oldSubnet.Spec.DHCPv6Options != newSubnet.Spec.DHCPv6Options ||
 		oldSubnet.Spec.EnableIPv6RA != newSubnet.Spec.EnableIPv6RA ||
-		oldSubnet.Spec.IPv6RAConfigs != newSubnet.Spec.IPv6RAConfigs {
+		oldSubnet.Spec.IPv6RAConfigs != newSubnet.Spec.IPv6RAConfigs ||
+		oldSubnet.Spec.Protocol != newSubnet.Spec.Protocol {
 		klog.V(3).Infof("enqueue update subnet %s", key)
 		c.addOrUpdateSubnetQueue.Add(key)
 	}
@@ -289,7 +290,8 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		subnet.Spec.Provider = util.OvnProvider
 		changed = true
 	}
-	if subnet.Spec.Protocol == "" || subnet.Spec.Protocol != util.CheckProtocol(subnet.Spec.CIDRBlock) {
+	newCIDRBlock := subnet.Spec.CIDRBlock
+	if subnet.Spec.Protocol == "" || subnet.Spec.Protocol != util.CheckProtocol(newCIDRBlock) {
 		subnet.Spec.Protocol = util.CheckProtocol(subnet.Spec.CIDRBlock)
 		changed = true
 	}
