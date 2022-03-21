@@ -4,15 +4,18 @@ go 1.17
 
 require (
 	github.com/Mellanox/sriovnet v1.0.3
+	github.com/Microsoft/go-winio v0.5.2
+	github.com/Microsoft/hcsshim v0.8.22
 	github.com/alauda/felix v3.6.6-0.20201207121355-187332daf314+incompatible
+	github.com/bhendo/go-powershell v0.0.0-20190719160123-219e7fb4e41e
 	github.com/cnf/structhash v0.0.0-20201127153200-e1b16c1ebc08
-	github.com/containernetworking/cni v0.8.1
-	github.com/containernetworking/plugins v0.9.1
+	github.com/containernetworking/cni v1.0.1
+	github.com/containernetworking/plugins v1.0.1
 	github.com/coreos/go-iptables v0.6.0
 	github.com/emicklei/go-restful/v3 v3.7.3
 	github.com/golang/protobuf v1.5.2
 	github.com/greenpau/ovsdb v0.0.0-20181114004433-3582b85e8968
-	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.1.1-0.20210510153419-66a699ae3b05
+	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.2.0
 	github.com/mdlayher/arp v0.0.0-20191213142603-f72070a231fc
 	github.com/neverlee/keymutex v0.0.0-20171121013845-f593aa834bf9
 	github.com/oilbeater/go-ping v0.0.0-20200413021620-332b7197c5b5
@@ -25,7 +28,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.0
 	github.com/vishvananda/netlink v1.1.1-0.20211101163509-b10eb8fe5cf6
-	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e
+	golang.org/x/sys v0.0.0-20220315194320-039c03cc5b86
 	google.golang.org/grpc v1.40.0
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v3 v3.7.2
 	k8s.io/api v0.23.1
@@ -41,7 +44,9 @@ require (
 require (
 	github.com/armon/go-radix v1.0.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.1 // indirect
+	github.com/containerd/cgroups v1.0.1 // indirect
 	github.com/coreos/prometheus-operator v0.38.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13 // indirect
@@ -67,6 +72,7 @@ require (
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/juju/errors v0.0.0-20220203013757-bd733f3c86b9 // indirect
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/kelseyhightower/envconfig v1.4.0 // indirect
 	github.com/kubernetes-csi/external-snapshotter/v2 v2.1.1 // indirect
@@ -101,9 +107,10 @@ require (
 	github.com/stretchr/objx v0.3.0 // indirect
 	github.com/subosito/gotenv v1.2.0 // indirect
 	github.com/vishvananda/netns v0.0.0-20211101163701-50045581ed74 // indirect
-	golang.org/x/net v0.0.0-20211216030914-fe4d6282115f // indirect
+	go.opencensus.io v0.23.0 // indirect
+	golang.org/x/net v0.0.0-20220127200216-cd36cc0744dd // indirect
 	golang.org/x/oauth2 v0.0.0-20210819190943-2bc19b11175f // indirect
-	golang.org/x/term v0.0.0-20210615171337-6886f2dfbf5b // indirect
+	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac // indirect
 	gomodules.xyz/jsonpatch/v2 v2.2.0 // indirect
@@ -138,6 +145,7 @@ replace (
 	github.com/openshift/api => github.com/openshift/api v0.0.0-20210428205234-a8389931bee7
 	github.com/openshift/client-go => github.com/openshift/client-go v0.0.0-20210112165513-ebc401615f47
 	github.com/openshift/library-go => github.com/mhenriks/library-go v0.0.0-20210511195009-51ba86622560
+	gopkg.in/k8snetworkplumbingwg/multus-cni.v3 => github.com/zhangzujian/multus-cni v0.0.0-20220218071955-4d1657701c6d
 	k8s.io/api => k8s.io/api v0.23.1
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.23.1
 	k8s.io/apimachinery => k8s.io/apimachinery v0.23.1

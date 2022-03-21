@@ -133,16 +133,10 @@ const (
 	InternalType = "internal-port"
 	DpdkType     = "dpdk-port"
 
-	DefaultHostVhostuserBaseDir = "/run/openvswitch/vhost_sockets"
-
-	ChassisLoc     = "/etc/openvswitch/system-id.conf"
 	HostnameEnv    = "KUBE_NODE_NAME"
 	ChasRetryTime  = 5
 	ChasRetryIntev = 1
 	VmInstance     = "VirtualMachineInstance"
-
-	VfioSysDir = "/sys/bus/pci/drivers/vfio-pci"
-	NetSysDir  = "/sys/class/net"
 
 	MirrorControlAnnotation = "ovn.kubernetes.io/mirror"
 	MirrorDefaultName       = "m0"
@@ -165,10 +159,6 @@ const (
 	NetemQosLatencyAnnotationTemplate = "%s.kubernetes.io/latency"
 	NetemQosLimitAnnotationTemplate   = "%s.kubernetes.io/limit"
 	NetemQosLossAnnotationTemplate    = "%s.kubernetes.io/loss"
-
-	KoDir  = "/tmp/"
-	KoENV  = "MODULES"
-	RpmENV = "RPMS"
 
 	POD_IP             = "POD_IP"
 	ContentType        = "application/vnd.kubernetes.protobuf"

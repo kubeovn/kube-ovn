@@ -1,4 +1,4 @@
-package daemon
+package main
 
 import (
 	"context"
@@ -23,7 +23,7 @@ import (
 	"github.com/kubeovn/kube-ovn/versions"
 )
 
-func CmdMain() {
+func main() {
 	defer klog.Flush()
 
 	klog.Infof(versions.String())
@@ -75,21 +75,8 @@ func CmdMain() {
 	kubeovnInformerFactory.Start(stopCh)
 	go ctl.Run(stopCh)
 	go daemon.RunServer(config, ctl)
-	if err := mvCNIConf(config.CniConfName); err != nil {
-		klog.Fatalf("failed to mv cni conf, %v", err)
-	}
 	http.Handle("/metrics", promhttp.Handler())
 	klog.Fatal(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.PprofPort), nil))
-}
-
-func mvCNIConf(confName string) error {
-	data, err := os.ReadFile("/kube-ovn/01-kube-ovn.conflist")
-	if err != nil {
-		return err
-	}
-
-	cniConfPath := fmt.Sprintf("/etc/cni/net.d/%s", confName)
-	return os.WriteFile(cniConfPath, data, 0444)
 }
 
 func Retry(attempts int, sleep int, f func(configuration *daemon.Configuration) error, ctrl *daemon.Configuration) (err error) {
@@ -113,10 +100,10 @@ func initChassisAnno(cfg *daemon.Configuration) error {
 		return err
 	}
 
-	hostname := cfg.NodeName
-	node, err := cfg.KubeClient.CoreV1().Nodes().Get(context.Background(), hostname, v1.GetOptions{})
+	nodeName := cfg.NodeName
+	node, err := cfg.KubeClient.CoreV1().Nodes().Get(context.Background(), nodeName, v1.GetOptions{})
 	if err != nil {
-		klog.Errorf("failed to get node %s %v", hostname, err)
+		klog.Errorf("failed to get node %s %v", nodeName, err)
 		return err
 	}
 
@@ -131,9 +118,9 @@ func initChassisAnno(cfg *daemon.Configuration) error {
 	op := "add"
 	raw, _ := json.Marshal(node.Annotations)
 	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-	_, err = cfg.KubeClient.CoreV1().Nodes().Patch(context.Background(), hostname, types.JSONPatchType, []byte(patchPayload), v1.PatchOptions{}, "")
+	_, err = cfg.KubeClient.CoreV1().Nodes().Patch(context.Background(), nodeName, types.JSONPatchType, []byte(patchPayload), v1.PatchOptions{}, "")
 	if err != nil {
-		klog.Errorf("patch node %s failed %v", hostname, err)
+		klog.Errorf("patch node %s failed %v", nodeName, err)
 		return err
 	}
 	klog.Infof("finish adding chassis annotation")

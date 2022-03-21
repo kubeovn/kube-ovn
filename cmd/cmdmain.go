@@ -1,13 +1,13 @@
 package main
 
 import (
-	"github.com/kubeovn/kube-ovn/cmd/controller_health_check"
 	"os"
-	"strings"
+	"path/filepath"
 
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/cmd/controller"
+	"github.com/kubeovn/kube-ovn/cmd/controller_health_check"
 	"github.com/kubeovn/kube-ovn/cmd/daemon"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_leader_checker"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_monitor"
@@ -28,8 +28,9 @@ const (
 )
 
 func main() {
-	cmds := strings.Split(os.Args[0], "/")
-	cmd := cmds[len(cmds)-1]
+	filename := filepath.Base(os.Args[0])
+	ext := filepath.Ext(filename)
+	cmd := filename[:len(filename)-len(ext)]
 	switch cmd {
 	case CmdController:
 		controller.CmdMain()

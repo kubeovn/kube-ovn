@@ -1,0 +1,68 @@
+name: Build Open vSwitch for Hyper-V
+on:
+  push:
+    branches:
+      - win-ci
+
+jobs:
+  build-ovs-win64:
+    name: Build OVS Win64
+    runs-on: windows-2019
+    steps:
+      - name: Check out Open vSwitch
+        uses: actions/checkout@v2
+        with:
+          repository: zhangzujian/ovs
+          ref: vs2019
+          path: ovs
+
+      - name: Check out PTHREADS4W
+        run: |
+          mkdir pthreads4w
+          git clone https://git.code.sf.net/p/pthreads4w/code pthreads4w\code
+
+      - name: Build PTHREADS4W
+        shell: cmd
+        run: |
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          cd pthreads4w\code
+          nmake all install
+
+      - name: Install OpenSSL
+        shell: powershell
+        run: |
+          Invoke-WebRequest -Uri "https://slproweb.com/download/Win64OpenSSL-1_1_1m.exe" -OutFile OpenSSL.exe
+          Start-Process .\OpenSSL.exe -Wait -ArgumentList '/silent /verysilent /sp- /suppressmsgboxes /DIR="C:\OpenSSL"'
+
+      - name: Install pypiwin32
+        run: python3 -m pip install pypiwin32
+
+      - name: Build Open vSwitch
+        shell: cmd
+        env:
+          MSYS2_PATH_TYPE: inherit
+        run: |
+          SETLOCAL ENABLEDELAYEDEXPANSION
+          SET _p4w_dir=%CD:\=/%/pthreads4w/PTHREADS-BUILT
+          FOR /F "tokens=* USEBACKQ" %%F IN (`C:\msys64\usr\bin\cygpath.exe -u "%CD%\ovs"`) DO (
+            SET _ovs_dir=%%F
+          )
+          CALL "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          SET _vs_path=
+          FOR %%d IN ("%PATH:;=";"%") DO (
+            echo %%~d | findstr /C:"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise" > nul && set _vs_path=!_vs_path!;%%~d
+          )
+          SET PATH="%_vs_path%;%PATH%"
+          C:\msys64\usr\bin\bash.exe -lc "pacman -Syu --noconfirm"
+          C:\msys64\usr\bin\bash.exe -lc "pacman -S --noconfirm libtool autoconf automake-wrapper"
+          C:\msys64\usr\bin\bash.exe -lc "rm -f `which link`"
+          C:\msys64\usr\bin\bash.exe -lc "cd '%_ovs_dir%' && ./boot.sh"
+          C:\msys64\usr\bin\bash.exe -lc "cd '%_ovs_dir%' && ./configure CC=./build-aux/cccl LD='`which link`' LIBS='-lws2_32 -lShlwapi -liphlpapi -lwbemuuid -lole32 -loleaut32' --prefix='C:/openvswitch/usr' --localstatedir='C:/openvswitch/var' --sysconfdir='C:/openvswitch/etc' --with-pthread='%_p4w_dir%' --enable-ssl --with-openssl='C:/OpenSSL'"
+          C:\msys64\usr\bin\bash.exe -lc "cd '%_ovs_dir%' && V=1 make"
+          C:\msys64\usr\bin\bash.exe -lc "cd '%_ovs_dir%' && V=1 make windows_installer"
+
+      - name: Upload installer to artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: ovs-installer
+          path: ovs\windows\ovs-windows-installer\bin\Release\OpenvSwitch.msi

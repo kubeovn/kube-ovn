@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	nodeName              = ""
+	nodeName              string
 	cniOperationHistogram = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "cni_op_latency_seconds",

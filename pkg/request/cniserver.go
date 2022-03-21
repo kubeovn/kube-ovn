@@ -1,10 +1,7 @@
 package request
 
 import (
-	"context"
 	"fmt"
-	"net"
-	"net/http"
 
 	"github.com/parnurzeal/gorequest"
 )
@@ -22,6 +19,7 @@ type Route struct {
 
 // CniRequest is the cniserver request format
 type CniRequest struct {
+	NetworkName  string  `json:"network_name"`
 	CniType      string  `json:"cni_type"`
 	PodName      string  `json:"pod_name"`
 	PodNamespace string  `json:"pod_namespace"`
@@ -49,15 +47,6 @@ type CniResponse struct {
 	Mtu        int    `json:"mtu"`
 	PodNicName string `json:"nicname"`
 	Err        string `json:"error"`
-}
-
-// NewCniServerClient return a new cniserver client
-func NewCniServerClient(socketAddress string) CniServerClient {
-	request := gorequest.New()
-	request.Transport = &http.Transport{DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-		return net.Dial("unix", socketAddress)
-	}}
-	return CniServerClient{request}
 }
 
 // Add pod request
