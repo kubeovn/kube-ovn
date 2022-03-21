@@ -623,7 +623,7 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 	var keepIpCR bool
 	if ok, sts := isStatefulSetPod(pod); ok {
 		toDel := isStatefulSetPodToDel(c.config.KubeClient, pod, sts)
-		delete, err := appendCheckStatefulSetPodToDel(c, pod)
+		delete, err := appendCheckPodToDel(c, pod)
 		if pod.DeletionTimestamp != nil {
 			// triggered by delete event
 			if !(toDel || (delete && err == nil)) {
@@ -631,6 +631,18 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 			}
 		}
 		keepIpCR = !toDel && !delete && err == nil
+	}
+	isVmPod, vmName := isVmPod(pod)
+	if isVmPod && c.config.EnableKeepVmIP {
+		toDel := c.isVmPodToDel(pod, vmName)
+		delete, err := appendCheckPodToDel(c, pod)
+		if pod.DeletionTimestamp != nil {
+			// triggered by delete event
+			if !(toDel || (delete && err == nil)) {
+				return nil
+			}
+			klog.V(3).Infof("delete vm pod %s", podName)
+		}
 	}
 
 	// Add additional default ports to compatible with previous versions
@@ -1269,7 +1281,7 @@ func (c *Controller) deleteAttachmentNetWorkIP(pod *v1.Pod) error {
 	return nil
 }
 
-func appendCheckStatefulSetPodToDel(c *Controller, pod *v1.Pod) (bool, error) {
+func appendCheckPodToDel(c *Controller, pod *v1.Pod) (bool, error) {
 	// subnet for ns has been changed, and statefulset pod's ip is not in the range of subnet's cidr anymore
 	podNs, err := c.namespacesLister.Get(pod.Namespace)
 	if err != nil {
