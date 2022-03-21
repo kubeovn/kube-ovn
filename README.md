@@ -16,9 +16,9 @@ Kube-OVN, a [CNCF Sandbox Level Project](https://www.cncf.io/sandbox-projects/),
 The Kube-OVN community is waiting for your participation!
 - Follow us at [Twitter](https://twitter.com/KubeOvn)
 - Chat with us at [Slack](https://kube-ovn-slackin.herokuapp.com/)
-- 微信用户扫码加小助手进入社区交流群，请注明 Kube-OVN
+- 微信用户扫码加入交流群
 
-  ![Image of wechat](./docs/wechat.jpg)
+  ![Image of wechat](./docs/wechat.png)
 
 ## Features
 - **Namespaced Subnets**: Each Namespace can have a unique Subnet (backed by a Logical Switch). Pods within the Namespace will have IP addresses allocated from the Subnet. It's also possible for multiple Namespaces to share a Subnet.
