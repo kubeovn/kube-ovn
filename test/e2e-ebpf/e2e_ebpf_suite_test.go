@@ -86,6 +86,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 		Spec: kubeovn.SubnetSpec{
 			CIDRBlock:  "12.10.0.0/16",
 			Namespaces: []string{namespace},
+			Protocol:   util.CheckProtocol("12.10.0.0/16"),
 		},
 	}
 	_, err = f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), &s, metav1.CreateOptions{})

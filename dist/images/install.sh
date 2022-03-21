@@ -573,6 +573,10 @@ spec:
                   type: boolean
                 protocol:
                   type: string
+                  enum:
+                    - IPv4
+                    - IPv6
+                    - Dual
                 cidrBlock:
                   type: string
                 namespaces:

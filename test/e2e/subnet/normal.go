@@ -67,6 +67,7 @@ var _ = Describe("[Subnet]", func() {
 				},
 				Spec: kubeovn.SubnetSpec{
 					CIDRBlock: cidr,
+					Protocol:  util.CheckProtocol(cidr),
 				},
 			}
 			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), &s, metav1.CreateOptions{})
@@ -126,6 +127,7 @@ var _ = Describe("[Subnet]", func() {
 					CIDRBlock:   cidr,
 					GatewayType: kubeovn.GWCentralizedType,
 					GatewayNode: "kube-ovn-control-plane,kube-ovn-worker,kube-ovn-worker2",
+					Protocol:    util.CheckProtocol(cidr),
 				},
 			}
 			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), &s, metav1.CreateOptions{})
@@ -158,6 +160,7 @@ var _ = Describe("[Subnet]", func() {
 				},
 				Spec: kubeovn.SubnetSpec{
 					CIDRBlock: cidr,
+					Protocol:  util.CheckProtocol(cidr),
 				},
 			}
 			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), s, metav1.CreateOptions{})
@@ -196,6 +199,7 @@ var _ = Describe("[Subnet]", func() {
 				},
 				Spec: kubeovn.SubnetSpec{
 					CIDRBlock: cidr,
+					Protocol:  util.CheckProtocol(cidr),
 				},
 			}
 			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), &s, metav1.CreateOptions{})
@@ -231,6 +235,7 @@ var _ = Describe("[Subnet]", func() {
 				},
 				Spec: kubeovn.SubnetSpec{
 					CIDRBlock: cidr,
+					Protocol:  util.CheckProtocol(cidr),
 				},
 			}
 
@@ -262,6 +267,7 @@ var _ = Describe("[Subnet]", func() {
 				Spec: kubeovn.SubnetSpec{
 					CIDRBlock:  "19.0.0.0/31",
 					ExcludeIps: []string{"179.17.0.0..179.17.0.10"},
+					Protocol:   util.CheckProtocol("19.0.0.0/31"),
 				},
 			}
 			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), s, metav1.CreateOptions{})
@@ -285,6 +291,7 @@ var _ = Describe("[Subnet]", func() {
 				Spec: kubeovn.SubnetSpec{
 					CIDRBlock:  "29.0.0.0/30",
 					ExcludeIps: []string{"179.17.0.0..179.17.0.10"},
+					Protocol:   util.CheckProtocol("29.0.0.0/30"),
 				},
 			}
 			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), s, metav1.CreateOptions{})
@@ -308,6 +315,7 @@ var _ = Describe("[Subnet]", func() {
 				Spec: kubeovn.SubnetSpec{
 					CIDRBlock:  "179.17.0.0/24",
 					ExcludeIps: []string{"179.17.0.0..179.17.0.10"},
+					Protocol:   util.CheckProtocol("179.17.0.0/24"),
 				},
 			}
 			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), s, metav1.CreateOptions{})
@@ -375,6 +383,7 @@ var _ = Describe("[Subnet]", func() {
 					ExternalEgressGateway: egw,
 					PolicyRoutingPriority: priority,
 					PolicyRoutingTableID:  tableID,
+					Protocol:              util.CheckProtocol(cidr),
 				},
 			}
 			_, err = f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), subnet, metav1.CreateOptions{})
@@ -520,6 +529,7 @@ var _ = Describe("[Subnet]", func() {
 					PolicyRoutingPriority: priority,
 					PolicyRoutingTableID:  tableID,
 					Namespaces:            []string{namespace},
+					Protocol:              util.CheckProtocol(cidr),
 				},
 			}
 			_, err = f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), &s, metav1.CreateOptions{})
