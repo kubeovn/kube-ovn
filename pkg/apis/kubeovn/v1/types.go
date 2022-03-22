@@ -133,6 +133,15 @@ type SubnetSpec struct {
 
 	EnableIPv6RA  bool   `json:"enableIPv6RA"`
 	IPv6RAConfigs string `json:"ipv6RAConfigs"`
+
+	Acls []Acl `json:"acls,omitempty"`
+}
+
+type Acl struct {
+	Direction string `json:"direction,omitempty"`
+	Priority  int    `json:"priority,omitempty"`
+	Match     string `json:"match,omitempty"`
+	Action    string `json:"action,omitempty"`
 }
 
 // ConditionType encodes information on the condition

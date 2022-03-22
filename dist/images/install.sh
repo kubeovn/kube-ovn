@@ -643,6 +643,30 @@ spec:
                   type: boolean
                 ipv6RAConfigs:
                   type: string
+                acls:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      direction:
+                        type: string
+                        enum:
+                          - from-lport
+                          - to-lport
+                      priority:
+                        type: integer
+                        minimum: 0
+                        maximum: 32767
+                      match:
+                        type: string
+                      action:
+                        type: string
+                        enum:
+                          - allow-related
+                          - allow-stateless
+                          - allow
+                          - drop
+                          - reject
   scope: Cluster
   names:
     plural: subnets
