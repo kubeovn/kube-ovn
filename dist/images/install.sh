@@ -234,6 +234,10 @@ spec:
                     properties:
                       eip:
                         type: string
+                      v4ip:
+                        type: string
+                      v6ip:
+                        type: string
                       externalPort:
                         type: string
                       internalIp:
@@ -247,7 +251,11 @@ spec:
                   items:
                     type: object
                     properties:
-                      eipCIDR:
+                      eip:
+                        type: string
+                      v4ip:
+                        type: string
+                      v6ip:
                         type: string
                       gateway:
                         type: string
@@ -257,6 +265,10 @@ spec:
                     type: object
                     properties:
                       eip:
+                        type: string
+                      v4ip:
+                        type: string
+                      v6ip:
                         type: string
                       internalIp:
                         type: string
@@ -269,6 +281,10 @@ spec:
                     properties:
                       eip:
                         type: string
+                      v4ip:
+                        type: string
+                      v6ip:
+                        type: string
                       internalCIDR:
                         type: string
                 subnet:
@@ -279,10 +295,344 @@ spec:
                   type: array
                   items:
                     type: string
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: iptables-eips.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: iptables-eips
+    singular: iptables-eip
+    shortNames:
+      - eip
+    kind: IptablesEIP
+    listKind: IptablesEIPList
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
       subresources:
         status: {}
-  conversion:
-    strategy: None
+      additionalPrinterColumns:
+      - jsonPath: .status.ip
+        name: IP
+        type: string
+      - jsonPath: .spec.macAddress
+        name: Mac
+        type: string
+      - jsonPath: .status.nat
+        name: Nat
+        type: string
+      - jsonPath: .spec.natGwDp
+        name: NatGwDp
+        type: string
+      - jsonPath: .status.ready
+        name: Ready
+        type: boolean
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            status:
+              type: object
+              properties:
+                ready:
+                  type: boolean
+                ip:
+                  type: string
+                nat:
+                  type: string
+                redo:
+                  type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                      lastUpdateTime:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+            spec:
+              type: object
+              properties:
+                v4ip:
+                  type: string
+                v6ip:
+                  type: string
+                macAddress:
+                  type: string
+                natGwDp:
+                  type: string
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: iptables-fip-rules.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: iptables-fip-rules
+    singular: iptables-fip-rule
+    shortNames:
+      - fip
+    kind: IptablesFIPRule
+    listKind: IptablesFIPRuleList
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+      - jsonPath: .spec.eip
+        name: Eip
+        type: string
+      - jsonPath: .status.v4ip
+        name: V4ip
+        type: string
+      - jsonPath: .spec.internalIp
+        name: InternalIp
+        type: string
+      - jsonPath: .status.v6ip
+        name: V6ip
+        type: string
+      - jsonPath: .status.ready
+        name: Ready
+        type: boolean
+      - jsonPath: .status.natGwDp
+        name: NatGwDp
+        type: string
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            status:
+              type: object
+              properties:
+                ready:
+                  type: boolean
+                v4ip:
+                  type: string
+                v6ip:
+                  type: string
+                natGwDp:
+                  type: string
+                redo:
+                  type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                      lastUpdateTime:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+            spec:
+              type: object
+              properties:
+                eip:
+                  type: string
+                internalIp:
+                  type: string
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: iptables-dnat-rules.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: iptables-dnat-rules
+    singular: iptables-dnat-rule
+    shortNames:
+      - dnat
+    kind: IptablesDnatRule
+    listKind: IptablesDnatRuleList
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+      - jsonPath: .spec.eip
+        name: Eip
+        type: string
+      - jsonPath: .spec.protocol
+        name: Protocol
+        type: string
+      - jsonPath: .status.v4ip
+        name: V4ip
+        type: string
+      - jsonPath: .status.v6ip
+        name: V6ip
+        type: string
+      - jsonPath: .spec.internalIp
+        name: InternalIp
+        type: string
+      - jsonPath: .spec.externalPort
+        name: ExternalPort
+        type: string
+      - jsonPath: .spec.internalPort
+        name: InternalPort
+        type: string
+      - jsonPath: .status.natGwDp
+        name: NatGwDp
+        type: string
+      - jsonPath: .status.ready
+        name: Ready
+        type: boolean
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            status:
+              type: object
+              properties:
+                ready:
+                  type: boolean
+                v4ip:
+                  type: string
+                v6ip:
+                  type: string
+                natGwDp:
+                  type: string
+                redo:
+                  type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                      lastUpdateTime:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+            spec:
+              type: object
+              properties:
+                eip:
+                  type: string
+                externalPort:
+                  type: string
+                protocol:
+                  type: string
+                internalIp:
+                  type: string
+                internalPort:
+                  type: string
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: iptables-snat-rules.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: iptables-snat-rules
+    singular: iptables-snat-rule
+    shortNames:
+      - snat
+    kind: IptablesSnatRule
+    listKind: IptablesSnatRuleList
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+      - jsonPath: .spec.eip
+        name: EIP
+        type: string
+      - jsonPath: .status.v4ip
+        name: V4ip
+        type: string
+      - jsonPath: .status.v6ip
+        name: V6ip
+        type: string
+      - jsonPath: .spec.internalCIDR
+        name: InternalCIDR
+        type: string
+      - jsonPath: .status.natGwDp
+        name: NatGwDp
+        type: string
+      - jsonPath: .status.ready
+        name: Ready
+        type: boolean
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            status:
+              type: object
+              properties:
+                ready:
+                  type: boolean
+                v4ip:
+                  type: string
+                v6ip:
+                  type: string
+                natGwDp:
+                  type: string
+                redo:
+                  type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                      lastUpdateTime:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+            spec:
+              type: object
+              properties:
+                eip:
+                  type: string
+                internalCIDR:
+                  type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -473,6 +823,93 @@ spec:
     kind: IP
     shortNames:
       - ip
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: virtual-ips.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: virtual-ips
+    singular: virtual-ip
+    kind: VirtualIP
+    shortNames:
+      - vip
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      additionalPrinterColumns:
+      - name: Subnet
+        type: string
+        jsonPath: .spec.subnet
+      - name: V4IP
+        type: string
+        jsonPath: .spec.v4ip
+      - name: Mac
+        type: string
+        jsonPath: .spec.macAddress
+      - name: V6IP
+        type: string
+        jsonPath: .spec.v6ip
+      - name: PV4IP
+        type: string
+        jsonPath: .spec.parentV4ip
+      - name: PMac
+        type: string
+        jsonPath: .spec.ParentMac
+      - name: PV6IP
+        type: string
+        jsonPath: .spec.parentV6ip
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            status:
+              type: object
+              properties:
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                      lastUpdateTime:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+            spec:
+              type: object
+              properties:
+                namespace:
+                  type: string
+                subnet:
+                  type: string
+                attachSubnets:
+                  type: array
+                  items:
+                    type: string
+                v4ip:
+                  type: string
+                macAddress:
+                  type: string
+                v6ip:
+                  type: string
+                parentV4ip:
+                  type: string
+                parentMac:
+                  type: string
+                parentV6ip:
+                  type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -960,12 +1397,22 @@ rules:
       - subnets
       - subnets/status
       - ips
+      - virtual-ips
       - vlans
       - provider-networks
       - provider-networks/status
       - security-groups
       - security-groups/status
       - htbqoses
+      - iptables-eips
+      - iptables-fip-rules
+      - iptables-dnat-rules
+      - iptables-snat-rules
+      - iptables-eips/status
+      - iptables-fip-rules/status
+      - iptables-dnat-rules/status
+      - iptables-snat-rules/status
+      - virtual-ips/status
     verbs:
       - "*"
   - apiGroups:
@@ -1445,12 +1892,23 @@ rules:
       - subnets
       - subnets/status
       - ips
+      - virtual-ips
       - vlans
       - provider-networks
       - provider-networks/status
+      - networks
       - security-groups
       - security-groups/status
       - htbqoses
+      - iptables-eips
+      - iptables-fip-rules
+      - iptables-dnat-rules
+      - iptables-snat-rules
+      - iptables-eips/status
+      - iptables-fip-rules/status
+      - iptables-dnat-rules/status
+      - iptables-snat-rules/status
+      - virtual-ips/status
     verbs:
       - "*"
   - apiGroups:
