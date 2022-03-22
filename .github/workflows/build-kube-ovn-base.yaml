@@ -89,4 +89,4 @@ jobs:
           docker push kubeovn/kube-ovn-base:$TAG-amd64
           docker push kubeovn/kube-ovn-base:$TAG-arm64
           docker manifest create kubeovn/kube-ovn-base:$TAG kubeovn/kube-ovn-base:$TAG-amd64 kubeovn/kube-ovn-base:$TAG-arm64
-          docker manifest push kubeovn/kube-ovn-base:$TAG
+          docker manifest push --purge kubeovn/kube-ovn-base:$TAG
