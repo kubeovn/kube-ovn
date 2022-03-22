@@ -2,6 +2,8 @@
 
 This document describes how to run Kube-OVN with nodes which run ovs-dpdk or ovs-kernel
 
+> Upstream KubeVirt has not officially support OVS-DPDK, you should try [downstream path with OVS-DPDK support](https://github.com/kubevirt/kubevirt/pull/3208) or [KVM device plugin](https://github.com/kubevirt/kubernetes-device-plugins/blob/master/docs/README.kvm.md) to use this function. 
+
 ## Prerequisite
 * Node which runs ovs-dpdk must have a net card bound to the dpdk driver.
 * Hugepages on the host.

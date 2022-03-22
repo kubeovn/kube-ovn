@@ -6,7 +6,7 @@ By using eip, external services can visit a pod with a stable ip and pod will vi
 
 ## Prerequisite
 * To take use of OVN L3 Gateway, a dedicated nic *MUST* be bridged into ovs to act as the gateway between overlay and underlay, ops should use other nics to manage the host server.
-* As the nic will emit packets with nat ip directly into underlay network, administrators *MUST* make sure that theses packets will not be denied by security rules.
+* As the nic will emit packets with nat ip directly into underlay network, administrators *MUST* make sure that these packets will not be denied by security rules.
 * SNAT and EIP functions *CANNOT* work together with Cluster interconnection network
 
 ## Steps
