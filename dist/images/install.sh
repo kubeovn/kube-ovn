@@ -227,66 +227,8 @@ spec:
             spec:
               type: object
               properties:
-                dnatRules:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      eip:
-                        type: string
-                      v4ip:
-                        type: string
-                      v6ip:
-                        type: string
-                      externalPort:
-                        type: string
-                      internalIp:
-                        type: string
-                      internalPort:
-                        type: string
-                      protocol:
-                        type: string
-                eips:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      eip:
-                        type: string
-                      v4ip:
-                        type: string
-                      v6ip:
-                        type: string
-                      gateway:
-                        type: string
-                floatingIpRules:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      eip:
-                        type: string
-                      v4ip:
-                        type: string
-                      v6ip:
-                        type: string
-                      internalIp:
-                        type: string
                 lanIp:
                   type: string
-                snatRules:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      eip:
-                        type: string
-                      v4ip:
-                        type: string
-                      v6ip:
-                        type: string
-                      internalCIDR:
-                        type: string
                 subnet:
                   type: string
                 vpc:
