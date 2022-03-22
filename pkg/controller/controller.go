@@ -77,6 +77,37 @@ type Controller struct {
 	ipsLister kubeovnlister.IPLister
 	ipSynced  cache.InformerSynced
 
+	virtualIpsLister     kubeovnlister.VirtualIPLister
+	virtualIpsSynced     cache.InformerSynced
+	addVirtualIpQueue    workqueue.RateLimitingInterface
+	updateVirtualIpQueue workqueue.RateLimitingInterface
+	delVirtualIpQueue    workqueue.RateLimitingInterface
+
+	iptablesEipsLister     kubeovnlister.IptablesEIPLister
+	iptablesEipSynced      cache.InformerSynced
+	addIptablesEipQueue    workqueue.RateLimitingInterface
+	updateIptablesEipQueue workqueue.RateLimitingInterface
+	resetIptablesEipQueue  workqueue.RateLimitingInterface
+	delIptablesEipQueue    workqueue.RateLimitingInterface
+
+	iptablesFipsLister     kubeovnlister.IptablesFIPRuleLister
+	iptablesFipSynced      cache.InformerSynced
+	addIptablesFipQueue    workqueue.RateLimitingInterface
+	updateIptablesFipQueue workqueue.RateLimitingInterface
+	delIptablesFipQueue    workqueue.RateLimitingInterface
+
+	iptablesDnatRulesLister     kubeovnlister.IptablesDnatRuleLister
+	iptablesDnatRuleSynced      cache.InformerSynced
+	addIptablesDnatRuleQueue    workqueue.RateLimitingInterface
+	updateIptablesDnatRuleQueue workqueue.RateLimitingInterface
+	delIptablesDnatRuleQueue    workqueue.RateLimitingInterface
+
+	iptablesSnatRulesLister     kubeovnlister.IptablesSnatRuleLister
+	iptablesSnatRuleSynced      cache.InformerSynced
+	addIptablesSnatRuleQueue    workqueue.RateLimitingInterface
+	updateIptablesSnatRuleQueue workqueue.RateLimitingInterface
+	delIptablesSnatRuleQueue    workqueue.RateLimitingInterface
+
 	vlansLister kubeovnlister.VlanLister
 	vlanSynced  cache.InformerSynced
 
@@ -155,6 +186,11 @@ func NewController(config *Configuration) *Controller {
 	vpcNatGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	ipInformer := kubeovnInformerFactory.Kubeovn().V1().IPs()
+	virtualIpInformer := kubeovnInformerFactory.Kubeovn().V1().VirtualIPs()
+	iptablesEipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesEIPs()
+	iptablesFipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesFIPRules()
+	iptablesDnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesDnatRules()
+	iptablesSnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesSnatRules()
 	vlanInformer := kubeovnInformerFactory.Kubeovn().V1().Vlans()
 	providerNetworkInformer := kubeovnInformerFactory.Kubeovn().V1().ProviderNetworks()
 	sgInformer := kubeovnInformerFactory.Kubeovn().V1().SecurityGroups()
@@ -200,6 +236,37 @@ func NewController(config *Configuration) *Controller {
 
 		ipsLister: ipInformer.Lister(),
 		ipSynced:  ipInformer.Informer().HasSynced,
+
+		virtualIpsLister:     virtualIpInformer.Lister(),
+		virtualIpsSynced:     virtualIpInformer.Informer().HasSynced,
+		addVirtualIpQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "addVirtualIp"),
+		updateVirtualIpQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "updateVirtualIp"),
+		delVirtualIpQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "delVirtualIp"),
+
+		iptablesEipsLister:     iptablesEipInformer.Lister(),
+		iptablesEipSynced:      iptablesEipInformer.Informer().HasSynced,
+		addIptablesEipQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "addIptablesEip"),
+		updateIptablesEipQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "updateIptablesEip"),
+		resetIptablesEipQueue:  workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "resetIptablesEip"),
+		delIptablesEipQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "delIptablesEip"),
+
+		iptablesFipsLister:     iptablesFipInformer.Lister(),
+		iptablesFipSynced:      iptablesFipInformer.Informer().HasSynced,
+		addIptablesFipQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "addIptablesFip"),
+		updateIptablesFipQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "updateIptablesFip"),
+		delIptablesFipQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "delIptablesFip"),
+
+		iptablesDnatRulesLister:     iptablesDnatRuleInformer.Lister(),
+		iptablesDnatRuleSynced:      iptablesDnatRuleInformer.Informer().HasSynced,
+		addIptablesDnatRuleQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "addIptablesDnatRule"),
+		updateIptablesDnatRuleQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "updateIptablesDnatRule"),
+		delIptablesDnatRuleQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "delIptablesDnatRule"),
+
+		iptablesSnatRulesLister:     iptablesSnatRuleInformer.Lister(),
+		iptablesSnatRuleSynced:      iptablesSnatRuleInformer.Informer().HasSynced,
+		addIptablesSnatRuleQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "addIptablesSnatRule"),
+		updateIptablesSnatRuleQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "updateIptablesSnatRule"),
+		delIptablesSnatRuleQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "delIptablesSnatRule"),
 
 		vlansLister:     vlanInformer.Lister(),
 		vlanSynced:      vlanInformer.Informer().HasSynced,
@@ -336,6 +403,36 @@ func NewController(config *Configuration) *Controller {
 		UpdateFunc: controller.enqueueUpdateSg,
 	})
 
+	virtualIpInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: controller.enqueueAddVirtualIp,
+		// UpdateFunc: controller.enqueueUpdateVirtualIp,
+		DeleteFunc: controller.enqueueDelVirtualIp,
+	})
+
+	iptablesEipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddIptablesEip,
+		UpdateFunc: controller.enqueueUpdateIptablesEip,
+		DeleteFunc: controller.enqueueDelIptablesEip,
+	})
+
+	iptablesFipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddIptablesFip,
+		UpdateFunc: controller.enqueueUpdateIptablesFip,
+		DeleteFunc: controller.enqueueDelIptablesFip,
+	})
+
+	iptablesDnatRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddIptablesDnatRule,
+		UpdateFunc: controller.enqueueUpdateIptablesDnatRule,
+		DeleteFunc: controller.enqueueDelIptablesDnatRule,
+	})
+
+	iptablesSnatRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddIptablesSnatRule,
+		UpdateFunc: controller.enqueueUpdateIptablesSnatRule,
+		DeleteFunc: controller.enqueueDelIptablesSnatRule,
+	})
+
 	return controller
 }
 
@@ -357,7 +454,9 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 
 	klog.Info("Waiting for informer caches to sync")
 	cacheSyncs := []cache.InformerSynced{
-		c.vpcNatGatewaySynced, c.vpcSynced, c.subnetSynced, c.ipSynced,
+		c.vpcNatGatewaySynced, c.vpcSynced, c.subnetSynced,
+		c.ipSynced, c.virtualIpsSynced, c.iptablesEipSynced,
+		c.iptablesFipSynced, c.iptablesDnatRuleSynced, c.iptablesSnatRuleSynced,
 		c.vlanSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced,
 		c.serviceSynced, c.endpointsSynced, c.configMapsSynced,
 	}
@@ -465,6 +564,27 @@ func (c *Controller) shutdown() {
 	c.updateVpcSnatQueue.ShutDown()
 	c.updateVpcSubnetQueue.ShutDown()
 
+	c.addVirtualIpQueue.ShutDown()
+	c.updateVirtualIpQueue.ShutDown()
+	c.delVirtualIpQueue.ShutDown()
+
+	c.addIptablesEipQueue.ShutDown()
+	c.updateIptablesEipQueue.ShutDown()
+	c.resetIptablesEipQueue.ShutDown()
+	c.delIptablesEipQueue.ShutDown()
+
+	c.addIptablesFipQueue.ShutDown()
+	c.updateIptablesFipQueue.ShutDown()
+	c.delIptablesFipQueue.ShutDown()
+
+	c.addIptablesDnatRuleQueue.ShutDown()
+	c.updateIptablesDnatRuleQueue.ShutDown()
+	c.delIptablesDnatRuleQueue.ShutDown()
+
+	c.addIptablesSnatRuleQueue.ShutDown()
+	c.updateIptablesSnatRuleQueue.ShutDown()
+	c.delIptablesSnatRuleQueue.ShutDown()
+
 	if c.config.EnableNP {
 		c.updateNpQueue.ShutDown()
 		c.deleteNpQueue.ShutDown()
@@ -482,8 +602,8 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	go wait.Until(c.runAddOrUpdateVpcNatGwWorker, time.Second, stopCh)
 	go wait.Until(c.runInitVpcNatGwWorker, time.Second, stopCh)
 	go wait.Until(c.runDelVpcNatGwWorker, time.Second, stopCh)
-	go wait.Until(c.runUpdateVpcEipWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdateVpcFloatingIpWorker, time.Second, stopCh)
+	go wait.Until(c.runUpdateVpcEipWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdateVpcDnatWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdateVpcSnatWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdateVpcSubnetWorker, time.Second, stopCh)
@@ -607,4 +727,24 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	}
 
 	go wait.Until(c.syncVmLiveMigrationPort, 15*time.Second, stopCh)
+
+	go wait.Until(c.runAddVirtualIpWorker, time.Second, stopCh)
+	go wait.Until(c.runDelVirtualIpWorker, time.Second, stopCh)
+
+	go wait.Until(c.runAddIptablesEipWorker, time.Second, stopCh)
+	go wait.Until(c.runUpdateIptablesEipWorker, time.Second, stopCh)
+	go wait.Until(c.runResetIptablesEipWorker, time.Second, stopCh)
+	go wait.Until(c.runDelIptablesEipWorker, time.Second, stopCh)
+
+	go wait.Until(c.runAddIptablesFipWorker, time.Second, stopCh)
+	go wait.Until(c.runUpdateIptablesFipWorker, time.Second, stopCh)
+	go wait.Until(c.runDelIptablesFipWorker, time.Second, stopCh)
+
+	go wait.Until(c.runAddIptablesDnatRuleWorker, time.Second, stopCh)
+	go wait.Until(c.runUpdateIptablesDnatRuleWorker, time.Second, stopCh)
+	go wait.Until(c.runDelIptablesDnatRuleWorker, time.Second, stopCh)
+
+	go wait.Until(c.runAddIptablesSnatRuleWorker, time.Second, stopCh)
+	go wait.Until(c.runUpdateIptablesSnatRuleWorker, time.Second, stopCh)
+	go wait.Until(c.runDelIptablesSnatRuleWorker, time.Second, stopCh)
 }

@@ -3,6 +3,7 @@ package ipam
 import (
 	"errors"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -243,4 +244,13 @@ func (ipam *IPAM) IsIPAssignedToPod(ip, subnetName, podName string) bool {
 	} else {
 		return subnet.isIPAssignedToPod(ip, podName)
 	}
+}
+
+func (ipam *IPAM) GetSubnetV4Mask(subnetName string) (string, error) {
+	subnet, ok := ipam.Subnets[subnetName]
+	if !ok {
+		return "", ErrNoAvailable
+	}
+	mask, _ := subnet.V4CIDR.Mask.Size()
+	return strconv.Itoa(mask), nil
 }

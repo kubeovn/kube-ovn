@@ -360,6 +360,35 @@ func (c *Controller) InitIPAM() error {
 		}
 	}
 
+	vips, err := c.virtualIpsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list VIPs: %v", err)
+		return err
+	}
+	for _, vip := range vips {
+		var ipamKey string
+		if vip.Spec.Namespace != "" {
+			ipamKey = fmt.Sprintf("%s/%s", vip.Spec.Namespace, vip.Name)
+		} else {
+			ipamKey = vip.Name
+		}
+		if _, _, _, err = c.ipam.GetStaticAddress(ipamKey, vip.Name, vip.Spec.V4ip, vip.Spec.MacAddress, vip.Spec.Subnet, false); err != nil {
+			klog.Errorf("failed to init IPAM from VIP CR %s: %v", vip.Name, err)
+		}
+	}
+
+	eips, err := c.iptablesEipsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list EIPs: %v", err)
+		return err
+	}
+	for _, eip := range eips {
+		ipamKey := eip.Name
+		if _, _, _, err = c.ipam.GetStaticAddress(ipamKey, eip.Name, eip.Spec.V4ip, eip.Spec.MacAddress, util.VpcExternalNet, false); err != nil {
+			klog.Errorf("failed to init IPAM from EIP CR %s: %v", eip.Name, err)
+		}
+	}
+
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list nodes: %v", err)
