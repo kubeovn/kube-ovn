@@ -291,7 +291,7 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		changed = true
 	}
 	newCIDRBlock := subnet.Spec.CIDRBlock
-	if subnet.Spec.Protocol == "" || subnet.Spec.Protocol != util.CheckProtocol(newCIDRBlock) {
+	if subnet.Spec.Protocol != util.CheckProtocol(newCIDRBlock) {
 		subnet.Spec.Protocol = util.CheckProtocol(subnet.Spec.CIDRBlock)
 		changed = true
 	}

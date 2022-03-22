@@ -240,6 +240,7 @@ var _ = Describe("[Underlay]", func() {
 					CIDRBlock:      "99.11.0.0/16",
 					Vlan:           Vlan,
 					LogicalGateway: true,
+					Protocol:       util.CheckProtocol(cidr),
 				},
 			}
 			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), subnet, metav1.CreateOptions{})
@@ -281,6 +282,7 @@ var _ = Describe("[Underlay]", func() {
 					CIDRBlock:           "99.12.0.0/16",
 					Vlan:                Vlan,
 					DisableGatewayCheck: true,
+					Protocol:            util.CheckProtocol(cidr),
 				},
 			}
 			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), subnet, metav1.CreateOptions{})
