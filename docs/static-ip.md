@@ -2,6 +2,9 @@
 
 Kube-OVN supports allocation a static IP address for a single Pod, or a static IP pool for a Workload with multiple Pods (Deployment/DaemonSet/StatefulSet). To enable this feature, add the following annotations to the Pod spec template.
 
+> This doc mainly focuses on Kube-OVN as a standalone CNI plugin to configure static IP.
+> If work with multus-cni to configure static ip, please refer to [IPAM for Multi Network Interface](./multi-nic.md)
+
 ## For a single Pod
 
 Use the following annotations to specify the address
