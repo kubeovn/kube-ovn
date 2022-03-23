@@ -1538,7 +1538,7 @@ func (c *Controller) createFipInPod(dp, v4ip, internalIP string) error {
 	var addRules []string
 	rule := fmt.Sprintf("%s,%s", v4ip, internalIP)
 	addRules = append(addRules, rule)
-	if err = c.execNatGwRules(gwPod, NAT_GW_FLOATING_IP_ADD, addRules); err != nil {
+	if err = c.execNatGwRules(gwPod, natGwSubnetFipAdd, addRules); err != nil {
 		return err
 	}
 	return nil
@@ -1556,7 +1556,7 @@ func (c *Controller) deleteFipInPod(dp, v4ip, internalIP string) error {
 	var delRules []string
 	rule := fmt.Sprintf("%s,%s", v4ip, internalIP)
 	delRules = append(delRules, rule)
-	if err = c.execNatGwRules(gwPod, NAT_GW_FLOATING_IP_DEL, delRules); err != nil {
+	if err = c.execNatGwRules(gwPod, natGwSubnetFipDel, delRules); err != nil {
 		return err
 	}
 	return nil
@@ -1572,7 +1572,7 @@ func (c *Controller) createDnatInPod(dp, protocol, v4ip, internalIp, externalPor
 	rule := fmt.Sprintf("%s,%s,%s,%s,%s", v4ip, externalPort, protocol, internalIp, internalPort)
 	addRules = append(addRules, rule)
 
-	if err = c.execNatGwRules(gwPod, NAT_GW_DNAT_ADD, addRules); err != nil {
+	if err = c.execNatGwRules(gwPod, natGwDnatAdd, addRules); err != nil {
 		return err
 	}
 	return nil
@@ -1588,7 +1588,7 @@ func (c *Controller) deleteDnatInPod(dp, protocol, v4ip, internalIp, externalPor
 	var delRules []string
 	rule := fmt.Sprintf("%s,%s,%s,%s,%s", v4ip, externalPort, protocol, internalIp, internalPort)
 	delRules = append(delRules, rule)
-	if err = c.execNatGwRules(gwPod, NAT_GW_DNAT_DEL, delRules); err != nil {
+	if err = c.execNatGwRules(gwPod, natGwDnatDel, delRules); err != nil {
 		return err
 	}
 	return nil
@@ -1603,7 +1603,7 @@ func (c *Controller) createSnatInPod(dp, v4ip, internalCIDR string) error {
 	var rules []string
 	rule := fmt.Sprintf("%s,%s", v4ip, internalCIDR)
 	rules = append(rules, rule)
-	if err = c.execNatGwRules(gwPod, NAT_GW_SNAT_ADD, rules); err != nil {
+	if err = c.execNatGwRules(gwPod, natGwSnatAdd, rules); err != nil {
 		klog.Errorf("failed to exec nat gateway rule, err: %v", err)
 		return err
 	}
@@ -1620,7 +1620,7 @@ func (c *Controller) deleteSnatInPod(dp, v4ip, internalCIDR string) error {
 	var delRules []string
 	rule := fmt.Sprintf("%s,%s", v4ip, internalCIDR)
 	delRules = append(delRules, rule)
-	if err = c.execNatGwRules(gwPod, NAT_GW_SNAT_DEL, delRules); err != nil {
+	if err = c.execNatGwRules(gwPod, natGwSnatDel, delRules); err != nil {
 		return err
 	}
 	return nil

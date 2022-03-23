@@ -33,19 +33,17 @@ var (
 )
 
 const (
-	NAT_GW_INIT    = "init"
-	NAT_GW_EIP_ADD = "eip-add"
-	NAT_GW_EIP_DEL = "eip-del"
-
-	NAT_GW_DNAT_ADD = "dnat-add"
-	NAT_GW_DNAT_DEL = "dnat-del"
-	NAT_GW_SNAT_ADD = "snat-add"
-	NAT_GW_SNAT_DEL = "snat-del"
-
-	NAT_GW_SUBNET_ROUTE_ADD = "subnet-route-add"
-	NAT_GW_SUBNET_ROUTE_DEL = "subnet-route-del"
-	NAT_GW_FLOATING_IP_ADD  = "floating-ip-add"
-	NAT_GW_FLOATING_IP_DEL  = "floating-ip-del"
+	natGwInit           = "init"
+	natGwEipAdd         = "eip-add"
+	natGwEipDel         = "eip-del"
+	natGwDnatAdd        = "dnat-add"
+	natGwDnatDel        = "dnat-del"
+	natGwSnatAdd        = "snat-add"
+	natGwSnatDel        = "snat-del"
+	natGwSubnetFipAdd   = "floating-ip-add"
+	natGwSubnetFipDel   = "floating-ip-del"
+	natGwSubnetRouteAdd = "subnet-route-add"
+	natGwSubnetRouteDel = "subnet-route-del"
 )
 
 func genNatGwDpName(name string) string {
@@ -564,7 +562,7 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 				rules = append(rules, fmt.Sprintf("%s,%s", cidr, gwSubnet.Spec.Gateway))
 			}
 		}
-		if err = c.execNatGwRules(pod, NAT_GW_SUBNET_ROUTE_ADD, rules); err != nil {
+		if err = c.execNatGwRules(pod, natGwSubnetRouteAdd, rules); err != nil {
 			klog.Errorf("failed to exec nat gateway rule, err: %v", err)
 			return err
 		}
@@ -572,7 +570,7 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 
 	if len(toBeDelCIDRs) > 0 {
 		for _, cidr := range toBeDelCIDRs {
-			if err = c.execNatGwRules(pod, NAT_GW_SUBNET_ROUTE_DEL, []string{cidr}); err != nil {
+			if err = c.execNatGwRules(pod, natGwSubnetRouteDel, []string{cidr}); err != nil {
 				klog.Errorf("failed to exec nat gateway rule, err: %v", err)
 				return err
 			}

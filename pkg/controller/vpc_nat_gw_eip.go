@@ -564,7 +564,7 @@ func (c *Controller) createEipInPod(dp, gw, v4Cidr string) error {
 	var addRules []string
 	rule := fmt.Sprintf("%s,%s", v4Cidr, gw)
 	addRules = append(addRules, rule)
-	if err = c.execNatGwRules(gwPod, NAT_GW_EIP_ADD, addRules); err != nil {
+	if err = c.execNatGwRules(gwPod, natGwEipAdd, addRules); err != nil {
 		return err
 	}
 	return nil
@@ -581,7 +581,7 @@ func (c *Controller) deleteEipInPod(dp, v4Cidr string) error {
 	var delRules []string
 	rule := v4Cidr
 	delRules = append(delRules, rule)
-	if err = c.execNatGwRules(gwPod, NAT_GW_EIP_DEL, delRules); err != nil {
+	if err = c.execNatGwRules(gwPod, natGwEipDel, delRules); err != nil {
 		return err
 	}
 	return nil
