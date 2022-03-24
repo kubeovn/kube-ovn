@@ -57,12 +57,22 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().HtbQoses().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("ips"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().IPs().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("iptables-dnat-rules"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().IptablesDnatRules().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("iptables-eips"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().IptablesEIPs().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("iptables-fip-rules"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().IptablesFIPRules().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("iptables-snat-rules"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().IptablesSnatRules().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("provider-networks"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().ProviderNetworks().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("security-groups"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().SecurityGroups().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("subnets"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().Subnets().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("virtual-ips"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().VirtualIPs().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("vlans"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().Vlans().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("vpcs"):

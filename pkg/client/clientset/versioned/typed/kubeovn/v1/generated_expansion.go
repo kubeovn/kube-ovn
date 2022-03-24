@@ -22,11 +22,21 @@ type HtbQosExpansion interface{}
 
 type IPExpansion interface{}
 
+type IptablesDnatRuleExpansion interface{}
+
+type IptablesEIPExpansion interface{}
+
+type IptablesFIPRuleExpansion interface{}
+
+type IptablesSnatRuleExpansion interface{}
+
 type ProviderNetworkExpansion interface{}
 
 type SecurityGroupExpansion interface{}
 
 type SubnetExpansion interface{}
+
+type VirtualIPExpansion interface{}
 
 type VlanExpansion interface{}
 
