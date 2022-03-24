@@ -97,7 +97,8 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		oldSubnet.Spec.DHCPv6Options != newSubnet.Spec.DHCPv6Options ||
 		oldSubnet.Spec.EnableIPv6RA != newSubnet.Spec.EnableIPv6RA ||
 		oldSubnet.Spec.IPv6RAConfigs != newSubnet.Spec.IPv6RAConfigs ||
-		oldSubnet.Spec.Protocol != newSubnet.Spec.Protocol {
+		oldSubnet.Spec.Protocol != newSubnet.Spec.Protocol ||
+		!reflect.DeepEqual(oldSubnet.Spec.Acls, newSubnet.Spec.Acls) {
 		klog.V(3).Infof("enqueue update subnet %s", key)
 		c.addOrUpdateSubnetQueue.Add(key)
 	}
@@ -699,6 +700,11 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			return err
 		}
 		c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclSuccess", "")
+	}
+
+	if err := c.ovnClient.UpdateSubnetACL(subnet.Name, subnet.Spec.Acls); err != nil {
+		c.patchSubnetStatus(subnet, "SetLogicalSwitchAclsFailed", err.Error())
+		return err
 	}
 
 	c.updateVpcStatusQueue.Add(subnet.Spec.Vpc)
