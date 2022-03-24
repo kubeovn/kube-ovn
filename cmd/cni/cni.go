@@ -10,7 +10,7 @@ import (
 
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
-	"github.com/containernetworking/cni/pkg/types/current"
+	current "github.com/containernetworking/cni/pkg/types/100"
 	"github.com/containernetworking/cni/pkg/version"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -63,12 +63,12 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return err
 	}
 
-	result := generateCNIResult(cniVersion, response)
+	result := generateCNIResult(response)
 	return types.PrintResult(&result, cniVersion)
 }
 
-func generateCNIResult(cniVersion string, cniResponse *request.CniResponse) current.Result {
-	result := current.Result{CNIVersion: cniVersion}
+func generateCNIResult(cniResponse *request.CniResponse) current.Result {
+	result := current.Result{CNIVersion: current.ImplementedSpecVersion}
 	_, mask, _ := net.ParseCIDR(cniResponse.CIDR)
 	podIface := current.Interface{
 		Name: cniResponse.PodNicName,
@@ -202,7 +202,6 @@ func parseValueFromArgs(key, argString string) (string, error) {
 
 func assignV4Address(ipAddress, gateway string, mask *net.IPNet) (current.IPConfig, types.Route) {
 	ip := current.IPConfig{
-		Version: "4",
 		Address: net.IPNet{IP: net.ParseIP(ipAddress).To4(), Mask: mask.Mask},
 		Gateway: net.ParseIP(gateway).To4(),
 	}
@@ -217,7 +216,6 @@ func assignV4Address(ipAddress, gateway string, mask *net.IPNet) (current.IPConf
 
 func assignV6Address(ipAddress, gateway string, mask *net.IPNet) (current.IPConfig, types.Route) {
 	ip := current.IPConfig{
-		Version: "6",
 		Address: net.IPNet{IP: net.ParseIP(ipAddress).To16(), Mask: mask.Mask},
 		Gateway: net.ParseIP(gateway).To16(),
 	}
