@@ -26,7 +26,7 @@ jobs:
       - name: Set up Go 1.x
         uses: actions/setup-go@v2
         with:
-          go-version: 1.17.5
+          go-version: 1.17.8
         id: go
 
       - name: Check out code into the Go module directory
@@ -314,7 +314,7 @@ jobs:
         run: |
           sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
           sh dist/images/cleanup.sh
-      
+
       - name: Check Node Network
         run: |
           sh -c '
