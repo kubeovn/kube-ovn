@@ -76,11 +76,12 @@ const (
 
 	OvsDpTypeLabel = "ovn.kubernetes.io/ovs_dp_type"
 
-	SubnetNameLabel    = "ovn.kubernetes.io/subnet"
-	ICGatewayLabel     = "ovn.kubernetes.io/ic-gw"
-	ExGatewayLabel     = "ovn.kubernetes.io/external-gw"
-	VpcNatGatewayLabel = "ovn.kubernetes.io/vpc-nat-gw"
-	VpcLbLabel         = "ovn.kubernetes.io/vpc_lb"
+	SubnetNameLabel        = "ovn.kubernetes.io/subnet"
+	ICGatewayLabel         = "ovn.kubernetes.io/ic-gw"
+	ExGatewayLabel         = "ovn.kubernetes.io/external-gw"
+	VpcNatGatewayLabel     = "ovn.kubernetes.io/vpc-nat-gw"
+	VpcNatGatewayNameLabel = "ovn.kubernetes.io/vpc-nat-gw-name"
+	VpcLbLabel             = "ovn.kubernetes.io/vpc_lb"
 
 	ProtocolTCP = "tcp"
 	ProtocolUDP = "udp"
