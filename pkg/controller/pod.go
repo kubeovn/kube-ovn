@@ -793,18 +793,13 @@ func (c *Controller) handleUpdatePod(key string) error {
 					klog.Errorf("failed to get ex-gateway config, %v", err)
 					return err
 				}
-				nextHop := cm.Data["nic-ip"]
+				nextHop := cm.Data["external-gw-addr"]
 				if nextHop == "" {
 					klog.Errorf("no available gateway nic address")
 					return fmt.Errorf("no available gateway nic address")
 				}
-				if !strings.Contains(nextHop, "/") {
-					klog.Errorf("gateway nic address's format is invalid")
-					return fmt.Errorf("gateway nic address's format is invalid")
-				}
-				nextHop = strings.Split(nextHop, "/")[0]
-				if addr := cm.Data["external-gw-addr"]; addr != "" {
-					nextHop = addr
+				if strings.Contains(nextHop, "/") {
+					nextHop = strings.Split(nextHop, "/")[0]
 				}
 
 				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nextHop, c.config.ClusterRouter, util.NormalRouteType); err != nil {
