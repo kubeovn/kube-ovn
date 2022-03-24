@@ -156,8 +156,12 @@ func CheckProtocol(address string) string {
 	ip := net.ParseIP(address)
 	if ip.To4() != nil {
 		return kubeovnv1.ProtocolIPv4
+	} else if ip.To16() != nil {
+		return kubeovnv1.ProtocolIPv6
 	}
-	return kubeovnv1.ProtocolIPv6
+
+	// cidr formal error
+	return ""
 }
 
 // ProtocolToFamily converts protocol string to netlink family
