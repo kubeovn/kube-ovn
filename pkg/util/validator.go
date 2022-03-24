@@ -45,6 +45,9 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 	if err := cidrConflict(subnet.Spec.CIDRBlock); err != nil {
 		return err
 	}
+	if CheckProtocol(subnet.Spec.CIDRBlock) == "" {
+		return fmt.Errorf("CIDRBlock: %s formal error", subnet.Spec.CIDRBlock)
+	}
 	excludeIps := subnet.Spec.ExcludeIps
 	for _, ipr := range excludeIps {
 		ips := strings.Split(ipr, "..")
