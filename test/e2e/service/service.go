@@ -302,7 +302,7 @@ var _ = Describe("[Service]", func() {
 			for _, node := range nodes.Items {
 				hasEndpoint := hasEndpoint(node.Name, localEtpHostEndpoints)
 				for _, pod := range containerPods.Items {
-					shoudSucceed := hasEndpoint || (!proxyIpvsMode && pod.Spec.NodeName == node.Name)
+					shoudSucceed := hasEndpoint || !proxyIpvsMode
 					for _, nodeIP := range nodeIPs(node) {
 						checkService(shoudSucceed, "kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...)
 					}
