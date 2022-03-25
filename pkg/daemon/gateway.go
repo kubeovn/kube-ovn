@@ -86,11 +86,6 @@ func (c *Controller) setIPSet() error {
 			klog.Errorf("get subnets failed, %+v", err)
 			return err
 		}
-		localPodIPs, err := c.getLocalPodIPsNeedNAT(protocol)
-		if err != nil {
-			klog.Errorf("get local pod ips failed, %+v", err)
-			return err
-		}
 		subnetsNeedNat, err := c.getSubnetsNeedNAT(protocol)
 		if err != nil {
 			klog.Errorf("get need nat subnets failed, %+v", err)
@@ -115,7 +110,7 @@ func (c *Controller) setIPSet() error {
 			MaxSize: 1048576,
 			SetID:   LocalPodSet,
 			Type:    ipsets.IPSetTypeHashIP,
-		}, localPodIPs)
+		}, nil)
 		c.ipsets[protocol].AddOrReplaceIPSet(ipsets.IPSetMetadata{
 			MaxSize: 1048576,
 			SetID:   SubnetNatSet,
@@ -186,13 +181,9 @@ func (c *Controller) addEgressConfig(subnet *kubeovnv1.Subnet, ip string) error 
 		return nil
 	}
 
-	podIPs := strings.Split(ip, ",")
-	protocol := util.CheckProtocol(ip)
-	if subnet.Spec.NatOutgoing {
-		c.addIPSetMembers(LocalPodSet, protocol, podIPs)
-		return nil
-	}
-	if subnet.Spec.ExternalEgressGateway != "" {
+	if !subnet.Spec.NatOutgoing && subnet.Spec.ExternalEgressGateway != "" {
+		podIPs := strings.Split(ip, ",")
+		protocol := util.CheckProtocol(ip)
 		return c.addPodPolicyRouting(protocol, subnet.Spec.ExternalEgressGateway, subnet.Spec.PolicyRoutingPriority, subnet.Spec.PolicyRoutingTableID, podIPs)
 	}
 
@@ -218,55 +209,13 @@ func (c *Controller) removeEgressConfig(subnet, ip string) error {
 		return nil
 	}
 
-	podIPs := strings.Split(ip, ",")
-	protocol := util.CheckProtocol(ip)
-	if podSubnet.Spec.NatOutgoing {
-		c.removeIPSetMembers(LocalPodSet, protocol, podIPs)
-		return nil
-	}
-	if podSubnet.Spec.ExternalEgressGateway != "" {
+	if !podSubnet.Spec.NatOutgoing && podSubnet.Spec.ExternalEgressGateway != "" {
+		podIPs := strings.Split(ip, ",")
+		protocol := util.CheckProtocol(ip)
 		return c.deletePodPolicyRouting(protocol, podSubnet.Spec.ExternalEgressGateway, podSubnet.Spec.PolicyRoutingPriority, podSubnet.Spec.PolicyRoutingTableID, podIPs)
 	}
 
 	return nil
-}
-
-func (c *Controller) addIPSetMembers(setID, protocol string, ips []string) {
-	c.ipsetLock.Lock()
-	defer c.ipsetLock.Unlock()
-
-	if protocol == kubeovnv1.ProtocolDual {
-		if c.ipsets[kubeovnv1.ProtocolIPv4] != nil {
-			c.ipsets[kubeovnv1.ProtocolIPv4].AddMembers(setID, ips[:1])
-			c.ipsets[kubeovnv1.ProtocolIPv4].ApplyUpdates()
-		}
-		if c.ipsets[kubeovnv1.ProtocolIPv6] != nil {
-			c.ipsets[kubeovnv1.ProtocolIPv6].AddMembers(setID, ips[1:])
-			c.ipsets[kubeovnv1.ProtocolIPv6].ApplyUpdates()
-		}
-	} else if c.ipsets[protocol] != nil {
-		c.ipsets[protocol].AddMembers(setID, ips[:1])
-		c.ipsets[protocol].ApplyUpdates()
-	}
-}
-
-func (c *Controller) removeIPSetMembers(setID, protocol string, ips []string) {
-	c.ipsetLock.Lock()
-	defer c.ipsetLock.Unlock()
-
-	if protocol == kubeovnv1.ProtocolDual {
-		if c.ipsets[kubeovnv1.ProtocolIPv4] != nil {
-			c.ipsets[kubeovnv1.ProtocolIPv4].RemoveMembers(setID, ips[:1])
-			c.ipsets[kubeovnv1.ProtocolIPv4].ApplyUpdates()
-		}
-		if c.ipsets[kubeovnv1.ProtocolIPv6] != nil {
-			c.ipsets[kubeovnv1.ProtocolIPv6].RemoveMembers(setID, ips[1:])
-			c.ipsets[kubeovnv1.ProtocolIPv6].ApplyUpdates()
-		}
-	} else if c.ipsets[protocol] != nil {
-		c.ipsets[protocol].RemoveMembers(setID, ips[:1])
-		c.ipsets[protocol].ApplyUpdates()
-	}
 }
 
 func (c *Controller) addPodPolicyRouting(podProtocol, externalEgressGateway string, priority, tableID uint32, ips []string) error {
@@ -434,11 +383,9 @@ func (c *Controller) setIptables() error {
 
 		v4Rules = []util.IPTableRule{
 			// do not nat route traffic
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set ! --match-set ovn40subnets src -m set ! --match-set ovn40other-node src -m set --match-set ovn40local-pod-ip-nat dst -j RETURN`)},
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set ! --match-set ovn40subnets src -m set ! --match-set ovn40other-node src -m set --match-set ovn40subnets-nat dst -j RETURN`)},
 			// nat outgoing
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set --match-set ovn40subnets-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE`)},
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set --match-set ovn40local-pod-ip-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE`)},
 			// Input Accept
 			{Table: "filter", Chain: "INPUT", Rule: strings.Fields(`-m set --match-set ovn40subnets src -j ACCEPT`)},
 			{Table: "filter", Chain: "INPUT", Rule: strings.Fields(`-m set --match-set ovn40subnets dst -j ACCEPT`)},
@@ -454,11 +401,9 @@ func (c *Controller) setIptables() error {
 		}
 		v6Rules = []util.IPTableRule{
 			// do not nat route traffic
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src -m set --match-set ovn60local-pod-ip-nat dst -j RETURN`)},
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src -m set --match-set ovn60subnets-nat dst -j RETURN`)},
 			// nat outgoing
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set --match-set ovn60subnets-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE`)},
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set --match-set ovn60local-pod-ip-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE`)},
 			// Input Accept
 			{Table: "filter", Chain: "INPUT", Rule: strings.Fields(`-m set --match-set ovn60subnets src -j ACCEPT`)},
 			{Table: "filter", Chain: "INPUT", Rule: strings.Fields(`-m set --match-set ovn60subnets dst -j ACCEPT`)},
@@ -507,10 +452,10 @@ func (c *Controller) setIptables() error {
 			)
 
 			rules := make([]util.IPTableRule, len(iptablesRules)+2)
-			copy(rules[1:5], iptablesRules[:4])
+			copy(rules[1:3], iptablesRules[:2])
 			rules[0] = util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m mark --mark 0x4000/0x4000 -j MASQUERADE`, nodeIP))}
-			rules[5] = util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set ! --match-set %s src -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset, matchset))}
-			copy(rules[6:], iptablesRules[4:])
+			rules[3] = util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set ! --match-set %s src -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset, matchset))}
+			copy(rules[4:], iptablesRules[2:])
 			iptablesRules = rules
 		}
 
@@ -672,62 +617,6 @@ func (c *Controller) setExGateway() error {
 	return nil
 }
 
-func (c *Controller) getLocalPodIPsNeedNAT(protocol string) ([]string, error) {
-	var localPodIPs []string
-	nodeName := os.Getenv(util.HostnameEnv)
-	allPods, err := c.podsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("list pods failed, %+v", err)
-		return nil, err
-	}
-	for _, pod := range allPods {
-		if pod.Spec.HostNetwork ||
-			pod.DeletionTimestamp != nil ||
-			pod.Spec.NodeName != nodeName ||
-			pod.Annotations[util.LogicalSwitchAnnotation] == "" ||
-			pod.Annotations[util.IpAddressAnnotation] == "" {
-			continue
-		}
-		subnet, err := c.subnetsLister.Get(pod.Annotations[util.LogicalSwitchAnnotation])
-		if err != nil {
-			klog.Errorf("get subnet %s failed, %+v", pod.Annotations[util.LogicalSwitchAnnotation], err)
-			continue
-		}
-
-		if !subnet.Spec.NatOutgoing ||
-			subnet.Spec.Vpc != util.DefaultVpc ||
-			subnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
-			continue
-		}
-		if subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway {
-			continue
-		}
-
-		if len(pod.Status.PodIPs) != 0 {
-			if len(pod.Status.PodIPs) == 2 && protocol == kubeovnv1.ProtocolIPv6 {
-				localPodIPs = append(localPodIPs, pod.Status.PodIPs[1].IP)
-			} else if util.CheckProtocol(pod.Status.PodIP) == protocol {
-				localPodIPs = append(localPodIPs, pod.Status.PodIP)
-			}
-		} else {
-			ipv4, ipv6 := util.SplitStringIP(pod.Annotations[util.IpAddressAnnotation])
-			if ipv4 != "" && protocol == kubeovnv1.ProtocolIPv4 {
-				localPodIPs = append(localPodIPs, ipv4)
-			}
-			if ipv6 != "" && protocol == kubeovnv1.ProtocolIPv6 {
-				localPodIPs = append(localPodIPs, ipv6)
-			}
-		}
-		attachIps, err := c.getAttachmentLocalPodIPsNeedNAT(pod, nodeName, protocol)
-		if len(attachIps) != 0 && err == nil {
-			localPodIPs = append(localPodIPs, attachIps...)
-		}
-	}
-
-	klog.V(3).Infof("local pod ips %v", localPodIPs)
-	return localPodIPs, nil
-}
-
 func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta][]string, error) {
 	allPods, err := c.podsLister.List(labels.Everything())
 	if err != nil {
@@ -814,8 +703,6 @@ func (c *Controller) getSubnetsNeedNAT(protocol string) ([]string, error) {
 		if subnet.DeletionTimestamp == nil &&
 			subnet.Spec.NatOutgoing &&
 			(subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) &&
-			subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType &&
-			util.GatewayContains(subnet.Spec.GatewayNode, c.config.NodeName) &&
 			subnet.Spec.Vpc == util.DefaultVpc &&
 			(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) {
 			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
@@ -1070,38 +957,4 @@ func getIptablesRuleNum(table, chain, rule, dstNatIp string) (string, error) {
 		}
 	}
 	return num, nil
-}
-
-func (c *Controller) getAttachmentLocalPodIPsNeedNAT(pod *v1.Pod, nodeName, protocol string) ([]string, error) {
-	var attachPodIPs []string
-
-	attachNets, err := util.ParsePodNetworkAnnotation(pod.Annotations[util.AttachmentNetworkAnnotation], pod.Namespace)
-	if err != nil {
-		klog.Errorf("failed to parse attach net for pod '%s', %v", pod.Name, err)
-		return attachPodIPs, err
-	}
-	for _, multiNet := range attachNets {
-		provider := fmt.Sprintf("%s.%s.ovn", multiNet.Name, multiNet.Namespace)
-		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
-			subnet, err := c.subnetsLister.Get(pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider)])
-			if err != nil {
-				klog.Errorf("get subnet %s failed, %+v", pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider)], err)
-				continue
-			}
-
-			if subnet.Spec.NatOutgoing &&
-				subnet.Spec.Vpc == util.DefaultVpc &&
-				subnet.Spec.GatewayType == kubeovnv1.GWDistributedType &&
-				pod.Spec.NodeName == nodeName {
-				ipv4, ipv6 := util.SplitStringIP(pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, provider)])
-				if ipv4 != "" && protocol == kubeovnv1.ProtocolIPv4 {
-					attachPodIPs = append(attachPodIPs, ipv4)
-				}
-				if ipv6 != "" && protocol == kubeovnv1.ProtocolIPv6 {
-					attachPodIPs = append(attachPodIPs, ipv6)
-				}
-			}
-		}
-	}
-	return attachPodIPs, nil
 }
