@@ -168,6 +168,7 @@ func GetExporterName() string {
 }
 
 func (e *Exporter) exportOvnStatusGauge() {
+	metricOvnHealthyStatus.Reset()
 	result := e.getOvnStatus()
 	for k, v := range result {
 		metricOvnHealthyStatus.WithLabelValues(e.Client.System.Hostname, k).Set(float64(v))
@@ -175,6 +176,7 @@ func (e *Exporter) exportOvnStatusGauge() {
 }
 
 func (e *Exporter) exportOvnLogFileSizeGauge() {
+	metricLogFileSize.Reset()
 	components := []string{
 		"ovsdb-server-southbound",
 		"ovsdb-server-northbound",
@@ -192,6 +194,7 @@ func (e *Exporter) exportOvnLogFileSizeGauge() {
 }
 
 func (e *Exporter) exportOvnDBFileSizeGauge() {
+	metricDBFileSize.Reset()
 	nbPath := e.Client.Database.Northbound.File.Data.Path
 	sbPath := e.Client.Database.Southbound.File.Data.Path
 	dirDbMap := map[string]string{
@@ -213,6 +216,7 @@ func (e *Exporter) exportOvnRequestErrorGauge() {
 }
 
 func (e *Exporter) exportOvnChassisGauge() {
+	metricChassisInfo.Reset()
 	if vteps, err := e.Client.GetChassis(); err != nil {
 		klog.Errorf("%s: %v", e.Client.Database.Southbound.Name, err)
 		e.IncrementErrorCounter()
@@ -224,14 +228,17 @@ func (e *Exporter) exportOvnChassisGauge() {
 }
 
 func (e *Exporter) exportLogicalSwitchGauge() {
+	resetLogicalSwitchMetrics()
 	e.setLogicalSwitchInfoMetric()
 }
 
 func (e *Exporter) exportLogicalSwitchPortGauge() {
+	resetLogicalSwitchPortMetrics()
 	e.setLogicalSwitchPortInfoMetric()
 }
 
 func (e *Exporter) exportOvnClusterEnableGauge() {
+	metricClusterEnabled.Reset()
 	isClusterEnabled, err := getClusterEnableState(e.Client.Database.Northbound.File.Data.Path)
 	if err != nil {
 		klog.Errorf("failed to get output of cluster status: %v", err)
@@ -244,6 +251,7 @@ func (e *Exporter) exportOvnClusterEnableGauge() {
 }
 
 func (e *Exporter) exportOvnClusterInfoGauge() {
+	resetOvnClusterMetrics()
 	dirDbMap := map[string]string{
 		"nb": "OVN_Northbound",
 		"sb": "OVN_Southbound",
@@ -259,6 +267,7 @@ func (e *Exporter) exportOvnClusterInfoGauge() {
 }
 
 func (e *Exporter) exportOvnDBStatusGauge() {
+	metricDBStatus.Reset()
 	dbList := []string{"OVN_Northbound", "OVN_Southbound"}
 	for _, database := range dbList {
 		ok, err := getDBStatus(database)
