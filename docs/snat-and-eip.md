@@ -24,8 +24,9 @@ data:
   type: "centralized"                   # centralized or distributed, when centralized external-gw-nodes config below will take effect. When distributed, every node in cluster must have a same nic and eip function will perform in distributed way.
   external-gw-nodes: "kube-ovn-worker"  # NodeName in kubernetes which will act the overlay to underlay gateway functions
   external-gw-nic: "eth1"               # The nic that will be bridged into ovs and act as overlay to underlay gateway
-  nic-ip: "172.56.0.1/16"               # The ip and mask of the underlay physical gateway
-  nic-mac: "16:52:f3:13:6a:25"          # The mac of the underlay physical gateway
+  external-gw-addr: "172.56.0.1/16"     # The ip and mask of the underlay physical gateway
+  nic-ip: "172.56.0.254/16"             # The ip and mask of the underlay physical network for logical route externel gw port
+  nic-mac: "16:52:f3:13:6a:25"          # The mac of nic-ip
 ```
 
 2. Wait about one minute for gateway installation get ready and check the status.
@@ -43,8 +44,8 @@ switch 3de4cea7-1a71-43f3-8b62-435a57ef16a6 (ovn-external)
         router-port: ovn-cluster-ovn-external
 router e1eb83ad-34be-4ed5-9a02-fcc8b1d357c4 (ovn-cluster)
     port ovn-cluster-ovn-external
-        mac: "ac:1f:6b:2d:33:f1"
-        networks: ["172.56.0.100/16"]
+        mac: "16:52:f3:13:6a:25"
+        networks: ["172.56.0.254/16"]
         gateway chassis: [a5682814-2e2c-46dd-9c1c-6803ef0dab66]
 ```
 
