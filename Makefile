@@ -8,6 +8,9 @@ COMMIT = git-$(shell git rev-parse --short HEAD)
 DATE = $(shell date +"%Y-%m-%d_%H:%M:%S")
 GOLDFLAGS = "-w -s -extldflags '-z now' -X github.com/kubeovn/kube-ovn/versions.COMMIT=$(COMMIT) -X github.com/kubeovn/kube-ovn/versions.VERSION=$(RELEASE_TAG) -X github.com/kubeovn/kube-ovn/versions.BUILDDATE=$(DATE)"
 
+MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:stable
+MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset.yml
+
 # ARCH could be amd64,arm64
 ARCH = amd64
 
@@ -269,6 +272,16 @@ kind-install-underlay-logical-gateway-dual:
 		kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-; \
 	fi
 	ENABLE_SSL=true DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 LOGICAL_GATEWAY=true bash install-underlay.sh
+
+.PHONY: kind-install-multus
+kind-install-multus:
+	docker pull "$(MULTUS_IMAGE)"
+	kind load docker-image --name kube-ovn "$(MULTUS_IMAGE)"
+	kubectl apply -f "$(MULTUS_YAML)"
+	kubectl -n kube-system rollout status ds kube-multus-ds
+	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
+	ENABLE_SSL=true CNI_CONFIG_PRIORITY=10 dist/images/install.sh
+	kubectl describe no
 
 .PHONY: kind-install-ic
 kind-install-ic:

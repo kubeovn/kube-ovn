@@ -13,6 +13,7 @@ HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_LB=${ENABLE_LB:-true}
 ENABLE_NP=${ENABLE_NP:-true}
 ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-true}
+CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
 # The nic to support container network can be a nic name or a group of regex
 # separated by comma, if empty will use the nic that the default route use
 IFACE=${IFACE:-}
@@ -2260,6 +2261,7 @@ spec:
           - --dpdk-tunnel-iface=${DPDK_TUNNEL_IFACE}
           - --network-type=$NETWORK_TYPE
           - --default-interface-name=$VLAN_INTERFACE_NAME
+          - --cni-conf-name=${CNI_CONFIG_PRIORITY}-kube-ovn.conflist
           - --logtostderr=false
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-cni.log
