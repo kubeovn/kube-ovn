@@ -366,6 +366,10 @@ e2e:
 		done; \
 	fi
 
+	bridge link show | awk '{print $2}' | while read s; do ip -d link show $s; done
+	bridge link show | awk '{print $2}' | while read s; do bridge link set dev $s hairpin off; done
+	bridge link show | awk '{print $2}' | while read s; do ip -d link show $s; done
+
 	@if [ -n "$$VLAN_ID" ]; then \
 		kind get nodes --name kube-ovn | while read node; do \
 			docker cp test/kind-vlan.sh $$node:/kind-vlan.sh; \
