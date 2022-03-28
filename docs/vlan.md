@@ -27,11 +27,12 @@ From v1.7.1 on, Kube-OVN supports dynamic underlay/VLAN networking management.
 
 In the Vlan/Underlay mode, OVS sends origin Pods packets directly to the physical network and uses physical switch/router to transmit the traffic, so it relies on the capabilities of network infrastructure.
 
-1. For K8s running on VMs provided by OpenStack, `PortSecurity` of the network ports MUST be `disabled`;
-2. For K8s running on VMs provided by VMware, the switch security options `MAC Address Changes` and `Forged Transmits` MUST be `allowed`;
-3. The Vlan/Underlay mode can not run on public IaaS providers like AWS/GCE/Alibaba Cloud as their network can not provide the capability to transmit this type packets;
-4. In versions prior to v1.9.0, Kube-OVN checks the connectivity to the subnet gateway through ICMP, so the gateway MUST respond the ICMP messages if you are using those versions, or you can turn off the check by setting `disableGatewayCheck` to `true` which is introduced in v1.8.0;
-5. For in-cluster service traffic, Pods set the dst mac to gateway mac and then Kube-OVN applies DNAT to transfer the dst ip, the packets will first be sent to the gateway, so the gateway MUST be capable of transmitting the packets back to the subnet.
+1. `hairpin` mode MUST be turned off on the switch/bridge ports to which the network interfaces are connected;
+2. For K8s running on VMs provided by OpenStack, `PortSecurity` of the network ports MUST be `disabled`;
+3. For K8s running on VMs provided by VMware, the switch security options `MAC Address Changes` and `Forged Transmits` MUST be `allowed`;
+4. The Vlan/Underlay mode can not run on public IaaS providers like AWS/GCE/Alibaba Cloud as their network can not provide the capability to transmit this type packets;
+5. In versions prior to v1.9.0, Kube-OVN checks the connectivity to the subnet gateway through ICMP, so the gateway MUST respond the ICMP messages if you are using those versions, or you can turn off the check by setting `disableGatewayCheck` to `true` which is introduced in v1.8.0;
+6. For in-cluster service traffic, Pods set the dst mac to gateway mac and then Kube-OVN applies DNAT to transfer the dst ip, the packets will first be sent to the gateway, so the gateway MUST be capable of transmitting the packets back to the subnet.
 
 ## Comparison with Macvlan
 
