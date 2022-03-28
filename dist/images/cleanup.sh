@@ -12,15 +12,15 @@ done
 
 for subnet in $(kubectl get subnet -o name); do
   kubectl patch "$subnet" --type='json' -p '[{"op": "replace", "path": "/metadata/finalizers", "value": []}]'
-  kubectl delete "$subnet"
+  kubectl delete --ignore-not-found "$subnet"
 done
 
 for vlan in $(kubectl get vlan -o name); do
-  kubectl delete $vlan
+  kubectl delete --ignore-not-found $vlan
 done
 
 for pn in $(kubectl get provider-network -o name); do
-  kubectl delete $pn
+  kubectl delete --ignore-not-found $pn
 done
 
 sleep 5
