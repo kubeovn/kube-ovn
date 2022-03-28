@@ -427,6 +427,24 @@ jobs:
           command: |
             sudo make kind-install
 
+      - name: Set up Go 1.x
+        uses: actions/setup-go@v2
+        with:
+          go-version: ^1.17
+        id: go
+
+      - name: Run E2E
+        run: |
+          go install github.com/onsi/ginkgo/ginkgo@latest
+          sudo kubectl cluster-info
+          sudo chmod 666 /home/runner/.kube/config
+          make e2e
+
+      - name: Cleanup
+        run: |
+          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
+          sh dist/images/cleanup.sh
+
   ipv6-e2e:
     needs: build
     name: ipv6-e2e
