@@ -111,6 +111,11 @@ var _ = Describe("[Subnet]", func() {
 
 		It("centralized gateway", func() {
 			name := f.GetName()
+			cidr := "11.11.0.0/16"
+			if isIPv6 {
+				cidr = "fd00:11:11::/112"
+			}
+
 			By("create subnet")
 			s := kubeovn.Subnet{
 				ObjectMeta: metav1.ObjectMeta{
@@ -118,7 +123,7 @@ var _ = Describe("[Subnet]", func() {
 					Labels: map[string]string{"e2e": "true"},
 				},
 				Spec: kubeovn.SubnetSpec{
-					CIDRBlock:   "11.11.0.0/16",
+					CIDRBlock:   cidr,
 					GatewayType: kubeovn.GWCentralizedType,
 					GatewayNode: "kube-ovn-control-plane,kube-ovn-worker,kube-ovn-worker2",
 				},
@@ -140,6 +145,11 @@ var _ = Describe("[Subnet]", func() {
 	Describe("Update", func() {
 		It("distributed to centralized", func() {
 			name := f.GetName()
+			cidr := "11.12.0.0/16"
+			if isIPv6 {
+				cidr = "fd00:11:12::/112"
+			}
+
 			By("create subnet")
 			s := &kubeovn.Subnet{
 				ObjectMeta: metav1.ObjectMeta{
@@ -147,7 +157,7 @@ var _ = Describe("[Subnet]", func() {
 					Labels: map[string]string{"e2e": "true"},
 				},
 				Spec: kubeovn.SubnetSpec{
-					CIDRBlock: "11.12.0.0/16",
+					CIDRBlock: cidr,
 				},
 			}
 			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), s, metav1.CreateOptions{})
@@ -174,6 +184,10 @@ var _ = Describe("[Subnet]", func() {
 	Describe("Delete", func() {
 		It("normal deletion", func() {
 			name := f.GetName()
+			cidr := "11.13.0.0/16"
+			if isIPv6 {
+				cidr = "fd00:11:13::/112"
+			}
 			By("create subnet")
 			s := kubeovn.Subnet{
 				ObjectMeta: metav1.ObjectMeta{
@@ -181,7 +195,7 @@ var _ = Describe("[Subnet]", func() {
 					Labels: map[string]string{"e2e": "true"},
 				},
 				Spec: kubeovn.SubnetSpec{
-					CIDRBlock: "11.13.0.0/16",
+					CIDRBlock: cidr,
 				},
 			}
 			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), &s, metav1.CreateOptions{})
@@ -205,6 +219,10 @@ var _ = Describe("[Subnet]", func() {
 	Describe("cidr with nonstandard style", func() {
 		It("cidr ends with nonzero", func() {
 			name := f.GetName()
+			cidr := "11.14.0.10/16"
+			if isIPv6 {
+				cidr = "fd00:11:14::10/112"
+			}
 			By("create subnet")
 			s := &kubeovn.Subnet{
 				ObjectMeta: metav1.ObjectMeta{
@@ -212,7 +230,7 @@ var _ = Describe("[Subnet]", func() {
 					Labels: map[string]string{"e2e": "true"},
 				},
 				Spec: kubeovn.SubnetSpec{
-					CIDRBlock: "11.14.0.1/16",
+					CIDRBlock: cidr,
 				},
 			}
 
@@ -224,7 +242,12 @@ var _ = Describe("[Subnet]", func() {
 
 			s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), name, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(s.Spec.CIDRBlock).To(Equal("11.14.0.0/16"))
+			if !isIPv6 {
+				Expect(s.Spec.CIDRBlock).To(Equal("11.14.0.0/16"))
+			} else {
+				Expect(s.Spec.CIDRBlock).To(Equal("fd00:11:14::/112"))
+			}
+
 		})
 	})
 

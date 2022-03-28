@@ -397,6 +397,9 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	if err := c.initSyncCrdVlans(); err != nil {
 		klog.Errorf("failed to sync crd vlans: %v", err)
 	}
+	if err := c.initDeleteOverlayPodsStaticRoutes(); err != nil {
+		klog.Errorf("failed to delete pod's static route in default vpc: %v", err)
+	}
 
 	// start workers to do all the network operations
 	c.startWorkers(stopCh)

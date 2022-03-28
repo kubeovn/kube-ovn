@@ -45,6 +45,11 @@ func (c *Controller) InitOVN() error {
 		return err
 	}
 
+	if err := c.createOverlaySubnetsAddressSet(); err != nil {
+		klog.Errorf("failed to create overlay subnets address-set, %v", err)
+		return err
+	}
+
 	return nil
 }
 
@@ -627,5 +632,37 @@ func (c *Controller) initAppendNodeExternalIds(portName, nodeName string) error 
 		klog.Errorf("failed to set lsp external_ids for node %s, %v", nodeName, err)
 		return err
 	}
+	return nil
+}
+
+func (c *Controller) initDeleteOverlayPodsStaticRoutes() error {
+	pods, err := c.podsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list pods: %v", err)
+		return err
+	}
+	for _, pod := range pods {
+		if pod.Spec.HostNetwork {
+			continue
+		}
+		podNets, err := c.getPodKubeovnNets(pod)
+		if err != nil {
+			klog.Errorf("failed to get pod kubeovn nets %s.%s address %s: %v", pod.Name, pod.Namespace, pod.Annotations[util.IpAddressAnnotation], err)
+			continue
+		}
+		for _, podNet := range podNets {
+			if !isOvnSubnet(podNet.Subnet) || podNet.Subnet.Spec.Vpc != util.DefaultVpc || podNet.Subnet.Spec.Vlan != "" || podNet.Subnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
+				continue
+			}
+			if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
+				for _, podIP := range strings.Split(pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)], ",") {
+					if err := c.ovnClient.DeleteStaticRoute(podIP, podNet.Subnet.Spec.Vpc); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+
 	return nil
 }

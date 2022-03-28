@@ -120,6 +120,9 @@ const (
 	OffloadType      = "offload-port"
 	InternalType     = "internal-port"
 
+	PodRouterPolicyPriority = 20000
+	CentralSubnetPriority   = 25000
+
 	ChassisLoc     = "/etc/openvswitch/system-id.conf"
 	HostnameEnv    = "KUBE_NODE_NAME"
 	ChasRetryTime  = 5

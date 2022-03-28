@@ -328,22 +328,22 @@ func (c Client) AddLbToLogicalSwitch(tcpLb, tcpSessLb, udpLb, udpSessLb, ls stri
 
 func (c Client) RemoveLbFromLogicalSwitch(tcpLb, tcpSessLb, udpLb, udpSessLb, ls string) error {
 	if err := c.removeLoadBalancerFromLogicalSwitch(tcpLb, ls); err != nil {
-		klog.Errorf("failed to add tcp lb to %s, %v", ls, err)
+		klog.Errorf("failed to remove tcp lb from %s, %v", ls, err)
 		return err
 	}
 
 	if err := c.removeLoadBalancerFromLogicalSwitch(udpLb, ls); err != nil {
-		klog.Errorf("failed to add udp lb to %s, %v", ls, err)
+		klog.Errorf("failed to remove udp lb from %s, %v", ls, err)
 		return err
 	}
 
 	if err := c.removeLoadBalancerFromLogicalSwitch(tcpSessLb, ls); err != nil {
-		klog.Errorf("failed to add tcp session lb to %s, %v", ls, err)
+		klog.Errorf("failed to remove tcp session lb from %s, %v", ls, err)
 		return err
 	}
 
 	if err := c.removeLoadBalancerFromLogicalSwitch(udpSessLb, ls); err != nil {
-		klog.Errorf("failed to add udp session lb to %s, %v", ls, err)
+		klog.Errorf("failed to remove udp session lb from %s, %v", ls, err)
 		return err
 	}
 
@@ -725,6 +725,107 @@ func (c Client) AddStaticRoute(policy, cidr, nextHop, router string, routeType s
 	return nil
 }
 
+// AddPolicyRoute add a policy route rule in ovn
+func (c Client) AddPolicyRoute(router string, priority int32, match string, action string, nextHop string) error {
+	exist, err := c.IsPolicyRouteExist(router, priority, match)
+	if err != nil {
+		return err
+	}
+	if exist {
+		return nil
+	}
+
+	// lr-policy-add ROUTER PRIORITY MATCH ACTION [NEXTHOP]
+	args := []string{"lr-policy-add", router, strconv.Itoa(int(priority)), match, action}
+	if nextHop != "" {
+		args = append(args, nextHop)
+	}
+	if _, err := c.ovnNbCommand(args...); err != nil {
+		return err
+	}
+	return nil
+}
+
+// DeletePolicyRoute delete a policy route rule in ovn
+func (c Client) DeletePolicyRoute(router string, priority int32, match string) error {
+	exist, err := c.IsPolicyRouteExist(router, priority, match)
+	if err != nil {
+		return err
+	}
+	if !exist {
+		return nil
+	}
+	var args = []string{"lr-policy-del", router}
+	// lr-policy-del ROUTER [PRIORITY [MATCH]]
+	if priority > 0 {
+		args = append(args, strconv.Itoa(int(priority)))
+		if match != "" {
+			args = append(args, match)
+		}
+	}
+	_, err = c.ovnNbCommand(args...)
+	return err
+}
+
+func (c Client) IsPolicyRouteExist(router string, priority int32, match string) (bool, error) {
+	existPolicyRoute, err := c.GetPolicyRouteList(router)
+	if err != nil {
+		return false, err
+	}
+	for _, rule := range existPolicyRoute {
+		if rule.Priority != priority {
+			continue
+		}
+		if match == "" || rule.Match == match {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+type PolicyRoute struct {
+	Priority  int32
+	Match     string
+	Action    string
+	NextHopIP string
+}
+
+func (c Client) GetPolicyRouteList(router string) (routeList []*PolicyRoute, err error) {
+	output, err := c.ovnNbCommand("lr-policy-list", router)
+	if err != nil {
+		klog.Errorf("failed to list logical router policy route: %v", err)
+		return nil, err
+	}
+	return parseLrPolicyRouteListOutput(output)
+}
+
+var policyRouteRegexp = regexp.MustCompile(`^\s*(\d+)\s+(.*)\b\s+(allow|drop|reroute)\s*(.*)?$`)
+
+func parseLrPolicyRouteListOutput(output string) (routeList []*PolicyRoute, err error) {
+	lines := strings.Split(output, "\n")
+	routeList = make([]*PolicyRoute, 0, len(lines))
+	for _, l := range lines {
+		if len(l) == 0 {
+			continue
+		}
+		sm := policyRouteRegexp.FindStringSubmatch(l)
+		if len(sm) != 5 {
+			continue
+		}
+		priority, err := strconv.ParseInt(sm[1], 10, 32)
+		if err != nil {
+			return nil, fmt.Errorf("found unexpeted policy priority %s, please check", sm[1])
+		}
+		routeList = append(routeList, &PolicyRoute{
+			Priority:  int32(priority),
+			Match:     sm[2],
+			Action:    sm[3],
+			NextHopIP: sm[4],
+		})
+	}
+	return routeList, nil
+}
+
 func (c Client) GetStaticRouteList(router string) (routeList []*StaticRoute, err error) {
 	output, err := c.ovnNbCommand("lr-route-list", router)
 	if err != nil {
@@ -849,6 +950,10 @@ func (c Client) DeleteStaticRouteByNextHop(nextHop string) error {
 	if strings.TrimSpace(nextHop) == "" {
 		return nil
 	}
+	if util.CheckProtocol(nextHop) == kubeovnv1.ProtocolIPv6 {
+		nextHop = strings.ReplaceAll(nextHop, ":", "\\:")
+	}
+
 	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=ip_prefix", "find", "Logical_Router_Static_Route", fmt.Sprintf("nexthop=%s", nextHop))
 	if err != nil {
 		klog.Errorf("failed to list static route %s, %v", nextHop, err)
@@ -1136,7 +1241,47 @@ func (c Client) ListNpPortGroup() ([]portGroup, error) {
 	return result, nil
 }
 
-func (c Client) CreateAddressSet(asName, npNamespace, npName, direction string) error {
+func (c Client) CreateAddressSet(name string) error {
+	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid", "find", "address_set", fmt.Sprintf("name=%s", name))
+	if err != nil {
+		klog.Errorf("failed to find address_set %s: %v, %q", name, err, output)
+		return err
+	}
+	if output != "" {
+		return nil
+	}
+	_, err = c.ovnNbCommand("create", "address_set", fmt.Sprintf("name=%s", name), fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
+	return err
+}
+
+func (c Client) RemoveAddressSetAddresses(name string, address string) error {
+	output, err := c.ovnNbCommand("remove", "address_set", name, "addresses", strings.ReplaceAll(address, ":", `\:`))
+	if err != nil {
+		klog.Errorf("failed to remove address %s from address_set %s: %v, %q", address, name, err, output)
+		return err
+	}
+	return nil
+}
+
+func (c Client) ListAddressesByName(addressSetName string) ([]string, error) {
+	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=addresses", "find", "address_set", fmt.Sprintf("name=%s", addressSetName))
+	if err != nil {
+		klog.Errorf("failed to list address_set of %s, error %v", addressSetName, err)
+		return nil, err
+	}
+
+	lines := strings.Split(output, "\n")
+	result := make([]string, 0, len(lines))
+	for _, l := range lines {
+		if len(strings.TrimSpace(l)) == 0 {
+			continue
+		}
+		result = append(result, strings.Fields(l)...)
+	}
+	return result, nil
+}
+
+func (c Client) CreateNpAddressSet(asName, npNamespace, npName, direction string) error {
 	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid", "find", "address_set", fmt.Sprintf("name=%s", asName))
 	if err != nil {
 		klog.Errorf("failed to find address_set %s: %v, %q", asName, err, output)
@@ -1727,4 +1872,79 @@ func (c *Client) AclExists(priority, direction string) (bool, error) {
 		return false, nil
 	}
 	return true, nil
+}
+
+func (c *Client) PortGroupExists(pgName string) (bool, error) {
+	results, err := c.CustomFindEntity("port_group", []string{"_uuid"}, fmt.Sprintf("name=%s", pgName))
+	if err != nil {
+		klog.Errorf("customFindEntity failed, %v", err)
+		return false, err
+	}
+	if len(results) == 0 {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (c *Client) PolicyRouteExists(priority int32, match string) (bool, error) {
+	results, err := c.CustomFindEntity("Logical_Router_Policy", []string{"_uuid"}, fmt.Sprintf("priority=%d", priority), fmt.Sprintf("match=\"%s\"", match))
+	if err != nil {
+		klog.Errorf("customFindEntity failed, %v", err)
+		return false, err
+	}
+	if len(results) == 0 {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (c *Client) GetPolicyRouteParas(priority int32, match string) ([]string, map[string]string, error) {
+	var nexthops []string
+	result, err := c.CustomFindEntity("Logical_Router_Policy", []string{"nexthops", "external_ids"}, fmt.Sprintf("priority=%d", priority), fmt.Sprintf("match=\"%s\"", match))
+	if err != nil {
+		klog.Errorf("customFindEntity failed, %v", err)
+		return nexthops, nil, err
+	}
+	if len(result) == 0 {
+		return nexthops, nil, nil
+	}
+	nexthops = append(nexthops, result[0]["nexthops"]...)
+
+	nameIpMap := make(map[string]string, len(result[0]["external_ids"]))
+	for _, l := range result[0]["external_ids"] {
+		if len(strings.TrimSpace(l)) == 0 {
+			continue
+		}
+		parts := strings.Split(strings.TrimSpace(l), "=")
+		if len(parts) != 2 {
+			continue
+		}
+		name := strings.TrimSpace(parts[0])
+		ip := strings.TrimSpace(parts[1])
+		nameIpMap[name] = ip
+	}
+
+	return nexthops, nameIpMap, nil
+}
+
+func (c Client) SetPolicyRouteExternalIds(priority int32, match string, nameIpMaps map[string]string) error {
+	result, err := c.CustomFindEntity("Logical_Router_Policy", []string{"_uuid"}, fmt.Sprintf("priority=%d", priority), fmt.Sprintf("match=\"%s\"", match))
+	if err != nil {
+		klog.Errorf("customFindEntity failed, %v", err)
+		return err
+	}
+	if len(result) == 0 {
+		return nil
+	}
+
+	uuid := result[0]["_uuid"][0]
+	ovnCmd := []string{"set", "logical-router-policy", uuid}
+	for nodeName, nodeIP := range nameIpMaps {
+		ovnCmd = append(ovnCmd, fmt.Sprintf("external_ids:%s=\"%s\"", nodeName, nodeIP))
+	}
+
+	if _, err := c.ovnNbCommand(ovnCmd...); err != nil {
+		return fmt.Errorf("failed to set logical-router-policy externalIds, %v", err)
+	}
+	return nil
 }
