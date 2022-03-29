@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 1.8.4 -- 2022/03/29
+### Bugfix
+- fix provider network range loop
+- increase memory limit of ovn-central
+- add missing link scope routes in vpc-nat-gateway
+- update ip assigned check
+- fix external egress gateway
+- update nodeips for restore cmd in ko plugin
+- append vm deletion check
+- check the cidr format whether is correct
+- add reset for kube-ovn-monitor metrics
+- The underlay physical gateway config by external-gw-addr when use snat&eip
+- avoid frequent ipset update
+- do not recreate port for terminating pods
+- create ip crd in kube-ovn-controller
+
 ## 1.8.3 -- 2022/03/09
 ### Bugfix
 - update check for delete statefulset pod
