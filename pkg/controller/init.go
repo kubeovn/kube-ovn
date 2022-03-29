@@ -290,47 +290,31 @@ func (c *Controller) InitIPAM() error {
 		return err
 	}
 	for _, pod := range pods {
-		if isPodAlive(pod) && pod.Annotations[util.AllocatedAnnotation] == "true" {
-			podName := c.getNameByPod(pod)
-			if pod.Annotations[util.LogicalSwitchAnnotation] != "" {
+		if pod.Spec.HostNetwork {
+			continue
+		}
+		podName := c.getNameByPod(pod)
+		podNets, err := c.getPodKubeovnNets(pod)
+		if err != nil {
+			klog.Errorf("failed to get pod kubeovn nets %s.%s address %s: %v", pod.Name, pod.Namespace, pod.Annotations[util.IpAddressAnnotation], err)
+		}
+		for _, podNet := range podNets {
+			if !isOvnSubnet(podNet.Subnet) {
+				continue
+			}
+			if isPodAlive(pod) && pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
 				_, _, _, err := c.ipam.GetStaticAddress(
 					fmt.Sprintf("%s/%s", pod.Namespace, podName),
-					pod.Annotations[util.IpAddressAnnotation],
-					pod.Annotations[util.MacAddressAnnotation],
-					pod.Annotations[util.LogicalSwitchAnnotation])
+					pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)],
+					pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)],
+					pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)])
 				if err != nil {
-					klog.Errorf("failed to init pod %s.%s address %s: %v", podName, pod.Namespace, pod.Annotations[util.IpAddressAnnotation], err)
+					klog.Errorf("failed to init pod %s.%s address %s: %v", podName, pod.Namespace, pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)], err)
 				}
-			}
-			attachNetworks := pod.Annotations[util.AttachmentNetworkAnnotation]
-			if attachNetworks != "" {
-				attachments, err := util.ParsePodNetworkAnnotation(attachNetworks, pod.Namespace)
-				if err != nil {
-					klog.Errorf("failed to parse attach net for pod '%s', %v", podName, err)
-					continue
-				}
-				for _, attach := range attachments {
-					var builder strings.Builder
-					builder.WriteString(attach.Name)
-					builder.WriteString(".")
-					if attach.Namespace == "" {
-						builder.WriteString("default")
-					} else {
-						builder.WriteString(attach.Namespace)
-					}
 
-					_, _, _, err := c.ipam.GetStaticAddress(
-						fmt.Sprintf("%s/%s", pod.Namespace, podName),
-						pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, builder.String())],
-						pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, builder.String())],
-						pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, builder.String())])
-					if err != nil {
-						klog.Errorf("failed to init pod %s.%s address %s: %v", podName, pod.Namespace, pod.Annotations[util.IpAddressAnnotation], err)
-					}
+				if err = c.initAppendPodExternalIds(pod); err != nil {
+					klog.Errorf("failed to init append pod %s.%s externalIds: %v", podName, pod.Namespace, err)
 				}
-			}
-			if err = c.initAppendPodExternalIds(pod); err != nil {
-				klog.Errorf("failed to init append pod %s.%s externalIds: %v", podName, pod.Namespace, err)
 			}
 		}
 	}
