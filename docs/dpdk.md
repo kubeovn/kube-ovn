@@ -75,7 +75,7 @@ SVC_CIDR="10.96.0.0/12"                # Do NOT overlap with NODE/POD/JOIN CIDR
 JOIN_CIDR="100.64.0.0/16"              # Do NOT overlap with NODE/POD/SVC CIDR
 LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
 IFACE=""                               # The nic to support container network, if empty will use the nic that the default route use
-VERSION="v1.8.0"
+VERSION="v1.8.4"
 ```
 
 3. Run the installation script making sure to include the flag --with-dpdk= followed by the required DPDK version.
