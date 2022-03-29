@@ -134,6 +134,7 @@ func (subnet *Subnet) GetRandomMac(podName string) string {
 
 func (subnet *Subnet) GetStaticMac(podName, mac string) error {
 	if p, ok := subnet.MacToPod[mac]; ok && p != podName {
+		klog.Errorf("existPod %s, allocated pod %s, mac %s", p, podName, mac)
 		return ConflictError
 	}
 	subnet.MacToPod[mac] = podName
@@ -303,6 +304,7 @@ func (subnet *Subnet) GetStaticAddress(podName string, ip IP, mac string, force 
 	if v4 {
 		if existPod, ok := subnet.V4IPToPod[ip]; ok {
 			if existPod != podName {
+				klog.Errorf("existPod %s, allocated pod %s, ip %s", existPod, podName, ip)
 				return ip, mac, ConflictError
 			}
 			if !force {
@@ -332,6 +334,7 @@ func (subnet *Subnet) GetStaticAddress(podName string, ip IP, mac string, force 
 	} else if v6 {
 		if existPod, ok := subnet.V6IPToPod[ip]; ok {
 			if existPod != podName {
+				klog.Errorf("existPod %s, allocated pod %s, ip %s", existPod, podName, ip)
 				return ip, mac, ConflictError
 			}
 			if !force {
