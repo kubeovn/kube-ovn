@@ -334,7 +334,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	if err := c.createOrUpdateCrdIPs(key, ipStr, mac); err != nil {
+	if err := c.createOrUpdateCrdIPs(key, ipStr, mac, c.config.NodeSwitch, "", node.Name, ""); err != nil {
 		klog.Errorf("failed to create or update IPs node-%s: %v", key, err)
 		return err
 	}
@@ -627,23 +627,31 @@ func (c *Controller) handleUpdateNode(key string) error {
 	return nil
 }
 
-func (c *Controller) createOrUpdateCrdIPs(key, ip, mac string) error {
+func (c *Controller) createOrUpdateCrdIPs(key, ip, mac, subnetName, ns, nodeName, providerName string) error {
+	var ipName string
+	if subnetName == c.config.NodeSwitch {
+		ipName = fmt.Sprintf("node-%s", key)
+	} else {
+		ipName = ovs.PodNameToPortName(key, ns, providerName)
+	}
+
 	v4IP, v6IP := util.SplitStringIP(ip)
-	ipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), fmt.Sprintf("node-%s", key), metav1.GetOptions{})
+	ipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), ipName, metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Create(context.Background(), &kubeovnv1.IP{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: fmt.Sprintf("node-%s", key),
+					Name: ipName,
 					Labels: map[string]string{
-						util.SubnetNameLabel: c.config.NodeSwitch,
-						c.config.NodeSwitch:  "",
+						util.SubnetNameLabel: subnetName,
+						subnetName:           "",
 					},
 				},
 				Spec: kubeovnv1.IPSpec{
 					PodName:       key,
-					Subnet:        c.config.NodeSwitch,
-					NodeName:      key,
+					Subnet:        subnetName,
+					NodeName:      nodeName,
+					Namespace:     ns,
 					IPAddress:     ip,
 					V4IPAddress:   v4IP,
 					V6IPAddress:   v6IP,
@@ -665,16 +673,16 @@ func (c *Controller) createOrUpdateCrdIPs(key, ip, mac string) error {
 		}
 	} else {
 		if ipCr.Labels != nil {
-			ipCr.Labels[util.SubnetNameLabel] = c.config.NodeSwitch
+			ipCr.Labels[util.SubnetNameLabel] = subnetName
 		} else {
 			ipCr.Labels = map[string]string{
-				util.SubnetNameLabel: c.config.NodeSwitch,
+				util.SubnetNameLabel: subnetName,
 			}
 		}
 		ipCr.Spec.PodName = key
-		ipCr.Spec.Namespace = ""
-		ipCr.Spec.Subnet = c.config.NodeSwitch
-		ipCr.Spec.NodeName = key
+		ipCr.Spec.Namespace = ns
+		ipCr.Spec.Subnet = subnetName
+		ipCr.Spec.NodeName = nodeName
 		ipCr.Spec.IPAddress = ip
 		ipCr.Spec.V4IPAddress = v4IP
 		ipCr.Spec.V6IPAddress = v6IP

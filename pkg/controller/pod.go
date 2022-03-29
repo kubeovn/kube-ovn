@@ -520,6 +520,10 @@ func (c *Controller) handleAddPod(key string) error {
 			return err
 		}
 
+		if err := c.createOrUpdateCrdIPs(pod.Name, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName); err != nil {
+			klog.Errorf("failed to create IP %s.%s: %v", pod.Name, pod.Namespace, err)
+		}
+
 		if podNet.Type != providerTypeIPAM {
 			if (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && subnet.Spec.Vpc != "" {
 				pod.Annotations[fmt.Sprintf(util.LogicalRouterAnnotationTemplate, podNet.ProviderName)] = subnet.Spec.Vpc
