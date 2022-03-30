@@ -54,6 +54,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 		IfName:                    args.IfName,
 		Provider:                  netConf.Provider,
 		Routes:                    netConf.Routes,
+		DNS:                       netConf.DNS,
 		DeviceID:                  netConf.DeviceID,
 		VfDriver:                  netConf.VfDriver,
 		VhostUserSocketVolumeName: netConf.VhostUserSocketVolumeName,
@@ -68,7 +69,10 @@ func cmdAdd(args *skel.CmdArgs) error {
 }
 
 func generateCNIResult(cniResponse *request.CniResponse) current.Result {
-	result := current.Result{CNIVersion: current.ImplementedSpecVersion}
+	result := current.Result{
+		CNIVersion: current.ImplementedSpecVersion,
+		DNS:        cniResponse.DNS,
+	}
 	_, mask, _ := net.ParseCIDR(cniResponse.CIDR)
 	podIface := current.Interface{
 		Name: cniResponse.PodNicName,
@@ -146,20 +150,6 @@ func cmdDel(args *skel.CmdArgs) error {
 type ipamConf struct {
 	ServerSocket string `json:"server_socket"`
 	Provider     string `json:"provider"`
-}
-
-type netConf struct {
-	types.NetConf
-	ServerSocket string          `json:"server_socket"`
-	Provider     string          `json:"provider"`
-	Routes       []request.Route `json:"routes"`
-	IPAM         *ipamConf       `json:"ipam"`
-	// PciAddrs in case of using sriov
-	DeviceID string `json:"deviceID"`
-	VfDriver string `json:"vf_driver"`
-	// for dpdk
-	VhostUserSocketVolumeName string `json:"vhost_user_socket_volume_name"`
-	VhostUserSocketName       string `json:"vhost_user_socket_name"`
 }
 
 func loadNetConf(bytes []byte) (*netConf, string, error) {

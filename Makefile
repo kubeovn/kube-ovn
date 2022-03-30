@@ -16,6 +16,11 @@ build-go:
 	go mod tidy
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn-cmd -ldflags $(GOLDFLAGS) -v ./cmd
 
+.PHONY: build-go-windows
+build-go-windows:
+	go mod tidy
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn.exe -ldflags $(GOLDFLAGS) -v ./cmd/windows/cni
+
 .PHONY: build-go-arm
 build-go-arm:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn-cmd -ldflags $(GOLDFLAGS) -v ./cmd
@@ -345,6 +350,13 @@ lint:
 	fi
 	@GOOS=linux go vet ./...
 	@GOOS=linux gosec -exclude=G204,G601 ./...
+
+.PHONY: lint-windows
+lint-windows:
+	@GOOS=windows go vet ./cmd/windows/...
+	@GOOS=windows gosec -exclude=G204,G601 ./pkg/util
+	@GOOS=windows gosec -exclude=G204,G601 ./pkg/request
+	@GOOS=windows gosec -exclude=G204,G601 ./cmd/cni
 
 .PHONY: scan
 scan:

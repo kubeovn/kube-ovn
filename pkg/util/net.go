@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	"golang.org/x/sys/unix"
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -162,20 +161,6 @@ func CheckProtocol(address string) string {
 
 	// cidr formal error
 	return ""
-}
-
-// ProtocolToFamily converts protocol string to netlink family
-func ProtocolToFamily(protocol string) (int, error) {
-	switch protocol {
-	case kubeovnv1.ProtocolDual:
-		return unix.AF_UNSPEC, nil
-	case kubeovnv1.ProtocolIPv4:
-		return unix.AF_INET, nil
-	case kubeovnv1.ProtocolIPv6:
-		return unix.AF_INET6, nil
-	default:
-		return -1, fmt.Errorf("invalid protocol: %s", protocol)
-	}
 }
 
 func AddressCount(network *net.IPNet) float64 {

@@ -4,6 +4,7 @@ go 1.17
 
 require (
 	github.com/Mellanox/sriovnet v1.0.3
+	github.com/Microsoft/go-winio v0.5.2
 	github.com/alauda/felix v3.6.6-0.20201207121355-187332daf314+incompatible
 	github.com/cnf/structhash v0.0.0-20201127153200-e1b16c1ebc08
 	github.com/containernetworking/cni v1.0.1
@@ -25,7 +26,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.0
 	github.com/vishvananda/netlink v1.1.1-0.20211101163509-b10eb8fe5cf6
-	golang.org/x/sys v0.0.0-20220319134239-a9b59b0215f8
+	golang.org/x/sys v0.0.0-20220330033206-e17cdc41300f
 	google.golang.org/grpc v1.40.0
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v3 v3.7.2
 	k8s.io/api v0.23.1
@@ -39,9 +40,12 @@ require (
 )
 
 require (
+	github.com/Microsoft/hcsshim v0.8.22 // indirect
 	github.com/armon/go-radix v1.0.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.1 // indirect
+	github.com/containerd/cgroups v1.0.1 // indirect
 	github.com/coreos/prometheus-operator v0.38.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13 // indirect
@@ -101,6 +105,7 @@ require (
 	github.com/stretchr/objx v0.3.0 // indirect
 	github.com/subosito/gotenv v1.2.0 // indirect
 	github.com/vishvananda/netns v0.0.0-20211101163701-50045581ed74 // indirect
+	go.opencensus.io v0.23.0 // indirect
 	golang.org/x/net v0.0.0-20220225172249-27dd8689420f // indirect
 	golang.org/x/oauth2 v0.0.0-20210819190943-2bc19b11175f // indirect
 	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
