@@ -1,0 +1,53 @@
+name: Build Windows Binaries
+
+on:
+  pull_request:
+    branches:
+    - master
+    paths-ignore:
+    - 'docs/**'
+    - '**.md'
+  push:
+    branches:
+    - master
+    - release-*
+    paths-ignore:
+    - 'docs/**'
+    - '**.md'
+
+jobs:
+  build:
+    name: Build Windows x86
+    runs-on: windows-2019
+    steps:
+      - name: Set up Go 1.x
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.17.8
+        id: go
+
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v2
+
+      - name: Go Build Cache
+        uses: actions/cache@v2
+        with:
+          path: /home/runner/.cache/go-build
+          key: ${{ runner.os }}-go-x86-build-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-x86-build-
+
+      - name: Go Mod Cache
+        uses: actions/cache@v2
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Build
+        run: |
+          go mod tidy
+          go install github.com/securego/gosec/cmd/gosec@latest
+          make lint-windows
+          make build-go-windows
