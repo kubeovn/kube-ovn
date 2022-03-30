@@ -672,25 +672,29 @@ func (c *Controller) createOrUpdateCrdIPs(key, ip, mac, subnetName, ns, nodeName
 			return errMsg
 		}
 	} else {
-		if ipCr.Labels != nil {
-			ipCr.Labels[util.SubnetNameLabel] = subnetName
+		newIpCr := ipCr.DeepCopy()
+		if newIpCr.Labels != nil {
+			newIpCr.Labels[util.SubnetNameLabel] = subnetName
 		} else {
-			ipCr.Labels = map[string]string{
+			newIpCr.Labels = map[string]string{
 				util.SubnetNameLabel: subnetName,
 			}
 		}
-		ipCr.Spec.PodName = key
-		ipCr.Spec.Namespace = ns
-		ipCr.Spec.Subnet = subnetName
-		ipCr.Spec.NodeName = nodeName
-		ipCr.Spec.IPAddress = ip
-		ipCr.Spec.V4IPAddress = v4IP
-		ipCr.Spec.V6IPAddress = v6IP
-		ipCr.Spec.MacAddress = mac
-		ipCr.Spec.ContainerID = ""
-		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), ipCr, metav1.UpdateOptions{})
+		newIpCr.Spec.PodName = key
+		newIpCr.Spec.Namespace = ns
+		newIpCr.Spec.Subnet = subnetName
+		newIpCr.Spec.NodeName = nodeName
+		newIpCr.Spec.IPAddress = ip
+		newIpCr.Spec.V4IPAddress = v4IP
+		newIpCr.Spec.V6IPAddress = v6IP
+		newIpCr.Spec.MacAddress = mac
+		newIpCr.Spec.ContainerID = ""
+		newIpCr.Spec.AttachIPs = []string{}
+		newIpCr.Spec.AttachMacs = []string{}
+		newIpCr.Spec.AttachSubnets = []string{}
+		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), newIpCr, metav1.UpdateOptions{})
 		if err != nil {
-			errMsg := fmt.Errorf("failed to create ip crd for %s, %v", ip, err)
+			errMsg := fmt.Errorf("failed to update ips cr %s: %v", newIpCr.Name, err)
 			klog.Error(errMsg)
 			return errMsg
 		}
