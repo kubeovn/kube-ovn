@@ -313,7 +313,7 @@ func (c *Controller) InitIPAM() error {
 		return err
 	}
 	for _, pod := range pods {
-		if pod.Spec.HostNetwork {
+		if pod.Spec.HostNetwork || !isPodAlive(pod) {
 			continue
 		}
 		podName := c.getNameByPod(pod)
@@ -325,15 +325,20 @@ func (c *Controller) InitIPAM() error {
 			if !isOvnSubnet(podNet.Subnet) {
 				continue
 			}
-			if isPodAlive(pod) && pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
-				_, _, _, err := c.ipam.GetStaticAddress(
-					fmt.Sprintf("%s/%s", pod.Namespace, podName),
-					ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName),
-					pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)],
-					pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)],
-					pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)], false)
+			if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
+				key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
+				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+				ip := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
+				mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
+				subnet := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)]
+				_, _, _, err := c.ipam.GetStaticAddress(key, portName, ip, mac, subnet, false)
 				if err != nil {
 					klog.Errorf("failed to init pod %s.%s address %s: %v", podName, pod.Namespace, pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)], err)
+				} else {
+					err = c.createOrUpdateCrdIPs(key, ip, mac, subnet, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName)
+					if err != nil {
+						klog.Errorf("failed to create/update ips CR %s.%s with ip address %s: %v", podName, pod.Namespace, ip, err)
+					}
 				}
 
 				if err = c.initAppendPodExternalIds(pod); err != nil {
