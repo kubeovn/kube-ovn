@@ -400,7 +400,7 @@ func (c *Controller) handleNodeAnnotationsForProviderNetworks(node *v1.Node) err
 		}
 
 		if newPn != nil {
-			if _, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Update(context.Background(), newPn, metav1.UpdateOptions{}); err != nil {
+			if newPn, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Update(context.Background(), newPn, metav1.UpdateOptions{}); err != nil {
 				klog.Errorf("failed to update provider network %s: %v", pn.Name, err)
 				return err
 			}
@@ -419,16 +419,16 @@ func (c *Controller) handleNodeAnnotationsForProviderNetworks(node *v1.Node) err
 		}
 
 		if excluded {
-			status := pn.Status.DeepCopy()
-			if status.EnsureNodeStandardConditions(node.Name) {
-				bytes, err := status.Bytes()
+			if newPn == nil {
+				newPn = pn.DeepCopy()
+			} else {
+				newPn = newPn.DeepCopy()
+			}
+
+			if newPn.Status.EnsureNodeStandardConditions(node.Name) {
+				_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().UpdateStatus(context.Background(), newPn, metav1.UpdateOptions{})
 				if err != nil {
-					klog.Error(err)
-					return err
-				}
-				_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
-				if err != nil {
-					klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
+					klog.Errorf("failed to update status of provider network %s: %v", pn.Name, err)
 					return err
 				}
 			}
@@ -498,53 +498,26 @@ func (c *Controller) handleDeleteNode(key string) error {
 
 func (c *Controller) updateProviderNetworkForNodeDeletion(pn *kubeovnv1.ProviderNetwork, node string) error {
 	// update provider network status
-	status := pn.Status.DeepCopy()
-	if util.ContainsString(status.ReadyNodes, node) {
-		status.ReadyNodes = util.RemoveString(status.ReadyNodes, node)
-		if len(status.ReadyNodes) == 0 {
-			bytes := []byte(`[{ "op": "remove", "path": "/status/readyNodes"}]`)
-			_, err := c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.JSONPatchType, bytes, metav1.PatchOptions{})
-			if err != nil {
-				klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
-				return err
-			}
-		} else {
-			bytes, err := status.Bytes()
-			if err != nil {
-				klog.Error(err)
-				return err
-			}
-			_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
-			if err != nil {
-				klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
-				return err
-			}
-		}
+	var needUpdate bool
+	newPn := pn.DeepCopy()
+	if util.ContainsString(newPn.Status.ReadyNodes, node) {
+		newPn.Status.ReadyNodes = util.RemoveString(newPn.Status.ReadyNodes, node)
+		needUpdate = true
 	}
-	if status.RemoveNodeConditions(node) {
-		if len(status.Conditions) == 0 {
-			bytes := []byte(`[{ "op": "remove", "path": "/status/conditions"}]`)
-			_, err := c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.JSONPatchType, bytes, metav1.PatchOptions{})
-			if err != nil {
-				klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
-				return err
-			}
-		} else {
-			bytes, err := status.Bytes()
-			if err != nil {
-				klog.Error(err)
-				return err
-			}
-			_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
-			if err != nil {
-				klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
-				return err
-			}
+	if newPn.Status.RemoveNodeConditions(node) {
+		needUpdate = true
+	}
+	if needUpdate {
+		var err error
+		newPn, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().UpdateStatus(context.Background(), newPn, metav1.UpdateOptions{})
+		if err != nil {
+			klog.Errorf("failed to update status of provider network %s: %v", pn.Name, err)
+			return err
 		}
 	}
 
 	// update provider network spec
-	var newPn *kubeovnv1.ProviderNetwork
+	pn, newPn = newPn, nil
 	if excludeNodes := util.RemoveString(pn.Spec.ExcludeNodes, node); len(excludeNodes) != len(pn.Spec.ExcludeNodes) {
 		newPn := pn.DeepCopy()
 		newPn.Spec.ExcludeNodes = excludeNodes

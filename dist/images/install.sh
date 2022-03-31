@@ -596,6 +596,8 @@ spec:
     - name: v1
       served: true
       storage: true
+      subresources:
+        status: {}
       schema:
         openAPIV3Schema:
           type: object
@@ -649,6 +651,8 @@ spec:
     - name: v1
       served: true
       storage: true
+      subresources:
+        status: {}
       schema:
         openAPIV3Schema:
           type: object
@@ -900,6 +904,7 @@ rules:
       - subnets/status
       - ips
       - vlans
+      - vlans/status
       - provider-networks
       - provider-networks/status
       - security-groups
@@ -1384,6 +1389,7 @@ rules:
       - subnets/status
       - ips
       - vlans
+      - vlans/status
       - provider-networks
       - provider-networks/status
       - security-groups

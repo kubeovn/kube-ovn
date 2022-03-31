@@ -791,30 +791,18 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 }
 
 func (c *Controller) updateVlanStatusForSubnetDeletion(vlan *kubeovnv1.Vlan, subnet string) error {
-	if util.ContainsString(vlan.Status.Subnets, subnet) {
-		status := vlan.Status.DeepCopy()
-		status.Subnets = util.RemoveString(status.Subnets, subnet)
-		if len(status.Subnets) == 0 {
-			bytes := []byte(`[{ "op": "remove", "path": "/status/subnets"}]`)
-			_, err := c.config.KubeOvnClient.KubeovnV1().Vlans().Patch(context.Background(), vlan.Name, types.JSONPatchType, bytes, metav1.PatchOptions{})
-			if err != nil {
-				klog.Errorf("failed to patch vlan %s: %v", vlan.Name, err)
-				return err
-			}
-		} else {
-			bytes, err := status.Bytes()
-			if err != nil {
-				klog.Error(err)
-				return err
-			}
-
-			_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Patch(context.Background(), vlan.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
-			if err != nil {
-				klog.Errorf("failed to patch vlan %s: %v", vlan.Name, err)
-				return err
-			}
-		}
+	if !util.ContainsString(vlan.Status.Subnets, subnet) {
+		return nil
 	}
+
+	newVlan := vlan.DeepCopy()
+	newVlan.Status.Subnets = util.RemoveString(newVlan.Status.Subnets, subnet)
+	_, err := c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(context.Background(), newVlan, metav1.UpdateOptions{})
+	if err != nil {
+		klog.Errorf("failed to update status of vlan %s: %v", vlan.Name, err)
+		return err
+	}
+
 	return nil
 }
 
@@ -1103,17 +1091,11 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 	}
 
 	if !util.ContainsString(vlan.Status.Subnets, subnet.Name) {
-		status := vlan.Status.DeepCopy()
-		status.Subnets = append(status.Subnets, subnet.Name)
-		bytes, err := status.Bytes()
+		newVlan := vlan.DeepCopy()
+		newVlan.Status.Subnets = append(newVlan.Status.Subnets, subnet.Name)
+		_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(context.Background(), newVlan, metav1.UpdateOptions{})
 		if err != nil {
-			klog.Error(err)
-			return err
-		}
-
-		_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Patch(context.Background(), vlan.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
-		if err != nil {
-			klog.Errorf("failed to patch vlan %s: %v", vlan.Name, err)
+			klog.Errorf("failed to update status of vlan %s: %v", vlan.Name, err)
 			return err
 		}
 	}
