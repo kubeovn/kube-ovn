@@ -1139,7 +1139,7 @@ jobs:
         run: |
           sudo pip3 install j2cli
           sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH make kind-init-iptables
+          sudo PATH=~/.local/bin:$PATH make kind-init-cilium
 
       - name: Download image
         uses: actions/download-artifact@v2
@@ -1161,9 +1161,7 @@ jobs:
           timeout_minutes: 10
           max_attempts: 3
           shell: bash
-          command: |
-            sudo PATH=~/.local/bin:$PATH make kind-install-cilium
-            docker exec kube-ovn-control-plane bash -c "ls -al /etc/cni/net.d/"
+          command: sudo PATH=~/.local/bin:$PATH make kind-install-cilium
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v2
@@ -1178,7 +1176,6 @@ jobs:
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
           docker exec kube-ovn-control-plane bash -c "ls -al /etc/cni/net.d/"
-          kubectl  rollout status -n kube-system ds cilium
           kubectl get pods -A
           make e2e-ovn-ebpf
 

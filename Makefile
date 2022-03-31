@@ -11,6 +11,9 @@ GOLDFLAGS = "-w -s -extldflags '-z now' -X github.com/kubeovn/kube-ovn/versions.
 MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:stable
 MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset.yml
 
+CILIUM_VERSION = 1.10.9
+CILIUM_IMAGE_REPO = quay.io/cilium/cilium
+
 # ARCH could be amd64,arm64
 ARCH = amd64
 
@@ -146,6 +149,13 @@ kind-init-dual: kind-clean
 	docker exec kube-ovn-worker sysctl -w net.ipv6.conf.all.disable_ipv6=0
 	docker exec kube-ovn-control-plane sysctl -w net.ipv6.conf.all.disable_ipv6=0
 
+.PHONY: kind-init-cilium
+kind-init-cilium: kind-clean
+	kind delete cluster --name=kube-ovn
+	kube_proxy_mode=none ip_family=ipv4 ha=false single=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
+	kind create cluster --config yamls/kind.yaml --name kube-ovn
+	kubectl describe no
+
 .PHONY: kind-install
 kind-install:
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
@@ -280,7 +290,9 @@ kind-install-underlay-logical-gateway-dual:
 
 .PHONY: kind-install-multus
 kind-install-multus:
-	docker pull "$(MULTUS_IMAGE)"
+	if ! docker images --format "{{.Repository}}:{{.Tag}}" | grep -qw "^$(MULTUS_IMAGE)$$"; then \
+		docker pull "$(MULTUS_IMAGE)"; \
+	fi
 	kind load docker-image --name kube-ovn "$(MULTUS_IMAGE)"
 	kubectl apply -f "$(MULTUS_YAML)"
 	kubectl -n kube-system rollout status ds kube-multus-ds
@@ -302,36 +314,36 @@ kind-install-ic:
 
 .PHONY: kind-install-cilium
 kind-install-cilium:
-	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
-	ENABLE_SSL=true ENABLE_LB=false ENABLE_NP=false dist/images/install.sh
-	kubectl describe no
+	$(eval KUBERNETES_SERVICE_HOST = $(shell kubectl get nodes kube-ovn-control-plane -o jsonpath='{.status.addresses[0].address}'))
+	if ! docker images --format "{{.Repository}}:{{.Tag}}" | grep -qw "^$(CILIUM_IMAGE_REPO):v$(CILIUM_VERSION)$$"; then \
+		docker pull "$(CILIUM_IMAGE_REPO):v$(CILIUM_VERSION)"; \
+	fi
+	kind load docker-image --name kube-ovn "$(CILIUM_IMAGE_REPO):v$(CILIUM_VERSION)"
+	kubectl apply -f yamls/chaining.yaml
+	helm repo add cilium https://helm.cilium.io/
+	helm install cilium cilium/cilium \
+		--version $(CILIUM_VERSION) \
+		--namespace=kube-system \
+		--set k8sServiceHost=$(KUBERNETES_SERVICE_HOST) \
+		--set k8sServicePort=6443 \
+		--set tunnel=disabled \
+		--set enableIPv4Masquerade=false \
+		--set enableIdentityMark=false \
+		--set kubeProxyReplacement=strict \
+		--set cni.chainingMode=generic-veth \
+		--set cni.customConf=true \
+		--set cni.configMap=cni-configuration
+	kubectl -n kube-system rollout status ds cilium --timeout 300s
+
 	$(eval TAINTS = $(shell kubectl get no kube-ovn-control-plane -o jsonpath={.spec.taints}))
 	$(eval MASTER_TAINT = "node-role.kubernetes.io/master")
 	@if [[ "${TAINTS}" =~ .*"${MASTER_TAINT}".* ]]; then \
 		kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-; \
 	fi
-	kubectl apply -f yamls/chaining.yaml
-	kind get nodes --name kube-ovn | while read node; do \
-    	docker exec $$node mv /etc/cni/net.d/01-kube-ovn.conflist /etc/cni/net.d/10-kube-ovn.conflist; \
-	done
-	$(eval CONTROLLERIP = $(shell kubectl get nodes kube-ovn-control-plane -ojsonpath='{.status.addresses[0].address}'))
-	helm repo add cilium https://helm.cilium.io/
-	helm install cilium cilium/cilium --version 1.10.5 \
-		--namespace=kube-system \
-		--set cni.chainingMode=generic-veth \
-		--set cni.customConf=true \
-		--set cni.configMap=cni-configuration \
-		--set tunnel=disabled \
-		--set enableIPv4Masquerade=false \
-		--set enableIdentityMark=false \
-		--set kubeProxyReplacement=strict \
-		--set k8sServiceHost=$(CONTROLLERIP) \
-		--set k8sServicePort=6443
-	kubectl -n kube-system delete ds kube-proxy
-	kubectl -n kube-system delete cm kube-proxy
-	kind get nodes --name kube-ovn | while read node; do \
-    	docker exec $$node bash -c "iptables-save | grep -v KUBE | iptables-restore"; \
-	done
+
+	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
+	ENABLE_SSL=true ENABLE_LB=false ENABLE_NP=false WITHOUT_KUBE_PROXY=true bash dist/images/install.sh
+	kubectl describe no
 
 .PHONY: kind-reload
 kind-reload:
