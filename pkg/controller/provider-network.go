@@ -8,7 +8,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -83,10 +82,11 @@ func (c *Controller) handleUpdateProviderNetwork(key string) error {
 	}
 
 	if providerNetworkIsReady(pn, nodes) != pn.Status.Ready {
-		patchPayload := []byte(fmt.Sprintf(`[{ "op": "replace", "path": "/status/ready", "value": %t }]`, !pn.Status.Ready))
-		_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.JSONPatchType, patchPayload, metav1.PatchOptions{})
+		newPn := pn.DeepCopy()
+		newPn.Status.Ready = !pn.Status.Ready
+		_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().UpdateStatus(context.Background(), newPn, metav1.UpdateOptions{})
 		if err != nil {
-			klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
+			klog.Errorf("failed to update status of provider network %s: %v", pn.Name, err)
 			return err
 		}
 	}

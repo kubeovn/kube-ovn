@@ -197,13 +197,11 @@ type VlanSpec struct {
 type VlanStatus struct {
 	// +optional
 	// +patchStrategy=merge
-	Subnets []string `json:"subnets,omitempty" patchStrategy:"merge"`
+	Subnets []string `json:"subnets,omitempty"`
 
 	// Conditions represents the latest state of the object
 	// +optional
-	// +patchMergeKey=type
-	// +patchStrategy=merge
-	Conditions []VlanCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+	Conditions []VlanCondition `json:"conditions,omitempty"`
 }
 
 // Condition describes the state of an object at a certain point.
@@ -261,22 +259,17 @@ type ProviderNetworkSpec struct {
 
 type ProviderNetworkStatus struct {
 	// +optional
-	// +patchStrategy=merge
-	Ready bool `json:"ready" patchStrategy:"merge"`
+	Ready bool `json:"ready"`
 
 	// +optional
-	// +patchStrategy=merge
-	ReadyNodes []string `json:"readyNodes,omitempty" patchStrategy:"merge"`
+	ReadyNodes []string `json:"readyNodes,omitempty"`
 
 	// +optional
-	// +patchStrategy=merge
-	Vlans []string `json:"vlans,omitempty" patchStrategy:"merge"`
+	Vlans []string `json:"vlans,omitempty"`
 
 	// Conditions represents the latest state of the object
 	// +optional
-	// +patchMergeKey=node
-	// +patchStrategy=merge
-	Conditions []ProviderNetworkCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"node"`
+	Conditions []ProviderNetworkCondition `json:"conditions,omitempty"`
 }
 
 // Condition describes the state of an object at a certain point.

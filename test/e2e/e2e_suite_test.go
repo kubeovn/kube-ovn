@@ -8,7 +8,6 @@ import (
 	"os"
 	"strconv"
 	"testing"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -212,8 +211,6 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	if err = f.WaitProviderNetworkReady(pn.Name); err != nil {
 		Fail("provider network failed: " + err.Error())
 	}
-	// FIXME: wait 3 seconds to ensure node conditions are up to date
-	time.Sleep(3 * time.Second)
 	if pn, err = f.OvnClientSet.KubeovnV1().ProviderNetworks().Get(context.Background(), pn.Name, metav1.GetOptions{}); err != nil {
 		Fail("failed to get provider network: " + err.Error())
 	}
