@@ -2,6 +2,7 @@
 set -euo pipefail
 
 KUBE_OVN_NS=kube-system
+WITHOUT_KUBE_PROXY=false
 OVN_NB_POD=
 OVN_SB_POD=
 KUBE_OVN_VERSION=
@@ -289,7 +290,10 @@ diagnose(){
   kubectl ko nbctl list acl
   kubectl ko sbctl show
 
-  checkKubeProxy
+  if [ "${WITHOUT_KUBE_PROXY}" = "false" ]; then
+    checkKubeProxy
+  fi
+
   checkDeployment ovn-central
   checkDeployment kube-ovn-controller
   checkDaemonSet kube-ovn-cni
@@ -404,8 +408,9 @@ checkDeployment(){
 }
 
 checkKubeProxy(){
-  dsMode=`kubectl get ds -n kube-system | grep kube-proxy || true`
-  if [ -z "$dsMode" ]; then
+  if kubectl get ds -n kube-system --no-headers -o custom-columns=NAME:.metadata.name | grep -qw ^kube-proxy; then
+    checkDaemonSet kube-proxy
+  else
     nodeIps=`kubectl get node -o wide | grep -v "INTERNAL-IP" | awk '{print $6}'`
     for node in $nodeIps
     do
@@ -415,8 +420,6 @@ checkKubeProxy(){
         exit 1
       fi
     done
-  else
-    checkDaemonSet kube-proxy
   fi
   echo "kube-proxy ready"
 }

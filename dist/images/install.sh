@@ -12,6 +12,7 @@ VLAN_NIC=${VLAN_NIC:-}
 HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_LB=${ENABLE_LB:-true}
 ENABLE_NP=${ENABLE_NP:-true}
+WITHOUT_KUBE_PROXY=${WITHOUT_KUBE_PROXY:-false}
 ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-true}
 CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
 # The nic to support container network can be a nic name or a group of regex
@@ -2695,7 +2696,7 @@ echo "-------------------------------"
 echo ""
 
 echo "[Step 4/6] Delete pod that not in host network mode"
-for ns in $(kubectl get ns --no-headers -o  custom-columns=NAME:.metadata.name); do
+for ns in $(kubectl get ns --no-headers -o custom-columns=NAME:.metadata.name); do
   for pod in $(kubectl get pod --no-headers -n "$ns" --field-selector spec.restartPolicy=Always -o custom-columns=NAME:.metadata.name,HOST:spec.hostNetwork | awk '{if ($2!="true") print $1}'); do
     kubectl delete pod "$pod" -n "$ns" --ignore-not-found
   done
@@ -2714,6 +2715,11 @@ cat <<\EOF > /usr/local/bin/kubectl-ko
 set -euo pipefail
 
 KUBE_OVN_NS=kube-system
+EOF
+cat <<EOF >> /usr/local/bin/kubectl-ko
+WITHOUT_KUBE_PROXY=${WITHOUT_KUBE_PROXY}
+EOF
+cat <<\EOF >> /usr/local/bin/kubectl-ko
 OVN_NB_POD=
 OVN_SB_POD=
 KUBE_OVN_VERSION=
@@ -3001,7 +3007,10 @@ diagnose(){
   kubectl ko nbctl list acl
   kubectl ko sbctl show
 
-  checkKubeProxy
+  if [ "${WITHOUT_KUBE_PROXY}" = "false" ]; then
+    checkKubeProxy
+  fi
+
   checkDeployment ovn-central
   checkDeployment kube-ovn-controller
   checkDaemonSet kube-ovn-cni
@@ -3116,8 +3125,9 @@ checkDeployment(){
 }
 
 checkKubeProxy(){
-  dsMode=`kubectl get ds -n kube-system | grep kube-proxy || true`
-  if [ -z "$dsMode" ]; then
+  if kubectl get ds -n kube-system --no-headers -o custom-columns=NAME:.metadata.name | grep -qw ^kube-proxy; then
+    checkDaemonSet kube-proxy
+  else
     nodeIps=`kubectl get node -o wide | grep -v "INTERNAL-IP" | awk '{print $6}'`
     for node in $nodeIps
     do
@@ -3127,8 +3137,6 @@ checkKubeProxy(){
         exit 1
       fi
     done
-  else
-    checkDaemonSet kube-proxy
   fi
   echo "kube-proxy ready"
 }
@@ -3433,7 +3441,6 @@ case $subcommand in
   showHelp
     ;;
 esac
-
 EOF
 
 chmod +x /usr/local/bin/kubectl-ko
