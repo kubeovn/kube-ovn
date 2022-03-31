@@ -18,26 +18,6 @@ func (ss *SubnetStatus) Bytes() ([]byte, error) {
 	return []byte(newStr), nil
 }
 
-func (vs *VlanStatus) Bytes() ([]byte, error) {
-	bytes, err := json.Marshal(vs)
-	if err != nil {
-		return nil, err
-	}
-	newStr := fmt.Sprintf(`{"status": %s}`, string(bytes))
-	klog.V(5).Info("status body", newStr)
-	return []byte(newStr), nil
-}
-
-func (pns *ProviderNetworkStatus) Bytes() ([]byte, error) {
-	bytes, err := json.Marshal(pns)
-	if err != nil {
-		return nil, err
-	}
-	newStr := fmt.Sprintf(`{"status": %s}`, string(bytes))
-	klog.V(5).Info("status body", newStr)
-	return []byte(newStr), nil
-}
-
 func (vs *VpcStatus) Bytes() ([]byte, error) {
 	bytes, err := json.Marshal(vs)
 	if err != nil {
