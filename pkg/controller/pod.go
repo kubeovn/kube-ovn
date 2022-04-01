@@ -466,8 +466,8 @@ func (c *Controller) handleAddPod(key string) error {
 
 	// Avoid create lsp for already running pod in ovn-nb when controller restart
 	for _, podNet := range needAllocateSubnets(pod, podNets) {
-		subnet := podNet.Subnet
-		v4IP, v6IP, mac, err := c.acquireAddress(pod, podNet)
+		// the subnet may changed when alloc static ip from the latter subnet after ns supports multi subnets
+		v4IP, v6IP, mac, subnet, err := c.acquireAddress(pod, podNet)
 		if err != nil {
 			c.recorder.Eventf(pod, v1.EventTypeWarning, "AcquireAddressFailed", err.Error())
 			return err
@@ -1151,7 +1151,7 @@ func (c *Controller) validatePodIP(podName, subnetName, ipv4, ipv6 string) (bool
 	return true, true, nil
 }
 
-func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, string, string, error) {
+func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, string, string, *kubeovnv1.Subnet, error) {
 	podName := c.getNameByPod(pod)
 	key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
 	macStr := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
@@ -1164,15 +1164,15 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 			nicName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 			ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, nicName, podNet.Subnet.Name, skippedAddrs)
 			if err != nil {
-				return "", "", "", err
+				return "", "", "", podNet.Subnet, err
 			}
 
 			ipv4OK, ipv6OK, err := c.validatePodIP(pod.Name, podNet.Subnet.Name, ipv4, ipv6)
 			if err != nil {
-				return "", "", "", err
+				return "", "", "", podNet.Subnet, err
 			}
 			if ipv4OK && ipv6OK {
-				return ipv4, ipv6, mac, nil
+				return ipv4, ipv6, mac, podNet.Subnet, nil
 			}
 
 			if !ipv4OK {
@@ -1185,10 +1185,33 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	}
 
 	nicName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+
+	// The static ip can be assigned from any subnet after ns supports multi subnets
+	nsNets, _ := c.getNsAvailableSubnets(pod)
+	found := false
+	for _, nsNet := range nsNets {
+		if nsNet.Subnet.Name == podNet.Subnet.Name {
+			found = true
+			break
+		}
+	}
+	if !found {
+		nsNets = append(nsNets, podNet)
+	}
+	var v4IP, v6IP, mac string
+	var err error
+
 	// Static allocate
 	if pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)] != "" {
 		ipStr := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
-		return c.acquireStaticAddress(key, nicName, ipStr, macStr, podNet.Subnet.Name, podNet.AllowLiveMigration)
+
+		for _, net := range nsNets {
+			v4IP, v6IP, mac, err = c.acquireStaticAddress(key, nicName, ipStr, macStr, net.Subnet.Name, net.AllowLiveMigration)
+			if err == nil {
+				return v4IP, v6IP, mac, net.Subnet, nil
+			}
+		}
+		return v4IP, v6IP, mac, podNet.Subnet, err
 	}
 
 	// IPPool allocate
@@ -1198,27 +1221,36 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	}
 
 	if ok, _ := isStatefulSetPod(pod); !ok {
-		for _, staticIP := range ipPool {
-			if c.ipam.IsIPAssignedToPod(staticIP, podNet.Subnet.Name, key) {
-				klog.Errorf("static address %s for %s has been assigned", staticIP, key)
-				continue
-			}
-			if v4IP, v6IP, mac, err := c.acquireStaticAddress(key, nicName, staticIP, macStr, podNet.Subnet.Name, podNet.AllowLiveMigration); err == nil {
-				return v4IP, v6IP, mac, nil
-			} else {
-				klog.Errorf("acquire address %s for %s failed, %v", staticIP, key, err)
+		for _, net := range nsNets {
+			for _, staticIP := range ipPool {
+				if c.ipam.IsIPAssignedToPod(staticIP, net.Subnet.Name, key) {
+					klog.Errorf("static address %s for %s has been assigned", staticIP, key)
+					continue
+				}
+
+				v4IP, v6IP, mac, err = c.acquireStaticAddress(key, nicName, staticIP, macStr, net.Subnet.Name, net.AllowLiveMigration)
+				if err == nil {
+					return v4IP, v6IP, mac, net.Subnet, nil
+				}
 			}
 		}
+		klog.Errorf("acquire address %s for %s failed, %v", pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)], key, err)
 	} else {
 		tempStrs := strings.Split(pod.Name, "-")
 		numStr := tempStrs[len(tempStrs)-1]
 		index, _ := strconv.Atoi(numStr)
 		if index < len(ipPool) {
-			return c.acquireStaticAddress(key, nicName, ipPool[index], macStr, podNet.Subnet.Name, podNet.AllowLiveMigration)
+			for _, net := range nsNets {
+				v4IP, v6IP, mac, err = c.acquireStaticAddress(key, nicName, ipPool[index], macStr, net.Subnet.Name, net.AllowLiveMigration)
+				if err == nil {
+					return v4IP, v6IP, mac, net.Subnet, nil
+				}
+			}
+			klog.Errorf("acquire address %s for %s failed, %v", ipPool[index], key, err)
 		}
 	}
 	klog.Errorf("alloc address for %s failed, return NoAvailableAddress", key)
-	return "", "", "", ipam.ErrNoAvailable
+	return "", "", "", podNet.Subnet, ipam.ErrNoAvailable
 }
 
 func generatePatchPayload(annotations map[string]string, op string) []byte {
@@ -1392,4 +1424,50 @@ func (c *Controller) getNameByPod(pod *v1.Pod) string {
 		podName = vmName
 	}
 	return podName
+}
+
+func (c *Controller) getNsAvailableSubnets(pod *v1.Pod) ([]*kubeovnNet, error) {
+	var result []*kubeovnNet
+
+	ns, err := c.namespacesLister.Get(pod.Namespace)
+	if err != nil {
+		klog.Errorf("failed to get namespace %s, %v", pod.Namespace, err)
+		return nil, err
+	}
+	if ns.Annotations == nil {
+		return nil, nil
+	}
+
+	subnetNames := ns.Annotations[util.LogicalSwitchAnnotation]
+	for _, subnetName := range strings.Split(subnetNames, ",") {
+		if subnetName == "" {
+			continue
+		}
+		subnet, err := c.subnetsLister.Get(subnetName)
+		if err != nil {
+			klog.Errorf("failed to get subnet %v", err)
+			return nil, err
+		}
+
+		switch subnet.Spec.Protocol {
+		case kubeovnv1.ProtocolIPv4:
+			fallthrough
+		case kubeovnv1.ProtocolDual:
+			if subnet.Status.V4AvailableIPs == 0 {
+				continue
+			}
+		case kubeovnv1.ProtocolIPv6:
+			if subnet.Status.V6AvailableIPs == 0 {
+				continue
+			}
+		}
+
+		result = append(result, &kubeovnNet{
+			Type:         providerTypeOriginal,
+			ProviderName: subnet.Spec.Provider,
+			Subnet:       subnet,
+		})
+	}
+
+	return result, nil
 }
