@@ -98,7 +98,7 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
 - [F5 CES Integration](https://github.com/f5devcentral/container-egress-service/wiki)
 
 ## Contribution
-We are looking forwards to your PR!
+We are looking forward to your PR!
 
 - [Development Guide](docs/development.md)
 - [Architecture Guide](ARCHITECTURE.MD)
