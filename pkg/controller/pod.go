@@ -497,8 +497,9 @@ func (c *Controller) handleAddPod(key string) error {
 			return err
 		}
 
-		if err := c.createOrUpdateCrdIPs(pod.Name, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName); err != nil {
-			klog.Errorf("failed to create IP %s.%s: %v", pod.Name, pod.Namespace, err)
+		podName := c.getNameByPod(pod)
+		if err := c.createOrUpdateCrdIPs(podName, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName); err != nil {
+			klog.Errorf("failed to create IP %s.%s: %v", podName, pod.Namespace, err)
 		}
 
 		if podNet.Type != providerTypeIPAM {
@@ -531,7 +532,6 @@ func (c *Controller) handleAddPod(key string) error {
 				}
 			}
 
-			podName := c.getNameByPod(pod)
 			portName := ovs.PodNameToPortName(podName, namespace, podNet.ProviderName)
 			if err := c.ovnClient.CreatePort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace, portSecurity, securityGroupAnnotation, vips, podNet.AllowLiveMigration); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
