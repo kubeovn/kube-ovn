@@ -225,6 +225,10 @@ var _ = Describe("[Service]", func() {
 		})
 
 		It("external to ClusterIP", func() {
+			if ciliumChaining {
+				return
+			}
+
 			port := containerService.Spec.Ports[0].Port
 			for _, ip := range containerService.Spec.ClusterIPs {
 				checkService(true, "docker", append(dockerArgs, strings.Fields(curlArgs(ip, port))...)...)
