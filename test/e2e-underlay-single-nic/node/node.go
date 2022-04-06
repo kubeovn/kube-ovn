@@ -166,12 +166,10 @@ var _ = Describe("[Underlay Node]", func() {
 		var hasAddr bool
 		for _, s := range strings.Split(stdout, "\n") {
 			if s = strings.TrimSpace(s); strings.HasPrefix(s, "inet ") || strings.HasPrefix(s, "inet6 ") {
-				if strings.HasPrefix(s, "inet6 ") {
-					_, ipnet, err := net.ParseCIDR(strings.Fields(s)[1])
-					Expect(err).NotTo(HaveOccurred())
-					if ipnet.String() == "fe80::/64" {
-						continue
-					}
+				ip, _, err := net.ParseCIDR(strings.Fields(s)[1])
+				Expect(err).NotTo(HaveOccurred())
+				if ip.IsLinkLocalUnicast() {
+					continue
 				}
 				hasAddr = true
 				break
@@ -209,8 +207,17 @@ var _ = Describe("[Underlay Node]", func() {
 
 		var hasRoute bool
 		for _, s := range strings.Split(stdout, "\n") {
-			if s == "" || strings.HasPrefix(s, "fe80::/64 ") {
+			if s = strings.TrimSpace(s); s == "" {
 				continue
+			}
+
+			if !strings.HasPrefix(s, "default ") {
+				addr := strings.Split(strings.Fields(s)[0], "/")[0]
+				ip := net.ParseIP(addr)
+				Expect(ip).NotTo(BeNil())
+				if ip.IsLinkLocalUnicast() {
+					continue
+				}
 			}
 
 			hasRoute = true
