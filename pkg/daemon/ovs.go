@@ -432,7 +432,8 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int) error {
 		return fmt.Errorf("can not get addr %s: %v", nodeLink, err)
 	}
 	for _, ipAddr := range ipAddrs {
-		if strings.HasPrefix(ipAddr.IP.String(), "fe80::") {
+		if ipAddr.IP.IsLinkLocalUnicast() {
+			// skip 169.254.0.0/16 and fe80::/10
 			continue
 		}
 		ipDelMap[ipAddr.IP.String()+"/"+ipAddr.Mask.String()] = ipAddr
@@ -623,7 +624,8 @@ func configProviderNic(nicName, brName string) (int, error) {
 	}
 	for _, scope := range scopeOrders {
 		for _, route := range routes {
-			if route.Gw == nil && route.Dst != nil && route.Dst.String() == "fe80::/64" {
+			if route.Gw == nil && route.Dst != nil && route.Dst.IP.IsLinkLocalUnicast() {
+				// skip 169.254.0.0/16 and fe80::/10
 				continue
 			}
 			if route.Scope == scope {
@@ -726,7 +728,8 @@ func removeProviderNic(nicName, brName string) error {
 	}
 	for _, scope := range scopeOrders {
 		for _, route := range routes {
-			if route.Gw == nil && route.Dst != nil && route.Dst.String() == "fe80::/64" {
+			if route.Gw == nil && route.Dst != nil && route.Dst.IP.IsLinkLocalUnicast() {
+				// skip 169.254.0.0/16 and fe80::/10
 				continue
 			}
 			if route.Scope == scope {
@@ -922,7 +925,8 @@ func configureAdditionalNic(link, ip string) error {
 		return fmt.Errorf("can not get addr %s %v", nodeLink, err)
 	}
 	for _, ipAddr := range ipAddrs {
-		if strings.HasPrefix(ipAddr.IP.String(), "fe80::") {
+		if ipAddr.IP.IsLinkLocalUnicast() {
+			// skip 169.254.0.0/16 and fe80::/10
 			continue
 		}
 		ipDelMap[ipAddr.IP.String()+"/"+ipAddr.Mask.String()] = ipAddr
