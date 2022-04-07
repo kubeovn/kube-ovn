@@ -12,6 +12,7 @@ VLAN_NIC=${VLAN_NIC:-}
 HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_LB=${ENABLE_LB:-true}
 ENABLE_NP=${ENABLE_NP:-true}
+ENABLE_EIP_SNAT=${ENABLE_EIP_SNAT:-true}
 WITHOUT_KUBE_PROXY=${WITHOUT_KUBE_PROXY:-false}
 ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-true}
 CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
@@ -159,6 +160,7 @@ echo "Default Subnet CIDR:  $POD_CIDR"
 echo "Join Subnet CIDR:     $JOIN_CIDR"
 echo "Enable SVC LB:        $ENABLE_LB"
 echo "Enable Networkpolicy: $ENABLE_NP"
+echo "Enable EIP and SNAT:  $ENABLE_EIP_SNAT"
 echo "Enable Mirror:        $ENABLE_MIRROR"
 echo "-------------------------------"
 
@@ -2149,6 +2151,7 @@ spec:
           - --pod-nic-type=$POD_NIC_TYPE
           - --enable-lb=$ENABLE_LB
           - --enable-np=$ENABLE_NP
+          - --enable-eip-snat=$ENABLE_EIP_SNAT
           - --enable-external-vpc=$ENABLE_EXTERNAL_VPC
           - --logtostderr=false
           - --alsologtostderr=true

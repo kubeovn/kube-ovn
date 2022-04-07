@@ -60,6 +60,8 @@ spec:
             - --pod-nic-type=veth-pair
             - --enable-lb=true
             - --enable-np=true
+            - --enable-eip-snat=true
+            - --enable-external-vpc=true
           env:
             - name: ENABLE_SSL
               value: "false"
