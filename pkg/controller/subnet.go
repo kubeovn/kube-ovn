@@ -1096,10 +1096,12 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 			}
 
 			for _, pod := range pods {
-				if !isPodAlive(pod) || pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "" {
+				if !isPodAlive(pod) {
 					continue
 				}
-				podName := c.getNameByPod(pod)
+				if c.config.EnableEipSnat && (pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "") {
+					continue
+				}
 
 				node, err := c.nodesLister.Get(pod.Spec.NodeName)
 				if err != nil {
@@ -1155,6 +1157,7 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 							return err
 						}
 					} else {
+						podName := c.getNameByPod(pod)
 						portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 						if !util.IsStringIn(portName, pgPorts) {
 							klog.Infof("new port %v should add to port group %v", portName, pgName)
