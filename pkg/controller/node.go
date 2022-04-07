@@ -295,7 +295,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	if err := c.createOrUpdateCrdIPs(key, ipStr, mac, c.config.NodeSwitch, "", node.Name, ""); err != nil {
+	if err := c.createOrUpdateCrdIPs("", ipStr, mac, c.config.NodeSwitch, "", node.Name, ""); err != nil {
 		klog.Errorf("failed to create or update IPs node-%s: %v", key, err)
 		return err
 	}
@@ -540,12 +540,14 @@ func (c *Controller) handleUpdateNode(key string) error {
 	return nil
 }
 
-func (c *Controller) createOrUpdateCrdIPs(key, ip, mac, subnetName, ns, nodeName, providerName string) error {
-	var ipName string
+func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, nodeName, providerName string) error {
+	var key, ipName string
 	if subnetName == c.config.NodeSwitch {
-		ipName = fmt.Sprintf("node-%s", key)
+		key = nodeName
+		ipName = fmt.Sprintf("node-%s", nodeName)
 	} else {
-		ipName = ovs.PodNameToPortName(key, ns, providerName)
+		key = podName
+		ipName = ovs.PodNameToPortName(podName, ns, providerName)
 	}
 
 	v4IP, v6IP := util.SplitStringIP(ip)
