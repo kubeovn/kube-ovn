@@ -527,7 +527,7 @@ func (c *Controller) handleAddPod(key string) error {
 		if k8serrors.IsNotFound(err) {
 			// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.
 			// Then we need to recycle the resource again.
-			c.deletePodQueue.AddRateLimited(key)
+			c.deletePodQueue.AddRateLimited(pod)
 			return nil
 		}
 		klog.Errorf("patch pod %s/%s failed: %v", name, namespace, err)
@@ -811,7 +811,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 		if k8serrors.IsNotFound(err) {
 			// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.
 			// Then we need to recycle the resource again.
-			c.deletePodQueue.AddRateLimited(key)
+			c.deletePodQueue.AddRateLimited(pod)
 			return nil
 		}
 		klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
