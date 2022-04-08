@@ -78,7 +78,7 @@ type Controller struct {
 	ipsLister kubeovnlister.IPLister
 	ipSynced  cache.InformerSynced
 
-	virtualIpsLister     kubeovnlister.VirtualIPLister
+	virtualIpsLister     kubeovnlister.VipLister
 	virtualIpsSynced     cache.InformerSynced
 	addVirtualIpQueue    workqueue.RateLimitingInterface
 	updateVirtualIpQueue workqueue.RateLimitingInterface
@@ -191,7 +191,7 @@ func NewController(config *Configuration) *Controller {
 	vpcNatGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	ipInformer := kubeovnInformerFactory.Kubeovn().V1().IPs()
-	virtualIpInformer := kubeovnInformerFactory.Kubeovn().V1().VirtualIPs()
+	virtualIpInformer := kubeovnInformerFactory.Kubeovn().V1().Vips()
 	iptablesEipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesEIPs()
 	iptablesFipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesFIPRules()
 	iptablesDnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesDnatRules()
@@ -409,8 +409,8 @@ func NewController(config *Configuration) *Controller {
 	})
 
 	virtualIpInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: controller.enqueueAddVirtualIp,
-		// UpdateFunc: controller.enqueueUpdateVirtualIp,
+		AddFunc:    controller.enqueueAddVirtualIp,
+		UpdateFunc: controller.enqueueUpdateVirtualIp,
 		DeleteFunc: controller.enqueueDelVirtualIp,
 	})
 
@@ -734,6 +734,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	go wait.Until(c.syncVmLiveMigrationPort, 15*time.Second, stopCh)
 
 	go wait.Until(c.runAddVirtualIpWorker, time.Second, stopCh)
+	go wait.Until(c.runUpdateVirtualIpWorker, time.Second, stopCh)
 	go wait.Until(c.runDelVirtualIpWorker, time.Second, stopCh)
 
 	go wait.Until(c.runAddIptablesEipWorker, time.Second, stopCh)

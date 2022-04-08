@@ -1408,7 +1408,7 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	}
 
 	if subnet.Spec.Vpc != "" {
-		vitrualIPs, err := c.config.KubeOvnClient.KubeovnV1().VirtualIPs().List(context.Background(), metav1.ListOptions{
+		vitrualIPs, err := c.config.KubeOvnClient.KubeovnV1().Vips().List(context.Background(), metav1.ListOptions{
 			LabelSelector: fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name).String(),
 		})
 		if err != nil {
@@ -1473,7 +1473,7 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	}
 	usingIPs := float64(len(podUsedIPs.Items))
 	if subnet.Spec.Vpc != "" {
-		vips, err := c.config.KubeOvnClient.KubeovnV1().VirtualIPs().List(context.Background(), metav1.ListOptions{
+		vips, err := c.config.KubeOvnClient.KubeovnV1().Vips().List(context.Background(), metav1.ListOptions{
 			LabelSelector: fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name).String(),
 		})
 		if err != nil {

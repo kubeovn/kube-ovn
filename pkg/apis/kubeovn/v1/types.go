@@ -788,8 +788,8 @@ type HtbQosList struct {
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
-// +resourceName=virtual-ips
-type VirtualIP struct {
+
+type Vip struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
@@ -808,11 +808,48 @@ type VirtualIPSpec struct {
 	AttachSubnets []string `json:"attachSubnets"`
 }
 
+// Condition describes the state of an object at a certain point.
+// +k8s:deepcopy-gen=true
+type VipCondition struct {
+	// Type of condition.
+	Type ConditionType `json:"type"`
+	// Status of the condition, one of True, False, Unknown.
+	Status corev1.ConditionStatus `json:"status"`
+	// The reason for the condition's last transition.
+	// +optional
+	Reason string `json:"reason,omitempty"`
+	// A human readable message indicating details about the transition.
+	// +optional
+	Message string `json:"message,omitempty"`
+	// Last time the condition was probed
+	// +optional
+	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
+	// Last time the condition transitioned from one status to another.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+}
+
+type VipStatus struct {
+	// Conditions represents the latest state of the object
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	Conditions []VipCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
+	Ready bool   `json:"ready" patchStrategy:"merge"`
+	V4ip  string `json:"v4ip" patchStrategy:"merge"`
+	V6ip  string `json:"v6ip" patchStrategy:"merge"`
+	Mac   string `json:"mac" patchStrategy:"merge"`
+	Pv4ip string `json:"pv4ip" patchStrategy:"merge"`
+	Pv6ip string `json:"pv6ip" patchStrategy:"merge"`
+	Pmac  string `json:"pmac" patchStrategy:"merge"`
+}
+
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-type VirtualIPList struct {
+type VipList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
 
-	Items []VirtualIP `json:"items"`
+	Items []Vip `json:"items"`
 }

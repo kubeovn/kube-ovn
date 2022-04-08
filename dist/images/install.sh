@@ -769,42 +769,46 @@ spec:
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: virtual-ips.kubeovn.io
+  name: vips.kubeovn.io
 spec:
   group: kubeovn.io
   names:
-    plural: virtual-ips
-    singular: virtual-ip
-    kind: VirtualIP
+    plural: vips
+    singular: vip
     shortNames:
       - vip
+    kind: Vip
+    listKind: VipList
   scope: Cluster
   versions:
     - name: v1
       served: true
       storage: true
       additionalPrinterColumns:
-      - name: Subnet
-        type: string
-        jsonPath: .spec.subnet
       - name: V4IP
         type: string
         jsonPath: .spec.v4ip
-      - name: Mac
-        type: string
-        jsonPath: .spec.macAddress
-      - name: V6IP
-        type: string
-        jsonPath: .spec.v6ip
       - name: PV4IP
         type: string
         jsonPath: .spec.parentV4ip
+      - name: Mac
+        type: string
+        jsonPath: .spec.macAddress
       - name: PMac
         type: string
         jsonPath: .spec.ParentMac
+      - name: V6IP
+        type: string
+        jsonPath: .spec.v6ip
       - name: PV6IP
         type: string
         jsonPath: .spec.parentV6ip
+      - name: Subnet
+        type: string
+        jsonPath: .spec.subnet
+      - jsonPath: .status.ready
+        name: Ready
+        type: boolean
       schema:
         openAPIV3Schema:
           type: object
@@ -812,6 +816,20 @@ spec:
             status:
               type: object
               properties:
+                ready:
+                  type: boolean
+                v4ip:
+                  type: string
+                v6ip:
+                  type: string
+                mac:
+                  type: string
+                pv4ip:
+                  type: string
+                pv6ip:
+                  type: string
+                pmac:
+                  type: string
                 conditions:
                   type: array
                   items:
@@ -1339,7 +1357,8 @@ rules:
       - subnets
       - subnets/status
       - ips
-      - virtual-ips
+      - vips
+      - vips/status
       - vlans
       - provider-networks
       - provider-networks/status
@@ -1354,7 +1373,6 @@ rules:
       - iptables-fip-rules/status
       - iptables-dnat-rules/status
       - iptables-snat-rules/status
-      - virtual-ips/status
     verbs:
       - "*"
   - apiGroups:
@@ -1834,7 +1852,8 @@ rules:
       - subnets
       - subnets/status
       - ips
-      - virtual-ips
+      - vips
+      - vips/status
       - vlans
       - provider-networks
       - provider-networks/status
@@ -1850,7 +1869,6 @@ rules:
       - iptables-fip-rules/status
       - iptables-dnat-rules/status
       - iptables-snat-rules/status
-      - virtual-ips/status
     verbs:
       - "*"
   - apiGroups:

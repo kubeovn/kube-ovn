@@ -19,6 +19,13 @@ import (
 	"k8s.io/klog/v2"
 )
 
+const (
+	ReadyCondition              = "Ready"
+	AddressOutOfRangeCondition  = "AddressOutOfRange"
+	AddressConflictCondition    = "AddressConflict"
+	NoAvailableAddressCondition = "NoAvailableAddress"
+)
+
 func (c *Controller) enqueueAddVirtualIp(obj interface{}) {
 	if !c.isLeader() {
 		return
@@ -32,6 +39,27 @@ func (c *Controller) enqueueAddVirtualIp(obj interface{}) {
 	c.addVirtualIpQueue.Add(key)
 }
 
+func (c *Controller) enqueueUpdateVirtualIp(old, new interface{}) {
+	if !c.isLeader() {
+		return
+	}
+	var key string
+	var err error
+	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
+		utilruntime.HandleError(err)
+		return
+	}
+	oldVip := old.(*kubeovnv1.Vip)
+	newVip := new.(*kubeovnv1.Vip)
+	if !newVip.DeletionTimestamp.IsZero() ||
+		oldVip.Spec.MacAddress != newVip.Spec.MacAddress ||
+		oldVip.Spec.ParentMac != newVip.Spec.ParentMac ||
+		oldVip.Spec.ParentV4ip != newVip.Spec.ParentV4ip ||
+		oldVip.Spec.V4ip != newVip.Spec.V4ip {
+		c.updateVirtualIpQueue.Add(key)
+	}
+}
+
 func (c *Controller) enqueueDelVirtualIp(obj interface{}) {
 	if !c.isLeader() {
 		return
@@ -43,12 +71,17 @@ func (c *Controller) enqueueDelVirtualIp(obj interface{}) {
 		return
 	}
 	c.delVirtualIpQueue.Add(key)
-	vipObj := obj.(*kubeovnv1.VirtualIP)
+	vipObj := obj.(*kubeovnv1.Vip)
 	c.updateSubnetStatusQueue.Add(vipObj.Spec.Subnet)
 }
 
 func (c *Controller) runAddVirtualIpWorker() {
 	for c.processNextAddVirtualIpWorkItem() {
+	}
+}
+
+func (c *Controller) runUpdateVirtualIpWorker() {
+	for c.processNextUpdateVirtualIpWorkItem() {
 	}
 }
 
@@ -80,6 +113,34 @@ func (c *Controller) processNextAddVirtualIpWorkItem() bool {
 		return nil
 	}(obj)
 
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
+	return true
+}
+
+func (c *Controller) processNextUpdateVirtualIpWorkItem() bool {
+	obj, shutdown := c.updateVirtualIpQueue.Get()
+	if shutdown {
+		return false
+	}
+	err := func(obj interface{}) error {
+		defer c.updateVirtualIpQueue.Done(obj)
+		var key string
+		var ok bool
+		if key, ok = obj.(string); !ok {
+			c.updateVirtualIpQueue.Forget(obj)
+			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
+			return nil
+		}
+		if err := c.handleUpdateVirtualIp(key); err != nil {
+			c.updateVirtualIpQueue.AddRateLimited(key)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		}
+		c.updateVirtualIpQueue.Forget(obj)
+		return nil
+	}(obj)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -161,9 +222,66 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 		time.Sleep(2 * time.Second)
 		return err
 	}
+	_, err = c.handleVipFinalizer(vip)
+	if err != nil {
+		klog.Errorf("failed to handle vip finalizer %v", err)
+		return err
+	}
 	if err = c.subnetCountVip(subnet); err != nil {
 		klog.Errorf("failed to count virtual ip [%s] in subnet, %v", vip.Name, err)
 		time.Sleep(2 * time.Second)
+		return err
+
+	}
+	return nil
+}
+
+func (c *Controller) handleUpdateVirtualIp(key string) error {
+	cachedVip, err := c.virtualIpsLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	vip := cachedVip.DeepCopy()
+	// should delete
+	if !vip.DeletionTimestamp.IsZero() {
+		// TODO:// clean vip in its parent port aap list
+		klog.Infof("todo:// remove this vip '%s' from its parent port aap list", key)
+
+		if err = c.patchVipStatus(key, "", false); err != nil {
+			time.Sleep(2 * time.Second)
+			return err
+		}
+		vip.Status.Ready = false
+		_, err = c.handleVipFinalizer(vip)
+		if err != nil {
+			klog.Errorf("failed to handle vip finalizer %v", err)
+			return err
+		}
+		return nil
+	}
+	if vip.Status.Mac == "" ||
+		vip.Status.Mac != vip.Spec.MacAddress ||
+		vip.Status.Pmac != vip.Spec.ParentMac {
+		// TODO:// add vip in its parent port aap list
+		klog.Infof("todo:// add this vip '%s' into its parent port aap list", key)
+		if err = c.createOrUpdateCrdVip(key, vip.Namespace, vip.Spec.Subnet,
+			vip.Spec.V6ip, vip.Spec.V6ip, vip.Spec.MacAddress,
+			vip.Spec.ParentV4ip, vip.Spec.ParentV6ip, vip.Spec.MacAddress); err != nil {
+			time.Sleep(2 * time.Second)
+			return err
+		}
+		if err = c.patchVipStatus(key, vip.Spec.V4ip, true); err != nil {
+			time.Sleep(2 * time.Second)
+			return err
+		}
+	}
+	vip.Status.Ready = true
+	_, err = c.handleVipFinalizer(vip)
+	if err != nil {
+		klog.Errorf("failed to handle vip finalizer %v", err)
 		return err
 	}
 	return nil
@@ -195,7 +313,7 @@ func (c *Controller) acquireStaticVirtualAddress(subnetName, name, namespace, ni
 func (c *Controller) acquireVirtualAddress(subnetName, name, namespace, nicName string) (string, string, string, error) {
 	var skippedAddrs []string
 	for {
-		ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(name, nicName, "", subnetName, skippedAddrs, true)
+		ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(name, nicName, subnetName, skippedAddrs)
 		if err != nil {
 			return "", "", "", err
 		}
@@ -229,10 +347,10 @@ func (c *Controller) subnetCountVip(subnet *kubeovnv1.Subnet) error {
 }
 
 func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4ip, pV6ip, pmac string) error {
-	vipCr, err := c.config.KubeOvnClient.KubeovnV1().VirtualIPs().Get(context.Background(), key, metav1.GetOptions{})
+	vipCr, err := c.config.KubeOvnClient.KubeovnV1().Vips().Get(context.Background(), key, metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			_, err := c.config.KubeOvnClient.KubeovnV1().VirtualIPs().Create(context.Background(), &kubeovnv1.VirtualIP{
+			_, err := c.config.KubeOvnClient.KubeovnV1().Vips().Create(context.Background(), &kubeovnv1.Vip{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: key,
 					Labels: map[string]string{
@@ -240,12 +358,24 @@ func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4i
 					},
 					Namespace: ns,
 				},
-				Spec: kubeovnv1.VirtualIPSpec{
+				Spec: kubeovnv1.VipSpec{
 					Namespace:  ns,
 					Subnet:     subnet,
 					V4ip:       v4ip,
 					V6ip:       v6ip,
 					MacAddress: mac,
+					ParentV4ip: pV4ip,
+					ParentV6ip: pV6ip,
+					ParentMac:  pmac,
+				},
+				Status: kubeovnv1.VipStatus{
+					Ready: true,
+					V4ip:  v4ip,
+					V6ip:  v6ip,
+					Mac:   mac,
+					Pv4ip: pV4ip,
+					Pv6ip: pV6ip,
+					Pmac:  pmac,
 				},
 			}, metav1.CreateOptions{})
 
@@ -259,6 +389,7 @@ func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4i
 			klog.Error(errMsg)
 			return errMsg
 		}
+		time.Sleep(2 * time.Second)
 	} else {
 		vip := vipCr.DeepCopy()
 		if vip.Spec.MacAddress == "" && mac != "" {
@@ -272,9 +403,18 @@ func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4i
 			vip.Spec.ParentV4ip = pV4ip
 			vip.Spec.ParentV6ip = pV6ip
 			vip.Spec.ParentMac = pmac
-			_, err := c.config.KubeOvnClient.KubeovnV1().VirtualIPs().Update(context.Background(), vip, metav1.UpdateOptions{})
+
+			vip.Status.Ready = true
+			vip.Status.V4ip = v4ip
+			vip.Status.V6ip = v6ip
+			vip.Status.Mac = mac
+			vip.Status.Pv4ip = pV4ip
+			vip.Status.Pv6ip = pV6ip
+			vip.Status.Pmac = pmac
+
+			_, err := c.config.KubeOvnClient.KubeovnV1().Vips().Update(context.Background(), vip, metav1.UpdateOptions{})
 			if err != nil {
-				errMsg := fmt.Errorf("failed to update vip crd for [%s], %v", key, err)
+				errMsg := fmt.Errorf("failed to update vip [%s], %v", key, err)
 				klog.Error(errMsg)
 				return errMsg
 			}
@@ -295,11 +435,85 @@ func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4i
 			patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
 			raw, _ := json.Marshal(vip.Labels)
 			patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-			_, err := c.config.KubeOvnClient.KubeovnV1().VirtualIPs().Patch(context.Background(), vip.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
+			_, err := c.config.KubeOvnClient.KubeovnV1().Vips().Patch(context.Background(), vip.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
 			if err != nil {
 				klog.Errorf("failed to patch vip label %s: %v", vip.Name, err)
 				return err
 			}
+		}
+	}
+	time.Sleep(2 * time.Second)
+	return nil
+}
+
+func (c *Controller) handleVipFinalizer(vip *kubeovnv1.Vip) (bool, error) {
+	if vip.DeletionTimestamp.IsZero() && !util.ContainsString(vip.Finalizers, util.ControllerName) {
+		if len(vip.Finalizers) != 0 {
+			return false, nil
+		}
+		vip.Finalizers = append(vip.Finalizers, util.ControllerName)
+		raw, _ := json.Marshal(vip.Finalizers)
+		patchPayloadTemplate := `[{ "op": "add", "path": "/metadata/finalizers", "value": %s }]`
+		patchPayload := fmt.Sprintf(patchPayloadTemplate, raw)
+		if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Patch(context.Background(), vip.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
+			if k8serrors.IsNotFound(err) {
+				return true, nil
+			}
+			klog.Errorf("failed to add finalizer to vip %s, %v", vip.Name, err)
+			time.Sleep(2 * time.Second)
+			return false, err
+		}
+		// wait local cache ready
+		time.Sleep(2 * time.Second)
+		return false, nil
+	}
+
+	if !vip.DeletionTimestamp.IsZero() && !vip.Status.Ready {
+		if len(vip.Finalizers) == 0 {
+			return true, nil
+		}
+		vip.Finalizers = util.RemoveString(vip.Finalizers, util.ControllerName)
+		raw, _ := json.Marshal(vip.Finalizers)
+		patchPayloadTemplate := `[{ "op": "remove", "path": "/metadata/finalizers", "value": %s }]`
+		patchPayload := fmt.Sprintf(patchPayloadTemplate, raw)
+		if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Patch(context.Background(), vip.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
+			if k8serrors.IsNotFound(err) {
+				return true, nil
+			}
+			klog.Errorf("failed to remove finalizer from vip %s, %v", vip.Name, err)
+			time.Sleep(2 * time.Second)
+			return false, err
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
+func (c *Controller) patchVipStatus(key, v4ip string, ready bool) error {
+	oriVip, err := c.virtualIpsLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to get cached vip [%s], %v", key, err)
+			return nil
+		}
+		return err
+	}
+	vip := oriVip.DeepCopy()
+	var changed bool
+	if vip.Status.Ready != ready {
+		vip.Status.Ready = ready
+		changed = true
+	}
+
+	if ready && v4ip != "" && vip.Status.V4ip != v4ip {
+		vip.Status.V4ip = v4ip
+		changed = true
+	}
+
+	if changed {
+		if _, err = c.config.KubeOvnClient.KubeovnV1().Vips().Update(context.Background(), vip, metav1.UpdateOptions{}); err != nil {
+			klog.Errorf("failed to update status for vip [%s], %v", key, err)
+			return err
 		}
 	}
 	return nil

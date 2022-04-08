@@ -58,8 +58,8 @@ func (sgs *SecurityGroupStatus) Bytes() ([]byte, error) {
 	return []byte(newStr), nil
 }
 
-func (vs *IptablesEipStatus) Bytes() ([]byte, error) {
-	bytes, err := json.Marshal(vs)
+func (vipst *VipStatus) Bytes() ([]byte, error) {
+	bytes, err := json.Marshal(vipst)
 	if err != nil {
 		return nil, err
 	}
@@ -68,8 +68,8 @@ func (vs *IptablesEipStatus) Bytes() ([]byte, error) {
 	return []byte(newStr), nil
 }
 
-func (vs *IptablesFIPRuleStatus) Bytes() ([]byte, error) {
-	bytes, err := json.Marshal(vs)
+func (ieips *IptablesEipStatus) Bytes() ([]byte, error) {
+	bytes, err := json.Marshal(ieips)
 	if err != nil {
 		return nil, err
 	}
@@ -78,8 +78,8 @@ func (vs *IptablesFIPRuleStatus) Bytes() ([]byte, error) {
 	return []byte(newStr), nil
 }
 
-func (vs *IptablesDnatRuleStatus) Bytes() ([]byte, error) {
-	bytes, err := json.Marshal(vs)
+func (ifips *IptablesFIPRuleStatus) Bytes() ([]byte, error) {
+	bytes, err := json.Marshal(ifips)
 	if err != nil {
 		return nil, err
 	}
@@ -88,8 +88,18 @@ func (vs *IptablesDnatRuleStatus) Bytes() ([]byte, error) {
 	return []byte(newStr), nil
 }
 
-func (vs *IptablesSnatRuleStatus) Bytes() ([]byte, error) {
-	bytes, err := json.Marshal(vs)
+func (idnats *IptablesDnatRuleStatus) Bytes() ([]byte, error) {
+	bytes, err := json.Marshal(idnats)
+	if err != nil {
+		return nil, err
+	}
+	newStr := fmt.Sprintf(`{"status": %s}`, string(bytes))
+	klog.V(5).Info("status body", newStr)
+	return []byte(newStr), nil
+}
+
+func (isnats *IptablesSnatRuleStatus) Bytes() ([]byte, error) {
+	bytes, err := json.Marshal(isnats)
 	if err != nil {
 		return nil, err
 	}
