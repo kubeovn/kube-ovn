@@ -379,7 +379,9 @@ func (c *Controller) handleUpdateVpcFloatingIp(natGwKey string) error {
 	c.vpcNatGwKeyMutex.Lock(natGwKey)
 	defer c.vpcNatGwKeyMutex.Unlock(natGwKey)
 	// refresh exist fips
-	c.initCreateAt(natGwKey)
+	if err := c.initCreateAt(natGwKey); err != nil {
+		klog.Errorf("failed to init nat gw pod '%s' create at, %v", natGwKey, err)
+	}
 	fips, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().List(context.Background(), metav1.ListOptions{
 		LabelSelector: fields.OneTermEqualSelector(util.VpcNatGatewayNameLabel, natGwKey).String(),
 	})
@@ -410,7 +412,9 @@ func (c *Controller) handleUpdateVpcEip(natGwKey string) error {
 	c.vpcNatGwKeyMutex.Lock(natGwKey)
 	defer c.vpcNatGwKeyMutex.Unlock(natGwKey)
 	// refresh exist fips
-	c.initCreateAt(natGwKey)
+	if err := c.initCreateAt(natGwKey); err != nil {
+		klog.Errorf("failed to init nat gw pod '%s' create at, %v", natGwKey, err)
+	}
 	eips, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().List(context.Background(), metav1.ListOptions{
 		LabelSelector: fields.OneTermEqualSelector(util.VpcNatLabel, "").String(),
 	})
@@ -440,7 +444,9 @@ func (c *Controller) handleUpdateVpcSnat(natGwKey string) error {
 	c.vpcNatGwKeyMutex.Lock(natGwKey)
 	defer c.vpcNatGwKeyMutex.Unlock(natGwKey)
 	// refresh exist snats
-	c.initCreateAt(natGwKey)
+	if err := c.initCreateAt(natGwKey); err != nil {
+		klog.Errorf("failed to init nat gw pod '%s' create at, %v", natGwKey, err)
+	}
 	snats, err := c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().List(context.Background(), metav1.ListOptions{
 		LabelSelector: fields.OneTermEqualSelector(util.VpcNatGatewayNameLabel, natGwKey).String(),
 	})
@@ -470,7 +476,9 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 	c.vpcNatGwKeyMutex.Lock(natGwKey)
 	defer c.vpcNatGwKeyMutex.Unlock(natGwKey)
 	// refresh exist dnats
-	c.initCreateAt(natGwKey)
+	if err := c.initCreateAt(natGwKey); err != nil {
+		klog.Errorf("failed to init nat gw pod '%s' create at, %v", natGwKey, err)
+	}
 	dnats, err := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().List(context.Background(), metav1.ListOptions{
 		LabelSelector: fields.OneTermEqualSelector(util.VpcNatGatewayNameLabel, natGwKey).String(),
 	})
