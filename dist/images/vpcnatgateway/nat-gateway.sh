@@ -15,14 +15,12 @@ function exec_cmd() {
 function init() {
     # run once is enough
     iptables-save | grep DNAT_FILTER && exit 0
-    if [ "$?" -eq 1 ];then
-      echo "first init"
-    fi
-    ip link set dev net1 arp off
+    # add static chain
+    # this also a flag to make sure init once
+    iptables -t nat -N DNAT_FILTER
     ip link set net1 up
     ip link set dev net1 arp off
     lanCIDR=$1
-    ip link set net1 up
     if [ $(ip rule show iif net1 | wc -l) -eq 0 ]; then
         exec_cmd "ip rule add iif net1 table $ROUTE_TABLE"
     fi
@@ -32,7 +30,6 @@ function init() {
     exec_cmd "ip route replace $lanCIDR dev eth0 table $ROUTE_TABLE"
 
     # add static chain
-    iptables -t nat -N DNAT_FILTER
     iptables -t nat -N SNAT_FILTER
     iptables -t nat -N EXCLUSIVE_DNAT # floatingIp DNAT
     iptables -t nat -N EXCLUSIVE_SNAT # floatingIp SNAT
@@ -50,7 +47,7 @@ function init() {
 
 function add_vpc_internal_route() {
     # make sure inited
-    iptables-save | grep DNAT_FILTER
+    iptables-save -t nat | grep  SNAT_FILTER | grep SHARED_SNAT
     for rule in $@
     do
         arr=(${rule//,/ })
@@ -63,7 +60,7 @@ function add_vpc_internal_route() {
 
 function del_vpc_internal_route() {
     # make sure inited
-    iptables-save | grep DNAT_FILTER
+    iptables-save -t nat | grep  SNAT_FILTER | grep SHARED_SNAT
     for rule in $@
     do
         arr=(${rule//,/ })
@@ -75,7 +72,7 @@ function del_vpc_internal_route() {
 
 function add_eip() {
     # make sure inited
-    iptables-save | grep DNAT_FILTER
+    iptables-save -t nat | grep  SNAT_FILTER | grep SHARED_SNAT
     for rule in $@
     do
         arr=(${rule//,/ })
@@ -95,7 +92,7 @@ function add_eip() {
 
 function del_eip() {
     # make sure inited
-    iptables-save | grep DNAT_FILTER
+    iptables-save -t nat | grep  SNAT_FILTER | grep SHARED_SNAT
     for rule in $@
     do
         arr=(${rule//,/ })
@@ -109,7 +106,7 @@ function del_eip() {
 
 function add_floating_ip() {
     # make sure inited
-    iptables-save | grep DNAT_FILTER
+    iptables-save -t nat | grep  SNAT_FILTER | grep SHARED_SNAT
     for rule in $@
     do
         arr=(${rule//,/ })
@@ -124,7 +121,7 @@ function add_floating_ip() {
 
 function del_floating_ip() {
     # make sure inited
-    iptables-save | grep DNAT_FILTER
+    iptables-save -t nat | grep  SNAT_FILTER | grep SHARED_SNAT
     for rule in $@
     do
         arr=(${rule//,/ })
@@ -141,7 +138,7 @@ function del_floating_ip() {
 
 function add_snat() {
     # make sure inited
-    iptables-save | grep DNAT_FILTER
+    iptables-save -t nat | grep  SNAT_FILTER | grep SHARED_SNAT
     # iptables -t nat -F SHARED_SNAT
     for rule in $@
     do
@@ -155,7 +152,7 @@ function add_snat() {
 }
 function del_snat() {
     # make sure inited
-    iptables-save | grep DNAT_FILTER
+    iptables-save -t nat | grep  SNAT_FILTER | grep SHARED_SNAT
     # iptables -t nat -F SHARED_SNAT
     for rule in $@
     do
@@ -172,7 +169,7 @@ function del_snat() {
 
 function add_dnat() {
     # make sure inited
-    iptables-save | grep DNAT_FILTER
+    iptables-save -t nat | grep  SNAT_FILTER | grep SHARED_SNAT
     for rule in $@
     do
         arr=(${rule//,/ })
@@ -189,7 +186,7 @@ function add_dnat() {
 
 function del_dnat() {
     # make sure inited
-    iptables-save | grep DNAT_FILTER
+    iptables-save -t nat | grep  SNAT_FILTER | grep SHARED_SNAT
     for rule in $@
     do
         arr=(${rule//,/ })
