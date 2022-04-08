@@ -25,44 +25,44 @@ import (
 	"k8s.io/client-go/tools/cache"
 )
 
-// VirtualIPLister helps list VirtualIPs.
+// VipLister helps list Vips.
 // All objects returned here must be treated as read-only.
-type VirtualIPLister interface {
-	// List lists all VirtualIPs in the indexer.
+type VipLister interface {
+	// List lists all Vips in the indexer.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1.VirtualIP, err error)
-	// Get retrieves the VirtualIP from the index for a given name.
+	List(selector labels.Selector) (ret []*v1.Vip, err error)
+	// Get retrieves the Vip from the index for a given name.
 	// Objects returned here must be treated as read-only.
-	Get(name string) (*v1.VirtualIP, error)
-	VirtualIPListerExpansion
+	Get(name string) (*v1.Vip, error)
+	VipListerExpansion
 }
 
-// virtualIPLister implements the VirtualIPLister interface.
-type virtualIPLister struct {
+// vipLister implements the VipLister interface.
+type vipLister struct {
 	indexer cache.Indexer
 }
 
-// NewVirtualIPLister returns a new VirtualIPLister.
-func NewVirtualIPLister(indexer cache.Indexer) VirtualIPLister {
-	return &virtualIPLister{indexer: indexer}
+// NewVipLister returns a new VipLister.
+func NewVipLister(indexer cache.Indexer) VipLister {
+	return &vipLister{indexer: indexer}
 }
 
-// List lists all VirtualIPs in the indexer.
-func (s *virtualIPLister) List(selector labels.Selector) (ret []*v1.VirtualIP, err error) {
+// List lists all Vips in the indexer.
+func (s *vipLister) List(selector labels.Selector) (ret []*v1.Vip, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1.VirtualIP))
+		ret = append(ret, m.(*v1.Vip))
 	})
 	return ret, err
 }
 
-// Get retrieves the VirtualIP from the index for a given name.
-func (s *virtualIPLister) Get(name string) (*v1.VirtualIP, error) {
+// Get retrieves the Vip from the index for a given name.
+func (s *vipLister) Get(name string) (*v1.Vip, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err
 	}
 	if !exists {
-		return nil, errors.NewNotFound(v1.Resource("virtualip"), name)
+		return nil, errors.NewNotFound(v1.Resource("vip"), name)
 	}
-	return obj.(*v1.VirtualIP), nil
+	return obj.(*v1.Vip), nil
 }

@@ -36,7 +36,7 @@ type SecurityGroupExpansion interface{}
 
 type SubnetExpansion interface{}
 
-type VirtualIPExpansion interface{}
+type VipExpansion interface{}
 
 type VlanExpansion interface{}
 

@@ -42,8 +42,8 @@ type Interface interface {
 	SecurityGroups() SecurityGroupInformer
 	// Subnets returns a SubnetInformer.
 	Subnets() SubnetInformer
-	// VirtualIPs returns a VirtualIPInformer.
-	VirtualIPs() VirtualIPInformer
+	// Vips returns a VipInformer.
+	Vips() VipInformer
 	// Vlans returns a VlanInformer.
 	Vlans() VlanInformer
 	// Vpcs returns a VpcInformer.
@@ -108,9 +108,9 @@ func (v *version) Subnets() SubnetInformer {
 	return &subnetInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
-// VirtualIPs returns a VirtualIPInformer.
-func (v *version) VirtualIPs() VirtualIPInformer {
-	return &virtualIPInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+// Vips returns a VipInformer.
+func (v *version) Vips() VipInformer {
+	return &vipInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
 // Vlans returns a VlanInformer.

@@ -64,8 +64,8 @@ func (c *FakeKubeovnV1) Subnets() v1.SubnetInterface {
 	return &FakeSubnets{c}
 }
 
-func (c *FakeKubeovnV1) VirtualIPs() v1.VirtualIPInterface {
-	return &FakeVirtualIPs{c}
+func (c *FakeKubeovnV1) Vips() v1.VipInterface {
+	return &FakeVips{c}
 }
 
 func (c *FakeKubeovnV1) Vlans() v1.VlanInterface {

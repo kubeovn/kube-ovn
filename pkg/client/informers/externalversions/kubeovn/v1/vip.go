@@ -32,58 +32,58 @@ import (
 	cache "k8s.io/client-go/tools/cache"
 )
 
-// VirtualIPInformer provides access to a shared informer and lister for
-// VirtualIPs.
-type VirtualIPInformer interface {
+// VipInformer provides access to a shared informer and lister for
+// Vips.
+type VipInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1.VirtualIPLister
+	Lister() v1.VipLister
 }
 
-type virtualIPInformer struct {
+type vipInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
 	tweakListOptions internalinterfaces.TweakListOptionsFunc
 }
 
-// NewVirtualIPInformer constructs a new informer for VirtualIP type.
+// NewVipInformer constructs a new informer for Vip type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewVirtualIPInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
-	return NewFilteredVirtualIPInformer(client, resyncPeriod, indexers, nil)
+func NewVipInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
+	return NewFilteredVipInformer(client, resyncPeriod, indexers, nil)
 }
 
-// NewFilteredVirtualIPInformer constructs a new informer for VirtualIP type.
+// NewFilteredVipInformer constructs a new informer for Vip type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewFilteredVirtualIPInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
+func NewFilteredVipInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.KubeovnV1().VirtualIPs().List(context.TODO(), options)
+				return client.KubeovnV1().Vips().List(context.TODO(), options)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.KubeovnV1().VirtualIPs().Watch(context.TODO(), options)
+				return client.KubeovnV1().Vips().Watch(context.TODO(), options)
 			},
 		},
-		&kubeovnv1.VirtualIP{},
+		&kubeovnv1.Vip{},
 		resyncPeriod,
 		indexers,
 	)
 }
 
-func (f *virtualIPInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewFilteredVirtualIPInformer(client, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
+func (f *vipInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+	return NewFilteredVipInformer(client, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
 }
 
-func (f *virtualIPInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&kubeovnv1.VirtualIP{}, f.defaultInformer)
+func (f *vipInformer) Informer() cache.SharedIndexInformer {
+	return f.factory.InformerFor(&kubeovnv1.Vip{}, f.defaultInformer)
 }
 
-func (f *virtualIPInformer) Lister() v1.VirtualIPLister {
-	return v1.NewVirtualIPLister(f.Informer().GetIndexer())
+func (f *vipInformer) Lister() v1.VipLister {
+	return v1.NewVipLister(f.Informer().GetIndexer())
 }

@@ -793,10 +793,11 @@ type Vip struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec VirtualIPSpec `json:"spec"`
+	Spec   VipSpec   `json:"spec"`
+	Status VipStatus `json:"status,omitempty"`
 }
 
-type VirtualIPSpec struct {
+type VipSpec struct {
 	Namespace     string   `json:"namespace"`
 	Subnet        string   `json:"subnet"`
 	V4ip          string   `json:"v4ip"`

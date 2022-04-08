@@ -313,7 +313,7 @@ func (c *Controller) acquireStaticVirtualAddress(subnetName, name, namespace, ni
 func (c *Controller) acquireVirtualAddress(subnetName, name, namespace, nicName string) (string, string, string, error) {
 	var skippedAddrs []string
 	for {
-		ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(name, nicName, subnetName, skippedAddrs)
+		ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(name, nicName, "", subnetName, skippedAddrs, false)
 		if err != nil {
 			return "", "", "", err
 		}

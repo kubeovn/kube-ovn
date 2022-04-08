@@ -71,8 +71,8 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().SecurityGroups().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("subnets"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().Subnets().Informer()}, nil
-	case v1.SchemeGroupVersion.WithResource("virtual-ips"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().VirtualIPs().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("vips"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().Vips().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("vlans"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().Vlans().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("vpcs"):

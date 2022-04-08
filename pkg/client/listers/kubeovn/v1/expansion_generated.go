@@ -54,9 +54,9 @@ type SecurityGroupListerExpansion interface{}
 // SubnetLister.
 type SubnetListerExpansion interface{}
 
-// VirtualIPListerExpansion allows custom methods to be added to
-// VirtualIPLister.
-type VirtualIPListerExpansion interface{}
+// VipListerExpansion allows custom methods to be added to
+// VipLister.
+type VipListerExpansion interface{}
 
 // VlanListerExpansion allows custom methods to be added to
 // VlanLister.
