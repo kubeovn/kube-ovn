@@ -233,7 +233,7 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		return nil
 	}
 	eip := cachedEip.DeepCopy()
-	klog.Infof("handle add eip [%s]", key)
+	klog.V(3).Infof("handle add eip %s", key)
 	var v4ip, v6ip, mac, nicName, eipV4Cidr, gw string
 	nicName = ovs.PodNameToPortName(eip.Name, eip.Namespace, subnetProvider)
 	if eip.Spec.V4ip != "" {
@@ -256,23 +256,23 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 	err = c.createEipInPod(eip.Spec.NatGwDp, gw, eipV4Cidr)
 	if err != nil {
 		// not retry too often
-		klog.Errorf("failed to create eip, %v", err)
+		klog.Errorf("failed to create eip '%s' in pod, %v", key, err)
 		time.Sleep(2 * time.Second)
 		return err
 	}
 	if err = c.createOrUpdateCrdEip(key, eip.Namespace, v4ip, v6ip, mac, eip.Spec.NatGwDp); err != nil {
-		klog.Errorf("failed to update eip [%s] %v", key, err)
+		klog.Errorf("failed to update eip %s, %v", key, err)
 		time.Sleep(2 * time.Second)
 		return err
 	}
 	if err = c.patchEipStatus(key, v4ip, "", "", true); err != nil {
-		klog.Errorf("failed to update eip [%s] status, %v", key, err)
+		klog.Errorf("failed to patch status for eip %s, %v", key, err)
 		time.Sleep(2 * time.Second)
 		return err
 	}
 	_, err = c.handleIptablesEipFinalizer(eip, false)
 	if err != nil {
-		klog.Errorf("failed to handle eip finalizer %v", err)
+		klog.Errorf("failed to handle finalizer for eip %s, %v", key, err)
 		return err
 	}
 	return nil
@@ -322,11 +322,11 @@ func (c *Controller) handleResetIptablesEip(key string) error {
 
 	if notUse {
 		if err := c.natLabelEip(key, ""); err != nil {
-			klog.Errorf("failed to reset label for eip [%s], %v", key, err)
+			klog.Errorf("failed to clean label for eip %s, %v", key, err)
 			return err
 		}
 		if err := c.patchResetEipStatusNat(key, ""); err != nil {
-			klog.Errorf("failed to clean status.nat for eip [%s], %v", key, err)
+			klog.Errorf("failed to clean status for eip %s, %v", key, err)
 			return err
 		}
 	}
@@ -353,20 +353,20 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 	eip := cachedEip.DeepCopy()
 	// should delete
 	if !eip.DeletionTimestamp.IsZero() {
-		klog.Infof("clean eip in pod [%s]", key)
+		klog.V(3).Infof("clean eip '%s' in pod", key)
 		v4Cidr, err := c.getEipV4Cidr(eip.Status.IP)
 		if err != nil {
-			klog.Errorf("failed to clean eip, %v", err)
+			klog.Errorf("failed to clean eip %s, %v", key, err)
 			return err
 		}
 		err = c.deleteEipInPod(eip.Spec.NatGwDp, v4Cidr)
 		if err != nil {
-			klog.Errorf("failed to clean eip, %v", err)
+			klog.Errorf("failed to clean eip '%s' in pod, %v", key, err)
 			return err
 		}
 		_, err = c.handleIptablesEipFinalizer(eip, true)
 		if err != nil {
-			klog.Errorf("failed to handle eip finalizer %v", err)
+			klog.Errorf("failed to handle finalizer for eip %s, %v", key, err)
 			return err
 		}
 		return nil
@@ -374,14 +374,14 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 	if eip.Status.IP != "" && eip.Spec.V4ip == "" {
 		// eip spec V4ip is removed
 		if err = c.createOrUpdateCrdEip(key, eip.Namespace, eip.Status.IP, eip.Spec.V6ip, eip.Spec.MacAddress, eip.Spec.NatGwDp); err != nil {
-			klog.Errorf("failed to update eip [%s] %v", key, err)
+			klog.Errorf("failed to update eip %s, %v", key, err)
 			time.Sleep(2 * time.Second)
 			return err
 		}
 	}
 	// eip change ip
 	if c.eipChangeIP(eip) {
-		klog.Infof("eip change ip, old ip [%s], new ip [%s]", eip.Status.IP, eip.Spec.V4ip)
+		klog.V(3).Infof("eip change ip, old ip '%s', new ip '%s'", eip.Status.IP, eip.Spec.V4ip)
 		var v4Cidr, gw, v4ip, v6ip, mac, nicName, natType, natName string
 		if v4Cidr, err = c.getEipV4Cidr(eip.Status.IP); err != nil {
 			klog.Errorf("failed to get old eip cidr, %v", err)
@@ -414,17 +414,17 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 			return err
 		}
 		if err = c.createOrUpdateCrdEip(key, eip.Namespace, v4ip, v6ip, mac, eip.Spec.NatGwDp); err != nil {
-			klog.Errorf("failed to update eip [%s] %v", key, err)
+			klog.Errorf("failed to update eip %s, %v", key, err)
 			time.Sleep(2 * time.Second)
 			return err
 		}
 		if err = c.patchEipStatus(key, v4ip, "", "", true); err != nil {
-			klog.Errorf("failed to update eip [%s] status, %v", key, err)
+			klog.Errorf("failed to patch status for eip %s, %v", key, err)
 			return err
 		}
 		// inform nat to replace eip
 		if eip.Status.Nat == "" {
-			klog.Infof("no nat use eip [%s]", key)
+			klog.V(3).Infof("no nat use eip %s", key)
 			return nil
 		}
 		switch eip.Status.Nat {
@@ -438,15 +438,15 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 				return err
 			}
 			if len(fips.Items) == 0 {
-				err = fmt.Errorf("no fip use eip [%s]", eip.Name)
+				err = fmt.Errorf("no fip use eip %s", eip.Name)
 				return err
 			} else if len(fips.Items) != 1 {
-				err = fmt.Errorf("too many fips use eip [%s]", eip.Name)
+				err = fmt.Errorf("too many fips use eip %s", eip.Name)
 				return err
 			}
 			for _, fip := range fips.Items {
 				if err = c.redoFip(fip.Name, time.Now().Format("2006-01-02T15:04:05"), true); err != nil {
-					klog.Errorf("failed to notify fip [%s] to change ip, %v", natName, err)
+					klog.Errorf("failed to notify fip '%s' to change ip, %v", natName, err)
 					return err
 				}
 			}
@@ -460,13 +460,13 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 				return err
 			}
 			if len(dnats.Items) == 0 {
-				err = fmt.Errorf("no dnat use eip [%s]", eip.Name)
+				err = fmt.Errorf("no dnat use eip %s", eip.Name)
 				return err
 			}
 			for _, dnat := range dnats.Items {
-				klog.Infof("redo dnat [%s] depended on eip [%s]", dnat.Name, eip.Name)
+				klog.V(3).Infof("redo dnat '%s' depended on eip %s", dnat.Name, eip.Name)
 				if err = c.redoDnat(dnat.Name, time.Now().Format("2006-01-02T15:04:05"), true); err != nil {
-					klog.Errorf("failed to notify dnat [%s] to change ip, %v", natName, err)
+					klog.Errorf("failed to notify dnat '%s' to change ip, %v", natName, err)
 					return err
 				}
 			}
@@ -480,18 +480,18 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 				return err
 			}
 			if len(snats.Items) == 0 {
-				err = fmt.Errorf("no snat use eip [%s]", eip.Name)
+				err = fmt.Errorf("no snat use eip %s", eip.Name)
 				return err
 			}
 			for _, snat := range snats.Items {
-				klog.Infof("redo snat [%s] depended on eip [%s]", snat.Name, eip.Name)
+				klog.V(3).Infof("redo snat '%s' depended on eip %s", snat.Name, eip.Name)
 				if err = c.redoSnat(snat.Name, time.Now().Format("2006-01-02T15:04:05"), true); err != nil {
-					klog.Errorf("failed to notify snat [%s] to change ip, %v", natName, err)
+					klog.Errorf("failed to notify snat '%s' to change ip, %v", natName, err)
 					return err
 				}
 			}
 		default:
-			err = fmt.Errorf("nat type label [%s] is invalid for eip [%s]", natType, key)
+			err = fmt.Errorf("nat type label '%s' is invalid for eip %s", natType, key)
 			return err
 		}
 		return nil
@@ -503,7 +503,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 		eip.DeletionTimestamp.IsZero() {
 		eipV4Cidr, err := c.getEipV4Cidr(eip.Status.IP)
 		if err != nil {
-			klog.Errorf("failed to get virtual eip or v4Cidr %v", err)
+			klog.Errorf("failed to get eip or v4Cidr, %v", err)
 			return err
 		}
 		gw, err := c.GetGw()
@@ -518,7 +518,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 			return err
 		}
 		if err = c.patchEipStatus(key, "", "", "", true); err != nil {
-			klog.Errorf("failed to update eip [%s] status, %v", key, err)
+			klog.Errorf("failed to patch status for eip %s, %v", key, err)
 			time.Sleep(2 * time.Second)
 			return err
 		}
@@ -526,7 +526,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 	}
 	_, err = c.handleIptablesEipFinalizer(eip, false)
 	if err != nil {
-		klog.Errorf("failed to handle eip finalizer %v", err)
+		klog.Errorf("failed to handle finalizer for eip, %v", err)
 		return err
 	}
 	return nil
@@ -534,20 +534,20 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 
 func (c *Controller) handleDelIptablesEip(key string) error {
 	c.ipam.ReleaseAddressByPod(key)
-	klog.Infof("deleted vpc nat eip [%s]", key)
+	klog.V(3).Infof("deleted vpc nat eip %s", key)
 	return nil
 }
 
 func (c *Controller) GetEip(eipName string) (*kubeovnv1.IptablesEIP, error) {
 	cachedEip, err := c.iptablesEipsLister.Get(eipName)
 	if err != nil {
-		klog.Errorf("failed to get eip [%s], %v", eipName, err)
+		klog.Errorf("failed to get eip %s, %v", eipName, err)
 		time.Sleep(2 * time.Second)
 		return nil, err
 	}
 	if cachedEip.Spec.V4ip == "" {
 		time.Sleep(2 * time.Second)
-		return nil, fmt.Errorf("eip [%s] is not ready, has no v4ip", eipName)
+		return nil, fmt.Errorf("eip '%s' is not ready, has no v4ip", eipName)
 	}
 	eip := cachedEip.DeepCopy()
 	return eip, nil
@@ -593,12 +593,12 @@ func (c *Controller) acquireStaticEip(name, namespace, nicName, ip string) (stri
 	var err error
 	for _, ipStr := range strings.Split(ip, ",") {
 		if net.ParseIP(ipStr) == nil {
-			return "", "", "", fmt.Errorf("failed to parse virtual IP %s", ipStr)
+			return "", "", "", fmt.Errorf("failed to parse eip ip %s", ipStr)
 		}
 	}
 
 	if v4ip, v6ip, mac, err = c.ipam.GetStaticAddress(name, nicName, ip, mac, util.VpcExternalNet, !liveMigration); err != nil {
-		klog.Errorf("failed to get static virtual ip %v, mac %v, subnet %v, err %v", ip, mac, util.VpcExternalNet, err)
+		klog.Errorf("failed to get static ip %v, mac %v, subnet %v, err %v", ip, mac, util.VpcExternalNet, err)
 		return "", "", "", err
 	}
 	return v4ip, v6ip, mac, nil
@@ -647,7 +647,7 @@ func (c *Controller) getEipV4Cidr(v4ip string) (string, error) {
 		var err error
 		extSubnetMask, err = c.ipam.GetSubnetV4Mask(util.VpcExternalNet)
 		if err != nil {
-			klog.Errorf("failed to get eip [%s] mask from subnet [%s], %v", v4ip, util.VpcExternalNet, err)
+			klog.Errorf("failed to get eip '%s' mask from subnet %s, %v", v4ip, util.VpcExternalNet, err)
 			time.Sleep(2 * time.Second)
 			return "", err
 		}
@@ -662,7 +662,7 @@ func (c *Controller) GetGw() (string, error) {
 	}
 	subnet, err := c.subnetsLister.Get(util.VpcExternalNet)
 	if err != nil {
-		klog.Errorf("failed to get subnet [%s], %v", util.VpcExternalNet, err)
+		klog.Errorf("failed to get subnet %s, %v", util.VpcExternalNet, err)
 		return "", err
 	}
 	extGw = subnet.Spec.Gateway
@@ -690,12 +690,12 @@ func (c *Controller) createOrUpdateCrdEip(key, ns, v4ip, v6ip, mac, natGwDp stri
 			}, metav1.CreateOptions{})
 
 			if err != nil {
-				errMsg := fmt.Errorf("failed to create eip crd for [%s], %v", key, err)
+				errMsg := fmt.Errorf("failed to create eip crd %s, %v", key, err)
 				klog.Error(errMsg)
 				return errMsg
 			}
 		} else {
-			errMsg := fmt.Errorf("failed to get eip crd for [%s], %v", key, err)
+			errMsg := fmt.Errorf("failed to get eip crd %s, %v", key, err)
 			klog.Error(errMsg)
 			return errMsg
 		}
@@ -708,7 +708,7 @@ func (c *Controller) createOrUpdateCrdEip(key, ns, v4ip, v6ip, mac, natGwDp stri
 			eip.Spec.NatGwDp = natGwDp
 			_, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Update(context.Background(), eip, metav1.UpdateOptions{})
 			if err != nil {
-				errMsg := fmt.Errorf("failed to update eip crd for [%s], %v", key, err)
+				errMsg := fmt.Errorf("failed to update eip crd %s, %v", key, err)
 				klog.Error(errMsg)
 				return errMsg
 			}
@@ -736,7 +736,7 @@ func (c *Controller) createOrUpdateCrdEip(key, ns, v4ip, v6ip, mac, natGwDp stri
 			patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
 			_, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), key, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
 			if err != nil {
-				klog.Errorf("failed to patch label for eip %s: %v", eip.Name, err)
+				klog.Errorf("failed to patch label for eip %s, %v", eip.Name, err)
 				return err
 			}
 		}
@@ -889,7 +889,7 @@ func (c *Controller) natLabelEip(eipName, natName string) error {
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
 		_, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), eip.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
 		if err != nil {
-			klog.Errorf("failed to patch label for eip [%s]: %v", eip.Name, err)
+			klog.Errorf("failed to patch label for eip %s, %v", eip.Name, err)
 			return err
 		}
 	}

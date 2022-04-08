@@ -239,11 +239,11 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		return err
 	}
 	if _, err := c.vpcsLister.Get(gw.Spec.Vpc); err != nil {
-		klog.Errorf("failed to get vpc %s, err: %v", gw.Spec.Vpc, err)
+		klog.Errorf("failed to get vpc '%s', err: %v", gw.Spec.Vpc, err)
 		return err
 	}
 	if _, err := c.subnetsLister.Get(gw.Spec.Subnet); err != nil {
-		klog.Errorf("failed to get subnet %s, err: %v", gw.Spec.Subnet, err)
+		klog.Errorf("failed to get subnet '%s', err: %v", gw.Spec.Subnet, err)
 		return err
 	}
 
@@ -267,7 +267,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 			Create(context.Background(), newDp, metav1.CreateOptions{})
 
 		if err != nil {
-			klog.Errorf("failed to create deployment %s, err: %v", newDp.Name, err)
+			klog.Errorf("failed to create deployment '%s', err: %v", newDp.Name, err)
 			return err
 		}
 		return nil
@@ -276,7 +276,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 			Update(context.Background(), newDp, metav1.UpdateOptions{})
 
 		if err != nil {
-			klog.Errorf("failed to update deployment %s, err: %v", newDp.Name, err)
+			klog.Errorf("failed to update deployment '%s', err: %v", newDp.Name, err)
 			return err
 		}
 	}
@@ -334,8 +334,8 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 	}
 	subnet, err := c.subnetsLister.Get(gw.Spec.Subnet)
 	if err != nil {
-		klog.Errorf("failed to get subnet %s: %v", gw.Spec.Subnet, err)
-		return fmt.Errorf("failed to initialize vpc nat gateway %s: %v", key, err)
+		klog.Errorf("failed to get subnet '%s', %v", gw.Spec.Subnet, err)
+		return fmt.Errorf("failed to initialize vpc nat gateway '%s', %v", key, err)
 	}
 
 	oripod, err := c.getNatGwPod(key)
@@ -356,14 +356,14 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 		return nil
 	}
 	createAt = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
-	klog.Infof("nat gw pod [%s] inited at [%s]", key, createAt)
+	klog.V(3).Infof("nat gw pod '%s' inited at %s", key, createAt)
 	if err = c.execNatGwRules(pod, natGwInit, []string{subnet.Spec.CIDRBlock}); err != nil {
-		klog.Errorf("failed to init vpc nat gateway, err: %v", err)
+		klog.Errorf("failed to init vpc nat gateway, %v", err)
 		return err
 	}
 	pod.Annotations[util.VpcNatGatewayInitAnnotation] = "true"
 	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name, types.JSONPatchType, generatePatchPayload(pod.Annotations, "replace"), metav1.PatchOptions{}, ""); err != nil {
-		klog.Errorf("patch pod %s/%s failed %v", pod.Name, pod.Namespace, err)
+		klog.Errorf("patch pod %s/%s failed, %v", pod.Name, pod.Namespace, err)
 		return err
 	}
 	return c.syncVpcNatGwRules(key)
@@ -389,9 +389,9 @@ func (c *Controller) handleUpdateVpcFloatingIp(natGwKey string) error {
 	}
 	for _, fip := range fips.Items {
 		if fip.Status.Redo != createAt {
-			klog.Infof("redo fip [%s]", fip.Name)
+			klog.V(3).Infof("redo fip %s", fip.Name)
 			if err = c.redoFip(fip.Name, createAt, false); err != nil {
-				klog.Errorf("failed to update eip [%s] to make sure applied, %v", fip.Spec.EIP, err)
+				klog.Errorf("failed to update eip '%s' to make sure applied, %v", fip.Spec.EIP, err)
 				return err
 			}
 		}
@@ -420,9 +420,9 @@ func (c *Controller) handleUpdateVpcEip(natGwKey string) error {
 	}
 	for _, eip := range eips.Items {
 		if eip.Spec.NatGwDp == natGwKey && eip.Status.Redo != createAt {
-			klog.Infof("redo eip [%s]", eip.Name)
+			klog.V(3).Infof("redo eip %s", eip.Name)
 			if err = c.patchEipStatus(eip.Name, "", createAt, "", false); err != nil {
-				klog.Errorf("failed to update eip [%s] to make sure applied, %v", eip.Name, err)
+				klog.Errorf("failed to update eip '%s' to make sure applied, %v", eip.Name, err)
 				return err
 			}
 		}
@@ -450,9 +450,9 @@ func (c *Controller) handleUpdateVpcSnat(natGwKey string) error {
 	}
 	for _, snat := range snats.Items {
 		if snat.Status.Redo != createAt {
-			klog.Infof("redo snat [%s]", snat.Name)
+			klog.V(3).Infof("redo snat %s", snat.Name)
 			if err = c.redoSnat(snat.Name, createAt, false); err != nil {
-				klog.Errorf("failed to update eip [%s] to make sure applied, %v", snat.Spec.EIP, err)
+				klog.Errorf("failed to update eip '%s' to make sure applied, %v", snat.Spec.EIP, err)
 				return err
 			}
 		}
@@ -480,9 +480,9 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 	}
 	for _, dnat := range dnats.Items {
 		if dnat.Status.Redo != createAt {
-			klog.Infof("redo dnat [%s]", dnat.Name)
+			klog.V(3).Infof("redo dnat %s", dnat.Name)
 			if err = c.redoDnat(dnat.Name, createAt, false); err != nil {
-				klog.Errorf("failed to update dnat [%s] to make sure applied, %v", dnat.Name, err)
+				klog.Errorf("failed to update dnat '%s' to make sure applied, %v", dnat.Name, err)
 				return err
 			}
 		}
@@ -595,13 +595,13 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 			klog.Errorf("failed to ExecuteCommandInContainer, errOutput: %v", errOutput)
 		}
 		if len(stdOutput) > 0 {
-			klog.Infof("failed to ExecuteCommandInContainer, stdOutput: %v", stdOutput)
+			klog.V(3).Infof("failed to ExecuteCommandInContainer, stdOutput: %v", stdOutput)
 		}
 		return err
 	}
 
 	if len(stdOutput) > 0 {
-		klog.Infof("ExecuteCommandInContainer stdOutput: %v", stdOutput)
+		klog.V(3).Infof("ExecuteCommandInContainer stdOutput: %v", stdOutput)
 	}
 
 	if len(errOutput) > 0 {
@@ -706,7 +706,7 @@ func (c *Controller) getNatGwPod(name string) (*corev1.Pod, error) {
 		return nil, err
 	} else if len(pods) == 0 {
 		time.Sleep(2 * time.Second)
-		return nil, fmt.Errorf("pod [%s] not exist", name)
+		return nil, fmt.Errorf("pod '%s' not exist", name)
 	} else if len(pods) != 1 {
 		time.Sleep(5 * time.Second)
 		return nil, fmt.Errorf("too many pod")
@@ -723,7 +723,7 @@ func (c *Controller) checkVpcExternalNet() (err error) {
 	_, err = networkClient.Get(context.Background(), util.VpcExternalNet, metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			klog.Errorf("vpc external multus net [%s] should be exist already before ovn-vpc-nat-gw-config applied", util.VpcExternalNet)
+			klog.Errorf("vpc external multus net '%s' should be exist already before ovn-vpc-nat-gw-config applied", util.VpcExternalNet)
 		}
 	}
 	return err

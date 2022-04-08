@@ -191,11 +191,11 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 		return nil
 	}
 	vip := cachedVip.DeepCopy()
-	klog.Infof("handle add vip [%s]", vip.Name)
+	klog.V(3).Infof("handle add vip %s", vip.Name)
 	var sourceV4Ip, v4ip, v6ip, mac, nicName, subnetName, parentV4ip, parentV6ip, parentMac string
 	subnetName = vip.Spec.Subnet
 	if subnetName == "" {
-		return fmt.Errorf("failed to create vip [%s] without subnet", key)
+		return fmt.Errorf("failed to create vip '%s', subnet should be set", key)
 	}
 	subnet, err := c.subnetsLister.Get(subnetName)
 	if err != nil {
@@ -218,17 +218,17 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 		parentMac = vip.Spec.ParentMac
 	}
 	if err = c.createOrUpdateCrdVip(key, vip.Namespace, subnet.Name, v4ip, v6ip, mac, parentV4ip, parentV6ip, parentMac); err != nil {
-		klog.Errorf("failed to create or update vip [%s], %v", vip.Name, err)
+		klog.Errorf("failed to create or update vip '%s', %v", vip.Name, err)
 		time.Sleep(2 * time.Second)
 		return err
 	}
 	_, err = c.handleVipFinalizer(vip)
 	if err != nil {
-		klog.Errorf("failed to handle vip finalizer %v", err)
+		klog.Errorf("failed to handle vip finalizer, %v", err)
 		return err
 	}
 	if err = c.subnetCountVip(subnet); err != nil {
-		klog.Errorf("failed to count virtual ip [%s] in subnet, %v", vip.Name, err)
+		klog.Errorf("failed to count vip '%s' in subnet, %v", vip.Name, err)
 		time.Sleep(2 * time.Second)
 		return err
 
@@ -248,7 +248,7 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 	// should delete
 	if !vip.DeletionTimestamp.IsZero() {
 		// TODO:// clean vip in its parent port aap list
-		klog.Infof("todo:// remove this vip '%s' from its parent port aap list", key)
+		// klog.V(3).Infof("todo:// remove this vip '%s' from its parent port aap list", key)
 
 		if err = c.patchVipStatus(key, "", false); err != nil {
 			time.Sleep(2 * time.Second)
@@ -266,7 +266,8 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 		vip.Status.Mac != vip.Spec.MacAddress ||
 		vip.Status.Pmac != vip.Spec.ParentMac {
 		// TODO:// add vip in its parent port aap list
-		klog.Infof("todo:// add this vip '%s' into its parent port aap list", key)
+		// klog.V(3).Infof("todo:// add this vip '%s' into its parent port aap list", key)
+
 		if err = c.createOrUpdateCrdVip(key, vip.Namespace, vip.Spec.Subnet,
 			vip.Spec.V6ip, vip.Spec.V6ip, vip.Spec.MacAddress,
 			vip.Spec.ParentV4ip, vip.Spec.ParentV6ip, vip.Spec.MacAddress); err != nil {
@@ -288,7 +289,7 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 }
 
 func (c *Controller) handleDelVirtualIp(key string) error {
-	klog.Infof("l2 pod release virtual ip [%s]", key)
+	klog.V(3).Infof("release vip %s", key)
 	c.ipam.ReleaseAddressByPod(key)
 	return nil
 }
@@ -299,12 +300,12 @@ func (c *Controller) acquireStaticVirtualAddress(subnetName, name, namespace, ni
 	var err error
 	for _, ipStr := range strings.Split(ip, ",") {
 		if net.ParseIP(ipStr) == nil {
-			return "", "", "", fmt.Errorf("failed to parse virtual IP %s", ipStr)
+			return "", "", "", fmt.Errorf("failed to parse vip ip %s", ipStr)
 		}
 	}
 
 	if v4ip, v6ip, mac, err = c.ipam.GetStaticAddress(name, nicName, ip, mac, subnetName, !liveMigration); err != nil {
-		klog.Errorf("failed to get static virtual ip %v, mac %v, subnet %v, err %v", ip, mac, subnetName, err)
+		klog.Errorf("failed to get static virtual ip '%s', mac '%s', subnet '%s', %v", ip, mac, subnetName, err)
 		return "", "", "", err
 	}
 	return v4ip, v6ip, mac, nil
@@ -380,12 +381,12 @@ func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4i
 			}, metav1.CreateOptions{})
 
 			if err != nil {
-				errMsg := fmt.Errorf("failed to create vip crd for [%s], %v", key, err)
+				errMsg := fmt.Errorf("failed to create crd vip '%s', %v", key, err)
 				klog.Error(errMsg)
 				return errMsg
 			}
 		} else {
-			errMsg := fmt.Errorf("failed to get vip crd for [%s], %v", key, err)
+			errMsg := fmt.Errorf("failed to get crd vip '%s', %v", key, err)
 			klog.Error(errMsg)
 			return errMsg
 		}
@@ -414,7 +415,7 @@ func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4i
 
 			_, err := c.config.KubeOvnClient.KubeovnV1().Vips().Update(context.Background(), vip, metav1.UpdateOptions{})
 			if err != nil {
-				errMsg := fmt.Errorf("failed to update vip [%s], %v", key, err)
+				errMsg := fmt.Errorf("failed to update vip '%s', %v", key, err)
 				klog.Error(errMsg)
 				return errMsg
 			}
@@ -437,7 +438,7 @@ func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4i
 			patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
 			_, err := c.config.KubeOvnClient.KubeovnV1().Vips().Patch(context.Background(), vip.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
 			if err != nil {
-				klog.Errorf("failed to patch vip label %s: %v", vip.Name, err)
+				klog.Errorf("failed to patch label for vip '%s', %v", vip.Name, err)
 				return err
 			}
 		}
@@ -459,7 +460,7 @@ func (c *Controller) handleVipFinalizer(vip *kubeovnv1.Vip) (bool, error) {
 			if k8serrors.IsNotFound(err) {
 				return true, nil
 			}
-			klog.Errorf("failed to add finalizer to vip %s, %v", vip.Name, err)
+			klog.Errorf("failed to add finalizer for vip '%s', %v", vip.Name, err)
 			time.Sleep(2 * time.Second)
 			return false, err
 		}
@@ -480,7 +481,7 @@ func (c *Controller) handleVipFinalizer(vip *kubeovnv1.Vip) (bool, error) {
 			if k8serrors.IsNotFound(err) {
 				return true, nil
 			}
-			klog.Errorf("failed to remove finalizer from vip %s, %v", vip.Name, err)
+			klog.Errorf("failed to remove finalizer from vip '%s', %v", vip.Name, err)
 			time.Sleep(2 * time.Second)
 			return false, err
 		}
@@ -493,7 +494,7 @@ func (c *Controller) patchVipStatus(key, v4ip string, ready bool) error {
 	oriVip, err := c.virtualIpsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			klog.Errorf("failed to get cached vip [%s], %v", key, err)
+			klog.Errorf("failed to get cached vip '%s', %v", key, err)
 			return nil
 		}
 		return err
@@ -512,7 +513,7 @@ func (c *Controller) patchVipStatus(key, v4ip string, ready bool) error {
 
 	if changed {
 		if _, err = c.config.KubeOvnClient.KubeovnV1().Vips().Update(context.Background(), vip, metav1.UpdateOptions{}); err != nil {
-			klog.Errorf("failed to update status for vip [%s], %v", key, err)
+			klog.Errorf("failed to update status for vip '%s', %v", key, err)
 			return err
 		}
 	}

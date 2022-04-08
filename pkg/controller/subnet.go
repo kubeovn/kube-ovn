@@ -1414,7 +1414,7 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		if err != nil {
 			return err
 		}
-		// v6 vip not supported for now, todo later
+		// TODO:// support v6 vip
 		for _, vip := range vitrualIPs.Items {
 			v4toSubIPs = append(v4toSubIPs, vip.Spec.V4ip)
 			v4UsingIPs = append(v4UsingIPs, vip.Spec.V4ip)
@@ -1427,7 +1427,7 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		if err != nil {
 			return err
 		}
-		// v6 vip not supported for now, todo later
+		// TODO:// support v6 eip
 		for _, eip := range eips.Items {
 			v4toSubIPs = append(v4toSubIPs, eip.Spec.V4ip)
 			v4UsingIPs = append(v4UsingIPs, eip.Spec.V4ip)
@@ -1482,7 +1482,7 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		if len(vips.Items) > 0 {
 			usingIPs += float64(len(vips.Items))
 			for _, vip := range vips.Items {
-				// ipv6 vip not supported, todo later
+				// TODO:// support v6 vip
 				toSubIPs = append(toSubIPs, vip.Spec.V4ip)
 			}
 		}
@@ -1497,7 +1497,7 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		if len(eips.Items) > 0 {
 			usingIPs += float64(len(eips.Items))
 			for _, eip := range eips.Items {
-				// ipv6 vip not supported, todo later
+				// TODO:// support v6 eip
 				toSubIPs = append(toSubIPs, eip.Spec.V4ip)
 			}
 		}
