@@ -66,11 +66,6 @@ func (c *Controller) resyncVpcNatGwConfig() {
 			klog.Errorf("failed to clean up vpc nat gateway, %v", err)
 			return
 		}
-		if err = c.gcVpcExternalNetwork(); err != nil {
-			klog.Errorf("failed to gc vpc external network, %v", err)
-			return
-		}
-
 		vpcNatEnabled = "false"
 		lastVpcNatCM = nil
 		klog.Info("finish clean up vpc nat gateway")

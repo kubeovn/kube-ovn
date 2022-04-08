@@ -607,7 +607,7 @@ func (c *Controller) acquireStaticEip(name, namespace, nicName, ip string) (stri
 func (c *Controller) acquireEip(name, namespace, nicName string) (string, string, string, error) {
 	var skippedAddrs []string
 	for {
-		ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(name, nicName, util.VpcExternalNet, skippedAddrs)
+		ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(name, nicName, "", util.VpcExternalNet, skippedAddrs, true)
 		if err != nil {
 			return "", "", "", err
 		}
