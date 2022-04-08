@@ -20,12 +20,13 @@ import (
 
 // Configuration is the controller conf
 type Configuration struct {
-	BindAddress    string
-	OvnNbAddr      string
-	OvnSbAddr      string
-	OvnTimeout     int
-	KubeConfigFile string
-	KubeRestConfig *rest.Config
+	BindAddress          string
+	OvnNbAddr            string
+	OvnSbAddr            string
+	OvnTimeout           int
+	CustCrdRetryMaxDelay int
+	KubeConfigFile       string
+	KubeRestConfig       *rest.Config
 
 	KubeClient      kubernetes.Interface
 	KubeOvnClient   clientset.Interface
@@ -83,10 +84,11 @@ type Configuration struct {
 // TODO: validate configuration
 func ParseFlags() (*Configuration, error) {
 	var (
-		argOvnNbAddr      = pflag.String("ovn-nb-addr", "", "ovn-nb address")
-		argOvnSbAddr      = pflag.String("ovn-sb-addr", "", "ovn-sb address")
-		argOvnTimeout     = pflag.Int("ovn-timeout", 60, "")
-		argKubeConfigFile = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
+		argOvnNbAddr            = pflag.String("ovn-nb-addr", "", "ovn-nb address")
+		argOvnSbAddr            = pflag.String("ovn-sb-addr", "", "ovn-sb address")
+		argOvnTimeout           = pflag.Int("ovn-timeout", 60, "")
+		argCustCrdRetryMaxDelay = pflag.Int("cust-crd-retry-max-delay", 20, "")
+		argKubeConfigFile       = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 
 		argDefaultLogicalSwitch  = pflag.String("default-ls", util.DefaultSubnet, "The default logical switch name")
 		argDefaultCIDR           = pflag.String("default-cidr", "10.16.0.0/16", "Default CIDR for namespace with no logical switch annotation")
@@ -149,6 +151,7 @@ func ParseFlags() (*Configuration, error) {
 		OvnNbAddr:                     *argOvnNbAddr,
 		OvnSbAddr:                     *argOvnSbAddr,
 		OvnTimeout:                    *argOvnTimeout,
+		CustCrdRetryMaxDelay:          *argCustCrdRetryMaxDelay,
 		KubeConfigFile:                *argKubeConfigFile,
 		DefaultLogicalSwitch:          *argDefaultLogicalSwitch,
 		DefaultCIDR:                   *argDefaultCIDR,

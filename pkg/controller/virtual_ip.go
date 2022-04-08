@@ -262,8 +262,7 @@ func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4i
 	} else {
 		vip := vipCr.DeepCopy()
 		if vip.Spec.MacAddress == "" && mac != "" {
-			// vip once created, no need to update or change
-			// just delete and recreate
+			// vip not support to update, just delete and create
 			vip.ObjectMeta.Namespace = ns
 			vip.Spec.Namespace = ns
 			vip.Spec.Subnet = subnet

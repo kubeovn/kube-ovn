@@ -738,7 +738,7 @@ func (c *Controller) initCreateAt(key string) (err error) {
 	if createAt != "" {
 		return nil
 	}
-	oripod, err := c.getNatGwPod(key)
+	pod, err := c.getNatGwPod(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil

@@ -730,8 +730,11 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 	}
 	if eip.Status.Nat != "" && eip.Status.Nat != "dnat" {
 		// eip is in use by other nat
-		err = fmt.Errorf("failed to update dnat [%s], eip [%s] is used by [%s]", key, eipName, eip.Status.Nat)
+		err = fmt.Errorf("failed to create dnat [%s], eip [%s] is used by [%s]", key, eipName, eip.Status.Nat)
 		time.Sleep(2 * time.Second)
+		return err
+	}
+	if dup, err := c.isDnatDuplicated(eipName, dnat.Name, dnat.Spec.ExternalPort); dup || err != nil {
 		return err
 	}
 	// create nat
@@ -817,6 +820,9 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		// eip is in use by other nat
 		err = fmt.Errorf("failed to update dnat [%s], eip [%s] is used by [%s]", key, eipName, eip.Status.Nat)
 		time.Sleep(2 * time.Second)
+		return err
+	}
+	if dup, err := c.isDnatDuplicated(eipName, dnat.Name, dnat.Spec.ExternalPort); dup || err != nil {
 		return err
 	}
 	if c.dnatChangeEip(dnat, eip) {
@@ -1340,18 +1346,21 @@ func (c *Controller) patchDnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 		dnat.Labels = map[string]string{
 			util.VpcNatGatewayNameLabel: eip.Spec.NatGwDp,
 			util.VpcEipLabel:            eip.Name,
+			util.VpcDnatEPortLabel:      dnat.Spec.ExternalPort,
 		}
 		needUpdateLabel = true
 	} else if dnat.Labels[util.SubnetNameLabel] != eip.Spec.NatGwDp {
 		op = "replace"
 		dnat.Labels[util.VpcNatGatewayNameLabel] = eip.Spec.NatGwDp
 		dnat.Labels[util.VpcEipLabel] = eip.Name
+		dnat.Labels[util.VpcDnatEPortLabel] = dnat.Spec.ExternalPort
 		needUpdateLabel = true
 	}
 
 	if dnat.Labels[util.VpcEipLabel] != eip.Name {
 		op = "replace"
 		dnat.Labels[util.VpcEipLabel] = eip.Name
+		dnat.Labels[util.VpcDnatEPortLabel] = dnat.Spec.ExternalPort
 		needUpdateLabel = true
 	}
 	if needUpdateLabel {
@@ -1657,4 +1666,26 @@ func (c *Controller) snatChangeEip(snat *kubeovnv1.IptablesSnatRule, eip *kubeov
 		return true
 	}
 	return false
+}
+
+func (c *Controller) isDnatDuplicated(eipName, dnatName, externalPort string) (bool, error) {
+	// check if eip:external port already used
+	dnatLabel := fmt.Sprintf("%s=%s,%s=%s", util.VpcEipLabel, eipName, util.VpcDnatEPortLabel, externalPort)
+	dnats, err := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().List(context.Background(), metav1.ListOptions{
+		LabelSelector: dnatLabel,
+	})
+	if err != nil {
+		if !k8serrors.IsNotFound(err) {
+			return false, err
+		}
+	}
+	if len(dnats.Items) > 0 {
+		for _, d := range dnats.Items {
+			if d.Name != dnatName {
+				err = fmt.Errorf("failed to create dnat [%s], duplicate, same eip [%s], same external port [%s] is using by dnat [%s]", dnatName, eipName, externalPort, d.Name)
+				return true, err
+			}
+		}
+	}
+	return false, nil
 }

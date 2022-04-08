@@ -55,8 +55,8 @@ func (c *Controller) enqueueUpdateIptablesEip(old, new interface{}) {
 		oldEip.Spec.V4ip != newEip.Spec.V4ip ||
 		oldEip.Status.Redo != newEip.Status.Redo {
 		c.updateIptablesEipQueue.Add(key)
-		c.updateSubnetStatusQueue.Add(util.VpcExternalNet)
 	}
+	c.updateSubnetStatusQueue.Add(util.VpcExternalNet)
 }
 
 func (c *Controller) enqueueDelIptablesEip(obj interface{}) {
@@ -859,8 +859,9 @@ func (c *Controller) patchResetEipStatusNat(key, nat string) error {
 func (c *Controller) natLabelEip(eipName, natName string) error {
 	oriEip, err := c.iptablesEipsLister.Get(eipName)
 	if err != nil {
-		klog.Errorf("failed to get eip [%s], %v", eipName, err)
-		time.Sleep(2 * time.Second)
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
 		return err
 	}
 	eip := oriEip.DeepCopy()
