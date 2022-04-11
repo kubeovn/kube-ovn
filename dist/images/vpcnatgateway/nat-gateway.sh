@@ -207,58 +207,47 @@ rules=${@:2:${#}}
 opt=$1
 case $opt in
  init)
-        echo "init"
-        echo "init" >> record
-        init
+        echo "init $rules"
+        init $rules
         ;;
  subnet-route-add)
         echo "subnet-route-add $rules"
-        echo "subnet-route-add $rules" >> record
         add_vpc_internal_route $rules
         ;;
  subnet-route-del)
         echo "subnet-route-del $rules"
-        echo "subnet-route-del $rules" >> record
         del_vpc_internal_route $rules
         ;;
  eip-add)
         echo "eip-add $rules"
-        echo "eip-add $rules" >> record
         add_eip $rules
         ;;
  eip-del)
         echo "eip-del $rules"
-        echo "eip-del $rules" >> record
         del_eip $rules
         ;;
  dnat-add)
         echo "dnat-add $rules"
-        echo "dnat-add $rules" >> record
         add_dnat $rules
         ;;
  dnat-del)
         echo "dnat-del $rules"
-        echo "dnat-del $rules" >> record
         del_dnat $rules
         ;;
  snat-add)
         echo "snat-add $rules"
-        echo "snat-add $rules" >> record
         add_snat $rules
         ;;
  snat-del)
         echo "snat-del $rules"
-        echo "snat-del $rules" >> record
         del_snat $rules
         ;;
  floating-ip-add)
         echo "floating-ip-add $rules"
-        echo "floating-ip-add $rules" >> record
         add_floating_ip $rules
         ;;
  floating-ip-del)
         echo "floating-ip-del $rules"
-        echo "floating-ip-del $rules" >> record
         del_floating_ip $rules
         ;;
  *)
