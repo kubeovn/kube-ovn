@@ -280,3 +280,35 @@ func getDBStatus(dbName string) (bool, error) {
 
 	return result, nil
 }
+
+func resetLogicalSwitchMetrics() {
+	metricLogicalSwitchInfo.Reset()
+	metricLogicalSwitchPortsNum.Reset()
+	metricLogicalSwitchPortBinding.Reset()
+	metricLogicalSwitchExternalIDs.Reset()
+	metricLogicalSwitchTunnelKey.Reset()
+}
+
+func resetLogicalSwitchPortMetrics() {
+	metricLogicalSwitchPortInfo.Reset()
+	metricLogicalSwitchPortTunnelKey.Reset()
+}
+
+func resetOvnClusterMetrics() {
+	metricClusterRole.Reset()
+	metricClusterStatus.Reset()
+	metricClusterTerm.Reset()
+	metricClusterLeaderSelf.Reset()
+	metricClusterVoteSelf.Reset()
+
+	metricClusterElectionTimer.Reset()
+	metricClusterNotCommittedEntryCount.Reset()
+	metricClusterNotAppliedEntryCount.Reset()
+	metricClusterLogIndexStart.Reset()
+	metricClusterLogIndexNext.Reset()
+
+	metricClusterInConnTotal.Reset()
+	metricClusterOutConnTotal.Reset()
+	metricClusterInConnErrTotal.Reset()
+	metricClusterOutConnErrTotal.Reset()
+}

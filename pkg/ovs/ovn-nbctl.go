@@ -2483,3 +2483,63 @@ func (c *Client) UpdateRouterPortIPv6RA(ls, lr, cidrBlock, gateway, ipv6RAConfig
 	}
 	return nil
 }
+
+func (c Client) DeleteSubnetACL(ls string) error {
+	results, err := c.CustomFindEntity("acl", []string{"direction", "priority", "match"}, fmt.Sprintf("external_ids:subnet=\"%s\"", ls))
+	if err != nil {
+		klog.Errorf("customFindEntity failed, %v", err)
+		return err
+	}
+	if len(results) == 0 {
+		return nil
+	}
+
+	for _, result := range results {
+		aclArgs := []string{"acl-del", ls}
+		aclArgs = append(aclArgs, result["direction"][0], result["priority"][0], result["match"][0])
+
+		_, err := c.ovnNbCommand(aclArgs...)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c Client) UpdateSubnetACL(ls string, acls []kubeovnv1.Acl) error {
+	if err := c.DeleteSubnetACL(ls); err != nil {
+		klog.Errorf("failed to delete acls for subnet %s, %v", ls, err)
+		return err
+	}
+	if len(acls) == 0 {
+		return nil
+	}
+
+	for _, acl := range acls {
+		aclArgs := []string{}
+		aclArgs = append(aclArgs, "--", MayExist, "acl-add", ls, acl.Direction, strconv.Itoa(acl.Priority), acl.Match, acl.Action)
+		_, err := c.ovnNbCommand(aclArgs...)
+		if err != nil {
+			klog.Errorf("failed to create acl for subnet %s, %v", ls, err)
+			return err
+		}
+
+		results, err := c.CustomFindEntity("acl", []string{"_uuid"}, fmt.Sprintf("priority=%d", acl.Priority), fmt.Sprintf("direction=%s", acl.Direction), fmt.Sprintf("match=\"%s\"", acl.Match))
+		if err != nil {
+			klog.Errorf("customFindEntity failed, %v", err)
+			return err
+		}
+		if len(results) == 0 {
+			return nil
+		}
+
+		uuid := results[0]["_uuid"][0]
+		ovnCmd := []string{"set", "acl", uuid}
+		ovnCmd = append(ovnCmd, fmt.Sprintf("external_ids:subnet=\"%s\"", ls))
+
+		if _, err := c.ovnNbCommand(ovnCmd...); err != nil {
+			return fmt.Errorf("failed to set acl externalIds for subnet %s, %v", ls, err)
+		}
+	}
+	return nil
+}

@@ -64,6 +64,7 @@ rules:
       - subnets/status
       - ips
       - vlans
+      - vlans/status
       - provider-networks
       - provider-networks/status
       - security-groups

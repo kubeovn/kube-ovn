@@ -7,7 +7,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -189,10 +188,11 @@ func (c *Controller) handleAddVlan(key string) error {
 	vlan := cachedVlan.DeepCopy()
 	if vlan.Spec.Provider == "" {
 		vlan.Spec.Provider = c.config.DefaultProviderName
-		if _, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(context.Background(), vlan, metav1.UpdateOptions{}); err != nil {
+		if vlan, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(context.Background(), vlan, metav1.UpdateOptions{}); err != nil {
 			klog.Errorf("failed to update vlan %s, %v", vlan.Name, err)
 			return err
 		}
+		vlan = vlan.DeepCopy()
 	}
 
 	subnets, err := c.subnetsLister.List(labels.Everything())
@@ -210,15 +210,9 @@ func (c *Controller) handleAddVlan(key string) error {
 	}
 
 	if needUpdate {
-		bytes, err := vlan.Status.Bytes()
+		_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(context.Background(), vlan, metav1.UpdateOptions{})
 		if err != nil {
-			klog.Error(err)
-			return err
-		}
-
-		_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Patch(context.Background(), vlan.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
-		if err != nil {
-			klog.Errorf("failed to patch vlan %s: %v", vlan.Name, err)
+			klog.Errorf("failed to update status of vlan %s: %v", vlan.Name, err)
 			return err
 		}
 	}
@@ -230,17 +224,11 @@ func (c *Controller) handleAddVlan(key string) error {
 	}
 
 	if !util.ContainsString(pn.Status.Vlans, vlan.Name) {
-		status := pn.Status.DeepCopy()
-		status.Vlans = append(status.Vlans, vlan.Name)
-		bytes, err := status.Bytes()
+		newPn := pn.DeepCopy()
+		newPn.Status.Vlans = append(newPn.Status.Vlans, vlan.Name)
+		_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().UpdateStatus(context.Background(), newPn, metav1.UpdateOptions{})
 		if err != nil {
-			klog.Error(err)
-			return err
-		}
-
-		_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
-		if err != nil {
-			klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
+			klog.Errorf("failed to update status of provider network %s: %v", pn.Name, err)
 			return err
 		}
 	}
@@ -315,27 +303,12 @@ func (c *Controller) updateProviderNetworkStatusForVlanDeletion(pn *kubeovnv1.Pr
 		return nil
 	}
 
-	status := pn.Status.DeepCopy()
-	status.Vlans = util.RemoveString(status.Vlans, vlan)
-	if len(status.Vlans) == 0 {
-		bytes := []byte(`[{ "op": "remove", "path": "/status/vlans"}]`)
-		_, err := c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.JSONPatchType, bytes, metav1.PatchOptions{})
-		if err != nil {
-			klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
-			return err
-		}
-	} else {
-		bytes, err := status.Bytes()
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
-
-		_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
-		if err != nil {
-			klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
-			return err
-		}
+	newPn := pn.DeepCopy()
+	newPn.Status.Vlans = util.RemoveString(newPn.Status.Vlans, vlan)
+	_, err := c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().UpdateStatus(context.Background(), newPn, metav1.UpdateOptions{})
+	if err != nil {
+		klog.Errorf("failed to update status of provider network %s: %v", pn.Name, err)
+		return err
 	}
 
 	return nil

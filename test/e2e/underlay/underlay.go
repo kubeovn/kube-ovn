@@ -240,6 +240,7 @@ var _ = Describe("[Underlay]", func() {
 					CIDRBlock:      "99.11.0.0/16",
 					Vlan:           Vlan,
 					LogicalGateway: true,
+					Protocol:       util.CheckProtocol(cidr),
 				},
 			}
 			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), subnet, metav1.CreateOptions{})
@@ -250,9 +251,10 @@ var _ = Describe("[Underlay]", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("validate OVN logical router port")
-			ovnPods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(context.Background(), metav1.ListOptions{LabelSelector: "app=ovn-central"})
+			ovnPods, err := f.KubeClientSet.CoreV1().Pods("kube-system").List(context.Background(), metav1.ListOptions{LabelSelector: "app=ovn-central,ovn-nb-leader=true"})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ovnPods).NotTo(BeNil())
+			Expect(ovnPods.Items).To(HaveLen(1))
 
 			ovnPod := ovnPods.Items[0]
 			lsp := fmt.Sprintf("%s-%s", name, util.DefaultVpc)
@@ -281,6 +283,7 @@ var _ = Describe("[Underlay]", func() {
 					CIDRBlock:           "99.12.0.0/16",
 					Vlan:                Vlan,
 					DisableGatewayCheck: true,
+					Protocol:            util.CheckProtocol(cidr),
 				},
 			}
 			_, err := f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), subnet, metav1.CreateOptions{})
@@ -614,7 +617,7 @@ var _ = Describe("[Underlay]", func() {
 
 					By("create pods")
 					name := f.GetName()
-					pods := make([]*corev1.Pod, 2)
+					pods := make([]*corev1.Pod, len(nodes))
 					var autoMount bool
 					for i := range nodes {
 						pods[i] = &corev1.Pod{

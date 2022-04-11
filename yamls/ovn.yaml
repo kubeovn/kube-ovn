@@ -64,6 +64,7 @@ rules:
       - vpc-nat-gateways
       - ips
       - vlans
+      - vlans/status
       - provider-networks
       - provider-networks/status
       - networks

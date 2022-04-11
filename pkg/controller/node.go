@@ -334,7 +334,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	if err := c.createOrUpdateCrdIPs(key, ipStr, mac); err != nil {
+	if err := c.createOrUpdateCrdIPs("", ipStr, mac, c.config.NodeSwitch, "", node.Name, ""); err != nil {
 		klog.Errorf("failed to create or update IPs node-%s: %v", key, err)
 		return err
 	}
@@ -410,7 +410,7 @@ func (c *Controller) handleNodeAnnotationsForProviderNetworks(node *v1.Node) err
 		}
 
 		if newPn != nil {
-			if _, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Update(context.Background(), newPn, metav1.UpdateOptions{}); err != nil {
+			if newPn, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Update(context.Background(), newPn, metav1.UpdateOptions{}); err != nil {
 				klog.Errorf("failed to update provider network %s: %v", pn.Name, err)
 				return err
 			}
@@ -429,16 +429,16 @@ func (c *Controller) handleNodeAnnotationsForProviderNetworks(node *v1.Node) err
 		}
 
 		if excluded {
-			status := pn.Status.DeepCopy()
-			if status.EnsureNodeStandardConditions(node.Name) {
-				bytes, err := status.Bytes()
+			if newPn == nil {
+				newPn = pn.DeepCopy()
+			} else {
+				newPn = newPn.DeepCopy()
+			}
+
+			if newPn.Status.EnsureNodeStandardConditions(node.Name) {
+				_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().UpdateStatus(context.Background(), newPn, metav1.UpdateOptions{})
 				if err != nil {
-					klog.Error(err)
-					return err
-				}
-				_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
-				if err != nil {
-					klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
+					klog.Errorf("failed to update status of provider network %s: %v", pn.Name, err)
 					return err
 				}
 			}
@@ -512,53 +512,26 @@ func (c *Controller) handleDeleteNode(key string) error {
 
 func (c *Controller) updateProviderNetworkForNodeDeletion(pn *kubeovnv1.ProviderNetwork, node string) error {
 	// update provider network status
-	status := pn.Status.DeepCopy()
-	if util.ContainsString(status.ReadyNodes, node) {
-		status.ReadyNodes = util.RemoveString(status.ReadyNodes, node)
-		if len(status.ReadyNodes) == 0 {
-			bytes := []byte(`[{ "op": "remove", "path": "/status/readyNodes"}]`)
-			_, err := c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.JSONPatchType, bytes, metav1.PatchOptions{})
-			if err != nil {
-				klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
-				return err
-			}
-		} else {
-			bytes, err := status.Bytes()
-			if err != nil {
-				klog.Error(err)
-				return err
-			}
-			_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
-			if err != nil {
-				klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
-				return err
-			}
-		}
+	var needUpdate bool
+	newPn := pn.DeepCopy()
+	if util.ContainsString(newPn.Status.ReadyNodes, node) {
+		newPn.Status.ReadyNodes = util.RemoveString(newPn.Status.ReadyNodes, node)
+		needUpdate = true
 	}
-	if status.RemoveNodeConditions(node) {
-		if len(status.Conditions) == 0 {
-			bytes := []byte(`[{ "op": "remove", "path": "/status/conditions"}]`)
-			_, err := c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.JSONPatchType, bytes, metav1.PatchOptions{})
-			if err != nil {
-				klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
-				return err
-			}
-		} else {
-			bytes, err := status.Bytes()
-			if err != nil {
-				klog.Error(err)
-				return err
-			}
-			_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), pn.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
-			if err != nil {
-				klog.Errorf("failed to patch provider network %s: %v", pn.Name, err)
-				return err
-			}
+	if newPn.Status.RemoveNodeConditions(node) {
+		needUpdate = true
+	}
+	if needUpdate {
+		var err error
+		newPn, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().UpdateStatus(context.Background(), newPn, metav1.UpdateOptions{})
+		if err != nil {
+			klog.Errorf("failed to update status of provider network %s: %v", pn.Name, err)
+			return err
 		}
 	}
 
 	// update provider network spec
-	var newPn *kubeovnv1.ProviderNetwork
+	pn, newPn = newPn, nil
 	if excludeNodes := util.RemoveString(pn.Spec.ExcludeNodes, node); len(excludeNodes) != len(pn.Spec.ExcludeNodes) {
 		newPn := pn.DeepCopy()
 		newPn.Spec.ExcludeNodes = excludeNodes
@@ -627,23 +600,33 @@ func (c *Controller) handleUpdateNode(key string) error {
 	return nil
 }
 
-func (c *Controller) createOrUpdateCrdIPs(key, ip, mac string) error {
+func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, nodeName, providerName string) error {
+	var key, ipName string
+	if subnetName == c.config.NodeSwitch {
+		key = nodeName
+		ipName = fmt.Sprintf("node-%s", nodeName)
+	} else {
+		key = podName
+		ipName = ovs.PodNameToPortName(podName, ns, providerName)
+	}
+
 	v4IP, v6IP := util.SplitStringIP(ip)
-	ipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), fmt.Sprintf("node-%s", key), metav1.GetOptions{})
+	ipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), ipName, metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Create(context.Background(), &kubeovnv1.IP{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: fmt.Sprintf("node-%s", key),
+					Name: ipName,
 					Labels: map[string]string{
-						util.SubnetNameLabel: c.config.NodeSwitch,
-						c.config.NodeSwitch:  "",
+						util.SubnetNameLabel: subnetName,
+						subnetName:           "",
 					},
 				},
 				Spec: kubeovnv1.IPSpec{
 					PodName:       key,
-					Subnet:        c.config.NodeSwitch,
-					NodeName:      key,
+					Subnet:        subnetName,
+					NodeName:      nodeName,
+					Namespace:     ns,
 					IPAddress:     ip,
 					V4IPAddress:   v4IP,
 					V6IPAddress:   v6IP,
@@ -664,25 +647,29 @@ func (c *Controller) createOrUpdateCrdIPs(key, ip, mac string) error {
 			return errMsg
 		}
 	} else {
-		if ipCr.Labels != nil {
-			ipCr.Labels[util.SubnetNameLabel] = c.config.NodeSwitch
+		newIpCr := ipCr.DeepCopy()
+		if newIpCr.Labels != nil {
+			newIpCr.Labels[util.SubnetNameLabel] = subnetName
 		} else {
-			ipCr.Labels = map[string]string{
-				util.SubnetNameLabel: c.config.NodeSwitch,
+			newIpCr.Labels = map[string]string{
+				util.SubnetNameLabel: subnetName,
 			}
 		}
-		ipCr.Spec.PodName = key
-		ipCr.Spec.Namespace = ""
-		ipCr.Spec.Subnet = c.config.NodeSwitch
-		ipCr.Spec.NodeName = key
-		ipCr.Spec.IPAddress = ip
-		ipCr.Spec.V4IPAddress = v4IP
-		ipCr.Spec.V6IPAddress = v6IP
-		ipCr.Spec.MacAddress = mac
-		ipCr.Spec.ContainerID = ""
-		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), ipCr, metav1.UpdateOptions{})
+		newIpCr.Spec.PodName = key
+		newIpCr.Spec.Namespace = ns
+		newIpCr.Spec.Subnet = subnetName
+		newIpCr.Spec.NodeName = nodeName
+		newIpCr.Spec.IPAddress = ip
+		newIpCr.Spec.V4IPAddress = v4IP
+		newIpCr.Spec.V6IPAddress = v6IP
+		newIpCr.Spec.MacAddress = mac
+		newIpCr.Spec.ContainerID = ""
+		newIpCr.Spec.AttachIPs = []string{}
+		newIpCr.Spec.AttachMacs = []string{}
+		newIpCr.Spec.AttachSubnets = []string{}
+		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), newIpCr, metav1.UpdateOptions{})
 		if err != nil {
-			errMsg := fmt.Errorf("failed to create ip crd for %s, %v", ip, err)
+			errMsg := fmt.Errorf("failed to update ips cr %s: %v", newIpCr.Name, err)
 			klog.Error(errMsg)
 			return errMsg
 		}
@@ -1013,7 +1000,8 @@ func (c *Controller) RemoveRedundantChassis(node *v1.Node) error {
 		klog.Errorf("failed to get node %s chassisID, %v", node.Name, err)
 		return err
 	}
-	if chassisAdd == "" {
+
+	if chassisAdd == "" && node.Annotations[util.ChassisAnnotation] != "" {
 		chassises, err := c.ovnClient.GetAllChassisHostname()
 		if err != nil {
 			klog.Errorf("failed to get all chassis, %v", err)

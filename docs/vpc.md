@@ -145,7 +145,7 @@ metadata:
 spec:
   vpc: test-vpc-1                  # Specifies which VPC the gateway belongs to
   subnet: sn                       # Subnet in VPC
-  lanIp: 10.0.1.254                # Internal IP for nat gateway pod, IP should be within the range of the subnet
+  lanIp: 10.0.1.254                # IP should be within the range of the subnet sn, this is the internal IP for nat gateway pod
   eips:                            # Underlay IPs assigned to the gateway
     - eipCIDR: 192.168.0.111/24
       gateway: 192.168.0.254
@@ -246,7 +246,9 @@ ip route add <SVC_IP> via <VPC_LB_IP>
 
 Replace `<VPC_LB_IP>` with the VPC LB Pod's IP address in subnet `ovn-vpc-lb`.
 
-## Custom VPC limitation
-
+## Custom VPC limitation and FAQ
 - Custom VPC can not access host network
-- Not support DNS/Service/Loadbalancer
+- TCP/HTTP probes cannot work, as the host can not access Pods in custom VPCs
+- DNS is not supported
+- The vpc-nat-gateway use macvlan to implement external network and as the limitation of macvlan, host can not access the vpc-nat-gateway address and can not use tcpdump to capture the traffic
+- The routes in vpc-nat-gateway can not show by `ip route`, you should use `ip rule` and `ip route show table 100` to see the detail routes

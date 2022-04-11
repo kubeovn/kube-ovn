@@ -1,7 +1,7 @@
 # Installation
 
 Kube-OVN includes two parts:
-- Native OVS and OVN components
+- OVS and OVN components
 - Controller and CNI plugins that integrate OVN with Kubernetes
 
 ## Prerequisite
@@ -10,12 +10,22 @@ Kube-OVN includes two parts:
 - OS: CentOS 7/8, Ubuntu 16.04/18.04 
 - Other Linux distributions with geneve, openvswitch and ip_tables module installed. You can use commands  `modinfo geneve`, `modinfo openvswitch` and `modinfo ip_tables` to verify
 - Kernel boot with `ipv6.disable=0`
-- Kube-proxy *MUST* be ready so that Kube-OVN can connect to apiserver
+- Kube-proxy *MUST* be ready so that Kube-OVN can connect to apiserver by service address
 
 *NOTE*
 1. Users using Ubuntu 16.04 should build the OVS kernel module and replace the built-in one to avoid kernel NAT issues.
 2. CentOS users should make sure kernel version is greater than 3.10.0-898 to avoid a kernel conntrack bug, see [here](https://bugs.launchpad.net/neutron/+bug/1776778).
 3. Kernel must boot with IPv6 enabled, otherwise geneve tunnel will not be established due to a kernel bug, see [here](https://bugs.launchpad.net/ubuntu/+source/linux/+bug/1794232).
+
+*Ports that Kube-OVN uses:*
+
+| Component           | Port                                          | Usage                  |
+|---------------------|-----------------------------------------------|------------------------|
+| ovn-central         | 6641/tcp, 6642/tcp, 6643/tcp, 6644/tcp        | ovn-db and raft server |
+| ovs-ovn             | Geneve 6081/udp, STT 7471/tcp, Vxlan 4789/udp | Tunnel port            |
+| kube-ovn-controller | 10660/tcp                                     | Metrics                |
+| kube-ovn-daemon     | 10665/tcp                                     | Metrics                |
+| kube-ovn-monitor    | 10661/tcp                                     | Metrics                |
 
 ## To Install
 
@@ -34,13 +44,17 @@ If you want to try the latest developing Kube-OVN, try the script below:
 2. Use vim to edit the script variables to meet your requirement:
 ```bash
  REGISTRY="kubeovn"
- POD_CIDR="10.16.0.0/16"                # Default subnet CIDR, Do NOT overlap with NODE/SVC/JOIN CIDR
+ POD_CIDR="10.16.0.0/16"                # Pod default subnet CIDR, Do NOT overlap with NODE/SVC/JOIN CIDR
  SVC_CIDR="10.96.0.0/12"                # Should be equal with service-cluster-ip-range CIDR range which is configured for the API server
  JOIN_CIDR="100.64.0.0/16"              # Subnet CIDR used for connectivity between nodes and Pods, Do NOT overlap with NODE/POD/SVC CIDR
  LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
  IFACE=""                               # The nic to support container network can be a nic name or a group of regex separated by comma e.g. `IFACE=enp6s0f0,eth.*`, if empty will use the nic that the default route use
- VERSION="v1.9.0"
+ VERSION="v1.9.1"
 ```
+
+> Note: 
+> 1. `SVC_CIDR` here is just to tell Kube-OVN the Service CIDR in this cluster to configure related rules, Kube-OVN will *NOT* set the cluster Service CIDR 
+> 2. If the desired nic names are different across nodes and can not be easily expressed by regex, you can add node annotation `ovn.kubernetes.io/tunnel_interface=xxx` to exact math the interface name
 
 This basic setup works for default overlay network. If you are using default underlay/vlan network, please refer [Vlan/Underlay Support](vlan.md).
 

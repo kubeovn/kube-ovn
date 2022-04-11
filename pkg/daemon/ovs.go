@@ -498,7 +498,8 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int) error {
 		return fmt.Errorf("can not get addr %s: %v", nodeLink, err)
 	}
 	for _, ipAddr := range ipAddrs {
-		if strings.HasPrefix(ipAddr.IP.String(), "fe80::") {
+		if ipAddr.IP.IsLinkLocalUnicast() {
+			// skip 169.254.0.0/16 and fe80::/10
 			continue
 		}
 		ipDelMap[ipAddr.IP.String()+"/"+ipAddr.Mask.String()] = ipAddr
@@ -519,14 +520,12 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int) error {
 	}
 
 	for _, addr := range ipDelMap {
-		ipDel := addr
-		if err = netlink.AddrDel(nodeLink, &ipDel); err != nil {
+		if err = netlink.AddrDel(nodeLink, &addr); err != nil {
 			return fmt.Errorf("delete address %s: %v", addr, err)
 		}
 	}
 	for _, addr := range ipAddMap {
-		ipAdd := addr
-		if err = netlink.AddrAdd(nodeLink, &ipAdd); err != nil {
+		if err = netlink.AddrAdd(nodeLink, &addr); err != nil {
 			return fmt.Errorf("can not add address %v to nic %s: %v", addr, link, err)
 		}
 	}
@@ -663,15 +662,19 @@ func configProviderNic(nicName, brName string) (int, error) {
 	}
 
 	for _, addr := range addrs {
-		if addr.IP.To4() == nil && addr.IP.IsLinkLocalUnicast() {
-			if prefix, _ := addr.Mask.Size(); prefix == 64 {
-				// skip link local IPv6 address
-				continue
-			}
+		if addr.IP.IsLinkLocalUnicast() {
+			// skip 169.254.0.0/16 and fe80::/10
+			continue
 		}
 
-		if err = netlink.AddrDel(nic, &addr); err != nil && !errors.Is(err, syscall.ENOENT) {
-			return 0, fmt.Errorf("failed to delete address %s on nic %s: %v", addr.String(), nicName, err)
+		if err = netlink.AddrDel(nic, &addr); err != nil {
+			errMsg := fmt.Errorf("failed to delete address %s on nic %s: %v", addr.String(), nicName, err)
+			if errors.Is(err, syscall.EADDRNOTAVAIL) {
+				// the IP address does not exist now
+				klog.Warning(errMsg)
+				continue
+			}
+			return 0, errMsg
 		}
 
 		if addr.Label != "" {
@@ -709,7 +712,8 @@ func configProviderNic(nicName, brName string) (int, error) {
 	}
 	for _, scope := range scopeOrders {
 		for _, route := range routes {
-			if route.Gw == nil && route.Dst != nil && route.Dst.String() == "fe80::/64" {
+			if route.Gw == nil && route.Dst != nil && route.Dst.IP.IsLinkLocalUnicast() {
+				// skip 169.254.0.0/16 and fe80::/10
 				continue
 			}
 			if route.Scope == scope {
@@ -777,15 +781,19 @@ func removeProviderNic(nicName, brName string) error {
 	}
 
 	for _, addr := range addrs {
-		if addr.IP.To4() == nil && addr.IP.IsLinkLocalUnicast() {
-			if prefix, _ := addr.Mask.Size(); prefix == 64 {
-				// skip link local IPv6 address
-				continue
-			}
+		if addr.IP.IsLinkLocalUnicast() {
+			// skip 169.254.0.0/16 and fe80::/10
+			continue
 		}
 
-		if err = netlink.AddrDel(bridge, &addr); err != nil && !errors.Is(err, syscall.ENOENT) {
-			return fmt.Errorf("failed to delete address %s on OVS bridge %s: %v", addr.String(), brName, err)
+		if err = netlink.AddrDel(bridge, &addr); err != nil {
+			errMsg := fmt.Errorf("failed to delete address %s on OVS bridge %s: %v", addr.String(), brName, err)
+			if errors.Is(err, syscall.EADDRNOTAVAIL) {
+				// the IP address does not exist now
+				klog.Warning(errMsg)
+				continue
+			}
+			return errMsg
 		}
 
 		if addr.Label != "" {
@@ -808,7 +816,8 @@ func removeProviderNic(nicName, brName string) error {
 	}
 	for _, scope := range scopeOrders {
 		for _, route := range routes {
-			if route.Gw == nil && route.Dst != nil && route.Dst.String() == "fe80::/64" {
+			if route.Gw == nil && route.Dst != nil && route.Dst.IP.IsLinkLocalUnicast() {
+				// skip 169.254.0.0/16 and fe80::/10
 				continue
 			}
 			if route.Scope == scope {
@@ -1004,7 +1013,8 @@ func configureAdditionalNic(link, ip string) error {
 		return fmt.Errorf("can not get addr %s %v", nodeLink, err)
 	}
 	for _, ipAddr := range ipAddrs {
-		if strings.HasPrefix(ipAddr.IP.String(), "fe80::") {
+		if ipAddr.IP.IsLinkLocalUnicast() {
+			// skip 169.254.0.0/16 and fe80::/10
 			continue
 		}
 		ipDelMap[ipAddr.IP.String()+"/"+ipAddr.Mask.String()] = ipAddr
@@ -1025,14 +1035,12 @@ func configureAdditionalNic(link, ip string) error {
 	}
 
 	for _, addr := range ipDelMap {
-		ipDel := addr
-		if err = netlink.AddrDel(nodeLink, &ipDel); err != nil {
+		if err = netlink.AddrDel(nodeLink, &addr); err != nil {
 			return fmt.Errorf("delete address %s %v", addr, err)
 		}
 	}
 	for _, addr := range ipAddMap {
-		ipAdd := addr
-		if err = netlink.AddrAdd(nodeLink, &ipAdd); err != nil {
+		if err = netlink.AddrAdd(nodeLink, &addr); err != nil {
 			return fmt.Errorf("can not add address %v to nic %s, %v", addr, link, err)
 		}
 	}

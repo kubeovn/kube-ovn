@@ -97,7 +97,8 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		oldSubnet.Spec.DHCPv6Options != newSubnet.Spec.DHCPv6Options ||
 		oldSubnet.Spec.EnableIPv6RA != newSubnet.Spec.EnableIPv6RA ||
 		oldSubnet.Spec.IPv6RAConfigs != newSubnet.Spec.IPv6RAConfigs ||
-		oldSubnet.Spec.Protocol != newSubnet.Spec.Protocol {
+		oldSubnet.Spec.Protocol != newSubnet.Spec.Protocol ||
+		!reflect.DeepEqual(oldSubnet.Spec.Acls, newSubnet.Spec.Acls) {
 		klog.V(3).Infof("enqueue update subnet %s", key)
 		c.addOrUpdateSubnetQueue.Add(key)
 	}
@@ -291,7 +292,7 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		changed = true
 	}
 	newCIDRBlock := subnet.Spec.CIDRBlock
-	if subnet.Spec.Protocol == "" || subnet.Spec.Protocol != util.CheckProtocol(newCIDRBlock) {
+	if subnet.Spec.Protocol != util.CheckProtocol(newCIDRBlock) {
 		subnet.Spec.Protocol = util.CheckProtocol(subnet.Spec.CIDRBlock)
 		changed = true
 	}
@@ -701,6 +702,11 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclSuccess", "")
 	}
 
+	if err := c.ovnClient.UpdateSubnetACL(subnet.Name, subnet.Spec.Acls); err != nil {
+		c.patchSubnetStatus(subnet, "SetLogicalSwitchAclsFailed", err.Error())
+		return err
+	}
+
 	c.updateVpcStatusQueue.Add(subnet.Spec.Vpc)
 	return nil
 }
@@ -883,30 +889,18 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 }
 
 func (c *Controller) updateVlanStatusForSubnetDeletion(vlan *kubeovnv1.Vlan, subnet string) error {
-	if util.ContainsString(vlan.Status.Subnets, subnet) {
-		status := vlan.Status.DeepCopy()
-		status.Subnets = util.RemoveString(status.Subnets, subnet)
-		if len(status.Subnets) == 0 {
-			bytes := []byte(`[{ "op": "remove", "path": "/status/subnets"}]`)
-			_, err := c.config.KubeOvnClient.KubeovnV1().Vlans().Patch(context.Background(), vlan.Name, types.JSONPatchType, bytes, metav1.PatchOptions{})
-			if err != nil {
-				klog.Errorf("failed to patch vlan %s: %v", vlan.Name, err)
-				return err
-			}
-		} else {
-			bytes, err := status.Bytes()
-			if err != nil {
-				klog.Error(err)
-				return err
-			}
-
-			_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Patch(context.Background(), vlan.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
-			if err != nil {
-				klog.Errorf("failed to patch vlan %s: %v", vlan.Name, err)
-				return err
-			}
-		}
+	if !util.ContainsString(vlan.Status.Subnets, subnet) {
+		return nil
 	}
+
+	newVlan := vlan.DeepCopy()
+	newVlan.Status.Subnets = util.RemoveString(newVlan.Status.Subnets, subnet)
+	_, err := c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(context.Background(), newVlan, metav1.UpdateOptions{})
+	if err != nil {
+		klog.Errorf("failed to update status of vlan %s: %v", vlan.Name, err)
+		return err
+	}
+
 	return nil
 }
 
@@ -1356,17 +1350,11 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 	}
 
 	if !util.ContainsString(vlan.Status.Subnets, subnet.Name) {
-		status := vlan.Status.DeepCopy()
-		status.Subnets = append(status.Subnets, subnet.Name)
-		bytes, err := status.Bytes()
+		newVlan := vlan.DeepCopy()
+		newVlan.Status.Subnets = append(newVlan.Status.Subnets, subnet.Name)
+		_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(context.Background(), newVlan, metav1.UpdateOptions{})
 		if err != nil {
-			klog.Error(err)
-			return err
-		}
-
-		_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Patch(context.Background(), vlan.Name, types.MergePatchType, bytes, metav1.PatchOptions{})
-		if err != nil {
-			klog.Errorf("failed to patch vlan %s: %v", vlan.Name, err)
+			klog.Errorf("failed to update status of vlan %s: %v", vlan.Name, err)
 			return err
 		}
 	}

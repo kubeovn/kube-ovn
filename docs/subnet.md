@@ -74,6 +74,8 @@ Since kube-ovn v1.8.0, kube-ovn support using designative egress ip on node, the
 
 ## DHCP Options
 
+> This function mainly works with KubeVirt SR-IOV or OVS-DPDK type network, where the embedded dhcp in KubeVirt can not work.
+
 OVN implements native DHCPv4 and DHCPv6 support which provides stateless replies to DHCPv4 and DHCPv6 requests. 
 
 Now kube-ovn support [DHCP feature](https://github.com/kubeovn/kube-ovn/pull/1320) too, you can enable it in the spec of subnet. It will create DHCPv4 options or DHCPv6 options, and patch the UUIDs into the status of subnet.

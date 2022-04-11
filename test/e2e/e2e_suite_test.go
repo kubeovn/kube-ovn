@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -125,6 +124,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 		Spec: kubeovn.SubnetSpec{
 			CIDRBlock:  "12.10.0.0/16",
 			Namespaces: []string{namespace},
+			Protocol:   util.CheckProtocol("12.10.0.0/16"),
 		},
 	}
 	_, err = f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), &s, metav1.CreateOptions{})
@@ -249,8 +249,6 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	if err = f.WaitProviderNetworkReady(pn.Name); err != nil {
 		Fail("provider network failed: " + err.Error())
 	}
-	// FIXME: wait 3 seconds to ensure node conditions are up to date
-	time.Sleep(3 * time.Second)
 	if pn, err = f.OvnClientSet.KubeovnV1().ProviderNetworks().Get(context.Background(), pn.Name, metav1.GetOptions{}); err != nil {
 		Fail("failed to get provider network: " + err.Error())
 	}
@@ -287,6 +285,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 			ExcludeIps: underlayNodeIPs,
 			Vlan:       vlan.Name,
 			Namespaces: []string{underlay.Namespace},
+			Protocol:   util.CheckProtocol(underlayCIDR),
 		},
 	}
 	if _, err = f.OvnClientSet.KubeovnV1().Subnets().Create(context.Background(), &subnet, metav1.CreateOptions{}); err != nil {

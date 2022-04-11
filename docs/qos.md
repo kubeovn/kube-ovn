@@ -4,15 +4,17 @@ Kube-OVN supports dynamically configurations of Ingress and Egress traffic rate 
 
 Before v1.9.0, Kube-OVN can use annotation ` ovn.kubernetes.io/ingress_rate` and ` ovn.kubernetes.io/egress_rate` to specify the bandwidth of pod. The unit is 'Mbit/s'. We can set QoS when creating a pod or dynamically set QoS by changing annotations for pod.
 
-Since v1.9.0, Kube-OVN starts to support linux-htb and linux-netem QoS settings. The detailed description for the Qos can be found at [Qos](https://man7.org/linux/man-pages/man5/ovs-vswitchd.conf.db.5.html#QoS_TABLE)
+Since v1.9.0, Kube-OVN starts to support linux-htb and linux-netem QoS settings. The detailed description for the QoS can be found at [QoS](https://man7.org/linux/man-pages/man5/ovs-vswitchd.conf.db.5.html#QoS_TABLE)
+
+> The QoS function supports both overlay and vlan mode network.
 
 ## Previous Pod QoS Setting
 Use the following annotations to specify QoS:
 - `ovn.kubernetes.io/ingress_rate`: Rate limit for Ingress traffic, unit: Mbit/s
 - `ovn.kubernetes.io/egress_rate`: Rate limit for Egress traffic, unit: Mbit/s
 
-## linux-htb Qos
-A CRD resource is added to set QoS priority for linux-htb qos.
+## linux-htb QoS
+A CRD resource is added to set QoS priority for linux-htb QoS.
 CRD is defined as follows:
 
 ```
@@ -116,7 +118,7 @@ You can also use this annotation to control the traffic from each node to extern
 through these annotations.
 
 # Test
-## Qos Priority Case
+## QoS Priority Case
 When the parameter `subnet.Spec.HtbQos` is specified for subnet, such as `htbqos: htbqos-high`, and the annotation `ovn.kubernetes.io/priority` is specified for pod, such as `ovn.kubernetes.io/priority: "50"`, the actual priority settings are as follows
 
 ```

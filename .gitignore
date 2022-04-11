@@ -1,8 +1,8 @@
 .idea/*
 .vscode/*
 .DS_Store
-dist/images/kube-ovn
 dist/images/kube-ovn-cmd
+dist/images/kube-ovn.exe
 test/e2e/ovnnb_db.*
 test/e2e/ovnsb_db.*
 kube-ovn.yaml

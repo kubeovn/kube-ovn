@@ -31,6 +31,11 @@ func (c *Controller) inspectPod() error {
 		if pod.Spec.HostNetwork {
 			continue
 		}
+
+		if !isPodAlive(pod) {
+			continue
+		}
+
 		podName := c.getNameByPod(pod)
 		podNets, err := c.getPodKubeovnNets(pod)
 		if err != nil {

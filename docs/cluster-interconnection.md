@@ -4,6 +4,8 @@ From v1.4.0, two or more Kubernetes clusters can be connected with each other. P
 communicate directly using Pod IP. Kub-OVN uses tunnel to encapsulate traffic between clusters gateways, 
 only L3 connectivity for gateway nodes is required.
 
+> The multi-cluster networking only supports overlay type network, multi-cluster networking for vlan type network should be implemented by underlay infrastructure.
+
 ## Prerequisite
 * To use route auto advertise, subnet CIDRs in different clusters *MUST NOT* be overlapped with each other，including ovn-default and join subnets CIDRs. Otherwise, you should disable the auto route and add routes manually.
 * The Interconnection Controller *SHOULD* be deployed in a region that every cluster can access by IP.
@@ -15,7 +17,7 @@ only L3 connectivity for gateway nodes is required.
 ```bash
 docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn kubeovn/kube-ovn:v1.9.0 bash start-ic-db.sh
 ```
-​		If `containerd` replaces `docker` then the command is as follows:
+If `containerd` replaces `docker` then the command is as follows:
 
 ```shell
 ctr -n k8s.io run -d --net-host --mount="type=bind,src=/etc/ovn/,dst=/etc/ovn,options=rbind:rw" --mount="type=bind,src=/var/run/ovn,dst=/var/run/ovn,options=rbind:rw" --mount="type=bind,src=/var/log/ovn,dst=/var/log/ovn,options=rbind:rw" docker.io/kubeovn/kube-ovn:v1.9.0 ovn-ic-db bash start-ic-db.sh
@@ -163,7 +165,7 @@ In az2
 docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn -e LOCAL_IP="LEADERIP"  -e NODE_IPS="IP1,IP2,IP3"   kubeovn/kube-ovn:v1.9.0 bash start-ic-db.sh
 ```
 
-​        If `containerd` replaces `docker` then the command is as follows:
+If `containerd` replaces `docker` then the command is as follows:
 
 ```shell
 ctr -n k8s.io run -d --net-host --mount="type=bind,src=/etc/ovn/,dst=/etc/ovn,options=rbind:rw" --mount="type=bind,src=/var/run/ovn,dst=/var/run/ovn,options=rbind:rw" --mount="type=bind,src=/var/log/ovn,dst=/var/log/ovn,options=rbind:rw"  --env="NODE_IPS="IP1,IP2,IP3"" --env="LOCAL_IP="LEADERIP"" docker.io/kubeovn/kube-ovn:v1.9.0 ovn-ic-db bash start-ic-db.sh
@@ -175,7 +177,7 @@ ctr -n k8s.io run -d --net-host --mount="type=bind,src=/etc/ovn/,dst=/etc/ovn,op
 docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn -e LOCAL_IP="LOCALIP"  -e NODE_IPS="IP1,IP2,IP3" -e LEADER_IP="LEADERIP"  kubeovn/kube-ovn:v1.9.0 bash start-ic-db.sh
 ```
 
-​		If `containerd` replaces `docker` then the command is as follows:
+If `containerd` replaces `docker` then the command is as follows:
 
 ```shell
 ctr -n k8s.io run -d --net-host --mount="type=bind,src=/etc/ovn/,dst=/etc/ovn,options=rbind:rw" --mount="type=bind,src=/var/run/ovn,dst=/var/run/ovn,options=rbind:rw" --mount="type=bind,src=/var/log/ovn,dst=/var/log/ovn,options=rbind:rw" --env="NODE_IPS="IP1,IP2,IP3"" --env="LOCAL_IP="LEADERIP"" --env="NODE_IPS="IP1,IP2,IP3"" docker.io/kubeovn/kube-ovn:v1.9.0 ovn-ic-db bash start-ic-db.sh
@@ -198,11 +200,3 @@ data:
   gw-nodes: "az1-gw"            												# The node name which acts as the interconnection gateway
   auto-route: "false"           # Auto announce route to all clusters. If set false, you can select announced routes later manually
 ```
-
-
-
-## Gateway High Available
-
-Kube-OVN now supports Active-Backup mode gateway HA. You can add more nodes name in the configmap separated by commas.
-
-Active-Active mode gateway HA is under development.
