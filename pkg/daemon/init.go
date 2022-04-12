@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vishvananda/netlink"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
@@ -24,12 +23,9 @@ func InitOVSBridges() (map[string]string, error) {
 
 	mappings := make(map[string]string)
 	for _, brName := range bridges {
-		bridge, err := netlink.LinkByName(brName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get bridge by name %s: %v", brName, err)
-		}
-		if err = netlink.LinkSetUp(bridge); err != nil {
-			return nil, fmt.Errorf("failed to set OVS bridge %s up: %v", brName, err)
+		if err = util.SetLinkUp(brName); err != nil {
+			klog.Error(err)
+			return nil, err
 		}
 
 		output, err := ovs.Exec("list-ports", brName)

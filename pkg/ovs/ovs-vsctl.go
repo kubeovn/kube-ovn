@@ -66,8 +66,11 @@ func ovsAdd(table, record string, column string, values ...string) error {
 }
 
 // Returns the given column of records that match the condition
-func ovsFind(table, column, condition string) ([]string, error) {
-	output, err := Exec("--no-heading", "--columns="+column, "find", table, condition)
+func ovsFind(table, column string, conditions ...string) ([]string, error) {
+	args := make([]string, len(conditions)+4)
+	args[0], args[1], args[2], args[3] = "--no-heading", "--columns="+column, "find", table
+	copy(args[4:], conditions)
+	output, err := Exec(args...)
 	if err != nil {
 		return nil, err
 	}
@@ -129,6 +132,16 @@ func BridgeExists(name string) (bool, error) {
 		return false, err
 	}
 	return util.ContainsString(bridges, name), nil
+}
+
+// PortExists checks whether the port already exists
+func PortExists(name string) (bool, error) {
+	result, err := ovsFind("port", "_uuid", "name="+name)
+	if err != nil {
+		klog.Errorf("failed to find port with name %s: %v", name, err)
+		return false, err
+	}
+	return len(result) != 0, nil
 }
 
 func GetQosList(podName, podNamespace, ifaceID string) ([]string, error) {
@@ -295,8 +308,8 @@ func CleanLostInterface() {
 // have multiple sandboxes if some are waiting for garbage collection,
 // but only the latest one should have the iface-id set.
 // See: https://github.com/ovn-org/ovn-kubernetes/pull/869
-func CleanDuplicatePort(ifaceID string) {
-	uuids, _ := ovsFind("Interface", "_uuid", "external-ids:iface-id="+ifaceID)
+func CleanDuplicatePort(ifaceID, portName string) {
+	uuids, _ := ovsFind("Interface", "_uuid", "external-ids:iface-id="+ifaceID, "name!="+portName)
 	for _, uuid := range uuids {
 		if out, err := Exec("remove", "Interface", uuid, "external-ids", "iface-id"); err != nil {
 			klog.Errorf("failed to clear stale OVS port %q iface-id %q: %v\n  %q", uuid, ifaceID, err, out)
