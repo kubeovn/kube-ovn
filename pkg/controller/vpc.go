@@ -290,7 +290,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 
 		for _, item := range routeNeedAdd {
-			if err = c.ovnClient.AddStaticRoute(convertPolicy(item.Policy), item.CIDR, item.NextHopIP, vpc.Name, util.NormalRouteType); err != nil {
+			if err = c.ovnClient.AddStaticRoute(convertPolicy(item.Policy), item.CIDR, item.NextHopIP, vpc.Name, util.NormalRouteType, false); err != nil {
 				klog.Errorf("add static route to vpc %s failed, %v", vpc.Name, err)
 				return err
 			}

@@ -746,7 +746,7 @@ func (c Client) ListStaticRoute() ([]StaticRoute, error) {
 }
 
 // AddStaticRoute add a static route rule in ovn
-func (c Client) AddStaticRoute(policy, cidr, nextHop, router string, routeType string) error {
+func (c Client) AddStaticRoute(policy, cidr, nextHop, router string, routeType string, isMigrate bool) error {
 	if policy == "" {
 		policy = PolicyDstIP
 	}
@@ -783,7 +783,7 @@ func (c Client) AddStaticRoute(policy, cidr, nextHop, router string, routeType s
 					}
 
 					for _, route := range result {
-						if util.ContainsString(existingRoutes, route["_uuid"][0]) {
+						if util.ContainsString(existingRoutes, route["_uuid"][0]) && !isMigrate {
 							return fmt.Errorf(`static route "policy=%s ip_prefix=%s" with different nexthop already exists on logical router %s`, policy, cidrBlock, router)
 						}
 					}

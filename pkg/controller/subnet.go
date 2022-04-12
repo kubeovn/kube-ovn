@@ -921,7 +921,7 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 					nextHop = pod.Annotations[util.NorthGatewayAnnotation]
 				}
 
-				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, pod.Annotations[util.IpAddressAnnotation], nextHop, c.config.ClusterRouter, util.NormalRouteType); err != nil {
+				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, pod.Annotations[util.IpAddressAnnotation], nextHop, c.config.ClusterRouter, util.NormalRouteType, false); err != nil {
 					klog.Errorf("add static route failed, %v", err)
 					return err
 				}
@@ -978,7 +978,7 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 					klog.Infof("subnet %s adds centralized gw %v", subnet.Name, nextHops)
 
 					for _, nextHop := range nextHops {
-						if err = c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, cidr, nextHop, c.config.ClusterRouter, util.EcmpRouteType); err != nil {
+						if err = c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, cidr, nextHop, c.config.ClusterRouter, util.EcmpRouteType, false); err != nil {
 							klog.Errorf("failed to add static route: %v", err)
 							return err
 						}
@@ -1034,7 +1034,7 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 				}
 
 				nextHop := getNextHopByTunnelIP(nodeTunlIPAddr)
-				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, subnet.Spec.CIDRBlock, nextHop, c.config.ClusterRouter, util.NormalRouteType); err != nil {
+				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, subnet.Spec.CIDRBlock, nextHop, c.config.ClusterRouter, util.NormalRouteType, false); err != nil {
 					klog.Errorf("failed to add static route, %v", err)
 					return err
 				}

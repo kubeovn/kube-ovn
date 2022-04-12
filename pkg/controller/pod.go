@@ -790,7 +790,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 					nextHop = strings.Split(nextHop, "/")[0]
 				}
 
-				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nextHop, c.config.ClusterRouter, util.NormalRouteType); err != nil {
+				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nextHop, c.config.ClusterRouter, util.NormalRouteType, false); err != nil {
 					klog.Errorf("failed to add static route, %v", err)
 					return err
 				}
@@ -806,12 +806,17 @@ func (c *Controller) handleUpdatePod(key string) error {
 						return err
 					}
 
+					migrate := pod.Annotations[fmt.Sprintf(util.LiveMigrationAnnotationTemplate, podNet.ProviderName)]
+					isVmPod, _ := isVmPod(pod)
+					isMigrate := isVmPod && c.config.EnableKeepVmIP && (migrate == "true")
+					klog.V(3).Infof("update pod %v, migrate is %v", pod.Name, isMigrate)
+
 					for _, nodeAddr := range nodeTunlIPAddr {
 						for _, podAddr := range strings.Split(podIP, ",") {
 							if util.CheckProtocol(nodeAddr.String()) != util.CheckProtocol(podAddr) {
 								continue
 							}
-							if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podAddr, nodeAddr.String(), c.config.ClusterRouter, util.NormalRouteType); err != nil {
+							if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podAddr, nodeAddr.String(), c.config.ClusterRouter, util.NormalRouteType, isMigrate); err != nil {
 								klog.Errorf("failed to add static route, %v", err)
 								return err
 							}
@@ -820,7 +825,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 				}
 
 				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
-					if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], c.config.ClusterRouter, util.NormalRouteType); err != nil {
+					if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], c.config.ClusterRouter, util.NormalRouteType, false); err != nil {
 						klog.Errorf("failed to add static route, %v", err)
 						return err
 					}
