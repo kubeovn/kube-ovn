@@ -375,7 +375,7 @@ getOvnCentralPod(){
     if [ -z "$VERSION" ]; then
           echo "kubeovn version not exists"
           exit 1
-        fi
+    fi
     KUBE_OVN_VERSION=$VERSION
 }
 
