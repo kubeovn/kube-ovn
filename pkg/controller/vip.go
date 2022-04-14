@@ -295,7 +295,7 @@ func (c *Controller) handleDelVirtualIp(key string) error {
 }
 
 func (c *Controller) acquireStaticVirtualAddress(subnetName, name, namespace, nicName, ip string) (string, string, string, error) {
-	liveMigration := true
+	checkConflict := true
 	var v4ip, v6ip, mac string
 	var err error
 	for _, ipStr := range strings.Split(ip, ",") {
@@ -304,7 +304,7 @@ func (c *Controller) acquireStaticVirtualAddress(subnetName, name, namespace, ni
 		}
 	}
 
-	if v4ip, v6ip, mac, err = c.ipam.GetStaticAddress(name, nicName, ip, mac, subnetName, !liveMigration); err != nil {
+	if v4ip, v6ip, mac, err = c.ipam.GetStaticAddress(name, nicName, ip, mac, subnetName, checkConflict); err != nil {
 		klog.Errorf("failed to get static virtual ip '%s', mac '%s', subnet '%s', %v", ip, mac, subnetName, err)
 		return "", "", "", err
 	}
