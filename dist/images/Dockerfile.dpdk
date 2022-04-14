@@ -10,12 +10,12 @@ COPY grace_stop_ovn_controller /usr/share/ovn/scripts/grace_stop_ovn_controller
 WORKDIR /kube-ovn
 
 COPY kube-ovn-cmd /kube-ovn/kube-ovn-cmd
+COPY kube-ovn-webhook /kube-ovn/kube-ovn-webhook
 RUN ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-controller && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-daemon && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-monitor && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-pinger && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-speaker && \
-    ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-webhook && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-controller-healthcheck && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-leader-checker

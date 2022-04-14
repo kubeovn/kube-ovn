@@ -3,6 +3,7 @@
 .DS_Store
 dist/images/kube-ovn-cmd
 dist/images/kube-ovn.exe
+dist/images/kube-ovn-webhook
 test/e2e/ovnnb_db.*
 test/e2e/ovnsb_db.*
 kube-ovn.yaml
