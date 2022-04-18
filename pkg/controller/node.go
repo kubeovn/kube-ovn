@@ -295,7 +295,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	if err := c.createOrUpdateCrdIPs("", ipStr, mac, c.config.NodeSwitch, "", node.Name, ""); err != nil {
+	if err := c.createOrUpdateCrdIPs("", ipStr, mac, c.config.NodeSwitch, "", node.Name, "", ""); err != nil {
 		klog.Errorf("failed to create or update IPs node-%s: %v", key, err)
 		return err
 	}
@@ -540,7 +540,7 @@ func (c *Controller) handleUpdateNode(key string) error {
 	return nil
 }
 
-func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, nodeName, providerName string) error {
+func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, nodeName, providerName, podType string) error {
 	var key, ipName string
 	if subnetName == c.config.NodeSwitch {
 		key = nodeName
@@ -574,6 +574,7 @@ func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, node
 					AttachIPs:     []string{},
 					AttachMacs:    []string{},
 					AttachSubnets: []string{},
+					PodType:       podType,
 				},
 			}, metav1.CreateOptions{})
 			if err != nil {
@@ -607,6 +608,7 @@ func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, node
 		newIpCr.Spec.AttachIPs = []string{}
 		newIpCr.Spec.AttachMacs = []string{}
 		newIpCr.Spec.AttachSubnets = []string{}
+		newIpCr.Spec.PodType = podType
 		_, err := c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), newIpCr, metav1.UpdateOptions{})
 		if err != nil {
 			errMsg := fmt.Errorf("failed to update ips cr %s: %v", newIpCr.Name, err)
