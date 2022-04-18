@@ -1867,7 +1867,7 @@ spec:
               memory: 200Mi
             limits:
               cpu: 1000m
-              memory: 800Mi
+              memory: 1000Mi
       nodeSelector:
         kubernetes.io/os: "linux"
         ovn.kubernetes.io/ovs_dp_type: kernel
