@@ -956,7 +956,12 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 					}
 
 					node, err := c.nodesLister.Get(gw)
-					if err == nil && nodeReady(node) {
+					if err != nil {
+						klog.Errorf("failed to get gw node %s, %v", gw, err)
+						continue
+					}
+
+					if nodeReady(node) {
 						nodeTunlIP := strings.TrimSpace(node.Annotations[util.IpAddressAnnotation])
 						if nodeTunlIP == "" {
 							klog.Errorf("gateway node %v has no ip annotation", node.Name)
