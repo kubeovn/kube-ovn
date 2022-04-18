@@ -72,7 +72,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, providerNetwork, ifName, nicType, netns, podNicName, vmName string
 	var pod *v1.Pod
 	var err error
-	for i := 0; i < 15; i++ {
+	for i := 0; i < 20; i++ {
 		if pod, err = csh.Controller.podsLister.Pods(podRequest.PodNamespace).Get(podRequest.PodName); err != nil {
 			errMsg := fmt.Errorf("get pod %s/%s failed %v", podRequest.PodNamespace, podRequest.PodName, err)
 			klog.Error(errMsg)
@@ -114,6 +114,14 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		} else {
 			nicType = pod.Annotations[util.PodNicAnnotation]
 		}
+
+		if pod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podRequest.Provider)] != "true" {
+			klog.Infof("wait route ready for pod %s/%s provider %s", podRequest.PodNamespace, podRequest.PodName, podRequest.Provider)
+			cniWaitRouteResult.WithLabelValues(nodeName).Inc()
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
 		if vmName != "" {
 			podRequest.PodName = vmName
 		}

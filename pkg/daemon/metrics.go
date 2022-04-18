@@ -30,6 +30,14 @@ var (
 		[]string{"node_name"},
 	)
 
+	cniWaitRouteResult = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cni_wait_route_seconds_total",
+			Help: "Latency that cni wait controller to add routed annotation to pod",
+		},
+		[]string{"node_name"},
+	)
+
 	cniConnectivityResult = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "cni_wait_connectivity_seconds_total",
