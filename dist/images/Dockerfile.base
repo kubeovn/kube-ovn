@@ -13,6 +13,7 @@ RUN apt update && apt install build-essential git libnuma-dev autoconf curl \
 RUN cd /usr/src/ && \
     git clone -b v2.17.0 --depth=1 https://github.com/openvswitch/ovs.git && \
     cd ovs && \
+    # increase election timer
     curl -s https://github.com/kubeovn/ovs/commit/22ea22c40b46ee5adeae977ff6cfca81b3ff25d7.patch | git apply && \
     ./boot.sh && \
     rm -rf .git && \
@@ -24,7 +25,9 @@ RUN dpkg -i /usr/src/python3-openvswitch*.deb /usr/src/libopenvswitch*.deb
 
 RUN cd /usr/src/ && git clone -b branch-22.03 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
+    # do not send traffic that not designate to svc to conntrack
     curl -s https://github.com/kubeovn/ovn/commit/d26ae4de0ab070f6b602688ba808c8963f69d5c4.patch | git apply && \
+    # change hash type from dp_hash to hash with field src_ip
     curl -s https://github.com/kubeovn/ovn/commit/ab923b252271cbbcccc8091e338ee7efe75e5fcd.patch | git apply && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
