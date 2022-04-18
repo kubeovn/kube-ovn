@@ -423,6 +423,8 @@ spec:
                     type: string
                 containerID:
                   type: string
+                podType:
+                  type: string
   scope: Cluster
   names:
     plural: ips

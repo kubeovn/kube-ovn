@@ -74,6 +74,7 @@ type IPSpec struct {
 	MacAddress    string   `json:"macAddress"`
 	AttachMacs    []string `json:"attachMacs"`
 	ContainerID   string   `json:"containerID"`
+	PodType       string   `json:"podType"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
