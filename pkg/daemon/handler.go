@@ -80,7 +80,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	var isDefaultRoute bool
 	var pod *v1.Pod
 	var err error
-	for i := 0; i < 15; i++ {
+	for i := 0; i < 20; i++ {
 		if pod, err = csh.Controller.podsLister.Pods(podRequest.PodNamespace).Get(podRequest.PodName); err != nil {
 			errMsg := fmt.Errorf("get pod %s/%s failed %v", podRequest.PodNamespace, podRequest.PodName, err)
 			klog.Error(errMsg)
@@ -140,6 +140,13 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			isDefaultRoute = false
 		default:
 			isDefaultRoute = ifName == "eth0"
+		}
+
+		if isDefaultRoute && pod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podRequest.Provider)] != "true" {
+			klog.Infof("wait route ready for pod %s/%s provider %s", podRequest.PodNamespace, podRequest.PodName, podRequest.Provider)
+			cniWaitRouteResult.WithLabelValues(nodeName).Inc()
+			time.Sleep(1 * time.Second)
+			continue
 		}
 
 		if vmName != "" {
