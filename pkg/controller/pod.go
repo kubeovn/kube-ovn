@@ -520,8 +520,9 @@ func (c *Controller) handleAddPod(key string) error {
 			return err
 		}
 
+		podType := getPodType(pod)
 		podName := c.getNameByPod(pod)
-		if err := c.createOrUpdateCrdIPs(podName, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName); err != nil {
+		if err := c.createOrUpdateCrdIPs(podName, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType); err != nil {
 			klog.Errorf("failed to create IP %s.%s: %v", podName, pod.Namespace, err)
 		}
 
@@ -1537,4 +1538,12 @@ func (c *Controller) getNsAvailableSubnets(pod *v1.Pod) ([]*kubeovnNet, error) {
 	}
 
 	return result, nil
+}
+
+func getPodType(pod *v1.Pod) string {
+	var podType string
+	if ok, _ := isStatefulSetPod(pod); ok {
+		podType = "StatefulSet"
+	}
+	return podType
 }
