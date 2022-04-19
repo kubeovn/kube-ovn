@@ -12,6 +12,7 @@ import (
 
 	"github.com/alauda/felix/ipsets"
 	"github.com/vishvananda/netlink"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
@@ -444,6 +445,50 @@ func (c *Controller) setIptables() error {
 			klog.V(3).Infof("iptables rules %v, exists %v", strings.Join(iptRule.Rule, " "), exists)
 		}
 	}
+	return nil
+}
+
+func (c *Controller) addEgressConfig(subnet *kubeovnv1.Subnet, ip string) error {
+	if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) ||
+		subnet.Spec.GatewayType != kubeovnv1.GWDistributedType ||
+		subnet.Spec.Vpc != util.DefaultVpc {
+		return nil
+	}
+
+	if !subnet.Spec.NatOutgoing && subnet.Spec.ExternalEgressGateway != "" {
+		podIPs := strings.Split(ip, ",")
+		protocol := util.CheckProtocol(ip)
+		return c.addPodPolicyRouting(protocol, subnet.Spec.ExternalEgressGateway, subnet.Spec.PolicyRoutingPriority, subnet.Spec.PolicyRoutingTableID, podIPs)
+	}
+
+	return nil
+}
+
+func (c *Controller) removeEgressConfig(subnet, ip string) error {
+	if subnet == "" || ip == "" {
+		return nil
+	}
+
+	podSubnet, err := c.subnetsLister.Get(subnet)
+	if k8serrors.IsNotFound(err) {
+		return nil
+	} else if err != nil {
+		klog.Errorf("failed to get subnet %s: %+v", subnet, err)
+		return err
+	}
+
+	if (podSubnet.Spec.Vlan != "" && !podSubnet.Spec.LogicalGateway) ||
+		podSubnet.Spec.GatewayType != kubeovnv1.GWDistributedType ||
+		podSubnet.Spec.Vpc != util.DefaultVpc {
+		return nil
+	}
+
+	if !podSubnet.Spec.NatOutgoing && podSubnet.Spec.ExternalEgressGateway != "" {
+		podIPs := strings.Split(ip, ",")
+		protocol := util.CheckProtocol(ip)
+		return c.deletePodPolicyRouting(protocol, podSubnet.Spec.ExternalEgressGateway, podSubnet.Spec.PolicyRoutingPriority, podSubnet.Spec.PolicyRoutingTableID, podIPs)
+	}
+
 	return nil
 }
 

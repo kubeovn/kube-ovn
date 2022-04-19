@@ -55,7 +55,7 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 	return nil
 }
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute bool, routes []request.Route, ingress, egress, priority, DeviceID, nicType string, gwCheckMode int) error {
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, priority, DeviceID, nicType string, gwCheckMode int) error {
 	var err error
 	var hostNicName, containerNicName string
 	if DeviceID == "" {
@@ -122,7 +122,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	return nil
 }
 
-func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, deviceID, ifName, nicType string) error {
+func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns, deviceID, ifName, nicType string) error {
 	var nicName string
 	hostNicName, containerNicName := generateNicName(containerID, ifName)
 
@@ -835,7 +835,7 @@ func renameLink(curName, newName string) error {
 	return nil
 }
 
-func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute bool, routes []request.Route, ingress, egress, priority, DeviceID, nicType string, gwCheckMode int) (string, error) {
+func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, priority, DeviceID, nicType string, gwCheckMode int) (string, error) {
 	_, containerNicName := generateNicName(containerID, ifName)
 	ipStr := util.GetIpWithoutMask(ip)
 	ifaceID := ovs.PodNameToPortName(podName, podNamespace, provider)

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	_ "net/http/pprof" // #nosec
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -75,21 +76,21 @@ func CmdMain() {
 	kubeovnInformerFactory.Start(stopCh)
 	go ctl.Run(stopCh)
 	go daemon.RunServer(config, ctl)
-	if err := mvCNIConf(config.CniConfName); err != nil {
+	if err := mvCNIConf(config.CniConfDir, config.CniConfFile, config.CniConfName); err != nil {
 		klog.Fatalf("failed to mv cni conf, %v", err)
 	}
 	http.Handle("/metrics", promhttp.Handler())
 	klog.Fatal(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.PprofPort), nil))
 }
 
-func mvCNIConf(confName string) error {
-	data, err := os.ReadFile("/kube-ovn/01-kube-ovn.conflist")
+func mvCNIConf(configDir, configFile, confName string) error {
+	data, err := os.ReadFile(configFile)
 	if err != nil {
 		return err
 	}
 
-	cniConfPath := fmt.Sprintf("/etc/cni/net.d/%s", confName)
-	return os.WriteFile(cniConfPath, data, 0444)
+	cniConfPath := filepath.Join(configDir, confName)
+	return os.WriteFile(cniConfPath, data, 0644)
 }
 
 func Retry(attempts int, sleep int, f func(configuration *daemon.Configuration) error, ctrl *daemon.Configuration) (err error) {

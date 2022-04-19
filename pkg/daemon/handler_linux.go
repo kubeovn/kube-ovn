@@ -9,8 +9,14 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
+	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func (csh cniServerHandler) validatePodRequest(req *request.CniRequest) error {
+	// nothing to do on linux
+	return nil
+}
 
 func createShortSharedDir(pod *v1.Pod, volumeName string) (err error) {
 	var volume *v1.Volume
