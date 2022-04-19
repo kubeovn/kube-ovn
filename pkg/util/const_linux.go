@@ -14,4 +14,7 @@ const (
 	KoDir  = "/tmp/"
 	KoENV  = "MODULES"
 	RpmENV = "RPMS"
+
+	DefaultCniConfigFile = "/kube-ovn/01-kube-ovn.conflist"
+	DefaultCniConfigDir  = "/etc/cni/net.d"
 )

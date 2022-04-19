@@ -74,7 +74,15 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		return
 	}
 
-	klog.Infof("add port request %v", podRequest)
+	klog.Infof("add port request: %v", podRequest)
+	if err := csh.validatePodRequest(&podRequest); err != nil {
+		klog.Error(err)
+		if err := resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: err.Error()}); err != nil {
+			klog.Errorf("failed to write response, %v", err)
+		}
+		return
+	}
+
 	var gatewayCheckMode int
 	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, providerNetwork, ifName, nicType, podNicName, priority, vmName string
 	var isDefaultRoute bool
@@ -231,12 +239,12 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 
 		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s, custom routes %v", ifName, macAddr, ipAddr, cidr, gw, podRequest.Routes)
 		if nicType == util.InternalType {
-			podNicName, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, podRequest.Routes, ingress, egress, priority, podRequest.DeviceID, nicType, gatewayCheckMode)
+			podNicName, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, podRequest.Routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, priority, podRequest.DeviceID, nicType, gatewayCheckMode)
 		} else if nicType == util.DpdkType {
 			err = csh.configureDpdkNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, ingress, egress, priority, getShortSharedDir(pod.UID, podRequest.VhostUserSocketVolumeName), podRequest.VhostUserSocketName)
 		} else {
 			podNicName = ifName
-			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, podRequest.Routes, ingress, egress, priority, podRequest.DeviceID, nicType, gatewayCheckMode)
+			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, podRequest.Routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, priority, podRequest.DeviceID, nicType, gatewayCheckMode)
 		}
 		if err != nil {
 			errMsg := fmt.Errorf("configure nic failed %v", err)
@@ -356,7 +364,15 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		}
 	}
 
-	klog.Infof("delete port request %v", podRequest)
+	klog.Infof("del port request: %v", podRequest)
+	if err := csh.validatePodRequest(&podRequest); err != nil {
+		klog.Error(err)
+		if err := resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: err.Error()}); err != nil {
+			klog.Errorf("failed to write response, %v", err)
+		}
+		return
+	}
+
 	if pod.Annotations != nil && (podRequest.Provider == util.OvnProvider || podRequest.CniType == util.CniTypeName) {
 		subnet := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podRequest.Provider)]
 		if subnet != "" {
@@ -392,7 +408,7 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 			podRequest.PodName = vmName
 		}
 
-		err = csh.deleteNic(podRequest.PodName, podRequest.PodNamespace, podRequest.ContainerID, podRequest.DeviceID, podRequest.IfName, nicType)
+		err = csh.deleteNic(podRequest.PodName, podRequest.PodNamespace, podRequest.ContainerID, podRequest.NetNs, podRequest.DeviceID, podRequest.IfName, nicType)
 		if err != nil {
 			errMsg := fmt.Errorf("del nic failed %v", err)
 			klog.Error(errMsg)

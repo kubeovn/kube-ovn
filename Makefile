@@ -27,6 +27,7 @@ build-go:
 build-go-windows:
 	go mod tidy
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn.exe -ldflags $(GOLDFLAGS) -v ./cmd/windows/cni
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn-daemon.exe -ldflags $(GOLDFLAGS) -v ./cmd/windows/daemon
 
 .PHONY: build-go-arm
 build-go-arm:
