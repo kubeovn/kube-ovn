@@ -88,18 +88,20 @@ func hasEndpoint(node string, endpoints *corev1.Endpoints) bool {
 	return false
 }
 
-func checkService(shouldSucceed bool, cmd string, args ...string) {
-	c := exec.Command(cmd, args...)
-	var stdout, stderr bytes.Buffer
-	c.Stdout, c.Stderr = &stdout, &stderr
-	err := c.Run()
-	output := strings.TrimSpace(stdout.String())
-	if shouldSucceed {
-		Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("stdout: %s, stderr: %s", output, strings.TrimSpace(stderr.String())))
-		Expect(output).To(Equal("200"))
-	} else {
-		Expect(err).To(HaveOccurred())
-		Expect(output).To(Equal("000"))
+func checkService(checkCount int, shouldSucceed bool, cmd string, args ...string) {
+	for i := 0; i < checkCount; i++ {
+		c := exec.Command(cmd, args...)
+		var stdout, stderr bytes.Buffer
+		c.Stdout, c.Stderr = &stdout, &stderr
+		err := c.Run()
+		output := strings.TrimSpace(stdout.String())
+		if shouldSucceed {
+			Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("stdout: %s, stderr: %s", output, strings.TrimSpace(stderr.String())))
+			Expect(output).To(Equal("200"))
+		} else {
+			Expect(err).To(HaveOccurred())
+			Expect(output).To(Equal("000"))
+		}
 	}
 }
 
@@ -125,6 +127,7 @@ var _ = Describe("[Service]", func() {
 
 	nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred())
+	checkCount := len(nodes.Items)
 
 	var ciliumChaining, proxyIpvsMode bool
 	_, err = f.KubeClientSet.AppsV1().DaemonSets(namespace).Get(context.Background(), "cilium", metav1.GetOptions{})
@@ -148,7 +151,7 @@ var _ = Describe("[Service]", func() {
 			port := hostService.Spec.Ports[0].Port
 			for _, ip := range hostService.Spec.ClusterIPs {
 				for _, pod := range containerPods.Items {
-					checkService(true, "kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...)
+					checkService(checkCount, true, "kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...)
 				}
 			}
 		})
@@ -157,7 +160,7 @@ var _ = Describe("[Service]", func() {
 			port := hostService.Spec.Ports[0].Port
 			for _, ip := range hostService.Spec.ClusterIPs {
 				for _, pod := range hostPods.Items {
-					checkService(true, "kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...)
+					checkService(checkCount, true, "kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...)
 				}
 			}
 		})
@@ -165,7 +168,7 @@ var _ = Describe("[Service]", func() {
 		It("external to ClusterIP", func() {
 			port := hostService.Spec.Ports[0].Port
 			for _, ip := range hostService.Spec.ClusterIPs {
-				checkService(true, "docker", append(dockerArgs, strings.Fields(curlArgs(ip, port))...)...)
+				checkService(checkCount, true, "docker", append(dockerArgs, strings.Fields(curlArgs(ip, port))...)...)
 			}
 		})
 
@@ -174,7 +177,7 @@ var _ = Describe("[Service]", func() {
 			for _, pod := range containerPods.Items {
 				for _, node := range nodes.Items {
 					for _, nodeIP := range nodeIPs(node) {
-						checkService(true, "kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...)
+						checkService(checkCount, true, "kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...)
 					}
 				}
 			}
@@ -185,7 +188,7 @@ var _ = Describe("[Service]", func() {
 			for _, pod := range hostPods.Items {
 				for _, node := range nodes.Items {
 					for _, nodeIP := range nodeIPs(node) {
-						checkService(true, "kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...)
+						checkService(checkCount, true, "kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...)
 					}
 				}
 			}
@@ -199,7 +202,7 @@ var _ = Describe("[Service]", func() {
 			port := hostService.Spec.Ports[0].NodePort
 			for _, node := range nodes.Items {
 				for _, nodeIP := range nodeIPs(node) {
-					checkService(true, "docker", append(dockerArgs, strings.Fields(curlArgs(nodeIP, port))...)...)
+					checkService(checkCount, true, "docker", append(dockerArgs, strings.Fields(curlArgs(nodeIP, port))...)...)
 				}
 			}
 		})
@@ -210,7 +213,7 @@ var _ = Describe("[Service]", func() {
 			port := containerService.Spec.Ports[0].Port
 			for _, ip := range containerService.Spec.ClusterIPs {
 				for _, pod := range containerPods.Items {
-					checkService(true, "kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...)
+					checkService(checkCount, true, "kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...)
 				}
 			}
 		})
@@ -219,7 +222,7 @@ var _ = Describe("[Service]", func() {
 			port := containerService.Spec.Ports[0].Port
 			for _, ip := range containerService.Spec.ClusterIPs {
 				for _, pod := range hostPods.Items {
-					checkService(true, "kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...)
+					checkService(checkCount, true, "kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...)
 				}
 			}
 		})
@@ -227,7 +230,7 @@ var _ = Describe("[Service]", func() {
 		It("external to ClusterIP", func() {
 			port := containerService.Spec.Ports[0].Port
 			for _, ip := range containerService.Spec.ClusterIPs {
-				checkService(true, "docker", append(dockerArgs, strings.Fields(curlArgs(ip, port))...)...)
+				checkService(checkCount, true, "docker", append(dockerArgs, strings.Fields(curlArgs(ip, port))...)...)
 			}
 		})
 
@@ -236,7 +239,7 @@ var _ = Describe("[Service]", func() {
 			for _, pod := range containerPods.Items {
 				for _, node := range nodes.Items {
 					for _, nodeIP := range nodeIPs(node) {
-						checkService(true, "kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...)
+						checkService(checkCount, true, "kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...)
 					}
 				}
 			}
@@ -247,7 +250,7 @@ var _ = Describe("[Service]", func() {
 			for _, pod := range hostPods.Items {
 				for _, node := range nodes.Items {
 					for _, nodeIP := range nodeIPs(node) {
-						checkService(true, "kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...)
+						checkService(checkCount, true, "kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...)
 					}
 				}
 			}
@@ -261,7 +264,7 @@ var _ = Describe("[Service]", func() {
 			port := containerService.Spec.Ports[0].NodePort
 			for _, node := range nodes.Items {
 				for _, nodeIP := range nodeIPs(node) {
-					checkService(true, "docker", append(dockerArgs, strings.Fields(curlArgs(nodeIP, port))...)...)
+					checkService(checkCount, true, "docker", append(dockerArgs, strings.Fields(curlArgs(nodeIP, port))...)...)
 				}
 			}
 		})
@@ -272,7 +275,7 @@ var _ = Describe("[Service]", func() {
 			port := localEtpHostService.Spec.Ports[0].Port
 			for _, pod := range containerPods.Items {
 				for _, ip := range localEtpHostService.Spec.ClusterIPs {
-					checkService(true, "kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...)
+					checkService(checkCount, true, "kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...)
 				}
 			}
 		})
@@ -281,7 +284,7 @@ var _ = Describe("[Service]", func() {
 			port := localEtpHostService.Spec.Ports[0].Port
 			for _, pod := range hostPods.Items {
 				for _, ip := range localEtpHostService.Spec.ClusterIPs {
-					checkService(true, "kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...)
+					checkService(checkCount, true, "kubectl", strings.Fields(kubectlArgs(pod.Name, ip, port))...)
 				}
 			}
 		})
@@ -289,7 +292,7 @@ var _ = Describe("[Service]", func() {
 		It("external to ClusterIP", func() {
 			port := localEtpHostService.Spec.Ports[0].Port
 			for _, ip := range localEtpHostService.Spec.ClusterIPs {
-				checkService(true, "docker", append(dockerArgs, strings.Fields(curlArgs(ip, port))...)...)
+				checkService(checkCount, true, "docker", append(dockerArgs, strings.Fields(curlArgs(ip, port))...)...)
 			}
 		})
 
@@ -304,7 +307,7 @@ var _ = Describe("[Service]", func() {
 				for _, pod := range containerPods.Items {
 					shoudSucceed := hasEndpoint || !proxyIpvsMode
 					for _, nodeIP := range nodeIPs(node) {
-						checkService(shoudSucceed, "kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...)
+						checkService(checkCount, shoudSucceed, "kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...)
 					}
 				}
 			}
@@ -321,7 +324,7 @@ var _ = Describe("[Service]", func() {
 				for _, pod := range hostPods.Items {
 					shoudSucceed := hasEndpoint || (!proxyIpvsMode && pod.Spec.NodeName == node.Name)
 					for _, nodeIP := range nodeIPs(node) {
-						checkService(shoudSucceed, "kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...)
+						checkService(checkCount, shoudSucceed, "kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...)
 					}
 				}
 			}
@@ -336,7 +339,7 @@ var _ = Describe("[Service]", func() {
 			for _, node := range nodes.Items {
 				shouldSucceed := hasEndpoint(node.Name, localEtpHostEndpoints)
 				for _, nodeIP := range nodeIPs(node) {
-					checkService(shouldSucceed, "docker", append(dockerArgs, strings.Fields(curlArgs(nodeIP, port))...)...)
+					checkService(checkCount, shouldSucceed, "docker", append(dockerArgs, strings.Fields(curlArgs(nodeIP, port))...)...)
 				}
 			}
 		})
