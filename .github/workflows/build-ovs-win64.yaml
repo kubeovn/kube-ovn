@@ -15,22 +15,25 @@ jobs:
         uses: actions/checkout@v2
         with:
           repository: openvswitch/ovs
-          ref: branch-2.16
+          ref: v2.17.0
           path: ovs
 
       - name: Check out OVN
         uses: actions/checkout@v2
         with:
           repository: ovn-org/ovn
-          ref: branch-21.06
+          ref: branch-22.03
           path: ovn
 
       - name: Apply OVS patches
         working-directory: ovs
         run: |
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/e238bdcb3d062728f6a3929d7e94c52c26b8b3cc.patch" -OutFile ..\ovs-01.patch
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/77edc343f97427940cd10a19c13f2dd5dc72bd45.patch" -OutFile ..\ovs-02.patch
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/e4b05cc9cc2836ba18f46d776d7e176038215763.patch" -OutFile ..\ovs-03.patch
+          # fix kernel crash
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/4ffb7de197dd578d3c6d3e0bf045e4451113a216.patch" -OutFile ..\ovs-01.patch
+          # support for building in github actions
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/fafb5d6d2140e2778f681f6ff0e9f4cc3c0a9e37.patch" -OutFile ..\ovs-02.patch
+          # listen on tcp 127.0.0.1:6643 by default
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/f806e839b76e82308a6db4e8054fb0acbe3d2ad0.patch" -OutFile ..\ovs-03.patch
           git apply ..\ovs-01.patch
           git apply ..\ovs-02.patch
           git apply ..\ovs-03.patch
@@ -38,7 +41,8 @@ jobs:
       - name: Apply OVN patches
         working-directory: ovn
         run: |
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/72d2a0d17763b0d0b49e50a655473046e117c038.patch" -OutFile ..\ovn-01.patch
+          # add support for windows
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/b7d91200f20e1ae5083c247fc966d196ecee2f91.patch" -OutFile ..\ovn-01.patch
           git apply ..\ovn-01.patch
 
       - name: Build PTHREADS4W
