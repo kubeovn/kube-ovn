@@ -347,14 +347,14 @@ func (c *Controller) processNextDeletePodWorkItem() bool {
 			utilruntime.HandleError(fmt.Errorf("expected pod in workqueue but got %#v", obj))
 			return nil
 		}
-		klog.Infof("handle delete pod %s", pod.Name)
+		klog.Infof("handle delete pod %s/%s", pod.Namespace, pod.Name)
 		if err := c.handleDeletePod(pod); err != nil {
 			c.deletePodQueue.AddRateLimited(obj)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", pod.Name, err.Error())
 		}
 		c.deletePodQueue.Forget(obj)
 		last := time.Since(now)
-		klog.Infof("take %d ms to handle delete pod %s", last.Milliseconds(), pod.Name)
+		klog.Infof("take %d ms to handle delete pod %s/%s", last.Milliseconds(), pod.Namespace, pod.Name)
 		return nil
 	}(obj)
 
@@ -372,6 +372,7 @@ func (c *Controller) processNextUpdatePodWorkItem() bool {
 		return false
 	}
 
+	now := time.Now()
 	err := func(obj interface{}) error {
 		defer c.updatePodQueue.Done(obj)
 		var key string
@@ -381,11 +382,14 @@ func (c *Controller) processNextUpdatePodWorkItem() bool {
 			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
 			return nil
 		}
+		klog.Infof("handle update pod %s", key)
 		if err := c.handleUpdatePod(key); err != nil {
 			c.updatePodQueue.AddRateLimited(key)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
 		c.updatePodQueue.Forget(obj)
+		last := time.Since(now)
+		klog.Infof("take %d ms to handle update pod %s", last.Milliseconds(), key)
 		return nil
 	}(obj)
 
@@ -453,13 +457,15 @@ func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
 }
 
 func (c *Controller) handleAddPod(key string) error {
-	c.podKeyMutex.Lock(key)
-	defer c.podKeyMutex.Unlock(key)
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
+
+	c.podKeyMutex.Lock(key)
+	defer c.podKeyMutex.Unlock(key)
+
 	oripod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -481,7 +487,7 @@ func (c *Controller) handleAddPod(key string) error {
 	}
 
 	op := "replace"
-	if pod.Annotations == nil || len(pod.Annotations) == 0 {
+	if len(pod.Annotations) == 0 {
 		op = "add"
 		pod.Annotations = map[string]string{}
 	}
@@ -520,8 +526,9 @@ func (c *Controller) handleAddPod(key string) error {
 			return err
 		}
 
+		podType := getPodType(pod)
 		podName := c.getNameByPod(pod)
-		if err := c.createOrUpdateCrdIPs(podName, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName); err != nil {
+		if err := c.createOrUpdateCrdIPs(podName, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType); err != nil {
 			klog.Errorf("failed to create IP %s.%s: %v", podName, pod.Namespace, err)
 		}
 
@@ -745,13 +752,15 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 }
 
 func (c *Controller) handleUpdatePod(key string) error {
-	c.podKeyMutex.Lock(key)
-	defer c.podKeyMutex.Unlock(key)
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
+
+	c.podKeyMutex.Lock(key)
+	defer c.podKeyMutex.Unlock(key)
+
 	oripod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -791,7 +800,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 		subnet = podNet.Subnet
 
 		if podIP != "" && subnet.Spec.Vlan == "" && subnet.Spec.Vpc == util.DefaultVpc {
-			if pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "" {
+			if c.config.EnableEipSnat && (pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "") {
 				cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
 				if err != nil {
 					klog.Errorf("failed to get ex-gateway config, %v", err)
@@ -888,15 +897,17 @@ func (c *Controller) handleUpdatePod(key string) error {
 				}
 			}
 
-			for _, ipStr := range strings.Split(podIP, ",") {
-				if err := c.ovnClient.UpdateNatRule("dnat_and_snat", ipStr, pod.Annotations[util.EipAnnotation], c.config.ClusterRouter, pod.Annotations[util.MacAddressAnnotation], fmt.Sprintf("%s.%s", podName, pod.Namespace)); err != nil {
-					klog.Errorf("failed to add nat rules, %v", err)
-					return err
-				}
+			if c.config.EnableEipSnat {
+				for _, ipStr := range strings.Split(podIP, ",") {
+					if err := c.ovnClient.UpdateNatRule("dnat_and_snat", ipStr, pod.Annotations[util.EipAnnotation], c.config.ClusterRouter, pod.Annotations[util.MacAddressAnnotation], fmt.Sprintf("%s.%s", podName, pod.Namespace)); err != nil {
+						klog.Errorf("failed to add nat rules, %v", err)
+						return err
+					}
 
-				if err := c.ovnClient.UpdateNatRule("snat", ipStr, pod.Annotations[util.SnatAnnotation], c.config.ClusterRouter, "", ""); err != nil {
-					klog.Errorf("failed to add nat rules, %v", err)
-					return err
+					if err := c.ovnClient.UpdateNatRule("snat", ipStr, pod.Annotations[util.SnatAnnotation], c.config.ClusterRouter, "", ""); err != nil {
+						klog.Errorf("failed to add nat rules, %v", err)
+						return err
+					}
 				}
 			}
 		}
@@ -1537,4 +1548,12 @@ func (c *Controller) getNsAvailableSubnets(pod *v1.Pod) ([]*kubeovnNet, error) {
 	}
 
 	return result, nil
+}
+
+func getPodType(pod *v1.Pod) string {
+	var podType string
+	if ok, _ := isStatefulSetPod(pod); ok {
+		podType = "StatefulSet"
+	}
+	return podType
 }

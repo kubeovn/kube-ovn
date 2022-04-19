@@ -1,4 +1,4 @@
-package webhook
+package main
 
 import (
 	"flag"
@@ -37,7 +37,7 @@ func init() {
 	}
 }
 
-func CmdMain() {
+func main() {
 	var port int
 	klog.Infof(versions.String())
 

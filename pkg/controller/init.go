@@ -331,11 +331,12 @@ func (c *Controller) InitIPAM() error {
 				ip := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
 				mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
 				subnet := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)]
+				podType := getPodType(pod)
 				_, _, _, err := c.ipam.GetStaticAddress(key, portName, ip, mac, subnet, false)
 				if err != nil {
 					klog.Errorf("failed to init pod %s.%s address %s: %v", podName, pod.Namespace, pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)], err)
 				} else {
-					err = c.createOrUpdateCrdIPs(podName, ip, mac, subnet, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName)
+					err = c.createOrUpdateCrdIPs(podName, ip, mac, subnet, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType)
 					if err != nil {
 						klog.Errorf("failed to create/update ips CR %s.%s with ip address %s: %v", podName, pod.Namespace, ip, err)
 					}
@@ -354,6 +355,10 @@ func (c *Controller) InitIPAM() error {
 		return err
 	}
 	for _, ip := range ips {
+		if ip.Spec.PodType != "StatefulSet" {
+			continue
+		}
+
 		var ipamKey string
 		if ip.Spec.Namespace != "" {
 			ipamKey = fmt.Sprintf("%s/%s", ip.Spec.Namespace, ip.Spec.PodName)

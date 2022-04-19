@@ -14,7 +14,6 @@ import (
 	"github.com/kubeovn/kube-ovn/cmd/ovn_monitor"
 	"github.com/kubeovn/kube-ovn/cmd/pinger"
 	"github.com/kubeovn/kube-ovn/cmd/speaker"
-	"github.com/kubeovn/kube-ovn/cmd/webhook"
 )
 
 const (
@@ -24,7 +23,6 @@ const (
 	CmdMonitor               = "kube-ovn-monitor"
 	CmdPinger                = "kube-ovn-pinger"
 	CmdSpeaker               = "kube-ovn-speaker"
-	CmdWebHook               = "kube-ovn-webhook"
 	CmdControllerHealthCheck = "kube-ovn-controller-healthcheck"
 	CmdOvnLeaderChecker      = "kube-ovn-leader-checker"
 )
@@ -45,8 +43,6 @@ func main() {
 		pinger.CmdMain()
 	case CmdSpeaker:
 		speaker.CmdMain()
-	case CmdWebHook:
-		webhook.CmdMain()
 	case CmdControllerHealthCheck:
 		controller_health_check.CmdMain()
 	case CmdOvnLeaderChecker:
