@@ -60,6 +60,7 @@ type Configuration struct {
 
 	EnableLb          bool
 	EnableNP          bool
+	EnableEipSnat     bool
 	EnableExternalVpc bool
 	EnableEcmp        bool
 	EnableKeepVmIP    bool
@@ -100,6 +101,7 @@ func ParseFlags() (*Configuration, error) {
 		argPodNicType           = pflag.String("pod-nic-type", "veth-pair", "The default pod network nic implementation type, default: veth-pair")
 		argEnableLb             = pflag.Bool("enable-lb", true, "Enable load balancer, default: true")
 		argEnableNP             = pflag.Bool("enable-np", true, "Enable network policy support, default: true")
+		argEnableEipSnat        = pflag.Bool("enable-eip-snat", true, "Enable EIP and SNAT")
 		argEnableExternalVpc    = pflag.Bool("enable-external-vpc", true, "Enable external vpc support, default: true")
 		argEnableEcmp           = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
 		argKeepVmIP             = pflag.Bool("keep-vm-ip", false, "Whether to keep ip for kubevirt pod when pod is rebuild")
@@ -152,6 +154,7 @@ func ParseFlags() (*Configuration, error) {
 		PodNicType:                    *argPodNicType,
 		EnableLb:                      *argEnableLb,
 		EnableNP:                      *argEnableNP,
+		EnableEipSnat:                 *argEnableEipSnat,
 		EnableExternalVpc:             *argEnableExternalVpc,
 		EnableEcmp:                    *argEnableEcmp,
 		EnableKeepVmIP:                *argKeepVmIP,
