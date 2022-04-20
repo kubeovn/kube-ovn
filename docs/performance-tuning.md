@@ -155,18 +155,21 @@ Please refer [FastPath Guide](../fastpath/README.md) to get the detail steps.
 The OVS flow match process takes about 10% of the CPU time. If the OVS runs on x86 CPU with popcnt and sse instruction sets, some
 compile optimization can be applied to accelerate the match process.
 
-1. Make sure the CPU support the instruction set
+1. ##### Make sure the CPU support the instruction set
 ```bash
 # cat /proc/cpuinfo  | grep popcnt
 # cat /proc/cpuinfo  | grep sse4_2
 ```
-2. Compile and install the OVS kernel module, below are the steps to compile the module on CentOS
+2. ##### Compile and install the OVS kernel module.
+
+   Steps to compile the module in CentOS:
 ```bash
 # Make sure the related kernel headers is installed
 yum install -y gcc kernel-devel-$(uname -r) python3 autoconf automake libtool rpm-build openssl-devel
 
-git clone -b branch-2.15 --depth=1 https://github.com/openvswitch/ovs.git
+git clone -b branch-2.17 --depth=1 https://github.com/openvswitch/ovs.git
 cd ovs
+curl -s  https://github.com/kubeovn/ovs/commit/2d2c83c26d4217446918f39d5cd5838e9ac27b32.patch |  git apply
 ./boot.sh
 ./configure --with-linux=/lib/modules/$(uname -r)/build CFLAGS="-g -O2 -mpopcnt -msse4.2"
 make rpm-fedora-kmod
@@ -175,6 +178,32 @@ cd rpm/rpmbuild/RPMS/x86_64/
 # Copy the rpm to every node and install
 rpm -i openvswitch-kmod-2.15.2-1.el7.x86_64.rpm
 ```
+
+​	 Steps to compile the modules in Ubuntu:
+
+```bash
+apt install -y autoconf automake libtool gcc build-essential libssl-dev
+
+git clone -b branch-2.17 --depth=1 https://github.com/openvswitch/ovs.git
+cd ovs
+curl -s  https://github.com/kubeovn/ovs/commit/2d2c83c26d4217446918f39d5cd5838e9ac27b32.patch |  git apply
+./boot.sh
+./configure --prefix=/usr/ --localstatedir=/var --enable-ssl --with-linux=/lib/modules/$(uname -r)/build
+make -j `nproc`
+make install
+make modules_install
+
+cat > /etc/depmod.d/openvswitch.conf << EOF
+override openvswitch * extra
+override vport-* * extra
+EOF
+
+depmod -a
+cp debian/openvswitch-switch.init /etc/init.d/openvswitch-switch
+/etc/init.d/openvswitch-switch force-reload-kmod
+```
+
+
 
 ### Automatically compile openvswitch rpm and distribute it:
 
