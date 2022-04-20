@@ -46,7 +46,6 @@ const (
 	LogicalSwitchAnnotationTemplate = "%s.kubernetes.io/logical_switch"
 	LogicalRouterAnnotationTemplate = "%s.kubernetes.io/logical_router"
 	VlanIdAnnotationTemplate        = "%s.kubernetes.io/vlan_id"
-	NetworkTypeTemplate             = "%s.kubernetes.io/network_type"
 	IngressRateAnnotationTemplate   = "%s.kubernetes.io/ingress_rate"
 	EgressRateAnnotationTemplate    = "%s.kubernetes.io/egress_rate"
 	SecurityGroupAnnotationTemplate = "%s.kubernetes.io/security_groups"
