@@ -2538,8 +2538,6 @@ spec:
       tolerations:
         - effect: NoSchedule
           operator: Exists
-        - effect: NoExecute
-          operator: Exists
         - key: CriticalAddonsOnly
           operator: Exists
       affinity:
