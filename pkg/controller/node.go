@@ -821,6 +821,10 @@ func (c *Controller) checkChassisDupl(node *v1.Node) error {
 		klog.Errorf("failed to get node %s chassisID, %v", node.Name, err)
 		return err
 	}
+	if chassisAdd == "" {
+		klog.Errorf("chassis of node %s is empty", node.Name)
+		return err
+	}
 	chassisAnn := node.Annotations[util.ChassisAnnotation]
 	if chassisAnn == chassisAdd || chassisAnn == "" {
 		return nil
