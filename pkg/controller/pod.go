@@ -10,6 +10,10 @@ import (
 	"strings"
 	"time"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ipam"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/logging"
 	multustypes "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
 	v1 "k8s.io/api/core/v1"
@@ -21,11 +25,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ipam"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func isPodAlive(p *v1.Pod) bool {
@@ -486,9 +485,8 @@ func (c *Controller) handleAddPod(key string) error {
 		return err
 	}
 
-	op := "replace"
+	oriPod := pod.DeepCopy()
 	if len(pod.Annotations) == 0 {
-		op = "add"
 		pod.Annotations = map[string]string{}
 	}
 	isVmPod, vmName := isVmPod(pod)
@@ -579,7 +577,12 @@ func (c *Controller) handleAddPod(key string) error {
 		}
 	}
 
-	if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(context.Background(), name, types.JSONPatchType, generatePatchPayload(pod.Annotations, op), metav1.PatchOptions{}, ""); err != nil {
+	patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
+	if err != nil {
+		return err
+	}
+	if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(context.Background(), name,
+		types.StrategicMergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 		if k8serrors.IsNotFound(err) {
 			// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.
 			// Then we need to recycle the resource again.
@@ -756,14 +759,14 @@ func (c *Controller) handleUpdatePod(key string) error {
 	c.podKeyMutex.Lock(key)
 	defer c.podKeyMutex.Unlock(key)
 
-	oripod, err := c.podsLister.Pods(namespace).Get(name)
+	oriPod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	pod := oripod.DeepCopy()
+	pod := oriPod.DeepCopy()
 	podName := c.getNameByPod(pod)
 
 	klog.Infof("update pod %s/%s", namespace, name)
@@ -909,7 +912,12 @@ func (c *Controller) handleUpdatePod(key string) error {
 
 		pod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)] = "true"
 	}
-	if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(context.Background(), name, types.JSONPatchType, generatePatchPayload(pod.Annotations, "replace"), metav1.PatchOptions{}, ""); err != nil {
+	patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
+	if err != nil {
+		return err
+	}
+	if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(context.Background(), name,
+		types.StrategicMergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 		if k8serrors.IsNotFound(err) {
 			// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.
 			// Then we need to recycle the resource again.
@@ -1324,18 +1332,6 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	}
 	klog.Errorf("alloc address for %s failed, return NoAvailableAddress", key)
 	return "", "", "", podNet.Subnet, ipam.ErrNoAvailable
-}
-
-func generatePatchPayload(annotations map[string]string, op string) []byte {
-	patchPayloadTemplate :=
-		`[{
-        "op": "%s",
-        "path": "/metadata/annotations",
-        "value": %s
-          }]`
-
-	raw, _ := json.Marshal(annotations)
-	return []byte(fmt.Sprintf(patchPayloadTemplate, op, raw))
 }
 
 func (c *Controller) acquireStaticAddress(key, nicName, ip, mac, subnet string, liveMigration bool) (string, string, string, error) {

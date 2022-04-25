@@ -331,14 +331,14 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 		return fmt.Errorf("failed to initialize vpc nat gateway %s: %v", key, err)
 	}
 
-	oripod, err := c.getNatGwPod(key)
+	oriPod, err := c.getNatGwPod(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	pod := oripod.DeepCopy()
+	pod := oriPod.DeepCopy()
 
 	if pod.Status.Phase != corev1.PodRunning {
 		time.Sleep(5 * 1000)
@@ -353,7 +353,12 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 		return err
 	}
 	pod.Annotations[util.VpcNatGatewayInitAnnotation] = "true"
-	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name, types.JSONPatchType, generatePatchPayload(pod.Annotations, "replace"), metav1.PatchOptions{}, ""); err != nil {
+	patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
+	if err != nil {
+		return err
+	}
+	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
+		types.StrategicMergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 		klog.Errorf("patch pod %s/%s failed %v", pod.Name, pod.Namespace, err)
 		return err
 	}
@@ -374,14 +379,14 @@ func (c *Controller) handleUpdateVpcEips(natGwKey string) error {
 		return err
 	}
 
-	oripod, err := c.getNatGwPod(natGwKey)
+	oriPod, err := c.getNatGwPod(natGwKey)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	pod := oripod.DeepCopy()
+	pod := oriPod.DeepCopy()
 
 	var toBeDelEips, oldEips []*kubeovnv1.Eip
 	if eipAnnotation, ok := pod.Annotations[util.VpcEipsAnnotation]; ok {
@@ -431,7 +436,12 @@ func (c *Controller) handleUpdateVpcEips(natGwKey string) error {
 		return err
 	}
 	pod.Annotations[util.VpcEipsAnnotation] = string(eipBytes)
-	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name, types.JSONPatchType, generatePatchPayload(pod.Annotations, "replace"), metav1.PatchOptions{}, ""); err != nil {
+	patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
+	if err != nil {
+		return err
+	}
+	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
+		types.StrategicMergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 		klog.Errorf("patch pod %s/%s failed %v", pod.Name, pod.Namespace, err)
 		return err
 	}
@@ -452,14 +462,14 @@ func (c *Controller) handleUpdateVpcFloatingIp(natGwKey string) error {
 		return err
 	}
 
-	oripod, err := c.getNatGwPod(natGwKey)
+	oriPod, err := c.getNatGwPod(natGwKey)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	pod := oripod.DeepCopy()
+	pod := oriPod.DeepCopy()
 
 	// check md5
 	newMd5 := fmt.Sprintf("%x", structhash.Md5(gw.Spec.FloatingIpRules, 1))
@@ -480,7 +490,12 @@ func (c *Controller) handleUpdateVpcFloatingIp(natGwKey string) error {
 
 	// update annotation
 	pod.Annotations[util.VpcFloatingIpMd5Annotation] = newMd5
-	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name, types.JSONPatchType, generatePatchPayload(pod.Annotations, "replace"), metav1.PatchOptions{}, ""); err != nil {
+	patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
+	if err != nil {
+		return err
+	}
+	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
+		types.StrategicMergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 		klog.Errorf("patch pod %s/%s failed %v", pod.Name, pod.Namespace, err)
 		return err
 	}
@@ -502,14 +517,14 @@ func (c *Controller) handleUpdateVpcSnat(natGwKey string) error {
 		return err
 	}
 
-	oripod, err := c.getNatGwPod(natGwKey)
+	oriPod, err := c.getNatGwPod(natGwKey)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	pod := oripod.DeepCopy()
+	pod := oriPod.DeepCopy()
 
 	// check md5
 	newMd5 := fmt.Sprintf("%x", structhash.Md5(gw.Spec.SnatRules, 1))
@@ -530,7 +545,12 @@ func (c *Controller) handleUpdateVpcSnat(natGwKey string) error {
 
 	// update annotation
 	pod.Annotations[util.VpcSnatMd5Annotation] = newMd5
-	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name, types.JSONPatchType, generatePatchPayload(pod.Annotations, "replace"), metav1.PatchOptions{}, ""); err != nil {
+	patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
+	if err != nil {
+		return err
+	}
+	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
+		types.StrategicMergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 		klog.Errorf("patch pod %s/%s failed %v", pod.Name, pod.Namespace, err)
 		return err
 	}
@@ -551,14 +571,14 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 		return err
 	}
 
-	oripod, err := c.getNatGwPod(natGwKey)
+	oriPod, err := c.getNatGwPod(natGwKey)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	pod := oripod.DeepCopy()
+	pod := oriPod.DeepCopy()
 
 	// check md5
 	newMd5 := fmt.Sprintf("%x", structhash.Md5(gw.Spec.DnatRules, 1))
@@ -579,7 +599,12 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 
 	// update annotation
 	pod.Annotations[util.VpcDnatMd5Annotation] = newMd5
-	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name, types.JSONPatchType, generatePatchPayload(pod.Annotations, "replace"), metav1.PatchOptions{}, ""); err != nil {
+	patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
+	if err != nil {
+		return err
+	}
+	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
+		types.StrategicMergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 		klog.Errorf("patch pod %s/%s failed %v", pod.Name, pod.Namespace, err)
 		return err
 	}
@@ -600,14 +625,14 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 		return err
 	}
 
-	oripod, err := c.getNatGwPod(natGwKey)
+	oriPod, err := c.getNatGwPod(natGwKey)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	pod := oripod.DeepCopy()
+	pod := oriPod.DeepCopy()
 
 	gwSubnet, err := c.subnetsLister.Get(gw.Spec.Subnet)
 	if err != nil {
@@ -671,7 +696,12 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 		return err
 	}
 	pod.Annotations[util.VpcCIDRsAnnotation] = string(cidrBytes)
-	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name, types.JSONPatchType, generatePatchPayload(pod.Annotations, "replace"), metav1.PatchOptions{}, ""); err != nil {
+	patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
+	if err != nil {
+		return err
+	}
+	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
+		types.StrategicMergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 		klog.Errorf("patch pod %s/%s failed %v", pod.Name, pod.Namespace, err)
 		return err
 	}

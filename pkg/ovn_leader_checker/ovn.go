@@ -2,9 +2,9 @@ package ovn_leader_checker
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	"io/ioutil"
 	"os"
 	exec "os/exec"
@@ -293,20 +293,21 @@ func stealLock() {
 
 }
 
-func generatePatchPayload(labels map[string]string, op string) []byte {
-	patchPayloadTemplate :=
-		`[{
-        "op": "%s",
-        "path": "/metadata/labels",
-        "value": %s
-          }]`
-
-	raw, _ := json.Marshal(labels)
-	return []byte(fmt.Sprintf(patchPayloadTemplate, op, raw))
-}
-
 func patchPodLabels(cfg *Configuration, pod *v1.Pod, labels map[string]string) error {
-	_, err := cfg.KubeClient.CoreV1().Pods(pod.ObjectMeta.Namespace).Patch(context.Background(), pod.ObjectMeta.Name, types.JSONPatchType, generatePatchPayload(labels, "replace"), metav1.PatchOptions{}, "")
+	oriPod := pod.DeepCopy()
+	if pod.Labels == nil {
+		pod.Labels = labels
+	} else {
+		for k, v := range labels {
+			pod.Labels[k] = v
+		}
+	}
+	patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
+	if err != nil {
+		return err
+	}
+	_, err = cfg.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
+		types.StrategicMergePatchType, patch, metav1.PatchOptions{}, "")
 	return err
 }
 
