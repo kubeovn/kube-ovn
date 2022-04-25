@@ -91,7 +91,7 @@ New annotations added for pod, `ovn.kubernetes.io/latency`、 `ovn.kubernetes.io
 
 `limit` is the maximum number of packets the qdisc may hold queued at a time. The value is an integer value, such as 1000.
 
-`loss` is an independent loss probability to the packets outgoing from the chosen network interface. For example, if the value is 0.2, the packet loss probability is 20%.
+`loss` is an independent loss probability to the packets outgoing from the chosen network interface, the valid range for this field is from 0 to 100. For example, if the value is 20, the packet loss probability is 20%.
 
 ## Caution
 linux-htb QoS and linux-netem QoS are two types of QoS. Pod cannot support both types of QoS at the same time, so the annotation settings should not conflict. The annotations cannot be set at the same time.
