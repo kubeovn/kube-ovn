@@ -13,12 +13,12 @@ only L3 connectivity for gateway nodes is required.
 ## Auto Route Step
 1. Run Interconnection Controller in a region that can be accessed by other cluster
 ```bash
-docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn kubeovn/kube-ovn:v1.9.1 bash start-ic-db.sh
+docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn kubeovn/kube-ovn:v1.9.2 bash start-ic-db.sh
 ```
 ​		If `containerd` replaces `docker` then the command is as follows:
 
 ```shell
-ctr -n k8s.io run -d --net-host --mount="type=bind,src=/etc/ovn/,dst=/etc/ovn,options=rbind:rw" --mount="type=bind,src=/var/run/ovn,dst=/var/run/ovn,options=rbind:rw" --mount="type=bind,src=/var/log/ovn,dst=/var/log/ovn,options=rbind:rw" docker.io/kubeovn/kube-ovn:v1.9.1 ovn-ic-db bash start-ic-db.sh
+ctr -n k8s.io run -d --net-host --mount="type=bind,src=/etc/ovn/,dst=/etc/ovn,options=rbind:rw" --mount="type=bind,src=/var/run/ovn,dst=/var/run/ovn,options=rbind:rw" --mount="type=bind,src=/var/log/ovn,dst=/var/log/ovn,options=rbind:rw" docker.io/kubeovn/kube-ovn:v1.9.2 ovn-ic-db bash start-ic-db.sh
 ```
 
 2. Create `ovn-ic-config` ConfigMap in each cluster `kube-system` namespace. Edit and apply the yaml below in each cluster.
@@ -160,25 +160,25 @@ kubectl ko nbctl lr-route-add ovn-cluster 10.16.0.0/24 169.254.100.79
    `LOCALIP` is the IP of the node on which the container will run. For the leader, `LOCALIP` is its own IP.
 
 ```bash
-docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn -e LOCAL_IP="LEADERIP"  -e NODE_IPS="IP1,IP2,IP3"   kubeovn/kube-ovn:v1.9.1 bash start-ic-db.sh
+docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn -e LOCAL_IP="LEADERIP"  -e NODE_IPS="IP1,IP2,IP3"   kubeovn/kube-ovn:v1.9.2 bash start-ic-db.sh
 ```
 
 ​        If `containerd` replaces `docker` then the command is as follows:
 
 ```shell
-ctr -n k8s.io run -d --net-host --mount="type=bind,src=/etc/ovn/,dst=/etc/ovn,options=rbind:rw" --mount="type=bind,src=/var/run/ovn,dst=/var/run/ovn,options=rbind:rw" --mount="type=bind,src=/var/log/ovn,dst=/var/log/ovn,options=rbind:rw"  --env="NODE_IPS="IP1,IP2,IP3"" --env="LOCAL_IP="LEADERIP"" docker.io/kubeovn/kube-ovn:v1.9.1 ovn-ic-db bash start-ic-db.sh
+ctr -n k8s.io run -d --net-host --mount="type=bind,src=/etc/ovn/,dst=/etc/ovn,options=rbind:rw" --mount="type=bind,src=/var/run/ovn,dst=/var/run/ovn,options=rbind:rw" --mount="type=bind,src=/var/log/ovn,dst=/var/log/ovn,options=rbind:rw"  --env="NODE_IPS="IP1,IP2,IP3"" --env="LOCAL_IP="LEADERIP"" docker.io/kubeovn/kube-ovn:v1.9.2 ovn-ic-db bash start-ic-db.sh
 ```
 
 2. Run the follower Interconnection Controller in the same region. 
 
 ```bash
-docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn -e LOCAL_IP="LOCALIP"  -e NODE_IPS="IP1,IP2,IP3" -e LEADER_IP="LEADERIP"  kubeovn/kube-ovn:v1.9.1 bash start-ic-db.sh
+docker run --name=ovn-ic-db -d --network=host -v /etc/ovn/:/etc/ovn -v /var/run/ovn:/var/run/ovn -v /var/log/ovn:/var/log/ovn -e LOCAL_IP="LOCALIP"  -e NODE_IPS="IP1,IP2,IP3" -e LEADER_IP="LEADERIP"  kubeovn/kube-ovn:v1.9.2 bash start-ic-db.sh
 ```
 
 ​		If `containerd` replaces `docker` then the command is as follows:
 
 ```shell
-ctr -n k8s.io run -d --net-host --mount="type=bind,src=/etc/ovn/,dst=/etc/ovn,options=rbind:rw" --mount="type=bind,src=/var/run/ovn,dst=/var/run/ovn,options=rbind:rw" --mount="type=bind,src=/var/log/ovn,dst=/var/log/ovn,options=rbind:rw" --env="NODE_IPS="IP1,IP2,IP3"" --env="LOCAL_IP="LEADERIP"" --env="NODE_IPS="IP1,IP2,IP3"" docker.io/kubeovn/kube-ovn:v1.9.1 ovn-ic-db bash start-ic-db.sh
+ctr -n k8s.io run -d --net-host --mount="type=bind,src=/etc/ovn/,dst=/etc/ovn,options=rbind:rw" --mount="type=bind,src=/var/run/ovn,dst=/var/run/ovn,options=rbind:rw" --mount="type=bind,src=/var/log/ovn,dst=/var/log/ovn,options=rbind:rw" --env="NODE_IPS="IP1,IP2,IP3"" --env="LOCAL_IP="LEADERIP"" --env="NODE_IPS="IP1,IP2,IP3"" docker.io/kubeovn/kube-ovn:v1.9.2 ovn-ic-db bash start-ic-db.sh
 ```
 
 3.  Create `ic-config` ConfigMap in each cluster as follows.

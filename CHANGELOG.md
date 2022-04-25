@@ -1,5 +1,39 @@
 # CHANGELOG
 
+## 1.9.2 -- 2022/04/25
+
+### Bugfix
+- fix: wrong vpc-nat-gateway arm image
+- add delete ovs pods after restore nb db
+- delete monitor noexecute toleration
+- masquerade packets from Pods to service IP
+- modify init ipam by ip crd only for sts pod
+- modify webhook img to independent image
+- fix adding key to delete Pod queue
+- fix IPAM initialization
+- ignore all link local unicast addresses/routes
+- fix error handling for netlink.AddrDel
+- replace pod name when create ip crd
+- fix provider-networks status
+- recover ips CR on IPAM initialization
+- fix: do not recreate port for terminating pods
+- avoid frequent ipset update
+- fix: The underlay physical gateway config by external-gw-addr when use snat&eip
+- add reset for kube-ovn-monitor metrics
+- check the cidr format whether is correct
+- fix external egress gateway
+- add missing link scope routes in vpc-nat-gateway
+
+### New Feature
+- add env-check
+- add kube-ovn-controller switch for EIP and SNAT
+- add routed check in circulation
+- log: show the reason if get gw node failed
+- support keep-vm-ip and live-migrate at the same time
+- support alloc static ip from any subnet after ns supports multi subnets
+- create ip crd in kube-ovn-controller
+- add condition for triggering the deletion of redundant chassises in sbdb
+
 ## 1.9.1 -- 2022/03/09
 
 ### New Feature
