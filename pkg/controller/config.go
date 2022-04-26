@@ -88,7 +88,7 @@ func ParseFlags() (*Configuration, error) {
 		argOvnNbAddr            = pflag.String("ovn-nb-addr", "", "ovn-nb address")
 		argOvnSbAddr            = pflag.String("ovn-sb-addr", "", "ovn-sb address")
 		argOvnTimeout           = pflag.Int("ovn-timeout", 60, "")
-		argCustCrdRetryMaxDelay = pflag.Int("cust-crd-retry-max-delay", 20, "")
+		argCustCrdRetryMaxDelay = pflag.Int("cust-crd-retry-max-delay", 20, "The max delay between custom crd two retries")
 		argKubeConfigFile       = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 
 		argDefaultLogicalSwitch  = pflag.String("default-ls", util.DefaultSubnet, "The default logical switch name")

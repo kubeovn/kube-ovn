@@ -19,13 +19,6 @@ import (
 	"k8s.io/klog/v2"
 )
 
-const (
-	ReadyCondition              = "Ready"
-	AddressOutOfRangeCondition  = "AddressOutOfRange"
-	AddressConflictCondition    = "AddressConflict"
-	NoAvailableAddressCondition = "NoAvailableAddress"
-)
-
 func (c *Controller) enqueueAddVirtualIp(obj interface{}) {
 	if !c.isLeader() {
 		return
@@ -204,10 +197,10 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 	nicName = ovs.PodNameToPortName(vip.Name, vip.Namespace, subnet.Spec.Provider)
 	sourceV4Ip = vip.Spec.V4ip
 	if sourceV4Ip != "" {
-		v4ip, v6ip, mac, err = c.acquireStaticVirtualAddress(subnet.Name, vip.Name, vip.Namespace, nicName, sourceV4Ip)
+		v4ip, v6ip, mac, err = c.acquireStaticVirtualAddress(subnet.Name, vip.Name, nicName, sourceV4Ip)
 	} else {
 		// Random allocate
-		v4ip, v6ip, mac, err = c.acquireVirtualAddress(subnet.Name, vip.Name, vip.Namespace, nicName)
+		v4ip, v6ip, mac, err = c.acquireVirtualAddress(subnet.Name, vip.Name, nicName)
 	}
 	if err != nil {
 		return err
@@ -219,7 +212,6 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 	}
 	if err = c.createOrUpdateCrdVip(key, vip.Namespace, subnet.Name, v4ip, v6ip, mac, parentV4ip, parentV6ip, parentMac); err != nil {
 		klog.Errorf("failed to create or update vip '%s', %v", vip.Name, err)
-		time.Sleep(2 * time.Second)
 		return err
 	}
 	_, err = c.handleVipFinalizer(vip)
@@ -229,7 +221,6 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 	}
 	if err = c.subnetCountVip(subnet); err != nil {
 		klog.Errorf("failed to count vip '%s' in subnet, %v", vip.Name, err)
-		time.Sleep(2 * time.Second)
 		return err
 
 	}
@@ -251,7 +242,6 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 		// klog.V(3).Infof("todo:// remove this vip '%s' from its parent port aap list", key)
 
 		if err = c.patchVipStatus(key, "", false); err != nil {
-			time.Sleep(2 * time.Second)
 			return err
 		}
 		vip.Status.Ready = false
@@ -271,11 +261,9 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 		if err = c.createOrUpdateCrdVip(key, vip.Namespace, vip.Spec.Subnet,
 			vip.Spec.V6ip, vip.Spec.V6ip, vip.Spec.MacAddress,
 			vip.Spec.ParentV4ip, vip.Spec.ParentV6ip, vip.Spec.MacAddress); err != nil {
-			time.Sleep(2 * time.Second)
 			return err
 		}
 		if err = c.patchVipStatus(key, vip.Spec.V4ip, true); err != nil {
-			time.Sleep(2 * time.Second)
 			return err
 		}
 	}
@@ -294,7 +282,7 @@ func (c *Controller) handleDelVirtualIp(key string) error {
 	return nil
 }
 
-func (c *Controller) acquireStaticVirtualAddress(subnetName, name, namespace, nicName, ip string) (string, string, string, error) {
+func (c *Controller) acquireStaticVirtualAddress(subnetName, name, nicName, ip string) (string, string, string, error) {
 	checkConflict := true
 	var v4ip, v6ip, mac string
 	var err error
@@ -311,7 +299,7 @@ func (c *Controller) acquireStaticVirtualAddress(subnetName, name, namespace, ni
 	return v4ip, v6ip, mac, nil
 }
 
-func (c *Controller) acquireVirtualAddress(subnetName, name, namespace, nicName string) (string, string, string, error) {
+func (c *Controller) acquireVirtualAddress(subnetName, name, nicName string) (string, string, string, error) {
 	var skippedAddrs []string
 	for {
 		ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(name, nicName, "", subnetName, skippedAddrs, false)
@@ -390,7 +378,6 @@ func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4i
 			klog.Error(errMsg)
 			return errMsg
 		}
-		time.Sleep(2 * time.Second)
 	} else {
 		vip := vipCr.DeepCopy()
 		if vip.Spec.MacAddress == "" && mac != "" {
@@ -443,7 +430,6 @@ func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4i
 			}
 		}
 	}
-	time.Sleep(2 * time.Second)
 	return nil
 }
 
@@ -461,7 +447,6 @@ func (c *Controller) handleVipFinalizer(vip *kubeovnv1.Vip) (bool, error) {
 				return true, nil
 			}
 			klog.Errorf("failed to add finalizer for vip '%s', %v", vip.Name, err)
-			time.Sleep(2 * time.Second)
 			return false, err
 		}
 		// wait local cache ready
@@ -482,7 +467,6 @@ func (c *Controller) handleVipFinalizer(vip *kubeovnv1.Vip) (bool, error) {
 				return true, nil
 			}
 			klog.Errorf("failed to remove finalizer from vip '%s', %v", vip.Name, err)
-			time.Sleep(2 * time.Second)
 			return false, err
 		}
 		return true, nil
