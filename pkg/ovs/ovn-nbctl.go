@@ -237,6 +237,15 @@ func (c Client) ListVirtualPort(ls string) ([]string, error) {
 	return result, nil
 }
 
+// EnablePortLayer2forward set logical switch port addresses as 'unknown'
+func (c Client) EnablePortLayer2forward(ls, port string) error {
+	if _, err := c.ovnNbCommand("lsp-set-addresses", port, "unknown"); err != nil {
+		klog.Errorf("enable port %s layer2 forward failed: %v", port, err)
+		return err
+	}
+	return nil
+}
+
 // CreatePort create logical switch port in ovn
 func (c Client) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurity bool, securityGroups string, vips string, liveMigration bool, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs) error {
 	var ovnCommand []string

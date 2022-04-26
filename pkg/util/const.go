@@ -30,10 +30,11 @@ const (
 	LogicalRouterAnnotation = "ovn.kubernetes.io/logical_router"
 	VpcAnnotation           = "ovn.kubernetes.io/vpc"
 
-	PortSecurityAnnotationTemplate = "%s.kubernetes.io/port_security"
-	PortVipAnnotationTemplate      = "%s.kubernetes.io/port_vips"
-	PortSecurityAnnotation         = "ovn.kubernetes.io/port_security"
-	NorthGatewayAnnotation         = "ovn.kubernetes.io/north_gateway"
+	Layer2ForwardAnnotationTemplate = "%s.kubernetes.io/layer2_forward"
+	PortSecurityAnnotationTemplate  = "%s.kubernetes.io/port_security"
+	PortVipAnnotationTemplate       = "%s.kubernetes.io/port_vips"
+	PortSecurityAnnotation          = "ovn.kubernetes.io/port_security"
+	NorthGatewayAnnotation          = "ovn.kubernetes.io/north_gateway"
 
 	AllocatedAnnotationSuffix       = ".kubernetes.io/allocated"
 	AllocatedAnnotationTemplate     = "%s.kubernetes.io/allocated"
