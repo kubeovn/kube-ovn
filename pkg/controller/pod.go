@@ -565,6 +565,13 @@ func (c *Controller) handleAddPod(key string) error {
 				return err
 			}
 
+			if pod.Annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, podNet.ProviderName)] == "true" {
+				if err := c.ovnClient.EnablePortLayer2forward(subnet.Name, portName); err != nil {
+					c.recorder.Eventf(pod, v1.EventTypeWarning, "EnablePortLayer2forwardFailed", err.Error())
+					return err
+				}
+			}
+
 			if portSecurity {
 				sgNames := strings.Split(securityGroupAnnotation, ",")
 				for _, sgName := range sgNames {
