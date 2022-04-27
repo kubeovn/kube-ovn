@@ -620,7 +620,7 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 	if eip.Status.Nat == "fip" &&
 		eip.Labels[util.VpcNatLabel] != "" &&
 		eip.Labels[util.VpcNatLabel] != fip.Name {
-		err = fmt.Errorf("failed to update fip %s, eip '%s' is used by other fip [%s]", key, eipName, eip.Labels[util.VpcNatLabel])
+		err = fmt.Errorf("failed to update fip %s, eip '%s' is used by other fip %s", key, eipName, eip.Labels[util.VpcNatLabel])
 		return err
 	}
 	// fip change eip
@@ -837,7 +837,7 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 	if dnat.Status.Redo != "" &&
 		dnat.Status.V4ip != "" &&
 		dnat.DeletionTimestamp.IsZero() {
-		klog.V(3).Infof("reapply dnat in pod for [%s]", key)
+		klog.V(3).Infof("reapply dnat in pod for %s", key)
 		if err = c.createDnatInPod(eip.Spec.NatGwDp, dnat.Spec.Protocol,
 			dnat.Status.V4ip, dnat.Spec.InternalIp,
 			dnat.Spec.ExternalPort, dnat.Spec.InternalPort); err != nil {

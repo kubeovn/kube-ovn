@@ -1403,18 +1403,16 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		}
 	}
 
-	if subnet.Spec.Vpc != "" {
-		vitrualIPs, err := c.config.KubeOvnClient.KubeovnV1().Vips().List(context.Background(), metav1.ListOptions{
-			LabelSelector: fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name).String(),
-		})
-		if err != nil {
-			return err
-		}
-		// TODO:// support v6 vip
-		for _, vip := range vitrualIPs.Items {
-			v4toSubIPs = append(v4toSubIPs, vip.Spec.V4ip)
-			v4UsingIPs = append(v4UsingIPs, vip.Spec.V4ip)
-		}
+	vips, err := c.config.KubeOvnClient.KubeovnV1().Vips().List(context.Background(), metav1.ListOptions{
+		LabelSelector: fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name).String(),
+	})
+	if err != nil {
+		return err
+	}
+	// TODO:// support v6 vip
+	for _, vip := range vips.Items {
+		v4toSubIPs = append(v4toSubIPs, vip.Spec.V4ip)
+		v4UsingIPs = append(v4UsingIPs, vip.Spec.V4ip)
 	}
 	if subnet.Name == util.VpcExternalNet {
 		eips, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().List(context.Background(), metav1.ListOptions{
@@ -1468,19 +1466,17 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		toSubIPs = append(toSubIPs, podUsedIP.Spec.IPAddress)
 	}
 	usingIPs := float64(len(podUsedIPs.Items))
-	if subnet.Spec.Vpc != "" {
-		vips, err := c.config.KubeOvnClient.KubeovnV1().Vips().List(context.Background(), metav1.ListOptions{
-			LabelSelector: fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name).String(),
-		})
-		if err != nil {
-			return err
-		}
-		if len(vips.Items) > 0 {
-			usingIPs += float64(len(vips.Items))
-			for _, vip := range vips.Items {
-				// TODO:// support v6 vip
-				toSubIPs = append(toSubIPs, vip.Spec.V4ip)
-			}
+	vips, err := c.config.KubeOvnClient.KubeovnV1().Vips().List(context.Background(), metav1.ListOptions{
+		LabelSelector: fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name).String(),
+	})
+	if err != nil {
+		return err
+	}
+	if len(vips.Items) > 0 {
+		usingIPs += float64(len(vips.Items))
+		for _, vip := range vips.Items {
+			// TODO:// support v6 vip
+			toSubIPs = append(toSubIPs, vip.Spec.V4ip)
 		}
 	}
 	if subnet.Name == util.VpcExternalNet {
