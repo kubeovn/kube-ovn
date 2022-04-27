@@ -14,19 +14,23 @@ on:
     - 'docs/**'
     - '**.md'
 
+env:
+  GO_VERSION: '1.17'
+
 jobs:
   build:
     name: Build arm64
     runs-on: ubuntu-18.04
     steps:
       - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
-          go-version: 1.17.8
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Check out code into the Go module directory
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
@@ -38,7 +42,7 @@ jobs:
         uses: docker/setup-buildx-action@v1
 
       - name: Go Build Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: /home/runner/.cache/go-build
           key: ${{ runner.os }}-arm64-go-build-${{ hashFiles('**/go.sum') }}
@@ -46,7 +50,7 @@ jobs:
             ${{ runner.os }}-arm64-go-build-
 
       - name: Go Mod Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ~/go/pkg/mod
           key: ${{ runner.os }}-arm64-go-${{ hashFiles('**/go.sum') }}

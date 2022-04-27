@@ -12,14 +12,14 @@ jobs:
           git clone https://git.code.sf.net/p/pthreads4w/code pthreads4w\code
 
       - name: Check out OVS
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           repository: openvswitch/ovs
           ref: v2.17.0
           path: ovs
 
       - name: Check out OVN
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           repository: ovn-org/ovn
           ref: branch-22.03
@@ -87,13 +87,13 @@ jobs:
           C:\msys64\usr\bin\bash.exe -lc "cd '%_ovn_dir%' && make install"
 
       - name: Upload OVS
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ovs
           path: ovs\windows\ovs-windows-installer\bin\x64\Release\OpenvSwitch.msi
 
       - name: Upload OVN
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ovn
           path: C:\ovn

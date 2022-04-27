@@ -16,6 +16,7 @@ on:
     - '**.md'
 
 env:
+  GO_VERSION: '1.17'
   KIND_VERSION: v0.12.0
 
 jobs:
@@ -24,19 +25,20 @@ jobs:
     runs-on: ubuntu-18.04
     steps:
       - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
-          go-version: 1.17.8
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Check out code into the Go module directory
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Docker Buildx
         uses: docker/setup-buildx-action@v1
 
       - name: Go Build Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: /home/runner/.cache/go-build
           key: ${{ runner.os }}-go-x86-build-${{ hashFiles('**/go.sum') }}
@@ -44,7 +46,7 @@ jobs:
             ${{ runner.os }}-go-x86-build-
 
       - name: Go Mod Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
@@ -64,25 +66,25 @@ jobs:
           make tar
 
       - name: Upload kube-ovn image to artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: kube-ovn
           path: kube-ovn.tar
 
       - name: Upload vpc-nat-gateway image to artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: vpc-nat-gateway
           path: vpc-nat-gateway.tar
 
       - name: Upload centos7-compile image to artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: centos7-compile
           path: centos7-compile.tar
 
 #      - name: Upload centos8-compile image to artifact
-#        uses: actions/upload-artifact@v2
+#        uses: actions/upload-artifact@v3
 #        with:
 #          name: centos8-compile
 #          path: centos8-compile.tar
@@ -94,7 +96,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install Kind
         run: |
@@ -109,7 +111,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init
 
       - name: Download image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: kube-ovn
 
@@ -127,9 +129,10 @@ jobs:
             sudo make kind-install
 
       - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
-          go-version: ^1.17
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -151,7 +154,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install Kind
         run: |
@@ -166,7 +169,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-iptables
 
       - name: Download image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: kube-ovn
 
@@ -184,9 +187,10 @@ jobs:
             sudo make kind-install
 
       - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
-          go-version: ^1.17
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -208,7 +212,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install Kind
         run: |
@@ -223,7 +227,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init
 
       - name: Download image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: kube-ovn
 
@@ -241,9 +245,10 @@ jobs:
             sudo make kind-install
 
       - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
-          go-version: ^1.17
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -265,7 +270,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install Kind
         run: |
@@ -280,7 +285,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init
 
       - name: Download image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: kube-ovn
 
@@ -298,9 +303,10 @@ jobs:
             sudo make kind-install-underlay
 
       - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
-          go-version: ^1.17
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -338,7 +344,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install Kind
         run: |
@@ -353,7 +359,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-single
 
       - name: Download image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: kube-ovn
 
@@ -371,9 +377,10 @@ jobs:
             sudo make kind-install-single
 
       - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
-          go-version: ^1.17
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -395,7 +402,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install Kind
         run: |
@@ -410,7 +417,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-ha
 
       - name: Download image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: kube-ovn
 
@@ -428,9 +435,10 @@ jobs:
             sudo make kind-install
 
       - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
-          go-version: ^1.17
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -452,7 +460,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install Kind
         run: |
@@ -467,7 +475,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-ipv6
 
       - name: Download image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: kube-ovn
 
@@ -485,9 +493,10 @@ jobs:
             sudo make kind-install-ipv6
 
       - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
-          go-version: ^1.17
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -509,7 +518,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install Kind
         run: |
@@ -524,7 +533,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-ipv6
 
       - name: Download image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: kube-ovn
 
@@ -542,9 +551,10 @@ jobs:
             sudo make kind-install-ipv6
 
       - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
-          go-version: ^1.17
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -566,7 +576,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install Kind
         run: |
@@ -581,7 +591,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-ipv6
 
       - name: Download image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: kube-ovn
 
@@ -599,9 +609,10 @@ jobs:
             sudo make kind-install-underlay-ipv6
 
       - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
-          go-version: ^1.17
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -639,7 +650,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install Kind
         run: |
@@ -654,7 +665,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-dual
 
       - name: Download image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: kube-ovn
 
@@ -672,9 +683,10 @@ jobs:
             sudo make kind-install-dual
 
       - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
-          go-version: ^1.17
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -696,7 +708,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install Kind
         run: |
@@ -711,7 +723,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-dual
 
       - name: Download image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: kube-ovn
 
@@ -729,9 +741,10 @@ jobs:
             sudo make kind-install-underlay-dual
 
       - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
-          go-version: ^1.17
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -769,7 +782,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install Kind
         run: |
@@ -784,7 +797,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-dual
 
       - name: Download image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: kube-ovn
 
@@ -802,9 +815,10 @@ jobs:
             sudo make kind-install-underlay-logical-gateway-dual
 
       - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
-          go-version: ^1.17
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -842,7 +856,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install Kind
         run: |
@@ -857,7 +871,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init
 
       - name: Download image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: kube-ovn
 
@@ -877,9 +891,10 @@ jobs:
             sudo make kind-install
 
       - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
-          go-version: ^1.17
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -901,7 +916,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install Kind
         run: |
@@ -916,7 +931,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-iptables
 
       - name: Download image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: kube-ovn
 
@@ -936,9 +951,10 @@ jobs:
             sudo make kind-install
 
       - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
-          go-version: ^1.17
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -960,7 +976,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install Kind
         run: |
@@ -975,7 +991,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init
 
       - name: Download image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: kube-ovn
 
@@ -993,9 +1009,10 @@ jobs:
             sudo ENABLE_NP=false make kind-install
 
       - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
-          go-version: ^1.17
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -1017,7 +1034,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install Kind
         run: |
@@ -1032,7 +1049,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init
 
       - name: Download image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: kube-ovn
 
@@ -1050,9 +1067,10 @@ jobs:
             sudo make kind-install-multus
 
       - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
-          go-version: ^1.17
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -1069,7 +1087,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install Kind
         run: |
@@ -1084,7 +1102,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-cluster
 
       - name: Download image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: kube-ovn
 
@@ -1103,9 +1121,10 @@ jobs:
             sudo PATH=~/.local/bin:$PATH make kind-install-ic
 
       - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
-          go-version: ^1.17
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -1127,7 +1146,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install Kind
         run: |
@@ -1142,7 +1161,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-cilium
 
       - name: Download image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: kube-ovn
 
@@ -1164,9 +1183,10 @@ jobs:
           command: sudo PATH=~/.local/bin:$PATH make kind-install-cilium
 
       - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
-          go-version: ^1.17
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -1207,25 +1227,25 @@ jobs:
     runs-on: ubuntu-18.04
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: kube-ovn
 
       - name: Download vpc-nat-gateway image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: vpc-nat-gateway
 
       - name: Download centos7-compile image
-        uses: actions/Download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: centos7-compile
 
 #      - name: Download centos8-compile image
-#        uses: actions/Download-artifact@v2
+#        uses: actions/download-artifact@v3
 #        with:
 #          name: centos8-compile
 
