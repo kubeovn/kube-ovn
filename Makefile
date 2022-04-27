@@ -306,8 +306,8 @@ lint:
 
 .PHONY: scan
 scan:
-	trivy image --light --exit-code=1 --severity=HIGH --ignore-unfixed $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
-	trivy image --light --exit-code=1 --severity=HIGH --ignore-unfixed $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG)
+	trivy image --security-checks vuln --light --exit-code=1 --severity=HIGH --ignore-unfixed kubeovn/kube-ovn:$(RELEASE_TAG)
+	trivy image --security-checks vuln --light --exit-code=1 --severity=HIGH --ignore-unfixed $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG)
 
 .PHONY: ut
 ut:
