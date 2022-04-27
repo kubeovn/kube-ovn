@@ -338,14 +338,14 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 		return fmt.Errorf("failed to initialize vpc nat gateway '%s', %v", key, err)
 	}
 
-	oripod, err := c.getNatGwPod(key)
+	oriPod, err := c.getNatGwPod(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	pod := oripod.DeepCopy()
+	pod := oriPod.DeepCopy()
 
 	if pod.Status.Phase != corev1.PodRunning {
 		time.Sleep(10 * 1000)
@@ -362,8 +362,13 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 		return err
 	}
 	pod.Annotations[util.VpcNatGatewayInitAnnotation] = "true"
-	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name, types.JSONPatchType, generatePatchPayload(pod.Annotations, "replace"), metav1.PatchOptions{}, ""); err != nil {
-		klog.Errorf("patch pod %s/%s failed, %v", pod.Name, pod.Namespace, err)
+	patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
+	if err != nil {
+		return err
+	}
+	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
+		types.StrategicMergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+		klog.Errorf("patch pod %s/%s failed %v", pod.Name, pod.Namespace, err)
 		return err
 	}
 	return c.syncVpcNatGwRules(key)
@@ -382,13 +387,16 @@ func (c *Controller) handleUpdateVpcFloatingIp(natGwKey string) error {
 	if err := c.initCreateAt(natGwKey); err != nil {
 		klog.Errorf("failed to init nat gw pod '%s' create at, %v", natGwKey, err)
 	}
+
 	fips, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().List(context.Background(), metav1.ListOptions{
 		LabelSelector: fields.OneTermEqualSelector(util.VpcNatGatewayNameLabel, natGwKey).String(),
 	})
+
 	if err != nil {
 		klog.Errorf("failed to get all fips, %v", err)
 		return err
 	}
+
 	for _, fip := range fips.Items {
 		if fip.Status.Redo != createAt {
 			klog.V(3).Infof("redo fip %s", fip.Name)
@@ -397,7 +405,6 @@ func (c *Controller) handleUpdateVpcFloatingIp(natGwKey string) error {
 				return err
 			}
 		}
-
 	}
 	return nil
 }
@@ -479,6 +486,7 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 	if err := c.initCreateAt(natGwKey); err != nil {
 		klog.Errorf("failed to init nat gw pod '%s' create at, %v", natGwKey, err)
 	}
+
 	dnats, err := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().List(context.Background(), metav1.ListOptions{
 		LabelSelector: fields.OneTermEqualSelector(util.VpcNatGatewayNameLabel, natGwKey).String(),
 	})
@@ -515,14 +523,14 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 		return err
 	}
 
-	oripod, err := c.getNatGwPod(natGwKey)
+	oriPod, err := c.getNatGwPod(natGwKey)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	pod := oripod.DeepCopy()
+	pod := oriPod.DeepCopy()
 
 	gwSubnet, err := c.subnetsLister.Get(gw.Spec.Subnet)
 	if err != nil {
@@ -586,7 +594,12 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 		return err
 	}
 	pod.Annotations[util.VpcCIDRsAnnotation] = string(cidrBytes)
-	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name, types.JSONPatchType, generatePatchPayload(pod.Annotations, "replace"), metav1.PatchOptions{}, ""); err != nil {
+	patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
+	if err != nil {
+		return err
+	}
+	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
+		types.StrategicMergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 		klog.Errorf("patch pod %s/%s failed %v", pod.Name, pod.Namespace, err)
 		return err
 	}

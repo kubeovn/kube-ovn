@@ -237,6 +237,15 @@ func (c Client) ListVirtualPort(ls string) ([]string, error) {
 	return result, nil
 }
 
+// EnablePortLayer2forward set logical switch port addresses as 'unknown'
+func (c Client) EnablePortLayer2forward(ls, port string) error {
+	if _, err := c.ovnNbCommand("lsp-set-addresses", port, "unknown"); err != nil {
+		klog.Errorf("enable port %s layer2 forward failed: %v", port, err)
+		return err
+	}
+	return nil
+}
+
 // CreatePort create logical switch port in ovn
 func (c Client) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurity bool, securityGroups string, vips string, liveMigration bool, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs) error {
 	var ovnCommand []string
@@ -2542,4 +2551,39 @@ func (c Client) UpdateSubnetACL(ls string, acls []kubeovnv1.Acl) error {
 		}
 	}
 	return nil
+}
+
+func (c *Client) GetLspExternalIds(lsp string) map[string]string {
+	result, err := c.CustomFindEntity("Logical_Switch_Port", []string{"external_ids"}, fmt.Sprintf("name=%s", lsp))
+	if err != nil {
+		klog.Errorf("customFindEntity failed, %v", err)
+		return nil
+	}
+	if len(result) == 0 {
+		return nil
+	}
+
+	nameNsMap := make(map[string]string, 1)
+	for _, l := range result[0]["external_ids"] {
+		if len(strings.TrimSpace(l)) == 0 {
+			continue
+		}
+		parts := strings.Split(strings.TrimSpace(l), "=")
+		if len(parts) != 2 {
+			continue
+		}
+		if strings.TrimSpace(parts[0]) != "pod" {
+			continue
+		}
+
+		podInfo := strings.Split(strings.TrimSpace(parts[1]), "/")
+		if len(podInfo) != 2 {
+			continue
+		}
+		podNs := podInfo[0]
+		podName := podInfo[1]
+		nameNsMap[podName] = podNs
+	}
+
+	return nameNsMap
 }

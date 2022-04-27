@@ -2956,8 +2956,6 @@ spec:
       tolerations:
         - effect: NoSchedule
           operator: Exists
-        - effect: NoExecute
-          operator: Exists
         - key: CriticalAddonsOnly
           operator: Exists
       affinity:
@@ -3169,6 +3167,7 @@ showHelp(){
   echo "  diagnose {all|node} [nodename]    diagnose connectivity of all nodes or a specific node"
   echo "  tuning {install-fastpath|local-install-fastpath|remove-fastpath|install-stt|local-install-stt|remove-stt} {centos7|centos8}} [kernel-devel-version]  deploy  kernel optimisation components to the system"
   echo "  reload restart all kube-ovn components"
+  echo "  env-check check the environment configuration"
 }
 
 tcpdump(){
@@ -3521,7 +3520,7 @@ getOvnCentralPod(){
     if [ -z "$VERSION" ]; then
           echo "kubeovn version not exists"
           exit 1
-        fi
+    fi
     KUBE_OVN_VERSION=$VERSION
 }
 
@@ -3645,6 +3644,9 @@ dbtool(){
           kubectl exec -it -n $KUBE_OVN_NS ${podNameArray[0]} -- mv /etc/ovn/ovnnb_db_standalone.db /etc/ovn/ovnnb_db.db
           kubectl scale deployment -n $KUBE_OVN_NS ovn-central --replicas=$replicas
           echo "finish restore nb db file and ovn-central replicas"
+
+          echo "recreate ovs-ovn pods"
+          kubectl delete pod -n $KUBE_OVN_NS -l app=ovs
           ;;
         *)
           echo "unknown action $action"
@@ -3829,6 +3831,21 @@ reload(){
   kubectl rollout status deployment/kube-ovn-monitor -n kube-system
 }
 
+env-check(){
+  set +e
+
+  KUBE_OVN_NS=kube-system
+  podNames=`kubectl get pod --no-headers -n $KUBE_OVN_NS | grep kube-ovn-cni | awk '{print $1}'`
+  for pod in $podNames
+  do
+    nodeName=$(kubectl get pod $pod -n $KUBE_OVN_NS -o jsonpath={.spec.nodeName})
+    echo "************************************************"
+    echo "Start environment check for Node $nodeName"
+    echo "************************************************"
+    kubectl exec -it -n $KUBE_OVN_NS $pod -c cni-server -- bash /kube-ovn/env-check.sh
+  done
+}
+
 if [ $# -lt 1 ]; then
   showHelp
   exit 0
@@ -3865,6 +3882,9 @@ case $subcommand in
     ;;
   tuning)
     tuning "$@"
+    ;;
+  env-check)
+    env-check
     ;;
   *)
   showHelp

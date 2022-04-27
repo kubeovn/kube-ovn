@@ -49,7 +49,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
         ethtool iproute2 ncat libunbound-dev procps libatomic1 kmod iptables \
         tcpdump ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 \
-        logrotate libjemalloc2 dnsutils -y --no-install-recommends && \
+        logrotate libjemalloc2 dnsutils net-tools nmap -y --no-install-recommends && \
         rm -rf /var/lib/apt/lists/* && \
         cd /usr/sbin && \
         ln -sf /usr/sbin/iptables-legacy iptables && \
@@ -64,6 +64,11 @@ RUN mkdir -p /var/run/openvswitch && \
 ARG ARCH
 ENV CNI_VERSION=v1.0.1
 RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz | tar -xz -C . ./loopback ./portmap ./macvlan
+
+ENV KUBE_VERSION="v1.21.1"
+
+RUN curl -L https://dl.k8s.io/${KUBE_VERSION}/kubernetes-client-linux-${ARCH}.tar.gz | tar -xz -C . && cp ./kubernetes/client/bin/kubectl /usr/bin/kubectl \
+ && chmod +x /usr/bin/kubectl && rm -rf ./kubernetes
 
 RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     dpkg -i /packages/libopenvswitch*.deb && \

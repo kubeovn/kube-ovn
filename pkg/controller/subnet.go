@@ -1656,7 +1656,7 @@ func (c *Controller) createOverlaySubnetsAddressSet() error {
 	}
 
 	for _, subnet := range subnetList {
-		if subnet.Spec.Vlan != "" || subnet.Spec.Vpc != util.DefaultVpc || subnet.Name == c.config.NodeSwitch {
+		if subnet.Spec.Vlan != "" || subnet.Spec.Vpc != util.DefaultVpc {
 			continue
 		}
 
