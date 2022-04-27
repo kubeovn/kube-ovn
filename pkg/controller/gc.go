@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -247,6 +248,8 @@ func (c *Controller) markAndCleanLSP() error {
 			if !lastNoPodLSP[lsp] {
 				noPodLSP[lsp] = true
 			} else {
+				nameNsMap, podAddres := c.ovnClient.GetLspExternalIds(lsp)
+
 				klog.Infof("gc logical switch port %s", lsp)
 				if err := c.ovnClient.DeleteLogicalSwitchPort(lsp); err != nil {
 					klog.Errorf("failed to delete lsp %s, %v", lsp, err)
@@ -256,6 +259,20 @@ func (c *Controller) markAndCleanLSP() error {
 					if !k8serrors.IsNotFound(err) {
 						klog.Errorf("failed to delete ip %s, %v", lsp, err)
 						return err
+					}
+				}
+
+				for podName, nsName := range nameNsMap {
+					key := fmt.Sprintf("%s/%s", nsName, podName)
+					c.ipam.ReleaseAddressByPod(key)
+				}
+
+				for _, podAddr := range podAddres {
+					if net.ParseIP(podAddr).To4() != nil || net.ParseIP(podAddr).To16() != nil {
+						if err := c.ovnClient.DeleteStaticRoute(podAddr, c.config.ClusterRouter); err != nil {
+							klog.Errorf("failed to delete static route when gc lsp %s, ip %v", lsp, podAddr)
+							continue
+						}
 					}
 				}
 			}
