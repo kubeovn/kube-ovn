@@ -222,7 +222,7 @@ lint:
 
 .PHONY: scan
 scan:
-	trivy image --light --exit-code=1 --severity=HIGH --ignore-unfixed kubeovn/kube-ovn:$(RELEASE_TAG)
+	trivy image --security-checks vuln --light --exit-code=1 --severity=HIGH --ignore-unfixed kubeovn/kube-ovn:$(RELEASE_TAG)
 
 .PHONY: ut
 ut:
