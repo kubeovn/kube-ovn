@@ -30,9 +30,14 @@ type KubeovnV1Interface interface {
 	RESTClient() rest.Interface
 	HtbQosesGetter
 	IPsGetter
+	IptablesDnatRulesGetter
+	IptablesEIPsGetter
+	IptablesFIPRulesGetter
+	IptablesSnatRulesGetter
 	ProviderNetworksGetter
 	SecurityGroupsGetter
 	SubnetsGetter
+	VipsGetter
 	VlansGetter
 	VpcsGetter
 	VpcNatGatewaysGetter
@@ -51,6 +56,22 @@ func (c *KubeovnV1Client) IPs() IPInterface {
 	return newIPs(c)
 }
 
+func (c *KubeovnV1Client) IptablesDnatRules() IptablesDnatRuleInterface {
+	return newIptablesDnatRules(c)
+}
+
+func (c *KubeovnV1Client) IptablesEIPs() IptablesEIPInterface {
+	return newIptablesEIPs(c)
+}
+
+func (c *KubeovnV1Client) IptablesFIPRules() IptablesFIPRuleInterface {
+	return newIptablesFIPRules(c)
+}
+
+func (c *KubeovnV1Client) IptablesSnatRules() IptablesSnatRuleInterface {
+	return newIptablesSnatRules(c)
+}
+
 func (c *KubeovnV1Client) ProviderNetworks() ProviderNetworkInterface {
 	return newProviderNetworks(c)
 }
@@ -61,6 +82,10 @@ func (c *KubeovnV1Client) SecurityGroups() SecurityGroupInterface {
 
 func (c *KubeovnV1Client) Subnets() SubnetInterface {
 	return newSubnets(c)
+}
+
+func (c *KubeovnV1Client) Vips() VipInterface {
+	return newVips(c)
 }
 
 func (c *KubeovnV1Client) Vlans() VlanInterface {

@@ -1402,6 +1402,31 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 			v6UsingIPs = append(v6UsingIPs, splitIPs[1])
 		}
 	}
+
+	vips, err := c.config.KubeOvnClient.KubeovnV1().Vips().List(context.Background(), metav1.ListOptions{
+		LabelSelector: fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name).String(),
+	})
+	if err != nil {
+		return err
+	}
+	// TODO:// support v6 vip
+	for _, vip := range vips.Items {
+		v4toSubIPs = append(v4toSubIPs, vip.Spec.V4ip)
+		v4UsingIPs = append(v4UsingIPs, vip.Spec.V4ip)
+	}
+	if subnet.Name == util.VpcExternalNet {
+		eips, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().List(context.Background(), metav1.ListOptions{
+			LabelSelector: fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name).String(),
+		})
+		if err != nil {
+			return err
+		}
+		// TODO:// support v6 eip
+		for _, eip := range eips.Items {
+			v4toSubIPs = append(v4toSubIPs, eip.Spec.V4ip)
+			v4UsingIPs = append(v4UsingIPs, eip.Spec.V4ip)
+		}
+	}
 	v4availableIPs := util.AddressCount(v4CIDR) - util.CountIpNums(v4toSubIPs)
 	if v4availableIPs < 0 {
 		v4availableIPs = 0
@@ -1440,11 +1465,39 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	for _, podUsedIP := range podUsedIPs.Items {
 		toSubIPs = append(toSubIPs, podUsedIP.Spec.IPAddress)
 	}
+	usingIPs := float64(len(podUsedIPs.Items))
+	vips, err := c.config.KubeOvnClient.KubeovnV1().Vips().List(context.Background(), metav1.ListOptions{
+		LabelSelector: fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name).String(),
+	})
+	if err != nil {
+		return err
+	}
+	if len(vips.Items) > 0 {
+		usingIPs += float64(len(vips.Items))
+		for _, vip := range vips.Items {
+			// TODO:// support v6 vip
+			toSubIPs = append(toSubIPs, vip.Spec.V4ip)
+		}
+	}
+	if subnet.Name == util.VpcExternalNet {
+		eips, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().List(context.Background(), metav1.ListOptions{
+			LabelSelector: fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name).String(),
+		})
+		if err != nil {
+			return err
+		}
+		if len(eips.Items) > 0 {
+			usingIPs += float64(len(eips.Items))
+			for _, eip := range eips.Items {
+				// TODO:// support v6 eip
+				toSubIPs = append(toSubIPs, eip.Spec.V4ip)
+			}
+		}
+	}
 	availableIPs := util.AddressCount(cidr) - util.CountIpNums(toSubIPs)
 	if availableIPs < 0 {
 		availableIPs = 0
 	}
-	usingIPs := float64(len(podUsedIPs.Items))
 	if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolIPv4 {
 		subnet.Status.V4AvailableIPs = availableIPs
 		subnet.Status.V4UsingIPs = usingIPs

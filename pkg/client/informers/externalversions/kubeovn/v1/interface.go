@@ -28,12 +28,22 @@ type Interface interface {
 	HtbQoses() HtbQosInformer
 	// IPs returns a IPInformer.
 	IPs() IPInformer
+	// IptablesDnatRules returns a IptablesDnatRuleInformer.
+	IptablesDnatRules() IptablesDnatRuleInformer
+	// IptablesEIPs returns a IptablesEIPInformer.
+	IptablesEIPs() IptablesEIPInformer
+	// IptablesFIPRules returns a IptablesFIPRuleInformer.
+	IptablesFIPRules() IptablesFIPRuleInformer
+	// IptablesSnatRules returns a IptablesSnatRuleInformer.
+	IptablesSnatRules() IptablesSnatRuleInformer
 	// ProviderNetworks returns a ProviderNetworkInformer.
 	ProviderNetworks() ProviderNetworkInformer
 	// SecurityGroups returns a SecurityGroupInformer.
 	SecurityGroups() SecurityGroupInformer
 	// Subnets returns a SubnetInformer.
 	Subnets() SubnetInformer
+	// Vips returns a VipInformer.
+	Vips() VipInformer
 	// Vlans returns a VlanInformer.
 	Vlans() VlanInformer
 	// Vpcs returns a VpcInformer.
@@ -63,6 +73,26 @@ func (v *version) IPs() IPInformer {
 	return &iPInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
+// IptablesDnatRules returns a IptablesDnatRuleInformer.
+func (v *version) IptablesDnatRules() IptablesDnatRuleInformer {
+	return &iptablesDnatRuleInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// IptablesEIPs returns a IptablesEIPInformer.
+func (v *version) IptablesEIPs() IptablesEIPInformer {
+	return &iptablesEIPInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// IptablesFIPRules returns a IptablesFIPRuleInformer.
+func (v *version) IptablesFIPRules() IptablesFIPRuleInformer {
+	return &iptablesFIPRuleInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// IptablesSnatRules returns a IptablesSnatRuleInformer.
+func (v *version) IptablesSnatRules() IptablesSnatRuleInformer {
+	return &iptablesSnatRuleInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
 // ProviderNetworks returns a ProviderNetworkInformer.
 func (v *version) ProviderNetworks() ProviderNetworkInformer {
 	return &providerNetworkInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
@@ -76,6 +106,11 @@ func (v *version) SecurityGroups() SecurityGroupInformer {
 // Subnets returns a SubnetInformer.
 func (v *version) Subnets() SubnetInformer {
 	return &subnetInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// Vips returns a VipInformer.
+func (v *version) Vips() VipInformer {
+	return &vipInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
 // Vlans returns a VlanInformer.
