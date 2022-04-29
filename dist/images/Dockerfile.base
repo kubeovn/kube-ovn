@@ -11,7 +11,7 @@ RUN apt update && apt install build-essential git libnuma-dev autoconf curl \
     flake8 python3-sphinx graphviz groff wget libjemalloc-dev -y
 
 RUN cd /usr/src/ && \
-    git clone -b v2.17.0 --depth=1 https://github.com/openvswitch/ovs.git && \
+    git clone -b branch-2.17 --depth=1 https://github.com/openvswitch/ovs.git && \
     cd ovs && \
     # increase election timer
     curl -s https://github.com/kubeovn/ovs/commit/22ea22c40b46ee5adeae977ff6cfca81b3ff25d7.patch | git apply && \
