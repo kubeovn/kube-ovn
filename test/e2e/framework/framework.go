@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -324,4 +325,64 @@ func getPodInitStatus(pod corev1.Pod, reason string) (bool, string) {
 		break
 	}
 	return initializing, reason
+}
+
+type netemQos struct {
+	Latency string `json:"latency"`
+	Limit   string `json:"limit"`
+	Loss    string `json:"loss"`
+}
+
+func GetPodNetemQosPara(podName, podNamespace string) (netemQos, error) {
+	var qosVal netemQos
+
+	output, err := exec.Command("kubectl", "ko", "vsctl", "kube-ovn-control-plane", "--no-heading", "--columns=other_config", "--bare", "find", "qos", fmt.Sprintf(`external_ids:pod="%s/%s"`, podNamespace, podName)).CombinedOutput()
+	if err != nil {
+		return qosVal, err
+	}
+
+	values := strings.Fields(string(output))
+	for _, val := range values {
+		temp := strings.Split(val, "=")
+		if len(temp) != 2 {
+			continue
+		}
+
+		switch temp[0] {
+		case "latency":
+			qosVal.Latency = temp[1]
+		case "limit":
+			qosVal.Limit = temp[1]
+		case "loss":
+			qosVal.Loss = temp[1]
+		}
+	}
+
+	return qosVal, nil
+}
+
+func GetPodHtbQosPara(podName, podNamespace string) (string, string, error) {
+	var priority, rate string
+
+	output, err := exec.Command("kubectl", "ko", "vsctl", "kube-ovn-control-plane", "--no-heading", "--columns=other_config", "--bare", "find", "queue", fmt.Sprintf(`external_ids:pod="%s/%s"`, podNamespace, podName)).CombinedOutput()
+	if err != nil {
+		return "", "", err
+	}
+
+	values := strings.Fields(string(output))
+	for _, val := range values {
+		temp := strings.Split(val, "=")
+		if len(temp) != 2 {
+			continue
+		}
+
+		switch temp[0] {
+		case "max-rate":
+			rate = temp[1]
+		case "priority":
+			priority = temp[1]
+		}
+	}
+
+	return priority, rate, nil
 }
