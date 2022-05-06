@@ -77,7 +77,9 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
 - [Dynamic QoS](docs/qos.md)
 - [Subnet Gateway and Direct connect](docs/subnet.md#gateway)
 - [Pod Gateway](docs/pod-gw.md)
-- [Multi-Cluster Network](docs/cluster-interconnection.md)
+- Multi-Cluster Network
+  - [Multi Cluster with ovn-ic](docs/cluster-interconnection.md)
+  - [Multi Cluster with Submariner](docs/cluster-submariner.md)
 - Network interconnection with OpenStack
   - [Separated Kubernetes and OpenStack connected by OVN-IC](docs/OpenStackK8sInterconnection.md)
   - [Kubernetes and OpenStack based on the same OVN deployment](docs/OpenstackOnKubernetes.md)

@@ -1,10 +1,10 @@
-# Multiple Cluster On KubeOVN
+# Multiple Cluster with Submariner
 
 Currently, multiple Kubernetes clusters need to be deployed for many obvious reasons. 
 
 However, some of the Kubernetes features still need to be preserved, as an example, service discover, and service IP.
 
-This doc introduces some solutions to build multipe clusters.
+This doc introduces some solutions to build multiple clusters.
 
 
 
