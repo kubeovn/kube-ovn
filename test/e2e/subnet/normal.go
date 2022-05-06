@@ -170,11 +170,16 @@ var _ = Describe("[Subnet]", func() {
 			err = f.WaitSubnetReady(name)
 			Expect(err).NotTo(HaveOccurred())
 
-			s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), name, metav1.GetOptions{})
-			Expect(err).NotTo(HaveOccurred())
-			s.Spec.GatewayType = kubeovn.GWCentralizedType
-			s.Spec.GatewayNode = "kube-ovn-control-plane,kube-ovn-worker,kube-ovn-worker2"
-			_, err = f.OvnClientSet.KubeovnV1().Subnets().Update(context.Background(), s, metav1.UpdateOptions{})
+			for i := 0; i < 3; i++ {
+				s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), name, metav1.GetOptions{})
+				Expect(err).NotTo(HaveOccurred())
+				s.Spec.GatewayType = kubeovn.GWCentralizedType
+				s.Spec.GatewayNode = "kube-ovn-control-plane,kube-ovn-worker,kube-ovn-worker2"
+				_, err = f.OvnClientSet.KubeovnV1().Subnets().Update(context.Background(), s, metav1.UpdateOptions{})
+				if err == nil {
+					break
+				}
+			}
 			Expect(err).NotTo(HaveOccurred())
 
 			time.Sleep(5 * time.Second)
