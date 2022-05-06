@@ -64,6 +64,8 @@ rules:
       - subnets
       - subnets/status
       - ips
+      - vips
+      - vips/status
       - vlans
       - vlans/status
       - provider-networks
@@ -71,6 +73,14 @@ rules:
       - security-groups
       - security-groups/status
       - htbqoses
+      - iptables-eips
+      - iptables-fip-rules
+      - iptables-dnat-rules
+      - iptables-snat-rules
+      - iptables-eips/status
+      - iptables-fip-rules/status
+      - iptables-dnat-rules/status
+      - iptables-snat-rules/status
     verbs:
       - "*"
   - apiGroups:
