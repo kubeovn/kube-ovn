@@ -505,7 +505,7 @@ func (c *Controller) handleAddPod(key string) error {
 
 		podType := getPodType(pod)
 		podName := c.getNameByPod(pod)
-		if err := c.createOrUpdateCrdIPs(podName, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType); err != nil {
+		if err := c.createOrUpdateCrdIPs(podName, ipStr, mac, subnet.Name, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType, nil); err != nil {
 			klog.Errorf("failed to create IP %s.%s: %v", podName, pod.Namespace, err)
 		}
 
@@ -1434,12 +1434,12 @@ func (c *Controller) isVmPodToDel(pod *v1.Pod, vmName string) bool {
 }
 
 func (c *Controller) getNameByPod(pod *v1.Pod) string {
-	podName := pod.Name
-	isVmPod, vmName := isVmPod(pod)
-	if isVmPod && c.config.EnableKeepVmIP {
-		podName = vmName
+	if c.config.EnableKeepVmIP {
+		if isVmPod, vmName := isVmPod(pod); isVmPod {
+			return vmName
+		}
 	}
-	return podName
+	return pod.Name
 }
 
 func (c *Controller) getNsAvailableSubnets(pod *v1.Pod) ([]*kubeovnNet, error) {
@@ -1489,9 +1489,8 @@ func (c *Controller) getNsAvailableSubnets(pod *v1.Pod) ([]*kubeovnNet, error) {
 }
 
 func getPodType(pod *v1.Pod) string {
-	var podType string
 	if ok, _ := isStatefulSetPod(pod); ok {
-		podType = "StatefulSet"
+		return "StatefulSet"
 	}
-	return podType
+	return ""
 }
