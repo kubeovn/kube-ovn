@@ -29,6 +29,7 @@ import (
 	_ "github.com/kubeovn/kube-ovn/test/e2e/ip"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/kubectl-ko"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/node"
+	_ "github.com/kubeovn/kube-ovn/test/e2e/qos"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/service"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/subnet"
 	"github.com/kubeovn/kube-ovn/test/e2e/underlay"
