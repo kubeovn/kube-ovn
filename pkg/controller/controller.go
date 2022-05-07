@@ -497,6 +497,10 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		klog.Fatalf("failed to init ipam: %v", err)
 	}
 
+	if err := c.initNodeChassis(); err != nil {
+		klog.Errorf("failed to init node chassis: %v", err)
+	}
+
 	if err := c.initNodeRoutes(); err != nil {
 		klog.Fatalf("failed to initialize node routes: %v", err)
 	}
