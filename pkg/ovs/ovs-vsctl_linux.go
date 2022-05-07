@@ -9,9 +9,6 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-// Glory belongs to openvswitch/ovn-kubernetes
-// https://github.com/openvswitch/ovn-kubernetes/blob/master/go-controller/pkg/util/ovs.go
-
 // SetInterfaceBandwidth set ingress/egress qos for given pod, annotation values are for node/pod
 // but ingress/egress parameters here are from the point of ovs port/interface view, so reverse input parameters when call func SetInterfaceBandwidth
 func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, podPriority string) error {

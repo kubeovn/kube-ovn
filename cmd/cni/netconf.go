@@ -22,3 +22,7 @@ type netConf struct {
 	VhostUserSocketVolumeName string `json:"vhost_user_socket_volume_name"`
 	VhostUserSocketName       string `json:"vhost_user_socket_name"`
 }
+
+func (n *netConf) postLoad() {
+	// nothing to do on linux
+}

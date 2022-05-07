@@ -171,6 +171,7 @@ func loadNetConf(bytes []byte) (*netConf, string, error) {
 		n.Provider = util.OvnProvider
 	}
 
+	n.postLoad()
 	return n, n.CNIVersion, nil
 }
 

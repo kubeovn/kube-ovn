@@ -27,18 +27,23 @@ import (
 func CmdMain() {
 	defer klog.Flush()
 
-	klog.Infof(versions.String())
 	daemon.InitMetrics()
 	util.InitKlogMetrics()
+
+	config := daemon.ParseFlags()
+	klog.Infof(versions.String())
+
+	if err := initForOS(); err != nil {
+		klog.Fatal(err)
+	}
 
 	nicBridgeMappings, err := daemon.InitOVSBridges()
 	if err != nil {
 		klog.Fatalf("failed to initialize OVS bridges: %v", err)
 	}
 
-	config, err := daemon.ParseFlags(nicBridgeMappings)
-	if err != nil {
-		klog.Fatalf("parse config failed %v", err)
+	if err = config.Init(nicBridgeMappings); err != nil {
+		klog.Fatalf("failed to initialize config: %v", err)
 	}
 
 	if err := Retry(util.ChasRetryTime, util.ChasRetryIntev, initChassisAnno, config); err != nil {

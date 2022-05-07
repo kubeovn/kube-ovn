@@ -33,8 +33,15 @@ func (c *Controller) reconcileRouters(_ subnetEvent) error {
 	}
 	gateway, ok := node.Annotations[util.GatewayAnnotation]
 	if !ok {
-		klog.Errorf("annotation for node %s ovn.kubernetes.io/gateway not exists", node.Name)
-		return fmt.Errorf("annotation for node ovn.kubernetes.io/gateway not exists")
+		err = fmt.Errorf("node %s does not have annotation %s", node.Name, util.GatewayAnnotation)
+		klog.Error(err)
+		return err
+	}
+	cidr, ok := node.Annotations[util.CidrAnnotation]
+	if !ok {
+		err = fmt.Errorf("node %s does not have annotation %s", node.Name, util.CidrAnnotation)
+		klog.Error(err)
+		return err
 	}
 
 	subnets, err := c.subnetsLister.List(labels.Everything())
@@ -106,6 +113,11 @@ func (c *Controller) reconcileRouters(_ subnetEvent) error {
 		if err = util.RemoveNetRoute(adapter.InterfaceIndex, r); err != nil {
 			klog.Errorf("failed to remove route %s: %v", r, err)
 		}
+	}
+
+	if err = util.NewNetNat(util.NetNat, cidr, true); err != nil {
+		klog.Error(err)
+		return err
 	}
 
 	return nil
@@ -230,4 +242,8 @@ func rotateLog() {
 }
 
 func (c *Controller) operateMod() {
+}
+
+func recompute() {
+	// FIXME: do not execute recompute to decrease possibility of ovs stuckness
 }
