@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -296,6 +297,7 @@ func (c *Controller) initLoadBalancer() error {
 }
 
 func (c *Controller) InitIPAM() error {
+	start := time.Now()
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnet: %v", err)
@@ -307,46 +309,19 @@ func (c *Controller) InitIPAM() error {
 		}
 	}
 
+	result, err := c.ovnClient.CustomFindEntity("logical_switch_port", []string{"name"}, `external-ids:vendor{<}""`)
+	if err != nil {
+		klog.Errorf("failed to find logical switch port without external-ids:vendor: %v", err)
+	}
+	lspWithoutVendor := make(map[string]struct{}, len(result))
+	for _, lsp := range result {
+		lspWithoutVendor[lsp["name"][0]] = struct{}{}
+	}
+
 	pods, err := c.podsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list pods: %v", err)
 		return err
-	}
-	for _, pod := range pods {
-		if pod.Spec.HostNetwork || !isPodAlive(pod) {
-			continue
-		}
-		podName := c.getNameByPod(pod)
-		podNets, err := c.getPodKubeovnNets(pod)
-		if err != nil {
-			klog.Errorf("failed to get pod kubeovn nets %s.%s address %s: %v", pod.Name, pod.Namespace, pod.Annotations[util.IpAddressAnnotation], err)
-		}
-		for _, podNet := range podNets {
-			if !isOvnSubnet(podNet.Subnet) {
-				continue
-			}
-			if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
-				key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
-				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-				ip := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
-				mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
-				subnet := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)]
-				podType := getPodType(pod)
-				_, _, _, err := c.ipam.GetStaticAddress(key, portName, ip, mac, subnet, false)
-				if err != nil {
-					klog.Errorf("failed to init pod %s.%s address %s: %v", podName, pod.Namespace, pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)], err)
-				} else {
-					err = c.createOrUpdateCrdIPs(podName, ip, mac, subnet, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType)
-					if err != nil {
-						klog.Errorf("failed to create/update ips CR %s.%s with ip address %s: %v", podName, pod.Namespace, ip, err)
-					}
-				}
-
-				if err = c.initAppendPodExternalIds(pod); err != nil {
-					klog.Errorf("failed to init append pod %s.%s externalIds: %v", podName, pod.Namespace, err)
-				}
-			}
-		}
 	}
 
 	ips, err := c.ipsLister.List(labels.Everything())
@@ -354,7 +329,10 @@ func (c *Controller) InitIPAM() error {
 		klog.Errorf("failed to list IPs: %v", err)
 		return err
 	}
+
+	ipsMap := make(map[string]*kubeovnv1.IP, len(ips))
 	for _, ip := range ips {
+		ipsMap[ip.Name] = ip
 		if ip.Spec.PodType != "StatefulSet" {
 			continue
 		}
@@ -365,8 +343,51 @@ func (c *Controller) InitIPAM() error {
 		} else {
 			ipamKey = fmt.Sprintf("node-%s", ip.Spec.PodName)
 		}
-		if _, _, _, err = c.ipam.GetStaticAddress(ipamKey, ip.Name, ip.Spec.IPAddress, ip.Spec.MacAddress, ip.Spec.Subnet, false); err != nil {
+		if _, _, _, err = c.ipam.GetStaticAddress(ipamKey, ip.Name, ip.Spec.IPAddress, ip.Spec.MacAddress, ip.Spec.Subnet, true); err != nil {
 			klog.Errorf("failed to init IPAM from IP CR %s: %v", ip.Name, err)
+		}
+	}
+
+	for _, pod := range pods {
+		if pod.Spec.HostNetwork || !isPodAlive(pod) {
+			continue
+		}
+
+		podNets, err := c.getPodKubeovnNets(pod)
+		if err != nil {
+			klog.Errorf("failed to get pod kubeovn nets %s.%s address %s: %v", pod.Name, pod.Namespace, pod.Annotations[util.IpAddressAnnotation], err)
+			continue
+		}
+
+		podType := getPodType(pod)
+		podName := c.getNameByPod(pod)
+		key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
+		for _, podNet := range podNets {
+			if !isOvnSubnet(podNet.Subnet) {
+				continue
+			}
+			if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
+				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+				ip := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
+				mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
+				subnet := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)]
+				_, _, _, err := c.ipam.GetStaticAddress(key, portName, ip, mac, subnet, true)
+				if err != nil {
+					klog.Errorf("failed to init pod %s.%s address %s: %v", podName, pod.Namespace, pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)], err)
+				} else {
+					ipCR := ipsMap[portName]
+					err = c.createOrUpdateCrdIPs(podName, ip, mac, subnet, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType, &ipCR)
+					if err != nil {
+						klog.Errorf("failed to create/update ips CR %s.%s with ip address %s: %v", podName, pod.Namespace, ip, err)
+					}
+				}
+
+				if _, ok := lspWithoutVendor[portName]; ok {
+					if err = c.initAppendLspExternalIds(portName, pod); err != nil {
+						klog.Errorf("failed to append external-ids for logical switch port %s: %v", portName, err)
+					}
+				}
+			}
 		}
 	}
 
@@ -393,8 +414,7 @@ func (c *Controller) InitIPAM() error {
 		return err
 	}
 	for _, eip := range eips {
-		ipamKey := eip.Name
-		if _, _, _, err = c.ipam.GetStaticAddress(ipamKey, eip.Name, eip.Spec.V4ip, eip.Spec.MacAddress, util.VpcExternalNet, false); err != nil {
+		if _, _, _, err = c.ipam.GetStaticAddress(eip.Name, eip.Name, eip.Spec.V4ip, eip.Spec.MacAddress, util.VpcExternalNet, false); err != nil {
 			klog.Errorf("failed to init IPAM from EIP CR %s: %v", eip.Name, err)
 		}
 	}
@@ -407,7 +427,8 @@ func (c *Controller) InitIPAM() error {
 	for _, node := range nodes {
 		if node.Annotations[util.AllocatedAnnotation] == "true" {
 			portName := fmt.Sprintf("node-%s", node.Name)
-			v4IP, v6IP, _, err := c.ipam.GetStaticAddress(portName, portName, node.Annotations[util.IpAddressAnnotation],
+			v4IP, v6IP, _, err := c.ipam.GetStaticAddress(portName, portName,
+				node.Annotations[util.IpAddressAnnotation],
 				node.Annotations[util.MacAddressAnnotation],
 				node.Annotations[util.LogicalSwitchAnnotation], true)
 			if err != nil {
@@ -417,12 +438,15 @@ func (c *Controller) InitIPAM() error {
 				node.Annotations[util.IpAddressAnnotation] = util.GetStringIP(v4IP, v6IP)
 			}
 
-			if err = c.initAppendNodeExternalIds(portName, node.Name); err != nil {
-				klog.Errorf("failed to init append node %s externalIds: %v", node.Name, err)
+			if _, ok := lspWithoutVendor[portName]; ok {
+				if err = c.initAppendLspExternalIds(portName, nil); err != nil {
+					klog.Errorf("failed to append external-ids for logical switch port %s: %v", portName, err)
+				}
 			}
 		}
 	}
 
+	klog.Infof("take %.2f seconds to initialize IPAM", time.Since(start).Seconds())
 	return nil
 }
 
@@ -698,56 +722,18 @@ func (c *Controller) initNodeRoutes() error {
 	return nil
 }
 
-func (c *Controller) initAppendPodExternalIds(pod *v1.Pod) error {
-	if !isPodAlive(pod) {
-		return nil
+func (c *Controller) initAppendLspExternalIds(portName string, pod *v1.Pod) error {
+	externalIDs := make(map[string]string, 2)
+	externalIDs["vendor"] = util.CniTypeName
+	if pod != nil {
+		externalIDs["pod"] = fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
 	}
 
-	podNets, err := c.getPodKubeovnNets(pod)
-	if err != nil {
-		klog.Errorf("failed to get pod nets %v", err)
+	if err := c.ovnClient.SetLspExternalIds(portName, externalIDs); err != nil {
+		klog.Errorf("failed to set lsp external_ids for port %s: %v", portName, err)
 		return err
 	}
 
-	podName := c.getNameByPod(pod)
-	for _, podNet := range podNets {
-		if !strings.HasSuffix(podNet.ProviderName, util.OvnProvider) {
-			continue
-		}
-		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-		externalIds, err := c.ovnClient.OvnGet("logical_switch_port", portName, "external_ids", "")
-		if err != nil {
-			klog.Errorf("failed to get lsp external_ids for pod %s/%s, %v", pod.Namespace, podName, err)
-			return err
-		}
-		if strings.Contains(externalIds, "pod") || strings.Contains(externalIds, "vendor") {
-			continue
-		}
-
-		ovnCommand := []string{"set", "logical_switch_port", portName, fmt.Sprintf("external_ids:pod=%s/%s", pod.Namespace, podName), fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)}
-		if err = c.ovnClient.SetLspExternalIds(ovnCommand); err != nil {
-			klog.Errorf("failed to set lsp external_ids for pod %s/%s, %v", pod.Namespace, podName, err)
-			return err
-		}
-	}
-	return nil
-}
-
-func (c *Controller) initAppendNodeExternalIds(portName, nodeName string) error {
-	externalIds, err := c.ovnClient.OvnGet("logical_switch_port", portName, "external_ids", "")
-	if err != nil {
-		klog.Errorf("failed to get lsp external_ids for node %s, %v", nodeName, err)
-		return err
-	}
-	if strings.Contains(externalIds, "vendor") {
-		return nil
-	}
-
-	ovnCommand := []string{"set", "logical_switch_port", portName, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)}
-	if err = c.ovnClient.SetLspExternalIds(ovnCommand); err != nil {
-		klog.Errorf("failed to set lsp external_ids for node %s, %v", nodeName, err)
-		return err
-	}
 	return nil
 }
 
