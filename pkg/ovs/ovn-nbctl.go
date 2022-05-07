@@ -1709,9 +1709,19 @@ func (c Client) OvnGet(table, record, column, key string) (string, error) {
 	return c.ovnNbCommand(args...)
 }
 
-func (c Client) SetLspExternalIds(cmd []string) error {
+func (c Client) SetLspExternalIds(name string, externalIDs map[string]string) error {
+	if len(externalIDs) == 0 {
+		return nil
+	}
+
+	cmd := make([]string, len(externalIDs)+3)
+	cmd = append(cmd, "set", "logical_switch_port", name)
+	for k, v := range externalIDs {
+		cmd = append(cmd, fmt.Sprintf(`external-ids:%s="%s"`, k, v))
+	}
+
 	if _, err := c.ovnNbCommand(cmd...); err != nil {
-		return fmt.Errorf("failed to set lsp externalIds, %v", err)
+		return fmt.Errorf("failed to set external-ids for logical switch port %s: %v", name, err)
 	}
 	return nil
 }
