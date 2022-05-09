@@ -1,5 +1,34 @@
 # CHANGELOG
 
+## 1.8.6  -- 2022/05/09
+### Enhancement
+- add kube-ovn-controller switch for EIP and SNAT
+- log: show the reason if get gw node failed
+- append metrics
+- add env-check
+- add delete ovs pods after restore nb db
+- optimize IPAM initialization
+
+### Bugfix
+- recover ips CR on IPAM initialization
+- fix provider-networks status
+- support alloc static ip from any subnet after ns supports multi subnets
+- replace pod name when create ip crd
+- fix error handling for netlink.AddrDel
+- ignore all link local unicast addresses/routes
+- fix IPAM initialization
+- fix adding key to delete Pod queue
+- modify init ipam by ip crd only for sts pod
+- add routed check in circulation
+- delete monitor noexecute toleration
+- delete ipam record and static route when gc lsp
+- fix: ovs trace flow always ends with controller action
+
+### Security
+- update alpine to fix CVE-2022-1271
+- ignore cni cve
+- CVE-2022-27191
+
 ## 1.8.4 -- 2022/03/29
 ### Bugfix
 - fix provider network range loop
