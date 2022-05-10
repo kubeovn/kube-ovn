@@ -120,19 +120,13 @@ func ClearHtbQosQueue(podName, podNamespace, iface string) error {
 }
 
 func IsHtbQos(iface string) (bool, error) {
-	qosList, err := ovsFind("qos", "_uuid", fmt.Sprintf(`external-ids:iface-id="%s"`, iface))
+	qosType, err := ovsFind("qos", "type", fmt.Sprintf(`external-ids:iface-id="%s"`, iface))
 	if err != nil {
 		return false, err
 	}
 
-	for _, qos := range qosList {
-		qosType, err := ovsGet("qos", qos, "type", "")
-		if err != nil {
-			return false, err
-		}
-		if qosType == util.HtbQos {
-			return true, nil
-		}
+	if len(qosType) != 0 && qosType[0] == util.HtbQos {
+		return true, nil
 	}
 	return false, nil
 }
