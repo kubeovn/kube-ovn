@@ -129,9 +129,9 @@ const (
 	EcmpRouteType   = "ecmp"
 	NormalRouteType = "normal"
 
-	PodRouterPolicyPriority  = 20000
-	CentralSubnetPriority    = 25000
-	NodeRouterPolicyPriority = 30000
+	GatewayRouterPolicyPriority = 29000
+	NodeRouterPolicyPriority    = 30000
+	SubnetRouterPolicyPriority  = 31000
 
 	OffloadType  = "offload-port"
 	InternalType = "internal-port"

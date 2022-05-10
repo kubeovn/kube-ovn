@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -210,31 +211,14 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	var v4CIDRs, v6CIDRs []string
 	nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
 	for _, subnet := range subnets {
 		if subnet.Spec.Vpc != util.DefaultVpc {
 			continue
 		}
 
-		var conflict bool
 		v4, v6 := util.SplitStringIP(subnet.Spec.CIDRBlock)
-		if util.CIDRContainIP(v4, nodeIPv4) {
-			if subnet.Spec.Vlan == "" {
-				conflict = true
-			} else if subnet.Spec.LogicalGateway {
-				v4CIDRs = append(v4CIDRs, v4)
-			}
-		}
-		if util.CIDRContainIP(v6, nodeIPv6) {
-			if subnet.Spec.Vlan == "" {
-				conflict = true
-			} else if subnet.Spec.LogicalGateway {
-				v6CIDRs = append(v6CIDRs, v6)
-			}
-		}
-
-		if conflict {
+		if subnet.Spec.Vlan == "" && (util.CIDRContainIP(v4, nodeIPv4) || util.CIDRContainIP(v6, nodeIPv6)) {
 			msg := fmt.Sprintf("internal IP address of node %s is in CIDR of subnet %s, this may result in network issues", node.Name, subnet.Name)
 			klog.Warning(msg)
 			c.recorder.Eventf(&v1.Node{ObjectMeta: metav1.ObjectMeta{Name: node.Name, UID: types.UID(node.Name)}}, v1.EventTypeWarning, "NodeAddressConflictWithSubnet", msg)
@@ -242,14 +226,6 @@ func (c *Controller) handleAddNode(key string) error {
 		}
 	}
 
-	if err = c.ovnClient.CreateAddressSetWithAddresses(nodeUnderlayAddressSetName(node.Name, 4), v4CIDRs...); err != nil {
-		klog.Errorf("failed to create address set for node %s: %v", node.Name, err)
-		return err
-	}
-	if err = c.ovnClient.CreateAddressSetWithAddresses(nodeUnderlayAddressSetName(node.Name, 6), v6CIDRs...); err != nil {
-		klog.Errorf("failed to create address set for node %s: %v", node.Name, err)
-		return err
-	}
 	if err = c.handleNodeAnnotationsForProviderNetworks(node); err != nil {
 		klog.Errorf("failed to handle annotations of node %s for provider networks: %v", node.Name, err)
 		return err
@@ -294,8 +270,13 @@ func (c *Controller) handleAddNode(key string) error {
 			nodeIP, af = nodeIPv6, 6
 		}
 		if nodeIP != "" {
-			match := fmt.Sprintf("ip%d.dst == %s && ip%d.src != $%s", af, nodeIP, af, nodeUnderlayAddressSetName(node.Name, af))
-			if err = c.ovnClient.AddPolicyRoute(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", ip); err != nil {
+			match := fmt.Sprintf("ip%d.dst == %s", af, nodeIP)
+			externalIDs := map[string]string{
+				"vendor":         util.CniTypeName,
+				"node":           node.Name,
+				"address-family": strconv.Itoa(af),
+			}
+			if err = c.ovnClient.AddPolicyRoute(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", ip, externalIDs); err != nil {
 				klog.Errorf("failed to add logical router policy for node %s: %v", node.Name, err)
 				return err
 			}
@@ -591,7 +572,7 @@ func (c *Controller) handleUpdateNode(key string) error {
 	for _, orisubnet := range subnets {
 		subnet := orisubnet.DeepCopy()
 		if util.GatewayContains(subnet.Spec.GatewayNode, node.Name) {
-			if err := c.reconcileGateway(subnet); err != nil {
+			if err := c.reconcileOvnRoute(subnet); err != nil {
 				return err
 			}
 		}
@@ -1076,14 +1057,11 @@ func (c *Controller) addNodeGwStaticRoute() error {
 
 func (c *Controller) getPolicyRouteParas(cidr string) ([]string, map[string]string, error) {
 	ipSuffix := "ip4"
-	subnetAsName := getOverlaySubnetsAddressSetName(c.config.ClusterRouter, kubeovnv1.ProtocolIPv4)
 	if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv6 {
 		ipSuffix = "ip6"
-		subnetAsName = getOverlaySubnetsAddressSetName(c.config.ClusterRouter, kubeovnv1.ProtocolIPv6)
 	}
-	match := fmt.Sprintf("%s.src == %s && %s.dst != $%s", ipSuffix, cidr, ipSuffix, subnetAsName)
-
-	nextHops, nameIpMap, err := c.ovnClient.GetPolicyRouteParas(util.CentralSubnetPriority, match)
+	match := fmt.Sprintf("%s.src == %s", ipSuffix, cidr)
+	nextHops, nameIpMap, err := c.ovnClient.GetPolicyRouteParas(util.GatewayRouterPolicyPriority, match)
 	if err != nil {
 		klog.Errorf("failed to get policy route paras, %v", err)
 		return nextHops, nameIpMap, err
