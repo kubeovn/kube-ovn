@@ -1287,8 +1287,11 @@ func (c Client) SetPrivateLogicalSwitch(ls, cidr string, allow []string) error {
 		protocol := util.CheckProtocol(cidrBlock)
 		if protocol == kubeovnv1.ProtocolIPv4 {
 			allowArgs = append(allowArgs, "--", MayExist, "acl-add", ls, "to-lport", util.SubnetAllowPriority, fmt.Sprintf(`ip4.src==%s && ip4.dst==%s`, cidrBlock, cidrBlock), "allow-related")
-		} else {
+		} else if protocol == kubeovnv1.ProtocolIPv6 {
 			allowArgs = append(allowArgs, "--", MayExist, "acl-add", ls, "to-lport", util.SubnetAllowPriority, fmt.Sprintf(`ip6.src==%s && ip6.dst==%s`, cidrBlock, cidrBlock), "allow-related")
+		} else {
+			klog.Errorf("the cidrBlock: %s format is error in subnet: %s", cidrBlock, ls)
+			continue
 		}
 
 		for _, nodeCidrBlock := range strings.Split(c.NodeSwitchCIDR, ",") {
@@ -1298,7 +1301,7 @@ func (c Client) SetPrivateLogicalSwitch(ls, cidr string, allow []string) error {
 
 			if protocol == kubeovnv1.ProtocolIPv4 {
 				allowArgs = append(allowArgs, "--", MayExist, "acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip4.src==%s", nodeCidrBlock), "allow-related")
-			} else {
+			} else if protocol == kubeovnv1.ProtocolIPv6 {
 				allowArgs = append(allowArgs, "--", MayExist, "acl-add", ls, "to-lport", util.NodeAllowPriority, fmt.Sprintf("ip6.src==%s", nodeCidrBlock), "allow-related")
 			}
 		}
