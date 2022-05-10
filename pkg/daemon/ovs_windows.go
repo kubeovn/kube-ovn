@@ -22,11 +22,11 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 	return errors.New("DPDK is not supported on Windows")
 }
 
-func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, priority, DeviceID, nicType string, gwCheckMode int) (string, error) {
-	return ifName, csh.configureNic(podName, podNamespace, provider, netns, containerID, "", ifName, mac, mtu, ip, gateway, isDefaultRoute, routes, dnsServer, dnsSuffix, ingress, egress, priority, DeviceID, nicType, gwCheckMode)
+func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, priority, DeviceID, nicType, latency, limit, loss string, gwCheckMode int) (string, error) {
+	return ifName, csh.configureNic(podName, podNamespace, provider, netns, containerID, "", ifName, mac, mtu, ip, gateway, isDefaultRoute, routes, dnsServer, dnsSuffix, ingress, egress, priority, DeviceID, nicType, latency, limit, loss, gwCheckMode)
 }
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, priority, DeviceID, nicType string, gwCheckMode int) error {
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, priority, DeviceID, nicType, latency, limit, loss string, gwCheckMode int) error {
 	if DeviceID != "" {
 		return errors.New("SR-IOV is not supported on Windows")
 	}
