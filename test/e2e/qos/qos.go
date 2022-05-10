@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -215,7 +216,11 @@ var _ = Describe("[Qos]", func() {
 
 	It("update htb qos", func() {
 		name := f.GetName()
+		isIPv6 := strings.EqualFold(os.Getenv("IPV6"), "true")
 		cidr := "20.6.0.0/16"
+		if isIPv6 {
+			cidr = "fc00:20:6::/112"
+		}
 
 		By("create subnet with htbqos")
 		s := kubeovn.Subnet{

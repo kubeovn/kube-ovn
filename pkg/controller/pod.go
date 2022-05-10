@@ -872,20 +872,23 @@ func (c *Controller) handleUpdatePod(key string) error {
 							}
 
 							ipSuffix := "ip4"
-							subnetAsName := getOverlaySubnetsAddressSetName(c.config.ClusterRouter, kubeovnv1.ProtocolIPv4)
 							if util.CheckProtocol(nodeAddr.String()) == kubeovnv1.ProtocolIPv6 {
 								ipSuffix = "ip6"
-								subnetAsName = getOverlaySubnetsAddressSetName(c.config.ClusterRouter, kubeovnv1.ProtocolIPv6)
 							}
 							pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
-							match := fmt.Sprintf("%s.src == $%s && %s.dst != $%s", ipSuffix, pgAs, ipSuffix, subnetAsName)
+							match := fmt.Sprintf("%s.src == $%s", ipSuffix, pgAs)
 
-							exist, err := c.ovnClient.PolicyRouteExists(util.PodRouterPolicyPriority, match)
+							exist, err := c.ovnClient.PolicyRouteExists(util.GatewayRouterPolicyPriority, match)
 							if err != nil {
 								return err
 							}
 							if !exist {
-								if err = c.ovnClient.AddPolicyRoute(c.config.ClusterRouter, util.PodRouterPolicyPriority, match, "reroute", nodeAddr.String()); err != nil {
+								externalIDs := map[string]string{
+									"vendor": util.CniTypeName,
+									"subnet": subnet.Name,
+									"node":   node.Name,
+								}
+								if err = c.ovnClient.AddPolicyRoute(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match, "reroute", nodeAddr.String(), externalIDs); err != nil {
 									klog.Errorf("failed to add logical router policy for port-group address-set %s: %v", pgAs, err)
 									return err
 								}

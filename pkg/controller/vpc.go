@@ -337,7 +337,8 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			}
 		}
 		for _, item := range policyRouteNeedAdd {
-			if err = c.ovnClient.AddPolicyRoute(vpc.Name, item.Priority, item.Match, string(item.Action), item.NextHopIP); err != nil {
+			externalIDs := map[string]string{"vendor": util.CniTypeName}
+			if err = c.ovnClient.AddPolicyRoute(vpc.Name, item.Priority, item.Match, string(item.Action), item.NextHopIP, externalIDs); err != nil {
 				klog.Errorf("add policy route to vpc %s failed, %v", vpc.Name, err)
 				return err
 			}

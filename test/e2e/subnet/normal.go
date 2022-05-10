@@ -56,7 +56,7 @@ var _ = Describe("[Subnet]", func() {
 			name := f.GetName()
 			af, cidr, protocol := 4, "11.10.0.0/16", kubeovn.ProtocolIPv4
 			if isIPv6 {
-				af, cidr, protocol = 6, "fc10::/16", kubeovn.ProtocolIPv6
+				af, cidr, protocol = 6, "fc00:11:10::/112", kubeovn.ProtocolIPv6
 			}
 			gateway, _ := util.FirstIP(cidr)
 
@@ -95,7 +95,7 @@ var _ = Describe("[Subnet]", func() {
 			By("validate status")
 			Expect(subnet.Status.ActivateGateway).To(BeEmpty())
 			if isIPv6 {
-				Expect(subnet.Status.V6AvailableIPs).To(Equal(math.Exp2(128-16) - 3))
+				Expect(subnet.Status.V6AvailableIPs).To(Equal(math.Exp2(128-112) - 3))
 			} else {
 				Expect(subnet.Status.V4AvailableIPs).To(Equal(math.Exp2(32-16) - 3))
 			}
@@ -115,7 +115,7 @@ var _ = Describe("[Subnet]", func() {
 			name := f.GetName()
 			cidr := "11.11.0.0/16"
 			if isIPv6 {
-				cidr = "fc11::/16"
+				cidr = "fc00:11:11::/112"
 			}
 
 			By("create subnet")
@@ -150,7 +150,7 @@ var _ = Describe("[Subnet]", func() {
 			name := f.GetName()
 			cidr := "11.12.0.0/16"
 			if isIPv6 {
-				cidr = "fc12::/16"
+				cidr = "fc00:11:12::/112"
 			}
 
 			By("create subnet")
@@ -195,7 +195,7 @@ var _ = Describe("[Subnet]", func() {
 			name := f.GetName()
 			cidr := "11.13.0.0/16"
 			if isIPv6 {
-				cidr = "fc13::/16"
+				cidr = "fc00:11:13::/112"
 			}
 			By("create subnet")
 			s := kubeovn.Subnet{
@@ -231,7 +231,7 @@ var _ = Describe("[Subnet]", func() {
 			name := f.GetName()
 			cidr := "11.14.0.10/16"
 			if isIPv6 {
-				cidr = "fc14::/16"
+				cidr = "fc00:11:14::/112"
 			}
 			By("create subnet")
 			s := &kubeovn.Subnet{
@@ -256,7 +256,7 @@ var _ = Describe("[Subnet]", func() {
 			if !isIPv6 {
 				Expect(s.Spec.CIDRBlock).To(Equal("11.14.0.0/16"))
 			} else {
-				Expect(s.Spec.CIDRBlock).To(Equal("fc14::/16"))
+				Expect(s.Spec.CIDRBlock).To(Equal("fc00:11:14::/112"))
 			}
 
 		})
@@ -352,7 +352,7 @@ var _ = Describe("[Subnet]", func() {
 
 			af, cidr := 4, "11.15.0.0/16"
 			if isIPv6 {
-				af, cidr = 6, "fc15::/16"
+				af, cidr = 6, "fc00:11:15::/112"
 			}
 
 			var egw string
@@ -491,7 +491,7 @@ var _ = Describe("[Subnet]", func() {
 
 			af, cidr := 4, "11.16.0.0/16"
 			if isIPv6 {
-				af, cidr = 6, "fc16::/16"
+				af, cidr = 6, "fc00:11:16::/112"
 			}
 
 			var selectedNode *corev1.Node
