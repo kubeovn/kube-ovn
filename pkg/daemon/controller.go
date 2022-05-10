@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"strconv"
 	"time"
 
@@ -668,11 +667,4 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.loopCheckSubnetQosPriority, 5*time.Second, stopCh)
 	<-stopCh
 	klog.Info("Shutting down workers")
-}
-
-func recompute() {
-	output, err := exec.Command("ovn-appctl", "-t", "ovn-controller", "recompute").CombinedOutput()
-	if err != nil {
-		klog.Errorf("failed to recompute ovn-controller %q", output)
-	}
 }

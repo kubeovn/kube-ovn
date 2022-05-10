@@ -53,7 +53,14 @@ type NetRoute struct {
 	NextHop           string
 }
 
-func powershell(cmd string) (string, error) {
+func bool2PsParam(v bool) string {
+	if v {
+		return "Enabled"
+	}
+	return "Disabled"
+}
+
+func Powershell(cmd string) (string, error) {
 	shell, err := ps.New(&backend.Local{})
 	if err != nil {
 		return "", err
@@ -67,15 +74,8 @@ func powershell(cmd string) (string, error) {
 	return stdout, nil
 }
 
-func bool2PsParam(v bool) string {
-	if v {
-		return "Enabled"
-	}
-	return "Disabled"
-}
-
 func GetNetAdapter(name string, ignoreError bool) (*NetAdapter, error) {
-	output, err := powershell(fmt.Sprintf(`Get-NetAdapter -Name "%s" | ConvertTo-Json`, name))
+	output, err := Powershell(fmt.Sprintf(`Get-NetAdapter -Name "%s" | ConvertTo-Json`, name))
 	if err != nil {
 		if !ignoreError {
 			err2 := fmt.Errorf("failed to get network adapter %s: %v", name, err)
@@ -97,7 +97,7 @@ func GetNetAdapter(name string, ignoreError bool) (*NetAdapter, error) {
 }
 
 func EnableAdapter(adapter string) error {
-	_, err := powershell(fmt.Sprintf(`Enable-NetAdapter -Name "%s" -Confirm:$False`, adapter))
+	_, err := Powershell(fmt.Sprintf(`Enable-NetAdapter -Name "%s" -Confirm:$False`, adapter))
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("failed to enable network adapter %s: %v", adapter, err)
@@ -106,7 +106,7 @@ func EnableAdapter(adapter string) error {
 }
 
 func SetAdapterMac(adapter, mac string) error {
-	_, err := powershell(fmt.Sprintf(`Set-NetAdapter -Name "%s" -MacAddress %s -Confirm:$False`, adapter, mac))
+	_, err := Powershell(fmt.Sprintf(`Set-NetAdapter -Name "%s" -MacAddress %s -Confirm:$False`, adapter, mac))
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("failed to set MAC address of network adapter %s: %v", adapter, err)
@@ -115,7 +115,7 @@ func SetAdapterMac(adapter, mac string) error {
 }
 
 func GetNetIPInterface(ifIndex uint32) ([]NetIPInterface, error) {
-	output, err := powershell(fmt.Sprintf("Get-NetIPInterface -InterfaceIndex %d | ConvertTo-Json", ifIndex))
+	output, err := Powershell(fmt.Sprintf("Get-NetIPInterface -InterfaceIndex %d | ConvertTo-Json", ifIndex))
 	if err != nil {
 		err2 := fmt.Errorf("failed to get NetIPInterface with index %d: %v", ifIndex, err)
 		klog.Error(err2)
@@ -147,7 +147,7 @@ func SetNetIPInterface(ifIndex uint32, addressFamily *uint16, mtu *uint32, dhcp,
 		parameters = append(parameters, fmt.Sprintf("-Forwading %s", bool2PsParam(*forwarding)))
 	}
 
-	_, err := powershell(fmt.Sprintf("Set-NetIPInterface -IncludeAllCompartments -InterfaceIndex %d %s -Confirm:$False", ifIndex, strings.Join(parameters, " ")))
+	_, err := Powershell(fmt.Sprintf("Set-NetIPInterface -IncludeAllCompartments -InterfaceIndex %d %s -Confirm:$False", ifIndex, strings.Join(parameters, " ")))
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("failed to set NetIPInterface with index %d: %v", ifIndex, err)
@@ -157,7 +157,7 @@ func SetNetIPInterface(ifIndex uint32, addressFamily *uint16, mtu *uint32, dhcp,
 }
 
 func GetNetIPAddress(ifIndex uint32) ([]NetIPAddress, error) {
-	output, err := powershell(fmt.Sprintf("Get-NetIPAddress -InterfaceIndex %d | ConvertTo-Json", ifIndex))
+	output, err := Powershell(fmt.Sprintf("Get-NetIPAddress -InterfaceIndex %d | ConvertTo-Json", ifIndex))
 	if err != nil {
 		err2 := fmt.Errorf("failed to get NetIPAddress with index %d: %v", ifIndex, err)
 		klog.Error(err2)
@@ -181,7 +181,7 @@ func GetNetIPAddress(ifIndex uint32) ([]NetIPAddress, error) {
 func NewNetIPAddress(ifIndex uint32, ipAddr string) error {
 	fields := strings.Split(ipAddr, "/")
 	cmd := fmt.Sprintf("New-NetIPAddress -InterfaceIndex %d -IPAddress %s -PrefixLength %s -PolicyStore ActiveStore -Confirm:$False", ifIndex, fields[0], fields[1])
-	_, err := powershell(cmd)
+	_, err := Powershell(cmd)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("failed to add IP address %s to interface with index %d: %v", ipAddr, ifIndex, err)
@@ -192,7 +192,7 @@ func NewNetIPAddress(ifIndex uint32, ipAddr string) error {
 func RemoveNetIPAddress(ifIndex uint32, ipAddr string) error {
 	fields := strings.Split(ipAddr, "/")
 	cmd := fmt.Sprintf("Remove-NetIPAddress -InterfaceIndex %d -IPAddress %s -PrefixLength %s -Confirm:$False", ifIndex, fields[0], fields[1])
-	_, err := powershell(cmd)
+	_, err := Powershell(cmd)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("failed to remove IP address %s from interface with index %d: %v", ipAddr, ifIndex, err)
@@ -201,7 +201,7 @@ func RemoveNetIPAddress(ifIndex uint32, ipAddr string) error {
 }
 
 func GetInterfaceByIP(ip string) (*NetIPInterface, error) {
-	output, err := powershell(fmt.Sprintf(`Get-NetIPAddress | Where-Object -Property IPAddress -eq -Value "%s" | ConvertTo-Json`, ip))
+	output, err := Powershell(fmt.Sprintf(`Get-NetIPAddress | Where-Object -Property IPAddress -eq -Value "%s" | ConvertTo-Json`, ip))
 	if err != nil {
 		err2 := fmt.Errorf("failed to get interface by IP %s: %v", ip, err)
 		klog.Error(err2)
@@ -234,7 +234,7 @@ func GetInterfaceByIP(ip string) (*NetIPInterface, error) {
 }
 
 func GetNetRoute(ifIndex uint32) ([]NetRoute, error) {
-	output, err := powershell(fmt.Sprintf("Get-NetRoute -InterfaceIndex %d | ConvertTo-Json", ifIndex))
+	output, err := Powershell(fmt.Sprintf("Get-NetRoute -InterfaceIndex %d | ConvertTo-Json", ifIndex))
 	if err != nil {
 		err2 := fmt.Errorf("failed to get NetRoute with index %d: %v", ifIndex, err)
 		klog.Error(err2)
@@ -253,7 +253,7 @@ func GetNetRoute(ifIndex uint32) ([]NetRoute, error) {
 
 func NewNetRoute(ifIndex uint32, destinationPrefix, nextHop string) error {
 	cmd := fmt.Sprintf("New-NetRoute -InterfaceIndex %d -DestinationPrefix %s -NextHop %s -PolicyStore ActiveStore -Confirm:$False", ifIndex, destinationPrefix, nextHop)
-	_, err := powershell(cmd)
+	_, err := Powershell(cmd)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("failed to add route %s nexthop %s to interface with index %d: %v", destinationPrefix, nextHop, ifIndex, err)
@@ -263,10 +263,23 @@ func NewNetRoute(ifIndex uint32, destinationPrefix, nextHop string) error {
 
 func RemoveNetRoute(ifIndex uint32, destinationPrefix string) error {
 	cmd := fmt.Sprintf("Remove-NetRoute -InterfaceIndex %d -DestinationPrefix %s -Confirm:$False", ifIndex, destinationPrefix)
-	_, err := powershell(cmd)
+	_, err := Powershell(cmd)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("failed to remove route %s from interface with index %d: %v", destinationPrefix, ifIndex, err)
+	}
+	return nil
+}
+
+func NewNetNat(name, addressPrefix string, mayExist bool) error {
+	cmd := fmt.Sprintf(`New-NetNat -Name "%s" -InternalIPInterfaceAddressPrefix %s`, name, addressPrefix)
+	if mayExist {
+		cmd = fmt.Sprintf(`if (!(Get-NetNat | Where {$_.Name -eq "%s"})) {%s}`, name, cmd)
+	}
+	_, err := Powershell(cmd)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to add net nat %s with address prefix %s: %v", name, addressPrefix, err)
 	}
 	return nil
 }

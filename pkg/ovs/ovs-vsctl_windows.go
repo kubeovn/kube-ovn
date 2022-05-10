@@ -41,9 +41,5 @@ func SetNetemQos(podName, podNamespace, iface, latency, limit, loss string) erro
 }
 
 func IsUserspaceDataPath() (is bool, err error) {
-	dp, err := ovsFind("bridge", "datapath_type", "name=br-int")
-	if err != nil {
-		return false, err
-	}
-	return len(dp) > 0 && dp[0] == "netdev", nil
+	return false, nil
 }

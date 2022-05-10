@@ -314,17 +314,13 @@ func configureMirrorLink(portName string, mtu int) error {
 	return nil
 }
 
-// Add host nic to external bridge
-// Mac address, MTU, IP addresses & routes will be copied/transferred to the external bridge
 func configProviderNic(nicName, brName string) (int, error) {
-	// TODO
+	// nothing to do on Windows
 	return 0, nil
 }
 
-// Remove host nic from external bridge
-// IP addresses & routes will be transferred to the host nic
 func removeProviderNic(nicName, brName string) error {
-	// TODO
+	// nothing to do on Windows
 	return nil
 }
 
