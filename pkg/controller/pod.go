@@ -151,7 +151,7 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 			c.deletePodQueue.Add(obj)
 		}
 
-		if delete, err := appendCheckPodToDel(c, p); delete && err == nil {
+		if delete, err := appendCheckPodToDel(c, p, statefulSetName, "StatefulSet"); delete && err == nil {
 			klog.V(3).Infof("enqueue delete pod %s", key)
 			c.deletePodQueue.Add(obj)
 		}
@@ -160,7 +160,7 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 			klog.V(3).Infof("enqueue delete pod %s", key)
 			c.deletePodQueue.Add(obj)
 		}
-		if delete, err := appendCheckPodToDel(c, p); delete && err == nil {
+		if delete, err := appendCheckPodToDel(c, p, vmName, util.VmInstance); delete && err == nil {
 			klog.V(3).Infof("enqueue delete pod %s", key)
 			c.deletePodQueue.Add(obj)
 		}
@@ -656,7 +656,7 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 
 	var keepIpCR bool
 	if ok, sts := isStatefulSetPod(pod); ok {
-		delete, err := appendCheckPodToDel(c, pod)
+		delete, err := appendCheckPodToDel(c, pod, sts, "StatefulSet")
 		keepIpCR = !isStatefulSetPodToDel(c.config.KubeClient, pod, sts) && !delete && err == nil
 	}
 
@@ -1391,7 +1391,7 @@ func (c *Controller) deleteAttachmentNetWorkIP(pod *v1.Pod) error {
 	return nil
 }
 
-func appendCheckPodToDel(c *Controller, pod *v1.Pod) (bool, error) {
+func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind string) (bool, error) {
 	// subnet for ns has been changed, and statefulset pod's ip is not in the range of subnet's cidr anymore
 	podNs, err := c.namespacesLister.Get(pod.Namespace)
 	if err != nil {
@@ -1399,10 +1399,28 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod) (bool, error) {
 		return false, err
 	}
 
-	subnetNames := podNs.Annotations[util.LogicalSwitchAnnotation]
-	if subnetNames != "" && pod.Annotations[util.LogicalSwitchAnnotation] != "" && !util.ContainsString(strings.Split(subnetNames, ","), strings.TrimSpace(pod.Annotations[util.LogicalSwitchAnnotation])) {
-		klog.Infof("ns %s annotation subnet is %s, which is inconstant with subnet for pod %s, delete pod", pod.Namespace, podNs.Annotations[util.LogicalSwitchAnnotation], pod.Name)
-		return true, nil
+	// check if subnet exist in OwnerReference
+	var ownerRefSubnetExist bool
+	switch ownerRefKind {
+	case "StatefulSet":
+		ss, _ := c.config.KubeClient.AppsV1().StatefulSets(pod.Namespace).Get(context.Background(), ownerRefName, metav1.GetOptions{})
+		if ss != nil && ss.Spec.Template.ObjectMeta.Annotations[util.LogicalSwitchAnnotation] != "" {
+			ownerRefSubnetExist = true
+		}
+
+	case util.VmInstance:
+		vm, _ := c.config.KubevirtClient.VirtualMachine(pod.Namespace).Get(ownerRefName, &metav1.GetOptions{})
+		if vm != nil && vm.Spec.Template.ObjectMeta.Annotations[util.LogicalSwitchAnnotation] != "" {
+			ownerRefSubnetExist = true
+		}
+	}
+
+	if !ownerRefSubnetExist {
+		subnetNames := podNs.Annotations[util.LogicalSwitchAnnotation]
+		if subnetNames != "" && pod.Annotations[util.LogicalSwitchAnnotation] != "" && !util.ContainsString(strings.Split(subnetNames, ","), strings.TrimSpace(pod.Annotations[util.LogicalSwitchAnnotation])) {
+			klog.Infof("ns %s annotation subnet is %s, which is inconstant with subnet for pod %s, delete pod", pod.Namespace, podNs.Annotations[util.LogicalSwitchAnnotation], pod.Name)
+			return true, nil
+		}
 	}
 
 	// subnet cidr has been changed, and statefulset pod's ip is not in the range of subnet's cidr anymore
