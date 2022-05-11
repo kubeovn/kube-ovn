@@ -5,6 +5,7 @@ HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
 OVN_DB_IPS=${OVN_DB_IPS:-}
 TUNNEL_TYPE=${TUNNEL_TYPE:-geneve}
+FLOW_WAIT=${FLOW_WAIT:-5}
 
 # Check required kernel module
 modinfo openvswitch
@@ -51,14 +52,19 @@ if [[ `nproc` -gt 12 ]]; then
     ovs-vsctl --no-wait set Open_vSwitch . other_config:n-handler-threads=10
 fi
 
+# When ovs-vswitchd starts with this value set as true, it will neither flush or
+# expire previously set datapath flows nor will it send and receive any
+# packets to or from the datapath. Please check ovs-vswitchd.conf.db.5.txt
+ovs-vsctl --no-wait set open_vswitch . other_config:flow-restore-wait="true"
+
 if [ "$HW_OFFLOAD" = "true" ]; then
   ovs-vsctl --no-wait set open_vswitch . other_config:hw-offload=true
 else
   ovs-vsctl --no-wait set open_vswitch . other_config:hw-offload=false
 fi
 
-# Start vswitchd
-/usr/share/openvswitch/scripts/ovs-ctl restart --no-ovsdb-server --system-id=random
+# Start vswitchd. restart will automatically set/unset flow-restore-wait which is not what we want
+/usr/share/openvswitch/scripts/ovs-ctl start --no-ovsdb-server --system-id=random
 /usr/share/openvswitch/scripts/ovs-ctl --protocol=udp --dport=6081 enable-protocol
 
 sleep 1
@@ -161,5 +167,11 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
 else
   /usr/share/ovn/scripts/ovn-ctl --ovn-controller-ssl-key=/var/run/tls/key --ovn-controller-ssl-cert=/var/run/tls/cert --ovn-controller-ssl-ca-cert=/var/run/tls/cacert restart_controller
 fi
+
+# Wait ovn-controller finish init flow compute and update it to vswitchd,
+# then update flow-restore-wait to indicate vswitchd to process flows
+sleep ${FLOW_WAIT}
+ovs-vsctl --no-wait set open_vswitch . other_config:flow-restore-wait="false"
+
 chmod 600 /etc/openvswitch/*
 tail -f /var/log/ovn/ovn-controller.log
