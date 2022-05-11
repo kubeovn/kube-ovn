@@ -67,9 +67,11 @@ This benchmark is for reference only, the result may vary dramatically due to di
 Optimization for packets with big size and underlay latency are still in progress, we will publish the optimization 
 methods and benchmark results later.
 
+
+
 ## Optimization methods
 
-### CPU frequency scaling
+## CPU frequency scaling
 
 When the CPU works at power save mode, its performance behavior is unstable and various. Use the performance mode to get stable behavior.
 
@@ -77,7 +79,9 @@ When the CPU works at power save mode, its performance behavior is unstable and 
 cpupower frequency-set -g performance
 ```
 
-### Increasing the RX ring buffer 
+
+
+## Increasing the RX ring buffer 
 
 A high drop rate at receive side will hurt the throughput performance.
 
@@ -101,7 +105,9 @@ A high drop rate at receive side will hurt the throughput performance.
 # ethtool -G eno1 rx 4096
 ```
 
-### Enable the checksum offload
+
+
+## Enable the checksum offload
 
 In v1.7 to bypass a kernel double nat issue, we disabled the tx checksum offload of geneve tunnel. This issue has been resolved
 in a different way in the latest version. Users who update from old versions can enable the checksum again. Users who use
@@ -115,7 +121,9 @@ in a different way in the latest version. Users who update from old versions can
 # ovs-vsctl set open . external_ids:ovn-encap-csum=true
 ```
 
-### Disable OVN LB
+
+
+## Disable OVN LB
 
 With profile, the OVN L2 LB need packet clone and recirculate which consumes lots CPU time and block every traffic path 
 even if the packets are not designated to a LB VIP. From v1.8 the OVN LB can be disabled, for overlay network traffic to 
@@ -142,15 +150,33 @@ to bypass the conntrack system for traffic that not designate to svc.
 kubectl ko nbctl set nb_global . options:svc_ipv4_cidr=10.244.0.0/16
 ```
 
-### Kernel FastPath module
+
+
+## Kernel FastPath module
 
 With Profile, the netfilter hooks inside container netns and between tunnel endpoints contribute about 25% of the CPU time
 after the optimization of disabling lb. We provide a FastPath module that can bypass the nf hooks process and reduce about 
 another 20% of CPU time and latency in 1 byte packet test.
 
-Please refer [FastPath Guide](../fastpath/README.md) to get the detail steps.
+The easiest way is to download the `.ko` file and `insmod` the file as [doc](https://github.com/kubeovn/tunning-package) introduce. The `ko` file currently support a limited number of kernel versions. However, we encourage users to submit requests, and we will support new versions soon.
 
-### Optimize OVS kernel module
+If you want to compile yourself, please refer [FastPath Guide](../fastpath/README.md) to get the detail steps.
+
+
+
+## Optimize OVS kernel module
+
+### Download a ready-made package
+
+Also, the easiest way is to download the ovs-kernel file and install the file as [doc](https://github.com/kubeovn/tunning-package) introduce. Detail information could be found in repo `Kube-OVN/tunning-packages`.
+
+However, also currently the packages support a limited number of kernel versions. So we encourage users to submit requests.
+
+You also could compile the package manually or automatically according to the following entries.
+
+After installing the ovs kernel modules, enable the ovs stt configuration to complete the optimisation.
+
+### manual compile
 
 The OVS flow match process takes about 10% of the CPU time. If the OVS runs on x86 CPU with popcnt and sse instruction sets, some
 compile optimization can be applied to accelerate the match process.
@@ -203,8 +229,6 @@ cp debian/openvswitch-switch.init /etc/init.d/openvswitch-switch
 /etc/init.d/openvswitch-switch force-reload-kmod
 ```
 
-
-
 ### Automatically compile openvswitch rpm and distribute it:
 
 ```bash
@@ -250,8 +274,6 @@ $ reboot
 ```bash
 $ kubectl ko tuning remove-stt centos
 ```
-
-
 
 ### Using STT tunnel type
 
