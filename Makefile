@@ -279,6 +279,12 @@ kind-reload:
 	kubectl delete pod -n kube-system -l app=kube-ovn-controller
 	kubectl delete pod -n kube-system -l app=kube-ovn-cni
 	kubectl delete pod -n kube-system -l app=kube-ovn-pinger
+	kubectl delete pod -n kube-system -l app=ovs
+
+.PHONY: kind-reload-ovs
+kind-reload-ovs:
+	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
+	kubectl delete pod -n kube-system -l app=ovs
 
 .PHONY: kind-clean
 kind-clean:
