@@ -29,6 +29,7 @@ The Kube-OVN community is waiting for your participation!
 - **TroubleShooting Tools**: Handy tools to diagnose, trace, monitor and dump container network traffic to help troubleshoot complicate network issues.
 - **Prometheus & Grafana Integration**: Exposing network quality metrics like pod/node/service/dns connectivity/latency in Prometheus format.
 - **ARM Support**: Kube-OVN can run on x86_64 and arm64 platforms.
+- **Windows Support**: Kube-OVN can run on Windows worker nodes.
 - **Subnet Isolation**: Can configure a Subnet to deny any traffic from source IP addresses not within the same Subnet. Can whitelist specific IP addresses and IP ranges.
 - **Network Policy**: Implementing networking.k8s.io/NetworkPolicy API by high performance ovn ACL.
 - **DualStack IP Support**: Pod can run in IPv4-Only/IPv6-Only/DualStack mode.
@@ -98,6 +99,7 @@ If you want to install Kubernetes from scratch, you can try [kubespray](https://
 - [Performance Tuning](docs/performance-tuning.md)
 - [Cilium Integration](docs/IntegrateCiliumIntoKubeOVN.md)
 - [F5 CES Integration](https://github.com/f5devcentral/container-egress-service/wiki)
+- [Windows Support](docs/windows-support.md)
 
 ## Contribution
 We are looking forward to your PR!
