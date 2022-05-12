@@ -2553,9 +2553,8 @@ spec:
         - name: kube-ovn-controller
           image: "$REGISTRY/kube-ovn:$VERSION"
           imagePullPolicy: $IMAGE_PULL_POLICY
-          command:
-          - /kube-ovn/start-controller.sh
           args:
+          - /kube-ovn/start-controller.sh
           - --default-cidr=$POD_CIDR
           - --default-gateway=$POD_GATEWAY
           - --default-gateway-check=$CHECK_GATEWAY
