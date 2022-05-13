@@ -75,3 +75,8 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     dpkg -i /packages/openvswitch-*.deb && \
     dpkg -i /packages/python3-openvswitch*.deb &&\
     dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/ovn-*.deb
+
+RUN curl -sSf -L --retry 5 -o /usr/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v1.2.5/dumb-init_1.2.5_x86_64
+RUN chmod +x /usr/bin/dumb-init
+
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
