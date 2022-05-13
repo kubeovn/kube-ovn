@@ -151,7 +151,7 @@ metadata:
   namespace: net2
 spec:
   containers:
-  - image: kubeovn/kube-ovn:v1.8.4
+  - image: kubeovn/kube-ovn:v1.8.6
     command:
       - "sleep"
       - "604800"

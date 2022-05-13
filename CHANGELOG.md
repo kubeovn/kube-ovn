@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## 1.8.6  -- 2022/05/09
+## 1.8.6  -- 2022/05/13
 ### Enhancement
 - add kube-ovn-controller switch for EIP and SNAT
 - log: show the reason if get gw node failed
@@ -8,6 +8,7 @@
 - add env-check
 - add delete ovs pods after restore nb db
 - optimize IPAM initialization
+- reduce ovs-ovn restart downtime
 
 ### Bugfix
 - recover ips CR on IPAM initialization
