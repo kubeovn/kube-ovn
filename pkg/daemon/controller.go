@@ -609,6 +609,18 @@ func (c *Controller) reconcileRouters(event subnetEvent) error {
 			}
 		}
 	}
+
+	if oldSubnet != nil && newSubnet != nil && oldSubnet.Spec.HtbQos != "" && newSubnet.Spec.HtbQos == "" {
+		if err := c.deleteSubnetQos(newSubnet); err != nil {
+			klog.Errorf("failed to delete htb qos for subnet %s: %v", newSubnet.Name, err)
+			return err
+		}
+	} else if newSubnet != nil && newSubnet.Spec.HtbQos != "" {
+		if err := c.setSubnetQosPriority(newSubnet); err != nil {
+			klog.Errorf("failed to set htb qos priority for subnet %s: %v", newSubnet.Name, err)
+			return err
+		}
+	}
 	return nil
 }
 
@@ -919,9 +931,16 @@ func (c *Controller) handlePod(key string) error {
 		podName = pod.Annotations[fmt.Sprintf(util.VmTemplate, util.OvnProvider)]
 	}
 
+	priority := pod.Annotations[util.PriorityAnnotation]
+	subnetName := pod.Annotations[util.LogicalSwitchAnnotation]
+	subnetPriority := c.getSubnetQosPriority(subnetName)
+	if priority == "" && subnetPriority != "" {
+		priority = subnetPriority
+	}
+
 	// set default nic bandwidth
 	ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
-	err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation], pod.Annotations[util.PriorityAnnotation])
+	err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation], priority)
 	if err != nil {
 		return err
 	}
@@ -947,7 +966,14 @@ func (c *Controller) handlePod(key string) error {
 		}
 		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
 			ifaceID = ovs.PodNameToPortName(podName, pod.Namespace, provider)
-			err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.PriorityAnnotationTemplate, provider)])
+			priority := pod.Annotations[fmt.Sprintf(util.PriorityAnnotationTemplate, provider)]
+			subnetName := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider)]
+			subnetPriority := c.getSubnetQosPriority(subnetName)
+			if priority == "" && subnetPriority != "" {
+				priority = subnetPriority
+			}
+
+			err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)], priority)
 			if err != nil {
 				return err
 			}
@@ -1032,28 +1058,6 @@ func (c *Controller) markAndCleanInternalPort() error {
 	lastNoPodOvsPort = noPodOvsPort
 
 	return nil
-}
-
-func (c *Controller) loopCheckSubnetQosPriority() {
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets %v", err)
-		return
-	}
-
-	for _, subnet := range subnets {
-		if subnet.Spec.HtbQos == "" {
-			if err := c.deleteSubnetQos(subnet); err != nil {
-				klog.Errorf("failed to delete htb qos for subnet %s: %v", subnet.Name, err)
-				return
-			}
-		} else {
-			if err := c.setSubnetQosPriority(subnet); err != nil {
-				klog.Errorf("failed to set htb qos priority for subnet %s: %v", subnet.Name, err)
-				return
-			}
-		}
-	}
 }
 
 func (c *Controller) setSubnetQosPriority(subnet *kubeovnv1.Subnet) error {
@@ -1211,6 +1215,22 @@ func (c *Controller) deleteSubnetQos(subnet *kubeovnv1.Subnet) error {
 	return nil
 }
 
+func (c *Controller) getSubnetQosPriority(subnetName string) string {
+	var priority string
+	subnet, err := c.subnetsLister.Get(subnetName)
+	if err != nil {
+		klog.Errorf("failed to get subnet %s: %v", subnet, err)
+	} else if subnet.Spec.HtbQos != "" {
+		htbQos, err := c.htbQosLister.Get(subnet.Spec.HtbQos)
+		if err != nil {
+			klog.Errorf("failed to get htbqos %s: %v", subnet.Spec.HtbQos, err)
+		} else {
+			priority = htbQos.Spec.Priority
+		}
+	}
+	return priority
+}
+
 // Run starts controller
 func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
@@ -1245,7 +1265,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 			klog.Errorf("gc ovs port error: %v", err)
 		}
 	}, 5*time.Minute, stopCh)
-	go wait.Until(c.loopCheckSubnetQosPriority, 5*time.Second, stopCh)
+
 	<-stopCh
 	klog.Info("Shutting down workers")
 }
