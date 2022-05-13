@@ -1,7 +1,7 @@
 #!/bin/bash
 set -eo pipefail
 
-IMAGE=kubeovn/kube-ovn:v1.9.2
+IMAGE=kubeovn/kube-ovn:v1.9.3
 
 echo "[Step 0/8] Update CRD"
 cat <<EOF > kube-ovn-crd-1.9.yaml

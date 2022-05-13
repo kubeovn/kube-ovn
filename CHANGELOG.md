@@ -1,11 +1,15 @@
 # CHANGELOG
 
-## 1.9.3 -- 2022/05/09
+## 1.9.3 -- 2022/05/13
 ### Enhancement
 - optimize IPAM initialization
+- reduce ovs-ovn restart downtime
+- optimize node port-group check
+- optimize ovs request in cni
 ### Bugfix
 - delete ipam record and static route when gc lsp
 - fix: ovs trace flow always ends with controller action
+- fix defunct ovn-nbctl daemon
 
 ## 1.9.2 -- 2022/04/25
 
