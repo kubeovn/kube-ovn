@@ -203,6 +203,11 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			return
 		}
 
+		subnetPriority := csh.Controller.getSubnetQosPriority(subnet)
+		if priority == "" && subnetPriority != "" {
+			priority = subnetPriority
+		}
+
 		//skip ping check gateway for pods during live migration
 		if pod.Annotations[fmt.Sprintf(util.LiveMigrationAnnotationTemplate, podRequest.Provider)] != "true" {
 			if !podSubnet.Spec.DisableGatewayCheck {

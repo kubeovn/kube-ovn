@@ -228,10 +228,6 @@ func (c *Controller) loopEncapIpCheck() {
 	// TODO
 }
 
-func (c *Controller) loopCheckSubnetQosPriority() {
-	// TODO
-}
-
 func (c *Controller) clearQos(podName, podNamespace, ifaceID string) error {
 	// TODO
 	return nil

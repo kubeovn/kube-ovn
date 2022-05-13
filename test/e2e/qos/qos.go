@@ -279,7 +279,7 @@ var _ = Describe("[Qos]", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Check Ovs Qos Para, same as subnet")
-		time.Sleep(10 * time.Second)
+		time.Sleep(3 * time.Second)
 		priority, _, err := framework.GetPodHtbQosPara(name, namespace)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(priority).To(Equal("100"))
@@ -318,7 +318,7 @@ var _ = Describe("[Qos]", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Check Ovs Qos Para, priority from subnet")
-		time.Sleep(10 * time.Second)
+		time.Sleep(3 * time.Second)
 		priority, _, err = framework.GetPodHtbQosPara(name, namespace)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(priority).To(Equal("100"))

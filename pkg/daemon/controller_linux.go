@@ -176,6 +176,18 @@ func (c *Controller) reconcileRouters(event subnetEvent) error {
 			}
 		}
 	}
+
+	if oldSubnet != nil && newSubnet != nil && oldSubnet.Spec.HtbQos != "" && newSubnet.Spec.HtbQos == "" {
+		if err := c.deleteSubnetQos(newSubnet); err != nil {
+			klog.Errorf("failed to delete htb qos for subnet %s: %v", newSubnet.Name, err)
+			return err
+		}
+	} else if newSubnet != nil && newSubnet.Spec.HtbQos != "" {
+		if err := c.setSubnetQosPriority(newSubnet); err != nil {
+			klog.Errorf("failed to set htb qos priority for subnet %s: %v", newSubnet.Name, err)
+			return err
+		}
+	}
 	return nil
 }
 
@@ -403,9 +415,16 @@ func (c *Controller) handlePod(key string) error {
 		podName = pod.Annotations[fmt.Sprintf(util.VmTemplate, util.OvnProvider)]
 	}
 
+	priority := pod.Annotations[util.PriorityAnnotation]
+	subnetName := pod.Annotations[util.LogicalSwitchAnnotation]
+	subnetPriority := c.getSubnetQosPriority(subnetName)
+	if priority == "" && subnetPriority != "" {
+		priority = subnetPriority
+	}
+
 	// set default nic bandwidth
 	ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
-	err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation], pod.Annotations[util.PriorityAnnotation])
+	err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation], priority)
 	if err != nil {
 		return err
 	}
@@ -431,7 +450,14 @@ func (c *Controller) handlePod(key string) error {
 		}
 		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
 			ifaceID = ovs.PodNameToPortName(podName, pod.Namespace, provider)
-			err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.PriorityAnnotationTemplate, provider)])
+			priority := pod.Annotations[fmt.Sprintf(util.PriorityAnnotationTemplate, provider)]
+			subnetName := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider)]
+			subnetPriority := c.getSubnetQosPriority(subnetName)
+			if priority == "" && subnetPriority != "" {
+				priority = subnetPriority
+			}
+
+			err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)], priority)
 			if err != nil {
 				return err
 			}
@@ -487,28 +513,6 @@ func (c *Controller) loopEncapIpCheck() {
 		if err = setEncapIP(encapIP); err != nil {
 			klog.Errorf("failed to set encap ip %s for iface %s", encapIP, c.config.Iface)
 			return
-		}
-	}
-}
-
-func (c *Controller) loopCheckSubnetQosPriority() {
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets %v", err)
-		return
-	}
-
-	for _, subnet := range subnets {
-		if subnet.Spec.HtbQos == "" {
-			if err := c.deleteSubnetQos(subnet); err != nil {
-				klog.Errorf("failed to delete htb qos for subnet %s: %v", subnet.Name, err)
-				return
-			}
-		} else {
-			if err := c.setSubnetQosPriority(subnet); err != nil {
-				klog.Errorf("failed to set htb qos priority for subnet %s: %v", subnet.Name, err)
-				return
-			}
 		}
 	}
 }

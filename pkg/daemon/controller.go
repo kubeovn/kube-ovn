@@ -628,6 +628,22 @@ func (c *Controller) deleteSubnetQos(subnet *kubeovnv1.Subnet) error {
 	return nil
 }
 
+func (c *Controller) getSubnetQosPriority(subnetName string) string {
+	var priority string
+	subnet, err := c.subnetsLister.Get(subnetName)
+	if err != nil {
+		klog.Errorf("failed to get subnet %s: %v", subnet, err)
+	} else if subnet.Spec.HtbQos != "" {
+		htbQos, err := c.htbQosLister.Get(subnet.Spec.HtbQos)
+		if err != nil {
+			klog.Errorf("failed to get htbqos %s: %v", subnet.Spec.HtbQos, err)
+		} else {
+			priority = htbQos.Spec.Priority
+		}
+	}
+	return priority
+}
+
 // Run starts controller
 func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
@@ -664,7 +680,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 			klog.Errorf("gc ovs port error: %v", err)
 		}
 	}, 5*time.Minute, stopCh)
-	go wait.Until(c.loopCheckSubnetQosPriority, 5*time.Second, stopCh)
+
 	<-stopCh
 	klog.Info("Shutting down workers")
 }
