@@ -60,8 +60,9 @@ type Configuration struct {
 	PodNamespace string
 	PodNicType   string
 
-	WorkerNum int
-	PprofPort int
+	WorkerNum       int
+	PprofPort       int
+	NodePgProbeTime int
 
 	NetworkType          string
 	DefaultProviderName  string
@@ -110,8 +111,9 @@ func ParseFlags() (*Configuration, error) {
 		argClusterTcpSessionLoadBalancer = pflag.String("cluster-tcp-session-loadbalancer", "cluster-tcp-session-loadbalancer", "The name for cluster tcp session loadbalancer")
 		argClusterUdpSessionLoadBalancer = pflag.String("cluster-udp-session-loadbalancer", "cluster-udp-session-loadbalancer", "The name for cluster udp session loadbalancer")
 
-		argWorkerNum = pflag.Int("worker-num", 3, "The parallelism of each worker")
-		argPprofPort = pflag.Int("pprof-port", 10660, "The port to get profiling data")
+		argWorkerNum       = pflag.Int("worker-num", 3, "The parallelism of each worker")
+		argPprofPort       = pflag.Int("pprof-port", 10660, "The port to get profiling data")
+		argNodePgProbeTime = pflag.Int("nodepg-probe-time", 1, "The probe interval for node port-group, the unit is minute")
 
 		argNetworkType          = pflag.String("network-type", util.NetworkTypeGeneve, "The ovn network type")
 		argDefaultProviderName  = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name")
@@ -189,6 +191,7 @@ func ParseFlags() (*Configuration, error) {
 		ExternalGatewayVlanID:         *argExternalGatewayVlanID,
 		EnableEcmp:                    *argEnableEcmp,
 		EnableKeepVmIP:                *argKeepVmIP,
+		NodePgProbeTime:               *argNodePgProbeTime,
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {

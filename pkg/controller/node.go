@@ -853,13 +853,7 @@ func (c *Controller) retryDelDupChassis(attempts int, sleep int, f func(node *v1
 	return nil
 }
 
-func (c *Controller) fetchPodsOnNode(nodeName string) ([]string, error) {
-	pods, err := c.podsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list pods, %v", err)
-		return nil, err
-	}
-
+func (c *Controller) fetchPodsOnNode(nodeName string, pods []*v1.Pod) ([]string, error) {
 	ports := make([]string, 0, len(pods))
 	for _, pod := range pods {
 		if !isPodAlive(pod) || pod.Spec.HostNetwork || pod.Spec.NodeName != nodeName || pod.Annotations[util.LogicalRouterAnnotation] != util.DefaultVpc {
@@ -886,37 +880,13 @@ func (c *Controller) fetchPodsOnNode(nodeName string) ([]string, error) {
 	return ports, nil
 }
 
-func (c *Controller) checkPodsChangedOnNode(pgName string, ports []string) (bool, error) {
-	pgPorts, err := c.ovnClient.ListPgPorts(pgName)
-	if err != nil {
-		klog.Errorf("failed to fetch ports for pg %v, %v", pgName, err)
-		return false, err
-	}
-
-	nameIdMap, idNameMap, err := c.ovnClient.ListLspForNodePortgroup()
-	if err != nil {
-		klog.Errorf("failed to list lsp info, %v", err)
-		return false, err
-	}
-
-	portIds := make([]string, 0, len(ports))
+func (c *Controller) checkPodsChangedOnNode(pgName string, nameIdMap map[string]string, pgPorts, ports []string) (bool, error) {
 	for _, port := range ports {
 		if portId, ok := nameIdMap[port]; ok {
-			portIds = append(portIds, portId)
-		}
-	}
-
-	for _, portId := range portIds {
-		if !util.IsStringIn(portId, pgPorts) {
-			klog.Infof("pod on node changed, new added port %v should add to node port group %v", idNameMap[portId], pgName)
-			return true, nil
-		}
-	}
-
-	for _, pgPort := range pgPorts {
-		if !util.IsStringIn(pgPort, portIds) {
-			klog.Infof("pod on node changed, can not find match pod for port %v in node port group %v", pgPort, pgName)
-			return true, nil
+			if !util.IsStringIn(portId, pgPorts) {
+				klog.Infof("pod on node changed, new added port %v should add to node port group %v", port, pgName)
+				return true, nil
+			}
 		}
 	}
 
@@ -942,22 +912,36 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 		return err
 	}
 
+	pods, err := c.podsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list pods, %v", err)
+		return err
+	}
+
+	nameIdMap, _, err := c.ovnClient.ListLspForNodePortgroup()
+	if err != nil {
+		klog.Errorf("failed to list lsp info, %v", err)
+		return err
+	}
+
+	namePortsMap, err := c.ovnClient.ListPgPortsForNodePortgroup()
+	if err != nil {
+		klog.Errorf("failed to list port-group info, %v", err)
+		return err
+	}
+
 	for _, node := range nodes {
-		// ovn acl doesn't support address_set name with '-', so replace '-' by '.'
+		// The port-group should already created when add node
 		pgName := strings.Replace(node.Annotations[util.PortNameAnnotation], "-", ".", -1)
 		nodeIP := node.Annotations[util.IpAddressAnnotation]
-		if err := c.ovnClient.CreateNpPortGroup(pgName, "node", node.Name); err != nil {
-			klog.Errorf("failed to create port group %v for node %s, %v", pgName, node.Name, err)
-			return err
-		}
 
-		ports, err := c.fetchPodsOnNode(node.Name)
+		ports, err := c.fetchPodsOnNode(node.Name, pods)
 		if err != nil {
 			klog.Errorf("failed to fetch pods for node %v, %v", node.Name, err)
 			return err
 		}
 
-		changed, err := c.checkPodsChangedOnNode(pgName, ports)
+		changed, err := c.checkPodsChangedOnNode(pgName, nameIdMap, namePortsMap[pgName], ports)
 		if err != nil {
 			klog.Errorf("failed to check pod status for node %v, %v", node.Name, err)
 			continue
