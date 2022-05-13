@@ -43,9 +43,8 @@ spec:
         - name: kube-ovn-controller
           image: "kubeovn/kube-ovn:v1.8.6"
           imagePullPolicy: IfNotPresent
-          command:
-            - /kube-ovn/start-controller.sh
           args:
+            - /kube-ovn/start-controller.sh
             - --default-cidr=2001:db8:0000:0000::/64
             - --default-gateway=2001:db8:0000:0000::1
             - --node-switch-cidr=2001:db8:0000:0001::/64
