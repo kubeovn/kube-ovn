@@ -1593,6 +1593,30 @@ func (c Client) ListLspForNodePortgroup() (map[string]string, map[string]string,
 	return nameIdMap, idNameMap, nil
 }
 
+func (c Client) ListPgPortsForNodePortgroup() (map[string][]string, error) {
+	output, err := c.ovnNbCommand("--data=bare", "--format=csv", "--no-heading", "--columns=name,ports", "list", "port_group")
+	if err != nil {
+		klog.Errorf("failed to list port_group, %v", err)
+		return nil, err
+	}
+	lines := strings.Split(output, "\n")
+	namePortsMap := make(map[string][]string, len(lines))
+	for _, l := range lines {
+		if len(strings.TrimSpace(l)) == 0 {
+			continue
+		}
+		parts := strings.Split(strings.TrimSpace(l), ",")
+		if len(parts) != 2 {
+			continue
+		}
+		name := strings.TrimSpace(parts[0])
+		ports := strings.Fields(parts[1])
+		namePortsMap[name] = ports
+	}
+
+	return namePortsMap, nil
+}
+
 func (c Client) SetPortsToPortGroup(portGroup string, portNames []string) error {
 	ovnArgs := []string{"clear", "port_group", portGroup, "ports"}
 	if len(portNames) > 0 {
