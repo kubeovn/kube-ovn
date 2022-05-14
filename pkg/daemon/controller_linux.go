@@ -744,10 +744,3 @@ func isFile(filename string, dir string) (bool, string) {
 	}
 	return isFile, fileFullName
 }
-
-func recompute() {
-	output, err := exec.Command("ovn-appctl", "-t", "ovn-controller", "recompute").CombinedOutput()
-	if err != nil {
-		klog.Errorf("failed to recompute ovn-controller %q", output)
-	}
-}

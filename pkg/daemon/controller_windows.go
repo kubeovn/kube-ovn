@@ -239,7 +239,3 @@ func rotateLog() {
 
 func (c *Controller) operateMod() {
 }
-
-func recompute() {
-	// FIXME: do not execute recompute to decrease possibility of ovs stuckness
-}
