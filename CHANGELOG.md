@@ -1,5 +1,99 @@
 # CHANGELOG
 
+## v1.10.0 -- 2022/05/14
+
+### New Feature
+- Windows support
+- Reduce ovs-ovn restart downtime
+- Submariner for multi clusters service
+- Iptables eip nats splits
+- support to add multiple subnets for a namespace
+- add custom ACLs for subnet
+- support dpdk hybrid node
+- keep ip for kubevirt pod
+- Support kubevirt vm live migrate for pod static ip
+- feat: support DHCP
+- feat: vpc peering connection
+- add 'virtual' port for vip
+- LSP forwarding external Layer-2 packets
+- update provider network via node annotation
+- feat: add webhook to check subnet deletion
+- add webhook validate the vpc resource whether it can be deleted.
+
+### Performance
+- optimize ovs request in cni
+- optimize node port-group check
+- optimize IPAM initialization
+- manual compile method for ubuntu20.04
+- add repo for tunning packages
+- add kube-ovn-controller switch for EIP and SNAT
+- use router policy for distributed/centralized gateway
+
+### Security
+- update alpine to fix CVE-2022-1271
+
+### Monitoring
+- Add env-check
+- add sb/nb db check bash script
+- update nodeips for restore cmd in ko plugin
+- add restore process for ovn nb db
+- add reset porocess for ovs interface metrics
+- add metric for ovn nb/sb db status
+
+### Bugfix
+- fix defunct ovn-nbctl daemon
+- keep vm's and statefulset's ips when user specified subnet
+- add netem qos when create pod
+- handle the case of error node cidr
+- ovs trace flow always ends with controller action
+- add empty chassis check in ovn db
+- delete ipam record when gc lsp
+- fix wrong vpc-nat-gateway arm image
+- fix pod annotation may override by patch
+- fix: workqueue_depth should show count not rate
+- add delete ovs pods after restore nb db
+- delete monitor noexecute toleration
+- fix routes for packets from Pods to other nodes
+- masquerade packets from Pods to service IP
+- modify init ipam by ip crd only for sts pod
+- fix adding key to delete Pod queue
+- fix IPAM initialization
+- ignore all link local unicast addresses/routes
+- fix error handling for netlink.AddrDel
+- fix provider-networks status
+- recover ips CR on IPAM initialization
+- fix: do not recreate port for terminating pods
+- avoid frequent ipset update
+- add reset for kube-ovn-monitor metrics
+- fix: The underlay physical gateway config by external-gw-addr when use snat&eip
+- fix external egress gateway
+- add missing link scope routes in vpc-nat-gateway
+- modify ipam v6 release ip problem
+- skip ping gateway for pods during live migration
+- don't check conflict for migration pod with only static mac
+- fix usage of ovn commands
+- fix OVS bridge with bond port in mode 6
+- fix underlay subnet in custom VPC
+- configurable kube-ovn cni config filename
+- replace ecmp dp_hash with hash by src_ip
+- set up tunnel correctly in hybrid mode
+- check static route conflict
+- transfer IP/route earlier in OVS startup
+- fix: validate statefulset pod by name
+
+### Mics
+- use inc-engine/recompute instead of deprecated recomput
+- update kind to v0.13.0
+- refactor logical router routes
+- update ovn and ovs
+- add routed check in circulation
+- create ip crd in kube-ovn-controller
+- update cni version to 1.0
+- VIP is decoupled from port security
+- Use go to rerimplement ovn-is-leader.sh
+- Replace command health check with k8s tcpSocket check
+- add gateway check after update subnet
+
 ## 1.9.0 -- 2022/01/07
 
 ### New Feature
