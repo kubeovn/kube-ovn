@@ -166,6 +166,10 @@ var _ = Describe("[Service]", func() {
 		})
 
 		It("external to ClusterIP", func() {
+			if ciliumChaining {
+				return
+			}
+
 			port := hostService.Spec.Ports[0].Port
 			for _, ip := range hostService.Spec.ClusterIPs {
 				checkService(checkCount, true, "docker", append(dockerArgs, strings.Fields(curlArgs(ip, port))...)...)
@@ -290,6 +294,10 @@ var _ = Describe("[Service]", func() {
 		})
 
 		It("external to ClusterIP", func() {
+			if ciliumChaining {
+				return
+			}
+
 			port := localEtpHostService.Spec.Ports[0].Port
 			for _, ip := range localEtpHostService.Spec.ClusterIPs {
 				checkService(checkCount, true, "docker", append(dockerArgs, strings.Fields(curlArgs(ip, port))...)...)
