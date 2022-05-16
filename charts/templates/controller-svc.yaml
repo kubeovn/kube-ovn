@@ -1,0 +1,16 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: kube-ovn-controller
+  namespace: kube-system
+  labels:
+    app: kube-ovn-controller
+spec:
+  selector:
+    app: kube-ovn-controller
+  ports:
+    - port: 10660
+      name: metrics
+  {{- if eq .Values.networking.net_stack "dual_stack" }}
+  ipFamilyPolicy: PreferDualStack
+  {{- end }}
