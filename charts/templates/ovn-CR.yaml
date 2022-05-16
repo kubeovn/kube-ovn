@@ -1,0 +1,104 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  annotations:
+    rbac.authorization.k8s.io/system-only: "true"
+  name: system:ovn
+rules:
+  - apiGroups: ['policy']
+    resources: ['podsecuritypolicies']
+    verbs:     ['use']
+    resourceNames:
+      - kube-ovn
+  - apiGroups:
+      - "kubeovn.io"
+    resources:
+      - vpcs
+      - vpcs/status
+      - vpc-nat-gateways
+      - subnets
+      - subnets/status
+      - ips
+      - vips
+      - vips/status
+      - vlans
+      - vlans/status
+      - provider-networks
+      - provider-networks/status
+      - networks
+      - security-groups
+      - security-groups/status
+      - htbqoses
+      - iptables-eips
+      - iptables-fip-rules
+      - iptables-dnat-rules
+      - iptables-snat-rules
+      - iptables-eips/status
+      - iptables-fip-rules/status
+      - iptables-dnat-rules/status
+      - iptables-snat-rules/status
+    verbs:
+      - "*"
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+      - pods/exec
+      - namespaces
+      - nodes
+      - configmaps
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+      - patch
+      - update
+  - apiGroups:
+      - ""
+      - networking.k8s.io
+      - apps
+      - extensions
+    resources:
+      - networkpolicies
+      - services
+      - endpoints
+      - statefulsets
+      - daemonsets
+      - deployments
+      - deployments/scale
+    verbs:
+      - create
+      - delete
+      - update
+      - patch
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+      - update
+  - apiGroups:
+      - "k8s.cni.cncf.io"
+    resources:
+      - network-attachment-definitions
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - update
+  - apiGroups:
+      - "kubevirt.io"
+    resources:
+      - virtualmachines
+      - virtualmachineinstances
+    verbs:
+      - get
+      - list
+
