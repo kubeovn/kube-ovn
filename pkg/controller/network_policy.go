@@ -304,7 +304,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 				}
 
 				if len(allows) != 0 || len(excepts) != 0 {
-					if err := c.ovnClient.CreateIngressACL(fmt.Sprintf("%s/%s", np.Namespace, np.Name), pgName, ingressAllowAsName, ingressExceptAsName, svcAsName, protocol, npr.Ports); err != nil {
+					if err := c.ovnClient.CreateIngressACL(pgName, ingressAllowAsName, ingressExceptAsName, svcAsName, protocol, npr.Ports); err != nil {
 						klog.Errorf("failed to create ingress acls for np %s, %v", key, err)
 						return err
 					}
@@ -323,7 +323,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 				ingressPorts := []netv1.NetworkPolicyPort{}
-				if err := c.ovnClient.CreateIngressACL(fmt.Sprintf("%s/%s", np.Namespace, np.Name), pgName, ingressAllowAsName, ingressExceptAsName, svcAsName, protocol, ingressPorts); err != nil {
+				if err := c.ovnClient.CreateIngressACL(pgName, ingressAllowAsName, ingressExceptAsName, svcAsName, protocol, ingressPorts); err != nil {
 					klog.Errorf("failed to create ingress acls for np %s, %v", key, err)
 					return err
 				}
@@ -442,7 +442,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 				}
 
 				if len(allows) != 0 || len(excepts) != 0 {
-					if err := c.ovnClient.CreateEgressACL(fmt.Sprintf("%s/%s", np.Namespace, np.Name), pgName, egressAllowAsName, egressExceptAsName, protocol, npr.Ports, svcAsName); err != nil {
+					if err := c.ovnClient.CreateEgressACL(pgName, egressAllowAsName, egressExceptAsName, protocol, npr.Ports, svcAsName); err != nil {
 						klog.Errorf("failed to create egress acls for np %s, %v", key, err)
 						return err
 					}
@@ -461,7 +461,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 				egressPorts := []netv1.NetworkPolicyPort{}
-				if err := c.ovnClient.CreateEgressACL(fmt.Sprintf("%s/%s", np.Namespace, np.Name), pgName, egressAllowAsName, egressExceptAsName, protocol, egressPorts, svcAsName); err != nil {
+				if err := c.ovnClient.CreateEgressACL(pgName, egressAllowAsName, egressExceptAsName, protocol, egressPorts, svcAsName); err != nil {
 					klog.Errorf("failed to create egress acls for np %s, %v", key, err)
 					return err
 				}
