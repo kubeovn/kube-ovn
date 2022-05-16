@@ -1567,14 +1567,14 @@ func (c Client) CreateNpAddressSet(asName, npNamespace, npName, direction string
 	return err
 }
 
-func (c Client) CreateIngressACL(npName, pgName, asIngressName, asExceptName, svcAsName, protocol string, npp []netv1.NetworkPolicyPort) error {
+func (c Client) CreateIngressACL(pgName, asIngressName, asExceptName, svcAsName, protocol string, npp []netv1.NetworkPolicyPort) error {
 	var allowArgs []string
 
 	ipSuffix := "ip4"
 	if protocol == kubeovnv1.ProtocolIPv6 {
 		ipSuffix = "ip6"
 	}
-	ovnArgs := []string{MayExist, "--type=port-group", "--log", fmt.Sprintf("--name=%s", npName), fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "to-lport", util.IngressDefaultDrop, fmt.Sprintf("outport==@%s && ip", pgName), "drop"}
+	ovnArgs := []string{MayExist, "--type=port-group", "--log", fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "to-lport", util.IngressDefaultDrop, fmt.Sprintf("outport==@%s && ip", pgName), "drop"}
 
 	if len(npp) == 0 {
 		allowArgs = []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("%s.src == $%s && %s.src != $%s && outport==@%s && ip", ipSuffix, asIngressName, ipSuffix, asExceptName, pgName), "allow-related"}
@@ -1597,14 +1597,14 @@ func (c Client) CreateIngressACL(npName, pgName, asIngressName, asExceptName, sv
 	return err
 }
 
-func (c Client) CreateEgressACL(npName, pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, portSvcName string) error {
+func (c Client) CreateEgressACL(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, portSvcName string) error {
 	var allowArgs []string
 
 	ipSuffix := "ip4"
 	if protocol == kubeovnv1.ProtocolIPv6 {
 		ipSuffix = "ip6"
 	}
-	ovnArgs := []string{"--", MayExist, "--type=port-group", "--log", fmt.Sprintf("--name=%s", npName), fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "from-lport", util.EgressDefaultDrop, fmt.Sprintf("inport==@%s && ip", pgName), "drop"}
+	ovnArgs := []string{"--", MayExist, "--type=port-group", "--log", fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "from-lport", util.EgressDefaultDrop, fmt.Sprintf("inport==@%s && ip", pgName), "drop"}
 
 	if len(npp) == 0 {
 		allowArgs = []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("%s.dst == $%s && %s.dst != $%s && inport==@%s && ip", ipSuffix, asEgressName, ipSuffix, asExceptName, pgName), "allow-related"}
