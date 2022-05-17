@@ -53,20 +53,6 @@ func (c *Controller) leaderElection() {
 }
 
 func setupLeaderElection(config *leaderElectionConfig) *leaderelection.LeaderElector {
-	var elector *leaderelection.LeaderElector
-
-	// start a new context
-	ctx := context.Background()
-
-	var cancelContext context.CancelFunc
-
-	var newLeaderCtx = func(ctx context.Context) context.CancelFunc {
-		// allow to cancel the context in case we stop being the leader
-		leaderCtx, cancel := context.WithCancel(ctx)
-		go elector.Run(leaderCtx)
-		return cancel
-	}
-
 	var stopCh chan struct{}
 	callbacks := leaderelection.LeaderCallbacks{
 		OnStartedLeading: func(ctx context.Context) {
@@ -80,11 +66,6 @@ func setupLeaderElection(config *leaderElectionConfig) *leaderelection.LeaderEle
 		OnStoppedLeading: func() {
 			klog.Info("I am not leader anymore")
 			close(stopCh)
-
-			// cancel the context
-			cancelContext()
-
-			cancelContext = newLeaderCtx(ctx)
 
 			if config.OnStoppedLeading != nil {
 				config.OnStoppedLeading()
@@ -101,12 +82,10 @@ func setupLeaderElection(config *leaderElectionConfig) *leaderelection.LeaderEle
 
 	broadcaster := record.NewBroadcaster()
 	hostname := os.Getenv(util.HostnameEnv)
-
 	recorder := broadcaster.NewRecorder(scheme.Scheme, apiv1.EventSource{
 		Component: ovnLeaderElector,
 		Host:      hostname,
 	})
-
 	lock := resourcelock.ConfigMapLock{
 		ConfigMapMeta: metav1.ObjectMeta{Namespace: config.PodNamespace, Name: config.ElectionID},
 		Client:        config.Client.CoreV1(),
@@ -115,21 +94,17 @@ func setupLeaderElection(config *leaderElectionConfig) *leaderelection.LeaderEle
 			EventRecorder: recorder,
 		},
 	}
-
-	var err error
-
-	elector, err = leaderelection.NewLeaderElector(leaderelection.LeaderElectionConfig{
+	elector, err := leaderelection.NewLeaderElector(leaderelection.LeaderElectionConfig{
 		Lock:          &lock,
 		LeaseDuration: 15 * time.Second,
 		RenewDeadline: 10 * time.Second,
 		RetryPeriod:   2 * time.Second,
-
-		Callbacks: callbacks,
+		Callbacks:     callbacks,
 	})
 	if err != nil {
 		klog.Fatalf("unexpected error starting leader election: %v", err)
 	}
 
-	cancelContext = newLeaderCtx(ctx)
+	go elector.Run(context.Background())
 	return elector
 }
