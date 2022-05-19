@@ -1358,14 +1358,6 @@ EOF
 
 if $DPDK; then
   cat <<EOF > ovn.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ovn-config
-  namespace: kube-system
-data:
-  defaultNetworkType: '$NETWORK_TYPE'
-
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -1468,6 +1460,12 @@ rules:
       - create
       - patch
       - update
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - "*"
   - apiGroups:
       - "k8s.cni.cncf.io"
     resources:
@@ -1856,13 +1854,6 @@ EOF
 
 else
   cat <<EOF > ovn.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ovn-config
-  namespace: kube-system
-data:
-  defaultNetworkType: '$NETWORK_TYPE'
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -1955,6 +1946,12 @@ rules:
       - create
       - patch
       - update
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - "*"
   - apiGroups:
       - "k8s.cni.cncf.io"
     resources:
