@@ -6,7 +6,7 @@
 set -euo pipefail
 
 KUBE_OVN_NS=kube-system
-IS_RESTORE=true
+IS_RESTORE=false
 
 restoreNB(){
   echo "start restore db"
@@ -65,7 +65,7 @@ restoreNB(){
 }
 
 DBabnormal(){
-  if [ $IS_RESTORE ]; then
+  if $IS_RESTORE; then
     restoreNB
   else
     exit 1
