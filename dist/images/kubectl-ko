@@ -2,7 +2,7 @@
 set -euo pipefail
 
 KUBE_OVN_NS=kube-system
-WITHOUT_KUBE_PROXY=false
+WITHOUT_KUBE_PROXY=${WITHOUT_KUBE_PROXY:-false}
 OVN_NB_POD=
 OVN_SB_POD=
 KUBE_OVN_VERSION=
