@@ -5,7 +5,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -14,6 +13,8 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const ovnLeaderElector = "ovn-controller-leader-elector"
@@ -38,7 +39,7 @@ func (c *Controller) isLeader() bool {
 func (c *Controller) leaderElection() {
 	elector := setupLeaderElection(&leaderElectionConfig{
 		Client:       c.config.KubeClient,
-		ElectionID:   "ovn-config",
+		ElectionID:   "kube-ovn-controller",
 		PodName:      c.config.PodName,
 		PodNamespace: c.config.PodNamespace,
 	})
@@ -86,16 +87,16 @@ func setupLeaderElection(config *leaderElectionConfig) *leaderelection.LeaderEle
 		Component: ovnLeaderElector,
 		Host:      hostname,
 	})
-	lock := resourcelock.ConfigMapLock{
-		ConfigMapMeta: metav1.ObjectMeta{Namespace: config.PodNamespace, Name: config.ElectionID},
-		Client:        config.Client.CoreV1(),
+	lock := &resourcelock.LeaseLock{
+		LeaseMeta: metav1.ObjectMeta{Namespace: config.PodNamespace, Name: config.ElectionID},
+		Client:    config.Client.CoordinationV1(),
 		LockConfig: resourcelock.ResourceLockConfig{
 			Identity:      config.PodName,
 			EventRecorder: recorder,
 		},
 	}
 	elector, err := leaderelection.NewLeaderElector(leaderelection.LeaderElectionConfig{
-		Lock:          &lock,
+		Lock:          lock,
 		LeaseDuration: 15 * time.Second,
 		RenewDeadline: 10 * time.Second,
 		RetryPeriod:   2 * time.Second,
