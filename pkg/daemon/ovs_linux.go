@@ -811,7 +811,6 @@ func setupSriovInterface(containerID, deviceID, vfDriver, ifName string, mtu int
 		return "", "", fmt.Errorf("failed to set MTU on %s: %v", hostNicName, err)
 	}
 
-	
 	// 7. set MAC address to VF
 	if err = setVfMac(deviceID, vfIndex, mac); err != nil {
 		return "", "", err
