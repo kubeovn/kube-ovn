@@ -2,6 +2,10 @@
 
 set -u -e
 
+mkdir -p /usr/local/bin
+cp -f /kube-ovn/kubectl-ko /usr/local/bin/
+chmod +x /usr/local/bin/kubectl-ko
+
 if [[ -f "/proc/sys/net/ipv4/ip_forward" ]];
     then echo 1 > /proc/sys/net/ipv4/ip_forward;
 fi
