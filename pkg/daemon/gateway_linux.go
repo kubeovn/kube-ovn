@@ -310,6 +310,8 @@ func (c *Controller) setIptables() error {
 		}
 
 		v4Rules = []util.IPTableRule{
+			// do not nat node port service traffic with external traffic policy set to local
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -j RETURN`)},
 			// do not nat route traffic
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set ! --match-set ovn40subnets src -m set ! --match-set ovn40other-node src -m set --match-set ovn40subnets-nat dst -j RETURN`)},
 			// nat outgoing
@@ -330,6 +332,8 @@ func (c *Controller) setIptables() error {
 			{Table: "filter", Chain: "OUTPUT", Rule: strings.Fields(`-p udp -m udp --dport 6081 -j MARK --set-xmark 0x0`)},
 		}
 		v6Rules = []util.IPTableRule{
+			// do not nat node port service traffic with external traffic policy set to local
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -j RETURN`)},
 			// do not nat route traffic
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src -m set --match-set ovn60subnets-nat dst -j RETURN`)},
 			// nat outgoing
@@ -368,14 +372,19 @@ func (c *Controller) setIptables() error {
 			return err
 		}
 
-		var matchset string
+		var kubeProxyIpsetProtocol, matchset string
 		var abandonedRules, iptablesRules []util.IPTableRule
 		if protocol == kubeovnv1.ProtocolIPv4 {
 			iptablesRules, abandonedRules = v4Rules, v4AbandonedRules
 			matchset = "ovn40subnets"
 		} else {
 			iptablesRules, abandonedRules = v6Rules, v6AbandonedRules
-			matchset = "ovn60subnets"
+			kubeProxyIpsetProtocol, matchset = "6-", "ovn60subnets"
+		}
+
+		kubeProxyIpsets := map[string]string{
+			"tcp": fmt.Sprintf("KUBE-%sNODE-PORT-LOCAL-TCP", kubeProxyIpsetProtocol),
+			"udp": fmt.Sprintf("KUBE-%sNODE-PORT-LOCAL-UDP", kubeProxyIpsetProtocol),
 		}
 
 		if nodeIP := nodeIPs[protocol]; nodeIP != "" {
@@ -384,10 +393,33 @@ func (c *Controller) setIptables() error {
 			)
 
 			rules := make([]util.IPTableRule, len(iptablesRules)+2)
-			copy(rules[1:3], iptablesRules[:2])
+			copy(rules[1:4], iptablesRules[:3])
 			rules[0] = util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m mark --mark 0x4000/0x4000 -j MASQUERADE`, nodeIP))}
-			rules[3] = util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set ! --match-set %s src -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset, matchset))}
-			copy(rules[4:], iptablesRules[2:])
+			rules[4] = util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set ! --match-set %s src -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset, matchset))}
+			copy(rules[5:], iptablesRules[3:])
+
+			chainExists, err := c.iptables[protocol].ChainExists("nat", "KUBE-NODE-PORT")
+			if err != nil {
+				klog.Errorf("failed to check existence of chain KUBE-NODE-PORT in nat table: %v", err)
+				return err
+			}
+			if chainExists {
+				nodePortRules := make([]util.IPTableRule, 0, len(kubeProxyIpsets))
+				for protocol, ipset := range kubeProxyIpsets {
+					ipsetExists, err := ipsetExists(ipset)
+					if err != nil {
+						klog.Error("failed to check existence of ipset %s: %v", ipset, err)
+						return err
+					}
+					if !ipsetExists {
+						klog.Warningf("ipset %s does not exist", ipset)
+						continue
+					}
+					nodePortRules = append(nodePortRules, util.IPTableRule{Table: "nat", Chain: "KUBE-NODE-PORT", Rule: strings.Fields(fmt.Sprintf("-p %s -m set --match-set %s dst -j MARK --set-xmark 0x80000/0x80000", protocol, ipset))})
+				}
+				rules = append(nodePortRules, rules...)
+			}
+
 			iptablesRules = rules
 		}
 
@@ -775,4 +807,18 @@ func getIptablesRuleNum(table, chain, rule, dstNatIp string) (string, error) {
 		}
 	}
 	return num, nil
+}
+
+func ipsetExists(name string) (bool, error) {
+	result, err := netlink.IpsetListAll()
+	if err != nil {
+		return false, fmt.Errorf("failed to list ipsets: %v", err)
+	}
+
+	for _, ipset := range result {
+		if ipset.SetName == name {
+			return true, nil
+		}
+	}
+	return false, nil
 }
