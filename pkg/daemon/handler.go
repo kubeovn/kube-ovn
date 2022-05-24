@@ -279,7 +279,17 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		}
 	}
 
-	if err := resp.WriteHeaderAndEntity(http.StatusOK, request.CniResponse{Protocol: util.CheckProtocol(cidr), IpAddress: ip, MacAddress: macAddr, CIDR: cidr, Gateway: gw, PodNicName: podNicName}); err != nil {
+	response := &request.CniResponse{
+		Protocol:   util.CheckProtocol(cidr),
+		IpAddress:  ip,
+		MacAddress: macAddr,
+		CIDR:       cidr,
+		PodNicName: podNicName,
+	}
+	if isDefaultRoute {
+		response.Gateway = gw
+	}
+	if err := resp.WriteHeaderAndEntity(http.StatusOK, response); err != nil {
 		klog.Errorf("failed to write response, %v", err)
 	}
 }
