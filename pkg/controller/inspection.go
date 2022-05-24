@@ -21,7 +21,7 @@ func (c *Controller) inspectPod() error {
 		klog.Errorf("failed to list ip, %v", err)
 		return err
 	}
-	lsps, err := c.ovnClient.ListLogicalSwitchPort(c.config.EnableExternalVpc)
+	lsps, err := c.ovnLegacyClient.ListLogicalSwitchPort(c.config.EnableExternalVpc)
 	if err != nil {
 		klog.Errorf("failed to list logical switch port, %v", err)
 		return err

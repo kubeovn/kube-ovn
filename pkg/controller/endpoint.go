@@ -187,13 +187,13 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 			if port.Protocol == v1.ProtocolTCP {
 				// for performance reason delete lb with no backends
 				if len(backends) != 0 {
-					err = c.ovnClient.CreateLoadBalancerRule(tcpLb, vip, backends, string(port.Protocol))
+					err = c.ovnLegacyClient.CreateLoadBalancerRule(tcpLb, vip, backends, string(port.Protocol))
 					if err != nil {
 						klog.Errorf("failed to update vip %s to tcp lb, %v", vip, err)
 						return err
 					}
 				} else {
-					err = c.ovnClient.DeleteLoadBalancerVip(vip, tcpLb)
+					err = c.ovnLegacyClient.DeleteLoadBalancerVip(vip, tcpLb)
 					if err != nil {
 						klog.Errorf("failed to delete vip %s at tcp lb, %v", vip, err)
 						return err
@@ -201,13 +201,13 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 				}
 			} else {
 				if len(backends) != 0 {
-					err = c.ovnClient.CreateLoadBalancerRule(udpLb, vip, backends, string(port.Protocol))
+					err = c.ovnLegacyClient.CreateLoadBalancerRule(udpLb, vip, backends, string(port.Protocol))
 					if err != nil {
 						klog.Errorf("failed to update vip %s to udp lb, %v", vip, err)
 						return err
 					}
 				} else {
-					err = c.ovnClient.DeleteLoadBalancerVip(vip, udpLb)
+					err = c.ovnLegacyClient.DeleteLoadBalancerVip(vip, udpLb)
 					if err != nil {
 						klog.Errorf("failed to delete vip %s at udp lb, %v", vip, err)
 						return err
