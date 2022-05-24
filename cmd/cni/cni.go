@@ -77,13 +77,17 @@ func generateCNIResult(cniVersion string, cniResponse *request.CniResponse) curr
 	switch cniResponse.Protocol {
 	case kubeovnv1.ProtocolIPv4:
 		ip, route := assignV4Address(cniResponse.IpAddress, cniResponse.Gateway, mask)
-		result.IPs = []*current.IPConfig{&ip}
-		result.Routes = []*types.Route{&route}
+		result.IPs = []*current.IPConfig{ip}
+		if route != nil {
+			result.Routes = []*types.Route{route}
+		}
 		result.Interfaces = []*current.Interface{&podIface}
 	case kubeovnv1.ProtocolIPv6:
 		ip, route := assignV6Address(cniResponse.IpAddress, cniResponse.Gateway, mask)
-		result.IPs = []*current.IPConfig{&ip}
-		result.Routes = []*types.Route{&route}
+		result.IPs = []*current.IPConfig{ip}
+		if route != nil {
+			result.Routes = []*types.Route{route}
+		}
 		result.Interfaces = []*current.Interface{&podIface}
 	case kubeovnv1.ProtocolDual:
 		var netMask *net.IPNet
@@ -94,15 +98,19 @@ func generateCNIResult(cniVersion string, cniResponse *request.CniResponse) curr
 				gwStr := strings.Split(cniResponse.Gateway, ",")[0]
 
 				ip, route := assignV4Address(ipStr, gwStr, netMask)
-				result.IPs = append(result.IPs, &ip)
-				result.Routes = append(result.Routes, &route)
+				result.IPs = append(result.IPs, ip)
+				if route != nil {
+					result.Routes = append(result.Routes, route)
+				}
 			} else if util.CheckProtocol(cidrBlock) == kubeovnv1.ProtocolIPv6 {
 				ipStr := strings.Split(cniResponse.IpAddress, ",")[1]
 				gwStr := strings.Split(cniResponse.Gateway, ",")[1]
 
 				ip, route := assignV6Address(ipStr, gwStr, netMask)
-				result.IPs = append(result.IPs, &ip)
-				result.Routes = append(result.Routes, &route)
+				result.IPs = append(result.IPs, ip)
+				if route != nil {
+					result.Routes = append(result.Routes, route)
+				}
 			}
 		}
 		result.Interfaces = []*current.Interface{&podIface}
@@ -196,31 +204,37 @@ func parseValueFromArgs(key, argString string) (string, error) {
 	return "", fmt.Errorf("%s is required in CNI_ARGS", key)
 }
 
-func assignV4Address(ipAddress, gateway string, mask *net.IPNet) (current.IPConfig, types.Route) {
-	ip := current.IPConfig{
+func assignV4Address(ipAddress, gateway string, mask *net.IPNet) (*current.IPConfig, *types.Route) {
+	ip := &current.IPConfig{
 		Version: "4",
 		Address: net.IPNet{IP: net.ParseIP(ipAddress).To4(), Mask: mask.Mask},
 		Gateway: net.ParseIP(gateway).To4(),
 	}
 
-	route := types.Route{
-		Dst: net.IPNet{IP: net.ParseIP("0.0.0.0").To4(), Mask: net.CIDRMask(0, 32)},
-		GW:  net.ParseIP(gateway).To4(),
+	var route *types.Route
+	if gw := net.ParseIP(gateway); gw != nil {
+		route = &types.Route{
+			Dst: net.IPNet{IP: net.ParseIP("0.0.0.0").To4(), Mask: net.CIDRMask(0, 32)},
+			GW:  net.ParseIP(gateway).To4(),
+		}
 	}
 
 	return ip, route
 }
 
-func assignV6Address(ipAddress, gateway string, mask *net.IPNet) (current.IPConfig, types.Route) {
-	ip := current.IPConfig{
+func assignV6Address(ipAddress, gateway string, mask *net.IPNet) (*current.IPConfig, *types.Route) {
+	ip := &current.IPConfig{
 		Version: "6",
 		Address: net.IPNet{IP: net.ParseIP(ipAddress).To16(), Mask: mask.Mask},
 		Gateway: net.ParseIP(gateway).To16(),
 	}
 
-	route := types.Route{
-		Dst: net.IPNet{IP: net.ParseIP("::").To16(), Mask: net.CIDRMask(0, 128)},
-		GW:  net.ParseIP(gateway).To16(),
+	var route *types.Route
+	if gw := net.ParseIP(gateway); gw != nil {
+		route = &types.Route{
+			Dst: net.IPNet{IP: net.ParseIP("::").To16(), Mask: net.CIDRMask(0, 128)},
+			GW:  net.ParseIP(gateway).To16(),
+		}
 	}
 
 	return ip, route
