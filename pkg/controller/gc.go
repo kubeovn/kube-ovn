@@ -256,7 +256,7 @@ func (c *Controller) markAndCleanLSP() error {
 		klog.Errorf("failed to list node, %v", err)
 		return err
 	}
-	ipNames := make([]string, 0, len(pods)+len(nodes))
+	ipMap := make(map[string]struct{}, len(pods)+len(nodes))
 	for _, pod := range pods {
 		if isStsPod, sts := isStatefulSetPod(pod); isStsPod {
 			if isStatefulSetPodToDel(c.config.KubeClient, pod, sts) {
@@ -279,52 +279,53 @@ func (c *Controller) markAndCleanLSP() error {
 			if !isProviderOvn {
 				continue
 			}
-			ipNames = append(ipNames, ovs.PodNameToPortName(podName, pod.Namespace, providerName))
+			ipMap[ovs.PodNameToPortName(podName, pod.Namespace, providerName)] = struct{}{}
 		}
 	}
 	for _, node := range nodes {
 		if node.Annotations[util.AllocatedAnnotation] == "true" {
-			ipNames = append(ipNames, fmt.Sprintf("node-%s", node.Name))
+			ipMap[fmt.Sprintf("node-%s", node.Name)] = struct{}{}
 		}
 	}
 
-	lsps, err := c.ovnLegacyClient.ListLogicalSwitchPort(c.config.EnableExternalVpc)
+	lsps, err := c.ovnClient.ListLogicalSwitchPorts(c.config.EnableExternalVpc, nil)
 	if err != nil {
 		klog.Errorf("failed to list logical switch port, %v", err)
 		return err
 	}
 
 	noPodLSP := map[string]bool{}
+	lspMap := make(map[string]struct{}, len(lsps))
 	for _, lsp := range lsps {
-		if !util.IsStringIn(lsp, ipNames) {
-			if !lastNoPodLSP[lsp] {
-				noPodLSP[lsp] = true
-			} else {
-				nameNsMap := c.ovnLegacyClient.GetLspExternalIds(lsp)
+		lspMap[lsp.Name] = struct{}{}
+		if _, ok := ipMap[lsp.Name]; ok {
+			continue
+		}
+		if !lastNoPodLSP[lsp.Name] {
+			noPodLSP[lsp.Name] = true
+			continue
+		}
 
-				klog.Infof("gc logical switch port %s", lsp)
-				if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(lsp); err != nil {
-					klog.Errorf("failed to delete lsp %s, %v", lsp, err)
-					return err
-				}
-				if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), lsp, metav1.DeleteOptions{}); err != nil {
-					if !k8serrors.IsNotFound(err) {
-						klog.Errorf("failed to delete ip %s, %v", lsp, err)
-						return err
-					}
-				}
-
-				for podName, nsName := range nameNsMap {
-					key := fmt.Sprintf("%s/%s", nsName, podName)
-					c.ipam.ReleaseAddressByPod(key)
-				}
+		klog.Infof("gc logical switch port %s", lsp.Name)
+		if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(lsp.Name); err != nil {
+			klog.Errorf("failed to delete lsp %s, %v", lsp, err)
+			return err
+		}
+		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), lsp.Name, metav1.DeleteOptions{}); err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to delete ip %s, %v", lsp.Name, err)
+				return err
 			}
+		}
+
+		if key := lsp.ExternalIDs["pod"]; key != "" {
+			c.ipam.ReleaseAddressByPod(key)
 		}
 	}
 	lastNoPodLSP = noPodLSP
 
-	for _, ipName := range ipNames {
-		if !util.IsStringIn(ipName, lsps) {
+	for ipName := range ipMap {
+		if _, ok := lspMap[ipName]; !ok {
 			klog.Errorf("lsp lost for pod %s, please delete the pod and retry", ipName)
 		}
 	}

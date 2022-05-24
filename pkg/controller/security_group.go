@@ -17,6 +17,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -398,18 +399,9 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 	return nil
 }
 
-func (c *Controller) getPortSg(portName string) ([]string, error) {
-	results, err := c.ovnLegacyClient.CustomFindEntity("logical_switch_port", []string{"external_ids"}, fmt.Sprintf("name=%s", portName))
-	if err != nil {
-		klog.Errorf("customFindEntity failed, %v", err)
-		return nil, err
-	}
-	if len(results) == 0 {
-		return nil, nil
-	}
-	extIds := results[0]["external_ids"]
+func (c *Controller) getPortSg(port *ovnnb.LogicalSwitchPort) ([]string, error) {
 	var sgList []string
-	for _, value := range extIds {
+	for _, value := range port.ExternalIDs {
 		if strings.HasPrefix(value, "associated_sg_") && strings.HasSuffix(value, "true") {
 			sgName := strings.ReplaceAll(strings.Split(value, "=")[0], "associated_sg_", "")
 			sgList = append(sgList, sgName)
@@ -419,7 +411,12 @@ func (c *Controller) getPortSg(portName string) ([]string, error) {
 }
 
 func (c *Controller) reconcilePortSg(portName, securityGroups string) error {
-	oldSgList, err := c.getPortSg(portName)
+	port, err := c.ovnClient.GetLogicalSwitchPort(portName, false)
+	if err != nil {
+		klog.Errorf("failed to get logical switch port %s: %v", portName, err)
+		return err
+	}
+	oldSgList, err := c.getPortSg(port)
 	if err != nil {
 		klog.Errorf("get port sg failed, %v", err)
 		return err

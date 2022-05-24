@@ -37,9 +37,12 @@ type Controller struct {
 	config *Configuration
 	vpcs   *sync.Map
 	//subnetVpcMap *sync.Map
-	podSubnetMap    *sync.Map
+	podSubnetMap *sync.Map
+	ipam         *ovnipam.IPAM
+
 	ovnLegacyClient *ovs.LegacyClient
-	ipam            *ovnipam.IPAM
+	ovnClient       *ovs.OvnClient
+	ovnPgKeyMutex   *keymutex.KeyMutex
 
 	podsLister             v1.PodLister
 	podsSynced             cache.InformerSynced
@@ -211,6 +214,7 @@ func NewController(config *Configuration) *Controller {
 		vpcs:            &sync.Map{},
 		podSubnetMap:    &sync.Map{},
 		ovnLegacyClient: ovs.NewLegacyClient(config.OvnNbAddr, config.OvnTimeout, config.OvnSbAddr, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
+		ovnPgKeyMutex:   keymutex.New(97),
 		ipam:            ovnipam.NewIPAM(),
 
 		vpcsLister:           vpcInformer.Lister(),
@@ -325,6 +329,11 @@ func NewController(config *Configuration) *Controller {
 		informerFactory:        informerFactory,
 		cmInformerFactory:      cmInformerFactory,
 		kubeovnInformerFactory: kubeovnInformerFactory,
+	}
+
+	var err error
+	if controller.ovnClient, err = ovs.NewOvnClient(config.OvnNbAddr, config.OvnTimeout); err != nil {
+		klog.Fatal(err)
 	}
 
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{

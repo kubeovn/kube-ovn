@@ -621,7 +621,7 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 		return nil
 	}
 
-	ports, err := c.ovnLegacyClient.ListPodLogicalSwitchPorts(podName, pod.Namespace)
+	ports, err := c.ovnClient.ListPodLogicalSwitchPorts(key)
 	if err != nil {
 		klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
 		return err
@@ -645,11 +645,10 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 			} else if err != nil {
 				return err
 			}
-			if err := c.ovnLegacyClient.DeleteStaticRoute(address.Ip, vpc.Status.Router); err != nil {
-				return err
-			}
-			if err := c.ovnLegacyClient.DeleteNatRule(address.Ip, vpc.Status.Router); err != nil {
-				return err
+			if exGwEnabled == "true" {
+				if err := c.ovnLegacyClient.DeleteNatRule(address.Ip, vpc.Status.Router); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -660,22 +659,20 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 		keepIpCR = !isStatefulSetPodToDel(c.config.KubeClient, pod, sts) && !delete && err == nil
 	}
 
-	// Add additional default ports to compatible with previous versions
-	ports = append(ports, ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider))
-	for _, portName := range ports {
-		sgs, err := c.getPortSg(portName)
+	for _, port := range ports {
+		sgs, err := c.getPortSg(&port)
 		if err != nil {
-			klog.Warningf("filed to get port '%s' sg, %v", portName, err)
+			klog.Warningf("failed to get port '%s' sg, %v", port.Name, err)
 		}
 		// when lsp is deleted, the port of pod is deleted from any port-group automatically.
-		if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(portName); err != nil {
-			klog.Errorf("failed to delete lsp %s, %v", portName, err)
+		if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(port.Name); err != nil {
+			klog.Errorf("failed to delete lsp %s, %v", port.Name, err)
 			return err
 		}
 		if !keepIpCR {
-			if err = c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil {
+			if err = c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), port.Name, metav1.DeleteOptions{}); err != nil {
 				if !k8serrors.IsNotFound(err) {
-					klog.Errorf("failed to delete ip %s, %v", portName, err)
+					klog.Errorf("failed to delete ip %s, %v", port.Name, err)
 					return err
 				}
 			}
@@ -703,13 +700,15 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 }
 
 func (c *Controller) handleUpdatePodSecurity(key string) error {
-	c.podKeyMutex.Lock(key)
-	defer c.podKeyMutex.Unlock(key)
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
+
+	c.podKeyMutex.Lock(key)
+	defer c.podKeyMutex.Unlock(key)
+
 	pod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -786,12 +785,6 @@ func (c *Controller) handleUpdatePod(key string) error {
 		return err
 	}
 
-	_, idNameMap, err := c.ovnLegacyClient.ListLspForNodePortgroup()
-	if err != nil {
-		klog.Errorf("failed to list lsp info, %v", err)
-		return err
-	}
-
 	for _, podNet := range podNets {
 		if !isOvnSubnet(podNet.Subnet) {
 			continue
@@ -832,67 +825,25 @@ func (c *Controller) handleUpdatePod(key string) error {
 						return err
 					}
 
-					pgName := getOverlaySubnetsPortGroupName(subnet.Name, node.Name)
-					exist, err := c.ovnLegacyClient.PortGroupExists(pgName)
-					if err != nil {
-						return err
-					}
-					if !exist {
-						if err = c.ovnLegacyClient.CreateNpPortGroup(pgName, subnet.Name, node.Name); err != nil {
-							klog.Errorf("failed to create port group for subnet %s and node %s, %v", subnet.Name, node.Name, err)
-							return err
-						}
-					}
-
 					nodeTunlIPAddr, err := getNodeTunlIP(node)
 					if err != nil {
 						return err
 					}
 
+					pgName := getOverlaySubnetsPortGroupName(subnet.Name, node.Name)
 					for _, nodeAddr := range nodeTunlIPAddr {
 						for _, podAddr := range strings.Split(podIP, ",") {
 							if util.CheckProtocol(nodeAddr.String()) != util.CheckProtocol(podAddr) {
 								continue
 							}
 
-							pgPorts, err := c.getPgPorts(idNameMap, pgName)
-							if err != nil {
-								klog.Errorf("failed to fetch ports for pg %v, %v", pgName, err)
-								return err
-							}
-
 							portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-							if !util.IsStringIn(portName, pgPorts) {
-								pgPorts = append(pgPorts, portName)
-
-								if err = c.ovnLegacyClient.SetPortsToPortGroup(pgName, pgPorts); err != nil {
-									klog.Errorf("failed to set ports to port group %v, %v", pgName, err)
-									return err
-								}
-							}
-
-							ipSuffix := "ip4"
-							if util.CheckProtocol(nodeAddr.String()) == kubeovnv1.ProtocolIPv6 {
-								ipSuffix = "ip6"
-							}
-							pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
-							match := fmt.Sprintf("%s.src == $%s", ipSuffix, pgAs)
-
-							exist, err := c.ovnLegacyClient.PolicyRouteExists(util.GatewayRouterPolicyPriority, match)
-							if err != nil {
+							c.ovnPgKeyMutex.Lock(pgName)
+							if err = c.ovnClient.PortGroupAddPort(pgName, portName); err != nil {
+								c.ovnPgKeyMutex.Unlock(pgName)
 								return err
 							}
-							if !exist {
-								externalIDs := map[string]string{
-									"vendor": util.CniTypeName,
-									"subnet": subnet.Name,
-									"node":   node.Name,
-								}
-								if err = c.ovnLegacyClient.AddPolicyRoute(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match, "reroute", nodeAddr.String(), externalIDs); err != nil {
-									klog.Errorf("failed to add logical router policy for port-group address-set %s: %v", pgAs, err)
-									return err
-								}
-							}
+							c.ovnPgKeyMutex.Unlock(pgName)
 						}
 					}
 				}
