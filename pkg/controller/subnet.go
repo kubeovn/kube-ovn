@@ -1142,6 +1142,7 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 						newPgPorts = append(newPgPorts, port)
 					}
 					if err = c.ovnLegacyClient.SetPortsToPortGroup(pgName, newPgPorts); err != nil {
+						c.ovnPgKeyMutex.Unlock(pgName)
 						klog.Errorf("failed to set ports to port group %v, %v", pgName, err)
 						return err
 					}
