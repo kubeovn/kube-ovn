@@ -10,7 +10,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func (c Client) ovnSbCommand(cmdArgs ...string) (string, error) {
+func (c LegacyClient) ovnSbCommand(cmdArgs ...string) (string, error) {
 	start := time.Now()
 	if os.Getenv("ENABLE_SSL") == "true" {
 		cmdArgs = append([]string{
@@ -49,7 +49,7 @@ func (c Client) ovnSbCommand(cmdArgs ...string) (string, error) {
 	return trimCommandOutput(raw), nil
 }
 
-func (c Client) DeleteChassis(node string) error {
+func (c LegacyClient) DeleteChassis(node string) error {
 	output, err := c.ovnSbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=name", "find", "chassis", fmt.Sprintf("hostname=%s", node))
 	if err != nil {
 		return fmt.Errorf("failed to find node chassis %s, %v", node, err)
@@ -65,7 +65,7 @@ func (c Client) DeleteChassis(node string) error {
 	return nil
 }
 
-func (c Client) GetChassis(node string) (string, error) {
+func (c LegacyClient) GetChassis(node string) (string, error) {
 	output, err := c.ovnSbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=name", "find", "chassis", fmt.Sprintf("hostname=%s", node))
 	if err != nil {
 		return "", fmt.Errorf("failed to find node chassis %s, %v", node, err)
@@ -73,7 +73,7 @@ func (c Client) GetChassis(node string) (string, error) {
 	return strings.TrimSpace(output), nil
 }
 
-func (c Client) GetAllChassisHostname() ([]string, error) {
+func (c LegacyClient) GetAllChassisHostname() ([]string, error) {
 	output, err := c.ovnSbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=hostname", "find", "chassis")
 	if err != nil {
 		return nil, fmt.Errorf("failed to find node chassis, %v", err)

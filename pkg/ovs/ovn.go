@@ -1,16 +1,14 @@
 package ovs
 
-import (
-	"errors"
-)
+import "errors"
 
 var (
 	ErrNoAddr   = errors.New("no address")
 	ErrNotFound = errors.New("not found")
 )
 
-// Client is the ovn client
-type Client struct {
+// LegacyClient is the legacy ovn client
+type LegacyClient struct {
 	OvnNbAddress                  string
 	OvnTimeout                    int
 	OvnSbAddress                  string
@@ -37,9 +35,9 @@ const (
 	PolicySrcIP = "src-ip"
 )
 
-// NewClient init an ovn client
-func NewClient(ovnNbAddr string, ovnNbTimeout int, ovnSbAddr, clusterRouter, clusterTcpLoadBalancer, clusterUdpLoadBalancer, clusterTcpSessionLoadBalancer, clusterUdpSessionLoadBalancer, nodeSwitch, nodeSwitchCIDR string) *Client {
-	return &Client{
+// NewLegacyClient init a legacy ovn client
+func NewLegacyClient(ovnNbAddr string, ovnNbTimeout int, ovnSbAddr, clusterRouter, clusterTcpLoadBalancer, clusterUdpLoadBalancer, clusterTcpSessionLoadBalancer, clusterUdpSessionLoadBalancer, nodeSwitch, nodeSwitchCIDR string) *LegacyClient {
+	return &LegacyClient{
 		OvnNbAddress:                  ovnNbAddr,
 		OvnSbAddress:                  ovnSbAddr,
 		OvnTimeout:                    ovnNbTimeout,

@@ -541,7 +541,7 @@ func (c *Controller) handleAddPod(key string) error {
 			}
 
 			portName := ovs.PodNameToPortName(podName, namespace, podNet.ProviderName)
-			if err := c.ovnClient.CreatePort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace, portSecurity, securityGroupAnnotation, vips, podNet.AllowLiveMigration); err != nil {
+			if err := c.ovnLegacyClient.CreatePort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace, portSecurity, securityGroupAnnotation, vips, podNet.AllowLiveMigration); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
 				return err
 			}
@@ -599,7 +599,7 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 		}
 	}
 
-	ports, err := c.ovnClient.ListPodLogicalSwitchPorts(podName, pod.Namespace)
+	ports, err := c.ovnLegacyClient.ListPodLogicalSwitchPorts(podName, pod.Namespace)
 	if err != nil {
 		klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
 		return err
@@ -623,10 +623,10 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 			} else if err != nil {
 				return err
 			}
-			if err := c.ovnClient.DeleteStaticRoute(address.Ip, vpc.Status.Router); err != nil {
+			if err := c.ovnLegacyClient.DeleteStaticRoute(address.Ip, vpc.Status.Router); err != nil {
 				return err
 			}
-			if err := c.ovnClient.DeleteNatRule(address.Ip, vpc.Status.Router); err != nil {
+			if err := c.ovnLegacyClient.DeleteNatRule(address.Ip, vpc.Status.Router); err != nil {
 				return err
 			}
 		}
@@ -665,7 +665,7 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 			klog.Warningf("filed to get port '%s' sg, %v", portName, err)
 		}
 		// when lsp is deleted, the port of pod is deleted from any port-group automatically.
-		if err := c.ovnClient.DeleteLogicalSwitchPort(portName); err != nil {
+		if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(portName); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", portName, err)
 			return err
 		}
@@ -725,7 +725,7 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 		mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
 		ipStr := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
 		vips := pod.Annotations[fmt.Sprintf(util.PortVipAnnotationTemplate, podNet.ProviderName)]
-		if err = c.ovnClient.SetPortSecurity(portSecurity, ovs.PodNameToPortName(podName, namespace, podNet.ProviderName), mac, ipStr, vips); err != nil {
+		if err = c.ovnLegacyClient.SetPortSecurity(portSecurity, ovs.PodNameToPortName(podName, namespace, podNet.ProviderName), mac, ipStr, vips); err != nil {
 			klog.Errorf("setPortSecurity failed. %v", err)
 			return err
 		}
@@ -773,7 +773,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 		return err
 	}
 
-	_, idNameMap, err := c.ovnClient.ListLspForNodePortgroup()
+	_, idNameMap, err := c.ovnLegacyClient.ListLspForNodePortgroup()
 	if err != nil {
 		klog.Errorf("failed to list lsp info, %v", err)
 		return err
@@ -807,7 +807,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 					nextHop = strings.Split(nextHop, "/")[0]
 				}
 
-				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nextHop, c.config.ClusterRouter, util.NormalRouteType, false); err != nil {
+				if err := c.ovnLegacyClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nextHop, c.config.ClusterRouter, util.NormalRouteType, false); err != nil {
 					klog.Errorf("failed to add static route, %v", err)
 					return err
 				}
@@ -820,12 +820,12 @@ func (c *Controller) handleUpdatePod(key string) error {
 					}
 
 					pgName := getOverlaySubnetsPortGroupName(subnet.Name, node.Name)
-					exist, err := c.ovnClient.PortGroupExists(pgName)
+					exist, err := c.ovnLegacyClient.PortGroupExists(pgName)
 					if err != nil {
 						return err
 					}
 					if !exist {
-						if err = c.ovnClient.CreateNpPortGroup(pgName, subnet.Name, node.Name); err != nil {
+						if err = c.ovnLegacyClient.CreateNpPortGroup(pgName, subnet.Name, node.Name); err != nil {
 							klog.Errorf("failed to create port group for subnet %s and node %s, %v", subnet.Name, node.Name, err)
 							return err
 						}
@@ -857,7 +857,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 							if !util.IsStringIn(portName, pgPorts) {
 								pgPorts = append(pgPorts, portName)
 
-								if err = c.ovnClient.SetPortsToPortGroup(pgName, pgPorts); err != nil {
+								if err = c.ovnLegacyClient.SetPortsToPortGroup(pgName, pgPorts); err != nil {
 									klog.Errorf("failed to set ports to port group %v, %v", pgName, err)
 									return err
 								}
@@ -870,7 +870,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 							pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
 							match := fmt.Sprintf("%s.src == $%s", ipSuffix, pgAs)
 
-							exist, err := c.ovnClient.PolicyRouteExists(util.GatewayRouterPolicyPriority, match)
+							exist, err := c.ovnLegacyClient.PolicyRouteExists(util.GatewayRouterPolicyPriority, match)
 							if err != nil {
 								return err
 							}
@@ -880,7 +880,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 									"subnet": subnet.Name,
 									"node":   node.Name,
 								}
-								if err = c.ovnClient.AddPolicyRoute(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match, "reroute", nodeAddr.String(), externalIDs); err != nil {
+								if err = c.ovnLegacyClient.AddPolicyRoute(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match, "reroute", nodeAddr.String(), externalIDs); err != nil {
 									klog.Errorf("failed to add logical router policy for port-group address-set %s: %v", pgAs, err)
 									return err
 								}
@@ -890,7 +890,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 				}
 
 				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
-					if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], c.config.ClusterRouter, util.NormalRouteType, false); err != nil {
+					if err := c.ovnLegacyClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], c.config.ClusterRouter, util.NormalRouteType, false); err != nil {
 						klog.Errorf("failed to add static route, %v", err)
 						return err
 					}
@@ -899,12 +899,12 @@ func (c *Controller) handleUpdatePod(key string) error {
 
 			if c.config.EnableEipSnat {
 				for _, ipStr := range strings.Split(podIP, ",") {
-					if err := c.ovnClient.UpdateNatRule("dnat_and_snat", ipStr, pod.Annotations[util.EipAnnotation], c.config.ClusterRouter, pod.Annotations[util.MacAddressAnnotation], fmt.Sprintf("%s.%s", podName, pod.Namespace)); err != nil {
+					if err := c.ovnLegacyClient.UpdateNatRule("dnat_and_snat", ipStr, pod.Annotations[util.EipAnnotation], c.config.ClusterRouter, pod.Annotations[util.MacAddressAnnotation], fmt.Sprintf("%s.%s", podName, pod.Namespace)); err != nil {
 						klog.Errorf("failed to add nat rules, %v", err)
 						return err
 					}
 
-					if err := c.ovnClient.UpdateNatRule("snat", ipStr, pod.Annotations[util.SnatAnnotation], c.config.ClusterRouter, "", ""); err != nil {
+					if err := c.ovnLegacyClient.UpdateNatRule("snat", ipStr, pod.Annotations[util.SnatAnnotation], c.config.ClusterRouter, "", ""); err != nil {
 						klog.Errorf("failed to add nat rules, %v", err)
 						return err
 					}
@@ -1456,7 +1456,7 @@ func (c *Controller) syncVmLiveMigrationPort() {
 	}
 	for _, subnet := range subnets {
 		// lists pods with the 'liveMigration' flag
-		ports, err := c.ovnClient.ListLogicalEntity("logical_switch_port",
+		ports, err := c.ovnLegacyClient.ListLogicalEntity("logical_switch_port",
 			fmt.Sprintf("external_ids:ls=%s", subnet.Name),
 			"external_ids:liveMigration=1")
 		if err != nil {
@@ -1471,7 +1471,7 @@ func (c *Controller) syncVmLiveMigrationPort() {
 				return
 			}
 			// lists pods with the same IP address
-			vmLsps, err := c.ovnClient.ListLogicalEntity("logical_switch_port",
+			vmLsps, err := c.ovnLegacyClient.ListLogicalEntity("logical_switch_port",
 				fmt.Sprintf("external_ids:ls=%s", subnet.Name),
 				fmt.Sprintf("external_ids:ip=\"%s\"", strings.ReplaceAll(addr.Spec.IPAddress, ",", "/")))
 			if err != nil {
@@ -1481,11 +1481,11 @@ func (c *Controller) syncVmLiveMigrationPort() {
 
 			// reset addresses after live Migration
 			if len(vmLsps) == 1 {
-				if err = c.ovnClient.SetPortAddress(port, addr.Spec.MacAddress, addr.Spec.IPAddress); err != nil {
+				if err = c.ovnLegacyClient.SetPortAddress(port, addr.Spec.MacAddress, addr.Spec.IPAddress); err != nil {
 					klog.Errorf("set port addresses failed, %v", err)
 					return
 				}
-				if err = c.ovnClient.SetPortExternalIds(port, "liveMigration", "0"); err != nil {
+				if err = c.ovnLegacyClient.SetPortExternalIds(port, "liveMigration", "0"); err != nil {
 					klog.Errorf("set port externalIds failed, %v", err)
 					return
 				}
