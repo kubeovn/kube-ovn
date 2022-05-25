@@ -85,14 +85,14 @@ func (c *Controller) resyncInterConnection() {
 				blackList = append(blackList, ipv6)
 			}
 		}
-		if err := c.ovnClient.SetICAutoRoute(autoRoute, blackList); err != nil {
+		if err := c.ovnLegacyClient.SetICAutoRoute(autoRoute, blackList); err != nil {
 			klog.Errorf("failed to config auto route, %v", err)
 			return
 		}
 		if icEnabled == "true" && lastICCM != nil && reflect.DeepEqual(cm.Data, lastICCM) {
 			return
 		}
-		c.ovnClient.OVNIcNBAddress = genHostAddress(cm.Data["ic-db-host"], cm.Data["ic-nb-port"])
+		c.ovnLegacyClient.OVNIcNBAddress = genHostAddress(cm.Data["ic-db-host"], cm.Data["ic-nb-port"])
 		klog.Info("start to establish ovn-ic")
 		if err := c.establishInterConnection(cm.Data); err != nil {
 			klog.Errorf("failed to establish ovn-ic, %v", err)
@@ -135,7 +135,7 @@ func (c *Controller) removeInterConnection(azName string) error {
 	}
 
 	if azName != "" {
-		if err := c.ovnClient.DeleteICLogicalRouterPort(azName); err != nil {
+		if err := c.ovnLegacyClient.DeleteICLogicalRouterPort(azName); err != nil {
 			klog.Errorf("failed to delete ovn-ic lrp, %v", err)
 			return err
 		}
@@ -156,7 +156,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 	}
 
 	tsPort := fmt.Sprintf("ts-%s", config["az-name"])
-	exist, err := c.ovnClient.LogicalSwitchPortExists(tsPort)
+	exist, err := c.ovnLegacyClient.LogicalSwitchPortExists(tsPort)
 	if err != nil {
 		klog.Errorf("failed to list logical switch ports, %v", err)
 		return err
@@ -166,7 +166,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 		return nil
 	}
 
-	if err := c.ovnClient.SetAzName(config["az-name"]); err != nil {
+	if err := c.ovnLegacyClient.SetAzName(config["az-name"]); err != nil {
 		klog.Errorf("failed to set az name. %v", err)
 		return err
 	}
@@ -199,7 +199,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 			klog.Errorf("patch gw node %s failed %v", gw, err)
 			return err
 		}
-		chassisID, err := c.ovnClient.GetChassis(gw)
+		chassisID, err := c.ovnLegacyClient.GetChassis(gw)
 		if err != nil {
 			klog.Errorf("failed to get gw %s chassisID, %v", gw, err)
 			return err
@@ -224,7 +224,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 		return err
 	}
 
-	if err := c.ovnClient.CreateICLogicalRouterPort(config["az-name"], util.GenerateMac(), subnet, chassises); err != nil {
+	if err := c.ovnLegacyClient.CreateICLogicalRouterPort(config["az-name"], util.GenerateMac(), subnet, chassises); err != nil {
 		klog.Errorf("failed to create ovn-ic lrp %v", err)
 		return err
 	}
@@ -233,12 +233,12 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 }
 
 func (c *Controller) acquireLrpAddress(ts string) (string, error) {
-	cidr, err := c.ovnClient.GetTsSubnet(ts)
+	cidr, err := c.ovnLegacyClient.GetTsSubnet(ts)
 	if err != nil {
 		klog.Errorf("failed to get ts subnet, %v", err)
 		return "", err
 	}
-	existAddress, err := c.ovnClient.ListRemoteLogicalSwitchPortAddress()
+	existAddress, err := c.ovnLegacyClient.ListRemoteLogicalSwitchPortAddress()
 	if err != nil {
 		klog.Errorf("failed to list remote port address, %v", err)
 		return "", err
@@ -290,7 +290,7 @@ func (c *Controller) stopOVNIC() error {
 func (c *Controller) waitTsReady() error {
 	retry := 6
 	for retry > 0 {
-		exists, err := c.ovnClient.LogicalSwitchExists(util.InterconnectionSwitch, false)
+		exists, err := c.ovnLegacyClient.LogicalSwitchExists(util.InterconnectionSwitch, false)
 		if err != nil {
 			klog.Errorf("failed to list logical switch, %v", err)
 			return err
@@ -306,12 +306,12 @@ func (c *Controller) waitTsReady() error {
 }
 
 func (c *Controller) delLearnedRoute() error {
-	originalPorts, err := c.ovnClient.CustomFindEntity("Logical_Router_Static_Route", []string{"_uuid", "ip_prefix"})
+	originalPorts, err := c.ovnLegacyClient.CustomFindEntity("Logical_Router_Static_Route", []string{"_uuid", "ip_prefix"})
 	if err != nil {
 		klog.Errorf("failed to list static routes of logical router, %v", err)
 		return err
 	}
-	filteredPorts, err := c.ovnClient.CustomFindEntity("Logical_Router_Static_Route", []string{"_uuid", "ip_prefix"}, "external_ids:ic-learned-route{<=}1")
+	filteredPorts, err := c.ovnLegacyClient.CustomFindEntity("Logical_Router_Static_Route", []string{"_uuid", "ip_prefix"}, "external_ids:ic-learned-route{<=}1")
 	if err != nil {
 		klog.Errorf("failed to filter static routes of logical router, %v", err)
 		return err
@@ -330,12 +330,12 @@ func (c *Controller) delLearnedRoute() error {
 	}
 	if len(learnedPorts) != 0 {
 		for _, aLdPort := range learnedPorts {
-			itsRouter, err := c.ovnClient.CustomFindEntity("Logical_Router", []string{"name"}, fmt.Sprintf("static_routes{>}%s", aLdPort["_uuid"][0]))
+			itsRouter, err := c.ovnLegacyClient.CustomFindEntity("Logical_Router", []string{"name"}, fmt.Sprintf("static_routes{>}%s", aLdPort["_uuid"][0]))
 			if err != nil || len(itsRouter) != 1 {
 				klog.Errorf("failed to list logical router of static route %s, %v", aLdPort["_uuid"][0], err)
 				return err
 			}
-			if err := c.ovnClient.DeleteStaticRoute(aLdPort["ip_prefix"][0], itsRouter[0]["name"][0]); err != nil {
+			if err := c.ovnLegacyClient.DeleteStaticRoute(aLdPort["ip_prefix"][0], itsRouter[0]["name"][0]); err != nil {
 				klog.Errorf("failed to delete stale route %s, %v", aLdPort["ip_prefix"][0], err)
 				return err
 			}
