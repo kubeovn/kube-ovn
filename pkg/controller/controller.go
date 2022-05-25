@@ -38,8 +38,11 @@ type Controller struct {
 	vpcs   *sync.Map
 	//subnetVpcMap *sync.Map
 	podSubnetMap *sync.Map
-	ovnClient    *ovs.Client
 	ipam         *ovnipam.IPAM
+
+	ovnLegacyClient *ovs.LegacyClient
+	ovnClient       *ovs.OvnClient
+	ovnPgKeyMutex   *keymutex.KeyMutex
 
 	podsLister             v1.PodLister
 	podsSynced             cache.InformerSynced
@@ -207,11 +210,12 @@ func NewController(config *Configuration) *Controller {
 	configMapInformer := cmInformerFactory.Core().V1().ConfigMaps()
 
 	controller := &Controller{
-		config:       config,
-		vpcs:         &sync.Map{},
-		podSubnetMap: &sync.Map{},
-		ovnClient:    ovs.NewClient(config.OvnNbAddr, config.OvnTimeout, config.OvnSbAddr, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
-		ipam:         ovnipam.NewIPAM(),
+		config:          config,
+		vpcs:            &sync.Map{},
+		podSubnetMap:    &sync.Map{},
+		ovnLegacyClient: ovs.NewLegacyClient(config.OvnNbAddr, config.OvnTimeout, config.OvnSbAddr, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
+		ovnPgKeyMutex:   keymutex.New(97),
+		ipam:            ovnipam.NewIPAM(),
 
 		vpcsLister:           vpcInformer.Lister(),
 		vpcSynced:            vpcInformer.Informer().HasSynced,
@@ -325,6 +329,11 @@ func NewController(config *Configuration) *Controller {
 		informerFactory:        informerFactory,
 		cmInformerFactory:      cmInformerFactory,
 		kubeovnInformerFactory: kubeovnInformerFactory,
+	}
+
+	var err error
+	if controller.ovnClient, err = ovs.NewOvnClient(config.OvnNbAddr, config.OvnTimeout); err != nil {
+		klog.Fatal(err)
 	}
 
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -472,7 +481,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		klog.Fatalf("failed to wait for caches to sync")
 	}
 
-	if err := c.ovnClient.SetUseCtInvMatch(); err != nil {
+	if err := c.ovnLegacyClient.SetUseCtInvMatch(); err != nil {
 		klog.Fatalf("failed to set NB_Global option use_ct_inv_match to false: %v", err)
 	}
 
@@ -516,7 +525,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	}
 	// The static route for node gw can be deleted when gc static route, so add it after gc process
 	dstIp := "0.0.0.0/0,::/0"
-	if err := c.ovnClient.AddStaticRoute("", dstIp, c.config.NodeSwitchGateway, c.config.ClusterRouter, util.NormalRouteType); err != nil {
+	if err := c.ovnLegacyClient.AddStaticRoute("", dstIp, c.config.NodeSwitchGateway, c.config.ClusterRouter, util.NormalRouteType); err != nil {
 		klog.Errorf("failed to add static route for node gw: %v", err)
 	}
 
@@ -620,7 +629,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	for {
 		klog.Infof("wait for %s and %s ready", c.config.DefaultLogicalSwitch, c.config.NodeSwitch)
 		time.Sleep(3 * time.Second)
-		lss, err := c.ovnClient.ListLogicalSwitch(c.config.EnableExternalVpc)
+		lss, err := c.ovnLegacyClient.ListLogicalSwitch(c.config.EnableExternalVpc)
 		if err != nil {
 			klog.Fatalf("failed to list logical switch: %v", err)
 		}

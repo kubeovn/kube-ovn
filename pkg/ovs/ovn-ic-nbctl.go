@@ -9,7 +9,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func (c Client) ovnIcNbCommand(cmdArgs ...string) (string, error) {
+func (c LegacyClient) ovnIcNbCommand(cmdArgs ...string) (string, error) {
 	start := time.Now()
 	cmdArgs = append([]string{fmt.Sprintf("--timeout=%d", c.OvnTimeout), fmt.Sprintf("--db=%s", c.OVNIcNBAddress)}, cmdArgs...)
 	raw, err := exec.Command(OVNIcNbCtl, cmdArgs...).CombinedOutput()
@@ -37,7 +37,7 @@ func (c Client) ovnIcNbCommand(cmdArgs ...string) (string, error) {
 	return trimCommandOutput(raw), nil
 }
 
-func (c Client) GetTsSubnet(ts string) (string, error) {
+func (c LegacyClient) GetTsSubnet(ts string) (string, error) {
 	subnet, err := c.ovnIcNbCommand("get", "Transit_Switch", ts, "external_ids:subnet")
 	if err != nil {
 		return "", fmt.Errorf("failed to get ts subnet, %v", err)

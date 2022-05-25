@@ -60,7 +60,7 @@ func (c *Controller) resyncExternalGateway() {
 		}
 		exGwEnabled = "true"
 		lastExGwCM = cm.Data
-		c.ovnClient.ExternalGatewayType = cm.Data["type"]
+		c.ovnLegacyClient.ExternalGatewayType = cm.Data["type"]
 		klog.Info("finish establishing ovn external gw")
 	}
 }
@@ -94,7 +94,7 @@ func (c *Controller) removeExternalGateway() error {
 		}
 	}
 
-	if err := c.ovnClient.DeleteGatewaySwitch(util.ExternalGatewaySwitch); err != nil {
+	if err := c.ovnLegacyClient.DeleteGatewaySwitch(util.ExternalGatewaySwitch); err != nil {
 		klog.Errorf("failed to delete external gateway switch, %v", err)
 		return err
 	}
@@ -141,7 +141,7 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 			klog.Errorf("patch external gw node %s failed %v", gw, err)
 			return err
 		}
-		chassisID, err := c.ovnClient.GetChassis(gw)
+		chassisID, err := c.ovnLegacyClient.GetChassis(gw)
 		if err != nil {
 			klog.Errorf("failed to get external gw %s chassisID, %v", gw, err)
 			return err
@@ -156,7 +156,7 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 		return fmt.Errorf("no available external gw")
 	}
 
-	if err := c.ovnClient.CreateGatewaySwitch(util.ExternalGatewaySwitch, c.config.ExternalGatewayNet, c.config.ExternalGatewayVlanID, config["nic-ip"], config["nic-mac"], chassises); err != nil {
+	if err := c.ovnLegacyClient.CreateGatewaySwitch(util.ExternalGatewaySwitch, c.config.ExternalGatewayNet, c.config.ExternalGatewayVlanID, config["nic-ip"], config["nic-mac"], chassises); err != nil {
 		klog.Errorf("failed to create external gateway switch, %v", err)
 		return err
 	}
