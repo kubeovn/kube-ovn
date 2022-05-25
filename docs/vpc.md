@@ -35,11 +35,10 @@ metadata:
   name: net1
 spec:
   vpc: test-vpc-1
+  cidrBlock: 10.0.1.0/24
+  protocol: IPv4
   namespaces:
     - ns1
-  cidrBlock: 10.0.1.0/24
-  default: true
-  natOutgoing: false
 ---
 kind: Subnet
 apiVersion: kubeovn.io/v1
@@ -48,14 +47,14 @@ metadata:
 spec:
   vpc: test-vpc-2
   cidrBlock: 10.0.1.0/24
-  natOutgoing: false
+  protocol: IPv4
 ```
 
-In the examples above, two subnet in different VPCs can use same IP space
+In the examples above, two subnets in different VPCs can use the same CIDR.
 
 3. Create Pod
 
-Pod can inherent VPC from the namespace or explicitly bind to subnet by annotation
+Pod can inherent VPC from the namespace or explicitly bind to a subnet by annotation.
 
 ```yaml
 apiVersion: v1
@@ -93,7 +92,9 @@ spec:
       nextHopIP: 10.0.1.253
       policy: policySrc
 ```
-For more, VPC provides a more powerful way to configure your Policy-based routing (PBR).you can configure permit/deny and reroute policies with priority on the router by specifying policyRoutes field in Vpc.
+
+For more, VPC provides a more powerful way to configure your Policy-based routing (PBR). You can configure permit, deny or reroute policies with priority on the router by specifying the `policyRoutes` field.
+
 ```yaml
 kind: Vpc
 apiVersion: kubeovn.io/v1
@@ -110,20 +111,18 @@ spec:
       priority: 10
 ```
 
-
 ## VPC external gateway
 
 To connect custom VPC network with the external network, custom gateway is needed.
 
 ### Steps to use VPC external gateway
 
-Firstly, you need to confirm that Multus-CNI and macvlan CNI have been installed. 
+Firstly, you need to confirm that Multus-CNI and macvlan CNI have been installed.
 
-1. config  macvlan multus network attachment definition and public underlay subnet
+1. Create macvlan multus network attachment definition and public underlay subnet.
 
 ``` yaml
-
-# nad-macvlan.yaml 
+# nad-macvlan.yaml
 apiVersion: "k8s.cni.cncf.io/v1"
 kind: NetworkAttachmentDefinition
 metadata:
@@ -133,7 +132,7 @@ spec:
   config: '{
       "cniVersion": "0.3.0",
       "type": "macvlan",
-      "master": "eth3",
+      "master": "eth1",
       "mode": "bridge",
       "ipam": {
         "type": "kube-ovn",
@@ -150,18 +149,13 @@ metadata:
 spec:
   protocol: IPv4
   provider: ovn-vpc-external-network.kube-system
-  cidrBlock: 10.0.1.0/24
-  gateway: 10.0.1.254
+  cidrBlock: 192.168.0.0/24
+  gateway: 192.168.0.1  # IP address of the physical gateway
   excludeIps:
-  - 10.0.1.1..10.0.1.100
-
+  - 192.168.0.1..192.168.0.10
 ```
 
-
-Secondly, then we start to config the VPC nat gateway.
-
-
-2. Config and enable the feature
+2. Enable the feature by creating a configmap named `ovn-vpc-nat-gw-config`.
 
 ```yaml
 kind: ConfigMap
@@ -171,8 +165,8 @@ metadata:
   namespace: kube-system
 data:
   image: 'kubeovn/vpc-nat-gateway:v1.10.0'  # Docker image for vpc nat gateway
-  enable-vpc-nat-gw: true                  # 'true' for enable, 'false' for disable
-  nic: eth1                                # The nic that connect to underlay network, use as the 'master' for macvlan
+  enable-vpc-nat-gw: 'true'                 # 'true' for enable, 'false' for disable
+  nic: eth1                                 # The nic that connect to underlay network, use as the 'master' for macvlan
 ```
 
 Controller will check this configmap and create network attachment definition.
@@ -186,8 +180,8 @@ metadata:
   name: gw1
 spec:
   vpc: test-vpc-1                  # Specifies which VPC the gateway belongs to
-  subnet: sn                       # Subnet in VPC
-  lanIp: 10.0.1.254                # IP should be within the range of the subnet sn, this is the internal IP for nat gateway pod
+  subnet: net1                     # Subnet in VPC
+  lanIp: 10.0.1.254                # IP should be within the range of the subnet, this is the internal IP for nat gateway pod
   selector:                        # NodeSelector for vpc-nat-gw pod, the item of array should be string type with key:value format
     - "kubernetes.io/hostname: kube-ovn-worker"
     - "kubernetes.io/os: linux"
