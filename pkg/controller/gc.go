@@ -236,6 +236,10 @@ func (c *Controller) markAndCleanLSP() error {
 		}
 	}
 
+	// The lsp for vm pod should not be deleted if vm still exists
+	vmLsps := c.getVmLsps()
+	ipNames = append(ipNames, vmLsps...)
+
 	lsps, err := c.ovnClient.ListLogicalSwitchPort(c.config.EnableExternalVpc)
 	if err != nil {
 		klog.Errorf("failed to list logical switch port, %v", err)
@@ -574,4 +578,35 @@ func (c *Controller) isOVNProvided(providerName string, pod *corev1.Pod) (bool, 
 		return false, nil
 	}
 	return true, nil
+}
+
+func (c *Controller) getVmLsps() []string {
+	var vmLsps []string
+
+	if !c.config.EnableKeepVmIP {
+		return vmLsps
+	}
+
+	nss, err := c.namespacesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list namespaces, %v", err)
+		return vmLsps
+	}
+
+	for _, ns := range nss {
+		vms, err := c.config.KubevirtClient.VirtualMachine(ns.Name).List(&metav1.ListOptions{})
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to list vm in namespace %s, %v", ns, err)
+			}
+			continue
+		} else {
+			for _, vm := range vms.Items {
+				vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, util.OvnProvider)
+				vmLsps = append(vmLsps, vmLsp)
+			}
+		}
+	}
+
+	return vmLsps
 }
