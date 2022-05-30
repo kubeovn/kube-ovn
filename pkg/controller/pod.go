@@ -1354,14 +1354,28 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 	var ownerRefSubnetExist bool
 	switch ownerRefKind {
 	case "StatefulSet":
-		ss, _ := c.config.KubeClient.AppsV1().StatefulSets(pod.Namespace).Get(context.Background(), ownerRefName, metav1.GetOptions{})
-		if ss != nil && ss.Spec.Template.ObjectMeta.Annotations[util.LogicalSwitchAnnotation] != "" {
+		ss, err := c.config.KubeClient.AppsV1().StatefulSets(pod.Namespace).Get(context.Background(), ownerRefName, metav1.GetOptions{})
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				return true, nil
+			} else {
+				klog.Errorf("failed to get StatefulSet %s, %v", ownerRefName, err)
+			}
+		}
+		if ss.Spec.Template.ObjectMeta.Annotations[util.LogicalSwitchAnnotation] != "" {
 			ownerRefSubnetExist = true
 		}
 
 	case util.VmInstance:
-		vm, _ := c.config.KubevirtClient.VirtualMachine(pod.Namespace).Get(ownerRefName, &metav1.GetOptions{})
-		if vm != nil && vm.Spec.Template.ObjectMeta.Annotations[util.LogicalSwitchAnnotation] != "" {
+		vm, err := c.config.KubevirtClient.VirtualMachine(pod.Namespace).Get(ownerRefName, &metav1.GetOptions{})
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				return true, nil
+			} else {
+				klog.Errorf("failed to get VirtualMachine %s, %v", ownerRefName, err)
+			}
+		}
+		if vm.Spec.Template.ObjectMeta.Annotations[util.LogicalSwitchAnnotation] != "" {
 			ownerRefSubnetExist = true
 		}
 	}
