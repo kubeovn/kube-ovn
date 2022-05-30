@@ -74,10 +74,10 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 	}
 
 	if !isPodAlive(p) {
-		isStateful, statefulSetName := isStatefulSetPod(p)
+		isStateful, stsName, stsUid := isStatefulSetPod(p)
 		isVmPod, vmName := isVmPod(p)
 		if isStateful || (isVmPod && c.config.EnableKeepVmIP) {
-			if isStateful && isStatefulSetPodToDel(c.config.KubeClient, p, statefulSetName) {
+			if isStateful && isStatefulSetPodToDel(c.config.KubeClient, p, stsName, stsUid) {
 				klog.V(3).Infof("enqueue delete pod %s", key)
 				c.deletePodQueue.Add(obj)
 			}
@@ -143,15 +143,15 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 		return
 	}
 
-	isStateful, statefulSetName := isStatefulSetPod(p)
+	isStateful, stsName, stsUid := isStatefulSetPod(p)
 	isVmPod, vmName := isVmPod(p)
 	if isStateful {
-		if isStatefulSetPodToDel(c.config.KubeClient, p, statefulSetName) {
+		if isStatefulSetPodToDel(c.config.KubeClient, p, stsName, stsUid) {
 			klog.V(3).Infof("enqueue delete pod %s", key)
 			c.deletePodQueue.Add(obj)
 		}
 
-		if delete, err := appendCheckPodToDel(c, p, statefulSetName, "StatefulSet"); delete && err == nil {
+		if delete, err := appendCheckPodToDel(c, p, stsName, "StatefulSet"); delete && err == nil {
 			klog.V(3).Infof("enqueue delete pod %s", key)
 			c.deletePodQueue.Add(obj)
 		}
@@ -207,7 +207,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		return
 	}
 
-	isStateful, statefulSetName := isStatefulSetPod(newPod)
+	isStateful, stsName, stsUid := isStatefulSetPod(newPod)
 	isVmPod, vmName := isVmPod(newPod)
 	if !isPodAlive(newPod) && !isStateful && !isVmPod {
 		klog.V(3).Infof("enqueue delete pod %s", key)
@@ -227,7 +227,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 
 	// do not delete statefulset pod unless ownerReferences is deleted
 	if isStateful {
-		if isStatefulSetPodToDel(c.config.KubeClient, newPod, statefulSetName) {
+		if isStatefulSetPodToDel(c.config.KubeClient, newPod, stsName, stsUid) {
 			klog.V(3).Infof("enqueue delete pod %s", key)
 			c.deletePodQueue.Add(newObj)
 			return
@@ -654,9 +654,9 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 	}
 
 	var keepIpCR bool
-	if ok, sts := isStatefulSetPod(pod); ok {
-		delete, err := appendCheckPodToDel(c, pod, sts, "StatefulSet")
-		keepIpCR = !isStatefulSetPodToDel(c.config.KubeClient, pod, sts) && !delete && err == nil
+	if ok, stsName, stsUid := isStatefulSetPod(pod); ok {
+		delete, err := appendCheckPodToDel(c, pod, stsName, "StatefulSet")
+		keepIpCR = !isStatefulSetPodToDel(c.config.KubeClient, pod, stsName, stsUid) && !delete && err == nil
 	}
 
 	for _, port := range ports {
@@ -891,32 +891,35 @@ func (c *Controller) handleUpdatePod(key string) error {
 	return nil
 }
 
-func isStatefulSetPod(pod *v1.Pod) (bool, string) {
+func isStatefulSetPod(pod *v1.Pod) (bool, string, string) {
 	for _, owner := range pod.OwnerReferences {
 		if owner.Kind == "StatefulSet" && strings.HasPrefix(owner.APIVersion, "apps/") {
 			if strings.HasPrefix(pod.Name, owner.Name) {
-				return true, owner.Name
+				return true, owner.Name, string(owner.UID)
 			}
 		}
 	}
-	return false, ""
+	return false, "", ""
 }
 
-func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, statefulSetName string) bool {
+func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, stsName, stsUid string) bool {
 	// only delete statefulset pod lsp when statefulset deleted or down scaled
-	ss, err := c.AppsV1().StatefulSets(pod.Namespace).Get(context.Background(), statefulSetName, metav1.GetOptions{})
+	sts, err := c.AppsV1().StatefulSets(pod.Namespace).Get(context.Background(), stsName, metav1.GetOptions{})
 	if err != nil {
 		// statefulset is deleted
 		if k8serrors.IsNotFound(err) {
 			return true
-		} else {
-			klog.Errorf("failed to get statefulset %v", err)
 		}
+		if sts.GetUID() != types.UID(stsUid) {
+			return true
+		}
+
+		klog.Errorf("failed to get statefulset %v", err)
 		return false
 	}
 
 	// statefulset is deleting
-	if ss.DeletionTimestamp != nil {
+	if sts.DeletionTimestamp != nil {
 		return true
 	}
 
@@ -929,7 +932,7 @@ func isStatefulSetPodToDel(c kubernetes.Interface, pod *v1.Pod, statefulSetName 
 		return false
 	}
 
-	return index >= int64(*ss.Spec.Replicas)
+	return index >= int64(*sts.Spec.Replicas)
 }
 
 func getNodeTunlIP(node *v1.Node) ([]net.IP, error) {
@@ -1262,7 +1265,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		ipPool[i] = strings.TrimSpace(ip)
 	}
 
-	if ok, _ := isStatefulSetPod(pod); !ok {
+	if ok, _, _ := isStatefulSetPod(pod); !ok {
 		for _, net := range nsNets {
 			for _, staticIP := range ipPool {
 				if c.ipam.IsIPAssignedToPod(staticIP, net.Subnet.Name, key) {
@@ -1535,7 +1538,7 @@ func (c *Controller) getNsAvailableSubnets(pod *v1.Pod) ([]*kubeovnNet, error) {
 }
 
 func getPodType(pod *v1.Pod) string {
-	if ok, _ := isStatefulSetPod(pod); ok {
+	if ok, _, _ := isStatefulSetPod(pod); ok {
 		return "StatefulSet"
 	}
 	return ""

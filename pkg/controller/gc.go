@@ -258,8 +258,8 @@ func (c *Controller) markAndCleanLSP() error {
 	}
 	ipMap := make(map[string]struct{}, len(pods)+len(nodes))
 	for _, pod := range pods {
-		if isStsPod, sts := isStatefulSetPod(pod); isStsPod {
-			if isStatefulSetPodToDel(c.config.KubeClient, pod, sts) {
+		if isStsPod, stsName, stsUid := isStatefulSetPod(pod); isStsPod {
+			if isStatefulSetPodToDel(c.config.KubeClient, pod, stsName, stsUid) {
 				continue
 			}
 		} else if !isPodAlive(pod) {
