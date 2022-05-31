@@ -3,6 +3,8 @@ package v1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
 const (
@@ -32,9 +34,9 @@ const (
 
 type SgPolicy string
 
-const (
-	PolicyAllow SgPolicy = "allow"
-	PolicyDrop  SgPolicy = "drop"
+var (
+	PolicyAllow = SgPolicy(ovnnb.ACLActionAllow)
+	PolicyDrop  = SgPolicy(ovnnb.ACLActionDrop)
 )
 
 // Constants for condition
@@ -340,10 +342,10 @@ type StaticRoute struct {
 
 type PolicyRouteAction string
 
-const (
-	PolicyRouteActionAllow   PolicyRouteAction = "allow"
-	PolicyRouteActionDrop    PolicyRouteAction = "drop"
-	PolicyRouteActionReroute PolicyRouteAction = "reroute"
+var (
+	PolicyRouteActionAllow   = PolicyRouteAction(ovnnb.LogicalRouterPolicyActionAllow)
+	PolicyRouteActionDrop    = PolicyRouteAction(ovnnb.LogicalRouterPolicyActionDrop)
+	PolicyRouteActionReroute = PolicyRouteAction(ovnnb.LogicalRouterPolicyActionReroute)
 )
 
 type PolicyRoute struct {

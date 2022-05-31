@@ -599,7 +599,7 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 		}
 	}
 
-	ports, err := c.ovnLegacyClient.ListPodLogicalSwitchPorts(podName, pod.Namespace)
+	ports, err := c.ovnClient.ListPodLogicalSwitchPorts(key)
 	if err != nil {
 		klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
 		return err
@@ -623,11 +623,10 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 			} else if err != nil {
 				return err
 			}
-			if err := c.ovnLegacyClient.DeleteStaticRoute(address.Ip, vpc.Status.Router); err != nil {
-				return err
-			}
-			if err := c.ovnLegacyClient.DeleteNatRule(address.Ip, vpc.Status.Router); err != nil {
-				return err
+			if exGwEnabled == "true" {
+				if err := c.ovnLegacyClient.DeleteNatRule(address.Ip, vpc.Status.Router); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -657,22 +656,19 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 		}
 	}
 
-	// Add additional default ports to compatible with previous versions
-	ports = append(ports, ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider))
-	for _, portName := range ports {
-		sgs, err := c.getPortSg(portName)
+	for _, port := range ports {
+		sgs, err := c.getPortSg(&port)
 		if err != nil {
-			klog.Warningf("filed to get port '%s' sg, %v", portName, err)
+			klog.Warningf("failed to get port '%s' sg, %v", port.Name, err)
 		}
-		// when lsp is deleted, the port of pod is deleted from any port-group automatically.
-		if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(portName); err != nil {
-			klog.Errorf("failed to delete lsp %s, %v", portName, err)
+		if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(port.Name); err != nil {
+			klog.Errorf("failed to delete lsp %s, %v", port.Name, err)
 			return err
 		}
 		if !keepIpCR {
-			if err = c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil {
+			if err = c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), port.Name, metav1.DeleteOptions{}); err != nil {
 				if !k8serrors.IsNotFound(err) {
-					klog.Errorf("failed to delete ip %s, %v", portName, err)
+					klog.Errorf("failed to delete ip %s, %v", port.Name, err)
 					return err
 				}
 			}
@@ -691,13 +687,15 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 }
 
 func (c *Controller) handleUpdatePodSecurity(key string) error {
-	c.podKeyMutex.Lock(key)
-	defer c.podKeyMutex.Unlock(key)
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
+
+	c.podKeyMutex.Lock(key)
+	defer c.podKeyMutex.Unlock(key)
+
 	pod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
