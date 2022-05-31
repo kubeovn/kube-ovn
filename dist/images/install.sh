@@ -85,6 +85,8 @@ DPDK_MEMORY="2Gi"                       # Default Memory configuration for it --
 # performance
 MODULES="kube_ovn_fastpath.ko"
 RPMS="openvswitch-kmod"
+GC_INTERVAL=360
+INSPECT_INTERVAL=20
 
 display_help() {
     echo "Usage: $0 [option...]"
@@ -2569,6 +2571,8 @@ spec:
           - --enable-external-vpc=$ENABLE_EXTERNAL_VPC
           - --logtostderr=false
           - --alsologtostderr=true
+          - --gc-interval=$GC_INTERVAL
+          - --inspect-interval=$INSPECT_INTERVAL
           - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
           - --log_file_max_size=0
           env:
