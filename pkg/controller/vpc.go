@@ -162,6 +162,43 @@ func (c *Controller) handleUpdateVpcStatus(key string) error {
 	return nil
 }
 
+func (c *Controller) reconcileRouterPorts(vpc *kubeovnv1.Vpc) error {
+	subnets, _, err := c.getVpcSubnets(vpc)
+	if err != nil {
+		klog.ErrorS(err, "unable to get related subnets", "vpc", vpc.Name)
+		return err
+	}
+
+	router := vpc.Name
+	for _, subnetName := range subnets {
+		routerPortName := ovs.LogicalRouterPortName(router, subnetName)
+		exists, err := c.ovnClient.LogicalRouterPortExists(routerPortName)
+		if err != nil {
+			return err
+		}
+
+		if !exists {
+			subnet, err := c.subnetsLister.Get(subnetName)
+			if err != nil {
+				if k8serrors.IsNotFound(err) {
+					continue
+				}
+				klog.ErrorS(err, "unable to get subnet", "subnet", subnetName)
+				return err
+			}
+
+			klog.V(1).InfoS("router port not exists, trying to create", "vpc", vpc.Name, "subnet", subnetName)
+
+			networks := util.GetIpAddrWithMask(subnet.Spec.Gateway, subnet.Spec.CIDRBlock)
+			if err := c.ovnClient.AddLogicalRouterPort(router, routerPortName, "", networks); err != nil {
+				klog.ErrorS(err, "unable to create router port", "vpc", vpc.Name, "subnet", subnetName)
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 type VpcLoadBalancer struct {
 	TcpLoadBalancer     string
 	TcpSessLoadBalancer string
@@ -268,6 +305,11 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 	if err = c.createVpcRouter(key); err != nil {
+		return err
+	}
+
+	if err := c.reconcileRouterPorts(vpc); err != nil {
+		klog.ErrorS(err, "unable to reconcileRouterPorts")
 		return err
 	}
 
