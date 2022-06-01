@@ -84,6 +84,7 @@ func NewNbClient(addr string, timeout int) (client.Client, error) {
 
 	monitorOpts := []client.MonitorOption{
 		client.WithTable(&ovnnb.LogicalRouter{}),
+		client.WithTable(&ovnnb.LogicalRouterPort{}),
 		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
 		client.WithTable(&ovnnb.LogicalSwitchPort{}),
 		client.WithTable(&ovnnb.PortGroup{}),
