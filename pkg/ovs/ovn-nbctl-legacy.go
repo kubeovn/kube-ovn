@@ -53,6 +53,21 @@ func (c LegacyClient) ovnNbCommand(cmdArgs ...string) (string, error) {
 	return trimCommandOutput(raw), nil
 }
 
+func (c LegacyClient) GetVersion() (string, error) {
+	if c.Version != "" {
+		return c.Version, nil
+	}
+	output, err := c.ovnNbCommand("--version")
+	if err != nil {
+		return "", fmt.Errorf("failed to get version,%v", err)
+	}
+	lines := strings.Split(output, "\n")
+	if len(lines) > 0 {
+		c.Version = strings.Split(lines[0], " ")[1]
+	}
+	return c.Version, nil
+}
+
 func (c LegacyClient) SetAzName(azName string) error {
 	if _, err := c.ovnNbCommand("set", "NB_Global", ".", fmt.Sprintf("name=%s", azName)); err != nil {
 		return fmt.Errorf("failed to set az name, %v", err)

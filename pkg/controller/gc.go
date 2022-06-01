@@ -23,6 +23,7 @@ var lastNoPodLSP map[string]bool
 func (c *Controller) gc() error {
 	gcFunctions := []func() error{
 		c.gcNode,
+		c.gcChassis,
 		c.gcLogicalSwitch,
 		c.gcCustomLogicalRouter,
 		c.gcLogicalSwitchPort,
@@ -610,6 +611,35 @@ func (c *Controller) gcStaticRoute() error {
 			klog.Infof("gc static route %s %s %s", route.Policy, route.CIDR, route.NextHop)
 			if err := c.ovnLegacyClient.DeleteStaticRoute(route.CIDR, c.config.ClusterRouter); err != nil {
 				klog.Errorf("failed to delete stale route %s, %v", route.NextHop, err)
+			}
+		}
+	}
+	return nil
+}
+
+func (c *Controller) gcChassis() error {
+	klog.Infof("start to gc chassis")
+	chassises, err := c.ovnLegacyClient.GetAllChassis()
+	if err != nil {
+		klog.Errorf("failed to get all chassis, %v", err)
+	}
+	nodes, err := c.nodesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list nodes, %v", err)
+		return err
+	}
+	for _, chassis := range chassises {
+		matched := true
+		for _, node := range nodes {
+			if chassis == node.Annotations[util.ChassisAnnotation] {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			if err := c.ovnLegacyClient.DeleteChassisByName(chassis); err != nil {
+				klog.Errorf("failed to delete chassis %s %v", chassis, err)
+				return err
 			}
 		}
 	}

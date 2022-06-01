@@ -342,7 +342,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	if err := c.RemoveRedundantChassis(node); err != nil {
+	if err := c.validateChassis(node); err != nil {
 		return err
 	}
 
@@ -445,7 +445,7 @@ func (c *Controller) handleDeleteNode(key string) error {
 		klog.Errorf("failed to delete node switch port node-%s: %v", key, err)
 		return err
 	}
-	if err := c.ovnLegacyClient.DeleteChassis(key); err != nil {
+	if err := c.ovnLegacyClient.DeleteChassisByNode(key); err != nil {
 		klog.Errorf("failed to delete chassis for node %s: %v", key, err)
 		return err
 	}
@@ -575,6 +575,12 @@ func (c *Controller) handleUpdateNode(key string) error {
 		return err
 	}
 
+	if node.Annotations[util.ChassisAnnotation] != "" {
+		if err = c.ovnLegacyClient.InitChassisNodeTag(node.Annotations[util.ChassisAnnotation], node.Name); err != nil {
+			klog.Errorf("failed to set chassis nodeTag for node '%s', %v", node.Name, err)
+			return err
+		}
+	}
 	if err := c.retryDelDupChassis(util.ChasRetryTime, util.ChasRetryIntev+2, c.checkChassisDupl, node); err != nil {
 		return err
 	}
@@ -835,7 +841,7 @@ func (c *Controller) checkChassisDupl(node *v1.Node) error {
 	}
 
 	klog.Errorf("duplicate chassis for node %s and new chassis %s", node.Name, chassisAdd)
-	if err := c.ovnLegacyClient.DeleteChassis(node.Name); err != nil {
+	if err := c.ovnLegacyClient.DeleteChassisByNode(node.Name); err != nil {
 		klog.Errorf("failed to delete chassis for node %s %v", node.Name, err)
 		return err
 	}
@@ -988,40 +994,35 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 	return nil
 }
 
-func (c *Controller) RemoveRedundantChassis(node *v1.Node) error {
+func (c *Controller) validateChassis(node *v1.Node) error {
+	if node.Annotations[util.ChassisAnnotation] == "" {
+		return nil
+	}
 	chassisAdd, err := c.ovnLegacyClient.GetChassis(node.Name)
 	if err != nil {
 		klog.Errorf("failed to get node %s chassisID, %v", node.Name, err)
 		return err
 	}
-
-	if chassisAdd == "" && node.Annotations[util.ChassisAnnotation] != "" {
-		chassises, err := c.ovnLegacyClient.GetAllChassisHostname()
-		if err != nil {
-			klog.Errorf("failed to get all chassis, %v", err)
+	if node.Annotations[util.ChassisAnnotation] == chassisAdd {
+		if err = c.ovnLegacyClient.InitChassisNodeTag(chassisAdd, node.Name); err != nil {
+			return fmt.Errorf("failed to init chassis tag, %v", err)
 		}
-		nodes, err := c.nodesLister.List(labels.Everything())
-		if err != nil {
-			klog.Errorf("failed to list nodes, %v", err)
+		return nil
+	}
+	if chassisAdd == "" {
+		// If no chassisID for this node is obtained, we need to perform GC in order for the chassis to be re-registered
+		if err = c.gcChassis(); err != nil {
+			return fmt.Errorf("failed to gc chassis, %v", err)
+		}
+	} else {
+		// When the ids are obtained but are inconsistent, it is usually because there are duplicate chassis records.
+		// All chassis related to Node need to be deleted so that the correct chassis can be registered again
+		if err := c.ovnLegacyClient.DeleteChassisByNode(node.Name); err != nil {
+			klog.Errorf("failed to delete chassis for node %s %v", node.Name, err)
 			return err
 		}
-		for _, chassis := range chassises {
-			matched := true
-			for _, node := range nodes {
-				if chassis == node.Name {
-					matched = false
-				}
-			}
-			if matched {
-				if err := c.ovnLegacyClient.DeleteChassis(chassis); err != nil {
-					klog.Errorf("failed to delete chassis for node %s %v", chassis, err)
-					return err
-				}
-			}
-		}
-		return errors.New("chassis reset, reboot ovs-ovn on this node: " + node.Name)
 	}
-	return nil
+	return errors.New("chassis reset, reboot ovs-ovn on this node: " + node.Name)
 }
 
 func (c *Controller) addNodeGwStaticRoute() error {

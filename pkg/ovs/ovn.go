@@ -31,6 +31,7 @@ type LegacyClient struct {
 	NodeSwitch                    string
 	NodeSwitchCIDR                string
 	ExternalGatewayType           string
+	Version                       string
 }
 
 type OvnClient struct {

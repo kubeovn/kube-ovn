@@ -764,3 +764,30 @@ func (c *Controller) initHtbQos() error {
 	}
 	return err
 }
+
+func (c *Controller) initNodeChassis() error {
+	nodes, err := c.nodesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list nodes: %v", err)
+		return err
+	}
+
+	for _, node := range nodes {
+		chassisName := node.Annotations[util.ChassisAnnotation]
+		if chassisName != "" {
+			exist, err := c.ovnLegacyClient.ChassisExist(chassisName)
+			if err != nil {
+				klog.Errorf("failed to check chassis exist: %v", err)
+				return err
+			}
+			if exist {
+				err = c.ovnLegacyClient.InitChassisNodeTag(chassisName, node.Name)
+				if err != nil {
+					klog.Errorf("failed to set chassis nodeTag: %v", err)
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
