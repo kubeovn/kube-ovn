@@ -53,6 +53,8 @@ const (
 	Policy      = "--policy"
 	PolicyDstIP = "dst-ip"
 	PolicySrcIP = "src-ip"
+
+	OVSDBWaitTimeout = 0
 )
 
 // NewLegacyClient init a legacy ovn client
@@ -118,4 +120,21 @@ func Transact(c client.Client, method string, operations []ovsdb.Operation, time
 	}
 
 	return nil
+}
+
+func ConstructWaitForNameNotExistsOperation(name string, table string) ovsdb.Operation {
+	return ConstructWaitForUniqueOperation(table, "name", name)
+}
+
+func ConstructWaitForUniqueOperation(table string, column string, value interface{}) ovsdb.Operation {
+	timeout := OVSDBWaitTimeout
+	return ovsdb.Operation{
+		Op:      ovsdb.OperationWait,
+		Table:   table,
+		Timeout: &timeout,
+		Where:   []ovsdb.Condition{{Column: column, Function: ovsdb.ConditionEqual, Value: value}},
+		Columns: []string{column},
+		Until:   "!=",
+		Rows:    []ovsdb.Row{{column: value}},
+	}
 }
