@@ -140,6 +140,7 @@ const (
 	HostnameEnv    = "KUBE_NODE_NAME"
 	ChasRetryTime  = 5
 	ChasRetryIntev = 1
+	Vm             = "VirtualMachine"
 	VmInstance     = "VirtualMachineInstance"
 
 	MirrorControlAnnotation = "ovn.kubernetes.io/mirror"
