@@ -1375,7 +1375,10 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 				klog.Errorf("failed to get VirtualMachine %s, %v", ownerRefName, err)
 			}
 		}
-		if vm.Spec.Template.ObjectMeta.Annotations[util.LogicalSwitchAnnotation] != "" {
+		if vm != nil &&
+			vm.Spec.Template != nil &&
+			vm.Spec.Template.ObjectMeta.Annotations != nil &&
+			vm.Spec.Template.ObjectMeta.Annotations[util.LogicalSwitchAnnotation] != "" {
 			ownerRefSubnetExist = true
 		}
 	}
@@ -1459,14 +1462,54 @@ func isVmPod(pod *v1.Pod) (bool, string) {
 	return false, ""
 }
 
-func (c *Controller) isVmPodToDel(pod *v1.Pod, vmName string) bool {
+func isOwnsByTheVM(vmi metav1.Object) (bool, string) {
+	for _, owner := range vmi.GetOwnerReferences() {
+		if owner.Kind == util.Vm && strings.HasPrefix(owner.APIVersion, "kubevirt.io") {
+			return true, owner.Name
+		}
+	}
+	return false, ""
+}
+
+func (c *Controller) isVmPodToDel(pod *v1.Pod, vmiName string) bool {
+	var (
+		vmiAlived bool
+		vmName    string
+	)
 	// The vmi is also deleted when pod is deleted, only left vm exists.
-	vm, err := c.config.KubevirtClient.VirtualMachine(pod.Namespace).Get(vmName, &metav1.GetOptions{})
+	vmi, err := c.config.KubevirtClient.VirtualMachineInstance(pod.Namespace).Get(vmiName, &metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
+			vmiAlived = false
+			// The name of vmi is consistent with vm's name.
+			vmName = vmiName
+			klog.V(4).ErrorS(err, "failed to get vmi, will try to get the vm directly", "name", vmiName)
+		} else {
+			klog.ErrorS(err, "failed to get vmi", "name", vmiName)
+			return false
+		}
+	} else {
+		var ownsByVM bool
+		ownsByVM, vmName = isOwnsByTheVM(vmi)
+		if !ownsByVM && vmi.DeletionTimestamp != nil {
+			// deleteting ephemeral vmi
+			return true
+		}
+		vmiAlived = (vmi.DeletionTimestamp == nil)
+	}
+
+	if vmiAlived {
+		return false
+	}
+
+	vm, err := c.config.KubevirtClient.VirtualMachine(pod.Namespace).Get(vmName, &metav1.GetOptions{})
+	if err != nil {
+		// the vm has gone
+		if k8serrors.IsNotFound(err) {
+			klog.V(4).ErrorS(err, "failed to get vm", "name", vmName)
 			return true
 		} else {
-			klog.Errorf("failed to get vm %s, %v", vmName, err)
+			klog.ErrorS(err, "failed to get vm", "name", vmName)
 		}
 		return false
 	}
