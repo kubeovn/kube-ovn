@@ -133,6 +133,7 @@ const (
 	HostnameEnv    = "KUBE_NODE_NAME"
 	ChasRetryTime  = 5
 	ChasRetryIntev = 1
+	Vm             = "VirtualMachine"
 	VmInstance     = "VirtualMachineInstance"
 
 	VfioSysDir = "/sys/bus/pci/drivers/vfio-pci"
