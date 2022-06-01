@@ -26,6 +26,6 @@ func (c OvnClient) GetLogicalRouter(name string, ignoreNotFound bool) (*ovnnb.Lo
 }
 
 func (c OvnClient) LogicalRouterExists(name string) (bool, error) {
-	lsp, err := c.GetLogicalRouter(name, true)
-	return lsp != nil, err
+	lr, err := c.GetLogicalRouter(name, true)
+	return lr != nil, err
 }

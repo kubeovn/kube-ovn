@@ -77,6 +77,6 @@ func (c OvnClient) AddLogicalRouterPort(lr, name, mac, networks string) error {
 }
 
 func (c OvnClient) LogicalRouterPortExists(name string) (bool, error) {
-	lsp, err := c.GetLogicalRouterPort(name, true)
-	return lsp != nil, err
+	lrp, err := c.GetLogicalRouterPort(name, true)
+	return lrp != nil, err
 }
