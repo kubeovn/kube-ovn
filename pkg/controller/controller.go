@@ -719,13 +719,13 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		if err := c.markAndCleanLSP(); err != nil {
 			klog.Errorf("gc lsp error: %v", err)
 		}
-	}, 6*time.Minute, stopCh)
+	}, time.Duration(c.config.GCInterval)*time.Second, stopCh)
 
 	go wait.Until(func() {
 		if err := c.inspectPod(); err != nil {
 			klog.Errorf("inspection error: %v", err)
 		}
-	}, 20*time.Second, stopCh)
+	}, time.Duration(c.config.InspectInterval)*time.Second, stopCh)
 
 	if c.config.EnableExternalVpc {
 		go wait.Until(func() {
