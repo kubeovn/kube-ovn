@@ -12,3 +12,4 @@ RUN set -ex \
 
 WORKDIR /kube-ovn
 COPY nat-gateway.sh /kube-ovn/
+COPY lb-svc.sh /kube-ovn/

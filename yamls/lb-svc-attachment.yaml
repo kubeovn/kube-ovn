@@ -1,0 +1,7 @@
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: lb-svc-attachment
+  namespace: kube-system
+spec:
+  config: '{"cniVersion": "0.3.0","type": "macvlan","master": "eth0","mode": "bridge"}'

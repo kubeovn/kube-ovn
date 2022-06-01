@@ -169,4 +169,7 @@ const (
 	POD_IP             = "POD_IP"
 	ContentType        = "application/vnd.kubernetes.protobuf"
 	AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
+
+	AttachmentProvider = "ovn.kubernetes.io/attchmentprovider"
+	LbSvcPodImg        = "ovn.kubernetes.io/lb_svc_img"
 )
