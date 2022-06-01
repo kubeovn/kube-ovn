@@ -23,3 +23,11 @@ func trimCommandOutput(raw []byte) string {
 	output := strings.TrimSpace(string(raw))
 	return strings.Trim(output, "\"")
 }
+
+func LogicalRouterPortName(lr, ls string) string {
+	return fmt.Sprintf("%s-%s", lr, ls)
+}
+
+func LogicalSwitchPortName(lr, ls string) string {
+	return fmt.Sprintf("%s-%s", ls, lr)
+}
