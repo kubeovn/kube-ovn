@@ -714,22 +714,28 @@ func (c *Controller) handleUpdatePod(key string) error {
 	c.podKeyMutex.Lock(key)
 	defer c.podKeyMutex.Unlock(key)
 
-	oripod, err := c.podsLister.Pods(namespace).Get(name)
+	cachedPod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	podName := c.getNameByPod(oripod)
-	pod := oripod.DeepCopy()
+	if cachedPod.DeletionTimestamp != nil || !isPodAlive(cachedPod) {
+		return nil
+	}
 
 	// in case update handler overlap the annotation when cache is not in sync
-	if pod.Annotations[util.AllocatedAnnotation] == "" {
+	if len(cachedPod.Annotations) == 0 || cachedPod.Annotations[util.AllocatedAnnotation] == "" {
 		return fmt.Errorf("no address has been allocated to %s/%s", namespace, name)
+	}
+	if cachedPod.Annotations[util.RoutedAnnotation] == "true" {
+		// no need to handle the Pod
+		return nil
 	}
 
 	klog.Infof("update pod %s/%s", namespace, name)
+	pod := cachedPod.DeepCopy()
 
 	var podIP string
 	var subnet *kubeovnv1.Subnet
@@ -803,6 +809,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 		}
 
 		if c.config.EnableEipSnat {
+			podName := c.getNameByPod(pod)
 			for _, ipStr := range strings.Split(podIP, ",") {
 				if err := c.ovnClient.UpdateNatRule("dnat_and_snat", ipStr, pod.Annotations[util.EipAnnotation], c.config.ClusterRouter, pod.Annotations[util.MacAddressAnnotation], fmt.Sprintf("%s.%s", podName, pod.Namespace)); err != nil {
 					klog.Errorf("failed to add nat rules, %v", err)
