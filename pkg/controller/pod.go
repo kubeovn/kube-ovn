@@ -95,7 +95,8 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 
 	podNets, err := c.getPodKubeovnNets(p)
 	if err != nil {
-		klog.Errorf("failed to get pod nets %v", err)
+		klog.Errorf("pod not managed by ovn? failed to get pod nets %v", err)
+		c.addPodQueue.Add(key)
 		return
 	}
 	// In case update event might lost during leader election
