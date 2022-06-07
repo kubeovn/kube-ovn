@@ -81,14 +81,14 @@ spec:
             exec:
               command:
               - cat
-              - /var/run/ovn/ovnnb_db.pid
+              - /var/run/ovn/ovn-controller.pid
             periodSeconds: 10
             timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
               - cat
-              - /var/run/ovn/ovnnb_db.pid
+              - /var/run/ovn/ovn-controller.pid
             initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 5
