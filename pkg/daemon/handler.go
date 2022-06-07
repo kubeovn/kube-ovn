@@ -115,7 +115,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			nicType = pod.Annotations[util.PodNicAnnotation]
 		}
 
-		if pod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podRequest.Provider)] != "true" {
+		if ifName == "eth0" && pod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podRequest.Provider)] != "true" {
 			klog.Infof("wait route ready for pod %s/%s provider %s", podRequest.PodNamespace, podRequest.PodName, podRequest.Provider)
 			cniWaitRouteResult.WithLabelValues(nodeName).Inc()
 			time.Sleep(1 * time.Second)
