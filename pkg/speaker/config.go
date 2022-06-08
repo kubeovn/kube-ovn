@@ -5,9 +5,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/osrg/gobgp/pkg/packet/bgp"
+	"k8s.io/klog"
 	"os"
 	"time"
 
+	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	api "github.com/osrg/gobgp/api"
 	gobgp "github.com/osrg/gobgp/pkg/server"
 	"github.com/spf13/pflag"
@@ -15,9 +18,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/klog/v2"
-
-	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 )
 
 const (
@@ -44,6 +44,7 @@ type Configuration struct {
 	GracefulRestart             bool
 	GracefulRestartDeferralTime time.Duration
 	GracefulRestartTime         time.Duration
+	PassiveMode                 bool
 
 	KubeConfigFile string
 	KubeClient     kubernetes.Interface
@@ -68,6 +69,7 @@ func ParseFlags() (*Configuration, error) {
 		argHoldTime                    = pflag.Duration("holdtime", DefaultBGPHoldtime, "ovn-speaker goes down abnormally, the local saving time of BGP route will be affected.Holdtime must be in the range 3s to 65536s. (default 90s)")
 		argPprofPort                   = pflag.Uint32("pprof-port", DefaultPprofPort, "The port to get profiling data, default: 10667")
 		argKubeConfigFile              = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
+		argPassiveMode                 = pflag.BoolP("passivemode", "", false, "Set BGP Speaker to passive model,do not actively initiate connections to peers ")
 	)
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
@@ -107,6 +109,7 @@ func ParseFlags() (*Configuration, error) {
 		GracefulRestart:             *argGracefulRestart,
 		GracefulRestartDeferralTime: *argGracefulRestartDeferralTime,
 		GracefulRestartTime:         *argDefaultGracefulTime,
+		PassiveMode:                 *argPassiveMode,
 	}
 
 	if config.RouterId == "" {
@@ -178,17 +181,21 @@ func (config *Configuration) checkGracefulRestartOptions() error {
 
 func (config *Configuration) initBgpServer() error {
 	maxSize := 256 << 20
+	var listenPort int32 = -1
 	grpcOpts := []grpc.ServerOption{grpc.MaxRecvMsgSize(maxSize), grpc.MaxSendMsgSize(maxSize)}
 	s := gobgp.NewBgpServer(
 		gobgp.GrpcListenAddress(fmt.Sprintf("%s:%d", config.GrpcHost, config.GrpcPort)),
 		gobgp.GrpcOption(grpcOpts))
 	go s.Serve()
 
+	if config.PassiveMode {
+		listenPort = bgp.BGP_PORT
+	}
 	if err := s.StartBgp(context.Background(), &api.StartBgpRequest{
 		Global: &api.Global{
 			As:               config.ClusterAs,
 			RouterId:         config.RouterId,
-			ListenPort:       -1,
+			ListenPort:       listenPort,
 			UseMultiplePaths: true,
 		},
 	}); err != nil {
@@ -200,6 +207,9 @@ func (config *Configuration) initBgpServer() error {
 		Conf: &api.PeerConf{
 			NeighborAddress: config.NeighborAddress,
 			PeerAs:          config.NeighborAs,
+		},
+		Transport: &api.Transport{
+			PassiveMode: config.PassiveMode,
 		},
 	}
 	if config.AuthPassword != "" {
