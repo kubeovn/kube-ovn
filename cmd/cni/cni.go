@@ -2,7 +2,6 @@ package cni
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
 	"runtime"
@@ -16,6 +15,7 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
+	"github.com/kubeovn/kube-ovn/versions"
 )
 
 func CmdMain() {
@@ -24,7 +24,8 @@ func CmdMain() {
 	// must ensure that the goroutine does not jump from OS thread to thread
 	runtime.LockOSThread()
 
-	skel.PluginMain(cmdAdd, nil, cmdDel, version.All, "")
+	about := fmt.Sprintf("CNI kube-ovn plugin %s", versions.VERSION)
+	skel.PluginMain(cmdAdd, nil, cmdDel, version.All, about)
 }
 
 func cmdAdd(args *skel.CmdArgs) error {
@@ -61,7 +62,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 		VhostUserSocketName:       netConf.VhostUserSocketName,
 	})
 	if err != nil {
-		return err
+		return types.NewError(types.ErrTryAgainLater, "RPC failed", err.Error())
 	}
 
 	result := generateCNIResult(response)
@@ -142,7 +143,7 @@ func cmdDel(args *skel.CmdArgs) error {
 		netConf.Provider = util.OvnProvider
 	}
 
-	return client.Del(request.CniRequest{
+	err = client.Del(request.CniRequest{
 		CniType:                   netConf.Type,
 		PodName:                   podName,
 		PodNamespace:              podNamespace,
@@ -153,6 +154,10 @@ func cmdDel(args *skel.CmdArgs) error {
 		DeviceID:                  netConf.DeviceID,
 		VhostUserSocketVolumeName: netConf.VhostUserSocketVolumeName,
 	})
+	if err != nil {
+		return types.NewError(types.ErrTryAgainLater, "RPC failed", err.Error())
+	}
+	return nil
 }
 
 type ipamConf struct {
@@ -163,7 +168,7 @@ type ipamConf struct {
 func loadNetConf(bytes []byte) (*netConf, string, error) {
 	n := &netConf{}
 	if err := json.Unmarshal(bytes, n); err != nil {
-		return nil, "", fmt.Errorf("failed to load netconf: %v", err)
+		return nil, "", types.NewError(types.ErrDecodingFailure, "failed to load netconf", err.Error())
 	}
 
 	if n.Type != util.CniTypeName && n.IPAM != nil {
@@ -172,7 +177,7 @@ func loadNetConf(bytes []byte) (*netConf, string, error) {
 	}
 
 	if n.ServerSocket == "" {
-		return nil, "", fmt.Errorf("server_socket is required in cni.conf, %+v", n)
+		return nil, "", types.NewError(types.ErrInvalidNetworkConfig, "Invalid Configuration", fmt.Sprintf("server_socket is required in cni.conf, %+v", n))
 	}
 
 	if n.Provider == "" {
@@ -185,7 +190,7 @@ func loadNetConf(bytes []byte) (*netConf, string, error) {
 
 func parseValueFromArgs(key, argString string) (string, error) {
 	if argString == "" {
-		return "", errors.New("CNI_ARGS is required")
+		return "", types.NewError(types.ErrInvalidNetworkConfig, "Invalid Configuration", "CNI_ARGS is required")
 	}
 	args := strings.Split(argString, ";")
 	for _, arg := range args {
@@ -196,7 +201,7 @@ func parseValueFromArgs(key, argString string) (string, error) {
 			}
 		}
 	}
-	return "", fmt.Errorf("%s is required in CNI_ARGS", key)
+	return "", types.NewError(types.ErrInvalidNetworkConfig, "Invalid Configuration", fmt.Sprintf("%s is required in CNI_ARGS", key))
 }
 
 func assignV4Address(ipAddress, gateway string, mask *net.IPNet) (*current.IPConfig, *types.Route) {
@@ -208,7 +213,7 @@ func assignV4Address(ipAddress, gateway string, mask *net.IPNet) (*current.IPCon
 	var route *types.Route
 	if gw := net.ParseIP(gateway); gw != nil {
 		route = &types.Route{
-			Dst: net.IPNet{IP: net.ParseIP("0.0.0.0").To4(), Mask: net.CIDRMask(0, 32)},
+			Dst: net.IPNet{IP: net.IPv4zero.To4(), Mask: net.CIDRMask(0, 32)},
 			GW:  net.ParseIP(gateway).To4(),
 		}
 	}
@@ -225,7 +230,7 @@ func assignV6Address(ipAddress, gateway string, mask *net.IPNet) (*current.IPCon
 	var route *types.Route
 	if gw := net.ParseIP(gateway); gw != nil {
 		route = &types.Route{
-			Dst: net.IPNet{IP: net.ParseIP("::").To16(), Mask: net.CIDRMask(0, 128)},
+			Dst: net.IPNet{IP: net.IPv6zero, Mask: net.CIDRMask(0, 128)},
 			GW:  net.ParseIP(gateway).To16(),
 		}
 	}
