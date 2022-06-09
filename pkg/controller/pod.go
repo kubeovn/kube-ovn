@@ -1258,20 +1258,22 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	}
 
 	// IPPool allocate
-	ipPool := strings.Split(pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)], ",")
+	ipPool := strings.Split(pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)], ";")
 	for i, ip := range ipPool {
 		ipPool[i] = strings.TrimSpace(ip)
 	}
 
 	if ok, _ := isStatefulSetPod(pod); !ok {
 		for _, net := range nsNets {
-			for _, staticIP := range ipPool {
-				if c.ipam.IsIPAssignedToPod(staticIP, net.Subnet.Name, key) {
-					klog.Errorf("static address %s for %s has been assigned", staticIP, key)
-					continue
+			for _, staticIPs := range ipPool {
+				for _, staticIP := range strings.Split(staticIPs, ",") {
+					if c.ipam.IsIPAssignedToPod(staticIP, net.Subnet.Name, key) {
+						klog.Errorf("static address %s for %s has been assigned", staticIP, key)
+						break
+					}
 				}
 
-				v4IP, v6IP, mac, err = c.acquireStaticAddress(key, nicName, staticIP, macStr, net.Subnet.Name, net.AllowLiveMigration)
+				v4IP, v6IP, mac, err = c.acquireStaticAddress(key, nicName, staticIPs, macStr, net.Subnet.Name, net.AllowLiveMigration)
 				if err == nil {
 					return v4IP, v6IP, mac, net.Subnet, nil
 				}
