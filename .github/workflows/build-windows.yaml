@@ -31,29 +31,32 @@ jobs:
       - name: Check out OVS
         uses: actions/checkout@v3
         with:
-          repository: openvswitch/ovs
-          ref: master
+          repository: kubeovn/ovs
+          ref: ovn-22.03.1
           path: ovs
 
       - name: Check out OVN
         uses: actions/checkout@v3
         with:
           repository: ovn-org/ovn
-          ref: branch-22.03
+          ref: v22.03.1
           path: ovn
 
       - name: Apply OVS patches
         working-directory: ovs
         run: |
+          # Carefully release NBL in Windows
+          Invoke-WebRequest -Uri "https://github.com/openvswitch/ovs/commit/bb78070fc7ec0d67e80d9d15de482ef830196da3.patch" -OutFile ..\ovs-01.patch
           # fix kernel crash
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/64383c14a9c25e9e0ca53c6758d9499c60132536.patch" -OutFile ..\ovs-01.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/64383c14a9c25e9e0ca53c6758d9499c60132536.patch" -OutFile ..\ovs-02.patch
           # support for building in github actions
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/08a95db2ca506fce4d89fdf4fafab74607b2bb9f.patch" -OutFile ..\ovs-02.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/08a95db2ca506fce4d89fdf4fafab74607b2bb9f.patch" -OutFile ..\ovs-03.patch
           # listen on tcp 127.0.0.1:6643 by default
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/680e77a190ae7df3086bc35bb6150238e97f9020.patch" -OutFile ..\ovs-03.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/680e77a190ae7df3086bc35bb6150238e97f9020.patch" -OutFile ..\ovs-04.patch
           git apply ..\ovs-01.patch
           git apply ..\ovs-02.patch
           git apply ..\ovs-03.patch
+          git apply ..\ovs-04.patch
 
       - name: Apply OVN patches
         working-directory: ovn
