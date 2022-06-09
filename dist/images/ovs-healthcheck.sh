@@ -23,11 +23,11 @@ function gen_conn_str {
   echo "$x"
 }
 
-echo Connecting OVN SB "$(gen_conn_str 6642)"
+# echo Connecting OVN SB "$(gen_conn_str 6642)"
 if [[ "$ENABLE_SSL" == "false" ]]; then
-  ovsdb-client list-dbs "$(gen_conn_str 6642)"
+  ovsdb-client list-dbs
 else
-  ovsdb-client -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert list-dbs "$(gen_conn_str 6642)"
+  ovsdb-client -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert list-dbs
 fi
 alias ovs-ctl='/usr/share/openvswitch/scripts/ovs-ctl'
 alias ovn-ctl='/usr/share/ovn/scripts/ovn-ctl'
