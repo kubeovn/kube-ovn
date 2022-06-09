@@ -5,18 +5,14 @@ in some scenarios below, vip should be very useful。
 - build k8s cluster based on  kubevirt vms, if you use veth-pair, ipvlan, macvlan as your cni
 - ovn lb health-check also need vip
 
-
-
 **vip can use in any subnet, vpc and underlay subnet both included.**
 
-
-
-### create vip
+## Creating vip
 
 ```yaml
 # 1. dynamic get vip
 apiVersion: kubeovn.io/v1
-kind: VirtualIP
+kind: Vip
 metadata:
   name: vip-dynamic-01
 spec:
@@ -24,7 +20,7 @@ spec:
 ---
 # 2. static ip
 apiVersion: kubeovn.io/v1
-kind: VirtualIP
+kind: Vip
 metadata:
   name: static-vip01
 spec:
