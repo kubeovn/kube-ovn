@@ -13,7 +13,7 @@ require (
 	github.com/containernetworking/cni v1.1.1
 	github.com/containernetworking/plugins v1.1.1
 	github.com/coreos/go-iptables v0.6.0
-	github.com/emicklei/go-restful/v3 v3.7.4
+	github.com/emicklei/go-restful/v3 v3.8.0
 	github.com/go-logr/stdr v1.2.2
 	github.com/golang/protobuf v1.5.2
 	github.com/greenpau/ovsdb v0.0.0-20181114004433-3582b85e8968
