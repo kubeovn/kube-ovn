@@ -97,7 +97,7 @@ var _ = Describe("[IP Allocation]", func() {
 								"e2e":  "true",
 							},
 							Annotations: map[string]string{
-								util.IpPoolAnnotation: strings.Join(ips, ","),
+								util.IpPoolAnnotation: strings.Join(ips, ";"),
 							},
 						},
 						Spec: corev1.PodSpec{
@@ -175,7 +175,7 @@ var _ = Describe("[IP Allocation]", func() {
 								"e2e":  "true",
 							},
 							Annotations: map[string]string{
-								util.IpPoolAnnotation: strings.Join(ips, ","),
+								util.IpPoolAnnotation: strings.Join(ips, ";"),
 							},
 						},
 						Spec: corev1.PodSpec{
