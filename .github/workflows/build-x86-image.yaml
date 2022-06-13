@@ -35,7 +35,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Docker Buildx
-        uses: docker/setup-buildx-action@v1
+        uses: docker/setup-buildx-action@v2
 
       - name: Go Build Cache
         uses: actions/cache@v3
@@ -1285,6 +1285,7 @@ jobs:
           # docker tag kubeovn/centos8-compile:$TAG kubeovn/centos8-compile:$TAG-x86
           docker images
           docker push kubeovn/kube-ovn:$TAG-x86
+          docker push kubeovn/kube-ovn:$TAG-no-avx512
           docker push kubeovn/kube-ovn-dev:$COMMIT-x86
           docker push kubeovn/vpc-nat-gateway:$TAG-x86
           docker push kubeovn/vpc-nat-gateway-dev:$COMMIT-x86
