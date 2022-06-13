@@ -4,6 +4,7 @@ package speaker
 import (
 	"context"
 	"fmt"
+	"github.com/vishvananda/netlink"
 	"net"
 	"strconv"
 	"strings"
@@ -188,7 +189,7 @@ func (c *Controller) getNlriAndAttrs(route string) (*anypb.Any, []*anypb.Any, er
 		Origin: 0,
 	})
 	a2, _ := ptypes.MarshalAny(&bgpapi.NextHopAttribute{
-		NextHop: c.config.RouterId,
+		NextHop: getNextHopAttribute(c.config.NeighborAddress, c.config.RouterId),
 	})
 	attrs := []*anypb.Any{a1, a2}
 	return nlri, attrs, err
@@ -223,4 +224,12 @@ func getNextHopFromPathAttributes(attrs []bgp.PathAttributeInterface) net.IP {
 		}
 	}
 	return nil
+}
+func getNextHopAttribute(NeighborAddress string, RouteId string) string {
+	nextHop := RouteId
+	routes, err := netlink.RouteGet(net.ParseIP(NeighborAddress))
+	if err == nil && len(routes) == 1 && routes[0].Src != nil {
+		nextHop = routes[0].Src.String()
+	}
+	return nextHop
 }
