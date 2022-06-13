@@ -162,9 +162,11 @@ func ValidatePodNetwork(annotations map[string]string) error {
 
 	ipPool := annotations[IpPoolAnnotation]
 	if ipPool != "" {
-		for _, ip := range strings.Split(ipPool, ",") {
-			if net.ParseIP(strings.TrimSpace(ip)) == nil {
-				errors = append(errors, fmt.Errorf("%s in %s is not a valid address", ip, IpPoolAnnotation))
+		for _, ips := range strings.Split(ipPool, ";") {
+			for _, ip := range strings.Split(ips, ",") {
+				if net.ParseIP(strings.TrimSpace(ip)) == nil {
+					errors = append(errors, fmt.Errorf("%s in %s is not a valid address", ip, IpPoolAnnotation))
+				}
 			}
 		}
 	}
