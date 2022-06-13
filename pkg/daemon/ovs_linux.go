@@ -388,6 +388,7 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 	}
 
 	// ping ovn0 gw to activate the flow
+	klog.Infof("wait ovn0 gw ready")
 	if err := waitNetworkReady(util.NodeNic, ip, gw, false, true); err != nil {
 		klog.Errorf("failed to init ovn0 check: %v", err)
 		return err
