@@ -39,7 +39,7 @@ spec:
 Use the following annotation to allocate addresses for a Workload:
 -  `ovn.kubernetes.io/ip_pool`: For Deployments/DaemonSets, we will randomly choose an available IP address for a Pod. For StatefulSets, the IP allocation will follow the order specified in the list.
 
-Example:
+Ipv4 Example:
 
 ```yaml
 apiVersion: apps/v1
@@ -59,7 +59,34 @@ spec:
       labels:
         app: starter-backend
       annotations:
-        ovn.kubernetes.io/ip_pool: 10.16.0.15,10.16.0.16,10.16.0.17
+        ovn.kubernetes.io/ip_pool: 10.16.0.15;10.16.0.16;10.16.0.17
+    spec:
+      containers:
+      - name: backend
+        image: nginx:alpine
+```
+
+Dual Example:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: ovn-test
+  name: starter-backend
+  labels:
+    app: starter-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: starter-backend
+  template:
+    metadata:
+      labels:
+        app: starter-backend
+      annotations:
+        ovn.kubernetes.io/ip_pool: 10.16.0.15,fd00:10:16::15;10.16.0.16,fd00:10:16::18;10.16.0.17,fd00:10:16::17
     spec:
       containers:
       - name: backend
