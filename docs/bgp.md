@@ -3,6 +3,13 @@
 Kube-OVN supports advertise pod/subnet ips to external networks by BGP protocol. To enable BGP advertise function, you
 need to install kube-ovn-speaker and annotate pods/subnets that need to be exposed.
 
+## High-level design of ovn-spekaer
+
+![ovn-speaker.png](ovn-speaker.png)
+
+kube-ovn-speaker periodically lists Pod/subnet/service resource information of kubernetes apiServer.
+Check the obtained Pod/subnet/service resources, select the annotation ovn.kubernetes.io/bgp=true and the resources that are not advertised
+by BGP use BGP to advertise externally.
 ## List of Options
 ```text
 Usage of ovn-speaker:
