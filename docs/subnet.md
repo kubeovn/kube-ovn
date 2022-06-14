@@ -44,7 +44,7 @@ Besides standard NetworkPolicy，Kube-OVN also supports network isolation and ac
 *Note*: NetworkPolicy take a higher priority than subnet isolation rules.
 
 - `private`: Boolean, controls whether to deny traffic from IP addresses outside of this Subnet. Default: false.
-- `allow`: Strings of CIDRs separated by commas, controls which addresses can access this Subnet, if `private=true`.
+- `allowSubnets`: List of CIDRs, controls which addresses can access this Subnet, if `private=true`.
 
 After Kube-OVN v1.10.0, we provide support for fine-grained traffic control in subnet. The detailed implementation can be referenced in [Subnet-ACL](https://github.com/kubeovn/kube-ovn/blob/master/docs/subnet-acl.md).
 
