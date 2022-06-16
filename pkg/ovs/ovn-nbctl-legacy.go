@@ -1307,7 +1307,11 @@ func (c LegacyClient) ResetLogicalSwitchAcl(ls string) error {
 // SetPrivateLogicalSwitch will drop all ingress traffic except allow subnets
 func (c LegacyClient) SetPrivateLogicalSwitch(ls, cidr string, allow []string) error {
 	ovnArgs := []string{"acl-del", ls}
-	dropArgs := []string{"--", "--log", fmt.Sprintf("--name=%s", ls), fmt.Sprintf("--severity=%s", "warning"), "acl-add", ls, "to-lport", util.DefaultDropPriority, "ip", "drop"}
+	trimName := ls
+	if len(ls) > 63 {
+		trimName = ls[:63]
+	}
+	dropArgs := []string{"--", "--log", fmt.Sprintf("--name=%s", trimName), fmt.Sprintf("--severity=%s", "warning"), "acl-add", ls, "to-lport", util.DefaultDropPriority, "ip", "drop"}
 	ovnArgs = append(ovnArgs, dropArgs...)
 
 	for _, cidrBlock := range strings.Split(cidr, ",") {
