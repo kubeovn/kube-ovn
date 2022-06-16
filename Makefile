@@ -347,7 +347,9 @@ kind-install-cilium:
 	fi
 
 	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
-	ENABLE_SSL=true ENABLE_LB=false ENABLE_NP=false WITHOUT_KUBE_PROXY=true bash dist/images/install.sh
+	ENABLE_SSL=true ENABLE_LB=false ENABLE_NP=false \
+		WITHOUT_KUBE_PROXY=true CNI_CONFIG_PRIORITY=10 \
+		bash dist/images/install.sh
 	kubectl describe no
 
 .PHONY: kind-reload
