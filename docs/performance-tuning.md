@@ -67,8 +67,6 @@ This benchmark is for reference only, the result may vary dramatically due to di
 Optimization for packets with big size and underlay latency are still in progress, we will publish the optimization 
 methods and benchmark results later.
 
-
-
 ## Optimization methods
 
 ## CPU frequency scaling
@@ -78,8 +76,6 @@ When the CPU works at power save mode, its performance behavior is unstable and 
 ```bash
 cpupower frequency-set -g performance
 ```
-
-
 
 ## Increasing the RX ring buffer 
 
@@ -104,24 +100,6 @@ A high drop rate at receive side will hurt the throughput performance.
 ```bash
 # ethtool -G eno1 rx 4096
 ```
-
-
-
-## Enable the checksum offload
-
-In v1.7 to bypass a kernel double nat issue, we disabled the tx checksum offload of geneve tunnel. This issue has been resolved
-in a different way in the latest version. Users who update from old versions can enable the checksum again. Users who use
-1.7.2 or later do not need to change the settings.
-
-```bash
-# run on every ovs-ovn pod
-
-# ethtool -K genev_sys_6081 tx on
-# ethtool -K ovn0 tx on
-# ovs-vsctl set open . external_ids:ovn-encap-csum=true
-```
-
-
 
 ## Disable OVN LB
 
@@ -150,18 +128,16 @@ to bypass the conntrack system for traffic that not designate to svc.
 kubectl ko nbctl set nb_global . options:svc_ipv4_cidr=10.244.0.0/16
 ```
 
-
-
 ## Kernel FastPath module
 
 With Profile, the netfilter hooks inside container netns and between tunnel endpoints contribute about 25% of the CPU time
 after the optimization of disabling lb. We provide a FastPath module that can bypass the nf hooks process and reduce about 
 another 20% of CPU time and latency in 1 byte packet test.
 
-The easiest way is to download the `.ko` file and `insmod` the file as [doc](https://github.com/kubeovn/tunning-package) introduce. The `ko` file currently support a limited number of kernel versions. However, we encourage users to submit requests, and we will support new versions soon.
+The easiest way is to download the `.ko` file and `insmod` the file as [doc](https://github.com/kubeovn/tunning-package) introduce. 
+The `ko` file currently support a limited number of kernel versions. However, we encourage users to submit requests, and we will support new versions soon.
 
 If you want to compile yourself, please refer [FastPath Guide](../fastpath/README.md) to get the detail steps.
-
 
 
 ## Optimize OVS kernel module
@@ -278,7 +254,7 @@ $ kubectl ko tuning remove-stt centos
 ### Using STT tunnel type
 
 Popular tunnel encapsulation methods like Geneve or Vxlan use udp to wrap the origin packets. 
-However，when using udp over tcp packets, lots of the tcp offloading capabilities that modern NICs provided cannot be utilized 
+However, when using udp over tcp packets, lots of the tcp offloading capabilities that modern NICs provided cannot be utilized 
 and leads to degraded performance compared to non-encapsulated one.
 
 STT provides a tcp like header to encapsulate packet which can utilize all the offloading capabilities and dramatically improve the throughput of tcp traffic.
