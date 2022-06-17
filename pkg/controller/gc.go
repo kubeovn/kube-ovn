@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -517,6 +518,21 @@ func (c *Controller) gcPortGroup() error {
 		}
 		for _, node := range nodes {
 			npNames = append(npNames, fmt.Sprintf("%s/%s", "node", node.Name))
+		}
+
+		// append overlay subnets port group to npNames to avoid gc distributed subnets port group
+		subnets, err := c.subnetsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list subnets %v", err)
+			return err
+		}
+		for _, subnet := range subnets {
+			if subnet.Spec.Vpc != util.DefaultVpc || subnet.Spec.Vlan != "" || subnet.Name == c.config.NodeSwitch || subnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
+				continue
+			}
+			for _, node := range nodes {
+				npNames = append(npNames, fmt.Sprintf("%s/%s", subnet.Name, node.Name))
+			}
 		}
 	}
 

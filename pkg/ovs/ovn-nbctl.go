@@ -1042,6 +1042,10 @@ func (c Client) DeleteStaticRouteByNextHop(nextHop string) error {
 	if strings.TrimSpace(nextHop) == "" {
 		return nil
 	}
+	if util.CheckProtocol(nextHop) == kubeovnv1.ProtocolIPv6 {
+		nextHop = strings.ReplaceAll(nextHop, ":", "\\:")
+	}
+
 	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=ip_prefix", "find", "Logical_Router_Static_Route", fmt.Sprintf("nexthop=%s", nextHop))
 	if err != nil {
 		klog.Errorf("failed to list static route %s, %v", nextHop, err)
@@ -1400,6 +1404,24 @@ func (c Client) ListNpAddressSet(npNamespace, npName, direction string) ([]strin
 		return nil, err
 	}
 	return strings.Split(output, "\n"), nil
+}
+
+func (c Client) ListAddressesByName(addressSetName string) ([]string, error) {
+	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=addresses", "find", "address_set", fmt.Sprintf("name=%s", addressSetName))
+	if err != nil {
+		klog.Errorf("failed to list address_set of %s, error %v", addressSetName, err)
+		return nil, err
+	}
+
+	lines := strings.Split(output, "\n")
+	result := make([]string, 0, len(lines))
+	for _, l := range lines {
+		if len(strings.TrimSpace(l)) == 0 {
+			continue
+		}
+		result = append(result, strings.Fields(l)...)
+	}
+	return result, nil
 }
 
 func (c Client) CreateNpAddressSet(asName, npNamespace, npName, direction string) error {
@@ -2071,4 +2093,28 @@ func (c *Client) GetLspExternalIds(lsp string) (map[string]string, []string) {
 	}
 
 	return nameNsMap, result[0]["addresses"]
+}
+
+func (c *Client) PortGroupExists(pgName string) (bool, error) {
+	results, err := c.CustomFindEntity("port_group", []string{"_uuid"}, fmt.Sprintf("name=%s", pgName))
+	if err != nil {
+		klog.Errorf("customFindEntity failed, %v", err)
+		return false, err
+	}
+	if len(results) == 0 {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (c *Client) PolicyRouteExists(priority int32, match string) (bool, error) {
+	results, err := c.CustomFindEntity("Logical_Router_Policy", []string{"_uuid"}, fmt.Sprintf("priority=%d", priority), fmt.Sprintf("match=\"%s\"", match))
+	if err != nil {
+		klog.Errorf("customFindEntity failed, %v", err)
+		return false, err
+	}
+	if len(results) == 0 {
+		return false, nil
+	}
+	return true, nil
 }

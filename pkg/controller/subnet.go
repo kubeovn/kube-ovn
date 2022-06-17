@@ -605,6 +605,11 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
+	if err := c.updateOverlaySubnetAddressSet(subnet, true); err != nil {
+		klog.Errorf("failed to update overlay subnets address-set, %v", err)
+		return err
+	}
+
 	if err := c.reconcileSubnet(subnet); err != nil {
 		klog.Errorf("reconcile subnet for %s failed, %v", subnet.Name, err)
 		return err
@@ -752,6 +757,11 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 		return err
 	}
 
+	if err := c.updateOverlaySubnetAddressSet(subnet, false); err != nil {
+		klog.Errorf("failed to update overlay subnets address-set, %v", err)
+		return err
+	}
+
 	err := c.handleDeleteLogicalSwitch(subnet.Name)
 	if err != nil {
 		klog.Errorf("failed to delete logical switch %s %v", subnet.Name, err)
@@ -814,7 +824,7 @@ func (c *Controller) reconcileSubnet(subnet *kubeovnv1.Subnet) error {
 
 	if subnet.Name != c.config.NodeSwitch {
 		if err := c.reconcileGateway(subnet); err != nil {
-			klog.Errorf("reconcile centralized gateway for subnet %s failed, %v", subnet.Name, err)
+			klog.Errorf("reconcile gateway for subnet %s failed, %v", subnet.Name, err)
 			return err
 		}
 	}
@@ -883,16 +893,36 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 	} else {
 		// if gw is distributed remove activateGateway field
 		if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
-			if subnet.Spec.GatewayNode == "" {
+			if subnet.Spec.GatewayNode == "" && subnet.Status.ActivateGateway == "" {
 				return nil
 			}
 			subnet.Spec.GatewayNode = ""
+			subnet.Status.ActivateGateway = ""
 			bytes, err := subnet.Status.Bytes()
 			if err != nil {
 				return err
 			}
 			_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "")
 			if err != nil {
+				return err
+			}
+
+			nodes, err := c.nodesLister.List(labels.Everything())
+			if err != nil {
+				klog.Errorf("failed to list nodes: %v", err)
+				return err
+			}
+			for _, node := range nodes {
+				pgName := getOverlaySubnetsPortGroupName(subnet.Name, node.Name)
+				if err = c.ovnClient.CreateNpPortGroup(pgName, subnet.Name, node.Name); err != nil {
+					klog.Errorf("failed to create port group for subnet %s and node %s, %v", subnet.Name, node.Name, err)
+					return err
+				}
+			}
+
+			_, idNameMap, err := c.ovnClient.ListLspForNodePortgroup()
+			if err != nil {
+				klog.Errorf("failed to list lsp info, %v", err)
 				return err
 			}
 
@@ -918,15 +948,82 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 					klog.Errorf("failed to get node %s tunnel ip, %v", node.Name, err)
 					return err
 				}
-
 				nextHop := getNextHopByTunnelIP(nodeIP)
-				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
-					nextHop = pod.Annotations[util.NorthGatewayAnnotation]
+
+				pgName := getOverlaySubnetsPortGroupName(subnet.Name, node.Name)
+				pgPorts, err := c.getPgPorts(idNameMap, pgName)
+				if err != nil {
+					klog.Errorf("failed to fetch ports for pg %v, %v", pgName, err)
+					return err
 				}
 
-				if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, pod.Annotations[util.IpAddressAnnotation], nextHop, c.config.ClusterRouter, util.NormalRouteType, false); err != nil {
-					klog.Errorf("add static route failed, %v", err)
+				changed := false
+				podNets, err := c.getPodKubeovnNets(pod)
+				if err != nil {
+					klog.Errorf("failed to get pod nets %v", err)
 					return err
+				}
+				for _, podNet := range podNets {
+					if !isOvnSubnet(podNet.Subnet) {
+						continue
+					}
+
+					if pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)] == "" || pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)] != subnet.Name {
+						continue
+					}
+
+					if pod.Annotations[util.NorthGatewayAnnotation] != "" {
+						nextHop = pod.Annotations[util.NorthGatewayAnnotation]
+						exist, err := c.checkRouteExist(nextHop, pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)], ovs.PolicySrcIP)
+						if err != nil {
+							klog.Errorf("failed to get static route for subnet %v, error %v", subnet.Name, err)
+							return err
+						}
+						if exist {
+							continue
+						}
+
+						if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)], nextHop, c.config.ClusterRouter, util.NormalRouteType, false); err != nil {
+							klog.Errorf("add static route failed, %v", err)
+							return err
+						}
+					} else {
+						portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName)
+						if !util.IsStringIn(portName, pgPorts) {
+							klog.Infof("new port %v should add to port group %v", portName, pgName)
+							pgPorts = append(pgPorts, portName)
+							changed = true
+
+							if err = c.ovnClient.SetPortsToPortGroup(pgName, pgPorts); err != nil {
+								klog.Errorf("failed to set ports to port group %v, %v", pgName, err)
+								return err
+							}
+						}
+					}
+				}
+
+				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
+					continue
+				}
+				if changed {
+					for _, nextHopIp := range strings.Split(nextHop, ",") {
+						if nextHopIp == "" {
+							continue
+						}
+
+						ipSuffix := "ip4"
+						subnetAsName := getOverlaySubnetsAddressSetName(c.config.ClusterRouter, kubeovnv1.ProtocolIPv4)
+						if util.CheckProtocol(nextHopIp) == kubeovnv1.ProtocolIPv6 {
+							ipSuffix = "ip6"
+							subnetAsName = getOverlaySubnetsAddressSetName(c.config.ClusterRouter, kubeovnv1.ProtocolIPv6)
+						}
+						pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
+						match := fmt.Sprintf("%s.src == $%s && %s.dst != $%s", ipSuffix, pgAs, ipSuffix, subnetAsName)
+						if err = c.ovnClient.AddPolicyRoute(c.config.ClusterRouter, util.PodRouterPolicyPriority, match, "reroute", nextHopIp); err != nil {
+							klog.Errorf("failed to add logical router policy for port-group address-set %s: %v", pgAs, err)
+							return err
+						}
+					}
 				}
 			}
 			return c.deleteStaticRoute(subnet.Spec.CIDRBlock, c.config.ClusterRouter, subnet)
@@ -1365,7 +1462,7 @@ func (c *Controller) deleteEcmpRouteForNode(subnet *kubeovnv1.Subnet) error {
 					continue
 				}
 
-				exist, err := c.checkNodeEcmpRouteExist(ip, cidrBlock)
+				exist, err := c.checkRouteExist(ip, cidrBlock, ovs.PolicySrcIP)
 				if err != nil {
 					klog.Errorf("get ecmp static route for subnet %v, error %v", subnet.Name, err)
 					break
@@ -1385,5 +1482,137 @@ func (c *Controller) deleteEcmpRouteForNode(subnet *kubeovnv1.Subnet) error {
 			}
 		}
 	}
+	return nil
+}
+
+func (c *Controller) getPgPorts(idNameMap map[string]string, pgName string) ([]string, error) {
+	var portNames []string
+	pgPorts, err := c.ovnClient.ListPgPorts(pgName)
+	if err != nil {
+		klog.Errorf("failed to fetch ports for pg %v, %v", pgName, err)
+		return portNames, err
+	}
+
+	for _, portId := range pgPorts {
+		if portName, ok := idNameMap[portId]; ok {
+			portNames = append(portNames, portName)
+		}
+	}
+
+	return portNames, nil
+}
+
+func getOverlaySubnetsPortGroupName(subnetName, nodeName string) string {
+	return strings.Replace(fmt.Sprintf("%s.%s", subnetName, nodeName), "-", ".", -1)
+}
+
+func getOverlaySubnetsAddressSetName(router, protocol string) string {
+	return strings.Replace(fmt.Sprintf("%s.overlay.subnets.%s", router, protocol), "-", ".", -1)
+}
+
+func (c *Controller) createOverlaySubnetsAddressSet() error {
+	var v4CIDRs, v6CIDRs []string
+	subnetList, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets %v", err)
+		return err
+	}
+
+	for _, subnet := range subnetList {
+		if subnet.Spec.Vlan != "" || subnet.Spec.Vpc != util.DefaultVpc || subnet.Name == c.config.NodeSwitch {
+			continue
+		}
+
+		for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+			protocol := util.CheckProtocol(cidrBlock)
+
+			switch protocol {
+			case kubeovnv1.ProtocolIPv4:
+				v4CIDRs = append(v4CIDRs, cidrBlock)
+			case kubeovnv1.ProtocolIPv6:
+				v6CIDRs = append(v6CIDRs, cidrBlock)
+			}
+		}
+	}
+
+	subnetAsIPv4 := getOverlaySubnetsAddressSetName(c.config.ClusterRouter, kubeovnv1.ProtocolIPv4)
+	subnetAsIPv6 := getOverlaySubnetsAddressSetName(c.config.ClusterRouter, kubeovnv1.ProtocolIPv6)
+	if err = c.ovnClient.CreateAddressSet(subnetAsIPv4); err != nil {
+		klog.Errorf("failed to create address set for IPv4 overlay subnets: %v", err)
+		return err
+	}
+	if err = c.ovnClient.CreateAddressSet(subnetAsIPv6); err != nil {
+		klog.Errorf("failed to create address set for IPv6 overlay subnets: %v", err)
+		return err
+	}
+
+	if err = c.ovnClient.SetAddressesToAddressSet(v4CIDRs, subnetAsIPv4); err != nil {
+		klog.Errorf("failed to set IPv4 overlay address_set, %v", err)
+		return err
+	}
+	if err = c.ovnClient.SetAddressesToAddressSet(v6CIDRs, subnetAsIPv6); err != nil {
+		klog.Errorf("failed to set IPv6 overlay address_set, %v", err)
+		return err
+	}
+
+	return nil
+}
+
+func (c *Controller) updateOverlaySubnetAddressSet(subnet *kubeovnv1.Subnet, isAdd bool) error {
+	var err error
+	if subnet.Spec.Vlan != "" || subnet.Spec.Vpc != util.DefaultVpc || subnet.Name == c.config.NodeSwitch {
+		return nil
+	}
+
+	subnetAsIPv4 := getOverlaySubnetsAddressSetName(c.config.ClusterRouter, kubeovnv1.ProtocolIPv4)
+	subnetAsIPv6 := getOverlaySubnetsAddressSetName(c.config.ClusterRouter, kubeovnv1.ProtocolIPv6)
+	for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+		protocol := util.CheckProtocol(cidrBlock)
+
+		switch protocol {
+		case kubeovnv1.ProtocolIPv4:
+			err = c.updateAddressSet(subnetAsIPv4, cidrBlock, isAdd)
+		case kubeovnv1.ProtocolIPv6:
+			err = c.updateAddressSet(subnetAsIPv6, cidrBlock, isAdd)
+		}
+		if err != nil {
+			klog.Errorf("failed to update address_set for subnet %v, %v", subnet.Name, err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *Controller) updateAddressSet(addressSetName, cidr string, isAdd bool) error {
+	var err error
+	var addresses []string
+
+	if addresses, err = c.ovnClient.ListAddressesByName(addressSetName); err != nil {
+		klog.Errorf("failed to get addresses for addressSet %v: %v", addressSetName, err)
+		return err
+	}
+	exist := util.ContainsString(addresses, cidr)
+
+	if isAdd {
+		if exist {
+			return nil
+		}
+		addresses = append(addresses, cidr)
+		if err = c.ovnClient.SetAddressesToAddressSet(addresses, addressSetName); err != nil {
+			klog.Errorf("failed to set address %v to address_set %v, %v", cidr, addressSetName, err)
+			return err
+		}
+	} else {
+		if !exist {
+			return nil
+		}
+
+		if err = c.ovnClient.RemoveAddressSetAddresses(addressSetName, cidr); err != nil {
+			klog.Errorf("failed to delete address %v from address_set %v, %v", cidr, addressSetName, err)
+			return err
+		}
+	}
+
 	return nil
 }

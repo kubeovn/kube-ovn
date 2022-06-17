@@ -664,6 +664,7 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 		if err != nil {
 			klog.Warningf("filed to get port '%s' sg, %v", portName, err)
 		}
+		// when lsp is deleted, the port of pod is deleted from any port-group automatically.
 		if err := c.ovnClient.DeleteLogicalSwitchPort(portName); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", portName, err)
 			return err
@@ -772,6 +773,12 @@ func (c *Controller) handleUpdatePod(key string) error {
 		return err
 	}
 
+	_, idNameMap, err := c.ovnClient.ListLspForNodePortgroup()
+	if err != nil {
+		klog.Errorf("failed to list lsp info, %v", err)
+		return err
+	}
+
 	for _, podNet := range podNets {
 		if !isOvnSubnet(podNet.Subnet) {
 			continue
@@ -811,6 +818,19 @@ func (c *Controller) handleUpdatePod(key string) error {
 						klog.Errorf("get node %s failed %v", pod.Spec.NodeName, err)
 						return err
 					}
+
+					pgName := getOverlaySubnetsPortGroupName(subnet.Name, node.Name)
+					exist, err := c.ovnClient.PortGroupExists(pgName)
+					if err != nil {
+						return err
+					}
+					if !exist {
+						if err = c.ovnClient.CreateNpPortGroup(pgName, subnet.Name, node.Name); err != nil {
+							klog.Errorf("failed to create port group for subnet %s and node %s, %v", subnet.Name, node.Name, err)
+							return err
+						}
+					}
+
 					nodeTunlIPAddr, err := getNodeTunlIP(node)
 					if err != nil {
 						return err
@@ -826,9 +846,41 @@ func (c *Controller) handleUpdatePod(key string) error {
 							if util.CheckProtocol(nodeAddr.String()) != util.CheckProtocol(podAddr) {
 								continue
 							}
-							if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, podAddr, nodeAddr.String(), c.config.ClusterRouter, util.NormalRouteType, isMigrate); err != nil {
-								klog.Errorf("failed to add static route, %v", err)
+
+							pgPorts, err := c.getPgPorts(idNameMap, pgName)
+							if err != nil {
+								klog.Errorf("failed to fetch ports for pg %v, %v", pgName, err)
 								return err
+							}
+
+							portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName)
+							if !util.IsStringIn(portName, pgPorts) {
+								pgPorts = append(pgPorts, portName)
+
+								if err = c.ovnClient.SetPortsToPortGroup(pgName, pgPorts); err != nil {
+									klog.Errorf("failed to set ports to port group %v, %v", pgName, err)
+									return err
+								}
+							}
+
+							ipSuffix := "ip4"
+							subnetAsName := getOverlaySubnetsAddressSetName(c.config.ClusterRouter, kubeovnv1.ProtocolIPv4)
+							if util.CheckProtocol(nodeAddr.String()) == kubeovnv1.ProtocolIPv6 {
+								ipSuffix = "ip6"
+								subnetAsName = getOverlaySubnetsAddressSetName(c.config.ClusterRouter, kubeovnv1.ProtocolIPv6)
+							}
+							pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
+							match := fmt.Sprintf("%s.src == $%s && %s.dst != $%s", ipSuffix, pgAs, ipSuffix, subnetAsName)
+
+							exist, err := c.ovnClient.PolicyRouteExists(util.PodRouterPolicyPriority, match)
+							if err != nil {
+								return err
+							}
+							if !exist {
+								if err = c.ovnClient.AddPolicyRoute(c.config.ClusterRouter, util.PodRouterPolicyPriority, match, "reroute", nodeAddr.String()); err != nil {
+									klog.Errorf("failed to add logical router policy for port-group address-set %s: %v", pgAs, err)
+									return err
+								}
 							}
 						}
 					}

@@ -123,6 +123,7 @@ const (
 	EcmpRouteType   = "ecmp"
 	NormalRouteType = "normal"
 
+	PodRouterPolicyPriority  = 20000
 	NodeRouterPolicyPriority = 30000
 
 	VethType     = "veth-pair"
