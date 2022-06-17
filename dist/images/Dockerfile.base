@@ -32,6 +32,8 @@ RUN cd /usr/src/ && git clone -b v22.03.1 --depth=1 https://github.com/ovn-org/o
     curl -s https://github.com/kubeovn/ovn/commit/d26ae4de0ab070f6b602688ba808c8963f69d5c4.patch | git apply && \
     # change hash type from dp_hash to hash with field src_ip
     curl -s https://github.com/kubeovn/ovn/commit/ab923b252271cbbcccc8091e338ee7efe75e5fcd.patch | git apply && \
+    # set ether dst addr for dnat on logical switch
+    curl -s https://github.com/kubeovn/ovn/commit/94b73d939cd33b0531fa9a3422c999cd83ead087.patch | git apply && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \
