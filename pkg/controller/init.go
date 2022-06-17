@@ -58,11 +58,6 @@ func (c *Controller) InitOVN() error {
 		return err
 	}
 
-	if err := c.createOverlaySubnetsAddressSet(); err != nil {
-		klog.Errorf("failed to create overlay subnets address-set, %v", err)
-		return err
-	}
-
 	return nil
 }
 
@@ -616,20 +611,30 @@ func (c *Controller) initSyncCrdVlans() error {
 	return nil
 }
 
-func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string, cidrs []string) error {
+func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
 	if err := c.ovnClient.DeleteStaticRoute(ip, c.config.ClusterRouter); err != nil {
 		klog.Errorf("failed to delete obsolete static route for node %s: %v", node, err)
 		return err
 	}
 
 	asName := nodeUnderlayAddressSetName(node, af)
-	if err := c.ovnClient.CreateAddressSetWithAddresses(asName, cidrs...); err != nil {
-		klog.Errorf("failed to create address set %s for node %s: %v", asName, node, err)
+	obsoleteMatch := fmt.Sprintf("ip%d.dst == %s && ip%d.src != $%s", af, ip, af, asName)
+	if err := c.ovnClient.DeletePolicyRoute(c.config.ClusterRouter, util.NodeRouterPolicyPriority, obsoleteMatch); err != nil {
+		klog.Errorf("failed to delete obsolete logical router policy for node %s: %v", node, err)
 		return err
 	}
 
-	match := fmt.Sprintf("ip%d.dst == %s && ip%d.src != $%s", af, ip, af, asName)
-	if err := c.ovnClient.AddPolicyRoute(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", nexthop); err != nil {
+	if err := c.ovnClient.DeleteAddressSet(asName); err != nil {
+		klog.Errorf("failed to delete obsolete address set %s for node %s: %v", asName, node, err)
+		return err
+	}
+
+	match := fmt.Sprintf("ip%d.dst == %s", af, ip)
+	externalIDs := map[string]string{
+		"vendor": util.CniTypeName,
+		"node":   node,
+	}
+	if err := c.ovnClient.AddPolicyRoute(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", nexthop, externalIDs); err != nil {
 		klog.Errorf("failed to add logical router policy for node %s: %v", node, err)
 		return err
 	}
@@ -638,11 +643,6 @@ func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string, cidrs []
 }
 
 func (c *Controller) initNodeRoutes() error {
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets: %v", err)
-		return err
-	}
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list nodes: %v", err)
@@ -650,30 +650,14 @@ func (c *Controller) initNodeRoutes() error {
 	}
 	for _, node := range nodes {
 		nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
-
-		var v4CIDRs, v6CIDRs []string
-		for _, subnet := range subnets {
-			if subnet.Spec.Vlan == "" || !subnet.Spec.LogicalGateway || subnet.Spec.Vpc != util.DefaultVpc {
-				continue
-			}
-
-			v4, v6 := util.SplitStringIP(subnet.Spec.CIDRBlock)
-			if util.CIDRContainIP(v4, nodeIPv4) {
-				v4CIDRs = append(v4CIDRs, v4)
-			}
-			if util.CIDRContainIP(v6, nodeIPv6) {
-				v6CIDRs = append(v6CIDRs, v6)
-			}
-		}
-
 		joinAddrV4, joinAddrV6 := util.SplitStringIP(node.Annotations[util.IpAddressAnnotation])
 		if nodeIPv4 != "" && joinAddrV4 != "" {
-			if err = c.migrateNodeRoute(4, node.Name, nodeIPv4, joinAddrV4, v4CIDRs); err != nil {
+			if err = c.migrateNodeRoute(4, node.Name, nodeIPv4, joinAddrV4); err != nil {
 				klog.Errorf("failed to migrate IPv4 route for node %s: %v", node.Name, err)
 			}
 		}
 		if nodeIPv6 != "" && joinAddrV6 != "" {
-			if err = c.migrateNodeRoute(6, node.Name, nodeIPv6, joinAddrV6, v6CIDRs); err != nil {
+			if err = c.migrateNodeRoute(6, node.Name, nodeIPv6, joinAddrV6); err != nil {
 				klog.Errorf("failed to migrate IPv6 route for node %s: %v", node.Name, err)
 			}
 		}

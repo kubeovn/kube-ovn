@@ -800,23 +800,36 @@ func (c Client) AddStaticRoute(policy, cidr, nextHop, router string, routeType s
 }
 
 // AddPolicyRoute add a policy route rule in ovn
-func (c Client) AddPolicyRoute(router string, priority int32, match string, action string, nextHop string) error {
-	exist, err := c.IsPolicyRouteExist(router, priority, match)
-	if err != nil {
-		return err
-	}
-	if exist {
-		return nil
-	}
-
+func (c Client) AddPolicyRoute(router string, priority int32, match, action, nextHop string, externalIDs map[string]string) error {
 	// lr-policy-add ROUTER PRIORITY MATCH ACTION [NEXTHOP]
-	args := []string{"lr-policy-add", router, strconv.Itoa(int(priority)), match, action}
+	args := []string{MayExist, "lr-policy-add", router, strconv.Itoa(int(priority)), match, action}
 	if nextHop != "" {
 		args = append(args, nextHop)
 	}
 	if _, err := c.ovnNbCommand(args...); err != nil {
 		return err
 	}
+
+	if len(externalIDs) == 0 {
+		return nil
+	}
+
+	result, err := c.CustomFindEntity("logical_router_policy", []string{"_uuid"}, fmt.Sprintf("priority=%d", priority), fmt.Sprintf(`match="%s"`, match))
+	if err != nil {
+		klog.Errorf("failed to get logical router policy UUID: %v", err)
+		return err
+	}
+	for _, policy := range result {
+		args := make([]string, 0, len(externalIDs)+3)
+		args = append(args, "set", "logical_router_policy", policy["_uuid"][0])
+		for k, v := range externalIDs {
+			args = append(args, fmt.Sprintf("external-ids:%s=%v", k, v))
+		}
+		if _, err = c.ovnNbCommand(args...); err != nil {
+			return fmt.Errorf("failed to set external ids of logical router policy %s: %v", policy["_uuid"][0], err)
+		}
+	}
+
 	return nil
 }
 
@@ -2120,16 +2133,14 @@ func (c *Client) PolicyRouteExists(priority int32, match string) (bool, error) {
 }
 
 func (c *Client) GetPolicyRouteParas(priority int32, match string) ([]string, map[string]string, error) {
-	var nexthops []string
-	result, err := c.CustomFindEntity("Logical_Router_Policy", []string{"nexthops", "external_ids"}, fmt.Sprintf("priority=%d", priority), fmt.Sprintf("match=\"%s\"", match))
+	result, err := c.CustomFindEntity("Logical_Router_Policy", []string{"nexthops", "external_ids"}, fmt.Sprintf("priority=%d", priority), fmt.Sprintf(`match="%s"`, match))
 	if err != nil {
 		klog.Errorf("customFindEntity failed, %v", err)
-		return nexthops, nil, err
+		return nil, nil, err
 	}
 	if len(result) == 0 {
-		return nexthops, nil, nil
+		return nil, nil, nil
 	}
-	nexthops = append(nexthops, result[0]["nexthops"]...)
 
 	nameIpMap := make(map[string]string, len(result[0]["external_ids"]))
 	for _, l := range result[0]["external_ids"] {
@@ -2145,7 +2156,7 @@ func (c *Client) GetPolicyRouteParas(priority int32, match string) ([]string, ma
 		nameIpMap[name] = ip
 	}
 
-	return nexthops, nameIpMap, nil
+	return result[0]["nexthops"], nameIpMap, nil
 }
 
 func (c Client) SetPolicyRouteExternalIds(priority int32, match string, nameIpMaps map[string]string) error {
