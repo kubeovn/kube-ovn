@@ -106,11 +106,10 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 
 		if p.Annotations != nil &&
 			p.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" &&
-			p.Status.HostIP != "" && p.Status.PodIP != "" {
-			if p.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)] != "true" {
-				c.updatePodQueue.Add(key)
-				return
-			}
+			p.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)] != "true" &&
+			p.Status.HostIP != "" && p.Status.PodIP == "" {
+			c.updatePodQueue.Add(key)
+			return
 		}
 
 		if p.Annotations != nil && p.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
