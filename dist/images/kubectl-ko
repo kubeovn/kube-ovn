@@ -379,6 +379,18 @@ getOvnCentralPod(){
     KUBE_OVN_VERSION=$VERSION
 }
 
+getOvnCentralDbStatus(){
+  NB_PODS=$(kubectl get pod -n $KUBE_OVN_NS | grep ovn-central | awk '{print $1}')
+  for pod in $NB_PODS
+  do
+    echo "get dbstatus in pod $pod"
+    nbstatus=`kubectl exec "$pod" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/get-db-storage-status OVN_Northbound`
+    echo "nb db status $nbstatus"
+    sbstatus=`kubectl exec "$pod" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/get-db-storage-status OVN_Southbound`
+    echo "sb db status $sbstatus"
+  done
+}
+
 checkDaemonSet(){
   name="$1"
   currentScheduled=$(kubectl get ds -n $KUBE_OVN_NS "$name" -o jsonpath={.status.currentNumberScheduled})
@@ -452,7 +464,7 @@ dbtool(){
           echo "backup ovn-$component db to $(pwd)/ovnnb_db.$suffix.backup"
           ;;
         dbstatus)
-          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/get-db-storage-status OVN_Northbound
+          getOvnCentralDbStatus
           ;;
         restore)
           # set ovn-central replicas to 0
@@ -530,7 +542,7 @@ dbtool(){
           echo "backup ovn-$component db to $(pwd)/ovnsb_db.$suffix.backup"
           ;;
         dbstatus)
-          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/get-db-storage-status OVN_Southbound
+          getOvnCentralDbStatus
           ;;
         restore)
           echo "restore cmd is only used for nb db"
