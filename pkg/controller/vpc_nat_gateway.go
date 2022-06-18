@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"strings"
 	"time"
 
@@ -26,10 +25,10 @@ import (
 )
 
 var (
-	vpcNatImage                     = ""
-	vpcNatEnabled                   = "unknown"
-	lastVpcNatCM  map[string]string = nil
-	createAt                        = ""
+	vpcNatImage     = ""
+	vpcNatEnabled   = "unknown"
+	VpcNatCmVersion = ""
+	createAt        = ""
 )
 
 const (
@@ -67,11 +66,11 @@ func (c *Controller) resyncVpcNatGwConfig() {
 			return
 		}
 		vpcNatEnabled = "false"
-		lastVpcNatCM = nil
+		VpcNatCmVersion = ""
 		klog.Info("finish clean up vpc nat gateway")
 		return
 	} else {
-		if vpcNatEnabled == "true" && lastVpcNatCM != nil && reflect.DeepEqual(cm.Data, lastVpcNatCM) {
+		if vpcNatEnabled == "true" && VpcNatCmVersion == cm.ResourceVersion {
 			return
 		}
 
@@ -88,7 +87,7 @@ func (c *Controller) resyncVpcNatGwConfig() {
 		}
 		vpcNatImage = cm.Data["image"]
 		vpcNatEnabled = "true"
-		lastVpcNatCM = cm.Data
+		VpcNatCmVersion = cm.ResourceVersion
 		for _, gw := range gws {
 			c.addOrUpdateVpcNatGatewayQueue.Add(gw.Name)
 		}
