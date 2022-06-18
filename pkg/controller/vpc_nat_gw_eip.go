@@ -574,7 +574,7 @@ func (c *Controller) deleteEipInPod(dp, v4Cidr string) error {
 }
 
 func (c *Controller) acquireStaticEip(name, namespace, nicName, ip string) (string, string, string, error) {
-	liveMigration := true
+	checkConflict := true
 	var v4ip, v6ip, mac string
 	var err error
 	for _, ipStr := range strings.Split(ip, ",") {
@@ -583,7 +583,7 @@ func (c *Controller) acquireStaticEip(name, namespace, nicName, ip string) (stri
 		}
 	}
 
-	if v4ip, v6ip, mac, err = c.ipam.GetStaticAddress(name, nicName, ip, mac, util.VpcExternalNet, !liveMigration); err != nil {
+	if v4ip, v6ip, mac, err = c.ipam.GetStaticAddress(name, nicName, ip, mac, util.VpcExternalNet, checkConflict); err != nil {
 		klog.Errorf("failed to get static ip %v, mac %v, subnet %v, err %v", ip, mac, util.VpcExternalNet, err)
 		return "", "", "", err
 	}
