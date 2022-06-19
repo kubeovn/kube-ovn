@@ -179,7 +179,7 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 		}
 		return err
 	}
-	if cachedVip.Spec.MacAddress != "" {
+	if cachedVip.Status.Mac != "" {
 		// already ok
 		return nil
 	}
@@ -240,8 +240,9 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 	if !vip.DeletionTimestamp.IsZero() {
 		// TODO:// clean vip in its parent port aap list
 		// klog.V(3).Infof("todo:// remove this vip '%s' from its parent port aap list", key)
-
-		if err = c.patchVipStatus(key, "", false); err != nil {
+		v4ip := ""
+		ready := false
+		if err = c.patchVipStatus(key, v4ip, ready); err != nil {
 			return err
 		}
 		vip.Status.Ready = false
@@ -263,7 +264,8 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 			vip.Spec.ParentV4ip, vip.Spec.ParentV6ip, vip.Spec.MacAddress); err != nil {
 			return err
 		}
-		if err = c.patchVipStatus(key, vip.Spec.V4ip, true); err != nil {
+		ready := true
+		if err = c.patchVipStatus(key, vip.Spec.V4ip, ready); err != nil {
 			return err
 		}
 	}
@@ -301,26 +303,29 @@ func (c *Controller) acquireStaticVirtualAddress(subnetName, name, nicName, ip s
 
 func (c *Controller) acquireVirtualAddress(subnetName, name, nicName string) (string, string, string, error) {
 	var skippedAddrs []string
+	var v4ip, v6ip, mac string
+	checkConflict := false
+	var err error
 	for {
-		ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(name, nicName, "", subnetName, skippedAddrs, false)
+		v4ip, v6ip, mac, err = c.ipam.GetRandomAddress(name, nicName, mac, subnetName, skippedAddrs, checkConflict)
 		if err != nil {
 			return "", "", "", err
 		}
 
-		ipv4OK, ipv6OK, err := c.validatePodIP(name, subnetName, ipv4, ipv6)
+		ipv4OK, ipv6OK, err := c.validatePodIP(name, subnetName, v4ip, v6ip)
 		if err != nil {
 			return "", "", "", err
 		}
 
 		if ipv4OK && ipv6OK {
-			return ipv4, ipv6, mac, nil
+			return v4ip, v6ip, mac, nil
 		}
 
 		if !ipv4OK {
-			skippedAddrs = append(skippedAddrs, ipv4)
+			skippedAddrs = append(skippedAddrs, v4ip)
 		}
 		if !ipv6OK {
-			skippedAddrs = append(skippedAddrs, ipv6)
+			skippedAddrs = append(skippedAddrs, v6ip)
 		}
 	}
 }
