@@ -31,7 +31,7 @@ func (c *Controller) InitOVN() error {
 		}
 		v4Svc, _ := util.SplitStringIP(c.config.ServiceClusterIPRange)
 		if v4Svc != "" {
-			if err := c.ovnClient.SetLBCIDR(v4Svc); err != nil {
+			if err := c.ovnLegacyClient.SetLBCIDR(v4Svc); err != nil {
 				klog.Errorf("init load balancer svc cidr failed: %v", err)
 				return err
 			}
@@ -186,7 +186,7 @@ func (c *Controller) initNodeSwitch() error {
 
 // InitClusterRouter init cluster router to connect different logical switches
 func (c *Controller) initClusterRouter() error {
-	lrs, err := c.ovnClient.ListLogicalRouter(c.config.EnableExternalVpc)
+	lrs, err := c.ovnLegacyClient.ListLogicalRouter(c.config.EnableExternalVpc)
 	if err != nil {
 		return err
 	}
@@ -196,7 +196,7 @@ func (c *Controller) initClusterRouter() error {
 			return nil
 		}
 	}
-	return c.ovnClient.CreateLogicalRouter(c.config.ClusterRouter)
+	return c.ovnLegacyClient.CreateLogicalRouter(c.config.ClusterRouter)
 }
 
 // InitLoadBalancer init the default tcp and udp cluster loadbalancer
@@ -211,13 +211,13 @@ func (c *Controller) initLoadBalancer() error {
 		vpc := orivpc.DeepCopy()
 		vpcLb := c.GenVpcLoadBalancer(vpc.Name)
 
-		tcpLb, err := c.ovnClient.FindLoadbalancer(vpcLb.TcpLoadBalancer)
+		tcpLb, err := c.ovnLegacyClient.FindLoadbalancer(vpcLb.TcpLoadBalancer)
 		if err != nil {
 			return fmt.Errorf("failed to find tcp lb: %v", err)
 		}
 		if tcpLb == "" {
 			klog.Infof("init cluster tcp load balancer %s", vpcLb.TcpLoadBalancer)
-			err := c.ovnClient.CreateLoadBalancer(vpcLb.TcpLoadBalancer, util.ProtocolTCP, "")
+			err := c.ovnLegacyClient.CreateLoadBalancer(vpcLb.TcpLoadBalancer, util.ProtocolTCP, "")
 			if err != nil {
 				klog.Errorf("failed to crate cluster tcp load balancer: %v", err)
 				return err
@@ -226,13 +226,13 @@ func (c *Controller) initLoadBalancer() error {
 			klog.Infof("tcp load balancer %s exists", tcpLb)
 		}
 
-		tcpSessionLb, err := c.ovnClient.FindLoadbalancer(vpcLb.TcpSessLoadBalancer)
+		tcpSessionLb, err := c.ovnLegacyClient.FindLoadbalancer(vpcLb.TcpSessLoadBalancer)
 		if err != nil {
 			return fmt.Errorf("failed to find tcp session lb: %v", err)
 		}
 		if tcpSessionLb == "" {
 			klog.Infof("init cluster tcp session load balancer %s", vpcLb.TcpSessLoadBalancer)
-			err := c.ovnClient.CreateLoadBalancer(vpcLb.TcpSessLoadBalancer, util.ProtocolTCP, "ip_src")
+			err := c.ovnLegacyClient.CreateLoadBalancer(vpcLb.TcpSessLoadBalancer, util.ProtocolTCP, "ip_src")
 			if err != nil {
 				klog.Errorf("failed to crate cluster tcp session load balancer: %v", err)
 				return err
@@ -241,13 +241,13 @@ func (c *Controller) initLoadBalancer() error {
 			klog.Infof("tcp session load balancer %s exists", vpcLb.TcpSessLoadBalancer)
 		}
 
-		udpLb, err := c.ovnClient.FindLoadbalancer(vpcLb.UdpLoadBalancer)
+		udpLb, err := c.ovnLegacyClient.FindLoadbalancer(vpcLb.UdpLoadBalancer)
 		if err != nil {
 			return fmt.Errorf("failed to find udp lb: %v", err)
 		}
 		if udpLb == "" {
 			klog.Infof("init cluster udp load balancer %s", vpcLb.UdpLoadBalancer)
-			err := c.ovnClient.CreateLoadBalancer(vpcLb.UdpLoadBalancer, util.ProtocolUDP, "")
+			err := c.ovnLegacyClient.CreateLoadBalancer(vpcLb.UdpLoadBalancer, util.ProtocolUDP, "")
 			if err != nil {
 				klog.Errorf("failed to crate cluster udp load balancer: %v", err)
 				return err
@@ -256,13 +256,13 @@ func (c *Controller) initLoadBalancer() error {
 			klog.Infof("udp load balancer %s exists", udpLb)
 		}
 
-		udpSessionLb, err := c.ovnClient.FindLoadbalancer(vpcLb.UdpSessLoadBalancer)
+		udpSessionLb, err := c.ovnLegacyClient.FindLoadbalancer(vpcLb.UdpSessLoadBalancer)
 		if err != nil {
 			return fmt.Errorf("failed to find udp session lb: %v", err)
 		}
 		if udpSessionLb == "" {
 			klog.Infof("init cluster udp session load balancer %s", vpcLb.UdpSessLoadBalancer)
-			err := c.ovnClient.CreateLoadBalancer(vpcLb.UdpSessLoadBalancer, util.ProtocolUDP, "ip_src")
+			err := c.ovnLegacyClient.CreateLoadBalancer(vpcLb.UdpSessLoadBalancer, util.ProtocolUDP, "ip_src")
 			if err != nil {
 				klog.Errorf("failed to crate cluster udp session load balancer: %v", err)
 				return err
@@ -300,7 +300,7 @@ func (c *Controller) InitIPAM() error {
 		}
 	}
 
-	result, err := c.ovnClient.CustomFindEntity("logical_switch_port", []string{"name"}, `external-ids:vendor{<}""`)
+	result, err := c.ovnLegacyClient.CustomFindEntity("logical_switch_port", []string{"name"}, `external-ids:vendor{<}""`)
 	if err != nil {
 		klog.Errorf("failed to find logical switch port without external-ids:vendor: %v", err)
 	}
@@ -611,20 +611,30 @@ func (c *Controller) initSyncCrdVlans() error {
 	return nil
 }
 
-func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string, cidrs []string) error {
-	if err := c.ovnClient.DeleteStaticRoute(ip, c.config.ClusterRouter); err != nil {
+func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
+	if err := c.ovnLegacyClient.DeleteStaticRoute(ip, c.config.ClusterRouter); err != nil {
 		klog.Errorf("failed to delete obsolete static route for node %s: %v", node, err)
 		return err
 	}
 
 	asName := nodeUnderlayAddressSetName(node, af)
-	if err := c.ovnClient.CreateAddressSetWithAddresses(asName, cidrs...); err != nil {
-		klog.Errorf("failed to create address set %s for node %s: %v", asName, node, err)
+	obsoleteMatch := fmt.Sprintf("ip%d.dst == %s && ip%d.src != $%s", af, ip, af, asName)
+	if err := c.ovnLegacyClient.DeletePolicyRoute(c.config.ClusterRouter, util.NodeRouterPolicyPriority, obsoleteMatch); err != nil {
+		klog.Errorf("failed to delete obsolete logical router policy for node %s: %v", node, err)
 		return err
 	}
 
-	match := fmt.Sprintf("ip%d.dst == %s && ip%d.src != $%s", af, ip, af, asName)
-	if err := c.ovnClient.AddPolicyRoute(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", nexthop); err != nil {
+	if err := c.ovnLegacyClient.DeleteAddressSet(asName); err != nil {
+		klog.Errorf("failed to delete obsolete address set %s for node %s: %v", asName, node, err)
+		return err
+	}
+
+	match := fmt.Sprintf("ip%d.dst == %s", af, ip)
+	externalIDs := map[string]string{
+		"vendor": util.CniTypeName,
+		"node":   node,
+	}
+	if err := c.ovnLegacyClient.AddPolicyRoute(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", nexthop, externalIDs); err != nil {
 		klog.Errorf("failed to add logical router policy for node %s: %v", node, err)
 		return err
 	}
@@ -633,11 +643,6 @@ func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string, cidrs []
 }
 
 func (c *Controller) initNodeRoutes() error {
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets: %v", err)
-		return err
-	}
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list nodes: %v", err)
@@ -645,30 +650,14 @@ func (c *Controller) initNodeRoutes() error {
 	}
 	for _, node := range nodes {
 		nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
-
-		var v4CIDRs, v6CIDRs []string
-		for _, subnet := range subnets {
-			if subnet.Spec.Vlan == "" || !subnet.Spec.LogicalGateway || subnet.Spec.Vpc != util.DefaultVpc {
-				continue
-			}
-
-			v4, v6 := util.SplitStringIP(subnet.Spec.CIDRBlock)
-			if util.CIDRContainIP(v4, nodeIPv4) {
-				v4CIDRs = append(v4CIDRs, v4)
-			}
-			if util.CIDRContainIP(v6, nodeIPv6) {
-				v6CIDRs = append(v6CIDRs, v6)
-			}
-		}
-
 		joinAddrV4, joinAddrV6 := util.SplitStringIP(node.Annotations[util.IpAddressAnnotation])
 		if nodeIPv4 != "" && joinAddrV4 != "" {
-			if err = c.migrateNodeRoute(4, node.Name, nodeIPv4, joinAddrV4, v4CIDRs); err != nil {
+			if err = c.migrateNodeRoute(4, node.Name, nodeIPv4, joinAddrV4); err != nil {
 				klog.Errorf("failed to migrate IPv4 route for node %s: %v", node.Name, err)
 			}
 		}
 		if nodeIPv6 != "" && joinAddrV6 != "" {
-			if err = c.migrateNodeRoute(6, node.Name, nodeIPv6, joinAddrV6, v6CIDRs); err != nil {
+			if err = c.migrateNodeRoute(6, node.Name, nodeIPv6, joinAddrV6); err != nil {
 				klog.Errorf("failed to migrate IPv6 route for node %s: %v", node.Name, err)
 			}
 		}
@@ -684,7 +673,7 @@ func (c *Controller) initAppendLspExternalIds(portName string, pod *v1.Pod) erro
 		externalIDs["pod"] = fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
 	}
 
-	if err := c.ovnClient.SetLspExternalIds(portName, externalIDs); err != nil {
+	if err := c.ovnLegacyClient.SetLspExternalIds(portName, externalIDs); err != nil {
 		klog.Errorf("failed to set lsp external_ids for port %s: %v", portName, err)
 		return err
 	}

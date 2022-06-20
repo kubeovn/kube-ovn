@@ -83,7 +83,7 @@ func (c *Controller) syncExternalVpc() {
 
 func (c *Controller) getRouterStatus() (logicalRouters map[string]util.LogicalRouter, err error) {
 	logicalRouters = make(map[string]util.LogicalRouter)
-	externalOvnRouters, err := c.ovnClient.CustomFindEntity("logical_router", []string{"name", "port"}, fmt.Sprintf("external_ids{!=}vendor=%s", util.CniTypeName))
+	externalOvnRouters, err := c.ovnLegacyClient.CustomFindEntity("logical_router", []string{"name", "port"}, fmt.Sprintf("external_ids{!=}vendor=%s", util.CniTypeName))
 	if err != nil {
 		klog.Errorf("failed to list external logical router, %v", err)
 		return logicalRouters, err
@@ -98,7 +98,7 @@ func (c *Controller) getRouterStatus() (logicalRouters map[string]util.LogicalRo
 		aLogicalRouter.Name = aExternalRouter["name"][0]
 		var ports []util.Port
 		for _, portUUId := range aExternalRouter["port"] {
-			portName, err := c.ovnClient.GetEntityInfo("logical_router_port", portUUId, []string{"name"})
+			portName, err := c.ovnLegacyClient.GetEntityInfo("logical_router_port", portUUId, []string{"name"})
 			if err != nil {
 				klog.Info("get port error")
 				continue
@@ -116,7 +116,7 @@ func (c *Controller) getRouterStatus() (logicalRouters map[string]util.LogicalRo
 	for routerName, logicalRouter := range logicalRouters {
 		tmpRouter := logicalRouter
 		for _, port := range logicalRouter.Ports {
-			peerPorts, err := c.ovnClient.CustomFindEntity("logical_switch_port", []string{UUID}, fmt.Sprintf("options:router-port=%s", port.Name))
+			peerPorts, err := c.ovnLegacyClient.CustomFindEntity("logical_switch_port", []string{UUID}, fmt.Sprintf("options:router-port=%s", port.Name))
 			if err != nil || len(peerPorts) > 1 {
 				klog.Errorf("failed to list peer port of %s, %v", port, err)
 				continue
@@ -124,7 +124,7 @@ func (c *Controller) getRouterStatus() (logicalRouters map[string]util.LogicalRo
 			if len(peerPorts) == 0 {
 				continue
 			}
-			switches, err := c.ovnClient.CustomFindEntity("logical_switch", []string{"name"}, fmt.Sprintf("ports{>=}%s", peerPorts[0][UUID][0]))
+			switches, err := c.ovnLegacyClient.CustomFindEntity("logical_switch", []string{"name"}, fmt.Sprintf("ports{>=}%s", peerPorts[0][UUID][0]))
 			if err != nil || len(switches) > 1 {
 				klog.Errorf("failed to list peer switch of %s, %v", peerPorts, err)
 				continue

@@ -123,7 +123,9 @@ const (
 	EcmpRouteType   = "ecmp"
 	NormalRouteType = "normal"
 
-	NodeRouterPolicyPriority = 30000
+	GatewayRouterPolicyPriority = 29000
+	NodeRouterPolicyPriority    = 30000
+	SubnetRouterPolicyPriority  = 31000
 
 	VethType     = "veth-pair"
 	OffloadType  = "offload-port"
