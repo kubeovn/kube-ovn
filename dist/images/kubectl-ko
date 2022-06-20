@@ -486,14 +486,23 @@ dbtool(){
           # mv all db files
           for pod in ${podNameArray[@]}
           do
-            kubectl exec -it -n $KUBE_OVN_NS $pod -- mv /etc/ovn/ovnnb_db.db /tmp
-            kubectl exec -it -n $KUBE_OVN_NS $pod -- mv /etc/ovn/ovnsb_db.db /tmp
+            kubectl exec -it -n $KUBE_OVN_NS $pod -- mv -f /etc/ovn/ovnnb_db.db /tmp
+            kubectl exec -it -n $KUBE_OVN_NS $pod -- mv -f /etc/ovn/ovnsb_db.db /tmp
           done
 
           # restore db and replicas
           echo "restore nb db file, operate in pod ${podNameArray[0]}"
-          kubectl exec -it -n $KUBE_OVN_NS ${podNameArray[0]} -- mv /etc/ovn/ovnnb_db_standalone.db /etc/ovn/ovnnb_db.db
+          kubectl exec -it -n $KUBE_OVN_NS ${podNameArray[0]} -- mv -f /etc/ovn/ovnnb_db_standalone.db /etc/ovn/ovnnb_db.db
           kubectl scale deployment -n $KUBE_OVN_NS ovn-central --replicas=$replicas
+
+          # wait ovn-central pods running
+          availabelNum=$(kubectl get deployment -n $KUBE_OVN_NS | grep ovn-central | awk {'print $4'})
+          while [ $availabelNum != $replicas ]
+          do
+            availabelNum=$(kubectl get deployment -n $KUBE_OVN_NS | grep ovn-central | awk {'print $4'})
+            echo "wait all ovn-central pods running, availabel $availabelNum"
+            sleep 1
+          done
           echo "finish restore nb db file and ovn-central replicas"
 
           echo "recreate ovs-ovn pods"
