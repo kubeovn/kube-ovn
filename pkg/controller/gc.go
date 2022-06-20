@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"net"
 	"strings"
 	"time"
 
@@ -275,17 +274,6 @@ func (c *Controller) markAndCleanLSP() error {
 
 		if key := lsp.ExternalIDs["pod"]; key != "" {
 			c.ipam.ReleaseAddressByPod(key)
-		}
-
-		for _, lspAddr := range lsp.Addresses {
-			for _, podAddr := range strings.Fields(lspAddr) {
-				if net.ParseIP(podAddr).To4() != nil || net.ParseIP(podAddr).To16() != nil {
-					if err := c.ovnLegacyClient.DeleteStaticRoute(podAddr, c.config.ClusterRouter); err != nil {
-						klog.Errorf("failed to delete static route when gc lsp %s, ip %v", lsp.Name, podAddr)
-						continue
-					}
-				}
-			}
 		}
 	}
 	lastNoPodLSP = noPodLSP

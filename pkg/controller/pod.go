@@ -586,17 +586,8 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 
 	p, _ := c.podsLister.Pods(pod.Namespace).Get(pod.Name)
 	if p != nil && p.UID != pod.UID {
-		// The existing OVN static route with a different nexthop will block creation of the new Pod,
-		// so we need to check the node names
-		if pod.Spec.NodeName == "" || pod.Spec.NodeName == p.Spec.NodeName {
-			// the old Pod has not been scheduled,
-			// or the new Pod and the old one are scheduled to the same node
-			return nil
-		}
-		if pod.DeletionTimestamp == nil {
-			// triggered by add/update events, ignore
-			return nil
-		}
+		// Pod with same name exists, just return here
+		return nil
 	}
 
 	ports, err := c.ovnClient.ListPodLogicalSwitchPorts(key)
@@ -751,14 +742,14 @@ func (c *Controller) handleUpdatePod(key string) error {
 	c.podKeyMutex.Lock(key)
 	defer c.podKeyMutex.Unlock(key)
 
-	oripod, err := c.podsLister.Pods(namespace).Get(name)
+	oriPod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	pod := oripod.DeepCopy()
+	pod := oriPod.DeepCopy()
 	podName := c.getNameByPod(pod)
 
 	klog.Infof("update pod %s/%s", namespace, name)
@@ -768,12 +759,6 @@ func (c *Controller) handleUpdatePod(key string) error {
 	podNets, err := c.getPodKubeovnNets(pod)
 	if err != nil {
 		klog.Errorf("failed to pod nets %v", err)
-		return err
-	}
-
-	_, idNameMap, err := c.ovnLegacyClient.ListLspForNodePortgroup()
-	if err != nil {
-		klog.Errorf("failed to list lsp info, %v", err)
 		return err
 	}
 
@@ -817,72 +802,25 @@ func (c *Controller) handleUpdatePod(key string) error {
 						return err
 					}
 
-					pgName := getOverlaySubnetsPortGroupName(subnet.Name, node.Name)
-					exist, err := c.ovnLegacyClient.PortGroupExists(pgName)
-					if err != nil {
-						return err
-					}
-					if !exist {
-						if err = c.ovnLegacyClient.CreateNpPortGroup(pgName, subnet.Name, node.Name); err != nil {
-							klog.Errorf("failed to create port group for subnet %s and node %s, %v", subnet.Name, node.Name, err)
-							return err
-						}
-					}
-
 					nodeTunlIPAddr, err := getNodeTunlIP(node)
 					if err != nil {
 						return err
 					}
 
-					migrate := pod.Annotations[fmt.Sprintf(util.LiveMigrationAnnotationTemplate, podNet.ProviderName)]
-					isVmPod, _ := isVmPod(pod)
-					isMigrate := isVmPod && c.config.EnableKeepVmIP && (migrate == "true")
-					klog.V(3).Infof("update pod %v, migrate is %v", pod.Name, isMigrate)
-
+					pgName := getOverlaySubnetsPortGroupName(subnet.Name, node.Name)
 					for _, nodeAddr := range nodeTunlIPAddr {
 						for _, podAddr := range strings.Split(podIP, ",") {
 							if util.CheckProtocol(nodeAddr.String()) != util.CheckProtocol(podAddr) {
 								continue
 							}
 
-							pgPorts, err := c.getPgPorts(idNameMap, pgName)
-							if err != nil {
-								klog.Errorf("failed to fetch ports for pg %v, %v", pgName, err)
+							portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+							c.ovnPgKeyMutex.Lock(pgName)
+							if err = c.ovnClient.PortGroupAddPort(pgName, portName); err != nil {
+								c.ovnPgKeyMutex.Unlock(pgName)
 								return err
 							}
-
-							portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, podNet.ProviderName)
-							if !util.IsStringIn(portName, pgPorts) {
-								pgPorts = append(pgPorts, portName)
-
-								if err = c.ovnLegacyClient.SetPortsToPortGroup(pgName, pgPorts); err != nil {
-									klog.Errorf("failed to set ports to port group %v, %v", pgName, err)
-									return err
-								}
-							}
-
-							ipSuffix := "ip4"
-							if util.CheckProtocol(nodeAddr.String()) == kubeovnv1.ProtocolIPv6 {
-								ipSuffix = "ip6"
-							}
-							pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
-							match := fmt.Sprintf("%s.src == $%s", ipSuffix, pgAs)
-
-							exist, err := c.ovnLegacyClient.PolicyRouteExists(util.GatewayRouterPolicyPriority, match)
-							if err != nil {
-								return err
-							}
-							if !exist {
-								externalIDs := map[string]string{
-									"vendor": util.CniTypeName,
-									"subnet": subnet.Name,
-									"node":   node.Name,
-								}
-								if err = c.ovnLegacyClient.AddPolicyRoute(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match, "reroute", nodeAddr.String(), externalIDs); err != nil {
-									klog.Errorf("failed to add logical router policy for port-group address-set %s: %v", pgAs, err)
-									return err
-								}
-							}
+							c.ovnPgKeyMutex.Unlock(pgName)
 						}
 					}
 				}

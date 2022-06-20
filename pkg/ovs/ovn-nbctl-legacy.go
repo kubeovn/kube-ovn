@@ -2061,42 +2061,6 @@ func (c *LegacyClient) SetLBCIDR(svccidr string) error {
 	}
 	return nil
 }
-
-func (c *LegacyClient) GetLspExternalIds(lsp string) (map[string]string, []string) {
-	result, err := c.CustomFindEntity("Logical_Switch_Port", []string{"external_ids", "addresses"}, fmt.Sprintf("name=%s", lsp))
-	if err != nil {
-		klog.Errorf("customFindEntity failed, %v", err)
-		return nil, nil
-	}
-	if len(result) == 0 {
-		return nil, nil
-	}
-
-	nameNsMap := make(map[string]string, 1)
-	for _, l := range result[0]["external_ids"] {
-		if len(strings.TrimSpace(l)) == 0 {
-			continue
-		}
-		parts := strings.Split(strings.TrimSpace(l), "=")
-		if len(parts) != 2 {
-			continue
-		}
-		if strings.TrimSpace(parts[0]) != "pod" {
-			continue
-		}
-
-		podInfo := strings.Split(strings.TrimSpace(parts[1]), "/")
-		if len(podInfo) != 2 {
-			continue
-		}
-		podNs := podInfo[0]
-		podName := podInfo[1]
-		nameNsMap[podName] = podNs
-	}
-
-	return nameNsMap, result[0]["addresses"]
-}
-
 func (c *LegacyClient) PortGroupExists(pgName string) (bool, error) {
 	results, err := c.CustomFindEntity("port_group", []string{"_uuid"}, fmt.Sprintf("name=%s", pgName))
 	if err != nil {

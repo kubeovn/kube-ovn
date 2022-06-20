@@ -319,6 +319,17 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
+	for _, subnet := range subnets {
+		if err = c.createPortGroupForDistributedSubnet(node, subnet); err != nil {
+			klog.Errorf("failed to create port group for node %s and subnet %s: %v", node.Name, subnet.Name, err)
+			return err
+		}
+		if err = c.addPolicyRouteForDistributedSubnet(subnet, node.Name, v4IP, v6IP); err != nil {
+			klog.Errorf("failed to add policy router for node %s and subnet %s: %v", node.Name, subnet.Name, err)
+			return err
+		}
+	}
+
 	// ovn acl doesn't support address_set name with '-', so replace '-' by '.'
 	pgName := strings.Replace(node.Annotations[util.PortNameAnnotation], "-", ".", -1)
 	if err := c.ovnLegacyClient.CreateNpPortGroup(pgName, "node", key); err != nil {
