@@ -10,10 +10,12 @@ while :; do
   sleep 5
 done
 
+set +e
 for subnet in $(kubectl get subnet -o name); do
   kubectl patch "$subnet" --type='json' -p '[{"op": "replace", "path": "/metadata/finalizers", "value": []}]'
   kubectl delete --ignore-not-found "$subnet"
 done
+set -e
 
 for vlan in $(kubectl get vlan -o name); do
   kubectl delete --ignore-not-found $vlan
