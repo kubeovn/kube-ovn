@@ -201,8 +201,9 @@ func parseValueFromArgs(key, argString string) (string, error) {
 
 func assignV4Address(ipAddress, gateway string, mask *net.IPNet) (*current.IPConfig, *types.Route) {
 	ip := &current.IPConfig{
-		Address: net.IPNet{IP: net.ParseIP(ipAddress).To4(), Mask: mask.Mask},
-		Gateway: net.ParseIP(gateway).To4(),
+		Address:   net.IPNet{IP: net.ParseIP(ipAddress).To4(), Mask: mask.Mask},
+		Gateway:   net.ParseIP(gateway).To4(),
+		Interface: current.Int(0),
 	}
 
 	var route *types.Route
@@ -218,8 +219,9 @@ func assignV4Address(ipAddress, gateway string, mask *net.IPNet) (*current.IPCon
 
 func assignV6Address(ipAddress, gateway string, mask *net.IPNet) (*current.IPConfig, *types.Route) {
 	ip := &current.IPConfig{
-		Address: net.IPNet{IP: net.ParseIP(ipAddress).To16(), Mask: mask.Mask},
-		Gateway: net.ParseIP(gateway).To16(),
+		Address:   net.IPNet{IP: net.ParseIP(ipAddress).To16(), Mask: mask.Mask},
+		Gateway:   net.ParseIP(gateway).To16(),
+		Interface: current.Int(0),
 	}
 
 	var route *types.Route
