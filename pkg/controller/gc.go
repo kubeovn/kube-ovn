@@ -79,7 +79,7 @@ func (c *Controller) gcVpcNatGateway() error {
 		return err
 	}
 
-	var gwDpNames []string
+	var gwStsNames []string
 	for _, gw := range gws {
 		_, err = c.vpcsLister.Get(gw.Spec.Vpc)
 		if err != nil {
@@ -92,22 +92,22 @@ func (c *Controller) gcVpcNatGateway() error {
 				return err
 			}
 		}
-		gwDpNames = append(gwDpNames, genNatGwDpName(gw.Name))
+		gwStsNames = append(gwStsNames, genNatGwStsName(gw.Name))
 	}
 
 	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.VpcNatGatewayLabel: "true"}})
-	dps, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).List(context.Background(), metav1.ListOptions{
+	stss, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).List(context.Background(), metav1.ListOptions{
 		LabelSelector: sel.String(),
 	})
 	if err != nil {
-		klog.Errorf("failed to list vpc nat gateway deployment, %v", err)
+		klog.Errorf("failed to list vpc nat gateway stafulset, %v", err)
 		return err
 	}
-	for _, dp := range dps.Items {
-		if !util.ContainsString(gwDpNames, dp.Name) {
-			err = c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Delete(context.Background(), dp.Name, metav1.DeleteOptions{})
+	for _, sts := range stss.Items {
+		if !util.ContainsString(gwStsNames, sts.Name) {
+			err = c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).Delete(context.Background(), sts.Name, metav1.DeleteOptions{})
 			if err != nil {
-				klog.Errorf("failed to delete vpc nat gateway deployment, %v", err)
+				klog.Errorf("failed to delete vpc nat gateway stafulset, %v", err)
 				return err
 			}
 		}
