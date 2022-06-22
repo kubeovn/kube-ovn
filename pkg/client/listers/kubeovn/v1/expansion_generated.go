@@ -54,6 +54,10 @@ type SecurityGroupListerExpansion interface{}
 // SubnetLister.
 type SubnetListerExpansion interface{}
 
+// SwitchLBRuleListerExpansion allows custom methods to be added to
+// SwitchLBRuleLister.
+type SwitchLBRuleListerExpansion interface{}
+
 // VipListerExpansion allows custom methods to be added to
 // VipLister.
 type VipListerExpansion interface{}

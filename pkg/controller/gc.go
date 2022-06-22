@@ -407,6 +407,9 @@ func (c *Controller) gcLoadBalancer() error {
 	udpSessionVips := []string{}
 	for _, svc := range svcs {
 		ip := svc.Spec.ClusterIP
+		if v, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
+			ip = v
+		}
 		for _, port := range svc.Spec.Ports {
 			if port.Protocol == corev1.ProtocolTCP {
 				if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {

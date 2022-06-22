@@ -64,6 +64,10 @@ func (c *FakeKubeovnV1) Subnets() v1.SubnetInterface {
 	return &FakeSubnets{c}
 }
 
+func (c *FakeKubeovnV1) SwitchLBRules() v1.SwitchLBRuleInterface {
+	return &FakeSwitchLBRules{c}
+}
+
 func (c *FakeKubeovnV1) Vips() v1.VipInterface {
 	return &FakeVips{c}
 }

@@ -859,3 +859,70 @@ type VipList struct {
 
 	Items []Vip `json:"items"`
 }
+
+type SlrPort struct {
+	Name       string `json:"name"`
+	Port       int32  `json:"port"`
+	TargetPort int32  `json:"targetPort,omitempty"`
+	Protocol   string `json:"protocol"`
+}
+
+type SwitchLBRuleSpec struct {
+	Vip             string    `json:"vip"`
+	Namespace       string    `json:"namespace"`
+	Selector        []string  `json:"selector"`
+	SessionAffinity string    `json:"sessionAffinity,omitempty"`
+	Ports           []SlrPort `json:"ports"`
+}
+
+type SwitchLBRuleStatus struct {
+	// Conditions represents the latest state of the object
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	Conditions []SwitchLBRuleCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
+	Ports   string `json:"ports" patchStrategy:"merge"`
+	Service string `json:"service" patchStrategy:"merge"`
+}
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +genclient:nonNamespaced
+// +resourceName=switch-lb-rules
+type SwitchLBRule struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   SwitchLBRuleSpec   `json:"spec"`
+	Status SwitchLBRuleStatus `json:"status,omitempty"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type SwitchLBRuleList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []SwitchLBRule `json:"items"`
+}
+
+// Condition describes the state of an object at a certain point.
+// +k8s:deepcopy-gen=true
+type SwitchLBRuleCondition struct {
+	// Type of condition.
+	Type ConditionType `json:"type"`
+	// Status of the condition, one of True, False, Unknown.
+	Status corev1.ConditionStatus `json:"status"`
+	// The reason for the condition's last transition.
+	// +optional
+	Reason string `json:"reason,omitempty"`
+	// A human readable message indicating details about the transition.
+	// +optional
+	Message string `json:"message,omitempty"`
+	// Last time the condition was probed
+	// +optional
+	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
+	// Last time the condition transitioned from one status to another.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+}

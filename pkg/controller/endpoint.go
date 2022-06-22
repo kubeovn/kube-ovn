@@ -115,12 +115,17 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	}
 	svc := orisvc.DeepCopy()
 
-	clusterIPs := svc.Spec.ClusterIPs
-	if len(clusterIPs) == 0 && svc.Spec.ClusterIP != "" && svc.Spec.ClusterIP != v1.ClusterIPNone {
-		clusterIPs = []string{svc.Spec.ClusterIP}
-	}
-	if len(clusterIPs) == 0 || clusterIPs[0] == v1.ClusterIPNone {
-		return nil
+	var settingIPs []string
+	if vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
+		settingIPs = []string{vip}
+	} else {
+		settingIPs = svc.Spec.ClusterIPs
+		if len(settingIPs) == 0 && svc.Spec.ClusterIP != "" && svc.Spec.ClusterIP != v1.ClusterIPNone {
+			settingIPs = []string{svc.Spec.ClusterIP}
+		}
+		if len(settingIPs) == 0 || settingIPs[0] == v1.ClusterIPNone {
+			return nil
+		}
 	}
 
 	pods, err := c.podsLister.Pods(namespace).List(labels.Set(svc.Spec.Selector).AsSelector())
@@ -180,10 +185,10 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		tcpLb, udpLb = vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer
 	}
 
-	for _, clusterIP := range clusterIPs {
+	for _, settingIP := range settingIPs {
 		for _, port := range svc.Spec.Ports {
-			vip := util.JoinHostPort(clusterIP, port.Port)
-			backends := getServicePortBackends(ep, pods, port, clusterIP)
+			vip := util.JoinHostPort(settingIP, port.Port)
+			backends := getServicePortBackends(ep, pods, port, settingIP)
 			if port.Protocol == v1.ProtocolTCP {
 				// for performance reason delete lb with no backends
 				if len(backends) != 0 {

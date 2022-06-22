@@ -70,6 +70,11 @@ type Controller struct {
 	updateVpcSubnetQueue          workqueue.RateLimitingInterface
 	vpcNatGwKeyMutex              *keymutex.KeyMutex
 
+	switchLBRuleLister           kubeovnlister.SwitchLBRuleLister
+	switchLBRuleSynced           cache.InformerSynced
+	addOrUpdateSwitchLBRuleQueue workqueue.RateLimitingInterface
+	delSwitchLBRuleQueue         workqueue.RateLimitingInterface
+
 	subnetsLister           kubeovnlister.SubnetLister
 	subnetSynced            cache.InformerSynced
 	addOrUpdateSubnetQueue  workqueue.RateLimitingInterface
@@ -208,6 +213,7 @@ func NewController(config *Configuration) *Controller {
 	serviceInformer := informerFactory.Core().V1().Services()
 	endpointInformer := informerFactory.Core().V1().Endpoints()
 	configMapInformer := cmInformerFactory.Core().V1().ConfigMaps()
+	switchLBRuleInfomer := kubeovnInformerFactory.Kubeovn().V1().SwitchLBRules()
 
 	controller := &Controller{
 		config:          config,
@@ -234,6 +240,11 @@ func NewController(config *Configuration) *Controller {
 		updateVpcSnatQueue:            workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateVpcSnat"),
 		updateVpcSubnetQueue:          workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateVpcSubnet"),
 		vpcNatGwKeyMutex:              keymutex.New(97),
+
+		switchLBRuleLister:           switchLBRuleInfomer.Lister(),
+		switchLBRuleSynced:           switchLBRuleInfomer.Informer().HasSynced,
+		addOrUpdateSwitchLBRuleQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addSwitchLBRule"),
+		delSwitchLBRuleQueue:         workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delSwitchLBRule"),
 
 		subnetsLister:           subnetInformer.Lister(),
 		subnetSynced:            subnetInformer.Informer().HasSynced,
@@ -377,6 +388,12 @@ func NewController(config *Configuration) *Controller {
 		DeleteFunc: controller.enqueueDeleteVpcNatGw,
 	})
 
+	switchLBRuleInfomer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddSwitchLBRule,
+		UpdateFunc: controller.enqueueUpdateSwitchLBRule,
+		DeleteFunc: controller.enqueueDeleteSwitchLBRule,
+	})
+
 	subnetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddSubnet,
 		UpdateFunc: controller.enqueueUpdateSubnet,
@@ -472,7 +489,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		c.ipSynced, c.virtualIpsSynced, c.iptablesEipSynced,
 		c.iptablesFipSynced, c.iptablesDnatRuleSynced, c.iptablesSnatRuleSynced,
 		c.vlanSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced,
-		c.serviceSynced, c.endpointsSynced, c.configMapsSynced,
+		c.serviceSynced, c.endpointsSynced, c.configMapsSynced, c.switchLBRuleSynced,
 	}
 	if c.config.EnableNP {
 		cacheSyncs = append(cacheSyncs, c.npsSynced)
@@ -579,6 +596,9 @@ func (c *Controller) shutdown() {
 	c.updateVpcSnatQueue.ShutDown()
 	c.updateVpcSubnetQueue.ShutDown()
 
+	c.addOrUpdateSwitchLBRuleQueue.ShutDown()
+	c.delSwitchLBRuleQueue.ShutDown()
+
 	c.addVirtualIpQueue.ShutDown()
 	c.updateVirtualIpQueue.ShutDown()
 	c.delVirtualIpQueue.ShutDown()
@@ -622,6 +642,8 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	go wait.Until(c.runUpdateVpcDnatWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdateVpcSnatWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdateVpcSubnetWorker, time.Second, stopCh)
+	go wait.Until(c.runAddSwitchLBRuleWorker, time.Second, stopCh)
+	go wait.Until(c.runDelSwitchLBRuleWorker, time.Second, stopCh)
 
 	// add default/join subnet and wait them ready
 	go wait.Until(c.runAddSubnetWorker, time.Second, stopCh)
