@@ -779,7 +779,7 @@ func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
 func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 	c.updateVpcStatusQueue.Add(subnet.Spec.Vpc)
 
-	if err := c.deletePolicyRouteByGatewayType(subnet, subnet.Spec.GatewayType); err != nil {
+	if err := c.deletePolicyRouteByGatewayType(subnet, subnet.Spec.GatewayType, true); err != nil {
 		klog.Errorf("failed to delete policy route for overlay subnet %s, %v", subnet.Name, err)
 		return err
 	}
@@ -1071,6 +1071,9 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 						return err
 					}
 				}
+				if node.Annotations[util.AllocatedAnnotation] != "true" {
+					continue
+				}
 				nodeIP, err := getNodeTunlIP(node)
 				if err != nil {
 					klog.Errorf("failed to get node %s tunnel ip, %v", node.Name, err)
@@ -1078,7 +1081,6 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 				}
 				nextHop := getNextHopByTunnelIP(nodeIP)
 
-				changed := false
 				podNets, err := c.getPodKubeovnNets(pod)
 				if err != nil {
 					klog.Errorf("failed to get pod nets %v", err)
@@ -1134,7 +1136,6 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 				}
 
 				if len(portsToAdd) != 0 {
-					changed = true
 					klog.Infof("new port %v should be added to port group %s", portsToAdd, pgName)
 					newPgPorts := make([]string, len(portsToAdd), len(portsToAdd)+len(pgPorts))
 					copy(newPgPorts, portsToAdd)
@@ -1152,29 +1153,30 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
 					continue
 				}
-				if changed {
-					for _, nextHopIp := range strings.Split(nextHop, ",") {
-						if nextHopIp == "" {
-							continue
-						}
 
-						ipSuffix := "ip4"
-						if util.CheckProtocol(nextHopIp) == kubeovnv1.ProtocolIPv6 {
-							ipSuffix = "ip6"
-						}
-						pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
-						match := fmt.Sprintf("%s.src == $%s", ipSuffix, pgAs)
-						externalIDs := map[string]string{
-							"vendor": util.CniTypeName,
-							"subnet": subnet.Name,
-							"node":   node.Name,
-						}
-						// in case the node name is "vendor", "subnet" or "node"
-						externalIDs[node.Name] = nextHopIp
-						if err = c.ovnLegacyClient.AddPolicyRoute(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match, "reroute", nextHopIp, externalIDs); err != nil {
-							klog.Errorf("failed to add policy route for port-group address-set %s: %v", pgAs, err)
-							return err
-						}
+				// policy route should be flushed when cidr changed for join subnet
+				for _, nextHopIp := range strings.Split(nextHop, ",") {
+					if nextHopIp == "" {
+						continue
+					}
+
+					ipSuffix := "ip4"
+					if util.CheckProtocol(nextHopIp) == kubeovnv1.ProtocolIPv6 {
+						ipSuffix = "ip6"
+					}
+					pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
+					match := fmt.Sprintf("%s.src == $%s", ipSuffix, pgAs)
+					externalIDs := map[string]string{
+						"vendor": util.CniTypeName,
+						"subnet": subnet.Name,
+						"node":   node.Name,
+					}
+					// in case the node name is "vendor", "subnet" or "node"
+					externalIDs[node.Name] = nextHopIp
+
+					if err = c.ovnLegacyClient.AddPolicyRoute(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match, "reroute", nextHopIp, externalIDs); err != nil {
+						klog.Errorf("failed to add policy route for port-group address-set %s: %v", pgAs, err)
+						return err
 					}
 				}
 			}
@@ -1295,7 +1297,7 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 				}
 			}
 
-			if err := c.deletePolicyRouteByGatewayType(subnet, kubeovnv1.GWDistributedType); err != nil {
+			if err := c.deletePolicyRouteByGatewayType(subnet, kubeovnv1.GWDistributedType, false); err != nil {
 				klog.Errorf("failed to delete policy route for overlay subnet %s, %v", subnet.Name, err)
 				return err
 			}
@@ -1674,33 +1676,33 @@ func (c *Controller) updatePolicyRouteForCentralizedSubnet(subnetName, cidr stri
 }
 
 func (c *Controller) addPolicyRouteForCentralizedSubnet(subnet *kubeovnv1.Subnet, nodeName string, ipNameMap map[string]string, nodeIPs []string) error {
-	for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
-		exist, err := c.checkPolicyRouteExistForNode(nodeName, cidrBlock)
-		if err != nil {
-			klog.Errorf("check ecmp policy route exist for subnet %v, error %v", subnet.Name, err)
-			continue
-		}
-		if exist {
-			continue
-		}
-
-		var nextHops []string
-		nameIpMap := map[string]string{}
-		for _, nodeIp := range nodeIPs {
-			if util.CheckProtocol(nodeIp) != util.CheckProtocol(cidrBlock) {
+	for _, nodeIP := range nodeIPs {
+		for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+			if util.CheckProtocol(cidrBlock) != util.CheckProtocol(nodeIP) {
 				continue
 			}
-			nextHops = append(nextHops, nodeIp)
+			exist, err := c.checkPolicyRouteExistForNode(nodeName, cidrBlock, nodeIP)
+			if err != nil {
+				klog.Errorf("check ecmp policy route exist for subnet %v, error %v", subnet.Name, err)
+				continue
+			}
+			if exist {
+				continue
+			}
 
+			var nextHops []string
+			nameIpMap := map[string]string{}
+
+			nextHops = append(nextHops, nodeIP)
 			tmpName := nodeName
 			if nodeName == "" {
-				tmpName = ipNameMap[nodeIp]
+				tmpName = ipNameMap[nodeIP]
 			}
-			nameIpMap[tmpName] = nodeIp
-		}
+			nameIpMap[tmpName] = nodeIP
 
-		if err := c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops, nameIpMap); err != nil {
-			return err
+			if err := c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops, nameIpMap); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -1779,13 +1781,13 @@ func (c *Controller) deletePolicyRouteForDistributedSubnet(subnet *kubeovnv1.Sub
 	return nil
 }
 
-func (c *Controller) deletePolicyRouteByGatewayType(subnet *kubeovnv1.Subnet, gatewayType string) error {
-	if subnet.Spec.Vlan != "" || subnet.Spec.Vpc != util.DefaultVpc || subnet.Name == c.config.NodeSwitch {
+func (c *Controller) deletePolicyRouteByGatewayType(subnet *kubeovnv1.Subnet, gatewayType string, isDelete bool) error {
+	if subnet.Spec.Vlan != "" || subnet.Spec.Vpc != util.DefaultVpc {
 		return nil
 	}
 
 	for _, cidr := range strings.Split(subnet.Spec.CIDRBlock, ",") {
-		if cidr == "" {
+		if cidr == "" || !isDelete {
 			continue
 		}
 
@@ -1794,10 +1796,14 @@ func (c *Controller) deletePolicyRouteByGatewayType(subnet *kubeovnv1.Subnet, ga
 			af = 6
 		}
 		match := fmt.Sprintf("ip%d.dst == %s", af, cidr)
+		klog.Infof("delete policy route for subnet %s, match %s", subnet.Name, match)
 		if err := c.ovnLegacyClient.DeletePolicyRoute(c.config.ClusterRouter, util.SubnetRouterPolicyPriority, match); err != nil {
 			klog.Errorf("failed to delete logical router policy for CIDR %s of subnet %s: %v", cidr, subnet.Name, err)
 			return err
 		}
+	}
+	if subnet.Name == c.config.NodeSwitch {
+		return nil
 	}
 
 	if gatewayType == kubeovnv1.GWDistributedType {

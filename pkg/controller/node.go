@@ -203,6 +203,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 	node := orinode.DeepCopy()
+	klog.Infof("handle add node %v", node.Name)
 
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -320,6 +321,9 @@ func (c *Controller) handleAddNode(key string) error {
 	}
 
 	for _, subnet := range subnets {
+		if subnet.Spec.Vlan != "" || subnet.Spec.Vpc != util.DefaultVpc || subnet.Name == c.config.NodeSwitch || subnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
+			continue
+		}
 		if err = c.createPortGroupForDistributedSubnet(node, subnet); err != nil {
 			klog.Errorf("failed to create port group for node %s and subnet %s: %v", node.Name, subnet.Name, err)
 			return err
@@ -328,6 +332,8 @@ func (c *Controller) handleAddNode(key string) error {
 			klog.Errorf("failed to add policy router for node %s and subnet %s: %v", node.Name, subnet.Name, err)
 			return err
 		}
+		// policy route for overlay distributed subnet should be reconciled when node ip changed
+		c.addOrUpdateSubnetQueue.Add(subnet.Name)
 	}
 
 	// ovn acl doesn't support address_set name with '-', so replace '-' by '.'
@@ -337,7 +343,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	if err := c.addPolicyRouteForNode(node.Name, ipStr); err != nil {
+	if err := c.addPolicyRouteForCentralizedSubnetOnNode(node.Name, ipStr); err != nil {
 		klog.Errorf("failed to add policy route for node %s, %v", key, err)
 		return err
 	}
@@ -727,7 +733,7 @@ func (c *Controller) checkGatewayReady() error {
 						continue
 					}
 
-					exist, err := c.checkPolicyRouteExistForNode(node.Name, cidrBlock)
+					exist, err := c.checkPolicyRouteExistForNode(node.Name, cidrBlock, ip)
 					if err != nil {
 						klog.Errorf("check ecmp policy route exist for subnet %v, error %v", subnet.Name, err)
 						break
@@ -1064,14 +1070,14 @@ func (c *Controller) getPolicyRouteParas(cidr string) ([]string, map[string]stri
 	return nextHops, nameIpMap, nil
 }
 
-func (c *Controller) checkPolicyRouteExistForNode(nodeName, cidr string) (bool, error) {
+func (c *Controller) checkPolicyRouteExistForNode(nodeName, cidr, nexthop string) (bool, error) {
 	_, nameIpMap, err := c.getPolicyRouteParas(cidr)
 	if err != nil {
 		klog.Errorf("failed to get policy route paras, %v", err)
 		return false, err
 	}
 
-	if _, ok := nameIpMap[nodeName]; ok {
+	if nodeIp, ok := nameIpMap[nodeName]; ok && nodeIp == nexthop {
 		return true, nil
 	}
 	return false, nil
@@ -1105,16 +1111,15 @@ func (c *Controller) deletePolicyRouteForNode(nodeName string) error {
 		if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType {
 			if c.config.EnableEcmp {
 				for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
-					exist, err := c.checkPolicyRouteExistForNode(nodeName, cidrBlock)
-					if err != nil {
-						klog.Errorf("check ecmp policy route exist for subnet %v, error %v", subnet.Name, err)
-						continue
-					}
-
 					nextHops, nameIpMap, err := c.getPolicyRouteParas(cidrBlock)
 					if err != nil {
 						klog.Errorf("get ecmp policy route paras for subnet %v, error %v", subnet.Name, err)
 						continue
+					}
+
+					exist := false
+					if _, ok := nameIpMap[nodeName]; ok {
+						exist = true
 					}
 
 					if exist {
@@ -1145,7 +1150,7 @@ func (c *Controller) deletePolicyRouteForNode(nodeName string) error {
 	return nil
 }
 
-func (c *Controller) addPolicyRouteForNode(nodeName, nodeIP string) error {
+func (c *Controller) addPolicyRouteForCentralizedSubnetOnNode(nodeName, nodeIP string) error {
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to get subnets %v", err)
@@ -1162,24 +1167,23 @@ func (c *Controller) addPolicyRouteForNode(nodeName, nodeIP string) error {
 				continue
 			}
 
-			for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
-				exist, err := c.checkPolicyRouteExistForNode(nodeName, cidrBlock)
-				if err != nil {
-					klog.Errorf("check ecmp policy route exist for subnet %v, error %v", subnet.Name, err)
-					continue
-				}
-				if exist {
-					continue
-				}
+			for _, nextHop := range strings.Split(nodeIP, ",") {
+				for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+					if util.CheckProtocol(cidrBlock) != util.CheckProtocol(nextHop) {
+						continue
+					}
+					exist, err := c.checkPolicyRouteExistForNode(nodeName, cidrBlock, nextHop)
+					if err != nil {
+						klog.Errorf("check ecmp policy route exist for subnet %v, error %v", subnet.Name, err)
+						continue
+					}
+					if exist {
+						continue
+					}
 
-				nextHops, nameIpMap, err := c.getPolicyRouteParas(cidrBlock)
-				if err != nil {
-					klog.Errorf("get ecmp policy route paras for subnet %v, error %v", subnet.Name, err)
-					continue
-				}
-
-				for _, nextHop := range strings.Split(nodeIP, ",") {
-					if util.CheckProtocol(cidrBlock) == util.CheckProtocol(nextHop) {
+					nextHops, nameIpMap, err := c.getPolicyRouteParas(cidrBlock)
+					if err != nil {
+						klog.Errorf("get ecmp policy route paras for subnet %v, error %v", subnet.Name, err)
 						continue
 					}
 					nextHops = append(nextHops, nextHop)
