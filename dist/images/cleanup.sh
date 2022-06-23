@@ -43,9 +43,7 @@ while :; do
 done
 
 for pod in $(kubectl get pod -n kube-system -l app=ovs -o 'jsonpath={.items[?(@.status.phase=="Running")].metadata.name}'); do
-  node=$(kubectl get pod -n kube-system $pod -o 'jsonpath={.spec.nodeName}')
-  nodeIPs=$(kubectl get node $node -o 'jsonpath={.status.addresses[?(@.type=="InternalIP")].address}' | sed 's/ /,/')
-  kubectl exec -n kube-system "$pod" -- bash /kube-ovn/uninstall.sh "$nodeIPs"
+  kubectl exec -n kube-system "$pod" -- bash /kube-ovn/uninstall.sh
 done
 
 kubectl delete --ignore-not-found svc ovn-nb ovn-sb ovn-northd -n kube-system
