@@ -53,7 +53,8 @@ func (c *Controller) enqueueUpdateNp(old, new interface{}) {
 	}
 	oldNp := old.(*netv1.NetworkPolicy)
 	newNp := new.(*netv1.NetworkPolicy)
-	if !reflect.DeepEqual(oldNp.Spec, newNp.Spec) {
+	if !reflect.DeepEqual(oldNp.Spec, newNp.Spec) ||
+		!reflect.DeepEqual(oldNp.Annotations, newNp.Annotations) {
 		var key string
 		var err error
 		if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
@@ -176,6 +177,11 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}()
 
+	logEnable := false
+	if np.Annotations[util.NetworkPolicyLogAnnotation] == "true" {
+		logEnable = true
+	}
+
 	// TODO: ovn acl doesn't support address_set name with '-', now we replace '-' by '.'.
 	// This may cause conflict if two np with name test-np and test.np. Maybe hash is a better solution,
 	// but we do not want to lost the readability now.
@@ -284,7 +290,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 						excepts = append(excepts, except...)
 					}
 				}
-				klog.Infof("UpdateNp Ingress, allows is %v, excepts is %v", allows, excepts)
+				klog.Infof("UpdateNp Ingress, allows is %v, excepts is %v, log %v", allows, excepts, logEnable)
 				if err := c.ovnClient.CreateAddressSet(ingressAllowAsName, np.Namespace, np.Name, "ingress"); err != nil {
 					klog.Errorf("failed to create address_set %s, %v", ingressAllowAsName, err)
 					return err
@@ -304,7 +310,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 				}
 
 				if len(allows) != 0 || len(excepts) != 0 {
-					if err := c.ovnClient.CreateIngressACL(pgName, ingressAllowAsName, ingressExceptAsName, svcAsName, protocol, npr.Ports); err != nil {
+					if err := c.ovnClient.CreateIngressACL(pgName, ingressAllowAsName, ingressExceptAsName, svcAsName, protocol, npr.Ports, logEnable); err != nil {
 						klog.Errorf("failed to create ingress acls for np %s, %v", key, err)
 						return err
 					}
@@ -323,10 +329,15 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 				ingressPorts := []netv1.NetworkPolicyPort{}
-				if err := c.ovnClient.CreateIngressACL(pgName, ingressAllowAsName, ingressExceptAsName, svcAsName, protocol, ingressPorts); err != nil {
+				if err := c.ovnClient.CreateIngressACL(pgName, ingressAllowAsName, ingressExceptAsName, svcAsName, protocol, ingressPorts, logEnable); err != nil {
 					klog.Errorf("failed to create ingress acls for np %s, %v", key, err)
 					return err
 				}
+			}
+
+			if err = c.ovnClient.SetAclLog(pgName, logEnable, true); err != nil {
+				// just log and do not return err here
+				klog.Errorf("failed to set ingress acl log for np %s, %v", key, err)
 			}
 		}
 
@@ -422,7 +433,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 						excepts = append(excepts, except...)
 					}
 				}
-				klog.Infof("UpdateNp Egress, allows is %v, excepts is %v", allows, excepts)
+				klog.Infof("UpdateNp Egress, allows is %v, excepts is %v, log %v", allows, excepts, logEnable)
 				if err := c.ovnClient.CreateAddressSet(egressAllowAsName, np.Namespace, np.Name, "egress"); err != nil {
 					klog.Errorf("failed to create address_set %s, %v", egressAllowAsName, err)
 					return err
@@ -442,7 +453,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 				}
 
 				if len(allows) != 0 || len(excepts) != 0 {
-					if err := c.ovnClient.CreateEgressACL(pgName, egressAllowAsName, egressExceptAsName, protocol, npr.Ports, svcAsName); err != nil {
+					if err := c.ovnClient.CreateEgressACL(pgName, egressAllowAsName, egressExceptAsName, protocol, npr.Ports, svcAsName, logEnable); err != nil {
 						klog.Errorf("failed to create egress acls for np %s, %v", key, err)
 						return err
 					}
@@ -461,10 +472,14 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 				egressPorts := []netv1.NetworkPolicyPort{}
-				if err := c.ovnClient.CreateEgressACL(pgName, egressAllowAsName, egressExceptAsName, protocol, egressPorts, svcAsName); err != nil {
+				if err := c.ovnClient.CreateEgressACL(pgName, egressAllowAsName, egressExceptAsName, protocol, egressPorts, svcAsName, logEnable); err != nil {
 					klog.Errorf("failed to create egress acls for np %s, %v", key, err)
 					return err
 				}
+			}
+			if err = c.ovnClient.SetAclLog(pgName, logEnable, false); err != nil {
+				// just log and do not return err here
+				klog.Errorf("failed to set egress acl log for np %s, %v", key, err)
 			}
 		}
 

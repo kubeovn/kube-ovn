@@ -72,6 +72,8 @@ const (
 	ExGatewayLabel     = "ovn.kubernetes.io/external-gw"
 	VpcNatGatewayLabel = "ovn.kubernetes.io/vpc-nat-gw"
 
+	NetworkPolicyLogAnnotation = "ovn.kubernetes.io/enable_log"
+
 	ProtocolTCP = "tcp"
 	ProtocolUDP = "udp"
 
