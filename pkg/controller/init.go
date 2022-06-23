@@ -649,6 +649,9 @@ func (c *Controller) initNodeRoutes() error {
 		return err
 	}
 	for _, node := range nodes {
+		if node.Annotations[util.AllocatedAnnotation] != "true" {
+			continue
+		}
 		nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
 		joinAddrV4, joinAddrV6 := util.SplitStringIP(node.Annotations[util.IpAddressAnnotation])
 		if nodeIPv4 != "" && joinAddrV4 != "" {

@@ -790,6 +790,17 @@ func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, router string, route
 
 // AddPolicyRoute add a policy route rule in ovn
 func (c LegacyClient) AddPolicyRoute(router string, priority int32, match, action, nextHop string, externalIDs map[string]string) error {
+	consistent, err := c.CheckPolicyRouteNexthopConsistent(router, match, nextHop, priority)
+	if err != nil {
+		return err
+	}
+	if !consistent {
+		if err := c.DeletePolicyRoute(router, priority, match); err != nil {
+			klog.Errorf("failed to delete policy route: %v", err)
+			return err
+		}
+	}
+
 	// lr-policy-add ROUTER PRIORITY MATCH ACTION [NEXTHOP]
 	args := []string{MayExist, "lr-policy-add", router, strconv.Itoa(int(priority)), match, action}
 	if nextHop != "" {
@@ -2132,4 +2143,26 @@ func (c LegacyClient) SetPolicyRouteExternalIds(priority int32, match string, na
 		return fmt.Errorf("failed to set logical-router-policy externalIds, %v", err)
 	}
 	return nil
+}
+
+func (c LegacyClient) CheckPolicyRouteNexthopConsistent(router, match, nexthop string, priority int32) (bool, error) {
+	exist, err := c.PolicyRouteExists(priority, match)
+	if err != nil {
+		return false, err
+	}
+	if !exist {
+		return false, nil
+	}
+
+	nextHops, _, err := c.GetPolicyRouteParas(priority, match)
+	if err != nil {
+		klog.Errorf("failed to get policy route paras, %v", err)
+		return false, err
+	}
+	for _, next := range nextHops {
+		if next == nexthop {
+			return true, nil
+		}
+	}
+	return false, nil
 }
