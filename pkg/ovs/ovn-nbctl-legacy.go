@@ -1450,14 +1450,19 @@ func (c LegacyClient) CreateNpAddressSet(asName, npNamespace, npName, direction 
 	return err
 }
 
-func (c LegacyClient) CreateIngressACL(pgName, asIngressName, asExceptName, svcAsName, protocol string, npp []netv1.NetworkPolicyPort) error {
-	var allowArgs []string
+func (c LegacyClient) CreateIngressACL(pgName, asIngressName, asExceptName, svcAsName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool) error {
+	var allowArgs, ovnArgs []string
 
 	ipSuffix := "ip4"
 	if protocol == kubeovnv1.ProtocolIPv6 {
 		ipSuffix = "ip6"
 	}
-	ovnArgs := []string{MayExist, "--type=port-group", "--log", fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "to-lport", util.IngressDefaultDrop, fmt.Sprintf("outport==@%s && ip", pgName), "drop"}
+
+	if logEnable {
+		ovnArgs = []string{MayExist, "--type=port-group", "--log", fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "to-lport", util.IngressDefaultDrop, fmt.Sprintf("outport==@%s && ip", pgName), "drop"}
+	} else {
+		ovnArgs = []string{MayExist, "--type=port-group", fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "to-lport", util.IngressDefaultDrop, fmt.Sprintf("outport==@%s && ip", pgName), "drop"}
+	}
 
 	if len(npp) == 0 {
 		allowArgs = []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("%s.src == $%s && %s.src != $%s && outport==@%s && ip", ipSuffix, asIngressName, ipSuffix, asExceptName, pgName), "allow-related"}
@@ -1480,15 +1485,18 @@ func (c LegacyClient) CreateIngressACL(pgName, asIngressName, asExceptName, svcA
 	return err
 }
 
-func (c LegacyClient) CreateEgressACL(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, portSvcName string) error {
-	var allowArgs []string
+func (c LegacyClient) CreateEgressACL(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, portSvcName string, logEnable bool) error {
+	var allowArgs, ovnArgs []string
 
 	ipSuffix := "ip4"
 	if protocol == kubeovnv1.ProtocolIPv6 {
 		ipSuffix = "ip6"
 	}
-	ovnArgs := []string{"--", MayExist, "--type=port-group", "--log", fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "from-lport", util.EgressDefaultDrop, fmt.Sprintf("inport==@%s && ip", pgName), "drop"}
-
+	if logEnable {
+		ovnArgs = []string{"--", MayExist, "--type=port-group", "--log", fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "from-lport", util.EgressDefaultDrop, fmt.Sprintf("inport==@%s && ip", pgName), "drop"}
+	} else {
+		ovnArgs = []string{"--", MayExist, "--type=port-group", fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "from-lport", util.EgressDefaultDrop, fmt.Sprintf("inport==@%s && ip", pgName), "drop"}
+	}
 	if len(npp) == 0 {
 		allowArgs = []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("%s.dst == $%s && %s.dst != $%s && inport==@%s && ip", ipSuffix, asEgressName, ipSuffix, asExceptName, pgName), "allow-related"}
 		ovnArgs = append(ovnArgs, allowArgs...)
@@ -2165,4 +2173,35 @@ func (c LegacyClient) CheckPolicyRouteNexthopConsistent(router, match, nexthop s
 		}
 	}
 	return false, nil
+}
+
+func (c LegacyClient) SetAclLog(pgName string, logEnable, isIngress bool) error {
+	var direction, match string
+	if isIngress {
+		direction = "to-lport"
+		match = fmt.Sprintf("outport==@%s && ip", pgName)
+	} else {
+		direction = "from-lport"
+		match = fmt.Sprintf("inport==@%s && ip", pgName)
+	}
+
+	priority, _ := strconv.Atoi(util.IngressDefaultDrop)
+	result, err := c.CustomFindEntity("acl", []string{"_uuid"}, fmt.Sprintf("priority=%d", priority), fmt.Sprintf(`match="%s"`, match), fmt.Sprintf("direction=%s", direction), "action=drop")
+	if err != nil {
+		klog.Errorf("failed to get acl UUID: %v", err)
+		return err
+	}
+
+	if len(result) == 0 {
+		return nil
+	}
+
+	uuid := result[0]["_uuid"][0]
+	ovnCmd := []string{"set", "acl", uuid, fmt.Sprintf("log=%v", logEnable)}
+
+	if _, err := c.ovnNbCommand(ovnCmd...); err != nil {
+		return fmt.Errorf("failed to set acl log, %v", err)
+	}
+
+	return nil
 }
