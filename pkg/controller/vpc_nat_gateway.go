@@ -209,10 +209,12 @@ func (c *Controller) processNextWorkItem(processName string, queue workqueue.Rat
 func (c *Controller) handleDelVpcNatGw(key string) error {
 	c.vpcNatGwKeyMutex.Lock(key)
 	defer c.vpcNatGwKeyMutex.Unlock(key)
-	_, err := c.vpcNatGatewayLister.Get(key)
+	name := genNatGwStsName(key)
+	klog.Infof("delete vpc nat gw %s", name)
+	err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).Delete(context.Background(), name, metav1.DeleteOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			return c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).Delete(context.Background(), genNatGwStsName(key), metav1.DeleteOptions{})
+			return nil
 		}
 		return err
 	}
