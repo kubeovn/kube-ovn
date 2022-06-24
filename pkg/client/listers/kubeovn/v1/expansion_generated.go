@@ -70,6 +70,10 @@ type VlanListerExpansion interface{}
 // VpcLister.
 type VpcListerExpansion interface{}
 
+// VpcDnsListerExpansion allows custom methods to be added to
+// VpcDnsLister.
+type VpcDnsListerExpansion interface{}
+
 // VpcNatGatewayListerExpansion allows custom methods to be added to
 // VpcNatGatewayLister.
 type VpcNatGatewayListerExpansion interface{}

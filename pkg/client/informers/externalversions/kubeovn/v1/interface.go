@@ -50,6 +50,8 @@ type Interface interface {
 	Vlans() VlanInformer
 	// Vpcs returns a VpcInformer.
 	Vpcs() VpcInformer
+	// VpcDnses returns a VpcDnsInformer.
+	VpcDnses() VpcDnsInformer
 	// VpcNatGateways returns a VpcNatGatewayInformer.
 	VpcNatGateways() VpcNatGatewayInformer
 }
@@ -128,6 +130,11 @@ func (v *version) Vlans() VlanInformer {
 // Vpcs returns a VpcInformer.
 func (v *version) Vpcs() VpcInformer {
 	return &vpcInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// VpcDnses returns a VpcDnsInformer.
+func (v *version) VpcDnses() VpcDnsInformer {
+	return &vpcDnsInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
 // VpcNatGateways returns a VpcNatGatewayInformer.

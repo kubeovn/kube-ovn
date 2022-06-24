@@ -197,6 +197,70 @@ addresses=$(kubectl get no -lkube-ovn/role=master --no-headers -o wide | awk '{p
 echo "Install OVN DB in $addresses"
 
 cat <<EOF > kube-ovn-crd.yaml
+--
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: vpc-dnses.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: vpc-dnses
+    singular: vpc-dns
+    shortNames:
+      - vpc-dns
+    kind: VpcDns
+    listKind: VpcDnsList
+  scope: Cluster
+  versions:
+    - additionalPrinterColumns:
+        - jsonPath: .status.active
+          name: Active
+          type: boolean
+        - jsonPath: .spec.vpc
+          name: Vpc
+          type: string
+        - jsonPath: .spec.subnet
+          name: Subnet
+          type: string
+      name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                vpc:
+                  type: string
+                subnet:
+                  type: string
+            status:
+              type: object
+              properties:
+                active:
+                  type: boolean
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                      lastUpdateTime:
+                        type: string
+                      lastTransitionTime:
+                        type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -1483,6 +1547,8 @@ rules:
       - iptables-snat-rules/status
       - switch-lb-rules
       - switch-lb-rules/status
+      - vpc-dnses
+      - vpc-dnses/status
     verbs:
       - "*"
   - apiGroups:
@@ -1563,6 +1629,21 @@ rules:
     verbs:
       - get
       - list
+    - apiGroups:
+        - "rbac.authorization.k8s.io"
+      resources:
+        - clusterroles
+        - clusterrolebindings
+      verbs:
+        - get
+        - create
+    - apiGroups:
+      - discovery.k8s.io
+      resources:
+      - endpointslices
+      verbs:
+      - list
+      - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -1979,6 +2060,8 @@ rules:
       - iptables-fip-rules/status
       - iptables-dnat-rules/status
       - iptables-snat-rules/status
+      - vpc-dnses
+      - vpc-dnses/status
     verbs:
       - "*"
   - apiGroups:
@@ -2049,6 +2132,21 @@ rules:
     verbs:
       - get
       - list
+  - apiGroups:
+      - "rbac.authorization.k8s.io"
+    resources:
+      - clusterroles
+      - clusterrolebindings
+    verbs:
+      - get
+      - create
+  - apiGroups:
+    - discovery.k8s.io
+    resources:
+    - endpointslices
+    verbs:
+    - list
+    - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

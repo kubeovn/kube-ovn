@@ -124,6 +124,7 @@ const (
 	VpcNatGatewayConfig    = "ovn-vpc-nat-gw-config"
 	VpcExternalNet         = "ovn-vpc-external-network"
 	VpcLbNetworkAttachment = "ovn-vpc-lb"
+	VpcDnsConfig           = "vpc-dns-config"
 
 	DefaultVpc    = "ovn-cluster"
 	DefaultSubnet = "ovn-default"
