@@ -1897,7 +1897,6 @@ rules:
       - vlans/status
       - provider-networks
       - provider-networks/status
-      - networks
       - security-groups
       - security-groups/status
       - htbqoses
