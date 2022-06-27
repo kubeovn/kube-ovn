@@ -75,6 +75,13 @@ func (c LegacyClient) SetAzName(azName string) error {
 	return nil
 }
 
+func (c LegacyClient) SetLsDnatModDlDst(enabled bool) error {
+	if _, err := c.ovnNbCommand("set", "NB_Global", ".", fmt.Sprintf("options:ls_dnat_mod_dl_dst=%v", enabled)); err != nil {
+		return fmt.Errorf("failed to set NB_Global option ls_dnat_mod_dl_dst to %v: %v", enabled, err)
+	}
+	return nil
+}
+
 func (c LegacyClient) SetUseCtInvMatch() error {
 	if _, err := c.ovnNbCommand("set", "NB_Global", ".", "options:use_ct_inv_match=false"); err != nil {
 		return fmt.Errorf("failed to set NB_Global option use_ct_inv_match to false: %v", err)
