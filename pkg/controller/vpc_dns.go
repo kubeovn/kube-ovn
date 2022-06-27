@@ -276,7 +276,7 @@ func (c *Controller) handleAddOrUpdateVpcDns(key string) error {
 	if needToCreateSvc {
 		_, err := c.config.KubeOvnClient.KubeovnV1().SwitchLBRules().Create(context.Background(), newSlr, metav1.CreateOptions{})
 		if err != nil {
-			klog.Errorf("failed to create deployment '%s', err: %v", newDp.Name, err)
+			klog.Errorf("failed to create switchLBRules '%s', err: %v", newSlr.Name, err)
 			return err
 		}
 		klog.V(3).Infof("%s SwitchLBRule is successfully deployed", newSlr.Name)
@@ -288,7 +288,7 @@ func (c *Controller) handleAddOrUpdateVpcDns(key string) error {
 		newSlr.ResourceVersion = oldSlr.ResourceVersion
 		_, err := c.config.KubeOvnClient.KubeovnV1().SwitchLBRules().Update(context.Background(), newSlr, metav1.UpdateOptions{})
 		if err != nil {
-			klog.Errorf("failed to update deployment '%s', err: %v", newDp.Name, err)
+			klog.Errorf("failed to update switchLBRules '%s', err: %v", newSlr.Name, err)
 			return err
 		}
 		klog.V(3).Infof("%s SwitchLBRule is successfully updated", newSlr.Name)
@@ -615,7 +615,6 @@ func (c *Controller) initCorednsResource() error {
 			_, err = c.config.KubeClient.RbacV1().ClusterRoles().Create(context.Background(), cr, metav1.CreateOptions{})
 			if err != nil {
 				klog.Errorf("failed to create vpc-dns clusterRoles:%s, %s", cr.Name, err)
-				klog.Errorf(err.Error())
 				return err
 			}
 		} else {
