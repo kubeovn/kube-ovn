@@ -2062,6 +2062,8 @@ rules:
       - iptables-snat-rules/status
       - vpc-dnses
       - vpc-dnses/status
+      - switch-lb-rules
+      - switch-lb-rules/status
     verbs:
       - "*"
   - apiGroups:
