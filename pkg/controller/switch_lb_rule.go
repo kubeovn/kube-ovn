@@ -60,12 +60,10 @@ func (c *Controller) enqueueUpdateSwitchLBRule(old, new interface{}) {
 	oldSlr := old.(*kubeovnv1.SwitchLBRule)
 	newSlr := new.(*kubeovnv1.SwitchLBRule)
 
-	if oldSlr.Spec.Namespace != newSlr.Spec.Namespace ||
-		oldSlr.Spec.Vip != newSlr.Spec.Vip {
+	if oldSlr.Spec.Namespace != newSlr.Spec.Namespace {
 		slr := old.(*kubeovnv1.SwitchLBRule)
 		info := NewSlrInfo(slr)
 		c.delSwitchLBRuleQueue.Add(info)
-		klog.Infof("444444444444444444444")
 	}
 
 	if oldSlr.ResourceVersion != newSlr.ResourceVersion &&
@@ -165,7 +163,7 @@ func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
 	} else {
 		_, err = c.config.KubeClient.CoreV1().Services(slr.Spec.Namespace).Update(context.Background(), svc, metav1.UpdateOptions{})
 		if err != nil {
-			klog.Errorf("failed to create service '%s', err: %v", svc, err)
+			klog.Errorf("failed to update service '%s', err: %v", svc, err)
 			return err
 		}
 	}
@@ -192,16 +190,11 @@ func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
 
 func (c *Controller) handleDelSwitchLBRule(info *slrInfo) error {
 	klog.V(3).Infof("handleDelSwitchLBRule %s", info.Name)
-	_, err := c.switchLBRuleLister.Get(info.Name)
+
+	name := genSvcName(info.Name)
+	err := c.config.KubeClient.CoreV1().Services(info.Namespace).Delete(context.Background(), name, metav1.DeleteOptions{})
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			name := genSvcName(info.Name)
-			err = c.config.KubeClient.CoreV1().Services(info.Namespace).Delete(context.Background(), name, metav1.DeleteOptions{})
-			if err != nil && !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to delete service %s,err: %v", name, err)
-				return err
-			}
-		}
+		klog.Errorf("failed to delete service %s,err: %v", name, err)
 		return err
 	}
 	return nil
