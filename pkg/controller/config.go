@@ -69,6 +69,7 @@ type Configuration struct {
 	DefaultHostInterface string
 	DefaultVlanName      string
 	DefaultVlanID        int
+	LsDnatModDlDst       bool
 
 	EnableLb          bool
 	EnableNP          bool
@@ -120,6 +121,7 @@ func ParseFlags() (*Configuration, error) {
 		argDefaultInterfaceName = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
 		argDefaultVlanName      = pflag.String("default-vlan-name", "ovn-vlan", "The default vlan name")
 		argDefaultVlanID        = pflag.Int("default-vlan-id", 1, "The default vlan id")
+		argLsDnatModDlDst       = pflag.Bool("ls-dnat-mod-dl-dst", true, "Set ethernet destination address for DNAT on logical switch")
 		argPodNicType           = pflag.String("pod-nic-type", "veth-pair", "The default pod network nic implementation type")
 		argEnableLb             = pflag.Bool("enable-lb", true, "Enable load balancer")
 		argEnableNP             = pflag.Bool("enable-np", true, "Enable network policy support")
@@ -176,6 +178,7 @@ func ParseFlags() (*Configuration, error) {
 		PprofPort:                     *argPprofPort,
 		NetworkType:                   *argNetworkType,
 		DefaultVlanID:                 *argDefaultVlanID,
+		LsDnatModDlDst:                *argLsDnatModDlDst,
 		DefaultProviderName:           *argDefaultProviderName,
 		DefaultHostInterface:          *argDefaultInterfaceName,
 		DefaultVlanName:               *argDefaultVlanName,
