@@ -1258,7 +1258,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 				for _, staticIP := range strings.Split(staticIPs, ",") {
 					if c.ipam.IsIPAssignedToPod(staticIP, net.Subnet.Name, key) {
 						klog.Errorf("static address %s for %s has been assigned", staticIP, key)
-						break
+						continue
 					}
 				}
 
