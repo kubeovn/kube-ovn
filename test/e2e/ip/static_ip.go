@@ -341,6 +341,10 @@ var _ = Describe("[IP Allocation]", func() {
 			}
 			err = f.WaitStatefulsetReady(name, namespace)
 			Expect(err).NotTo(HaveOccurred())
+
+			By("Delete statefulset")
+			err = f.KubeClientSet.AppsV1().StatefulSets(namespace).Delete(context.Background(), sts.Name, metav1.DeleteOptions{})
+			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 })
