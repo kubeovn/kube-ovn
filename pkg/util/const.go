@@ -15,6 +15,7 @@ const (
 	BgpAnnotation        = "ovn.kubernetes.io/bgp"
 	SnatAnnotation       = "ovn.kubernetes.io/snat"
 	EipAnnotation        = "ovn.kubernetes.io/eip"
+	VipAnnotation        = "ovn.kubernetes.io/vip"
 	ChassisAnnotation    = "ovn.kubernetes.io/chassis"
 
 	VpcNatGatewayAnnotation     = "ovn.kubernetes.io/vpc_nat_gw"
@@ -81,6 +82,7 @@ const (
 	ICGatewayLabel         = "ovn.kubernetes.io/ic-gw"
 	ExGatewayLabel         = "ovn.kubernetes.io/external-gw"
 	VpcNatGatewayLabel     = "ovn.kubernetes.io/vpc-nat-gw"
+	IpReservedLabel        = "ovn.kubernetes.io/ip_reserved"
 	VpcNatGatewayNameLabel = "ovn.kubernetes.io/vpc-nat-gw-name"
 	VpcLbLabel             = "ovn.kubernetes.io/vpc_lb"
 

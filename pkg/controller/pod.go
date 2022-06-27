@@ -685,6 +685,12 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 		if err = c.deleteAttachmentNetWorkIP(pod); err != nil {
 			klog.Errorf("failed to delete attach ip for pod %v, %v, please delete attach ip manually", pod.Name, err)
 		}
+		if pod.Annotations[util.VipAnnotation] != "" {
+			if err = c.podNotReuseVip(pod.Annotations[util.VipAnnotation]); err != nil {
+				klog.Errorf("failed to clean label for ip %s, %v", pod.Annotations[util.VipAnnotation], err)
+				return err
+			}
+		}
 	}
 	c.ipam.ReleaseAddressByPod(key)
 
@@ -1191,6 +1197,22 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	podName := c.getNameByPod(pod)
 	key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
 
+	isStsPod, _ := isStatefulSetPod(pod)
+	// if pod has static vip
+	vipName := pod.Annotations[util.VipAnnotation]
+	if vipName != "" {
+		vip, err := c.virtualIpsLister.Get(vipName)
+		if err != nil {
+			klog.Errorf("failed to get static vip '%s', %v", vipName, err)
+			return "", "", "", podNet.Subnet, err
+		}
+		nicName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+		if err = c.podReuseVip(vipName, nicName, isStsPod); err != nil {
+			return "", "", "", podNet.Subnet, err
+		}
+		return vip.Spec.V4ip, vip.Spec.V6ip, vip.Spec.MacAddress, podNet.Subnet, nil
+	}
+
 	macStr := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
 	if macStr != "" {
 		if _, err := net.ParseMAC(macStr); err != nil {
@@ -1252,7 +1274,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		ipPool[i] = strings.TrimSpace(ip)
 	}
 
-	if ok, _ := isStatefulSetPod(pod); !ok {
+	if !isStsPod {
 		for _, net := range nsNets {
 			for _, staticIPs := range ipPool {
 				for _, staticIP := range strings.Split(staticIPs, ",") {
