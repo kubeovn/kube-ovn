@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -56,32 +57,80 @@ func TestE2e(t *testing.T) {
 
 var _ = SynchronizedAfterSuite(func() {}, func() {
 	f := framework.NewFramework("init", fmt.Sprintf("%s/.kube/config", os.Getenv("HOME")))
-	nss, err := f.KubeClientSet.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{LabelSelector: "e2e=true"})
-	if err != nil {
-		Fail(err.Error())
+	for {
+		pods, err := f.KubeClientSet.CoreV1().Pods(corev1.NamespaceAll).List(context.Background(), metav1.ListOptions{LabelSelector: "e2e=true"})
+		if err != nil {
+			Fail(err.Error())
+		}
+		if len(pods.Items) == 0 {
+			break
+		}
+		time.Sleep(time.Second)
 	}
-	if nss != nil {
+
+	for {
+		nss, err := f.KubeClientSet.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{LabelSelector: "e2e=true"})
+		if err != nil {
+			Fail(err.Error())
+		}
+		if len(nss.Items) == 0 {
+			break
+		}
 		for _, ns := range nss.Items {
+			if ns.DeletionTimestamp != nil {
+				continue
+			}
 			err := f.KubeClientSet.CoreV1().Namespaces().Delete(context.Background(), ns.Name, metav1.DeleteOptions{})
 			if err != nil {
 				Fail(err.Error())
 			}
 		}
+		time.Sleep(time.Second)
 	}
 
-	err = f.OvnClientSet.KubeovnV1().Subnets().DeleteCollection(context.Background(), metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: "e2e=true"})
+	err := f.OvnClientSet.KubeovnV1().Subnets().DeleteCollection(context.Background(), metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: "e2e=true"})
 	if err != nil {
 		Fail(err.Error())
+	}
+	for {
+		subnets, err := f.OvnClientSet.KubeovnV1().Subnets().List(context.Background(), metav1.ListOptions{LabelSelector: "e2e=true"})
+		if err != nil {
+			Fail(err.Error())
+		}
+		if len(subnets.Items) == 0 {
+			break
+		}
+		time.Sleep(time.Second)
 	}
 
 	err = f.OvnClientSet.KubeovnV1().Vlans().DeleteCollection(context.Background(), metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: "e2e=true"})
 	if err != nil {
 		Fail(err.Error())
 	}
+	for {
+		vlans, err := f.OvnClientSet.KubeovnV1().Vlans().List(context.Background(), metav1.ListOptions{LabelSelector: "e2e=true"})
+		if err != nil {
+			Fail(err.Error())
+		}
+		if len(vlans.Items) == 0 {
+			break
+		}
+		time.Sleep(time.Second)
+	}
 
 	err = f.OvnClientSet.KubeovnV1().ProviderNetworks().DeleteCollection(context.Background(), metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: "e2e=true"})
 	if err != nil {
 		Fail(err.Error())
+	}
+	for {
+		pns, err := f.OvnClientSet.KubeovnV1().ProviderNetworks().List(context.Background(), metav1.ListOptions{LabelSelector: "e2e=true"})
+		if err != nil {
+			Fail(err.Error())
+		}
+		if len(pns.Items) == 0 {
+			break
+		}
+		time.Sleep(time.Second)
 	}
 })
 
