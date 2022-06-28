@@ -1047,7 +1047,22 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 				if err = c.createPortGroupForDistributedSubnet(node, subnet); err != nil {
 					return err
 				}
+				if node.Annotations[util.AllocatedAnnotation] != "true" {
+					continue
+				}
+				nodeIP, err := getNodeTunlIP(node)
+				if err != nil {
+					klog.Errorf("failed to get node %s tunnel ip, %v", node.Name, err)
+					return err
+				}
+				nextHop := getNextHopByTunnelIP(nodeIP)
+				v4IP, v6IP := util.SplitStringIP(nextHop)
+				if err = c.addPolicyRouteForDistributedSubnet(subnet, node.Name, v4IP, v6IP); err != nil {
+					klog.Errorf("failed to add policy router for node %s and subnet %s: %v", node.Name, subnet.Name, err)
+					return err
+				}
 			}
+
 			_, idNameMap, err := c.ovnLegacyClient.ListLspForNodePortgroup()
 			if err != nil {
 				klog.Errorf("failed to list lsp info, %v", err)
@@ -1061,25 +1076,6 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 				if c.config.EnableEipSnat && (pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "") {
 					continue
 				}
-
-				node, err := c.nodesLister.Get(pod.Spec.NodeName)
-				if err != nil {
-					if k8serrors.IsNotFound(err) {
-						continue
-					} else {
-						klog.Errorf("failed to get node %s, %v", pod.Spec.NodeName, err)
-						return err
-					}
-				}
-				if node.Annotations[util.AllocatedAnnotation] != "true" {
-					continue
-				}
-				nodeIP, err := getNodeTunlIP(node)
-				if err != nil {
-					klog.Errorf("failed to get node %s tunnel ip, %v", node.Name, err)
-					return err
-				}
-				nextHop := getNextHopByTunnelIP(nodeIP)
 
 				podNets, err := c.getPodKubeovnNets(pod)
 				if err != nil {
@@ -1098,7 +1094,7 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 					}
 
 					if pod.Annotations[util.NorthGatewayAnnotation] != "" {
-						nextHop = pod.Annotations[util.NorthGatewayAnnotation]
+						nextHop := pod.Annotations[util.NorthGatewayAnnotation]
 						exist, err := c.checkRouteExist(nextHop, pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)], ovs.PolicySrcIP)
 						if err != nil {
 							klog.Errorf("failed to get static route for subnet %v, error %v", subnet.Name, err)
@@ -1119,7 +1115,11 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 					}
 				}
 
-				pgName := getOverlaySubnetsPortGroupName(subnet.Name, node.Name)
+				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
+					continue
+				}
+
+				pgName := getOverlaySubnetsPortGroupName(subnet.Name, pod.Spec.NodeName)
 				c.ovnPgKeyMutex.Lock(pgName)
 				pgPorts, err := c.getPgPorts(idNameMap, pgName)
 				if err != nil {
@@ -1149,36 +1149,6 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 					}
 				}
 				c.ovnPgKeyMutex.Unlock(pgName)
-
-				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
-					continue
-				}
-
-				// policy route should be flushed when cidr changed for join subnet
-				for _, nextHopIp := range strings.Split(nextHop, ",") {
-					if nextHopIp == "" {
-						continue
-					}
-
-					ipSuffix := "ip4"
-					if util.CheckProtocol(nextHopIp) == kubeovnv1.ProtocolIPv6 {
-						ipSuffix = "ip6"
-					}
-					pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
-					match := fmt.Sprintf("%s.src == $%s", ipSuffix, pgAs)
-					externalIDs := map[string]string{
-						"vendor": util.CniTypeName,
-						"subnet": subnet.Name,
-						"node":   node.Name,
-					}
-					// in case the node name is "vendor", "subnet" or "node"
-					externalIDs[node.Name] = nextHopIp
-
-					if err = c.ovnLegacyClient.AddPolicyRoute(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match, "reroute", nextHopIp, externalIDs); err != nil {
-						klog.Errorf("failed to add policy route for port-group address-set %s: %v", pgAs, err)
-						return err
-					}
-				}
 			}
 			return c.deletePolicyRouteForCentralizedSubnet(subnet)
 		} else {
