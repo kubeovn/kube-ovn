@@ -10,15 +10,10 @@
 
 [中文文档](https://kubeovn.github.io/docs/)
 
-Kube-OVN, a [CNCF Sandbox Level Project](https://www.cncf.io/sandbox-projects/), integrates the OVN-based Network Virtualization with Kubernetes. It offers an advanced Container Network Fabric for Enterprises with the most functions and the easiest operation.
+If you miss the good old days of SDN, then Kube-OVN is your choice in Cloud Native era.
 
-## Community
-The Kube-OVN community is waiting for your participation!
-- Follow us at [Twitter](https://twitter.com/KubeOvn)
-- Chat with us at [Slack](https://kube-ovn-slackin.herokuapp.com/)
-- 微信用户扫码加入交流群
-
-  ![Image of wechat](./docs/wechat.png)
+Kube-OVN, a [CNCF Sandbox Level Project](https://www.cncf.io/sandbox-projects/), integrates the OVN-based Network Virtualization with Kubernetes. 
+It offers an advanced Container Network Fabric for Enterprises with the most functions, extreme performance and the easiest operation.
 
 ## Features
 - **Namespaced Subnets**: Each Namespace can have a unique Subnet (backed by a Logical Switch). Pods within the Namespace will have IP addresses allocated from the Subnet. It's also possible for multiple Namespaces to share a Subnet.
@@ -35,7 +30,7 @@ The Kube-OVN community is waiting for your participation!
 - **DualStack IP Support**: Pod can run in IPv4-Only/IPv6-Only/DualStack mode.
 - **Pod NAT and EIP**: Manage the pod external traffic and external ip like tradition VM.
 - **IPAM for Multi NIC**: A cluster-wide IPAM for CNI plugins other than Kube-OVN, such as macvlan/vlan/host-device to take advantage of subnet and static ip allocation functions in Kube-OVN.
-- **Dynamic QoS**: Configure Pod/Gateway Ingress/Egress traffic rate limits on the fly.
+- **Dynamic QoS**: Configure Pod/Gateway Ingress/Egress traffic rate/priority/loss/latency on the fly.
 - **Embedded Load Balancers**: Replace kube-proxy with the OVN embedded high performance distributed L2 Load Balancer.
 - **Distributed Gateways**: Every Node can act as a Gateway to provide external network connectivity.
 - **Namespaced Gateways**: Every Namespace can have a dedicated Gateway for Egress traffic.
@@ -44,14 +39,8 @@ The Kube-OVN community is waiting for your participation!
 - **Traffic Mirror**: Duplicated container network traffic for monitoring, diagnosing and replay.
 - **Hardware Offload**: Boost network performance and save CPU resource by offloading OVS flow table to hardware.
 - **DPDK Support**: DPDK application now can run in Pod with OVS-DPDK.
-- **Cilium Integration**: Cilium can take over the work of Kube-proxy.
+- **Cilium Integration**: Cilium can take over the work of kube-proxy.
 - **F5 CES Integration**: F5 can help better manage the outgoing traffic of k8s pod/container.
-
-## Planned Future Work
-- Policy-based QoS
-- High performance kernel datapath
-- Namespaced VPC
-- Kubevirt/Kata optimization
 
 ## Network Topology
 
@@ -109,50 +98,31 @@ We are looking forward to your PR!
 
 
 ## FAQ
-1. Q: How about the scalability of Kube-OVN?
+0. Q: What's the different with other CNIs?
+   
+   A: Different CNI Implementations have different scopes, there is no single implementation that can resolve all network problems. Kube-OVN is aiming to bring SDN to Cloud Native. 
+      If you are missing the old day network concepts like VPC, Subnet, customize route, security groups etc. you can not find corresponding functions in any other CNIs. Then Kube-OVN
+      is you only choice when you need these functions to build datacenter or enterprise network fabric.
 
-   A: We have simulated 200 Nodes with 10k Pods by kubemark, and it works fine. Some community users have deployed one cluster with 250+ Nodes and 3k+ Pods in production. It's still not reach the limitation, but we don't have enough resources to find the limitation.
+2. Q: How about the scalability of Kube-OVN?
 
-2. Q: What's the Addressing/IPAM? Node-specific or cluster-wide?
+   A: We have simulated 200 Nodes with 10k Pods by kubemark, and it works fine. Some community users have deployed one cluster with 500 Nodes and 10k+ Pods in production. It's still not reach the limitation, but we don't have enough resources to find the limitation.
+
+3. Q: What's the Addressing/IPAM? Node-specific or cluster-wide?
 
    A: Kube-OVN use a cluster-wide IPAM, Pod address can float to any nodes in the cluster.
 
-3. Q: What's the encapsulation?
+4. Q: What's the encapsulation?
 
-   A: For overlay mode, Kube-OVN uses Geneve/Vxlan to encapsulate packets between nodes. For Vlan/Underlay mode there is no encapsulation.
+   A: For overlay mode, Kube-OVN uses Geneve/Vxlan/STT to encapsulate packets between nodes. For Vlan/Underlay mode there is no encapsulation.
 
-## Kube-OVN vs. Other CNI Implementation
+## Community
+The Kube-OVN community is waiting for your participation!
+- Follow us at [Twitter](https://twitter.com/KubeOvn)
+- Chat with us at [Slack](https://kube-ovn-slackin.herokuapp.com/)
+- 微信用户扫码加入交流群
 
-Different CNI Implementation has different function scope and network topology. There is no single implementation that can resolve all network problems. In this section, we compare Kube-OVN
-to some other options to give users a better understanding to assess which network will fit into your infrastructure.
-
-### Kube-OVN vs. ovn-kubernetes
-
-[ovn-kubernetes](https://github.com/ovn-org/ovn-kubernetes) is developed by the ovn community to integration ovn for Kubernetes. As both projects use OVN/OVS as the data plane, they have some same function sets and architecture. The main differences come from the network topology and gateway implementation.
-
-ovn-kubernetes implements a subnet-per-node network topology.
-That means each node will have a fixed cidr range, and the ip allocation is fulfilled by each node when the pod has been invoked by kubelet.
-
-Kube-OVN implements a subnet-per-namespace network topology.
-That means a cidr can spread the entire cluster nodes, and the ip allocation is fulfilled by kube-ovn-controller at a central place. And then kube-ovn can apply lots of network configurations at subnet level, like cidr, gw, exclude_ips, nat and so on. This topology also gives Kube-OVN more ability to control how ip should be allocated, on top of this topology, Kube-OVN can allocate static ip for workloads.
-
-We believe the subnet-per-namespace topology will give more flexibility to evolve the network.
-
-On the gateway side, ovn-kubernetes uses native ovn gateway concept to control the traffic. The native ovn gateway relies on a dedicated nic or needs to transfer the nic ip to another device to bind the nic to the ovs bridge. This implementation can reach better performance, however not all environments meet the network requirements especially in the cloud.
-
-Kube-OVN uses policy-route, ipset and iptables to implement the gateway functions that all by software, which can fit more infrastructure and give more flexibility to more function.
-
-### Kube-OVN vs. Calico
-
-[Calico](https://www.projectcalico.org/) is an open-source networking and network security solution for containers, virtual machines, and native host-based workloads. It's known for its good performance and security policy.
-
-The main difference from the design point is the encapsulation method. Calico use no encapsulation or lightweight IPIP encapsulation and Kube-OVN uses geneve to encapsulate packets. No encapsulation can achieve better network performance for both throughput and latency. However, as this method will expose pod network directly to the underlay network with it comes with the burden on deploy and maintain. In some managed network environment where BGP and IPIP is not allowed, encapsulation is a must.
-
-Use encapsulation can lower the requirement on networking, and isolate containers and underlay network from logical. We can use the overlay technology to build a much complex network concept, like router, gateway, and vpc. For performance, ovs can make use of hardware offload and DPDK to enhance throughput and latency.
-
-Kube-OVN can also work in non-encapsulation mode, that take use of underlay switches to switch the packets or use hardware offload to achieve better performance than kernel datapath.
-
-From the function set, Kube-OVN can offer some more abilities like static ip, QoS and traffic mirror. The subnet in Kube-OVN and ippool in Calico share some same function set.
+  ![Image of wechat](./docs/wechat.png)
 
 ## License
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Falauda%2Fkube-ovn.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Falauda%2Fkube-ovn?ref=badge_large)

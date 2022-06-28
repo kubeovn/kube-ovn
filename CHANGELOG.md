@@ -1,5 +1,35 @@
 # Changelog
 
+## v1.10.2 (2022-06-28)
+
+ * [b1a17c4a](https://github.com/kubeovn/kube-ovn/commit/b1a17c4add0a817fb05340f3fc1777e57a305de4) set for release 1.10.2
+ * [4d229555](https://github.com/kubeovn/kube-ovn/commit/4d229555325ca3ac8561e815acfc26dff952aa9d) fix: no need routed when use v1.multus-cni.io/default-network (#1652)
+ * [40391a03](https://github.com/kubeovn/kube-ovn/commit/40391a0384b7666ec06b82d8c3a00ecff2517fcc) prepare for release 1.10.2
+ * [7c4dfe72](https://github.com/kubeovn/kube-ovn/commit/7c4dfe72192458c381781923ee399473a3727ebc) fix: subnet failed when create without protocol
+ * [4b063242](https://github.com/kubeovn/kube-ovn/commit/4b063242b513d1cd82f06bc65bba66da23a8e41c) set ether dst addr for dnat on logical switch (#1512)
+ * [20222e4f](https://github.com/kubeovn/kube-ovn/commit/20222e4f5db74782cf49336cfd31882b847cdd1f) CI: delete resources in order to avoid a long time waiting for subnet deletions. (#1643)
+ * [35e29e16](https://github.com/kubeovn/kube-ovn/commit/35e29e162524ddb58e5e721ded06cfbb9329b1c7) ci: fix golangci-lint (#1639)
+ * [4661b76e](https://github.com/kubeovn/kube-ovn/commit/4661b76eaeeb28aea6a1ab853929f49117befc21) fix: cleanup should ignore patch failed (#1626)
+ * [73a53ba7](https://github.com/kubeovn/kube-ovn/commit/73a53ba74fbd3ee4dadc6b6c4730ccafe2f06808) fix no interface report to multus cni, missing in k8s.v1.cni.cncf.io/network[s]-status (#1636)
+ * [fe5e020e](https://github.com/kubeovn/kube-ovn/commit/fe5e020eb9251658f7c30ba07d4687125ede8078) Update install.sh (#1645)
+ * [bd7ff533](https://github.com/kubeovn/kube-ovn/commit/bd7ff5338c55ac01d790ecacc75b7e83c4fd1b22) set networkpolicy log default to false (#1633)
+ * [83c9e845](https://github.com/kubeovn/kube-ovn/commit/83c9e84560d5e789e1408334b05b210e711cca3b) update policy route when join subnet cidr changed (#1638)
+ * [bcf057d1](https://github.com/kubeovn/kube-ovn/commit/bcf057d16d73f8639854856e3694217f826bba34) ci: update trivy options (#1637)
+ * [f93a5273](https://github.com/kubeovn/kube-ovn/commit/f93a52737cdd793610cdb09ef472e4b63da3a6ae) increase initial delay of ovs-ovn liveness probe (#1634)
+ * [1a55ce12](https://github.com/kubeovn/kube-ovn/commit/1a55ce126a38600ab4ed26c8a9d468bbeeb4c7e4) wait ovn-central pods running before delete ovs-ovn pods (#1627)
+ * [f8a266d6](https://github.com/kubeovn/kube-ovn/commit/f8a266d69587e6c961917f1ec57fe1f71f29f3f4) get dbstatus for all ovn-central pod (#1619)
+ * [bc838d5a](https://github.com/kubeovn/kube-ovn/commit/bc838d5a607275c33622d8122646acd622a5bb70) delete "allow" policy route on subnet deletion (#1628)
+
+### Contributors
+
+ * Mengxin Liu
+ * ShaPoHun
+ * halfcrazy
+ * hzma
+ * xujunjie-cover
+ * zhangzujian
+ * 张祖建
+
 ## v1.10.1 (2022-06-19)
 
  * [4935fa6a](https://github.com/kubeovn/kube-ovn/commit/4935fa6adc8a0088b173603e819cec274996ed29) monitor dns in cilium e2e (#1597)
@@ -240,6 +270,28 @@
  * 张祖建
  * 罗云鹤
  * 范日明
+
+## v1.9.5 (2022-06-28)
+
+ * [8a2cc741](https://github.com/kubeovn/kube-ovn/commit/8a2cc7418191fa5268779ac62da2d1d7405236d4) set for release 1.9.5
+ * [9935ab54](https://github.com/kubeovn/kube-ovn/commit/9935ab544d44566c827339e2161049907f73ffc1) fix: no need routed when use v1.multus-cni.io/default-network (#1652)
+ * [60d33ca9](https://github.com/kubeovn/kube-ovn/commit/60d33ca97749b75980a678762de597a0e4e7b097) prepare for release 1.9.5
+ * [a48e64ae](https://github.com/kubeovn/kube-ovn/commit/a48e64ae469e01b7de308667f61dd69f05586954) CI: delete resources in order to avoid a long time waiting for subnet deletions. (#1643)
+ * [502a7a00](https://github.com/kubeovn/kube-ovn/commit/502a7a00480de870e3de33dca5517c523835989b) set networkpolicy log default to false (#1633)
+ * [0bda2e6f](https://github.com/kubeovn/kube-ovn/commit/0bda2e6f6aceae063ec22a972bec7d00d2764491) update policy route when join subnet cidr changed (#1638)
+ * [3cfafe40](https://github.com/kubeovn/kube-ovn/commit/3cfafe40d35cfda70782c857a107918016ce22c6) ci: update trivy options (#1637)
+ * [71dba393](https://github.com/kubeovn/kube-ovn/commit/71dba393dd75fbc9726cdcce12fcf5bbb89f1d46) increase initial delay of ovs-ovn liveness probe (#1634)
+ * [cf0bbd92](https://github.com/kubeovn/kube-ovn/commit/cf0bbd9212c4438f8144d56f99a4f65a55550c94) wait ovn-central pods running before delete ovs-ovn pods (#1627)
+ * [0877c3a7](https://github.com/kubeovn/kube-ovn/commit/0877c3a753bfd3a85c4c4f67b7af3f38de38ed5a) get dbstatus for all ovn-central pod (#1619)
+ * [51c409bd](https://github.com/kubeovn/kube-ovn/commit/51c409bdc5e285154e007e085c15e098ee98dc81) fix issues about OVN policy routing
+ * [637503b4](https://github.com/kubeovn/kube-ovn/commit/637503b46f9429fef62b81cd6585796ca8255fad) use policy route instead of static route (#1618)
+
+### Contributors
+
+ * hzma
+ * xujunjie-cover
+ * zhangzujian
+ * 张祖建
 
 ## v1.9.4 (2022-06-19)
 
@@ -586,6 +638,20 @@
  * wangchl01
  * zhangzujian
  * 范日明
+
+## v1.8.8 (2022-06-28)
+
+ * [0fbefff5](https://github.com/kubeovn/kube-ovn/commit/0fbefff55b77bc991f97d216b301044af27a01b8) set release 1.8.8
+ * [37df8e76](https://github.com/kubeovn/kube-ovn/commit/37df8e76ada0731a7693d0cdd611736f9ab8aa72) prepare for release 1.8.8
+ * [bf873330](https://github.com/kubeovn/kube-ovn/commit/bf8733308c0b64fe1444e4d253463896e437864c) CI: delete resources in order to avoid a long time waiting for subnet deletions. (#1643)
+ * [de117356](https://github.com/kubeovn/kube-ovn/commit/de117356f0a6e0054b563005e994f11de7ae4a30) add ovn-ic HA deploy
+ * [1dcf9a43](https://github.com/kubeovn/kube-ovn/commit/1dcf9a43223c595fe4af8ca22f3c3826de656394) set networkpolicy log default to false
+
+### Contributors
+
+ * hzma
+ * lut777
+ * 张祖建
 
 ## v1.8.7 (2022-06-19)
 
