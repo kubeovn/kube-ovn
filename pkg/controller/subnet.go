@@ -473,6 +473,7 @@ func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason string, e
 
 func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	var err error
+
 	cachedSubnet, err := c.subnetsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -482,16 +483,12 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	subnet := cachedSubnet.DeepCopy()
-	deleted, err := c.handleSubnetFinalizer(subnet)
-	if err != nil {
-		klog.Errorf("handle subnet finalizer failed %v", err)
+	if err = formatSubnet(subnet, c); err != nil {
 		return err
 	}
-	if deleted {
-		return nil
-	}
 
-	if cachedSubnet, err = c.subnetsLister.Get(key); err != nil {
+	cachedSubnet, err = c.subnetsLister.Get(key)
+	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
@@ -499,8 +496,13 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	subnet = cachedSubnet.DeepCopy()
-	if err = formatSubnet(subnet, c); err != nil {
+	deleted, err := c.handleSubnetFinalizer(subnet)
+	if err != nil {
+		klog.Errorf("handle subnet finalizer failed %v", err)
 		return err
+	}
+	if deleted {
+		return nil
 	}
 
 	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
