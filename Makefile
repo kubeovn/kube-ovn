@@ -66,7 +66,7 @@ base-arm64:
 	docker buildx build --platform linux/arm64 --build-arg ARCH=arm64 -t $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-arm64 -o type=docker -f dist/images/Dockerfile.base dist/images/
 
 .PHONY: release
-release: lint build-go
+release: build-go
 	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
 	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-no-avx512 -o type=docker -f dist/images/Dockerfile.no-avx512 dist/images/
 	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-dpdk -o type=docker -f dist/images/Dockerfile.dpdk dist/images/
@@ -385,7 +385,7 @@ lint:
 		echo "Code differs from gofmt's style" 1>&2 && exit 1; \
 	fi
 	@GOOS=linux go vet ./...
-	@GOOS=linux gosec -exclude=G204,G601,G306 -exclude-dir=test -exclude-dir=pkg/client ./...
+	@GOOS=linux gosec -exclude=G204,G601,G306,G404 -exclude-dir=test -exclude-dir=pkg/client ./...
 
 .PHONY: lint-windows
 lint-windows:
