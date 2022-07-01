@@ -969,7 +969,7 @@ func setVfMac(deviceID string, vfIndex int, mac string) error {
 		devicePortNameFile := filepath.Join(util.NetSysDir, dev, "phys_port_name")
 		physPortName, err := sriovutilfs.Fs.ReadFile(devicePortNameFile)
 		if err != nil {
-			return err
+			continue
 		}
 
 		if !strings.Contains(strings.TrimSpace(string(physPortName)), "vf") {
