@@ -715,6 +715,10 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	}, time.Second, stopCh)
 
 	go wait.Until(func() {
+		c.SynRouteToPolicy()
+	}, 5*time.Second, stopCh)
+
+	go wait.Until(func() {
 		c.resyncExternalGateway()
 	}, time.Second, stopCh)
 
