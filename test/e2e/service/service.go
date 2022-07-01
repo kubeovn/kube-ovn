@@ -129,10 +129,11 @@ var _ = Describe("[Service]", func() {
 	Expect(err).NotTo(HaveOccurred())
 	checkCount := len(nodes.Items)
 
-	var ciliumChaining, proxyIpvsMode bool
+	//	var _ciliumChaining, proxyIpvsMode bool
+	var proxyIpvsMode bool
 	_, err = f.KubeClientSet.AppsV1().DaemonSets(namespace).Get(context.Background(), "cilium", metav1.GetOptions{})
 	if err == nil {
-		ciliumChaining = true
+		//	_ciliumChaining = true
 	} else {
 		Expect(errors.IsNotFound(err)).To(BeTrue())
 
@@ -166,9 +167,9 @@ var _ = Describe("[Service]", func() {
 		})
 
 		It("external to ClusterIP", func() {
-			if ciliumChaining {
-				return
-			}
+			/*			if ciliumChaining {
+						return
+					}*/
 
 			port := hostService.Spec.Ports[0].Port
 			for _, ip := range hostService.Spec.ClusterIPs {
@@ -199,9 +200,9 @@ var _ = Describe("[Service]", func() {
 		})
 
 		It("external to NodePort", func() {
-			if ciliumChaining {
-				return
-			}
+			/*			if ciliumChaining {
+						return
+					}*/
 
 			port := hostService.Spec.Ports[0].NodePort
 			for _, node := range nodes.Items {
@@ -232,9 +233,9 @@ var _ = Describe("[Service]", func() {
 		})
 
 		It("external to ClusterIP", func() {
-			if ciliumChaining {
-				return
-			}
+			/*			if ciliumChaining {
+						return
+					}*/
 
 			port := containerService.Spec.Ports[0].Port
 			for _, ip := range containerService.Spec.ClusterIPs {
@@ -265,9 +266,9 @@ var _ = Describe("[Service]", func() {
 		})
 
 		It("external to NodePort", func() {
-			if ciliumChaining {
-				return
-			}
+			/*			if ciliumChaining {
+						return
+					}*/
 
 			port := containerService.Spec.Ports[0].NodePort
 			for _, node := range nodes.Items {
@@ -298,9 +299,9 @@ var _ = Describe("[Service]", func() {
 		})
 
 		It("external to ClusterIP", func() {
-			if ciliumChaining {
-				return
-			}
+			/*			if ciliumChaining {
+						return
+					}*/
 
 			port := localEtpHostService.Spec.Ports[0].Port
 			for _, ip := range localEtpHostService.Spec.ClusterIPs {
@@ -309,9 +310,9 @@ var _ = Describe("[Service]", func() {
 		})
 
 		It("container to NodePort", func() {
-			if ciliumChaining {
-				return
-			}
+			/*			if ciliumChaining {
+						return
+					}*/
 
 			port := localEtpHostService.Spec.Ports[0].NodePort
 			for _, node := range nodes.Items {
@@ -324,9 +325,9 @@ var _ = Describe("[Service]", func() {
 		})
 
 		It("host to NodePort", func() {
-			if ciliumChaining {
-				return
-			}
+			/*			if ciliumChaining {
+						return
+					}*/
 
 			port := localEtpHostService.Spec.Ports[0].NodePort
 			for _, node := range nodes.Items {
@@ -341,9 +342,9 @@ var _ = Describe("[Service]", func() {
 		})
 
 		It("external to NodePort", func() {
-			if ciliumChaining {
-				return
-			}
+			/*			if ciliumChaining {
+						return
+					}*/
 
 			port := localEtpHostService.Spec.Ports[0].NodePort
 			for _, node := range nodes.Items {

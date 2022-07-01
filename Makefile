@@ -13,7 +13,7 @@ CONTROL_PLANE_TAINTS = node-role.kubernetes.io/master node-role.kubernetes.io/co
 MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:stable
 MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset.yml
 
-CILIUM_VERSION = 1.10.9
+CILIUM_VERSION = 1.11.6
 CILIUM_IMAGE_REPO = quay.io/cilium/cilium
 
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG)
@@ -161,7 +161,7 @@ kind-init-dual: kind-clean
 .PHONY: kind-init-cilium
 kind-init-cilium: kind-clean
 	kind delete cluster --name=kube-ovn
-	kube_proxy_mode=none ip_family=ipv4 ha=false single=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
+	kube_proxy_mode=iptables ip_family=ipv4 ha=false single=false j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
 	kind create cluster --config yamls/kind.yaml --name kube-ovn
 	kubectl describe no
 
@@ -317,12 +317,12 @@ kind-install-cilium: kind-load-image kind-untaint-control-plane
 		--set tunnel=disabled \
 		--set enableIPv4Masquerade=false \
 		--set enableIdentityMark=false \
-		--set kubeProxyReplacement=strict \
 		--set cni.chainingMode=generic-veth \
 		--set cni.customConf=true \
 		--set cni.configMap=cni-configuration
 	kubectl -n kube-system rollout status ds cilium --timeout 300s
-	ENABLE_SSL=true ENABLE_LB=false ENABLE_NP=false WITHOUT_KUBE_PROXY=true bash dist/images/install.sh
+	bash dist/images/cilium.sh
+	ENABLE_SSL=true ENABLE_LB=false ENABLE_NP=false WITHOUT_KUBE_PROXY=true CNI_CONFIG_PRIORITY=10 bash dist/images/install.sh
 	kubectl describe no
 
 .PHONY: kind-reload
