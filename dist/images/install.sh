@@ -188,7 +188,9 @@ fi
 kubectl label no -lbeta.kubernetes.io/os=linux kubernetes.io/os=linux --overwrite
 kubectl label no -l$LABEL kube-ovn/role=master --overwrite
 
-kubectl label no -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel  --overwrite
+if [ "$DPDK" = "true" -o "$HYBRID_DPDK" = "true" ]; then
+  kubectl label no -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel --overwrite
+fi
 
 echo "-------------------------------"
 echo ""
@@ -2291,7 +2293,6 @@ spec:
               memory: 1000Mi
       nodeSelector:
         kubernetes.io/os: "linux"
-        ovn.kubernetes.io/ovs_dp_type: kernel
       volumes:
         - name: host-modules
           hostPath:
