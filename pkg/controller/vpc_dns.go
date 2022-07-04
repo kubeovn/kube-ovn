@@ -21,6 +21,7 @@ import (
 	"k8s.io/klog/v2"
 	"os"
 	"path"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -63,7 +64,11 @@ func hostConfigFromReader() error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func(file *os.File) {
+		if err := file.Close(); err != nil {
+			klog.Errorf("failed to close file, %s", err)
+		}
+	}(file)
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -581,8 +586,8 @@ func (c *Controller) updateVpcDns() error {
 }
 
 func parseYamlToResource(file string, any interface{}) error {
-	filePath := path.Join(CorednsConfigDir, file)
-	fileBytes, err := ioutil.ReadFile(filePath)
+	filePath := filepath.Join(CorednsConfigDir, file)
+	fileBytes, err := ioutil.ReadFile(filepath.Clean(filePath))
 	if err != nil {
 		klog.Errorf("failed to read %s, %v", file, err)
 		return err
