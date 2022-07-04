@@ -515,6 +515,9 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		klog.Fatalf("failed to wait for caches to sync")
 	}
 
+	if err := c.ovnLegacyClient.SetLsDnatModDlDst(c.config.LsDnatModDlDst); err != nil {
+		klog.Fatal(err)
+	}
 	if err := c.ovnLegacyClient.SetUseCtInvMatch(); err != nil {
 		klog.Fatalf("failed to set NB_Global option use_ct_inv_match to false: %v", err)
 	}

@@ -13,6 +13,7 @@ HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_LB=${ENABLE_LB:-true}
 ENABLE_NP=${ENABLE_NP:-true}
 ENABLE_EIP_SNAT=${ENABLE_EIP_SNAT:-true}
+LS_DNAT_MOD_DL_DST=${LS_DNAT_MOD_DL_DST:-true}
 WITHOUT_KUBE_PROXY=${WITHOUT_KUBE_PROXY:-false}
 ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-true}
 CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
@@ -1952,7 +1953,7 @@ spec:
               command:
                 - bash
                 - /kube-ovn/ovs-dpdk-healthcheck.sh
-            initialDelaySeconds: 10
+            initialDelaySeconds: 60
             periodSeconds: 5
             failureThreshold: 5
             timeoutSeconds: 45
@@ -2047,7 +2048,6 @@ rules:
       - vlans/status
       - provider-networks
       - provider-networks/status
-      - networks
       - security-groups
       - security-groups/status
       - htbqoses
@@ -2454,7 +2454,7 @@ spec:
               command:
                 - bash
                 - /kube-ovn/ovs-healthcheck.sh
-            initialDelaySeconds: 10
+            initialDelaySeconds: 60
             periodSeconds: 5
             failureThreshold: 5
             timeoutSeconds: 45
@@ -2611,7 +2611,7 @@ spec:
               command:
                 - bash
                 - /kube-ovn/ovs-healthcheck.sh
-            initialDelaySeconds: 10
+            initialDelaySeconds: 60
             periodSeconds: 5
             failureThreshold: 5
             timeoutSeconds: 45
@@ -2740,6 +2740,7 @@ spec:
           - --network-type=$NETWORK_TYPE
           - --default-interface-name=$VLAN_INTERFACE_NAME
           - --default-vlan-id=$VLAN_ID
+          - --ls-dnat-mod-dl-dst=$LS_DNAT_MOD_DL_DST
           - --pod-nic-type=$POD_NIC_TYPE
           - --enable-lb=$ENABLE_LB
           - --enable-np=$ENABLE_NP

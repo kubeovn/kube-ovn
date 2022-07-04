@@ -75,6 +75,13 @@ func (c LegacyClient) SetAzName(azName string) error {
 	return nil
 }
 
+func (c LegacyClient) SetLsDnatModDlDst(enabled bool) error {
+	if _, err := c.ovnNbCommand("set", "NB_Global", ".", fmt.Sprintf("options:ls_dnat_mod_dl_dst=%v", enabled)); err != nil {
+		return fmt.Errorf("failed to set NB_Global option ls_dnat_mod_dl_dst to %v: %v", enabled, err)
+	}
+	return nil
+}
+
 func (c LegacyClient) SetUseCtInvMatch() error {
 	if _, err := c.ovnNbCommand("set", "NB_Global", ".", "options:use_ct_inv_match=false"); err != nil {
 		return fmt.Errorf("failed to set NB_Global option use_ct_inv_match to false: %v", err)
@@ -928,6 +935,17 @@ func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, router string, route
 
 // AddPolicyRoute add a policy route rule in ovn
 func (c LegacyClient) AddPolicyRoute(router string, priority int32, match, action, nextHop string, externalIDs map[string]string) error {
+	consistent, err := c.CheckPolicyRouteNexthopConsistent(router, match, nextHop, priority)
+	if err != nil {
+		return err
+	}
+	if !consistent {
+		if err := c.DeletePolicyRoute(router, priority, match); err != nil {
+			klog.Errorf("failed to delete policy route: %v", err)
+			return err
+		}
+	}
+
 	// lr-policy-add ROUTER PRIORITY MATCH ACTION [NEXTHOP]
 	args := []string{MayExist, "lr-policy-add", router, strconv.Itoa(int(priority)), match, action}
 	if nextHop != "" {
@@ -1586,14 +1604,19 @@ func (c LegacyClient) CreateNpAddressSet(asName, npNamespace, npName, direction 
 	return err
 }
 
-func (c LegacyClient) CreateIngressACL(pgName, asIngressName, asExceptName, svcAsName, protocol string, npp []netv1.NetworkPolicyPort) error {
-	var allowArgs []string
+func (c LegacyClient) CreateIngressACL(pgName, asIngressName, asExceptName, svcAsName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool) error {
+	var allowArgs, ovnArgs []string
 
 	ipSuffix := "ip4"
 	if protocol == kubeovnv1.ProtocolIPv6 {
 		ipSuffix = "ip6"
 	}
-	ovnArgs := []string{MayExist, "--type=port-group", "--log", fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "to-lport", util.IngressDefaultDrop, fmt.Sprintf("outport==@%s && ip", pgName), "drop"}
+
+	if logEnable {
+		ovnArgs = []string{MayExist, "--type=port-group", "--log", fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "to-lport", util.IngressDefaultDrop, fmt.Sprintf("outport==@%s && ip", pgName), "drop"}
+	} else {
+		ovnArgs = []string{MayExist, "--type=port-group", fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "to-lport", util.IngressDefaultDrop, fmt.Sprintf("outport==@%s && ip", pgName), "drop"}
+	}
 
 	if len(npp) == 0 {
 		allowArgs = []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("%s.src == $%s && %s.src != $%s && outport==@%s && ip", ipSuffix, asIngressName, ipSuffix, asExceptName, pgName), "allow-related"}
@@ -1616,15 +1639,18 @@ func (c LegacyClient) CreateIngressACL(pgName, asIngressName, asExceptName, svcA
 	return err
 }
 
-func (c LegacyClient) CreateEgressACL(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, portSvcName string) error {
-	var allowArgs []string
+func (c LegacyClient) CreateEgressACL(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, portSvcName string, logEnable bool) error {
+	var allowArgs, ovnArgs []string
 
 	ipSuffix := "ip4"
 	if protocol == kubeovnv1.ProtocolIPv6 {
 		ipSuffix = "ip6"
 	}
-	ovnArgs := []string{"--", MayExist, "--type=port-group", "--log", fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "from-lport", util.EgressDefaultDrop, fmt.Sprintf("inport==@%s && ip", pgName), "drop"}
-
+	if logEnable {
+		ovnArgs = []string{"--", MayExist, "--type=port-group", "--log", fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "from-lport", util.EgressDefaultDrop, fmt.Sprintf("inport==@%s && ip", pgName), "drop"}
+	} else {
+		ovnArgs = []string{"--", MayExist, "--type=port-group", fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "from-lport", util.EgressDefaultDrop, fmt.Sprintf("inport==@%s && ip", pgName), "drop"}
+	}
 	if len(npp) == 0 {
 		allowArgs = []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("%s.dst == $%s && %s.dst != $%s && inport==@%s && ip", ipSuffix, asEgressName, ipSuffix, asExceptName, pgName), "allow-related"}
 		ovnArgs = append(ovnArgs, allowArgs...)
@@ -2282,6 +2308,28 @@ func (c LegacyClient) SetPolicyRouteExternalIds(priority int32, match string, na
 	return nil
 }
 
+func (c LegacyClient) CheckPolicyRouteNexthopConsistent(router, match, nexthop string, priority int32) (bool, error) {
+	exist, err := c.PolicyRouteExists(priority, match)
+	if err != nil {
+		return false, err
+	}
+	if !exist {
+		return false, nil
+	}
+
+	nextHops, _, err := c.GetPolicyRouteParas(priority, match)
+	if err != nil {
+		klog.Errorf("failed to get policy route paras, %v", err)
+		return false, err
+	}
+	for _, next := range nextHops {
+		if next == nexthop {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 type DHCPOptionsUUIDs struct {
 	DHCPv4OptionsUUID string
 	DHCPv6OptionsUUID string
@@ -2653,4 +2701,35 @@ func (c *LegacyClient) GetLspExternalIds(lsp string) map[string]string {
 	}
 
 	return nameNsMap
+}
+
+func (c LegacyClient) SetAclLog(pgName string, logEnable, isIngress bool) error {
+	var direction, match string
+	if isIngress {
+		direction = "to-lport"
+		match = fmt.Sprintf("outport==@%s && ip", pgName)
+	} else {
+		direction = "from-lport"
+		match = fmt.Sprintf("inport==@%s && ip", pgName)
+	}
+
+	priority, _ := strconv.Atoi(util.IngressDefaultDrop)
+	result, err := c.CustomFindEntity("acl", []string{"_uuid"}, fmt.Sprintf("priority=%d", priority), fmt.Sprintf(`match="%s"`, match), fmt.Sprintf("direction=%s", direction), "action=drop")
+	if err != nil {
+		klog.Errorf("failed to get acl UUID: %v", err)
+		return err
+	}
+
+	if len(result) == 0 {
+		return nil
+	}
+
+	uuid := result[0]["_uuid"][0]
+	ovnCmd := []string{"set", "acl", uuid, fmt.Sprintf("log=%v", logEnable)}
+
+	if _, err := c.ovnNbCommand(ovnCmd...); err != nil {
+		return fmt.Errorf("failed to set acl log, %v", err)
+	}
+
+	return nil
 }

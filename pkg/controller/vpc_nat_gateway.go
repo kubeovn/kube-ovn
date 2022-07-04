@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"strings"
 	"time"
 
@@ -26,10 +25,10 @@ import (
 )
 
 var (
-	vpcNatImage                     = ""
-	vpcNatEnabled                   = "unknown"
-	lastVpcNatCM  map[string]string = nil
-	createAt                        = ""
+	vpcNatImage     = ""
+	vpcNatEnabled   = "unknown"
+	VpcNatCmVersion = ""
+	createAt        = ""
 )
 
 const (
@@ -46,7 +45,7 @@ const (
 	natGwSubnetRouteDel = "subnet-route-del"
 )
 
-func genNatGwDpName(name string) string {
+func genNatGwStsName(name string) string {
 	return fmt.Sprintf("vpc-nat-gw-%s", name)
 }
 
@@ -67,11 +66,11 @@ func (c *Controller) resyncVpcNatGwConfig() {
 			return
 		}
 		vpcNatEnabled = "false"
-		lastVpcNatCM = nil
+		VpcNatCmVersion = ""
 		klog.Info("finish clean up vpc nat gateway")
 		return
 	} else {
-		if vpcNatEnabled == "true" && lastVpcNatCM != nil && reflect.DeepEqual(cm.Data, lastVpcNatCM) {
+		if vpcNatEnabled == "true" && VpcNatCmVersion == cm.ResourceVersion {
 			return
 		}
 
@@ -88,7 +87,7 @@ func (c *Controller) resyncVpcNatGwConfig() {
 		}
 		vpcNatImage = cm.Data["image"]
 		vpcNatEnabled = "true"
-		lastVpcNatCM = cm.Data
+		VpcNatCmVersion = cm.ResourceVersion
 		for _, gw := range gws {
 			c.addOrUpdateVpcNatGatewayQueue.Add(gw.Name)
 		}
@@ -210,10 +209,12 @@ func (c *Controller) processNextWorkItem(processName string, queue workqueue.Rat
 func (c *Controller) handleDelVpcNatGw(key string) error {
 	c.vpcNatGwKeyMutex.Lock(key)
 	defer c.vpcNatGwKeyMutex.Unlock(key)
-	_, err := c.vpcNatGatewayLister.Get(key)
+	name := genNatGwStsName(key)
+	klog.Infof("delete vpc nat gw %s", name)
+	err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).Delete(context.Background(), name, metav1.DeleteOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			return c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Delete(context.Background(), genNatGwDpName(key), metav1.DeleteOptions{})
+			return nil
 		}
 		return err
 	}
@@ -221,7 +222,7 @@ func (c *Controller) handleDelVpcNatGw(key string) error {
 }
 
 func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
-	// create nat gw deployment
+	// create nat gw statefulset
 	c.vpcNatGwKeyMutex.Lock(key)
 	defer c.vpcNatGwKeyMutex.Unlock(key)
 	if vpcNatEnabled != "true" {
@@ -247,10 +248,10 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		return err
 	}
 
-	// check or create deployment
+	// check or create statefulset
 	needToCreate := false
-	oldDp, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).
-		Get(context.Background(), genNatGwDpName(gw.Name), metav1.GetOptions{})
+	oldSts, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
+		Get(context.Background(), genNatGwStsName(gw.Name), metav1.GetOptions{})
 
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -260,23 +261,23 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		}
 	}
 
-	newDp := c.genNatGwDeployment(gw, oldDp.DeepCopy())
+	newSts := c.genNatGwStatefulSet(gw, oldSts.DeepCopy())
 
 	if needToCreate {
-		_, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).
-			Create(context.Background(), newDp, metav1.CreateOptions{})
+		_, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
+			Create(context.Background(), newSts, metav1.CreateOptions{})
 
 		if err != nil {
-			klog.Errorf("failed to create deployment '%s', err: %v", newDp.Name, err)
+			klog.Errorf("failed to create statefulset '%s', err: %v", newSts.Name, err)
 			return err
 		}
 		return nil
 	} else {
-		_, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).
-			Update(context.Background(), newDp, metav1.UpdateOptions{})
+		_, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
+			Update(context.Background(), newSts, metav1.UpdateOptions{})
 
 		if err != nil {
-			klog.Errorf("failed to update deployment '%s', err: %v", newDp.Name, err)
+			klog.Errorf("failed to update statefulset '%s', err: %v", newSts.Name, err)
 			return err
 		}
 	}
@@ -633,9 +634,9 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 	return nil
 }
 
-func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway, oldDeploy *v1.Deployment) (dp *v1.Deployment) {
+func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1.StatefulSet) (newSts *v1.StatefulSet) {
 	replicas := int32(1)
-	name := genNatGwDpName(gw.Name)
+	name := genNatGwStsName(gw.Name)
 	allowPrivilegeEscalation := true
 	privileged := true
 	labels := map[string]string{
@@ -643,8 +644,8 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway, oldDeploy *
 		util.VpcNatGatewayLabel: "true",
 	}
 	newPodAnnotations := map[string]string{}
-	if oldDeploy != nil && len(oldDeploy.Annotations) != 0 {
-		newPodAnnotations = oldDeploy.Annotations
+	if oldSts != nil && len(oldSts.Annotations) != 0 {
+		newPodAnnotations = oldSts.Annotations
 	}
 
 	podAnnotations := map[string]string{
@@ -667,11 +668,11 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway, oldDeploy *
 	}
 	klog.V(3).Infof("prepare for vpc nat gateway pod, node selector: %v", selectors)
 
-	dp = &v1.Deployment{
+	newSts = &v1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: v1.DeploymentSpec{
+		Spec: v1.StatefulSetSpec{
 			Replicas: &replicas,
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels,
@@ -698,8 +699,8 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway, oldDeploy *
 					NodeSelector: selectors,
 				},
 			},
-			Strategy: v1.DeploymentStrategy{
-				Type: v1.RecreateDeploymentStrategyType,
+			UpdateStrategy: v1.StatefulSetUpdateStrategy{
+				Type: v1.RollingUpdateStatefulSetStrategyType,
 			},
 		},
 	}
@@ -720,7 +721,7 @@ func (c *Controller) cleanUpVpcNatGw() error {
 
 func (c *Controller) getNatGwPod(name string) (*corev1.Pod, error) {
 	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: map[string]string{"app": genNatGwDpName(name), util.VpcNatGatewayLabel: "true"},
+		MatchLabels: map[string]string{"app": genNatGwStsName(name), util.VpcNatGatewayLabel: "true"},
 	})
 
 	pods, err := c.podsLister.Pods(c.config.PodNamespace).List(sel)

@@ -106,11 +106,10 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 
 		if p.Annotations != nil &&
 			p.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" &&
-			p.Status.HostIP != "" && p.Status.PodIP != "" {
-			if p.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)] != "true" {
-				c.updatePodQueue.Add(key)
-				return
-			}
+			p.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)] != "true" &&
+			p.Status.HostIP != "" && p.Status.PodIP == "" {
+			c.updatePodQueue.Add(key)
+			return
 		}
 
 		if p.Annotations != nil && p.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
@@ -1230,17 +1229,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	nicName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 
 	// The static ip can be assigned from any subnet after ns supports multi subnets
-	nsNets, _ := c.getNsAvailableSubnets(pod)
-	found := false
-	for _, nsNet := range nsNets {
-		if nsNet.Subnet.Name == podNet.Subnet.Name {
-			found = true
-			break
-		}
-	}
-	if !found {
-		nsNets = append(nsNets, podNet)
-	}
+	nsNets, _ := c.getNsAvailableSubnets(pod, podNet)
 	var v4IP, v6IP, mac string
 	var err error
 
@@ -1269,7 +1258,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 				for _, staticIP := range strings.Split(staticIPs, ",") {
 					if c.ipam.IsIPAssignedToPod(staticIP, net.Subnet.Name, key) {
 						klog.Errorf("static address %s for %s has been assigned", staticIP, key)
-						break
+						continue
 					}
 				}
 
@@ -1534,8 +1523,10 @@ func (c *Controller) getNameByPod(pod *v1.Pod) string {
 	return pod.Name
 }
 
-func (c *Controller) getNsAvailableSubnets(pod *v1.Pod) ([]*kubeovnNet, error) {
+func (c *Controller) getNsAvailableSubnets(pod *v1.Pod, podNet *kubeovnNet) ([]*kubeovnNet, error) {
 	var result []*kubeovnNet
+	// keep the annotation subnet of the pod in first position
+	result = append(result, podNet)
 
 	ns, err := c.namespacesLister.Get(pod.Namespace)
 	if err != nil {
@@ -1548,7 +1539,7 @@ func (c *Controller) getNsAvailableSubnets(pod *v1.Pod) ([]*kubeovnNet, error) {
 
 	subnetNames := ns.Annotations[util.LogicalSwitchAnnotation]
 	for _, subnetName := range strings.Split(subnetNames, ",") {
-		if subnetName == "" {
+		if subnetName == "" || subnetName == podNet.Subnet.Name {
 			continue
 		}
 		subnet, err := c.subnetsLister.Get(subnetName)
