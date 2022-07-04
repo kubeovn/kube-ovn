@@ -401,9 +401,9 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 
 func (c *Controller) getPortSg(port *ovnnb.LogicalSwitchPort) ([]string, error) {
 	var sgList []string
-	for _, value := range port.ExternalIDs {
-		if strings.HasPrefix(value, "associated_sg_") && strings.HasSuffix(value, "true") {
-			sgName := strings.ReplaceAll(strings.Split(value, "=")[0], "associated_sg_", "")
+	for key, value := range port.ExternalIDs {
+		if strings.HasPrefix(key, "associated_sg_") && value == "true" {
+			sgName := strings.ReplaceAll(key, "associated_sg_", "")
 			sgList = append(sgList, sgName)
 		}
 	}
