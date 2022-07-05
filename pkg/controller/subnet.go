@@ -940,6 +940,10 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
 					continue
 				}
+				// Pod will add to port-group when pod get updated
+				if pod.Spec.NodeName == "" {
+					continue
+				}
 
 				pgName := getOverlaySubnetsPortGroupName(subnet.Name, pod.Spec.NodeName)
 				c.ovnPgKeyMutex.Lock(pgName)
