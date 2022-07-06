@@ -2024,6 +2024,9 @@ spec:
               fieldRef:
                 fieldPath: spec.nodeName
         volumeMounts:
+          - name: host-modules
+            mountPath: /lib/modules
+            readOnly: true
           - mountPath: /etc/openvswitch
             name: systemid
           - mountPath: /etc/cni/net.d
@@ -2071,6 +2074,9 @@ spec:
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
+        - name: host-modules
+          hostPath:
+            path: /lib/modules
         - name: systemid
           hostPath:
             path: /etc/origin/openvswitch
