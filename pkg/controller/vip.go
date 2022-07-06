@@ -513,7 +513,7 @@ func (c *Controller) patchVipStatus(key, v4ip string, ready bool) error {
 	return nil
 }
 
-func (c *Controller) podReuseVip(key, podName string, isStsPod bool) error {
+func (c *Controller) podReuseVip(key, portName string, isStsPod bool) error {
 	// when pod use static vip, label vip reserved for pod
 	oriVip, err := c.virtualIpsLister.Get(key)
 	if err != nil {
@@ -524,37 +524,31 @@ func (c *Controller) podReuseVip(key, podName string, isStsPod bool) error {
 		return err
 	}
 	vip := oriVip.DeepCopy()
-	var needUpdateLabel bool
 	var op string
 
 	if vip.Labels[util.IpReservedLabel] != "" {
-		if isStsPod && vip.Labels[util.IpReservedLabel] == podName {
+		if isStsPod && vip.Labels[util.IpReservedLabel] == portName {
 			return nil
 		} else {
 			return fmt.Errorf("vip '%s' is in use by pod %s", vip.Name, vip.Labels[util.IpReservedLabel])
 		}
 	}
-	if podName != "" {
-		op = "replace"
-		vip.Labels[util.IpReservedLabel] = podName
-		needUpdateLabel = true
+	op = "replace"
+	vip.Labels[util.IpReservedLabel] = portName
+	patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
+	raw, _ := json.Marshal(vip.Labels)
+	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
+	if _, err = c.config.KubeOvnClient.KubeovnV1().Vips().Patch(context.Background(), vip.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
+		klog.Errorf("failed to patch label for vip '%s', %v", vip.Name, err)
+		return err
 	}
-	if needUpdateLabel {
-		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
-		raw, _ := json.Marshal(vip.Labels)
-		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-		_, err := c.config.KubeOvnClient.KubeovnV1().Vips().Patch(context.Background(), vip.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
-		if err != nil {
-			klog.Errorf("failed to patch label for vip '%s', %v", vip.Name, err)
-			return err
-		}
-		c.ipam.ReleaseAddressByPod(key)
-		c.updateSubnetStatusQueue.Add(vip.Spec.Subnet)
-	}
+	c.ipam.ReleaseAddressByPod(key)
+	c.updateSubnetStatusQueue.Add(vip.Spec.Subnet)
 	return nil
 }
 
-func (c *Controller) podNotReuseVip(key string) error {
+func (c *Controller) releaseVip(key string) error {
+	// clean vip label when pod delete
 	oriVip, err := c.virtualIpsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -574,6 +568,7 @@ func (c *Controller) podNotReuseVip(key string) error {
 		needUpdateLabel = true
 	}
 	if needUpdateLabel {
+		klog.V(3).Infof("clean reserved label from vip %s", key)
 		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
 		raw, _ := json.Marshal(vip.Labels)
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
@@ -585,6 +580,7 @@ func (c *Controller) podNotReuseVip(key string) error {
 		if _, _, _, err = c.ipam.GetStaticAddress(key, vip.Name, vip.Spec.V4ip, vip.Spec.MacAddress, vip.Spec.Subnet, false); err != nil {
 			klog.Errorf("failed to recover IPAM from VIP CR %s: %v", vip.Name, err)
 		}
+		c.updateSubnetStatusQueue.Add(vip.Spec.Subnet)
 	}
 	return nil
 }

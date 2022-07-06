@@ -686,8 +686,8 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 			klog.Errorf("failed to delete attach ip for pod %v, %v, please delete attach ip manually", pod.Name, err)
 		}
 		if pod.Annotations[util.VipAnnotation] != "" {
-			if err = c.podNotReuseVip(pod.Annotations[util.VipAnnotation]); err != nil {
-				klog.Errorf("failed to clean label for ip %s, %v", pod.Annotations[util.VipAnnotation], err)
+			if err = c.releaseVip(pod.Annotations[util.VipAnnotation]); err != nil {
+				klog.Errorf("failed to clean label from vip %s, %v", pod.Annotations[util.VipAnnotation], err)
 				return err
 			}
 		}
@@ -1206,8 +1206,8 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 			klog.Errorf("failed to get static vip '%s', %v", vipName, err)
 			return "", "", "", podNet.Subnet, err
 		}
-		nicName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-		if err = c.podReuseVip(vipName, nicName, isStsPod); err != nil {
+		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+		if err = c.podReuseVip(vipName, portName, isStsPod); err != nil {
 			return "", "", "", podNet.Subnet, err
 		}
 		return vip.Spec.V4ip, vip.Spec.V6ip, vip.Spec.MacAddress, podNet.Subnet, nil
