@@ -185,7 +185,7 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 	}
 	vip := cachedVip.DeepCopy()
 	klog.V(3).Infof("handle add vip %s", vip.Name)
-	var sourceV4Ip, v4ip, v6ip, mac, nicName, subnetName, parentV4ip, parentV6ip, parentMac string
+	var sourceV4Ip, v4ip, v6ip, mac, subnetName, parentV4ip, parentV6ip, parentMac string
 	subnetName = vip.Spec.Subnet
 	if subnetName == "" {
 		return fmt.Errorf("failed to create vip '%s', subnet should be set", key)
@@ -194,13 +194,13 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 	if err != nil {
 		return err
 	}
-	nicName = ovs.PodNameToPortName(vip.Name, vip.Namespace, subnet.Spec.Provider)
+	portName := ovs.PodNameToPortName(vip.Name, vip.Namespace, subnet.Spec.Provider)
 	sourceV4Ip = vip.Spec.V4ip
 	if sourceV4Ip != "" {
-		v4ip, v6ip, mac, err = c.acquireStaticVirtualAddress(subnet.Name, vip.Name, nicName, sourceV4Ip)
+		v4ip, v6ip, mac, err = c.acquireStaticVirtualAddress(subnet.Name, vip.Name, portName, sourceV4Ip)
 	} else {
 		// Random allocate
-		v4ip, v6ip, mac, err = c.acquireVirtualAddress(subnet.Name, vip.Name, nicName)
+		v4ip, v6ip, mac, err = c.acquireVirtualAddress(subnet.Name, vip.Name, portName)
 	}
 	if err != nil {
 		return err

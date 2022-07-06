@@ -234,15 +234,15 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 	}
 	eip := cachedEip.DeepCopy()
 	klog.V(3).Infof("handle add eip %s", key)
-	var v4ip, v6ip, mac, nicName, eipV4Cidr, gw string
-	nicName = ovs.PodNameToPortName(eip.Name, eip.Namespace, subnetProvider)
+	var v4ip, v6ip, mac, eipV4Cidr, gw string
+	portName := ovs.PodNameToPortName(eip.Name, eip.Namespace, subnetProvider)
 	if eip.Spec.V4ip != "" {
-		if v4ip, v6ip, mac, err = c.acquireStaticEip(eip.Name, eip.Namespace, nicName, eip.Spec.V4ip); err != nil {
+		if v4ip, v6ip, mac, err = c.acquireStaticEip(eip.Name, eip.Namespace, portName, eip.Spec.V4ip); err != nil {
 			return err
 		}
 	} else {
 		// Random allocate
-		if v4ip, v6ip, mac, err = c.acquireEip(eip.Name, eip.Namespace, nicName); err != nil {
+		if v4ip, v6ip, mac, err = c.acquireEip(eip.Name, eip.Namespace, portName); err != nil {
 			return err
 		}
 	}
@@ -377,7 +377,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 	// eip change ip
 	if c.eipChangeIP(eip) {
 		klog.V(3).Infof("eip change ip, old ip '%s', new ip '%s'", eip.Status.IP, eip.Spec.V4ip)
-		var v4Cidr, gw, v4ip, v6ip, mac, nicName, natType, natName string
+		var v4Cidr, gw, v4ip, v6ip, mac, natType, natName string
 		if v4Cidr, err = c.getEipV4Cidr(eip.Status.IP); err != nil {
 			klog.Errorf("failed to get old eip cidr, %v", err)
 			return err
@@ -389,8 +389,8 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 		}
 		c.ipam.ReleaseAddressByPod(key)
 		// create new
-		nicName = ovs.PodNameToPortName(eip.Name, eip.Namespace, subnetProvider)
-		if v4ip, v6ip, mac, err = c.acquireStaticEip(eip.Name, eip.Namespace, nicName, eip.Spec.V4ip); err != nil {
+		portName := ovs.PodNameToPortName(eip.Name, eip.Namespace, subnetProvider)
+		if v4ip, v6ip, mac, err = c.acquireStaticEip(eip.Name, eip.Namespace, portName, eip.Spec.V4ip); err != nil {
 			return err
 		}
 		if v4Cidr, err = c.getEipV4Cidr(eip.Spec.V4ip); err != nil {
