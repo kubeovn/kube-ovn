@@ -60,41 +60,19 @@ Kube-OVN is easy to install with all necessary components/dependencies included.
 If you want to install Kubernetes from scratch, you can try [kubespray](https://github.com/kubernetes-sigs/kubespray/blob/master/docs/kube-ovn.md) or for Chinese users try [kubeasz](https://github.com/easzlab/kubeasz/blob/master/docs/setup/network-plugin/kube-ovn.md) to deploy a production ready Kubernetes cluster with Kube-OVN embedded.
 
 ## Documents
-- [Namespaced Subnets](docs/subnet.md)
-- [Subnet Isolation](docs/subnet.md#isolation)
-- [Static IP](docs/static-ip.md)
-- [Pod NAT and EIP](docs/snat-and-eip.md)
-- [Dynamic QoS](docs/qos.md)
-- [Subnet Gateway and Direct connect](docs/subnet.md#gateway)
-- [Pod Gateway](docs/pod-gw.md)
-- Multi-Cluster Network
-  - [Multi Cluster with ovn-ic](docs/cluster-interconnection.md)
-  - [Multi Cluster with Submariner](docs/cluster-submariner.md)
-- Network interconnection with OpenStack
-  - [Separated Kubernetes and OpenStack connected by OVN-IC](docs/OpenStackK8sInterconnection.md)
-  - [Kubernetes and OpenStack based on the same OVN deployment](docs/OpenstackOnKubernetes.md)
-- [BGP support](docs/bgp.md)
-- [Multi NIC Support](docs/multi-nic.md)
-- Hardware Offload for [Mellanox](docs/hw-offload-mellanox.md) and [Corigine](docs/hw-offload-corigine.md)
-- [Vlan/Underlay Support](docs/vlan.md)
-- [DPDK Support](docs/dpdk.md)
-- [Traffic Mirror](docs/mirror.md)
-- [IPv6](docs/ipv6.md)
-- [DualStack](docs/dual-stack.md)
-- [VPC](docs/vpc.md)
-- [Tracing/Diagnose/Dump Traffic with Kubectl Plugin](docs/kubectl-plugin.md)
-- [Prometheus Integration](docs/prometheus.md)
-- [Metrics](docs/ovn-ovs-monitor.md)
-- [Performance Tuning](docs/performance-tuning.md)
-- [Cilium Integration](docs/IntegrateCiliumIntoKubeOVN.md)
-- [F5 CES Integration](https://github.com/f5devcentral/container-egress-service/wiki)
-- [Windows Support](docs/windows-support.md)
+
+- [Overview](https://kubeovn.github.io/docs/en/)
+- [Getting Start](https://kubeovn.github.io/docs/en/start/prepare/)
+- [User Guide](https://kubeovn.github.io/docs/en/guide/setup-options/)
+- [Operations](https://kubeovn.github.io/docs/en/ops/kubectl-ko/)
+- [Advanced Usage](https://kubeovn.github.io/docs/en/advance/multi-nic/)
+- [Reference](https://kubeovn.github.io/docs/en/reference/architecture/)
 
 ## Contribution
 We are looking forward to your PR!
 
-- [Development Guide](docs/development.md)
-- [Architecture Guide](ARCHITECTURE.MD)
+- [Development Guide](https://kubeovn.github.io/docs/en/reference/dev-env/)
+- [Architecture Guide](https://kubeovn.github.io/docs/en/reference/architecture/)
 
 
 ## FAQ
@@ -126,3 +104,7 @@ The Kube-OVN community is waiting for your participation!
 
 ## License
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Falauda%2Fkube-ovn.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Falauda%2Fkube-ovn?ref=badge_large)
+
+<a href="https://trackgit.com">
+<img src="https://us-central1-trackgit-analytics.cloudfunctions.net/token/ping/l57vf80m7ckk59iv8ll5" alt="trackgit-views" />
+</a>

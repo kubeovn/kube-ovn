@@ -34,11 +34,11 @@ func NewNbClient(addr string, timeout int) (client.Client, error) {
 	}
 
 	logger := stdr.NewWithOptions(log.New(os.Stderr, "", log.LstdFlags), stdr.Options{LogCaller: stdr.All}).
-		WithName("libovsdb").
-		WithValues("database", dbModel.Name())
+		WithName("libovsdb")
+	stdr.SetVerbosity(3)
 	options := []client.Option{
 		client.WithReconnect(time.Duration(timeout)*time.Second, &backoff.ZeroBackOff{}),
-		client.WithLeaderOnly(false),
+		client.WithLeaderOnly(true),
 		client.WithLogger(&logger),
 	}
 
