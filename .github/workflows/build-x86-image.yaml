@@ -1218,6 +1218,48 @@ jobs:
         run: |
           sudo sh dist/images/cleanup.sh
 
+  installation-compatibility-e2e:
+    needs: build
+    name: installation-compatibility-e2e
+    runs-on: ubuntu-20.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Install Kind
+        run: |
+          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
+          chmod +x ./kind
+          sudo mv kind /usr/local/bin
+
+      - name: Init Kind
+        run: |
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH k8s_version=v1.23.6 make kind-init
+
+      - name: Download image
+        uses: actions/download-artifact@v3
+        with:
+          name: kube-ovn
+
+      - name: Load Image
+        run: |
+          docker load --input kube-ovn.tar
+
+      - name: Install Kube-OVN
+        uses: nick-invision/retry@v2
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          shell: bash
+          command: sudo PATH=~/.local/bin:$PATH make kind-install
+
+      - name: Cleanup
+        run: |
+          sudo sh dist/images/cleanup.sh
+
   push:
     needs:
       - single-e2e
@@ -1238,6 +1280,7 @@ jobs:
       - multus-e2e
       - ovnic-e2e
       - cilium-e2e
+      - installation-compatibility-e2e
     name: push
     runs-on: ubuntu-18.04
     steps:
