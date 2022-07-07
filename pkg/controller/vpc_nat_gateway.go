@@ -44,7 +44,6 @@ const (
 	natGwSubnetRouteAdd    = "subnet-route-add"
 	natGwSubnetRouteDel    = "subnet-route-del"
 	natGwExtSubnetRouteAdd = "ext-subnet-route-add"
-	natGwExtSubnetRouteDel = "ext-subnet-route-del"
 )
 
 func genNatGwStsName(name string) string {
