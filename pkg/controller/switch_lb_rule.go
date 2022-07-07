@@ -102,7 +102,7 @@ func (c *Controller) processSwitchLBRuleWorkItem(processName string, queue workq
 			return nil
 		}
 		if err := handler(key); err != nil {
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+			return fmt.Errorf("error syncing '%s': %s, requeuing", key.Name, err.Error())
 		}
 		queue.Forget(obj)
 		return nil
