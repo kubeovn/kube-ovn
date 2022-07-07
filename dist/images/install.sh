@@ -2719,6 +2719,9 @@ spec:
           - name: RPMS
             value: $RPMS
         volumeMounts:
+          - name: host-modules
+            mountPath: /lib/modules
+            readOnly: true
           - name: shared-dir
             mountPath: /var/lib/kubelet/pods
           - mountPath: /etc/openvswitch
@@ -2769,6 +2772,9 @@ spec:
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
+        - name: host-modules
+          hostPath:
+            path: /lib/modules
         - name: shared-dir
           hostPath:
             path: /var/lib/kubelet/pods
