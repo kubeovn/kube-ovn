@@ -685,6 +685,12 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 		if err = c.deleteAttachmentNetWorkIP(pod); err != nil {
 			klog.Errorf("failed to delete attach ip for pod %v, %v, please delete attach ip manually", pod.Name, err)
 		}
+		if pod.Annotations[util.VipAnnotation] != "" {
+			if err = c.releaseVip(pod.Annotations[util.VipAnnotation]); err != nil {
+				klog.Errorf("failed to clean label from vip %s, %v", pod.Annotations[util.VipAnnotation], err)
+				return err
+			}
+		}
 	}
 	c.ipam.ReleaseAddressByPod(key)
 
@@ -1191,6 +1197,22 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	podName := c.getNameByPod(pod)
 	key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
 
+	isStsPod, _ := isStatefulSetPod(pod)
+	// if pod has static vip
+	vipName := pod.Annotations[util.VipAnnotation]
+	if vipName != "" {
+		vip, err := c.virtualIpsLister.Get(vipName)
+		if err != nil {
+			klog.Errorf("failed to get static vip '%s', %v", vipName, err)
+			return "", "", "", podNet.Subnet, err
+		}
+		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+		if err = c.podReuseVip(vipName, portName, isStsPod); err != nil {
+			return "", "", "", podNet.Subnet, err
+		}
+		return vip.Spec.V4ip, vip.Spec.V6ip, vip.Spec.MacAddress, podNet.Subnet, nil
+	}
+
 	macStr := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
 	if macStr != "" {
 		if _, err := net.ParseMAC(macStr); err != nil {
@@ -1203,9 +1225,9 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)] == "" {
 		var skippedAddrs []string
 		for {
-			nicName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+			portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 
-			ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, nicName, macStr, podNet.Subnet.Name, skippedAddrs, !podNet.AllowLiveMigration)
+			ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, portName, macStr, podNet.Subnet.Name, skippedAddrs, !podNet.AllowLiveMigration)
 			if err != nil {
 				return "", "", "", podNet.Subnet, err
 			}
@@ -1226,7 +1248,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		}
 	}
 
-	nicName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+	portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 
 	// The static ip can be assigned from any subnet after ns supports multi subnets
 	nsNets, _ := c.getNsAvailableSubnets(pod, podNet)
@@ -1238,7 +1260,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		ipStr := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
 
 		for _, net := range nsNets {
-			v4IP, v6IP, mac, err = c.acquireStaticAddress(key, nicName, ipStr, macStr, net.Subnet.Name, net.AllowLiveMigration)
+			v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, macStr, net.Subnet.Name, net.AllowLiveMigration)
 			if err == nil {
 				return v4IP, v6IP, mac, net.Subnet, nil
 			}
@@ -1252,7 +1274,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		ipPool[i] = strings.TrimSpace(ip)
 	}
 
-	if ok, _ := isStatefulSetPod(pod); !ok {
+	if !isStsPod {
 		for _, net := range nsNets {
 			for _, staticIPs := range ipPool {
 				for _, staticIP := range strings.Split(staticIPs, ",") {
@@ -1262,7 +1284,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 					}
 				}
 
-				v4IP, v6IP, mac, err = c.acquireStaticAddress(key, nicName, staticIPs, macStr, net.Subnet.Name, net.AllowLiveMigration)
+				v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, staticIPs, macStr, net.Subnet.Name, net.AllowLiveMigration)
 				if err == nil {
 					return v4IP, v6IP, mac, net.Subnet, nil
 				}
@@ -1275,7 +1297,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		index, _ := strconv.Atoi(numStr)
 		if index < len(ipPool) {
 			for _, net := range nsNets {
-				v4IP, v6IP, mac, err = c.acquireStaticAddress(key, nicName, ipPool[index], macStr, net.Subnet.Name, net.AllowLiveMigration)
+				v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipPool[index], macStr, net.Subnet.Name, net.AllowLiveMigration)
 				if err == nil {
 					return v4IP, v6IP, mac, net.Subnet, nil
 				}

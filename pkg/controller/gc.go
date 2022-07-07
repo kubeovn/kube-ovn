@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
@@ -32,6 +33,7 @@ func (c *Controller) gc() error {
 		c.gcStaticRoute,
 		c.gcVpcNatGateway,
 		c.gcLogicalRouterPort,
+		c.gcVip,
 	}
 	for _, gcFunc := range gcFunctions {
 		if err := gcFunc(); err != nil {
@@ -229,6 +231,37 @@ func (c *Controller) gcNode() error {
 			klog.Infof("gc node %s", no)
 			if err := c.handleDeleteNode(no); err != nil {
 				klog.Errorf("failed to gc node %s, %v", no, err)
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (c *Controller) gcVip() error {
+	klog.Infof("start to gc vips")
+	vips, err := c.config.KubeOvnClient.KubeovnV1().Vips().List(context.Background(), metav1.ListOptions{
+		LabelSelector: fields.OneTermNotEqualSelector(util.IpReservedLabel, "").String()},
+	)
+	if err != nil {
+		klog.Errorf("failed to list VIPs: %v", err)
+		return err
+	}
+	for _, vip := range vips.Items {
+		portName := vip.Labels[util.IpReservedLabel]
+		portNameSplits := strings.Split(portName, ".")
+		if len(portNameSplits) >= 2 {
+			podName := portNameSplits[0]
+			namespace := portNameSplits[1]
+			_, err := c.podsLister.Pods(namespace).Get(podName)
+			if err != nil {
+				if k8serrors.IsNotFound(err) {
+					if err = c.releaseVip(vip.Name); err != nil {
+						klog.Errorf("failed to clean label from vip %s, %v", vip.Name, err)
+						return err
+					}
+					return nil
+				}
 				return err
 			}
 		}
