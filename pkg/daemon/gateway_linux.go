@@ -310,8 +310,12 @@ func (c *Controller) setIptables() error {
 		}
 
 		v4Rules = []util.IPTableRule{
+			// nat packets marked by kube-proxy or kube-ovn
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x4000/0x4000 -j MASQUERADE`)},
 			// do not nat node port service traffic with external traffic policy set to local
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -j RETURN`)},
+			// do not nat reply packets in direct routing
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-p tcp --tcp-flags SYN NONE -m conntrack --ctstate NEW -j RETURN`)},
 			// do not nat route traffic
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set ! --match-set ovn40subnets src -m set ! --match-set ovn40other-node src -m set --match-set ovn40subnets-nat dst -j RETURN`)},
 			// nat outgoing
@@ -332,8 +336,12 @@ func (c *Controller) setIptables() error {
 			{Table: "filter", Chain: "OUTPUT", Rule: strings.Fields(`-p udp -m udp --dport 6081 -j MARK --set-xmark 0x0`)},
 		}
 		v6Rules = []util.IPTableRule{
+			// nat packets marked by kube-proxy or kube-ovn
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x4000/0x4000 -j MASQUERADE`)},
 			// do not nat node port service traffic with external traffic policy set to local
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -j RETURN`)},
+			// do not nat reply packets in direct routing
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-p tcp --tcp-flags SYN NONE -m conntrack --ctstate NEW -j RETURN`)},
 			// do not nat route traffic
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src -m set --match-set ovn60subnets-nat dst -j RETURN`)},
 			// nat outgoing
@@ -390,13 +398,9 @@ func (c *Controller) setIptables() error {
 		if nodeIP := nodeIPs[protocol]; nodeIP != "" {
 			abandonedRules = append(abandonedRules,
 				util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset))},
+				util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m mark --mark 0x4000/0x4000 -j MASQUERADE`, nodeIP))},
+				util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set ! --match-set %s src -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset, matchset))},
 			)
-
-			rules := make([]util.IPTableRule, len(iptablesRules)+2)
-			copy(rules[1:4], iptablesRules[:3])
-			rules[0] = util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m mark --mark 0x4000/0x4000 -j MASQUERADE`, nodeIP))}
-			rules[4] = util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set ! --match-set %s src -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset, matchset))}
-			copy(rules[5:], iptablesRules[3:])
 
 			chainExists, err := c.iptables[protocol].ChainExists("nat", "KUBE-NODE-PORT")
 			if err != nil {
@@ -417,10 +421,8 @@ func (c *Controller) setIptables() error {
 					}
 					nodePortRules = append(nodePortRules, util.IPTableRule{Table: "nat", Chain: "KUBE-NODE-PORT", Rule: strings.Fields(fmt.Sprintf("-p %s -m set --match-set %s dst -j MARK --set-xmark 0x80000/0x80000", protocol, ipset))})
 				}
-				rules = append(nodePortRules, rules...)
+				iptablesRules = append(nodePortRules, iptablesRules...)
 			}
-
-			iptablesRules = rules
 		}
 
 		// delete abandoned iptables rules
