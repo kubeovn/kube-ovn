@@ -295,13 +295,8 @@ func stealLock() {
 
 func patchPodLabels(cfg *Configuration, pod *v1.Pod, labels map[string]string) error {
 	oriPod := pod.DeepCopy()
-	if pod.Labels == nil {
-		pod.Labels = labels
-	} else {
-		for k, v := range labels {
-			pod.Labels[k] = v
-		}
-	}
+	pod.Labels = labels
+
 	patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
 	if err != nil {
 		return err
