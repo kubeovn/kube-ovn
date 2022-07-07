@@ -23,6 +23,10 @@ for pn in $(kubectl get provider-network -o name); do
   kubectl delete --ignore-not-found $pn
 done
 
+for slr in $(kubectl get switch-lb-rule -o name); do
+   kubectl delete --ignore-not-found $slr
+done
+
 sleep 5
 
 # Delete Kube-OVN components
@@ -59,7 +63,7 @@ kubectl delete --ignore-not-found clusterrolebinding ovn
 kubectl delete --ignore-not-found crd htbqoses.kubeovn.io security-groups.kubeovn.io ips.kubeovn.io subnets.kubeovn.io \
                                       vpc-nat-gateways.kubeovn.io vpcs.kubeovn.io vlans.kubeovn.io provider-networks.kubeovn.io \
                                       iptables-dnat-rules.kubeovn.io  iptables-eips.kubeovn.io  iptables-fip-rules.kubeovn.io \
-                                      iptables-snat-rules.kubeovn.io vips.kubeovn.io
+                                      iptables-snat-rules.kubeovn.io vips.kubeovn.io switch-lb-rules.kubeovn.io
 
 # Remove annotations/labels in namespaces and nodes
 kubectl annotate no --all ovn.kubernetes.io/cidr-
