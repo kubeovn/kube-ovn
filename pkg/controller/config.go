@@ -62,6 +62,7 @@ type Configuration struct {
 
 	WorkerNum       int
 	PprofPort       int
+	EnablePprof     bool
 	NodePgProbeTime int
 
 	NetworkType          string
@@ -116,6 +117,7 @@ func ParseFlags() (*Configuration, error) {
 		argClusterUdpSessionLoadBalancer = pflag.String("cluster-udp-session-loadbalancer", "cluster-udp-session-loadbalancer", "The name for cluster udp session loadbalancer")
 
 		argWorkerNum       = pflag.Int("worker-num", 3, "The parallelism of each worker")
+		argEnablePprof     = pflag.Bool("enable-pprof", false, "Enable pprof")
 		argPprofPort       = pflag.Int("pprof-port", 10660, "The port to get profiling data")
 		argNodePgProbeTime = pflag.Int("nodepg-probe-time", 1, "The probe interval for node port-group, the unit is minute")
 
@@ -181,6 +183,7 @@ func ParseFlags() (*Configuration, error) {
 		ClusterTcpSessionLoadBalancer: *argClusterTcpSessionLoadBalancer,
 		ClusterUdpSessionLoadBalancer: *argClusterUdpSessionLoadBalancer,
 		WorkerNum:                     *argWorkerNum,
+		EnablePprof:                   *argEnablePprof,
 		PprofPort:                     *argPprofPort,
 		NetworkType:                   *argNetworkType,
 		DefaultVlanID:                 *argDefaultVlanID,
