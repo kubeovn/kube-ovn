@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"net/http"
-	_ "net/http/pprof" // #nosec
+	"net/http/pprof"
 	"os"
 	"time"
 
@@ -40,8 +40,16 @@ func CmdMain() {
 
 	go loopOvnNbctlDaemon(config)
 	go func() {
-		http.Handle("/metrics", promhttp.Handler())
-		klog.Fatal(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.PprofPort), nil))
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.Handler())
+		if config.EnablePprof {
+			mux.HandleFunc("/debug/pprof/", pprof.Index)
+			mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+			mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+			mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+			mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+		}
+		klog.Fatal(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.PprofPort), mux))
 	}()
 
 	ctl := controller.NewController(config)
