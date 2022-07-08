@@ -23,12 +23,13 @@ import (
 )
 
 const (
-	ServiceSet   = "services"
-	SubnetSet    = "subnets"
-	SubnetNatSet = "subnets-nat"
-	LocalPodSet  = "local-pod-ip-nat"
-	OtherNodeSet = "other-node"
-	IPSetPrefix  = "ovn"
+	ServiceSet             = "services"
+	SubnetSet              = "subnets"
+	SubnetNatSet           = "subnets-nat"
+	SubnetDistributedGwSet = "subnets-distributed-gw"
+	LocalPodSet            = "local-pod-ip-nat"
+	OtherNodeSet           = "other-node"
+	IPSetPrefix            = "ovn"
 )
 
 type policyRouteMeta struct {
@@ -63,6 +64,11 @@ func (c *Controller) setIPSet() error {
 			klog.Errorf("get need nat subnets failed, %+v", err)
 			return err
 		}
+		subnetsDistributedGateway, err := c.getSubnetsDistributedGateway(protocol)
+		if err != nil {
+			klog.Errorf("failed to get subnets with centralized gateway: %v", err)
+			return err
+		}
 		otherNode, err := c.getOtherNodes(protocol)
 		if err != nil {
 			klog.Errorf("failed to get node, %+v", err)
@@ -88,6 +94,11 @@ func (c *Controller) setIPSet() error {
 			SetID:   SubnetNatSet,
 			Type:    ipsets.IPSetTypeHashNet,
 		}, subnetsNeedNat)
+		c.ipsets[protocol].AddOrReplaceIPSet(ipsets.IPSetMetadata{
+			MaxSize: 1048576,
+			SetID:   SubnetDistributedGwSet,
+			Type:    ipsets.IPSetTypeHashNet,
+		}, subnetsDistributedGateway)
 		c.ipsets[protocol].AddOrReplaceIPSet(ipsets.IPSetMetadata{
 			MaxSize: 1048576,
 			SetID:   OtherNodeSet,
@@ -313,7 +324,9 @@ func (c *Controller) setIptables() error {
 			// nat packets marked by kube-proxy or kube-ovn
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x4000/0x4000 -j MASQUERADE`)},
 			// do not nat node port service traffic with external traffic policy set to local
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -j RETURN`)},
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -m set --match-set ovn40subnets-distributed-gw dst -j RETURN`)},
+			// nat node port service traffic with external traffic policy set to local for subnets with centralized gateway
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -j MASQUERADE`)},
 			// do not nat reply packets in direct routing
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-p tcp --tcp-flags SYN NONE -m conntrack --ctstate NEW -j RETURN`)},
 			// do not nat route traffic
@@ -339,7 +352,9 @@ func (c *Controller) setIptables() error {
 			// nat packets marked by kube-proxy or kube-ovn
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x4000/0x4000 -j MASQUERADE`)},
 			// do not nat node port service traffic with external traffic policy set to local
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -j RETURN`)},
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -m set --match-set ovn60subnets-distributed-gw dst -j RETURN`)},
+			// nat node port service traffic with external traffic policy set to local for subnets with centralized gateway
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -j MASQUERADE`)},
 			// do not nat reply packets in direct routing
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-p tcp --tcp-flags SYN NONE -m conntrack --ctstate NEW -j RETURN`)},
 			// do not nat route traffic
