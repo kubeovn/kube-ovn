@@ -33,17 +33,18 @@ var (
 )
 
 const (
-	natGwInit           = "init"
-	natGwEipAdd         = "eip-add"
-	natGwEipDel         = "eip-del"
-	natGwDnatAdd        = "dnat-add"
-	natGwDnatDel        = "dnat-del"
-	natGwSnatAdd        = "snat-add"
-	natGwSnatDel        = "snat-del"
-	natGwSubnetFipAdd   = "floating-ip-add"
-	natGwSubnetFipDel   = "floating-ip-del"
-	natGwSubnetRouteAdd = "subnet-route-add"
-	natGwSubnetRouteDel = "subnet-route-del"
+	natGwInit              = "init"
+	natGwEipAdd            = "eip-add"
+	natGwEipDel            = "eip-del"
+	natGwDnatAdd           = "dnat-add"
+	natGwDnatDel           = "dnat-del"
+	natGwSnatAdd           = "snat-add"
+	natGwSnatDel           = "snat-del"
+	natGwSubnetFipAdd      = "floating-ip-add"
+	natGwSubnetFipDel      = "floating-ip-del"
+	natGwSubnetRouteAdd    = "subnet-route-add"
+	natGwSubnetRouteDel    = "subnet-route-del"
+	natGwExtSubnetRouteAdd = "ext-subnet-route-add"
 )
 
 func genNatGwDpName(name string) string {
@@ -531,6 +532,22 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 		return err
 	}
 	pod := oriPod.DeepCopy()
+	extSubnet, err := c.subnetsLister.Get(util.VpcExternalNet)
+	if err != nil {
+		klog.Errorf("failed to get ovn-vpc-external-network subnet, err: %v", err)
+		return err
+	}
+	var extRules []string
+	if extSubnet.Spec.CIDRBlock != "" && extSubnet.Spec.Gateway != "" {
+		extRules = append(extRules, fmt.Sprintf("%s,%s", extSubnet.Spec.CIDRBlock, extSubnet.Spec.Gateway))
+		if err = c.execNatGwRules(pod, natGwExtSubnetRouteAdd, extRules); err != nil {
+			klog.Errorf("failed to exec nat gateway rule, err: %v", err)
+			return err
+		}
+	} else {
+		err = fmt.Errorf("failed to get external subnet cidr and gw")
+		return err
+	}
 
 	gwSubnet, err := c.subnetsLister.Get(gw.Spec.Subnet)
 	if err != nil {
@@ -573,9 +590,11 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 				rules = append(rules, fmt.Sprintf("%s,%s", cidr, gwSubnet.Spec.Gateway))
 			}
 		}
-		if err = c.execNatGwRules(pod, natGwSubnetRouteAdd, rules); err != nil {
-			klog.Errorf("failed to exec nat gateway rule, err: %v", err)
-			return err
+		if len(rules) > 0 {
+			if err = c.execNatGwRules(pod, natGwSubnetRouteAdd, rules); err != nil {
+				klog.Errorf("failed to exec nat gateway rule, err: %v", err)
+				return err
+			}
 		}
 	}
 

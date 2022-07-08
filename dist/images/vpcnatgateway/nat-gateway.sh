@@ -70,6 +70,35 @@ function del_vpc_internal_route() {
     done
 }
 
+function add_vpc_external_route() {
+    # make sure inited
+    iptables-save -t nat | grep  SNAT_FILTER | grep SHARED_SNAT
+    for rule in $@
+    do
+        arr=(${rule//,/ })
+        cidr=${arr[0]}
+        nextHop=${arr[1]}
+
+        exec_cmd "ip route replace $cidr dev net1 table $ROUTE_TABLE"
+        sleep 1
+        exec_cmd "ip route replace default via $nextHop dev net1 table $ROUTE_TABLE"
+    done
+}
+
+function del_vpc_external_route() {
+    # make sure inited
+    iptables-save -t nat | grep  SNAT_FILTER | grep SHARED_SNAT
+    for rule in $@
+    do
+        arr=(${rule//,/ })
+        cidr=${arr[0]}
+
+        exec_cmd "ip route del $cidr table $ROUTE_TABLE"
+        sleep 1
+        exec_cmd "ip route del default table $ROUTE_TABLE"
+    done
+}
+
 function add_eip() {
     # make sure inited
     iptables-save -t nat | grep  SNAT_FILTER | grep SHARED_SNAT
@@ -83,8 +112,6 @@ function add_eip() {
         gateway=${arr[1]}
 
         exec_cmd "ip addr replace $eip dev net1"
-        exec_cmd "ip route replace $eip_network/$eip_prefix dev net1 table $ROUTE_TABLE"
-        exec_cmd "ip route replace default via $gateway dev net1 table $ROUTE_TABLE"
         ip link set dev net1 arp on
         exec_cmd "arping -c 3 -s $eip_without_prefix $gateway"
     done
@@ -217,6 +244,14 @@ case $opt in
  subnet-route-del)
         echo "subnet-route-del $rules"
         del_vpc_internal_route $rules
+        ;;
+ ext-subnet-route-add)
+        echo "ext-subnet-route-add $rules"
+        add_vpc_external_route $rules
+        ;;
+ ext-subnet-route-del)
+        echo "ext-subnet-route-del $rules"
+        del_vpc_external_route $rules
         ;;
  eip-add)
         echo "eip-add $rules"
