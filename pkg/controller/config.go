@@ -49,8 +49,9 @@ type Configuration struct {
 	PodNamespace string
 	PodNicType   string
 
-	WorkerNum int
-	PprofPort int
+	WorkerNum   int
+	PprofPort   int
+	EnablePprof bool
 
 	NetworkType          string
 	DefaultProviderName  string
@@ -90,8 +91,9 @@ func ParseFlags() (*Configuration, error) {
 		argClusterTcpSessionLoadBalancer = pflag.String("cluster-tcp-session-loadbalancer", "cluster-tcp-session-loadbalancer", "The name for cluster tcp session loadbalancer")
 		argClusterUdpSessionLoadBalancer = pflag.String("cluster-udp-session-loadbalancer", "cluster-udp-session-loadbalancer", "The name for cluster udp session loadbalancer")
 
-		argWorkerNum = pflag.Int("worker-num", 3, "The parallelism of each worker, default: 3")
-		argPprofPort = pflag.Int("pprof-port", 10660, "The port to get profiling data, default 10660")
+		argWorkerNum   = pflag.Int("worker-num", 3, "The parallelism of each worker, default: 3")
+		argPprofPort   = pflag.Int("pprof-port", 10660, "The port to get profiling data, default 10660")
+		argEnablePprof = pflag.Bool("enable-pprof", false, "Enable pprof")
 
 		argNetworkType          = pflag.String("network-type", util.NetworkTypeGeneve, "The ovn network type, default: geneve")
 		argDefaultProviderName  = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name, default: provider")
@@ -143,6 +145,7 @@ func ParseFlags() (*Configuration, error) {
 		ClusterTcpSessionLoadBalancer: *argClusterTcpSessionLoadBalancer,
 		ClusterUdpSessionLoadBalancer: *argClusterUdpSessionLoadBalancer,
 		WorkerNum:                     *argWorkerNum,
+		EnablePprof:                   *argEnablePprof,
 		PprofPort:                     *argPprofPort,
 		NetworkType:                   *argNetworkType,
 		DefaultVlanID:                 *argDefaultVlanID,

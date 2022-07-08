@@ -41,6 +41,7 @@ type Configuration struct {
 	NodeLocalDNSIP        string
 	EncapChecksum         bool
 	PprofPort             int
+	EnablePprof           bool
 	NetworkType           string
 	DefaultProviderName   string
 	DefaultInterfaceName  string
@@ -61,7 +62,7 @@ func ParseFlags(nicBridgeMappings map[string]string) (*Configuration, error) {
 		argNodeLocalDnsIP        = pflag.String("node-local-dns-ip", "", "If use nodelocaldns the local dns server ip should be set here, default empty.")
 		argEncapChecksum         = pflag.Bool("encap-checksum", true, "Enable checksum, default: true")
 		argPprofPort             = pflag.Int("pprof-port", 10665, "The port to get profiling data, default: 10665")
-
+		argEnablePprof           = pflag.Bool("enable-pprof", false, "Enable pprof")
 		argsNetworkType          = pflag.String("network-type", "geneve", "The ovn network type, default: geneve")
 		argsDefaultProviderName  = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name, default: provider")
 		argsDefaultInterfaceName = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
@@ -101,6 +102,7 @@ func ParseFlags(nicBridgeMappings map[string]string) (*Configuration, error) {
 		BindSocket:            *argBindSocket,
 		OvsSocket:             *argOvsSocket,
 		KubeConfigFile:        *argKubeConfigFile,
+		EnablePprof:           *argEnablePprof,
 		PprofPort:             *argPprofPort,
 		NodeName:              nodeName,
 		ServiceClusterIPRange: *argServiceClusterIPRange,
