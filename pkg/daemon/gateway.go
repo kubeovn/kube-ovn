@@ -105,6 +105,27 @@ func (c *Controller) getSubnetsNeedNAT(protocol string) ([]string, error) {
 	return subnetsNeedNat, nil
 }
 
+func (c *Controller) getSubnetsDistributedGateway(protocol string) ([]string, error) {
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets: %v", err)
+		return nil, err
+	}
+
+	var result []string
+	for _, subnet := range subnets {
+		if subnet.DeletionTimestamp == nil &&
+			subnet.Spec.Vlan == "" &&
+			subnet.Spec.Vpc == util.DefaultVpc &&
+			subnet.Spec.GatewayType == kubeovnv1.GWDistributedType &&
+			(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) {
+			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
+			result = append(result, cidrBlock)
+		}
+	}
+	return result, nil
+}
+
 func (c *Controller) getServicesCIDR(protocol string) []string {
 	ret := make([]string, 0)
 	for _, cidr := range strings.Split(c.config.ServiceClusterIPRange, ",") {
