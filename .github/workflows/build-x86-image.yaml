@@ -1057,6 +1057,15 @@ jobs:
         run: |
           docker load --input kube-ovn.tar
 
+      - name: Download image
+        uses: actions/download-artifact@v3
+        with:
+          name: vpc-nat-gateway
+
+      - name: Load Image
+        run: |
+          docker load --input vpc-nat-gateway.tar
+
       - name: Install Kube-OVN & Multus
         uses: nick-invision/retry@v2
         with:
@@ -1078,7 +1087,7 @@ jobs:
           go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
           sudo chmod 666 /home/runner/.kube/config
-          make e2e
+          make e2e-multus
 
   ovnic-e2e:
     needs: build

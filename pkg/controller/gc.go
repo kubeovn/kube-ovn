@@ -34,6 +34,7 @@ func (c *Controller) gc() error {
 		c.gcVpcNatGateway,
 		c.gcLogicalRouterPort,
 		c.gcVip,
+		c.gcLbSvcPods,
 	}
 	for _, gcFunc := range gcFunctions {
 		if err := gcFunc(); err != nil {
@@ -721,4 +722,44 @@ func (c *Controller) getVmLsps() []string {
 	}
 
 	return vmLsps
+}
+
+func (c *Controller) gcLbSvcPods() error {
+	klog.Infof("start to gc lb svc pods")
+	nss, err := c.namespacesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list namespaces, %v", err)
+		return err
+	}
+
+	for _, ns := range nss {
+		dps, err := c.config.KubeClient.AppsV1().Deployments(ns.Name).List(context.Background(), metav1.ListOptions{})
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to list lb svc deployment in namespace %s, %v", ns.Name, err)
+			}
+			continue
+		}
+
+		for _, dp := range dps.Items {
+			if !strings.HasPrefix(dp.Name, "lb-svc-") {
+				continue
+			}
+			if _, ok := dp.Spec.Template.Labels["service"]; !ok {
+				continue
+			}
+
+			svcName := strings.TrimPrefix(dp.Name, "lb-svc-")
+			_, err := c.servicesLister.Services(ns.Name).Get(svcName)
+			if err != nil && k8serrors.IsNotFound(err) {
+				klog.Infof("gc lb svc deployment %s in ns %s", dp.Name, ns.Name)
+				if err := c.config.KubeClient.AppsV1().Deployments(ns.Name).Delete(context.Background(), dp.Name, metav1.DeleteOptions{}); err != nil {
+					if !k8serrors.IsNotFound(err) {
+						klog.Errorf("failed to delete lb svc deployment in namespace %s, %v", ns.Name, err)
+					}
+				}
+			}
+		}
+	}
+	return nil
 }
