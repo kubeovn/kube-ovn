@@ -96,7 +96,7 @@ func checkService(checkCount int, shouldSucceed bool, cmd string, args ...string
 		err := c.Run()
 		output := strings.TrimSpace(stdout.String())
 		if shouldSucceed {
-			Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("stdout: %s, stderr: %s", output, strings.TrimSpace(stderr.String())))
+			Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("cmd: %s, stdout: %s, stderr: %s", c.String(), output, strings.TrimSpace(stderr.String())))
 			Expect(output).To(Equal("200"))
 		} else {
 			Expect(err).To(HaveOccurred())
