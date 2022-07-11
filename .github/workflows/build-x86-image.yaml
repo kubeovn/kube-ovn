@@ -81,11 +81,11 @@ jobs:
           name: vpc-nat-gateway
           path: vpc-nat-gateway.tar
 
-      - name: Upload centos7-compile image to artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: centos7-compile
-          path: centos7-compile.tar
+      # - name: Upload centos7-compile image to artifact
+      #   uses: actions/upload-artifact@v3
+      #   with:
+      #     name: centos7-compile
+      #     path: centos7-compile.tar
 
 #      - name: Upload centos8-compile image to artifact
 #        uses: actions/upload-artifact@v3
