@@ -97,13 +97,15 @@ func checkService(checkCount int, shouldSucceed bool, cmd string, args ...string
 		err := c.Run()
 		output := strings.TrimSpace(stdout.String())
 		if shouldSucceed {
-			Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("cmd: %s, stdout: %s, stderr: %s", c.String(), output, strings.TrimSpace(stderr.String())))
-			cmd := exec.Command("kubectl", strings.Fields("-n kube-system get po -o wide")...)
-			if output, err := cmd.CombinedOutput(); err != nil {
-				klog.Error(err)
-			} else {
-				klog.Info(string(output))
+			if err != nil {
+				cmd := exec.Command("kubectl", strings.Fields("-n kube-system get po -o wide")...)
+				if output, err1 := cmd.CombinedOutput(); err1 != nil {
+					klog.Error(err1)
+				} else {
+					klog.Info(string(output))
+				}
 			}
+			Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("cmd: %s, stdout: %s, stderr: %s", c.String(), output, strings.TrimSpace(stderr.String())))
 			Expect(output).To(Equal("200"))
 		} else {
 			Expect(err).To(HaveOccurred())
