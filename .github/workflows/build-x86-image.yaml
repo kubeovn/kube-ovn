@@ -436,12 +436,6 @@ jobs:
           max_attempts: 3
           shell: bash
           command: |
-            for node in $(sudo kubectl get no -o jsonpath='{.items[*].metadata.name}'); do
-              taint=$(sudo kubectl get no $node -o jsonpath='{.spec.taints[?(@.key=="node-role.kubernetes.io/master")]}')
-              if [ -n "$taint" ]; then
-                sudo kubectl taint node $node node-role.kubernetes.io/master:NoSchedule-
-              fi
-            done
             sudo make kind-install
             sudo kubectl patch subnet ovn-default --type merge \
               -p '{"spec":{"gatewayType": "centralized", "gatewayNode": "kube-ovn-control-plane"}}'
