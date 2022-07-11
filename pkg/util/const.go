@@ -31,6 +31,8 @@ const (
 	VpcDnatEPortLabel           = "ovn.kubernetes.io/vpc_dnat_eport"
 	VpcNatLabel                 = "ovn.kubernetes.io/vpc_nat"
 
+	SwitchLBRuleVipsAnnotation = "ovn.kubernetes.io/switch_lb_vip"
+
 	LogicalRouterAnnotation = "ovn.kubernetes.io/logical_router"
 	VpcAnnotation           = "ovn.kubernetes.io/vpc"
 
