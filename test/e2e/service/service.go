@@ -13,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/klog/v2"
 	kubeadmconstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
 	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/apis/config"
 	kubeproxyscheme "k8s.io/kubernetes/pkg/proxy/apis/config/scheme"
@@ -334,6 +335,7 @@ var _ = Describe("[Service]", func() {
 				for _, pod := range hostPods.Items {
 					shouldSucceed := hasEndpoint || pod.Spec.NodeName == node.Name
 					for _, nodeIP := range nodeIPs(node) {
+						klog.Infof("access node port svc: %s -> %s: %s:%d", pod.Spec.NodeName, node.Name, nodeIP, port)
 						checkService(checkCount, shouldSucceed, "kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...)
 					}
 				}
