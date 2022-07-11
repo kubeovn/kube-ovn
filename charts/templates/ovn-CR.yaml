@@ -27,7 +27,7 @@ rules:
       - security-groups/status
       - htbqoses
       - switch-lb-vpcs
-	  - switch-lb-vpcs/status
+      - switch-lb-vpcs/status
     verbs:
       - "*"
   - apiGroups:

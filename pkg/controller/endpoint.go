@@ -115,15 +115,15 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	}
 	svc := orisvc.DeepCopy()
 
-	var settingIPs []string
+	var LbIPs []string
 	if vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
-		settingIPs = []string{vip}
+		LbIPs = []string{vip}
 	} else {
-		settingIPs = svc.Spec.ClusterIPs
-		if len(settingIPs) == 0 && svc.Spec.ClusterIP != "" && svc.Spec.ClusterIP != v1.ClusterIPNone {
-			settingIPs = []string{svc.Spec.ClusterIP}
+		LbIPs = svc.Spec.ClusterIPs
+		if len(LbIPs) == 0 && svc.Spec.ClusterIP != "" && svc.Spec.ClusterIP != v1.ClusterIPNone {
+			LbIPs = []string{svc.Spec.ClusterIP}
 		}
-		if len(settingIPs) == 0 || settingIPs[0] == v1.ClusterIPNone {
+		if len(LbIPs) == 0 || LbIPs[0] == v1.ClusterIPNone {
 			return nil
 		}
 	}
@@ -185,7 +185,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		tcpLb, udpLb = vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer
 	}
 
-	for _, settingIP := range settingIPs {
+	for _, settingIP := range LbIPs {
 		for _, port := range svc.Spec.Ports {
 			vip := util.JoinHostPort(settingIP, port.Port)
 			backends := getServicePortBackends(ep, pods, port, settingIP)

@@ -70,10 +70,11 @@ type Controller struct {
 	updateVpcSubnetQueue          workqueue.RateLimitingInterface
 	vpcNatGwKeyMutex              *keymutex.KeyMutex
 
-	switchLBRuleLister           kubeovnlister.SwitchLBRuleLister
-	switchLBRuleSynced           cache.InformerSynced
-	addOrUpdateSwitchLBRuleQueue workqueue.RateLimitingInterface
-	delSwitchLBRuleQueue         workqueue.RateLimitingInterface
+	switchLBRuleLister      kubeovnlister.SwitchLBRuleLister
+	switchLBRuleSynced      cache.InformerSynced
+	addSwitchLBRuleQueue    workqueue.RateLimitingInterface
+	UpdateSwitchLBRuleQueue workqueue.RateLimitingInterface
+	delSwitchLBRuleQueue    workqueue.RateLimitingInterface
 
 	vpcDnsLister           kubeovnlister.VpcDnsLister
 	vpcDnsSynced           cache.InformerSynced
@@ -218,7 +219,6 @@ func NewController(config *Configuration) *Controller {
 	serviceInformer := informerFactory.Core().V1().Services()
 	endpointInformer := informerFactory.Core().V1().Endpoints()
 	configMapInformer := cmInformerFactory.Core().V1().ConfigMaps()
-	switchLBRuleInfomer := kubeovnInformerFactory.Kubeovn().V1().SwitchLBRules()
 	vpcDnsInformer := kubeovnInformerFactory.Kubeovn().V1().VpcDnses()
 
 	controller := &Controller{
@@ -246,11 +246,6 @@ func NewController(config *Configuration) *Controller {
 		updateVpcSnatQueue:            workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateVpcSnat"),
 		updateVpcSubnetQueue:          workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateVpcSubnet"),
 		vpcNatGwKeyMutex:              keymutex.New(97),
-
-		switchLBRuleLister:           switchLBRuleInfomer.Lister(),
-		switchLBRuleSynced:           switchLBRuleInfomer.Informer().HasSynced,
-		addOrUpdateSwitchLBRuleQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addSwitchLBRule"),
-		delSwitchLBRuleQueue:         workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delSwitchLBRule"),
 
 		vpcDnsLister:           vpcDnsInformer.Lister(),
 		vpcDnsSynced:           vpcDnsInformer.Informer().HasSynced,
@@ -399,11 +394,20 @@ func NewController(config *Configuration) *Controller {
 		DeleteFunc: controller.enqueueDeleteVpcNatGw,
 	})
 
-	switchLBRuleInfomer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueAddSwitchLBRule,
-		UpdateFunc: controller.enqueueUpdateSwitchLBRule,
-		DeleteFunc: controller.enqueueDeleteSwitchLBRule,
-	})
+	if config.EnableLb {
+		switchLBRuleInformer := kubeovnInformerFactory.Kubeovn().V1().SwitchLBRules()
+		controller.switchLBRuleLister = switchLBRuleInformer.Lister()
+		controller.switchLBRuleSynced = switchLBRuleInformer.Informer().HasSynced
+		controller.addSwitchLBRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addSwitchLBRule")
+		controller.delSwitchLBRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delSwitchLBRule")
+		controller.UpdateSwitchLBRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateSwitchLBRule")
+
+		switchLBRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddSwitchLBRule,
+			UpdateFunc: controller.enqueueUpdateSwitchLBRule,
+			DeleteFunc: controller.enqueueDeleteSwitchLBRule,
+		})
+	}
 
 	subnetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddSubnet,
@@ -506,11 +510,16 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		c.ipSynced, c.virtualIpsSynced, c.iptablesEipSynced,
 		c.iptablesFipSynced, c.iptablesDnatRuleSynced, c.iptablesSnatRuleSynced,
 		c.vlanSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced,
-		c.serviceSynced, c.endpointsSynced, c.configMapsSynced, c.switchLBRuleSynced, c.vpcDnsSynced,
+		c.serviceSynced, c.endpointsSynced, c.configMapsSynced, c.vpcDnsSynced,
 	}
 	if c.config.EnableNP {
 		cacheSyncs = append(cacheSyncs, c.npsSynced)
 	}
+
+	if c.config.EnableLb {
+		cacheSyncs = append(cacheSyncs, c.switchLBRuleSynced)
+	}
+
 	if ok := cache.WaitForCacheSync(stopCh, cacheSyncs...); !ok {
 		klog.Fatalf("failed to wait for caches to sync")
 	}
@@ -621,8 +630,11 @@ func (c *Controller) shutdown() {
 	c.updateVpcSnatQueue.ShutDown()
 	c.updateVpcSubnetQueue.ShutDown()
 
-	c.addOrUpdateSwitchLBRuleQueue.ShutDown()
-	c.delSwitchLBRuleQueue.ShutDown()
+	if c.config.EnableLb {
+		c.addSwitchLBRuleQueue.ShutDown()
+		c.delSwitchLBRuleQueue.ShutDown()
+		c.UpdateSwitchLBRuleQueue.ShutDown()
+	}
 
 	c.addOrUpdateVpcDnsQueue.ShutDown()
 	c.delVpcDnsQueue.ShutDown()
@@ -670,8 +682,6 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	go wait.Until(c.runUpdateVpcDnatWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdateVpcSnatWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdateVpcSubnetWorker, time.Second, stopCh)
-	go wait.Until(c.runAddSwitchLBRuleWorker, time.Second, stopCh)
-	go wait.Until(c.runDelSwitchLBRuleWorker, time.Second, stopCh)
 
 	go wait.Until(c.runAddOrUpdateVpcDnsWorker, time.Second, stopCh)
 	go wait.Until(c.runDelVpcDnsWorker, time.Second, stopCh)
@@ -729,6 +739,10 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	if c.config.EnableLb {
 		// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
 		go wait.Until(c.runDeleteServiceWorker, time.Second, stopCh)
+
+		go wait.Until(c.runAddSwitchLBRuleWorker, time.Second, stopCh)
+		go wait.Until(c.runDelSwitchLBRuleWorker, time.Second, stopCh)
+		go wait.Until(c.runUpdateSwitchLBRuleWorker, time.Second, stopCh)
 	}
 
 	for i := 0; i < c.config.WorkerNum; i++ {
