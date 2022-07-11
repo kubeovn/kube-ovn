@@ -6,9 +6,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path"
+	"path/filepath"
+	"reflect"
+	"strconv"
+	"strings"
+	"sync"
+	"text/template"
+	"time"
+
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	"io/ioutil"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -19,15 +29,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	"os"
-	"path"
-	"path/filepath"
-	"reflect"
-	"strconv"
-	"strings"
-	"sync"
-	"text/template"
-	"time"
 )
 
 var (
@@ -187,7 +188,9 @@ func (c *Controller) handleAddOrUpdateVpcDns(key string) error {
 	}
 
 	if len(corednsImage) == 0 {
-		klog.Errorf("failed to get the vpc-dns coredns image parameter")
+		err := fmt.Errorf("failed to get the vpc-dns coredns image parameter")
+		klog.Errorf("failed to get corednsImage, err: %s", err)
+		return err
 	}
 
 	if len(corednsVip) == 0 {
@@ -252,7 +255,7 @@ func (c *Controller) handleAddOrUpdateVpcDns(key string) error {
 			klog.Errorf("failed to create deployment '%s', err: %s", newDp.Name, err)
 			return err
 		}
-		klog.Infof("%s Deployment is successfully deployed", newDp.Name)
+		klog.V(3).Infof("%s Deployment is successfully deployed", newDp.Name)
 	} else {
 		_, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).
 			Update(context.Background(), newDp, metav1.UpdateOptions{})
@@ -262,7 +265,7 @@ func (c *Controller) handleAddOrUpdateVpcDns(key string) error {
 			return err
 		}
 
-		klog.Infof("%s Deployment is successfully updated", newDp.Name)
+		klog.V(3).Infof("%s Deployment is successfully updated", newDp.Name)
 	}
 
 	needToCreateSvc := false
@@ -319,7 +322,9 @@ func (c *Controller) handleDelVpcDns(key string) error {
 				klog.Errorf("failed to delete SwitchLBRule: %v", err)
 				return err
 			}
+			return nil
 		}
+		klog.Errorf("failed to delete vpc-dns, %s", err)
 		return err
 	}
 	return nil
@@ -477,16 +482,29 @@ func (c *Controller) checkOvnProvided() error {
 
 func (c *Controller) resyncVpcDnsConfig() {
 	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcDnsConfig)
-	if err != nil {
+	if err != nil && !k8serrors.IsNotFound(err) {
 		klog.Errorf("failed to get %s, %v", util.VpcDnsConfig, err)
+		return
+	}
+
+	if k8serrors.IsNotFound(err) {
+		klog.V(3).Infof("the vpc-dns configuration is not set ")
+		if len(cmVersion) != 0 {
+			if err := c.cleanVpcDns(); err != nil {
+				klog.Errorf("failed to clear all vpc-dns, %v", err)
+				return
+			}
+			cmVersion = ""
+		}
 		return
 	}
 
 	if cmVersion == cm.ResourceVersion {
 		return
+	} else {
+		cmVersion = cm.ResourceVersion
+		klog.V(3).Infof("the vpc-dns ConfigMap update")
 	}
-	cmVersion = cm.ResourceVersion
-	klog.V(3).Infof("The vpc-dns ConfigMap update")
 
 	setValue := func(key string) string {
 		if v, ok := cm.Data[key]; ok {
@@ -507,7 +525,7 @@ func (c *Controller) resyncVpcDnsConfig() {
 		for _, container := range dp.Spec.Template.Spec.Containers {
 			if container.Name == CorednsContainerName {
 				corednsImage = container.Image
-				klog.Infof("use the cluster default coredns image version, %s", corednsImage)
+				klog.V(3).Infof("use the cluster default coredns image version, %s", corednsImage)
 				break
 			}
 		}
@@ -534,17 +552,19 @@ func (c *Controller) resyncVpcDnsConfig() {
 			if err := c.initCorednsResource(); err != nil {
 				klog.Errorf("failed to init coredns resource")
 			}
-			klog.Errorf("init coredns resource succeeded")
+			klog.V(3).Infof("init coredns resource succeeded")
 		})
 	}
 
 	if enableCoredns && !newEnableCoredns {
 		if err := c.cleanVpcDns(); err != nil {
 			klog.Errorf("failed to clear all vpc-dns, %v", err)
+			return
 		}
 	} else {
 		if err := c.updateVpcDns(); err != nil {
 			klog.Errorf("failed to update vpc-dns deployment")
+			return
 		}
 	}
 
@@ -567,6 +587,7 @@ func (c *Controller) cleanVpcDns() error {
 		metav1.ListOptions{})
 	if err != nil {
 		klog.Errorf("Failed to clear all vpc-dns %s", err)
+		return err
 	}
 
 	return nil

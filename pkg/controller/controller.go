@@ -219,7 +219,6 @@ func NewController(config *Configuration) *Controller {
 	serviceInformer := informerFactory.Core().V1().Services()
 	endpointInformer := informerFactory.Core().V1().Endpoints()
 	configMapInformer := cmInformerFactory.Core().V1().ConfigMaps()
-	vpcDnsInformer := kubeovnInformerFactory.Kubeovn().V1().VpcDnses()
 
 	controller := &Controller{
 		config:          config,
@@ -246,11 +245,6 @@ func NewController(config *Configuration) *Controller {
 		updateVpcSnatQueue:            workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateVpcSnat"),
 		updateVpcSubnetQueue:          workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateVpcSubnet"),
 		vpcNatGwKeyMutex:              keymutex.New(97),
-
-		vpcDnsLister:           vpcDnsInformer.Lister(),
-		vpcDnsSynced:           vpcDnsInformer.Informer().HasSynced,
-		addOrUpdateVpcDnsQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddOrUpdateVpcDns"),
-		delVpcDnsQueue:         workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeleteVpcDns"),
 
 		subnetsLister:           subnetInformer.Lister(),
 		subnetSynced:            subnetInformer.Informer().HasSynced,
@@ -407,6 +401,17 @@ func NewController(config *Configuration) *Controller {
 			UpdateFunc: controller.enqueueUpdateSwitchLBRule,
 			DeleteFunc: controller.enqueueDeleteSwitchLBRule,
 		})
+
+		vpcDnsInformer := kubeovnInformerFactory.Kubeovn().V1().VpcDnses()
+		controller.vpcDnsLister = vpcDnsInformer.Lister()
+		controller.vpcDnsSynced = vpcDnsInformer.Informer().HasSynced
+		controller.addOrUpdateVpcDnsQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddOrUpdateVpcDns")
+		controller.delVpcDnsQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeleteVpcDns")
+		vpcDnsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddVpcDns,
+			UpdateFunc: controller.enqueueUpdateVpcDns,
+			DeleteFunc: controller.enqueueDeleteVpcDns,
+		})
 	}
 
 	subnetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -429,12 +434,6 @@ func NewController(config *Configuration) *Controller {
 
 	providerNetworkInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: controller.enqueueUpdateProviderNetwork,
-	})
-
-	vpcDnsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueAddVpcDns,
-		UpdateFunc: controller.enqueueUpdateVpcDns,
-		DeleteFunc: controller.enqueueDeleteVpcDns,
 	})
 
 	if config.EnableNP {
@@ -510,14 +509,14 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		c.ipSynced, c.virtualIpsSynced, c.iptablesEipSynced,
 		c.iptablesFipSynced, c.iptablesDnatRuleSynced, c.iptablesSnatRuleSynced,
 		c.vlanSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced,
-		c.serviceSynced, c.endpointsSynced, c.configMapsSynced, c.vpcDnsSynced,
+		c.serviceSynced, c.endpointsSynced, c.configMapsSynced,
 	}
 	if c.config.EnableNP {
 		cacheSyncs = append(cacheSyncs, c.npsSynced)
 	}
 
 	if c.config.EnableLb {
-		cacheSyncs = append(cacheSyncs, c.switchLBRuleSynced)
+		cacheSyncs = append(cacheSyncs, c.switchLBRuleSynced, c.vpcDnsSynced)
 	}
 
 	if ok := cache.WaitForCacheSync(stopCh, cacheSyncs...); !ok {
@@ -571,8 +570,10 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		klog.Errorf("failed to sync crd vlans: %v", err)
 	}
 
-	if err := c.initVpcDnsConfig(); err != nil {
-		klog.Errorf("failed to init vpc-dns: %v", err)
+	if c.config.EnableLb {
+		if err := c.initVpcDnsConfig(); err != nil {
+			klog.Errorf("failed to init vpc-dns: %v", err)
+		}
 	}
 
 	// The static route for node gw can be deleted when gc static route, so add it after gc process
@@ -634,10 +635,10 @@ func (c *Controller) shutdown() {
 		c.addSwitchLBRuleQueue.ShutDown()
 		c.delSwitchLBRuleQueue.ShutDown()
 		c.UpdateSwitchLBRuleQueue.ShutDown()
-	}
 
-	c.addOrUpdateVpcDnsQueue.ShutDown()
-	c.delVpcDnsQueue.ShutDown()
+		c.addOrUpdateVpcDnsQueue.ShutDown()
+		c.delVpcDnsQueue.ShutDown()
+	}
 
 	c.addVirtualIpQueue.ShutDown()
 	c.updateVirtualIpQueue.ShutDown()
@@ -682,9 +683,6 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	go wait.Until(c.runUpdateVpcDnatWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdateVpcSnatWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdateVpcSubnetWorker, time.Second, stopCh)
-
-	go wait.Until(c.runAddOrUpdateVpcDnsWorker, time.Second, stopCh)
-	go wait.Until(c.runDelVpcDnsWorker, time.Second, stopCh)
 
 	// add default/join subnet and wait them ready
 	go wait.Until(c.runAddSubnetWorker, time.Second, stopCh)
@@ -743,6 +741,9 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		go wait.Until(c.runAddSwitchLBRuleWorker, time.Second, stopCh)
 		go wait.Until(c.runDelSwitchLBRuleWorker, time.Second, stopCh)
 		go wait.Until(c.runUpdateSwitchLBRuleWorker, time.Second, stopCh)
+
+		go wait.Until(c.runAddOrUpdateVpcDnsWorker, time.Second, stopCh)
+		go wait.Until(c.runDelVpcDnsWorker, time.Second, stopCh)
 	}
 
 	for i := 0; i < c.config.WorkerNum; i++ {
@@ -782,9 +783,11 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		c.resyncVpcNatGwConfig()
 	}, time.Second, stopCh)
 
-	go wait.Until(func() {
-		c.resyncVpcDnsConfig()
-	}, 5*time.Second, stopCh)
+	if c.config.EnableLb {
+		go wait.Until(func() {
+			c.resyncVpcDnsConfig()
+		}, 5*time.Second, stopCh)
+	}
 
 	go wait.Until(func() {
 		if err := c.markAndCleanLSP(); err != nil {
