@@ -1,4 +1,4 @@
-GO_VERSION = 1.17
+GO_VERSION = 1.18
 SHELL=/bin/bash
 
 REGISTRY = kubeovn
