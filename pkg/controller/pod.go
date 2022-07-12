@@ -1353,6 +1353,7 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 
 	// check if subnet exist in OwnerReference
 	var ownerRefSubnetExist bool
+	var ownerRefSubnet string
 	switch ownerRefKind {
 	case "StatefulSet":
 		ss, err := c.config.KubeClient.AppsV1().StatefulSets(pod.Namespace).Get(context.Background(), ownerRefName, metav1.GetOptions{})
@@ -1365,6 +1366,7 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 		}
 		if ss.Spec.Template.ObjectMeta.Annotations[util.LogicalSwitchAnnotation] != "" {
 			ownerRefSubnetExist = true
+			ownerRefSubnet = ss.Spec.Template.ObjectMeta.Annotations[util.LogicalSwitchAnnotation]
 		}
 
 	case util.VmInstance:
@@ -1381,6 +1383,7 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 			vm.Spec.Template.ObjectMeta.Annotations != nil &&
 			vm.Spec.Template.ObjectMeta.Annotations[util.LogicalSwitchAnnotation] != "" {
 			ownerRefSubnetExist = true
+			ownerRefSubnet = vm.Spec.Template.ObjectMeta.Annotations[util.LogicalSwitchAnnotation]
 		}
 	}
 
@@ -1400,6 +1403,11 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 	}
 	if podSubnet != nil && !util.CIDRContainIP(podSubnet.Spec.CIDRBlock, pod.Annotations[util.IpAddressAnnotation]) {
 		klog.Infof("pod's ip %s is not in the range of subnet %s, delete pod", pod.Annotations[util.IpAddressAnnotation], podSubnet.Name)
+		return true, nil
+	}
+	// subnet of ownerReference(sts/vm) has been changed, it needs to handle delete pod and create port on the new logical switch
+	if podSubnet != nil && ownerRefSubnet != "" && podSubnet.Name != ownerRefSubnet {
+		klog.Infof("Subnet of owner %s has been changed from %s to %s, delete pod %s/%s", ownerRefName, podSubnet.Name, ownerRefSubnet, pod.Namespace, pod.Name)
 		return true, nil
 	}
 
