@@ -711,7 +711,7 @@ func (c LegacyClient) createRouterPort(ls, lr, ip, mac string) error {
 	return nil
 }
 
-func (c Client) CreatePeerRouterPort(localRouter, remoteRouter, localRouterPortIP string) error {
+func (c LegacyClient) CreatePeerRouterPort(localRouter, remoteRouter, localRouterPortIP string) error {
 	localRouterPort := fmt.Sprintf("%s-%s", localRouter, remoteRouter)
 	remoteRouterPort := fmt.Sprintf("%s-%s", remoteRouter, localRouter)
 

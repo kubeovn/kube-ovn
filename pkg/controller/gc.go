@@ -54,14 +54,14 @@ func (c *Controller) gcLogicalRouterPort() error {
 			exceptPeerPorts = append(exceptPeerPorts, fmt.Sprintf("%s-%s", vpc.Name, peer))
 		}
 	}
-	lrps, err := c.ovnClient.ListLogicalEntity("logical_router_port", "peer!=[]")
+	lrps, err := c.ovnLegacyClient.ListLogicalEntity("logical_router_port", "peer!=[]")
 	if err != nil {
 		klog.Errorf("failed to list logical router port, %v", err)
 		return err
 	}
 	for _, lrp := range lrps {
 		if !util.ContainsString(exceptPeerPorts, lrp) {
-			if err = c.ovnClient.DeleteLogicalRouterPort(lrp); err != nil {
+			if err = c.ovnLegacyClient.DeleteLogicalRouterPort(lrp); err != nil {
 				klog.Errorf("failed to delete logical router port %s, %v", lrp, err)
 				return err
 			}
