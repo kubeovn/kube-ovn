@@ -181,6 +181,13 @@ if [[ $ENABLE_SSL = "true" ]];then
 fi
 
 echo "[Step 1/6] Label kube-ovn-master node and label datapath type"
+
+# Kubernetes project moved away words that is considered offensive after v1.20.0
+KUBERNETES_SERVER_VERSION=$(kubectl version --short | grep "Server Version" | cut -d ":" -f 2 | cut -d "v" -f 2)
+if [ "$KUBERNETES_SERVER_VERSION" \> "1.20.0" ]; then
+  LABEL="node-role.kubernetes.io/control-plane"
+fi
+
 count=$(kubectl get no -l$LABEL --no-headers -o wide | wc -l | sed 's/ //g')
 if [ "$count" = "0" ]; then
   echo "ERROR: No node with label $LABEL"
