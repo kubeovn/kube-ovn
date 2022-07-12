@@ -138,6 +138,7 @@ const (
 	GatewayRouterPolicyPriority = 29000
 	NodeRouterPolicyPriority    = 30000
 	SubnetRouterPolicyPriority  = 31000
+	OvnICPolicyPriority         = 29500
 
 	OffloadType  = "offload-port"
 	InternalType = "internal-port"
@@ -174,4 +175,10 @@ const (
 
 	AttachmentProvider = "ovn.kubernetes.io/attchmentprovider"
 	LbSvcPodImg        = "ovn.kubernetes.io/lb_svc_img"
+
+	OvnICKey   = "origin"
+	OvnICValue = "connected"
+
+	MatchV4Src = "ip4.src"
+	MatchV4Dst = "ip4.dst"
 )
