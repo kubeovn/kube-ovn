@@ -128,6 +128,7 @@ const (
 	GatewayRouterPolicyPriority = 29000
 	NodeRouterPolicyPriority    = 30000
 	SubnetRouterPolicyPriority  = 31000
+	OvnICPolicyPriority         = 29500
 
 	VethType     = "veth-pair"
 	OffloadType  = "offload-port"
@@ -164,4 +165,17 @@ const (
 	NetemQosLatencyAnnotationTemplate = "%s.kubernetes.io/latency"
 	NetemQosLimitAnnotationTemplate   = "%s.kubernetes.io/limit"
 	NetemQosLossAnnotationTemplate    = "%s.kubernetes.io/loss"
+
+	POD_IP             = "POD_IP"
+	ContentType        = "application/vnd.kubernetes.protobuf"
+	AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
+
+	AttachmentProvider = "ovn.kubernetes.io/attchmentprovider"
+	LbSvcPodImg        = "ovn.kubernetes.io/lb_svc_img"
+
+	OvnICKey   = "origin"
+	OvnICValue = "connected"
+
+	MatchV4Src = "ip4.src"
+	MatchV4Dst = "ip4.dst"
 )
