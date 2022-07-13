@@ -231,7 +231,7 @@ var _ = Describe("[Qos]", func() {
 			Spec: kubeovn.SubnetSpec{
 				CIDRBlock:  cidr,
 				Protocol:   util.CheckProtocol(cidr),
-				HtbQos:     util.HtbQosHigh,
+				HtbQos:     util.HtbQosLow,
 				Namespaces: []string{namespace},
 			},
 		}
@@ -243,7 +243,7 @@ var _ = Describe("[Qos]", func() {
 
 		subnet, err := f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(subnet.Spec.HtbQos).To(Equal(util.HtbQosHigh))
+		Expect(subnet.Spec.HtbQos).To(Equal(util.HtbQosLow))
 
 		autoMount := false
 		oriPod := &corev1.Pod{
@@ -282,11 +282,11 @@ var _ = Describe("[Qos]", func() {
 		time.Sleep(3 * time.Second)
 		priority, _, err := framework.GetPodHtbQosPara(name, namespace)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(priority).To(Equal("100"))
+		Expect(priority).To(Equal("5"))
 
 		By("Annotate pod with priority")
 		pod := oriPod.DeepCopy()
-		pod.Annotations[util.PriorityAnnotation] = "60"
+		pod.Annotations[util.PriorityAnnotation] = "2"
 
 		patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
 		Expect(err).NotTo(HaveOccurred())
@@ -296,13 +296,13 @@ var _ = Describe("[Qos]", func() {
 
 		pod, err = f.KubeClientSet.CoreV1().Pods(namespace).Get(context.Background(), name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(pod.Annotations[util.PriorityAnnotation]).To(Equal("60"))
+		Expect(pod.Annotations[util.PriorityAnnotation]).To(Equal("2"))
 
 		By("Check Ovs Qos Para")
 		time.Sleep(3 * time.Second)
 		priority, _, err = framework.GetPodHtbQosPara(name, namespace)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(priority).To(Equal("60"))
+		Expect(priority).To(Equal("2"))
 
 		By("Delete Pod priority annotation")
 		testPod := pod.DeepCopy()
@@ -321,7 +321,7 @@ var _ = Describe("[Qos]", func() {
 		time.Sleep(3 * time.Second)
 		priority, _, err = framework.GetPodHtbQosPara(name, namespace)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(priority).To(Equal("100"))
+		Expect(priority).To(Equal("5"))
 
 		By("Delete pod")
 		err = f.KubeClientSet.CoreV1().Pods(namespace).Delete(context.Background(), pod.Name, metav1.DeleteOptions{})
