@@ -25,6 +25,26 @@ for pn in $(kubectl get provider-network -o name); do
   kubectl delete --ignore-not-found $pn
 done
 
+for vip in $(kubectl get vip -o name); do
+   kubectl delete --ignore-not-found $vip
+done
+
+for eip in $(kubectl get eip -o name); do
+   kubectl delete --ignore-not-found $eip
+done
+
+for snat in $(kubectl get snat -o name); do
+   kubectl delete --ignore-not-found $snat
+done
+
+for dnat in $(kubectl get dnat -o name); do
+   kubectl delete --ignore-not-found $dnat
+done
+
+for fip in $(kubectl get fip -o name); do
+   kubectl delete --ignore-not-found $fip
+done
+
 sleep 5
 
 # Delete Kube-OVN components
