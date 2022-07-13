@@ -185,7 +185,7 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 	}
 	vip := cachedVip.DeepCopy()
 	klog.V(3).Infof("handle add vip %s", vip.Name)
-	var sourceV4Ip, v4ip, v6ip, mac, nicName, subnetName, parentV4ip, parentV6ip, parentMac string
+	var sourceV4Ip, v4ip, v6ip, mac, subnetName, parentV4ip, parentV6ip, parentMac string
 	subnetName = vip.Spec.Subnet
 	if subnetName == "" {
 		return fmt.Errorf("failed to create vip '%s', subnet should be set", key)
@@ -194,13 +194,13 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 	if err != nil {
 		return err
 	}
-	nicName = ovs.PodNameToPortName(vip.Name, vip.Namespace, subnet.Spec.Provider)
+	portName := ovs.PodNameToPortName(vip.Name, vip.Namespace, subnet.Spec.Provider)
 	sourceV4Ip = vip.Spec.V4ip
 	if sourceV4Ip != "" {
-		v4ip, v6ip, mac, err = c.acquireStaticVirtualAddress(subnet.Name, vip.Name, nicName, sourceV4Ip)
+		v4ip, v6ip, mac, err = c.acquireStaticVirtualAddress(subnet.Name, vip.Name, portName, sourceV4Ip)
 	} else {
 		// Random allocate
-		v4ip, v6ip, mac, err = c.acquireVirtualAddress(subnet.Name, vip.Name, nicName)
+		v4ip, v6ip, mac, err = c.acquireVirtualAddress(subnet.Name, vip.Name, portName)
 	}
 	if err != nil {
 		return err
@@ -349,6 +349,7 @@ func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4i
 					Name: key,
 					Labels: map[string]string{
 						util.SubnetNameLabel: subnet,
+						util.IpReservedLabel: "",
 					},
 					Namespace: ns,
 				},
@@ -416,7 +417,10 @@ func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4i
 		var op string
 		if len(vip.Labels) == 0 {
 			op = "add"
-			vip.Labels = map[string]string{util.SubnetNameLabel: subnet}
+			vip.Labels = map[string]string{
+				util.SubnetNameLabel: subnet,
+				util.IpReservedLabel: "",
+			}
 			needUpdateLabel = true
 		}
 		if vip.Labels[util.SubnetNameLabel] != subnet {
@@ -505,6 +509,78 @@ func (c *Controller) patchVipStatus(key, v4ip string, ready bool) error {
 			klog.Errorf("failed to update status for vip '%s', %v", key, err)
 			return err
 		}
+	}
+	return nil
+}
+
+func (c *Controller) podReuseVip(key, portName string, isStsPod bool) error {
+	// when pod use static vip, label vip reserved for pod
+	oriVip, err := c.virtualIpsLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to get cached vip '%s', %v", key, err)
+			return nil
+		}
+		return err
+	}
+	vip := oriVip.DeepCopy()
+	var op string
+
+	if vip.Labels[util.IpReservedLabel] != "" {
+		if isStsPod && vip.Labels[util.IpReservedLabel] == portName {
+			return nil
+		} else {
+			return fmt.Errorf("vip '%s' is in use by pod %s", vip.Name, vip.Labels[util.IpReservedLabel])
+		}
+	}
+	op = "replace"
+	vip.Labels[util.IpReservedLabel] = portName
+	patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
+	raw, _ := json.Marshal(vip.Labels)
+	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
+	if _, err = c.config.KubeOvnClient.KubeovnV1().Vips().Patch(context.Background(), vip.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
+		klog.Errorf("failed to patch label for vip '%s', %v", vip.Name, err)
+		return err
+	}
+	c.ipam.ReleaseAddressByPod(key)
+	c.updateSubnetStatusQueue.Add(vip.Spec.Subnet)
+	return nil
+}
+
+func (c *Controller) releaseVip(key string) error {
+	// clean vip label when pod delete
+	oriVip, err := c.virtualIpsLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to get cached vip '%s', %v", key, err)
+			return nil
+		}
+		return err
+	}
+	vip := oriVip.DeepCopy()
+	var needUpdateLabel bool
+	var op string
+	if vip.Labels[util.IpReservedLabel] == "" {
+		return nil
+	} else {
+		op = "replace"
+		vip.Labels[util.IpReservedLabel] = ""
+		needUpdateLabel = true
+	}
+	if needUpdateLabel {
+		klog.V(3).Infof("clean reserved label from vip %s", key)
+		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
+		raw, _ := json.Marshal(vip.Labels)
+		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
+		_, err := c.config.KubeOvnClient.KubeovnV1().Vips().Patch(context.Background(), vip.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
+		if err != nil {
+			klog.Errorf("failed to patch label for vip '%s', %v", vip.Name, err)
+			return err
+		}
+		if _, _, _, err = c.ipam.GetStaticAddress(key, vip.Name, vip.Spec.V4ip, vip.Spec.MacAddress, vip.Spec.Subnet, false); err != nil {
+			klog.Errorf("failed to recover IPAM from VIP CR %s: %v", vip.Name, err)
+		}
+		c.updateSubnetStatusQueue.Add(vip.Spec.Subnet)
 	}
 	return nil
 }

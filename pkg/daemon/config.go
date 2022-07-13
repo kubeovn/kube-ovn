@@ -43,6 +43,7 @@ type Configuration struct {
 	ServiceClusterIPRange   string
 	NodeLocalDnsIP          string
 	EncapChecksum           bool
+	EnablePprof             bool
 	PprofPort               int
 	NetworkType             string
 	CniConfDir              string
@@ -69,6 +70,7 @@ func ParseFlags() *Configuration {
 		argServiceClusterIPRange = pflag.String("service-cluster-ip-range", "10.96.0.0/12", "The kubernetes service cluster ip range")
 		argNodeLocalDnsIP        = pflag.String("node-local-dns-ip", "", "If use nodelocaldns the local dns server ip should be set here.")
 		argEncapChecksum         = pflag.Bool("encap-checksum", true, "Enable checksum")
+		argEnablePprof           = pflag.Bool("enable-pprof", false, "Enable pprof")
 		argPprofPort             = pflag.Int("pprof-port", 10665, "The port to get profiling data")
 
 		argsNetworkType            = pflag.String("network-type", "geneve", "The ovn network type")
@@ -110,6 +112,7 @@ func ParseFlags() *Configuration {
 		BindSocket:              *argBindSocket,
 		OvsSocket:               *argOvsSocket,
 		KubeConfigFile:          *argKubeConfigFile,
+		EnablePprof:             *argEnablePprof,
 		PprofPort:               *argPprofPort,
 		NodeName:                strings.ToLower(*argNodeName),
 		ServiceClusterIPRange:   *argServiceClusterIPRange,

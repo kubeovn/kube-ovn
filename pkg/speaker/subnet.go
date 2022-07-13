@@ -36,8 +36,10 @@ func isPodAlive(p *v1.Pod) bool {
 	return true
 }
 
-func isClusterIP(svc *v1.Service) bool {
-	return svc.Spec.Type == "ClusterIP"
+func isClusterIPService(svc *v1.Service) bool {
+	return svc.Spec.Type == v1.ServiceTypeClusterIP &&
+		svc.Spec.ClusterIP != v1.ClusterIPNone &&
+		len(svc.Spec.ClusterIP) != 0
 }
 
 // TODO: ipv4 only, need ipv6/dualstack support later
@@ -61,12 +63,9 @@ func (c *Controller) syncSubnetRoutes() {
 			return
 		}
 		for _, svc := range services {
-
-			if isClusterIP(svc) && svc.Annotations[util.BgpAnnotation] == "true" && svc.Spec.ClusterIP != "None" &&
-				svc.Spec.ClusterIP != "" {
+			if svc.Annotations != nil && svc.Annotations[util.BgpAnnotation] == "true" && isClusterIPService(svc) {
 				bgpExpected = append(bgpExpected, fmt.Sprintf("%s/32", svc.Spec.ClusterIP))
 			}
-
 		}
 	}
 

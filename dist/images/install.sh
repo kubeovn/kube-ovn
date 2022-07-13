@@ -17,6 +17,7 @@ LS_DNAT_MOD_DL_DST=${LS_DNAT_MOD_DL_DST:-true}
 WITHOUT_KUBE_PROXY=${WITHOUT_KUBE_PROXY:-false}
 ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-true}
 CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
+ENABLE_LB_SVC=${ENABLE_LB_SVC:-false}
 # The nic to support container network can be a nic name or a group of regex
 # separated by comma, if empty will use the nic that the default route use
 IFACE=${IFACE:-}
@@ -188,7 +189,9 @@ fi
 kubectl label no -lbeta.kubernetes.io/os=linux kubernetes.io/os=linux --overwrite
 kubectl label no -l$LABEL kube-ovn/role=master --overwrite
 
-kubectl label no -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel  --overwrite
+if [ "$DPDK" = "true" -o "$HYBRID_DPDK" = "true" ]; then
+  kubectl label no -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel --overwrite
+fi
 
 echo "-------------------------------"
 echo ""
@@ -261,6 +264,81 @@ spec:
                         type: string
                       lastTransitionTime:
                         type: string
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: switch-lb-rules.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: switch-lb-rules
+    singular: switch-lb-rule
+    shortNames:
+      - slr
+    kind: SwitchLBRule
+    listKind: SwitchLBRuleList
+  scope: Cluster
+  versions:
+    - additionalPrinterColumns:
+        - jsonPath: .spec.vip
+          name: vip
+          type: string
+        - jsonPath: .status.ports
+          name: port(s)
+          type: string
+        - jsonPath: .status.service
+          name: service
+          type: string
+        - jsonPath: .metadata.creationTimestamp
+          name: age
+          type: date
+      name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                namespace:
+                  type: string
+                vip:
+                  type: string
+                sessionAffinity:
+                  type: string
+                ports:
+                  items:
+                    properties:
+                      name:
+                        type: string
+                      port:
+                        type: integer
+                        minimum: 1
+                        maximum: 65535
+                      protocol:
+                        type: string
+                      targetPort:
+                        type: integer
+                        minimum: 1
+                        maximum: 65535
+                    type: object
+                  type: array
+                selector:
+                  items:
+                    type: string
+                  type: array
+            status:
+              type: object
+              properties:
+                ports:
+                  type: string
+                service:
+                  type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -1585,6 +1663,7 @@ rules:
     resources:
       - networkpolicies
       - services
+      - services/status
       - endpoints
       - statefulsets
       - daemonsets
@@ -2090,6 +2169,7 @@ rules:
     resources:
       - networkpolicies
       - services
+      - services/status
       - endpoints
       - statefulsets
       - daemonsets
@@ -2469,7 +2549,6 @@ spec:
               memory: 1000Mi
       nodeSelector:
         kubernetes.io/os: "linux"
-        ovn.kubernetes.io/ovs_dp_type: kernel
       volumes:
         - name: host-modules
           hostPath:
@@ -2754,6 +2833,7 @@ spec:
           - --inspect-interval=$INSPECT_INTERVAL
           - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
           - --log_file_max_size=0
+          - --enable-lb-svc=$ENABLE_LB_SVC
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
@@ -2896,6 +2976,9 @@ spec:
           - name: RPMS
             value: $RPMS
         volumeMounts:
+          - name: host-modules
+            mountPath: /lib/modules
+            readOnly: true
           - name: shared-dir
             mountPath: /var/lib/kubelet/pods
           - mountPath: /etc/openvswitch
@@ -2946,6 +3029,9 @@ spec:
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
+        - name: host-modules
+          hostPath:
+            path: /lib/modules
         - name: shared-dir
           hostPath:
             path: /var/lib/kubelet/pods

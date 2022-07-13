@@ -15,6 +15,7 @@ const (
 	BgpAnnotation        = "ovn.kubernetes.io/bgp"
 	SnatAnnotation       = "ovn.kubernetes.io/snat"
 	EipAnnotation        = "ovn.kubernetes.io/eip"
+	VipAnnotation        = "ovn.kubernetes.io/vip"
 	ChassisAnnotation    = "ovn.kubernetes.io/chassis"
 
 	VpcNatGatewayAnnotation     = "ovn.kubernetes.io/vpc_nat_gw"
@@ -83,6 +84,7 @@ const (
 	ICGatewayLabel         = "ovn.kubernetes.io/ic-gw"
 	ExGatewayLabel         = "ovn.kubernetes.io/external-gw"
 	VpcNatGatewayLabel     = "ovn.kubernetes.io/vpc-nat-gw"
+	IpReservedLabel        = "ovn.kubernetes.io/ip_reserved"
 	VpcNatGatewayNameLabel = "ovn.kubernetes.io/vpc-nat-gw-name"
 	VpcLbLabel             = "ovn.kubernetes.io/vpc_lb"
 
@@ -137,6 +139,7 @@ const (
 	GatewayRouterPolicyPriority = 29000
 	NodeRouterPolicyPriority    = 30000
 	SubnetRouterPolicyPriority  = 31000
+	OvnICPolicyPriority         = 29500
 
 	OffloadType  = "offload-port"
 	InternalType = "internal-port"
@@ -170,4 +173,13 @@ const (
 	POD_IP             = "POD_IP"
 	ContentType        = "application/vnd.kubernetes.protobuf"
 	AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
+
+	AttachmentProvider = "ovn.kubernetes.io/attchmentprovider"
+	LbSvcPodImg        = "ovn.kubernetes.io/lb_svc_img"
+
+	OvnICKey   = "origin"
+	OvnICValue = "connected"
+
+	MatchV4Src = "ip4.src"
+	MatchV4Dst = "ip4.dst"
 )

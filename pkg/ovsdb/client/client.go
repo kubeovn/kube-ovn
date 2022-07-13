@@ -34,11 +34,11 @@ func NewNbClient(addr string, timeout int) (client.Client, error) {
 	}
 
 	logger := stdr.NewWithOptions(log.New(os.Stderr, "", log.LstdFlags), stdr.Options{LogCaller: stdr.All}).
-		WithName("libovsdb").
-		WithValues("database", dbModel.Name())
+		WithName("libovsdb")
+	stdr.SetVerbosity(3)
 	options := []client.Option{
 		client.WithReconnect(time.Duration(timeout)*time.Second, &backoff.ZeroBackOff{}),
-		client.WithLeaderOnly(false),
+		client.WithLeaderOnly(true),
 		client.WithLogger(&logger),
 	}
 
@@ -88,6 +88,8 @@ func NewNbClient(addr string, timeout int) (client.Client, error) {
 		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
 		client.WithTable(&ovnnb.LogicalSwitchPort{}),
 		client.WithTable(&ovnnb.PortGroup{}),
+		client.WithTable(&ovnnb.LogicalRouterStaticRoute{}),
+		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
 	}
 	if _, err = c.Monitor(context.TODO(), c.NewMonitor(monitorOpts...)); err != nil {
 		klog.Errorf("failed to monitor database on OVN NB server %s: %v", addr, err)
