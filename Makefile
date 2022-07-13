@@ -375,6 +375,9 @@ ut:
 e2e:
 	$(eval NODE_COUNT = $(shell kind get nodes --name kube-ovn | wc -l))
 	$(eval NETWORK_BRIDGE = $(shell docker inspect -f '{{json .NetworkSettings.Networks.bridge}}' kube-ovn-control-plane))
+	@if docker ps -a --format 'table {{.Names}}' | grep -q '^kube-ovn-e2e$$'; then \
+		docker rm -f kube-ovn-e2e; \
+	fi
 	docker run -d --name kube-ovn-e2e --network kind --cap-add=NET_ADMIN $(REGISTRY)/kube-ovn:$(RELEASE_TAG) sleep infinity
 	@if [ '$(NETWORK_BRIDGE)' = 'null' ]; then \
 		kind get nodes --name kube-ovn | while read node; do \
