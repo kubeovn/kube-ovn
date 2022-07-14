@@ -249,7 +249,8 @@ func (c *Controller) addLoadBalancer(vpc string) (*VpcLoadBalancer, error) {
 }
 
 func (c *Controller) handleAddOrUpdateVpc(key string) error {
-	orivpc, err := c.vpcsLister.Get(key)
+	// get latest vpc info
+	orivpc, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Get(context.Background(), key, metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
