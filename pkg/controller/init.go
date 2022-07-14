@@ -205,13 +205,13 @@ func (c *Controller) initClusterRouter() error {
 
 // InitLoadBalancer init the default tcp and udp cluster loadbalancer
 func (c *Controller) initLoadBalancer() error {
-	vpcs, err := c.vpcsLister.List(labels.Everything())
+	vpcs, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		klog.Errorf("failed to list vpc: %v", err)
 		return err
 	}
 
-	for _, orivpc := range vpcs {
+	for _, orivpc := range vpcs.Items {
 		vpc := orivpc.DeepCopy()
 		vpcLb := c.GenVpcLoadBalancer(vpc.Name)
 
