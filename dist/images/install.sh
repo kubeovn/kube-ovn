@@ -181,6 +181,13 @@ if [[ $ENABLE_SSL = "true" ]];then
 fi
 
 echo "[Step 1/6] Label kube-ovn-master node and label datapath type"
+
+# Kubernetes project moved away words that is considered offensive after v1.20.0
+KUBERNETES_SERVER_VERSION=$(kubectl version --short | grep "Server Version" | cut -d ":" -f 2 | cut -d "v" -f 2)
+if [ "$KUBERNETES_SERVER_VERSION" \> "1.20.0" ]; then
+  LABEL="node-role.kubernetes.io/control-plane"
+fi
+
 count=$(kubectl get no -l$LABEL --no-headers -o wide | wc -l | sed 's/ //g')
 if [ "$count" = "0" ]; then
   echo "ERROR: No node with label $LABEL"
@@ -201,6 +208,81 @@ addresses=$(kubectl get no -lkube-ovn/role=master --no-headers -o wide | awk '{p
 echo "Install OVN DB in $addresses"
 
 cat <<EOF > kube-ovn-crd.yaml
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: switch-lb-rules.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: switch-lb-rules
+    singular: switch-lb-rule
+    shortNames:
+      - slr
+    kind: SwitchLBRule
+    listKind: SwitchLBRuleList
+  scope: Cluster
+  versions:
+    - additionalPrinterColumns:
+        - jsonPath: .spec.vip
+          name: vip
+          type: string
+        - jsonPath: .status.ports
+          name: port(s)
+          type: string
+        - jsonPath: .status.service
+          name: service
+          type: string
+        - jsonPath: .metadata.creationTimestamp
+          name: age
+          type: date
+      name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                namespace:
+                  type: string
+                vip:
+                  type: string
+                sessionAffinity:
+                  type: string
+                ports:
+                  items:
+                    properties:
+                      name:
+                        type: string
+                      port:
+                        type: integer
+                        minimum: 1
+                        maximum: 65535
+                      protocol:
+                        type: string
+                      targetPort:
+                        type: integer
+                        minimum: 1
+                        maximum: 65535
+                    type: object
+                  type: array
+                selector:
+                  items:
+                    type: string
+                  type: array
+            status:
+              type: object
+              properties:
+                ports:
+                  type: string
+                service:
+                  type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -1410,6 +1492,8 @@ rules:
       - iptables-fip-rules/status
       - iptables-dnat-rules/status
       - iptables-snat-rules/status
+      - switch-lb-rules
+      - switch-lb-rules/status
     verbs:
       - "*"
   - apiGroups:
@@ -1906,6 +1990,8 @@ rules:
       - iptables-fip-rules/status
       - iptables-dnat-rules/status
       - iptables-snat-rules/status
+      - switch-lb-rules
+      - switch-lb-rules/status
     verbs:
       - "*"
   - apiGroups:

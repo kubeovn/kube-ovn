@@ -37,6 +37,7 @@ type KubeovnV1Interface interface {
 	ProviderNetworksGetter
 	SecurityGroupsGetter
 	SubnetsGetter
+	SwitchLBRulesGetter
 	VipsGetter
 	VlansGetter
 	VpcsGetter
@@ -82,6 +83,10 @@ func (c *KubeovnV1Client) SecurityGroups() SecurityGroupInterface {
 
 func (c *KubeovnV1Client) Subnets() SubnetInterface {
 	return newSubnets(c)
+}
+
+func (c *KubeovnV1Client) SwitchLBRules() SwitchLBRuleInterface {
+	return newSwitchLBRules(c)
 }
 
 func (c *KubeovnV1Client) Vips() VipInterface {

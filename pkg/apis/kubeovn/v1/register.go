@@ -57,6 +57,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&SecurityGroupList{},
 		&HtbQos{},
 		&HtbQosList{},
+		&SwitchLBRule{},
+		&SwitchLBRuleList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil
