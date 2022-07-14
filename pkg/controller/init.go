@@ -743,11 +743,11 @@ func (c *Controller) initHtbQos() error {
 
 		switch qosName {
 		case util.HtbQosHigh:
-			priority = "100"
+			priority = "1"
 		case util.HtbQosMedium:
-			priority = "200"
+			priority = "3"
 		case util.HtbQosLow:
-			priority = "300"
+			priority = "5"
 		default:
 			klog.Errorf("qos %s is not default defined", qosName)
 		}
