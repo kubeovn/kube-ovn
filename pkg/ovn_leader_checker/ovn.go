@@ -391,6 +391,7 @@ func doOvnLeaderCheck(cfg *Configuration, podName string, podNamespace string) {
 	}
 	if checkNorthdSvcExist(cfg, podNamespace, "ovn-northd") {
 		if !checkNorthdSvcValidIP(cfg, podNamespace, "ovn-northd") {
+			klog.Warning("no available northd leader, try to release the lock")
 			stealLock()
 		}
 	}
