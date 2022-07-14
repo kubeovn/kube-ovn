@@ -80,3 +80,42 @@ func (c OvnClient) LogicalRouterPortExists(name string) (bool, error) {
 	lrp, err := c.GetLogicalRouterPort(name, true)
 	return lrp != nil, err
 }
+
+// CreateVpcExGwLogicalRouterPort create logical router port
+func (c OvnClient) CreateLogicalRouterPort(lrp *ovnnb.LogicalRouterPort) error {
+	if nil == lrp {
+		return fmt.Errorf("logical_router_port is nil")
+	}
+
+	op, err := c.Create(lrp)
+	if err != nil {
+		return fmt.Errorf("generate create operations for logical router port %s: %v", lrp.Name, err)
+	}
+
+	err = c.Transact("lrp-create", op)
+	if err != nil {
+		return fmt.Errorf("create logical router port %s: %v", lrp.Name, err)
+	}
+
+	return nil
+}
+
+// DeleteLogicalRouterPort delete logical router port
+func (c OvnClient) DeleteLogicalRouterPort(name string) error {
+	lrp, err := c.GetLogicalRouterPort(name, true)
+	if nil != err {
+		return err
+	}
+
+	// not found, skip
+	if nil == lrp {
+		return nil
+	}
+
+	op, err := c.Where(lrp).Delete()
+	if err != nil {
+		return err
+	}
+
+	return c.Transact("lrp-del", op)
+}
