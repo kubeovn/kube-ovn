@@ -3,19 +3,21 @@ package e2e_ovnic_test
 import (
 	"context"
 	"fmt"
-	"github.com/kubeovn/kube-ovn/test/e2e/framework"
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	"os"
 	"os/exec"
 	"strings"
 	"testing"
 
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
+	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
 
 func TestE2eOvnic(t *testing.T) {

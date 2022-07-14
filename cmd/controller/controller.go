@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -17,6 +16,7 @@ import (
 
 	"github.com/kubeovn/kube-ovn/pkg/controller"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/versions"
 )
 
