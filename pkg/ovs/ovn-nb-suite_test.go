@@ -82,8 +82,42 @@ func (suite *OvnClientTestSuite) Test_ListLogicalRouter() {
 	suite.testListLogicalRouter()
 }
 
-func (suite *OvnClientTestSuite) Test_LogicalRouterAddPort() {
-	suite.testLogicalRouterAddPort()
+func (suite *OvnClientTestSuite) Test_LogicalRouterOp() {
+	suite.testLogicalRouterOp()
+}
+
+/* logical_router_port unit test */
+func (suite *OvnClientTestSuite) Test_CreateVpcExGwLogicalRouterPort() {
+	suite.testCreateVpcExGwLogicalRouterPort()
+}
+
+func (suite *OvnClientTestSuite) Test_CreatePeerRouterPort() {
+	suite.testCreatePeerRouterPort()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateRouterPortIPv6RA() {
+	suite.testUpdateRouterPortIPv6RA()
+}
+
+func (suite *OvnClientTestSuite) Test_CreateLogicalRouterPort() {
+	suite.testCreateLogicalRouterPort()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateLogicalRouterPort() {
+	suite.testUpdateLogicalRouterPort()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteLogicalRouterPort() {
+	suite.testDeleteLogicalRouterPort()
+}
+
+/* gateway chassis unit test */
+func (suite *OvnClientTestSuite) Test_CreateGatewayChassis() {
+	suite.testCreateGatewayChassis()
+}
+
+func (suite *OvnClientTestSuite) Test_CreateGatewayChassises() {
+	suite.testCreateGatewayChassises()
 }
 
 func (suite *OvnClientTestSuite) Test_scratch() {
@@ -180,10 +214,10 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 		client.WithTable(&ovnnb.LogicalRouter{}),
 		client.WithTable(&ovnnb.LogicalRouterPort{}),
 		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
+		client.WithTable(&ovnnb.LogicalRouterStaticRoute{}),
+		client.WithTable(&ovnnb.LogicalSwitch{}),
 		client.WithTable(&ovnnb.LogicalSwitchPort{}),
 		client.WithTable(&ovnnb.PortGroup{}),
-		client.WithTable(&ovnnb.LogicalRouterStaticRoute{}),
-		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
 		client.WithTable(&ovnnb.NBGlobal{}),
 		client.WithTable(&ovnnb.GatewayChassis{}),
 	}
