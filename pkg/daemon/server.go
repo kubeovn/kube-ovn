@@ -2,9 +2,7 @@ package daemon
 
 import (
 	"fmt"
-	"net"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/emicklei/go-restful/v3"
@@ -13,24 +11,26 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/request"
 )
 
-var requestLogString = "[%s] Incoming %s %s %s request"
-var responseLogString = "[%s] Outgoing response %s %s with %d status code in %vms"
+const (
+	requestLogFormat  = "[%s] Incoming %s %s %s request"
+	responseLogFormat = "[%s] Outgoing response %s %s with %d status code in %vms"
+)
 
 // RunServer runs the cniserver
 func RunServer(config *Configuration, controller *Controller) {
 	nodeName = config.NodeName
 	csh := createCniServerHandler(config, controller)
 	server := http.Server{
-		Handler: createHandler(csh),
+		Handler:           createHandler(csh),
+		ReadHeaderTimeout: 3 * time.Second,
 	}
-	unixListener, err := net.Listen("unix", config.BindSocket)
+	listener, cleanFunc, err := listen(config.BindSocket)
 	if err != nil {
-		klog.Errorf("bind socket to %s failed %v", config.BindSocket, err)
 		return
 	}
-	defer os.Remove(config.BindSocket)
+	defer cleanFunc()
 	klog.Infof("start listen on %s", config.BindSocket)
-	klog.Fatal(server.Serve(unixListener))
+	klog.Fatal(server.Serve(listener))
 }
 
 func createHandler(csh *cniServerHandler) http.Handler {
@@ -73,13 +73,13 @@ func requestAndResponseLogger(request *restful.Request, response *restful.Respon
 
 // formatRequestLog formats request log string.
 func formatRequestLog(request *restful.Request) string {
-	return fmt.Sprintf(requestLogString, time.Now().Format(time.RFC3339), request.Request.Proto,
+	return fmt.Sprintf(requestLogFormat, time.Now().Format(time.RFC3339), request.Request.Proto,
 		request.Request.Method, getRequestURI(request))
 }
 
 // formatResponseLog formats response log string.
 func formatResponseLog(response *restful.Response, request *restful.Request, reqTime float64) string {
-	return fmt.Sprintf(responseLogString, time.Now().Format(time.RFC3339),
+	return fmt.Sprintf(responseLogFormat, time.Now().Format(time.RFC3339),
 		request.Request.Method, getRequestURI(request), response.StatusCode(), reqTime)
 }
 

@@ -43,10 +43,22 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&VpcList{},
 		&VpcNatGateway{},
 		&VpcNatGatewayList{},
+		&Vip{},
+		&VipList{},
+		&IptablesEIP{},
+		&IptablesEIPList{},
+		&IptablesFIPRule{},
+		&IptablesFIPRuleList{},
+		&IptablesDnatRule{},
+		&IptablesDnatRuleList{},
+		&IptablesSnatRule{},
+		&IptablesSnatRuleList{},
 		&SecurityGroup{},
 		&SecurityGroupList{},
 		&HtbQos{},
 		&HtbQosList{},
+		&SwitchLBRule{},
+		&SwitchLBRuleList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

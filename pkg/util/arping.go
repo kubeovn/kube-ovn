@@ -6,19 +6,19 @@ package util
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"time"
 
 	"github.com/mdlayher/arp"
 )
 
 func Arping(nic, srcIP, dstIP string, timeout time.Duration, maxRetry int) (net.HardwareAddr, int, error) {
-	target := net.ParseIP(dstIP)
-	if target == nil {
-		return nil, 0, fmt.Errorf("%s is not a valid IP address", dstIP)
+	target, err := netip.ParseAddr(dstIP)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to parse target address %s: %v", dstIP, err)
 	}
 
 	var count int
-	var err error
 	var ifi *net.Interface
 	for ; count < maxRetry; count++ {
 		if ifi, err = net.InterfaceByName(nic); err == nil {

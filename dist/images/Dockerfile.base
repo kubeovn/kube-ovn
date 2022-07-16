@@ -2,6 +2,7 @@
 FROM ubuntu:22.04 as ovs-builder
 
 ARG ARCH
+ARG NO_AVX512=false
 ARG DEBIAN_FRONTEND=noninteractive
 ENV SRC_DIR='/usr/src'
 
@@ -11,9 +12,12 @@ RUN apt update && apt install build-essential git libnuma-dev autoconf curl \
     flake8 python3-sphinx graphviz groff wget libjemalloc-dev -y
 
 RUN cd /usr/src/ && \
-    git clone -b branch-2.16 --depth=1 https://github.com/openvswitch/ovs.git && \
+    git clone -b ovn-22.03.1 --depth=1 https://github.com/kubeovn/ovs.git && \
     cd ovs && \
+    # increase election timer
     curl -s https://github.com/kubeovn/ovs/commit/22ea22c40b46ee5adeae977ff6cfca81b3ff25d7.patch | git apply && \
+    # compile without avx512
+    if [ "$ARCH" = "amd64" -a "$NO_AVX512" = "true" ]; then curl -s https://github.com/kubeovn/ovs/commit/38c59e078d69b343f56ab0f380fb9f42b94b7c02.patch | git apply; fi && \
     ./boot.sh && \
     rm -rf .git && \
     CONFIGURE_OPTS='LIBS=-ljemalloc' && \
@@ -22,14 +26,14 @@ RUN cd /usr/src/ && \
 
 RUN dpkg -i /usr/src/python3-openvswitch*.deb /usr/src/libopenvswitch*.deb
 
-RUN cd /usr/src/ && git clone -b branch-21.06 --depth=1 https://github.com/ovn-org/ovn.git && \
+RUN cd /usr/src/ && git clone -b v22.03.1 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
-    curl -s https://github.com/kubeovn/ovn/commit/e24734913d25c0bffdf1cfd79e14ef43d01e1019.patch | git apply && \
-    curl -s https://github.com/kubeovn/ovn/commit/8f4e4868377afb5e980856755b9f6394f8b649e2.patch | git apply && \
-    curl -s https://github.com/kubeovn/ovn/commit/23a87cabb76fbdce5092a6b3d3b56f3fa8dd61f5.patch | git apply && \
-    curl -s https://github.com/kubeovn/ovn/commit/89ca60989df4af9a96cc6024e04f99b9b77bad22.patch | git apply && \
-    curl -s https://github.com/kubeovn/ovn/commit/aeafa43fc51be8ea1c7abfbe779c69205c1c5aa4.patch | git apply && \
-    curl -s https://github.com/kubeovn/ovn/commit/71f831b9cc5a6dc923af4ca90286857e2cf8b1d3.patch | git apply && \
+    # do not send traffic that not designate to svc to conntrack
+    curl -s https://github.com/kubeovn/ovn/commit/d26ae4de0ab070f6b602688ba808c8963f69d5c4.patch | git apply && \
+    # change hash type from dp_hash to hash with field src_ip
+    curl -s https://github.com/kubeovn/ovn/commit/ab923b252271cbbcccc8091e338ee7efe75e5fcd.patch | git apply && \
+    # set ether dst addr for dnat on logical switch
+    curl -s https://github.com/kubeovn/ovn/commit/94b73d939cd33b0531fa9a3422c999cd83ead087.patch | git apply && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \
@@ -50,7 +54,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
         ethtool iproute2 ncat libunbound-dev procps libatomic1 kmod iptables \
         tcpdump ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 \
-        logrotate libjemalloc2 dnsutils -y --no-install-recommends && \
+        logrotate libjemalloc2 dnsutils net-tools nmap -y --no-install-recommends && \
         rm -rf /var/lib/apt/lists/* && \
         cd /usr/sbin && \
         ln -sf /usr/sbin/iptables-legacy iptables && \
@@ -63,11 +67,24 @@ RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /opt/cni/bin
 
 ARG ARCH
-ENV CNI_VERSION=v0.8.7
+ENV CNI_VERSION=v1.1.1
 RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz | tar -xz -C . ./loopback ./portmap ./macvlan
+
+ENV KUBE_VERSION="v1.24.2"
+
+RUN curl -L https://dl.k8s.io/${KUBE_VERSION}/kubernetes-client-linux-${ARCH}.tar.gz | tar -xz -C . && cp ./kubernetes/client/bin/kubectl /usr/bin/kubectl \
+ && chmod +x /usr/bin/kubectl && rm -rf ./kubernetes
 
 RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     dpkg -i /packages/libopenvswitch*.deb && \
     dpkg -i /packages/openvswitch-*.deb && \
     dpkg -i /packages/python3-openvswitch*.deb &&\
     dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/ovn-*.deb
+
+ENV DUMB_INIT_VERSION="1.2.5"
+RUN dump_arch="x86_64"; \
+    if [ "$ARCH" = "arm64" ]; then dump_arch="aarch64"; fi; \
+    curl -sSf -L --retry 5 -o /usr/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v${DUMB_INIT_VERSION}/dumb-init_${DUMB_INIT_VERSION}_${dump_arch} && \
+    chmod +x /usr/bin/dumb-init
+
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]

@@ -1,0 +1,144 @@
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: ovs-ovn
+  namespace: kube-system
+  annotations:
+    kubernetes.io/description: |
+      This daemon set launches the openvswitch daemon.
+spec:
+  selector:
+    matchLabels:
+      app: ovs
+  updateStrategy:
+    type: OnDelete
+  template:
+    metadata:
+      labels:
+        app: ovs
+        component: network
+        type: infra
+    spec:
+      tolerations:
+        - effect: NoSchedule
+          operator: Exists
+        - effect: NoExecute
+          operator: Exists
+        - key: CriticalAddonsOnly
+          operator: Exists
+      priorityClassName: system-cluster-critical
+      serviceAccountName: ovn
+      hostNetwork: true
+      hostPID: true
+      containers:
+        - name: openvswitch
+          image: "{{- .Values.image.repository -}}/kube-ovn:{{- .Values.image.version }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/kube-ovn/start-ovs.sh"]
+          securityContext:
+            runAsUser: 0
+            privileged: true
+          env:
+            - name: ENABLE_SSL
+              value: "{{ .Values.networking.enable_ssl }}"
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: HW_OFFLOAD
+              value: "{{- .Values.func.HW_OFFLOAD }}"
+            - name: TUNNEL_TYPE
+              value: "{{- .Values.networking.network_type }}"
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: OVN_DB_IPS
+              value: "{{ .Values.cni_conf.MASTER_NODES }}"
+          volumeMounts:
+            - mountPath: /lib/modules
+              name: host-modules
+              readOnly: true
+            - mountPath: /var/run/openvswitch
+              name: host-run-ovs
+            - mountPath: /var/run/ovn
+              name: host-run-ovn
+            - mountPath: /sys
+              name: host-sys
+              readOnly: true
+            - mountPath: /etc/cni/net.d
+              name: cni-conf
+            - mountPath: /etc/openvswitch
+              name: host-config-openvswitch
+            - mountPath: /etc/ovn
+              name: host-config-ovn
+            - mountPath: /var/log/openvswitch
+              name: host-log-ovs
+            - mountPath: /var/log/ovn
+              name: host-log-ovn
+            - mountPath: /etc/localtime
+              name: localtime
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
+          readinessProbe:
+            exec:
+              command:
+                - bash
+                - -c
+                - LOG_ROTATE=true /kube-ovn/ovs-healthcheck.sh
+            periodSeconds: 5
+            timeoutSeconds: 45
+          livenessProbe:
+            exec:
+              command:
+                - bash
+                - /kube-ovn/ovs-healthcheck.sh
+            initialDelaySeconds: 60
+            periodSeconds: 5
+            failureThreshold: 5
+            timeoutSeconds: 45
+          resources:
+            requests:
+              cpu: 200m
+              memory: 200Mi
+            limits:
+              cpu: 1000m
+              memory: 800Mi
+      nodeSelector:
+        kubernetes.io/os: "linux"
+      volumes:
+        - name: host-modules
+          hostPath:
+            path: /lib/modules
+        - name: host-run-ovs
+          hostPath:
+            path: /run/openvswitch
+        - name: host-run-ovn
+          hostPath:
+            path: /run/ovn
+        - name: host-sys
+          hostPath:
+            path: /sys
+        - name: cni-conf
+          hostPath:
+            path: /etc/cni/net.d
+        - name: host-config-openvswitch
+          hostPath:
+            path: /etc/origin/openvswitch
+        - name: host-config-ovn
+          hostPath:
+            path: /etc/origin/ovn
+        - name: host-log-ovs
+          hostPath:
+            path: /var/log/openvswitch
+        - name: host-log-ovn
+          hostPath:
+            path: /var/log/ovn
+        - name: localtime
+          hostPath:
+            path: /etc/localtime
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
+

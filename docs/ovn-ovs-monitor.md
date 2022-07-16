@@ -11,6 +11,7 @@ This document shows Kube-OVN monitor metrics.
 | Gauge               | log_file_size                            | The size of a log file associated with an OVN component.                                                                          |
 | Gauge               | db_file_size                             | The size of a database file associated with an OVN component.                                                                     |
 | Gauge               | chassis_info                             | Whether the OVN chassis is up (1) or down (0), together with additional information about the chassis.                            |
+| Gauge               | db_status                                | The status of OVN NB/SB DB, (1) for healthy, (0) for unhealthy.                                                                   |
 | Gauge               | logical_switch_info                      | The information about OVN logical switch. This metric is always up (1).                                                           |
 | Gauge               | logical_switch_external_id               | Provides the external IDs and values associated with OVN logical switches. This metric is always up (1).                          |
 | Gauge               | logical_switch_port_binding              | Provides the association between a logical switch and a logical switch port. This metric is always up (1).                        |
@@ -111,6 +112,7 @@ This document shows Kube-OVN monitor metrics.
 | Histogram           | cni_op_latency_seconds                   | The latency seconds for cni operations                                                                                            |
 | Counter             | cni_wait_address_seconds_total           | Latency that cni wait controller to assign an address                                                                             |
 | Counter             | cni_wait_connectivity_seconds_total      | Latency that cni wait address ready in overlay network                                                                            |
+| Counter             | cni_wait_route_seconds_total             | Latency that cni wait controller to add routed annotation to pod                                                                  |
 | Histogram           | rest_client_request_latency_seconds      | Request latency in seconds. Broken down by verb and URL                                                                           |
 | Counter             | rest_client_requests_total               | Number of HTTP requests, partitioned by status code, method, and host                                                             |
 | Counter             | lists_total                              | Total number of API lists done by the reflectors                                                                                  |

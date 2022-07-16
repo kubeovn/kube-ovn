@@ -1,4 +1,4 @@
-﻿# Hardware Offload for Mellanox 
+﻿# Hardware Offload for Mellanox
 
 The OVS software based solution is CPU intensive, affecting system performance and preventing full utilization of the available bandwidth.
 Mellanox Accelerated Switching And Packet Processing (ASAP2) technology allows OVS offloading by handling OVS data-plane in Mellanox ConnectX-5 onwards NIC hardware (Mellanox Embedded Switch or eSwitch) while maintaining OVS control-plane unmodified. As a result, we observe significantly higher OVS performance without the associated CPU load.
@@ -28,6 +28,8 @@ wget https://raw.githubusercontent.com/alauda/kube-ovn/master/dist/images/instal
 
 2. Edit the install script, enable hw-offload, disable traffic mirror and set the IFACE to the PF.
 Make sure that there is an IP address bind to the PF.
+
+> `NOTICE`: If the PF is slave of a `bond` interface, the hardware offload across nodes may not function normally.
 
 ```bash
 ENABLE_MIRROR=${ENABLE_MIRROR:-false}

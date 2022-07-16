@@ -14,31 +14,34 @@ on:
     - 'docs/**'
     - '**.md'
 
+env:
+  GO_VERSION: '1.18'
+
 jobs:
   build:
     name: Build arm64
     runs-on: ubuntu-18.04
     steps:
       - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
-          go-version: 1.17.8
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Check out code into the Go module directory
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v1
+        uses: docker/setup-qemu-action@v2
         with:
-          image: tonistiigi/binfmt:latest
           platforms: arm64
 
       - name: Docker Buildx
-        uses: docker/setup-buildx-action@v1
+        uses: docker/setup-buildx-action@v2
 
       - name: Go Build Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: /home/runner/.cache/go-build
           key: ${{ runner.os }}-arm64-go-build-${{ hashFiles('**/go.sum') }}
@@ -46,7 +49,7 @@ jobs:
             ${{ runner.os }}-arm64-go-build-
 
       - name: Go Mod Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ~/go/pkg/mod
           key: ${{ runner.os }}-arm64-go-${{ hashFiles('**/go.sum') }}
@@ -67,8 +70,8 @@ jobs:
           echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
           docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-arm
           docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn-dev:$COMMIT-arm
-          docker tag kubeovn/kube-ovn:$TAG kubeovn/vpc-nat-gateway:$TAG-arm
-          docker tag kubeovn/kube-ovn:$TAG kubeovn/vpc-nat-gateway-dev:$COMMIT-arm
+          docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway:$TAG-arm
+          docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway-dev:$COMMIT-arm
           docker images
           docker push kubeovn/kube-ovn:$TAG-arm
           docker push kubeovn/kube-ovn-dev:$COMMIT-arm

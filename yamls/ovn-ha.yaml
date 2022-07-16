@@ -27,15 +27,6 @@ spec:
     rule: 'RunAsAny'
 
 ---
-
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ovn-config
-  namespace: kube-system
-data:
-  defaultNetworkType: geneve
----
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -63,6 +54,8 @@ rules:
       - subnets
       - subnets/status
       - ips
+      - vips
+      - vips/status
       - vlans
       - vlans/status
       - provider-networks
@@ -70,6 +63,14 @@ rules:
       - security-groups
       - security-groups/status
       - htbqoses
+      - iptables-eips
+      - iptables-fip-rules
+      - iptables-dnat-rules
+      - iptables-snat-rules
+      - iptables-eips/status
+      - iptables-fip-rules/status
+      - iptables-dnat-rules/status
+      - iptables-snat-rules/status
     verbs:
       - "*"
   - apiGroups:
@@ -95,6 +96,7 @@ rules:
     resources:
       - networkpolicies
       - services
+      - services/status
       - endpoints
       - statefulsets
       - daemonsets
@@ -116,6 +118,12 @@ rules:
       - create
       - patch
       - update
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - "*"
   - apiGroups:
       - "k8s.cni.cncf.io"
     resources:
@@ -243,7 +251,7 @@ spec:
       hostNetwork: true
       containers:
         - name: ovn-central
-          image: "kubeovn/kube-ovn:v1.9.0"
+          image: "kubeovn/kube-ovn:v1.10.0"
           imagePullPolicy: IfNotPresent
           command: ["/kube-ovn/start-db.sh"]
           securityContext:
@@ -371,7 +379,7 @@ spec:
       hostPID: true
       containers:
         - name: openvswitch
-          image: "kubeovn/kube-ovn:v1.9.0"
+          image: "kubeovn/kube-ovn:v1.10.0"
           imagePullPolicy: IfNotPresent
           command: ["/kube-ovn/start-ovs.sh"]
           securityContext:
@@ -425,7 +433,7 @@ spec:
               command:
                 - bash
                 - /kube-ovn/ovs-healthcheck.sh
-            initialDelaySeconds: 10
+            initialDelaySeconds: 60
             periodSeconds: 5
             failureThreshold: 5
             timeoutSeconds: 45

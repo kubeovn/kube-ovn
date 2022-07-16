@@ -115,14 +115,14 @@ func (c *Controller) processNextAddNamespaceWorkItem() bool {
 }
 
 func (c *Controller) handleAddNamespace(key string) error {
-	orinamespace, err := c.namespacesLister.Get(key)
+	oriNamespace, err := c.namespacesLister.Get(key)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	namespace := orinamespace.DeepCopy()
+	namespace := oriNamespace.DeepCopy()
 
 	var ls string
 	var lss, cidrs, excludeIps []string
@@ -177,9 +177,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 		excludeIps = append(excludeIps, strings.Join(subnet.Spec.ExcludeIps, ","))
 	}
 
-	op := "replace"
 	if namespace.Annotations == nil || len(namespace.Annotations) == 0 {
-		op = "add"
 		namespace.Annotations = map[string]string{}
 	} else {
 		if namespace.Annotations[util.LogicalSwitchAnnotation] == strings.Join(lss, ",") {
@@ -190,7 +188,12 @@ func (c *Controller) handleAddNamespace(key string) error {
 	namespace.Annotations[util.CidrAnnotation] = strings.Join(cidrs, ";")
 	namespace.Annotations[util.ExcludeIpsAnnotation] = strings.Join(excludeIps, ";")
 
-	if _, err = c.config.KubeClient.CoreV1().Namespaces().Patch(context.Background(), key, types.JSONPatchType, generatePatchPayload(namespace.Annotations, op), metav1.PatchOptions{}, ""); err != nil {
+	patch, err := util.GenerateStrategicMergePatchPayload(oriNamespace, namespace)
+	if err != nil {
+		return err
+	}
+	if _, err = c.config.KubeClient.CoreV1().Namespaces().Patch(context.Background(), key,
+		types.StrategicMergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 		klog.Errorf("patch namespace %s failed %v", key, err)
 	}
 	return err

@@ -4,6 +4,7 @@ package speaker
 import (
 	"context"
 	"fmt"
+	"github.com/vishvananda/netlink"
 	"net"
 	"strconv"
 	"strings"
@@ -35,8 +36,10 @@ func isPodAlive(p *v1.Pod) bool {
 	return true
 }
 
-func isClusterIP(svc *v1.Service) bool {
-	return svc.Spec.Type == "ClusterIP"
+func isClusterIPService(svc *v1.Service) bool {
+	return svc.Spec.Type == v1.ServiceTypeClusterIP &&
+		svc.Spec.ClusterIP != v1.ClusterIPNone &&
+		len(svc.Spec.ClusterIP) != 0
 }
 
 // TODO: ipv4 only, need ipv6/dualstack support later
@@ -60,12 +63,9 @@ func (c *Controller) syncSubnetRoutes() {
 			return
 		}
 		for _, svc := range services {
-
-			if isClusterIP(svc) && svc.Annotations[util.BgpAnnotation] == "true" && svc.Spec.ClusterIP != "None" &&
-				svc.Spec.ClusterIP != "" {
+			if svc.Annotations != nil && svc.Annotations[util.BgpAnnotation] == "true" && isClusterIPService(svc) {
 				bgpExpected = append(bgpExpected, fmt.Sprintf("%s/32", svc.Spec.ClusterIP))
 			}
-
 		}
 	}
 
@@ -188,7 +188,7 @@ func (c *Controller) getNlriAndAttrs(route string) (*anypb.Any, []*anypb.Any, er
 		Origin: 0,
 	})
 	a2, _ := ptypes.MarshalAny(&bgpapi.NextHopAttribute{
-		NextHop: c.config.RouterId,
+		NextHop: getNextHopAttribute(c.config.NeighborAddress, c.config.RouterId),
 	})
 	attrs := []*anypb.Any{a1, a2}
 	return nlri, attrs, err
@@ -223,4 +223,12 @@ func getNextHopFromPathAttributes(attrs []bgp.PathAttributeInterface) net.IP {
 		}
 	}
 	return nil
+}
+func getNextHopAttribute(NeighborAddress string, RouteId string) string {
+	nextHop := RouteId
+	routes, err := netlink.RouteGet(net.ParseIP(NeighborAddress))
+	if err == nil && len(routes) == 1 && routes[0].Src != nil {
+		nextHop = routes[0].Src.String()
+	}
+	return nextHop
 }

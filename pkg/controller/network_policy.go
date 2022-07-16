@@ -54,7 +54,8 @@ func (c *Controller) enqueueUpdateNp(old, new interface{}) {
 	}
 	oldNp := old.(*netv1.NetworkPolicy)
 	newNp := new.(*netv1.NetworkPolicy)
-	if !reflect.DeepEqual(oldNp.Spec, newNp.Spec) {
+	if !reflect.DeepEqual(oldNp.Spec, newNp.Spec) ||
+		!reflect.DeepEqual(oldNp.Annotations, newNp.Annotations) {
 		var key string
 		var err error
 		if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
@@ -177,6 +178,11 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}()
 
+	logEnable := false
+	if np.Annotations[util.NetworkPolicyLogAnnotation] == "true" {
+		logEnable = true
+	}
+
 	// TODO: ovn acl doesn't support address_set name with '-', now we replace '-' by '.'.
 	// This may cause conflict if two np with name test-np and test.np. Maybe hash is a better solution,
 	// but we do not want to lost the readability now.
@@ -187,11 +193,11 @@ func (c *Controller) handleUpdateNp(key string) error {
 	egressExceptAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.egress.except", np.Name, np.Namespace), "-", ".", -1)
 
 	// delete existing pg to update acl
-	if err = c.ovnClient.DeletePortGroup(pgName); err != nil {
+	if err = c.ovnLegacyClient.DeletePortGroup(pgName); err != nil {
 		klog.Errorf("failed to delete port group %s before networkpolicy update process, %v", pgName, err)
 	}
 
-	if err = c.ovnClient.CreateNpPortGroup(pgName, np.Namespace, np.Name); err != nil {
+	if err = c.ovnLegacyClient.CreateNpPortGroup(pgName, np.Namespace, np.Name); err != nil {
 		klog.Errorf("failed to create port group for np %s, %v", key, err)
 		return err
 	}
@@ -202,7 +208,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		return err
 	}
 
-	err = c.ovnClient.SetPortsToPortGroup(pgName, ports)
+	err = c.ovnLegacyClient.SetPortsToPortGroup(pgName, ports)
 	if err != nil && !strings.Contains(err.Error(), "not found") {
 		klog.Errorf("failed to set port group, %v", err)
 		return err
@@ -224,29 +230,29 @@ func (c *Controller) handleUpdateNp(key string) error {
 			svcAsName = svcAsNameIPv6
 			svcIPs = svcIpv6s
 		}
-		if err = c.ovnClient.CreateNpAddressSet(svcAsName, np.Namespace, np.Name, "service"); err != nil {
+		if err = c.ovnLegacyClient.CreateNpAddressSet(svcAsName, np.Namespace, np.Name, "service"); err != nil {
 			klog.Errorf("failed to create address_set %s, %v", svcAsNameIPv4, err)
 			return err
 		}
-		if err = c.ovnClient.SetAddressesToAddressSet(svcIPs, svcAsName); err != nil {
+		if err = c.ovnLegacyClient.SetAddressesToAddressSet(svcIPs, svcAsName); err != nil {
 			klog.Errorf("failed to set netpol svc, %v", err)
 			return err
 		}
 	}
 
 	// before update or add ingress info,we should first delete acl and address_set
-	if err = c.ovnClient.DeleteACL(pgName, "to-lport"); err != nil {
+	if err = c.ovnLegacyClient.DeleteACL(pgName, "to-lport"); err != nil {
 		klog.Errorf("failed to delete np %s ingress acls, %v", key, err)
 		return err
 	}
 
-	ingressAsNames, err := c.ovnClient.ListNpAddressSet(np.Namespace, np.Name, "ingress")
+	ingressAsNames, err := c.ovnLegacyClient.ListNpAddressSet(np.Namespace, np.Name, "ingress")
 	if err != nil {
 		klog.Errorf("failed to list ingress address_set, %v", err)
 		return err
 	}
 	for _, ingressAsName := range ingressAsNames {
-		if err = c.ovnClient.DeleteAddressSet(ingressAsName); err != nil {
+		if err = c.ovnLegacyClient.DeleteAddressSet(ingressAsName); err != nil {
 			klog.Errorf("failed to delete np %s address set, %v", key, err)
 			return err
 		}
@@ -283,27 +289,27 @@ func (c *Controller) handleUpdateNp(key string) error {
 						excepts = append(excepts, except...)
 					}
 				}
-				klog.Infof("UpdateNp Ingress, allows is %v, excepts is %v", allows, excepts)
-				if err = c.ovnClient.CreateNpAddressSet(ingressAllowAsName, np.Namespace, np.Name, "ingress"); err != nil {
+				klog.Infof("UpdateNp Ingress, allows is %v, excepts is %v, log %v", allows, excepts, logEnable)
+				if err = c.ovnLegacyClient.CreateNpAddressSet(ingressAllowAsName, np.Namespace, np.Name, "ingress"); err != nil {
 					klog.Errorf("failed to create address_set %s, %v", ingressAllowAsName, err)
 					return err
 				}
-				if err = c.ovnClient.SetAddressesToAddressSet(allows, ingressAllowAsName); err != nil {
+				if err = c.ovnLegacyClient.SetAddressesToAddressSet(allows, ingressAllowAsName); err != nil {
 					klog.Errorf("failed to set ingress allow address_set, %v", err)
 					return err
 				}
 
-				if err = c.ovnClient.CreateNpAddressSet(ingressExceptAsName, np.Namespace, np.Name, "ingress"); err != nil {
+				if err = c.ovnLegacyClient.CreateNpAddressSet(ingressExceptAsName, np.Namespace, np.Name, "ingress"); err != nil {
 					klog.Errorf("failed to create address_set %s, %v", ingressExceptAsName, err)
 					return err
 				}
-				if err = c.ovnClient.SetAddressesToAddressSet(excepts, ingressExceptAsName); err != nil {
+				if err = c.ovnLegacyClient.SetAddressesToAddressSet(excepts, ingressExceptAsName); err != nil {
 					klog.Errorf("failed to set ingress except address_set, %v", err)
 					return err
 				}
 
 				if len(allows) != 0 || len(excepts) != 0 {
-					if err = c.ovnClient.CreateIngressACL(fmt.Sprintf("%s/%s", np.Namespace, np.Name), pgName, ingressAllowAsName, ingressExceptAsName, svcAsName, protocol, npr.Ports); err != nil {
+					if err = c.ovnLegacyClient.CreateIngressACL(pgName, ingressAllowAsName, ingressExceptAsName, svcAsName, protocol, npr.Ports, logEnable); err != nil {
 						klog.Errorf("failed to create ingress acls for np %s, %v", key, err)
 						return err
 					}
@@ -312,25 +318,30 @@ func (c *Controller) handleUpdateNp(key string) error {
 			if len(np.Spec.Ingress) == 0 {
 				ingressAllowAsName := fmt.Sprintf("%s.%s.all", ingressAllowAsNamePrefix, protocol)
 				ingressExceptAsName := fmt.Sprintf("%s.%s.all", ingressExceptAsNamePrefix, protocol)
-				if err = c.ovnClient.CreateNpAddressSet(ingressAllowAsName, np.Namespace, np.Name, "ingress"); err != nil {
+				if err = c.ovnLegacyClient.CreateNpAddressSet(ingressAllowAsName, np.Namespace, np.Name, "ingress"); err != nil {
 					klog.Errorf("failed to create address_set %s, %v", ingressAllowAsName, err)
 					return err
 				}
 
-				if err = c.ovnClient.CreateNpAddressSet(ingressExceptAsName, np.Namespace, np.Name, "ingress"); err != nil {
+				if err = c.ovnLegacyClient.CreateNpAddressSet(ingressExceptAsName, np.Namespace, np.Name, "ingress"); err != nil {
 					klog.Errorf("failed to create address_set %s, %v", ingressExceptAsName, err)
 					return err
 				}
 				ingressPorts := []netv1.NetworkPolicyPort{}
-				if err = c.ovnClient.CreateIngressACL(fmt.Sprintf("%s/%s", np.Namespace, np.Name), pgName, ingressAllowAsName, ingressExceptAsName, svcAsName, protocol, ingressPorts); err != nil {
+				if err = c.ovnLegacyClient.CreateIngressACL(pgName, ingressAllowAsName, ingressExceptAsName, svcAsName, protocol, ingressPorts, logEnable); err != nil {
 					klog.Errorf("failed to create ingress acls for np %s, %v", key, err)
 					return err
 				}
 			}
+
+			if err = c.ovnLegacyClient.SetAclLog(pgName, logEnable, true); err != nil {
+				// just log and do not return err here
+				klog.Errorf("failed to set ingress acl log for np %s, %v", key, err)
+			}
 		}
 
 		var asNames []string
-		if asNames, err = c.ovnClient.ListNpAddressSet(np.Namespace, np.Name, "ingress"); err != nil {
+		if asNames, err = c.ovnLegacyClient.ListNpAddressSet(np.Namespace, np.Name, "ingress"); err != nil {
 			klog.Errorf("failed to list address_set, %v", err)
 			return err
 		}
@@ -346,25 +357,25 @@ func (c *Controller) handleUpdateNp(key string) error {
 			}
 			idx, _ := strconv.Atoi(idxStr)
 			if idx >= len(np.Spec.Ingress) {
-				if err = c.ovnClient.DeleteAddressSet(asName); err != nil {
+				if err = c.ovnLegacyClient.DeleteAddressSet(asName); err != nil {
 					klog.Errorf("failed to delete np %s address set, %v", key, err)
 					return err
 				}
 			}
 		}
 	} else {
-		if err = c.ovnClient.DeleteACL(pgName, "to-lport"); err != nil {
+		if err = c.ovnLegacyClient.DeleteACL(pgName, "to-lport"); err != nil {
 			klog.Errorf("failed to delete np %s ingress acls, %v", key, err)
 			return err
 		}
 
-		asNames, err := c.ovnClient.ListNpAddressSet(np.Namespace, np.Name, "ingress")
+		asNames, err := c.ovnLegacyClient.ListNpAddressSet(np.Namespace, np.Name, "ingress")
 		if err != nil {
 			klog.Errorf("failed to list address_set, %v", err)
 			return err
 		}
 		for _, asName := range asNames {
-			if err = c.ovnClient.DeleteAddressSet(asName); err != nil {
+			if err = c.ovnLegacyClient.DeleteAddressSet(asName); err != nil {
 				klog.Errorf("failed to delete np %s address set, %v", key, err)
 				return err
 			}
@@ -372,18 +383,18 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 
 	// before update or add egress info, we should first delete acl and address_set
-	if err = c.ovnClient.DeleteACL(pgName, "from-lport"); err != nil {
+	if err = c.ovnLegacyClient.DeleteACL(pgName, "from-lport"); err != nil {
 		klog.Errorf("failed to delete np %s egress acls, %v", key, err)
 		return err
 	}
 
-	egressAsNames, err := c.ovnClient.ListNpAddressSet(np.Namespace, np.Name, "egress")
+	egressAsNames, err := c.ovnLegacyClient.ListNpAddressSet(np.Namespace, np.Name, "egress")
 	if err != nil {
 		klog.Errorf("failed to list egress address_set, %v", err)
 		return err
 	}
 	for _, egressAsName := range egressAsNames {
-		if err = c.ovnClient.DeleteAddressSet(egressAsName); err != nil {
+		if err = c.ovnLegacyClient.DeleteAddressSet(egressAsName); err != nil {
 			klog.Errorf("failed to delete np %s address set, %v", key, err)
 			return err
 		}
@@ -419,27 +430,27 @@ func (c *Controller) handleUpdateNp(key string) error {
 						excepts = append(excepts, except...)
 					}
 				}
-				klog.Infof("UpdateNp Egress, allows is %v, excepts is %v", allows, excepts)
-				if err = c.ovnClient.CreateNpAddressSet(egressAllowAsName, np.Namespace, np.Name, "egress"); err != nil {
+				klog.Infof("UpdateNp Egress, allows is %v, excepts is %v, log %v", allows, excepts, logEnable)
+				if err = c.ovnLegacyClient.CreateNpAddressSet(egressAllowAsName, np.Namespace, np.Name, "egress"); err != nil {
 					klog.Errorf("failed to create address_set %s, %v", egressAllowAsName, err)
 					return err
 				}
-				if err = c.ovnClient.SetAddressesToAddressSet(allows, egressAllowAsName); err != nil {
+				if err = c.ovnLegacyClient.SetAddressesToAddressSet(allows, egressAllowAsName); err != nil {
 					klog.Errorf("failed to set egress allow address_set, %v", err)
 					return err
 				}
 
-				if err = c.ovnClient.CreateNpAddressSet(egressExceptAsName, np.Namespace, np.Name, "egress"); err != nil {
+				if err = c.ovnLegacyClient.CreateNpAddressSet(egressExceptAsName, np.Namespace, np.Name, "egress"); err != nil {
 					klog.Errorf("failed to create address_set %s, %v", egressExceptAsName, err)
 					return err
 				}
-				if err = c.ovnClient.SetAddressesToAddressSet(excepts, egressExceptAsName); err != nil {
+				if err = c.ovnLegacyClient.SetAddressesToAddressSet(excepts, egressExceptAsName); err != nil {
 					klog.Errorf("failed to set egress except address_set, %v", err)
 					return err
 				}
 
 				if len(allows) != 0 || len(excepts) != 0 {
-					if err = c.ovnClient.CreateEgressACL(fmt.Sprintf("%s/%s", np.Namespace, np.Name), pgName, egressAllowAsName, egressExceptAsName, protocol, npr.Ports, svcAsName); err != nil {
+					if err = c.ovnLegacyClient.CreateEgressACL(pgName, egressAllowAsName, egressExceptAsName, protocol, npr.Ports, svcAsName, logEnable); err != nil {
 						klog.Errorf("failed to create egress acls for np %s, %v", key, err)
 						return err
 					}
@@ -448,25 +459,29 @@ func (c *Controller) handleUpdateNp(key string) error {
 			if len(np.Spec.Egress) == 0 {
 				egressAllowAsName := fmt.Sprintf("%s.%s.all", egressAllowAsNamePrefix, protocol)
 				egressExceptAsName := fmt.Sprintf("%s.%s.all", egressExceptAsNamePrefix, protocol)
-				if err = c.ovnClient.CreateNpAddressSet(egressAllowAsName, np.Namespace, np.Name, "egress"); err != nil {
+				if err = c.ovnLegacyClient.CreateNpAddressSet(egressAllowAsName, np.Namespace, np.Name, "egress"); err != nil {
 					klog.Errorf("failed to create address_set %s, %v", egressAllowAsName, err)
 					return err
 				}
 
-				if err = c.ovnClient.CreateNpAddressSet(egressExceptAsName, np.Namespace, np.Name, "egress"); err != nil {
+				if err = c.ovnLegacyClient.CreateNpAddressSet(egressExceptAsName, np.Namespace, np.Name, "egress"); err != nil {
 					klog.Errorf("failed to create address_set %s, %v", egressExceptAsName, err)
 					return err
 				}
 				egressPorts := []netv1.NetworkPolicyPort{}
-				if err = c.ovnClient.CreateEgressACL(fmt.Sprintf("%s/%s", np.Namespace, np.Name), pgName, egressAllowAsName, egressExceptAsName, protocol, egressPorts, svcAsName); err != nil {
+				if err = c.ovnLegacyClient.CreateEgressACL(pgName, egressAllowAsName, egressExceptAsName, protocol, egressPorts, svcAsName, logEnable); err != nil {
 					klog.Errorf("failed to create egress acls for np %s, %v", key, err)
 					return err
 				}
 			}
+			if err = c.ovnLegacyClient.SetAclLog(pgName, logEnable, false); err != nil {
+				// just log and do not return err here
+				klog.Errorf("failed to set egress acl log for np %s, %v", key, err)
+			}
 		}
 
 		var asNames []string
-		if asNames, err = c.ovnClient.ListNpAddressSet(np.Namespace, np.Name, "egress"); err != nil {
+		if asNames, err = c.ovnLegacyClient.ListNpAddressSet(np.Namespace, np.Name, "egress"); err != nil {
 			klog.Errorf("failed to list address_set, %v", err)
 			return err
 		}
@@ -483,7 +498,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 
 			idx, _ := strconv.Atoi(idxStr)
 			if idx >= len(np.Spec.Egress) {
-				if err = c.ovnClient.DeleteAddressSet(asName); err != nil {
+				if err = c.ovnLegacyClient.DeleteAddressSet(asName); err != nil {
 					klog.Errorf("failed to delete np %s address set, %v", key, err)
 					return err
 				}
@@ -491,7 +506,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}
 
-	if err = c.ovnClient.CreateGatewayACL(pgName, subnet.Spec.Gateway, subnet.Spec.CIDRBlock); err != nil {
+	if err = c.ovnLegacyClient.CreateGatewayACL(pgName, subnet.Spec.Gateway, subnet.Spec.CIDRBlock); err != nil {
 		klog.Errorf("failed to create gateway acl, %v", err)
 		return err
 	}
@@ -506,41 +521,41 @@ func (c *Controller) handleDeleteNp(key string) error {
 	}
 
 	pgName := strings.Replace(fmt.Sprintf("%s.%s", name, namespace), "-", ".", -1)
-	if err := c.ovnClient.DeletePortGroup(pgName); err != nil {
+	if err := c.ovnLegacyClient.DeletePortGroup(pgName); err != nil {
 		klog.Errorf("failed to delete np %s port group, %v", key, err)
 	}
 
-	svcAsNames, err := c.ovnClient.ListNpAddressSet(namespace, name, "service")
+	svcAsNames, err := c.ovnLegacyClient.ListNpAddressSet(namespace, name, "service")
 	if err != nil {
 		klog.Errorf("failed to list svc address_set, %v", err)
 		return err
 	}
 	for _, asName := range svcAsNames {
-		if err := c.ovnClient.DeleteAddressSet(asName); err != nil {
+		if err := c.ovnLegacyClient.DeleteAddressSet(asName); err != nil {
 			klog.Errorf("failed to delete np %s address set, %v", key, err)
 			return err
 		}
 	}
 
-	ingressAsNames, err := c.ovnClient.ListNpAddressSet(namespace, name, "ingress")
+	ingressAsNames, err := c.ovnLegacyClient.ListNpAddressSet(namespace, name, "ingress")
 	if err != nil {
 		klog.Errorf("failed to list address_set, %v", err)
 		return err
 	}
 	for _, asName := range ingressAsNames {
-		if err := c.ovnClient.DeleteAddressSet(asName); err != nil {
+		if err := c.ovnLegacyClient.DeleteAddressSet(asName); err != nil {
 			klog.Errorf("failed to delete np %s address set, %v", key, err)
 			return err
 		}
 	}
 
-	egressAsNames, err := c.ovnClient.ListNpAddressSet(namespace, name, "egress")
+	egressAsNames, err := c.ovnLegacyClient.ListNpAddressSet(namespace, name, "egress")
 	if err != nil {
 		klog.Errorf("failed to list address_set, %v", err)
 		return err
 	}
 	for _, asName := range egressAsNames {
-		if err := c.ovnClient.DeleteAddressSet(asName); err != nil {
+		if err := c.ovnLegacyClient.DeleteAddressSet(asName); err != nil {
 			klog.Errorf("failed to delete np %s address set, %v", key, err)
 			return err
 		}

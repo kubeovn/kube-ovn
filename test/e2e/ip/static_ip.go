@@ -97,7 +97,7 @@ var _ = Describe("[IP Allocation]", func() {
 								"e2e":  "true",
 							},
 							Annotations: map[string]string{
-								util.IpPoolAnnotation: strings.Join(ips, ","),
+								util.IpPoolAnnotation: strings.Join(ips, ";"),
 							},
 						},
 						Spec: corev1.PodSpec{
@@ -175,7 +175,7 @@ var _ = Describe("[IP Allocation]", func() {
 								"e2e":  "true",
 							},
 							Annotations: map[string]string{
-								util.IpPoolAnnotation: strings.Join(ips, ","),
+								util.IpPoolAnnotation: strings.Join(ips, ";"),
 							},
 						},
 						Spec: corev1.PodSpec{
@@ -340,6 +340,10 @@ var _ = Describe("[IP Allocation]", func() {
 				Expect(err).NotTo(HaveOccurred())
 			}
 			err = f.WaitStatefulsetReady(name, namespace)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Delete statefulset")
+			err = f.KubeClientSet.AppsV1().StatefulSets(namespace).Delete(context.Background(), sts.Name, metav1.DeleteOptions{})
 			Expect(err).NotTo(HaveOccurred())
 		})
 	})

@@ -37,3 +37,53 @@ func (sgs *SecurityGroupStatus) Bytes() ([]byte, error) {
 	klog.V(5).Info("status body", newStr)
 	return []byte(newStr), nil
 }
+
+func (vipst *VipStatus) Bytes() ([]byte, error) {
+	bytes, err := json.Marshal(vipst)
+	if err != nil {
+		return nil, err
+	}
+	newStr := fmt.Sprintf(`{"status": %s}`, string(bytes))
+	klog.V(5).Info("status body", newStr)
+	return []byte(newStr), nil
+}
+
+func (ieips *IptablesEipStatus) Bytes() ([]byte, error) {
+	bytes, err := json.Marshal(ieips)
+	if err != nil {
+		return nil, err
+	}
+	newStr := fmt.Sprintf(`{"status": %s}`, string(bytes))
+	klog.V(5).Info("status body", newStr)
+	return []byte(newStr), nil
+}
+
+func (ifips *IptablesFIPRuleStatus) Bytes() ([]byte, error) {
+	bytes, err := json.Marshal(ifips)
+	if err != nil {
+		return nil, err
+	}
+	newStr := fmt.Sprintf(`{"status": %s}`, string(bytes))
+	klog.V(5).Info("status body", newStr)
+	return []byte(newStr), nil
+}
+
+func (idnats *IptablesDnatRuleStatus) Bytes() ([]byte, error) {
+	bytes, err := json.Marshal(idnats)
+	if err != nil {
+		return nil, err
+	}
+	newStr := fmt.Sprintf(`{"status": %s}`, string(bytes))
+	klog.V(5).Info("status body", newStr)
+	return []byte(newStr), nil
+}
+
+func (isnats *IptablesSnatRuleStatus) Bytes() ([]byte, error) {
+	bytes, err := json.Marshal(isnats)
+	if err != nil {
+		return nil, err
+	}
+	newStr := fmt.Sprintf(`{"status": %s}`, string(bytes))
+	klog.V(5).Info("status body", newStr)
+	return []byte(newStr), nil
+}

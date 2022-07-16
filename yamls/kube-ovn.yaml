@@ -41,11 +41,10 @@ spec:
       hostNetwork: true
       containers:
         - name: kube-ovn-controller
-          image: "kubeovn/kube-ovn:v1.9.0"
+          image: "kubeovn/kube-ovn:v1.10.0"
           imagePullPolicy: IfNotPresent
-          command:
-            - /kube-ovn/start-controller.sh
           args:
+            - /kube-ovn/start-controller.sh
             - --default-cidr=10.16.0.0/16
             - --default-gateway=10.16.0.1
             - --default-gateway-check=true
@@ -59,6 +58,7 @@ spec:
             - --pod-nic-type=veth-pair
             - --enable-lb=true
             - --enable-np=true
+            - --enable-eip-snat=true
             - --enable-external-vpc=true
           env:
             - name: ENABLE_SSL
@@ -145,7 +145,7 @@ spec:
       hostPID: true
       initContainers:
         - name: install-cni
-          image: "kubeovn/kube-ovn:v1.9.0"
+          image: "kubeovn/kube-ovn:v1.10.0"
           imagePullPolicy: IfNotPresent
           command: ["/kube-ovn/install-cni.sh"]
           securityContext:
@@ -156,7 +156,7 @@ spec:
               name: cni-bin
       containers:
         - name: cni-server
-          image: "kubeovn/kube-ovn:v1.9.0"
+          image: "kubeovn/kube-ovn:v1.10.0"
           imagePullPolicy: IfNotPresent
           command:
             - bash
@@ -183,6 +183,9 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
           volumeMounts:
+            - name: host-modules
+              mountPath: /lib/modules
+              readOnly: true
             - mountPath: /etc/openvswitch
               name: systemid
             - mountPath: /etc/cni/net.d
@@ -228,6 +231,9 @@ spec:
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
+        - name: host-modules
+          hostPath:
+            path: /lib/modules
         - name: systemid
           hostPath:
             path: /etc/origin/openvswitch
@@ -285,7 +291,7 @@ spec:
       hostPID: true
       containers:
         - name: pinger
-          image: "kubeovn/kube-ovn:v1.9.0"
+          image: "kubeovn/kube-ovn:v1.10.0"
           command:
             - /kube-ovn/kube-ovn-pinger
             - --external-address=114.114.114.114
@@ -403,8 +409,6 @@ spec:
       tolerations:
         - effect: NoSchedule
           operator: Exists
-        - effect: NoExecute
-          operator: Exists
         - key: CriticalAddonsOnly
           operator: Exists
       affinity:
@@ -419,7 +423,7 @@ spec:
       hostNetwork: true
       containers:
         - name: kube-ovn-monitor
-          image: "kubeovn/kube-ovn:v1.9.0"
+          image: "kubeovn/kube-ovn:v1.10.0"
           imagePullPolicy: IfNotPresent
           command: ["/kube-ovn/start-ovn-monitor.sh"]
           securityContext:
@@ -460,14 +464,14 @@ spec:
             exec:
               command:
                 - cat
-                - /var/run/ovn/ovnnb_db.pid
+                - /var/run/ovn/ovn-controller.pid
             periodSeconds: 10
             timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
                 - cat
-                - /var/run/ovn/ovnnb_db.pid
+                - /var/run/ovn/ovn-controller.pid
             initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 5

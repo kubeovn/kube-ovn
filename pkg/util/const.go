@@ -15,6 +15,7 @@ const (
 	BgpAnnotation        = "ovn.kubernetes.io/bgp"
 	SnatAnnotation       = "ovn.kubernetes.io/snat"
 	EipAnnotation        = "ovn.kubernetes.io/eip"
+	VipAnnotation        = "ovn.kubernetes.io/vip"
 	ChassisAnnotation    = "ovn.kubernetes.io/chassis"
 
 	VpcNatGatewayAnnotation     = "ovn.kubernetes.io/vpc_nat_gw"
@@ -26,14 +27,20 @@ const (
 	VpcCIDRsAnnotation          = "ovn.kubernetes.io/vpc_cidrs"
 	VpcLbAnnotation             = "ovn.kubernetes.io/vpc_lb"
 	VpcExternalLabel            = "ovn.kubernetes.io/vpc_external"
+	VpcEipLabel                 = "ovn.kubernetes.io/vpc_eip"
+	VpcDnatEPortLabel           = "ovn.kubernetes.io/vpc_dnat_eport"
+	VpcNatLabel                 = "ovn.kubernetes.io/vpc_nat"
+
+	SwitchLBRuleVipsAnnotation = "ovn.kubernetes.io/switch_lb_vip"
 
 	LogicalRouterAnnotation = "ovn.kubernetes.io/logical_router"
 	VpcAnnotation           = "ovn.kubernetes.io/vpc"
 
-	PortSecurityAnnotationTemplate = "%s.kubernetes.io/port_security"
-	PortVipAnnotationTemplate      = "%s.kubernetes.io/port_vips"
-	PortSecurityAnnotation         = "ovn.kubernetes.io/port_security"
-	NorthGatewayAnnotation         = "ovn.kubernetes.io/north_gateway"
+	Layer2ForwardAnnotationTemplate = "%s.kubernetes.io/layer2_forward"
+	PortSecurityAnnotationTemplate  = "%s.kubernetes.io/port_security"
+	PortVipAnnotationTemplate       = "%s.kubernetes.io/port_vips"
+	PortSecurityAnnotation          = "ovn.kubernetes.io/port_security"
+	NorthGatewayAnnotation          = "ovn.kubernetes.io/north_gateway"
 
 	AllocatedAnnotationSuffix       = ".kubernetes.io/allocated"
 	AllocatedAnnotationTemplate     = "%s.kubernetes.io/allocated"
@@ -46,7 +53,6 @@ const (
 	LogicalSwitchAnnotationTemplate = "%s.kubernetes.io/logical_switch"
 	LogicalRouterAnnotationTemplate = "%s.kubernetes.io/logical_router"
 	VlanIdAnnotationTemplate        = "%s.kubernetes.io/vlan_id"
-	NetworkTypeTemplate             = "%s.kubernetes.io/network_type"
 	IngressRateAnnotationTemplate   = "%s.kubernetes.io/ingress_rate"
 	EgressRateAnnotationTemplate    = "%s.kubernetes.io/egress_rate"
 	SecurityGroupAnnotationTemplate = "%s.kubernetes.io/security_groups"
@@ -74,11 +80,15 @@ const (
 
 	OvsDpTypeLabel = "ovn.kubernetes.io/ovs_dp_type"
 
-	SubnetNameLabel    = "ovn.kubernetes.io/subnet"
-	ICGatewayLabel     = "ovn.kubernetes.io/ic-gw"
-	ExGatewayLabel     = "ovn.kubernetes.io/external-gw"
-	VpcNatGatewayLabel = "ovn.kubernetes.io/vpc-nat-gw"
-	VpcLbLabel         = "ovn.kubernetes.io/vpc_lb"
+	SubnetNameLabel        = "ovn.kubernetes.io/subnet"
+	ICGatewayLabel         = "ovn.kubernetes.io/ic-gw"
+	ExGatewayLabel         = "ovn.kubernetes.io/external-gw"
+	VpcNatGatewayLabel     = "ovn.kubernetes.io/vpc-nat-gw"
+	IpReservedLabel        = "ovn.kubernetes.io/ip_reserved"
+	VpcNatGatewayNameLabel = "ovn.kubernetes.io/vpc-nat-gw-name"
+	VpcLbLabel             = "ovn.kubernetes.io/vpc_lb"
+
+	NetworkPolicyLogAnnotation = "ovn.kubernetes.io/enable_log"
 
 	ProtocolTCP = "tcp"
 	ProtocolUDP = "udp"
@@ -125,32 +135,25 @@ const (
 	EcmpRouteType   = "ecmp"
 	NormalRouteType = "normal"
 
-	PodRouterPolicyPriority  = 20000
-	CentralSubnetPriority    = 25000
-	NodeRouterPolicyPriority = 30000
+	GatewayRouterPolicyPriority = 29000
+	NodeRouterPolicyPriority    = 30000
+	SubnetRouterPolicyPriority  = 31000
+	OvnICPolicyPriority         = 29500
 
 	OffloadType  = "offload-port"
 	InternalType = "internal-port"
 	DpdkType     = "dpdk-port"
 
-	DefaultHostVhostuserBaseDir = "/run/openvswitch/vhost_sockets"
-
-	ChassisLoc     = "/etc/openvswitch/system-id.conf"
 	HostnameEnv    = "KUBE_NODE_NAME"
 	ChasRetryTime  = 5
 	ChasRetryIntev = 1
+	Vm             = "VirtualMachine"
 	VmInstance     = "VirtualMachineInstance"
-
-	VfioSysDir = "/sys/bus/pci/drivers/vfio-pci"
-	NetSysDir  = "/sys/class/net"
 
 	MirrorControlAnnotation = "ovn.kubernetes.io/mirror"
 	MirrorDefaultName       = "m0"
 
 	DenyAllSecurityGroup = "kubeovn_deny_all"
-
-	HtbQos   = "linux-htb"
-	NetemQos = "linux-netem"
 
 	HtbQosHigh   = "htbqos-high"
 	HtbQosMedium = "htbqos-medium"
@@ -166,11 +169,16 @@ const (
 	NetemQosLimitAnnotationTemplate   = "%s.kubernetes.io/limit"
 	NetemQosLossAnnotationTemplate    = "%s.kubernetes.io/loss"
 
-	KoDir  = "/tmp/"
-	KoENV  = "MODULES"
-	RpmENV = "RPMS"
-
 	POD_IP             = "POD_IP"
 	ContentType        = "application/vnd.kubernetes.protobuf"
 	AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
+
+	AttachmentProvider = "ovn.kubernetes.io/attchmentprovider"
+	LbSvcPodImg        = "ovn.kubernetes.io/lb_svc_img"
+
+	OvnICKey   = "origin"
+	OvnICValue = "connected"
+
+	MatchV4Src = "ip4.src"
+	MatchV4Dst = "ip4.dst"
 )

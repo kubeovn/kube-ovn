@@ -9,17 +9,19 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
-	"github.com/vishvananda/netlink"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -41,8 +43,11 @@ type Configuration struct {
 	ServiceClusterIPRange   string
 	NodeLocalDnsIP          string
 	EncapChecksum           bool
+	EnablePprof             bool
 	PprofPort               int
 	NetworkType             string
+	CniConfDir              string
+	CniConfFile             string
 	CniConfName             string
 	DefaultProviderName     string
 	DefaultInterfaceName    string
@@ -51,22 +56,26 @@ type Configuration struct {
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
 // TODO: validate configuration
-func ParseFlags(nicBridgeMappings map[string]string) (*Configuration, error) {
+func ParseFlags() *Configuration {
 	var (
+		argNodeName              = pflag.String("node-name", "", "Name of the node on which the daemon is running on.")
 		argIface                 = pflag.String("iface", "", "The iface used to inter-host pod communication, can be a nic name or a group of regex separated by comma (default the default route iface)")
 		argDPDKTunnelIface       = pflag.String("dpdk-tunnel-iface", "br-phy", "Specifies the name of the dpdk tunnel iface.")
 		argMTU                   = pflag.Int("mtu", 0, "The MTU used by pod iface in overlay networks (default iface MTU - 100)")
 		argEnableMirror          = pflag.Bool("enable-mirror", false, "Enable traffic mirror (default false)")
 		argMirrorNic             = pflag.String("mirror-iface", "mirror0", "The mirror nic name that will be created by kube-ovn")
-		argBindSocket            = pflag.String("bind-socket", "/run/openvswitch/kube-ovn-daemon.sock", "The socket daemon bind to.")
+		argBindSocket            = pflag.String("bind-socket", defaultBindSocket, "The socket daemon bind to.")
 		argOvsSocket             = pflag.String("ovs-socket", "", "The socket to local ovs-server")
 		argKubeConfigFile        = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 		argServiceClusterIPRange = pflag.String("service-cluster-ip-range", "10.96.0.0/12", "The kubernetes service cluster ip range")
 		argNodeLocalDnsIP        = pflag.String("node-local-dns-ip", "", "If use nodelocaldns the local dns server ip should be set here.")
 		argEncapChecksum         = pflag.Bool("encap-checksum", true, "Enable checksum")
+		argEnablePprof           = pflag.Bool("enable-pprof", false, "Enable pprof")
 		argPprofPort             = pflag.Int("pprof-port", 10665, "The port to get profiling data")
 
 		argsNetworkType            = pflag.String("network-type", "geneve", "The ovn network type")
+		argCniConfDir              = pflag.String("cni-conf-dir", "/etc/cni/net.d", "Path of the CNI config directory.")
+		argCniConfFile             = pflag.String("cni-conf-file", "/kube-ovn/01-kube-ovn.conflist", "Path of the CNI config file.")
 		argsCniConfName            = pflag.String("cni-conf-name", "01-kube-ovn.conflist", "Specify the name of kube ovn conflist name in dir /etc/cni/net.d/, default: 01-kube-ovn.conflist")
 		argsDefaultProviderName    = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name")
 		argsDefaultInterfaceName   = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
@@ -94,11 +103,6 @@ func ParseFlags(nicBridgeMappings map[string]string) (*Configuration, error) {
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
 
-	nodeName := os.Getenv(util.HostnameEnv)
-	if nodeName == "" {
-		klog.Errorf("env KUBE_NODE_NAME not exists")
-		return nil, fmt.Errorf("env KUBE_NODE_NAME not exists")
-	}
 	config := &Configuration{
 		Iface:                   *argIface,
 		DPDKTunnelIface:         *argDPDKTunnelIface,
@@ -108,37 +112,48 @@ func ParseFlags(nicBridgeMappings map[string]string) (*Configuration, error) {
 		BindSocket:              *argBindSocket,
 		OvsSocket:               *argOvsSocket,
 		KubeConfigFile:          *argKubeConfigFile,
+		EnablePprof:             *argEnablePprof,
 		PprofPort:               *argPprofPort,
-		NodeName:                nodeName,
+		NodeName:                strings.ToLower(*argNodeName),
 		ServiceClusterIPRange:   *argServiceClusterIPRange,
 		NodeLocalDnsIP:          *argNodeLocalDnsIP,
 		EncapChecksum:           *argEncapChecksum,
 		NetworkType:             *argsNetworkType,
+		CniConfDir:              *argCniConfDir,
+		CniConfFile:             *argCniConfFile,
 		CniConfName:             *argsCniConfName,
 		DefaultProviderName:     *argsDefaultProviderName,
 		DefaultInterfaceName:    *argsDefaultInterfaceName,
 		ExternalGatewayConfigNS: *argExternalGatewayConfigNS,
 	}
+	return config
+}
 
-	if err := config.initKubeClient(); err != nil {
-		return nil, err
+func (config *Configuration) Init(nicBridgeMappings map[string]string) error {
+	if config.NodeName == "" {
+		klog.Info("node name not specified in command line parameters, fall back to the environment variable")
+		if config.NodeName = strings.ToLower(os.Getenv(util.HostnameEnv)); config.NodeName == "" {
+			klog.Info("node name not specified in environment variables, fall back to the hostname")
+			hostname, err := os.Hostname()
+			if err != nil {
+				return fmt.Errorf("failed to get hostname: %v", err)
+			}
+			config.NodeName = strings.ToLower(hostname)
+		}
 	}
 
+	if err := config.initKubeClient(); err != nil {
+		return err
+	}
 	if err := config.initNicConfig(nicBridgeMappings); err != nil {
-		return nil, err
+		return err
 	}
 
 	klog.Infof("daemon config: %v", config)
-	return config, nil
+	return nil
 }
 
 func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) error {
-	var (
-		iface   *net.Interface
-		err     error
-		encapIP string
-	)
-
 	// Support to specify node network card separately
 	node, err := config.KubeClient.CoreV1().Nodes().Get(context.Background(), config.NodeName, metav1.GetOptions{})
 	if err != nil {
@@ -151,21 +166,18 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 	}
 
 	isDPDKNode := node.GetLabels()[util.OvsDpTypeLabel] == "userspace"
-
 	if isDPDKNode {
 		config.Iface = config.DPDKTunnelIface
 	}
+
+	var mtu int
+	var encapIP string
 	if config.Iface == "" {
-		podIP, ok := os.LookupEnv(util.POD_IP)
-		if !ok || podIP == "" {
-			return errors.New("failed to lookup env POD_IP")
-		}
-		iface, err = getIfaceOwnPodIP(podIP)
-		if err != nil {
-			klog.Errorf("failed to find POD_IP iface %v", err)
+		encapIP = config.getEncapIP(node)
+		if config.Iface, mtu, err = getIfaceByIP(encapIP); err != nil {
+			klog.Errorf("failed to get interface by IP %s: %v", encapIP, err)
 			return err
 		}
-		encapIP = podIP
 	} else {
 		tunnelNic := config.Iface
 		if brName := nicBridgeMappings[tunnelNic]; brName != "" {
@@ -173,7 +185,7 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 			tunnelNic = brName
 		}
 
-		iface, err = findInterface(tunnelNic)
+		iface, err := findInterface(tunnelNic)
 		if err != nil {
 			klog.Errorf("failed to find iface %s, %v", tunnelNic, err)
 			return err
@@ -182,14 +194,22 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 		if err != nil {
 			return fmt.Errorf("failed to get iface addr. %v", err)
 		}
-		if len(addrs) == 0 {
-			return fmt.Errorf("iface %s has no ip address", tunnelNic)
+		for _, addr := range addrs {
+			ipStr := strings.Split(addr.String(), "/")[0]
+			if ip := net.ParseIP(ipStr); ip == nil || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			encapIP = ipStr
+			break
 		}
-		encapIP = strings.Split(addrs[0].String(), "/")[0]
+		if len(encapIP) == 0 {
+			return fmt.Errorf("iface %s has no valid IP address", tunnelNic)
+		}
+		mtu = iface.MTU
 	}
 
 	if config.MTU == 0 {
-		config.MTU = iface.MTU - util.GeneveHeaderLength
+		config.MTU = mtu - util.GeneveHeaderLength
 	}
 
 	config.MSS = config.MTU - util.TcpIpHeaderLength
@@ -199,7 +219,32 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 		}
 	}
 
+	if err = config.initRuntimeConfig(node); err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	// OVS windows datapath does not IPv6 tunnel in version v2.17 and earlier
+	if runtime.GOOS == "windows" && util.CheckProtocol(encapIP) == kubeovnv1.ProtocolIPv6 {
+		err = errors.New("IPv6 tunnel is not supported on Windows currently")
+		klog.Error(err)
+		return err
+	}
+
 	return setEncapIP(encapIP)
+}
+
+func (config *Configuration) getEncapIP(node *corev1.Node) string {
+	if podIP := os.Getenv(util.POD_IP); podIP != "" {
+		return podIP
+	}
+
+	klog.Info("environment variable POD_IP not found, fall back to node address")
+	ipv4, ipv6 := util.GetNodeInternalIP(*node)
+	if ipv4 != "" {
+		return ipv4
+	}
+	return ipv6
 }
 
 func findInterface(ifaceStr string) (*net.Interface, error) {
@@ -263,33 +308,6 @@ func (config *Configuration) initKubeClient() error {
 	}
 	config.KubeClient = kubeClient
 	return nil
-}
-
-func getIfaceOwnPodIP(podIP string) (*net.Interface, error) {
-	links, err := netlink.LinkList()
-	if err != nil {
-		return nil, err
-	}
-
-	for _, link := range links {
-		addrs, err := netlink.AddrList(link, netlink.FAMILY_ALL)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get a list of IP addresses %v", err)
-		}
-		for _, addr := range addrs {
-			if addr.IPNet.Contains(net.ParseIP(podIP)) && addr.IP.String() == podIP {
-				return &net.Interface{
-					Index:        link.Attrs().Index,
-					MTU:          link.Attrs().MTU,
-					Name:         link.Attrs().Name,
-					HardwareAddr: link.Attrs().HardwareAddr,
-					Flags:        link.Attrs().Flags,
-				}, nil
-			}
-		}
-	}
-
-	return nil, errors.New("unable to find podIP interface")
 }
 
 func setEncapIP(ip string) error {

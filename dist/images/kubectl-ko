@@ -2,7 +2,7 @@
 set -euo pipefail
 
 KUBE_OVN_NS=kube-system
-WITHOUT_KUBE_PROXY=false
+WITHOUT_KUBE_PROXY=${WITHOUT_KUBE_PROXY:-false}
 OVN_NB_POD=
 OVN_SB_POD=
 KUBE_OVN_VERSION=
@@ -222,11 +222,11 @@ trace(){
   case $type in
     icmp)
       set -x
-      kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-appctl ofproto/trace br-int "in_port=$inPort,icmp$proto,${nw}_src=$podIP,${nw}_dst=$dst,dl_src=$mac,dl_dst=$gwMac"
+      kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-appctl ofproto/trace br-int "in_port=$inPort,icmp$proto,nw_ttl=64,${nw}_src=$podIP,${nw}_dst=$dst,dl_src=$mac,dl_dst=$gwMac"
       ;;
     tcp|udp)
       set -x
-      kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-appctl ofproto/trace br-int "in_port=$inPort,$type$proto,${nw}_src=$podIP,${nw}_dst=$dst,dl_src=$mac,dl_dst=$gwMac,${type}_src=1000,${type}_dst=$4"
+      kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-appctl ofproto/trace br-int "in_port=$inPort,$type$proto,nw_ttl=64,${nw}_src=$podIP,${nw}_dst=$dst,dl_src=$mac,dl_dst=$gwMac,${type}_src=1000,${type}_dst=$4"
       ;;
     *)
       echo "type $type not supported"
@@ -375,8 +375,20 @@ getOvnCentralPod(){
     if [ -z "$VERSION" ]; then
           echo "kubeovn version not exists"
           exit 1
-        fi
+    fi
     KUBE_OVN_VERSION=$VERSION
+}
+
+getOvnCentralDbStatus(){
+  NB_PODS=$(kubectl get pod -n $KUBE_OVN_NS | grep ovn-central | awk '{print $1}')
+  for pod in $NB_PODS
+  do
+    echo "get dbstatus in pod $pod"
+    nbstatus=`kubectl exec "$pod" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/get-db-storage-status OVN_Northbound`
+    echo "nb db status $nbstatus"
+    sbstatus=`kubectl exec "$pod" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/get-db-storage-status OVN_Southbound`
+    echo "sb db status $sbstatus"
+  done
 }
 
 checkDaemonSet(){
@@ -395,15 +407,22 @@ checkDaemonSet(){
 
 checkDeployment(){
   name="$1"
-  ready=$(kubectl get deployment -n $KUBE_OVN_NS "$name" -o jsonpath={.status.readyReplicas})
-  updated=$(kubectl get deployment -n $KUBE_OVN_NS "$name" -o jsonpath={.status.updatedReplicas})
-  desire=$(kubectl get deployment -n $KUBE_OVN_NS "$name" -o jsonpath={.status.replicas})
-  available=$(kubectl get deployment -n $KUBE_OVN_NS "$name" -o jsonpath={.status.availableReplicas})
-  if [ "$ready" = "$updated" ] && [ "$updated" = "$desire" ] && [ "$desire" = "$available" ]; then
-    echo "deployment $name ready"
-  else
+  isfailed=true
+  for i in {0..29}
+  do
+    ready=$(kubectl get deployment -n $KUBE_OVN_NS "$name" -o jsonpath={.status.readyReplicas})
+    updated=$(kubectl get deployment -n $KUBE_OVN_NS "$name" -o jsonpath={.status.updatedReplicas})
+    desire=$(kubectl get deployment -n $KUBE_OVN_NS "$name" -o jsonpath={.status.replicas})
+    available=$(kubectl get deployment -n $KUBE_OVN_NS "$name" -o jsonpath={.status.availableReplicas})
+    if [ "$ready" = "$updated" ] && [ "$updated" = "$desire" ] && [ "$desire" = "$available" ]; then
+      echo "deployment $name ready"
+      isfailed=false
+      break
+    fi
+    sleep 1
+  done
+  if $isfailed; then
     echo "Error deployment $name not ready"
-    exit 1
   fi
 }
 
@@ -445,7 +464,7 @@ dbtool(){
           echo "backup ovn-$component db to $(pwd)/ovnnb_db.$suffix.backup"
           ;;
         dbstatus)
-          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/get-db-storage-status OVN_Northbound
+          getOvnCentralDbStatus
           ;;
         restore)
           # set ovn-central replicas to 0
@@ -490,15 +509,27 @@ dbtool(){
           # mv all db files
           for pod in ${podNameArray[@]}
           do
-            kubectl exec -it -n $KUBE_OVN_NS $pod -- mv /etc/ovn/ovnnb_db.db /tmp
-            kubectl exec -it -n $KUBE_OVN_NS $pod -- mv /etc/ovn/ovnsb_db.db /tmp
+            kubectl exec -it -n $KUBE_OVN_NS $pod -- mv -f /etc/ovn/ovnnb_db.db /tmp
+            kubectl exec -it -n $KUBE_OVN_NS $pod -- mv -f /etc/ovn/ovnsb_db.db /tmp
           done
 
           # restore db and replicas
           echo "restore nb db file, operate in pod ${podNameArray[0]}"
-          kubectl exec -it -n $KUBE_OVN_NS ${podNameArray[0]} -- mv /etc/ovn/ovnnb_db_standalone.db /etc/ovn/ovnnb_db.db
+          kubectl exec -it -n $KUBE_OVN_NS ${podNameArray[0]} -- mv -f /etc/ovn/ovnnb_db_standalone.db /etc/ovn/ovnnb_db.db
           kubectl scale deployment -n $KUBE_OVN_NS ovn-central --replicas=$replicas
+
+          # wait ovn-central pods running
+          availabelNum=$(kubectl get deployment -n $KUBE_OVN_NS | grep ovn-central | awk {'print $4'})
+          while [ $availabelNum != $replicas ]
+          do
+            availabelNum=$(kubectl get deployment -n $KUBE_OVN_NS | grep ovn-central | awk {'print $4'})
+            echo "wait all ovn-central pods running, availabel $availabelNum"
+            sleep 1
+          done
           echo "finish restore nb db file and ovn-central replicas"
+
+          echo "recreate ovs-ovn pods"
+          kubectl delete pod -n $KUBE_OVN_NS -l app=ovs
           ;;
         *)
           echo "unknown action $action"
@@ -520,7 +551,7 @@ dbtool(){
           echo "backup ovn-$component db to $(pwd)/ovnsb_db.$suffix.backup"
           ;;
         dbstatus)
-          kubectl exec "$OVN_NB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/get-db-storage-status OVN_Southbound
+          getOvnCentralDbStatus
           ;;
         restore)
           echo "restore cmd is only used for nb db"

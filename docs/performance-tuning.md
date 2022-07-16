@@ -69,7 +69,7 @@ methods and benchmark results later.
 
 ## Optimization methods
 
-### CPU frequency scaling
+## CPU frequency scaling
 
 When the CPU works at power save mode, its performance behavior is unstable and various. Use the performance mode to get stable behavior.
 
@@ -77,7 +77,7 @@ When the CPU works at power save mode, its performance behavior is unstable and 
 cpupower frequency-set -g performance
 ```
 
-### Increasing the RX ring buffer 
+## Increasing the RX ring buffer 
 
 A high drop rate at receive side will hurt the throughput performance.
 
@@ -101,21 +101,7 @@ A high drop rate at receive side will hurt the throughput performance.
 # ethtool -G eno1 rx 4096
 ```
 
-### Enable the checksum offload
-
-In v1.7 to bypass a kernel double nat issue, we disabled the tx checksum offload of geneve tunnel. This issue has been resolved
-in a different way in the latest version. Users who update from old versions can enable the checksum again. Users who use
-1.7.2 or later do not need to change the settings.
-
-```bash
-# run on every ovs-ovn pod
-
-# ethtool -K genev_sys_6081 tx on
-# ethtool -K ovn0 tx on
-# ovs-vsctl set open . external_ids:ovn-encap-csum=true
-```
-
-### Disable OVN LB
+## Disable OVN LB
 
 With profile, the OVN L2 LB need packet clone and recirculate which consumes lots CPU time and block every traffic path 
 even if the packets are not designated to a LB VIP. From v1.8 the OVN LB can be disabled, for overlay network traffic to 
@@ -142,31 +128,50 @@ to bypass the conntrack system for traffic that not designate to svc.
 kubectl ko nbctl set nb_global . options:svc_ipv4_cidr=10.244.0.0/16
 ```
 
-### Kernel FastPath module
+## Kernel FastPath module
 
 With Profile, the netfilter hooks inside container netns and between tunnel endpoints contribute about 25% of the CPU time
 after the optimization of disabling lb. We provide a FastPath module that can bypass the nf hooks process and reduce about 
 another 20% of CPU time and latency in 1 byte packet test.
 
-Please refer [FastPath Guide](../fastpath/README.md) to get the detail steps.
+The easiest way is to download the `.ko` file and `insmod` the file as [doc](https://github.com/kubeovn/tunning-package) introduce. 
+The `ko` file currently support a limited number of kernel versions. However, we encourage users to submit requests, and we will support new versions soon.
 
-### Optimize OVS kernel module
+If you want to compile yourself, please refer [FastPath Guide](../fastpath/README.md) to get the detail steps.
+
+
+## Optimize OVS kernel module
+
+### Download a ready-made package
+
+Also, the easiest way is to download the ovs-kernel file and install the file as [doc](https://github.com/kubeovn/tunning-package) introduce. Detail information could be found in repo `Kube-OVN/tunning-packages`.
+
+However, also currently the packages support a limited number of kernel versions. So we encourage users to submit requests.
+
+You also could compile the package manually or automatically according to the following entries.
+
+After installing the ovs kernel modules, enable the ovs stt configuration to complete the optimisation.
+
+### manual compile
 
 The OVS flow match process takes about 10% of the CPU time. If the OVS runs on x86 CPU with popcnt and sse instruction sets, some
 compile optimization can be applied to accelerate the match process.
 
-1. Make sure the CPU support the instruction set
+1. ##### Make sure the CPU support the instruction set
 ```bash
 # cat /proc/cpuinfo  | grep popcnt
 # cat /proc/cpuinfo  | grep sse4_2
 ```
-2. Compile and install the OVS kernel module, below are the steps to compile the module on CentOS
+2. ##### Compile and install the OVS kernel module.
+
+   Steps to compile the module in CentOS:
 ```bash
 # Make sure the related kernel headers is installed
 yum install -y gcc kernel-devel-$(uname -r) python3 autoconf automake libtool rpm-build openssl-devel
 
-git clone -b branch-2.15 --depth=1 https://github.com/openvswitch/ovs.git
+git clone -b branch-2.17 --depth=1 https://github.com/openvswitch/ovs.git
 cd ovs
+curl -s  https://github.com/kubeovn/ovs/commit/2d2c83c26d4217446918f39d5cd5838e9ac27b32.patch |  git apply
 ./boot.sh
 ./configure --with-linux=/lib/modules/$(uname -r)/build CFLAGS="-g -O2 -mpopcnt -msse4.2"
 make rpm-fedora-kmod
@@ -174,6 +179,30 @@ cd rpm/rpmbuild/RPMS/x86_64/
 
 # Copy the rpm to every node and install
 rpm -i openvswitch-kmod-2.15.2-1.el7.x86_64.rpm
+```
+
+​	 Steps to compile the modules in Ubuntu:
+
+```bash
+apt install -y autoconf automake libtool gcc build-essential libssl-dev
+
+git clone -b branch-2.17 --depth=1 https://github.com/openvswitch/ovs.git
+cd ovs
+curl -s  https://github.com/kubeovn/ovs/commit/2d2c83c26d4217446918f39d5cd5838e9ac27b32.patch |  git apply
+./boot.sh
+./configure --prefix=/usr/ --localstatedir=/var --enable-ssl --with-linux=/lib/modules/$(uname -r)/build
+make -j `nproc`
+make install
+make modules_install
+
+cat > /etc/depmod.d/openvswitch.conf << EOF
+override openvswitch * extra
+override vport-* * extra
+EOF
+
+depmod -a
+cp debian/openvswitch-switch.init /etc/init.d/openvswitch-switch
+/etc/init.d/openvswitch-switch force-reload-kmod
 ```
 
 ### Automatically compile openvswitch rpm and distribute it:
@@ -222,12 +251,10 @@ $ reboot
 $ kubectl ko tuning remove-stt centos
 ```
 
-
-
 ### Using STT tunnel type
 
 Popular tunnel encapsulation methods like Geneve or Vxlan use udp to wrap the origin packets. 
-However，when using udp over tcp packets, lots of the tcp offloading capabilities that modern NICs provided cannot be utilized 
+However, when using udp over tcp packets, lots of the tcp offloading capabilities that modern NICs provided cannot be utilized 
 and leads to degraded performance compared to non-encapsulated one.
 
 STT provides a tcp like header to encapsulate packet which can utilize all the offloading capabilities and dramatically improve the throughput of tcp traffic.

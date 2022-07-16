@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	_ "net/http/pprof" // #nosec
+	"net/http/pprof"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -26,18 +27,23 @@ import (
 func CmdMain() {
 	defer klog.Flush()
 
-	klog.Infof(versions.String())
 	daemon.InitMetrics()
 	util.InitKlogMetrics()
+
+	config := daemon.ParseFlags()
+	klog.Infof(versions.String())
+
+	if err := initForOS(); err != nil {
+		klog.Fatal(err)
+	}
 
 	nicBridgeMappings, err := daemon.InitOVSBridges()
 	if err != nil {
 		klog.Fatalf("failed to initialize OVS bridges: %v", err)
 	}
 
-	config, err := daemon.ParseFlags(nicBridgeMappings)
-	if err != nil {
-		klog.Fatalf("parse config failed %v", err)
+	if err = config.Init(nicBridgeMappings); err != nil {
+		klog.Fatalf("failed to initialize config: %v", err)
 	}
 
 	if err := Retry(util.ChasRetryTime, util.ChasRetryIntev, initChassisAnno, config); err != nil {
@@ -75,21 +81,31 @@ func CmdMain() {
 	kubeovnInformerFactory.Start(stopCh)
 	go ctl.Run(stopCh)
 	go daemon.RunServer(config, ctl)
-	if err := mvCNIConf(config.CniConfName); err != nil {
+	if err := mvCNIConf(config.CniConfDir, config.CniConfFile, config.CniConfName); err != nil {
 		klog.Fatalf("failed to mv cni conf, %v", err)
 	}
-	http.Handle("/metrics", promhttp.Handler())
-	klog.Fatal(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.PprofPort), nil))
+
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	if config.EnablePprof {
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	}
+	klog.Fatal(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.PprofPort), mux))
 }
 
-func mvCNIConf(confName string) error {
-	data, err := os.ReadFile("/kube-ovn/01-kube-ovn.conflist")
+func mvCNIConf(configDir, configFile, confName string) error {
+	// #nosec
+	data, err := os.ReadFile(configFile)
 	if err != nil {
 		return err
 	}
 
-	cniConfPath := fmt.Sprintf("/etc/cni/net.d/%s", confName)
-	return os.WriteFile(cniConfPath, data, 0444)
+	cniConfPath := filepath.Join(configDir, confName)
+	return os.WriteFile(cniConfPath, data, 0644)
 }
 
 func Retry(attempts int, sleep int, f func(configuration *daemon.Configuration) error, ctrl *daemon.Configuration) (err error) {

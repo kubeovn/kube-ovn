@@ -1,8 +1,14 @@
 # BGP support
 
-Kube-OVN supports advertise pod/subnet ips to external networks by BGP protocol.
-To enable BGP advertise function, you need to install kube-ovn-speaker and annotate pods/subnets that need to be exposed.
+Kube-OVN supports advertise pod/subnet ips to external networks by BGP protocol. To enable BGP advertise function, you
+need to install kube-ovn-speaker and annotate pods/subnets that need to be exposed.
 
+## High-level design of ovn-spekaer
+
+![ovn-speaker.png](ovn-speaker.png)
+kube-ovn-speaker periodically lists Pod/subnet/service resource information of kubernetes apiServer.
+Check the obtained Pod/subnet/service resources, select the annotation ovn.kubernetes.io/bgp=true and
+the resources that are not advertised by BGP use BGP to advertise externally.
 ## List of Options
 ```text
 Usage of ovn-speaker:
@@ -32,8 +38,8 @@ Usage of ovn-speaker:
       --stderrthreshold severity                  logs at or above this threshold go to stderr (default 2)
   -v, --v Level                                   number for the log level verbosity
       --vmodule moduleSpec                        comma-separated list of pattern=N settings for file-filtered logging
-
-
+      --passivemode                               Set BGP Speaker to passive model,do not actively initiate connections to peers (default false)
+      --ebgp-multihop                             The TTL value of EBGP peer, default 1 (default 1)
 ```
 
 1. Label nodes that host the BGP speaker and act as overlay to underlay gateway
@@ -63,7 +69,6 @@ wget https://github.com/kubeovn/kube-ovn/blob/master/yamls/speaker.yaml
 ```bash
 kubectl apply -f speaker.yaml
 ```
-
 
 *NOTE*: When more than one node host speaker, the upstream router need to support multiple path routes to act ECMP.
 

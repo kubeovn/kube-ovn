@@ -483,7 +483,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(rate(workqueue_depth{job=\"kube-ovn-controller\", instance=~\"$instance\"}[5m])) by (instance, name)",
+          "expr": "workqueue_depth{job=\"kube-ovn-controller\", instance=~\"$instance\"}",
           "format": "time_series",
           "interval": "",
           "intervalFactor": 2,

@@ -26,6 +26,22 @@ type HtbQosListerExpansion interface{}
 // IPLister.
 type IPListerExpansion interface{}
 
+// IptablesDnatRuleListerExpansion allows custom methods to be added to
+// IptablesDnatRuleLister.
+type IptablesDnatRuleListerExpansion interface{}
+
+// IptablesEIPListerExpansion allows custom methods to be added to
+// IptablesEIPLister.
+type IptablesEIPListerExpansion interface{}
+
+// IptablesFIPRuleListerExpansion allows custom methods to be added to
+// IptablesFIPRuleLister.
+type IptablesFIPRuleListerExpansion interface{}
+
+// IptablesSnatRuleListerExpansion allows custom methods to be added to
+// IptablesSnatRuleLister.
+type IptablesSnatRuleListerExpansion interface{}
+
 // ProviderNetworkListerExpansion allows custom methods to be added to
 // ProviderNetworkLister.
 type ProviderNetworkListerExpansion interface{}
@@ -37,6 +53,14 @@ type SecurityGroupListerExpansion interface{}
 // SubnetListerExpansion allows custom methods to be added to
 // SubnetLister.
 type SubnetListerExpansion interface{}
+
+// SwitchLBRuleListerExpansion allows custom methods to be added to
+// SwitchLBRuleLister.
+type SwitchLBRuleListerExpansion interface{}
+
+// VipListerExpansion allows custom methods to be added to
+// VipLister.
+type VipListerExpansion interface{}
 
 // VlanListerExpansion allows custom methods to be added to
 // VlanLister.

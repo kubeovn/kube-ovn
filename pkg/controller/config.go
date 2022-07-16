@@ -20,12 +20,13 @@ import (
 
 // Configuration is the controller conf
 type Configuration struct {
-	BindAddress    string
-	OvnNbAddr      string
-	OvnSbAddr      string
-	OvnTimeout     int
-	KubeConfigFile string
-	KubeRestConfig *rest.Config
+	BindAddress          string
+	OvnNbAddr            string
+	OvnSbAddr            string
+	OvnTimeout           int
+	CustCrdRetryMaxDelay int
+	KubeConfigFile       string
+	KubeRestConfig       *rest.Config
 
 	KubeClient      kubernetes.Interface
 	KubeOvnClient   clientset.Interface
@@ -59,34 +60,43 @@ type Configuration struct {
 	PodNamespace string
 	PodNicType   string
 
-	WorkerNum int
-	PprofPort int
+	WorkerNum       int
+	PprofPort       int
+	EnablePprof     bool
+	NodePgProbeTime int
 
 	NetworkType          string
 	DefaultProviderName  string
 	DefaultHostInterface string
 	DefaultVlanName      string
 	DefaultVlanID        int
+	LsDnatModDlDst       bool
 
 	EnableLb          bool
 	EnableNP          bool
+	EnableEipSnat     bool
 	EnableExternalVpc bool
 	EnableEcmp        bool
 	EnableKeepVmIP    bool
+	EnableLbSvc       bool
 
 	ExternalGatewayConfigNS string
 	ExternalGatewayNet      string
 	ExternalGatewayVlanID   int
+
+	GCInterval      int
+	InspectInterval int
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
 // TODO: validate configuration
 func ParseFlags() (*Configuration, error) {
 	var (
-		argOvnNbAddr      = pflag.String("ovn-nb-addr", "", "ovn-nb address")
-		argOvnSbAddr      = pflag.String("ovn-sb-addr", "", "ovn-sb address")
-		argOvnTimeout     = pflag.Int("ovn-timeout", 60, "")
-		argKubeConfigFile = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
+		argOvnNbAddr            = pflag.String("ovn-nb-addr", "", "ovn-nb address")
+		argOvnSbAddr            = pflag.String("ovn-sb-addr", "", "ovn-sb address")
+		argOvnTimeout           = pflag.Int("ovn-timeout", 60, "")
+		argCustCrdRetryMaxDelay = pflag.Int("cust-crd-retry-max-delay", 20, "The max delay between custom crd two retries")
+		argKubeConfigFile       = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 
 		argDefaultLogicalSwitch  = pflag.String("default-ls", util.DefaultSubnet, "The default logical switch name")
 		argDefaultCIDR           = pflag.String("default-cidr", "10.16.0.0/16", "Default CIDR for namespace with no logical switch annotation")
@@ -107,24 +117,32 @@ func ParseFlags() (*Configuration, error) {
 		argClusterTcpSessionLoadBalancer = pflag.String("cluster-tcp-session-loadbalancer", "cluster-tcp-session-loadbalancer", "The name for cluster tcp session loadbalancer")
 		argClusterUdpSessionLoadBalancer = pflag.String("cluster-udp-session-loadbalancer", "cluster-udp-session-loadbalancer", "The name for cluster udp session loadbalancer")
 
-		argWorkerNum = pflag.Int("worker-num", 3, "The parallelism of each worker")
-		argPprofPort = pflag.Int("pprof-port", 10660, "The port to get profiling data")
+		argWorkerNum       = pflag.Int("worker-num", 3, "The parallelism of each worker")
+		argEnablePprof     = pflag.Bool("enable-pprof", false, "Enable pprof")
+		argPprofPort       = pflag.Int("pprof-port", 10660, "The port to get profiling data")
+		argNodePgProbeTime = pflag.Int("nodepg-probe-time", 1, "The probe interval for node port-group, the unit is minute")
 
 		argNetworkType          = pflag.String("network-type", util.NetworkTypeGeneve, "The ovn network type")
 		argDefaultProviderName  = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name")
 		argDefaultInterfaceName = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
 		argDefaultVlanName      = pflag.String("default-vlan-name", "ovn-vlan", "The default vlan name")
 		argDefaultVlanID        = pflag.Int("default-vlan-id", 1, "The default vlan id")
+		argLsDnatModDlDst       = pflag.Bool("ls-dnat-mod-dl-dst", true, "Set ethernet destination address for DNAT on logical switch")
 		argPodNicType           = pflag.String("pod-nic-type", "veth-pair", "The default pod network nic implementation type")
 		argEnableLb             = pflag.Bool("enable-lb", true, "Enable load balancer")
 		argEnableNP             = pflag.Bool("enable-np", true, "Enable network policy support")
+		argEnableEipSnat        = pflag.Bool("enable-eip-snat", true, "Enable EIP and SNAT")
 		argEnableExternalVpc    = pflag.Bool("enable-external-vpc", true, "Enable external vpc support")
 		argEnableEcmp           = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
 		argKeepVmIP             = pflag.Bool("keep-vm-ip", false, "Whether to keep ip for kubevirt pod when pod is rebuild")
+		argEnableLbSvc          = pflag.Bool("enable-lb-svc", false, "Whether to support loadbalancer service")
 
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
-		argExternalGatewayNet      = pflag.String("external-gateway-net", "external", "The namespace of configmap external-gateway-config, default: external")
+		argExternalGatewayNet      = pflag.String("external-gateway-net", "external", "The name of the external network which mappings with an ovs bridge, default: external")
 		argExternalGatewayVlanID   = pflag.Int("external-gateway-vlanid", 0, "The vlanId of port ln-ovn-external, default: 0")
+
+		argGCInterval      = pflag.Int("gc-interval", 360, "The interval between GC processes, default 360 seconds")
+		argInspectInterval = pflag.Int("inspect-interval", 20, "The interval between inspect processes, default 20 seconds")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -149,6 +167,7 @@ func ParseFlags() (*Configuration, error) {
 		OvnNbAddr:                     *argOvnNbAddr,
 		OvnSbAddr:                     *argOvnSbAddr,
 		OvnTimeout:                    *argOvnTimeout,
+		CustCrdRetryMaxDelay:          *argCustCrdRetryMaxDelay,
 		KubeConfigFile:                *argKubeConfigFile,
 		DefaultLogicalSwitch:          *argDefaultLogicalSwitch,
 		DefaultCIDR:                   *argDefaultCIDR,
@@ -166,9 +185,11 @@ func ParseFlags() (*Configuration, error) {
 		ClusterTcpSessionLoadBalancer: *argClusterTcpSessionLoadBalancer,
 		ClusterUdpSessionLoadBalancer: *argClusterUdpSessionLoadBalancer,
 		WorkerNum:                     *argWorkerNum,
+		EnablePprof:                   *argEnablePprof,
 		PprofPort:                     *argPprofPort,
 		NetworkType:                   *argNetworkType,
 		DefaultVlanID:                 *argDefaultVlanID,
+		LsDnatModDlDst:                *argLsDnatModDlDst,
 		DefaultProviderName:           *argDefaultProviderName,
 		DefaultHostInterface:          *argDefaultInterfaceName,
 		DefaultVlanName:               *argDefaultVlanName,
@@ -177,12 +198,17 @@ func ParseFlags() (*Configuration, error) {
 		PodNicType:                    *argPodNicType,
 		EnableLb:                      *argEnableLb,
 		EnableNP:                      *argEnableNP,
+		EnableEipSnat:                 *argEnableEipSnat,
 		EnableExternalVpc:             *argEnableExternalVpc,
 		ExternalGatewayConfigNS:       *argExternalGatewayConfigNS,
 		ExternalGatewayNet:            *argExternalGatewayNet,
 		ExternalGatewayVlanID:         *argExternalGatewayVlanID,
 		EnableEcmp:                    *argEnableEcmp,
 		EnableKeepVmIP:                *argKeepVmIP,
+		NodePgProbeTime:               *argNodePgProbeTime,
+		GCInterval:                    *argGCInterval,
+		InspectInterval:               *argInspectInterval,
+		EnableLbSvc:                   *argEnableLbSvc,
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {

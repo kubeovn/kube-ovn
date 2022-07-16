@@ -3,6 +3,7 @@ package subnet
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"time"
@@ -55,7 +56,7 @@ var _ = Describe("[Subnet]", func() {
 			name := f.GetName()
 			af, cidr, protocol := 4, "11.10.0.0/16", kubeovn.ProtocolIPv4
 			if isIPv6 {
-				af, cidr, protocol = 6, "fd00:11:10::/112", kubeovn.ProtocolIPv6
+				af, cidr, protocol = 6, "fc00:11:10::/112", kubeovn.ProtocolIPv6
 			}
 			gateway, _ := util.FirstIP(cidr)
 
@@ -94,9 +95,9 @@ var _ = Describe("[Subnet]", func() {
 			By("validate status")
 			Expect(subnet.Status.ActivateGateway).To(BeEmpty())
 			if isIPv6 {
-				Expect(subnet.Status.V6AvailableIPs).To(Equal(float64(65533)))
+				Expect(subnet.Status.V6AvailableIPs).To(Equal(math.Exp2(128-112) - 3))
 			} else {
-				Expect(subnet.Status.V4AvailableIPs).To(Equal(float64(65533)))
+				Expect(subnet.Status.V4AvailableIPs).To(Equal(math.Exp2(32-16) - 3))
 			}
 			Expect(subnet.Status.V4UsingIPs).To(BeZero())
 			Expect(subnet.Status.V6UsingIPs).To(BeZero())
@@ -114,7 +115,7 @@ var _ = Describe("[Subnet]", func() {
 			name := f.GetName()
 			cidr := "11.11.0.0/16"
 			if isIPv6 {
-				cidr = "fd00:11:11::/112"
+				cidr = "fc00:11:11::/112"
 			}
 
 			By("create subnet")
@@ -149,7 +150,7 @@ var _ = Describe("[Subnet]", func() {
 			name := f.GetName()
 			cidr := "11.12.0.0/16"
 			if isIPv6 {
-				cidr = "fd00:11:12::/112"
+				cidr = "fc00:11:12::/112"
 			}
 
 			By("create subnet")
@@ -169,11 +170,16 @@ var _ = Describe("[Subnet]", func() {
 			err = f.WaitSubnetReady(name)
 			Expect(err).NotTo(HaveOccurred())
 
-			s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), name, metav1.GetOptions{})
-			Expect(err).NotTo(HaveOccurred())
-			s.Spec.GatewayType = kubeovn.GWCentralizedType
-			s.Spec.GatewayNode = "kube-ovn-control-plane,kube-ovn-worker,kube-ovn-worker2"
-			_, err = f.OvnClientSet.KubeovnV1().Subnets().Update(context.Background(), s, metav1.UpdateOptions{})
+			for i := 0; i < 3; i++ {
+				s, err = f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), name, metav1.GetOptions{})
+				Expect(err).NotTo(HaveOccurred())
+				s.Spec.GatewayType = kubeovn.GWCentralizedType
+				s.Spec.GatewayNode = "kube-ovn-control-plane,kube-ovn-worker,kube-ovn-worker2"
+				_, err = f.OvnClientSet.KubeovnV1().Subnets().Update(context.Background(), s, metav1.UpdateOptions{})
+				if err == nil {
+					break
+				}
+			}
 			Expect(err).NotTo(HaveOccurred())
 
 			time.Sleep(5 * time.Second)
@@ -189,7 +195,7 @@ var _ = Describe("[Subnet]", func() {
 			name := f.GetName()
 			cidr := "11.13.0.0/16"
 			if isIPv6 {
-				cidr = "fd00:11:13::/112"
+				cidr = "fc00:11:13::/112"
 			}
 			By("create subnet")
 			s := kubeovn.Subnet{
@@ -225,7 +231,7 @@ var _ = Describe("[Subnet]", func() {
 			name := f.GetName()
 			cidr := "11.14.0.10/16"
 			if isIPv6 {
-				cidr = "fd00:11:14::10/112"
+				cidr = "fc00:11:14::/112"
 			}
 			By("create subnet")
 			s := &kubeovn.Subnet{
@@ -250,7 +256,7 @@ var _ = Describe("[Subnet]", func() {
 			if !isIPv6 {
 				Expect(s.Spec.CIDRBlock).To(Equal("11.14.0.0/16"))
 			} else {
-				Expect(s.Spec.CIDRBlock).To(Equal("fd00:11:14::/112"))
+				Expect(s.Spec.CIDRBlock).To(Equal("fc00:11:14::/112"))
 			}
 
 		})
@@ -346,7 +352,7 @@ var _ = Describe("[Subnet]", func() {
 
 			af, cidr := 4, "11.15.0.0/16"
 			if isIPv6 {
-				af, cidr = 6, "fd00:11:15::/112"
+				af, cidr = 6, "fc00:11:15::/112"
 			}
 
 			var egw string
@@ -485,7 +491,7 @@ var _ = Describe("[Subnet]", func() {
 
 			af, cidr := 4, "11.16.0.0/16"
 			if isIPv6 {
-				af, cidr = 6, "fd00:11:16::/112"
+				af, cidr = 6, "fc00:11:16::/112"
 			}
 
 			var selectedNode *corev1.Node

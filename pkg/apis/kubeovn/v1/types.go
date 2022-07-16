@@ -3,6 +3,8 @@ package v1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
 const (
@@ -32,9 +34,9 @@ const (
 
 type SgPolicy string
 
-const (
-	PolicyAllow SgPolicy = "allow"
-	PolicyDrop  SgPolicy = "drop"
+var (
+	PolicyAllow = SgPolicy(ovnnb.ACLActionAllow)
+	PolicyDrop  = SgPolicy(ovnnb.ACLActionDrop)
 )
 
 // Constants for condition
@@ -74,6 +76,7 @@ type IPSpec struct {
 	MacAddress    string   `json:"macAddress"`
 	AttachMacs    []string `json:"attachMacs"`
 	ContainerID   string   `json:"containerID"`
+	PodType       string   `json:"podType"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -365,10 +368,10 @@ type StaticRoute struct {
 
 type PolicyRouteAction string
 
-const (
-	PolicyRouteActionAllow   PolicyRouteAction = "allow"
-	PolicyRouteActionDrop    PolicyRouteAction = "drop"
-	PolicyRouteActionReroute PolicyRouteAction = "reroute"
+var (
+	PolicyRouteActionAllow   = PolicyRouteAction(ovnnb.LogicalRouterPolicyActionAllow)
+	PolicyRouteActionDrop    = PolicyRouteAction(ovnnb.LogicalRouterPolicyActionDrop)
+	PolicyRouteActionReroute = PolicyRouteAction(ovnnb.LogicalRouterPolicyActionReroute)
 )
 
 type PolicyRoute struct {
@@ -442,37 +445,266 @@ type VpcNatGateway struct {
 }
 
 type VpcNatSpec struct {
-	Vpc             string            `json:"vpc"`
-	Subnet          string            `json:"subnet"`
-	LanIp           string            `json:"lanIp"`
-	Selector        []string          `json:"selector"`
-	Eips            []*Eip            `json:"eips,omitempty"`
-	FloatingIpRules []*FloutingIpRule `json:"floatingIpRules,omitempty"`
-	DnatRules       []*DnatRule       `json:"dnatRules,omitempty"`
-	SnatRules       []*SnatRule       `json:"snatRules,omitempty"`
+	Vpc      string   `json:"vpc"`
+	Subnet   string   `json:"subnet"`
+	LanIp    string   `json:"lanIp"`
+	Selector []string `json:"selector"`
 }
 
-type Eip struct {
-	EipCIDR string `json:"eipCIDR"`
-	Gateway string `json:"gateway"`
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +genclient:nonNamespaced
+// +resourceName=iptables-eips
+
+type IptablesEIP struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   IptablesEipSpec   `json:"spec"`
+	Status IptablesEipStatus `json:"status,omitempty"`
+}
+type IptablesEipSpec struct {
+	V4ip       string `json:"v4ip"`
+	V6ip       string `json:"v6ip"`
+	MacAddress string `json:"macAddress"`
+	NatGwDp    string `json:"natGwDp"`
 }
 
-type FloutingIpRule struct {
-	Eip        string `json:"eip"`
+// Condition describes the state of an object at a certain point.
+// +k8s:deepcopy-gen=true
+type IptablesEIPCondition struct {
+	// Type of condition.
+	Type ConditionType `json:"type"`
+	// Status of the condition, one of True, False, Unknown.
+	Status corev1.ConditionStatus `json:"status"`
+	// The reason for the condition's last transition.
+	// +optional
+	Reason string `json:"reason,omitempty"`
+	// A human readable message indicating details about the transition.
+	// +optional
+	Message string `json:"message,omitempty"`
+	// Last time the condition was probed
+	// +optional
+	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
+	// Last time the condition transitioned from one status to another.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+}
+
+type IptablesEipStatus struct {
+	// +optional
+	// +patchStrategy=merge
+	Ready bool   `json:"ready" patchStrategy:"merge"`
+	IP    string `json:"ip" patchStrategy:"merge"`
+	Redo  string `json:"redo" patchStrategy:"merge"`
+	Nat   string `json:"nat" patchStrategy:"merge"`
+
+	// Conditions represents the latest state of the object
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	Conditions []IptablesEIPCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type IptablesEIPList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []IptablesEIP `json:"items"`
+}
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +genclient:nonNamespaced
+// +resourceName=iptables-fip-rules
+
+type IptablesFIPRule struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   IptablesFIPRuleSpec   `json:"spec"`
+	Status IptablesFIPRuleStatus `json:"status,omitempty"`
+}
+type IptablesFIPRuleSpec struct {
+	EIP        string `json:"eip"`
 	InternalIp string `json:"internalIp"`
 }
 
-type SnatRule struct {
-	Eip          string `json:"eip"`
+// Condition describes the state of an object at a certain point.
+// +k8s:deepcopy-gen=true
+type IptablesFIPRuleCondition struct {
+	// Type of condition.
+	Type ConditionType `json:"type"`
+	// Status of the condition, one of True, False, Unknown.
+	Status corev1.ConditionStatus `json:"status"`
+	// The reason for the condition's last transition.
+	// +optional
+	Reason string `json:"reason,omitempty"`
+	// A human readable message indicating details about the transition.
+	// +optional
+	Message string `json:"message,omitempty"`
+	// Last time the condition was probed
+	// +optional
+	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
+	// Last time the condition transitioned from one status to another.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+}
+
+type IptablesFIPRuleStatus struct {
+	// +optional
+	// +patchStrategy=merge
+	Ready   bool   `json:"ready" patchStrategy:"merge"`
+	V4ip    string `json:"v4ip" patchStrategy:"merge"`
+	V6ip    string `json:"v6ip" patchStrategy:"merge"`
+	NatGwDp string `json:"natGwDp" patchStrategy:"merge"`
+	Redo    string `json:"redo" patchStrategy:"merge"`
+
+	// Conditions represents the latest state of the object
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	Conditions []IptablesFIPRuleCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type IptablesFIPRuleList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []IptablesFIPRule `json:"items"`
+}
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +genclient:nonNamespaced
+// +resourceName=iptables-snat-rules
+type IptablesSnatRule struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   IptablesSnatRuleSpec   `json:"spec"`
+	Status IptablesSnatRuleStatus `json:"status,omitempty"`
+}
+
+type IptablesSnatRuleSpec struct {
+	EIP          string `json:"eip"`
 	InternalCIDR string `json:"internalCIDR"`
 }
 
-type DnatRule struct {
-	Eip          string `json:"eip"`
+// Condition describes the state of an object at a certain point.
+// +k8s:deepcopy-gen=true
+type IptablesSnatRuleCondition struct {
+	// Type of condition.
+	Type ConditionType `json:"type"`
+	// Status of the condition, one of True, False, Unknown.
+	Status corev1.ConditionStatus `json:"status"`
+	// The reason for the condition's last transition.
+	// +optional
+	Reason string `json:"reason,omitempty"`
+	// A human readable message indicating details about the transition.
+	// +optional
+	Message string `json:"message,omitempty"`
+	// Last time the condition was probed
+	// +optional
+	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
+	// Last time the condition transitioned from one status to another.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+}
+
+type IptablesSnatRuleStatus struct {
+	// +optional
+	// +patchStrategy=merge
+	Ready   bool   `json:"ready" patchStrategy:"merge"`
+	V4ip    string `json:"v4ip" patchStrategy:"merge"`
+	V6ip    string `json:"v6ip" patchStrategy:"merge"`
+	NatGwDp string `json:"natGwDp" patchStrategy:"merge"`
+	Redo    string `json:"redo" patchStrategy:"merge"`
+
+	// Conditions represents the latest state of the object
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	Conditions []IptablesSnatRuleCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type IptablesSnatRuleList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []IptablesSnatRule `json:"items"`
+}
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +genclient:nonNamespaced
+// +resourceName=iptables-dnat-rules
+
+type IptablesDnatRule struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   IptablesDnatRuleSpec   `json:"spec"`
+	Status IptablesDnatRuleStatus `json:"status,omitempty"`
+}
+type IptablesDnatRuleSpec struct {
+	EIP          string `json:"eip"`
 	ExternalPort string `json:"externalPort"`
 	Protocol     string `json:"protocol,omitempty"`
 	InternalIp   string `json:"internalIp"`
 	InternalPort string `json:"internalPort"`
+}
+
+// Condition describes the state of an object at a certain point.
+// +k8s:deepcopy-gen=true
+type IptablesDnatRuleCondition struct {
+	// Type of condition.
+	Type ConditionType `json:"type"`
+	// Status of the condition, one of True, False, Unknown.
+	Status corev1.ConditionStatus `json:"status"`
+	// The reason for the condition's last transition.
+	// +optional
+	Reason string `json:"reason,omitempty"`
+	// A human readable message indicating details about the transition.
+	// +optional
+	Message string `json:"message,omitempty"`
+	// Last time the condition was probed
+	// +optional
+	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
+	// Last time the condition transitioned from one status to another.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+}
+
+type IptablesDnatRuleStatus struct {
+	// +optional
+	// +patchStrategy=merge
+	Ready   bool   `json:"ready" patchStrategy:"merge"`
+	V4ip    string `json:"v4ip" patchStrategy:"merge"`
+	V6ip    string `json:"v6ip" patchStrategy:"merge"`
+	NatGwDp string `json:"natGwDp" patchStrategy:"merge"`
+	Redo    string `json:"redo" patchStrategy:"merge"`
+
+	// Conditions represents the latest state of the object
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	Conditions []IptablesDnatRuleCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type IptablesDnatRuleList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []IptablesDnatRule `json:"items"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -556,4 +788,141 @@ type HtbQosList struct {
 	metav1.ListMeta `json:"metadata"`
 
 	Items []HtbQos `json:"items"`
+}
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +genclient:nonNamespaced
+
+type Vip struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   VipSpec   `json:"spec"`
+	Status VipStatus `json:"status,omitempty"`
+}
+
+type VipSpec struct {
+	Namespace     string   `json:"namespace"`
+	Subnet        string   `json:"subnet"`
+	V4ip          string   `json:"v4ip"`
+	V6ip          string   `json:"v6ip"`
+	MacAddress    string   `json:"macAddress"`
+	ParentV4ip    string   `json:"parentV4ip"`
+	ParentV6ip    string   `json:"parentV6ip"`
+	ParentMac     string   `json:"parentMac"`
+	AttachSubnets []string `json:"attachSubnets"`
+}
+
+// Condition describes the state of an object at a certain point.
+// +k8s:deepcopy-gen=true
+type VipCondition struct {
+	// Type of condition.
+	Type ConditionType `json:"type"`
+	// Status of the condition, one of True, False, Unknown.
+	Status corev1.ConditionStatus `json:"status"`
+	// The reason for the condition's last transition.
+	// +optional
+	Reason string `json:"reason,omitempty"`
+	// A human readable message indicating details about the transition.
+	// +optional
+	Message string `json:"message,omitempty"`
+	// Last time the condition was probed
+	// +optional
+	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
+	// Last time the condition transitioned from one status to another.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+}
+
+type VipStatus struct {
+	// Conditions represents the latest state of the object
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	Conditions []VipCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
+	Ready bool   `json:"ready" patchStrategy:"merge"`
+	V4ip  string `json:"v4ip" patchStrategy:"merge"`
+	V6ip  string `json:"v6ip" patchStrategy:"merge"`
+	Mac   string `json:"mac" patchStrategy:"merge"`
+	Pv4ip string `json:"pv4ip" patchStrategy:"merge"`
+	Pv6ip string `json:"pv6ip" patchStrategy:"merge"`
+	Pmac  string `json:"pmac" patchStrategy:"merge"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type VipList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []Vip `json:"items"`
+}
+
+type SlrPort struct {
+	Name       string `json:"name"`
+	Port       int32  `json:"port"`
+	TargetPort int32  `json:"targetPort,omitempty"`
+	Protocol   string `json:"protocol"`
+}
+
+type SwitchLBRuleSpec struct {
+	Vip             string    `json:"vip"`
+	Namespace       string    `json:"namespace"`
+	Selector        []string  `json:"selector"`
+	SessionAffinity string    `json:"sessionAffinity,omitempty"`
+	Ports           []SlrPort `json:"ports"`
+}
+
+type SwitchLBRuleStatus struct {
+	// Conditions represents the latest state of the object
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	Conditions []SwitchLBRuleCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
+	Ports   string `json:"ports" patchStrategy:"merge"`
+	Service string `json:"service" patchStrategy:"merge"`
+}
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +genclient:nonNamespaced
+// +resourceName=switch-lb-rules
+type SwitchLBRule struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   SwitchLBRuleSpec   `json:"spec"`
+	Status SwitchLBRuleStatus `json:"status,omitempty"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type SwitchLBRuleList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []SwitchLBRule `json:"items"`
+}
+
+// Condition describes the state of an object at a certain point.
+// +k8s:deepcopy-gen=true
+type SwitchLBRuleCondition struct {
+	// Type of condition.
+	Type ConditionType `json:"type"`
+	// Status of the condition, one of True, False, Unknown.
+	Status corev1.ConditionStatus `json:"status"`
+	// The reason for the condition's last transition.
+	// +optional
+	Reason string `json:"reason,omitempty"`
+	// A human readable message indicating details about the transition.
+	// +optional
+	Message string `json:"message,omitempty"`
+	// Last time the condition was probed
+	// +optional
+	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
+	// Last time the condition transitioned from one status to another.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
 }

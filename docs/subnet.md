@@ -30,7 +30,7 @@ spec:
 
 ## Basic Configuration
 
-- `protocol`: The ip protocol ,can be IPv4 or IPv6. *Note*: Through kube-ovn support both protocol subnets coexist in a cluster, kubernetes control plan now only support one protocol. So you will lost some ability like probe and  service discovery if you use a protocol other than the kubernetes control plan.
+- `protocol`: The ip protocol ,can be IPv4 or IPv6 or Dual.
 - `default`: If set true, all namespaces that not bind to any subnets will use this subnet to allocate pod ip and share other network configuration. Note: Kube-OVN will create a default subnet and set this field to true. There can only be one default subnet in a cluster.
 - `namespaces`: List of namespaces that bind to this subnet. If you want to bind a namespace to this subnet, edit and add the namespace name to this field.
 - `cidrBlock`: The cidr of this subnet.
@@ -44,7 +44,9 @@ Besides standard NetworkPolicy，Kube-OVN also supports network isolation and ac
 *Note*: NetworkPolicy take a higher priority than subnet isolation rules.
 
 - `private`: Boolean, controls whether to deny traffic from IP addresses outside of this Subnet. Default: false.
-- `allow`: Strings of CIDRs separated by commas, controls which addresses can access this Subnet, if `private=true`.
+- `allowSubnets`: List of CIDRs, controls which addresses can access this Subnet, if `private=true`.
+
+After Kube-OVN v1.10.0, we provide support for fine-grained traffic control in subnet. The detailed implementation can be referenced in [Subnet-ACL](https://github.com/kubeovn/kube-ovn/blob/master/docs/subnet-acl.md).
 
 ## Gateway
 
