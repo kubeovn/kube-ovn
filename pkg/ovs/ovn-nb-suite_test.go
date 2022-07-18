@@ -41,8 +41,6 @@ func (suite *OvnClientTestSuite) SetupSuite() {
 	ovnClient, err := newOvnClient(suite.T(), endpoint, 10)
 	require.NoError(suite.T(), err)
 
-	// create logical switch
-
 	suite.ovnClient = ovnClient
 }
 
@@ -70,7 +68,7 @@ func (suite *OvnClientTestSuite) Test_CreateLogicalRouter() {
 	suite.testCreateLogicalRouter()
 }
 
-func (suite *OvnClientTestSuite) Test_DeleteLogicalRouterr() {
+func (suite *OvnClientTestSuite) Test_DeleteLogicalRouter() {
 	suite.testDeleteLogicalRouter()
 }
 
@@ -101,6 +99,10 @@ func (suite *OvnClientTestSuite) Test_UpdateRouterPortIPv6RA() {
 
 func (suite *OvnClientTestSuite) Test_CreateLogicalRouterPort() {
 	suite.testCreateLogicalRouterPort()
+}
+
+func (suite *OvnClientTestSuite) Test_CreateLogicalRouterPortOp() {
+	suite.testCreateLogicalRouterPortOp()
 }
 
 func (suite *OvnClientTestSuite) Test_UpdateLogicalRouterPort() {
