@@ -15,7 +15,7 @@ on:
     - '**.md'
 
 env:
-  GO_VERSION: '1.17'
+  GO_VERSION: '1.18'
 
 jobs:
   build:
@@ -35,7 +35,6 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
         with:
-          image: tonistiigi/binfmt:latest
           platforms: arm64
 
       - name: Docker Buildx

@@ -22,6 +22,7 @@ ENABLE_LB_SVC=${ENABLE_LB_SVC:-false}
 # separated by comma, if empty will use the nic that the default route use
 IFACE=${IFACE:-}
 # Specifies the name of the dpdk tunnel iface.
+# Note that the dpdk tunnel iface and tunnel ip cidr should be diffierent with Kubernetes api cidr,otherwise the route will be a problem.
 DPDK_TUNNEL_IFACE=${DPDK_TUNNEL_IFACE:-br-phy}
 
 CNI_CONF_DIR="/etc/cni/net.d"
@@ -55,11 +56,12 @@ if [ "$DUAL_STACK" = "true" ]; then
   SVC_YAML_IPFAMILYPOLICY="ipFamilyPolicy: PreferDualStack"
 fi
 
-EXCLUDE_IPS=""                         # EXCLUDE_IPS for default subnet
-LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
-NETWORK_TYPE="geneve"                  # geneve or vlan
-TUNNEL_TYPE="geneve"                   # geneve, vxlan or stt. ATTENTION: some networkpolicy cannot take effect when using vxlan and stt need custom compile ovs kernel module
-POD_NIC_TYPE="veth-pair"               # veth-pair or internal-port
+EXCLUDE_IPS=""                                    # EXCLUDE_IPS for default subnet
+LABEL="node-role.kubernetes.io/control-plane"     # The node label to deploy OVN DB
+DEPRECATED_LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB in earlier versions
+NETWORK_TYPE="geneve"                             # geneve or vlan
+TUNNEL_TYPE="geneve"                              # geneve, vxlan or stt. ATTENTION: some networkpolicy cannot take effect when using vxlan and stt need custom compile ovs kernel module
+POD_NIC_TYPE="veth-pair"                          # veth-pair or internal-port
 
 # VLAN Config only take effect when NETWORK_TYPE is vlan
 PROVIDER_NAME="provider"
@@ -181,13 +183,17 @@ if [[ $ENABLE_SSL = "true" ]];then
 fi
 
 echo "[Step 1/6] Label kube-ovn-master node and label datapath type"
-count=$(kubectl get no -l$LABEL --no-headers -o wide | wc -l | sed 's/ //g')
-if [ "$count" = "0" ]; then
-  echo "ERROR: No node with label $LABEL"
-  exit 1
+count=$(kubectl get no -l$LABEL --no-headers | wc -l)
+node_label="$LABEL"
+if [ $count -eq 0 ]; then
+  count=$(kubectl get no -l$DEPRECATED_LABEL --no-headers | wc -l)
+  node_label="$DEPRECATED_LABEL"
+  if [ $count -eq 0 ]; then
+    echo "ERROR: No node with label $LABEL or $DEPRECATED_LABEL found"
+    exit 1
+  fi
 fi
-kubectl label no -lbeta.kubernetes.io/os=linux kubernetes.io/os=linux --overwrite
-kubectl label no -l$LABEL kube-ovn/role=master --overwrite
+kubectl label no -l$node_label kube-ovn/role=master --overwrite
 
 if [ "$DPDK" = "true" -o "$HYBRID_DPDK" = "true" ]; then
   kubectl label no -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel --overwrite
