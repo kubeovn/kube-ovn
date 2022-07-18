@@ -1637,7 +1637,6 @@ rules:
       - namespaces
       - nodes
       - configmaps
-      - serviceaccounts
     verbs:
       - create
       - get
@@ -1709,21 +1708,6 @@ rules:
     verbs:
       - get
       - list
-  - apiGroups:
-      - "rbac.authorization.k8s.io"
-    resources:
-      - clusterroles
-      - clusterrolebindings
-    verbs:
-      - get
-      - create
-  - apiGroups:
-    - discovery.k8s.io
-    resources:
-    - endpointslices
-    verbs:
-    - list
-    - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -2153,7 +2137,6 @@ rules:
       - namespaces
       - nodes
       - configmaps
-      - serviceaccounts
     verbs:
       - create
       - get
@@ -2215,21 +2198,6 @@ rules:
     verbs:
       - get
       - list
-  - apiGroups:
-      - "rbac.authorization.k8s.io"
-    resources:
-      - clusterroles
-      - clusterrolebindings
-    verbs:
-      - get
-      - create
-  - apiGroups:
-    - discovery.k8s.io
-    resources:
-    - endpointslices
-    verbs:
-    - list
-    - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

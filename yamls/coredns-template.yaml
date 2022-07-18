@@ -4,7 +4,6 @@ metadata:
   name: {{ .DeployName }}
   labels:
     k8s-app: {{ .DeployName }}
-    app: vpc-dns
 spec:
   replicas: 2
   strategy:
@@ -18,7 +17,6 @@ spec:
     metadata:
       labels:
         k8s-app: {{ .DeployName }}
-        app: vpc-dns
     spec:
       priorityClassName: system-cluster-critical
       serviceAccountName: vpc-dns
@@ -73,7 +71,7 @@ spec:
       volumes:
         - name: config-volume
           configMap:
-            name: vpc-dns
+            name: vpc-dns-corefile
             items:
             - key: Corefile
               path: Corefile

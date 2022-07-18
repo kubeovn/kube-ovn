@@ -748,6 +748,9 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 
 		go wait.Until(c.runAddOrUpdateVpcDnsWorker, time.Second, stopCh)
 		go wait.Until(c.runDelVpcDnsWorker, time.Second, stopCh)
+		go wait.Until(func() {
+			c.resyncVpcDnsConfig()
+		}, 5*time.Second, stopCh)
 	}
 
 	for i := 0; i < c.config.WorkerNum; i++ {
@@ -790,12 +793,6 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	go wait.Until(func() {
 		c.resyncVpcNatGwConfig()
 	}, time.Second, stopCh)
-
-	if c.config.EnableLb {
-		go wait.Until(func() {
-			c.resyncVpcDnsConfig()
-		}, 5*time.Second, stopCh)
-	}
 
 	go wait.Until(func() {
 		if err := c.markAndCleanLSP(); err != nil {
