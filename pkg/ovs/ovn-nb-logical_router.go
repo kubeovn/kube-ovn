@@ -89,15 +89,20 @@ func (c OvnClient) ListLogicalRouter(needVendorFilter bool) ([]ovnnb.LogicalRout
 	return lrList, nil
 }
 
-func (c OvnClient) LogicalRouterOp(lrName string, lrp *ovnnb.LogicalRouterPort, opIsAdd bool) ([]ovsdb.Operation, error) {
+// LogicalRouterOp create operations add port to logical router
+func (c OvnClient) LogicalRouterOp(lrName, lrpUUID string, opIsAdd bool) ([]ovsdb.Operation, error) {
 	lr, err := c.GetLogicalRouter(lrName, false)
 	if err != nil {
 		return nil, err
 	}
 
+	if 0 == len(lrpUUID) {
+		return nil, fmt.Errorf("the uuid of port added to logical router %s cannot be empty", lrName)
+	}
+
 	mutation := model.Mutation{
 		Field: &lr.Ports,
-		Value: []string{lrp.UUID},
+		Value: []string{lrpUUID},
 	}
 
 	if opIsAdd {
