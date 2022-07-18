@@ -7,7 +7,7 @@ Kube-OVN includes two parts:
 ## Prerequisite
 - Kubernetes >= 1.16
 - Docker >= 1.12.6
-- OS: CentOS 7/8, Ubuntu 16.04/18.04 
+- OS: CentOS 7/8, Ubuntu 16.04/18.04
 - Other Linux distributions with geneve, openvswitch and ip_tables module installed. You can use commands  `modinfo geneve`, `modinfo openvswitch` and `modinfo ip_tables` to verify
 - Kernel boot with `ipv6.disable=0`
 - Kube-proxy *MUST* be ready so that Kube-OVN can connect to apiserver by service address
@@ -20,7 +20,7 @@ Kube-OVN includes two parts:
 *Ports that Kube-OVN uses:*
 
 | Component           | Port                                          | Usage                  |
-|---------------------|-----------------------------------------------|------------------------|
+| ------------------- | --------------------------------------------- | ---------------------- |
 | ovn-central         | 6641/tcp, 6642/tcp, 6643/tcp, 6644/tcp        | ovn-db and raft server |
 | ovs-ovn             | Geneve 6081/udp, STT 7471/tcp, Vxlan 4789/udp | Tunnel port            |
 | kube-ovn-controller | 10660/tcp                                     | Metrics                |
@@ -35,7 +35,6 @@ Kube-OVN provides a one script install to easily install a high-available, produ
 
 1. Download the stable release installer scripts.
 
-For Kubernetes version>=1.16:
 `wget https://raw.githubusercontent.com/kubeovn/kube-ovn/release-1.10/dist/images/install.sh`
 
 If you want to try the latest developing Kube-OVN, try the script below:
@@ -52,8 +51,8 @@ If you want to try the latest developing Kube-OVN, try the script below:
  VERSION="v1.10.0"
 ```
 
-> Note: 
-> 1. `SVC_CIDR` here is just to tell Kube-OVN the Service CIDR in this cluster to configure related rules, Kube-OVN will *NOT* set the cluster Service CIDR 
+> Note:
+> 1. `SVC_CIDR` here is just to tell Kube-OVN the Service CIDR in this cluster to configure related rules, Kube-OVN will *NOT* set the cluster Service CIDR
 > 2. If the desired nic names are different across nodes and can not be easily expressed by regex, you can add node annotation `ovn.kubernetes.io/tunnel_interface=xxx` to exact math the interface name
 
 This basic setup works for default overlay network. If you are using default underlay/vlan network, please refer [Vlan/Underlay Support](vlan.md).
@@ -169,7 +168,7 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
       --logtostderr                       log to standard error instead of files (default true)
       --mirror-iface string               The mirror nic name that will be created by kube-ovn (default "mirror0")
       --mtu int                           The MTU used by pod iface in overlay networks (default iface MTU - 100)
-      --network-type string               The ovn network type (default "geneve")
+      --network-type string               Tunnel encapsulation protocol in overlay networks (default "geneve")
       --node-local-dns-ip string          If use nodelocaldns the local dns server ip should be set here.
       --ovs-socket string                 The socket to local ovs-server
       --pprof-port int                    The port to get profiling data (default 10665)
@@ -183,7 +182,7 @@ You can use `--default-cidr` flags below to config default Pod CIDR or create a 
 
 ### Install with customized kubeconfig
 
-By default, Kube-OVN uses in-cluster config to init kube client. In this way, Kube-OVN relies on kube-proxy to provide service discovery to connect to Kubernetes apiserver. 
+By default, Kube-OVN uses in-cluster config to init kube client. In this way, Kube-OVN relies on kube-proxy to provide service discovery to connect to Kubernetes apiserver.
 To use an external or high available Kubernetes apiserver, users can use self customized kubeconfig to connect to apiserver.
 
 1. Generate configmap from an existing kubeconfig:

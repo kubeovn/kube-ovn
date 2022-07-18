@@ -2782,7 +2782,7 @@ spec:
           - --service-cluster-ip-range=$SVC_CIDR
           - --iface=${IFACE}
           - --dpdk-tunnel-iface=${DPDK_TUNNEL_IFACE}
-          - --network-type=$NETWORK_TYPE
+          - --network-type=$TUNNEL_TYPE
           - --default-interface-name=$VLAN_INTERFACE_NAME
           - --cni-conf-name=${CNI_CONFIG_PRIORITY}-kube-ovn.conflist
           - --logtostderr=false
