@@ -91,6 +91,8 @@ const (
 
 	NetworkTypeVlan   = "vlan"
 	NetworkTypeGeneve = "geneve"
+	NetworkTypeVxlan  = "vxlan"
+	NetworkTypeStt    = "stt"
 
 	NodeNic           = "ovn0"
 	NodeAllowPriority = "3000"
@@ -109,6 +111,8 @@ const (
 	DefaultDropPriority = "1000"
 
 	GeneveHeaderLength = 100
+	VxlanHeaderLength  = 50
+	SttHeaderLength    = 72
 	TcpIpHeaderLength  = 40
 
 	OvnProvider                 = "ovn"
