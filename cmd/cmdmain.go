@@ -2,7 +2,7 @@ package main
 
 import (
 	"os"
-	"strings"
+	"path/filepath"
 
 	"k8s.io/klog/v2"
 
@@ -28,8 +28,7 @@ const (
 )
 
 func main() {
-	cmds := strings.Split(os.Args[0], "/")
-	cmd := cmds[len(cmds)-1]
+	cmd := filepath.Base(os.Args[0])
 	switch cmd {
 	case CmdCNI:
 		cni.CmdMain()

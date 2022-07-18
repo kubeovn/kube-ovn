@@ -40,7 +40,7 @@ spec:
               type: object
               properties:
                 priority:
-                  type: string					# Value in range 0 to 4,294,967,295.
+                  type: string					# Value in range 0 to 7.
   scope: Cluster
   names:
     plural: htbqoses
@@ -54,9 +54,9 @@ The spec parameter has only one field, `htbqoses.spec.priority`, which value rep
 ```
 mac@bogon kube-ovn % kubectl get htbqos
 NAME            PRIORITY
-htbqos-high     100
-htbqos-low      300
-htbqos-medium   200
+htbqos-high     1
+htbqos-low      5
+htbqos-medium   3
 ```
 Specific priority values are unimportant, only relative ordering matters. The smaller the priority value, the higher the QoS priority.
 

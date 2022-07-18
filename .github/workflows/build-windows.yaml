@@ -16,7 +16,8 @@ on:
     - '**.md'
 
 env:
-  GO_VERSION: '1.17'
+  GO_VERSION: '1.18'
+  GOSEC_VERSION: '2.12.0'
 
 jobs:
   build-ovs-and-ovn:
@@ -153,10 +154,16 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
+      - name: Install gosec
+        run: |
+          Invoke-WebRequest https://github.com/securego/gosec/releases/download/v${{ env.GOSEC_VERSION }}/gosec_${{ env.GOSEC_VERSION }}_windows_amd64.tar.gz -OutFile gosec.tar.gz
+          mkdir gosec
+          tar -xzvf gosec.tar.gz -C gosec
+          Copy-Item gosec/gosec.exe -Destination C:\Windows\system32
+
       - name: Build
         run: |
           go mod tidy
-          go install github.com/securego/gosec/cmd/gosec@latest
           make lint-windows
           make build-go-windows
 
