@@ -311,6 +311,10 @@ func (c *Controller) createOrUpdateVpcDnsSlr(vpcDns *kubeovnv1.VpcDns) error {
 	}
 
 	newSlr, err := c.genVpcDnsSlr(vpcDns.Name, c.config.PodNamespace)
+	if err != nil {
+		klog.Errorf("failed to generate vpc-dns switchLBRule, %v", err)
+		return err
+	}
 
 	if needToCreateSlr {
 		_, err := c.config.KubeOvnClient.KubeovnV1().SwitchLBRules().Create(context.Background(), newSlr, metav1.CreateOptions{})
