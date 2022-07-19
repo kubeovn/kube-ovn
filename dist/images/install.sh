@@ -13,6 +13,7 @@ HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_LB=${ENABLE_LB:-true}
 ENABLE_NP=${ENABLE_NP:-true}
 ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-true}
+ENABLE_KEEP_VM_IP=${ENABLE_KEEP_VM_IP:-true}
 # The nic to support container network can be a nic name or a group of regex
 # separated by comma, if empty will use the nic that the default route use
 IFACE=${IFACE:-}
@@ -1906,6 +1907,7 @@ spec:
           - --logtostderr=false
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
+          - --keep-vm-ip=$ENABLE_KEEP_VM_IP
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
