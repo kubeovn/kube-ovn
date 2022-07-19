@@ -7,8 +7,6 @@ import (
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
 
-	"k8s.io/klog/v2"
-
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -79,11 +77,9 @@ func (c OvnClient) ListLogicalRouter(needVendorFilter bool) ([]ovnnb.LogicalRout
 		if needVendorFilter && (len(lr.ExternalIDs) == 0 || lr.ExternalIDs["vendor"] != util.CniTypeName) {
 			return false
 		}
-
 		return true
 	}).List(context.TODO(), &lrList); err != nil {
-		klog.Errorf("list logical router: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("list logical router: %v", err)
 	}
 
 	return lrList, nil
