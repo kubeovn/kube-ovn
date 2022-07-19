@@ -1958,7 +1958,7 @@ spec:
           operator: Exists
         - key: CriticalAddonsOnly
           operator: Exists
-      priorityClassName: system-cluster-critical
+      priorityClassName: system-node-critical
       serviceAccountName: ovn
       hostNetwork: true
       hostPID: true
@@ -2444,7 +2444,7 @@ spec:
           operator: Exists
         - key: CriticalAddonsOnly
           operator: Exists
-      priorityClassName: system-cluster-critical
+      priorityClassName: system-node-critical
       serviceAccountName: ovn
       hostNetwork: true
       hostPID: true
@@ -2591,7 +2591,7 @@ spec:
     spec:
       tolerations:
       - operator: Exists
-      priorityClassName: system-cluster-critical
+      priorityClassName: system-node-critical
       serviceAccountName: ovn
       hostNetwork: true
       hostPID: true
@@ -2896,7 +2896,7 @@ spec:
           operator: Exists
         - key: CriticalAddonsOnly
           operator: Exists
-      priorityClassName: system-cluster-critical
+      priorityClassName: system-node-critical
       serviceAccountName: ovn
       hostNetwork: true
       hostPID: true
@@ -3070,6 +3070,7 @@ spec:
         component: network
         type: infra
     spec:
+      priorityClassName: system-node-critical
       serviceAccountName: ovn
       hostPID: true
       containers:
