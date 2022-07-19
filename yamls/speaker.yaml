@@ -24,7 +24,7 @@ spec:
                 matchLabels:
                   app: kube-ovn-speaker
               topologyKey: kubernetes.io/hostname
-      priorityClassName: system-cluster-critical
+      priorityClassName: system-node-critical
       serviceAccountName: ovn
       hostNetwork: true
       containers:
