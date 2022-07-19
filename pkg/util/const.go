@@ -80,14 +80,14 @@ const (
 
 	OvsDpTypeLabel = "ovn.kubernetes.io/ovs_dp_type"
 
-	SubnetNameLabel        = "ovn.kubernetes.io/subnet"
-	ICGatewayLabel         = "ovn.kubernetes.io/ic-gw"
-	ExGatewayLabel         = "ovn.kubernetes.io/external-gw"
-	VpcNatGatewayLabel     = "ovn.kubernetes.io/vpc-nat-gw"
-	IpReservedLabel        = "ovn.kubernetes.io/ip_reserved"
-	VpcNatGatewayNameLabel = "ovn.kubernetes.io/vpc-nat-gw-name"
-	VpcLbLabel             = "ovn.kubernetes.io/vpc_lb"
-
+	SubnetNameLabel            = "ovn.kubernetes.io/subnet"
+	ICGatewayLabel             = "ovn.kubernetes.io/ic-gw"
+	ExGatewayLabel             = "ovn.kubernetes.io/external-gw"
+	VpcNatGatewayLabel         = "ovn.kubernetes.io/vpc-nat-gw"
+	IpReservedLabel            = "ovn.kubernetes.io/ip_reserved"
+	VpcNatGatewayNameLabel     = "ovn.kubernetes.io/vpc-nat-gw-name"
+	VpcLbLabel                 = "ovn.kubernetes.io/vpc_lb"
+	VpcDnsNameLabel            = "ovn.kubernetes.io/vpc-dns"
 	NetworkPolicyLogAnnotation = "ovn.kubernetes.io/enable_log"
 
 	ProtocolTCP = "tcp"
@@ -132,6 +132,8 @@ const (
 	VpcNatGatewayConfig    = "ovn-vpc-nat-gw-config"
 	VpcExternalNet         = "ovn-vpc-external-network"
 	VpcLbNetworkAttachment = "ovn-vpc-lb"
+	VpcDnsConfig           = "vpc-dns-config"
+	VpcDnsDepTemplate      = "vpc-dns-dep"
 
 	DefaultVpc    = "ovn-cluster"
 	DefaultSubnet = "ovn-default"

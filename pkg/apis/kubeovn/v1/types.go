@@ -860,6 +860,63 @@ type VipList struct {
 	Items []Vip `json:"items"`
 }
 
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +genclient:nonNamespaced
+// +resourceName=vpc-dnses
+
+type VpcDns struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   VpcDnsSpec   `json:"spec"`
+	Status VpcDnsStatus `json:"status,omitempty"`
+}
+
+type VpcDnsSpec struct {
+	Vpc    string `json:"vpc"`
+	Subnet string `json:"subnet"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type VpcDnsList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []VpcDns `json:"items"`
+}
+
+type VpcDnsStatus struct {
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	Conditions []VpcDnsCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
+	Active bool `json:"active" patchStrategy:"merge"`
+}
+
+// Condition describes the state of an object at a certain point.
+// +k8s:deepcopy-gen=true
+type VpcDnsCondition struct {
+	// Type of condition.
+	Type ConditionType `json:"type"`
+	// Status of the condition, one of True, False, Unknown.
+	Status corev1.ConditionStatus `json:"status"`
+	// The reason for the condition's last transition.
+	// +optional
+	Reason string `json:"reason,omitempty"`
+	// A human readable message indicating details about the transition.
+	// +optional
+	Message string `json:"message,omitempty"`
+	// Last time the condition was probed
+	// +optional
+	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
+	// Last time the condition transitioned from one status to another.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+}
+
 type SlrPort struct {
 	Name       string `json:"name"`
 	Port       int32  `json:"port"`

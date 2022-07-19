@@ -80,6 +80,10 @@ func (c *FakeKubeovnV1) Vpcs() v1.VpcInterface {
 	return &FakeVpcs{c}
 }
 
+func (c *FakeKubeovnV1) VpcDnses() v1.VpcDnsInterface {
+	return &FakeVpcDnses{c}
+}
+
 func (c *FakeKubeovnV1) VpcNatGateways() v1.VpcNatGatewayInterface {
 	return &FakeVpcNatGateways{c}
 }
