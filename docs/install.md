@@ -15,7 +15,8 @@ Kube-OVN includes two parts:
 *NOTE*
 1. Users using Ubuntu 16.04 should build the OVS kernel module and replace the built-in one to avoid kernel NAT issues.
 2. CentOS users should make sure kernel version is greater than 3.10.0-898 to avoid a kernel conntrack bug, see [here](https://bugs.launchpad.net/neutron/+bug/1776778).
-3. Kernel must boot with IPv6 enabled, otherwise geneve tunnel will not be established due to a kernel bug, see [here](https://bugs.launchpad.net/ubuntu/+source/linux/+bug/1794232).
+3. Users using Rocky Linux 8.6 should update kernel to version 4.18.0-372.13.1.el8_6 or later.
+4. Kernel must boot with IPv6 enabled, otherwise geneve tunnel will not be established due to a kernel bug, see [here](https://bugs.launchpad.net/ubuntu/+source/linux/+bug/1794232).
 
 *Ports that Kube-OVN uses:*
 
