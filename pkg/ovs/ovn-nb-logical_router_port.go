@@ -19,35 +19,6 @@ const (
 	logicalRouterKey = "logical_router"
 )
 
-// CreateVpcExGwLogicalRouterPort create logical router port for vpc external gateway
-func (c OvnClient) CreateVpcExGwLogicalRouterPort(lrName, mac, ip, lrpName string, chassises []string) error {
-	/* create gateway chassises */
-	err := c.CreateGatewayChassises(lrpName, chassises)
-	if nil != err {
-		return err
-	}
-
-	/* create logical router port */
-	lrp := &ovnnb.LogicalRouterPort{
-		UUID:           ovsclient.UUID(),
-		Name:           lrpName,
-		MAC:            mac,
-		Networks:       []string{fmt.Sprintf("%s/24", ip)},
-		GatewayChassis: chassises,
-	}
-
-	ops, err := c.CreateLogicalRouterPortOp(lrp, lrName)
-	if nil != err {
-		return err
-	}
-
-	if err = c.Transact("lrp-add", ops); err != nil {
-		return fmt.Errorf("create vpc external gateway logical router port %s: %v", lrpName, err)
-	}
-
-	return nil
-}
-
 func (c OvnClient) CreatePeerRouterPort(localRouter, remoteRouter, localRouterPortIP string) error {
 	localRouterPort := fmt.Sprintf("%s-%s", localRouter, remoteRouter)
 	remoteRouterPort := fmt.Sprintf("%s-%s", remoteRouter, localRouter)
@@ -276,7 +247,7 @@ func (c OvnClient) DeleteLogicalRouterPortOp(lrp *ovnnb.LogicalRouterPort) ([]ov
 		return nil, fmt.Errorf("no %s exist in lsp's external_ids", logicalRouterKey)
 	}
 
-	// delete logical router port from logical router
+	// remove logical router port from logical router
 	lrpRemoveOp, err := c.LogicalRouterOp(lrName, lrp.UUID, false)
 	if err != nil {
 		return nil, err

@@ -7,25 +7,50 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (suite *OvnClientTestSuite) testCreateICLogicalRouterPort() {
+func (suite *OvnClientTestSuite) testCreateRouterPort() {
 	t := suite.T()
 	t.Parallel()
 
 	ovnClient := suite.ovnClient
-	azName := "az"
+	lsName := "test-create-router-ls"
+	lrName := "test-create-router-lr"
+	lrpName := fmt.Sprintf("%s-%s", lrName, lsName)
 	chassises := []string{"5de32fcb-495a-40df-919e-f09812c4dffe", "25310674-65ce-41fd-bcfa-65b25268926b"}
 
-	err := ovnClient.CreateLogicalRouter(ovnClient.ClusterRouter)
+	err := ovnClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
-	err = ovnClient.CreateBareLogicalSwitch(util.InterconnectionSwitch)
+	err = ovnClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
 
-	err = ovnClient.CreateICLogicalRouterPort(azName, "192.168.230.1/24", chassises)
-	require.NoError(t, err)
+	t.Run("create router port with chassises", func(t *testing.T) {
+		t.Parallel()
+		err := ovnClient.CreateRouterPort(lsName, lrName, "192.168.230.1/24,fc00::0af4:01/112", chassises...)
+		require.NoError(t, err)
+
+		for _, chassisName := range chassises {
+			gwChassisName := lrpName + "-" + chassisName
+			_, err := ovnClient.GetGatewayChassis(gwChassisName, false)
+			require.NoError(t, err)
+		}
+	})
+
+	t.Run("create router port with no chassises", func(t *testing.T) {
+		t.Parallel()
+		lsName := "test-create-router-ls-1"
+		lrName := "test-create-router-lr-1"
+
+		err := ovnClient.CreateLogicalRouter(lrName)
+		require.NoError(t, err)
+
+		err = ovnClient.CreateBareLogicalSwitch(lsName)
+		require.NoError(t, err)
+
+		err = ovnClient.CreateRouterPort(lsName, lrName, "192.168.230.1/24,fc00::0af4:01/112")
+		require.NoError(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testCreateRouterTypePort() {
@@ -46,7 +71,7 @@ func (suite *OvnClientTestSuite) testCreateRouterTypePort() {
 	require.NoError(t, err)
 
 	t.Run("normal add router type port", func(t *testing.T) {
-		err = ovnClient.CreateRouterTypePort(lsName, lspName, lrName, lrpName, "192.168.230.1/24,fc00::0af4:01/112", func(lrp *ovnnb.LogicalRouterPort) {
+		err = ovnClient.CreateRouterTypePort(lsName, lrName, "192.168.230.1/24,fc00::0af4:01/112", func(lrp *ovnnb.LogicalRouterPort) {
 			if 0 != len(chassises) {
 				lrp.GatewayChassis = chassises
 			}
@@ -78,7 +103,7 @@ func (suite *OvnClientTestSuite) testCreateRouterTypePort() {
 	})
 
 	t.Run("should no err when add router type port repeatedly", func(t *testing.T) {
-		err = ovnClient.CreateRouterTypePort(lsName, lspName, lrName, lrpName, "192.168.230.1/24,fc00::0af4:01/112", func(lrp *ovnnb.LogicalRouterPort) {
+		err = ovnClient.CreateRouterTypePort(lsName, lrName, "192.168.230.1/24,fc00::0af4:01/112", func(lrp *ovnnb.LogicalRouterPort) {
 			if 0 != len(chassises) {
 				lrp.GatewayChassis = chassises
 			}

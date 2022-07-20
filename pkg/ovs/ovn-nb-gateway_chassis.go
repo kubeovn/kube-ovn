@@ -6,16 +6,21 @@ import (
 
 	"github.com/ovn-org/libovsdb/client"
 	"github.com/ovn-org/libovsdb/model"
+	"github.com/ovn-org/libovsdb/ovsdb"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
 // CreateGatewayChassises create multiple gateway chassis once
-func (c OvnClient) CreateGatewayChassises(namePrefix string, chassises []string) error {
+func (c OvnClient) CreateGatewayChassises(lrpName string, chassises []string) error {
+	if 0 == len(chassises) {
+		return nil
+	}
+
 	models := make([]model.Model, 0, len(chassises))
 
 	for i, chassisName := range chassises {
-		gwChassisName := namePrefix + "-" + chassisName
+		gwChassisName := lrpName + "-" + chassisName
 		gwChassis := &ovnnb.GatewayChassis{
 			Name:        gwChassisName,
 			ChassisName: chassisName,
@@ -31,7 +36,7 @@ func (c OvnClient) CreateGatewayChassises(namePrefix string, chassises []string)
 
 	err = c.Transact("gateway-chassises-create", op)
 	if err != nil {
-		return fmt.Errorf("create gateway chassis: %v", err)
+		return fmt.Errorf("create gateway chassis for logical router port %s: %v", lrpName, err)
 	}
 
 	return nil
@@ -54,6 +59,53 @@ func (c OvnClient) CreateGatewayChassis(gwChassis *ovnnb.GatewayChassis) error {
 	}
 
 	return nil
+}
+
+// DeleteGatewayChassises delete multiple gateway chassis once
+func (c OvnClient) DeleteGatewayChassises(lrpName string, chassises []string) error {
+	if 0 == len(chassises) {
+		return nil
+	}
+
+	ops := make([]ovsdb.Operation, 0, len(chassises))
+
+	for _, chassisName := range chassises {
+		gwChassisName := lrpName + "-" + chassisName
+		op, err := c.DeleteGatewayChassisOp(gwChassisName)
+		if nil != err {
+			return nil
+		}
+
+		ops = append(ops, op...)
+	}
+
+	err := c.Transact("gateway-chassises-delete", ops)
+	if err != nil {
+		return fmt.Errorf("delete gateway chassis for logical router port %s: %v", lrpName, err)
+	}
+
+	return nil
+}
+
+// DeleteGatewayChassis delete multiple gateway chassis
+func (c OvnClient) DeleteGatewayChassisOp(chassisName string) ([]ovsdb.Operation, error) {
+	gwChassis, err := c.GetGatewayChassis(chassisName, true)
+
+	if err != nil {
+		return nil, err
+	}
+
+	// not found, skip
+	if nil == gwChassis {
+		return nil, nil
+	}
+
+	op, err := c.Where(gwChassis).Delete()
+	if err != nil {
+		return nil, err
+	}
+
+	return op, nil
 }
 
 func (c OvnClient) GetGatewayChassis(name string, ignoreNotFound bool) (*ovnnb.GatewayChassis, error) {
