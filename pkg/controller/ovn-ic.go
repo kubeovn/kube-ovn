@@ -373,7 +373,8 @@ func (c *Controller) SynRouteToPolicy() {
 		klog.Errorf("logical router does not exist %v at %v", err, time.Now())
 		return
 	}
-	lrRouteList, err := c.ovnClient.GetLogicalRouterRouteByOpts(util.OvnICKey, util.OvnICValue)
+	// due to old ovn version, filter method is adapted
+	lrRouteList, err := c.ovnClient.GetLogicalRouterRouteByExtIds(util.OvnICExtKey)
 	if err != nil {
 		klog.Errorf("failed to list lr ovn-ic route %v", err)
 		return
