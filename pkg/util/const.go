@@ -173,8 +173,9 @@ const (
 	AttachmentProvider = "ovn.kubernetes.io/attchmentprovider"
 	LbSvcPodImg        = "ovn.kubernetes.io/lb_svc_img"
 
-	OvnICKey   = "origin"
-	OvnICValue = "connected"
+	OvnICKey    = "origin"
+	OvnICValue  = "connected"
+	OvnICExtKey = "ic-learned-route"
 
 	MatchV4Src = "ip4.src"
 	MatchV4Dst = "ip4.dst"

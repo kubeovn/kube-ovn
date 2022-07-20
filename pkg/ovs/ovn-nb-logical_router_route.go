@@ -20,6 +20,20 @@ func (c OvnClient) GetLogicalRouterRouteByOpts(key, value string) ([]ovnnb.Logic
 	return lrRouteList, nil
 }
 
+func (c OvnClient) GetLogicalRouterRouteByExtIds(key string) ([]ovnnb.LogicalRouterStaticRoute, error) {
+	var lrRouteList []ovnnb.LogicalRouterStaticRoute
+	err := c.ovnNbClient.WhereCache(
+		func(lrroute *ovnnb.LogicalRouterStaticRoute) bool {
+			_, ok := lrroute.ExternalIDs[key]
+			return ok
+		}).List(context.TODO(), &lrRouteList)
+	if err != nil && err != client.ErrNotFound {
+		return nil, err
+	}
+
+	return lrRouteList, nil
+}
+
 func (c OvnClient) GetLogicalRouterPoliciesByExtID(key, value string) ([]ovnnb.LogicalRouterPolicy, error) {
 
 	var lrPolicyList []ovnnb.LogicalRouterPolicy
