@@ -36,7 +36,7 @@ spec:
                 matchLabels:
                   app: kube-ovn-controller
               topologyKey: kubernetes.io/hostname
-      priorityClassName: system-cluster-critical
+      priorityClassName: system-node-critical
       serviceAccountName: ovn
       hostNetwork: true
       containers:
@@ -139,7 +139,7 @@ spec:
           operator: Exists
         - key: CriticalAddonsOnly
           operator: Exists
-      priorityClassName: system-cluster-critical
+      priorityClassName: system-node-critical
       serviceAccountName: ovn
       hostNetwork: true
       hostPID: true
@@ -183,6 +183,9 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
           volumeMounts:
+            - name: host-modules
+              mountPath: /lib/modules
+              readOnly: true
             - mountPath: /etc/openvswitch
               name: systemid
             - mountPath: /etc/cni/net.d
@@ -228,6 +231,9 @@ spec:
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
+        - name: host-modules
+          hostPath:
+            path: /lib/modules
         - name: systemid
           hostPath:
             path: /etc/origin/openvswitch
@@ -281,6 +287,7 @@ spec:
         component: network
         type: infra
     spec:
+      priorityClassName: system-node-critical
       serviceAccountName: ovn
       hostPID: true
       containers:

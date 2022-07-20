@@ -70,6 +70,17 @@ type Controller struct {
 	updateVpcSubnetQueue          workqueue.RateLimitingInterface
 	vpcNatGwKeyMutex              *keymutex.KeyMutex
 
+	switchLBRuleLister      kubeovnlister.SwitchLBRuleLister
+	switchLBRuleSynced      cache.InformerSynced
+	addSwitchLBRuleQueue    workqueue.RateLimitingInterface
+	UpdateSwitchLBRuleQueue workqueue.RateLimitingInterface
+	delSwitchLBRuleQueue    workqueue.RateLimitingInterface
+
+	vpcDnsLister           kubeovnlister.VpcDnsLister
+	vpcDnsSynced           cache.InformerSynced
+	addOrUpdateVpcDnsQueue workqueue.RateLimitingInterface
+	delVpcDnsQueue         workqueue.RateLimitingInterface
+
 	subnetsLister           kubeovnlister.SubnetLister
 	subnetSynced            cache.InformerSynced
 	addOrUpdateSubnetQueue  workqueue.RateLimitingInterface
@@ -135,6 +146,7 @@ type Controller struct {
 
 	servicesLister     v1.ServiceLister
 	serviceSynced      cache.InformerSynced
+	addServiceQueue    workqueue.RateLimitingInterface
 	deleteServiceQueue workqueue.RateLimitingInterface
 	updateServiceQueue workqueue.RateLimitingInterface
 
@@ -307,6 +319,7 @@ func NewController(config *Configuration) *Controller {
 
 		servicesLister:     serviceInformer.Lister(),
 		serviceSynced:      serviceInformer.Informer().HasSynced,
+		addServiceQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddService"),
 		deleteServiceQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteService"),
 		updateServiceQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateService"),
 
@@ -376,6 +389,32 @@ func NewController(config *Configuration) *Controller {
 		UpdateFunc: controller.enqueueUpdateVpcNatGw,
 		DeleteFunc: controller.enqueueDeleteVpcNatGw,
 	})
+
+	if config.EnableLb {
+		switchLBRuleInformer := kubeovnInformerFactory.Kubeovn().V1().SwitchLBRules()
+		controller.switchLBRuleLister = switchLBRuleInformer.Lister()
+		controller.switchLBRuleSynced = switchLBRuleInformer.Informer().HasSynced
+		controller.addSwitchLBRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addSwitchLBRule")
+		controller.delSwitchLBRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delSwitchLBRule")
+		controller.UpdateSwitchLBRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateSwitchLBRule")
+
+		switchLBRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddSwitchLBRule,
+			UpdateFunc: controller.enqueueUpdateSwitchLBRule,
+			DeleteFunc: controller.enqueueDeleteSwitchLBRule,
+		})
+
+		vpcDnsInformer := kubeovnInformerFactory.Kubeovn().V1().VpcDnses()
+		controller.vpcDnsLister = vpcDnsInformer.Lister()
+		controller.vpcDnsSynced = vpcDnsInformer.Informer().HasSynced
+		controller.addOrUpdateVpcDnsQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddOrUpdateVpcDns")
+		controller.delVpcDnsQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeleteVpcDns")
+		vpcDnsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddVpcDns,
+			UpdateFunc: controller.enqueueUpdateVpcDns,
+			DeleteFunc: controller.enqueueDeleteVpcDns,
+		})
+	}
 
 	subnetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddSubnet,
@@ -477,6 +516,11 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	if c.config.EnableNP {
 		cacheSyncs = append(cacheSyncs, c.npsSynced)
 	}
+
+	if c.config.EnableLb {
+		cacheSyncs = append(cacheSyncs, c.switchLBRuleSynced, c.vpcDnsSynced)
+	}
+
 	if ok := cache.WaitForCacheSync(stopCh, cacheSyncs...); !ok {
 		klog.Fatalf("failed to wait for caches to sync")
 	}
@@ -527,6 +571,13 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	if err := c.initSyncCrdVlans(); err != nil {
 		klog.Errorf("failed to sync crd vlans: %v", err)
 	}
+
+	if c.config.EnableLb {
+		if err := c.initVpcDnsConfig(); err != nil {
+			klog.Errorf("failed to init vpc-dns: %v", err)
+		}
+	}
+
 	// The static route for node gw can be deleted when gc static route, so add it after gc process
 	dstIp := "0.0.0.0/0,::/0"
 	if err := c.ovnLegacyClient.AddStaticRoute("", dstIp, c.config.NodeSwitchGateway, c.config.ClusterRouter, util.NormalRouteType); err != nil {
@@ -559,6 +610,7 @@ func (c *Controller) shutdown() {
 	c.updateNodeQueue.ShutDown()
 	c.deleteNodeQueue.ShutDown()
 
+	c.addServiceQueue.ShutDown()
 	c.deleteServiceQueue.ShutDown()
 	c.updateServiceQueue.ShutDown()
 	c.updateEndpointQueue.ShutDown()
@@ -581,6 +633,15 @@ func (c *Controller) shutdown() {
 	c.updateVpcDnatQueue.ShutDown()
 	c.updateVpcSnatQueue.ShutDown()
 	c.updateVpcSubnetQueue.ShutDown()
+
+	if c.config.EnableLb {
+		c.addSwitchLBRuleQueue.ShutDown()
+		c.delSwitchLBRuleQueue.ShutDown()
+		c.UpdateSwitchLBRuleQueue.ShutDown()
+
+		c.addOrUpdateVpcDnsQueue.ShutDown()
+		c.delVpcDnsQueue.ShutDown()
+	}
 
 	c.addVirtualIpQueue.ShutDown()
 	c.updateVirtualIpQueue.ShutDown()
@@ -677,8 +738,19 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	go wait.Until(c.runUpdateProviderNetworkWorker, time.Second, stopCh)
 
 	if c.config.EnableLb {
+		go wait.Until(c.runAddServiceWorker, time.Second, stopCh)
 		// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
 		go wait.Until(c.runDeleteServiceWorker, time.Second, stopCh)
+
+		go wait.Until(c.runAddSwitchLBRuleWorker, time.Second, stopCh)
+		go wait.Until(c.runDelSwitchLBRuleWorker, time.Second, stopCh)
+		go wait.Until(c.runUpdateSwitchLBRuleWorker, time.Second, stopCh)
+
+		go wait.Until(c.runAddOrUpdateVpcDnsWorker, time.Second, stopCh)
+		go wait.Until(c.runDelVpcDnsWorker, time.Second, stopCh)
+		go wait.Until(func() {
+			c.resyncVpcDnsConfig()
+		}, 5*time.Second, stopCh)
 	}
 
 	for i := 0; i < c.config.WorkerNum; i++ {
@@ -709,6 +781,10 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	go wait.Until(func() {
 		c.resyncInterConnection()
 	}, time.Second, stopCh)
+
+	go wait.Until(func() {
+		c.SynRouteToPolicy()
+	}, 5*time.Second, stopCh)
 
 	go wait.Until(func() {
 		c.resyncExternalGateway()

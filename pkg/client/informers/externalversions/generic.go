@@ -71,12 +71,16 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().SecurityGroups().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("subnets"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().Subnets().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("switch-lb-rules"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().SwitchLBRules().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("vips"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().Vips().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("vlans"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().Vlans().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("vpcs"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().Vpcs().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("vpc-dnses"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().VpcDnses().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("vpc-nat-gateways"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().VpcNatGateways().Informer()}, nil
 

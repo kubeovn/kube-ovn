@@ -26,6 +26,8 @@ rules:
       - security-groups
       - security-groups/status
       - htbqoses
+      - switch-lb-vpcs
+      - switch-lb-vpcs/status
     verbs:
       - "*"
   - apiGroups:
@@ -51,6 +53,7 @@ rules:
     resources:
       - networkpolicies
       - services
+      - services/status
       - endpoints
       - statefulsets
       - daemonsets

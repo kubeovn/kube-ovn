@@ -2,11 +2,12 @@ package client
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/binary"
 	"fmt"
 	"log"
-	"math/rand"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -20,7 +21,15 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
-var namedUUIDCounter = rand.Uint32()
+var namedUUIDCounter uint32
+
+func init() {
+	buff := make([]byte, 4)
+	if _, err := rand.Reader.Read(buff); err != nil {
+		panic(err)
+	}
+	namedUUIDCounter = binary.LittleEndian.Uint32(buff)
+}
 
 func NamedUUID() string {
 	return fmt.Sprintf("u%010d", atomic.AddUint32(&namedUUIDCounter, 1))
@@ -88,6 +97,8 @@ func NewNbClient(addr string, timeout int) (client.Client, error) {
 		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
 		client.WithTable(&ovnnb.LogicalSwitchPort{}),
 		client.WithTable(&ovnnb.PortGroup{}),
+		client.WithTable(&ovnnb.LogicalRouterStaticRoute{}),
+		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
 	}
 	if _, err = c.Monitor(context.TODO(), c.NewMonitor(monitorOpts...)); err != nil {
 		klog.Errorf("failed to monitor database on OVN NB server %s: %v", addr, err)

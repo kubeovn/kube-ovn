@@ -43,6 +43,7 @@ type Configuration struct {
 	ServiceClusterIPRange   string
 	NodeLocalDnsIP          string
 	EncapChecksum           bool
+	EnablePprof             bool
 	PprofPort               int
 	NetworkType             string
 	CniConfDir              string
@@ -69,9 +70,10 @@ func ParseFlags() *Configuration {
 		argServiceClusterIPRange = pflag.String("service-cluster-ip-range", "10.96.0.0/12", "The kubernetes service cluster ip range")
 		argNodeLocalDnsIP        = pflag.String("node-local-dns-ip", "", "If use nodelocaldns the local dns server ip should be set here.")
 		argEncapChecksum         = pflag.Bool("encap-checksum", true, "Enable checksum")
+		argEnablePprof           = pflag.Bool("enable-pprof", false, "Enable pprof")
 		argPprofPort             = pflag.Int("pprof-port", 10665, "The port to get profiling data")
 
-		argsNetworkType            = pflag.String("network-type", "geneve", "The ovn network type")
+		argsNetworkType            = pflag.String("network-type", util.NetworkTypeGeneve, "Tunnel encapsulation protocol in overlay networks")
 		argCniConfDir              = pflag.String("cni-conf-dir", "/etc/cni/net.d", "Path of the CNI config directory.")
 		argCniConfFile             = pflag.String("cni-conf-file", "/kube-ovn/01-kube-ovn.conflist", "Path of the CNI config file.")
 		argsCniConfName            = pflag.String("cni-conf-name", "01-kube-ovn.conflist", "Specify the name of kube ovn conflist name in dir /etc/cni/net.d/, default: 01-kube-ovn.conflist")
@@ -110,6 +112,7 @@ func ParseFlags() *Configuration {
 		BindSocket:              *argBindSocket,
 		OvsSocket:               *argOvsSocket,
 		KubeConfigFile:          *argKubeConfigFile,
+		EnablePprof:             *argEnablePprof,
 		PprofPort:               *argPprofPort,
 		NodeName:                strings.ToLower(*argNodeName),
 		ServiceClusterIPRange:   *argServiceClusterIPRange,
@@ -205,8 +208,29 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 		mtu = iface.MTU
 	}
 
+	encapIsIPv6 := util.CheckProtocol(encapIP) == kubeovnv1.ProtocolIPv6
+	if encapIsIPv6 && runtime.GOOS == "windows" {
+		// OVS windows datapath does not IPv6 tunnel in version v2.17
+		err = errors.New("IPv6 tunnel is not supported on Windows currently")
+		klog.Error(err)
+		return err
+	}
+
 	if config.MTU == 0 {
-		config.MTU = mtu - util.GeneveHeaderLength
+		switch config.NetworkType {
+		case util.NetworkTypeGeneve, util.NetworkTypeVlan:
+			config.MTU = mtu - util.GeneveHeaderLength
+		case util.NetworkTypeVxlan:
+			config.MTU = mtu - util.VxlanHeaderLength
+		case util.NetworkTypeStt:
+			config.MTU = mtu - util.SttHeaderLength
+		default:
+			return fmt.Errorf("invalid network type: %s", config.NetworkType)
+		}
+		if encapIsIPv6 {
+			// IPv6 header size is 40
+			config.MTU -= 20
+		}
 	}
 
 	config.MSS = config.MTU - util.TcpIpHeaderLength
@@ -217,13 +241,6 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 	}
 
 	if err = config.initRuntimeConfig(node); err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	// OVS windows datapath does not IPv6 tunnel in version v2.17 and earlier
-	if runtime.GOOS == "windows" && util.CheckProtocol(encapIP) == kubeovnv1.ProtocolIPv6 {
-		err = errors.New("IPv6 tunnel is not supported on Windows currently")
 		klog.Error(err)
 		return err
 	}

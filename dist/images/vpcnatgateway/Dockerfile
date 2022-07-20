@@ -1,4 +1,4 @@
-FROM alpine:3.16
+FROM alpine:edge
 
 RUN set -ex \
     && apk update \
@@ -12,3 +12,4 @@ RUN set -ex \
 
 WORKDIR /kube-ovn
 COPY nat-gateway.sh /kube-ovn/
+COPY lb-svc.sh /kube-ovn/

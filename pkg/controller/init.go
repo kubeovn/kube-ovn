@@ -205,13 +205,13 @@ func (c *Controller) initClusterRouter() error {
 
 // InitLoadBalancer init the default tcp and udp cluster loadbalancer
 func (c *Controller) initLoadBalancer() error {
-	vpcs, err := c.vpcsLister.List(labels.Everything())
+	vpcs, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		klog.Errorf("failed to list vpc: %v", err)
 		return err
 	}
 
-	for _, orivpc := range vpcs {
+	for _, orivpc := range vpcs.Items {
 		vpc := orivpc.DeepCopy()
 		vpcLb := c.GenVpcLoadBalancer(vpc.Name)
 
@@ -386,7 +386,7 @@ func (c *Controller) InitIPAM() error {
 		}
 	}
 
-	vips, err := c.virtualIpsLister.List(labels.Everything())
+	vips, err := c.virtualIpsLister.List(labels.SelectorFromSet(labels.Set{util.IpReservedLabel: ""}))
 	if err != nil {
 		klog.Errorf("failed to list VIPs: %v", err)
 		return err
@@ -743,11 +743,11 @@ func (c *Controller) initHtbQos() error {
 
 		switch qosName {
 		case util.HtbQosHigh:
-			priority = "100"
+			priority = "1"
 		case util.HtbQosMedium:
-			priority = "200"
+			priority = "3"
 		case util.HtbQosLow:
-			priority = "300"
+			priority = "5"
 		default:
 			klog.Errorf("qos %s is not default defined", qosName)
 		}

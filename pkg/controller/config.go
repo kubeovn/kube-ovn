@@ -62,6 +62,7 @@ type Configuration struct {
 
 	WorkerNum       int
 	PprofPort       int
+	EnablePprof     bool
 	NodePgProbeTime int
 
 	NetworkType          string
@@ -77,6 +78,7 @@ type Configuration struct {
 	EnableExternalVpc bool
 	EnableEcmp        bool
 	EnableKeepVmIP    bool
+	EnableLbSvc       bool
 
 	ExternalGatewayConfigNS string
 	ExternalGatewayNet      string
@@ -116,6 +118,7 @@ func ParseFlags() (*Configuration, error) {
 		argClusterUdpSessionLoadBalancer = pflag.String("cluster-udp-session-loadbalancer", "cluster-udp-session-loadbalancer", "The name for cluster udp session loadbalancer")
 
 		argWorkerNum       = pflag.Int("worker-num", 3, "The parallelism of each worker")
+		argEnablePprof     = pflag.Bool("enable-pprof", false, "Enable pprof")
 		argPprofPort       = pflag.Int("pprof-port", 10660, "The port to get profiling data")
 		argNodePgProbeTime = pflag.Int("nodepg-probe-time", 1, "The probe interval for node port-group, the unit is minute")
 
@@ -132,6 +135,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnableExternalVpc    = pflag.Bool("enable-external-vpc", true, "Enable external vpc support")
 		argEnableEcmp           = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
 		argKeepVmIP             = pflag.Bool("keep-vm-ip", false, "Whether to keep ip for kubevirt pod when pod is rebuild")
+		argEnableLbSvc          = pflag.Bool("enable-lb-svc", false, "Whether to support loadbalancer service")
 
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
 		argExternalGatewayNet      = pflag.String("external-gateway-net", "external", "The name of the external network which mappings with an ovs bridge, default: external")
@@ -181,6 +185,7 @@ func ParseFlags() (*Configuration, error) {
 		ClusterTcpSessionLoadBalancer: *argClusterTcpSessionLoadBalancer,
 		ClusterUdpSessionLoadBalancer: *argClusterUdpSessionLoadBalancer,
 		WorkerNum:                     *argWorkerNum,
+		EnablePprof:                   *argEnablePprof,
 		PprofPort:                     *argPprofPort,
 		NetworkType:                   *argNetworkType,
 		DefaultVlanID:                 *argDefaultVlanID,
@@ -203,6 +208,7 @@ func ParseFlags() (*Configuration, error) {
 		NodePgProbeTime:               *argNodePgProbeTime,
 		GCInterval:                    *argGCInterval,
 		InspectInterval:               *argInspectInterval,
+		EnableLbSvc:                   *argEnableLbSvc,
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {

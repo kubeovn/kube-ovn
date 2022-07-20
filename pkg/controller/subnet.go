@@ -1349,8 +1349,10 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 
 	usingIPs := float64(len(podUsedIPs.Items))
 
+	vipSelectors := fields.AndSelectors(fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name),
+		fields.OneTermEqualSelector(util.IpReservedLabel, "")).String()
 	vips, err := c.config.KubeOvnClient.KubeovnV1().Vips().List(context.Background(), metav1.ListOptions{
-		LabelSelector: fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name).String(),
+		LabelSelector: vipSelectors,
 	})
 	if err != nil {
 		return err
@@ -1402,8 +1404,10 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	toSubIPs := util.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
 	availableIPs := util.AddressCount(cidr) - util.CountIpNums(toSubIPs)
 	usingIPs := float64(len(podUsedIPs.Items))
+	vipSelectors := fields.AndSelectors(fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name),
+		fields.OneTermEqualSelector(util.IpReservedLabel, "")).String()
 	vips, err := c.config.KubeOvnClient.KubeovnV1().Vips().List(context.Background(), metav1.ListOptions{
-		LabelSelector: fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name).String(),
+		LabelSelector: vipSelectors,
 	})
 	if err != nil {
 		return err

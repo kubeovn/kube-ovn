@@ -64,6 +64,10 @@ func (c *FakeKubeovnV1) Subnets() v1.SubnetInterface {
 	return &FakeSubnets{c}
 }
 
+func (c *FakeKubeovnV1) SwitchLBRules() v1.SwitchLBRuleInterface {
+	return &FakeSwitchLBRules{c}
+}
+
 func (c *FakeKubeovnV1) Vips() v1.VipInterface {
 	return &FakeVips{c}
 }
@@ -74,6 +78,10 @@ func (c *FakeKubeovnV1) Vlans() v1.VlanInterface {
 
 func (c *FakeKubeovnV1) Vpcs() v1.VpcInterface {
 	return &FakeVpcs{c}
+}
+
+func (c *FakeKubeovnV1) VpcDnses() v1.VpcDnsInterface {
+	return &FakeVpcDnses{c}
 }
 
 func (c *FakeKubeovnV1) VpcNatGateways() v1.VpcNatGatewayInterface {

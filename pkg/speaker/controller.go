@@ -81,7 +81,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	c.informerFactory.Start(stopCh)
 	c.kubeovnInformerFactory.Start(stopCh)
 
-	if ok := cache.WaitForCacheSync(stopCh, c.podsSynced, c.subnetSynced); !ok {
+	if !cache.WaitForCacheSync(stopCh, c.podsSynced, c.subnetSynced, c.servicesSynced) {
 		klog.Fatalf("failed to wait for caches to sync")
 		return
 	}

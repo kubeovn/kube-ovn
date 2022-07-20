@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	_ "net/http/pprof" // #nosec
+	"net/http/pprof"
 	"os"
 	"path/filepath"
 	"strings"
@@ -84,11 +84,21 @@ func CmdMain() {
 	if err := mvCNIConf(config.CniConfDir, config.CniConfFile, config.CniConfName); err != nil {
 		klog.Fatalf("failed to mv cni conf, %v", err)
 	}
-	http.Handle("/metrics", promhttp.Handler())
-	klog.Fatal(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.PprofPort), nil))
+
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	if config.EnablePprof {
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	}
+	klog.Fatal(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.PprofPort), mux))
 }
 
 func mvCNIConf(configDir, configFile, confName string) error {
+	// #nosec
 	data, err := os.ReadFile(configFile)
 	if err != nil {
 		return err

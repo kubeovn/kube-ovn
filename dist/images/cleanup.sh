@@ -25,6 +25,34 @@ for pn in $(kubectl get provider-network -o name); do
   kubectl delete --ignore-not-found $pn
 done
 
+for slr in $(kubectl get switch-lb-rule -o name); do
+   kubectl delete --ignore-not-found $slr
+done
+
+for vd in $(kubectl  get vpc-dns -o name); do
+  kubectl delete --ignore-not-found $vd
+done
+
+for vip in $(kubectl get vip -o name); do
+   kubectl delete --ignore-not-found $vip
+done
+
+for eip in $(kubectl get eip -o name); do
+   kubectl delete --ignore-not-found $eip
+done
+
+for snat in $(kubectl get snat -o name); do
+   kubectl delete --ignore-not-found $snat
+done
+
+for dnat in $(kubectl get dnat -o name); do
+   kubectl delete --ignore-not-found $dnat
+done
+
+for fip in $(kubectl get fip -o name); do
+   kubectl delete --ignore-not-found $fip
+done
+
 sleep 5
 
 # Delete Kube-OVN components
@@ -43,9 +71,7 @@ while :; do
 done
 
 for pod in $(kubectl get pod -n kube-system -l app=ovs -o 'jsonpath={.items[?(@.status.phase=="Running")].metadata.name}'); do
-  node=$(kubectl get pod -n kube-system $pod -o 'jsonpath={.spec.nodeName}')
-  nodeIPs=$(kubectl get node $node -o 'jsonpath={.status.addresses[?(@.type=="InternalIP")].address}' | sed 's/ /,/')
-  kubectl exec -n kube-system "$pod" -- bash /kube-ovn/uninstall.sh "$nodeIPs"
+  kubectl exec -n kube-system "$pod" -- bash /kube-ovn/uninstall.sh
 done
 
 kubectl delete --ignore-not-found svc ovn-nb ovn-sb ovn-northd -n kube-system
@@ -57,11 +83,17 @@ kubectl delete --ignore-not-found sa ovn -n kube-system
 kubectl delete --ignore-not-found clusterrole system:ovn
 kubectl delete --ignore-not-found clusterrolebinding ovn
 
+# delete vpc-dns content
+kubectl delete --ignore-not-found cm vpc-dns-config -n kube-system
+kubectl delete --ignore-not-found clusterrole system:vpc-dns
+kubectl delete --ignore-not-found clusterrolebinding vpc-dns
+kubectl delete --ignore-not-found sa vpc-dns -n kube-system
+
 # delete CRD
 kubectl delete --ignore-not-found crd htbqoses.kubeovn.io security-groups.kubeovn.io ips.kubeovn.io subnets.kubeovn.io \
                                       vpc-nat-gateways.kubeovn.io vpcs.kubeovn.io vlans.kubeovn.io provider-networks.kubeovn.io \
                                       iptables-dnat-rules.kubeovn.io  iptables-eips.kubeovn.io  iptables-fip-rules.kubeovn.io \
-                                      iptables-snat-rules.kubeovn.io vips.kubeovn.io
+                                      iptables-snat-rules.kubeovn.io vips.kubeovn.io switch-lb-rules.kubeovn.io vpc-dnses.kubeovn.io
 
 # Remove annotations/labels in namespaces and nodes
 kubectl annotate no --all ovn.kubernetes.io/cidr-

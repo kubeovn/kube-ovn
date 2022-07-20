@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
@@ -32,6 +33,9 @@ func (c *Controller) gc() error {
 		c.gcStaticRoute,
 		c.gcVpcNatGateway,
 		c.gcLogicalRouterPort,
+		c.gcVip,
+		c.gcLbSvcPods,
+		c.gcVpcDns,
 	}
 	for _, gcFunc := range gcFunctions {
 		if err := gcFunc(); err != nil {
@@ -236,6 +240,37 @@ func (c *Controller) gcNode() error {
 	return nil
 }
 
+func (c *Controller) gcVip() error {
+	klog.Infof("start to gc vips")
+	vips, err := c.config.KubeOvnClient.KubeovnV1().Vips().List(context.Background(), metav1.ListOptions{
+		LabelSelector: fields.OneTermNotEqualSelector(util.IpReservedLabel, "").String()},
+	)
+	if err != nil {
+		klog.Errorf("failed to list VIPs: %v", err)
+		return err
+	}
+	for _, vip := range vips.Items {
+		portName := vip.Labels[util.IpReservedLabel]
+		portNameSplits := strings.Split(portName, ".")
+		if len(portNameSplits) >= 2 {
+			podName := portNameSplits[0]
+			namespace := portNameSplits[1]
+			_, err := c.podsLister.Pods(namespace).Get(podName)
+			if err != nil {
+				if k8serrors.IsNotFound(err) {
+					if err = c.releaseVip(vip.Name); err != nil {
+						klog.Errorf("failed to clean label from vip %s, %v", vip.Name, err)
+						return err
+					}
+					return nil
+				}
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (c *Controller) gcLogicalSwitchPort() error {
 	klog.Info("start to gc logical switch port")
 	if err := c.markAndCleanLSP(); err != nil {
@@ -407,6 +442,9 @@ func (c *Controller) gcLoadBalancer() error {
 	udpSessionVips := []string{}
 	for _, svc := range svcs {
 		ip := svc.Spec.ClusterIP
+		if v, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
+			ip = v
+		}
 		for _, port := range svc.Spec.Ports {
 			if port.Protocol == corev1.ProtocolTCP {
 				if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
@@ -688,4 +726,114 @@ func (c *Controller) getVmLsps() []string {
 	}
 
 	return vmLsps
+}
+
+func (c *Controller) gcLbSvcPods() error {
+	klog.Infof("start to gc lb svc pods")
+	nss, err := c.namespacesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list namespaces, %v", err)
+		return err
+	}
+
+	for _, ns := range nss {
+		dps, err := c.config.KubeClient.AppsV1().Deployments(ns.Name).List(context.Background(), metav1.ListOptions{})
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to list lb svc deployment in namespace %s, %v", ns.Name, err)
+			}
+			continue
+		}
+
+		for _, dp := range dps.Items {
+			if !strings.HasPrefix(dp.Name, "lb-svc-") {
+				continue
+			}
+			if _, ok := dp.Spec.Template.Labels["service"]; !ok {
+				continue
+			}
+
+			svcName := strings.TrimPrefix(dp.Name, "lb-svc-")
+			_, err := c.servicesLister.Services(ns.Name).Get(svcName)
+			if err != nil && k8serrors.IsNotFound(err) {
+				klog.Infof("gc lb svc deployment %s in ns %s", dp.Name, ns.Name)
+				if err := c.config.KubeClient.AppsV1().Deployments(ns.Name).Delete(context.Background(), dp.Name, metav1.DeleteOptions{}); err != nil {
+					if !k8serrors.IsNotFound(err) {
+						klog.Errorf("failed to delete lb svc deployment in namespace %s, %v", ns.Name, err)
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (c *Controller) gcVpcDns() error {
+	if !c.config.EnableLb {
+		return nil
+	}
+
+	klog.Infof("start to gc vpc dns")
+	vds, err := c.vpcDnsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vpc-dns, %v", err)
+		return err
+	}
+
+	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.VpcDnsNameLabel: "true"}})
+
+	deps, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).List(context.Background(), metav1.ListOptions{
+		LabelSelector: sel.String(),
+	})
+	if err != nil {
+		klog.Errorf("failed to list vpc-dns deployment, %s", err)
+		return err
+	}
+
+	for _, dep := range deps.Items {
+		canFind := false
+		for _, vd := range vds {
+			name := genVpcDnsDpName(vd.Name)
+			if dep.Name == name {
+				canFind = true
+				break
+			}
+		}
+		if !canFind {
+			err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Delete(context.Background(),
+				dep.Name, metav1.DeleteOptions{})
+			if err != nil {
+				klog.Errorf("failed to delete vpc-dns deployment, %s", err)
+				return err
+			}
+		}
+	}
+
+	slrs, err := c.config.KubeOvnClient.KubeovnV1().SwitchLBRules().List(context.Background(), metav1.ListOptions{
+		LabelSelector: sel.String(),
+	})
+	if err != nil {
+		klog.Errorf("failed to list vpc-dns SwitchLBRules, %s", err)
+		return err
+	}
+
+	for _, slr := range slrs.Items {
+		canFind := false
+		for _, vd := range vds {
+			name := genVpcDnsDpName(vd.Name)
+			if slr.Name == name {
+				canFind = true
+				break
+			}
+		}
+		if !canFind {
+			err := c.config.KubeOvnClient.KubeovnV1().SwitchLBRules().Delete(context.Background(),
+				slr.Name, metav1.DeleteOptions{})
+			if err != nil {
+				klog.Errorf("failed to delete vpc-dns SwitchLBRule, %s", err)
+				return err
+			}
+		}
+	}
+	return nil
 }

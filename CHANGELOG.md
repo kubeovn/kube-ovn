@@ -1,5 +1,56 @@
 # Changelog
 
+## v1.10.4 (2022-07-18)
+
+ * [1e4a1959](https://github.com/kubeovn/kube-ovn/commit/1e4a195992020c422a3f6edf82e06a2277e00ca7) set release 1.10.4
+ * [0bbcb389](https://github.com/kubeovn/kube-ovn/commit/0bbcb3898fb5b590637d78b4e5b68f528637ca97) prepare for release 1.10.4
+ * [fb76c58e](https://github.com/kubeovn/kube-ovn/commit/fb76c58e51894cb18f720ada9f3c58257745e285) fix: response has no gw when create nic without default route (#1703)
+ * [55b3d508](https://github.com/kubeovn/kube-ovn/commit/55b3d508392276c5104500ee52f7537ea8111548) ignore ovsdb-server/compact error: not storing a duplicate snapshot
+ * [b6084777](https://github.com/kubeovn/kube-ovn/commit/b6084777c279e3e031405dd0e91bb9d6b0c90a31) Get latest vpc data from apiserver instead of cache (#1684)
+ * [f447a1d5](https://github.com/kubeovn/kube-ovn/commit/f447a1d519d7c61c61c85f82dd485fe03126f0fc) update priority range in htb qos (#1688)
+ * [bdfdc178](https://github.com/kubeovn/kube-ovn/commit/bdfdc178174abd3e3f4e40eb5e2f56a28086ae98) fix: clean vip eip snat dant fip in cleanup.sh (#1690)
+ * [460f930c](https://github.com/kubeovn/kube-ovn/commit/460f930cfb429997213a16376caa175d159a5655) add upgrade-ovs script (#1681)
+
+### Contributors
+
+ * Mengxin Liu
+ * Wang Bo
+ * bobz965
+ * hzma
+ * xujunjie-cover
+ * zhangzujian
+
+## v1.10.3 (2022-07-13)
+
+ * [f24ed686](https://github.com/kubeovn/kube-ovn/commit/f24ed6862f870481f6ad823401e6437c1781478c) set release 1.10.3
+ * [02d68f7f](https://github.com/kubeovn/kube-ovn/commit/02d68f7fb5036a00c1de3424a80dd9113b12a75a) prepare for release 1.10.3
+ * [2c989340](https://github.com/kubeovn/kube-ovn/commit/2c989340b834b34341af061e3f690a44101ced29) fix: change ovn-ic static route to policy (#1670)
+ * [1596c9ef](https://github.com/kubeovn/kube-ovn/commit/1596c9ef00ce7505af460978042b1e18d21795a5) fix: Do not Recreate Logical_Router_Port when Vpc recreated (#1570)
+ * [db4f5ad0](https://github.com/kubeovn/kube-ovn/commit/db4f5ad0644a65dfefaf3655351150913926dbfa) Delete pod if subnet of the pod's owner(sts/vm) updated (#1678)
+ * [c41897a0](https://github.com/kubeovn/kube-ovn/commit/c41897a00a1011b35efae358232cc4d8bb7bfbb5) do not snat packets only for subnets with distributed gateway when external traffic policy is set to local (#1616)
+ * [8190df3b](https://github.com/kubeovn/kube-ovn/commit/8190df3b330da01613d676fc768094c7f60c15c7) security: disable pprof by default (#1672)
+ * [761ddcbc](https://github.com/kubeovn/kube-ovn/commit/761ddcbc62586e2cb74064f0bf18973fca3c8094) bgp: consolidate service check and use service const (#1674)
+ * [5cffa97d](https://github.com/kubeovn/kube-ovn/commit/5cffa97d2708f9113b43bea05cf3cb95f7f92509) fix bgp: sync service cache (#1673)
+ * [874785bf](https://github.com/kubeovn/kube-ovn/commit/874785bfbcf7c686f2064871fe5226bd719db857) fix iptables for direct routing (#1578)
+ * [f3886af7](https://github.com/kubeovn/kube-ovn/commit/f3886af7b30a6253bed5d88bf1addbad4d2a78ac) fix libovsdb (#1664)
+ * [662dfa64](https://github.com/kubeovn/kube-ovn/commit/662dfa649897728744d8d5dcb8c8bd3bdfb1fc95) mount modules for auto load ip6tables moudles (#1665)
+ * [1efaeb00](https://github.com/kubeovn/kube-ovn/commit/1efaeb000deaed7c824c83265229fb58e4dbbddd) ignore pod not scheduled when reconcile subnet (#1666)
+ * [4409f6c9](https://github.com/kubeovn/kube-ovn/commit/4409f6c9f051cde843e30df4bd5e29678d7ae9de) fix ovs-ovn not running on newly added nodes (#1661)
+ * [b5025a6a](https://github.com/kubeovn/kube-ovn/commit/b5025a6a7f1dbdc39a6a3f7738bad635b4a8c032) fix get security group name by external_ids (#1663)
+ * [4afbaf31](https://github.com/kubeovn/kube-ovn/commit/4afbaf31d8514e85d184d307e35cfc9c91291bf0) add policy route when add subnet (#1655)
+
+### Contributors
+
+ * Mengxin Liu
+ * Money Liu
+ * Wang Bo
+ * gugu
+ * hzma
+ * lut777
+ * wangyd1988
+ * 刘睿华
+ * 张祖建
+
 ## v1.10.2 (2022-06-28)
 
  * [b1a17c4a](https://github.com/kubeovn/kube-ovn/commit/b1a17c4add0a817fb05340f3fc1777e57a305de4) set for release 1.10.2
@@ -269,6 +320,51 @@
  * 尚墨
  * 张祖建
  * 罗云鹤
+ * 范日明
+
+## v1.9.7 (2022-07-18)
+
+ * [eb412c96](https://github.com/kubeovn/kube-ovn/commit/eb412c96ff98d50ea5fddcef30f089b11d186c51) set release 1.9.7
+ * [07bec2a2](https://github.com/kubeovn/kube-ovn/commit/07bec2a203798c54f8585f1d0469eb3fb713a999) prepare for release 1.9.7
+ * [a798a8c2](https://github.com/kubeovn/kube-ovn/commit/a798a8c25633e5dbc8ac72a3d90dce8147aa422a) Get latest vpc data from apiserver instead of cache (#1684)
+ * [8bc1b169](https://github.com/kubeovn/kube-ovn/commit/8bc1b1697145ed4dc488588c01862c8f20949a90) update priority range in htb qos (#1688)
+ * [ef4673d2](https://github.com/kubeovn/kube-ovn/commit/ef4673d204a83dc7d98ace69b55007fbed265d7e) add upgrade-ovs script (#1681)
+
+### Contributors
+
+ * Mengxin Liu
+ * Wang Bo
+ * hzma
+
+## v1.9.6 (2022-07-13)
+
+ * [6db04118](https://github.com/kubeovn/kube-ovn/commit/6db04118eb5885dfcf3ce9aa0f584c1d5cab84da) set release 1.9.6
+ * [885e41f6](https://github.com/kubeovn/kube-ovn/commit/885e41f6ae43084feb7cfd850e7619e4a1ba7911) prepare for release 1.9.6
+ * [556a2cf8](https://github.com/kubeovn/kube-ovn/commit/556a2cf83af6f2dffdce61393d128aaa7c190e13) shim: fix diffs of commits
+ * [67da728a](https://github.com/kubeovn/kube-ovn/commit/67da728ad6e72ebb7af4d2101b07939dfc7c2465) fix: change ovn-ic static route to policy (#1670)
+ * [a7a11f03](https://github.com/kubeovn/kube-ovn/commit/a7a11f0301adc92a4f4d0513bd393c8a5ccded22) fix: Do not Recreate Logical_Router_Port when Vpc recreated (#1570)
+ * [e2ab703a](https://github.com/kubeovn/kube-ovn/commit/e2ab703a4bc0fcbdba564275eb7631e08ab4fc38) feat: vpc peering connection
+ * [7699a34b](https://github.com/kubeovn/kube-ovn/commit/7699a34bb6b3400227abba6082f855aad7a32e04) Delete pod if subnet of the pod's owner(sts/vm) updated (#1678)
+ * [02e8973a](https://github.com/kubeovn/kube-ovn/commit/02e8973a22e153b49b45607010187add66d38962) security: disable pprof by default (#1672)
+ * [0242b9c2](https://github.com/kubeovn/kube-ovn/commit/0242b9c2ade5bce9275dd24f58c050fbe2ccbe91) bgp: consolidate service check and use service const (#1674)
+ * [3401d933](https://github.com/kubeovn/kube-ovn/commit/3401d933b8ceb1762f4e4675a32ea5bf38a43459) fix bgp: sync service cache (#1673)
+ * [f818ca5c](https://github.com/kubeovn/kube-ovn/commit/f818ca5c782c71387e8a7386190a2b4d54f54293) fix libovsdb (#1664)
+ * [a11feff7](https://github.com/kubeovn/kube-ovn/commit/a11feff7e3b4f98d83b1149433f4b9c257897c54) mount modules for auto load ip6tables moudles (#1665)
+ * [2882cafc](https://github.com/kubeovn/kube-ovn/commit/2882cafc1a0b94176bd3bf3d34813a39272bbcfb) ignore pod not scheduled when reconcile subnet (#1666)
+ * [91dfbbf4](https://github.com/kubeovn/kube-ovn/commit/91dfbbf44c50e9f05e0f08e4cebf6e26c589e078) fix get security group name by external_ids (#1663)
+ * [e56d581b](https://github.com/kubeovn/kube-ovn/commit/e56d581b8778ad206fe936cd58abbfc008e26ae1) add policy route when add subnet
+
+### Contributors
+
+ * Mengxin Liu
+ * Money Liu
+ * Wang Bo
+ * gugu
+ * hzma
+ * lut777
+ * wangyd1988
+ * 刘睿华
+ * 张祖建
  * 范日明
 
 ## v1.9.5 (2022-06-28)
@@ -638,6 +734,20 @@
  * wangchl01
  * zhangzujian
  * 范日明
+
+## v1.8.9 (2022-07-13)
+
+ * [9050b22d](https://github.com/kubeovn/kube-ovn/commit/9050b22da0750de7f8880f937de42bb6363024c4) set release 1.8.9
+ * [c42900d6](https://github.com/kubeovn/kube-ovn/commit/c42900d6350ad90b10c7f091f67d9e3491477ce1) prepare for release 1.8.9
+ * [ff928386](https://github.com/kubeovn/kube-ovn/commit/ff928386e1a4a6ea9f3b9d497c94335c1c241849) [PATCH] Delete pod if subnet of the pod's owner(sts/vm) updated (#1678)
+ * [f216a2f5](https://github.com/kubeovn/kube-ovn/commit/f216a2f57854d002b759dacbfecfb242fe89b760) security: disable pprof by default (#1672)
+ * [a984c913](https://github.com/kubeovn/kube-ovn/commit/a984c913d265597b1c9ca249a91833f0f7eb28dd) update ovs health check, delete connection to ovn sb db (#1588)
+
+### Contributors
+
+ * Mengxin Liu
+ * Wang Bo
+ * hzma
 
 ## v1.8.8 (2022-06-28)
 

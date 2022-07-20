@@ -36,10 +36,14 @@ type SecurityGroupExpansion interface{}
 
 type SubnetExpansion interface{}
 
+type SwitchLBRuleExpansion interface{}
+
 type VipExpansion interface{}
 
 type VlanExpansion interface{}
 
 type VpcExpansion interface{}
+
+type VpcDnsExpansion interface{}
 
 type VpcNatGatewayExpansion interface{}
