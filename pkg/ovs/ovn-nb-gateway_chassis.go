@@ -43,7 +43,7 @@ func (c OvnClient) CreateGatewayChassises(lrpName string, chassises []string) er
 
 // CreateGatewayChassis create gateway chassis
 func (c OvnClient) CreateGatewayChassis(gwChassis *ovnnb.GatewayChassis) error {
-	if nil == gwChassis {
+	if gwChassis == nil {
 		return fmt.Errorf("gateway_chassis is nil")
 	}
 
@@ -93,7 +93,7 @@ func (c OvnClient) DeleteGatewayChassisOp(chassisName string) ([]ovsdb.Operation
 	}
 
 	// not found, skip
-	if nil == gwChassis {
+	if gwChassis == nil {
 		return nil, nil
 	}
 

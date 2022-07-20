@@ -34,7 +34,7 @@ func (c OvnClient) DeleteLogicalRouter(name string) error {
 	}
 
 	// not found, skip
-	if nil == lr {
+	if lr == nil {
 		return nil
 	}
 

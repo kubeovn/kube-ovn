@@ -83,7 +83,7 @@ func (c *OvnClient) UpdateRouterPortIPv6RA(lrpName, ipv6RAConfigsStr string, ena
 
 // CreateVpcExGwLogicalRouterPort create logical router port for vpc external gateway
 func (c OvnClient) UpdateLogicalRouterPort(lrp *ovnnb.LogicalRouterPort, fields ...interface{}) error {
-	if nil == lrp {
+	if lrp == nil {
 		return fmt.Errorf("logical_router_port is nil")
 	}
 
@@ -202,11 +202,11 @@ func (c OvnClient) AddLogicalRouterPort(lr, name, mac, networks string) error {
 
 // CreateLogicalRouterPortOp create operation which create logical router port
 func (c OvnClient) CreateLogicalRouterPortOp(lrp *ovnnb.LogicalRouterPort, lrName string) ([]ovsdb.Operation, error) {
-	if nil == lrp {
+	if lrp == nil {
 		return nil, fmt.Errorf("logical_router_port is nil")
 	}
 
-	if nil == lrp.ExternalIDs {
+	if lrp.ExternalIDs == nil {
 		lrp.ExternalIDs = make(map[string]string)
 	}
 
@@ -235,7 +235,7 @@ func (c OvnClient) CreateLogicalRouterPortOp(lrp *ovnnb.LogicalRouterPort, lrNam
 // DeleteLogicalRouterPortOp create operation which delete logical router port
 func (c OvnClient) DeleteLogicalRouterPortOp(lrp *ovnnb.LogicalRouterPort) ([]ovsdb.Operation, error) {
 	// not found, skip
-	if nil == lrp {
+	if lrp == nil {
 		return nil, nil
 	}
 

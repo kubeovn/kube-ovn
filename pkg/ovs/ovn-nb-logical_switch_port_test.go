@@ -14,7 +14,7 @@ import (
 )
 
 func createLogicalSwitchPort(c *OvnClient, lsp *ovnnb.LogicalSwitchPort) error {
-	if nil == lsp {
+	if lsp == nil {
 		return fmt.Errorf("logical_switch_port is nil")
 	}
 

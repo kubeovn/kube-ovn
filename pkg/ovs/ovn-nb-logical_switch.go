@@ -79,7 +79,7 @@ func (c OvnClient) DeleteLogicalSwitch(lsName string) error {
 	}
 
 	// not found, skip
-	if nil == ls {
+	if ls == nil {
 		return nil
 	}
 

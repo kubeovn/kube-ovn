@@ -132,11 +132,11 @@ func (c OvnClient) LogicalSwitchPortExists(name string) (bool, error) {
 
 // CreateLogicalSwitchPortOp create operations which create logical switch port
 func (c OvnClient) CreateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, lsName string) ([]ovsdb.Operation, error) {
-	if nil == lsp {
+	if lsp == nil {
 		return nil, fmt.Errorf("logical_switch_port is nil")
 	}
 
-	if nil == lsp.ExternalIDs {
+	if lsp.ExternalIDs == nil {
 		lsp.ExternalIDs = make(map[string]string)
 	}
 
@@ -166,7 +166,7 @@ func (c OvnClient) CreateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, lsNam
 // DeleteLogicalSwitchPortOp create operations which delete logical switch port
 func (c OvnClient) DeleteLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort) ([]ovsdb.Operation, error) {
 	// not found, skip
-	if nil == lsp {
+	if lsp == nil {
 		return nil, nil
 	}
 
