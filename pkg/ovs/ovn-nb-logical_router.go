@@ -29,7 +29,7 @@ func (c OvnClient) CreateLogicalRouter(name string) error {
 // DeleteLogicalRouter delete logical router in ovn
 func (c OvnClient) DeleteLogicalRouter(name string) error {
 	lr, err := c.GetLogicalRouter(name, true)
-	if nil != err {
+	if err != nil {
 		return err
 	}
 
@@ -55,7 +55,7 @@ func (c OvnClient) GetLogicalRouter(name string, ignoreNotFound bool) (*ovnnb.Lo
 	}
 
 	// not found
-	if 0 == len(lrList) {
+	if len(lrList) == 0 {
 		if ignoreNotFound {
 			return nil, nil
 		}
@@ -92,7 +92,7 @@ func (c OvnClient) LogicalRouterOp(lrName, lrpUUID string, opIsAdd bool) ([]ovsd
 		return nil, err
 	}
 
-	if 0 == len(lrpUUID) {
+	if len(lrpUUID) == 0 {
 		return nil, fmt.Errorf("the uuid of port added to logical router %s cannot be empty", lrName)
 	}
 
@@ -108,7 +108,7 @@ func (c OvnClient) LogicalRouterOp(lrName, lrpUUID string, opIsAdd bool) ([]ovsd
 	}
 
 	ops, err := c.ovnNbClient.Where(lr).Mutate(lr, mutation)
-	if nil != err {
+	if err != nil {
 		return nil, fmt.Errorf("generate mutate operations for logical router %s: %v", lrName, err)
 	}
 

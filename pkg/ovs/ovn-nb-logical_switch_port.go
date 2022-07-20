@@ -41,16 +41,16 @@ func (c OvnClient) CreateBareLogicalSwitchPort(lsName, lspName string) error {
 // DeleteLogicalSwitchPort delete logical switch port in ovn
 func (c OvnClient) DeleteLogicalSwitchPort(name string) error {
 	lsp, err := c.GetLogicalSwitchPort(name, true)
-	if nil != err {
+	if err != nil {
 		return err
 	}
 
 	ops, err := c.DeleteLogicalSwitchPortOp(lsp)
-	if nil != err {
+	if err != nil {
 		return err
 	}
 
-	if err = c.Transact("lsp-del", ops); nil != err {
+	if err = c.Transact("lsp-del", ops); err != nil {
 		return fmt.Errorf("delete logical switch port %s", name)
 	}
 
@@ -103,8 +103,8 @@ func (c OvnClient) ListLogicalSwitchPorts(needVendorFilter bool, externalIDs map
 			for k, v := range externalIDs {
 				// if only key exist but not value in externalIDs, we should include this lsp,
 				// it's equal to shell command `ovn-nbctl --columns=xx find logical_switch_port external_ids:key!=\"\"`
-				if 0 == len(v) {
-					if 0 == len(lsp.ExternalIDs[k]) {
+				if len(v) == 0 {
+					if len(lsp.ExternalIDs[k]) == 0 {
 						return false
 					}
 				} else {
@@ -152,7 +152,7 @@ func (c OvnClient) CreateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, lsNam
 
 	/* add logical switch port to logical switch*/
 	lspAddOp, err := c.LogicalSwitchOp(lsName, lsp, true)
-	if nil != err {
+	if err != nil {
 		return nil, err
 	}
 

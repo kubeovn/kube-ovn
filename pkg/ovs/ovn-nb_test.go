@@ -72,7 +72,7 @@ func (suite *OvnClientTestSuite) testCreateRouterTypePort() {
 
 	t.Run("normal add router type port", func(t *testing.T) {
 		err = ovnClient.CreateRouterTypePort(lsName, lrName, "192.168.230.1/24,fc00::0af4:01/112", func(lrp *ovnnb.LogicalRouterPort) {
-			if 0 != len(chassises) {
+			if len(chassises) != 0 {
 				lrp.GatewayChassis = chassises
 			}
 		})
@@ -104,7 +104,7 @@ func (suite *OvnClientTestSuite) testCreateRouterTypePort() {
 
 	t.Run("should no err when add router type port repeatedly", func(t *testing.T) {
 		err = ovnClient.CreateRouterTypePort(lsName, lrName, "192.168.230.1/24,fc00::0af4:01/112", func(lrp *ovnnb.LogicalRouterPort) {
-			if 0 != len(chassises) {
+			if len(chassises) != 0 {
 				lrp.GatewayChassis = chassises
 			}
 		})

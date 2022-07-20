@@ -24,7 +24,7 @@ func (c OvnClient) CreatePeerRouterPort(localRouter, remoteRouter, localRouterPo
 	remoteRouterPort := fmt.Sprintf("%s-%s", remoteRouter, localRouter)
 
 	exist, err := c.LogicalRouterPortExists(localRouterPort)
-	if nil != err {
+	if err != nil {
 		return err
 	}
 
@@ -47,7 +47,7 @@ func (c OvnClient) CreatePeerRouterPort(localRouter, remoteRouter, localRouterPo
 	}
 
 	ops, err := c.CreateLogicalRouterPortOp(lrp, localRouter)
-	if nil != err {
+	if err != nil {
 		return err
 	}
 
@@ -60,7 +60,7 @@ func (c OvnClient) CreatePeerRouterPort(localRouter, remoteRouter, localRouterPo
 
 func (c *OvnClient) UpdateRouterPortIPv6RA(lrpName, ipv6RAConfigsStr string, enableIPv6RA bool) error {
 	lrp, err := c.GetLogicalRouterPort(lrpName, false)
-	if nil != err {
+	if err != nil {
 		return err
 	}
 
@@ -72,7 +72,7 @@ func (c *OvnClient) UpdateRouterPortIPv6RA(lrpName, ipv6RAConfigsStr string, ena
 		lrp.Ipv6RaConfigs = parseIpv6RaConfigs(ipv6RAConfigsStr)
 
 		// dhcpv6 works only with Ipv6Prefix and Ipv6RaConfigs
-		if 0 == len(lrp.Ipv6Prefix) || 0 == len(lrp.Ipv6RaConfigs) {
+		if len(lrp.Ipv6Prefix) == 0 || len(lrp.Ipv6RaConfigs) == 0 {
 			klog.Warningf("dhcpv6 works only with Ipv6Prefix and Ipv6RaConfigs")
 			return nil
 		}
@@ -92,8 +92,7 @@ func (c OvnClient) UpdateLogicalRouterPort(lrp *ovnnb.LogicalRouterPort, fields 
 		return fmt.Errorf("generate update operations for logical router port %s: %v", lrp.Name, err)
 	}
 
-	err = c.Transact("lrp-set", op)
-	if err != nil {
+	if err = c.Transact("lrp-set", op); err != nil {
 		return fmt.Errorf("update logical router port %s: %v", lrp.Name, err)
 	}
 
@@ -107,8 +106,7 @@ func (c OvnClient) CreateLogicalRouterPort(lrp *ovnnb.LogicalRouterPort, lrName 
 		return fmt.Errorf("generate create operations for logical router port %s: %v", lrp.Name, err)
 	}
 
-	err = c.Transact("lrp-add", op)
-	if err != nil {
+	if err = c.Transact("lrp-add", op); err != nil {
 		return fmt.Errorf("create logical router port %s: %v", lrp.Name, err)
 	}
 
@@ -118,17 +116,16 @@ func (c OvnClient) CreateLogicalRouterPort(lrp *ovnnb.LogicalRouterPort, lrName 
 // DeleteLogicalRouterPort delete logical router port from logical router
 func (c OvnClient) DeleteLogicalRouterPort(name string) error {
 	lrp, err := c.GetLogicalRouterPort(name, true)
-	if nil != err {
+	if err != nil {
 		return err
 	}
 
 	ops, err := c.DeleteLogicalRouterPortOp(lrp)
-	if nil != err {
+	if err != nil {
 		return err
 	}
 
-	err = c.Transact("lrp-del", ops)
-	if nil != err {
+	if err = c.Transact("lrp-del", ops); err != nil {
 		return fmt.Errorf("delete logical router port %s", name)
 	}
 
@@ -224,7 +221,7 @@ func (c OvnClient) CreateLogicalRouterPortOp(lrp *ovnnb.LogicalRouterPort, lrNam
 
 	/* add logical router port to logical router*/
 	lrpAddOp, err := c.LogicalRouterOp(lrName, lrp.UUID, true)
-	if nil != err {
+	if err != nil {
 		return nil, err
 	}
 

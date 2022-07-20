@@ -13,7 +13,7 @@ import (
 
 // CreateGatewayChassises create multiple gateway chassis once
 func (c OvnClient) CreateGatewayChassises(lrpName string, chassises []string) error {
-	if 0 == len(chassises) {
+	if len(chassises) == 0 {
 		return nil
 	}
 
@@ -34,8 +34,7 @@ func (c OvnClient) CreateGatewayChassises(lrpName string, chassises []string) er
 		return fmt.Errorf("generate create operations for gateway chassis %v", err)
 	}
 
-	err = c.Transact("gateway-chassises-create", op)
-	if err != nil {
+	if err = c.Transact("gateway-chassises-create", op); err != nil {
 		return fmt.Errorf("create gateway chassis for logical router port %s: %v", lrpName, err)
 	}
 
@@ -53,8 +52,7 @@ func (c OvnClient) CreateGatewayChassis(gwChassis *ovnnb.GatewayChassis) error {
 		return fmt.Errorf("generate create operations for gateway chassis %s: %v", gwChassis.Name, err)
 	}
 
-	err = c.Transact("gateway-chassis-create", op)
-	if err != nil {
+	if err = c.Transact("gateway-chassis-create", op); err != nil {
 		return fmt.Errorf("create gateway chassis %s: %v", gwChassis.Name, err)
 	}
 
@@ -63,7 +61,7 @@ func (c OvnClient) CreateGatewayChassis(gwChassis *ovnnb.GatewayChassis) error {
 
 // DeleteGatewayChassises delete multiple gateway chassis once
 func (c OvnClient) DeleteGatewayChassises(lrpName string, chassises []string) error {
-	if 0 == len(chassises) {
+	if len(chassises) == 0 {
 		return nil
 	}
 
@@ -72,15 +70,14 @@ func (c OvnClient) DeleteGatewayChassises(lrpName string, chassises []string) er
 	for _, chassisName := range chassises {
 		gwChassisName := lrpName + "-" + chassisName
 		op, err := c.DeleteGatewayChassisOp(gwChassisName)
-		if nil != err {
+		if err != nil {
 			return nil
 		}
 
 		ops = append(ops, op...)
 	}
 
-	err := c.Transact("gateway-chassises-delete", ops)
-	if err != nil {
+	if err := c.Transact("gateway-chassises-delete", ops); err != nil {
 		return fmt.Errorf("delete gateway chassis for logical router port %s: %v", lrpName, err)
 	}
 
