@@ -26,6 +26,9 @@ var _ = Describe("[IPAM]", func() {
 		"fd00::4",
 		"2001::1..2001::a",
 	}
+	v4Gw := "10.16.0.1"
+	v6Gw := "fd00::1"
+	dualGw := "10.16.0.1,fd00::1"
 
 	dualCIDR := fmt.Sprintf("%s,%s", ipv4CIDR, ipv6CIDR)
 	dualExcludeIPs := append(ipv4ExcludeIPs, ipv6ExcludeIPs...)
@@ -34,15 +37,15 @@ var _ = Describe("[IPAM]", func() {
 		Context("[IPv4]", func() {
 			It("invalid subnet", func() {
 				im := ipam.NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, "1.1.1.1/64", nil)
+				err := im.AddOrUpdateSubnet(subnetName, "1.1.1.1/64", v4Gw, nil)
 				Expect(err).Should(MatchError(ipam.ErrInvalidCIDR))
-				err = im.AddOrUpdateSubnet(subnetName, "1.1.256.1/24", nil)
+				err = im.AddOrUpdateSubnet(subnetName, "1.1.256.1/24", v4Gw, nil)
 				Expect(err).Should(MatchError(ipam.ErrInvalidCIDR))
 			})
 
 			It("normal subnet", func() {
 				im := ipam.NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, ipv4CIDR, ipv4ExcludeIPs)
+				err := im.AddOrUpdateSubnet(subnetName, ipv4CIDR, v4Gw, ipv4ExcludeIPs)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				_, _, _, err = im.GetStaticAddress("pod1.ns", "pod1.ns", "10.16.0.2", "", subnetName, true)
@@ -66,7 +69,7 @@ var _ = Describe("[IPAM]", func() {
 				_, _, _, err = im.GetRandomAddress("pod4.ns", "pod4.ns", "", "invalid_subnet", nil, true)
 				Expect(err).Should(MatchError(ipam.ErrNoAvailable))
 
-				err = im.AddOrUpdateSubnet(subnetName, ipv4CIDR, nil)
+				err = im.AddOrUpdateSubnet(subnetName, ipv4CIDR, v4Gw, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				ip, _, _, err = im.GetRandomAddress("pod5.ns", "pod5.ns", "", subnetName, nil, true)
@@ -80,10 +83,10 @@ var _ = Describe("[IPAM]", func() {
 
 			It("change cidr", func() {
 				im := ipam.NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, ipv4CIDR, ipv4ExcludeIPs)
+				err := im.AddOrUpdateSubnet(subnetName, ipv4CIDR, v4Gw, ipv4ExcludeIPs)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				err = im.AddOrUpdateSubnet(subnetName, "10.17.0.0/16", []string{"10.17.0.1"})
+				err = im.AddOrUpdateSubnet(subnetName, "10.17.0.0/16", v4Gw, []string{"10.17.0.1"})
 				Expect(err).ShouldNot(HaveOccurred())
 				ip, _, _, err := im.GetRandomAddress("pod5.ns", "pod5.ns", "", subnetName, nil, true)
 				Expect(err).ShouldNot(HaveOccurred())
@@ -92,7 +95,7 @@ var _ = Describe("[IPAM]", func() {
 
 			It("reuse released address when no unused address", func() {
 				im := ipam.NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, "10.16.0.0/30", nil)
+				err := im.AddOrUpdateSubnet(subnetName, "10.16.0.0/30", v4Gw, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				ip, _, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil, true)
@@ -110,9 +113,9 @@ var _ = Describe("[IPAM]", func() {
 				Expect(ip).To(Equal("10.16.0.1"))
 			})
 
-			It("donot reuse released address after update subnet's excludedIps", func() {
+			It("do not reuse released address after update subnet's excludedIps", func() {
 				im := ipam.NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, "10.16.0.0/30", nil)
+				err := im.AddOrUpdateSubnet(subnetName, "10.16.0.0/30", v4Gw, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				ip, _, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil, true)
@@ -120,7 +123,7 @@ var _ = Describe("[IPAM]", func() {
 				Expect(ip).To(Equal("10.16.0.1"))
 
 				im.ReleaseAddressByPod("pod1.ns")
-				err = im.AddOrUpdateSubnet(subnetName, "10.16.0.0/30", []string{"10.16.0.1..10.16.0.2"})
+				err = im.AddOrUpdateSubnet(subnetName, "10.16.0.0/30", v4Gw, []string{"10.16.0.1..10.16.0.2"})
 				Expect(err).ShouldNot(HaveOccurred())
 
 				_, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil, true)
@@ -131,15 +134,15 @@ var _ = Describe("[IPAM]", func() {
 		Context("[IPv6]", func() {
 			It("invalid subnet", func() {
 				im := ipam.NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, "fd00::/130", nil)
+				err := im.AddOrUpdateSubnet(subnetName, "fd00::/130", v6Gw, nil)
 				Expect(err).Should(MatchError(ipam.ErrInvalidCIDR))
-				err = im.AddOrUpdateSubnet(subnetName, "fd00::g/120", nil)
+				err = im.AddOrUpdateSubnet(subnetName, "fd00::g/120", v6Gw, nil)
 				Expect(err).Should(MatchError(ipam.ErrInvalidCIDR))
 			})
 
 			It("normal subnet", func() {
 				im := ipam.NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, ipv6CIDR, ipv6ExcludeIPs)
+				err := im.AddOrUpdateSubnet(subnetName, ipv6CIDR, v6Gw, ipv6ExcludeIPs)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				_, _, _, err = im.GetStaticAddress("pod1.ns", "pod1.ns", "fd00::2", "", subnetName, true)
@@ -163,7 +166,7 @@ var _ = Describe("[IPAM]", func() {
 				_, _, _, err = im.GetRandomAddress("pod4.ns", "pod4.ns", "", "invalid_subnet", nil, true)
 				Expect(err).Should(MatchError(ipam.ErrNoAvailable))
 
-				err = im.AddOrUpdateSubnet(subnetName, ipv6CIDR, nil)
+				err = im.AddOrUpdateSubnet(subnetName, ipv6CIDR, v6Gw, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				_, ip, _, err = im.GetRandomAddress("pod5.ns", "pod5.ns", "", subnetName, nil, true)
@@ -177,10 +180,10 @@ var _ = Describe("[IPAM]", func() {
 
 			It("change cidr", func() {
 				im := ipam.NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, ipv6CIDR, ipv6ExcludeIPs)
+				err := im.AddOrUpdateSubnet(subnetName, ipv6CIDR, v6Gw, ipv6ExcludeIPs)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				err = im.AddOrUpdateSubnet(subnetName, "fe00::/112", []string{"fe00::1"})
+				err = im.AddOrUpdateSubnet(subnetName, "fe00::/112", v6Gw, []string{"fe00::1"})
 				Expect(err).ShouldNot(HaveOccurred())
 				_, ip, _, err := im.GetRandomAddress("pod5.ns", "pod5.ns", "", subnetName, nil, true)
 				Expect(err).ShouldNot(HaveOccurred())
@@ -189,7 +192,7 @@ var _ = Describe("[IPAM]", func() {
 
 			It("reuse released address when no unused address", func() {
 				im := ipam.NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, "fd00::/126", nil)
+				err := im.AddOrUpdateSubnet(subnetName, "fd00::/126", v6Gw, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				_, ip, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil, true)
@@ -209,7 +212,7 @@ var _ = Describe("[IPAM]", func() {
 
 			It("donot reuse released address after update subnet's excludedIps", func() {
 				im := ipam.NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, "fd00::/126", nil)
+				err := im.AddOrUpdateSubnet(subnetName, "fd00::/126", v6Gw, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				_, ip, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil, true)
@@ -217,7 +220,7 @@ var _ = Describe("[IPAM]", func() {
 				Expect(ip).To(Equal("fd00::1"))
 
 				im.ReleaseAddressByPod("pod1.ns")
-				err = im.AddOrUpdateSubnet(subnetName, "fd00::/126", []string{"fd00::1..fd00::2"})
+				err = im.AddOrUpdateSubnet(subnetName, "fd00::/126", v6Gw, []string{"fd00::1..fd00::2"})
 				Expect(err).ShouldNot(HaveOccurred())
 
 				_, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil, true)
@@ -228,19 +231,19 @@ var _ = Describe("[IPAM]", func() {
 		Context("[DualStack]", func() {
 			It("invalid subnet", func() {
 				im := ipam.NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, fmt.Sprintf("1.1.1.1/64,%s", ipv6CIDR), nil)
+				err := im.AddOrUpdateSubnet(subnetName, fmt.Sprintf("1.1.1.1/64,%s", ipv6CIDR), dualGw, nil)
 				Expect(err).Should(MatchError(ipam.ErrInvalidCIDR))
-				err = im.AddOrUpdateSubnet(subnetName, fmt.Sprintf("1.1.256.1/24,%s", ipv6CIDR), nil)
+				err = im.AddOrUpdateSubnet(subnetName, fmt.Sprintf("1.1.256.1/24,%s", ipv6CIDR), dualGw, nil)
 				Expect(err).Should(MatchError(ipam.ErrInvalidCIDR))
-				err = im.AddOrUpdateSubnet(subnetName, fmt.Sprintf("%s,fd00::/130", ipv4CIDR), nil)
+				err = im.AddOrUpdateSubnet(subnetName, fmt.Sprintf("%s,fd00::/130", ipv4CIDR), dualGw, nil)
 				Expect(err).Should(MatchError(ipam.ErrInvalidCIDR))
-				err = im.AddOrUpdateSubnet(subnetName, fmt.Sprintf("%s,fd00::g/120", ipv4CIDR), nil)
+				err = im.AddOrUpdateSubnet(subnetName, fmt.Sprintf("%s,fd00::g/120", ipv4CIDR), dualGw, nil)
 				Expect(err).Should(MatchError(ipam.ErrInvalidCIDR))
 			})
 
 			It("normal subnet", func() {
 				im := ipam.NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, dualCIDR, dualExcludeIPs)
+				err := im.AddOrUpdateSubnet(subnetName, dualCIDR, dualGw, dualExcludeIPs)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				_, _, _, err = im.GetStaticAddress("pod1.ns", "pod1.ns", "10.16.0.2,fd00::2", "", subnetName, true)
@@ -266,7 +269,7 @@ var _ = Describe("[IPAM]", func() {
 				_, _, _, err = im.GetRandomAddress("pod4.ns", "pod4.ns", "", "invalid_subnet", nil, true)
 				Expect(err).Should(MatchError(ipam.ErrNoAvailable))
 
-				err = im.AddOrUpdateSubnet(subnetName, dualCIDR, nil)
+				err = im.AddOrUpdateSubnet(subnetName, dualCIDR, dualGw, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				ipv4, ipv6, _, err = im.GetRandomAddress("pod5.ns", "pod5.ns", "", subnetName, nil, true)
@@ -282,10 +285,10 @@ var _ = Describe("[IPAM]", func() {
 
 			It("change cidr", func() {
 				im := ipam.NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, dualCIDR, dualExcludeIPs)
+				err := im.AddOrUpdateSubnet(subnetName, dualCIDR, dualGw, dualExcludeIPs)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				err = im.AddOrUpdateSubnet(subnetName, "10.17.0.2/16,fe00::/112", []string{"10.17.0.1", "fe00::1"})
+				err = im.AddOrUpdateSubnet(subnetName, "10.17.0.2/16,fe00::/112", dualGw, []string{"10.17.0.1", "fe00::1"})
 				Expect(err).ShouldNot(HaveOccurred())
 				ipv4, ipv6, _, err := im.GetRandomAddress("pod5.ns", "pod5.ns", "", subnetName, nil, true)
 				Expect(err).ShouldNot(HaveOccurred())
@@ -295,7 +298,7 @@ var _ = Describe("[IPAM]", func() {
 
 			It("reuse released address when no unused address", func() {
 				im := ipam.NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, "10.16.0.2/30,fd00::/126", nil)
+				err := im.AddOrUpdateSubnet(subnetName, "10.16.0.2/30,fd00::/126", dualGw, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				ipv4, ipv6, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil, true)
@@ -318,7 +321,7 @@ var _ = Describe("[IPAM]", func() {
 
 			It("donot reuse released address after update subnet's excludedIps", func() {
 				im := ipam.NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, "10.16.0.2/30,fd00::/126", nil)
+				err := im.AddOrUpdateSubnet(subnetName, "10.16.0.2/30,fd00::/126", dualGw, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				ipv4, ipv6, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil, true)
@@ -327,7 +330,7 @@ var _ = Describe("[IPAM]", func() {
 				Expect(ipv6).To(Equal("fd00::1"))
 
 				im.ReleaseAddressByPod("pod1.ns")
-				err = im.AddOrUpdateSubnet(subnetName, "10.16.0.2/30,fd00::/126", []string{"10.16.0.1..10.16.0.2", "fd00::1..fd00::2"})
+				err = im.AddOrUpdateSubnet(subnetName, "10.16.0.2/30,fd00::/126", dualGw, []string{"10.16.0.1..10.16.0.2", "fd00::1..fd00::2"})
 				Expect(err).ShouldNot(HaveOccurred())
 
 				_, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil, true)
