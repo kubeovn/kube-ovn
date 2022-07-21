@@ -334,10 +334,11 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 		}
 		return err
 	}
-	subnet, err := c.subnetsLister.Get(gw.Spec.Subnet)
-	if err != nil {
-		klog.Errorf("failed to get subnet '%s', %v", gw.Spec.Subnet, err)
-		return fmt.Errorf("failed to initialize vpc nat gateway '%s', %v", key, err)
+	var v4Cidr string
+	if subnet, ok := c.ipam.Subnets[gw.Spec.Subnet]; ok {
+		v4Cidr = subnet.V4CIDR.String()
+	} else {
+		return fmt.Errorf("failed to get subnet %s", gw.Spec.Subnet)
 	}
 
 	oriPod, err := c.getNatGwPod(key)
@@ -359,7 +360,7 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 	}
 	createAt = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
 	klog.V(3).Infof("nat gw pod '%s' inited at %s", key, createAt)
-	if err = c.execNatGwRules(pod, natGwInit, []string{subnet.Spec.CIDRBlock}); err != nil {
+	if err = c.execNatGwRules(pod, natGwInit, []string{v4Cidr}); err != nil {
 		klog.Errorf("failed to init vpc nat gateway, %v", err)
 		return err
 	}
@@ -533,26 +534,21 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 		return err
 	}
 	pod := oriPod.DeepCopy()
-	extSubnet, err := c.subnetsLister.Get(util.VpcExternalNet)
-	if err != nil {
-		klog.Errorf("failed to get ovn-vpc-external-network subnet, err: %v", err)
-		return err
-	}
 	var extRules []string
-	if extSubnet.Spec.CIDRBlock != "" && extSubnet.Spec.Gateway != "" {
-		extRules = append(extRules, fmt.Sprintf("%s,%s", extSubnet.Spec.CIDRBlock, extSubnet.Spec.Gateway))
-		if err = c.execNatGwRules(pod, natGwExtSubnetRouteAdd, extRules); err != nil {
-			klog.Errorf("failed to exec nat gateway rule, err: %v", err)
-			return err
-		}
+	var v4ExternalGw, v4InternalGw, v4ExternalCidr string
+	if subnet, ok := c.ipam.Subnets[util.VpcExternalNet]; ok {
+		v4ExternalGw = subnet.V4Gw
+		v4ExternalCidr = subnet.V4CIDR.String()
 	} else {
-		err = fmt.Errorf("failed to get external subnet cidr and gw")
+		return fmt.Errorf("failed to get external subnet %s", util.VpcExternalNet)
+	}
+	extRules = append(extRules, fmt.Sprintf("%s,%s", v4ExternalCidr, v4ExternalGw))
+	if err = c.execNatGwRules(pod, natGwExtSubnetRouteAdd, extRules); err != nil {
+		klog.Errorf("failed to exec nat gateway rule, err: %v", err)
 		return err
 	}
 
-	gwSubnet, err := c.subnetsLister.Get(gw.Spec.Subnet)
-	if err != nil {
-		klog.Errorf("failed to get subnet, err: %v", err)
+	if v4InternalGw, _, err = c.GetGwbySubnet(gw.Spec.Subnet); err != nil {
 		return err
 	}
 	vpc, err := c.vpcsLister.Get(gw.Spec.Vpc)
@@ -565,12 +561,12 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	var newCIDRS, oldCIDRs, toBeDelCIDRs []string
 	if len(vpc.Status.Subnets) > 0 {
 		for _, s := range vpc.Status.Subnets {
-			subnet, err := c.subnetsLister.Get(s)
-			if err != nil {
+			subnet, ok := c.ipam.Subnets[s]
+			if !ok {
 				klog.Errorf("failed to get subnet, err: %v", err)
 				return err
 			}
-			newCIDRS = append(newCIDRS, subnet.Spec.CIDRBlock)
+			newCIDRS = append(newCIDRS, subnet.V4CIDR.String())
 		}
 	}
 	if cidrs, ok := pod.Annotations[util.VpcCIDRsAnnotation]; ok {
@@ -587,8 +583,8 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	if len(newCIDRS) > 0 {
 		var rules []string
 		for _, cidr := range newCIDRS {
-			if !util.CIDRContainIP(cidr, gwSubnet.Spec.Gateway) {
-				rules = append(rules, fmt.Sprintf("%s,%s", cidr, gwSubnet.Spec.Gateway))
+			if !util.CIDRContainIP(cidr, v4InternalGw) {
+				rules = append(rules, fmt.Sprintf("%s,%s", cidr, v4InternalGw))
 			}
 		}
 		if len(rules) > 0 {

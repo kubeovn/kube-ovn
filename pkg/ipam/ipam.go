@@ -119,13 +119,13 @@ func (ipam *IPAM) ReleaseAddressByPod(podName string) {
 	}
 }
 
-func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr string, excludeIps []string) error {
+func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []string) error {
 	excludeIps = util.ExpandExcludeIPs(excludeIps, cidrStr)
 
 	ipam.mutex.Lock()
 	defer ipam.mutex.Unlock()
 
-	var v4cidrStr, v6cidrStr string
+	var v4cidrStr, v6cidrStr, v4Gw, v6Gw string
 	var cidrs []*net.IPNet
 	for _, cidrBlock := range strings.Split(cidrStr, ",") {
 		if _, cidr, err := net.ParseCIDR(cidrBlock); err != nil {
@@ -139,10 +139,15 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr string, excludeIps []string) e
 	case kubeovnv1.ProtocolDual:
 		v4cidrStr = cidrs[0].String()
 		v6cidrStr = cidrs[1].String()
+		gws := strings.Split(gw, ",")
+		v4Gw = gws[0]
+		v6Gw = gws[1]
 	case kubeovnv1.ProtocolIPv4:
 		v4cidrStr = cidrs[0].String()
+		v4Gw = gw
 	case kubeovnv1.ProtocolIPv6:
 		v6cidrStr = cidrs[0].String()
+		v6Gw = gw
 	}
 
 	// subnet.Spec.ExcludeIps contains both v4 and v6 addresses
@@ -191,6 +196,8 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr string, excludeIps []string) e
 	if err != nil {
 		return err
 	}
+	subnet.V4Gw = v4Gw
+	subnet.V6Gw = v6Gw
 	klog.Infof("adding new subnet %s", name)
 	ipam.Subnets[name] = subnet
 	return nil
@@ -247,10 +254,10 @@ func (ipam *IPAM) IsIPAssignedToPod(ip, subnetName, podName string) bool {
 }
 
 func (ipam *IPAM) GetSubnetV4Mask(subnetName string) (string, error) {
-	subnet, ok := ipam.Subnets[subnetName]
-	if !ok {
+	if subnet, ok := ipam.Subnets[subnetName]; ok {
+		mask, _ := subnet.V4CIDR.Mask.Size()
+		return strconv.Itoa(mask), nil
+	} else {
 		return "", ErrNoAvailable
 	}
-	mask, _ := subnet.V4CIDR.Mask.Size()
-	return strconv.Itoa(mask), nil
 }

@@ -21,9 +21,8 @@ import (
 )
 
 var (
-	extGw          = ""
-	extSubnetMask  = ""
-	subnetProvider = "ovn-vpc-external-network.kube-system"
+	// external underlay vlan macvlan network attachment definition provider
+	MACVLAN_NAD_PROVIDER = fmt.Sprintf("%s.%s", util.VpcExternalNet, ATTACHMENT_NS)
 )
 
 func (c *Controller) enqueueAddIptablesEip(obj interface{}) {
@@ -234,8 +233,8 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 	}
 	eip := cachedEip.DeepCopy()
 	klog.V(3).Infof("handle add eip %s", key)
-	var v4ip, v6ip, mac, eipV4Cidr, gw string
-	portName := ovs.PodNameToPortName(eip.Name, eip.Namespace, subnetProvider)
+	var v4ip, v6ip, mac, eipV4Cidr, v4Gw string
+	portName := ovs.PodNameToPortName(eip.Name, eip.Namespace, MACVLAN_NAD_PROVIDER)
 	if eip.Spec.V4ip != "" {
 		if v4ip, v6ip, mac, err = c.acquireStaticEip(eip.Name, eip.Namespace, portName, eip.Spec.V4ip); err != nil {
 			return err
@@ -249,11 +248,11 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 	if eipV4Cidr, err = c.getEipV4Cidr(v4ip); err != nil {
 		return err
 	}
-	if gw, err = c.GetGw(); err != nil {
+	if v4Gw, _, err = c.GetGwbySubnet(util.VpcExternalNet); err != nil {
 		return err
 	}
 	// create
-	err = c.createEipInPod(eip.Spec.NatGwDp, gw, eipV4Cidr)
+	err = c.createEipInPod(eip.Spec.NatGwDp, v4Gw, eipV4Cidr)
 	if err != nil {
 		klog.Errorf("failed to create eip '%s' in pod, %v", key, err)
 		return err
@@ -377,7 +376,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 	// eip change ip
 	if c.eipChangeIP(eip) {
 		klog.V(3).Infof("eip change ip, old ip '%s', new ip '%s'", eip.Status.IP, eip.Spec.V4ip)
-		var v4Cidr, gw, v4ip, v6ip, mac, natType, natName string
+		var v4Cidr, v4Gw, v4ip, v6ip, mac, natType, natName string
 		if v4Cidr, err = c.getEipV4Cidr(eip.Status.IP); err != nil {
 			klog.Errorf("failed to get old eip cidr, %v", err)
 			return err
@@ -389,7 +388,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 		}
 		c.ipam.ReleaseAddressByPod(key)
 		// create new
-		portName := ovs.PodNameToPortName(eip.Name, eip.Namespace, subnetProvider)
+		portName := ovs.PodNameToPortName(eip.Name, eip.Namespace, MACVLAN_NAD_PROVIDER)
 		if v4ip, v6ip, mac, err = c.acquireStaticEip(eip.Name, eip.Namespace, portName, eip.Spec.V4ip); err != nil {
 			return err
 		}
@@ -397,10 +396,10 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 			klog.Errorf("failed to clean old eip, %v", err)
 			return err
 		}
-		if gw, err = c.GetGw(); err != nil {
+		if v4Gw, _, err = c.GetGwbySubnet(util.VpcExternalNet); err != nil {
 			return err
 		}
-		if err = c.createEipInPod(eip.Spec.NatGwDp, gw, v4Cidr); err != nil {
+		if err = c.createEipInPod(eip.Spec.NatGwDp, v4Gw, v4Cidr); err != nil {
 			klog.Errorf("failed to clean eip, %v", err)
 			return err
 		}
@@ -496,12 +495,12 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 			klog.Errorf("failed to get eip or v4Cidr, %v", err)
 			return err
 		}
-		gw, err := c.GetGw()
+		v4Gw, _, err := c.GetGwbySubnet(util.VpcExternalNet)
 		if err != nil {
 			klog.Errorf("failed to get gw, %v", err)
 			return err
 		}
-		err = c.createEipInPod(eip.Spec.NatGwDp, gw, eipV4Cidr)
+		err = c.createEipInPod(eip.Spec.NatGwDp, v4Gw, eipV4Cidr)
 		if err != nil {
 			klog.Errorf("failed to create eip, %v", err)
 			return err
@@ -626,32 +625,21 @@ func (c *Controller) eipChangeIP(eip *kubeovnv1.IptablesEIP) bool {
 }
 
 func (c *Controller) getEipV4Cidr(v4ip string) (string, error) {
-	if v4ip == "" {
-		return "", fmt.Errorf("eip v4ip is empty")
-	}
-	if extSubnetMask == "" {
-		var err error
-		extSubnetMask, err = c.ipam.GetSubnetV4Mask(util.VpcExternalNet)
-		if err != nil {
-			klog.Errorf("failed to get eip '%s' mask from subnet %s, %v", v4ip, util.VpcExternalNet, err)
-			return "", err
-		}
+	extSubnetMask, err := c.ipam.GetSubnetV4Mask(util.VpcExternalNet)
+	if err != nil {
+		klog.Errorf("failed to get eip '%s' mask from subnet %s, %v", v4ip, util.VpcExternalNet, err)
+		return "", err
 	}
 	v4IpCidr := fmt.Sprintf("%s/%s", v4ip, extSubnetMask)
 	return v4IpCidr, nil
 }
 
-func (c *Controller) GetGw() (string, error) {
-	if extGw != "" {
-		return extGw, nil
+func (c *Controller) GetGwbySubnet(name string) (string, string, error) {
+	if subnet, ok := c.ipam.Subnets[name]; ok {
+		return subnet.V4Gw, subnet.V6Gw, nil
+	} else {
+		return "", "", fmt.Errorf("failed to get subnet %s", name)
 	}
-	subnet, err := c.subnetsLister.Get(util.VpcExternalNet)
-	if err != nil {
-		klog.Errorf("failed to get subnet %s, %v", util.VpcExternalNet, err)
-		return "", err
-	}
-	extGw = subnet.Spec.Gateway
-	return extGw, nil
 }
 
 func (c *Controller) createOrUpdateCrdEip(key, ns, v4ip, v6ip, mac, natGwDp string) error {
