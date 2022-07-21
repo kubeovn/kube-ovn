@@ -382,6 +382,8 @@ func (c *Controller) setIptables() error {
 		}
 
 		v4Rules = []util.IPTableRule{
+			// nat service traffic
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set --match-set ovn40subnets src -m set --match-set ovn40subnets dst -j MASQUERADE`)},
 			// do not nat route traffic
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set ! --match-set ovn40subnets src -m set ! --match-set ovn40other-node src -m set --match-set ovn40subnets-nat dst -j RETURN`)},
 			// nat outgoing
@@ -402,6 +404,8 @@ func (c *Controller) setIptables() error {
 			{Table: "filter", Chain: "OUTPUT", Rule: strings.Fields(`-p udp -m udp --dport 6081 -j MARK --set-xmark 0x0`)},
 		}
 		v6Rules = []util.IPTableRule{
+			// nat service traffic
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set --match-set ovn60subnets src -m set --match-set ovn60subnets dst -j MASQUERADE`)},
 			// do not nat route traffic
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src -m set --match-set ovn60subnets-nat dst -j RETURN`)},
 			// nat outgoing
@@ -456,10 +460,10 @@ func (c *Controller) setIptables() error {
 			)
 
 			rules := make([]util.IPTableRule, len(iptablesRules)+2)
-			copy(rules[1:3], iptablesRules[:2])
+			copy(rules[1:4], iptablesRules[:3])
 			rules[0] = util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m mark --mark 0x4000/0x4000 -j MASQUERADE`, nodeIP))}
-			rules[3] = util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set ! --match-set %s src -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset, matchset))}
-			copy(rules[4:], iptablesRules[2:])
+			rules[4] = util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set ! --match-set %s src -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset, matchset))}
+			copy(rules[5:], iptablesRules[3:])
 			iptablesRules = rules
 		}
 
