@@ -3,6 +3,7 @@ package ovs
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/ovn-org/libovsdb/client"
 	"github.com/ovn-org/libovsdb/ovsdb"
@@ -33,6 +34,68 @@ func (c OvnClient) CreateBareLogicalSwitchPort(lsName, lspName string) error {
 
 	if err = c.Transact("lsp-add", ops); err != nil {
 		return fmt.Errorf("create logical switch port %s: %v", lspName, err)
+	}
+
+	return nil
+}
+
+// SetLogicalSwitchPortSecurity set logical switch port port_security
+func (c OvnClient) SetLogicalSwitchPortSecurity(portSecurity bool, lspName, mac, ips, vips string) error {
+	lsp, err := c.GetLogicalSwitchPort(lspName, false)
+	if err != nil {
+		return err
+	}
+
+	// note: addresses is the first element of port_security
+	lsp.PortSecurity = nil
+	if portSecurity {
+		ipList := strings.Split(ips, ",")
+		vipList := strings.Split(vips, ",")
+		addresses := make([]string, 0, len(ipList)+len(vipList)+1) // +1 is the mac length
+
+		addresses = append(addresses, mac)
+		addresses = append(addresses, ipList...)
+
+		// it's necessary to add vip to port_security
+		if vips != "" {
+			addresses = append(addresses, vipList...)
+		}
+
+		lsp.PortSecurity = []string{strings.Join(addresses, " ")}
+	}
+
+	if vips != "" {
+		// be careful that dont't overwite origin ExternalIDs
+		if lsp.ExternalIDs == nil {
+			lsp.ExternalIDs = make(map[string]string)
+		}
+		lsp.ExternalIDs["vips"] = strings.ReplaceAll(vips, ",", "/")
+		lsp.ExternalIDs["attach-vips"] = "true"
+	} else {
+		delete(lsp.ExternalIDs, "vips")
+		delete(lsp.ExternalIDs, "attach-vips")
+	}
+
+	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.PortSecurity, &lsp.ExternalIDs); err != nil {
+		return fmt.Errorf("update logical switch port %s: %v", lspName, err)
+	}
+
+	return nil
+}
+
+// UpdateLogicalSwitchPort update logical switch port
+func (c OvnClient) UpdateLogicalSwitchPort(lsp *ovnnb.LogicalSwitchPort, fields ...interface{}) error {
+	if lsp == nil {
+		return fmt.Errorf("logical_switch_port is nil")
+	}
+
+	op, err := c.Where(lsp).Update(lsp, fields...)
+	if err != nil {
+		return fmt.Errorf("generate update operations for logical switch port %s: %v", lsp.Name, err)
+	}
+
+	if err = c.Transact("lsp-update", op); err != nil {
+		return fmt.Errorf("update logical switch port %s: %v", lsp.Name, err)
 	}
 
 	return nil

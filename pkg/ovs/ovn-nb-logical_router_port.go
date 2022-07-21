@@ -81,7 +81,7 @@ func (c *OvnClient) UpdateRouterPortIPv6RA(lrpName, ipv6RAConfigsStr string, ena
 	return c.UpdateLogicalRouterPort(lrp, &lrp.Ipv6Prefix, &lrp.Ipv6RaConfigs)
 }
 
-// CreateVpcExGwLogicalRouterPort create logical router port for vpc external gateway
+// UpdateLogicalRouterPort update logical router port
 func (c OvnClient) UpdateLogicalRouterPort(lrp *ovnnb.LogicalRouterPort, fields ...interface{}) error {
 	if lrp == nil {
 		return fmt.Errorf("logical_router_port is nil")
@@ -92,7 +92,7 @@ func (c OvnClient) UpdateLogicalRouterPort(lrp *ovnnb.LogicalRouterPort, fields 
 		return fmt.Errorf("generate update operations for logical router port %s: %v", lrp.Name, err)
 	}
 
-	if err = c.Transact("lrp-set", op); err != nil {
+	if err = c.Transact("lrp-update", op); err != nil {
 		return fmt.Errorf("update logical router port %s: %v", lrp.Name, err)
 	}
 
