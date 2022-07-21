@@ -487,15 +487,15 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
-	cachedSubnet, err = c.subnetsLister.Get(key)
+	subnet, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), key, metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Errorf("failed to get subnet %s error %v", key, err)
 		return err
 	}
 
-	subnet = cachedSubnet.DeepCopy()
 	deleted, err := c.handleSubnetFinalizer(subnet)
 	if err != nil {
 		klog.Errorf("handle subnet finalizer failed %v", err)
@@ -624,6 +624,13 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		if err := c.ovnLegacyClient.CreateLogicalSwitch(subnet.Name, vpc.Status.Router, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, needRouter); err != nil {
 			c.patchSubnetStatus(subnet, "CreateLogicalSwitchFailed", err.Error())
 			return err
+		}
+
+		if needRouter {
+			if err := c.reconcileRouterPortBySubnet(vpc, subnet); err != nil {
+				klog.Errorf("failed to connect switch %s to router %s, %v", subnet.Name, vpc.Name, err)
+				return err
+			}
 		}
 	} else {
 		// logical switch exists, only update other_config
