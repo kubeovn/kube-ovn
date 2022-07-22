@@ -370,6 +370,7 @@ scan:
 .PHONY: ut
 ut:
 	ginkgo -mod=mod -progress -reportPassed --slowSpecThreshold=60 test/unittest
+	go test ./pkg/...
 
 .PHONY: e2e
 e2e:
