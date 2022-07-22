@@ -544,6 +544,10 @@ func (c *Controller) gcStaticRoute() error {
 	for _, route := range routes {
 		if route.Policy == ovs.PolicyDstIP || route.Policy == "" {
 			if !c.ipam.ContainAddress(route.NextHop) {
+				exist, err := c.ovnClient.NatRuleExists(route.CIDR)
+				if exist || err != nil {
+					continue
+				}
 				klog.Infof("gc static route %s %s %s", route.Policy, route.CIDR, route.NextHop)
 				if err := c.ovnClient.DeleteStaticRouteByNextHop(route.NextHop); err != nil {
 					klog.Errorf("failed to delete stale nexthop route %s, %v", route.NextHop, err)

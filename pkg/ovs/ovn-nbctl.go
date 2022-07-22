@@ -828,6 +828,18 @@ func (c Client) DeleteNatRule(logicalIP, router string) error {
 	return err
 }
 
+func (c *Client) NatRuleExists(logicalIP string) (bool, error) {
+	results, err := c.CustomFindEntity("NAT", []string{"external_ip"}, fmt.Sprintf("logical_ip=%s", logicalIP))
+	if err != nil {
+		klog.Errorf("customFindEntity failed, %v", err)
+		return false, err
+	}
+	if len(results) == 0 {
+		return false, nil
+	}
+	return true, nil
+}
+
 func (c Client) DeleteMatchedStaticRoute(cidr, nexthop, router string) error {
 	if cidr == "" || nexthop == "" {
 		return nil
