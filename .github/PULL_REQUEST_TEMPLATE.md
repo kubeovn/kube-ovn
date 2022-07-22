@@ -1,5 +1,5 @@
 
-- [ ] Make sure you have followed [Kube-OVN Code Style](../CODE_STYLE.md).
+- [ ] Make sure you have followed [Kube-OVN Code Style](https://github.com/kubeovn/kube-ovn/blob/master/CODE_STYLE.md).
 
 #### What type of this PR
 Examples of user facing changes:
