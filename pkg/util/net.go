@@ -144,11 +144,15 @@ func CIDRContainIP(cidrStr, ipStr string) bool {
 func CheckProtocol(address string) string {
 	ips := strings.Split(address, ",")
 	if len(ips) == 2 {
-		v4IP := net.ParseIP(strings.Split(ips[0], "/")[0])
-		v6IP := net.ParseIP(strings.Split(ips[1], "/")[0])
-		if v4IP.To4() != nil && v6IP.To16() != nil {
+		IP1 := net.ParseIP(strings.Split(ips[0], "/")[0])
+		IP2 := net.ParseIP(strings.Split(ips[1], "/")[0])
+		if IP1.To4() != nil && IP2.To4() == nil && IP2.To16() != nil {
 			return kubeovnv1.ProtocolDual
 		}
+		if IP2.To4() != nil && IP1.To4() == nil && IP1.To16() != nil {
+			return kubeovnv1.ProtocolDual
+		}
+		return ""
 	}
 
 	address = strings.Split(address, "/")[0]
@@ -302,13 +306,20 @@ func GetIpWithoutMask(ipStr string) string {
 
 func SplitStringIP(ipStr string) (string, string) {
 	var v4IP, v6IP string
-	if CheckProtocol(ipStr) == kubeovnv1.ProtocolDual {
-		v4IP = strings.Split(ipStr, ",")[0]
-		v6IP = strings.Split(ipStr, ",")[1]
-	} else if CheckProtocol(ipStr) == kubeovnv1.ProtocolIPv4 {
+	switch CheckProtocol(ipStr) {
+	case kubeovnv1.ProtocolDual:
+		for _, ipTmp := range strings.Split(ipStr, ",") {
+			if CheckProtocol(ipTmp) == kubeovnv1.ProtocolIPv4 {
+				v4IP = ipTmp
+			} else {
+				v6IP = ipTmp
+			}
+		}
+	case kubeovnv1.ProtocolIPv4:
 		v4IP = ipStr
-	} else if CheckProtocol(ipStr) == kubeovnv1.ProtocolIPv6 {
+	case kubeovnv1.ProtocolIPv6:
 		v6IP = ipStr
+
 	}
 
 	return v4IP, v6IP
