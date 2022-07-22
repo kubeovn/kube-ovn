@@ -5,8 +5,12 @@ import (
 	"fmt"
 
 	"github.com/ovn-org/libovsdb/client"
+	"github.com/ovn-org/libovsdb/model"
+	"github.com/ovn-org/libovsdb/ovsdb"
+
 	"k8s.io/klog/v2"
 
+	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -65,4 +69,55 @@ func (c OvnClient) ListLogicalSwitchPorts(needVendorFilter bool, externalIDs map
 func (c OvnClient) LogicalSwitchPortExists(name string) (bool, error) {
 	lsp, err := c.GetLogicalSwitchPort(name, true)
 	return lsp != nil, err
+}
+
+func (c OvnClient) AddSwitchRouterPort(ls, lr string) error {
+	klog.Infof("add %s to %s", ls, lr)
+	lsTolr := fmt.Sprintf("%s-%s", ls, lr)
+	lrTols := fmt.Sprintf("%s-%s", lr, ls)
+
+	logicalSwitch, err := c.GetLogicalSwitch(ls, false)
+	if err != nil {
+		return err
+	}
+
+	var ops []ovsdb.Operation
+
+	lsp := &ovnnb.LogicalSwitchPort{
+		UUID:        ovsclient.NamedUUID(),
+		Name:        lsTolr,
+		Type:        "router",
+		Addresses:   []string{"router"},
+		Options:     map[string]string{"router-port": lrTols},
+		ExternalIDs: map[string]string{"vendor": util.CniTypeName},
+	}
+
+	// ensure there is no port in the same name, before we create it in the transaction
+	waitOp := ConstructWaitForNameNotExistsOperation(lsTolr, "Logical_Switch_Port")
+	ops = append(ops, waitOp)
+
+	createOps, err := c.ovnNbClient.Create(lsp)
+	if err != nil {
+		return err
+	}
+	ops = append(ops, createOps...)
+
+	mutationOps, err := c.ovnNbClient.
+		Where(logicalSwitch).
+		Mutate(logicalSwitch,
+			model.Mutation{
+				Field:   &logicalSwitch.Ports,
+				Mutator: ovsdb.MutateOperationInsert,
+				Value:   []string{lsp.UUID},
+			},
+		)
+	if err != nil {
+		return err
+	}
+	ops = append(ops, mutationOps...)
+
+	if err := Transact(c.ovnNbClient, "lsp-add", ops, c.ovnNbClient.Timeout); err != nil {
+		return fmt.Errorf("failed to create logical switch port %s: %v", lsTolr, err)
+	}
+	return nil
 }
