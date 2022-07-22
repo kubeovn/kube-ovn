@@ -1430,9 +1430,13 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	if subnet.Spec.Protocol == kubeovnv1.ProtocolIPv4 {
 		subnet.Status.V4AvailableIPs = availableIPs
 		subnet.Status.V4UsingIPs = usingIPs
+		subnet.Status.V6AvailableIPs = 0
+		subnet.Status.V6UsingIPs = 0
 	} else {
 		subnet.Status.V6AvailableIPs = availableIPs
 		subnet.Status.V6UsingIPs = usingIPs
+		subnet.Status.V4AvailableIPs = 0
+		subnet.Status.V4UsingIPs = 0
 	}
 
 	bytes, err := subnet.Status.Bytes()
