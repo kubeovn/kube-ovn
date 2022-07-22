@@ -16,8 +16,49 @@ import (
 )
 
 const (
-	logicalSwitchKey = "logical_switch"
+	logicalSwitchKey = "ls"
 )
+
+// CreateVirtualLogicalSwitchPorts create some virtual type logical switch port once
+func (c OvnClient) CreateVirtualLogicalSwitchPorts(lsName string, ips ...string) error {
+	ops := make([]ovsdb.Operation, 0, len(ips))
+
+	for _, ip := range ips {
+		lspName := fmt.Sprintf("%s-vip-%s", lsName, ip)
+
+		exist, err := c.LogicalSwitchPortExists(lspName)
+		if err != nil {
+			return err
+		}
+
+		// ignore
+		if exist {
+			continue
+		}
+
+		lsp := &ovnnb.LogicalSwitchPort{
+			UUID: ovsclient.UUID(),
+			Name: lspName,
+			Type: "virtual",
+			Options: map[string]string{
+				"virtual-ip": ip,
+			},
+		}
+
+		op, err := c.CreateLogicalSwitchPortOp(lsp, lsName)
+		if err != nil {
+			return err
+		}
+
+		ops = append(ops, op...)
+	}
+
+	if err := c.Transact("lsp-add", ops); err != nil {
+		return fmt.Errorf("create virtual logical switch ports for logical switch %s: %v", lsName, err)
+	}
+
+	return nil
+}
 
 // CreateBareLogicalSwitchPort create logical switch port with basic configuration
 func (c OvnClient) CreateBareLogicalSwitchPort(lsName, lspName string) error {
@@ -39,6 +80,36 @@ func (c OvnClient) CreateBareLogicalSwitchPort(lsName, lspName string) error {
 	return nil
 }
 
+// CreateVirtualLogicalSwitchPorts update some virtual type logical switch port virtual-parents once
+func (c OvnClient) SetLogicalSwitchPortVirtualParents(lsName, parents string, ips ...string) error {
+	ops := make([]ovsdb.Operation, 0, len(ips))
+	for _, ip := range ips {
+		lspName := fmt.Sprintf("%s-vip-%s", lsName, ip)
+
+		lsp, err := c.GetLogicalSwitchPort(lspName, false)
+		if err != nil {
+			return err
+		}
+
+		lsp.Options["virtual-parents"] = parents
+		if len(parents) == 0 {
+			delete(lsp.Options, "virtual-parents")
+		}
+
+		op, err := c.UpdateLogicalSwitchPortOp(lsp, &lsp.Options)
+		if err != nil {
+			return err
+		}
+
+		ops = append(ops, op...)
+	}
+
+	if err := c.Transact("lsp-update", ops); err != nil {
+		return fmt.Errorf("create virtual logical switch ports for logical switch %s: %v", lsName, err)
+	}
+	return nil
+}
+
 // SetLogicalSwitchPortSecurity set logical switch port port_security
 func (c OvnClient) SetLogicalSwitchPortSecurity(portSecurity bool, lspName, mac, ips, vips string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, false)
@@ -46,7 +117,6 @@ func (c OvnClient) SetLogicalSwitchPortSecurity(portSecurity bool, lspName, mac,
 		return err
 	}
 
-	// note: addresses is the first element of port_security
 	lsp.PortSecurity = nil
 	if portSecurity {
 		ipList := strings.Split(ips, ",")
@@ -61,6 +131,7 @@ func (c OvnClient) SetLogicalSwitchPortSecurity(portSecurity bool, lspName, mac,
 			addresses = append(addresses, vipList...)
 		}
 
+		// addresses is the first element of port_security
 		lsp.PortSecurity = []string{strings.Join(addresses, " ")}
 	}
 
@@ -77,6 +148,22 @@ func (c OvnClient) SetLogicalSwitchPortSecurity(portSecurity bool, lspName, mac,
 	}
 
 	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.PortSecurity, &lsp.ExternalIDs); err != nil {
+		return fmt.Errorf("update logical switch port %s: %v", lspName, err)
+	}
+
+	return nil
+}
+
+// EnablePortLayer2forward set logical switch port addresses as 'unknown'
+func (c OvnClient) EnablePortLayer2forward(lspName string) error {
+	lsp, err := c.GetLogicalSwitchPort(lspName, false)
+	if err != nil {
+		return err
+	}
+
+	lsp.Addresses = []string{"unknown"}
+
+	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Addresses); err != nil {
 		return fmt.Errorf("update logical switch port %s: %v", lspName, err)
 	}
 
@@ -255,4 +342,19 @@ func (c OvnClient) DeleteLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort) ([]ov
 	ops = append(ops, lspDelOp...)
 
 	return ops, nil
+}
+
+// UpdateLogicalSwitchPortOp create operations which update logical switch port
+func (c OvnClient) UpdateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, fields ...interface{}) ([]ovsdb.Operation, error) {
+	// not found, skip
+	if lsp == nil {
+		return nil, nil
+	}
+
+	op, err := c.Where(lsp).Update(lsp, fields...)
+	if err != nil {
+		return nil, fmt.Errorf("generate update operations for logical switch port %s: %v", lsp.Name, err)
+	}
+
+	return op, nil
 }

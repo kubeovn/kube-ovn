@@ -85,8 +85,20 @@ func (suite *OvnClientTestSuite) Test_LogicalSwitchOp() {
 }
 
 /* logical_switch_port unit test */
+func (suite *OvnClientTestSuite) Test_CreateVirtualLogicalSwitchPorts() {
+	suite.testCreateVirtualLogicalSwitchPorts()
+}
+
+func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPortVirtualParents() {
+	suite.testSetLogicalSwitchPortVirtualParents()
+}
+
 func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPortSecurity() {
 	suite.testSetLogicalSwitchPortSecurity()
+}
+
+func (suite *OvnClientTestSuite) Test_EnablePortLayer2forward() {
+	suite.testEnablePortLayer2forward()
 }
 
 func (suite *OvnClientTestSuite) Test_UpdateLogicalSwitchPort() {
