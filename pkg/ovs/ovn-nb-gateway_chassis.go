@@ -6,16 +6,21 @@ import (
 
 	"github.com/ovn-org/libovsdb/client"
 	"github.com/ovn-org/libovsdb/model"
+	"github.com/ovn-org/libovsdb/ovsdb"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
 // CreateGatewayChassises create multiple gateway chassis once
-func (c OvnClient) CreateGatewayChassises(namePrefix string, chassises []string) error {
+func (c OvnClient) CreateGatewayChassises(lrpName string, chassises []string) error {
+	if len(chassises) == 0 {
+		return nil
+	}
+
 	models := make([]model.Model, 0, len(chassises))
 
 	for i, chassisName := range chassises {
-		gwChassisName := namePrefix + "-" + chassisName
+		gwChassisName := lrpName + "-" + chassisName
 		gwChassis := &ovnnb.GatewayChassis{
 			Name:        gwChassisName,
 			ChassisName: chassisName,
@@ -29,9 +34,8 @@ func (c OvnClient) CreateGatewayChassises(namePrefix string, chassises []string)
 		return fmt.Errorf("generate create operations for gateway chassis %v", err)
 	}
 
-	err = c.Transact("gateway-chassises-create", op)
-	if err != nil {
-		return fmt.Errorf("create gateway chassis: %v", err)
+	if err = c.Transact("gateway-chassises-create", op); err != nil {
+		return fmt.Errorf("create gateway chassis for logical router port %s: %v", lrpName, err)
 	}
 
 	return nil
@@ -39,7 +43,7 @@ func (c OvnClient) CreateGatewayChassises(namePrefix string, chassises []string)
 
 // CreateGatewayChassis create gateway chassis
 func (c OvnClient) CreateGatewayChassis(gwChassis *ovnnb.GatewayChassis) error {
-	if nil == gwChassis {
+	if gwChassis == nil {
 		return fmt.Errorf("gateway_chassis is nil")
 	}
 
@@ -48,12 +52,57 @@ func (c OvnClient) CreateGatewayChassis(gwChassis *ovnnb.GatewayChassis) error {
 		return fmt.Errorf("generate create operations for gateway chassis %s: %v", gwChassis.Name, err)
 	}
 
-	err = c.Transact("gateway-chassis-create", op)
-	if err != nil {
+	if err = c.Transact("gateway-chassis-create", op); err != nil {
 		return fmt.Errorf("create gateway chassis %s: %v", gwChassis.Name, err)
 	}
 
 	return nil
+}
+
+// DeleteGatewayChassises delete multiple gateway chassis once
+func (c OvnClient) DeleteGatewayChassises(lrpName string, chassises []string) error {
+	if len(chassises) == 0 {
+		return nil
+	}
+
+	ops := make([]ovsdb.Operation, 0, len(chassises))
+
+	for _, chassisName := range chassises {
+		gwChassisName := lrpName + "-" + chassisName
+		op, err := c.DeleteGatewayChassisOp(gwChassisName)
+		if err != nil {
+			return nil
+		}
+
+		ops = append(ops, op...)
+	}
+
+	if err := c.Transact("gateway-chassises-delete", ops); err != nil {
+		return fmt.Errorf("delete gateway chassis for logical router port %s: %v", lrpName, err)
+	}
+
+	return nil
+}
+
+// DeleteGatewayChassis delete multiple gateway chassis
+func (c OvnClient) DeleteGatewayChassisOp(chassisName string) ([]ovsdb.Operation, error) {
+	gwChassis, err := c.GetGatewayChassis(chassisName, true)
+
+	if err != nil {
+		return nil, err
+	}
+
+	// not found, skip
+	if gwChassis == nil {
+		return nil, nil
+	}
+
+	op, err := c.Where(gwChassis).Delete()
+	if err != nil {
+		return nil, err
+	}
+
+	return op, nil
 }
 
 func (c OvnClient) GetGatewayChassis(name string, ignoreNotFound bool) (*ovnnb.GatewayChassis, error) {

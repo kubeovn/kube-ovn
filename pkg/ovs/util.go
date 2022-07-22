@@ -38,7 +38,7 @@ func LogicalSwitchPortName(lr, ls string) string {
 // the raw config's format is: address_mode=dhcpv6_stateful,max_interval=30,min_interval=5,send_periodic=true
 func parseIpv6RaConfigs(raw string) map[string]string {
 	// return default Ipv6RaConfigs
-	if 0 == len(raw) {
+	if len(raw) == 0 {
 		return map[string]string{
 			"address_mode":  "dhcpv6_stateful",
 			"max_interval":  "30",
@@ -55,7 +55,7 @@ func parseIpv6RaConfigs(raw string) map[string]string {
 	for _, option := range options {
 		kv := strings.Split(option, "=")
 		// TODO: ignore invalidate option, maybe need further validation
-		if 2 != len(kv) || 0 == len(kv[0]) || 0 == len(kv[1]) {
+		if len(kv) != 2 || len(kv[0]) == 0 || len(kv[1]) == 0 {
 			continue
 		}
 		Ipv6RaConfigs[kv[0]] = kv[1]
