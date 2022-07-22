@@ -645,8 +645,14 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 			} else if err != nil {
 				return err
 			}
+			// If pod has snat or eip, also need delete staticRoute when delete pod
+			if vpc.Name == util.DefaultVpc {
+				if err := c.ovnLegacyClient.DeleteStaticRoute(address.Ip, vpc.Name); err != nil {
+					return err
+				}
+			}
 			if exGwEnabled == "true" {
-				if err := c.ovnLegacyClient.DeleteNatRule(address.Ip, vpc.Status.Router); err != nil {
+				if err := c.ovnLegacyClient.DeleteNatRule(address.Ip, vpc.Name); err != nil {
 					return err
 				}
 			}
