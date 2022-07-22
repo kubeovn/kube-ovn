@@ -212,8 +212,8 @@ func (c *Controller) handleDelVpcNatGw(key string) error {
 	defer c.vpcNatGwKeyMutex.Unlock(key)
 	name := genNatGwStsName(key)
 	klog.Infof("delete vpc nat gw %s", name)
-	err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).Delete(context.Background(), name, metav1.DeleteOptions{})
-	if err != nil {
+	if err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).Delete(context.Background(),
+		name, metav1.DeleteOptions{}); err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
@@ -549,6 +549,7 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	}
 
 	if v4InternalGw, _, err = c.GetGwbySubnet(gw.Spec.Subnet); err != nil {
+		klog.Errorf("failed to get gw, err: %v", err)
 		return err
 	}
 	vpc, err := c.vpcsLister.Get(gw.Spec.Vpc)

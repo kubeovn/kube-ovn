@@ -210,7 +210,7 @@ var _ = Describe("[IPAM]", func() {
 				Expect(ip).To(Equal("fd00::1"))
 			})
 
-			It("donot reuse released address after update subnet's excludedIps", func() {
+			It("do not reuse released address after update subnet's excludedIps", func() {
 				im := ipam.NewIPAM()
 				err := im.AddOrUpdateSubnet(subnetName, "fd00::/126", v6Gw, nil)
 				Expect(err).ShouldNot(HaveOccurred())
@@ -319,7 +319,7 @@ var _ = Describe("[IPAM]", func() {
 				Expect(ipv6).To(Equal("fd00::1"))
 			})
 
-			It("donot reuse released address after update subnet's excludedIps", func() {
+			It("do not reuse released address after update subnet's excludedIps", func() {
 				im := ipam.NewIPAM()
 				err := im.AddOrUpdateSubnet(subnetName, "10.16.0.2/30,fd00::/126", dualGw, nil)
 				Expect(err).ShouldNot(HaveOccurred())

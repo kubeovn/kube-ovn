@@ -1494,6 +1494,7 @@ func (c *Controller) createFipInPod(dp, v4ip, internalIP string) error {
 	rule := fmt.Sprintf("%s,%s", v4ip, internalIP)
 	addRules = append(addRules, rule)
 	if err = c.execNatGwRules(gwPod, natGwSubnetFipAdd, addRules); err != nil {
+		klog.Errorf("failed to create fip, err: %v", err)
 		return err
 	}
 	return nil
@@ -1512,6 +1513,7 @@ func (c *Controller) deleteFipInPod(dp, v4ip, internalIP string) error {
 	rule := fmt.Sprintf("%s,%s", v4ip, internalIP)
 	delRules = append(delRules, rule)
 	if err = c.execNatGwRules(gwPod, natGwSubnetFipDel, delRules); err != nil {
+		klog.Errorf("failed to delete fip, err: %v", err)
 		return err
 	}
 	return nil
@@ -1528,6 +1530,7 @@ func (c *Controller) createDnatInPod(dp, protocol, v4ip, internalIp, externalPor
 	addRules = append(addRules, rule)
 
 	if err = c.execNatGwRules(gwPod, natGwDnatAdd, addRules); err != nil {
+		klog.Errorf("failed to create dnat, err: %v", err)
 		return err
 	}
 	return nil
@@ -1544,6 +1547,7 @@ func (c *Controller) deleteDnatInPod(dp, protocol, v4ip, internalIp, externalPor
 	rule := fmt.Sprintf("%s,%s,%s,%s,%s", v4ip, externalPort, protocol, internalIp, internalPort)
 	delRules = append(delRules, rule)
 	if err = c.execNatGwRules(gwPod, natGwDnatDel, delRules); err != nil {
+		klog.Errorf("failed to delete dnat, err: %v", err)
 		return err
 	}
 	return nil
@@ -1576,6 +1580,7 @@ func (c *Controller) deleteSnatInPod(dp, v4ip, internalCIDR string) error {
 	rule := fmt.Sprintf("%s,%s", v4ip, internalCIDR)
 	delRules = append(delRules, rule)
 	if err = c.execNatGwRules(gwPod, natGwSnatDel, delRules); err != nil {
+		klog.Errorf("failed to delete snat, err: %v", err)
 		return err
 	}
 	return nil

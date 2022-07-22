@@ -249,11 +249,11 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		return err
 	}
 	if v4Gw, _, err = c.GetGwbySubnet(util.VpcExternalNet); err != nil {
+		klog.Errorf("failed to get gw, err: %v", err)
 		return err
 	}
 	// create
-	err = c.createEipInPod(eip.Spec.NatGwDp, v4Gw, eipV4Cidr)
-	if err != nil {
+	if err = c.createEipInPod(eip.Spec.NatGwDp, v4Gw, eipV4Cidr); err != nil {
 		klog.Errorf("failed to create eip '%s' in pod, %v", key, err)
 		return err
 	}
@@ -265,8 +265,7 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		klog.Errorf("failed to patch status for eip %s, %v", key, err)
 		return err
 	}
-	_, err = c.handleIptablesEipFinalizer(eip, false)
-	if err != nil {
+	if _, err = c.handleIptablesEipFinalizer(eip, false); err != nil {
 		klog.Errorf("failed to handle finalizer for eip %s, %v", key, err)
 		return err
 	}
@@ -354,13 +353,11 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 			klog.Errorf("failed to clean eip %s, %v", key, err)
 			return err
 		}
-		err = c.deleteEipInPod(eip.Spec.NatGwDp, v4Cidr)
-		if err != nil {
+		if err = c.deleteEipInPod(eip.Spec.NatGwDp, v4Cidr); err != nil {
 			klog.Errorf("failed to clean eip '%s' in pod, %v", key, err)
 			return err
 		}
-		_, err = c.handleIptablesEipFinalizer(eip, true)
-		if err != nil {
+		if _, err = c.handleIptablesEipFinalizer(eip, true); err != nil {
 			klog.Errorf("failed to handle finalizer for eip %s, %v", key, err)
 			return err
 		}
@@ -495,8 +492,8 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 			klog.Errorf("failed to get eip or v4Cidr, %v", err)
 			return err
 		}
-		v4Gw, _, err := c.GetGwbySubnet(util.VpcExternalNet)
-		if err != nil {
+		var v4Gw string
+		if v4Gw, _, err = c.GetGwbySubnet(util.VpcExternalNet); err != nil {
 			klog.Errorf("failed to get gw, %v", err)
 			return err
 		}
@@ -511,8 +508,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 		}
 		return nil
 	}
-	_, err = c.handleIptablesEipFinalizer(eip, false)
-	if err != nil {
+	if _, err = c.handleIptablesEipFinalizer(eip, false); err != nil {
 		klog.Errorf("failed to handle finalizer for eip, %v", err)
 		return err
 	}
@@ -679,8 +675,7 @@ func (c *Controller) createOrUpdateCrdEip(key, ns, v4ip, v6ip, mac, natGwDp stri
 			eip.Spec.V4ip = v4ip
 			eip.Spec.V6ip = v6ip
 			eip.Spec.NatGwDp = natGwDp
-			_, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Update(context.Background(), eip, metav1.UpdateOptions{})
-			if err != nil {
+			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Update(context.Background(), eip, metav1.UpdateOptions{}); err != nil {
 				errMsg := fmt.Errorf("failed to update eip crd %s, %v", key, err)
 				klog.Error(errMsg)
 				return errMsg
@@ -707,8 +702,8 @@ func (c *Controller) createOrUpdateCrdEip(key, ns, v4ip, v6ip, mac, natGwDp stri
 			patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
 			raw, _ := json.Marshal(eip.Labels)
 			patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-			_, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), key, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
-			if err != nil {
+			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), key, types.JSONPatchType,
+				[]byte(patchPayload), metav1.PatchOptions{}); err != nil {
 				klog.Errorf("failed to patch label for eip %s, %v", eip.Name, err)
 				return err
 			}
@@ -800,8 +795,11 @@ func (c *Controller) patchEipStatus(key, v4ip, redo, nat string, ready bool) err
 		if err != nil {
 			return err
 		}
-		_, err = c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), key, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
-		return err
+		if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), key, types.MergePatchType,
+			bytes, metav1.PatchOptions{}, "status"); err != nil {
+			klog.Errorf("failed to patch eip %s, %v", eip.Name, err)
+			return err
+		}
 	}
 	return nil
 }
@@ -821,8 +819,11 @@ func (c *Controller) patchResetEipStatusNat(key, nat string) error {
 		if err != nil {
 			return err
 		}
-		_, err = c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), key, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
-		return err
+		if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), key, types.MergePatchType,
+			bytes, metav1.PatchOptions{}, "status"); err != nil {
+			klog.Errorf("failed to patch eip '%s' nat type, %v", eip.Name, err)
+			return err
+		}
 	}
 	return nil
 }
@@ -857,8 +858,8 @@ func (c *Controller) natLabelEip(eipName, natName string) error {
 		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
 		raw, _ := json.Marshal(eip.Labels)
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-		_, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), eip.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
-		if err != nil {
+		if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), eip.Name,
+			types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
 			klog.Errorf("failed to patch label for eip %s, %v", eip.Name, err)
 			return err
 		}
