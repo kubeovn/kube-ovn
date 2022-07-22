@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -131,21 +130,14 @@ func (suite *OvnClientTestSuite) testLogicalRouterOp() {
 
 	ovnClient := suite.ovnClient
 	lrName := "test-port-op-lr"
-	lrpName := "test-port-op-lrp"
+	uuid := ovsclient.UUID()
 
 	err := ovnClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
-	lrp := &ovnnb.LogicalRouterPort{
-		UUID:     ovsclient.UUID(),
-		Name:     lrpName,
-		MAC:      "00:11:22:37:af:89",
-		Networks: []string{"192.168.131.1/24"},
-	}
-
 	t.Run("add new port to logical router", func(t *testing.T) {
 		t.Parallel()
-		ops, err := ovnClient.LogicalRouterOp(lrName, lrp, true)
+		ops, err := ovnClient.LogicalRouterOp(lrName, uuid, true)
 		require.NoError(t, err)
 		require.Equal(t, []ovsdb.Mutation{
 			{
@@ -154,7 +146,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterOp() {
 				Value: ovsdb.OvsSet{
 					GoSet: []interface{}{
 						ovsdb.UUID{
-							GoUUID: lrp.UUID,
+							GoUUID: uuid,
 						},
 					},
 				},
@@ -164,7 +156,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterOp() {
 
 	t.Run("del port from logical router", func(t *testing.T) {
 		t.Parallel()
-		ops, err := ovnClient.LogicalRouterOp(lrName, lrp, false)
+		ops, err := ovnClient.LogicalRouterOp(lrName, uuid, false)
 		require.NoError(t, err)
 		require.Equal(t, []ovsdb.Mutation{
 			{
@@ -173,7 +165,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterOp() {
 				Value: ovsdb.OvsSet{
 					GoSet: []interface{}{
 						ovsdb.UUID{
-							GoUUID: lrp.UUID,
+							GoUUID: uuid,
 						},
 					},
 				},
@@ -181,9 +173,15 @@ func (suite *OvnClientTestSuite) testLogicalRouterOp() {
 		}, ops[0].Mutations)
 	})
 
+	t.Run("should return err when uuid is empty", func(t *testing.T) {
+		t.Parallel()
+		_, err := ovnClient.LogicalRouterOp(lrName, "", true)
+		require.ErrorContains(t, err, fmt.Sprintf("the uuid of port added to logical router %s cannot be empty", lrName))
+	})
+
 	t.Run("should return err when logical router does not exist", func(t *testing.T) {
 		t.Parallel()
-		_, err := ovnClient.LogicalRouterOp("test-port-op-lr-non-existent", lrp, true)
+		_, err := ovnClient.LogicalRouterOp("test-port-op-lr-non-existent", uuid, true)
 		require.ErrorContains(t, err, "not found logical router")
 	})
 
