@@ -214,15 +214,13 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 		klog.Errorf("failed to create or update vip '%s', %v", vip.Name, err)
 		return err
 	}
-	_, err = c.handleVipFinalizer(vip)
-	if err != nil {
+	if _, err = c.handleVipFinalizer(vip); err != nil {
 		klog.Errorf("failed to handle vip finalizer, %v", err)
 		return err
 	}
 	if err = c.subnetCountVip(subnet); err != nil {
 		klog.Errorf("failed to count vip '%s' in subnet, %v", vip.Name, err)
 		return err
-
 	}
 	return nil
 }
@@ -246,8 +244,7 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 			return err
 		}
 		vip.Status.Ready = false
-		_, err = c.handleVipFinalizer(vip)
-		if err != nil {
+		if _, err = c.handleVipFinalizer(vip); err != nil {
 			klog.Errorf("failed to handle vip finalizer %v", err)
 			return err
 		}
@@ -270,8 +267,7 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 		}
 	}
 	vip.Status.Ready = true
-	_, err = c.handleVipFinalizer(vip)
-	if err != nil {
+	if _, err = c.handleVipFinalizer(vip); err != nil {
 		klog.Errorf("failed to handle vip finalizer %v", err)
 		return err
 	}
@@ -406,8 +402,7 @@ func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4i
 			vip.Status.Pv6ip = pV6ip
 			vip.Status.Pmac = pmac
 
-			_, err := c.config.KubeOvnClient.KubeovnV1().Vips().Update(context.Background(), vip, metav1.UpdateOptions{})
-			if err != nil {
+			if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Update(context.Background(), vip, metav1.UpdateOptions{}); err != nil {
 				errMsg := fmt.Errorf("failed to update vip '%s', %v", key, err)
 				klog.Error(errMsg)
 				return errMsg
@@ -432,8 +427,8 @@ func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4i
 			patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
 			raw, _ := json.Marshal(vip.Labels)
 			patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-			_, err := c.config.KubeOvnClient.KubeovnV1().Vips().Patch(context.Background(), vip.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
-			if err != nil {
+			if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Patch(context.Background(), vip.Name, types.JSONPatchType,
+				[]byte(patchPayload), metav1.PatchOptions{}); err != nil {
 				klog.Errorf("failed to patch label for vip '%s', %v", vip.Name, err)
 				return err
 			}
@@ -572,8 +567,8 @@ func (c *Controller) releaseVip(key string) error {
 		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
 		raw, _ := json.Marshal(vip.Labels)
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-		_, err := c.config.KubeOvnClient.KubeovnV1().Vips().Patch(context.Background(), vip.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
-		if err != nil {
+		if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Patch(context.Background(), vip.Name,
+			types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
 			klog.Errorf("failed to patch label for vip '%s', %v", vip.Name, err)
 			return err
 		}

@@ -299,7 +299,7 @@ func (c *Controller) InitIPAM() error {
 		return err
 	}
 	for _, subnet := range subnets {
-		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.ExcludeIps); err != nil {
+		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
 			klog.Errorf("failed to init subnet %s: %v", subnet.Name, err)
 		}
 	}
