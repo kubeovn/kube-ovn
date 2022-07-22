@@ -546,8 +546,7 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 	}
 
 	// create fip nat
-	err = c.createFipInPod(eip.Spec.NatGwDp, eip.Spec.V4ip, fip.Spec.InternalIp)
-	if err != nil {
+	if err = c.createFipInPod(eip.Spec.NatGwDp, eip.Spec.V4ip, fip.Spec.InternalIp); err != nil {
 		klog.Errorf("failed to create fip, %v", err)
 		return err
 	}
@@ -720,11 +719,9 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 		return err
 	}
 	// create nat
-	err = c.createDnatInPod(eip.Spec.NatGwDp, dnat.Spec.Protocol,
+	if err = c.createDnatInPod(eip.Spec.NatGwDp, dnat.Spec.Protocol,
 		eip.Spec.V4ip, dnat.Spec.InternalIp,
-		dnat.Spec.ExternalPort, dnat.Spec.InternalPort,
-	)
-	if err != nil {
+		dnat.Spec.ExternalPort, dnat.Spec.InternalPort); err != nil {
 		// not retry too often
 		klog.Errorf("failed to create dnat, %v", err)
 		return err
@@ -900,8 +897,7 @@ func (c *Controller) handleAddIptablesSnatRule(key string) error {
 		return err
 	}
 	// create snat
-	err = c.createSnatInPod(eip.Spec.NatGwDp, eip.Spec.V4ip, snat.Spec.InternalCIDR)
-	if err != nil {
+	if err = c.createSnatInPod(eip.Spec.NatGwDp, eip.Spec.V4ip, snat.Spec.InternalCIDR); err != nil {
 		klog.Errorf("failed to create snat, %v", err)
 		return err
 	}
@@ -1248,8 +1244,11 @@ func (c *Controller) patchFipStatus(key, v4ip, v6ip, natGwDp, redo string, ready
 		return err
 	}
 	if changed {
-		_, err = c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Patch(context.Background(), fip.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
-		return err
+		if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Patch(context.Background(), fip.Name,
+			types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+			klog.Errorf("failed to patch fip %s, %v", fip.Name, err)
+			return err
+		}
 	}
 	return nil
 }
@@ -1313,8 +1312,8 @@ func (c *Controller) patchDnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
 		raw, _ := json.Marshal(dnat.Labels)
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-		_, err := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Patch(context.Background(), dnat.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
-		if err != nil {
+		if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Patch(context.Background(), dnat.Name,
+			types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
 			klog.Errorf("failed to patch label for dnat %s, %v", dnat.Name, err)
 			return err
 		}
@@ -1352,8 +1351,11 @@ func (c *Controller) patchDnatStatus(key, v4ip, v6ip, natGwDp, redo string, read
 		return err
 	}
 	if changed {
-		_, err = c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Patch(context.Background(), dnat.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
-		return err
+		if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Patch(context.Background(), dnat.Name,
+			types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+			klog.Errorf("failed to patch dnat %s, %v", dnat.Name, err)
+			return err
+		}
 	}
 	return nil
 }
@@ -1415,8 +1417,8 @@ func (c *Controller) patchSnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
 		raw, _ := json.Marshal(snat.Labels)
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-		_, err := c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().Patch(context.Background(), snat.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
-		if err != nil {
+		if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().Patch(context.Background(), snat.Name,
+			types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
 			klog.Errorf("failed to patch label for snat %s, %v", snat.Name, err)
 			return err
 		}
@@ -1454,8 +1456,11 @@ func (c *Controller) patchSnatStatus(key, v4ip, v6ip, natGwDp, redo string, read
 		return err
 	}
 	if changed {
-		_, err = c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().Patch(context.Background(), snat.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
-		return err
+		if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().Patch(context.Background(), snat.Name,
+			types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+			klog.Errorf("failed to patch snat %s, %v", snat.Name, err)
+			return err
+		}
 	}
 	return nil
 }

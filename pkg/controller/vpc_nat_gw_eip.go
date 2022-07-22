@@ -497,8 +497,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 			klog.Errorf("failed to get gw, %v", err)
 			return err
 		}
-		err = c.createEipInPod(eip.Spec.NatGwDp, v4Gw, eipV4Cidr)
-		if err != nil {
+		if err = c.createEipInPod(eip.Spec.NatGwDp, v4Gw, eipV4Cidr); err != nil {
 			klog.Errorf("failed to create eip, %v", err)
 			return err
 		}

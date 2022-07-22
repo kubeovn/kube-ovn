@@ -759,8 +759,7 @@ func (c *Controller) getNatGwPod(name string) (*corev1.Pod, error) {
 
 func (c *Controller) checkVpcExternalNet() (err error) {
 	networkClient := c.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(c.config.PodNamespace)
-	_, err = networkClient.Get(context.Background(), util.VpcExternalNet, metav1.GetOptions{})
-	if err != nil {
+	if _, err = networkClient.Get(context.Background(), util.VpcExternalNet, metav1.GetOptions{}); err != nil {
 		if k8serrors.IsNotFound(err) {
 			klog.Errorf("vpc external multus net '%s' should be exist already before ovn-vpc-nat-gw-config applied", util.VpcExternalNet)
 		}
