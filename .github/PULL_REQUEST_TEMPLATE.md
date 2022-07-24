@@ -1,19 +1,15 @@
+
+- [ ] Make sure you have followed [Kube-OVN Code Style](https://github.com/kubeovn/kube-ovn/blob/master/CODE_STYLE.md).
+
 #### What type of this PR
 Examples of user facing changes:
-- API changes
+- Features
 - Bug fixes
+- Docs
+- Tests
 <!-- 
-Describe your changes here- ideally you can get that description straight from your descriptive commit message(s)! 
-
-In addition, categorize the changes you're making using the "/kind" Prow command, example:
-
-/kind <kind>
-
-Supported kinds are: bug, cleanup, design, documentation, failing-test, feature, flake, misc, question, tep
+Describe your changes here, ideally you can get that description straight from your descriptive commit message(s)!
 -->
 
 #### Which issue(s) this PR fixes:
 Fixes #(issue-number)
-
-
-

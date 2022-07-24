@@ -139,7 +139,7 @@ spec:
           operator: Exists
         - key: CriticalAddonsOnly
           operator: Exists
-      priorityClassName: system-cluster-critical
+      priorityClassName: system-node-critical
       serviceAccountName: ovn
       hostNetwork: true
       hostPID: true
@@ -272,6 +272,7 @@ spec:
         component: network
         type: infra
     spec:
+      priorityClassName: system-node-critical
       serviceAccountName: ovn
       hostPID: true
       containers:
@@ -403,7 +404,7 @@ spec:
                 matchLabels:
                   app: kube-ovn-monitor
               topologyKey: kubernetes.io/hostname
-      priorityClassName: system-cluster-critical
+      priorityClassName: system-node-critical
       serviceAccountName: ovn
       hostNetwork: true
       containers:

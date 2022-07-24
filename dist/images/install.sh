@@ -18,6 +18,7 @@ WITHOUT_KUBE_PROXY=${WITHOUT_KUBE_PROXY:-false}
 ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-true}
 CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
 ENABLE_LB_SVC=${ENABLE_LB_SVC:-false}
+ENABLE_KEEP_VM_IP=${ENABLE_KEEP_VM_IP:-true}
 # The nic to support container network can be a nic name or a group of regex
 # separated by comma, if empty will use the nic that the default route use
 IFACE=${IFACE:-}
@@ -207,6 +208,144 @@ addresses=$(kubectl get no -lkube-ovn/role=master --no-headers -o wide | awk '{p
 echo "Install OVN DB in $addresses"
 
 cat <<EOF > kube-ovn-crd.yaml
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: vpc-dnses.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: vpc-dnses
+    singular: vpc-dns
+    shortNames:
+      - vpc-dns
+    kind: VpcDns
+    listKind: VpcDnsList
+  scope: Cluster
+  versions:
+    - additionalPrinterColumns:
+        - jsonPath: .status.active
+          name: Active
+          type: boolean
+        - jsonPath: .spec.vpc
+          name: Vpc
+          type: string
+        - jsonPath: .spec.subnet
+          name: Subnet
+          type: string
+      name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                vpc:
+                  type: string
+                subnet:
+                  type: string
+            status:
+              type: object
+              properties:
+                active:
+                  type: boolean
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                      lastUpdateTime:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: switch-lb-rules.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: switch-lb-rules
+    singular: switch-lb-rule
+    shortNames:
+      - slr
+    kind: SwitchLBRule
+    listKind: SwitchLBRuleList
+  scope: Cluster
+  versions:
+    - additionalPrinterColumns:
+        - jsonPath: .spec.vip
+          name: vip
+          type: string
+        - jsonPath: .status.ports
+          name: port(s)
+          type: string
+        - jsonPath: .status.service
+          name: service
+          type: string
+        - jsonPath: .metadata.creationTimestamp
+          name: age
+          type: date
+      name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                namespace:
+                  type: string
+                vip:
+                  type: string
+                sessionAffinity:
+                  type: string
+                ports:
+                  items:
+                    properties:
+                      name:
+                        type: string
+                      port:
+                        type: integer
+                        minimum: 1
+                        maximum: 65535
+                      protocol:
+                        type: string
+                      targetPort:
+                        type: integer
+                        minimum: 1
+                        maximum: 65535
+                    type: object
+                  type: array
+                selector:
+                  items:
+                    type: string
+                  type: array
+            status:
+              type: object
+              properties:
+                ports:
+                  type: string
+                service:
+                  type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -1493,6 +1632,8 @@ rules:
       - iptables-snat-rules/status
       - switch-lb-rules
       - switch-lb-rules/status
+      - vpc-dnses
+      - vpc-dnses/status
     verbs:
       - "*"
   - apiGroups:
@@ -1817,7 +1958,7 @@ spec:
           operator: Exists
         - key: CriticalAddonsOnly
           operator: Exists
-      priorityClassName: system-cluster-critical
+      priorityClassName: system-node-critical
       serviceAccountName: ovn
       hostNetwork: true
       hostPID: true
@@ -1989,6 +2130,8 @@ rules:
       - iptables-fip-rules/status
       - iptables-dnat-rules/status
       - iptables-snat-rules/status
+      - vpc-dnses
+      - vpc-dnses/status
       - switch-lb-rules
       - switch-lb-rules/status
     verbs:
@@ -2301,7 +2444,7 @@ spec:
           operator: Exists
         - key: CriticalAddonsOnly
           operator: Exists
-      priorityClassName: system-cluster-critical
+      priorityClassName: system-node-critical
       serviceAccountName: ovn
       hostNetwork: true
       hostPID: true
@@ -2448,7 +2591,7 @@ spec:
     spec:
       tolerations:
       - operator: Exists
-      priorityClassName: system-cluster-critical
+      priorityClassName: system-node-critical
       serviceAccountName: ovn
       hostNetwork: true
       hostPID: true
@@ -2666,6 +2809,7 @@ spec:
           - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
           - --log_file_max_size=0
           - --enable-lb-svc=$ENABLE_LB_SVC
+          - --keep-vm-ip=$ENABLE_KEEP_VM_IP
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
@@ -2752,7 +2896,7 @@ spec:
           operator: Exists
         - key: CriticalAddonsOnly
           operator: Exists
-      priorityClassName: system-cluster-critical
+      priorityClassName: system-node-critical
       serviceAccountName: ovn
       hostNetwork: true
       hostPID: true
@@ -2782,7 +2926,7 @@ spec:
           - --service-cluster-ip-range=$SVC_CIDR
           - --iface=${IFACE}
           - --dpdk-tunnel-iface=${DPDK_TUNNEL_IFACE}
-          - --network-type=$NETWORK_TYPE
+          - --network-type=$TUNNEL_TYPE
           - --default-interface-name=$VLAN_INTERFACE_NAME
           - --cni-conf-name=${CNI_CONFIG_PRIORITY}-kube-ovn.conflist
           - --logtostderr=false
@@ -2926,6 +3070,7 @@ spec:
         component: network
         type: infra
     spec:
+      priorityClassName: system-node-critical
       serviceAccountName: ovn
       hostPID: true
       containers:

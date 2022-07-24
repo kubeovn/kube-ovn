@@ -24,7 +24,7 @@ spec:
   protocol: Dual
 ```
 
-The fields of subnet can be found at [Subnets](https://github.com/kubeovn/kube-ovn/blob/master/docs/subnet.md).
+The fields of subnet can be found at [Subnets](./subnet.md).
 
 ## Test for dual-stack
 
@@ -54,7 +54,7 @@ podIP: 10.16.0.9
 ```
 
 ## Others
-The crd resources of IP and Subnet had been adapted for dual-stack.The result is displayed by protocol.
+The CRD resources of IP and Subnet had been adapted for dual-stack. The result is displayed by protocol.
 
 ```shell
 mac@localhost ~ % kubectl get ips

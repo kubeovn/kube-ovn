@@ -456,9 +456,7 @@ func (c LegacyClient) CreateLogicalSwitch(ls, lr, subnet, gateway string, needRo
 	}
 
 	if needRouter {
-		ip := util.GetIpAddrWithMask(gateway, subnet)
-		mac := util.GenerateMac()
-		if err := c.createRouterPort(ls, lr, ip, mac); err != nil {
+		if err := c.createRouterPort(ls, lr); err != nil {
 			klog.Errorf("failed to connect switch %s to router, %v", ls, err)
 			return err
 		}
@@ -791,8 +789,8 @@ func (c LegacyClient) RemoveRouterPort(ls, lr string) error {
 	return nil
 }
 
-func (c LegacyClient) createRouterPort(ls, lr, ip, mac string) error {
-	klog.Infof("add %s to %s with ip=%s, mac=%s", ls, lr, ip, mac)
+func (c LegacyClient) createRouterPort(ls, lr string) error {
+	klog.Infof("add %s to %s", ls, lr)
 	lsTolr := fmt.Sprintf("%s-%s", ls, lr)
 	lrTols := fmt.Sprintf("%s-%s", lr, ls)
 	_, err := c.ovnNbCommand(MayExist, "lsp-add", ls, lsTolr, "--",
@@ -802,20 +800,6 @@ func (c LegacyClient) createRouterPort(ls, lr, ip, mac string) error {
 		"set", "logical_switch_port", lsTolr, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
 	if err != nil {
 		klog.Errorf("failed to create switch router port %s: %v", lsTolr, err)
-		return err
-	}
-	if len(ip) == 0 {
-		klog.Errorf("failed to create switch router port: ip is empty")
-		return err
-	}
-	ipStr := strings.Split(ip, ",")
-	if len(ipStr) == 2 {
-		_, err = c.ovnNbCommand(MayExist, "lrp-add", lr, lrTols, mac, ipStr[0], ipStr[1])
-	} else {
-		_, err = c.ovnNbCommand(MayExist, "lrp-add", lr, lrTols, mac, ipStr[0])
-	}
-	if err != nil {
-		klog.Errorf("failed to create router port %s: %v", lrTols, err)
 		return err
 	}
 	return nil
@@ -1179,6 +1163,18 @@ func (c LegacyClient) DeleteNatRule(logicalIP, router string) error {
 	}
 
 	return err
+}
+
+func (c *LegacyClient) NatRuleExists(logicalIP string) (bool, error) {
+	results, err := c.CustomFindEntity("NAT", []string{"external_ip"}, fmt.Sprintf("logical_ip=%s", logicalIP))
+	if err != nil {
+		klog.Errorf("customFindEntity failed, %v", err)
+		return false, err
+	}
+	if len(results) == 0 {
+		return false, nil
+	}
+	return true, nil
 }
 
 func (c LegacyClient) DeleteMatchedStaticRoute(cidr, nexthop, router string) error {

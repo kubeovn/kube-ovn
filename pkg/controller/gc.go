@@ -35,6 +35,7 @@ func (c *Controller) gc() error {
 		c.gcLogicalRouterPort,
 		c.gcVip,
 		c.gcLbSvcPods,
+		c.gcVpcDns,
 	}
 	for _, gcFunc := range gcFunctions {
 		if err := gcFunc(); err != nil {
@@ -646,6 +647,10 @@ func (c *Controller) gcStaticRoute() error {
 	for _, route := range routes {
 		if route.CIDR != "0.0.0.0/0" && route.CIDR != "::/0" && c.ipam.ContainAddress(route.CIDR) {
 			klog.Infof("gc static route %s %s %s", route.Policy, route.CIDR, route.NextHop)
+			exist, err := c.ovnLegacyClient.NatRuleExists(route.CIDR)
+			if exist || err != nil {
+				continue
+			}
 			if err := c.ovnLegacyClient.DeleteStaticRoute(route.CIDR, c.config.ClusterRouter); err != nil {
 				klog.Errorf("failed to delete stale route %s, %v", route.NextHop, err)
 			}
@@ -761,6 +766,76 @@ func (c *Controller) gcLbSvcPods() error {
 						klog.Errorf("failed to delete lb svc deployment in namespace %s, %v", ns.Name, err)
 					}
 				}
+			}
+		}
+	}
+	return nil
+}
+
+func (c *Controller) gcVpcDns() error {
+	if !c.config.EnableLb {
+		return nil
+	}
+
+	klog.Infof("start to gc vpc dns")
+	vds, err := c.vpcDnsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vpc-dns, %v", err)
+		return err
+	}
+
+	sel, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{util.VpcDnsNameLabel: "true"}})
+
+	deps, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).List(context.Background(), metav1.ListOptions{
+		LabelSelector: sel.String(),
+	})
+	if err != nil {
+		klog.Errorf("failed to list vpc-dns deployment, %s", err)
+		return err
+	}
+
+	for _, dep := range deps.Items {
+		canFind := false
+		for _, vd := range vds {
+			name := genVpcDnsDpName(vd.Name)
+			if dep.Name == name {
+				canFind = true
+				break
+			}
+		}
+		if !canFind {
+			err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Delete(context.Background(),
+				dep.Name, metav1.DeleteOptions{})
+			if err != nil {
+				klog.Errorf("failed to delete vpc-dns deployment, %s", err)
+				return err
+			}
+		}
+	}
+
+	slrs, err := c.config.KubeOvnClient.KubeovnV1().SwitchLBRules().List(context.Background(), metav1.ListOptions{
+		LabelSelector: sel.String(),
+	})
+	if err != nil {
+		klog.Errorf("failed to list vpc-dns SwitchLBRules, %s", err)
+		return err
+	}
+
+	for _, slr := range slrs.Items {
+		canFind := false
+		for _, vd := range vds {
+			name := genVpcDnsDpName(vd.Name)
+			if slr.Name == name {
+				canFind = true
+				break
+			}
+		}
+		if !canFind {
+			err := c.config.KubeOvnClient.KubeovnV1().SwitchLBRules().Delete(context.Background(),
+				slr.Name, metav1.DeleteOptions{})
+			if err != nil {
+				klog.Errorf("failed to delete vpc-dns SwitchLBRule, %s", err)
+				return err
 			}
 		}
 	}

@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.10.4 (2022-07-18)
+
+ * [1e4a1959](https://github.com/kubeovn/kube-ovn/commit/1e4a195992020c422a3f6edf82e06a2277e00ca7) set release 1.10.4
+ * [0bbcb389](https://github.com/kubeovn/kube-ovn/commit/0bbcb3898fb5b590637d78b4e5b68f528637ca97) prepare for release 1.10.4
+ * [fb76c58e](https://github.com/kubeovn/kube-ovn/commit/fb76c58e51894cb18f720ada9f3c58257745e285) fix: response has no gw when create nic without default route (#1703)
+ * [55b3d508](https://github.com/kubeovn/kube-ovn/commit/55b3d508392276c5104500ee52f7537ea8111548) ignore ovsdb-server/compact error: not storing a duplicate snapshot
+ * [b6084777](https://github.com/kubeovn/kube-ovn/commit/b6084777c279e3e031405dd0e91bb9d6b0c90a31) Get latest vpc data from apiserver instead of cache (#1684)
+ * [f447a1d5](https://github.com/kubeovn/kube-ovn/commit/f447a1d519d7c61c61c85f82dd485fe03126f0fc) update priority range in htb qos (#1688)
+ * [bdfdc178](https://github.com/kubeovn/kube-ovn/commit/bdfdc178174abd3e3f4e40eb5e2f56a28086ae98) fix: clean vip eip snat dant fip in cleanup.sh (#1690)
+ * [460f930c](https://github.com/kubeovn/kube-ovn/commit/460f930cfb429997213a16376caa175d159a5655) add upgrade-ovs script (#1681)
+
+### Contributors
+
+ * Mengxin Liu
+ * Wang Bo
+ * bobz965
+ * hzma
+ * xujunjie-cover
+ * zhangzujian
+
 ## v1.10.3 (2022-07-13)
 
  * [f24ed686](https://github.com/kubeovn/kube-ovn/commit/f24ed6862f870481f6ad823401e6437c1781478c) set release 1.10.3
@@ -301,6 +321,20 @@
  * 张祖建
  * 罗云鹤
  * 范日明
+
+## v1.9.7 (2022-07-18)
+
+ * [eb412c96](https://github.com/kubeovn/kube-ovn/commit/eb412c96ff98d50ea5fddcef30f089b11d186c51) set release 1.9.7
+ * [07bec2a2](https://github.com/kubeovn/kube-ovn/commit/07bec2a203798c54f8585f1d0469eb3fb713a999) prepare for release 1.9.7
+ * [a798a8c2](https://github.com/kubeovn/kube-ovn/commit/a798a8c25633e5dbc8ac72a3d90dce8147aa422a) Get latest vpc data from apiserver instead of cache (#1684)
+ * [8bc1b169](https://github.com/kubeovn/kube-ovn/commit/8bc1b1697145ed4dc488588c01862c8f20949a90) update priority range in htb qos (#1688)
+ * [ef4673d2](https://github.com/kubeovn/kube-ovn/commit/ef4673d204a83dc7d98ace69b55007fbed265d7e) add upgrade-ovs script (#1681)
+
+### Contributors
+
+ * Mengxin Liu
+ * Wang Bo
+ * hzma
 
 ## v1.9.6 (2022-07-13)
 

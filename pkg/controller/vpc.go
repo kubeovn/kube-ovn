@@ -199,6 +199,35 @@ func (c *Controller) reconcileRouterPorts(vpc *kubeovnv1.Vpc) error {
 	return nil
 }
 
+func (c *Controller) reconcileRouterPortBySubnet(vpc *kubeovnv1.Vpc, subnet *kubeovnv1.Subnet) error {
+	router := vpc.Name
+	routerPortName := ovs.LogicalRouterPortName(router, subnet.Name)
+	exists, err := c.ovnClient.LogicalRouterPortExists(routerPortName)
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		subnet, err := c.subnetsLister.Get(subnet.Name)
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				return nil
+			}
+			klog.Errorf("failed to get subnet %s, err %v", subnet.Name, err)
+			return err
+		}
+
+		networks := util.GetIpAddrWithMask(subnet.Spec.Gateway, subnet.Spec.CIDRBlock)
+		klog.Infof("router port does not exist, trying to create %s with ip %s", routerPortName, networks)
+
+		if err := c.ovnClient.AddLogicalRouterPort(router, routerPortName, "", networks); err != nil {
+			klog.Errorf("failed to create router port %s, err %v", routerPortName, err)
+			return err
+		}
+	}
+	return nil
+}
+
 type VpcLoadBalancer struct {
 	TcpLoadBalancer     string
 	TcpSessLoadBalancer string
@@ -660,17 +689,13 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 	}
 
 	for _, subnet := range allSubnets {
-		deleted, err := c.handleSubnetFinalizer(subnet)
-		if err != nil {
-			klog.Errorf("handle subnet finalizer failed %v", err)
-			return nil, "", err
+		if subnet.Spec.Vpc != vpc.Name || !subnet.DeletionTimestamp.IsZero() {
+			continue
 		}
 
-		if !deleted && subnet.Spec.Vpc == vpc.Name {
-			subnets = append(subnets, subnet.Name)
-			if subnet.Spec.Default {
-				defaultSubnet = subnet.Name
-			}
+		subnets = append(subnets, subnet.Name)
+		if subnet.Spec.Default {
+			defaultSubnet = subnet.Name
 		}
 	}
 	return

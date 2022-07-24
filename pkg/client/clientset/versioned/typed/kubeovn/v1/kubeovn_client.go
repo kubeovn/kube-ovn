@@ -41,6 +41,7 @@ type KubeovnV1Interface interface {
 	VipsGetter
 	VlansGetter
 	VpcsGetter
+	VpcDnsesGetter
 	VpcNatGatewaysGetter
 }
 
@@ -99,6 +100,10 @@ func (c *KubeovnV1Client) Vlans() VlanInterface {
 
 func (c *KubeovnV1Client) Vpcs() VpcInterface {
 	return newVpcs(c)
+}
+
+func (c *KubeovnV1Client) VpcDnses() VpcDnsInterface {
+	return newVpcDnses(c)
 }
 
 func (c *KubeovnV1Client) VpcNatGateways() VpcNatGatewayInterface {
