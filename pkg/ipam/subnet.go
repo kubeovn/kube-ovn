@@ -31,6 +31,8 @@ type Subnet struct {
 	NicToMac         map[string]string
 	MacToPod         map[string]string
 	PodToNicList     map[string][]string
+	V4Gw             string
+	V6Gw             string
 }
 
 func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
