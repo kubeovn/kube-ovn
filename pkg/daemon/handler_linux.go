@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"syscall"
 
 	"golang.org/x/sys/unix"
 	v1 "k8s.io/api/core/v1"
@@ -34,8 +35,11 @@ func createShortSharedDir(pod *v1.Pod, volumeName string) (err error) {
 	}
 	originSharedDir := fmt.Sprintf("/var/lib/kubelet/pods/%s/volumes/kubernetes.io~empty-dir/%s", pod.UID, volumeName)
 	newSharedDir := getShortSharedDir(pod.UID, volumeName)
+	// set vhostuser dir 777 for qemu has the permission to create sock
+	mask := syscall.Umask(0)
+	defer syscall.Umask(mask)
 	if _, err = os.Stat(newSharedDir); os.IsNotExist(err) {
-		err = os.MkdirAll(newSharedDir, 0750)
+		err = os.MkdirAll(newSharedDir, 0777)
 		if err != nil {
 			return fmt.Errorf("createSharedDir: Failed to create dir (%s): %v", newSharedDir, err)
 		}
