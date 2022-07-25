@@ -447,6 +447,17 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		return err
+	}
+
+	for _, subnet := range subnets {
+		if subnet.Spec.Vpc == key {
+			c.addOrUpdateSubnetQueue.Add(subnet.Name)
+		}
+	}
+
 	return nil
 }
 
