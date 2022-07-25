@@ -990,6 +990,12 @@ func (c *Controller) markAndCleanInternalPort() error {
 	return nil
 }
 
+func rotateLog() {
+	if output, err := exec.Command("logrotate", "/etc/logrotate.d/kubeovn").CombinedOutput(); err != nil {
+		klog.Errorf("failed to rotate kube-ovn log %q", output)
+	}
+}
+
 // Run starts controller
 func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
@@ -1000,6 +1006,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 
 	go wait.Until(ovs.CleanLostInterface, time.Minute, stopCh)
 	go wait.Until(recompute, 10*time.Minute, stopCh)
+	go wait.Until(rotateLog, 1*time.Hour, stopCh)
 
 	if ok := cache.WaitForCacheSync(stopCh, c.providerNetworksSynced, c.subnetsSynced, c.podsSynced, c.nodesSynced); !ok {
 		klog.Fatalf("failed to wait for caches to sync")
