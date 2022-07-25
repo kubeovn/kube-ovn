@@ -96,10 +96,20 @@ func InitMirror(config *Configuration) error {
 	return configureEmptyMirror(config.MirrorNic, config.MTU)
 }
 
-func ovsInitProviderNetwork(provider, nic string) (int, error) {
+func ovsInitProviderNetwork(provider, nic string, exchangeLinkName bool) (int, error) {
 	// create and configure external bridge
 	brName := util.ExternalBridgeName(provider)
-	if err := configExternalBridge(provider, brName, nic); err != nil {
+	if exchangeLinkName {
+		exchanged, err := changeProvideNicName(nic, brName)
+		if err != nil {
+			return 0, err
+		}
+		if exchanged {
+			nic, brName = brName, nic
+		}
+	}
+
+	if err := configExternalBridge(provider, brName, nic, exchangeLinkName); err != nil {
 		errMsg := fmt.Errorf("failed to create and configure external bridge %s: %v", brName, err)
 		klog.Error(errMsg)
 		return 0, errMsg
@@ -124,35 +134,52 @@ func ovsInitProviderNetwork(provider, nic string) (int, error) {
 }
 
 func ovsCleanProviderNetwork(provider string) error {
-	output, err := ovs.Exec("list-br")
+	output, err := ovs.Exec(ovs.IfExists, "get", "open", ".", "external-ids:ovn-bridge-mappings")
 	if err != nil {
+		return fmt.Errorf("failed to get ovn-bridge-mappings, %v: %q", err, output)
+	}
+
+	var idx int
+	var m, brName string
+	mappingPrefix := provider + ":"
+	brMappings := strings.Split(output, ",")
+	for idx, m = range brMappings {
+		if strings.HasPrefix(m, mappingPrefix) {
+			brName = m[len(mappingPrefix):]
+			break
+		}
+	}
+
+	if output, err = ovs.Exec("list-br"); err != nil {
 		return fmt.Errorf("failed to list OVS bridge %v: %q", err, output)
 	}
 
-	brName := util.ExternalBridgeName(provider)
 	if !util.ContainsString(strings.Split(output, "\n"), brName) {
 		return nil
 	}
 
-	if output, err = ovs.Exec(ovs.IfExists, "get", "open", ".", "external-ids:ovn-bridge-mappings"); err != nil {
-		return fmt.Errorf("failed to get ovn-bridge-mappings, %v: %q", err, output)
+	// get host nic
+	if output, err = ovs.Exec("list-ports", brName); err != nil {
+		return fmt.Errorf("failed to list ports of OVS bridge %s, %v: %q", brName, err, output)
 	}
 
-	mappings := strings.Split(output, ",")
-	brMap := fmt.Sprintf("%s:%s", provider, brName)
-
-	var idx int
-	for idx = range mappings {
-		if mappings[idx] == brMap {
-			break
+	// remove host nic from the external bridge
+	if output != "" {
+		for _, port := range strings.Split(output, "\n") {
+			if err = removeProviderNic(port, brName); err != nil {
+				errMsg := fmt.Errorf("failed to remove port %s from external bridge %s: %v", port, brName, err)
+				klog.Error(errMsg)
+				return errMsg
+			}
 		}
 	}
-	if idx != len(mappings) {
-		mappings = append(mappings[:idx], mappings[idx+1:]...)
-		if len(mappings) == 0 {
+
+	if idx != len(brMappings) {
+		brMappings = append(brMappings[:idx], brMappings[idx+1:]...)
+		if len(brMappings) == 0 {
 			output, err = ovs.Exec(ovs.IfExists, "remove", "open", ".", "external-ids", "ovn-bridge-mappings")
 		} else {
-			output, err = ovs.Exec("set", "open", ".", "external-ids:ovn-bridge-mappings="+strings.Join(mappings, ","))
+			output, err = ovs.Exec("set", "open", ".", "external-ids:ovn-bridge-mappings="+strings.Join(brMappings, ","))
 		}
 		if err != nil {
 			return fmt.Errorf("failed to set ovn-bridge-mappings, %v: %q", err, output)
@@ -164,7 +191,7 @@ func ovsCleanProviderNetwork(provider string) error {
 	}
 	macMappings := strings.Split(output, ",")
 	for _, macMap := range macMappings {
-		if len(macMap) == len(provider)+18 && strings.HasPrefix(macMap, provider) {
+		if strings.HasPrefix(macMap, mappingPrefix) {
 			macMappings = util.RemoveString(macMappings, macMap)
 			break
 		}
@@ -185,9 +212,9 @@ func ovsCleanProviderNetwork(provider string) error {
 
 	// remove host nic from the external bridge
 	if output != "" {
-		for _, nic := range strings.Split(output, "\n") {
-			if err = removeProviderNic(nic, brName); err != nil {
-				errMsg := fmt.Errorf("failed to remove nic %s from external bridge %s: %v", nic, brName, err)
+		for _, port := range strings.Split(output, "\n") {
+			if err = removeProviderNic(port, brName); err != nil {
+				errMsg := fmt.Errorf("failed to remove port %s from external bridge %s: %v", port, brName, err)
 				klog.Error(errMsg)
 				return errMsg
 			}
@@ -197,6 +224,12 @@ func ovsCleanProviderNetwork(provider string) error {
 	// remove OVS bridge
 	if output, err = ovs.Exec(ovs.IfExists, "del-br", brName); err != nil {
 		return fmt.Errorf("failed to remove OVS bridge %s, %v: %q", brName, err, output)
+	}
+
+	if br := util.ExternalBridgeName(provider); br != brName {
+		if _, err = changeProvideNicName(br, brName); err != nil {
+			return err
+		}
 	}
 
 	return nil
