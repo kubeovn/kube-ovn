@@ -689,7 +689,7 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 	}
 
 	for _, subnet := range allSubnets {
-		if subnet.Spec.Vpc != vpc.Name || !subnet.DeletionTimestamp.IsZero() {
+		if subnet.Spec.Vpc != vpc.Name || !subnet.DeletionTimestamp.IsZero() || !isOvnSubnet(subnet) {
 			continue
 		}
 
