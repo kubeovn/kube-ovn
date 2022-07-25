@@ -135,6 +135,8 @@ const (
 	VpcDnsConfig           = "vpc-dns-config"
 	VpcDnsDepTemplate      = "vpc-dns-dep"
 
+	DefaultSecurityGroupName = "default-securitygroup"
+
 	DefaultVpc    = "ovn-cluster"
 	DefaultSubnet = "ovn-default"
 
