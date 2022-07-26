@@ -15,6 +15,14 @@ If you miss the good old days of SDN, then Kube-OVN is your choice in Cloud Nati
 Kube-OVN, a [CNCF Sandbox Level Project](https://www.cncf.io/sandbox-projects/), integrates the OVN-based Network Virtualization with Kubernetes. 
 It offers an advanced Container Network Fabric for Enterprises with the most functions, extreme performance and the easiest operation.
 
+## Community
+The Kube-OVN community is waiting for your participation!
+- Follow us at [Twitter](https://twitter.com/KubeOvn)
+- Chat with us at [Slack](https://kube-ovn-slackin.herokuapp.com/)
+- 微信用户扫码加入交流群
+
+  ![Image of wechat](./docs/wechat.png)
+
 ## Features
 - **Namespaced Subnets**: Each Namespace can have a unique Subnet (backed by a Logical Switch). Pods within the Namespace will have IP addresses allocated from the Subnet. It's also possible for multiple Namespaces to share a Subnet.
 - **Vlan/Underlay Support**: In addition to overlay network, Kube-OVN also supports underlay and vlan mode network for better performance and direct connectivity with physical network.
@@ -93,14 +101,6 @@ We are looking forward to your PR!
 4. Q: What's the encapsulation?
 
    A: For overlay mode, Kube-OVN uses Geneve/Vxlan/STT to encapsulate packets between nodes. For Vlan/Underlay mode there is no encapsulation.
-
-## Community
-The Kube-OVN community is waiting for your participation!
-- Follow us at [Twitter](https://twitter.com/KubeOvn)
-- Chat with us at [Slack](https://kube-ovn-slackin.herokuapp.com/)
-- 微信用户扫码加入交流群
-
-  ![Image of wechat](./docs/wechat.png)
 
 ## License
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Falauda%2Fkube-ovn.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Falauda%2Fkube-ovn?ref=badge_large)
