@@ -900,8 +900,13 @@ func (c *Controller) handleAddIptablesSnatRule(key string) error {
 		return err
 	}
 	// create snat
-	err = c.createSnatInPod(eip.Spec.NatGwDp, eip.Spec.V4ip, snat.Spec.InternalCIDR)
-	if err != nil {
+	v4Cidr, _ := util.SplitStringIP(snat.Spec.InternalCIDR)
+	if v4Cidr == "" {
+		// only support IPv4 snat
+		err = fmt.Errorf("failed to get snat v4 internal cidr, original cidr is %s", snat.Spec.InternalCIDR)
+		return err
+	}
+	if err = c.createSnatInPod(eip.Spec.NatGwDp, eip.Spec.V4ip, v4Cidr); err != nil {
 		klog.Errorf("failed to create snat, %v", err)
 		return err
 	}
@@ -942,10 +947,15 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 		return err
 	}
 	snat := cachedSnat.DeepCopy()
+	v4Cidr, _ := util.SplitStringIP(snat.Spec.InternalCIDR)
+	if v4Cidr == "" {
+		err = fmt.Errorf("failed to get snat v4 internal cidr, original cidr is %s", snat.Spec.InternalCIDR)
+		return err
+	}
 	// should delete
 	if !snat.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("clean snat '%s' in pod", key)
-		if err = c.deleteSnatInPod(snat.Status.NatGwDp, snat.Status.V4ip, snat.Spec.InternalCIDR); err != nil {
+		if err = c.deleteSnatInPod(snat.Status.NatGwDp, snat.Status.V4ip, v4Cidr); err != nil {
 			klog.Errorf("failed to delete snat, %v", err)
 			return err
 		}
@@ -974,11 +984,11 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 	// snat change eip
 	if c.snatChangeEip(snat, eip) {
 		klog.V(3).Infof("snat change ip, old ip %s, new ip %s", snat.Status.V4ip, eip.Spec.V4ip)
-		if err = c.deleteSnatInPod(snat.Status.NatGwDp, snat.Status.V4ip, snat.Spec.InternalCIDR); err != nil {
+		if err = c.deleteSnatInPod(snat.Status.NatGwDp, snat.Status.V4ip, v4Cidr); err != nil {
 			klog.Errorf("failed to delete old snat, %v", err)
 			return err
 		}
-		if err = c.createSnatInPod(snat.Status.NatGwDp, eip.Spec.V4ip, snat.Spec.InternalCIDR); err != nil {
+		if err = c.createSnatInPod(snat.Status.NatGwDp, eip.Spec.V4ip, v4Cidr); err != nil {
 			klog.Errorf("failed to create new snat, %v", err)
 			return err
 		}
@@ -1004,7 +1014,7 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 	if snat.Status.Redo != "" &&
 		snat.Status.V4ip != "" &&
 		snat.DeletionTimestamp.IsZero() {
-		if err = c.createSnatInPod(snat.Status.NatGwDp, snat.Status.V4ip, snat.Spec.InternalCIDR); err != nil {
+		if err = c.createSnatInPod(snat.Status.NatGwDp, snat.Status.V4ip, v4Cidr); err != nil {
 			klog.Errorf("failed to create new snat, %v", err)
 			return err
 		}
