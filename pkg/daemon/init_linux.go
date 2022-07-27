@@ -47,7 +47,7 @@ func changeProvideNicName(current, target string) (bool, error) {
 	}
 	if link.Type() == "openvswitch" {
 		klog.Infof("%s is an openvswitch interface, skip", current)
-		return false, nil
+		return true, nil
 	}
 
 	// set link unmanaged by NetworkManager to avoid getting new IP by DHCP
