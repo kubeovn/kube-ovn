@@ -646,11 +646,12 @@ func (c *Controller) gcStaticRoute() error {
 	}
 	for _, route := range routes {
 		if route.CIDR != "0.0.0.0/0" && route.CIDR != "::/0" && c.ipam.ContainAddress(route.CIDR) {
-			klog.Infof("gc static route %s %s %s", route.Policy, route.CIDR, route.NextHop)
 			exist, err := c.ovnLegacyClient.NatRuleExists(route.CIDR)
 			if exist || err != nil {
+				klog.Errorf("failed to get NatRule by LogicalIP %s, %v", route.CIDR, err)
 				continue
 			}
+			klog.Infof("gc static route %s %s %s", route.Policy, route.CIDR, route.NextHop)
 			if err := c.ovnLegacyClient.DeleteStaticRoute(route.CIDR, c.config.ClusterRouter); err != nil {
 				klog.Errorf("failed to delete stale route %s, %v", route.NextHop, err)
 			}

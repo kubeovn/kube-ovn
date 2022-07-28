@@ -447,6 +447,17 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		return err
+	}
+
+	for _, subnet := range subnets {
+		if subnet.Spec.Vpc == key {
+			c.addOrUpdateSubnetQueue.Add(subnet.Name)
+		}
+	}
+
 	return nil
 }
 
@@ -689,7 +700,7 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 	}
 
 	for _, subnet := range allSubnets {
-		if subnet.Spec.Vpc != vpc.Name || !subnet.DeletionTimestamp.IsZero() {
+		if subnet.Spec.Vpc != vpc.Name || !subnet.DeletionTimestamp.IsZero() || !isOvnSubnet(subnet) {
 			continue
 		}
 
