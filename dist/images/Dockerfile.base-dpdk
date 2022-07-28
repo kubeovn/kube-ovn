@@ -25,8 +25,9 @@ RUN cd /usr/src/ && \
 
 
 RUN cd /usr/src/ && \
-    git clone -b branch-2.16 --depth=1 https://github.com/openvswitch/ovs.git && \
+    git clone https://github.com/openvswitch/ovs.git && \
     cd ovs && \
+    git checkout c50a0f080d95e9027b7ba3a70150b02c2377c721 && \
     curl -s https://github.com/kubeovn/ovs/commit/22ea22c40b46ee5adeae977ff6cfca81b3ff25d7.patch | git apply && \
     ./boot.sh && \
     rm -rf .git && \
@@ -37,14 +38,9 @@ RUN cd /usr/src/ && \
 
 RUN dpkg -i /usr/src/python3-openvswitch*.deb /usr/src/libopenvswitch*.deb
 
-RUN cd /usr/src/ && git clone -b branch-21.06 --depth=1 https://github.com/ovn-org/ovn.git && \
+RUN cd /usr/src/ && git clone -b branch-21.06 --depth=1 https://github.com/kubeovn/ovn.git && \
     cd ovn && \
-    curl -s https://github.com/kubeovn/ovn/commit/e24734913d25c0bffdf1cfd79e14ef43d01e1019.patch | git apply && \
-    curl -s https://github.com/kubeovn/ovn/commit/8f4e4868377afb5e980856755b9f6394f8b649e2.patch | git apply && \
-    curl -s https://github.com/kubeovn/ovn/commit/23a87cabb76fbdce5092a6b3d3b56f3fa8dd61f5.patch | git apply && \
-    curl -s https://github.com/kubeovn/ovn/commit/89ca60989df4af9a96cc6024e04f99b9b77bad22.patch | git apply && \
-    curl -s https://github.com/kubeovn/ovn/commit/aeafa43fc51be8ea1c7abfbe779c69205c1c5aa4.patch | git apply && \
-    curl -s https://github.com/kubeovn/ovn/commit/71f831b9cc5a6dc923af4ca90286857e2cf8b1d3.patch | git apply && \
+
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \
