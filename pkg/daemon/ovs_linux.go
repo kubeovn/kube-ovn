@@ -582,13 +582,7 @@ func configProviderNic(nicName, brName string) (int, error) {
 		return 0, fmt.Errorf("failed to set OVS bridge %s up: %v", brName, err)
 	}
 
-	scopeOrders := [...]netlink.Scope{
-		netlink.SCOPE_HOST,
-		netlink.SCOPE_LINK,
-		netlink.SCOPE_SITE,
-		netlink.SCOPE_UNIVERSE,
-	}
-	for _, scope := range scopeOrders {
+	for _, scope := range routeScopeOrders {
 		for _, route := range routes {
 			if route.Gw == nil && route.Dst != nil && route.Dst.IP.IsLinkLocalUnicast() {
 				// skip 169.254.0.0/16 and fe80::/10

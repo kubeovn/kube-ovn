@@ -467,6 +467,7 @@ func (c *Controller) initDefaultProviderNetwork() error {
 		},
 		Spec: kubeovnv1.ProviderNetworkSpec{
 			DefaultInterface: c.config.DefaultHostInterface,
+			ExchangeLinkName: c.config.DefaultExchangeLinkName,
 		},
 	}
 
