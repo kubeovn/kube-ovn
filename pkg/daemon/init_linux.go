@@ -23,17 +23,24 @@ func nmSetManaged(device string, managed bool) error {
 
 	d, err := nm.GetDeviceByIpIface(device)
 	if err != nil {
+		klog.Errorf("failed to get device by IP iface %s: %v", device, err)
 		return err
 	}
 	current, err := d.GetPropertyManaged()
 	if err != nil {
+		klog.Errorf("failed to get device property managed: %v", err)
 		return err
 	}
 	if current == managed {
 		return nil
 	}
 
-	return d.SetPropertyManaged(managed)
+	if err = d.SetPropertyManaged(managed); err != nil {
+		klog.Errorf("failed to set device property managed to %v: %v", managed, err)
+		return err
+	}
+
+	return nil
 }
 
 func changeProvideNicName(current, target string) (bool, error) {
