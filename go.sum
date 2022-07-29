@@ -1031,6 +1031,8 @@ github.com/osrg/gobgp v0.0.0-20190401195721-805d02fdfbc5 h1:ZFqHsIsRU5o6JY4HrCrk
 github.com/osrg/gobgp v0.0.0-20190401195721-805d02fdfbc5/go.mod h1:CM+XMF5H4FfrlOm3OCFsOXJkVmWB7sx1AfoS+EKA47g=
 github.com/ovn-org/libovsdb v0.0.0-20220603173653-bbc32842d174 h1:vn8YwJUXw0+E/JZu+ktRB8mMw9C14BXOOwksxg2KtUs=
 github.com/ovn-org/libovsdb v0.0.0-20220603173653-bbc32842d174/go.mod h1:BQPdnSM2QOKxPwxl7wHJDSPP4B/CDKq3+vzgFW3J5gE=
+github.com/ovn-org/libovsdb v0.6.1-0.20220728174359-0f874300cb47 h1:Wl5+owcpFZnDz+BVLOuPFxon4jLOR7EiEFSrke/0qxo=
+github.com/ovn-org/libovsdb v0.6.1-0.20220728174359-0f874300cb47/go.mod h1:BQPdnSM2QOKxPwxl7wHJDSPP4B/CDKq3+vzgFW3J5gE=
 github.com/parnurzeal/gorequest v0.2.16 h1:T/5x+/4BT+nj+3eSknXmCTnEVGSzFzPGdpqmUVVZXHQ=
 github.com/parnurzeal/gorequest v0.2.16/go.mod h1:3Kh2QUMJoqw3icWAecsyzkpY7UzRfDhbRdTjtNwNiUE=
 github.com/pascaldekloe/goe v0.0.0-20180627143212-57f6aae5913c/go.mod h1:lzWF7FIEvWOWxwDKqyGYQf6ZUaNfKdP144TG7ZOy1lc=
