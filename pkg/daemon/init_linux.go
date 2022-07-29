@@ -50,6 +50,7 @@ func changeProvideNicName(current, target string) (bool, error) {
 			klog.Infof("link %s not found, skip", current)
 			return false, nil
 		}
+		klog.Errorf("failed to get link %s: %v", current, err)
 		return false, err
 	}
 	if link.Type() == "openvswitch" {
@@ -59,26 +60,32 @@ func changeProvideNicName(current, target string) (bool, error) {
 
 	// set link unmanaged by NetworkManager to avoid getting new IP by DHCP
 	if err = nmSetManaged(current, false); err != nil {
+		klog.Errorf("failed set device %s to unmanaged by NetworkManager: %v", current, err)
 		return false, err
 	}
 
 	klog.Infof("change nic name from %s to %s", current, target)
 	addresses, err := netlink.AddrList(link, netlink.FAMILY_ALL)
 	if err != nil {
+		klog.Errorf("failed to list addresses of link %s: %v", current, err)
 		return false, err
 	}
 	routes, err := netlink.RouteList(link, netlink.FAMILY_ALL)
 	if err != nil {
+		klog.Errorf("failed to list routes of link %s: %v", current, err)
 		return false, err
 	}
 
 	if err = netlink.LinkSetDown(link); err != nil {
+		klog.Errorf("failed to set link %s down: %v", current, err)
 		return false, err
 	}
 	if err = netlink.LinkSetName(link, target); err != nil {
+		klog.Errorf("failed to set name of link %s to %s: %v", current, target, err)
 		return false, err
 	}
 	if err = netlink.LinkSetUp(link); err != nil {
+		klog.Errorf("failed to set link %s up: %v", target, err)
 		return false, err
 	}
 
@@ -87,6 +94,7 @@ func changeProvideNicName(current, target string) (bool, error) {
 			continue
 		}
 		if err = netlink.AddrReplace(link, &addr); err != nil {
+			klog.Errorf("failed to replace address %s: %v", addr.String(), err)
 			return false, err
 		}
 	}
@@ -98,6 +106,7 @@ func changeProvideNicName(current, target string) (bool, error) {
 			}
 			if route.Scope == scope {
 				if err = netlink.RouteReplace(&route); err != nil {
+					klog.Errorf("failed to replace route %s: %v", route.String(), err)
 					return false, err
 				}
 			}

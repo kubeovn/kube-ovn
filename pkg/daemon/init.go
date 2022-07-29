@@ -102,6 +102,7 @@ func ovsInitProviderNetwork(provider, nic string, exchangeLinkName bool) (int, e
 	if exchangeLinkName {
 		exchanged, err := changeProvideNicName(nic, brName)
 		if err != nil {
+			klog.Errorf("failed to change provider nic name from %s to %s: %v", nic, brName, err)
 			return 0, err
 		}
 		if exchanged {
@@ -228,6 +229,7 @@ func ovsCleanProviderNetwork(provider string) error {
 
 	if br := util.ExternalBridgeName(provider); br != brName {
 		if _, err = changeProvideNicName(br, brName); err != nil {
+			klog.Errorf("failed to change provider nic name from %s to %s: %v", br, brName, err)
 			return err
 		}
 	}
