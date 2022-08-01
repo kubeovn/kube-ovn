@@ -11,7 +11,7 @@ RUN apt update && apt install build-essential git libnuma-dev autoconf curl \
     flake8 python3-sphinx graphviz groff wget libjemalloc-dev -y
 
 RUN cd /usr/src/ && \
-    git clone -b branch-2.16 --depth=1 https://github.com/openvswitch/ovs.git && \
+    git clone -b ovn-21.06 --depth=1 https://github.com/kubeovn/ovs.git && \
     cd ovs && \
     curl -s https://github.com/kubeovn/ovs/commit/22ea22c40b46ee5adeae977ff6cfca81b3ff25d7.patch | git apply && \
     ./boot.sh && \
@@ -24,6 +24,8 @@ RUN dpkg -i /usr/src/python3-openvswitch*.deb /usr/src/libopenvswitch*.deb
 
 RUN cd /usr/src/ && git clone -b branch-21.06 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
+    # avoid patch interface deletion & recreation during restart
+    curl -s https://github.com/kubeovn/ovn/commit/48c615300047adcda36535029b04ed30b69ca4c2.patch | git apply && \
     curl -s https://github.com/kubeovn/ovn/commit/e24734913d25c0bffdf1cfd79e14ef43d01e1019.patch | git apply && \
     curl -s https://github.com/kubeovn/ovn/commit/8f4e4868377afb5e980856755b9f6394f8b649e2.patch | git apply && \
     curl -s https://github.com/kubeovn/ovn/commit/23a87cabb76fbdce5092a6b3d3b56f3fa8dd61f5.patch | git apply && \
