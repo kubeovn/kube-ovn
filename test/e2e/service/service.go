@@ -315,11 +315,9 @@ var _ = Describe("[Service]", func() {
 
 			port := localEtpHostService.Spec.Ports[0].NodePort
 			for _, node := range nodes.Items {
-				hasEndpoint := hasEndpoint(node.Name, localEtpHostEndpoints)
 				for _, pod := range containerPods.Items {
-					shoudSucceed := hasEndpoint || !proxyIpvsMode
 					for _, nodeIP := range nodeIPs(node) {
-						checkService(checkCount, shoudSucceed, "kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...)
+						checkService(checkCount, true, "kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...)
 					}
 				}
 			}
@@ -332,11 +330,11 @@ var _ = Describe("[Service]", func() {
 
 			port := localEtpHostService.Spec.Ports[0].NodePort
 			for _, node := range nodes.Items {
-				hasEndpoint := hasEndpoint(node.Name, localEtpHostEndpoints)
+				hasEndpoint := proxyIpvsMode || hasEndpoint(node.Name, localEtpHostEndpoints)
 				for _, pod := range hostPods.Items {
-					shoudSucceed := hasEndpoint || (!proxyIpvsMode && pod.Spec.NodeName == node.Name)
+					shouldSucceed := hasEndpoint || pod.Spec.NodeName == node.Name
 					for _, nodeIP := range nodeIPs(node) {
-						checkService(checkCount, shoudSucceed, "kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...)
+						checkService(checkCount, shouldSucceed, "kubectl", strings.Fields(kubectlArgs(pod.Name, nodeIP, port))...)
 					}
 				}
 			}
@@ -349,7 +347,7 @@ var _ = Describe("[Service]", func() {
 
 			port := localEtpHostService.Spec.Ports[0].NodePort
 			for _, node := range nodes.Items {
-				shouldSucceed := hasEndpoint(node.Name, localEtpHostEndpoints)
+				shouldSucceed := proxyIpvsMode || hasEndpoint(node.Name, localEtpHostEndpoints)
 				for _, nodeIP := range nodeIPs(node) {
 					checkService(checkCount, shouldSucceed, "docker", append(dockerArgs, strings.Fields(curlArgs(nodeIP, port))...)...)
 				}
