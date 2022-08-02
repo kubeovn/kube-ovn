@@ -8,8 +8,6 @@ import (
 	"github.com/ovn-org/libovsdb/client"
 	"github.com/ovn-org/libovsdb/ovsdb"
 
-	"k8s.io/klog/v2"
-
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -22,7 +20,7 @@ const (
 func (c OvnClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, namespace string, portSecurity bool, securityGroups string, vips string, liveMigration bool, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs, vpc string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, true)
 	if err != nil {
-		return err
+		return fmt.Errorf("get logical switch port %s: %v", lspName, err)
 	}
 
 	// when kubevirt vm live-migrate, just consider the this case for now(keep-vm-ip=true):
@@ -217,7 +215,7 @@ func (c OvnClient) SetLogicalSwitchPortVirtualParents(lsName, parents string, ip
 
 		lsp, err := c.GetLogicalSwitchPort(lspName, false)
 		if err != nil {
-			return err
+			return fmt.Errorf("get logical switch port %s: %v", lspName, err)
 		}
 
 		lsp.Options["virtual-parents"] = parents
@@ -243,7 +241,7 @@ func (c OvnClient) SetLogicalSwitchPortVirtualParents(lsName, parents string, ip
 func (c OvnClient) SetLogicalSwitchPortSecurity(portSecurity bool, lspName, mac, ips, vips string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, false)
 	if err != nil {
-		return err
+		return fmt.Errorf("get logical switch port %s: %v", lspName, err)
 	}
 
 	lsp.PortSecurity = nil
@@ -287,7 +285,7 @@ func (c OvnClient) SetLogicalSwitchPortSecurity(portSecurity bool, lspName, mac,
 func (c OvnClient) EnablePortLayer2forward(lspName string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, false)
 	if err != nil {
-		return err
+		return fmt.Errorf("get logical switch port %s: %v", lspName, err)
 	}
 
 	lsp.Addresses = []string{"unknown"}
@@ -307,7 +305,7 @@ func (c OvnClient) SetLogicalSwitchPortVlanTag(lspName string, vlanID int) error
 
 	lsp, err := c.GetLogicalSwitchPort(lspName, false)
 	if err != nil {
-		return err
+		return fmt.Errorf("get logical switch port %s: %v", lspName, err)
 	}
 
 	// no need update vlan id
@@ -417,8 +415,7 @@ func (c OvnClient) ListLogicalSwitchPorts(needVendorFilter bool, externalIDs map
 
 		return true
 	}).List(context.TODO(), &lspList); err != nil {
-		klog.Errorf("list logical switch ports: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("list logical switch ports: %v", err)
 	}
 
 	return lspList, nil
