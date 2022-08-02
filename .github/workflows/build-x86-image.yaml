@@ -441,6 +441,8 @@ jobs:
             sudo make kind-install
             sudo kubectl patch subnet ovn-default --type merge \
               -p '{"spec":{"gatewayType": "centralized", "gatewayNode": "kube-ovn-control-plane"}}'
+            sudo kubectl -n kube-system patch svc kube-ovn-pinger --type merge \
+              -p '{"spec":{"type": "NodePort", "externalTrafficPolicy": "Local"}}'
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v3

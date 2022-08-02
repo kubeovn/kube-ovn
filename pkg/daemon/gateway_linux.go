@@ -323,6 +323,8 @@ func (c *Controller) setIptables() error {
 		v4Rules = []util.IPTableRule{
 			// nat packets marked by kube-proxy or kube-ovn
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x4000/0x4000 -j MASQUERADE`)},
+			// nat service traffic
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set --match-set ovn40subnets src -m set --match-set ovn40subnets dst -j MASQUERADE`)},
 			// do not nat node port service traffic with external traffic policy set to local
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -m set --match-set ovn40subnets-distributed-gw dst -j RETURN`)},
 			// nat node port service traffic with external traffic policy set to local for subnets with centralized gateway
@@ -351,6 +353,8 @@ func (c *Controller) setIptables() error {
 		v6Rules = []util.IPTableRule{
 			// nat packets marked by kube-proxy or kube-ovn
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x4000/0x4000 -j MASQUERADE`)},
+			// nat service traffic
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set --match-set ovn60subnets src -m set --match-set ovn60subnets dst -j MASQUERADE`)},
 			// do not nat node port service traffic with external traffic policy set to local
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -m set --match-set ovn60subnets-distributed-gw dst -j RETURN`)},
 			// nat node port service traffic with external traffic policy set to local for subnets with centralized gateway
