@@ -83,7 +83,7 @@ func (c OvnClient) DeleteGatewayChassises(lrpName string, chassises []string) er
 	}
 
 	if err := c.Transact("gateway-chassises-delete", ops); err != nil {
-		return fmt.Errorf("delete gateway chassises %s from logical router port %v: %v", chassises, lrpName, err)
+		return fmt.Errorf("delete gateway chassises %v from logical router port %s: %v", chassises, lrpName, err)
 	}
 
 	return nil

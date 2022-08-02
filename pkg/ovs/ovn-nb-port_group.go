@@ -66,7 +66,7 @@ func (c OvnClient) PortGroupUpdatePorts(pgName string, op ovsdb.Mutator, lspName
 	}
 
 	if err := c.Transact("pg-ports-update", ops); err != nil {
-		return fmt.Errorf("port group %s update ports %s: %v", pgName, lspNames, err)
+		return fmt.Errorf("port group %s update ports %v: %v", pgName, lspNames, err)
 	}
 
 	return nil
