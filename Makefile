@@ -292,8 +292,13 @@ kind-install-ic:
 	zone=az1 ic_db_host=$$ic_db_host gateway_node_name=kube-ovn1-control-plane j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
 	kubectl config use-context kind-kube-ovn
 	kubectl apply -f ovn-ic-0.yaml
+	sleep 6
+	kubectl -n kube-system get pods | grep ovs-ovn | awk '{print $$1}' | xargs kubectl -n kube-system delete pod
 	kubectl config use-context kind-kube-ovn1
 	kubectl apply -f ovn-ic-1.yaml
+	sleep 6
+	kubectl -n kube-system get pods | grep ovs-ovn | awk '{print $$1}' | xargs kubectl -n kube-system delete pod
+
 
 .PHONY: kind-install-cilium
 kind-install-cilium: kind-load-image kind-untaint-control-plane
