@@ -101,24 +101,24 @@ type Subnet struct {
 }
 
 type SubnetSpec struct {
-	Default    bool     `json:"default"`
+	Default    bool     `json:"default,omitempty"`
 	Vpc        string   `json:"vpc,omitempty"`
-	Protocol   string   `json:"protocol"`
+	Protocol   string   `json:"protocol,omitempty"`
 	Namespaces []string `json:"namespaces,omitempty"`
 	CIDRBlock  string   `json:"cidrBlock"`
 	Gateway    string   `json:"gateway"`
 	ExcludeIps []string `json:"excludeIps,omitempty"`
 	Provider   string   `json:"provider,omitempty"`
 
-	GatewayType string `json:"gatewayType"`
-	GatewayNode string `json:"gatewayNode"`
-	NatOutgoing bool   `json:"natOutgoing"`
+	GatewayType string `json:"gatewayType,omitempty"`
+	GatewayNode string `json:"gatewayNode,omitempty"`
+	NatOutgoing bool   `json:"natOutgoing,omitempty"`
 
 	ExternalEgressGateway string `json:"externalEgressGateway,omitempty"`
 	PolicyRoutingPriority uint32 `json:"policyRoutingPriority,omitempty"`
 	PolicyRoutingTableID  uint32 `json:"policyRoutingTableID,omitempty"`
 
-	Private      bool     `json:"private"`
+	Private      bool     `json:"private,omitempty"`
 	AllowSubnets []string `json:"allowSubnets,omitempty"`
 
 	Vlan   string `json:"vlan,omitempty"`
@@ -126,16 +126,16 @@ type SubnetSpec struct {
 
 	Vips []string `json:"vips,omitempty"`
 
-	LogicalGateway         bool `json:"logicalGateway"`
-	DisableGatewayCheck    bool `json:"disableGatewayCheck"`
-	DisableInterConnection bool `json:"disableInterConnection"`
+	LogicalGateway         bool `json:"logicalGateway,omitempty"`
+	DisableGatewayCheck    bool `json:"disableGatewayCheck,omitempty"`
+	DisableInterConnection bool `json:"disableInterConnection,omitempty"`
 
-	EnableDHCP    bool   `json:"enableDHCP"`
-	DHCPv4Options string `json:"dhcpV4Options"`
-	DHCPv6Options string `json:"dhcpV6Options"`
+	EnableDHCP    bool   `json:"enableDHCP,omitempty"`
+	DHCPv4Options string `json:"dhcpV4Options,omitempty"`
+	DHCPv6Options string `json:"dhcpV6Options,omitempty"`
 
-	EnableIPv6RA  bool   `json:"enableIPv6RA"`
-	IPv6RAConfigs string `json:"ipv6RAConfigs"`
+	EnableIPv6RA  bool   `json:"enableIPv6RA,omitempty"`
+	IPv6RAConfigs string `json:"ipv6RAConfigs,omitempty"`
 
 	Acls []Acl `json:"acls,omitempty"`
 }
