@@ -2,12 +2,14 @@ package controller_health_check
 
 import (
 	"fmt"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"k8s.io/klog/v2"
 	"net"
 	"os"
 	"strings"
 	"time"
+
+	"k8s.io/klog/v2"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 )
 
 func CmdMain() {
