@@ -187,4 +187,6 @@ const (
 
 	MatchV4Src = "ip4.src"
 	MatchV4Dst = "ip4.dst"
+
+	ChassisIDLength = 5
 )

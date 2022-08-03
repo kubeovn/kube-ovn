@@ -837,7 +837,7 @@ func (c *Controller) checkChassisDupl(node *v1.Node) error {
 		klog.Errorf("failed to get node %s chassisID, %v", node.Name, err)
 		return err
 	}
-	if chassisAdd == "" {
+	if len(chassisAdd) < util.ChassisIDLength {
 		klog.Errorf("chassis of node %s is empty", node.Name)
 		return err
 	}
@@ -1015,8 +1015,9 @@ func (c *Controller) validateChassis(node *v1.Node) error {
 		}
 		return nil
 	}
-	if chassisAdd == "" {
-		// If no chassisID for this node is obtained, we need to perform GC in order for the chassis to be re-registered
+	if len(chassisAdd) < util.ChassisIDLength {
+		// If no chassisID for this node is obtained, we need to perform GC for the chassis' being re-registered
+		klog.Errorf("chassis empty in node %s", node.Name)
 		if err = c.gcChassis(); err != nil {
 			return fmt.Errorf("failed to gc chassis, %v", err)
 		}
