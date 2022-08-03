@@ -11,17 +11,22 @@ import (
 
 // CreateAddressSet create address set with external ids
 func (c OvnClient) CreateAddressSet(asName string, externalIDs map[string]string) error {
-	as, err := c.GetAddressSet(asName, true)
+	// ovn acl doesn't support address_set name with '-'
+	if matched, err := matchAddressSetName(asName); err != nil || !matched {
+		return err
+	}
+
+	exists, err := c.AddressSetExists(asName)
 	if err != nil {
 		return err
 	}
 
 	// found, ingore
-	if as != nil {
+	if exists {
 		return nil
 	}
 
-	as = &ovnnb.AddressSet{
+	as := &ovnnb.AddressSet{
 		Name:        asName,
 		ExternalIDs: externalIDs,
 	}
@@ -108,6 +113,11 @@ func (c OvnClient) GetAddressSet(asName string, ignoreNotFound bool) (*ovnnb.Add
 	}
 
 	return as, nil
+}
+
+func (c OvnClient) AddressSetExists(name string) (bool, error) {
+	as, err := c.GetAddressSet(name, true)
+	return as != nil, err
 }
 
 // ListAddressSets list address set by external_ids

@@ -2,6 +2,7 @@ package ovs
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -74,4 +75,17 @@ func getIpv6Prefix(networks []string) []string {
 	}
 
 	return ipv6Prefix
+}
+
+func matchAddressSetName(asName string) (bool, error) {
+	matched, err := regexp.MatchString(`^[a-zA-Z_.][a-zA-Z_.0-9]*$`, asName)
+	if err != nil {
+		return false, err
+	}
+
+	if !matched {
+		return false, fmt.Errorf("address set %s must match `[a-zA-Z_.][a-zA-Z_.0-9]*`", asName)
+	}
+
+	return true, nil
 }
