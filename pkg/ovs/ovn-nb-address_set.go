@@ -12,8 +12,8 @@ import (
 // CreateAddressSet create address set with external ids
 func (c OvnClient) CreateAddressSet(asName string, externalIDs map[string]string) error {
 	// ovn acl doesn't support address_set name with '-'
-	if matched, err := matchAddressSetName(asName); err != nil || !matched {
-		return err
+	if matched := matchAddressSetName(asName); !matched {
+		return fmt.Errorf("address set %s must match `[a-zA-Z_.][a-zA-Z_.0-9]*`", asName)
 	}
 
 	exists, err := c.AddressSetExists(asName)
