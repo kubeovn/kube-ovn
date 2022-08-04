@@ -308,12 +308,24 @@ func (suite *OvnClientTestSuite) Test_ListAddressSets() {
 }
 
 /* acl unit test */
+func (suite *OvnClientTestSuite) Test_CreateIngressACL() {
+	suite.testCreateIngressACL()
+}
+
+func (suite *OvnClientTestSuite) Test_GetAcl() {
+	suite.testGetAcl()
+}
+
 func (suite *OvnClientTestSuite) Test_CreateAclOp() {
 	suite.testCreateAclOp()
 }
 
 func (suite *OvnClientTestSuite) Test_newAcl() {
 	suite.testnewAcl()
+}
+
+func (suite *OvnClientTestSuite) Test_newIngressAllowACL() {
+	suite.testnewIngressAllowACL()
 }
 
 /* mixed operations unit test */
