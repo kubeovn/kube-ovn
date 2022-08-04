@@ -25,6 +25,7 @@ type Configuration struct {
 	OvnSbAddr            string
 	OvnTimeout           int
 	CustCrdRetryMaxDelay int
+	CustCrdRetryMinDelay int
 	KubeConfigFile       string
 	KubeRestConfig       *rest.Config
 
@@ -96,7 +97,8 @@ func ParseFlags() (*Configuration, error) {
 		argOvnNbAddr            = pflag.String("ovn-nb-addr", "", "ovn-nb address")
 		argOvnSbAddr            = pflag.String("ovn-sb-addr", "", "ovn-sb address")
 		argOvnTimeout           = pflag.Int("ovn-timeout", 60, "")
-		argCustCrdRetryMaxDelay = pflag.Int("cust-crd-retry-max-delay", 20, "The max delay between custom crd two retries")
+		argCustCrdRetryMinDelay = pflag.Int("cust-crd-retry-min-delay", 2, "The max delay seconds between custom crd two retries")
+		argCustCrdRetryMaxDelay = pflag.Int("cust-crd-retry-max-delay", 20, "The max delay seconds between custom crd two retries")
 		argKubeConfigFile       = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 
 		argDefaultLogicalSwitch  = pflag.String("default-ls", util.DefaultSubnet, "The default logical switch name")
@@ -169,6 +171,7 @@ func ParseFlags() (*Configuration, error) {
 		OvnNbAddr:                     *argOvnNbAddr,
 		OvnSbAddr:                     *argOvnSbAddr,
 		OvnTimeout:                    *argOvnTimeout,
+		CustCrdRetryMinDelay:          *argCustCrdRetryMinDelay,
 		CustCrdRetryMaxDelay:          *argCustCrdRetryMaxDelay,
 		KubeConfigFile:                *argKubeConfigFile,
 		DefaultLogicalSwitch:          *argDefaultLogicalSwitch,
