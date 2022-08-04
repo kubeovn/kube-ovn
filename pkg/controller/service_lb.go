@@ -93,6 +93,9 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service) (dp *v1.Deployment)
 	if svc.Spec.LoadBalancerIP != "" {
 		podAnnotations[attchIpAnnotation] = svc.Spec.LoadBalancerIP
 	}
+	if v, ok := svc.Annotations[util.LogicalSwitchAnnotation]; ok {
+		podAnnotations[util.LogicalSwitchAnnotation] = v
+	}
 
 	dp = &v1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
