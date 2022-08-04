@@ -3,6 +3,7 @@ package e2e_ovnic_test
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"strings"
@@ -49,6 +50,13 @@ var _ = SynchronizedAfterSuite(func() {}, func() {
 	checkLSP("ts-az1", pods.Items[0], f)
 	checkLSP("ts-az0", pods.Items[0], f)
 
+	output, err = exec.Command("kubectl", "-n", "kube-system", "-l", "app=kube-ovn-pinger", "get", "pod", "-o=jsonpath={.items[0].status.podIP}").CombinedOutput()
+	Expect(err).NotTo(HaveOccurred())
+	if net.ParseIP(string(output)) == nil {
+		Fail(fmt.Sprintf("pinger ip %s not right", output))
+	}
+	ip0 := string(output)
+
 	// To avoid the situation that the wrong kube-config context is loaded in framework, and then the test cloud always
 	// pass the test. a replacement kube-client solution is introduced to force the correct context pod-list to be read.
 	// Then if framework read the wrong context, it will get wrong pod which from another cluster.
@@ -76,6 +84,14 @@ var _ = SynchronizedAfterSuite(func() {}, func() {
 
 	checkLSP("ts-az1", pods1.Items[0], f)
 	checkLSP("ts-az0", pods1.Items[0], f)
+
+	output, err = exec.Command("kubectl", "-n", "kube-system", "-l", "app=kube-ovn-pinger", "get", "pod", "-o=jsonpath={.items[0].metadata.name}").CombinedOutput()
+	Expect(err).NotTo(HaveOccurred())
+	Expect(output).ShouldNot(BeEmpty())
+
+	output, err = exec.Command("kubectl", "-n", "kube-system", "exec", "-i", string(output), "--", "/usr/bin/ping", ip0, "-c2").CombinedOutput()
+	Expect(err).NotTo(HaveOccurred())
+	Expect(string(output)).Should(ContainSubstring("0% packet loss"))
 })
 
 func buildConfigFromFlags(context, kubeconfigPath string) (*rest.Config, error) {

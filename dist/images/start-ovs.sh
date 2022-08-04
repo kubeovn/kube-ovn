@@ -63,6 +63,77 @@ else
   ovs-vsctl --no-wait set open_vswitch . other_config:hw-offload=false
 fi
 
+function exchange_link_names() {
+  mappings=($(ovs-vsctl --if-exists get open . external-ids:ovn-bridge-mappings | tr -d '"' | tr ',' ' '))
+  bridges=($(ovs-vsctl --no-heading --columns=name find bridge external-ids:vendor=kube-ovn external-ids:exchange-link-name=true))
+  for br in ${bridges[@]}; do
+    provider=""
+    for m in ${mappings[*]}; do
+      if echo $m | grep -q ":$br"'$'; then
+        provider=${m%:$br}
+        break
+      fi
+    done
+    if [ "x$provider" = "x" ]; then
+      echo "error: failed to get provider name for bridge $br"
+      continue
+    fi
+
+    port="br-$provider"
+    if ip link show $port 2>/dev/null; then
+      echo "link $port already exists"
+      continue
+    fi
+    if ! ip link show $br 2>/dev/null; then
+      echo "link $br does not exists"
+      continue
+    fi
+
+    echo "change link name from $br to $port"
+    ipv4_routes=($(ip -4 route show dev $br | tr ' ' '#'))
+    ipv6_routes=($(ip -6 route show dev $br | tr ' ' '#'))
+    ip link set $br down
+    ip link set $br name $port
+    ip link set $port up
+
+    # transfer IPv4 routes
+    default_ipv4_routes=()
+    for route in ${ipv4_routes[@]}; do
+      r=$(echo $route | tr '#' ' ')
+      if echo $r | grep -q -w 'scope link'; then
+        printf "add/replace IPv4 route $r to $port\n"
+        ip -4 route replace $r dev $port
+      else
+        default_ipv4_routes=(${default_ipv4_routes[@]} $route)
+      fi
+    done
+    for route in ${default_ipv4_routes[@]}; do
+      r=$(echo $route | tr '#' ' ')
+      printf "add/replace IPv4 route $r to $port\n"
+      ip -4 route replace $r dev $port
+    done
+
+    # transfer IPv6 routes
+    default_ipv6_routes=()
+    for route in ${ipv6_routes[@]}; do
+      r=$(echo $route | tr '#' ' ')
+      if echo $r | grep -q -w 'scope link'; then
+        printf "add/replace IPv6 route $r to $port\n"
+        ip -6 route replace $r dev $port
+      else
+        default_ipv6_routes=(${default_ipv6_routes[@]} $route)
+      fi
+    done
+    for route in ${default_ipv6_routes[@]}; do
+      r=$(echo $route | tr '#' ' ')
+      printf "add/replace IPv6 route $r to $port\n"
+      ip -6 route replace $r dev $port
+    done
+  done
+}
+
+exchange_link_names
+
 # Start vswitchd. restart will automatically set/unset flow-restore-wait which is not what we want
 /usr/share/openvswitch/scripts/ovs-ctl start --no-ovsdb-server --system-id=random
 /usr/share/openvswitch/scripts/ovs-ctl --protocol=udp --dport=6081 enable-protocol

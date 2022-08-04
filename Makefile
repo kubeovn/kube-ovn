@@ -292,8 +292,13 @@ kind-install-ic:
 	zone=az1 ic_db_host=$$ic_db_host gateway_node_name=kube-ovn1-control-plane j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
 	kubectl config use-context kind-kube-ovn
 	kubectl apply -f ovn-ic-0.yaml
+	sleep 6
+	kubectl -n kube-system get pods | grep ovs-ovn | awk '{print $$1}' | xargs kubectl -n kube-system delete pod
 	kubectl config use-context kind-kube-ovn1
 	kubectl apply -f ovn-ic-1.yaml
+	sleep 6
+	kubectl -n kube-system get pods | grep ovs-ovn | awk '{print $$1}' | xargs kubectl -n kube-system delete pod
+
 
 .PHONY: kind-install-cilium
 kind-install-cilium: kind-load-image kind-untaint-control-plane
@@ -353,14 +358,14 @@ lint:
 		echo "Code differs from gofmt's style" 1>&2 && exit 1; \
 	fi
 	@GOOS=linux go vet ./...
-	@GOOS=linux gosec -exclude=G204,G306,G404,G601 -exclude-dir=test -exclude-dir=pkg/client ./...
+	@GOOS=linux gosec -exclude=G204,G306,G404,G601,G301 -exclude-dir=test -exclude-dir=pkg/client ./...
 
 .PHONY: lint-windows
 lint-windows:
 	@GOOS=windows go vet ./cmd/windows/...
-	@GOOS=windows gosec -exclude=G204,G601 ./pkg/util
-	@GOOS=windows gosec -exclude=G204,G601 ./pkg/request
-	@GOOS=windows gosec -exclude=G204,G601 ./cmd/cni
+	@GOOS=windows gosec -exclude=G204,G601,G301 ./pkg/util
+	@GOOS=windows gosec -exclude=G204,G601,G301 ./pkg/request
+	@GOOS=windows gosec -exclude=G204,G601,G301 ./cmd/cni
 
 .PHONY: scan
 scan:

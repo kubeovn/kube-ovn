@@ -3,6 +3,7 @@
 ovs-dpctl del-dp ovs-system
 
 iptables -t nat -D POSTROUTING -m mark --mark 0x4000/0x4000 -j MASQUERADE
+iptables -t nat -D POSTROUTING -m set --match-set ovn40subnets src -m set --match-set ovn40subnets dst -j MASQUERADE
 iptables -t nat -D POSTROUTING -m mark --mark 0x80000/0x80000 -m set --match-set ovn40subnets-distributed-gw dst -j RETURN
 iptables -t nat -D POSTROUTING -m mark --mark 0x80000/0x80000 -j MASQUERADE
 iptables -t nat -D POSTROUTING -p tcp --tcp-flags SYN NONE -m conntrack --ctstate NEW -j RETURN
@@ -31,6 +32,7 @@ ipset destroy ovn40other-node
 ipset destroy ovn40services
 
 ip6tables -t nat -D POSTROUTING -m mark --mark 0x4000/0x4000 -j MASQUERADE
+ip6tables -t nat -D POSTROUTING -m set --match-set ovn60subnets src -m set --match-set ovn60subnets dst -j MASQUERADE
 ip6tables -t nat -D POSTROUTING -m mark --mark 0x80000/0x80000 -m set --match-set ovn60subnets-distributed-gw dst -j RETURN
 ip6tables -t nat -D POSTROUTING -m mark --mark 0x80000/0x80000 -j MASQUERADE
 ip6tables -t nat -D POSTROUTING -p tcp --tcp-flags SYN NONE -m conntrack --ctstate NEW -j RETURN
