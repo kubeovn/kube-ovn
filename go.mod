@@ -4,6 +4,7 @@ go 1.17
 
 require (
 	github.com/Mellanox/sriovnet v1.0.3
+	github.com/Wifx/gonetworkmanager v0.4.0
 	github.com/alauda/felix v3.6.6-0.20201207121355-187332daf314+incompatible
 	github.com/cenkalti/backoff/v4 v4.1.3
 	github.com/cnf/structhash v0.0.0-20201127153200-e1b16c1ebc08
@@ -59,6 +60,7 @@ require (
 	github.com/go-kit/kit v0.9.0 // indirect
 	github.com/go-logfmt/logfmt v0.5.1 // indirect
 	github.com/go-logr/logr v1.2.3 // indirect
+	github.com/godbus/dbus/v5 v5.0.4 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/glog v1.0.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect

@@ -3,6 +3,7 @@ package underlay
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"os/exec"
 	"strings"
@@ -34,6 +35,8 @@ const (
 )
 
 var (
+	ExchangeLinkName bool
+
 	VlanID = os.Getenv("VLAN_ID")
 
 	cidr    string
@@ -44,6 +47,11 @@ var (
 	nodeRoutes = make(map[string][]string)
 	nodeMTU    = make(map[string]int)
 )
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+	ExchangeLinkName = rand.Intn(2) != 0
+}
 
 func SetCIDR(s string) {
 	cidr = s
@@ -100,7 +108,11 @@ var _ = Describe("[Underlay]", func() {
 				}
 				Expect(ovsPod).NotTo(BeNil())
 
-				stdout, _, err := f.ExecToPodThroughAPI("ip addr show "+providerInterface, "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
+				nic, br := providerInterface, util.ExternalBridgeName(ProviderNetwork)
+				if ExchangeLinkName {
+					nic, br = br, nic
+				}
+				stdout, _, err := f.ExecToPodThroughAPI("ip addr show "+nic, "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
 				Expect(err).NotTo(HaveOccurred())
 
 				addrNotFound := make([]bool, len(nodeAddrs[node.Name]))
@@ -117,19 +129,19 @@ var _ = Describe("[Underlay]", func() {
 					Expect(found).To(BeTrue())
 				}
 
-				stdout, _, err = f.ExecToPodThroughAPI("ovs-vsctl list-ports "+util.ExternalBridgeName(ProviderNetwork), "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
+				stdout, _, err = f.ExecToPodThroughAPI("ovs-vsctl list-ports "+br, "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
 				Expect(err).NotTo(HaveOccurred())
 
 				var portFound bool
 				for _, port := range strings.Split(stdout, "\n") {
-					if port == providerInterface {
+					if port == nic {
 						portFound = true
 						break
 					}
 				}
 				Expect(portFound).To(BeTrue())
 
-				stdout, _, err = f.ExecToPodThroughAPI("ip addr show "+util.ExternalBridgeName(ProviderNetwork), "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
+				stdout, _, err = f.ExecToPodThroughAPI("ip addr show "+br, "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
 				Expect(err).NotTo(HaveOccurred())
 
 				var isUp bool

@@ -260,6 +260,7 @@ type ProviderNetworkSpec struct {
 	DefaultInterface string            `json:"defaultInterface,omitempty"`
 	CustomInterfaces []CustomInterface `json:"customInterfaces,omitempty"`
 	ExcludeNodes     []string          `json:"excludeNodes,omitempty"`
+	ExchangeLinkName bool              `json:"exchangeLinkName,omitempty"`
 }
 
 type ProviderNetworkStatus struct {

@@ -702,6 +702,8 @@ spec:
                         type: array
                         items:
                           type: string
+                exchangeLinkName:
+                  type: boolean
                 excludeNodes:
                   type: array
                   items:

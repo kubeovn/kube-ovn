@@ -211,7 +211,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	providerInterface := underlay.UnderlayInterface
 	if underlay.VlanID != "" {
 		if vlanID, err = strconv.Atoi(underlay.VlanID); err != nil || vlanID <= 0 || vlanID > 4095 {
-			Fail(underlay.VlanID + " is not an invalid VLAN id")
+			Fail(underlay.VlanID + " is not a valid VLAN ID")
 		}
 		providerInterface = underlay.VlanInterface
 	}
@@ -289,6 +289,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 		},
 		Spec: kubeovn.ProviderNetworkSpec{
 			DefaultInterface: providerInterface,
+			ExchangeLinkName: underlay.ExchangeLinkName,
 		},
 	}
 	if _, err = f.OvnClientSet.KubeovnV1().ProviderNetworks().Create(context.Background(), pn, metav1.CreateOptions{}); err != nil {
