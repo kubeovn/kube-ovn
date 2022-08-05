@@ -675,7 +675,8 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 
 	newSts = &v1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+			Name:   name,
+			Labels: labels,
 		},
 		Spec: v1.StatefulSetSpec{
 			Replicas: &replicas,
