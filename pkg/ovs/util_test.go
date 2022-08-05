@@ -78,3 +78,108 @@ func Test_matchAddressSetName(t *testing.T) {
 	matched = matchAddressSetName(asName)
 	require.False(t, matched)
 }
+
+func Test_Rule(t *testing.T) {
+	t.Parallel()
+
+	t.Run("generate acl match rule", func(t *testing.T) {
+		t.Parallel()
+
+		/* match all ip traffic */
+		AllIpMatch := NewAndAclMatchRule(
+			NewAclRuleKv("inport", "==", "@ovn.sg.test_sg", ""),
+			NewAclRuleKv("ip", "", "", ""),
+		)
+
+		rule, err := AllIpMatch.Rule()
+		require.NoError(t, err)
+		require.Equal(t, "inport == @ovn.sg.test_sg && ip", rule)
+
+		/* match allowed ip traffic */
+		partialIpMatch := NewAndAclMatchRule(
+			AllIpMatch,
+			NewAclRuleKv("ip4.dst", "==", "$test.allow.as", ""),
+			NewAclRuleKv("ip4.dst", "!=", "$test.except.as", ""),
+		)
+
+		rule, err = partialIpMatch.Rule()
+		require.NoError(t, err)
+		require.Equal(t, "inport == @ovn.sg.test_sg && ip && ip4.dst == $test.allow.as && ip4.dst != $test.except.as", rule)
+
+		/* match all tcp traffic */
+		allTcpMatch := NewAndAclMatchRule(
+			partialIpMatch,
+			NewAclRuleKv("tcp", "", "", ""),
+		)
+
+		rule, err = allTcpMatch.Rule()
+		require.NoError(t, err)
+		require.Equal(t, "inport == @ovn.sg.test_sg && ip && ip4.dst == $test.allow.as && ip4.dst != $test.except.as && tcp", rule)
+
+		/* match one tcp port traffic */
+		oneTcpMatch := NewAndAclMatchRule(
+			partialIpMatch,
+			NewAclRuleKv("tcp.dst", "==", "12345", ""),
+		)
+
+		rule, err = oneTcpMatch.Rule()
+		require.NoError(t, err)
+		require.Equal(t, "inport == @ovn.sg.test_sg && ip && ip4.dst == $test.allow.as && ip4.dst != $test.except.as && tcp.dst == 12345", rule)
+
+		/* match several tcp port traffic */
+		rangeTcpMatch := NewAndAclMatchRule(
+			partialIpMatch,
+			NewAclRuleKv("tcp.dst", "<=", "12345", "12500"),
+		)
+
+		rule, err = rangeTcpMatch.Rule()
+		require.NoError(t, err)
+		require.Equal(t, "inport == @ovn.sg.test_sg && ip && ip4.dst == $test.allow.as && ip4.dst != $test.except.as && 12345 <= tcp.dst <= 12500", rule)
+	})
+
+	t.Run("err occurred when key is empty", func(t *testing.T) {
+		t.Parallel()
+
+		spec := NewAndAclMatchRule(
+			NewAclRuleKv("", "", "", ""),
+		)
+
+		_, err := spec.Rule()
+		require.ErrorContains(t, err, "acl rule key is required")
+	})
+
+	t.Run("generate acl match rule like 'ip'", func(t *testing.T) {
+		t.Parallel()
+
+		spec := NewAndAclMatchRule(
+			NewAclRuleKv("ip", "==", "", ""),
+		)
+
+		rule, err := spec.Rule()
+		require.NoError(t, err)
+		require.Equal(t, "ip", rule)
+	})
+}
+
+func Test_String(t *testing.T) {
+	t.Parallel()
+	t.Run("generate acl match rule", func(t *testing.T) {
+		spec := NewAndAclMatchRule(
+			NewAclRuleKv("ip.dst", "==", "$test.allow.as", ""),
+		)
+
+		require.Equal(t, "ip.dst == $test.allow.as", spec.String())
+	})
+
+	t.Run("key is empty", func(t *testing.T) {
+		t.Parallel()
+
+		spec := NewAndAclMatchRule(
+			NewAclRuleKv("ip.dst", "==", "$test.allow.as", ""),
+			NewAclRuleKv("", "", "", ""),
+		)
+
+		require.Empty(t, spec.String())
+	})
+
+}
