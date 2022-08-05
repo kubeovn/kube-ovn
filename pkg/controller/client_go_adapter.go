@@ -21,6 +21,7 @@ package controller
 import (
 	"context"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -154,7 +155,12 @@ type latencyAdapter struct {
 }
 
 func (l *latencyAdapter) Observe(_ context.Context, verb string, u url.URL, latency time.Duration) {
-	l.metric.WithLabelValues(verb, u.String()).Observe(latency.Seconds())
+	url := u.String()
+	last := strings.LastIndex(url, "/")
+	if last != -1 {
+		url = url[:last]
+	}
+	l.metric.WithLabelValues(verb, url).Observe(latency.Seconds())
 }
 
 type resultAdapter struct {
