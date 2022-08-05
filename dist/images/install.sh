@@ -18,7 +18,7 @@ ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-true}
 CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
 # exchange link names of OVS bridge and the provider nic
 # in the default provider-network
-EXCHANGE_LINK_NAME=${EXCHANGE_LINK_NAME:-false}
+# EXCHANGE_LINK_NAME=${EXCHANGE_LINK_NAME:-false}
 # The nic to support container network can be a nic name or a group of regex
 # separated by comma, if empty will use the nic that the default route use
 IFACE=${IFACE:-}
@@ -2571,7 +2571,6 @@ spec:
           - --service-cluster-ip-range=$SVC_CIDR
           - --network-type=$NETWORK_TYPE
           - --default-interface-name=$VLAN_INTERFACE_NAME
-          - --default-exchange-link-name=$EXCHANGE_LINK_NAME
           - --default-vlan-id=$VLAN_ID
           - --pod-nic-type=$POD_NIC_TYPE
           - --enable-lb=$ENABLE_LB
