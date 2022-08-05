@@ -520,6 +520,10 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 		}
 		return err
 	}
+	if cachedFip.Status.Ready && cachedFip.Status.V4ip != "" {
+		// already ok
+		return nil
+	}
 	fip := cachedFip.DeepCopy()
 	klog.V(3).Infof("handle add fip %s", key)
 	// get eip
@@ -562,7 +566,10 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 		klog.Errorf("failed to patch status for eip %s, %v", key, err)
 		return err
 	}
-	if err = c.patchFipStatus(key, eip.Spec.V4ip, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
+	if err := c.initCreateAt(eip.Spec.NatGwDp); err != nil {
+		klog.Errorf("failed to init nat gw pod '%s' create at, %v", eip.Spec.NatGwDp, err)
+	}
+	if err = c.patchFipStatus(key, eip.Spec.V4ip, eip.Spec.V6ip, eip.Spec.NatGwDp, NAT_GW_CREATED_AT, true); err != nil {
 		klog.Errorf("failed to patch status for fip %s, %v", key, err)
 		return err
 	}
@@ -652,7 +659,8 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 		return nil
 	}
 	// redo
-	if fip.Status.Redo != "" &&
+	if !fip.Status.Ready &&
+		fip.Status.Redo != "" &&
 		fip.Status.V4ip != "" &&
 		fip.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("reapply fip '%s' in pod ", key)
@@ -694,7 +702,7 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 		}
 		return err
 	}
-	if cachedDnat.Status.V4ip != "" {
+	if cachedDnat.Status.Ready && cachedDnat.Status.V4ip != "" {
 		// already ok
 		return nil
 	}
@@ -738,7 +746,10 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 		klog.Errorf("failed to patch status for eip %s, %v", key, err)
 		return err
 	}
-	if err = c.patchDnatStatus(key, eip.Spec.V4ip, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
+	if err := c.initCreateAt(eip.Spec.NatGwDp); err != nil {
+		klog.Errorf("failed to init nat gw pod '%s' create at, %v", eip.Spec.NatGwDp, err)
+	}
+	if err = c.patchDnatStatus(key, eip.Spec.V4ip, eip.Spec.V6ip, eip.Spec.NatGwDp, NAT_GW_CREATED_AT, true); err != nil {
 		klog.Errorf("failed to patch status for dnat %s, %v", key, err)
 		return err
 	}
@@ -831,7 +842,8 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		return nil
 	}
 	// redo
-	if dnat.Status.Redo != "" &&
+	if !dnat.Status.Ready &&
+		dnat.Status.Redo != "" &&
 		dnat.Status.V4ip != "" &&
 		dnat.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("reapply dnat in pod for %s", key)
@@ -875,7 +887,7 @@ func (c *Controller) handleAddIptablesSnatRule(key string) error {
 		}
 		return err
 	}
-	if cachedSnat.Status.V4ip != "" {
+	if cachedSnat.Status.Ready && cachedSnat.Status.V4ip != "" {
 		// already ok
 		return nil
 	}
@@ -919,7 +931,10 @@ func (c *Controller) handleAddIptablesSnatRule(key string) error {
 		klog.Errorf("failed to patch status for eip %s, %v", key, err)
 		return err
 	}
-	if err = c.patchSnatStatus(key, eip.Spec.V4ip, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
+	if err := c.initCreateAt(eip.Spec.NatGwDp); err != nil {
+		klog.Errorf("failed to init nat gw pod '%s' create at, %v", eip.Spec.NatGwDp, err)
+	}
+	if err = c.patchSnatStatus(key, eip.Spec.V4ip, eip.Spec.V6ip, eip.Spec.NatGwDp, NAT_GW_CREATED_AT, true); err != nil {
 		klog.Errorf("failed to update status for snat %s, %v", key, err)
 		return err
 	}
@@ -1008,7 +1023,8 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 		return nil
 	}
 	// redo
-	if snat.Status.Redo != "" &&
+	if !snat.Status.Ready &&
+		snat.Status.Redo != "" &&
 		snat.Status.V4ip != "" &&
 		snat.DeletionTimestamp.IsZero() {
 		if err = c.createSnatInPod(snat.Status.NatGwDp, snat.Status.V4ip, v4Cidr); err != nil {

@@ -227,7 +227,7 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		}
 		return err
 	}
-	if cachedEip.Spec.MacAddress != "" {
+	if cachedEip.Status.Ready && cachedEip.Status.IP != "" {
 		// already ok
 		return nil
 	}
@@ -261,7 +261,10 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		klog.Errorf("failed to update eip %s, %v", key, err)
 		return err
 	}
-	if err = c.patchEipStatus(key, v4ip, "", "", true); err != nil {
+	if err := c.initCreateAt(eip.Spec.NatGwDp); err != nil {
+		klog.Errorf("failed to init nat gw pod '%s' create at, %v", eip.Spec.NatGwDp, err)
+	}
+	if err = c.patchEipStatus(key, v4ip, NAT_GW_CREATED_AT, "", true); err != nil {
 		klog.Errorf("failed to patch status for eip %s, %v", key, err)
 		return err
 	}
@@ -484,7 +487,8 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 	}
 
 	// redo
-	if eip.Status.Redo != "" &&
+	if !eip.Status.Ready &&
+		eip.Status.Redo != "" &&
 		eip.Status.IP != "" &&
 		eip.DeletionTimestamp.IsZero() {
 		eipV4Cidr, err := c.getEipV4Cidr(eip.Status.IP)
