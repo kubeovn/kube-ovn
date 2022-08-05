@@ -212,10 +212,6 @@ func (suite *OvnClientTestSuite) Test_DeleteLogicalRouterPortOp() {
 }
 
 /* gateway_chassis unit test */
-func (suite *OvnClientTestSuite) Test_CreateGatewayChassis() {
-	suite.testCreateGatewayChassis()
-}
-
 func (suite *OvnClientTestSuite) Test_CreateGatewayChassises() {
 	suite.testCreateGatewayChassises()
 }
@@ -308,24 +304,32 @@ func (suite *OvnClientTestSuite) Test_ListAddressSets() {
 }
 
 /* acl unit test */
-func (suite *OvnClientTestSuite) Test_CreateIngressACL() {
-	suite.testCreateIngressACL()
+func (suite *OvnClientTestSuite) Test_CreateIngressAcl() {
+	suite.testCreateIngressAcl()
+}
+
+func (suite *OvnClientTestSuite) Test_CreateEgressAcl() {
+	suite.testCreateEgressAcl()
 }
 
 func (suite *OvnClientTestSuite) Test_GetAcl() {
 	suite.testGetAcl()
 }
 
-func (suite *OvnClientTestSuite) Test_CreateAclOp() {
-	suite.testCreateAclOp()
+func (suite *OvnClientTestSuite) Test_ListAcls() {
+	suite.testListAcls()
+}
+
+func (suite *OvnClientTestSuite) Test_CreateAcls() {
+	suite.testCreateAcls()
 }
 
 func (suite *OvnClientTestSuite) Test_newAcl() {
 	suite.testnewAcl()
 }
 
-func (suite *OvnClientTestSuite) Test_newIngressAllowACL() {
-	suite.testnewIngressAllowACL()
+func (suite *OvnClientTestSuite) Test_newAllowAclMatch() {
+	suite.testnewAllowAclMatch()
 }
 
 /* mixed operations unit test */
