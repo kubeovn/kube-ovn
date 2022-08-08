@@ -32,7 +32,7 @@ func (c OvnClient) CreateGatewayChassises(lrpName string, chassises []string) er
 
 	op, err := c.Create(models...)
 	if err != nil {
-		return fmt.Errorf("generate create operations for gateway chassis %v", err)
+		return fmt.Errorf("generate operations for creating gateway chassis %v", err)
 	}
 
 	if err = c.Transact("gateway-chassises-create", op); err != nil {
@@ -50,7 +50,7 @@ func (c OvnClient) CreateGatewayChassis(gwChassis *ovnnb.GatewayChassis) error {
 
 	op, err := c.Create(gwChassis)
 	if err != nil {
-		return fmt.Errorf("generate create operations for gateway chassis %s: %v", gwChassis.Name, err)
+		return fmt.Errorf("generate operations for creating gateway chassis %s: %v", gwChassis.Name, err)
 	}
 
 	if err = c.Transact("gateway-chassis-create", op); err != nil {

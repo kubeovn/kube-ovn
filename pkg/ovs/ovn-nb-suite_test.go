@@ -39,7 +39,7 @@ func (suite *OvnClientTestSuite) SetupSuite() {
 	endpoint := fmt.Sprintf("unix:%s", sock)
 	require.FileExists(suite.T(), sock)
 
-	ovnClient, err := newOvnClient(suite.T(), endpoint, 10)
+	ovnClient, err := newOvnClient(suite.T(), endpoint, 10*time.Second)
 	require.NoError(suite.T(), err)
 
 	suite.ovnClient = ovnClient
@@ -208,7 +208,7 @@ func (suite *OvnClientTestSuite) Test_DeleteLogicalRouterPortOp() {
 	suite.testDeleteLogicalRouterPortOp()
 }
 
-/* gateway chassis unit test */
+/* gateway_chassis unit test */
 func (suite *OvnClientTestSuite) Test_CreateGatewayChassis() {
 	suite.testCreateGatewayChassis()
 }
@@ -225,7 +225,7 @@ func (suite *OvnClientTestSuite) Test_DeleteGatewayChassisOp() {
 	suite.testDeleteGatewayChassisOp()
 }
 
-/* load balancer unit test */
+/* load_balancer unit test */
 func (suite *OvnClientTestSuite) Test_CreateLoadBalancer() {
 	suite.testCreateLoadBalancer()
 }
@@ -251,6 +251,10 @@ func (suite *OvnClientTestSuite) Test_DeleteLoadBalancerOp() {
 }
 
 /* mixed operations unit test */
+func (suite *OvnClientTestSuite) Test_CreateGatewayLogicalSwitch() {
+	suite.testCreateGatewayLogicalSwitch()
+}
+
 func (suite *OvnClientTestSuite) Test_CreateRouterPort() {
 	suite.testCreateRouterPort()
 }
@@ -261,6 +265,10 @@ func (suite *OvnClientTestSuite) Test_CreateRouterTypePort() {
 
 func (suite *OvnClientTestSuite) Test_RemoveRouterTypePort() {
 	suite.testRemoveRouterTypePort()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteLogicalGatewaySwitch() {
+	suite.testDeleteLogicalGatewaySwitch()
 }
 
 func newOVSDBServer(t *testing.T, dbModel model.ClientDBModel, schema ovsdb.DatabaseSchema) (*server.OvsdbServer, string) {

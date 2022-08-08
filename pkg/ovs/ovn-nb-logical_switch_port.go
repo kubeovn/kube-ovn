@@ -332,7 +332,7 @@ func (c OvnClient) UpdateLogicalSwitchPort(lsp *ovnnb.LogicalSwitchPort, fields 
 
 	op, err := c.Where(lsp).Update(lsp, fields...)
 	if err != nil {
-		return fmt.Errorf("generate update operations for logical switch port %s: %v", lsp.Name, err)
+		return fmt.Errorf("generate operations for updating logical switch port %s: %v", lsp.Name, err)
 	}
 
 	if err = c.Transact("lsp-update", op); err != nil {
@@ -343,19 +343,14 @@ func (c OvnClient) UpdateLogicalSwitchPort(lsp *ovnnb.LogicalSwitchPort, fields 
 }
 
 // DeleteLogicalSwitchPort delete logical switch port in ovn
-func (c OvnClient) DeleteLogicalSwitchPort(name string) error {
-	lsp, err := c.GetLogicalSwitchPort(name, true)
-	if err != nil {
-		return err
-	}
-
-	ops, err := c.DeleteLogicalSwitchPortOp(lsp)
+func (c OvnClient) DeleteLogicalSwitchPort(lspName string) error {
+	ops, err := c.DeleteLogicalSwitchPortOp(lspName)
 	if err != nil {
 		return err
 	}
 
 	if err = c.Transact("lsp-del", ops); err != nil {
-		return fmt.Errorf("delete logical switch port %s", name)
+		return fmt.Errorf("delete logical switch port %s", lspName)
 	}
 
 	return nil
@@ -370,7 +365,7 @@ func (c OvnClient) GetLogicalSwitchPort(name string, ignoreNotFound bool) (*ovnn
 		if ignoreNotFound && err == client.ErrNotFound {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("failed to get logical switch port %s: %v", name, err)
+		return nil, fmt.Errorf("get logical switch port %s: %v", name, err)
 	}
 
 	return lsp, nil
@@ -381,7 +376,7 @@ func (c OvnClient) ListRemoteTypeLogicalSwitchPorts() ([]ovnnb.LogicalSwitchPort
 	if err := c.WhereCache(func(lsp *ovnnb.LogicalSwitchPort) bool {
 		return lsp.Type == "remote"
 	}).List(context.TODO(), &lspList); err != nil {
-		return nil, fmt.Errorf("failed to list logical switch port which type is remote: %v", err)
+		return nil, fmt.Errorf("list logical switch port which type is remote: %v", err)
 	}
 
 	return lspList, nil
@@ -454,7 +449,7 @@ func (c OvnClient) CreateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, lsNam
 	/* create logical switch port */
 	lspCreateOp, err := c.Create(lsp)
 	if err != nil {
-		return nil, fmt.Errorf("generate create operations for logical switch port %s: %v", lsp.Name, err)
+		return nil, fmt.Errorf("generate operations for creating logical switch port %s: %v", lsp.Name, err)
 	}
 
 	/* add logical switch port to logical switch*/
@@ -471,7 +466,12 @@ func (c OvnClient) CreateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, lsNam
 }
 
 // DeleteLogicalSwitchPortOp create operations which delete logical switch port
-func (c OvnClient) DeleteLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort) ([]ovsdb.Operation, error) {
+func (c OvnClient) DeleteLogicalSwitchPortOp(lspName string) ([]ovsdb.Operation, error) {
+	lsp, err := c.GetLogicalSwitchPort(lspName, true)
+	if err != nil {
+		return nil, fmt.Errorf("get logical switch port %s when generate delete operations: %v", lspName, err)
+	}
+
 	// not found, skip
 	if lsp == nil {
 		return nil, nil
@@ -485,13 +485,13 @@ func (c OvnClient) DeleteLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort) ([]ov
 	// remove logical switch port from logical switch
 	lspRemoveOp, err := c.LogicalSwitchUpdatePortOp(lsName, lsp.UUID, ovsdb.MutateOperationDelete)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("generate operations for removing port %s from logical switch %s: %v", lspName, lsName, err)
 	}
 
 	// delete logical switch port
 	lspDelOp, err := c.Where(lsp).Delete()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("generate operations for deleting logical switch port %s: %v", lspName, err)
 	}
 
 	ops := make([]ovsdb.Operation, 0, len(lspRemoveOp)+len(lspDelOp))
@@ -510,7 +510,7 @@ func (c OvnClient) UpdateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, field
 
 	op, err := c.Where(lsp).Update(lsp, fields...)
 	if err != nil {
-		return nil, fmt.Errorf("generate update operations for logical switch port %s: %v", lsp.Name, err)
+		return nil, fmt.Errorf("generate operations for updating logical switch port %s: %v", lsp.Name, err)
 	}
 
 	return op, nil

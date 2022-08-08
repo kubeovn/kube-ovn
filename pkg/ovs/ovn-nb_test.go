@@ -10,6 +10,39 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+func (suite *OvnClientTestSuite) testCreateGatewayLogicalSwitch() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lsName := "test-create-gw-ls"
+	lrName := "test-create-gw-lr"
+	lspName := fmt.Sprintf("%s-%s", lsName, lrName)
+	lrpName := fmt.Sprintf("%s-%s", lrName, lsName)
+	localnetLspName := fmt.Sprintf("ln-%s", lsName)
+	chassises := []string{"5de32fcb-495a-40df-919e-f09812c4d11e", "25310674-65ce-69fd-bcfa-65b25268926b"}
+
+	err := ovnClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
+	err = ovnClient.CreateGatewayLogicalSwitch(lsName, lrName, "test-external", "192.168.230.1/24,fc00::0af4:01/112", util.GenerateMac(), 210, chassises...)
+	require.NoError(t, err)
+
+	ls, err := ovnClient.GetLogicalSwitch(lsName, false)
+	require.NoError(t, err)
+
+	localnetLsp, err := ovnClient.GetLogicalSwitchPort(localnetLspName, false)
+	require.NoError(t, err)
+	require.Equal(t, "localnet", localnetLsp.Type)
+
+	_, err = ovnClient.GetLogicalRouterPort(lrpName, false)
+	require.NoError(t, err)
+
+	lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
+	require.NoError(t, err)
+	require.Contains(t, ls.Ports, lsp.UUID)
+}
+
 func (suite *OvnClientTestSuite) testCreateRouterPort() {
 	t := suite.T()
 	t.Parallel()
@@ -31,6 +64,10 @@ func (suite *OvnClientTestSuite) testCreateRouterPort() {
 		err := ovnClient.CreateRouterPort(lsName, lrName, "192.168.230.1/24,fc00::0af4:01/112", util.GenerateMac(), chassises...)
 		require.NoError(t, err)
 
+		lrp, err := ovnClient.GetLogicalRouterPort(lrpName, false)
+		require.NoError(t, err)
+		require.Equal(t, []string{"192.168.230.1/24", "fc00::0af4:01/112"}, lrp.Networks)
+
 		for _, chassisName := range chassises {
 			gwChassisName := lrpName + "-" + chassisName
 			_, err := ovnClient.GetGatewayChassis(gwChassisName, false)
@@ -40,8 +77,8 @@ func (suite *OvnClientTestSuite) testCreateRouterPort() {
 
 	t.Run("create router port with no chassises", func(t *testing.T) {
 		t.Parallel()
-		lsName := "test-create-router-ls-1"
-		lrName := "test-create-router-lr-1"
+		lsName := "test-create-ls-no-chassises"
+		lrName := "test-create-lr-no-chassises"
 
 		err := ovnClient.CreateLogicalRouter(lrName)
 		require.NoError(t, err)
@@ -51,6 +88,26 @@ func (suite *OvnClientTestSuite) testCreateRouterPort() {
 
 		err = ovnClient.CreateRouterPort(lsName, lrName, "192.168.230.1/24,fc00::0af4:01/112", util.GenerateMac())
 		require.NoError(t, err)
+	})
+
+	t.Run("create router port with no ip", func(t *testing.T) {
+		t.Parallel()
+		lsName := "test-create-ls-no-ip"
+		lrName := "test-create-lr-no-ip"
+		lrpName := fmt.Sprintf("%s-%s", lrName, lsName)
+
+		err := ovnClient.CreateLogicalRouter(lrName)
+		require.NoError(t, err)
+
+		err = ovnClient.CreateBareLogicalSwitch(lsName)
+		require.NoError(t, err)
+
+		err = ovnClient.CreateRouterPort(lsName, lrName, "", util.GenerateMac())
+		require.NoError(t, err)
+
+		lrp, err := ovnClient.GetLogicalRouterPort(lrpName, false)
+		require.NoError(t, err)
+		require.Empty(t, lrp.Networks)
 	})
 }
 
@@ -72,7 +129,8 @@ func (suite *OvnClientTestSuite) testCreateRouterTypePort() {
 	require.NoError(t, err)
 
 	t.Run("normal add router type port", func(t *testing.T) {
-		err = ovnClient.CreateRouterTypePort(lsName, lrName, "192.168.230.1/24,fc00::0af4:01/112", util.GenerateMac(), func(lrp *ovnnb.LogicalRouterPort) {
+		err = ovnClient.CreateRouterTypePort(lsName, lrName, util.GenerateMac(), func(lrp *ovnnb.LogicalRouterPort) {
+			lrp.Networks = []string{"192.168.230.1/24", "fc00::0af4:01/112"}
 			if len(chassises) != 0 {
 				lrp.GatewayChassis = chassises
 			}
@@ -104,7 +162,7 @@ func (suite *OvnClientTestSuite) testCreateRouterTypePort() {
 	})
 
 	t.Run("should no err when add router type port repeatedly", func(t *testing.T) {
-		err = ovnClient.CreateRouterTypePort(lsName, lrName, "192.168.230.1/24,fc00::0af4:01/112", util.GenerateMac(), func(lrp *ovnnb.LogicalRouterPort) {
+		err = ovnClient.CreateRouterTypePort(lsName, lrName, util.GenerateMac(), func(lrp *ovnnb.LogicalRouterPort) {
 			if len(chassises) != 0 {
 				lrp.GatewayChassis = chassises
 			}
@@ -149,4 +207,37 @@ func (suite *OvnClientTestSuite) testRemoveRouterTypePort() {
 		err = ovnClient.RemoveRouterTypePort(lspName, lrpName)
 		require.NoError(t, err)
 	})
+}
+
+func (suite *OvnClientTestSuite) testDeleteLogicalGatewaySwitch() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lsName := "test-del-gw-ls"
+	lrName := "test-del-gw-lr"
+	lspName := fmt.Sprintf("%s-%s", lsName, lrName)
+	lrpName := fmt.Sprintf("%s-%s", lrName, lsName)
+	localnetLspName := fmt.Sprintf("ln-%s", lsName)
+
+	err := ovnClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
+	err = ovnClient.CreateGatewayLogicalSwitch(lsName, lrName, "test-external", "192.168.230.1/24,fc00::0af4:01/112", util.GenerateMac(), 210)
+	require.NoError(t, err)
+
+	err = ovnClient.DeleteLogicalGatewaySwitch(lsName, lrName)
+	require.NoError(t, err)
+
+	_, err = ovnClient.GetLogicalSwitch(lsName, false)
+	require.ErrorContains(t, err, "not found logical switch")
+
+	_, err = ovnClient.GetLogicalSwitchPort(localnetLspName, false)
+	require.ErrorContains(t, err, "object not found")
+
+	_, err = ovnClient.GetLogicalSwitchPort(lspName, false)
+	require.ErrorContains(t, err, "object not found")
+
+	_, err = ovnClient.GetLogicalRouterPort(lrpName, false)
+	require.ErrorContains(t, err, "object not found")
 }

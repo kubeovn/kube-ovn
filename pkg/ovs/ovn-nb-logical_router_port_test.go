@@ -71,7 +71,7 @@ func (suite *OvnClientTestSuite) testUpdateRouterPortIPv6RA() {
 	err := ovnClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
-	err = ovnClient.CreateLogicalRouterPort(lrp, lrName)
+	err = ovnClient.CreateLogicalRouterPort(lrName, lrp)
 	require.NoError(t, err)
 
 	t.Run("update ipv6 ra config when enableIPv6RA is true and ipv6RAConfigsStr is empty", func(t *testing.T) {
@@ -128,7 +128,7 @@ func (suite *OvnClientTestSuite) testUpdateRouterPortIPv6RA() {
 			Networks: []string{"192.168.33.1/24"},
 		}
 
-		err := ovnClient.CreateLogicalRouterPort(lrp, lrName)
+		err := ovnClient.CreateLogicalRouterPort(lrName, lrp)
 		require.NoError(t, err)
 
 		err = ovnClient.UpdateRouterPortIPv6RA(name, "address_mode=dhcpv6_stateful,max_interval=30", true)
@@ -158,7 +158,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPort() {
 			Networks: []string{"192.168.123.1/24"},
 		}
 
-		err := ovnClient.CreateLogicalRouterPort(lrp, LrName)
+		err := ovnClient.CreateLogicalRouterPort(LrName, lrp)
 		require.NoError(t, err)
 
 		lrp, err = ovnClient.GetLogicalRouterPort(name, false)
@@ -184,7 +184,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPort() {
 			Networks: []string{"fd00::c0a8:7b01/120"},
 		}
 
-		err := ovnClient.CreateLogicalRouterPort(lrp, LrName)
+		err := ovnClient.CreateLogicalRouterPort(LrName, lrp)
 		require.NoError(t, err)
 
 		lrp, err = ovnClient.GetLogicalRouterPort(name, false)
@@ -210,7 +210,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPort() {
 			Networks: []string{"192.168.123.1/24", "fd00::c0a8:7b01/120"},
 		}
 
-		err := ovnClient.CreateLogicalRouterPort(lrp, LrName)
+		err := ovnClient.CreateLogicalRouterPort(LrName, lrp)
 		require.NoError(t, err)
 
 		lrp, err = ovnClient.GetLogicalRouterPort(name, false)
@@ -243,7 +243,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouterPort() {
 	err := ovnClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
-	err = ovnClient.CreateLogicalRouterPort(lrp, lrName)
+	err = ovnClient.CreateLogicalRouterPort(lrName, lrp)
 	require.NoError(t, err)
 
 	t.Run("normal update", func(t *testing.T) {
@@ -291,7 +291,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPort() {
 		Networks: []string{"192.168.123.1/24"},
 	}
 
-	err = ovnClient.CreateLogicalRouterPort(lrp, lrName)
+	err = ovnClient.CreateLogicalRouterPort(lrName, lrp)
 	require.NoError(t, err)
 
 	t.Run("no err when delete existent logical router port", func(t *testing.T) {
@@ -419,7 +419,13 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPortOp() {
 		},
 	}
 
-	ops, err := ovnClient.DeleteLogicalRouterPortOp(lrp)
+	err = ovnClient.CreateLogicalRouterPort(lrName, lrp)
+	require.NoError(t, err)
+
+	lrp, err = ovnClient.GetLogicalRouterPort(lrpName, false)
+	require.NoError(t, err)
+
+	ops, err := ovnClient.DeleteLogicalRouterPortOp(lrpName)
 	require.NoError(t, err)
 	require.Len(t, ops, 2)
 

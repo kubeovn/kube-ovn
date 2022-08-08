@@ -11,7 +11,7 @@ import (
 func (c OvnClient) CreateNbGlobal(nbGlobal *ovnnb.NBGlobal) error {
 	op, err := c.ovnNbClient.Create(nbGlobal)
 	if err != nil {
-		return fmt.Errorf("generate create operations for nb global: %v", err)
+		return fmt.Errorf("generate operations for creating nb global: %v", err)
 	}
 
 	return c.Transact("nb-global-create", op)
@@ -65,7 +65,7 @@ func (c OvnClient) UpdateNbGlobal(newNbGlobal *ovnnb.NBGlobal, fields ...interfa
 
 	op, err := c.Where(oldNbGlobal).Update(newNbGlobal, fields...)
 	if err != nil {
-		return fmt.Errorf("generate update operations for nb global: %v", err)
+		return fmt.Errorf("generate operations for updating nb global: %v", err)
 	}
 
 	return c.Transact("set", op)

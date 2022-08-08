@@ -134,9 +134,9 @@ func (suite *OvnClientTestSuite) testLoadBalancerUpdateVips() {
 	err := ovnClient.CreateLoadBalancer(lbName, "tcp", "")
 	require.NoError(t, err)
 
-	lb, err := ovnClient.GetLoadBalancer(lbName, false)
+	_, err = ovnClient.GetLoadBalancer(lbName, false)
 	require.NoError(t, err)
-	fmt.Println(lb.UUID)
+
 	t.Run("add new vips to load balancer", func(t *testing.T) {
 		err := ovnClient.LoadBalancerUpdateVips(lbName, vips, ovsdb.MutateOperationInsert)
 		require.NoError(t, err)
@@ -176,8 +176,6 @@ func (suite *OvnClientTestSuite) testLoadBalancerUpdateVips() {
 	})
 
 	t.Run("should no error when del non-existent vips from load balancer", func(t *testing.T) {
-		t.SkipNow()
-
 		delVips := map[string]string{
 			"10.96.10.100:443": "192.168.100.31:6443",
 		}
