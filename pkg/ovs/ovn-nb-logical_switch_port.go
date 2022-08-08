@@ -11,6 +11,22 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+// CreateLogicalSwitchPort create logical switch port in ovn
+func (c OvnClient) CreateLogicalSwitchPort(mac, lsName, lsPortName string) error {
+	lsp := &ovnnb.LogicalSwitchPort{
+		Addresses:   []string{mac},
+		ExternalIDs: map[string]string{"pod": lsPortName},
+		Name:        lsPortName,
+	}
+
+	op, err := c.ovnNbClient.Create(lsp)
+	if err != nil {
+		return err
+	}
+
+	return c.Transact("lsp-add", op)
+}
+
 func (c OvnClient) GetLogicalSwitchPort(name string, ignoreNotFound bool) (*ovnnb.LogicalSwitchPort, error) {
 	lsp := &ovnnb.LogicalSwitchPort{Name: name}
 	if err := c.ovnNbClient.Get(context.TODO(), lsp); err != nil {
