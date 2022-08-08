@@ -63,6 +63,25 @@ func (suite *OvnClientTestSuite) Test_SetICAutoRoute() {
 	suite.testSetICAutoRoute()
 }
 
+/* logical_switch unit test */
+
+func (suite *OvnClientTestSuite) Test_GetLogicalSwitch() {
+	suite.testGetLogicalSwitch()
+}
+
+func (suite *OvnClientTestSuite) Test_LogicalSwitchOp() {
+	suite.testLogicalSwitchOp()
+}
+
+/* logical_switch_port unit test */
+func (suite *OvnClientTestSuite) Test_CreateLogicalSwitchPortOp() {
+	suite.testCreateLogicalSwitchPortOp()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteLogicalSwitchPortOp() {
+	suite.testDeleteLogicalSwitchPortOp()
+}
+
 /* logical_router unit test */
 func (suite *OvnClientTestSuite) Test_CreateLogicalRouter() {
 	suite.testCreateLogicalRouter()
@@ -120,6 +139,19 @@ func (suite *OvnClientTestSuite) Test_CreateGatewayChassis() {
 
 func (suite *OvnClientTestSuite) Test_CreateGatewayChassises() {
 	suite.testCreateGatewayChassises()
+}
+
+/* mixed operations unit test */
+func (suite *OvnClientTestSuite) Test_CreateICLogicalRouterPort() {
+	suite.testCreateICLogicalRouterPort()
+}
+
+func (suite *OvnClientTestSuite) Test_CreateRouterTypePort() {
+	suite.testCreateRouterTypePort()
+}
+
+func (suite *OvnClientTestSuite) Test_RemoveRouterTypePort() {
+	suite.testRemoveRouterTypePort()
 }
 
 func (suite *OvnClientTestSuite) Test_scratch() {
