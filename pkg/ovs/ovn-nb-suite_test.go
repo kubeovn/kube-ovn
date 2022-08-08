@@ -85,6 +85,14 @@ func (suite *OvnClientTestSuite) Test_LogicalSwitchOp() {
 }
 
 /* logical_switch_port unit test */
+func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPortSecurity() {
+	suite.testSetLogicalSwitchPortSecurity()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateLogicalSwitchPort() {
+	suite.testUpdateLogicalSwitchPort()
+}
+
 func (suite *OvnClientTestSuite) Test_DeleteLogicalSwitchPort() {
 	suite.testDeleteLogicalSwitchPort()
 }
