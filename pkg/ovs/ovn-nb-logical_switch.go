@@ -156,7 +156,8 @@ func (c OvnClient) DeleteLogicalSwitch(lsName string) error {
 	return nil
 }
 
-// GetLogicalSwitch get logical switch by name
+// GetLogicalSwitch get logical switch by name,
+// it is because of lack name index that does't use ovnNbClient.Get
 func (c OvnClient) GetLogicalSwitch(name string, ignoreNotFound bool) (*ovnnb.LogicalSwitch, error) {
 	lsList := make([]ovnnb.LogicalSwitch, 0)
 	if err := c.ovnNbClient.WhereCache(func(ls *ovnnb.LogicalSwitch) bool {
@@ -204,7 +205,7 @@ func (c OvnClient) ListLogicalSwitch(needVendorFilter bool) ([]ovnnb.LogicalSwit
 // LogicalSwitchUpdatePortOp create operations add port to or delete port from logical switch
 func (c OvnClient) LogicalSwitchUpdatePortOp(lsName string, lspUUID string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
 	if len(lspUUID) == 0 {
-		return nil, fmt.Errorf("uuid %s add or del to logical switch %s cannot be empty", lspUUID, lsName)
+		return nil, nil
 	}
 
 	mutation := func(ls *ovnnb.LogicalSwitch) *model.Mutation {
@@ -262,7 +263,7 @@ func (c OvnClient) LogicalSwitchOp(lsName string, mutationsFunc ...func(ls *ovnn
 
 	ops, err := c.ovnNbClient.Where(ls).Mutate(ls, mutations...)
 	if err != nil {
-		return nil, fmt.Errorf("generate operations for mutating logical switch %s: %v", ls.Name, err)
+		return nil, fmt.Errorf("generate operations for mutating logical switch %s: %v", lsName, err)
 	}
 
 	return ops, nil
