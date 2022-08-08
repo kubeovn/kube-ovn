@@ -421,27 +421,21 @@ func (c *Controller) setIptables() error {
 				util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set ! --match-set %s src -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset, matchset))},
 			)
 
-			chainExists, err := c.iptables[protocol].ChainExists("nat", "KUBE-NODE-PORT")
-			if err != nil {
-				klog.Errorf("failed to check existence of chain KUBE-NODE-PORT in nat table: %v", err)
-				return err
-			}
-			if chainExists {
-				nodePortRules := make([]util.IPTableRule, 0, len(kubeProxyIpsets))
-				for protocol, ipset := range kubeProxyIpsets {
-					ipsetExists, err := ipsetExists(ipset)
-					if err != nil {
-						klog.Error("failed to check existence of ipset %s: %v", ipset, err)
-						return err
-					}
-					if !ipsetExists {
-						klog.Warningf("ipset %s does not exist", ipset)
-						continue
-					}
-					nodePortRules = append(nodePortRules, util.IPTableRule{Table: "nat", Chain: "KUBE-NODE-PORT", Rule: strings.Fields(fmt.Sprintf("-p %s -m set --match-set %s dst -j MARK --set-xmark 0x80000/0x80000", protocol, ipset))})
+			nodePortRules := make([]util.IPTableRule, 0, len(kubeProxyIpsets))
+			for protocol, ipset := range kubeProxyIpsets {
+				ipsetExists, err := ipsetExists(ipset)
+				if err != nil {
+					klog.Error("failed to check existence of ipset %s: %v", ipset, err)
+					return err
 				}
-				iptablesRules = append(nodePortRules, iptablesRules...)
+				if !ipsetExists {
+					klog.Warningf("ipset %s does not exist", ipset)
+					continue
+				}
+				rule := fmt.Sprintf("-p %s -m addrtype --dst-type LOCAL -m set --match-set %s dst -j MARK --set-xmark 0x80000/0x80000", protocol, ipset)
+				nodePortRules = append(nodePortRules, util.IPTableRule{Table: "nat", Chain: "PREROUTING", Rule: strings.Fields(rule)})
 			}
+			iptablesRules = append(nodePortRules, iptablesRules...)
 		}
 
 		// delete abandoned iptables rules

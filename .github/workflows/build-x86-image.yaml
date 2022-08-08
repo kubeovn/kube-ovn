@@ -140,17 +140,12 @@ jobs:
         id: go
 
       - name: Run E2E
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 2
-          shell: bash
-          command: |
-            go install github.com/onsi/ginkgo/ginkgo@latest
-            sudo kubectl cluster-info
-            sudo cp -r /root/.kube/ /home/runner/.kube/
-            sudo chmod -R 777 /home/runner/.kube/
-            make e2e
+        run: |
+          go install github.com/onsi/ginkgo/ginkgo@latest
+          sudo kubectl cluster-info
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          make e2e
 
       - name: Cleanup
         run: |
@@ -263,17 +258,12 @@ jobs:
         id: go
 
       - name: Run E2E
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 2
-          shell: bash
-          command: |
-            go install github.com/onsi/ginkgo/ginkgo@latest
-            sudo kubectl cluster-info
-            sudo cp -r /root/.kube/ /home/runner/.kube/
-            sudo chmod -R 777 /home/runner/.kube/
-            make e2e-vlan
+        run: |
+          go install github.com/onsi/ginkgo/ginkgo@latest
+          sudo kubectl cluster-info
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          make e2e-vlan
 
       - name: Cleanup
         run: |
@@ -465,17 +455,12 @@ jobs:
         id: go
 
       - name: Run E2E
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 2
-          shell: bash
-          command: |
-            go install github.com/onsi/ginkgo/ginkgo@latest
-            sudo kubectl cluster-info
-            sudo cp -r /root/.kube/ /home/runner/.kube/
-            sudo chmod -R 777 /home/runner/.kube/
-            make e2e
+        run: |
+          go install github.com/onsi/ginkgo/ginkgo@latest
+          sudo kubectl cluster-info
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          make e2e
 
       - name: Cleanup
         run: |
@@ -529,17 +514,12 @@ jobs:
         id: go
 
       - name: Run E2E
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 2
-          shell: bash
-          command: |
-            go install github.com/onsi/ginkgo/ginkgo@latest
-            sudo kubectl cluster-info
-            sudo cp -r /root/.kube/ /home/runner/.kube/
-            sudo chmod -R 777 /home/runner/.kube/
-            make e2e-ipv6
+        run: |
+          go install github.com/onsi/ginkgo/ginkgo@latest
+          sudo kubectl cluster-info
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          make e2e-ipv6
 
       - name: Cleanup
         run: |
@@ -593,17 +573,12 @@ jobs:
         id: go
 
       - name: Run E2E
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 2
-          shell: bash
-          command: |
-            go install github.com/onsi/ginkgo/ginkgo@latest
-            sudo kubectl cluster-info
-            sudo cp -r /root/.kube/ /home/runner/.kube/
-            sudo chmod -R 777 /home/runner/.kube/
-            make e2e-vlan-ipv6
+        run: |
+          go install github.com/onsi/ginkgo/ginkgo@latest
+          sudo kubectl cluster-info
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          make e2e-vlan-ipv6
 
       - name: Cleanup
         run: |
@@ -732,17 +707,12 @@ jobs:
         id: go
 
       - name: Run E2E
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 2
-          shell: bash
-          command: |
-            go install github.com/onsi/ginkgo/ginkgo@latest
-            sudo kubectl cluster-info
-            sudo cp -r /root/.kube/ /home/runner/.kube/
-            sudo chmod -R 777 /home/runner/.kube/
-            make e2e
+        run: |
+          go install github.com/onsi/ginkgo/ginkgo@latest
+          sudo kubectl cluster-info
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          make e2e
 
       - name: Cleanup
         run: |
@@ -871,17 +841,12 @@ jobs:
         id: go
 
       - name: Run E2E
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 2
-          shell: bash
-          command: |
-            go install github.com/onsi/ginkgo/ginkgo@latest
-            sudo kubectl cluster-info
-            sudo cp -r /root/.kube/ /home/runner/.kube/
-            sudo chmod -R 777 /home/runner/.kube/
-            make e2e
+        run: |
+          go install github.com/onsi/ginkgo/ginkgo@latest
+          sudo kubectl cluster-info
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          make e2e
 
       - name: Cleanup
         run: |
@@ -953,17 +918,12 @@ jobs:
         id: go
 
       - name: Run E2E
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 2
-          shell: bash
-          command: |
-            go install github.com/onsi/ginkgo/ginkgo@latest
-            sudo kubectl cluster-info
-            sudo cp -r /root/.kube/ /home/runner/.kube/
-            sudo chmod -R 777 /home/runner/.kube/
-            make e2e
+        run: |
+          go install github.com/onsi/ginkgo/ginkgo@latest
+          sudo kubectl cluster-info
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          make e2e
 
       - name: Cleanup
         run: |
@@ -1078,17 +1038,12 @@ jobs:
         id: go
 
       - name: Run E2E
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 2
-          shell: bash
-          command: |
-            go install github.com/onsi/ginkgo/ginkgo@latest
-            sudo kubectl cluster-info
-            sudo cp -r /root/.kube/ /home/runner/.kube/
-            sudo chmod -R 777 /home/runner/.kube/
-            make e2e
+        run: |
+          go install github.com/onsi/ginkgo/ginkgo@latest
+          sudo kubectl cluster-info
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          make e2e
 
       - name: Cleanup
         run: |
