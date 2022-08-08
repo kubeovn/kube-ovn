@@ -23,7 +23,11 @@ func (c OvnClient) CreateLogicalRouter(name string) error {
 		return fmt.Errorf("generate create operations for logical router %s: %v", name, err)
 	}
 
-	return c.Transact("lr-add", op)
+	if err := c.Transact("lr-add", op); err != nil {
+		return fmt.Errorf("create logical router %s: %v", name, err)
+	}
+
+	return nil
 }
 
 // DeleteLogicalRouter delete logical router in ovn
@@ -43,7 +47,11 @@ func (c OvnClient) DeleteLogicalRouter(name string) error {
 		return err
 	}
 
-	return c.Transact("lr-del", op)
+	if err := c.Transact("lr-del", op); err != nil {
+		return fmt.Errorf("delete logical router %s: %v", name, err)
+	}
+
+	return nil
 }
 
 func (c OvnClient) GetLogicalRouter(name string, ignoreNotFound bool) (*ovnnb.LogicalRouter, error) {

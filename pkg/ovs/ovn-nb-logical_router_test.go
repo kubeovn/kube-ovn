@@ -21,10 +21,6 @@ func (suite *OvnClientTestSuite) testGetLogicalRouter() {
 
 	err := ovnClient.CreateLogicalRouter(name)
 	require.NoError(t, err)
-	t.Cleanup(func() {
-		err = ovnClient.DeleteLogicalRouter(name)
-		require.NoError(t, err)
-	})
 
 	t.Run("should return no err when found logical router", func(t *testing.T) {
 		lr, err := ovnClient.GetLogicalRouter(name, false)
@@ -50,11 +46,6 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouter() {
 
 	ovnClient := suite.ovnClient
 	name := "test-create-lr"
-
-	t.Cleanup(func() {
-		err := ovnClient.DeleteLogicalRouter(name)
-		require.NoError(t, err)
-	})
 
 	err := ovnClient.CreateLogicalRouter(name)
 	require.NoError(t, err)
