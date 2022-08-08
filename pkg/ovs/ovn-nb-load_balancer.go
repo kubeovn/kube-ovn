@@ -75,7 +75,8 @@ func (c OvnClient) DeleteLoadBalancers(lbs ...string) error {
 	return nil
 }
 
-// GetLoadBalancer get load balancer by name
+// GetLoadBalancer get load balancer by name,
+// it is because of lack name index that does't use ovnNbClient.Get
 func (c OvnClient) GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnnb.LoadBalancer, error) {
 	lbList := make([]ovnnb.LoadBalancer, 0)
 	if err := c.ovnNbClient.WhereCache(func(lb *ovnnb.LoadBalancer) bool {

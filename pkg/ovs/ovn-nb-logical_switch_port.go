@@ -356,6 +356,7 @@ func (c OvnClient) DeleteLogicalSwitchPort(lspName string) error {
 	return nil
 }
 
+// GetLogicalSwitchPort get logical switch port by name
 func (c OvnClient) GetLogicalSwitchPort(name string, ignoreNotFound bool) (*ovnnb.LogicalSwitchPort, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
@@ -414,7 +415,6 @@ func (c OvnClient) ListLogicalSwitchPorts(needVendorFilter bool, externalIDs map
 						return false
 					}
 				}
-
 			}
 		}
 

@@ -128,6 +128,7 @@ func (c OvnClient) DeleteLogicalRouterPort(lrpName string) error {
 	return nil
 }
 
+// GetLogicalRouterPort get logical router port by name,
 func (c OvnClient) GetLogicalRouterPort(lrpName string, ignoreNotFound bool) (*ovnnb.LogicalRouterPort, error) {
 	lrp := &ovnnb.LogicalRouterPort{Name: lrpName}
 	if err := c.Get(context.TODO(), lrp); err != nil {

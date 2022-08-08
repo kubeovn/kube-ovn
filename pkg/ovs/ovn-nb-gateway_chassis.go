@@ -111,6 +111,7 @@ func (c OvnClient) DeleteGatewayChassisOp(chassisName string) ([]ovsdb.Operation
 	return op, nil
 }
 
+// GetGatewayChassis get gateway chassis by name
 func (c OvnClient) GetGatewayChassis(name string, ignoreNotFound bool) (*ovnnb.GatewayChassis, error) {
 	gwChassis := &ovnnb.GatewayChassis{Name: name}
 	if err := c.Get(context.TODO(), gwChassis); err != nil {
