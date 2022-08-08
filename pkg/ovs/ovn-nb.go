@@ -20,8 +20,7 @@ func (c OvnClient) CreateRouterPort(lsName, lrName, ip string, chassises ...stri
 
 	// create gateway chassis
 	lrpName := fmt.Sprintf("%s-%s", lrName, lsName)
-	err := c.CreateGatewayChassises(lrpName, chassises)
-	if err != nil {
+	if err := c.CreateGatewayChassises(lrpName, chassises); err != nil {
 		return err
 	}
 
