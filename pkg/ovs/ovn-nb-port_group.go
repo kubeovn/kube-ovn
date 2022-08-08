@@ -3,7 +3,6 @@ package ovs
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/ovn-org/libovsdb/client"
 	"github.com/ovn-org/libovsdb/model"
@@ -63,11 +62,11 @@ func (c OvnClient) PortGroupUpdatePorts(pgName string, op ovsdb.Mutator, lspName
 
 	ops, err := c.portGroupUpdatePortOp(pgName, lspUUIDs, op)
 	if err != nil {
-		return fmt.Errorf("generate operations for port group %s update ports %s: %v", pgName, strings.Join(lspNames, " "), err)
+		return fmt.Errorf("generate operations for port group %s update ports %v: %v", pgName, lspNames, err)
 	}
 
 	if err := c.Transact("pg-ports-update", ops); err != nil {
-		return fmt.Errorf("port group %s update ports %s: %v", pgName, strings.Join(lspNames, " "), err)
+		return fmt.Errorf("port group %s update ports %v: %v", pgName, lspNames, err)
 	}
 
 	return nil
@@ -97,13 +96,13 @@ func (c OvnClient) DeletePortGroup(pgName string) error {
 }
 
 // GetPortGroup get port group by name
-func (c OvnClient) GetPortGroup(name string, ignoreNotFound bool) (*ovnnb.PortGroup, error) {
-	pg := &ovnnb.PortGroup{Name: name}
+func (c OvnClient) GetPortGroup(pgName string, ignoreNotFound bool) (*ovnnb.PortGroup, error) {
+	pg := &ovnnb.PortGroup{Name: pgName}
 	if err := c.ovnNbClient.Get(context.TODO(), pg); err != nil {
 		if ignoreNotFound && err == client.ErrNotFound {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("get port group %s: %v", name, err)
+		return nil, fmt.Errorf("get port group %s: %v", pgName, err)
 	}
 
 	return pg, nil
@@ -146,8 +145,8 @@ func (c OvnClient) ListPortGroups(externalIDs map[string]string) ([]ovnnb.PortGr
 	return pgs, nil
 }
 
-func (c OvnClient) PortGroupExists(name string) (bool, error) {
-	lsp, err := c.GetPortGroup(name, true)
+func (c OvnClient) PortGroupExists(pgName string) (bool, error) {
+	lsp, err := c.GetPortGroup(pgName, true)
 	return lsp != nil, err
 }
 
