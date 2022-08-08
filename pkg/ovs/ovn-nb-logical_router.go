@@ -30,7 +30,7 @@ func (c OvnClient) CreateLogicalRouter(lrName string) error {
 
 	op, err := c.ovnNbClient.Create(lr)
 	if err != nil {
-		return fmt.Errorf("generate create operations for logical router %s: %v", lrName, err)
+		return fmt.Errorf("generate operations for creating logical router %s: %v", lrName, err)
 	}
 
 	if err := c.Transact("lr-add", op); err != nil {
@@ -44,7 +44,7 @@ func (c OvnClient) CreateLogicalRouter(lrName string) error {
 func (c OvnClient) DeleteLogicalRouter(lrName string) error {
 	lr, err := c.GetLogicalRouter(lrName, true)
 	if err != nil {
-		return err
+		return fmt.Errorf("get logical router %s when delete: %v", lrName, err)
 	}
 
 	// not found, skip
@@ -112,7 +112,7 @@ func (c OvnClient) ListLogicalRouter(needVendorFilter bool) ([]ovnnb.LogicalRout
 func (c OvnClient) LogicalRouterUpdatePortOp(lrName, lrpUUID string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
 	lr, err := c.GetLogicalRouter(lrName, false)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get logical router %s when add or del port: %v", lrName, err)
 	}
 
 	if len(lrpUUID) == 0 {
@@ -127,7 +127,7 @@ func (c OvnClient) LogicalRouterUpdatePortOp(lrName, lrpUUID string, op ovsdb.Mu
 
 	ops, err := c.ovnNbClient.Where(lr).Mutate(lr, mutation)
 	if err != nil {
-		return nil, fmt.Errorf("generate mutate operations for logical router %s: %v", lrName, err)
+		return nil, fmt.Errorf("generate operations for mutating logical router %s: %v", lrName, err)
 	}
 
 	return ops, nil

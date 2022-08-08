@@ -17,6 +17,7 @@ require (
 	github.com/emicklei/go-restful/v3 v3.9.0
 	github.com/go-logr/stdr v1.2.2
 	github.com/golang/protobuf v1.5.2
+	github.com/google/uuid v1.3.0
 	github.com/greenpau/ovsdb v1.0.2
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.3.0
 	github.com/mdlayher/arp v0.0.0-20220512170110-6706a2966875
@@ -78,7 +79,6 @@ require (
 	github.com/google/gnostic v0.6.9 // indirect
 	github.com/google/go-cmp v0.5.8 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
-	github.com/google/uuid v1.3.0 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/hashicorp/go-version v1.2.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
