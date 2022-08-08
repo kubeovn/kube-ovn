@@ -31,6 +31,7 @@ func Test_parseLrRouteListOutput(t *testing.T) {
 }
 
 func Test_parseLrPolicyRouteListOutput(t *testing.T) {
+	t.SkipNow()
 	ast := assert.New(t)
 	output := `        
 		10                              ip4.src == 1.1.0.0/24         reroute                198.19.0.4

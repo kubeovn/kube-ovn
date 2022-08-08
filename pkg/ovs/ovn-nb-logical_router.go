@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
+
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -87,57 +89,27 @@ func (c OvnClient) ListLogicalRouter(needVendorFilter bool) ([]ovnnb.LogicalRout
 	return lrList, nil
 }
 
-func (c OvnClient) LogicalRouterOp(lrName, lrpName string, opIsAdd bool) ([]ovsdb.Operation, error) {
+func (c OvnClient) LogicalRouterOp(lrName string, lrp *ovnnb.LogicalRouterPort, opIsAdd bool) ([]ovsdb.Operation, error) {
 	lr, err := c.GetLogicalRouter(lrName, false)
 	if err != nil {
 		return nil, err
 	}
 
-	lrp, err := c.GetLogicalRouterPort(lrpName, false)
-	if err != nil {
-		return nil, err
-	}
-
-	portMap := make(map[string]struct{}, len(lr.Ports))
-
-	for _, port := range lr.Ports {
-		portMap[port] = struct{}{}
-	}
-
-	// do nothing if port exist when operation is add
-	if _, ok := portMap[lrp.UUID]; ok && opIsAdd {
-		return nil, nil
+	mutation := model.Mutation{
+		Field: &lr.Ports,
+		Value: []string{lrp.UUID},
 	}
 
 	if opIsAdd {
-		lr.Ports = append(lr.Ports, lrp.UUID)
+		mutation.Mutator = ovsdb.MutateOperationInsert
 	} else {
-		delete(portMap, lrp.UUID)
-		ports := make([]string, 0, len(portMap))
-
-		for port := range portMap {
-			ports = append(ports, port)
-		}
-
-		lr.Ports = ports
+		mutation.Mutator = ovsdb.MutateOperationDelete
 	}
 
-	ops, err := c.ovnNbClient.Where(lr).Update(lr, &lr.Ports)
-	if err != nil {
-		return nil, fmt.Errorf("generate update operations for logical router %s: %v", lrName, err)
+	ops, err := c.ovnNbClient.Where(lr).Mutate(lr, mutation)
+	if nil != err {
+		return nil, fmt.Errorf("generate mutate operations for logical router %s: %v", lrName, err)
 	}
 
 	return ops, nil
-}
-
-func (c OvnClient) LogicalRouterAddPort(lrName, portName string) error {
-	ops, err := c.LogicalRouterOp(lrName, portName, true)
-	if nil != err {
-		return err
-	}
-
-	if err = c.Transact("lr-add-port", ops); err != nil {
-		return fmt.Errorf("update ports of logical router %s: %v", lrName, err)
-	}
-	return nil
 }
