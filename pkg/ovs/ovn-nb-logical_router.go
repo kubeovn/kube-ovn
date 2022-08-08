@@ -64,6 +64,8 @@ func (c OvnClient) DeleteLogicalRouter(lrName string) error {
 	return nil
 }
 
+// GetLogicalRouter get load balancer by name,
+// it is because of lack name index that does't use ovnNbClient.Get
 func (c OvnClient) GetLogicalRouter(lrName string, ignoreNotFound bool) (*ovnnb.LogicalRouter, error) {
 	lrList := make([]ovnnb.LogicalRouter, 0)
 	if err := c.ovnNbClient.WhereCache(func(lr *ovnnb.LogicalRouter) bool {
