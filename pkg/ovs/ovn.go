@@ -140,3 +140,46 @@ func ConstructWaitForUniqueOperation(table string, column string, value interfac
 		Rows:    []ovsdb.Row{{column: value}},
 	}
 }
+
+func (c *OvnClient) Transact(method string, operations []ovsdb.Operation) error {
+	if 0 == len(operations) {
+		klog.Warningf("operations should not be empty")
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.TODO(), time.Duration(c.Timeout)*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	results, err := c.ovnNbClient.Transact(ctx, operations...)
+	elapsed := float64((time.Since(start)) / time.Millisecond)
+
+	var dbType string
+	switch c.Schema().Name {
+	case "OVN_Northbound":
+		dbType = "ovn-nb"
+	}
+
+	code := "0"
+	defer func() {
+		ovsClientRequestLatency.WithLabelValues(dbType, method, code).Observe(elapsed)
+	}()
+
+	if err != nil {
+		code = "1"
+		klog.Errorf("error occurred in transact with %s operations: %+v in %vms", dbType, operations, elapsed)
+		return err
+	}
+
+	if elapsed > 500 {
+		klog.Warningf("%s operations took too long: %+v in %vms", dbType, operations, elapsed)
+	}
+
+	errors, err := ovsdb.CheckOperationResults(results, operations)
+	if err != nil {
+		klog.Errorf("error occurred in transact with operations %+v with operation errors %+v: %v", operations, errors, err)
+		return err
+	}
+
+	return nil
+}

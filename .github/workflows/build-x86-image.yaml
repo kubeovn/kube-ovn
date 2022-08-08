@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
     - master
+    - perf/libovsdb
     paths-ignore:
     - 'docs/**'
     - '**.md'
