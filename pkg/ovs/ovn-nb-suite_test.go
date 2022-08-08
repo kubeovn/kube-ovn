@@ -282,6 +282,23 @@ func (suite *OvnClientTestSuite) Test_portGroupOp() {
 	suite.testportGroupOp()
 }
 
+/* address_set unit test */
+func (suite *OvnClientTestSuite) Test_CreateAddressSet() {
+	suite.testCreateAddressSet()
+}
+
+func (suite *OvnClientTestSuite) Test_AddressSetUpdateAddress() {
+	suite.testAddressSetUpdateAddress()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteAddressSet() {
+	suite.testDeleteAddressSet()
+}
+
+func (suite *OvnClientTestSuite) Test_ListAddressSets() {
+	suite.testListAddressSets()
+}
+
 /* mixed operations unit test */
 func (suite *OvnClientTestSuite) Test_CreateGatewayLogicalSwitch() {
 	suite.testCreateGatewayLogicalSwitch()
@@ -393,6 +410,8 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 		client.WithTable(&ovnnb.NBGlobal{}),
 		client.WithTable(&ovnnb.GatewayChassis{}),
 		client.WithTable(&ovnnb.LoadBalancer{}),
+		client.WithTable(&ovnnb.AddressSet{}),
+		client.WithTable(&ovnnb.ACL{}),
 	}
 	if _, err = c.Monitor(context.TODO(), c.NewMonitor(monitorOpts...)); err != nil {
 		return nil, err
