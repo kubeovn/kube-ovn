@@ -15,13 +15,8 @@ func (suite *OvnClientTestSuite) testCreateLoadBalancer() {
 
 	ovnClient := suite.ovnClient
 	lbName := "test-create-lb"
-	vips := map[string]string{
-		"10.96.0.1:443":           "192.168.20.3:6443",
-		"10.107.43.237:8080":      "10.244.0.15:8080,10.244.0.16:8080,10.244.0.17:8080",
-		"[fd00:10:96::e82f]:8080": "[fc00::af4:f]:8080,[fc00::af4:10]:8080,[fc00::af4:11]:8080",
-	}
 
-	err := ovnClient.CreateLoadBalancer(lbName, "tcp", "ip_dst", vips)
+	err := ovnClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
 	require.NoError(t, err)
 
 	lb, err := ovnClient.GetLoadBalancer(lbName, false)
@@ -30,10 +25,9 @@ func (suite *OvnClientTestSuite) testCreateLoadBalancer() {
 	require.NotEmpty(t, lb.UUID)
 	require.Equal(t, "tcp", *lb.Protocol)
 	require.Equal(t, []string{"ip_dst"}, lb.SelectionFields)
-	require.Equal(t, vips, lb.Vips)
 
 	// should no err create lb repeatedly
-	err = ovnClient.CreateLoadBalancer(lbName, "tcp", "ip_dst", vips)
+	err = ovnClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
 	require.NoError(t, err)
 }
 
@@ -47,7 +41,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancers() {
 
 	for i := 0; i < 5; i++ {
 		lbName := fmt.Sprintf("%s-%d", lbNamePrefix, i)
-		err := ovnClient.CreateLoadBalancer(lbName, "tcp", "", nil)
+		err := ovnClient.CreateLoadBalancer(lbName, "tcp", "")
 		require.NoError(t, err)
 
 		lbNames = append(lbNames, lbName)
@@ -72,7 +66,7 @@ func (suite *OvnClientTestSuite) testGetLoadBalancer() {
 	ovnClient := suite.ovnClient
 	lbName := "test-get-lb"
 
-	err := ovnClient.CreateLoadBalancer(lbName, "tcp", "", nil)
+	err := ovnClient.CreateLoadBalancer(lbName, "tcp", "")
 	require.NoError(t, err)
 
 	t.Run("should return no err when found load balancer", func(t *testing.T) {
@@ -106,7 +100,7 @@ func (suite *OvnClientTestSuite) testListLoadBalancers() {
 
 	for i := 0; i < 5; i++ {
 		lbName := fmt.Sprintf("%s-%d", lbNamePrefix, i)
-		err := ovnClient.CreateLoadBalancer(lbName, "tcp", "", nil)
+		err := ovnClient.CreateLoadBalancer(lbName, "tcp", "")
 		require.NoError(t, err)
 
 		lbNames = append(lbNames, lbName)
@@ -137,14 +131,14 @@ func (suite *OvnClientTestSuite) testLoadBalancerUpdateVips() {
 		"[fd00:10:96::e82f]:8080": "[fc00::af4:f]:8080,[fc00::af4:10]:8080,[fc00::af4:11]:8080",
 	}
 
-	err := ovnClient.CreateLoadBalancer(lbName, "tcp", "", vips)
+	err := ovnClient.CreateLoadBalancer(lbName, "tcp", "")
 	require.NoError(t, err)
 
 	lb, err := ovnClient.GetLoadBalancer(lbName, false)
 	require.NoError(t, err)
 	fmt.Println(lb.UUID)
 	t.Run("add new vips to load balancer", func(t *testing.T) {
-		err := ovnClient.LoadBalancerUpdateVips(lbName, vips, true)
+		err := ovnClient.LoadBalancerUpdateVips(lbName, vips, ovsdb.MutateOperationInsert)
 		require.NoError(t, err)
 
 		lb, err := ovnClient.GetLoadBalancer(lbName, false)
@@ -157,7 +151,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerUpdateVips() {
 		require.NoError(t, err)
 		require.Equal(t, vips, lb.Vips)
 
-		err = ovnClient.LoadBalancerUpdateVips(lbName, vips, true)
+		err = ovnClient.LoadBalancerUpdateVips(lbName, vips, ovsdb.MutateOperationInsert)
 		require.NoError(t, err)
 
 		lb, err = ovnClient.GetLoadBalancer(lbName, false)
@@ -171,7 +165,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerUpdateVips() {
 			"[fd00:10:96::e82f]:8080": "[fc00::af4:f]:8080,[fc00::af4:10]:8080,[fc00::af4:11]:8080",
 		}
 
-		err = ovnClient.LoadBalancerUpdateVips(lbName, delVips, false)
+		err = ovnClient.LoadBalancerUpdateVips(lbName, delVips, ovsdb.MutateOperationDelete)
 		require.NoError(t, err)
 
 		lb, err := ovnClient.GetLoadBalancer(lbName, false)
@@ -182,13 +176,13 @@ func (suite *OvnClientTestSuite) testLoadBalancerUpdateVips() {
 	})
 
 	t.Run("should no error when del non-existent vips from load balancer", func(t *testing.T) {
-		// TODO: to fix panic when delete non-existent vips from load balancer
 		t.SkipNow()
+
 		delVips := map[string]string{
 			"10.96.10.100:443": "192.168.100.31:6443",
 		}
 
-		err = ovnClient.LoadBalancerUpdateVips(lbName, delVips, false)
+		err = ovnClient.LoadBalancerUpdateVips(lbName, delVips, ovsdb.MutateOperationDelete)
 		require.NoError(t, err)
 
 		lb, err := ovnClient.GetLoadBalancer(lbName, false)
@@ -206,7 +200,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerOp() {
 	ovnClient := suite.ovnClient
 	lbName := "test-del-lb-op"
 
-	err := ovnClient.CreateLoadBalancer(lbName, "tcp", "", nil)
+	err := ovnClient.CreateLoadBalancer(lbName, "tcp", "")
 	require.NoError(t, err)
 
 	lb, err := ovnClient.GetLoadBalancer(lbName, false)

@@ -12,7 +12,7 @@ import (
 )
 
 // createRouterPort create logical router port and associated logical switch port which type is router
-func (c OvnClient) CreateRouterPort(lsName, lrName, ip string, chassises ...string) error {
+func (c OvnClient) CreateRouterPort(lsName, lrName, ip, mac string, chassises ...string) error {
 	// check ip format: 192.168.231.1/24,fc00::0af4:01/112
 	if err := util.CheckCidrs(ip); err != nil {
 		return err
@@ -25,7 +25,7 @@ func (c OvnClient) CreateRouterPort(lsName, lrName, ip string, chassises ...stri
 	}
 
 	// create router type port
-	return c.CreateRouterTypePort(lsName, lrName, ip, func(lrp *ovnnb.LogicalRouterPort) {
+	return c.CreateRouterTypePort(lsName, lrName, ip, mac, func(lrp *ovnnb.LogicalRouterPort) {
 		if len(chassises) != 0 {
 			lrp.GatewayChassis = chassises
 		}
@@ -44,7 +44,7 @@ func (c OvnClient) DeleteRouterPort(lspName, lrpName string, chassises ...string
 	return c.RemoveRouterTypePort(lspName, lrpName)
 }
 
-func (c OvnClient) CreateRouterTypePort(lsName, lrName, ip string, LrpOptions ...func(lrp *ovnnb.LogicalRouterPort)) error {
+func (c OvnClient) CreateRouterTypePort(lsName, lrName, ip, mac string, LrpOptions ...func(lrp *ovnnb.LogicalRouterPort)) error {
 	lspName := fmt.Sprintf("%s-%s", lsName, lrName)
 	lrpName := fmt.Sprintf("%s-%s", lrName, lsName)
 
@@ -59,7 +59,7 @@ func (c OvnClient) CreateRouterTypePort(lsName, lrName, ip string, LrpOptions ..
 		return err
 	}
 
-	// this condition is "||" because of the ovsdb transcation
+	// this condition is "||" because of ovsdb ACID transcation
 	if lspExist || lrpExist {
 		return nil
 	}
@@ -84,7 +84,7 @@ func (c OvnClient) CreateRouterTypePort(lsName, lrName, ip string, LrpOptions ..
 	lrp := &ovnnb.LogicalRouterPort{
 		UUID:     ovsclient.UUID(),
 		Name:     lrpName,
-		MAC:      util.GenerateMac(),
+		MAC:      mac,
 		Networks: strings.Split(ip, ","),
 	}
 

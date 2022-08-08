@@ -154,6 +154,77 @@ func (suite *OvnClientTestSuite) testLogicalSwitchDelPort() {
 	})
 }
 
+func (suite *OvnClientTestSuite) testLogicalSwitchUpdateLoadBalancers() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lsName := "test-add-lb-to-ls"
+	prefix := "test-add-lb"
+	lbNames := make([]string, 0, 3)
+
+	err := ovnClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	for i := 1; i <= 3; i++ {
+		lbName := fmt.Sprintf("%s-%d", prefix, i)
+		lbNames = append(lbNames, lbName)
+		err := ovnClient.CreateLoadBalancer(lbName, "tcp", "")
+		require.NoError(t, err)
+	}
+
+	t.Run("add lbs to logical switch", func(t *testing.T) {
+		err = ovnClient.LogicalSwitchUpdateLoadBalancers(lsName, ovsdb.MutateOperationInsert, lbNames...)
+		require.NoError(t, err)
+
+		ls, err := ovnClient.GetLogicalSwitch(lsName, false)
+		require.NoError(t, err)
+
+		for _, lbName := range lbNames {
+			lb, err := ovnClient.GetLoadBalancer(lbName, false)
+			require.NoError(t, err)
+			require.Contains(t, ls.LoadBalancer, lb.UUID)
+		}
+	})
+
+	t.Run("should no err when add non-existent lbs to logical switch", func(t *testing.T) {
+		// add a non-existent lb
+		err = ovnClient.LogicalSwitchUpdateLoadBalancers(lsName, ovsdb.MutateOperationInsert, []string{"017d4a80-3373-43bd-ab40-58874b6dbaed"}...)
+		require.NoError(t, err)
+
+		ls, err := ovnClient.GetLogicalSwitch(lsName, false)
+		require.NoError(t, err)
+		// should not contains the non-existent lb
+		require.NotContains(t, ls.LoadBalancer, "017d4a80-3373-43bd-ab40-58874b6dbaed")
+	})
+
+	t.Run("del lbs from logical switch", func(t *testing.T) {
+		// delete the first two lbs from logical switch
+		err = ovnClient.LogicalSwitchUpdateLoadBalancers(lsName, ovsdb.MutateOperationDelete, lbNames[0:2]...)
+		require.NoError(t, err)
+
+		ls, err := ovnClient.GetLogicalSwitch(lsName, false)
+		require.NoError(t, err)
+
+		for i, lbName := range lbNames {
+			lb, err := ovnClient.GetLoadBalancer(lbName, false)
+			require.NoError(t, err)
+
+			// logical switch contains the last lb
+			if i == 2 {
+				require.Contains(t, ls.LoadBalancer, lb.UUID)
+				continue
+			}
+			require.NotContains(t, ls.LoadBalancer, lb.UUID)
+		}
+	})
+
+	t.Run("del non-existent lbs from logical switch", func(t *testing.T) {
+		err = ovnClient.LogicalSwitchUpdateLoadBalancers(lsName, ovsdb.MutateOperationDelete, []string{"e591456a-f7b3-4506-a402-0db1b3ff224c", "fa4f4dc1-5ac1-40fd-a42f-28bf2838fe70"}...)
+		require.NoError(t, err)
+	})
+}
+
 func (suite *OvnClientTestSuite) testDeleteLogicalSwitch() {
 	t := suite.T()
 	t.Parallel()
@@ -250,7 +321,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdatePortOp() {
 
 	t.Run("add new port to logical switch", func(t *testing.T) {
 		t.Parallel()
-		ops, err := ovnClient.LogicalSwitchUpdatePortOp(lsName, lspUUID, true)
+		ops, err := ovnClient.LogicalSwitchUpdatePortOp(lsName, lspUUID, ovsdb.MutateOperationInsert)
 		require.NoError(t, err)
 		require.Equal(t, []ovsdb.Mutation{
 			{
@@ -269,7 +340,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdatePortOp() {
 
 	t.Run("del port from logical switch", func(t *testing.T) {
 		t.Parallel()
-		ops, err := ovnClient.LogicalSwitchUpdatePortOp(lsName, lspUUID, false)
+		ops, err := ovnClient.LogicalSwitchUpdatePortOp(lsName, lspUUID, ovsdb.MutateOperationDelete)
 		require.NoError(t, err)
 		require.Equal(t, []ovsdb.Mutation{
 			{
@@ -288,8 +359,76 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdatePortOp() {
 
 	t.Run("should return err when logical router does not exist", func(t *testing.T) {
 		t.Parallel()
-		_, err := ovnClient.LogicalSwitchUpdatePortOp("test-port-op-ls-non-existent", lspUUID, true)
+		_, err := ovnClient.LogicalSwitchUpdatePortOp("test-port-op-ls-non-existent", lspUUID, ovsdb.MutateOperationInsert)
 		require.ErrorContains(t, err, "not found logical switch")
+	})
+}
+
+func (suite *OvnClientTestSuite) testLogicalSwitchUpdateLoadBalancerOp() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lsName := "test-update-lb-ls"
+	lbUUIDs := []string{ovsclient.UUID(), ovsclient.UUID(), ovsclient.UUID()}
+
+	err := ovnClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	t.Run("add new lb to logical switch", func(t *testing.T) {
+		t.Parallel()
+		ops, err := ovnClient.LogicalSwitchUpdateLoadBalancerOp(lsName, lbUUIDs, ovsdb.MutateOperationInsert)
+		require.NoError(t, err)
+		require.Equal(t, []ovsdb.Mutation{
+			{
+				Column:  "load_balancer",
+				Mutator: ovsdb.MutateOperationInsert,
+				Value: ovsdb.OvsSet{
+					GoSet: []interface{}{
+						ovsdb.UUID{
+							GoUUID: lbUUIDs[0],
+						},
+						ovsdb.UUID{
+							GoUUID: lbUUIDs[1],
+						},
+						ovsdb.UUID{
+							GoUUID: lbUUIDs[2],
+						},
+					},
+				},
+			},
+		}, ops[0].Mutations)
+	})
+
+	t.Run("del port from logical switch", func(t *testing.T) {
+		t.Parallel()
+		ops, err := ovnClient.LogicalSwitchUpdateLoadBalancerOp(lsName, lbUUIDs, ovsdb.MutateOperationDelete)
+		require.NoError(t, err)
+		require.Equal(t, []ovsdb.Mutation{
+			{
+				Column:  "load_balancer",
+				Mutator: ovsdb.MutateOperationDelete,
+				Value: ovsdb.OvsSet{
+					GoSet: []interface{}{
+						ovsdb.UUID{
+							GoUUID: lbUUIDs[0],
+						},
+						ovsdb.UUID{
+							GoUUID: lbUUIDs[1],
+						},
+						ovsdb.UUID{
+							GoUUID: lbUUIDs[2],
+						},
+					},
+				},
+			},
+		}, ops[0].Mutations)
+	})
+
+	t.Run("should no err when lbUUIDs is empty", func(t *testing.T) {
+		t.Parallel()
+		_, err := ovnClient.LogicalSwitchUpdateLoadBalancerOp("test-port-op-ls-non-existent", nil, ovsdb.MutateOperationInsert)
+		require.NoError(t, err)
 	})
 }
 
@@ -304,8 +443,8 @@ func (suite *OvnClientTestSuite) testLogicalSwitchOp() {
 	require.NoError(t, err)
 
 	lspUUID := ovsclient.UUID()
-	lspMutation := func(ls *ovnnb.LogicalSwitch) model.Mutation {
-		mutation := model.Mutation{
+	lspMutation := func(ls *ovnnb.LogicalSwitch) *model.Mutation {
+		mutation := &model.Mutation{
 			Field:   &ls.Ports,
 			Value:   []string{lspUUID},
 			Mutator: ovsdb.MutateOperationInsert,
@@ -315,8 +454,8 @@ func (suite *OvnClientTestSuite) testLogicalSwitchOp() {
 	}
 
 	LbUUID := ovsclient.UUID()
-	LbMutation := func(ls *ovnnb.LogicalSwitch) model.Mutation {
-		mutation := model.Mutation{
+	LbMutation := func(ls *ovnnb.LogicalSwitch) *model.Mutation {
+		mutation := &model.Mutation{
 			Field:   &ls.LoadBalancer,
 			Value:   []string{LbUUID},
 			Mutator: ovsdb.MutateOperationInsert,
