@@ -54,3 +54,27 @@ func Test_getIpv6Prefix(t *testing.T) {
 	})
 
 }
+
+func Test_matchAddressSetName(t *testing.T) {
+	t.Parallel()
+
+	asName := "ovn.sg.sg.associated.v4"
+	matched := matchAddressSetName(asName)
+	require.True(t, matched)
+
+	asName = "ovn.sg.sg.associated.v4.123"
+	matched = matchAddressSetName(asName)
+	require.True(t, matched)
+
+	asName = "ovn-sg.sg.associated.v4"
+	matched = matchAddressSetName(asName)
+	require.False(t, matched)
+
+	asName = "123ovn.sg.sg.associated.v4"
+	matched = matchAddressSetName(asName)
+	require.False(t, matched)
+
+	asName = "123.ovn.sg.sg.associated.v4"
+	matched = matchAddressSetName(asName)
+	require.False(t, matched)
+}

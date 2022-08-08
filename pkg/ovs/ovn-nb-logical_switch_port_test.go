@@ -283,6 +283,29 @@ func (suite *OvnClientTestSuite) testCreateVirtualLogicalSwitchPorts() {
 	})
 }
 
+func (suite *OvnClientTestSuite) testCreateBareLogicalSwitchPort() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lsName := "test-create-bare-port-ls"
+	lspName := "test-create-bare-port-lsp"
+
+	err := ovnClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	err = ovnClient.CreateBareLogicalSwitchPort(lsName, lspName)
+	require.NoError(t, err)
+
+	lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
+	require.NoError(t, err)
+
+	ls, err := ovnClient.GetLogicalSwitch(lsName, false)
+	require.NoError(t, err)
+
+	require.Contains(t, ls.Ports, lsp.UUID)
+}
+
 func (suite *OvnClientTestSuite) testSetLogicalSwitchPortVirtualParents() {
 	t := suite.T()
 	t.Parallel()

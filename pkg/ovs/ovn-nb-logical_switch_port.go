@@ -97,7 +97,7 @@ func (c OvnClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, na
 
 	ops, err := c.CreateLogicalSwitchPortOp(lsp, lsName)
 	if err != nil {
-		return err
+		return fmt.Errorf("generate operations for creating logical switch port %s: %v", lspName, err)
 	}
 
 	if err = c.Transact("lsp-add", ops); err != nil {
