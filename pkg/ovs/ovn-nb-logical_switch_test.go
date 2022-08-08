@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
 
@@ -71,6 +72,85 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitch() {
 
 		err = ovnClient.CreateLogicalSwitch(lsName+"-1", lrName+"-1", "192.168.2.0/24,fd00::c0a8:9900/120", "192.168.2.1,fd00::c0a8:9901", false)
 		require.NoError(t, err)
+	})
+}
+
+func (suite *OvnClientTestSuite) testLogicalSwitchAddPort() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lsName := "test-add-port-ls"
+	lspName := "test-add-port-lsp"
+
+	err := ovnClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	err = ovnClient.CreateBareLogicalSwitchPort(lsName, lspName)
+	require.NoError(t, err)
+
+	lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
+	require.NoError(t, err)
+
+	t.Run("add port to logical switch", func(t *testing.T) {
+		err = ovnClient.LogicalSwitchAddPort(lsName, lspName)
+		require.NoError(t, err)
+
+		ls, err := ovnClient.GetLogicalSwitch(lsName, false)
+		require.NoError(t, err)
+		require.Contains(t, ls.Ports, lsp.UUID)
+	})
+
+	t.Run("add port to logical switch repeatedly", func(t *testing.T) {
+		err = ovnClient.LogicalSwitchAddPort(lsName, lspName)
+		require.NoError(t, err)
+
+		ls, err := ovnClient.GetLogicalSwitch(lsName, false)
+		require.NoError(t, err)
+		require.Contains(t, ls.Ports, lsp.UUID)
+	})
+}
+
+func (suite *OvnClientTestSuite) testLogicalSwitchDelPort() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lsName := "test-del-port-ls"
+	lspName := "test-del-port-lsp"
+
+	err := ovnClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	err = ovnClient.CreateBareLogicalSwitchPort(lsName, lspName)
+	require.NoError(t, err)
+
+	lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
+	require.NoError(t, err)
+
+	err = ovnClient.LogicalSwitchAddPort(lsName, lspName)
+	require.NoError(t, err)
+
+	t.Run("del port from logical switch", func(t *testing.T) {
+		ls, err := ovnClient.GetLogicalSwitch(lsName, false)
+		require.NoError(t, err)
+		require.Contains(t, ls.Ports, lsp.UUID)
+
+		err = ovnClient.LogicalSwitchDelPort(lsName, lspName)
+		require.NoError(t, err)
+
+		ls, err = ovnClient.GetLogicalSwitch(lsName, false)
+		require.NoError(t, err)
+		require.NotContains(t, ls.Ports, lsp.UUID)
+	})
+
+	t.Run("del port from logical switch repeatedly", func(t *testing.T) {
+		err = ovnClient.LogicalSwitchDelPort(lsName, lspName)
+		require.NoError(t, err)
+
+		ls, err := ovnClient.GetLogicalSwitch(lsName, false)
+		require.NoError(t, err)
+		require.NotContains(t, ls.Ports, lsp.UUID)
 	})
 }
 
@@ -157,25 +237,20 @@ func (suite *OvnClientTestSuite) testListLogicalSwitch() {
 	})
 }
 
-func (suite *OvnClientTestSuite) testLogicalSwitchOp() {
+func (suite *OvnClientTestSuite) testLogicalSwitchUpdatePortOp() {
 	t := suite.T()
 	t.Parallel()
 
 	ovnClient := suite.ovnClient
-	lsName := "test-port-op-ls"
-	lspName := "test-port-op-lsp"
+	lsName := "test-set-port-op-ls"
+	lspUUID := ovsclient.UUID()
 
 	err := ovnClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
 
-	lsp := &ovnnb.LogicalSwitchPort{
-		UUID: ovsclient.UUID(),
-		Name: lspName,
-	}
-
 	t.Run("add new port to logical switch", func(t *testing.T) {
 		t.Parallel()
-		ops, err := ovnClient.LogicalSwitchOp(lsName, lsp, true)
+		ops, err := ovnClient.LogicalSwitchUpdatePortOp(lsName, lspUUID, true)
 		require.NoError(t, err)
 		require.Equal(t, []ovsdb.Mutation{
 			{
@@ -184,7 +259,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchOp() {
 				Value: ovsdb.OvsSet{
 					GoSet: []interface{}{
 						ovsdb.UUID{
-							GoUUID: lsp.UUID,
+							GoUUID: lspUUID,
 						},
 					},
 				},
@@ -194,7 +269,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchOp() {
 
 	t.Run("del port from logical switch", func(t *testing.T) {
 		t.Parallel()
-		ops, err := ovnClient.LogicalSwitchOp(lsName, lsp, false)
+		ops, err := ovnClient.LogicalSwitchUpdatePortOp(lsName, lspUUID, false)
 		require.NoError(t, err)
 		require.Equal(t, []ovsdb.Mutation{
 			{
@@ -203,7 +278,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchOp() {
 				Value: ovsdb.OvsSet{
 					GoSet: []interface{}{
 						ovsdb.UUID{
-							GoUUID: lsp.UUID,
+							GoUUID: lspUUID,
 						},
 					},
 				},
@@ -213,7 +288,69 @@ func (suite *OvnClientTestSuite) testLogicalSwitchOp() {
 
 	t.Run("should return err when logical router does not exist", func(t *testing.T) {
 		t.Parallel()
-		_, err := ovnClient.LogicalSwitchOp("test-port-op-ls-non-existent", lsp, true)
+		_, err := ovnClient.LogicalSwitchUpdatePortOp("test-port-op-ls-non-existent", lspUUID, true)
 		require.ErrorContains(t, err, "not found logical switch")
 	})
+}
+
+func (suite *OvnClientTestSuite) testLogicalSwitchOp() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lsName := "test-port-op-ls"
+
+	err := ovnClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	lspUUID := ovsclient.UUID()
+	lspMutation := func(ls *ovnnb.LogicalSwitch) model.Mutation {
+		mutation := model.Mutation{
+			Field:   &ls.Ports,
+			Value:   []string{lspUUID},
+			Mutator: ovsdb.MutateOperationInsert,
+		}
+
+		return mutation
+	}
+
+	LbUUID := ovsclient.UUID()
+	LbMutation := func(ls *ovnnb.LogicalSwitch) model.Mutation {
+		mutation := model.Mutation{
+			Field:   &ls.LoadBalancer,
+			Value:   []string{LbUUID},
+			Mutator: ovsdb.MutateOperationInsert,
+		}
+
+		return mutation
+	}
+
+	ops, err := ovnClient.LogicalSwitchOp(lsName, lspMutation, LbMutation)
+	require.NoError(t, err)
+
+	require.Len(t, ops[0].Mutations, 2)
+	require.Equal(t, []ovsdb.Mutation{
+		{
+			Column:  "ports",
+			Mutator: ovsdb.MutateOperationInsert,
+			Value: ovsdb.OvsSet{
+				GoSet: []interface{}{
+					ovsdb.UUID{
+						GoUUID: lspUUID,
+					},
+				},
+			},
+		},
+		{
+			Column:  "load_balancer",
+			Mutator: ovsdb.MutateOperationInsert,
+			Value: ovsdb.OvsSet{
+				GoSet: []interface{}{
+					ovsdb.UUID{
+						GoUUID: LbUUID,
+					},
+				},
+			},
+		},
+	}, ops[0].Mutations)
 }
