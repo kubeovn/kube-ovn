@@ -26,6 +26,75 @@ func createLogicalSwitchPort(c *OvnClient, lsp *ovnnb.LogicalSwitchPort) error {
 	return c.Transact("lrp-create", op)
 }
 
+func (suite *OvnClientTestSuite) testCreateVirtualLogicalSwitchPorts() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lsName := "test-create-virtual-port-ls"
+	vips := []string{"192.168.33.10", "192.168.33.12"}
+
+	err := ovnClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+	t.Run("create virtual logical switch port", func(t *testing.T) {
+		err = ovnClient.CreateVirtualLogicalSwitchPorts(lsName, vips...)
+		require.NoError(t, err)
+		for _, ip := range vips {
+			lspName := fmt.Sprintf("%s-vip-%s", lsName, ip)
+
+			lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
+			require.NoError(t, err)
+			require.Equal(t, lspName, lsp.Name)
+			require.Equal(t, "virtual", lsp.Type)
+			require.Equal(t, map[string]string{
+				"virtual-ip": ip,
+			}, lsp.Options)
+		}
+	})
+
+	t.Run("should no err when create logical switch port repeatedly", func(t *testing.T) {
+		err = ovnClient.CreateVirtualLogicalSwitchPorts(lsName, vips...)
+		require.NoError(t, err)
+	})
+}
+
+func (suite *OvnClientTestSuite) testSetLogicalSwitchPortVirtualParents() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lsName := "test-update-port-virt-parents-ls"
+	ips := []string{"192.168.211.31", "192.168.211.32"}
+
+	err := ovnClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	err = ovnClient.CreateVirtualLogicalSwitchPorts(lsName, ips...)
+	require.NoError(t, err)
+
+	t.Run("set virtual-parents option", func(t *testing.T) {
+		err = ovnClient.SetLogicalSwitchPortVirtualParents(lsName, "virt-parents-ls-1,virt-parents-ls-2", ips...)
+		require.NoError(t, err)
+		for _, ip := range ips {
+			lspName := fmt.Sprintf("%s-vip-%s", lsName, ip)
+			lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
+			require.NoError(t, err)
+			require.Equal(t, "virt-parents-ls-1,virt-parents-ls-2", lsp.Options["virtual-parents"])
+		}
+	})
+
+	t.Run("clear virtual-parents option", func(t *testing.T) {
+		err = ovnClient.SetLogicalSwitchPortVirtualParents(lsName, "", ips...)
+		require.NoError(t, err)
+		for _, ip := range ips {
+			lspName := fmt.Sprintf("%s-vip-%s", lsName, ip)
+			lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
+			require.NoError(t, err)
+			require.Empty(t, lsp.Options["virtual-parents"])
+		}
+	})
+}
+
 func (suite *OvnClientTestSuite) testSetLogicalSwitchPortSecurity() {
 	t := suite.T()
 	t.Parallel()
@@ -96,6 +165,34 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortSecurity() {
 			"attach-vips": "true",
 		}, lsp.ExternalIDs)
 	})
+}
+
+func (suite *OvnClientTestSuite) testEnablePortLayer2forward() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lsName := "test-enble-port-l2-ls"
+	lspName := "test-enable-port-l2-lsp"
+
+	lsp := &ovnnb.LogicalSwitchPort{
+		UUID: ovsclient.UUID(),
+		Name: lspName,
+		ExternalIDs: map[string]string{
+			"vendor":         util.CniTypeName,
+			logicalSwitchKey: lsName,
+		},
+	}
+
+	err := createLogicalSwitchPort(ovnClient, lsp)
+	require.NoError(t, err)
+
+	err = ovnClient.EnablePortLayer2forward(lspName)
+	require.NoError(t, err)
+
+	lsp, err = ovnClient.GetLogicalSwitchPort(lspName, false)
+	require.NoError(t, err)
+	require.Equal(t, []string{"unknown"}, lsp.Addresses)
 }
 
 func (suite *OvnClientTestSuite) testUpdateLogicalSwitchPort() {
