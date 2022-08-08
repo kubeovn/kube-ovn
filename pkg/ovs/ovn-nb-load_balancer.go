@@ -3,7 +3,6 @@ package ovs
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
@@ -69,7 +68,7 @@ func (c OvnClient) DeleteLoadBalancers(lbs ...string) error {
 	}
 
 	if err := c.Transact("lb-del", ops); err != nil {
-		return fmt.Errorf("delete load balancers %s: %v", strings.Join(lbs, " "), err)
+		return fmt.Errorf("delete load balancers %v: %v", lbs, err)
 	}
 
 	return nil
