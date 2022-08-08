@@ -36,23 +36,12 @@ func (c OvnClient) CreateVpcExGwLogicalRouterPort(lrName, mac, ip, lrpName strin
 		GatewayChassis: chassises,
 	}
 
-	lrpCreateOp, err := c.CreateLogicalRouterPortOp(lrp, lrName)
+	ops, err := c.CreateLogicalRouterPortOp(lrp, lrName)
 	if nil != err {
 		return err
 	}
 
-	/* add logical router port to logical router*/
-	lrpAddOp, err := c.LogicalRouterOp(lrName, lrp, true)
-	if nil != err {
-		return err
-	}
-
-	ops := make([]ovsdb.Operation, 0, len(lrpCreateOp)+len(lrpAddOp))
-	ops = append(ops, lrpCreateOp...)
-	ops = append(ops, lrpAddOp...)
-
-	err = c.Transact("lrp-add", ops)
-	if err != nil {
+	if err = c.Transact("lrp-add", ops); err != nil {
 		return fmt.Errorf("create vpc external gateway logical router port %s: %v", lrpName, err)
 	}
 
@@ -86,23 +75,12 @@ func (c OvnClient) CreatePeerRouterPort(localRouter, remoteRouter, localRouterPo
 		Peer:     &remoteRouterPort,
 	}
 
-	lrpCreateOp, err := c.CreateLogicalRouterPortOp(lrp, localRouter)
+	ops, err := c.CreateLogicalRouterPortOp(lrp, localRouter)
 	if nil != err {
 		return err
 	}
 
-	/* add logical router port to logical router*/
-	lrpAddOp, err := c.LogicalRouterOp(localRouter, lrp, true)
-	if nil != err {
-		return err
-	}
-
-	ops := make([]ovsdb.Operation, 0, len(lrpCreateOp)+len(lrpAddOp))
-	ops = append(ops, lrpCreateOp...)
-	ops = append(ops, lrpAddOp...)
-
-	err = c.Transact("lrp-add", ops)
-	if err != nil {
+	if err = c.Transact("lrp-add", ops); err != nil {
 		return fmt.Errorf("create vpc external gateway logical router port %s: %v", localRouterPort, err)
 	}
 
@@ -151,40 +129,19 @@ func (c OvnClient) UpdateLogicalRouterPort(lrp *ovnnb.LogicalRouterPort, fields 
 	return nil
 }
 
-// CreateVpcExGwLogicalRouterPort create logical router port
+// CreateLogicalRouterPort create logical router port
 func (c OvnClient) CreateLogicalRouterPort(lrp *ovnnb.LogicalRouterPort, lrName string) error {
 	op, err := c.CreateLogicalRouterPortOp(lrp, lrName)
 	if err != nil {
 		return fmt.Errorf("generate create operations for logical router port %s: %v", lrp.Name, err)
 	}
 
-	err = c.Transact("lrp-create", op)
+	err = c.Transact("lrp-add", op)
 	if err != nil {
 		return fmt.Errorf("create logical router port %s: %v", lrp.Name, err)
 	}
 
 	return nil
-}
-
-// CreateLogicalRouterPortOp return operation which create logical router port
-func (c OvnClient) CreateLogicalRouterPortOp(lrp *ovnnb.LogicalRouterPort, lrName string) ([]ovsdb.Operation, error) {
-	if nil == lrp {
-		return nil, fmt.Errorf("logical_router_port is nil")
-	}
-
-	if nil == lrp.ExternalIDs {
-		lrp.ExternalIDs = make(map[string]string)
-	}
-
-	// attach necessary info
-	lrp.ExternalIDs[logicalRouterKey] = lrName
-
-	op, err := c.Create(lrp)
-	if err != nil {
-		return nil, fmt.Errorf("generate create operations for logical router port %s: %v", lrp.Name, err)
-	}
-
-	return op, nil
 }
 
 // DeleteLogicalRouterPort delete logical router port from logical router
@@ -194,38 +151,27 @@ func (c OvnClient) DeleteLogicalRouterPort(name string) error {
 		return err
 	}
 
-	// not found, skip
-	if nil == lrp {
-		return nil
-	}
-
-	// delete logical router port from logical router
-	lrName := lrp.ExternalIDs[logicalRouterKey]
-	lrpRemoveOp, err := c.LogicalRouterOp(lrName, lrp, false)
-	if err != nil {
+	ops, err := c.DeleteLogicalRouterPortOp(lrp)
+	if nil != err {
 		return err
 	}
 
-	// delete logical router port
-	lrpDelOp, err := c.Where(lrp).Delete()
-	if err != nil {
-		return err
+	err = c.Transact("lrp-del", ops)
+	if nil != err {
+		return fmt.Errorf("delete logical router port %s", name)
 	}
 
-	ops := make([]ovsdb.Operation, 0, len(lrpRemoveOp)+len(lrpDelOp))
-	ops = append(ops, lrpRemoveOp...)
-	ops = append(ops, lrpDelOp...)
-
-	return c.Transact("lrp-del", ops)
+	return nil
 }
 
 func (c OvnClient) GetLogicalRouterPort(name string, ignoreNotFound bool) (*ovnnb.LogicalRouterPort, error) {
 	lrp := &ovnnb.LogicalRouterPort{Name: name}
-	if err := c.ovnNbClient.Get(context.TODO(), lrp); err != nil {
+	if err := c.Get(context.TODO(), lrp); err != nil {
 		if ignoreNotFound && err == client.ErrNotFound {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("failed to get logical router port %s: %v", name, err)
+
+		return nil, fmt.Errorf("get logical router port %s: %v", name, err)
 	}
 
 	return lrp, nil
@@ -284,4 +230,67 @@ func (c OvnClient) AddLogicalRouterPort(lr, name, mac, networks string) error {
 		return fmt.Errorf("failed to create logical router port %s: %v", name, err)
 	}
 	return nil
+}
+
+// CreateLogicalRouterPortOp create operation which create logical router port
+func (c OvnClient) CreateLogicalRouterPortOp(lrp *ovnnb.LogicalRouterPort, lrName string) ([]ovsdb.Operation, error) {
+	if nil == lrp {
+		return nil, fmt.Errorf("logical_router_port is nil")
+	}
+
+	if nil == lrp.ExternalIDs {
+		lrp.ExternalIDs = make(map[string]string)
+	}
+
+	// attach necessary info
+	lrp.ExternalIDs[logicalRouterKey] = lrName
+
+	/* create logical router port */
+	lrpCreateOp, err := c.Create(lrp)
+	if err != nil {
+		return nil, fmt.Errorf("generate create operations for logical router port %s: %v", lrp.Name, err)
+	}
+
+	/* add logical router port to logical router*/
+	lrpAddOp, err := c.LogicalRouterOp(lrName, lrp.UUID, true)
+	if nil != err {
+		return nil, err
+	}
+
+	ops := make([]ovsdb.Operation, 0, len(lrpCreateOp)+len(lrpAddOp))
+	ops = append(ops, lrpCreateOp...)
+	ops = append(ops, lrpAddOp...)
+
+	return ops, nil
+}
+
+// DeleteLogicalRouterPortOp create operation which delete logical router port
+func (c OvnClient) DeleteLogicalRouterPortOp(lrp *ovnnb.LogicalRouterPort) ([]ovsdb.Operation, error) {
+	// not found, skip
+	if nil == lrp {
+		return nil, nil
+	}
+
+	lrName, ok := lrp.ExternalIDs[logicalRouterKey]
+	if !ok {
+		return nil, fmt.Errorf("no %s exist in lsp's external_ids", logicalRouterKey)
+	}
+
+	// delete logical router port from logical router
+	lrpRemoveOp, err := c.LogicalRouterOp(lrName, lrp.UUID, false)
+	if err != nil {
+		return nil, err
+	}
+
+	// delete logical router port
+	lrpDelOp, err := c.Where(lrp).Delete()
+	if err != nil {
+		return nil, err
+	}
+
+	ops := make([]ovsdb.Operation, 0, len(lrpRemoveOp)+len(lrpDelOp))
+	ops = append(ops, lrpRemoveOp...)
+	ops = append(ops, lrpDelOp...)
+
+	return ops, nil
 }
