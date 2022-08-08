@@ -19,7 +19,7 @@ func (c OvnClient) CreateNbGlobal(nbGlobal *ovnnb.NBGlobal) error {
 
 func (c OvnClient) DeleteNbGlobal() error {
 	nbGlobal, err := c.GetNbGlobal()
-	if nil != err {
+	if err != nil {
 		return err
 	}
 
@@ -39,11 +39,11 @@ func (c OvnClient) GetNbGlobal() (*ovnnb.NBGlobal, error) {
 		return true
 	}).List(context.TODO(), &nbGlobalList)
 
-	if nil != err {
+	if err != nil {
 		return nil, fmt.Errorf("list nbGlobal: %v", err)
 	}
 
-	if 0 == len(nbGlobalList) {
+	if len(nbGlobalList) == 0 {
 		return nil, fmt.Errorf("not found nb_global")
 	}
 
@@ -59,12 +59,12 @@ func (c OvnClient) UpdateNbGlobal(newNbGlobal *ovnnb.NBGlobal, fields ...interfa
 	   	}).Update(nbGlobal) */
 
 	oldNbGlobal, err := c.GetNbGlobal()
-	if nil != err {
+	if err != nil {
 		return err
 	}
 
 	op, err := c.Where(oldNbGlobal).Update(newNbGlobal, fields...)
-	if nil != err {
+	if err != nil {
 		return fmt.Errorf("generate update operations for nb global: %v", err)
 	}
 
@@ -86,7 +86,7 @@ func (c OvnClient) SetICAutoRoute(enable bool, blackList []string) error {
 		}}
 	}
 
-	if err := c.UpdateNbGlobal(&update); nil != err {
+	if err := c.UpdateNbGlobal(&update); err != nil {
 		return fmt.Errorf("enable ovn-ic auto route, %v", err)
 	}
 	return nil

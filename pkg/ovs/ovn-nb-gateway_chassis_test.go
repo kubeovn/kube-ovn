@@ -1,6 +1,7 @@
 package ovs
 
 import (
+	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -50,4 +51,60 @@ func (suite *OvnClientTestSuite) testCreateGatewayChassises() {
 		require.Equal(t, chassisName, gwChassis.ChassisName)
 		require.Equal(t, 100-i, gwChassis.Priority)
 	}
+}
+
+func (suite *OvnClientTestSuite) testDeleteGatewayChassises() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lrpName := "test-gateway-chassis-del-op-lrp"
+	chassises := []string{"ea8368a0-28cd-4549-9da5-a7ea67262619", "b25ffb94-8b32-4c7e-b5b0-0f343bf6bdd8", "62265268-8af7-4b36-a550-ab5ad38375e3"}
+
+	err := ovnClient.CreateGatewayChassises(lrpName, chassises)
+	require.NoError(t, err)
+
+	err = ovnClient.DeleteGatewayChassises(lrpName, chassises)
+	require.NoError(t, err)
+
+	for _, chassisName := range chassises {
+		gwChassisName := lrpName + "-" + chassisName
+		_, err := ovnClient.GetGatewayChassis(gwChassisName, false)
+		require.ErrorContains(t, err, "object not found")
+	}
+}
+
+func (suite *OvnClientTestSuite) testDeleteGatewayChassisOp() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lrpName := "test-gateway-chassis-del-op-lrp"
+	chassis := "6c322ce8-02b7-42b3-925b-ae24020272a9"
+	gwChassisName := lrpName + "-" + chassis
+
+	err := ovnClient.CreateGatewayChassises(lrpName, []string{chassis})
+	require.NoError(t, err)
+
+	gwChassis, err := ovnClient.GetGatewayChassis(gwChassisName, false)
+	require.NoError(t, err)
+
+	ops, err := ovnClient.DeleteGatewayChassisOp(gwChassisName)
+	require.NoError(t, err)
+	require.Len(t, ops, 1)
+
+	require.Equal(t,
+		ovsdb.Operation{
+			Op:    "delete",
+			Table: "Gateway_Chassis",
+			Where: []ovsdb.Condition{
+				{
+					Column:   "_uuid",
+					Function: "==",
+					Value: ovsdb.UUID{
+						GoUUID: gwChassis.UUID,
+					},
+				},
+			},
+		}, ops[0])
 }
