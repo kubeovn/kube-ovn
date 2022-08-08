@@ -99,6 +99,8 @@ func NewNbClient(addr string, timeout int) (client.Client, error) {
 		client.WithTable(&ovnnb.PortGroup{}),
 		client.WithTable(&ovnnb.LogicalRouterStaticRoute{}),
 		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
+		client.WithTable(&ovnnb.NBGlobal{}),
+		client.WithTable(&ovnnb.GatewayChassis{}),
 	}
 	if _, err = c.Monitor(context.TODO(), c.NewMonitor(monitorOpts...)); err != nil {
 		klog.Errorf("failed to monitor database on OVN NB server %s: %v", addr, err)
