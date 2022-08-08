@@ -20,7 +20,7 @@ func createLogicalSwitchPort(c *OvnClient, lsp *ovnnb.LogicalSwitchPort) error {
 
 	op, err := c.Create(lsp)
 	if err != nil {
-		return fmt.Errorf("generate create operations for logical switch port %s: %v", lsp.Name, err)
+		return fmt.Errorf("generate operations for creating logical switch port %s: %v", lsp.Name, err)
 	}
 
 	return c.Transact("lrp-create", op)
@@ -825,16 +825,13 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPortOp() {
 	err := ovnClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
 
-	lsp := &ovnnb.LogicalSwitchPort{
-		UUID: ovsclient.UUID(),
-		Name: lspName,
-		ExternalIDs: map[string]string{
-			"pod":            lspName,
-			logicalSwitchKey: lsName,
-		},
-	}
+	err = ovnClient.CreateBareLogicalSwitchPort(lsName, lspName)
+	require.NoError(t, err)
 
-	ops, err := ovnClient.DeleteLogicalSwitchPortOp(lsp)
+	lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
+	require.NoError(t, err)
+
+	ops, err := ovnClient.DeleteLogicalSwitchPortOp(lspName)
 	require.NoError(t, err)
 	require.Len(t, ops, 2)
 
