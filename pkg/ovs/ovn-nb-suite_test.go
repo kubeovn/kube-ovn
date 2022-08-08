@@ -249,6 +249,39 @@ func (suite *OvnClientTestSuite) Test_DeleteLoadBalancerOp() {
 	suite.testDeleteLoadBalancerOp()
 }
 
+/* port_group unit test */
+func (suite *OvnClientTestSuite) Test_CreatePortGroup() {
+	suite.testCreatePortGroup()
+}
+
+func (suite *OvnClientTestSuite) Test_PortGroupUpdatePorts() {
+	suite.testPortGroupUpdatePorts()
+}
+
+func (suite *OvnClientTestSuite) Test_DeletePortGroup() {
+	suite.testDeletePortGroup()
+}
+
+func (suite *OvnClientTestSuite) Test_GetGetPortGroup() {
+	suite.testGetGetPortGroup()
+}
+
+func (suite *OvnClientTestSuite) Test_ListPortGroups() {
+	suite.testListPortGroups()
+}
+
+func (suite *OvnClientTestSuite) Test_PortGroupALLNotExist() {
+	suite.testPortGroupALLNotExist()
+}
+
+func (suite *OvnClientTestSuite) Test_portGroupUpdatePortOp() {
+	suite.testportGroupUpdatePortOp()
+}
+
+func (suite *OvnClientTestSuite) Test_portGroupOp() {
+	suite.testportGroupOp()
+}
+
 /* mixed operations unit test */
 func (suite *OvnClientTestSuite) Test_CreateGatewayLogicalSwitch() {
 	suite.testCreateGatewayLogicalSwitch()
