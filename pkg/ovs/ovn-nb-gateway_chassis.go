@@ -3,6 +3,7 @@ package ovs
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/ovn-org/libovsdb/client"
 	"github.com/ovn-org/libovsdb/model"
@@ -74,17 +75,22 @@ func (c OvnClient) DeleteGatewayChassises(lrpName string, chassises []string) er
 			return nil
 		}
 
+		// ingnore non-existent object
+		if len(op) == 0 {
+			continue
+		}
+
 		ops = append(ops, op...)
 	}
 
 	if err := c.Transact("gateway-chassises-delete", ops); err != nil {
-		return fmt.Errorf("delete gateway chassis for logical router port %s: %v", lrpName, err)
+		return fmt.Errorf("delete gateway chassises %s for logical router port %s: %v", strings.Join(chassises, " "), lrpName, err)
 	}
 
 	return nil
 }
 
-// DeleteGatewayChassis delete multiple gateway chassis
+// DeleteGatewayChassisOp create operation which gateway chassis
 func (c OvnClient) DeleteGatewayChassisOp(chassisName string) ([]ovsdb.Operation, error) {
 	gwChassis, err := c.GetGatewayChassis(chassisName, true)
 

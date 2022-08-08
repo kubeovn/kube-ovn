@@ -69,6 +69,14 @@ func (suite *OvnClientTestSuite) Test_CreateLogicalSwitch() {
 	suite.testCreateLogicalSwitch()
 }
 
+func (suite *OvnClientTestSuite) Test_LogicalSwitchAddPort() {
+	suite.testLogicalSwitchAddPort()
+}
+
+func (suite *OvnClientTestSuite) Test_LogicalSwitchDelPort() {
+	suite.testLogicalSwitchDelPort()
+}
+
 func (suite *OvnClientTestSuite) Test_DeleteLogicalSwitch() {
 	suite.testDeleteLogicalSwitch()
 }
@@ -79,6 +87,10 @@ func (suite *OvnClientTestSuite) Test_GetLogicalSwitch() {
 
 func (suite *OvnClientTestSuite) Test_ListLogicalSwitch() {
 	suite.testListLogicalSwitch()
+}
+
+func (suite *OvnClientTestSuite) Test_LogicalSwitchUpdatePortOp() {
+	suite.testLogicalSwitchUpdatePortOp()
 }
 
 func (suite *OvnClientTestSuite) Test_LogicalSwitchOp() {
@@ -205,6 +217,31 @@ func (suite *OvnClientTestSuite) Test_DeleteGatewayChassisOp() {
 	suite.testDeleteGatewayChassisOp()
 }
 
+/* load balancer unit test */
+func (suite *OvnClientTestSuite) Test_CreateLoadBalancer() {
+	suite.testCreateLoadBalancer()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteLoadBalancers() {
+	suite.testDeleteLoadBalancers()
+}
+
+func (suite *OvnClientTestSuite) Test_GetLoadBalancer() {
+	suite.testGetLoadBalancer()
+}
+
+func (suite *OvnClientTestSuite) Test_ListLoadBalancers() {
+	suite.testListLoadBalancers()
+}
+
+func (suite *OvnClientTestSuite) Test_LoadBalancerUpdateVips() {
+	suite.testLoadBalancerUpdateVips()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteLoadBalancerOp() {
+	suite.testDeleteLoadBalancerOp()
+}
+
 /* mixed operations unit test */
 func (suite *OvnClientTestSuite) Test_CreateRouterPort() {
 	suite.testCreateRouterPort()
@@ -306,6 +343,7 @@ func newNbClient(addr string, timeout time.Duration) (client.Client, error) {
 		client.WithTable(&ovnnb.PortGroup{}),
 		client.WithTable(&ovnnb.NBGlobal{}),
 		client.WithTable(&ovnnb.GatewayChassis{}),
+		client.WithTable(&ovnnb.LoadBalancer{}),
 	}
 	if _, err = c.Monitor(context.TODO(), c.NewMonitor(monitorOpts...)); err != nil {
 		return nil, err

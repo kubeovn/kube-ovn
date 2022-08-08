@@ -23,6 +23,7 @@ func (suite *OvnClientTestSuite) testGetLogicalRouter() {
 	require.NoError(t, err)
 
 	t.Run("should return no err when found logical router", func(t *testing.T) {
+		t.Parallel()
 		lr, err := ovnClient.GetLogicalRouter(name, false)
 		require.NoError(t, err)
 		require.Equal(t, name, lr.Name)
@@ -30,11 +31,13 @@ func (suite *OvnClientTestSuite) testGetLogicalRouter() {
 	})
 
 	t.Run("should return err when not found logical router", func(t *testing.T) {
+		t.Parallel()
 		_, err := ovnClient.GetLogicalRouter("test-get-lr-non-existent", false)
 		require.ErrorContains(t, err, "not found logical router")
 	})
 
 	t.Run("no err when not found logical router and ignoreNotFound is true", func(t *testing.T) {
+		t.Parallel()
 		_, err := ovnClient.GetLogicalRouter("test-get-lr-non-existent", true)
 		require.NoError(t, err)
 	})
@@ -164,7 +167,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterOp() {
 	t.Run("should return err when uuid is empty", func(t *testing.T) {
 		t.Parallel()
 		_, err := ovnClient.LogicalRouterOp(lrName, "", true)
-		require.ErrorContains(t, err, fmt.Sprintf("the uuid of port added to logical router %s cannot be empty", lrName))
+		require.ErrorContains(t, err, fmt.Sprintf("the uuid of port add or del to logical router %s cannot be empty", lrName))
 	})
 
 	t.Run("should return err when logical router does not exist", func(t *testing.T) {

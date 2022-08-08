@@ -458,7 +458,7 @@ func (c OvnClient) CreateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, lsNam
 	}
 
 	/* add logical switch port to logical switch*/
-	lspAddOp, err := c.LogicalSwitchOp(lsName, lsp, true)
+	lspAddOp, err := c.LogicalSwitchUpdatePortOp(lsName, lsp.UUID, true)
 	if err != nil {
 		return nil, err
 	}
@@ -483,7 +483,7 @@ func (c OvnClient) DeleteLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort) ([]ov
 	}
 
 	// remove logical switch port from logical switch
-	lspRemoveOp, err := c.LogicalSwitchOp(lsName, lsp, false)
+	lspRemoveOp, err := c.LogicalSwitchUpdatePortOp(lsName, lsp.UUID, false)
 	if err != nil {
 		return nil, err
 	}
