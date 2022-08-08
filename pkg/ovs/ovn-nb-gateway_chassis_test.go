@@ -64,7 +64,7 @@ func (suite *OvnClientTestSuite) testDeleteGatewayChassises() {
 	err := ovnClient.CreateGatewayChassises(lrpName, chassises)
 	require.NoError(t, err)
 
-	err = ovnClient.DeleteGatewayChassises(lrpName, chassises)
+	err = ovnClient.DeleteGatewayChassises(lrpName, append(chassises, "73bbe5d4-2b9b-47d0-aba8-94e86941881a"))
 	require.NoError(t, err)
 
 	for _, chassisName := range chassises {
