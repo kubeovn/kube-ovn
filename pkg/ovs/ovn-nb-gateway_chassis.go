@@ -21,12 +21,15 @@ func (c OvnClient) CreateGatewayChassises(lrpName string, chassises []string) er
 
 	for i, chassisName := range chassises {
 		gwChassisName := lrpName + "-" + chassisName
-		gwChassis := &ovnnb.GatewayChassis{
-			Name:        gwChassisName,
-			ChassisName: chassisName,
-			Priority:    100 - i,
+		gwChassis, err := c.newGatewayChassis(gwChassisName, chassisName, 100-i)
+		if err != nil {
+			return err
 		}
-		models = append(models, model.Model(gwChassis))
+
+		// found, skip
+		if gwChassis != nil {
+			models = append(models, model.Model(gwChassis))
+		}
 	}
 
 	op, err := c.Create(models...)
@@ -119,6 +122,32 @@ func (c OvnClient) GetGatewayChassis(name string, ignoreNotFound bool) (*ovnnb.G
 		}
 
 		return nil, fmt.Errorf("get gateway chassis %s: %v", name, err)
+	}
+
+	return gwChassis, nil
+}
+
+func (c OvnClient) GatewayChassisExist(name string) (bool, error) {
+	gwChassis, err := c.GetGatewayChassis(name, true)
+	return gwChassis != nil, err
+}
+
+// newGatewayChassis return gateway chassis with basic information
+func (c OvnClient) newGatewayChassis(gwChassisName, chassisName string, priority int) (*ovnnb.GatewayChassis, error) {
+	exists, err := c.GatewayChassisExist(gwChassisName)
+	if err != nil {
+		return nil, err
+	}
+
+	// found, skip
+	if exists {
+		return nil, nil
+	}
+
+	gwChassis := &ovnnb.GatewayChassis{
+		Name:        gwChassisName,
+		ChassisName: chassisName,
+		Priority:    priority,
 	}
 
 	return gwChassis, nil
