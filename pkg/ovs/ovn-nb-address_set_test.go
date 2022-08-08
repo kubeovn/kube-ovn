@@ -13,20 +13,29 @@ func (suite *OvnClientTestSuite) testCreateAddressSet() {
 	t.Parallel()
 
 	ovnClient := suite.ovnClient
-	asName := "test-create-as"
+	asName := "test_create_as"
 
-	err := ovnClient.CreateAddressSet(asName, map[string]string{
-		"sg": "test-sg",
+	t.Run("create address set", func(t *testing.T) {
+		err := ovnClient.CreateAddressSet(asName, map[string]string{
+			"sg": "test-sg",
+		})
+		require.NoError(t, err)
+
+		as, err := ovnClient.GetAddressSet(asName, false)
+		require.NoError(t, err)
+		require.NotEmpty(t, as.UUID)
+		require.Equal(t, asName, as.Name)
+		require.Equal(t, map[string]string{
+			"sg": "test-sg",
+		}, as.ExternalIDs)
 	})
-	require.NoError(t, err)
 
-	as, err := ovnClient.GetAddressSet(asName, false)
-	require.NoError(t, err)
-	require.NotEmpty(t, as.UUID)
-	require.Equal(t, asName, as.Name)
-	require.Equal(t, map[string]string{
-		"sg": "test-sg",
-	}, as.ExternalIDs)
+	t.Run("error occur because of invalid address set name", func(t *testing.T) {
+		err := ovnClient.CreateAddressSet("test-create-as", map[string]string{
+			"sg": "test-sg",
+		})
+		require.Error(t, err)
+	})
 }
 
 func (suite *OvnClientTestSuite) testAddressSetUpdateAddress() {
@@ -34,7 +43,7 @@ func (suite *OvnClientTestSuite) testAddressSetUpdateAddress() {
 	t.Parallel()
 
 	ovnClient := suite.ovnClient
-	asName := "test-update-address-as"
+	asName := "test_update_address_as"
 	addresses := []string{"1.2.3.4", "1.2.3.6", "1.2.3.7"}
 
 	err := ovnClient.CreateAddressSet(asName, map[string]string{
@@ -76,7 +85,7 @@ func (suite *OvnClientTestSuite) testDeleteAddressSet() {
 	t.Parallel()
 
 	ovnClient := suite.ovnClient
-	asName := "test-delete-as"
+	asName := "test_delete_as"
 
 	t.Run("no err when delete existent address set", func(t *testing.T) {
 		t.Parallel()
@@ -105,7 +114,7 @@ func (suite *OvnClientTestSuite) testListAddressSets() {
 	ovnClient := suite.ovnClient
 
 	t.Run("result should exclude as when externalIDs's length is not equal", func(t *testing.T) {
-		asName := "test-list-as-mismatch-length"
+		asName := "test_list_as_mismatch_length"
 
 		err := ovnClient.CreateAddressSet(asName, map[string]string{"key": "value"})
 		require.NoError(t, err)
@@ -116,7 +125,7 @@ func (suite *OvnClientTestSuite) testListAddressSets() {
 	})
 
 	t.Run("result should include as when key exists in as column: external_ids", func(t *testing.T) {
-		asName := "test-list-as-exist-key"
+		asName := "test_list_as_exist_key"
 
 		err := ovnClient.CreateAddressSet(asName, map[string]string{"sg": "sg", "direction": "to-lport", "key": "value"})
 		require.NoError(t, err)
@@ -128,10 +137,10 @@ func (suite *OvnClientTestSuite) testListAddressSets() {
 	})
 
 	t.Run("result should include all as when externalIDs is empty", func(t *testing.T) {
-		prefix := "test-list-as-all"
+		prefix := "test_list_as_all"
 
 		for i := 0; i < 4; i++ {
-			asName := fmt.Sprintf("%s-%d", prefix, i)
+			asName := fmt.Sprintf("%s_%d", prefix, i)
 
 			err := ovnClient.CreateAddressSet(asName, map[string]string{"sg": "sg", "direction": "to-lport", "key": "value"})
 			require.NoError(t, err)
@@ -159,7 +168,7 @@ func (suite *OvnClientTestSuite) testListAddressSets() {
 	})
 
 	t.Run("result should include as which externalIDs[key] is ''", func(t *testing.T) {
-		asName := "test-list-as-no-val"
+		asName := "test_list_as_no_val"
 
 		err := ovnClient.CreateAddressSet(asName, map[string]string{"sg_test": "sg", "direction": "to-lport", "key": "value"})
 		require.NoError(t, err)

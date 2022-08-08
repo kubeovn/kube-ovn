@@ -2,11 +2,14 @@ package ovs
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+var addressSetNameRegex = regexp.MustCompile(`^[a-zA-Z_.][a-zA-Z_.0-9]*$`)
 
 // PodNameToPortName return the ovn port name for a given pod
 func PodNameToPortName(pod, namespace, provider string) string {
@@ -74,4 +77,8 @@ func getIpv6Prefix(networks []string) []string {
 	}
 
 	return ipv6Prefix
+}
+
+func matchAddressSetName(asName string) bool {
+	return addressSetNameRegex.MatchString(asName)
 }
