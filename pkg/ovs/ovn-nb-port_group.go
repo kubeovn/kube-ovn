@@ -191,6 +191,25 @@ func (c OvnClient) portGroupUpdatePortOp(pgName string, lspUUIDs []string, op ov
 	return c.portGroupOp(pgName, mutation)
 }
 
+// portGroupUpdatePortOp create operations add acl to or delete acl from port group
+func (c OvnClient) portGroupUpdateAclOp(pgName string, aclUUIDs []string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
+	if len(aclUUIDs) == 0 {
+		return nil, nil
+	}
+
+	mutation := func(pg *ovnnb.PortGroup) *model.Mutation {
+		mutation := &model.Mutation{
+			Field:   &pg.ACLs,
+			Value:   aclUUIDs,
+			Mutator: op,
+		}
+
+		return mutation
+	}
+
+	return c.portGroupOp(pgName, mutation)
+}
+
 // portGroupOp create operations about port group
 func (c OvnClient) portGroupOp(pgName string, mutationsFunc ...func(pg *ovnnb.PortGroup) *model.Mutation) ([]ovsdb.Operation, error) {
 	pg, err := c.GetPortGroup(pgName, false)
