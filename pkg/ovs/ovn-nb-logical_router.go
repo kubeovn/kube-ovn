@@ -108,8 +108,8 @@ func (c OvnClient) ListLogicalRouter(needVendorFilter bool) ([]ovnnb.LogicalRout
 	return lrList, nil
 }
 
-// LogicalRouterOp create operations add port to logical router
-func (c OvnClient) LogicalRouterOp(lrName, lrpUUID string, opIsAdd bool) ([]ovsdb.Operation, error) {
+// LogicalRouterUpdatePortOp create operations add to or delete from logical router
+func (c OvnClient) LogicalRouterUpdatePortOp(lrName, lrpUUID string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
 	lr, err := c.GetLogicalRouter(lrName, false)
 	if err != nil {
 		return nil, err
@@ -120,14 +120,9 @@ func (c OvnClient) LogicalRouterOp(lrName, lrpUUID string, opIsAdd bool) ([]ovsd
 	}
 
 	mutation := model.Mutation{
-		Field: &lr.Ports,
-		Value: []string{lrpUUID},
-	}
-
-	if opIsAdd {
-		mutation.Mutator = ovsdb.MutateOperationInsert
-	} else {
-		mutation.Mutator = ovsdb.MutateOperationDelete
+		Field:   &lr.Ports,
+		Value:   []string{lrpUUID},
+		Mutator: op,
 	}
 
 	ops, err := c.ovnNbClient.Where(lr).Mutate(lr, mutation)
