@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -30,4 +31,47 @@ func LogicalRouterPortName(lr, ls string) string {
 
 func LogicalSwitchPortName(lr, ls string) string {
 	return fmt.Sprintf("%s-%s", ls, lr)
+}
+
+// parseIpv6RaConfigs parses the ipv6 ra config,
+// return default Ipv6RaConfigs when raw="",
+// the raw config's format is: address_mode=dhcpv6_stateful,max_interval=30,min_interval=5,send_periodic=true
+func parseIpv6RaConfigs(raw string) map[string]string {
+	// return default Ipv6RaConfigs
+	if 0 == len(raw) {
+		return map[string]string{
+			"address_mode":  "dhcpv6_stateful",
+			"max_interval":  "30",
+			"min_interval":  "5",
+			"send_periodic": "true",
+		}
+	}
+
+	Ipv6RaConfigs := make(map[string]string)
+
+	// trim blank
+	raw = strings.ReplaceAll(raw, " ", "")
+	options := strings.Split(raw, ",")
+	for _, option := range options {
+		kv := strings.Split(option, "=")
+		// TODO: ignore invalidate option, maybe need further validation
+		if 2 != len(kv) || 0 == len(kv[0]) || 0 == len(kv[1]) {
+			continue
+		}
+		Ipv6RaConfigs[kv[0]] = kv[1]
+	}
+
+	return Ipv6RaConfigs
+}
+
+// getIpv6Prefix get ipv6 prefix from networks
+func getIpv6Prefix(networks []string) []string {
+	ipv6Prefix := make([]string, 0, len(networks))
+	for _, network := range networks {
+		if kubeovnv1.ProtocolIPv6 == util.CheckProtocol(network) {
+			ipv6Prefix = append(ipv6Prefix, strings.Split(network, "/")[1])
+		}
+	}
+
+	return ipv6Prefix
 }
