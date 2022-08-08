@@ -117,6 +117,10 @@ func (suite *OvnClientTestSuite) Test_CreateVirtualLogicalSwitchPorts() {
 	suite.testCreateVirtualLogicalSwitchPorts()
 }
 
+func (suite *OvnClientTestSuite) Test_CreateBareLogicalSwitchPort() {
+	suite.testCreateBareLogicalSwitchPort()
+}
+
 func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPortVirtualParents() {
 	suite.testSetLogicalSwitchPortVirtualParents()
 }
@@ -278,6 +282,10 @@ func (suite *OvnClientTestSuite) Test_portGroupUpdatePortOp() {
 	suite.testportGroupUpdatePortOp()
 }
 
+func (suite *OvnClientTestSuite) Test_portGroupUpdateAclOp() {
+	suite.testportGroupUpdateAclOp()
+}
+
 func (suite *OvnClientTestSuite) Test_portGroupOp() {
 	suite.testportGroupOp()
 }
@@ -297,6 +305,15 @@ func (suite *OvnClientTestSuite) Test_DeleteAddressSet() {
 
 func (suite *OvnClientTestSuite) Test_ListAddressSets() {
 	suite.testListAddressSets()
+}
+
+/* acl unit test */
+func (suite *OvnClientTestSuite) Test_CreateAclOp() {
+	suite.testCreateAclOp()
+}
+
+func (suite *OvnClientTestSuite) Test_newAcl() {
+	suite.testnewAcl()
 }
 
 /* mixed operations unit test */
