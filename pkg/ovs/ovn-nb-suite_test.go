@@ -312,6 +312,22 @@ func (suite *OvnClientTestSuite) Test_CreateEgressAcl() {
 	suite.testCreateEgressAcl()
 }
 
+func (suite *OvnClientTestSuite) Test_CreateGatewayACL() {
+	suite.testCreateGatewayACL()
+}
+
+func (suite *OvnClientTestSuite) Test_CreateNodeACL() {
+	suite.testCreateNodeACL()
+}
+
+func (suite *OvnClientTestSuite) Test_CreateAcls() {
+	suite.testCreateAcls()
+}
+
+func (suite *OvnClientTestSuite) Test_DeletePortGroupAcls() {
+	suite.testDeletePortGroupAcls()
+}
+
 func (suite *OvnClientTestSuite) Test_GetAcl() {
 	suite.testGetAcl()
 }
@@ -320,16 +336,16 @@ func (suite *OvnClientTestSuite) Test_ListAcls() {
 	suite.testListAcls()
 }
 
-func (suite *OvnClientTestSuite) Test_CreateAcls() {
-	suite.testCreateAcls()
-}
-
 func (suite *OvnClientTestSuite) Test_newAcl() {
 	suite.testnewAcl()
 }
 
 func (suite *OvnClientTestSuite) Test_newAllowAclMatch() {
 	suite.testnewAllowAclMatch()
+}
+
+func (suite *OvnClientTestSuite) Test_aclFilter() {
+	suite.testaclFilter()
 }
 
 /* mixed operations unit test */
