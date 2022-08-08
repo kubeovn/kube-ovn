@@ -6,8 +6,10 @@ import (
 
 	"github.com/ovn-org/libovsdb/client"
 	"github.com/ovn-org/libovsdb/ovsdb"
+
 	"k8s.io/klog/v2"
 
+	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -16,25 +18,48 @@ const (
 	logicalSwitchKey = "logical_switch"
 )
 
-// CreateLogicalSwitchPort create logical switch port in ovn
-func (c OvnClient) CreateLogicalSwitchPort(mac, lsName, lsPortName string) error {
+// CreateBareLogicalSwitchPort create logical switch port with basic configuration
+func (c OvnClient) CreateBareLogicalSwitchPort(lsName, lspName string) error {
+	/* create logical switch port */
 	lsp := &ovnnb.LogicalSwitchPort{
-		Addresses:   []string{mac},
-		ExternalIDs: map[string]string{"pod": lsPortName},
-		Name:        lsPortName,
+		UUID: ovsclient.UUID(),
+		Name: lspName,
 	}
 
-	op, err := c.ovnNbClient.Create(lsp)
+	ops, err := c.CreateLogicalSwitchPortOp(lsp, lsName)
 	if err != nil {
 		return err
 	}
 
-	return c.Transact("lsp-add", op)
+	if err = c.Transact("lsp-add", ops); err != nil {
+		return fmt.Errorf("create logical switch port %s: %v", lspName, err)
+	}
+
+	return nil
+}
+
+// DeleteLogicalSwitchPort delete logical switch port in ovn
+func (c OvnClient) DeleteLogicalSwitchPort(name string) error {
+	lsp, err := c.GetLogicalSwitchPort(name, true)
+	if err != nil {
+		return err
+	}
+
+	ops, err := c.DeleteLogicalSwitchPortOp(lsp)
+	if err != nil {
+		return err
+	}
+
+	if err = c.Transact("lsp-del", ops); err != nil {
+		return fmt.Errorf("delete logical switch port %s", name)
+	}
+
+	return nil
 }
 
 func (c OvnClient) GetLogicalSwitchPort(name string, ignoreNotFound bool) (*ovnnb.LogicalSwitchPort, error) {
 	lsp := &ovnnb.LogicalSwitchPort{Name: name}
-	if err := c.ovnNbClient.Get(context.TODO(), lsp); err != nil {
+	if err := c.Get(context.TODO(), lsp); err != nil {
 		if ignoreNotFound && err == client.ErrNotFound {
 			return nil, nil
 		}
@@ -44,39 +69,56 @@ func (c OvnClient) GetLogicalSwitchPort(name string, ignoreNotFound bool) (*ovnn
 	return lsp, nil
 }
 
-func (c OvnClient) ListPodLogicalSwitchPorts(key string) ([]ovnnb.LogicalSwitchPort, error) {
+func (c OvnClient) ListRemoteTypeLogicalSwitchPorts() ([]ovnnb.LogicalSwitchPort, error) {
 	lspList := make([]ovnnb.LogicalSwitchPort, 0, 1)
-	if err := c.ovnNbClient.WhereCache(func(lsp *ovnnb.LogicalSwitchPort) bool {
-		return len(lsp.ExternalIDs) != 0 && lsp.ExternalIDs["pod"] == key
+	if err := c.WhereCache(func(lsp *ovnnb.LogicalSwitchPort) bool {
+		return lsp.Type == "remote"
 	}).List(context.TODO(), &lspList); err != nil {
-		return nil, fmt.Errorf("failed to list logical switch ports of Pod %s: %v", key, err)
+		return nil, fmt.Errorf("failed to list logical switch port which type is remote: %v", err)
 	}
 
 	return lspList, nil
 }
 
+// ListLogicalSwitchPorts list logical switch ports which match the given externalIDs,
+// result should include all logical switch ports when externalIDs is empty,
+// result should include all logical switch ports which externalIDs[key] is not empty when externalIDs[key] is ""
 func (c OvnClient) ListLogicalSwitchPorts(needVendorFilter bool, externalIDs map[string]string) ([]ovnnb.LogicalSwitchPort, error) {
 	lspList := make([]ovnnb.LogicalSwitchPort, 0)
-	if err := c.ovnNbClient.WhereCache(func(lsp *ovnnb.LogicalSwitchPort) bool {
+
+	if err := c.WhereCache(func(lsp *ovnnb.LogicalSwitchPort) bool {
 		if lsp.Type != "" {
 			return false
 		}
+
 		if needVendorFilter && (len(lsp.ExternalIDs) == 0 || lsp.ExternalIDs["vendor"] != util.CniTypeName) {
 			return false
 		}
+
 		if len(lsp.ExternalIDs) < len(externalIDs) {
 			return false
 		}
+
 		if len(lsp.ExternalIDs) != 0 {
 			for k, v := range externalIDs {
-				if lsp.ExternalIDs[k] != v {
-					return false
+				// if only key exist but not value in externalIDs, we should include this lsp,
+				// it's equal to shell command `ovn-nbctl --columns=xx find logical_switch_port external_ids:key!=\"\"`
+				if len(v) == 0 {
+					if len(lsp.ExternalIDs[k]) == 0 {
+						return false
+					}
+				} else {
+					if lsp.ExternalIDs[k] != v {
+						return false
+					}
 				}
+
 			}
 		}
+
 		return true
 	}).List(context.TODO(), &lspList); err != nil {
-		klog.Errorf("failed to list logical switch ports: %v", err)
+		klog.Errorf("list logical switch ports: %v", err)
 		return nil, err
 	}
 
@@ -90,11 +132,11 @@ func (c OvnClient) LogicalSwitchPortExists(name string) (bool, error) {
 
 // CreateLogicalSwitchPortOp create operations which create logical switch port
 func (c OvnClient) CreateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, lsName string) ([]ovsdb.Operation, error) {
-	if nil == lsp {
+	if lsp == nil {
 		return nil, fmt.Errorf("logical_switch_port is nil")
 	}
 
-	if nil == lsp.ExternalIDs {
+	if lsp.ExternalIDs == nil {
 		lsp.ExternalIDs = make(map[string]string)
 	}
 
@@ -110,7 +152,7 @@ func (c OvnClient) CreateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, lsNam
 
 	/* add logical switch port to logical switch*/
 	lspAddOp, err := c.LogicalSwitchOp(lsName, lsp, true)
-	if nil != err {
+	if err != nil {
 		return nil, err
 	}
 
@@ -121,29 +163,10 @@ func (c OvnClient) CreateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, lsNam
 	return ops, nil
 }
 
-// DeleteLogicalSwitchPort delete logical switch port in ovn
-func (c OvnClient) DeleteLogicalSwitchPort(name string) error {
-	lsp, err := c.GetLogicalSwitchPort(name, true)
-	if nil != err {
-		return err
-	}
-
-	ops, err := c.DeleteLogicalSwitchPortOp(lsp)
-	if nil != err {
-		return err
-	}
-
-	if err = c.Transact("lsp-del", ops); nil != err {
-		return fmt.Errorf("delete logical switch port %s", name)
-	}
-
-	return nil
-}
-
 // DeleteLogicalSwitchPortOp create operations which delete logical switch port
 func (c OvnClient) DeleteLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort) ([]ovsdb.Operation, error) {
 	// not found, skip
-	if nil == lsp {
+	if lsp == nil {
 		return nil, nil
 	}
 
@@ -152,7 +175,7 @@ func (c OvnClient) DeleteLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort) ([]ov
 		return nil, fmt.Errorf("no %s exist in lsp's external_ids", logicalSwitchKey)
 	}
 
-	// delete logical switch port from logical switch
+	// remove logical switch port from logical switch
 	lspRemoveOp, err := c.LogicalSwitchOp(lsName, lsp, false)
 	if err != nil {
 		return nil, err
