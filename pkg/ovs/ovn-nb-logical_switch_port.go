@@ -148,7 +148,7 @@ func (c OvnClient) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider str
 	return nil
 }
 
-// CreateVirtualLogicalSwitchPorts create some virtual type logical switch port once
+// CreateVirtualLogicalSwitchPorts create several virtual type logical switch port once
 func (c OvnClient) CreateVirtualLogicalSwitchPorts(lsName string, ips ...string) error {
 	ops := make([]ovsdb.Operation, 0, len(ips))
 
@@ -209,7 +209,7 @@ func (c OvnClient) CreateBareLogicalSwitchPort(lsName, lspName string) error {
 	return nil
 }
 
-// CreateVirtualLogicalSwitchPorts update some virtual type logical switch port virtual-parents once
+// CreateVirtualLogicalSwitchPorts update several virtual type logical switch port virtual-parents once
 func (c OvnClient) SetLogicalSwitchPortVirtualParents(lsName, parents string, ips ...string) error {
 	ops := make([]ovsdb.Operation, 0, len(ips))
 	for _, ip := range ips {
@@ -455,7 +455,7 @@ func (c OvnClient) CreateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, lsNam
 	}
 
 	/* add logical switch port to logical switch*/
-	lspAddOp, err := c.LogicalSwitchUpdatePortOp(lsName, lsp.UUID, true)
+	lspAddOp, err := c.LogicalSwitchUpdatePortOp(lsName, lsp.UUID, ovsdb.MutateOperationInsert)
 	if err != nil {
 		return nil, err
 	}
@@ -480,7 +480,7 @@ func (c OvnClient) DeleteLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort) ([]ov
 	}
 
 	// remove logical switch port from logical switch
-	lspRemoveOp, err := c.LogicalSwitchUpdatePortOp(lsName, lsp.UUID, false)
+	lspRemoveOp, err := c.LogicalSwitchUpdatePortOp(lsName, lsp.UUID, ovsdb.MutateOperationDelete)
 	if err != nil {
 		return nil, err
 	}
