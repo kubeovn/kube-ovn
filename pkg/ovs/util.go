@@ -82,3 +82,86 @@ func getIpv6Prefix(networks []string) []string {
 func matchAddressSetName(asName string) bool {
 	return addressSetNameRegex.MatchString(asName)
 }
+
+type AclMatchRule interface {
+	Rule() (string, error)
+	String() string
+}
+
+type AndAclMatchRule struct {
+	rules []AclMatchRule
+}
+
+func NewAndAclMatchRule(rules ...AclMatchRule) AclMatchRule {
+	return AndAclMatchRule{
+		rules: rules,
+	}
+}
+
+// Rule generate acl match rule like 'ip4.src == $test.allow.as && ip4.src != $test.except.as && 12345 <= tcp.dst <= 12500 && outport == @ovn.sg.test_sg && ip'
+func (s AndAclMatchRule) Rule() (string, error) {
+	var rules []string
+	for _, specification := range s.rules {
+		rule, err := specification.Rule()
+		if err != nil {
+			return "", fmt.Errorf("generate rule %s: %v", rule, err)
+		}
+		rules = append(rules, rule)
+	}
+
+	return strings.Join(rules, " && "), nil
+}
+
+func (s AndAclMatchRule) String() string {
+	rule, _ := s.Rule()
+
+	return rule
+}
+
+type aclRuleKv struct {
+	key      string
+	value    string
+	maxValue string
+	effect   string
+}
+
+func NewAclRuleKv(key, effect, value, maxValue string) AclMatchRule {
+	return aclRuleKv{
+		key:      key,
+		effect:   effect,
+		value:    value,
+		maxValue: maxValue,
+	}
+}
+
+// Rule generate acl match rule like
+// 'ip4.src == $test.allow.as'
+// or 'ip4.src != $test.except.as'
+// or '12345 <= tcp.dst <= 12500'
+// or 'tcp.dst == 13500'
+// or 'outport == @ovn.sg.test_sg && ip'
+func (kv aclRuleKv) Rule() (string, error) {
+	// key must exist at least
+	if len(kv.key) == 0 {
+		return "", fmt.Errorf("acl rule key is required")
+	}
+
+	// like 'ip'
+	if len(kv.effect) == 0 || len(kv.value) == 0 {
+		return kv.key, nil
+	}
+
+	// like 'tcp.dst == 13500' or 'ip4.src == $test.allow.as'
+	if len(kv.maxValue) == 0 {
+		return fmt.Sprintf("%s %s %s", kv.key, kv.effect, kv.value), nil
+	}
+
+	// like '12345 <= tcp.dst <= 12500'
+	return fmt.Sprintf("%s %s %s %s %s", kv.value, kv.effect, kv.key, kv.effect, kv.maxValue), nil
+}
+
+func (kv aclRuleKv) String() string {
+	rule, _ := kv.Rule()
+
+	return rule
+}
