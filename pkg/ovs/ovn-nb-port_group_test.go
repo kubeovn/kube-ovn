@@ -300,6 +300,7 @@ func (suite *OvnClientTestSuite) testportGroupUpdatePortOp() {
 
 	t.Run("add new port to port group", func(t *testing.T) {
 		t.Parallel()
+
 		ops, err := ovnClient.portGroupUpdatePortOp(pgName, lspUUIDs, ovsdb.MutateOperationInsert)
 		require.NoError(t, err)
 		require.Equal(t, []ovsdb.Mutation{
@@ -322,6 +323,7 @@ func (suite *OvnClientTestSuite) testportGroupUpdatePortOp() {
 
 	t.Run("del port from port group", func(t *testing.T) {
 		t.Parallel()
+
 		ops, err := ovnClient.portGroupUpdatePortOp(pgName, lspUUIDs, ovsdb.MutateOperationDelete)
 		require.NoError(t, err)
 		require.Equal(t, []ovsdb.Mutation{

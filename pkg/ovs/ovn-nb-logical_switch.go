@@ -131,11 +131,11 @@ func (c OvnClient) LogicalSwitchUpdateLoadBalancers(lsName string, op ovsdb.Muta
 
 	ops, err := c.LogicalSwitchUpdateLoadBalancerOp(lsName, lbUUIDs, op)
 	if err != nil {
-		return fmt.Errorf("generate operations for logical switch %s update lbs %s: %v", lsName, strings.Join(lbNames, " "), err)
+		return fmt.Errorf("generate operations for logical switch %s update lbs %v: %v", lsName, lbNames, err)
 	}
 
 	if err := c.Transact("ls-lb-update", ops); err != nil {
-		return fmt.Errorf("logical switch %s update lbs %s: %v", lsName, strings.Join(lbNames, " "), err)
+		return fmt.Errorf("logical switch %s update lbs %v: %v", lsName, lbNames, err)
 
 	}
 
@@ -158,12 +158,12 @@ func (c OvnClient) DeleteLogicalSwitch(lsName string) error {
 
 // GetLogicalSwitch get logical switch by name,
 // it is because of lack name index that does't use ovnNbClient.Get
-func (c OvnClient) GetLogicalSwitch(name string, ignoreNotFound bool) (*ovnnb.LogicalSwitch, error) {
+func (c OvnClient) GetLogicalSwitch(lsName string, ignoreNotFound bool) (*ovnnb.LogicalSwitch, error) {
 	lsList := make([]ovnnb.LogicalSwitch, 0)
 	if err := c.ovnNbClient.WhereCache(func(ls *ovnnb.LogicalSwitch) bool {
-		return ls.Name == name
+		return ls.Name == lsName
 	}).List(context.TODO(), &lsList); err != nil {
-		return nil, fmt.Errorf("list switch switch %q: %v", name, err)
+		return nil, fmt.Errorf("list switch switch %q: %v", lsName, err)
 	}
 
 	// not found
@@ -171,18 +171,18 @@ func (c OvnClient) GetLogicalSwitch(name string, ignoreNotFound bool) (*ovnnb.Lo
 		if ignoreNotFound {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("not found logical switch %q", name)
+		return nil, fmt.Errorf("not found logical switch %q", lsName)
 	}
 
 	if len(lsList) > 1 {
-		return nil, fmt.Errorf("more than one logical switch with same name %q", name)
+		return nil, fmt.Errorf("more than one logical switch with same name %q", lsName)
 	}
 
 	return &lsList[0], nil
 }
 
-func (c OvnClient) LogicalSwitchExists(name string) (bool, error) {
-	lrp, err := c.GetLogicalSwitch(name, true)
+func (c OvnClient) LogicalSwitchExists(lsName string) (bool, error) {
+	lrp, err := c.GetLogicalSwitch(lsName, true)
 	return lrp != nil, err
 }
 
