@@ -65,9 +65,20 @@ func (suite *OvnClientTestSuite) Test_SetICAutoRoute() {
 }
 
 /* logical_switch unit test */
+func (suite *OvnClientTestSuite) Test_CreateLogicalSwitch() {
+	suite.testCreateLogicalSwitch()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteLogicalSwitch() {
+	suite.testDeleteLogicalSwitch()
+}
 
 func (suite *OvnClientTestSuite) Test_GetLogicalSwitch() {
 	suite.testGetLogicalSwitch()
+}
+
+func (suite *OvnClientTestSuite) Test_ListLogicalSwitch() {
+	suite.testListLogicalSwitch()
 }
 
 func (suite *OvnClientTestSuite) Test_LogicalSwitchOp() {
@@ -75,6 +86,18 @@ func (suite *OvnClientTestSuite) Test_LogicalSwitchOp() {
 }
 
 /* logical_switch_port unit test */
+func (suite *OvnClientTestSuite) Test_DeleteLogicalSwitchPort() {
+	suite.testDeleteLogicalSwitchPort()
+}
+
+func (suite *OvnClientTestSuite) Test_ListLogicalSwitchPorts() {
+	suite.testListLogicalSwitchPorts()
+}
+
+func (suite *OvnClientTestSuite) Test_ListRemoteTypeLogicalSwitchPorts() {
+	suite.testListRemoteTypeLogicalSwitchPorts()
+}
+
 func (suite *OvnClientTestSuite) Test_CreateLogicalSwitchPortOp() {
 	suite.testCreateLogicalSwitchPortOp()
 }
@@ -105,10 +128,6 @@ func (suite *OvnClientTestSuite) Test_LogicalRouterOp() {
 }
 
 /* logical_router_port unit test */
-func (suite *OvnClientTestSuite) Test_CreateVpcExGwLogicalRouterPort() {
-	suite.testCreateVpcExGwLogicalRouterPort()
-}
-
 func (suite *OvnClientTestSuite) Test_CreatePeerRouterPort() {
 	suite.testCreatePeerRouterPort()
 }
@@ -121,16 +140,20 @@ func (suite *OvnClientTestSuite) Test_CreateLogicalRouterPort() {
 	suite.testCreateLogicalRouterPort()
 }
 
-func (suite *OvnClientTestSuite) Test_CreateLogicalRouterPortOp() {
-	suite.testCreateLogicalRouterPortOp()
-}
-
 func (suite *OvnClientTestSuite) Test_UpdateLogicalRouterPort() {
 	suite.testUpdateLogicalRouterPort()
 }
 
 func (suite *OvnClientTestSuite) Test_DeleteLogicalRouterPort() {
 	suite.testDeleteLogicalRouterPort()
+}
+
+func (suite *OvnClientTestSuite) Test_CreateLogicalRouterPortOp() {
+	suite.testCreateLogicalRouterPortOp()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteLogicalRouterPortOp() {
+	suite.testDeleteLogicalRouterPortOp()
 }
 
 /* gateway chassis unit test */
@@ -142,9 +165,17 @@ func (suite *OvnClientTestSuite) Test_CreateGatewayChassises() {
 	suite.testCreateGatewayChassises()
 }
 
+func (suite *OvnClientTestSuite) Test_DeleteGatewayChassises() {
+	suite.testDeleteGatewayChassises()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteGatewayChassisOp() {
+	suite.testDeleteGatewayChassisOp()
+}
+
 /* mixed operations unit test */
-func (suite *OvnClientTestSuite) Test_CreateICLogicalRouterPort() {
-	suite.testCreateICLogicalRouterPort()
+func (suite *OvnClientTestSuite) Test_CreateRouterPort() {
+	suite.testCreateRouterPort()
 }
 
 func (suite *OvnClientTestSuite) Test_CreateRouterTypePort() {
@@ -153,23 +184,6 @@ func (suite *OvnClientTestSuite) Test_CreateRouterTypePort() {
 
 func (suite *OvnClientTestSuite) Test_RemoveRouterTypePort() {
 	suite.testRemoveRouterTypePort()
-}
-
-func (suite *OvnClientTestSuite) Test_scratch() {
-	t := suite.T()
-	t.Parallel()
-	t.SkipNow()
-
-	ovnClient := suite.ovnClient
-	name := "test-create-lsp"
-
-	err := ovnClient.CreateLogicalSwitchPort("02:42:83:d3:87:43", "", name)
-	require.NoError(t, err)
-
-	out, err := ovnClient.GetLogicalSwitchPort(name, false)
-	require.NoError(t, err)
-	require.Equal(t, out.Name, name)
-	require.NotEmpty(t, out.UUID)
 }
 
 func newOVSDBServer(t *testing.T, dbModel model.ClientDBModel, schema ovsdb.DatabaseSchema) (*server.OvsdbServer, string) {
@@ -212,7 +226,12 @@ func newOvnClient(t *testing.T, ovnNbAddr string, ovnNbTimeout time.Duration) (*
 	nbClient, err := newNbClient(ovnNbAddr, ovnNbTimeout)
 	require.NoError(t, err)
 
-	return &OvnClient{ovnNbClient: ovnNbClient{Client: nbClient, Timeout: ovnNbTimeout}}, nil
+	return &OvnClient{
+		ovnNbClient: ovnNbClient{
+			Client:  nbClient,
+			Timeout: ovnNbTimeout,
+		},
+	}, nil
 }
 
 func newNbClient(addr string, timeout time.Duration) (client.Client, error) {

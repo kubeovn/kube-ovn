@@ -11,39 +11,6 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
-func (suite *OvnClientTestSuite) testCreateVpcExGwLogicalRouterPort() {
-	t := suite.T()
-	t.Parallel()
-
-	ovnClient := suite.ovnClient
-	lrpName := "test-create-vpc-lrp"
-	lrName := "test-create-vpc-lr"
-	chassises := []string{"22e659f5-f3ab-41d0-9433-a819b52f889a", "ff9f7816-6906-4a4b-94f3-f55e9eb6b0b4"}
-
-	err := ovnClient.CreateLogicalRouter(lrName)
-	require.NoError(t, err)
-
-	err = ovnClient.CreateVpcExGwLogicalRouterPort(lrName, "00:11:22:37:af:62", "192.168.230.1", lrpName, chassises)
-	require.NoError(t, err)
-
-	lrp, err := ovnClient.GetLogicalRouterPort(lrpName, false)
-	require.NoError(t, err)
-	require.NotEmpty(t, lrp.UUID)
-	require.Equal(t, chassises, lrp.GatewayChassis)
-	require.Equal(t, lrName, lrp.ExternalIDs[logicalRouterKey])
-	require.Equal(t, []string{"192.168.230.1/24"}, lrp.Networks)
-
-	lr, err := ovnClient.GetLogicalRouter(lrName, false)
-	require.NoError(t, err)
-	require.Equal(t, []string{lrp.UUID}, lr.Ports)
-
-	for _, chassisName := range chassises {
-		gwChassisName := lrpName + "-" + chassisName
-		_, err := ovnClient.GetGatewayChassis(gwChassisName, false)
-		require.NoError(t, err)
-	}
-}
-
 func (suite *OvnClientTestSuite) testCreatePeerRouterPort() {
 	t := suite.T()
 	t.Parallel()
@@ -317,7 +284,14 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPort() {
 	err := ovnClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
-	err = ovnClient.CreateVpcExGwLogicalRouterPort(lrName, "00:11:22:37:af:62", "192.168.230.1", lrpName, nil)
+	lrp := &ovnnb.LogicalRouterPort{
+		UUID:     ovsclient.UUID(),
+		Name:     lrpName,
+		MAC:      "00:11:22:37:af:62",
+		Networks: []string{"192.168.123.1/24"},
+	}
+
+	err = ovnClient.CreateLogicalRouterPort(lrp, lrName)
 	require.NoError(t, err)
 
 	t.Run("no err when delete existent logical router port", func(t *testing.T) {
@@ -422,4 +396,60 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPortOp() {
 			},
 		}, ops[1].Mutations)
 	})
+}
+
+func (suite *OvnClientTestSuite) testDeleteLogicalRouterPortOp() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lrpName := "test-del-op-lrp"
+	lrName := "test-del-op-lr"
+
+	err := ovnClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
+	lrp := &ovnnb.LogicalRouterPort{
+		UUID:     ovsclient.UUID(),
+		Name:     lrpName,
+		MAC:      "00:11:22:37:af:62",
+		Networks: []string{"192.168.123.1/24"},
+		ExternalIDs: map[string]string{
+			logicalRouterKey: lrName,
+		},
+	}
+
+	ops, err := ovnClient.DeleteLogicalRouterPortOp(lrp)
+	require.NoError(t, err)
+	require.Len(t, ops, 2)
+
+	require.Equal(t,
+		[]ovsdb.Mutation{
+			{
+				Column:  "ports",
+				Mutator: ovsdb.MutateOperationDelete,
+				Value: ovsdb.OvsSet{
+					GoSet: []interface{}{
+						ovsdb.UUID{
+							GoUUID: lrp.UUID,
+						},
+					},
+				},
+			},
+		}, ops[0].Mutations)
+
+	require.Equal(t,
+		ovsdb.Operation{
+			Op:    "delete",
+			Table: "Logical_Router_Port",
+			Where: []ovsdb.Condition{
+				{
+					Column:   "_uuid",
+					Function: "==",
+					Value: ovsdb.UUID{
+						GoUUID: lrp.UUID,
+					},
+				},
+			},
+		}, ops[1])
 }

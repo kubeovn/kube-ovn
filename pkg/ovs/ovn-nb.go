@@ -11,39 +11,47 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-// createRouterPort create logical router port and associated logical switch port type is router
-func (c OvnClient) CreateRouterPort(lsName, lrName, ip string) error {
+// createRouterPort create logical router port and associated logical switch port which type is router
+func (c OvnClient) CreateRouterPort(lsName, lrName, ip string, chassises ...string) error {
+	// check ip format: 192.168.231.1/24,fc00::0af4:01/112
+	if err := util.CheckCidrs(ip); err != nil {
+		return err
+	}
+
+	// create gateway chassis
+	lrpName := fmt.Sprintf("%s-%s", lrName, lsName)
+	err := c.CreateGatewayChassises(lrpName, chassises)
+	if err != nil {
+		return err
+	}
+
+	// create router type port
+	return c.CreateRouterTypePort(lsName, lrName, ip, func(lrp *ovnnb.LogicalRouterPort) {
+		if len(chassises) != 0 {
+			lrp.GatewayChassis = chassises
+		}
+	})
+}
+
+// DeleteRouterPort delete logical router port and associated logical switch port which type is router
+func (c OvnClient) DeleteRouterPort(lspName, lrpName string, chassises ...string) error {
+	// delete gateway chassises
+	err := c.DeleteGatewayChassises(lrpName, chassises)
+	if err != nil {
+		return err
+	}
+
+	// remove router type port
+	return c.RemoveRouterTypePort(lspName, lrpName)
+}
+
+func (c OvnClient) CreateRouterTypePort(lsName, lrName, ip string, LrpOptions ...func(lrp *ovnnb.LogicalRouterPort)) error {
 	lspName := fmt.Sprintf("%s-%s", lsName, lrName)
 	lrpName := fmt.Sprintf("%s-%s", lrName, lsName)
 
-	return c.CreateRouterTypePort(lsName, lspName, lrName, lrpName, ip)
-}
-
-func (c OvnClient) CreateICLogicalRouterPort(az, subnet string, chassises []string) error {
-	lspName := fmt.Sprintf("ts-%s", az)
-	lrpName := fmt.Sprintf("%s-ts", az)
-
-	err := c.CreateGatewayChassises(lrpName, chassises)
-	if nil != err {
-		return err
-	}
-
-	if err := c.CreateRouterTypePort(util.InterconnectionSwitch, lspName, c.ClusterRouter, lrpName, subnet,
-		func(lrp *ovnnb.LogicalRouterPort) {
-			if 0 != len(chassises) {
-				lrp.GatewayChassis = chassises
-			}
-		}); nil != err {
-		return err
-	}
-
-	return nil
-}
-
-func (c OvnClient) CreateRouterTypePort(lsName, lspName, lrName, lrpName, ip string, LrpOptions ...func(lrp *ovnnb.LogicalRouterPort)) error {
 	/* do nothing if logical switch port or logical router port exist */
 	lspExist, err := c.LogicalSwitchPortExists(lspName)
-	if nil != err {
+	if err != nil {
 		return err
 	}
 
@@ -105,7 +113,7 @@ func (c OvnClient) CreateRouterTypePort(lsName, lspName, lrName, lrpName, ip str
 func (c OvnClient) RemoveRouterTypePort(lspName, lrpName string) error {
 	/* delete logical switch port*/
 	lsp, err := c.GetLogicalSwitchPort(lspName, true)
-	if nil != err {
+	if err != nil {
 		return err
 	}
 
@@ -116,7 +124,7 @@ func (c OvnClient) RemoveRouterTypePort(lspName, lrpName string) error {
 
 	/* delete logical router port*/
 	lrp, err := c.GetLogicalRouterPort(lrpName, true)
-	if nil != err {
+	if err != nil {
 		return err
 	}
 
