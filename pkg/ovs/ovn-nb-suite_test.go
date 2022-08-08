@@ -65,6 +65,27 @@ func (suite *OvnClientTestSuite) Test_SetICAutoRoute() {
 	suite.testSetICAutoRoute()
 }
 
+/* logical_router unit test */
+func (suite *OvnClientTestSuite) Test_CreateLogicalRouter() {
+	suite.testCreateLogicalRouter()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteLogicalRouterr() {
+	suite.testDeleteLogicalRouter()
+}
+
+func (suite *OvnClientTestSuite) Test_GetLogicalRouter() {
+	suite.testGetLogicalRouter()
+}
+
+func (suite *OvnClientTestSuite) Test_ListLogicalRouter() {
+	suite.testListLogicalRouter()
+}
+
+func (suite *OvnClientTestSuite) Test_LogicalRouterAddPort() {
+	suite.testLogicalRouterAddPort()
+}
+
 func (suite *OvnClientTestSuite) Test_scratch() {
 	t := suite.T()
 	t.Parallel()
@@ -157,10 +178,14 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 
 	monitorOpts := []client.MonitorOption{
 		client.WithTable(&ovnnb.LogicalRouter{}),
+		client.WithTable(&ovnnb.LogicalRouterPort{}),
 		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
 		client.WithTable(&ovnnb.LogicalSwitchPort{}),
 		client.WithTable(&ovnnb.PortGroup{}),
+		client.WithTable(&ovnnb.LogicalRouterStaticRoute{}),
+		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
 		client.WithTable(&ovnnb.NBGlobal{}),
+		client.WithTable(&ovnnb.GatewayChassis{}),
 	}
 	if _, err = c.Monitor(context.TODO(), c.NewMonitor(monitorOpts...)); err != nil {
 		return nil, err
