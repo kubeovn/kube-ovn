@@ -38,7 +38,7 @@ func (c OvnClient) CreateIngressAcl(pgName, asIngressName, asExceptName, protoco
 
 	defaultDropAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionToLport, util.IngressDefaultDrop, AllIpMatch.String(), ovnnb.ACLActionDrop, options)
 	if err != nil {
-		return fmt.Errorf("new ingress default drop acl direction %s priority %s match %s action %s: %v", ovnnb.ACLDirectionToLport, util.IngressDefaultDrop, AllIpMatch, ovnnb.ACLActionDrop, err)
+		return fmt.Errorf("new ingress default drop acl for port group %s: %v", pgName, err)
 	}
 
 	acls = append(acls, defaultDropAcl)
@@ -48,7 +48,7 @@ func (c OvnClient) CreateIngressAcl(pgName, asIngressName, asExceptName, protoco
 	for _, m := range matches {
 		allowAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, m, ovnnb.ACLActionAllowRelated)
 		if err != nil {
-			return fmt.Errorf("new ingress allow acl direction %s priority %s match %s action %s: %v", ovnnb.ACLDirectionToLport, util.IngressAllowPriority, m, ovnnb.ACLActionAllowRelated, err)
+			return fmt.Errorf("new ingress allow acl for port group %s: %v", pgName, err)
 		}
 
 		acls = append(acls, allowAcl)
@@ -78,7 +78,7 @@ func (c OvnClient) CreateEgressAcl(pgName, asEgressName, asExceptName, protocol 
 
 	defaultDropAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionFromLport, util.EgressDefaultDrop, AllIpMatch.String(), ovnnb.ACLActionDrop, options)
 	if err != nil {
-		return fmt.Errorf("new egress default drop acl direction %s priority %s match %s action %s: %v", ovnnb.ACLDirectionFromLport, util.EgressDefaultDrop, AllIpMatch, ovnnb.ACLActionDrop, err)
+		return fmt.Errorf("new egress default drop acl for port group %s: %v", pgName, err)
 	}
 
 	acls = append(acls, defaultDropAcl)
@@ -88,7 +88,7 @@ func (c OvnClient) CreateEgressAcl(pgName, asEgressName, asExceptName, protocol 
 	for _, m := range matches {
 		allowAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, m, ovnnb.ACLActionAllowRelated)
 		if err != nil {
-			return fmt.Errorf("new egress allow acl direction %s priority %s match %s action %s: %v", ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, m, ovnnb.ACLActionAllowRelated, err)
+			return fmt.Errorf("new egress allow acl for port group %s: %v", pgName, err)
 		}
 
 		acls = append(acls, allowAcl)
@@ -96,6 +96,66 @@ func (c OvnClient) CreateEgressAcl(pgName, asEgressName, asExceptName, protocol 
 
 	if err := c.CreateAcls(pgName, acls...); err != nil {
 		return fmt.Errorf("add egress acls to port group %s: %v", pgName, err)
+	}
+
+	return nil
+}
+
+func (c OvnClient) CreateGatewayACL(pgName, gateway string) error {
+	acls := make([]*ovnnb.ACL, 0)
+
+	for _, gw := range strings.Split(gateway, ",") {
+		protocol := util.CheckProtocol(gw)
+		ipSuffix := "ip4"
+		if protocol == kubeovnv1.ProtocolIPv6 {
+			ipSuffix = "ip6"
+		}
+
+		allowIngressAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, fmt.Sprintf("%s.src == %s", ipSuffix, gw), ovnnb.ACLActionAllowRelated)
+		if err != nil {
+			return fmt.Errorf("new ingress allow acl for port group %s: %v", pgName, err)
+		}
+
+		allowEgressAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, fmt.Sprintf("%s.dst == %s", ipSuffix, gw), ovnnb.ACLActionAllowRelated)
+		if err != nil {
+			return fmt.Errorf("new egress allow acl for port group %s: %v", pgName, err)
+		}
+
+		acls = append(acls, allowIngressAcl, allowEgressAcl)
+	}
+
+	if err := c.CreateAcls(pgName, acls...); err != nil {
+		return fmt.Errorf("add gateway acls to port group %s: %v", pgName, err)
+	}
+
+	return nil
+}
+
+func (c OvnClient) CreateNodeACL(pgName, nodeIp string) error {
+	acls := make([]*ovnnb.ACL, 0)
+	for _, ip := range strings.Split(nodeIp, ",") {
+		protocol := util.CheckProtocol(ip)
+		ipSuffix := "ip4"
+		if protocol == kubeovnv1.ProtocolIPv6 {
+			ipSuffix = "ip6"
+		}
+		pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
+
+		allowIngressAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionToLport, util.NodeAllowPriority, fmt.Sprintf("%s.src == %s && %s.dst == $%s", ipSuffix, ip, ipSuffix, pgAs), ovnnb.ACLActionAllowRelated)
+		if err != nil {
+			return fmt.Errorf("new ingress allow acl for port group %s: %v", pgName, err)
+		}
+
+		allowEgressAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionFromLport, util.NodeAllowPriority, fmt.Sprintf("%s.dst == %s && %s.src == $%s", ipSuffix, ip, ipSuffix, pgAs), ovnnb.ACLActionAllowRelated)
+		if err != nil {
+			return fmt.Errorf("new egress allow acl for port group %s: %v", pgName, err)
+		}
+
+		acls = append(acls, allowIngressAcl, allowEgressAcl)
+	}
+
+	if err := c.CreateAcls(pgName, acls...); err != nil {
+		return fmt.Errorf("add node acls to port group %s: %v", pgName, err)
 	}
 
 	return nil
@@ -152,6 +212,49 @@ func (c OvnClient) CreateBareAcl(parentName, direction, priority, match, action 
 	return nil
 }
 
+// DeletePortGroupAcl delete acls from port group,
+// delete to-lport and from-lport direction acl when direction is empty, otherwise one-way
+func (c OvnClient) DeletePortGroupAcls(pgName, direction string) error {
+	_, err := c.GetPortGroup(pgName, false)
+	if err != nil {
+		return fmt.Errorf("get port group %s", pgName)
+	}
+
+	externalIDs := map[string]string{aclParentKey: pgName}
+
+	/* delete acls from port group */
+	acls, err := c.ListAcls(direction, externalIDs)
+	if err != nil {
+		return fmt.Errorf("list port groups %s acls: %v", pgName, err)
+	}
+
+	aclUUIDs := make([]string, 0, len(acls))
+	for _, acl := range acls {
+		aclUUIDs = append(aclUUIDs, acl.UUID)
+	}
+
+	removeAclsOp, err := c.portGroupUpdateAclOp(pgName, aclUUIDs, ovsdb.MutateOperationDelete)
+	if err != nil {
+		return fmt.Errorf("generate operation for deleting port group %s direction '%s' acls: %v", pgName, direction, err)
+	}
+
+	// delete acls
+	delAclsOp, err := c.WhereCache(aclFilter(direction, externalIDs)).Delete()
+	if err != nil {
+		return fmt.Errorf("generate operation for deleting acls: %v", err)
+	}
+
+	ops := make([]ovsdb.Operation, 0, len(removeAclsOp)+len(delAclsOp))
+	ops = append(ops, removeAclsOp...)
+	ops = append(ops, delAclsOp...)
+
+	if err = c.Transact("acls-del", ops); err != nil {
+		return fmt.Errorf("del acls from %s: %v", pgName, err)
+	}
+
+	return nil
+}
+
 // GetAcl get acl by direction, priority and match,
 // be consistent with ovn-nbctl which direction, priority and match determine one acl rule
 func (c OvnClient) GetAcl(direction, priority, match string, ignoreNotFound bool) (*ovnnb.ACL, error) {
@@ -179,7 +282,7 @@ func (c OvnClient) GetAcl(direction, priority, match string, ignoreNotFound bool
 	return &aclList[0], nil
 }
 
-// ListAcls list acks which match the given externalIDs,
+// ListAcls list acls which match the given externalIDs,
 // result should include all to-lport and from-lport acls when direction is empty,
 // result should include all acls when externalIDs is empty,
 // result should include all acls which externalIDs[key] is not empty when externalIDs[key] is ""
@@ -187,33 +290,7 @@ func (c OvnClient) GetAcl(direction, priority, match string, ignoreNotFound bool
 func (c OvnClient) ListAcls(direction string, externalIDs map[string]string) ([]ovnnb.ACL, error) {
 	aclList := make([]ovnnb.ACL, 0)
 
-	if err := c.WhereCache(func(acl *ovnnb.ACL) bool {
-		if len(acl.ExternalIDs) < len(externalIDs) {
-			return false
-		}
-
-		if len(acl.ExternalIDs) != 0 {
-			for k, v := range externalIDs {
-				// if only key exist but not value in externalIDs, we should include this lsp,
-				// it's equal to shell command `ovn-nbctl --columns=xx find acl external_ids:key!=\"\"`
-				if len(v) == 0 {
-					if len(acl.ExternalIDs[k]) == 0 {
-						return false
-					}
-				} else {
-					if acl.ExternalIDs[k] != v {
-						return false
-					}
-				}
-			}
-		}
-
-		if len(direction) != 0 && acl.Direction != direction {
-			return false
-		}
-
-		return true
-	}).List(context.TODO(), &aclList); err != nil {
+	if err := c.WhereCache(aclFilter(direction, externalIDs)).List(context.TODO(), &aclList); err != nil {
 		return nil, fmt.Errorf("list acls: %v", err)
 	}
 
@@ -233,7 +310,7 @@ func (c OvnClient) newAcl(parentName, direction, priority, match, action string,
 
 	exists, err := c.AclExists(direction, priority, match)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get acl 'direction %s' 'priority %s' 'match %s': %v", direction, priority, match, err)
 	}
 
 	// found, ingore
@@ -331,4 +408,39 @@ func newAllowAclMatch(pgName, asAllowName, asExceptName, protocol, direction str
 	}
 
 	return matches
+}
+
+// direction filter acls which match the given externalIDs,
+// result should include all to-lport and from-lport acls when direction is empty,
+// result should include all acls when externalIDs is empty,
+// result should include all acls which externalIDs[key] is not empty when externalIDs[key] is ""
+// TODO: maybe add other filter conditions(priority or match)
+func aclFilter(direction string, externalIDs map[string]string) func(acl *ovnnb.ACL) bool {
+	return func(acl *ovnnb.ACL) bool {
+		if len(acl.ExternalIDs) < len(externalIDs) {
+			return false
+		}
+
+		if len(acl.ExternalIDs) != 0 {
+			for k, v := range externalIDs {
+				// if only key exist but not value in externalIDs, we should include this lsp,
+				// it's equal to shell command `ovn-nbctl --columns=xx find acl external_ids:key!=\"\"`
+				if len(v) == 0 {
+					if len(acl.ExternalIDs[k]) == 0 {
+						return false
+					}
+				} else {
+					if acl.ExternalIDs[k] != v {
+						return false
+					}
+				}
+			}
+		}
+
+		if len(direction) != 0 && acl.Direction != direction {
+			return false
+		}
+
+		return true
+	}
 }
