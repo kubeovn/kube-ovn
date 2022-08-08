@@ -36,7 +36,7 @@ func (c OvnClient) CreateLoadBalancer(lbName, protocol, selectFields string) err
 
 	op, err := c.ovnNbClient.Create(lb)
 	if err != nil {
-		return fmt.Errorf("generate create operations for load balancer %s: %v", lbName, err)
+		return fmt.Errorf("generate operations for creating load balancer %s: %v", lbName, err)
 	}
 
 	if err := c.Transact("lb-add", op); err != nil {
@@ -135,7 +135,7 @@ func (c OvnClient) LoadBalancerUpdateVips(lbName string, vips map[string]string,
 
 	ops, err := c.LoadBalancerOp(lbName, mutation)
 	if err != nil {
-		return fmt.Errorf("generate update vips %s operations for load balancer %s: %v", vips, lbName, err)
+		return fmt.Errorf("generate operations for update load balancer %s vips %s: %v", lbName, vips, err)
 	}
 
 	if err := c.Transact("update-lb-vips", ops); err != nil {
@@ -167,7 +167,7 @@ func (c OvnClient) LoadBalancerOp(lbName string, mutationsFunc ...func(lb *ovnnb
 
 	ops, err := c.ovnNbClient.Where(lb).Mutate(lb, mutations...)
 	if err != nil {
-		return nil, fmt.Errorf("generate mutate operations for load balancer %s: %v", lb.Name, err)
+		return nil, fmt.Errorf("generate operations for mutating load balancer %s: %v", lb.Name, err)
 	}
 
 	return ops, nil
