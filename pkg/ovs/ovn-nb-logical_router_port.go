@@ -220,7 +220,7 @@ func (c OvnClient) CreateLogicalRouterPortOp(lrp *ovnnb.LogicalRouterPort, lrNam
 	}
 
 	/* add logical router port to logical router*/
-	lrpAddOp, err := c.LogicalRouterOp(lrName, lrp.UUID, true)
+	lrpAddOp, err := c.LogicalRouterUpdatePortOp(lrName, lrp.UUID, ovsdb.MutateOperationInsert)
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +245,7 @@ func (c OvnClient) DeleteLogicalRouterPortOp(lrp *ovnnb.LogicalRouterPort) ([]ov
 	}
 
 	// remove logical router port from logical router
-	lrpRemoveOp, err := c.LogicalRouterOp(lrName, lrp.UUID, false)
+	lrpRemoveOp, err := c.LogicalRouterUpdatePortOp(lrName, lrp.UUID, ovsdb.MutateOperationDelete)
 	if err != nil {
 		return nil, err
 	}
