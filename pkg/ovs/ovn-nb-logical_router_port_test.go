@@ -247,7 +247,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouterPort() {
 	require.NoError(t, err)
 
 	t.Run("normal update", func(t *testing.T) {
-		lrp = &ovnnb.LogicalRouterPort{
+		lrp := &ovnnb.LogicalRouterPort{
 			Name:     lrpName,
 			Networks: []string{"192.168.123.1/24", "192.168.125.1/24"},
 		}
@@ -260,7 +260,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouterPort() {
 	})
 
 	t.Run("clear networks", func(t *testing.T) {
-		lrp = &ovnnb.LogicalRouterPort{
+		lrp := &ovnnb.LogicalRouterPort{
 			Name:     lrpName,
 			Networks: nil,
 		}
