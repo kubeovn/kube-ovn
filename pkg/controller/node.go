@@ -1025,7 +1025,7 @@ func (c *Controller) RemoveRedundantChassis(node *v1.Node) error {
 				}
 			}
 		}
-		return errors.New("chassis reset, reboot ovs-ovn on this node: " + node.Name)
+		return errors.New("chassis is empty, please check parameter and reboot ovs-ovn on this node: " + node.Name)
 	}
 	return nil
 }
