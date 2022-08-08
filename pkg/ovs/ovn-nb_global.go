@@ -50,7 +50,7 @@ func (c OvnClient) GetNbGlobal() (*ovnnb.NBGlobal, error) {
 	return &nbGlobalList[0], nil
 }
 
-func (c OvnClient) UpdateNbGlobal(newNbGlobal *ovnnb.NBGlobal) error {
+func (c OvnClient) UpdateNbGlobal(newNbGlobal *ovnnb.NBGlobal, fields ...interface{}) error {
 	/* 	// list nb_global which connections != nil
 	   	op, err := c.Where(nbGlobal, model.Condition{
 	   		Field:    &nbGlobal.Connections,
@@ -63,7 +63,7 @@ func (c OvnClient) UpdateNbGlobal(newNbGlobal *ovnnb.NBGlobal) error {
 		return err
 	}
 
-	op, err := c.Where(oldNbGlobal).Update(newNbGlobal)
+	op, err := c.Where(oldNbGlobal).Update(newNbGlobal, fields...)
 	if nil != err {
 		return fmt.Errorf("generate update operations for nb global: %v", err)
 	}

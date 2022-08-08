@@ -65,19 +65,32 @@ func (suite *OvnClientTestSuite) testUpdateNbGlobal() {
 	nbGlobal := mockNBGlobal()
 	err := ovnClient.CreateNbGlobal(nbGlobal)
 	require.NoError(t, err)
+	t.Run("normal update", func(t *testing.T) {
+		update := &ovnnb.NBGlobal{Name: name, Options: map[string]string{
+			"mac_prefix": "11:22:aa",
+			"max_tunid":  "16711680",
+		}}
 
-	update := &ovnnb.NBGlobal{Name: name, Options: map[string]string{
-		"mac_prefix": "11:22:aa",
-		"max_tunid":  "16711680",
-	}}
+		err = ovnClient.UpdateNbGlobal(update)
+		require.NoError(t, err)
 
-	err = ovnClient.UpdateNbGlobal(update)
-	require.NoError(t, err)
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.Equal(t, "11:22:aa", out.Options["mac_prefix"])
+		require.Equal(t, "16711680", out.Options["max_tunid"])
+	})
 
-	out, err := ovnClient.GetNbGlobal()
-	require.NoError(t, err)
-	require.Equal(t, "11:22:aa", out.Options["mac_prefix"])
-	require.Equal(t, "16711680", out.Options["max_tunid"])
+	t.Run("cleate options", func(t *testing.T) {
+		update := &ovnnb.NBGlobal{}
+
+		err = ovnClient.UpdateNbGlobal(update, &update.Name, &update.Options)
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.Empty(t, out.Name)
+		require.Empty(t, out.Options)
+	})
 }
 
 func (suite *OvnClientTestSuite) testSetICAutoRoute() {

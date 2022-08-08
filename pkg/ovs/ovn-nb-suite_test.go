@@ -13,6 +13,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/go-logr/stdr"
 	"github.com/ovn-org/libovsdb/client"
+	"github.com/ovn-org/libovsdb/database"
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/ovn-org/libovsdb/ovsdb/serverdb"
@@ -65,6 +66,27 @@ func (suite *OvnClientTestSuite) Test_SetICAutoRoute() {
 	suite.testSetICAutoRoute()
 }
 
+/* logical_router unit test */
+func (suite *OvnClientTestSuite) Test_CreateLogicalRouter() {
+	suite.testCreateLogicalRouter()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteLogicalRouterr() {
+	suite.testDeleteLogicalRouter()
+}
+
+func (suite *OvnClientTestSuite) Test_GetLogicalRouter() {
+	suite.testGetLogicalRouter()
+}
+
+func (suite *OvnClientTestSuite) Test_ListLogicalRouter() {
+	suite.testListLogicalRouter()
+}
+
+func (suite *OvnClientTestSuite) Test_LogicalRouterAddPort() {
+	suite.testLogicalRouterAddPort()
+}
+
 func (suite *OvnClientTestSuite) Test_scratch() {
 	t := suite.T()
 	t.Parallel()
@@ -87,7 +109,7 @@ func newOVSDBServer(t *testing.T, dbModel model.ClientDBModel, schema ovsdb.Data
 	require.NoError(t, err)
 	serverSchema := serverdb.Schema()
 
-	db := server.NewInMemoryDatabase(map[string]model.ClientDBModel{
+	db := database.NewInMemoryDatabase(map[string]model.ClientDBModel{
 		schema.Name:       dbModel,
 		serverSchema.Name: serverDBModel,
 	})
@@ -118,14 +140,14 @@ func newOVSDBServer(t *testing.T, dbModel model.ClientDBModel, schema ovsdb.Data
 	return server, tmpfile
 }
 
-func newOvnClient(t *testing.T, ovnNbAddr string, ovnNbTimeout int) (*OvnClient, error) {
+func newOvnClient(t *testing.T, ovnNbAddr string, ovnNbTimeout time.Duration) (*OvnClient, error) {
 	nbClient, err := newNbClient(ovnNbAddr, ovnNbTimeout)
 	require.NoError(t, err)
 
 	return &OvnClient{ovnNbClient: ovnNbClient{Client: nbClient, Timeout: ovnNbTimeout}}, nil
 }
 
-func newNbClient(addr string, timeout int) (client.Client, error) {
+func newNbClient(addr string, timeout time.Duration) (client.Client, error) {
 	dbModel, err := ovnnb.FullDatabaseModel()
 	if err != nil {
 		return nil, err
@@ -137,7 +159,7 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 	stdr.SetVerbosity(1)
 
 	options := []client.Option{
-		client.WithReconnect(time.Duration(timeout)*time.Second, &backoff.ZeroBackOff{}),
+		client.WithReconnect(timeout, &backoff.ZeroBackOff{}),
 		client.WithLeaderOnly(false),
 		client.WithLogger(&logger),
 	}
@@ -157,10 +179,14 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 
 	monitorOpts := []client.MonitorOption{
 		client.WithTable(&ovnnb.LogicalRouter{}),
+		client.WithTable(&ovnnb.LogicalRouterPort{}),
 		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
 		client.WithTable(&ovnnb.LogicalSwitchPort{}),
 		client.WithTable(&ovnnb.PortGroup{}),
+		client.WithTable(&ovnnb.LogicalRouterStaticRoute{}),
+		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
 		client.WithTable(&ovnnb.NBGlobal{}),
+		client.WithTable(&ovnnb.GatewayChassis{}),
 	}
 	if _, err = c.Monitor(context.TODO(), c.NewMonitor(monitorOpts...)); err != nil {
 		return nil, err
