@@ -80,6 +80,9 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouter() {
 
 		err = ovnClient.DeleteLogicalRouter(name)
 		require.NoError(t, err)
+
+		_, err = ovnClient.GetLogicalRouter(name, false)
+		require.ErrorContains(t, err, "not found logical router")
 	})
 
 	t.Run("no err when delete non-existent logical router", func(t *testing.T) {
@@ -103,17 +106,11 @@ func (suite *OvnClientTestSuite) testListLogicalRouter() {
 		require.NoError(t, err)
 	}
 
-	t.Cleanup(func() {
-		for _, lr := range names {
-			err := ovnClient.DeleteLogicalRouter(lr)
-			require.NoError(t, err)
-		}
-	})
-
 	t.Run("return all logical router which match vendor", func(t *testing.T) {
 		t.Parallel()
 		lrs, err := ovnClient.ListLogicalRouter(true)
 		require.NoError(t, err)
+		require.NotEmpty(t, lrs)
 
 		for _, lr := range lrs {
 			if !strings.Contains(lr.Name, namePrefix) {

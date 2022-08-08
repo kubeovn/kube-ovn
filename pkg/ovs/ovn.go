@@ -37,6 +37,7 @@ type LegacyClient struct {
 
 type OvnClient struct {
 	ovnNbClient
+	ClusterRouter string
 }
 
 type ovnNbClient struct {
