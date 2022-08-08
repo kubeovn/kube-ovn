@@ -201,6 +201,56 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 	})
 }
 
+func (suite *OvnClientTestSuite) testCreateLocalnetLogicalSwitchPort() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lspName := "test-create-localnet-port-lsp"
+	lsName := "test-create-localnet-port-port-ls"
+	provider := "external"
+
+	err := ovnClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	t.Run("create localnet logical switch port with vlan id", func(t *testing.T) {
+		err = ovnClient.CreateLocalnetLogicalSwitchPort(lsName, lspName, provider, 200)
+		require.NoError(t, err)
+
+		lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.Equal(t, lspName, lsp.Name)
+		require.Equal(t, "localnet", lsp.Type)
+		require.Equal(t, []string{"unknown"}, lsp.Addresses)
+		require.Equal(t, map[string]string{
+			"network_name": provider,
+		}, lsp.Options)
+
+		require.Equal(t, 200, *lsp.Tag)
+	})
+
+	t.Run("create localnet logical switch port without vlan id", func(t *testing.T) {
+		lspName := "test-create-localnet-port-lsp-no-vlanid"
+		err = ovnClient.CreateLocalnetLogicalSwitchPort(lsName, lspName, provider, 0)
+		require.NoError(t, err)
+
+		lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.Equal(t, lspName, lsp.Name)
+		require.Equal(t, "localnet", lsp.Type)
+		require.Equal(t, []string{"unknown"}, lsp.Addresses)
+		require.Equal(t, map[string]string{
+			"network_name": provider,
+		}, lsp.Options)
+		require.Empty(t, lsp.Tag)
+	})
+
+	t.Run("should no err when create logical switch port repeatedly", func(t *testing.T) {
+		err = ovnClient.CreateLocalnetLogicalSwitchPort(lsName, lspName, "external", 0)
+		require.NoError(t, err)
+	})
+}
+
 func (suite *OvnClientTestSuite) testCreateVirtualLogicalSwitchPorts() {
 	t := suite.T()
 	t.Parallel()
@@ -368,6 +418,48 @@ func (suite *OvnClientTestSuite) testEnablePortLayer2forward() {
 	lsp, err = ovnClient.GetLogicalSwitchPort(lspName, false)
 	require.NoError(t, err)
 	require.Equal(t, []string{"unknown"}, lsp.Addresses)
+}
+
+func (suite *OvnClientTestSuite) testSetLogicalSwitchPortVlanTag() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lsName := "test-set-port-vlan-tag-ls"
+	lspName := "test-set-port-vlan-tag-lsp"
+
+	lsp := &ovnnb.LogicalSwitchPort{
+		UUID: ovsclient.UUID(),
+		Name: lspName,
+		ExternalIDs: map[string]string{
+			"vendor":         util.CniTypeName,
+			logicalSwitchKey: lsName,
+		},
+	}
+
+	err := createLogicalSwitchPort(ovnClient, lsp)
+	require.NoError(t, err)
+
+	t.Run("set logical switch port vlan id", func(t *testing.T) {
+		err = ovnClient.SetLogicalSwitchPortVlanTag(lspName, 10)
+		require.NoError(t, err)
+
+		lsp, err = ovnClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.Equal(t, 10, *lsp.Tag)
+
+		// no error when set the same vlan id
+		err = ovnClient.SetLogicalSwitchPortVlanTag(lspName, 10)
+		require.NoError(t, err)
+	})
+
+	t.Run("invalid vlan id", func(t *testing.T) {
+		err = ovnClient.SetLogicalSwitchPortVlanTag(lspName, 0)
+		require.ErrorContains(t, err, "invalid vlan id")
+
+		err = ovnClient.SetLogicalSwitchPortVlanTag(lspName, 4096)
+		require.ErrorContains(t, err, "invalid vlan id")
+	})
 }
 
 func (suite *OvnClientTestSuite) testUpdateLogicalSwitchPort() {

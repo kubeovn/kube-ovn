@@ -109,6 +109,45 @@ func (c OvnClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, na
 	return nil
 }
 
+// CreateLocalnetLogicalSwitchPort create localnet type logical switch port
+func (c OvnClient) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider string, vlanID int) error {
+	exist, err := c.LogicalSwitchPortExists(lspName)
+	if err != nil {
+		return err
+	}
+
+	// ignore
+	if exist {
+		return nil
+	}
+
+	/* create logical switch port */
+	lsp := &ovnnb.LogicalSwitchPort{
+		UUID:      ovsclient.UUID(),
+		Name:      lspName,
+		Type:      "localnet",
+		Addresses: []string{"unknown"},
+		Options: map[string]string{
+			"network_name": provider,
+		},
+	}
+
+	if vlanID > 0 && vlanID < 4096 {
+		lsp.Tag = &vlanID
+	}
+
+	ops, err := c.CreateLogicalSwitchPortOp(lsp, lsName)
+	if err != nil {
+		return err
+	}
+
+	if err = c.Transact("lsp-add", ops); err != nil {
+		return fmt.Errorf("create localnet logical switch port %s: %v", lspName, err)
+	}
+
+	return nil
+}
+
 // CreateVirtualLogicalSwitchPorts create some virtual type logical switch port once
 func (c OvnClient) CreateVirtualLogicalSwitchPorts(lsName string, ips ...string) error {
 	ops := make([]ovsdb.Operation, 0, len(ips))
@@ -195,7 +234,7 @@ func (c OvnClient) SetLogicalSwitchPortVirtualParents(lsName, parents string, ip
 	}
 
 	if err := c.Transact("lsp-update", ops); err != nil {
-		return fmt.Errorf("create virtual logical switch ports for logical switch %s: %v", lsName, err)
+		return fmt.Errorf("set logical switch port virtual-parents %v", err)
 	}
 	return nil
 }
@@ -238,7 +277,7 @@ func (c OvnClient) SetLogicalSwitchPortSecurity(portSecurity bool, lspName, mac,
 	}
 
 	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.PortSecurity, &lsp.ExternalIDs); err != nil {
-		return fmt.Errorf("update logical switch port %s: %v", lspName, err)
+		return fmt.Errorf("set logical switch port %s port_security %v: %v", lspName, lsp.PortSecurity, err)
 	}
 
 	return nil
@@ -254,7 +293,32 @@ func (c OvnClient) EnablePortLayer2forward(lspName string) error {
 	lsp.Addresses = []string{"unknown"}
 
 	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Addresses); err != nil {
-		return fmt.Errorf("update logical switch port %s: %v", lspName, err)
+		return fmt.Errorf("set logical switch port %s addressed=unknown: %v", lspName, err)
+	}
+
+	return nil
+}
+
+func (c OvnClient) SetLogicalSwitchPortVlanTag(lspName string, vlanID int) error {
+	// valid vlan id is 0~4095
+	if vlanID < 1 || vlanID > 4095 {
+		return fmt.Errorf("invalid vlan id %d", vlanID)
+	}
+
+	lsp, err := c.GetLogicalSwitchPort(lspName, false)
+	if err != nil {
+		return err
+	}
+
+	// no need update vlan id
+	if lsp.Tag != nil && *lsp.Tag == vlanID {
+		return nil
+	}
+
+	lsp.Tag = &vlanID
+
+	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Tag); err != nil {
+		return fmt.Errorf("set logical switch port %s tag %d: %v", lspName, vlanID, err)
 	}
 
 	return nil
