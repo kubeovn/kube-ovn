@@ -15,7 +15,9 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/go-logr/stdr"
+	"github.com/google/uuid"
 	"github.com/ovn-org/libovsdb/client"
+
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -33,6 +35,10 @@ func init() {
 
 func NamedUUID() string {
 	return fmt.Sprintf("u%010d", atomic.AddUint32(&namedUUIDCounter, 1))
+}
+
+func UUID() string {
+	return uuid.NewString()
 }
 
 // NewNbClient creates a new OVN NB client
@@ -95,10 +101,10 @@ func NewNbClient(addr string, timeout int) (client.Client, error) {
 		client.WithTable(&ovnnb.LogicalRouter{}),
 		client.WithTable(&ovnnb.LogicalRouterPort{}),
 		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
+		client.WithTable(&ovnnb.LogicalRouterStaticRoute{}),
+		client.WithTable(&ovnnb.LogicalSwitch{}),
 		client.WithTable(&ovnnb.LogicalSwitchPort{}),
 		client.WithTable(&ovnnb.PortGroup{}),
-		client.WithTable(&ovnnb.LogicalRouterStaticRoute{}),
-		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
 		client.WithTable(&ovnnb.NBGlobal{}),
 		client.WithTable(&ovnnb.GatewayChassis{}),
 	}
