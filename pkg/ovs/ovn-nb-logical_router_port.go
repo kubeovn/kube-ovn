@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	logicalRouterKey = "logical_router"
+	logicalRouterKey = "lr"
 )
 
 func (c OvnClient) CreatePeerRouterPort(localRouter, remoteRouter, localRouterPortIP string) error {
