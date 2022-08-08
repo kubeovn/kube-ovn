@@ -115,7 +115,7 @@ func (suite *OvnClientTestSuite) testListLogicalRouter() {
 	})
 }
 
-func (suite *OvnClientTestSuite) testLogicalRouterOp() {
+func (suite *OvnClientTestSuite) testLogicalRouterUpdatePortOp() {
 	t := suite.T()
 	t.Parallel()
 
@@ -128,7 +128,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterOp() {
 
 	t.Run("add new port to logical router", func(t *testing.T) {
 		t.Parallel()
-		ops, err := ovnClient.LogicalRouterOp(lrName, uuid, true)
+		ops, err := ovnClient.LogicalRouterUpdatePortOp(lrName, uuid, ovsdb.MutateOperationInsert)
 		require.NoError(t, err)
 		require.Equal(t, []ovsdb.Mutation{
 			{
@@ -147,7 +147,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterOp() {
 
 	t.Run("del port from logical router", func(t *testing.T) {
 		t.Parallel()
-		ops, err := ovnClient.LogicalRouterOp(lrName, uuid, false)
+		ops, err := ovnClient.LogicalRouterUpdatePortOp(lrName, uuid, ovsdb.MutateOperationDelete)
 		require.NoError(t, err)
 		require.Equal(t, []ovsdb.Mutation{
 			{
@@ -166,13 +166,13 @@ func (suite *OvnClientTestSuite) testLogicalRouterOp() {
 
 	t.Run("should return err when uuid is empty", func(t *testing.T) {
 		t.Parallel()
-		_, err := ovnClient.LogicalRouterOp(lrName, "", true)
+		_, err := ovnClient.LogicalRouterUpdatePortOp(lrName, "", ovsdb.MutateOperationInsert)
 		require.ErrorContains(t, err, fmt.Sprintf("the uuid of port add or del to logical router %s cannot be empty", lrName))
 	})
 
 	t.Run("should return err when logical router does not exist", func(t *testing.T) {
 		t.Parallel()
-		_, err := ovnClient.LogicalRouterOp("test-port-op-lr-non-existent", uuid, true)
+		_, err := ovnClient.LogicalRouterUpdatePortOp("test-port-op-lr-non-existent", uuid, ovsdb.MutateOperationInsert)
 		require.ErrorContains(t, err, "not found logical router")
 	})
 
