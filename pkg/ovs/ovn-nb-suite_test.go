@@ -52,9 +52,23 @@ func TestOvnClientTestSuite(t *testing.T) {
 	suite.Run(t, new(OvnClientTestSuite))
 }
 
+/* nb_global unit test */
+func (suite *OvnClientTestSuite) Test_GetNbGlobal() {
+	suite.testGetNbGlobal()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateNbGlobal() {
+	suite.testUpdateNbGlobal()
+}
+
+func (suite *OvnClientTestSuite) Test_SetICAutoRoute() {
+	suite.testSetICAutoRoute()
+}
+
 func (suite *OvnClientTestSuite) Test_scratch() {
 	t := suite.T()
 	t.Parallel()
+	t.SkipNow()
 
 	ovnClient := suite.ovnClient
 	name := "test-create-lsp"
