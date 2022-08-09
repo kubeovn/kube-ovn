@@ -581,6 +581,10 @@ func (c *Controller) handleAddPod(key string) error {
 					c.syncSgPortsQueue.Add(sgName)
 				}
 			}
+
+			if vips != "" {
+				c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
+			}
 		}
 	}
 

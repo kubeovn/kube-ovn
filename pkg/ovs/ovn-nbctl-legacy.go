@@ -230,6 +230,7 @@ func (c LegacyClient) CreateVirtualPort(ls, ip string) error {
 }
 
 func (c LegacyClient) SetVirtualParents(ls, ip, parents string) error {
+	klog.Infof("set virtual parents: ls='%s', vip='%s', parents='%s'", ls, ip, parents)
 	portName := fmt.Sprintf("%s-vip-%s", ls, ip)
 	var cmdArg []string
 	if parents != "" {
