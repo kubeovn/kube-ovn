@@ -13,6 +13,8 @@ RUN apt update && apt install build-essential git libnuma-dev autoconf curl \
 RUN cd /usr/src/ && \
     git clone -b ovn-21.06 --depth=1 https://github.com/kubeovn/ovs.git && \
     cd ovs && \
+    # fix memleak
+    curl -s https://github.com/kubeovn/ovs/commit/2dc8e7aa202818952b2fa80b47298604530c9de0.patch | git apply && \
     curl -s https://github.com/kubeovn/ovs/commit/22ea22c40b46ee5adeae977ff6cfca81b3ff25d7.patch | git apply && \
     ./boot.sh && \
     rm -rf .git && \
