@@ -13,6 +13,8 @@ RUN apt update && apt install build-essential git libnuma-dev autoconf curl \
 RUN cd /usr/src/ && \
     git clone -b branch-2.15 --depth=1 https://github.com/openvswitch/ovs.git && \
     cd ovs && \
+    # fix memleak
+    curl -s https://github.com/kubeovn/ovs/commit/2dc8e7aa202818952b2fa80b47298604530c9de0.patch | git apply && \
     curl https://github.com/kubeovn/ovs/commit/df1c802f568be2af84aa81372fec46f5b09b4366.patch | git apply && \
     curl https://github.com/kubeovn/ovs/commit/8dd4973bba021ce92eb9f42446d6c1c0e3474e25.patch | git apply && \
     ./boot.sh && \
