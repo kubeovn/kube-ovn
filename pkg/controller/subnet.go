@@ -933,24 +933,29 @@ func (c *Controller) syncVirtualPort(key string) error {
 		klog.Errorf("failed to list logical_switch_port, %v", err)
 		return err
 	}
+	vipVirtualParentsMap := map[string][]string{}
+	for _, ret := range results {
+		var associatedVips []string
+		for _, value := range ret["external_ids"] {
+			if strings.HasPrefix(value, "vips") {
+				vips := strings.Split(value, "=")[1]
+				associatedVips = strings.Split(strings.ReplaceAll(vips, " ", ""), "/")
+			}
+		}
+		klog.Infof("associatedVips %v", associatedVips)
+		for _, vip := range associatedVips {
+			vipVirtualParentsMap[vip] = append(vipVirtualParentsMap[vip], ret["name"][0])
+		}
+	}
+
 	for _, vip := range subnet.Spec.Vips {
 		if !util.CIDRContainIP(subnet.Spec.CIDRBlock, vip) {
 			klog.Errorf("vip %s is out of range to subnet %s", vip, subnet.Name)
 			continue
 		}
 		var virtualParents []string
-		for _, ret := range results {
-			var associatedVips []string
-			for _, value := range ret["external_ids"] {
-				if strings.HasPrefix(value, "vips") {
-					vips := strings.Split(value, "=")[1]
-					associatedVips = strings.Split(strings.ReplaceAll(vips, " ", ""), "/")
-				}
-			}
-			klog.Infof("associatedVips %v", associatedVips)
-			if util.ContainsString(associatedVips, vip) {
-				virtualParents = append(virtualParents, ret["name"][0])
-			}
+		if value, exist := vipVirtualParentsMap[vip]; exist {
+			virtualParents = value
 		}
 		if err = c.ovnLegacyClient.SetVirtualParents(subnet.Name, vip, strings.Join(virtualParents, ",")); err != nil {
 			klog.Errorf("failed to set vip %s virtual parents, %v", vip, err)
