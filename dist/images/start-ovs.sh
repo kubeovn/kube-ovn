@@ -64,7 +64,7 @@ else
 fi
 
 # Start vswitchd. restart will automatically set/unset flow-restore-wait which is not what we want
-/usr/share/openvswitch/scripts/ovs-ctl start --no-ovsdb-server --system-id=random
+/usr/share/openvswitch/scripts/ovs-ctl start --no-ovsdb-server --system-id=random --no-mlockall
 /usr/share/openvswitch/scripts/ovs-ctl --protocol=udp --dport=6081 enable-protocol
 
 sleep 1
