@@ -142,6 +142,24 @@ func (c OvnClient) LogicalSwitchUpdateLoadBalancers(lsName string, op ovsdb.Muta
 	return nil
 }
 
+// UpdateLogicalSwitch update logical switch
+func (c OvnClient) UpdateLogicalSwitch(ls *ovnnb.LogicalSwitch, fields ...interface{}) error {
+	if ls == nil {
+		return fmt.Errorf("logical_switch is nil")
+	}
+
+	op, err := c.Where(ls).Update(ls, fields...)
+	if err != nil {
+		return fmt.Errorf("generate operations for updating logical switch %s: %v", ls.Name, err)
+	}
+
+	if err = c.Transact("ls-update", op); err != nil {
+		return fmt.Errorf("update logical switch %s: %v", ls.Name, err)
+	}
+
+	return nil
+}
+
 // DeleteLogicalSwitch delete logical switch
 func (c OvnClient) DeleteLogicalSwitch(lsName string) error {
 	op, err := c.DeleteLogicalSwitchOp(lsName)
@@ -231,6 +249,25 @@ func (c OvnClient) LogicalSwitchUpdateLoadBalancerOp(lsName string, lbUUIDs []st
 		mutation := &model.Mutation{
 			Field:   &ls.LoadBalancer,
 			Value:   lbUUIDs,
+			Mutator: op,
+		}
+
+		return mutation
+	}
+
+	return c.LogicalSwitchOp(lsName, mutation)
+}
+
+// logicalSwitchUpdateAclOp create operations add acl to or delete acl from logical switch
+func (c OvnClient) logicalSwitchUpdateAclOp(lsName string, aclUUIDs []string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
+	if len(aclUUIDs) == 0 {
+		return nil, nil
+	}
+
+	mutation := func(ls *ovnnb.LogicalSwitch) *model.Mutation {
+		mutation := &model.Mutation{
+			Field:   &ls.ACLs,
+			Value:   aclUUIDs,
 			Mutator: op,
 		}
 
