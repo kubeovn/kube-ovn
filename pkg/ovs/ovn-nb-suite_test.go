@@ -100,6 +100,10 @@ func (suite *OvnClientTestSuite) Test_LogicalSwitchUpdateLoadBalancerOp() {
 	suite.testLogicalSwitchUpdateLoadBalancerOp()
 }
 
+func (suite *OvnClientTestSuite) Test_logicalSwitchUpdateAclOp() {
+	suite.testlogicalSwitchUpdateAclOp()
+}
+
 func (suite *OvnClientTestSuite) Test_LogicalSwitchOp() {
 	suite.testLogicalSwitchOp()
 }
@@ -299,8 +303,16 @@ func (suite *OvnClientTestSuite) Test_DeleteAddressSet() {
 	suite.testDeleteAddressSet()
 }
 
+func (suite *OvnClientTestSuite) Test_DeleteAddressSets() {
+	suite.testDeleteAddressSets()
+}
+
 func (suite *OvnClientTestSuite) Test_ListAddressSets() {
 	suite.testListAddressSets()
+}
+
+func (suite *OvnClientTestSuite) Test_addressSetFilter() {
+	suite.testaddressSetFilter()
 }
 
 /* acl unit test */
@@ -312,20 +324,36 @@ func (suite *OvnClientTestSuite) Test_CreateEgressAcl() {
 	suite.testCreateEgressAcl()
 }
 
-func (suite *OvnClientTestSuite) Test_CreateGatewayACL() {
-	suite.testCreateGatewayACL()
+func (suite *OvnClientTestSuite) Test_CreateGatewayAcl() {
+	suite.testCreateGatewayAcl()
 }
 
-func (suite *OvnClientTestSuite) Test_CreateNodeACL() {
-	suite.testCreateNodeACL()
+func (suite *OvnClientTestSuite) Test_CreateNodeAcl() {
+	suite.testCreateNodeAcl()
+}
+
+func (suite *OvnClientTestSuite) Test_CreateSgDenyAllAcl() {
+	suite.testCreateSgDenyAllAcl()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateSgAcl() {
+	suite.testUpdateSgAcl()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateLogicalSwitchAcl() {
+	suite.testUpdateLogicalSwitchAcl()
+}
+
+func (suite *OvnClientTestSuite) Test_newSgRuleACL() {
+	suite.testnewSgRuleACL()
 }
 
 func (suite *OvnClientTestSuite) Test_CreateAcls() {
 	suite.testCreateAcls()
 }
 
-func (suite *OvnClientTestSuite) Test_DeletePortGroupAcls() {
-	suite.testDeletePortGroupAcls()
+func (suite *OvnClientTestSuite) Test_DeleteAcls() {
+	suite.testDeleteAcls()
 }
 
 func (suite *OvnClientTestSuite) Test_GetAcl() {
