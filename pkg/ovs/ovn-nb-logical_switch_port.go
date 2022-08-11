@@ -13,10 +13,6 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-const (
-	logicalSwitchKey = "ls"
-)
-
 func (c OvnClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, namespace string, portSecurity bool, securityGroups string, vips string, liveMigration bool, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs, vpc string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, true)
 	if err != nil {

@@ -11,6 +11,13 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+const (
+	logicalRouterKey = "lr"
+	logicalSwitchKey = "ls"
+	portGroupKey     = "pg"
+	aclParentKey     = "acl-parent"
+)
+
 // CreateGatewayLogicalSwitch create gateway switch connect external networks
 func (c OvnClient) CreateGatewayLogicalSwitch(lsName, lrName, provider, ip, mac string, vlanID int, chassises ...string) error {
 	lspName := fmt.Sprintf("%s-%s", lsName, lrName)
