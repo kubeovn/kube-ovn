@@ -220,9 +220,9 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		}
 
 		var mtu int
+		var node *v1.Node
 		if providerNetwork != "" {
-			node, err := csh.Controller.nodesLister.Get(csh.Config.NodeName)
-			if err != nil {
+			if node, err = csh.Controller.nodesLister.Get(csh.Config.NodeName); err != nil {
 				errMsg := fmt.Errorf("failed to get node %s: %v", csh.Config.NodeName, err)
 				klog.Error(errMsg)
 				if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
@@ -245,14 +245,61 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			mtu = csh.Config.MTU
 		}
 
-		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s, custom routes %v", ifName, macAddr, ipAddr, cidr, gw, podRequest.Routes)
+		// routes used for access from underlay to overlay
+		var u2oRoutes []request.Route
+		if podSubnet.Spec.U2oRouting && podSubnet.Spec.Vlan != "" && !podSubnet.Spec.LogicalGateway {
+			subnets, err := csh.Controller.subnetsLister.List(labels.Everything())
+			if err != nil {
+				errMsg := fmt.Errorf("failed to list subnets: %v", err)
+				klog.Error(errMsg)
+				if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
+					klog.Errorf("failed to write response: %v", err)
+				}
+				return
+			}
+
+			if node == nil {
+				if node, err = csh.Controller.nodesLister.Get(csh.Config.NodeName); err != nil {
+					errMsg := fmt.Errorf("failed to get node %s: %v", csh.Config.NodeName, err)
+					klog.Error(errMsg)
+					if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
+						klog.Errorf("failed to write response: %v", err)
+					}
+					return
+				}
+			}
+
+			podCidrV4, podCidrV6 := util.SplitStringIP(cidr)
+			nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
+			v4Routing := util.CIDRContainIP(podCidrV4, nodeIPv4)
+			v6Routing := util.CIDRContainIP(podCidrV6, nodeIPv6)
+			for _, subnet := range subnets {
+				if subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway {
+					if !subnet.Status.IsReady() {
+						klog.V(5).Infof("subnet %s is not ready, skip", subnet.Name)
+						continue
+					}
+
+					cidrV4, cidrV6 := util.SplitStringIP(subnet.Spec.CIDRBlock)
+					if v4Routing && cidrV4 != "" {
+						u2oRoutes = append(u2oRoutes, request.Route{Destination: cidrV4, Gateway: nodeIPv4})
+					}
+					if v6Routing && cidrV6 != "" {
+						u2oRoutes = append(u2oRoutes, request.Route{Destination: cidrV6, Gateway: nodeIPv6})
+					}
+				}
+			}
+		}
+
+		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s, u2o routes %v, custom routes %v", ifName, macAddr, ipAddr, cidr, gw, u2oRoutes, podRequest.Routes)
+		allRoutes := append(u2oRoutes, podRequest.Routes...)
 		if nicType == util.InternalType {
-			podNicName, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, podRequest.Routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, priority, podRequest.DeviceID, nicType, latency, limit, loss, gatewayCheckMode)
+			podNicName, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, allRoutes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, priority, podRequest.DeviceID, nicType, latency, limit, loss, gatewayCheckMode)
 		} else if nicType == util.DpdkType {
 			err = csh.configureDpdkNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, ingress, egress, priority, getShortSharedDir(pod.UID, podRequest.VhostUserSocketVolumeName), podRequest.VhostUserSocketName)
 		} else {
 			podNicName = ifName
-			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, podRequest.Routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, priority, podRequest.DeviceID, nicType, latency, limit, loss, gatewayCheckMode)
+			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, allRoutes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, priority, podRequest.DeviceID, nicType, latency, limit, loss, gatewayCheckMode)
 		}
 		if err != nil {
 			errMsg := fmt.Errorf("configure nic failed %v", err)
