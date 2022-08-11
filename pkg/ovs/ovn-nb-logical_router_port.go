@@ -16,10 +16,6 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-const (
-	logicalRouterKey = "lr"
-)
-
 func (c OvnClient) CreatePeerRouterPort(localRouter, remoteRouter, localRouterPortIP string) error {
 	localRouterPort := fmt.Sprintf("%s-%s", localRouter, remoteRouter)
 	remoteRouterPort := fmt.Sprintf("%s-%s", remoteRouter, localRouter)
