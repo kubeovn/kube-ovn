@@ -389,7 +389,7 @@ func (suite *OvnClientTestSuite) testportGroupUpdateAclOp() {
 		}, ops[0].Mutations)
 	})
 
-	t.Run("del port from port group", func(t *testing.T) {
+	t.Run("del acl from port group", func(t *testing.T) {
 		t.Parallel()
 
 		ops, err := ovnClient.portGroupUpdateAclOp(pgName, aclUUIDs, ovsdb.MutateOperationDelete)
