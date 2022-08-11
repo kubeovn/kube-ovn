@@ -348,11 +348,11 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	if err := c.RemoveRedundantChassis(node); err != nil {
+	if err := c.EnsureChassisOnlyForClusterNodes(node); err != nil {
 		return err
 	}
 
-	if err := c.retryDelDupChassis(util.ChasRetryTime, util.ChasRetryIntev+2, c.checkChassisDupl, node); err != nil {
+	if err := c.retryDelDupChassis(util.ChasRetryTime, util.ChasRetryIntev+2, c.EnsureChassisConsistency, node); err != nil {
 		return err
 	}
 
@@ -581,7 +581,7 @@ func (c *Controller) handleUpdateNode(key string) error {
 		return err
 	}
 
-	if err := c.retryDelDupChassis(util.ChasRetryTime, util.ChasRetryIntev+2, c.checkChassisDupl, node); err != nil {
+	if err := c.retryDelDupChassis(util.ChasRetryTime, util.ChasRetryIntev+2, c.EnsureChassisConsistency, node); err != nil {
 		return err
 	}
 
@@ -824,7 +824,7 @@ func (c *Controller) checkRouteExist(nextHop, cidrBlock, routePolicy string) (bo
 	return false, nil
 }
 
-func (c *Controller) checkChassisDupl(node *v1.Node) error {
+func (c *Controller) EnsureChassisConsistency(node *v1.Node) error {
 	// notice that multiple chassises may arise and we are not prepared
 	chassisAdd, err := c.ovnLegacyClient.GetChassis(node.Name)
 	if err != nil {
@@ -990,7 +990,7 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 	return nil
 }
 
-func (c *Controller) RemoveRedundantChassis(node *v1.Node) error {
+func (c *Controller) EnsureChassisOnlyForClusterNodes(node *v1.Node) error {
 	chassisAdd, err := c.ovnLegacyClient.GetChassis(node.Name)
 	if err != nil {
 		klog.Errorf("failed to get node %s chassisID, %v", node.Name, err)
@@ -1021,7 +1021,7 @@ func (c *Controller) RemoveRedundantChassis(node *v1.Node) error {
 				}
 			}
 		}
-		return errors.New("chassis reset, reboot ovs-ovn on this node: " + node.Name)
+		return errors.New("chassis is empty, please check parameters and reboot ovs-ovn on this node: " + node.Name)
 	}
 	return nil
 }
