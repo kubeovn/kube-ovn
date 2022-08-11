@@ -2,11 +2,18 @@ package ovs
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/stretchr/testify/require"
 )
+
+func newAddressSet(name string, externalIDs map[string]string) *ovnnb.AddressSet {
+	return &ovnnb.AddressSet{
+		Name:        name,
+		ExternalIDs: externalIDs,
+	}
+}
 
 func (suite *OvnClientTestSuite) testCreateAddressSet() {
 	t := suite.T()
@@ -107,84 +114,128 @@ func (suite *OvnClientTestSuite) testDeleteAddressSet() {
 	})
 }
 
+func (suite *OvnClientTestSuite) testDeleteAddressSets() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	pgName := "test-del-ass-pg"
+	asPrefix := "test_del_ass"
+	externalIDs := map[string]string{"sg": pgName}
+
+	for i := 0; i < 3; i++ {
+		asName := fmt.Sprintf("%s_%d", asPrefix, i)
+		err := ovnClient.CreateAddressSet(asName, externalIDs)
+		require.NoError(t, err)
+	}
+
+	// create a new address set with no sg name, it should't be deleted
+	asName := fmt.Sprintf("%s_%d", asPrefix, 3)
+	err := ovnClient.CreateAddressSet(asName, nil)
+	require.NoError(t, err)
+
+	err = ovnClient.DeleteAddressSets(externalIDs)
+	require.NoError(t, err)
+
+	// it should't be deleted
+	_, err = ovnClient.GetAddressSet(asName, false)
+	require.NoError(t, err)
+
+	// should delete
+	ass, err := ovnClient.ListAddressSets(externalIDs)
+	require.NoError(t, err)
+	require.Empty(t, ass)
+}
+
 func (suite *OvnClientTestSuite) testListAddressSets() {
 	t := suite.T()
 	t.Parallel()
 
 	ovnClient := suite.ovnClient
 
-	t.Run("result should exclude as when externalIDs's length is not equal", func(t *testing.T) {
-		asName := "test_list_as_mismatch_length"
+	asName := "test_list_as_exist_key"
 
-		err := ovnClient.CreateAddressSet(asName, map[string]string{"key": "value"})
-		require.NoError(t, err)
+	err := ovnClient.CreateAddressSet(asName, map[string]string{"sg": "sg", "direction": "to-lport", "key": "value"})
+	require.NoError(t, err)
 
-		ass, err := ovnClient.ListAddressSets(map[string]string{"sg": "sg", "direction": "to-lport"})
-		require.NoError(t, err)
-		require.Empty(t, ass)
-	})
+	ass, err := ovnClient.ListAddressSets(map[string]string{"sg": "sg", "key": "value"})
+	require.NoError(t, err)
+	require.Len(t, ass, 1)
+	require.Equal(t, asName, ass[0].Name)
 
-	t.Run("result should include as when key exists in as column: external_ids", func(t *testing.T) {
-		asName := "test_list_as_exist_key"
+}
 
-		err := ovnClient.CreateAddressSet(asName, map[string]string{"sg": "sg", "direction": "to-lport", "key": "value"})
-		require.NoError(t, err)
+func (suite *OvnClientTestSuite) testaddressSetFilter() {
+	t := suite.T()
+	t.Parallel()
 
-		ass, err := ovnClient.ListAddressSets(map[string]string{"sg": "sg", "key": "value"})
-		require.NoError(t, err)
-		require.Len(t, ass, 1)
-		require.Equal(t, asName, ass[0].Name)
-	})
+	pgName := "test-filter-as-pg"
+	asPrefix := "test-filter-as"
 
-	t.Run("result should include all as when externalIDs is empty", func(t *testing.T) {
-		prefix := "test_list_as_all"
+	ass := make([]*ovnnb.AddressSet, 0)
 
-		for i := 0; i < 4; i++ {
-			asName := fmt.Sprintf("%s_%d", prefix, i)
-
-			err := ovnClient.CreateAddressSet(asName, map[string]string{"sg": "sg", "direction": "to-lport", "key": "value"})
-			require.NoError(t, err)
+	t.Run("filter address set", func(t *testing.T) {
+		// create two to-lport acl
+		i := 0
+		for ; i < 3; i++ {
+			as := newAddressSet(fmt.Sprintf("%s-%d", asPrefix, i), map[string]string{
+				"sg": pgName,
+			})
+			ass = append(ass, as)
 		}
 
-		out, err := ovnClient.ListAddressSets(nil)
-		require.NoError(t, err)
+		// create two as without sg name
+		for ; i < 5; i++ {
+			as := newAddressSet(fmt.Sprintf("%s-%d", asPrefix, i), nil)
+			ass = append(ass, as)
+		}
+
+		// create two as with other sg name
+		for ; i < 6; i++ {
+			as := newAddressSet(fmt.Sprintf("%s-%d", asPrefix, i), map[string]string{
+				"sg": pgName + "-other",
+			})
+			ass = append(ass, as)
+		}
+
+		/* include all as */
+		filterFunc := addressSetFilter(nil)
 		count := 0
-		for _, v := range out {
-			if strings.Contains(v.Name, prefix) {
+		for _, as := range ass {
+			if filterFunc(as) {
+				count++
+			}
+		}
+		require.Equal(t, count, 6)
+
+		filterFunc = addressSetFilter(map[string]string{"sg": ""})
+		count = 0
+		for _, as := range ass {
+			if filterFunc(as) {
 				count++
 			}
 		}
 		require.Equal(t, count, 4)
 
-		out, err = ovnClient.ListAddressSets(map[string]string{})
-		require.NoError(t, err)
+		/* include all as with sg name */
+		filterFunc = addressSetFilter(map[string]string{"sg": pgName})
 		count = 0
-		for _, v := range out {
-			if strings.Contains(v.Name, prefix) {
+		for _, as := range ass {
+			if filterFunc(as) {
 				count++
 			}
 		}
-		require.Equal(t, count, 4)
+		require.Equal(t, count, 3)
 	})
 
-	t.Run("result should include as which externalIDs[key] is ''", func(t *testing.T) {
-		asName := "test_list_as_no_val"
+	t.Run("result should exclude as when externalIDs's length is not equal", func(t *testing.T) {
+		asName := "test_filter_as_mismatch_length"
+		as := newAddressSet(asName, map[string]string{
+			"sg": pgName,
+		})
 
-		err := ovnClient.CreateAddressSet(asName, map[string]string{"sg_test": "sg", "direction": "to-lport", "key": "value"})
-		require.NoError(t, err)
-
-		ass, err := ovnClient.ListAddressSets(map[string]string{"sg_test": "", "key": ""})
-		require.NoError(t, err)
-		require.Len(t, ass, 1)
-		require.Equal(t, asName, ass[0].Name)
-
-		ass, err = ovnClient.ListAddressSets(map[string]string{"sg_test": ""})
-		require.NoError(t, err)
-		require.Len(t, ass, 1)
-		require.Equal(t, asName, ass[0].Name)
-
-		ass, err = ovnClient.ListAddressSets(map[string]string{"sg_test": "", "key": "", "key1": ""})
-		require.NoError(t, err)
-		require.Empty(t, ass)
+		filterFunc := addressSetFilter(map[string]string{"sg": pgName, "direction": "to-lport"})
+		out := filterFunc(as)
+		require.False(t, out)
 	})
 }

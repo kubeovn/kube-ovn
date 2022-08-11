@@ -102,6 +102,25 @@ func (c OvnClient) DeleteAddressSet(asName string) error {
 	return nil
 }
 
+// DeleteAddressSets delete several address set once
+func (c OvnClient) DeleteAddressSets(externalIDs map[string]string) error {
+	// it's dangerous when externalIDs is empty, it will delete all address set
+	if len(externalIDs) == 0 {
+		return nil
+	}
+
+	op, err := c.WhereCache(addressSetFilter(externalIDs)).Delete()
+	if err != nil {
+		return fmt.Errorf("generate operation for deleting address sets with external IDs %v: %v", externalIDs, err)
+	}
+
+	if err := c.Transact("ass-del", op); err != nil {
+		return fmt.Errorf("delete address sets with external IDs %v: %v", externalIDs, err)
+	}
+
+	return nil
+}
+
 // GetAddressSet get address set by name
 func (c OvnClient) GetAddressSet(asName string, ignoreNotFound bool) (*ovnnb.AddressSet, error) {
 	as := &ovnnb.AddressSet{Name: asName}
@@ -124,7 +143,19 @@ func (c OvnClient) AddressSetExists(name string) (bool, error) {
 func (c OvnClient) ListAddressSets(externalIDs map[string]string) ([]ovnnb.AddressSet, error) {
 	asList := make([]ovnnb.AddressSet, 0)
 
-	if err := c.WhereCache(func(as *ovnnb.AddressSet) bool {
+	if err := c.WhereCache(addressSetFilter(externalIDs)).List(context.TODO(), &asList); err != nil {
+		return nil, fmt.Errorf("list address set: %v", err)
+	}
+
+	return asList, nil
+}
+
+// addressSetFilter filter address set which match the given externalIDs,
+// result should include all to-lport and from-lport acls when direction is empty,
+// result should include all acls when externalIDs is empty,
+// result should include all acls which externalIDs[key] is not empty when externalIDs[key] is ""
+func addressSetFilter(externalIDs map[string]string) func(as *ovnnb.AddressSet) bool {
+	return func(as *ovnnb.AddressSet) bool {
 		if len(as.ExternalIDs) < len(externalIDs) {
 			return false
 		}
@@ -146,9 +177,5 @@ func (c OvnClient) ListAddressSets(externalIDs map[string]string) ([]ovnnb.Addre
 		}
 
 		return true
-	}).List(context.TODO(), &asList); err != nil {
-		return nil, fmt.Errorf("list address set: %v", err)
 	}
-
-	return asList, nil
 }
