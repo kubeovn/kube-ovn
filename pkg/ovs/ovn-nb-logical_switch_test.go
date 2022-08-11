@@ -427,6 +427,71 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdateLoadBalancerOp() {
 	})
 }
 
+func (suite *OvnClientTestSuite) testlogicalSwitchUpdateAclOp() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lsName := "test-update-acl-op-ls"
+	aclUUIDs := []string{ovsclient.UUID(), ovsclient.UUID()}
+
+	err := ovnClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	t.Run("add new acl to logical switch ", func(t *testing.T) {
+		t.Parallel()
+
+		ops, err := ovnClient.logicalSwitchUpdateAclOp(lsName, aclUUIDs, ovsdb.MutateOperationInsert)
+		require.NoError(t, err)
+		require.Equal(t, []ovsdb.Mutation{
+			{
+				Column:  "acls",
+				Mutator: ovsdb.MutateOperationInsert,
+				Value: ovsdb.OvsSet{
+					GoSet: []interface{}{
+						ovsdb.UUID{
+							GoUUID: aclUUIDs[0],
+						},
+						ovsdb.UUID{
+							GoUUID: aclUUIDs[1],
+						},
+					},
+				},
+			},
+		}, ops[0].Mutations)
+	})
+
+	t.Run("del acl from logical switch", func(t *testing.T) {
+		t.Parallel()
+
+		ops, err := ovnClient.logicalSwitchUpdateAclOp(lsName, aclUUIDs, ovsdb.MutateOperationDelete)
+		require.NoError(t, err)
+		require.Equal(t, []ovsdb.Mutation{
+			{
+				Column:  "acls",
+				Mutator: ovsdb.MutateOperationDelete,
+				Value: ovsdb.OvsSet{
+					GoSet: []interface{}{
+						ovsdb.UUID{
+							GoUUID: aclUUIDs[0],
+						},
+						ovsdb.UUID{
+							GoUUID: aclUUIDs[1],
+						},
+					},
+				},
+			},
+		}, ops[0].Mutations)
+	})
+
+	t.Run("should return err when logical switch does not exist", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := ovnClient.logicalSwitchUpdateAclOp("test-acl-op-ls-non-existent", aclUUIDs, ovsdb.MutateOperationInsert)
+		require.ErrorContains(t, err, "not found logical switch")
+	})
+}
+
 func (suite *OvnClientTestSuite) testLogicalSwitchOp() {
 	t := suite.T()
 	t.Parallel()
