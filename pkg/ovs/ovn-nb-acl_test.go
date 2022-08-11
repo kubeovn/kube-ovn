@@ -692,8 +692,6 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		}
 
 		err = ovnClient.CreateAcls(pgName, portGroupKey, acls...)
-		require.NoError(t, err)
-
 		pg, err := ovnClient.GetPortGroup(pgName, false)
 		require.NoError(t, err)
 		require.Len(t, pg.ACLs, 5)
