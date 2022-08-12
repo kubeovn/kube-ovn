@@ -26,6 +26,7 @@ type leaderElectionConfig struct {
 	Client clientset.Interface
 
 	ElectionID string
+	WasLeader  bool
 
 	OnStartedLeading func(chan struct{})
 	OnStoppedLeading func()
@@ -37,13 +38,22 @@ func (c *Controller) isLeader() bool {
 }
 
 func (c *Controller) leaderElection() {
-	elector := setupLeaderElection(&leaderElectionConfig{
+	config := &leaderElectionConfig{
 		Client:       c.config.KubeClient,
 		ElectionID:   "kube-ovn-controller",
 		PodName:      c.config.PodName,
 		PodNamespace: c.config.PodNamespace,
-	})
-	c.elector = elector
+	}
+	config.OnStartedLeading = func(_ chan struct{}) {
+		config.WasLeader = true
+	}
+	config.OnNewLeader = func(identity string) {
+		if config.WasLeader && identity != config.PodName {
+			klog.Fatal("I am not leader anymore")
+		}
+	}
+
+	c.elector = setupLeaderElection(config)
 	for {
 		if c.isLeader() {
 			return
