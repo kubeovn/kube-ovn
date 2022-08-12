@@ -133,6 +133,18 @@ func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPortSecurity() {
 	suite.testSetLogicalSwitchPortSecurity()
 }
 
+func (suite *OvnClientTestSuite) Test_SetSetLogicalSwitchPortExternalIds() {
+	suite.testSetSetLogicalSwitchPortExternalIds()
+}
+
+func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPortSecurityGroup() {
+	suite.testSetLogicalSwitchPortSecurityGroup()
+}
+
+func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPortsSecurityGroup() {
+	suite.testSetLogicalSwitchPortsSecurityGroup()
+}
+
 func (suite *OvnClientTestSuite) Test_EnablePortLayer2forward() {
 	suite.testEnablePortLayer2forward()
 }
@@ -143,6 +155,10 @@ func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPortVlanTag() {
 
 func (suite *OvnClientTestSuite) Test_UpdateLogicalSwitchPort() {
 	suite.testUpdateLogicalSwitchPort()
+}
+
+func (suite *OvnClientTestSuite) Test_getLogicalSwitchPortSgs() {
+	suite.testgetLogicalSwitchPortSgs()
 }
 
 func (suite *OvnClientTestSuite) Test_DeleteLogicalSwitchPort() {
@@ -191,8 +207,8 @@ func (suite *OvnClientTestSuite) Test_CreatePeerRouterPort() {
 	suite.testCreatePeerRouterPort()
 }
 
-func (suite *OvnClientTestSuite) Test_UpdateRouterPortIPv6RA() {
-	suite.testUpdateRouterPortIPv6RA()
+func (suite *OvnClientTestSuite) Test_UpdateLogicalRouterPortRA() {
+	suite.testUpdateLogicalRouterPortRA()
 }
 
 func (suite *OvnClientTestSuite) Test_CreateLogicalRouterPort() {
@@ -395,6 +411,10 @@ func (suite *OvnClientTestSuite) Test_RemoveRouterTypePort() {
 
 func (suite *OvnClientTestSuite) Test_DeleteLogicalGatewaySwitch() {
 	suite.testDeleteLogicalGatewaySwitch()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteSecurityGroup() {
+	suite.testDeleteSecurityGroup()
 }
 
 func newOVSDBServer(t *testing.T, dbModel model.ClientDBModel, schema ovsdb.DatabaseSchema) (*server.OvsdbServer, string) {

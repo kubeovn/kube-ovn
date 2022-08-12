@@ -55,7 +55,7 @@ func (c OvnClient) CreatePeerRouterPort(localRouter, remoteRouter, localRouterPo
 	return nil
 }
 
-func (c *OvnClient) UpdateRouterPortIPv6RA(lrpName, ipv6RAConfigsStr string, enableIPv6RA bool) error {
+func (c *OvnClient) UpdateLogicalRouterPortRA(lrpName, ipv6RAConfigsStr string, enableIPv6RA bool) error {
 	lrp, err := c.GetLogicalRouterPort(lrpName, false)
 	if err != nil {
 		return err
