@@ -188,7 +188,7 @@ func (c OvnClient) UpdateSgAcl(sg *kubeovnv1.SecurityGroup, direction string) er
 	}
 
 	// clear address_set
-	if err := c.DeleteAddressSets(map[string]string{"sg": sg.Name}); err != nil {
+	if err := c.DeleteAddressSets(map[string]string{sgKey: sg.Name}); err != nil {
 		return err
 	}
 
@@ -224,7 +224,7 @@ func (c OvnClient) UpdateSgAcl(sg *kubeovnv1.SecurityGroup, direction string) er
 		}
 	}
 
-	/* recreate rule ACL */
+	/* create rule acl */
 	for _, rule := range sgRules {
 		acl, err := c.newSgRuleACL(sg.Name, direction, rule)
 		if err != nil {

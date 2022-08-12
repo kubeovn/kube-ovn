@@ -52,7 +52,7 @@ func (suite *OvnClientTestSuite) testCreatePeerRouterPort() {
 	})
 }
 
-func (suite *OvnClientTestSuite) testUpdateRouterPortIPv6RA() {
+func (suite *OvnClientTestSuite) testUpdateLogicalRouterPortRA() {
 	t := suite.T()
 	t.Parallel()
 
@@ -75,7 +75,7 @@ func (suite *OvnClientTestSuite) testUpdateRouterPortIPv6RA() {
 	require.NoError(t, err)
 
 	t.Run("update ipv6 ra config when enableIPv6RA is true and ipv6RAConfigsStr is empty", func(t *testing.T) {
-		err := ovnClient.UpdateRouterPortIPv6RA(lrpName, "", true)
+		err := ovnClient.UpdateLogicalRouterPortRA(lrpName, "", true)
 		require.NoError(t, err)
 
 		out, err := ovnClient.GetLogicalRouterPort(lrpName, false)
@@ -90,7 +90,7 @@ func (suite *OvnClientTestSuite) testUpdateRouterPortIPv6RA() {
 	})
 
 	t.Run("update ipv6 ra config when enableIPv6RA is true and exist ipv6RAConfigsStr", func(t *testing.T) {
-		err := ovnClient.UpdateRouterPortIPv6RA(lrpName, "address_mode=dhcpv6_stateful,max_interval=30", true)
+		err := ovnClient.UpdateLogicalRouterPortRA(lrpName, "address_mode=dhcpv6_stateful,max_interval=30", true)
 		require.NoError(t, err)
 
 		out, err := ovnClient.GetLogicalRouterPort(lrpName, false)
@@ -103,7 +103,7 @@ func (suite *OvnClientTestSuite) testUpdateRouterPortIPv6RA() {
 	})
 
 	t.Run("update ipv6 ra config when enableIPv6RA is false", func(t *testing.T) {
-		err := ovnClient.UpdateRouterPortIPv6RA(lrpName, "address_mode=dhcpv6_stateful,max_interval=30", false)
+		err := ovnClient.UpdateLogicalRouterPortRA(lrpName, "address_mode=dhcpv6_stateful,max_interval=30", false)
 		require.NoError(t, err)
 
 		out, err := ovnClient.GetLogicalRouterPort(lrpName, false)
@@ -114,7 +114,7 @@ func (suite *OvnClientTestSuite) testUpdateRouterPortIPv6RA() {
 	})
 
 	t.Run("do nothing when enableIPv6RA is true and ipv6RAConfigsStr is invalid", func(t *testing.T) {
-		err := ovnClient.UpdateRouterPortIPv6RA(lrpName, "address_mode=,test ", true)
+		err := ovnClient.UpdateLogicalRouterPortRA(lrpName, "address_mode=,test ", true)
 		require.NoError(t, err)
 	})
 
@@ -131,7 +131,7 @@ func (suite *OvnClientTestSuite) testUpdateRouterPortIPv6RA() {
 		err := ovnClient.CreateLogicalRouterPort(lrName, lrp)
 		require.NoError(t, err)
 
-		err = ovnClient.UpdateRouterPortIPv6RA(name, "address_mode=dhcpv6_stateful,max_interval=30", true)
+		err = ovnClient.UpdateLogicalRouterPortRA(name, "address_mode=dhcpv6_stateful,max_interval=30", true)
 		require.NoError(t, err)
 	})
 }
