@@ -99,7 +99,7 @@ func (c OvnClient) DeletePortGroup(pgName string) error {
 func (c OvnClient) GetPortGroup(pgName string, ignoreNotFound bool) (*ovnnb.PortGroup, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
-	
+
 	pg := &ovnnb.PortGroup{Name: pgName}
 	if err := c.ovnNbClient.Get(ctx, pg); err != nil {
 		if ignoreNotFound && err == client.ErrNotFound {

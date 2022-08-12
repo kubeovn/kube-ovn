@@ -24,7 +24,7 @@ func (suite *OvnClientTestSuite) testCreateAddressSet() {
 
 	t.Run("create address set", func(t *testing.T) {
 		err := ovnClient.CreateAddressSet(asName, map[string]string{
-			"sg": "test-sg",
+			sgKey: "test-sg",
 		})
 		require.NoError(t, err)
 
@@ -33,13 +33,13 @@ func (suite *OvnClientTestSuite) testCreateAddressSet() {
 		require.NotEmpty(t, as.UUID)
 		require.Equal(t, asName, as.Name)
 		require.Equal(t, map[string]string{
-			"sg": "test-sg",
+			sgKey: "test-sg",
 		}, as.ExternalIDs)
 	})
 
 	t.Run("error occur because of invalid address set name", func(t *testing.T) {
 		err := ovnClient.CreateAddressSet("test-create-as", map[string]string{
-			"sg": "test-sg",
+			sgKey: "test-sg",
 		})
 		require.Error(t, err)
 	})
@@ -54,7 +54,7 @@ func (suite *OvnClientTestSuite) testAddressSetUpdateAddress() {
 	addresses := []string{"1.2.3.4", "1.2.3.6", "1.2.3.7"}
 
 	err := ovnClient.CreateAddressSet(asName, map[string]string{
-		"sg": "test-sg",
+		sgKey: "test-sg",
 	})
 	require.NoError(t, err)
 
@@ -121,7 +121,7 @@ func (suite *OvnClientTestSuite) testDeleteAddressSets() {
 	ovnClient := suite.ovnClient
 	pgName := "test-del-ass-pg"
 	asPrefix := "test_del_ass"
-	externalIDs := map[string]string{"sg": pgName}
+	externalIDs := map[string]string{sgKey: pgName}
 
 	for i := 0; i < 3; i++ {
 		asName := fmt.Sprintf("%s_%d", asPrefix, i)
@@ -155,10 +155,10 @@ func (suite *OvnClientTestSuite) testListAddressSets() {
 
 	asName := "test_list_as_exist_key"
 
-	err := ovnClient.CreateAddressSet(asName, map[string]string{"sg": "sg", "direction": "to-lport", "key": "value"})
+	err := ovnClient.CreateAddressSet(asName, map[string]string{sgKey: "sg", "direction": "to-lport", "key": "value"})
 	require.NoError(t, err)
 
-	ass, err := ovnClient.ListAddressSets(map[string]string{"sg": "sg", "key": "value"})
+	ass, err := ovnClient.ListAddressSets(map[string]string{sgKey: "sg", "key": "value"})
 	require.NoError(t, err)
 	require.Len(t, ass, 1)
 	require.Equal(t, asName, ass[0].Name)
@@ -179,7 +179,7 @@ func (suite *OvnClientTestSuite) testaddressSetFilter() {
 		i := 0
 		for ; i < 3; i++ {
 			as := newAddressSet(fmt.Sprintf("%s-%d", asPrefix, i), map[string]string{
-				"sg": pgName,
+				sgKey: pgName,
 			})
 			ass = append(ass, as)
 		}
@@ -193,7 +193,7 @@ func (suite *OvnClientTestSuite) testaddressSetFilter() {
 		// create two as with other sg name
 		for ; i < 6; i++ {
 			as := newAddressSet(fmt.Sprintf("%s-%d", asPrefix, i), map[string]string{
-				"sg": pgName + "-other",
+				sgKey: pgName + "-other",
 			})
 			ass = append(ass, as)
 		}
@@ -208,7 +208,7 @@ func (suite *OvnClientTestSuite) testaddressSetFilter() {
 		}
 		require.Equal(t, count, 6)
 
-		filterFunc = addressSetFilter(map[string]string{"sg": ""})
+		filterFunc = addressSetFilter(map[string]string{sgKey: ""})
 		count = 0
 		for _, as := range ass {
 			if filterFunc(as) {
@@ -218,7 +218,7 @@ func (suite *OvnClientTestSuite) testaddressSetFilter() {
 		require.Equal(t, count, 4)
 
 		/* include all as with sg name */
-		filterFunc = addressSetFilter(map[string]string{"sg": pgName})
+		filterFunc = addressSetFilter(map[string]string{sgKey: pgName})
 		count = 0
 		for _, as := range ass {
 			if filterFunc(as) {
@@ -231,10 +231,10 @@ func (suite *OvnClientTestSuite) testaddressSetFilter() {
 	t.Run("result should exclude as when externalIDs's length is not equal", func(t *testing.T) {
 		asName := "test_filter_as_mismatch_length"
 		as := newAddressSet(asName, map[string]string{
-			"sg": pgName,
+			sgKey: pgName,
 		})
 
-		filterFunc := addressSetFilter(map[string]string{"sg": pgName, "direction": "to-lport"})
+		filterFunc := addressSetFilter(map[string]string{sgKey: pgName, "direction": "to-lport"})
 		out := filterFunc(as)
 		require.False(t, out)
 	})

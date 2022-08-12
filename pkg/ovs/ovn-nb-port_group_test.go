@@ -21,7 +21,7 @@ func (suite *OvnClientTestSuite) testCreatePortGroup() {
 
 	err := ovnClient.CreatePortGroup(pgName, map[string]string{
 		"type": "security_group",
-		"sg":   "test-sg",
+		sgKey:  "test-sg",
 	})
 	require.NoError(t, err)
 
@@ -31,7 +31,7 @@ func (suite *OvnClientTestSuite) testCreatePortGroup() {
 	require.Equal(t, pgName, pg.Name)
 	require.Equal(t, map[string]string{
 		"type": "security_group",
-		"sg":   "test-sg",
+		sgKey:  "test-sg",
 	}, pg.ExternalIDs)
 }
 
@@ -50,7 +50,7 @@ func (suite *OvnClientTestSuite) testPortGroupUpdatePorts() {
 
 	err = ovnClient.CreatePortGroup(pgName, map[string]string{
 		"type": "security_group",
-		"sg":   "test-sg",
+		sgKey:  "test-sg",
 	})
 	require.NoError(t, err)
 
@@ -144,7 +144,7 @@ func (suite *OvnClientTestSuite) testGetGetPortGroup() {
 
 	err := ovnClient.CreatePortGroup(pgName, map[string]string{
 		"type": "security_group",
-		"sg":   "test-sg",
+		sgKey:  "test-sg",
 	})
 	require.NoError(t, err)
 
@@ -181,7 +181,7 @@ func (suite *OvnClientTestSuite) testListPortGroups() {
 		err := ovnClient.CreatePortGroup(pgName, map[string]string{"key": "value"})
 		require.NoError(t, err)
 
-		pgs, err := ovnClient.ListPortGroups(map[string]string{"sg": "sg", "type": "security_group", "key": "value"})
+		pgs, err := ovnClient.ListPortGroups(map[string]string{sgKey: "sg", "type": "security_group", "key": "value"})
 		require.NoError(t, err)
 		require.Empty(t, pgs)
 	})
@@ -189,7 +189,7 @@ func (suite *OvnClientTestSuite) testListPortGroups() {
 	t.Run("result should include lsp when key exists in pg column: external_ids", func(t *testing.T) {
 		pgName := "test-list-pg-exist-key"
 
-		err := ovnClient.CreatePortGroup(pgName, map[string]string{"sg": "sg", "type": "security_group", "key": "value"})
+		err := ovnClient.CreatePortGroup(pgName, map[string]string{sgKey: "sg", "type": "security_group", "key": "value"})
 		require.NoError(t, err)
 
 		pgs, err := ovnClient.ListPortGroups(map[string]string{"type": "security_group", "key": "value"})
@@ -204,7 +204,7 @@ func (suite *OvnClientTestSuite) testListPortGroups() {
 		for i := 0; i < 4; i++ {
 			pgName := fmt.Sprintf("%s-%d", prefix, i)
 
-			err := ovnClient.CreatePortGroup(pgName, map[string]string{"sg": "sg", "type": "security_group", "key": "value"})
+			err := ovnClient.CreatePortGroup(pgName, map[string]string{sgKey: "sg", "type": "security_group", "key": "value"})
 			require.NoError(t, err)
 		}
 
@@ -261,7 +261,7 @@ func (suite *OvnClientTestSuite) testPortGroupALLNotExist() {
 
 	err := ovnClient.CreatePortGroup(pgName, map[string]string{
 		"type": "security_group",
-		"sg":   "test-sg",
+		sgKey:  "test-sg",
 	})
 	require.NoError(t, err)
 
@@ -294,7 +294,7 @@ func (suite *OvnClientTestSuite) testportGroupUpdatePortOp() {
 
 	err := ovnClient.CreatePortGroup(pgName, map[string]string{
 		"type": "security_group",
-		"sg":   "test-sg",
+		sgKey:  "test-sg",
 	})
 	require.NoError(t, err)
 
@@ -362,7 +362,7 @@ func (suite *OvnClientTestSuite) testportGroupUpdateAclOp() {
 
 	err := ovnClient.CreatePortGroup(pgName, map[string]string{
 		"type": "security_group",
-		"sg":   "test-sg",
+		sgKey:  "test-sg",
 	})
 	require.NoError(t, err)
 
@@ -429,7 +429,7 @@ func (suite *OvnClientTestSuite) testportGroupOp() {
 
 	err := ovnClient.CreatePortGroup(pgName, map[string]string{
 		"type": "security_group",
-		"sg":   "test-sg",
+		sgKey:  "test-sg",
 	})
 	require.NoError(t, err)
 
