@@ -12,10 +12,13 @@ import (
 )
 
 const (
-	logicalRouterKey = "lr"
-	logicalSwitchKey = "ls"
-	portGroupKey     = "pg"
-	aclParentKey     = "acl-parent"
+	logicalRouterKey      = "lr"
+	logicalSwitchKey      = "ls"
+	portGroupKey          = "pg"
+	aclParentKey          = "acl-parent"
+	associatedSgKeyPrefix = "associated_sg_"
+	sgsKey                = "security_groups"
+	sgKey                 = "sg"
 )
 
 // CreateGatewayLogicalSwitch create gateway switch connect external networks
@@ -112,6 +115,33 @@ func (c OvnClient) DeleteLogicalGatewaySwitch(lsName, lrName string) error {
 
 	if err = c.Transact("gw-ls-del", ops); err != nil {
 		return fmt.Errorf("create router type port %s and %s: %v", lspName, lrpName, err)
+	}
+
+	return nil
+}
+
+func (c OvnClient) DeleteSecurityGroup(sgName string) error {
+	pgName := GetSgPortGroupName(sgName)
+
+	// clear acl
+	if err := c.DeleteAcls(pgName, portGroupKey, ""); err != nil {
+		return fmt.Errorf("delete acls from port group %s: %v", pgName, err)
+	}
+
+	// clear address_set
+	if err := c.DeleteAddressSets(map[string]string{sgKey: sgName}); err != nil {
+		return err
+	}
+
+	if sgName == util.DefaultSecurityGroupName {
+		if err := c.SetLogicalSwitchPortsSecurityGroup(sgName, "remove"); err != nil {
+			return fmt.Errorf("clear default security group %s from logical switch ports: %v", sgName, err)
+		}
+	}
+
+	// delete pg
+	if err := c.DeletePortGroup(pgName); err != nil {
+		return err
 	}
 
 	return nil

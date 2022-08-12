@@ -56,18 +56,18 @@ func (c OvnClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, na
 
 		// set sercurity groups
 		if len(securityGroups) != 0 {
-			lsp.ExternalIDs["security_groups"] = strings.ReplaceAll(securityGroups, ",", "/")
+			lsp.ExternalIDs[sgsKey] = strings.ReplaceAll(securityGroups, ",", "/")
 
 			sgList := strings.Split(securityGroups, ",")
 			for _, sg := range sgList {
-				lsp.ExternalIDs["associated_sg_"+sg] = "true"
+				lsp.ExternalIDs[associatedSgKeyPrefix+sg] = "true"
 			}
 		}
 	}
 
 	// add lsp which does not belong to defualt vpc to default-securitygroup when default-securitygroup configMap exist
 	if vpc != "" && vpc != util.DefaultVpc && !strings.Contains(securityGroups, util.DefaultSecurityGroupName) {
-		lsp.ExternalIDs["associated_sg_"+util.DefaultSecurityGroupName] = "false"
+		lsp.ExternalIDs[associatedSgKeyPrefix+util.DefaultSecurityGroupName] = "false"
 	}
 
 	// set vips info to external-ids
@@ -277,6 +277,112 @@ func (c OvnClient) SetLogicalSwitchPortSecurity(portSecurity bool, lspName, mac,
 	return nil
 }
 
+// SetLogicalSwitchPortExternalIds set logical switch port external ids
+func (c OvnClient) SetLogicalSwitchPortExternalIds(lspName string, externalIds map[string]string) error {
+	lsp, err := c.GetLogicalSwitchPort(lspName, false)
+	if err != nil {
+		return fmt.Errorf("get logical switch port %s: %v", lspName, err)
+	}
+
+	if lsp.ExternalIDs == nil {
+		lsp.ExternalIDs = make(map[string]string)
+	}
+
+	for k, v := range externalIds {
+		lsp.ExternalIDs[k] = v
+	}
+
+	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.ExternalIDs); err != nil {
+		return fmt.Errorf("set logical switch port %s external ids %v: %v", lspName, externalIds, err)
+	}
+
+	return nil
+}
+
+// SetLogicalSwitchPortSecurityGroup set logical switch port security group,
+// op is 'add' or 'remove'
+func (c OvnClient) SetLogicalSwitchPortSecurityGroup(lsp *ovnnb.LogicalSwitchPort, op string, sgs ...string) ([]string, error) {
+	if len(sgs) == 0 {
+		return nil, nil
+	}
+
+	if op != "add" && op != "remove" {
+		return nil, fmt.Errorf("op must be 'add' or 'remove'")
+	}
+
+	diffSgs := make([]string, 0, len(sgs))
+	oldSgs := getLogicalSwitchPortSgs(lsp)
+	for _, sgName := range sgs {
+		associatedSgKey := associatedSgKeyPrefix + sgName
+		if op == "add" {
+			if _, ok := oldSgs[sgName]; ok {
+				continue // ignore existent
+			}
+
+			lsp.ExternalIDs[associatedSgKey] = "true"
+			oldSgs[sgName] = struct{}{}
+			diffSgs = append(diffSgs, sgName)
+		} else {
+			if _, ok := oldSgs[sgName]; !ok {
+				continue // ignore non-existent
+			}
+
+			lsp.ExternalIDs[associatedSgKey] = "false"
+			delete(oldSgs, sgName)
+			diffSgs = append(diffSgs, sgName)
+		}
+	}
+
+	newSgs := ""
+	for sg := range oldSgs {
+		if len(newSgs) != 0 {
+			newSgs += "/" + sg
+		} else {
+			newSgs = sg
+		}
+	}
+
+	lsp.ExternalIDs[sgsKey] = newSgs
+	if len(newSgs) == 0 { // when all sgs had been removed, delete sgsKey
+		delete(lsp.ExternalIDs, sgsKey)
+	}
+
+	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.ExternalIDs); err != nil {
+		return nil, fmt.Errorf("set logical switch port %s security group %v: %v", lsp.Name, newSgs, err)
+	}
+	return diffSgs, nil
+}
+
+// SetLogicalSwitchPortsSecurityGroup set logical switch port security group,
+// op is 'add' or 'remove'
+func (c OvnClient) SetLogicalSwitchPortsSecurityGroup(sgName string, op string) error {
+	if op != "add" && op != "remove" {
+		return fmt.Errorf("op must be 'add' or 'remove'")
+	}
+
+	/* list sg port */
+	associatedSgKey := associatedSgKeyPrefix + sgName
+	associated := "false" // list false associated sg port when add sg to port external_ids
+	if op == "remove" {   // list true associated sg port when remove sg from port external_ids
+		associated = "true"
+	}
+
+	externalIds := map[string]string{associatedSgKey: associated}
+	lsps, err := c.ListLogicalSwitchPorts(true, externalIds)
+	if err != nil {
+		return fmt.Errorf("list logical switch ports with external_ids %v: %v", externalIds, err)
+	}
+
+	/* add to or remove from sgs form port external_ids */
+	for _, lsp := range lsps {
+		if _, err := c.SetLogicalSwitchPortSecurityGroup(&lsp, op, sgName); err != nil {
+			return fmt.Errorf("set logical switch port %s security group %s: %v", lsp.Name, sgName, err)
+		}
+	}
+
+	return nil
+}
+
 // EnablePortLayer2forward set logical switch port addresses as 'unknown'
 func (c OvnClient) EnablePortLayer2forward(lspName string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, false)
@@ -351,13 +457,13 @@ func (c OvnClient) DeleteLogicalSwitchPort(lspName string) error {
 }
 
 // GetLogicalSwitchPort get logical switch port by name
-func (c OvnClient) GetLogicalSwitchPort(name string, ignoreNotFound bool) (*ovnnb.LogicalSwitchPort, error) {
-	lsp := &ovnnb.LogicalSwitchPort{Name: name}
+func (c OvnClient) GetLogicalSwitchPort(lspName string, ignoreNotFound bool) (*ovnnb.LogicalSwitchPort, error) {
+	lsp := &ovnnb.LogicalSwitchPort{Name: lspName}
 	if err := c.Get(context.TODO(), lsp); err != nil {
 		if ignoreNotFound && err == client.ErrNotFound {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("get logical switch port %s: %v", name, err)
+		return nil, fmt.Errorf("get logical switch port %s: %v", lspName, err)
 	}
 
 	return lsp, nil
@@ -504,4 +610,21 @@ func (c OvnClient) UpdateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, field
 	}
 
 	return op, nil
+}
+
+// getLogicalSwitchPortSgs get logical switch port security group
+func getLogicalSwitchPortSgs(lsp *ovnnb.LogicalSwitchPort) map[string]struct{} {
+	if lsp == nil {
+		return nil
+	}
+
+	sgs := make(map[string]struct{})
+	for key, value := range lsp.ExternalIDs {
+		if strings.HasPrefix(key, associatedSgKeyPrefix) && value == "true" {
+			sgName := strings.ReplaceAll(key, associatedSgKeyPrefix, "")
+			sgs[sgName] = struct{}{}
+		}
+	}
+
+	return sgs
 }
