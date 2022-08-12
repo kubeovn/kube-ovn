@@ -602,6 +602,26 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 				return err
 			}
 		}
+
+		// there's some case which can not delete static route by ipam for sts pod when upgrading from lower version
+		for _, lsp := range ports {
+			addrs, err := c.ovnClient.GetPortAddr(lsp)
+			if err != nil {
+				if err != ovs.ErrNoAddr {
+					klog.Errorf("failed to get addr for lsp %s, %v", lsp, err)
+				}
+				continue
+			}
+			for _, addr := range addrs {
+				if net.ParseIP(addr) == nil {
+					continue
+				}
+				if err := c.ovnClient.DeleteStaticRoute(addr, util.DefaultVpc); err != nil {
+					klog.Errorf("failed to delete static route for lsp %s, err %v", lsp, err)
+					return err
+				}
+			}
+		}
 	}
 
 	var keepIpCR bool
