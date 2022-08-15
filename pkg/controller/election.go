@@ -25,6 +25,7 @@ type leaderElectionConfig struct {
 	Client clientset.Interface
 
 	ElectionID string
+	WasLeader  bool
 
 	OnStartedLeading func(chan struct{})
 	OnStoppedLeading func()
@@ -36,13 +37,14 @@ func (c *Controller) isLeader() bool {
 }
 
 func (c *Controller) leaderElection() {
-	elector := setupLeaderElection(&leaderElectionConfig{
+	config := &leaderElectionConfig{
 		Client:       c.config.KubeClient,
 		ElectionID:   "ovn-config",
 		PodName:      c.config.PodName,
 		PodNamespace: c.config.PodNamespace,
-	})
-	c.elector = elector
+	}
+
+	c.elector = setupLeaderElection(config)
 	for {
 		if c.isLeader() {
 			return
@@ -58,6 +60,7 @@ func setupLeaderElection(config *leaderElectionConfig) *leaderelection.LeaderEle
 		OnStartedLeading: func(ctx context.Context) {
 			klog.Infof("I am the new leader")
 			stopCh = make(chan struct{})
+			config.WasLeader = true
 
 			if config.OnStartedLeading != nil {
 				config.OnStartedLeading(stopCh)
@@ -74,6 +77,9 @@ func setupLeaderElection(config *leaderElectionConfig) *leaderelection.LeaderEle
 		},
 		OnNewLeader: func(identity string) {
 			klog.Infof("new leader elected: %v", identity)
+			if config.WasLeader && identity != config.PodName {
+				klog.Fatal("I am not leader anymore")
+			}
 			if config.OnNewLeader != nil {
 				config.OnNewLeader(identity)
 			}
