@@ -1,6 +1,7 @@
 package ovs
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,6 +25,8 @@ const (
 	SgAclIngressDirection AclDirection = "to-lport"
 	SgAclEgressDirection  AclDirection = "from-lport"
 )
+
+var nbctlDaemonSocketRegexp = regexp.MustCompile(`^/var/run/ovn/ovn-nbctl\.[0-9]+\.ctl$`)
 
 func (c LegacyClient) ovnNbCommand(cmdArgs ...string) (string, error) {
 	start := time.Now()
@@ -1850,14 +1853,23 @@ func StartOvnNbctlDaemon(ovnNbAddr string) error {
 			"--overwrite-pidfile",
 		}
 	}
-	_ = os.Unsetenv("OVN_NB_DAEMON")
-	output, err = exec.Command("ovn-nbctl", command...).CombinedOutput()
-	if err != nil {
-		klog.Errorf("start ovn-nbctl daemon failed, %q", output)
+
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command("ovn-nbctl", command...)
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err = cmd.Run(); err != nil {
+		klog.Errorf("failed to start ovn-nbctl daemon: %v, %s, %s", err, stdout.String(), stderr.String())
 		return err
 	}
 
-	daemonSocket := strings.TrimSpace(string(output))
+	daemonSocket := strings.TrimSpace(stdout.String())
+	if !nbctlDaemonSocketRegexp.MatchString(daemonSocket) {
+		err = fmt.Errorf("invalid nbctl daemon socket: %q", daemonSocket)
+		klog.Error(err)
+		return err
+	}
+
+	_ = os.Unsetenv("OVN_NB_DAEMON")
 	if err := os.Setenv("OVN_NB_DAEMON", daemonSocket); err != nil {
 		klog.Errorf("failed to set env OVN_NB_DAEMON, %v", err)
 		return err
@@ -1867,14 +1879,12 @@ func StartOvnNbctlDaemon(ovnNbAddr string) error {
 
 // CheckAlive check if kube-ovn-controller can access ovn-nb from nbctl-daemon
 func CheckAlive() error {
-	output, err := exec.Command(
-		"ovn-nbctl",
-		"--timeout=60",
-		"show",
-	).CombinedOutput()
+	var stderr bytes.Buffer
+	cmd := exec.Command("ovn-nbctl", "--timeout=60", "show")
+	cmd.Stderr = &stderr
 
-	if err != nil {
-		klog.Errorf("failed to access ovn-nb from daemon, %q", output)
+	if err := cmd.Run(); err != nil {
+		klog.Errorf("failed to access ovn-nb from daemon: %v, %s", err, stderr.String())
 		return err
 	}
 	return nil
