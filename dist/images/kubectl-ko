@@ -174,15 +174,15 @@ trace(){
     namespace="default"
   fi
 
-  hostNetwork=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.hostNetwork})
-  if [ "$hostNetwork" = "true" ]; then
-    echo "Can not trace host network pod"
-    exit 1
-  fi
-
   dst="$2"
   if [ -z "$dst" ]; then
     echo "need a target ip address"
+    exit 1
+  fi
+
+  hostNetwork=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.hostNetwork})
+  if [ "$hostNetwork" = "true" ]; then
+    echo "Can not trace host network pod"
     exit 1
   fi
 
@@ -234,15 +234,13 @@ trace(){
 
   dstMac=""
   if ipIsInCidr $dst $cidr; then
+    set +o pipefail
     if [ $af -eq 4 ]; then
-      set +o pipefail
       dstMac=$(kubectl exec $OVN_NB_POD -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl --data=bare --no-heading --columns=addresses list logical_switch_port | grep -w "$(echo $dst | tr . '\.')" | awk '{print $1}')
-      set -o pipefail
     else
-      set +o pipefail
       dstMac=$(kubectl exec $OVN_NB_POD -n $KUBE_OVN_NS -c ovn-central -- ovn-nbctl --data=bare --no-heading --columns=addresses list logical_switch_port | grep -i " $dst\$" | awk '{print $1}')
-      set -o pipefail
     fi
+    set -o pipefail
   fi
   if [ -z "$dstMac" ]; then
     vlan=$(kubectl get subnet "$ls" -o jsonpath={.spec.vlan})
