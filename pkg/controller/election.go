@@ -44,14 +44,6 @@ func (c *Controller) leaderElection() {
 		PodName:      c.config.PodName,
 		PodNamespace: c.config.PodNamespace,
 	}
-	config.OnStartedLeading = func(_ chan struct{}) {
-		config.WasLeader = true
-	}
-	config.OnNewLeader = func(identity string) {
-		if config.WasLeader && identity != config.PodName {
-			klog.Fatal("I am not leader anymore")
-		}
-	}
 
 	c.elector = setupLeaderElection(config)
 	for {
@@ -69,6 +61,7 @@ func setupLeaderElection(config *leaderElectionConfig) *leaderelection.LeaderEle
 		OnStartedLeading: func(ctx context.Context) {
 			klog.Infof("I am the new leader")
 			stopCh = make(chan struct{})
+			config.WasLeader = true
 
 			if config.OnStartedLeading != nil {
 				config.OnStartedLeading(stopCh)
@@ -85,6 +78,9 @@ func setupLeaderElection(config *leaderElectionConfig) *leaderelection.LeaderEle
 		},
 		OnNewLeader: func(identity string) {
 			klog.Infof("new leader elected: %v", identity)
+			if config.WasLeader && identity != config.PodName {
+				klog.Fatal("I am not leader anymore")
+			}
 			if config.OnNewLeader != nil {
 				config.OnNewLeader(identity)
 			}
