@@ -467,7 +467,7 @@ jobs:
           max_attempts: 3
           shell: bash
           command: |
-            sudo make kind-install-single
+            sudo make kind-install
 
       - name: Run E2E
         run: |

@@ -220,14 +220,9 @@ kind-install-underlay: kind-load-image kind-untaint-control-plane
 	ENABLE_SSL=true ENABLE_VLAN=true VLAN_NIC=eth0 bash install-underlay.sh
 	kubectl describe no
 
-.PHONY: kind-install-single
-kind-install-single: kind-load-image
-	ENABLE_SSL=true dist/images/install.sh
-	kubectl describe no
-
 .PHONY: kind-install-ipv6
-kind-install-ipv6: kind-load-image kind-untaint-control-plane
-	ENABLE_SSL=true IPV6=true dist/images/install.sh
+kind-install-ipv6:
+	IPV6=true $(MAKE) kind-install
 
 .PHONY: kind-install-underlay-ipv6
 kind-install-underlay-ipv6: kind-load-image kind-untaint-control-plane
@@ -242,9 +237,8 @@ kind-install-underlay-ipv6: kind-load-image kind-untaint-control-plane
 	ENABLE_SSL=true IPV6=true ENABLE_VLAN=true VLAN_NIC=eth0 bash install-underlay.sh
 
 .PHONY: kind-install-dual
-kind-install-dual: kind-load-image kind-untaint-control-plane
-	ENABLE_SSL=true DUAL_STACK=true dist/images/install.sh
-	kubectl describe no
+kind-install-dual:
+	DUAL_STACK=true $(MAKE) kind-install
 
 .PHONY: kind-install-underlay-dual
 kind-install-underlay-dual: kind-load-image kind-untaint-control-plane
@@ -286,7 +280,6 @@ kind-install-multus: kind-load-image kind-untaint-control-plane
 	kubectl apply -f "$(MULTUS_YAML)"
 	kubectl -n kube-system rollout status ds kube-multus-ds
 	kubectl apply -f yamls/lb-svc-attachment.yaml
-	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
 	kind load docker-image --name kube-ovn $(VPC_NAT_GW_IMG)
 	ENABLE_SSL=true ENABLE_LB_SVC=true CNI_CONFIG_PRIORITY=10 dist/images/install.sh
 	kubectl describe no
@@ -307,7 +300,6 @@ kind-install-ic:
 	kubectl apply -f ovn-ic-1.yaml
 	sleep 6
 	kubectl -n kube-system get pods | grep ovs-ovn | awk '{print $$1}' | xargs kubectl -n kube-system delete pod
-
 
 .PHONY: kind-install-cilium
 kind-install-cilium: kind-load-image kind-untaint-control-plane
