@@ -1202,7 +1202,7 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v1
         with:
-          version: v3.4.0
+          version: v3.9.0
 
       - name: Load Image
         run: |
@@ -1232,6 +1232,7 @@ jobs:
           docker exec kube-ovn-control-plane bash -c "ls -al /etc/cni/net.d/"
           kubectl get pods -A
           make e2e-ovn-ebpf
+          make e2e
 
       - name: Cleanup
         run: |
