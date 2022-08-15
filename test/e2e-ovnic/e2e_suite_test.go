@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -92,6 +93,19 @@ var _ = SynchronizedAfterSuite(func() {}, func() {
 	output, err = exec.Command("kubectl", "-n", "kube-system", "exec", "-i", string(output), "--", "/usr/bin/ping", ip0, "-c2").CombinedOutput()
 	Expect(err).NotTo(HaveOccurred())
 	Expect(string(output)).Should(ContainSubstring("0% packet loss"))
+
+	output, err = exec.Command("kubectl", "apply", "-f", "./yamls/ovn-ic-1-alter.yaml").CombinedOutput()
+	Expect(err).NotTo(HaveOccurred())
+	Expect(string(output)).Should(ContainSubstring("created"))
+
+	time.Sleep(time.Second * 10)
+
+	checkLSP("ts-az1111", pods1.Items[0], f)
+
+	output, err = exec.Command("kubectl", "-n", "kube-system", "exec", "-i", string(output), "--", "/usr/bin/ping", ip0, "-c2").CombinedOutput()
+	Expect(err).NotTo(HaveOccurred())
+	Expect(string(output)).Should(ContainSubstring("0% packet loss"))
+
 })
 
 func buildConfigFromFlags(context, kubeconfigPath string) (*rest.Config, error) {
