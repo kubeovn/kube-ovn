@@ -21,6 +21,7 @@ showHelp(){
   echo "  tcpdump {namespace/podname} [tcpdump options ...]     capture pod traffic"
   echo "  trace {namespace/podname} {target ip address} {icmp|tcp|udp} [target tcp or udp port]    trace ovn microflow of specific packet"
   echo "  diagnose {all|node} [nodename]    diagnose connectivity of all nodes or a specific node"
+  echo "  env-check check the environment configuration"
   echo "  tuning {install-fastpath|local-install-fastpath|remove-fastpath|install-stt|local-install-stt|remove-stt} {centos7|centos8}} [kernel-devel-version]  deploy  kernel optimisation components to the system"
   echo "  reload restart all kube-ovn components"
 }
@@ -825,12 +826,26 @@ reload(){
   kubectl rollout status deployment/kube-ovn-monitor -n kube-system
 }
 
+env-check(){
+  set +e
+
+  KUBE_OVN_NS=kube-system
+  podNames=`kubectl get pod -n $KUBE_OVN_NS -l app=kube-ovn-cni -o 'jsonpath={.items[*].metadata.name}'`
+  for pod in $podNames; do
+    nodeName=$(kubectl get pod $pod -n $KUBE_OVN_NS -o jsonpath={.spec.nodeName})
+    echo "************************************************"
+    echo "Start environment check for node $nodeName"
+    echo "************************************************"
+    kubectl exec -it -n $KUBE_OVN_NS $pod -c cni-server -- bash /kube-ovn/env-check.sh
+  done
+}
+
 if [ $# -lt 1 ]; then
   showHelp
   exit 0
-else
-  subcommand="$1"; shift
 fi
+
+subcommand="$1"; shift
 
 getOvnCentralPod
 
@@ -862,7 +877,10 @@ case $subcommand in
   tuning)
     tuning "$@"
     ;;
+  env-check)
+    env-check
+    ;;
   *)
-  showHelp
+    showHelp
     ;;
 esac
