@@ -22,9 +22,9 @@ func (c OvnClient) CreateIngressAcl(pgName, asIngressName, asExceptName, protoco
 	acls := make([]*ovnnb.ACL, 0)
 
 	/* default drop acl */
-	AllIpMatch := NewAndAclMatchRule(
-		NewAclRuleKv("outport", "==", "@"+pgName, ""),
-		NewAclRuleKv("ip", "", "", ""),
+	AllIpMatch := NewAndAclMatch(
+		NewAclMatch("outport", "==", "@"+pgName, ""),
+		NewAclMatch("ip", "", "", ""),
 	)
 	options := func(acl *ovnnb.ACL) {
 		acl.Name = &pgName
@@ -34,7 +34,7 @@ func (c OvnClient) CreateIngressAcl(pgName, asIngressName, asExceptName, protoco
 
 	defaultDropAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionToLport, util.IngressDefaultDrop, AllIpMatch.String(), ovnnb.ACLActionDrop, options)
 	if err != nil {
-		return fmt.Errorf("new ingress default drop acl for port group %s: %v", pgName, err)
+		return fmt.Errorf("new default drop ingress acl for port group %s: %v", pgName, err)
 	}
 
 	acls = append(acls, defaultDropAcl)
@@ -44,7 +44,7 @@ func (c OvnClient) CreateIngressAcl(pgName, asIngressName, asExceptName, protoco
 	for _, m := range matches {
 		allowAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, m, ovnnb.ACLActionAllowRelated)
 		if err != nil {
-			return fmt.Errorf("new ingress allow acl for port group %s: %v", pgName, err)
+			return fmt.Errorf("new allow ingress acl for port group %s: %v", pgName, err)
 		}
 
 		acls = append(acls, allowAcl)
@@ -62,9 +62,9 @@ func (c OvnClient) CreateEgressAcl(pgName, asEgressName, asExceptName, protocol 
 	acls := make([]*ovnnb.ACL, 0)
 
 	/* default drop acl */
-	AllIpMatch := NewAndAclMatchRule(
-		NewAclRuleKv("inport", "==", "@"+pgName, ""),
-		NewAclRuleKv("ip", "", "", ""),
+	AllIpMatch := NewAndAclMatch(
+		NewAclMatch("inport", "==", "@"+pgName, ""),
+		NewAclMatch("ip", "", "", ""),
 	)
 	options := func(acl *ovnnb.ACL) {
 		acl.Name = &pgName
@@ -74,7 +74,7 @@ func (c OvnClient) CreateEgressAcl(pgName, asEgressName, asExceptName, protocol 
 
 	defaultDropAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionFromLport, util.EgressDefaultDrop, AllIpMatch.String(), ovnnb.ACLActionDrop, options)
 	if err != nil {
-		return fmt.Errorf("new egress default drop acl for port group %s: %v", pgName, err)
+		return fmt.Errorf("new default drop egress acl for port group %s: %v", pgName, err)
 	}
 
 	acls = append(acls, defaultDropAcl)
@@ -84,7 +84,7 @@ func (c OvnClient) CreateEgressAcl(pgName, asEgressName, asExceptName, protocol 
 	for _, m := range matches {
 		allowAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, m, ovnnb.ACLActionAllowRelated)
 		if err != nil {
-			return fmt.Errorf("new egress allow acl for port group %s: %v", pgName, err)
+			return fmt.Errorf("new allow egress acl for port group %s: %v", pgName, err)
 		}
 
 		acls = append(acls, allowAcl)
@@ -110,12 +110,12 @@ func (c OvnClient) CreateGatewayAcl(pgName, gateway string) error {
 
 		allowIngressAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, fmt.Sprintf("%s.src == %s", ipSuffix, gw), ovnnb.ACLActionAllowRelated)
 		if err != nil {
-			return fmt.Errorf("new ingress allow acl for port group %s: %v", pgName, err)
+			return fmt.Errorf("new allow ingress acl for port group %s: %v", pgName, err)
 		}
 
 		allowEgressAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, fmt.Sprintf("%s.dst == %s", ipSuffix, gw), ovnnb.ACLActionAllowRelated)
 		if err != nil {
-			return fmt.Errorf("new egress allow acl for port group %s: %v", pgName, err)
+			return fmt.Errorf("new allow egress acl for port group %s: %v", pgName, err)
 		}
 
 		acls = append(acls, allowIngressAcl, allowEgressAcl)
@@ -141,12 +141,12 @@ func (c OvnClient) CreateNodeAcl(pgName, nodeIp string) error {
 
 		allowIngressAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionToLport, util.NodeAllowPriority, fmt.Sprintf("%s.src == %s && %s.dst == $%s", ipSuffix, ip, ipSuffix, pgAs), ovnnb.ACLActionAllowRelated)
 		if err != nil {
-			return fmt.Errorf("new ingress allow acl for port group %s: %v", pgName, err)
+			return fmt.Errorf("new allow ingress acl for port group %s: %v", pgName, err)
 		}
 
 		allowEgressAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionFromLport, util.NodeAllowPriority, fmt.Sprintf("%s.dst == %s && %s.src == $%s", ipSuffix, ip, ipSuffix, pgAs), ovnnb.ACLActionAllowRelated)
 		if err != nil {
-			return fmt.Errorf("new egress allow acl for port group %s: %v", pgName, err)
+			return fmt.Errorf("new allow egress acl for port group %s: %v", pgName, err)
 		}
 
 		acls = append(acls, allowIngressAcl, allowEgressAcl)
@@ -164,12 +164,12 @@ func (c OvnClient) CreateSgDenyAllAcl(sgName string) error {
 
 	ingressAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionToLport, util.SecurityGroupDropPriority, fmt.Sprintf("outport == @%s && ip", pgName), ovnnb.ACLActionDrop)
 	if err != nil {
-		return fmt.Errorf("new deny all ingress acl for port group %s: %v", pgName, err)
+		return fmt.Errorf("new deny all ingress acl for security group %s: %v", sgName, err)
 	}
 
 	egressAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionFromLport, util.SecurityGroupDropPriority, fmt.Sprintf("inport == @%s && ip", pgName), ovnnb.ACLActionDrop)
 	if err != nil {
-		return fmt.Errorf("new deny all security group egress acl for port group %s: %v", pgName, err)
+		return fmt.Errorf("new deny all egress acl for security group %s: %v", sgName, err)
 	}
 
 	if err := c.CreateAcls(pgName, portGroupKey, ingressAcl, egressAcl); err != nil {
@@ -210,14 +210,14 @@ func (c OvnClient) UpdateSgAcl(sg *kubeovnv1.SecurityGroup, direction string) er
 				asName = GetSgV6AssociatedName(sg.Name)
 			}
 
-			match := NewAndAclMatchRule(
-				NewAclRuleKv(portDriection, "==", "@"+pgName, ""),
-				NewAclRuleKv(ipSuffix, "", "", ""),
-				NewAclRuleKv(ipSuffix+"."+srcOrDst, "==", "$"+asName, ""),
+			match := NewAndAclMatch(
+				NewAclMatch(portDriection, "==", "@"+pgName, ""),
+				NewAclMatch(ipSuffix, "", "", ""),
+				NewAclMatch(ipSuffix+"."+srcOrDst, "==", "$"+asName, ""),
 			)
 			acl, err := c.newAcl(pgName, direction, util.SecurityGroupAllowPriority, match.String(), ovnnb.ACLActionAllowRelated)
 			if err != nil {
-				return fmt.Errorf("new %s allow acl for port group %s: %v", ipSuffix, pgName, err)
+				return fmt.Errorf("new allow acl for security group %s: %v", sg.Name, err)
 			}
 
 			acls = append(acls, acl)
@@ -228,7 +228,7 @@ func (c OvnClient) UpdateSgAcl(sg *kubeovnv1.SecurityGroup, direction string) er
 	for _, rule := range sgRules {
 		acl, err := c.newSgRuleACL(sg.Name, direction, rule)
 		if err != nil {
-			return fmt.Errorf("create security group %s rule acl: %v", sg.Name, err)
+			return fmt.Errorf("new rule acl for security group %s: %v", sg.Name, err)
 		}
 		acls = append(acls, acl)
 	}
@@ -261,6 +261,128 @@ func (c OvnClient) UpdateLogicalSwitchAcl(lsName string, subnetAcls []kubeovnv1.
 
 	if err := c.CreateAcls(lsName, logicalSwitchKey, acls...); err != nil {
 		return fmt.Errorf("add acls to logical switch %s: %v", lsName, err)
+	}
+
+	return nil
+}
+
+// SetLogicalSwitchPrivate will drop all ingress traffic except allow subnets, same subnet and node subnet
+func (c OvnClient) SetLogicalSwitchPrivate(lsName, cidrBlock string, allowSubnets []string) error {
+	// clear acls
+	if err := c.DeleteAcls(lsName, logicalSwitchKey, ""); err != nil {
+		return fmt.Errorf("clear logical switch %s acls: %v", lsName, err)
+	}
+
+	acls := make([]*ovnnb.ACL, 0)
+
+	/* default drop acl */
+	AllIpMatch := NewAndAclMatch(
+		NewAclMatch("ip", "", "", ""),
+	)
+
+	options := func(acl *ovnnb.ACL) {
+		acl.Name = &lsName
+		acl.Log = true
+		acl.Severity = &ovnnb.ACLSeverityWarning
+	}
+
+	defaultDropAcl, err := c.newAcl(lsName, ovnnb.ACLDirectionToLport, util.DefaultDropPriority, AllIpMatch.String(), ovnnb.ACLActionDrop, options)
+	if err != nil {
+		return fmt.Errorf("new default drop ingress acl for logical switch %s: %v", lsName, err)
+	}
+
+	acls = append(acls, defaultDropAcl)
+
+	nodeSubnetAclFunc := func(protocol, ipSuffix string) error {
+		for _, nodeCidr := range strings.Split(c.NodeSwitchCIDR, ",") {
+			// skip different address family
+			if protocol != util.CheckProtocol(nodeCidr) {
+				continue
+			}
+
+			match := NewAndAclMatch(
+				NewAclMatch(ipSuffix+".src", "==", nodeCidr, ""),
+			)
+
+			acl, err := c.newAcl(lsName, ovnnb.ACLDirectionToLport, util.NodeAllowPriority, match.String(), ovnnb.ACLActionAllowRelated)
+			if err != nil {
+				return fmt.Errorf("new node subnet ingress acl for logical switch %s: %v", lsName, err)
+			}
+
+			acls = append(acls, acl)
+		}
+
+		return nil
+	}
+
+	allowSubnetAclFunc := func(protocol, ipSuffix, cidr string) error {
+		for _, allowSubnet := range allowSubnets {
+			subnet := strings.TrimSpace(allowSubnet)
+			// skip empty subnet
+			if len(subnet) == 0 {
+				continue
+			}
+
+			// skip different address family
+			if util.CheckProtocol(subnet) != protocol {
+				continue
+			}
+
+			match := NewOrAclMatch(
+				NewAndAclMatch(
+					NewAclMatch(ipSuffix+".src", "==", cidr, ""),
+					NewAclMatch(ipSuffix+".dst", "==", subnet, ""),
+				),
+				NewAndAclMatch(
+					NewAclMatch(ipSuffix+".src", "==", subnet, ""),
+					NewAclMatch(ipSuffix+".dst", "==", cidr, ""),
+				),
+			)
+
+			acl, err := c.newAcl(lsName, ovnnb.ACLDirectionToLport, util.SubnetAllowPriority, match.String(), ovnnb.ACLActionAllowRelated)
+			if err != nil {
+				return fmt.Errorf("new allow subnet ingress acl for logical switch %s: %v", lsName, err)
+			}
+
+			acls = append(acls, acl)
+		}
+		return nil
+	}
+
+	for _, cidr := range strings.Split(cidrBlock, ",") {
+		protocol := util.CheckProtocol(cidr)
+
+		ipSuffix := "ip4"
+		if protocol == kubeovnv1.ProtocolIPv6 {
+			ipSuffix = "ip6"
+		}
+
+		/* same subnet acl */
+		sameSubnetMatch := NewAndAclMatch(
+			NewAclMatch(ipSuffix+".src", "==", cidr, ""),
+			NewAclMatch(ipSuffix+".dst", "==", cidr, ""),
+		)
+
+		sameSubnetAcl, err := c.newAcl(lsName, ovnnb.ACLDirectionToLport, util.SubnetAllowPriority, sameSubnetMatch.String(), ovnnb.ACLActionAllowRelated)
+		if err != nil {
+			return fmt.Errorf("new same subnet ingress acl for logical switch %s: %v", lsName, err)
+		}
+
+		acls = append(acls, sameSubnetAcl)
+
+		// node subnet acl
+		if err := nodeSubnetAclFunc(protocol, ipSuffix); err != nil {
+			return err
+		}
+
+		// allow subnet acl
+		if err := allowSubnetAclFunc(protocol, ipSuffix, cidr); err != nil {
+			return err
+		}
+	}
+
+	if err := c.CreateAcls(lsName, logicalSwitchKey, acls...); err != nil {
+		return fmt.Errorf("add ingress acls to logical switch %s: %v", lsName, err)
 	}
 
 	return nil
@@ -482,23 +604,23 @@ func (c OvnClient) newSgRuleACL(sgName string, direction string, rule *kubeovnv1
 	ipKey := ipSuffix + "." + srcOrDst
 
 	/* match all traffic to or from pgName */
-	AllIpMatch := NewAndAclMatchRule(
-		NewAclRuleKv(portDriection, "==", "@"+pgName, ""),
-		NewAclRuleKv(ipSuffix, "", "", ""),
+	AllIpMatch := NewAndAclMatch(
+		NewAclMatch(portDriection, "==", "@"+pgName, ""),
+		NewAclMatch(ipSuffix, "", "", ""),
 	)
 
 	/* allow allowed ip traffic */
 	// type address
-	allowedIpMatch := NewAndAclMatchRule(
+	allowedIpMatch := NewAndAclMatch(
 		AllIpMatch,
-		NewAclRuleKv(ipKey, "==", rule.RemoteAddress, ""),
+		NewAclMatch(ipKey, "==", rule.RemoteAddress, ""),
 	)
 
 	// type securityGroup
 	if rule.RemoteType == kubeovnv1.SgRemoteTypeSg {
-		allowedIpMatch = NewAndAclMatchRule(
+		allowedIpMatch = NewAndAclMatch(
 			AllIpMatch,
-			NewAclRuleKv(ipKey, "==", "$"+rule.RemoteSecurityGroup, ""),
+			NewAclMatch(ipKey, "==", "$"+rule.RemoteSecurityGroup, ""),
 		)
 	}
 
@@ -508,20 +630,20 @@ func (c OvnClient) newSgRuleACL(sgName string, direction string, rule *kubeovnv1
 
 	switch rule.Protocol {
 	case kubeovnv1.ProtocolICMP:
-		match = NewAndAclMatchRule(
+		match = NewAndAclMatch(
 			allowedIpMatch,
-			NewAclRuleKv("icmp4", "", "", ""),
+			NewAclMatch("icmp4", "", "", ""),
 		)
 		if ipSuffix == "ip6" {
-			match = NewAndAclMatchRule(
+			match = NewAndAclMatch(
 				allowedIpMatch,
-				NewAclRuleKv("icmp6", "", "", ""),
+				NewAclMatch("icmp6", "", "", ""),
 			)
 		}
 	case kubeovnv1.ProtocolTCP, kubeovnv1.ProtocolUDP:
-		match = NewAndAclMatchRule(
+		match = NewAndAclMatch(
 			allowedIpMatch,
-			NewAclRuleKv(string(rule.Protocol)+".dst", "<=", strconv.Itoa(rule.PortRangeMin), strconv.Itoa(rule.PortRangeMax)),
+			NewAclMatch(string(rule.Protocol)+".dst", "<=", strconv.Itoa(rule.PortRangeMin), strconv.Itoa(rule.PortRangeMax)),
 		)
 	}
 
@@ -556,15 +678,15 @@ func newNetworkPolicyAclMatch(pgName, asAllowName, asExceptName, protocol, direc
 	ipKey := ipSuffix + "." + srcOrDst
 
 	// match all traffic to or from pgName
-	AllIpMatch := NewAndAclMatchRule(
-		NewAclRuleKv(portDriection, "==", "@"+pgName, ""),
-		NewAclRuleKv("ip", "", "", ""),
+	AllIpMatch := NewAndAclMatch(
+		NewAclMatch(portDriection, "==", "@"+pgName, ""),
+		NewAclMatch("ip", "", "", ""),
 	)
 
-	allowedIpMatch := NewAndAclMatchRule(
+	allowedIpMatch := NewAndAclMatch(
 		AllIpMatch,
-		NewAclRuleKv(ipKey, "==", "$"+asAllowName, ""),
-		NewAclRuleKv(ipKey, "!=", "$"+asExceptName, ""),
+		NewAclMatch(ipKey, "==", "$"+asAllowName, ""),
+		NewAclMatch(ipKey, "!=", "$"+asExceptName, ""),
 	)
 
 	matches := make([]string, 0)
@@ -579,9 +701,9 @@ func newNetworkPolicyAclMatch(pgName, asAllowName, asExceptName, protocol, direc
 
 		// allow all tcp or udp traffic
 		if port.Port == nil {
-			allLayer4Match := NewAndAclMatchRule(
+			allLayer4Match := NewAndAclMatch(
 				allowedIpMatch,
-				NewAclRuleKv(protocol, "", "", ""),
+				NewAclMatch(protocol, "", "", ""),
 			)
 
 			matches = append(matches, allLayer4Match.String())
@@ -591,9 +713,9 @@ func newNetworkPolicyAclMatch(pgName, asAllowName, asExceptName, protocol, direc
 		// allow one tcp or udp port traffic
 		if port.EndPort == nil {
 			tcpKey := protocol + ".dst"
-			oneTcpMatch := NewAndAclMatchRule(
+			oneTcpMatch := NewAndAclMatch(
 				allowedIpMatch,
-				NewAclRuleKv(tcpKey, "==", fmt.Sprintf("%d", port.Port.IntVal), ""),
+				NewAclMatch(tcpKey, "==", fmt.Sprintf("%d", port.Port.IntVal), ""),
 			)
 
 			matches = append(matches, oneTcpMatch.String())
@@ -602,9 +724,9 @@ func newNetworkPolicyAclMatch(pgName, asAllowName, asExceptName, protocol, direc
 
 		// allow several tcp or udp port traffic
 		tcpKey := protocol + ".dst"
-		severalTcpMatch := NewAndAclMatchRule(
+		severalTcpMatch := NewAndAclMatch(
 			allowedIpMatch,
-			NewAclRuleKv(tcpKey, "<=", fmt.Sprintf("%d", port.Port.IntVal), fmt.Sprintf("%d", *port.EndPort)),
+			NewAclMatch(tcpKey, "<=", fmt.Sprintf("%d", port.Port.IntVal), fmt.Sprintf("%d", *port.EndPort)),
 		)
 		matches = append(matches, severalTcpMatch.String())
 	}
