@@ -90,10 +90,39 @@ func (c *Controller) resyncInterConnection() {
 			klog.Errorf("failed to config auto route, %v", err)
 			return
 		}
-		if icEnabled == "true" && lastICCM != nil && reflect.DeepEqual(cm.Data, lastICCM) {
+
+		isCMEuqal := reflect.DeepEqual(cm.Data, lastICCM)
+		if icEnabled == "true" && lastICCM != nil && isCMEuqal {
 			return
 		}
-		c.ovnLegacyClient.OVNIcNBAddress = genHostAddress(cm.Data["ic-db-host"], cm.Data["ic-nb-port"])
+		if icEnabled == "true" && lastICCM != nil && !isCMEuqal {
+			if err := c.removeInterConnection(lastICCM["az-name"]); err != nil {
+				klog.Errorf("failed to remove ovn-ic, %v", err)
+				return
+			}
+			if err := c.delLearnedRoute(); err != nil {
+				klog.Errorf("failed to remove learned static routes, %v", err)
+				return
+			}
+			c.ovnLegacyClient.OvnICSbAddress = genHostAddress(cm.Data["ic-db-host"], cm.Data["ic-sb-port"])
+
+			if err := c.RemoveOldChassisInSbDB(); err != nil {
+				klog.Errorf("failed to remove remote chassis: %v", err)
+			}
+
+			c.ovnLegacyClient.OvnICNbAddress = genHostAddress(cm.Data["ic-db-host"], cm.Data["ic-nb-port"])
+			klog.Info("start to reestablish ovn-ic")
+			if err := c.establishInterConnection(cm.Data); err != nil {
+				klog.Errorf("failed to reestablish ovn-ic, %v", err)
+				return
+			}
+			icEnabled = "true"
+			lastICCM = cm.Data
+			klog.Info("finish reestablishing ovn-ic")
+			return
+		}
+
+		c.ovnLegacyClient.OvnICNbAddress = genHostAddress(cm.Data["ic-db-host"], cm.Data["ic-nb-port"])
 		klog.Info("start to establish ovn-ic")
 		if err := c.establishInterConnection(cm.Data); err != nil {
 			klog.Errorf("failed to establish ovn-ic, %v", err)
@@ -425,6 +454,31 @@ func (c *Controller) SynRouteToPolicy() {
 			klog.Errorf("deleting router policy failed %v", err)
 		}
 	}
+}
+
+func (c *Controller) RemoveOldChassisInSbDB() error {
+
+	azUUID, err := c.ovnLegacyClient.GetAZUUID(lastICCM["az-name"])
+	if err != nil {
+		klog.Errorf("chassis ungetable %v", err)
+	}
+
+	gateways, err := c.ovnLegacyClient.GetGatewayUUIDsInOneAZ(azUUID)
+	if err != nil {
+		klog.Errorf("gateways in as %v ungetable %v", azUUID, err)
+	}
+
+	routes, err := c.ovnLegacyClient.GetRouteUUIDsInOneAZ(azUUID)
+	if err != nil {
+		klog.Errorf("routes in as %v ungetable %v", azUUID, err)
+	}
+
+	c.ovnLegacyClient.DestroyGateways(gateways)
+	c.ovnLegacyClient.DestroyRoutes(routes)
+	if err := c.ovnLegacyClient.DestroyChassis(azUUID); err != nil {
+		return err
+	}
+	return nil
 }
 
 func stripPrefix(policyMatch string) (string, error) {

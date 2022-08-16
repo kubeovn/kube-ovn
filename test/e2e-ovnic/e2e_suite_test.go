@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -85,13 +86,26 @@ var _ = SynchronizedAfterSuite(func() {}, func() {
 	checkLSP("ts-az1", pods1.Items[0], f)
 	checkLSP("ts-az0", pods1.Items[0], f)
 
-	output, err = exec.Command("kubectl", "-n", "kube-system", "-l", "app=kube-ovn-pinger", "get", "pod", "-o=jsonpath={.items[0].metadata.name}").CombinedOutput()
+	pod, err := exec.Command("kubectl", "-n", "kube-system", "-l", "app=kube-ovn-pinger", "get", "pod", "-o=jsonpath={.items[0].metadata.name}").CombinedOutput()
 	Expect(err).NotTo(HaveOccurred())
-	Expect(output).ShouldNot(BeEmpty())
+	Expect(pod).ShouldNot(BeEmpty())
 
-	output, err = exec.Command("kubectl", "-n", "kube-system", "exec", "-i", string(output), "--", "/usr/bin/ping", ip0, "-c2").CombinedOutput()
+	output, err = exec.Command("kubectl", "-n", "kube-system", "exec", "-i", string(pod), "--", "/usr/bin/ping", ip0, "-c2").CombinedOutput()
 	Expect(err).NotTo(HaveOccurred())
 	Expect(string(output)).Should(ContainSubstring("0% packet loss"))
+
+	output, err = exec.Command("kubectl", "apply", "-f", "/tmp/ovn-ic-1-alter.yaml").CombinedOutput()
+	Expect(err).NotTo(HaveOccurred())
+	Expect(string(output)).Should(ContainSubstring("configured"))
+
+	time.Sleep(time.Second * 10)
+
+	checkLSP("ts-az1111", pods1.Items[0], f)
+
+	output, err = exec.Command("kubectl", "-n", "kube-system", "exec", "-i", string(pod), "--", "/usr/bin/ping", ip0, "-c2").CombinedOutput()
+	Expect(err).NotTo(HaveOccurred())
+	Expect(string(output)).Should(ContainSubstring("0% packet loss"))
+
 })
 
 func buildConfigFromFlags(context, kubeconfigPath string) (*rest.Config, error) {
