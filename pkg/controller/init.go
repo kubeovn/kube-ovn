@@ -371,10 +371,11 @@ func (c *Controller) InitIPAM() error {
 				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 				if !isAlive && isStsPod {
 					if ipCR := ipsMap[portName]; ipCR != nil && ipCR.Spec.PodType == "" {
-						if _, _, _, err = c.ipam.GetStaticAddress(key, ipCR.Spec.IPAddress, ipCR.Spec.MacAddress, ipCR.Spec.Subnet); err != nil {
+						if _, _, _, err = c.ipam.GetStaticAddress(key, ipCR.Name, ipCR.Spec.IPAddress, ipCR.Spec.MacAddress, ipCR.Spec.Subnet, true); err != nil {
 							klog.Errorf("failed to init IPAM from IP CR %s: %v", ipCR.Name, err)
 						}
 					}
+					continue
 				}
 				ip := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
 				mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
