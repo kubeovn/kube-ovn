@@ -558,70 +558,35 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 
 	p, _ := c.podsLister.Pods(pod.Namespace).Get(pod.Name)
 	if p != nil && p.UID != pod.UID {
-		// The existing OVN static route with a different nexthop will block creation of the new Pod,
-		// so we need to check the node names
-		if pod.Spec.NodeName == "" || pod.Spec.NodeName == p.Spec.NodeName {
-			// the old Pod has not been scheduled,
-			// or the new Pod and the old one are scheduled to the same node
-			return nil
+		// Pod with same name exists, just return here
+		return nil
+	}
+
+	addresses := c.ipam.GetPodAddress(key)
+	for _, address := range addresses {
+		if strings.TrimSpace(address.Ip) == "" {
+			continue
 		}
-		if pod.DeletionTimestamp == nil {
-			// triggered by add/update events, ignore
-			return nil
+		subnet, err := c.subnetsLister.Get(address.Subnet.Name)
+		if err != nil {
+			return err
+		}
+		vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
+		if err != nil {
+			return err
+		}
+		if err := c.ovnClient.DeleteStaticRoute(address.Ip, vpc.Status.Router); err != nil {
+			return err
+		}
+		if err := c.ovnClient.DeleteNatRule(address.Ip, vpc.Status.Router); err != nil {
+			return err
 		}
 	}
 
-	ports, err := c.ovnClient.ListPodLogicalSwitchPorts(podName, pod.Namespace)
+	ports, err := c.ovnClient.ListPodLogicalSwitchPorts(pod.Name, pod.Namespace)
 	if err != nil {
 		klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
 		return err
-	}
-
-	if len(ports) != 0 {
-		addresses := c.ipam.GetPodAddress(key)
-		for _, address := range addresses {
-			if strings.TrimSpace(address.Ip) == "" {
-				continue
-			}
-			subnet, err := c.subnetsLister.Get(address.Subnet.Name)
-			if k8serrors.IsNotFound(err) {
-				continue
-			} else if err != nil {
-				return err
-			}
-			vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
-			if k8serrors.IsNotFound(err) {
-				continue
-			} else if err != nil {
-				return err
-			}
-			if err := c.ovnClient.DeleteStaticRoute(address.Ip, vpc.Status.Router); err != nil {
-				return err
-			}
-			if err := c.ovnClient.DeleteNatRule(address.Ip, vpc.Status.Router); err != nil {
-				return err
-			}
-		}
-
-		// there's some case which can not delete static route by ipam for sts pod when upgrading from lower version
-		for _, lsp := range ports {
-			addrs, err := c.ovnClient.GetLogicalSwitchPortAddress(lsp)
-			if err != nil {
-				if err != ovs.ErrNoAddr {
-					klog.Errorf("failed to get addr for lsp %s, %v", lsp, err)
-				}
-				continue
-			}
-			for _, addr := range addrs {
-				if net.ParseIP(addr) == nil {
-					continue
-				}
-				if err := c.ovnClient.DeleteStaticRoute(addr, util.DefaultVpc); err != nil {
-					klog.Errorf("failed to delete static route for lsp %s, err %v", lsp, err)
-					return err
-				}
-			}
-		}
 	}
 
 	var keepIpCR bool
