@@ -1080,8 +1080,10 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 					if err != nil {
 						return err
 					}
-					_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
-					return err
+					if _, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+						klog.Errorf("failed to patch subnet %s NoReadyGateway status: %v", subnet.Name, err)
+					}
+					return fmt.Errorf("all subnet %s gws are not ready", subnet.Name)
 				}
 
 				nextHop := getNextHopByTunnelIP(nodeTunlIPAddr)
