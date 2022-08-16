@@ -345,7 +345,7 @@ func NewController(config *Configuration) *Controller {
 	}
 
 	var err error
-	if controller.ovnClient, err = ovs.NewOvnClient(config.OvnNbAddr, config.OvnTimeout, config.ClusterRouter); err != nil {
+	if controller.ovnClient, err = ovs.NewOvnClient(config.OvnNbAddr, config.OvnTimeout, config.ClusterRouter, config.NodeSwitchCIDR); err != nil {
 		klog.Fatal(err)
 	}
 

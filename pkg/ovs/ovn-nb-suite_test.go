@@ -38,7 +38,7 @@ func (suite *OvnClientTestSuite) SetupSuite() {
 	endpoint := fmt.Sprintf("unix:%s", sock)
 	require.FileExists(suite.T(), sock)
 
-	ovnClient, err := newOvnClient(suite.T(), endpoint, 10, "test-cluster-router")
+	ovnClient, err := newOvnClient(suite.T(), endpoint, 10, "test-cluster-router", "100.64.0.0/16,fd00:100:64::/64")
 	require.NoError(suite.T(), err)
 
 	suite.ovnClient = ovnClient
@@ -360,6 +360,10 @@ func (suite *OvnClientTestSuite) Test_UpdateLogicalSwitchAcl() {
 	suite.testUpdateLogicalSwitchAcl()
 }
 
+func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPrivate() {
+	suite.testSetLogicalSwitchPrivate()
+}
+
 func (suite *OvnClientTestSuite) Test_newSgRuleACL() {
 	suite.testnewSgRuleACL()
 }
@@ -453,7 +457,7 @@ func newOVSDBServer(t *testing.T, dbModel model.ClientDBModel, schema ovsdb.Data
 	return server, tmpfile
 }
 
-func newOvnClient(t *testing.T, ovnNbAddr string, ovnNbTimeout int, clusterRouter string) (*OvnClient, error) {
+func newOvnClient(t *testing.T, ovnNbAddr string, ovnNbTimeout int, clusterRouter, nodeSwitchCIDR string) (*OvnClient, error) {
 	nbClient, err := newNbClient(ovnNbAddr, ovnNbTimeout)
 	require.NoError(t, err)
 
@@ -462,7 +466,8 @@ func newOvnClient(t *testing.T, ovnNbAddr string, ovnNbTimeout int, clusterRoute
 			Client:  nbClient,
 			Timeout: ovnNbTimeout,
 		},
-		ClusterRouter: clusterRouter,
+		ClusterRouter:  clusterRouter,
+		NodeSwitchCIDR: nodeSwitchCIDR,
 	}, nil
 }
 
