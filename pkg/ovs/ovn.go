@@ -37,7 +37,8 @@ type LegacyClient struct {
 
 type OvnClient struct {
 	ovnNbClient
-	ClusterRouter string
+	ClusterRouter  string
+	NodeSwitchCIDR string
 }
 
 type ovnNbClient struct {
@@ -77,7 +78,7 @@ func NewLegacyClient(ovnNbAddr string, ovnNbTimeout int, ovnSbAddr, clusterRoute
 }
 
 // TODO: support sb/ic-nb client
-func NewOvnClient(ovnNbAddr string, ovnNbTimeout int, clusterRouter string) (*OvnClient, error) {
+func NewOvnClient(ovnNbAddr string, ovnNbTimeout int, clusterRouter, nodeSwitchCIDR string) (*OvnClient, error) {
 	nbClient, err := ovsclient.NewNbClient(ovnNbAddr, ovnNbTimeout)
 	if err != nil {
 		klog.Errorf("failed to create OVN NB client: %v", err)
@@ -89,7 +90,8 @@ func NewOvnClient(ovnNbAddr string, ovnNbTimeout int, clusterRouter string) (*Ov
 			Client:  nbClient,
 			Timeout: ovnNbTimeout,
 		},
-		ClusterRouter: clusterRouter,
+		ClusterRouter:  clusterRouter,
+		NodeSwitchCIDR: nodeSwitchCIDR,
 	}, nil
 }
 

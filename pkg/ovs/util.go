@@ -83,50 +83,84 @@ func matchAddressSetName(asName string) bool {
 	return addressSetNameRegex.MatchString(asName)
 }
 
-type AclMatchRule interface {
-	Rule() (string, error)
+type AclMatch interface {
+	Match() (string, error)
 	String() string
 }
 
-type AndAclMatchRule struct {
-	rules []AclMatchRule
+type AndAclMatch struct {
+	matches []AclMatch
 }
 
-func NewAndAclMatchRule(rules ...AclMatchRule) AclMatchRule {
-	return AndAclMatchRule{
-		rules: rules,
+func NewAndAclMatch(matches ...AclMatch) AclMatch {
+	return AndAclMatch{
+		matches: matches,
 	}
 }
 
-// Rule generate acl match rule like 'ip4.src == $test.allow.as && ip4.src != $test.except.as && 12345 <= tcp.dst <= 12500 && outport == @ovn.sg.test_sg && ip'
-func (s AndAclMatchRule) Rule() (string, error) {
-	var rules []string
-	for _, specification := range s.rules {
-		rule, err := specification.Rule()
+// Rule generate acl match like 'ip4.src == $test.allow.as && ip4.src != $test.except.as && 12345 <= tcp.dst <= 12500 && outport == @ovn.sg.test_sg && ip'
+func (m AndAclMatch) Match() (string, error) {
+	var matches []string
+	for _, r := range m.matches {
+		match, err := r.Match()
 		if err != nil {
-			return "", fmt.Errorf("generate rule %s: %v", rule, err)
+			return "", fmt.Errorf("generate match %s: %v", match, err)
 		}
-		rules = append(rules, rule)
+		matches = append(matches, match)
 	}
 
-	return strings.Join(rules, " && "), nil
+	return strings.Join(matches, " && "), nil
 }
 
-func (s AndAclMatchRule) String() string {
-	rule, _ := s.Rule()
-
-	return rule
+func (m AndAclMatch) String() string {
+	match, _ := m.Match()
+	return match
 }
 
-type aclRuleKv struct {
+type OrAclMatch struct {
+	matches []AclMatch
+}
+
+func NewOrAclMatch(matches ...AclMatch) AclMatch {
+	return OrAclMatch{
+		matches: matches,
+	}
+}
+
+// Match generate acl match like '(ip4.src==10.250.0.0/16 && ip4.dst==10.244.0.0/16) || (ip4.src==10.244.0.0/16 && ip4.dst==10.250.0.0/16)'
+func (m OrAclMatch) Match() (string, error) {
+	var matches []string
+	for _, specification := range m.matches {
+		match, err := specification.Match()
+		if err != nil {
+			return "", fmt.Errorf("generate match %s: %v", match, err)
+		}
+
+		// has more then one rule
+		if strings.Contains(match, "&&") {
+			match = "(" + match + ")"
+		}
+
+		matches = append(matches, match)
+	}
+
+	return strings.Join(matches, " || "), nil
+}
+
+func (m OrAclMatch) String() string {
+	match, _ := m.Match()
+	return match
+}
+
+type aclMatch struct {
 	key      string
 	value    string
 	maxValue string
 	effect   string
 }
 
-func NewAclRuleKv(key, effect, value, maxValue string) AclMatchRule {
-	return aclRuleKv{
+func NewAclMatch(key, effect, value, maxValue string) AclMatch {
+	return aclMatch{
 		key:      key,
 		effect:   effect,
 		value:    value,
@@ -134,34 +168,33 @@ func NewAclRuleKv(key, effect, value, maxValue string) AclMatchRule {
 	}
 }
 
-// Rule generate acl match rule like
+// Match generate acl match like
 // 'ip4.src == $test.allow.as'
 // or 'ip4.src != $test.except.as'
 // or '12345 <= tcp.dst <= 12500'
 // or 'tcp.dst == 13500'
 // or 'outport == @ovn.sg.test_sg && ip'
-func (kv aclRuleKv) Rule() (string, error) {
+func (m aclMatch) Match() (string, error) {
 	// key must exist at least
-	if len(kv.key) == 0 {
+	if len(m.key) == 0 {
 		return "", fmt.Errorf("acl rule key is required")
 	}
 
 	// like 'ip'
-	if len(kv.effect) == 0 || len(kv.value) == 0 {
-		return kv.key, nil
+	if len(m.effect) == 0 || len(m.value) == 0 {
+		return m.key, nil
 	}
 
 	// like 'tcp.dst == 13500' or 'ip4.src == $test.allow.as'
-	if len(kv.maxValue) == 0 {
-		return fmt.Sprintf("%s %s %s", kv.key, kv.effect, kv.value), nil
+	if len(m.maxValue) == 0 {
+		return fmt.Sprintf("%s %s %s", m.key, m.effect, m.value), nil
 	}
 
 	// like '12345 <= tcp.dst <= 12500'
-	return fmt.Sprintf("%s %s %s %s %s", kv.value, kv.effect, kv.key, kv.effect, kv.maxValue), nil
+	return fmt.Sprintf("%s %s %s %s %s", m.value, m.effect, m.key, m.effect, m.maxValue), nil
 }
 
-func (kv aclRuleKv) String() string {
-	rule, _ := kv.Rule()
-
+func (m aclMatch) String() string {
+	rule, _ := m.Match()
 	return rule
 }
