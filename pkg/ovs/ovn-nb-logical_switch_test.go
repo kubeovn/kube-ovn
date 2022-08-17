@@ -308,7 +308,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdatePortOp() {
 	t.Parallel()
 
 	ovnClient := suite.ovnClient
-	lsName := "test-set-port-op-ls"
+	lsName := "test-update-port-op-ls"
 	lspUUID := ovsclient.UUID()
 
 	err := ovnClient.CreateBareLogicalSwitch(lsName)
@@ -354,7 +354,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdatePortOp() {
 
 	t.Run("should return err when logical switch does not exist", func(t *testing.T) {
 		t.Parallel()
-		_, err := ovnClient.LogicalSwitchUpdatePortOp("test-port-op-ls-non-existent", lspUUID, ovsdb.MutateOperationInsert)
+		_, err := ovnClient.LogicalSwitchUpdatePortOp("test-update-port-op-ls-non-existent", lspUUID, ovsdb.MutateOperationInsert)
 		require.ErrorContains(t, err, "not found logical switch")
 	})
 }
@@ -497,7 +497,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchOp() {
 	t.Parallel()
 
 	ovnClient := suite.ovnClient
-	lsName := "test-port-op-ls"
+	lsName := "test-op-ls"
 
 	err := ovnClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
