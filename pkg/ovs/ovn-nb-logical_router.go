@@ -110,24 +110,66 @@ func (c OvnClient) ListLogicalRouter(needVendorFilter bool) ([]ovnnb.LogicalRout
 	return lrList, nil
 }
 
-// LogicalRouterUpdatePortOp create operations add to or delete from logical router
+// LogicalRouterUpdatePortOp create operations add to or delete port from logical router
 func (c OvnClient) LogicalRouterUpdatePortOp(lrName, lrpUUID string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
+	if len(lrpUUID) == 0 {
+		return nil, nil
+	}
+
+	mutation := func(lr *ovnnb.LogicalRouter) *model.Mutation {
+		mutation := &model.Mutation{
+			Field:   &lr.Ports,
+			Value:   []string{lrpUUID},
+			Mutator: op,
+		}
+
+		return mutation
+	}
+
+	return c.LogicalRouterOp(lrName, mutation)
+}
+
+// LogicalRouterUpdatePolicyOp create operations add to or delete policy from logical router
+func (c OvnClient) LogicalRouterUpdatePolicyOp(lrName string, policyUUIDs []string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
+	if len(policyUUIDs) == 0 {
+		return nil, nil
+	}
+
+	mutation := func(lr *ovnnb.LogicalRouter) *model.Mutation {
+		mutation := &model.Mutation{
+			Field:   &lr.Policies,
+			Value:   policyUUIDs,
+			Mutator: op,
+		}
+
+		return mutation
+	}
+
+	return c.LogicalRouterOp(lrName, mutation)
+}
+
+// LogicalRouterOp create operations about logical router
+func (c OvnClient) LogicalRouterOp(lrName string, mutationsFunc ...func(lr *ovnnb.LogicalRouter) *model.Mutation) ([]ovsdb.Operation, error) {
 	lr, err := c.GetLogicalRouter(lrName, false)
 	if err != nil {
-		return nil, fmt.Errorf("get logical router %s when add or del port: %v", lrName, err)
+		return nil, fmt.Errorf("get logical router %s: %v", lrName, err)
 	}
 
-	if len(lrpUUID) == 0 {
-		return nil, fmt.Errorf("the uuid of port add or del to logical router %s cannot be empty", lrName)
+	if len(mutationsFunc) == 0 {
+		return nil, nil
 	}
 
-	mutation := model.Mutation{
-		Field:   &lr.Ports,
-		Value:   []string{lrpUUID},
-		Mutator: op,
+	mutations := make([]model.Mutation, 0, len(mutationsFunc))
+
+	for _, f := range mutationsFunc {
+		mutation := f(lr)
+
+		if mutation != nil {
+			mutations = append(mutations, *mutation)
+		}
 	}
 
-	ops, err := c.ovnNbClient.Where(lr).Mutate(lr, mutation)
+	ops, err := c.ovnNbClient.Where(lr).Mutate(lr, mutations...)
 	if err != nil {
 		return nil, fmt.Errorf("generate operations for mutating logical router %s: %v", lrName, err)
 	}

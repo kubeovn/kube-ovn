@@ -203,6 +203,14 @@ func (suite *OvnClientTestSuite) Test_LogicalRouterUpdatePortOp() {
 	suite.testLogicalRouterUpdatePortOp()
 }
 
+func (suite *OvnClientTestSuite) Test_LogicalRouterUpdatePolicyOp() {
+	suite.testLogicalRouterUpdatePolicyOp()
+}
+
+func (suite *OvnClientTestSuite) Test_LogicalRouterOp() {
+	suite.testLogicalRouterOp()
+}
+
 /* logical_router_port unit test */
 func (suite *OvnClientTestSuite) Test_CreatePeerRouterPort() {
 	suite.testCreatePeerRouterPort()
@@ -397,6 +405,23 @@ func (suite *OvnClientTestSuite) Test_aclFilter() {
 	suite.testaclFilter()
 }
 
+/* logical_router_policy unit test */
+func (suite *OvnClientTestSuite) Test_AddLogicalRouterPolicy() {
+	suite.testAddLogicalRouterPolicy()
+}
+
+func (suite *OvnClientTestSuite) Test_CreateLogicalRouterPolicys() {
+	suite.testCreateLogicalRouterPolicys()
+}
+
+func (suite *OvnClientTestSuite) Test_GetLogicalRouterPolicy() {
+	suite.testGetLogicalRouterPolicy()
+}
+
+func (suite *OvnClientTestSuite) Test_newLogicalRouterPolicy() {
+	suite.testnewLogicalRouterPolicy()
+}
+
 /* mixed operations unit test */
 func (suite *OvnClientTestSuite) Test_CreateGatewayLogicalSwitch() {
 	suite.testCreateGatewayLogicalSwitch()
@@ -505,6 +530,7 @@ func newNbClient(addr string, timeout time.Duration) (client.Client, error) {
 		client.WithTable(&ovnnb.LogicalRouterPort{}),
 		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
 		client.WithTable(&ovnnb.LogicalRouterStaticRoute{}),
+		client.WithTable(&ovnnb.NAT{}),
 		client.WithTable(&ovnnb.LogicalSwitch{}),
 		client.WithTable(&ovnnb.LogicalSwitchPort{}),
 		client.WithTable(&ovnnb.PortGroup{}),

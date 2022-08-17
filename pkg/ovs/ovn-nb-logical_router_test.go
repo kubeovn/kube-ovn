@@ -5,10 +5,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -120,7 +122,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdatePortOp() {
 	t.Parallel()
 
 	ovnClient := suite.ovnClient
-	lrName := "test-port-op-lr"
+	lrName := "test-update-port-op-lr"
 	uuid := ovsclient.UUID()
 
 	err := ovnClient.CreateLogicalRouter(lrName)
@@ -164,16 +166,127 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdatePortOp() {
 		}, ops[0].Mutations)
 	})
 
-	t.Run("should return err when uuid is empty", func(t *testing.T) {
+	t.Run("should return err when logical router does not exist", func(t *testing.T) {
 		t.Parallel()
-		_, err := ovnClient.LogicalRouterUpdatePortOp(lrName, "", ovsdb.MutateOperationInsert)
-		require.ErrorContains(t, err, fmt.Sprintf("the uuid of port add or del to logical router %s cannot be empty", lrName))
+		_, err := ovnClient.LogicalRouterUpdatePortOp("test-update-port-op-lr-non-existent", uuid, ovsdb.MutateOperationInsert)
+		require.ErrorContains(t, err, "not found logical router")
+	})
+}
+
+func (suite *OvnClientTestSuite) testLogicalRouterUpdatePolicyOp() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lrName := "test-update-policy-op-lr"
+	uuid := ovsclient.UUID()
+
+	err := ovnClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
+	t.Run("add new policy to logical router", func(t *testing.T) {
+		t.Parallel()
+		ops, err := ovnClient.LogicalRouterUpdatePolicyOp(lrName, []string{uuid}, ovsdb.MutateOperationInsert)
+		require.NoError(t, err)
+		require.Equal(t, []ovsdb.Mutation{
+			{
+				Column:  "policies",
+				Mutator: ovsdb.MutateOperationInsert,
+				Value: ovsdb.OvsSet{
+					GoSet: []interface{}{
+						ovsdb.UUID{
+							GoUUID: uuid,
+						},
+					},
+				},
+			},
+		}, ops[0].Mutations)
+	})
+
+	t.Run("del policy from logical router", func(t *testing.T) {
+		t.Parallel()
+		ops, err := ovnClient.LogicalRouterUpdatePolicyOp(lrName, []string{uuid}, ovsdb.MutateOperationDelete)
+		require.NoError(t, err)
+		require.Equal(t, []ovsdb.Mutation{
+			{
+				Column:  "policies",
+				Mutator: ovsdb.MutateOperationDelete,
+				Value: ovsdb.OvsSet{
+					GoSet: []interface{}{
+						ovsdb.UUID{
+							GoUUID: uuid,
+						},
+					},
+				},
+			},
+		}, ops[0].Mutations)
 	})
 
 	t.Run("should return err when logical router does not exist", func(t *testing.T) {
 		t.Parallel()
-		_, err := ovnClient.LogicalRouterUpdatePortOp("test-port-op-lr-non-existent", uuid, ovsdb.MutateOperationInsert)
+		_, err := ovnClient.LogicalRouterUpdatePolicyOp("test-update-policy-op-lr-non-existent", []string{uuid}, ovsdb.MutateOperationInsert)
 		require.ErrorContains(t, err, "not found logical router")
 	})
+}
 
+func (suite *OvnClientTestSuite) testLogicalRouterOp() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lrName := "test-op-lr"
+
+	err := ovnClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
+	lrpUUID := ovsclient.UUID()
+	lrpMutation := func(lr *ovnnb.LogicalRouter) *model.Mutation {
+		mutation := &model.Mutation{
+			Field:   &lr.Ports,
+			Value:   []string{lrpUUID},
+			Mutator: ovsdb.MutateOperationInsert,
+		}
+
+		return mutation
+	}
+
+	policyUUID := ovsclient.UUID()
+	policyMutation := func(lr *ovnnb.LogicalRouter) *model.Mutation {
+		mutation := &model.Mutation{
+			Field:   &lr.Policies,
+			Value:   []string{policyUUID},
+			Mutator: ovsdb.MutateOperationInsert,
+		}
+
+		return mutation
+	}
+
+	ops, err := ovnClient.LogicalRouterOp(lrName, lrpMutation, policyMutation)
+	require.NoError(t, err)
+
+	require.Len(t, ops[0].Mutations, 2)
+	require.Equal(t, []ovsdb.Mutation{
+		{
+			Column:  "ports",
+			Mutator: ovsdb.MutateOperationInsert,
+			Value: ovsdb.OvsSet{
+				GoSet: []interface{}{
+					ovsdb.UUID{
+						GoUUID: lrpUUID,
+					},
+				},
+			},
+		},
+		{
+			Column:  "policies",
+			Mutator: ovsdb.MutateOperationInsert,
+			Value: ovsdb.OvsSet{
+				GoSet: []interface{}{
+					ovsdb.UUID{
+						GoUUID: policyUUID,
+					},
+				},
+			},
+		},
+	}, ops[0].Mutations)
 }

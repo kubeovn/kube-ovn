@@ -503,15 +503,20 @@ func (c OvnClient) DeleteAcls(parentName, parentType string, direction string) e
 }
 
 // GetAcl get acl by direction, priority and match,
-// be consistent with ovn-nbctl which direction, priority and match determine one acl rule
-func (c OvnClient) GetAcl(direction, priority, match string, ignoreNotFound bool) (*ovnnb.ACL, error) {
+// be consistent with ovn-nbctl which direction, priority and match determine one acl in port group or logical switch
+func (c OvnClient) GetAcl(parent, direction, priority, match string, ignoreNotFound bool) (*ovnnb.ACL, error) {
+	// this is necessary because may exist same direction, priority and match acl in different port group or logical switch
+	if len(parent) == 0 {
+		return nil, fmt.Errorf("the parent name is required")
+	}
+
 	intPriority, _ := strconv.Atoi(priority)
 
 	aclList := make([]ovnnb.ACL, 0)
 	if err := c.ovnNbClient.WhereCache(func(acl *ovnnb.ACL) bool {
-		return acl.Direction == direction && acl.Priority == intPriority && acl.Match == match
+		return len(acl.ExternalIDs) != 0 && acl.ExternalIDs[aclParentKey] == parent && acl.Direction == direction && acl.Priority == intPriority && acl.Match == match
 	}).List(context.TODO(), &aclList); err != nil {
-		return nil, fmt.Errorf("get acl direction %s priority %s match %s: %v", direction, priority, match, err)
+		return nil, fmt.Errorf("get acl with 'parent %s direction %s priority %s match %s': %v", parent, direction, priority, match, err)
 	}
 
 	// not found
@@ -519,11 +524,11 @@ func (c OvnClient) GetAcl(direction, priority, match string, ignoreNotFound bool
 		if ignoreNotFound {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("not found acl direction %s priority %s match %s", direction, priority, match)
+		return nil, fmt.Errorf("not found acl with 'parent %s direction %s priority %s match %s'", parent, direction, priority, match)
 	}
 
 	if len(aclList) > 1 {
-		return nil, fmt.Errorf("more than one acl with same direction %s priority %s match %s", direction, priority, match)
+		return nil, fmt.Errorf("more than one acl with same 'parent %s direction %s priority %s match %s'", parent, direction, priority, match)
 	}
 
 	return &aclList[0], nil
@@ -544,20 +549,24 @@ func (c OvnClient) ListAcls(direction string, externalIDs map[string]string) ([]
 	return aclList, nil
 }
 
-func (c OvnClient) AclExists(direction, priority, match string) (bool, error) {
-	acl, err := c.GetAcl(direction, priority, match, true)
+func (c OvnClient) AclExists(parent, direction, priority, match string) (bool, error) {
+	acl, err := c.GetAcl(parent, direction, priority, match, true)
 	return acl != nil, err
 }
 
 // newAcl return acl with basic information
-func (c OvnClient) newAcl(parentName, direction, priority, match, action string, options ...func(acl *ovnnb.ACL)) (*ovnnb.ACL, error) {
-	if len(direction) == 0 || len(priority) == 0 || len(match) == 0 || len(action) == 0 {
-		return nil, fmt.Errorf("acl 'direction %s' or 'priority %s' or 'match %s' or 'action %s' is empty", direction, priority, match, action)
+func (c OvnClient) newAcl(parent, direction, priority, match, action string, options ...func(acl *ovnnb.ACL)) (*ovnnb.ACL, error) {
+	if len(parent) == 0 {
+		return nil, fmt.Errorf("the parent name is required")
 	}
 
-	exists, err := c.AclExists(direction, priority, match)
+	if len(direction) == 0 || len(priority) == 0 || len(match) == 0 || len(action) == 0 {
+		return nil, fmt.Errorf("acl 'direction %s' or 'priority %s' or 'match %s' or 'action %s' is required", direction, priority, match, action)
+	}
+
+	exists, err := c.AclExists(parent, direction, priority, match)
 	if err != nil {
-		return nil, fmt.Errorf("get acl 'direction %s' 'priority %s' 'match %s': %v", direction, priority, match, err)
+		return nil, fmt.Errorf("get acl: %v", err)
 	}
 
 	// found, ingore
@@ -574,7 +583,7 @@ func (c OvnClient) newAcl(parentName, direction, priority, match, action string,
 		Match:     match,
 		Priority:  intPriority,
 		ExternalIDs: map[string]string{
-			aclParentKey: parentName,
+			aclParentKey: parent,
 		},
 	}
 
