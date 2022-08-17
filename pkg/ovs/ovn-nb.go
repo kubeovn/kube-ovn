@@ -15,7 +15,7 @@ const (
 	logicalRouterKey      = "lr"
 	logicalSwitchKey      = "ls"
 	portGroupKey          = "pg"
-	aclParentKey          = "acl-parent"
+	aclParentKey          = "parent"
 	associatedSgKeyPrefix = "associated_sg_"
 	sgsKey                = "security_groups"
 	sgKey                 = "sg"
