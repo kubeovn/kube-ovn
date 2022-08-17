@@ -140,7 +140,7 @@ function add_floating_ip() {
         eip=(${arr[0]//\// })
         internalIp=${arr[1]}
         # check if already exist
-        iptables-save  | grep "EXCLUSIVE_DNAT" | grep "\-d $eip" | grep  "destination" && exit 0
+        iptables-save  | grep "EXCLUSIVE_DNAT" | grep -w "\-d $eip/32" | grep  "destination" && exit 0
         exec_cmd "iptables -t nat -A EXCLUSIVE_DNAT -d $eip -j DNAT --to-destination $internalIp"
         exec_cmd "iptables -t nat -A EXCLUSIVE_SNAT -s $internalIp -j SNAT --to-source $eip"
     done
@@ -155,7 +155,7 @@ function del_floating_ip() {
         eip=(${arr[0]//\// })
         internalIp=${arr[1]}
         # check if already exist
-        iptables-save  | grep "EXCLUSIVE_DNAT" | grep "\-d $eip" | grep  "destination"
+        iptables-save  | grep "EXCLUSIVE_DNAT" | grep -w "\-d $eip/32" | grep  "destination"
         if [ "$?" -eq 0 ];then
             exec_cmd "iptables -t nat -D EXCLUSIVE_DNAT -d $eip -j DNAT --to-destination $internalIp"
             exec_cmd "iptables -t nat -D EXCLUSIVE_SNAT -s $internalIp -j SNAT --to-source $eip"
@@ -206,7 +206,7 @@ function add_dnat() {
         internalIp=${arr[3]}
         internalPort=${arr[4]}
         # check if already exist
-        iptables-save  | grep "SHARED_DNAT" | grep "\-d $eip" | grep "p $protocol" | grep "dport $dport"| grep  "destination $internalIp:$internalPort"  && exit 0
+        iptables-save  | grep "SHARED_DNAT" | grep -w "\-d $eip/32" | grep "p $protocol" | grep "dport $dport"| grep  "destination $internalIp:$internalPort"  && exit 0
         exec_cmd "iptables -t nat -A SHARED_DNAT -p $protocol -d $eip --dport $dport -j DNAT --to-destination $internalIp:$internalPort"
     done
 }
@@ -223,7 +223,7 @@ function del_dnat() {
         internalIp=${arr[3]}
         internalPort=${arr[4]}
         # check if already exist
-        iptables-save  | grep "SHARED_DNAT" | grep "\-d $eip" | grep "p $protocol" | grep "dport $dport"| grep  "destination $internalIp:$internalPort"
+        iptables-save  | grep "SHARED_DNAT" | grep -w "\-d $eip/32" | grep "p $protocol" | grep "dport $dport"| grep  "destination $internalIp:$internalPort"
         if [ "$?" -eq 0 ];then
           exec_cmd "iptables -t nat -D SHARED_DNAT -p $protocol -d $eip --dport $dport -j DNAT --to-destination $internalIp:$internalPort"
         fi
