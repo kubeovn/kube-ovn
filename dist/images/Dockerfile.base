@@ -14,6 +14,8 @@ RUN apt update && apt install build-essential git libnuma-dev autoconf curl \
 RUN cd /usr/src/ && \
     git clone -b branch-2.17 --depth=1 https://github.com/openvswitch/ovs.git && \
     cd ovs && \
+    # ovsdb-idl: Support write-only-changed IDL monitor mode
+    curl -s https://github.com/kubeovn/ovs/commit/24c1b28c416d3a0312c10a9fe9341c04b8b31ce9.patch | git apply && \
     # fix memleak
     curl -s https://github.com/kubeovn/ovs/commit/2dc8e7aa202818952b2fa80b47298604530c9de0.patch | git apply && \
     # increase election timer
