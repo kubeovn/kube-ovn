@@ -1604,11 +1604,6 @@ metadata:
     rbac.authorization.k8s.io/system-only: "true"
   name: system:ovn
 rules:
-  - apiGroups: ['policy']
-    resources: ['podsecuritypolicies']
-    verbs:     ['use']
-    resourceNames:
-      - kube-ovn
   - apiGroups:
       - "kubeovn.io"
     resources:
@@ -2104,11 +2099,6 @@ metadata:
     rbac.authorization.k8s.io/system-only: "true"
   name: system:ovn
 rules:
-  - apiGroups: ['policy']
-    resources: ['podsecuritypolicies']
-    verbs:     ['use']
-    resourceNames:
-      - kube-ovn
   - apiGroups:
       - "kubeovn.io"
     resources:
