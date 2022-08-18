@@ -946,6 +946,10 @@ func (c *Controller) loopEncapIpCheck() {
 			klog.Errorf("iface %s has no ip address", nodeTunnelName)
 			return
 		}
+		if iface.Name != c.config.tunnelIface {
+			klog.Infof("use %s as tunnel interface", iface.Name)
+			c.config.tunnelIface = iface.Name
+		}
 
 		// if assigned iface in node annotation is down or with no ip, the error msg should be printed periodically
 		if c.config.Iface == nodeTunnelName {
