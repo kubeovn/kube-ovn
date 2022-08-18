@@ -231,7 +231,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouterPort() {
 
 	ovnClient := suite.ovnClient
 	lrpName := "test-update-lrp"
-	lrName := "test-update-lr"
+	lrName := "test-update-lrp-lr"
 
 	lrp := &ovnnb.LogicalRouterPort{
 		UUID:     ovsclient.UUID(),
