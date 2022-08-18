@@ -456,7 +456,7 @@ func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason string, e
 		c.recorder.Eventf(subnet, v1.EventTypeWarning, reason, errStr)
 	} else {
 		subnet.Status.Validated(reason, "")
-		if reason == "SetPrivateLogicalSwitchSuccess" || reason == "ResetLogicalSwitchAclSuccess" {
+		if reason == "SetPrivateLogicalSwitchSuccess" || reason == "ResetLogicalSwitchAclSuccess" || reason == "ReconcileCentralizedGatewaySuccess" {
 			subnet.Status.Ready(reason, "")
 		}
 	}
@@ -1262,7 +1262,7 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 					if _, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
 						klog.Errorf("failed to patch subnet %s NoReadyGateway status: %v", subnet.Name, err)
 					}
-					return fmt.Errorf("all subnet %s gws are not ready", subnet.Name)
+					return err
 				}
 
 				nextHop := getNextHopByTunnelIP(nodeTunlIPAddr)
@@ -1272,14 +1272,7 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 				}
 
 				subnet.Status.ActivateGateway = newActivateNode
-				subnet.Status.Ready("ReconcileCentralizedGatewaySuccess", "")
-				bytes, err := subnet.Status.Bytes()
-				if err != nil {
-					return err
-				}
-				if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
-					return err
-				}
+				c.patchSubnetStatus(subnet, "ReconcileCentralizedGatewaySuccess", "")
 			}
 
 			if err := c.deletePolicyRouteByGatewayType(subnet, kubeovnv1.GWDistributedType, false); err != nil {
