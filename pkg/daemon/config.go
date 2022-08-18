@@ -26,6 +26,8 @@ import (
 
 // Configuration is the daemon conf
 type Configuration struct {
+	// interface being used for tunnel
+	tunnelIface             string
 	Iface                   string
 	MTU                     int
 	MSS                     int
@@ -178,6 +180,9 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 			return fmt.Errorf("iface %s has no ip address", tunnelNic)
 		}
 		encapIP = strings.Split(addrs[0].String(), "/")[0]
+
+		klog.Infof("use %s as tunnel interface", iface.Name)
+		config.tunnelIface = iface.Name
 	}
 
 	if config.MTU == 0 {
@@ -211,7 +216,6 @@ func findInterface(ifaceStr string) (*net.Interface, error) {
 	}
 	for _, iface := range ifaces {
 		if ifaceRegex.MatchString(iface.Name) {
-			klog.Infof("use %s as tunnel interface", iface.Name)
 			return &iface, nil
 		}
 	}
