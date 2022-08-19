@@ -40,6 +40,20 @@ func (c OvnClient) CreateLogicalRouter(lrName string) error {
 	return nil
 }
 
+// UpdateLogicalRouter update logical router
+func (c OvnClient) UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...interface{}) error {
+	op, err := c.UpdateLogicalRouterOp(lr, fields...)
+	if err != nil {
+		return err
+	}
+
+	if err = c.Transact("lr-update", op); err != nil {
+		return fmt.Errorf("update logical router %s: %v", lr.Name, err)
+	}
+
+	return nil
+}
+
 // DeleteLogicalRouter delete logical router in ovn
 func (c OvnClient) DeleteLogicalRouter(lrName string) error {
 	lr, err := c.GetLogicalRouter(lrName, true)
@@ -108,6 +122,24 @@ func (c OvnClient) ListLogicalRouter(needVendorFilter bool) ([]ovnnb.LogicalRout
 	}
 
 	return lrList, nil
+}
+
+// UpdateLogicalRouterOp generate operations which update logical router
+func (c OvnClient) UpdateLogicalRouterOp(lr *ovnnb.LogicalRouter, fields ...interface{}) ([]ovsdb.Operation, error) {
+	if lr == nil {
+		return nil, fmt.Errorf("logical_router is nil")
+	}
+
+	lrName := lr.Name
+
+	op, err := c.ovnNbClient.WhereCache(func(lr *ovnnb.LogicalRouter) bool {
+		return lr.Name == lrName
+	}).Update(lr, fields...)
+	if err != nil {
+		return nil, fmt.Errorf("generate operations for updating logical router %s: %v", lr.Name, err)
+	}
+
+	return op, nil
 }
 
 // LogicalRouterUpdatePortOp create operations add to or delete port from logical router
