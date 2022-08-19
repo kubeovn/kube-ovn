@@ -142,24 +142,6 @@ func (c OvnClient) LogicalSwitchUpdateLoadBalancers(lsName string, op ovsdb.Muta
 	return nil
 }
 
-// UpdateLogicalSwitch update logical switch
-func (c OvnClient) UpdateLogicalSwitch(ls *ovnnb.LogicalSwitch, fields ...interface{}) error {
-	if ls == nil {
-		return fmt.Errorf("logical_switch is nil")
-	}
-
-	op, err := c.Where(ls).Update(ls, fields...)
-	if err != nil {
-		return fmt.Errorf("generate operations for updating logical switch %s: %v", ls.Name, err)
-	}
-
-	if err = c.Transact("ls-update", op); err != nil {
-		return fmt.Errorf("update logical switch %s: %v", ls.Name, err)
-	}
-
-	return nil
-}
-
 // DeleteLogicalSwitch delete logical switch
 func (c OvnClient) DeleteLogicalSwitch(lsName string) error {
 	op, err := c.DeleteLogicalSwitchOp(lsName)
