@@ -79,6 +79,74 @@ func (c OvnClient) CreateBareLogicalRouterPolicy(lrName string, priority int, ma
 	return nil
 }
 
+// DeleteLogicalRouterPolicy delete policy from logical router
+func (c OvnClient) DeleteLogicalRouterPolicy(lrName string, priority int, match string) error {
+	policy, err := c.GetLogicalRouterPolicy(lrName, priority, match, true)
+	if err != nil {
+		return err
+	}
+
+	// not found, skip
+	if policy == nil {
+		return nil
+	}
+
+	// remove policy from logical router
+	policyRemoveOp, err := c.LogicalRouterUpdatePolicyOp(lrName, []string{policy.UUID}, ovsdb.MutateOperationDelete)
+	if err != nil {
+		return fmt.Errorf("generate operations for removing policy 'priority %d match %s' from logical router %s: %v", priority, match, lrName, err)
+	}
+
+	// delete logical router policy
+	policyDelOp, err := c.Where(policy).Delete()
+	if err != nil {
+		return fmt.Errorf("generate operations for deleting logical router policy 'priority %d match %s': %v", priority, match, err)
+	}
+
+	ops := make([]ovsdb.Operation, 0, len(policyRemoveOp)+len(policyDelOp))
+	ops = append(ops, policyRemoveOp...)
+	ops = append(ops, policyDelOp...)
+
+	if err = c.Transact("lr-policy-del", ops); err != nil {
+		return fmt.Errorf("delete logical router policy 'priority %d match %s': %v", priority, match, err)
+	}
+
+	return nil
+}
+
+// ClearLogicalRouterPolicy clear policy from logical router once
+func (c OvnClient) ClearLogicalRouterPolicy(lrName string) error {
+	lr, err := c.GetLogicalRouter(lrName, false)
+	if err != nil {
+		return fmt.Errorf("get logical router %s: %v", lrName, err)
+	}
+
+	// clear logical router policy
+	lr.Policies = nil
+	policyClearOp, err := c.UpdateLogicalRouterOp(lr, &lr.Policies)
+	if err != nil {
+		return fmt.Errorf("generate operations for clear logical router %s policy: %v", lrName, err)
+	}
+
+	// delete logical router policy
+	policyDelOp, err := c.WhereCache(func(policy *ovnnb.LogicalRouterPolicy) bool {
+		return len(policy.ExternalIDs) != 0 && policy.ExternalIDs[logicalRouterKey] == lrName
+	}).Delete()
+	if err != nil {
+		return fmt.Errorf("generate operations for deleting logical router %s policy: %v", lrName, err)
+	}
+
+	ops := make([]ovsdb.Operation, 0, len(policyClearOp)+len(policyDelOp))
+	ops = append(ops, policyClearOp...)
+	ops = append(ops, policyDelOp...)
+
+	if err = c.Transact("lr-policies-del", ops); err != nil {
+		return fmt.Errorf("delete logical router %s policy: %v", lrName, err)
+	}
+
+	return nil
+}
+
 // GetLogicalRouterPolicy get logical router policy by priority and match,
 // be consistent with ovn-nbctl which priority and match determine one policy in logical router
 func (c OvnClient) GetLogicalRouterPolicy(lrName string, priority int, match string, ignoreNotFound bool) (*ovnnb.LogicalRouterPolicy, error) {
