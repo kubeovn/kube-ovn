@@ -1,5 +1,46 @@
 # Changelog
 
+## v1.10.5 (2022-08-10)
+
+ * [88531d50](https://github.com/kubeovn/kube-ovn/commit/88531d501c4a08d13ec48f80ec324c70105316c6) set release v1.10.5
+ * [97031bdd](https://github.com/kubeovn/kube-ovn/commit/97031bdd6b49fdf2252d7f5f10aa891fd94ca197) prepare for release v1.10.5
+ * [4a34c5dd](https://github.com/kubeovn/kube-ovn/commit/4a34c5dd47bd719c9e1fa4a893bf767eeacf1c7c) delete htb qos when releated annotation is deleted (#1788)
+ * [66643ba3](https://github.com/kubeovn/kube-ovn/commit/66643ba3aa6851fa5865e483b71f06fd50a36da9) perf: fix memory leak
+ * [84aba41f](https://github.com/kubeovn/kube-ovn/commit/84aba41f4bc9d12145bb7dde34a8f91e24aa699b) perf: disable mlockall to reduce memory usage
+ * [35533738](https://github.com/kubeovn/kube-ovn/commit/35533738e1b86cbdacdaa7d9457f323f3d42ed35) fix iptables for services with external traffic policy set to Local (#1773)
+ * [32ee00b6](https://github.com/kubeovn/kube-ovn/commit/32ee00b6190767efac36e5d40f639ef94fe6121b) perf: reduce metrics labels (#1784)
+ * [93e74c60](https://github.com/kubeovn/kube-ovn/commit/93e74c6092ceb8c13e9b9eb4dd75572a6b4ebeda) northd: remove lookup_arp_ip actions (#1780)
+ * [6c7f45ef](https://github.com/kubeovn/kube-ovn/commit/6c7f45efd19c049d99712ed872c9624245f64a04) fix install error
+ * [86173506](https://github.com/kubeovn/kube-ovn/commit/86173506d7cd164b08e50b791908ccd86e697cac) fix:can not delete pod with sriov vf (#1654)
+ * [dc77ceb3](https://github.com/kubeovn/kube-ovn/commit/dc77ceb385c82755253a665831038e753f3945f6) dpdk-v2 ，--with-hybrid-dpdk 修改 Dockerfile.base-dpdk 解决 编译安装 ovs-dpdk 正常运行 (#1754)
+ * [7a1795e6](https://github.com/kubeovn/kube-ovn/commit/7a1795e61e7d360ad77a2687e065d924df87dc60) dpdk-v2 ，--with-hybrid-dpdk qemu 创建 sock 权限问题 (#1739)
+ * [0541ce98](https://github.com/kubeovn/kube-ovn/commit/0541ce98da448b6372e44b2fb9e554db9c62ecf6) feature: support exchange link names of OVS bridge and provider nic in underlay networks (#1736)
+ * [4617d7f7](https://github.com/kubeovn/kube-ovn/commit/4617d7f7a31e119e168a546d48015a313fd8a84d) support kubernetes v1.24 (#1761)
+ * [29f3d6ed](https://github.com/kubeovn/kube-ovn/commit/29f3d6edd6780dcb1a69f04304921186447c93eb) use leases for leader election (#1529)
+ * [f02df1a8](https://github.com/kubeovn/kube-ovn/commit/f02df1a82d6004ab8532453b1752d0e14d855380) fix iptables for service traffic when external traffic policy set to local (#1728)
+ * [7f256965](https://github.com/kubeovn/kube-ovn/commit/7f256965bf0ec0598c818dcb5053d878e60c9a2b) set sysctl variables on cni server startup (#1758)
+ * [47e39fbf](https://github.com/kubeovn/kube-ovn/commit/47e39fbf5befd59e1f8254b0bbb97bab1f9abf2d) fix: add omitempty to subnet spec
+ * [c9ac0cdf](https://github.com/kubeovn/kube-ovn/commit/c9ac0cdf96270c7c9bfe5f45b320010b0d6198a3) perf: replace jemalloc to reduce memory usage
+ * [7ffa99e3](https://github.com/kubeovn/kube-ovn/commit/7ffa99e37280f02e92488653500bc9b79354c990) avoid patch interface deletion & recreation during restart (#1741)
+ * [8fa4ca49](https://github.com/kubeovn/kube-ovn/commit/8fa4ca49705f35c613a28e48f436696441463ee9) only support IPv4 snat in vpc-nat-gw when internal subnet is dual (#1747)
+ * [a46b36d9](https://github.com/kubeovn/kube-ovn/commit/a46b36d98687c359c4d3224e1106b6b528389de0) enqueue subnets after vpc update (#1722)
+ * [1bf5dc44](https://github.com/kubeovn/kube-ovn/commit/1bf5dc44f89b7699ec23e0dcc54db56d802e919b) do not add subnet not processed by kube-ovn to vpc (#1735)
+ * [66d8be9f](https://github.com/kubeovn/kube-ovn/commit/66d8be9f1dd6226d58ec743d5076ced665a02802) dpdk-v2 ，--with-hybrid-dpdk qemu 创建 sock 权限问题 (#1739)
+ * [e9c27c60](https://github.com/kubeovn/kube-ovn/commit/e9c27c60556c4a115df0b06996919d3ca8ec5517) fix: If pod has snat or eip, also need delete staticRoute when delete pod. (#1731)
+ * [7841f082](https://github.com/kubeovn/kube-ovn/commit/7841f082151a058d2f54db3cb537f5cdfc143a0e) optimize lrp create for subnet in vpc (#1712)
+ * [994885c8](https://github.com/kubeovn/kube-ovn/commit/994885c808177ab74e7d813c509763bc047899f6) fix: cancel delete staticroute when it's used by NatRule (#1733)
+ * [f9a84588](https://github.com/kubeovn/kube-ovn/commit/f9a84588e6c147a4d4e252920b2cf064629ed1dd) fix: wrong info when update subnet from dual to ipv4 or ipv6. (#1726)
+ * [77988f21](https://github.com/kubeovn/kube-ovn/commit/77988f21f3f5a7155908ed8f2d3a384baad7e808) fix overlay MTU in vxlan/stt tunnels (#1693)
+
+### Contributors
+
+ * Mengxin Liu
+ * hzma
+ * long.wang
+ * xujunjie-cover
+ * zhouhui-Corigine
+ * 张祖建
+
 ## v1.10.4 (2022-07-18)
 
  * [1e4a1959](https://github.com/kubeovn/kube-ovn/commit/1e4a195992020c422a3f6edf82e06a2277e00ca7) set release 1.10.4
@@ -321,6 +362,38 @@
  * 张祖建
  * 罗云鹤
  * 范日明
+
+## v1.9.8 (2022-08-10)
+
+ * [686d913c](https://github.com/kubeovn/kube-ovn/commit/686d913c21d56d6f2a5bb2e6446de7fa2a8f5dc9) set release v1.9.8
+ * [8de35693](https://github.com/kubeovn/kube-ovn/commit/8de356930fdaebce8136c4f6f033cad8db4815c5) prepare for release v1.9.8
+ * [38ee8301](https://github.com/kubeovn/kube-ovn/commit/38ee83014556702604e77071870ca7f06fde0a43) delete htb qos when releated annotation is deleted (#1788)
+ * [85bd5f94](https://github.com/kubeovn/kube-ovn/commit/85bd5f94b2c2a8ce81452caffc6c6099e1b5504b) perf: fix memory leak
+ * [46c970d6](https://github.com/kubeovn/kube-ovn/commit/46c970d6dcab21e64b62cf13e0e4a285a734a96e) perf: disable mlockall to reduce memory usage
+ * [d7fd3793](https://github.com/kubeovn/kube-ovn/commit/d7fd3793e646c9dc5bbcef40a633a7baa61696df) perf: reduce metrics labels (#1784)
+ * [d7a9f5e9](https://github.com/kubeovn/kube-ovn/commit/d7a9f5e91c5a44deb9801e4538386512e45da627) feature: support exchange link names of OVS bridge and provider nic in underlay networks (#1736)
+ * [b966dd59](https://github.com/kubeovn/kube-ovn/commit/b966dd596c4d8898a267bf33e7e85d2b8144da00) perf: replace jemalloc to reduce memory usage (#1764)
+ * [8bb8b173](https://github.com/kubeovn/kube-ovn/commit/8bb8b17355b91456bde7535747c13ae937e0a894) fix: add omitempty to subnet spec (#1765)
+ * [fd676437](https://github.com/kubeovn/kube-ovn/commit/fd67643772e7b1e9ea1c5a39f4a7d3356fe853a8) set sysctl variables on cni server startup (#1758)
+ * [7c6250f3](https://github.com/kubeovn/kube-ovn/commit/7c6250f3fa69a7843e03791bb4eb268497874d4c) avoid patch interface deletion & recreation during restart (#1741)
+ * [a91056a3](https://github.com/kubeovn/kube-ovn/commit/a91056a3caff58c39f93bd87f5b677f5d50ac62a) enqueue subnets after vpc update (#1722)
+ * [e895c5ff](https://github.com/kubeovn/kube-ovn/commit/e895c5ff0062d0730b7dfb2abc120d782afa8907) do not add subnet not processed by kube-ovn to vpc (#1735)
+ * [f13f3f46](https://github.com/kubeovn/kube-ovn/commit/f13f3f4621e8788caaf18751fb7766cd3ad7d3cd) add logrotate for kube-ovn log (#1740)
+ * [70246fb9](https://github.com/kubeovn/kube-ovn/commit/70246fb9ac6ecb7e38e04274e7fc043fd809bd88) fix: If pod has snat or eip, also need delete staticRoute when delete pod. (#1731)
+ * [76e3c670](https://github.com/kubeovn/kube-ovn/commit/76e3c670e75ff9cceef38a291b26c70014ff143a) fix iptables for service traffic when external traffic policy set to local(#1725)
+ * [cee39213](https://github.com/kubeovn/kube-ovn/commit/cee392133310cb1f404f88613d2c8e3eaa4018aa) optimize lrp create for subnet in vpc (#1712)
+ * [21f0b979](https://github.com/kubeovn/kube-ovn/commit/21f0b979c38d18a5ed2abb93216b6fd3341d2d94) fix: cancel delete staticroute when it's used by NatRule (#1733)
+ * [4c2d0c86](https://github.com/kubeovn/kube-ovn/commit/4c2d0c86765d6208c033df095b9a18aa3eee19fe) fix: wrong info when update subnet from dual to ipv4 or ipv6. (#1726)
+ * [417176ed](https://github.com/kubeovn/kube-ovn/commit/417176ed9bff4061720a3f6d8e86ab78c2bd42b0) fix: new ovn-ic static route method adapted due to old ovn version (#1718)
+
+### Contributors
+
+ * Mengxin Liu
+ * hzma
+ * lut777
+ * xujunjie-cover
+ * zhangzujian
+ * 张祖建
 
 ## v1.9.7 (2022-07-18)
 

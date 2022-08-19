@@ -645,6 +645,8 @@ spec:
                   type: string
                 natOutgoing:
                   type: boolean
+                u2oRouting:
+                  type: boolean
                 externalEgressGateway:
                   type: string
                 policyRoutingPriority:
@@ -816,6 +818,8 @@ spec:
                         type: array
                         items:
                           type: string
+                exchangeLinkName:
+                  type: boolean
                 excludeNodes:
                   type: array
                   items:

@@ -25,6 +25,7 @@ type Configuration struct {
 	OvnSbAddr            string
 	OvnTimeout           int
 	CustCrdRetryMaxDelay int
+	CustCrdRetryMinDelay int
 	KubeConfigFile       string
 	KubeRestConfig       *rest.Config
 
@@ -65,12 +66,13 @@ type Configuration struct {
 	EnablePprof     bool
 	NodePgProbeTime int
 
-	NetworkType          string
-	DefaultProviderName  string
-	DefaultHostInterface string
-	DefaultVlanName      string
-	DefaultVlanID        int
-	LsDnatModDlDst       bool
+	NetworkType             string
+	DefaultProviderName     string
+	DefaultHostInterface    string
+	DefaultExchangeLinkName bool
+	DefaultVlanName         string
+	DefaultVlanID           int
+	LsDnatModDlDst          bool
 
 	EnableLb          bool
 	EnableNP          bool
@@ -95,7 +97,8 @@ func ParseFlags() (*Configuration, error) {
 		argOvnNbAddr            = pflag.String("ovn-nb-addr", "", "ovn-nb address")
 		argOvnSbAddr            = pflag.String("ovn-sb-addr", "", "ovn-sb address")
 		argOvnTimeout           = pflag.Int("ovn-timeout", 60, "")
-		argCustCrdRetryMaxDelay = pflag.Int("cust-crd-retry-max-delay", 20, "The max delay between custom crd two retries")
+		argCustCrdRetryMinDelay = pflag.Int("cust-crd-retry-min-delay", 2, "The min delay seconds between custom crd two retries")
+		argCustCrdRetryMaxDelay = pflag.Int("cust-crd-retry-max-delay", 20, "The max delay seconds between custom crd two retries")
 		argKubeConfigFile       = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 
 		argDefaultLogicalSwitch  = pflag.String("default-ls", util.DefaultSubnet, "The default logical switch name")
@@ -122,20 +125,21 @@ func ParseFlags() (*Configuration, error) {
 		argPprofPort       = pflag.Int("pprof-port", 10660, "The port to get profiling data")
 		argNodePgProbeTime = pflag.Int("nodepg-probe-time", 1, "The probe interval for node port-group, the unit is minute")
 
-		argNetworkType          = pflag.String("network-type", util.NetworkTypeGeneve, "The ovn network type")
-		argDefaultProviderName  = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name")
-		argDefaultInterfaceName = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
-		argDefaultVlanName      = pflag.String("default-vlan-name", "ovn-vlan", "The default vlan name")
-		argDefaultVlanID        = pflag.Int("default-vlan-id", 1, "The default vlan id")
-		argLsDnatModDlDst       = pflag.Bool("ls-dnat-mod-dl-dst", true, "Set ethernet destination address for DNAT on logical switch")
-		argPodNicType           = pflag.String("pod-nic-type", "veth-pair", "The default pod network nic implementation type")
-		argEnableLb             = pflag.Bool("enable-lb", true, "Enable load balancer")
-		argEnableNP             = pflag.Bool("enable-np", true, "Enable network policy support")
-		argEnableEipSnat        = pflag.Bool("enable-eip-snat", true, "Enable EIP and SNAT")
-		argEnableExternalVpc    = pflag.Bool("enable-external-vpc", true, "Enable external vpc support")
-		argEnableEcmp           = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
-		argKeepVmIP             = pflag.Bool("keep-vm-ip", false, "Whether to keep ip for kubevirt pod when pod is rebuild")
-		argEnableLbSvc          = pflag.Bool("enable-lb-svc", false, "Whether to support loadbalancer service")
+		argNetworkType             = pflag.String("network-type", util.NetworkTypeGeneve, "The ovn network type")
+		argDefaultProviderName     = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name")
+		argDefaultInterfaceName    = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
+		argDefaultExchangeLinkName = pflag.Bool("default-exchange-link-name", false, "exchange link names of OVS bridge and the provider nic in the default provider-network")
+		argDefaultVlanName         = pflag.String("default-vlan-name", "ovn-vlan", "The default vlan name")
+		argDefaultVlanID           = pflag.Int("default-vlan-id", 1, "The default vlan id")
+		argLsDnatModDlDst          = pflag.Bool("ls-dnat-mod-dl-dst", true, "Set ethernet destination address for DNAT on logical switch")
+		argPodNicType              = pflag.String("pod-nic-type", "veth-pair", "The default pod network nic implementation type")
+		argEnableLb                = pflag.Bool("enable-lb", true, "Enable load balancer")
+		argEnableNP                = pflag.Bool("enable-np", true, "Enable network policy support")
+		argEnableEipSnat           = pflag.Bool("enable-eip-snat", true, "Enable EIP and SNAT")
+		argEnableExternalVpc       = pflag.Bool("enable-external-vpc", true, "Enable external vpc support")
+		argEnableEcmp              = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
+		argKeepVmIP                = pflag.Bool("keep-vm-ip", false, "Whether to keep ip for kubevirt pod when pod is rebuild")
+		argEnableLbSvc             = pflag.Bool("enable-lb-svc", false, "Whether to support loadbalancer service")
 
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
 		argExternalGatewayNet      = pflag.String("external-gateway-net", "external", "The name of the external network which mappings with an ovs bridge, default: external")
@@ -167,6 +171,7 @@ func ParseFlags() (*Configuration, error) {
 		OvnNbAddr:                     *argOvnNbAddr,
 		OvnSbAddr:                     *argOvnSbAddr,
 		OvnTimeout:                    *argOvnTimeout,
+		CustCrdRetryMinDelay:          *argCustCrdRetryMinDelay,
 		CustCrdRetryMaxDelay:          *argCustCrdRetryMaxDelay,
 		KubeConfigFile:                *argKubeConfigFile,
 		DefaultLogicalSwitch:          *argDefaultLogicalSwitch,
@@ -192,6 +197,7 @@ func ParseFlags() (*Configuration, error) {
 		LsDnatModDlDst:                *argLsDnatModDlDst,
 		DefaultProviderName:           *argDefaultProviderName,
 		DefaultHostInterface:          *argDefaultInterfaceName,
+		DefaultExchangeLinkName:       *argDefaultExchangeLinkName,
 		DefaultVlanName:               *argDefaultVlanName,
 		PodName:                       os.Getenv("POD_NAME"),
 		PodNamespace:                  os.Getenv("KUBE_NAMESPACE"),

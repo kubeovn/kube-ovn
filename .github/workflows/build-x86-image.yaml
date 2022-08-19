@@ -140,17 +140,12 @@ jobs:
         id: go
 
       - name: Run E2E
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 2
-          shell: bash
-          command: |
-            go install github.com/onsi/ginkgo/ginkgo@latest
-            sudo kubectl cluster-info
-            sudo cp -r /root/.kube/ /home/runner/.kube/
-            sudo chmod -R 777 /home/runner/.kube/
-            make e2e
+        run: |
+          go install github.com/onsi/ginkgo/ginkgo@latest
+          sudo kubectl cluster-info
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          make e2e
 
       - name: Cleanup
         run: |
@@ -263,17 +258,12 @@ jobs:
         id: go
 
       - name: Run E2E
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 2
-          shell: bash
-          command: |
-            go install github.com/onsi/ginkgo/ginkgo@latest
-            sudo kubectl cluster-info
-            sudo cp -r /root/.kube/ /home/runner/.kube/
-            sudo chmod -R 777 /home/runner/.kube/
-            make e2e-vlan
+        run: |
+          go install github.com/onsi/ginkgo/ginkgo@latest
+          sudo kubectl cluster-info
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          make e2e-vlan
 
       - name: Cleanup
         run: |
@@ -454,6 +444,8 @@ jobs:
             sudo make kind-install
             sudo kubectl patch subnet ovn-default --type merge \
               -p '{"spec":{"gatewayType": "centralized", "gatewayNode": "kube-ovn-control-plane"}}'
+            sudo kubectl -n kube-system patch svc kube-ovn-pinger --type merge \
+              -p '{"spec":{"type": "NodePort", "externalTrafficPolicy": "Local"}}'
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v3
@@ -463,17 +455,12 @@ jobs:
         id: go
 
       - name: Run E2E
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 2
-          shell: bash
-          command: |
-            go install github.com/onsi/ginkgo/ginkgo@latest
-            sudo kubectl cluster-info
-            sudo cp -r /root/.kube/ /home/runner/.kube/
-            sudo chmod -R 777 /home/runner/.kube/
-            make e2e
+        run: |
+          go install github.com/onsi/ginkgo/ginkgo@latest
+          sudo kubectl cluster-info
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          make e2e
 
       - name: Cleanup
         run: |
@@ -527,17 +514,12 @@ jobs:
         id: go
 
       - name: Run E2E
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 2
-          shell: bash
-          command: |
-            go install github.com/onsi/ginkgo/ginkgo@latest
-            sudo kubectl cluster-info
-            sudo cp -r /root/.kube/ /home/runner/.kube/
-            sudo chmod -R 777 /home/runner/.kube/
-            make e2e-ipv6
+        run: |
+          go install github.com/onsi/ginkgo/ginkgo@latest
+          sudo kubectl cluster-info
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          make e2e-ipv6
 
       - name: Cleanup
         run: |
@@ -591,17 +573,12 @@ jobs:
         id: go
 
       - name: Run E2E
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 2
-          shell: bash
-          command: |
-            go install github.com/onsi/ginkgo/ginkgo@latest
-            sudo kubectl cluster-info
-            sudo cp -r /root/.kube/ /home/runner/.kube/
-            sudo chmod -R 777 /home/runner/.kube/
-            make e2e-vlan-ipv6
+        run: |
+          go install github.com/onsi/ginkgo/ginkgo@latest
+          sudo kubectl cluster-info
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          make e2e-vlan-ipv6
 
       - name: Cleanup
         run: |
@@ -730,17 +707,12 @@ jobs:
         id: go
 
       - name: Run E2E
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 2
-          shell: bash
-          command: |
-            go install github.com/onsi/ginkgo/ginkgo@latest
-            sudo kubectl cluster-info
-            sudo cp -r /root/.kube/ /home/runner/.kube/
-            sudo chmod -R 777 /home/runner/.kube/
-            make e2e
+        run: |
+          go install github.com/onsi/ginkgo/ginkgo@latest
+          sudo kubectl cluster-info
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          make e2e
 
       - name: Cleanup
         run: |
@@ -869,17 +841,12 @@ jobs:
         id: go
 
       - name: Run E2E
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 2
-          shell: bash
-          command: |
-            go install github.com/onsi/ginkgo/ginkgo@latest
-            sudo kubectl cluster-info
-            sudo cp -r /root/.kube/ /home/runner/.kube/
-            sudo chmod -R 777 /home/runner/.kube/
-            make e2e
+        run: |
+          go install github.com/onsi/ginkgo/ginkgo@latest
+          sudo kubectl cluster-info
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          make e2e
 
       - name: Cleanup
         run: |
@@ -934,14 +901,12 @@ jobs:
 
       - name: Install Kube-OVN without LoadBalancer
         uses: nick-invision/retry@v2
-        env:
-          ENABLE_LB: "false"
         with:
           timeout_minutes: 10
           max_attempts: 3
           shell: bash
           command: |
-            sudo make kind-install
+            sudo ENABLE_LB=false make kind-install
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v3
@@ -951,17 +916,12 @@ jobs:
         id: go
 
       - name: Run E2E
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 2
-          shell: bash
-          command: |
-            go install github.com/onsi/ginkgo/ginkgo@latest
-            sudo kubectl cluster-info
-            sudo cp -r /root/.kube/ /home/runner/.kube/
-            sudo chmod -R 777 /home/runner/.kube/
-            make e2e
+        run: |
+          go install github.com/onsi/ginkgo/ginkgo@latest
+          sudo kubectl cluster-info
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          make e2e
 
       - name: Cleanup
         run: |
@@ -1000,14 +960,12 @@ jobs:
 
       - name: Install Kube-OVN without LoadBalancer
         uses: nick-invision/retry@v2
-        env:
-          ENABLE_LB: "false"
         with:
           timeout_minutes: 10
           max_attempts: 3
           shell: bash
           command: |
-            sudo make kind-install
+            sudo ENABLE_LB=false make kind-install
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v3
@@ -1076,17 +1034,12 @@ jobs:
         id: go
 
       - name: Run E2E
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 2
-          shell: bash
-          command: |
-            go install github.com/onsi/ginkgo/ginkgo@latest
-            sudo kubectl cluster-info
-            sudo cp -r /root/.kube/ /home/runner/.kube/
-            sudo chmod -R 777 /home/runner/.kube/
-            make e2e
+        run: |
+          go install github.com/onsi/ginkgo/ginkgo@latest
+          sudo kubectl cluster-info
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          make e2e
 
       - name: Cleanup
         run: |
@@ -1245,7 +1198,7 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v1
         with:
-          version: v3.4.0
+          version: v3.9.0
 
       - name: Load Image
         run: |
@@ -1275,6 +1228,7 @@ jobs:
           docker exec kube-ovn-control-plane bash -c "ls -al /etc/cni/net.d/"
           kubectl get pods -A
           make e2e-ovn-ebpf
+          make e2e
 
       - name: Cleanup
         run: |

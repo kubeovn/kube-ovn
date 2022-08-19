@@ -25,10 +25,10 @@ import (
 )
 
 var (
-	vpcNatImage     = ""
-	vpcNatEnabled   = "unknown"
-	VpcNatCmVersion = ""
-	createAt        = ""
+	vpcNatImage       = ""
+	vpcNatEnabled     = "unknown"
+	VpcNatCmVersion   = ""
+	NAT_GW_CREATED_AT = ""
 )
 
 const (
@@ -267,7 +267,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	if needToCreate {
 		_, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
 			Create(context.Background(), newSts, metav1.CreateOptions{})
-
+		// if pod create successfully, will add initVpcNatGatewayQueue, then syncVpcNatGwRules
 		if err != nil {
 			klog.Errorf("failed to create statefulset '%s', err: %v", newSts.Name, err)
 			return err
@@ -281,17 +281,6 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 			klog.Errorf("failed to update statefulset '%s', err: %v", newSts.Name, err)
 			return err
 		}
-	}
-
-	pod, err := c.getNatGwPod(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-	if _, ok := pod.Annotations[util.VpcNatGatewayInitAnnotation]; ok {
-		return c.syncVpcNatGwRules(key)
 	}
 	return nil
 }
@@ -358,8 +347,8 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 	if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; hasInit {
 		return nil
 	}
-	createAt = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
-	klog.V(3).Infof("nat gw pod '%s' inited at %s", key, createAt)
+	NAT_GW_CREATED_AT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
+	klog.V(3).Infof("nat gw pod '%s' inited at %s", key, NAT_GW_CREATED_AT)
 	if err = c.execNatGwRules(pod, natGwInit, []string{v4Cidr}); err != nil {
 		klog.Errorf("failed to init vpc nat gateway, %v", err)
 		return err
@@ -401,9 +390,9 @@ func (c *Controller) handleUpdateVpcFloatingIp(natGwKey string) error {
 	}
 
 	for _, fip := range fips.Items {
-		if fip.Status.Redo != createAt {
+		if fip.Status.Redo != NAT_GW_CREATED_AT {
 			klog.V(3).Infof("redo fip %s", fip.Name)
-			if err = c.redoFip(fip.Name, createAt, false); err != nil {
+			if err = c.redoFip(fip.Name, NAT_GW_CREATED_AT, false); err != nil {
 				klog.Errorf("failed to update eip '%s' to make sure applied, %v", fip.Spec.EIP, err)
 				return err
 			}
@@ -433,9 +422,9 @@ func (c *Controller) handleUpdateVpcEip(natGwKey string) error {
 		return err
 	}
 	for _, eip := range eips.Items {
-		if eip.Spec.NatGwDp == natGwKey && eip.Status.Redo != createAt {
+		if eip.Spec.NatGwDp == natGwKey && eip.Status.Redo != NAT_GW_CREATED_AT {
 			klog.V(3).Infof("redo eip %s", eip.Name)
-			if err = c.patchEipStatus(eip.Name, "", createAt, "", false); err != nil {
+			if err = c.patchEipStatus(eip.Name, "", NAT_GW_CREATED_AT, "", false); err != nil {
 				klog.Errorf("failed to update eip '%s' to make sure applied, %v", eip.Name, err)
 				return err
 			}
@@ -465,9 +454,9 @@ func (c *Controller) handleUpdateVpcSnat(natGwKey string) error {
 		return err
 	}
 	for _, snat := range snats.Items {
-		if snat.Status.Redo != createAt {
+		if snat.Status.Redo != NAT_GW_CREATED_AT {
 			klog.V(3).Infof("redo snat %s", snat.Name)
-			if err = c.redoSnat(snat.Name, createAt, false); err != nil {
+			if err = c.redoSnat(snat.Name, NAT_GW_CREATED_AT, false); err != nil {
 				klog.Errorf("failed to update eip '%s' to make sure applied, %v", snat.Spec.EIP, err)
 				return err
 			}
@@ -498,9 +487,9 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 		return err
 	}
 	for _, dnat := range dnats.Items {
-		if dnat.Status.Redo != createAt {
+		if dnat.Status.Redo != NAT_GW_CREATED_AT {
 			klog.V(3).Infof("redo dnat %s", dnat.Name)
-			if err = c.redoDnat(dnat.Name, createAt, false); err != nil {
+			if err = c.redoDnat(dnat.Name, NAT_GW_CREATED_AT, false); err != nil {
 				klog.Errorf("failed to update dnat '%s' to make sure applied, %v", dnat.Name, err)
 				return err
 			}
@@ -686,7 +675,8 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 
 	newSts = &v1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+			Name:   name,
+			Labels: labels,
 		},
 		Spec: v1.StatefulSetSpec{
 			Replicas: &replicas,
@@ -768,7 +758,7 @@ func (c *Controller) checkVpcExternalNet() (err error) {
 }
 
 func (c *Controller) initCreateAt(key string) (err error) {
-	if createAt != "" {
+	if NAT_GW_CREATED_AT != "" {
 		return nil
 	}
 	pod, err := c.getNatGwPod(key)
@@ -778,6 +768,6 @@ func (c *Controller) initCreateAt(key string) (err error) {
 		}
 		return err
 	}
-	createAt = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
+	NAT_GW_CREATED_AT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
 	return nil
 }

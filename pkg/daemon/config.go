@@ -28,6 +28,8 @@ import (
 
 // Configuration is the daemon conf
 type Configuration struct {
+	// interface being used for tunnel
+	tunnelIface             string
 	Iface                   string
 	DPDKTunnelIface         string
 	MTU                     int
@@ -205,7 +207,10 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 		if len(encapIP) == 0 {
 			return fmt.Errorf("iface %s has no valid IP address", tunnelNic)
 		}
+
+		klog.Infof("use %s as tunnel interface", iface.Name)
 		mtu = iface.MTU
+		config.tunnelIface = iface.Name
 	}
 
 	encapIsIPv6 := util.CheckProtocol(encapIP) == kubeovnv1.ProtocolIPv6
@@ -278,7 +283,6 @@ func findInterface(ifaceStr string) (*net.Interface, error) {
 	}
 	for _, iface := range ifaces {
 		if ifaceRegex.MatchString(iface.Name) {
-			klog.Infof("use %s as tunnel interface", iface.Name)
 			return &iface, nil
 		}
 	}

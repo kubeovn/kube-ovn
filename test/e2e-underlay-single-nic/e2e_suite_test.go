@@ -16,6 +16,7 @@ import (
 	// tests to run
 	_ "github.com/kubeovn/kube-ovn/test/e2e-underlay-single-nic/kubectl-ko"
 	_ "github.com/kubeovn/kube-ovn/test/e2e-underlay-single-nic/node"
+	_ "github.com/kubeovn/kube-ovn/test/e2e-underlay-single-nic/overlay"
 )
 
 func TestE2e(t *testing.T) {

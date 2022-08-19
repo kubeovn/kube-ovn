@@ -22,7 +22,8 @@ type LegacyClient struct {
 	OvnNbAddress                  string
 	OvnTimeout                    int
 	OvnSbAddress                  string
-	OVNIcNBAddress                string
+	OvnICNbAddress                string
+	OvnICSbAddress                string
 	ClusterRouter                 string
 	ClusterTcpLoadBalancer        string
 	ClusterUdpLoadBalancer        string
@@ -47,6 +48,7 @@ const (
 	OvnNbCtl    = "ovn-nbctl"
 	OvnSbCtl    = "ovn-sbctl"
 	OVNIcNbCtl  = "ovn-ic-nbctl"
+	OVNIcSbCtl  = "ovn-ic-sbctl"
 	OvsVsCtl    = "ovs-vsctl"
 	MayExist    = "--may-exist"
 	IfExists    = "--if-exists"

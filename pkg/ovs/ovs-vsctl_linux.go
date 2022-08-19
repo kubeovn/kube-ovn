@@ -62,7 +62,6 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, podPri
 					return err
 				}
 
-				// It's difficult to check if qos and queue should be destroyed here since can not get subnet info here. So leave destroy operation in loop check
 				if _, err := Exec("remove", "queue", queueId, "other_config", "max-rate"); err != nil {
 					return fmt.Errorf("failed to remove rate limit for queue in pod %v/%v, %v", podNamespace, podName, err)
 				}
@@ -70,6 +69,12 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, podPri
 		}
 
 		if err = SetHtbQosPriority(podName, podNamespace, iface, ifName, podPriority, qosIfaceUidMap, queueIfaceUidMap); err != nil {
+			return err
+		}
+
+		// Delete Qos and Queue record if both bandwidth and priority do not exist
+		if err = CheckAndUpdateHtbQos(podName, podNamespace, iface, queueIfaceUidMap); err != nil {
+			klog.Errorf("failed to check htb qos: %v", err)
 			return err
 		}
 	}
@@ -202,7 +207,6 @@ func SetHtbQosPriority(podName, podNamespace, iface, ifName, priority string, qo
 			return err
 		}
 
-		// It's difficult to check if qos and queue should be destroyed here since can not get subnet info here. So leave destroy operation in subnet loop check
 		if _, err := Exec("remove", "queue", queueId, "other_config", "priority"); err != nil {
 			return fmt.Errorf("failed to remove priority for queue in pod %v/%v, %v", podNamespace, podName, err)
 		}
@@ -361,4 +365,43 @@ func IsUserspaceDataPath() (is bool, err error) {
 		return false, err
 	}
 	return len(dp) > 0 && dp[0] == "netdev", nil
+}
+
+func CheckAndUpdateHtbQos(podName, podNamespace, ifaceID string, queueIfaceUidMap map[string]string) error {
+	var queueUid string
+	var ok bool
+	if queueUid, ok = queueIfaceUidMap[ifaceID]; !ok {
+		return nil
+	}
+
+	config, err := ovsGet("queue", queueUid, "other_config", "")
+	if err != nil {
+		klog.Errorf("failed to get other_config for queueId %s: %v", queueUid, err)
+		return err
+	}
+	// bandwidth or priority exists, can not delete qos
+	if config != "{}" {
+		return nil
+	}
+
+	// recall clearQos
+	if htbQos, _ := IsHtbQos(ifaceID); !htbQos {
+		return nil
+	}
+
+	if err := ClearPortQosBinding(ifaceID); err != nil {
+		klog.Errorf("failed to delete qos bingding info: %v", err)
+		return err
+	}
+
+	if err := ClearPodBandwidth(podName, podNamespace, ifaceID); err != nil {
+		klog.Errorf("failed to delete htbqos record: %v", err)
+		return err
+	}
+
+	if err := ClearHtbQosQueue(podName, podNamespace, ifaceID); err != nil {
+		klog.Errorf("failed to delete htbqos queue: %v", err)
+		return err
+	}
+	return nil
 }

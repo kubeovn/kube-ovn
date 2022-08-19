@@ -323,6 +323,8 @@ func (c *Controller) setIptables() error {
 		v4Rules = []util.IPTableRule{
 			// nat packets marked by kube-proxy or kube-ovn
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x4000/0x4000 -j MASQUERADE`)},
+			// nat service traffic
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set --match-set ovn40subnets src -m set --match-set ovn40subnets dst -j MASQUERADE`)},
 			// do not nat node port service traffic with external traffic policy set to local
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -m set --match-set ovn40subnets-distributed-gw dst -j RETURN`)},
 			// nat node port service traffic with external traffic policy set to local for subnets with centralized gateway
@@ -351,6 +353,8 @@ func (c *Controller) setIptables() error {
 		v6Rules = []util.IPTableRule{
 			// nat packets marked by kube-proxy or kube-ovn
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x4000/0x4000 -j MASQUERADE`)},
+			// nat service traffic
+			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set --match-set ovn60subnets src -m set --match-set ovn60subnets dst -j MASQUERADE`)},
 			// do not nat node port service traffic with external traffic policy set to local
 			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -m set --match-set ovn60subnets-distributed-gw dst -j RETURN`)},
 			// nat node port service traffic with external traffic policy set to local for subnets with centralized gateway
@@ -417,27 +421,21 @@ func (c *Controller) setIptables() error {
 				util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set ! --match-set %s src -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset, matchset))},
 			)
 
-			chainExists, err := c.iptables[protocol].ChainExists("nat", "KUBE-NODE-PORT")
-			if err != nil {
-				klog.Errorf("failed to check existence of chain KUBE-NODE-PORT in nat table: %v", err)
-				return err
-			}
-			if chainExists {
-				nodePortRules := make([]util.IPTableRule, 0, len(kubeProxyIpsets))
-				for protocol, ipset := range kubeProxyIpsets {
-					ipsetExists, err := ipsetExists(ipset)
-					if err != nil {
-						klog.Error("failed to check existence of ipset %s: %v", ipset, err)
-						return err
-					}
-					if !ipsetExists {
-						klog.Warningf("ipset %s does not exist", ipset)
-						continue
-					}
-					nodePortRules = append(nodePortRules, util.IPTableRule{Table: "nat", Chain: "KUBE-NODE-PORT", Rule: strings.Fields(fmt.Sprintf("-p %s -m set --match-set %s dst -j MARK --set-xmark 0x80000/0x80000", protocol, ipset))})
+			nodePortRules := make([]util.IPTableRule, 0, len(kubeProxyIpsets))
+			for protocol, ipset := range kubeProxyIpsets {
+				ipsetExists, err := ipsetExists(ipset)
+				if err != nil {
+					klog.Error("failed to check existence of ipset %s: %v", ipset, err)
+					return err
 				}
-				iptablesRules = append(nodePortRules, iptablesRules...)
+				if !ipsetExists {
+					klog.Warningf("ipset %s does not exist", ipset)
+					continue
+				}
+				rule := fmt.Sprintf("-p %s -m addrtype --dst-type LOCAL -m set --match-set %s dst -j MARK --set-xmark 0x80000/0x80000", protocol, ipset)
+				nodePortRules = append(nodePortRules, util.IPTableRule{Table: "nat", Chain: "PREROUTING", Rule: strings.Fields(rule)})
 			}
+			iptablesRules = append(nodePortRules, iptablesRules...)
 		}
 
 		// delete abandoned iptables rules

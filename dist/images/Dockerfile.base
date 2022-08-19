@@ -9,36 +9,42 @@ ENV SRC_DIR='/usr/src'
 RUN apt update && apt install build-essential git libnuma-dev autoconf curl \
     python3 libmnl-dev libpcap-dev libtool libcap-ng-dev libssl-dev pkg-config \
     python3-six libunbound-dev libunwind-dev dh-make fakeroot debhelper dh-python \
-    flake8 python3-sphinx graphviz groff wget libjemalloc-dev -y
+    flake8 python3-sphinx graphviz groff wget -y
 
 RUN cd /usr/src/ && \
-    git clone -b ovn-22.03.1 --depth=1 https://github.com/kubeovn/ovs.git && \
+    git clone -b branch-2.17 --depth=1 https://github.com/openvswitch/ovs.git && \
     cd ovs && \
+    # ovsdb-idl: Support write-only-changed IDL monitor mode
+    curl -s https://github.com/kubeovn/ovs/commit/24c1b28c416d3a0312c10a9fe9341c04b8b31ce9.patch | git apply && \
+    # fix memleak
+    curl -s https://github.com/kubeovn/ovs/commit/2dc8e7aa202818952b2fa80b47298604530c9de0.patch | git apply && \
     # increase election timer
     curl -s https://github.com/kubeovn/ovs/commit/22ea22c40b46ee5adeae977ff6cfca81b3ff25d7.patch | git apply && \
     # compile without avx512
     if [ "$ARCH" = "amd64" -a "$NO_AVX512" = "true" ]; then curl -s https://github.com/kubeovn/ovs/commit/38c59e078d69b343f56ab0f380fb9f42b94b7c02.patch | git apply; fi && \
     ./boot.sh && \
     rm -rf .git && \
-    CONFIGURE_OPTS='LIBS=-ljemalloc' && \
-    if [ "$ARCH" = "amd64" ]; then CONFIGURE_OPTS='LIBS=-ljemalloc CFLAGS="-O2 -g -msse4.2 -mpopcnt"'; fi && \
+    CONFIGURE_OPTS='' && \
+    if [ "$ARCH" = "amd64" ]; then CONFIGURE_OPTS='CFLAGS="-O2 -g -msse4.2 -mpopcnt"'; fi && \
     DATAPATH_CONFIGURE_OPTS='--prefix=/usr' EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS DEB_BUILD_OPTIONS='parallel=8 nocheck' fakeroot debian/rules binary
 
 RUN dpkg -i /usr/src/python3-openvswitch*.deb /usr/src/libopenvswitch*.deb
 
-RUN cd /usr/src/ && git clone -b v22.03.1 --depth=1 https://github.com/ovn-org/ovn.git && \
+RUN cd /usr/src/ && git clone -b branch-22.03 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
+    # avoid patch interface deletion & recreation during restart
+    curl -s https://github.com/kubeovn/ovn/commit/48c615300047adcda36535029b04ed30b69ca4c2.patch | git apply && \
     # do not send traffic that not designate to svc to conntrack
     curl -s https://github.com/kubeovn/ovn/commit/d26ae4de0ab070f6b602688ba808c8963f69d5c4.patch | git apply && \
     # change hash type from dp_hash to hash with field src_ip
     curl -s https://github.com/kubeovn/ovn/commit/ab923b252271cbbcccc8091e338ee7efe75e5fcd.patch | git apply && \
     # set ether dst addr for dnat on logical switch
-    curl -s https://github.com/kubeovn/ovn/commit/94b73d939cd33b0531fa9a3422c999cd83ead087.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/f6217e2c1d9a24eb4595c75727202daf05dadc85.patch | git apply && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \
-    CONFIGURE_OPTS='LIBS=-ljemalloc' && \
-    if [ "$ARCH" = "amd64" ]; then CONFIGURE_OPTS='LIBS=-ljemalloc CFLAGS="-O2 -g -msse4.2 -mpopcnt"'; fi && \
+    CONFIGURE_OPTS='' && \
+    if [ "$ARCH" = "amd64" ]; then CONFIGURE_OPTS='CFLAGS="-O2 -g -msse4.2 -mpopcnt"'; fi && \
     OVSDIR=/usr/src/ovs EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS DEB_BUILD_OPTIONS='parallel=8 nocheck' fakeroot debian/rules binary
 
 RUN mkdir /packages/ && \
@@ -54,7 +60,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
         ethtool iproute2 ncat libunbound-dev procps libatomic1 kmod iptables \
         tcpdump ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 \
-        logrotate libjemalloc2 dnsutils net-tools nmap -y --no-install-recommends && \
+        logrotate dnsutils net-tools nmap -y --no-install-recommends && \
         rm -rf /var/lib/apt/lists/* && \
         cd /usr/sbin && \
         ln -sf /usr/sbin/iptables-legacy iptables && \
