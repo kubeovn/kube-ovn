@@ -187,6 +187,10 @@ func (suite *OvnClientTestSuite) Test_CreateLogicalRouter() {
 	suite.testCreateLogicalRouter()
 }
 
+func (suite *OvnClientTestSuite) Test_UpdateLogicalRouter() {
+	suite.testUpdateLogicalRouter()
+}
+
 func (suite *OvnClientTestSuite) Test_DeleteLogicalRouter() {
 	suite.testDeleteLogicalRouter()
 }
@@ -412,6 +416,14 @@ func (suite *OvnClientTestSuite) Test_AddLogicalRouterPolicy() {
 
 func (suite *OvnClientTestSuite) Test_CreateLogicalRouterPolicys() {
 	suite.testCreateLogicalRouterPolicys()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteLogicalRouterPolicy() {
+	suite.testDeleteLogicalRouterPolicy()
+}
+
+func (suite *OvnClientTestSuite) Test_ClearLogicalRouterPolicy() {
+	suite.testClearLogicalRouterPolicy()
 }
 
 func (suite *OvnClientTestSuite) Test_GetLogicalRouterPolicy() {

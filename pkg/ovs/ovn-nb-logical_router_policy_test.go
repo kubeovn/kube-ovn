@@ -73,6 +73,92 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPolicys() {
 	})
 }
 
+func (suite *OvnClientTestSuite) testDeleteLogicalRouterPolicy() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lrName := "test-del-policy-lr"
+	priority := 11012
+	match := "ip4.src == $ovn.default.lm2_ip4"
+	action := ovnnb.LogicalRouterPolicyActionAllow
+	nextHops := []string{"100.64.0.2"}
+
+	err := ovnClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
+	err = ovnClient.AddLogicalRouterPolicy(lrName, priority, match, action, nextHops, nil)
+	require.NoError(t, err)
+
+	t.Run("no err when delete existent logical switch port", func(t *testing.T) {
+		lr, err := ovnClient.GetLogicalRouter(lrName, false)
+		require.NoError(t, err)
+
+		policy, err := ovnClient.GetLogicalRouterPolicy(lrName, priority, match, false)
+		require.NoError(t, err)
+		require.Contains(t, lr.Policies, policy.UUID)
+
+		err = ovnClient.DeleteLogicalRouterPolicy(lrName, priority, match)
+		require.NoError(t, err)
+
+		_, err = ovnClient.GetLogicalRouterPolicy(lrName, priority, match, false)
+		require.ErrorContains(t, err, "not found policy")
+
+		lr, err = ovnClient.GetLogicalRouter(lrName, false)
+		require.NoError(t, err)
+		require.NotContains(t, lr.Policies, policy.UUID)
+	})
+
+	t.Run("no err when delete non-existent logical switch port", func(t *testing.T) {
+		err := ovnClient.DeleteLogicalSwitchPort("test-delete-lrp-non-existent")
+		require.NoError(t, err)
+	})
+}
+
+func (suite *OvnClientTestSuite) testClearLogicalRouterPolicy() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lrName := "test-clear-policy-lr"
+	basePriority := 11012
+	match := "ip4.src == $ovn.default.lm2_ip4"
+	action := ovnnb.LogicalRouterPolicyActionAllow
+	nextHops := []string{"100.64.0.2"}
+
+	err := ovnClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
+	for i := 0; i < 3; i++ {
+		priority := basePriority + i
+		err = ovnClient.AddLogicalRouterPolicy(lrName, priority, match, action, nextHops, nil)
+		require.NoError(t, err)
+	}
+
+	lr, err := ovnClient.GetLogicalRouter(lrName, false)
+	require.NoError(t, err)
+	require.Len(t, lr.Policies, 3)
+
+	for i := 0; i < 3; i++ {
+		priority := basePriority + i
+		_, err = ovnClient.GetLogicalRouterPolicy(lrName, priority, match, false)
+		require.NoError(t, err)
+	}
+
+	err = ovnClient.ClearLogicalRouterPolicy(lrName)
+	require.NoError(t, err)
+
+	for i := 0; i < 3; i++ {
+		priority := basePriority + i
+		_, err = ovnClient.GetLogicalRouterPolicy(lrName, priority, match, false)
+		require.ErrorContains(t, err, "not found policy")
+	}
+
+	lr, err = ovnClient.GetLogicalRouter(lrName, false)
+	require.NoError(t, err)
+	require.Empty(t, lr.Policies)
+}
+
 func (suite *OvnClientTestSuite) testGetLogicalRouterPolicy() {
 	t := suite.T()
 	t.Parallel()

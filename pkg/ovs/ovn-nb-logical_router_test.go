@@ -14,6 +14,89 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+func (suite *OvnClientTestSuite) testCreateLogicalRouter() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	name := "test-create-lr"
+
+	err := ovnClient.CreateLogicalRouter(name)
+	require.NoError(t, err)
+
+	lr, err := ovnClient.GetLogicalRouter(name, false)
+	require.NoError(t, err)
+	require.Equal(t, name, lr.Name)
+	require.NotEmpty(t, lr.UUID)
+	require.Equal(t, util.CniTypeName, lr.ExternalIDs["vendor"])
+}
+
+func (suite *OvnClientTestSuite) testUpdateLogicalRouter() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lrName := "test-update-lr"
+	policies := []string{ovsclient.UUID(), ovsclient.UUID()}
+
+	err := ovnClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
+	t.Run("update policy", func(t *testing.T) {
+		lr := &ovnnb.LogicalRouter{
+			Name:     lrName,
+			Policies: policies,
+		}
+
+		err = ovnClient.UpdateLogicalRouter(lr)
+		require.NoError(t, err)
+
+		lr, err := ovnClient.GetLogicalRouter(lrName, false)
+		require.NoError(t, err)
+		require.ElementsMatch(t, lr.Policies, policies)
+	})
+
+	t.Run("clear policy", func(t *testing.T) {
+		lr := &ovnnb.LogicalRouter{
+			Name: lrName,
+		}
+
+		err = ovnClient.UpdateLogicalRouter(lr, &lr.Policies)
+		require.NoError(t, err)
+
+		lr, err := ovnClient.GetLogicalRouter(lrName, false)
+		require.NoError(t, err)
+		require.Empty(t, lr.Policies)
+	})
+
+}
+
+func (suite *OvnClientTestSuite) testDeleteLogicalRouter() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	name := "test-delete-lr"
+
+	t.Run("no err when delete existent logical router", func(t *testing.T) {
+		t.Parallel()
+		err := ovnClient.CreateLogicalRouter(name)
+		require.NoError(t, err)
+
+		err = ovnClient.DeleteLogicalRouter(name)
+		require.NoError(t, err)
+
+		_, err = ovnClient.GetLogicalRouter(name, false)
+		require.ErrorContains(t, err, "not found logical router")
+	})
+
+	t.Run("no err when delete non-existent logical router", func(t *testing.T) {
+		t.Parallel()
+		err := ovnClient.DeleteLogicalRouter("test-delete-lr-non-existent")
+		require.NoError(t, err)
+	})
+}
+
 func (suite *OvnClientTestSuite) testGetLogicalRouter() {
 	t := suite.T()
 	t.Parallel()
@@ -41,49 +124,6 @@ func (suite *OvnClientTestSuite) testGetLogicalRouter() {
 	t.Run("no err when not found logical router and ignoreNotFound is true", func(t *testing.T) {
 		t.Parallel()
 		_, err := ovnClient.GetLogicalRouter("test-get-lr-non-existent", true)
-		require.NoError(t, err)
-	})
-}
-
-func (suite *OvnClientTestSuite) testCreateLogicalRouter() {
-	t := suite.T()
-	t.Parallel()
-
-	ovnClient := suite.ovnClient
-	name := "test-create-lr"
-
-	err := ovnClient.CreateLogicalRouter(name)
-	require.NoError(t, err)
-
-	lr, err := ovnClient.GetLogicalRouter(name, false)
-	require.NoError(t, err)
-	require.Equal(t, name, lr.Name)
-	require.NotEmpty(t, lr.UUID)
-	require.Equal(t, util.CniTypeName, lr.ExternalIDs["vendor"])
-}
-
-func (suite *OvnClientTestSuite) testDeleteLogicalRouter() {
-	t := suite.T()
-	t.Parallel()
-
-	ovnClient := suite.ovnClient
-	name := "test-delete-lr"
-
-	t.Run("no err when delete existent logical router", func(t *testing.T) {
-		t.Parallel()
-		err := ovnClient.CreateLogicalRouter(name)
-		require.NoError(t, err)
-
-		err = ovnClient.DeleteLogicalRouter(name)
-		require.NoError(t, err)
-
-		_, err = ovnClient.GetLogicalRouter(name, false)
-		require.ErrorContains(t, err, "not found logical router")
-	})
-
-	t.Run("no err when delete non-existent logical router", func(t *testing.T) {
-		t.Parallel()
-		err := ovnClient.DeleteLogicalRouter("test-delete-lr-non-existent")
 		require.NoError(t, err)
 	})
 }
