@@ -116,7 +116,7 @@ ipIsInCidr(){
   local ip_dec=$((0x$ip_hex))
   local network_hex=$(ipv4_to_hex $network)
   local network_dec=$((0x$network_hex))
-  local broadcast_dec=$(($network_dec + 2**$prefix - 1))
+  local broadcast_dec=$(($network_dec + 2**(32-$prefix) - 1))
   # TODO: check whether the IP is network/broadcast address
   if [ $ip_dec -gt $network_dec -a $ip_dec -lt $broadcast_dec ]; then
     return 0
