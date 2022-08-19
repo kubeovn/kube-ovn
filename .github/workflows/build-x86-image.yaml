@@ -901,14 +901,12 @@ jobs:
 
       - name: Install Kube-OVN without LoadBalancer
         uses: nick-invision/retry@v2
-        env:
-          ENABLE_LB: "false"
         with:
           timeout_minutes: 10
           max_attempts: 3
           shell: bash
           command: |
-            sudo make kind-install
+            sudo ENABLE_LB=false make kind-install
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v3
@@ -962,14 +960,12 @@ jobs:
 
       - name: Install Kube-OVN without LoadBalancer
         uses: nick-invision/retry@v2
-        env:
-          ENABLE_LB: "false"
         with:
           timeout_minutes: 10
           max_attempts: 3
           shell: bash
           command: |
-            sudo make kind-install
+            sudo ENABLE_LB=false make kind-install
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v3
