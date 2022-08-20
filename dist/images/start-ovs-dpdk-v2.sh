@@ -11,6 +11,23 @@ if ! test -f "$OVS_DPDK_CONFIG_FILE"; then
 fi
 source $OVS_DPDK_CONFIG_FILE
 
+# set up driver
+modprobe vfio-pci
+
+
+# band nic to dpdk driver
+driverctl set-override ${DPDK_DEV}  modprobe vfio-pci
+
+# link sock
+mkdir -p /usr/local/var/run
+
+if [ -L /usr/local/var/run/openvswitch ]
+then
+     echo "sock exist"
+else
+     echo "link sock"
+     ln -s /var/run/openvswitch /usr/local/var/run/openvswitch
+fi
 
 export PATH=$PATH:/usr/share/openvswitch/scripts
 export PATH=$PATH:/usr/share/ovn/scripts
