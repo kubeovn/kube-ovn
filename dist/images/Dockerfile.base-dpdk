@@ -2,6 +2,7 @@
 FROM ubuntu:22.04 as ovs-builder
 
 ARG ARCH
+ARG NO_AVX512=false
 ARG DEBIAN_FRONTEND=noninteractive
 ENV SRC_DIR='/usr/src'
 
@@ -29,6 +30,8 @@ RUN cd /usr/src/ && \
     cd ovs && \
     git checkout c50a0f080d95e9027b7ba3a70150b02c2377c721 && \
     curl -s https://github.com/kubeovn/ovs/commit/22ea22c40b46ee5adeae977ff6cfca81b3ff25d7.patch | git apply && \
+    # compile without avx512
+    if [ "$ARCH" = "amd64" -a "$NO_AVX512" = "true" ]; then curl -s https://github.com/kubeovn/ovs/commit/38c59e078d69b343f56ab0f380fb9f42b94b7c02.patch | git apply; fi && \
     ./boot.sh && \
     rm -rf .git && \
     export DPDK_DIR=/usr/src/dpdk-stable-20.11.1 && \
@@ -48,7 +51,14 @@ RUN cd /usr/src/ && git clone -b branch-21.06 --depth=1 https://github.com/kubeo
     if [ "$ARCH" = "amd64" ]; then CONFIGURE_OPTS='LIBS=-ljemalloc CFLAGS="-O2 -g -msse4.2 -mpopcnt"'; fi && \
     OVSDIR=/usr/src/ovs EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS DEB_BUILD_OPTIONS='parallel=8 nocheck' fakeroot debian/rules binary
 
+RUN cd /usr/src/ && \
+    cd ovs && \
+    ./boot.sh && \
+    ./configure --with-dpdk=yes && \
+    make 
+
 RUN mkdir /packages/ && \
+     cp /usr/src/ovs/vswitchd/ovs-vswitchd /packages && \
      cp /usr/src/libopenvswitch*.deb /packages && \
      cp /usr/src/openvswitch-*.deb /packages && \
      cp /usr/src/python3-openvswitch*.deb /packages && \
@@ -58,7 +68,7 @@ RUN mkdir /packages/ && \
 FROM ubuntu:22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
-RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
+RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname driverctl libunwind8 netbase \
         ethtool iproute2 ncat libunbound-dev procps libatomic1 kmod iptables \
         tcpdump ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 \
         logrotate libjemalloc2 dnsutils  libnuma-dev -y --no-install-recommends && \
@@ -81,4 +91,6 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     dpkg -i /packages/libopenvswitch*.deb && \
     dpkg -i /packages/openvswitch-*.deb && \
     dpkg -i /packages/python3-openvswitch*.deb &&\
-    dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/ovn-*.deb
+    dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/ovn-*.deb && \
+    cp -f /packages/ovs-vswitchd /usr/sbin/
+
