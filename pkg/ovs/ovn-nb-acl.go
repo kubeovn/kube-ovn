@@ -561,12 +561,12 @@ func (c OvnClient) newAcl(parent, direction, priority, match, action string, opt
 	}
 
 	if len(direction) == 0 || len(priority) == 0 || len(match) == 0 || len(action) == 0 {
-		return nil, fmt.Errorf("acl 'direction %s' or 'priority %s' or 'match %s' or 'action %s' is required", direction, priority, match, action)
+		return nil, fmt.Errorf("acl 'direction %s' and 'priority %s' and 'match %s' and 'action %s' is required", direction, priority, match, action)
 	}
 
 	exists, err := c.AclExists(parent, direction, priority, match)
 	if err != nil {
-		return nil, fmt.Errorf("get acl: %v", err)
+		return nil, fmt.Errorf("get parent %s acl: %v", parent, err)
 	}
 
 	// found, ingore
