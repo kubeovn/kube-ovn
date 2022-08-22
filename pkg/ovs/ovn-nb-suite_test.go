@@ -210,6 +210,10 @@ func (suite *OvnClientTestSuite) Test_LogicalRouterUpdatePolicyOp() {
 	suite.testLogicalRouterUpdatePolicyOp()
 }
 
+func (suite *OvnClientTestSuite) Test_LogicalRouterUpdateNatOp() {
+	suite.testLogicalRouterUpdateNatOp()
+}
+
 func (suite *OvnClientTestSuite) Test_LogicalRouterOp() {
 	suite.testLogicalRouterOp()
 }
@@ -431,6 +435,35 @@ func (suite *OvnClientTestSuite) Test_GetLogicalRouterPolicy() {
 
 func (suite *OvnClientTestSuite) Test_newLogicalRouterPolicy() {
 	suite.testnewLogicalRouterPolicy()
+}
+
+/* nat unit test */
+func (suite *OvnClientTestSuite) Test_CreateNats() {
+	suite.testCreateNats()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateSnat() {
+	suite.testUpdateSnat()
+}
+
+func (suite *OvnClientTestSuite) Test_UpdateDnatAndSnat() {
+	suite.testUpdateDnatAndSnat()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteNats() {
+	suite.testDeleteNats()
+}
+
+func (suite *OvnClientTestSuite) Test_GetNat() {
+	suite.testGetNat()
+}
+
+func (suite *OvnClientTestSuite) Test_newNat() {
+	suite.testnewNat()
+}
+
+func (suite *OvnClientTestSuite) Test_natFilter() {
+	suite.testnatFilter()
 }
 
 /* mixed operations unit test */

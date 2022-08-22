@@ -189,12 +189,12 @@ func (c OvnClient) newLogicalRouterPolicy(lrName string, priority int, match, ac
 	}
 
 	if priority == 0 || len(match) == 0 || len(action) == 0 {
-		return nil, fmt.Errorf("logical router policy 'priority %d' or 'match %s' or 'action %s' is required", priority, match, action)
+		return nil, fmt.Errorf("logical router policy 'priority %d' and 'match %s' and 'action %s' is required", priority, match, action)
 	}
 
 	exists, err := c.LogicalRouterPolicyExists(lrName, priority, match)
 	if err != nil {
-		return nil, fmt.Errorf("get logical router policy: %v", err)
+		return nil, fmt.Errorf("get logical router %s policy: %v", lrName, err)
 	}
 
 	// found, ingore
