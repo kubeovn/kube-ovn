@@ -11,7 +11,7 @@ RUN apt update && apt install build-essential git libnuma-dev autoconf curl \
     flake8 python3-sphinx graphviz groff -y
 
 RUN cd /usr/src/ && \
-    git clone -b branch-2.15 --depth=1 https://github.com/openvswitch/ovs.git && \
+    git clone -b v2.15.3 --depth=1 https://github.com/openvswitch/ovs.git && \
     cd ovs && \
     # fix memleak
     curl -s https://github.com/kubeovn/ovs/commit/2dc8e7aa202818952b2fa80b47298604530c9de0.patch | git apply && \
@@ -28,7 +28,6 @@ RUN cd /usr/src/ && git clone -b branch-21.03 --depth=1 https://github.com/ovn-o
     curl -s https://github.com/kubeovn/ovn/commit/289c62e3fcd05901dac4b727aa59f6cba058905f.patch | git apply && \
     curl -s https://github.com/kubeovn/ovn/commit/e24734913d25c0bffdf1cfd79e14ef43d01e1019.patch | git apply && \
     curl -s https://github.com/kubeovn/ovn/commit/71f831b9cc5a6dc923af4ca90286857e2cf8b1d3.patch | git apply && \
-    curl -s https://github.com/kubeovn/ovn/commit/b99e52429a800c7dc041c6d5513ee759d3840d4f.patch | git apply && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \
