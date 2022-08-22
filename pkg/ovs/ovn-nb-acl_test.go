@@ -1175,6 +1175,8 @@ func (suite *OvnClientTestSuite) testaclFilter() {
 	acls := make([]*ovnnb.ACL, 0)
 
 	t.Run("filter acl", func(t *testing.T) {
+		t.Parallel()
+
 		match := "outport == @ovn.sg.test_list_acl_pg && ip"
 		// create two to-lport acl
 		for i := 0; i < 2; i++ {
@@ -1264,6 +1266,8 @@ func (suite *OvnClientTestSuite) testaclFilter() {
 	})
 
 	t.Run("result should exclude acl when externalIDs's length is not equal", func(t *testing.T) {
+		t.Parallel()
+
 		match := "outport == @ovn.sg.test_filter_acl_pg && ip"
 		acl := newAcl(pgName, ovnnb.ACLDirectionToLport, "9999", match, ovnnb.ACLActionAllowRelated)
 

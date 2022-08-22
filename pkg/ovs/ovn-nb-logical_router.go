@@ -130,11 +130,7 @@ func (c OvnClient) UpdateLogicalRouterOp(lr *ovnnb.LogicalRouter, fields ...inte
 		return nil, fmt.Errorf("logical_router is nil")
 	}
 
-	lrName := lr.Name
-
-	op, err := c.ovnNbClient.WhereCache(func(lr *ovnnb.LogicalRouter) bool {
-		return lr.Name == lrName
-	}).Update(lr, fields...)
+	op, err := c.ovnNbClient.Where(lr).Update(lr, fields...)
 	if err != nil {
 		return nil, fmt.Errorf("generate operations for updating logical router %s: %v", lr.Name, err)
 	}
@@ -171,6 +167,25 @@ func (c OvnClient) LogicalRouterUpdatePolicyOp(lrName string, policyUUIDs []stri
 		mutation := &model.Mutation{
 			Field:   &lr.Policies,
 			Value:   policyUUIDs,
+			Mutator: op,
+		}
+
+		return mutation
+	}
+
+	return c.LogicalRouterOp(lrName, mutation)
+}
+
+// LogicalRouterUpdateNatOp create operations add to or delete nat rule from logical router
+func (c OvnClient) LogicalRouterUpdateNatOp(lrName string, natUUIDs []string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
+	if len(natUUIDs) == 0 {
+		return nil, nil
+	}
+
+	mutation := func(lr *ovnnb.LogicalRouter) *model.Mutation {
+		mutation := &model.Mutation{
+			Field:   &lr.Nat,
+			Value:   natUUIDs,
 			Mutator: op,
 		}
 
