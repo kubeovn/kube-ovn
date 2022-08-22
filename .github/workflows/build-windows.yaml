@@ -128,31 +128,28 @@ jobs:
     name: Build Kube-OVN
     runs-on: windows-2019
     steps:
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v3
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
         with:
           go-version: '${{ env.GO_VERSION }}'
           check-latest: true
         id: go
 
-      - name: Check out code
-        uses: actions/checkout@v3
+      - name: Export Go full version
+        run: |
+          $goVersion = (go version).Split()[2]
+          $entry = [string]::Format("GO_FULL_VER={0}", $goVersion)
+          Add-Content -Path $env:GITHUB_ENV -Value $entry
 
-      - name: Go Build Cache
+      - name: Go Cache
         uses: actions/cache@v3
         with:
-          path: /home/runner/.cache/go-build
-          key: ${{ runner.os }}-go-x86-build-${{ hashFiles('**/go.sum') }}
+          path: |
+            ~\AppData\Local\go-build
+            ~\go\pkg\mod
+          key: ${{ runner.os }}-${{ env.GO_FULL_VER }}-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-x86-build-
-
-      - name: Go Mod Cache
-        uses: actions/cache@v3
-        with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+            ${{ runner.os }}-${{ env.GO_FULL_VER }}-
 
       - name: Install gosec
         run: |
@@ -182,8 +179,7 @@ jobs:
       - build-kube-ovn
     runs-on: windows-2019
     steps:
-      - name: Check out code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
       - name: Download Kube-OVN binaries
         uses: actions/download-artifact@v3
