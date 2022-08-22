@@ -42,11 +42,11 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouter() {
 	err := ovnClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
+	lr, err := ovnClient.GetLogicalRouter(lrName, false)
+	require.NoError(t, err)
+
 	t.Run("update policy", func(t *testing.T) {
-		lr := &ovnnb.LogicalRouter{
-			Name:     lrName,
-			Policies: policies,
-		}
+		lr.Policies = policies
 
 		err = ovnClient.UpdateLogicalRouter(lr)
 		require.NoError(t, err)
@@ -57,9 +57,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouter() {
 	})
 
 	t.Run("clear policy", func(t *testing.T) {
-		lr := &ovnnb.LogicalRouter{
-			Name: lrName,
-		}
+		lr.Policies = nil
 
 		err = ovnClient.UpdateLogicalRouter(lr, &lr.Policies)
 		require.NoError(t, err)
@@ -265,6 +263,62 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdatePolicyOp() {
 	t.Run("should return err when logical router does not exist", func(t *testing.T) {
 		t.Parallel()
 		_, err := ovnClient.LogicalRouterUpdatePolicyOp("test-update-policy-op-lr-non-existent", []string{uuid}, ovsdb.MutateOperationInsert)
+		require.ErrorContains(t, err, "not found logical router")
+	})
+}
+
+func (suite *OvnClientTestSuite) testLogicalRouterUpdateNatOp() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lrName := "test-update-nat-op-lr"
+	uuid := ovsclient.UUID()
+
+	err := ovnClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
+	t.Run("add new nat rule to logical router", func(t *testing.T) {
+		t.Parallel()
+		ops, err := ovnClient.LogicalRouterUpdateNatOp(lrName, []string{uuid}, ovsdb.MutateOperationInsert)
+		require.NoError(t, err)
+		require.Equal(t, []ovsdb.Mutation{
+			{
+				Column:  "nat",
+				Mutator: ovsdb.MutateOperationInsert,
+				Value: ovsdb.OvsSet{
+					GoSet: []interface{}{
+						ovsdb.UUID{
+							GoUUID: uuid,
+						},
+					},
+				},
+			},
+		}, ops[0].Mutations)
+	})
+
+	t.Run("del policy from logical router", func(t *testing.T) {
+		t.Parallel()
+		ops, err := ovnClient.LogicalRouterUpdateNatOp(lrName, []string{uuid}, ovsdb.MutateOperationDelete)
+		require.NoError(t, err)
+		require.Equal(t, []ovsdb.Mutation{
+			{
+				Column:  "nat",
+				Mutator: ovsdb.MutateOperationDelete,
+				Value: ovsdb.OvsSet{
+					GoSet: []interface{}{
+						ovsdb.UUID{
+							GoUUID: uuid,
+						},
+					},
+				},
+			},
+		}, ops[0].Mutations)
+	})
+
+	t.Run("should return err when logical router does not exist", func(t *testing.T) {
+		t.Parallel()
+		_, err := ovnClient.LogicalRouterUpdateNatOp("test-update-nat-op-lr-non-existent", []string{uuid}, ovsdb.MutateOperationInsert)
 		require.ErrorContains(t, err, "not found logical router")
 	})
 }
