@@ -240,7 +240,7 @@ trace(){
   mac=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/mac_address})
 
   dstMac=""
-  if echo "$3" | grep -oE '^([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}$'; then
+  if echo "$3" | grep -qE '^([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}$'; then
     dstMac=$3
     shift
   elif ipIsInCidr $dst $cidr; then
