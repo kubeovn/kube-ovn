@@ -367,17 +367,6 @@ func (c *Controller) InitIPAM() error {
 		for _, podNet := range podNets {
 			if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
 				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-				if !isAlive && isStsPod {
-					if ipCR := ipsMap[portName]; ipCR != nil && ipCR.Spec.PodType == "" {
-						if _, _, _, err = c.ipam.GetStaticAddress(key, ipCR.Name, ipCR.Spec.IPAddress, ipCR.Spec.MacAddress, ipCR.Spec.Subnet, true); err != nil {
-							klog.Errorf("failed to init IPAM from IP CR %s: %v", ipCR.Name, err)
-						}
-						if err = c.createOrUpdateCrdIPs(podName, ipCR.Spec.IPAddress, ipCR.Spec.MacAddress, ipCR.Spec.Subnet, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType, &ipCR); err != nil {
-							klog.Errorf("failed to create/update ips CR %s.%s with ip address %s: %v", podName, pod.Namespace, ipCR.Spec.IPAddress, err)
-						}
-						continue
-					}
-				}
 				ip := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
 				mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
 				subnet := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)]
