@@ -365,14 +365,14 @@ func (suite *OvnClientTestSuite) testGetNat() {
 			require.NoError(t, err)
 		})
 
-		t.Run("external is different", func(t *testing.T) {
+		t.Run("external ip is different", func(t *testing.T) {
 			_, err := ovnClient.GetNat(lrName, natType, "192.168.30.255", logicalIP, false)
 			require.ErrorContains(t, err, "not found")
 		})
 	})
 }
 
-func (suite *OvnClientTestSuite) testnewNat() {
+func (suite *OvnClientTestSuite) test_newNat() {
 	t := suite.T()
 	t.Parallel()
 
@@ -430,7 +430,7 @@ func (suite *OvnClientTestSuite) testnewNat() {
 	})
 }
 
-func (suite *OvnClientTestSuite) testnatFilter() {
+func (suite *OvnClientTestSuite) test_natFilter() {
 	t := suite.T()
 	t.Parallel()
 

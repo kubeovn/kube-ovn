@@ -33,7 +33,7 @@ func (suite *OvnClientTestSuite) testAddLogicalRouterPolicy() {
 	require.Contains(t, lr.Policies, policy.UUID)
 }
 
-func (suite *OvnClientTestSuite) testCreateLogicalRouterPolicys() {
+func (suite *OvnClientTestSuite) testCreateLogicalRouterPolicies() {
 	t := suite.T()
 	t.Parallel()
 
@@ -56,7 +56,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPolicys() {
 			policies = append(policies, policy)
 		}
 
-		err = ovnClient.CreateLogicalRouterPolicys(lrName, append(policies, nil)...)
+		err = ovnClient.CreateLogicalRouterPolicies(lrName, append(policies, nil)...)
 		require.NoError(t, err)
 
 		lr, err := ovnClient.GetLogicalRouter(lrName, false)
@@ -205,7 +205,7 @@ func (suite *OvnClientTestSuite) testGetLogicalRouterPolicy() {
 	})
 }
 
-func (suite *OvnClientTestSuite) testnewLogicalRouterPolicy() {
+func (suite *OvnClientTestSuite) test_newLogicalRouterPolicy() {
 	t := suite.T()
 	t.Parallel()
 

@@ -165,7 +165,7 @@ func (suite *OvnClientTestSuite) testListAddressSets() {
 
 }
 
-func (suite *OvnClientTestSuite) testaddressSetFilter() {
+func (suite *OvnClientTestSuite) test_addressSetFilter() {
 	t := suite.T()
 	t.Parallel()
 

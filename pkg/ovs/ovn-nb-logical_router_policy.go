@@ -18,15 +18,15 @@ func (c OvnClient) AddLogicalRouterPolicy(lrName string, priority int, match, ac
 		return fmt.Errorf("new policy for logical router %s: %v", lrName, err)
 	}
 
-	if err := c.CreateLogicalRouterPolicys(lrName, policy); err != nil {
+	if err := c.CreateLogicalRouterPolicies(lrName, policy); err != nil {
 		return fmt.Errorf("add policy to logical router %s: %v", lrName, err)
 	}
 
 	return nil
 }
 
-// CreateLogicalRouterPolicys create several logical router policy once
-func (c OvnClient) CreateLogicalRouterPolicys(lrName string, policies ...*ovnnb.LogicalRouterPolicy) error {
+// CreateLogicalRouterPolicies create several logical router policy once
+func (c OvnClient) CreateLogicalRouterPolicies(lrName string, policies ...*ovnnb.LogicalRouterPolicy) error {
 	if len(policies) == 0 {
 		return nil
 	}
@@ -140,8 +140,8 @@ func (c OvnClient) ClearLogicalRouterPolicy(lrName string) error {
 	ops = append(ops, policyClearOp...)
 	ops = append(ops, policyDelOp...)
 
-	if err = c.Transact("lr-policies-del", ops); err != nil {
-		return fmt.Errorf("delete logical router %s policy: %v", lrName, err)
+	if err = c.Transact("lr-policy-clear", ops); err != nil {
+		return fmt.Errorf("clear logical router %s policy: %v", lrName, err)
 	}
 
 	return nil

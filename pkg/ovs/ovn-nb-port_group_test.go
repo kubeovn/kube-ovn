@@ -284,7 +284,7 @@ func (suite *OvnClientTestSuite) testPortGroupALLNotExist() {
 	})
 }
 
-func (suite *OvnClientTestSuite) testportGroupUpdatePortOp() {
+func (suite *OvnClientTestSuite) test_portGroupUpdatePortOp() {
 	t := suite.T()
 	t.Parallel()
 
@@ -352,7 +352,7 @@ func (suite *OvnClientTestSuite) testportGroupUpdatePortOp() {
 	})
 }
 
-func (suite *OvnClientTestSuite) testportGroupUpdateAclOp() {
+func (suite *OvnClientTestSuite) test_portGroupUpdateAclOp() {
 	t := suite.T()
 	t.Parallel()
 
@@ -420,7 +420,7 @@ func (suite *OvnClientTestSuite) testportGroupUpdateAclOp() {
 	})
 }
 
-func (suite *OvnClientTestSuite) testportGroupOp() {
+func (suite *OvnClientTestSuite) test_portGroupOp() {
 	t := suite.T()
 	t.Parallel()
 

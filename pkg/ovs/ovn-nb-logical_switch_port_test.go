@@ -230,7 +230,7 @@ func (suite *OvnClientTestSuite) testCreateLocalnetLogicalSwitchPort() {
 	})
 
 	t.Run("create localnet logical switch port without vlan id", func(t *testing.T) {
-		lspName := "test-create-localnet-port-lsp-no-vlanid"
+		lspName := "test-create-localnet-port-lsp-no-vlan-id"
 		err = ovnClient.CreateLocalnetLogicalSwitchPort(lsName, lspName, provider, 0)
 		require.NoError(t, err)
 
@@ -420,7 +420,7 @@ func (suite *OvnClientTestSuite) testSetSetLogicalSwitchPortExternalIds() {
 	t.Parallel()
 
 	ovnClient := suite.ovnClient
-	lspName := "test-set-port-exid-lsp"
+	lspName := "test-set-port-ext-id-lsp"
 
 	lsp := &ovnnb.LogicalSwitchPort{
 		UUID: ovsclient.UUID(),
@@ -826,7 +826,7 @@ func (suite *OvnClientTestSuite) testEnablePortLayer2forward() {
 	t.Parallel()
 
 	ovnClient := suite.ovnClient
-	lsName := "test-enble-port-l2-ls"
+	lsName := "test-enable-port-l2-ls"
 	lspName := "test-enable-port-l2-lsp"
 
 	lsp := &ovnnb.LogicalSwitchPort{
@@ -1192,7 +1192,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPortOp() {
 	err := ovnClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
 
-	t.Run("merget ExternalIDs when exist ExternalIDs", func(t *testing.T) {
+	t.Run("merge ExternalIDs when exist ExternalIDs", func(t *testing.T) {
 		lsp := &ovnnb.LogicalSwitchPort{
 			UUID: ovsclient.UUID(),
 			Name: lspName,
@@ -1229,7 +1229,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPortOp() {
 	})
 
 	t.Run("attach ExternalIDs when does't exist ExternalIDs", func(t *testing.T) {
-		lspName := "test-create-op-lsp-none-exid"
+		lspName := "test-create-op-lsp-none-ext-id"
 
 		lsp := &ovnnb.LogicalSwitchPort{
 			UUID: ovsclient.UUID(),
@@ -1314,7 +1314,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPortOp() {
 		}, ops[1])
 }
 
-func (suite *OvnClientTestSuite) testgetLogicalSwitchPortSgs() {
+func (suite *OvnClientTestSuite) test_getLogicalSwitchPortSgs() {
 	t := suite.T()
 	t.Parallel()
 

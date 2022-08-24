@@ -195,6 +195,25 @@ func (c OvnClient) LogicalRouterUpdateNatOp(lrName string, natUUIDs []string, op
 	return c.LogicalRouterOp(lrName, mutation)
 }
 
+// LogicalRouterUpdateStaticRouteOp create operations add to or delete static route from logical router
+func (c OvnClient) LogicalRouterUpdateStaticRouteOp(lrName string, routeUUIDs []string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
+	if len(routeUUIDs) == 0 {
+		return nil, nil
+	}
+
+	mutation := func(lr *ovnnb.LogicalRouter) *model.Mutation {
+		mutation := &model.Mutation{
+			Field:   &lr.StaticRoutes,
+			Value:   routeUUIDs,
+			Mutator: op,
+		}
+
+		return mutation
+	}
+
+	return c.LogicalRouterOp(lrName, mutation)
+}
+
 // LogicalRouterOp create operations about logical router
 func (c OvnClient) LogicalRouterOp(lrName string, mutationsFunc ...func(lr *ovnnb.LogicalRouter) *model.Mutation) ([]ovsdb.Operation, error) {
 	lr, err := c.GetLogicalRouter(lrName, false)
