@@ -140,8 +140,8 @@ func (c OvnClient) ClearLogicalRouterPolicy(lrName string) error {
 	ops = append(ops, policyClearOp...)
 	ops = append(ops, policyDelOp...)
 
-	if err = c.Transact("lr-policies-del", ops); err != nil {
-		return fmt.Errorf("delete logical router %s policy: %v", lrName, err)
+	if err = c.Transact("lr-policy-clear", ops); err != nil {
+		return fmt.Errorf("clear logical router %s policy: %v", lrName, err)
 	}
 
 	return nil

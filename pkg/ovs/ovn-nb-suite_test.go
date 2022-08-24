@@ -214,6 +214,10 @@ func (suite *OvnClientTestSuite) Test_LogicalRouterUpdateNatOp() {
 	suite.testLogicalRouterUpdateNatOp()
 }
 
+func (suite *OvnClientTestSuite) Test_LogicalRouterUpdateStaticRouteOp() {
+	suite.testLogicalRouterUpdateStaticRouteOp()
+}
+
 func (suite *OvnClientTestSuite) Test_LogicalRouterOp() {
 	suite.testLogicalRouterOp()
 }
@@ -464,6 +468,35 @@ func (suite *OvnClientTestSuite) Test_newNat() {
 
 func (suite *OvnClientTestSuite) Test_natFilter() {
 	suite.testnatFilter()
+}
+
+/* logical_router_static_route unit test */
+func (suite *OvnClientTestSuite) Test_CreateLogicalRouterStaticRoutes() {
+	suite.testCreateLogicalRouterStaticRoutes()
+}
+
+func (suite *OvnClientTestSuite) Test_AddLogicalRouterStaticRoute() {
+	suite.testAddLogicalRouterStaticRoute()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteLogicalRouterStaticRoute() {
+	suite.testDeleteLogicalRouterStaticRoute()
+}
+
+func (suite *OvnClientTestSuite) Test_ClearLogicalRouterStaticRoute() {
+	suite.testClearLogicalRouterStaticRoute()
+}
+
+func (suite *OvnClientTestSuite) Test_GetLogicalRouterStaticRoute() {
+	suite.testGetLogicalRouterStaticRoute()
+}
+
+func (suite *OvnClientTestSuite) Test_ListLogicalRouterStaticRoutes() {
+	suite.testListLogicalRouterStaticRoutes()
+}
+
+func (suite *OvnClientTestSuite) Test_newLogicalRouterStaticRoute() {
+	suite.testnewLogicalRouterStaticRoute()
 }
 
 /* mixed operations unit test */

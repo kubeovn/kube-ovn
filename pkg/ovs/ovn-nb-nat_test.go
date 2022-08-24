@@ -365,7 +365,7 @@ func (suite *OvnClientTestSuite) testGetNat() {
 			require.NoError(t, err)
 		})
 
-		t.Run("external is different", func(t *testing.T) {
+		t.Run("external ip is different", func(t *testing.T) {
 			_, err := ovnClient.GetNat(lrName, natType, "192.168.30.255", logicalIP, false)
 			require.ErrorContains(t, err, "not found")
 		})
