@@ -310,6 +310,7 @@ func (c *Controller) InitIPAM() error {
 	ipsMap := make(map[string]*kubeovnv1.IP, len(ips))
 	for _, ip := range ips {
 		ipsMap[ip.Name] = ip
+		// just recover sts ip, old sts ip with empty pod type and other ip recover in later pod loop
 		if ip.Spec.PodType != "StatefulSet" {
 			continue
 		}
@@ -346,19 +347,8 @@ func (c *Controller) InitIPAM() error {
 		podName := c.getNameByPod(pod)
 		key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
 		for _, podNet := range podNets {
-			if !isOvnSubnet(podNet.Subnet) {
-				continue
-			}
 			if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
 				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-				if !isAlive && isStsPod {
-					if ipCR := ipsMap[portName]; ipCR != nil && ipCR.Spec.PodType == "" {
-						if _, _, _, err = c.ipam.GetStaticAddress(key, ipCR.Spec.IPAddress, ipCR.Spec.MacAddress, ipCR.Spec.Subnet); err != nil {
-							klog.Errorf("failed to init IPAM from IP CR %s: %v", ipCR.Name, err)
-						}
-					}
-					continue
-				}
 				ip := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
 				mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
 				subnet := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)]
