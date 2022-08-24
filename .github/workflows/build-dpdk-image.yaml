@@ -4,17 +4,15 @@ on: workflow_dispatch
 jobs:
   build:
     name: Build DPDK
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     steps:
-      - name: Check out code
-        uses: actions/checkout@v3
-
-      - name: Docker Buildx
-        uses: docker/setup-buildx-action@v2
+      - uses: actions/checkout@v3
+      - uses: docker/setup-buildx-action@v2
 
       - name: Build
         run: |
           make build-dpdk
+
       - name: Push
         if: ${{ github.ref == 'refs/heads/master' || contains(github.ref, 'release') }}
         env:

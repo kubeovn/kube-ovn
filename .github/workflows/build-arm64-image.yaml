@@ -20,45 +20,38 @@ env:
 jobs:
   build:
     name: Build arm64
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     steps:
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v3
+      - uses: actions/checkout@v3
+      - uses: docker/setup-buildx-action@v2
+      - uses: docker/setup-qemu-action@v2
+        with:
+          platforms: arm64
+
+      - uses: actions/setup-go@v3
         with:
           go-version: '${{ env.GO_VERSION }}'
           check-latest: true
         id: go
 
-      - name: Check out code into the Go module directory
-        uses: actions/checkout@v3
+      - name: Export Go full version
+        run: |
+          echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
-        with:
-          platforms: arm64
-
-      - name: Docker Buildx
-        uses: docker/setup-buildx-action@v2
-
-      - name: Go Build Cache
+      - name: Go Cache
         uses: actions/cache@v3
         with:
-          path: /home/runner/.cache/go-build
-          key: ${{ runner.os }}-arm64-go-build-${{ hashFiles('**/go.sum') }}
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-${{ env.GO_FULL_VER }}-arm64-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-arm64-go-build-
-
-      - name: Go Mod Cache
-        uses: actions/cache@v3
-        with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-arm64-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-arm64-go-
+            ${{ runner.os }}-${{ env.GO_FULL_VER }}-arm64-
 
       - name: Build
         run: |
           make release-arm || make release-arm
+
       - name: Push
         if: ${{ github.ref == 'refs/heads/master' || contains(github.ref, 'release') }}
         env:

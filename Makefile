@@ -38,19 +38,9 @@ build-go-arm:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn-cmd -ldflags $(GOLDFLAGS) -v ./cmd
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn-webhook -ldflags $(GOLDFLAGS) -v ./cmd/webhook
 
-.PHONY: build-bin
-build-bin:
-	docker run --rm -e GOOS=linux -e GOCACHE=/tmp -e GOARCH=$(ARCH) -e GOPROXY=https://goproxy.cn \
-		-u $(shell id -u):$(shell id -g) \
-		-v $(CURDIR):/go/src/github.com/kubeovn/kube-ovn:ro \
-		-v $(CURDIR)/dist:/go/src/github.com/kubeovn/kube-ovn/dist/ \
-		golang:$(GO_VERSION) /bin/bash -c '\
-		cd /go/src/github.com/kubeovn/kube-ovn && \
-		make build-go '
-
-.PHONY: build-dev-images
-build-dev-images: build-bin
-	docker build -t $(REGISTRY)/kube-ovn:$(DEV_TAG) --build-arg ARCH=amd64 -f dist/images/Dockerfile dist/images/
+.PHONY: build-dev
+build-dev: build-go
+	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 -t $(REGISTRY)/kube-ovn:$(DEV_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
 
 .PHONY: build-dpdk
 build-dpdk:
@@ -69,14 +59,23 @@ base-amd64-dpdk:
 base-arm64:
 	docker buildx build --platform linux/arm64 --build-arg ARCH=arm64 -t $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-arm64 -o type=docker -f dist/images/Dockerfile.base dist/images/
 
-.PHONY: release
-release: lint build-go
+.PHONY: image-kube-ovn
+image-kube-ovn: build-go
 	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
 	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-no-avx512 -o type=docker -f dist/images/Dockerfile.no-avx512 dist/images/
 	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-dpdk -o type=docker -f dist/images/Dockerfile.dpdk dist/images/
+
+.PHONY: image-vpc-nat-gateway
+image-vpc-nat-gateway:
 	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 -t $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
+
+.PHONY: image-centos-compile
+image-centos-compile:
 	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 -t $(REGISTRY)/centos7-compile:$(RELEASE_TAG) -o type=docker -f dist/images/compile/centos7/Dockerfile fastpath/
-#	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 -t $(REGISTRY)/centos8-compile:$(RELEASE_TAG) -o type=docker -f dist/images/compile/centos8/Dockerfile fastpath/
+	# docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 -t $(REGISTRY)/centos8-compile:$(RELEASE_TAG) -o type=docker -f dist/images/compile/centos8/Dockerfile fastpath/
+
+.PHONY: release
+release: lint image-kube-ovn image-vpc-nat-gateway image-centos-compile
 
 .PHONY: release-arm
 release-arm: build-go-arm
@@ -91,12 +90,21 @@ push-dev:
 push-release: release
 	docker push $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
 
-.PHONY: tar
-tar:
+.PHONY: tar-kube-ovn
+tar-kube-ovn:
 	docker save $(REGISTRY)/kube-ovn:$(RELEASE_TAG) $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-no-avx512 -o kube-ovn.tar
+
+.PHONY: tar-vpc-nat-gateway
+tar-vpc-nat-gateway:
 	docker save $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) -o vpc-nat-gateway.tar
+
+.PHONY: tar-centos-compile
+tar-centos-compile:
 	docker save $(REGISTRY)/centos7-compile:$(RELEASE_TAG) -o centos7-compile.tar
-#	docker save $(REGISTRY)/centos8-compile:$(RELEASE_TAG) -o centos8-compile.tar
+	# docker save $(REGISTRY)/centos8-compile:$(RELEASE_TAG) -o centos8-compile.tar
+
+.PHONY: tar
+tar: tar-kube-ovn tar-vpc-nat-gateway tar-centos-compile
 
 .PHONY: base-tar-amd64
 base-tar-amd64:
@@ -212,14 +220,9 @@ kind-install-underlay: kind-load-image kind-untaint-control-plane
 	ENABLE_SSL=true ENABLE_VLAN=true VLAN_NIC=eth0 bash install-underlay.sh
 	kubectl describe no
 
-.PHONY: kind-install-single
-kind-install-single: kind-load-image
-	ENABLE_SSL=true dist/images/install.sh
-	kubectl describe no
-
 .PHONY: kind-install-ipv6
-kind-install-ipv6: kind-load-image kind-untaint-control-plane
-	ENABLE_SSL=true IPV6=true dist/images/install.sh
+kind-install-ipv6:
+	IPV6=true $(MAKE) kind-install
 
 .PHONY: kind-install-underlay-ipv6
 kind-install-underlay-ipv6: kind-load-image kind-untaint-control-plane
@@ -234,9 +237,8 @@ kind-install-underlay-ipv6: kind-load-image kind-untaint-control-plane
 	ENABLE_SSL=true IPV6=true ENABLE_VLAN=true VLAN_NIC=eth0 bash install-underlay.sh
 
 .PHONY: kind-install-dual
-kind-install-dual: kind-load-image kind-untaint-control-plane
-	ENABLE_SSL=true DUAL_STACK=true dist/images/install.sh
-	kubectl describe no
+kind-install-dual:
+	DUAL_STACK=true $(MAKE) kind-install
 
 .PHONY: kind-install-underlay-dual
 kind-install-underlay-dual: kind-load-image kind-untaint-control-plane
@@ -278,7 +280,6 @@ kind-install-multus: kind-load-image kind-untaint-control-plane
 	kubectl apply -f "$(MULTUS_YAML)"
 	kubectl -n kube-system rollout status ds kube-multus-ds
 	kubectl apply -f yamls/lb-svc-attachment.yaml
-	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
 	kind load docker-image --name kube-ovn $(VPC_NAT_GW_IMG)
 	ENABLE_SSL=true ENABLE_LB_SVC=true CNI_CONFIG_PRIORITY=10 dist/images/install.sh
 	kubectl describe no
@@ -299,7 +300,6 @@ kind-install-ic:
 	kubectl apply -f ovn-ic-1.yaml
 	sleep 6
 	kubectl -n kube-system get pods | grep ovs-ovn | awk '{print $$1}' | xargs kubectl -n kube-system delete pod
-
 
 .PHONY: kind-install-cilium
 kind-install-cilium: kind-load-image kind-untaint-control-plane

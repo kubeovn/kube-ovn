@@ -32,22 +32,22 @@ jobs:
       - name: Check out OVS
         uses: actions/checkout@v3
         with:
-          repository: kubeovn/ovs
-          ref: ovn-22.03.1
+          repository: openvswitch/ovs
+          ref: branch-2.17
           path: ovs
 
       - name: Check out OVN
         uses: actions/checkout@v3
         with:
           repository: ovn-org/ovn
-          ref: v22.03.1
+          ref: branch-22.03
           path: ovn
 
       - name: Apply OVS patches
         working-directory: ovs
         run: |
-          # Carefully release NBL in Windows
-          Invoke-WebRequest -Uri "https://github.com/openvswitch/ovs/commit/bb78070fc7ec0d67e80d9d15de482ef830196da3.patch" -OutFile ..\ovs-01.patch
+          # ovsdb-idl: Support write-only-changed IDL monitor mode
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/24c1b28c416d3a0312c10a9fe9341c04b8b31ce9.patch" -OutFile ..\ovs-01.patch
           # fix kernel crash
           Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/64383c14a9c25e9e0ca53c6758d9499c60132536.patch" -OutFile ..\ovs-02.patch
           # support for building in github actions
@@ -67,7 +67,7 @@ jobs:
           # add support for windows
           Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/064ea5f0253b6ba68c8952b61e39ed2fb0f58a91.patch" -OutFile ..\ovn-02.patch
           # set br-int controller to TCP 127.0.0.1:6653
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/3a2cce5217c474cd1d8adda94b3c3153adfe6cd2.patch" -OutFile ..\ovn-03.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/e498c03eda80248dd786775d8f7779d9b895e3ff.patch" -OutFile ..\ovn-03.patch
           git apply ..\ovn-01.patch
           git apply ..\ovn-02.patch
           git apply ..\ovn-03.patch
@@ -128,31 +128,28 @@ jobs:
     name: Build Kube-OVN
     runs-on: windows-2019
     steps:
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v3
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
         with:
           go-version: '${{ env.GO_VERSION }}'
           check-latest: true
         id: go
 
-      - name: Check out code
-        uses: actions/checkout@v3
+      - name: Export Go full version
+        run: |
+          $goVersion = (go version).Split()[2]
+          $entry = [string]::Format("GO_FULL_VER={0}", $goVersion)
+          Add-Content -Path $env:GITHUB_ENV -Value $entry
 
-      - name: Go Build Cache
+      - name: Go Cache
         uses: actions/cache@v3
         with:
-          path: /home/runner/.cache/go-build
-          key: ${{ runner.os }}-go-x86-build-${{ hashFiles('**/go.sum') }}
+          path: |
+            ~\AppData\Local\go-build
+            ~\go\pkg\mod
+          key: ${{ runner.os }}-${{ env.GO_FULL_VER }}-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-x86-build-
-
-      - name: Go Mod Cache
-        uses: actions/cache@v3
-        with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+            ${{ runner.os }}-${{ env.GO_FULL_VER }}-
 
       - name: Install gosec
         run: |
@@ -182,8 +179,7 @@ jobs:
       - build-kube-ovn
     runs-on: windows-2019
     steps:
-      - name: Check out code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
       - name: Download Kube-OVN binaries
         uses: actions/download-artifact@v3

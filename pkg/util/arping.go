@@ -42,11 +42,12 @@ func Arping(nic, srcIP, dstIP string, timeout time.Duration, maxRetry int) (net.
 		return nil, count, fmt.Errorf("failed to set up ARP client: %v", err)
 	}
 
+	var mac net.HardwareAddr
 	for ; count < maxRetry; count++ {
 		if err = client.SetDeadline(time.Now().Add(timeout)); err != nil {
 			continue
 		}
-		if mac, err := client.Resolve(target); err == nil {
+		if mac, err = client.Resolve(target); err == nil {
 			return mac, count + 1, nil
 		}
 	}
