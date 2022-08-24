@@ -328,6 +328,7 @@ func (c *Controller) InitIPAM() error {
 	ipsMap := make(map[string]*kubeovnv1.IP, len(ips))
 	for _, ip := range ips {
 		ipsMap[ip.Name] = ip
+		// just recover sts ip, old sts ip with empty pod type and other ip recover in later pod loop
 		if ip.Spec.PodType != "StatefulSet" {
 			continue
 		}
@@ -364,9 +365,6 @@ func (c *Controller) InitIPAM() error {
 		podName := c.getNameByPod(pod)
 		key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
 		for _, podNet := range podNets {
-			if !isOvnSubnet(podNet.Subnet) {
-				continue
-			}
 			if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
 				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 				if !isAlive && isStsPod {
@@ -374,8 +372,11 @@ func (c *Controller) InitIPAM() error {
 						if _, _, _, err = c.ipam.GetStaticAddress(key, ipCR.Name, ipCR.Spec.IPAddress, ipCR.Spec.MacAddress, ipCR.Spec.Subnet, true); err != nil {
 							klog.Errorf("failed to init IPAM from IP CR %s: %v", ipCR.Name, err)
 						}
+						if err = c.createOrUpdateCrdIPs(podName, ipCR.Spec.IPAddress, ipCR.Spec.MacAddress, ipCR.Spec.Subnet, pod.Namespace, pod.Spec.NodeName, podNet.ProviderName, podType, &ipCR); err != nil {
+							klog.Errorf("failed to create/update ips CR %s.%s with ip address %s: %v", podName, pod.Namespace, ipCR.Spec.IPAddress, err)
+						}
+						continue
 					}
-					continue
 				}
 				ip := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
 				mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
