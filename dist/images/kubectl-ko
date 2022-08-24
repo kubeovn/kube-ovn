@@ -378,19 +378,23 @@ checkDeployment(){
 }
 
 checkKubeProxy(){
-  dsMode=`kubectl get ds -n kube-system | grep kube-proxy || true`
-  if [ -z "$dsMode" ]; then
-    nodeIps=`kubectl get node -o wide | grep -v "INTERNAL-IP" | awk '{print $6}'`
-    for node in $nodeIps
-    do
-      healthResult=`curl -g -6 -sL -w %{http_code} http://[$node]:10256/healthz -o /dev/null | grep -v 200 || true`
+  if kubectl get ds -n kube-system --no-headers -o custom-columns=NAME:.metadata.name | grep '^kube-proxy$' >/dev/null; then
+    checkDaemonSet kube-proxy
+  else
+    for node in $(kubectl get node --no-headers -o custom-columns=NAME:.metadata.name); do
+      local pod=$(kubectl get pod -n $KUBE_OVN_NS -l app=kube-ovn-cni -o 'jsonpath={.items[?(@.spec.nodeName=="'$node'")].metadata.name}')
+      local ip=$(kubectl get pod -n $KUBE_OVN_NS -l app=kube-ovn-cni -o 'jsonpath={.items[?(@.spec.nodeName=="'$node'")].status.podIP}')
+      local arg=""
+      if [[ $ip =~ .*:.* ]]; then
+        arg="g6"
+        ip="[$ip]"
+      fi
+      healthResult=$(kubectl -n $KUBE_OVN_NS exec $pod -- curl -s${arg} -m 3 -w %{http_code} http://$ip:10256/healthz -o /dev/null | grep -v 200 || true)
       if [ -n "$healthResult" ]; then
         echo "$node kube-proxy's health check failed"
         exit 1
       fi
     done
-  else
-    checkDaemonSet kube-proxy
   fi
   echo "kube-proxy ready"
 }
