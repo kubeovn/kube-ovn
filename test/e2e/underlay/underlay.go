@@ -307,7 +307,7 @@ var _ = Describe("[Underlay]", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        name,
 					Namespace:   Namespace,
-					Annotations: map[string]string{util.LogicalSwitchAnnotation: name},
+					Annotations: map[string]string{util.LogicalSwitchAnnotation: subnet.Name},
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
@@ -376,9 +376,10 @@ var _ = Describe("[Underlay]", func() {
 				var autoMount bool
 				pod := &corev1.Pod{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      f.GetName(),
-						Namespace: Namespace,
-						Labels:    map[string]string{"e2e": "true"},
+						Name:        f.GetName(),
+						Namespace:   Namespace,
+						Labels:      map[string]string{"e2e": "true"},
+						Annotations: map[string]string{util.LogicalSwitchAnnotation: Subnet},
 					},
 					Spec: corev1.PodSpec{
 						Containers: []corev1.Container{
@@ -447,9 +448,10 @@ var _ = Describe("[Underlay]", func() {
 					var autoMount bool
 					pod := &corev1.Pod{
 						ObjectMeta: metav1.ObjectMeta{
-							Name:      f.GetName(),
-							Namespace: Namespace,
-							Labels:    map[string]string{"e2e": "true"},
+							Name:        f.GetName(),
+							Namespace:   Namespace,
+							Labels:      map[string]string{"e2e": "true"},
+							Annotations: map[string]string{util.LogicalSwitchAnnotation: Subnet},
 						},
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -538,9 +540,10 @@ var _ = Describe("[Underlay]", func() {
 					var autoMount bool
 					pod := &corev1.Pod{
 						ObjectMeta: metav1.ObjectMeta{
-							Name:      f.GetName(),
-							Namespace: Namespace,
-							Labels:    map[string]string{"e2e": "true"},
+							Name:        f.GetName(),
+							Namespace:   Namespace,
+							Labels:      map[string]string{"e2e": "true"},
+							Annotations: map[string]string{util.LogicalSwitchAnnotation: Subnet},
 						},
 						Spec: corev1.PodSpec{
 							NodeName: nodes[0],
@@ -631,9 +634,10 @@ var _ = Describe("[Underlay]", func() {
 					for i := range nodes {
 						pods[i] = &corev1.Pod{
 							ObjectMeta: metav1.ObjectMeta{
-								Name:      fmt.Sprintf("%s-%d", name, i+1),
-								Namespace: Namespace,
-								Labels:    map[string]string{"e2e": "true"},
+								Name:        fmt.Sprintf("%s-%d", name, i+1),
+								Namespace:   Namespace,
+								Labels:      map[string]string{"e2e": "true"},
+								Annotations: map[string]string{util.LogicalSwitchAnnotation: Subnet},
 							},
 							Spec: corev1.PodSpec{
 								NodeName: nodes[i],
@@ -722,9 +726,10 @@ var _ = Describe("[Underlay]", func() {
 					var autoMount bool
 					upod := &corev1.Pod{
 						ObjectMeta: metav1.ObjectMeta{
-							Name:      f.GetName(),
-							Namespace: Namespace,
-							Labels:    map[string]string{"e2e": "true"},
+							Name:        f.GetName(),
+							Namespace:   Namespace,
+							Labels:      map[string]string{"e2e": "true"},
+							Annotations: map[string]string{util.LogicalSwitchAnnotation: Subnet},
 						},
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -810,9 +815,10 @@ var _ = Describe("[Underlay]", func() {
 			var autoMount bool
 			pod := &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      f.GetName(),
-					Namespace: Namespace,
-					Labels:    map[string]string{"e2e": "true"},
+					Name:        f.GetName(),
+					Namespace:   Namespace,
+					Labels:      map[string]string{"e2e": "true"},
+					Annotations: map[string]string{util.LogicalSwitchAnnotation: Subnet},
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
