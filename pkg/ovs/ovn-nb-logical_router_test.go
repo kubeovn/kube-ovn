@@ -66,7 +66,6 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouter() {
 		require.NoError(t, err)
 		require.Empty(t, lr.Policies)
 	})
-
 }
 
 func (suite *OvnClientTestSuite) testDeleteLogicalRouter() {
@@ -278,7 +277,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdateNatOp() {
 	err := ovnClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
-	t.Run("add new nat rule to logical router", func(t *testing.T) {
+	t.Run("add new nat to logical router", func(t *testing.T) {
 		t.Parallel()
 		ops, err := ovnClient.LogicalRouterUpdateNatOp(lrName, []string{uuid}, ovsdb.MutateOperationInsert)
 		require.NoError(t, err)
@@ -297,7 +296,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdateNatOp() {
 		}, ops[0].Mutations)
 	})
 
-	t.Run("del policy from logical router", func(t *testing.T) {
+	t.Run("del nat from logical router", func(t *testing.T) {
 		t.Parallel()
 		ops, err := ovnClient.LogicalRouterUpdateNatOp(lrName, []string{uuid}, ovsdb.MutateOperationDelete)
 		require.NoError(t, err)
@@ -319,6 +318,62 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdateNatOp() {
 	t.Run("should return err when logical router does not exist", func(t *testing.T) {
 		t.Parallel()
 		_, err := ovnClient.LogicalRouterUpdateNatOp("test-update-nat-op-lr-non-existent", []string{uuid}, ovsdb.MutateOperationInsert)
+		require.ErrorContains(t, err, "not found logical router")
+	})
+}
+
+func (suite *OvnClientTestSuite) testLogicalRouterUpdateStaticRouteOp() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lrName := "test-update-route-op-lr"
+	uuid := ovsclient.UUID()
+
+	err := ovnClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
+	t.Run("add new static route to logical router", func(t *testing.T) {
+		t.Parallel()
+		ops, err := ovnClient.LogicalRouterUpdateStaticRouteOp(lrName, []string{uuid}, ovsdb.MutateOperationInsert)
+		require.NoError(t, err)
+		require.Equal(t, []ovsdb.Mutation{
+			{
+				Column:  "static_routes",
+				Mutator: ovsdb.MutateOperationInsert,
+				Value: ovsdb.OvsSet{
+					GoSet: []interface{}{
+						ovsdb.UUID{
+							GoUUID: uuid,
+						},
+					},
+				},
+			},
+		}, ops[0].Mutations)
+	})
+
+	t.Run("del static route from logical router", func(t *testing.T) {
+		t.Parallel()
+		ops, err := ovnClient.LogicalRouterUpdateStaticRouteOp(lrName, []string{uuid}, ovsdb.MutateOperationDelete)
+		require.NoError(t, err)
+		require.Equal(t, []ovsdb.Mutation{
+			{
+				Column:  "static_routes",
+				Mutator: ovsdb.MutateOperationDelete,
+				Value: ovsdb.OvsSet{
+					GoSet: []interface{}{
+						ovsdb.UUID{
+							GoUUID: uuid,
+						},
+					},
+				},
+			},
+		}, ops[0].Mutations)
+	})
+
+	t.Run("should return err when logical router does not exist", func(t *testing.T) {
+		t.Parallel()
+		_, err := ovnClient.LogicalRouterUpdateStaticRouteOp("test-update-route-op-lr-non-existent", []string{uuid}, ovsdb.MutateOperationInsert)
 		require.ErrorContains(t, err, "not found logical router")
 	})
 }
