@@ -269,4 +269,4 @@ ovs-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/memory-trim-on-compaction o
 ovs-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/memory-trim-on-compaction on
 
 chmod 600 /etc/ovn/*
-tail -f /var/log/ovn/ovn-northd.log
+tail --follow=name --retry /var/log/ovn/ovn-northd.log

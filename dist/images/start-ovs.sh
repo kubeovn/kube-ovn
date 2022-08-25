@@ -174,4 +174,4 @@ sleep ${FLOW_WAIT}
 ovs-vsctl --no-wait set open_vswitch . other_config:flow-restore-wait="false"
 
 chmod 600 /etc/openvswitch/*
-tail -f /var/log/ovn/ovn-controller.log
+tail --follow=name --retry /var/log/ovn/ovn-controller.log
