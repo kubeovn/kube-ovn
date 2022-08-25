@@ -16,7 +16,7 @@ modprobe vfio-pci
 
 
 # band nic to dpdk driver
-driverctl set-override ${DPDK_DEV}  modprobe vfio-pci
+driverctl set-override ${DPDK_DEV} vfio-pci
 
 # link sock
 mkdir -p /usr/local/var/run

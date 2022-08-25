@@ -30,6 +30,7 @@ RUN cd /usr/src/ && \
     cd ovs && \
     git checkout c50a0f080d95e9027b7ba3a70150b02c2377c721 && \
     curl -s https://github.com/kubeovn/ovs/commit/22ea22c40b46ee5adeae977ff6cfca81b3ff25d7.patch | git apply && \
+    curl -s https://github.com/openvswitch/ovs/commit/a432b1eb496cc1606873068c26716977a02029e2.patch | git apply && \
     # compile without avx512
     if [ "$ARCH" = "amd64" -a "$NO_AVX512" = "true" ]; then curl -s https://github.com/kubeovn/ovs/commit/38c59e078d69b343f56ab0f380fb9f42b94b7c02.patch | git apply; fi && \
     ./boot.sh && \
