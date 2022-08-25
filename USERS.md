@@ -9,3 +9,4 @@ Share you story about the Kube-OVN journey with the community.
 | User | China Yealink | https://www.yealink.com/ | Yealink uses Kube-OVN as the cloud native SDN component in Private Cloud. |
 | User | Inspur | https://www.inspur.com/ | Inspur uses Kube-OVN as the cloud native SDN component in Private Cloud. |
 | User | GPUHPC | https://gpuhpc.com/ | GPUHPC uses Kube-OVN as the cloud native SDN component in Edge Cloud. |
+| User | 99Cloud | https://www.99cloud.net/ | 99Cloud uses Kube-OVN to provider cloud native network for VM, Kata, VNF in Hybird Cloud. |
