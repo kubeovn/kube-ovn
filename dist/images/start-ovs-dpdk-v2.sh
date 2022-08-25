@@ -103,4 +103,4 @@ ovs-vsctl set open . external-ids:ovn-remote-probe-interval=10000
 ovs-vsctl set open . external-ids:ovn-openflow-probe-interval=180
 ovs-vsctl set open . external-ids:ovn-encap-type=geneve
 
-tail -f /var/log/openvswitch/ovs-vswitchd.log
+tail --follow=name --retry /var/log/openvswitch/ovs-vswitchd.log
