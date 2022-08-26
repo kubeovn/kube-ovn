@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-ROUTE_TABLE=100
-
 function exec_cmd() {
     cmd=${@:1:${#}}
     $cmd
@@ -21,13 +19,6 @@ function init() {
     ip link set net1 up
     ip link set dev net1 arp off
     lanCIDR=$1
-    if [ $(ip rule show iif net1 | wc -l) -eq 0 ]; then
-        exec_cmd "ip rule add iif net1 table $ROUTE_TABLE"
-    fi
-    if [ $(ip rule show iif eth0 | wc -l) -eq 0 ]; then
-        exec_cmd "ip rule add iif eth0 table $ROUTE_TABLE"
-    fi
-    exec_cmd "ip route replace $lanCIDR dev eth0 table $ROUTE_TABLE"
 
     # add static chain
     iptables -t nat -N SNAT_FILTER
@@ -54,7 +45,7 @@ function add_vpc_internal_route() {
         cidr=${arr[0]}
         nextHop=${arr[1]}
 
-        exec_cmd "ip route replace $cidr via $nextHop dev eth0 table $ROUTE_TABLE"
+        exec_cmd "ip route replace $cidr via $nextHop dev eth0"
     done
 }
 
@@ -66,7 +57,7 @@ function del_vpc_internal_route() {
         arr=(${rule//,/ })
         cidr=${arr[0]}
 
-        exec_cmd "ip route del $cidr table $ROUTE_TABLE"
+        exec_cmd "ip route del $cidr dev eth0"
     done
 }
 
@@ -79,9 +70,11 @@ function add_vpc_external_route() {
         cidr=${arr[0]}
         nextHop=${arr[1]}
 
-        exec_cmd "ip route replace $cidr dev net1 table $ROUTE_TABLE"
+        exec_cmd "ip route delete default dev eth0"
+        # remove useless default route about dev eth0
         sleep 1
-        exec_cmd "ip route replace default via $nextHop dev net1 table $ROUTE_TABLE"
+        exec_cmd "ip route replace default via $nextHop dev net1"
+        # add default route about dev net1 to public network
     done
 }
 
@@ -93,9 +86,9 @@ function del_vpc_external_route() {
         arr=(${rule//,/ })
         cidr=${arr[0]}
 
-        exec_cmd "ip route del $cidr table $ROUTE_TABLE"
+        exec_cmd "ip route del $cidr dev net1"
         sleep 1
-        exec_cmd "ip route del default table $ROUTE_TABLE"
+        exec_cmd "ip route del default dev net1"
     done
 }
 
