@@ -500,6 +500,39 @@ func (suite *OvnClientTestSuite) Test_newLogicalRouterStaticRoute() {
 	suite.test_newLogicalRouterStaticRoute()
 }
 
+/* dhcp options unit test */
+func (suite *OvnClientTestSuite) Test_UpdateDHCPOptions() {
+	suite.testUpdateDHCPOptions()
+}
+
+func (suite *OvnClientTestSuite) Test_updateDHCPv4Options() {
+	suite.testupdateDHCPv4Options()
+}
+
+func (suite *OvnClientTestSuite) Test_updateDHCPv6Options() {
+	suite.testupdateDHCPv6Options()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteDHCPOptionsByUUIDs() {
+	suite.testDeleteDHCPOptionsByUUIDs()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteDHCPOptions() {
+	suite.testDeleteDHCPOptions()
+}
+
+func (suite *OvnClientTestSuite) Test_GetDHCPOptions() {
+	suite.testGetDHCPOptions()
+}
+
+func (suite *OvnClientTestSuite) Test_ListDHCPOptions() {
+	suite.testListDHCPOptions()
+}
+
+func (suite *OvnClientTestSuite) Test_dhcpOptionsFilter() {
+	suite.testdhcpOptionsFilter()
+}
+
 /* mixed operations unit test */
 func (suite *OvnClientTestSuite) Test_CreateGatewayLogicalSwitch() {
 	suite.testCreateGatewayLogicalSwitch()
@@ -617,6 +650,7 @@ func newNbClient(addr string, timeout time.Duration) (client.Client, error) {
 		client.WithTable(&ovnnb.LoadBalancer{}),
 		client.WithTable(&ovnnb.AddressSet{}),
 		client.WithTable(&ovnnb.ACL{}),
+		client.WithTable(&ovnnb.DHCPOptions{}),
 	}
 	if _, err = c.Monitor(context.TODO(), c.NewMonitor(monitorOpts...)); err != nil {
 		return nil, err
