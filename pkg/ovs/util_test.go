@@ -38,6 +38,26 @@ func Test_parseIpv6RaConfigs(t *testing.T) {
 	})
 }
 
+func Test_parseDHCPOptions(t *testing.T) {
+	t.Parallel()
+
+	t.Run("return dhcp options", func(t *testing.T) {
+		t.Parallel()
+		dhcpOpt := parseDHCPOptions("server_id= 192.168.123.50,server_mac =00:00:00:08:0a:11,router=,test")
+		require.Equal(t, map[string]string{
+			"server_id":  "192.168.123.50",
+			"server_mac": "00:00:00:08:0a:11",
+		}, dhcpOpt)
+	})
+
+	t.Run("no validation dhcp options", func(t *testing.T) {
+		t.Parallel()
+		dhcpOpt := parseDHCPOptions("router=,test")
+		require.Equal(t, map[string]string{}, dhcpOpt)
+		require.Equal(t, 0, len(dhcpOpt))
+	})
+}
+
 func Test_getIpv6Prefix(t *testing.T) {
 	t.Parallel()
 
@@ -52,7 +72,6 @@ func Test_getIpv6Prefix(t *testing.T) {
 		config := getIpv6Prefix([]string{"192.168.100.1/24", "fd00::c0a8:6401/120", "fd00::c0a8:6501/60"})
 		require.Equal(t, []string{"120", "60"}, config)
 	})
-
 }
 
 func Test_matchAddressSetName(t *testing.T) {

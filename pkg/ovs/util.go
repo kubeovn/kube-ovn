@@ -79,6 +79,31 @@ func getIpv6Prefix(networks []string) []string {
 	return ipv6Prefix
 }
 
+// parseDHCPOptions parses dhcp options,
+// the raw option's format is: server_id=192.168.123.50,server_mac=00:00:00:08:0a:11
+func parseDHCPOptions(raw string) map[string]string {
+	// return default Ipv6RaConfigs
+	if len(raw) == 0 {
+		return nil
+	}
+
+	dhcpOpt := make(map[string]string)
+
+	// trim blank
+	raw = strings.ReplaceAll(raw, " ", "")
+	options := strings.Split(raw, ",")
+	for _, option := range options {
+		kv := strings.Split(option, "=")
+		// TODO: ignore invalidate option, maybe need further validation
+		if len(kv) != 2 || len(kv[0]) == 0 || len(kv[1]) == 0 {
+			continue
+		}
+		dhcpOpt[kv[0]] = kv[1]
+	}
+
+	return dhcpOpt
+}
+
 func matchAddressSetName(asName string) bool {
 	return addressSetNameRegex.MatchString(asName)
 }
