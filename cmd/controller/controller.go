@@ -53,8 +53,8 @@ func CmdMain() {
 		// conform to Gosec G114
 		// https://github.com/securego/gosec#available-rules
 		server := &http.Server{
-			Addr:        fmt.Sprintf("0.0.0.0:%d", config.PprofPort),
-			ReadTimeout: 3 * time.Second,
+			Addr:              fmt.Sprintf("0.0.0.0:%d", config.PprofPort),
+			ReadHeaderTimeout: 3 * time.Second,
 		}
 		klog.Fatal(server.ListenAndServe())
 	}()
