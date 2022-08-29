@@ -1,7 +1,9 @@
 package daemon
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"strings"
 	"syscall"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
+	"github.com/moby/sys/mountinfo"
 )
 
 func (csh cniServerHandler) validatePodRequest(req *request.CniRequest) error {
@@ -61,6 +64,12 @@ func removeShortSharedDir(pod *v1.Pod, volumeName string) (err error) {
 	sharedDir := getShortSharedDir(pod.UID, volumeName)
 	if _, err = os.Stat(sharedDir); os.IsNotExist(err) {
 		klog.Errorf("shared directory %s does not exist to unmount, %s", sharedDir, err)
+		return nil
+	}
+
+	foundMount, err := mountinfo.Mounted(sharedDir)
+	if errors.Is(err, fs.ErrNotExist) || (err == nil && !foundMount) {
+		klog.Infof("volume: %s not mounted, no need to unmount", sharedDir)
 		return nil
 	}
 	err = unix.Unmount(sharedDir, 0)
