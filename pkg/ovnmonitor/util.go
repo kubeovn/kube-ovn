@@ -2,7 +2,7 @@ package ovnmonitor
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -42,7 +42,7 @@ func (e *Exporter) getOvnStatus() map[string]int {
 	result["ovsdb-server-southbound"] = parseDbStatus(string(output))
 
 	// get ovn-northd status
-	pid, err := ioutil.ReadFile("/var/run/ovn/ovn-northd.pid")
+	pid, err := os.ReadFile("/var/run/ovn/ovn-northd.pid")
 	if err != nil {
 		klog.Errorf("read ovn-northd pid failed, err %v", err)
 		result["ovn-northd"] = 0
