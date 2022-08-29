@@ -18,7 +18,6 @@ function init() {
     iptables -t nat -N DNAT_FILTER
     ip link set net1 up
     ip link set dev net1 arp off
-    lanCIDR=$1
 
     # add static chain
     iptables -t nat -N SNAT_FILTER
@@ -70,26 +69,31 @@ function add_vpc_external_route() {
         cidr=${arr[0]}
         nextHop=${arr[1]}
 
-        exec_cmd "ip route delete default dev eth0"
-        # remove useless default route about dev eth0
-        sleep 1
         exec_cmd "ip route replace default via $nextHop dev net1"
-        # add default route about dev net1 to public network
+        # replace default route to dev net1 to access public network
+        # TODO: use multus macvlan to provider eth0 to skip this external route
+        sleep 1
+        ip route | grep "default via $nextHop dev net1"
+        # make sure route is added
+        # gw lost probably occured when you create >10 nat gw pod at the same time
+        # so add the same logic again in every eip add process
+
     done
 }
 
 function del_vpc_external_route() {
     # make sure inited
     iptables-save -t nat | grep  SNAT_FILTER | grep SHARED_SNAT
-    for rule in $@
-    do
-        arr=(${rule//,/ })
-        cidr=${arr[0]}
+    # never do this, if deleted, will cause error
 
-        exec_cmd "ip route del $cidr dev net1"
-        sleep 1
-        exec_cmd "ip route del default dev net1"
-    done
+    # for rule in $@
+    # do
+    #     arr=(${rule//,/ })
+    #     cidr=${arr[0]}
+    #     exec_cmd "ip route del $cidr dev net1"
+    #     sleep 1
+    #     exec_cmd "ip route del default dev net1"
+    # done
 }
 
 function add_eip() {
@@ -106,6 +110,9 @@ function add_eip() {
 
         exec_cmd "ip addr replace $eip dev net1"
         ip link set dev net1 arp on
+        # gw may lost, even if add_vpc_external_route add route successfully
+        exec_cmd "ip route replace default via $gateway dev net1"
+        ip route | grep "default via $gateway dev net1"
         exec_cmd "arping -c 3 -s $eip_without_prefix $gateway"
     done
 }
