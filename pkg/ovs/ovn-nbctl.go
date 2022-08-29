@@ -1161,7 +1161,7 @@ func (c Client) CreateIngressACL(pgName, asIngressName, asExceptName, svcAsName,
 	if logEnable {
 		ovnArgs = []string{MayExist, "--type=port-group", "--log", fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "to-lport", util.IngressDefaultDrop, fmt.Sprintf("%s.dst == $%s", ipSuffix, pgAs), "drop"}
 	} else {
-		ovnArgs = []string{MayExist, "--type=port-group", fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "to-lport", util.IngressDefaultDrop, fmt.Sprintf("%s.dst == $%s", ipSuffix, pgAs), "drop"}
+		ovnArgs = []string{MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressDefaultDrop, fmt.Sprintf("%s.dst == $%s", ipSuffix, pgAs), "drop"}
 	}
 
 	if len(npp) == 0 {
@@ -1192,7 +1192,7 @@ func (c Client) CreateEgressACL(pgName, asEgressName, asExceptName, protocol str
 	if logEnable {
 		ovnArgs = []string{"--", MayExist, "--type=port-group", "--log", fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "from-lport", util.EgressDefaultDrop, fmt.Sprintf("%s.src == $%s", ipSuffix, pgAs), "drop"}
 	} else {
-		ovnArgs = []string{"--", MayExist, "--type=port-group", fmt.Sprintf("--severity=%s", "warning"), "acl-add", pgName, "from-lport", util.EgressDefaultDrop, fmt.Sprintf("%s.src == $%s", ipSuffix, pgAs), "drop"}
+		ovnArgs = []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressDefaultDrop, fmt.Sprintf("%s.src == $%s", ipSuffix, pgAs), "drop"}
 	}
 	if len(npp) == 0 {
 		allowArgs = []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("%s.dst == $%s && %s.dst != $%s && %s.src == $%s", ipSuffix, asEgressName, ipSuffix, asExceptName, ipSuffix, pgAs), "allow-related"}
