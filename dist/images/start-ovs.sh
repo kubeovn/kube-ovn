@@ -5,7 +5,7 @@ HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
 OVN_DB_IPS=${OVN_DB_IPS:-}
 TUNNEL_TYPE=${TUNNEL_TYPE:-geneve}
-FLOW_WAIT=${FLOW_WAIT:-5}
+FLOW_LIMIT=${FLOW_LIMIT:-10}
 
 # Check required kernel module
 modinfo openvswitch
@@ -241,7 +241,16 @@ fi
 
 # Wait ovn-controller finish init flow compute and update it to vswitchd,
 # then update flow-restore-wait to indicate vswitchd to process flows
-sleep ${FLOW_WAIT}
+set +e
+flow_num=$(ovs-ofctl dump-flows br-int | wc -l)
+while [ $flow_num -le $FLOW_LIMIT ]
+do
+  echo "$flow_num flows now, waiting for ovs-vswitchd flow ready"
+  sleep 1
+  flow_num=$(ovs-ofctl dump-flows br-int | wc -l)
+done
+set -e
+
 ovs-vsctl --no-wait set open_vswitch . other_config:flow-restore-wait="false"
 
 chmod 600 /etc/openvswitch/*
