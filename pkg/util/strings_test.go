@@ -20,7 +20,7 @@ func TestDoubleQuotedFields(t *testing.T) {
 			want: []string{"abc", "def", "123"},
 		},
 		{
-			name: "with quotes",
+			name: "with quotes 1",
 			arg:  `abc "def xyz" 123`,
 			want: []string{"abc", "def xyz", "123"},
 		},
@@ -35,7 +35,7 @@ func TestDoubleQuotedFields(t *testing.T) {
 			want: []string{"abc", " def xyz", "123"},
 		},
 		{
-			name: "with quotes 3",
+			name: "with quotes 4",
 			arg:  `abc " def xyz " 123`,
 			want: []string{"abc", " def xyz ", "123"},
 		},
