@@ -22,27 +22,27 @@ require (
 	github.com/mdlayher/arp v0.0.0-20220512170110-6706a2966875
 	github.com/neverlee/keymutex v0.0.0-20171121013845-f593aa834bf9
 	github.com/oilbeater/go-ping v0.0.0-20200413021620-332b7197c5b5
-	github.com/onsi/ginkgo/v2 v2.1.4
-	github.com/onsi/gomega v1.20.0
+	github.com/onsi/ginkgo/v2 v2.1.5
+	github.com/onsi/gomega v1.20.1
 	github.com/osrg/gobgp v0.0.0-20190401195721-805d02fdfbc5
-	github.com/ovn-org/libovsdb v0.0.0-20220603173653-bbc32842d174
+	github.com/ovn-org/libovsdb v0.0.0-20220826133223-e4d2d8648be7
 	github.com/parnurzeal/gorequest v0.2.16
 	github.com/prometheus/client_golang v1.13.0
 	github.com/sirupsen/logrus v1.9.0
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.8.0
 	github.com/vishvananda/netlink v1.2.1-beta.2
-	golang.org/x/sys v0.0.0-20220825204002-c680a09ffe64
+	golang.org/x/sys v0.0.0-20220829200755-d48e67d00261
 	golang.org/x/time v0.0.0-20220722155302-e5dcc9cfc0b9
 	google.golang.org/grpc v1.49.0
-	gopkg.in/k8snetworkplumbingwg/multus-cni.v3 v3.9.0
-	k8s.io/api v0.24.3
-	k8s.io/apimachinery v0.24.3
+	gopkg.in/k8snetworkplumbingwg/multus-cni.v3 v3.9.1
+	k8s.io/api v0.24.4
+	k8s.io/apimachinery v0.24.4
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/klog/v2 v2.70.1
-	k8s.io/kubernetes v1.24.3
-	k8s.io/sample-controller v0.24.3
-	kubevirt.io/client-go v0.54.0
+	k8s.io/kubernetes v1.24.4
+	k8s.io/sample-controller v0.24.4
+	kubevirt.io/client-go v0.56.0
 	sigs.k8s.io/controller-runtime v0.12.3
 )
 
@@ -101,7 +101,7 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/openshift/api v0.0.0-20210105115604-44119421ec6b // indirect
+	github.com/openshift/api v0.0.0-20211217221424-8779abfbd571 // indirect
 	github.com/openshift/client-go v3.9.0+incompatible // indirect
 	github.com/openshift/custom-resource-status v1.1.2 // indirect
 	github.com/pborman/uuid v1.2.1 // indirect
@@ -138,15 +138,15 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apiextensions-apiserver v0.24.3 // indirect
-	k8s.io/cluster-bootstrap v0.24.3 // indirect
-	k8s.io/component-base v0.24.3 // indirect
-	k8s.io/component-helpers v0.24.3 // indirect
+	k8s.io/apiextensions-apiserver v0.24.4 // indirect
+	k8s.io/cluster-bootstrap v0.24.4 // indirect
+	k8s.io/component-base v0.24.4 // indirect
+	k8s.io/component-helpers v0.24.4 // indirect
 	k8s.io/kube-openapi v0.0.0-20220803164354-a70c9af30aea // indirect
 	k8s.io/kube-proxy v0.0.0 // indirect
 	k8s.io/utils v0.0.0-20220823124924-e9cbc92d1a73 // indirect
-	kubevirt.io/api v0.54.0 // indirect
-	kubevirt.io/containerized-data-importer-api v1.51.0 // indirect
+	kubevirt.io/api v0.56.0 // indirect
+	kubevirt.io/containerized-data-importer-api v1.54.0 // indirect
 	kubevirt.io/controller-lifecycle-operator-sdk/api v0.2.4 // indirect
 	moul.io/http2curl v1.0.0 // indirect
 	sigs.k8s.io/json v0.0.0-20220713155537-f223a00ba0e2 // indirect
@@ -161,33 +161,33 @@ replace (
 	github.com/openshift/api => github.com/openshift/api v0.0.0-20210428205234-a8389931bee7
 	github.com/openshift/client-go => github.com/openshift/client-go v0.0.0-20210112165513-ebc401615f47
 	github.com/openshift/library-go => github.com/mhenriks/library-go v0.0.0-20210511195009-51ba86622560
-	gopkg.in/k8snetworkplumbingwg/multus-cni.v3 => github.com/k8snetworkplumbingwg/multus-cni v0.0.0-20220621142415-3cda380ad148
-	k8s.io/api => k8s.io/api v0.24.3
-	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.24.3
-	k8s.io/apimachinery => k8s.io/apimachinery v0.24.3
-	k8s.io/apiserver => k8s.io/apiserver v0.24.3
-	k8s.io/cli-runtime => k8s.io/cli-runtime v0.24.3
-	k8s.io/client-go => k8s.io/client-go v0.24.3
-	k8s.io/cloud-provider => k8s.io/cloud-provider v0.24.3
-	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.24.3
-	k8s.io/code-generator => k8s.io/code-generator v0.24.3
-	k8s.io/component-base => k8s.io/component-base v0.24.3
-	k8s.io/component-helpers => k8s.io/component-helpers v0.24.3
-	k8s.io/controller-manager => k8s.io/controller-manager v0.24.3
-	k8s.io/cri-api => k8s.io/cri-api v0.24.3
-	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.24.3
-	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.24.3
-	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.24.3
-	k8s.io/kube-proxy => k8s.io/kube-proxy v0.24.3
-	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.24.3
-	k8s.io/kubectl => k8s.io/kubectl v0.24.3
-	k8s.io/kubelet => k8s.io/kubelet v0.24.3
-	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.24.3
-	k8s.io/metrics => k8s.io/metrics v0.24.3
-	k8s.io/mount-utils => k8s.io/mount-utils v0.24.3
-	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.24.3
-	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.24.3
-	kubevirt.io/api => kubevirt.io/api v0.53.1
-	kubevirt.io/client-go => kubevirt.io/client-go v0.53.1
-	kubevirt.io/containerized-data-importer => kubevirt.io/kubevirt-containerized-data-importer v1.47.0
+	gopkg.in/k8snetworkplumbingwg/multus-cni.v3 => github.com/k8snetworkplumbingwg/multus-cni v0.0.0-20220818150730-3d9cec4ec9d5
+	k8s.io/api => k8s.io/api v0.24.4
+	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.24.4
+	k8s.io/apimachinery => k8s.io/apimachinery v0.24.4
+	k8s.io/apiserver => k8s.io/apiserver v0.24.4
+	k8s.io/cli-runtime => k8s.io/cli-runtime v0.24.4
+	k8s.io/client-go => k8s.io/client-go v0.24.4
+	k8s.io/cloud-provider => k8s.io/cloud-provider v0.24.4
+	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.24.4
+	k8s.io/code-generator => k8s.io/code-generator v0.24.4
+	k8s.io/component-base => k8s.io/component-base v0.24.4
+	k8s.io/component-helpers => k8s.io/component-helpers v0.24.4
+	k8s.io/controller-manager => k8s.io/controller-manager v0.24.4
+	k8s.io/cri-api => k8s.io/cri-api v0.24.4
+	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.24.4
+	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.24.4
+	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.24.4
+	k8s.io/kube-proxy => k8s.io/kube-proxy v0.24.4
+	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.24.4
+	k8s.io/kubectl => k8s.io/kubectl v0.24.4
+	k8s.io/kubelet => k8s.io/kubelet v0.24.4
+	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.24.4
+	k8s.io/metrics => k8s.io/metrics v0.24.4
+	k8s.io/mount-utils => k8s.io/mount-utils v0.24.4
+	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.24.4
+	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.24.4
+	kubevirt.io/api => kubevirt.io/api v0.56.0
+	kubevirt.io/client-go => kubevirt.io/client-go v0.56.0
+	kubevirt.io/containerized-data-importer => kubevirt.io/kubevirt-containerized-data-importer v1.54.0
 )
