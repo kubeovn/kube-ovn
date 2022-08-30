@@ -35,9 +35,18 @@ cat /proc/cmdline"
 fi
 
 function quit {
-	/usr/share/ovn/scripts/grace_stop_ovn_controller
-	/usr/share/openvswitch/scripts/ovs-ctl stop
-	exit 0
+  set +e
+  for netns in /var/run/netns/*; do
+    nsenter --net=$netns sysctl -w net.ipv4.neigh.eth0.base_reachable_time_ms=180000;
+    nsenter --net=$netns sysctl -w net.ipv4.neigh.eth0.gc_stale_time=180;
+  done
+  # If the arp is in stale or delay status, stop vswitchd will lead prob failed.
+  # Wait a while for prob ready.
+  # As the timeout has been increased existing entry will not change to stale or delay at the moment
+  sleep 5
+  /usr/share/ovn/scripts/grace_stop_ovn_controller
+  /usr/share/openvswitch/scripts/ovs-ctl stop
+  exit 0
 }
 trap quit EXIT
 
@@ -252,6 +261,13 @@ done
 set -e
 
 ovs-vsctl --no-wait set open_vswitch . other_config:flow-restore-wait="false"
+
+set +e
+for netns in /var/run/netns/*; do
+  nsenter --net=$netns sysctl -w net.ipv4.neigh.eth0.base_reachable_time_ms=30000;
+  nsenter --net=$netns sysctl -w net.ipv4.neigh.eth0.gc_stale_time=60;
+done
+set -e
 
 chmod 600 /etc/openvswitch/*
 tail --follow=name --retry /var/log/ovn/ovn-controller.log
