@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -375,7 +376,7 @@ func (c *Controller) updateIptablesChain(protocol, table, chain, parent string, 
 		added++
 	}
 	for i := len(existingRules) - 1; i >= len(rules)-added; i-- {
-		if err = c.iptables[protocol].Delete(table, chain, existingRules[i]...); err != nil {
+		if err = c.iptables[protocol].Delete(table, chain, strconv.Itoa(i+added)); err != nil {
 			klog.Errorf(`failed to delete iptables rule %v: %v`, existingRules[i], err)
 			return err
 		}
