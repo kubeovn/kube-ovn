@@ -27,7 +27,6 @@ var _ = Describe("[Subnet]", func() {
 		if err := f.OvnClientSet.KubeovnV1().Subnets().Delete(context.Background(), f.GetName(), metav1.DeleteOptions{}); err != nil {
 			if !k8serrors.IsNotFound(err) {
 				klog.Fatalf("failed to delete subnet %s, %v", f.GetName(), err)
-
 			}
 		}
 		if err := f.KubeClientSet.CoreV1().Namespaces().Delete(context.Background(), f.GetName(), metav1.DeleteOptions{}); err != nil {
