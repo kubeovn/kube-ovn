@@ -3,6 +3,7 @@ package ovs
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"k8s.io/klog/v2"
 
@@ -300,8 +301,8 @@ func SetNetemQos(podName, podNamespace, iface, latency, limit, loss string) erro
 				if err != nil {
 					return err
 				}
-				err = ovsSet("port", ifName, fmt.Sprintf("qos=%s", qos))
-				if err != nil {
+
+				if err = ovsSet("port", ifName, fmt.Sprintf("qos=%s", qos)); err != nil {
 					return err
 				}
 			} else {
@@ -315,46 +316,93 @@ func SetNetemQos(podName, podNamespace, iface, latency, limit, loss string) erro
 						return nil
 					}
 
-					if err := ovsSet("qos", qos, qosCommandValues...); err != nil {
+					latencyVal, lossVal, limitVal, err := getNetemQosConfig(qos)
+					if err != nil {
+						klog.Errorf("failed to get other_config for qos %s: %v", qos, err)
 						return err
 					}
 
-					if latencyMs == 0 {
-						if err := ovsRemove("qos", qos, "other_config", "latency"); err != nil {
-							return err
-						}
+					if latencyVal == strconv.Itoa(latencyUs) && limitVal == limit && lossVal == loss {
+						klog.Infof("no value changed for netem qos, ignore")
+						continue
 					}
-					if limitPkts == 0 {
-						if err := ovsRemove("qos", qos, "other_config", "limit"); err != nil {
-							return err
-						}
+
+					if err = deleteNetemQosById(qos, iface, podName, podNamespace); err != nil {
+						klog.Errorf("failed to delete netem qos: %v", err)
+						return err
 					}
-					if lossPercent == 0 {
-						if err := ovsRemove("qos", qos, "other_config", "loss"); err != nil {
-							return err
-						}
+
+					qosCommandValues = append(qosCommandValues, "type=linux-netem", fmt.Sprintf(`external-ids:iface-id="%s"`, iface))
+					if podNamespace != "" && podName != "" {
+						qosCommandValues = append(qosCommandValues, fmt.Sprintf("external-ids:pod=%s/%s", podNamespace, podName))
+					}
+
+					qos, err := ovsCreate("qos", qosCommandValues...)
+					if err != nil {
+						klog.Errorf("failed to create netem qos: %v", err)
+						return err
+					}
+
+					if err = ovsSet("port", ifName, fmt.Sprintf("qos=%s", qos)); err != nil {
+						klog.Errorf("failed to set netem qos to port: %v", err)
+						return err
 					}
 				}
 			}
 		} else {
 			for _, qos := range qosList {
-				qosType, _ := ovsGet("qos", qos, "type", "")
-				if qosType != util.NetemQos {
-					continue
-				}
-
-				if err = ClearPortQosBinding(iface); err != nil {
-					klog.Errorf("failed to delete qos bingding info for interface %s: %v", iface, err)
-					return err
-				}
-
-				// reuse this function to delete qos record
-				if err = ClearPodBandwidth(podName, podNamespace, iface); err != nil {
-					klog.Errorf("failed to delete netemqos record for pod %s/%s: %v", podNamespace, podName, err)
+				if err := deleteNetemQosById(qos, iface, podName, podNamespace); err != nil {
+					klog.Errorf("failed to delete netem qos: %v", err)
 					return err
 				}
 			}
 		}
+	}
+	return nil
+}
+
+func getNetemQosConfig(qosId string) (string, string, string, error) {
+	var latency, loss, limit string
+
+	config, err := ovsGet("qos", qosId, "other_config", "")
+	if err != nil {
+		klog.Errorf("failed to get other_config for qos %s: %v", qosId, err)
+		return latency, loss, limit, err
+	}
+	if len(config) == 0 {
+		return latency, loss, limit, nil
+	}
+
+	values := strings.Split(strings.Trim(config, "{}"), ",")
+	for _, value := range values {
+		records := strings.Split(value, "=")
+		switch strings.TrimSpace(records[0]) {
+		case "latency":
+			latency = strings.TrimSpace(records[1])
+		case "loss":
+			loss = strings.TrimSpace(records[1])
+		case "limit":
+			limit = strings.TrimSpace(records[1])
+		}
+	}
+	return latency, loss, limit, nil
+}
+
+func deleteNetemQosById(qosId, iface, podName, podNamespace string) error {
+	qosType, _ := ovsGet("qos", qosId, "type", "")
+	if qosType != util.NetemQos {
+		return nil
+	}
+
+	if err := ClearPortQosBinding(iface); err != nil {
+		klog.Errorf("failed to delete qos bingding info for interface %s: %v", iface, err)
+		return err
+	}
+
+	// reuse this function to delete qos record
+	if err := ClearPodBandwidth(podName, podNamespace, iface); err != nil {
+		klog.Errorf("failed to delete netemqos record for pod %s/%s: %v", podNamespace, podName, err)
+		return err
 	}
 	return nil
 }
