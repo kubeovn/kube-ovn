@@ -62,7 +62,7 @@ func NewFramework(baseName, kubeConfig string) *Framework {
 }
 
 func (f *Framework) GetName() string {
-	return strings.Replace(CurrentSpecReport().FullText(), " ", "-", -1)
+	return strings.Replace(CurrentSpecReport().LeafNodeText, " ", "-", -1)
 }
 
 func (f *Framework) WaitProviderNetworkReady(providerNetwork string) error {
