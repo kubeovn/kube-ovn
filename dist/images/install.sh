@@ -1766,6 +1766,9 @@ spec:
             - name: OVN_DB_IPS
               value: $addresses
           volumeMounts:
+            - mountPath: /var/run/netns
+              name: host-ns
+              mountPropagation: HostToContainer
             - mountPath: /lib/modules
               name: host-modules
               readOnly: true
@@ -1834,6 +1837,9 @@ spec:
         - name: host-sys
           hostPath:
             path: /sys
+        - name: host-ns
+          hostPath:
+            path: /var/run/netns
         - name: cni-conf
           hostPath:
             path: /etc/cni/net.d
@@ -2251,6 +2257,9 @@ spec:
             - name: OVN_DB_IPS
               value: $addresses
           volumeMounts:
+            - mountPath: /var/run/netns
+              name: host-ns
+              mountPropagation: HostToContainer
             - mountPath: /lib/modules
               name: host-modules
               readOnly: true
@@ -2314,6 +2323,9 @@ spec:
         - name: host-sys
           hostPath:
             path: /sys
+        - name: host-ns
+          hostPath:
+            path: /var/run/netns
         - name: cni-conf
           hostPath:
             path: /etc/cni/net.d
