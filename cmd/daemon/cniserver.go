@@ -88,7 +88,15 @@ func CmdMain() {
 		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	}
-	klog.Fatal(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.PprofPort), mux))
+
+	// conform to Gosec G114
+	// https://github.com/securego/gosec#available-rules
+	server := &http.Server{
+		Addr:              fmt.Sprintf("0.0.0.0:%d", config.PprofPort),
+		ReadHeaderTimeout: 3 * time.Second,
+		Handler:           mux,
+	}
+	klog.Fatal(server.ListenAndServe())
 }
 
 func mvCNIConf() error {
