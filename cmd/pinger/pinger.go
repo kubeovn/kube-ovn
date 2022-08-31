@@ -5,6 +5,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"net/http"
 	_ "net/http/pprof" // #nosec
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/klog/v2"
@@ -26,7 +27,13 @@ func CmdMain() {
 	if config.Mode == "server" {
 		http.Handle("/metrics", promhttp.Handler())
 		go func() {
-			klog.Fatal(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.Port), nil))
+			// conform to Gosec G114
+			// https://github.com/securego/gosec#available-rules
+			server := &http.Server{
+				Addr:              fmt.Sprintf("0.0.0.0:%d", config.Port),
+				ReadHeaderTimeout: 3 * time.Second,
+			}
+			klog.Fatal(server.ListenAndServe())
 		}()
 	}
 	e := pinger.NewExporter(config)
