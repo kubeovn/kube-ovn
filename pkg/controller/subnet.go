@@ -576,7 +576,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			continue
 		}
 
-		if util.CIDRConflict(sub.Spec.CIDRBlock, subnet.Spec.CIDRBlock) {
+		if util.CIDROverlap(sub.Spec.CIDRBlock, subnet.Spec.CIDRBlock) {
 			err = fmt.Errorf("subnet %s cidr %s is conflict with subnet %s cidr %s", subnet.Name, subnet.Spec.CIDRBlock, sub.Name, sub.Spec.CIDRBlock)
 			klog.Error(err)
 			c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error())
