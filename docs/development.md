@@ -9,7 +9,7 @@
 2. We also use [gosec](https://github.com/securego/gosec) to inspect source code for security problems. 
 
 ```shell
-go get github.com/securego/gosec/v2/cmd/gosec
+go install github.com/securego/gosec/v2/cmd/gosec@latest
 ```
 
 3. To minimize image size we use docker experimental buildx features.
@@ -28,7 +28,7 @@ docker buildx create --use
 
 ```shell
 git clone https://github.com/kubeovn/kube-ovn.git
-go get -u github.com/securego/gosec/cmd/gosec
+go install github.com/securego/gosec/v2/cmd/gosec@latest
 cd kube-ovn
 make release
 ```
@@ -39,12 +39,10 @@ Kube-OVN uses [KIND](https://kind.sigs.k8s.io/) to setup a local Kubernetes clus
 and [Ginkgo](https://onsi.github.io/ginkgo/) as the test framework to run the e2e tests.
 
 ```shell
-go get -u github.com/onsi/ginkgo/ginkgo
-go get -u github.com/onsi/gomega/...
-
 make kind-init
 make kind-install
 # wait all pods ready
+go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo@latest
 make e2e
 ```
 
@@ -64,4 +62,3 @@ If you want to run Kube-OVN on arm64 platform, you need to build the arm64 image
 ```bash
 make release-arm
 ```
-

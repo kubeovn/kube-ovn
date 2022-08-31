@@ -20,7 +20,7 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 	"k8s.io/klog/v2"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
@@ -62,7 +62,7 @@ func NewFramework(baseName, kubeConfig string) *Framework {
 }
 
 func (f *Framework) GetName() string {
-	return strings.Replace(CurrentGinkgoTestDescription().TestText, " ", "-", -1)
+	return strings.Replace(CurrentSpecReport().LeafNodeText, " ", "-", -1)
 }
 
 func (f *Framework) WaitProviderNetworkReady(providerNetwork string) error {
@@ -107,11 +107,11 @@ func (f *Framework) WaitPodReady(pod, namespace string) (*corev1.Pod, error) {
 		}
 
 		switch getPodStatus(*p) {
-		case Completed:
+		case podCompleted:
 			return nil, fmt.Errorf("pod already completed")
-		case Running:
+		case podRunning:
 			return p, nil
-		case Initing, Pending, PodInitializing, ContainerCreating, Terminating:
+		case podIniting, podPending, podInitializing, podContainerCreating, podTerminating:
 			continue
 		default:
 			klog.Info(p.String())
@@ -131,7 +131,7 @@ func (f *Framework) WaitPodDeleted(pod, namespace string) error {
 			return err
 		}
 
-		if status := getPodStatus(*p); status != Terminating {
+		if status := getPodStatus(*p); status != podTerminating {
 			return fmt.Errorf("unexpected pod status: %s", status)
 		}
 	}
@@ -156,11 +156,11 @@ func (f *Framework) WaitDeploymentReady(deployment, namespace string) error {
 		ready := true
 		for _, pod := range pods.Items {
 			switch getPodStatus(pod) {
-			case Completed:
+			case podCompleted:
 				return fmt.Errorf("pod already completed")
-			case Running:
+			case podRunning:
 				continue
-			case Initing, Pending, PodInitializing, ContainerCreating, Terminating:
+			case podIniting, podPending, podInitializing, podContainerCreating, podTerminating:
 				ready = false
 			default:
 				klog.Info(pod.String())
@@ -192,11 +192,11 @@ func (f *Framework) WaitStatefulsetReady(statefulset, namespace string) error {
 		ready := true
 		for _, pod := range pods.Items {
 			switch getPodStatus(pod) {
-			case Completed:
+			case podCompleted:
 				return fmt.Errorf("pod already completed")
-			case Running:
+			case podRunning:
 				continue
-			case Initing, Pending, PodInitializing, ContainerCreating, Terminating:
+			case podIniting, podPending, podInitializing, podContainerCreating, podTerminating:
 				ready = false
 			default:
 				klog.Info(pod.String())
@@ -250,13 +250,13 @@ func (f *Framework) ExecToPodThroughAPI(command, containerName, podName, namespa
 }
 
 const (
-	Running           = "Running"
-	Pending           = "Pending"
-	Completed         = "Completed"
-	ContainerCreating = "ContainerCreating"
-	PodInitializing   = "PodInitializing"
-	Terminating       = "Terminating"
-	Initing           = "Initing"
+	podRunning           = "Running"
+	podPending           = "Pending"
+	podCompleted         = "Completed"
+	podContainerCreating = "ContainerCreating"
+	podInitializing      = "PodInitializing"
+	podTerminating       = "Terminating"
+	podIniting           = "Initing"
 )
 
 func getPodContainerStatus(pod corev1.Pod, reason string) string {
