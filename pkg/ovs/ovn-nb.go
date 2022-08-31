@@ -169,7 +169,7 @@ func (c *ovnClient) CreateRouterTypePort(lsName, lrName, mac string, LrpOptions 
 
 	/* create logical switch port */
 	lsp := &ovnnb.LogicalSwitchPort{
-		UUID:      ovsclient.UUID(),
+		UUID:      ovsclient.NamedUUID(),
 		Name:      lspName,
 		Addresses: []string{"router"},
 		Type:      "router",
@@ -185,7 +185,7 @@ func (c *ovnClient) CreateRouterTypePort(lsName, lrName, mac string, LrpOptions 
 
 	/* create logical router port */
 	lrp := &ovnnb.LogicalRouterPort{
-		UUID: ovsclient.UUID(),
+		UUID: ovsclient.NamedUUID(),
 		Name: lrpName,
 		MAC:  mac,
 	}

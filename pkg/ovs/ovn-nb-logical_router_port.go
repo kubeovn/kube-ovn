@@ -36,7 +36,7 @@ func (c *ovnClient) CreatePeerRouterPort(localRouter, remoteRouter, localRouterP
 
 	/* create logical router port */
 	lrp := &ovnnb.LogicalRouterPort{
-		UUID:     ovsclient.UUID(),
+		UUID:     ovsclient.NamedUUID(),
 		Name:     localRouterPort,
 		MAC:      util.GenerateMac(),
 		Networks: strings.Split(localRouterPortIP, ","),

@@ -309,7 +309,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdatePortOp() {
 
 	ovnClient := suite.ovnClient
 	lsName := "test-update-port-op-ls"
-	lspUUID := ovsclient.UUID()
+	lspUUID := ovsclient.NamedUUID()
 
 	err := ovnClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
@@ -365,7 +365,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdateLoadBalancerOp() {
 
 	ovnClient := suite.ovnClient
 	lsName := "test-update-lb-ls"
-	lbUUIDs := []string{ovsclient.UUID(), ovsclient.UUID(), ovsclient.UUID()}
+	lbUUIDs := []string{ovsclient.NamedUUID(), ovsclient.NamedUUID(), ovsclient.NamedUUID()}
 
 	err := ovnClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
@@ -433,7 +433,7 @@ func (suite *OvnClientTestSuite) testlogicalSwitchUpdateAclOp() {
 
 	ovnClient := suite.ovnClient
 	lsName := "test-update-acl-op-ls"
-	aclUUIDs := []string{ovsclient.UUID(), ovsclient.UUID()}
+	aclUUIDs := []string{ovsclient.NamedUUID(), ovsclient.NamedUUID()}
 
 	err := ovnClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
@@ -502,7 +502,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchOp() {
 	err := ovnClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
 
-	lspUUID := ovsclient.UUID()
+	lspUUID := ovsclient.NamedUUID()
 	lspMutation := func(ls *ovnnb.LogicalSwitch) *model.Mutation {
 		mutation := &model.Mutation{
 			Field:   &ls.Ports,
@@ -513,7 +513,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchOp() {
 		return mutation
 	}
 
-	lbUUID := ovsclient.UUID()
+	lbUUID := ovsclient.NamedUUID()
 	lbMutation := func(ls *ovnnb.LogicalSwitch) *model.Mutation {
 		mutation := &model.Mutation{
 			Field:   &ls.LoadBalancer,

@@ -320,7 +320,7 @@ func (c *ovnClient) newLogicalRouterStaticRoute(lrName, policy, prefix, nextHop,
 	}
 
 	route := &ovnnb.LogicalRouterStaticRoute{
-		UUID:     ovsclient.UUID(),
+		UUID:     ovsclient.NamedUUID(),
 		Policy:   &policy,
 		IPPrefix: prefix,
 		Nexthop:  nextHop,

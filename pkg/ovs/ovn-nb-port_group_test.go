@@ -257,7 +257,7 @@ func (suite *OvnClientTestSuite) testportGroupUpdatePortOp() {
 
 	ovnClient := suite.ovnClient
 	pgName := "test-update-port-op-pg"
-	lspUUIDs := []string{ovsclient.UUID(), ovsclient.UUID()}
+	lspUUIDs := []string{ovsclient.NamedUUID(), ovsclient.NamedUUID()}
 
 	err := ovnClient.CreatePortGroup(pgName, map[string]string{
 		"type": "security_group",
@@ -325,7 +325,7 @@ func (suite *OvnClientTestSuite) testportGroupUpdateAclOp() {
 
 	ovnClient := suite.ovnClient
 	pgName := "test-update-acl-op-pg"
-	aclUUIDs := []string{ovsclient.UUID(), ovsclient.UUID()}
+	aclUUIDs := []string{ovsclient.NamedUUID(), ovsclient.NamedUUID()}
 
 	err := ovnClient.CreatePortGroup(pgName, map[string]string{
 		"type": "security_group",
@@ -400,7 +400,7 @@ func (suite *OvnClientTestSuite) testportGroupOp() {
 	})
 	require.NoError(t, err)
 
-	lspUUID := ovsclient.UUID()
+	lspUUID := ovsclient.NamedUUID()
 	lspMutation := func(pg *ovnnb.PortGroup) *model.Mutation {
 		mutation := &model.Mutation{
 			Field:   &pg.Ports,
@@ -411,7 +411,7 @@ func (suite *OvnClientTestSuite) testportGroupOp() {
 		return mutation
 	}
 
-	aclUUID := ovsclient.UUID()
+	aclUUID := ovsclient.NamedUUID()
 	aclMutation := func(pg *ovnnb.PortGroup) *model.Mutation {
 		mutation := &model.Mutation{
 			Field:   &pg.ACLs,

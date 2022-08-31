@@ -214,7 +214,7 @@ func (c *ovnClient) newLogicalRouterPolicy(lrName string, priority int, match, a
 	}
 
 	policy := &ovnnb.LogicalRouterPolicy{
-		UUID:     ovsclient.UUID(),
+		UUID:     ovsclient.NamedUUID(),
 		Priority: priority,
 		Match:    match,
 		Action:   action,

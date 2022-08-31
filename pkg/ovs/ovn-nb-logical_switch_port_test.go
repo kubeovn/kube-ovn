@@ -352,7 +352,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortSecurity() {
 	lspName := "test-update-port-security-lsp"
 
 	lsp := &ovnnb.LogicalSwitchPort{
-		UUID: ovsclient.UUID(),
+		UUID: ovsclient.NamedUUID(),
 		Name: lspName,
 		ExternalIDs: map[string]string{
 			"vendor":         util.CniTypeName,
@@ -395,7 +395,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortSecurity() {
 		lspName := "test-update-port-security-lsp-nil-eid"
 
 		lsp := &ovnnb.LogicalSwitchPort{
-			UUID: ovsclient.UUID(),
+			UUID: ovsclient.NamedUUID(),
 			Name: lspName,
 		}
 
@@ -423,7 +423,7 @@ func (suite *OvnClientTestSuite) testSetSetLogicalSwitchPortExternalIds() {
 	lspName := "test-set-port-exid-lsp"
 
 	lsp := &ovnnb.LogicalSwitchPort{
-		UUID: ovsclient.UUID(),
+		UUID: ovsclient.NamedUUID(),
 		Name: lspName,
 		ExternalIDs: map[string]string{
 			"vendor": util.CniTypeName,
@@ -830,7 +830,7 @@ func (suite *OvnClientTestSuite) testEnablePortLayer2forward() {
 	lspName := "test-enable-port-l2-lsp"
 
 	lsp := &ovnnb.LogicalSwitchPort{
-		UUID: ovsclient.UUID(),
+		UUID: ovsclient.NamedUUID(),
 		Name: lspName,
 		ExternalIDs: map[string]string{
 			"vendor":         util.CniTypeName,
@@ -858,7 +858,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortVlanTag() {
 	lspName := "test-set-port-vlan-tag-lsp"
 
 	lsp := &ovnnb.LogicalSwitchPort{
-		UUID: ovsclient.UUID(),
+		UUID: ovsclient.NamedUUID(),
 		Name: lspName,
 		ExternalIDs: map[string]string{
 			"vendor":         util.CniTypeName,
@@ -899,7 +899,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalSwitchPort() {
 	lspName := "test-update-lsp"
 
 	lsp := &ovnnb.LogicalSwitchPort{
-		UUID:        ovsclient.UUID(),
+		UUID:        ovsclient.NamedUUID(),
 		Name:        lspName,
 		ExternalIDs: map[string]string{"vendor": util.CniTypeName},
 	}
@@ -959,7 +959,7 @@ func (suite *OvnClientTestSuite) testListLogicalSwitchPorts() {
 		lspName := "test-list-lsp-other-vendor"
 
 		lsp := &ovnnb.LogicalSwitchPort{
-			UUID:        ovsclient.UUID(),
+			UUID:        ovsclient.NamedUUID(),
 			Name:        lspName,
 			ExternalIDs: map[string]string{"vendor": "other-vendor"},
 		}
@@ -985,7 +985,7 @@ func (suite *OvnClientTestSuite) testListLogicalSwitchPorts() {
 		lspName := "test-list-lsp-mismatch-length"
 
 		lsp := &ovnnb.LogicalSwitchPort{
-			UUID: ovsclient.UUID(),
+			UUID: ovsclient.NamedUUID(),
 			Name: lspName,
 			ExternalIDs: map[string]string{
 				"vendor": util.CniTypeName,
@@ -1005,7 +1005,7 @@ func (suite *OvnClientTestSuite) testListLogicalSwitchPorts() {
 		lspName := "test-list-lsp-exist"
 
 		lsp := &ovnnb.LogicalSwitchPort{
-			UUID: ovsclient.UUID(),
+			UUID: ovsclient.NamedUUID(),
 			Name: lspName,
 			ExternalIDs: map[string]string{
 				"vendor": util.CniTypeName,
@@ -1025,7 +1025,7 @@ func (suite *OvnClientTestSuite) testListLogicalSwitchPorts() {
 		lspName := "test-list-lsp-no-exist"
 
 		lsp := &ovnnb.LogicalSwitchPort{
-			UUID: ovsclient.UUID(),
+			UUID: ovsclient.NamedUUID(),
 			Name: lspName,
 			ExternalIDs: map[string]string{
 				"vendor": util.CniTypeName,
@@ -1047,7 +1047,7 @@ func (suite *OvnClientTestSuite) testListLogicalSwitchPorts() {
 		for i := 0; i < 4; i++ {
 			lspName := fmt.Sprintf("%s-%d", prefix, i)
 			lsp := &ovnnb.LogicalSwitchPort{
-				UUID: ovsclient.UUID(),
+				UUID: ovsclient.NamedUUID(),
 				Name: lspName,
 				ExternalIDs: map[string]string{
 					"vendor": util.CniTypeName,
@@ -1084,7 +1084,7 @@ func (suite *OvnClientTestSuite) testListLogicalSwitchPorts() {
 		lspName := "test-list-lsp-no-val"
 
 		lsp := &ovnnb.LogicalSwitchPort{
-			UUID: ovsclient.UUID(),
+			UUID: ovsclient.NamedUUID(),
 			Name: lspName,
 			ExternalIDs: map[string]string{
 				"vendor":               util.CniTypeName,
@@ -1122,7 +1122,7 @@ func (suite *OvnClientTestSuite) testListRemoteTypeLogicalSwitchPorts() {
 		lspName := "test-list-lsp-remote"
 
 		lsp := &ovnnb.LogicalSwitchPort{
-			UUID: ovsclient.UUID(),
+			UUID: ovsclient.NamedUUID(),
 			Name: lspName,
 			ExternalIDs: map[string]string{
 				"vendor":               util.CniTypeName,
@@ -1194,7 +1194,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPortOp() {
 
 	t.Run("merget ExternalIDs when exist ExternalIDs", func(t *testing.T) {
 		lsp := &ovnnb.LogicalSwitchPort{
-			UUID: ovsclient.UUID(),
+			UUID: ovsclient.NamedUUID(),
 			Name: lspName,
 			ExternalIDs: map[string]string{
 				"pod": lspName,
@@ -1232,7 +1232,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPortOp() {
 		lspName := "test-create-op-lsp-none-exid"
 
 		lsp := &ovnnb.LogicalSwitchPort{
-			UUID: ovsclient.UUID(),
+			UUID: ovsclient.NamedUUID(),
 			Name: lspName,
 		}
 

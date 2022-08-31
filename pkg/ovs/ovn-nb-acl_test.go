@@ -45,7 +45,7 @@ func newAcl(parentName, direction, priority, match, action string, options ...fu
 	intPriority, _ := strconv.Atoi(priority)
 
 	acl := &ovnnb.ACL{
-		UUID:      ovsclient.UUID(),
+		UUID:      ovsclient.NamedUUID(),
 		Action:    action,
 		Direction: direction,
 		Match:     match,

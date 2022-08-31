@@ -11,7 +11,7 @@ import (
 
 func newLogicalRouterPolicy(lrName string, priority int, match, action string, nextHops []string, externalIDs map[string]string) *ovnnb.LogicalRouterPolicy {
 	policy := &ovnnb.LogicalRouterPolicy{
-		UUID:     ovsclient.UUID(),
+		UUID:     ovsclient.NamedUUID(),
 		Priority: priority,
 		Match:    match,
 		Action:   action,

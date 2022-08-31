@@ -15,7 +15,6 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/go-logr/stdr"
-	"github.com/google/uuid"
 	"github.com/ovn-org/libovsdb/client"
 
 	"k8s.io/klog/v2"
@@ -35,10 +34,6 @@ func init() {
 
 func NamedUUID() string {
 	return fmt.Sprintf("u%010d", atomic.AddUint32(&namedUUIDCounter, 1))
-}
-
-func UUID() string {
-	return uuid.NewString()
 }
 
 // NewNbClient creates a new OVN NB client

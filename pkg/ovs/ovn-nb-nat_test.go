@@ -12,7 +12,7 @@ import (
 
 func newNat(lrName, natType, externalIP, logicalIP string, options ...func(nat *ovnnb.NAT)) *ovnnb.NAT {
 	nat := &ovnnb.NAT{
-		UUID:       ovsclient.UUID(),
+		UUID:       ovsclient.NamedUUID(),
 		Type:       natType,
 		ExternalIP: externalIP,
 		LogicalIP:  logicalIP,

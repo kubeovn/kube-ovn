@@ -33,7 +33,7 @@ func (c *ovnClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, n
 
 	/* normal lsp creation */
 	lsp = &ovnnb.LogicalSwitchPort{
-		UUID:        ovsclient.UUID(),
+		UUID:        ovsclient.NamedUUID(),
 		Name:        lspName,
 		ExternalIDs: make(map[string]string),
 	}
@@ -117,7 +117,7 @@ func (c *ovnClient) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider st
 
 	/* create logical switch port */
 	lsp := &ovnnb.LogicalSwitchPort{
-		UUID:      ovsclient.UUID(),
+		UUID:      ovsclient.NamedUUID(),
 		Name:      lspName,
 		Type:      "localnet",
 		Addresses: []string{"unknown"},
@@ -160,7 +160,7 @@ func (c *ovnClient) CreateVirtualLogicalSwitchPorts(lsName string, ips ...string
 		}
 
 		lsp := &ovnnb.LogicalSwitchPort{
-			UUID: ovsclient.UUID(),
+			UUID: ovsclient.NamedUUID(),
 			Name: lspName,
 			Type: "virtual",
 			Options: map[string]string{
@@ -187,7 +187,7 @@ func (c *ovnClient) CreateVirtualLogicalSwitchPorts(lsName string, ips ...string
 func (c *ovnClient) CreateBareLogicalSwitchPort(lsName, lspName string) error {
 	/* create logical switch port */
 	lsp := &ovnnb.LogicalSwitchPort{
-		UUID: ovsclient.UUID(),
+		UUID: ovsclient.NamedUUID(),
 		Name: lspName,
 	}
 

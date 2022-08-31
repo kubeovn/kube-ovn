@@ -24,7 +24,7 @@ func (c *ovnClient) CreateLoadBalancer(lbName, protocol, selectFields string) er
 	}
 
 	lb := &ovnnb.LoadBalancer{
-		UUID:     ovsclient.UUID(),
+		UUID:     ovsclient.NamedUUID(),
 		Name:     lbName,
 		Protocol: &protocol,
 	}

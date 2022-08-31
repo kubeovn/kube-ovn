@@ -278,7 +278,7 @@ func (c *ovnClient) newNat(lrName, natType, externalIP, logicalIP string, option
 	}
 
 	nat := &ovnnb.NAT{
-		UUID:       ovsclient.UUID(),
+		UUID:       ovsclient.NamedUUID(),
 		Type:       natType,
 		ExternalIP: externalIP,
 		LogicalIP:  logicalIP,

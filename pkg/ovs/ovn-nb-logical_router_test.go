@@ -37,7 +37,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouter() {
 
 	ovnClient := suite.ovnClient
 	lrName := "test-update-lr"
-	policies := []string{ovsclient.UUID(), ovsclient.UUID()}
+	policies := []string{ovsclient.NamedUUID(), ovsclient.NamedUUID()}
 
 	err := ovnClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
@@ -160,7 +160,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdatePortOp() {
 
 	ovnClient := suite.ovnClient
 	lrName := "test-update-port-op-lr"
-	uuid := ovsclient.UUID()
+	uuid := ovsclient.NamedUUID()
 
 	err := ovnClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
@@ -216,7 +216,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdatePolicyOp() {
 
 	ovnClient := suite.ovnClient
 	lrName := "test-update-policy-op-lr"
-	uuid := ovsclient.UUID()
+	uuid := ovsclient.NamedUUID()
 
 	err := ovnClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
@@ -272,7 +272,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdateNatOp() {
 
 	ovnClient := suite.ovnClient
 	lrName := "test-update-nat-op-lr"
-	uuid := ovsclient.UUID()
+	uuid := ovsclient.NamedUUID()
 
 	err := ovnClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
@@ -328,7 +328,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterUpdateStaticRouteOp() {
 
 	ovnClient := suite.ovnClient
 	lrName := "test-update-route-op-lr"
-	uuid := ovsclient.UUID()
+	uuid := ovsclient.NamedUUID()
 
 	err := ovnClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
@@ -388,7 +388,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterOp() {
 	err := ovnClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
-	lrpUUID := ovsclient.UUID()
+	lrpUUID := ovsclient.NamedUUID()
 	lrpMutation := func(lr *ovnnb.LogicalRouter) *model.Mutation {
 		mutation := &model.Mutation{
 			Field:   &lr.Ports,
@@ -399,7 +399,7 @@ func (suite *OvnClientTestSuite) testLogicalRouterOp() {
 		return mutation
 	}
 
-	policyUUID := ovsclient.UUID()
+	policyUUID := ovsclient.NamedUUID()
 	policyMutation := func(lr *ovnnb.LogicalRouter) *model.Mutation {
 		mutation := &model.Mutation{
 			Field:   &lr.Policies,

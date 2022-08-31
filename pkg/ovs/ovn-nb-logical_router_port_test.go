@@ -61,7 +61,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouterPortRA() {
 	lrName := "test-update-ra-lr"
 
 	lrp := &ovnnb.LogicalRouterPort{
-		UUID: ovsclient.UUID(),
+		UUID: ovsclient.NamedUUID(),
 		Name: lrpName,
 		MAC:  "00:11:22:37:af:62",
 		// Networks: []string{"192.168.33.1/24"},
@@ -122,7 +122,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouterPortRA() {
 		name := "test-update-ra-lr-no-ipv6"
 
 		lrp := &ovnnb.LogicalRouterPort{
-			UUID:     ovsclient.UUID(),
+			UUID:     ovsclient.NamedUUID(),
 			Name:     name,
 			MAC:      "00:11:22:37:af:62",
 			Networks: []string{"192.168.33.1/24"},
@@ -152,7 +152,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPort() {
 		name := "test-create-lrp-ipv4"
 
 		lrp := &ovnnb.LogicalRouterPort{
-			UUID:     ovsclient.UUID(),
+			UUID:     ovsclient.NamedUUID(),
 			Name:     name,
 			MAC:      "00:11:22:37:af:62",
 			Networks: []string{"192.168.123.1/24"},
@@ -178,7 +178,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPort() {
 		name := "test-create-lrp-ipv6"
 
 		lrp := &ovnnb.LogicalRouterPort{
-			UUID:     ovsclient.UUID(),
+			UUID:     ovsclient.NamedUUID(),
 			Name:     name,
 			MAC:      "00:11:22:37:af:62",
 			Networks: []string{"fd00::c0a8:7b01/120"},
@@ -204,7 +204,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPort() {
 		name := "test-create-lrp-dual"
 
 		lrp := &ovnnb.LogicalRouterPort{
-			UUID:     ovsclient.UUID(),
+			UUID:     ovsclient.NamedUUID(),
 			Name:     name,
 			MAC:      "00:11:22:37:af:62",
 			Networks: []string{"192.168.123.1/24", "fd00::c0a8:7b01/120"},
@@ -234,7 +234,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouterPort() {
 	lrName := "test-update-lrp-lr"
 
 	lrp := &ovnnb.LogicalRouterPort{
-		UUID:     ovsclient.UUID(),
+		UUID:     ovsclient.NamedUUID(),
 		Name:     lrpName,
 		MAC:      "00:11:22:37:af:62",
 		Networks: []string{"192.168.123.1/24"},
@@ -285,7 +285,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPort() {
 	require.NoError(t, err)
 
 	lrp := &ovnnb.LogicalRouterPort{
-		UUID:     ovsclient.UUID(),
+		UUID:     ovsclient.NamedUUID(),
 		Name:     lrpName,
 		MAC:      "00:11:22:37:af:62",
 		Networks: []string{"192.168.123.1/24"},
@@ -332,7 +332,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPortOp() {
 
 	t.Run("merget ExternalIDs when exist ExternalIDs", func(t *testing.T) {
 		lrp := &ovnnb.LogicalRouterPort{
-			UUID: ovsclient.UUID(),
+			UUID: ovsclient.NamedUUID(),
 			Name: lrpName,
 			ExternalIDs: map[string]string{
 				"pod": lrpName,
@@ -368,7 +368,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPortOp() {
 		lrpName := "test-create-op-lrp-none-exid"
 
 		lrp := &ovnnb.LogicalRouterPort{
-			UUID: ovsclient.UUID(),
+			UUID: ovsclient.NamedUUID(),
 			Name: lrpName,
 		}
 
@@ -410,7 +410,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPortOp() {
 	require.NoError(t, err)
 
 	lrp := &ovnnb.LogicalRouterPort{
-		UUID:     ovsclient.UUID(),
+		UUID:     ovsclient.NamedUUID(),
 		Name:     lrpName,
 		MAC:      "00:11:22:37:af:62",
 		Networks: []string{"192.168.123.1/24"},
