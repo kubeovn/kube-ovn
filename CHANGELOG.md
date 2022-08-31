@@ -1,5 +1,50 @@
 # Changelog
 
+## v1.10.6 (2022-08-30)
+
+ * [0b9f0c1f](https://github.com/kubeovn/kube-ovn/commit/0b9f0c1f577cddffe25d3aacf3f41c75ca4cb875) set release 1.10.6
+ * [1510905c](https://github.com/kubeovn/kube-ovn/commit/1510905c3a5910f34583824e083e6717db825f67) feat: reduce downtime by increasing arp cache timeout
+ * [2b05fd4c](https://github.com/kubeovn/kube-ovn/commit/2b05fd4cc009f70a8613e38ad298cec242ba9894) feat: reduce wait time by counting the flow num.
+ * [e5378927](https://github.com/kubeovn/kube-ovn/commit/e5378927a6fbf31ebcc511a36da249fe845bf07f) fix: missing stop_ovn_daemon args
+ * [709ede03](https://github.com/kubeovn/kube-ovn/commit/709ede035131ac00f33e295bcf673193e86bcbad) delete log severity for drop acl when update networkpolicy
+ * [c1e5be72](https://github.com/kubeovn/kube-ovn/commit/c1e5be72e608caf15fc62517a89769404f76cda1) refactor: extract external routes from eip func, make it the same as … (#1671)
+ * [7bcf578e](https://github.com/kubeovn/kube-ovn/commit/7bcf578e6fd26bd7493b1fda540cc507d6a2eaab) prepare release for 1.10.6
+ * [ed237f9b](https://github.com/kubeovn/kube-ovn/commit/ed237f9ba8cdcc49f398a4644b25c4e4d382a48f) ovs: fix log file descriptor leak in monitor process (#1855)
+ * [e16667c3](https://github.com/kubeovn/kube-ovn/commit/e16667c36e9097c1edd9d0433f5aa36cb9ef2469) fix ovs-ovn logging (#1848)
+ * [a83ec475](https://github.com/kubeovn/kube-ovn/commit/a83ec475348ccbe0104291b2bf0e44fde64b595a) fix: dnat port not use whole words to check (#1854)
+ * [e3b41023](https://github.com/kubeovn/kube-ovn/commit/e3b4102360e58958c3486efa5a493e1bc0455b5a) fix ovn dhcp not work with ovs-dpdk (#1853)
+ * [237e3189](https://github.com/kubeovn/kube-ovn/commit/237e3189e4bfa232eb12652c3f71ecbf6016f629) update base image
+ * [05b27f2d](https://github.com/kubeovn/kube-ovn/commit/05b27f2de3762494b77a3b06d72bc46758ec30c7) fix: add and set ENABLE_KEEP_VM_IP=true to keep vm ip (#1702)
+ * [a4030de5](https://github.com/kubeovn/kube-ovn/commit/a4030de5c8fca82eb439954decdf25cd6f05eebd) fix: multus macvlan ipvlan use kube-ovn ipam，but  ip not inited in init-ipam (#1843)
+ * [80053001](https://github.com/kubeovn/kube-ovn/commit/80053001fbe5d4427c02b68224e0fa4cf2509fe3) fix underlay e2e (#1828)
+ * [1a3a1694](https://github.com/kubeovn/kube-ovn/commit/1a3a1694166516e4cbd86d2c12c642cabbc3e5db) fix arping error log (#1841)
+ * [9447b859](https://github.com/kubeovn/kube-ovn/commit/9447b8590421dbd50b5fc3138880fa9d4698e5c1) ko: fix kube-proxy check (#1842)
+ * [774b8d46](https://github.com/kubeovn/kube-ovn/commit/774b8d46723fb74272100386f470521b77a006ec) base: use patch from OVN upstream (#1844)
+ * [17d0f5af](https://github.com/kubeovn/kube-ovn/commit/17d0f5af569cafe31bcdcdab6b0b083a8ef2f2e0) ci: switch environment to ubuntu-20.04 (#1838)
+ * [9f0d324a](https://github.com/kubeovn/kube-ovn/commit/9f0d324a17a6b1219dc75b64cb57903ce4145f60) 修改 ovs-ovn-dpdk 容器镜像编译打包，解决容器中 ovs 运行不正常：无法添加物理网卡，无法创建 vhostuserclient port 问题 (#1831)
+ * [8c533548](https://github.com/kubeovn/kube-ovn/commit/8c533548ec8105ae9e7885138d51aa6f897286ad) windows: fix ovs/ovn versions and patches (#1830)
+ * [d24c5131](https://github.com/kubeovn/kube-ovn/commit/d24c5131324ef1139aa61bedbe65d98fe30fc870) update centralized subnet gateway ready patch operation (#1827)
+ * [02a4caf1](https://github.com/kubeovn/kube-ovn/commit/02a4caf18c499c63baea9c336402efd9c5e58be4) fix duplicate log for tunnel interface decision (#1823)
+ * [b25f58f5](https://github.com/kubeovn/kube-ovn/commit/b25f58f5a23ed9f81fca08938f3007620d650dbc) update ovs/ovn version to fix hardware offload (#1821)
+ * [842d6a34](https://github.com/kubeovn/kube-ovn/commit/842d6a347f97ad59b3f861a171bbdc2d1811b8e5) fix: use full longest word to match full ip about dnat (#1825)
+ * [f12fe0ea](https://github.com/kubeovn/kube-ovn/commit/f12fe0eace1b2fddf434a152ef7c9d49d6b14cd2) update centralize subnet gatewayNode until gw is ready (#1814)
+ * [b9c591f9](https://github.com/kubeovn/kube-ovn/commit/b9c591f97ad8adb2872c53ae8df2edf7b9d05294) initialize IPAM from IP CR with empty PodType for sts Pods (#1812)
+ * [e57021fc](https://github.com/kubeovn/kube-ovn/commit/e57021fc64e29157a26aea4a0c95a5f15344bc21) kubectl-ko: fix missing env-check (#1804)
+ * [4c248112](https://github.com/kubeovn/kube-ovn/commit/4c2481123436c3898736a023a0ac7aad923ecbd6) kubectl-ko: fix destination mac (#1801)
+ * [c21c57d1](https://github.com/kubeovn/kube-ovn/commit/c21c57d1fc9534746bd48dc916a8ae0654bd5139) abort kube-ovn-controller on leader change (#1797)
+ * [d2939e9e](https://github.com/kubeovn/kube-ovn/commit/d2939e9ee73ff05083d095b001d754382645acf6) avoid invalid ovn-nbctl daemon socket path (#1799)
+ * [aa7b9c8f](https://github.com/kubeovn/kube-ovn/commit/aa7b9c8f7f56d989887209eb542b066c8367430d) update vpc-nat-gateway base
+ * [7674b85f](https://github.com/kubeovn/kube-ovn/commit/7674b85fefacab832b4b9c62f6b81c4af364521d) fix: warning for empty chassis fixed (#1787)
+
+### Contributors
+
+ * bobz965
+ * hzma
+ * long.wang
+ * lut777
+ * zhangzujian
+ * 张祖建
+
 ## v1.10.5 (2022-08-10)
 
  * [88531d50](https://github.com/kubeovn/kube-ovn/commit/88531d501c4a08d13ec48f80ec324c70105316c6) set release v1.10.5
@@ -362,6 +407,43 @@
  * 张祖建
  * 罗云鹤
  * 范日明
+
+## v1.9.9 (2022-08-30)
+
+ * [c4701fd2](https://github.com/kubeovn/kube-ovn/commit/c4701fd291b14424fc507cae2be9a76d1de918a8) set release 1.9.9
+ * [33d027af](https://github.com/kubeovn/kube-ovn/commit/33d027af66b7c89e18ca6f6c2e5cb416240e4093) feat: reduce downtime by increasing arp cache timeout
+ * [b90769f3](https://github.com/kubeovn/kube-ovn/commit/b90769f31c5b3744a429a0ee2f7dee4de92480a3) feat: reduce wait time by counting the flow num.
+ * [2afbe408](https://github.com/kubeovn/kube-ovn/commit/2afbe4089ac297d0b58149d6c047a3ada27d05ed) fix: missing stop_ovn_daemon args
+ * [37b9f2f8](https://github.com/kubeovn/kube-ovn/commit/37b9f2f85d6c8ea143c811de46ee746f47242a75) delete log severity for drop acl when update networkpolicy
+ * [82026bbd](https://github.com/kubeovn/kube-ovn/commit/82026bbd699d4af78903411cd50a85c3ef07395d) base: use patch from OVN upstream (#1844)
+ * [f9a2d8de](https://github.com/kubeovn/kube-ovn/commit/f9a2d8de2ec233b47ba8a1b19917ae84b3d34f87) prepare release for 1.9.9
+ * [7138087c](https://github.com/kubeovn/kube-ovn/commit/7138087c5b4286e676f123bc8f98c59a993ec572) ovs: fix log file descriptor leak in monitor process (#1855)
+ * [c6f9565c](https://github.com/kubeovn/kube-ovn/commit/c6f9565cb917e6b15f289337fafde75d03758b60) fix ovs-ovn logging (#1848)
+ * [b3a6998e](https://github.com/kubeovn/kube-ovn/commit/b3a6998e41d6bbe45f2f3842313d2c55459c2384) fix: add and set ENABLE_KEEP_VM_IP=true to keep vm ip (#1702)
+ * [20ed2329](https://github.com/kubeovn/kube-ovn/commit/20ed2329e0b41f30b993064fd4a73a1ef4645421) fix: multus macvlan ipvlan use kube-ovn ipam，but  ip not inited in init-ipam (#1843)
+ * [4c40a20d](https://github.com/kubeovn/kube-ovn/commit/4c40a20d91728d27f2fb57b090cefef1170d3052) fix underlay e2e (#1828)
+ * [eb1706bc](https://github.com/kubeovn/kube-ovn/commit/eb1706bc1977fe0055a826311b4e7b4554b287de) fix arping error log (#1841)
+ * [5757b8ec](https://github.com/kubeovn/kube-ovn/commit/5757b8ecef6ced353f68860025f38e28a710d5e1) ko: fix kube-proxy check (#1842)
+ * [2000e996](https://github.com/kubeovn/kube-ovn/commit/2000e996c5cdc4cc923005094126324c29f98a63) ci: switch environment to ubuntu-20.04 (#1838)
+ * [919bb236](https://github.com/kubeovn/kube-ovn/commit/919bb236fe5f5072cdb18d8224865ce638cdffc7) update centralized subnet gateway ready patch operation (#1827)
+ * [1c3b622c](https://github.com/kubeovn/kube-ovn/commit/1c3b622cb270b5d78816db80c0a5b233ded6586f) fix duplicate log for tunnel interface decision (#1823)
+ * [e4d53217](https://github.com/kubeovn/kube-ovn/commit/e4d53217da145e7c74d7a26158941ca0f708ecfc) update centralize subnet gatewayNode until gw is ready (#1814)
+ * [d44de3e0](https://github.com/kubeovn/kube-ovn/commit/d44de3e06f1b5682ab9863cfe8cb091ed6f955c3) initialize IPAM from IP CR with empty PodType for sts Pods (#1812)
+ * [3eb1d1ad](https://github.com/kubeovn/kube-ovn/commit/3eb1d1ad16fb6c9a3e75b2ef9b5486e03b4e1c79) kubectl-ko: fix missing env-check (#1804)
+ * [5613b63c](https://github.com/kubeovn/kube-ovn/commit/5613b63c26890825c26e606f8d6b8b5539979e0d) kubectl-ko: fix destination mac (#1801)
+ * [1284f15d](https://github.com/kubeovn/kube-ovn/commit/1284f15d627ce8d6903553b81c63f9f12980ba27) abort kube-ovn-controller on leader change (#1797)
+ * [5bf8de0f](https://github.com/kubeovn/kube-ovn/commit/5bf8de0fcb9a416552bf449677c08e95143ffec5) avoid invalid ovn-nbctl daemon socket path (#1799)
+ * [4680e632](https://github.com/kubeovn/kube-ovn/commit/4680e632388585430b9033af2c013d4e721e51ea) update vpc-nat-gateway base
+ * [4cce7870](https://github.com/kubeovn/kube-ovn/commit/4cce7870db4de63dce59b554b233ad9eb0feaf4a) fix: warning for empty chassis fixed (#1786)
+
+### Contributors
+
+ * Mengxin Liu
+ * bobz965
+ * hzma
+ * lut777
+ * zhangzujian
+ * 张祖建
 
 ## v1.9.8 (2022-08-10)
 
@@ -807,6 +889,54 @@
  * wangchl01
  * zhangzujian
  * 范日明
+
+## v1.8.11 (2022-08-30)
+
+ * [9f059091](https://github.com/kubeovn/kube-ovn/commit/9f059091c073df2908b6c3dc846fb42ab6f73eff) set release 1.8.11
+ * [5fa2a8e1](https://github.com/kubeovn/kube-ovn/commit/5fa2a8e11d73e0b5947da1dd8350fc955867de25) feat: reduce downtime by increasing arp cache timeout
+ * [c18cae4e](https://github.com/kubeovn/kube-ovn/commit/c18cae4ec1631b316a9a3c9c235f8c2fa8e85ac6) feat: reduce wait time by counting the flow num.
+ * [c8e36b5e](https://github.com/kubeovn/kube-ovn/commit/c8e36b5eab6c3b24073215866d90ab39598c29d4) fix: missing stop_ovn_daemon args
+ * [e5735c20](https://github.com/kubeovn/kube-ovn/commit/e5735c20945af95e13d18a1a345233cdf61c4c70) delete log severity for drop acl when update networkpolicy (#1862)
+ * [4bcfb373](https://github.com/kubeovn/kube-ovn/commit/4bcfb37306ad718338d32a4cba7681e0fe31b3b0) prepare release for 1.8.11
+ * [9d7f0a59](https://github.com/kubeovn/kube-ovn/commit/9d7f0a59efcc9596cee53f46443d598af4a39ecf) ovs: fix log file descriptor leak in monitor process (#1855)
+ * [446ee6a2](https://github.com/kubeovn/kube-ovn/commit/446ee6a21edc6b4594926603da950949b8e8d838) fix ovs-ovn logging (#1848)
+ * [63b218c6](https://github.com/kubeovn/kube-ovn/commit/63b218c6339f69230805299d2d8fd399be46d680) fix: multus macvlan ipvlan use kube-ovn ipam，but  ip not inited in init-ipam (#1843)
+ * [95c8ca4f](https://github.com/kubeovn/kube-ovn/commit/95c8ca4f3140200de6e8eac983a2c1915f881789) ko: fix kube-proxy check (#1842)
+ * [b7b7d26d](https://github.com/kubeovn/kube-ovn/commit/b7b7d26dc1724569c6185f8e20f47b3b619b1ec4) avoid patch interface deletion & recreation during restart
+ * [2746a195](https://github.com/kubeovn/kube-ovn/commit/2746a195495026574e4617d5024db7927a1aaddc) ci: switch environment to ubuntu-20.04 (#1838)
+ * [cacb1ec4](https://github.com/kubeovn/kube-ovn/commit/cacb1ec4a0937b49ac68b8a00641aa571f7b80f9) fix base failure
+ * [3941595b](https://github.com/kubeovn/kube-ovn/commit/3941595b1feb8e1c39fb921d725eff7fccb4252b) update base image
+ * [2938daaa](https://github.com/kubeovn/kube-ovn/commit/2938daaaaa4c427f950da8237f6b424a8ce6643a) fix base build failure
+ * [122754aa](https://github.com/kubeovn/kube-ovn/commit/122754aa5a677d6fc42c0fccbd00f5d92c07b247) update centralized subnet gateway ready patch operation
+ * [c3f23af3](https://github.com/kubeovn/kube-ovn/commit/c3f23af3f448bf9825329cb79029bb94a960719b) fix duplicate log for tunnel interface decision (#1823)
+ * [3d966bff](https://github.com/kubeovn/kube-ovn/commit/3d966bff9cb766a6a9d4ced664dc41fd0ec7b8d0) update version to v1.8.10 (#1819)
+ * [dfc89924](https://github.com/kubeovn/kube-ovn/commit/dfc899246dacce9f5db1cabb63904c7ba06b10c6) do not check static route conflict (#1817)
+ * [a6403f0e](https://github.com/kubeovn/kube-ovn/commit/a6403f0eaca39c571dfbf91b7f21b3d92c375895) update centralize subnet gatewayNode until gw is ready (#1814)
+ * [7103aae8](https://github.com/kubeovn/kube-ovn/commit/7103aae83c356fa6e18a51cdaa406c6f88d26a8c) initialize IPAM from IP CR with empty PodType for sts Pods (#1812)
+ * [b669c673](https://github.com/kubeovn/kube-ovn/commit/b669c673af2932050fbc39e35d1fb15f32721d4e) abort kube-ovn-controller on leader change (#1797)
+ * [0e0ea3c7](https://github.com/kubeovn/kube-ovn/commit/0e0ea3c7e32ead9ca9f42ce65d745ecf62be0026) avoid invalid ovn-nbctl daemon socket path (#1799)
+ * [a7f499dd](https://github.com/kubeovn/kube-ovn/commit/a7f499dd72dd08418c084ad365e8a9491fc182cb) do not wait dynamic address for pod (#1800)
+ * [2b34fd58](https://github.com/kubeovn/kube-ovn/commit/2b34fd587fc63767b81020403381ee8853651d07) update vpc-nat-gateway base
+ * [8d2d0b1e](https://github.com/kubeovn/kube-ovn/commit/8d2d0b1e6defd339065da9e3abe0e1a8222f35f5) append delete static route for sts pod (#1798)
+ * [9dc6e15e](https://github.com/kubeovn/kube-ovn/commit/9dc6e15ee02479e4dcb4823aec567f9066c92bde) perf: fix memory leak
+ * [14beb484](https://github.com/kubeovn/kube-ovn/commit/14beb4840878b99c7ab60a6e6dbc739bf1f81545) perf: disable mlockall to reduce memory usage
+ * [e6eace89](https://github.com/kubeovn/kube-ovn/commit/e6eace89b181e7f985b37d00af4482457e9465f5) set sysctl variables on cni server startup (#1758)
+ * [020b20de](https://github.com/kubeovn/kube-ovn/commit/020b20dec34db6f29433c02043d499aa49778935) fix: add omitempty to subnet spec (#1765)
+ * [3e77c51c](https://github.com/kubeovn/kube-ovn/commit/3e77c51cc2787aa67823947cf17c22641ae1fbd6) fix CVE-2022-21698
+ * [c5212982](https://github.com/kubeovn/kube-ovn/commit/c5212982ddb6bfa8c5bd910a4a4f5a4b489367a0) add logrotate for kube-ovn log (#1740)
+ * [ef275cc1](https://github.com/kubeovn/kube-ovn/commit/ef275cc1c5c257da02ed7219dc1067502c625b74) fix: cancel delete staticroute when it's used by NatRule (#1733)
+ * [513a30b5](https://github.com/kubeovn/kube-ovn/commit/513a30b52000a434328318c8bc3192cff427f346) fix: wrong info when update subnet from dual to ipv4 or ipv6. (#1726)
+ * [aef889ae](https://github.com/kubeovn/kube-ovn/commit/aef889ae7a8119ea6205873d100be85059a67e5c) Get latest vpc data from apiserver instead of cache (#1684)
+
+### Contributors
+
+ * Mengxin Liu
+ * Wang Bo
+ * bobz965
+ * hzma
+ * xujunjie-cover
+ * zhangzujian
+ * 张祖建
 
 ## v1.8.9 (2022-07-13)
 
