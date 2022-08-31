@@ -37,4 +37,4 @@ ic_nb_active_conf_file="$ovn_etcdir/ic-nb-active.conf"
 ic_sb_active_conf_file="$ovn_etcdir/ic-sb-active.conf"
 ovn_ic_db_conf_file="$ovn_etcdir/ovn-ic-db-params.conf"
 
-OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovn-controller --restart
+OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovn-controller "" "" --restart
