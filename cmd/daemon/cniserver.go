@@ -100,6 +100,7 @@ func CmdMain() {
 	server := &http.Server{
 		Addr:              fmt.Sprintf("0.0.0.0:%d", config.PprofPort),
 		ReadHeaderTimeout: 3 * time.Second,
+		Handler:           mux,
 	}
 	klog.Fatal(server.ListenAndServe())
 }
