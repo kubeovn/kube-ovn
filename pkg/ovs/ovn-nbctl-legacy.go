@@ -74,41 +74,6 @@ func (c LegacyClient) GetVersion() (string, error) {
 	return c.Version, nil
 }
 
-func (c LegacyClient) SetAzName(azName string) error {
-	if _, err := c.ovnNbCommand("set", "NB_Global", ".", fmt.Sprintf("name=%s", azName)); err != nil {
-		return fmt.Errorf("failed to set az name, %v", err)
-	}
-	return nil
-}
-
-func (c LegacyClient) SetLsDnatModDlDst(enabled bool) error {
-	if _, err := c.ovnNbCommand("set", "NB_Global", ".", fmt.Sprintf("options:ls_dnat_mod_dl_dst=%v", enabled)); err != nil {
-		return fmt.Errorf("failed to set NB_Global option ls_dnat_mod_dl_dst to %v: %v", enabled, err)
-	}
-	return nil
-}
-
-func (c LegacyClient) SetUseCtInvMatch() error {
-	if _, err := c.ovnNbCommand("set", "NB_Global", ".", "options:use_ct_inv_match=false"); err != nil {
-		return fmt.Errorf("failed to set NB_Global option use_ct_inv_match to false: %v", err)
-	}
-	return nil
-}
-
-func (c LegacyClient) SetICAutoRoute(enable bool, blackList []string) error {
-	if enable {
-		if _, err := c.ovnNbCommand("set", "NB_Global", ".", "options:ic-route-adv=true", "options:ic-route-learn=true", fmt.Sprintf("options:ic-route-blacklist=%s", strings.Join(blackList, ","))); err != nil {
-			return fmt.Errorf("failed to enable ovn-ic auto route, %v", err)
-		}
-		return nil
-	} else {
-		if _, err := c.ovnNbCommand("set", "NB_Global", ".", "options:ic-route-adv=false", "options:ic-route-learn=false"); err != nil {
-			return fmt.Errorf("failed to disable ovn-ic auto route, %v", err)
-		}
-		return nil
-	}
-}
-
 // DeleteLogicalSwitchPort delete logical switch port in ovn
 func (c LegacyClient) DeleteLogicalSwitchPort(port string) error {
 	klog.Infof("delete lsp %s", port)
