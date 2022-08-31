@@ -2,6 +2,7 @@ package ovn_monitor
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/klog/v2"
@@ -28,5 +29,12 @@ func CmdMain() {
 
 	http.Handle(config.MetricsPath, promhttp.Handler())
 	klog.Infoln("Listening on", config.ListenAddress)
-	klog.Fatal(http.ListenAndServe(config.ListenAddress, nil))
+
+	// conform to Gosec G114
+	// https://github.com/securego/gosec#available-rules
+	server := &http.Server{
+		Addr:              config.ListenAddress,
+		ReadHeaderTimeout: 3 * time.Second,
+	}
+	klog.Fatal(server.ListenAndServe())
 }

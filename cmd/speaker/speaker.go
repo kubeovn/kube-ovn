@@ -3,6 +3,7 @@ package speaker
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/klog/v2"
@@ -26,7 +27,14 @@ func CmdMain() {
 
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
-		klog.Fatal(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.PprofPort), nil))
+
+		// conform to Gosec G114
+		// https://github.com/securego/gosec#available-rules
+		server := &http.Server{
+			Addr:              fmt.Sprintf("0.0.0.0:%d", config.PprofPort),
+			ReadHeaderTimeout: 3 * time.Second,
+		}
+		klog.Fatal(server.ListenAndServe())
 	}()
 
 	ctl.Run(stopCh)
