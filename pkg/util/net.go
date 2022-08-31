@@ -15,6 +15,19 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
+const (
+	IPv4Multicast        = "224.0.0.0/4"
+	IPv4Loopback         = "127.0.0.1/8"
+	IPv4Broadcast        = "255.255.255.255/32"
+	IPv4Zero             = "0.0.0.0/32"
+	IPv4LinkLocalUnicast = "169.254.0.0/16"
+
+	IPv6Unspecified      = "::/128"
+	IPv6Loopback         = "::1/128"
+	IPv6Multicast        = "ff00::/8"
+	IPv6LinkLocalUnicast = "FE80::/10"
+)
+
 // GenerateMac generates mac address.
 func GenerateMac() string {
 	prefix := "00:00:00"
@@ -92,25 +105,6 @@ func LastIP(subnet string) (string, error) {
 	size := big.NewInt(0).Lsh(big.NewInt(1), length-uint(maskLength))
 	size = big.NewInt(0).Sub(size, big.NewInt(2))
 	return BigInt2Ip(ipInt.Add(ipInt, size)), nil
-}
-
-func CIDRConflict(a, b string) bool {
-	for _, cidra := range strings.Split(a, ",") {
-		for _, cidrb := range strings.Split(b, ",") {
-			if CheckProtocol(cidra) != CheckProtocol(cidrb) {
-				continue
-			}
-			aIp, aIpNet, aErr := net.ParseCIDR(cidra)
-			bIp, bIpNet, bErr := net.ParseCIDR(cidrb)
-			if aErr != nil || bErr != nil {
-				return false
-			}
-			if aIpNet.Contains(bIp) || bIpNet.Contains(aIp) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func CIDRContainIP(cidrStr, ipStr string) bool {
@@ -422,4 +416,75 @@ func GatewayContains(gatewayNodeStr, gateway string) bool {
 
 func JoinHostPort(host string, port int32) string {
 	return net.JoinHostPort(host, strconv.FormatInt(int64(port), 10))
+}
+
+func CIDROverlap(a, b string) bool {
+	for _, cidra := range strings.Split(a, ",") {
+		for _, cidrb := range strings.Split(b, ",") {
+			if CheckProtocol(cidra) != CheckProtocol(cidrb) {
+				continue
+			}
+			aIp, aIpNet, aErr := net.ParseCIDR(cidra)
+			bIp, bIpNet, bErr := net.ParseCIDR(cidrb)
+			if aErr != nil || bErr != nil {
+				return false
+			}
+			if aIpNet.Contains(bIp) || bIpNet.Contains(aIp) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func CIDRGlobalUnicast(cidr string) error {
+	for _, cidrBlock := range strings.Split(cidr, ",") {
+		if CIDROverlap(cidrBlock, IPv4Broadcast) {
+			return fmt.Errorf("%s conflict with v4 broadcast cidr %s", cidr, IPv4Broadcast)
+		}
+		if CIDROverlap(cidrBlock, IPv4Multicast) {
+			return fmt.Errorf("%s conflict with v4 multicast cidr %s", cidr, IPv4Multicast)
+		}
+		if CIDROverlap(cidrBlock, IPv4Loopback) {
+			return fmt.Errorf("%s conflict with v4 loopback cidr %s", cidr, IPv4Loopback)
+		}
+		if CIDROverlap(cidrBlock, IPv4Zero) {
+			return fmt.Errorf("%s conflict with v4 localnet cidr %s", cidr, IPv4Zero)
+		}
+		if CIDROverlap(cidrBlock, IPv4LinkLocalUnicast) {
+			return fmt.Errorf("%s conflict with v4 link local cidr %s", cidr, IPv4LinkLocalUnicast)
+		}
+
+		if CIDROverlap(cidrBlock, IPv6Unspecified) {
+			return fmt.Errorf("%s conflict with v6 unspecified cidr %s", cidr, IPv6Unspecified)
+		}
+		if CIDROverlap(cidrBlock, IPv6Loopback) {
+			return fmt.Errorf("%s conflict with v6 loopback cidr %s", cidr, IPv6Loopback)
+		}
+		if CIDROverlap(cidrBlock, IPv6Multicast) {
+			return fmt.Errorf("%s conflict with v6 multicast cidr %s", cidr, IPv6Multicast)
+		}
+		if CIDROverlap(cidrBlock, IPv6LinkLocalUnicast) {
+			return fmt.Errorf("%s conflict with v6 link local cidr %s", cidr, IPv6LinkLocalUnicast)
+		}
+	}
+	return nil
+}
+
+func CheckSystemCIDR(cidrs []string) error {
+	for i, cidr := range cidrs {
+		if err := CIDRGlobalUnicast(cidr); err != nil {
+			return err
+		}
+		for j, nextCidr := range cidrs {
+			if j <= i {
+				continue
+			}
+			if CIDROverlap(cidr, nextCidr) {
+				err := fmt.Errorf("cidr %s is conflict with cidr %s", cidr, nextCidr)
+				return err
+			}
+		}
+	}
+	return nil
 }

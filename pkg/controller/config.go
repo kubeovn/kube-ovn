@@ -235,6 +235,10 @@ func ParseFlags() (*Configuration, error) {
 		return nil, err
 	}
 
+	if err := util.CheckSystemCIDR([]string{config.NodeSwitchCIDR, config.DefaultCIDR, config.ServiceClusterIPRange}); err != nil {
+		return nil, fmt.Errorf("check system cidr failed, %v", err)
+	}
+
 	klog.Infof("config is  %+v", config)
 	return config, nil
 }
