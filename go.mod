@@ -20,6 +20,7 @@ require (
 	github.com/greenpau/ovsdb v1.0.2
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.3.0
 	github.com/mdlayher/arp v0.0.0-20220512170110-6706a2966875
+	github.com/moby/sys/mountinfo v0.6.0
 	github.com/neverlee/keymutex v0.0.0-20171121013845-f593aa834bf9
 	github.com/oilbeater/go-ping v0.0.0-20200413021620-332b7197c5b5
 	github.com/onsi/ginkgo/v2 v2.1.5
