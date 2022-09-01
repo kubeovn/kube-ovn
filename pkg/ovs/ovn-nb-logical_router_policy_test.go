@@ -4,9 +4,29 @@ import (
 	"fmt"
 	"testing"
 
+	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/stretchr/testify/require"
 )
+
+func newLogicalRouterPolicy(lrName string, priority int, match, action string, nextHops []string, externalIDs map[string]string) *ovnnb.LogicalRouterPolicy {
+	policy := &ovnnb.LogicalRouterPolicy{
+		UUID:     ovsclient.UUID(),
+		Priority: priority,
+		Match:    match,
+		Action:   action,
+		Nexthops: nextHops,
+		ExternalIDs: map[string]string{
+			logicalRouterKey: lrName,
+		},
+	}
+
+	for k, v := range externalIDs {
+		policy.ExternalIDs[k] = v
+	}
+
+	return policy
+}
 
 func (suite *OvnClientTestSuite) testAddLogicalRouterPolicy() {
 	t := suite.T()
@@ -231,4 +251,65 @@ func (suite *OvnClientTestSuite) testnewLogicalRouterPolicy() {
 	require.NoError(t, err)
 	expect.UUID = policy.UUID
 	require.Equal(t, expect, policy)
+}
+
+func (suite *OvnClientTestSuite) testpolicyFilter() {
+	t := suite.T()
+	t.Parallel()
+
+	lrName := "test-filter-policy-lr"
+	basePriority := 10000
+	match := "ip4.src == $ovn.default.lm2_ip4"
+	nextHops := []string{"100.64.0.2"}
+	action := ovnnb.LogicalRouterPolicyActionAllow
+	policies := make([]*ovnnb.LogicalRouterPolicy, 0)
+
+	// create three polices
+	for i := 0; i < 3; i++ {
+		priority := basePriority + i
+		policy := newLogicalRouterPolicy(lrName, priority, match, action, nextHops, nil)
+		policies = append(policies, policy)
+	}
+
+	// create two polices with other logical router key
+	for i := 0; i < 2; i++ {
+		priority := basePriority + i
+		policy := newLogicalRouterPolicy(lrName, priority, match, action, nextHops, nil)
+		policy.ExternalIDs[logicalRouterKey] = lrName + "-test"
+		policies = append(policies, policy)
+	}
+
+	t.Run("include all policies", func(t *testing.T) {
+		filterFunc := policyFilter(nil)
+		count := 0
+		for _, policy := range policies {
+			if filterFunc(policy) {
+				count++
+			}
+		}
+		require.Equal(t, count, 5)
+	})
+
+	t.Run("include all policies with external ids", func(t *testing.T) {
+		filterFunc := policyFilter(map[string]string{logicalRouterKey: lrName})
+		count := 0
+		for _, policy := range policies {
+			if filterFunc(policy) {
+				count++
+			}
+		}
+		require.Equal(t, count, 3)
+	})
+
+	t.Run("result should exclude policies when externalIDs's length is not equal", func(t *testing.T) {
+		t.Parallel()
+
+		policy := newLogicalRouterPolicy(lrName, basePriority+10, match, action, nextHops, nil)
+		filterFunc := policyFilter(map[string]string{
+			logicalRouterKey: lrName,
+			"key":            "value",
+		})
+
+		require.False(t, filterFunc(policy))
+	})
 }

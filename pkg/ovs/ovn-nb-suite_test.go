@@ -25,7 +25,7 @@ import (
 
 type OvnClientTestSuite struct {
 	suite.Suite
-	ovnClient *OvnClient
+	ovnClient *ovnClient
 }
 
 func (suite *OvnClientTestSuite) SetupSuite() {
@@ -310,10 +310,6 @@ func (suite *OvnClientTestSuite) Test_ListPortGroups() {
 	suite.testListPortGroups()
 }
 
-func (suite *OvnClientTestSuite) Test_PortGroupALLNotExist() {
-	suite.testPortGroupALLNotExist()
-}
-
 func (suite *OvnClientTestSuite) Test_portGroupUpdatePortOp() {
 	suite.testportGroupUpdatePortOp()
 }
@@ -439,6 +435,10 @@ func (suite *OvnClientTestSuite) Test_GetLogicalRouterPolicy() {
 
 func (suite *OvnClientTestSuite) Test_newLogicalRouterPolicy() {
 	suite.testnewLogicalRouterPolicy()
+}
+
+func (suite *OvnClientTestSuite) Test_policyFilter() {
+	suite.testpolicyFilter()
 }
 
 /* nat unit test */
@@ -593,11 +593,11 @@ func newOVSDBServer(t *testing.T, dbModel model.ClientDBModel, schema ovsdb.Data
 	return server, tmpfile
 }
 
-func newOvnClient(t *testing.T, ovnNbAddr string, ovnNbTimeout int, clusterRouter, nodeSwitchCIDR string) (*OvnClient, error) {
+func newOvnClient(t *testing.T, ovnNbAddr string, ovnNbTimeout int, clusterRouter, nodeSwitchCIDR string) (*ovnClient, error) {
 	nbClient, err := newNbClient(ovnNbAddr, ovnNbTimeout)
 	require.NoError(t, err)
 
-	return &OvnClient{
+	return &ovnClient{
 		ovnNbClient: ovnNbClient{
 			Client:  nbClient,
 			Timeout: ovnNbTimeout,

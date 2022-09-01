@@ -52,26 +52,26 @@ func (suite *OvnClientTestSuite) testUpdateNbGlobal() {
 	t := suite.T()
 
 	ovnClient := suite.ovnClient
-	name := "test-nb-global-update"
 
 	t.Cleanup(func() {
 		err := ovnClient.DeleteNbGlobal()
 		require.NoError(t, err)
-
-		_, err = ovnClient.GetNbGlobal()
-		require.ErrorContains(t, err, "not found nb_global")
 	})
 
 	nbGlobal := mockNBGlobal()
 	err := ovnClient.CreateNbGlobal(nbGlobal)
 	require.NoError(t, err)
+
+	nbGlobal, err = ovnClient.GetNbGlobal()
+	require.NoError(t, err)
+
 	t.Run("normal update", func(t *testing.T) {
-		update := &ovnnb.NBGlobal{Name: name, Options: map[string]string{
+		nbGlobal.Options = map[string]string{
 			"mac_prefix": "11:22:aa",
 			"max_tunid":  "16711680",
-		}}
+		}
 
-		err = ovnClient.UpdateNbGlobal(update)
+		err = ovnClient.UpdateNbGlobal(nbGlobal)
 		require.NoError(t, err)
 
 		out, err := ovnClient.GetNbGlobal()
@@ -81,9 +81,11 @@ func (suite *OvnClientTestSuite) testUpdateNbGlobal() {
 	})
 
 	t.Run("cleate options", func(t *testing.T) {
-		update := &ovnnb.NBGlobal{}
+		nbGlobal := &ovnnb.NBGlobal{
+			UUID: nbGlobal.UUID,
+		}
 
-		err = ovnClient.UpdateNbGlobal(update, &update.Name, &update.Options)
+		err = ovnClient.UpdateNbGlobal(nbGlobal, &nbGlobal.Name, &nbGlobal.Options)
 		require.NoError(t, err)
 
 		out, err := ovnClient.GetNbGlobal()

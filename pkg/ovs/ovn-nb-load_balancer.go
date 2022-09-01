@@ -12,7 +12,7 @@ import (
 )
 
 // CreateLoadBalancer create loadbalancer
-func (c OvnClient) CreateLoadBalancer(lbName, protocol, selectFields string) error {
+func (c *ovnClient) CreateLoadBalancer(lbName, protocol, selectFields string) error {
 	exist, err := c.LoadBalancerExists(lbName)
 	if err != nil {
 		return err
@@ -46,7 +46,7 @@ func (c OvnClient) CreateLoadBalancer(lbName, protocol, selectFields string) err
 }
 
 // DeleteLoadBalancers delete several loadbalancer once
-func (c OvnClient) DeleteLoadBalancers(lbs ...string) error {
+func (c *ovnClient) DeleteLoadBalancers(lbs ...string) error {
 	if len(lbs) == 0 {
 		return nil
 	}
@@ -76,7 +76,7 @@ func (c OvnClient) DeleteLoadBalancers(lbs ...string) error {
 
 // GetLoadBalancer get load balancer by name,
 // it is because of lack name index that does't use ovnNbClient.Get
-func (c OvnClient) GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnnb.LoadBalancer, error) {
+func (c *ovnClient) GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnnb.LoadBalancer, error) {
 	lbList := make([]ovnnb.LoadBalancer, 0)
 	if err := c.ovnNbClient.WhereCache(func(lb *ovnnb.LoadBalancer) bool {
 		return lb.Name == lbName
@@ -99,13 +99,13 @@ func (c OvnClient) GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnnb.L
 	return &lbList[0], nil
 }
 
-func (c OvnClient) LoadBalancerExists(lbName string) (bool, error) {
+func (c *ovnClient) LoadBalancerExists(lbName string) (bool, error) {
 	lrp, err := c.GetLoadBalancer(lbName, true)
 	return lrp != nil, err
 }
 
 // ListLoadBalancers list all load balancers
-func (c OvnClient) ListLoadBalancers() ([]ovnnb.LoadBalancer, error) {
+func (c *ovnClient) ListLoadBalancers() ([]ovnnb.LoadBalancer, error) {
 	lbList := make([]ovnnb.LoadBalancer, 0)
 	if err := c.ovnNbClient.WhereCache(func(lb *ovnnb.LoadBalancer) bool {
 		// list all load balancers
@@ -118,7 +118,7 @@ func (c OvnClient) ListLoadBalancers() ([]ovnnb.LoadBalancer, error) {
 }
 
 // LoadBalancerUpdateVips update load balancer vips
-func (c OvnClient) LoadBalancerUpdateVips(lbName string, vips map[string]string, op ovsdb.Mutator) error {
+func (c *ovnClient) LoadBalancerUpdateVips(lbName string, vips map[string]string, op ovsdb.Mutator) error {
 	if len(vips) == 0 {
 		return fmt.Errorf("vips %s add or del to load balancer %s cannot be empty", vips, lbName)
 	}
@@ -145,7 +145,7 @@ func (c OvnClient) LoadBalancerUpdateVips(lbName string, vips map[string]string,
 	return nil
 }
 
-func (c OvnClient) LoadBalancerOp(lbName string, mutationsFunc ...func(lb *ovnnb.LoadBalancer) *model.Mutation) ([]ovsdb.Operation, error) {
+func (c *ovnClient) LoadBalancerOp(lbName string, mutationsFunc ...func(lb *ovnnb.LoadBalancer) *model.Mutation) ([]ovsdb.Operation, error) {
 	lb, err := c.GetLoadBalancer(lbName, false)
 	if err != nil {
 		return nil, err
@@ -174,7 +174,7 @@ func (c OvnClient) LoadBalancerOp(lbName string, mutationsFunc ...func(lb *ovnnb
 }
 
 // DeleteLoadBalancerOp create operation which delete load balancer
-func (c OvnClient) DeleteLoadBalancerOp(lbName string) ([]ovsdb.Operation, error) {
+func (c *ovnClient) DeleteLoadBalancerOp(lbName string) ([]ovsdb.Operation, error) {
 	lb, err := c.GetLoadBalancer(lbName, true)
 
 	if err != nil {

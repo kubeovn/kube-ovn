@@ -185,20 +185,41 @@ func (c *Controller) initDenyAllSecurityGroup() error {
 	return nil
 }
 
+// updateDenyAllSgPorts set lsp to deny which security_groups is not empty
 func (c *Controller) updateDenyAllSgPorts() error {
-	results, err := c.ovnLegacyClient.CustomFindEntity("logical_switch_port", []string{"_uuid", "name", "port_security"}, "external_ids:security_groups!=\"\"")
+	sgKey := "security_groups"
+	// list all lsp which security_groups is not empty
+	ports, err := c.ovnClient.ListLogicalSwitchPorts(true, map[string]string{sgKey: ""})
 	if err != nil {
 		klog.Errorf("failed to find logical port, %v", err)
 		return err
 	}
-	var ports []string
-	for _, ret := range results {
-		if len(ret["port_security"]) < 2 {
+
+	matchPorts := make([]string, 0, len(ports))
+	for _, port := range ports {
+		// skip lsp which only have mac addresses,
+		// data store in port.PortSecurity[0], em...
+		if len(strings.Split(port.PortSecurity[0], " ")) < 2 {
 			continue
 		}
-		ports = append(ports, ret["name"][0])
+
+		/*  skip lsp which security_group does not exist */
+		// sgs format: sg1/sg2/sg3
+		sgs := strings.Split(port.ExternalIDs[sgKey], "/")
+		allNotExist, err := c.securityGroupALLNotExist(sgs)
+		if err != nil {
+			return err
+		}
+
+		if allNotExist {
+			klog.Infof("all sgs of lsp: %s does't exist", port.Name)
+			continue
+		}
+
+		matchPorts = append(matchPorts, port.Name)
 	}
-	return c.ovnLegacyClient.SetPortsToPortGroup(ovs.GetSgPortGroupName(util.DenyAllSecurityGroup), ports)
+
+	return c.ovnLegacyClient.SetPortsToPortGroup(ovs.GetSgPortGroupName(util.DenyAllSecurityGroup), matchPorts)
 }
 
 func (c *Controller) handleAddOrUpdateSg(key string) error {
@@ -445,4 +466,26 @@ func (c *Controller) reconcilePortSg(portName, securityGroups string) error {
 		return err
 	}
 	return nil
+}
+
+// securityGroupALLNotExist return true if all sgs does not exist
+func (c *Controller) securityGroupALLNotExist(sgs []string) (bool, error) {
+	if len(sgs) == 0 {
+		return true, nil
+	}
+
+	notExistsCount := 0
+	// sgs format: sg1/sg2/sg3
+	for _, sg := range sgs {
+		ok, err := c.ovnClient.PortGroupExists(ovs.GetSgPortGroupName(sg))
+		if err != nil {
+			return true, err
+		}
+
+		if !ok {
+			notExistsCount++
+		}
+	}
+
+	return notExistsCount == len(sgs), nil
 }

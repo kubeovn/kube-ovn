@@ -13,7 +13,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func createLogicalSwitchPort(c *OvnClient, lsp *ovnnb.LogicalSwitchPort) error {
+func createLogicalSwitchPort(c *ovnClient, lsp *ovnnb.LogicalSwitchPort) error {
 	if lsp == nil {
 		return fmt.Errorf("logical_switch_port is nil")
 	}

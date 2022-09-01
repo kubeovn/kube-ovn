@@ -12,7 +12,7 @@ import (
 )
 
 // CreateGatewayChassises create multiple gateway chassis once
-func (c OvnClient) CreateGatewayChassises(lrpName string, chassises []string) error {
+func (c *ovnClient) CreateGatewayChassises(lrpName string, chassises []string) error {
 	if len(chassises) == 0 {
 		return nil
 	}
@@ -45,7 +45,7 @@ func (c OvnClient) CreateGatewayChassises(lrpName string, chassises []string) er
 }
 
 // CreateGatewayChassis create gateway chassis
-func (c OvnClient) CreateGatewayChassis(gwChassis *ovnnb.GatewayChassis) error {
+func (c *ovnClient) CreateGatewayChassis(gwChassis *ovnnb.GatewayChassis) error {
 	if gwChassis == nil {
 		return fmt.Errorf("gateway_chassis is nil")
 	}
@@ -63,7 +63,7 @@ func (c OvnClient) CreateGatewayChassis(gwChassis *ovnnb.GatewayChassis) error {
 }
 
 // DeleteGatewayChassises delete multiple gateway chassis once
-func (c OvnClient) DeleteGatewayChassises(lrpName string, chassises []string) error {
+func (c *ovnClient) DeleteGatewayChassises(lrpName string, chassises []string) error {
 	if len(chassises) == 0 {
 		return nil
 	}
@@ -93,7 +93,7 @@ func (c OvnClient) DeleteGatewayChassises(lrpName string, chassises []string) er
 }
 
 // DeleteGatewayChassisOp create operation which gateway chassis
-func (c OvnClient) DeleteGatewayChassisOp(chassisName string) ([]ovsdb.Operation, error) {
+func (c *ovnClient) DeleteGatewayChassisOp(chassisName string) ([]ovsdb.Operation, error) {
 	gwChassis, err := c.GetGatewayChassis(chassisName, true)
 
 	if err != nil {
@@ -114,7 +114,7 @@ func (c OvnClient) DeleteGatewayChassisOp(chassisName string) ([]ovsdb.Operation
 }
 
 // GetGatewayChassis get gateway chassis by name
-func (c OvnClient) GetGatewayChassis(name string, ignoreNotFound bool) (*ovnnb.GatewayChassis, error) {
+func (c *ovnClient) GetGatewayChassis(name string, ignoreNotFound bool) (*ovnnb.GatewayChassis, error) {
 	gwChassis := &ovnnb.GatewayChassis{Name: name}
 	if err := c.Get(context.TODO(), gwChassis); err != nil {
 		if ignoreNotFound && err == client.ErrNotFound {
@@ -127,13 +127,13 @@ func (c OvnClient) GetGatewayChassis(name string, ignoreNotFound bool) (*ovnnb.G
 	return gwChassis, nil
 }
 
-func (c OvnClient) GatewayChassisExist(name string) (bool, error) {
+func (c *ovnClient) GatewayChassisExist(name string) (bool, error) {
 	gwChassis, err := c.GetGatewayChassis(name, true)
 	return gwChassis != nil, err
 }
 
 // newGatewayChassis return gateway chassis with basic information
-func (c OvnClient) newGatewayChassis(gwChassisName, chassisName string, priority int) (*ovnnb.GatewayChassis, error) {
+func (c *ovnClient) newGatewayChassis(gwChassisName, chassisName string, priority int) (*ovnnb.GatewayChassis, error) {
 	exists, err := c.GatewayChassisExist(gwChassisName)
 	if err != nil {
 		return nil, err

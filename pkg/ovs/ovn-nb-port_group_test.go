@@ -251,39 +251,6 @@ func (suite *OvnClientTestSuite) testListPortGroups() {
 	})
 }
 
-func (suite *OvnClientTestSuite) testPortGroupALLNotExist() {
-	t := suite.T()
-	t.Parallel()
-
-	ovnClient := suite.ovnClient
-	sgName := "sg"
-	pgName := GetSgPortGroupName(sgName)
-
-	err := ovnClient.CreatePortGroup(pgName, map[string]string{
-		"type": "security_group",
-		sgKey:  "test-sg",
-	})
-	require.NoError(t, err)
-
-	t.Run("should return false when some port group exist", func(t *testing.T) {
-		exist, err := ovnClient.PortGroupALLNotExist([]string{sgName, "sg1", "sg2", "sg3"})
-		require.NoError(t, err)
-		require.False(t, exist)
-	})
-
-	t.Run("should return true when all port group does't exist", func(t *testing.T) {
-		exist, err := ovnClient.PortGroupALLNotExist([]string{"sg1", "sg2", "sg3"})
-		require.NoError(t, err)
-		require.True(t, exist)
-	})
-
-	t.Run("should return true when sgs is empty", func(t *testing.T) {
-		exist, err := ovnClient.PortGroupALLNotExist([]string{})
-		require.NoError(t, err)
-		require.True(t, exist)
-	})
-}
-
 func (suite *OvnClientTestSuite) testportGroupUpdatePortOp() {
 	t := suite.T()
 	t.Parallel()

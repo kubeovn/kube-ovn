@@ -12,7 +12,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
-func (c OvnClient) CreateBareNat(lrName, natType, externalIP, logicalIP string) error {
+func (c *ovnClient) CreateBareNat(lrName, natType, externalIP, logicalIP string) error {
 	nat, err := c.newNat(lrName, natType, externalIP, logicalIP)
 	if err != nil {
 		return err
@@ -31,7 +31,7 @@ func (c OvnClient) CreateBareNat(lrName, natType, externalIP, logicalIP string) 
 }
 
 // CreateNats create several logical router nat rule once
-func (c OvnClient) CreateNats(lrName string, nats ...*ovnnb.NAT) error {
+func (c *ovnClient) CreateNats(lrName string, nats ...*ovnnb.NAT) error {
 	if len(nats) == 0 {
 		return nil
 	}
@@ -67,7 +67,7 @@ func (c OvnClient) CreateNats(lrName string, nats ...*ovnnb.NAT) error {
 }
 
 // UpdateSnat update snat rule
-func (c OvnClient) UpdateSnat(lrName, externalIP, logicalIP string) error {
+func (c *ovnClient) UpdateSnat(lrName, externalIP, logicalIP string) error {
 	natType := ovnnb.NATTypeSNAT
 
 	nat, err := c.GetNat(lrName, natType, "", logicalIP, true)
@@ -94,7 +94,7 @@ func (c OvnClient) UpdateSnat(lrName, externalIP, logicalIP string) error {
 }
 
 // UpdateDnatAndSnat update dnat_and_snat rule
-func (c OvnClient) UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, externalMac, gatewayType string) error {
+func (c *ovnClient) UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, externalMac, gatewayType string) error {
 	natType := ovnnb.NATTypeDNATAndSNAT
 
 	nat, err := c.GetNat(lrName, natType, externalIP, "", true)
@@ -139,7 +139,7 @@ func (c OvnClient) UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, ext
 }
 
 // UpdateNat update nat
-func (c OvnClient) UpdateNat(nat *ovnnb.NAT, fields ...interface{}) error {
+func (c *ovnClient) UpdateNat(nat *ovnnb.NAT, fields ...interface{}) error {
 	if nat == nil {
 		return fmt.Errorf("nat is nil")
 	}
@@ -157,7 +157,7 @@ func (c OvnClient) UpdateNat(nat *ovnnb.NAT, fields ...interface{}) error {
 }
 
 // DeleteNat delete several nat rule once
-func (c OvnClient) DeleteNats(lrName, natType, logicalIP string) error {
+func (c *ovnClient) DeleteNats(lrName, natType, logicalIP string) error {
 	externalIDs := map[string]string{logicalRouterKey: lrName}
 
 	/* delete nats from logical router */
@@ -196,7 +196,7 @@ func (c OvnClient) DeleteNats(lrName, natType, logicalIP string) error {
 // GetNat get nat by some attribute,
 // a nat rule is uniquely identified by router(lrName), type(natType) and logical_ip when sant
 // a nat rule is uniquely identified by router(lrName), type(natType) and external_ip when dnat_and_snat
-func (c OvnClient) GetNat(lrName, natType, externalIP, logicalIP string, ignoreNotFound bool) (*ovnnb.NAT, error) {
+func (c *ovnClient) GetNat(lrName, natType, externalIP, logicalIP string, ignoreNotFound bool) (*ovnnb.NAT, error) {
 	// this is necessary because may exist same nat rule in different logical router
 	if len(lrName) == 0 {
 		return nil, fmt.Errorf("the logical router name is required")
@@ -238,7 +238,7 @@ func (c OvnClient) GetNat(lrName, natType, externalIP, logicalIP string, ignoreN
 }
 
 // ListNats list acls which match the given externalIDs
-func (c OvnClient) ListNats(natType, logicalIP string, externalIDs map[string]string) ([]ovnnb.NAT, error) {
+func (c *ovnClient) ListNats(natType, logicalIP string, externalIDs map[string]string) ([]ovnnb.NAT, error) {
 	natList := make([]ovnnb.NAT, 0)
 
 	if err := c.WhereCache(natFilter(natType, logicalIP, externalIDs)).List(context.TODO(), &natList); err != nil {
@@ -248,13 +248,13 @@ func (c OvnClient) ListNats(natType, logicalIP string, externalIDs map[string]st
 	return natList, nil
 }
 
-func (c OvnClient) NatExists(lrName, natType, externalIP, logicalIP string) (bool, error) {
+func (c *ovnClient) NatExists(lrName, natType, externalIP, logicalIP string) (bool, error) {
 	nat, err := c.GetNat(lrName, natType, externalIP, logicalIP, true)
 	return nat != nil, err
 }
 
 // newNat return net with basic information
-func (c OvnClient) newNat(lrName, natType, externalIP, logicalIP string, options ...func(nat *ovnnb.NAT)) (*ovnnb.NAT, error) {
+func (c *ovnClient) newNat(lrName, natType, externalIP, logicalIP string, options ...func(nat *ovnnb.NAT)) (*ovnnb.NAT, error) {
 	if len(lrName) == 0 {
 		return nil, fmt.Errorf("the logical router name is required")
 	}

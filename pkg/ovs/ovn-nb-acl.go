@@ -18,7 +18,7 @@ import (
 )
 
 // CreateIngressACL creates an ingress ACL
-func (c OvnClient) CreateIngressAcl(pgName, asIngressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort) error {
+func (c *ovnClient) CreateIngressAcl(pgName, asIngressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort) error {
 	acls := make([]*ovnnb.ACL, 0)
 
 	/* default drop acl */
@@ -58,7 +58,7 @@ func (c OvnClient) CreateIngressAcl(pgName, asIngressName, asExceptName, protoco
 }
 
 // CreateIngressACL creates an egress ACL
-func (c OvnClient) CreateEgressAcl(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort) error {
+func (c *ovnClient) CreateEgressAcl(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort) error {
 	acls := make([]*ovnnb.ACL, 0)
 
 	/* default drop acl */
@@ -98,7 +98,7 @@ func (c OvnClient) CreateEgressAcl(pgName, asEgressName, asExceptName, protocol 
 }
 
 // CreateGatewayACL create allow acl for subnet gateway
-func (c OvnClient) CreateGatewayAcl(pgName, gateway string) error {
+func (c *ovnClient) CreateGatewayAcl(pgName, gateway string) error {
 	acls := make([]*ovnnb.ACL, 0)
 
 	for _, gw := range strings.Split(gateway, ",") {
@@ -129,7 +129,7 @@ func (c OvnClient) CreateGatewayAcl(pgName, gateway string) error {
 }
 
 // CreateGatewayACL create allow acl for node join ip
-func (c OvnClient) CreateNodeAcl(pgName, nodeIp string) error {
+func (c *ovnClient) CreateNodeAcl(pgName, nodeIp string) error {
 	acls := make([]*ovnnb.ACL, 0)
 	for _, ip := range strings.Split(nodeIp, ",") {
 		protocol := util.CheckProtocol(ip)
@@ -159,7 +159,7 @@ func (c OvnClient) CreateNodeAcl(pgName, nodeIp string) error {
 	return nil
 }
 
-func (c OvnClient) CreateSgDenyAllAcl(sgName string) error {
+func (c *ovnClient) CreateSgDenyAllAcl(sgName string) error {
 	pgName := GetSgPortGroupName(sgName)
 
 	ingressAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionToLport, util.SecurityGroupDropPriority, fmt.Sprintf("outport == @%s && ip", pgName), ovnnb.ACLActionDrop)
@@ -179,7 +179,7 @@ func (c OvnClient) CreateSgDenyAllAcl(sgName string) error {
 	return nil
 }
 
-func (c OvnClient) UpdateSgAcl(sg *kubeovnv1.SecurityGroup, direction string) error {
+func (c *ovnClient) UpdateSgAcl(sg *kubeovnv1.SecurityGroup, direction string) error {
 	pgName := GetSgPortGroupName(sg.Name)
 
 	// clear acl
@@ -240,7 +240,7 @@ func (c OvnClient) UpdateSgAcl(sg *kubeovnv1.SecurityGroup, direction string) er
 	return nil
 }
 
-func (c OvnClient) UpdateLogicalSwitchAcl(lsName string, subnetAcls []kubeovnv1.Acl) error {
+func (c *ovnClient) UpdateLogicalSwitchAcl(lsName string, subnetAcls []kubeovnv1.Acl) error {
 	if err := c.DeleteAcls(lsName, logicalSwitchKey, ""); err != nil {
 		return fmt.Errorf("clear logical switch %s acls: %v", lsName, err)
 	}
@@ -267,7 +267,7 @@ func (c OvnClient) UpdateLogicalSwitchAcl(lsName string, subnetAcls []kubeovnv1.
 }
 
 // SetLogicalSwitchPrivate will drop all ingress traffic except allow subnets, same subnet and node subnet
-func (c OvnClient) SetLogicalSwitchPrivate(lsName, cidrBlock string, allowSubnets []string) error {
+func (c *ovnClient) SetLogicalSwitchPrivate(lsName, cidrBlock string, allowSubnets []string) error {
 	// clear acls
 	if err := c.DeleteAcls(lsName, logicalSwitchKey, ""); err != nil {
 		return fmt.Errorf("clear logical switch %s acls: %v", lsName, err)
@@ -390,7 +390,7 @@ func (c OvnClient) SetLogicalSwitchPrivate(lsName, cidrBlock string, allowSubnet
 
 // CreateAcls create several acl once
 // parentType is 'ls' or 'pg'
-func (c OvnClient) CreateAcls(parentName, parentType string, acls ...*ovnnb.ACL) error {
+func (c *ovnClient) CreateAcls(parentName, parentType string, acls ...*ovnnb.ACL) error {
 	if parentType != portGroupKey && parentType != logicalSwitchKey {
 		return fmt.Errorf("acl parent type must be '%s' or '%s'", portGroupKey, logicalSwitchKey)
 	}
@@ -437,7 +437,7 @@ func (c OvnClient) CreateAcls(parentName, parentType string, acls ...*ovnnb.ACL)
 	return nil
 }
 
-func (c OvnClient) CreateBareAcl(parentName, direction, priority, match, action string) error {
+func (c *ovnClient) CreateBareAcl(parentName, direction, priority, match, action string) error {
 	acl, err := c.newAcl(parentName, direction, priority, match, action)
 	if err != nil {
 		return fmt.Errorf("new acl direction %s priority %s match %s action %s: %v", direction, priority, match, action, err)
@@ -458,7 +458,7 @@ func (c OvnClient) CreateBareAcl(parentName, direction, priority, match, action 
 // DeleteAcls delete several acl once,
 // delete to-lport and from-lport direction acl when direction is empty, otherwise one-way
 // parentType is 'ls' or 'pg'
-func (c OvnClient) DeleteAcls(parentName, parentType string, direction string) error {
+func (c *ovnClient) DeleteAcls(parentName, parentType string, direction string) error {
 	externalIDs := map[string]string{aclParentKey: parentName}
 
 	/* delete acls from port group or logical switch*/
@@ -504,7 +504,7 @@ func (c OvnClient) DeleteAcls(parentName, parentType string, direction string) e
 
 // GetAcl get acl by direction, priority and match,
 // be consistent with ovn-nbctl which direction, priority and match determine one acl in port group or logical switch
-func (c OvnClient) GetAcl(parent, direction, priority, match string, ignoreNotFound bool) (*ovnnb.ACL, error) {
+func (c *ovnClient) GetAcl(parent, direction, priority, match string, ignoreNotFound bool) (*ovnnb.ACL, error) {
 	// this is necessary because may exist same direction, priority and match acl in different port group or logical switch
 	if len(parent) == 0 {
 		return nil, fmt.Errorf("the parent name is required")
@@ -539,7 +539,7 @@ func (c OvnClient) GetAcl(parent, direction, priority, match string, ignoreNotFo
 // result should include all acls when externalIDs is empty,
 // result should include all acls which externalIDs[key] is not empty when externalIDs[key] is ""
 // TODO: maybe add other filter conditions(priority or match)
-func (c OvnClient) ListAcls(direction string, externalIDs map[string]string) ([]ovnnb.ACL, error) {
+func (c *ovnClient) ListAcls(direction string, externalIDs map[string]string) ([]ovnnb.ACL, error) {
 	aclList := make([]ovnnb.ACL, 0)
 
 	if err := c.WhereCache(aclFilter(direction, externalIDs)).List(context.TODO(), &aclList); err != nil {
@@ -549,13 +549,13 @@ func (c OvnClient) ListAcls(direction string, externalIDs map[string]string) ([]
 	return aclList, nil
 }
 
-func (c OvnClient) AclExists(parent, direction, priority, match string) (bool, error) {
+func (c *ovnClient) AclExists(parent, direction, priority, match string) (bool, error) {
 	acl, err := c.GetAcl(parent, direction, priority, match, true)
 	return acl != nil, err
 }
 
 // newAcl return acl with basic information
-func (c OvnClient) newAcl(parent, direction, priority, match, action string, options ...func(acl *ovnnb.ACL)) (*ovnnb.ACL, error) {
+func (c *ovnClient) newAcl(parent, direction, priority, match, action string, options ...func(acl *ovnnb.ACL)) (*ovnnb.ACL, error) {
 	if len(parent) == 0 {
 		return nil, fmt.Errorf("the parent name is required")
 	}
@@ -595,7 +595,7 @@ func (c OvnClient) newAcl(parent, direction, priority, match, action string, opt
 }
 
 // createSgRuleACL create security group rule acl
-func (c OvnClient) newSgRuleACL(sgName string, direction string, rule *kubeovnv1.SgRule) (*ovnnb.ACL, error) {
+func (c *ovnClient) newSgRuleACL(sgName string, direction string, rule *kubeovnv1.SgRule) (*ovnnb.ACL, error) {
 	ipSuffix := "ip4"
 	if rule.IPVersion == "ipv6" {
 		ipSuffix = "ip6"

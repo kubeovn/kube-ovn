@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"os"
 	"os/exec"
 	"reflect"
@@ -17,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -196,7 +196,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 		return nil
 	}
 
-	if err := c.ovnLegacyClient.SetAzName(config["az-name"]); err != nil {
+	if err := c.setAzName(config["az-name"]); err != nil {
 		klog.Errorf("failed to set az name. %v", err)
 		return err
 	}
@@ -396,7 +396,6 @@ func genHostAddress(host string, port string) (hostaddress string) {
 }
 
 func (c *Controller) SynRouteToPolicy() {
-
 	lr, err := c.ovnClient.GetLogicalRouter(util.DefaultVpc, false)
 	if err != nil {
 		klog.Errorf("logical router does not exist %v at %v", err, time.Now())
@@ -408,10 +407,10 @@ func (c *Controller) SynRouteToPolicy() {
 		return
 	}
 	if len(lrRouteList) == 0 {
-		klog.V(5).Info(" lr ovn-ic route does not exist")
-		lrPolicyList, err := c.ovnClient.GetLogicalRouterPoliciesByExtID(util.OvnICKey, util.OvnICValue)
+		klog.V(5).Info("lr ovn-ic route does not exist")
+		lrPolicyList, err := c.ovnClient.ListLogicalRouterPolicies(map[string]string{util.OvnICKey: util.OvnICValue})
 		if err != nil {
-			klog.Errorf("failed to list ovn-ic lr policy ", err)
+			klog.Errorf("failed to list ovn-ic lr policy", err)
 			return
 		}
 		for _, lrPolicy := range lrPolicyList {
@@ -423,7 +422,7 @@ func (c *Controller) SynRouteToPolicy() {
 	}
 
 	policyMap := map[string]string{}
-	lrPolicyList, err := c.ovnClient.GetLogicalRouterPoliciesByExtID(util.OvnICKey, util.OvnICValue)
+	lrPolicyList, err := c.ovnClient.ListLogicalRouterPolicies(map[string]string{util.OvnICKey: util.OvnICValue})
 	if err != nil {
 		klog.Errorf("failed to list ovn-ic lr policy ", err)
 		return
@@ -441,10 +440,7 @@ func (c *Controller) SynRouteToPolicy() {
 			delete(policyMap, lrRoute.IPPrefix)
 		} else {
 			matchFiled := util.MatchV4Dst + " == " + lrRoute.IPPrefix
-			if err := c.ovnClient.AddRouterPolicy(lr, matchFiled, ovnnb.LogicalRouterPolicyActionAllow,
-				map[string]string{},
-				map[string]string{util.OvnICKey: util.OvnICValue, "vendor": util.CniTypeName},
-				util.OvnICPolicyPriority); err != nil {
+			if err := c.ovnClient.AddLogicalRouterPolicy(util.DefaultVpc, util.OvnICPolicyPriority, matchFiled, ovnnb.LogicalRouterPolicyActionAllow, nil, map[string]string{util.OvnICKey: util.OvnICValue, "vendor": util.CniTypeName}); err != nil {
 				klog.Errorf("adding router policy failed %v", err)
 			}
 		}
@@ -488,4 +484,19 @@ func stripPrefix(policyMatch string) (string, error) {
 	} else {
 		return "", fmt.Errorf("policy %s is mismatched", policyMatch)
 	}
+}
+
+func (c *Controller) setAzName(azName string) error {
+	nbGlobal, err := c.ovnClient.GetNbGlobal()
+	if err != nil {
+		return fmt.Errorf("get nb global: %v", err)
+	}
+
+	nbGlobal.Name = azName
+
+	if err := c.ovnClient.UpdateNbGlobal(nbGlobal, &nbGlobal.Name); err != nil {
+		return fmt.Errorf("set nb_global az name %s: %v", azName, err)
+	}
+
+	return nil
 }

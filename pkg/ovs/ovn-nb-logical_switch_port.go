@@ -13,7 +13,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c OvnClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, namespace string, portSecurity bool, securityGroups string, vips string, liveMigration bool, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs, vpc string) error {
+func (c *ovnClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, namespace string, portSecurity bool, securityGroups string, vips string, liveMigration bool, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs, vpc string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, true)
 	if err != nil {
 		return fmt.Errorf("get logical switch port %s: %v", lspName, err)
@@ -104,7 +104,7 @@ func (c OvnClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, na
 }
 
 // CreateLocalnetLogicalSwitchPort create localnet type logical switch port
-func (c OvnClient) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider string, vlanID int) error {
+func (c *ovnClient) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider string, vlanID int) error {
 	exist, err := c.LogicalSwitchPortExists(lspName)
 	if err != nil {
 		return err
@@ -143,7 +143,7 @@ func (c OvnClient) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider str
 }
 
 // CreateVirtualLogicalSwitchPorts create several virtual type logical switch port once
-func (c OvnClient) CreateVirtualLogicalSwitchPorts(lsName string, ips ...string) error {
+func (c *ovnClient) CreateVirtualLogicalSwitchPorts(lsName string, ips ...string) error {
 	ops := make([]ovsdb.Operation, 0, len(ips))
 
 	for _, ip := range ips {
@@ -184,7 +184,7 @@ func (c OvnClient) CreateVirtualLogicalSwitchPorts(lsName string, ips ...string)
 }
 
 // CreateBareLogicalSwitchPort create logical switch port with basic configuration
-func (c OvnClient) CreateBareLogicalSwitchPort(lsName, lspName string) error {
+func (c *ovnClient) CreateBareLogicalSwitchPort(lsName, lspName string) error {
 	/* create logical switch port */
 	lsp := &ovnnb.LogicalSwitchPort{
 		UUID: ovsclient.UUID(),
@@ -204,7 +204,7 @@ func (c OvnClient) CreateBareLogicalSwitchPort(lsName, lspName string) error {
 }
 
 // CreateVirtualLogicalSwitchPorts update several virtual type logical switch port virtual-parents once
-func (c OvnClient) SetLogicalSwitchPortVirtualParents(lsName, parents string, ips ...string) error {
+func (c *ovnClient) SetLogicalSwitchPortVirtualParents(lsName, parents string, ips ...string) error {
 	ops := make([]ovsdb.Operation, 0, len(ips))
 	for _, ip := range ips {
 		lspName := fmt.Sprintf("%s-vip-%s", lsName, ip)
@@ -234,7 +234,7 @@ func (c OvnClient) SetLogicalSwitchPortVirtualParents(lsName, parents string, ip
 }
 
 // SetLogicalSwitchPortSecurity set logical switch port port_security
-func (c OvnClient) SetLogicalSwitchPortSecurity(portSecurity bool, lspName, mac, ips, vips string) error {
+func (c *ovnClient) SetLogicalSwitchPortSecurity(portSecurity bool, lspName, mac, ips, vips string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, false)
 	if err != nil {
 		return fmt.Errorf("get logical switch port %s: %v", lspName, err)
@@ -278,7 +278,7 @@ func (c OvnClient) SetLogicalSwitchPortSecurity(portSecurity bool, lspName, mac,
 }
 
 // SetLogicalSwitchPortExternalIds set logical switch port external ids
-func (c OvnClient) SetLogicalSwitchPortExternalIds(lspName string, externalIds map[string]string) error {
+func (c *ovnClient) SetLogicalSwitchPortExternalIds(lspName string, externalIds map[string]string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, false)
 	if err != nil {
 		return fmt.Errorf("get logical switch port %s: %v", lspName, err)
@@ -301,7 +301,7 @@ func (c OvnClient) SetLogicalSwitchPortExternalIds(lspName string, externalIds m
 
 // SetLogicalSwitchPortSecurityGroup set logical switch port security group,
 // op is 'add' or 'remove'
-func (c OvnClient) SetLogicalSwitchPortSecurityGroup(lsp *ovnnb.LogicalSwitchPort, op string, sgs ...string) ([]string, error) {
+func (c *ovnClient) SetLogicalSwitchPortSecurityGroup(lsp *ovnnb.LogicalSwitchPort, op string, sgs ...string) ([]string, error) {
 	if len(sgs) == 0 {
 		return nil, nil
 	}
@@ -355,7 +355,7 @@ func (c OvnClient) SetLogicalSwitchPortSecurityGroup(lsp *ovnnb.LogicalSwitchPor
 
 // SetLogicalSwitchPortsSecurityGroup set logical switch port security group,
 // op is 'add' or 'remove'
-func (c OvnClient) SetLogicalSwitchPortsSecurityGroup(sgName string, op string) error {
+func (c *ovnClient) SetLogicalSwitchPortsSecurityGroup(sgName string, op string) error {
 	if op != "add" && op != "remove" {
 		return fmt.Errorf("op must be 'add' or 'remove'")
 	}
@@ -384,7 +384,7 @@ func (c OvnClient) SetLogicalSwitchPortsSecurityGroup(sgName string, op string) 
 }
 
 // EnablePortLayer2forward set logical switch port addresses as 'unknown'
-func (c OvnClient) EnablePortLayer2forward(lspName string) error {
+func (c *ovnClient) EnablePortLayer2forward(lspName string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, false)
 	if err != nil {
 		return fmt.Errorf("get logical switch port %s: %v", lspName, err)
@@ -399,7 +399,7 @@ func (c OvnClient) EnablePortLayer2forward(lspName string) error {
 	return nil
 }
 
-func (c OvnClient) SetLogicalSwitchPortVlanTag(lspName string, vlanID int) error {
+func (c *ovnClient) SetLogicalSwitchPortVlanTag(lspName string, vlanID int) error {
 	// valid vlan id is 0~4095
 	if vlanID < 1 || vlanID > 4095 {
 		return fmt.Errorf("invalid vlan id %d", vlanID)
@@ -425,7 +425,7 @@ func (c OvnClient) SetLogicalSwitchPortVlanTag(lspName string, vlanID int) error
 }
 
 // UpdateLogicalSwitchPort update logical switch port
-func (c OvnClient) UpdateLogicalSwitchPort(lsp *ovnnb.LogicalSwitchPort, fields ...interface{}) error {
+func (c *ovnClient) UpdateLogicalSwitchPort(lsp *ovnnb.LogicalSwitchPort, fields ...interface{}) error {
 	if lsp == nil {
 		return fmt.Errorf("logical_switch_port is nil")
 	}
@@ -443,7 +443,7 @@ func (c OvnClient) UpdateLogicalSwitchPort(lsp *ovnnb.LogicalSwitchPort, fields 
 }
 
 // DeleteLogicalSwitchPort delete logical switch port in ovn
-func (c OvnClient) DeleteLogicalSwitchPort(lspName string) error {
+func (c *ovnClient) DeleteLogicalSwitchPort(lspName string) error {
 	ops, err := c.DeleteLogicalSwitchPortOp(lspName)
 	if err != nil {
 		return err
@@ -457,7 +457,7 @@ func (c OvnClient) DeleteLogicalSwitchPort(lspName string) error {
 }
 
 // GetLogicalSwitchPort get logical switch port by name
-func (c OvnClient) GetLogicalSwitchPort(lspName string, ignoreNotFound bool) (*ovnnb.LogicalSwitchPort, error) {
+func (c *ovnClient) GetLogicalSwitchPort(lspName string, ignoreNotFound bool) (*ovnnb.LogicalSwitchPort, error) {
 	lsp := &ovnnb.LogicalSwitchPort{Name: lspName}
 	if err := c.Get(context.TODO(), lsp); err != nil {
 		if ignoreNotFound && err == client.ErrNotFound {
@@ -469,7 +469,7 @@ func (c OvnClient) GetLogicalSwitchPort(lspName string, ignoreNotFound bool) (*o
 	return lsp, nil
 }
 
-func (c OvnClient) ListRemoteTypeLogicalSwitchPorts() ([]ovnnb.LogicalSwitchPort, error) {
+func (c *ovnClient) ListRemoteTypeLogicalSwitchPorts() ([]ovnnb.LogicalSwitchPort, error) {
 	lspList := make([]ovnnb.LogicalSwitchPort, 0, 1)
 	if err := c.WhereCache(func(lsp *ovnnb.LogicalSwitchPort) bool {
 		return lsp.Type == "remote"
@@ -483,7 +483,7 @@ func (c OvnClient) ListRemoteTypeLogicalSwitchPorts() ([]ovnnb.LogicalSwitchPort
 // ListLogicalSwitchPorts list logical switch ports which match the given externalIDs,
 // result should include all logical switch ports when externalIDs is empty,
 // result should include all logical switch ports which externalIDs[key] is not empty when externalIDs[key] is ""
-func (c OvnClient) ListLogicalSwitchPorts(needVendorFilter bool, externalIDs map[string]string) ([]ovnnb.LogicalSwitchPort, error) {
+func (c *ovnClient) ListLogicalSwitchPorts(needVendorFilter bool, externalIDs map[string]string) ([]ovnnb.LogicalSwitchPort, error) {
 	lspList := make([]ovnnb.LogicalSwitchPort, 0)
 
 	if err := c.WhereCache(func(lsp *ovnnb.LogicalSwitchPort) bool {
@@ -523,13 +523,13 @@ func (c OvnClient) ListLogicalSwitchPorts(needVendorFilter bool, externalIDs map
 	return lspList, nil
 }
 
-func (c OvnClient) LogicalSwitchPortExists(name string) (bool, error) {
+func (c *ovnClient) LogicalSwitchPortExists(name string) (bool, error) {
 	lsp, err := c.GetLogicalSwitchPort(name, true)
 	return lsp != nil, err
 }
 
 // CreateLogicalSwitchPortOp create operations which create logical switch port
-func (c OvnClient) CreateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, lsName string) ([]ovsdb.Operation, error) {
+func (c *ovnClient) CreateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, lsName string) ([]ovsdb.Operation, error) {
 	if lsp == nil {
 		return nil, fmt.Errorf("logical_switch_port is nil")
 	}
@@ -562,7 +562,7 @@ func (c OvnClient) CreateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, lsNam
 }
 
 // DeleteLogicalSwitchPortOp create operations which delete logical switch port
-func (c OvnClient) DeleteLogicalSwitchPortOp(lspName string) ([]ovsdb.Operation, error) {
+func (c *ovnClient) DeleteLogicalSwitchPortOp(lspName string) ([]ovsdb.Operation, error) {
 	lsp, err := c.GetLogicalSwitchPort(lspName, true)
 	if err != nil {
 		return nil, fmt.Errorf("get logical switch port %s when generate delete operations: %v", lspName, err)
@@ -598,7 +598,7 @@ func (c OvnClient) DeleteLogicalSwitchPortOp(lspName string) ([]ovsdb.Operation,
 }
 
 // UpdateLogicalSwitchPortOp create operations which update logical switch port
-func (c OvnClient) UpdateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, fields ...interface{}) ([]ovsdb.Operation, error) {
+func (c *ovnClient) UpdateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, fields ...interface{}) ([]ovsdb.Operation, error) {
 	// not found, skip
 	if lsp == nil {
 		return nil, nil

@@ -12,7 +12,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c OvnClient) CreateDHCPOptions(lsName, cidr, options string) error {
+func (c *ovnClient) CreateDHCPOptions(lsName, cidr, options string) error {
 	dhcpOpt, err := newDHCPOptions(lsName, cidr, options)
 	if err != nil {
 		return err
@@ -30,7 +30,7 @@ func (c OvnClient) CreateDHCPOptions(lsName, cidr, options string) error {
 	return nil
 }
 
-func (c *OvnClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet) (*DHCPOptionsUUIDs, error) {
+func (c *ovnClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet) (*DHCPOptionsUUIDs, error) {
 	lsName := subnet.Name
 	cidrBlock := subnet.Spec.CIDRBlock
 	gateway := subnet.Spec.Gateway
@@ -76,7 +76,7 @@ func (c *OvnClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet) (*DHCPOptionsUUI
 	}, nil
 }
 
-func (c OvnClient) updateDHCPv4Options(lsName, cidr, gateway, options string) (uuid string, err error) {
+func (c *ovnClient) updateDHCPv4Options(lsName, cidr, gateway, options string) (uuid string, err error) {
 	protocol := util.CheckProtocol(cidr)
 	if protocol != kubeovnv1.ProtocolIPv4 {
 		return "", fmt.Errorf("cidr %s must be a valid ipv4 address", cidr)
@@ -116,7 +116,7 @@ func (c OvnClient) updateDHCPv4Options(lsName, cidr, gateway, options string) (u
 	return dhcpOpt.UUID, nil
 }
 
-func (c OvnClient) updateDHCPv6Options(lsName, cidr, options string) (uuid string, err error) {
+func (c *ovnClient) updateDHCPv6Options(lsName, cidr, options string) (uuid string, err error) {
 	protocol := util.CheckProtocol(cidr)
 	if protocol != kubeovnv1.ProtocolIPv6 {
 		return "", fmt.Errorf("cidr %s must be a valid ipv4 address", cidr)
@@ -157,7 +157,7 @@ func (c OvnClient) updateDHCPv6Options(lsName, cidr, options string) (uuid strin
 }
 
 // updateDHCPOptions update dhcp options
-func (c OvnClient) updateDHCPOptions(dhcpOpt *ovnnb.DHCPOptions, fields ...interface{}) error {
+func (c *ovnClient) updateDHCPOptions(dhcpOpt *ovnnb.DHCPOptions, fields ...interface{}) error {
 	if dhcpOpt == nil {
 		return fmt.Errorf("dhcp_options is nil")
 	}
@@ -175,7 +175,7 @@ func (c OvnClient) updateDHCPOptions(dhcpOpt *ovnnb.DHCPOptions, fields ...inter
 }
 
 // DeleteDHCPOptionsByUUIDs delete dhcp options by uuid
-func (c OvnClient) DeleteDHCPOptionsByUUIDs(uuidList ...string) error {
+func (c *ovnClient) DeleteDHCPOptionsByUUIDs(uuidList ...string) error {
 	ops := make([]ovsdb.Operation, 0, len(uuidList))
 	for _, uuid := range uuidList {
 		dhcpOptions := &ovnnb.DHCPOptions{
@@ -197,7 +197,7 @@ func (c OvnClient) DeleteDHCPOptionsByUUIDs(uuidList ...string) error {
 }
 
 // DeleteDHCPOptions delete dhcp options which belongs to logical switch
-func (c OvnClient) DeleteDHCPOptions(lsName string, protocol string) error {
+func (c *ovnClient) DeleteDHCPOptions(lsName string, protocol string) error {
 	if protocol == kubeovnv1.ProtocolDual {
 		protocol = ""
 	}
@@ -220,7 +220,7 @@ func (c OvnClient) DeleteDHCPOptions(lsName string, protocol string) error {
 
 // GetDHCPOptions get dhcp options,
 // a dhcp options is uniquely identified by switch(lsName) and protocol
-func (c OvnClient) GetDHCPOptions(lsName, protocol string, ignoreNotFound bool) (*ovnnb.DHCPOptions, error) {
+func (c *ovnClient) GetDHCPOptions(lsName, protocol string, ignoreNotFound bool) (*ovnnb.DHCPOptions, error) {
 	if len(lsName) == 0 {
 		return nil, fmt.Errorf("the logical router name is required")
 	}
@@ -255,7 +255,7 @@ func (c OvnClient) GetDHCPOptions(lsName, protocol string, ignoreNotFound bool) 
 }
 
 // ListDHCPOptions list dhcp options which match the given externalIDs
-func (c OvnClient) ListDHCPOptions(needVendorFilter bool, externalIDs map[string]string) ([]ovnnb.DHCPOptions, error) {
+func (c *ovnClient) ListDHCPOptions(needVendorFilter bool, externalIDs map[string]string) ([]ovnnb.DHCPOptions, error) {
 	dhcpOptList := make([]ovnnb.DHCPOptions, 0)
 
 	if err := c.WhereCache(dhcpOptionsFilter(needVendorFilter, externalIDs)).List(context.TODO(), &dhcpOptList); err != nil {
@@ -265,7 +265,7 @@ func (c OvnClient) ListDHCPOptions(needVendorFilter bool, externalIDs map[string
 	return dhcpOptList, nil
 }
 
-func (c OvnClient) DHCPOptionsExists(lsName, cidr string) (bool, error) {
+func (c *ovnClient) DHCPOptionsExists(lsName, cidr string) (bool, error) {
 	dhcpOpt, err := c.GetDHCPOptions(lsName, cidr, true)
 	return dhcpOpt != nil, err
 }

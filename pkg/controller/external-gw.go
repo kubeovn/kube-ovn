@@ -61,7 +61,7 @@ func (c *Controller) resyncExternalGateway() {
 		exGwEnabled = "true"
 		lastExGwCM = cm.Data
 		c.ovnLegacyClient.ExternalGatewayType = cm.Data["type"]
-		c.ovnClient.ExternalGatewayType = cm.Data["type"]
+		c.ExternalGatewayType = cm.Data["type"]
 		klog.Info("finish establishing ovn external gw")
 	}
 }

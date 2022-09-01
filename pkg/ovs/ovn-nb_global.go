@@ -8,7 +8,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
-func (c OvnClient) CreateNbGlobal(nbGlobal *ovnnb.NBGlobal) error {
+func (c *ovnClient) CreateNbGlobal(nbGlobal *ovnnb.NBGlobal) error {
 	op, err := c.ovnNbClient.Create(nbGlobal)
 	if err != nil {
 		return fmt.Errorf("generate operations for creating nb global: %v", err)
@@ -17,7 +17,7 @@ func (c OvnClient) CreateNbGlobal(nbGlobal *ovnnb.NBGlobal) error {
 	return c.Transact("nb-global-create", op)
 }
 
-func (c OvnClient) DeleteNbGlobal() error {
+func (c *ovnClient) DeleteNbGlobal() error {
 	nbGlobal, err := c.GetNbGlobal()
 	if err != nil {
 		return err
@@ -31,7 +31,7 @@ func (c OvnClient) DeleteNbGlobal() error {
 	return c.Transact("nb-global-delete", op)
 }
 
-func (c OvnClient) GetNbGlobal() (*ovnnb.NBGlobal, error) {
+func (c *ovnClient) GetNbGlobal() (*ovnnb.NBGlobal, error) {
 	nbGlobalList := make([]ovnnb.NBGlobal, 0, 1)
 
 	// there is only one nb_global in OVN_Northbound, so return true and it will work
@@ -50,7 +50,7 @@ func (c OvnClient) GetNbGlobal() (*ovnnb.NBGlobal, error) {
 	return &nbGlobalList[0], nil
 }
 
-func (c OvnClient) UpdateNbGlobal(newNbGlobal *ovnnb.NBGlobal, fields ...interface{}) error {
+func (c *ovnClient) UpdateNbGlobal(nbGlobal *ovnnb.NBGlobal, fields ...interface{}) error {
 	/* 	// list nb_global which connections != nil
 	   	op, err := c.Where(nbGlobal, model.Condition{
 	   		Field:    &nbGlobal.Connections,
@@ -58,35 +58,38 @@ func (c OvnClient) UpdateNbGlobal(newNbGlobal *ovnnb.NBGlobal, fields ...interfa
 	   		Value:    []string{""},
 	   	}).Update(nbGlobal) */
 
-	oldNbGlobal, err := c.GetNbGlobal()
-	if err != nil {
-		return err
-	}
-
-	op, err := c.Where(oldNbGlobal).Update(newNbGlobal, fields...)
+	op, err := c.Where(nbGlobal).Update(nbGlobal, fields...)
 	if err != nil {
 		return fmt.Errorf("generate operations for updating nb global: %v", err)
 	}
 
-	return c.Transact("set", op)
+	if err := c.Transact("nb-global-update", op); err != nil {
+		return fmt.Errorf("update nb global: %v", err)
+	}
+
+	return nil
 }
 
-func (c OvnClient) SetICAutoRoute(enable bool, blackList []string) error {
-	var update ovnnb.NBGlobal
+func (c *ovnClient) SetICAutoRoute(enable bool, blackList []string) error {
+	nbGlobal, err := c.GetNbGlobal()
+	if err != nil {
+		return fmt.Errorf("get nb global: %v", err)
+	}
+
 	if enable {
-		update = ovnnb.NBGlobal{Options: map[string]string{
+		nbGlobal.Options = map[string]string{
 			"ic-route-adv":       "true",
 			"ic-route-learn":     "true",
 			"ic-route-blacklist": strings.Join(blackList, ","),
-		}}
+		}
 	} else {
-		update = ovnnb.NBGlobal{Options: map[string]string{
+		nbGlobal.Options = map[string]string{
 			"ic-route-adv":   "false",
 			"ic-route-learn": "false",
-		}}
+		}
 	}
 
-	if err := c.UpdateNbGlobal(&update); err != nil {
+	if err := c.UpdateNbGlobal(nbGlobal, &nbGlobal.Options); err != nil {
 		return fmt.Errorf("enable ovn-ic auto route, %v", err)
 	}
 	return nil

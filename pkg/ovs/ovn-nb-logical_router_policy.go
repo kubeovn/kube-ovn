@@ -12,7 +12,7 @@ import (
 )
 
 // AddLogicalRouterPolicy add a policy route to logical router
-func (c OvnClient) AddLogicalRouterPolicy(lrName string, priority int, match, action string, nextHops []string, externalIDs map[string]string) error {
+func (c *ovnClient) AddLogicalRouterPolicy(lrName string, priority int, match, action string, nextHops []string, externalIDs map[string]string) error {
 	policy, err := c.newLogicalRouterPolicy(lrName, priority, match, action, nextHops, externalIDs)
 	if err != nil {
 		return fmt.Errorf("new policy for logical router %s: %v", lrName, err)
@@ -26,7 +26,7 @@ func (c OvnClient) AddLogicalRouterPolicy(lrName string, priority int, match, ac
 }
 
 // CreateLogicalRouterPolicys create several logical router policy once
-func (c OvnClient) CreateLogicalRouterPolicys(lrName string, policies ...*ovnnb.LogicalRouterPolicy) error {
+func (c *ovnClient) CreateLogicalRouterPolicys(lrName string, policies ...*ovnnb.LogicalRouterPolicy) error {
 	if len(policies) == 0 {
 		return nil
 	}
@@ -61,7 +61,7 @@ func (c OvnClient) CreateLogicalRouterPolicys(lrName string, policies ...*ovnnb.
 	return nil
 }
 
-func (c OvnClient) CreateBareLogicalRouterPolicy(lrName string, priority int, match, action string, nextHops []string) error {
+func (c *ovnClient) CreateBareLogicalRouterPolicy(lrName string, priority int, match, action string, nextHops []string) error {
 	policy, err := c.newLogicalRouterPolicy(lrName, priority, match, action, nextHops, nil)
 	if err != nil {
 		return fmt.Errorf("new logical router policy: %v", err)
@@ -80,7 +80,7 @@ func (c OvnClient) CreateBareLogicalRouterPolicy(lrName string, priority int, ma
 }
 
 // DeleteLogicalRouterPolicy delete policy from logical router
-func (c OvnClient) DeleteLogicalRouterPolicy(lrName string, priority int, match string) error {
+func (c *ovnClient) DeleteLogicalRouterPolicy(lrName string, priority int, match string) error {
 	policy, err := c.GetLogicalRouterPolicy(lrName, priority, match, true)
 	if err != nil {
 		return err
@@ -115,7 +115,7 @@ func (c OvnClient) DeleteLogicalRouterPolicy(lrName string, priority int, match 
 }
 
 // ClearLogicalRouterPolicy clear policy from logical router once
-func (c OvnClient) ClearLogicalRouterPolicy(lrName string) error {
+func (c *ovnClient) ClearLogicalRouterPolicy(lrName string) error {
 	lr, err := c.GetLogicalRouter(lrName, false)
 	if err != nil {
 		return fmt.Errorf("get logical router %s: %v", lrName, err)
@@ -149,7 +149,7 @@ func (c OvnClient) ClearLogicalRouterPolicy(lrName string) error {
 
 // GetLogicalRouterPolicy get logical router policy by priority and match,
 // be consistent with ovn-nbctl which priority and match determine one policy in logical router
-func (c OvnClient) GetLogicalRouterPolicy(lrName string, priority int, match string, ignoreNotFound bool) (*ovnnb.LogicalRouterPolicy, error) {
+func (c *ovnClient) GetLogicalRouterPolicy(lrName string, priority int, match string, ignoreNotFound bool) (*ovnnb.LogicalRouterPolicy, error) {
 	// this is necessary because may exist same priority and match policy in different logical router
 	if len(lrName) == 0 {
 		return nil, fmt.Errorf("the logical router name is required")
@@ -177,13 +177,24 @@ func (c OvnClient) GetLogicalRouterPolicy(lrName string, priority int, match str
 	return &policyList[0], nil
 }
 
-func (c OvnClient) LogicalRouterPolicyExists(lrName string, priority int, match string) (bool, error) {
+// ListLogicalRouterPolicies list route policy which match the given externalIDs
+func (c *ovnClient) ListLogicalRouterPolicies(externalIDs map[string]string) ([]ovnnb.LogicalRouterPolicy, error) {
+	policyList := make([]ovnnb.LogicalRouterPolicy, 0)
+
+	if err := c.WhereCache(policyFilter(externalIDs)).List(context.TODO(), &policyList); err != nil {
+		return nil, fmt.Errorf("list logical router policies: %v", err)
+	}
+
+	return policyList, nil
+}
+
+func (c *ovnClient) LogicalRouterPolicyExists(lrName string, priority int, match string) (bool, error) {
 	acl, err := c.GetLogicalRouterPolicy(lrName, priority, match, true)
 	return acl != nil, err
 }
 
 // newLogicalRouterPolicy return logical router policy with basic information
-func (c OvnClient) newLogicalRouterPolicy(lrName string, priority int, match, action string, nextHops []string, externalIDs map[string]string) (*ovnnb.LogicalRouterPolicy, error) {
+func (c *ovnClient) newLogicalRouterPolicy(lrName string, priority int, match, action string, nextHops []string, externalIDs map[string]string) (*ovnnb.LogicalRouterPolicy, error) {
 	if len(lrName) == 0 {
 		return nil, fmt.Errorf("the logical router name is required")
 	}
@@ -220,12 +231,38 @@ func (c OvnClient) newLogicalRouterPolicy(lrName string, priority int, match, ac
 	return policy, nil
 }
 
+// policyFilter filter policies which match the given externalIDs
+func policyFilter(externalIDs map[string]string) func(policy *ovnnb.LogicalRouterPolicy) bool {
+	return func(policy *ovnnb.LogicalRouterPolicy) bool {
+		if len(policy.ExternalIDs) < len(externalIDs) {
+			return false
+		}
+
+		if len(policy.ExternalIDs) != 0 {
+			for k, v := range externalIDs {
+				// if only key exist but not value in externalIDs, we should include this lsp,
+				// it's equal to shell command `ovn-nbctl --columns=xx find logical_router_policy external_ids:key!=\"\"`
+				if len(v) == 0 {
+					if len(policy.ExternalIDs[k]) == 0 {
+						return false
+					}
+				} else {
+					if policy.ExternalIDs[k] != v {
+						return false
+					}
+				}
+			}
+		}
+		return true
+	}
+}
+
 /*
 ----------------------------------------------------------------------------------------------
 TODO: wait to be deleted
 */
 
-func (c OvnClient) AddRouterPolicy(lr *ovnnb.LogicalRouter, matchfield string, action ovnnb.LogicalRouterPolicyAction,
+func (c *ovnClient) AddRouterPolicy(lr *ovnnb.LogicalRouter, matchfield string, action ovnnb.LogicalRouterPolicyAction,
 	opts map[string]string, extIDs map[string]string, priority int) error {
 	lrPolicy := &ovnnb.LogicalRouterPolicy{
 		Action:      action,
@@ -264,7 +301,7 @@ func (c OvnClient) AddRouterPolicy(lr *ovnnb.LogicalRouter, matchfield string, a
 	return nil
 }
 
-func (c OvnClient) DeleteRouterPolicy(lr *ovnnb.LogicalRouter, uuid string) error {
+func (c *ovnClient) DeleteRouterPolicy(lr *ovnnb.LogicalRouter, uuid string) error {
 
 	var ops []ovsdb.Operation
 
