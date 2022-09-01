@@ -2,16 +2,12 @@
 /usr/share/openvswitch/scripts/ovs-ctl stop
 ovs-dpctl del-dp ovs-system
 
-iptables -t nat -D POSTROUTING -m mark --mark 0x4000/0x4000 -j MASQUERADE
-iptables -t nat -D POSTROUTING -m set --match-set ovn40subnets src -m set --match-set ovn40subnets dst -j MASQUERADE
-iptables -t nat -D POSTROUTING -m mark --mark 0x80000/0x80000 -m set --match-set ovn40subnets-distributed-gw dst -j RETURN
-iptables -t nat -D POSTROUTING -m mark --mark 0x80000/0x80000 -j MASQUERADE
-iptables -t nat -D POSTROUTING -p tcp --tcp-flags SYN NONE -m conntrack --ctstate NEW -j RETURN
-iptables -t nat -D POSTROUTING -m set ! --match-set ovn40subnets src -m set ! --match-set ovn40other-node src -m set --match-set ovn40subnets-nat dst -j RETURN
-iptables -t nat -D POSTROUTING -m set --match-set ovn40subnets-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE
-iptables -t nat -D PREROUTING -p tcp -m addrtype --dst-type LOCAL -m set --match-set KUBE-NODE-PORT-LOCAL-TCP dst -j MARK --set-xmark 0x80000/0x80000
-iptables -t nat -D PREROUTING -p udp -m addrtype --dst-type LOCAL -m set --match-set KUBE-NODE-PORT-LOCAL-UDP dst -j MARK --set-xmark 0x80000/0x80000
-iptables -t mangle -D PREROUTING -i ovn0 -m set --match-set ovn40subnets src -m set --match-set ovn40services dst -j MARK --set-xmark 0x4000/0x4000
+iptables -t nat -D PREROUTING -j OVN-PREROUTING -m comment --comment "kube-ovn prerouting rules"
+iptables -t nat -D POSTROUTING -j OVN-POSTROUTING -m comment --comment "kube-ovn postrouting rules"
+iptables -t nat -F OVN-PREROUTING
+iptables -t nat -X OVN-PREROUTING
+iptables -t nat -F OVN-POSTROUTING
+iptables -t nat -X OVN-POSTROUTING
 iptables -t filter -D INPUT -m set --match-set ovn40subnets dst -j ACCEPT
 iptables -t filter -D INPUT -m set --match-set ovn40subnets src -j ACCEPT
 iptables -t filter -D INPUT -m set --match-set ovn40services dst -j ACCEPT
@@ -31,16 +27,12 @@ ipset destroy ovn40local-pod-ip-nat
 ipset destroy ovn40other-node
 ipset destroy ovn40services
 
-ip6tables -t nat -D POSTROUTING -m mark --mark 0x4000/0x4000 -j MASQUERADE
-ip6tables -t nat -D POSTROUTING -m set --match-set ovn60subnets src -m set --match-set ovn60subnets dst -j MASQUERADE
-ip6tables -t nat -D POSTROUTING -m mark --mark 0x80000/0x80000 -m set --match-set ovn60subnets-distributed-gw dst -j RETURN
-ip6tables -t nat -D POSTROUTING -m mark --mark 0x80000/0x80000 -j MASQUERADE
-ip6tables -t nat -D POSTROUTING -p tcp --tcp-flags SYN NONE -m conntrack --ctstate NEW -j RETURN
-ip6tables -t nat -D POSTROUTING -m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src -m set --match-set ovn60subnets-nat dst -j RETURN
-ip6tables -t nat -D POSTROUTING -m set --match-set ovn60subnets-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE
-ip6tables -t nat -D PREROUTING -p tcp -m addrtype --dst-type LOCAL -m set --match-set KUBE-6-NODE-PORT-LOCAL-TCP dst -j MARK --set-xmark 0x80000/0x80000
-ip6tables -t nat -D PREROUTING -p udp -m addrtype --dst-type LOCAL -m set --match-set KUBE-6-NODE-PORT-LOCAL-UDP dst -j MARK --set-xmark 0x80000/0x80000
-ip6tables -t mangle -D PREROUTING -i ovn0 -m set --match-set ovn60subnets src -m set --match-set ovn60services dst -j MARK --set-xmark 0x4000/0x4000
+ip6tables -t nat -D PREROUTING -j OVN-PREROUTING -m comment --comment "kube-ovn prerouting rules"
+ip6tables -t nat -D POSTROUTING -j OVN-POSTROUTING -m comment --comment "kube-ovn postrouting rules"
+ip6tables -t nat -F OVN-PREROUTING
+ip6tables -t nat -X OVN-PREROUTING
+ip6tables -t nat -F OVN-POSTROUTING
+ip6tables -t nat -X OVN-POSTROUTING
 ip6tables -t filter -D INPUT -m set --match-set ovn60subnets dst -j ACCEPT
 ip6tables -t filter -D INPUT -m set --match-set ovn60subnets src -j ACCEPT
 ip6tables -t filter -D INPUT -m set --match-set ovn60services dst -j ACCEPT

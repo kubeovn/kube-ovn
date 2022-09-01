@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
+	"reflect"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -30,6 +31,14 @@ const (
 	LocalPodSet            = "local-pod-ip-nat"
 	OtherNodeSet           = "other-node"
 	IPSetPrefix            = "ovn"
+)
+
+const (
+	NAT            = "nat"
+	Prerouting     = "PREROUTING"
+	Postrouting    = "POSTROUTING"
+	OvnPrerouting  = "OVN-PREROUTING"
+	OvnPostrouting = "OVN-POSTROUTING"
 )
 
 type policyRouteMeta struct {
@@ -289,6 +298,94 @@ func (c *Controller) deletePolicyRouting(family int, gateway string, priority, t
 	return nil
 }
 
+func (c *Controller) createIptablesRule(protocol string, rule util.IPTableRule) error {
+	exists, err := c.iptables[protocol].Exists(rule.Table, rule.Chain, rule.Rule...)
+	if err != nil {
+		klog.Errorf("failed to check iptables rule existence: %v", err)
+		return err
+	}
+
+	s := strings.Join(rule.Rule, " ")
+	if exists {
+		klog.V(3).Infof(`iptables rule "%s" already exists`, s, exists)
+		return nil
+	}
+
+	klog.Infof(`creating iptables rules: "%s"`, s)
+	if err = c.iptables[protocol].Insert(rule.Table, rule.Chain, 1, rule.Rule...); err != nil {
+		klog.Errorf(`failed to insert iptables rule "%s": %v`, s, err)
+		return err
+	}
+
+	return nil
+}
+
+func (c *Controller) updateIptablesChain(protocol, table, chain, parent string, rules []util.IPTableRule) error {
+	ok, err := c.iptables[protocol].ChainExists(table, chain)
+	if err != nil {
+		klog.Errorf("failed to check existence of iptables chain %s in table %s: %v", chain, table, err)
+		return err
+	}
+	if !ok {
+		if err = c.iptables[protocol].NewChain(table, chain); err != nil {
+			klog.Errorf("failed to create iptables chain %s in table %s: %v", chain, table, err)
+			return err
+		}
+		klog.Infof("created iptables chain %s in table %s", chain, table)
+	}
+
+	comment := fmt.Sprintf("kube-ovn %s rules", strings.ToLower(parent))
+	rule := util.IPTableRule{
+		Table: table,
+		Chain: parent,
+		Rule:  []string{"-m", "comment", "--comment", comment, "-j", chain},
+	}
+	if err = c.createIptablesRule(protocol, rule); err != nil {
+		klog.Errorf("failed to create iptables rule: %v", err)
+		return err
+	}
+
+	// list existing rules
+	ruleList, err := c.iptables[protocol].List(table, chain)
+	if err != nil {
+		klog.Errorf("failed to list iptables rules in chain %s/%s: %v", table, chain, err)
+		return err
+	}
+
+	// filter the heading default chain policy: -N OVN-POSTROUTING
+	ruleList = ruleList[1:]
+
+	// trim prefix: "-A OVN-POSTROUTING "
+	prefixLen := 4 + len(chain)
+	existingRules := make([][]string, 0, len(ruleList))
+	for _, r := range ruleList {
+		existingRules = append(existingRules, util.DoubleQuotedFields(r[prefixLen:]))
+	}
+
+	var added int
+	for i, rule := range rules {
+		if i-added < len(existingRules) && reflect.DeepEqual(existingRules[i-added], rule.Rule) {
+			klog.V(5).Infof("iptables rule %v already exists", rule.Rule)
+			continue
+		}
+		if err = c.iptables[protocol].Insert(table, chain, i+1, rule.Rule...); err != nil {
+			klog.Errorf(`failed to insert iptables rule %v: %v`, rule.Rule, err)
+			return err
+		}
+		klog.Infof(`created iptables rule %v`, rule.Rule)
+		added++
+	}
+	for i := len(existingRules) - 1; i >= len(rules)-added; i-- {
+		if err = c.iptables[protocol].Delete(table, chain, strconv.Itoa(i+added)); err != nil {
+			klog.Errorf(`failed to delete iptables rule %v: %v`, existingRules[i], err)
+			return err
+		}
+		klog.Infof("deleted iptables rule %v", existingRules[i])
+	}
+
+	return nil
+}
+
 func (c *Controller) setIptables() error {
 	klog.V(3).Infoln("start to set up iptables")
 	node, err := c.nodesLister.Get(c.config.NodeName)
@@ -312,31 +409,65 @@ func (c *Controller) setIptables() error {
 
 	var (
 		v4AbandonedRules = []util.IPTableRule{
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x40000/0x40000 -j MASQUERADE`)},
-			{Table: "mangle", Chain: "PREROUTING", Rule: strings.Fields(`-i ovn0 -m set --match-set ovn40subnets src -m set --match-set ovn40services dst -j MARK --set-xmark 0x40000/0x40000`)},
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m mark --mark 0x40000/0x40000 -j MASQUERADE`)},
+			{Table: "mangle", Chain: Prerouting, Rule: strings.Fields(`-i ovn0 -m set --match-set ovn40subnets src -m set --match-set ovn40services dst -j MARK --set-xmark 0x40000/0x40000`)},
+			// legacy rules
+			// nat packets marked by kube-proxy or kube-ovn
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m mark --mark 0x4000/0x4000 -j MASQUERADE`)},
+			// nat service traffic
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m set --match-set ovn40subnets src -m set --match-set ovn40subnets dst -j MASQUERADE`)},
+			// do not nat node port service traffic with external traffic policy set to local
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -m set --match-set ovn40subnets-distributed-gw dst -j RETURN`)},
+			// nat node port service traffic with external traffic policy set to local for subnets with centralized gateway
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -j MASQUERADE`)},
+			// do not nat reply packets in direct routing
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-p tcp --tcp-flags SYN NONE -m conntrack --ctstate NEW -j RETURN`)},
+			// do not nat route traffic
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m set ! --match-set ovn40subnets src -m set ! --match-set ovn40other-node src -m set --match-set ovn40subnets-nat dst -j RETURN`)},
+			// nat outgoing
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m set --match-set ovn40subnets-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE`)},
+			// mark packets from pod to service
+			{Table: "mangle", Chain: Prerouting, Rule: strings.Fields(`-i ovn0 -m set --match-set ovn40subnets src -m set --match-set ovn40services dst -j MARK --set-xmark 0x4000/0x4000`)},
 		}
 		v6AbandonedRules = []util.IPTableRule{
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x40000/0x40000 -j MASQUERADE`)},
-			{Table: "mangle", Chain: "PREROUTING", Rule: strings.Fields(`-i ovn0 -m set --match-set ovn60subnets src -m set --match-set ovn60services dst -j MARK --set-xmark 0x40000/0x40000`)},
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m mark --mark 0x40000/0x40000 -j MASQUERADE`)},
+			{Table: "mangle", Chain: Prerouting, Rule: strings.Fields(`-i ovn0 -m set --match-set ovn60subnets src -m set --match-set ovn60services dst -j MARK --set-xmark 0x40000/0x40000`)},
+			// legacy rules
+			// nat packets marked by kube-proxy or kube-ovn
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m mark --mark 0x4000/0x4000 -j MASQUERADE`)},
+			// nat service traffic
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m set --match-set ovn60subnets src -m set --match-set ovn60subnets dst -j MASQUERADE`)},
+			// do not nat node port service traffic with external traffic policy set to local
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -m set --match-set ovn60subnets-distributed-gw dst -j RETURN`)},
+			// nat node port service traffic with external traffic policy set to local for subnets with centralized gateway
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -j MASQUERADE`)},
+			// do not nat reply packets in direct routing
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-p tcp --tcp-flags SYN NONE -m conntrack --ctstate NEW -j RETURN`)},
+			// do not nat route traffic
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src -m set --match-set ovn60subnets-nat dst -j RETURN`)},
+			// nat outgoing
+			{Table: NAT, Chain: Postrouting, Rule: strings.Fields(`-m set --match-set ovn60subnets-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE`)},
+			// mark packets from pod to service
+			{Table: "mangle", Chain: Prerouting, Rule: strings.Fields(`-i ovn0 -m set --match-set ovn60subnets src -m set --match-set ovn60services dst -j MARK --set-xmark 0x4000/0x4000`)},
 		}
 
 		v4Rules = []util.IPTableRule{
-			// nat packets marked by kube-proxy or kube-ovn
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x4000/0x4000 -j MASQUERADE`)},
-			// nat service traffic
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set --match-set ovn40subnets src -m set --match-set ovn40subnets dst -j MASQUERADE`)},
-			// do not nat node port service traffic with external traffic policy set to local
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -m set --match-set ovn40subnets-distributed-gw dst -j RETURN`)},
-			// nat node port service traffic with external traffic policy set to local for subnets with centralized gateway
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -j MASQUERADE`)},
-			// do not nat reply packets in direct routing
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-p tcp --tcp-flags SYN NONE -m conntrack --ctstate NEW -j RETURN`)},
-			// do not nat route traffic
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set ! --match-set ovn40subnets src -m set ! --match-set ovn40other-node src -m set --match-set ovn40subnets-nat dst -j RETURN`)},
-			// nat outgoing
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set --match-set ovn40subnets-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE`)},
 			// mark packets from pod to service
-			{Table: "mangle", Chain: "PREROUTING", Rule: strings.Fields(`-i ovn0 -m set --match-set ovn40subnets src -m set --match-set ovn40services dst -j MARK --set-xmark 0x4000/0x4000`)},
+			{Table: NAT, Chain: OvnPrerouting, Rule: strings.Fields(`-i ovn0 -m set --match-set ovn40subnets src -m set --match-set ovn40services dst -j MARK --set-xmark 0x4000/0x4000`)},
+			// nat packets marked by kube-proxy or kube-ovn
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m mark --mark 0x4000/0x4000 -j MASQUERADE`)},
+			// nat service traffic
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set --match-set ovn40subnets src -m set --match-set ovn40subnets dst -j MASQUERADE`)},
+			// do not nat node port service traffic with external traffic policy set to local
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -m set --match-set ovn40subnets-distributed-gw dst -j RETURN`)},
+			// nat node port service traffic with external traffic policy set to local for subnets with centralized gateway
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -j MASQUERADE`)},
+			// do not nat reply packets in direct routing
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-p tcp -m tcp --tcp-flags SYN NONE -m conntrack --ctstate NEW -j RETURN`)},
+			// do not nat route traffic
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set ! --match-set ovn40subnets src -m set ! --match-set ovn40other-node src -m set --match-set ovn40subnets-nat dst -j RETURN`)},
+			// nat outgoing
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set --match-set ovn40subnets-nat src -m set ! --match-set ovn40subnets dst -j MASQUERADE`)},
 			// Input Accept
 			{Table: "filter", Chain: "INPUT", Rule: strings.Fields(`-m set --match-set ovn40subnets src -j ACCEPT`)},
 			{Table: "filter", Chain: "INPUT", Rule: strings.Fields(`-m set --match-set ovn40subnets dst -j ACCEPT`)},
@@ -351,22 +482,22 @@ func (c *Controller) setIptables() error {
 			{Table: "filter", Chain: "OUTPUT", Rule: strings.Fields(`-p udp -m udp --dport 6081 -j MARK --set-xmark 0x0`)},
 		}
 		v6Rules = []util.IPTableRule{
-			// nat packets marked by kube-proxy or kube-ovn
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x4000/0x4000 -j MASQUERADE`)},
-			// nat service traffic
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set --match-set ovn60subnets src -m set --match-set ovn60subnets dst -j MASQUERADE`)},
-			// do not nat node port service traffic with external traffic policy set to local
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -m set --match-set ovn60subnets-distributed-gw dst -j RETURN`)},
-			// nat node port service traffic with external traffic policy set to local for subnets with centralized gateway
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -j MASQUERADE`)},
-			// do not nat reply packets in direct routing
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-p tcp --tcp-flags SYN NONE -m conntrack --ctstate NEW -j RETURN`)},
-			// do not nat route traffic
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src -m set --match-set ovn60subnets-nat dst -j RETURN`)},
-			// nat outgoing
-			{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(`-m set --match-set ovn60subnets-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE`)},
 			// mark packets from pod to service
-			{Table: "mangle", Chain: "PREROUTING", Rule: strings.Fields(`-i ovn0 -m set --match-set ovn60subnets src -m set --match-set ovn60services dst -j MARK --set-xmark 0x4000/0x4000`)},
+			{Table: NAT, Chain: OvnPrerouting, Rule: strings.Fields(`-i ovn0 -m set --match-set ovn60subnets src -m set --match-set ovn60services dst -j MARK --set-xmark 0x4000/0x4000`)},
+			// nat packets marked by kube-proxy or kube-ovn
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m mark --mark 0x4000/0x4000 -j MASQUERADE`)},
+			// nat service traffic
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set --match-set ovn60subnets src -m set --match-set ovn60subnets dst -j MASQUERADE`)},
+			// do not nat node port service traffic with external traffic policy set to local
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -m set --match-set ovn60subnets-distributed-gw dst -j RETURN`)},
+			// nat node port service traffic with external traffic policy set to local for subnets with centralized gateway
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m mark --mark 0x80000/0x80000 -j MASQUERADE`)},
+			// do not nat reply packets in direct routing
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-p tcp -m tcp --tcp-flags SYN NONE -m conntrack --ctstate NEW -j RETURN`)},
+			// do not nat route traffic
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set ! --match-set ovn60subnets src -m set ! --match-set ovn60other-node src -m set --match-set ovn60subnets-nat dst -j RETURN`)},
+			// nat outgoing
+			{Table: NAT, Chain: OvnPostrouting, Rule: strings.Fields(`-m set --match-set ovn60subnets-nat src -m set ! --match-set ovn60subnets dst -j MASQUERADE`)},
 			// Input Accept
 			{Table: "filter", Chain: "INPUT", Rule: strings.Fields(`-m set --match-set ovn60subnets src -j ACCEPT`)},
 			{Table: "filter", Chain: "INPUT", Rule: strings.Fields(`-m set --match-set ovn60subnets dst -j ACCEPT`)},
@@ -393,11 +524,6 @@ func (c *Controller) setIptables() error {
 		if c.iptables[protocol] == nil {
 			continue
 		}
-		// delete unused iptables rule when nat gw with designative ip has been changed in centralized subnet
-		if err = c.deleteUnusedIptablesRule(protocol, "nat", "POSTROUTING", centralGwNatips); err != nil {
-			klog.Errorf("failed to delete iptables rule on node %s, maybe can delete manually, %v", c.config.NodeName, err)
-			return err
-		}
 
 		var kubeProxyIpsetProtocol, matchset string
 		var abandonedRules, iptablesRules []util.IPTableRule
@@ -409,20 +535,15 @@ func (c *Controller) setIptables() error {
 			kubeProxyIpsetProtocol, matchset = "6-", "ovn60subnets"
 		}
 
-		kubeProxyIpsets := map[string]string{
-			"tcp": fmt.Sprintf("KUBE-%sNODE-PORT-LOCAL-TCP", kubeProxyIpsetProtocol),
-			"udp": fmt.Sprintf("KUBE-%sNODE-PORT-LOCAL-UDP", kubeProxyIpsetProtocol),
-		}
-
 		if nodeIP := nodeIPs[protocol]; nodeIP != "" {
 			abandonedRules = append(abandonedRules,
-				util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset))},
-				util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m mark --mark 0x4000/0x4000 -j MASQUERADE`, nodeIP))},
-				util.IPTableRule{Table: "nat", Chain: "POSTROUTING", Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set ! --match-set %s src -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset, matchset))},
+				util.IPTableRule{Table: NAT, Chain: Postrouting, Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset))},
+				util.IPTableRule{Table: NAT, Chain: Postrouting, Rule: strings.Fields(fmt.Sprintf(`! -s %s -m mark --mark 0x4000/0x4000 -j MASQUERADE`, nodeIP))},
+				util.IPTableRule{Table: NAT, Chain: Postrouting, Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set ! --match-set %s src -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset, matchset))},
 			)
 
-			nodePortRules := make([]util.IPTableRule, 0, len(kubeProxyIpsets))
-			for protocol, ipset := range kubeProxyIpsets {
+			for _, p := range [...]string{"tcp", "udp"} {
+				ipset := fmt.Sprintf("KUBE-%sNODE-PORT-LOCAL-%s", kubeProxyIpsetProtocol, strings.ToUpper(p))
 				ipsetExists, err := ipsetExists(ipset)
 				if err != nil {
 					klog.Error("failed to check existence of ipset %s: %v", ipset, err)
@@ -432,68 +553,77 @@ func (c *Controller) setIptables() error {
 					klog.Warningf("ipset %s does not exist", ipset)
 					continue
 				}
-				rule := fmt.Sprintf("-p %s -m addrtype --dst-type LOCAL -m set --match-set %s dst -j MARK --set-xmark 0x80000/0x80000", protocol, ipset)
-				nodePortRules = append(nodePortRules, util.IPTableRule{Table: "nat", Chain: "PREROUTING", Rule: strings.Fields(rule)})
+				rule := fmt.Sprintf("-p %s -m addrtype --dst-type LOCAL -m set --match-set %s dst -j MARK --set-xmark 0x80000/0x80000", p, ipset)
+				abandonedRules = append(abandonedRules, util.IPTableRule{Table: NAT, Chain: Prerouting, Rule: strings.Fields(rule)})
+				iptablesRules = append(iptablesRules, util.IPTableRule{Table: NAT, Chain: OvnPrerouting, Rule: strings.Fields(rule)})
 			}
-			iptablesRules = append(nodePortRules, iptablesRules...)
+		}
+
+		var natPreroutingRules, natPostroutingRules []util.IPTableRule
+		for _, rule := range iptablesRules {
+			if rule.Table == NAT {
+				switch rule.Chain {
+				case OvnPrerouting:
+					natPreroutingRules = append(natPreroutingRules, rule)
+					continue
+				case OvnPostrouting:
+					natPostroutingRules = append(natPostroutingRules, rule)
+					continue
+				}
+			}
+
+			if err = c.createIptablesRule(protocol, rule); err != nil {
+				klog.Errorf(`failed to create iptables rule "%s": %v`, strings.Join(rule.Rule, " "), err)
+				return err
+			}
+		}
+
+		// add iptables rule for nat gw with designative ip in centralized subnet
+		for cidr, ip := range centralGwNatips {
+			if util.CheckProtocol(cidr) != protocol {
+				continue
+			}
+
+			s := fmt.Sprintf("-s %s -m set ! --match-set %s dst -j SNAT --to-source %s", cidr, matchset, ip)
+			rule := util.IPTableRule{
+				Table: NAT,
+				Chain: OvnPostrouting,
+				Rule:  util.DoubleQuotedFields(s),
+			}
+			// insert the rule before the one for nat outgoing
+			n := len(natPostroutingRules)
+			natPostroutingRules = append(natPostroutingRules[:n-1], rule, natPostroutingRules[n-1])
+		}
+
+		if err = c.updateIptablesChain(protocol, NAT, OvnPrerouting, Prerouting, natPreroutingRules); err != nil {
+			klog.Errorf("failed to update chain %s/%s: %v", NAT, OvnPrerouting)
+			return err
+		}
+		if err = c.updateIptablesChain(protocol, NAT, OvnPostrouting, Postrouting, natPostroutingRules); err != nil {
+			klog.Errorf("failed to update chain %s/%s: %v", NAT, OvnPostrouting)
+			return err
+		}
+
+		// delete unused iptables rule when nat gw with designative ip has been changed in centralized subnet
+		if err = c.deleteLegacySnatRules(protocol, NAT, Postrouting); err != nil {
+			klog.Errorf("failed to delete legacy iptables rule for SNAT: %v", err)
+			return err
 		}
 
 		// delete abandoned iptables rules
-		for _, iptRule := range abandonedRules {
-			exists, err := c.iptables[protocol].Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
+		for _, rule := range abandonedRules {
+			exists, err := c.iptables[protocol].Exists(rule.Table, rule.Chain, rule.Rule...)
 			if err != nil {
 				klog.Errorf("failed to check existence of iptables rule: %v", err)
 				return err
 			}
 			if exists {
-				klog.Infof("deleting abandoned iptables rule: %s", strings.Join(iptRule.Rule, " "))
-				if err := c.iptables[protocol].Delete(iptRule.Table, iptRule.Chain, iptRule.Rule...); err != nil {
-					klog.Errorf("failed to delete iptables rule %s: %v", strings.Join(iptRule.Rule, " "), err)
+				klog.Infof("deleting abandoned iptables rule: %s", strings.Join(rule.Rule, " "))
+				if err := c.iptables[protocol].Delete(rule.Table, rule.Chain, rule.Rule...); err != nil {
+					klog.Errorf("failed to delete iptables rule %s: %v", strings.Join(rule.Rule, " "), err)
 					return err
 				}
 			}
-		}
-
-		// add iptables rule for nat gw with designative ip in centralized subnet
-		for cidr, natip := range centralGwNatips {
-			if util.CheckProtocol(cidr) != protocol {
-				continue
-			}
-
-			ruleval := fmt.Sprintf("-s %v -m set ! --match-set %s dst -j SNAT --to-source %v", cidr, matchset, natip)
-			rule := util.IPTableRule{
-				Table: "nat",
-				Chain: "POSTROUTING",
-				Rule:  strings.Fields(ruleval),
-			}
-			iptablesRules = append(iptablesRules, rule)
-		}
-
-		// reverse rules in nat table
-		var idx int
-		for idx = range iptablesRules {
-			if iptablesRules[idx].Table != "nat" {
-				break
-			}
-		}
-		for i := 0; i < idx/2; i++ {
-			iptablesRules[i], iptablesRules[idx-1-i] = iptablesRules[idx-1-i], iptablesRules[i]
-		}
-
-		for _, iptRule := range iptablesRules {
-			exists, err := c.iptables[protocol].Exists(iptRule.Table, iptRule.Chain, iptRule.Rule...)
-			if err != nil {
-				klog.Errorf("check iptables rule exist failed, %+v", err)
-				return err
-			}
-			if !exists {
-				klog.Infof("iptables rules %s not exist, recreate iptables rules", strings.Join(iptRule.Rule, " "))
-				if err := c.iptables[protocol].Insert(iptRule.Table, iptRule.Chain, 1, iptRule.Rule...); err != nil {
-					klog.Errorf("insert iptables rule %s failed, %+v", strings.Join(iptRule.Rule, " "), err)
-					return err
-				}
-			}
-			klog.V(3).Infof("iptables rules %v, exists %v", strings.Join(iptRule.Rule, " "), exists)
 		}
 	}
 	return nil
@@ -714,8 +844,8 @@ func (c *Controller) getSubnetsNeedPR(protocol string) (map[policyRouteMeta]stri
 	return subnetsNeedPR, nil
 }
 
-//Generally, the MTU of the interface is set to 1400. But in special cases, a special pod (docker indocker) will introduce the docker0 interface to the pod. The MTU of docker0 is 1500.
-//The network application in pod will calculate the TCP MSS according to the MTU of docker0, and then initiate communication with others. After the other party sends a response, the kernel protocol stack of Linux host will send ICMP unreachable message to the other party, indicating that IP fragmentation is needed, which is not supported by the other party, resulting in communication failure.
+// Generally, the MTU of the interface is set to 1400. But in special cases, a special pod (docker indocker) will introduce the docker0 interface to the pod. The MTU of docker0 is 1500.
+// The network application in pod will calculate the TCP MSS according to the MTU of docker0, and then initiate communication with others. After the other party sends a response, the kernel protocol stack of Linux host will send ICMP unreachable message to the other party, indicating that IP fragmentation is needed, which is not supported by the other party, resulting in communication failure.
 func (c *Controller) appendMssRule() {
 	if c.config.Iface != "" && c.config.MSS > 0 {
 		iface, err := findInterface(c.config.Iface)
@@ -726,7 +856,7 @@ func (c *Controller) appendMssRule() {
 		rule := fmt.Sprintf("-p tcp --tcp-flags SYN,RST SYN -o %s -j TCPMSS --set-mss %d", iface.Name, c.config.MSS)
 		MssMangleRule := util.IPTableRule{
 			Table: "mangle",
-			Chain: "POSTROUTING",
+			Chain: Postrouting,
 			Rule:  strings.Fields(rule),
 		}
 
@@ -758,7 +888,7 @@ func (c *Controller) updateMssRuleByProtocol(protocol string, MssMangleRule util
 	}
 }
 
-func (c *Controller) deleteUnusedIptablesRule(protocol, table, chain string, subnetsNatIps map[string]string) error {
+func (c *Controller) deleteLegacySnatRules(protocol, table, chain string) error {
 	rules, err := c.iptables[protocol].List(table, chain)
 	if err != nil {
 		klog.Errorf("failed to list iptables rules in table %v chain %v, %+v", table, chain, err)
@@ -769,59 +899,17 @@ func (c *Controller) deleteUnusedIptablesRule(protocol, table, chain string, sub
 		if !strings.Contains(rule, "--to-source") {
 			continue
 		}
+
 		// "-A POSTROUTING -s 100.168.10.0/24 -m set ! --match-set ovn40subnets dst -j SNAT --to-source 172.17.0.3"
-		rule = strings.TrimPrefix(rule, "-A POSTROUTING ")
-		ruleval := strings.Fields(rule)
-		dstNatIp := ruleval[len(ruleval)-1]
-
-		found := false
-		for cidr, natip := range subnetsNatIps {
-			if util.CheckProtocol(cidr) != protocol {
-				continue
-			}
-
-			if dstNatIp == natip {
-				found = true
-				break
-			}
-		}
-
-		if !found {
-			num, err := getIptablesRuleNum(table, chain, rule, dstNatIp)
-			if err != nil {
-				klog.Errorf("failed to get iptables rule num when delete rule %v, please check manually", rule)
-				continue
-			}
-
-			klog.Infof("iptables rule %v %v %s, num %v should be deleted because nat gw has been changed", table, chain, rule, num)
-			if err := c.iptables[protocol].Delete(table, chain, num); err != nil {
-				klog.Errorf("delete iptables rule %s failed, %+v", rule, err)
-				return err
-			}
+		rule := rule[4+len(chain):]
+		spec := util.DoubleQuotedFields(rule)
+		if err = c.iptables[protocol].Delete(table, chain, spec...); err != nil {
+			klog.Errorf(`failed to delete iptables rule "%s": %v`, rule, err)
+			return err
 		}
 	}
+
 	return nil
-}
-
-func getIptablesRuleNum(table, chain, rule, dstNatIp string) (string, error) {
-	var num string
-	var err error
-
-	cmdstr := fmt.Sprintf("iptables -t %v -L %v --line-numbers", table, chain)
-	cmd := exec.Command("sh", "-c", cmdstr)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return num, fmt.Errorf("failed to get iptables rule num: %v", err)
-	}
-
-	for _, line := range strings.Split(string(output), "\n") {
-		if strings.Contains(line, dstNatIp) {
-			num = strings.Fields(line)[0]
-			klog.Infof("get iptables rule %v num %v", rule, num)
-			break
-		}
-	}
-	return num, nil
 }
 
 func ipsetExists(name string) (bool, error) {
