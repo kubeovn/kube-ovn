@@ -26,7 +26,7 @@ import (
 
 type OvnClientTestSuite struct {
 	suite.Suite
-	ovnClient *OvnClient
+	ovnClient *ovnClient
 }
 
 func (suite *OvnClientTestSuite) SetupSuite() {
@@ -311,10 +311,6 @@ func (suite *OvnClientTestSuite) Test_ListPortGroups() {
 	suite.testListPortGroups()
 }
 
-func (suite *OvnClientTestSuite) Test_PortGroupALLNotExist() {
-	suite.testPortGroupALLNotExist()
-}
-
 func (suite *OvnClientTestSuite) Test_portGroupUpdatePortOp() {
 	suite.test_portGroupUpdatePortOp()
 }
@@ -442,6 +438,10 @@ func (suite *OvnClientTestSuite) Test_newLogicalRouterPolicy() {
 	suite.test_newLogicalRouterPolicy()
 }
 
+func (suite *OvnClientTestSuite) Test_policyFilter() {
+	suite.test_policyFilter()
+}
+
 /* nat unit test */
 func (suite *OvnClientTestSuite) Test_CreateNats() {
 	suite.testCreateNats()
@@ -506,11 +506,11 @@ func (suite *OvnClientTestSuite) Test_UpdateDHCPOptions() {
 }
 
 func (suite *OvnClientTestSuite) Test_updateDHCPv4Options() {
-	suite.testupdateDHCPv4Options()
+	suite.test_updateDHCPv4Options()
 }
 
 func (suite *OvnClientTestSuite) Test_updateDHCPv6Options() {
-	suite.testupdateDHCPv6Options()
+	suite.test_updateDHCPv6Options()
 }
 
 func (suite *OvnClientTestSuite) Test_DeleteDHCPOptionsByUUIDs() {
@@ -530,7 +530,7 @@ func (suite *OvnClientTestSuite) Test_ListDHCPOptions() {
 }
 
 func (suite *OvnClientTestSuite) Test_dhcpOptionsFilter() {
-	suite.testdhcpOptionsFilter()
+	suite.test_dhcpOptionsFilter()
 }
 
 /* mixed operations unit test */
@@ -594,11 +594,11 @@ func newOVSDBServer(t *testing.T, dbModel model.ClientDBModel, schema ovsdb.Data
 	return server, tmpfile
 }
 
-func newOvnClient(t *testing.T, ovnNbAddr string, ovnNbTimeout time.Duration) (*OvnClient, error) {
+func newOvnClient(t *testing.T, ovnNbAddr string, ovnNbTimeout time.Duration) (*ovnClient, error) {
 	nbClient, err := newNbClient(ovnNbAddr, ovnNbTimeout)
 	require.NoError(t, err)
 
-	return &OvnClient{
+	return &ovnClient{
 		ovnNbClient: ovnNbClient{
 			Client:  nbClient,
 			Timeout: ovnNbTimeout,

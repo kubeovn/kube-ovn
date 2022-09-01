@@ -11,8 +11,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ovn-org/libovsdb/ovsdb"
+
 	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/logging"
 	multustypes "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
+
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -943,7 +946,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 				// remove lsp from port group to make EIP/SNAT work
 				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 				c.ovnPgKeyMutex.Lock(pgName)
-				if err = c.ovnClient.PortGroupRemovePort(pgName, portName); err != nil {
+				if err = c.ovnClient.PortGroupRemovePorts(pgName, portName); err != nil {
 					c.ovnPgKeyMutex.Unlock(pgName)
 					return err
 				}
@@ -965,7 +968,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 
 							portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 							c.ovnPgKeyMutex.Lock(pgName)
-							if err = c.ovnClient.PortGroupAddPort(pgName, portName); err != nil {
+							if err = c.ovnClient.PortGroupUpdatePorts(pgName, ovsdb.MutateOperationInsert, portName); err != nil {
 								c.ovnPgKeyMutex.Unlock(pgName)
 								return err
 							}

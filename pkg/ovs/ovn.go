@@ -35,11 +35,10 @@ type LegacyClient struct {
 	Version                       string
 }
 
-type OvnClient struct {
+type ovnClient struct {
 	ovnNbClient
-	ClusterRouter       string
-	NodeSwitchCIDR      string
-	ExternalGatewayType string
+	ClusterRouter  string
+	NodeSwitchCIDR string
 }
 
 type ovnNbClient struct {
@@ -79,14 +78,14 @@ func NewLegacyClient(ovnNbAddr string, ovnNbTimeout int, ovnSbAddr, clusterRoute
 }
 
 // TODO: support sb/ic-nb client
-func NewOvnClient(ovnNbAddr string, ovnNbTimeout int) (*OvnClient, error) {
+func NewOvnClient(ovnNbAddr string, ovnNbTimeout int) (*ovnClient, error) {
 	nbClient, err := ovsclient.NewNbClient(ovnNbAddr)
 	if err != nil {
 		klog.Errorf("failed to create OVN NB client: %v", err)
 		return nil, err
 	}
 
-	c := &OvnClient{
+	c := &ovnClient{
 		ovnNbClient: ovnNbClient{
 			Client:  nbClient,
 			Timeout: time.Duration(ovnNbTimeout) * time.Second,
@@ -150,7 +149,7 @@ func ConstructWaitForUniqueOperation(table string, column string, value interfac
 	}
 }
 
-func (c *OvnClient) Transact(method string, operations []ovsdb.Operation) error {
+func (c *ovnClient) Transact(method string, operations []ovsdb.Operation) error {
 	if len(operations) == 0 {
 		klog.Warningf("operations should not be empty")
 		return nil

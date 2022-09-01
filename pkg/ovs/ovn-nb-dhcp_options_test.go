@@ -62,7 +62,7 @@ func (suite *OvnClientTestSuite) testUpdateDHCPOptions() {
 	})
 }
 
-func (suite *OvnClientTestSuite) testupdateDHCPv4Options() {
+func (suite *OvnClientTestSuite) test_updateDHCPv4Options() {
 	t := suite.T()
 	t.Parallel()
 
@@ -130,7 +130,7 @@ func (suite *OvnClientTestSuite) testupdateDHCPv4Options() {
 	})
 }
 
-func (suite *OvnClientTestSuite) testupdateDHCPv6Options() {
+func (suite *OvnClientTestSuite) test_updateDHCPv6Options() {
 	t := suite.T()
 	t.Parallel()
 
@@ -194,11 +194,11 @@ func (suite *OvnClientTestSuite) testDeleteDHCPOptionsByUUIDs() {
 
 	ovnClient := suite.ovnClient
 	lsName := "test-del-dhcp-opt-uuid-ls"
-	v4CideBlock := []string{"192.168.30.0/24", "192.168.40.0/24", "192.168.50.0/24"}
+	v4CidrBlock := []string{"192.168.30.0/24", "192.168.40.0/24", "192.168.50.0/24"}
 	uuidList := make([]string, 0)
 
 	// create three ipv4 dhcp options
-	for _, cidr := range v4CideBlock {
+	for _, cidr := range v4CidrBlock {
 		err := ovnClient.CreateDHCPOptions(lsName, cidr, "")
 		require.NoError(t, err)
 	}
@@ -224,18 +224,18 @@ func (suite *OvnClientTestSuite) testDeleteDHCPOptions() {
 
 	ovnClient := suite.ovnClient
 	lsName := "test-del-dhcp-opt-ls"
-	v4CideBlock := []string{"192.168.30.0/24", "192.168.40.0/24", "192.168.50.0/24"}
-	v6CideBlock := []string{"fd00::c0a8:6401/120", "fd00::c0a8:6e01/120"}
+	v4CidrBlock := []string{"192.168.30.0/24", "192.168.40.0/24", "192.168.50.0/24"}
+	v6CidrBlock := []string{"fd00::c0a8:6401/120", "fd00::c0a8:6e01/120"}
 
 	prepare := func() {
 		// create three ipv4 dhcp options
-		for _, cidr := range v4CideBlock {
+		for _, cidr := range v4CidrBlock {
 			err := ovnClient.CreateDHCPOptions(lsName, cidr, "")
 			require.NoError(t, err)
 		}
 
 		// create two ipv6 dhcp options
-		for _, cidr := range v6CideBlock {
+		for _, cidr := range v6CidrBlock {
 			err := ovnClient.CreateDHCPOptions(lsName, cidr, "")
 			require.NoError(t, err)
 		}
@@ -340,10 +340,10 @@ func (suite *OvnClientTestSuite) testListDHCPOptions() {
 
 	ovnClient := suite.ovnClient
 	lsName := "test-list-dhcp-opt-ls"
-	v4CideBlock := []string{"192.168.30.0/24", "192.168.40.0/24", "192.168.50.0/24"}
+	v4CidrBlock := []string{"192.168.30.0/24", "192.168.40.0/24", "192.168.50.0/24"}
 
 	// create three ipv4 dhcp options
-	for _, cidr := range v4CideBlock {
+	for _, cidr := range v4CidrBlock {
 		err := ovnClient.CreateDHCPOptions(lsName, cidr, "")
 		require.NoError(t, err)
 	}
@@ -354,34 +354,34 @@ func (suite *OvnClientTestSuite) testListDHCPOptions() {
 	require.Len(t, out, 3)
 }
 
-func (suite *OvnClientTestSuite) testdhcpOptionsFilter() {
+func (suite *OvnClientTestSuite) test_dhcpOptionsFilter() {
 	t := suite.T()
 	t.Parallel()
 
 	lsName := "test-filter-dhcp-opt-ls"
-	v4CideBlock := []string{"192.168.30.0/24", "192.168.40.0/24", "192.168.50.0/24"}
-	v6CideBlock := []string{"fd00::c0a8:6401/120", "fd00::c0a8:6e01/120"}
+	v4CidrBlock := []string{"192.168.30.0/24", "192.168.40.0/24", "192.168.50.0/24"}
+	v6CidrBlock := []string{"fd00::c0a8:6401/120", "fd00::c0a8:6e01/120"}
 	dhcpOpts := make([]*ovnnb.DHCPOptions, 0)
 
 	t.Run("filter dhcp options", func(t *testing.T) {
 		t.Parallel()
 
 		// create three ipv4 dhcp options
-		for _, cidr := range v4CideBlock {
+		for _, cidr := range v4CidrBlock {
 			dhcpOpt, err := newDHCPOptions(lsName, cidr, "")
 			require.NoError(t, err)
 			dhcpOpts = append(dhcpOpts, dhcpOpt)
 		}
 
 		// create two ipv6 dhcp options
-		for _, cidr := range v6CideBlock {
+		for _, cidr := range v6CidrBlock {
 			dhcpOpt, err := newDHCPOptions(lsName, cidr, "")
 			require.NoError(t, err)
 			dhcpOpts = append(dhcpOpts, dhcpOpt)
 		}
 
 		// create three ipv4 dhcp options with other logical switch name
-		for _, cidr := range v4CideBlock {
+		for _, cidr := range v4CidrBlock {
 			dhcpOpt, err := newDHCPOptions(lsName, cidr, "")
 			dhcpOpt.ExternalIDs[logicalSwitchKey] = lsName + "-test"
 			require.NoError(t, err)
@@ -389,7 +389,7 @@ func (suite *OvnClientTestSuite) testdhcpOptionsFilter() {
 		}
 
 		// create three ipv4 dhcp options with other vendor
-		for _, cidr := range v4CideBlock {
+		for _, cidr := range v4CidrBlock {
 			dhcpOpt, err := newDHCPOptions(lsName, cidr, "")
 			dhcpOpt.ExternalIDs["vendor"] = util.CniTypeName + "-test"
 			require.NoError(t, err)

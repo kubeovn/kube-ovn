@@ -14,7 +14,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c OvnClient) GetLogicalRouterRouteByOpts(key, value string) ([]ovnnb.LogicalRouterStaticRoute, error) {
+func (c *ovnClient) GetLogicalRouterRouteByOpts(key, value string) ([]ovnnb.LogicalRouterStaticRoute, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
@@ -33,7 +33,7 @@ func (c OvnClient) GetLogicalRouterRouteByOpts(key, value string) ([]ovnnb.Logic
 	return lrRouteList, nil
 }
 
-func (c OvnClient) GetLogicalRouterPoliciesByExtID(key, value string) ([]ovnnb.LogicalRouterPolicy, error) {
+func (c *ovnClient) GetLogicalRouterPoliciesByExtID(key, value string) ([]ovnnb.LogicalRouterPolicy, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
@@ -52,7 +52,7 @@ func (c OvnClient) GetLogicalRouterPoliciesByExtID(key, value string) ([]ovnnb.L
 	return lrPolicyList, nil
 }
 
-func (c OvnClient) CreateBareLogicalRouterStaticRoute(lrName, policy, prefix, nextHop, routeType string) error {
+func (c *ovnClient) CreateBareLogicalRouterStaticRoute(lrName, policy, prefix, nextHop, routeType string) error {
 	route, err := c.newLogicalRouterStaticRoute(lrName, policy, prefix, nextHop, routeType)
 	if err != nil {
 		return err
@@ -71,7 +71,7 @@ func (c OvnClient) CreateBareLogicalRouterStaticRoute(lrName, policy, prefix, ne
 }
 
 // CreateLogicalRouterStaticRoutes create several logical router static route once
-func (c OvnClient) CreateLogicalRouterStaticRoutes(lrName string, routes ...*ovnnb.LogicalRouterStaticRoute) error {
+func (c *ovnClient) CreateLogicalRouterStaticRoutes(lrName string, routes ...*ovnnb.LogicalRouterStaticRoute) error {
 	if len(routes) == 0 {
 		return nil
 	}
@@ -107,7 +107,7 @@ func (c OvnClient) CreateLogicalRouterStaticRoutes(lrName string, routes ...*ovn
 }
 
 // AddStaticRoute add a logical router static route
-func (c OvnClient) AddLogicalRouterStaticRoute(lrName, policy, cidrBlock, nextHops, routeType string) error {
+func (c *ovnClient) AddLogicalRouterStaticRoute(lrName, policy, cidrBlock, nextHops, routeType string) error {
 	if len(policy) == 0 {
 		policy = ovnnb.LogicalRouterStaticRoutePolicyDstIP
 	}
@@ -154,7 +154,7 @@ func (c OvnClient) AddLogicalRouterStaticRoute(lrName, policy, cidrBlock, nextHo
 }
 
 // UpdateLogicalRouterStaticRoute update logical router static route
-func (c OvnClient) UpdateLogicalRouterStaticRoute(route *ovnnb.LogicalRouterStaticRoute, fields ...interface{}) error {
+func (c *ovnClient) UpdateLogicalRouterStaticRoute(route *ovnnb.LogicalRouterStaticRoute, fields ...interface{}) error {
 	if route == nil {
 		return fmt.Errorf("route is nil")
 	}
@@ -172,7 +172,7 @@ func (c OvnClient) UpdateLogicalRouterStaticRoute(route *ovnnb.LogicalRouterStat
 }
 
 // DeleteLogicalRouterStaticRoute add a logical router static route
-func (c OvnClient) DeleteLogicalRouterStaticRoute(lrName, policy, prefix, nextHop, routeType string) error {
+func (c *ovnClient) DeleteLogicalRouterStaticRoute(lrName, policy, prefix, nextHop, routeType string) error {
 	if len(policy) == 0 {
 		policy = ovnnb.LogicalRouterStaticRoutePolicyDstIP
 	}
@@ -211,7 +211,7 @@ func (c OvnClient) DeleteLogicalRouterStaticRoute(lrName, policy, prefix, nextHo
 }
 
 // ClearLogicalRouterStaticRoute clear static route from logical router once
-func (c OvnClient) ClearLogicalRouterStaticRoute(lrName string) error {
+func (c *ovnClient) ClearLogicalRouterStaticRoute(lrName string) error {
 	lr, err := c.GetLogicalRouter(lrName, false)
 	if err != nil {
 		return fmt.Errorf("get logical router %s: %v", lrName, err)
@@ -246,7 +246,7 @@ func (c OvnClient) ClearLogicalRouterStaticRoute(lrName string) error {
 // GetLogicalRouterStaticRoute get logical router static route by some attribute,
 // a static route is uniquely identified by router(lrName), policy and prefix when route is not ecmp
 // a static route is uniquely identified by router(lrName), policy, prefix and nextHop when route is ecmp
-func (c OvnClient) GetLogicalRouterStaticRoute(lrName, policy, prefix, nextHop, routeType string, ignoreNotFound bool) (*ovnnb.LogicalRouterStaticRoute, error) {
+func (c *ovnClient) GetLogicalRouterStaticRoute(lrName, policy, prefix, nextHop, routeType string, ignoreNotFound bool) (*ovnnb.LogicalRouterStaticRoute, error) {
 	// this is necessary because may exist same static route in different logical router
 	if len(lrName) == 0 {
 		return nil, fmt.Errorf("the logical router name is required")
@@ -287,7 +287,7 @@ func (c OvnClient) GetLogicalRouterStaticRoute(lrName, policy, prefix, nextHop, 
 }
 
 // ListLogicalRouterStaticRoutes list route which match the given externalIDs
-func (c OvnClient) ListLogicalRouterStaticRoutes(externalIDs map[string]string) ([]ovnnb.LogicalRouterStaticRoute, error) {
+func (c *ovnClient) ListLogicalRouterStaticRoutes(externalIDs map[string]string) ([]ovnnb.LogicalRouterStaticRoute, error) {
 	routeList := make([]ovnnb.LogicalRouterStaticRoute, 0)
 
 	if err := c.WhereCache(func(route *ovnnb.LogicalRouterStaticRoute) bool {
@@ -319,13 +319,13 @@ func (c OvnClient) ListLogicalRouterStaticRoutes(externalIDs map[string]string) 
 	return routeList, nil
 }
 
-func (c OvnClient) LogicalRouterStaticRouteExists(lrName, policy, prefix, nextHop, routeType string) (bool, error) {
+func (c *ovnClient) LogicalRouterStaticRouteExists(lrName, policy, prefix, nextHop, routeType string) (bool, error) {
 	route, err := c.GetLogicalRouterStaticRoute(lrName, policy, prefix, nextHop, routeType, true)
 	return route != nil, err
 }
 
 // newLogicalRouterStaticRoute return logical router static route with basic information
-func (c OvnClient) newLogicalRouterStaticRoute(lrName, policy, prefix, nextHop, routeType string, options ...func(route *ovnnb.LogicalRouterStaticRoute)) (*ovnnb.LogicalRouterStaticRoute, error) {
+func (c *ovnClient) newLogicalRouterStaticRoute(lrName, policy, prefix, nextHop, routeType string, options ...func(route *ovnnb.LogicalRouterStaticRoute)) (*ovnnb.LogicalRouterStaticRoute, error) {
 	if len(lrName) == 0 {
 		return nil, fmt.Errorf("the logical router name is required")
 	}
@@ -345,7 +345,7 @@ func (c OvnClient) newLogicalRouterStaticRoute(lrName, policy, prefix, nextHop, 
 	}
 
 	route := &ovnnb.LogicalRouterStaticRoute{
-		UUID:     ovsclient.UUID(),
+		UUID:     ovsclient.NamedUUID(),
 		Policy:   &policy,
 		IPPrefix: prefix,
 		Nexthop:  nextHop,

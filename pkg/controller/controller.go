@@ -42,8 +42,11 @@ type Controller struct {
 	namedPort    *NamedPort
 
 	ovnLegacyClient *ovs.LegacyClient
-	ovnClient       *ovs.OvnClient
+	ovnClient       ovs.OvnClient
 	ovnPgKeyMutex   *keymutex.KeyMutex
+
+	// ExternalGatewayType define external gateway type, centralized
+	ExternalGatewayType string
 
 	podsLister             v1.PodLister
 	podsSynced             cache.InformerSynced
