@@ -282,7 +282,9 @@ trace(){
         nicName=$(echo $peer | awk '{print $2}')
       fi
 
+      set +o pipefail
       master=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- nsenter --net="$podNetNs" ip link show $nicName | grep -Eo '\smaster\s\w+\s' | awk '{print $2}')
+      set -o pipefail
       if [ ! -z "$master" ]; then
         echo "Error: Pod nic $nicName is a slave of $master, please set the destination mac address."
         exit 1
