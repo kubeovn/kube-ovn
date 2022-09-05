@@ -137,10 +137,10 @@ ct_next(ct_state=new|trk)
 ....Skip More....
 ```
 
-If the pod is a virtual machine running in underlay network, you may need to set the destination mac address:
+If the pod is a virtual machine running in underlay network, you may need to add another parameter to specify the destination mac address:
 
-```sh
-kubectl ko trace default/ds1-l6n7p 8.8.8.8 82:7c:9f:83:8c:01 icmp
+```bash
+kubectl ko trace default/virt-handler-7lvml 8.8.8.8 82:7c:9f:83:8c:01 icmp
 ```
 
 4. Diagnose network connectivity
