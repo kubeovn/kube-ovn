@@ -42,13 +42,17 @@ func (c *Controller) leaderElection() {
 		PodName:      c.config.PodName,
 		PodNamespace: c.config.PodNamespace,
 	}
-
 	c.elector = setupLeaderElection(config)
+
+	var flag bool
 	for {
 		if c.isLeader() {
 			return
 		}
-		klog.Info("waiting for becoming a leader")
+		if !flag {
+			klog.Info("waiting for becoming a leader")
+			flag = true
+		}
 		time.Sleep(5 * time.Second)
 	}
 }
