@@ -90,8 +90,9 @@ const (
 	VpcDnsNameLabel            = "ovn.kubernetes.io/vpc-dns"
 	NetworkPolicyLogAnnotation = "ovn.kubernetes.io/enable_log"
 
-	ProtocolTCP = "tcp"
-	ProtocolUDP = "udp"
+	ProtocolTCP  = "tcp"
+	ProtocolUDP  = "udp"
+	ProtocolSCTP = "sctp"
 
 	NetworkTypeVlan   = "vlan"
 	NetworkTypeGeneve = "geneve"

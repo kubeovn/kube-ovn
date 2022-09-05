@@ -313,11 +313,11 @@ func (c *Controller) updatePodAttachNets(pod *corev1.Pod, svc *corev1.Service) e
 		var protocol string
 		switch port.Protocol {
 		case corev1.ProtocolTCP:
-			protocol = "tcp"
+			protocol = util.ProtocolTCP
 		case corev1.ProtocolUDP:
-			protocol = "udp"
+			protocol = util.ProtocolTCP
 		case corev1.ProtocolSCTP:
-			protocol = "sctp"
+			protocol = util.ProtocolSCTP
 		}
 
 		var rules []string
