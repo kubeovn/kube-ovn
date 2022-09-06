@@ -9,7 +9,7 @@ To enable kubectl plugin, kubectl version of 1.12 or later is recommended. You c
 1. Get the `kubectl-ko` file
 
 ```bash
-wget https://raw.githubusercontent.com/alauda/kube-ovn/release-1.8/dist/images/kubectl-ko
+wget https://raw.githubusercontent.com/kubeovn/kube-ovn/release-1.10/dist/images/kubectl-ko
 ```
 
 2. Move the file to one of $PATH directories
@@ -38,7 +38,7 @@ The following compatible plugins are available:
 ```text
 kubectl ko {subcommand} [option...]
 Available Subcommands:
-  [nb|sb] [status|kick|backup]     ovn-db operations show cluster status, kick stale server or backup database
+  [nb|sb] [status|kick|backup|dbstatus|restore]     ovn-db operations show cluster status, kick stale server, backup database, get db consistency status or restore ovn nb db when met 'inconsistent data' error
   nbctl [ovn-nbctl options ...]    invoke ovn-nbctl
   sbctl [ovn-sbctl options ...]    invoke ovn-sbctl
   vsctl {nodeName} [ovs-vsctl options ...]   invoke ovs-vsctl on the specified node
@@ -46,8 +46,10 @@ Available Subcommands:
   dpctl {nodeName} [ovs-dpctl options ...]   invoke ovs-dpctl on the specified node
   appctl {nodeName} [ovs-appctl options ...]   invoke ovs-appctl on the specified node
   tcpdump {namespace/podname} [tcpdump options ...]     capture pod traffic
-  trace {namespace/podname} {target ip address} {icmp|tcp|udp} [target tcp or udp port]    trace ovn microflow of specific packet
+  trace {namespace/podname} {target ip address} [target mac address] {icmp|tcp|udp} [target tcp or udp port]    trace ovn microflow of specific packet
   diagnose {all|node} [nodename]    diagnose connectivity of all nodes or a specific node
+  env-check check the environment configuration
+  tuning {install-fastpath|local-install-fastpath|remove-fastpath|install-stt|local-install-stt|remove-stt} {centos7|centos8}} [kernel-devel-version]  deploy  kernel optimisation components to the system
   reload restart all kube-ovn components
 ```
 
@@ -133,6 +135,12 @@ ct_next(ct_state=new|trk)
     output;
 
 ....Skip More....
+```
+
+If the pod is a virtual machine running in underlay network, you may need to add another parameter to specify the destination mac address:
+
+```bash
+kubectl ko trace default/virt-handler-7lvml 8.8.8.8 82:7c:9f:83:8c:01 icmp
 ```
 
 4. Diagnose network connectivity
