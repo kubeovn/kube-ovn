@@ -15,6 +15,10 @@ on:
     - 'docs/**'
     - '**.md'
 
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
 env:
   GO_VERSION: '1.18'
   GOSEC_VERSION: '2.12.0'
