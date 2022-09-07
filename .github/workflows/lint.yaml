@@ -8,6 +8,10 @@ on:
       - main
   pull_request:
 
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
 env:
   GO_VERSION: '1.18'
 
