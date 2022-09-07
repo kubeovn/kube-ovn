@@ -8,16 +8,15 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/golang/protobuf/ptypes"
-	anypb "github.com/golang/protobuf/ptypes/any"
-	bgpapi "github.com/osrg/gobgp/api"
-	"github.com/osrg/gobgp/pkg/packet/bgp"
+	bgpapi "github.com/osrg/gobgp/v3/api"
+	bgpapiutil "github.com/osrg/gobgp/v3/pkg/apiutil"
+	"github.com/osrg/gobgp/v3/pkg/packet/bgp"
 	"github.com/vishvananda/netlink"
+	"google.golang.org/protobuf/types/known/anypb"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
 
-	bgpapiutil "github.com/kubeovn/kube-ovn/pkg/speaker/bgpapiutil"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -180,14 +179,14 @@ func (c *Controller) getNlriAndAttrs(route string) (*anypb.Any, []*anypb.Any, er
 	if err != nil {
 		return nil, nil, err
 	}
-	nlri, _ := ptypes.MarshalAny(&bgpapi.IPAddressPrefix{
+	nlri, _ := anypb.New(&bgpapi.IPAddressPrefix{
 		Prefix:    prefix,
 		PrefixLen: prefixLen,
 	})
-	a1, _ := ptypes.MarshalAny(&bgpapi.OriginAttribute{
+	a1, _ := anypb.New(&bgpapi.OriginAttribute{
 		Origin: 0,
 	})
-	a2, _ := ptypes.MarshalAny(&bgpapi.NextHopAttribute{
+	a2, _ := anypb.New(&bgpapi.NextHopAttribute{
 		NextHop: getNextHopAttribute(c.config.NeighborAddress, c.config.RouterId),
 	})
 	attrs := []*anypb.Any{a1, a2}

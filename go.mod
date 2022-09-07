@@ -16,7 +16,6 @@ require (
 	github.com/coreos/go-iptables v0.6.0
 	github.com/emicklei/go-restful/v3 v3.9.0
 	github.com/go-logr/stdr v1.2.2
-	github.com/golang/protobuf v1.5.2
 	github.com/greenpau/ovsdb v1.0.2
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.3.0
 	github.com/mdlayher/arp v0.0.0-20220512170110-6706a2966875
@@ -25,7 +24,7 @@ require (
 	github.com/oilbeater/go-ping v0.0.0-20200413021620-332b7197c5b5
 	github.com/onsi/ginkgo/v2 v2.1.6
 	github.com/onsi/gomega v1.20.2
-	github.com/osrg/gobgp v0.0.0-20211201041502-6248c576b118
+	github.com/osrg/gobgp/v3 v3.6.0
 	github.com/ovn-org/libovsdb v0.0.0-20220901025242-999ca1972a3a
 	github.com/parnurzeal/gorequest v0.2.16
 	github.com/prometheus/client_golang v1.13.0
@@ -36,6 +35,7 @@ require (
 	golang.org/x/sys v0.0.0-20220907062415-87db552b00fd
 	golang.org/x/time v0.0.0-20220722155302-e5dcc9cfc0b9
 	google.golang.org/grpc v1.49.0
+	google.golang.org/protobuf v1.28.1
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v3 v3.9.1
 	k8s.io/api v0.24.4
 	k8s.io/apimachinery v0.24.4
@@ -75,6 +75,7 @@ require (
 	github.com/golang/glog v1.0.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/mock v1.6.0 // indirect
+	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/gnostic v0.6.9 // indirect
 	github.com/google/go-cmp v0.5.8 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
@@ -132,7 +133,6 @@ require (
 	gomodules.xyz/jsonpatch/v2 v2.2.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20220902135211-223410557253 // indirect
-	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
