@@ -358,7 +358,9 @@ xxctl(){
 
 checkLeader(){
   component="$1"; shift
+  set +o pipefail
   count=$(kubectl get ep ovn-$component -n $KUBE_OVN_NS -o yaml | grep ip | wc -l)
+  set -o pipefail
   if [ $count -eq 0 ]; then
     echo "no ovn-$component exists !!"
     exit 1
