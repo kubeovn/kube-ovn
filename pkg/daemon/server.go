@@ -21,7 +21,8 @@ func RunServer(config *Configuration, controller *Controller) {
 	nodeName = config.NodeName
 	csh := createCniServerHandler(config, controller)
 	server := http.Server{
-		Handler: createHandler(csh),
+		Handler:           createHandler(csh),
+		ReadHeaderTimeout: 3 * time.Second,
 	}
 	unixListener, err := net.Listen("unix", config.BindSocket)
 	if err != nil {
