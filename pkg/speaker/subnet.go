@@ -4,7 +4,6 @@ package speaker
 import (
 	"context"
 	"fmt"
-	"github.com/vishvananda/netlink"
 	"net"
 	"strconv"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	anypb "github.com/golang/protobuf/ptypes/any"
 	bgpapi "github.com/osrg/gobgp/api"
 	"github.com/osrg/gobgp/pkg/packet/bgp"
+	"github.com/vishvananda/netlink"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"

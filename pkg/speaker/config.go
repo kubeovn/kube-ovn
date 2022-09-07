@@ -5,11 +5,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/osrg/gobgp/pkg/packet/bgp"
 	"os"
 	"time"
 
 	api "github.com/osrg/gobgp/api"
+	"github.com/osrg/gobgp/pkg/packet/bgp"
 	gobgp "github.com/osrg/gobgp/pkg/server"
 	"github.com/spf13/pflag"
 	"google.golang.org/grpc"
