@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -868,17 +869,14 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(c.runAddSubnetWorker, time.Second, ctx.Done())
 	go wait.Until(c.runAddVlanWorker, time.Second, ctx.Done())
 	go wait.Until(c.runAddNamespaceWorker, time.Second, ctx.Done())
-	for {
-		klog.Infof("wait for %s and %s ready", c.config.DefaultLogicalSwitch, c.config.NodeSwitch)
-		time.Sleep(3 * time.Second)
-		lss, err := c.ovnLegacyClient.ListLogicalSwitch(c.config.EnableExternalVpc)
-		if err != nil {
-			util.LogFatalAndExit(err, "failed to list logical switch")
-		}
+	err := wait.PollUntil(3*time.Second, func() (done bool, err error) {
+		subnets := []string{c.config.DefaultLogicalSwitch, c.config.NodeSwitch}
+		klog.Infof("wait for subnets %v ready", subnets)
 
-		if util.IsStringIn(c.config.DefaultLogicalSwitch, lss) && util.IsStringIn(c.config.NodeSwitch, lss) && c.addNamespaceQueue.Len() == 0 {
-			break
-		}
+		return c.allSubnetReady(subnets...)
+	}, ctx.Done())
+	if err != nil {
+		klog.Fatalf("wait default/join subnet ready error: %v", err)
 	}
 
 	go wait.Until(c.runAddSgWorker, time.Second, ctx.Done())
@@ -1009,8 +1007,6 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(c.CheckNodePortGroup, time.Duration(c.config.NodePgProbeTime)*time.Minute, ctx.Done())
 	}
 
-	go wait.Until(c.syncVmLiveMigrationPort, 15*time.Second, ctx.Done())
-
 	go wait.Until(c.runAddVirtualIpWorker, time.Second, ctx.Done())
 	go wait.Until(c.runUpdateVirtualIpWorker, time.Second, ctx.Done())
 	go wait.Until(c.runDelVirtualIpWorker, time.Second, ctx.Done())
@@ -1039,4 +1035,19 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(c.runAddPodAnnotatedIptablesFipWorker, time.Second, ctx.Done())
 		go wait.Until(c.runDelPodAnnotatedIptablesFipWorker, time.Second, ctx.Done())
 	}
+}
+
+func (c *Controller) allSubnetReady(subnets ...string) (bool, error) {
+	for _, lsName := range subnets {
+		exist, err := c.ovnClient.LogicalSwitchExists(lsName)
+		if err != nil {
+			return false, fmt.Errorf("check logical switch %s exist: %v", lsName, err)
+		}
+
+		if !exist {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }

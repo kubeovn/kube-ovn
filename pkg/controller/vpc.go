@@ -167,87 +167,6 @@ func (c *Controller) handleUpdateVpcStatus(key string) error {
 	return nil
 }
 
-func (c *Controller) reconcileRouterPorts(vpc *kubeovnv1.Vpc) error {
-	subnets, _, err := c.getVpcSubnets(vpc)
-	if err != nil {
-		klog.ErrorS(err, "unable to get related subnets", "vpc", vpc.Name)
-		return err
-	}
-
-	router := vpc.Name
-	for _, subnetName := range subnets {
-		routerPortName := ovs.LogicalRouterPortName(router, subnetName)
-		exists, err := c.ovnClient.LogicalRouterPortExists(routerPortName)
-		if err != nil {
-			return err
-		}
-
-		if !exists {
-			subnet, err := c.subnetsLister.Get(subnetName)
-			if err != nil {
-				if k8serrors.IsNotFound(err) {
-					continue
-				}
-				klog.ErrorS(err, "unable to get subnet", "subnet", subnetName)
-				return err
-			}
-
-			if subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway {
-				// skip vlan subnet which use underlay gw
-				// vpc connect to external vlan subnet is controlled by vpc spec enableExternal
-				klog.Infof("no need to connect vpc '%s' to vlan subnet %s", router, subnet.Name)
-				return nil
-			}
-
-			gateway := subnet.Spec.Gateway
-			if subnet.Spec.U2OInterconnection && subnet.Status.U2OInterconnectionIP != "" {
-				gateway = subnet.Status.U2OInterconnectionIP
-			}
-			networks := util.GetIpAddrWithMask(gateway, subnet.Spec.CIDRBlock)
-			klog.Infof("add vpc lrp %s, networks %s", routerPortName, networks)
-
-			if err := c.ovnClient.CreateLogicalRouterPort(router, routerPortName, "", strings.Split(networks, ",")); err != nil {
-				klog.Errorf("failed to create router port %s, err %v", routerPortName, err)
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func (c *Controller) reconcileRouterPortBySubnet(vpc *kubeovnv1.Vpc, subnet *kubeovnv1.Subnet) error {
-	router := vpc.Name
-	routerPortName := ovs.LogicalRouterPortName(router, subnet.Name)
-	exists, err := c.ovnClient.LogicalRouterPortExists(routerPortName)
-	if err != nil {
-		return err
-	}
-
-	if !exists {
-		subnet, err := c.subnetsLister.Get(subnet.Name)
-		if err != nil {
-			if k8serrors.IsNotFound(err) {
-				return nil
-			}
-			klog.Errorf("failed to get subnet %s, err %v", subnet.Name, err)
-			return err
-		}
-
-		gateway := subnet.Spec.Gateway
-		if subnet.Spec.U2OInterconnection && subnet.Status.U2OInterconnectionIP != "" {
-			gateway = subnet.Status.U2OInterconnectionIP
-		}
-		networks := util.GetIpAddrWithMask(gateway, subnet.Spec.CIDRBlock)
-		klog.Infof("router port does not exist, trying to create %s with ip %s", routerPortName, networks)
-
-		if err := c.ovnClient.CreateLogicalRouterPort(router, routerPortName, "", strings.Split(networks, ",")); err != nil {
-			klog.Errorf("failed to create router port %s, err %v", routerPortName, err)
-			return err
-		}
-	}
-	return nil
-}
-
 type VpcLoadBalancer struct {
 	TcpLoadBalancer      string
 	TcpSessLoadBalancer  string
@@ -322,29 +241,23 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 
-	if err := c.reconcileRouterPorts(vpc); err != nil {
-		klog.ErrorS(err, "unable to reconcileRouterPorts")
-		return err
-	}
-
 	var newPeers []string
 	for _, peering := range vpc.Spec.VpcPeerings {
 		if err = util.CheckCidrs(peering.LocalConnectIP); err != nil {
 			klog.Errorf("invalid cidr %s", peering.LocalConnectIP)
 			return err
 		}
+
 		newPeers = append(newPeers, peering.RemoteVpc)
-		if err := c.ovnLegacyClient.CreatePeerRouterPort(vpc.Name, peering.RemoteVpc, peering.LocalConnectIP); err != nil {
-			klog.Errorf("failed to create peer router port for vpc %s, %v", vpc.Name, err)
+		if err := c.ovnClient.CreatePeerRouterPort(vpc.Name, peering.RemoteVpc, peering.LocalConnectIP); err != nil {
+			klog.Errorf("create peer router port for vpc %s, %v", vpc.Name, err)
 			return err
 		}
 	}
 	for _, oldPeer := range vpc.Status.VpcPeerings {
 		if !util.ContainsString(newPeers, oldPeer) {
-			lrpName := fmt.Sprintf("%s-%s", vpc.Name, oldPeer)
-			klog.Infof("delete logical router port %s", lrpName)
-			if err = c.ovnLegacyClient.DeleteLogicalRouterPort(lrpName); err != nil {
-				klog.Errorf("failed to delete peer router port for vpc %s, %v", vpc.Name, err)
+			if err = c.ovnClient.DeleteLogicalRouterPort(fmt.Sprintf("%s-%s", vpc.Name, oldPeer)); err != nil {
+				klog.Errorf("delete peer router port for vpc %s, %v", vpc.Name, err)
 				return err
 			}
 		}
@@ -394,12 +307,13 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 					nextHop = strings.Split(nextHop, "/")[0]
 				}
 
-				nats, err := c.ovnLegacyClient.GetRouterNat(vpc.Name)
+				lr, err := c.ovnClient.GetLogicalRouter(vpc.Name, false)
 				if err != nil {
-					klog.Errorf("failed to get nat for vpc %s, %v", vpc.Name, err)
+					klog.Errorf("failed to get logical router %s: %v", vpc.Name, err)
 					return err
 				}
-				for _, nat := range nats {
+
+				for _, nat := range lr.Nat {
 					logical_ip, err := c.ovnLegacyClient.GetNatIPInfo(nat)
 					if err != nil {
 						klog.Errorf("failed to get nat ip info for vpc %s, %v", vpc.Name, err)
@@ -829,22 +743,12 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 
 // createVpcRouter create router to connect logical switches in vpc
 func (c *Controller) createVpcRouter(lr string) error {
-	lrs, err := c.ovnLegacyClient.ListLogicalRouter(c.config.EnableExternalVpc)
-	if err != nil {
-		return err
-	}
-	klog.Infof("exists routers %v", lrs)
-	for _, r := range lrs {
-		if lr == r {
-			return nil
-		}
-	}
-	return c.ovnLegacyClient.CreateLogicalRouter(lr)
+	return c.ovnClient.CreateLogicalRouter(lr)
 }
 
 // deleteVpcRouter delete router to connect logical switches in vpc
 func (c *Controller) deleteVpcRouter(lr string) error {
-	return c.ovnLegacyClient.DeleteLogicalRouter(lr)
+	return c.ovnClient.DeleteLogicalRouter(lr)
 }
 
 func (c *Controller) handleAddVpcExternal(key string) error {
@@ -892,11 +796,16 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 		klog.Errorf("failed to get gateway chassis, %v", err)
 		return err
 	}
+
 	v4ipCidr := util.GetIpAddrWithMask(v4ip, cachedSubnet.Spec.CIDRBlock)
-	if err := c.ovnLegacyClient.ConnectRouterToExternal(c.config.ExternalGatewaySwitch, key, v4ipCidr, mac, chassises); err != nil {
-		klog.Errorf("failed to connect router '%s' to external, %v", key, err)
+	lspName := fmt.Sprintf("%s-%s", c.config.ExternalGatewaySwitch, key)
+	lrpName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
+
+	if err := c.ovnClient.CreateLogicalPatchPort(c.config.ExternalGatewaySwitch, key, lspName, lrpName, v4ipCidr, mac, chassises...); err != nil {
+		klog.Errorf("failed to connect router '%s' to external: %v", key, err)
 		return err
 	}
+
 	cachedVpc, err := c.vpcsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -971,12 +880,16 @@ func (c *Controller) handleDelVpcExternal(key string) error {
 		}
 		return err
 	}
-	lrpEipName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
-	klog.V(3).Infof("delete vpc lrp %s", lrpEipName)
-	if err := c.ovnLegacyClient.DisconnectRouterToExternal(c.config.ExternalGatewaySwitch, key); err != nil {
+
+	lspName := fmt.Sprintf("%s-%s", c.config.ExternalGatewaySwitch, key)
+	lrpName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
+	klog.V(3).Infof("delete vpc lrp %s", lrpName)
+
+	if err := c.ovnClient.RemoveLogicalPatchPort(lspName, lrpName); err != nil {
 		klog.Errorf("failed to disconnect router '%s' to external, %v", key, err)
 		return err
 	}
+
 	vpc := cachedVpc.DeepCopy()
 	vpc.Status.EnableExternal = cachedVpc.Spec.EnableExternal
 	bytes, err := vpc.Status.Bytes()
@@ -987,7 +900,7 @@ func (c *Controller) handleDelVpcExternal(key string) error {
 		vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
 		return err
 	}
-	cachedEip, err := c.ovnEipsLister.Get(lrpEipName)
+	cachedEip, err := c.ovnEipsLister.Get(lrpName)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -998,15 +911,15 @@ func (c *Controller) handleDelVpcExternal(key string) error {
 		klog.Errorf("failed to del finalizer for ovn eip, %v", err)
 		return err
 	}
-	if err = c.config.KubeOvnClient.KubeovnV1().OvnEips().Delete(context.Background(), lrpEipName, metav1.DeleteOptions{}); err != nil {
+	if err = c.config.KubeOvnClient.KubeovnV1().OvnEips().Delete(context.Background(), lrpName, metav1.DeleteOptions{}); err != nil {
 		if !k8serrors.IsNotFound(err) {
-			klog.Errorf("failed to delete ovn eip %s, %v", lrpEipName, err)
+			klog.Errorf("failed to delete ovn eip %s, %v", lrpName, err)
 			return err
 		}
 	}
 
 	// del all vpc bfds
-	if err := c.ovnLegacyClient.DeleteBfd(lrpEipName, ""); err != nil {
+	if err := c.ovnLegacyClient.DeleteBfd(lrpName, ""); err != nil {
 		klog.Error(err)
 		return err
 	}

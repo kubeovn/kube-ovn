@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCheckSystemCIDR(t *testing.T) {
@@ -993,4 +994,55 @@ func TestJoinHostPort(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_CIDRContainIP(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		desc  string
+		cidrs string
+		ips   string
+		want  bool
+	}{
+		{
+			"ipv4 family",
+			"192.168.230.0/24",
+			"192.168.230.10,192.168.230.11",
+			true,
+		},
+		{
+			"ipv6 family",
+			"fc00::0af4:00/112",
+			"fc00::0af4:10,fc00::0af4:11",
+			true,
+		},
+		{
+			"dual",
+			"192.168.230.0/24,fc00::0af4:00/112",
+			"fc00::0af4:10,fc00::0af4:11,192.168.230.10,192.168.230.11",
+			true,
+		},
+		{
+			"ipv4 family",
+			"192.168.230.0/24",
+			"192.168.231.10,192.168.230.11",
+			false,
+		},
+		{
+			"dual",
+			"192.168.230.0/24,fc00::0af4:00/112",
+			"fc00::0af4:10,fd00::0af4:11,192.168.230.10,192.168.230.11",
+			false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			// t.Parallel()
+			got := CIDRContainIP(tt.cidrs, tt.ips)
+			require.Equal(t, got, tt.want)
+		})
+	}
+
 }

@@ -21,11 +21,7 @@ func (c *Controller) inspectPod() error {
 		klog.Errorf("failed to list ip, %v", err)
 		return err
 	}
-	lsps, err := c.ovnLegacyClient.ListLogicalSwitchPort(c.config.EnableExternalVpc)
-	if err != nil {
-		klog.Errorf("failed to list logical switch port, %v", err)
-		return err
-	}
+
 	for _, oriPod := range pods {
 		pod := oriPod.DeepCopy()
 		if pod.Spec.HostNetwork {
@@ -45,14 +41,12 @@ func (c *Controller) inspectPod() error {
 		for _, podNet := range filterSubnets(pod, podNets) {
 			if podNet.Type != providerTypeIPAM {
 				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-				isLspExist := false
-				for _, lsp := range lsps {
-					if portName == lsp {
-						isLspExist = true
-						break
-					}
+				exists, err := c.ovnClient.LogicalSwitchPortExists(portName)
+				if err != nil {
+					return err
 				}
-				if !isLspExist {
+
+				if !exists { // pod exists but not lsp
 					delete(pod.Annotations, fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName))
 					delete(pod.Annotations, fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName))
 					patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)

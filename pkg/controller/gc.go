@@ -15,6 +15,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -52,25 +53,16 @@ func (c *Controller) gcLogicalRouterPort() error {
 		return err
 	}
 
-	var exceptPeerPorts []string
+	exceptPeerPorts := make(map[string]struct{})
 	for _, vpc := range vpcs {
 		for _, peer := range vpc.Status.VpcPeerings {
-			exceptPeerPorts = append(exceptPeerPorts, fmt.Sprintf("%s-%s", vpc.Name, peer))
+			exceptPeerPorts[fmt.Sprintf("%s-%s", vpc.Name, peer)] = struct{}{}
 		}
 	}
-	lrps, err := c.ovnLegacyClient.ListLogicalEntity("logical_router_port", "peer!=[]")
-	if err != nil {
-		klog.Errorf("failed to list logical router port, %v", err)
+
+	if err = c.ovnClient.DeleteLogicalRouterPorts(nil, logicalRouterPortFilter(exceptPeerPorts)); err != nil {
+		klog.Errorf("delete non-existent peer logical router port: %v", err)
 		return err
-	}
-	for _, lrp := range lrps {
-		if !util.ContainsString(exceptPeerPorts, lrp) {
-			klog.Infof("gc logical router port %s", lrp)
-			if err = c.ovnLegacyClient.DeleteLogicalRouterPort(lrp); err != nil {
-				klog.Errorf("failed to delete logical router port %s, %v", lrp, err)
-				return err
-			}
-		}
 	}
 	return nil
 }
@@ -132,25 +124,27 @@ func (c *Controller) gcLogicalSwitch() error {
 		subnetMap[s.Name] = s
 		subnetNames = append(subnetNames, s.Name)
 	}
-	lss, err := c.ovnLegacyClient.ListLogicalSwitch(c.config.EnableExternalVpc)
+
+	lss, err := c.ovnClient.ListLogicalSwitch(c.config.EnableExternalVpc, nil)
 	if err != nil {
-		klog.Errorf("failed to list logical switch, %v", err)
+		klog.Errorf("list logical switch: %v", err)
 		return err
 	}
+
 	klog.Infof("ls in ovn %v", lss)
 	klog.Infof("subnet in kubernetes %v", subnetNames)
 	for _, ls := range lss {
-		if ls == util.InterconnectionSwitch ||
-			ls == util.ExternalGatewaySwitch ||
-			ls == c.config.ExternalGatewaySwitch {
+		if ls.Name == util.InterconnectionSwitch ||
+			ls.Name == util.ExternalGatewaySwitch ||
+			*&ls.Name == c.config.ExternalGatewaySwitch {
 			continue
 		}
-		if s := subnetMap[ls]; s != nil && isOvnSubnet(s) {
+		if s := subnetMap[ls.Name]; s != nil && isOvnSubnet(s) {
 			continue
 		}
 
 		klog.Infof("gc subnet %s", ls)
-		if err := c.handleDeleteLogicalSwitch(ls); err != nil {
+		if err := c.handleDeleteLogicalSwitch(ls.Name); err != nil {
 			klog.Errorf("failed to gc subnet %s, %v", ls, err)
 			return err
 		}
@@ -190,20 +184,23 @@ func (c *Controller) gcCustomLogicalRouter() error {
 	for _, s := range vpcs {
 		vpcNames = append(vpcNames, s.Name)
 	}
-	lrs, err := c.ovnLegacyClient.ListLogicalRouter(c.config.EnableExternalVpc)
+
+	lrs, err := c.ovnClient.ListLogicalRouter(c.config.EnableExternalVpc, nil)
 	if err != nil {
 		klog.Errorf("failed to list logical router, %v", err)
 		return err
 	}
+
 	klog.Infof("lr in ovn %v", lrs)
 	klog.Infof("vpc in kubernetes %v", vpcNames)
+
 	for _, lr := range lrs {
-		if lr == util.DefaultVpc {
+		if lr.Name == util.DefaultVpc {
 			continue
 		}
-		if !util.IsStringIn(lr, vpcNames) {
+		if !util.IsStringIn(lr.Name, vpcNames) {
 			klog.Infof("gc router %s", lr)
-			if err := c.deleteVpcRouter(lr); err != nil {
+			if err := c.deleteVpcRouter(lr.Name); err != nil {
 				klog.Errorf("failed to delete router %s, %v", lr, err)
 				return err
 			}
@@ -359,10 +356,11 @@ func (c *Controller) markAndCleanLSP() error {
 		}
 
 		klog.Infof("gc logical switch port %s", lsp.Name)
-		if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(lsp.Name); err != nil {
+		if err := c.ovnClient.DeleteLogicalSwitchPort(lsp.Name); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", lsp, err)
 			return err
 		}
+
 		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), lsp.Name, metav1.DeleteOptions{}); err != nil {
 			if !k8serrors.IsNotFound(err) {
 				klog.Errorf("failed to delete ip %s, %v", lsp.Name, err)
@@ -841,4 +839,14 @@ func (c *Controller) gcVpcDns() error {
 		}
 	}
 	return nil
+}
+
+func logicalRouterPortFilter(exceptPeerPorts map[string]struct{}) func(lrp *ovnnb.LogicalRouterPort) bool {
+	return func(lrp *ovnnb.LogicalRouterPort) bool {
+		if _, ok := exceptPeerPorts[lrp.Name]; ok {
+			return false // ignore except lrp
+		}
+
+		return lrp.Peer != nil && len(*lrp.Peer) != 0
+	}
 }
