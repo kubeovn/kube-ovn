@@ -113,7 +113,7 @@ function add_eip() {
         # gw may lost, even if add_vpc_external_route add route successfully
         exec_cmd "ip route replace default via $gateway dev net1"
         ip route | grep "default via $gateway dev net1"
-        exec_cmd "arping -c 3 -s $eip_without_prefix $gateway"
+        exec_cmd "arping -I net1 -c 3 -D $eip_without_prefix"
     done
 }
 
