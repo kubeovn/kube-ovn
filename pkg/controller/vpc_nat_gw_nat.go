@@ -505,10 +505,7 @@ func (c *Controller) processNextDeleteIptablesSnatRuleWorkItem() bool {
 
 func (c *Controller) handleAddIptablesFip(key string) error {
 	if vpcNatEnabled != "true" {
-		time.Sleep(10 * time.Second)
-		if vpcNatEnabled != "true" {
-			return fmt.Errorf("failed to add vpc fip rule, vpcNatEnabled='%s'", vpcNatEnabled)
-		}
+		return fmt.Errorf("iptables nat gw not enable")
 	}
 	c.vpcNatGwKeyMutex.Lock(key)
 	defer c.vpcNatGwKeyMutex.Unlock(key)
@@ -577,12 +574,6 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 }
 
 func (c *Controller) handleUpdateIptablesFip(key string) error {
-	if vpcNatEnabled != "true" {
-		time.Sleep(10 * time.Second)
-		if vpcNatEnabled != "true" {
-			return fmt.Errorf("failed to del vpc fip rule, vpcNatEnabled='%s'", vpcNatEnabled)
-		}
-	}
 	c.vpcNatGwKeyMutex.Lock(key)
 	defer c.vpcNatGwKeyMutex.Unlock(key)
 
@@ -608,6 +599,10 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 		//  reset eip
 		c.resetIptablesEipQueue.Add(fip.Spec.EIP)
 		return nil
+	}
+	// add or update should make sure vpc nat enabled
+	if vpcNatEnabled != "true" {
+		return fmt.Errorf("iptables nat gw not enable")
 	}
 	eipName := cachedFip.Spec.EIP
 	if len(eipName) == 0 {
@@ -687,10 +682,7 @@ func (c *Controller) handleDelIptablesFip(key string) error {
 
 func (c *Controller) handleAddIptablesDnatRule(key string) error {
 	if vpcNatEnabled != "true" {
-		time.Sleep(10 * time.Second)
-		if vpcNatEnabled != "true" {
-			return fmt.Errorf("failed to add vpc dnat rule, vpcNatEnabled='%s'", vpcNatEnabled)
-		}
+		return fmt.Errorf("iptables nat gw not enable")
 	}
 	c.vpcNatGwKeyMutex.Lock(key)
 	defer c.vpcNatGwKeyMutex.Unlock(key)
@@ -757,12 +749,6 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 }
 
 func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
-	if vpcNatEnabled != "true" {
-		time.Sleep(10 * time.Second)
-		if vpcNatEnabled != "true" {
-			return fmt.Errorf("failed to del vpc dnat rule, vpcNatEnabled='%s'", vpcNatEnabled)
-		}
-	}
 	c.vpcNatGwKeyMutex.Lock(key)
 	defer c.vpcNatGwKeyMutex.Unlock(key)
 
@@ -808,6 +794,10 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 	}
 	if dup, err := c.isDnatDuplicated(eipName, dnat.Name, dnat.Spec.ExternalPort); dup || err != nil {
 		return err
+	}
+	// add or update should make sure vpc nat enabled
+	if vpcNatEnabled != "true" {
+		return fmt.Errorf("iptables nat gw not enable")
 	}
 	if c.dnatChangeEip(dnat, eip) {
 		klog.V(3).Infof("dnat change ip, old ip '%s', new ip %s", dnat.Status.V4ip, eip.Spec.V4ip)
@@ -872,10 +862,7 @@ func (c *Controller) handleDelIptablesDnatRule(key string) error {
 
 func (c *Controller) handleAddIptablesSnatRule(key string) error {
 	if vpcNatEnabled != "true" {
-		time.Sleep(10 * time.Second)
-		if vpcNatEnabled != "true" {
-			return fmt.Errorf("failed to add vpc snat rule, vpcNatEnabled='%s'", vpcNatEnabled)
-		}
+		return fmt.Errorf("iptables nat gw not enable")
 	}
 	c.vpcNatGwKeyMutex.Lock(key)
 	defer c.vpcNatGwKeyMutex.Unlock(key)
@@ -942,12 +929,6 @@ func (c *Controller) handleAddIptablesSnatRule(key string) error {
 }
 
 func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
-	if vpcNatEnabled != "true" {
-		time.Sleep(10 * time.Second)
-		if vpcNatEnabled != "true" {
-			return fmt.Errorf("failed to del vpc snat rule, vpcNatEnabled='%s'", vpcNatEnabled)
-		}
-	}
 	c.vpcNatGwKeyMutex.Lock(key)
 	defer c.vpcNatGwKeyMutex.Unlock(key)
 
@@ -992,6 +973,10 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 		// eip is in use by other nat
 		err = fmt.Errorf("failed to update snat %s, eip '%s' is used by %s", key, eipName, eip.Status.Nat)
 		return err
+	}
+	// add or update should make sure vpc nat enabled
+	if vpcNatEnabled != "true" {
+		return fmt.Errorf("iptables nat gw not enable")
 	}
 	// snat change eip
 	if c.snatChangeEip(snat, eip) {
@@ -1571,7 +1556,9 @@ func (c *Controller) createDnatInPod(dp, protocol, v4ip, internalIp, externalPor
 func (c *Controller) deleteDnatInPod(dp, protocol, v4ip, internalIp, externalPort, internalPort string) error {
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
-		klog.Errorf("failed to get nat gw pod, %v", err)
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
 		return err
 	}
 	// del nat
@@ -1604,7 +1591,9 @@ func (c *Controller) createSnatInPod(dp, v4ip, internalCIDR string) error {
 func (c *Controller) deleteSnatInPod(dp, v4ip, internalCIDR string) error {
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
-		klog.Errorf("failed to get nat gw pod, %v", err)
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
 		return err
 	}
 	// del nat

@@ -211,10 +211,7 @@ func (c *Controller) processNextDeleteIptablesEipWorkItem() bool {
 
 func (c *Controller) handleAddIptablesEip(key string) error {
 	if vpcNatEnabled != "true" {
-		time.Sleep(10 * time.Second)
-		if vpcNatEnabled != "true" {
-			return fmt.Errorf("failed to add vpc nat eip, vpcNatEnabled='%s'", vpcNatEnabled)
-		}
+		return fmt.Errorf("iptables nat gw not enable")
 	}
 
 	c.vpcNatGwKeyMutex.Lock(key)
@@ -331,15 +328,8 @@ func (c *Controller) handleResetIptablesEip(key string) error {
 }
 
 func (c *Controller) handleUpdateIptablesEip(key string) error {
-	if vpcNatEnabled != "true" {
-		time.Sleep(10 * time.Second)
-		if vpcNatEnabled != "true" {
-			return fmt.Errorf("failed to del vpc nat eip, vpcNatEnabled='%s'", vpcNatEnabled)
-		}
-	}
 	c.vpcNatGwKeyMutex.Lock(key)
 	defer c.vpcNatGwKeyMutex.Unlock(key)
-
 	cachedEip, err := c.iptablesEipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -365,6 +355,10 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 			return err
 		}
 		return nil
+	}
+	// add or update should make sure vpc nat enabled
+	if vpcNatEnabled != "true" {
+		return fmt.Errorf("iptables nat gw not enable")
 	}
 	if eip.Status.IP != "" && eip.Spec.V4ip == "" {
 		// eip spec V4ip is removed
