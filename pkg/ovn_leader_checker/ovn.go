@@ -4,9 +4,9 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
-	exec "os/exec"
+	"os/exec"
 	"reflect"
 	"strings"
 	"syscall"
@@ -219,7 +219,7 @@ func checkNorthdActive() bool {
 		klog.Errorf("failed to open %s err =  %v", OvnNorthdPid, err)
 		return false
 	}
-	fileByte, err := ioutil.ReadAll(file)
+	fileByte, err := io.ReadAll(file)
 	if err != nil {
 		klog.Errorf("failed to read %s err = %v", OvnNorthdPid, err)
 		return false
