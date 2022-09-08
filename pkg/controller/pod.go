@@ -218,7 +218,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	if newPod.DeletionTimestamp != nil && !isStateful && !isVmPod {
 		go func() {
 			// In case node get lost and pod can not be deleted,
-			// the ipaddress will not be recycled
+			// the ip address will not be recycled
 			time.Sleep(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second)
 			c.deletePodQueue.Add(newObj)
 		}()

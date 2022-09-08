@@ -175,10 +175,10 @@ func (config *Configuration) initKubeClient() error {
 
 func (config *Configuration) checkGracefulRestartOptions() error {
 	if config.GracefulRestartTime > time.Second*4095 || config.GracefulRestartTime <= 0 {
-		return errors.New("GracefuleRestartTime should be less than 4095 seconds or more than 0")
+		return errors.New("GracefulRestartTime should be less than 4095 seconds or more than 0")
 	}
 	if config.GracefulRestartDeferralTime > time.Hour*18 || config.GracefulRestartDeferralTime <= 0 {
-		return errors.New("GracefuleRestartDeferralTime should be less than 18 hours or more than 0")
+		return errors.New("GracefulRestartDeferralTime should be less than 18 hours or more than 0")
 	}
 
 	return nil

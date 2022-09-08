@@ -596,7 +596,7 @@ func (c *Controller) getDefaultCoreDnsImage() (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("coredns container no fonud")
+	return "", fmt.Errorf("coredns container no found")
 }
 
 func (c *Controller) initVpcDnsConfig() error {

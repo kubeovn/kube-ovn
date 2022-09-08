@@ -11,13 +11,15 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func parsePodNetworkObjectName(podnetwork string) (string, string, string, error) {
+var attachmentRegexp = regexp.MustCompile("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
+
+func parsePodNetworkObjectName(podNetwork string) (string, string, string, error) {
 	var netNsName string
 	var netIfName string
 	var networkName string
 
-	klog.V(3).Infof("parsePodNetworkObjectName: %s", podnetwork)
-	slashItems := strings.Split(podnetwork, "/")
+	klog.V(3).Infof("parsePodNetworkObjectName: %s", podNetwork)
+	slashItems := strings.Split(podNetwork, "/")
 	if len(slashItems) == 2 {
 		netNsName = strings.TrimSpace(slashItems[0])
 		networkName = slashItems[1]
@@ -44,9 +46,7 @@ func parsePodNetworkObjectName(podnetwork string) (string, string, string, error
 	// It must start and end alphanumerically.
 	allItems := []string{netNsName, networkName, netIfName}
 	for i := range allItems {
-		// nolint:staticcheck
-		matched, _ := regexp.MatchString("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", allItems[i])
-		if !matched && len([]rune(allItems[i])) > 0 {
+		if !attachmentRegexp.MatchString(allItems[i]) && len([]rune(allItems[i])) > 0 {
 			klog.Errorf(fmt.Sprintf("parsePodNetworkObjectName: Failed to parse: "+
 				"one or more items did not match comma-delimited format (must consist of lower case alphanumeric characters). "+
 				"Must start and end with an alphanumeric character), mismatch @ '%v'", allItems[i]))

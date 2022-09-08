@@ -316,8 +316,8 @@ func GetResidualInternalPorts() []string {
 		}
 
 		// iface-id field does not exist in external_ids for residual internal port
-		externaIds := strings.Split(intf, "\n")[1]
-		if !strings.Contains(externaIds, "iface-id") {
+		externalIds := strings.Split(intf, "\n")[1]
+		if !strings.Contains(externalIds, "iface-id") {
 			residualPorts = append(residualPorts, name)
 		}
 	}

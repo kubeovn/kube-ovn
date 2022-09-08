@@ -55,7 +55,7 @@ func parseAttachNetworkProvider(svc *corev1.Service) (string, string) {
 func (c *Controller) checkAttachNetwork(svc *corev1.Service) error {
 	attachmentName, attachmentNs := parseAttachNetworkProvider(svc)
 	if attachmentName == "" && attachmentNs == "" {
-		return fmt.Errorf("The provider name should be consisted of name and namesapce")
+		return fmt.Errorf("the provider name should be consisted of name and namespace")
 	}
 
 	_, err := c.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(attachmentNs).Get(context.Background(), attachmentName, metav1.GetOptions{})
@@ -84,14 +84,14 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service) (dp *v1.Deployment)
 
 	attachmentName, attachmentNs := parseAttachNetworkProvider(svc)
 	providerName := getAttachNetworkProvider(svc)
-	attchSubnetAnnotation := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)
-	attchIpAnnotation := fmt.Sprintf(util.IpAddressAnnotationTemplate, providerName)
+	attachSubnetAnnotation := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)
+	attachIpAnnotation := fmt.Sprintf(util.IpAddressAnnotationTemplate, providerName)
 	podAnnotations := map[string]string{
 		util.AttachmentNetworkAnnotation: fmt.Sprintf("%s/%s", attachmentNs, attachmentName),
-		attchSubnetAnnotation:            svc.Annotations[attchSubnetAnnotation],
+		attachSubnetAnnotation:           svc.Annotations[attachSubnetAnnotation],
 	}
 	if svc.Spec.LoadBalancerIP != "" {
-		podAnnotations[attchIpAnnotation] = svc.Spec.LoadBalancerIP
+		podAnnotations[attachIpAnnotation] = svc.Spec.LoadBalancerIP
 	}
 	if v, ok := svc.Annotations[util.LogicalSwitchAnnotation]; ok {
 		podAnnotations[util.LogicalSwitchAnnotation] = v
@@ -138,14 +138,14 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service) (dp *v1.Deployment)
 func (c *Controller) updateLbSvcDeployment(svc *corev1.Service, dp *v1.Deployment) *v1.Deployment {
 	attachmentName, attachmentNs := parseAttachNetworkProvider(svc)
 	providerName := getAttachNetworkProvider(svc)
-	attchSubnetAnnotation := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)
-	attchIpAnnotation := fmt.Sprintf(util.IpAddressAnnotationTemplate, providerName)
+	attachSubnetAnnotation := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)
+	attachIpAnnotation := fmt.Sprintf(util.IpAddressAnnotationTemplate, providerName)
 	podAnnotations := map[string]string{
 		util.AttachmentNetworkAnnotation: fmt.Sprintf("%s/%s", attachmentNs, attachmentName),
-		attchSubnetAnnotation:            svc.Annotations[attchSubnetAnnotation],
+		attachSubnetAnnotation:           svc.Annotations[attachSubnetAnnotation],
 	}
 	if svc.Spec.LoadBalancerIP != "" {
-		podAnnotations[attchIpAnnotation] = svc.Spec.LoadBalancerIP
+		podAnnotations[attachIpAnnotation] = svc.Spec.LoadBalancerIP
 	}
 	dp.Spec.Template.Annotations = podAnnotations
 
@@ -205,23 +205,23 @@ func (c *Controller) getLbSvcPod(svcName, svcNamespace string) (*corev1.Pod, err
 
 func (c *Controller) validateSvc(svc *corev1.Service) error {
 	providerName := getAttachNetworkProvider(svc)
-	attchSubnetAnnotation := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)
+	attachSubnetAnnotation := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)
 
 	if svc.Spec.LoadBalancerIP != "" {
 		if ip := net.ParseIP(svc.Spec.LoadBalancerIP); ip == nil {
-			return fmt.Errorf("Invalid static loadbalancerIP %s for svc %s", svc.Spec.LoadBalancerIP, svc.Name)
+			return fmt.Errorf("invalid static loadbalancerIP %s for svc %s", svc.Spec.LoadBalancerIP, svc.Name)
 		}
 	}
 
-	if svc.Annotations[attchSubnetAnnotation] != "" {
-		subnet, err := c.subnetsLister.Get(svc.Annotations[attchSubnetAnnotation])
+	if svc.Annotations[attachSubnetAnnotation] != "" {
+		subnet, err := c.subnetsLister.Get(svc.Annotations[attachSubnetAnnotation])
 		if err != nil {
 			klog.Errorf("failed to get subnet %v", err)
 			return err
 		}
 
 		if svc.Spec.LoadBalancerIP != "" && !util.CIDRContainIP(subnet.Spec.CIDRBlock, svc.Spec.LoadBalancerIP) {
-			return fmt.Errorf("The loadbalancerIP %s is not in the range of subnet %s, cidr %v", svc.Spec.LoadBalancerIP, subnet.Name, subnet.Spec.CIDRBlock)
+			return fmt.Errorf("the loadbalancer IP %s is not in the range of subnet %s, cidr %v", svc.Spec.LoadBalancerIP, subnet.Name, subnet.Spec.CIDRBlock)
 		}
 	}
 	return nil
@@ -232,10 +232,10 @@ func (c *Controller) getPodAttachIP(pod *corev1.Pod, svc *corev1.Service) (strin
 	var err error
 
 	providerName := getAttachNetworkProvider(svc)
-	attchIpAnnotation := fmt.Sprintf(util.IpAddressAnnotationTemplate, providerName)
+	attachIpAnnotation := fmt.Sprintf(util.IpAddressAnnotationTemplate, providerName)
 
-	if pod.Annotations[attchIpAnnotation] != "" {
-		loadBalancerIP = pod.Annotations[attchIpAnnotation]
+	if pod.Annotations[attachIpAnnotation] != "" {
+		loadBalancerIP = pod.Annotations[attachIpAnnotation]
 	} else {
 		err = fmt.Errorf("failed to get attachment ip from pod's annotation")
 	}
@@ -289,19 +289,19 @@ func (c *Controller) updatePodAttachNets(pod *corev1.Pod, svc *corev1.Service) e
 	}
 
 	providerName := getAttachNetworkProvider(svc)
-	attchIpAnnotation := fmt.Sprintf(util.IpAddressAnnotationTemplate, providerName)
-	attchCidrAnnotation := fmt.Sprintf(util.CidrAnnotationTemplate, providerName)
-	attchGatewayAnnotation := fmt.Sprintf(util.GatewayAnnotationTemplate, providerName)
+	attachIpAnnotation := fmt.Sprintf(util.IpAddressAnnotationTemplate, providerName)
+	attachCidrAnnotation := fmt.Sprintf(util.CidrAnnotationTemplate, providerName)
+	attachGatewayAnnotation := fmt.Sprintf(util.GatewayAnnotationTemplate, providerName)
 
-	if pod.Annotations[attchCidrAnnotation] == "" || pod.Annotations[attchGatewayAnnotation] == "" {
+	if pod.Annotations[attachCidrAnnotation] == "" || pod.Annotations[attachGatewayAnnotation] == "" {
 		return fmt.Errorf("failed to get attachment network info for pod %s", pod.Name)
 	}
 
-	loadBalancerIP := pod.Annotations[attchIpAnnotation]
-	ipAddr := util.GetIpAddrWithMask(loadBalancerIP, pod.Annotations[attchCidrAnnotation])
+	loadBalancerIP := pod.Annotations[attachIpAnnotation]
+	ipAddr := util.GetIpAddrWithMask(loadBalancerIP, pod.Annotations[attachCidrAnnotation])
 
 	var addRules []string
-	addRules = append(addRules, fmt.Sprintf("%s,%s", ipAddr, pod.Annotations[attchGatewayAnnotation]))
+	addRules = append(addRules, fmt.Sprintf("%s,%s", ipAddr, pod.Annotations[attachGatewayAnnotation]))
 	klog.Infof("add eip rules for lb svc pod, %v", addRules)
 	if err := c.execNatRules(pod, POD_EIP_ADD, addRules); err != nil {
 		klog.Errorf("failed to add eip for pod, err: %v", err)

@@ -438,7 +438,7 @@ func CheckAndUpdateHtbQos(podName, podNamespace, ifaceID string, queueIfaceUidMa
 	}
 
 	if err := ClearPortQosBinding(ifaceID); err != nil {
-		klog.Errorf("failed to delete qos bingding info: %v", err)
+		klog.Errorf("failed to delete qos binding info: %v", err)
 		return err
 	}
 

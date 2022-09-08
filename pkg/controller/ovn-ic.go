@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"os"
 	"os/exec"
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -91,11 +92,11 @@ func (c *Controller) resyncInterConnection() {
 			return
 		}
 
-		isCMEuqal := reflect.DeepEqual(cm.Data, lastICCM)
-		if icEnabled == "true" && lastICCM != nil && isCMEuqal {
+		isCMEqual := reflect.DeepEqual(cm.Data, lastICCM)
+		if icEnabled == "true" && lastICCM != nil && isCMEqual {
 			return
 		}
-		if icEnabled == "true" && lastICCM != nil && !isCMEuqal {
+		if icEnabled == "true" && lastICCM != nil && !isCMEqual {
 			if err := c.removeInterConnection(lastICCM["az-name"]); err != nil {
 				klog.Errorf("failed to remove ovn-ic, %v", err)
 				return
@@ -348,13 +349,13 @@ func (c *Controller) delLearnedRoute() error {
 	}
 	learnedPorts := []map[string][]string{}
 	for _, aOriPort := range originalPorts {
-		isfiltered := false
+		isFiltered := false
 		for _, aFtPort := range filteredPorts {
 			if aFtPort["_uuid"][0] == aOriPort["_uuid"][0] {
-				isfiltered = true
+				isFiltered = true
 			}
 		}
-		if !isfiltered {
+		if !isFiltered {
 			learnedPorts = append(learnedPorts, aOriPort)
 		}
 	}
@@ -378,21 +379,21 @@ func (c *Controller) delLearnedRoute() error {
 	return nil
 }
 
-func genHostAddress(host string, port string) (hostaddress string) {
+func genHostAddress(host string, port string) (hostAddress string) {
 	hostList := strings.Split(host, ",")
 	if len(hostList) == 1 {
-		hostaddress = fmt.Sprintf("tcp:[%s]:%s", hostList[0], port)
+		hostAddress = fmt.Sprintf("tcp:[%s]:%s", hostList[0], port)
 	} else {
-		var blder strings.Builder
+		var builder strings.Builder
 		i := 0
 		for i < len(hostList)-1 {
-			blder.WriteString(fmt.Sprintf("tcp:[%s]:%s,", hostList[i], port))
+			builder.WriteString(fmt.Sprintf("tcp:[%s]:%s,", hostList[i], port))
 			i += 1
 		}
-		blder.WriteString(fmt.Sprintf("tcp:[%s]:%s", hostList[i], port))
-		hostaddress = blder.String()
+		builder.WriteString(fmt.Sprintf("tcp:[%s]:%s", hostList[i], port))
+		hostAddress = builder.String()
 	}
-	return hostaddress
+	return hostAddress
 }
 
 func (c *Controller) SynRouteToPolicy() {
@@ -457,20 +458,19 @@ func (c *Controller) SynRouteToPolicy() {
 }
 
 func (c *Controller) RemoveOldChassisInSbDB() error {
-
-	azUUID, err := c.ovnLegacyClient.GetAZUUID(lastICCM["az-name"])
+	azUUID, err := c.ovnLegacyClient.GetAzUUID(lastICCM["az-name"])
 	if err != nil {
-		klog.Errorf("chassis ungetable %v", err)
+		klog.Errorf("failed to get UUID of AZ %s: %v", lastICCM["az-name"], err)
 	}
 
 	gateways, err := c.ovnLegacyClient.GetGatewayUUIDsInOneAZ(azUUID)
 	if err != nil {
-		klog.Errorf("gateways in as %v ungetable %v", azUUID, err)
+		klog.Errorf("failed to get gateway UUIDs in AZ %s: %v", azUUID, err)
 	}
 
 	routes, err := c.ovnLegacyClient.GetRouteUUIDsInOneAZ(azUUID)
 	if err != nil {
-		klog.Errorf("routes in as %v ungetable %v", azUUID, err)
+		klog.Errorf("failed to get route UUIDs in AZ %s: %v", azUUID, err)
 	}
 
 	c.ovnLegacyClient.DestroyGateways(gateways)

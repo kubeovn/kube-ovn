@@ -566,7 +566,7 @@ func (c *Controller) handleDeleteNp(key string) error {
 func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.LabelSelector) ([]string, error) {
 	sel, err := metav1.LabelSelectorAsSelector(selector)
 	if err != nil {
-		return nil, fmt.Errorf("error createing label selector, %v", err)
+		return nil, fmt.Errorf("error creating label selector, %v", err)
 	}
 	pods, err := c.podsLister.Pods(namespace).List(sel)
 	if err != nil {
@@ -675,7 +675,7 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 	} else {
 		sel, err := metav1.LabelSelectorAsSelector(npp.NamespaceSelector)
 		if err != nil {
-			return nil, nil, fmt.Errorf("error createing label selector, %v", err)
+			return nil, nil, fmt.Errorf("error creating label selector, %v", err)
 		}
 		nss, err := c.namespacesLister.List(sel)
 		if err != nil {

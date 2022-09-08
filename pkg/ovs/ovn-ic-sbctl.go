@@ -57,12 +57,12 @@ func (c LegacyClient) FindUUIDWithAttrInTable(attribute, value, table string) ([
 func (c LegacyClient) DestroyTableWithUUID(uuid, table string) error {
 	_, err := c.ovnIcSbCommand("destroy", table, uuid)
 	if err != nil {
-		return fmt.Errorf("failed to destroy table %v with %vcause %v", table, uuid, err)
+		return fmt.Errorf("failed to destroy record %s in table %s: %v", uuid, table, err)
 	}
 	return nil
 }
 
-func (c LegacyClient) GetAZUUID(az string) (string, error) {
+func (c LegacyClient) GetAzUUID(az string) (string, error) {
 	uuids, err := c.FindUUIDWithAttrInTable("name", az, "availability_zone")
 	if err != nil {
 		return "", fmt.Errorf("failed to get ovn-ic-sb availability_zone uuid: %v", err)

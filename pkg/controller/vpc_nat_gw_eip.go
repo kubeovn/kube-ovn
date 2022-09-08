@@ -248,7 +248,7 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 	if eipV4Cidr, err = c.getEipV4Cidr(v4ip); err != nil {
 		return err
 	}
-	if v4Gw, _, err = c.GetGwbySubnet(util.VpcExternalNet); err != nil {
+	if v4Gw, _, err = c.GetGwBySubnet(util.VpcExternalNet); err != nil {
 		klog.Errorf("failed to get gw, err: %v", err)
 		return err
 	}
@@ -396,7 +396,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 			klog.Errorf("failed to clean old eip, %v", err)
 			return err
 		}
-		if v4Gw, _, err = c.GetGwbySubnet(util.VpcExternalNet); err != nil {
+		if v4Gw, _, err = c.GetGwBySubnet(util.VpcExternalNet); err != nil {
 			return err
 		}
 		if err = c.createEipInPod(eip.Spec.NatGwDp, v4Gw, v4Cidr); err != nil {
@@ -497,7 +497,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 			return err
 		}
 		var v4Gw string
-		if v4Gw, _, err = c.GetGwbySubnet(util.VpcExternalNet); err != nil {
+		if v4Gw, _, err = c.GetGwBySubnet(util.VpcExternalNet); err != nil {
 			klog.Errorf("failed to get gw, %v", err)
 			return err
 		}
@@ -633,7 +633,7 @@ func (c *Controller) getEipV4Cidr(v4ip string) (string, error) {
 	return v4IpCidr, nil
 }
 
-func (c *Controller) GetGwbySubnet(name string) (string, string, error) {
+func (c *Controller) GetGwBySubnet(name string) (string, string, error) {
 	if subnet, ok := c.ipam.Subnets[name]; ok {
 		return subnet.V4Gw, subnet.V6Gw, nil
 	} else {

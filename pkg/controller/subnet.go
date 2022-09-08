@@ -1330,7 +1330,7 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	if err := util.CheckCidrs(subnet.Spec.CIDRBlock); err != nil {
 		return err
 	}
-	// Get the number of pods, not ips. For one pod with two ip(v4 & v6) in dualstack, num of Items is 1
+	// Get the number of pods, not ips. For one pod with two ip(v4 & v6) in dual-stack, num of Items is 1
 	podUsedIPs, err := c.config.KubeOvnClient.KubeovnV1().IPs().List(context.Background(), metav1.ListOptions{
 		LabelSelector: fields.OneTermEqualSelector(subnet.Name, "").String(),
 	})

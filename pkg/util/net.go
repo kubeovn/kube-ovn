@@ -131,7 +131,7 @@ func CIDRContainIP(cidrStr, ipStr string) bool {
 			}
 		}
 	}
-	// v4 and v6 address should be both matched for dualstack check
+	// v4 and v6 address should be both matched for dual-stack check
 	return containFlag
 }
 
@@ -430,13 +430,13 @@ func JoinHostPort(host string, port int32) string {
 }
 
 func CIDROverlap(a, b string) bool {
-	for _, cidra := range strings.Split(a, ",") {
-		for _, cidrb := range strings.Split(b, ",") {
-			if CheckProtocol(cidra) != CheckProtocol(cidrb) {
+	for _, cidrA := range strings.Split(a, ",") {
+		for _, cidrB := range strings.Split(b, ",") {
+			if CheckProtocol(cidrA) != CheckProtocol(cidrB) {
 				continue
 			}
-			aIp, aIpNet, aErr := net.ParseCIDR(cidra)
-			bIp, bIpNet, bErr := net.ParseCIDR(cidrb)
+			aIp, aIpNet, aErr := net.ParseCIDR(cidrA)
+			bIp, bIpNet, bErr := net.ParseCIDR(cidrB)
 			if aErr != nil || bErr != nil {
 				return false
 			}

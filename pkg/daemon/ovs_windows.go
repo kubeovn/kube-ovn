@@ -48,8 +48,8 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	}
 
 	ipAddr := util.GetIpWithoutMask(ip)
-	sanbox := hns.GetSandboxContainerID(containerID, netns)
-	epName := sanbox[:12]
+	sandbox := hns.GetSandboxContainerID(containerID, netns)
+	epName := sandbox[:12]
 	_, err = hns.AddHnsEndpoint(epName, hnsNetwork.Id, containerID, netns, func() (*hcsshim.HNSEndpoint, error) {
 		ipv4, ipv6 := util.SplitStringIP(ipAddr)
 		endpoint := &hcsshim.HNSEndpoint{
@@ -82,7 +82,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		return err
 	}
 
-	if containerID != sanbox {
+	if containerID != sandbox  {
 		// pause container, return here
 		return nil
 	}

@@ -99,7 +99,7 @@ func ValidatePodNetwork(annotations map[string]string) error {
 	errors := []error{}
 
 	if ipAddress := annotations[IpAddressAnnotation]; ipAddress != "" {
-		// The format of IP Annotation in dualstack is 10.244.0.0/16,fd00:10:244:0:2::/80
+		// The format of IP Annotation in dual-stack is 10.244.0.0/16,fd00:10:244:0:2::/80
 		for _, ip := range strings.Split(ipAddress, ",") {
 			if strings.Contains(ip, "/") {
 				if _, _, err := net.ParseCIDR(ip); err != nil {
