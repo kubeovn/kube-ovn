@@ -111,7 +111,7 @@ type SubnetSpec struct {
 	Provider   string   `json:"provider,omitempty"`
 
 	GatewayType string `json:"gatewayType,omitempty"`
-	GatewayNode string `json:"gatewayNode,omitempty"`
+	GatewayNode string `json:"gatewayNode"`
 	NatOutgoing bool   `json:"natOutgoing"`
 
 	ExternalEgressGateway string `json:"externalEgressGateway,omitempty"`
