@@ -114,14 +114,14 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 }
 
 func (c *Controller) handleUpdateVpcStatus(key string) error {
-	orivpc, err := c.vpcsLister.Get(key)
+	cachedVpc, err := c.vpcsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	vpc := orivpc.DeepCopy()
+	vpc := cachedVpc.DeepCopy()
 
 	subnets, defaultSubnet, err := c.getVpcSubnets(vpc)
 	if err != nil {
@@ -321,14 +321,14 @@ func (c *Controller) addLoadBalancer(vpc string) (*VpcLoadBalancer, error) {
 
 func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	// get latest vpc info
-	orivpc, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Get(context.Background(), key, metav1.GetOptions{})
+	cachedVpc, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Get(context.Background(), key, metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	vpc := orivpc.DeepCopy()
+	vpc := cachedVpc.DeepCopy()
 
 	if err = formatVpc(vpc, c); err != nil {
 		klog.Errorf("failed to format vpc: %v", err)

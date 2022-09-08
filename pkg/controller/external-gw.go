@@ -72,8 +72,8 @@ func (c *Controller) removeExternalGateway() error {
 		klog.Errorf("failed to list nodes, %v", err)
 		return err
 	}
-	for _, orino := range nodes {
-		no := orino.DeepCopy()
+	for _, cachedNode := range nodes {
+		no := cachedNode.DeepCopy()
 		patchPayloadTemplate :=
 			`[{
         "op": "%s",
@@ -117,12 +117,12 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 	}
 	for _, gw := range gwNodes {
 		gw = strings.TrimSpace(gw)
-		orinode, err := c.nodesLister.Get(gw)
+		cachedNode, err := c.nodesLister.Get(gw)
 		if err != nil {
 			klog.Errorf("failed to get gw node %s, %v", gw, err)
 			return err
 		}
-		node := orinode.DeepCopy()
+		node := cachedNode.DeepCopy()
 		patchPayloadTemplate :=
 			`[{
         "op": "%s",

@@ -383,8 +383,8 @@ func (c *Controller) gcLoadBalancer() error {
 		if err != nil {
 			return err
 		}
-		for _, orivpc := range vpcs {
-			vpc := orivpc.DeepCopy()
+		for _, cachedVpc := range vpcs {
+			vpc := cachedVpc.DeepCopy()
 			for _, subnetName := range vpc.Status.Subnets {
 				_, err := c.subnetsLister.Get(subnetName)
 				if err != nil {

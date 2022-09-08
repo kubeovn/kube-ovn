@@ -62,17 +62,17 @@ func (c *Controller) InitOVN() error {
 }
 
 func (c *Controller) InitDefaultVpc() error {
-	orivpc, err := c.vpcsLister.Get(util.DefaultVpc)
+	cachedVpc, err := c.vpcsLister.Get(util.DefaultVpc)
 	if err != nil {
-		orivpc = &kubeovnv1.Vpc{}
-		orivpc.Name = util.DefaultVpc
-		orivpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Create(context.Background(), orivpc, metav1.CreateOptions{})
+		cachedVpc = &kubeovnv1.Vpc{}
+		cachedVpc.Name = util.DefaultVpc
+		cachedVpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Create(context.Background(), cachedVpc, metav1.CreateOptions{})
 		if err != nil {
 			klog.Errorf("init default vpc failed: %v", err)
 			return err
 		}
 	}
-	vpc := orivpc.DeepCopy()
+	vpc := cachedVpc.DeepCopy()
 	vpc.Status.DefaultLogicalSwitch = c.config.DefaultLogicalSwitch
 	vpc.Status.Router = c.config.ClusterRouter
 	if c.config.EnableLb {
@@ -213,8 +213,8 @@ func (c *Controller) initLoadBalancer() error {
 		return err
 	}
 
-	for _, orivpc := range vpcs.Items {
-		vpc := orivpc.DeepCopy()
+	for _, cachedVpc := range vpcs.Items {
+		vpc := cachedVpc.DeepCopy()
 		vpcLb := c.GenVpcLoadBalancer(vpc.Name)
 
 		tcpLb, err := c.ovnLegacyClient.FindLoadbalancer(vpcLb.TcpLoadBalancer)

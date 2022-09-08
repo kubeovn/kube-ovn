@@ -359,7 +359,7 @@ func checkAndUpdateCIDR(subnet *kubeovnv1.Subnet) (bool, error) {
 	for _, cidr := range strings.Split(subnet.Spec.CIDRBlock, ",") {
 		_, ipNet, err := net.ParseCIDR(cidr)
 		if err != nil {
-			return false, fmt.Errorf("subnet %s cidr %s is not a valid cidrblock", subnet.Name, cidr)
+			return false, fmt.Errorf("subnet %s cidr %s is invalid", subnet.Name, cidr)
 		}
 		if ipNet.String() != cidr {
 			changed = true
@@ -711,8 +711,8 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 }
 
 func (c *Controller) handleUpdateSubnetStatus(key string) error {
-	orisubnet, err := c.subnetsLister.Get(key)
-	subnet := orisubnet.DeepCopy()
+	cachedSubnet, err := c.subnetsLister.Get(key)
+	subnet := cachedSubnet.DeepCopy()
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
