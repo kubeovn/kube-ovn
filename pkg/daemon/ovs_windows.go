@@ -82,7 +82,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		return err
 	}
 
-	if containerID != sandbox  {
+	if containerID != sandbox {
 		// pause container, return here
 		return nil
 	}
