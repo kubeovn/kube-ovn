@@ -2647,7 +2647,6 @@ spec:
               name: host-run-ovn
             - mountPath: /sys
               name: host-sys
-              readOnly: true
             - mountPath: /etc/cni/net.d
               name: cni-conf
             - mountPath: /etc/openvswitch
