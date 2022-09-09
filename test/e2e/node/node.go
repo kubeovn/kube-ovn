@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/kubeovn/kube-ovn/pkg/util"
-	"github.com/kubeovn/kube-ovn/test/e2e/framework"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
+	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
 
 var _ = Describe("[Node Init]", func() {

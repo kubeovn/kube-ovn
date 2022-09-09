@@ -218,7 +218,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	if newPod.DeletionTimestamp != nil && !isStateful && !isVmPod {
 		go func() {
 			// In case node get lost and pod can not be deleted,
-			// the ipaddress will not be recycled
+			// the ip address will not be recycled
 			time.Sleep(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second)
 			c.deletePodQueue.Add(newObj)
 		}()
@@ -465,14 +465,14 @@ func (c *Controller) handleAddPod(key string) error {
 	c.podKeyMutex.Lock(key)
 	defer c.podKeyMutex.Unlock(key)
 
-	oripod, err := c.podsLister.Pods(namespace).Get(name)
+	cachedPod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	pod := oripod.DeepCopy()
+	pod := cachedPod.DeepCopy()
 	if err := util.ValidatePodNetwork(pod.Annotations); err != nil {
 		klog.Errorf("validate pod %s/%s failed: %v", namespace, name, err)
 		c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", err.Error())
@@ -1501,14 +1501,14 @@ func isOwnsByTheVM(vmi metav1.Object) (bool, string) {
 
 func (c *Controller) isVmPodToDel(pod *v1.Pod, vmiName string) bool {
 	var (
-		vmiAlived bool
-		vmName    string
+		vmiAlive bool
+		vmName   string
 	)
 	// The vmi is also deleted when pod is deleted, only left vm exists.
 	vmi, err := c.config.KubevirtClient.VirtualMachineInstance(pod.Namespace).Get(vmiName, &metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			vmiAlived = false
+			vmiAlive = false
 			// The name of vmi is consistent with vm's name.
 			vmName = vmiName
 			klog.V(4).ErrorS(err, "failed to get vmi, will try to get the vm directly", "name", vmiName)
@@ -1520,13 +1520,13 @@ func (c *Controller) isVmPodToDel(pod *v1.Pod, vmiName string) bool {
 		var ownsByVM bool
 		ownsByVM, vmName = isOwnsByTheVM(vmi)
 		if !ownsByVM && vmi.DeletionTimestamp != nil {
-			// deleteting ephemeral vmi
+			// deleting ephemeral vmi
 			return true
 		}
-		vmiAlived = (vmi.DeletionTimestamp == nil)
+		vmiAlive = (vmi.DeletionTimestamp == nil)
 	}
 
-	if vmiAlived {
+	if vmiAlive {
 		return false
 	}
 

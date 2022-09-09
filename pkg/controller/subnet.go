@@ -359,7 +359,7 @@ func checkAndUpdateCIDR(subnet *kubeovnv1.Subnet) (bool, error) {
 	for _, cidr := range strings.Split(subnet.Spec.CIDRBlock, ",") {
 		_, ipNet, err := net.ParseCIDR(cidr)
 		if err != nil {
-			return false, fmt.Errorf("subnet %s cidr %s is not a valid cidrblock", subnet.Name, cidr)
+			return false, fmt.Errorf("subnet %s cidr %s is invalid", subnet.Name, cidr)
 		}
 		if ipNet.String() != cidr {
 			changed = true
@@ -711,8 +711,8 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 }
 
 func (c *Controller) handleUpdateSubnetStatus(key string) error {
-	orisubnet, err := c.subnetsLister.Get(key)
-	subnet := orisubnet.DeepCopy()
+	cachedSubnet, err := c.subnetsLister.Get(key)
+	subnet := cachedSubnet.DeepCopy()
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -1330,7 +1330,7 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	if err := util.CheckCidrs(subnet.Spec.CIDRBlock); err != nil {
 		return err
 	}
-	// Get the number of pods, not ips. For one pod with two ip(v4 & v6) in dualstack, num of Items is 1
+	// Get the number of pods, not ips. For one pod with two ip(v4 & v6) in dual-stack, num of Items is 1
 	podUsedIPs, err := c.config.KubeOvnClient.KubeovnV1().IPs().List(context.Background(), metav1.ListOptions{
 		LabelSelector: fields.OneTermEqualSelector(subnet.Name, "").String(),
 	})

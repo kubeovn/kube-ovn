@@ -400,12 +400,12 @@ func (c *Controller) setIptables() error {
 		kubeovnv1.ProtocolIPv6: nodeIPv6,
 	}
 
-	centralGwNatips, err := c.getEgressNatIpByNode(c.config.NodeName)
+	centralGwNatIPs, err := c.getEgressNatIpByNode(c.config.NodeName)
 	if err != nil {
 		klog.Errorf("failed to get centralized subnets nat ips on node %s, %v", c.config.NodeName, err)
 		return err
 	}
-	klog.V(3).Infof("centralized subnets nat ips %v", centralGwNatips)
+	klog.V(3).Infof("centralized subnets nat ips %v", centralGwNatIPs)
 
 	var (
 		v4AbandonedRules = []util.IPTableRule{
@@ -579,7 +579,7 @@ func (c *Controller) setIptables() error {
 		}
 
 		// add iptables rule for nat gw with designative ip in centralized subnet
-		for cidr, ip := range centralGwNatips {
+		for cidr, ip := range centralGwNatIPs {
 			if util.CheckProtocol(cidr) != protocol {
 				continue
 			}
@@ -688,8 +688,8 @@ func (c *Controller) setExGateway() error {
 		}
 		// enable external-gw-config without 'external-gw-nic' configured
 		// to reuse existing physical network from arg 'external-gateway-net'
-		linkname, exist := cm.Data["external-gw-nic"]
-		if !exist || len(linkname) == 0 {
+		linkName, exist := cm.Data["external-gw-nic"]
+		if !exist || len(linkName) == 0 {
 			return nil
 		}
 		link, err := netlink.LinkByName(cm.Data["external-gw-nic"])

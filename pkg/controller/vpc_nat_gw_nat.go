@@ -107,7 +107,7 @@ func (c *Controller) enqueueUpdateIptablesDnatRule(old, new interface{}) {
 	}
 
 	if oldDnat.Spec.EIP != newDnat.Spec.EIP {
-		// to notify old eip to remove nat lable
+		// to notify old eip to remove nat table
 		c.resetIptablesEipQueue.Add(oldDnat.Spec.EIP)
 	}
 

@@ -144,7 +144,7 @@ func SetNetIPInterface(ifIndex uint32, addressFamily *uint16, mtu *uint32, dhcp,
 		parameters = append(parameters, fmt.Sprintf("-Dhcp %s", bool2PsParam(*dhcp)))
 	}
 	if forwarding != nil {
-		parameters = append(parameters, fmt.Sprintf("-Forwading %s", bool2PsParam(*forwarding)))
+		parameters = append(parameters, fmt.Sprintf("-Forwarding %s", bool2PsParam(*forwarding)))
 	}
 
 	_, err := Powershell(fmt.Sprintf("Set-NetIPInterface -IncludeAllCompartments -InterfaceIndex %d %s -Confirm:$False", ifIndex, strings.Join(parameters, " ")))

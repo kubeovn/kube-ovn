@@ -104,14 +104,14 @@ func (c *Controller) gcVpcNatGateway() error {
 		LabelSelector: sel.String(),
 	})
 	if err != nil {
-		klog.Errorf("failed to list vpc nat gateway stafulset, %v", err)
+		klog.Errorf("failed to list vpc nat gateway statefulset, %v", err)
 		return err
 	}
 	for _, sts := range stss.Items {
 		if !util.ContainsString(gwStsNames, sts.Name) {
 			err = c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).Delete(context.Background(), sts.Name, metav1.DeleteOptions{})
 			if err != nil {
-				klog.Errorf("failed to delete vpc nat gateway stafulset, %v", err)
+				klog.Errorf("failed to delete vpc nat gateway statefulset, %v", err)
 				return err
 			}
 		}
@@ -383,8 +383,8 @@ func (c *Controller) gcLoadBalancer() error {
 		if err != nil {
 			return err
 		}
-		for _, orivpc := range vpcs {
-			vpc := orivpc.DeepCopy()
+		for _, cachedVpc := range vpcs {
+			vpc := cachedVpc.DeepCopy()
 			for _, subnetName := range vpc.Status.Subnets {
 				_, err := c.subnetsLister.Get(subnetName)
 				if err != nil {

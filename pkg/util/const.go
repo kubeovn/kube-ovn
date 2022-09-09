@@ -180,7 +180,7 @@ const (
 	ContentType        = "application/vnd.kubernetes.protobuf"
 	AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
 
-	AttachmentProvider = "ovn.kubernetes.io/attchmentprovider"
+	AttachmentProvider = "ovn.kubernetes.io/attachmentprovider"
 	LbSvcPodImg        = "ovn.kubernetes.io/lb_svc_img"
 
 	OvnICKey   = "origin"

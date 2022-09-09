@@ -124,7 +124,7 @@ func (c LegacyClient) DeleteLogicalRouterPort(port string) error {
 
 func (c LegacyClient) CreateICLogicalRouterPort(az, mac, subnet string, chassises []string) error {
 	if _, err := c.ovnNbCommand(MayExist, "lrp-add", c.ClusterRouter, fmt.Sprintf("%s-ts", az), mac, subnet); err != nil {
-		return fmt.Errorf("failed to crate ovn-ic lrp, %v", err)
+		return fmt.Errorf("failed to create ovn-ic lrp, %v", err)
 	}
 	if _, err := c.ovnNbCommand(MayExist, "lsp-add", util.InterconnectionSwitch, fmt.Sprintf("ts-%s", az), "--",
 		"lsp-set-addresses", fmt.Sprintf("ts-%s", az), "router", "--",
@@ -411,7 +411,7 @@ func (c LegacyClient) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway s
 	cidrBlocks := strings.Split(subnet, ",")
 	temp := strings.Split(cidrBlocks[0], "/")
 	if len(temp) != 2 {
-		klog.Errorf("cidrBlock %s is invalied", cidrBlocks[0])
+		klog.Errorf("cidrBlock %s is invalid", cidrBlocks[0])
 		return err
 	}
 	mask := temp[1]
@@ -549,11 +549,11 @@ func (c LegacyClient) ListLoadBalancer() ([]string, error) {
 	return result, nil
 }
 
-func (c LegacyClient) CreateGatewaySwitch(name, externalgatewaynet string, externalgatewayvlanid int, ip, mac string, chassises []string) error {
+func (c LegacyClient) CreateGatewaySwitch(name, network string, vlan int, ip, mac string, chassises []string) error {
 	lsTolr := fmt.Sprintf("%s-%s", name, c.ClusterRouter)
 	lrTols := fmt.Sprintf("%s-%s", c.ClusterRouter, name)
 	localnetPort := fmt.Sprintf("ln-%s", name)
-	portOptions := fmt.Sprintf("network_name=%s", externalgatewaynet)
+	portOptions := fmt.Sprintf("network_name=%s", network)
 	_, err := c.ovnNbCommand(
 		MayExist, "ls-add", name, "--",
 		"set", "logical_switch", name, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName), "--",
@@ -571,8 +571,8 @@ func (c LegacyClient) CreateGatewaySwitch(name, externalgatewaynet string, exter
 		return fmt.Errorf("failed to create external gateway switch, %v", err)
 	}
 
-	if externalgatewayvlanid > 0 {
-		portVlanId := fmt.Sprintf("tag=%d", externalgatewayvlanid)
+	if vlan > 0 {
+		portVlanId := fmt.Sprintf("tag=%d", vlan)
 		_, err := c.ovnNbCommand("set", "logical_switch_port", localnetPort, portVlanId)
 		if err != nil {
 			return fmt.Errorf("failed to set vlanId for ,%s, %v", localnetPort, err)
@@ -1051,7 +1051,7 @@ func parseLrPolicyRouteListOutput(output string) (routeList []*PolicyRoute, err 
 		}
 		priority, err := strconv.ParseInt(sm[1], 10, 32)
 		if err != nil {
-			return nil, fmt.Errorf("found unexpeted policy priority %s, please check", sm[1])
+			return nil, fmt.Errorf("found unexpected policy priority %s, please check", sm[1])
 		}
 		routeList = append(routeList, &PolicyRoute{
 			Priority:  int32(priority),

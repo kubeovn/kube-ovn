@@ -41,7 +41,7 @@ func isClusterIPService(svc *v1.Service) bool {
 		len(svc.Spec.ClusterIP) != 0
 }
 
-// TODO: ipv4 only, need ipv6/dualstack support later
+// TODO: ipv4 only, need ipv6/dual-stack support later
 func (c *Controller) syncSubnetRoutes() {
 	bgpExpected, bgpExists := []string{}, []string{}
 	subnets, err := c.subnetsLister.List(labels.Everything())

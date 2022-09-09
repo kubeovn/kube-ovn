@@ -22,7 +22,7 @@ func TestCheckCIDRsAll(t *testing.T) {
 		{"255", []string{"10.16.0.0/16", "10.96.0.0/12", "255.255.0.0/16"}, errors.New("")},
 		{"ff80", []string{"10.16.0.0/16,ff80::/64", "10.96.0.0/12,fd00:10:96::/112", "100.64.0.0/16,fd00:100:64::/64"}, errors.New("")},
 		// overlap only
-		{"overlaperr", []string{"10.16.0.0/16", "10.96.0.0/12", "10.96.0.2/16"}, errors.New("")},
+		{"overlapped", []string{"10.16.0.0/16", "10.96.0.0/12", "10.96.0.2/16"}, errors.New("")},
 	}
 
 	for _, c := range cases {

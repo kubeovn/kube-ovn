@@ -537,7 +537,7 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 		return err
 	}
 
-	if v4InternalGw, _, err = c.GetGwbySubnet(gw.Spec.Subnet); err != nil {
+	if v4InternalGw, _, err = c.GetGwBySubnet(gw.Spec.Subnet); err != nil {
 		klog.Errorf("failed to get gw, err: %v", err)
 		return err
 	}

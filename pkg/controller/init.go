@@ -62,17 +62,17 @@ func (c *Controller) InitOVN() error {
 }
 
 func (c *Controller) InitDefaultVpc() error {
-	orivpc, err := c.vpcsLister.Get(util.DefaultVpc)
+	cachedVpc, err := c.vpcsLister.Get(util.DefaultVpc)
 	if err != nil {
-		orivpc = &kubeovnv1.Vpc{}
-		orivpc.Name = util.DefaultVpc
-		orivpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Create(context.Background(), orivpc, metav1.CreateOptions{})
+		cachedVpc = &kubeovnv1.Vpc{}
+		cachedVpc.Name = util.DefaultVpc
+		cachedVpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Create(context.Background(), cachedVpc, metav1.CreateOptions{})
 		if err != nil {
 			klog.Errorf("init default vpc failed: %v", err)
 			return err
 		}
 	}
-	vpc := orivpc.DeepCopy()
+	vpc := cachedVpc.DeepCopy()
 	vpc.Status.DefaultLogicalSwitch = c.config.DefaultLogicalSwitch
 	vpc.Status.Router = c.config.ClusterRouter
 	if c.config.EnableLb {
@@ -213,8 +213,8 @@ func (c *Controller) initLoadBalancer() error {
 		return err
 	}
 
-	for _, orivpc := range vpcs.Items {
-		vpc := orivpc.DeepCopy()
+	for _, cachedVpc := range vpcs.Items {
+		vpc := cachedVpc.DeepCopy()
 		vpcLb := c.GenVpcLoadBalancer(vpc.Name)
 
 		tcpLb, err := c.ovnLegacyClient.FindLoadbalancer(vpcLb.TcpLoadBalancer)
@@ -225,7 +225,7 @@ func (c *Controller) initLoadBalancer() error {
 			klog.Infof("init cluster tcp load balancer %s", vpcLb.TcpLoadBalancer)
 			err := c.ovnLegacyClient.CreateLoadBalancer(vpcLb.TcpLoadBalancer, util.ProtocolTCP, "")
 			if err != nil {
-				klog.Errorf("failed to crate cluster tcp load balancer: %v", err)
+				klog.Errorf("failed to create cluster tcp load balancer: %v", err)
 				return err
 			}
 		} else {
@@ -240,7 +240,7 @@ func (c *Controller) initLoadBalancer() error {
 			klog.Infof("init cluster tcp session load balancer %s", vpcLb.TcpSessLoadBalancer)
 			err := c.ovnLegacyClient.CreateLoadBalancer(vpcLb.TcpSessLoadBalancer, util.ProtocolTCP, "ip_src")
 			if err != nil {
-				klog.Errorf("failed to crate cluster tcp session load balancer: %v", err)
+				klog.Errorf("failed to create cluster tcp session load balancer: %v", err)
 				return err
 			}
 		} else {
@@ -255,7 +255,7 @@ func (c *Controller) initLoadBalancer() error {
 			klog.Infof("init cluster udp load balancer %s", vpcLb.UdpLoadBalancer)
 			err := c.ovnLegacyClient.CreateLoadBalancer(vpcLb.UdpLoadBalancer, util.ProtocolUDP, "")
 			if err != nil {
-				klog.Errorf("failed to crate cluster udp load balancer: %v", err)
+				klog.Errorf("failed to create cluster udp load balancer: %v", err)
 				return err
 			}
 		} else {
@@ -270,7 +270,7 @@ func (c *Controller) initLoadBalancer() error {
 			klog.Infof("init cluster udp session load balancer %s", vpcLb.UdpSessLoadBalancer)
 			err := c.ovnLegacyClient.CreateLoadBalancer(vpcLb.UdpSessLoadBalancer, util.ProtocolUDP, "ip_src")
 			if err != nil {
-				klog.Errorf("failed to crate cluster udp session load balancer: %v", err)
+				klog.Errorf("failed to create cluster udp session load balancer: %v", err)
 				return err
 			}
 		} else {

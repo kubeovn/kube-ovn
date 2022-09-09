@@ -106,14 +106,14 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		return err
 	}
 
-	orisvc, err := c.servicesLister.Services(namespace).Get(name)
+	cachedService, err := c.servicesLister.Services(namespace).Get(name)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	svc := orisvc.DeepCopy()
+	svc := cachedService.DeepCopy()
 
 	var LbIPs []string
 	if vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {

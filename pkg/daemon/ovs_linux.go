@@ -721,7 +721,7 @@ func setupVethPair(containerID, ifName string, mtu int) (string, string, error) 
 			klog.Errorf("failed to delete veth %v", err)
 			return "", "", err
 		}
-		return "", "", fmt.Errorf("failed to crate veth for %v", err)
+		return "", "", fmt.Errorf("failed to create veth for %v", err)
 	}
 	return hostNicName, containerNicName, nil
 }
@@ -936,7 +936,7 @@ func addAdditionalNic(ifName string) error {
 			klog.Errorf("failed to delete static iface %v, err %v", ifName, err)
 			return err
 		}
-		return fmt.Errorf("failed to crate static iface %v, err %v", ifName, err)
+		return fmt.Errorf("failed to create static iface %v, err %v", ifName, err)
 	}
 	return nil
 }

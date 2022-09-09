@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"os"
 	"os/exec"
 	"reflect"
@@ -17,12 +16,13 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 var (
-	icEnabled                   = "unknown"
-	lastICCM  map[string]string = nil
+	icEnabled = "unknown"
+	lastIcCm  map[string]string
 )
 
 func (c *Controller) resyncInterConnection() {
@@ -40,8 +40,8 @@ func (c *Controller) resyncInterConnection() {
 		azName := ""
 		if cm != nil {
 			azName = cm.Data["az-name"]
-		} else if lastICCM != nil {
-			azName = lastICCM["az-name"]
+		} else if lastIcCm != nil {
+			azName = lastIcCm["az-name"]
 		}
 		if err := c.removeInterConnection(azName); err != nil {
 			klog.Errorf("failed to remove ovn-ic, %v", err)
@@ -52,7 +52,7 @@ func (c *Controller) resyncInterConnection() {
 			return
 		}
 		icEnabled = "false"
-		lastICCM = nil
+		lastIcCm = nil
 
 		klog.Info("finish removing ovn-ic")
 		return
@@ -91,12 +91,12 @@ func (c *Controller) resyncInterConnection() {
 			return
 		}
 
-		isCMEuqal := reflect.DeepEqual(cm.Data, lastICCM)
-		if icEnabled == "true" && lastICCM != nil && isCMEuqal {
+		isCMEqual := reflect.DeepEqual(cm.Data, lastIcCm)
+		if icEnabled == "true" && lastIcCm != nil && isCMEqual {
 			return
 		}
-		if icEnabled == "true" && lastICCM != nil && !isCMEuqal {
-			if err := c.removeInterConnection(lastICCM["az-name"]); err != nil {
+		if icEnabled == "true" && lastIcCm != nil && !isCMEqual {
+			if err := c.removeInterConnection(lastIcCm["az-name"]); err != nil {
 				klog.Errorf("failed to remove ovn-ic, %v", err)
 				return
 			}
@@ -117,7 +117,7 @@ func (c *Controller) resyncInterConnection() {
 				return
 			}
 			icEnabled = "true"
-			lastICCM = cm.Data
+			lastIcCm = cm.Data
 			klog.Info("finish reestablishing ovn-ic")
 			return
 		}
@@ -129,7 +129,7 @@ func (c *Controller) resyncInterConnection() {
 			return
 		}
 		icEnabled = "true"
-		lastICCM = cm.Data
+		lastIcCm = cm.Data
 		klog.Info("finish establishing ovn-ic")
 		return
 	}
@@ -142,8 +142,8 @@ func (c *Controller) removeInterConnection(azName string) error {
 		klog.Errorf("failed to list nodes, %v", err)
 		return err
 	}
-	for _, orino := range nodes {
-		no := orino.DeepCopy()
+	for _, cachedNode := range nodes {
+		no := cachedNode.DeepCopy()
 		patchPayloadTemplate :=
 			`[{
         "op": "%s",
@@ -205,12 +205,12 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 	gwNodes := strings.Split(config["gw-nodes"], ",")
 	for _, gw := range gwNodes {
 		gw = strings.TrimSpace(gw)
-		orinode, err := c.nodesLister.Get(gw)
+		cachedNode, err := c.nodesLister.Get(gw)
 		if err != nil {
 			klog.Errorf("failed to get gw node %s, %v", gw, err)
 			return err
 		}
-		node := orinode.DeepCopy()
+		node := cachedNode.DeepCopy()
 		patchPayloadTemplate :=
 			`[{
         "op": "%s",
@@ -348,13 +348,13 @@ func (c *Controller) delLearnedRoute() error {
 	}
 	learnedPorts := []map[string][]string{}
 	for _, aOriPort := range originalPorts {
-		isfiltered := false
+		isFiltered := false
 		for _, aFtPort := range filteredPorts {
 			if aFtPort["_uuid"][0] == aOriPort["_uuid"][0] {
-				isfiltered = true
+				isFiltered = true
 			}
 		}
-		if !isfiltered {
+		if !isFiltered {
 			learnedPorts = append(learnedPorts, aOriPort)
 		}
 	}
@@ -378,21 +378,21 @@ func (c *Controller) delLearnedRoute() error {
 	return nil
 }
 
-func genHostAddress(host string, port string) (hostaddress string) {
+func genHostAddress(host string, port string) (hostAddress string) {
 	hostList := strings.Split(host, ",")
 	if len(hostList) == 1 {
-		hostaddress = fmt.Sprintf("tcp:[%s]:%s", hostList[0], port)
+		hostAddress = fmt.Sprintf("tcp:[%s]:%s", hostList[0], port)
 	} else {
-		var blder strings.Builder
+		var builder strings.Builder
 		i := 0
 		for i < len(hostList)-1 {
-			blder.WriteString(fmt.Sprintf("tcp:[%s]:%s,", hostList[i], port))
+			builder.WriteString(fmt.Sprintf("tcp:[%s]:%s,", hostList[i], port))
 			i += 1
 		}
-		blder.WriteString(fmt.Sprintf("tcp:[%s]:%s", hostList[i], port))
-		hostaddress = blder.String()
+		builder.WriteString(fmt.Sprintf("tcp:[%s]:%s", hostList[i], port))
+		hostAddress = builder.String()
 	}
-	return hostaddress
+	return hostAddress
 }
 
 func (c *Controller) SynRouteToPolicy() {
@@ -457,20 +457,19 @@ func (c *Controller) SynRouteToPolicy() {
 }
 
 func (c *Controller) RemoveOldChassisInSbDB() error {
-
-	azUUID, err := c.ovnLegacyClient.GetAZUUID(lastICCM["az-name"])
+	azUUID, err := c.ovnLegacyClient.GetAzUUID(lastIcCm["az-name"])
 	if err != nil {
-		klog.Errorf("chassis ungetable %v", err)
+		klog.Errorf("failed to get UUID of AZ %s: %v", lastIcCm["az-name"], err)
 	}
 
 	gateways, err := c.ovnLegacyClient.GetGatewayUUIDsInOneAZ(azUUID)
 	if err != nil {
-		klog.Errorf("gateways in as %v ungetable %v", azUUID, err)
+		klog.Errorf("failed to get gateway UUIDs in AZ %s: %v", azUUID, err)
 	}
 
 	routes, err := c.ovnLegacyClient.GetRouteUUIDsInOneAZ(azUUID)
 	if err != nil {
-		klog.Errorf("routes in as %v ungetable %v", azUUID, err)
+		klog.Errorf("failed to get route UUIDs in AZ %s: %v", azUUID, err)
 	}
 
 	c.ovnLegacyClient.DestroyGateways(gateways)
