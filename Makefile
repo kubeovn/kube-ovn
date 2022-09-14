@@ -410,6 +410,7 @@ e2e:
 	@if [ ! -n "$$(docker images -q kubeovn/pause:3.2 2>/dev/null)" ]; then docker pull kubeovn/pause:3.2; fi
 	kind load docker-image --name kube-ovn kubeovn/pause:3.2
 	ginkgo -mod=mod -progress --always-emit-ginkgo-writer --slow-spec-threshold=60s test/e2e
+	ginkgo -mod=mod -progress --always-emit-ginkgo-writer --slow-spec-threshold=60s test/e2e-k8s
 
 .PHONY: e2e-ipv6
 e2e-ipv6:
