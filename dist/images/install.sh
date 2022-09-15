@@ -469,6 +469,21 @@ spec:
                   type: array
                   items:
                     type: string
+                tolerations:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      key:
+                        type: string
+                      operator:
+                        type: string
+                      value:
+                        type: string
+                      effect:
+                        type: string
+                      tolerationSeconds:
+                        type: integer
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
