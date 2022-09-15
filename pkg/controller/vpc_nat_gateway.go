@@ -673,6 +673,21 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	}
 	klog.V(3).Infof("prepare for vpc nat gateway pod, node selector: %v", selectors)
 
+	var tolerations []corev1.Toleration
+	for _, t := range gw.Spec.Tolerations {
+		toleration := corev1.Toleration{
+			Key:      t.Key,
+			Value:    t.Value,
+			Effect:   corev1.TaintEffect(t.Effect),
+			Operator: corev1.TolerationOperator(t.Operator),
+		}
+
+		if t.TolerationSeconds != 0 {
+			toleration.TolerationSeconds = &t.TolerationSeconds
+		}
+		tolerations = append(tolerations, toleration)
+	}
+
 	newSts = &v1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   name,
@@ -703,6 +718,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 						},
 					},
 					NodeSelector: selectors,
+					Tolerations:  tolerations,
 				},
 			},
 			UpdateStrategy: v1.StatefulSetUpdateStrategy{
