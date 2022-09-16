@@ -447,10 +447,19 @@ type VpcNatGateway struct {
 }
 
 type VpcNatSpec struct {
-	Vpc      string   `json:"vpc"`
-	Subnet   string   `json:"subnet"`
-	LanIp    string   `json:"lanIp"`
-	Selector []string `json:"selector"`
+	Vpc         string             `json:"vpc"`
+	Subnet      string             `json:"subnet"`
+	LanIp       string             `json:"lanIp"`
+	Selector    []string           `json:"selector"`
+	Tolerations []VpcNatToleration `json:"tolerations"`
+}
+
+type VpcNatToleration struct {
+	Key               string `json:"key"`
+	Operator          string `json:"operator"`
+	Value             string `json:"value"`
+	Effect            string `json:"effect"`
+	TolerationSeconds int64  `json:"tolerationSeconds"`
 }
 
 // +genclient
