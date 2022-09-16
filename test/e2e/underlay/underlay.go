@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -423,6 +424,16 @@ var _ = Describe("[Underlay]", func() {
 				cmd = fmt.Sprintf("nsenter --net=%s ip link show eth0", netns)
 				stdout, _, err = f.ExecToPodThroughAPI(cmd, "cni-server", cniPod.Name, cniPod.Namespace, nil)
 				Expect(err).NotTo(HaveOccurred())
+				if !strings.Contains(stdout, fmt.Sprintf(" mtu %d ", nodeMTU[pod.Spec.NodeName])) {
+					GinkgoWriter.Println(stdout)
+					GinkgoWriter.Println(pod.Spec.NodeName, netns)
+					b, _ := yaml.Marshal(pod)
+					GinkgoWriter.Println(string(b))
+
+					node, _ := f.KubeClientSet.CoreV1().Nodes().Get(context.Background(), pod.Spec.NodeName, metav1.GetOptions{})
+					b, _ = yaml.Marshal(node)
+					GinkgoWriter.Println(string(b))
+				}
 				Expect(stdout).To(ContainSubstring(" mtu %d ", nodeMTU[pod.Spec.NodeName]))
 			})
 		})
