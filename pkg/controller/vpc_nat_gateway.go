@@ -227,11 +227,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	c.vpcNatGwKeyMutex.Lock(key)
 	defer c.vpcNatGwKeyMutex.Unlock(key)
 	if vpcNatEnabled != "true" {
-		// wait and check again
-		time.Sleep(10 * time.Second)
-		if vpcNatEnabled != "true" {
-			return fmt.Errorf("failed to addOrUpdateVpcNatGw, vpcNatEnabled='%s'", vpcNatEnabled)
-		}
+		return fmt.Errorf("iptables nat gw not enable")
 	}
 	gw, err := c.vpcNatGatewayLister.Get(key)
 	if err != nil {
@@ -289,9 +285,6 @@ func (c *Controller) syncVpcNatGwRules(key string) error {
 	// sync all nat crd
 	pod, err := c.getNatGwPod(key)
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
 		return err
 	}
 
@@ -309,10 +302,7 @@ func (c *Controller) syncVpcNatGwRules(key string) error {
 
 func (c *Controller) handleInitVpcNatGw(key string) error {
 	if vpcNatEnabled != "true" {
-		time.Sleep(10 * time.Second)
-		if vpcNatEnabled != "true" {
-			return fmt.Errorf("failed init vpc nat gateway, vpcNatEnabled='%s'", vpcNatEnabled)
-		}
+		return fmt.Errorf("iptables nat gw not enable")
 	}
 	c.vpcNatGwKeyMutex.Lock(key)
 	defer c.vpcNatGwKeyMutex.Unlock(key)
@@ -332,9 +322,6 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 
 	oriPod, err := c.getNatGwPod(key)
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
 		return err
 	}
 	pod := oriPod.DeepCopy()
@@ -368,10 +355,7 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 
 func (c *Controller) handleUpdateVpcFloatingIp(natGwKey string) error {
 	if vpcNatEnabled != "true" {
-		time.Sleep(10 * time.Second)
-		if vpcNatEnabled != "true" {
-			return fmt.Errorf("failed to update vpc floatingIp, vpcNatEnabled='%s'", vpcNatEnabled)
-		}
+		return fmt.Errorf("iptables nat gw not enable")
 	}
 	c.vpcNatGwKeyMutex.Lock(natGwKey)
 	defer c.vpcNatGwKeyMutex.Unlock(natGwKey)
@@ -403,10 +387,7 @@ func (c *Controller) handleUpdateVpcFloatingIp(natGwKey string) error {
 
 func (c *Controller) handleUpdateVpcEip(natGwKey string) error {
 	if vpcNatEnabled != "true" {
-		time.Sleep(10 * time.Second)
-		if vpcNatEnabled != "true" {
-			return fmt.Errorf("failed to update vpc eip, vpcNatEnabled='%s'", vpcNatEnabled)
-		}
+		return fmt.Errorf("iptables nat gw not enable")
 	}
 	c.vpcNatGwKeyMutex.Lock(natGwKey)
 	defer c.vpcNatGwKeyMutex.Unlock(natGwKey)
@@ -435,10 +416,7 @@ func (c *Controller) handleUpdateVpcEip(natGwKey string) error {
 
 func (c *Controller) handleUpdateVpcSnat(natGwKey string) error {
 	if vpcNatEnabled != "true" {
-		time.Sleep(10 * time.Second)
-		if vpcNatEnabled != "true" {
-			return fmt.Errorf("failed to update vpc snat, vpcNatEnabled='%s'", vpcNatEnabled)
-		}
+		return fmt.Errorf("iptables nat gw not enable")
 	}
 	c.vpcNatGwKeyMutex.Lock(natGwKey)
 	defer c.vpcNatGwKeyMutex.Unlock(natGwKey)
@@ -467,10 +445,7 @@ func (c *Controller) handleUpdateVpcSnat(natGwKey string) error {
 
 func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 	if vpcNatEnabled != "true" {
-		time.Sleep(10 * time.Second)
-		if vpcNatEnabled != "true" {
-			return fmt.Errorf("failed update vpc dnat, vpcNatEnabled='%s'", vpcNatEnabled)
-		}
+		return fmt.Errorf("iptables nat gw not enable")
 	}
 	c.vpcNatGwKeyMutex.Lock(natGwKey)
 	defer c.vpcNatGwKeyMutex.Unlock(natGwKey)
@@ -500,26 +475,17 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 
 func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	if vpcNatEnabled != "true" {
-		time.Sleep(10 * time.Second)
-		if vpcNatEnabled != "true" {
-			return fmt.Errorf("failed to update subnet route, vpcNatEnabled='%s'", vpcNatEnabled)
-		}
+		return fmt.Errorf("iptables nat gw not enable")
 	}
 	c.vpcNatGwKeyMutex.Lock(natGwKey)
 	defer c.vpcNatGwKeyMutex.Unlock(natGwKey)
 	gw, err := c.vpcNatGatewayLister.Get(natGwKey)
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
 		return err
 	}
 
 	oriPod, err := c.getNatGwPod(natGwKey)
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
 		return err
 	}
 	pod := oriPod.DeepCopy()
@@ -750,8 +716,7 @@ func (c *Controller) getNatGwPod(name string) (*corev1.Pod, error) {
 	if err != nil {
 		return nil, err
 	} else if len(pods) == 0 {
-		time.Sleep(2 * time.Second)
-		return nil, fmt.Errorf("pod '%s' not exist", name)
+		return nil, k8serrors.NewNotFound(v1.Resource("pod"), name)
 	} else if len(pods) != 1 {
 		time.Sleep(5 * time.Second)
 		return nil, fmt.Errorf("too many pod")
@@ -779,9 +744,6 @@ func (c *Controller) initCreateAt(key string) (err error) {
 	}
 	pod, err := c.getNatGwPod(key)
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
 		return err
 	}
 	NAT_GW_CREATED_AT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
