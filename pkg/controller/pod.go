@@ -812,7 +812,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 		if podIP != "" && subnet.Spec.Vlan == "" && subnet.Spec.Vpc == util.DefaultVpc {
 			node, err := c.nodesLister.Get(pod.Spec.NodeName)
 			if err != nil {
-				klog.Errorf("get node %s failed %v", pod.Spec.NodeName, err)
+				klog.Errorf("failed to get node %s: %v", pod.Spec.NodeName, err)
 				return err
 			}
 
