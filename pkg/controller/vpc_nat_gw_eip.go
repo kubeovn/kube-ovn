@@ -534,9 +534,6 @@ func (c *Controller) GetEip(eipName string) (*kubeovnv1.IptablesEIP, error) {
 func (c *Controller) createEipInPod(dp, gw, v4Cidr string) error {
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
 		return err
 	}
 	var addRules []string

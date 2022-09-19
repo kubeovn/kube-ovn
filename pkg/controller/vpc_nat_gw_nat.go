@@ -1502,9 +1502,6 @@ func (c *Controller) redoSnat(key, redo string, eipReady bool) error {
 func (c *Controller) createFipInPod(dp, v4ip, internalIP string) error {
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
 		return err
 	}
 	var addRules []string

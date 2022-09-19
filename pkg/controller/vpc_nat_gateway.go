@@ -285,9 +285,6 @@ func (c *Controller) syncVpcNatGwRules(key string) error {
 	// sync all nat crd
 	pod, err := c.getNatGwPod(key)
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
 		return err
 	}
 
@@ -325,9 +322,6 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 
 	oriPod, err := c.getNatGwPod(key)
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
 		return err
 	}
 	pod := oriPod.DeepCopy()
@@ -487,17 +481,11 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	defer c.vpcNatGwKeyMutex.Unlock(natGwKey)
 	gw, err := c.vpcNatGatewayLister.Get(natGwKey)
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
 		return err
 	}
 
 	oriPod, err := c.getNatGwPod(natGwKey)
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
 		return err
 	}
 	pod := oriPod.DeepCopy()
@@ -740,9 +728,6 @@ func (c *Controller) initCreateAt(key string) (err error) {
 	}
 	pod, err := c.getNatGwPod(key)
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
 		return err
 	}
 	NAT_GW_CREATED_AT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
