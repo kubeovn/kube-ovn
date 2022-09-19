@@ -546,7 +546,9 @@ func (c *Controller) gcLoadBalancer() error {
 
 func (c *Controller) gcPortGroup() error {
 	klog.Infof("start to gc network policy")
-	var npNames []string
+
+	npNames := make(map[string]struct{})
+
 	if c.config.EnableNP {
 		nps, err := c.npsLister.List(labels.Everything())
 		if err != nil {
@@ -554,18 +556,19 @@ func (c *Controller) gcPortGroup() error {
 			return err
 		}
 
-		npNames = make([]string, 0, len(nps))
 		for _, np := range nps {
-			npNames = append(npNames, fmt.Sprintf("%s/%s", np.Namespace, np.Name))
+			npNames[fmt.Sprintf("%s/%s", np.Namespace, np.Name)] = struct{}{}
 		}
+
 		// append node port group to npNames to avoid gc node port group
 		nodes, err := c.nodesLister.List(labels.Everything())
 		if err != nil {
 			klog.Errorf("failed to list nodes, %v", err)
 			return err
 		}
+
 		for _, node := range nodes {
-			npNames = append(npNames, fmt.Sprintf("%s/%s", "node", node.Name))
+			npNames[fmt.Sprintf("%s/%s", "node", node.Name)] = struct{}{}
 		}
 
 		// append overlay subnets port group to npNames to avoid gc distributed subnets port group
@@ -578,22 +581,30 @@ func (c *Controller) gcPortGroup() error {
 			if subnet.Spec.Vpc != util.DefaultVpc || (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Name == c.config.NodeSwitch || subnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
 				continue
 			}
+
 			for _, node := range nodes {
-				npNames = append(npNames, fmt.Sprintf("%s/%s", subnet.Name, node.Name))
+				npNames[fmt.Sprintf("%s/%s", subnet.Name, node.Name)] = struct{}{}
 			}
 		}
 	}
 
-	pgs, err := c.ovnLegacyClient.ListNpPortGroup()
+	// list all np port groups which externalIDs[np]!=""
+	pgs, err := c.ovnClient.ListPortGroups(map[string]string{networkPolicyKey: ""})
 	if err != nil {
-		klog.Errorf("failed to list port-group, %v", err)
+		klog.Errorf("list np port group: %v", err)
 		return err
 	}
+
 	for _, pg := range pgs {
-		if !c.config.EnableNP || !util.IsStringIn(fmt.Sprintf("%s/%s", pg.NpNamespace, pg.NpName), npNames) {
+		np := strings.Split(pg.ExternalIDs[networkPolicyKey], "/")
+		npNamespace := np[0]
+		npName := np[1]
+
+		if _, ok := npNames[fmt.Sprintf("%s/%s", npNamespace, npName)]; !c.config.EnableNP || !ok {
 			klog.Infof("gc port group %s", pg.Name)
-			if err := c.handleDeleteNp(fmt.Sprintf("%s/%s", pg.NpNamespace, pg.NpName)); err != nil {
-				klog.Errorf("failed to gc np %s/%s, %v", pg.NpNamespace, pg.NpName, err)
+
+			if err := c.handleDeleteNp(fmt.Sprintf("%s/%s", npNamespace, npName)); err != nil {
+				klog.Errorf("gc np %s/%s, %v", npNamespace, npName, err)
 				return err
 			}
 		}

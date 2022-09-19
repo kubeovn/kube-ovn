@@ -336,8 +336,8 @@ func (c *Controller) handleAddNode(key string) error {
 
 	// ovn acl doesn't support address_set name with '-', so replace '-' by '.'
 	pgName := strings.Replace(node.Annotations[util.PortNameAnnotation], "-", ".", -1)
-	if err := c.ovnLegacyClient.CreateNpPortGroup(pgName, "node", key); err != nil {
-		klog.Errorf("failed to create port group %s for node %s: %v", pgName, key, err)
+	if err = c.ovnClient.CreatePortGroup(pgName, map[string]string{networkPolicyKey: "node" + "/" + key}); err != nil {
+		klog.Errorf("create port group %s for node %s: %v", pgName, key, err)
 		return err
 	}
 
@@ -461,10 +461,11 @@ func (c *Controller) handleDeleteNode(key string) error {
 
 	// ovn acl doesn't support address_set name with '-', so replace '-' by '.'
 	pgName := strings.Replace(portName, "-", ".", -1)
-	if err := c.ovnLegacyClient.DeletePortGroup(pgName); err != nil {
-		klog.Errorf("failed to delete port group %s for node, %v", portName, err)
+	if err := c.ovnClient.DeletePortGroup(pgName); err != nil {
+		klog.Errorf("delete port group %s for node: %v", portName, err)
 		return err
 	}
+
 	if err := c.deletePolicyRouteForNode(key); err != nil {
 		klog.Errorf("failed to delete policy route for node %s: %v", key, err)
 		return err
@@ -917,26 +918,11 @@ func (c *Controller) fetchPodsOnNode(nodeName string, pods []*v1.Pod) ([]string,
 	return ports, nil
 }
 
-func (c *Controller) checkPodsChangedOnNode(pgName string, nameIdMap map[string]string, pgPorts, ports []string) (bool, error) {
-	for _, port := range ports {
-		if portId, ok := nameIdMap[port]; ok {
-			if !util.IsStringIn(portId, pgPorts) {
-				klog.Infof("pod on node changed, new added port %v should add to node port group %v", port, pgName)
-				return true, nil
-			}
-		}
-	}
-
-	return false, nil
-}
-
 func (c *Controller) CheckNodePortGroup() {
 	if err := c.checkAndUpdateNodePortGroup(); err != nil {
-		klog.Errorf("failed to check node port-group status, %v", err)
+		klog.Errorf("check node port group status: %v", err)
 	}
 }
-
-var lastNpExists = make(map[string]bool)
 
 func (c *Controller) checkAndUpdateNodePortGroup() error {
 	klog.V(3).Infoln("start to check node port-group status")
@@ -945,25 +931,13 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
-		klog.Errorf("failed to list nodes, %v", err)
+		klog.Errorf("list nodes: %v", err)
 		return err
 	}
 
 	pods, err := c.podsLister.List(labels.Everything())
 	if err != nil {
-		klog.Errorf("failed to list pods, %v", err)
-		return err
-	}
-
-	nameIdMap, _, err := c.ovnLegacyClient.ListLspForNodePortgroup()
-	if err != nil {
-		klog.Errorf("failed to list lsp info, %v", err)
-		return err
-	}
-
-	namePortsMap, err := c.ovnLegacyClient.ListPgPortsForNodePortgroup()
-	if err != nil {
-		klog.Errorf("failed to list port-group info, %v", err)
+		klog.Errorf("list pods, %v", err)
 		return err
 	}
 
@@ -983,32 +957,14 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 		}
 		nodeIP := strings.Trim(fmt.Sprintf("%s,%s", nodeIPv4, nodeIPv6), ",")
 
-		ports, err := c.fetchPodsOnNode(node.Name, pods)
+		nodePorts, err := c.fetchPodsOnNode(node.Name, pods)
 		if err != nil {
-			klog.Errorf("failed to fetch pods for node %v, %v", node.Name, err)
+			klog.Errorf("fetch pods for node %v: %v", node.Name, err)
 			return err
 		}
 
-		changed, err := c.checkPodsChangedOnNode(pgName, nameIdMap, namePortsMap[pgName], ports)
-		if err != nil {
-			klog.Errorf("failed to check pod status for node %v, %v", node.Name, err)
-			continue
-		}
-
-		if lastNpExists[node.Name] != networkPolicyExists {
-			klog.Infof("networkpolicy num changed when check nodepg %v", pgName)
-			changed = true
-		}
-
-		if !changed {
-			klog.V(3).Infof("pods on node %v do not changed", node.Name)
-			continue
-		}
-		lastNpExists[node.Name] = networkPolicyExists
-
-		err = c.ovnLegacyClient.SetPortsToPortGroup(pgName, ports)
-		if err != nil {
-			klog.Errorf("failed to set port group for node %v, %v", node.Name, err)
+		if err := c.ovnClient.PortGroupAddPorts(pgName, nodePorts...); err != nil {
+			klog.Errorf("add ports to port group %s: %v", pgName, err)
 			return err
 		}
 
@@ -1123,7 +1079,7 @@ func (c *Controller) checkPolicyRouteExistForNode(nodeName, cidr, nexthop string
 func (c *Controller) deletePolicyRouteForNode(nodeName string) error {
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
-		klog.Errorf("failed to get subnets %v", err)
+		klog.Errorf("get subnets: %v", err)
 		return err
 	}
 
@@ -1134,14 +1090,14 @@ func (c *Controller) deletePolicyRouteForNode(nodeName string) error {
 
 		if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
 			pgName := getOverlaySubnetsPortGroupName(subnet.Name, nodeName)
-			if err = c.ovnLegacyClient.DeletePortGroup(pgName); err != nil {
-				klog.Errorf("failed to delete port group for subnet %s and node %s, %v", subnet.Name, nodeName, err)
+			if err = c.ovnClient.DeletePortGroup(pgName); err != nil {
+				klog.Errorf("delete port group for subnet %s and node %s: %v", subnet.Name, nodeName, err)
 				return err
 			}
 
 			klog.Infof("delete policy route for distributed subnet %s, node %s", subnet.Name, nodeName)
 			if err = c.deletePolicyRouteForDistributedSubnet(subnet, nodeName); err != nil {
-				klog.Errorf("failed to delete policy route for subnet %s and node %s, %v", subnet.Name, nodeName, err)
+				klog.Errorf("delete policy route for subnet %s and node %s: %v", subnet.Name, nodeName, err)
 				return err
 			}
 		}
