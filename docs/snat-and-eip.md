@@ -5,7 +5,7 @@ By using snat, a group of pods can share one same ip address to communicate with
 By using eip, external services can visit a pod with a stable ip and pod will visit external services using the same ip.
 
 ## Prerequisite
-* To take use of OVN L3 Gateway, a dedicated nic *MUST* be bridged into ovs to act as the gateway between overlay and underlay, ops should use other nics to manage the host server.
+* To take use of OVN L3 Gateway, a dedicated nic *MUST* be bridged into ovs to act as the gateway between overlay and underlay, ops should use other NICs to manage the host server.
 * As the nic will emit packets with nat ip directly into underlay network, administrators *MUST* make sure that these packets will not be denied by security rules.
 * SNAT and EIP functions *CANNOT* work together with Cluster interconnection network
 
@@ -25,7 +25,7 @@ data:
   external-gw-nodes: "kube-ovn-worker"  # NodeName in kubernetes which will act the overlay to underlay gateway functions
   external-gw-nic: "eth1"               # The nic that will be bridged into ovs and act as overlay to underlay gateway
   external-gw-addr: "172.56.0.1/16"     # The ip and mask of the underlay physical gateway
-  nic-ip: "172.56.0.254/16"             # The ip and mask of the underlay physical network for logical route externel gw port
+  nic-ip: "172.56.0.100/16"             # The ip and mask of the underlay physical network for logical route external gw port
   nic-mac: "16:52:f3:13:6a:25"          # The mac of nic-ip
 ```
 
