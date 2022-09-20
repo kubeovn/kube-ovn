@@ -976,7 +976,8 @@ func (c *Controller) reconcileNamespaces(subnet *kubeovnv1.Subnet) error {
 	}
 
 	for _, ns := range namespaces {
-		if ns.Annotations != nil && !util.ContainsString(subnet.Spec.Namespaces, ns.Name) && util.ContainsString(strings.Split(ns.Annotations[util.LogicalSwitchAnnotation], ","), subnet.Name) {
+		// when subnet cidr changed, the ns annotation with the subnet should be updated
+		if ns.Annotations != nil && util.ContainsString(strings.Split(ns.Annotations[util.LogicalSwitchAnnotation], ","), subnet.Name) {
 			c.addNamespaceQueue.Add(ns.Name)
 		}
 	}
