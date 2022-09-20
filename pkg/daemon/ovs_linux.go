@@ -153,13 +153,19 @@ func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns,
 		hostLink, err := netlink.LinkByName(nicName)
 		if err != nil {
 			// If link already not exists, return quietly
+			// E.g. Internal port had been deleted by Remove ovs port previously
 			if _, ok := err.(netlink.LinkNotFoundError); ok {
 				return nil
 			}
 			return fmt.Errorf("find host link %s failed %v", nicName, err)
 		}
-		if err = netlink.LinkDel(hostLink); err != nil {
-			return fmt.Errorf("delete host link %s failed %v", hostLink, err)
+
+		hostLinkType := hostLink.Type()
+		// Sometimes no deviceID input for vf nic, avoid delete vf nic.
+		if hostLinkType == "veth" {
+			if err = netlink.LinkDel(hostLink); err != nil {
+				return fmt.Errorf("delete host link %s failed %v", hostLink, err)
+			}
 		}
 	} else if pciAddrRegexp.MatchString(deviceID) {
 		// Ret VF index from PCI
