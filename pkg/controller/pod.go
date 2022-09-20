@@ -810,6 +810,13 @@ func (c *Controller) handleUpdatePod(key string) error {
 		subnet = podNet.Subnet
 
 		if podIP != "" && subnet.Spec.Vlan == "" && subnet.Spec.Vpc == util.DefaultVpc {
+			node, err := c.nodesLister.Get(pod.Spec.NodeName)
+			if err != nil {
+				klog.Errorf("failed to get node %s: %v", pod.Spec.NodeName, err)
+				return err
+			}
+
+			pgName := getOverlaySubnetsPortGroupName(subnet.Name, node.Name)
 			if c.config.EnableEipSnat && (pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "") {
 				cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
 				if err != nil {
@@ -829,20 +836,24 @@ func (c *Controller) handleUpdatePod(key string) error {
 					klog.Errorf("failed to add static route, %v", err)
 					return err
 				}
+
+				// remove lsp from port group to make EIP/SNAT work
+				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+				c.ovnPgKeyMutex.Lock(pgName)
+				if err = c.ovnClient.PortGroupRemovePort(pgName, portName); err != nil {
+					c.ovnPgKeyMutex.Unlock(pgName)
+					return err
+				}
+				c.ovnPgKeyMutex.Unlock(pgName)
+
 			} else {
 				if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType && pod.Annotations[util.NorthGatewayAnnotation] == "" {
-					node, err := c.nodesLister.Get(pod.Spec.NodeName)
-					if err != nil {
-						klog.Errorf("get node %s failed %v", pod.Spec.NodeName, err)
-						return err
-					}
-
 					nodeTunlIPAddr, err := getNodeTunlIP(node)
 					if err != nil {
 						return err
 					}
 
-					pgName := getOverlaySubnetsPortGroupName(subnet.Name, node.Name)
+					var added bool
 					for _, nodeAddr := range nodeTunlIPAddr {
 						for _, podAddr := range strings.Split(podIP, ",") {
 							if util.CheckProtocol(nodeAddr.String()) != util.CheckProtocol(podAddr) {
@@ -856,6 +867,12 @@ func (c *Controller) handleUpdatePod(key string) error {
 								return err
 							}
 							c.ovnPgKeyMutex.Unlock(pgName)
+
+							added = true
+							break
+						}
+						if added {
+							break
 						}
 					}
 				}
