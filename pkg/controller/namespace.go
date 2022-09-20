@@ -182,7 +182,9 @@ func (c *Controller) handleAddNamespace(key string) error {
 		op = "add"
 		namespace.Annotations = map[string]string{}
 	} else {
-		if namespace.Annotations[util.LogicalSwitchAnnotation] == strings.Join(lss, ",") {
+		if namespace.Annotations[util.LogicalSwitchAnnotation] == strings.Join(lss, ",") &&
+			namespace.Annotations[util.CidrAnnotation] == strings.Join(cidrs, ";") &&
+			namespace.Annotations[util.ExcludeIpsAnnotation] == strings.Join(excludeIps, ";") {
 			return nil
 		}
 	}
