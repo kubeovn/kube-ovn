@@ -8,7 +8,8 @@ RUN set -ex \
     iproute2 \
     iptables \
     iputils \
-    tcpdump
+    tcpdump \
+    conntrack-tools
 
 WORKDIR /kube-ovn
 COPY nat-gateway.sh /kube-ovn/
