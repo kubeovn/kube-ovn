@@ -16,6 +16,7 @@ on:
     - '**.md'
 
 env:
+  GO_VERSION: '1.17'
   KIND_VERSION: v0.11.1
 
 jobs:
@@ -23,10 +24,10 @@ jobs:
     name: Build x86
     runs-on: ubuntu-20.04
     steps:
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+      - uses: actions/setup-go@v3
         with:
-          go-version: 1.16.7
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Check out code into the Go module directory
@@ -100,10 +101,10 @@ jobs:
           docker load --input image.tar
           sudo make kind-install
 
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+      - uses: actions/setup-go@v3
         with:
-          go-version: ^1.16
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -150,10 +151,10 @@ jobs:
           docker load --input image.tar
           sudo make kind-install
 
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+      - uses: actions/setup-go@v3
         with:
-          go-version: ^1.16
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -200,10 +201,10 @@ jobs:
           docker load --input image.tar
           sudo make kind-install
 
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+      - uses: actions/setup-go@v3
         with:
-          go-version: ^1.16
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -250,10 +251,10 @@ jobs:
           docker load --input image.tar
           sudo make kind-install-underlay
 
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+      - uses: actions/setup-go@v3
         with:
-          go-version: ^1.16
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -316,10 +317,10 @@ jobs:
           docker load --input image.tar
           sudo make kind-install-single
 
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+      - uses: actions/setup-go@v3
         with:
-          go-version: ^1.16
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -401,10 +402,10 @@ jobs:
           docker load --input image.tar
           sudo make kind-install-ipv6
 
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+      - uses: actions/setup-go@v3
         with:
-          go-version: ^1.16
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -455,10 +456,10 @@ jobs:
           docker load --input image.tar
           sudo make kind-install-ipv6
 
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+      - uses: actions/setup-go@v3
         with:
-          go-version: ^1.16
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -509,10 +510,10 @@ jobs:
           docker load --input image.tar
           sudo make kind-install-underlay-ipv6
 
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+      - uses: actions/setup-go@v3
         with:
-          go-version: ^1.16
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -579,10 +580,10 @@ jobs:
           docker load --input image.tar
           sudo make kind-install-dual
 
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+      - uses: actions/setup-go@v3
         with:
-          go-version: ^1.16
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -633,10 +634,10 @@ jobs:
           docker load --input image.tar
           sudo make kind-install-underlay-dual
 
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+      - uses: actions/setup-go@v3
         with:
-          go-version: ^1.16
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -701,10 +702,10 @@ jobs:
           docker load --input image.tar
           sudo make kind-install
 
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+      - uses: actions/setup-go@v3
         with:
-          go-version: ^1.16
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -753,10 +754,10 @@ jobs:
           docker load --input image.tar
           sudo make kind-install
 
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+      - uses: actions/setup-go@v3
         with:
-          go-version: ^1.16
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
@@ -805,10 +806,10 @@ jobs:
           docker load --input image.tar
           sudo make kind-install
 
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+      - uses: actions/setup-go@v3
         with:
-          go-version: ^1.16
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
       - name: Run E2E
