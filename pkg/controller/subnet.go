@@ -893,7 +893,7 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 				}
 			}
 
-			_, idNameMap, err := c.ovnLegacyClient.ListLspForNodePortgroup()
+			nameIdMap, idNameMap, err := c.ovnLegacyClient.ListLspForNodePortgroup()
 			if err != nil {
 				klog.Errorf("failed to list lsp info, %v", err)
 				return err
@@ -904,6 +904,10 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 					continue
 				}
 				if c.config.EnableEipSnat && (pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "") {
+					continue
+				}
+				// Pod will add to port-group when pod get updated
+				if pod.Spec.NodeName == "" {
 					continue
 				}
 
@@ -948,10 +952,6 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
 					continue
 				}
-				// Pod will add to port-group when pod get updated
-				if pod.Spec.NodeName == "" {
-					continue
-				}
 
 				pgName := getOverlaySubnetsPortGroupName(subnet.Name, pod.Spec.NodeName)
 				c.ovnPgKeyMutex.Lock(pgName)
@@ -964,6 +964,11 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 
 				portsToAdd := make([]string, 0, len(podPorts))
 				for _, port := range podPorts {
+					if _, ok := nameIdMap[port]; !ok {
+						klog.Errorf("lsp does not exist for pod %v, please delete the pod and retry", port)
+						continue
+					}
+
 					if _, ok := pgPorts[port]; !ok {
 						portsToAdd = append(portsToAdd, port)
 					}
