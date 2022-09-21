@@ -914,7 +914,7 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 				podNets, err := c.getPodKubeovnNets(pod)
 				if err != nil {
 					klog.Errorf("failed to get pod nets %v", err)
-					return err
+					continue
 				}
 
 				podPorts := make([]string, 0, 1)
