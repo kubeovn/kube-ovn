@@ -74,7 +74,7 @@ func (c LegacyClient) DeleteChassisByName(chassisName string) error {
 	}
 
 	cmdArg := []string{"chassis-del", strings.TrimSpace(chassisName)}
-	if util.CompareVersion("20.09", ovnVersion) >= 0 {
+	if util.CompareVersion(ovnVersion, "20.09") >= 0 {
 		cmdArg = append(cmdArg, "--", "destroy", "chassis_private", strings.TrimSpace(chassisName))
 	}
 	if _, err := c.ovnSbCommand(cmdArg...); err != nil {
