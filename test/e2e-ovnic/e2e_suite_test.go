@@ -22,7 +22,7 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
 
-func TestE2eOvnic(t *testing.T) {
+func TestE2eOvnIC(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Kube-OVN E2E OVN-IC Suite")
 }

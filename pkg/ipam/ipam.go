@@ -81,16 +81,15 @@ func (ipam *IPAM) GetStaticAddress(podName, nicName, ip, mac, subnetName string,
 		case kubeovnv1.ProtocolIPv6:
 			klog.Infof("allocate v6 %s mac %s for %s", ip, mac, podName)
 			return "", ip, mac, err
-		case kubeovnv1.ProtocolDual:
+		default:
 			klog.Infof("allocate v4 %s v6 %s mac %s for %s", string(ips[0]), string(ips[1]), mac, podName)
 			return string(ips[0]), string(ips[1]), mac, err
 		}
 	}
-	return "", "", "", ErrNoAvailable
 }
 
 func checkAndAppendIpsForDual(ips []IP, mac string, podName string, nicName string, subnet *Subnet, checkConflict bool) ([]IP, error) {
-	// IP Address for dual-stack should be format of 'IPv4,IPv6'
+	// IP Address for dual-stack should be formatted with 'IPv4,IPv6'
 	if subnet.Protocol != kubeovnv1.ProtocolDual || len(ips) == 2 {
 		return ips, nil
 	}

@@ -19,7 +19,7 @@ import (
 	_ "github.com/kubeovn/kube-ovn/test/e2e-underlay-single-nic/overlay"
 )
 
-func TestE2e(t *testing.T) {
+func TestE2eUnderlaySingleNic(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Kube-OVN Vlan E2E Suite")
 }
