@@ -1103,6 +1103,12 @@ func parseLrRouteListOutput(output string) (routeList []*StaticRoute, err error)
 }
 
 func (c LegacyClient) UpdateNatRule(policy, logicalIP, externalIP, router, logicalMac, port string) error {
+	// when dual protocol pod has eip or snat, will add nat for all dual addresses.
+	// will failed when logicalIP externalIP is different protocol.
+	if util.CheckProtocol(logicalIP) != util.CheckProtocol(externalIP) {
+		return nil
+	}
+
 	if policy == "snat" {
 		if externalIP == "" {
 			_, err := c.ovnNbCommand(IfExists, "lr-nat-del", router, "snat", logicalIP)
@@ -1114,7 +1120,7 @@ func (c LegacyClient) UpdateNatRule(policy, logicalIP, externalIP, router, logic
 		_, err := c.ovnNbCommand(MayExist, "lr-nat-add", router, policy, externalIP, logicalIP)
 		return err
 	} else {
-		output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=external_ip", "find", "NAT", fmt.Sprintf("logical_ip=%s", logicalIP), "type=dnat_and_snat")
+		output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=external_ip", "find", "NAT", fmt.Sprintf("logical_ip=%s", strings.ReplaceAll(logicalIP, ":", "\\:")), "type=dnat_and_snat")
 		if err != nil {
 			klog.Errorf("failed to list nat rules, %v", err)
 			return err
@@ -1143,7 +1149,7 @@ func (c LegacyClient) UpdateNatRule(policy, logicalIP, externalIP, router, logic
 }
 
 func (c LegacyClient) DeleteNatRule(logicalIP, router string) error {
-	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=type,external_ip", "find", "NAT", fmt.Sprintf("logical_ip=%s", logicalIP))
+	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=type,external_ip", "find", "NAT", fmt.Sprintf("logical_ip=%s", strings.ReplaceAll(logicalIP, ":", "\\:")))
 	if err != nil {
 		klog.Errorf("failed to list nat rules, %v", err)
 		return err
@@ -1171,7 +1177,7 @@ func (c LegacyClient) DeleteNatRule(logicalIP, router string) error {
 }
 
 func (c *LegacyClient) NatRuleExists(logicalIP string) (bool, error) {
-	results, err := c.CustomFindEntity("NAT", []string{"external_ip"}, fmt.Sprintf("logical_ip=%s", logicalIP))
+	results, err := c.CustomFindEntity("NAT", []string{"external_ip"}, fmt.Sprintf("logical_ip=%s", strings.ReplaceAll(logicalIP, ":", "\\:")))
 	if err != nil {
 		klog.Errorf("customFindEntity failed, %v", err)
 		return false, err
