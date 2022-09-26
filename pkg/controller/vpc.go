@@ -229,26 +229,38 @@ func (c *Controller) reconcileRouterPortBySubnet(vpc *kubeovnv1.Vpc, subnet *kub
 }
 
 type VpcLoadBalancer struct {
-	TcpLoadBalancer     string
-	TcpSessLoadBalancer string
-	UdpLoadBalancer     string
-	UdpSessLoadBalancer string
+	TcpLoadBalancer       string
+	TcpSessLoadBalancer   string
+	UdpLoadBalancer       string
+	UdpSessLoadBalancer   string
+	LRTcpLoadBalancer     string
+	LRTcpSessLoadBalancer string
+	LRUdpLoadBalancer     string
+	LRUdpSessLoadBalancer string
 }
 
 func (c *Controller) GenVpcLoadBalancer(vpcKey string) *VpcLoadBalancer {
 	if vpcKey == util.DefaultVpc || vpcKey == "" {
 		return &VpcLoadBalancer{
-			TcpLoadBalancer:     c.config.ClusterTcpLoadBalancer,
-			TcpSessLoadBalancer: c.config.ClusterTcpSessionLoadBalancer,
-			UdpLoadBalancer:     c.config.ClusterUdpLoadBalancer,
-			UdpSessLoadBalancer: c.config.ClusterUdpSessionLoadBalancer,
+			TcpLoadBalancer:       c.config.ClusterTcpLoadBalancer,
+			TcpSessLoadBalancer:   c.config.ClusterTcpSessionLoadBalancer,
+			UdpLoadBalancer:       c.config.ClusterUdpLoadBalancer,
+			UdpSessLoadBalancer:   c.config.ClusterUdpSessionLoadBalancer,
+			LRTcpLoadBalancer:     fmt.Sprintf("vpc-%s-lr-tcp-load", util.DefaultVpc),
+			LRTcpSessLoadBalancer: fmt.Sprintf("vpc-%s-lr-tcp-sess-load", util.DefaultVpc),
+			LRUdpLoadBalancer:     fmt.Sprintf("vpc-%s-lr-udp-load", util.DefaultVpc),
+			LRUdpSessLoadBalancer: fmt.Sprintf("vpc-%s-lr-udp-sess-load", util.DefaultVpc),
 		}
 	} else {
 		return &VpcLoadBalancer{
-			TcpLoadBalancer:     fmt.Sprintf("vpc-%s-tcp-load", vpcKey),
-			TcpSessLoadBalancer: fmt.Sprintf("vpc-%s-tcp-sess-load", vpcKey),
-			UdpLoadBalancer:     fmt.Sprintf("vpc-%s-udp-load", vpcKey),
-			UdpSessLoadBalancer: fmt.Sprintf("vpc-%s-udp-sess-load", vpcKey),
+			TcpLoadBalancer:       fmt.Sprintf("vpc-%s-tcp-load", vpcKey),
+			TcpSessLoadBalancer:   fmt.Sprintf("vpc-%s-tcp-sess-load", vpcKey),
+			UdpLoadBalancer:       fmt.Sprintf("vpc-%s-udp-load", vpcKey),
+			UdpSessLoadBalancer:   fmt.Sprintf("vpc-%s-udp-sess-load", vpcKey),
+			LRTcpLoadBalancer:     fmt.Sprintf("vpc-%s-lr-tcp-load", vpcKey),
+			LRTcpSessLoadBalancer: fmt.Sprintf("vpc-%s-lr-tcp-sess-load", vpcKey),
+			LRUdpLoadBalancer:     fmt.Sprintf("vpc-%s-lr-udp-load", vpcKey),
+			LRUdpSessLoadBalancer: fmt.Sprintf("vpc-%s-lr-udp-sess-load", vpcKey),
 		}
 	}
 }
@@ -314,6 +326,82 @@ func (c *Controller) addLoadBalancer(vpc string) (*VpcLoadBalancer, error) {
 		}
 	} else {
 		klog.Infof("udp session load balancer %s exists", udpSessionLb)
+	}
+
+	lrTcpLb, err := c.ovnLegacyClient.FindLoadbalancer(vpcLbConfig.LRTcpLoadBalancer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find lr tcp lb %v", err)
+	}
+	if lrTcpLb == "" {
+		klog.Infof("init lr tcp load balancer %s", vpcLbConfig.LRTcpLoadBalancer)
+		err := c.ovnLegacyClient.CreateLoadBalancer(vpcLbConfig.LRTcpLoadBalancer, util.ProtocolTCP, "")
+		if err != nil {
+			klog.Errorf("failed to create lr tcp load balancer %v", err)
+			return nil, err
+		}
+	} else {
+		klog.Infof("lr tcp load balancer %s exists", lrTcpLb)
+	}
+	if err := c.ovnLegacyClient.AddLoadBalancerToLogicalRouter(vpcLbConfig.LRTcpLoadBalancer, vpc); err != nil {
+		klog.Errorf("failed to add lr tcp lb to %s, %v", vpcLbConfig.LRTcpLoadBalancer, err)
+		return nil, err
+	}
+
+	lrTcpSessionLb, err := c.ovnLegacyClient.FindLoadbalancer(vpcLbConfig.LRTcpSessLoadBalancer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find lr tcp session lb %v", err)
+	}
+	if lrTcpSessionLb == "" {
+		klog.Infof("init lr tcp session load balancer %s", vpcLbConfig.LRTcpSessLoadBalancer)
+		err := c.ovnLegacyClient.CreateLoadBalancer(vpcLbConfig.LRTcpSessLoadBalancer, util.ProtocolTCP, "ip_src")
+		if err != nil {
+			klog.Errorf("failed to create lr tcp session load balancer %v", err)
+			return nil, err
+		}
+	} else {
+		klog.Infof("lr tcp session load balancer %s exists", lrTcpSessionLb)
+	}
+	if err := c.ovnLegacyClient.AddLoadBalancerToLogicalRouter(vpcLbConfig.LRTcpSessLoadBalancer, vpc); err != nil {
+		klog.Errorf("failed to add lr tcp session lb to %s, %v", vpcLbConfig.LRTcpSessLoadBalancer, err)
+		return nil, err
+	}
+
+	lrUdpLb, err := c.ovnLegacyClient.FindLoadbalancer(vpcLbConfig.LRUdpLoadBalancer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find lr udp lb %v", err)
+	}
+	if lrUdpLb == "" {
+		klog.Infof("init lr udp load balancer %s", vpcLbConfig.LRUdpLoadBalancer)
+		err := c.ovnLegacyClient.CreateLoadBalancer(vpcLbConfig.LRUdpLoadBalancer, util.ProtocolUDP, "")
+		if err != nil {
+			klog.Errorf("failed to create lr udp load balancer %v", err)
+			return nil, err
+		}
+	} else {
+		klog.Infof("lr udp load balancer %s exists", lrUdpLb)
+	}
+	if err := c.ovnLegacyClient.AddLoadBalancerToLogicalRouter(vpcLbConfig.LRUdpLoadBalancer, vpc); err != nil {
+		klog.Errorf("failed to add lr udp lb to %s, %v", vpcLbConfig.LRUdpLoadBalancer, err)
+		return nil, err
+	}
+
+	lrUdpSessionLb, err := c.ovnLegacyClient.FindLoadbalancer(vpcLbConfig.LRUdpSessLoadBalancer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find lr udp session lb %v", err)
+	}
+	if lrUdpSessionLb == "" {
+		klog.Infof("init lr udp session load balancer %s", vpcLbConfig.LRUdpSessLoadBalancer)
+		err := c.ovnLegacyClient.CreateLoadBalancer(vpcLbConfig.LRUdpSessLoadBalancer, util.ProtocolUDP, "ip_src")
+		if err != nil {
+			klog.Errorf("failed to create lr udp session load balancer %v", err)
+			return nil, err
+		}
+	} else {
+		klog.Infof("lr udp session load balancer %s exists", lrUdpSessionLb)
+	}
+	if err := c.ovnLegacyClient.AddLoadBalancerToLogicalRouter(vpcLbConfig.LRUdpSessLoadBalancer, vpc); err != nil {
+		klog.Errorf("failed to add lr udp session lb to %s, %v", vpcLbConfig.LRUdpSessLoadBalancer, err)
+		return nil, err
 	}
 
 	return vpcLbConfig, nil

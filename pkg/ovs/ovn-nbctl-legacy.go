@@ -2747,3 +2747,25 @@ func (c LegacyClient) SetAclLog(pgName string, logEnable, isIngress bool) error 
 
 	return nil
 }
+
+func (c LegacyClient) CreateLRLBPortGroup(pgName, vpcName, serviceName string) error {
+	output, err := c.ovnNbCommand(
+		"--data=bare", "--no-heading", "--columns=_uuid", "find", "port_group", fmt.Sprintf("name=%s", pgName))
+	if err != nil {
+		klog.Errorf("failed to find port_group %s: %v, %q", pgName, err, output)
+		return err
+	}
+	if output != "" {
+		return nil
+	}
+	_, err = c.ovnNbCommand(
+		"pg-add", pgName,
+		"--", "set", "port_group", pgName, fmt.Sprintf("external_ids:svc=%s/%s", vpcName, serviceName),
+	)
+	return err
+}
+
+func (c LegacyClient) AddLoadBalancerToLogicalRouter(lb, lr string) error {
+	_, err := c.ovnNbCommand(MayExist, "lr-lb-add", lr, lb)
+	return err
+}

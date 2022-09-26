@@ -13,6 +13,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -220,6 +221,73 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 				}
 			}
 		}
+	}
+
+	if c.config.EnableEipSnat && svc.Annotations[util.EipAnnotation] != "" {
+		eIP := svc.Annotations[util.EipAnnotation]
+		lrTcpLb := fmt.Sprintf("vpc-%s-lr-tcp-load", util.DefaultVpc)
+		lrUdpLb := fmt.Sprintf("vpc-%s-lr-udp-load", util.DefaultVpc)
+		if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
+			lrTcpLb = fmt.Sprintf("vpc-%s-lr-tcp-sess-load", util.DefaultVpc)
+			lrUdpLb = fmt.Sprintf("vpc-%s-lr-udp-sess-load", util.DefaultVpc)
+		}
+
+		for _, port := range svc.Spec.Ports {
+			vip := util.JoinHostPort(eIP, port.Port)
+			backends := getServicePortBackends(ep, pods, port, eIP)
+			if port.Protocol == v1.ProtocolTCP {
+				// for performance reason delete lb with no backends
+				if len(backends) != 0 {
+					err = c.ovnLegacyClient.CreateLoadBalancerRule(lrTcpLb, vip, backends, string(port.Protocol))
+					if err != nil {
+						klog.Errorf("failed to update vip %s to lr tcp lb, %v", vip, err)
+						return err
+					}
+				} else {
+					err = c.ovnLegacyClient.DeleteLoadBalancerVip(vip, lrTcpLb)
+					if err != nil {
+						klog.Errorf("failed to delete vip %s at lr tcp lb, %v", vip, err)
+						return err
+					}
+				}
+			} else {
+				if len(backends) != 0 {
+					err = c.ovnLegacyClient.CreateLoadBalancerRule(lrUdpLb, vip, backends, string(port.Protocol))
+					if err != nil {
+						klog.Errorf("failed to update vip %s to lr udp lb, %v", vip, err)
+						return err
+					}
+				} else {
+					err = c.ovnLegacyClient.DeleteLoadBalancerVip(vip, lrUdpLb)
+					if err != nil {
+						klog.Errorf("failed to delete vip %s at lr udp lb, %v", vip, err)
+						return err
+					}
+				}
+			}
+		}
+
+		pgName := getLRLBPortGroupName(vpcName, svc.Name)
+		if err := c.ovnLegacyClient.CreateLRLBPortGroup(pgName, vpcName, name); err != nil {
+			klog.Errorf("failed to create port group for vpc %s and service %s, %v", vpcName, name, err)
+			return err
+		}
+		var pgPorts []string
+		for _, pod := range pods {
+			podName := c.getNameByPod(pod)
+			portName := ovs.PodNameToPortName(podName, pod.Namespace, "ovn")
+			pgPorts = append(pgPorts, portName)
+		}
+
+		klog.Errorf("pgPorts len %d, %v", len(pgPorts), pgPorts)
+
+		c.ovnPgKeyMutex.Lock(pgName)
+		if err = c.ovnLegacyClient.SetPortsToPortGroup(pgName, pgPorts); err != nil {
+			c.ovnPgKeyMutex.Unlock(pgName)
+			klog.Errorf("failed to set ports to port group %v, %v", pgName, err)
+			return err
+		}
+		c.ovnPgKeyMutex.Unlock(pgName)
 	}
 
 	return nil
