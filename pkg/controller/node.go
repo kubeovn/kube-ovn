@@ -281,6 +281,31 @@ func (c *Controller) handleAddNode(key string) error {
 				return err
 			}
 		}
+
+		// Add policy route for locical router. issue: 1277 and 1789.
+		// Src: portgroup for all port on node; Dst: serviceIPRange and nodeLocalDNS; reroute: ovn0
+		// 1. Pod with Snat or EIP connects serviceIP when enableLB is false.
+		// 2. Pod with Snat or EIP connects nodelocaldns.
+		for _, serviceIPRange := range strings.Split(c.config.ServiceClusterIPRange, ",") {
+			if util.CheckProtocol(strings.TrimSpace(serviceIPRange)) == util.CheckProtocol(ip) {
+				dstCidr := fmt.Sprintf("ip%d.dst == %s", af, serviceIPRange)
+				if c.config.NodeLocalDNS != "" && util.CheckProtocol(c.config.NodeLocalDNS) == util.CheckProtocol(ip) {
+					dstCidr = fmt.Sprintf("(ip%d.dst == %s || ip%d.dst == %s)", af, serviceIPRange, af, c.config.NodeLocalDNS)
+				}
+				pgName := strings.Replace(portName, "-", ".", -1)
+				pgAs := fmt.Sprintf("%s_ip%d", pgName, af)
+				match := fmt.Sprintf("ip%d.src == $%s && %s", af, pgAs, dstCidr)
+				externalIDs := map[string]string{
+					"vendor":         util.CniTypeName,
+					"node":           node.Name,
+					"address-family": strconv.Itoa(af),
+				}
+				if err = c.ovnLegacyClient.AddPolicyRoute(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", ip, externalIDs); err != nil {
+					klog.Errorf("failed to add logical router policy for serviceIP %s on node %s: %v", serviceIPRange, node.Name, err)
+					return err
+				}
+			}
+		}
 	}
 
 	if err := c.addNodeGwStaticRoute(); err != nil {
