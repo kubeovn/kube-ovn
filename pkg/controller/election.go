@@ -49,6 +49,7 @@ func (c *Controller) leaderElection() {
 	var flag bool
 	for {
 		if c.isLeader() {
+			config.WasLeader = true
 			return
 		}
 		if !flag {
