@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Wifx/gonetworkmanager"
@@ -199,7 +200,7 @@ func changeProvideNicName(current, target string) (bool, error) {
 				continue
 			}
 			if route.Scope == scope {
-				if err = netlink.RouteReplace(&route); err != nil {
+				if err = netlink.RouteReplace(&route); err != nil && err != syscall.EEXIST {
 					klog.Errorf("failed to replace route %s: %v", route.String(), err)
 					return false, err
 				}
