@@ -25,7 +25,7 @@ RUN cd /usr/src/ && \
     # add fdb update logging
     curl -s https://github.com/kubeovn/ovs/commit/8c2f28b778129161bbf8f0738fa41d385860d5bc.patch | git apply && \
     # compile without avx512
-    if [ "$ARCH" = "amd64" -a "$NO_AVX512" = "true" ]; then curl -s https://github.com/kubeovn/ovs/commit/38c59e078d69b343f56ab0f380fb9f42b94b7c02.patch | git apply; fi && \
+    if [ "$ARCH" = "amd64" -a "$NO_AVX512" = "true" ]; then curl -s https://github.com/kubeovn/ovs/commit/c257b0794b827cfae9660a9f3238bee8a29e7676.patch | git apply; fi && \
     ./boot.sh && \
     rm -rf .git && \
     CONFIGURE_OPTS='' && \
