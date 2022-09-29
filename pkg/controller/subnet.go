@@ -448,7 +448,7 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (bool, erro
 	return false, nil
 }
 
-func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason string, errStr string) {
+func (c *Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason string, errStr string) {
 	if errStr != "" {
 		subnet.Status.SetError(reason, errStr)
 		subnet.Status.NotValidated(reason, errStr)

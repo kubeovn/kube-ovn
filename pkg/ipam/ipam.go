@@ -261,3 +261,14 @@ func (ipam *IPAM) GetSubnetV4Mask(subnetName string) (string, error) {
 		return "", ErrNoAvailable
 	}
 }
+
+func (ipam *IPAM) GetPodByIP(ip string, subnetName string) (podList []string) {
+	ipam.mutex.RLock()
+	defer ipam.mutex.RUnlock()
+
+	if subnet, ok := ipam.Subnets[subnetName]; !ok {
+		return
+	} else {
+		return subnet.GetPodByIP(ip)
+	}
+}

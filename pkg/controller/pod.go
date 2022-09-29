@@ -19,6 +19,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -1340,10 +1341,58 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	return "", "", "", podNet.Subnet, ipam.ErrNoAvailable
 }
 
+func (c *Controller) recycleAddress(ipStrList []string, subnet string) error {
+	// get ip crd, check if crd exists. if crd not exists, release all pods related to the address, otherwise
+	podUsedIPs, err := c.config.KubeOvnClient.KubeovnV1().IPs().List(context.Background(), metav1.ListOptions{
+		LabelSelector: fields.OneTermEqualSelector(subnet, "").String(),
+	})
+	if err != nil {
+		klog.Errorf("failed to list ip crd, subnet:%v, err:%v", subnet, err)
+		return err
+	}
+
+	for _, ipStr := range ipStrList {
+		curPods := make(map[string]int)
+		for _, ipCrd := range podUsedIPs.Items {
+			if !(util.CheckProtocol(ipStr) == kubeovnv1.ProtocolIPv4 && ipCrd.Spec.V4IPAddress == ipStr) &&
+				!(util.CheckProtocol(ipStr) == kubeovnv1.ProtocolIPv6 && ipCrd.Spec.V6IPAddress == ipStr) {
+				continue
+			}
+
+			if _, err := c.podsLister.Pods(ipCrd.Spec.Namespace).Get(ipCrd.Spec.PodName); err != nil {
+				if k8serrors.IsNotFound(err) {
+					// delete ip crd that associated with pod which does not exist anymore
+					if err = c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ipCrd.Name, metav1.DeleteOptions{}); err != nil {
+						klog.Errorf("failed to delete ip crd:%s, err:%v", ipCrd.Name, err)
+						return err
+					}
+					continue
+				} else {
+					klog.Errorf("failed to get pods:%s, err:%v", ipCrd.Spec.PodName, err)
+					return err
+				}
+			}
+
+			curPods[ipCrd.Spec.PodName] = 1
+		}
+
+		// release addresses that does not associate with existing pod
+		ipPodList := c.ipam.GetPodByIP(ipStr, subnet)
+		for _, podName := range ipPodList {
+			if _, ok := curPods[podName]; !ok {
+				c.ipam.ReleaseAddressByPod(podName)
+			}
+		}
+	}
+
+	return nil
+}
+
 func (c *Controller) acquireStaticAddress(key, nicName, ip, mac, subnet string, liveMigration bool) (string, string, string, error) {
 	var v4IP, v6IP string
 	var err error
-	for _, ipStr := range strings.Split(ip, ",") {
+	ipStrList := strings.Split(ip, ",")
+	for _, ipStr := range ipStrList {
 		if net.ParseIP(ipStr) == nil {
 			return "", "", "", fmt.Errorf("failed to parse IP %s", ipStr)
 		}
@@ -1351,6 +1400,11 @@ func (c *Controller) acquireStaticAddress(key, nicName, ip, mac, subnet string, 
 
 	if v4IP, v6IP, mac, err = c.ipam.GetStaticAddress(key, nicName, ip, mac, subnet, !liveMigration); err != nil {
 		klog.Errorf("failed to get static ip %v, mac %v, subnet %v, err %v", ip, mac, subnet, err)
+		if err == ipam.ErrConflict {
+			if errGc := c.recycleAddress(ipStrList, subnet); errGc != nil {
+				klog.Errorf("failed to recycleAddress, ip %v, subnet %v, err %v", ip, subnet, err)
+			}
+		}
 		return "", "", "", err
 	}
 	return v4IP, v6IP, mac, nil

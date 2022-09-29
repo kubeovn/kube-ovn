@@ -568,3 +568,20 @@ func (subnet *Subnet) isIPAssignedToPod(ip, podName string) bool {
 	}
 	return false
 }
+
+func (subnet *Subnet) GetPodByIP(ip string) (podList []string) {
+	if pl, ok := subnet.V4IPToPod[IP(ip)]; ok {
+		if strings.TrimSpace(pl) != "" {
+			podList = strings.Split(pl, ",")
+		}
+		return
+	}
+	if pl6, ok := subnet.V6IPToPod[IP(ip)]; ok {
+		if strings.TrimSpace(pl6) != "" {
+			podList = strings.Split(pl6, ",")
+		}
+		return
+	}
+
+	return
+}
