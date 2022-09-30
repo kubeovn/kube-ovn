@@ -8,7 +8,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestUTIPAM(t *testing.T) {
+func TestIPAM(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Kube-OVN ipam unit test Suite")
 }
@@ -63,7 +63,6 @@ var _ = Describe("[IPAM]", func() {
 
 				_, _, _, err = im.GetStaticAddress("pod1.ns", "pod1.ns", "10.16.0.2", "", subnetName, true)
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(im.IsIPAssignedToPod("10.16.0.2", subnetName, "pod1.ns")).Should(BeTrue())
 
 				ip, _, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", "", subnetName, nil, true)
 				Expect(err).ShouldNot(HaveOccurred())
@@ -79,7 +78,6 @@ var _ = Describe("[IPAM]", func() {
 				im.ReleaseAddressByPod("pod1.ns")
 				_, _, _, err = im.GetStaticAddress("pod3.ns", "pod3.ns", "10.16.0.2", "", subnetName, true)
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(im.IsIPAssignedToPod("10.16.0.2", subnetName, "pod1.ns")).Should(BeFalse())
 
 				_, _, _, err = im.GetRandomAddress("pod4.ns", "pod4.ns", "", "invalid_subnet", nil, true)
 				Expect(err).Should(MatchError(ErrNoAvailable))

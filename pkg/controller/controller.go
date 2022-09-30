@@ -40,7 +40,7 @@ type Controller struct {
 	podSubnetMap *sync.Map
 	ipam         *ovnipam.IPAM
 
-	ovnLegacyClient *ovs.LegacyClient
+	ovnLegacyClient ovs.LegacyClientInterface
 	ovnClient       *ovs.OvnClient
 	ovnPgKeyMutex   *keymutex.KeyMutex
 
@@ -225,7 +225,8 @@ func NewController(config *Configuration) *Controller {
 		config:          config,
 		vpcs:            &sync.Map{},
 		podSubnetMap:    &sync.Map{},
-		ovnLegacyClient: ovs.NewLegacyClient(config.OvnNbAddr, config.OvnTimeout, config.OvnSbAddr, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
+		ovnLegacyClient: config.OvnLegacyClient,
+		ovnClient:       config.OvnClient,
 		ovnPgKeyMutex:   keymutex.New(97),
 		ipam:            ovnipam.NewIPAM(),
 
@@ -344,11 +345,6 @@ func NewController(config *Configuration) *Controller {
 		kubeovnInformerFactory: kubeovnInformerFactory,
 	}
 
-	var err error
-	if controller.ovnClient, err = ovs.NewOvnClient(config.OvnNbAddr, config.OvnTimeout); err != nil {
-		klog.Fatal(err)
-	}
-
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddPod,
 		DeleteFunc: controller.enqueueDeletePod,
@@ -450,6 +446,7 @@ func NewController(config *Configuration) *Controller {
 			DeleteFunc: controller.enqueueDeleteNp,
 		})
 	}
+
 	sgInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddSg,
 		DeleteFunc: controller.enqueueDeleteSg,

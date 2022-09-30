@@ -35,6 +35,30 @@ type LegacyClient struct {
 	Version                       string
 }
 
+func (c *LegacyClient) SetExternalGatewayType(gatewayType string) {
+	c.ExternalGatewayType = gatewayType
+}
+
+func (c LegacyClient) GetExternalGatewayType() string {
+	return c.ExternalGatewayType
+}
+
+func (c *LegacyClient) SetOvnICNbAddress(address string) {
+	c.OvnICNbAddress = address
+}
+
+func (c *LegacyClient) SetOvnICSbAddress(address string) {
+	c.OvnICSbAddress = address
+}
+
+func (c LegacyClient) GetOvnICNbAddress() string {
+	return c.OvnICNbAddress
+}
+
+func (c LegacyClient) GetOvnICSbAddress() string {
+	return c.OvnICSbAddress
+}
+
 type OvnClient struct {
 	ovnNbClient
 }

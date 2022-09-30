@@ -3,6 +3,7 @@ package controller
 import (
 	"flag"
 	"fmt"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"os"
 	"time"
 
@@ -24,6 +25,8 @@ type Configuration struct {
 	OvnNbAddr            string
 	OvnSbAddr            string
 	OvnTimeout           int
+	OvnLegacyClient      ovs.LegacyClientInterface
+	OvnClient            *ovs.OvnClient
 	CustCrdRetryMaxDelay int
 	CustCrdRetryMinDelay int
 	KubeConfigFile       string
@@ -252,6 +255,17 @@ func ParseFlags() (*Configuration, error) {
 	if err := util.CheckSystemCIDR([]string{config.NodeSwitchCIDR, config.DefaultCIDR, config.ServiceClusterIPRange}); err != nil {
 		return nil, fmt.Errorf("check system cidr failed, %v", err)
 	}
+
+	ovnClient, err := ovs.NewOvnClient(config.OvnNbAddr, config.OvnTimeout)
+	if err != nil {
+		return nil, err
+	}
+	config.OvnClient = ovnClient
+
+	config.OvnLegacyClient = ovs.NewLegacyClient(config.OvnNbAddr, config.OvnTimeout, config.OvnSbAddr,
+		config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer,
+		config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch,
+		config.NodeSwitchCIDR)
 
 	klog.Infof("config is  %+v", config)
 	return config, nil

@@ -104,13 +104,13 @@ func (c *Controller) resyncInterConnection() {
 				klog.Errorf("failed to remove learned static routes, %v", err)
 				return
 			}
-			c.ovnLegacyClient.OvnICSbAddress = genHostAddress(cm.Data["ic-db-host"], cm.Data["ic-sb-port"])
+			c.ovnLegacyClient.SetOvnICSbAddress(genHostAddress(cm.Data["ic-db-host"], cm.Data["ic-sb-port"]))
 
 			if err := c.RemoveOldChassisInSbDB(); err != nil {
 				klog.Errorf("failed to remove remote chassis: %v", err)
 			}
 
-			c.ovnLegacyClient.OvnICNbAddress = genHostAddress(cm.Data["ic-db-host"], cm.Data["ic-nb-port"])
+			c.ovnLegacyClient.SetOvnICNbAddress(genHostAddress(cm.Data["ic-db-host"], cm.Data["ic-nb-port"]))
 			klog.Info("start to reestablish ovn-ic")
 			if err := c.establishInterConnection(cm.Data); err != nil {
 				klog.Errorf("failed to reestablish ovn-ic, %v", err)
@@ -122,7 +122,7 @@ func (c *Controller) resyncInterConnection() {
 			return
 		}
 
-		c.ovnLegacyClient.OvnICNbAddress = genHostAddress(cm.Data["ic-db-host"], cm.Data["ic-nb-port"])
+		c.ovnLegacyClient.SetOvnICNbAddress(genHostAddress(cm.Data["ic-db-host"], cm.Data["ic-nb-port"]))
 		klog.Info("start to establish ovn-ic")
 		if err := c.establishInterConnection(cm.Data); err != nil {
 			klog.Errorf("failed to establish ovn-ic, %v", err)
