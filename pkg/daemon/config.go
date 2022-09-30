@@ -46,6 +46,7 @@ type Configuration struct {
 	NodeLocalDnsIP          string
 	EncapChecksum           bool
 	EnablePprof             bool
+	MacLearningFallback     bool
 	PprofPort               int
 	NetworkType             string
 	CniConfDir              string
@@ -74,6 +75,7 @@ func ParseFlags() *Configuration {
 		argEncapChecksum         = pflag.Bool("encap-checksum", true, "Enable checksum")
 		argEnablePprof           = pflag.Bool("enable-pprof", false, "Enable pprof")
 		argPprofPort             = pflag.Int("pprof-port", 10665, "The port to get profiling data")
+		argMacLearningFallback   = pflag.Bool("mac-learning-fallback", false, "Fallback to the legacy MAC learning mode")
 
 		argsNetworkType            = pflag.String("network-type", util.NetworkTypeGeneve, "Tunnel encapsulation protocol in overlay networks")
 		argCniConfDir              = pflag.String("cni-conf-dir", "/etc/cni/net.d", "Path of the CNI config directory.")
@@ -116,6 +118,7 @@ func ParseFlags() *Configuration {
 		KubeConfigFile:          *argKubeConfigFile,
 		EnablePprof:             *argEnablePprof,
 		PprofPort:               *argPprofPort,
+		MacLearningFallback:     *argMacLearningFallback,
 		NodeName:                strings.ToLower(*argNodeName),
 		ServiceClusterIPRange:   *argServiceClusterIPRange,
 		NodeLocalDnsIP:          *argNodeLocalDnsIP,
