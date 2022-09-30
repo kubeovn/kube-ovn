@@ -25,7 +25,7 @@ func (c *Controller) InitOVN() error {
 	}
 
 	if c.config.EnableLb {
-		if err := c.initLoadBalancer(); err != nil {
+		if _, err := c.initLoadBalancer(); err != nil {
 			klog.Errorf("init load balancer failed: %v", err)
 			return err
 		}
@@ -206,11 +206,12 @@ func (c *Controller) initClusterRouter() error {
 }
 
 // InitLoadBalancer init the default tcp and udp cluster loadbalancer
-func (c *Controller) initLoadBalancer() error {
+func (c *Controller) initLoadBalancer() (bool, error) {
+	var changed bool
 	vpcs, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		klog.Errorf("failed to list vpc: %v", err)
-		return err
+		return changed, err
 	}
 
 	for _, cachedVpc := range vpcs.Items {
@@ -219,60 +220,64 @@ func (c *Controller) initLoadBalancer() error {
 
 		tcpLb, err := c.ovnLegacyClient.FindLoadbalancer(vpcLb.TcpLoadBalancer)
 		if err != nil {
-			return fmt.Errorf("failed to find tcp lb: %v", err)
+			return changed, fmt.Errorf("failed to find tcp lb: %v", err)
 		}
 		if tcpLb == "" {
 			klog.Infof("init cluster tcp load balancer %s", vpcLb.TcpLoadBalancer)
 			err := c.ovnLegacyClient.CreateLoadBalancer(vpcLb.TcpLoadBalancer, util.ProtocolTCP, "")
 			if err != nil {
 				klog.Errorf("failed to create cluster tcp load balancer: %v", err)
-				return err
+				return changed, err
 			}
+			changed = true
 		} else {
 			klog.Infof("tcp load balancer %s exists", tcpLb)
 		}
 
 		tcpSessionLb, err := c.ovnLegacyClient.FindLoadbalancer(vpcLb.TcpSessLoadBalancer)
 		if err != nil {
-			return fmt.Errorf("failed to find tcp session lb: %v", err)
+			return changed, fmt.Errorf("failed to find tcp session lb: %v", err)
 		}
 		if tcpSessionLb == "" {
 			klog.Infof("init cluster tcp session load balancer %s", vpcLb.TcpSessLoadBalancer)
 			err := c.ovnLegacyClient.CreateLoadBalancer(vpcLb.TcpSessLoadBalancer, util.ProtocolTCP, "ip_src")
 			if err != nil {
 				klog.Errorf("failed to create cluster tcp session load balancer: %v", err)
-				return err
+				return changed, err
 			}
+			changed = true
 		} else {
 			klog.Infof("tcp session load balancer %s exists", vpcLb.TcpSessLoadBalancer)
 		}
 
 		udpLb, err := c.ovnLegacyClient.FindLoadbalancer(vpcLb.UdpLoadBalancer)
 		if err != nil {
-			return fmt.Errorf("failed to find udp lb: %v", err)
+			return changed, fmt.Errorf("failed to find udp lb: %v", err)
 		}
 		if udpLb == "" {
 			klog.Infof("init cluster udp load balancer %s", vpcLb.UdpLoadBalancer)
 			err := c.ovnLegacyClient.CreateLoadBalancer(vpcLb.UdpLoadBalancer, util.ProtocolUDP, "")
 			if err != nil {
 				klog.Errorf("failed to create cluster udp load balancer: %v", err)
-				return err
+				return changed, err
 			}
+			changed = true
 		} else {
 			klog.Infof("udp load balancer %s exists", udpLb)
 		}
 
 		udpSessionLb, err := c.ovnLegacyClient.FindLoadbalancer(vpcLb.UdpSessLoadBalancer)
 		if err != nil {
-			return fmt.Errorf("failed to find udp session lb: %v", err)
+			return changed, fmt.Errorf("failed to find udp session lb: %v", err)
 		}
 		if udpSessionLb == "" {
 			klog.Infof("init cluster udp session load balancer %s", vpcLb.UdpSessLoadBalancer)
 			err := c.ovnLegacyClient.CreateLoadBalancer(vpcLb.UdpSessLoadBalancer, util.ProtocolUDP, "ip_src")
 			if err != nil {
 				klog.Errorf("failed to create cluster udp session load balancer: %v", err)
-				return err
+				return changed, err
 			}
+			changed = true
 		} else {
 			klog.Infof("udp session load balancer %s exists", vpcLb.UdpSessLoadBalancer)
 		}
@@ -283,14 +288,14 @@ func (c *Controller) initLoadBalancer() error {
 		vpc.Status.UdpSessionLoadBalancer = vpcLb.UdpSessLoadBalancer
 		bytes, err := vpc.Status.Bytes()
 		if err != nil {
-			return err
+			return changed, err
 		}
 		_, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
 		if err != nil {
-			return err
+			return changed, err
 		}
 	}
-	return nil
+	return changed, nil
 }
 
 func (c *Controller) InitIPAM() error {
@@ -799,5 +804,100 @@ func (c *Controller) initNodeChassis() error {
 			}
 		}
 	}
+	return nil
+}
+
+func (c *Controller) checkAndSyncOvnDb() {
+	klog.Infof("start to check ovn db")
+	if err := c.initClusterRouter(); err != nil {
+		klog.Errorf("init cluster router failed: %v", err)
+		return
+	}
+
+	if c.config.EnableLb {
+		var changed bool
+		var err error
+		if changed, err = c.initLoadBalancer(); err != nil {
+			klog.Errorf("init load balancer failed: %v", err)
+			return
+		}
+		v4Svc, _ := util.SplitStringIP(c.config.ServiceClusterIPRange)
+		if v4Svc != "" {
+			if err := c.ovnLegacyClient.SetLBCIDR(v4Svc); err != nil {
+				klog.Errorf("init load balancer svc cidr failed: %v", err)
+				return
+			}
+		}
+		if changed {
+			if err := c.syncUpdateService(); err != nil {
+				klog.Errorf("failed to update service: %v", err)
+				return
+			}
+		}
+	}
+
+	if err := c.initDefaultVlan(); err != nil {
+		klog.Errorf("init default vlan failed: %v", err)
+		return
+	}
+
+	if err := c.syncSwitch(); err != nil {
+		klog.Errorf("sync node switch failed: %v", err)
+		return
+	}
+
+	if err := c.syncNodeInfo(); err != nil {
+		klog.Errorf("sync node port-group failed: %v", err)
+		return
+	}
+	klog.Infof("finish to check ovn db")
+}
+
+func (c *Controller) syncSwitch() error {
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to get subnets %v", err)
+		return err
+	}
+
+	for _, subnet := range subnets {
+		vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
+		if err != nil {
+			klog.Errorf("failed to get subnet's vpc '%s', %v", subnet.Spec.Vpc, err)
+			return err
+		}
+		if !vpc.Status.Standby {
+			err = fmt.Errorf("the vpc '%s' not standby yet", vpc.Name)
+			klog.Error(err)
+			return err
+		}
+
+		exist, err := c.ovnLegacyClient.LogicalSwitchExists(subnet.Name, c.config.EnableExternalVpc)
+		if err != nil {
+			klog.Errorf("failed to list logical switch, %v", err)
+			return err
+		}
+
+		needRouter := subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway
+		if !exist {
+			if err := c.ovnLegacyClient.CreateLogicalSwitch(subnet.Name, vpc.Status.Router, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, needRouter); err != nil {
+				klog.Errorf("failed to create switch %s, %v", subnet.Name, err)
+				return err
+			}
+
+			if needRouter {
+				if err := c.reconcileRouterPortBySubnet(vpc, subnet); err != nil {
+					klog.Errorf("failed to connect switch %s to router %s, %v", subnet.Name, vpc.Name, err)
+					return err
+				}
+			}
+
+			if err := c.reconcileOvnRoute(subnet); err != nil {
+				klog.Errorf("failed to reconcile subnet %s, %v", subnet.Name, err)
+				return err
+			}
+		}
+	}
+
 	return nil
 }

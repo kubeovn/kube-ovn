@@ -806,6 +806,8 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		}
 	}, time.Duration(c.config.InspectInterval)*time.Second, stopCh)
 
+	go wait.Until(c.checkAndSyncOvnDb, 1*time.Minute, stopCh)
+
 	if c.config.EnableExternalVpc {
 		go wait.Until(func() {
 			c.syncExternalVpc()

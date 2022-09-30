@@ -492,3 +492,27 @@ func (c *Controller) handleAddService(key string) error {
 
 	return nil
 }
+
+func (c *Controller) syncUpdateService() error {
+	svcs, err := c.servicesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list svc, %v", err)
+		return err
+	}
+
+	for _, svc := range svcs {
+		if svc.Spec.Type == v1.ServiceTypeLoadBalancer {
+			continue
+		}
+
+		var key string
+		var err error
+		if key, err = cache.MetaNamespaceKeyFunc(svc); err != nil {
+			utilruntime.HandleError(err)
+			return err
+		}
+		klog.V(3).Infof("enqueue update service %s", key)
+		c.updateServiceQueue.Add(key)
+	}
+	return nil
+}

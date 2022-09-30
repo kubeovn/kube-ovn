@@ -1208,3 +1208,80 @@ func (c *Controller) addPolicyRouteForCentralizedSubnetOnNode(nodeName, nodeIP s
 	}
 	return nil
 }
+
+func (c *Controller) syncNodeInfo() error {
+	nodes, err := c.nodesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list nodes: %v", err)
+		return err
+	}
+	for _, node := range nodes {
+		ipStr := node.Annotations[util.IpAddressAnnotation]
+		mac := node.Annotations[util.MacAddressAnnotation]
+		portName := fmt.Sprintf("node-%s", node.Name)
+		nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
+
+		exist, err := c.ovnLegacyClient.LogicalSwitchPortExists(portName)
+		if err != nil {
+			klog.Errorf("failed to list logical switch port %s, %v", portName, err)
+			return err
+		}
+		if !exist {
+			if err := c.ovnLegacyClient.CreatePort(c.config.NodeSwitch, portName, ipStr, mac, "", "", false, "", "", false, false, nil); err != nil {
+				klog.Errorf("failed to create logical switch port %s, %v", portName, err)
+				return err
+			}
+		}
+
+		for _, ip := range strings.Split(ipStr, ",") {
+			if ip == "" {
+				continue
+			}
+
+			nodeIP, af := nodeIPv4, 4
+			if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 {
+				nodeIP, af = nodeIPv6, 6
+			}
+			if nodeIP != "" {
+				match := fmt.Sprintf("ip%d.dst == %s", af, nodeIP)
+
+				exist, err = c.ovnLegacyClient.IsPolicyRouteExist(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match)
+				if err != nil {
+					klog.Errorf("failed to get policy route for node %s, %v", node.Name, err)
+					return err
+				}
+				if !exist {
+					externalIDs := map[string]string{
+						"vendor":         util.CniTypeName,
+						"node":           node.Name,
+						"address-family": strconv.Itoa(af),
+					}
+					if err = c.ovnLegacyClient.AddPolicyRoute(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", ip, externalIDs); err != nil {
+						klog.Errorf("failed to add logical router policy for node %s: %v", node.Name, err)
+						return err
+					}
+				}
+			}
+		}
+
+		if err := c.addNodeGwStaticRoute(); err != nil {
+			klog.Errorf("failed to add static route for node gw: %v", err)
+			return err
+		}
+
+		pgName := strings.Replace(node.Annotations[util.PortNameAnnotation], "-", ".", -1)
+		exist, err = c.ovnLegacyClient.PortGroupExists(pgName)
+		if err != nil {
+			klog.Errorf("failed to get port-group for node %v: %v", node.Name, err)
+			return err
+		}
+		if !exist {
+			if err := c.ovnLegacyClient.CreateNpPortGroup(pgName, "node", node.Name); err != nil {
+				klog.Errorf("failed to create port group %s for node %s: %v", pgName, node.Name, err)
+				return err
+			}
+		}
+	}
+
+	return nil
+}
