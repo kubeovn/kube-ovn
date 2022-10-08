@@ -1207,7 +1207,7 @@ spec:
       hostPID: true
       containers:
         - name: openvswitch
-          image: "kubeovn/kube-ovn-dpdk:$DPDK_VERSION-$VERSION"
+          image: "$REGISTRY/kube-ovn-dpdk:$DPDK_VERSION-$VERSION"
           imagePullPolicy: $IMAGE_PULL_POLICY
           command: ["/kube-ovn/start-ovs-dpdk.sh"]
           securityContext:
