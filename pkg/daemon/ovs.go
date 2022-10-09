@@ -482,13 +482,15 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int) error {
 	return nil
 }
 
-func configExternalBridge(provider, bridge, nic string) error {
+func configExternalBridge(provider, bridge, nic string, macLearningFallback bool) error {
 	brExists, err := ovs.BridgeExists(bridge)
 	if err != nil {
 		return fmt.Errorf("failed to check OVS bridge existence: %v", err)
 	}
 	output, err := ovs.Exec(ovs.MayExist, "add-br", bridge,
-		"--", "set", "bridge", bridge, "external_ids:vendor="+util.CniTypeName)
+		"--", "set", "bridge", bridge, fmt.Sprintf("other_config:mac-learning-fallback=%v", macLearningFallback),
+		"--", "set", "bridge", bridge, "external_ids:vendor="+util.CniTypeName,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to create OVS bridge %s, %v: %q", bridge, err, output)
 	}

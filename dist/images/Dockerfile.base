@@ -21,6 +21,8 @@ RUN cd /usr/src/ && \
     curl -s https://github.com/kubeovn/ovs/commit/8dd4973bba021ce92eb9f42446d6c1c0e3474e25.patch | git apply && \
     # add fdb update logging
     curl -s https://github.com/kubeovn/ovs/commit/7a7e8e2b5c17d8ae789599db861cf1eafc1c8ffd.patch | git apply && \
+    # fdb: fix mac learning in environments with hairpin enabled
+    curl -s https://github.com/kubeovn/ovs/commit/8d661ed4706a60d9bb96be6d9ca20117dde60bcc.patch | git apply && \
     ./boot.sh && \
     rm -rf .git && \
     DATAPATH_CONFIGURE_OPTS='--prefix=/usr --enable-shared' DEB_BUILD_OPTIONS='parallel=8 nocheck' fakeroot debian/rules binary

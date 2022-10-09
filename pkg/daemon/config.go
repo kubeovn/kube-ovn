@@ -44,6 +44,7 @@ type Configuration struct {
 	EncapChecksum         bool
 	PprofPort             int
 	EnablePprof           bool
+	MacLearningFallback   bool
 	NetworkType           string
 	DefaultProviderName   string
 	DefaultInterfaceName  string
@@ -65,6 +66,7 @@ func ParseFlags(nicBridgeMappings map[string]string) (*Configuration, error) {
 		argEncapChecksum         = pflag.Bool("encap-checksum", true, "Enable checksum, default: true")
 		argPprofPort             = pflag.Int("pprof-port", 10665, "The port to get profiling data, default: 10665")
 		argEnablePprof           = pflag.Bool("enable-pprof", false, "Enable pprof")
+		argMacLearningFallback   = pflag.Bool("mac-learning-fallback", false, "Fallback to the legacy MAC learning mode")
 		argsNetworkType          = pflag.String("network-type", "geneve", "The ovn network type, default: geneve")
 		argsDefaultProviderName  = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name, default: provider")
 		argsDefaultInterfaceName = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
@@ -106,6 +108,7 @@ func ParseFlags(nicBridgeMappings map[string]string) (*Configuration, error) {
 		KubeConfigFile:        *argKubeConfigFile,
 		EnablePprof:           *argEnablePprof,
 		PprofPort:             *argPprofPort,
+		MacLearningFallback:   *argMacLearningFallback,
 		NodeName:              nodeName,
 		ServiceClusterIPRange: *argServiceClusterIPRange,
 		NodeLocalDNSIP:        *argNodeLocalDnsIP,
