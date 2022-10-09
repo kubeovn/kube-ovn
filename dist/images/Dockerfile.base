@@ -20,6 +20,8 @@ RUN cd /usr/src/ && \
     curl -s https://github.com/kubeovn/ovs/commit/22ea22c40b46ee5adeae977ff6cfca81b3ff25d7.patch | git apply && \
     # add fdb update logging
     curl -s https://github.com/kubeovn/ovs/commit/7a7e8e2b5c17d8ae789599db861cf1eafc1c8ffd.patch | git apply && \
+    # fdb: fix mac learning in environments with hairpin enabled
+    curl -s https://github.com/kubeovn/ovs/commit/8d661ed4706a60d9bb96be6d9ca20117dde60bcc.patch | git apply && \
     ./boot.sh && \
     rm -rf .git && \
     CONFIGURE_OPTS='' && \
