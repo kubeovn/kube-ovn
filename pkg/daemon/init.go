@@ -96,7 +96,7 @@ func InitMirror(config *Configuration) error {
 	return configureEmptyMirror(config.MirrorNic, config.MTU)
 }
 
-func ovsInitProviderNetwork(provider, nic string, exchangeLinkName bool) (int, error) {
+func ovsInitProviderNetwork(provider, nic string, exchangeLinkName, macLearningFallback bool) (int, error) {
 	// create and configure external bridge
 	brName := util.ExternalBridgeName(provider)
 	if exchangeLinkName {
@@ -110,7 +110,7 @@ func ovsInitProviderNetwork(provider, nic string, exchangeLinkName bool) (int, e
 		}
 	}
 
-	if err := configExternalBridge(provider, brName, nic, exchangeLinkName); err != nil {
+	if err := configExternalBridge(provider, brName, nic, exchangeLinkName, macLearningFallback); err != nil {
 		errMsg := fmt.Errorf("failed to create and configure external bridge %s: %v", brName, err)
 		klog.Error(errMsg)
 		return 0, errMsg
