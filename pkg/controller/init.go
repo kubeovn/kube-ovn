@@ -66,6 +66,16 @@ func (c *Controller) InitDefaultVpc() error {
 	if err != nil {
 		cachedVpc = &kubeovnv1.Vpc{}
 		cachedVpc.Name = util.DefaultVpc
+		// default vpc created by kube-ovn and support update later
+		if cachedVpc.Spec.StaticRoutes == nil {
+			nodeStaticRoute := kubeovnv1.StaticRoute{
+				Policy:    kubeovnv1.PolicyDst,
+				CIDR:      "0.0.0.0/0,::/0",
+				NextHopIP: c.config.NodeSwitchGateway,
+			}
+			cachedVpc.Spec.StaticRoutes = make([]*kubeovnv1.StaticRoute, 0, 1)
+			cachedVpc.Spec.StaticRoutes = append(cachedVpc.Spec.StaticRoutes, &nodeStaticRoute)
+		}
 		cachedVpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Create(context.Background(), cachedVpc, metav1.CreateOptions{})
 		if err != nil {
 			klog.Errorf("init default vpc failed: %v", err)

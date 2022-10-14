@@ -644,7 +644,23 @@ func (c *Controller) gcStaticRoute() error {
 		klog.Errorf("failed to list static route %v", err)
 		return err
 	}
+	defaultVpc, err := c.vpcsLister.Get(util.DefaultVpc)
+	if err != nil {
+		klog.Errorf("failed to get default vpc, %v", err)
+		return err
+	}
+	var keepStaticRoute bool
 	for _, route := range routes {
+		keepStaticRoute = false
+		for _, item := range defaultVpc.Spec.StaticRoutes {
+			if route.CIDR == item.CIDR {
+				keepStaticRoute = true
+				break
+			}
+		}
+		if keepStaticRoute {
+			continue
+		}
 		if route.CIDR != "0.0.0.0/0" && route.CIDR != "::/0" && c.ipam.ContainAddress(route.CIDR) {
 			exist, err := c.ovnLegacyClient.NatRuleExists(route.CIDR)
 			if exist || err != nil {
