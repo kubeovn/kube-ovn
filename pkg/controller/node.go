@@ -1032,13 +1032,23 @@ func (c *Controller) validateChassis(node *v1.Node) error {
 }
 
 func (c *Controller) addNodeGwStaticRoute() error {
+	// If user not manage static route for default vpc, just add route about ovn-default to join
+	if vpc, err := c.vpcsLister.Get(util.DefaultVpc); err != nil || vpc.Spec.StaticRoutes != nil {
+		existRoute, err := c.ovnLegacyClient.GetStaticRouteList(c.config.ClusterRouter)
+		if err != nil {
+			klog.Errorf("failed to get vpc %s static route list, %v", c.config.ClusterRouter, err)
+		}
+		if len(existRoute) != 0 {
+			klog.Infof("skip add static route for node gw")
+			return nil
+		}
+	}
 	dstCidr := "0.0.0.0/0,::/0"
 	for _, cidrBlock := range strings.Split(dstCidr, ",") {
 		for _, nextHop := range strings.Split(c.config.NodeSwitchGateway, ",") {
 			if util.CheckProtocol(cidrBlock) != util.CheckProtocol(nextHop) {
 				continue
 			}
-
 			exist, err := c.checkRouteExist(nextHop, cidrBlock, ovs.PolicyDstIP)
 			if err != nil {
 				klog.Errorf("get static route for node gw error %v", err)
@@ -1046,6 +1056,7 @@ func (c *Controller) addNodeGwStaticRoute() error {
 			}
 
 			if !exist {
+				klog.Infof("add static route for node gw")
 				if err := c.ovnLegacyClient.AddStaticRoute("", cidrBlock, nextHop, c.config.ClusterRouter, util.NormalRouteType); err != nil {
 					klog.Errorf("failed to add static route for node gw: %v", err)
 					return err

@@ -734,7 +734,7 @@ func (c *Controller) handleDeleteRoute(subnet *kubeovnv1.Subnet) error {
 		}
 		return err
 	}
-	return c.deleteStaticRoute(subnet.Spec.CIDRBlock, vpc.Status.Router, subnet)
+	return c.deleteStaticRoute(subnet.Spec.CIDRBlock, vpc.Status.Router)
 }
 
 func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
@@ -1006,13 +1006,13 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 	if subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway {
 		for _, pod := range pods {
 			if pod.Annotations[util.LogicalSwitchAnnotation] == subnet.Name && pod.Annotations[util.IpAddressAnnotation] != "" {
-				if err := c.deleteStaticRoute(pod.Annotations[util.IpAddressAnnotation], c.config.ClusterRouter, subnet); err != nil {
+				if err := c.deleteStaticRoute(pod.Annotations[util.IpAddressAnnotation], c.config.ClusterRouter); err != nil {
 					return err
 				}
 			}
 		}
 
-		if err := c.deleteStaticRoute(subnet.Spec.CIDRBlock, c.config.ClusterRouter, subnet); err != nil {
+		if err := c.deleteStaticRoute(subnet.Spec.CIDRBlock, c.config.ClusterRouter); err != nil {
 			return err
 		}
 
@@ -1284,7 +1284,7 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 	return nil
 }
 
-func (c *Controller) deleteStaticRoute(ip, router string, subnet *kubeovnv1.Subnet) error {
+func (c *Controller) deleteStaticRoute(ip, router string) error {
 	for _, ipStr := range strings.Split(ip, ",") {
 		if err := c.ovnLegacyClient.DeleteStaticRoute(ipStr, router); err != nil {
 			klog.Errorf("failed to delete static route %s, %v", ipStr, err)
