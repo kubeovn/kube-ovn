@@ -175,7 +175,7 @@ function add_snat() {
         internalCIDR=${arr[1]}
         # check if already exist
         iptables-save  | grep "SHARED_SNAT" | grep "\-s $internalCIDR" | grep "source $eip" && exit 0
-        exec_cmd "iptables -t nat -A SHARED_SNAT -s $internalCIDR -j SNAT --to-source $eip"
+        exec_cmd "iptables -t nat -A SHARED_SNAT -s $internalCIDR -j SNAT --to-source $eip --random-fully"
     done
 }
 function del_snat() {
@@ -190,7 +190,7 @@ function del_snat() {
         # check if already exist
         iptables-save  | grep "SHARED_SNAT" | grep "\-s $internalCIDR" | grep "source $eip"
         if [ "$?" -eq 0 ];then
-          exec_cmd "iptables -t nat -D SHARED_SNAT -s $internalCIDR -j SNAT --to-source $eip"
+          exec_cmd "iptables -t nat -D SHARED_SNAT -s $internalCIDR -j SNAT --to-source $eip --random-fully"
         fi
     done
 }
