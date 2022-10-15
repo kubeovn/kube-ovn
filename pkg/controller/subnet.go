@@ -933,24 +933,29 @@ func (c *Controller) syncVirtualPort(key string) error {
 		klog.Errorf("failed to list logical_switch_port, %v", err)
 		return err
 	}
+	vipVirtualParentsMap := map[string][]string{}
+	for _, ret := range results {
+		var associatedVips []string
+		for _, value := range ret["external_ids"] {
+			if strings.HasPrefix(value, "vips") {
+				vips := strings.Split(value, "=")[1]
+				associatedVips = strings.Split(strings.ReplaceAll(vips, " ", ""), "/")
+			}
+		}
+		klog.Infof("associatedVips %v", associatedVips)
+		for _, vip := range associatedVips {
+			vipVirtualParentsMap[vip] = append(vipVirtualParentsMap[vip], ret["name"][0])
+		}
+	}
+
 	for _, vip := range subnet.Spec.Vips {
 		if !util.CIDRContainIP(subnet.Spec.CIDRBlock, vip) {
 			klog.Errorf("vip %s is out of range to subnet %s", vip, subnet.Name)
 			continue
 		}
 		var virtualParents []string
-		for _, ret := range results {
-			var associatedVips []string
-			for _, value := range ret["external_ids"] {
-				if strings.HasPrefix(value, "vips") {
-					vips := strings.Split(value, "=")[1]
-					associatedVips = strings.Split(strings.ReplaceAll(vips, " ", ""), "/")
-				}
-			}
-			klog.Infof("associatedVips %v", associatedVips)
-			if util.ContainsString(associatedVips, vip) {
-				virtualParents = append(virtualParents, ret["name"][0])
-			}
+		if value, exist := vipVirtualParentsMap[vip]; exist {
+			virtualParents = value
 		}
 		if err = c.ovnLegacyClient.SetVirtualParents(subnet.Name, vip, strings.Join(virtualParents, ",")); err != nil {
 			klog.Errorf("failed to set vip %s virtual parents, %v", vip, err)
@@ -1073,7 +1078,7 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 				}
 			}
 
-			_, idNameMap, err := c.ovnLegacyClient.ListLspForNodePortgroup()
+			nameIdMap, idNameMap, err := c.ovnLegacyClient.ListLspForNodePortgroup()
 			if err != nil {
 				klog.Errorf("failed to list lsp info, %v", err)
 				return err
@@ -1086,11 +1091,15 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 				if c.config.EnableEipSnat && (pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "") {
 					continue
 				}
+				// Pod will add to port-group when pod get updated
+				if pod.Spec.NodeName == "" {
+					continue
+				}
 
 				podNets, err := c.getPodKubeovnNets(pod)
 				if err != nil {
 					klog.Errorf("failed to get pod nets %v", err)
-					return err
+					continue
 				}
 
 				podPorts := make([]string, 0, 1)
@@ -1128,10 +1137,6 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
 					continue
 				}
-				// Pod will add to port-group when pod get updated
-				if pod.Spec.NodeName == "" {
-					continue
-				}
 
 				pgName := getOverlaySubnetsPortGroupName(subnet.Name, pod.Spec.NodeName)
 				c.ovnPgKeyMutex.Lock(pgName)
@@ -1144,6 +1149,11 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 
 				portsToAdd := make([]string, 0, len(podPorts))
 				for _, port := range podPorts {
+					if _, ok := nameIdMap[port]; !ok {
+						klog.Errorf("lsp does not exist for pod %v, please delete the pod and retry", port)
+						continue
+					}
+
 					if _, ok := pgPorts[port]; !ok {
 						portsToAdd = append(portsToAdd, port)
 					}

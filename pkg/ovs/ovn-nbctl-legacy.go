@@ -230,6 +230,7 @@ func (c LegacyClient) CreateVirtualPort(ls, ip string) error {
 }
 
 func (c LegacyClient) SetVirtualParents(ls, ip, parents string) error {
+	klog.Infof("set virtual parents: ls='%s', vip='%s', parents='%s'", ls, ip, parents)
 	portName := fmt.Sprintf("%s-vip-%s", ls, ip)
 	var cmdArg []string
 	if parents != "" {
@@ -279,12 +280,13 @@ func (c LegacyClient) CreatePort(ls, port, ip, mac, pod, namespace string, portS
 	addresses = append(addresses, strings.Split(ip, ",")...)
 	ovnCommand = []string{MayExist, "lsp-add", ls, port}
 	isAddrConflict := false
-	if liveMigration {
-		// add external_id info as the filter of 'live Migration vm port'
-		ovnCommand = append(ovnCommand,
-			"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:ls=%s", ls),
-			"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:ip=%s", strings.ReplaceAll(ip, ",", "/")))
 
+	// add external_id info
+	ovnCommand = append(ovnCommand,
+		"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:ls=%s", ls),
+		"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:ip=%s", strings.ReplaceAll(ip, ",", "/")))
+
+	if liveMigration {
 		ports, err := c.ListLogicalEntity("logical_switch_port",
 			fmt.Sprintf("external_ids:ls=%s", ls),
 			fmt.Sprintf("external_ids:ip=\"%s\"", strings.ReplaceAll(ip, ",", "/")))
@@ -1101,6 +1103,12 @@ func parseLrRouteListOutput(output string) (routeList []*StaticRoute, err error)
 }
 
 func (c LegacyClient) UpdateNatRule(policy, logicalIP, externalIP, router, logicalMac, port string) error {
+	// when dual protocol pod has eip or snat, will add nat for all dual addresses.
+	// will failed when logicalIP externalIP is different protocol.
+	if util.CheckProtocol(logicalIP) != util.CheckProtocol(externalIP) {
+		return nil
+	}
+
 	if policy == "snat" {
 		if externalIP == "" {
 			_, err := c.ovnNbCommand(IfExists, "lr-nat-del", router, "snat", logicalIP)
@@ -1112,7 +1120,7 @@ func (c LegacyClient) UpdateNatRule(policy, logicalIP, externalIP, router, logic
 		_, err := c.ovnNbCommand(MayExist, "lr-nat-add", router, policy, externalIP, logicalIP)
 		return err
 	} else {
-		output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=external_ip", "find", "NAT", fmt.Sprintf("logical_ip=%s", logicalIP), "type=dnat_and_snat")
+		output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=external_ip", "find", "NAT", fmt.Sprintf("logical_ip=%s", strings.ReplaceAll(logicalIP, ":", "\\:")), "type=dnat_and_snat")
 		if err != nil {
 			klog.Errorf("failed to list nat rules, %v", err)
 			return err
@@ -1141,7 +1149,7 @@ func (c LegacyClient) UpdateNatRule(policy, logicalIP, externalIP, router, logic
 }
 
 func (c LegacyClient) DeleteNatRule(logicalIP, router string) error {
-	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=type,external_ip", "find", "NAT", fmt.Sprintf("logical_ip=%s", logicalIP))
+	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=type,external_ip", "find", "NAT", fmt.Sprintf("logical_ip=%s", strings.ReplaceAll(logicalIP, ":", "\\:")))
 	if err != nil {
 		klog.Errorf("failed to list nat rules, %v", err)
 		return err
@@ -1169,7 +1177,7 @@ func (c LegacyClient) DeleteNatRule(logicalIP, router string) error {
 }
 
 func (c *LegacyClient) NatRuleExists(logicalIP string) (bool, error) {
-	results, err := c.CustomFindEntity("NAT", []string{"external_ip"}, fmt.Sprintf("logical_ip=%s", logicalIP))
+	results, err := c.CustomFindEntity("NAT", []string{"external_ip"}, fmt.Sprintf("logical_ip=%s", strings.ReplaceAll(logicalIP, ":", "\\:")))
 	if err != nil {
 		klog.Errorf("customFindEntity failed, %v", err)
 		return false, err

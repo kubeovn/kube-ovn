@@ -313,6 +313,11 @@ func (c *Controller) handleUpdateNp(key string) error {
 						klog.Errorf("failed to create ingress acls for np %s, %v", key, err)
 						return err
 					}
+				} else {
+					if err = c.ovnLegacyClient.CreateIngressACL(pgName, ingressAllowAsName, ingressExceptAsName, svcAsName, protocol, []netv1.NetworkPolicyPort{}, logEnable); err != nil {
+						klog.Errorf("failed to create default deny all ingress acls for np %s, %v", key, err)
+						return err
+					}
 				}
 			}
 			if len(np.Spec.Ingress) == 0 {

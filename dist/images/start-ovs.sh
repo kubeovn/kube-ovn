@@ -72,6 +72,11 @@ else
   ovs-vsctl --no-wait set open_vswitch . other_config:hw-offload=false
 fi
 
+# avoid warnings caused by ovs-vsctl
+ovsdb_server_ctl="/var/run/openvswitch/ovsdb-server.$(cat /var/run/openvswitch/ovsdb-server.pid).ctl"
+ovs-appctl -t "$ovsdb_server_ctl" vlog/set jsonrpc:file:err
+ovs-appctl -t "$ovsdb_server_ctl" vlog/set reconnect:file:err
+
 function exchange_link_names() {
   mappings=($(ovs-vsctl --if-exists get open . external-ids:ovn-bridge-mappings | tr -d '"' | tr ',' ' '))
   bridges=($(ovs-vsctl --no-heading --columns=name find bridge external-ids:vendor=kube-ovn external-ids:exchange-link-name=true))

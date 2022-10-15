@@ -394,6 +394,13 @@ jobs:
           sudo chmod -R 777 /home/runner/.kube/
           make e2e-underlay-single-nic
 
+      - name: Run networkpolicy E2E
+        working-directory: test/networkpolicy-cyclonus/
+        run: |
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          bash ./start-test.sh
+
       - name: Cleanup
         run: |
           sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
@@ -556,6 +563,13 @@ jobs:
           sudo chmod -R 777 /home/runner/.kube/
           make e2e
 
+      - name: Run networkpolicy E2E
+        working-directory: test/networkpolicy-cyclonus/
+        run: |
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          bash ./start-test.sh
+
       - name: Cleanup
         run: |
           sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
@@ -565,7 +579,7 @@ jobs:
     needs: build-kube-ovn
     name: ipv6-e2e
     runs-on: ubuntu-20.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
 
@@ -626,6 +640,13 @@ jobs:
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
           make e2e-ipv6
+
+      - name: Run networkpolicy E2E
+        working-directory: test/networkpolicy-cyclonus/
+        run: |
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          bash ./start-test.sh
 
       - name: Cleanup
         run: |
@@ -769,6 +790,13 @@ jobs:
           sudo chmod -R 777 /home/runner/.kube/
           make e2e-underlay-single-nic
 
+      - name: Run networkpolicy E2E
+        working-directory: test/networkpolicy-cyclonus/
+        run: |
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          bash ./start-test.sh
+
       - name: Cleanup
         run: |
           sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
@@ -856,6 +884,13 @@ jobs:
           sudo chmod -R 777 /home/runner/.kube/
           make e2e
 
+      - name: Run networkpolicy E2E
+        working-directory: test/networkpolicy-cyclonus/
+        run: |
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          bash ./start-test.sh
+
       - name: Cleanup
         run: |
           sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
@@ -865,7 +900,7 @@ jobs:
     needs: build-kube-ovn
     name: dual-stack-underlay-e2e-single-nic
     runs-on: ubuntu-20.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
 
@@ -927,6 +962,13 @@ jobs:
           sudo chmod -R 777 /home/runner/.kube/
           make e2e-underlay-single-nic
 
+      - name: Run networkpolicy E2E
+        working-directory: test/networkpolicy-cyclonus/
+        run: |
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          bash ./start-test.sh
+
       - name: Cleanup
         run: |
           sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
@@ -952,7 +994,7 @@ jobs:
     needs: build-kube-ovn
     name: dual-stack-underlay-logical-gateway-e2e
     runs-on: ubuntu-20.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
 
@@ -1013,6 +1055,13 @@ jobs:
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
           make e2e
+
+      - name: Run networkpolicy E2E
+        working-directory: test/networkpolicy-cyclonus/
+        run: |
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          bash ./start-test.sh
 
       - name: Cleanup
         run: |
