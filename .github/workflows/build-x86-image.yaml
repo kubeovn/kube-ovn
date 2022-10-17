@@ -53,7 +53,7 @@ jobs:
 
       - name: Unit test
         run: |
-          go install github.com/onsi/ginkgo/v2/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           make ut
 
       - name: Install gosec
@@ -175,7 +175,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/v2/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -246,7 +246,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/v2/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -317,7 +317,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/v2/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -388,7 +388,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/v2/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -482,7 +482,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/v2/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -557,7 +557,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/v2/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -635,7 +635,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/v2/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -713,7 +713,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/v2/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -784,7 +784,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/v2/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -878,7 +878,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/v2/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -956,7 +956,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/v2/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -1050,7 +1050,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/v2/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -1144,7 +1144,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/v2/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -1215,7 +1215,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/v2/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -1286,7 +1286,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/v2/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -1368,7 +1368,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/v2/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -1435,7 +1435,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/v2/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -1509,7 +1509,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/v2/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/

@@ -42,7 +42,7 @@ and [Ginkgo](https://onsi.github.io/ginkgo/) as the test framework to run the e2
 make kind-init
 make kind-install
 # wait all pods ready
-go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo@latest
+go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 make e2e
 ```
 
