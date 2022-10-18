@@ -1613,5 +1613,9 @@ func getPodType(pod *v1.Pod) string {
 	if ok, _ := isStatefulSetPod(pod); ok {
 		return "StatefulSet"
 	}
+
+	if isVmPod, _ := isVmPod(pod); isVmPod {
+		return util.Vm
+	}
 	return ""
 }
