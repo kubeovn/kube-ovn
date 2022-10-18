@@ -540,6 +540,11 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		klog.Fatalf("failed to init ovn resource: %v", err)
 	}
 
+	// sync ip crd before initIPAM since ip crd will be used to restore vm and statefulset pod in initIPAM
+	if err := c.initSyncCrdIPs(); err != nil {
+		klog.Errorf("failed to sync crd ips: %v", err)
+	}
+
 	if err := c.InitIPAM(); err != nil {
 		klog.Fatalf("failed to init ipam: %v", err)
 	}
@@ -562,9 +567,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	}
 
 	c.registerSubnetMetrics()
-	if err := c.initSyncCrdIPs(); err != nil {
-		klog.Errorf("failed to sync crd ips: %v", err)
-	}
 	if err := c.initSyncCrdSubnets(); err != nil {
 		klog.Errorf("failed to sync crd subnets: %v", err)
 	}
