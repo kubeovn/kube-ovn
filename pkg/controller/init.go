@@ -326,8 +326,8 @@ func (c *Controller) InitIPAM() error {
 	ipsMap := make(map[string]*kubeovnv1.IP, len(ips))
 	for _, ip := range ips {
 		ipsMap[ip.Name] = ip
-		// just recover sts ip, old sts ip with empty pod type and other ip recover in later pod loop
-		if ip.Spec.PodType != "StatefulSet" {
+		// recover sts and kubevirt vm ip, other ip recover in later pod loop
+		if ip.Spec.PodType != "StatefulSet" && ip.Spec.PodType != util.Vm {
 			continue
 		}
 
@@ -542,10 +542,22 @@ func (c *Controller) initSyncCrdIPs() error {
 		return err
 	}
 
+	vmLsps := c.getVmLsps()
+	ipMap := make(map[string]struct{}, len(vmLsps))
+	for _, vmLsp := range vmLsps {
+		ipMap[vmLsp] = struct{}{}
+	}
+
 	for _, ipCr := range ips.Items {
 		ip := ipCr.DeepCopy()
+		changed := false
+		if _, ok := ipMap[ip.Name]; ok && ip.Spec.PodType == "" {
+			ip.Spec.PodType = util.Vm
+			changed = true
+		}
+
 		v4IP, v6IP := util.SplitStringIP(ip.Spec.IPAddress)
-		if ip.Spec.V4IPAddress == v4IP && ip.Spec.V6IPAddress == v6IP {
+		if ip.Spec.V4IPAddress == v4IP && ip.Spec.V6IPAddress == v6IP && !changed {
 			continue
 		}
 		ip.Spec.V4IPAddress = v4IP
