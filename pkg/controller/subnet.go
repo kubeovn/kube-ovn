@@ -712,7 +712,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 
 func (c *Controller) handleUpdateSubnetStatus(key string) error {
 	c.subnetStatusKeyMutex.Lock(key)
-	defer c.subnetStatusKeyMutex .Unlock(key)
+	defer c.subnetStatusKeyMutex.Unlock(key)
 
 	cachedSubnet, err := c.subnetsLister.Get(key)
 	subnet := cachedSubnet.DeepCopy()
