@@ -88,6 +88,7 @@ type Controller struct {
 	deleteRouteQueue        workqueue.RateLimitingInterface
 	updateSubnetStatusQueue workqueue.RateLimitingInterface
 	syncVirtualPortsQueue   workqueue.RateLimitingInterface
+	subnetStatusKeyMutex    *keymutex.KeyMutex
 
 	ipsLister kubeovnlister.IPLister
 	ipSynced  cache.InformerSynced
@@ -254,6 +255,7 @@ func NewController(config *Configuration) *Controller {
 		deleteRouteQueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteRoute"),
 		updateSubnetStatusQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateSubnetStatus"),
 		syncVirtualPortsQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "SyncVirtualPort"),
+		subnetStatusKeyMutex:    keymutex.New(97),
 
 		ipsLister: ipInformer.Lister(),
 		ipSynced:  ipInformer.Informer().HasSynced,
