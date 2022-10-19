@@ -711,6 +711,9 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 }
 
 func (c *Controller) handleUpdateSubnetStatus(key string) error {
+	c.subnetStatusKeyMutex.Lock(key)
+	defer c.subnetStatusKeyMutex.Unlock(key)
+
 	orisubnet, err := c.subnetsLister.Get(key)
 	subnet := orisubnet.DeepCopy()
 	if err != nil {
@@ -1398,6 +1401,13 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		v6availableIPs = 0
 	}
 
+	if subnet.Status.V4AvailableIPs == v4availableIPs &&
+		subnet.Status.V6AvailableIPs == v6availableIPs &&
+		subnet.Status.V4UsingIPs == float64(len(v4UsingIPs)) &&
+		subnet.Status.V6UsingIPs == float64(len(v6UsingIPs)) {
+		return nil
+	}
+
 	subnet.Status.V4AvailableIPs = v4availableIPs
 	subnet.Status.V6AvailableIPs = v6availableIPs
 	subnet.Status.V4UsingIPs = float64(len(v4UsingIPs))
@@ -1460,6 +1470,13 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	if availableIPs < 0 {
 		availableIPs = 0
 	}
+
+	cachedFields := [4]float64{
+		subnet.Status.V4AvailableIPs,
+		subnet.Status.V4UsingIPs,
+		subnet.Status.V6AvailableIPs,
+		subnet.Status.V6UsingIPs,
+	}
 	if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolIPv4 {
 		subnet.Status.V4AvailableIPs = availableIPs
 		subnet.Status.V4UsingIPs = usingIPs
@@ -1470,6 +1487,14 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		subnet.Status.V6UsingIPs = usingIPs
 		subnet.Status.V4AvailableIPs = 0
 		subnet.Status.V4UsingIPs = 0
+	}
+	if cachedFields == [4]float64{
+		subnet.Status.V4AvailableIPs,
+		subnet.Status.V4UsingIPs,
+		subnet.Status.V6AvailableIPs,
+		subnet.Status.V6UsingIPs,
+	} {
+		return nil
 	}
 
 	bytes, err := subnet.Status.Bytes()
