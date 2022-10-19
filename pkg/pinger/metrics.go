@@ -205,7 +205,7 @@ var (
 		})
 	externalPingLostCounter = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "pinger_node_external_lost_total",
+			Name: "pinger_external_ping_lost_total",
 			Help: "The lost count for pod ping external address",
 		}, []string{
 			"src_node_name",
