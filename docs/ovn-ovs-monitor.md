@@ -3,7 +3,7 @@
 This document shows Kube-OVN monitor metrics.
 
 | Type                | Metric                                   | Description                                                                                                                       |
-| ------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| ------------------- |------------------------------------------| --------------------------------------------------------------------------------------------------------------------------------- |
 | OVN_Monitor         |                                          | OVN NB/SB/Northd metrics                                                                                                          |
 | Gauge               | ovn_status                               | OVN Health Status. The values are: (2) for standby or follower, (1) for active or leader, (0) for unhealthy.                                                                        |
 | Gauge               | ovn_info                                 | This metric provides basic information about OVN. It is always set to 1.                                                          |
@@ -93,7 +93,7 @@ This document shows Kube-OVN monitor metrics.
 | Gauge               | pinger_node_ping_lost_total              | The lost count for pod ping node                                                                                                  |
 | Gauge               | pinger_node_ping_count_total             | The total count for pod ping node                                                                                                 |
 | Histogram           | pinger_external_ping_latency_ms          | The latency ms histogram for pod ping external address                                                                            |
-| Gauge               | pinger_node_external_lost_total          | The lost count for pod ping external address                                                                                      |
+| Gauge               | pinger_external_ping_lost_total          | The lost count for pod ping external address                                                                                      |
 | Kube-OVN-Controller |                                          | Controller metrics                                                                                                                |
 | Histogram           | rest_client_request_latency_seconds      | Request latency in seconds. Broken down by verb and URL                                                                           |
 | Counter             | rest_client_requests_total               | Number of HTTP requests, partitioned by status code, method, and host                                                             |
