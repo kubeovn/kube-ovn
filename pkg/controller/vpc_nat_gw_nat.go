@@ -1043,6 +1043,9 @@ func (c *Controller) handleIptablesFipFinalizer(fip *kubeovnv1.IptablesFIPRule, 
 		patchPayloadTemplate := `[{ "op": "remove", "path": "/metadata/finalizers", "value": %s }]`
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, raw)
 		if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Patch(context.Background(), fip.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
+			if k8serrors.IsNotFound(err) {
+				return true, nil
+			}
 			klog.Errorf("failed to remove finalizer from fip %s, %v", fip.Name, err)
 			return false, err
 		}
@@ -1058,6 +1061,9 @@ func (c *Controller) handleIptablesFipFinalizer(fip *kubeovnv1.IptablesFIPRule, 
 		patchPayloadTemplate := `[{ "op": "add", "path": "/metadata/finalizers", "value": %s }]`
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, raw)
 		if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Patch(context.Background(), fip.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
+			if k8serrors.IsNotFound(err) {
+				return true, nil
+			}
 			klog.Errorf("failed to add finalizer to fip %s, %v", fip.Name, err)
 			return false, err
 		}
@@ -1075,6 +1081,9 @@ func (c *Controller) handleIptablesFipFinalizer(fip *kubeovnv1.IptablesFIPRule, 
 		patchPayloadTemplate := `[{ "op": "remove", "path": "/metadata/finalizers", "value": %s }]`
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, raw)
 		if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Patch(context.Background(), fip.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
+			if k8serrors.IsNotFound(err) {
+				return true, nil
+			}
 			klog.Errorf("failed to remove finalizer from fip %s, %v", fip.Name, err)
 			return false, err
 		}
@@ -1093,6 +1102,9 @@ func (c *Controller) handleIptablesDnatRuleFinalizer(dnat *kubeovnv1.IptablesDna
 		patchPayloadTemplate := `[{ "op": "remove", "path": "/metadata/finalizers", "value": %s }]`
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, raw)
 		if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Patch(context.Background(), dnat.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
+			if k8serrors.IsNotFound(err) {
+				return true, nil
+			}
 			klog.Errorf("failed to remove finalizer from dnat %s, %v", dnat.Name, err)
 			return false, err
 		}
@@ -1108,6 +1120,9 @@ func (c *Controller) handleIptablesDnatRuleFinalizer(dnat *kubeovnv1.IptablesDna
 		patchPayloadTemplate := `[{ "op": "add", "path": "/metadata/finalizers", "value": %s }]`
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, raw)
 		if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Patch(context.Background(), dnat.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
+			if k8serrors.IsNotFound(err) {
+				return true, nil
+			}
 			klog.Errorf("failed to add finalizer to dnat %s, %v", dnat.Name, err)
 			return false, err
 		}
@@ -1125,6 +1140,9 @@ func (c *Controller) handleIptablesDnatRuleFinalizer(dnat *kubeovnv1.IptablesDna
 		patchPayloadTemplate := `[{ "op": "remove", "path": "/metadata/finalizers", "value": %s }]`
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, raw)
 		if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Patch(context.Background(), dnat.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
+			if k8serrors.IsNotFound(err) {
+				return true, nil
+			}
 			klog.Errorf("failed to remove finalizer from dnat %s, %v", dnat.Name, err)
 			return false, err
 		}
@@ -1167,6 +1185,9 @@ func (c *Controller) patchFipLabel(key string, eip *kubeovnv1.IptablesEIP) error
 		raw, _ := json.Marshal(fip.Labels)
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
 		_, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Patch(context.Background(), fip.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
 		if err != nil {
 			klog.Errorf("failed to patch label for fip %s, %v", fip.Name, err)
 			return err
@@ -1185,6 +1206,9 @@ func (c *Controller) handleIptablesSnatRuleFinalizer(snat *kubeovnv1.IptablesSna
 		patchPayloadTemplate := `[{ "op": "remove", "path": "/metadata/finalizers", "value": %s }]`
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, raw)
 		if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().Patch(context.Background(), snat.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
+			if k8serrors.IsNotFound(err) {
+				return true, nil
+			}
 			klog.Errorf("failed to add finalizer to snat %s, %v", snat.Name, err)
 			return false, err
 		}
@@ -1200,6 +1224,9 @@ func (c *Controller) handleIptablesSnatRuleFinalizer(snat *kubeovnv1.IptablesSna
 		patchPayloadTemplate := `[{ "op": "add", "path": "/metadata/finalizers", "value": %s }]`
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, raw)
 		if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().Patch(context.Background(), snat.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
+			if k8serrors.IsNotFound(err) {
+				return true, nil
+			}
 			klog.Errorf("failed to add finalizer to snat %s, %v", snat.Name, err)
 			return false, err
 		}
@@ -1217,6 +1244,9 @@ func (c *Controller) handleIptablesSnatRuleFinalizer(snat *kubeovnv1.IptablesSna
 		patchPayloadTemplate := `[{ "op": "remove", "path": "/metadata/finalizers", "value": %s }]`
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, raw)
 		if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().Patch(context.Background(), snat.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
+			if k8serrors.IsNotFound(err) {
+				return true, nil
+			}
 			klog.Errorf("failed to add finalizer to snat %s, %v", snat.Name, err)
 			return false, err
 		}
@@ -1258,6 +1288,9 @@ func (c *Controller) patchFipStatus(key, v4ip, v6ip, natGwDp, redo string, ready
 	if changed {
 		if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Patch(context.Background(), fip.Name,
 			types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+			if k8serrors.IsNotFound(err) {
+				return nil
+			}
 			klog.Errorf("failed to patch fip %s, %v", fip.Name, err)
 			return err
 		}
@@ -1326,6 +1359,9 @@ func (c *Controller) patchDnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
 		if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Patch(context.Background(), dnat.Name,
 			types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
+			if k8serrors.IsNotFound(err) {
+				return nil
+			}
 			klog.Errorf("failed to patch label for dnat %s, %v", dnat.Name, err)
 			return err
 		}
@@ -1365,6 +1401,9 @@ func (c *Controller) patchDnatStatus(key, v4ip, v6ip, natGwDp, redo string, read
 	if changed {
 		if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Patch(context.Background(), dnat.Name,
 			types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+			if k8serrors.IsNotFound(err) {
+				return nil
+			}
 			klog.Errorf("failed to patch dnat %s, %v", dnat.Name, err)
 			return err
 		}
@@ -1431,6 +1470,9 @@ func (c *Controller) patchSnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
 		if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().Patch(context.Background(), snat.Name,
 			types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
+			if k8serrors.IsNotFound(err) {
+				return nil
+			}
 			klog.Errorf("failed to patch label for snat %s, %v", snat.Name, err)
 			return err
 		}
@@ -1470,6 +1512,9 @@ func (c *Controller) patchSnatStatus(key, v4ip, v6ip, natGwDp, redo string, read
 	if changed {
 		if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().Patch(context.Background(), snat.Name,
 			types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+			if k8serrors.IsNotFound(err) {
+				return nil
+			}
 			klog.Errorf("failed to patch snat %s, %v", snat.Name, err)
 			return err
 		}
@@ -1657,4 +1702,43 @@ func (c *Controller) isDnatDuplicated(eipName, dnatName, externalPort string) (b
 		}
 	}
 	return false, nil
+}
+
+func (c *Controller) createOrUpdateCrdFip(key, eipName, internalIp string) error {
+	eipCr, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Get(context.Background(), key, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			_, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Create(context.Background(), &kubeovnv1.IptablesFIPRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: key,
+				},
+				Spec: kubeovnv1.IptablesFIPRuleSpec{
+					EIP:        eipName,
+					InternalIp: internalIp,
+				},
+			}, metav1.CreateOptions{})
+
+			if err != nil {
+				errMsg := fmt.Errorf("failed to create fip crd %s, %v", key, err)
+				klog.Error(errMsg)
+				return errMsg
+			}
+		} else {
+			errMsg := fmt.Errorf("failed to get fip crd %s, %v", key, err)
+			klog.Error(errMsg)
+			return errMsg
+		}
+	} else {
+		eip := eipCr.DeepCopy()
+		if eip.Spec.EIP != eipName || eip.Spec.InternalIp != internalIp {
+			eip.Spec.EIP = eipName
+			eip.Spec.InternalIp = internalIp
+			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Update(context.Background(), eip, metav1.UpdateOptions{}); err != nil {
+				errMsg := fmt.Errorf("failed to update eip crd %s, %v", key, err)
+				klog.Error(errMsg)
+				return errMsg
+			}
+		}
+	}
+	return nil
 }
