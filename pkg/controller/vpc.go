@@ -364,56 +364,54 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 	}
 
-	if vpc.Name != util.DefaultVpc {
-		// handle static route
-		existRoute, err := c.ovnLegacyClient.GetStaticRouteList(vpc.Name)
-		if err != nil {
-			klog.Errorf("failed to get vpc %s static route list, %v", vpc.Name, err)
-			return err
-		}
+	// handle static route
+	existRoute, err := c.ovnLegacyClient.GetStaticRouteList(vpc.Name)
+	if err != nil {
+		klog.Errorf("failed to get vpc %s static route list, %v", vpc.Name, err)
+		return err
+	}
 
-		routeNeedDel, routeNeedAdd, err := diffStaticRoute(existRoute, vpc.Spec.StaticRoutes)
-		if err != nil {
-			klog.Errorf("failed to diff vpc %s static route, %v", vpc.Name, err)
+	routeNeedDel, routeNeedAdd, err := diffStaticRoute(existRoute, vpc.Spec.StaticRoutes)
+	if err != nil {
+		klog.Errorf("failed to diff vpc %s static route, %v", vpc.Name, err)
+		return err
+	}
+	for _, item := range routeNeedDel {
+		if err = c.ovnLegacyClient.DeleteStaticRoute(item.CIDR, vpc.Name); err != nil {
+			klog.Errorf("del vpc %s static route failed, %v", vpc.Name, err)
 			return err
 		}
-		for _, item := range routeNeedDel {
-			if err = c.ovnLegacyClient.DeleteStaticRoute(item.CIDR, vpc.Name); err != nil {
-				klog.Errorf("del vpc %s static route failed, %v", vpc.Name, err)
-				return err
-			}
-		}
+	}
 
-		for _, item := range routeNeedAdd {
-			if err = c.ovnLegacyClient.AddStaticRoute(convertPolicy(item.Policy), item.CIDR, item.NextHopIP, vpc.Name, util.NormalRouteType); err != nil {
-				klog.Errorf("add static route to vpc %s failed, %v", vpc.Name, err)
-				return err
-			}
-		}
-		// handle policy route
-		existPolicyRoute, err := c.ovnLegacyClient.GetPolicyRouteList(vpc.Name)
-		if err != nil {
-			klog.Errorf("failed to get vpc %s policy route list, %v", vpc.Name, err)
+	for _, item := range routeNeedAdd {
+		if err = c.ovnLegacyClient.AddStaticRoute(convertPolicy(item.Policy), item.CIDR, item.NextHopIP, vpc.Name, util.NormalRouteType); err != nil {
+			klog.Errorf("add static route to vpc %s failed, %v", vpc.Name, err)
 			return err
 		}
+	}
+	// handle policy route
+	existPolicyRoute, err := c.ovnLegacyClient.GetPolicyRouteList(vpc.Name)
+	if err != nil {
+		klog.Errorf("failed to get vpc %s policy route list, %v", vpc.Name, err)
+		return err
+	}
 
-		policyRouteNeedDel, policyRouteNeedAdd, err := diffPolicyRoute(existPolicyRoute, vpc.Spec.PolicyRoutes)
-		if err != nil {
-			klog.Errorf("failed to diff vpc %s policy route, %v", vpc.Name, err)
+	policyRouteNeedDel, policyRouteNeedAdd, err := diffPolicyRoute(existPolicyRoute, vpc.Spec.PolicyRoutes)
+	if err != nil {
+		klog.Errorf("failed to diff vpc %s policy route, %v", vpc.Name, err)
+		return err
+	}
+	for _, item := range policyRouteNeedDel {
+		if err = c.ovnLegacyClient.DeletePolicyRoute(vpc.Name, item.Priority, item.Match); err != nil {
+			klog.Errorf("del vpc %s policy route failed, %v", vpc.Name, err)
 			return err
 		}
-		for _, item := range policyRouteNeedDel {
-			if err = c.ovnLegacyClient.DeletePolicyRoute(vpc.Name, item.Priority, item.Match); err != nil {
-				klog.Errorf("del vpc %s policy route failed, %v", vpc.Name, err)
-				return err
-			}
-		}
-		for _, item := range policyRouteNeedAdd {
-			externalIDs := map[string]string{"vendor": util.CniTypeName}
-			if err = c.ovnLegacyClient.AddPolicyRoute(vpc.Name, item.Priority, item.Match, string(item.Action), item.NextHopIP, externalIDs); err != nil {
-				klog.Errorf("add policy route to vpc %s failed, %v", vpc.Name, err)
-				return err
-			}
+	}
+	for _, item := range policyRouteNeedAdd {
+		externalIDs := map[string]string{"vendor": util.CniTypeName}
+		if err = c.ovnLegacyClient.AddPolicyRoute(vpc.Name, item.Priority, item.Match, string(item.Action), item.NextHopIP, externalIDs); err != nil {
+			klog.Errorf("add policy route to vpc %s failed, %v", vpc.Name, err)
+			return err
 		}
 	}
 
@@ -538,47 +536,38 @@ func getStaticRouteItemKey(item *kubeovnv1.StaticRoute) (key string) {
 
 func formatVpc(vpc *kubeovnv1.Vpc, c *Controller) error {
 	var changed bool
-
-	// default vpc does not support custom route
-	if vpc.Status.Default {
-		if len(vpc.Spec.StaticRoutes) > 0 {
+	for _, item := range vpc.Spec.StaticRoutes {
+		// check policy
+		if item.Policy == "" {
+			item.Policy = kubeovnv1.PolicyDst
 			changed = true
-			vpc.Spec.StaticRoutes = nil
 		}
-	} else {
-		for _, item := range vpc.Spec.StaticRoutes {
-			// check policy
-			if item.Policy == "" {
-				item.Policy = kubeovnv1.PolicyDst
+		if item.Policy != kubeovnv1.PolicyDst && item.Policy != kubeovnv1.PolicySrc {
+			return fmt.Errorf("unknown policy type: %s", item.Policy)
+		}
+		// check cidr
+		if strings.Contains(item.CIDR, "/") {
+			if _, _, err := net.ParseCIDR(item.CIDR); err != nil {
+				return fmt.Errorf("invalid cidr %s: %w", item.CIDR, err)
+			}
+		} else if ip := net.ParseIP(item.CIDR); ip == nil {
+			return fmt.Errorf("invalid IP %s", item.CIDR)
+		}
+		// check next hop ip
+		if ip := net.ParseIP(item.NextHopIP); ip == nil {
+			return fmt.Errorf("invalid next hop IP %s", item.NextHopIP)
+		}
+	}
+
+	for _, route := range vpc.Spec.PolicyRoutes {
+		if route.Action != kubeovnv1.PolicyRouteActionReroute {
+			if route.NextHopIP != "" {
+				route.NextHopIP = ""
 				changed = true
 			}
-			if item.Policy != kubeovnv1.PolicyDst && item.Policy != kubeovnv1.PolicySrc {
-				return fmt.Errorf("unknown policy type: %s", item.Policy)
-			}
-			// check cidr
-			if strings.Contains(item.CIDR, "/") {
-				if _, _, err := net.ParseCIDR(item.CIDR); err != nil {
-					return fmt.Errorf("invalid cidr %s: %w", item.CIDR, err)
-				}
-			} else if ip := net.ParseIP(item.CIDR); ip == nil {
-				return fmt.Errorf("invalid IP %s", item.CIDR)
-			}
-			// check next hop ip
-			if ip := net.ParseIP(item.NextHopIP); ip == nil {
-				return fmt.Errorf("invalid next hop IP %s", item.NextHopIP)
-			}
-		}
-
-		for _, route := range vpc.Spec.PolicyRoutes {
-			if route.Action != kubeovnv1.PolicyRouteActionReroute {
-				if route.NextHopIP != "" {
-					route.NextHopIP = ""
-					changed = true
-				}
-			} else {
-				if ip := net.ParseIP(route.NextHopIP); ip == nil {
-					return fmt.Errorf("bad next hop ip: %s", route.NextHopIP)
-				}
+		} else {
+			if ip := net.ParseIP(route.NextHopIP); ip == nil {
+				return fmt.Errorf("bad next hop ip: %s", route.NextHopIP)
 			}
 		}
 	}

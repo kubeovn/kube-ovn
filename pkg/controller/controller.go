@@ -527,9 +527,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	if err := c.initSyncCrdVlans(); err != nil {
 		klog.Errorf("failed to sync crd vlans: %v", err)
 	}
-	// The static route for node gw can be deleted when gc static route, so add it after gc process
-	dstIp := "0.0.0.0/0,::/0"
-	if err := c.ovnLegacyClient.AddStaticRoute("", dstIp, c.config.NodeSwitchGateway, c.config.ClusterRouter, util.NormalRouteType); err != nil {
+
+	if err := c.addNodeGwStaticRoute(); err != nil {
 		klog.Errorf("failed to add static route for node gw: %v", err)
 	}
 
