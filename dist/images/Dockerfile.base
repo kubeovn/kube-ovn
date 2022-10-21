@@ -26,6 +26,8 @@ RUN cd /usr/src/ && \
     curl -s https://github.com/kubeovn/ovs/commit/8c2f28b778129161bbf8f0738fa41d385860d5bc.patch | git apply && \
     # fdb: fix mac learning in environments with hairpin enabled
     curl -s https://github.com/kubeovn/ovs/commit/1cb138aaf2fdf922d75a587e4e9cf610d38f9fee.patch | git apply && \
+    # ovsdb-tool: add optional server id parameter for "join-cluster" command
+    curl -s https://github.com/kubeovn/ovs/commit/2e2ec1161cadbec79786d63fde9475053d996586.patch | git apply && \
     # compile without avx512
     if [ "$ARCH" = "amd64" -a "$NO_AVX512" = "true" ]; then curl -s https://github.com/kubeovn/ovs/commit/c257b0794b827cfae9660a9f3238bee8a29e7676.patch | git apply; fi && \
     ./boot.sh && \
