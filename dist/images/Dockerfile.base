@@ -22,6 +22,8 @@ RUN cd /usr/src/ && \
     curl -s https://github.com/kubeovn/ovs/commit/7a7e8e2b5c17d8ae789599db861cf1eafc1c8ffd.patch | git apply && \
     # fdb: fix mac learning in environments with hairpin enabled
     curl -s https://github.com/kubeovn/ovs/commit/8d661ed4706a60d9bb96be6d9ca20117dde60bcc.patch | git apply && \
+    # ovsdb-tool: add optional server id parameter for "join-cluster" command
+    curl -s https://github.com/kubeovn/ovs/commit/2e2ec1161cadbec79786d63fde9475053d996586.patch | git apply && \
     ./boot.sh && \
     rm -rf .git && \
     CONFIGURE_OPTS='' && \

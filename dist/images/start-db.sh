@@ -26,6 +26,20 @@ DB_SB_ADDR=${DB_SB_ADDR:-::}
 DB_SB_PORT=${DB_SB_PORT:-6642}
 ENABLE_SSL=${ENABLE_SSL:-false}
 
+. /usr/share/openvswitch/scripts/ovs-lib || exit 1
+
+function random_str {
+    echo $RANDOM | md5sum | head -c 6
+}
+
+function gen_conn_addr {
+    if [[ "$ENABLE_SSL" == "false" ]]; then
+        echo "tcp:[$1]:$2"
+    else
+        echo "ssl:[$1]:$2"
+    fi
+}
+
 function gen_conn_str {
     t=$(echo -n "${NODE_IPS}" | sed 's/[[:space:]]//g' | sed 's/,/ /g')
     if [[ "$ENABLE_SSL" == "false" ]]; then
@@ -74,6 +88,62 @@ function is_clustered {
   return 1
 }
 
+# create a new db file and join it to the cluster
+# if the nb/sb db file is corrputed
+function ovn_db_pre_start() {
+    local db=""
+    local port=""
+    case $1 in
+    nb)
+        db=OVN_Northbound
+        port=6643
+        ;;
+    sb)
+        db=OVN_Southbound
+        port=6644
+        ;;
+    *)
+        echo "invalid database: $1"
+        exit 1
+        ;;
+    esac
+
+    local db_file="/etc/ovn/ovn${1}_db.db"
+    [ ! -e "$db_file" ] && return
+    ovsdb_tool check-cluster "$db_file" && return
+
+    echo "detected database corruption for file $db_file, rebuild it."
+    local sid=$(ovsdb-tool db-sid "$db_file")
+    if ! echo -n "$sid" | grep -qE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'; then
+        echo "failed to get sid from $1 db file $db_file"
+        return 1
+    fi
+    echo "get local server id $sid"
+
+    local local_addr="$(gen_conn_addr $POD_IP $port)"
+    echo "local address: $local_addr"
+
+    local remote_addr=()
+    local ips=$(echo -n "${NODE_IPS}" | sed 's/,/ /g')
+    for ip in ${ips[*]}; do
+        if [ ! "$POD_IP" = "$ip" ]; then
+            remote_addr=(${remote_addr[*]} "$(gen_conn_addr $ip $port)")
+        fi
+    done
+    echo "remote addresses: ${remote_addr[*]}"
+
+    local db_new="$db_file.init-$(random_str)"
+    echo "generating new database file $db_new"
+    ovsdb_tool --sid $sid join-cluster "$db_new" $db $local_addr ${remote_addr[*]} || return 1
+
+    local db_bak="$db_file.backup-$(random_str)"
+    echo "backup $db_file to $db_bak"
+    mv "$db_file" "$db_bak" || return 1
+
+    echo "use new database file $db_new"
+    mv "$db_new" "$db_file"
+}
+
 trap quit EXIT
 if [[ "$ENABLE_SSL" == "false" ]]; then
     if [[ -z "$NODE_IPS" ]]; then
@@ -90,6 +160,8 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
             exit 1
         fi
         /usr/share/ovn/scripts/ovn-ctl stop_northd
+        ovn_db_pre_start nb
+        ovn_db_pre_start sb
 
         nb_leader_ip=$(get_leader_ip nb)
         sb_leader_ip=$(get_leader_ip sb)
@@ -182,6 +254,8 @@ else
             exit 1
         fi
         /usr/share/ovn/scripts/ovn-ctl stop_northd
+        ovn_db_pre_start nb
+        ovn_db_pre_start sb
 
         nb_leader_ip=$(get_leader_ip nb)
         sb_leader_ip=$(get_leader_ip sb)
