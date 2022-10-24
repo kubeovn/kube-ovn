@@ -192,16 +192,20 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	}
 
 	// do not delete statefulset pod unless ownerReferences is deleted
-	if isStateful {
-		if isStatefulSetPodToDel(c.config.KubeClient, newPod, statefulSetName) {
+	if isStateful && isStatefulSetPodToDel(c.config.KubeClient, newPod, statefulSetName) {
+		go func() {
 			klog.V(3).Infof("enqueue delete pod %s", key)
+			time.Sleep(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second)
 			c.deletePodQueue.Add(newObj)
-			return
-		}
+		}()
+		return
 	}
 	if isVmPod && c.isVmPodToDel(newPod, vmName) {
-		klog.V(3).Infof("enqueue delete pod %s", key)
-		c.deletePodQueue.Add(newObj)
+		go func() {
+			klog.V(3).Infof("enqueue delete pod %s", key)
+			time.Sleep(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second)
+			c.deletePodQueue.Add(newObj)
+		}()
 		return
 	}
 
