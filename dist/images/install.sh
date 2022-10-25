@@ -2518,6 +2518,8 @@ spec:
               name: localtime
             - mountPath: /var/run/tls
               name: kube-ovn-tls
+            - mountPath: /var/run/containerd
+              name: cruntime
           readinessProbe:
             exec:
               command:
@@ -2578,6 +2580,9 @@ spec:
         - name: localtime
           hostPath:
             path: /etc/localtime
+        - hostPath:
+            path: /var/run/containerd
+          name: cruntime
         - name: kube-ovn-tls
           secret:
             optional: true
