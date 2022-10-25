@@ -76,7 +76,7 @@ function wait_flows_pre_check() {
   local devices=""
   local ips=($(echo $OVN_DB_IPS | sed 's/,/ /g'))
   for ip in ${ips[*]}; do
-    devices="$devices $(ip route get $ip | grep -oE 'dev [^\s]+' | awk '{print $2}')"
+    devices="$devices $(ip route get $ip | grep -oE 'dev .+' | awk '{print $2}')"
   done
 
   bridges=($(ovs-vsctl --no-heading --columns=name find bridge external-ids:vendor=kube-ovn))
