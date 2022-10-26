@@ -34,3 +34,19 @@ alias ovn-ctl='/usr/share/ovn/scripts/ovn-ctl'
 
 ovs-ctl status
 ovn-ctl status_controller
+
+# check if ovn-controller can write to ovn sb db
+file="/var/log/ovn/ovn-controller.log"
+if [ -e $file ]
+then
+  result=$(tail -6 $file)
+  if [[ "$result" =~ "clustered database server has stale data" ]]
+  then
+    echo "check write to ovn sb db, clustered database server has stale data, run sb-cluster-state-reset command to restore"
+    pid=$(cat /var/run/ovn/ovn-controller.pid)
+    ovs-appctl -t /var/run/ovn/ovn-controller.$pid.ctl sb-cluster-state-reset
+    echo "finish exec cmd sb-cluster-state-reset"
+  else
+    echo "check write to ovn sb db success"
+  fi
+fi
