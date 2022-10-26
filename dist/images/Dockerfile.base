@@ -11,17 +11,18 @@ RUN apt update && apt install build-essential git libnuma-dev autoconf curl \
     flake8 python3-sphinx graphviz groff wget -y
 
 RUN cd /usr/src/ && \
-    git clone -b ovn-21.06 --depth=1 https://github.com/kubeovn/ovs.git && \
+    git clone -b branch-2.16 --depth=1 https://github.com/openvswitch/ovs.git && \
     cd ovs && \
     # fix memleak
     curl -s https://github.com/kubeovn/ovs/commit/2dc8e7aa202818952b2fa80b47298604530c9de0.patch | git apply && \
     # fix log file descriptor leak in monitor process
     curl -s https://github.com/kubeovn/ovs/commit/918d6dc79634bec760054ee53f7628186315bcfb.patch | git apply && \
+    # increase election timer
     curl -s https://github.com/kubeovn/ovs/commit/22ea22c40b46ee5adeae977ff6cfca81b3ff25d7.patch | git apply && \
     # add fdb update logging
-    curl -s https://github.com/kubeovn/ovs/commit/7a7e8e2b5c17d8ae789599db861cf1eafc1c8ffd.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/8c2f28b778129161bbf8f0738fa41d385860d5bc.patch | git apply && \
     # fdb: fix mac learning in environments with hairpin enabled
-    curl -s https://github.com/kubeovn/ovs/commit/8d661ed4706a60d9bb96be6d9ca20117dde60bcc.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/1cb138aaf2fdf922d75a587e4e9cf610d38f9fee.patch | git apply && \
     # ovsdb-tool: add optional server id parameter for "join-cluster" command
     curl -s https://github.com/kubeovn/ovs/commit/2e2ec1161cadbec79786d63fde9475053d996586.patch | git apply && \
     ./boot.sh && \
@@ -34,14 +35,23 @@ RUN dpkg -i /usr/src/python3-openvswitch*.deb /usr/src/libopenvswitch*.deb
 
 RUN cd /usr/src/ && git clone -b branch-21.06 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
+    # expr.c: Use expr_destroy and expr_clone instead of free and xmemdup.
+    curl -s https://github.com/ovn-org/ovn/commit/4b4cadcfabbc79f7d69c213be2b37e5e8634201c.patch | git apply && \
+    # treewide: bump ovs and fix problematic loops
+    curl -s https://github.com/kubeovn/ovn/commit/8146578592200c7b732bca8ab43be05a84e34269.patch | git apply && \
     # ovn-controller: Add a generic way to check if the daemon started recently.
     curl -s https://github.com/kubeovn/ovn/commit/a8ebd69d8a759c06f49102226192174c32fbb15b.patch | git apply && \
     # patch.c: Avoid patch interface deletion & recreation during restart.
     curl -s https://github.com/kubeovn/ovn/commit/e24734913d25c0bffdf1cfd79e14ef43d01e1019.patch | git apply && \
+    # do not send multicast packets to conntrack
     curl -s https://github.com/kubeovn/ovn/commit/8f4e4868377afb5e980856755b9f6394f8b649e2.patch | git apply && \
+    # do not send traffic that not designate to svc to conntrack
     curl -s https://github.com/kubeovn/ovn/commit/23a87cabb76fbdce5092a6b3d3b56f3fa8dd61f5.patch | git apply && \
+    # Add EXTRA_CONFIGURE_OPTS for debian build
     curl -s https://github.com/kubeovn/ovn/commit/89ca60989df4af9a96cc6024e04f99b9b77bad22.patch | git apply && \
+    # fix ipv6 svc
     curl -s https://github.com/kubeovn/ovn/commit/aeafa43fc51be8ea1c7abfbe779c69205c1c5aa4.patch | git apply && \
+    # change hash type from dp_hash to hash with field src_ip
     curl -s https://github.com/kubeovn/ovn/commit/71f831b9cc5a6dc923af4ca90286857e2cf8b1d3.patch | git apply && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
