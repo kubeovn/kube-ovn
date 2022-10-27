@@ -26,6 +26,8 @@ import (
 
 // Configuration is the daemon conf
 type Configuration struct {
+	// interface being used for tunnel
+	tunnelIface             string
 	Iface                   string
 	MTU                     int
 	MSS                     int
@@ -41,6 +43,7 @@ type Configuration struct {
 	NodeLocalDnsIP          string
 	EncapChecksum           bool
 	EnablePprof             bool
+	MacLearningFallback     bool
 	PprofPort               int
 	NetworkType             string
 	DefaultProviderName     string
@@ -64,6 +67,7 @@ func ParseFlags(nicBridgeMappings map[string]string) (*Configuration, error) {
 		argEncapChecksum         = pflag.Bool("encap-checksum", true, "Enable checksum")
 		argEnablePprof           = pflag.Bool("enable-pprof", false, "Enable pprof")
 		argPprofPort             = pflag.Int("pprof-port", 10665, "The port to get profiling data")
+		argMacLearningFallback   = pflag.Bool("mac-learning-fallback", false, "Fallback to the legacy MAC learning mode")
 
 		argsNetworkType            = pflag.String("network-type", "geneve", "The ovn network type")
 		argsDefaultProviderName    = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name")
@@ -107,6 +111,7 @@ func ParseFlags(nicBridgeMappings map[string]string) (*Configuration, error) {
 		KubeConfigFile:          *argKubeConfigFile,
 		EnablePprof:             *argEnablePprof,
 		PprofPort:               *argPprofPort,
+		MacLearningFallback:     *argMacLearningFallback,
 		NodeName:                nodeName,
 		ServiceClusterIPRange:   *argServiceClusterIPRange,
 		NodeLocalDnsIP:          *argNodeLocalDnsIP,
@@ -178,6 +183,9 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 			return fmt.Errorf("iface %s has no ip address", tunnelNic)
 		}
 		encapIP = strings.Split(addrs[0].String(), "/")[0]
+
+		klog.Infof("use %s as tunnel interface", iface.Name)
+		config.tunnelIface = iface.Name
 	}
 
 	if config.MTU == 0 {
@@ -211,7 +219,6 @@ func findInterface(ifaceStr string) (*net.Interface, error) {
 	}
 	for _, iface := range ifaces {
 		if ifaceRegex.MatchString(iface.Name) {
-			klog.Infof("use %s as tunnel interface", iface.Name)
 			return &iface, nil
 		}
 	}

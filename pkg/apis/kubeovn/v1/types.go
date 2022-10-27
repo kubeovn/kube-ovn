@@ -101,7 +101,7 @@ type Subnet struct {
 }
 
 type SubnetSpec struct {
-	Default    bool     `json:"default,omitempty"`
+	Default    bool     `json:"default"`
 	Vpc        string   `json:"vpc,omitempty"`
 	Protocol   string   `json:"protocol,omitempty"`
 	Namespaces []string `json:"namespaces,omitempty"`
@@ -111,14 +111,14 @@ type SubnetSpec struct {
 	Provider   string   `json:"provider,omitempty"`
 
 	GatewayType string `json:"gatewayType,omitempty"`
-	GatewayNode string `json:"gatewayNode,omitempty"`
-	NatOutgoing bool   `json:"natOutgoing,omitempty"`
+	GatewayNode string `json:"gatewayNode"`
+	NatOutgoing bool   `json:"natOutgoing"`
 
 	ExternalEgressGateway string `json:"externalEgressGateway,omitempty"`
 	PolicyRoutingPriority uint32 `json:"policyRoutingPriority,omitempty"`
 	PolicyRoutingTableID  uint32 `json:"policyRoutingTableID,omitempty"`
 
-	Private      bool     `json:"private,omitempty"`
+	Private      bool     `json:"private"`
 	AllowSubnets []string `json:"allowSubnets,omitempty"`
 
 	Vlan   string `json:"vlan,omitempty"`

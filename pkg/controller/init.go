@@ -127,6 +127,7 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 			Provider:            util.OvnProvider,
 			CIDRBlock:           c.config.DefaultCIDR,
 			Gateway:             c.config.DefaultGateway,
+			GatewayNode:         "",
 			DisableGatewayCheck: !c.config.DefaultGatewayCheck,
 			ExcludeIps:          strings.Split(c.config.DefaultExcludeIps, ","),
 			NatOutgoing:         true,
@@ -174,6 +175,7 @@ func (c *Controller) initNodeSwitch() error {
 			Provider:               util.OvnProvider,
 			CIDRBlock:              c.config.NodeSwitchCIDR,
 			Gateway:                c.config.NodeSwitchGateway,
+			GatewayNode:            "",
 			ExcludeIps:             strings.Split(c.config.NodeSwitchGateway, ","),
 			Protocol:               util.CheckProtocol(c.config.NodeSwitchCIDR),
 			DisableInterConnection: true,
@@ -324,7 +326,8 @@ func (c *Controller) InitIPAM() error {
 	ipsMap := make(map[string]*kubeovnv1.IP, len(ips))
 	for _, ip := range ips {
 		ipsMap[ip.Name] = ip
-		if ip.Spec.PodType != "StatefulSet" {
+		// recover sts and kubevirt vm ip, other ip recover in later pod loop
+		if ip.Spec.PodType != "StatefulSet" && ip.Spec.PodType != util.Vm {
 			continue
 		}
 
@@ -340,7 +343,13 @@ func (c *Controller) InitIPAM() error {
 	}
 
 	for _, pod := range pods {
-		if pod.Spec.HostNetwork || !isPodAlive(pod) {
+		if pod.Spec.HostNetwork {
+			continue
+		}
+
+		isAlive := isPodAlive(pod)
+		isStsPod, _ := isStatefulSetPod(pod)
+		if !isAlive && !isStsPod {
 			continue
 		}
 
@@ -354,9 +363,6 @@ func (c *Controller) InitIPAM() error {
 		podName := c.getNameByPod(pod)
 		key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
 		for _, podNet := range podNets {
-			if !isOvnSubnet(podNet.Subnet) {
-				continue
-			}
 			if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
 				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 				ip := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
@@ -536,10 +542,22 @@ func (c *Controller) initSyncCrdIPs() error {
 		return err
 	}
 
+	vmLsps := c.getVmLsps()
+	ipMap := make(map[string]struct{}, len(vmLsps))
+	for _, vmLsp := range vmLsps {
+		ipMap[vmLsp] = struct{}{}
+	}
+
 	for _, ipCr := range ips.Items {
 		ip := ipCr.DeepCopy()
+		changed := false
+		if _, ok := ipMap[ip.Name]; ok && ip.Spec.PodType == "" {
+			ip.Spec.PodType = util.Vm
+			changed = true
+		}
+
 		v4IP, v6IP := util.SplitStringIP(ip.Spec.IPAddress)
-		if ip.Spec.V4IPAddress == v4IP && ip.Spec.V6IPAddress == v6IP {
+		if ip.Spec.V4IPAddress == v4IP && ip.Spec.V6IPAddress == v6IP && !changed {
 			continue
 		}
 		ip.Spec.V4IPAddress = v4IP

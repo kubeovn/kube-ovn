@@ -5,7 +5,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -14,6 +13,8 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const ovnLeaderElector = "ovn-controller-leader-elector"
@@ -25,6 +26,7 @@ type leaderElectionConfig struct {
 	Client clientset.Interface
 
 	ElectionID string
+	WasLeader  bool
 
 	OnStartedLeading func(chan struct{})
 	OnStoppedLeading func()
@@ -36,18 +38,24 @@ func (c *Controller) isLeader() bool {
 }
 
 func (c *Controller) leaderElection() {
-	elector := setupLeaderElection(&leaderElectionConfig{
+	config := &leaderElectionConfig{
 		Client:       c.config.KubeClient,
-		ElectionID:   "ovn-config",
+		ElectionID:   "kube-ovn-controller",
 		PodName:      c.config.PodName,
 		PodNamespace: c.config.PodNamespace,
-	})
-	c.elector = elector
+	}
+	c.elector = setupLeaderElection(config)
+
+	var flag bool
 	for {
 		if c.isLeader() {
+			config.WasLeader = true
 			return
 		}
-		klog.Info("waiting for becoming a leader")
+		if !flag {
+			klog.Info("waiting for becoming a leader")
+			flag = true
+		}
 		time.Sleep(5 * time.Second)
 	}
 }
@@ -58,6 +66,7 @@ func setupLeaderElection(config *leaderElectionConfig) *leaderelection.LeaderEle
 		OnStartedLeading: func(ctx context.Context) {
 			klog.Infof("I am the new leader")
 			stopCh = make(chan struct{})
+			config.WasLeader = true
 
 			if config.OnStartedLeading != nil {
 				config.OnStartedLeading(stopCh)
@@ -74,6 +83,9 @@ func setupLeaderElection(config *leaderElectionConfig) *leaderelection.LeaderEle
 		},
 		OnNewLeader: func(identity string) {
 			klog.Infof("new leader elected: %v", identity)
+			if config.WasLeader && identity != config.PodName {
+				klog.Fatal("I am not leader anymore")
+			}
 			if config.OnNewLeader != nil {
 				config.OnNewLeader(identity)
 			}
@@ -86,16 +98,16 @@ func setupLeaderElection(config *leaderElectionConfig) *leaderelection.LeaderEle
 		Component: ovnLeaderElector,
 		Host:      hostname,
 	})
-	lock := resourcelock.ConfigMapLock{
-		ConfigMapMeta: metav1.ObjectMeta{Namespace: config.PodNamespace, Name: config.ElectionID},
-		Client:        config.Client.CoreV1(),
+	lock := &resourcelock.LeaseLock{
+		LeaseMeta: metav1.ObjectMeta{Namespace: config.PodNamespace, Name: config.ElectionID},
+		Client:    config.Client.CoordinationV1(),
 		LockConfig: resourcelock.ResourceLockConfig{
 			Identity:      config.PodName,
 			EventRecorder: recorder,
 		},
 	}
 	elector, err := leaderelection.NewLeaderElector(leaderelection.LeaderElectionConfig{
-		Lock:          &lock,
+		Lock:          lock,
 		LeaseDuration: 15 * time.Second,
 		RenewDeadline: 10 * time.Second,
 		RetryPeriod:   2 * time.Second,

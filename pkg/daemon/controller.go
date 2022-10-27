@@ -291,7 +291,7 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 
 	var mtu int
 	var err error
-	if mtu, err = ovsInitProviderNetwork(pn.Name, nic, pn.Spec.ExchangeLinkName); err != nil {
+	if mtu, err = ovsInitProviderNetwork(pn.Name, nic, pn.Spec.ExchangeLinkName, c.config.MacLearningFallback); err != nil {
 		if oldLen := len(node.Labels); oldLen != 0 {
 			delete(node.Labels, fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name))
 			delete(node.Labels, fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name))
@@ -1015,6 +1015,10 @@ func (c *Controller) loopEncapIpCheck() {
 		if len(addrs) == 0 {
 			klog.Errorf("iface %s has no ip address", nodeTunnelName)
 			return
+		}
+		if iface.Name != c.config.tunnelIface {
+			klog.Infof("use %s as tunnel interface", iface.Name)
+			c.config.tunnelIface = iface.Name
 		}
 
 		// if assigned iface in node annotation is down or with no ip, the error msg should be printed periodically

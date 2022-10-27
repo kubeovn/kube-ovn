@@ -21,7 +21,7 @@ if [[ -z "$NODE_IPS" && -z "$LOCAL_IP" ]]; then
     /usr/share/ovn/scripts/ovn-ctl status_ic_ovsdb
     ovn-ic-nbctl --may-exist ts-add "$TS_NAME"
     ovn-ic-nbctl set Transit_Switch ts external_ids:subnet="$TS_CIDR"
-    tail -f /var/log/ovn/ovsdb-server-ic-nb.log
+    tail --follow=name --retry /var/log/ovn/ovsdb-server-ic-nb.log
 else
     if [[ -z "$LEADER_IP" ]]; then
         echo "leader start with local ${LOCAL_IP} and cluster $(gen_conn_str 6647)"
@@ -35,7 +35,7 @@ else
         /usr/share/ovn/scripts/ovn-ctl status_ic_ovsdb
         ovn-ic-nbctl --may-exist ts-add "$TS_NAME"
         ovn-ic-nbctl set Transit_Switch ts external_ids:subnet="$TS_CIDR"
-        tail -f /var/log/ovn/ovsdb-server-ic-nb.log
+        tail --follow=name --retry /var/log/ovn/ovsdb-server-ic-nb.log
     else
         echo "follower start with local ${LOCAL_IP}, leader ${LEADER_IP} and cluster $(gen_conn_str 6647)"
         /usr/share/ovn/scripts/ovn-ctl  --db-ic-nb-create-insecure-remote=yes \
@@ -47,6 +47,6 @@ else
         --ovn-ic-nb-db="$(gen_conn_str 6647)" \
         --ovn-ic-sb-db="$(gen_conn_str 6648)" \
         start_ic_ovsdb
-        tail -f /var/log/ovn/ovsdb-server-ic-nb.log
+        tail --follow=name --retry /var/log/ovn/ovsdb-server-ic-nb.log
     fi
 fi

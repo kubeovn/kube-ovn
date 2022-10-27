@@ -21,7 +21,7 @@ env:
 jobs:
   build:
     name: Build x86
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     steps:
       - name: Set up Go 1.x
         uses: actions/setup-go@v2
@@ -78,7 +78,7 @@ jobs:
   single-e2e:
     needs: build
     name: 1-master-e2e
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
       - name: Check out code
@@ -92,8 +92,8 @@ jobs:
 
       - name: Init Kind
         run: |
-          pip install j2cli --user
-          pip install "j2cli[yaml]" --user
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init
 
       - name: Download image
@@ -116,7 +116,8 @@ jobs:
         run: |
           go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
-          sudo chmod 666 /home/runner/.kube/config
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
           make e2e
 
       - name: Cleanup
@@ -127,7 +128,7 @@ jobs:
   single-iptables-e2e:
     needs: build
     name: 1-master-iptables-e2e
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
       - name: Check out code
@@ -141,8 +142,8 @@ jobs:
 
       - name: Init Kind
         run: |
-          pip install j2cli --user
-          pip install "j2cli[yaml]" --user
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init-iptables
 
       - name: Download image
@@ -165,7 +166,8 @@ jobs:
         run: |
           go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
-          sudo chmod 666 /home/runner/.kube/config
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
           make e2e
 
       - name: Cleanup
@@ -176,7 +178,7 @@ jobs:
   single-vlan-e2e:
     needs: build
     name: 1-master-vlan-e2e
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
       - name: Check out code
@@ -190,8 +192,8 @@ jobs:
 
       - name: Init Kind
         run: |
-          pip install j2cli --user
-          pip install "j2cli[yaml]" --user
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init
 
       - name: Download image
@@ -214,7 +216,8 @@ jobs:
         run: |
           go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
-          sudo chmod 666 /home/runner/.kube/config
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
           make e2e-vlan
 
       - name: Cleanup
@@ -225,7 +228,7 @@ jobs:
   single-underlay-e2e-single-nic:
     needs: build
     name: 1-master-underlay-e2e-single-nic
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
       - name: Check out code
@@ -239,8 +242,8 @@ jobs:
 
       - name: Init Kind
         run: |
-          pip install j2cli --user
-          pip install "j2cli[yaml]" --user
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init
 
       - name: Download image
@@ -263,14 +266,22 @@ jobs:
         run: |
           go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
-          sudo chmod 666 /home/runner/.kube/config
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
           make e2e-underlay-single-nic
+
+      - name: Run networkpolicy E2E
+        working-directory: test/networkpolicy-cyclonus/
+        run: |
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          bash ./start-test.sh
 
       - name: Cleanup
         run: |
           sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
           sh dist/images/cleanup.sh
-      
+
       - name: Check Node Network
         run: |
           sh -c '
@@ -290,7 +301,7 @@ jobs:
   single-node-e2e:
     needs: build
     name: 1-node-e2e
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
       - name: Check out code
@@ -304,8 +315,8 @@ jobs:
 
       - name: Init Kind
         run: |
-          pip install j2cli --user
-          pip install "j2cli[yaml]" --user
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init-single
 
       - name: Download image
@@ -328,7 +339,8 @@ jobs:
         run: |
           go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
-          sudo chmod 666 /home/runner/.kube/config
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
           make e2e
 
       - name: Cleanup
@@ -339,7 +351,7 @@ jobs:
   ha-e2e:
     needs: build
     name: 3-master-e2e
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
       - name: Check out code
@@ -353,8 +365,8 @@ jobs:
 
       - name: Init Kind
         run: |
-          pip install j2cli --user
-          pip install "j2cli[yaml]" --user
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init-ha
 
       - name: Download image
@@ -370,8 +382,8 @@ jobs:
   ipv6-e2e:
     needs: build
     name: ipv6-e2e
-    runs-on: ubuntu-18.04
-    timeout-minutes: 30
+    runs-on: ubuntu-20.04
+    timeout-minutes: 45
     steps:
       - name: Check out code
         uses: actions/checkout@v2
@@ -384,8 +396,8 @@ jobs:
 
       - name: Init Kind
         run: |
-          pip install j2cli --user
-          pip install "j2cli[yaml]" --user
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init-ipv6
 
       - name: Download image
@@ -412,8 +424,16 @@ jobs:
         run: |
           go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
-          sudo chmod 666 /home/runner/.kube/config
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
           make e2e-ipv6
+
+      - name: Run networkpolicy E2E
+        working-directory: test/networkpolicy-cyclonus/
+        run: |
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          bash ./start-test.sh
 
       - name: Cleanup
         run: |
@@ -423,7 +443,7 @@ jobs:
   ipv6-vlan-e2e:
     needs: build
     name: ipv6-vlan-e2e
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
       - name: Check out code
@@ -437,8 +457,8 @@ jobs:
 
       - name: Init Kind
         run: |
-          pip install j2cli --user
-          pip install "j2cli[yaml]" --user
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init-ipv6
 
       - name: Download image
@@ -465,7 +485,8 @@ jobs:
         run: |
           go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
-          sudo chmod 666 /home/runner/.kube/config
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
           make e2e-vlan-ipv6
 
       - name: Cleanup
@@ -476,7 +497,7 @@ jobs:
   ipv6-underlay-e2e-single-nic:
     needs: build
     name: ipv6-underlay-e2e-single-nic
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
       - name: Check out code
@@ -490,8 +511,8 @@ jobs:
 
       - name: Init Kind
         run: |
-          pip install j2cli --user
-          pip install "j2cli[yaml]" --user
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init-ipv6
 
       - name: Download image
@@ -518,7 +539,8 @@ jobs:
         run: |
           go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
-          sudo chmod 666 /home/runner/.kube/config
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
           make e2e-underlay-single-nic
 
       - name: Cleanup
@@ -545,7 +567,7 @@ jobs:
   dual-stack-e2e:
     needs: build
     name: dual-stack-e2e
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
       - name: Check out code
@@ -559,8 +581,8 @@ jobs:
 
       - name: Init Kind
         run: |
-          pip install j2cli --user
-          pip install "j2cli[yaml]" --user
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init-dual
 
       - name: Download image
@@ -587,8 +609,16 @@ jobs:
         run: |
           go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
-          sudo chmod 666 /home/runner/.kube/config
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
           make e2e
+
+      - name: Run networkpolicy E2E
+        working-directory: test/networkpolicy-cyclonus/
+        run: |
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          bash ./start-test.sh
 
       - name: Cleanup
         run: |
@@ -598,8 +628,8 @@ jobs:
   dual-stack-underlay-e2e-single-nic:
     needs: build
     name: dual-stack-underlay-e2e-single-nic
-    runs-on: ubuntu-18.04
-    timeout-minutes: 30
+    runs-on: ubuntu-20.04
+    timeout-minutes: 45
     steps:
       - name: Check out code
         uses: actions/checkout@v2
@@ -612,8 +642,8 @@ jobs:
 
       - name: Init Kind
         run: |
-          pip install j2cli --user
-          pip install "j2cli[yaml]" --user
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init-dual
 
       - name: Download image
@@ -640,8 +670,16 @@ jobs:
         run: |
           go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
-          sudo chmod 666 /home/runner/.kube/config
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
           make e2e-underlay-single-nic
+
+      - name: Run networkpolicy E2E
+        working-directory: test/networkpolicy-cyclonus/
+        run: |
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          bash ./start-test.sh
 
       - name: Cleanup
         run: |
@@ -667,8 +705,8 @@ jobs:
   dual-stack-underlay-logical-gw-e2e:
     needs: build
     name: dual-stack-underlay-logical-gateway-e2e
-    runs-on: ubuntu-18.04
-    timeout-minutes: 30
+    runs-on: ubuntu-20.04
+    timeout-minutes: 45
     steps:
       - name: Check out code
         uses: actions/checkout@v2
@@ -681,8 +719,8 @@ jobs:
 
       - name: Init Kind
         run: |
-          pip install j2cli --user
-          pip install "j2cli[yaml]" --user
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init-dual
 
       - name: Download image
@@ -709,8 +747,16 @@ jobs:
         run: |
           go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
-          sudo chmod 666 /home/runner/.kube/config
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
           make e2e
+
+      - name: Run networkpolicy E2E
+        working-directory: test/networkpolicy-cyclonus/
+        run: |
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          bash ./start-test.sh
 
       - name: Cleanup
         run: |
@@ -736,7 +782,7 @@ jobs:
   no-lb-e2e:
     needs: build
     name: disable-loadbalancer-e2e
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
       - name: Check out code
@@ -750,8 +796,8 @@ jobs:
 
       - name: Init Kind
         run: |
-          pip install j2cli --user
-          pip install "j2cli[yaml]" --user
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init
 
       - name: Download image
@@ -776,7 +822,8 @@ jobs:
         run: |
           go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
-          sudo chmod 666 /home/runner/.kube/config
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
           make e2e
 
       - name: Cleanup
@@ -787,7 +834,7 @@ jobs:
   no-lb-iptables-e2e:
     needs: build
     name: disable-loadbalancer-iptables-e2e
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
       - name: Check out code
@@ -801,8 +848,8 @@ jobs:
 
       - name: Init Kind
         run: |
-          pip install j2cli --user
-          pip install "j2cli[yaml]" --user
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init-iptables
 
       - name: Download image
@@ -827,7 +874,8 @@ jobs:
         run: |
           go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
-          sudo chmod 666 /home/runner/.kube/config
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
           make e2e
 
       - name: Cleanup
@@ -838,7 +886,7 @@ jobs:
   no-np-e2e:
     needs: build
     name: disable-network-policy-e2e
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
       - name: Check out code
@@ -852,8 +900,8 @@ jobs:
 
       - name: Init Kind
         run: |
-          pip install j2cli --user
-          pip install "j2cli[yaml]" --user
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init
 
       - name: Download image
@@ -878,7 +926,8 @@ jobs:
         run: |
           go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
-          sudo chmod 666 /home/runner/.kube/config
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
           make e2e
 
       - name: Cleanup
@@ -889,7 +938,7 @@ jobs:
   ovnic-e2e:
     needs: build
     name: 1-master-ovnic-e2e
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
       - name: Check out code
@@ -903,8 +952,8 @@ jobs:
 
       - name: Init Kind
         run: |
-          pip install j2cli --user
-          pip install "j2cli[yaml]" --user
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init-cluster
 
       - name: Download image
@@ -928,6 +977,7 @@ jobs:
         run: |
           go install github.com/onsi/ginkgo/ginkgo@latest
           sudo kubectl cluster-info
+          sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
           make e2e-ovn-ic
 
@@ -955,7 +1005,7 @@ jobs:
       - no-np-e2e
       - ovnic-e2e
     name: push
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     steps:
       - name: Check out code
         uses: actions/checkout@v2

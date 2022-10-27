@@ -412,7 +412,7 @@ func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason string, e
 		c.recorder.Eventf(subnet, v1.EventTypeWarning, reason, errStr)
 	} else {
 		subnet.Status.Validated(reason, "")
-		if reason == "SetPrivateLogicalSwitchSuccess" || reason == "ResetLogicalSwitchAclSuccess" {
+		if reason == "SetPrivateLogicalSwitchSuccess" || reason == "ResetLogicalSwitchAclSuccess" || reason == "ReconcileCentralizedGatewaySuccess" {
 			subnet.Status.Ready(reason, "")
 		}
 	}
@@ -632,6 +632,9 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 }
 
 func (c *Controller) handleUpdateSubnetStatus(key string) error {
+	c.subnetStatusKeyMutex.Lock(key)
+	defer c.subnetStatusKeyMutex.Unlock(key)
+
 	orisubnet, err := c.subnetsLister.Get(key)
 	subnet := orisubnet.DeepCopy()
 	if err != nil {
@@ -893,7 +896,7 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 				}
 			}
 
-			_, idNameMap, err := c.ovnLegacyClient.ListLspForNodePortgroup()
+			nameIdMap, idNameMap, err := c.ovnLegacyClient.ListLspForNodePortgroup()
 			if err != nil {
 				klog.Errorf("failed to list lsp info, %v", err)
 				return err
@@ -906,11 +909,15 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 				if c.config.EnableEipSnat && (pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "") {
 					continue
 				}
+				// Pod will add to port-group when pod get updated
+				if pod.Spec.NodeName == "" {
+					continue
+				}
 
 				podNets, err := c.getPodKubeovnNets(pod)
 				if err != nil {
 					klog.Errorf("failed to get pod nets %v", err)
-					return err
+					continue
 				}
 
 				podPorts := make([]string, 0, 1)
@@ -948,10 +955,6 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
 					continue
 				}
-				// Pod will add to port-group when pod get updated
-				if pod.Spec.NodeName == "" {
-					continue
-				}
 
 				pgName := getOverlaySubnetsPortGroupName(subnet.Name, pod.Spec.NodeName)
 				c.ovnPgKeyMutex.Lock(pgName)
@@ -964,6 +967,11 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 
 				portsToAdd := make([]string, 0, len(podPorts))
 				for _, port := range podPorts {
+					if _, ok := nameIdMap[port]; !ok {
+						klog.Errorf("lsp does not exist for pod %v, please delete the pod and retry", port)
+						continue
+					}
+
 					if _, ok := pgPorts[port]; !ok {
 						portsToAdd = append(portsToAdd, port)
 					}
@@ -1080,7 +1088,9 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 					if err != nil {
 						return err
 					}
-					_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
+					if _, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+						klog.Errorf("failed to patch subnet %s NoReadyGateway status: %v", subnet.Name, err)
+					}
 					return err
 				}
 
@@ -1091,14 +1101,7 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 				}
 
 				subnet.Status.ActivateGateway = newActivateNode
-				subnet.Status.Ready("ReconcileCentralizedGatewaySuccess", "")
-				bytes, err := subnet.Status.Bytes()
-				if err != nil {
-					return err
-				}
-				if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
-					return err
-				}
+				c.patchSubnetStatus(subnet, "ReconcileCentralizedGatewaySuccess", "")
 			}
 
 			if err := c.deletePolicyRouteByGatewayType(subnet, kubeovnv1.GWDistributedType, false); err != nil {
@@ -1193,6 +1196,13 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		v6availableIPs = 0
 	}
 
+	if subnet.Status.V4AvailableIPs == v4availableIPs &&
+		subnet.Status.V6AvailableIPs == v6availableIPs &&
+		subnet.Status.V4UsingIPs == float64(len(v4UsingIPs)) &&
+		subnet.Status.V6UsingIPs == float64(len(v6UsingIPs)) {
+		return nil
+	}
+
 	subnet.Status.V4AvailableIPs = v4availableIPs
 	subnet.Status.V6AvailableIPs = v6availableIPs
 	subnet.Status.V4UsingIPs = float64(len(v4UsingIPs))
@@ -1227,6 +1237,13 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		availableIPs = 0
 	}
 	usingIPs := float64(len(podUsedIPs.Items))
+	cachedFields := [4]float64{
+		subnet.Status.V4AvailableIPs,
+		subnet.Status.V4UsingIPs,
+		subnet.Status.V6AvailableIPs,
+		subnet.Status.V6UsingIPs,
+	}
+
 	if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolIPv4 {
 		subnet.Status.V4AvailableIPs = availableIPs
 		subnet.Status.V4UsingIPs = usingIPs
@@ -1237,6 +1254,14 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		subnet.Status.V6UsingIPs = usingIPs
 		subnet.Status.V4AvailableIPs = 0
 		subnet.Status.V4UsingIPs = 0
+	}
+	if cachedFields == [4]float64{
+		subnet.Status.V4AvailableIPs,
+		subnet.Status.V4UsingIPs,
+		subnet.Status.V6AvailableIPs,
+		subnet.Status.V6UsingIPs,
+	} {
+		return nil
 	}
 
 	bytes, err := subnet.Status.Bytes()

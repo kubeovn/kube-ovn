@@ -27,15 +27,6 @@ spec:
     rule: 'RunAsAny'
 
 ---
-
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ovn-config
-  namespace: kube-system
-data:
-  defaultNetworkType: geneve
----
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -113,6 +104,12 @@ rules:
       - create
       - patch
       - update
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - "*"
   - apiGroups:
       - "k8s.cni.cncf.io"
     resources:

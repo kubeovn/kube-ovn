@@ -5,7 +5,7 @@ HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
 OVN_DB_IPS=${OVN_DB_IPS:-}
 TUNNEL_TYPE=${TUNNEL_TYPE:-geneve}
-FLOW_WAIT=${FLOW_WAIT:-5}
+FLOW_LIMIT=${FLOW_LIMIT:-10}
 
 # Check required kernel module
 modinfo openvswitch
@@ -35,9 +35,18 @@ cat /proc/cmdline"
 fi
 
 function quit {
-	/usr/share/ovn/scripts/grace_stop_ovn_controller
-	/usr/share/openvswitch/scripts/ovs-ctl stop
-	exit 0
+  set +e
+  for netns in /var/run/netns/*; do
+    nsenter --net=$netns sysctl -w net.ipv4.neigh.eth0.base_reachable_time_ms=180000;
+    nsenter --net=$netns sysctl -w net.ipv4.neigh.eth0.gc_stale_time=180;
+  done
+  # If the arp is in stale or delay status, stop vswitchd will lead prob failed.
+  # Wait a while for prob ready.
+  # As the timeout has been increased existing entry will not change to stale or delay at the moment
+  sleep 5
+  /usr/share/ovn/scripts/grace_stop_ovn_controller
+  /usr/share/openvswitch/scripts/ovs-ctl stop
+  exit 0
 }
 trap quit EXIT
 
@@ -52,16 +61,16 @@ if [[ `nproc` -gt 12 ]]; then
     ovs-vsctl --no-wait set Open_vSwitch . other_config:n-handler-threads=10
 fi
 
-# When ovs-vswitchd starts with this value set as true, it will neither flush or
-# expire previously set datapath flows nor will it send and receive any
-# packets to or from the datapath. Please check ovs-vswitchd.conf.db.5.txt
-ovs-vsctl --no-wait set open_vswitch . other_config:flow-restore-wait="true"
-
 if [ "$HW_OFFLOAD" = "true" ]; then
   ovs-vsctl --no-wait set open_vswitch . other_config:hw-offload=true
 else
   ovs-vsctl --no-wait set open_vswitch . other_config:hw-offload=false
 fi
+
+# avoid warnings caused by ovs-vsctl
+ovsdb_server_ctl="/var/run/openvswitch/ovsdb-server.$(cat /var/run/openvswitch/ovsdb-server.pid).ctl"
+ovs-appctl -t "$ovsdb_server_ctl" vlog/set jsonrpc:file:err
+ovs-appctl -t "$ovsdb_server_ctl" vlog/set reconnect:file:err
 
 function exchange_link_names() {
   mappings=($(ovs-vsctl --if-exists get open . external-ids:ovn-bridge-mappings | tr -d '"' | tr ',' ' '))
@@ -134,8 +143,51 @@ function exchange_link_names() {
 
 exchange_link_names
 
+function wait_flows_pre_check() {
+  local devices=""
+  local ips=($(echo $OVN_DB_IPS | sed 's/,/ /g'))
+  for ip in ${ips[*]}; do
+    devices="$devices $(ip route get $ip | grep -oE 'dev .+' | awk '{print $2}')"
+  done
+
+  bridges=($(ovs-vsctl --no-heading --columns=name find bridge external-ids:vendor=kube-ovn))
+  for br in ${bridges[@]}; do
+    ports=($(ovs-vsctl list-ports $br))
+    for port in ${ports[@]}; do
+      if ! echo $devices | grep -qw "$port"; then
+        continue
+      fi
+
+      port_type=$(ovs-vsctl --no-heading --columns=type find interface name=$port)
+      if [ ! "x$port_type" = 'x""' ]; then
+        continue
+      fi
+
+      if ! ip link show $port | grep -qw "master ovs-system"; then
+        return 1
+      fi
+    done
+  done
+
+  return 0
+}
+
+skip_wait_flows=0
+if ! wait_flows_pre_check; then
+  skip_wait_flows=1
+fi
+
+if [ $skip_wait_flows -eq 0 ]; then
+  # When ovs-vswitchd starts with this value set as true, it will neither flush or
+  # expire previously set datapath flows nor will it send and receive any
+  # packets to or from the datapath. Please check ovs-vswitchd.conf.db.5.txt
+  ovs-vsctl --no-wait set open_vswitch . other_config:flow-restore-wait="true"
+else
+  ovs-vsctl --no-wait set open_vswitch . other_config:flow-restore-wait="false"
+fi
+
 # Start vswitchd. restart will automatically set/unset flow-restore-wait which is not what we want
-/usr/share/openvswitch/scripts/ovs-ctl start --no-ovsdb-server --system-id=random
+/usr/share/openvswitch/scripts/ovs-ctl start --no-ovsdb-server --system-id=random --no-mlockall
 /usr/share/openvswitch/scripts/ovs-ctl --protocol=udp --dport=6081 enable-protocol
 
 sleep 1
@@ -239,10 +291,28 @@ else
   /usr/share/ovn/scripts/ovn-ctl --ovn-controller-ssl-key=/var/run/tls/key --ovn-controller-ssl-cert=/var/run/tls/cert --ovn-controller-ssl-ca-cert=/var/run/tls/cacert restart_controller
 fi
 
-# Wait ovn-controller finish init flow compute and update it to vswitchd,
-# then update flow-restore-wait to indicate vswitchd to process flows
-sleep ${FLOW_WAIT}
-ovs-vsctl --no-wait set open_vswitch . other_config:flow-restore-wait="false"
+if [ $skip_wait_flows -eq 0 ]; then
+  # Wait ovn-controller finish init flow compute and update it to vswitchd,
+  # then update flow-restore-wait to indicate vswitchd to process flows
+  set +e
+  flow_num=$(ovs-ofctl dump-flows br-int | wc -l)
+  while [ $flow_num -le $FLOW_LIMIT ]
+  do
+    echo "$flow_num flows now, waiting for ovs-vswitchd flow ready"
+    sleep 1
+    flow_num=$(ovs-ofctl dump-flows br-int | wc -l)
+  done
+  set -e
+
+  ovs-vsctl --no-wait set open_vswitch . other_config:flow-restore-wait="false"
+fi
+
+set +e
+for netns in /var/run/netns/*; do
+  nsenter --net=$netns sysctl -w net.ipv4.neigh.eth0.base_reachable_time_ms=30000;
+  nsenter --net=$netns sysctl -w net.ipv4.neigh.eth0.gc_stale_time=60;
+done
+set -e
 
 chmod 600 /etc/openvswitch/*
-tail -f /var/log/ovn/ovn-controller.log
+tail --follow=name --retry /var/log/ovn/ovn-controller.log
