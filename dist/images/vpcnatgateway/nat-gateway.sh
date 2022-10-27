@@ -35,6 +35,11 @@ function init() {
     iptables -t nat -A SNAT_FILTER -j SHARED_SNAT
 }
 
+
+function get-iptables-version() {
+  exec_cmd "iptables --version"
+}
+
 function add_vpc_internal_route() {
     # make sure inited
     iptables-save -t nat | grep  SNAT_FILTER | grep SHARED_SNAT
@@ -173,9 +178,10 @@ function add_snat() {
         arr=(${rule//,/ })
         eip=(${arr[0]//\// })
         internalCIDR=${arr[1]}
+        randomFullyOption=${arr[2]}
         # check if already exist
         iptables-save  | grep "SHARED_SNAT" | grep "\-s $internalCIDR" | grep "source $eip" && exit 0
-        exec_cmd "iptables -t nat -A SHARED_SNAT -s $internalCIDR -j SNAT --to-source $eip"
+        exec_cmd "iptables -t nat -A SHARED_SNAT -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
     done
 }
 function del_snat() {
@@ -188,12 +194,14 @@ function del_snat() {
         eip=(${arr[0]//\// })
         internalCIDR=${arr[1]}
         # check if already exist
-        iptables-save  | grep "SHARED_SNAT" | grep "\-s $internalCIDR" | grep "source $eip"
+        ruleMatch=$(iptables-save  | grep "SHARED_SNAT" | grep "\-s $internalCIDR" | grep "source $eip")
         if [ "$?" -eq 0 ];then
-          exec_cmd "iptables -t nat -D SHARED_SNAT -s $internalCIDR -j SNAT --to-source $eip"
+          ruleMatch=$(echo $ruleMatch | sed 's/-A //')
+          exec_cmd "iptables -t nat -D $ruleMatch"
         fi
     done
 }
+
 
 function add_dnat() {
     # make sure inited
@@ -211,6 +219,7 @@ function add_dnat() {
         exec_cmd "iptables -t nat -A SHARED_DNAT -p $protocol -d $eip --dport $dport -j DNAT --to-destination $internalIp:$internalPort"
     done
 }
+
 
 function del_dnat() {
     # make sure inited
@@ -285,6 +294,10 @@ case $opt in
  floating-ip-del)
         echo "floating-ip-del $rules"
         del_floating_ip $rules
+        ;;
+ get-iptables-version)
+        echo "get-iptables-version $rules"
+        get-iptables-version $rules
         ;;
  *)
         echo "Usage: $0 [init|subnet-route-add|subnet-route-del|eip-add|eip-del|floating-ip-add|floating-ip-del|dnat-add|dnat-del|snat-add|snat-del] ..."

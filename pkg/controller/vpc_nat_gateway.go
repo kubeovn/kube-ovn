@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -44,6 +45,8 @@ const (
 	natGwSubnetRouteAdd    = "subnet-route-add"
 	natGwSubnetRouteDel    = "subnet-route-del"
 	natGwExtSubnetRouteAdd = "ext-subnet-route-add"
+
+	getIptablesVersion = "get-iptables-version"
 )
 
 func genNatGwStsName(name string) string {
@@ -471,6 +474,39 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 		}
 	}
 	return nil
+}
+
+func (c *Controller) getIptablesVersion(pod *corev1.Pod) (version string, err error) {
+	operation := getIptablesVersion
+	cmd := fmt.Sprintf("bash /kube-ovn/nat-gateway.sh %s", operation)
+	klog.V(3).Infof(cmd)
+	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw", []string{"/bin/bash", "-c", cmd}...)
+
+	if err != nil {
+		if len(errOutput) > 0 {
+			klog.Errorf("failed to ExecuteCommandInContainer, errOutput: %v", errOutput)
+		}
+		if len(stdOutput) > 0 {
+			klog.V(3).Infof("failed to ExecuteCommandInContainer, stdOutput: %v", stdOutput)
+		}
+		return "", err
+	}
+
+	if len(stdOutput) > 0 {
+		klog.V(3).Infof("ExecuteCommandInContainer stdOutput: %v", stdOutput)
+	}
+
+	if len(errOutput) > 0 {
+		klog.Errorf("failed to ExecuteCommandInContainer errOutput: %v", errOutput)
+		return "", err
+	}
+
+	versionMatcher := regexp.MustCompile(`v([0-9]+(\.[0-9]+)+)`)
+	match := versionMatcher.FindStringSubmatch(stdOutput)
+	if match == nil {
+		return "", fmt.Errorf("no iptables version found in string: %s", stdOutput)
+	}
+	return match[1], nil
 }
 
 func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {

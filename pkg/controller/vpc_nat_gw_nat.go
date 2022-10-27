@@ -1558,6 +1558,7 @@ func (c *Controller) deleteDnatInPod(dp, protocol, v4ip, internalIp, externalPor
 		}
 		return err
 	}
+
 	// del nat
 	var delRules []string
 	rule := fmt.Sprintf("%s,%s,%s,%s,%s", v4ip, externalPort, protocol, internalIp, internalPort)
@@ -1577,6 +1578,16 @@ func (c *Controller) createSnatInPod(dp, v4ip, internalCIDR string) error {
 	}
 	var rules []string
 	rule := fmt.Sprintf("%s,%s", v4ip, internalCIDR)
+
+	version, err := c.getIptablesVersion(gwPod)
+	if err != nil {
+		version = "1.0.0"
+		klog.Warningf("failed to checking iptables version, assuming version at least %s: %v", version, err)
+	}
+	if util.CompareVersion(version, "1.6.2") >= 1 {
+		rule = fmt.Sprintf("%s,%s", rule, "--random-fully")
+	}
+
 	rules = append(rules, rule)
 	if err = c.execNatGwRules(gwPod, natGwSnatAdd, rules); err != nil {
 		klog.Errorf("failed to exec nat gateway rule, err: %v", err)
