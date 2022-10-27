@@ -11,13 +11,6 @@ if ! test -f "$OVS_DPDK_CONFIG_FILE"; then
 fi
 source $OVS_DPDK_CONFIG_FILE
 
-# set up driver
-modprobe vfio-pci
-
-
-# band nic to dpdk driver
-driverctl set-override ${DPDK_DEV} vfio-pci
-
 # link sock
 mkdir -p /usr/local/var/run
 
