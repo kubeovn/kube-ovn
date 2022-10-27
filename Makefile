@@ -7,6 +7,8 @@ COMMIT = git-$(shell git rev-parse --short HEAD)
 DATE = $(shell date +"%Y-%m-%d_%H:%M:%S")
 GOLDFLAGS = "-w -s -extldflags '-z now' -X github.com/kubeovn/kube-ovn/versions.COMMIT=$(COMMIT) -X github.com/kubeovn/kube-ovn/versions.VERSION=$(RELEASE_TAG) -X github.com/kubeovn/kube-ovn/versions.BUILDDATE=$(DATE)"
 
+CONTROL_PLANE_TAINTS = node-role.kubernetes.io/master node-role.kubernetes.io/control-plane
+
 # ARCH could be amd64,arm64
 ARCH = amd64
 
@@ -134,6 +136,30 @@ kind-install:
 	kubectl taint node kube-ovn-control-plane node-role.kubernetes.io/master:NoSchedule-
 	ENABLE_SSL=true dist/images/install.sh
 	kubectl describe no
+
+.PHONY: kind-untaint-control-plane
+kind-untaint-control-plane:
+	@for node in $$(kubectl get no -o jsonpath='{.items[*].metadata.name}'); do \
+		for key in $(CONTROL_PLANE_TAINTS); do \
+			taint=$$(kubectl get no $$node -o jsonpath="{.spec.taints[?(@.key==\"$$key\")]}"); \
+			if [ -n "$$taint" ]; then \
+				kubectl taint node $$node $$key:NoSchedule-; \
+			fi; \
+		done; \
+	done
+
+.PHONY: kind-helm-install
+kind-helm-install: kind-untaint-control-plane
+	kubectl label no -lbeta.kubernetes.io/os=linux kubernetes.io/os=linux --overwrite
+	kubectl label no -lnode-role.kubernetes.io/control-plane  kube-ovn/role=master --overwrite
+	kubectl label no -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel  --overwrite
+	$(eval NODESNUMBER = $(shell docker exec -i kube-ovn-control-plane kubectl get nodes --no-headers=true | wc -l))
+	$(eval MASTERNODES = $(shell docker exec -i kube-ovn-control-plane kubectl get nodes -l node-role.kubernetes.io/control-plane=""  -o jsonpath='{.items[*].status.addresses[].address}'))
+	$(eval EMPTY := )
+	$(eval SPACE := $(EMPTY))
+	$(eval MASTERS = $(subst SPACE,,,$(strip $$(MASTERNODES))))
+	helm install kubeovn ./kubeovn-helm --set cni_conf.MASTER_NODES=$(MASTERNODES) --set nodes=$(NODESNUMBER)
+	kubectl -n kube-system get pods -o wide
 
 .PHONY: kind-install-cluster
 kind-install-cluster:
