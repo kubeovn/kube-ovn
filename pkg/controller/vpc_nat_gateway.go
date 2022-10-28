@@ -266,7 +266,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	if needToCreate {
 		_, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
 			Create(context.Background(), newSts, metav1.CreateOptions{})
-		// if pod create successfully, will add initVpcNatGatewayQueue, then syncVpcNatGwRules
+		// if pod create successfully, will add initVpcNatGatewayQueue
 		if err != nil {
 			klog.Errorf("failed to create statefulset '%s', err: %v", newSts.Name, err)
 			return err
@@ -281,25 +281,6 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 			return err
 		}
 	}
-	return nil
-}
-
-func (c *Controller) syncVpcNatGwRules(key string) error {
-	// sync all nat crd
-	pod, err := c.getNatGwPod(key)
-	if err != nil {
-		return err
-	}
-
-	if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; !hasInit {
-		c.initVpcNatGatewayQueue.Add(key)
-		return nil
-	}
-	c.updateVpcFloatingIpQueue.Add(key)
-	c.updateVpcDnatQueue.Add(key)
-	c.updateVpcSnatQueue.Add(key)
-	c.updateVpcSubnetQueue.Add(key)
-	c.updateVpcEipQueue.Add(key)
 	return nil
 }
 
@@ -343,6 +324,11 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 		klog.Errorf("failed to init vpc nat gateway, %v", err)
 		return err
 	}
+	c.updateVpcFloatingIpQueue.Add(key)
+	c.updateVpcDnatQueue.Add(key)
+	c.updateVpcSnatQueue.Add(key)
+	c.updateVpcSubnetQueue.Add(key)
+	c.updateVpcEipQueue.Add(key)
 	pod.Annotations[util.VpcNatGatewayInitAnnotation] = "true"
 	patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
 	if err != nil {
@@ -353,7 +339,7 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 		klog.Errorf("patch pod %s/%s failed %v", pod.Name, pod.Namespace, err)
 		return err
 	}
-	return c.syncVpcNatGwRules(key)
+	return nil
 }
 
 func (c *Controller) handleUpdateVpcFloatingIp(natGwKey string) error {
