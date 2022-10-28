@@ -36,7 +36,7 @@ function init() {
 }
 
 
-function get-iptables-version() {
+function get_iptables_version() {
   exec_cmd "iptables --version"
 }
 
@@ -297,7 +297,7 @@ case $opt in
         ;;
  get-iptables-version)
         echo "get-iptables-version $rules"
-        get-iptables-version $rules
+        get_iptables_version $rules
         ;;
  *)
         echo "Usage: $0 [init|subnet-route-add|subnet-route-del|eip-add|eip-del|floating-ip-add|floating-ip-del|dnat-add|dnat-del|snat-add|snat-del] ..."
