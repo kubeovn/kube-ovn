@@ -9,7 +9,8 @@ ENV SRC_DIR='/usr/src'
 RUN apt update && apt install build-essential git libnuma-dev autoconf curl \
     python3 libmnl-dev libpcap-dev libtool libcap-ng-dev libssl-dev pkg-config \
     python3-six libunbound-dev libunwind-dev dh-make fakeroot debhelper dh-python \
-    flake8 python3-sphinx graphviz groff wget libjemalloc-dev python3-pip -y
+    flake8 python3-sphinx graphviz groff wget libjemalloc-dev python3-pip libibverbs1 \
+    libibverbs-dev ibverbs-providers -y
 
 RUN pip3 install meson ninja
 
@@ -28,7 +29,7 @@ RUN cd /usr/src/ && \
 RUN cd /usr/src/ && \
     git clone https://github.com/openvswitch/ovs.git && \
     cd ovs && \
-    git checkout c50a0f080d95e9027b7ba3a70150b02c2377c721 && \
+    git checkout 1570924c3f83851f39f56e3363050b70ba1aafb0 && \
     curl -s https://github.com/kubeovn/ovs/commit/22ea22c40b46ee5adeae977ff6cfca81b3ff25d7.patch | git apply && \
     curl -s https://github.com/openvswitch/ovs/commit/a432b1eb496cc1606873068c26716977a02029e2.patch | git apply && \
     # compile without avx512
@@ -44,7 +45,6 @@ RUN dpkg -i /usr/src/python3-openvswitch*.deb /usr/src/libopenvswitch*.deb
 
 RUN cd /usr/src/ && git clone -b branch-21.06 --depth=1 https://github.com/kubeovn/ovn.git && \
     cd ovn && \
-
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \
@@ -72,7 +72,8 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname driverctl libunwind8 netbase \
         ethtool iproute2 ncat libunbound-dev procps libatomic1 kmod iptables \
         tcpdump ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 \
-        logrotate libjemalloc2 dnsutils  libnuma-dev -y --no-install-recommends && \
+        logrotate libjemalloc2 dnsutils  libnuma-dev libibverbs1 libibverbs-dev \
+        ibverbs-providers libnl-3-dev libnl-route-3-dev libnl-3-200 libnl-route-3-200 -y --no-install-recommends && \
         rm -rf /var/lib/apt/lists/* && \
         cd /usr/sbin && \
         ln -sf /usr/sbin/iptables-legacy iptables && \
