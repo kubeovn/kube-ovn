@@ -633,7 +633,7 @@ func (c *Controller) GetGwBySubnet(name string) (string, string, error) {
 }
 
 func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp string) error {
-	eipCr, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Get(context.Background(), key, metav1.GetOptions{})
+	eip, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Get(context.Background(), key, metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			_, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Create(context.Background(), &kubeovnv1.IptablesEIP{
@@ -663,7 +663,6 @@ func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp string) 
 			return errMsg
 		}
 	} else {
-		eip := eipCr.DeepCopy()
 		if eip.Spec.MacAddress != mac || eip.Spec.V4ip != v4ip {
 			eip.Spec.MacAddress = mac
 			eip.Spec.V4ip = v4ip

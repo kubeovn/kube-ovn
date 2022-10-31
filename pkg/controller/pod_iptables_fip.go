@@ -234,18 +234,17 @@ func (c *Controller) handleAddPodAnnotatedIptablesFip(key string) error {
 		// fip aleady ok
 		return nil
 	}
-	pod := cachedPod.DeepCopy()
-	fipName := PodNameToEipName(pod.Name, pod.Namespace)
-	if v, ok := pod.Annotations[util.EipNameAnnotation]; ok {
+	fipName := PodNameToEipName(cachedPod.Name, cachedPod.Namespace)
+	if v, ok := cachedPod.Annotations[util.EipNameAnnotation]; ok {
 		v = strings.Trim(v, " ")
 		if v != "" {
 			fipName = v
 		}
 	}
-	if err = c.handleAddPodAnnotatedIptablesFipFinalizer(pod); err != nil {
+	if err = c.handleAddPodAnnotatedIptablesFipFinalizer(cachedPod); err != nil {
 		return err
 	}
-	if pod.Annotations[util.AllocatedAnnotation] != "true" {
+	if cachedPod.Annotations[util.AllocatedAnnotation] != "true" {
 		err = fmt.Errorf("pod network not allocated, failed to create iptables fip %s", fipName)
 		return err
 	}
@@ -254,12 +253,12 @@ func (c *Controller) handleAddPodAnnotatedIptablesFip(key string) error {
 			return err
 		}
 		klog.V(3).Infof("handle add pod annotated iptables fip %s", fipName)
-		if err := c.createOrUpdateCrdFip(fipName, fipName, pod.Annotations[util.IpAddressAnnotation]); err != nil {
+		if err := c.createOrUpdateCrdFip(fipName, fipName, cachedPod.Annotations[util.IpAddressAnnotation]); err != nil {
 			klog.Errorf("failed to create fip %s: %v", fipName, err)
 			return err
 		}
 	}
-	newPod := pod.DeepCopy()
+	newPod := cachedPod.DeepCopy()
 	newPod.Annotations[util.FipNameAnnotation] = fipName
 	patch, err := util.GenerateStrategicMergePatchPayload(cachedPod, newPod)
 	if err != nil {
@@ -311,9 +310,9 @@ func (c *Controller) handleAddPodAnnotatedIptablesFipFinalizer(pod *v1.Pod) erro
 		if util.ContainsString(pod.Finalizers, util.FipFinalizer) {
 			return nil
 		}
-		oriPod := pod.DeepCopy()
-		pod.Finalizers = append(pod.Finalizers, util.FipFinalizer)
-		patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
+		newPod := pod.DeepCopy()
+		newPod.Finalizers = util.RemoveString(newPod.Finalizers, util.FipFinalizer)
+		patch, err := util.GenerateStrategicMergePatchPayload(pod, newPod)
 		if err != nil {
 			return err
 		}
@@ -335,9 +334,9 @@ func (c *Controller) handleDelPodAnnotatedIptablesFipFinalizer(pod *v1.Pod) erro
 	if len(pod.Finalizers) == 0 {
 		return nil
 	}
-	oriPod := pod.DeepCopy()
-	pod.Finalizers = util.RemoveString(pod.Finalizers, util.FipFinalizer)
-	patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
+	newPod := pod.DeepCopy()
+	newPod.Finalizers = util.RemoveString(newPod.Finalizers, util.FipFinalizer)
+	patch, err := util.GenerateStrategicMergePatchPayload(pod, newPod)
 	if err != nil {
 		return err
 	}

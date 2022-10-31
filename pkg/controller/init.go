@@ -641,7 +641,7 @@ func (c *Controller) initSyncCrdVpcNatGw() error {
 	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcNatGatewayConfig)
 	if err != nil && !k8serrors.IsNotFound(err) {
 		klog.Errorf("failed to get ovn-vpc-nat-gw-config, %v", err)
-		return nil
+		return err
 	}
 	if k8serrors.IsNotFound(err) || cm.Data["enable-vpc-nat-gw"] == "false" || cm.Data["image"] == "" {
 		return nil
@@ -649,7 +649,7 @@ func (c *Controller) initSyncCrdVpcNatGw() error {
 	gws, err := c.vpcNatGatewayLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list vpc nat gateway, %v", err)
-		return nil
+		return err
 	}
 	for _, gw := range gws {
 		if err := c.updateCrdNatGw(gw.Name); err != nil {

@@ -367,6 +367,7 @@ func (c *Controller) handleUpdateVpcFloatingIp(natGwKey string) error {
 	// refresh exist fips
 	if err := c.initCreateAt(natGwKey); err != nil {
 		klog.Errorf("failed to init nat gw pod '%s' create at, %v", natGwKey, err)
+		return err
 	}
 
 	fips, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().List(context.Background(), metav1.ListOptions{
@@ -399,6 +400,7 @@ func (c *Controller) handleUpdateVpcEip(natGwKey string) error {
 	// refresh exist fips
 	if err := c.initCreateAt(natGwKey); err != nil {
 		klog.Errorf("failed to init nat gw pod '%s' create at, %v", natGwKey, err)
+		return err
 	}
 	eips, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().List(context.Background(), metav1.ListOptions{
 		LabelSelector: fields.OneTermEqualSelector(util.VpcNatLabel, "").String(),
@@ -428,6 +430,7 @@ func (c *Controller) handleUpdateVpcSnat(natGwKey string) error {
 	// refresh exist snats
 	if err := c.initCreateAt(natGwKey); err != nil {
 		klog.Errorf("failed to init nat gw pod '%s' create at, %v", natGwKey, err)
+		return err
 	}
 	snats, err := c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().List(context.Background(), metav1.ListOptions{
 		LabelSelector: fields.OneTermEqualSelector(util.VpcNatGatewayNameLabel, natGwKey).String(),
@@ -457,6 +460,7 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 	// refresh exist dnats
 	if err := c.initCreateAt(natGwKey); err != nil {
 		klog.Errorf("failed to init nat gw pod '%s' create at, %v", natGwKey, err)
+		return err
 	}
 
 	dnats, err := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().List(context.Background(), metav1.ListOptions{
@@ -738,9 +742,11 @@ func (c *Controller) checkVpcExternalNet() (err error) {
 	if _, err = networkClient.Get(context.Background(), util.VpcExternalNet, metav1.GetOptions{}); err != nil {
 		if k8serrors.IsNotFound(err) {
 			klog.Errorf("vpc external multus net '%s' should be exist already before ovn-vpc-nat-gw-config applied", util.VpcExternalNet)
+			return err
 		}
+		return err
 	}
-	return err
+	return nil
 }
 
 func (c *Controller) initCreateAt(key string) (err error) {
@@ -756,13 +762,12 @@ func (c *Controller) initCreateAt(key string) (err error) {
 }
 
 func (c *Controller) updateCrdNatGw(key string) error {
-	gwCr, err := c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Get(context.Background(), key, metav1.GetOptions{})
+	gw, err := c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Get(context.Background(), key, metav1.GetOptions{})
 	if err != nil {
 		errMsg := fmt.Errorf("failed to get vpc nat gw '%s', %v", key, err)
 		klog.Error(errMsg)
 		return errMsg
 	}
-	gw := gwCr.DeepCopy()
 	var needUpdateLabel bool
 	var op string
 	// vpc nat gw label may lost

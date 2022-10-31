@@ -248,15 +248,14 @@ func (c *Controller) handleAddPodAnnotatedIptablesEip(key string) error {
 		// eip aleady ok
 		return nil
 	}
-	pod := cachedPod.DeepCopy()
-	eipName := PodNameToEipName(pod.Name, pod.Namespace)
-	if v, ok := pod.Annotations[util.EipNameAnnotation]; ok {
+	eipName := PodNameToEipName(cachedPod.Name, cachedPod.Namespace)
+	if v, ok := cachedPod.Annotations[util.EipNameAnnotation]; ok {
 		v = strings.Trim(v, " ")
 		if v != "" {
 			eipName = v
 		}
 	}
-	newPod := pod.DeepCopy()
+	newPod := cachedPod.DeepCopy()
 	if newPod.Annotations[util.AllocatedAnnotation] != "true" {
 		err = fmt.Errorf("pod network not allocated, failed to create iptables eip %s", eipName)
 		return err
@@ -271,6 +270,7 @@ func (c *Controller) handleAddPodAnnotatedIptablesEip(key string) error {
 		natGw, err := c.getNatGw(router, subnet)
 		if err != nil {
 			klog.Errorf("failed to get vpc nat gw eip: %v", eipName, err)
+			return err
 		}
 		if err := c.createOrUpdateCrdEip(eipName, "", "", "", natGw); err != nil {
 			klog.Errorf("failed to create eip %s: %v", eipName, err)
@@ -341,16 +341,16 @@ func PodNameToEipName(name, namespace string) string {
 }
 
 func isStatefulSetDeleted(c kubernetes.Interface, pod *v1.Pod, statefulSetName string) bool {
-	// only delete statefulset pod lsp when statefulset deleted or down scaled
+	// return true if statefulset is deleted or in deleting
 	ss, err := c.AppsV1().StatefulSets(pod.Namespace).Get(context.Background(), statefulSetName, metav1.GetOptions{})
 	if err != nil {
-		// statefulset is deleted
 		if k8serrors.IsNotFound(err) {
+			// statefulset is deleted
 			return true
 		} else {
 			klog.Errorf("failed to get statefulset %v", err)
+			return false
 		}
-		return false
 	}
 	// statefulset is deleting
 	if ss.DeletionTimestamp != nil {
