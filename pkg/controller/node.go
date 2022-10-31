@@ -690,6 +690,18 @@ func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, node
 	return nil
 }
 
+func (c *Controller) deleteCrdIPs(podName, ns, providerName string) error {
+	portName := ovs.PodNameToPortName(podName, ns, providerName)
+	klog.Infof("delete cr ip '%s' for pod %s/%s", portName, ns, podName)
+	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil {
+		if !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to delete ip %s, %v", portName, err)
+			return err
+		}
+	}
+	return nil
+}
+
 func (c *Controller) CheckGatewayReady() {
 	if err := c.checkGatewayReady(); err != nil {
 		klog.Errorf("failed to check gateway ready %v", err)

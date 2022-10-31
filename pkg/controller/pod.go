@@ -680,32 +680,24 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 			klog.Errorf("failed to delete lsp %s, %v", port.Name, err)
 			return err
 		}
-		if !keepIpCR {
-			if err = c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), port.Name, metav1.DeleteOptions{}); err != nil {
-				if !k8serrors.IsNotFound(err) {
-					klog.Errorf("failed to delete ip %s, %v", port.Name, err)
-					return err
-				}
-			}
-		}
 		for _, sg := range sgs {
 			c.syncSgPortsQueue.Add(sg)
 		}
 	}
-	if !keepIpCR {
-		if err = c.deleteAttachmentNetWorkIP(pod); err != nil {
-			klog.Errorf("failed to delete attach ip for pod %v, %v, please delete attach ip manually", pod.Name, err)
-		}
-	}
-	c.ipam.ReleaseAddressByPod(key)
-
 	podNets, err := c.getPodKubeovnNets(pod)
 	if err != nil {
 		klog.Errorf("failed to get pod nets %v", err)
-	} else {
+	}
+	if !keepIpCR {
 		for _, podNet := range podNets {
-			c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
+			if err = c.deleteCrdIPs(pod.Name, pod.Namespace, podNet.ProviderName); err != nil {
+				klog.Errorf("failed to delete ip for pod %s, %v, please delete manually", pod.Name, err)
+			}
 		}
+	}
+	c.ipam.ReleaseAddressByPod(key)
+	for _, podNet := range podNets {
+		c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
 	}
 	return nil
 }
@@ -1337,37 +1329,6 @@ func (c *Controller) acquireStaticAddress(key, nicName, ip, mac, subnet string, 
 		return "", "", "", err
 	}
 	return v4IP, v6IP, mac, nil
-}
-
-func (c *Controller) deleteAttachmentNetWorkIP(pod *v1.Pod) error {
-	var providers []string
-	for k, v := range pod.Annotations {
-		if !strings.Contains(k, util.AllocatedAnnotationSuffix) || v != "true" {
-			continue
-		}
-		providerName := strings.ReplaceAll(k, util.AllocatedAnnotationSuffix, "")
-		if providerName == util.OvnProvider {
-			continue
-		} else {
-			providers = append(providers, providerName)
-		}
-	}
-	if len(providers) == 0 {
-		return nil
-	}
-	klog.Infof("providers are %v for pod %v", providers, pod.Name)
-
-	podName := c.getNameByPod(pod)
-	for _, providerName := range providers {
-		portName := ovs.PodNameToPortName(podName, pod.Namespace, providerName)
-		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil {
-			if !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to delete ip %s, %v", portName, err)
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind string) (bool, error) {
