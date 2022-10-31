@@ -6,6 +6,7 @@ metadata:
   annotations:
     kubernetes.io/description: |
       This daemon set launches the openvswitch daemon.
+    chart-version: "{{ .Chart.Name }}-{{ .Chart.Version }}"
 spec:
   selector:
     matchLabels:
@@ -18,6 +19,8 @@ spec:
         app: ovs
         component: network
         type: infra
+      annotations:
+        chart-version: "{{ .Chart.Name }}-{{ .Chart.Version }}"
     spec:
       tolerations:
         - effect: NoSchedule
@@ -26,13 +29,13 @@ spec:
           operator: Exists
         - key: CriticalAddonsOnly
           operator: Exists
-      priorityClassName: system-cluster-critical
+      priorityClassName: system-node-critical
       serviceAccountName: ovn
       hostNetwork: true
       hostPID: true
       containers:
         - name: openvswitch
-          image: "{{- .Values.image.repository -}}/kube-ovn:{{- .Values.image.version }}"
+          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["/kube-ovn/start-ovs.sh"]
           securityContext:
@@ -40,7 +43,7 @@ spec:
             privileged: true
           env:
             - name: ENABLE_SSL
-              value: "{{ .Values.networking.enable_ssl }}"
+              value: "{{ .Values.networking.ENABLE_SSL }}"
             - name: POD_IP
               valueFrom:
                 fieldRef:
@@ -48,14 +51,17 @@ spec:
             - name: HW_OFFLOAD
               value: "{{- .Values.func.HW_OFFLOAD }}"
             - name: TUNNEL_TYPE
-              value: "{{- .Values.networking.network_type }}"
+              value: "{{- .Values.networking.TUNNEL_TYPE }}"
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
-              value: "{{ .Values.cni_conf.MASTER_NODES }}"
+              value: "{{ .Values.MASTER_NODES }}"
           volumeMounts:
+            - mountPath: /var/run/netns
+              name: host-ns
+              mountPropagation: HostToContainer
             - mountPath: /lib/modules
               name: host-modules
               readOnly: true
@@ -80,6 +86,8 @@ spec:
               name: localtime
             - mountPath: /var/run/tls
               name: kube-ovn-tls
+            - mountPath: /var/run/containerd
+              name: cruntime
           readinessProbe:
             exec:
               command:
@@ -103,9 +111,10 @@ spec:
               memory: 200Mi
             limits:
               cpu: 1000m
-              memory: 800Mi
+              memory: 1000Mi
       nodeSelector:
         kubernetes.io/os: "linux"
+        ovn.kubernetes.io/ovs_dp_type: "kernel"
       volumes:
         - name: host-modules
           hostPath:
@@ -141,4 +150,11 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
+        - name: host-ns
+          hostPath:
+            path: /var/run/netns
+        - hostPath:
+            path: /var/run/containerd
+          name: cruntime
+
 

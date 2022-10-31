@@ -40,58 +40,67 @@ spec:
       hostNetwork: true
       containers:
         - name: kube-ovn-controller
-          image: "{{ .Values.image.repository -}}/kube-ovn:{{- .Values.image.version }}"
+          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
           - /kube-ovn/start-controller.sh
           - --default-cidr=
-          {{- if eq .Values.networking.net_stack "dual_stack" -}}
+          {{- if eq .Values.networking.NET_STACK "dual_stack" -}}
           {{ .Values.dual_stack.POD_CIDR }}
-          {{- else if eq .Values.networking.net_stack "ipv4" -}}
+          {{- else if eq .Values.networking.NET_STACK "ipv4" -}}
           {{ .Values.ipv4.POD_CIDR }}
-          {{- else if eq .Values.networking.net_stack "ipv6" -}}
+          {{- else if eq .Values.networking.NET_STACK "ipv6" -}}
           {{ .Values.ipv6.POD_CIDR }}
           {{- end }}
           - --default-gateway=
-          {{- if eq .Values.networking.net_stack "dual_stack" -}}
+          {{- if eq .Values.networking.NET_STACK "dual_stack" -}}
           {{ .Values.dual_stack.POD_GATEWAY }}
-          {{- else if eq .Values.networking.net_stack "ipv4" -}}
+          {{- else if eq .Values.networking.NET_STACK "ipv4" -}}
           {{ .Values.ipv4.POD_GATEWAY }}
-          {{- else if eq .Values.networking.net_stack "ipv6" -}}
+          {{- else if eq .Values.networking.NET_STACK "ipv6" -}}
           {{ .Values.ipv6.POD_GATEWAY }}
           {{- end }}
-          - --default-gateway-check={{- .Values.cni_conf.CHECK_GATEWAY }}
-          - --default-logical-gateway={{- .Values.cni_conf.LOGICAL_GATEWAY }}
-          - --default-exclude-ips={{- .Values.cni_conf.EXCLUDE_IPS }}
+          - --default-gateway-check={{- .Values.func.CHECK_GATEWAY }}
+          - --default-logical-gateway={{- .Values.func.LOGICAL_GATEWAY }}
+          - --default-exclude-ips={{- .Values.networking.EXCLUDE_IPS }}
           - --node-switch-cidr=
-          {{- if eq .Values.networking.net_stack "dual_stack" -}}
+          {{- if eq .Values.networking.NET_STACK "dual_stack" -}}
           {{ .Values.dual_stack.JOIN_CIDR }}
-          {{- else if eq .Values.networking.net_stack "ipv4" -}}
+          {{- else if eq .Values.networking.NET_STACK "ipv4" -}}
           {{ .Values.ipv4.JOIN_CIDR }}
-          {{- else if eq .Values.networking.net_stack "ipv6" -}}
+          {{- else if eq .Values.networking.NET_STACK "ipv6" -}}
           {{ .Values.ipv6.JOIN_CIDR }}
           {{- end }}
           - --service-cluster-ip-range=
-          {{- if eq .Values.networking.net_stack "dual_stack" -}}
+          {{- if eq .Values.networking.NET_STACK "dual_stack" -}}
           {{ .Values.dual_stack.SVC_CIDR }}
-          {{- else if eq .Values.networking.net_stack "ipv4" -}}
+          {{- else if eq .Values.networking.NET_STACK "ipv4" -}}
           {{ .Values.ipv4.SVC_CIDR }}
-          {{- else if eq .Values.networking.net_stack "ipv6" -}}
+          {{- else if eq .Values.networking.NET_STACK "ipv6" -}}
           {{ .Values.ipv6.SVC_CIDR }}
           {{- end }}
-          - --network-type={{- .Values.networking.network_type }}
+          - --network-type={{- .Values.networking.NETWORK_TYPE }}
           - --default-interface-name={{- .Values.networking.vlan.VLAN_INTERFACE_NAME }}
+          - --default-exchange-link-name={{- .Values.networking.EXCHANGE_LINK_NAME }}
           - --default-vlan-id={{- .Values.networking.vlan.VLAN_ID }}
+          - --ls-dnat-mod-dl-dst={{- .Values.func.LS_DNAT_MOD_DL_DST }}
           - --pod-nic-type={{- .Values.networking.POD_NIC_TYPE }}
           - --enable-lb={{- .Values.func.ENABLE_LB }}
           - --enable-np={{- .Values.func.ENABLE_NP }}
+          - --enable-eip-snat={{- .Values.networking.ENABLE_EIP_SNAT }}
           - --enable-external-vpc={{- .Values.func.ENABLE_EXTERNAL_VPC }}
           - --logtostderr=false
           - --alsologtostderr=true
+          - --gc-interval={{- .Values.performance.GC_INTERVAL }}
+          - --inspect-interval={{- .Values.performance.INSPECT_INTERVAL }}
           - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
+          - --log_file_max_size=0
+          - --enable-lb-svc={{- .Values.func.ENABLE_LB_SVC }}
+          - --keep-vm-ip={{- .Values.func.ENABLE_KEEP_VM_IP }}
+          - --pod-default-fip-type={{- .Values.networking.POD_DEFAULT_FIP_TYPE }}
           env:
             - name: ENABLE_SSL
-              value: "{{ .Values.networking.enable_ssl }}"
+              value: "{{ .Values.networking.ENABLE_SSL }}"
             - name: POD_NAME
               valueFrom:
                 fieldRef:
@@ -105,7 +114,7 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
-              value: "{{ .Values.cni_conf.MASTER_NODES }}"
+              value: "{{ .Values.MASTER_NODES }}"
           volumeMounts:
             - mountPath: /etc/localtime
               name: localtime
