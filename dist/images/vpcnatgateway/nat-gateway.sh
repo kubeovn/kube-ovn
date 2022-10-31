@@ -164,7 +164,7 @@ function del_floating_ip() {
         if [ "$?" -eq 0 ];then
             exec_cmd "iptables -t nat -D EXCLUSIVE_DNAT -d $eip -j DNAT --to-destination $internalIp"
             exec_cmd "iptables -t nat -D EXCLUSIVE_SNAT -s $internalIp -j SNAT --to-source $eip"
-            exec_cmd "conntrack -D -d $eip"
+            conntrack -D -d $eip 2>/dev/nul || true
         fi
     done
 }
