@@ -36,8 +36,6 @@ func (c OvnClient) AddLogicalRouterPort(lr, name, mac, networks string) error {
 		mac = util.GenerateMac()
 	}
 
-	var ops []ovsdb.Operation
-
 	lrp := &ovnnb.LogicalRouterPort{
 		UUID:        ovsclient.NamedUUID(),
 		Name:        name,
@@ -48,7 +46,7 @@ func (c OvnClient) AddLogicalRouterPort(lr, name, mac, networks string) error {
 
 	// ensure there is no port in the same name, before we create it in the transaction
 	waitOp := ConstructWaitForNameNotExistsOperation(name, "Logical_Router_Port")
-	ops = append(ops, waitOp)
+	ops := []ovsdb.Operation{waitOp}
 
 	createOps, err := c.ovnNbClient.Create(lrp)
 	if err != nil {

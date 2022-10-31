@@ -104,14 +104,14 @@ func (c *Controller) gcVpcNatGateway() error {
 		LabelSelector: sel.String(),
 	})
 	if err != nil {
-		klog.Errorf("failed to list vpc nat gateway stafulset, %v", err)
+		klog.Errorf("failed to list vpc nat gateway statefulset, %v", err)
 		return err
 	}
 	for _, sts := range stss.Items {
 		if !util.ContainsString(gwStsNames, sts.Name) {
 			err = c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).Delete(context.Background(), sts.Name, metav1.DeleteOptions{})
 			if err != nil {
-				klog.Errorf("failed to delete vpc nat gateway stafulset, %v", err)
+				klog.Errorf("failed to delete vpc nat gateway statefulset, %v", err)
 				return err
 			}
 		}
@@ -383,8 +383,8 @@ func (c *Controller) gcLoadBalancer() error {
 		if err != nil {
 			return err
 		}
-		for _, orivpc := range vpcs {
-			vpc := orivpc.DeepCopy()
+		for _, cachedVpc := range vpcs {
+			vpc := cachedVpc.DeepCopy()
 			for _, subnetName := range vpc.Status.Subnets {
 				_, err := c.subnetsLister.Get(subnetName)
 				if err != nil {
@@ -644,7 +644,23 @@ func (c *Controller) gcStaticRoute() error {
 		klog.Errorf("failed to list static route %v", err)
 		return err
 	}
+	defaultVpc, err := c.vpcsLister.Get(util.DefaultVpc)
+	if err != nil {
+		klog.Errorf("failed to get default vpc, %v", err)
+		return err
+	}
+	var keepStaticRoute bool
 	for _, route := range routes {
+		keepStaticRoute = false
+		for _, item := range defaultVpc.Spec.StaticRoutes {
+			if route.CIDR == item.CIDR && route.NextHop == item.NextHopIP {
+				keepStaticRoute = true
+				break
+			}
+		}
+		if keepStaticRoute {
+			continue
+		}
 		if route.CIDR != "0.0.0.0/0" && route.CIDR != "::/0" && c.ipam.ContainAddress(route.CIDR) {
 			exist, err := c.ovnLegacyClient.NatRuleExists(route.CIDR)
 			if exist || err != nil {

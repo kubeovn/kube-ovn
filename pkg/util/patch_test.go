@@ -76,9 +76,9 @@ func TestGenerateStrategicMergePatchPayload(t *testing.T) {
 			}
 			b, _ := json.Marshal(tt.args.remote)
 			// apply patch for remote obj
-			newb, _ := strategicpatch.StrategicMergePatch(b, got, v1.Pod{})
+			newB, _ := strategicpatch.StrategicMergePatch(b, got, v1.Pod{})
 			patchedPod := v1.Pod{}
-			_ = json.Unmarshal(newb, &patchedPod)
+			_ = json.Unmarshal(newB, &patchedPod)
 			if !assert.Equal(t, tt.want, patchedPod, "patch: %s", got) {
 				t.Errorf("patch not correct, got = %+v, want= %+v", patchedPod, tt.want)
 			}

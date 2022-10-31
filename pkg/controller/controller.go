@@ -88,6 +88,7 @@ type Controller struct {
 	deleteRouteQueue        workqueue.RateLimitingInterface
 	updateSubnetStatusQueue workqueue.RateLimitingInterface
 	syncVirtualPortsQueue   workqueue.RateLimitingInterface
+	subnetStatusKeyMutex    *keymutex.KeyMutex
 
 	ipsLister kubeovnlister.IPLister
 	ipSynced  cache.InformerSynced
@@ -254,6 +255,7 @@ func NewController(config *Configuration) *Controller {
 		deleteRouteQueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteRoute"),
 		updateSubnetStatusQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateSubnetStatus"),
 		syncVirtualPortsQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "SyncVirtualPort"),
+		subnetStatusKeyMutex:    keymutex.New(97),
 
 		ipsLister: ipInformer.Lister(),
 		ipSynced:  ipInformer.Informer().HasSynced,
@@ -540,6 +542,11 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		klog.Fatalf("failed to init ovn resource: %v", err)
 	}
 
+	// sync ip crd before initIPAM since ip crd will be used to restore vm and statefulset pod in initIPAM
+	if err := c.initSyncCrdIPs(); err != nil {
+		klog.Errorf("failed to sync crd ips: %v", err)
+	}
+
 	if err := c.InitIPAM(); err != nil {
 		klog.Fatalf("failed to init ipam: %v", err)
 	}
@@ -562,9 +569,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	}
 
 	c.registerSubnetMetrics()
-	if err := c.initSyncCrdIPs(); err != nil {
-		klog.Errorf("failed to sync crd ips: %v", err)
-	}
 	if err := c.initSyncCrdSubnets(); err != nil {
 		klog.Errorf("failed to sync crd subnets: %v", err)
 	}
@@ -578,9 +582,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		}
 	}
 
-	// The static route for node gw can be deleted when gc static route, so add it after gc process
-	dstIp := "0.0.0.0/0,::/0"
-	if err := c.ovnLegacyClient.AddStaticRoute("", dstIp, c.config.NodeSwitchGateway, c.config.ClusterRouter, util.NormalRouteType); err != nil {
+	if err := c.addNodeGwStaticRoute(); err != nil {
 		klog.Errorf("failed to add static route for node gw: %v", err)
 	}
 

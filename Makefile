@@ -1,4 +1,4 @@
-GO_VERSION = 1.18
+GO_VERSION = 1.19
 SHELL=/bin/bash
 
 REGISTRY = kubeovn
@@ -375,7 +375,7 @@ scan:
 
 .PHONY: ut
 ut:
-	ginkgo -mod=mod -progress -reportPassed --slowSpecThreshold=60 test/unittest
+	ginkgo -mod=mod -progress --always-emit-ginkgo-writer --slow-spec-threshold=60s test/unittest
 
 .PHONY: e2e
 e2e:
@@ -409,7 +409,7 @@ e2e:
 
 	@if [ ! -n "$$(docker images -q kubeovn/pause:3.2 2>/dev/null)" ]; then docker pull kubeovn/pause:3.2; fi
 	kind load docker-image --name kube-ovn kubeovn/pause:3.2
-	ginkgo -mod=mod -progress -reportPassed --slowSpecThreshold=60 test/e2e
+	ginkgo -mod=mod -progress --always-emit-ginkgo-writer --slow-spec-threshold=60s test/e2e
 
 .PHONY: e2e-ipv6
 e2e-ipv6:
@@ -426,20 +426,20 @@ e2e-vlan-ipv6:
 .PHONY: e2e-underlay-single-nic
 e2e-underlay-single-nic:
 	@docker inspect -f '{{json .NetworkSettings.Networks.kind}}' kube-ovn-control-plane > test/e2e-underlay-single-nic/node/network.json
-	ginkgo -mod=mod -progress -reportPassed --slowSpecThreshold=60 test/e2e-underlay-single-nic
+	ginkgo -mod=mod -progress --always-emit-ginkgo-writer --slow-spec-threshold=60s test/e2e-underlay-single-nic
 
 .PHONY: e2e-ovn-ic
 e2e-ovn-ic:
-	ginkgo -mod=mod -progress -reportPassed --slowSpecThreshold=60 test/e2e-ovnic
+	ginkgo -mod=mod -progress --always-emit-ginkgo-writer --slow-spec-threshold=60s test/e2e-ovnic
 
 .PHONY: e2e-ovn-ebpf
 e2e-ovn-ebpf:
 	docker run -d --name kube-ovn-e2e --network kind --cap-add=NET_ADMIN $(REGISTRY)/kube-ovn:$(RELEASE_TAG) sleep infinity
-	ginkgo -mod=mod -progress -reportPassed --slowSpecThreshold=60 test/e2e-ebpf
+	ginkgo -mod=mod -progress --always-emit-ginkgo-writer --slow-spec-threshold=60s test/e2e-ebpf
 
 .PHONY: e2e-multus
 e2e-multus:
-	ginkgo -mod=mod -progress -reportPassed --slowSpecThreshold=60 test/e2e-multus
+	ginkgo -mod=mod -progress --always-emit-ginkgo-writer --slow-spec-threshold=60s test/e2e-multus
 
 .PHONY: clean
 clean:

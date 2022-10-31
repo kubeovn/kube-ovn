@@ -469,6 +469,21 @@ spec:
                   type: array
                   items:
                     type: string
+                tolerations:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      key:
+                        type: string
+                      operator:
+                        type: string
+                      value:
+                        type: string
+                      effect:
+                        type: string
+                      tolerationSeconds:
+                        type: integer
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -1965,7 +1980,7 @@ spec:
       hostPID: true
       containers:
         - name: openvswitch
-          image: "kubeovn/kube-ovn-dpdk:$DPDK_VERSION-$VERSION"
+          image: "$REGISTRY/kube-ovn-dpdk:$DPDK_VERSION-$VERSION"
           imagePullPolicy: $IMAGE_PULL_POLICY
           command: ["/kube-ovn/start-ovs-dpdk.sh"]
           securityContext:
@@ -2503,6 +2518,8 @@ spec:
               name: localtime
             - mountPath: /var/run/tls
               name: kube-ovn-tls
+            - mountPath: /var/run/containerd
+              name: cruntime
           readinessProbe:
             exec:
               command:
@@ -2563,6 +2580,9 @@ spec:
         - name: localtime
           hostPath:
             path: /etc/localtime
+        - hostPath:
+            path: /var/run/containerd
+          name: cruntime
         - name: kube-ovn-tls
           secret:
             optional: true
@@ -2647,7 +2667,6 @@ spec:
               name: host-run-ovn
             - mountPath: /sys
               name: host-sys
-              readOnly: true
             - mountPath: /etc/cni/net.d
               name: cni-conf
             - mountPath: /etc/openvswitch

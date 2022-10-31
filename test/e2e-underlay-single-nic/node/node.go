@@ -12,7 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -59,16 +59,16 @@ var _ = Describe("[Underlay Node]", func() {
 			if network.IPAddress != "" {
 				addr := fmt.Sprintf("%s/%d", network.IPAddress, network.IPPrefixLen)
 				nodeIPs = append(nodeIPs, addr)
-				_, ipnet, err := net.ParseCIDR(addr)
+				_, ipNet, err := net.ParseCIDR(addr)
 				Expect(err).NotTo(HaveOccurred())
-				nodeRoutes = append(nodeRoutes, fmt.Sprintf("%s ", ipnet.String()))
+				nodeRoutes = append(nodeRoutes, fmt.Sprintf("%s ", ipNet.String()))
 			}
 			if network.GlobalIPv6Address != "" {
 				addr := fmt.Sprintf("%s/%d", network.GlobalIPv6Address, network.GlobalIPv6PrefixLen)
 				nodeIPs = append(nodeIPs, addr)
-				_, ipnet, err := net.ParseCIDR(addr)
+				_, ipNet, err := net.ParseCIDR(addr)
 				Expect(err).NotTo(HaveOccurred())
-				nodeRoutes = append(nodeRoutes, fmt.Sprintf("%s ", ipnet.String()))
+				nodeRoutes = append(nodeRoutes, fmt.Sprintf("%s ", ipNet.String()))
 			}
 			if network.Gateway != "" {
 				nodeRoutes = append(nodeRoutes, fmt.Sprintf("default via %s ", network.Gateway))

@@ -7,8 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	"k8s.io/klog/v2"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (c LegacyClient) ovnSbCommand(cmdArgs ...string) (string, error) {
@@ -69,11 +70,11 @@ func (c LegacyClient) DeleteChassisByNode(node string) error {
 func (c LegacyClient) DeleteChassisByName(chassisName string) error {
 	ovnVersion, err := c.GetVersion()
 	if err != nil {
-		return fmt.Errorf("fieled to get ovn version, %v", err)
+		return fmt.Errorf("failed to get ovn version, %v", err)
 	}
 
 	cmdArg := []string{"chassis-del", strings.TrimSpace(chassisName)}
-	if util.CompareVersion("20.09", ovnVersion) >= 0 {
+	if util.CompareVersion(ovnVersion, "20.09") >= 0 {
 		cmdArg = append(cmdArg, "--", "destroy", "chassis_private", strings.TrimSpace(chassisName))
 	}
 	if _, err := c.ovnSbCommand(cmdArg...); err != nil {

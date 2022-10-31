@@ -62,17 +62,17 @@ func (c *Controller) InitOVN() error {
 }
 
 func (c *Controller) InitDefaultVpc() error {
-	orivpc, err := c.vpcsLister.Get(util.DefaultVpc)
+	cachedVpc, err := c.vpcsLister.Get(util.DefaultVpc)
 	if err != nil {
-		orivpc = &kubeovnv1.Vpc{}
-		orivpc.Name = util.DefaultVpc
-		orivpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Create(context.Background(), orivpc, metav1.CreateOptions{})
+		cachedVpc = &kubeovnv1.Vpc{}
+		cachedVpc.Name = util.DefaultVpc
+		cachedVpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Create(context.Background(), cachedVpc, metav1.CreateOptions{})
 		if err != nil {
 			klog.Errorf("init default vpc failed: %v", err)
 			return err
 		}
 	}
-	vpc := orivpc.DeepCopy()
+	vpc := cachedVpc.DeepCopy()
 	vpc.Status.DefaultLogicalSwitch = c.config.DefaultLogicalSwitch
 	vpc.Status.Router = c.config.ClusterRouter
 	if c.config.EnableLb {
@@ -127,6 +127,7 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 			Provider:            util.OvnProvider,
 			CIDRBlock:           c.config.DefaultCIDR,
 			Gateway:             c.config.DefaultGateway,
+			GatewayNode:         "",
 			DisableGatewayCheck: !c.config.DefaultGatewayCheck,
 			ExcludeIps:          strings.Split(c.config.DefaultExcludeIps, ","),
 			NatOutgoing:         true,
@@ -174,6 +175,7 @@ func (c *Controller) initNodeSwitch() error {
 			Provider:               util.OvnProvider,
 			CIDRBlock:              c.config.NodeSwitchCIDR,
 			Gateway:                c.config.NodeSwitchGateway,
+			GatewayNode:            "",
 			ExcludeIps:             strings.Split(c.config.NodeSwitchGateway, ","),
 			Protocol:               util.CheckProtocol(c.config.NodeSwitchCIDR),
 			DisableInterConnection: true,
@@ -211,8 +213,8 @@ func (c *Controller) initLoadBalancer() error {
 		return err
 	}
 
-	for _, orivpc := range vpcs.Items {
-		vpc := orivpc.DeepCopy()
+	for _, cachedVpc := range vpcs.Items {
+		vpc := cachedVpc.DeepCopy()
 		vpcLb := c.GenVpcLoadBalancer(vpc.Name)
 
 		tcpLb, err := c.ovnLegacyClient.FindLoadbalancer(vpcLb.TcpLoadBalancer)
@@ -223,7 +225,7 @@ func (c *Controller) initLoadBalancer() error {
 			klog.Infof("init cluster tcp load balancer %s", vpcLb.TcpLoadBalancer)
 			err := c.ovnLegacyClient.CreateLoadBalancer(vpcLb.TcpLoadBalancer, util.ProtocolTCP, "")
 			if err != nil {
-				klog.Errorf("failed to crate cluster tcp load balancer: %v", err)
+				klog.Errorf("failed to create cluster tcp load balancer: %v", err)
 				return err
 			}
 		} else {
@@ -238,7 +240,7 @@ func (c *Controller) initLoadBalancer() error {
 			klog.Infof("init cluster tcp session load balancer %s", vpcLb.TcpSessLoadBalancer)
 			err := c.ovnLegacyClient.CreateLoadBalancer(vpcLb.TcpSessLoadBalancer, util.ProtocolTCP, "ip_src")
 			if err != nil {
-				klog.Errorf("failed to crate cluster tcp session load balancer: %v", err)
+				klog.Errorf("failed to create cluster tcp session load balancer: %v", err)
 				return err
 			}
 		} else {
@@ -253,7 +255,7 @@ func (c *Controller) initLoadBalancer() error {
 			klog.Infof("init cluster udp load balancer %s", vpcLb.UdpLoadBalancer)
 			err := c.ovnLegacyClient.CreateLoadBalancer(vpcLb.UdpLoadBalancer, util.ProtocolUDP, "")
 			if err != nil {
-				klog.Errorf("failed to crate cluster udp load balancer: %v", err)
+				klog.Errorf("failed to create cluster udp load balancer: %v", err)
 				return err
 			}
 		} else {
@@ -268,7 +270,7 @@ func (c *Controller) initLoadBalancer() error {
 			klog.Infof("init cluster udp session load balancer %s", vpcLb.UdpSessLoadBalancer)
 			err := c.ovnLegacyClient.CreateLoadBalancer(vpcLb.UdpSessLoadBalancer, util.ProtocolUDP, "ip_src")
 			if err != nil {
-				klog.Errorf("failed to crate cluster udp session load balancer: %v", err)
+				klog.Errorf("failed to create cluster udp session load balancer: %v", err)
 				return err
 			}
 		} else {
@@ -328,8 +330,8 @@ func (c *Controller) InitIPAM() error {
 	ipsMap := make(map[string]*kubeovnv1.IP, len(ips))
 	for _, ip := range ips {
 		ipsMap[ip.Name] = ip
-		// just recover sts ip, old sts ip with empty pod type and other ip recover in later pod loop
-		if ip.Spec.PodType != "StatefulSet" {
+		// recover sts and kubevirt vm ip, other ip recover in later pod loop
+		if ip.Spec.PodType != "StatefulSet" && ip.Spec.PodType != util.Vm {
 			continue
 		}
 
@@ -580,10 +582,22 @@ func (c *Controller) initSyncCrdIPs() error {
 		return err
 	}
 
+	vmLsps := c.getVmLsps()
+	ipMap := make(map[string]struct{}, len(vmLsps))
+	for _, vmLsp := range vmLsps {
+		ipMap[vmLsp] = struct{}{}
+	}
+
 	for _, ipCr := range ips.Items {
 		ip := ipCr.DeepCopy()
+		changed := false
+		if _, ok := ipMap[ip.Name]; ok && ip.Spec.PodType == "" {
+			ip.Spec.PodType = util.Vm
+			changed = true
+		}
+
 		v4IP, v6IP := util.SplitStringIP(ip.Spec.IPAddress)
-		if ip.Spec.V4IPAddress == v4IP && ip.Spec.V6IPAddress == v6IP {
+		if ip.Spec.V4IPAddress == v4IP && ip.Spec.V6IPAddress == v6IP && !changed {
 			continue
 		}
 		ip.Spec.V4IPAddress = v4IP

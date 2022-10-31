@@ -115,14 +115,14 @@ func (c *Controller) processNextAddNamespaceWorkItem() bool {
 }
 
 func (c *Controller) handleAddNamespace(key string) error {
-	oriNamespace, err := c.namespacesLister.Get(key)
+	cachedNs, err := c.namespacesLister.Get(key)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	namespace := oriNamespace.DeepCopy()
+	namespace := cachedNs.DeepCopy()
 
 	var ls string
 	var lss, cidrs, excludeIps []string
@@ -180,7 +180,9 @@ func (c *Controller) handleAddNamespace(key string) error {
 	if namespace.Annotations == nil || len(namespace.Annotations) == 0 {
 		namespace.Annotations = map[string]string{}
 	} else {
-		if namespace.Annotations[util.LogicalSwitchAnnotation] == strings.Join(lss, ",") {
+		if namespace.Annotations[util.LogicalSwitchAnnotation] == strings.Join(lss, ",") &&
+			namespace.Annotations[util.CidrAnnotation] == strings.Join(cidrs, ";") &&
+			namespace.Annotations[util.ExcludeIpsAnnotation] == strings.Join(excludeIps, ";") {
 			return nil
 		}
 	}
@@ -188,7 +190,7 @@ func (c *Controller) handleAddNamespace(key string) error {
 	namespace.Annotations[util.CidrAnnotation] = strings.Join(cidrs, ";")
 	namespace.Annotations[util.ExcludeIpsAnnotation] = strings.Join(excludeIps, ";")
 
-	patch, err := util.GenerateStrategicMergePatchPayload(oriNamespace, namespace)
+	patch, err := util.GenerateStrategicMergePatchPayload(cachedNs, namespace)
 	if err != nil {
 		return err
 	}

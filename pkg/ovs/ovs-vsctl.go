@@ -109,17 +109,6 @@ func ovsGet(table, record, column, key string) (string, error) {
 	return Exec(args...)
 }
 
-func ovsRemove(table, record, column, key string) error {
-	args := []string{"remove"}
-	if key == "" {
-		args = append(args, table, record, column)
-	} else {
-		args = append(args, table, record, column, key)
-	}
-	_, err := Exec(args...)
-	return err
-}
-
 // Bridges returns bridges created by Kube-OVN
 func Bridges() ([]string, error) {
 	return ovsFind("bridge", "name", fmt.Sprintf("external-ids:vendor=%s", util.CniTypeName))
@@ -327,8 +316,8 @@ func GetResidualInternalPorts() []string {
 		}
 
 		// iface-id field does not exist in external_ids for residual internal port
-		externaIds := strings.Split(intf, "\n")[1]
-		if !strings.Contains(externaIds, "iface-id") {
+		externalIds := strings.Split(intf, "\n")[1]
+		if !strings.Contains(externalIds, "iface-id") {
 			residualPorts = append(residualPorts, name)
 		}
 	}

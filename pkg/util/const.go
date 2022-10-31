@@ -90,8 +90,9 @@ const (
 	VpcDnsNameLabel            = "ovn.kubernetes.io/vpc-dns"
 	NetworkPolicyLogAnnotation = "ovn.kubernetes.io/enable_log"
 
-	ProtocolTCP = "tcp"
-	ProtocolUDP = "udp"
+	ProtocolTCP  = "tcp"
+	ProtocolUDP  = "udp"
+	ProtocolSCTP = "sctp"
 
 	NetworkTypeVlan   = "vlan"
 	NetworkTypeGeneve = "geneve"
@@ -179,7 +180,7 @@ const (
 	ContentType        = "application/vnd.kubernetes.protobuf"
 	AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
 
-	AttachmentProvider = "ovn.kubernetes.io/attchmentprovider"
+	AttachmentProvider = "ovn.kubernetes.io/attachmentprovider"
 	LbSvcPodImg        = "ovn.kubernetes.io/lb_svc_img"
 
 	OvnICKey   = "origin"

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -44,6 +45,8 @@ const (
 	natGwSubnetRouteAdd    = "subnet-route-add"
 	natGwSubnetRouteDel    = "subnet-route-del"
 	natGwExtSubnetRouteAdd = "ext-subnet-route-add"
+
+	getIptablesVersion = "get-iptables-version"
 )
 
 func genNatGwStsName(name string) string {
@@ -227,11 +230,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	c.vpcNatGwKeyMutex.Lock(key)
 	defer c.vpcNatGwKeyMutex.Unlock(key)
 	if vpcNatEnabled != "true" {
-		// wait and check again
-		time.Sleep(10 * time.Second)
-		if vpcNatEnabled != "true" {
-			return fmt.Errorf("failed to addOrUpdateVpcNatGw, vpcNatEnabled='%s'", vpcNatEnabled)
-		}
+		return fmt.Errorf("iptables nat gw not enable")
 	}
 	gw, err := c.vpcNatGatewayLister.Get(key)
 	if err != nil {
@@ -267,7 +266,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	if needToCreate {
 		_, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
 			Create(context.Background(), newSts, metav1.CreateOptions{})
-		// if pod create successfully, will add initVpcNatGatewayQueue, then syncVpcNatGwRules
+		// if pod create successfully, will add initVpcNatGatewayQueue
 		if err != nil {
 			klog.Errorf("failed to create statefulset '%s', err: %v", newSts.Name, err)
 			return err
@@ -285,34 +284,9 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	return nil
 }
 
-func (c *Controller) syncVpcNatGwRules(key string) error {
-	// sync all nat crd
-	pod, err := c.getNatGwPod(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-
-	if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; !hasInit {
-		c.initVpcNatGatewayQueue.Add(key)
-		return nil
-	}
-	c.updateVpcFloatingIpQueue.Add(key)
-	c.updateVpcDnatQueue.Add(key)
-	c.updateVpcSnatQueue.Add(key)
-	c.updateVpcSubnetQueue.Add(key)
-	c.updateVpcEipQueue.Add(key)
-	return nil
-}
-
 func (c *Controller) handleInitVpcNatGw(key string) error {
 	if vpcNatEnabled != "true" {
-		time.Sleep(10 * time.Second)
-		if vpcNatEnabled != "true" {
-			return fmt.Errorf("failed init vpc nat gateway, vpcNatEnabled='%s'", vpcNatEnabled)
-		}
+		return fmt.Errorf("iptables nat gw not enable")
 	}
 	c.vpcNatGwKeyMutex.Lock(key)
 	defer c.vpcNatGwKeyMutex.Unlock(key)
@@ -332,9 +306,6 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 
 	oriPod, err := c.getNatGwPod(key)
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
 		return err
 	}
 	pod := oriPod.DeepCopy()
@@ -353,6 +324,11 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 		klog.Errorf("failed to init vpc nat gateway, %v", err)
 		return err
 	}
+	c.updateVpcFloatingIpQueue.Add(key)
+	c.updateVpcDnatQueue.Add(key)
+	c.updateVpcSnatQueue.Add(key)
+	c.updateVpcSubnetQueue.Add(key)
+	c.updateVpcEipQueue.Add(key)
 	pod.Annotations[util.VpcNatGatewayInitAnnotation] = "true"
 	patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
 	if err != nil {
@@ -363,15 +339,12 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 		klog.Errorf("patch pod %s/%s failed %v", pod.Name, pod.Namespace, err)
 		return err
 	}
-	return c.syncVpcNatGwRules(key)
+	return nil
 }
 
 func (c *Controller) handleUpdateVpcFloatingIp(natGwKey string) error {
 	if vpcNatEnabled != "true" {
-		time.Sleep(10 * time.Second)
-		if vpcNatEnabled != "true" {
-			return fmt.Errorf("failed to update vpc floatingIp, vpcNatEnabled='%s'", vpcNatEnabled)
-		}
+		return fmt.Errorf("iptables nat gw not enable")
 	}
 	c.vpcNatGwKeyMutex.Lock(natGwKey)
 	defer c.vpcNatGwKeyMutex.Unlock(natGwKey)
@@ -403,10 +376,7 @@ func (c *Controller) handleUpdateVpcFloatingIp(natGwKey string) error {
 
 func (c *Controller) handleUpdateVpcEip(natGwKey string) error {
 	if vpcNatEnabled != "true" {
-		time.Sleep(10 * time.Second)
-		if vpcNatEnabled != "true" {
-			return fmt.Errorf("failed to update vpc eip, vpcNatEnabled='%s'", vpcNatEnabled)
-		}
+		return fmt.Errorf("iptables nat gw not enable")
 	}
 	c.vpcNatGwKeyMutex.Lock(natGwKey)
 	defer c.vpcNatGwKeyMutex.Unlock(natGwKey)
@@ -435,10 +405,7 @@ func (c *Controller) handleUpdateVpcEip(natGwKey string) error {
 
 func (c *Controller) handleUpdateVpcSnat(natGwKey string) error {
 	if vpcNatEnabled != "true" {
-		time.Sleep(10 * time.Second)
-		if vpcNatEnabled != "true" {
-			return fmt.Errorf("failed to update vpc snat, vpcNatEnabled='%s'", vpcNatEnabled)
-		}
+		return fmt.Errorf("iptables nat gw not enable")
 	}
 	c.vpcNatGwKeyMutex.Lock(natGwKey)
 	defer c.vpcNatGwKeyMutex.Unlock(natGwKey)
@@ -467,10 +434,7 @@ func (c *Controller) handleUpdateVpcSnat(natGwKey string) error {
 
 func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 	if vpcNatEnabled != "true" {
-		time.Sleep(10 * time.Second)
-		if vpcNatEnabled != "true" {
-			return fmt.Errorf("failed update vpc dnat, vpcNatEnabled='%s'", vpcNatEnabled)
-		}
+		return fmt.Errorf("iptables nat gw not enable")
 	}
 	c.vpcNatGwKeyMutex.Lock(natGwKey)
 	defer c.vpcNatGwKeyMutex.Unlock(natGwKey)
@@ -498,28 +462,52 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 	return nil
 }
 
+func (c *Controller) getIptablesVersion(pod *corev1.Pod) (version string, err error) {
+	operation := getIptablesVersion
+	cmd := fmt.Sprintf("bash /kube-ovn/nat-gateway.sh %s", operation)
+	klog.V(3).Infof(cmd)
+	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "vpc-nat-gw", []string{"/bin/bash", "-c", cmd}...)
+
+	if err != nil {
+		if len(errOutput) > 0 {
+			klog.Errorf("failed to ExecuteCommandInContainer, errOutput: %v", errOutput)
+		}
+		if len(stdOutput) > 0 {
+			klog.V(3).Infof("failed to ExecuteCommandInContainer, stdOutput: %v", stdOutput)
+		}
+		return "", err
+	}
+
+	if len(stdOutput) > 0 {
+		klog.V(3).Infof("ExecuteCommandInContainer stdOutput: %v", stdOutput)
+	}
+
+	if len(errOutput) > 0 {
+		klog.Errorf("failed to ExecuteCommandInContainer errOutput: %v", errOutput)
+		return "", err
+	}
+
+	versionMatcher := regexp.MustCompile(`v([0-9]+(\.[0-9]+)+)`)
+	match := versionMatcher.FindStringSubmatch(stdOutput)
+	if match == nil {
+		return "", fmt.Errorf("no iptables version found in string: %s", stdOutput)
+	}
+	return match[1], nil
+}
+
 func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	if vpcNatEnabled != "true" {
-		time.Sleep(10 * time.Second)
-		if vpcNatEnabled != "true" {
-			return fmt.Errorf("failed to update subnet route, vpcNatEnabled='%s'", vpcNatEnabled)
-		}
+		return fmt.Errorf("iptables nat gw not enable")
 	}
 	c.vpcNatGwKeyMutex.Lock(natGwKey)
 	defer c.vpcNatGwKeyMutex.Unlock(natGwKey)
 	gw, err := c.vpcNatGatewayLister.Get(natGwKey)
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
 		return err
 	}
 
 	oriPod, err := c.getNatGwPod(natGwKey)
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
 		return err
 	}
 	pod := oriPod.DeepCopy()
@@ -537,7 +525,7 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 		return err
 	}
 
-	if v4InternalGw, _, err = c.GetGwbySubnet(gw.Spec.Subnet); err != nil {
+	if v4InternalGw, _, err = c.GetGwBySubnet(gw.Spec.Subnet); err != nil {
 		klog.Errorf("failed to get gw, err: %v", err)
 		return err
 	}
@@ -673,6 +661,21 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	}
 	klog.V(3).Infof("prepare for vpc nat gateway pod, node selector: %v", selectors)
 
+	var tolerations []corev1.Toleration
+	for _, t := range gw.Spec.Tolerations {
+		toleration := corev1.Toleration{
+			Key:      t.Key,
+			Value:    t.Value,
+			Effect:   corev1.TaintEffect(t.Effect),
+			Operator: corev1.TolerationOperator(t.Operator),
+		}
+
+		if t.TolerationSeconds != 0 {
+			toleration.TolerationSeconds = &t.TolerationSeconds
+		}
+		tolerations = append(tolerations, toleration)
+	}
+
 	newSts = &v1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   name,
@@ -703,6 +706,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 						},
 					},
 					NodeSelector: selectors,
+					Tolerations:  tolerations,
 				},
 			},
 			UpdateStrategy: v1.StatefulSetUpdateStrategy{
@@ -734,8 +738,7 @@ func (c *Controller) getNatGwPod(name string) (*corev1.Pod, error) {
 	if err != nil {
 		return nil, err
 	} else if len(pods) == 0 {
-		time.Sleep(2 * time.Second)
-		return nil, fmt.Errorf("pod '%s' not exist", name)
+		return nil, k8serrors.NewNotFound(v1.Resource("pod"), name)
 	} else if len(pods) != 1 {
 		time.Sleep(5 * time.Second)
 		return nil, fmt.Errorf("too many pod")
@@ -763,9 +766,6 @@ func (c *Controller) initCreateAt(key string) (err error) {
 	}
 	pod, err := c.getNatGwPod(key)
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
 		return err
 	}
 	NAT_GW_CREATED_AT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")

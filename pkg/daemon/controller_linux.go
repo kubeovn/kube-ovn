@@ -604,7 +604,7 @@ func (c *Controller) clearQos(podName, podNamespace, ifaceID string) error {
 	}
 
 	if err := ovs.ClearPortQosBinding(ifaceID); err != nil {
-		klog.Errorf("failed to delete qos bingding info for interface %s: %v", ifaceID, err)
+		klog.Errorf("failed to delete qos binding info for interface %s: %v", ifaceID, err)
 		return err
 	}
 
@@ -701,7 +701,7 @@ func removeKo(koName string) error {
 		return fmt.Errorf("remove module %s failed: %v", koName, err)
 	}
 	if string(out) != "" {
-		return fmt.Errorf("remove module %s faied: %v", koName, string(out))
+		return fmt.Errorf("remove module %s failed: %v", koName, string(out))
 	}
 	return nil
 }

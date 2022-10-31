@@ -77,7 +77,7 @@ metadata:
   annotations:
     cert-manager.io/inject-ca-from: kube-system/kube-ovn-webhook-serving-cert
 webhooks:
-- name: pod-ip-validaing.kube-ovn.io
+- name: pod-ip-validating.kube-ovn.io
   rules:
     - operations:
         - CREATE

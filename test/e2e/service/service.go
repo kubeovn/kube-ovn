@@ -17,7 +17,7 @@ import (
 	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/apis/config"
 	kubeproxyscheme "k8s.io/kubernetes/pkg/proxy/apis/config/scheme"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"

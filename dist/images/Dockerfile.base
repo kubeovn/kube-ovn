@@ -22,8 +22,14 @@ RUN cd /usr/src/ && \
     curl -s https://github.com/kubeovn/ovs/commit/918d6dc79634bec760054ee53f7628186315bcfb.patch | git apply && \
     # increase election timer
     curl -s https://github.com/kubeovn/ovs/commit/22ea22c40b46ee5adeae977ff6cfca81b3ff25d7.patch | git apply && \
+    # add fdb update logging
+    curl -s https://github.com/kubeovn/ovs/commit/8c2f28b778129161bbf8f0738fa41d385860d5bc.patch | git apply && \
+    # fdb: fix mac learning in environments with hairpin enabled
+    curl -s https://github.com/kubeovn/ovs/commit/1cb138aaf2fdf922d75a587e4e9cf610d38f9fee.patch | git apply && \
+    # ovsdb-tool: add optional server id parameter for "join-cluster" command
+    curl -s https://github.com/kubeovn/ovs/commit/2e2ec1161cadbec79786d63fde9475053d996586.patch | git apply && \
     # compile without avx512
-    if [ "$ARCH" = "amd64" -a "$NO_AVX512" = "true" ]; then curl -s https://github.com/kubeovn/ovs/commit/38c59e078d69b343f56ab0f380fb9f42b94b7c02.patch | git apply; fi && \
+    if [ "$ARCH" = "amd64" -a "$NO_AVX512" = "true" ]; then curl -s https://github.com/kubeovn/ovs/commit/c257b0794b827cfae9660a9f3238bee8a29e7676.patch | git apply; fi && \
     ./boot.sh && \
     rm -rf .git && \
     CONFIGURE_OPTS='' && \
@@ -43,7 +49,9 @@ RUN cd /usr/src/ && git clone -b branch-22.03 --depth=1 https://github.com/ovn-o
     # change hash type from dp_hash to hash with field src_ip
     curl -s https://github.com/kubeovn/ovn/commit/ab923b252271cbbcccc8091e338ee7efe75e5fcd.patch | git apply && \
     # set ether dst addr for dnat on logical switch
-    curl -s https://github.com/kubeovn/ovn/commit/f6217e2c1d9a24eb4595c75727202daf05dadc85.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/58a40438926745dfdd498c09ea71e1746b803a42.patch | git apply && \
+    # modify src route priority
+    curl -s https://github.com/kubeovn/ovn/commit/e0e20deb188434f73143b1906e481fdac913429d.patch | git apply && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \

@@ -5,12 +5,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/osrg/gobgp/pkg/packet/bgp"
 	"os"
 	"time"
 
-	api "github.com/osrg/gobgp/api"
-	gobgp "github.com/osrg/gobgp/pkg/server"
+	api "github.com/osrg/gobgp/v3/api"
+	"github.com/osrg/gobgp/v3/pkg/packet/bgp"
+	gobgp "github.com/osrg/gobgp/v3/pkg/server"
 	"github.com/spf13/pflag"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/kubernetes"
@@ -175,10 +175,10 @@ func (config *Configuration) initKubeClient() error {
 
 func (config *Configuration) checkGracefulRestartOptions() error {
 	if config.GracefulRestartTime > time.Second*4095 || config.GracefulRestartTime <= 0 {
-		return errors.New("GracefuleRestartTime should be less than 4095 seconds or more than 0")
+		return errors.New("GracefulRestartTime should be less than 4095 seconds or more than 0")
 	}
 	if config.GracefulRestartDeferralTime > time.Hour*18 || config.GracefulRestartDeferralTime <= 0 {
-		return errors.New("GracefuleRestartDeferralTime should be less than 18 hours or more than 0")
+		return errors.New("GracefulRestartDeferralTime should be less than 18 hours or more than 0")
 	}
 
 	return nil
@@ -198,7 +198,7 @@ func (config *Configuration) initBgpServer() error {
 	}
 	if err := s.StartBgp(context.Background(), &api.StartBgpRequest{
 		Global: &api.Global{
-			As:               config.ClusterAs,
+			Asn:              config.ClusterAs,
 			RouterId:         config.RouterId,
 			ListenPort:       listenPort,
 			UseMultiplePaths: true,
@@ -211,7 +211,7 @@ func (config *Configuration) initBgpServer() error {
 		Timers: &api.Timers{Config: &api.TimersConfig{HoldTime: uint64(config.HoldTime)}},
 		Conf: &api.PeerConf{
 			NeighborAddress: config.NeighborAddress,
-			PeerAs:          config.NeighborAs,
+			PeerAsn:         config.NeighborAs,
 		},
 		Transport: &api.Transport{
 			PassiveMode: config.PassiveMode,

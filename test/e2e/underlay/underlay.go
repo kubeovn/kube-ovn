@@ -14,7 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	kubeovn "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -197,7 +197,10 @@ var _ = Describe("[Underlay]", func() {
 				Expect(err).NotTo(HaveOccurred())
 			}
 
+			By("wait provider network to be ready")
 			time.Sleep(3 * time.Second)
+			err = f.WaitProviderNetworkReady(ProviderNetwork)
+			Expect(err).NotTo(HaveOccurred())
 
 			By("validate provider network")
 			pn, err := f.OvnClientSet.KubeovnV1().ProviderNetworks().Get(context.Background(), ProviderNetwork, metav1.GetOptions{})
@@ -221,6 +224,11 @@ var _ = Describe("[Underlay]", func() {
 			newPn := pn.DeepCopy()
 			newPn.Spec.ExcludeNodes = nil
 			_, err = f.OvnClientSet.KubeovnV1().ProviderNetworks().Update(context.Background(), newPn, metav1.UpdateOptions{})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("wait provider network to be ready")
+			time.Sleep(3 * time.Second)
+			err = f.WaitProviderNetworkReady(ProviderNetwork)
 			Expect(err).NotTo(HaveOccurred())
 		})
 	})

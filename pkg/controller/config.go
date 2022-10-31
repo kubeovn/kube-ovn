@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	attacnetclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
+	attachnetclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -31,7 +31,7 @@ type Configuration struct {
 
 	KubeClient      kubernetes.Interface
 	KubeOvnClient   clientset.Interface
-	AttachNetClient attacnetclientset.Interface
+	AttachNetClient attachnetclientset.Interface
 	KubevirtClient  kubecli.KubevirtClient
 
 	// with no timeout
@@ -249,6 +249,10 @@ func ParseFlags() (*Configuration, error) {
 		return nil, err
 	}
 
+	if err := util.CheckSystemCIDR([]string{config.NodeSwitchCIDR, config.DefaultCIDR, config.ServiceClusterIPRange}); err != nil {
+		return nil, fmt.Errorf("check system cidr failed, %v", err)
+	}
+
 	klog.Infof("config is  %+v", config)
 	return config, nil
 }
@@ -271,7 +275,7 @@ func (config *Configuration) initKubeClient() error {
 	// use cmd arg to modify timeout later
 	cfg.Timeout = 30 * time.Second
 
-	AttachNetClient, err := attacnetclientset.NewForConfig(cfg)
+	AttachNetClient, err := attachnetclientset.NewForConfig(cfg)
 	if err != nil {
 		klog.Errorf("init attach network client failed %v", err)
 		return err

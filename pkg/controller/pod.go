@@ -218,7 +218,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	if newPod.DeletionTimestamp != nil && !isStateful && !isVmPod {
 		go func() {
 			// In case node get lost and pod can not be deleted,
-			// the ipaddress will not be recycled
+			// the ip address will not be recycled
 			time.Sleep(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second)
 			c.deletePodQueue.Add(newObj)
 		}()
@@ -226,16 +226,20 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	}
 
 	// do not delete statefulset pod unless ownerReferences is deleted
-	if isStateful {
-		if isStatefulSetPodToDel(c.config.KubeClient, newPod, statefulSetName) {
+	if isStateful && isStatefulSetPodToDel(c.config.KubeClient, newPod, statefulSetName) {
+		go func() {
 			klog.V(3).Infof("enqueue delete pod %s", key)
+			time.Sleep(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second)
 			c.deletePodQueue.Add(newObj)
-			return
-		}
+		}()
+		return
 	}
 	if isVmPod && c.isVmPodToDel(newPod, vmName) {
-		klog.V(3).Infof("enqueue delete pod %s", key)
-		c.deletePodQueue.Add(newObj)
+		go func() {
+			klog.V(3).Infof("enqueue delete pod %s", key)
+			time.Sleep(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second)
+			c.deletePodQueue.Add(newObj)
+		}()
 		return
 	}
 
@@ -465,14 +469,14 @@ func (c *Controller) handleAddPod(key string) error {
 	c.podKeyMutex.Lock(key)
 	defer c.podKeyMutex.Unlock(key)
 
-	oripod, err := c.podsLister.Pods(namespace).Get(name)
+	cachedPod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	pod := oripod.DeepCopy()
+	pod := cachedPod.DeepCopy()
 	if err := util.ValidatePodNetwork(pod.Annotations); err != nil {
 		klog.Errorf("validate pod %s/%s failed: %v", namespace, name, err)
 		c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", err.Error())
@@ -580,6 +584,10 @@ func (c *Controller) handleAddPod(key string) error {
 					}
 					c.syncSgPortsQueue.Add(sgName)
 				}
+			}
+
+			if vips != "" {
+				c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
 			}
 		}
 	}
@@ -810,6 +818,13 @@ func (c *Controller) handleUpdatePod(key string) error {
 		subnet = podNet.Subnet
 
 		if podIP != "" && subnet.Spec.Vlan == "" && subnet.Spec.Vpc == util.DefaultVpc {
+			node, err := c.nodesLister.Get(pod.Spec.NodeName)
+			if err != nil {
+				klog.Errorf("failed to get node %s: %v", pod.Spec.NodeName, err)
+				return err
+			}
+
+			pgName := getOverlaySubnetsPortGroupName(subnet.Name, node.Name)
 			if c.config.EnableEipSnat && (pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "") {
 				cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
 				if err != nil {
@@ -829,20 +844,24 @@ func (c *Controller) handleUpdatePod(key string) error {
 					klog.Errorf("failed to add static route, %v", err)
 					return err
 				}
+
+				// remove lsp from port group to make EIP/SNAT work
+				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+				c.ovnPgKeyMutex.Lock(pgName)
+				if err = c.ovnClient.PortGroupRemovePort(pgName, portName); err != nil {
+					c.ovnPgKeyMutex.Unlock(pgName)
+					return err
+				}
+				c.ovnPgKeyMutex.Unlock(pgName)
+
 			} else {
 				if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType && pod.Annotations[util.NorthGatewayAnnotation] == "" {
-					node, err := c.nodesLister.Get(pod.Spec.NodeName)
-					if err != nil {
-						klog.Errorf("get node %s failed %v", pod.Spec.NodeName, err)
-						return err
-					}
-
 					nodeTunlIPAddr, err := getNodeTunlIP(node)
 					if err != nil {
 						return err
 					}
 
-					pgName := getOverlaySubnetsPortGroupName(subnet.Name, node.Name)
+					var added bool
 					for _, nodeAddr := range nodeTunlIPAddr {
 						for _, podAddr := range strings.Split(podIP, ",") {
 							if util.CheckProtocol(nodeAddr.String()) != util.CheckProtocol(podAddr) {
@@ -856,6 +875,12 @@ func (c *Controller) handleUpdatePod(key string) error {
 								return err
 							}
 							c.ovnPgKeyMutex.Unlock(pgName)
+
+							added = true
+							break
+						}
+						if added {
+							break
 						}
 					}
 				}
@@ -1501,14 +1526,14 @@ func isOwnsByTheVM(vmi metav1.Object) (bool, string) {
 
 func (c *Controller) isVmPodToDel(pod *v1.Pod, vmiName string) bool {
 	var (
-		vmiAlived bool
-		vmName    string
+		vmiAlive bool
+		vmName   string
 	)
 	// The vmi is also deleted when pod is deleted, only left vm exists.
 	vmi, err := c.config.KubevirtClient.VirtualMachineInstance(pod.Namespace).Get(vmiName, &metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			vmiAlived = false
+			vmiAlive = false
 			// The name of vmi is consistent with vm's name.
 			vmName = vmiName
 			klog.V(4).ErrorS(err, "failed to get vmi, will try to get the vm directly", "name", vmiName)
@@ -1520,13 +1545,13 @@ func (c *Controller) isVmPodToDel(pod *v1.Pod, vmiName string) bool {
 		var ownsByVM bool
 		ownsByVM, vmName = isOwnsByTheVM(vmi)
 		if !ownsByVM && vmi.DeletionTimestamp != nil {
-			// deleteting ephemeral vmi
+			// deleting ephemeral vmi
 			return true
 		}
-		vmiAlived = (vmi.DeletionTimestamp == nil)
+		vmiAlive = (vmi.DeletionTimestamp == nil)
 	}
 
-	if vmiAlived {
+	if vmiAlive {
 		return false
 	}
 
@@ -1610,6 +1635,10 @@ func (c *Controller) getNsAvailableSubnets(pod *v1.Pod, podNet *kubeovnNet) ([]*
 func getPodType(pod *v1.Pod) string {
 	if ok, _ := isStatefulSetPod(pod); ok {
 		return "StatefulSet"
+	}
+
+	if isVmPod, _ := isVmPod(pod); isVmPod {
+		return util.Vm
 	}
 	return ""
 }

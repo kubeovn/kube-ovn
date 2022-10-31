@@ -15,10 +15,14 @@ on:
     - 'docs/**'
     - '**.md'
 
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
 env:
-  GO_VERSION: '1.18'
-  GOSEC_VERSION: '2.12.0'
-  KIND_VERSION: v0.14.0
+  GO_VERSION: '1.19'
+  GOSEC_VERSION: '2.13.1'
+  KIND_VERSION: v0.15.0
 
 jobs:
   build-kube-ovn:
@@ -49,7 +53,7 @@ jobs:
 
       - name: Unit test
         run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           make ut
 
       - name: Install gosec
@@ -171,7 +175,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -242,7 +246,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -313,7 +317,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -384,11 +388,18 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
           make e2e-underlay-single-nic
+
+      - name: Run networkpolicy E2E
+        working-directory: test/networkpolicy-cyclonus/
+        run: |
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          bash ./start-test.sh
 
       - name: Cleanup
         run: |
@@ -471,7 +482,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -546,11 +557,18 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
           make e2e
+
+      - name: Run networkpolicy E2E
+        working-directory: test/networkpolicy-cyclonus/
+        run: |
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          bash ./start-test.sh
 
       - name: Cleanup
         run: |
@@ -561,7 +579,7 @@ jobs:
     needs: build-kube-ovn
     name: ipv6-e2e
     runs-on: ubuntu-20.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
 
@@ -617,11 +635,18 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
           make e2e-ipv6
+
+      - name: Run networkpolicy E2E
+        working-directory: test/networkpolicy-cyclonus/
+        run: |
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          bash ./start-test.sh
 
       - name: Cleanup
         run: |
@@ -688,7 +713,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -759,11 +784,18 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
           make e2e-underlay-single-nic
+
+      - name: Run networkpolicy E2E
+        working-directory: test/networkpolicy-cyclonus/
+        run: |
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          bash ./start-test.sh
 
       - name: Cleanup
         run: |
@@ -846,11 +878,18 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
           make e2e
+
+      - name: Run networkpolicy E2E
+        working-directory: test/networkpolicy-cyclonus/
+        run: |
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          bash ./start-test.sh
 
       - name: Cleanup
         run: |
@@ -861,7 +900,7 @@ jobs:
     needs: build-kube-ovn
     name: dual-stack-underlay-e2e-single-nic
     runs-on: ubuntu-20.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
 
@@ -917,11 +956,18 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
           make e2e-underlay-single-nic
+
+      - name: Run networkpolicy E2E
+        working-directory: test/networkpolicy-cyclonus/
+        run: |
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          bash ./start-test.sh
 
       - name: Cleanup
         run: |
@@ -948,7 +994,7 @@ jobs:
     needs: build-kube-ovn
     name: dual-stack-underlay-logical-gateway-e2e
     runs-on: ubuntu-20.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
 
@@ -1004,11 +1050,18 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
           make e2e
+
+      - name: Run networkpolicy E2E
+        working-directory: test/networkpolicy-cyclonus/
+        run: |
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          bash ./start-test.sh
 
       - name: Cleanup
         run: |
@@ -1091,7 +1144,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -1162,7 +1215,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -1233,7 +1286,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -1315,7 +1368,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -1382,7 +1435,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -1456,7 +1509,7 @@ jobs:
 
       - name: Run E2E
         run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
           sudo kubectl cluster-info
           sudo cp -r /root/.kube/ /home/runner/.kube/
           sudo chmod -R 777 /home/runner/.kube/
@@ -1496,7 +1549,7 @@ jobs:
         run: |
           sudo pip3 install j2cli
           sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH k8s_version=v1.23.6 make kind-init
+          sudo PATH=~/.local/bin:$PATH k8s_version=v1.23.10 make kind-init
 
       - name: Install Kube-OVN
         uses: nick-invision/retry@v2

@@ -10,7 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -88,16 +88,16 @@ var _ = Describe("Lbsvc", func() {
 		allocateAnnotation := fmt.Sprintf(util.AllocatedAnnotationTemplate, providerName)
 		Expect(pod.Annotations[allocateAnnotation]).To(Equal("true"))
 
-		attchCidrAnnotation := fmt.Sprintf(util.CidrAnnotationTemplate, providerName)
-		attchIpAnnotation := fmt.Sprintf(util.IpAddressAnnotationTemplate, providerName)
-		result := util.CIDRContainIP(pod.Annotations[attchCidrAnnotation], pod.Annotations[attchIpAnnotation])
+		attachCidrAnnotation := fmt.Sprintf(util.CidrAnnotationTemplate, providerName)
+		attachIpAnnotation := fmt.Sprintf(util.IpAddressAnnotationTemplate, providerName)
+		result := util.CIDRContainIP(pod.Annotations[attachCidrAnnotation], pod.Annotations[attachIpAnnotation])
 		Expect(result).To(Equal(true))
 
 		By("check svc externalIP")
 		checkSvc, err := f.KubeClientSet.CoreV1().Services(namespace).Get(context.Background(), name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		lbIP := checkSvc.Status.LoadBalancer.Ingress[0].IP
-		Expect(pod.Annotations[attchIpAnnotation]).To(Equal(lbIP))
+		Expect(pod.Annotations[attachIpAnnotation]).To(Equal(lbIP))
 
 		By("Delete svc")
 		err = f.KubeClientSet.CoreV1().Services(namespace).Delete(context.Background(), svc.Name, metav1.DeleteOptions{})
@@ -165,16 +165,16 @@ var _ = Describe("Lbsvc", func() {
 		allocateAnnotation := fmt.Sprintf(util.AllocatedAnnotationTemplate, providerName)
 		Expect(pod.Annotations[allocateAnnotation]).To(Equal("true"))
 
-		attchCidrAnnotation := fmt.Sprintf(util.CidrAnnotationTemplate, providerName)
-		attchIpAnnotation := fmt.Sprintf(util.IpAddressAnnotationTemplate, providerName)
-		result := util.CIDRContainIP(pod.Annotations[attchCidrAnnotation], pod.Annotations[attchIpAnnotation])
+		attachCidrAnnotation := fmt.Sprintf(util.CidrAnnotationTemplate, providerName)
+		attachIpAnnotation := fmt.Sprintf(util.IpAddressAnnotationTemplate, providerName)
+		result := util.CIDRContainIP(pod.Annotations[attachCidrAnnotation], pod.Annotations[attachIpAnnotation])
 		Expect(result).To(Equal(true))
 
 		By("check svc externalIP")
 		checkSvc, err := f.KubeClientSet.CoreV1().Services(namespace).Get(context.Background(), name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		lbIP := checkSvc.Status.LoadBalancer.Ingress[0].IP
-		Expect(pod.Annotations[attchIpAnnotation]).To(Equal(lbIP))
+		Expect(pod.Annotations[attachIpAnnotation]).To(Equal(lbIP))
 		Expect(staticIP).To(Equal(lbIP))
 
 		By("Delete svc")

@@ -101,7 +101,7 @@ type Subnet struct {
 }
 
 type SubnetSpec struct {
-	Default    bool     `json:"default,omitempty"`
+	Default    bool     `json:"default"`
 	Vpc        string   `json:"vpc,omitempty"`
 	Protocol   string   `json:"protocol,omitempty"`
 	Namespaces []string `json:"namespaces,omitempty"`
@@ -111,15 +111,15 @@ type SubnetSpec struct {
 	Provider   string   `json:"provider,omitempty"`
 
 	GatewayType string `json:"gatewayType,omitempty"`
-	GatewayNode string `json:"gatewayNode,omitempty"`
-	NatOutgoing bool   `json:"natOutgoing,omitempty"`
+	GatewayNode string `json:"gatewayNode"`
+	NatOutgoing bool   `json:"natOutgoing"`
 	U2oRouting  bool   `json:"u2oRouting,omitempty"`
 
 	ExternalEgressGateway string `json:"externalEgressGateway,omitempty"`
 	PolicyRoutingPriority uint32 `json:"policyRoutingPriority,omitempty"`
 	PolicyRoutingTableID  uint32 `json:"policyRoutingTableID,omitempty"`
 
-	Private      bool     `json:"private,omitempty"`
+	Private      bool     `json:"private"`
 	AllowSubnets []string `json:"allowSubnets,omitempty"`
 
 	Vlan   string `json:"vlan,omitempty"`
@@ -447,10 +447,19 @@ type VpcNatGateway struct {
 }
 
 type VpcNatSpec struct {
-	Vpc      string   `json:"vpc"`
-	Subnet   string   `json:"subnet"`
-	LanIp    string   `json:"lanIp"`
-	Selector []string `json:"selector"`
+	Vpc         string             `json:"vpc"`
+	Subnet      string             `json:"subnet"`
+	LanIp       string             `json:"lanIp"`
+	Selector    []string           `json:"selector"`
+	Tolerations []VpcNatToleration `json:"tolerations"`
+}
+
+type VpcNatToleration struct {
+	Key               string `json:"key"`
+	Operator          string `json:"operator"`
+	Value             string `json:"value"`
+	Effect            string `json:"effect"`
+	TolerationSeconds int64  `json:"tolerationSeconds"`
 }
 
 // +genclient

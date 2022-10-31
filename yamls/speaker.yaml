@@ -28,7 +28,7 @@ spec:
       serviceAccountName: ovn
       hostNetwork: true
       containers:
-        - name: ovn-central
+        - name: kube-ovn-speaker
           image: "kubeovn/kube-ovn:v1.10.0"
           imagePullPolicy: IfNotPresent
           command:

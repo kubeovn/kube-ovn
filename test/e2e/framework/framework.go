@@ -20,7 +20,7 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 	"k8s.io/klog/v2"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
@@ -33,6 +33,9 @@ type Framework struct {
 	OvnClientSet     clientset.Interface
 	KubeConfig       *rest.Config
 }
+
+// timeout for waiting resources ready
+const waitTimeout = 180
 
 func NewFramework(baseName, kubeConfig string) *Framework {
 	f := &Framework{BaseName: baseName}
@@ -62,10 +65,11 @@ func NewFramework(baseName, kubeConfig string) *Framework {
 }
 
 func (f *Framework) GetName() string {
-	return strings.Replace(CurrentGinkgoTestDescription().TestText, " ", "-", -1)
+	return strings.Replace(CurrentSpecReport().LeafNodeText, " ", "-", -1)
 }
 
 func (f *Framework) WaitProviderNetworkReady(providerNetwork string) error {
+	deadline := time.Now().Add(time.Second * waitTimeout)
 	for {
 		time.Sleep(1 * time.Second)
 
@@ -76,10 +80,14 @@ func (f *Framework) WaitProviderNetworkReady(providerNetwork string) error {
 		if pn.Status.Ready {
 			return nil
 		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timeout waiting for provider-network %s to be ready", providerNetwork)
+		}
 	}
 }
 
 func (f *Framework) WaitSubnetReady(subnet string) error {
+	deadline := time.Now().Add(time.Second * waitTimeout)
 	for {
 		time.Sleep(1 * time.Second)
 		s, err := f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), subnet, metav1.GetOptions{})
@@ -92,10 +100,14 @@ func (f *Framework) WaitSubnetReady(subnet string) error {
 		if s.Status.IsNotValidated() && s.Status.ConditionReason(v1.Validated) != "" {
 			return fmt.Errorf(s.Status.ConditionReason(v1.Validated))
 		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timeout waiting for subnet %s to be ready", subnet)
+		}
 	}
 }
 
 func (f *Framework) WaitPodReady(pod, namespace string) (*corev1.Pod, error) {
+	deadline := time.Now().Add(time.Second * waitTimeout)
 	for {
 		time.Sleep(1 * time.Second)
 		p, err := f.KubeClientSet.CoreV1().Pods(namespace).Get(context.Background(), pod, metav1.GetOptions{})
@@ -107,11 +119,14 @@ func (f *Framework) WaitPodReady(pod, namespace string) (*corev1.Pod, error) {
 		}
 
 		switch getPodStatus(*p) {
-		case Completed:
+		case podCompleted:
 			return nil, fmt.Errorf("pod already completed")
-		case Running:
+		case podRunning:
 			return p, nil
-		case Initing, Pending, PodInitializing, ContainerCreating, Terminating:
+		case podIniting, podPending, podInitializing, podContainerCreating, podTerminating:
+			if time.Now().After(deadline) {
+				return nil, fmt.Errorf("timeout waiting for Pod %s/%s to be ready", namespace, pod)
+			}
 			continue
 		default:
 			klog.Info(p.String())
@@ -121,6 +136,7 @@ func (f *Framework) WaitPodReady(pod, namespace string) (*corev1.Pod, error) {
 }
 
 func (f *Framework) WaitPodDeleted(pod, namespace string) error {
+	deadline := time.Now().Add(time.Second * waitTimeout)
 	for {
 		time.Sleep(1 * time.Second)
 		p, err := f.KubeClientSet.CoreV1().Pods(namespace).Get(context.Background(), pod, metav1.GetOptions{})
@@ -131,13 +147,17 @@ func (f *Framework) WaitPodDeleted(pod, namespace string) error {
 			return err
 		}
 
-		if status := getPodStatus(*p); status != Terminating {
+		if status := getPodStatus(*p); status != podTerminating {
 			return fmt.Errorf("unexpected pod status: %s", status)
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timeout waiting for pod %s/%s to be deleted", namespace, pod)
 		}
 	}
 }
 
 func (f *Framework) WaitDeploymentReady(deployment, namespace string) error {
+	deadline := time.Now().Add(time.Second * waitTimeout)
 	for {
 		time.Sleep(1 * time.Second)
 		deploy, err := f.KubeClientSet.AppsV1().Deployments(namespace).Get(context.Background(), deployment, metav1.GetOptions{})
@@ -145,6 +165,9 @@ func (f *Framework) WaitDeploymentReady(deployment, namespace string) error {
 			return err
 		}
 		if deploy.Status.ReadyReplicas != *deploy.Spec.Replicas {
+			if time.Now().After(deadline) {
+				return fmt.Errorf("timeout waiting for deployment %s/%s to be ready", namespace, deployment)
+			}
 			continue
 		}
 
@@ -156,24 +179,31 @@ func (f *Framework) WaitDeploymentReady(deployment, namespace string) error {
 		ready := true
 		for _, pod := range pods.Items {
 			switch getPodStatus(pod) {
-			case Completed:
+			case podCompleted:
 				return fmt.Errorf("pod already completed")
-			case Running:
+			case podRunning:
 				continue
-			case Initing, Pending, PodInitializing, ContainerCreating, Terminating:
+			case podIniting, podPending, podInitializing, podContainerCreating, podTerminating:
 				ready = false
 			default:
 				klog.Info(pod.String())
 				return fmt.Errorf("pod status failed")
 			}
+			if !ready {
+				break
+			}
 		}
 		if ready {
 			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timeout waiting for deployment %s/%s to be ready", namespace, deployment)
 		}
 	}
 }
 
 func (f *Framework) WaitStatefulsetReady(statefulset, namespace string) error {
+	deadline := time.Now().Add(time.Second * waitTimeout)
 	for {
 		time.Sleep(1 * time.Second)
 		ss, err := f.KubeClientSet.AppsV1().StatefulSets(namespace).Get(context.Background(), statefulset, metav1.GetOptions{})
@@ -181,6 +211,9 @@ func (f *Framework) WaitStatefulsetReady(statefulset, namespace string) error {
 			return err
 		}
 		if ss.Status.ReadyReplicas != *ss.Spec.Replicas {
+			if time.Now().After(deadline) {
+				return fmt.Errorf("timeout waiting for statefulset %s/%s to be ready", namespace, statefulset)
+			}
 			continue
 		}
 
@@ -192,19 +225,25 @@ func (f *Framework) WaitStatefulsetReady(statefulset, namespace string) error {
 		ready := true
 		for _, pod := range pods.Items {
 			switch getPodStatus(pod) {
-			case Completed:
+			case podCompleted:
 				return fmt.Errorf("pod already completed")
-			case Running:
+			case podRunning:
 				continue
-			case Initing, Pending, PodInitializing, ContainerCreating, Terminating:
+			case podIniting, podPending, podInitializing, podContainerCreating, podTerminating:
 				ready = false
 			default:
 				klog.Info(pod.String())
 				return fmt.Errorf("pod status failed")
 			}
+			if !ready {
+				break
+			}
 		}
 		if ready {
 			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timeout waiting for statefulset %s/%s to be ready", namespace, statefulset)
 		}
 	}
 }
@@ -250,13 +289,13 @@ func (f *Framework) ExecToPodThroughAPI(command, containerName, podName, namespa
 }
 
 const (
-	Running           = "Running"
-	Pending           = "Pending"
-	Completed         = "Completed"
-	ContainerCreating = "ContainerCreating"
-	PodInitializing   = "PodInitializing"
-	Terminating       = "Terminating"
-	Initing           = "Initing"
+	podRunning           = "Running"
+	podPending           = "Pending"
+	podCompleted         = "Completed"
+	podContainerCreating = "ContainerCreating"
+	podInitializing      = "PodInitializing"
+	podTerminating       = "Terminating"
+	podIniting           = "Initing"
 )
 
 func getPodContainerStatus(pod corev1.Pod, reason string) string {

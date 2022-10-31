@@ -153,13 +153,19 @@ func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns,
 		hostLink, err := netlink.LinkByName(nicName)
 		if err != nil {
 			// If link already not exists, return quietly
+			// E.g. Internal port had been deleted by Remove ovs port previously
 			if _, ok := err.(netlink.LinkNotFoundError); ok {
 				return nil
 			}
 			return fmt.Errorf("find host link %s failed %v", nicName, err)
 		}
-		if err = netlink.LinkDel(hostLink); err != nil {
-			return fmt.Errorf("delete host link %s failed %v", hostLink, err)
+
+		hostLinkType := hostLink.Type()
+		// Sometimes no deviceID input for vf nic, avoid delete vf nic.
+		if hostLinkType == "veth" {
+			if err = netlink.LinkDel(hostLink); err != nil {
+				return fmt.Errorf("delete host link %s failed %v", hostLink, err)
+			}
 		}
 	} else if pciAddrRegexp.MatchString(deviceID) {
 		// Ret VF index from PCI
@@ -721,7 +727,7 @@ func setupVethPair(containerID, ifName string, mtu int) (string, string, error) 
 			klog.Errorf("failed to delete veth %v", err)
 			return "", "", err
 		}
-		return "", "", fmt.Errorf("failed to crate veth for %v", err)
+		return "", "", fmt.Errorf("failed to create veth for %v", err)
 	}
 	return hostNicName, containerNicName, nil
 }
@@ -936,7 +942,7 @@ func addAdditionalNic(ifName string) error {
 			klog.Errorf("failed to delete static iface %v, err %v", ifName, err)
 			return err
 		}
-		return fmt.Errorf("failed to crate static iface %v, err %v", ifName, err)
+		return fmt.Errorf("failed to create static iface %v, err %v", ifName, err)
 	}
 	return nil
 }

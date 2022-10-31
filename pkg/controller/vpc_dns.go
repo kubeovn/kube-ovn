@@ -7,10 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/kubeovn/kube-ovn/versions"
 	"io"
-	"io/ioutil"
-	"k8s.io/apimachinery/pkg/util/yaml"
 	"net/http"
 	"os"
 	"reflect"
@@ -19,16 +16,19 @@ import (
 	"text/template"
 	"time"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
+	"github.com/kubeovn/kube-ovn/versions"
 )
 
 var (
@@ -596,7 +596,7 @@ func (c *Controller) getDefaultCoreDnsImage() (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("coredns container no fonud")
+	return "", fmt.Errorf("coredns container no found")
 }
 
 func (c *Controller) initVpcDnsConfig() error {
@@ -657,12 +657,12 @@ func getCoreDnsTemplateFile(url string) error {
 		return fmt.Errorf("access errors, return code:%d", resp.StatusCode)
 	}
 
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}
 
-	err = ioutil.WriteFile(CorednsTemplateDep, data, 0644)
+	err = os.WriteFile(CorednsTemplateDep, data, 0644)
 	if err != nil {
 		return err
 	}
