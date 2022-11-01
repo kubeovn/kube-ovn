@@ -19,6 +19,7 @@ env:
   GO_VERSION: '1.18'
   GOSEC_VERSION: '2.12.0'
   KIND_VERSION: v0.14.0
+  HELM_VERSION: v3.10.1
 
 jobs:
   build:
@@ -1226,6 +1227,9 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v3
+      - uses: azure/setup-helm@v3
+        with:
+          version: '${{ env.HELM_VERSION }}'
 
       - name: Install Kind
         run: |
@@ -1243,11 +1247,6 @@ jobs:
         uses: actions/download-artifact@v3
         with:
           name: kube-ovn
-
-      - name: Set up Helm
-        uses: azure/setup-helm@v1
-        with:
-          version: v3.4.0
 
       - name: Load Image
         run: |
