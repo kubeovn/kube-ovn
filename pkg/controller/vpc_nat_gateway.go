@@ -304,6 +304,11 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 		return fmt.Errorf("failed to get subnet %s", gw.Spec.Subnet)
 	}
 
+	if err := c.updateCrdNatGw(gw.Name); err != nil {
+		klog.Errorf("failed to update nat gw: %v", gw.Name, err)
+		return err
+	}
+
 	oriPod, err := c.getNatGwPod(key)
 	if err != nil {
 		return err
@@ -311,7 +316,7 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 	pod := oriPod.DeepCopy()
 
 	if pod.Status.Phase != corev1.PodRunning {
-		time.Sleep(10 * 1000)
+		time.Sleep(10 * time.Second)
 		return fmt.Errorf("failed to init vpc nat gateway, pod is not ready")
 	}
 
@@ -351,6 +356,7 @@ func (c *Controller) handleUpdateVpcFloatingIp(natGwKey string) error {
 	// refresh exist fips
 	if err := c.initCreateAt(natGwKey); err != nil {
 		klog.Errorf("failed to init nat gw pod '%s' create at, %v", natGwKey, err)
+		return err
 	}
 
 	fips, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().List(context.Background(), metav1.ListOptions{
@@ -383,6 +389,7 @@ func (c *Controller) handleUpdateVpcEip(natGwKey string) error {
 	// refresh exist fips
 	if err := c.initCreateAt(natGwKey); err != nil {
 		klog.Errorf("failed to init nat gw pod '%s' create at, %v", natGwKey, err)
+		return err
 	}
 	eips, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().List(context.Background(), metav1.ListOptions{
 		LabelSelector: fields.OneTermEqualSelector(util.VpcNatLabel, "").String(),
@@ -412,6 +419,7 @@ func (c *Controller) handleUpdateVpcSnat(natGwKey string) error {
 	// refresh exist snats
 	if err := c.initCreateAt(natGwKey); err != nil {
 		klog.Errorf("failed to init nat gw pod '%s' create at, %v", natGwKey, err)
+		return err
 	}
 	snats, err := c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().List(context.Background(), metav1.ListOptions{
 		LabelSelector: fields.OneTermEqualSelector(util.VpcNatGatewayNameLabel, natGwKey).String(),
@@ -441,6 +449,7 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 	// refresh exist dnats
 	if err := c.initCreateAt(natGwKey); err != nil {
 		klog.Errorf("failed to init nat gw pod '%s' create at, %v", natGwKey, err)
+		return err
 	}
 
 	dnats, err := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().List(context.Background(), metav1.ListOptions{
@@ -755,9 +764,11 @@ func (c *Controller) checkVpcExternalNet() (err error) {
 	if _, err = networkClient.Get(context.Background(), util.VpcExternalNet, metav1.GetOptions{}); err != nil {
 		if k8serrors.IsNotFound(err) {
 			klog.Errorf("vpc external multus net '%s' should be exist already before ovn-vpc-nat-gw-config applied", util.VpcExternalNet)
+			return err
 		}
+		return err
 	}
-	return err
+	return nil
 }
 
 func (c *Controller) initCreateAt(key string) (err error) {
@@ -770,4 +781,61 @@ func (c *Controller) initCreateAt(key string) (err error) {
 	}
 	NAT_GW_CREATED_AT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
 	return nil
+}
+
+func (c *Controller) updateCrdNatGw(key string) error {
+	gw, err := c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Get(context.Background(), key, metav1.GetOptions{})
+	if err != nil {
+		errMsg := fmt.Errorf("failed to get vpc nat gw '%s', %v", key, err)
+		klog.Error(errMsg)
+		return errMsg
+	}
+	var needUpdateLabel bool
+	var op string
+	// vpc nat gw label may lost
+	if len(gw.Labels) == 0 {
+		op = "add"
+		gw.Labels = map[string]string{
+			util.SubnetNameLabel: gw.Spec.Subnet,
+			util.VpcNameLabel:    gw.Spec.Vpc,
+		}
+		needUpdateLabel = true
+	} else {
+		if gw.Labels[util.SubnetNameLabel] != gw.Spec.Subnet {
+			op = "replace"
+			gw.Labels[util.SubnetNameLabel] = gw.Spec.Subnet
+			needUpdateLabel = true
+		}
+		if gw.Labels[util.VpcNameLabel] != gw.Spec.Subnet {
+			op = "replace"
+			gw.Labels[util.VpcNameLabel] = gw.Spec.Vpc
+			needUpdateLabel = true
+		}
+	}
+	if needUpdateLabel {
+		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
+		raw, _ := json.Marshal(gw.Labels)
+		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
+		if _, err := c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Patch(context.Background(), gw.Name, types.JSONPatchType,
+			[]byte(patchPayload), metav1.PatchOptions{}); err != nil {
+			klog.Errorf("failed to patch vpc nat gw %s: %v", gw.Name, err)
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) getNatGw(router, subnet string) (string, error) {
+	selectors := labels.Set{util.VpcNameLabel: router, util.SubnetNameLabel: subnet}.AsSelector()
+	gws, err := c.vpcNatGatewayLister.List(selectors)
+	if err != nil {
+		return "", err
+	}
+	if len(gws) == 1 {
+		return gws[0].Name, nil
+	}
+	if len(gws) == 0 {
+		return "", fmt.Errorf("no vpc nat gw found by selector %v", selectors)
+	}
+	return "", fmt.Errorf("too many nat gw")
 }
