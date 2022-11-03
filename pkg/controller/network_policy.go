@@ -16,6 +16,7 @@ import (
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -191,11 +192,6 @@ func (c *Controller) handleUpdateNp(key string) error {
 	egressAllowAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.egress.allow", np.Name, np.Namespace), "-", ".", -1)
 	egressExceptAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.egress.except", np.Name, np.Namespace), "-", ".", -1)
 
-	// delete existed pg to update acl
-	if err := c.ovnClient.DeletePortGroup(pgName); err != nil {
-		klog.Errorf("failed to delete port group %s before networkpolicy update process, %v", pgName, err)
-	}
-
 	if err := c.ovnClient.CreateNpPortGroup(pgName, np.Namespace, np.Name); err != nil {
 		klog.Errorf("failed to create port group for np %s, %v", key, err)
 		return err
@@ -239,12 +235,6 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}
 
-	// before update or add ingress info,we should first delete acl and address_set
-	if err := c.ovnClient.DeleteACL(pgName, "to-lport"); err != nil {
-		klog.Errorf("failed to delete np %s ingress acls, %v", key, err)
-		return err
-	}
-
 	ingressAsNames, err := c.ovnClient.ListAddressSet(np.Namespace, np.Name, "ingress")
 	if err != nil {
 		klog.Errorf("failed to list ingress address_set, %v", err)
@@ -257,6 +247,15 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}
 
+	var ingressAclCmd []string
+	exist, err := c.ovnClient.PortGroupExists(pgName)
+	if err != nil {
+		klog.Errorf("failed to query np %s port group, %v", key, err)
+		return err
+	}
+	if exist {
+		ingressAclCmd = []string{"--type=port-group", "acl-del", pgName, "to-lport"}
+	}
 	if hasIngressRule(np) {
 		for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
 			protocol := util.CheckProtocol(cidrBlock)
@@ -270,19 +269,17 @@ func (c *Controller) handleUpdateNp(key string) error {
 				ingressAllowAsName := fmt.Sprintf("%s.%s.%d", ingressAllowAsNamePrefix, protocol, idx)
 				ingressExceptAsName := fmt.Sprintf("%s.%s.%d", ingressExceptAsNamePrefix, protocol, idx)
 
-				allows := []string{}
-				excepts := []string{}
+				var allows, excepts []string
 				if len(npr.From) == 0 {
 					if protocol == kubeovnv1.ProtocolIPv4 {
 						allows = []string{"0.0.0.0/0"}
-					} else if protocol == kubeovnv1.ProtocolIPv6 {
+					} else {
 						allows = []string{"::/0"}
 					}
-					excepts = []string{}
 				} else {
+					var allow, except []string
 					for _, npp := range npr.From {
-						allow, except, err := c.fetchPolicySelectedAddresses(np.Namespace, protocol, npp)
-						if err != nil {
+						if allow, except, err = c.fetchPolicySelectedAddresses(np.Namespace, protocol, npp); err != nil {
 							klog.Errorf("failed to fetch policy selected addresses, %v", err)
 							return err
 						}
@@ -310,15 +307,9 @@ func (c *Controller) handleUpdateNp(key string) error {
 				}
 
 				if len(allows) != 0 || len(excepts) != 0 {
-					if err := c.ovnClient.CreateIngressACL(pgName, ingressAllowAsName, ingressExceptAsName, svcAsName, protocol, npr.Ports, logEnable); err != nil {
-						klog.Errorf("failed to create ingress acls for np %s, %v", key, err)
-						return err
-					}
+					ingressAclCmd = c.ovnClient.CombineIngressACLCmd(pgName, ingressAllowAsName, ingressExceptAsName, svcAsName, protocol, npr.Ports, logEnable, ingressAclCmd, idx)
 				} else {
-					if err = c.ovnClient.CreateIngressACL(pgName, ingressAllowAsName, ingressExceptAsName, svcAsName, protocol, []netv1.NetworkPolicyPort{}, logEnable); err != nil {
-						klog.Errorf("failed to create default deny all ingress acls for np %s, %v", key, err)
-						return err
-					}
+					ingressAclCmd = c.ovnClient.CombineIngressACLCmd(pgName, ingressAllowAsName, ingressExceptAsName, svcAsName, protocol, []netv1.NetworkPolicyPort{}, logEnable, ingressAclCmd, idx)
 				}
 			}
 			if len(np.Spec.Ingress) == 0 {
@@ -334,10 +325,13 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 				ingressPorts := []netv1.NetworkPolicyPort{}
-				if err := c.ovnClient.CreateIngressACL(pgName, ingressAllowAsName, ingressExceptAsName, svcAsName, protocol, ingressPorts, logEnable); err != nil {
-					klog.Errorf("failed to create ingress acls for np %s, %v", key, err)
-					return err
-				}
+				ingressAclCmd = c.ovnClient.CombineIngressACLCmd(pgName, ingressAllowAsName, ingressExceptAsName, svcAsName, protocol, ingressPorts, logEnable, ingressAclCmd, 0)
+			}
+
+			klog.Infof("create ingress acl cmd is: %v", ingressAclCmd)
+			if err = c.ovnClient.CreateACL(ingressAclCmd); err != nil {
+				klog.Errorf("failed to create ingress acls for np %s, %v", key, err)
+				return err
 			}
 
 			if err = c.ovnClient.SetAclLog(pgName, logEnable, true); err != nil {
@@ -388,12 +382,6 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}
 
-	// before update or add egress info, we should first delete acl and address_set
-	if err := c.ovnClient.DeleteACL(pgName, "from-lport"); err != nil {
-		klog.Errorf("failed to delete np %s egress acls, %v", key, err)
-		return err
-	}
-
 	egressAsNames, err := c.ovnClient.ListAddressSet(np.Namespace, np.Name, "egress")
 	if err != nil {
 		klog.Errorf("failed to list egress address_set, %v", err)
@@ -404,6 +392,16 @@ func (c *Controller) handleUpdateNp(key string) error {
 			klog.Errorf("failed to delete np %s address set, %v", key, err)
 			return err
 		}
+	}
+
+	var egressAclCmd []string
+	exist, err = c.ovnClient.PortGroupExists(pgName)
+	if err != nil {
+		klog.Errorf("failed to query np %s port group, %v", key, err)
+		return err
+	}
+	if exist {
+		egressAclCmd = []string{"--type=port-group", "acl-del", pgName, "from-lport"}
 	}
 	if hasEgressRule(np) {
 		for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
@@ -418,19 +416,17 @@ func (c *Controller) handleUpdateNp(key string) error {
 				egressAllowAsName := fmt.Sprintf("%s.%s.%d", egressAllowAsNamePrefix, protocol, idx)
 				egressExceptAsName := fmt.Sprintf("%s.%s.%d", egressExceptAsNamePrefix, protocol, idx)
 
-				allows := []string{}
-				excepts := []string{}
+				var allows, excepts []string
 				if len(npr.To) == 0 {
 					if protocol == kubeovnv1.ProtocolIPv4 {
 						allows = []string{"0.0.0.0/0"}
 					} else if protocol == kubeovnv1.ProtocolIPv6 {
 						allows = []string{"::/0"}
 					}
-					excepts = []string{}
 				} else {
+					var allow, except []string
 					for _, npp := range npr.To {
-						allow, except, err := c.fetchPolicySelectedAddresses(np.Namespace, protocol, npp)
-						if err != nil {
+						if allow, except, err = c.fetchPolicySelectedAddresses(np.Namespace, protocol, npp); err != nil {
 							klog.Errorf("failed to fetch policy selected addresses, %v", err)
 							return err
 						}
@@ -458,10 +454,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 				}
 
 				if len(allows) != 0 || len(excepts) != 0 {
-					if err := c.ovnClient.CreateEgressACL(pgName, egressAllowAsName, egressExceptAsName, protocol, npr.Ports, svcAsName, logEnable); err != nil {
-						klog.Errorf("failed to create egress acls for np %s, %v", key, err)
-						return err
-					}
+					egressAclCmd = c.ovnClient.CombineEgressACLCmd(pgName, egressAllowAsName, egressExceptAsName, protocol, npr.Ports, svcAsName, logEnable, egressAclCmd, idx)
 				}
 			}
 			if len(np.Spec.Egress) == 0 {
@@ -477,11 +470,15 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 				egressPorts := []netv1.NetworkPolicyPort{}
-				if err := c.ovnClient.CreateEgressACL(pgName, egressAllowAsName, egressExceptAsName, protocol, egressPorts, svcAsName, logEnable); err != nil {
-					klog.Errorf("failed to create egress acls for np %s, %v", key, err)
-					return err
-				}
+				egressAclCmd = c.ovnClient.CombineEgressACLCmd(pgName, egressAllowAsName, egressExceptAsName, protocol, egressPorts, svcAsName, logEnable, egressAclCmd, 0)
 			}
+
+			klog.Infof("create egress acl cmd is: %v", egressAclCmd)
+			if err = c.ovnClient.CreateACL(egressAclCmd); err != nil {
+				klog.Errorf("failed to create egress acls for np %s, %v", key, err)
+				return err
+			}
+
 			if err = c.ovnClient.SetAclLog(pgName, logEnable, false); err != nil {
 				// just log and do not return err here
 				klog.Errorf("failed to set egress acl log for np %s, %v", key, err)
@@ -510,6 +507,23 @@ func (c *Controller) handleUpdateNp(key string) error {
 					klog.Errorf("failed to delete np %s address set, %v", key, err)
 					return err
 				}
+			}
+		}
+	} else {
+		if err = c.ovnClient.DeleteACL(pgName, "from-lport"); err != nil {
+			klog.Errorf("failed to delete np %s egress acls, %v", key, err)
+			return err
+		}
+
+		asNames, err := c.ovnClient.ListAddressSet(np.Namespace, np.Name, "egress")
+		if err != nil {
+			klog.Errorf("failed to list egress address_set, %v", err)
+			return err
+		}
+		for _, asName := range asNames {
+			if err = c.ovnClient.DeleteAddressSet(asName); err != nil {
+				klog.Errorf("failed to delete np %s address set, %v", key, err)
+				return err
 			}
 		}
 	}
@@ -583,12 +597,23 @@ func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.Label
 
 	ports := make([]string, 0, len(pods))
 	for _, pod := range pods {
-		if !isPodAlive(pod) {
+		if !isPodAlive(pod) || pod.Spec.HostNetwork {
 			continue
 		}
 		podName := c.getNameByPod(pod)
-		if !pod.Spec.HostNetwork && pod.Annotations[util.AllocatedAnnotation] == "true" {
-			ports = append(ports, fmt.Sprintf("%s.%s", podName, pod.Namespace))
+		podNets, err := c.getPodKubeovnNets(pod)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get pod networks, %v", err)
+		}
+
+		for _, podNet := range podNets {
+			if !isOvnSubnet(podNet.Subnet) {
+				continue
+			}
+
+			if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" {
+				ports = append(ports, ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName))
+			}
 		}
 	}
 	return ports, nil
