@@ -688,15 +688,12 @@ func (c *Controller) checkGatewayReady() error {
 						pinger.Interval = 1 * time.Second
 
 						success := false
+
 						pinger.OnRecv = func(p *goping.Packet) {
 							success = true
 							pinger.Stop()
 						}
 						pinger.Run()
-
-						if !nodeReady(node) {
-							success = false
-						}
 
 						if !success {
 							klog.Warningf("failed to ping ovn0 %s or node %v is not ready", ip, node.Name)
