@@ -106,11 +106,23 @@ type Controller struct {
 	resetIptablesEipQueue  workqueue.RateLimitingInterface
 	delIptablesEipQueue    workqueue.RateLimitingInterface
 
+	podAnnotatedIptablesEipLister      v1.PodLister
+	podAnnotatedIptablesEipSynced      cache.InformerSynced
+	addPodAnnotatedIptablesEipQueue    workqueue.RateLimitingInterface
+	updatePodAnnotatedIptablesEipQueue workqueue.RateLimitingInterface
+	delPodAnnotatedIptablesEipQueue    workqueue.RateLimitingInterface
+
 	iptablesFipsLister     kubeovnlister.IptablesFIPRuleLister
 	iptablesFipSynced      cache.InformerSynced
 	addIptablesFipQueue    workqueue.RateLimitingInterface
 	updateIptablesFipQueue workqueue.RateLimitingInterface
 	delIptablesFipQueue    workqueue.RateLimitingInterface
+
+	podAnnotatedIptablesFipLister      v1.PodLister
+	podAnnotatedIptablesFipSynced      cache.InformerSynced
+	addPodAnnotatedIptablesFipQueue    workqueue.RateLimitingInterface
+	updatePodAnnotatedIptablesFipQueue workqueue.RateLimitingInterface
+	delPodAnnotatedIptablesFipQueue    workqueue.RateLimitingInterface
 
 	iptablesDnatRulesLister     kubeovnlister.IptablesDnatRuleLister
 	iptablesDnatRuleSynced      cache.InformerSynced
@@ -216,6 +228,8 @@ func NewController(config *Configuration) *Controller {
 	providerNetworkInformer := kubeovnInformerFactory.Kubeovn().V1().ProviderNetworks()
 	sgInformer := kubeovnInformerFactory.Kubeovn().V1().SecurityGroups()
 	podInformer := informerFactory.Core().V1().Pods()
+	podAnnotatedIptablesEipInformer := informerFactory.Core().V1().Pods()
+	podAnnotatedIptablesFipInformer := informerFactory.Core().V1().Pods()
 	namespaceInformer := informerFactory.Core().V1().Namespaces()
 	nodeInformer := informerFactory.Core().V1().Nodes()
 	serviceInformer := informerFactory.Core().V1().Services()
@@ -273,11 +287,23 @@ func NewController(config *Configuration) *Controller {
 		resetIptablesEipQueue:  workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "resetIptablesEip"),
 		delIptablesEipQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delIptablesEip"),
 
+		podAnnotatedIptablesEipLister:      podAnnotatedIptablesEipInformer.Lister(),
+		podAnnotatedIptablesEipSynced:      podAnnotatedIptablesEipInformer.Informer().HasSynced,
+		addPodAnnotatedIptablesEipQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addPodAnnotatedIptablesEip"),
+		updatePodAnnotatedIptablesEipQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updatePodAnnotatedIptablesEip"),
+		delPodAnnotatedIptablesEipQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delPodAnnotatedIptablesEip"),
+
 		iptablesFipsLister:     iptablesFipInformer.Lister(),
 		iptablesFipSynced:      iptablesFipInformer.Informer().HasSynced,
 		addIptablesFipQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addIptablesFip"),
 		updateIptablesFipQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateIptablesFip"),
 		delIptablesFipQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delIptablesFip"),
+
+		podAnnotatedIptablesFipLister:      podAnnotatedIptablesFipInformer.Lister(),
+		podAnnotatedIptablesFipSynced:      podAnnotatedIptablesFipInformer.Informer().HasSynced,
+		addPodAnnotatedIptablesFipQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addPodAnnotatedIptablesFip"),
+		updatePodAnnotatedIptablesFipQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updatePodAnnotatedIptablesFip"),
+		delPodAnnotatedIptablesFipQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delPodAnnotatedIptablesFip"),
 
 		iptablesDnatRulesLister:     iptablesDnatRuleInformer.Lister(),
 		iptablesDnatRuleSynced:      iptablesDnatRuleInformer.Informer().HasSynced,
@@ -488,6 +514,16 @@ func NewController(config *Configuration) *Controller {
 		DeleteFunc: controller.enqueueDelIptablesSnatRule,
 	})
 
+	podAnnotatedIptablesEipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddPodAnnotatedIptablesEip,
+		UpdateFunc: controller.enqueueUpdatePodAnnotatedIptablesEip,
+		DeleteFunc: controller.enqueueDeletePodAnnotatedIptablesEip,
+	})
+	podAnnotatedIptablesFipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddPodAnnotatedIptablesFip,
+		UpdateFunc: controller.enqueueUpdatePodAnnotatedIptablesFip,
+		DeleteFunc: controller.enqueueDeletePodAnnotatedIptablesFip,
+	})
 	return controller
 }
 
@@ -512,6 +548,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		c.vpcNatGatewaySynced, c.vpcSynced, c.subnetSynced,
 		c.ipSynced, c.virtualIpsSynced, c.iptablesEipSynced,
 		c.iptablesFipSynced, c.iptablesDnatRuleSynced, c.iptablesSnatRuleSynced,
+		c.podAnnotatedIptablesEipSynced, c.podAnnotatedIptablesFipSynced,
 		c.vlanSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced,
 		c.serviceSynced, c.endpointsSynced, c.configMapsSynced,
 	}
@@ -574,6 +611,12 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	}
 	if err := c.initSyncCrdVlans(); err != nil {
 		klog.Errorf("failed to sync crd vlans: %v", err)
+	}
+
+	if c.config.PodDefaultFipType == util.IptablesFip {
+		if err := c.initSyncCrdVpcNatGw(); err != nil {
+			klog.Errorf("failed to sync crd vpc nat gws: %v", err)
+		}
 	}
 
 	if c.config.EnableLb {
@@ -666,6 +709,15 @@ func (c *Controller) shutdown() {
 	c.updateIptablesSnatRuleQueue.ShutDown()
 	c.delIptablesSnatRuleQueue.ShutDown()
 
+	if c.config.PodDefaultFipType == util.IptablesFip {
+		c.addPodAnnotatedIptablesEipQueue.ShutDown()
+		c.updatePodAnnotatedIptablesEipQueue.ShutDown()
+		c.delPodAnnotatedIptablesEipQueue.ShutDown()
+
+		c.addPodAnnotatedIptablesFipQueue.ShutDown()
+		c.updatePodAnnotatedIptablesFipQueue.ShutDown()
+		c.delPodAnnotatedIptablesFipQueue.ShutDown()
+	}
 	if c.config.EnableNP {
 		c.updateNpQueue.ShutDown()
 		c.deleteNpQueue.ShutDown()
@@ -844,4 +896,12 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	go wait.Until(c.runAddIptablesSnatRuleWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdateIptablesSnatRuleWorker, time.Second, stopCh)
 	go wait.Until(c.runDelIptablesSnatRuleWorker, time.Second, stopCh)
+
+	if c.config.PodDefaultFipType == util.IptablesFip {
+		go wait.Until(c.runAddPodAnnotatedIptablesEipWorker, time.Second, stopCh)
+		go wait.Until(c.runDelPodAnnotatedIptablesEipWorker, time.Second, stopCh)
+
+		go wait.Until(c.runAddPodAnnotatedIptablesFipWorker, time.Second, stopCh)
+		go wait.Until(c.runDelPodAnnotatedIptablesFipWorker, time.Second, stopCh)
+	}
 }

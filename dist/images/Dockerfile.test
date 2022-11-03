@@ -1,0 +1,14 @@
+FROM alpine:edge
+
+RUN set -ex \
+    && echo https://dl-cdn.alpinelinux.org/alpine/edge/testing >> /etc/apk/repositories \
+    && apk update \
+    && apk upgrade \
+    && apk add --no-cache \
+    bash iproute2 iptables iputils tcpdump conntrack-tools \
+    redis nginx qperf iperf3 net-tools curl
+
+WORKDIR /kube-ovn
+COPY test-server /kube-ovn/test-server
+COPY test-server.sh /kube-ovn/test-server.sh
+CMD bash test-server.sh
