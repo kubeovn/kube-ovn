@@ -695,6 +695,10 @@ func (c *Controller) checkGatewayReady() error {
 						}
 						pinger.Run()
 
+						if !nodeReady(node) {
+							success = false
+						}
+
 						if !success {
 							klog.Warningf("failed to ping ovn0 %s or node %v is not ready", ip, node.Name)
 							if exist {
