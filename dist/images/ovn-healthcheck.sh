@@ -15,9 +15,11 @@ sb_role=$(ovn-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status OVN_Southbound 
 
 if ! echo ${nb_status} | grep -v "failed"; then
     echo "nb health check failed"
+    exit 1
 fi
 if ! echo ${sb_status} | grep -v "failed"; then
     echo "sb health check failed"
+    exit 1
 fi
 
 if echo ${nb_status} | grep "disconnected" && echo ${nb_role} | grep "candidate"; then
