@@ -311,7 +311,7 @@ func (c *Controller) handleAddPodAnnotatedIptablesFipFinalizer(pod *v1.Pod) erro
 			return nil
 		}
 		newPod := pod.DeepCopy()
-		newPod.Finalizers = util.RemoveString(newPod.Finalizers, util.FipFinalizer)
+		newPod.Finalizers = append(newPod.Finalizers, util.FipFinalizer)
 		patch, err := util.GenerateStrategicMergePatchPayload(pod, newPod)
 		if err != nil {
 			return err
