@@ -534,11 +534,6 @@ func configProviderNic(nicName, brName string) (int, error) {
 		return 0, fmt.Errorf("failed to get routes on nic %s: %v", nicName, err)
 	}
 
-	if _, err = ovs.Exec(ovs.MayExist, "add-port", brName, nicName,
-		"--", "set", "port", nicName, "external_ids:vendor="+util.CniTypeName); err != nil {
-		return 0, fmt.Errorf("failed to add %s to OVS bridge %s: %v", nicName, brName, err)
-	}
-
 	for _, addr := range addrs {
 		if addr.IP.IsLinkLocalUnicast() {
 			// skip 169.254.0.0/16 and fe80::/10
@@ -595,6 +590,11 @@ func configProviderNic(nicName, brName string) (int, error) {
 				}
 			}
 		}
+	}
+
+	if _, err = ovs.Exec(ovs.MayExist, "add-port", brName, nicName,
+		"--", "set", "port", nicName, "external_ids:vendor="+util.CniTypeName); err != nil {
+		return 0, fmt.Errorf("failed to add %s to OVS bridge %s: %v", nicName, brName, err)
 	}
 
 	if err = netlink.LinkSetUp(nic); err != nil {
