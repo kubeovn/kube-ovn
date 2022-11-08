@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -107,13 +108,19 @@ func CmdMain() {
 
 func mvCNIConf(configDir, configFile, confName string) error {
 	// #nosec
-	data, err := os.ReadFile(configFile)
+	src, err := os.Open(configFile)
 	if err != nil {
 		return err
 	}
-
 	cniConfPath := filepath.Join(configDir, confName)
-	return os.WriteFile(cniConfPath, data, 0644)
+	dst, err := os.OpenFile(cniConfPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0664)
+	if err != nil {
+		return err
+	}
+	if _, err = io.Copy(dst, src); err != nil {
+		return err
+	}
+	return nil
 }
 
 func Retry(attempts int, sleep int, f func(configuration *daemon.Configuration) error, ctrl *daemon.Configuration) (err error) {
