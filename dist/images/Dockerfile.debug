@@ -1,0 +1,142 @@
+# syntax = docker/dockerfile:experimental
+# With this image and cp related binary to host, perf and bcc can be used from host
+# to show the right symbol.
+# e.g.
+# kubectl cp kube-system/ovs-ovn-cmm5d:/usr/bin/ovn-controller /usr/bin/ovn-controller
+# kubectl cp kube-system/ovs-ovn-cmm5d:/usr/sbin/ovs-vswitchd /usr/sbin/ovs-vswitchd
+FROM ubuntu:22.04 as ovs-builder
+
+ARG ARCH
+ARG NO_AVX512=false
+ARG DEBIAN_FRONTEND=noninteractive
+ENV SRC_DIR='/usr/src'
+
+RUN apt update && apt install build-essential git libnuma-dev autoconf curl \
+    python3 libmnl-dev libpcap-dev libtool libcap-ng-dev libssl-dev pkg-config \
+    python3-six libunbound-dev libunwind-dev dh-make fakeroot debhelper dh-python \
+    flake8 python3-sphinx graphviz groff wget -y
+
+RUN cd /usr/src/ && \
+    git clone -b branch-2.17 --depth=1 https://github.com/openvswitch/ovs.git && \
+    cd ovs && \
+    # do not strip the binary
+    sed -i 89d debian/rules && \
+    sed -i s/--enable-shared//g debian/rules && \
+    sed -i 10d debian/automake.mk && \
+    sed -i 10d debian/automake.mk && \
+    rm debian/libopenvswitch.install debian/libopenvswitch-dev.install && \
+    # ovsdb-idl: Support write-only-changed IDL monitor mode
+    curl -s https://github.com/kubeovn/ovs/commit/24c1b28c416d3a0312c10a9fe9341c04b8b31ce9.patch | git apply && \
+    # fix memleak
+    curl -s https://github.com/kubeovn/ovs/commit/2dc8e7aa202818952b2fa80b47298604530c9de0.patch | git apply && \
+    # fix log file descriptor leak in monitor process
+    curl -s https://github.com/kubeovn/ovs/commit/918d6dc79634bec760054ee53f7628186315bcfb.patch | git apply && \
+    # increase election timer
+    curl -s https://github.com/kubeovn/ovs/commit/22ea22c40b46ee5adeae977ff6cfca81b3ff25d7.patch | git apply && \
+    # add fdb update logging
+    curl -s https://github.com/kubeovn/ovs/commit/8c2f28b778129161bbf8f0738fa41d385860d5bc.patch | git apply && \
+    # fdb: fix mac learning in environments with hairpin enabled
+    curl -s https://github.com/kubeovn/ovs/commit/1cb138aaf2fdf922d75a587e4e9cf610d38f9fee.patch | git apply && \
+    # ovsdb-tool: add optional server id parameter for "join-cluster" command
+    curl -s https://github.com/kubeovn/ovs/commit/2e2ec1161cadbec79786d63fde9475053d996586.patch | git apply && \
+    # compile without avx512
+    if [ "$ARCH" = "amd64" -a "$NO_AVX512" = "true" ]; then curl -s https://github.com/kubeovn/ovs/commit/c257b0794b827cfae9660a9f3238bee8a29e7676.patch | git apply; fi && \
+    ./boot.sh && \
+    rm -rf .git && \
+    CONFIGURE_OPTS='' && \
+    if [ "$ARCH" = "amd64" ]; then CONFIGURE_OPTS='CFLAGS="-fno-omit-frame-pointer -fno-common"'; fi && \
+    DATAPATH_CONFIGURE_OPTS='--with-debug --prefix=/usr' EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS DEB_BUILD_OPTIONS='parallel=8 nocheck' fakeroot debian/rules binary
+
+RUN dpkg -i /usr/src/python3-openvswitch*.deb /usr/src/libopenvswitch*.deb
+
+RUN cd /usr/src/ && git clone -b branch-22.03 --depth=1 https://github.com/ovn-org/ovn.git && \
+    cd ovn && \
+    # do not strip the binary
+    sed -i 67d debian/rules && \
+    sed -i s/--enable-shared//g debian/rules && \
+    sed -i 14d debian/ovn-common.install && \
+    # ovn-controller: Add a generic way to check if the daemon started recently.
+    curl -s https://github.com/kubeovn/ovn/commit/367d7ab6239089ce99dda20818c8833c69ffd77f.patch | git apply && \
+    # patch.c: Avoid patch interface deletion & recreation during restart.
+    curl -s https://github.com/kubeovn/ovn/commit/e4b97b4961fa80071cb73aa40cf97f586f55b1eb.patch | git apply && \
+    # do not send traffic that not designate to svc to conntrack
+    curl -s https://github.com/kubeovn/ovn/commit/d26ae4de0ab070f6b602688ba808c8963f69d5c4.patch | git apply && \
+    # change hash type from dp_hash to hash with field src_ip
+    curl -s https://github.com/kubeovn/ovn/commit/ab923b252271cbbcccc8091e338ee7efe75e5fcd.patch | git apply && \
+    # set ether dst addr for dnat on logical switch
+    curl -s https://github.com/kubeovn/ovn/commit/58a40438926745dfdd498c09ea71e1746b803a42.patch | git apply && \
+    # modify src route priority
+    curl -s https://github.com/kubeovn/ovn/commit/e0e20deb188434f73143b1906e481fdac913429d.patch | git apply && \
+    sed -i 's/OVN/ovn/g' debian/changelog && \
+    rm -rf .git && \
+    ./boot.sh && \
+    CONFIGURE_OPTS='' && \
+    if [ "$ARCH" = "amd64" ]; then CONFIGURE_OPTS='--with-debug CFLAGS="-fno-omit-frame-pointer -fno-common"'; fi && \
+    OVSDIR=/usr/src/ovs EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS DEB_BUILD_OPTIONS='parallel=8 nocheck' fakeroot debian/rules binary
+
+RUN mkdir /packages/ && \
+     cp /usr/src/libopenvswitch*.deb /packages && \
+     cp /usr/src/openvswitch-*.deb /packages && \
+     cp /usr/src/python3-openvswitch*.deb /packages && \
+     cp /usr/src/ovn-*.deb /packages && \
+     cd /packages && rm -f *dbg* *datapath* *docker* *vtep* *ipsec* *test* *dev*
+
+FROM ubuntu:22.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
+        ethtool iproute2 ncat libunbound-dev procps libatomic1 kmod iptables \
+        tcpdump ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 \
+        logrotate dnsutils net-tools nmap -y --no-install-recommends && \
+        rm -rf /var/lib/apt/lists/* && \
+        cd /usr/sbin && \
+        ln -sf /usr/sbin/iptables-legacy iptables && \
+        ln -sf /usr/sbin/ip6tables-legacy ip6tables && \
+        rm -rf /etc/localtime
+
+RUN mkdir -p /var/run/openvswitch && \
+    mkdir -p /var/run/ovn && \
+    mkdir -p /etc/cni/net.d && \
+    mkdir -p /opt/cni/bin
+
+ARG ARCH
+ENV CNI_VERSION=v1.1.1
+RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz | tar -xz -C . ./loopback ./portmap ./macvlan
+
+ENV KUBE_VERSION="v1.24.2"
+
+RUN curl -L https://dl.k8s.io/${KUBE_VERSION}/kubernetes-client-linux-${ARCH}.tar.gz | tar -xz -C . && cp ./kubernetes/client/bin/kubectl /usr/bin/kubectl \
+ && chmod +x /usr/bin/kubectl && rm -rf ./kubernetes
+
+RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
+    dpkg -i /packages/libopenvswitch*.deb && \
+    dpkg -i /packages/openvswitch-*.deb && \
+    dpkg -i /packages/python3-openvswitch*.deb &&\
+    dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/ovn-*.deb
+
+ENV DUMB_INIT_VERSION="1.2.5"
+RUN dump_arch="x86_64"; \
+    if [ "$ARCH" = "arm64" ]; then dump_arch="aarch64"; fi; \
+    curl -sSf -L --retry 5 -o /usr/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v${DUMB_INIT_VERSION}/dumb-init_${DUMB_INIT_VERSION}_${dump_arch} && \
+    chmod +x /usr/bin/dumb-init
+
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+
+COPY *.sh /kube-ovn/
+COPY kubectl-ko /kube-ovn/kubectl-ko
+COPY 01-kube-ovn.conflist /kube-ovn/01-kube-ovn.conflist
+COPY logrotate/* /etc/logrotate.d/
+COPY grace_stop_ovn_controller /usr/share/ovn/scripts/grace_stop_ovn_controller
+
+WORKDIR /kube-ovn
+
+COPY kube-ovn-cmd /kube-ovn/kube-ovn-cmd
+COPY kube-ovn-webhook /kube-ovn/kube-ovn-webhook
+RUN ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn && \
+    ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-controller && \
+    ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-daemon && \
+    ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-monitor && \
+    ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-pinger && \
+    ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-speaker && \
+    ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-controller-healthcheck && \
+    ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-leader-checker

@@ -15,6 +15,10 @@ const (
 	BgpAnnotation        = "ovn.kubernetes.io/bgp"
 	SnatAnnotation       = "ovn.kubernetes.io/snat"
 	EipAnnotation        = "ovn.kubernetes.io/eip"
+	EipNameAnnotation    = "ovn.kubernetes.io/eip_name"
+	FipNameAnnotation    = "ovn.kubernetes.io/fip_name"
+	FipEnableAnnotation  = "ovn.kubernetes.io/enable_fip"
+	FipFinalizer         = "ovn.kubernetes.io/fip"
 	VipAnnotation        = "ovn.kubernetes.io/vip"
 	ChassisAnnotation    = "ovn.kubernetes.io/chassis"
 
@@ -80,6 +84,7 @@ const (
 
 	OvsDpTypeLabel = "ovn.kubernetes.io/ovs_dp_type"
 
+	VpcNameLabel               = "ovn.kubernetes.io/vpc"
 	SubnetNameLabel            = "ovn.kubernetes.io/subnet"
 	ICGatewayLabel             = "ovn.kubernetes.io/ic-gw"
 	ExGatewayLabel             = "ovn.kubernetes.io/external-gw"
@@ -141,6 +146,9 @@ const (
 
 	EcmpRouteType   = "ecmp"
 	NormalRouteType = "normal"
+
+	OvnFip      = "ovn"
+	IptablesFip = "iptables"
 
 	GatewayRouterPolicyPriority = 29000
 	NodeRouterPolicyPriority    = 30000

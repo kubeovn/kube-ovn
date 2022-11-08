@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-server
+  labels:
+    env: test-server
+spec:
+  containers:
+    - name: test-server
+      image: kubeovn/test:v1.11.0
+      imagePullPolicy: IfNotPresent
+  nodeSelector:
+    kubernetes.io/hostname: kube-ovn-control-plane
+
+---
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-client
+  labels:
+    env: test-client
+spec:
+  containers:
+    - name: test-client
+      image: kubeovn/test:v1.11.0
+      imagePullPolicy: IfNotPresent
+  nodeSelector:
+    kubernetes.io/hostname: kube-ovn-worker
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    env: test-server
+  name: test-server
+  namespace: default
+spec:
+  ports:
+    - port: 80
+      protocol: TCP
+      targetPort: 80
+      name: nginx
+    - port: 5201
+      protocol: TCP
+      targetPort: 5201
+      name: iperf
+  selector:
+    env: test-server
+  type: NodePort
