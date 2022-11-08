@@ -3012,17 +3012,19 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 7
           successThreshold: 1
-          tcpSocket:
-            port: 10665
+          exec:
+            command:
+              - /kube-ovn/cni-check.sh
           timeoutSeconds: 3
         readinessProbe:
           failureThreshold: 3
           initialDelaySeconds: 30
           periodSeconds: 7
           successThreshold: 1
-          tcpSocket:
-            port: 10665
           timeoutSeconds: 3
+          exec:
+            command:
+              - /kube-ovn/cni-check.sh
         resources:
           requests:
             cpu: 100m
