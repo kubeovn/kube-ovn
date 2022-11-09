@@ -36,6 +36,12 @@ type Interface interface {
 	IptablesFIPRules() IptablesFIPRuleInformer
 	// IptablesSnatRules returns a IptablesSnatRuleInformer.
 	IptablesSnatRules() IptablesSnatRuleInformer
+	// OvnEips returns a OvnEipInformer.
+	OvnEips() OvnEipInformer
+	// OvnFips returns a OvnFipInformer.
+	OvnFips() OvnFipInformer
+	// OvnSnatRules returns a OvnSnatRuleInformer.
+	OvnSnatRules() OvnSnatRuleInformer
 	// ProviderNetworks returns a ProviderNetworkInformer.
 	ProviderNetworks() ProviderNetworkInformer
 	// SecurityGroups returns a SecurityGroupInformer.
@@ -95,6 +101,21 @@ func (v *version) IptablesFIPRules() IptablesFIPRuleInformer {
 // IptablesSnatRules returns a IptablesSnatRuleInformer.
 func (v *version) IptablesSnatRules() IptablesSnatRuleInformer {
 	return &iptablesSnatRuleInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// OvnEips returns a OvnEipInformer.
+func (v *version) OvnEips() OvnEipInformer {
+	return &ovnEipInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// OvnFips returns a OvnFipInformer.
+func (v *version) OvnFips() OvnFipInformer {
+	return &ovnFipInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// OvnSnatRules returns a OvnSnatRuleInformer.
+func (v *version) OvnSnatRules() OvnSnatRuleInformer {
+	return &ovnSnatRuleInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
 // ProviderNetworks returns a ProviderNetworkInformer.

@@ -87,3 +87,33 @@ func (isnats *IptablesSnatRuleStatus) Bytes() ([]byte, error) {
 	klog.V(5).Info("status body", newStr)
 	return []byte(newStr), nil
 }
+
+func (oeips *OvnEipStatus) Bytes() ([]byte, error) {
+	bytes, err := json.Marshal(oeips)
+	if err != nil {
+		return nil, err
+	}
+	newStr := fmt.Sprintf(`{"status": %s}`, string(bytes))
+	klog.V(5).Info("status body", newStr)
+	return []byte(newStr), nil
+}
+
+func (ofs *OvnFipStatus) Bytes() ([]byte, error) {
+	bytes, err := json.Marshal(ofs)
+	if err != nil {
+		return nil, err
+	}
+	newStr := fmt.Sprintf(`{"status": %s}`, string(bytes))
+	klog.V(5).Info("status body", newStr)
+	return []byte(newStr), nil
+}
+
+func (osrs *OvnSnatRuleStatus) Bytes() ([]byte, error) {
+	bytes, err := json.Marshal(osrs)
+	if err != nil {
+		return nil, err
+	}
+	newStr := fmt.Sprintf(`{"status": %s}`, string(bytes))
+	klog.V(5).Info("status body", newStr)
+	return []byte(newStr), nil
+}
