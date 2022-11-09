@@ -551,12 +551,12 @@ func (c LegacyClient) ListLoadBalancer() ([]string, error) {
 	return result, nil
 }
 
-func (c LegacyClient) ConnectRouterToExternal(externalNet, vpcRouter, lrpIp, lrpMac string, chassises []string) error {
+func (c LegacyClient) ConnectRouterToExternal(externalNet, vpcRouter, lrpIpCidr, lrpMac string, chassises []string) error {
 	// add lrp and lsp between vpc router and external network
 	lsTolr := fmt.Sprintf("%s-%s", externalNet, vpcRouter)
 	lrTols := fmt.Sprintf("%s-%s", vpcRouter, externalNet)
 	_, err := c.ovnNbCommand(
-		MayExist, "lrp-add", vpcRouter, lrTols, lrpMac, lrpIp, "--",
+		MayExist, "lrp-add", vpcRouter, lrTols, lrpMac, lrpIpCidr, "--",
 		MayExist, "lsp-add", externalNet, lsTolr, "--",
 		"lsp-set-type", lsTolr, "router", "--",
 		"lsp-set-addresses", lsTolr, "router", "--",
@@ -589,7 +589,7 @@ func (c LegacyClient) CreateGatewaySwitch(name, network string, vlan int, ip, ma
 	lsTolr := fmt.Sprintf("%s-%s", name, c.ClusterRouter)
 	lrTols := fmt.Sprintf("%s-%s", c.ClusterRouter, name)
 	localnetPort := fmt.Sprintf("ln-%s", name)
-	if network != util.ExternalGatewaySwitch {
+	if name != util.ExternalGatewaySwitch {
 		// compatiable with provider network and vlan and subnet
 		localnetPort = GetLocalnetName(name)
 	}

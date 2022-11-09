@@ -187,7 +187,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		}
 		return err
 	}
-	if cachedFip.Status.Ready && cachedFip.Status.V4ip != "" {
+	if cachedFip.Status.Ready && cachedFip.Status.V4Ip != "" {
 		// already ok
 		return nil
 	}
@@ -195,6 +195,9 @@ func (c *Controller) handleAddOvnFip(key string) error {
 	vpcPodIp, err := c.ipsLister.Get(cachedFip.Spec.IpName)
 	if err != nil {
 		return err
+	}
+	if vpcPodIp.Spec.V4IPAddress == "" || vpcPodIp.Spec.MacAddress == "" {
+		return fmt.Errorf("vpc pod ip '%s' ip or mac is empty", vpcPodIp.Name)
 	}
 	// get eip
 	eipName := cachedFip.Spec.OvnEip
@@ -206,11 +209,12 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	vpcName, err := c.getVpcBySubnet(cachedEip.Spec.ExternalSubnet)
+	subnet, err := c.subnetsLister.Get(vpcPodIp.Spec.Subnet)
 	if err != nil {
-		klog.Errorf("failed to get vpc, %v", err)
+		klog.Errorf("failed to get vpc subnet %s, %v", vpcPodIp.Spec.Subnet, err)
 		return err
 	}
+	vpcName := subnet.Spec.Vpc
 	if cachedEip.Spec.Type != "" && cachedEip.Spec.Type != util.FipUsingEip {
 		err = fmt.Errorf("failed to create ovn fip %s, eip '%s' is using by %s", key, eipName, cachedEip.Spec.Type)
 		return err
@@ -230,7 +234,8 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		return err
 	}
 	// ovn add fip
-	if err = c.ovnLegacyClient.AddFipRule(vpcName, cachedEip.Spec.V4ip, vpcPodIp.Spec.V4IPAddress, vpcPodIp.Spec.MacAddress, vpcPodIp.Name); err != nil {
+	if err = c.ovnLegacyClient.AddFipRule(vpcName, cachedEip.Spec.V4Ip,
+		vpcPodIp.Spec.V4IPAddress, vpcPodIp.Spec.MacAddress, vpcPodIp.Name); err != nil {
 		klog.Errorf("failed to create fip, %v", err)
 		return err
 	}
@@ -247,7 +252,8 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		klog.Errorf("failed to patch status for eip %s, %v", key, err)
 		return err
 	}
-	if err = c.patchOvnFipStatus(key, cachedEip.Spec.V4ip, cachedEip.Spec.V6ip, true); err != nil {
+	if err = c.patchOvnFipStatus(key, vpcName, cachedEip.Spec.V4Ip,
+		vpcPodIp.Spec.V4IPAddress, vpcPodIp.Spec.MacAddress, true); err != nil {
 		klog.Errorf("failed to patch status for fip %s, %v", key, err)
 		return err
 	}
@@ -267,6 +273,9 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 	if err != nil {
 		return err
 	}
+	if vpcPodIp.Spec.V4IPAddress == "" || vpcPodIp.Spec.MacAddress == "" {
+		return fmt.Errorf("vpc pod ip '%s' ip or mac is empty", vpcPodIp.Name)
+	}
 	// get eip
 	eipName := cachedFip.Spec.OvnEip
 	if len(eipName) == 0 {
@@ -277,11 +286,12 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	vpcName, err := c.getVpcBySubnet(cachedEip.Spec.ExternalSubnet)
+	subnet, err := c.subnetsLister.Get(vpcPodIp.Spec.Subnet)
 	if err != nil {
-		klog.Errorf("failed to get vpc, %v", err)
+		klog.Errorf("failed to get vpc subnet %s, %v", vpcPodIp.Spec.Subnet, err)
 		return err
 	}
+	vpcName := subnet.Spec.Vpc
 	if cachedEip.Spec.Type != "" && cachedEip.Spec.Type != util.FipUsingEip {
 		// eip is in use by other nat
 		err = fmt.Errorf("failed to update fip %s, eip '%s' is using by %s", key, eipName, cachedEip.Spec.Type)
@@ -296,13 +306,14 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 	fip := cachedFip.DeepCopy()
 	// fip change eip
 	if c.ovnFipChangeEip(fip, cachedEip) {
-		klog.V(3).Infof("fip change ip, old ip '%s', new ip %s", fip.Status.V4ip, cachedEip.Spec.V4ip)
-		if err = c.ovnLegacyClient.DeleteFipRule(vpcName, fip.Status.V4ip, vpcPodIp.Spec.V4IPAddress); err != nil {
+		klog.V(3).Infof("fip change ip, old ip '%s', new ip %s", fip.Status.V4Ip, cachedEip.Spec.V4Ip)
+		if err = c.ovnLegacyClient.DeleteFipRule(vpcName, fip.Status.V4Ip, vpcPodIp.Spec.V4IPAddress); err != nil {
 			klog.Errorf("failed to create fip, %v", err)
 			return err
 		}
 		// ovn add fip
-		if err = c.ovnLegacyClient.AddFipRule(vpcName, cachedEip.Spec.V4ip, vpcPodIp.Spec.V4IPAddress, vpcPodIp.Spec.MacAddress, vpcPodIp.Name); err != nil {
+		if err = c.ovnLegacyClient.AddFipRule(vpcName, cachedEip.Spec.V4Ip,
+			vpcPodIp.Spec.V4IPAddress, vpcPodIp.Spec.MacAddress, vpcPodIp.Name); err != nil {
 			klog.Errorf("failed to create fip, %v", err)
 			return err
 		}
@@ -314,7 +325,8 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 			klog.Errorf("failed to update label for fip %s, %v", key, err)
 			return err
 		}
-		if err = c.patchOvnFipStatus(key, cachedEip.Spec.V4ip, cachedEip.Spec.V6ip, true); err != nil {
+		if err = c.patchOvnFipStatus(key, vpcName, cachedEip.Spec.V4Ip,
+			vpcPodIp.Spec.V4IPAddress, vpcPodIp.Spec.MacAddress, true); err != nil {
 			klog.Errorf("failed to patch status for fip '%s', %v", key, err)
 			return err
 		}
@@ -345,17 +357,8 @@ func (c *Controller) handleDelOvnFip(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	vpcName, err := c.getVpcBySubnet(cachedEip.Spec.ExternalSubnet)
-	if err != nil {
-		klog.Errorf("failed to get vpc, %v", err)
-		return err
-	}
-	vpcPodIp, err := c.ipsLister.Get(cachedFip.Spec.IpName)
-	if err != nil {
-		return err
-	}
 	// ovn delete fip
-	if err = c.ovnLegacyClient.DeleteFipRule(vpcName, cachedEip.Spec.V4ip, vpcPodIp.Spec.V4IPAddress); err != nil {
+	if err = c.ovnLegacyClient.DeleteFipRule(cachedFip.Status.Vpc, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
 		klog.Errorf("failed to create fip, %v", err)
 		return err
 	}
@@ -452,7 +455,7 @@ func (c *Controller) patchOvnFipLabel(key, eipName string) error {
 	return nil
 }
 
-func (c *Controller) patchOvnFipStatus(key, v4ip, v6ip string, ready bool) error {
+func (c *Controller) patchOvnFipStatus(key, vpcName, v4Eip, podIp, podMac string, ready bool) error {
 	oriFip, err := c.ovnFipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -466,9 +469,11 @@ func (c *Controller) patchOvnFipStatus(key, v4ip, v6ip string, ready bool) error
 		fip.Status.Ready = ready
 		changed = true
 	}
-	if ready && v4ip != "" && fip.Status.V4ip != v4ip {
-		fip.Status.V4ip = v4ip
-		fip.Status.V6ip = v6ip
+	if ready && v4Eip != "" && fip.Status.V4Eip != v4Eip {
+		fip.Status.Vpc = vpcName
+		fip.Status.V4Eip = v4Eip
+		fip.Status.V4Ip = podIp
+		fip.Status.MacAddress = podMac
 		changed = true
 	}
 	if changed {
@@ -486,11 +491,11 @@ func (c *Controller) patchOvnFipStatus(key, v4ip, v6ip string, ready bool) error
 }
 
 func (c *Controller) ovnFipChangeEip(fip *kubeovnv1.OvnFip, eip *kubeovnv1.OvnEip) bool {
-	if fip.Status.V4ip == "" || eip.Spec.V4ip == "" {
+	if fip.Status.V4Ip == "" || eip.Spec.V4Ip == "" {
 		// eip created but not ready
 		return false
 	}
-	if fip.Status.V4ip != eip.Spec.V4ip {
+	if fip.Status.V4Ip != eip.Spec.V4Ip {
 		return true
 	}
 	return false
@@ -502,7 +507,7 @@ func (c *Controller) GetOvnEip(eipName string) (*kubeovnv1.OvnEip, error) {
 		klog.Errorf("failed to get eip %s, %v", eipName, err)
 		return nil, err
 	}
-	if cachedEip.Spec.V4ip == "" {
+	if cachedEip.Spec.V4Ip == "" {
 		return nil, fmt.Errorf("eip '%s' is not ready, has no v4ip", eipName)
 	}
 	return cachedEip, nil

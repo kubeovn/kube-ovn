@@ -1011,8 +1011,7 @@ type OvnEip struct {
 }
 type OvnEipSpec struct {
 	ExternalSubnet string `json:"externalSubnet"`
-	V4ip           string `json:"v4ip"`
-	V6ip           string `json:"v6ip"`
+	V4Ip           string `json:"v4ip"`
 	MacAddress     string `json:"macAddress"`
 	Type           string `json:"type"`
 	// usage type: fip, snat, lrp
@@ -1046,8 +1045,7 @@ type OvnEipStatus struct {
 	// +patchStrategy=merge
 	Conditions []OvnEipCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
-	V4ip       string `json:"v4ip" patchStrategy:"merge"`
-	V6ip       string `json:"v6ip" patchStrategy:"merge"`
+	V4Ip       string `json:"v4ip" patchStrategy:"merge"`
 	MacAddress string `json:"macAddress" patchStrategy:"merge"`
 }
 
@@ -1101,9 +1099,11 @@ type OvnFipCondition struct {
 type OvnFipStatus struct {
 	// +optional
 	// +patchStrategy=merge
-	Ready bool   `json:"ready" patchStrategy:"merge"`
-	V4ip  string `json:"v4ip" patchStrategy:"merge"`
-	V6ip  string `json:"v6ip" patchStrategy:"merge"`
+	Ready      bool   `json:"ready" patchStrategy:"merge"`
+	V4Eip      string `json:"v4Eip" patchStrategy:"merge"`
+	V4Ip       string `json:"v4Ip" patchStrategy:"merge"`
+	MacAddress string `json:"macAddress" patchStrategy:"merge"`
+	Vpc        string `json:"vpc" patchStrategy:"merge"`
 
 	// Conditions represents the latest state of the object
 	// +optional
@@ -1134,8 +1134,9 @@ type OvnSnatRule struct {
 }
 
 type OvnSnatRuleSpec struct {
-	OvnEip       string `json:"ovnEip"`
-	InternalCIDR string `json:"internalCIDR"`
+	OvnEip    string `json:"ovnEip"`
+	VpcSubnet string `json:"vpcSubnet"`
+	IpName    string `json:"ipName"`
 }
 
 // Condition describes the state of an object at a certain point.
@@ -1162,9 +1163,10 @@ type OvnSnatRuleCondition struct {
 type OvnSnatRuleStatus struct {
 	// +optional
 	// +patchStrategy=merge
-	Ready bool   `json:"ready" patchStrategy:"merge"`
-	V4ip  string `json:"v4ip" patchStrategy:"merge"`
-	V6ip  string `json:"v6ip" patchStrategy:"merge"`
+	Ready    bool   `json:"ready" patchStrategy:"merge"`
+	V4Eip    string `json:"v4Eip" patchStrategy:"merge"`
+	V4IpCidr string `json:"v4ipCidr" patchStrategy:"merge"`
+	Vpc      string `json:"vpc" patchStrategy:"merge"`
 
 	// Conditions represents the latest state of the object
 	// +optional

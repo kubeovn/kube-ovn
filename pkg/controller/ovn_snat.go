@@ -184,7 +184,7 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		}
 		return err
 	}
-	if cachedSnat.Status.Ready && cachedSnat.Status.V4ip != "" {
+	if cachedSnat.Status.Ready && cachedSnat.Status.V4IpCidr != "" {
 		// already ok
 		return nil
 	}
@@ -202,15 +202,34 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		err = fmt.Errorf("failed to create snat %s, eip '%s' is using by '%s'", key, eipName, cachedEip.Spec.Type)
 		return err
 	}
-	v4Cidr, _ := util.SplitStringIP(cachedSnat.Spec.InternalCIDR)
-	if v4Cidr == "" {
-		// only support IPv4 snat
-		err = fmt.Errorf("failed to get snat v4 internal cidr, original cidr is %s", cachedSnat.Spec.InternalCIDR)
-		return err
+	var v4IpCidr, vpcName string
+	if cachedSnat.Spec.VpcSubnet != "" {
+		subnet, err := c.subnetsLister.Get(cachedSnat.Spec.VpcSubnet)
+		if err != nil {
+			klog.Errorf("failed to get vpc subnet %s, %v", cachedSnat.Spec.VpcSubnet, err)
+			return err
+		}
+		vpcName = subnet.Spec.Vpc
+		v4IpCidr = subnet.Spec.CIDRBlock
 	}
-	vpcName, err := c.getVpcBySubnet(cachedEip.Spec.ExternalSubnet)
-	if err != nil {
-		klog.Errorf("failed to get vpc, %v", err)
+	if cachedSnat.Spec.IpName != "" {
+		vpcPodIp, err := c.ipsLister.Get(cachedSnat.Spec.IpName)
+		if err != nil {
+			klog.Errorf("failed to get pod ip %s, %v", cachedSnat.Spec.IpName, err)
+			return err
+		}
+		subnet, err := c.subnetsLister.Get(vpcPodIp.Spec.Subnet)
+		if err != nil {
+			klog.Errorf("failed to get vpc subnet %s, %v", vpcPodIp.Spec.Subnet, err)
+			return err
+		}
+		vpcName = subnet.Spec.Vpc
+		v4IpCidr = vpcPodIp.Spec.V4IPAddress
+	}
+
+	if v4IpCidr == "" {
+		// only support IPv4 snat
+		err = fmt.Errorf("failed to get v4 internal ip for snat %s", key)
 		return err
 	}
 	// create snat
@@ -223,7 +242,7 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		return err
 	}
 	// ovn add snat
-	if err = c.ovnLegacyClient.AddSnatRule(vpcName, cachedEip.Spec.V4ip, cachedSnat.Spec.InternalCIDR); err != nil {
+	if err = c.ovnLegacyClient.AddSnatRule(vpcName, cachedEip.Spec.V4Ip, v4IpCidr); err != nil {
 		klog.Errorf("failed to create snat, %v", err)
 		return err
 	}
@@ -239,7 +258,7 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		klog.Errorf("failed to patch status for eip %s, %v", key, err)
 		return err
 	}
-	if err = c.patchOvnSnatStatus(key, cachedEip.Spec.V4ip, cachedEip.Spec.V6ip, true); err != nil {
+	if err = c.patchOvnSnatStatus(key, vpcName, cachedEip.Spec.V4Ip, v4IpCidr, true); err != nil {
 		klog.Errorf("failed to update status for snat %s, %v", key, err)
 		return err
 	}
@@ -264,27 +283,11 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	if cachedEip.Spec.Type != "" && cachedEip.Spec.Type != util.SnatUsingEip {
-		// eip is in use by other
-		err = fmt.Errorf("failed to create snat %s, eip '%s' is using by nat '%s'", key, eipName, cachedEip.Spec.Type)
-		return err
-	}
-	v4Cidr, _ := util.SplitStringIP(cachedSnat.Spec.InternalCIDR)
-	if v4Cidr == "" {
-		// only support IPv4 snat
-		err = fmt.Errorf("failed to get snat v4 internal cidr, original cidr is %s", cachedSnat.Spec.InternalCIDR)
-		return err
-	}
-	vpcName, err := c.getVpcBySubnet(cachedEip.Spec.ExternalSubnet)
-	if err != nil {
-		klog.Errorf("failed to get vpc, %v", err)
-		return err
-	}
 	// should delete
 	if !cachedSnat.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("ovn clean snat %s", key)
 		// ovn delete snat
-		if err = c.ovnLegacyClient.DeleteSnatRule(vpcName, cachedEip.Spec.V4ip, cachedSnat.Spec.InternalCIDR); err != nil {
+		if err = c.ovnLegacyClient.DeleteSnatRule(cachedSnat.Status.Vpc, cachedEip.Spec.V4Ip, cachedSnat.Status.V4IpCidr); err != nil {
 			klog.Errorf("failed to delte snat, %v", err)
 			return err
 		}
@@ -300,15 +303,50 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 		}
 		return nil
 	}
+	if cachedEip.Spec.Type != "" && cachedEip.Spec.Type != util.SnatUsingEip {
+		// eip is in use by other
+		err = fmt.Errorf("failed to create snat %s, eip '%s' is using by nat '%s'", key, eipName, cachedEip.Spec.Type)
+		return err
+	}
+	var v4IpCidr, vpcName string
+	if cachedSnat.Spec.VpcSubnet != "" {
+		subnet, err := c.subnetsLister.Get(cachedSnat.Spec.VpcSubnet)
+		if err != nil {
+			klog.Errorf("failed to get vpc subnet %s, %v", cachedSnat.Spec.VpcSubnet, err)
+			return err
+		}
+		vpcName = subnet.Spec.Vpc
+		v4IpCidr = subnet.Spec.CIDRBlock
+	}
+	if cachedSnat.Spec.IpName != "" {
+		vpcPodIp, err := c.ipsLister.Get(cachedSnat.Spec.IpName)
+		if err != nil {
+			klog.Errorf("failed to get pod ip %s, %v", cachedSnat.Spec.IpName, err)
+			return err
+		}
+		subnet, err := c.subnetsLister.Get(vpcPodIp.Spec.Subnet)
+		if err != nil {
+			klog.Errorf("failed to get vpc subnet %s, %v", vpcPodIp.Spec.Subnet, err)
+			return err
+		}
+		vpcName = subnet.Spec.Vpc
+		v4IpCidr = vpcPodIp.Spec.V4IPAddress
+	}
+
+	if v4IpCidr == "" {
+		// only support IPv4 snat
+		err = fmt.Errorf("failed to get v4 internal ip for snat %s", key)
+		return err
+	}
 	// snat change eip
 	if c.ovnSnatChangeEip(cachedSnat, cachedEip) {
-		klog.V(3).Infof("snat change ip, old ip %s, new ip %s", cachedEip.Status.V4ip, cachedEip.Spec.V4ip)
-		if err = c.ovnLegacyClient.DeleteSnatRule(vpcName, cachedEip.Spec.V4ip, cachedSnat.Spec.InternalCIDR); err != nil {
+		klog.V(3).Infof("snat change ip, old ip %s, new ip %s", cachedEip.Status.V4Ip, cachedEip.Spec.V4Ip)
+		if err = c.ovnLegacyClient.DeleteSnatRule(vpcName, cachedEip.Status.V4Ip, v4IpCidr); err != nil {
 			klog.Errorf("failed to delte snat, %v", err)
 			return err
 		}
-		// ovn add snat
-		if err = c.ovnLegacyClient.AddSnatRule(vpcName, cachedEip.Spec.V4ip, cachedSnat.Spec.InternalCIDR); err != nil {
+		// ovn add snat with new eip
+		if err = c.ovnLegacyClient.AddSnatRule(vpcName, cachedEip.Spec.V4Ip, v4IpCidr); err != nil {
 			klog.Errorf("failed to create snat, %v", err)
 			return err
 		}
@@ -324,7 +362,7 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 			klog.Errorf("failed to patch status for eip %s, %v", key, err)
 			return err
 		}
-		if err = c.patchOvnSnatStatus(key, cachedEip.Spec.V4ip, cachedEip.Spec.V6ip, true); err != nil {
+		if err = c.patchOvnSnatStatus(key, vpcName, cachedEip.Spec.V4Ip, v4IpCidr, true); err != nil {
 			klog.Errorf("failed to update status for snat %s, %v", key, err)
 			return err
 		}
@@ -382,7 +420,7 @@ func (c *Controller) handleDelOvnSnatRuleFinalizer(cachedSnat *kubeovnv1.OvnSnat
 	return nil
 }
 
-func (c *Controller) patchOvnSnatStatus(key, v4ip, v6ip string, ready bool) error {
+func (c *Controller) patchOvnSnatStatus(key, vpc, v4Eip, v4IpCidr string, ready bool) error {
 	oriSnat, err := c.ovnSnatRulesLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -396,9 +434,10 @@ func (c *Controller) patchOvnSnatStatus(key, v4ip, v6ip string, ready bool) erro
 		snat.Status.Ready = ready
 		changed = true
 	}
-	if ready && v4ip != "" && snat.Status.V4ip != v4ip {
-		snat.Status.V4ip = v4ip
-		snat.Status.V6ip = v6ip
+	if ready && v4Eip != "" && snat.Status.V4Eip != v4Eip {
+		snat.Status.V4Eip = v4Eip
+		snat.Status.V4IpCidr = v4IpCidr
+		snat.Status.Vpc = vpc
 		changed = true
 	}
 	if changed {
@@ -452,11 +491,11 @@ func (c *Controller) patchOvnSnatLabel(key, eipName string) error {
 }
 
 func (c *Controller) ovnSnatChangeEip(snat *kubeovnv1.OvnSnatRule, eip *kubeovnv1.OvnEip) bool {
-	if snat.Status.V4ip == "" || eip.Spec.V4ip == "" {
+	if snat.Status.V4Eip == "" || eip.Spec.V4Ip == "" {
 		// eip created but not ready
 		return false
 	}
-	if snat.Status.V4ip != eip.Spec.V4ip {
+	if snat.Status.V4Eip != eip.Spec.V4Ip {
 		return true
 	}
 	return false

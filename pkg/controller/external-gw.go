@@ -125,34 +125,47 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 }
 
 func (c *Controller) createDefaultVpcLrpEip(config map[string]string) (string, string, error) {
-	if _, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch); err != nil {
+	cachedSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
+	if err != nil {
 		return "", "", err
 	}
-	var v4ip, v6ip, mac string
-	var err error
 	needCreateEip := false
 	lrpEipName := fmt.Sprintf("%s-%s", util.DefaultVpc, c.config.ExternalGatewaySwitch)
-	if _, err := c.ovnEipsLister.Get(lrpEipName); err != nil {
+	cachedEip, err := c.ovnEipsLister.Get(lrpEipName)
+	if err != nil {
 		if !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to get eip %s, %v", lrpEipName, err)
 			return "", "", err
 		}
 		needCreateEip = true
 	}
-	if config["nic-ip"] != "" && !needCreateEip {
-		v4ip, v6ip, mac, err = c.acquireStaticIpAddress(c.config.ExternalGatewaySwitch, lrpEipName, lrpEipName, config["nic-ip"])
+	var v4ip, mac string
+	if !needCreateEip {
+		v4ip = cachedEip.Spec.V4Ip
+		mac = cachedEip.Spec.MacAddress
 	} else {
+		var v6ip string
 		v4ip, v6ip, mac, err = c.acquireIpAddress(c.config.ExternalGatewaySwitch, lrpEipName, lrpEipName)
+		if err != nil {
+			klog.Errorf("failed to acquire ip address for default vpc lrp %s, %v", lrpEipName, err)
+			return "", "", err
+		}
+		if err := c.createOrUpdateCrdOvnEip(lrpEipName, c.config.ExternalGatewaySwitch, v4ip, v6ip, mac, util.LrpUsingEip); err != nil {
+			klog.Errorf("failed to create ovn eip cr for lrp %s, %v", lrpEipName, err)
+			return "", "", err
+		}
+		if err = c.patchOvnEipStatus(lrpEipName); err != nil {
+			klog.Errorf("failed to patch ovn eip cr status for lrp %s, %v", lrpEipName, err)
+			return "", "", err
+		}
 	}
-	if err != nil {
+	if v4ip == "" || mac == "" {
+		err = fmt.Errorf("lrp '%s' ip or mac should not be empty", lrpEipName)
+		klog.Error(err)
 		return "", "", err
 	}
-	if err := c.createOrUpdateCrdOvnEip(lrpEipName, c.config.ExternalGatewaySwitch, v4ip, v6ip, mac, util.LrpUsingEip); err != nil {
-		return "", "", err
-	}
-	if err = c.patchOvnEipStatus(lrpEipName); err != nil {
-		return "", "", err
-	}
-	return v4ip, mac, nil
+	v4ipCidr := util.GetIpAddrWithMask(v4ip, cachedSubnet.Spec.CIDRBlock)
+	return v4ipCidr, mac, nil
 }
 
 func (c *Controller) getGatewayChassis(config map[string]string) ([]string, error) {

@@ -15,6 +15,7 @@ require (
 	github.com/containernetworking/plugins v1.1.1
 	github.com/coreos/go-iptables v0.6.0
 	github.com/emicklei/go-restful/v3 v3.9.0
+	github.com/evanphx/json-patch v5.6.0+incompatible
 	github.com/go-logr/stdr v1.2.2
 	github.com/greenpau/ovsdb v1.0.2
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.3.0
@@ -60,7 +61,6 @@ require (
 	github.com/eapache/channels v1.1.0 // indirect
 	github.com/eapache/queue v1.1.0 // indirect
 	github.com/elazarl/goproxy v0.0.0-20190630181448-f1e96bc0f4c5 // indirect
-	github.com/evanphx/json-patch v5.6.0+incompatible // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
 	github.com/go-ini/ini v1.42.0 // indirect
 	github.com/go-kit/kit v0.12.0 // indirect

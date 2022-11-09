@@ -53,7 +53,7 @@ func (c *Controller) enqueueUpdateOvnEip(old, new interface{}) {
 			return
 		}
 	}
-	if oldovnEip.Spec.V4ip != "" && oldovnEip.Spec.V4ip != newovnEip.Spec.V4ip ||
+	if oldovnEip.Spec.V4Ip != "" && oldovnEip.Spec.V4Ip != newovnEip.Spec.V4Ip ||
 		oldovnEip.Spec.MacAddress != "" && oldovnEip.Spec.MacAddress != newovnEip.Spec.MacAddress {
 		klog.Infof("not support change ip or mac for eip %s", key)
 		c.resetOvnEipQueue.Add(key)
@@ -234,8 +234,8 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		return err
 	}
 	portName := cachedEip.Name
-	if cachedEip.Spec.V4ip != "" {
-		v4ip, v6ip, mac, err = c.acquireStaticIpAddress(subnet.Name, cachedEip.Name, portName, cachedEip.Spec.V4ip)
+	if cachedEip.Spec.V4Ip != "" {
+		v4ip, v6ip, mac, err = c.acquireStaticIpAddress(subnet.Name, cachedEip.Name, portName, cachedEip.Spec.V4Ip)
 	} else {
 		// random allocate
 		v4ip, v6ip, mac, err = c.acquireIpAddress(subnet.Name, cachedEip.Name, portName)
@@ -323,8 +323,7 @@ func (c *Controller) createOrUpdateCrdOvnEip(key, subnet, v4ip, v6ip, mac, usage
 				},
 				Spec: kubeovnv1.OvnEipSpec{
 					ExternalSubnet: subnet,
-					V4ip:           v4ip,
-					V6ip:           v6ip,
+					V4Ip:           v4ip,
 					MacAddress:     mac,
 					Type:           usage,
 				},
@@ -339,6 +338,18 @@ func (c *Controller) createOrUpdateCrdOvnEip(key, subnet, v4ip, v6ip, mac, usage
 			return err
 		}
 	} else {
+		if cachedEip.Spec.V4Ip == "" && v4ip != "" {
+			ovnEip := cachedEip.DeepCopy()
+			ovnEip.Spec.ExternalSubnet = subnet
+			ovnEip.Spec.V4Ip = v4ip
+			ovnEip.Spec.MacAddress = mac
+			ovnEip.Spec.Type = usage
+			if _, err := c.config.KubeOvnClient.KubeovnV1().OvnEips().Update(context.Background(), ovnEip, metav1.UpdateOptions{}); err != nil {
+				errMsg := fmt.Errorf("failed to update ovn eip '%s', %v", key, err)
+				klog.Error(errMsg)
+				return errMsg
+			}
+		}
 		var needUpdateLabel bool
 		var op string
 		ovnEip := cachedEip.DeepCopy()
@@ -365,25 +376,6 @@ func (c *Controller) createOrUpdateCrdOvnEip(key, subnet, v4ip, v6ip, mac, usage
 				return err
 			}
 		}
-		cachedEip, err := c.ovnEipsLister.Get(key)
-		if err != nil {
-			if k8serrors.IsNotFound(err) {
-				return nil
-			}
-		}
-		if cachedEip.Spec.MacAddress == "" && mac != "" && v4ip != "" {
-			ovnEip := cachedEip.DeepCopy()
-			ovnEip.Spec.ExternalSubnet = subnet
-			ovnEip.Spec.V4ip = v4ip
-			ovnEip.Spec.V6ip = v6ip
-			ovnEip.Spec.MacAddress = mac
-			ovnEip.Spec.Type = usage
-			if _, err := c.config.KubeOvnClient.KubeovnV1().OvnEips().Update(context.Background(), ovnEip, metav1.UpdateOptions{}); err != nil {
-				errMsg := fmt.Errorf("failed to update ovn eip '%s', %v", key, err)
-				klog.Error(errMsg)
-				return errMsg
-			}
-		}
 	}
 	return nil
 }
@@ -398,8 +390,7 @@ func (c *Controller) patchOvnEipStatus(key string) error {
 	changed := false
 	if ovnEip.Status.MacAddress == "" {
 		// not support change ip
-		ovnEip.Status.V4ip = cachedOvnEip.Spec.V4ip
-		ovnEip.Status.V6ip = cachedOvnEip.Spec.V6ip
+		ovnEip.Status.V4Ip = cachedOvnEip.Spec.V4Ip
 		ovnEip.Status.MacAddress = cachedOvnEip.Spec.MacAddress
 		changed = true
 	}
@@ -427,8 +418,7 @@ func (c *Controller) resetOvnEipSpec(key string) error {
 	changed := false
 	if ovnEip.Status.MacAddress != "" {
 		// not support change ip
-		cachedOvnEip.Spec.V4ip = ovnEip.Status.V4ip
-		cachedOvnEip.Spec.V6ip = ovnEip.Status.V6ip
+		cachedOvnEip.Spec.V4Ip = ovnEip.Status.V4Ip
 		cachedOvnEip.Spec.MacAddress = ovnEip.Status.MacAddress
 		changed = true
 	}

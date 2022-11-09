@@ -719,14 +719,6 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 	return
 }
 
-func (c *Controller) getVpcBySubnet(subnetName string) (vpc string, err error) {
-	cachedSubnet, err := c.subnetsLister.Get(subnetName)
-	if err != nil {
-		return "", err
-	}
-	return cachedSubnet.Spec.Vpc, nil
-}
-
 // createVpcRouter create router to connect logical switches in vpc
 func (c *Controller) createVpcRouter(lr string) error {
 	lrs, err := c.ovnLegacyClient.ListLogicalRouter(c.config.EnableExternalVpc)
@@ -748,9 +740,13 @@ func (c *Controller) deleteVpcRouter(lr string) error {
 }
 
 func (c *Controller) handleAddVpcExternal(key string) error {
-	var needCreateEip bool
+	cachedSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
+	if err != nil {
+		return err
+	}
 	lrpEipName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
 	cachedEip, err := c.ovnEipsLister.Get(lrpEipName)
+	var needCreateEip bool
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
 			return err
@@ -768,11 +764,11 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 			return err
 		}
 	} else {
-		v4ip = cachedEip.Spec.V4ip
+		v4ip = cachedEip.Spec.V4Ip
 		mac = cachedEip.Spec.MacAddress
 	}
 	if v4ip == "" || mac == "" {
-		return fmt.Errorf("lrp eip '%s' v4ip or mac should not be emplty", lrpEipName)
+		return fmt.Errorf("lrp '%s' ip or mac should not be empty", lrpEipName)
 	}
 	if err = c.patchOvnEipStatus(lrpEipName); err != nil {
 		return err
@@ -788,7 +784,8 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 		klog.Errorf("failed to get gateway chassis, %v", err)
 		return err
 	}
-	if err := c.ovnLegacyClient.ConnectRouterToExternal(c.config.ExternalGatewaySwitch, key, v4ip, mac, chassises); err != nil {
+	v4ipCidr := util.GetIpAddrWithMask(v4ip, cachedSubnet.Spec.CIDRBlock)
+	if err := c.ovnLegacyClient.ConnectRouterToExternal(c.config.ExternalGatewaySwitch, key, v4ipCidr, mac, chassises); err != nil {
 		return err
 	}
 	cachedVpc, err := c.vpcsLister.Get(key)

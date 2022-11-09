@@ -861,9 +861,7 @@ spec:
             status:
               type: object
               properties:
-                v4ip:
-                  type: string
-                v6ip:
+                v4Ip:
                   type: string
                 macAddress:
                   type: string
@@ -893,8 +891,6 @@ spec:
                   type: string
                 v4ip:
                   type: string
-                v6ip:
-                  type: string
                 macAddress:
                   type: string
 ---
@@ -919,17 +915,14 @@ spec:
       subresources:
         status: {}
       additionalPrinterColumns:
-      - jsonPath: .spec.ovnEip
-        name: Eip
+      - jsonPath: .status.vpc
+        name: Vpc
         type: string
-      - jsonPath: .spec.ipName
-        name: IpName
+      - jsonPath: .status.v4Eip
+        name: V4Eip
         type: string
-      - jsonPath: .status.v4ip
-        name: V4ip
-        type: string
-      - jsonPath: .status.v6ip
-        name: V6ip
+      - jsonPath: .status.v4Ip
+        name: V4Ip
         type: string
       - jsonPath: .status.ready
         name: Ready
@@ -943,9 +936,13 @@ spec:
               properties:
                 ready:
                   type: boolean
-                v4ip:
+                v4Eip:
                   type: string
-                v6ip:
+                v4Ip:
+                  type: string
+                macAddress:
+                  type: string
+                vpc:
                   type: string
                 conditions:
                   type: array
@@ -993,17 +990,14 @@ spec:
       subresources:
         status: {}
       additionalPrinterColumns:
-      - jsonPath: .spec.ovnEip
-        name: Eip
+      - jsonPath: .status.vpc
+        name: Vpc
         type: string
-      - jsonPath: .status.v4ip
-        name: V4ip
+      - jsonPath: .status.v4Eip
+        name: V4Eip
         type: string
-      - jsonPath: .status.v6ip
-        name: V6ip
-        type: string
-      - jsonPath: .spec.internalCIDR
-        name: InternalCIDR
+      - jsonPath: .status.v4ipCidr
+        name: V4Ip
         type: string
       - jsonPath: .status.ready
         name: Ready
@@ -1017,9 +1011,11 @@ spec:
               properties:
                 ready:
                   type: boolean
-                v4ip:
+                v4Eip:
                   type: string
-                v6ip:
+                v4ipCidr:
+                  type: string
+                vpc:
                   type: string
                 conditions:
                   type: array
@@ -1043,7 +1039,9 @@ spec:
               properties:
                 ovnEip:
                   type: string
-                internalCIDR:
+                vpcSubnet:
+                  type: string
+                ipName:
                   type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
