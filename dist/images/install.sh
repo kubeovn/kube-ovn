@@ -827,11 +827,236 @@ spec:
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
+  name: ovn-eips.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: ovn-eips
+    singular: ovn-eip
+    shortNames:
+      - oeip
+    kind: OvnEip
+    listKind: OvnEipList
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+      - jsonPath: .spec.v4ip
+        name: IP
+        type: string
+      - jsonPath: .spec.macAddress
+        name: Mac
+        type: string
+      - jsonPath: .spec.type
+        name: Type
+        type: string
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            status:
+              type: object
+              properties:
+                v4ip:
+                  type: string
+                v6ip:
+                  type: string
+                macAddress:
+                  type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                      lastUpdateTime:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+            spec:
+              type: object
+              properties:
+                externalSubnet:
+                  type: string
+                type:
+                  type: string
+                v4ip:
+                  type: string
+                v6ip:
+                  type: string
+                macAddress:
+                  type: string
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: ovn-fips.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: ovn-fips
+    singular: ovn-fip
+    shortNames:
+      - ofip
+    kind: OvnFip
+    listKind: OvnFipList
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+      - jsonPath: .spec.ovnEip
+        name: Eip
+        type: string
+      - jsonPath: .spec.ipName
+        name: IpName
+        type: string
+      - jsonPath: .status.v4ip
+        name: V4ip
+        type: string
+      - jsonPath: .status.v6ip
+        name: V6ip
+        type: string
+      - jsonPath: .status.ready
+        name: Ready
+        type: boolean
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            status:
+              type: object
+              properties:
+                ready:
+                  type: boolean
+                v4ip:
+                  type: string
+                v6ip:
+                  type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                      lastUpdateTime:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+            spec:
+              type: object
+              properties:
+                ovnEip:
+                  type: string
+                ipName:
+                  type: string
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: ovn-snat-rules.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: ovn-snat-rules
+    singular: ovn-snat-rule
+    shortNames:
+      - osnat
+    kind: OvnSnatRule
+    listKind: OvnSnatRuleList
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+      - jsonPath: .spec.ovnEip
+        name: Eip
+        type: string
+      - jsonPath: .status.v4ip
+        name: V4ip
+        type: string
+      - jsonPath: .status.v6ip
+        name: V6ip
+        type: string
+      - jsonPath: .spec.internalCIDR
+        name: InternalCIDR
+        type: string
+      - jsonPath: .status.ready
+        name: Ready
+        type: boolean
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            status:
+              type: object
+              properties:
+                ready:
+                  type: boolean
+                v4ip:
+                  type: string
+                v6ip:
+                  type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                      lastUpdateTime:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+            spec:
+              type: object
+              properties:
+                ovnEip:
+                  type: string
+                internalCIDR:
+                  type: string
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
   name: vpcs.kubeovn.io
 spec:
   group: kubeovn.io
   versions:
     - additionalPrinterColumns:
+        - jsonPath: .status.enableExternal
+          name: EnableExternal
+          type: boolean
         - jsonPath: .status.standby
           name: Standby
           type: boolean
@@ -847,6 +1072,8 @@ spec:
           properties:
             spec:
               properties:
+                enableExternal:
+                  type: boolean
                 namespaces:
                   items:
                     type: string
@@ -911,6 +1138,8 @@ spec:
                 router:
                   type: string
                 standby:
+                  type: boolean
+                enableExternal:
                   type: boolean
                 subnets:
                   items:
@@ -1647,6 +1876,12 @@ rules:
       - iptables-fip-rules/status
       - iptables-dnat-rules/status
       - iptables-snat-rules/status
+      - ovn-eips
+      - ovn-fips
+      - ovn-snat-rules
+      - ovn-eips/status
+      - ovn-fips/status
+      - ovn-snat-rules/status
       - switch-lb-rules
       - switch-lb-rules/status
       - vpc-dnses
@@ -2148,6 +2383,12 @@ rules:
       - iptables-fip-rules/status
       - iptables-dnat-rules/status
       - iptables-snat-rules/status
+      - ovn-eips
+      - ovn-fips
+      - ovn-snat-rules
+      - ovn-eips/status
+      - ovn-fips/status
+      - ovn-snat-rules/status
       - vpc-dnses
       - vpc-dnses/status
       - switch-lb-rules
