@@ -18,7 +18,7 @@ on:
 env:
   GO_VERSION: '1.18'
   GOSEC_VERSION: '2.12.0'
-  KIND_VERSION: v0.14.0
+  KIND_VERSION: v0.17.0
   HELM_VERSION: v3.10.1
 
 jobs:
@@ -1300,7 +1300,7 @@ jobs:
         run: |
           sudo pip3 install j2cli
           sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH k8s_version=v1.23.6 make kind-init
+          sudo PATH=~/.local/bin:$PATH k8s_version=v1.23.13 make kind-init
 
       - name: Download image
         uses: actions/download-artifact@v3
