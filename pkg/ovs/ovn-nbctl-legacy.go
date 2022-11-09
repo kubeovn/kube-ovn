@@ -551,10 +551,48 @@ func (c LegacyClient) ListLoadBalancer() ([]string, error) {
 	return result, nil
 }
 
+func (c LegacyClient) ConnectRouterToExternal(externalNet, vpcRouter, lrpIp, lrpMac string, chassises []string) error {
+	// add lrp and lsp between vpc router and external network
+	lsTolr := fmt.Sprintf("%s-%s", externalNet, vpcRouter)
+	lrTols := fmt.Sprintf("%s-%s", vpcRouter, externalNet)
+	_, err := c.ovnNbCommand(
+		MayExist, "lrp-add", vpcRouter, lrTols, lrpMac, lrpIp, "--",
+		MayExist, "lsp-add", externalNet, lsTolr, "--",
+		"lsp-set-type", lsTolr, "router", "--",
+		"lsp-set-addresses", lsTolr, "router", "--",
+		"lsp-set-options", lsTolr, fmt.Sprintf("router-port=%s", lrTols),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to connect vpc to external, %v", err)
+	}
+	for index, chassis := range chassises {
+		if _, err := c.ovnNbCommand("lrp-set-gateway-chassis", lrTols, chassis, fmt.Sprintf("%d", 100-index)); err != nil {
+			return fmt.Errorf("failed to set gateway chassis, %v", err)
+		}
+	}
+	return nil
+}
+
+func (c LegacyClient) DisconnectRouterToExternal(externalNet, vpcRouter string) error {
+	lrTols := fmt.Sprintf("%s-%s", vpcRouter, externalNet)
+	if _, err := c.ovnNbCommand(IfExists, "lrp-del", lrTols); err != nil {
+		return err
+	}
+	lsTolr := fmt.Sprintf("%s-%s", externalNet, vpcRouter)
+	if _, err := c.ovnNbCommand(IfExists, "lsp-del", lsTolr); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (c LegacyClient) CreateGatewaySwitch(name, network string, vlan int, ip, mac string, chassises []string) error {
 	lsTolr := fmt.Sprintf("%s-%s", name, c.ClusterRouter)
 	lrTols := fmt.Sprintf("%s-%s", c.ClusterRouter, name)
 	localnetPort := fmt.Sprintf("ln-%s", name)
+	if network != util.ExternalGatewaySwitch {
+		// compatiable with provider network and vlan and subnet
+		localnetPort = GetLocalnetName(name)
+	}
 	portOptions := fmt.Sprintf("network_name=%s", network)
 	_, err := c.ovnNbCommand(
 		MayExist, "ls-add", name, "--",
@@ -1186,6 +1224,125 @@ func (c *LegacyClient) NatRuleExists(logicalIP string) (bool, error) {
 		return false, nil
 	}
 	return true, nil
+}
+
+func (c LegacyClient) AddFipRule(router, eip, logicalIP, logicalMac, port string) error {
+	// failed if logicalIP externalIP(eip) is different protocol.
+	if util.CheckProtocol(logicalIP) != util.CheckProtocol(eip) {
+		return nil
+	}
+	var err error
+	fip := "dnat_and_snat"
+	if eip != "" && logicalIP != "" && logicalMac != "" {
+		if c.ExternalGatewayType == "distributed" {
+			_, err = c.ovnNbCommand(MayExist, "--stateless", "lr-nat-add", router, fip, eip, logicalIP, port, logicalMac)
+		} else {
+			_, err = c.ovnNbCommand(MayExist, "lr-nat-add", router, fip, eip, logicalIP)
+		}
+		return err
+	} else {
+		return fmt.Errorf("logical ip, external ip and logical mac must be provided to add fip rule")
+	}
+}
+
+func (c LegacyClient) DeleteFipRule(router, eip, logicalIP string) error {
+	fip := "dnat_and_snat"
+	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=type,external_ip", "find", "NAT", fmt.Sprintf("logical_ip=%s", logicalIP))
+	if err != nil {
+		klog.Errorf("failed to list nat rules, %v", err)
+		return err
+	}
+	rules := strings.Split(output, "\n")
+	for _, rule := range rules {
+		if len(strings.Split(rule, ",")) != 2 {
+			continue
+		}
+		policy, externalIP := strings.Split(rule, ",")[0], strings.Split(rule, ",")[1]
+		if externalIP == eip && policy == fip {
+			if _, err := c.ovnNbCommand(IfExists, "lr-nat-del", router, fip, externalIP); err != nil {
+				klog.Errorf("failed to delete fip rule, %v", err)
+				return err
+			}
+		}
+	}
+	return err
+}
+
+func (c *LegacyClient) FipRuleExists(eip, logicalIP string) (bool, error) {
+	fip := "dnat_and_snat"
+	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=type,external_ip", "find", "NAT", fmt.Sprintf("logical_ip=%s", logicalIP))
+	if err != nil {
+		klog.Errorf("failed to list nat rules, %v", err)
+		return false, err
+	}
+	rules := strings.Split(output, "\n")
+	for _, rule := range rules {
+		if len(strings.Split(rule, ",")) != 2 {
+			continue
+		}
+		policy, externalIP := strings.Split(rule, ",")[0], strings.Split(rule, ",")[1]
+		if externalIP == eip && policy == fip {
+			return true, nil
+		}
+	}
+	return false, fmt.Errorf("fip rule not exist")
+}
+
+func (c LegacyClient) AddSnatRule(router, eip, ipCidr string) error {
+	// failed if logicalIP externalIP(eip) is different protocol.
+	if util.CheckProtocol(ipCidr) != util.CheckProtocol(eip) {
+		return nil
+	}
+	snat := "snat"
+	if eip != "" && ipCidr != "" {
+		_, err := c.ovnNbCommand(MayExist, "lr-nat-add", router, snat, eip, ipCidr)
+		return err
+	} else {
+		return fmt.Errorf("logical ip, external ip and logical mac must be provided to add snat rule")
+	}
+}
+
+func (c LegacyClient) DeleteSnatRule(router, eip, ipCidr string) error {
+	snat := "snat"
+	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=type,external_ip", "find", "NAT", fmt.Sprintf("logical_ip=%s", ipCidr))
+	if err != nil {
+		klog.Errorf("failed to list nat rules, %v", err)
+		return err
+	}
+	rules := strings.Split(output, "\n")
+	for _, rule := range rules {
+		if len(strings.Split(rule, ",")) != 2 {
+			continue
+		}
+		policy, externalIP := strings.Split(rule, ",")[0], strings.Split(rule, ",")[1]
+		if externalIP == eip && policy == snat {
+			if _, err := c.ovnNbCommand(IfExists, "lr-nat-del", router, snat, ipCidr); err != nil {
+				klog.Errorf("failed to delete snat rule, %v", err)
+				return err
+			}
+		}
+	}
+	return err
+}
+
+func (c *LegacyClient) SnatRuleExists(eip, ipCidr string) (bool, error) {
+	snat := "snat"
+	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=type,external_ip", "find", "NAT", fmt.Sprintf("logical_ip=%s", ipCidr))
+	if err != nil {
+		klog.Errorf("failed to list nat rules, %v", err)
+		return false, err
+	}
+	rules := strings.Split(output, "\n")
+	for _, rule := range rules {
+		if len(strings.Split(rule, ",")) != 2 {
+			continue
+		}
+		policy, externalIP := strings.Split(rule, ",")[0], strings.Split(rule, ",")[1]
+		if externalIP == eip && policy == snat {
+			return true, nil
+		}
+	}
+	return false, fmt.Errorf("snat rule not exist")
 }
 
 func (c LegacyClient) DeleteMatchedStaticRoute(cidr, nexthop, router string) error {

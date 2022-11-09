@@ -110,6 +110,10 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 	if err != nil {
 		return err
 	}
+
+	if err := c.handleDelVpcExternal(vpc.Name); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -456,6 +460,20 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 	}
 
+	if cachedVpc.Spec.EnableExternal && !cachedVpc.Status.EnableExternal {
+		// connecte vpc to external
+		if err := c.handleAddVpcExternal(key); err != nil {
+			return err
+		}
+	}
+
+	if !cachedVpc.Spec.EnableExternal && cachedVpc.Status.EnableExternal {
+		// disconnect vpc to external
+		if err := c.handleDelVpcExternal(key); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -701,6 +719,14 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 	return
 }
 
+func (c *Controller) getVpcBySubnet(subnetName string) (vpc string, err error) {
+	cachedSubnet, err := c.subnetsLister.Get(subnetName)
+	if err != nil {
+		return "", err
+	}
+	return cachedSubnet.Spec.Vpc, nil
+}
+
 // createVpcRouter create router to connect logical switches in vpc
 func (c *Controller) createVpcRouter(lr string) error {
 	lrs, err := c.ovnLegacyClient.ListLogicalRouter(c.config.EnableExternalVpc)
@@ -719,4 +745,99 @@ func (c *Controller) createVpcRouter(lr string) error {
 // deleteVpcRouter delete router to connect logical switches in vpc
 func (c *Controller) deleteVpcRouter(lr string) error {
 	return c.ovnLegacyClient.DeleteLogicalRouter(lr)
+}
+
+func (c *Controller) handleAddVpcExternal(key string) error {
+	var needCreateEip bool
+	lrpEipName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
+	cachedEip, err := c.ovnEipsLister.Get(lrpEipName)
+	if err != nil {
+		if !k8serrors.IsNotFound(err) {
+			return err
+		}
+		needCreateEip = true
+	}
+	var v4ip, v6ip, mac string
+	klog.V(3).Infof("create vpc lrp eip %s", lrpEipName)
+	if needCreateEip {
+		if v4ip, v6ip, mac, err = c.acquireIpAddress(c.config.ExternalGatewaySwitch, lrpEipName, lrpEipName); err != nil {
+			return err
+		}
+		if err := c.createOrUpdateCrdOvnEip(lrpEipName, c.config.ExternalGatewaySwitch, v4ip, v6ip, mac, util.LrpUsingEip); err != nil {
+			klog.Errorf("failed to create ovn eip for lrp %s: %v", lrpEipName, err)
+			return err
+		}
+	} else {
+		v4ip = cachedEip.Spec.V4ip
+		mac = cachedEip.Spec.MacAddress
+	}
+	if v4ip == "" || mac == "" {
+		return fmt.Errorf("lrp eip '%s' v4ip or mac should not be emplty", lrpEipName)
+	}
+	if err = c.patchOvnEipStatus(lrpEipName); err != nil {
+		return err
+	}
+	// init lrp gw chassis group
+	cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
+	if err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to get ovn-external-gw-config, %v", err)
+		return err
+	}
+	chassises, err := c.getGatewayChassis(cm.Data)
+	if err != nil {
+		klog.Errorf("failed to get gateway chassis, %v", err)
+		return err
+	}
+	if err := c.ovnLegacyClient.ConnectRouterToExternal(c.config.ExternalGatewaySwitch, key, v4ip, mac, chassises); err != nil {
+		return err
+	}
+	cachedVpc, err := c.vpcsLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	vpc := cachedVpc.DeepCopy()
+	vpc.Status.EnableExternal = cachedVpc.Spec.EnableExternal
+	bytes, err := vpc.Status.Bytes()
+	if err != nil {
+		return err
+	}
+	if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
+		vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+		return err
+	}
+	cachedEip, err = c.ovnEipsLister.Get(lrpEipName)
+	if err != nil {
+		return err
+	}
+	if err = c.handleAddOvnEipFinalizer(cachedEip); err != nil {
+		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) handleDelVpcExternal(key string) error {
+	lrpEipName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
+	cachedEip, err := c.ovnEipsLister.Get(lrpEipName)
+	if err != nil {
+		return err
+	}
+	klog.V(3).Infof("delete vpc lrp %s", lrpEipName)
+	if err := c.ovnLegacyClient.DisconnectRouterToExternal(c.config.ExternalGatewaySwitch, key); err != nil {
+		return err
+	}
+	if err = c.handleDelOvnEipFinalizer(cachedEip); err != nil {
+		klog.Errorf("failed to del finalizer for ovn eip, %v", err)
+		return err
+	}
+	if err = c.config.KubeOvnClient.KubeovnV1().OvnEips().Delete(context.Background(), lrpEipName, metav1.DeleteOptions{}); err != nil {
+		if !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to delete ovn eip %s, %v", lrpEipName, err)
+			return err
+		}
+	}
+	return nil
 }

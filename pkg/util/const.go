@@ -147,6 +147,10 @@ const (
 	EcmpRouteType   = "ecmp"
 	NormalRouteType = "normal"
 
+	LrpUsingEip  = "lrp"
+	FipUsingEip  = "fip"
+	SnatUsingEip = "snat"
+
 	OvnFip      = "ovn"
 	IptablesFip = "iptables"
 

@@ -136,6 +136,25 @@ type Controller struct {
 	updateIptablesSnatRuleQueue workqueue.RateLimitingInterface
 	delIptablesSnatRuleQueue    workqueue.RateLimitingInterface
 
+	ovnEipsLister     kubeovnlister.OvnEipLister
+	ovnEipSynced      cache.InformerSynced
+	addOvnEipQueue    workqueue.RateLimitingInterface
+	updateOvnEipQueue workqueue.RateLimitingInterface
+	resetOvnEipQueue  workqueue.RateLimitingInterface
+	delOvnEipQueue    workqueue.RateLimitingInterface
+
+	ovnFipsLister     kubeovnlister.OvnFipLister
+	ovnFipSynced      cache.InformerSynced
+	addOvnFipQueue    workqueue.RateLimitingInterface
+	updateOvnFipQueue workqueue.RateLimitingInterface
+	delOvnFipQueue    workqueue.RateLimitingInterface
+
+	ovnSnatRulesLister     kubeovnlister.OvnSnatRuleLister
+	ovnSnatRuleSynced      cache.InformerSynced
+	addOvnSnatRuleQueue    workqueue.RateLimitingInterface
+	updateOvnSnatRuleQueue workqueue.RateLimitingInterface
+	delOvnSnatRuleQueue    workqueue.RateLimitingInterface
+
 	vlansLister kubeovnlister.VlanLister
 	vlanSynced  cache.InformerSynced
 
@@ -513,6 +532,45 @@ func NewController(config *Configuration) *Controller {
 		UpdateFunc: controller.enqueueUpdateIptablesSnatRule,
 		DeleteFunc: controller.enqueueDelIptablesSnatRule,
 	})
+	if config.EnableEipSnat {
+		ovnEipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnEips()
+		controller.ovnEipsLister = ovnEipInformer.Lister()
+		controller.ovnEipSynced = ovnEipInformer.Informer().HasSynced
+		controller.addOvnEipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addOvnEip")
+		controller.updateOvnEipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateOvnEip")
+		controller.resetOvnEipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "resetOvnEip")
+		controller.delOvnEipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delOvnEip")
+
+		ovnEipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddOvnEip,
+			UpdateFunc: controller.enqueueUpdateOvnEip,
+			DeleteFunc: controller.enqueueDelOvnEip,
+		})
+
+		ovnFipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnFips()
+		controller.ovnFipsLister = ovnFipInformer.Lister()
+		controller.ovnFipSynced = ovnFipInformer.Informer().HasSynced
+		controller.addOvnFipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addOvnFip")
+		controller.updateOvnFipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateOvnFip")
+		controller.delOvnFipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delOvnFip")
+		ovnFipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddOvnFip,
+			UpdateFunc: controller.enqueueUpdateOvnFip,
+			DeleteFunc: controller.enqueueDelOvnFip,
+		})
+
+		ovnSnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnSnatRules()
+		controller.ovnSnatRulesLister = ovnSnatRuleInformer.Lister()
+		controller.ovnSnatRuleSynced = ovnSnatRuleInformer.Informer().HasSynced
+		controller.addOvnSnatRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addOvnSnatRule")
+		controller.updateOvnSnatRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateOvnSnatRule")
+		controller.delOvnSnatRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delOvnSnatRule")
+		ovnSnatRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddOvnSnatRule,
+			UpdateFunc: controller.enqueueUpdateOvnSnatRule,
+			DeleteFunc: controller.enqueueDelOvnSnatRule,
+		})
+	}
 
 	podAnnotatedIptablesEipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddPodAnnotatedIptablesEip,
@@ -552,6 +610,11 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		c.vlanSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced,
 		c.serviceSynced, c.endpointsSynced, c.configMapsSynced,
 	}
+
+	if c.config.EnableEipSnat {
+		cacheSyncs = append(cacheSyncs, c.ovnEipSynced, c.ovnFipSynced, c.ovnSnatRuleSynced)
+	}
+
 	if c.config.EnableNP {
 		cacheSyncs = append(cacheSyncs, c.npsSynced)
 	}
@@ -708,6 +771,21 @@ func (c *Controller) shutdown() {
 	c.addIptablesSnatRuleQueue.ShutDown()
 	c.updateIptablesSnatRuleQueue.ShutDown()
 	c.delIptablesSnatRuleQueue.ShutDown()
+
+	if c.config.EnableEipSnat {
+		c.addOvnEipQueue.ShutDown()
+		c.updateOvnEipQueue.ShutDown()
+		c.resetOvnEipQueue.ShutDown()
+		c.delOvnEipQueue.ShutDown()
+
+		c.addOvnFipQueue.ShutDown()
+		c.updateOvnFipQueue.ShutDown()
+		c.delOvnFipQueue.ShutDown()
+
+		c.addIptablesSnatRuleQueue.ShutDown()
+		c.updateIptablesSnatRuleQueue.ShutDown()
+		c.delIptablesSnatRuleQueue.ShutDown()
+	}
 
 	if c.config.PodDefaultFipType == util.IptablesFip {
 		c.addPodAnnotatedIptablesEipQueue.ShutDown()
@@ -869,6 +947,21 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	go wait.Until(c.resyncProviderNetworkStatus, 30*time.Second, stopCh)
 	go wait.Until(c.resyncSubnetMetrics, 30*time.Second, stopCh)
 	go wait.Until(c.CheckGatewayReady, 5*time.Second, stopCh)
+
+	if c.config.EnableEipSnat {
+		go wait.Until(c.runAddOvnEipWorker, time.Second, stopCh)
+		go wait.Until(c.runUpdateOvnEipWorker, time.Second, stopCh)
+		go wait.Until(c.runResetOvnEipWorker, time.Second, stopCh)
+		go wait.Until(c.runDelOvnEipWorker, time.Second, stopCh)
+
+		go wait.Until(c.runAddOvnFipWorker, time.Second, stopCh)
+		go wait.Until(c.runUpdateOvnFipWorker, time.Second, stopCh)
+		go wait.Until(c.runDelOvnFipWorker, time.Second, stopCh)
+
+		go wait.Until(c.runAddOvnSnatRuleWorker, time.Second, stopCh)
+		go wait.Until(c.runUpdateOvnSnatRuleWorker, time.Second, stopCh)
+		go wait.Until(c.runDelOvnSnatRuleWorker, time.Second, stopCh)
+	}
 
 	if c.config.EnableNP {
 		go wait.Until(c.CheckNodePortGroup, time.Duration(c.config.NodePgProbeTime)*time.Minute, stopCh)
