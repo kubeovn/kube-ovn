@@ -770,6 +770,7 @@ func (c *Controller) checkGatewayReady() error {
 						pinger.Interval = 1 * time.Second
 
 						success := false
+
 						pinger.OnRecv = func(p *goping.Packet) {
 							success = true
 							pinger.Stop()

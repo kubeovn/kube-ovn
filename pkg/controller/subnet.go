@@ -1268,7 +1268,6 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 				if newActivateNode == "" {
 					klog.Warningf("all subnet %s gws are not ready", subnet.Name)
 					subnet.Status.ActivateGateway = newActivateNode
-					subnet.Status.NotReady("NoReadyGateway", "")
 					bytes, err := subnet.Status.Bytes()
 					if err != nil {
 						return err
