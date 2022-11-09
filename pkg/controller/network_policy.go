@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"unicode"
 
 	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
@@ -183,16 +184,22 @@ func (c *Controller) handleUpdateNp(key string) error {
 		logEnable = true
 	}
 
+	npName := np.Name
+	nameArray := []rune(np.Name)
+	if !unicode.IsLetter(nameArray[0]) {
+		npName = "np" + np.Name
+	}
+
 	// TODO: ovn acl doesn't support address_set name with '-', now we replace '-' by '.'.
 	// This may cause conflict if two np with name test-np and test.np. Maybe hash is a better solution,
 	// but we do not want to lost the readability now.
-	pgName := strings.Replace(fmt.Sprintf("%s.%s", np.Name, np.Namespace), "-", ".", -1)
-	ingressAllowAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.ingress.allow", np.Name, np.Namespace), "-", ".", -1)
-	ingressExceptAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.ingress.except", np.Name, np.Namespace), "-", ".", -1)
-	egressAllowAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.egress.allow", np.Name, np.Namespace), "-", ".", -1)
-	egressExceptAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.egress.except", np.Name, np.Namespace), "-", ".", -1)
+	pgName := strings.Replace(fmt.Sprintf("%s.%s", npName, np.Namespace), "-", ".", -1)
+	ingressAllowAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.ingress.allow", npName, np.Namespace), "-", ".", -1)
+	ingressExceptAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.ingress.except", npName, np.Namespace), "-", ".", -1)
+	egressAllowAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.egress.allow", npName, np.Namespace), "-", ".", -1)
+	egressExceptAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.egress.except", npName, np.Namespace), "-", ".", -1)
 
-	if err = c.ovnLegacyClient.CreateNpPortGroup(pgName, np.Namespace, np.Name); err != nil {
+	if err = c.ovnLegacyClient.CreateNpPortGroup(pgName, np.Namespace, npName); err != nil {
 		klog.Errorf("failed to create port group for np %s, %v", key, err)
 		return err
 	}
@@ -210,8 +217,8 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 
 	// set svc address_set
-	svcAsNameIPv4 := strings.Replace(fmt.Sprintf("%s.%s.service.%s", np.Name, np.Namespace, kubeovnv1.ProtocolIPv4), "-", ".", -1)
-	svcAsNameIPv6 := strings.Replace(fmt.Sprintf("%s.%s.service.%s", np.Name, np.Namespace, kubeovnv1.ProtocolIPv6), "-", ".", -1)
+	svcAsNameIPv4 := strings.Replace(fmt.Sprintf("%s.%s.service.%s", npName, np.Namespace, kubeovnv1.ProtocolIPv4), "-", ".", -1)
+	svcAsNameIPv6 := strings.Replace(fmt.Sprintf("%s.%s.service.%s", npName, np.Namespace, kubeovnv1.ProtocolIPv6), "-", ".", -1)
 	svcIpv4s, svcIpv6s, err := c.fetchSelectedSvc(np.Namespace, &np.Spec.PodSelector)
 	if err != nil {
 		klog.Errorf("failed to fetchSelectedSvc svcIPs result  %v", err)
@@ -225,7 +232,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			svcAsName = svcAsNameIPv6
 			svcIPs = svcIpv6s
 		}
-		if err = c.ovnLegacyClient.CreateNpAddressSet(svcAsName, np.Namespace, np.Name, "service"); err != nil {
+		if err = c.ovnLegacyClient.CreateNpAddressSet(svcAsName, np.Namespace, npName, "service"); err != nil {
 			klog.Errorf("failed to create address_set %s, %v", svcAsNameIPv4, err)
 			return err
 		}
@@ -235,7 +242,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}
 
-	ingressAsNames, err := c.ovnLegacyClient.ListNpAddressSet(np.Namespace, np.Name, "ingress")
+	ingressAsNames, err := c.ovnLegacyClient.ListNpAddressSet(np.Namespace, npName, "ingress")
 	if err != nil {
 		klog.Errorf("failed to list ingress address_set, %v", err)
 		return err
@@ -288,7 +295,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					}
 				}
 				klog.Infof("UpdateNp Ingress, allows is %v, excepts is %v, log %v", allows, excepts, logEnable)
-				if err = c.ovnLegacyClient.CreateNpAddressSet(ingressAllowAsName, np.Namespace, np.Name, "ingress"); err != nil {
+				if err = c.ovnLegacyClient.CreateNpAddressSet(ingressAllowAsName, np.Namespace, npName, "ingress"); err != nil {
 					klog.Errorf("failed to create address_set %s, %v", ingressAllowAsName, err)
 					return err
 				}
@@ -297,7 +304,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 
-				if err = c.ovnLegacyClient.CreateNpAddressSet(ingressExceptAsName, np.Namespace, np.Name, "ingress"); err != nil {
+				if err = c.ovnLegacyClient.CreateNpAddressSet(ingressExceptAsName, np.Namespace, npName, "ingress"); err != nil {
 					klog.Errorf("failed to create address_set %s, %v", ingressExceptAsName, err)
 					return err
 				}
@@ -315,12 +322,12 @@ func (c *Controller) handleUpdateNp(key string) error {
 			if len(np.Spec.Ingress) == 0 {
 				ingressAllowAsName := fmt.Sprintf("%s.%s.all", ingressAllowAsNamePrefix, protocol)
 				ingressExceptAsName := fmt.Sprintf("%s.%s.all", ingressExceptAsNamePrefix, protocol)
-				if err = c.ovnLegacyClient.CreateNpAddressSet(ingressAllowAsName, np.Namespace, np.Name, "ingress"); err != nil {
+				if err = c.ovnLegacyClient.CreateNpAddressSet(ingressAllowAsName, np.Namespace, npName, "ingress"); err != nil {
 					klog.Errorf("failed to create address_set %s, %v", ingressAllowAsName, err)
 					return err
 				}
 
-				if err = c.ovnLegacyClient.CreateNpAddressSet(ingressExceptAsName, np.Namespace, np.Name, "ingress"); err != nil {
+				if err = c.ovnLegacyClient.CreateNpAddressSet(ingressExceptAsName, np.Namespace, npName, "ingress"); err != nil {
 					klog.Errorf("failed to create address_set %s, %v", ingressExceptAsName, err)
 					return err
 				}
@@ -341,7 +348,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 
 		var asNames []string
-		if asNames, err = c.ovnLegacyClient.ListNpAddressSet(np.Namespace, np.Name, "ingress"); err != nil {
+		if asNames, err = c.ovnLegacyClient.ListNpAddressSet(np.Namespace, npName, "ingress"); err != nil {
 			klog.Errorf("failed to list address_set, %v", err)
 			return err
 		}
@@ -369,7 +376,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return err
 		}
 
-		asNames, err := c.ovnLegacyClient.ListNpAddressSet(np.Namespace, np.Name, "ingress")
+		asNames, err := c.ovnLegacyClient.ListNpAddressSet(np.Namespace, npName, "ingress")
 		if err != nil {
 			klog.Errorf("failed to list address_set, %v", err)
 			return err
@@ -382,7 +389,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}
 
-	egressAsNames, err := c.ovnLegacyClient.ListNpAddressSet(np.Namespace, np.Name, "egress")
+	egressAsNames, err := c.ovnLegacyClient.ListNpAddressSet(np.Namespace, npName, "egress")
 	if err != nil {
 		klog.Errorf("failed to list egress address_set, %v", err)
 		return err
@@ -435,7 +442,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					}
 				}
 				klog.Infof("UpdateNp Egress, allows is %v, excepts is %v, log %v", allows, excepts, logEnable)
-				if err = c.ovnLegacyClient.CreateNpAddressSet(egressAllowAsName, np.Namespace, np.Name, "egress"); err != nil {
+				if err = c.ovnLegacyClient.CreateNpAddressSet(egressAllowAsName, np.Namespace, npName, "egress"); err != nil {
 					klog.Errorf("failed to create address_set %s, %v", egressAllowAsName, err)
 					return err
 				}
@@ -444,7 +451,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 
-				if err = c.ovnLegacyClient.CreateNpAddressSet(egressExceptAsName, np.Namespace, np.Name, "egress"); err != nil {
+				if err = c.ovnLegacyClient.CreateNpAddressSet(egressExceptAsName, np.Namespace, npName, "egress"); err != nil {
 					klog.Errorf("failed to create address_set %s, %v", egressExceptAsName, err)
 					return err
 				}
@@ -460,12 +467,12 @@ func (c *Controller) handleUpdateNp(key string) error {
 			if len(np.Spec.Egress) == 0 {
 				egressAllowAsName := fmt.Sprintf("%s.%s.all", egressAllowAsNamePrefix, protocol)
 				egressExceptAsName := fmt.Sprintf("%s.%s.all", egressExceptAsNamePrefix, protocol)
-				if err = c.ovnLegacyClient.CreateNpAddressSet(egressAllowAsName, np.Namespace, np.Name, "egress"); err != nil {
+				if err = c.ovnLegacyClient.CreateNpAddressSet(egressAllowAsName, np.Namespace, npName, "egress"); err != nil {
 					klog.Errorf("failed to create address_set %s, %v", egressAllowAsName, err)
 					return err
 				}
 
-				if err = c.ovnLegacyClient.CreateNpAddressSet(egressExceptAsName, np.Namespace, np.Name, "egress"); err != nil {
+				if err = c.ovnLegacyClient.CreateNpAddressSet(egressExceptAsName, np.Namespace, npName, "egress"); err != nil {
 					klog.Errorf("failed to create address_set %s, %v", egressExceptAsName, err)
 					return err
 				}
@@ -486,7 +493,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 
 		var asNames []string
-		if asNames, err = c.ovnLegacyClient.ListNpAddressSet(np.Namespace, np.Name, "egress"); err != nil {
+		if asNames, err = c.ovnLegacyClient.ListNpAddressSet(np.Namespace, npName, "egress"); err != nil {
 			klog.Errorf("failed to list address_set, %v", err)
 			return err
 		}
@@ -515,7 +522,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return err
 		}
 
-		asNames, err := c.ovnLegacyClient.ListNpAddressSet(np.Namespace, np.Name, "egress")
+		asNames, err := c.ovnLegacyClient.ListNpAddressSet(np.Namespace, npName, "egress")
 		if err != nil {
 			klog.Errorf("failed to list egress address_set, %v", err)
 			return err
