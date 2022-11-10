@@ -17,6 +17,14 @@ for subnet in $(kubectl get subnet -o name); do
 done
 set -e
 
+for vpc in $(kubectl get vpc -o name); do
+  kubectl delete --ignore-not-found $vpc
+done
+
+for gw in $(kubectl get vpc-nat-gw -o name); do
+  kubectl delete --ignore-not-found $gw
+done
+
 for vlan in $(kubectl get vlan -o name); do
   kubectl delete --ignore-not-found $vlan
 done
