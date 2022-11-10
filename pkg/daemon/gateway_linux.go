@@ -550,7 +550,7 @@ func (c *Controller) setIptables() error {
 					return err
 				}
 				if !ipsetExists {
-					klog.Warningf("ipset %s does not exist", ipset)
+					klog.V(5).Infof("ipset %s does not exist", ipset)
 					continue
 				}
 				rule := fmt.Sprintf("-p %s -m addrtype --dst-type LOCAL -m set --match-set %s dst -j MARK --set-xmark 0x80000/0x80000", p, ipset)
