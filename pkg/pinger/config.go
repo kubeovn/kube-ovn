@@ -137,9 +137,9 @@ func ParseFlags() (*Configuration, error) {
 
 	podName := os.Getenv("POD_NAME")
 	for i := 0; i < 3; i++ {
-		pod, err := config.KubeClient.CoreV1().Pods("kube-system").Get(context.Background(), podName, metav1.GetOptions{})
+		pod, err := config.KubeClient.CoreV1().Pods(config.DaemonSetNamespace).Get(context.Background(), podName, metav1.GetOptions{})
 		if err != nil {
-			klog.Errorf("failed to get self pod kube-system/%s: %v", podName, err)
+			klog.Errorf("failed to get self pod %s/%s: %v", config.DaemonSetNamespace, podName, err)
 			return nil, err
 		}
 
@@ -152,7 +152,7 @@ func ParseFlags() (*Configuration, error) {
 		}
 
 		if pod.Status.ContainerStatuses[0].Ready {
-			klog.Fatalf("failed to get IPs of Pod kube-system/%s", podName)
+			klog.Fatalf("failed to get IPs of Pod %s/%s", config.DaemonSetNamespace, podName)
 		}
 
 		klog.Infof("cannot get Pod IPs now, waiting Pod to be ready")
@@ -160,7 +160,7 @@ func ParseFlags() (*Configuration, error) {
 	}
 
 	if len(config.PodProtocols) == 0 {
-		klog.Fatalf("failed to get IPs of Pod kube-system/%s after 3 attempts", podName)
+		klog.Fatalf("failed to get IPs of Pod %s/%s after 3 attempts", config.DaemonSetNamespace, podName)
 	}
 
 	klog.Infof("pinger config is %+v", config)
