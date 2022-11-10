@@ -98,7 +98,7 @@ jobs:
     needs: build
     name: 1-master-e2e
     runs-on: ubuntu-20.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out code
         uses: actions/checkout@v3
@@ -157,7 +157,7 @@ jobs:
     needs: build
     name: 1-master-iptables-e2e
     runs-on: ubuntu-20.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out code
         uses: actions/checkout@v3
@@ -216,7 +216,7 @@ jobs:
     needs: build
     name: 1-master-vlan-e2e
     runs-on: ubuntu-20.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out code
         uses: actions/checkout@v3
@@ -275,7 +275,7 @@ jobs:
     needs: build
     name: 1-master-underlay-e2e-single-nic
     runs-on: ubuntu-20.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out code
         uses: actions/checkout@v3
@@ -357,7 +357,7 @@ jobs:
     needs: build
     name: 1-node-e2e
     runs-on: ubuntu-20.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out code
         uses: actions/checkout@v3
@@ -416,7 +416,7 @@ jobs:
     needs: build
     name: 3-master-e2e
     runs-on: ubuntu-20.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out code
         uses: actions/checkout@v3
@@ -552,7 +552,7 @@ jobs:
     needs: build
     name: ipv6-vlan-e2e
     runs-on: ubuntu-20.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out code
         uses: actions/checkout@v3
@@ -611,7 +611,7 @@ jobs:
     needs: build
     name: ipv6-underlay-e2e-single-nic
     runs-on: ubuntu-20.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out code
         uses: actions/checkout@v3
@@ -693,7 +693,7 @@ jobs:
     needs: build
     name: dual-stack-e2e
     runs-on: ubuntu-20.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out code
         uses: actions/checkout@v3
@@ -923,7 +923,7 @@ jobs:
     needs: build
     name: disable-loadbalancer-e2e
     runs-on: ubuntu-20.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out code
         uses: actions/checkout@v3
@@ -984,7 +984,7 @@ jobs:
     needs: build
     name: disable-loadbalancer-iptables-e2e
     runs-on: ubuntu-20.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out code
         uses: actions/checkout@v3
@@ -1045,7 +1045,7 @@ jobs:
     needs: build
     name: disable-network-policy-e2e
     runs-on: ubuntu-20.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out code
         uses: actions/checkout@v3
@@ -1104,7 +1104,7 @@ jobs:
     needs: build
     name: multus-e2e
     runs-on: ubuntu-20.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out code
         uses: actions/checkout@v3
@@ -1163,7 +1163,7 @@ jobs:
     needs: build
     name: 1-master-ovnic-e2e
     runs-on: ubuntu-20.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out code
         uses: actions/checkout@v3
@@ -1223,7 +1223,7 @@ jobs:
     needs: build
     name: 1-master-cilium-e2e
     runs-on: ubuntu-20.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out code
         uses: actions/checkout@v3
