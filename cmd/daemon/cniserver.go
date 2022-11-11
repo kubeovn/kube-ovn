@@ -112,12 +112,12 @@ func mvCNIConf(configDir, configFile, confName string) error {
 	if err != nil {
 		return err
 	}
+	configDir = filepath.Clean(configDir)
 	// conform to Gosec G304 ,Potential file inclusion via variable
 	// https://github.com/securego/gosec#available-rules
 	confName = filepath.Clean(confName)
 	cniConfPath := filepath.Join(configDir, confName)
 	// conform to Gosec G302  Poor file permissions used with chmod
-	cniConfPath = filepath.Clean(cniConfPath)
 	dst, err := os.OpenFile(cniConfPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
