@@ -459,3 +459,7 @@ clean:
 	$(RM) kube-ovn.tar vpc-nat-gateway.tar image-amd64.tar image-arm64.tar
 	$(RM) test/e2e/ovnnb_db.* test/e2e/ovnsb_db.*
 	$(RM) install-underlay.sh
+
+.PHONY: changelog
+changelog:
+	./hack/changelog.sh > CHANGELOG.md

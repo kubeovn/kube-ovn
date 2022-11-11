@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -435,6 +436,45 @@ var _ = Describe("[Subnet]", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(stdout).To(HavePrefix(routePrefix))
 			}
+
+			By("dis-ready gateway node")
+			gwNodesResult, err := f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), name, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			gatewayNodes = strings.Split(gwNodesResult.Spec.GatewayNode, ",")
+
+			cmd := "docker exec -i " + gatewayNodes[0] + " systemctl stop kubelet"
+			_, err = exec.Command("bash", "-c", cmd).CombinedOutput()
+			Expect(err).NotTo(HaveOccurred())
+
+			time.Sleep(time.Second * 10)
+			for _, pod := range ovsPods.Items {
+				if nodeIPs[pod.Status.HostIP] == "" || pod.Spec.NodeName == gatewayNodes[0] {
+					continue
+				}
+
+				stdout, _, err := f.ExecToPodThroughAPI(fmt.Sprintf("ip -%d rule show", af), "openvswitch", pod.Name, pod.Namespace, nil)
+				Expect(err).NotTo(HaveOccurred())
+
+				var found bool
+				rules := strings.Split(stdout, "\n")
+				for _, rule := range rules {
+					if strings.HasPrefix(rule, rulePrefix) && strings.HasSuffix(rule, ruleSuffix) {
+						found = true
+						break
+					}
+				}
+				Expect(found).To(BeTrue())
+
+				stdout, _, err = f.ExecToPodThroughAPI(fmt.Sprintf("ip -%d route show table %d", af, tableID), "openvswitch", pod.Name, pod.Namespace, nil)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(stdout).To(HavePrefix(routePrefix))
+			}
+
+			cmd = "docker exec -i " + gatewayNodes[0] + " systemctl restart kubelet"
+			_, err = exec.Command("bash", "-c", cmd).CombinedOutput()
+			Expect(err).NotTo(HaveOccurred())
+
+			time.Sleep(time.Second * 30)
 
 			By("delete subnet")
 			err = f.OvnClientSet.KubeovnV1().Subnets().Delete(context.Background(), name, metav1.DeleteOptions{})
