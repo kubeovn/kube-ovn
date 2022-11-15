@@ -14,6 +14,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 func (c *Controller) enqueueAddPodAnnotatedIptablesFip(obj interface{}) {
@@ -311,13 +312,14 @@ func (c *Controller) handleAddPodAnnotatedIptablesFipFinalizer(pod *v1.Pod) erro
 			return nil
 		}
 		newPod := pod.DeepCopy()
-		newPod.Finalizers = append(newPod.Finalizers, util.FipFinalizer)
-		patch, err := util.GenerateStrategicMergePatchPayload(pod, newPod)
+		controllerutil.AddFinalizer(newPod, util.ControllerName)
+		patch, err := util.GenerateMergePatchPayload(pod, newPod)
 		if err != nil {
+			klog.Errorf("failed to generate patch payload for pod '%s', %v", pod.Name, err)
 			return err
 		}
 		if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
-			types.StrategicMergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+			types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 			if k8serrors.IsNotFound(err) {
 				return nil
 			}
@@ -335,13 +337,14 @@ func (c *Controller) handleDelPodAnnotatedIptablesFipFinalizer(pod *v1.Pod) erro
 		return nil
 	}
 	newPod := pod.DeepCopy()
-	newPod.Finalizers = util.RemoveString(newPod.Finalizers, util.FipFinalizer)
-	patch, err := util.GenerateStrategicMergePatchPayload(pod, newPod)
+	controllerutil.RemoveFinalizer(newPod, util.ControllerName)
+	patch, err := util.GenerateMergePatchPayload(pod, newPod)
 	if err != nil {
+		klog.Errorf("failed to generate patch payload for pod '%s', %v", pod.Name, err)
 		return err
 	}
 	if _, err := c.config.KubeClient.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name,
-		types.StrategicMergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
