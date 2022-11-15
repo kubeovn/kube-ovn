@@ -680,6 +680,7 @@ func (c *Controller) setExGateway() error {
 		return err
 	}
 	enable := node.Labels[util.ExGatewayLabel]
+	externalBride := fmt.Sprintf("br-%s", c.config.ExternalGatewaySwitch)
 	if enable == "true" {
 		cm, err := c.config.KubeClient.CoreV1().ConfigMaps(c.config.ExternalGatewayConfigNS).Get(context.Background(), util.ExternalGatewayConfig, metav1.GetOptions{})
 		if err != nil {
@@ -702,8 +703,8 @@ func (c *Controller) setExGateway() error {
 			return err
 		}
 		if _, err := ovs.Exec(
-			ovs.MayExist, "add-br", "br-external", "--",
-			ovs.MayExist, "add-port", "br-external", cm.Data["external-gw-nic"],
+			ovs.MayExist, "add-br", externalBride, "--",
+			ovs.MayExist, "add-port", externalBride, cm.Data["external-gw-nic"],
 		); err != nil {
 			return fmt.Errorf("failed to enable external gateway, %v", err)
 		}
@@ -712,7 +713,7 @@ func (c *Controller) setExGateway() error {
 		if err != nil {
 			return fmt.Errorf("failed to get external-ids, %v", err)
 		}
-		bridgeMappings := "external:br-external"
+		bridgeMappings := fmt.Sprintf("external:%s", externalBride)
 		if output != "" && !util.IsStringIn(bridgeMappings, strings.Split(output, ",")) {
 			bridgeMappings = fmt.Sprintf("%s,%s", output, bridgeMappings)
 		}
@@ -723,7 +724,7 @@ func (c *Controller) setExGateway() error {
 		}
 	} else {
 		if _, err := ovs.Exec(
-			ovs.IfExists, "del-br", "br-external"); err != nil {
+			ovs.IfExists, "del-br", externalBride); err != nil {
 			return fmt.Errorf("failed to disable external gateway, %v", err)
 		}
 	}

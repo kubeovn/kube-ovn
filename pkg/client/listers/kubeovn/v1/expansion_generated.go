@@ -42,6 +42,18 @@ type IptablesFIPRuleListerExpansion interface{}
 // IptablesSnatRuleLister.
 type IptablesSnatRuleListerExpansion interface{}
 
+// OvnEipListerExpansion allows custom methods to be added to
+// OvnEipLister.
+type OvnEipListerExpansion interface{}
+
+// OvnFipListerExpansion allows custom methods to be added to
+// OvnFipLister.
+type OvnFipListerExpansion interface{}
+
+// OvnSnatRuleListerExpansion allows custom methods to be added to
+// OvnSnatRuleLister.
+type OvnSnatRuleListerExpansion interface{}
+
 // ProviderNetworkListerExpansion allows custom methods to be added to
 // ProviderNetworkLister.
 type ProviderNetworkListerExpansion interface{}

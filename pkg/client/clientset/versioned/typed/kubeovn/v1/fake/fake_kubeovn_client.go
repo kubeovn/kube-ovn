@@ -52,6 +52,18 @@ func (c *FakeKubeovnV1) IptablesSnatRules() v1.IptablesSnatRuleInterface {
 	return &FakeIptablesSnatRules{c}
 }
 
+func (c *FakeKubeovnV1) OvnEips() v1.OvnEipInterface {
+	return &FakeOvnEips{c}
+}
+
+func (c *FakeKubeovnV1) OvnFips() v1.OvnFipInterface {
+	return &FakeOvnFips{c}
+}
+
+func (c *FakeKubeovnV1) OvnSnatRules() v1.OvnSnatRuleInterface {
+	return &FakeOvnSnatRules{c}
+}
+
 func (c *FakeKubeovnV1) ProviderNetworks() v1.ProviderNetworkInterface {
 	return &FakeProviderNetworks{c}
 }

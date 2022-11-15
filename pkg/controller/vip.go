@@ -197,10 +197,10 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 	portName := ovs.PodNameToPortName(vip.Name, vip.Namespace, subnet.Spec.Provider)
 	sourceV4Ip = vip.Spec.V4ip
 	if sourceV4Ip != "" {
-		v4ip, v6ip, mac, err = c.acquireStaticVirtualAddress(subnet.Name, vip.Name, portName, sourceV4Ip)
+		v4ip, v6ip, mac, err = c.acquireStaticIpAddress(subnet.Name, vip.Name, portName, sourceV4Ip)
 	} else {
 		// Random allocate
-		v4ip, v6ip, mac, err = c.acquireVirtualAddress(subnet.Name, vip.Name, portName)
+		v4ip, v6ip, mac, err = c.acquireIpAddress(subnet.Name, vip.Name, portName)
 	}
 	if err != nil {
 		return err
@@ -218,7 +218,7 @@ func (c *Controller) handleAddVirtualIp(key string) error {
 		klog.Errorf("failed to handle vip finalizer, %v", err)
 		return err
 	}
-	if err = c.subnetCountVip(subnet); err != nil {
+	if err = c.subnetCountIp(subnet); err != nil {
 		klog.Errorf("failed to count vip '%s' in subnet, %v", vip.Name, err)
 		return err
 	}
@@ -280,7 +280,7 @@ func (c *Controller) handleDelVirtualIp(key string) error {
 	return nil
 }
 
-func (c *Controller) acquireStaticVirtualAddress(subnetName, name, nicName, ip string) (string, string, string, error) {
+func (c *Controller) acquireStaticIpAddress(subnetName, name, nicName, ip string) (string, string, string, error) {
 	checkConflict := true
 	var v4ip, v6ip, mac string
 	var err error
@@ -297,7 +297,7 @@ func (c *Controller) acquireStaticVirtualAddress(subnetName, name, nicName, ip s
 	return v4ip, v6ip, mac, nil
 }
 
-func (c *Controller) acquireVirtualAddress(subnetName, name, nicName string) (string, string, string, error) {
+func (c *Controller) acquireIpAddress(subnetName, name, nicName string) (string, string, string, error) {
 	var skippedAddrs []string
 	var v4ip, v6ip, mac string
 	checkConflict := false
@@ -326,7 +326,7 @@ func (c *Controller) acquireVirtualAddress(subnetName, name, nicName string) (st
 	}
 }
 
-func (c *Controller) subnetCountVip(subnet *kubeovnv1.Subnet) error {
+func (c *Controller) subnetCountIp(subnet *kubeovnv1.Subnet) error {
 	var err error
 	if util.CheckProtocol(subnet.Spec.CIDRBlock) == kubeovnv1.ProtocolDual {
 		err = calcDualSubnetStatusIP(subnet, c)

@@ -61,6 +61,20 @@ for fip in $(kubectl get fip -o name); do
    kubectl delete --ignore-not-found $fip
 done
 
+
+for osnat in $(kubectl get osnat -o name); do
+   kubectl delete --ignore-not-found $osnat
+done
+
+for ofip in $(kubectl get ofip -o name); do
+   kubectl delete --ignore-not-found $ofip
+done
+
+for oeip in $(kubectl get oeip -o name); do
+   kubectl delete --ignore-not-found $oeip
+done
+
+
 sleep 5
 
 # Delete Kube-OVN components
@@ -101,7 +115,8 @@ kubectl delete --ignore-not-found sa vpc-dns -n kube-system
 kubectl delete --ignore-not-found crd htbqoses.kubeovn.io security-groups.kubeovn.io ips.kubeovn.io subnets.kubeovn.io \
                                       vpc-nat-gateways.kubeovn.io vpcs.kubeovn.io vlans.kubeovn.io provider-networks.kubeovn.io \
                                       iptables-dnat-rules.kubeovn.io  iptables-eips.kubeovn.io  iptables-fip-rules.kubeovn.io \
-                                      iptables-snat-rules.kubeovn.io vips.kubeovn.io switch-lb-rules.kubeovn.io vpc-dnses.kubeovn.io
+                                      iptables-snat-rules.kubeovn.io vips.kubeovn.io switch-lb-rules.kubeovn.io vpc-dnses.kubeovn.io \
+                                      ovn-eips.kubeovn.io ovn-fips.kubeovn.io ovn-snat-rules.kubeovn.io 
 
 # Remove annotations/labels in namespaces and nodes
 kubectl annotate no --all ovn.kubernetes.io/cidr-

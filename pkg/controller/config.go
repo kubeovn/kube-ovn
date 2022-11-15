@@ -84,6 +84,7 @@ type Configuration struct {
 	EnableKeepVmIP    bool
 	EnableLbSvc       bool
 
+	ExternalGatewaySwitch   string
 	ExternalGatewayConfigNS string
 	ExternalGatewayNet      string
 	ExternalGatewayVlanID   int
@@ -145,6 +146,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnableLbSvc             = pflag.Bool("enable-lb-svc", false, "Whether to support loadbalancer service")
 
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
+		argExternalGatewaySwitch   = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
 		argExternalGatewayNet      = pflag.String("external-gateway-net", "external", "The name of the external network which mappings with an ovs bridge, default: external")
 		argExternalGatewayVlanID   = pflag.Int("external-gateway-vlanid", 0, "The vlanId of port ln-ovn-external, default: 0")
 
@@ -211,6 +213,7 @@ func ParseFlags() (*Configuration, error) {
 		EnableEipSnat:                 *argEnableEipSnat,
 		EnableExternalVpc:             *argEnableExternalVpc,
 		ExternalGatewayConfigNS:       *argExternalGatewayConfigNS,
+		ExternalGatewaySwitch:         *argExternalGatewaySwitch,
 		ExternalGatewayNet:            *argExternalGatewayNet,
 		ExternalGatewayVlanID:         *argExternalGatewayVlanID,
 		EnableEcmp:                    *argEnableEcmp,

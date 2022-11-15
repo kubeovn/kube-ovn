@@ -30,6 +30,12 @@ type IptablesFIPRuleExpansion interface{}
 
 type IptablesSnatRuleExpansion interface{}
 
+type OvnEipExpansion interface{}
+
+type OvnFipExpansion interface{}
+
+type OvnSnatRuleExpansion interface{}
+
 type ProviderNetworkExpansion interface{}
 
 type SecurityGroupExpansion interface{}

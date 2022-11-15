@@ -405,7 +405,7 @@ func (c *Controller) InitIPAM() error {
 			ipamKey = vip.Name
 		}
 		if _, _, _, err = c.ipam.GetStaticAddress(ipamKey, vip.Name, vip.Spec.V4ip, vip.Spec.MacAddress, vip.Spec.Subnet, false); err != nil {
-			klog.Errorf("failed to init IPAM from VIP CR %s: %v", vip.Name, err)
+			klog.Errorf("failed to init ipam from vip cr %s: %v", vip.Name, err)
 		}
 	}
 
@@ -416,10 +416,23 @@ func (c *Controller) InitIPAM() error {
 	}
 	for _, eip := range eips {
 		if _, _, _, err = c.ipam.GetStaticAddress(eip.Name, eip.Name, eip.Spec.V4ip, eip.Spec.MacAddress, util.VpcExternalNet, false); err != nil {
-			klog.Errorf("failed to init IPAM from EIP CR %s: %v", eip.Name, err)
+			klog.Errorf("failed to init ipam from iptables eip cr %s: %v", eip.Name, err)
 		}
 	}
+	if c.config.EnableEipSnat {
+		oeips, err := c.ovnEipsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list ovn eips: %v", err)
+			return err
+		}
+		for _, oeip := range oeips {
+			if _, _, _, err = c.ipam.GetStaticAddress(oeip.Name, oeip.Name, oeip.Spec.V4Ip,
+				oeip.Spec.MacAddress, oeip.Spec.ExternalSubnet, false); err != nil {
 
+				klog.Errorf("failed to init ipam from ovn eip cr %s: %v", oeip.Name, err)
+			}
+		}
+	}
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list nodes: %v", err)

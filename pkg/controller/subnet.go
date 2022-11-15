@@ -1320,7 +1320,7 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 		return err
 	}
 
-	localnetPort := ovs.PodNameToLocalnetName(subnet.Name)
+	localnetPort := ovs.GetLocalnetName(subnet.Name)
 	if err := c.ovnLegacyClient.CreateLocalnetPort(subnet.Name, localnetPort, vlan.Spec.Provider, vlan.Spec.ID); err != nil {
 		klog.Errorf("failed to create localnet port for subnet %s: %v", subnet.Name, err)
 		return err
