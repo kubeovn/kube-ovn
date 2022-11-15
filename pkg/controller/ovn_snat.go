@@ -386,6 +386,7 @@ func (c *Controller) handleAddOvnSnatRuleFinalizer(cachedSnat *kubeovnv1.OvnSnat
 	controllerutil.AddFinalizer(newSnat, util.ControllerName)
 	patch, err := util.GenerateMergePatchPayload(cachedSnat, newSnat)
 	if err != nil {
+		klog.Errorf("failed to generate patch for snat %s, %v", cachedSnat.Name, err)
 		return err
 	}
 	if _, err := c.config.KubeOvnClient.KubeovnV1().OvnSnatRules().Patch(context.Background(), cachedSnat.Name,
@@ -407,6 +408,7 @@ func (c *Controller) handleDelOvnSnatRuleFinalizer(cachedSnat *kubeovnv1.OvnSnat
 	controllerutil.RemoveFinalizer(newSnat, util.ControllerName)
 	patch, err := util.GenerateMergePatchPayload(cachedSnat, newSnat)
 	if err != nil {
+		klog.Errorf("failed to generate patch for snat %s, %v", cachedSnat.Name, err)
 		return err
 	}
 	if _, err := c.config.KubeOvnClient.KubeovnV1().OvnSnatRules().Patch(context.Background(), cachedSnat.Name,
@@ -443,6 +445,7 @@ func (c *Controller) patchOvnSnatStatus(key, vpc, v4Eip, v4IpCidr string, ready 
 	if changed {
 		bytes, err := snat.Status.Bytes()
 		if err != nil {
+			klog.Errorf("failed to marshal snat status, %v", err)
 			return err
 		}
 		if _, err = c.config.KubeOvnClient.KubeovnV1().OvnSnatRules().Patch(context.Background(), snat.Name,

@@ -112,6 +112,7 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 	}
 
 	if err := c.handleDelVpcExternal(vpc.Name); err != nil {
+		klog.Errorf("failed to delete external connection for vpc %s, error %v", vpc.Name, err)
 		return err
 	}
 	return nil
@@ -463,6 +464,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	if cachedVpc.Spec.EnableExternal && !cachedVpc.Status.EnableExternal {
 		// connecte vpc to external
 		if err := c.handleAddVpcExternal(key); err != nil {
+			klog.Errorf("failed to add external connection for vpc %s, error %v", key, err)
 			return err
 		}
 	}
@@ -470,6 +472,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	if !cachedVpc.Spec.EnableExternal && cachedVpc.Status.EnableExternal {
 		// disconnect vpc to external
 		if err := c.handleDelVpcExternal(key); err != nil {
+			klog.Errorf("failed to delete external connection for vpc %s, error %v", key, err)
 			return err
 		}
 	}
@@ -757,6 +760,7 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 	klog.V(3).Infof("create vpc lrp eip %s", lrpEipName)
 	if needCreateEip {
 		if v4ip, v6ip, mac, err = c.acquireIpAddress(c.config.ExternalGatewaySwitch, lrpEipName, lrpEipName); err != nil {
+			klog.Errorf("failed to acquire ip address for lrp eip %s, %v", lrpEipName, err)
 			return err
 		}
 		if err := c.createOrUpdateCrdOvnEip(lrpEipName, c.config.ExternalGatewaySwitch, v4ip, v6ip, mac, util.LrpUsingEip); err != nil {
@@ -786,6 +790,7 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 	}
 	v4ipCidr := util.GetIpAddrWithMask(v4ip, cachedSubnet.Spec.CIDRBlock)
 	if err := c.ovnLegacyClient.ConnectRouterToExternal(c.config.ExternalGatewaySwitch, key, v4ipCidr, mac, chassises); err != nil {
+		klog.Errorf("failed to connect router '%s' to external, %v", key, err)
 		return err
 	}
 	cachedVpc, err := c.vpcsLister.Get(key)
@@ -824,6 +829,7 @@ func (c *Controller) handleDelVpcExternal(key string) error {
 	}
 	klog.V(3).Infof("delete vpc lrp %s", lrpEipName)
 	if err := c.ovnLegacyClient.DisconnectRouterToExternal(c.config.ExternalGatewaySwitch, key); err != nil {
+		klog.Errorf("failed to disconnect router '%s' to external, %v", key, err)
 		return err
 	}
 	if err = c.handleDelOvnEipFinalizer(cachedEip); err != nil {

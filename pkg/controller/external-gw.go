@@ -127,6 +127,7 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 func (c *Controller) createDefaultVpcLrpEip(config map[string]string) (string, string, error) {
 	cachedSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
 	if err != nil {
+		klog.Errorf("failed to get subnet %s, %v", c.config.ExternalGatewaySwitch, err)
 		return "", "", err
 	}
 	needCreateEip := false

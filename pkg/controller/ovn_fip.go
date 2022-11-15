@@ -194,6 +194,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 	klog.V(3).Infof("handle add fip %s", key)
 	vpcPodIp, err := c.ipsLister.Get(cachedFip.Spec.IpName)
 	if err != nil {
+		klog.Errorf("failed to get ip '%s', %v", cachedFip.Spec.IpName, err)
 		return err
 	}
 	if vpcPodIp.Spec.V4IPAddress == "" || vpcPodIp.Spec.MacAddress == "" {
@@ -271,6 +272,7 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 	klog.V(3).Infof("handle add fip %s", key)
 	vpcPodIp, err := c.ipsLister.Get(cachedFip.Spec.IpName)
 	if err != nil {
+		klog.Errorf("failed to get ip '%s', %v", cachedFip.Spec.IpName, err)
 		return err
 	}
 	if vpcPodIp.Spec.V4IPAddress == "" || vpcPodIp.Spec.MacAddress == "" {

@@ -241,6 +241,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		v4ip, v6ip, mac, err = c.acquireIpAddress(subnet.Name, cachedEip.Name, portName)
 	}
 	if err != nil {
+		klog.Errorf("failed to acquire ip address, %v", err)
 		return err
 	}
 	if err = c.createOrUpdateCrdOvnEip(key, subnet.Name, v4ip, v6ip, mac, cachedEip.Spec.Type); err != nil {
@@ -292,6 +293,7 @@ func (c *Controller) handleResetOvnEip(key string) error {
 	if cachedEip.Status.MacAddress != "" && cachedEip.Status.MacAddress != cachedEip.Spec.MacAddress {
 		// eip not support change ip, reset eip spec from its status
 		if err = c.resetOvnEipSpec(key); err != nil {
+			klog.Errorf("failed to reset ovn eip '%s', %v", cachedEip.Name, err)
 			return err
 		}
 		return nil
@@ -397,6 +399,7 @@ func (c *Controller) patchOvnEipStatus(key string) error {
 	if changed {
 		bytes, err := ovnEip.Status.Bytes()
 		if err != nil {
+			klog.Errorf("failed to marshal ovn eip status '%s', %v", key, err)
 			return err
 		}
 		if _, err = c.config.KubeOvnClient.KubeovnV1().OvnEips().Patch(context.Background(), ovnEip.Name,
@@ -480,6 +483,7 @@ func (c *Controller) handleAddOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip) error
 	controllerutil.AddFinalizer(newEip, util.ControllerName)
 	patch, err := util.GenerateMergePatchPayload(cachedEip, newEip)
 	if err != nil {
+		klog.Errorf("failed to generate patch payload for ovn eip '%s', %v", cachedEip.Name, err)
 		return err
 	}
 	if _, err := c.config.KubeOvnClient.KubeovnV1().OvnEips().Patch(context.Background(), cachedEip.Name,
@@ -501,6 +505,7 @@ func (c *Controller) handleDelOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip) error
 	controllerutil.RemoveFinalizer(newEip, util.ControllerName)
 	patch, err := util.GenerateMergePatchPayload(cachedEip, newEip)
 	if err != nil {
+		klog.Errorf("failed to generate patch payload for ovn eip '%s', %v", cachedEip.Name, err)
 		return err
 	}
 	if _, err := c.config.KubeOvnClient.KubeovnV1().OvnEips().Patch(context.Background(), cachedEip.Name,
