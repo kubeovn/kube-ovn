@@ -21,7 +21,7 @@ concurrency:
 
 env:
   GO_VERSION: '1.19'
-  GOSEC_VERSION: '2.13.1'
+  GOSEC_VERSION: '2.14.0'
   KIND_VERSION: v0.17.0
   HELM_VERSION: v3.10.1
 
@@ -578,7 +578,7 @@ jobs:
 
   ha-e2e:
     needs: build-kube-ovn
-    name: 3-master-e2e
+    name: ha-e2e
     runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
@@ -1072,6 +1072,72 @@ jobs:
               docker run --rm --network kind kubeovn/kube-ovn:$(cat VERSION) ping6 -c1 -w1 $ip
             done
           '
+        
+  dual-stack-underlay-hairpin-e2e-single-nic:
+    needs: build-kube-ovn
+    name: dual-stack-underlay-hairpin-e2e-single-nic
+    runs-on: ubuntu-20.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Kind
+        run: |
+          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
+          chmod +x ./kind
+          sudo mv kind /usr/local/bin
+
+      - name: Download image
+        uses: actions/download-artifact@v3
+        with:
+          name: kube-ovn
+
+      - name: Load Image
+        run: |
+          docker load --input kube-ovn.tar
+
+      - uses: actions/setup-go@v3
+        with:
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
+        id: go
+
+      - name: Export Go full version
+        run: |
+          echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+
+      - name: Go Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.GO_FULL_VER }}-x86-
+
+      - name: Init Kind
+        run: |
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH make kind-init-dual
+
+      - name: Install Kube-OVN
+        uses: nick-invision/retry@v2
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          shell: bash
+          command: |
+            sudo make kind-install-underlay-hairpin-dual
+
+      - name: Run E2E
+        run: |
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+          sudo kubectl cluster-info
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          make e2e-underlay-single-nic
 
   dual-stack-underlay-logical-gw-e2e:
     needs: build-kube-ovn
@@ -1457,9 +1523,9 @@ jobs:
           sudo chmod -R 777 /home/runner/.kube/
           make e2e-multus
 
-  ovnic-e2e:
+  ovn-ic-e2e:
     needs: build-kube-ovn
-    name: 1-master-ovnic-e2e
+    name: 1-master-ovn-ic-e2e
     runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
@@ -1504,7 +1570,7 @@ jobs:
         run: |
           sudo pip3 install j2cli
           sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH make kind-init-cluster
+          sudo PATH=~/.local/bin:$PATH make kind-init-ovn-ic
 
       - name: Install Kube-OVN
         uses: nick-invision/retry@v2
@@ -1513,8 +1579,7 @@ jobs:
           max_attempts: 3
           shell: bash
           command: |
-            sudo PATH=~/.local/bin:$PATH make kind-install-cluster
-            sudo PATH=~/.local/bin:$PATH make kind-install-ic
+            sudo PATH=~/.local/bin:$PATH make kind-install-ovn-ic
 
       - name: Run E2E
         run: |
@@ -1597,7 +1662,7 @@ jobs:
           sudo chmod -R 777 /home/runner/.kube/
           docker exec kube-ovn-control-plane bash -c "ls -al /etc/cni/net.d/"
           kubectl get pods -A
-          make e2e-ovn-ebpf
+          make e2e-cilium
           make e2e
 
       - name: Cleanup
@@ -1660,11 +1725,12 @@ jobs:
       - dual-stack-e2e
       - dual-stack-underlay-logical-gw-e2e
       - dual-stack-underlay-e2e-single-nic
+      - dual-stack-underlay-hairpin-e2e-single-nic
       - no-lb-e2e
       - no-lb-iptables-e2e
       - no-np-e2e
       - multus-e2e
-      - ovnic-e2e
+      - ovn-ic-e2e
       - cilium-e2e
       - installation-compatibility-e2e
     name: push

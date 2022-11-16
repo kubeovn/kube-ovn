@@ -1,4 +1,4 @@
-package e2e_ovnic_test
+package e2e_ovn_ic_test
 
 import (
 	"context"
@@ -22,7 +22,7 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
 
-func TestE2eOvnic(t *testing.T) {
+func TestE2eOvnIc(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Kube-OVN E2E OVN-IC Suite")
 }

@@ -2,7 +2,6 @@ package node
 
 import (
 	"context"
-	_ "embed"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -23,8 +22,7 @@ const vlanNic = "eth0"
 
 var vlanBr = util.ExternalBridgeName("provider")
 
-//go:embed network.json
-var networkJSON []byte
+var network *nodeNetwork
 
 type nodeNetwork struct {
 	Gateway             string
@@ -36,16 +34,18 @@ type nodeNetwork struct {
 	MacAddress          string
 }
 
+func init() {
+	data, err := os.ReadFile("node/network.json")
+	if err != nil {
+		panic(err)
+	}
+	if err = json.Unmarshal(data, &network); err != nil {
+		panic(err)
+	}
+}
+
 var _ = Describe("[Underlay Node]", func() {
 	f := framework.NewFramework("node", fmt.Sprintf("%s/.kube/config", os.Getenv("HOME")))
-
-	var network *nodeNetwork
-	BeforeEach(func() {
-		if len(networkJSON) != 0 {
-			network = new(nodeNetwork)
-			Expect(json.Unmarshal(networkJSON, network)).NotTo(HaveOccurred())
-		}
-	})
 
 	It("Single NIC", func() {
 		nodes, err := f.KubeClientSet.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})

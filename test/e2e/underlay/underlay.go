@@ -24,7 +24,6 @@ import (
 
 const (
 	UnderlayInterface = "eth1"
-	VlanInterface     = "vlan1"
 
 	ProviderNetwork = "net1"
 	Vlan            = "vlan-e2e"
@@ -74,11 +73,6 @@ func SetNodeMTU(node string, mtu int) {
 }
 
 var _ = Describe("[Underlay]", func() {
-	providerInterface := UnderlayInterface
-	if VlanID != "" {
-		providerInterface = VlanInterface
-	}
-
 	f := framework.NewFramework("underlay", fmt.Sprintf("%s/.kube/config", os.Getenv("HOME")))
 
 	Context("[Provider Network]", func() {
@@ -89,7 +83,7 @@ var _ = Describe("[Underlay]", func() {
 
 			for _, node := range nodes.Items {
 				Expect(node.Labels[fmt.Sprintf(util.ProviderNetworkExcludeTemplate, ProviderNetwork)]).To(BeEmpty())
-				Expect(node.Labels[fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, ProviderNetwork)]).To(Equal(providerInterface))
+				Expect(node.Labels[fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, ProviderNetwork)]).To(Equal(UnderlayInterface))
 				Expect(node.Labels[fmt.Sprintf(util.ProviderNetworkReadyTemplate, ProviderNetwork)]).To(Equal("true"))
 				Expect(node.Labels[fmt.Sprintf(util.ProviderNetworkMtuTemplate, ProviderNetwork)]).NotTo(BeEmpty())
 			}
@@ -108,25 +102,29 @@ var _ = Describe("[Underlay]", func() {
 				}
 				Expect(ovsPod).NotTo(BeNil())
 
-				nic, br := providerInterface, util.ExternalBridgeName(ProviderNetwork)
+				nic, br := UnderlayInterface, util.ExternalBridgeName(ProviderNetwork)
 				if ExchangeLinkName {
 					nic, br = br, nic
 				}
 				stdout, _, err := f.ExecToPodThroughAPI("ip addr show "+nic, "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
 				Expect(err).NotTo(HaveOccurred())
 
-				addrNotFound := make([]bool, len(nodeAddrs[node.Name]))
+				addrFound := make([]bool, len(nodeAddrs[node.Name]))
 				for _, s := range strings.Split(stdout, "\n") {
 					s = strings.TrimSpace(s)
 					for i, addr := range nodeAddrs[node.Name] {
-						if !strings.HasPrefix(s, fmt.Sprintf("inet %s ", addr)) && !strings.HasPrefix(s, fmt.Sprintf("inet6 %s ", addr)) {
-							addrNotFound[i] = true
+						if addrFound[i] {
+							continue
+						}
+						if strings.HasPrefix(s, fmt.Sprintf("inet %s ", addr)) || strings.HasPrefix(s, fmt.Sprintf("inet6 %s ", addr)) {
+							addrFound[i] = true
+							GinkgoWriter.Printf("found node %s address %s: '%s'\n", node.Name, addr, s)
 							break
 						}
 					}
 				}
-				for _, found := range addrNotFound {
-					Expect(found).To(BeTrue())
+				for _, found := range addrFound {
+					Expect(found).NotTo(BeTrue())
 				}
 
 				stdout, _, err = f.ExecToPodThroughAPI("ovs-vsctl list-ports "+br, "openvswitch", ovsPod.Name, ovsPod.Namespace, nil)
@@ -145,7 +143,7 @@ var _ = Describe("[Underlay]", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				var isUp bool
-				addrFound := make([]bool, len(nodeAddrs[node.Name]))
+				addrFound = make([]bool, len(nodeAddrs[node.Name]))
 				for i, s := range strings.Split(stdout, "\n") {
 					if i == 0 {
 						idx1, idx2 := strings.IndexRune(s, '<'), strings.IndexRune(s, '>')
@@ -169,6 +167,9 @@ var _ = Describe("[Underlay]", func() {
 
 						s = strings.TrimSpace(s)
 						for i, addr := range nodeAddrs[node.Name] {
+							if addrFound[i] {
+								continue
+							}
 							if strings.HasPrefix(s, fmt.Sprintf("inet %s ", addr)) || strings.HasPrefix(s, fmt.Sprintf("inet6 %s ", addr)) {
 								addrFound[i] = true
 								break
