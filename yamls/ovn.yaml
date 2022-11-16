@@ -39,6 +39,8 @@ rules:
       - iptables-snat-rules/status
       - switch-lb-rules
       - switch-lb-rules/status
+      - vpc-dnses
+      - vpc-dnses/status
     verbs:
       - "*"
   - apiGroups:
@@ -332,7 +334,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: ovs-ovn
-  namespace:  kube-system
+  namespace: kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the openvswitch daemon.

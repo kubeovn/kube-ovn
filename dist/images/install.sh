@@ -1873,16 +1873,6 @@ rules:
     verbs:
       - "*"
   - apiGroups:
-      - "k8s.cni.cncf.io"
-    resources:
-      - network-attachment-definitions
-    verbs:
-      - create
-      - delete
-      - get
-      - list
-      - update
-  - apiGroups:
       - "kubevirt.io"
     resources:
       - virtualmachines
