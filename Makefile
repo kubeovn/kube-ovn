@@ -202,6 +202,18 @@ kind-install: kind-load-image kind-untaint-control-plane
 	ENABLE_SSL=true dist/images/install.sh
 	kubectl describe no
 
+.PHONY: kind-helm-install
+kind-helm-install: kind-untaint-control-plane
+	kubectl label no -lbeta.kubernetes.io/os=linux kubernetes.io/os=linux --overwrite
+	kubectl label no -lnode-role.kubernetes.io/control-plane  kube-ovn/role=master --overwrite
+	kubectl label no -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel  --overwrite
+	$(eval MASTERNODES = $(shell docker exec -i kube-ovn-control-plane kubectl get nodes -l node-role.kubernetes.io/control-plane=""  -o jsonpath='{.items[*].status.addresses[].address}'))
+	$(eval EMPTY := )
+	$(eval SPACE := $(EMPTY))
+	$(eval MASTERS = $(subst SPACE,,,$(strip $$(MASTERNODES))))
+	helm install kubeovn ./kubeovn-helm --set MASTER_NODES=$(MASTERNODES)
+	kubectl -n kube-system get pods -o wide
+
 .PHONY: kind-install-cluster
 kind-install-cluster: kind-load-image
 	kind load docker-image --name kube-ovn1 $(REGISTRY)/kube-ovn:$(RELEASE_TAG)

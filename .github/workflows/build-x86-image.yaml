@@ -187,6 +187,88 @@ jobs:
           sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
           sh dist/images/cleanup.sh
 
+  single-helm-e2e:
+    needs: build-kube-ovn
+    name: 1-master-helm-e2e
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Kind
+        run: |
+          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
+          chmod +x ./kind
+          sudo mv kind /usr/local/bin
+
+      - name: Download image
+        uses: actions/download-artifact@v3
+        with:
+          name: kube-ovn
+
+      - name: Load Image
+        run: |
+          docker load --input kube-ovn.tar
+
+      - uses: actions/setup-go@v3
+        with:
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
+        id: go
+
+      - name: Export Go full version
+        run: |
+          echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+
+      - name: Go Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.GO_FULL_VER }}-x86-
+
+      - name: Init Kind
+        run: |
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH make kind-init
+
+      - name: Install Kube-OVN
+        run: |
+          docker load --input kube-ovn.tar
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          sudo make kind-helm-install
+          kubectl rollout status deployment/ovn-central -n kube-system --timeout 300s
+          kubectl rollout status deployment/kube-ovn-controller -n kube-system --timeout 300s
+          kubectl rollout status daemonset/kube-ovn-cni -n kube-system --timeout 300s
+
+      - name: Copy Kubelet-ko
+        run: |
+          sh -c '
+            set -e
+            kubectl -n kube-system get pods --no-headers | grep kube-ovn-controller | awk "{print \$1}" | while read pod; do
+              sudo kubectl -n kube-system cp $pod:/kube-ovn/kubectl-ko  /usr/bin/kubectl-ko
+            done
+            sudo chmod +x /usr/bin/kubectl-ko
+          '
+
+      - name: Run E2E
+        run: |
+          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+          sudo kubectl cluster-info
+          sudo cp -r /root/.kube/ /home/runner/.kube/
+          sudo chmod -R 777 /home/runner/.kube/
+          make e2e
+
+      - name: Cleanup
+        run: |
+          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
+          sh dist/images/cleanup.sh
+
   single-iptables-e2e:
     needs: build-kube-ovn
     name: 1-master-iptables-e2e

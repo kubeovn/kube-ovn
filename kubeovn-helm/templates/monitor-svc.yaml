@@ -13,6 +13,6 @@ spec:
   selector:
     app: kube-ovn-monitor
   sessionAffinity: None
-  {{- if eq .Values.networking.net_stack "dual_stack" }}
+  {{- if eq .Values.networking.NET_STACK "dual_stack" }}
   ipFamilyPolicy: PreferDualStack
   {{- end }}

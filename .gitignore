@@ -8,7 +8,6 @@ dist/windows/kube-ovn-daemon.exe
 test/e2e/ovnnb_db.*
 test/e2e/ovnsb_db.*
 kube-ovn.yaml
-kube-ovn-crd.yaml
 ovn.yaml
 ovn-ic-0.yaml
 ovn-ic-1.yaml

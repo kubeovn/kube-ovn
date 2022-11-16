@@ -5,7 +5,7 @@ metadata:
   namespace: kube-system
   annotations:
     kubernetes.io/description: |
-      This daemon set launches the pinger daemon.
+      This daemon set launches the openvswitch daemon.
 spec:
   selector:
     matchLabels:
@@ -19,40 +19,42 @@ spec:
         component: network
         type: infra
     spec:
+      priorityClassName: system-node-critical
       serviceAccountName: ovn
       hostPID: true
       containers:
         - name: pinger
-          image: "{{- .Values.image.repository -}}/kube-ovn:{{- .Values.image.version }}"
+          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
           command:
           - /kube-ovn/kube-ovn-pinger
           args:
           - --external-address=
-          {{- if eq .Values.networking.net_stack "dual_stack" -}}
+          {{- if eq .Values.networking.NET_STACK "dual_stack" -}}
           {{ .Values.dual_stack.PINGER_EXTERNAL_ADDRESS }} 
-          {{- else if eq .Values.networking.net_stack "ipv4" -}}
+          {{- else if eq .Values.networking.NET_STACK "ipv4" -}}
           {{ .Values.ipv4.PINGER_EXTERNAL_ADDRESS }}
-          {{- else if eq .Values.networking.net_stack "ipv6" -}}
+          {{- else if eq .Values.networking.NET_STACK "ipv6" -}}
           {{ .Values.ipv6.PINGER_EXTERNAL_ADDRESS }}
           {{- end }}
           - --external-dns=
-          {{- if eq .Values.networking.net_stack "dual_stack" -}}
+          {{- if eq .Values.networking.NET_STACK "dual_stack" -}}
           {{ .Values.dual_stack.PINGER_EXTERNAL_DOMAIN }}
-          {{- else if eq .Values.networking.net_stack "ipv4" -}}
+          {{- else if eq .Values.networking.NET_STACK "ipv4" -}}
           {{ .Values.ipv4.PINGER_EXTERNAL_DOMAIN }}
-          {{- else if eq .Values.networking.net_stack "ipv6" -}}
+          {{- else if eq .Values.networking.NET_STACK "ipv6" -}}
           {{ .Values.ipv6.PINGER_EXTERNAL_DOMAIN }}
           {{- end }}
           - --logtostderr=false
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-pinger.log
+          - --log_file_max_size=0
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             runAsUser: 0
             privileged: false
           env:
             - name: ENABLE_SSL
-              value: "{{ .Values.networking.enable_ssl }}"
+              value: "{{ .Values.networking.ENABLE_SSL }}"
             - name: POD_IP
               valueFrom:
                 fieldRef:
@@ -135,4 +137,3 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
-

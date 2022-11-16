@@ -1,30 +1,32 @@
 kind: Deployment
 apiVersion: apps/v1
 metadata:
-  name: kube-ovn-monitor
+  name: ovn-central
   namespace: kube-system
   annotations:
     kubernetes.io/description: |
-      Metrics for OVN components: northd, nb and sb.
+      OVN components: northd, nb and sb.
 spec:
-  replicas: 1
+  replicas: {{ .Values.replicaCount }}
   strategy:
     rollingUpdate:
-      maxSurge: 1
+      maxSurge: 0
       maxUnavailable: 1
     type: RollingUpdate
   selector:
     matchLabels:
-      app: kube-ovn-monitor
+      app: ovn-central
   template:
     metadata:
       labels:
-        app: kube-ovn-monitor
+        app: ovn-central
         component: network
         type: infra
     spec:
       tolerations:
         - effect: NoSchedule
+          operator: Exists
+        - effect: NoExecute
           operator: Exists
         - key: CriticalAddonsOnly
           operator: Exists
@@ -33,38 +35,51 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
                 matchLabels:
-                  app: kube-ovn-monitor
+                  app: ovn-central
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn
       hostNetwork: true
       containers:
-        - name: kube-ovn-monitor
-          image: "{{- .Values.image.repository -}}/kube-ovn:{{- .Values.image.version }}"
+        - name: ovn-central
+          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["/kube-ovn/start-ovn-monitor.sh"]
+          command: ["/kube-ovn/start-db.sh"]
           securityContext:
-            runAsUser: 0
-            privileged: false
+            capabilities:
+              add: ["SYS_NICE"]
           env:
             - name: ENABLE_SSL
-              value: "{{ .Values.networking.enable_ssl }}"
-            - name: KUBE_NODE_NAME
+              value: "{{ .Values.networking.ENABLE_SSL }}"
+            - name: NODE_IPS
+              value: "{{ .Values.MASTER_NODES }}"
+            - name: POD_IP
               valueFrom:
                 fieldRef:
-                  fieldPath: spec.nodeName
+                  fieldPath: status.podIP
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           resources:
             requests:
-              cpu: 200m
+              cpu: 300m
               memory: 200Mi
             limits:
-              cpu: 200m
-              memory: 200Mi
+              cpu: 3
+              memory: 4Gi
           volumeMounts:
             - mountPath: /var/run/openvswitch
               name: host-run-ovs
             - mountPath: /var/run/ovn
               name: host-run-ovn
+            - mountPath: /sys
+              name: host-sys
+              readOnly: true
             - mountPath: /etc/openvswitch
               name: host-config-openvswitch
             - mountPath: /etc/ovn
@@ -80,17 +95,17 @@ spec:
           readinessProbe:
             exec:
               command:
-              - cat
-              - /var/run/ovn/ovn-controller.pid
-            periodSeconds: 10
+                - bash
+                - /kube-ovn/ovn-healthcheck.sh
+            periodSeconds: 15
             timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
-              - cat
-              - /var/run/ovn/ovn-controller.pid
+                - bash
+                - /kube-ovn/ovn-healthcheck.sh
             initialDelaySeconds: 30
-            periodSeconds: 10
+            periodSeconds: 15
             failureThreshold: 5
             timeoutSeconds: 45
       nodeSelector:
@@ -103,6 +118,9 @@ spec:
         - name: host-run-ovn
           hostPath:
             path: /run/ovn
+        - name: host-sys
+          hostPath:
+            path: /sys
         - name: host-config-openvswitch
           hostPath:
             path: /etc/origin/openvswitch
@@ -122,3 +140,4 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
+
