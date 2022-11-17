@@ -52,6 +52,8 @@ RUN cd /usr/src/ && git clone -b branch-22.03 --depth=1 https://github.com/ovn-o
     curl -s https://github.com/kubeovn/ovn/commit/58a40438926745dfdd498c09ea71e1746b803a42.patch | git apply && \
     # modify src route priority
     curl -s https://github.com/kubeovn/ovn/commit/e0e20deb188434f73143b1906e481fdac913429d.patch | git apply && \
+    # fix reaching resubmit limit in underlay
+    curl -s https://github.com/kubeovn/ovn/commit/f531458f2076fc89419a2ce58974230b7be7b76c.patch | git apply && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \
