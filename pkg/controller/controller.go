@@ -392,7 +392,7 @@ func NewController(config *Configuration) *Controller {
 	}
 
 	var err error
-	if controller.ovnClient, err = ovs.NewOvnClient(config.OvnNbAddr, config.OvnTimeout); err != nil {
+	if controller.ovnClient, err = ovs.NewOvnClient(config.OvnNbAddr, config.OvnTimeout, config.Verbosity); err != nil {
 		klog.Fatal(err)
 	}
 
