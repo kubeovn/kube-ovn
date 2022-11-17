@@ -40,6 +40,8 @@ RUN cd /usr/src/ && git clone -b branch-21.03 --depth=1 https://github.com/ovn-o
     curl -s https://github.com/kubeovn/ovn/commit/289c62e3fcd05901dac4b727aa59f6cba058905f.patch | git apply && \
     curl -s https://github.com/kubeovn/ovn/commit/e24734913d25c0bffdf1cfd79e14ef43d01e1019.patch | git apply && \
     curl -s https://github.com/kubeovn/ovn/commit/71f831b9cc5a6dc923af4ca90286857e2cf8b1d3.patch | git apply && \
+    # fix reaching resubmit limit in underlay
+    curl -s https://github.com/kubeovn/ovn/commit/c7245b81061565925b2e28a2719a5f29e3a9fa1a.patch | git apply && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \
