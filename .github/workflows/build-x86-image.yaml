@@ -28,7 +28,7 @@ env:
 jobs:
   build-kube-ovn:
     name: Build kube-ovn
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
       - uses: docker/setup-buildx-action@v2
@@ -76,7 +76,7 @@ jobs:
 
   build-vpc-nat-gateway:
     name: Build vpc-nat-gateway
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
       - uses: docker/setup-buildx-action@v2
@@ -94,7 +94,7 @@ jobs:
 
   build-centos-compile:
     name: Build centos-compile
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
       - uses: docker/setup-buildx-action@v2
@@ -119,7 +119,7 @@ jobs:
   single-e2e:
     needs: build-kube-ovn
     name: 1-master-e2e
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
@@ -190,7 +190,7 @@ jobs:
   single-helm-e2e:
     needs: build-kube-ovn
     name: 1-master-helm-e2e
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
@@ -272,7 +272,7 @@ jobs:
   single-iptables-e2e:
     needs: build-kube-ovn
     name: 1-master-iptables-e2e
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
@@ -343,7 +343,7 @@ jobs:
   single-vlan-e2e:
     needs: build-kube-ovn
     name: 1-master-vlan-e2e
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
@@ -414,7 +414,7 @@ jobs:
   single-underlay-e2e-single-nic:
     needs: build-kube-ovn
     name: 1-master-underlay-e2e-single-nic
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
@@ -508,7 +508,7 @@ jobs:
   single-node-e2e:
     needs: build-kube-ovn
     name: 1-node-e2e
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
@@ -579,7 +579,7 @@ jobs:
   ha-e2e:
     needs: build-kube-ovn
     name: ha-e2e
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
@@ -661,7 +661,7 @@ jobs:
   ipv6-e2e:
     needs: build-kube-ovn
     name: ipv6-e2e
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
@@ -739,7 +739,7 @@ jobs:
   ipv6-vlan-e2e:
     needs: build-kube-ovn
     name: ipv6-vlan-e2e
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
@@ -810,7 +810,7 @@ jobs:
   ipv6-underlay-e2e-single-nic:
     needs: build-kube-ovn
     name: ipv6-underlay-e2e-single-nic
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
@@ -904,7 +904,7 @@ jobs:
   dual-stack-e2e:
     needs: build-kube-ovn
     name: dual-stack-e2e
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
@@ -982,7 +982,7 @@ jobs:
   dual-stack-underlay-e2e-single-nic:
     needs: build-kube-ovn
     name: dual-stack-underlay-e2e-single-nic
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
@@ -1076,7 +1076,7 @@ jobs:
   dual-stack-underlay-hairpin-e2e-single-nic:
     needs: build-kube-ovn
     name: dual-stack-underlay-hairpin-e2e-single-nic
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
@@ -1142,7 +1142,7 @@ jobs:
   dual-stack-underlay-logical-gw-e2e:
     needs: build-kube-ovn
     name: dual-stack-underlay-logical-gateway-e2e
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
@@ -1236,7 +1236,7 @@ jobs:
   no-lb-e2e:
     needs: build-kube-ovn
     name: disable-loadbalancer-e2e
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
@@ -1307,7 +1307,7 @@ jobs:
   no-lb-iptables-e2e:
     needs: build-kube-ovn
     name: disable-loadbalancer-iptables-e2e
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
@@ -1378,7 +1378,7 @@ jobs:
   no-np-e2e:
     needs: build-kube-ovn
     name: disable-network-policy-e2e
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
@@ -1451,7 +1451,7 @@ jobs:
       - build-kube-ovn
       - build-vpc-nat-gateway
     name: multus-e2e
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
@@ -1526,7 +1526,7 @@ jobs:
   ovn-ic-e2e:
     needs: build-kube-ovn
     name: 1-master-ovn-ic-e2e
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
@@ -1597,7 +1597,7 @@ jobs:
   cilium-e2e:
     needs: build-kube-ovn
     name: 1-master-cilium-e2e
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
@@ -1672,7 +1672,7 @@ jobs:
   installation-compatibility-e2e:
     needs: build-kube-ovn
     name: installation-compatibility-e2e
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v3
@@ -1734,7 +1734,7 @@ jobs:
       - cilium-e2e
       - installation-compatibility-e2e
     name: push
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
 

@@ -4,7 +4,7 @@ on: workflow_dispatch
 jobs:
   build-amd64:
     name: Build AMD64
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
       - uses: docker/setup-buildx-action@v2
@@ -24,7 +24,7 @@ jobs:
     needs:
       - build-amd64
     name: push
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
 
