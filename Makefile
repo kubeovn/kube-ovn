@@ -276,13 +276,6 @@ kind-untaint-control-plane:
 		done; \
 	done
 
-.PHONY: kind-install
-kind-install: kind-load-image
-	kubectl config use-context kind-kube-ovn
-	@$(MAKE) kind-untaint-control-plane
-	ENABLE_SSL=true dist/images/install.sh
-	kubectl describe no
-
 .PHONY: kind-helm-install
 kind-helm-install: kind-untaint-control-plane
 	kubectl label no -lbeta.kubernetes.io/os=linux kubernetes.io/os=linux --overwrite
@@ -295,8 +288,12 @@ kind-helm-install: kind-untaint-control-plane
 	helm install kubeovn ./kubeovn-helm --set MASTER_NODES=$(MASTERNODES)
 	kubectl -n kube-system get pods -o wide
 
-.PHONY: kind-install-overlay-ipv4
-kind-install-overlay-ipv4: kind-install
+.PHONY: kind-install
+kind-install: kind-load-image
+	kubectl config use-context kind-kube-ovn
+	@$(MAKE) kind-untaint-control-plane
+	ENABLE_SSL=true dist/images/install.sh
+	kubectl describe no
 
 .PHONY: kind-install-dev
 kind-install-dev:
@@ -304,6 +301,12 @@ kind-install-dev:
 	kubectl config use-context kind-kube-ovn
 	@$(MAKE) kind-untaint-control-plane
 	sed 's/VERSION=.*/VERSION=$(DEV_TAG)/' dist/images/install.sh | bash
+
+.PHONY: kind-install-ipv4
+kind-install-ipv4: kind-install-overlay-ipv4
+
+.PHONY: kind-install-overlay-ipv4
+kind-install-overlay-ipv4: kind-install
 
 .PHONY: kind-install-ovn-ic
 kind-install-ovn-ic: kind-load-image kind-install
