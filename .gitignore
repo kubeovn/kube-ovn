@@ -1,6 +1,7 @@
 .idea/*
 .vscode/*
 .DS_Store
+dist/images/test-server
 dist/images/kube-ovn-cmd
 dist/images/kube-ovn-webhook
 dist/windows/kube-ovn.exe
@@ -16,6 +17,5 @@ kube-ovn.tar
 vpc-nat-gateway.tar
 image-amd64.tar
 image-arm64.tar
-install-underlay.sh
 test/**/*.test
-install-multi.sh
+test/**/network.json

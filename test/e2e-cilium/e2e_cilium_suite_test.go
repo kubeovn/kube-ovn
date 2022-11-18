@@ -1,4 +1,4 @@
-package e2e_ebpf
+package e2e_cilium
 
 import (
 	"context"

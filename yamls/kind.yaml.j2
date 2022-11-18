@@ -1,6 +1,18 @@
-{% if k8s_version is not defined %}
-  {% set k8s_version = "v1.24.7" -%}
-{% endif %}
+{%- if k8s_version is not defined -%}
+  {%- set k8s_version = "v1.24.7" -%}
+{%- endif -%}
+{%- if kube_proxy_mode is not defined -%}
+  {%- set kube_proxy_mode = "ipvs" -%}
+{%- endif -%}
+{%- if ip_family is not defined -%}
+  {%- set ip_family = "ipv4" -%}
+{%- endif -%}
+{%- if ha is not defined -%}
+  {%- set ha = "false" -%}
+{%- endif -%}
+{%- if single is not defined -%}
+  {%- set single = "false" -%}
+{%- endif -%}
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 networking:
@@ -30,14 +42,15 @@ kubeadmConfigPatches:
 nodes:
   - role: control-plane
     image: kindest/node:{{ k8s_version }}
-  {%- if ha is equalto "true" %}
-  - role: control-plane
-    image: kindest/node:{{ k8s_version }}
-  - role: control-plane
-    image: kindest/node:{{ k8s_version }}
-  {%- elif single is equalto "true" %}
-
-  {%- else %}
+{%- if single is equalto "false" %}
   - role: worker
     image: kindest/node:{{ k8s_version }}
+  {%- if ha is equalto "true" %}
+    labels:
+      kube-ovn/role: master
+  - role: worker
+    image: kindest/node:{{ k8s_version }}
+    labels:
+      kube-ovn/role: master
   {%- endif %}
+{%- endif %}

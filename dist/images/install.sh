@@ -208,6 +208,7 @@ echo ""
 
 echo "[Step 2/6] Install OVN components"
 addresses=$(kubectl get no -lkube-ovn/role=master --no-headers -o wide | awk '{print $6}' | tr \\n ',')
+count=$(kubectl get no -lkube-ovn/role=master --no-headers | wc -l)
 echo "Install OVN DB in $addresses"
 
 cat <<EOF > kube-ovn-crd.yaml

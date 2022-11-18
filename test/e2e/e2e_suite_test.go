@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"context"
-	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -36,9 +35,6 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/underlay"
 )
 
-//go:embed network.json
-var networkJSON []byte
-
 var nodeNetworks map[string]nodeNetwork
 
 type nodeNetwork struct {
@@ -52,7 +48,11 @@ type nodeNetwork struct {
 }
 
 func init() {
-	if err := json.Unmarshal(networkJSON, &nodeNetworks); err != nil {
+	data, err := os.ReadFile("network.json")
+	if err != nil {
+		panic(err)
+	}
+	if err = json.Unmarshal(data, &nodeNetworks); err != nil {
 		panic(err)
 	}
 }
@@ -215,7 +215,6 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 		if vlanID, err = strconv.Atoi(underlay.VlanID); err != nil || vlanID <= 0 || vlanID > 4095 {
 			Fail(underlay.VlanID + " is not a valid VLAN ID")
 		}
-		providerInterface = underlay.VlanInterface
 	}
 
 	var underlayNodeIPs []string
