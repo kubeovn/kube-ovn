@@ -86,7 +86,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		return fmt.Errorf("add nic to ovs failed %v: %q", err, output)
 	}
 
-	// host and container nic must use same mac address, otherwise ovn will reject these packets by default
+	// lsp and container nic must use same mac address, otherwise ovn will reject these packets by default
 	macAddr, err := net.ParseMAC(mac)
 	if err != nil {
 		return fmt.Errorf("failed to parse mac %s %v", macAddr, err)
