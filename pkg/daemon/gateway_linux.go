@@ -222,8 +222,8 @@ func (c *Controller) addPolicyRouting(family int, gateway string, priority, tabl
 		Gw:       net.ParseIP(gateway),
 		Table:    int(tableID),
 	}
-	if err := netlink.RouteAdd(route); err != nil && !errors.Is(err, syscall.EEXIST) {
-		err = fmt.Errorf("failed to add route in table %d: %+v", tableID, err)
+	if err := netlink.RouteReplace(route); err != nil && !errors.Is(err, syscall.EEXIST) {
+		err = fmt.Errorf("failed to replace route in table %d: %+v", tableID, err)
 		klog.Error(err)
 		return err
 	}
