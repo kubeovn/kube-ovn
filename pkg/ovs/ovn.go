@@ -73,8 +73,8 @@ func NewLegacyClient(ovnNbAddr string, ovnNbTimeout int, ovnSbAddr, clusterRoute
 }
 
 // TODO: support sb/ic-nb client
-func NewOvnClient(ovnNbAddr string, ovnNbTimeout int) (*OvnClient, error) {
-	nbClient, err := ovsclient.NewNbClient(ovnNbAddr, ovnNbTimeout)
+func NewOvnClient(ovnNbAddr string, ovnNbTimeout, verbosity int) (*OvnClient, error) {
+	nbClient, err := ovsclient.NewNbClient(ovnNbAddr, ovnNbTimeout, verbosity)
 	if err != nil {
 		klog.Errorf("failed to create OVN NB client: %v", err)
 		return nil, err

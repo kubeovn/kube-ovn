@@ -27,7 +27,7 @@ func NamedUUID() string {
 }
 
 // NewNbClient creates a new OVN NB client
-func NewNbClient(addr string, timeout int) (client.Client, error) {
+func NewNbClient(addr string, timeout, verbosity int) (client.Client, error) {
 	dbModel, err := ovnnb.FullDatabaseModel()
 	if err != nil {
 		return nil, err
@@ -35,7 +35,11 @@ func NewNbClient(addr string, timeout int) (client.Client, error) {
 
 	logger := stdr.NewWithOptions(log.New(os.Stderr, "", log.LstdFlags), stdr.Options{LogCaller: stdr.All}).
 		WithName("libovsdb")
-	stdr.SetVerbosity(3)
+	if verbosity < 3 {
+		verbosity = 3
+	}
+	stdr.SetVerbosity(verbosity)
+
 	options := []client.Option{
 		client.WithReconnect(time.Duration(timeout)*time.Second, &backoff.ZeroBackOff{}),
 		client.WithLeaderOnly(true),
