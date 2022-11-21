@@ -53,7 +53,7 @@ func (c *Controller) leaderElection() {
 			klog.Info("waiting for becoming a leader")
 			flag = true
 		}
-		time.Sleep(5 * time.Second)
+		time.Sleep(1 * time.Second)
 	}
 }
 

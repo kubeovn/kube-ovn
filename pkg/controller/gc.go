@@ -3,16 +3,14 @@ package controller
 import (
 	"context"
 	"fmt"
-	"net"
-	"strings"
-	"time"
-
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
+	"net"
+	"strings"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -188,7 +186,6 @@ func (c *Controller) gcLogicalSwitchPort() error {
 	if err := c.markAndCleanLSP(); err != nil {
 		return err
 	}
-	time.Sleep(3 * time.Second)
 	return c.markAndCleanLSP()
 }
 
