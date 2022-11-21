@@ -1768,7 +1768,7 @@ func (c LegacyClient) CreateNpAddressSet(asName, npNamespace, npName, direction 
 	return err
 }
 
-func (c LegacyClient) CombineIngressACLCmd(pgName, asIngressName, asExceptName, svcAsName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, aclCmds []string, index int) []string {
+func (c LegacyClient) CombineIngressACLCmd(pgName, asIngressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, aclCmds []string, index int) []string {
 	var allowArgs, ovnArgs []string
 
 	ipSuffix := "ip4"
@@ -1808,7 +1808,7 @@ func (c LegacyClient) CreateACL(aclCmds []string) error {
 	return err
 }
 
-func (c LegacyClient) CombineEgressACLCmd(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, portSvcName string, logEnable bool, aclCmds []string, index int) []string {
+func (c LegacyClient) CombineEgressACLCmd(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, aclCmds []string, index int) []string {
 	var allowArgs, ovnArgs []string
 
 	ipSuffix := "ip4"
