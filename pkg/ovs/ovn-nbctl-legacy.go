@@ -819,7 +819,7 @@ func (c LegacyClient) CreatePeerRouterPort(localRouter, remoteRouter, localRoute
 	}
 
 	_, err = c.ovnNbCommand("set", "logical_router_port", localRouterPort,
-		fmt.Sprintf("networks=%s", strings.ReplaceAll(localRouterPortIP, ",", " ")))
+		fmt.Sprintf("networks=\"%s\"", strings.ReplaceAll(localRouterPortIP, ",", " ")))
 
 	if err != nil {
 		klog.Errorf("failed to set router port %s: %v", localRouterPort, err)
