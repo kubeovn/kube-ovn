@@ -462,7 +462,7 @@ kind-install-cilium: kind-load-image kind-untaint-control-plane
 	kubectl describe no
 
 .PHONY: kind-reload
-kind-reload: kind-load-ovs
+kind-reload: kind-reload-ovs
 	kubectl delete pod -n kube-system -l app=kube-ovn-controller
 	kubectl delete pod -n kube-system -l app=kube-ovn-cni
 	kubectl delete pod -n kube-system -l app=kube-ovn-pinger
