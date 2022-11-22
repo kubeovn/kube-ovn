@@ -3,6 +3,7 @@
 set -euo pipefail
 
 DPDK_TUNNEL_IFACE=${DPDK_TUNNEL_IFACE:-br-phy}
+TUNNEL_TYPE=${TUNNEL_TYPE:-geneve}
 
 OVS_DPDK_CONFIG_FILE=/opt/ovs-config/ovs-dpdk-config
 if ! test -f "$OVS_DPDK_CONFIG_FILE"; then
@@ -94,6 +95,6 @@ ovn-ctl restart_controller
 ovs-vsctl set open . external-ids:ovn-remote=tcp:"${OVN_SB_SERVICE_HOST}":"${OVN_SB_SERVICE_PORT}"
 ovs-vsctl set open . external-ids:ovn-remote-probe-interval=10000
 ovs-vsctl set open . external-ids:ovn-openflow-probe-interval=180
-ovs-vsctl set open . external-ids:ovn-encap-type=geneve
+ovs-vsctl set open . external-ids:ovn-encap-type="${TUNNEL_TYPE}"
 
 tail --follow=name --retry /var/log/openvswitch/ovs-vswitchd.log
