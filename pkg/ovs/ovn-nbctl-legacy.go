@@ -263,21 +263,15 @@ func (c LegacyClient) ListVirtualPort(ls string) ([]string, error) {
 	return result, nil
 }
 
-// EnablePortLayer2forward set logical switch port addresses as 'unknown'
-func (c LegacyClient) EnablePortLayer2forward(ls, port string) error {
-	if _, err := c.ovnNbCommand("lsp-set-addresses", port, "unknown"); err != nil {
-		klog.Errorf("enable port %s layer2 forward failed: %v", port, err)
-		return err
-	}
-	return nil
-}
-
 // CreatePort create logical switch port in ovn
-func (c LegacyClient) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurity bool, securityGroups string, vips string, liveMigration bool, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs) error {
+func (c LegacyClient) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurity bool, securityGroups string, vips string, liveMigration bool, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs, unknown bool) error {
 	var ovnCommand []string
 	var addresses []string
 	addresses = append(addresses, mac)
 	addresses = append(addresses, strings.Split(ip, ",")...)
+	if unknown {
+		addresses = append(addresses, "unknown")
+	}
 	ovnCommand = []string{MayExist, "lsp-add", ls, port}
 	isAddrConflict := false
 
