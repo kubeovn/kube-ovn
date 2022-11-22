@@ -126,7 +126,9 @@ func (c *Controller) gcLogicalSwitch() error {
 		return err
 	}
 	subnetNames := make([]string, 0, len(subnets))
+	subnetMap := make(map[string]*kubeovnv1.Subnet, len(subnets))
 	for _, s := range subnets {
+		subnetMap[s.Name] = s
 		subnetNames = append(subnetNames, s.Name)
 	}
 	lss, err := c.ovnLegacyClient.ListLogicalSwitch(c.config.EnableExternalVpc)
@@ -142,12 +144,14 @@ func (c *Controller) gcLogicalSwitch() error {
 			ls == c.config.ExternalGatewaySwitch {
 			continue
 		}
-		if !util.IsStringIn(ls, subnetNames) {
-			klog.Infof("gc subnet %s", ls)
-			if err := c.handleDeleteLogicalSwitch(ls); err != nil {
-				klog.Errorf("failed to gc subnet %s, %v", ls, err)
-				return err
-			}
+		if s := subnetMap[ls]; s != nil && isOvnSubnet(s) {
+			continue
+		}
+
+		klog.Infof("gc subnet %s", ls)
+		if err := c.handleDeleteLogicalSwitch(ls); err != nil {
+			klog.Errorf("failed to gc subnet %s, %v", ls, err)
+			return err
 		}
 	}
 
