@@ -3,6 +3,8 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -10,7 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
-	"strings"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -385,13 +386,17 @@ func (c *Controller) gcLoadBalancer() error {
 		for _, cachedVpc := range vpcs {
 			vpc := cachedVpc.DeepCopy()
 			for _, subnetName := range vpc.Status.Subnets {
-				_, err := c.subnetsLister.Get(subnetName)
+				subnet, err := c.subnetsLister.Get(subnetName)
 				if err != nil {
 					if k8serrors.IsNotFound(err) {
 						continue
 					}
 					return err
 				}
+				if !isOvnSubnet(subnet) {
+					continue
+				}
+
 				err = c.ovnLegacyClient.RemoveLbFromLogicalSwitch(
 					vpc.Status.TcpLoadBalancer,
 					vpc.Status.TcpSessionLoadBalancer,
