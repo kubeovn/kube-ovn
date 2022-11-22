@@ -392,7 +392,7 @@ func (c *Controller) InitIPAM() error {
 		}
 	}
 
-	vips, err := c.virtualIpsLister.List(labels.SelectorFromSet(labels.Set{util.IpReservedLabel: ""}))
+	vips, err := c.virtualIpsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list VIPs: %v", err)
 		return err
