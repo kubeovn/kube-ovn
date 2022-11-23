@@ -3,15 +3,17 @@ package controller
 import (
 	"context"
 	"fmt"
+	"net"
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
-	"net"
-	"strings"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -89,7 +91,9 @@ func (c *Controller) gcLogicalSwitch() error {
 		return err
 	}
 	subnetNames := make([]string, 0, len(subnets))
+	subnetMap := make(map[string]*kubeovnv1.Subnet, len(subnets))
 	for _, s := range subnets {
+		subnetMap[s.Name] = s
 		subnetNames = append(subnetNames, s.Name)
 	}
 	lss, err := c.ovnClient.ListLogicalSwitch(c.config.EnableExternalVpc)
@@ -103,12 +107,14 @@ func (c *Controller) gcLogicalSwitch() error {
 		if ls == util.InterconnectionSwitch || ls == util.ExternalGatewaySwitch {
 			continue
 		}
-		if !util.IsStringIn(ls, subnetNames) {
-			klog.Infof("gc subnet %s", ls)
-			if err := c.handleDeleteLogicalSwitch(ls); err != nil {
-				klog.Errorf("failed to gc subnet %s, %v", ls, err)
-				return err
-			}
+		if s := subnetMap[ls]; s != nil && isOvnSubnet(s) {
+			continue
+		}
+
+		klog.Infof("gc subnet %s", ls)
+		if err := c.handleDeleteLogicalSwitch(ls); err != nil {
+			klog.Errorf("failed to gc subnet %s, %v", ls, err)
+			return err
 		}
 	}
 	return nil
@@ -301,10 +307,17 @@ func (c *Controller) gcLoadBalancer() error {
 		for _, orivpc := range vpcs {
 			vpc := orivpc.DeepCopy()
 			for _, subnetName := range vpc.Status.Subnets {
-				_, err := c.subnetsLister.Get(subnetName)
-				if err != nil && !k8serrors.IsNotFound(err) {
+				subnet, err := c.subnetsLister.Get(subnetName)
+				if err != nil {
+					if k8serrors.IsNotFound(err) {
+						continue
+					}
 					return err
 				}
+				if !isOvnSubnet(subnet) {
+					continue
+				}
+
 				err = c.ovnClient.RemoveLbFromLogicalSwitch(
 					vpc.Status.TcpLoadBalancer,
 					vpc.Status.TcpSessionLoadBalancer,
