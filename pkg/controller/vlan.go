@@ -326,6 +326,7 @@ func (c *Controller) setLocalnetTag(subnet string, vlanID int) error {
 
 func (c *Controller) delLocalnet(subnet string) error {
 	localnetPort := ovs.GetLocalnetName(subnet)
+	klog.Infof("delete logical switch port %s", localnetPort)
 	if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(localnetPort); err != nil {
 		klog.Errorf("failed to delete localnet port %s: %v", localnetPort, err)
 		return err

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"sort"
 	"strings"
 	"time"
 
@@ -398,6 +399,7 @@ func checkAndUpdateExcludeIps(subnet *kubeovnv1.Subnet) bool {
 	changed := false
 	var excludeIps []string
 	excludeIps = append(excludeIps, strings.Split(subnet.Spec.Gateway, ",")...)
+	sort.Strings(excludeIps)
 	if len(subnet.Spec.ExcludeIps) == 0 {
 		subnet.Spec.ExcludeIps = excludeIps
 		changed = true
@@ -413,6 +415,7 @@ func checkAndUpdateExcludeIps(subnet *kubeovnv1.Subnet) bool {
 			}
 			if !gwExists {
 				subnet.Spec.ExcludeIps = append(subnet.Spec.ExcludeIps, gw)
+				sort.Strings(subnet.Spec.ExcludeIps)
 				changed = true
 			}
 		}
@@ -616,8 +619,15 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		c.patchSubnetStatus(subnet, "ListLogicalSwitchFailed", err.Error())
 		return err
 	}
-
-	needRouter := subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway
+	var isUnderlayGateway, needRouter bool
+	if subnet.Spec.Vlan == "" {
+		// subnet is overlay, should add lrp between vpc and subnet, lrp ip is subnet gw
+		needRouter = true
+	} else {
+		// subnet is underlay, lrp is controlled by vpc spec enableExternal
+		needRouter = subnet.Spec.LogicalGateway
+		isUnderlayGateway = !subnet.Spec.LogicalGateway
+	}
 	if !exist {
 		subnet.Status.EnsureStandardConditions()
 		// If multiple namespace use same ls name, only first one will success
@@ -625,7 +635,6 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			c.patchSubnetStatus(subnet, "CreateLogicalSwitchFailed", err.Error())
 			return err
 		}
-
 		if needRouter {
 			if err := c.reconcileRouterPortBySubnet(vpc, subnet); err != nil {
 				klog.Errorf("failed to connect switch %s to router %s, %v", subnet.Name, vpc.Name, err)
@@ -633,12 +642,19 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			}
 		}
 	} else {
+		if !needRouter && isUnderlayGateway {
+			// do nothing if subnet is underlay vlan and use underlay gw
+			// TODO:// support update if spec changed
+			klog.Infof("skip reset external connection from vpc %s to switch %s", vpc.Status.Router, subnet.Name)
+			return nil
+		}
 		// logical switch exists, only update other_config
 		if err := c.ovnLegacyClient.SetLogicalSwitchConfig(subnet.Name, vpc.Status.Router, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps, needRouter); err != nil {
 			c.patchSubnetStatus(subnet, "SetLogicalSwitchConfigFailed", err.Error())
 			return err
 		}
 		if !needRouter {
+			klog.Infof("remove connection from router %s to switch %s", vpc.Status.Router, subnet.Name)
 			if err := c.ovnLegacyClient.RemoveRouterPort(subnet.Name, vpc.Status.Router); err != nil {
 				klog.Errorf("failed to remove router port from %s, %v", subnet.Name, err)
 				return err
@@ -803,12 +819,14 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 	}
 	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
 	if err == nil && vpc.Status.Router != "" {
+		klog.Infof("remove connection from router %s to switch %s", vpc.Status.Router, subnet.Name)
 		if err = c.ovnLegacyClient.RemoveRouterPort(subnet.Name, vpc.Status.Router); err != nil {
 			klog.Errorf("failed to delete router port %s %v", subnet.Name, err)
 			return err
 		}
 	} else {
 		if k8serrors.IsNotFound(err) {
+			klog.Infof("remove connection from router %s to switch %s", vpc.Status.Router, subnet.Name)
 			if err = c.ovnLegacyClient.RemoveRouterPort(subnet.Name, util.DefaultVpc); err != nil {
 				klog.Errorf("failed to delete router port %s %v", subnet.Name, err)
 				return err
@@ -894,6 +912,7 @@ func (c *Controller) reconcileVips(subnet *kubeovnv1.Subnet) error {
 				continue
 			}
 			if !util.ContainsString(subnet.Spec.Vips, vip) {
+				klog.Infof("delete logical switch port %s", ret["name"][0])
 				if err = c.ovnLegacyClient.DeleteLogicalSwitchPort(ret["name"][0]); err != nil {
 					klog.Errorf("failed to delete virtual port, %v", err)
 					return err
@@ -1025,12 +1044,16 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 			return err
 		}
 
-		if !subnet.Spec.LogicalGateway {
-			if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(fmt.Sprintf("%s-%s", subnet.Name, c.config.ClusterRouter)); err != nil {
+		if subnet.Spec.LogicalGateway {
+			lspName := fmt.Sprintf("%s-%s", subnet.Name, c.config.ClusterRouter)
+			klog.Infof("delete logical switch port %s", lspName)
+			if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(lspName); err != nil {
 				klog.Errorf("failed to delete lsp %s-%s, %v", subnet.Name, c.config.ClusterRouter, err)
 				return err
 			}
-			if err := c.ovnLegacyClient.DeleteLogicalRouterPort(fmt.Sprintf("%s-%s", c.config.ClusterRouter, subnet.Name)); err != nil {
+			lrpName := fmt.Sprintf("%s-%s", c.config.ClusterRouter, subnet.Name)
+			klog.Infof("delete logical router port %s", lrpName)
+			if err := c.ovnLegacyClient.DeleteLogicalRouterPort(lrpName); err != nil {
 				klog.Errorf("failed to delete lrp %s-%s, %v", c.config.ClusterRouter, subnet.Name, err)
 				return err
 			}
@@ -1514,6 +1537,7 @@ func checkAndFormatsExcludeIps(subnet *kubeovnv1.Subnet) bool {
 			excludeIps = append(excludeIps, string(v.Start)+".."+string(v.End))
 		}
 	}
+	sort.Strings(excludeIps)
 	klog.V(3).Infof("excludeips before format is %v, after format is %v", subnet.Spec.ExcludeIps, excludeIps)
 	if !reflect.DeepEqual(subnet.Spec.ExcludeIps, excludeIps) {
 		subnet.Spec.ExcludeIps = excludeIps

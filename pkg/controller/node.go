@@ -447,6 +447,7 @@ func (c *Controller) handleNodeAnnotationsForProviderNetworks(node *v1.Node) err
 
 func (c *Controller) handleDeleteNode(key string) error {
 	portName := fmt.Sprintf("node-%s", key)
+	klog.Infof("delete logical switch port %s", portName)
 	if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(portName); err != nil {
 		klog.Errorf("failed to delete node switch port node-%s: %v", key, err)
 		return err

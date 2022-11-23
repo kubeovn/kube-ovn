@@ -65,6 +65,7 @@ func (c *Controller) gcLogicalRouterPort() error {
 	}
 	for _, lrp := range lrps {
 		if !util.ContainsString(exceptPeerPorts, lrp) {
+			klog.Infof("gc logical router port %s", lrp)
 			if err = c.ovnLegacyClient.DeleteLogicalRouterPort(lrp); err != nil {
 				klog.Errorf("failed to delete logical router port %s, %v", lrp, err)
 				return err

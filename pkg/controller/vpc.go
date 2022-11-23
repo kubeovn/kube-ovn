@@ -192,9 +192,15 @@ func (c *Controller) reconcileRouterPorts(vpc *kubeovnv1.Vpc) error {
 				return err
 			}
 
-			klog.V(1).InfoS("router port not exists, trying to create", "vpc", vpc.Name, "subnet", subnetName)
+			if subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway {
+				// skip vlan subnet which use underlay gw
+				// vpc connect to external vlan subnet is controlled by vpc spec enableExternal
+				klog.Infof("no need to connect vpc '%s' to vlan subnet %s", router, subnet.Name)
+				return nil
+			}
 
 			networks := util.GetIpAddrWithMask(subnet.Spec.Gateway, subnet.Spec.CIDRBlock)
+			klog.Infof("add vpc lrp %s, networks %s", routerPortName, networks)
 			if err := c.ovnClient.AddLogicalRouterPort(router, routerPortName, "", networks); err != nil {
 				klog.ErrorS(err, "unable to create router port", "vpc", vpc.Name, "subnet", subnetName)
 				return err
@@ -362,7 +368,9 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	}
 	for _, oldPeer := range vpc.Status.VpcPeerings {
 		if !util.ContainsString(newPeers, oldPeer) {
-			if err = c.ovnLegacyClient.DeleteLogicalRouterPort(fmt.Sprintf("%s-%s", vpc.Name, oldPeer)); err != nil {
+			lrpName := fmt.Sprintf("%s-%s", vpc.Name, oldPeer)
+			klog.Infof("delete logical router port %s", lrpName)
+			if err = c.ovnLegacyClient.DeleteLogicalRouterPort(lrpName); err != nil {
 				klog.Errorf("failed to delete peer router port for vpc %s, %v", vpc.Name, err)
 				return err
 			}
@@ -822,14 +830,34 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 }
 
 func (c *Controller) handleDelVpcExternal(key string) error {
-	lrpEipName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
-	cachedEip, err := c.ovnEipsLister.Get(lrpEipName)
+	cachedVpc, err := c.vpcsLister.Get(key)
 	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
 		return err
 	}
+	lrpEipName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
 	klog.V(3).Infof("delete vpc lrp %s", lrpEipName)
 	if err := c.ovnLegacyClient.DisconnectRouterToExternal(c.config.ExternalGatewaySwitch, key); err != nil {
 		klog.Errorf("failed to disconnect router '%s' to external, %v", key, err)
+		return err
+	}
+	vpc := cachedVpc.DeepCopy()
+	vpc.Status.EnableExternal = cachedVpc.Spec.EnableExternal
+	bytes, err := vpc.Status.Bytes()
+	if err != nil {
+		return err
+	}
+	if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
+		vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+		return err
+	}
+	cachedEip, err := c.ovnEipsLister.Get(lrpEipName)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
 		return err
 	}
 	if err = c.handleDelOvnEipFinalizer(cachedEip); err != nil {
