@@ -514,8 +514,8 @@ func (c *Controller) reconcileRouters(event subnetEvent) error {
 	}
 	// add new routes first
 	for _, r := range routesToAdd {
-		if err = netlink.RouteAdd(&r); err != nil && !errors.Is(err, syscall.EEXIST) {
-			klog.Errorf("failed to add route for subnet %s: %v", newSubnet.Name, err)
+		if err = netlink.RouteReplace(&r); err != nil && !errors.Is(err, syscall.EEXIST) {
+			klog.Errorf("failed to replace route for subnet %s: %v", newSubnet.Name, err)
 			return err
 		}
 	}

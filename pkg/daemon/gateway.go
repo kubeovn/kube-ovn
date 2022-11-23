@@ -274,8 +274,8 @@ func (c *Controller) addPolicyRouting(family int, gateway string, priority, tabl
 		Gw:       net.ParseIP(gateway),
 		Table:    int(tableID),
 	}
-	if err := netlink.RouteAdd(route); err != nil && !errors.Is(err, syscall.EEXIST) {
-		err = fmt.Errorf("failed to add route in table %d: %+v", tableID, err)
+	if err := netlink.RouteReplace(route); err != nil && !errors.Is(err, syscall.EEXIST) {
+		err = fmt.Errorf("failed to replace route in table %d: %+v", tableID, err)
 		klog.Error(err)
 		return err
 	}
@@ -803,8 +803,8 @@ func (c *Controller) getOtherNodes(protocol string) ([]string, error) {
 	return ret, nil
 }
 
-//Generally, the MTU of the interface is set to 1400. But in special cases, a special pod (docker indocker) will introduce the docker0 interface to the pod. The MTU of docker0 is 1500.
-//The network application in pod will calculate the TCP MSS according to the MTU of docker0, and then initiate communication with others. After the other party sends a response, the kernel protocol stack of Linux host will send ICMP unreachable message to the other party, indicating that IP fragmentation is needed, which is not supported by the other party, resulting in communication failure.
+// Generally, the MTU of the interface is set to 1400. But in special cases, a special pod (docker indocker) will introduce the docker0 interface to the pod. The MTU of docker0 is 1500.
+// The network application in pod will calculate the TCP MSS according to the MTU of docker0, and then initiate communication with others. After the other party sends a response, the kernel protocol stack of Linux host will send ICMP unreachable message to the other party, indicating that IP fragmentation is needed, which is not supported by the other party, resulting in communication failure.
 func (c *Controller) appendMssRule() {
 	if c.config.Iface != "" && c.config.MSS > 0 {
 		iface, err := findInterface(c.config.Iface)
