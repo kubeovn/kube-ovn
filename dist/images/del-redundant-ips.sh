@@ -38,6 +38,7 @@ do
   fi
 done
 
+DIP=()
 for ip in "${IPS[@]}"
 do
   IN=true
@@ -49,6 +50,32 @@ do
     fi
   done
   if $IN; then
-    delIPSWithIP "$ip"
+     DIP+=("$ip")
   fi
 done
+
+if [ ${#DIP[@]} == 0 ]; then
+  echo "no redundant IPS"
+  exit 0
+else
+  echo "listing redundant IPS:"
+  for ip in "${DIP[@]}"
+  do
+    echo $ip  "$(kubectl get ips | grep $ip | awk '{print $1}')"
+  done
+fi
+
+read -p "Do you want to proceed? (yes/no) " yn
+
+case $yn in
+	yes )
+	  for ip in "${DIP[@]}"
+    do
+      delIPSWithIP "$ip"
+    done
+	  ;;
+	no )
+		exit;;
+	* ) echo invalid response, exist;
+		exit 1;;
+esac
