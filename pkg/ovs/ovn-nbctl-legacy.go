@@ -980,6 +980,7 @@ func (c LegacyClient) AddPolicyRoute(router string, priority int32, match, actio
 		return err
 	}
 	if !consistent {
+		klog.Infof("remove inconsistent policy route from router %s: match %s", router, match)
 		if err := c.DeletePolicyRoute(router, priority, match); err != nil {
 			klog.Errorf("failed to delete policy route: %v", err)
 			return err
@@ -991,6 +992,7 @@ func (c LegacyClient) AddPolicyRoute(router string, priority int32, match, actio
 	if nextHop != "" {
 		args = append(args, nextHop)
 	}
+	klog.Infof("add policy route for router %s: priority %s, match %s, nextHop %s", router, priority, match, nextHop)
 	if _, err := c.ovnNbCommand(args...); err != nil {
 		return err
 	}
@@ -1035,6 +1037,7 @@ func (c LegacyClient) DeletePolicyRoute(router string, priority int32, match str
 			args = append(args, match)
 		}
 	}
+	klog.Infof("remove policy route from router %s: match %s", router, match)
 	_, err = c.ovnNbCommand(args...)
 	return err
 }
@@ -2456,6 +2459,7 @@ func (c *LegacyClient) GetPolicyRouteParas(priority int32, match string) ([]stri
 		klog.Errorf("customFindEntity failed, %v", err)
 		return nil, nil, err
 	}
+	klog.Infof("got logical router policy, nexthop, result: %v", result)
 	if len(result) == 0 {
 		return nil, nil, nil
 	}
@@ -2514,6 +2518,7 @@ func (c LegacyClient) CheckPolicyRouteNexthopConsistent(router, match, nexthop s
 		return false, err
 	}
 	for _, next := range nextHops {
+		klog.Infof("route check, next: %s, nexthop: %s", next, nexthop)
 		if next == nexthop {
 			return true, nil
 		}

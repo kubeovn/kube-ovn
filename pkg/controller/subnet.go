@@ -1697,7 +1697,7 @@ func (c *Controller) updatePolicyRouteForCentralizedSubnet(subnetName, cidr stri
 	match := fmt.Sprintf("%s.src == %s", ipSuffix, cidr)
 
 	// there's no way to update policy route when activeGateway changed for subnet, so delete and readd policy route
-	if err := c.ovnLegacyClient.DeletePolicyRoute(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match); err != nil {
+	if err := c.ovnLegacyClient.DeletePolicyRoute(c.config.ClusterRouter, util.GatewayECMPPolicyPriority, match); err != nil {
 		klog.Errorf("failed to delete policy route for centralized subnet %s: %v", subnetName, err)
 		return err
 	}
@@ -1712,11 +1712,11 @@ func (c *Controller) updatePolicyRouteForCentralizedSubnet(subnetName, cidr stri
 	for node, ip := range nameIpMap {
 		externalIDs[node] = ip
 	}
-	if err := c.ovnLegacyClient.AddPolicyRoute(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match, "reroute", nextHopIp, externalIDs); err != nil {
+	klog.Infof("add policy route for centralized subnet %s, nexthops %s", subnetName, nextHops)
+	if err := c.ovnLegacyClient.AddPolicyRoute(c.config.ClusterRouter, util.GatewayECMPPolicyPriority, match, "reroute", nextHopIp, externalIDs); err != nil {
 		klog.Errorf("failed to add policy route for centralized subnet %s: %v", subnetName, err)
 		return err
 	}
-
 	return nil
 }
 
@@ -1726,7 +1726,7 @@ func (c *Controller) addPolicyRouteForCentralizedSubnet(subnet *kubeovnv1.Subnet
 			if util.CheckProtocol(cidrBlock) != util.CheckProtocol(nodeIP) {
 				continue
 			}
-			exist, err := c.checkPolicyRouteExistForNode(nodeName, cidrBlock, nodeIP)
+			exist, err := c.checkPolicyRouteExistForNode(nodeName, cidrBlock, nodeIP, util.GatewayECMPPolicyPriority)
 			if err != nil {
 				klog.Errorf("check ecmp policy route exist for subnet %v, error %v", subnet.Name, err)
 				continue
@@ -1760,7 +1760,7 @@ func (c *Controller) deletePolicyRouteForCentralizedSubnet(subnet *kubeovnv1.Sub
 			ipSuffix = "ip6"
 		}
 		match := fmt.Sprintf("%s.src == %s", ipSuffix, cidr)
-		if err := c.ovnLegacyClient.DeletePolicyRoute(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match); err != nil {
+		if err := c.ovnLegacyClient.DeletePolicyRoute(c.config.ClusterRouter, util.GatewayECMPPolicyPriority, match); err != nil {
 			klog.Errorf("failed to delete policy route for centralized subnet %s: %v", subnet.Name, err)
 			return err
 		}

@@ -746,13 +746,12 @@ func (c *Controller) checkGatewayReady() error {
 						continue
 					}
 
-					exist, err := c.checkPolicyRouteExistForNode(node.Name, cidrBlock, ip)
+					exist, err := c.checkPolicyRouteExistForNode(node.Name, cidrBlock, ip, util.GatewayECMPPolicyPriority)
 					if err != nil {
 						klog.Errorf("check ecmp policy route exist for subnet %v, error %v", subnet.Name, err)
 						break
 					}
-
-					nextHops, nameIpMap, err := c.getPolicyRouteParas(cidrBlock)
+					nextHops, nameIpMap, err := c.getPolicyRouteParas(cidrBlock, util.GatewayECMPPolicyPriority)
 					if err != nil {
 						klog.Errorf("get ecmp policy route paras for subnet %v, error %v", subnet.Name, err)
 						break
@@ -1081,13 +1080,13 @@ func (c *Controller) addNodeGwStaticRoute() error {
 	return nil
 }
 
-func (c *Controller) getPolicyRouteParas(cidr string) ([]string, map[string]string, error) {
+func (c *Controller) getPolicyRouteParas(cidr string, priority int32) ([]string, map[string]string, error) {
 	ipSuffix := "ip4"
 	if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv6 {
 		ipSuffix = "ip6"
 	}
 	match := fmt.Sprintf("%s.src == %s", ipSuffix, cidr)
-	nextHops, nameIpMap, err := c.ovnLegacyClient.GetPolicyRouteParas(util.GatewayRouterPolicyPriority, match)
+	nextHops, nameIpMap, err := c.ovnLegacyClient.GetPolicyRouteParas(priority, match)
 	if err != nil {
 		klog.Errorf("failed to get policy route paras, %v", err)
 		return nextHops, nameIpMap, err
@@ -1095,8 +1094,8 @@ func (c *Controller) getPolicyRouteParas(cidr string) ([]string, map[string]stri
 	return nextHops, nameIpMap, nil
 }
 
-func (c *Controller) checkPolicyRouteExistForNode(nodeName, cidr, nexthop string) (bool, error) {
-	_, nameIpMap, err := c.getPolicyRouteParas(cidr)
+func (c *Controller) checkPolicyRouteExistForNode(nodeName, cidr, nexthop string, priority int32) (bool, error) {
+	_, nameIpMap, err := c.getPolicyRouteParas(cidr, priority)
 	if err != nil {
 		klog.Errorf("failed to get policy route paras, %v", err)
 		return false, err
@@ -1136,7 +1135,7 @@ func (c *Controller) deletePolicyRouteForNode(nodeName string) error {
 		if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType {
 			if c.config.EnableEcmp {
 				for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
-					nextHops, nameIpMap, err := c.getPolicyRouteParas(cidrBlock)
+					nextHops, nameIpMap, err := c.getPolicyRouteParas(cidrBlock, util.GatewayECMPPolicyPriority)
 					if err != nil {
 						klog.Errorf("get ecmp policy route paras for subnet %v, error %v", subnet.Name, err)
 						continue
@@ -1197,7 +1196,7 @@ func (c *Controller) addPolicyRouteForCentralizedSubnetOnNode(nodeName, nodeIP s
 					if util.CheckProtocol(cidrBlock) != util.CheckProtocol(nextHop) {
 						continue
 					}
-					exist, err := c.checkPolicyRouteExistForNode(nodeName, cidrBlock, nextHop)
+					exist, err := c.checkPolicyRouteExistForNode(nodeName, cidrBlock, nextHop, util.GatewayECMPPolicyPriority)
 					if err != nil {
 						klog.Errorf("check ecmp policy route exist for subnet %v, error %v", subnet.Name, err)
 						continue
@@ -1206,7 +1205,7 @@ func (c *Controller) addPolicyRouteForCentralizedSubnetOnNode(nodeName, nodeIP s
 						continue
 					}
 
-					nextHops, nameIpMap, err := c.getPolicyRouteParas(cidrBlock)
+					nextHops, nameIpMap, err := c.getPolicyRouteParas(cidrBlock, util.GatewayECMPPolicyPriority)
 					if err != nil {
 						klog.Errorf("get ecmp policy route paras for subnet %v, error %v", subnet.Name, err)
 						continue
