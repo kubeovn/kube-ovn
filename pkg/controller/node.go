@@ -256,7 +256,7 @@ func (c *Controller) handleAddNode(key string) error {
 	}
 
 	ipStr := util.GetStringIP(v4IP, v6IP)
-	if err := c.ovnLegacyClient.CreatePort(c.config.NodeSwitch, portName, ipStr, mac, "", "", false, "", "", false); err != nil {
+	if err := c.ovnLegacyClient.CreatePort(c.config.NodeSwitch, portName, ipStr, mac, "", "", false, "", "", false, false); err != nil {
 		return err
 	}
 

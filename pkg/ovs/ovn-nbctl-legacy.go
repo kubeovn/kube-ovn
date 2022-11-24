@@ -184,7 +184,7 @@ func (c LegacyClient) SetPortSecurity(portSecurity bool, port, mac, ipStr, vips 
 }
 
 // CreatePort create logical switch port in ovn
-func (c LegacyClient) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurity bool, securityGroups string, vips string, liveMigration bool) error {
+func (c LegacyClient) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurity bool, securityGroups string, vips string, liveMigration bool, hasUnknown bool) error {
 	var ovnCommand []string
 	var addresses []string
 	addresses = append(addresses, mac)
@@ -217,6 +217,10 @@ func (c LegacyClient) CreatePort(ls, port, ip, mac, pod, namespace string, portS
 		// set mac and ip
 		ovnCommand = append(ovnCommand,
 			"--", "lsp-set-addresses", port, strings.Join(addresses, " "))
+
+		if hasUnknown {
+			ovnCommand = append(ovnCommand, "unknown")
+		}
 	}
 
 	if portSecurity {
