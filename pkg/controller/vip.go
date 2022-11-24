@@ -300,7 +300,7 @@ func (c *Controller) acquireStaticIpAddress(subnetName, name, nicName, ip string
 func (c *Controller) acquireIpAddress(subnetName, name, nicName string) (string, string, string, error) {
 	var skippedAddrs []string
 	var v4ip, v6ip, mac string
-	checkConflict := false
+	checkConflict := true
 	var err error
 	for {
 		v4ip, v6ip, mac, err = c.ipam.GetRandomAddress(name, nicName, mac, subnetName, skippedAddrs, checkConflict)

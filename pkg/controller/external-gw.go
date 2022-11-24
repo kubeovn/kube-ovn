@@ -45,8 +45,9 @@ func (c *Controller) resyncExternalGateway() {
 		if exGwEnabled == "true" && lastExGwCM != nil && reflect.DeepEqual(cm.Data, lastExGwCM) {
 			return
 		}
+		klog.Info("last external gw configmap: %v", lastExGwCM)
 		if (lastExGwCM["type"] == "distributed" && cm.Data["type"] == "centralized") ||
-			!reflect.DeepEqual(lastExGwCM["external-gw-nodes"], cm.Data["external-gw-nodes"]) {
+			lastExGwCM != nil && !reflect.DeepEqual(lastExGwCM["external-gw-nodes"], cm.Data["external-gw-nodes"]) {
 			klog.Info("external gw nodes list changed, start to remove ovn external gw")
 			if err := c.removeExternalGateway(); err != nil {
 				klog.Errorf("failed to remove old ovn external gw, %v", err)
@@ -94,6 +95,7 @@ func (c *Controller) removeExternalGateway() error {
 		}
 	}
 
+	klog.Infof("delete external gateway switch %s", c.config.ExternalGatewaySwitch)
 	if err := c.ovnLegacyClient.DeleteGatewaySwitch(c.config.ExternalGatewaySwitch); err != nil {
 		klog.Errorf("failed to delete external gateway switch, %v", err)
 		return err
@@ -116,6 +118,15 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 	} else {
 		lrpIp = config["nic-ip"]
 		lrpMac = config["nic-mac"]
+	}
+	lrpName := fmt.Sprintf("%s-%s", c.config.ClusterRouter, c.config.ExternalGatewaySwitch)
+	exist, err := c.ovnClient.LogicalRouterPortExists(lrpName)
+	if err != nil {
+		return err
+	}
+	if exist {
+		klog.Infof("lrp %s exist", lrpName)
+		return nil
 	}
 	if err := c.ovnLegacyClient.CreateGatewaySwitch(c.config.ExternalGatewaySwitch, c.config.ExternalGatewayNet, c.config.ExternalGatewayVlanID, lrpIp, lrpMac, chassises); err != nil {
 		klog.Errorf("failed to create external gateway switch, %v", err)

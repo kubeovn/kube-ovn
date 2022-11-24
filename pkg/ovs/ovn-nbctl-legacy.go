@@ -108,6 +108,7 @@ func (c LegacyClient) SetICAutoRoute(enable bool, blackList []string) error {
 
 // DeleteLogicalSwitchPort delete logical switch port in ovn
 func (c LegacyClient) DeleteLogicalSwitchPort(port string) error {
+	klog.Infof("delete lsp %s", port)
 	if _, err := c.ovnNbCommand(IfExists, "lsp-del", port); err != nil {
 		return fmt.Errorf("failed to delete logical switch port %s, %v", port, err)
 	}
@@ -116,6 +117,7 @@ func (c LegacyClient) DeleteLogicalSwitchPort(port string) error {
 
 // DeleteLogicalRouterPort delete logical switch port in ovn
 func (c LegacyClient) DeleteLogicalRouterPort(port string) error {
+	klog.Infof("delete lrp %s", port)
 	if _, err := c.ovnNbCommand(IfExists, "lrp-del", port); err != nil {
 		return fmt.Errorf("failed to delete logical router port %s, %v", port, err)
 	}
@@ -123,7 +125,9 @@ func (c LegacyClient) DeleteLogicalRouterPort(port string) error {
 }
 
 func (c LegacyClient) CreateICLogicalRouterPort(az, mac, subnet string, chassises []string) error {
-	if _, err := c.ovnNbCommand(MayExist, "lrp-add", c.ClusterRouter, fmt.Sprintf("%s-ts", az), mac, subnet); err != nil {
+	lrpName := fmt.Sprintf("%s-ts", az)
+	klog.Infof("add vpc lrp %s", lrpName)
+	if _, err := c.ovnNbCommand(MayExist, "lrp-add", c.ClusterRouter, lrpName, mac, subnet); err != nil {
 		return fmt.Errorf("failed to create ovn-ic lrp, %v", err)
 	}
 	if _, err := c.ovnNbCommand(MayExist, "lsp-add", util.InterconnectionSwitch, fmt.Sprintf("ts-%s", az), "--",
@@ -405,6 +409,7 @@ func (c LegacyClient) ListPodLogicalSwitchPorts(pod, namespace string) ([]string
 }
 
 func (c LegacyClient) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway string, excludeIps []string, needRouter bool) error {
+	klog.Infof("set logical switch: ls %s, lr %s, protocol %s, subnet %s, gw %s", ls, lr, protocol, subnet, gateway)
 	var err error
 	cidrBlocks := strings.Split(subnet, ",")
 	temp := strings.Split(cidrBlocks[0], "/")
@@ -551,6 +556,8 @@ func (c LegacyClient) ConnectRouterToExternal(externalNet, vpcRouter, lrpIpCidr,
 	// add lrp and lsp between vpc router and external network
 	lsTolr := fmt.Sprintf("%s-%s", externalNet, vpcRouter)
 	lrTols := fmt.Sprintf("%s-%s", vpcRouter, externalNet)
+	klog.Infof("add vpc lrp %s, cidr %s", lrTols, lrpIpCidr)
+	klog.Infof("add lsp %s", lsTolr)
 	_, err := c.ovnNbCommand(
 		MayExist, "lrp-add", vpcRouter, lrTols, lrpMac, lrpIpCidr, "--",
 		MayExist, "lsp-add", externalNet, lsTolr, "--",
@@ -571,10 +578,12 @@ func (c LegacyClient) ConnectRouterToExternal(externalNet, vpcRouter, lrpIpCidr,
 
 func (c LegacyClient) DisconnectRouterToExternal(externalNet, vpcRouter string) error {
 	lrTols := fmt.Sprintf("%s-%s", vpcRouter, externalNet)
+	klog.Infof("delete lrp %s", lrTols)
 	if _, err := c.ovnNbCommand(IfExists, "lrp-del", lrTols); err != nil {
 		return err
 	}
 	lsTolr := fmt.Sprintf("%s-%s", externalNet, vpcRouter)
+	klog.Infof("delete lsp %s", lsTolr)
 	if _, err := c.ovnNbCommand(IfExists, "lsp-del", lsTolr); err != nil {
 		return err
 	}
@@ -584,6 +593,8 @@ func (c LegacyClient) DisconnectRouterToExternal(externalNet, vpcRouter string) 
 func (c LegacyClient) CreateGatewaySwitch(name, network string, vlan int, ip, mac string, chassises []string) error {
 	lsTolr := fmt.Sprintf("%s-%s", name, c.ClusterRouter)
 	lrTols := fmt.Sprintf("%s-%s", c.ClusterRouter, name)
+	klog.Infof("add vpc lrp %s, ip %s", lrTols, ip)
+	klog.Infof("add lsp %s", lsTolr)
 	localnetPort := fmt.Sprintf("ln-%s", name)
 	if name != util.ExternalGatewaySwitch {
 		// compatiable with provider network and vlan and subnet
@@ -625,6 +636,8 @@ func (c LegacyClient) CreateGatewaySwitch(name, network string, vlan int, ip, ma
 
 func (c LegacyClient) DeleteGatewaySwitch(name string) error {
 	lrTols := fmt.Sprintf("%s-%s", c.ClusterRouter, name)
+	klog.Infof("delete gw switch %s", name)
+	klog.Infof("delete gw lrp %s", lrTols)
 	_, err := c.ovnNbCommand(
 		IfExists, "ls-del", name, "--",
 		IfExists, "lrp-del", lrTols,
@@ -819,6 +832,7 @@ func (c LegacyClient) DeleteLogicalRouter(lr string) error {
 func (c LegacyClient) RemoveRouterPort(ls, lr string) error {
 	lsTolr := fmt.Sprintf("%s-%s", ls, lr)
 	lrTols := fmt.Sprintf("%s-%s", lr, ls)
+	klog.Infof("remove router port %s, switch port %s", lrTols, lsTolr)
 	_, err := c.ovnNbCommand(IfExists, "lsp-del", lsTolr, "--",
 		IfExists, "lrp-del", lrTols)
 	if err != nil {
@@ -857,9 +871,11 @@ func (c LegacyClient) CreatePeerRouterPort(localRouter, remoteRouter, localRoute
 	if len(results) == 0 {
 		ipStr := strings.Split(localRouterPortIP, ",")
 		if len(ipStr) == 2 {
+			klog.Infof("add vpc lrp %s", localRouterPort)
 			_, err = c.ovnNbCommand(MayExist, "lrp-add", localRouter, localRouterPort, util.GenerateMac(), ipStr[0], ipStr[1], "--",
 				"set", "logical_router_port", localRouterPort, fmt.Sprintf("peer=%s", remoteRouterPort))
 		} else {
+			klog.Infof("add vpc lrp %s", localRouterPort)
 			_, err = c.ovnNbCommand(MayExist, "lrp-add", localRouter, localRouterPort, util.GenerateMac(), ipStr[0], "--",
 				"set", "logical_router_port", localRouterPort, fmt.Sprintf("peer=%s", remoteRouterPort))
 		}
@@ -869,6 +885,7 @@ func (c LegacyClient) CreatePeerRouterPort(localRouter, remoteRouter, localRoute
 		}
 	}
 
+	klog.Infof("set lrp %s, networks %s", localRouterPort, localRouterPortIP)
 	_, err = c.ovnNbCommand("set", "logical_router_port", localRouterPort,
 		fmt.Sprintf("networks=\"%s\"", strings.ReplaceAll(localRouterPortIP, ",", " ")))
 
@@ -2765,6 +2782,7 @@ func (c *LegacyClient) UpdateRouterPortIPv6RA(ls, lr, cidrBlock, gateway, ipv6RA
 		}
 
 		ipv6RAConfigsStr = strings.ReplaceAll(ipv6RAConfigsStr, " ", "")
+		klog.Infof("set lrp %s, ipv6_prefix %s", lrTols, ipv6Prefix)
 		_, err = c.ovnNbCommand("--",
 			"set", "logical_router_port", lrTols, fmt.Sprintf("ipv6_prefix=%s", ipv6Prefix), fmt.Sprintf("ipv6_ra_configs=%s", ipv6RAConfigsStr))
 		if err != nil {
@@ -2772,6 +2790,7 @@ func (c *LegacyClient) UpdateRouterPortIPv6RA(ls, lr, cidrBlock, gateway, ipv6RA
 			return err
 		}
 	} else {
+		klog.Infof("set lrp %s", lrTols)
 		_, err = c.ovnNbCommand("--",
 			"set", "logical_router_port", lrTols, "ipv6_prefix=[]", "ipv6_ra_configs={}")
 		if err != nil {
