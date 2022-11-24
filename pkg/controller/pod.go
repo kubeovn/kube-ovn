@@ -565,16 +565,11 @@ func (c *Controller) handleAddPod(key string) error {
 				DHCPv4OptionsUUID: subnet.Status.DHCPv4OptionsUUID,
 				DHCPv6OptionsUUID: subnet.Status.DHCPv6OptionsUUID,
 			}
-			if err := c.ovnLegacyClient.CreatePort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace, portSecurity, securityGroupAnnotation, vips, podNet.AllowLiveMigration, podNet.Subnet.Spec.EnableDHCP, dhcpOptions); err != nil {
+
+			hasUnknown := pod.Annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, podNet.ProviderName)] == "true"
+			if err := c.ovnLegacyClient.CreatePort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace, portSecurity, securityGroupAnnotation, vips, podNet.AllowLiveMigration, podNet.Subnet.Spec.EnableDHCP, dhcpOptions, hasUnknown); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
 				return err
-			}
-
-			if pod.Annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, podNet.ProviderName)] == "true" {
-				if err := c.ovnLegacyClient.EnablePortLayer2forward(subnet.Name, portName); err != nil {
-					c.recorder.Eventf(pod, v1.EventTypeWarning, "EnablePortLayer2forwardFailed", err.Error())
-					return err
-				}
 			}
 
 			if portSecurity {
