@@ -3,6 +3,8 @@
 
 package ovnnb
 
+const LogicalSwitchPortTable = "Logical_Switch_Port"
+
 // LogicalSwitchPort defines an object in Logical_Switch_Port table
 type LogicalSwitchPort struct {
 	UUID             string            `ovsdb:"_uuid"`

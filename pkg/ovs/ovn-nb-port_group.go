@@ -10,8 +10,11 @@ import (
 )
 
 func (c OvnClient) GetPortGroup(name string, ignoreNotFound bool) (*ovnnb.PortGroup, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	pg := &ovnnb.PortGroup{Name: name}
-	if err := c.ovnNbClient.Get(context.TODO(), pg); err != nil {
+	if err := c.ovnNbClient.Get(ctx, pg); err != nil {
 		if ignoreNotFound && err == client.ErrNotFound {
 			return nil, nil
 		}

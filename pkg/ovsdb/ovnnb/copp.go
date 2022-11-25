@@ -3,6 +3,8 @@
 
 package ovnnb
 
+const CoppTable = "Copp"
+
 // Copp defines an object in Copp table
 type Copp struct {
 	UUID        string            `ovsdb:"_uuid"`

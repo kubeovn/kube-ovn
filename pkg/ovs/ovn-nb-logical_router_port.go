@@ -16,8 +16,11 @@ import (
 )
 
 func (c OvnClient) GetLogicalRouterPort(name string, ignoreNotFound bool) (*ovnnb.LogicalRouterPort, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	lrp := &ovnnb.LogicalRouterPort{Name: name}
-	if err := c.ovnNbClient.Get(context.TODO(), lrp); err != nil {
+	if err := c.ovnNbClient.Get(ctx, lrp); err != nil {
 		if ignoreNotFound && err == client.ErrNotFound {
 			return nil, nil
 		}

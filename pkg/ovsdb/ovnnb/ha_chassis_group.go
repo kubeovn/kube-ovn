@@ -3,6 +3,8 @@
 
 package ovnnb
 
+const HAChassisGroupTable = "HA_Chassis_Group"
+
 // HAChassisGroup defines an object in HA_Chassis_Group table
 type HAChassisGroup struct {
 	UUID        string            `ovsdb:"_uuid"`
