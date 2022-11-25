@@ -402,30 +402,41 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			return err
 		}
 	}
-	// handle policy route
-	existPolicyRoute, err := c.ovnLegacyClient.GetPolicyRouteList(vpc.Name)
-	if err != nil {
-		klog.Errorf("failed to get vpc %s policy route list, %v", vpc.Name, err)
-		return err
-	}
 
-	policyRouteNeedDel, policyRouteNeedAdd, err := diffPolicyRoute(existPolicyRoute, vpc.Spec.PolicyRoutes)
-	if err != nil {
-		klog.Errorf("failed to diff vpc %s policy route, %v", vpc.Name, err)
-		return err
-	}
-	for _, item := range policyRouteNeedDel {
-		if err = c.ovnLegacyClient.DeletePolicyRoute(vpc.Name, item.Priority, item.Match); err != nil {
-			klog.Errorf("del vpc %s policy route failed, %v", vpc.Name, err)
+	if vpc.Name != util.DefaultVpc && vpc.Spec.PolicyRoutes == nil {
+		// do not clean default vpc policy routes
+		if err = c.ovnLegacyClient.CleanPolicyRoute(vpc.Name); err != nil {
+			klog.Errorf("clean all vpc %s policy route failed, %v", vpc.Name, err)
 			return err
 		}
 	}
-	for _, item := range policyRouteNeedAdd {
-		externalIDs := map[string]string{"vendor": util.CniTypeName}
-		klog.Infof("add policy route for vpc %s, nexthops %s, priority %s", vpc.Name, item.NextHopIP, item.Priority)
-		if err = c.ovnLegacyClient.AddPolicyRoute(vpc.Name, item.Priority, item.Match, string(item.Action), item.NextHopIP, externalIDs); err != nil {
-			klog.Errorf("add policy route to vpc %s failed, %v", vpc.Name, err)
+
+	if vpc.Spec.PolicyRoutes != nil {
+		// diff update vpc policy route
+		existPolicyRoute, err := c.ovnLegacyClient.GetPolicyRouteList(vpc.Name)
+		if err != nil {
+			klog.Errorf("failed to get vpc %s policy route list, %v", vpc.Name, err)
 			return err
+		}
+		policyRouteNeedDel, policyRouteNeedAdd, err := diffPolicyRoute(existPolicyRoute, vpc.Spec.PolicyRoutes)
+		if err != nil {
+			klog.Errorf("failed to diff vpc %s policy route, %v", vpc.Name, err)
+			return err
+		}
+		for _, item := range policyRouteNeedDel {
+			klog.Infof("delete policy route for router: %s, priority: %d, match %s", vpc.Name, item.Priority, item.Match)
+			if err = c.ovnLegacyClient.DeletePolicyRoute(vpc.Name, item.Priority, item.Match); err != nil {
+				klog.Errorf("del vpc %s policy route failed, %v", vpc.Name, err)
+				return err
+			}
+		}
+		for _, item := range policyRouteNeedAdd {
+			externalIDs := map[string]string{"vendor": util.CniTypeName}
+			klog.Infof("add policy route for router: %s, match %s, action %s, nexthop %s, extrenalID %v", c.config.ClusterRouter, item.Match, string(item.Action), item.NextHopIP, externalIDs)
+			if err = c.ovnLegacyClient.AddPolicyRoute(vpc.Name, item.Priority, item.Match, string(item.Action), item.NextHopIP, externalIDs); err != nil {
+				klog.Errorf("add policy route to vpc %s failed, %v", vpc.Name, err)
+				return err
+			}
 		}
 	}
 

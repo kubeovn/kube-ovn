@@ -708,6 +708,16 @@ func (c *Controller) initSyncCrdVlans() error {
 }
 
 func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
+	// migrate from old version static route to policy route
+	match := fmt.Sprintf("ip%d.dst == %s", af, ip)
+	consistent, err := c.ovnLegacyClient.CheckPolicyRouteNexthopConsistent(c.config.ClusterRouter, match, nexthop, util.NodeRouterPolicyPriority)
+	if err != nil {
+		return err
+	}
+	if consistent {
+		klog.V(3).Infof("node policy route migrated")
+		return nil
+	}
 	if err := c.ovnLegacyClient.DeleteStaticRoute(ip, c.config.ClusterRouter); err != nil {
 		klog.Errorf("failed to delete obsolete static route for node %s: %v", node, err)
 		return err
@@ -715,6 +725,7 @@ func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
 
 	asName := nodeUnderlayAddressSetName(node, af)
 	obsoleteMatch := fmt.Sprintf("ip%d.dst == %s && ip%d.src != $%s", af, ip, af, asName)
+	klog.Infof("delete policy route for router: %s, priority: %d, match %s", c.config.ClusterRouter, util.NodeRouterPolicyPriority, obsoleteMatch)
 	if err := c.ovnLegacyClient.DeletePolicyRoute(c.config.ClusterRouter, util.NodeRouterPolicyPriority, obsoleteMatch); err != nil {
 		klog.Errorf("failed to delete obsolete logical router policy for node %s: %v", node, err)
 		return err
@@ -725,11 +736,12 @@ func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
 		return err
 	}
 
-	match := fmt.Sprintf("ip%d.dst == %s", af, ip)
 	externalIDs := map[string]string{
 		"vendor": util.CniTypeName,
 		"node":   node,
 	}
+	klog.Infof("add policy route for router: %s, priority: %d, match %s, action %s, nexthop %s, extrenalID %v",
+		c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", nexthop, externalIDs)
 	if err := c.ovnLegacyClient.AddPolicyRoute(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", nexthop, externalIDs); err != nil {
 		klog.Errorf("failed to add logical router policy for node %s: %v", node, err)
 		return err

@@ -154,7 +154,6 @@ const (
 	OvnFip      = "ovn"
 	IptablesFip = "iptables"
 
-	GatewayECMPPolicyPriority   = 29100
 	GatewayRouterPolicyPriority = 29000
 	NodeRouterPolicyPriority    = 30000
 	SubnetRouterPolicyPriority  = 31000
