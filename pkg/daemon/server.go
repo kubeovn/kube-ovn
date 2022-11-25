@@ -1,7 +1,9 @@
 package daemon
 
 import (
+	"context"
 	"fmt"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"net/http"
 	"time"
 
@@ -28,6 +30,10 @@ func RunServer(config *Configuration, controller *Controller) {
 	if err != nil {
 		return
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go wait.Until(csh.runAddPodWorker, time.Second, ctx.Done())
+	defer cancel()
+	defer csh.IPsQueue.ShuttingDown()
 	defer cleanFunc()
 	klog.Infof("start listen on %s", config.BindSocket)
 	klog.Fatal(server.Serve(listener))
