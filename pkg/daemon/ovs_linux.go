@@ -639,7 +639,11 @@ func linkIsAlbBond(link netlink.Link) (bool, error) {
 func removeProviderNic(nicName, brName string) error {
 	nic, err := netlink.LinkByName(nicName)
 	if err != nil {
-		return fmt.Errorf("failed to get nic by name %s: %v", nicName, err)
+		if _, ok := err.(netlink.LinkNotFoundError); !ok {
+			return fmt.Errorf("failed to get nic by name %s: %v", nicName, err)
+		}
+		klog.Warningf("failed to get nic by name %s: %v", nicName, err)
+		return nil
 	}
 	bridge, err := netlink.LinkByName(brName)
 	if err != nil {
