@@ -18,6 +18,7 @@ on:
 
 env:
   KIND_VERSION: v0.17.0
+  GOSEC_VERSION: "2.12.0"
 
 jobs:
   build:
@@ -57,10 +58,13 @@ jobs:
           go install github.com/onsi/ginkgo/ginkgo@latest
           make ut
 
+      - name: Install gosec
+        run: |
+          curl -sfL https://raw.githubusercontent.com/securego/gosec/master/install.sh | sh -s -- -b $(go env GOPATH)/bin 'v${{ env.GOSEC_VERSION }}'
+
       - name: Build
         run: |
           go mod tidy
-          go install github.com/securego/gosec/cmd/gosec@latest
           make release
           make tar
 
