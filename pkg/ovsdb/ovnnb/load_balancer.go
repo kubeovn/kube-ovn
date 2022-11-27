@@ -3,21 +3,23 @@
 
 package ovnnb
 
+const LoadBalancerTable = "Load_Balancer"
+
 type (
 	LoadBalancerProtocol        = string
 	LoadBalancerSelectionFields = string
 )
 
 var (
+	LoadBalancerProtocolSCTP          LoadBalancerProtocol        = "sctp"
 	LoadBalancerProtocolTCP           LoadBalancerProtocol        = "tcp"
 	LoadBalancerProtocolUDP           LoadBalancerProtocol        = "udp"
-	LoadBalancerProtocolSCTP          LoadBalancerProtocol        = "sctp"
-	LoadBalancerSelectionFieldsEthSrc LoadBalancerSelectionFields = "eth_src"
 	LoadBalancerSelectionFieldsEthDst LoadBalancerSelectionFields = "eth_dst"
-	LoadBalancerSelectionFieldsIPSrc  LoadBalancerSelectionFields = "ip_src"
+	LoadBalancerSelectionFieldsEthSrc LoadBalancerSelectionFields = "eth_src"
 	LoadBalancerSelectionFieldsIPDst  LoadBalancerSelectionFields = "ip_dst"
-	LoadBalancerSelectionFieldsTpSrc  LoadBalancerSelectionFields = "tp_src"
+	LoadBalancerSelectionFieldsIPSrc  LoadBalancerSelectionFields = "ip_src"
 	LoadBalancerSelectionFieldsTpDst  LoadBalancerSelectionFields = "tp_dst"
+	LoadBalancerSelectionFieldsTpSrc  LoadBalancerSelectionFields = "tp_src"
 )
 
 // LoadBalancer defines an object in Load_Balancer table

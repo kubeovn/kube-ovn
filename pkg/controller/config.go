@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strconv"
 	"time"
 
 	attachnetclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
@@ -92,7 +91,6 @@ type Configuration struct {
 
 	GCInterval      int
 	InspectInterval int
-	Verbosity       int
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -228,11 +226,6 @@ func ParseFlags() (*Configuration, error) {
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {
 		return nil, fmt.Errorf("no host nic for vlan")
-	}
-
-	var err error
-	if config.Verbosity, err = strconv.Atoi(klogFlags.Lookup("v").Value.String()); err != nil {
-		return nil, fmt.Errorf("failed to parse log verbosity level: %v", err)
 	}
 
 	if config.DefaultGateway == "" {

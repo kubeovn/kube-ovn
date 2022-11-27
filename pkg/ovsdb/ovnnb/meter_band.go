@@ -3,6 +3,8 @@
 
 package ovnnb
 
+const MeterBandTable = "Meter_Band"
+
 type (
 	MeterBandAction = string
 )

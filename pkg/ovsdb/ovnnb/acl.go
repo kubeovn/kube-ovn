@@ -3,6 +3,8 @@
 
 package ovnnb
 
+const ACLTable = "ACL"
+
 type (
 	ACLAction    = string
 	ACLDirection = string
@@ -18,10 +20,10 @@ var (
 	ACLDirectionFromLport   ACLDirection = "from-lport"
 	ACLDirectionToLport     ACLDirection = "to-lport"
 	ACLSeverityAlert        ACLSeverity  = "alert"
-	ACLSeverityWarning      ACLSeverity  = "warning"
-	ACLSeverityNotice       ACLSeverity  = "notice"
-	ACLSeverityInfo         ACLSeverity  = "info"
 	ACLSeverityDebug        ACLSeverity  = "debug"
+	ACLSeverityInfo         ACLSeverity  = "info"
+	ACLSeverityNotice       ACLSeverity  = "notice"
+	ACLSeverityWarning      ACLSeverity  = "warning"
 )
 
 // ACL defines an object in ACL table

@@ -3,6 +3,8 @@
 
 package ovnnb
 
+const AddressSetTable = "Address_Set"
+
 // AddressSet defines an object in Address_Set table
 type AddressSet struct {
 	UUID        string            `ovsdb:"_uuid"`

@@ -3,14 +3,16 @@
 
 package ovnnb
 
+const NATTable = "NAT"
+
 type (
 	NATType = string
 )
 
 var (
 	NATTypeDNAT        NATType = "dnat"
-	NATTypeSNAT        NATType = "snat"
 	NATTypeDNATAndSNAT NATType = "dnat_and_snat"
+	NATTypeSNAT        NATType = "snat"
 )
 
 // NAT defines an object in NAT table

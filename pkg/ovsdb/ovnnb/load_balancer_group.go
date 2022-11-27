@@ -3,6 +3,8 @@
 
 package ovnnb
 
+const LoadBalancerGroupTable = "Load_Balancer_Group"
+
 // LoadBalancerGroup defines an object in Load_Balancer_Group table
 type LoadBalancerGroup struct {
 	UUID         string   `ovsdb:"_uuid"`

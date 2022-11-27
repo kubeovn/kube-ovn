@@ -3,6 +3,8 @@
 
 package ovnnb
 
+const ForwardingGroupTable = "Forwarding_Group"
+
 // ForwardingGroup defines an object in Forwarding_Group table
 type ForwardingGroup struct {
 	UUID        string            `ovsdb:"_uuid"`
