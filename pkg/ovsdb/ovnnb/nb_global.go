@@ -3,6 +3,8 @@
 
 package ovnnb
 
+const NBGlobalTable = "NB_Global"
+
 // NBGlobal defines an object in NB_Global table
 type NBGlobal struct {
 	UUID           string            `ovsdb:"_uuid"`

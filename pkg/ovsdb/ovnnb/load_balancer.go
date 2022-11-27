@@ -3,6 +3,8 @@
 
 package ovnnb
 
+const LoadBalancerTable = "Load_Balancer"
+
 type (
 	LoadBalancerProtocol        = string
 	LoadBalancerSelectionFields = string

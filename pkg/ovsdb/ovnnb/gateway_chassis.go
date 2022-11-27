@@ -3,6 +3,8 @@
 
 package ovnnb
 
+const GatewayChassisTable = "Gateway_Chassis"
+
 // GatewayChassis defines an object in Gateway_Chassis table
 type GatewayChassis struct {
 	UUID        string            `ovsdb:"_uuid"`

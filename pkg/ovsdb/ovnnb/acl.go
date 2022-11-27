@@ -3,6 +3,8 @@
 
 package ovnnb
 
+const ACLTable = "ACL"
+
 type (
 	ACLAction    = string
 	ACLDirection = string

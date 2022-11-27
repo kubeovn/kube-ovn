@@ -3,6 +3,8 @@
 
 package ovnnb
 
+const DHCPOptionsTable = "DHCP_Options"
+
 // DHCPOptions defines an object in DHCP_Options table
 type DHCPOptions struct {
 	UUID        string            `ovsdb:"_uuid"`

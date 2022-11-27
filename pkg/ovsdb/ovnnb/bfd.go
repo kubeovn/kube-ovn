@@ -3,6 +3,8 @@
 
 package ovnnb
 
+const BFDTable = "BFD"
+
 type (
 	BFDStatus = string
 )

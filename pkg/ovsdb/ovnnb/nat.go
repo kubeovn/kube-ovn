@@ -3,6 +3,8 @@
 
 package ovnnb
 
+const NATTable = "NAT"
+
 type (
 	NATType = string
 )

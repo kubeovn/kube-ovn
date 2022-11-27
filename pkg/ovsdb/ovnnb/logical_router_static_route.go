@@ -3,6 +3,8 @@
 
 package ovnnb
 
+const LogicalRouterStaticRouteTable = "Logical_Router_Static_Route"
+
 type (
 	LogicalRouterStaticRoutePolicy = string
 )

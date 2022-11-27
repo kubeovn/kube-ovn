@@ -3,6 +3,8 @@
 
 package ovnnb
 
+const QoSTable = "QoS"
+
 type (
 	QoSAction    = string
 	QoSBandwidth = string
