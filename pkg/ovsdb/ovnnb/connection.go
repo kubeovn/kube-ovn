@@ -3,6 +3,8 @@
 
 package ovnnb
 
+const ConnectionTable = "Connection"
+
 // Connection defines an object in Connection table
 type Connection struct {
 	UUID            string            `ovsdb:"_uuid"`

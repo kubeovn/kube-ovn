@@ -3,6 +3,8 @@
 
 package ovnnb
 
+const SSLTable = "SSL"
+
 // SSL defines an object in SSL table
 type SSL struct {
 	UUID            string            `ovsdb:"_uuid"`

@@ -16,8 +16,11 @@ import (
 )
 
 func (c OvnClient) GetLogicalSwitchPort(name string, ignoreNotFound bool) (*ovnnb.LogicalSwitchPort, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	lsp := &ovnnb.LogicalSwitchPort{Name: name}
-	if err := c.ovnNbClient.Get(context.TODO(), lsp); err != nil {
+	if err := c.ovnNbClient.Get(ctx, lsp); err != nil {
 		if ignoreNotFound && err == client.ErrNotFound {
 			return nil, nil
 		}
@@ -28,10 +31,18 @@ func (c OvnClient) GetLogicalSwitchPort(name string, ignoreNotFound bool) (*ovnn
 }
 
 func (c OvnClient) ListPodLogicalSwitchPorts(key string) ([]ovnnb.LogicalSwitchPort, error) {
-	lspList := make([]ovnnb.LogicalSwitchPort, 0, 1)
-	if err := c.ovnNbClient.WhereCache(func(lsp *ovnnb.LogicalSwitchPort) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	api, err := c.ovnNbClient.WherePredict(ctx, func(lsp *ovnnb.LogicalSwitchPort) bool {
 		return len(lsp.ExternalIDs) != 0 && lsp.ExternalIDs["pod"] == key
-	}).List(context.TODO(), &lspList); err != nil {
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var lspList []ovnnb.LogicalSwitchPort
+	if err = api.List(context.TODO(), &lspList); err != nil {
 		return nil, fmt.Errorf("failed to list logical switch ports of Pod %s: %v", key, err)
 	}
 
@@ -39,8 +50,10 @@ func (c OvnClient) ListPodLogicalSwitchPorts(key string) ([]ovnnb.LogicalSwitchP
 }
 
 func (c OvnClient) ListLogicalSwitchPorts(needVendorFilter bool, externalIDs map[string]string) ([]ovnnb.LogicalSwitchPort, error) {
-	lspList := make([]ovnnb.LogicalSwitchPort, 0)
-	if err := c.ovnNbClient.WhereCache(func(lsp *ovnnb.LogicalSwitchPort) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	api, err := c.ovnNbClient.WherePredict(ctx, func(lsp *ovnnb.LogicalSwitchPort) bool {
 		if lsp.Type != "" {
 			return false
 		}
@@ -58,7 +71,13 @@ func (c OvnClient) ListLogicalSwitchPorts(needVendorFilter bool, externalIDs map
 			}
 		}
 		return true
-	}).List(context.TODO(), &lspList); err != nil {
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var lspList []ovnnb.LogicalSwitchPort
+	if err = api.List(context.TODO(), &lspList); err != nil {
 		klog.Errorf("failed to list logical switch ports: %v", err)
 		return nil, err
 	}

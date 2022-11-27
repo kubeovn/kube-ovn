@@ -3,6 +3,8 @@
 
 package ovnnb
 
+const PortGroupTable = "Port_Group"
+
 // PortGroup defines an object in Port_Group table
 type PortGroup struct {
 	UUID        string            `ovsdb:"_uuid"`

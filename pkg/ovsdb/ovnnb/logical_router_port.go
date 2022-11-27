@@ -3,6 +3,8 @@
 
 package ovnnb
 
+const LogicalRouterPortTable = "Logical_Router_Port"
+
 // LogicalRouterPort defines an object in Logical_Router_Port table
 type LogicalRouterPort struct {
 	UUID           string            `ovsdb:"_uuid"`

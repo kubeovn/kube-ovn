@@ -3,6 +3,8 @@
 
 package ovnnb
 
+const MeterTable = "Meter"
+
 type (
 	MeterUnit = string
 )

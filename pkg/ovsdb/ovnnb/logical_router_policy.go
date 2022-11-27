@@ -3,6 +3,8 @@
 
 package ovnnb
 
+const LogicalRouterPolicyTable = "Logical_Router_Policy"
+
 type (
 	LogicalRouterPolicyAction = string
 )

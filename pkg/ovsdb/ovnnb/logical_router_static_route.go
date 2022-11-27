@@ -3,13 +3,15 @@
 
 package ovnnb
 
+const LogicalRouterStaticRouteTable = "Logical_Router_Static_Route"
+
 type (
 	LogicalRouterStaticRoutePolicy = string
 )
 
 var (
-	LogicalRouterStaticRoutePolicySrcIP LogicalRouterStaticRoutePolicy = "src-ip"
 	LogicalRouterStaticRoutePolicyDstIP LogicalRouterStaticRoutePolicy = "dst-ip"
+	LogicalRouterStaticRoutePolicySrcIP LogicalRouterStaticRoutePolicy = "src-ip"
 )
 
 // LogicalRouterStaticRoute defines an object in Logical_Router_Static_Route table
