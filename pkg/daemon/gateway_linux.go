@@ -17,6 +17,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
+	k8sipset "k8s.io/kubernetes/pkg/util/ipset"
+	k8sexec "k8s.io/utils/exec"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -914,15 +916,10 @@ func (c *Controller) deleteLegacySnatRules(protocol, table, chain string) error 
 }
 
 func ipsetExists(name string) (bool, error) {
-	result, err := netlink.IpsetListAll()
+	sets, err := k8sipset.New(k8sexec.New()).ListSets()
 	if err != nil {
-		return false, fmt.Errorf("failed to list ipsets: %v", err)
+		return false, fmt.Errorf("failed to list ipset names: %v", err)
 	}
 
-	for _, ipset := range result {
-		if ipset.SetName == name {
-			return true, nil
-		}
-	}
-	return false, nil
+	return util.ContainsString(sets, name), nil
 }
