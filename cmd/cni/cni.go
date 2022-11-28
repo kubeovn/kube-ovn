@@ -64,19 +64,20 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return err
 	}
 
-	result := generateCNIResult(response)
+	result := generateCNIResult(response, args.Netns)
 	return types.PrintResult(&result, cniVersion)
 }
 
-func generateCNIResult(cniResponse *request.CniResponse) current.Result {
+func generateCNIResult(cniResponse *request.CniResponse, netns string) current.Result {
 	result := current.Result{
 		CNIVersion: current.ImplementedSpecVersion,
 		DNS:        cniResponse.DNS,
 	}
 	_, mask, _ := net.ParseCIDR(cniResponse.CIDR)
 	podIface := current.Interface{
-		Name: cniResponse.PodNicName,
-		Mac:  cniResponse.MacAddress,
+		Name:    cniResponse.PodNicName,
+		Mac:     cniResponse.MacAddress,
+		Sandbox: netns,
 	}
 	switch cniResponse.Protocol {
 	case kubeovnv1.ProtocolIPv4:
