@@ -1190,19 +1190,19 @@ spec:
       additionalPrinterColumns:
       - name: V4IP
         type: string
-        jsonPath: .spec.v4ip
+        jsonPath: .status.v4ip
       - name: PV4IP
         type: string
         jsonPath: .spec.parentV4ip
       - name: Mac
         type: string
-        jsonPath: .spec.macAddress
+        jsonPath: .status.mac
       - name: PMac
         type: string
-        jsonPath: .spec.ParentMac
+        jsonPath: .spec.parentMac
       - name: V6IP
         type: string
-        jsonPath: .spec.v6ip
+        jsonPath: .status.v6ip
       - name: PV6IP
         type: string
         jsonPath: .spec.parentV6ip

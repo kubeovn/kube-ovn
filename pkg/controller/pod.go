@@ -1229,7 +1229,7 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		if err = c.podReuseVip(vipName, portName, isStsPod); err != nil {
 			return "", "", "", podNet.Subnet, err
 		}
-		return vip.Spec.V4ip, vip.Spec.V6ip, vip.Spec.MacAddress, podNet.Subnet, nil
+		return vip.Status.V4ip, vip.Status.V6ip, vip.Status.Mac, podNet.Subnet, nil
 	}
 
 	macStr := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]

@@ -404,7 +404,7 @@ func (c *Controller) InitIPAM() error {
 		} else {
 			ipamKey = vip.Name
 		}
-		if _, _, _, err = c.ipam.GetStaticAddress(ipamKey, vip.Name, vip.Spec.V4ip, vip.Spec.MacAddress, vip.Spec.Subnet, false); err != nil {
+		if _, _, _, err = c.ipam.GetStaticAddress(ipamKey, vip.Name, vip.Status.V4ip, vip.Status.Mac, vip.Spec.Subnet, true); err != nil {
 			klog.Errorf("failed to init ipam from vip cr %s: %v", vip.Name, err)
 		}
 	}
