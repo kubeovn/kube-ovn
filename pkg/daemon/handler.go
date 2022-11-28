@@ -16,7 +16,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/request"
@@ -176,7 +175,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		return
 	}
 
-	if err := csh.createOrUpdateIPCr(podRequest, subnet, ip, macAddr); err != nil {
+	if err := csh.UpdateIPCr(podRequest, subnet, ip, macAddr); err != nil {
 		if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()}); err != nil {
 			klog.Errorf("failed to write response, %v", err)
 		}
@@ -294,45 +293,13 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	}
 }
 
-func (csh cniServerHandler) createOrUpdateIPCr(podRequest request.CniRequest, subnet, ip, macAddr string) error {
-	v4IP, v6IP := util.SplitStringIP(ip)
+func (csh cniServerHandler) UpdateIPCr(podRequest request.CniRequest, subnet, ip, macAddr string) error {
 	ipCrName := ovs.PodNameToPortName(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider)
 	oriIpCr, err := csh.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), ipCrName, metav1.GetOptions{})
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			_, err := csh.KubeOvnClient.KubeovnV1().IPs().Create(context.Background(), &kubeovnv1.IP{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: ipCrName,
-					Labels: map[string]string{
-						util.SubnetNameLabel: subnet,
-						subnet:               "",
-					},
-				},
-				Spec: kubeovnv1.IPSpec{
-					PodName:       podRequest.PodName,
-					Namespace:     podRequest.PodNamespace,
-					Subnet:        subnet,
-					NodeName:      csh.Config.NodeName,
-					IPAddress:     ip,
-					V4IPAddress:   v4IP,
-					V6IPAddress:   v6IP,
-					MacAddress:    macAddr,
-					ContainerID:   podRequest.ContainerID,
-					AttachIPs:     []string{},
-					AttachMacs:    []string{},
-					AttachSubnets: []string{},
-				},
-			}, metav1.CreateOptions{})
-			if err != nil {
-				errMsg := fmt.Errorf("failed to create ip crd for %s, provider '%s', %v", ip, podRequest.Provider, err)
-				klog.Error(errMsg)
-				return errMsg
-			}
-		} else {
-			errMsg := fmt.Errorf("failed to get ip crd for %s, %v", ip, err)
-			klog.Error(errMsg)
-			return errMsg
-		}
+		errMsg := fmt.Errorf("failed to get ip crd for %s, %v", ip, err)
+		klog.Error(errMsg)
+		return errMsg
 	} else {
 		ipCr := oriIpCr.DeepCopy()
 		ipCr.Spec.NodeName = csh.Config.NodeName
