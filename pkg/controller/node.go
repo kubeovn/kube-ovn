@@ -1211,6 +1211,9 @@ func (c *Controller) addPolicyRouteForCentralizedSubnetOnNode(nodeName, nodeIP s
 						continue
 					}
 					nextHops = append(nextHops, nextHop)
+					if nameIpMap == nil {
+						nameIpMap = make(map[string]string, 1)
+					}
 					nameIpMap[nodeName] = nextHop
 
 					if err = c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops, nameIpMap); err != nil {
