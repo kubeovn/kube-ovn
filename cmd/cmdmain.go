@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"k8s.io/klog/v2"
-
 	"github.com/kubeovn/kube-ovn/cmd/cni"
 	"github.com/kubeovn/kube-ovn/cmd/controller"
 	"github.com/kubeovn/kube-ovn/cmd/controller_health_check"
@@ -14,6 +12,7 @@ import (
 	"github.com/kubeovn/kube-ovn/cmd/ovn_monitor"
 	"github.com/kubeovn/kube-ovn/cmd/pinger"
 	"github.com/kubeovn/kube-ovn/cmd/speaker"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const (
@@ -47,6 +46,6 @@ func main() {
 	case CmdOvnLeaderChecker:
 		ovn_leader_checker.CmdMain()
 	default:
-		klog.Fatalf("%s is an unknown command", cmd)
+		util.LogFatalAndExit(nil, "%s is an unknown command", cmd)
 	}
 }
