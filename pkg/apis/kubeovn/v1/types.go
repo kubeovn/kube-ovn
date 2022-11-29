@@ -292,6 +292,9 @@ type ProviderNetworkStatus struct {
 	ReadyNodes []string `json:"readyNodes,omitempty"`
 
 	// +optional
+	NotReadyNodes []string `json:"notReadyNodes,omitempty"`
+
+	// +optional
 	Vlans []string `json:"vlans,omitempty"`
 
 	// Conditions represents the latest state of the object

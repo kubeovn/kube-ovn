@@ -1595,6 +1595,10 @@ spec:
                   type: array
                   items:
                     type: string
+                notReadyNodes:
+                  type: array
+                  items:
+                    type: string
                 vlans:
                   type: array
                   items:
