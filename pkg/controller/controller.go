@@ -295,9 +295,9 @@ func NewController(config *Configuration) *Controller {
 
 		virtualIpsLister:     virtualIpInformer.Lister(),
 		virtualIpsSynced:     virtualIpInformer.Informer().HasSynced,
-		addVirtualIpQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addVirtualIp"),
-		updateVirtualIpQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateVirtualIp"),
-		delVirtualIpQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delVirtualIp"),
+		addVirtualIpQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "addVirtualIp"),
+		updateVirtualIpQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "updateVirtualIp"),
+		delVirtualIpQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "delVirtualIp"),
 
 		iptablesEipsLister:     iptablesEipInformer.Lister(),
 		iptablesEipSynced:      iptablesEipInformer.Informer().HasSynced,
