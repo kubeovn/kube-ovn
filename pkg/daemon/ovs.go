@@ -396,7 +396,7 @@ func (c *Controller) loopOvn0Check() {
 	ip := node.Annotations[util.IpAddressAnnotation]
 	gw := node.Annotations[util.GatewayAnnotation]
 	if err := waitNetworkReady(util.NodeNic, ip, gw, false, false); err != nil {
-		util.LogFatalAndExit(err, "failed to ping ovn0 gateway %s", gw, err)
+		util.LogFatalAndExit(err, "failed to ping ovn0 gateway %s", gw)
 	}
 }
 
