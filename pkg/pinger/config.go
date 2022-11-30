@@ -89,7 +89,7 @@ func ParseFlags() (*Configuration, error) {
 		if f2 != nil {
 			value := f1.Value.String()
 			if err := f2.Value.Set(value); err != nil {
-				klog.Fatalf("failed to set flag %v", err)
+				util.LogFatalAndExit(err, "failed to set flag")
 			}
 		}
 	})
@@ -152,7 +152,7 @@ func ParseFlags() (*Configuration, error) {
 		}
 
 		if pod.Status.ContainerStatuses[0].Ready {
-			klog.Fatalf("failed to get IPs of Pod %s/%s", config.DaemonSetNamespace, podName)
+			util.LogFatalAndExit(nil, "failed to get IPs of Pod %s/%s", config.DaemonSetNamespace, podName)
 		}
 
 		klog.Infof("cannot get Pod IPs now, waiting Pod to be ready")
@@ -160,7 +160,7 @@ func ParseFlags() (*Configuration, error) {
 	}
 
 	if len(config.PodProtocols) == 0 {
-		klog.Fatalf("failed to get IPs of Pod %s/%s after 3 attempts", config.DaemonSetNamespace, podName)
+		util.LogFatalAndExit(nil, "failed to get IPs of Pod %s/%s after 3 attempts", config.DaemonSetNamespace, podName)
 	}
 
 	klog.Infof("pinger config is %+v", config)

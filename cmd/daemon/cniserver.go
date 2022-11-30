@@ -39,23 +39,23 @@ func CmdMain() {
 
 	nicBridgeMappings, err := daemon.InitOVSBridges()
 	if err != nil {
-		klog.Fatalf("failed to initialize OVS bridges: %v", err)
+		util.LogFatalAndExit(err, "failed to initialize OVS bridges")
 	}
 
 	if err = config.Init(nicBridgeMappings); err != nil {
-		klog.Fatalf("failed to initialize config: %v", err)
+		util.LogFatalAndExit(err, "failed to initialize config")
 	}
 
 	if err := Retry(util.ChasRetryTime, util.ChasRetryIntev, initChassisAnno, config); err != nil {
-		klog.Fatalf("failed to annotate chassis id, %v", err)
+		util.LogFatalAndExit(err, "failed to initialize ovn chassis annotation")
 	}
 
 	if err = daemon.InitMirror(config); err != nil {
-		klog.Fatalf("failed to init mirror nic, %v", err)
+		util.LogFatalAndExit(err, "failed to initialize ovs mirror")
 	}
 
 	if err = daemon.InitNodeGateway(config); err != nil {
-		klog.Fatalf("init node gateway failed %v", err)
+		util.LogFatalAndExit(err, "failed to initialize node gateway")
 	}
 
 	stopCh := signals.SetupSignalHandler()
@@ -74,7 +74,7 @@ func CmdMain() {
 		}))
 	ctl, err := daemon.NewController(config, podInformerFactory, nodeInformerFactory, kubeovnInformerFactory)
 	if err != nil {
-		klog.Fatalf("create controller failed %v", err)
+		util.LogFatalAndExit(err, "failed to create controller")
 	}
 	podInformerFactory.Start(stopCh)
 	nodeInformerFactory.Start(stopCh)
@@ -82,7 +82,7 @@ func CmdMain() {
 	go ctl.Run(stopCh)
 	go daemon.RunServer(config, ctl)
 	if err := mvCNIConf(config.CniConfDir, config.CniConfFile, config.CniConfName); err != nil {
-		klog.Fatalf("failed to mv cni conf, %v", err)
+		util.LogFatalAndExit(err, "failed to mv cni config file")
 	}
 
 	mux := http.NewServeMux()

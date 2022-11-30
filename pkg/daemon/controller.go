@@ -101,8 +101,7 @@ func NewController(config *Configuration, podInformerFactory informers.SharedInf
 
 	node, err := config.KubeClient.CoreV1().Nodes().Get(context.Background(), config.NodeName, metav1.GetOptions{})
 	if err != nil {
-		klog.Fatalf("failed to get node %s info %v", config.NodeName, err)
-		return nil, err
+		util.LogFatalAndExit(err, "failed to get node %s info", config.NodeName)
 	}
 	controller.protocol = util.CheckProtocol(node.Annotations[util.IpAddressAnnotation])
 
@@ -659,13 +658,11 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.operateMod, 10*time.Second, stopCh)
 
 	if ok := cache.WaitForCacheSync(stopCh, c.providerNetworksSynced, c.subnetsSynced, c.podsSynced, c.nodesSynced, c.htbQosSynced); !ok {
-		klog.Fatalf("failed to wait for caches to sync")
-		return
+		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
 	}
 
 	if err := c.setIPSet(); err != nil {
-		klog.Errorf("failed to set ipsets: %v", err)
-		return
+		util.LogFatalAndExit(err, "failed to set ipsets")
 	}
 
 	klog.Info("Started workers")
