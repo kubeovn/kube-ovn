@@ -31,11 +31,11 @@ func CmdMain() {
 	util.InitKlogMetrics()
 	config, err := controller.ParseFlags()
 	if err != nil {
-		klog.Fatalf("parse config failed %v", err)
+		util.LogFatalAndExit(err, "failed to parse config")
 	}
 
 	if err := checkPermission(config); err != nil {
-		klog.Fatalf("failed to check permission %v", err)
+		util.LogFatalAndExit(err, "failed to check permission")
 	}
 
 	go loopOvnNbctlDaemon(config)
