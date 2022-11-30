@@ -3,9 +3,6 @@ package speaker
 import (
 	"time"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
-	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -13,11 +10,15 @@ import (
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-
 	listerv1 "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
+	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const controllerAgentName = "ovn-speaker"
@@ -82,8 +83,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	c.kubeovnInformerFactory.Start(stopCh)
 
 	if ok := cache.WaitForCacheSync(stopCh, c.podsSynced, c.subnetSynced); !ok {
-		klog.Fatalf("failed to wait for caches to sync")
-		return
+		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
 	}
 
 	klog.Info("Started workers")

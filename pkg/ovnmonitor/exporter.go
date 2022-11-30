@@ -8,6 +8,8 @@ import (
 
 	"github.com/greenpau/ovsdb"
 	"k8s.io/klog/v2"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const (
@@ -114,8 +116,7 @@ func (e *Exporter) StartConnection() error {
 func (e *Exporter) TryClientConnection() {
 	for {
 		if tryConnectCnt > 5 {
-			klog.Fatalf("%s: ovn-monitor failed to reconnect db socket finally", e.Client.System.Hostname)
-			break
+			util.LogFatalAndExit(nil, "%s: ovn-monitor failed to reconnect db socket finally", e.Client.System.Hostname)
 		}
 
 		if err := e.StartConnection(); err != nil {

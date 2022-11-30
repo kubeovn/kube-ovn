@@ -354,11 +354,11 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 func (c *Controller) loopOvn0Check() {
 	link, err := netlink.LinkByName(util.NodeNic)
 	if err != nil {
-		klog.Fatalf("failed to get ovn0 nic: %v", err)
+		util.LogFatalAndExit(err, "failed to get ovn0 nic:")
 	}
 
 	if link.Attrs().OperState == netlink.OperDown {
-		klog.Fatalf("ovn0 nic is down")
+		util.LogFatalAndExit(err, "ovn0 nic is down")
 	}
 
 	node, err := c.nodesLister.Get(c.config.NodeName)
@@ -368,7 +368,7 @@ func (c *Controller) loopOvn0Check() {
 	}
 	gw := node.Annotations[util.GatewayAnnotation]
 	if err := waitNetworkReady(util.NodeNic, gw, false); err != nil {
-		klog.Fatalf("failed to ping ovn0 gw: %s, %v", gw, err)
+		util.LogFatalAndExit(err, "failed to ping ovn0 gateway %s", gw)
 	}
 }
 

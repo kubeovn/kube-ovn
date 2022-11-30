@@ -31,7 +31,7 @@ require (
 	k8s.io/apimachinery v0.20.4
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/klog v1.0.0
-	k8s.io/klog/v2 v2.4.0
+	k8s.io/klog/v2 v2.80.1
 	k8s.io/sample-controller v0.0.0-20190326030654-b8f621986e45
 	kubevirt.io/client-go v0.49.0
 	sigs.k8s.io/controller-runtime v0.8.3
@@ -55,7 +55,7 @@ require (
 	github.com/go-ini/ini v1.42.0 // indirect
 	github.com/go-kit/kit v0.9.0 // indirect
 	github.com/go-logfmt/logfmt v0.5.0 // indirect
-	github.com/go-logr/logr v0.3.0 // indirect
+	github.com/go-logr/logr v1.2.0 // indirect
 	github.com/go-openapi/jsonpointer v0.19.3 // indirect
 	github.com/go-openapi/jsonreference v0.19.3 // indirect
 	github.com/go-openapi/spec v0.19.5 // indirect

@@ -16,6 +16,7 @@ import (
 
 	ovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	ovnwebhook "github.com/kubeovn/kube-ovn/pkg/webhook"
 	"github.com/kubeovn/kube-ovn/versions"
 )
@@ -30,13 +31,13 @@ var (
 
 func init() {
 	if err := corev1.AddToScheme(scheme); err != nil {
-		klog.Fatalf("failed to add scheme, %v", err)
+		util.LogFatalAndExit(err, "failed to add core v1 scheme")
 	}
 	if err := appsv1.AddToScheme(scheme); err != nil {
-		klog.Fatalf("failed to add scheme, %v", err)
+		util.LogFatalAndExit(err, "failed to add apps v1 scheme")
 	}
 	if err := ovnv1.AddToScheme(scheme); err != nil {
-		klog.Fatalf("failed to add scheme, %v", err)
+		util.LogFatalAndExit(err, "failed to add ovn v1 scheme")
 	}
 }
 

@@ -365,41 +365,41 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		cacheSyncs = append(cacheSyncs, c.npsSynced)
 	}
 	if ok := cache.WaitForCacheSync(stopCh, cacheSyncs...); !ok {
-		klog.Fatalf("failed to wait for caches to sync")
+		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
 	}
 
 	if err := c.InitDefaultVpc(); err != nil {
-		klog.Fatalf("failed to init default vpc: %v", err)
+		util.LogFatalAndExit(err, "failed to initialize default vpc")
 	}
 
 	if err := c.InitOVN(); err != nil {
-		klog.Fatalf("failed to init ovn resource: %v", err)
+		util.LogFatalAndExit(err, "failed to initialize ovn resources")
 	}
 
 	// sync ip crd before initIPAM since ip crd will be used to restore vm and statefulset pod in initIPAM
 	if err := c.initSyncCrdIPs(); err != nil {
-		klog.Errorf("failed to sync crd ips: %v", err)
+		util.LogFatalAndExit(err, "failed to sync crd ips")
 	}
 
 	if err := c.InitIPAM(); err != nil {
-		klog.Fatalf("failed to init ipam: %v", err)
+		util.LogFatalAndExit(err, "failed to initialize ipam")
 	}
 
 	if err := c.initDenyAllSecurityGroup(); err != nil {
-		klog.Fatalf("failed to init 'deny_all' security group: %v", err)
+		util.LogFatalAndExit(err, "failed to initialize 'deny_all' security group")
 	}
 
 	// remove resources in ovndb that not exist any more in kubernetes resources
 	if err := c.gc(); err != nil {
-		klog.Fatalf("gc failed: %v", err)
+		util.LogFatalAndExit(err, "failed to run gc")
 	}
 
 	c.registerSubnetMetrics()
 	if err := c.initSyncCrdSubnets(); err != nil {
-		klog.Errorf("failed to sync crd subnets: %v", err)
+		util.LogFatalAndExit(err, "failed to sync crd subnets")
 	}
 	if err := c.initSyncCrdVlans(); err != nil {
-		klog.Errorf("failed to sync crd vlans: %v", err)
+		util.LogFatalAndExit(err, "failed to sync crd vlans")
 	}
 
 	// start workers to do all the network operations
@@ -482,7 +482,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		time.Sleep(3 * time.Second)
 		lss, err := c.ovnClient.ListLogicalSwitch(c.config.EnableExternalVpc)
 		if err != nil {
-			klog.Fatalf("failed to list logical switch: %v", err)
+			util.LogFatalAndExit(err, "failed to list logical switch")
 		}
 
 		if util.IsStringIn(c.config.DefaultLogicalSwitch, lss) && util.IsStringIn(c.config.NodeSwitch, lss) && c.addNamespaceQueue.Len() == 0 {
@@ -505,7 +505,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		time.Sleep(3 * time.Second)
 		nodes, err := c.nodesLister.List(labels.Everything())
 		if err != nil {
-			klog.Fatalf("failed to list nodes: %v", err)
+			util.LogFatalAndExit(err, "failed to list nodes")
 		}
 		for _, node := range nodes {
 			if node.Annotations[util.AllocatedAnnotation] != "true" {

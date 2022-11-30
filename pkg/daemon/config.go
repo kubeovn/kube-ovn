@@ -84,7 +84,7 @@ func ParseFlags(nicBridgeMappings map[string]string) (*Configuration, error) {
 		if f2 != nil {
 			value := f1.Value.String()
 			if err := f2.Value.Set(value); err != nil {
-				klog.Fatalf("failed to set flag, %v", err)
+				util.LogFatalAndExit(err, "failed to set flag")
 			}
 		}
 	})

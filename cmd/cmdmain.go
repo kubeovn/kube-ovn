@@ -4,13 +4,12 @@ import (
 	"os"
 	"strings"
 
-	"k8s.io/klog/v2"
-
 	"github.com/kubeovn/kube-ovn/cmd/controller"
 	"github.com/kubeovn/kube-ovn/cmd/daemon"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_monitor"
 	"github.com/kubeovn/kube-ovn/cmd/pinger"
 	"github.com/kubeovn/kube-ovn/cmd/speaker"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const (
@@ -36,6 +35,6 @@ func main() {
 	case CmdSpeaker:
 		speaker.CmdMain()
 	default:
-		klog.Fatalf("%s is an unknown command", cmd)
+		util.LogFatalAndExit(nil, "%s is an unknown command", cmd)
 	}
 }

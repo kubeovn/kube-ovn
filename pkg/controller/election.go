@@ -13,6 +13,8 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const ovnLeaderElector = "ovn-controller-leader-elector"
@@ -76,7 +78,7 @@ func setupLeaderElection(config *leaderElectionConfig) *leaderelection.LeaderEle
 			if config.OnStoppedLeading != nil {
 				config.OnStoppedLeading()
 			}
-			klog.Fatalf("leaderelection lost")
+			util.LogFatalAndExit(nil, "leaderelection lost")
 		},
 		OnNewLeader: func(identity string) {
 			klog.Infof("new leader elected: %v", identity)
@@ -111,7 +113,7 @@ func setupLeaderElection(config *leaderElectionConfig) *leaderelection.LeaderEle
 		Callbacks:     callbacks,
 	})
 	if err != nil {
-		klog.Fatalf("unexpected error starting leader election: %v", err)
+		util.LogFatalAndExit(err, "failed to create leader elector")
 	}
 
 	go elector.Run(context.Background())
