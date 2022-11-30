@@ -361,10 +361,10 @@ func compactOvnDatabase(db string) {
 
 func doOvnLeaderCheck(cfg *Configuration, podName string, podNamespace string) {
 	if podName == "" || podNamespace == "" {
-		klog.Fatalf("env variables POD_NAME and POD_NAMESPACE must be set")
+		util.LogFatalAndExit(nil, "env variables POD_NAME and POD_NAMESPACE must be set")
 	}
 	if cfg == nil || cfg.KubeClient == nil {
-		klog.Fatalf("preValidChkCfg: invalid cfg")
+		util.LogFatalAndExit(nil, "preValidChkCfg: invalid cfg")
 	}
 
 	if !checkOvnIsAlive() {

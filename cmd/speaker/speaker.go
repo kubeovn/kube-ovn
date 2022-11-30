@@ -9,6 +9,7 @@ import (
 	"k8s.io/sample-controller/pkg/signals"
 
 	"github.com/kubeovn/kube-ovn/pkg/speaker"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/versions"
 )
 
@@ -18,7 +19,7 @@ func CmdMain() {
 	klog.Infof(versions.String())
 	config, err := speaker.ParseFlags()
 	if err != nil {
-		klog.Fatalf("failed to parse config %v", err)
+		util.LogFatalAndExit(err, "failed to parse config")
 	}
 
 	stopCh := signals.SetupSignalHandler()

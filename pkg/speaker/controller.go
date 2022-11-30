@@ -18,6 +18,7 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
 	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const controllerAgentName = "ovn-speaker"
@@ -82,7 +83,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	c.kubeovnInformerFactory.Start(stopCh)
 
 	if !cache.WaitForCacheSync(stopCh, c.podsSynced, c.subnetSynced, c.servicesSynced) {
-		klog.Fatalf("failed to wait for caches to sync")
+		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
 		return
 	}
 

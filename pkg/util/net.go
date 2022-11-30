@@ -174,7 +174,7 @@ func GenerateRandomV4IP(cidr string) string {
 	hostNum := 32 - netMask
 	add, err := rand.Int(rand.Reader, big.NewInt(1<<(uint(hostNum)-1)))
 	if err != nil {
-		klog.Fatalf("failed to generate random ip, %v", err)
+		LogFatalAndExit(err, "failed to generate random ip")
 	}
 	t := big.NewInt(0).Add(Ip2BigInt(ip), add)
 	return fmt.Sprintf("%s/%d", BigInt2Ip(t), netMask)

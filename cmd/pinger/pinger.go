@@ -21,7 +21,7 @@ func CmdMain() {
 	util.InitKlogMetrics()
 	config, err := pinger.ParseFlags()
 	if err != nil {
-		klog.Fatalf("parse config failed %v", err)
+		util.LogFatalAndExit(err, "failed to parse config")
 	}
 	if config.Mode == "server" {
 		http.Handle("/metrics", promhttp.Handler())
