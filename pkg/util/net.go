@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"golang.org/x/sys/unix"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
