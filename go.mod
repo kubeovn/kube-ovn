@@ -45,7 +45,7 @@ require (
 	k8s.io/sample-controller v0.25.4
 	k8s.io/utils v0.0.0-20221108210102-8e77b1f39fe2
 	kubevirt.io/client-go v0.56.0
-	sigs.k8s.io/controller-runtime v0.12.3
+	sigs.k8s.io/controller-runtime v0.13.1
 )
 
 require (
@@ -62,6 +62,7 @@ require (
 	github.com/eapache/channels v1.1.0 // indirect
 	github.com/eapache/queue v1.1.0 // indirect
 	github.com/elazarl/goproxy v0.0.0-20190630181448-f1e96bc0f4c5 // indirect
+	github.com/evanphx/json-patch/v5 v5.6.0 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
 	github.com/go-ini/ini v1.42.0 // indirect
 	github.com/go-kit/kit v0.12.0 // indirect
@@ -142,9 +143,9 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apiextensions-apiserver v0.24.4 // indirect
+	k8s.io/apiextensions-apiserver v0.25.0 // indirect
 	k8s.io/cluster-bootstrap v0.24.4 // indirect
-	k8s.io/component-base v0.24.4 // indirect
+	k8s.io/component-base v0.25.0 // indirect
 	k8s.io/component-helpers v0.24.4 // indirect
 	k8s.io/kube-openapi v0.0.0-20220803164354-a70c9af30aea // indirect
 	k8s.io/kube-proxy v0.24.4 // indirect
