@@ -384,7 +384,33 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 
-	routeNeedDel, routeNeedAdd, err := diffStaticRoute(existRoute, vpc.Spec.StaticRoutes)
+	targetRoutes := vpc.Spec.StaticRoutes
+	if vpc.Name == c.config.ClusterRouter {
+		joinSubnet, err := c.subnetsLister.Get(c.config.NodeSwitch)
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Error("failed to get node switch subnet %s: %v", c.config.NodeSwitch)
+				return err
+			}
+		}
+		gatewayV4, gatewayV6 := util.SplitStringIP(joinSubnet.Spec.Gateway)
+		if gatewayV4 != "" {
+			targetRoutes = append(targetRoutes, &kubeovnv1.StaticRoute{
+				Policy:    kubeovnv1.PolicyDst,
+				CIDR:      "0.0.0.0/0",
+				NextHopIP: gatewayV4,
+			})
+		}
+		if gatewayV6 != "" {
+			targetRoutes = append(targetRoutes, &kubeovnv1.StaticRoute{
+				Policy:    kubeovnv1.PolicyDst,
+				CIDR:      "::/0",
+				NextHopIP: gatewayV6,
+			})
+		}
+	}
+
+	routeNeedDel, routeNeedAdd, err := diffStaticRoute(existRoute, targetRoutes)
 	if err != nil {
 		klog.Errorf("failed to diff vpc %s static route, %v", vpc.Name, err)
 		return err
