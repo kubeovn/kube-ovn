@@ -1044,7 +1044,7 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 			return err
 		}
 
-		if subnet.Spec.LogicalGateway {
+		if !subnet.Spec.LogicalGateway && subnet.Name != c.config.ExternalGatewaySwitch {
 			lspName := fmt.Sprintf("%s-%s", subnet.Name, c.config.ClusterRouter)
 			klog.Infof("delete logical switch port %s", lspName)
 			if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(lspName); err != nil {
