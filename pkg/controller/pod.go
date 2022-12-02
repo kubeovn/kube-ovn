@@ -1297,8 +1297,8 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		for _, net := range nsNets {
 			for _, staticIPs := range ipPool {
 				for _, staticIP := range strings.Split(staticIPs, ",") {
-					if c.ipam.IsIPAssignedToOtherPod(staticIP, net.Subnet.Name, key) {
-						klog.Errorf("static address %s for %s has been assigned", staticIP, key)
+					if isAssigned, assignedPod := c.ipam.IsIPAssignedToOtherPod(staticIP, net.Subnet.Name, key); isAssigned {
+						klog.Errorf("static address %s for %s has been assigned to %", staticIP, key, assignedPod)
 						continue
 					}
 				}
