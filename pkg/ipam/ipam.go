@@ -242,12 +242,12 @@ func (ipam *IPAM) ContainAddress(address string) bool {
 	return false
 }
 
-func (ipam *IPAM) IsIPAssignedToOtherPod(ip, subnetName, podName string) (bool, string) {
+func (ipam *IPAM) IsIPAssignedToOtherPod(ip, subnetName, podName string) (string, bool) {
 	ipam.mutex.RLock()
 	defer ipam.mutex.RUnlock()
 
 	if subnet, ok := ipam.Subnets[subnetName]; !ok {
-		return false, ""
+		return "", false
 	} else {
 		return subnet.isIPAssignedToOtherPod(ip, podName)
 	}

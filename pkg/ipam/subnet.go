@@ -551,20 +551,20 @@ func (subnet *Subnet) GetPodAddress(podName, nicName string) (IP, IP, string, st
 	}
 }
 
-func (subnet *Subnet) isIPAssignedToOtherPod(ip, podName string) (bool, string) {
+func (subnet *Subnet) isIPAssignedToOtherPod(ip, podName string) (string, bool) {
 	if existPod, ok := subnet.V4IPToPod[IP(ip)]; ok {
 		klog.V(4).Infof("v4 check ip assigned, existPod %s, podName %s", existPod, podName)
 		pods := strings.Split(existPod, ",")
 		if !util.ContainsString(pods, podName) {
-			return true, existPod
+			return existPod, true
 		}
 	}
 	if existPod, ok := subnet.V6IPToPod[IP(ip)]; ok {
 		klog.V(4).Infof("v6 check ip assigned, existPod %s, podName %s", existPod, podName)
 		pods := strings.Split(existPod, ",")
 		if !util.ContainsString(pods, podName) {
-			return true, existPod
+			return existPod, true
 		}
 	}
-	return false, ""
+	return "", false
 }
