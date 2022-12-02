@@ -619,15 +619,12 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		c.patchSubnetStatus(subnet, "ListLogicalSwitchFailed", err.Error())
 		return err
 	}
-	var isUnderlayGateway, needRouter bool
-	if subnet.Spec.Vlan == "" {
-		// subnet is overlay, should add lrp between vpc and subnet, lrp ip is subnet gw
-		needRouter = true
-	} else {
-		// subnet is underlay, lrp is controlled by vpc spec enableExternal
-		needRouter = subnet.Spec.LogicalGateway
-		isUnderlayGateway = !subnet.Spec.LogicalGateway
-	}
+	needRouter := subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway
+	// 1. overlay subnet, should add lrp, lrp ip is subnet gw
+	// 2. underlay subnet use logical gw, should add lrp, lrp ip is subnet gw
+	randomAllocateGW := !subnet.Spec.LogicalGateway && vpc.Spec.EnableExternal && subnet.Name == c.config.ExternalGatewaySwitch
+	// 3. underlay subnet use physical gw, vpc has eip, lrp managed in vpc process, lrp ip is random allocation, not subnet gw
+
 	if !exist {
 		subnet.Status.EnsureStandardConditions()
 		// If multiple namespace use same ls name, only first one will success
@@ -642,18 +639,12 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			}
 		}
 	} else {
-		if !needRouter && isUnderlayGateway {
-			// do nothing if subnet is underlay vlan and use underlay gw
-			// TODO:// support update if spec changed
-			klog.Infof("skip reset external connection from vpc %s to switch %s", vpc.Status.Router, subnet.Name)
-			return nil
-		}
 		// logical switch exists, only update other_config
 		if err := c.ovnLegacyClient.SetLogicalSwitchConfig(subnet.Name, vpc.Status.Router, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps, needRouter); err != nil {
 			c.patchSubnetStatus(subnet, "SetLogicalSwitchConfigFailed", err.Error())
 			return err
 		}
-		if !needRouter {
+		if !needRouter && !randomAllocateGW {
 			klog.Infof("remove connection from router %s to switch %s", vpc.Status.Router, subnet.Name)
 			if err := c.ovnLegacyClient.RemoveRouterPort(subnet.Name, vpc.Status.Router); err != nil {
 				klog.Errorf("failed to remove router port from %s, %v", subnet.Name, err)

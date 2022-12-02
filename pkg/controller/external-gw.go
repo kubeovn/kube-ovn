@@ -63,6 +63,24 @@ func (c *Controller) resyncExternalGateway() {
 		lastExGwCM = cm.Data
 		c.ovnLegacyClient.ExternalGatewayType = cm.Data["type"]
 		klog.Info("finish establishing ovn external gw")
+		cachedVpc, err := c.vpcsLister.Get(c.config.ClusterRouter)
+		if err != nil {
+			klog.Errorf("failed to get vpc %s, %v", c.config.ClusterRouter, err)
+			return
+		}
+		vpc := cachedVpc.DeepCopy()
+		vpc.Spec.EnableExternal = true
+		vpc.Status.EnableExternal = true
+		bytes, err := vpc.Status.Bytes()
+		if err != nil {
+			klog.Errorf("failed to get vpc bytes, %v", err)
+			return
+		}
+		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
+			vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+			klog.Errorf("failed to patch vpc %s, %v", c.config.ClusterRouter, err)
+			return
+		}
 	}
 }
 
