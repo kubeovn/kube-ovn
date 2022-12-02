@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/exp/slices"
 	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/klog/v2"
 
@@ -979,11 +980,14 @@ func (c LegacyClient) AddPolicyRoute(router string, priority int32, match, actio
 	if err != nil {
 		return err
 	}
-	if !consistent {
-		if err := c.DeletePolicyRoute(router, priority, match); err != nil {
-			klog.Errorf("failed to delete policy route: %v", err)
-			return err
-		}
+	if consistent {
+		return nil
+	}
+
+	klog.Infof("remove inconsistent policy route from router %s: match %s", router, match)
+	if err := c.DeletePolicyRoute(router, priority, match); err != nil {
+		klog.Errorf("failed to delete policy route: %v", err)
+		return err
 	}
 
 	// lr-policy-add ROUTER PRIORITY MATCH ACTION [NEXTHOP]
@@ -991,6 +995,7 @@ func (c LegacyClient) AddPolicyRoute(router string, priority int32, match, actio
 	if nextHop != "" {
 		args = append(args, nextHop)
 	}
+	klog.Infof("add policy route for router %s: priority %d, match %s, nextHop %s", router, priority, match, nextHop)
 	if _, err := c.ovnNbCommand(args...); err != nil {
 		return err
 	}
@@ -1035,7 +1040,16 @@ func (c LegacyClient) DeletePolicyRoute(router string, priority int32, match str
 			args = append(args, match)
 		}
 	}
+	klog.Infof("remove policy route from router %s: match %s", router, match)
 	_, err = c.ovnNbCommand(args...)
+	return err
+}
+
+func (c LegacyClient) CleanPolicyRoute(router string) error {
+	// lr-policy-del ROUTER
+	klog.Infof("clean all policy route for route %s", router)
+	var args = []string{"lr-policy-del", router}
+	_, err := c.ovnNbCommand(args...)
 	return err
 }
 
@@ -1069,7 +1083,7 @@ func (c LegacyClient) DeletePolicyRouteByNexthop(router string, priority int32, 
 	if output == "" {
 		return nil
 	}
-
+	klog.Infof("delete policy route for router: %s, priority: %d, match %s", router, priority, output)
 	return c.DeletePolicyRoute(router, priority, output)
 }
 
@@ -2436,6 +2450,47 @@ func (c *LegacyClient) PortGroupExists(pgName string) (bool, error) {
 		return false, nil
 	}
 	return true, nil
+}
+
+func (c *LegacyClient) VpcHasPolicyRoute(vpc string, nextHops []string, priority int32) (bool, error) {
+	// get all policies by vpc
+	outPolicies, err := c.ovnNbCommand("--data=bare", "--no-heading",
+		"--columns=policies", "find", "Logical_Router", fmt.Sprintf("name=%s", vpc))
+	if err != nil {
+		klog.Errorf("failed to find Logical_Router_Policy %s: %v, %q", vpc, err, outPolicies)
+		return false, err
+	}
+	if outPolicies == "" {
+		klog.V(3).Infof("vpc %s has no policy routes", vpc)
+		return false, nil
+	}
+
+	strRoutes := strings.Split(outPolicies, "\n")[0]
+	strPriority := fmt.Sprint(priority)
+	routes := strings.Fields(strRoutes)
+	// check if policie already exist
+	for _, r := range routes {
+		outPriorityNexthops, err := c.ovnNbCommand("--data=bare", "--no-heading", "--format=csv", "--columns=priority,nexthops", "list", "Logical_Router_Policy", r)
+		if err != nil {
+			klog.Errorf("failed to show Logical_Router_Policy %s: %v, %q", r, err, outPriorityNexthops)
+			return false, err
+		}
+		if outPriorityNexthops == "" {
+			return false, nil
+		}
+		priorityNexthops := strings.Split(outPriorityNexthops, "\n")[0]
+		result := strings.Split(priorityNexthops, ",")
+		if len(result) == 2 {
+			routePriority := result[0]
+			strNodeIPs := result[1]
+			nodeIPs := strings.Fields(strNodeIPs)
+			if routePriority == strPriority && slices.Equal(nextHops, nodeIPs) {
+				// make sure priority, nexthops is just the same
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 func (c *LegacyClient) PolicyRouteExists(priority int32, match string) (bool, error) {
