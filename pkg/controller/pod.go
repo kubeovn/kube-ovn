@@ -869,6 +869,10 @@ func (c *Controller) handleUpdatePod(key string) error {
 						klog.Errorf("failed to add static route, %v", err)
 						return err
 					}
+				} else {
+					if err := c.ovnLegacyClient.DeleteStaticRoute(podIP, c.config.ClusterRouter); err != nil {
+						return err
+					}
 				}
 			}
 

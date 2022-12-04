@@ -1082,6 +1082,12 @@ func parseLrRouteListOutput(output string) (routeList []*StaticRoute, err error)
 }
 
 func (c LegacyClient) UpdateNatRule(policy, logicalIP, externalIP, router, logicalMac, port string) error {
+	// when dual protocol pod has eip or snat, will add nat for all dual addresses.
+	// will fail when logicalIP externalIP is different protocol.
+	if externalIP != "" && util.CheckProtocol(logicalIP) != util.CheckProtocol(externalIP) {
+		return nil
+	}
+
 	if policy == "snat" {
 		if externalIP == "" {
 			_, err := c.ovnNbCommand(IfExists, "lr-nat-del", router, "snat", logicalIP)
