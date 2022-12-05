@@ -76,7 +76,6 @@ var _ = Describe("[Qos]", func() {
 		pod, err = f.KubeClientSet.CoreV1().Pods(namespace).Get(context.Background(), name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(pod.Annotations[util.AllocatedAnnotation]).To(Equal("true"))
-		Expect(pod.Annotations[util.RoutedAnnotation]).To(Equal("true"))
 		Expect(pod.Annotations[util.NetemQosLatencyAnnotation]).To(Equal("600"))
 		Expect(pod.Annotations[util.NetemQosLimitAnnotation]).To(Equal("2000"))
 		Expect(pod.Annotations[util.NetemQosLossAnnotation]).To(Equal("10"))
@@ -140,7 +139,6 @@ var _ = Describe("[Qos]", func() {
 		pod, err = f.KubeClientSet.CoreV1().Pods(namespace).Get(context.Background(), name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(pod.Annotations[util.AllocatedAnnotation]).To(Equal("true"))
-		Expect(pod.Annotations[util.RoutedAnnotation]).To(Equal("true"))
 		Expect(pod.Annotations[util.NetemQosLatencyAnnotation]).To(Equal("600"))
 		Expect(pod.Annotations[util.NetemQosLimitAnnotation]).To(Equal("2000"))
 		Expect(pod.Annotations[util.NetemQosLossAnnotation]).To(Equal("10"))
@@ -198,7 +196,6 @@ var _ = Describe("[Qos]", func() {
 		pod, err = f.KubeClientSet.CoreV1().Pods(namespace).Get(context.Background(), name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(pod.Annotations[util.AllocatedAnnotation]).To(Equal("true"))
-		Expect(pod.Annotations[util.RoutedAnnotation]).To(Equal("true"))
 		Expect(pod.Annotations[util.PriorityAnnotation]).To(Equal("50"))
 		Expect(pod.Annotations[util.IngressRateAnnotation]).To(Equal("300"))
 
