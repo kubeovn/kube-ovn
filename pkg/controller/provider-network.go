@@ -57,7 +57,7 @@ func (c *Controller) resyncProviderNetworkStatus() {
 		expectNodes = append(readyNodes, notReadyNodes...)
 		conditionsChange := false
 		for _, c := range pn.Status.Conditions {
-			if util.ContainsString(expectNodes, c.Node) {
+			if !util.ContainsString(expectNodes, c.Node) {
 				pn.Status.RemoveNodeConditions(c.Node)
 				conditionsChange = true
 			}
