@@ -9,12 +9,18 @@ import (
 )
 
 func (c OvnClient) GetLogicalRouterRouteByOpts(key, value string) ([]ovnnb.LogicalRouterStaticRoute, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	api, err := c.ovnNbClient.WherePredict(ctx, func(r *ovnnb.LogicalRouterStaticRoute) bool {
+		return r.Options[key] == value
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	var lrRouteList []ovnnb.LogicalRouterStaticRoute
-	err := c.ovnNbClient.WhereCache(
-		func(r *ovnnb.LogicalRouterStaticRoute) bool {
-			return r.Options[key] == value
-		}).List(context.TODO(), &lrRouteList)
-	if err != nil && err != client.ErrNotFound {
+	if err = api.List(context.TODO(), &lrRouteList); err != nil && err != client.ErrNotFound {
 		return nil, err
 	}
 
@@ -22,12 +28,18 @@ func (c OvnClient) GetLogicalRouterRouteByOpts(key, value string) ([]ovnnb.Logic
 }
 
 func (c OvnClient) GetLogicalRouterPoliciesByExtID(key, value string) ([]ovnnb.LogicalRouterPolicy, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	api, err := c.ovnNbClient.WherePredict(ctx, func(p *ovnnb.LogicalRouterPolicy) bool {
+		return p.ExternalIDs[key] == value
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	var lrPolicyList []ovnnb.LogicalRouterPolicy
-	err := c.ovnNbClient.WhereCache(
-		func(p *ovnnb.LogicalRouterPolicy) bool {
-			return p.ExternalIDs[key] == value
-		}).List(context.TODO(), &lrPolicyList)
-	if err != nil && err != client.ErrNotFound {
+	if err = api.List(context.TODO(), &lrPolicyList); err != nil && err != client.ErrNotFound {
 		return nil, err
 	}
 

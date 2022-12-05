@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -66,6 +65,7 @@ func (c *Controller) gcLogicalRouterPort() error {
 	}
 	for _, lrp := range lrps {
 		if !util.ContainsString(exceptPeerPorts, lrp) {
+			klog.Infof("gc logical router port %s", lrp)
 			if err = c.ovnLegacyClient.DeleteLogicalRouterPort(lrp); err != nil {
 				klog.Errorf("failed to delete logical router port %s, %v", lrp, err)
 				return err
@@ -127,7 +127,9 @@ func (c *Controller) gcLogicalSwitch() error {
 		return err
 	}
 	subnetNames := make([]string, 0, len(subnets))
+	subnetMap := make(map[string]*kubeovnv1.Subnet, len(subnets))
 	for _, s := range subnets {
+		subnetMap[s.Name] = s
 		subnetNames = append(subnetNames, s.Name)
 	}
 	lss, err := c.ovnLegacyClient.ListLogicalSwitch(c.config.EnableExternalVpc)
@@ -138,15 +140,19 @@ func (c *Controller) gcLogicalSwitch() error {
 	klog.Infof("ls in ovn %v", lss)
 	klog.Infof("subnet in kubernetes %v", subnetNames)
 	for _, ls := range lss {
-		if ls == util.InterconnectionSwitch || ls == util.ExternalGatewaySwitch {
+		if ls == util.InterconnectionSwitch ||
+			ls == util.ExternalGatewaySwitch ||
+			ls == c.config.ExternalGatewaySwitch {
 			continue
 		}
-		if !util.IsStringIn(ls, subnetNames) {
-			klog.Infof("gc subnet %s", ls)
-			if err := c.handleDeleteLogicalSwitch(ls); err != nil {
-				klog.Errorf("failed to gc subnet %s, %v", ls, err)
-				return err
-			}
+		if s := subnetMap[ls]; s != nil && isOvnSubnet(s) {
+			continue
+		}
+
+		klog.Infof("gc subnet %s", ls)
+		if err := c.handleDeleteLogicalSwitch(ls); err != nil {
+			klog.Errorf("failed to gc subnet %s, %v", ls, err)
+			return err
 		}
 	}
 
@@ -276,7 +282,6 @@ func (c *Controller) gcLogicalSwitchPort() error {
 	if err := c.markAndCleanLSP(); err != nil {
 		return err
 	}
-	time.Sleep(3 * time.Second)
 	return c.markAndCleanLSP()
 }
 
@@ -386,13 +391,17 @@ func (c *Controller) gcLoadBalancer() error {
 		for _, cachedVpc := range vpcs {
 			vpc := cachedVpc.DeepCopy()
 			for _, subnetName := range vpc.Status.Subnets {
-				_, err := c.subnetsLister.Get(subnetName)
+				subnet, err := c.subnetsLister.Get(subnetName)
 				if err != nil {
 					if k8serrors.IsNotFound(err) {
 						continue
 					}
 					return err
 				}
+				if !isOvnSubnet(subnet) {
+					continue
+				}
+
 				err = c.ovnLegacyClient.RemoveLbFromLogicalSwitch(
 					vpc.Status.TcpLoadBalancer,
 					vpc.Status.TcpSessionLoadBalancer,

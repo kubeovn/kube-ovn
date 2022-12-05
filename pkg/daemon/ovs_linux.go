@@ -86,7 +86,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		return fmt.Errorf("add nic to ovs failed %v: %q", err, output)
 	}
 
-	// host and container nic must use same mac address, otherwise ovn will reject these packets by default
+	// lsp and container nic must use same mac address, otherwise ovn will reject these packets by default
 	macAddr, err := net.ParseMAC(mac)
 	if err != nil {
 		return fmt.Errorf("failed to parse mac %s %v", macAddr, err)
@@ -408,11 +408,11 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 func (c *Controller) loopOvn0Check() {
 	link, err := netlink.LinkByName(util.NodeNic)
 	if err != nil {
-		klog.Fatalf("failed to get ovn0 nic: %v", err)
+		util.LogFatalAndExit(err, "failed to get ovn0 nic")
 	}
 
 	if link.Attrs().OperState == netlink.OperDown {
-		klog.Fatalf("ovn0 nic is down")
+		util.LogFatalAndExit(err, "ovn0 nic is down")
 	}
 
 	node, err := c.nodesLister.Get(c.config.NodeName)
@@ -423,7 +423,7 @@ func (c *Controller) loopOvn0Check() {
 	ip := node.Annotations[util.IpAddressAnnotation]
 	gw := node.Annotations[util.GatewayAnnotation]
 	if err := waitNetworkReady(util.NodeNic, ip, gw, false, false); err != nil {
-		klog.Fatalf("failed to ping ovn0 gw: %s, %v", gw, err)
+		util.LogFatalAndExit(err, "failed to ping ovn0 gateway %s", gw)
 	}
 }
 
@@ -639,6 +639,10 @@ func linkIsAlbBond(link netlink.Link) (bool, error) {
 func removeProviderNic(nicName, brName string) error {
 	nic, err := netlink.LinkByName(nicName)
 	if err != nil {
+		if _, ok := err.(netlink.LinkNotFoundError); ok {
+			klog.Warningf("failed to get nic by name %s: %v", nicName, err)
+			return nil
+		}
 		return fmt.Errorf("failed to get nic by name %s: %v", nicName, err)
 	}
 	bridge, err := netlink.LinkByName(brName)

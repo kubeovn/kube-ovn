@@ -10,12 +10,18 @@ import (
 )
 
 func (c OvnClient) GetLogicalRouter(name string, ignoreNotFound bool) (*ovnnb.LogicalRouter, error) {
-	predicate := func(model *ovnnb.LogicalRouter) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	api, err := c.ovnNbClient.WherePredict(ctx, func(model *ovnnb.LogicalRouter) bool {
 		return model.Name == name
+	})
+	if err != nil {
+		return nil, err
 	}
-	// Logical_Router has no indexes defined in the schema
+
 	var result []*ovnnb.LogicalRouter
-	if err := c.ovnNbClient.WhereCache(predicate).List(context.TODO(), &result); err != nil || len(result) == 0 {
+	if err = api.List(context.TODO(), &result); err != nil || len(result) == 0 {
 		if ignoreNotFound && (err == client.ErrNotFound || len(result) == 0) {
 			return nil, nil
 		}

@@ -392,7 +392,7 @@ func (c *Controller) InitIPAM() error {
 		}
 	}
 
-	vips, err := c.virtualIpsLister.List(labels.SelectorFromSet(labels.Set{util.IpReservedLabel: ""}))
+	vips, err := c.virtualIpsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list VIPs: %v", err)
 		return err
@@ -404,8 +404,8 @@ func (c *Controller) InitIPAM() error {
 		} else {
 			ipamKey = vip.Name
 		}
-		if _, _, _, err = c.ipam.GetStaticAddress(ipamKey, vip.Name, vip.Spec.V4ip, vip.Spec.MacAddress, vip.Spec.Subnet, false); err != nil {
-			klog.Errorf("failed to init IPAM from VIP CR %s: %v", vip.Name, err)
+		if _, _, _, err = c.ipam.GetStaticAddress(ipamKey, vip.Name, vip.Status.V4ip, vip.Status.Mac, vip.Spec.Subnet, true); err != nil {
+			klog.Errorf("failed to init ipam from vip cr %s: %v", vip.Name, err)
 		}
 	}
 
@@ -416,10 +416,23 @@ func (c *Controller) InitIPAM() error {
 	}
 	for _, eip := range eips {
 		if _, _, _, err = c.ipam.GetStaticAddress(eip.Name, eip.Name, eip.Spec.V4ip, eip.Spec.MacAddress, util.VpcExternalNet, false); err != nil {
-			klog.Errorf("failed to init IPAM from EIP CR %s: %v", eip.Name, err)
+			klog.Errorf("failed to init ipam from iptables eip cr %s: %v", eip.Name, err)
 		}
 	}
+	if c.config.EnableEipSnat {
+		oeips, err := c.ovnEipsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list ovn eips: %v", err)
+			return err
+		}
+		for _, oeip := range oeips {
+			if _, _, _, err = c.ipam.GetStaticAddress(oeip.Name, oeip.Name, oeip.Spec.V4Ip,
+				oeip.Spec.MacAddress, oeip.Spec.ExternalSubnet, false); err != nil {
 
+				klog.Errorf("failed to init ipam from ovn eip cr %s: %v", oeip.Name, err)
+			}
+		}
+	}
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list nodes: %v", err)
@@ -695,6 +708,16 @@ func (c *Controller) initSyncCrdVlans() error {
 }
 
 func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
+	// migrate from old version static route to policy route
+	match := fmt.Sprintf("ip%d.dst == %s", af, ip)
+	consistent, err := c.ovnLegacyClient.CheckPolicyRouteNexthopConsistent(c.config.ClusterRouter, match, nexthop, util.NodeRouterPolicyPriority)
+	if err != nil {
+		return err
+	}
+	if consistent {
+		klog.V(3).Infof("node policy route migrated")
+		return nil
+	}
 	if err := c.ovnLegacyClient.DeleteStaticRoute(ip, c.config.ClusterRouter); err != nil {
 		klog.Errorf("failed to delete obsolete static route for node %s: %v", node, err)
 		return err
@@ -702,6 +725,7 @@ func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
 
 	asName := nodeUnderlayAddressSetName(node, af)
 	obsoleteMatch := fmt.Sprintf("ip%d.dst == %s && ip%d.src != $%s", af, ip, af, asName)
+	klog.Infof("delete policy route for router: %s, priority: %d, match %s", c.config.ClusterRouter, util.NodeRouterPolicyPriority, obsoleteMatch)
 	if err := c.ovnLegacyClient.DeletePolicyRoute(c.config.ClusterRouter, util.NodeRouterPolicyPriority, obsoleteMatch); err != nil {
 		klog.Errorf("failed to delete obsolete logical router policy for node %s: %v", node, err)
 		return err
@@ -712,11 +736,12 @@ func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
 		return err
 	}
 
-	match := fmt.Sprintf("ip%d.dst == %s", af, ip)
 	externalIDs := map[string]string{
 		"vendor": util.CniTypeName,
 		"node":   node,
 	}
+	klog.Infof("add policy route for router: %s, priority: %d, match %s, action %s, nexthop %s, extrenalID %v",
+		c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", nexthop, externalIDs)
 	if err := c.ovnLegacyClient.AddPolicyRoute(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", nexthop, externalIDs); err != nil {
 		klog.Errorf("failed to add logical router policy for node %s: %v", node, err)
 		return err

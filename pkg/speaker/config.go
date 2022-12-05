@@ -19,6 +19,7 @@ import (
 	"k8s.io/klog/v2"
 
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const (
@@ -84,7 +85,7 @@ func ParseFlags() (*Configuration, error) {
 		if f2 != nil {
 			value := f1.Value.String()
 			if err := f2.Value.Set(value); err != nil {
-				klog.Fatalf("failed to set flag, %v", err)
+				util.LogFatalAndExit(err, "failed to set flag")
 			}
 		}
 	})

@@ -3,6 +3,8 @@
 
 package ovnnb
 
+const DNSTable = "DNS"
+
 // DNS defines an object in DNS table
 type DNS struct {
 	UUID        string            `ovsdb:"_uuid"`

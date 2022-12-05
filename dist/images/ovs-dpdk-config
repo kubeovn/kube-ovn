@@ -1,2 +1,4 @@
 ENCAP_IP=192.168.190.2
-DPDK_DEV=0000:00:0b.0
+DPDK_DEV=(0000:00:0b.0 0000:00:0c.0)
+BOND_TYPE=4 # ""=single_port, 0="balance-slb", 1="active-backup", 4="lacp"
+VLAN_TAG=0 # 0=untag

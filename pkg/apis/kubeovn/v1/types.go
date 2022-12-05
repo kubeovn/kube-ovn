@@ -292,6 +292,9 @@ type ProviderNetworkStatus struct {
 	ReadyNodes []string `json:"readyNodes,omitempty"`
 
 	// +optional
+	NotReadyNodes []string `json:"notReadyNodes,omitempty"`
+
+	// +optional
 	Vlans []string `json:"vlans,omitempty"`
 
 	// Conditions represents the latest state of the object
@@ -344,10 +347,11 @@ type Vpc struct {
 }
 
 type VpcSpec struct {
-	Namespaces   []string       `json:"namespaces,omitempty"`
-	StaticRoutes []*StaticRoute `json:"staticRoutes,omitempty"`
-	PolicyRoutes []*PolicyRoute `json:"policyRoutes,omitempty"`
-	VpcPeerings  []*VpcPeering  `json:"vpcPeerings,omitempty"`
+	Namespaces     []string       `json:"namespaces,omitempty"`
+	StaticRoutes   []*StaticRoute `json:"staticRoutes,omitempty"`
+	PolicyRoutes   []*PolicyRoute `json:"policyRoutes,omitempty"`
+	VpcPeerings    []*VpcPeering  `json:"vpcPeerings,omitempty"`
+	EnableExternal bool           `json:"enableExternal,omitempty"`
 }
 
 type VpcPeering struct {
@@ -402,6 +406,7 @@ type VpcStatus struct {
 	UdpSessionLoadBalancer string   `json:"udpSessionLoadBalancer"`
 	Subnets                []string `json:"subnets"`
 	VpcPeerings            []string `json:"vpcPeerings"`
+	EnableExternal         bool     `json:"enableExternal"`
 }
 
 // Condition describes the state of an object at a certain point.
@@ -993,4 +998,191 @@ type SwitchLBRuleCondition struct {
 	// Last time the condition transitioned from one status to another.
 	// +optional
 	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+}
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +genclient:nonNamespaced
+// +resourceName=ovn-eips
+
+type OvnEip struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   OvnEipSpec   `json:"spec"`
+	Status OvnEipStatus `json:"status,omitempty"`
+}
+type OvnEipSpec struct {
+	ExternalSubnet string `json:"externalSubnet"`
+	V4Ip           string `json:"v4ip"`
+	MacAddress     string `json:"macAddress"`
+	Type           string `json:"type"`
+	// usage type: fip, snat, lrp
+}
+
+// Condition describes the state of an object at a certain point.
+// +k8s:deepcopy-gen=true
+type OvnEipCondition struct {
+	// Type of condition.
+	Type ConditionType `json:"type"`
+	// Status of the condition, one of True, False, Unknown.
+	Status corev1.ConditionStatus `json:"status"`
+	// The reason for the condition's last transition.
+	// +optional
+	Reason string `json:"reason,omitempty"`
+	// A human readable message indicating details about the transition.
+	// +optional
+	Message string `json:"message,omitempty"`
+	// Last time the condition was probed
+	// +optional
+	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
+	// Last time the condition transitioned from one status to another.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+}
+
+type OvnEipStatus struct {
+	// Conditions represents the latest state of the object
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	Conditions []OvnEipCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
+	V4Ip       string `json:"v4ip" patchStrategy:"merge"`
+	MacAddress string `json:"macAddress" patchStrategy:"merge"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type OvnEipList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []OvnEip `json:"items"`
+}
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +genclient:nonNamespaced
+// +resourceName=ovn-fips
+
+type OvnFip struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   OvnFipSpec   `json:"spec"`
+	Status OvnFipStatus `json:"status,omitempty"`
+}
+type OvnFipSpec struct {
+	OvnEip string `json:"ovnEip"`
+	IpName string `json:"ipName"`
+}
+
+// Condition describes the state of an object at a certain point.
+// +k8s:deepcopy-gen=true
+type OvnFipCondition struct {
+	// Type of condition.
+	Type ConditionType `json:"type"`
+	// Status of the condition, one of True, False, Unknown.
+	Status corev1.ConditionStatus `json:"status"`
+	// The reason for the condition's last transition.
+	// +optional
+	Reason string `json:"reason,omitempty"`
+	// A human readable message indicating details about the transition.
+	// +optional
+	Message string `json:"message,omitempty"`
+	// Last time the condition was probed
+	// +optional
+	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
+	// Last time the condition transitioned from one status to another.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+}
+
+type OvnFipStatus struct {
+	// +optional
+	// +patchStrategy=merge
+	Ready      bool   `json:"ready" patchStrategy:"merge"`
+	V4Eip      string `json:"v4Eip" patchStrategy:"merge"`
+	V4Ip       string `json:"v4Ip" patchStrategy:"merge"`
+	MacAddress string `json:"macAddress" patchStrategy:"merge"`
+	Vpc        string `json:"vpc" patchStrategy:"merge"`
+
+	// Conditions represents the latest state of the object
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	Conditions []OvnFipCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type OvnFipList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []OvnFip `json:"items"`
+}
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +genclient:nonNamespaced
+// +resourceName=ovn-snat-rules
+type OvnSnatRule struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   OvnSnatRuleSpec   `json:"spec"`
+	Status OvnSnatRuleStatus `json:"status,omitempty"`
+}
+
+type OvnSnatRuleSpec struct {
+	OvnEip    string `json:"ovnEip"`
+	VpcSubnet string `json:"vpcSubnet"`
+	IpName    string `json:"ipName"`
+}
+
+// Condition describes the state of an object at a certain point.
+// +k8s:deepcopy-gen=true
+type OvnSnatRuleCondition struct {
+	// Type of condition.
+	Type ConditionType `json:"type"`
+	// Status of the condition, one of True, False, Unknown.
+	Status corev1.ConditionStatus `json:"status"`
+	// The reason for the condition's last transition.
+	// +optional
+	Reason string `json:"reason,omitempty"`
+	// A human readable message indicating details about the transition.
+	// +optional
+	Message string `json:"message,omitempty"`
+	// Last time the condition was probed
+	// +optional
+	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
+	// Last time the condition transitioned from one status to another.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+}
+
+type OvnSnatRuleStatus struct {
+	// +optional
+	// +patchStrategy=merge
+	Ready    bool   `json:"ready" patchStrategy:"merge"`
+	V4Eip    string `json:"v4Eip" patchStrategy:"merge"`
+	V4IpCidr string `json:"v4ipCidr" patchStrategy:"merge"`
+	Vpc      string `json:"vpc" patchStrategy:"merge"`
+
+	// Conditions represents the latest state of the object
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	Conditions []OvnSnatRuleCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type OvnSnatRuleList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []OvnSnatRule `json:"items"`
 }

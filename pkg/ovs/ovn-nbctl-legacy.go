@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/exp/slices"
 	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/klog/v2"
 
@@ -108,6 +109,7 @@ func (c LegacyClient) SetICAutoRoute(enable bool, blackList []string) error {
 
 // DeleteLogicalSwitchPort delete logical switch port in ovn
 func (c LegacyClient) DeleteLogicalSwitchPort(port string) error {
+	klog.Infof("delete lsp %s", port)
 	if _, err := c.ovnNbCommand(IfExists, "lsp-del", port); err != nil {
 		return fmt.Errorf("failed to delete logical switch port %s, %v", port, err)
 	}
@@ -116,6 +118,7 @@ func (c LegacyClient) DeleteLogicalSwitchPort(port string) error {
 
 // DeleteLogicalRouterPort delete logical switch port in ovn
 func (c LegacyClient) DeleteLogicalRouterPort(port string) error {
+	klog.Infof("delete lrp %s", port)
 	if _, err := c.ovnNbCommand(IfExists, "lrp-del", port); err != nil {
 		return fmt.Errorf("failed to delete logical router port %s, %v", port, err)
 	}
@@ -123,7 +126,9 @@ func (c LegacyClient) DeleteLogicalRouterPort(port string) error {
 }
 
 func (c LegacyClient) CreateICLogicalRouterPort(az, mac, subnet string, chassises []string) error {
-	if _, err := c.ovnNbCommand(MayExist, "lrp-add", c.ClusterRouter, fmt.Sprintf("%s-ts", az), mac, subnet); err != nil {
+	lrpName := fmt.Sprintf("%s-ts", az)
+	klog.Infof("add vpc lrp %s", lrpName)
+	if _, err := c.ovnNbCommand(MayExist, "lrp-add", c.ClusterRouter, lrpName, mac, subnet); err != nil {
 		return fmt.Errorf("failed to create ovn-ic lrp, %v", err)
 	}
 	if _, err := c.ovnNbCommand(MayExist, "lsp-add", util.InterconnectionSwitch, fmt.Sprintf("ts-%s", az), "--",
@@ -263,21 +268,13 @@ func (c LegacyClient) ListVirtualPort(ls string) ([]string, error) {
 	return result, nil
 }
 
-// EnablePortLayer2forward set logical switch port addresses as 'unknown'
-func (c LegacyClient) EnablePortLayer2forward(ls, port string) error {
-	if _, err := c.ovnNbCommand("lsp-set-addresses", port, "unknown"); err != nil {
-		klog.Errorf("enable port %s layer2 forward failed: %v", port, err)
-		return err
-	}
-	return nil
-}
-
 // CreatePort create logical switch port in ovn
-func (c LegacyClient) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurity bool, securityGroups string, vips string, liveMigration bool, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs) error {
+func (c LegacyClient) CreatePort(ls, port, ip, mac, pod, namespace string, portSecurity bool, securityGroups string, vips string, liveMigration bool, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs, hasUnknown bool) error {
 	var ovnCommand []string
 	var addresses []string
 	addresses = append(addresses, mac)
 	addresses = append(addresses, strings.Split(ip, ",")...)
+
 	ovnCommand = []string{MayExist, "lsp-add", ls, port}
 	isAddrConflict := false
 
@@ -307,6 +304,10 @@ func (c LegacyClient) CreatePort(ls, port, ip, mac, pod, namespace string, portS
 		// set mac and ip
 		ovnCommand = append(ovnCommand,
 			"--", "lsp-set-addresses", port, strings.Join(addresses, " "))
+
+		if hasUnknown {
+			ovnCommand = append(ovnCommand, "unknown")
+		}
 	}
 
 	if portSecurity {
@@ -409,6 +410,7 @@ func (c LegacyClient) ListPodLogicalSwitchPorts(pod, namespace string) ([]string
 }
 
 func (c LegacyClient) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway string, excludeIps []string, needRouter bool) error {
+	klog.Infof("set logical switch: ls %s, lr %s, protocol %s, subnet %s, gw %s", ls, lr, protocol, subnet, gateway)
 	var err error
 	cidrBlocks := strings.Split(subnet, ",")
 	temp := strings.Split(cidrBlocks[0], "/")
@@ -551,10 +553,54 @@ func (c LegacyClient) ListLoadBalancer() ([]string, error) {
 	return result, nil
 }
 
+func (c LegacyClient) ConnectRouterToExternal(externalNet, vpcRouter, lrpIpCidr, lrpMac string, chassises []string) error {
+	// add lrp and lsp between vpc router and external network
+	lsTolr := fmt.Sprintf("%s-%s", externalNet, vpcRouter)
+	lrTols := fmt.Sprintf("%s-%s", vpcRouter, externalNet)
+	klog.Infof("add vpc lrp %s, cidr %s", lrTols, lrpIpCidr)
+	klog.Infof("add lsp %s", lsTolr)
+	_, err := c.ovnNbCommand(
+		MayExist, "lrp-add", vpcRouter, lrTols, lrpMac, lrpIpCidr, "--",
+		MayExist, "lsp-add", externalNet, lsTolr, "--",
+		"lsp-set-type", lsTolr, "router", "--",
+		"lsp-set-addresses", lsTolr, "router", "--",
+		"lsp-set-options", lsTolr, fmt.Sprintf("router-port=%s", lrTols),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to connect vpc to external, %v", err)
+	}
+	for index, chassis := range chassises {
+		if _, err := c.ovnNbCommand("lrp-set-gateway-chassis", lrTols, chassis, fmt.Sprintf("%d", 100-index)); err != nil {
+			return fmt.Errorf("failed to set gateway chassis, %v", err)
+		}
+	}
+	return nil
+}
+
+func (c LegacyClient) DisconnectRouterToExternal(externalNet, vpcRouter string) error {
+	lrTols := fmt.Sprintf("%s-%s", vpcRouter, externalNet)
+	klog.Infof("delete lrp %s", lrTols)
+	if _, err := c.ovnNbCommand(IfExists, "lrp-del", lrTols); err != nil {
+		return err
+	}
+	lsTolr := fmt.Sprintf("%s-%s", externalNet, vpcRouter)
+	klog.Infof("delete lsp %s", lsTolr)
+	if _, err := c.ovnNbCommand(IfExists, "lsp-del", lsTolr); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (c LegacyClient) CreateGatewaySwitch(name, network string, vlan int, ip, mac string, chassises []string) error {
 	lsTolr := fmt.Sprintf("%s-%s", name, c.ClusterRouter)
 	lrTols := fmt.Sprintf("%s-%s", c.ClusterRouter, name)
+	klog.Infof("add vpc lrp %s, ip %s", lrTols, ip)
+	klog.Infof("add lsp %s", lsTolr)
 	localnetPort := fmt.Sprintf("ln-%s", name)
+	if name != util.ExternalGatewaySwitch {
+		// compatiable with provider network and vlan and subnet
+		localnetPort = GetLocalnetName(name)
+	}
 	portOptions := fmt.Sprintf("network_name=%s", network)
 	_, err := c.ovnNbCommand(
 		MayExist, "ls-add", name, "--",
@@ -591,6 +637,8 @@ func (c LegacyClient) CreateGatewaySwitch(name, network string, vlan int, ip, ma
 
 func (c LegacyClient) DeleteGatewaySwitch(name string) error {
 	lrTols := fmt.Sprintf("%s-%s", c.ClusterRouter, name)
+	klog.Infof("delete gw switch %s", name)
+	klog.Infof("delete gw lrp %s", lrTols)
 	_, err := c.ovnNbCommand(
 		IfExists, "ls-del", name, "--",
 		IfExists, "lrp-del", lrTols,
@@ -785,6 +833,7 @@ func (c LegacyClient) DeleteLogicalRouter(lr string) error {
 func (c LegacyClient) RemoveRouterPort(ls, lr string) error {
 	lsTolr := fmt.Sprintf("%s-%s", ls, lr)
 	lrTols := fmt.Sprintf("%s-%s", lr, ls)
+	klog.Infof("remove router port %s, switch port %s", lrTols, lsTolr)
 	_, err := c.ovnNbCommand(IfExists, "lsp-del", lsTolr, "--",
 		IfExists, "lrp-del", lrTols)
 	if err != nil {
@@ -823,9 +872,11 @@ func (c LegacyClient) CreatePeerRouterPort(localRouter, remoteRouter, localRoute
 	if len(results) == 0 {
 		ipStr := strings.Split(localRouterPortIP, ",")
 		if len(ipStr) == 2 {
+			klog.Infof("add vpc lrp %s", localRouterPort)
 			_, err = c.ovnNbCommand(MayExist, "lrp-add", localRouter, localRouterPort, util.GenerateMac(), ipStr[0], ipStr[1], "--",
 				"set", "logical_router_port", localRouterPort, fmt.Sprintf("peer=%s", remoteRouterPort))
 		} else {
+			klog.Infof("add vpc lrp %s", localRouterPort)
 			_, err = c.ovnNbCommand(MayExist, "lrp-add", localRouter, localRouterPort, util.GenerateMac(), ipStr[0], "--",
 				"set", "logical_router_port", localRouterPort, fmt.Sprintf("peer=%s", remoteRouterPort))
 		}
@@ -835,8 +886,9 @@ func (c LegacyClient) CreatePeerRouterPort(localRouter, remoteRouter, localRoute
 		}
 	}
 
+	klog.Infof("set lrp %s, networks %s", localRouterPort, localRouterPortIP)
 	_, err = c.ovnNbCommand("set", "logical_router_port", localRouterPort,
-		fmt.Sprintf("networks=%s", strings.ReplaceAll(localRouterPortIP, ",", " ")))
+		fmt.Sprintf("networks=\"%s\"", strings.ReplaceAll(localRouterPortIP, ",", " ")))
 
 	if err != nil {
 		klog.Errorf("failed to set router port %s: %v", localRouterPort, err)
@@ -928,11 +980,14 @@ func (c LegacyClient) AddPolicyRoute(router string, priority int32, match, actio
 	if err != nil {
 		return err
 	}
-	if !consistent {
-		if err := c.DeletePolicyRoute(router, priority, match); err != nil {
-			klog.Errorf("failed to delete policy route: %v", err)
-			return err
-		}
+	if consistent {
+		return nil
+	}
+
+	klog.Infof("remove inconsistent policy route from router %s: match %s", router, match)
+	if err := c.DeletePolicyRoute(router, priority, match); err != nil {
+		klog.Errorf("failed to delete policy route: %v", err)
+		return err
 	}
 
 	// lr-policy-add ROUTER PRIORITY MATCH ACTION [NEXTHOP]
@@ -940,6 +995,7 @@ func (c LegacyClient) AddPolicyRoute(router string, priority int32, match, actio
 	if nextHop != "" {
 		args = append(args, nextHop)
 	}
+	klog.Infof("add policy route for router %s: priority %d, match %s, nextHop %s", router, priority, match, nextHop)
 	if _, err := c.ovnNbCommand(args...); err != nil {
 		return err
 	}
@@ -984,7 +1040,16 @@ func (c LegacyClient) DeletePolicyRoute(router string, priority int32, match str
 			args = append(args, match)
 		}
 	}
+	klog.Infof("remove policy route from router %s: match %s", router, match)
 	_, err = c.ovnNbCommand(args...)
+	return err
+}
+
+func (c LegacyClient) CleanPolicyRoute(router string) error {
+	// lr-policy-del ROUTER
+	klog.Infof("clean all policy route for route %s", router)
+	var args = []string{"lr-policy-del", router}
+	_, err := c.ovnNbCommand(args...)
 	return err
 }
 
@@ -1018,7 +1083,7 @@ func (c LegacyClient) DeletePolicyRouteByNexthop(router string, priority int32, 
 	if output == "" {
 		return nil
 	}
-
+	klog.Infof("delete policy route for router: %s, priority: %d, match %s", router, priority, output)
 	return c.DeletePolicyRoute(router, priority, output)
 }
 
@@ -1104,8 +1169,8 @@ func parseLrRouteListOutput(output string) (routeList []*StaticRoute, err error)
 
 func (c LegacyClient) UpdateNatRule(policy, logicalIP, externalIP, router, logicalMac, port string) error {
 	// when dual protocol pod has eip or snat, will add nat for all dual addresses.
-	// will failed when logicalIP externalIP is different protocol.
-	if util.CheckProtocol(logicalIP) != util.CheckProtocol(externalIP) {
+	// will fail when logicalIP externalIP is different protocol.
+	if externalIP != "" && util.CheckProtocol(logicalIP) != util.CheckProtocol(externalIP) {
 		return nil
 	}
 
@@ -1186,6 +1251,125 @@ func (c *LegacyClient) NatRuleExists(logicalIP string) (bool, error) {
 		return false, nil
 	}
 	return true, nil
+}
+
+func (c LegacyClient) AddFipRule(router, eip, logicalIP, logicalMac, port string) error {
+	// failed if logicalIP externalIP(eip) is different protocol.
+	if util.CheckProtocol(logicalIP) != util.CheckProtocol(eip) {
+		return nil
+	}
+	var err error
+	fip := "dnat_and_snat"
+	if eip != "" && logicalIP != "" && logicalMac != "" {
+		if c.ExternalGatewayType == "distributed" {
+			_, err = c.ovnNbCommand(MayExist, "--stateless", "lr-nat-add", router, fip, eip, logicalIP, port, logicalMac)
+		} else {
+			_, err = c.ovnNbCommand(MayExist, "lr-nat-add", router, fip, eip, logicalIP)
+		}
+		return err
+	} else {
+		return fmt.Errorf("logical ip, external ip and logical mac must be provided to add fip rule")
+	}
+}
+
+func (c LegacyClient) DeleteFipRule(router, eip, logicalIP string) error {
+	fip := "dnat_and_snat"
+	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=type,external_ip", "find", "NAT", fmt.Sprintf("logical_ip=%s", logicalIP))
+	if err != nil {
+		klog.Errorf("failed to list nat rules, %v", err)
+		return err
+	}
+	rules := strings.Split(output, "\n")
+	for _, rule := range rules {
+		if len(strings.Split(rule, ",")) != 2 {
+			continue
+		}
+		policy, externalIP := strings.Split(rule, ",")[0], strings.Split(rule, ",")[1]
+		if externalIP == eip && policy == fip {
+			if _, err := c.ovnNbCommand(IfExists, "lr-nat-del", router, fip, externalIP); err != nil {
+				klog.Errorf("failed to delete fip rule, %v", err)
+				return err
+			}
+		}
+	}
+	return err
+}
+
+func (c *LegacyClient) FipRuleExists(eip, logicalIP string) (bool, error) {
+	fip := "dnat_and_snat"
+	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=type,external_ip", "find", "NAT", fmt.Sprintf("logical_ip=%s", logicalIP))
+	if err != nil {
+		klog.Errorf("failed to list nat rules, %v", err)
+		return false, err
+	}
+	rules := strings.Split(output, "\n")
+	for _, rule := range rules {
+		if len(strings.Split(rule, ",")) != 2 {
+			continue
+		}
+		policy, externalIP := strings.Split(rule, ",")[0], strings.Split(rule, ",")[1]
+		if externalIP == eip && policy == fip {
+			return true, nil
+		}
+	}
+	return false, fmt.Errorf("fip rule not exist")
+}
+
+func (c LegacyClient) AddSnatRule(router, eip, ipCidr string) error {
+	// failed if logicalIP externalIP(eip) is different protocol.
+	if util.CheckProtocol(ipCidr) != util.CheckProtocol(eip) {
+		return nil
+	}
+	snat := "snat"
+	if eip != "" && ipCidr != "" {
+		_, err := c.ovnNbCommand(MayExist, "lr-nat-add", router, snat, eip, ipCidr)
+		return err
+	} else {
+		return fmt.Errorf("logical ip, external ip and logical mac must be provided to add snat rule")
+	}
+}
+
+func (c LegacyClient) DeleteSnatRule(router, eip, ipCidr string) error {
+	snat := "snat"
+	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=type,external_ip", "find", "NAT", fmt.Sprintf("logical_ip=%s", ipCidr))
+	if err != nil {
+		klog.Errorf("failed to list nat rules, %v", err)
+		return err
+	}
+	rules := strings.Split(output, "\n")
+	for _, rule := range rules {
+		if len(strings.Split(rule, ",")) != 2 {
+			continue
+		}
+		policy, externalIP := strings.Split(rule, ",")[0], strings.Split(rule, ",")[1]
+		if externalIP == eip && policy == snat {
+			if _, err := c.ovnNbCommand(IfExists, "lr-nat-del", router, snat, ipCidr); err != nil {
+				klog.Errorf("failed to delete snat rule, %v", err)
+				return err
+			}
+		}
+	}
+	return err
+}
+
+func (c *LegacyClient) SnatRuleExists(eip, ipCidr string) (bool, error) {
+	snat := "snat"
+	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=type,external_ip", "find", "NAT", fmt.Sprintf("logical_ip=%s", ipCidr))
+	if err != nil {
+		klog.Errorf("failed to list nat rules, %v", err)
+		return false, err
+	}
+	rules := strings.Split(output, "\n")
+	for _, rule := range rules {
+		if len(strings.Split(rule, ",")) != 2 {
+			continue
+		}
+		policy, externalIP := strings.Split(rule, ",")[0], strings.Split(rule, ",")[1]
+		if externalIP == eip && policy == snat {
+			return true, nil
+		}
+	}
+	return false, fmt.Errorf("snat rule not exist")
 }
 
 func (c LegacyClient) DeleteMatchedStaticRoute(cidr, nexthop, router string) error {
@@ -1611,7 +1795,7 @@ func (c LegacyClient) CreateNpAddressSet(asName, npNamespace, npName, direction 
 	return err
 }
 
-func (c LegacyClient) CombineIngressACLCmd(pgName, asIngressName, asExceptName, svcAsName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, aclCmds []string, index int) []string {
+func (c LegacyClient) CombineIngressACLCmd(pgName, asIngressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, aclCmds []string, index int) []string {
 	var allowArgs, ovnArgs []string
 
 	ipSuffix := "ip4"
@@ -1651,7 +1835,7 @@ func (c LegacyClient) CreateACL(aclCmds []string) error {
 	return err
 }
 
-func (c LegacyClient) CombineEgressACLCmd(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, portSvcName string, logEnable bool, aclCmds []string, index int) []string {
+func (c LegacyClient) CombineEgressACLCmd(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, aclCmds []string, index int) []string {
 	var allowArgs, ovnArgs []string
 
 	ipSuffix := "ip4"
@@ -2268,6 +2452,47 @@ func (c *LegacyClient) PortGroupExists(pgName string) (bool, error) {
 	return true, nil
 }
 
+func (c *LegacyClient) VpcHasPolicyRoute(vpc string, nextHops []string, priority int32) (bool, error) {
+	// get all policies by vpc
+	outPolicies, err := c.ovnNbCommand("--data=bare", "--no-heading",
+		"--columns=policies", "find", "Logical_Router", fmt.Sprintf("name=%s", vpc))
+	if err != nil {
+		klog.Errorf("failed to find Logical_Router_Policy %s: %v, %q", vpc, err, outPolicies)
+		return false, err
+	}
+	if outPolicies == "" {
+		klog.V(3).Infof("vpc %s has no policy routes", vpc)
+		return false, nil
+	}
+
+	strRoutes := strings.Split(outPolicies, "\n")[0]
+	strPriority := fmt.Sprint(priority)
+	routes := strings.Fields(strRoutes)
+	// check if policie already exist
+	for _, r := range routes {
+		outPriorityNexthops, err := c.ovnNbCommand("--data=bare", "--no-heading", "--format=csv", "--columns=priority,nexthops", "list", "Logical_Router_Policy", r)
+		if err != nil {
+			klog.Errorf("failed to show Logical_Router_Policy %s: %v, %q", r, err, outPriorityNexthops)
+			return false, err
+		}
+		if outPriorityNexthops == "" {
+			return false, nil
+		}
+		priorityNexthops := strings.Split(outPriorityNexthops, "\n")[0]
+		result := strings.Split(priorityNexthops, ",")
+		if len(result) == 2 {
+			routePriority := result[0]
+			strNodeIPs := result[1]
+			nodeIPs := strings.Fields(strNodeIPs)
+			if routePriority == strPriority && slices.Equal(nextHops, nodeIPs) {
+				// make sure priority, nexthops is just the same
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
 func (c *LegacyClient) PolicyRouteExists(priority int32, match string) (bool, error) {
 	results, err := c.CustomFindEntity("Logical_Router_Policy", []string{"_uuid"}, fmt.Sprintf("priority=%d", priority), fmt.Sprintf("match=\"%s\"", match))
 	if err != nil {
@@ -2612,6 +2837,7 @@ func (c *LegacyClient) UpdateRouterPortIPv6RA(ls, lr, cidrBlock, gateway, ipv6RA
 		}
 
 		ipv6RAConfigsStr = strings.ReplaceAll(ipv6RAConfigsStr, " ", "")
+		klog.Infof("set lrp %s, ipv6_prefix %s", lrTols, ipv6Prefix)
 		_, err = c.ovnNbCommand("--",
 			"set", "logical_router_port", lrTols, fmt.Sprintf("ipv6_prefix=%s", ipv6Prefix), fmt.Sprintf("ipv6_ra_configs=%s", ipv6RAConfigsStr))
 		if err != nil {
@@ -2619,6 +2845,7 @@ func (c *LegacyClient) UpdateRouterPortIPv6RA(ls, lr, cidrBlock, gateway, ipv6RA
 			return err
 		}
 	} else {
+		klog.Infof("set lrp %s", lrTols)
 		_, err = c.ovnNbCommand("--",
 			"set", "logical_router_port", lrTols, "ipv6_prefix=[]", "ipv6_ra_configs={}")
 		if err != nil {

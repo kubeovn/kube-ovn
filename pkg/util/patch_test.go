@@ -27,7 +27,7 @@ func TestGenerateStrategicMergePatchPayload(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "1",
+			name: "base",
 			args: args{
 				original: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
 				modified: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"ovn1": "1", "ovn2": "2"}}},
@@ -37,7 +37,7 @@ func TestGenerateStrategicMergePatchPayload(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "2",
+			name: "baseWithRemote",
 			args: args{
 				original: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
 				modified: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"ovn1": "1", "ovn2": "2"}}},
@@ -47,7 +47,7 @@ func TestGenerateStrategicMergePatchPayload(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "3",
+			name: "baseWithoutAll",
 			args: args{
 				original: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
 				modified: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
@@ -57,7 +57,7 @@ func TestGenerateStrategicMergePatchPayload(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "4",
+			name: "baseWithoutModified",
 			args: args{
 				original: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"calico1": "1"}}},
 				modified: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},

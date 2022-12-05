@@ -136,12 +136,30 @@ type Controller struct {
 	updateIptablesSnatRuleQueue workqueue.RateLimitingInterface
 	delIptablesSnatRuleQueue    workqueue.RateLimitingInterface
 
+	ovnEipsLister     kubeovnlister.OvnEipLister
+	ovnEipSynced      cache.InformerSynced
+	addOvnEipQueue    workqueue.RateLimitingInterface
+	updateOvnEipQueue workqueue.RateLimitingInterface
+	resetOvnEipQueue  workqueue.RateLimitingInterface
+	delOvnEipQueue    workqueue.RateLimitingInterface
+
+	ovnFipsLister     kubeovnlister.OvnFipLister
+	ovnFipSynced      cache.InformerSynced
+	addOvnFipQueue    workqueue.RateLimitingInterface
+	updateOvnFipQueue workqueue.RateLimitingInterface
+	delOvnFipQueue    workqueue.RateLimitingInterface
+
+	ovnSnatRulesLister     kubeovnlister.OvnSnatRuleLister
+	ovnSnatRuleSynced      cache.InformerSynced
+	addOvnSnatRuleQueue    workqueue.RateLimitingInterface
+	updateOvnSnatRuleQueue workqueue.RateLimitingInterface
+	delOvnSnatRuleQueue    workqueue.RateLimitingInterface
+
 	vlansLister kubeovnlister.VlanLister
 	vlanSynced  cache.InformerSynced
 
-	providerNetworksLister     kubeovnlister.ProviderNetworkLister
-	providerNetworkSynced      cache.InformerSynced
-	updateProviderNetworkQueue workqueue.RateLimitingInterface
+	providerNetworksLister kubeovnlister.ProviderNetworkLister
+	providerNetworkSynced  cache.InformerSynced
 
 	addVlanQueue    workqueue.RateLimitingInterface
 	delVlanQueue    workqueue.RateLimitingInterface
@@ -276,9 +294,9 @@ func NewController(config *Configuration) *Controller {
 
 		virtualIpsLister:     virtualIpInformer.Lister(),
 		virtualIpsSynced:     virtualIpInformer.Informer().HasSynced,
-		addVirtualIpQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addVirtualIp"),
-		updateVirtualIpQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateVirtualIp"),
-		delVirtualIpQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delVirtualIp"),
+		addVirtualIpQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "addVirtualIp"),
+		updateVirtualIpQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "updateVirtualIp"),
+		delVirtualIpQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "delVirtualIp"),
 
 		iptablesEipsLister:     iptablesEipInformer.Lister(),
 		iptablesEipSynced:      iptablesEipInformer.Informer().HasSynced,
@@ -323,9 +341,8 @@ func NewController(config *Configuration) *Controller {
 		delVlanQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DelVlan"),
 		updateVlanQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVlan"),
 
-		providerNetworksLister:     providerNetworkInformer.Lister(),
-		providerNetworkSynced:      providerNetworkInformer.Informer().HasSynced,
-		updateProviderNetworkQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateProviderNetwork"),
+		providerNetworksLister: providerNetworkInformer.Lister(),
+		providerNetworkSynced:  providerNetworkInformer.Informer().HasSynced,
 
 		podsLister:             podInformer.Lister(),
 		podsSynced:             podInformer.Informer().HasSynced,
@@ -462,10 +479,6 @@ func NewController(config *Configuration) *Controller {
 		UpdateFunc: controller.enqueueUpdateVlan,
 	})
 
-	providerNetworkInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: controller.enqueueUpdateProviderNetwork,
-	})
-
 	if config.EnableNP {
 		npInformer := informerFactory.Networking().V1().NetworkPolicies()
 		controller.npsLister = npInformer.Lister()
@@ -513,6 +526,45 @@ func NewController(config *Configuration) *Controller {
 		UpdateFunc: controller.enqueueUpdateIptablesSnatRule,
 		DeleteFunc: controller.enqueueDelIptablesSnatRule,
 	})
+	if config.EnableEipSnat {
+		ovnEipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnEips()
+		controller.ovnEipsLister = ovnEipInformer.Lister()
+		controller.ovnEipSynced = ovnEipInformer.Informer().HasSynced
+		controller.addOvnEipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addOvnEip")
+		controller.updateOvnEipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateOvnEip")
+		controller.resetOvnEipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "resetOvnEip")
+		controller.delOvnEipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delOvnEip")
+
+		ovnEipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddOvnEip,
+			UpdateFunc: controller.enqueueUpdateOvnEip,
+			DeleteFunc: controller.enqueueDelOvnEip,
+		})
+
+		ovnFipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnFips()
+		controller.ovnFipsLister = ovnFipInformer.Lister()
+		controller.ovnFipSynced = ovnFipInformer.Informer().HasSynced
+		controller.addOvnFipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addOvnFip")
+		controller.updateOvnFipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateOvnFip")
+		controller.delOvnFipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delOvnFip")
+		ovnFipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddOvnFip,
+			UpdateFunc: controller.enqueueUpdateOvnFip,
+			DeleteFunc: controller.enqueueDelOvnFip,
+		})
+
+		ovnSnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnSnatRules()
+		controller.ovnSnatRulesLister = ovnSnatRuleInformer.Lister()
+		controller.ovnSnatRuleSynced = ovnSnatRuleInformer.Informer().HasSynced
+		controller.addOvnSnatRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addOvnSnatRule")
+		controller.updateOvnSnatRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateOvnSnatRule")
+		controller.delOvnSnatRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delOvnSnatRule")
+		ovnSnatRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddOvnSnatRule,
+			UpdateFunc: controller.enqueueUpdateOvnSnatRule,
+			DeleteFunc: controller.enqueueDelOvnSnatRule,
+		})
+	}
 
 	podAnnotatedIptablesEipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddPodAnnotatedIptablesEip,
@@ -552,6 +604,11 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		c.vlanSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced,
 		c.serviceSynced, c.endpointsSynced, c.configMapsSynced,
 	}
+
+	if c.config.EnableEipSnat {
+		cacheSyncs = append(cacheSyncs, c.ovnEipSynced, c.ovnFipSynced, c.ovnSnatRuleSynced)
+	}
+
 	if c.config.EnableNP {
 		cacheSyncs = append(cacheSyncs, c.npsSynced)
 	}
@@ -561,72 +618,72 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	}
 
 	if ok := cache.WaitForCacheSync(stopCh, cacheSyncs...); !ok {
-		klog.Fatalf("failed to wait for caches to sync")
+		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
 	}
 
 	if err := c.ovnLegacyClient.SetLsDnatModDlDst(c.config.LsDnatModDlDst); err != nil {
-		klog.Fatal(err)
+		util.LogFatalAndExit(err, "failed to set NB_Global option ls_dnat_mod_dl_dst")
 	}
 	if err := c.ovnLegacyClient.SetUseCtInvMatch(); err != nil {
-		klog.Fatalf("failed to set NB_Global option use_ct_inv_match to false: %v", err)
+		util.LogFatalAndExit(err, "failed to set NB_Global option use_ct_inv_match")
 	}
 
 	if err := c.InitDefaultVpc(); err != nil {
-		klog.Fatalf("failed to init default vpc: %v", err)
+		util.LogFatalAndExit(err, "failed to initialize default vpc")
 	}
 
 	if err := c.InitOVN(); err != nil {
-		klog.Fatalf("failed to init ovn resource: %v", err)
+		util.LogFatalAndExit(err, "failed to initialize ovn resources")
 	}
 
 	// sync ip crd before initIPAM since ip crd will be used to restore vm and statefulset pod in initIPAM
 	if err := c.initSyncCrdIPs(); err != nil {
-		klog.Errorf("failed to sync crd ips: %v", err)
+		util.LogFatalAndExit(err, "failed to sync crd ips")
 	}
 
 	if err := c.InitIPAM(); err != nil {
-		klog.Fatalf("failed to init ipam: %v", err)
+		util.LogFatalAndExit(err, "failed to initialize ipam")
 	}
 
 	if err := c.initNodeChassis(); err != nil {
-		klog.Errorf("failed to init node chassis: %v", err)
+		util.LogFatalAndExit(err, "failed to initialize node chassis")
 	}
 
 	if err := c.initNodeRoutes(); err != nil {
-		klog.Fatalf("failed to initialize node routes: %v", err)
+		util.LogFatalAndExit(err, "failed to initialize node routes")
 	}
 
 	if err := c.initDenyAllSecurityGroup(); err != nil {
-		klog.Fatalf("failed to init 'deny_all' security group: %v", err)
+		util.LogFatalAndExit(err, "failed to initialize 'deny_all' security group")
 	}
 
 	// remove resources in ovndb that not exist any more in kubernetes resources
 	if err := c.gc(); err != nil {
-		klog.Fatalf("gc failed: %v", err)
+		util.LogFatalAndExit(err, "failed to run gc")
 	}
 
 	c.registerSubnetMetrics()
 	if err := c.initSyncCrdSubnets(); err != nil {
-		klog.Errorf("failed to sync crd subnets: %v", err)
+		util.LogFatalAndExit(err, "failed to sync crd subnets")
 	}
 	if err := c.initSyncCrdVlans(); err != nil {
-		klog.Errorf("failed to sync crd vlans: %v", err)
+		util.LogFatalAndExit(err, "failed to sync crd vlans")
 	}
 
 	if c.config.PodDefaultFipType == util.IptablesFip {
 		if err := c.initSyncCrdVpcNatGw(); err != nil {
-			klog.Errorf("failed to sync crd vpc nat gws: %v", err)
+			util.LogFatalAndExit(err, "failed to sync crd vpc nat gateways")
 		}
 	}
 
 	if c.config.EnableLb {
 		if err := c.initVpcDnsConfig(); err != nil {
-			klog.Errorf("failed to init vpc-dns: %v", err)
+			util.LogFatalAndExit(err, "failed to initialize vpc-dns")
 		}
 	}
 
 	if err := c.addNodeGwStaticRoute(); err != nil {
-		klog.Errorf("failed to add static route for node gw: %v", err)
+		util.LogFatalAndExit(err, "failed to add static route for node gateway")
 	}
 
 	// start workers to do all the network operations
@@ -663,8 +720,6 @@ func (c *Controller) shutdown() {
 	c.addVlanQueue.ShutDown()
 	c.delVlanQueue.ShutDown()
 	c.updateVlanQueue.ShutDown()
-
-	c.updateProviderNetworkQueue.ShutDown()
 
 	c.addOrUpdateVpcQueue.ShutDown()
 	c.updateVpcStatusQueue.ShutDown()
@@ -709,6 +764,21 @@ func (c *Controller) shutdown() {
 	c.updateIptablesSnatRuleQueue.ShutDown()
 	c.delIptablesSnatRuleQueue.ShutDown()
 
+	if c.config.EnableEipSnat {
+		c.addOvnEipQueue.ShutDown()
+		c.updateOvnEipQueue.ShutDown()
+		c.resetOvnEipQueue.ShutDown()
+		c.delOvnEipQueue.ShutDown()
+
+		c.addOvnFipQueue.ShutDown()
+		c.updateOvnFipQueue.ShutDown()
+		c.delOvnFipQueue.ShutDown()
+
+		c.addIptablesSnatRuleQueue.ShutDown()
+		c.updateIptablesSnatRuleQueue.ShutDown()
+		c.delIptablesSnatRuleQueue.ShutDown()
+	}
+
 	if c.config.PodDefaultFipType == util.IptablesFip {
 		c.addPodAnnotatedIptablesEipQueue.ShutDown()
 		c.updatePodAnnotatedIptablesEipQueue.ShutDown()
@@ -750,7 +820,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		time.Sleep(3 * time.Second)
 		lss, err := c.ovnLegacyClient.ListLogicalSwitch(c.config.EnableExternalVpc)
 		if err != nil {
-			klog.Fatalf("failed to list logical switch: %v", err)
+			util.LogFatalAndExit(err, "failed to list logical switch")
 		}
 
 		if util.IsStringIn(c.config.DefaultLogicalSwitch, lss) && util.IsStringIn(c.config.NodeSwitch, lss) && c.addNamespaceQueue.Len() == 0 {
@@ -773,7 +843,7 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		time.Sleep(3 * time.Second)
 		nodes, err := c.nodesLister.List(labels.Everything())
 		if err != nil {
-			klog.Fatalf("failed to list nodes: %v", err)
+			util.LogFatalAndExit(err, "failed to list nodes")
 		}
 		for _, node := range nodes {
 			if node.Annotations[util.AllocatedAnnotation] != "true" {
@@ -789,7 +859,6 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 
 	go wait.Until(c.runDelVpcWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdateVpcStatusWorker, time.Second, stopCh)
-	go wait.Until(c.runUpdateProviderNetworkWorker, time.Second, stopCh)
 
 	if c.config.EnableLb {
 		go wait.Until(c.runAddServiceWorker, time.Second, stopCh)
@@ -869,6 +938,21 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 	go wait.Until(c.resyncProviderNetworkStatus, 30*time.Second, stopCh)
 	go wait.Until(c.resyncSubnetMetrics, 30*time.Second, stopCh)
 	go wait.Until(c.CheckGatewayReady, 5*time.Second, stopCh)
+
+	if c.config.EnableEipSnat {
+		go wait.Until(c.runAddOvnEipWorker, time.Second, stopCh)
+		go wait.Until(c.runUpdateOvnEipWorker, time.Second, stopCh)
+		go wait.Until(c.runResetOvnEipWorker, time.Second, stopCh)
+		go wait.Until(c.runDelOvnEipWorker, time.Second, stopCh)
+
+		go wait.Until(c.runAddOvnFipWorker, time.Second, stopCh)
+		go wait.Until(c.runUpdateOvnFipWorker, time.Second, stopCh)
+		go wait.Until(c.runDelOvnFipWorker, time.Second, stopCh)
+
+		go wait.Until(c.runAddOvnSnatRuleWorker, time.Second, stopCh)
+		go wait.Until(c.runUpdateOvnSnatRuleWorker, time.Second, stopCh)
+		go wait.Until(c.runDelOvnSnatRuleWorker, time.Second, stopCh)
+	}
 
 	if c.config.EnableNP {
 		go wait.Until(c.CheckNodePortGroup, time.Duration(c.config.NodePgProbeTime)*time.Minute, stopCh)

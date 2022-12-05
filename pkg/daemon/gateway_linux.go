@@ -17,6 +17,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
+	k8sipset "k8s.io/kubernetes/pkg/util/ipset"
+	k8sexec "k8s.io/utils/exec"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -222,8 +224,8 @@ func (c *Controller) addPolicyRouting(family int, gateway string, priority, tabl
 		Gw:       net.ParseIP(gateway),
 		Table:    int(tableID),
 	}
-	if err := netlink.RouteAdd(route); err != nil && !errors.Is(err, syscall.EEXIST) {
-		err = fmt.Errorf("failed to add route in table %d: %+v", tableID, err)
+	if err := netlink.RouteReplace(route); err != nil && !errors.Is(err, syscall.EEXIST) {
+		err = fmt.Errorf("failed to replace route in table %d: %+v", tableID, err)
 		klog.Error(err)
 		return err
 	}
@@ -680,6 +682,7 @@ func (c *Controller) setExGateway() error {
 		return err
 	}
 	enable := node.Labels[util.ExGatewayLabel]
+	externalBride := fmt.Sprintf("br-%s", c.config.ExternalGatewaySwitch)
 	if enable == "true" {
 		cm, err := c.config.KubeClient.CoreV1().ConfigMaps(c.config.ExternalGatewayConfigNS).Get(context.Background(), util.ExternalGatewayConfig, metav1.GetOptions{})
 		if err != nil {
@@ -702,8 +705,8 @@ func (c *Controller) setExGateway() error {
 			return err
 		}
 		if _, err := ovs.Exec(
-			ovs.MayExist, "add-br", "br-external", "--",
-			ovs.MayExist, "add-port", "br-external", cm.Data["external-gw-nic"],
+			ovs.MayExist, "add-br", externalBride, "--",
+			ovs.MayExist, "add-port", externalBride, cm.Data["external-gw-nic"],
 		); err != nil {
 			return fmt.Errorf("failed to enable external gateway, %v", err)
 		}
@@ -712,7 +715,7 @@ func (c *Controller) setExGateway() error {
 		if err != nil {
 			return fmt.Errorf("failed to get external-ids, %v", err)
 		}
-		bridgeMappings := "external:br-external"
+		bridgeMappings := fmt.Sprintf("external:%s", externalBride)
 		if output != "" && !util.IsStringIn(bridgeMappings, strings.Split(output, ",")) {
 			bridgeMappings = fmt.Sprintf("%s,%s", output, bridgeMappings)
 		}
@@ -723,7 +726,7 @@ func (c *Controller) setExGateway() error {
 		}
 	} else {
 		if _, err := ovs.Exec(
-			ovs.IfExists, "del-br", "br-external"); err != nil {
+			ovs.IfExists, "del-br", externalBride); err != nil {
 			return fmt.Errorf("failed to disable external gateway, %v", err)
 		}
 	}
@@ -913,15 +916,10 @@ func (c *Controller) deleteLegacySnatRules(protocol, table, chain string) error 
 }
 
 func ipsetExists(name string) (bool, error) {
-	result, err := netlink.IpsetListAll()
+	sets, err := k8sipset.New(k8sexec.New()).ListSets()
 	if err != nil {
-		return false, fmt.Errorf("failed to list ipsets: %v", err)
+		return false, fmt.Errorf("failed to list ipset names: %v", err)
 	}
 
-	for _, ipset := range result {
-		if ipset.SetName == name {
-			return true, nil
-		}
-	}
-	return false, nil
+	return util.ContainsString(sets, name), nil
 }

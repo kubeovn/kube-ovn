@@ -7,19 +7,19 @@ import (
 	"crypto/x509"
 	"encoding/binary"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/go-logr/stdr"
 	"github.com/ovn-org/libovsdb/client"
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
+
+const timeout = 3 * time.Second
 
 var namedUUIDCounter uint32
 
@@ -36,23 +36,22 @@ func NamedUUID() string {
 }
 
 // NewNbClient creates a new OVN NB client
-func NewNbClient(addr string, timeout int) (client.Client, error) {
+func NewNbClient(addr string) (client.Client, error) {
 	dbModel, err := ovnnb.FullDatabaseModel()
 	if err != nil {
 		return nil, err
 	}
 
-	logger := stdr.NewWithOptions(log.New(os.Stderr, "", log.LstdFlags), stdr.Options{LogCaller: stdr.All}).
-		WithName("libovsdb")
-	stdr.SetVerbosity(3)
+	logger := klog.NewKlogr().WithName("libovsdb")
 	options := []client.Option{
-		client.WithReconnect(time.Duration(timeout)*time.Second, &backoff.ZeroBackOff{}),
+		client.WithReconnect(timeout, &backoff.ConstantBackOff{Interval: time.Second}),
 		client.WithLeaderOnly(true),
 		client.WithLogger(&logger),
 	}
 
 	var ssl bool
-	for _, ep := range strings.Split(addr, ",") {
+	endpoints := strings.Split(addr, ",")
+	for _, ep := range endpoints {
 		if !ssl && strings.HasPrefix(ep, client.SSL) {
 			ssl = true
 		}
@@ -86,7 +85,9 @@ func NewNbClient(addr string, timeout int) (client.Client, error) {
 		return nil, err
 	}
 
-	if err = c.Connect(context.TODO()); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(len(endpoints)+1)*timeout)
+	defer cancel()
+	if err = c.Connect(ctx); err != nil {
 		klog.Errorf("failed to connect to OVN NB server %s: %v", addr, err)
 		return nil, err
 	}
@@ -95,10 +96,9 @@ func NewNbClient(addr string, timeout int) (client.Client, error) {
 		client.WithTable(&ovnnb.LogicalRouter{}),
 		client.WithTable(&ovnnb.LogicalRouterPort{}),
 		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
+		client.WithTable(&ovnnb.LogicalRouterStaticRoute{}),
 		client.WithTable(&ovnnb.LogicalSwitchPort{}),
 		client.WithTable(&ovnnb.PortGroup{}),
-		client.WithTable(&ovnnb.LogicalRouterStaticRoute{}),
-		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
 	}
 	if _, err = c.Monitor(context.TODO(), c.NewMonitor(monitorOpts...)); err != nil {
 		klog.Errorf("failed to monitor database on OVN NB server %s: %v", addr, err)

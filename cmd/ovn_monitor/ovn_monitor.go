@@ -8,6 +8,7 @@ import (
 	"k8s.io/klog/v2"
 
 	ovn "github.com/kubeovn/kube-ovn/pkg/ovnmonitor"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/versions"
 )
 
@@ -17,7 +18,7 @@ func CmdMain() {
 	klog.Infof(versions.String())
 	config, err := ovn.ParseFlags()
 	if err != nil {
-		klog.Fatalf("parse config failed %v", err)
+		util.LogFatalAndExit(err, "failed to parse config")
 	}
 
 	exporter := ovn.NewExporter(config)

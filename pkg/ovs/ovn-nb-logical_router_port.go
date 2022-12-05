@@ -12,11 +12,15 @@ import (
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
+	"k8s.io/klog/v2"
 )
 
 func (c OvnClient) GetLogicalRouterPort(name string, ignoreNotFound bool) (*ovnnb.LogicalRouterPort, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	lrp := &ovnnb.LogicalRouterPort{Name: name}
-	if err := c.ovnNbClient.Get(context.TODO(), lrp); err != nil {
+	if err := c.ovnNbClient.Get(ctx, lrp); err != nil {
 		if ignoreNotFound && err == client.ErrNotFound {
 			return nil, nil
 		}
@@ -67,7 +71,7 @@ func (c OvnClient) AddLogicalRouterPort(lr, name, mac, networks string) error {
 		return err
 	}
 	ops = append(ops, mutationOps...)
-
+	klog.Infof("add vpc lrp %s, networks %s", name, networks)
 	if err := Transact(c.ovnNbClient, "lrp-add", ops, c.ovnNbClient.Timeout); err != nil {
 		return fmt.Errorf("failed to create logical router port %s: %v", name, err)
 	}

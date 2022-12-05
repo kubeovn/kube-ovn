@@ -15,7 +15,7 @@ func PodNameToPortName(pod, namespace, provider string) string {
 	return fmt.Sprintf("%s.%s.%s", pod, namespace, provider)
 }
 
-func PodNameToLocalnetName(subnet string) string {
+func GetLocalnetName(subnet string) string {
 	return fmt.Sprintf("localnet.%s", subnet)
 }
 

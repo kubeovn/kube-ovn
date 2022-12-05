@@ -12,6 +12,7 @@ import (
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	ovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	ovnwebhook "github.com/kubeovn/kube-ovn/pkg/webhook"
 	"github.com/kubeovn/kube-ovn/versions"
 	"github.com/spf13/pflag"
@@ -27,13 +28,13 @@ var (
 
 func init() {
 	if err := corev1.AddToScheme(scheme); err != nil {
-		klog.Fatalf("failed to add scheme, %v", err)
+		util.LogFatalAndExit(err, "failed to add core v1 scheme")
 	}
 	if err := appsv1.AddToScheme(scheme); err != nil {
-		klog.Fatalf("failed to add scheme, %v", err)
+		util.LogFatalAndExit(err, "failed to add apps v1 scheme")
 	}
 	if err := ovnv1.AddToScheme(scheme); err != nil {
-		klog.Fatalf("failed to add scheme, %v", err)
+		util.LogFatalAndExit(err, "failed to add ovn v1 scheme")
 	}
 }
 
@@ -52,7 +53,7 @@ func main() {
 		if f2 != nil {
 			value := f1.Value.String()
 			if err := f2.Value.Set(value); err != nil {
-				klog.Fatalf("failed to set flag, %v", err)
+				util.LogFatalAndExit(err, "failed to set flag")
 			}
 		}
 	})

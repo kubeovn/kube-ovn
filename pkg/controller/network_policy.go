@@ -266,10 +266,6 @@ func (c *Controller) handleUpdateNp(key string) error {
 	if hasIngressRule(np) {
 		for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
 			protocol := util.CheckProtocol(cidrBlock)
-			svcAsName := svcAsNameIPv4
-			if protocol == kubeovnv1.ProtocolIPv6 {
-				svcAsName = svcAsNameIPv6
-			}
 
 			for idx, npr := range np.Spec.Ingress {
 				// A single address set must contain addresses of the same type and the name must be unique within table, so IPv4 and IPv6 address set should be different
@@ -314,9 +310,9 @@ func (c *Controller) handleUpdateNp(key string) error {
 				}
 
 				if len(allows) != 0 || len(excepts) != 0 {
-					ingressAclCmd = c.ovnLegacyClient.CombineIngressACLCmd(pgName, ingressAllowAsName, ingressExceptAsName, svcAsName, protocol, npr.Ports, logEnable, ingressAclCmd, idx)
+					ingressAclCmd = c.ovnLegacyClient.CombineIngressACLCmd(pgName, ingressAllowAsName, ingressExceptAsName, protocol, npr.Ports, logEnable, ingressAclCmd, idx)
 				} else {
-					ingressAclCmd = c.ovnLegacyClient.CombineIngressACLCmd(pgName, ingressAllowAsName, ingressExceptAsName, svcAsName, protocol, []netv1.NetworkPolicyPort{}, logEnable, ingressAclCmd, idx)
+					ingressAclCmd = c.ovnLegacyClient.CombineIngressACLCmd(pgName, ingressAllowAsName, ingressExceptAsName, protocol, []netv1.NetworkPolicyPort{}, logEnable, ingressAclCmd, idx)
 				}
 			}
 			if len(np.Spec.Ingress) == 0 {
@@ -332,7 +328,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 				ingressPorts := []netv1.NetworkPolicyPort{}
-				ingressAclCmd = c.ovnLegacyClient.CombineIngressACLCmd(pgName, ingressAllowAsName, ingressExceptAsName, svcAsName, protocol, ingressPorts, logEnable, ingressAclCmd, 0)
+				ingressAclCmd = c.ovnLegacyClient.CombineIngressACLCmd(pgName, ingressAllowAsName, ingressExceptAsName, protocol, ingressPorts, logEnable, ingressAclCmd, 0)
 			}
 
 			klog.Infof("create ingress acl cmd is: %v", ingressAclCmd)
@@ -413,10 +409,6 @@ func (c *Controller) handleUpdateNp(key string) error {
 	if hasEgressRule(np) {
 		for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
 			protocol := util.CheckProtocol(cidrBlock)
-			svcAsName := svcAsNameIPv4
-			if protocol == kubeovnv1.ProtocolIPv6 {
-				svcAsName = svcAsNameIPv6
-			}
 
 			for idx, npr := range np.Spec.Egress {
 				// A single address set must contain addresses of the same type and the name must be unique within table, so IPv4 and IPv6 address set should be different
@@ -461,7 +453,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 				}
 
 				if len(allows) != 0 || len(excepts) != 0 {
-					egressAclCmd = c.ovnLegacyClient.CombineEgressACLCmd(pgName, egressAllowAsName, egressExceptAsName, protocol, npr.Ports, svcAsName, logEnable, egressAclCmd, idx)
+					egressAclCmd = c.ovnLegacyClient.CombineEgressACLCmd(pgName, egressAllowAsName, egressExceptAsName, protocol, npr.Ports, logEnable, egressAclCmd, idx)
 				}
 			}
 			if len(np.Spec.Egress) == 0 {
@@ -477,7 +469,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 				egressPorts := []netv1.NetworkPolicyPort{}
-				egressAclCmd = c.ovnLegacyClient.CombineEgressACLCmd(pgName, egressAllowAsName, egressExceptAsName, protocol, egressPorts, svcAsName, logEnable, egressAclCmd, 0)
+				egressAclCmd = c.ovnLegacyClient.CombineEgressACLCmd(pgName, egressAllowAsName, egressExceptAsName, protocol, egressPorts, logEnable, egressAclCmd, 0)
 			}
 
 			klog.Infof("create egress acl cmd is: %v", egressAclCmd)

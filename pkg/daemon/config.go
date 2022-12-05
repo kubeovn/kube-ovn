@@ -55,6 +55,7 @@ type Configuration struct {
 	DefaultProviderName     string
 	DefaultInterfaceName    string
 	ExternalGatewayConfigNS string
+	ExternalGatewaySwitch   string
 }
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
@@ -84,6 +85,7 @@ func ParseFlags() *Configuration {
 		argsDefaultProviderName    = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name")
 		argsDefaultInterfaceName   = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
+		argExternalGatewaySwitch   = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
 	)
 
 	// mute info log for ipset lib
@@ -98,7 +100,7 @@ func ParseFlags() *Configuration {
 		if f2 != nil {
 			value := f1.Value.String()
 			if err := f2.Value.Set(value); err != nil {
-				klog.Fatalf("failed to set flag, %v", err)
+				util.LogFatalAndExit(err, "failed to set flag")
 			}
 		}
 	})
@@ -130,6 +132,7 @@ func ParseFlags() *Configuration {
 		DefaultProviderName:     *argsDefaultProviderName,
 		DefaultInterfaceName:    *argsDefaultInterfaceName,
 		ExternalGatewayConfigNS: *argExternalGatewayConfigNS,
+		ExternalGatewaySwitch:   *argExternalGatewaySwitch,
 	}
 	return config
 }

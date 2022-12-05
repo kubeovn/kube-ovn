@@ -1,18 +1,17 @@
 package ovn_leader_checker
 
 import (
-	"k8s.io/klog/v2"
-
 	"github.com/kubeovn/kube-ovn/pkg/ovn_leader_checker"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func CmdMain() {
 	cfg, err := ovn_leader_checker.ParseFlags()
 	if err != nil {
-		klog.Fatalf("ovn_leader_checker parseFlags error %v", err)
+		util.LogFatalAndExit(err, "failed to parse flags")
 	}
 	if err = ovn_leader_checker.KubeClientInit(cfg); err != nil {
-		klog.Fatalf("KubeClientInit err %v", err)
+		util.LogFatalAndExit(err, "failed to initialize kube client")
 	}
 	ovn_leader_checker.StartOvnLeaderCheck(cfg)
 }

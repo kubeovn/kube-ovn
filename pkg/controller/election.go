@@ -56,7 +56,7 @@ func (c *Controller) leaderElection() {
 			klog.Info("waiting for becoming a leader")
 			flag = true
 		}
-		time.Sleep(5 * time.Second)
+		time.Sleep(1 * time.Second)
 	}
 }
 
@@ -79,7 +79,7 @@ func setupLeaderElection(config *leaderElectionConfig) *leaderelection.LeaderEle
 			if config.OnStoppedLeading != nil {
 				config.OnStoppedLeading()
 			}
-			klog.Fatalf("leaderelection lost")
+			util.LogFatalAndExit(nil, "leaderelection lost")
 		},
 		OnNewLeader: func(identity string) {
 			klog.Infof("new leader elected: %v", identity)
@@ -114,7 +114,7 @@ func setupLeaderElection(config *leaderElectionConfig) *leaderelection.LeaderEle
 		Callbacks:     callbacks,
 	})
 	if err != nil {
-		klog.Fatalf("unexpected error starting leader election: %v", err)
+		util.LogFatalAndExit(err, "failed to create leader elector")
 	}
 
 	go elector.Run(context.Background())
