@@ -392,6 +392,11 @@ func (in *ProviderNetworkStatus) DeepCopyInto(out *ProviderNetworkStatus) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.NotReadyNodes != nil {
+		in, out := &in.NotReadyNodes, &out.NotReadyNodes
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.Vlans != nil {
 		in, out := &in.Vlans, &out.Vlans
 		*out = make([]string, len(*in))
