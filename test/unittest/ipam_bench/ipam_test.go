@@ -1,20 +1,62 @@
-package ipam
+package ipam_bench
 
 import (
+	"flag"
 	"fmt"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ipam"
-
-	"k8s.io/klog/v2"
 	"math/rand"
 	"testing"
+
+	"k8s.io/klog/v2"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ipam"
 )
+
+/*
+[root@localhost kube-ovn]# make ipam-bench
+go test -bench='^BenchmarkIPAM' -benchtime=10000x test/unittest/ipam_bench/ipam_test.go -args -logtostderr=false
+goos: linux
+goarch: amd64
+cpu: AMD Ryzen 7 5800H with Radeon Graphics
+BenchmarkIPAMIPv4AddSubnet-8       10000             25678 ns/op
+BenchmarkIPAMIPv4DelSubnet-8       10000             11381 ns/op
+BenchmarkIPAMIPv4AllocAddr-8       10000             19334 ns/op
+BenchmarkIPAMIPv4FreeAddr-8        10000             17432 ns/op
+BenchmarkIPAMIPv6AddSubnet-8       10000             19285 ns/op
+BenchmarkIPAMIPv6DelSubnet-8       10000             12678 ns/op
+BenchmarkIPAMIPv6AllocAddr-8       10000             19778 ns/op
+BenchmarkIPAMIPv6FreeAddr-8        10000             19717 ns/op
+BenchmarkIPAMDualAddSubnet-8       10000             31187 ns/op
+BenchmarkIPAMDualDelSubnet-8       10000             10764 ns/op
+BenchmarkIPAMDualAllocAddr-8       10000             23416 ns/op
+BenchmarkIPAMDualFreeAddr-8        10000             35587 ns/op
+PASS
+ok      command-line-arguments  3.977s
+go test -bench='^BenchmarkParallelIPAM' -benchtime=10x test/unittest/ipam_bench/ipam_test.go -args -logtostderr=false
+goos: linux
+goarch: amd64
+cpu: AMD Ryzen 7 5800H with Radeon Graphics
+BenchmarkParallelIPAMIPv4AddDel1000Subnet-8                   10          25722807 ns/op
+BenchmarkParallelIPAMIPv4AllocFree10000Addr-8                 10        13791297785 ns/op
+BenchmarkParallelIPAMIPv6AddDel1000Subnet-8                   10          20382767 ns/op
+BenchmarkParallelIPAMIPv6AllocFree10000Addr-8                 10        12932703206 ns/op
+BenchmarkParallelIPAMDualAddDel1000Subnet-8                   10          31276342 ns/op
+BenchmarkParallelIPAMDualAllocFree10000Addr-8                 10        7242771662 ns/op
+PASS
+ok      command-line-arguments  342.035s
+*/
+
+func init() {
+	testing.Init()
+	klog.InitFlags(nil)
+	flag.Parse()
+}
 
 func BenchmarkIPAMIPv4AddSubnet(b *testing.B) {
 	im := ipam.NewIPAM()
 	for n := 0; n < b.N; n++ {
 		if ok := addIPAMSubnet(im, n, kubeovnv1.ProtocolIPv4); !ok {
-			return
+			klog.Fatalf("ERROR: add v4 subnet with index %d ", n)
 		}
 	}
 }
@@ -23,7 +65,7 @@ func BenchmarkIPAMIPv4DelSubnet(b *testing.B) {
 	im := ipam.NewIPAM()
 	for n := 0; n < b.N; n++ {
 		if ok := addIPAMSubnet(im, n, kubeovnv1.ProtocolIPv4); !ok {
-			return
+			klog.Fatalf("ERROR: add v4 subnet with index %d ", n)
 		}
 	}
 
@@ -79,7 +121,7 @@ func BenchmarkIPAMIPv6AddSubnet(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		if ok := addIPAMSubnet(im, n, kubeovnv1.ProtocolIPv6); !ok {
-			return
+			klog.Fatalf("ERROR: add subnet with dual cidr with index %d ", n)
 		}
 	}
 }
@@ -88,7 +130,7 @@ func BenchmarkIPAMIPv6DelSubnet(b *testing.B) {
 	im := ipam.NewIPAM()
 	for n := 0; n < b.N; n++ {
 		if ok := addIPAMSubnet(im, n, kubeovnv1.ProtocolIPv6); !ok {
-			return
+			klog.Fatalf("ERROR: add subnet with dual cidr with index %d ", n)
 		}
 	}
 
@@ -144,7 +186,7 @@ func BenchmarkIPAMDualAddSubnet(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		if ok := addIPAMSubnet(im, n, kubeovnv1.ProtocolDual); !ok {
-			return
+			klog.Fatalf("ERROR: add dual subnet with index %d ", n)
 		}
 	}
 }
@@ -153,7 +195,7 @@ func BenchmarkIPAMDualDelSubnet(b *testing.B) {
 	im := ipam.NewIPAM()
 	for n := 0; n < b.N; n++ {
 		if ok := addIPAMSubnet(im, n, kubeovnv1.ProtocolDual); !ok {
-			return
+			klog.Fatalf("ERROR: add dual subnet with index %d ", n)
 		}
 	}
 
