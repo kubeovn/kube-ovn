@@ -54,15 +54,14 @@ const (
 	LiveMigrationAnnotationTemplate = "%s.kubernetes.io/allow_live_migration"
 	DefaultRouteAnnotationTemplate  = "%s.kubernetes.io/default_route"
 
-	ProviderNetworkTemplate           = "%s.kubernetes.io/provider_network"
-	ProviderNetworkErrMessageTemplate = "%s.provider-network.kubernetes.io/err_mesg"
-	ProviderNetworkReadyTemplate      = "%s.provider-network.kubernetes.io/ready"
-	ProviderNetworkExcludeTemplate    = "%s.provider-network.kubernetes.io/exclude"
-	ProviderNetworkInterfaceTemplate  = "%s.provider-network.kubernetes.io/interface"
-	ProviderNetworkMtuTemplate        = "%s.provider-network.kubernetes.io/mtu"
-	MirrorControlAnnotationTemplate   = "%s.kubernetes.io/mirror"
-	PodNicAnnotationTemplate          = "%s.kubernetes.io/pod_nic_type"
-	VmTemplate                        = "%s.kubernetes.io/virtualmachine"
+	ProviderNetworkTemplate          = "%s.kubernetes.io/provider_network"
+	ProviderNetworkReadyTemplate     = "%s.provider-network.kubernetes.io/ready"
+	ProviderNetworkExcludeTemplate   = "%s.provider-network.kubernetes.io/exclude"
+	ProviderNetworkInterfaceTemplate = "%s.provider-network.kubernetes.io/interface"
+	ProviderNetworkMtuTemplate       = "%s.provider-network.kubernetes.io/mtu"
+	MirrorControlAnnotationTemplate  = "%s.kubernetes.io/mirror"
+	PodNicAnnotationTemplate         = "%s.kubernetes.io/pod_nic_type"
+	VmTemplate                       = "%s.kubernetes.io/virtualmachine"
 
 	ExcludeIpsAnnotation = "ovn.kubernetes.io/exclude_ips"
 
