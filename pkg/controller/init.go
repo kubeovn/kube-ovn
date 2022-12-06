@@ -415,7 +415,7 @@ func (c *Controller) InitIPAM() error {
 		return err
 	}
 	for _, eip := range eips {
-		if _, _, _, err = c.ipam.GetStaticAddress(eip.Name, eip.Name, eip.Spec.V4ip, eip.Spec.MacAddress, util.VpcExternalNet, false); err != nil {
+		if _, _, _, err = c.ipam.GetStaticAddress(eip.Name, eip.Name, eip.Status.IP, eip.Spec.MacAddress, util.VpcExternalNet, true); err != nil {
 			klog.Errorf("failed to init ipam from iptables eip cr %s: %v", eip.Name, err)
 		}
 	}

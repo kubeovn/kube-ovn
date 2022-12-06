@@ -48,7 +48,7 @@ func (ipam *IPAM) GetRandomAddress(podName, nicName, mac, subnetName string, ski
 	}
 
 	v4IP, v6IP, mac, err := subnet.GetRandomAddress(podName, nicName, mac, skippedAddrs, checkConflict)
-	klog.Infof("allocate v4 %s v6 %s mac %s for %s", v4IP, v6IP, mac, podName)
+	klog.Infof("allocate v4 %s v6 %s mac %s for %s from subnet %s", v4IP, v6IP, mac, podName, subnetName)
 	return string(v4IP), string(v6IP), mac, err
 }
 

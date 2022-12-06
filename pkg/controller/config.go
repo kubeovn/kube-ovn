@@ -100,7 +100,7 @@ func ParseFlags() (*Configuration, error) {
 		argOvnNbAddr            = pflag.String("ovn-nb-addr", "", "ovn-nb address")
 		argOvnSbAddr            = pflag.String("ovn-sb-addr", "", "ovn-sb address")
 		argOvnTimeout           = pflag.Int("ovn-timeout", 60, "")
-		argCustCrdRetryMinDelay = pflag.Int("cust-crd-retry-min-delay", 2, "The min delay seconds between custom crd two retries")
+		argCustCrdRetryMinDelay = pflag.Int("cust-crd-retry-min-delay", 1, "The min delay seconds between custom crd two retries")
 		argCustCrdRetryMaxDelay = pflag.Int("cust-crd-retry-max-delay", 20, "The max delay seconds between custom crd two retries")
 		argKubeConfigFile       = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 
