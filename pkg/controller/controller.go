@@ -83,9 +83,8 @@ type Controller struct {
 	vlansLister kubeovnlister.VlanLister
 	vlanSynced  cache.InformerSynced
 
-	providerNetworksLister     kubeovnlister.ProviderNetworkLister
-	providerNetworkSynced      cache.InformerSynced
-	updateProviderNetworkQueue workqueue.RateLimitingInterface
+	providerNetworksLister kubeovnlister.ProviderNetworkLister
+	providerNetworkSynced  cache.InformerSynced
 
 	addVlanQueue    workqueue.RateLimitingInterface
 	delVlanQueue    workqueue.RateLimitingInterface
@@ -211,9 +210,8 @@ func NewController(config *Configuration) *Controller {
 		delVlanQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DelVlan"),
 		updateVlanQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateVlan"),
 
-		providerNetworksLister:     providerNetworkInformer.Lister(),
-		providerNetworkSynced:      providerNetworkInformer.Informer().HasSynced,
-		updateProviderNetworkQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateProviderNetwork"),
+		providerNetworksLister: providerNetworkInformer.Lister(),
+		providerNetworkSynced:  providerNetworkInformer.Informer().HasSynced,
 
 		podsLister:             podInformer.Lister(),
 		podsSynced:             podInformer.Informer().HasSynced,
@@ -321,10 +319,6 @@ func NewController(config *Configuration) *Controller {
 		AddFunc:    controller.enqueueAddVlan,
 		DeleteFunc: controller.enqueueDelVlan,
 		UpdateFunc: controller.enqueueUpdateVlan,
-	})
-
-	providerNetworkInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: controller.enqueueUpdateProviderNetwork,
 	})
 
 	if config.EnableNP {
@@ -457,8 +451,6 @@ func (c *Controller) shutdown() {
 	c.delVlanQueue.ShutDown()
 	c.updateVlanQueue.ShutDown()
 
-	c.updateProviderNetworkQueue.ShutDown()
-
 	c.addOrUpdateVpcQueue.ShutDown()
 	c.updateVpcStatusQueue.ShutDown()
 	c.delVpcQueue.ShutDown()
@@ -543,7 +535,6 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 
 	go wait.Until(c.runDelVpcWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdateVpcStatusWorker, time.Second, stopCh)
-	go wait.Until(c.runUpdateProviderNetworkWorker, time.Second, stopCh)
 
 	if c.config.EnableLb {
 		// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
