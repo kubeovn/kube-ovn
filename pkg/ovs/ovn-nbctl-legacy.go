@@ -1180,8 +1180,14 @@ func (c LegacyClient) DeleteStaticRoute(cidr, router string) error {
 	if cidr == "" {
 		return nil
 	}
-	_, err := c.ovnNbCommand(IfExists, "lr-route-del", router, cidr)
-	return err
+	for _, cidrBlock := range strings.Split(cidr, ",") {
+		if _, err := c.ovnNbCommand(IfExists, "lr-route-del", router, cidrBlock); err != nil {
+			klog.Errorf("fail to delete static route %s from %s, %v", cidrBlock, router, err)
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (c LegacyClient) DeleteStaticRouteByNextHop(nextHop string) error {
