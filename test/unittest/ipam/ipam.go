@@ -2,6 +2,7 @@ package ipam
 
 import (
 	"fmt"
+	"math/rand"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -43,11 +44,13 @@ var _ = Describe("[IPAM]", func() {
 				im := ipam.NewIPAM()
 
 				By("invalid mask len > 32")
-				err := im.AddOrUpdateSubnet(subnetName, "1.1.1.1/64", v4Gw, nil)
+				maskV4Length := rand.Int() + 32
+				err := im.AddOrUpdateSubnet(subnetName, fmt.Sprintf("1.1.1.1/%d", maskV4Length), v4Gw, nil)
 				Expect(err).Should(MatchError(ipam.ErrInvalidCIDR))
 
 				By("invalid ip range")
-				err = im.AddOrUpdateSubnet(subnetName, "1.1.256.1/24", v4Gw, nil)
+				invalidV4Ip := fmt.Sprintf("1.1.%d.1/24", rand.Int()+256)
+				err = im.AddOrUpdateSubnet(subnetName, invalidV4Ip, v4Gw, nil)
 				Expect(err).Should(MatchError(ipam.ErrInvalidCIDR))
 			})
 
@@ -191,8 +194,9 @@ var _ = Describe("[IPAM]", func() {
 			It("invalid subnet", func() {
 				im := ipam.NewIPAM()
 
+				maskV6Length := rand.Int() + 128
 				By("invalid mask len > 128")
-				err := im.AddOrUpdateSubnet(subnetName, "fd00::/130", v6Gw, nil)
+				err := im.AddOrUpdateSubnet(subnetName, fmt.Sprintf("fd00::/%d", maskV6Length), v6Gw, nil)
 				Expect(err).Should(MatchError(ipam.ErrInvalidCIDR))
 
 				By("invalid ip range")
