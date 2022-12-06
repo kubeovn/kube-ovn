@@ -3,48 +3,16 @@ package ipam_bench
 import (
 	"flag"
 	"fmt"
-	"math/rand"
+	"k8s.io/utils/strings/slices"
+	"math/big"
 	"testing"
 
+	"crypto/rand"
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
 )
-
-/*
-[root@localhost kube-ovn]# make ipam-bench
-go test -bench='^BenchmarkIPAM' -benchtime=10000x test/unittest/ipam_bench/ipam_test.go -args -logtostderr=false
-goos: linux
-goarch: amd64
-cpu: AMD Ryzen 7 5800H with Radeon Graphics
-BenchmarkIPAMIPv4AddSubnet-8       10000             25678 ns/op
-BenchmarkIPAMIPv4DelSubnet-8       10000             11381 ns/op
-BenchmarkIPAMIPv4AllocAddr-8       10000             19334 ns/op
-BenchmarkIPAMIPv4FreeAddr-8        10000             17432 ns/op
-BenchmarkIPAMIPv6AddSubnet-8       10000             19285 ns/op
-BenchmarkIPAMIPv6DelSubnet-8       10000             12678 ns/op
-BenchmarkIPAMIPv6AllocAddr-8       10000             19778 ns/op
-BenchmarkIPAMIPv6FreeAddr-8        10000             19717 ns/op
-BenchmarkIPAMDualAddSubnet-8       10000             31187 ns/op
-BenchmarkIPAMDualDelSubnet-8       10000             10764 ns/op
-BenchmarkIPAMDualAllocAddr-8       10000             23416 ns/op
-BenchmarkIPAMDualFreeAddr-8        10000             35587 ns/op
-PASS
-ok      command-line-arguments  3.977s
-go test -bench='^BenchmarkParallelIPAM' -benchtime=10x test/unittest/ipam_bench/ipam_test.go -args -logtostderr=false
-goos: linux
-goarch: amd64
-cpu: AMD Ryzen 7 5800H with Radeon Graphics
-BenchmarkParallelIPAMIPv4AddDel1000Subnet-8                   10          25722807 ns/op
-BenchmarkParallelIPAMIPv4AllocFree10000Addr-8                 10        13791297785 ns/op
-BenchmarkParallelIPAMIPv6AddDel1000Subnet-8                   10          20382767 ns/op
-BenchmarkParallelIPAMIPv6AllocFree10000Addr-8                 10        12932703206 ns/op
-BenchmarkParallelIPAMDualAddDel1000Subnet-8                   10          31276342 ns/op
-BenchmarkParallelIPAMDualAllocFree10000Addr-8                 10        7242771662 ns/op
-PASS
-ok      command-line-arguments  342.035s
-*/
 
 func init() {
 	testing.Init()
@@ -52,222 +20,195 @@ func init() {
 	flag.Parse()
 }
 
-func BenchmarkIPAMIPv4AddSubnet(b *testing.B) {
+func BenchmarkIPAMSerialIPv4AddSubnet(b *testing.B) {
 	im := ipam.NewIPAM()
-	for n := 0; n < b.N; n++ {
-		if ok := addIPAMSubnet(im, n, kubeovnv1.ProtocolIPv4); !ok {
-			klog.Fatalf("ERROR: add v4 subnet with index %d ", n)
-		}
-	}
+	addSubnetCapacity(b, im, kubeovnv1.ProtocolIPv4)
 }
 
-func BenchmarkIPAMIPv4DelSubnet(b *testing.B) {
+func BenchmarkIPAMSerialIPv4DelSubnet(b *testing.B) {
 	im := ipam.NewIPAM()
-	for n := 0; n < b.N; n++ {
-		if ok := addIPAMSubnet(im, n, kubeovnv1.ProtocolIPv4); !ok {
-			klog.Fatalf("ERROR: add v4 subnet with index %d ", n)
-		}
-	}
-
+	addSubnetCapacity(b, im, kubeovnv1.ProtocolIPv4)
 	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		delIPAMSubnet(im, n)
-	}
+	delSubnetCapacity(b, im)
 }
 
-func BenchmarkIPAMIPv4AllocAddr(b *testing.B) {
+func BenchmarkIPAMSerialIPv4AllocAddr(b *testing.B) {
 	im := ipam.NewIPAM()
-
-	subnetName, ipv4CIDR, v4Gw, ipv4ExcludeIPs := getDefaultSubnetParam(kubeovnv1.ProtocolIPv4)
-	if err := im.AddOrUpdateSubnet(subnetName, ipv4CIDR, v4Gw, ipv4ExcludeIPs); err != nil {
-		klog.Fatalf("ERROR: add subnet with ipv4 cidr %s ", ipv4CIDR)
-	}
-
-	for n := 0; n < b.N; n++ {
-		podName := fmt.Sprintf("pod%d", n)
-		nicName := fmt.Sprintf("nic%d", n)
-		if _, _, _, err := im.GetRandomAddress(podName, nicName, "", subnetName, nil, true); err != nil {
-			klog.Fatalf("ERROR: allocate ipv4 address failed with index %d ", n)
-		}
-	}
+	addSerailAddrCapacity(b, im, kubeovnv1.ProtocolIPv4)
 }
 
-func BenchmarkIPAMIPv4FreeAddr(b *testing.B) {
+func BenchmarkIPAMSerialIPv4FreeAddr(b *testing.B) {
 	im := ipam.NewIPAM()
-
-	subnetName, ipv4CIDR, v4Gw, ipv4ExcludeIPs := getDefaultSubnetParam(kubeovnv1.ProtocolIPv4)
-	if err := im.AddOrUpdateSubnet(subnetName, ipv4CIDR, v4Gw, ipv4ExcludeIPs); err != nil {
-		klog.Fatalf("ERROR: add subnet with ipv4 cidr %s ", ipv4CIDR)
-	}
-
-	for n := 0; n < b.N; n++ {
-		podName := fmt.Sprintf("pod%d", n)
-		nicName := fmt.Sprintf("nic%d", n)
-		if _, _, _, err := im.GetRandomAddress(podName, nicName, "", subnetName, nil, true); err != nil {
-			klog.Fatalf("ERROR: allocate ipv4 address failed with index %d ", n)
-		}
-	}
-
+	addSerailAddrCapacity(b, im, kubeovnv1.ProtocolIPv4)
 	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
-		podName := fmt.Sprintf("pod%d", n)
-		im.ReleaseAddressByPod(podName)
-	}
+	delPodAddressCapacity(b, im)
 }
 
-func BenchmarkIPAMIPv6AddSubnet(b *testing.B) {
+func BenchmarkIPAMSerialIPv6AddSubnet(b *testing.B) {
 	im := ipam.NewIPAM()
-
-	for n := 0; n < b.N; n++ {
-		if ok := addIPAMSubnet(im, n, kubeovnv1.ProtocolIPv6); !ok {
-			klog.Fatalf("ERROR: add subnet with dual cidr with index %d ", n)
-		}
-	}
+	addSubnetCapacity(b, im, kubeovnv1.ProtocolIPv6)
 }
 
-func BenchmarkIPAMIPv6DelSubnet(b *testing.B) {
+func BenchmarkIPAMSerialIPv6DelSubnet(b *testing.B) {
 	im := ipam.NewIPAM()
-	for n := 0; n < b.N; n++ {
-		if ok := addIPAMSubnet(im, n, kubeovnv1.ProtocolIPv6); !ok {
-			klog.Fatalf("ERROR: add subnet with dual cidr with index %d ", n)
-		}
-	}
-
+	addSubnetCapacity(b, im, kubeovnv1.ProtocolIPv6)
 	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		delIPAMSubnet(im, n)
-	}
+	delSubnetCapacity(b, im)
 }
 
-func BenchmarkIPAMIPv6AllocAddr(b *testing.B) {
+func BenchmarkIPAMSerialIPv6AllocAddr(b *testing.B) {
 	im := ipam.NewIPAM()
-
-	subnetName, ipv6CIDR, v6Gw, ipv6ExcludeIPs := getDefaultSubnetParam(kubeovnv1.ProtocolIPv6)
-	if err := im.AddOrUpdateSubnet(subnetName, ipv6CIDR, v6Gw, ipv6ExcludeIPs); err != nil {
-		klog.Fatalf("ERROR: add subnet with ipv6 cidr %s ", ipv6CIDR)
-	}
-
-	for n := 0; n < b.N; n++ {
-		podName := fmt.Sprintf("pod%d", n)
-		nicName := fmt.Sprintf("nic%d", n)
-		if _, _, _, err := im.GetRandomAddress(podName, nicName, "", subnetName, nil, true); err != nil {
-			klog.Fatalf("ERROR: allocate ipv6 address failed with index %d ", n)
-		}
-	}
+	addSerailAddrCapacity(b, im, kubeovnv1.ProtocolIPv6)
 }
 
-func BenchmarkIPAMIPv6FreeAddr(b *testing.B) {
+func BenchmarkIPAMSerialIPv6FreeAddr(b *testing.B) {
 	im := ipam.NewIPAM()
-
-	subnetName, ipv6CIDR, v6Gw, ipv6ExcludeIPs := getDefaultSubnetParam(kubeovnv1.ProtocolIPv6)
-	if err := im.AddOrUpdateSubnet(subnetName, ipv6CIDR, v6Gw, ipv6ExcludeIPs); err != nil {
-		klog.Fatalf("ERROR: add subnet with ipv6 cidr %s ", ipv6CIDR)
-	}
-
-	for n := 0; n < b.N; n++ {
-		podName := fmt.Sprintf("pod%d", n)
-		nicName := fmt.Sprintf("nic%d", n)
-		if _, _, _, err := im.GetRandomAddress(podName, nicName, "", subnetName, nil, true); err != nil {
-			klog.Fatalf("ERROR: allocate ipv6 address failed with index %d ", n)
-		}
-	}
-
+	addSerailAddrCapacity(b, im, kubeovnv1.ProtocolIPv6)
 	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
-		podName := fmt.Sprintf("pod%d", n)
-		im.ReleaseAddressByPod(podName)
-	}
+	delPodAddressCapacity(b, im)
 }
 
-func BenchmarkIPAMDualAddSubnet(b *testing.B) {
+func BenchmarkIPAMSerialDualAddSubnet(b *testing.B) {
 	im := ipam.NewIPAM()
-
-	for n := 0; n < b.N; n++ {
-		if ok := addIPAMSubnet(im, n, kubeovnv1.ProtocolDual); !ok {
-			klog.Fatalf("ERROR: add dual subnet with index %d ", n)
-		}
-	}
+	addSubnetCapacity(b, im, kubeovnv1.ProtocolDual)
 }
 
-func BenchmarkIPAMDualDelSubnet(b *testing.B) {
+func BenchmarkIPAMSerialDualDelSubnet(b *testing.B) {
 	im := ipam.NewIPAM()
-	for n := 0; n < b.N; n++ {
-		if ok := addIPAMSubnet(im, n, kubeovnv1.ProtocolDual); !ok {
-			klog.Fatalf("ERROR: add dual subnet with index %d ", n)
-		}
-	}
-
+	addSubnetCapacity(b, im, kubeovnv1.ProtocolDual)
 	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		delIPAMSubnet(im, n)
-	}
+	delSubnetCapacity(b, im)
 }
 
-func BenchmarkIPAMDualAllocAddr(b *testing.B) {
+func BenchmarkIPAMSerialDualAllocAddr(b *testing.B) {
 	im := ipam.NewIPAM()
-	subnetName, dualCIDR, dualGw, dualExcludeIPs := getDefaultSubnetParam(kubeovnv1.ProtocolDual)
-
-	if err := im.AddOrUpdateSubnet(subnetName, dualCIDR, dualGw, dualExcludeIPs); err != nil {
-		klog.Fatalf("ERROR: add subnet with dual cidr %s ", dualCIDR)
-	}
-
-	for n := 0; n < b.N; n++ {
-		podName := fmt.Sprintf("pod%d", n)
-		nicName := fmt.Sprintf("nic%d", n)
-		if _, _, _, err := im.GetRandomAddress(podName, nicName, "", subnetName, nil, true); err != nil {
-			klog.Fatalf("ERROR: allocate dual address failed with index %d ", n)
-		}
-	}
+	addSerailAddrCapacity(b, im, kubeovnv1.ProtocolDual)
 }
 
-func BenchmarkIPAMDualFreeAddr(b *testing.B) {
+func BenchmarkIPAMSerialDualFreeAddr(b *testing.B) {
 	im := ipam.NewIPAM()
-
-	subnetName, dualCIDR, dualGw, dualExcludeIPs := getDefaultSubnetParam(kubeovnv1.ProtocolDual)
-	if err := im.AddOrUpdateSubnet(subnetName, dualCIDR, dualGw, dualExcludeIPs); err != nil {
-		klog.Fatalf("ERROR: add subnet with ipv4 cidr %s ", dualCIDR)
-	}
-
-	for n := 0; n < b.N; n++ {
-		podName := fmt.Sprintf("pod%d", n)
-		nicName := fmt.Sprintf("nic%d", n)
-		if _, _, _, err := im.GetRandomAddress(podName, nicName, "", subnetName, nil, true); err != nil {
-			klog.Fatalf("ERROR: allocate ipv4 address failed with index %d ", n)
-		}
-	}
-
+	addSerailAddrCapacity(b, im, kubeovnv1.ProtocolDual)
 	b.ResetTimer()
+	delPodAddressCapacity(b, im)
+}
 
-	for n := 0; n < b.N; n++ {
-		podName := fmt.Sprintf("pod%d", n)
-		im.ReleaseAddressByPod(podName)
-	}
+func BenchmarkIPAMRandomIPv4AllocAddr(b *testing.B) {
+	im := ipam.NewIPAM()
+	addRandomAddrCapacity(b, im, kubeovnv1.ProtocolIPv4)
+}
+
+func BenchmarkIPAMRandomIPv4FreeAddr(b *testing.B) {
+	im := ipam.NewIPAM()
+
+	addRandomAddrCapacity(b, im, kubeovnv1.ProtocolIPv4)
+	b.ResetTimer()
+	delPodAddressCapacity(b, im)
+}
+
+func BenchmarkIPAMRandomIPv6AllocAddr(b *testing.B) {
+	im := ipam.NewIPAM()
+	addRandomAddrCapacity(b, im, kubeovnv1.ProtocolIPv6)
+}
+
+func BenchmarkIPAMRandomIPv6FreeAddr(b *testing.B) {
+	im := ipam.NewIPAM()
+	addRandomAddrCapacity(b, im, kubeovnv1.ProtocolIPv6)
+	b.ResetTimer()
+	delPodAddressCapacity(b, im)
+}
+
+func BenchmarkIPAMRandomDualAllocAddr(b *testing.B) {
+	im := ipam.NewIPAM()
+	addRandomAddrCapacity(b, im, kubeovnv1.ProtocolDual)
+}
+
+func BenchmarkIPAMRandomDualFreeAddr(b *testing.B) {
+	im := ipam.NewIPAM()
+	addRandomAddrCapacity(b, im, kubeovnv1.ProtocolDual)
+	b.ResetTimer()
+	delPodAddressCapacity(b, im)
 }
 
 func BenchmarkParallelIPAMIPv4AddDel1000Subnet(b *testing.B) {
-	benchmarkIPv4AddDelSubnetParallel(b, 1000)
+	benchmarkAddDelSubnetParallel(b, 1000, kubeovnv1.ProtocolIPv4)
 }
 
 func BenchmarkParallelIPAMIPv4AllocFree10000Addr(b *testing.B) {
-	benchmarkIPv4AllocFreeAddrParallel(b, 10000)
+	benchmarkAllocFreeAddrParallel(b, 10000, kubeovnv1.ProtocolIPv4)
 }
 
 func BenchmarkParallelIPAMIPv6AddDel1000Subnet(b *testing.B) {
-	benchmarkIPv6AddDelSubnetParallel(b, 1000)
+	benchmarkAddDelSubnetParallel(b, 1000, kubeovnv1.ProtocolIPv6)
 }
 
 func BenchmarkParallelIPAMIPv6AllocFree10000Addr(b *testing.B) {
-	benchmarkIPv6AllocFreeAddrParallel(b, 10000)
+	benchmarkAllocFreeAddrParallel(b, 10000, kubeovnv1.ProtocolIPv6)
 }
 
 func BenchmarkParallelIPAMDualAddDel1000Subnet(b *testing.B) {
-	benchmarkDualAddDelSubnetParallel(b, 1000)
+	benchmarkAddDelSubnetParallel(b, 1000, kubeovnv1.ProtocolDual)
 }
 
 func BenchmarkParallelIPAMDualAllocFree10000Addr(b *testing.B) {
-	benchmarkDualAllocFreeAddrParallel(b, 10000)
+	benchmarkAllocFreeAddrParallel(b, 10000, kubeovnv1.ProtocolDual)
+}
+
+func addSubnetCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
+	for n := 0; n < b.N; n++ {
+		if ok := addIPAMSubnet(im, n, protocol); !ok {
+			b.Errorf("ERROR: add %s subnet with index %d ", protocol, n)
+			return
+		}
+	}
+}
+
+func delSubnetCapacity(b *testing.B, im *ipam.IPAM) {
+	for n := 0; n < b.N; n++ {
+		delIPAMSubnet(im, n)
+	}
+}
+
+func addSerailAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
+	subnetName, CIDR, Gw, ExcludeIPs := getDefaultSubnetParam(protocol)
+	if err := im.AddOrUpdateSubnet(subnetName, CIDR, Gw, ExcludeIPs); err != nil {
+		b.Errorf("ERROR: add subnet with %s cidr %s err %v ", protocol, CIDR, err)
+		return
+	}
+
+	for n := 0; n < b.N; n++ {
+		podName := fmt.Sprintf("pod%d", n)
+		nicName := fmt.Sprintf("nic%d", n)
+		if _, _, _, err := im.GetRandomAddress(podName, nicName, "", subnetName, nil, true); err != nil {
+			b.Errorf("ERROR: allocate %s address failed with index %d with err %v ", protocol, n, err)
+			return
+		}
+	}
+}
+
+func addRandomAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
+	subnetName, CIDR, Gw, ExcludeIPs := getDefaultSubnetParam(protocol)
+	if err := im.AddOrUpdateSubnet(subnetName, CIDR, Gw, ExcludeIPs); err != nil {
+		b.Errorf("ERROR: add subnet with %s cidr %s err %v ", protocol, CIDR, err)
+		return
+	}
+
+	ips := getDefaultSubnetRandomIps(protocol, b.N)
+
+	for n := 0; n < b.N; n++ {
+		podName := fmt.Sprintf("pod%d", n)
+		nicName := fmt.Sprintf("nic%d", n)
+		if _, _, _, err := im.GetStaticAddress(podName, nicName, ips[n], "", subnetName, true); err != nil {
+			b.Errorf("ERROR: allocate %s address failed with index %d with err %v ", protocol, n, err)
+			return
+		}
+	}
+}
+
+func delPodAddressCapacity(b *testing.B, im *ipam.IPAM) {
+	for n := 0; n < b.N; n++ {
+		podName := fmt.Sprintf("pod%d", n)
+		im.ReleaseAddressByPod(podName)
+	}
 }
 
 func addIPAMSubnet(im *ipam.IPAM, index int, protocol string) bool {
@@ -289,15 +230,18 @@ func addIPAMSubnet(im *ipam.IPAM, index int, protocol string) bool {
 
 	if protocol == kubeovnv1.ProtocolIPv4 {
 		if err := im.AddOrUpdateSubnet(subnetName, ipv4CIDR, v4Gw, ipv4ExcludeIPs); err != nil {
-			klog.Fatalf("ERROR: add subnet with ipv4 cidr %s, with index %d ", ipv4CIDR, index)
+			klog.Fatal("ERROR: add subnet with ipv4 cidr %s, with index %d err %v ", ipv4CIDR, index, err)
+			return false
 		}
 	} else if protocol == kubeovnv1.ProtocolIPv6 {
 		if err := im.AddOrUpdateSubnet(subnetName, ipv6CIDR, v6Gw, ipv6ExcludeIPs); err != nil {
-			klog.Fatalf("ERROR: add subnet with ipv6 cidr %s, with index %d ", ipv6CIDR, index)
+			klog.Fatal("ERROR: add subnet with ipv6 cidr %s, with index %d err %v ", ipv6CIDR, index, err)
+			return false
 		}
 	} else if protocol == kubeovnv1.ProtocolDual {
 		if err := im.AddOrUpdateSubnet(subnetName, dualCIDR, dualGw, dualExcludeIPs); err != nil {
-			klog.Fatalf("ERROR: add subnet with dual cidr %s, with index %d ", dualCIDR, index)
+			klog.Fatal("ERROR: add subnet with dual cidr %s, with index %d err %v ", dualCIDR, index, err)
+			return false
 		}
 	}
 
@@ -309,13 +253,13 @@ func delIPAMSubnet(im *ipam.IPAM, index int) {
 	im.DeleteSubnet(subnetName)
 }
 
-func benchmarkIPv4AddDelSubnetParallel(b *testing.B, subnetNumber int) {
+func benchmarkAddDelSubnetParallel(b *testing.B, subnetNumber int, protocol string) {
 	im := ipam.NewIPAM()
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			for n := 0; n < subnetNumber; n++ {
-				if ok := addIPAMSubnet(im, n, kubeovnv1.ProtocolIPv4); !ok {
+				if ok := addIPAMSubnet(im, n, protocol); !ok {
 					return
 				}
 			}
@@ -326,107 +270,30 @@ func benchmarkIPv4AddDelSubnetParallel(b *testing.B, subnetNumber int) {
 	})
 }
 
-func benchmarkIPv4AllocFreeAddrParallel(b *testing.B, podNumber int) {
+func benchmarkAllocFreeAddrParallel(b *testing.B, podNumber int, protocol string) {
 	im := ipam.NewIPAM()
-	subnetName, ipv4CIDR, v4Gw, ipv4ExcludeIPs := getDefaultSubnetParam(kubeovnv1.ProtocolIPv4)
-	if err := im.AddOrUpdateSubnet(subnetName, ipv4CIDR, v4Gw, ipv4ExcludeIPs); err != nil {
-		klog.Fatalf("ERROR: add subnet with ipv4 cidr %s ", ipv4CIDR)
+	subnetName, CIDR, Gw, ExcludeIPs := getDefaultSubnetParam(protocol)
+	if err := im.AddOrUpdateSubnet(subnetName, CIDR, Gw, ExcludeIPs); err != nil {
+		b.Errorf("ERROR: add subnet with %s cidr %s ", protocol, CIDR)
+		return
 	}
-
+	ips := getDefaultSubnetRandomIps(protocol, podNumber)
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			key := getRandomInt()
 			for n := 0; n < podNumber; n++ {
 				podName := fmt.Sprintf("pod%d_%d", key, n)
 				nicName := fmt.Sprintf("nic%d_%d", key, n)
-				if _, _, _, err := im.GetRandomAddress(podName, nicName, "", subnetName, nil, true); err != nil {
-					klog.Fatalf("ERROR: allocate ipv4 address failed with index %d ", n)
-				}
-			}
-			for n := 0; n < podNumber; n++ {
-				podName := fmt.Sprintf("pod%d_%d", key, n)
-				im.ReleaseAddressByPod(podName)
-			}
-		}
-	})
-}
-
-func benchmarkIPv6AddDelSubnetParallel(b *testing.B, subnetNumber int) {
-	im := ipam.NewIPAM()
-
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			for n := 0; n < subnetNumber; n++ {
-				if ok := addIPAMSubnet(im, n, kubeovnv1.ProtocolIPv6); !ok {
-					return
-				}
-			}
-			for n := 0; n < subnetNumber; n++ {
-				delIPAMSubnet(im, n)
-			}
-		}
-	})
-}
-
-func benchmarkIPv6AllocFreeAddrParallel(b *testing.B, podNumber int) {
-	im := ipam.NewIPAM()
-
-	subnetName, ipv6CIDR, v6Gw, ipv6ExcludeIPs := getDefaultSubnetParam(kubeovnv1.ProtocolIPv6)
-
-	if err := im.AddOrUpdateSubnet(subnetName, ipv6CIDR, v6Gw, ipv6ExcludeIPs); err != nil {
-		klog.Fatalf("ERROR: add subnet with ipv6 cidr %s ", ipv6CIDR)
-	}
-
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			key := getRandomInt()
-			for n := 0; n < podNumber; n++ {
-				podName := fmt.Sprintf("pod%d_%d", key, n)
-				nicName := fmt.Sprintf("nic%d_%d", key, n)
-				if _, _, _, err := im.GetRandomAddress(podName, nicName, "", subnetName, nil, true); err != nil {
-					klog.Fatalf("ERROR: allocate ipv6 address failed with index %d ", n)
-				}
-			}
-			for n := 0; n < podNumber; n++ {
-				podName := fmt.Sprintf("pod%d_%d", key, n)
-				im.ReleaseAddressByPod(podName)
-			}
-		}
-	})
-}
-
-func benchmarkDualAddDelSubnetParallel(b *testing.B, subnetNumber int) {
-	im := ipam.NewIPAM()
-
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			for n := 0; n < subnetNumber; n++ {
-				if ok := addIPAMSubnet(im, n, kubeovnv1.ProtocolDual); !ok {
-					return
-				}
-			}
-			for n := 0; n < subnetNumber; n++ {
-				delIPAMSubnet(im, n)
-			}
-		}
-	})
-}
-
-func benchmarkDualAllocFreeAddrParallel(b *testing.B, podNumber int) {
-	im := ipam.NewIPAM()
-	subnetName, dualCIDR, dualGw, dualExcludeIPs := getDefaultSubnetParam(kubeovnv1.ProtocolDual)
-	if err := im.AddOrUpdateSubnet(subnetName, dualCIDR, dualGw, dualExcludeIPs); err != nil {
-		klog.Fatalf("ERROR: add subnet with dual cidr %s ", dualCIDR)
-	}
-
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			key := getRandomInt()
-			for n := 0; n < podNumber; n++ {
-				podName := fmt.Sprintf("pod%d_%d", key, n)
-				nicName := fmt.Sprintf("nic%d_%d", key, n)
-				if _, _, _, err := im.GetRandomAddress(podName, nicName, "", subnetName, nil, true); err != nil {
-					klog.Fatalf("ERROR: allocate dual address failed with index %d ", n)
+				if key%2 == 1 {
+					if _, _, _, err := im.GetRandomAddress(podName, nicName, "", subnetName, nil, true); err != nil {
+						b.Errorf("ERROR: allocate %s address failed with index %d err %v ", protocol, n, err)
+						return
+					}
+				} else {
+					if _, _, _, err := im.GetStaticAddress(podName, nicName, ips[n], "", subnetName, false); err != nil {
+						b.Errorf("ERROR: allocate %s address failed with index %d with err %v ", protocol, n, err)
+						return
+					}
 				}
 			}
 			for n := 0; n < podNumber; n++ {
@@ -443,8 +310,8 @@ func getDefaultSubnetParam(protocol string) (string, string, string, []string) {
 	v4Gw := "10.0.0.1"
 	ipv4ExcludeIPs := []string{v4Gw}
 
-	ipv6CIDR := "fd00::a0:00:00:00:00:00/104"
-	v6Gw := "fd00::a0:00:00:00:00:01"
+	ipv6CIDR := "fd00::/104"
+	v6Gw := "fd00::01"
 	ipv6ExcludeIPs := []string{v6Gw}
 
 	dualCIDR := fmt.Sprintf("%s,%s", ipv4CIDR, ipv6CIDR)
@@ -460,6 +327,36 @@ func getDefaultSubnetParam(protocol string) (string, string, string, []string) {
 	}
 }
 
+func getDefaultSubnetRandomIps(protocol string, ipCount int) []string {
+
+	var ips []string
+	var newip string
+	for n := 0; n < ipCount; n++ {
+		b := make([]byte, 3)
+		_, err := rand.Read(b)
+		if err != nil {
+			klog.Fatal("generate random error: %v", err)
+		}
+		if protocol == kubeovnv1.ProtocolIPv4 {
+			newip = fmt.Sprintf("10.%d.%d.%d", b[0], b[1], b[2])
+		} else if protocol == kubeovnv1.ProtocolIPv6 {
+			newip = fmt.Sprintf("fd00::00%02x:%02x%02x", b[0], b[1], b[2])
+		} else {
+			newip = fmt.Sprintf("10.%d.%d.%d,fd00::00%02x:%02x%02x",
+				b[0], b[1], b[2], b[0], b[1], b[2])
+		}
+		if ok := slices.Contains(ips, newip); ok {
+			n--
+			continue
+		} else {
+			ips = append(ips, newip)
+		}
+	}
+	return ips
+}
+
 func getRandomInt() int {
-	return rand.Intn(10000)
+	b := new(big.Int).SetInt64(int64(100000))
+	randInt, _ := rand.Int(rand.Reader, b)
+	return int(randInt.Int64())
 }
