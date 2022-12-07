@@ -309,6 +309,11 @@ func (subnet *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac strin
 	if v4 && !subnet.V4CIDR.Contains(net.ParseIP(string(ip))) {
 		return ip, mac, ErrOutOfRange
 	}
+
+	if v6 {
+		ip = IP(net.ParseIP(string(ip)).String())
+	}
+
 	if v6 && !subnet.V6CIDR.Contains(net.ParseIP(string(ip))) {
 		return ip, mac, ErrOutOfRange
 	}
