@@ -285,6 +285,11 @@ func (subnet *Subnet) GetStaticAddress(podName string, ip IP, mac string, force 
 	if v4 && !subnet.V4CIDR.Contains(net.ParseIP(string(ip))) {
 		return ip, mac, OutOfRangeError
 	}
+
+	if v6 {
+		ip = IP(net.ParseIP(string(ip)).String())
+	}
+
 	if v6 && !subnet.V6CIDR.Contains(net.ParseIP(string(ip))) {
 		return ip, mac, OutOfRangeError
 	}
