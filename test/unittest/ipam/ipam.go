@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -11,6 +12,10 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
 
 var _ = Describe("[IPAM]", func() {
 	subnetName := "test"
@@ -36,7 +41,7 @@ var _ = Describe("[IPAM]", func() {
 	dualCIDR := fmt.Sprintf("%s,%s", ipv4CIDR, ipv6CIDR)
 	dualExcludeIPs := append(ipv4ExcludeIPs, ipv6ExcludeIPs...)
 
-	// TODO test case use random ip and ipcidr, and input test data should seperate from test case
+	// TODO test case use random ip and ipcidr, and input test data should separate from test case
 
 	Describe("[IPAM]", func() {
 		Context("[IPv4]", func() {
@@ -537,8 +542,8 @@ var _ = Describe("[IPAM]", func() {
 			Expect(ipr.IPExist(ip1)).To(BeTrue())
 			Expect(ipr.IPExist(ip2)).To(BeTrue())
 
-			iprlist := ipam.IPRangeList{&ipr}
-			Expect(iprlist.Contains(ip1)).To(BeTrue())
+			iprList := ipam.IPRangeList{&ipr}
+			Expect(iprList.Contains(ip1)).To(BeTrue())
 		})
 
 		It("IPv6 operation", func() {
@@ -562,8 +567,8 @@ var _ = Describe("[IPAM]", func() {
 			Expect(ipr.IPExist(ip1)).To(BeTrue())
 			Expect(ipr.IPExist(ip2)).To(BeTrue())
 
-			iprlist := ipam.IPRangeList{&ipr}
-			Expect(iprlist.Contains(ip1)).To(BeTrue())
+			iprList := ipam.IPRangeList{&ipr}
+			Expect(iprList.Contains(ip1)).To(BeTrue())
 		})
 	})
 
