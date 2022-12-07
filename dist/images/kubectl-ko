@@ -577,12 +577,13 @@ getOvnCentralPod(){
       exit 1
     fi
     OVN_SB_POD=$SB_POD
-    VERSION=$(kubectl  -n kube-system get pods -l ovn-sb-leader=true -o yaml | grep  "image: $REGISTRY/kube-ovn:" | head -n 1 | awk -F ':' '{print $3}')
-    if [ -z "$VERSION" ]; then
-          echo "kubeovn version not exists"
+    image=$(kubectl  -n kube-system get pods -l app=kube-ovn-cni -o jsonpath='{.items[0].spec.containers[0].image}')
+    if [ -z "$image" ]; then
+          echo "cannot get kube-ovn image"
           exit 1
     fi
-    KUBE_OVN_VERSION=$VERSION
+    REGISTRY=$(dirname $image)
+    KUBE_OVN_VERSION=$(basename $image | awk -F ':' '{print $2}')
 }
 
 getOvnCentralDbStatus(){
