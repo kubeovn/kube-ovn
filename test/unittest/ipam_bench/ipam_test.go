@@ -1,14 +1,14 @@
 package ipam_bench
 
 import (
+	"crypto/rand"
 	"flag"
 	"fmt"
-	"k8s.io/utils/strings/slices"
 	"math/big"
 	"testing"
 
-	"crypto/rand"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/strings/slices"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
@@ -155,7 +155,7 @@ func BenchmarkParallelIPAMDualAllocFree10000Addr(b *testing.B) {
 
 func addSubnetCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
 	for n := 0; n < b.N; n++ {
-		if ok := addIPAMSubnet(im, n, protocol); !ok {
+		if !addIPAMSubnet(b, im, n, protocol) {
 			b.Errorf("ERROR: add %s subnet with index %d ", protocol, n)
 			return
 		}
@@ -169,9 +169,9 @@ func delSubnetCapacity(b *testing.B, im *ipam.IPAM) {
 }
 
 func addSerailAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
-	subnetName, CIDR, Gw, ExcludeIPs := getDefaultSubnetParam(protocol)
-	if err := im.AddOrUpdateSubnet(subnetName, CIDR, Gw, ExcludeIPs); err != nil {
-		b.Errorf("ERROR: add subnet with %s cidr %s err %v ", protocol, CIDR, err)
+	subnetName, cidr, gw, excludeIPs := getDefaultSubnetParam(protocol)
+	if err := im.AddOrUpdateSubnet(subnetName, cidr, gw, excludeIPs); err != nil {
+		b.Errorf("ERROR: add subnet with %s cidr %s err %v ", protocol, cidr, err)
 		return
 	}
 
@@ -186,13 +186,13 @@ func addSerailAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
 }
 
 func addRandomAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
-	subnetName, CIDR, Gw, ExcludeIPs := getDefaultSubnetParam(protocol)
-	if err := im.AddOrUpdateSubnet(subnetName, CIDR, Gw, ExcludeIPs); err != nil {
-		b.Errorf("ERROR: add subnet with %s cidr %s err %v ", protocol, CIDR, err)
+	subnetName, cidr, gw, excludeIPs := getDefaultSubnetParam(protocol)
+	if err := im.AddOrUpdateSubnet(subnetName, cidr, gw, excludeIPs); err != nil {
+		b.Errorf("ERROR: add subnet with %s cidr %s err %v ", protocol, cidr, err)
 		return
 	}
 
-	ips := getDefaultSubnetRandomIps(protocol, b.N)
+	ips := getDefaultSubnetRandomIps(b, protocol, b.N)
 
 	for n := 0; n < b.N; n++ {
 		podName := fmt.Sprintf("pod%d", n)
@@ -211,7 +211,7 @@ func delPodAddressCapacity(b *testing.B, im *ipam.IPAM) {
 	}
 }
 
-func addIPAMSubnet(im *ipam.IPAM, index int, protocol string) bool {
+func addIPAMSubnet(b *testing.B, im *ipam.IPAM, index int, protocol string) bool {
 	subnetName := fmt.Sprintf("subnet%d", index)
 	key1 := index / 65536
 	key2 := (index / 256) % 256
@@ -228,23 +228,23 @@ func addIPAMSubnet(im *ipam.IPAM, index int, protocol string) bool {
 	dualGw := fmt.Sprintf("%s,%s", v4Gw, v6Gw)
 	dualExcludeIPs := append(ipv4ExcludeIPs, ipv6ExcludeIPs...)
 
-	if protocol == kubeovnv1.ProtocolIPv4 {
+	switch protocol {
+	case kubeovnv1.ProtocolIPv4:
 		if err := im.AddOrUpdateSubnet(subnetName, ipv4CIDR, v4Gw, ipv4ExcludeIPs); err != nil {
-			klog.Fatal("ERROR: add subnet with ipv4 cidr %s, with index %d err %v ", ipv4CIDR, index, err)
+			b.Errorf("ERROR: add subnet with ipv4 cidr %s, with index %d err %v ", ipv4CIDR, index, err)
 			return false
 		}
-	} else if protocol == kubeovnv1.ProtocolIPv6 {
+	case kubeovnv1.ProtocolIPv6:
 		if err := im.AddOrUpdateSubnet(subnetName, ipv6CIDR, v6Gw, ipv6ExcludeIPs); err != nil {
-			klog.Fatal("ERROR: add subnet with ipv6 cidr %s, with index %d err %v ", ipv6CIDR, index, err)
+			b.Errorf("ERROR: add subnet with ipv6 cidr %s, with index %d err %v ", ipv6CIDR, index, err)
 			return false
 		}
-	} else if protocol == kubeovnv1.ProtocolDual {
+	case kubeovnv1.ProtocolDual:
 		if err := im.AddOrUpdateSubnet(subnetName, dualCIDR, dualGw, dualExcludeIPs); err != nil {
-			klog.Fatal("ERROR: add subnet with dual cidr %s, with index %d err %v ", dualCIDR, index, err)
+			b.Errorf("ERROR: add subnet with dual cidr %s, with index %d err %v ", dualCIDR, index, err)
 			return false
 		}
 	}
-
 	return true
 }
 
@@ -259,7 +259,7 @@ func benchmarkAddDelSubnetParallel(b *testing.B, subnetNumber int, protocol stri
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			for n := 0; n < subnetNumber; n++ {
-				if ok := addIPAMSubnet(im, n, protocol); !ok {
+				if !addIPAMSubnet(b, im, n, protocol) {
 					return
 				}
 			}
@@ -277,7 +277,7 @@ func benchmarkAllocFreeAddrParallel(b *testing.B, podNumber int, protocol string
 		b.Errorf("ERROR: add subnet with %s cidr %s ", protocol, CIDR)
 		return
 	}
-	ips := getDefaultSubnetRandomIps(protocol, podNumber)
+	ips := getDefaultSubnetRandomIps(b, protocol, podNumber)
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			key := getRandomInt()
@@ -318,34 +318,37 @@ func getDefaultSubnetParam(protocol string) (string, string, string, []string) {
 	dualGw := fmt.Sprintf("%s,%s", v4Gw, v6Gw)
 	dualExcludeIPs := append(ipv4ExcludeIPs, ipv6ExcludeIPs...)
 
-	if protocol == kubeovnv1.ProtocolIPv4 {
+	switch protocol {
+	case kubeovnv1.ProtocolIPv4:
 		return subnetName, ipv4CIDR, v4Gw, ipv4ExcludeIPs
-	} else if protocol == kubeovnv1.ProtocolIPv6 {
+	case kubeovnv1.ProtocolIPv6:
 		return subnetName, ipv6CIDR, v6Gw, ipv6ExcludeIPs
-	} else {
+	case kubeovnv1.ProtocolDual:
 		return subnetName, dualCIDR, dualGw, dualExcludeIPs
 	}
+	return "", "", "", nil
 }
 
-func getDefaultSubnetRandomIps(protocol string, ipCount int) []string {
+func getDefaultSubnetRandomIps(b *testing.B, protocol string, ipCount int) []string {
 
 	var ips []string
 	var newip string
 	for n := 0; n < ipCount; n++ {
-		b := make([]byte, 3)
-		_, err := rand.Read(b)
-		if err != nil {
-			klog.Fatal("generate random error: %v", err)
+		bytes := make([]byte, 3)
+		if _, err := rand.Read(bytes); err != nil {
+			b.Errorf("generate random error: %v", err)
 		}
-		if protocol == kubeovnv1.ProtocolIPv4 {
-			newip = fmt.Sprintf("10.%d.%d.%d", b[0], b[1], b[2])
-		} else if protocol == kubeovnv1.ProtocolIPv6 {
-			newip = fmt.Sprintf("fd00::00%02x:%02x%02x", b[0], b[1], b[2])
-		} else {
+		switch protocol {
+		case kubeovnv1.ProtocolIPv4:
+			newip = fmt.Sprintf("10.%d.%d.%d", bytes[0], bytes[1], bytes[2])
+		case kubeovnv1.ProtocolIPv6:
+			newip = fmt.Sprintf("fd00::00%02x:%02x%02x", bytes[0], bytes[1], bytes[2])
+		case kubeovnv1.ProtocolDual:
 			newip = fmt.Sprintf("10.%d.%d.%d,fd00::00%02x:%02x%02x",
-				b[0], b[1], b[2], b[0], b[1], b[2])
+				bytes[0], bytes[1], bytes[2], bytes[0], bytes[1], bytes[2])
 		}
-		if ok := slices.Contains(ips, newip); ok {
+
+		if slices.Contains(ips, newip) {
 			n--
 			continue
 		} else {
