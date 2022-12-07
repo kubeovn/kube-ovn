@@ -47,6 +47,12 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 		}
 	}
 
+	for _, cidr := range strings.Split(subnet.Spec.CIDRBlock, ",") {
+		if _, _, err := net.ParseCIDR(cidr); err != nil {
+			return fmt.Errorf("subnet %s cidr %s is invalid", subnet.Name, cidr)
+		}
+	}
+
 	allow := subnet.Spec.AllowSubnets
 	for _, cidr := range allow {
 		if _, _, err := net.ParseCIDR(cidr); err != nil {
