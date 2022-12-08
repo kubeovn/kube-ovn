@@ -61,8 +61,11 @@ func (c *Controller) resyncProviderNetworkStatus() {
 				if pod := podMap[node.Name]; pod == nil {
 					errMsg = fmt.Sprintf("kube-ovn-cni pod on node %s not found", node.Name)
 					klog.Error(errMsg)
-				} else if len(pod.Annotations) != 0 {
-					if errMsg = pod.Annotations[pnErrMsgAnnotation]; errMsg == "" {
+				} else {
+					if len(pod.Annotations) != 0 {
+						errMsg = pod.Annotations[pnErrMsgAnnotation]
+					}
+					if errMsg == "" {
 						errMsg = "unknown error"
 					}
 				}
