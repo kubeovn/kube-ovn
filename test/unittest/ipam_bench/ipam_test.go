@@ -7,8 +7,8 @@ import (
 	"math/big"
 	"testing"
 
+	mapset "github.com/deckarep/golang-set"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/strings/slices"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
@@ -331,31 +331,31 @@ func getDefaultSubnetParam(protocol string) (string, string, string, []string) {
 
 func getDefaultSubnetRandomIps(b *testing.B, protocol string, ipCount int) []string {
 
-	var ips []string
-	var newip string
-	for n := 0; n < ipCount; n++ {
+	var newIp string
+	var ipsArray []string
+	ips := mapset.NewSet()
+	for n := 0; len(ips.ToSlice()) < ipCount; n++ {
 		bytes := make([]byte, 3)
 		if _, err := rand.Read(bytes); err != nil {
 			b.Errorf("generate random error: %v", err)
 		}
 		switch protocol {
 		case kubeovnv1.ProtocolIPv4:
-			newip = fmt.Sprintf("10.%d.%d.%d", bytes[0], bytes[1], bytes[2])
+			newIp = fmt.Sprintf("10.%d.%d.%d", bytes[0], bytes[1], bytes[2])
 		case kubeovnv1.ProtocolIPv6:
-			newip = fmt.Sprintf("fd00::00%02x:%02x%02x", bytes[0], bytes[1], bytes[2])
+			newIp = fmt.Sprintf("fd00::00%02x:%02x%02x", bytes[0], bytes[1], bytes[2])
 		case kubeovnv1.ProtocolDual:
-			newip = fmt.Sprintf("10.%d.%d.%d,fd00::00%02x:%02x%02x",
+			newIp = fmt.Sprintf("10.%d.%d.%d,fd00::00%02x:%02x%02x",
 				bytes[0], bytes[1], bytes[2], bytes[0], bytes[1], bytes[2])
 		}
-
-		if slices.Contains(ips, newip) {
-			n--
-			continue
-		} else {
-			ips = append(ips, newip)
-		}
+		ips.Add(newIp)
 	}
-	return ips
+
+	for ip := range ips.Iterator().C {
+		ipsArray = append(ipsArray, ip.(string))
+	}
+
+	return ipsArray
 }
 
 func getRandomInt() int {

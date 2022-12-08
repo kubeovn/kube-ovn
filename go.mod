@@ -14,6 +14,7 @@ require (
 	github.com/containernetworking/cni v1.1.2
 	github.com/containernetworking/plugins v1.1.1
 	github.com/coreos/go-iptables v0.6.0
+	github.com/deckarep/golang-set v1.8.0
 	github.com/emicklei/go-restful/v3 v3.9.0
 	github.com/evanphx/json-patch v5.6.0+incompatible
 	github.com/greenpau/ovsdb v1.0.2
