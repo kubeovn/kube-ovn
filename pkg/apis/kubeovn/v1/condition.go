@@ -223,7 +223,7 @@ func (s *ProviderNetworkStatus) addNodeCondition(node string, ctype ConditionTyp
 }
 
 // setConditionValue updates or creates a new condition
-func (s *ProviderNetworkStatus) setNodeConditionValue(node string, ctype ConditionType, status corev1.ConditionStatus, reason, message string) {
+func (s *ProviderNetworkStatus) setNodeConditionValue(node string, ctype ConditionType, status corev1.ConditionStatus, reason, message string) bool {
 	var c *ProviderNetworkCondition
 	for i := range s.Conditions {
 		if s.Conditions[i].Node == node && s.Conditions[i].Type == ctype {
@@ -235,7 +235,7 @@ func (s *ProviderNetworkStatus) setNodeConditionValue(node string, ctype Conditi
 	} else {
 		// check message ?
 		if c.Status == status && c.Reason == reason && c.Message == message {
-			return
+			return false
 		}
 		now := metav1.Now()
 		c.LastUpdateTime = now
@@ -246,6 +246,8 @@ func (s *ProviderNetworkStatus) setNodeConditionValue(node string, ctype Conditi
 		c.Reason = reason
 		c.Message = message
 	}
+
+	return true
 }
 
 // RemoveCondition removes the condition with the provided type.
@@ -306,13 +308,13 @@ func (s *ProviderNetworkStatus) ConditionReason(node string, ctype ConditionType
 }
 
 // NodeReady - shortcut to set ready condition to true
-func (s *ProviderNetworkStatus) SetNodeReady(node, reason, message string) {
-	s.SetNodeCondition(node, Ready, reason, message)
+func (s *ProviderNetworkStatus) SetNodeReady(node, reason, message string) bool {
+	return s.SetNodeCondition(node, Ready, reason, message)
 }
 
 // NodeNotReady - shortcut to set ready condition to false
-func (s *ProviderNetworkStatus) SetNodeNotReady(node, reason, message string) {
-	s.ClearNodeCondition(node, Ready, reason, message)
+func (s *ProviderNetworkStatus) SetNodeNotReady(node, reason, message string) bool {
+	return s.ClearNodeCondition(node, Ready, reason, message)
 }
 
 // EnsureNodeCondition useful for adding default conditions
@@ -330,13 +332,13 @@ func (s *ProviderNetworkStatus) EnsureNodeStandardConditions(node string) bool {
 }
 
 // ClearNodeCondition updates or creates a new condition
-func (s *ProviderNetworkStatus) ClearNodeCondition(node string, ctype ConditionType, reason, message string) {
-	s.setNodeConditionValue(node, ctype, corev1.ConditionFalse, reason, message)
+func (s *ProviderNetworkStatus) ClearNodeCondition(node string, ctype ConditionType, reason, message string) bool {
+	return s.setNodeConditionValue(node, ctype, corev1.ConditionFalse, reason, message)
 }
 
 // SetNodeCondition updates or creates a new condition
-func (s *ProviderNetworkStatus) SetNodeCondition(node string, ctype ConditionType, reason, message string) {
-	s.setNodeConditionValue(node, ctype, corev1.ConditionTrue, reason, message)
+func (s *ProviderNetworkStatus) SetNodeCondition(node string, ctype ConditionType, reason, message string) bool {
+	return s.setNodeConditionValue(node, ctype, corev1.ConditionTrue, reason, message)
 }
 
 // RemoveNodeConditions updates or creates a new condition
