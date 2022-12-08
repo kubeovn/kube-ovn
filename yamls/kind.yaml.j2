@@ -13,13 +13,20 @@
 {%- if single is not defined -%}
   {%- set single = "false" -%}
 {%- endif -%}
+{%- if api_server_address is not defined -%}
+  {%- set api_server_address = "127.0.0.1" -%}
+{%- endif -%}
+{%- if api_server_port is not defined -%}
+  {%- set api_server_port = 0 -%}
+{%- endif -%}
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 networking:
   kubeProxyMode: {{ kube_proxy_mode }}
   disableDefaultCNI: true
   ipFamily: {{ ip_family }}
-  apiServerAddress: 127.0.0.1
+  apiServerAddress: {{ api_server_address }}
+  apiServerPort: {{ api_server_port }}
 {%- if ip_family is equalto "ipv4" %}
   podSubnet: "10.16.0.0/16"
   serviceSubnet: "10.96.0.0/12"
