@@ -2,11 +2,11 @@ package util
 
 import (
 	"encoding/json"
-	cnitypes "github.com/containernetworking/cni/pkg/types"
-	types2 "github.com/containernetworking/cni/pkg/types"
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
 	"reflect"
 	"testing"
+
+	cnitypes "github.com/containernetworking/cni/pkg/types"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
 )
 
 func TestParsePodNetworkObjectName(t *testing.T) {
@@ -340,7 +340,7 @@ func TestIsOvnNetwork(t *testing.T) {
 		{
 			name: "base",
 			netCfg: &types.DelegateNetConf{
-				Conf: types2.NetConf{
+				Conf: cnitypes.NetConf{
 					Type: CniTypeName,
 				},
 			},
@@ -360,7 +360,7 @@ func TestIsOvnNetwork(t *testing.T) {
 		{
 			name: "baseWithErr",
 			netCfg: &types.DelegateNetConf{
-				Conf: types2.NetConf{
+				Conf: cnitypes.NetConf{
 					Type: "err",
 				},
 			},

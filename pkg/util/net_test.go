@@ -1,11 +1,12 @@
 package util
 
 import (
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"math/big"
 	"net"
 	"reflect"
 	"testing"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
 func TestCheckSystemCIDR(t *testing.T) {

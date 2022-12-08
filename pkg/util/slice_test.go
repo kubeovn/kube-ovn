@@ -1,7 +1,9 @@
 package util
 
-import "testing"
-import "reflect"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestDiffStringSlice(t *testing.T) {
 	tests := []struct {

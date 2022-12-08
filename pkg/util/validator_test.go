@@ -1,10 +1,12 @@
 package util
 
 import (
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"os"
 	"testing"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
 func TestValidateSubnet(t *testing.T) {
@@ -34,7 +36,6 @@ func TestValidateSubnet(t *testing.T) {
 					Annotations:                nil,
 					OwnerReferences:            nil,
 					Finalizers:                 nil,
-					ZZZ_DeprecatedClusterName:  "",
 					ManagedFields:              nil,
 				},
 				Spec: kubeovnv1.SubnetSpec{
@@ -694,7 +695,7 @@ func TestValidateCidrConflict(t *testing.T) {
 				Status: kubeovnv1.SubnetStatus{},
 			},
 			subnetList: []kubeovnv1.Subnet{
-				kubeovnv1.Subnet{
+				{
 					TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "utest0",
@@ -738,7 +739,7 @@ func TestValidateCidrConflict(t *testing.T) {
 				Status: kubeovnv1.SubnetStatus{},
 			},
 			subnetList: []kubeovnv1.Subnet{
-				kubeovnv1.Subnet{
+				{
 					TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "utest1",
@@ -784,7 +785,7 @@ func TestValidateCidrConflict(t *testing.T) {
 				Status: kubeovnv1.SubnetStatus{},
 			},
 			subnetList: []kubeovnv1.Subnet{
-				kubeovnv1.Subnet{
+				{
 					TypeMeta: metav1.TypeMeta{Kind: "Subnet", APIVersion: "kubeovn.io/v1"},
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "utest1",

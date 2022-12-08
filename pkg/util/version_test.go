@@ -1,8 +1,6 @@
 package util
 
-import (
-	"testing"
-)
+import "testing"
 
 func TestCompareVersion(t *testing.T) {
 	tests := []struct {
