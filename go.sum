@@ -793,8 +793,8 @@ github.com/k-sone/critbitgo v1.4.0 h1:l71cTyBGeh6X5ATh6Fibgw3+rtNT80BA0uNNWgkPrb
 github.com/k-sone/critbitgo v1.4.0/go.mod h1:7E6pyoyADnFxlUBEKcnfS49b7SUAQGMK+OAp/UQvo0s=
 github.com/k8snetworkplumbingwg/multus-cni v0.0.0-20220818150730-3d9cec4ec9d5 h1:/BiK+qv91VvsZGESzj2Ms6fn+aKcwgye/qyfy07YMls=
 github.com/k8snetworkplumbingwg/multus-cni v0.0.0-20220818150730-3d9cec4ec9d5/go.mod h1:UuztUt9fVZCed9aexDAf//44CFiVQwrUnI8o4W4N8L8=
-github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.3.0 h1:MjRRgZyTGo90G+UrwlDQjU+uG4Z7By65qvQxGoILT/8=
-github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.3.0/go.mod h1:nqCI7aelBJU61wiBeeZWJ6oi4bJy5nrjkM6lWIMA4j0=
+github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.4.0 h1:VzM3TYHDgqPkettiP6I6q2jOeQFL4nrJM+UcAc4f6Fs=
+github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.4.0/go.mod h1:nqCI7aelBJU61wiBeeZWJ6oi4bJy5nrjkM6lWIMA4j0=
 github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 h1:iQTw/8FWTuc7uiaSepXwyf3o52HaUYcV+Tu66S3F5GA=
 github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0/go.mod h1:1NbS8ALrpOvjt0rHPNLyCIeMtbizbir8U//inJ+zuB8=
 github.com/karrick/godirwalk v1.16.1/go.mod h1:j4mkqPuvaLI8mp1DroR3P6ad7cyYd4c1qeJ3RV7ULlk=

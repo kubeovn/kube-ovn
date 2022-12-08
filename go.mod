@@ -17,7 +17,7 @@ require (
 	github.com/emicklei/go-restful/v3 v3.10.1
 	github.com/evanphx/json-patch v5.6.0+incompatible
 	github.com/greenpau/ovsdb v1.0.2
-	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.3.0
+	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.4.0
 	github.com/mdlayher/arp v0.0.0-20220512170110-6706a2966875
 	github.com/moby/sys/mountinfo v0.6.2
 	github.com/neverlee/keymutex v0.0.0-20171121013845-f593aa834bf9
