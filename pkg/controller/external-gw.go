@@ -63,23 +63,33 @@ func (c *Controller) resyncExternalGateway() {
 		lastExGwCM = cm.Data
 		c.ovnLegacyClient.ExternalGatewayType = cm.Data["type"]
 		klog.Info("finish establishing ovn external gw")
+
 		cachedVpc, err := c.vpcsLister.Get(c.config.ClusterRouter)
 		if err != nil {
 			klog.Errorf("failed to get vpc %s, %v", c.config.ClusterRouter, err)
 			return
 		}
 		vpc := cachedVpc.DeepCopy()
-		vpc.Spec.EnableExternal = true
-		vpc.Status.EnableExternal = true
-		bytes, err := vpc.Status.Bytes()
-		if err != nil {
-			klog.Errorf("failed to get vpc bytes, %v", err)
-			return
+		if !vpc.Spec.EnableExternal {
+			vpc.Spec.EnableExternal = true
+			if _, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
+				errMsg := fmt.Errorf("failed to update vpc enable external %s, %v", vpc.Name, err)
+				klog.Error(errMsg)
+				return
+			}
 		}
-		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
-			vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
-			klog.Errorf("failed to patch vpc %s, %v", c.config.ClusterRouter, err)
-			return
+		if !vpc.Status.EnableExternal {
+			vpc.Status.EnableExternal = true
+			bytes, err := vpc.Status.Bytes()
+			if err != nil {
+				klog.Errorf("failed to get vpc bytes, %v", err)
+				return
+			}
+			if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
+				vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+				klog.Errorf("failed to patch vpc %s, %v", c.config.ClusterRouter, err)
+				return
+			}
 		}
 	}
 }

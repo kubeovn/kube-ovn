@@ -484,6 +484,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 		return err
 	}
+	klog.V(4).Infof("handle add or update subnet %s", cachedSubnet.Name)
 
 	subnet := cachedSubnet.DeepCopy()
 	if err = formatSubnet(subnet, c); err != nil {
@@ -640,9 +641,11 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	} else {
 		// logical switch exists, only update other_config
-		if err := c.ovnLegacyClient.SetLogicalSwitchConfig(subnet.Name, vpc.Status.Router, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps, needRouter); err != nil {
-			c.patchSubnetStatus(subnet, "SetLogicalSwitchConfigFailed", err.Error())
-			return err
+		if !randomAllocateGW {
+			if err := c.ovnLegacyClient.SetLogicalSwitchConfig(subnet.Name, vpc.Status.Router, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps, needRouter); err != nil {
+				c.patchSubnetStatus(subnet, "SetLogicalSwitchConfigFailed", err.Error())
+				return err
+			}
 		}
 		if !needRouter && !randomAllocateGW {
 			klog.Infof("remove connection from router %s to switch %s", vpc.Status.Router, subnet.Name)
@@ -818,7 +821,7 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 		}
 	} else {
 		if k8serrors.IsNotFound(err) {
-			klog.Infof("remove connection from router %s to switch %s", vpc.Status.Router, subnet.Name)
+			klog.Infof("remove connection from router %s to switch %s", util.DefaultVpc, subnet.Name)
 			if err = c.ovnLegacyClient.RemoveRouterPort(subnet.Name, util.DefaultVpc); err != nil {
 				klog.Errorf("failed to delete router port %s %v", subnet.Name, err)
 				return err
@@ -1382,8 +1385,14 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 	if subnet.Spec.Vlan == "" {
 		return nil
 	}
-
 	klog.Infof("reconcile vlan %v", subnet.Spec.Vlan)
+	isExternalGatewaySwitch := !subnet.Spec.LogicalGateway && subnet.Name == c.config.ExternalGatewaySwitch
+	if isExternalGatewaySwitch {
+		// external gw deal this vlan subnet, just skip
+		klog.Infof("skip reconcile vlan subnet %s", c.config.ExternalGatewaySwitch)
+		return nil
+	}
+
 	vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
 	if err != nil {
 		klog.Errorf("failed to get vlan %s: %v", subnet.Spec.Vlan, err)
