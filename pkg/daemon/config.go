@@ -55,7 +55,7 @@ type Configuration struct {
 	DefaultProviderName     string
 	DefaultInterfaceName    string
 	ExternalGatewayConfigNS string
-	ExternalGatewaySwitch   string
+	ExternalGatewaySwitch   string // provider network underlay vlan subnet
 }
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
