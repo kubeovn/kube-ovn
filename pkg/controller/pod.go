@@ -690,7 +690,7 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 	}
 	if !keepIpCR {
 		for _, podNet := range podNets {
-			if err = c.deleteCrdIPs(pod.Name, pod.Namespace, podNet.ProviderName); err != nil {
+			if err = c.deleteCrdIPs(podName, pod.Namespace, podNet.ProviderName); err != nil {
 				klog.Errorf("failed to delete ip for pod %s, %v, please delete manually", pod.Name, err)
 			}
 		}
