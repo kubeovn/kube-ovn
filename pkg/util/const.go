@@ -151,6 +151,7 @@ const (
 	LrpUsingEip  = "lrp"
 	FipUsingEip  = "fip"
 	SnatUsingEip = "snat"
+	DnatUsingEip = "dnat"
 
 	OvnFip      = "ovn"
 	IptablesFip = "iptables"

@@ -283,8 +283,8 @@ func (c *Controller) handleAddPodAnnotatedIptablesEip(key string) error {
 		return err
 	}
 	// update pod eip annotation
-	if eip.Spec.V4ip != "" {
-		newPod.Annotations[util.EipAnnotation] = eip.Spec.V4ip
+	if eip.Status.IP != "" {
+		newPod.Annotations[util.EipAnnotation] = eip.Status.IP
 		patch, err := util.GenerateStrategicMergePatchPayload(cachedPod, newPod)
 		if err != nil {
 			return err
