@@ -633,8 +633,17 @@ func formatVpc(vpc *kubeovnv1.Vpc, c *Controller) error {
 				changed = true
 			}
 		} else {
-			if ip := net.ParseIP(route.NextHopIP); ip == nil {
-				return fmt.Errorf("bad next hop ip: %s", route.NextHopIP)
+			if strings.Contains(route.NextHopIP, ",") {
+				// ecmp policy route, reroute to multiple next hop ips
+				for _, ipStr := range strings.Split(route.NextHopIP, ",") {
+					if ip := net.ParseIP(ipStr); ip == nil {
+						return fmt.Errorf("invalid next hop IPs %s", route.NextHopIP)
+					}
+				}
+			} else {
+				if ip := net.ParseIP(route.NextHopIP); ip == nil {
+					return fmt.Errorf("invalid next hop IP %s", route.NextHopIP)
+				}
 			}
 		}
 	}

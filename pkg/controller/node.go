@@ -203,7 +203,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 	node := cachedNode.DeepCopy()
-	klog.Infof("handle add node %v", node.Name)
+	klog.Infof("handle add node %s", node.Name)
 
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {

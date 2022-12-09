@@ -279,6 +279,9 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 func (c *Controller) loopOvn0Check() {
 	// no need to check ovn0 on Windows
 }
+func (c *Controller) loopOvnExt0Check() {
+	// no need to check ovnext0 on Windows
+}
 
 func configureMirrorLink(portName string, mtu int) error {
 	adapter, err := util.GetNetAdapter(portName, false)

@@ -244,6 +244,14 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		klog.Errorf("failed to acquire ip address, %v", err)
 		return err
 	}
+
+	if cachedEip.Spec.Type == util.NodeExtGwUsingEip {
+		mergedIp := util.GetStringIP(v4ip, v6ip)
+		if err := c.ovnLegacyClient.CreatePort(subnet.Name, portName, mergedIp, mac, "", "", false, "", "", false, false, nil, false); err != nil {
+			return err
+		}
+	}
+
 	if err = c.createOrUpdateCrdOvnEip(key, subnet.Name, v4ip, v6ip, mac, cachedEip.Spec.Type); err != nil {
 		klog.Errorf("failed to create or update ovn eip '%s', %v", cachedEip.Name, err)
 		return err
@@ -252,6 +260,12 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		klog.Errorf("failed to count ovn eip '%s' in subnet, %v", cachedEip.Name, err)
 		return err
 	}
+
+	if err = c.handleAddOvnEipFinalizer(cachedEip); err != nil {
+		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
+		return err
+	}
+
 	return nil
 }
 
@@ -266,7 +280,7 @@ func (c *Controller) handleUpdateOvnEip(key string) error {
 	if !cachedEip.DeletionTimestamp.IsZero() {
 		subnetName := cachedEip.Spec.ExternalSubnet
 		if subnetName == "" {
-			return fmt.Errorf("failed to create ovn eip '%s', subnet should be set", key)
+			return fmt.Errorf("failed to update ovn eip '%s', subnet should be set", key)
 		}
 		subnet, err := c.subnetsLister.Get(subnetName)
 		if err != nil {
@@ -306,7 +320,24 @@ func (c *Controller) handleResetOvnEip(key string) error {
 }
 
 func (c *Controller) handleDelOvnEip(key string) error {
-	klog.V(3).Infof("release ovn eip %s", key)
+	klog.V(3).Infof("handle del ovn eip %s", key)
+	cachedEip, err := c.ovnEipsLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if cachedEip.Spec.Type == util.NodeExtGwUsingEip {
+		if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(cachedEip.Name); err != nil {
+			klog.Errorf("failed to delete lsp %s, %v", cachedEip.Name, err)
+			return err
+		}
+	}
+	if err = c.handleDelOvnEipFinalizer(cachedEip); err != nil {
+		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
+		return err
+	}
 	c.ipam.ReleaseAddressByPod(key)
 	return nil
 }
@@ -326,6 +357,7 @@ func (c *Controller) createOrUpdateCrdOvnEip(key, subnet, v4ip, v6ip, mac, usage
 				Spec: kubeovnv1.OvnEipSpec{
 					ExternalSubnet: subnet,
 					V4Ip:           v4ip,
+					V6Ip:           v6ip,
 					MacAddress:     mac,
 					Type:           usage,
 				},
@@ -340,16 +372,36 @@ func (c *Controller) createOrUpdateCrdOvnEip(key, subnet, v4ip, v6ip, mac, usage
 			return err
 		}
 	} else {
-		if cachedEip.Spec.V4Ip == "" && v4ip != "" {
+		if cachedEip.Spec.V4Ip == "" && v4ip != "" ||
+			cachedEip.Spec.V6Ip == "" && v6ip != "" {
 			ovnEip := cachedEip.DeepCopy()
 			ovnEip.Spec.ExternalSubnet = subnet
 			ovnEip.Spec.V4Ip = v4ip
+			ovnEip.Spec.V6Ip = v6ip
 			ovnEip.Spec.MacAddress = mac
 			ovnEip.Spec.Type = usage
 			if _, err := c.config.KubeOvnClient.KubeovnV1().OvnEips().Update(context.Background(), ovnEip, metav1.UpdateOptions{}); err != nil {
 				errMsg := fmt.Errorf("failed to update ovn eip '%s', %v", key, err)
 				klog.Error(errMsg)
 				return errMsg
+			}
+
+			if ovnEip.Status.MacAddress == "" {
+				ovnEip.Status.V4Ip = v4ip
+				ovnEip.Status.V6Ip = v6ip
+				ovnEip.Status.MacAddress = mac
+				bytes, err := ovnEip.Status.Bytes()
+				if err != nil {
+					return err
+				}
+				if _, err = c.config.KubeOvnClient.KubeovnV1().OvnEips().Patch(context.Background(), key, types.MergePatchType,
+					bytes, metav1.PatchOptions{}, "status"); err != nil {
+					if k8serrors.IsNotFound(err) {
+						return nil
+					}
+					klog.Errorf("failed to patch ovn eip %s, %v", ovnEip.Name, err)
+					return err
+				}
 			}
 		}
 		var needUpdateLabel bool
@@ -393,6 +445,7 @@ func (c *Controller) patchOvnEipStatus(key string) error {
 	if ovnEip.Status.MacAddress == "" {
 		// not support change ip
 		ovnEip.Status.V4Ip = cachedOvnEip.Spec.V4Ip
+		ovnEip.Status.V6Ip = cachedOvnEip.Spec.V6Ip
 		ovnEip.Status.MacAddress = cachedOvnEip.Spec.MacAddress
 		changed = true
 	}
@@ -422,6 +475,7 @@ func (c *Controller) resetOvnEipSpec(key string) error {
 	if ovnEip.Status.MacAddress != "" {
 		// not support change ip
 		cachedOvnEip.Spec.V4Ip = ovnEip.Status.V4Ip
+		cachedOvnEip.Spec.V6Ip = ovnEip.Status.V6Ip
 		cachedOvnEip.Spec.MacAddress = ovnEip.Status.MacAddress
 		changed = true
 	}

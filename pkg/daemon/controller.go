@@ -44,6 +44,9 @@ type Controller struct {
 	subnetsSynced cache.InformerSynced
 	subnetQueue   workqueue.RateLimitingInterface
 
+	ovnEipsLister kubeovnlister.OvnEipLister
+	ovnEipsSynced cache.InformerSynced
+
 	podsLister listerv1.PodLister
 	podsSynced cache.InformerSynced
 	podQueue   workqueue.RateLimitingInterface
@@ -72,6 +75,7 @@ func NewController(config *Configuration, podInformerFactory informers.SharedInf
 
 	providerNetworkInformer := kubeovnInformerFactory.Kubeovn().V1().ProviderNetworks()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
+	ovnEipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnEips()
 	podInformer := podInformerFactory.Core().V1().Pods()
 	nodeInformer := nodeInformerFactory.Core().V1().Nodes()
 	htbQosInformer := kubeovnInformerFactory.Kubeovn().V1().HtbQoses()
@@ -87,6 +91,9 @@ func NewController(config *Configuration, podInformerFactory informers.SharedInf
 		subnetsLister: subnetInformer.Lister(),
 		subnetsSynced: subnetInformer.Informer().HasSynced,
 		subnetQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Subnet"),
+
+		ovnEipsLister: ovnEipInformer.Lister(),
+		ovnEipsSynced: ovnEipInformer.Informer().HasSynced,
 
 		podsLister: podInformer.Lister(),
 		podsSynced: podInformer.Informer().HasSynced,
@@ -657,6 +664,9 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 
 	klog.Info("Started workers")
 	go wait.Until(c.loopOvn0Check, 5*time.Second, stopCh)
+	if c.config.EnableNodeExtGW {
+		go wait.Until(c.loopOvnExt0Check, 5*time.Second, stopCh)
+	}
 	go wait.Until(c.runAddOrUpdateProviderNetworkWorker, time.Second, stopCh)
 	go wait.Until(c.runDeleteProviderNetworkWorker, time.Second, stopCh)
 	go wait.Until(c.runSubnetWorker, time.Second, stopCh)
