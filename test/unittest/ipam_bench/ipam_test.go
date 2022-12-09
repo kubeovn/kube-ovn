@@ -377,22 +377,22 @@ func NewStringSet() *StringSet {
 	}
 }
 
-func (stringSet *StringSet) Add(item string) bool {
-	if _, ok := stringSet.StringMap[item]; ok {
+func (s *StringSet) Add(item string) bool {
+	if _, ok := s.StringMap[item]; ok {
 		return false
 	}
-	stringSet.StringMap[item] = struct{}{}
+	s.StringMap[item] = struct{}{}
 	return true
 }
 
-func (stringSet *StringSet) Pop() (string, bool) {
-	for key := range stringSet.StringMap {
-		delete(stringSet.StringMap, key)
+func (s *StringSet) Pop() (string, bool) {
+	for key := range s.StringMap {
+		delete(s.StringMap, key)
 		return key, true
 	}
 	return "", false
 }
 
-func (stringSet *StringSet) Len() int {
-	return len(stringSet.StringMap)
+func (s *StringSet) Len() int {
+	return len(s.StringMap)
 }
