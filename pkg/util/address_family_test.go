@@ -1,10 +1,12 @@
 package util
 
 import (
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"golang.org/x/sys/unix"
 	"strings"
 	"testing"
+
+	"golang.org/x/sys/unix"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
 func TestProtocolToFamily(t *testing.T) {
