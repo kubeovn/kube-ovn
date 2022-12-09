@@ -42,7 +42,7 @@ require (
 	k8s.io/apimachinery v0.25.5
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/klog/v2 v2.80.1
-	k8s.io/kubernetes v1.25.4
+	k8s.io/kubernetes v1.26.0
 	k8s.io/sample-controller v0.25.5
 	k8s.io/utils v0.0.0-20221128185143-99ec85e7a448
 	kubevirt.io/client-go v0.58.0
