@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"math/big"
+	"sync"
 	"testing"
 
 	"k8s.io/klog/v2"
@@ -281,10 +282,11 @@ func benchmarkAllocFreeAddrParallel(b *testing.B, podNumber int, protocol string
 		b.Errorf("ERROR: add subnet with %s cidr %s ", protocol, CIDR)
 		return
 	}
-	ipSet := getDefaultSubnetRandomIps(b, protocol, podNumber)
+
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			key := getRandomInt()
+			ipSet := getDefaultSubnetRandomIps(b, protocol, podNumber)
 			for n := 0; n < podNumber; n++ {
 				podName := fmt.Sprintf("pod%d_%d", key, n)
 				nicName := fmt.Sprintf("nic%d_%d", key, n)
@@ -369,6 +371,7 @@ func getRandomInt() int {
 
 type StringSet struct {
 	StringMap map[string]interface{}
+	mutex     sync.RWMutex
 }
 
 func NewStringSet() *StringSet {
@@ -386,6 +389,8 @@ func (s *StringSet) Add(item string) bool {
 }
 
 func (s *StringSet) Pop() (string, bool) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	for key := range s.StringMap {
 		delete(s.StringMap, key)
 		return key, true
