@@ -7,7 +7,6 @@ import (
 	"math/big"
 	"testing"
 
-	mapset "github.com/deckarep/golang-set"
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -192,12 +191,17 @@ func addRandomAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
 		return
 	}
 
-	ips := getDefaultSubnetRandomIps(b, protocol, b.N)
+	ipSet := getDefaultSubnetRandomIps(b, protocol, b.N)
 
 	for n := 0; n < b.N; n++ {
 		podName := fmt.Sprintf("pod%d", n)
 		nicName := fmt.Sprintf("nic%d", n)
-		if _, _, _, err := im.GetStaticAddress(podName, nicName, ips[n], "", subnetName, true); err != nil {
+		ip, ok := ipSet.Pop()
+		if !ok {
+			b.Errorf("pop item failed")
+			return
+		}
+		if _, _, _, err := im.GetStaticAddress(podName, nicName, ip, "", subnetName, true); err != nil {
 			b.Errorf("ERROR: allocate %s address failed with index %d with err %v ", protocol, n, err)
 			return
 		}
@@ -277,7 +281,7 @@ func benchmarkAllocFreeAddrParallel(b *testing.B, podNumber int, protocol string
 		b.Errorf("ERROR: add subnet with %s cidr %s ", protocol, CIDR)
 		return
 	}
-	ips := getDefaultSubnetRandomIps(b, protocol, podNumber)
+	ipSet := getDefaultSubnetRandomIps(b, protocol, podNumber)
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			key := getRandomInt()
@@ -290,7 +294,13 @@ func benchmarkAllocFreeAddrParallel(b *testing.B, podNumber int, protocol string
 						return
 					}
 				} else {
-					if _, _, _, err := im.GetStaticAddress(podName, nicName, ips[n], "", subnetName, false); err != nil {
+					ip, ok := ipSet.Pop()
+					if !ok {
+						b.Errorf("pop item failed")
+						return
+					}
+
+					if _, _, _, err := im.GetStaticAddress(podName, nicName, ip, "", subnetName, false); err != nil {
 						b.Errorf("ERROR: allocate %s address failed with index %d with err %v ", protocol, n, err)
 						return
 					}
@@ -329,12 +339,10 @@ func getDefaultSubnetParam(protocol string) (string, string, string, []string) {
 	return "", "", "", nil
 }
 
-func getDefaultSubnetRandomIps(b *testing.B, protocol string, ipCount int) []string {
-
+func getDefaultSubnetRandomIps(b *testing.B, protocol string, ipCount int) *StringSet {
 	var newIp string
-	var ipsArray []string
-	ips := mapset.NewSet()
-	for n := 0; len(ips.ToSlice()) < ipCount; n++ {
+	ipSet := NewStringSet()
+	for n := 0; ipSet.Len() < ipCount; n++ {
 		bytes := make([]byte, 3)
 		if _, err := rand.Read(bytes); err != nil {
 			b.Errorf("generate random error: %v", err)
@@ -348,18 +356,43 @@ func getDefaultSubnetRandomIps(b *testing.B, protocol string, ipCount int) []str
 			newIp = fmt.Sprintf("10.%d.%d.%d,fd00::00%02x:%02x%02x",
 				bytes[0], bytes[1], bytes[2], bytes[0], bytes[1], bytes[2])
 		}
-		ips.Add(newIp)
+		ipSet.Add(newIp)
 	}
-
-	for ip := range ips.Iterator().C {
-		ipsArray = append(ipsArray, ip.(string))
-	}
-
-	return ipsArray
+	return ipSet
 }
 
 func getRandomInt() int {
 	b := new(big.Int).SetInt64(int64(100000))
 	randInt, _ := rand.Int(rand.Reader, b)
 	return int(randInt.Int64())
+}
+
+type StringSet struct {
+	StringMap map[string]interface{}
+}
+
+func NewStringSet() *StringSet {
+	return &StringSet{
+		StringMap: map[string]interface{}{},
+	}
+}
+
+func (stringSet *StringSet) Add(item string) bool {
+	if _, ok := stringSet.StringMap[item]; ok {
+		return false
+	}
+	stringSet.StringMap[item] = struct{}{}
+	return true
+}
+
+func (stringSet *StringSet) Pop() (string, bool) {
+	for key := range stringSet.StringMap {
+		delete(stringSet.StringMap, key)
+		return key, true
+	}
+	return "", false
+}
+
+func (stringSet *StringSet) Len() int {
+	return len(stringSet.StringMap)
 }
