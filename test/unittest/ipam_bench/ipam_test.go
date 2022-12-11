@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"sync"
 	"testing"
+	"time"
 
 	"k8s.io/klog/v2"
 
@@ -41,7 +42,7 @@ func BenchmarkIPAMSerialIPv4FreeAddr(b *testing.B) {
 	im := ipam.NewIPAM()
 	addSerailAddrCapacity(b, im, kubeovnv1.ProtocolIPv4)
 	b.ResetTimer()
-	delPodAddressCapacity(b, im)
+	delPodAddressCapacity(b, im, false)
 }
 
 func BenchmarkIPAMSerialIPv6AddSubnet(b *testing.B) {
@@ -65,7 +66,7 @@ func BenchmarkIPAMSerialIPv6FreeAddr(b *testing.B) {
 	im := ipam.NewIPAM()
 	addSerailAddrCapacity(b, im, kubeovnv1.ProtocolIPv6)
 	b.ResetTimer()
-	delPodAddressCapacity(b, im)
+	delPodAddressCapacity(b, im, false)
 }
 
 func BenchmarkIPAMSerialDualAddSubnet(b *testing.B) {
@@ -89,68 +90,74 @@ func BenchmarkIPAMSerialDualFreeAddr(b *testing.B) {
 	im := ipam.NewIPAM()
 	addSerailAddrCapacity(b, im, kubeovnv1.ProtocolDual)
 	b.ResetTimer()
-	delPodAddressCapacity(b, im)
+	delPodAddressCapacity(b, im, false)
 }
 
 func BenchmarkIPAMRandomIPv4AllocAddr(b *testing.B) {
 	im := ipam.NewIPAM()
-	addRandomAddrCapacity(b, im, kubeovnv1.ProtocolIPv4)
+	addRandomAddrCapacity(b, im, kubeovnv1.ProtocolIPv4, false)
 }
 
 func BenchmarkIPAMRandomIPv4FreeAddr(b *testing.B) {
 	im := ipam.NewIPAM()
 
-	addRandomAddrCapacity(b, im, kubeovnv1.ProtocolIPv4)
+	addRandomAddrCapacity(b, im, kubeovnv1.ProtocolIPv4, false)
 	b.ResetTimer()
-	delPodAddressCapacity(b, im)
+	delPodAddressCapacity(b, im, false)
 }
 
 func BenchmarkIPAMRandomIPv6AllocAddr(b *testing.B) {
 	im := ipam.NewIPAM()
-	addRandomAddrCapacity(b, im, kubeovnv1.ProtocolIPv6)
+	addRandomAddrCapacity(b, im, kubeovnv1.ProtocolIPv6, false)
 }
 
 func BenchmarkIPAMRandomIPv6FreeAddr(b *testing.B) {
 	im := ipam.NewIPAM()
-	addRandomAddrCapacity(b, im, kubeovnv1.ProtocolIPv6)
+	addRandomAddrCapacity(b, im, kubeovnv1.ProtocolIPv6, false)
 	b.ResetTimer()
-	delPodAddressCapacity(b, im)
+	delPodAddressCapacity(b, im, false)
 }
 
 func BenchmarkIPAMRandomDualAllocAddr(b *testing.B) {
 	im := ipam.NewIPAM()
-	addRandomAddrCapacity(b, im, kubeovnv1.ProtocolDual)
+	addRandomAddrCapacity(b, im, kubeovnv1.ProtocolDual, false)
 }
 
 func BenchmarkIPAMRandomDualFreeAddr(b *testing.B) {
 	im := ipam.NewIPAM()
-	addRandomAddrCapacity(b, im, kubeovnv1.ProtocolDual)
+	addRandomAddrCapacity(b, im, kubeovnv1.ProtocolDual, false)
 	b.ResetTimer()
-	delPodAddressCapacity(b, im)
+	delPodAddressCapacity(b, im, false)
 }
 
 func BenchmarkParallelIPAMIPv4AddDel1000Subnet(b *testing.B) {
 	benchmarkAddDelSubnetParallel(b, 1000, kubeovnv1.ProtocolIPv4)
 }
 
-func BenchmarkParallelIPAMIPv4AllocFree10000Addr(b *testing.B) {
-	benchmarkAllocFreeAddrParallel(b, 10000, kubeovnv1.ProtocolIPv4)
+func BenchmarkParallelIPAMIPv4AllocFree3000Addr(b *testing.B) {
+	benchmarkAllocFreeAddrParallel(b, 3000, kubeovnv1.ProtocolIPv4)
 }
 
 func BenchmarkParallelIPAMIPv6AddDel1000Subnet(b *testing.B) {
 	benchmarkAddDelSubnetParallel(b, 1000, kubeovnv1.ProtocolIPv6)
 }
 
-func BenchmarkParallelIPAMIPv6AllocFree10000Addr(b *testing.B) {
-	benchmarkAllocFreeAddrParallel(b, 10000, kubeovnv1.ProtocolIPv6)
+func BenchmarkParallelIPAMIPv6AllocFree3000Addr(b *testing.B) {
+	benchmarkAllocFreeAddrParallel(b, 3000, kubeovnv1.ProtocolIPv6)
 }
 
 func BenchmarkParallelIPAMDualAddDel1000Subnet(b *testing.B) {
 	benchmarkAddDelSubnetParallel(b, 1000, kubeovnv1.ProtocolDual)
 }
 
-func BenchmarkParallelIPAMDualAllocFree10000Addr(b *testing.B) {
-	benchmarkAllocFreeAddrParallel(b, 10000, kubeovnv1.ProtocolDual)
+func BenchmarkParallelIPAMDualAllocFree3000Addr(b *testing.B) {
+	benchmarkAllocFreeAddrParallel(b, 3000, kubeovnv1.ProtocolDual)
+}
+
+func BenchmarkPerformanceIPAMRandomIPv4AllocAddr(b *testing.B) {
+	im := ipam.NewIPAM()
+	addRandomAddrCapacity(b, im, kubeovnv1.ProtocolIPv4, true)
+	delPodAddressCapacity(b, im, true)
 }
 
 func addSubnetCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
@@ -185,15 +192,16 @@ func addSerailAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
 	}
 }
 
-func addRandomAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
+func addRandomAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string, isTimeTrace bool) {
 	subnetName, cidr, gw, excludeIPs := getDefaultSubnetParam(protocol)
 	if err := im.AddOrUpdateSubnet(subnetName, cidr, gw, excludeIPs); err != nil {
 		b.Errorf("ERROR: add subnet with %s cidr %s err %v ", protocol, cidr, err)
 		return
 	}
 
+	step := 10000
 	ipSet := getDefaultSubnetRandomIps(b, protocol, b.N)
-
+	startTime := time.Now().Unix()
 	for n := 0; n < b.N; n++ {
 		podName := fmt.Sprintf("pod%d", n)
 		nicName := fmt.Sprintf("nic%d", n)
@@ -202,6 +210,12 @@ func addRandomAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
 			b.Errorf("pop item failed")
 			return
 		}
+		if isTimeTrace && (n+1)%step == 0 {
+			currentTime := time.Now().Unix()
+			fmt.Printf("%d to %d pods spent time %ds \n", n+1-step, n, currentTime-startTime)
+			startTime = currentTime
+		}
+
 		if _, _, _, err := im.GetStaticAddress(podName, nicName, ip, "", subnetName, true); err != nil {
 			b.Errorf("ERROR: allocate %s address failed with index %d with err %v ", protocol, n, err)
 			return
@@ -209,9 +223,16 @@ func addRandomAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
 	}
 }
 
-func delPodAddressCapacity(b *testing.B, im *ipam.IPAM) {
+func delPodAddressCapacity(b *testing.B, im *ipam.IPAM, isTimeTrace bool) {
+	step := 10000
+	startTime := time.Now().Unix()
 	for n := 0; n < b.N; n++ {
 		podName := fmt.Sprintf("pod%d", n)
+		if isTimeTrace && (n+1)%step == 0 {
+			currentTime := time.Now().Unix()
+			fmt.Printf("delete %d to %d pods spent time %ds \n", n+1-step, n, currentTime-startTime)
+			startTime = currentTime
+		}
 		im.ReleaseAddressByPod(podName)
 	}
 }
