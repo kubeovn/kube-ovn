@@ -717,6 +717,7 @@ func (c *Controller) getSubnetsNeedNAT(protocol string) ([]string, error) {
 			subnet.Spec.NatOutgoing &&
 			(subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) &&
 			subnet.Spec.Vpc == util.DefaultVpc &&
+			subnet.Spec.CIDRBlock != "" &&
 			(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) {
 			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
 			subnetsNeedNat = append(subnetsNeedNat, cidrBlock)
@@ -787,7 +788,7 @@ func (c *Controller) getDefaultVpcSubnetsCIDR(protocol string) ([]string, error)
 		ret = append(ret, c.config.NodeLocalDnsIP)
 	}
 	for _, subnet := range subnets {
-		if subnet.Spec.Vpc == util.DefaultVpc && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) {
+		if subnet.Spec.Vpc == util.DefaultVpc && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && subnet.Spec.CIDRBlock != "" {
 			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
 			ret = append(ret, cidrBlock)
 		}
