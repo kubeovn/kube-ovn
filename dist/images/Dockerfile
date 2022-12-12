@@ -16,6 +16,9 @@ COPY grace_stop_ovn_controller /usr/share/ovn/scripts/grace_stop_ovn_controller
 
 WORKDIR /kube-ovn
 
+RUN rm -f /usr/bin/nc &&\
+    rm -f /usr/bin/netcat
+
 COPY kube-ovn /kube-ovn/kube-ovn
 COPY kube-ovn-cmd /kube-ovn/kube-ovn-cmd
 COPY kube-ovn-webhook /kube-ovn/kube-ovn-webhook
