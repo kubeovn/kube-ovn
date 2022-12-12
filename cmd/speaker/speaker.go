@@ -35,7 +35,7 @@ func CmdMain() {
 			Addr:              fmt.Sprintf("0.0.0.0:%d", config.PprofPort),
 			ReadHeaderTimeout: 3 * time.Second,
 		}
-		klog.Fatal(server.ListenAndServe())
+		util.LogFatalAndExit(server.ListenAndServe(), "failed to listen and serve on %s", server.Addr)
 	}()
 
 	ctl.Run(stopCh)

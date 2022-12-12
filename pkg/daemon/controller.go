@@ -111,19 +111,25 @@ func NewController(config *Configuration, podInformerFactory informers.SharedInf
 		return nil, err
 	}
 
-	providerNetworkInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err = providerNetworkInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddProviderNetwork,
 		UpdateFunc: controller.enqueueUpdateProviderNetwork,
 		DeleteFunc: controller.enqueueDeleteProviderNetwork,
-	})
-	subnetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	}); err != nil {
+		return nil, err
+	}
+	if _, err = subnetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddSubnet,
 		UpdateFunc: controller.enqueueUpdateSubnet,
 		DeleteFunc: controller.enqueueDeleteSubnet,
-	})
-	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	}); err != nil {
+		return nil, err
+	}
+	if _, err = podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: controller.enqueuePod,
-	})
+	}); err != nil {
+		return nil, err
+	}
 
 	return controller, nil
 }

@@ -57,7 +57,7 @@ func CmdMain() {
 			ReadHeaderTimeout: 3 * time.Second,
 			Handler:           mux,
 		}
-		klog.Fatal(server.ListenAndServe())
+		util.LogFatalAndExit(server.ListenAndServe(), "failed to listen and server on %s", server.Addr)
 	}()
 
 	ctl := controller.NewController(config)

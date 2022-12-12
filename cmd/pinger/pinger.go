@@ -33,7 +33,7 @@ func CmdMain() {
 				Addr:              fmt.Sprintf("0.0.0.0:%d", config.Port),
 				ReadHeaderTimeout: 3 * time.Second,
 			}
-			klog.Fatal(server.ListenAndServe())
+			util.LogFatalAndExit(server.ListenAndServe(), "failed to listen and serve on %s", server.Addr)
 		}()
 	}
 	e := pinger.NewExporter(config)

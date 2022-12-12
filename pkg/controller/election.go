@@ -84,7 +84,7 @@ func setupLeaderElection(config *leaderElectionConfig) *leaderelection.LeaderEle
 		OnNewLeader: func(identity string) {
 			klog.Infof("new leader elected: %v", identity)
 			if config.WasLeader && identity != config.PodName {
-				klog.Fatal("I am not leader anymore")
+				util.LogFatalAndExit(nil, "I am not leader anymore")
 			}
 			if config.OnNewLeader != nil {
 				config.OnNewLeader(identity)
