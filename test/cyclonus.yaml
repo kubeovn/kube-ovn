@@ -1,0 +1,24 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cyclonus
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - command:
+            - ./cyclonus
+            - generate
+            - --exclude=
+            - --include=upstream-e2e
+            - --retries=3
+            - --noisy=true
+            - --ignore-loopback=true
+            - --cleanup-namespaces=true
+            - --server-port=80
+            - --server-protocol=tcp
+          name: cyclonus
+          imagePullPolicy: IfNotPresent
+          image: mfenwick100/cyclonus:latest
+      serviceAccount: cyclonus
