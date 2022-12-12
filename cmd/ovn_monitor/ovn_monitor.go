@@ -37,5 +37,5 @@ func CmdMain() {
 		Addr:              config.ListenAddress,
 		ReadHeaderTimeout: 3 * time.Second,
 	}
-	klog.Fatal(server.ListenAndServe())
+	util.LogFatalAndExit(server.ListenAndServe(), "failed to listen and server on %s", config.ListenAddress)
 }

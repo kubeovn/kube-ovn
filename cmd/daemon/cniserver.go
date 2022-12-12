@@ -34,7 +34,7 @@ func CmdMain() {
 	klog.Infof(versions.String())
 
 	if err := initForOS(); err != nil {
-		klog.Fatal(err)
+		util.LogFatalAndExit(err, "failed to do the OS initialization")
 	}
 
 	nicBridgeMappings, err := daemon.InitOVSBridges()
@@ -102,7 +102,7 @@ func CmdMain() {
 		ReadHeaderTimeout: 3 * time.Second,
 		Handler:           mux,
 	}
-	klog.Fatal(server.ListenAndServe())
+	util.LogFatalAndExit(server.ListenAndServe(), "failed to listen and serve on %s", server.Addr)
 }
 
 func mvCNIConf(configDir, configFile, confName string) error {

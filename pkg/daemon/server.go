@@ -9,6 +9,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/request"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const (
@@ -26,11 +27,11 @@ func RunServer(config *Configuration, controller *Controller) {
 	}
 	listener, cleanFunc, err := listen(config.BindSocket)
 	if err != nil {
-		return
+		util.LogFatalAndExit(err, "failed to listen on %s", config.BindSocket)
 	}
 	defer cleanFunc()
 	klog.Infof("start listen on %s", config.BindSocket)
-	klog.Fatal(server.Serve(listener))
+	util.LogFatalAndExit(server.Serve(listener), "failed to serve on %s", config.BindSocket)
 }
 
 func createHandler(csh *cniServerHandler) http.Handler {

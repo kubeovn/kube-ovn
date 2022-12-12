@@ -391,49 +391,63 @@ func NewController(config *Configuration) *Controller {
 
 	var err error
 	if controller.ovnClient, err = ovs.NewOvnClient(config.OvnNbAddr, config.OvnTimeout); err != nil {
-		klog.Fatal(err)
+		util.LogFatalAndExit(err, "failed to create ovn client")
 	}
 
-	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err = podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddPod,
 		DeleteFunc: controller.enqueueDeletePod,
 		UpdateFunc: controller.enqueueUpdatePod,
-	})
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add pod event handler")
+	}
 
-	namespaceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err = namespaceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddNamespace,
 		UpdateFunc: controller.enqueueUpdateNamespace,
 		DeleteFunc: controller.enqueueDeleteNamespace,
-	})
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add namespace event handler")
+	}
 
-	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err = nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddNode,
 		UpdateFunc: controller.enqueueUpdateNode,
 		DeleteFunc: controller.enqueueDeleteNode,
-	})
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add node event handler")
+	}
 
-	serviceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err = serviceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddService,
 		DeleteFunc: controller.enqueueDeleteService,
 		UpdateFunc: controller.enqueueUpdateService,
-	})
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add service event handler")
+	}
 
-	endpointInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err = endpointInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddEndpoint,
 		UpdateFunc: controller.enqueueUpdateEndpoint,
-	})
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add endpoint event handler")
+	}
 
-	vpcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err = vpcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddVpc,
 		UpdateFunc: controller.enqueueUpdateVpc,
 		DeleteFunc: controller.enqueueDelVpc,
-	})
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add vpc event handler")
+	}
 
-	vpcNatGatewayInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err = vpcNatGatewayInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddVpcNatGw,
 		UpdateFunc: controller.enqueueUpdateVpcNatGw,
 		DeleteFunc: controller.enqueueDeleteVpcNatGw,
-	})
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add vpc nat gateway event handler")
+	}
 
 	if config.EnableLb {
 		switchLBRuleInformer := kubeovnInformerFactory.Kubeovn().V1().SwitchLBRules()
@@ -443,41 +457,51 @@ func NewController(config *Configuration) *Controller {
 		controller.delSwitchLBRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delSwitchLBRule")
 		controller.UpdateSwitchLBRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateSwitchLBRule")
 
-		switchLBRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		if _, err = switchLBRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    controller.enqueueAddSwitchLBRule,
 			UpdateFunc: controller.enqueueUpdateSwitchLBRule,
 			DeleteFunc: controller.enqueueDeleteSwitchLBRule,
-		})
+		}); err != nil {
+			util.LogFatalAndExit(err, "failed to add switch lb rule event handler")
+		}
 
 		vpcDnsInformer := kubeovnInformerFactory.Kubeovn().V1().VpcDnses()
 		controller.vpcDnsLister = vpcDnsInformer.Lister()
 		controller.vpcDnsSynced = vpcDnsInformer.Informer().HasSynced
 		controller.addOrUpdateVpcDnsQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "AddOrUpdateVpcDns")
 		controller.delVpcDnsQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "DeleteVpcDns")
-		vpcDnsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		if _, err = vpcDnsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    controller.enqueueAddVpcDns,
 			UpdateFunc: controller.enqueueUpdateVpcDns,
 			DeleteFunc: controller.enqueueDeleteVpcDns,
-		})
+		}); err != nil {
+			util.LogFatalAndExit(err, "failed to add vpc dns event handler")
+		}
 	}
 
-	subnetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err = subnetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddSubnet,
 		UpdateFunc: controller.enqueueUpdateSubnet,
 		DeleteFunc: controller.enqueueDeleteSubnet,
-	})
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add subnet event handler")
+	}
 
-	ipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err = ipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddOrDelIP,
 		UpdateFunc: controller.enqueueUpdateIP,
 		DeleteFunc: controller.enqueueAddOrDelIP,
-	})
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add ips event handler")
+	}
 
-	vlanInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err = vlanInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddVlan,
 		DeleteFunc: controller.enqueueDelVlan,
 		UpdateFunc: controller.enqueueUpdateVlan,
-	})
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add vlan event handler")
+	}
 
 	if config.EnableNP {
 		npInformer := informerFactory.Networking().V1().NetworkPolicies()
@@ -485,47 +509,61 @@ func NewController(config *Configuration) *Controller {
 		controller.npsSynced = npInformer.Informer().HasSynced
 		controller.updateNpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateNp")
 		controller.deleteNpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteNp")
-		npInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		if _, err = npInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    controller.enqueueAddNp,
 			UpdateFunc: controller.enqueueUpdateNp,
 			DeleteFunc: controller.enqueueDeleteNp,
-		})
+		}); err != nil {
+			util.LogFatalAndExit(err, "failed to add network policy event handler")
+		}
 	}
-	sgInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err = sgInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddSg,
 		DeleteFunc: controller.enqueueDeleteSg,
 		UpdateFunc: controller.enqueueUpdateSg,
-	})
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add security group event handler")
+	}
 
-	virtualIpInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err = virtualIpInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddVirtualIp,
 		UpdateFunc: controller.enqueueUpdateVirtualIp,
 		DeleteFunc: controller.enqueueDelVirtualIp,
-	})
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add virtual ip event handler")
+	}
 
-	iptablesEipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err = iptablesEipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddIptablesEip,
 		UpdateFunc: controller.enqueueUpdateIptablesEip,
 		DeleteFunc: controller.enqueueDelIptablesEip,
-	})
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add iptables eip event handler")
+	}
 
-	iptablesFipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err = iptablesFipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddIptablesFip,
 		UpdateFunc: controller.enqueueUpdateIptablesFip,
 		DeleteFunc: controller.enqueueDelIptablesFip,
-	})
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add iptables fip event handler")
+	}
 
-	iptablesDnatRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err = iptablesDnatRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddIptablesDnatRule,
 		UpdateFunc: controller.enqueueUpdateIptablesDnatRule,
 		DeleteFunc: controller.enqueueDelIptablesDnatRule,
-	})
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add iptables dnat event handler")
+	}
 
-	iptablesSnatRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err = iptablesSnatRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddIptablesSnatRule,
 		UpdateFunc: controller.enqueueUpdateIptablesSnatRule,
 		DeleteFunc: controller.enqueueDelIptablesSnatRule,
-	})
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add iptables snat rule event handler")
+	}
 	if config.EnableEipSnat {
 		ovnEipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnEips()
 		controller.ovnEipsLister = ovnEipInformer.Lister()
@@ -535,11 +573,13 @@ func NewController(config *Configuration) *Controller {
 		controller.resetOvnEipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "resetOvnEip")
 		controller.delOvnEipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delOvnEip")
 
-		ovnEipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		if _, err = ovnEipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    controller.enqueueAddOvnEip,
 			UpdateFunc: controller.enqueueUpdateOvnEip,
 			DeleteFunc: controller.enqueueDelOvnEip,
-		})
+		}); err != nil {
+			util.LogFatalAndExit(err, "failed to add eip event handler")
+		}
 
 		ovnFipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnFips()
 		controller.ovnFipsLister = ovnFipInformer.Lister()
@@ -547,11 +587,13 @@ func NewController(config *Configuration) *Controller {
 		controller.addOvnFipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addOvnFip")
 		controller.updateOvnFipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateOvnFip")
 		controller.delOvnFipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delOvnFip")
-		ovnFipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		if _, err = ovnFipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    controller.enqueueAddOvnFip,
 			UpdateFunc: controller.enqueueUpdateOvnFip,
 			DeleteFunc: controller.enqueueDelOvnFip,
-		})
+		}); err != nil {
+			util.LogFatalAndExit(err, "failed to add ovn fip event handler")
+		}
 
 		ovnSnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnSnatRules()
 		controller.ovnSnatRulesLister = ovnSnatRuleInformer.Lister()
@@ -559,23 +601,29 @@ func NewController(config *Configuration) *Controller {
 		controller.addOvnSnatRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addOvnSnatRule")
 		controller.updateOvnSnatRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateOvnSnatRule")
 		controller.delOvnSnatRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delOvnSnatRule")
-		ovnSnatRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		if _, err = ovnSnatRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    controller.enqueueAddOvnSnatRule,
 			UpdateFunc: controller.enqueueUpdateOvnSnatRule,
 			DeleteFunc: controller.enqueueDelOvnSnatRule,
-		})
+		}); err != nil {
+			util.LogFatalAndExit(err, "failed to add ovn snat rule event handler")
+		}
 	}
 
-	podAnnotatedIptablesEipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err = podAnnotatedIptablesEipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddPodAnnotatedIptablesEip,
 		UpdateFunc: controller.enqueueUpdatePodAnnotatedIptablesEip,
 		DeleteFunc: controller.enqueueDeletePodAnnotatedIptablesEip,
-	})
-	podAnnotatedIptablesFipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add pod iptables eip event handler")
+	}
+	if _, err = podAnnotatedIptablesFipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddPodAnnotatedIptablesFip,
 		UpdateFunc: controller.enqueueUpdatePodAnnotatedIptablesFip,
 		DeleteFunc: controller.enqueueDeletePodAnnotatedIptablesFip,
-	})
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add pod iptables fip event handler")
+	}
 	return controller
 }
 
