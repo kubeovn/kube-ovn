@@ -166,13 +166,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init
 
       - name: Install Kube-OVN
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          shell: bash
-          command: |
-            sudo make kind-install
+        run: sudo make kind-install
 
       - name: Run E2E
         run: |
@@ -319,13 +313,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-iptables
 
       - name: Install Kube-OVN
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          shell: bash
-          command: |
-            sudo make kind-install
+        run: sudo make kind-install
 
       - name: Run E2E
         run: |
@@ -390,13 +378,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init
 
       - name: Install Kube-OVN
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          shell: bash
-          command: |
-            sudo make kind-install
+        run: sudo make kind-install
 
       - name: Run E2E
         run: |
@@ -461,13 +443,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init
 
       - name: Install Kube-OVN
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          shell: bash
-          command: |
-            sudo make kind-install-underlay
+        run: sudo make kind-install-underlay
 
       - name: Run E2E
         run: |
@@ -555,13 +531,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-single
 
       - name: Install Kube-OVN
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          shell: bash
-          command: |
-            sudo make kind-install
+        run: sudo make kind-install
 
       - name: Run E2E
         run: |
@@ -626,17 +596,12 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-ha
 
       - name: Install Kube-OVN
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          shell: bash
-          command: |
-            sudo make kind-install
-            sudo kubectl patch subnet ovn-default --type merge \
-              -p '{"spec":{"gatewayType": "centralized", "gatewayNode": "kube-ovn-control-plane"}}'
-            sudo kubectl -n kube-system patch svc kube-ovn-pinger --type merge \
-              -p '{"spec":{"type": "NodePort", "externalTrafficPolicy": "Local"}}'
+        run: |
+          sudo make kind-install
+          sudo kubectl patch subnet ovn-default --type merge \
+            -p '{"spec":{"gatewayType": "centralized", "gatewayNode": "kube-ovn-control-plane"}}'
+          sudo kubectl -n kube-system patch svc kube-ovn-pinger --type merge \
+            -p '{"spec":{"type": "NodePort", "externalTrafficPolicy": "Local"}}'
 
       - name: Run E2E
         run: |
@@ -708,13 +673,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-ipv6
 
       - name: Install Kube-OVN
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          shell: bash
-          command: |
-            sudo make kind-install-ipv6
+        run: sudo make kind-install-ipv6
 
       - name: Run E2E
         run: |
@@ -786,13 +745,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-ipv6
 
       - name: Install Kube-OVN
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          shell: bash
-          command: |
-            sudo make kind-install-ipv6
+        run: sudo make kind-install-ipv6
 
       - name: Run E2E
         run: |
@@ -857,13 +810,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-ipv6
 
       - name: Install Kube-OVN
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          shell: bash
-          command: |
-            sudo make kind-install-underlay-ipv6
+        run: sudo make kind-install-underlay-ipv6
 
       - name: Run E2E
         run: |
@@ -951,13 +898,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-dual
 
       - name: Install Kube-OVN
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          shell: bash
-          command: |
-            sudo make kind-install-dual
+        run: sudo make kind-install-dual
 
       - name: Run E2E
         run: |
@@ -1029,13 +970,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-dual
 
       - name: Install Kube-OVN
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          shell: bash
-          command: |
-            sudo make kind-install-underlay-dual
+        run: sudo make kind-install-underlay-dual
 
       - name: Run E2E
         run: |
@@ -1123,13 +1058,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-dual
 
       - name: Install Kube-OVN
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          shell: bash
-          command: |
-            sudo make kind-install-underlay-hairpin-dual
+        run: sudo make kind-install-underlay-hairpin-dual
 
       - name: Run E2E
         run: |
@@ -1189,13 +1118,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-dual
 
       - name: Install Kube-OVN
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          shell: bash
-          command: |
-            sudo make kind-install-underlay-logical-gateway-dual
+        run: sudo make kind-install-underlay-logical-gateway-dual
 
       - name: Run E2E
         run: |
@@ -1283,13 +1206,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init
 
       - name: Install Kube-OVN without LoadBalancer
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          shell: bash
-          command: |
-            sudo ENABLE_LB=false make kind-install
+        run: sudo ENABLE_LB=false make kind-install
 
       - name: Run E2E
         run: |
@@ -1354,13 +1271,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-iptables
 
       - name: Install Kube-OVN without LoadBalancer
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          shell: bash
-          command: |
-            sudo ENABLE_LB=false make kind-install
+        run: sudo ENABLE_LB=false make kind-install
 
       - name: Run E2E
         run: |
@@ -1425,13 +1336,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init
 
       - name: Install Kube-OVN
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          shell: bash
-          command: |
-            sudo ENABLE_NP=false make kind-install
+        run: sudo ENABLE_NP=false make kind-install
 
       - name: Run E2E
         run: |
@@ -1507,13 +1412,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init
 
       - name: Install Kube-OVN & Multus
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          shell: bash
-          command: |
-            sudo make kind-install-multus
+        run: sudo make kind-install-multus
 
       - name: Run E2E
         run: |
@@ -1573,13 +1472,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-ovn-ic
 
       - name: Install Kube-OVN
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          shell: bash
-          command: |
-            sudo PATH=~/.local/bin:$PATH make kind-install-ovn-ic
+        run: sudo PATH=~/.local/bin:$PATH make kind-install-ovn-ic
 
       - name: Run E2E
         run: |
@@ -1647,12 +1540,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-cilium
 
       - name: Install Kube-OVN
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          shell: bash
-          command: sudo PATH=~/.local/bin:$PATH make kind-install-cilium
+        run: sudo PATH=~/.local/bin:$PATH make kind-install-cilium
 
       - name: Run E2E
         run: |
@@ -1699,12 +1587,7 @@ jobs:
           sudo PATH=~/.local/bin:$PATH k8s_version=v1.23.13 make kind-init
 
       - name: Install Kube-OVN
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          shell: bash
-          command: sudo PATH=~/.local/bin:$PATH make kind-install
+        run: sudo PATH=~/.local/bin:$PATH make kind-install
 
       - name: Cleanup
         run: |
