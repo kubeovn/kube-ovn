@@ -509,6 +509,11 @@ scan:
 ut:
 	ginkgo -mod=mod -progress --always-emit-ginkgo-writer --slow-spec-threshold=60s test/unittest
 
+.PHONY: ipam-bench
+ipam-bench:
+	go test -timeout 30m -bench='^BenchmarkIPAM' -benchtime=10000x test/unittest/ipam_bench/ipam_test.go -args -logtostderr=false
+	go test -timeout 90m -bench='^BenchmarkParallelIPAM' -benchtime=10x test/unittest/ipam_bench/ipam_test.go -args -logtostderr=false
+
 .PHONY: e2e
 e2e:
 	$(call docker_create_vlan_network)
