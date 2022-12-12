@@ -2999,6 +2999,7 @@ spec:
           - --enable-lb-svc=$ENABLE_LB_SVC
           - --keep-vm-ip=$ENABLE_KEEP_VM_IP
           - --pod-default-fip-type=$POD_DEFAULT_FIP_TYPE
+          - --v=5
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
