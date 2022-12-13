@@ -308,7 +308,7 @@ func ValidatePortVendor(port string) (bool, error) {
 	return util.ContainsString(output, port), err
 }
 
-//config mirror for interface by pod annotations and install param
+// config mirror for interface by pod annotations and install param
 func ConfigInterfaceMirror(globalMirror bool, open string, iface string) error {
 	if !globalMirror {
 		//find interface name for port
