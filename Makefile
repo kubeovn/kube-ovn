@@ -1,5 +1,6 @@
-GO_VERSION = 1.19
-SHELL=/bin/bash
+SHELL = /bin/bash
+
+include Makefile.e2e
 
 REGISTRY = kubeovn
 DEV_TAG = dev
@@ -235,6 +236,7 @@ kind-init-ipv4: kind-clean
 
 .PHONY: kind-init-ovn-ic
 kind-init-ovn-ic: kind-clean-ovn-ic kind-init-single
+	@single=true $(MAKE) kind-generate-config
 	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1)
 
 .PHONY: kind-init-iptables

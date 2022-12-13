@@ -1,0 +1,50 @@
+E2E_BRANCH := $(shell echo $${E2E_BRANCH:-master})
+E2E_IP_FAMILY := $(shell echo $${E2E_IP_FAMILY:-ipv4})
+E2E_NETWORK_MODE := $(shell echo $${E2E_NETWORK_MODE:-overlay})
+
+K8S_CONFORMANCE_E2E_FOCUS = "sig-network.*Conformance" "sig-network.*Feature:NoSNAT"
+K8S_CONFORMANCE_E2E_SKIP = "sig-network.*Services.*session affinity"
+K8S_NETPOL_E2E_FOCUS = "sig-network.*Feature:NetworkPolicy"
+K8S_NETPOL_E2E_SKIP = "sig-network.*NetworkPolicyLegacy"
+
+ifeq ($(shell test $(E2E_IP_FAMILY) != ipv6 && echo true),true)
+K8S_CONFORMANCE_E2E_FOCUS += \
+	"sig-network.*Feature:Networking-IPv4" \
+	"sig-network.*Feature:Feature:Networking-DNS"
+endif
+
+ifeq ($(shell test $(E2E_IP_FAMILY) = dual && echo true),true)
+K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Feature:IPv6DualStack"
+endif
+
+define ginkgo_option
+--ginkgo.$(1)=$(shell echo '$(2)' | sed -E 's/^[[:space:]]+//' | sed -E 's/"[[:space:]]+"/" --ginkgo.$(1)="/g')
+endef
+
+.PHONY: k8s-conformance-e2e
+k8s-conformance-e2e:
+	go test ./test/k8s-network -c -o test/k8s-network/e2e.test
+	./test/k8s-network/e2e.test --ginkgo.timeout=1h \
+		$(call ginkgo_option,focus,$(K8S_CONFORMANCE_E2E_FOCUS)) \
+		$(call ginkgo_option,skip,$(K8S_CONFORMANCE_E2E_SKIP))
+
+.PHONY: k8s-netpol-e2e
+k8s-netpol-e2e:
+	go test ./test/k8s-network -c -o test/k8s-network/e2e.test
+	./test/k8s-network/e2e.test --ginkgo.timeout=2h \
+		$(call ginkgo_option,focus,$(K8S_NETPOL_E2E_FOCUS)) \
+		$(call ginkgo_option,skip,$(K8S_NETPOL_E2E_SKIP))
+
+.PHONY: cyclonus-netpol-e2e
+cyclonus-netpol-e2e:
+	kubectl create ns netpol
+	kubectl create clusterrolebinding cyclonus --clusterrole=cluster-admin --serviceaccount=netpol:cyclonus
+	kubectl create sa cyclonus -n netpol
+	kubectl create -f test/cyclonus.yaml -n netpol
+	while ! kubectl wait pod --for=condition=Ready -l job-name=cyclonus -n netpol; do \
+		sleep 3; \
+	done
+	kubectl logs -f -l job-name=cyclonus -n netpol
+	kubectl -n netpol logs \
+		$$(kubectl -n netpol get pod -l job-name=cyclonus -o=jsonpath={.items[0].metadata.name}) | \
+		grep failed; test $$? -ne 0
