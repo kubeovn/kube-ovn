@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/greenpau/ovsdb"
 	"k8s.io/klog/v2"
 )
 
@@ -104,6 +105,31 @@ func (e *Exporter) setLogicalSwitchInfoMetric() {
 	}
 }
 
+func lspAddress(addresses []ovsdb.OvnLogicalSwitchPortAddress) (mac, ip string) {
+	if len(addresses) == 0 {
+		return "", ""
+	}
+	if addresses[0].Router {
+		return "router", "router"
+	}
+	if addresses[0].Unknown {
+		return "unknown", "unknown"
+	}
+	if addresses[0].Dynamic {
+		return "dynamic", "dynamic"
+	}
+
+	if addresses[0].MacAddress != nil {
+		mac = addresses[0].MacAddress.String()
+	}
+	ips := make([]string, 0, len(addresses[0].IpAddresses))
+	for _, address := range addresses[0].IpAddresses {
+		ips = append(ips, address.String())
+	}
+	ip = strings.Join(ips, " ")
+	return
+}
+
 func (e *Exporter) setLogicalSwitchPortInfoMetric() {
 	lswps, err := e.Client.GetLogicalSwitchPorts()
 	if err != nil {
@@ -111,8 +137,9 @@ func (e *Exporter) setLogicalSwitchPortInfoMetric() {
 		e.IncrementErrorCounter()
 	} else {
 		for _, port := range lswps {
+			mac, ip := lspAddress(port.Addresses)
 			metricLogicalSwitchPortInfo.WithLabelValues(e.Client.System.Hostname, port.UUID, port.Name, port.ChassisUUID,
-				port.LogicalSwitchName, port.DatapathUUID, port.PortBindingUUID, port.MacAddress.String(), port.IPAddress.String()).Set(1)
+				port.LogicalSwitchName, port.DatapathUUID, port.PortBindingUUID, mac, ip).Set(1)
 			metricLogicalSwitchPortTunnelKey.WithLabelValues(e.Client.System.Hostname, port.UUID, port.LogicalSwitchName, port.Name).Set(float64(port.TunnelKey))
 		}
 	}

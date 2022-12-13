@@ -259,7 +259,7 @@ require (
 
 replace (
 	github.com/alauda/felix => github.com/kubeovn/felix v0.0.0-20220325073257-c8a0f705d139
-	github.com/greenpau/ovsdb => github.com/alauda/ovsdb v0.0.0-20210113100339-040cf3e76c28
+	github.com/greenpau/ovsdb => github.com/kubeovn/ovsdb v0.0.0-20221213053943-9372db56919f
 	github.com/onsi/ginkgo/v2 => github.com/onsi/ginkgo/v2 v2.4.0
 	github.com/openshift/client-go => github.com/openshift/client-go v0.0.0-20221107163225-3335a34a1d24
 	github.com/ovn-org/libovsdb => github.com/kubeovn/libovsdb v0.0.0-20221208095821-f8830e1998e8
