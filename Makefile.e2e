@@ -21,17 +21,27 @@ define ginkgo_option
 --ginkgo.$(1)=$(shell echo '$(2)' | sed -E 's/^[[:space:]]+//' | sed -E 's/"[[:space:]]+"/" --ginkgo.$(1)="/g')
 endef
 
+.PHONY: e2e
+e2e: kube-ovn-conformance-e2e
+
+.PHONY: e2e-compile
+e2e-compile:
+	go test ./test/e2e/k8s-network -c -o test/e2e/k8s-network/e2e.test
+	go test ./test/e2e/kube-ovn -c -o test/e2e/kube-ovn/e2e.test
+	go test ./test/e2e/ovn-ic -c -o test/e2e/ovn-ic/e2e.test
+	go test ./test/e2e/lb-svc -c -o test/e2e/lb-svc/e2e.test
+
 .PHONY: k8s-conformance-e2e
 k8s-conformance-e2e:
-	go test ./test/k8s-network -c -o test/k8s-network/e2e.test
-	./test/k8s-network/e2e.test --ginkgo.timeout=1h \
+	go test ./test/e2e/k8s-network -c -o test/e2e/k8s-network/e2e.test
+	./test/e2e/k8s-network/e2e.test --ginkgo.timeout=1h \
 		$(call ginkgo_option,focus,$(K8S_CONFORMANCE_E2E_FOCUS)) \
 		$(call ginkgo_option,skip,$(K8S_CONFORMANCE_E2E_SKIP))
 
 .PHONY: k8s-netpol-e2e
 k8s-netpol-e2e:
-	go test ./test/k8s-network -c -o test/k8s-network/e2e.test
-	./test/k8s-network/e2e.test --ginkgo.timeout=2h \
+	go test ./test/e2e/k8s-network -c -o test/e2e/k8s-network/e2e.test
+	./test/e2e/k8s-network/e2e.test --ginkgo.timeout=2h \
 		$(call ginkgo_option,focus,$(K8S_NETPOL_E2E_FOCUS)) \
 		$(call ginkgo_option,skip,$(K8S_NETPOL_E2E_SKIP))
 
@@ -40,7 +50,7 @@ cyclonus-netpol-e2e:
 	kubectl create ns netpol
 	kubectl create clusterrolebinding cyclonus --clusterrole=cluster-admin --serviceaccount=netpol:cyclonus
 	kubectl create sa cyclonus -n netpol
-	kubectl create -f test/cyclonus.yaml -n netpol
+	kubectl create -f test/e2e/cyclonus.yaml -n netpol
 	while ! kubectl wait pod --for=condition=Ready -l job-name=cyclonus -n netpol; do \
 		sleep 3; \
 	done
@@ -48,3 +58,18 @@ cyclonus-netpol-e2e:
 	kubectl -n netpol logs \
 		$$(kubectl -n netpol get pod -l job-name=cyclonus -o=jsonpath={.items[0].metadata.name}) | \
 		grep failed; test $$? -ne 0
+
+.PHONY: kube-ovn-conformance-e2e
+kube-ovn-conformance-e2e:
+	go test ./test/e2e/kube-ovn -c -o test/e2e/kube-ovn/e2e.test
+	./test/e2e/kube-ovn/e2e.test --ginkgo.focus=CNI:Kube-OVN
+
+.PHONY: kube-ovn-ic-conformance-e2e
+kube-ovn-ic-conformance-e2e:
+	go test ./test/e2e/ovn-ic -c -o test/e2e/ovn-ic/e2e.test
+	./test/e2e/ovn-ic/e2e.test --ginkgo.focus=CNI:Kube-OVN
+
+.PHONY: kube-ovn-lb-svc-conformance-e2e
+kube-ovn-lb-svc-conformance-e2e:
+	go test ./test/e2e/lb-svc -c -o test/e2e/lb-svc/e2e.test
+	./test/e2e/lb-svc/e2e.test --ginkgo.focus=CNI:Kube-OVN
