@@ -3259,6 +3259,16 @@ spec:
         component: network
         type: infra
     spec:
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/master
+        operator: Exists
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/cpaas-system
+        operator: Exists
       priorityClassName: system-node-critical
       serviceAccountName: ovn
       hostPID: true
