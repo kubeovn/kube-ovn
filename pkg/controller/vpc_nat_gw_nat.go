@@ -17,9 +17,7 @@ import (
 )
 
 func (c *Controller) enqueueAddIptablesFip(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
+
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -31,9 +29,6 @@ func (c *Controller) enqueueAddIptablesFip(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateIptablesFip(old, new interface{}) {
-	if !c.isLeader() {
-		return
-	}
 
 	var key string
 	var err error
@@ -62,9 +57,6 @@ func (c *Controller) enqueueUpdateIptablesFip(old, new interface{}) {
 }
 
 func (c *Controller) enqueueDelIptablesFip(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -75,9 +67,6 @@ func (c *Controller) enqueueDelIptablesFip(obj interface{}) {
 }
 
 func (c *Controller) enqueueAddIptablesDnatRule(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -89,9 +78,6 @@ func (c *Controller) enqueueAddIptablesDnatRule(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateIptablesDnatRule(old, new interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
@@ -121,9 +107,6 @@ func (c *Controller) enqueueUpdateIptablesDnatRule(old, new interface{}) {
 }
 
 func (c *Controller) enqueueDelIptablesDnatRule(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -134,9 +117,6 @@ func (c *Controller) enqueueDelIptablesDnatRule(obj interface{}) {
 }
 
 func (c *Controller) enqueueAddIptablesSnatRule(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -147,9 +127,6 @@ func (c *Controller) enqueueAddIptablesSnatRule(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateIptablesSnatRule(old, new interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
@@ -177,9 +154,6 @@ func (c *Controller) enqueueUpdateIptablesSnatRule(old, new interface{}) {
 }
 
 func (c *Controller) enqueueDelIptablesSnatRule(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {

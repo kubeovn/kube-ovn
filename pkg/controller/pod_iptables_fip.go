@@ -18,9 +18,7 @@ import (
 )
 
 func (c *Controller) enqueueAddPodAnnotatedIptablesFip(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
+
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -56,9 +54,6 @@ func (c *Controller) enqueueAddPodAnnotatedIptablesFip(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdatePodAnnotatedIptablesFip(oldObj, newObj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
 	if oldPod.ResourceVersion == newPod.ResourceVersion {
@@ -106,9 +101,6 @@ func (c *Controller) enqueueUpdatePodAnnotatedIptablesFip(oldObj, newObj interfa
 }
 
 func (c *Controller) enqueueDeletePodAnnotatedIptablesFip(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var err error
 	if _, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
 		utilruntime.HandleError(err)

@@ -22,9 +22,7 @@ import (
 )
 
 func (c *Controller) enqueueAddSg(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
+
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -36,9 +34,6 @@ func (c *Controller) enqueueAddSg(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateSg(old, new interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	oldSg := old.(*kubeovnv1.SecurityGroup)
 	newSg := new.(*kubeovnv1.SecurityGroup)
 	if !reflect.DeepEqual(oldSg.Spec, newSg.Spec) {
@@ -54,9 +49,6 @@ func (c *Controller) enqueueUpdateSg(old, new interface{}) {
 }
 
 func (c *Controller) enqueueDeleteSg(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {

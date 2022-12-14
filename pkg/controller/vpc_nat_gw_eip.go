@@ -27,9 +27,7 @@ var (
 )
 
 func (c *Controller) enqueueAddIptablesEip(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
+
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -40,9 +38,6 @@ func (c *Controller) enqueueAddIptablesEip(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateIptablesEip(old, new interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
@@ -59,9 +54,6 @@ func (c *Controller) enqueueUpdateIptablesEip(old, new interface{}) {
 }
 
 func (c *Controller) enqueueDelIptablesEip(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
