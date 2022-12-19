@@ -18,4 +18,3 @@ vpc-nat-gateway.tar
 image-amd64.tar
 image-arm64.tar
 test/**/*.test
-test/**/network.json
