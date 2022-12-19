@@ -51,7 +51,7 @@ jobs:
         working-directory: ovs
         run: |
           # ovsdb-idl: Support write-only-changed IDL monitor mode
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/24c1b28c416d3a0312c10a9fe9341c04b8b31ce9.patch" -OutFile ..\ovs-01.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/03ce8faf7d0eb79d7dd99f4310dc15be160e92fc.patch" -OutFile ..\ovs-01.patch
           # fix kernel crash
           Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/64383c14a9c25e9e0ca53c6758d9499c60132536.patch" -OutFile ..\ovs-02.patch
           # support for building in github actions
