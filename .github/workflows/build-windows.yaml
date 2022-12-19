@@ -69,7 +69,7 @@ jobs:
           # change hash type from dp_hash to hash with field src_ip
           Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/ab923b252271cbbcccc8091e338ee7efe75e5fcd.patch" -OutFile ..\ovn-01.patch
           # add support for windows
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/064ea5f0253b6ba68c8952b61e39ed2fb0f58a91.patch" -OutFile ..\ovn-02.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/700870525ffbbccb70c6b00ca0f807b2a387e6ee.patch" -OutFile ..\ovn-02.patch
           # set br-int controller to TCP 127.0.0.1:6653
           Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/e498c03eda80248dd786775d8f7779d9b895e3ff.patch" -OutFile ..\ovn-03.patch
           git apply ..\ovn-01.patch
