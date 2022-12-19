@@ -47,7 +47,7 @@ jobs:
         working-directory: ovs
         run: |
           # ovsdb-idl: Support write-only-changed IDL monitor mode
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/24c1b28c416d3a0312c10a9fe9341c04b8b31ce9.patch" -OutFile ..\ovs-01.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/03ce8faf7d0eb79d7dd99f4310dc15be160e92fc.patch" -OutFile ..\ovs-01.patch
           # fix kernel crash
           Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/64383c14a9c25e9e0ca53c6758d9499c60132536.patch" -OutFile ..\ovs-02.patch
           # support for building in github actions
@@ -65,7 +65,7 @@ jobs:
           # change hash type from dp_hash to hash with field src_ip
           Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/ab923b252271cbbcccc8091e338ee7efe75e5fcd.patch" -OutFile ..\ovn-01.patch
           # add support for windows
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/064ea5f0253b6ba68c8952b61e39ed2fb0f58a91.patch" -OutFile ..\ovn-02.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/700870525ffbbccb70c6b00ca0f807b2a387e6ee.patch" -OutFile ..\ovn-02.patch
           # set br-int controller to TCP 127.0.0.1:6653
           Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/e498c03eda80248dd786775d8f7779d9b895e3ff.patch" -OutFile ..\ovn-03.patch
           git apply ..\ovn-01.patch
