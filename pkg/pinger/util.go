@@ -226,8 +226,10 @@ func (e *Exporter) setOvsInterfaceStatisticsMetric(intf *ovsdb.OvsInterface) {
 			interfaceStatTxErrorsTotal.WithLabelValues(e.Client.System.Hostname, intf.Name).Set(float64(value))
 		case "collisions":
 			interfaceStatCollisions.WithLabelValues(e.Client.System.Hostname, intf.Name).Set(float64(value))
+		case "rx_multicast_packets":
+			interfaceStatRxMulticastPackets.WithLabelValues(e.Client.System.Hostname, intf.Name).Set(float64(value))
 		default:
-			klog.Errorf("OVS interface statistics has unsupported key: %s, value: %d", key, value)
+			klog.Warningf("unknown statistics %s with value %d on OVS interface %s", key, value, intf.Name)
 		}
 	}
 }
