@@ -395,7 +395,146 @@ func (c *Controller) handleUpdateService(key string) error {
 		}
 	}
 
+	if c.config.EnableEipSnat && svc.Annotations[util.EipAnnotation] != "" {
+		eIP := svc.Annotations[util.EipAnnotation]
+		cm, err := c.config.KubeClient.CoreV1().ConfigMaps(c.config.ExternalGatewayConfigNS).Get(context.Background(), util.ExternalGatewayConfig, metav1.GetOptions{})
+		if err != nil {
+			klog.Errorf("failed to get ovn-external-gw-config, %v", err)
+			return err
+		}
+		externalGw, exist := cm.Data["external-gw-addr"]
+		if !exist {
+			return nil
+		}
+		if strings.Contains(externalGw, "/") {
+			externalGw = strings.Split(externalGw, "/")[0]
+		}
+
+		// create portgroup
+		pgName := getLRLBPortGroupName(vpcName, name)
+		if err := c.ovnLegacyClient.CreateLRLBPortGroup(pgName, vpcName, name); err != nil {
+			klog.Errorf("failed to create port group for vpc %s and service %s, %v", vpcName, name, err)
+			return err
+		}
+
+		ipSuffix, nexthop := "ip4", externalGw
+		if util.CheckProtocol(nexthop) == kubeovnv1.ProtocolIPv6 {
+			ipSuffix = "ip6"
+		}
+
+		pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
+		match := fmt.Sprintf("%s.src == $%s && tcp.src == %d", ipSuffix, pgAs, svc.Spec.Ports[0].TargetPort.IntVal)
+
+		externalIDs := map[string]string{
+			"vendor": util.CniTypeName,
+		}
+		if err = c.ovnLegacyClient.AddPolicyRoute(c.config.ClusterRouter, 29500, match, "reroute", externalGw, externalIDs); err != nil {
+			klog.Errorf("failed to add logical router policy for port-group address-set %s: %v", pgAs, err)
+			return err
+		}
+
+		klog.Errorf("service eip %s", svc.Annotations[util.EipAnnotation])
+		lrTcpLb := fmt.Sprintf("vpc-%s-lr-tcp-load", util.DefaultVpc)
+		lrUdpLb := fmt.Sprintf("vpc-%s-lr-udp-load", util.DefaultVpc)
+		oLrTcpLb := fmt.Sprintf("vpc-%s-lr-tcp-sess-load", util.DefaultVpc)
+		oLrUdpLb := fmt.Sprintf("vpc-%s-lr-udp-sess-load", util.DefaultVpc)
+		if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
+			lrTcpLb = fmt.Sprintf("vpc-%s-lr-tcp-sess-load", util.DefaultVpc)
+			lrUdpLb = fmt.Sprintf("vpc-%s-lr-udp-sess-load", util.DefaultVpc)
+			oLrTcpLb = fmt.Sprintf("vpc-%s-lr-tcp-load", util.DefaultVpc)
+			oLrUdpLb = fmt.Sprintf("vpc-%s-lr-udp-load", util.DefaultVpc)
+		}
+		lrTcpVips := []string{}
+		lrUdpVips := []string{}
+		for _, port := range svc.Spec.Ports {
+			if port.Protocol == v1.ProtocolTCP {
+				if util.CheckProtocol(eIP) == kubeovnv1.ProtocolIPv6 {
+					lrTcpVips = append(lrTcpVips, fmt.Sprintf("[%s]:%d", eIP, port.Port))
+				} else {
+					lrTcpVips = append(lrTcpVips, fmt.Sprintf("%s:%d", eIP, port.Port))
+				}
+			} else if port.Protocol == v1.ProtocolUDP {
+				if util.CheckProtocol(eIP) == kubeovnv1.ProtocolIPv6 {
+					lrUdpVips = append(lrUdpVips, fmt.Sprintf("[%s]:%d", eIP, port.Port))
+				} else {
+					lrUdpVips = append(lrUdpVips, fmt.Sprintf("%s:%d", eIP, port.Port))
+				}
+			}
+		}
+
+		lbUuid, err := c.ovnLegacyClient.FindLoadbalancer(lrTcpLb)
+		if err != nil {
+			klog.Errorf("failed to get lr lb %v", err)
+			return err
+		}
+		vips, err := c.ovnLegacyClient.GetLoadBalancerVips(lbUuid)
+		if err != nil {
+			klog.Errorf("failed to get lr tcp lb vips %v", err)
+			return err
+		}
+		klog.V(3).Infof("exist lr tcp vips are %v", vips)
+		for _, vip := range lrTcpVips {
+			if err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, oLrTcpLb); err != nil {
+				klog.Errorf("failed to delete lr lb %s form %s, %v", vip, oLrTcpLb, err)
+				return err
+			}
+			if _, ok := vips[vip]; !ok {
+				klog.Infof("add vip %s to lr tcp lb %s", vip, oLrTcpLb)
+				c.updateEndpointQueue.Add(key)
+				break
+			}
+		}
+
+		for vip := range vips {
+			if parseVipAddr(vip) == eIP && !util.IsStringIn(vip, lrTcpVips) {
+				klog.Infof("remove stall vip %s", vip)
+				err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, lrTcpLb)
+				if err != nil {
+					klog.Errorf("failed to delete vip %s from lr tcp lb %v", vip, err)
+					return err
+				}
+			}
+		}
+
+		lbUuid, err = c.ovnLegacyClient.FindLoadbalancer(lrUdpLb)
+		if err != nil {
+			klog.Errorf("failed to get lr lb %v", err)
+			return err
+		}
+		vips, err = c.ovnLegacyClient.GetLoadBalancerVips(lbUuid)
+		if err != nil {
+			klog.Errorf("failed to get lr udp lb vips %v", err)
+			return err
+		}
+		klog.Infof("exist udp vips are %v", vips)
+		for _, vip := range lrUdpVips {
+			if err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, oLrUdpLb); err != nil {
+				klog.Errorf("failed to delete lr lb %s form %s, %v", vip, oLrUdpLb, err)
+				return err
+			}
+			if _, ok := vips[vip]; !ok {
+				klog.Infof("add vip %s to lr udp lb %s", vip, oLrUdpLb)
+				c.updateEndpointQueue.Add(key)
+				break
+			}
+		}
+
+		for vip := range vips {
+			if parseVipAddr(vip) == eIP && !util.IsStringIn(vip, lrUdpVips) {
+				klog.Infof("remove stall vip %s", vip)
+				if err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, lrUdpLb); err != nil {
+					klog.Errorf("failed to delete vip %s from udp lb %v", vip, err)
+					return err
+				}
+			}
+		}
+	}
+
 	return nil
+}
+
+func getLRLBPortGroupName(vpcName, serviceName string) string {
+	return strings.Replace(fmt.Sprintf("%s.%s", vpcName, serviceName), "-", ".", -1)
 }
 
 // Parse key of map, [fd00:10:96::11c9]:10665 for example
