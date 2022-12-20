@@ -156,5 +156,3 @@ spec:
         - hostPath:
             path: /var/run/containerd
           name: cruntime
-
-
