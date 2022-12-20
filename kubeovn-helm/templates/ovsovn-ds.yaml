@@ -125,6 +125,9 @@ spec:
         - name: host-sys
           hostPath:
             path: /sys
+        - name: host-ns
+          hostPath:
+            path: /var/run/netns
         - name: cni-conf
           hostPath:
             path: /etc/cni/net.d
@@ -147,8 +150,3 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
-        - name: host-ns
-          hostPath:
-            path: /var/run/netns
-
-

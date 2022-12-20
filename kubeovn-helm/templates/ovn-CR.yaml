@@ -45,12 +45,6 @@ rules:
       - update
   - apiGroups:
       - ""
-    resources:
-      - pods
-    verbs:
-      - delete
-  - apiGroups:
-      - ""
       - networking.k8s.io
       - apps
       - extensions
@@ -102,4 +96,3 @@ rules:
     verbs:
       - get
       - list
-
