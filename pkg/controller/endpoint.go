@@ -17,9 +17,6 @@ import (
 )
 
 func (c *Controller) enqueueAddEndpoint(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -31,9 +28,7 @@ func (c *Controller) enqueueAddEndpoint(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateEndpoint(old, new interface{}) {
-	if !c.isLeader() {
-		return
-	}
+
 	oldEp := old.(*v1.Endpoints)
 	newEp := new.(*v1.Endpoints)
 	if oldEp.ResourceVersion == newEp.ResourceVersion {

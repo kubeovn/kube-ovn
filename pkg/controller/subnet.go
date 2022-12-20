@@ -26,9 +26,7 @@ import (
 )
 
 func (c *Controller) enqueueAddSubnet(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
+
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -40,9 +38,7 @@ func (c *Controller) enqueueAddSubnet(obj interface{}) {
 }
 
 func (c *Controller) enqueueDeleteSubnet(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
+
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -58,9 +54,6 @@ func (c *Controller) enqueueDeleteSubnet(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	oldSubnet := old.(*kubeovnv1.Subnet)
 	newSubnet := new.(*kubeovnv1.Subnet)
 

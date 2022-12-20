@@ -86,9 +86,7 @@ func hostConfigFromReader() error {
 }
 
 func (c *Controller) enqueueAddVpcDns(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
+
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -100,9 +98,6 @@ func (c *Controller) enqueueAddVpcDns(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateVpcDns(old, new interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
@@ -120,9 +115,6 @@ func (c *Controller) enqueueUpdateVpcDns(old, new interface{}) {
 }
 
 func (c *Controller) enqueueDeleteVpcDns(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {

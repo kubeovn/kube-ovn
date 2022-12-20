@@ -26,9 +26,7 @@ type vpcService struct {
 }
 
 func (c *Controller) enqueueAddService(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
+
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -56,9 +54,6 @@ func (c *Controller) enqueueAddService(obj interface{}) {
 }
 
 func (c *Controller) enqueueDeleteService(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	svc := obj.(*v1.Service)
 	//klog.V(3).Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
 	klog.Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
@@ -98,9 +93,6 @@ func (c *Controller) enqueueDeleteService(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateService(old, new interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	oldSvc := old.(*v1.Service)
 	newSvc := new.(*v1.Service)
 	if oldSvc.ResourceVersion == newSvc.ResourceVersion {

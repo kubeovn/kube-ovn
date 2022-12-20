@@ -22,9 +22,7 @@ import (
 )
 
 func (c *Controller) enqueueAddNp(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
+
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -36,9 +34,6 @@ func (c *Controller) enqueueAddNp(obj interface{}) {
 }
 
 func (c *Controller) enqueueDeleteNp(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -50,9 +45,6 @@ func (c *Controller) enqueueDeleteNp(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateNp(old, new interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	oldNp := old.(*netv1.NetworkPolicy)
 	newNp := new.(*netv1.NetworkPolicy)
 	if !reflect.DeepEqual(oldNp.Spec, newNp.Spec) ||

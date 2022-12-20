@@ -3,27 +3,40 @@ package controller
 import (
 	"context"
 	"fmt"
+	apiv1 "k8s.io/api/core/v1"
+	"k8s.io/apiserver/pkg/server"
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/leaderelection"
+	"k8s.io/client-go/tools/leaderelection/resourcelock"
+	"k8s.io/client-go/tools/record"
 	"net/http"
 	"net/http/pprof"
 	"os"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	v1 "k8s.io/api/authorization/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/klog/v2"
-	"k8s.io/sample-controller/pkg/signals"
-
 	"github.com/kubeovn/kube-ovn/pkg/controller"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/versions"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	v1 "k8s.io/api/authorization/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog/v2"
 )
+
+const ovnLeaderResource = "kube-ovn-controller"
 
 func CmdMain() {
 	defer klog.Flush()
 
-	stopCh := signals.SetupSignalHandler()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		stopCh := server.SetupSignalHandler()
+		<-stopCh
+		cancel()
+	}()
+
 	klog.Infof(versions.String())
 
 	controller.InitClientGoMetrics()
@@ -60,8 +73,49 @@ func CmdMain() {
 		util.LogFatalAndExit(server.ListenAndServe(), "failed to listen and server on %s", server.Addr)
 	}()
 
-	ctl := controller.NewController(config)
-	ctl.Run(stopCh)
+	//	ctx, cancel := context.WithCancel(context.Background())
+	recorder := record.NewBroadcaster().NewRecorder(scheme.Scheme, apiv1.EventSource{
+		Component: ovnLeaderResource,
+		Host:      os.Getenv(util.HostnameEnv),
+	})
+	rl, err := resourcelock.NewFromKubeconfig("leases",
+		config.PodNamespace,
+		ovnLeaderResource,
+		resourcelock.ResourceLockConfig{
+			Identity:      config.PodName,
+			EventRecorder: recorder,
+		},
+		config.KubeRestConfig,
+		20*time.Second)
+	if err != nil {
+		klog.Fatalf("error creating lock: %v", err)
+	}
+
+	leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
+		Lock:          rl,
+		LeaseDuration: 30 * time.Second,
+		RenewDeadline: 20 * time.Second,
+		RetryPeriod:   6 * time.Second,
+		Callbacks: leaderelection.LeaderCallbacks{
+			OnStartedLeading: func(ctx context.Context) {
+				ctl := controller.NewController(config)
+				ctl.Run(ctx)
+			},
+			OnStoppedLeading: func() {
+				select {
+				case <-ctx.Done():
+					klog.InfoS("Requested to terminate, exiting")
+					os.Exit(0)
+				default:
+					klog.ErrorS(nil, "leaderelection lost")
+					klog.FlushAndExit(klog.ExitFlushTimeout, 1)
+				}
+			},
+		},
+		WatchDog:        nil,
+		ReleaseOnCancel: true,
+		Name:            ovnLeaderResource,
+	})
 }
 
 func loopOvnNbctlDaemon(config *controller.Configuration) {

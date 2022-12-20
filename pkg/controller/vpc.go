@@ -21,9 +21,7 @@ import (
 )
 
 func (c *Controller) enqueueAddVpc(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
+
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -38,9 +36,6 @@ func (c *Controller) enqueueAddVpc(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateVpc(old, new interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	oldVpc := old.(*kubeovnv1.Vpc)
 	newVpc := new.(*kubeovnv1.Vpc)
 
@@ -69,9 +64,6 @@ func (c *Controller) enqueueUpdateVpc(old, new interface{}) {
 }
 
 func (c *Controller) enqueueDelVpc(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
