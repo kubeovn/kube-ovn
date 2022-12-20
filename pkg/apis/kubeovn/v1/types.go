@@ -179,8 +179,6 @@ type SubnetStatus struct {
 	// +patchStrategy=merge
 	Conditions []SubnetCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
-	AvailableIPs      float64 `json:"availableIPs"`
-	UsingIPs          float64 `json:"usingIPs"`
 	V4AvailableIPs    float64 `json:"v4availableIPs"`
 	V4UsingIPs        float64 `json:"v4usingIPs"`
 	V6AvailableIPs    float64 `json:"v6availableIPs"`
