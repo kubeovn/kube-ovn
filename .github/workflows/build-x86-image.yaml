@@ -64,6 +64,7 @@ jobs:
       - name: Build
         run: |
           go mod tidy
+          git diff --exit-code
           make lint
           make image-kube-ovn
           make tar-kube-ovn
