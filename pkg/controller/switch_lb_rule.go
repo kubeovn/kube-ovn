@@ -38,9 +38,7 @@ func NewSlrInfo(slr *kubeovnv1.SwitchLBRule) *slrInfo {
 }
 
 func (c *Controller) enqueueAddSwitchLBRule(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
+
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -52,9 +50,6 @@ func (c *Controller) enqueueAddSwitchLBRule(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateSwitchLBRule(old, new interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	oldSlr := old.(*kubeovnv1.SwitchLBRule)
 	newSlr := new.(*kubeovnv1.SwitchLBRule)
 	info := NewSlrInfo(oldSlr)
@@ -73,9 +68,6 @@ func (c *Controller) enqueueUpdateSwitchLBRule(old, new interface{}) {
 }
 
 func (c *Controller) enqueueDeleteSwitchLBRule(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {

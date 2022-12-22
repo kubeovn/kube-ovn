@@ -18,9 +18,7 @@ import (
 )
 
 func (c *Controller) enqueueAddOvnEip(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
+
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -32,9 +30,6 @@ func (c *Controller) enqueueAddOvnEip(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateOvnEip(old, new interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
@@ -64,9 +59,6 @@ func (c *Controller) enqueueUpdateOvnEip(old, new interface{}) {
 }
 
 func (c *Controller) enqueueDelOvnEip(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {

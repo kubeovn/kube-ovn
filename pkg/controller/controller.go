@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -17,7 +18,6 @@ import (
 	v1 "k8s.io/client-go/listers/core/v1"
 	netv1 "k8s.io/client-go/listers/networking/v1"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
@@ -204,7 +204,6 @@ type Controller struct {
 	informerFactory        kubeinformers.SharedInformerFactory
 	cmInformerFactory      kubeinformers.SharedInformerFactory
 	kubeovnInformerFactory kubeovninformer.SharedInformerFactory
-	elector                *leaderelection.LeaderElector
 }
 
 // NewController returns a new ovn controller
@@ -631,17 +630,14 @@ func NewController(config *Configuration) *Controller {
 // as syncing informer caches and starting workers. It will block until stopCh
 // is closed, at which point it will shutdown the workqueue and wait for
 // workers to finish processing their current work items.
-func (c *Controller) Run(stopCh <-chan struct{}) {
+func (c *Controller) Run(ctx context.Context) {
 	defer c.shutdown()
 	klog.Info("Starting OVN controller")
 
-	// wait for becoming a leader
-	c.leaderElection()
-
 	// Wait for the caches to be synced before starting workers
-	c.informerFactory.Start(stopCh)
-	c.cmInformerFactory.Start(stopCh)
-	c.kubeovnInformerFactory.Start(stopCh)
+	c.informerFactory.Start(ctx.Done())
+	c.cmInformerFactory.Start(ctx.Done())
+	c.kubeovnInformerFactory.Start(ctx.Done())
 
 	klog.Info("Waiting for informer caches to sync")
 	cacheSyncs := []cache.InformerSynced{
@@ -665,7 +661,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		cacheSyncs = append(cacheSyncs, c.switchLBRuleSynced, c.vpcDnsSynced)
 	}
 
-	if ok := cache.WaitForCacheSync(stopCh, cacheSyncs...); !ok {
+	if ok := cache.WaitForCacheSync(ctx.Done(), cacheSyncs...); !ok {
 		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
 	}
 
@@ -735,8 +731,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	}
 
 	// start workers to do all the network operations
-	c.startWorkers(stopCh)
-	<-stopCh
+	c.startWorkers(ctx)
+	<-ctx.Done()
 	klog.Info("Shutting down workers")
 }
 
@@ -845,24 +841,24 @@ func (c *Controller) shutdown() {
 	c.syncSgPortsQueue.ShutDown()
 }
 
-func (c *Controller) startWorkers(stopCh <-chan struct{}) {
+func (c *Controller) startWorkers(ctx context.Context) {
 	klog.Info("Starting workers")
 
-	go wait.Until(c.runAddVpcWorker, time.Second, stopCh)
+	go wait.Until(c.runAddVpcWorker, time.Second, ctx.Done())
 
-	go wait.Until(c.runAddOrUpdateVpcNatGwWorker, time.Second, stopCh)
-	go wait.Until(c.runInitVpcNatGwWorker, time.Second, stopCh)
-	go wait.Until(c.runDelVpcNatGwWorker, time.Second, stopCh)
-	go wait.Until(c.runUpdateVpcFloatingIpWorker, time.Second, stopCh)
-	go wait.Until(c.runUpdateVpcEipWorker, time.Second, stopCh)
-	go wait.Until(c.runUpdateVpcDnatWorker, time.Second, stopCh)
-	go wait.Until(c.runUpdateVpcSnatWorker, time.Second, stopCh)
-	go wait.Until(c.runUpdateVpcSubnetWorker, time.Second, stopCh)
+	go wait.Until(c.runAddOrUpdateVpcNatGwWorker, time.Second, ctx.Done())
+	go wait.Until(c.runInitVpcNatGwWorker, time.Second, ctx.Done())
+	go wait.Until(c.runDelVpcNatGwWorker, time.Second, ctx.Done())
+	go wait.Until(c.runUpdateVpcFloatingIpWorker, time.Second, ctx.Done())
+	go wait.Until(c.runUpdateVpcEipWorker, time.Second, ctx.Done())
+	go wait.Until(c.runUpdateVpcDnatWorker, time.Second, ctx.Done())
+	go wait.Until(c.runUpdateVpcSnatWorker, time.Second, ctx.Done())
+	go wait.Until(c.runUpdateVpcSubnetWorker, time.Second, ctx.Done())
 
 	// add default/join subnet and wait them ready
-	go wait.Until(c.runAddSubnetWorker, time.Second, stopCh)
-	go wait.Until(c.runAddVlanWorker, time.Second, stopCh)
-	go wait.Until(c.runAddNamespaceWorker, time.Second, stopCh)
+	go wait.Until(c.runAddSubnetWorker, time.Second, ctx.Done())
+	go wait.Until(c.runAddVlanWorker, time.Second, ctx.Done())
+	go wait.Until(c.runAddNamespaceWorker, time.Second, ctx.Done())
 	for {
 		klog.Infof("wait for %s and %s ready", c.config.DefaultLogicalSwitch, c.config.NodeSwitch)
 		time.Sleep(3 * time.Second)
@@ -876,15 +872,15 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		}
 	}
 
-	go wait.Until(c.runAddSgWorker, time.Second, stopCh)
-	go wait.Until(c.runDelSgWorker, time.Second, stopCh)
-	go wait.Until(c.runSyncSgPortsWorker, time.Second, stopCh)
+	go wait.Until(c.runAddSgWorker, time.Second, ctx.Done())
+	go wait.Until(c.runDelSgWorker, time.Second, ctx.Done())
+	go wait.Until(c.runSyncSgPortsWorker, time.Second, ctx.Done())
 
 	// run node worker before handle any pods
 	for i := 0; i < c.config.WorkerNum; i++ {
-		go wait.Until(c.runAddNodeWorker, time.Second, stopCh)
-		go wait.Until(c.runUpdateNodeWorker, time.Second, stopCh)
-		go wait.Until(c.runDeleteNodeWorker, time.Second, stopCh)
+		go wait.Until(c.runAddNodeWorker, time.Second, ctx.Done())
+		go wait.Until(c.runUpdateNodeWorker, time.Second, ctx.Done())
+		go wait.Until(c.runDeleteNodeWorker, time.Second, ctx.Done())
 	}
 	for {
 		ready := true
@@ -905,135 +901,135 @@ func (c *Controller) startWorkers(stopCh <-chan struct{}) {
 		}
 	}
 
-	go wait.Until(c.runDelVpcWorker, time.Second, stopCh)
-	go wait.Until(c.runUpdateVpcStatusWorker, time.Second, stopCh)
+	go wait.Until(c.runDelVpcWorker, time.Second, ctx.Done())
+	go wait.Until(c.runUpdateVpcStatusWorker, time.Second, ctx.Done())
 
 	if c.config.EnableLb {
-		go wait.Until(c.runAddServiceWorker, time.Second, stopCh)
+		go wait.Until(c.runAddServiceWorker, time.Second, ctx.Done())
 		// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
-		go wait.Until(c.runDeleteServiceWorker, time.Second, stopCh)
+		go wait.Until(c.runDeleteServiceWorker, time.Second, ctx.Done())
 
-		go wait.Until(c.runAddSwitchLBRuleWorker, time.Second, stopCh)
-		go wait.Until(c.runDelSwitchLBRuleWorker, time.Second, stopCh)
-		go wait.Until(c.runUpdateSwitchLBRuleWorker, time.Second, stopCh)
+		go wait.Until(c.runAddSwitchLBRuleWorker, time.Second, ctx.Done())
+		go wait.Until(c.runDelSwitchLBRuleWorker, time.Second, ctx.Done())
+		go wait.Until(c.runUpdateSwitchLBRuleWorker, time.Second, ctx.Done())
 
-		go wait.Until(c.runAddOrUpdateVpcDnsWorker, time.Second, stopCh)
-		go wait.Until(c.runDelVpcDnsWorker, time.Second, stopCh)
+		go wait.Until(c.runAddOrUpdateVpcDnsWorker, time.Second, ctx.Done())
+		go wait.Until(c.runDelVpcDnsWorker, time.Second, ctx.Done())
 		go wait.Until(func() {
 			c.resyncVpcDnsConfig()
-		}, 5*time.Second, stopCh)
+		}, 5*time.Second, ctx.Done())
 	}
 
 	for i := 0; i < c.config.WorkerNum; i++ {
-		go wait.Until(c.runAddPodWorker, time.Second, stopCh)
-		go wait.Until(c.runDeletePodWorker, time.Second, stopCh)
-		go wait.Until(c.runUpdatePodWorker, time.Second, stopCh)
-		go wait.Until(c.runUpdatePodSecurityWorker, time.Second, stopCh)
+		go wait.Until(c.runAddPodWorker, time.Second, ctx.Done())
+		go wait.Until(c.runDeletePodWorker, time.Second, ctx.Done())
+		go wait.Until(c.runUpdatePodWorker, time.Second, ctx.Done())
+		go wait.Until(c.runUpdatePodSecurityWorker, time.Second, ctx.Done())
 
-		go wait.Until(c.runDeleteSubnetWorker, time.Second, stopCh)
-		go wait.Until(c.runDeleteRouteWorker, time.Second, stopCh)
-		go wait.Until(c.runUpdateSubnetStatusWorker, time.Second, stopCh)
-		go wait.Until(c.runSyncVirtualPortsWorker, time.Second, stopCh)
+		go wait.Until(c.runDeleteSubnetWorker, time.Second, ctx.Done())
+		go wait.Until(c.runDeleteRouteWorker, time.Second, ctx.Done())
+		go wait.Until(c.runUpdateSubnetStatusWorker, time.Second, ctx.Done())
+		go wait.Until(c.runSyncVirtualPortsWorker, time.Second, ctx.Done())
 
 		if c.config.EnableLb {
-			go wait.Until(c.runUpdateServiceWorker, time.Second, stopCh)
-			go wait.Until(c.runUpdateEndpointWorker, time.Second, stopCh)
+			go wait.Until(c.runUpdateServiceWorker, time.Second, ctx.Done())
+			go wait.Until(c.runUpdateEndpointWorker, time.Second, ctx.Done())
 		}
 
 		if c.config.EnableNP {
-			go wait.Until(c.runUpdateNpWorker, time.Second, stopCh)
-			go wait.Until(c.runDeleteNpWorker, time.Second, stopCh)
+			go wait.Until(c.runUpdateNpWorker, time.Second, ctx.Done())
+			go wait.Until(c.runDeleteNpWorker, time.Second, ctx.Done())
 		}
 
-		go wait.Until(c.runDelVlanWorker, time.Second, stopCh)
-		go wait.Until(c.runUpdateVlanWorker, time.Second, stopCh)
+		go wait.Until(c.runDelVlanWorker, time.Second, ctx.Done())
+		go wait.Until(c.runUpdateVlanWorker, time.Second, ctx.Done())
 	}
 
 	go wait.Until(func() {
 		c.resyncInterConnection()
-	}, time.Second, stopCh)
+	}, time.Second, ctx.Done())
 
 	go wait.Until(func() {
 		c.SynRouteToPolicy()
-	}, 5*time.Second, stopCh)
+	}, 5*time.Second, ctx.Done())
 
 	go wait.Until(func() {
 		c.resyncExternalGateway()
-	}, time.Second, stopCh)
+	}, time.Second, ctx.Done())
 
 	go wait.Until(func() {
 		c.resyncVpcNatGwConfig()
-	}, time.Second, stopCh)
+	}, time.Second, ctx.Done())
 
 	go wait.Until(func() {
 		if err := c.markAndCleanLSP(); err != nil {
 			klog.Errorf("gc lsp error: %v", err)
 		}
-	}, time.Duration(c.config.GCInterval)*time.Second, stopCh)
+	}, time.Duration(c.config.GCInterval)*time.Second, ctx.Done())
 
 	go wait.Until(func() {
 		if err := c.inspectPod(); err != nil {
 			klog.Errorf("inspection error: %v", err)
 		}
-	}, time.Duration(c.config.InspectInterval)*time.Second, stopCh)
+	}, time.Duration(c.config.InspectInterval)*time.Second, ctx.Done())
 
 	if c.config.EnableExternalVpc {
 		go wait.Until(func() {
 			c.syncExternalVpc()
-		}, 5*time.Second, stopCh)
+		}, 5*time.Second, ctx.Done())
 	}
 
-	go wait.Until(c.resyncProviderNetworkStatus, 30*time.Second, stopCh)
-	go wait.Until(c.resyncSubnetMetrics, 30*time.Second, stopCh)
-	go wait.Until(c.CheckGatewayReady, 5*time.Second, stopCh)
+	go wait.Until(c.resyncProviderNetworkStatus, 30*time.Second, ctx.Done())
+	go wait.Until(c.resyncSubnetMetrics, 30*time.Second, ctx.Done())
+	go wait.Until(c.CheckGatewayReady, 5*time.Second, ctx.Done())
 
 	if c.config.EnableEipSnat {
-		go wait.Until(c.runAddOvnEipWorker, time.Second, stopCh)
-		go wait.Until(c.runUpdateOvnEipWorker, time.Second, stopCh)
-		go wait.Until(c.runResetOvnEipWorker, time.Second, stopCh)
-		go wait.Until(c.runDelOvnEipWorker, time.Second, stopCh)
+		go wait.Until(c.runAddOvnEipWorker, time.Second, ctx.Done())
+		go wait.Until(c.runUpdateOvnEipWorker, time.Second, ctx.Done())
+		go wait.Until(c.runResetOvnEipWorker, time.Second, ctx.Done())
+		go wait.Until(c.runDelOvnEipWorker, time.Second, ctx.Done())
 
-		go wait.Until(c.runAddOvnFipWorker, time.Second, stopCh)
-		go wait.Until(c.runUpdateOvnFipWorker, time.Second, stopCh)
-		go wait.Until(c.runDelOvnFipWorker, time.Second, stopCh)
+		go wait.Until(c.runAddOvnFipWorker, time.Second, ctx.Done())
+		go wait.Until(c.runUpdateOvnFipWorker, time.Second, ctx.Done())
+		go wait.Until(c.runDelOvnFipWorker, time.Second, ctx.Done())
 
-		go wait.Until(c.runAddOvnSnatRuleWorker, time.Second, stopCh)
-		go wait.Until(c.runUpdateOvnSnatRuleWorker, time.Second, stopCh)
-		go wait.Until(c.runDelOvnSnatRuleWorker, time.Second, stopCh)
+		go wait.Until(c.runAddOvnSnatRuleWorker, time.Second, ctx.Done())
+		go wait.Until(c.runUpdateOvnSnatRuleWorker, time.Second, ctx.Done())
+		go wait.Until(c.runDelOvnSnatRuleWorker, time.Second, ctx.Done())
 	}
 
 	if c.config.EnableNP {
-		go wait.Until(c.CheckNodePortGroup, time.Duration(c.config.NodePgProbeTime)*time.Minute, stopCh)
+		go wait.Until(c.CheckNodePortGroup, time.Duration(c.config.NodePgProbeTime)*time.Minute, ctx.Done())
 	}
 
-	go wait.Until(c.syncVmLiveMigrationPort, 15*time.Second, stopCh)
+	go wait.Until(c.syncVmLiveMigrationPort, 15*time.Second, ctx.Done())
 
-	go wait.Until(c.runAddVirtualIpWorker, time.Second, stopCh)
-	go wait.Until(c.runUpdateVirtualIpWorker, time.Second, stopCh)
-	go wait.Until(c.runDelVirtualIpWorker, time.Second, stopCh)
+	go wait.Until(c.runAddVirtualIpWorker, time.Second, ctx.Done())
+	go wait.Until(c.runUpdateVirtualIpWorker, time.Second, ctx.Done())
+	go wait.Until(c.runDelVirtualIpWorker, time.Second, ctx.Done())
 
-	go wait.Until(c.runAddIptablesEipWorker, time.Second, stopCh)
-	go wait.Until(c.runUpdateIptablesEipWorker, time.Second, stopCh)
-	go wait.Until(c.runResetIptablesEipWorker, time.Second, stopCh)
-	go wait.Until(c.runDelIptablesEipWorker, time.Second, stopCh)
+	go wait.Until(c.runAddIptablesEipWorker, time.Second, ctx.Done())
+	go wait.Until(c.runUpdateIptablesEipWorker, time.Second, ctx.Done())
+	go wait.Until(c.runResetIptablesEipWorker, time.Second, ctx.Done())
+	go wait.Until(c.runDelIptablesEipWorker, time.Second, ctx.Done())
 
-	go wait.Until(c.runAddIptablesFipWorker, time.Second, stopCh)
-	go wait.Until(c.runUpdateIptablesFipWorker, time.Second, stopCh)
-	go wait.Until(c.runDelIptablesFipWorker, time.Second, stopCh)
+	go wait.Until(c.runAddIptablesFipWorker, time.Second, ctx.Done())
+	go wait.Until(c.runUpdateIptablesFipWorker, time.Second, ctx.Done())
+	go wait.Until(c.runDelIptablesFipWorker, time.Second, ctx.Done())
 
-	go wait.Until(c.runAddIptablesDnatRuleWorker, time.Second, stopCh)
-	go wait.Until(c.runUpdateIptablesDnatRuleWorker, time.Second, stopCh)
-	go wait.Until(c.runDelIptablesDnatRuleWorker, time.Second, stopCh)
+	go wait.Until(c.runAddIptablesDnatRuleWorker, time.Second, ctx.Done())
+	go wait.Until(c.runUpdateIptablesDnatRuleWorker, time.Second, ctx.Done())
+	go wait.Until(c.runDelIptablesDnatRuleWorker, time.Second, ctx.Done())
 
-	go wait.Until(c.runAddIptablesSnatRuleWorker, time.Second, stopCh)
-	go wait.Until(c.runUpdateIptablesSnatRuleWorker, time.Second, stopCh)
-	go wait.Until(c.runDelIptablesSnatRuleWorker, time.Second, stopCh)
+	go wait.Until(c.runAddIptablesSnatRuleWorker, time.Second, ctx.Done())
+	go wait.Until(c.runUpdateIptablesSnatRuleWorker, time.Second, ctx.Done())
+	go wait.Until(c.runDelIptablesSnatRuleWorker, time.Second, ctx.Done())
 
 	if c.config.PodDefaultFipType == util.IptablesFip {
-		go wait.Until(c.runAddPodAnnotatedIptablesEipWorker, time.Second, stopCh)
-		go wait.Until(c.runDelPodAnnotatedIptablesEipWorker, time.Second, stopCh)
+		go wait.Until(c.runAddPodAnnotatedIptablesEipWorker, time.Second, ctx.Done())
+		go wait.Until(c.runDelPodAnnotatedIptablesEipWorker, time.Second, ctx.Done())
 
-		go wait.Until(c.runAddPodAnnotatedIptablesFipWorker, time.Second, stopCh)
-		go wait.Until(c.runDelPodAnnotatedIptablesFipWorker, time.Second, stopCh)
+		go wait.Until(c.runAddPodAnnotatedIptablesFipWorker, time.Second, ctx.Done())
+		go wait.Until(c.runDelPodAnnotatedIptablesFipWorker, time.Second, ctx.Done())
 	}
 }

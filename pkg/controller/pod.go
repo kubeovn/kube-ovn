@@ -52,9 +52,7 @@ func isPodAlive(p *v1.Pod) bool {
 }
 
 func (c *Controller) enqueueAddPod(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
+
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -123,9 +121,6 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 }
 
 func (c *Controller) enqueueDeletePod(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -172,9 +167,6 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
 	if oldPod.ResourceVersion == newPod.ResourceVersion {

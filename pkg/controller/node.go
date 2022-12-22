@@ -26,9 +26,7 @@ import (
 )
 
 func (c *Controller) enqueueAddNode(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
+
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -49,9 +47,6 @@ func nodeReady(node *v1.Node) bool {
 }
 
 func (c *Controller) enqueueUpdateNode(oldObj, newObj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 
 	oldNode := oldObj.(*v1.Node)
 	newNode := newObj.(*v1.Node)
@@ -70,9 +65,6 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj interface{}) {
 }
 
 func (c *Controller) enqueueDeleteNode(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
