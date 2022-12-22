@@ -2989,3 +2989,33 @@ func (c LegacyClient) SetAclLog(pgName string, logEnable, isIngress bool) error 
 
 	return nil
 }
+
+func (c *LegacyClient) GetRouterNat(routerName string) ([]string, error) {
+	var nat []string
+	results, err := c.CustomFindEntity("logical-router", []string{"nat"}, fmt.Sprintf("name=%s", routerName))
+	if err != nil {
+		klog.Errorf("customFindEntity failed, %v", err)
+		return nat, err
+	}
+	if len(results) == 0 {
+		return nat, nil
+	}
+
+	return results[0]["nat"], nil
+}
+
+func (c *LegacyClient) GetNatIPInfo(uuid string) (string, error) {
+	var logical_ip string
+
+	output, err := c.ovnNbCommand("--data=bare", "--format=csv", "--no-heading", "--columns=logical_ip", "list", "nat", uuid)
+	if err != nil {
+		klog.Errorf("failed to list nat, %v", err)
+		return logical_ip, err
+	}
+	lines := strings.Split(output, "\n")
+
+	if len(lines) > 0 {
+		logical_ip = strings.TrimSpace(lines[0])
+	}
+	return logical_ip, nil
+}
