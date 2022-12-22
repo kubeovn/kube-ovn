@@ -2,6 +2,8 @@ package k8s_network
 
 import (
 	"flag"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"k8s.io/klog/v2"
@@ -25,6 +27,9 @@ func init() {
 
 	// Parse all the flags
 	flag.Parse()
+	if framework.TestContext.KubeConfig == "" {
+		framework.TestContext.KubeConfig = filepath.Join(os.Getenv("HOME"), ".kube", "config")
+	}
 	framework.AfterReadingAllFlags(&framework.TestContext)
 }
 

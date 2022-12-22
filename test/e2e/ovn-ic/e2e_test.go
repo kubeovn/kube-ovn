@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -43,6 +45,9 @@ func init() {
 
 	// Parse all the flags
 	flag.Parse()
+	if k8sframework.TestContext.KubeConfig == "" {
+		k8sframework.TestContext.KubeConfig = filepath.Join(os.Getenv("HOME"), ".kube", "config")
+	}
 	k8sframework.AfterReadingAllFlags(&k8sframework.TestContext)
 
 	var err error
