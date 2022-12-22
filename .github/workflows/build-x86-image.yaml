@@ -176,7 +176,7 @@ jobs:
           sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
-          sudo chmod -R 777 ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
         run: make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
@@ -246,7 +246,7 @@ jobs:
           sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
-          sudo chmod -R 777 ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
         run: make kind-install-${{ matrix.ip-family }}
@@ -289,7 +289,7 @@ jobs:
           sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
-          sudo chmod -R 777 ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
         run: make kind-install-${{ matrix.ip-family }}
@@ -352,7 +352,7 @@ jobs:
           sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
-          sudo chmod -R 777 ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
         run: make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
@@ -408,7 +408,7 @@ jobs:
           sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init-ovn-ic
           sudo cp -r /root/.kube/ ~/.kube/
-          sudo chmod -R 777 ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
         run: make kind-install-ovn-ic
@@ -444,7 +444,7 @@ jobs:
           sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
-          sudo chmod -R 777 ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
         run: |
@@ -484,7 +484,7 @@ jobs:
           sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init-ha
           sudo cp -r /root/.kube/ ~/.kube/
-          sudo chmod -R 777 ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
         run: sudo ENABLE_SSL=true make kind-install
@@ -520,7 +520,7 @@ jobs:
           sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
-          sudo chmod -R 777 ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN without LoadBalancer
         env:
@@ -558,7 +558,7 @@ jobs:
           sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
-          sudo chmod -R 777 ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
         env:
@@ -623,7 +623,7 @@ jobs:
           sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
-          sudo chmod -R 777 ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Multus
         run: make kind-install-multus
@@ -662,7 +662,7 @@ jobs:
           sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH k8s_version=v1.23.13 make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
-          sudo chmod -R 777 ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
         run: make kind-install
@@ -724,7 +724,7 @@ jobs:
           sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
-          sudo chmod -R 777 ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
         run: make kind-install
