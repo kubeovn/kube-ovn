@@ -41,7 +41,7 @@ jobs:
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
 
-      - name: Go Cache
+      - name: Go cache
         uses: actions/cache@v3
         with:
           path: |
@@ -64,7 +64,6 @@ jobs:
           git diff --exit-code
           make lint
           make image-kube-ovn
-          make e2e-compile
           make tar-kube-ovn
 
       - name: Upload images to artifact
@@ -133,6 +132,24 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Create the default branch directory
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=\"$(pwd)\"" >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=\"$(pwd)test/e2e/source\"" >> "$GITHUB_ENV"
+          fi
+
       - name: Remove DNS search domain
         run: |
           sudo sed -i '/^search/d' /etc/resolv.conf
@@ -147,16 +164,20 @@ jobs:
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
 
-      - name: Go Cache
+      - name: Go cache
         uses: actions/cache@v3
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-${{ env.GO_FULL_VER }}-x86-
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('${{ env.E2E_DIR }}/**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
-      - name: Install Kind
+      - name: Build e2e binaries
+        working-directory: ${{ env.E2E_DIR }}
+        run: make e2e-compile
+
+      - name: Install kind
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
@@ -167,7 +188,7 @@ jobs:
         with:
           name: kube-ovn
 
-      - name: Load Image
+      - name: Load image
         run: docker load --input kube-ovn.tar
 
       - name: Create kind cluster
@@ -182,6 +203,7 @@ jobs:
         run: make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
 
       - name: Run E2E
+        working-directory: ${{ env.E2E_DIR }}
         env:
           E2E_BRANCH: ${{ matrix.branch }}
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
@@ -203,6 +225,24 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Create the default branch directory
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=\"$(pwd)\"" >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=\"$(pwd)test/e2e/source\"" >> "$GITHUB_ENV"
+          fi
+
       - name: Remove DNS search domain
         run: |
           sudo sed -i '/^search/d' /etc/resolv.conf
@@ -217,16 +257,20 @@ jobs:
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
 
-      - name: Go Cache
+      - name: Go cache
         uses: actions/cache@v3
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-${{ env.GO_FULL_VER }}-x86-
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('${{ env.E2E_DIR }}/**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
-      - name: Install Kind
+      - name: Build e2e binaries
+        working-directory: ${{ env.E2E_DIR }}
+        run: make e2e-compile
+
+      - name: Install kind
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
@@ -237,7 +281,7 @@ jobs:
         with:
           name: kube-ovn
 
-      - name: Load Image
+      - name: Load image
         run: docker load --input kube-ovn.tar
 
       - name: Create kind cluster
@@ -252,6 +296,7 @@ jobs:
         run: make kind-install-${{ matrix.ip-family }}
 
       - name: Run E2E
+        working-directory: ${{ env.E2E_DIR }}
         run: make k8s-netpol-e2e
 
   cyclonus-netpol-e2e:
@@ -269,7 +314,25 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install Kind
+      - name: Create the default branch directory
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=\"$(pwd)\"" >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=\"$(pwd)test/e2e/source\"" >> "$GITHUB_ENV"
+          fi
+
+      - name: Install kind
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
@@ -280,7 +343,7 @@ jobs:
         with:
           name: kube-ovn
 
-      - name: Load Image
+      - name: Load image
         run: docker load --input kube-ovn.tar
 
       - name: Create kind cluster
@@ -295,6 +358,7 @@ jobs:
         run: make kind-install-${{ matrix.ip-family }}
 
       - name: Run E2E
+        working-directory: ${{ env.E2E_DIR }}
         run: make cyclonus-netpol-e2e
 
   kube-ovn-conformance-e2e:
@@ -314,6 +378,25 @@ jobs:
           - underlay
     steps:
       - uses: actions/checkout@v3
+
+      - name: Create the default branch directory
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=\"$(pwd)\"" >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=\"$(pwd)test/e2e/source\"" >> "$GITHUB_ENV"
+          fi
+
       - uses: actions/setup-go@v3
         with:
           go-version: '${{ env.GO_VERSION }}'
@@ -323,16 +406,20 @@ jobs:
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
 
-      - name: Go Cache
+      - name: Go cache
         uses: actions/cache@v3
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-${{ env.GO_FULL_VER }}-x86-
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('${{ env.E2E_DIR }}/**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
-      - name: Install Kind
+      - name: Build e2e binaries
+        working-directory: ${{ env.E2E_DIR }}
+        run: make e2e-compile
+
+      - name: Install kind
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
@@ -343,7 +430,7 @@ jobs:
         with:
           name: kube-ovn
 
-      - name: Load Image
+      - name: Load image
         run: docker load --input kube-ovn.tar
 
       - name: Create kind cluster
@@ -358,6 +445,7 @@ jobs:
         run: make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
 
       - name: Run E2E
+        working-directory: ${{ env.E2E_DIR }}
         env:
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
           E2E_NETWORK_MODE: ${{ matrix.mode }}
@@ -373,22 +461,45 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
+
+      - name: Create the default branch directory
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=\"$(pwd)\"" >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=\"$(pwd)test/e2e/source\"" >> "$GITHUB_ENV"
+          fi
+
       - uses: actions/setup-go@v3
         with:
           go-version: '${{ env.GO_VERSION }}'
           check-latest: true
         id: go
 
-      - name: Go Cache
+      - name: Go cache
         uses: actions/cache@v3
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-${{ env.GOVERSION }}-x86-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-${{ env.GOVERSION }}-x86-
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('${{ env.E2E_DIR }}/**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
-      - name: Install Kind
+      - name: Build e2e binaries
+        working-directory: ${{ env.E2E_DIR }}
+        run: make e2e-compile
+
+      - name: Install kind
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
@@ -399,7 +510,7 @@ jobs:
         with:
           name: kube-ovn
 
-      - name: Load Image
+      - name: Load image
         run: docker load --input kube-ovn.tar
 
       - name: Create kind clusters
@@ -414,6 +525,7 @@ jobs:
         run: make kind-install-ovn-ic
 
       - name: Run E2E
+        working-directory: ${{ env.E2E_DIR }}
         run: make kube-ovn-ic-conformance-e2e
 
   chart-installation-test:
@@ -424,7 +536,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install Kind
+      - name: Install kind
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
@@ -435,7 +547,7 @@ jobs:
         with:
           name: kube-ovn
 
-      - name: Load Image
+      - name: Load image
         run: docker load --input kube-ovn.tar
 
       - name: Create kind cluster
@@ -464,7 +576,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install Kind
+      - name: Install kind
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
@@ -475,7 +587,7 @@ jobs:
         with:
           name: kube-ovn
 
-      - name: Load Image
+      - name: Load image
         run: docker load --input kube-ovn.tar
 
       - name: Create kind cluster
@@ -500,7 +612,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install Kind
+      - name: Install kind
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
@@ -511,7 +623,7 @@ jobs:
         with:
           name: kube-ovn
 
-      - name: Load Image
+      - name: Load image
         run: docker load --input kube-ovn.tar
 
       - name: Create kind cluster
@@ -538,7 +650,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install Kind
+      - name: Install kind
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
@@ -549,7 +661,7 @@ jobs:
         with:
           name: kube-ovn
 
-      - name: Load Image
+      - name: Load image
         run: docker load --input kube-ovn.tar
 
       - name: Create kind cluster
@@ -587,7 +699,7 @@ jobs:
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
 
-      - name: Go Cache
+      - name: Go cache
         uses: actions/cache@v3
         with:
           path: |
@@ -596,7 +708,7 @@ jobs:
           key: ${{ runner.os }}-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
           restore-keys: ${{ runner.os }}-${{ env.GO_FULL_VER }}-x86-
 
-      - name: Install Kind
+      - name: Install kind
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
@@ -642,7 +754,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install Kind
+      - name: Install kind
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
@@ -653,7 +765,7 @@ jobs:
         with:
           name: kube-ovn
 
-      - name: Load Image
+      - name: Load image
         run: docker load --input kube-ovn.tar
 
       - name: Create kind cluster
@@ -681,6 +793,24 @@ jobs:
         with:
           version: '${{ env.HELM_VERSION }}'
 
+      - name: Create the default branch directory
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=\"$(pwd)\"" >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=\"$(pwd)test/e2e/source\"" >> "$GITHUB_ENV"
+          fi
+
       - name: Remove DNS search domain
         run: |
           sudo sed -i '/^search/d' /etc/resolv.conf
@@ -695,16 +825,20 @@ jobs:
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
 
-      - name: Go Cache
+      - name: Go cache
         uses: actions/cache@v3
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-${{ env.GO_FULL_VER }}-x86-
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('${{ env.E2E_DIR }}/**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
-      - name: Install Kind
+      - name: Build e2e binaries
+        working-directory: ${{ env.E2E_DIR }}
+        run: make e2e-compile
+
+      - name: Install kind
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
@@ -715,7 +849,7 @@ jobs:
         with:
           name: kube-ovn
 
-      - name: Load Image
+      - name: Load image
         run: docker load --input kube-ovn.tar
 
       - name: Create kind cluster
@@ -730,6 +864,7 @@ jobs:
         run: make kind-install
 
       - name: Run E2E
+        working-directory: ${{ env.E2E_DIR }}
         run: make k8s-conformance-e2e
 
       - name: Cleanup
@@ -775,7 +910,7 @@ jobs:
       #   with:
       #     name: centos8-compile
 
-      - name: Load Image
+      - name: Load image
         run: |
           docker load --input kube-ovn.tar
           docker load --input vpc-nat-gateway.tar
