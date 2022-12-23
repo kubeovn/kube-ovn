@@ -395,6 +395,40 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				NextHopIP: gatewayV6,
 			})
 		}
+
+		if c.config.EnableEipSnat {
+			cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
+			if err == nil {
+				nextHop := cm.Data["external-gw-addr"]
+				if nextHop == "" {
+					klog.Errorf("no available gateway nic address")
+					return fmt.Errorf("no available gateway nic address")
+				}
+				if strings.Contains(nextHop, "/") {
+					nextHop = strings.Split(nextHop, "/")[0]
+				}
+
+				nats, err := c.ovnLegacyClient.GetRouterNat(vpc.Name)
+				if err != nil {
+					klog.Errorf("failed to get nat for vpc %s, %v", vpc.Name, err)
+					return err
+				}
+				for _, nat := range nats {
+					logical_ip, err := c.ovnLegacyClient.GetNatIPInfo(nat)
+					if err != nil {
+						klog.Errorf("failed to get nat ip info for vpc %s, %v", vpc.Name, err)
+						return err
+					}
+					if logical_ip != "" {
+						targetRoutes = append(targetRoutes, &kubeovnv1.StaticRoute{
+							Policy:    kubeovnv1.PolicySrc,
+							CIDR:      logical_ip,
+							NextHopIP: nextHop,
+						})
+					}
+				}
+			}
+		}
 	}
 
 	routeNeedDel, routeNeedAdd, err := diffStaticRoute(existRoute, targetRoutes)
