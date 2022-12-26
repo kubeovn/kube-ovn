@@ -139,31 +139,8 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 		return
 	}
 
-	isStateful, statefulSetName := isStatefulSetPod(p)
-	isVmPod, vmName := isVmPod(p)
-	if isStateful {
-		if isStatefulSetPodToDel(c.config.KubeClient, p, statefulSetName) {
-			klog.V(3).Infof("enqueue delete pod %s", key)
-			c.deletePodQueue.Add(obj)
-		}
-
-		if delete, err := appendCheckPodToDel(c, p, statefulSetName, "StatefulSet"); delete && err == nil {
-			klog.V(3).Infof("enqueue delete pod %s", key)
-			c.deletePodQueue.Add(obj)
-		}
-	} else if isVmPod && c.config.EnableKeepVmIP {
-		if c.isVmPodToDel(p, vmName) {
-			klog.V(3).Infof("enqueue delete pod %s", key)
-			c.deletePodQueue.Add(obj)
-		}
-		if delete, err := appendCheckPodToDel(c, p, vmName, util.VmInstance); delete && err == nil {
-			klog.V(3).Infof("enqueue delete pod %s", key)
-			c.deletePodQueue.Add(obj)
-		}
-	} else {
-		klog.V(3).Infof("enqueue delete pod %s", key)
-		c.deletePodQueue.Add(obj)
-	}
+	klog.V(3).Infof("enqueue delete pod %s", key)
+	c.deletePodQueue.Add(obj)
 }
 
 func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
@@ -657,8 +634,27 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 
 	var keepIpCR bool
 	if ok, sts := isStatefulSetPod(pod); ok {
+		toDel := isStatefulSetPodToDel(c.config.KubeClient, pod, sts)
 		delete, err := appendCheckPodToDel(c, pod, sts, "StatefulSet")
-		keepIpCR = !isStatefulSetPodToDel(c.config.KubeClient, pod, sts) && !delete && err == nil
+		if pod.DeletionTimestamp != nil {
+			// triggered by delete event
+			if !(toDel || (delete && err == nil)) {
+				return nil
+			}
+		}
+		keepIpCR = !toDel && !delete && err == nil
+	}
+	isVmPod, vmName := isVmPod(pod)
+	if isVmPod && c.config.EnableKeepVmIP {
+		toDel := c.isVmPodToDel(pod, vmName)
+		delete, err := appendCheckPodToDel(c, pod, vmName, util.VmInstance)
+		if pod.DeletionTimestamp != nil {
+			// triggered by delete event
+			if !(toDel || (delete && err == nil)) {
+				return nil
+			}
+			klog.Infof("delete vm pod %s", podName)
+		}
 	}
 
 	for _, port := range ports {
