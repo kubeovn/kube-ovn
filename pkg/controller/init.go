@@ -137,7 +137,13 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 	}
 	if c.config.NetworkType == util.NetworkTypeVlan {
 		defaultSubnet.Spec.Vlan = c.config.DefaultVlanName
+		if c.config.DefaultLogicalGateway && c.config.DefaultU2OInterconnection {
+			err = fmt.Errorf("logicalGateway and u2oInterconnection can't be opened at the same time")
+			klog.Error(err)
+			return err
+		}
 		defaultSubnet.Spec.LogicalGateway = c.config.DefaultLogicalGateway
+		defaultSubnet.Spec.U2OInterconnection = c.config.DefaultU2OInterconnection
 	}
 
 	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(context.Background(), &defaultSubnet, metav1.CreateOptions{})
