@@ -116,7 +116,7 @@ func (c *Controller) getSubnetsDistributedGateway(protocol string) ([]string, er
 	var result []string
 	for _, subnet := range subnets {
 		if subnet.DeletionTimestamp == nil &&
-			subnet.Spec.Vlan == "" &&
+			(subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) &&
 			subnet.Spec.Vpc == util.DefaultVpc &&
 			subnet.Spec.CIDRBlock != "" &&
 			subnet.Spec.GatewayType == kubeovnv1.GWDistributedType &&
