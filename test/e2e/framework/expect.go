@@ -103,7 +103,7 @@ func ExpectHaveKey(actual interface{}, key interface{}, explain ...interface{}) 
 	gomega.ExpectWithOffset(1, actual).To(gomega.HaveKey(key), explain...)
 }
 
-// ExpectHaveKey expects the actual map has the passed in key/value pair.
+// ExpectHaveKeyWithValue expects the actual map has the passed in key/value pair.
 func ExpectHaveKeyWithValue(actual interface{}, key, value interface{}, explain ...interface{}) {
 	gomega.ExpectWithOffset(1, actual).To(gomega.HaveKeyWithValue(key, value), explain...)
 }

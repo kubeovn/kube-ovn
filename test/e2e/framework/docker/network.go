@@ -38,7 +38,7 @@ func generateULASubnetFromName(name string, attempt int32) string {
 	return subnet.String()
 }
 
-func getNetwork(name string, ignoreNotFount bool) (*types.NetworkResource, error) {
+func getNetwork(name string, ignoreNotFound bool) (*types.NetworkResource, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, err
@@ -53,7 +53,7 @@ func getNetwork(name string, ignoreNotFount bool) (*types.NetworkResource, error
 	}
 
 	if len(networks) == 0 {
-		if !ignoreNotFount {
+		if !ignoreNotFound {
 			return nil, fmt.Errorf("network %s does not exist", name)
 		}
 		return nil, nil
@@ -63,11 +63,11 @@ func getNetwork(name string, ignoreNotFount bool) (*types.NetworkResource, error
 	return &network, nil
 }
 
-func GetNetwork(name string) (*types.NetworkResource, error) {
+func NetworkGet(name string) (*types.NetworkResource, error) {
 	return getNetwork(name, false)
 }
 
-func CreateNetwork(name string, ipv6, skipIfExists bool) (*types.NetworkResource, error) {
+func NetworkCreate(name string, ipv6, skipIfExists bool) (*types.NetworkResource, error) {
 	if skipIfExists {
 		network, err := getNetwork(name, true)
 		if err != nil {

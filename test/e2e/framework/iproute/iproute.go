@@ -10,40 +10,40 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
 )
 
-type Linkinfo struct {
+type LinkInfo struct {
 	InfoKind string `json:"info_kind"`
 }
 
 type AddrInfo struct {
 	Family            string `json:"family"`
 	Local             string `json:"local"`
-	Prefixlen         int    `json:"prefixlen"`
+	PrefixLen         int    `json:"prefixlen"`
 	Broadcast         string `json:"broadcast,omitempty"`
 	Scope             string `json:"scope"`
 	Label             string `json:"label,omitempty"`
 	ValidLifeTime     int64  `json:"valid_life_time"`
 	PreferredLifeTime int64  `json:"preferred_life_time"`
-	Nodad             bool   `json:"nodad,omitempty"`
+	NoDAD             bool   `json:"nodad,omitempty"`
 }
 
 type Link struct {
-	Ifindex     int        `json:"ifindex"`
+	IfIndex     int        `json:"ifindex"`
 	LinkIndex   int        `json:"link_index"`
-	Ifname      string     `json:"ifname"`
+	IfName      string     `json:"ifname"`
 	Flags       []string   `json:"flags"`
 	Mtu         int        `json:"mtu"`
 	Qdisc       string     `json:"qdisc"`
 	Master      string     `json:"master"`
-	Operstate   string     `json:"operstate"`
+	OperState   string     `json:"operstate"`
 	Group       string     `json:"group"`
 	LinkType    string     `json:"link_type"`
 	Address     string     `json:"address"`
 	Broadcast   string     `json:"broadcast"`
-	LinkNetnsid int        `json:"link_netnsid"`
+	LinkNetnsID int        `json:"link_netnsid"`
 	Promiscuity int        `json:"promiscuity"`
 	MinMtu      int        `json:"min_mtu"`
 	MaxMtu      int        `json:"max_mtu"`
-	Linkinfo    Linkinfo   `json:"linkinfo"`
+	LinkInfo    LinkInfo   `json:"linkinfo"`
 	NumTxQueues int        `json:"num_tx_queues"`
 	NumRxQueues int        `json:"num_rx_queues"`
 	GsoMaxSize  int        `json:"gso_max_size"`
@@ -55,7 +55,7 @@ func (l *Link) NonLinkLocalAddresses() []string {
 	var result []string
 	for _, addr := range l.AddrInfo {
 		if !net.ParseIP(addr.Local).IsLinkLocalUnicast() {
-			result = append(result, fmt.Sprintf("%s/%d", addr.Local, addr.Prefixlen))
+			result = append(result, fmt.Sprintf("%s/%d", addr.Local, addr.PrefixLen))
 		}
 	}
 	return result
@@ -70,7 +70,7 @@ type Route struct {
 	Scope    string        `json:"scope"`
 	Metric   int           `json:"metric"`
 	Flags    []interface{} `json:"flags"`
-	Prefsrc  string        `json:"prefsrc,omitempty"`
+	PrefSrc  string        `json:"prefsrc,omitempty"`
 	Pref     string        `json:"pref"`
 }
 
@@ -79,7 +79,7 @@ type Rule struct {
 	Src      string `json:"src"`
 	Table    string `json:"table"`
 	Protocol string `json:"protocol"`
-	Srclen   int    `json:"srclen,omitempty"`
+	SrcLen   int    `json:"srclen,omitempty"`
 }
 
 type ExecFunc func(cmd ...string) (stdout, stderr []byte, err error)

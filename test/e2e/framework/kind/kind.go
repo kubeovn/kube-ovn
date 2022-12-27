@@ -87,7 +87,7 @@ func (n *Node) WaitLinkToDisappear(linkName string, interval time.Duration, dead
 			return false, err
 		}
 		for _, link := range links {
-			if link.Ifname == linkName {
+			if link.IfName == linkName {
 				framework.Logf("link %s still exists", linkName)
 				return false, nil
 			}

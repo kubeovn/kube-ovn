@@ -241,6 +241,7 @@ func MakeSubnet(name, vlan, cidr, gateway string, excludeIPs, gatewayNodes, name
 		Spec: apiv1.SubnetSpec{
 			Vlan:        vlan,
 			CIDRBlock:   cidr,
+			Gateway:     gateway,
 			Protocol:    util.CheckProtocol(cidr),
 			ExcludeIps:  excludeIPs,
 			GatewayNode: strings.Join(gatewayNodes, ","),

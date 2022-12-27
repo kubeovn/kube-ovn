@@ -349,7 +349,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		ginkgo.By("Getting docker network used by kind")
-		network, err := docker.GetNetwork(kind.NetworkName)
+		network, err := docker.NetworkGet(kind.NetworkName)
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Determine external egress gateway addresses")
@@ -407,7 +407,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 					rule.Table == strconv.Itoa(prTable) {
 					framework.ExpectEqual(pod.Spec.NodeName, node.Name())
 					framework.ExpectContainElement(podIPs, rule.Src)
-					framework.ExpectEqual(rule.Srclen, 0)
+					framework.ExpectEqual(rule.SrcLen, 0)
 				}
 			}
 
@@ -442,7 +442,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		ginkgo.By("Getting docker network used by kind")
-		network, err := docker.GetNetwork(kind.NetworkName)
+		network, err := docker.NetworkGet(kind.NetworkName)
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Determine external egress gateway addresses")
@@ -498,7 +498,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 			for _, rule := range rules {
 				if rule.Priority == prPriority &&
 					rule.Table == strconv.Itoa(prTable) {
-					framework.ExpectContainElement(cidrs, fmt.Sprintf("%s/%d", rule.Src, rule.Srclen))
+					framework.ExpectContainElement(cidrs, fmt.Sprintf("%s/%d", rule.Src, rule.SrcLen))
 					found++
 				}
 			}

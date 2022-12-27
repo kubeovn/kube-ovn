@@ -94,7 +94,7 @@ var _ = framework.Describe("[group:lb-svc]", func() {
 
 		if dockerNetwork == nil {
 			ginkgo.By("Getting docker network " + kind.NetworkName)
-			network, err := docker.GetNetwork(kind.NetworkName)
+			network, err := docker.NetworkGet(kind.NetworkName)
 			framework.ExpectNoError(err, "getting docker network "+kind.NetworkName)
 			dockerNetwork = network
 		}

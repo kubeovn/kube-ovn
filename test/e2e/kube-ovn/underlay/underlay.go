@@ -32,9 +32,9 @@ func makeProviderNetwork(providerNetworkName string, exchangeLinkName bool, link
 		}
 
 		if defaultInterface == "" {
-			defaultInterface = link.Ifname
-		} else if link.Ifname != defaultInterface {
-			customInterfaces[link.Ifname] = append(customInterfaces[link.Ifname], node)
+			defaultInterface = link.IfName
+		} else if link.IfName != defaultInterface {
+			customInterfaces[link.IfName] = append(customInterfaces[link.IfName], node)
 		}
 	}
 
@@ -87,7 +87,7 @@ var _ = framework.Describe("[group:underlay]", func() {
 
 		if dockerNetwork == nil {
 			ginkgo.By("Ensuring docker network " + dockerNetworkName + " exists")
-			network, err := docker.CreateNetwork(dockerNetworkName, true, true)
+			network, err := docker.NetworkCreate(dockerNetworkName, true, true)
 			framework.ExpectNoError(err, "creating docker network "+dockerNetworkName)
 			dockerNetwork = network
 		}
@@ -124,7 +124,7 @@ var _ = framework.Describe("[group:underlay]", func() {
 
 			link := linkMap[node.ID]
 			for _, route := range routes {
-				if route.Dev == link.Ifname {
+				if route.Dev == link.IfName {
 					r := iproute.Route{
 						Dst:     route.Dst,
 						Gateway: route.Gateway,
@@ -153,7 +153,7 @@ var _ = framework.Describe("[group:underlay]", func() {
 			ginkgo.By("Validating node labels")
 			for _, node := range k8sNodes.Items {
 				link := linkMap[node.Name]
-				framework.ExpectHaveKeyWithValue(node.Labels, fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, providerNetworkName), link.Ifname)
+				framework.ExpectHaveKeyWithValue(node.Labels, fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, providerNetworkName), link.IfName)
 				framework.ExpectHaveKeyWithValue(node.Labels, fmt.Sprintf(util.ProviderNetworkReadyTemplate, providerNetworkName), "true")
 				framework.ExpectHaveKeyWithValue(node.Labels, fmt.Sprintf(util.ProviderNetworkMtuTemplate, providerNetworkName), strconv.Itoa(link.Mtu))
 				framework.ExpectNotHaveKey(node.Labels, fmt.Sprintf(util.ProviderNetworkExcludeTemplate, providerNetworkName))
@@ -173,7 +173,7 @@ var _ = framework.Describe("[group:underlay]", func() {
 			bridgeName := util.ExternalBridgeName(providerNetworkName)
 			for _, node := range kindNodes {
 				if exchangeLinkName {
-					bridgeName = linkMap[node.ID].Ifname
+					bridgeName = linkMap[node.ID].IfName
 				}
 
 				links, err := node.ListLinks()
@@ -181,9 +181,9 @@ var _ = framework.Describe("[group:underlay]", func() {
 
 				var port, bridge *iproute.Link
 				for i, link := range links {
-					if link.Ifindex == linkMap[node.ID].Ifindex {
+					if link.IfIndex == linkMap[node.ID].IfIndex {
 						port = &links[i]
-					} else if link.Ifname == bridgeName {
+					} else if link.IfName == bridgeName {
 						bridge = &links[i]
 					}
 					if port != nil && bridge != nil {
@@ -194,28 +194,28 @@ var _ = framework.Describe("[group:underlay]", func() {
 				framework.ExpectEqual(port.Address, linkMap[node.ID].Address)
 				framework.ExpectEqual(port.Mtu, linkMap[node.ID].Mtu)
 				framework.ExpectEqual(port.Master, "ovs-system")
-				framework.ExpectEqual(port.Operstate, "UP")
+				framework.ExpectEqual(port.OperState, "UP")
 				if exchangeLinkName {
-					framework.ExpectEqual(port.Ifname, util.ExternalBridgeName(providerNetworkName))
+					framework.ExpectEqual(port.IfName, util.ExternalBridgeName(providerNetworkName))
 				}
 
 				framework.ExpectNotNil(bridge)
-				framework.ExpectEqual(bridge.Linkinfo.InfoKind, "openvswitch")
+				framework.ExpectEqual(bridge.LinkInfo.InfoKind, "openvswitch")
 				framework.ExpectEqual(bridge.Address, port.Address)
 				framework.ExpectEqual(bridge.Mtu, port.Mtu)
-				framework.ExpectEqual(bridge.Operstate, "UNKNOWN")
+				framework.ExpectEqual(bridge.OperState, "UNKNOWN")
 				framework.ExpectContainElement(bridge.Flags, "UP")
 
 				framework.ExpectEmpty(port.NonLinkLocalAddresses())
 				framework.ExpectConsistOf(bridge.NonLinkLocalAddresses(), linkMap[node.ID].NonLinkLocalAddresses())
 
-				linkNameMap[node.ID] = port.Ifname
+				linkNameMap[node.ID] = port.IfName
 			}
 
 			ginkgo.By("Validating node routes")
 			for _, node := range kindNodes {
 				if exchangeLinkName {
-					bridgeName = linkMap[node.ID].Ifname
+					bridgeName = linkMap[node.ID].IfName
 				}
 
 				routes, err := node.ListRoutes(true)
@@ -232,7 +232,7 @@ var _ = framework.Describe("[group:underlay]", func() {
 					if route.Dev == linkNameMap[node.ID] {
 						portRoutes = append(portRoutes, r)
 					} else if route.Dev == bridgeName {
-						r.Dev = linkMap[node.ID].Ifname
+						r.Dev = linkMap[node.ID].IfName
 						bridgeRoutes = append(bridgeRoutes, r)
 					}
 				}
@@ -284,7 +284,7 @@ var _ = framework.Describe("[group:underlay]", func() {
 		_ = providerNetworkClient.CreateSync(pn)
 
 		ginkgo.By("Getting docker network " + dockerNetworkName)
-		network, err := docker.GetNetwork(dockerNetworkName)
+		network, err := docker.NetworkGet(dockerNetworkName)
 		framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
 
 		ginkgo.By("Creating vlan " + vlanName)
