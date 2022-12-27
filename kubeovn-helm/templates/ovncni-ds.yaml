@@ -90,6 +90,10 @@ spec:
             value: "{{- .Values.performance.MODULES }}"
           - name: RPMS
             value: "{{- .Values.performance.RPMS }}"
+          - name: POD_IPS
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIPs
         volumeMounts:
           - name: host-modules
             mountPath: /lib/modules
