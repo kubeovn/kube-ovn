@@ -726,6 +726,24 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Create the default branch directory
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=." >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
+          fi
+
       - uses: actions/setup-go@v3
         with:
           go-version: '${{ env.GO_VERSION }}'
@@ -741,8 +759,12 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-${{ env.GO_FULL_VER }}-x86-
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('${{ env.E2E_DIR }}/**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
+
+      - name: Build e2e binaries
+        working-directory: ${{ env.E2E_DIR }}
+        run: make e2e-compile
 
       - name: Install kind
         run: |
@@ -780,6 +802,7 @@ jobs:
         run: make kind-install-lb-svc
 
       - name: Run E2E
+        working-directory: ${{ env.E2E_DIR }}
         run: make kube-ovn-lb-svc-conformance-e2e
 
   installation-compatibility-test:
