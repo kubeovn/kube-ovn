@@ -156,12 +156,14 @@ jobs:
           sudo pip3 install j2cli
           sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
         working-directory: test/e2e/k8s-network/branches/${{ matrix.branch }}
         run: |
           docker pull kubeovn/kube-ovn:$(cat VERSION)
-          sudo make kind-install-${{ matrix.ip-family }}
+          make kind-install-${{ matrix.ip-family }}
 
       - name: Run E2E
         run: make k8s-netpol-e2e
@@ -209,18 +211,17 @@ jobs:
           sudo pip3 install j2cli
           sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
         working-directory: test/e2e/k8s-network/branches/${{ matrix.branch }}
         run: |
           docker pull kubeovn/kube-ovn:$(cat VERSION)
-          sudo make kind-install-${{ matrix.ip-family }}
+          make kind-install-${{ matrix.ip-family }}
 
       - name: Run E2E
-        run: |
-          sudo cp -r /root/.kube/ ~/.kube/
-          sudo chown -R $(id -un). ~/.kube/
-          make cyclonus-netpol-e2e
+        run: make cyclonus-netpol-e2e
 
   kube-ovn-conformance-e2e:
     name: Kube-OVN Conformance E2E
@@ -360,3 +361,395 @@ jobs:
         env:
           E2E_BRANCH: ${{ matrix.branch }}
         run: make kube-ovn-ic-conformance-e2e
+
+  ha-installation-test:
+    needs: build-kube-ovn
+    name: HA Installation Test
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        branch:
+          - master
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Create branch directory
+        run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
+
+      - name: Check out branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ matrix.branch }}
+          fetch-depth: 1
+          path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+
+      - name: Install kind
+        run: |
+          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
+          chmod +x ./kind
+          sudo mv kind /usr/local/bin
+
+      - name: Create kind cluster
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: |
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH make kind-init-ha
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
+
+      - name: Install Kube-OVN
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: |
+          docker pull kubeovn/kube-ovn:$(cat VERSION)
+          sudo ENABLE_SSL=true make kind-install
+
+      - name: Cleanup
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: sh dist/images/cleanup.sh
+
+  underlay-logical-gateway-installation-test:
+    needs: build-kube-ovn
+    name: Underlay Logical Gateway Installation Test
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        branch:
+          - master
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Create branch directory
+        run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
+
+      - name: Check out branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ matrix.branch }}
+          fetch-depth: 1
+          path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        
+      - name: Install kind
+        run: |
+          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
+          chmod +x ./kind
+          sudo mv kind /usr/local/bin
+
+      - name: Create kind cluster
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: |
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH make kind-init
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
+
+      - name: Install Kube-OVN
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: |
+          docker pull kubeovn/kube-ovn:$(cat VERSION)
+          make kind-install-underlay-logical-gateway-dual
+
+      - name: Cleanup
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: sh dist/images/cleanup.sh
+
+  no-ovn-lb-test:
+    needs: build-kube-ovn
+    name: Disable OVN LB Test
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        branch:
+          - master
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Create branch directory
+        run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
+
+      - name: Check out branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ matrix.branch }}
+          fetch-depth: 1
+          path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+
+      - name: Install kind
+        run: |
+          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
+          chmod +x ./kind
+          sudo mv kind /usr/local/bin
+
+      - name: Create kind cluster
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: |
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH make kind-init
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
+
+      - name: Install Kube-OVN without LoadBalancer
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        env:
+          ENABLE_LB: "false"
+        run: |
+          docker pull kubeovn/kube-ovn:$(cat VERSION)
+          make kind-install
+
+      - name: Cleanup
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: sh dist/images/cleanup.sh
+
+  no-np-test:
+    needs: build-kube-ovn
+    name: Disable Network Policy Test
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        branch:
+          - master
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Create branch directory
+        run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
+
+      - name: Check out branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ matrix.branch }}
+          fetch-depth: 1
+          path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+
+      - name: Install kind
+        run: |
+          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
+          chmod +x ./kind
+          sudo mv kind /usr/local/bin
+
+      - name: Create kind cluster
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: |
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH make kind-init
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
+
+      - name: Install Kube-OVN
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        env:
+          ENABLE_NP: "false"
+        run: |
+          docker pull kubeovn/kube-ovn:$(cat VERSION)
+          make kind-install
+
+      - name: Cleanup
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: sh dist/images/cleanup.sh
+
+  lb-svc-e2e:
+    needs:
+      - build-kube-ovn
+      - build-vpc-nat-gateway
+    name: LB Service E2E
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        branch:
+          - master
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Create branch directory
+        run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
+
+      - name: Check out branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ matrix.branch }}
+          fetch-depth: 1
+          path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+
+      - uses: actions/setup-go@v3
+        with:
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
+        id: go
+
+      - name: Export Go full version
+        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+
+      - name: Go cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-${{ env.GO_FULL_VER }}-x86-
+
+      - name: Install kind
+        run: |
+          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
+          chmod +x ./kind
+          sudo mv kind /usr/local/bin
+
+      - name: Create kind cluster
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: |
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH make kind-init
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
+
+      - name: Install Multus
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: make kind-install-multus
+
+      - name: Install Kube-OVN
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: |
+          docker pull kubeovn/kube-ovn:$(cat VERSION)
+          docker pull kubeovn/vpc-nat-gateway:$(cat VERSION)
+          make kind-install-lb-svc
+
+      - name: Run E2E
+        run: make kube-ovn-lb-svc-conformance-e2e
+
+  installation-compatibility-test:
+    needs: build-kube-ovn
+    name: Installation Compatibility Test
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        branch:
+          - master
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Create branch directory
+        run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
+
+      - name: Check out branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ matrix.branch }}
+          fetch-depth: 1
+          path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+
+      - name: Install kind
+        run: |
+          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
+          chmod +x ./kind
+          sudo mv kind /usr/local/bin
+
+      - name: Create kind cluster
+        run: |
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH k8s_version=v1.23.13 make kind-init
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
+
+      - name: Install Kube-OVN
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: |
+          docker pull kubeovn/kube-ovn:$(cat VERSION)
+          make kind-install
+
+      - name: Cleanup
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: sh dist/images/cleanup.sh
+
+  cilium-chaining-e2e:
+    needs: build-kube-ovn
+    name: Cilium Chaining E2E
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        branch:
+          - master
+    steps:
+      - uses: actions/checkout@v3
+      - uses: azure/setup-helm@v3
+        with:
+          version: '${{ env.HELM_VERSION }}'
+
+      - name: Remove DNS search domain
+        run: |
+          sudo sed -i '/^search/d' /etc/resolv.conf
+          sudo systemctl restart docker
+
+      - uses: actions/setup-go@v3
+        with:
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
+        id: go
+
+      - name: Export Go full version
+        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+
+      - name: Go cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('${{ env.E2E_DIR }}/**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
+
+      - name: Create branch directory
+        run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
+
+      - name: Check out branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ matrix.branch }}
+          fetch-depth: 1
+          path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+
+      - name: Install kind
+        run: |
+          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
+          chmod +x ./kind
+          sudo mv kind /usr/local/bin
+
+      - name: Create kind cluster
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: |
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH make kind-init
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
+
+      - name: Install Kube-OVN
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: |
+          docker pull kubeovn/kube-ovn:$(cat VERSION)
+          make kind-install
+
+      - name: Run E2E
+        run: make k8s-conformance-e2e
+
+      - name: Cleanup
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: sh dist/images/cleanup.sh
