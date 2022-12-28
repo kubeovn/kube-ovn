@@ -202,6 +202,12 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			return
 		}
 
+		if podSubnet.Status.U2OInterconnectionIP == "" && podSubnet.Spec.U2OInterconnection {
+			errMsg := fmt.Errorf("failed to generate u2o ip on subnet %s ", podSubnet.Name)
+			klog.Error(errMsg)
+			return
+		}
+
 		subnetPriority := csh.Controller.getSubnetQosPriority(subnet)
 		if priority == "" && subnetPriority != "" {
 			priority = subnetPriority

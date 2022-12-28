@@ -311,7 +311,7 @@ func (c *Controller) InitIPAM() error {
 			klog.Errorf("failed to init subnet %s: %v", subnet.Name, err)
 		}
 
-		u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc)
+		u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
 		u2oInterconnLrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
 		if subnet.Status.U2OInterconnectionIP != "" {
 			if _, _, _, err = c.ipam.GetStaticAddress(u2oInterconnName, u2oInterconnLrpName, subnet.Status.U2OInterconnectionIP, "", subnet.Name, true); err != nil {

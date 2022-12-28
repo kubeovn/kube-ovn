@@ -818,6 +818,14 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 		return err
 	}
 
+	u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
+	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), u2oInterconnName, metav1.DeleteOptions{}); err != nil {
+		if !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to delete ip %s, %v", u2oInterconnName, err)
+			return err
+		}
+	}
+
 	klog.Infof("delete policy route for %s subnet %s", subnet.Spec.GatewayType, subnet.Name)
 	if err := c.deletePolicyRouteByGatewayType(subnet, subnet.Spec.GatewayType, true); err != nil {
 		klog.Errorf("failed to delete policy route for overlay subnet %s, %v", subnet.Name, err)
@@ -1454,7 +1462,7 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 		subnet.Name, subnet.Spec.U2OInterconnection, subnet.Status.U2OInterconnectionIP)
 	if subnet.Spec.U2OInterconnection {
 		if subnet.Status.U2OInterconnectionIP == "" {
-			u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc)
+			u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
 			u2oInterconnLrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
 			v4ip, v6ip, _, err := c.acquireIpAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName)
 			if err != nil {
@@ -1469,13 +1477,26 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 			case kubeovnv1.ProtocolDual:
 				subnet.Status.U2OInterconnectionIP = fmt.Sprintf("%s,%s", v4ip, v6ip)
 			}
+			if err := c.createOrUpdateCrdIPs(u2oInterconnName, subnet.Status.U2OInterconnectionIP, "", subnet.Name, "default", "", "", "", nil); err != nil {
+				klog.Errorf("failed to create or update IPs of %s : %v", u2oInterconnLrpName, err)
+				return err
+			}
+
 			needCalcIP = true
 		}
 	} else {
 		if subnet.Status.U2OInterconnectionIP != "" {
-			u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc)
+			u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
 			c.ipam.ReleaseAddressByPod(u2oInterconnName)
 			subnet.Status.U2OInterconnectionIP = ""
+
+			if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), u2oInterconnName, metav1.DeleteOptions{}); err != nil {
+				if !k8serrors.IsNotFound(err) {
+					klog.Errorf("failed to delete ip %s, %v", u2oInterconnName, err)
+					return err
+				}
+			}
+
 			needCalcIP = true
 		}
 	}
@@ -1538,11 +1559,6 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		}
 		usingIPs += float64(len(eips.Items))
 	}
-
-	if subnet.Spec.U2OInterconnection && subnet.Status.U2OInterconnectionIP != "" {
-		usingIPs += 1
-	}
-
 	v4availableIPs = v4availableIPs - usingIPs
 	if v4availableIPs < 0 {
 		v4availableIPs = 0
@@ -1603,10 +1619,6 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 			return err
 		}
 		usingIPs += float64(len(eips.Items))
-	}
-
-	if subnet.Spec.U2OInterconnection && subnet.Status.U2OInterconnectionIP != "" {
-		usingIPs += 1
 	}
 
 	availableIPs = availableIPs - usingIPs
