@@ -2027,6 +2027,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIPs
+            - name: ENABLE_BIND_LOCAL_IP
+              value: "true"
           resources:
             requests:
               cpu: 300m
@@ -2525,6 +2527,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIPs
+            - name: ENABLE_BIND_LOCAL_IP
+              value: "true"
           resources:
             requests:
               cpu: 300m
@@ -3028,6 +3032,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIPs
+            - name: ENABLE_BIND_LOCAL_IP
+              value: "true"
           volumeMounts:
             - mountPath: /etc/localtime
               name: localtime
@@ -3156,6 +3162,8 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: status.podIPs
+          - name: ENABLE_BIND_LOCAL_IP
+            value: "true"
         volumeMounts:
           - name: host-modules
             mountPath: /lib/modules
@@ -3439,6 +3447,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIPs
+            - name: ENABLE_BIND_LOCAL_IP
+              value: "true"
           resources:
             requests:
               cpu: 200m
