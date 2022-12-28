@@ -363,7 +363,6 @@ jobs:
         run: make kube-ovn-ic-conformance-e2e
 
   ha-installation-test:
-    needs: build-kube-ovn
     name: HA Installation Test
     runs-on: ubuntu-22.04
     timeout-minutes: 30
@@ -411,7 +410,6 @@ jobs:
         run: sh dist/images/cleanup.sh
 
   underlay-logical-gateway-installation-test:
-    needs: build-kube-ovn
     name: Underlay Logical Gateway Installation Test
     runs-on: ubuntu-22.04
     timeout-minutes: 30
@@ -459,7 +457,6 @@ jobs:
         run: sh dist/images/cleanup.sh
 
   no-ovn-lb-test:
-    needs: build-kube-ovn
     name: Disable OVN LB Test
     runs-on: ubuntu-22.04
     timeout-minutes: 30
@@ -509,7 +506,6 @@ jobs:
         run: sh dist/images/cleanup.sh
 
   no-np-test:
-    needs: build-kube-ovn
     name: Disable Network Policy Test
     runs-on: ubuntu-22.04
     timeout-minutes: 30
@@ -559,9 +555,6 @@ jobs:
         run: sh dist/images/cleanup.sh
 
   lb-svc-e2e:
-    needs:
-      - build-kube-ovn
-      - build-vpc-nat-gateway
     name: LB Service E2E
     runs-on: ubuntu-22.04
     timeout-minutes: 30
@@ -631,7 +624,6 @@ jobs:
         run: make kube-ovn-lb-svc-conformance-e2e
 
   installation-compatibility-test:
-    needs: build-kube-ovn
     name: Installation Compatibility Test
     runs-on: ubuntu-22.04
     timeout-minutes: 10
@@ -678,7 +670,6 @@ jobs:
         run: sh dist/images/cleanup.sh
 
   cilium-chaining-e2e:
-    needs: build-kube-ovn
     name: Cilium Chaining E2E
     runs-on: ubuntu-22.04
     timeout-minutes: 30
