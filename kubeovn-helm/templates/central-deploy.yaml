@@ -69,6 +69,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIPs
+            - name: ENABLE_BIND_LOCAL_IP
+              value: "true"
           resources:
             requests:
               cpu: 300m

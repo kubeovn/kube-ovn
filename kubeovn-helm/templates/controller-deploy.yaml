@@ -119,6 +119,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIPs
+            - name: ENABLE_BIND_LOCAL_IP
+              value: "true"
           volumeMounts:
             - mountPath: /etc/localtime
               name: localtime
