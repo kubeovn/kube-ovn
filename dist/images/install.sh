@@ -27,6 +27,7 @@ IFACE=${IFACE:-}
 # Specifies the name of the dpdk tunnel iface.
 # Note that the dpdk tunnel iface and tunnel ip cidr should be diffierent with Kubernetes api cidr,otherwise the route will be a problem.
 DPDK_TUNNEL_IFACE=${DPDK_TUNNEL_IFACE:-br-phy}
+ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
 
 CNI_CONF_DIR="/etc/cni/net.d"
 CNI_BIN_DIR="/opt/cni/bin"
@@ -2028,7 +2029,7 @@ spec:
                 fieldRef:
                   fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
-              value: "true"
+              value: "$ENABLE_BIND_LOCAL_IP"
           resources:
             requests:
               cpu: 300m
@@ -2528,7 +2529,7 @@ spec:
                 fieldRef:
                   fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
-              value: "true"
+              value: "$ENABLE_BIND_LOCAL_IP"
           resources:
             requests:
               cpu: 300m
@@ -3033,7 +3034,7 @@ spec:
                 fieldRef:
                   fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
-              value: "true"
+              value: "$ENABLE_BIND_LOCAL_IP"
           volumeMounts:
             - mountPath: /etc/localtime
               name: localtime
@@ -3163,7 +3164,7 @@ spec:
               fieldRef:
                 fieldPath: status.podIPs
           - name: ENABLE_BIND_LOCAL_IP
-            value: "true"
+            value: "$ENABLE_BIND_LOCAL_IP"
         volumeMounts:
           - name: host-modules
             mountPath: /lib/modules
@@ -3448,7 +3449,7 @@ spec:
                 fieldRef:
                   fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
-              value: "true"
+              value: "$ENABLE_BIND_LOCAL_IP"
           resources:
             requests:
               cpu: 200m
