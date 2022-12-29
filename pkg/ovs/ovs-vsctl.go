@@ -66,8 +66,11 @@ func ovsAdd(table, record string, column string, values ...string) error {
 }
 
 // Returns the given column of records that match the condition
-func ovsFind(table, column, condition string) ([]string, error) {
-	output, err := Exec("--no-heading", "--columns="+column, "find", table, condition)
+func ovsFind(table, column string, conditions ...string) ([]string, error) {
+	args := make([]string, len(conditions)+4)
+	args[0], args[1], args[2], args[3] = "--no-heading", "--columns="+column, "find", table
+	copy(args[4:], conditions)
+	output, err := Exec(args...)
 	if err != nil {
 		return nil, err
 	}
