@@ -107,6 +107,12 @@ spec:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
               value: "{{ .Values.cni_conf.MASTER_NODES }}"
+            - name: POD_IPS
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIPs
+            - name: ENABLE_BIND_LOCAL_IP
+              value: "{{- .Values.func.ENABLE_BIND_LOCAL_IP }}"
           volumeMounts:
             - mountPath: /etc/localtime
               name: localtime
