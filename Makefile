@@ -157,6 +157,7 @@ kind-helm-install: kind-untaint-control-plane
 	$(eval EMPTY := )
 	$(eval SPACE := $(EMPTY))
 	$(eval MASTERS = $(subst SPACE,,,$(strip $$(MASTERNODES))))
+	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
 	helm install kubeovn ./kubeovn-helm --set cni_conf.MASTER_NODES=$(MASTERNODES)
 	kubectl -n kube-system get pods -o wide
 
