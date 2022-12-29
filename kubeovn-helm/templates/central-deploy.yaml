@@ -70,7 +70,7 @@ spec:
                 fieldRef:
                   fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
-              value: "true"
+              value: "{{- .Values.func.ENABLE_BIND_LOCAL_IP }}"
           resources:
             requests:
               cpu: 300m

@@ -43,6 +43,7 @@ func:
   HW_OFFLOAD: false
   ENABLE_LB_SVC: false
   ENABLE_KEEP_VM_IP: true
+  ENABLE_BIND_LOCAL_IP: true
 
 ipv4:
   POD_CIDR: "10.16.0.0/16"
