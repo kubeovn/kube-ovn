@@ -278,8 +278,8 @@ kind-untaint-control-plane:
 		done; \
 	done
 
-.PHONY: kind-helm-install
-kind-helm-install: kind-untaint-control-plane
+.PHONY: kind-install-chart
+kind-install-chart: kind-untaint-control-plane
 	kubectl label no -lbeta.kubernetes.io/os=linux kubernetes.io/os=linux --overwrite
 	kubectl label no -lnode-role.kubernetes.io/control-plane  kube-ovn/role=master --overwrite
 	kubectl label no -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel  --overwrite
@@ -294,7 +294,7 @@ kind-helm-install: kind-untaint-control-plane
 kind-install: kind-load-image
 	kubectl config use-context kind-kube-ovn
 	@$(MAKE) kind-untaint-control-plane
-	ENABLE_SSL=true dist/images/install.sh
+	bash dist/images/install.sh
 	kubectl describe no
 
 .PHONY: kind-install-dev
@@ -318,7 +318,7 @@ kind-install-ovn-ic: kind-load-image kind-install
 		-e 's/10.96.0/10.98.0/g' \
 		-e 's/100.64.0/100.68.0/g' \
 		dist/images/install.sh | \
-		ENABLE_SSL=true bash
+		bash
 	kubectl describe no
 
 	docker run -d --name ovn-ic-db --network kind $(REGISTRY)/kube-ovn:$(RELEASE_TAG) bash start-ic-db.sh
@@ -350,7 +350,7 @@ kind-install-underlay-ipv4: kind-disable-hairpin kind-load-image kind-untaint-co
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV4_EXCLUDE_IPS)"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		dist/images/install.sh | \
-		ENABLE_SSL=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
+		ENABLE_VLAN=true VLAN_NIC=eth0 bash
 	kubectl describe no
 
 .PHONY: kind-install-underlay-hairpin-ipv4
@@ -361,7 +361,7 @@ kind-install-underlay-hairpin-ipv4: kind-enable-hairpin kind-load-image kind-unt
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV4_EXCLUDE_IPS)"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		dist/images/install.sh | \
-		ENABLE_SSL=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
+		ENABLE_VLAN=true VLAN_NIC=eth0 bash
 	kubectl describe no
 
 .PHONY: kind-install-ipv6
@@ -379,7 +379,7 @@ kind-install-underlay-ipv6: kind-disable-hairpin kind-load-image kind-untaint-co
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV6_EXCLUDE_IPS)"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		dist/images/install.sh | \
-		ENABLE_SSL=true IPV6=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
+		IPV6=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
 
 .PHONY: kind-install-underlay-hairpin-ipv6
 kind-install-underlay-hairpin-ipv6: kind-enable-hairpin kind-load-image kind-untaint-control-plane
@@ -389,7 +389,7 @@ kind-install-underlay-hairpin-ipv6: kind-enable-hairpin kind-load-image kind-unt
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV6_EXCLUDE_IPS)"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		dist/images/install.sh | \
-		ENABLE_SSL=true IPV6=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
+		IPV6=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
 
 .PHONY: kind-install-dual
 kind-install-dual: kind-install-overlay-dual
@@ -406,7 +406,7 @@ kind-install-underlay-dual: kind-disable-hairpin kind-load-image kind-untaint-co
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV4_EXCLUDE_IPS),$(KIND_IPV6_EXCLUDE_IPS)"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		dist/images/install.sh | \
-		ENABLE_SSL=true DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
+		DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
 
 .PHONY: kind-install-underlay-hairpin-dual
 kind-install-underlay-hairpin-dual: kind-enable-hairpin kind-load-image kind-untaint-control-plane
@@ -416,7 +416,7 @@ kind-install-underlay-hairpin-dual: kind-enable-hairpin kind-load-image kind-unt
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV4_EXCLUDE_IPS),$(KIND_IPV6_EXCLUDE_IPS)"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		dist/images/install.sh | \
-		ENABLE_SSL=true DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
+		DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
 
 .PHONY: kind-install-underlay-logical-gateway-dual
 kind-install-underlay-logical-gateway-dual: kind-disable-hairpin kind-load-image kind-untaint-control-plane
@@ -426,18 +426,21 @@ kind-install-underlay-logical-gateway-dual: kind-disable-hairpin kind-load-image
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV4_GATEWAY),$(KIND_IPV4_EXCLUDE_IPS),$(KIND_IPV6_GATEWAY),$(KIND_IPV6_EXCLUDE_IPS)"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		dist/images/install.sh | \
-		ENABLE_SSL=true DUAL_STACK=true ENABLE_VLAN=true \
+		DUAL_STACK=true ENABLE_VLAN=true \
 		VLAN_NIC=eth0 LOGICAL_GATEWAY=true bash
 
 .PHONY: kind-install-multus
-kind-install-multus: kind-load-image kind-untaint-control-plane
+kind-install-multus:
 	$(call docker_ensure_image_exists,$(MULTUS_IMAGE))
 	$(call kind_load_image,kube-ovn,$(MULTUS_IMAGE))
-	$(call kind_load_image,kube-ovn,$(VPC_NAT_GW_IMG))
 	kubectl apply -f "$(MULTUS_YAML)"
 	kubectl -n kube-system rollout status ds kube-multus-ds
+
+.PHONY: kind-install-lb-svc
+kind-install-lb-svc: kind-load-image kind-untaint-control-plane
+	$(call kind_load_image,kube-ovn,$(VPC_NAT_GW_IMG))
 	kubectl apply -f yamls/lb-svc-attachment.yaml
-	ENABLE_SSL=true ENABLE_LB_SVC=true CNI_CONFIG_PRIORITY=10 dist/images/install.sh
+	ENABLE_LB_SVC=true CNI_CONFIG_PRIORITY=10 dist/images/install.sh
 	kubectl describe no
 
 .PHONY: kind-install-cilium
@@ -460,7 +463,7 @@ kind-install-cilium: kind-load-image kind-untaint-control-plane
 		--set cni.configMap=cni-configuration
 	kubectl -n kube-system rollout status ds cilium --timeout 300s
 	bash dist/images/cilium.sh
-	ENABLE_SSL=true ENABLE_LB=false ENABLE_NP=false WITHOUT_KUBE_PROXY=true CNI_CONFIG_PRIORITY=10 bash dist/images/install.sh
+	ENABLE_LB=false ENABLE_NP=false WITHOUT_KUBE_PROXY=true CNI_CONFIG_PRIORITY=10 bash dist/images/install.sh
 	kubectl describe no
 
 .PHONY: kind-reload
@@ -474,12 +477,12 @@ kind-reload-ovs: kind-load-image
 	kubectl delete pod -n kube-system -l app=ovs
 
 .PHONY: kind-clean
-kind-clean: kind-disable-hairpin
-	$(call docker_rm_container,kube-ovn-e2e)
+kind-clean:
 	kind delete cluster --name=kube-ovn
 
 .PHONY: kind-clean-ovn-ic
 kind-clean-ovn-ic: kind-clean
+	$(call docker_rm_container,ovn-ic-db)
 	kind delete cluster --name=kube-ovn1
 
 .PHONY: uninstall
@@ -516,63 +519,6 @@ ipam-bench:
 	go test -timeout 30m -bench='^BenchmarkIPAM' -benchtime=10000x test/unittest/ipam_bench/ipam_test.go -args -logtostderr=false
 	go test -timeout 90m -bench='^BenchmarkParallelIPAM' -benchtime=10x test/unittest/ipam_bench/ipam_test.go -args -logtostderr=false
 
-.PHONY: e2e
-e2e:
-	$(call docker_create_vlan_network)
-	$(eval NODE_COUNT = $(shell kind get nodes --name kube-ovn | wc -l))
-	$(eval E2E_NETWORK_INFO = $(shell docker inspect -f '{{json (index .NetworkSettings.Networks "$(E2E_NETWORK)")}}' kube-ovn-control-plane))
-	$(call docker_rm_container,kube-ovn-e2e)
-	docker run -d --name kube-ovn-e2e --network kind --cap-add=NET_ADMIN $(REGISTRY)/kube-ovn:$(RELEASE_TAG) sleep infinity
-	@if [ '$(E2E_NETWORK_INFO)' = 'null' ]; then \
-		kind get nodes --name kube-ovn | while read node; do \
-			docker network connect $(E2E_NETWORK) $$node; \
-		done; \
-	fi
-	$(call docker_config_bridge,$(E2E_NETWORK),0,$(VLAN_ID))
-
-	@echo "{" > test/e2e/network.json
-	@i=0; kind get nodes --name kube-ovn | while read node; do \
-		i=$$((i+1)); \
-		printf '"%s": ' "$$node" >> test/e2e/network.json; \
-		docker inspect -f '{{json (index .NetworkSettings.Networks "$(E2E_NETWORK)")}}' "$$node" >> test/e2e/network.json; \
-		if [ $$i -ne $(NODE_COUNT) ]; then echo "," >> test/e2e/network.json; fi; \
-	done
-	@echo "}" >> test/e2e/network.json
-
-	$(call docker_ensure_image_exists,kubeovn/pause:3.2)
-	$(call kind_load_image,kube-ovn,kubeovn/pause:3.2)
-	ginkgo -mod=mod -progress --always-emit-ginkgo-writer --slow-spec-threshold=60s test/e2e
-
-.PHONY: e2e-ipv6
-e2e-ipv6:
-	@IPV6=true $(MAKE) e2e
-
-.PHONY: e2e-vlan
-e2e-vlan:
-	@VLAN_ID=100 $(MAKE) e2e
-
-.PHONY: e2e-vlan-ipv6
-e2e-vlan-ipv6:
-	@IPV6=true $(MAKE) e2e-vlan
-
-.PHONY: e2e-underlay-single-nic
-e2e-underlay-single-nic:
-	@docker inspect -f '{{json .NetworkSettings.Networks.kind}}' kube-ovn-control-plane > test/e2e-underlay-single-nic/node/network.json
-	ginkgo -mod=mod -progress --always-emit-ginkgo-writer --slow-spec-threshold=60s test/e2e-underlay-single-nic
-
-.PHONY: e2e-ovn-ic
-e2e-ovn-ic:
-	ginkgo -mod=mod -progress --always-emit-ginkgo-writer --slow-spec-threshold=60s test/e2e-ovn-ic
-
-.PHONY: e2e-cilium
-e2e-cilium:
-	docker run -d --name kube-ovn-e2e --network kind --cap-add=NET_ADMIN $(REGISTRY)/kube-ovn:$(RELEASE_TAG) sleep infinity
-	ginkgo -mod=mod -progress --always-emit-ginkgo-writer --slow-spec-threshold=60s test/e2e-cilium
-
-.PHONY: e2e-multus
-e2e-multus:
-	ginkgo -mod=mod -progress --always-emit-ginkgo-writer --slow-spec-threshold=60s test/e2e-multus
-
 .PHONY: clean
 clean:
 	$(RM) dist/images/kube-ovn dist/images/kube-ovn-cmd
@@ -580,8 +526,6 @@ clean:
 	$(RM) ovn.yaml kube-ovn.yaml kube-ovn-crd.yaml
 	$(RM) ovn-ic-0.yaml ovn-ic-1.yaml
 	$(RM) kube-ovn.tar vpc-nat-gateway.tar image-amd64.tar image-arm64.tar
-	$(RM) test/e2e/ovnnb_db.* test/e2e/ovnsb_db.*
-	$(RM) test/e2e/network.json test/e2e-underlay-single-nic/node/network.json
 
 .PHONY: changelog
 changelog:

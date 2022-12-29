@@ -14,6 +14,7 @@ require (
 	github.com/containernetworking/cni v1.1.2
 	github.com/containernetworking/plugins v1.1.1
 	github.com/coreos/go-iptables v0.6.0
+	github.com/docker/docker v20.10.22+incompatible
 	github.com/emicklei/go-restful/v3 v3.10.1
 	github.com/evanphx/json-patch/v5 v5.6.0
 	github.com/greenpau/ovsdb v1.0.3
@@ -32,7 +33,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.8.1
 	github.com/vishvananda/netlink v1.2.1-beta.2
-	golang.org/x/exp v0.0.0-20221211140036-ad323defaf05
+	golang.org/x/exp v0.0.0-20221217163422-3c43f8badb15
 	golang.org/x/sys v0.3.0
 	golang.org/x/time v0.3.0
 	google.golang.org/grpc v1.51.0
@@ -44,10 +45,11 @@ require (
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/klog/v2 v2.80.1
 	k8s.io/kubernetes v1.26.0
+	k8s.io/pod-security-admission v0.26.0
 	k8s.io/sample-controller v0.26.0
 	k8s.io/utils v0.0.0-20221128185143-99ec85e7a448
 	kubevirt.io/client-go v0.58.0
-	sigs.k8s.io/controller-runtime v0.0.0-20221211125314-222fb669e109
+	sigs.k8s.io/controller-runtime v0.14.0
 )
 
 require (
@@ -89,6 +91,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13 // indirect
 	github.com/docker/distribution v2.8.1+incompatible // indirect
+	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/eapache/channels v1.1.0 // indirect
 	github.com/eapache/queue v1.1.0 // indirect
@@ -161,6 +164,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
+	github.com/opencontainers/image-spec v1.0.2 // indirect
 	github.com/opencontainers/runc v1.1.4 // indirect
 	github.com/opencontainers/runtime-spec v1.0.3-0.20210326190908-1c3f411f0417 // indirect
 	github.com/opencontainers/selinux v1.10.0 // indirect
@@ -235,7 +239,7 @@ require (
 	k8s.io/cluster-bootstrap v0.26.0 // indirect
 	k8s.io/component-base v0.26.0 // indirect
 	k8s.io/component-helpers v0.26.0 // indirect
-	k8s.io/cri-api v0.20.6 // indirect
+	k8s.io/cri-api v0.26.0 // indirect
 	k8s.io/csi-translation-lib v0.26.0 // indirect
 	k8s.io/dynamic-resource-allocation v0.0.0 // indirect
 	k8s.io/kms v0.26.0 // indirect
@@ -246,9 +250,8 @@ require (
 	k8s.io/kubelet v0.26.0 // indirect
 	k8s.io/legacy-cloud-providers v0.0.0 // indirect
 	k8s.io/mount-utils v0.0.0 // indirect
-	k8s.io/pod-security-admission v0.0.0 // indirect
 	kubevirt.io/api v0.58.0 // indirect
-	kubevirt.io/containerized-data-importer-api v1.55.1 // indirect
+	kubevirt.io/containerized-data-importer-api v1.55.2 // indirect
 	kubevirt.io/controller-lifecycle-operator-sdk/api v0.2.4 // indirect
 	moul.io/http2curl v1.0.0 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.33 // indirect
