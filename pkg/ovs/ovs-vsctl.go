@@ -213,7 +213,7 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string)
 // When reboot node, the ovs internal interface will be deleted.
 func CleanLostInterface() {
 	// when interface error ofport will be -1
-	interfaceList, err := ovsFind("interface", "name,error", "ofport=-1")
+	interfaceList, err := ovsFind("interface", "name,error", "ofport=-1", "external_ids:pod_netns!=[]")
 	if err != nil {
 		klog.Errorf("failed to list failed interface %v", err)
 		return
@@ -231,7 +231,7 @@ func CleanLostInterface() {
 				return
 			}
 			klog.Infof("delete lost port %s", name)
-			output, err := Exec("--if-exists", "--with-iface", "del-port", "br-int", name)
+			output, err := Exec("--if-exists", "--with-iface", "del-port", name)
 			if err != nil {
 				klog.Errorf("failed to delete ovs port %v, %s", err, output)
 				return
