@@ -559,6 +559,11 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
+	if err := c.reconcileU2OInterconnectionIP(subnet); err != nil {
+		klog.Errorf("failed to reconcile underlay subnet %s to overlay interconnection %v", subnet.Name, err)
+		return err
+	}
+
 	if !isOvnSubnet(subnet) {
 		return nil
 	}
@@ -574,11 +579,6 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	subnetList, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets %v", err)
-		return err
-	}
-
-	if err := c.reconcileU2OInterconnectionIP(subnet); err != nil {
-		klog.Errorf("failed to reconcile underlay subnet %s to overlay interconnection %v", subnet.Name, err)
 		return err
 	}
 
