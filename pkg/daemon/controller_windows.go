@@ -17,8 +17,7 @@ import (
 )
 
 // ControllerRuntime represents runtime specific controller members
-type ControllerRuntime struct {
-}
+type ControllerRuntime struct{}
 
 func (c *Controller) initRuntime() error {
 	return nil
@@ -215,7 +214,7 @@ func (c *Controller) handlePod(key string) error {
 			if err != nil {
 				return err
 			}
-			err = ovs.SetNetemQos(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.NetemQosLatencyAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, provider)])
+			err = ovs.SetNetemQos(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.NetemQosLatencyAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosJitterAnnotationTemplate, provider)])
 			if err != nil {
 				return err
 			}

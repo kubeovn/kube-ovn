@@ -84,10 +84,12 @@ When the subnet specifies the htbqos parameter and pod sets the QoS priority ann
 **The previous annotation `ovn.kubernetes.io/ingress_rate` and `ovn.kubernetes.io/egress_rate`, can still be used to control the bidirectional bandwidth of pod.**
 
 ## linux-netem QoS
-New annotations added for pod, `ovn.kubernetes.io/latency`、 `ovn.kubernetes.io/limit` and
+New annotations added for pod, `ovn.kubernetes.io/latency`、 `ovn.kubernetes.io/jitter`、 `ovn.kubernetes.io/limit` and
 `ovn.kubernetes.io/loss`, used for setting QoS parameters of linux-netem type.
 
 `latency` is used for traffic delay. The value is an integer value, and the unit is `ms`.
+
+`jitter` is used for traffic delay jitter. The value is an integer value, and the unit is `ms`.
 
 `limit` is the maximum number of packets the qdisc may hold queued at a time. The value is an integer value, such as 1000.
 

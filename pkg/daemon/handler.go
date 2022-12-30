@@ -86,7 +86,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	}
 
 	var gatewayCheckMode int
-	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, providerNetwork, ifName, nicType, podNicName, vmName, latency, limit, loss, u2oInterconnectionIP string
+	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, providerNetwork, ifName, nicType, podNicName, vmName, latency, limit, loss, jitter, u2oInterconnectionIP string
 	var routes []request.Route
 	var isDefaultRoute bool
 	var pod *v1.Pod
@@ -125,6 +125,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		latency = pod.Annotations[fmt.Sprintf(util.NetemQosLatencyAnnotationTemplate, podRequest.Provider)]
 		limit = pod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, podRequest.Provider)]
 		loss = pod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, podRequest.Provider)]
+		jitter = pod.Annotations[fmt.Sprintf(util.NetemQosJitterAnnotationTemplate, podRequest.Provider)]
 		providerNetwork = pod.Annotations[fmt.Sprintf(util.ProviderNetworkTemplate, podRequest.Provider)]
 		vmName = pod.Annotations[fmt.Sprintf(util.VmTemplate, podRequest.Provider)]
 		ipAddr = util.GetIpAddrWithMask(ip, cidr)
@@ -225,7 +226,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			u2oInterconnectionIP = podSubnet.Status.U2OInterconnectionIP
 		}
 
-		//skip ping check gateway for pods during live migration
+		// skip ping check gateway for pods during live migration
 		if pod.Annotations[fmt.Sprintf(util.LiveMigrationAnnotationTemplate, podRequest.Provider)] != "true" {
 			if podSubnet.Spec.Vlan != "" && !podSubnet.Spec.LogicalGateway {
 				if podSubnet.Spec.DisableGatewayCheck {
@@ -272,12 +273,12 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s, custom routes %v", ifName, macAddr, ipAddr, cidr, gw, routes)
 		detectIPConflict := podSubnet.Spec.Vlan != ""
 		if nicType == util.InternalType {
-			podNicName, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, detectIPConflict, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, gatewayCheckMode, u2oInterconnectionIP)
+			podNicName, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, detectIPConflict, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP)
 		} else if nicType == util.DpdkType {
 			err = csh.configureDpdkNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, ingress, egress, getShortSharedDir(pod.UID, podRequest.VhostUserSocketVolumeName), podRequest.VhostUserSocketName)
 		} else {
 			podNicName = ifName
-			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, detectIPConflict, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, gatewayCheckMode, u2oInterconnectionIP)
+			err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, detectIPConflict, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP)
 		}
 		if err != nil {
 			errMsg := fmt.Errorf("configure nic failed %v", err)
