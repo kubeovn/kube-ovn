@@ -21,7 +21,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -139,18 +138,10 @@ func checkOvnIsAlive() bool {
 
 func checkNbIsLeader() bool {
 	var command []string
-	listenIp := "127.0.0.1"
-	if os.Getenv("ENABLE_BIND_LOCAL_IP") == "true" {
-		listenIp = os.Getenv("POD_IP")
-		if util.CheckProtocol(listenIp) == kubeovnv1.ProtocolIPv6 {
-			listenIp = fmt.Sprintf("[%s]", os.Getenv("POD_IP"))
-		}
-	}
-
 	if os.Getenv(EnvSSL) == "false" {
 		command = []string{
 			"query",
-			fmt.Sprintf("tcp:%s:6641", listenIp),
+			"tcp:127.0.0.1:6641",
 			`["_Server",{"table":"Database","where":[["name","==","OVN_Northbound"]],"columns":["leader"],"op":"select"}]`,
 		}
 	} else {
@@ -162,7 +153,7 @@ func checkNbIsLeader() bool {
 			"-C",
 			"/var/run/tls/cacert",
 			"query",
-			fmt.Sprintf("ssl:%s:6641", listenIp),
+			"ssl:127.0.0.1:6641",
 			`["_Server",{"table":"Database","where":[["name","==","OVN_Northbound"]],"columns":["leader"],"op":"select"}]`,
 		}
 	}
@@ -185,18 +176,10 @@ func checkNbIsLeader() bool {
 
 func checkSbIsLeader() bool {
 	var command []string
-	listenIp := "127.0.0.1"
-	if os.Getenv("ENABLE_BIND_LOCAL_IP") == "true" {
-		listenIp = os.Getenv("POD_IP")
-		if util.CheckProtocol(listenIp) == kubeovnv1.ProtocolIPv6 {
-			listenIp = fmt.Sprintf("[%s]", os.Getenv("POD_IP"))
-		}
-	}
-
 	if os.Getenv(EnvSSL) == "false" {
 		command = []string{
 			"query",
-			fmt.Sprintf("tcp:%s:6642", listenIp),
+			"tcp:127.0.0.1:6642",
 			`["_Server",{"table":"Database","where":[["name","==","OVN_Southbound"]],"columns":["leader"],"op":"select"}]`,
 		}
 	} else {
@@ -208,7 +191,7 @@ func checkSbIsLeader() bool {
 			"-C",
 			"/var/run/tls/cacert",
 			"query",
-			fmt.Sprintf("ssl:%s:6642", listenIp),
+			"ssl:127.0.0.1:6642",
 			`["_Server",{"table":"Database","where":[["name","==","OVN_Southbound"]],"columns":["leader"],"op":"select"}]`,
 		}
 	}
