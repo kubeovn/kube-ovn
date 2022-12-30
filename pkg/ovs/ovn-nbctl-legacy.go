@@ -439,8 +439,38 @@ func (c LegacyClient) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway s
 		cmd = []string{MayExist, "ls-add", ls}
 	}
 	if needRouter {
-		cmd = append(cmd, []string{"--",
-			"set", "logical_router_port", fmt.Sprintf("%s-%s", lr, ls), fmt.Sprintf("networks=%s", networks)}...)
+		lsTolr := fmt.Sprintf("%s-%s", ls, lr)
+		lrTols := fmt.Sprintf("%s-%s", lr, ls)
+
+		exist, err := c.LogicalSwitchPortExists(lsTolr)
+		if err != nil {
+			klog.Errorf("failed to get logical switch port %s to router, %v", lsTolr, err)
+			return err
+		}
+		if !exist {
+			cmd = append(cmd, []string{"--", MayExist, "lsp-add", ls, lsTolr, "--",
+				"set", "logical_switch_port", lsTolr, "type=router", "--",
+				"lsp-set-addresses", lsTolr, "router", "--",
+				"set", "logical_switch_port", lsTolr, fmt.Sprintf("options:router-port=%s", lrTols), "--",
+				"set", "logical_switch_port", lsTolr, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)}...)
+		}
+
+		// check router port exist
+		results, err := c.ListLogicalEntity("logical_router_port", fmt.Sprintf("name=%s", lrTols))
+		if err != nil {
+			klog.Errorf("failed to list router port %s, %v", lrTols, err)
+			return err
+		}
+		if len(results) == 0 {
+			// v6address no need add \ when use lrp-add
+			networks = strings.ReplaceAll(networks, "\\:", ":")
+			networkList := strings.Split(networks, " ")
+			cmd = append(cmd, []string{"--", MayExist, "lrp-add", lr, lrTols, util.GenerateMac()}...)
+			cmd = append(cmd, networkList...)
+		} else {
+			cmd = append(cmd, []string{"--",
+				"set", "logical_router_port", fmt.Sprintf("%s-%s", lr, ls), fmt.Sprintf("networks=%s", networks)}...)
+		}
 	}
 	cmd = append(cmd, []string{"--",
 		"set", "logical_switch", ls, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)}...)
@@ -2511,6 +2541,21 @@ func (c *LegacyClient) PolicyRouteExists(priority int32, match string) (bool, er
 		return false, nil
 	}
 	return true, nil
+}
+
+func (c *LegacyClient) DeletePolicyRouteByUUID(router string, uuids []string) error {
+	if len(uuids) == 0 {
+		return nil
+	}
+	for _, uuid := range uuids {
+		var args []string
+		args = append(args, []string{"lr-policy-del", router, uuid}...)
+		if _, err := c.ovnNbCommand(args...); err != nil {
+			klog.Errorf("failed to delete router %s policy route: %v", router, err)
+			return err
+		}
+	}
+	return nil
 }
 
 func (c *LegacyClient) GetPolicyRouteParas(priority int32, match string) ([]string, map[string]string, error) {
