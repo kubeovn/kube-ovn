@@ -1289,16 +1289,25 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	if !isStsPod {
 		for _, net := range nsNets {
 			for _, staticIPs := range ipPool {
+				ipProtocol := util.CheckProtocol(staticIPs)
 				for _, staticIP := range strings.Split(staticIPs, ",") {
 					if assignedPod, ok := c.ipam.IsIPAssignedToOtherPod(staticIP, net.Subnet.Name, key); ok {
-						klog.Errorf("static address %s for %s has been assigned to %", staticIP, key, assignedPod)
+						klog.Errorf("static address %s for %s has been assigned to %s", staticIP, key, assignedPod)
 						continue
 					}
-				}
 
-				v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, staticIPs, macStr, net.Subnet.Name, net.AllowLiveMigration)
-				if err == nil {
-					return v4IP, v6IP, mac, net.Subnet, nil
+					if ipProtocol != kubeovnv1.ProtocolDual {
+						v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, staticIP, macStr, net.Subnet.Name, net.AllowLiveMigration)
+						if err == nil {
+							return v4IP, v6IP, mac, net.Subnet, nil
+						}
+					}
+				}
+				if ipProtocol == kubeovnv1.ProtocolDual {
+					v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, staticIPs, macStr, net.Subnet.Name, net.AllowLiveMigration)
+					if err == nil {
+						return v4IP, v6IP, mac, net.Subnet, nil
+					}
 				}
 			}
 		}
