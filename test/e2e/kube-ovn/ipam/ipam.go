@@ -104,11 +104,11 @@ var _ = framework.Describe("[group:ipam]", func() {
 		podClient.DeleteSync(pod.Name)
 	})
 
-	framework.ConformanceIt("should allocate static ipv4 for deployment with ippool", func() {
+	framework.ConformanceIt("should allocate static ip for deployment with ippool", func() {
 		ippoolSep := ";"
-		if f.ClusterVersionMajor <= 1 && f.ClusterVersionMinor <= 10 {
+		if f.ClusterVersionMajor <= 1 && f.ClusterVersionMinor < 11 {
 			if f.ClusterIpFamily == "dual" {
-				ginkgo.Skip("Static dual stack ippool was introduced in v1.11")
+				ginkgo.Skip("Support for dual stack ippool was introduced in v1.11")
 			}
 			ippoolSep = ","
 		}
@@ -187,7 +187,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		framework.ExpectNoError(err, "failed to delete deployment "+name)
 	})
 
-	framework.ConformanceIt("should allocate static ipv4 for statefulset", func() {
+	framework.ConformanceIt("should allocate static ip for statefulset", func() {
 		replicas := 3
 		name := "statefulset-" + framework.RandomSuffix()
 		labels := map[string]string{"app": name}
@@ -248,11 +248,11 @@ var _ = framework.Describe("[group:ipam]", func() {
 		framework.ExpectNoError(err, "failed to delete statefulset "+name)
 	})
 
-	framework.ConformanceIt("should allocate static ipv4 for statefulset with ippool", func() {
+	framework.ConformanceIt("should allocate static ip for statefulset with ippool", func() {
 		ippoolSep := ";"
-		if f.ClusterVersionMajor <= 1 && f.ClusterVersionMinor <= 10 {
+		if f.ClusterVersionMajor <= 1 && f.ClusterVersionMinor < 11 {
 			if f.ClusterIpFamily == "dual" {
-				ginkgo.Skip("Skip static ippool for dual stack in release-1.9")
+				ginkgo.Skip("Support for dual stack ippool was introduced in v1.11")
 			}
 			ippoolSep = ","
 		}
