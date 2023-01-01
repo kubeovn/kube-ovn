@@ -26,10 +26,10 @@ func ContainerList(filters map[string][]string) ([]types.Container, error) {
 	return cli.ContainerList(context.Background(), types.ContainerListOptions{All: true, Filters: f})
 }
 
-func ContainerCreate(name, image, networkName string, cmd []string) (string, error) {
+func ContainerCreate(name, image, networkName string, cmd []string) (*types.ContainerJSON, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer cli.Close()
 
@@ -46,14 +46,19 @@ func ContainerCreate(name, image, networkName string, cmd []string) (string, err
 
 	resp, err := cli.ContainerCreate(context.Background(), containerConfig, nil, networkConfig, nil, name)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	if err = cli.ContainerStart(context.Background(), resp.ID, types.ContainerStartOptions{}); err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return resp.ID, nil
+	info, err := cli.ContainerInspect(context.Background(), resp.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &info, nil
 }
 
 func ContainerInspect(id string) (*types.ContainerJSON, error) {
