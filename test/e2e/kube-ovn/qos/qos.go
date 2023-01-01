@@ -87,7 +87,9 @@ var _ = framework.Describe("[group:qos]", func() {
 		}
 	})
 
-	framework.ConformanceIt(`should support netem QoS"`, func() {
+	framework.ConformanceIt("should support netem QoS", func() {
+		f.SkipVersionPriorTo(1, 9, "Support for netem QoS was introduced in v1.9")
+
 		name := "pod-" + framework.RandomSuffix()
 		ginkgo.By("Creating pod " + name)
 		latency, limit, loss := 600, 2000, 10
@@ -116,7 +118,9 @@ var _ = framework.Describe("[group:qos]", func() {
 		podClient.DeleteSync(pod.Name)
 	})
 
-	framework.ConformanceIt(`should be able to update netem QoS"`, func() {
+	framework.ConformanceIt("should be able to update netem QoS", func() {
+		f.SkipVersionPriorTo(1, 9, "Support for netem QoS was introduced in v1.9")
+
 		name := "pod-" + framework.RandomSuffix()
 		ginkgo.By("Creating pod " + name + " without QoS")
 		pod := framework.MakePod(namespaceName, name, nil, nil, "", nil, nil)
@@ -154,7 +158,7 @@ var _ = framework.Describe("[group:qos]", func() {
 		podClient.DeleteSync(pod.Name)
 	})
 
-	framework.ConformanceIt(`should support htb QoS"`, func() {
+	framework.ConformanceIt("should support htb QoS", func() {
 		name := "pod-" + framework.RandomSuffix()
 		ginkgo.By("Creating pod " + name)
 		priority, ingressRate := 50, 300
@@ -180,7 +184,7 @@ var _ = framework.Describe("[group:qos]", func() {
 		podClient.DeleteSync(pod.Name)
 	})
 
-	framework.ConformanceIt(`should be able to update htb QoS"`, func() {
+	framework.ConformanceIt("should be able to update htb QoS", func() {
 		subnetName = f.Namespace.Name
 		ginkgo.By("Creating subnet " + subnetName + " with htb QoS")
 		cidr := framework.RandomCIDR(f.ClusterIpFamily)

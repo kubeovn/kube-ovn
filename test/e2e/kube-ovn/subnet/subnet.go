@@ -105,7 +105,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 				return ""
 			}
 			_, ipnet, _ := net.ParseCIDR(cidr)
-			ipnet.IP = net.ParseIP(framework.RandomIPPool(cidr, 1))
+			ipnet.IP = net.ParseIP(framework.RandomIPPool(cidr, ";", 1))
 			return ipnet.String()
 		}
 

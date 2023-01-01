@@ -72,7 +72,7 @@ func RandomExcludeIPs(cidr string, count int) []string {
 	}
 
 	rangeCount := rand.Intn(count + 1)
-	ips := strings.Split(RandomIPPool(cidr, rangeCount*2+count-rangeCount), ";")
+	ips := strings.Split(RandomIPPool(cidr, ";", rangeCount*2+count-rangeCount), ";")
 	sortIPs(ips)
 
 	var idx int
@@ -92,7 +92,7 @@ func RandomExcludeIPs(cidr string, count int) []string {
 	return ret
 }
 
-func RandomIPPool(cidr string, count int) string {
+func RandomIPPool(cidr, sep string, count int) string {
 	fn := func(cidr string) []string {
 		if cidr == "" {
 			return nil
@@ -133,5 +133,5 @@ func RandomIPPool(cidr string, count int) string {
 		dual = append(dual, strings.Join(ips, ","))
 	}
 
-	return strings.Join(dual, ";")
+	return strings.Join(dual, sep)
 }

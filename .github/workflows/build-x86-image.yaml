@@ -406,6 +406,9 @@ jobs:
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
 
+      - name: Export Go full version
+        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+
       - name: Go cache
         uses: actions/cache@v3
         with:
@@ -447,6 +450,7 @@ jobs:
       - name: Run E2E
         working-directory: ${{ env.E2E_DIR }}
         env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref }}
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
           E2E_NETWORK_MODE: ${{ matrix.mode }}
         run: make kube-ovn-conformance-e2e
