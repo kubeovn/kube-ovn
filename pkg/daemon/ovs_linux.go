@@ -528,7 +528,7 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 				return err
 			}
 			if mac != nil {
-				return fmt.Errorf("IP address %s has already been used by host with mac %s", ip, mac)
+				return fmt.Errorf("IP address %s has already been used by host with MAC %s", ip, mac)
 			}
 		}
 
