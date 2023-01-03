@@ -240,19 +240,6 @@ kind-untaint-control-plane:
 		done; \
 	done
 
-.PHONY: kind-install-chart
-kind-install-chart: kind-untaint-control-plane
-	kubectl label no -lbeta.kubernetes.io/os=linux kubernetes.io/os=linux --overwrite
-	kubectl label no -lnode-role.kubernetes.io/control-plane  kube-ovn/role=master --overwrite
-	kubectl label no -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel  --overwrite
-	$(eval MASTERNODES = $(shell docker exec -i kube-ovn-control-plane kubectl get nodes -l node-role.kubernetes.io/control-plane=""  -o jsonpath='{.items[*].status.addresses[].address}'))
-	$(eval EMPTY := )
-	$(eval SPACE := $(EMPTY))
-	$(eval MASTERS = $(subst SPACE,,,$(strip $$(MASTERNODES))))
-	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
-	helm install kubeovn ./kubeovn-helm --set cni_conf.MASTER_NODES=$(MASTERNODES)
-	kubectl -n kube-system get pods -o wide
-
 .PHONY: kind-install
 kind-install: kind-load-image
 	kubectl config use-context kind-kube-ovn

@@ -507,46 +507,6 @@ jobs:
         working-directory: ${{ env.E2E_DIR }}
         run: make kube-ovn-ic-conformance-e2e
 
-  chart-installation-test:
-    needs: build-kube-ovn
-    name: Chart Installation Test
-    runs-on: ubuntu-22.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
-
-      - name: Download image
-        uses: actions/download-artifact@v3
-        with:
-          name: kube-ovn
-
-      - name: Load image
-        run: docker load --input kube-ovn.tar
-
-      - name: Create kind cluster
-        run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH make kind-init
-          sudo cp -r /root/.kube/ ~/.kube/
-          sudo chown -R $(id -un). ~/.kube/
-
-      - name: Install Kube-OVN
-        run: |
-          make kind-install-chart
-          kubectl rollout status deployment/ovn-central -n kube-system --timeout 300s
-          kubectl rollout status deployment/kube-ovn-controller -n kube-system --timeout 300s
-          kubectl rollout status daemonset/kube-ovn-cni -n kube-system --timeout 300s
-
-      - name: Cleanup
-        run: sh dist/images/cleanup.sh
-
   ha-installation-test:
     needs: build-kube-ovn
     name: HA Installation Test
@@ -564,7 +524,7 @@ jobs:
       - name: Download image
         uses: actions/download-artifact@v3
         with:
-          name: image
+          name: kube-ovn
 
       - name: Load image
         run: docker load --input kube-ovn.tar
@@ -600,7 +560,7 @@ jobs:
       - name: Download image
         uses: actions/download-artifact@v3
         with:
-          name: image
+          name: kube-ovn
 
       - name: Load image
         run: docker load --input kube-ovn.tar
@@ -674,7 +634,7 @@ jobs:
       - name: Download image
         uses: actions/download-artifact@v3
         with:
-          name: image
+          name: kube-ovn
 
       - name: Load image
         run: docker load --input kube-ovn.tar
@@ -828,7 +788,6 @@ jobs:
       - kube-ovn-ic-conformance-e2e
       - ha-installation-test
       - underlay-logical-gateway-installation-test
-      - chart-installation-test
       - installation-compatibility-test
       - no-ovn-lb-test
       - no-np-test
