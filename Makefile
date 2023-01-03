@@ -368,17 +368,6 @@ kind-install-underlay-hairpin-dual: kind-enable-hairpin kind-load-image kind-unt
 		dist/images/install.sh | \
 		DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
 
-.PHONY: kind-install-underlay-logical-gateway-dual
-kind-install-underlay-logical-gateway-dual: kind-disable-hairpin kind-load-image kind-untaint-control-plane
-	$(call docker_network_info,kind)
-	@sed -e 's@^[[:space:]]*POD_CIDR=.*@POD_CIDR="$(KIND_IPV4_SUBNET),$(KIND_IPV6_SUBNET)"@' \
-		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(KIND_IPV4_GATEWAY)9,$(KIND_IPV6_GATEWAY)f"@' \
-		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV4_GATEWAY),$(KIND_IPV4_EXCLUDE_IPS),$(KIND_IPV6_GATEWAY),$(KIND_IPV6_EXCLUDE_IPS)"@' \
-		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
-		dist/images/install.sh | \
-		DUAL_STACK=true ENABLE_VLAN=true \
-		VLAN_NIC=eth0 LOGICAL_GATEWAY=true bash
-
 .PHONY: kind-install-multus
 kind-install-multus:
 	$(call docker_ensure_image_exists,$(MULTUS_IMAGE))
