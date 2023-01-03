@@ -358,7 +358,7 @@ var _ = framework.Describe("[group:underlay]", func() {
 		if f.ClusterIpFamily != "ipv4" {
 			ginkgo.Skip("Address conflict detection only supports IPv4")
 		}
-		f.SkipVersionPriorTo(1, 11, "Address conflict detection was introduce in v1.11")
+		f.SkipVersionPriorTo(1, 9, "Address conflict detection was introduced in v1.9")
 
 		ginkgo.By("Creating provider network")
 		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
