@@ -22,7 +22,7 @@ func (f *Framework) EventClient() *EventClient {
 	}
 }
 
-// WaitToHaveEvent waits the Pod to have the event
+// WaitToHaveEvent waits the provided resource to have the specified event(s)
 func (c *EventClient) WaitToHaveEvent(kind, name, eventType, reason, sourceComponent, sourceHost string) []corev1.Event {
 	var result []corev1.Event
 	err := wait.Poll(poll, timeout, func() (bool, error) {

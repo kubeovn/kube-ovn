@@ -42,7 +42,7 @@ func makeProviderNetwork(providerNetworkName string, exchangeLinkName bool, link
 }
 
 var _ = framework.Describe("[group:underlay]", func() {
-	f := framework.NewDefaultFramework("provider-network")
+	f := framework.NewDefaultFramework("underlay")
 
 	var skip bool
 	var itFn func(bool)
@@ -358,6 +358,7 @@ var _ = framework.Describe("[group:underlay]", func() {
 		if f.ClusterIpFamily != "ipv4" {
 			ginkgo.Skip("Address conflict detection only supports IPv4")
 		}
+		f.SkipVersionPriorTo(1, 11, "Address conflict detection was introduce in v1.11")
 
 		ginkgo.By("Creating provider network")
 		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
