@@ -1,27 +1,22 @@
-name: Push Multi Arch Image
+name: Publish Release
 on:
-  workflow_run:
-    workflows: ["Build arm64 Image", "Build x86 Image"]
-    branches:
-    - master
-    - release-*
-    types:
-      - completed
+  workflow_dispatch:
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
 
 jobs:
   build:
-    name: Push multi arch images
-    runs-on: ubuntu-20.04
+    name: Publish Images
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
-      - uses: docker/setup-buildx-action@v2
 
-      - name: Push
-        if: ${{ github.ref == 'refs/heads/master' || contains(github.ref, 'release') }}
+      - name: Publish
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-          COMMIT: ${{ github.sha }}
           DOCKER_CLI_EXPERIMENTAL: enabled
         run: |
           TAG=$(cat VERSION)
