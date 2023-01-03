@@ -159,6 +159,8 @@ var _ = framework.Describe("[group:qos]", func() {
 	})
 
 	framework.ConformanceIt("should support htb QoS", func() {
+		f.SkipVersionPriorTo(1, 9, "Support for htb QoS with priority was introduced in v1.9")
+
 		name := "pod-" + framework.RandomSuffix()
 		ginkgo.By("Creating pod " + name)
 		priority, ingressRate := 50, 300
@@ -185,6 +187,8 @@ var _ = framework.Describe("[group:qos]", func() {
 	})
 
 	framework.ConformanceIt("should be able to update htb QoS", func() {
+		f.SkipVersionPriorTo(1, 9, "Support for htb QoS with priority was introduced in v1.9")
+
 		subnetName = f.Namespace.Name
 		ginkgo.By("Creating subnet " + subnetName + " with htb QoS")
 		cidr := framework.RandomCIDR(f.ClusterIpFamily)

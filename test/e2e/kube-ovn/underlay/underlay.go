@@ -275,6 +275,8 @@ var _ = framework.Describe("[group:underlay]", func() {
 	})
 
 	framework.ConformanceIt(`should exchange link names`, func() {
+		f.SkipVersionPriorTo(1, 9, "Support for exchanging link names was introduced in v1.9")
+
 		itFn(true)
 	})
 
