@@ -15,6 +15,4 @@ kube-ovn.tar
 vpc-nat-gateway.tar
 image-amd64.tar
 image-arm64.tar
-install-underlay.sh
 test/**/*.test
-install-multi.sh

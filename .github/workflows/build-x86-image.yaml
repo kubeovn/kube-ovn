@@ -4,7 +4,7 @@ on:
   pull_request:
     branches:
     - master
-    - release-1.9
+    - release-*
     paths-ignore:
     - 'docs/**'
     - '**.md'
@@ -16,1077 +16,834 @@ on:
     - 'docs/**'
     - '**.md'
 
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
 env:
+  GO_VERSION: '1.19'
+  GOSEC_VERSION: '2.12.0'
   KIND_VERSION: v0.17.0
-  GOSEC_VERSION: "2.12.0"
+  HELM_VERSION: v3.10.1
 
 jobs:
-  build:
-    name: Build x86
-    runs-on: ubuntu-20.04
+  build-kube-ovn:
+    name: Build kube-ovn
+    runs-on: ubuntu-22.04
     steps:
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+      - uses: actions/checkout@v3
+      - uses: docker/setup-buildx-action@v2
+      - uses: actions/setup-go@v3
         with:
-          go-version: 1.18.8
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
-      - name: Check out code into the Go module directory
-        uses: actions/checkout@v2
+      - name: Export Go full version
+        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
 
-      - name: Docker Buildx
-        uses: docker/setup-buildx-action@v1
-
-      - name: Go Build Cache
-        uses: actions/cache@v2
+      - name: Go cache
+        uses: actions/cache@v3
         with:
-          path: /home/runner/.cache/go-build
-          key: ${{ runner.os }}-go-x86-build-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-x86-build-
-
-      - name: Go Mod Cache
-        uses: actions/cache@v2
-        with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-${{ env.GO_FULL_VER }}-x86-
 
       - name: Unit test
         run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
+          go install -mod=mod github.com/onsi/ginkgo/ginkgo
           make ut
 
       - name: Install gosec
-        run: |
-          curl -sfL https://raw.githubusercontent.com/securego/gosec/master/install.sh | sh -s -- -b $(go env GOPATH)/bin 'v${{ env.GOSEC_VERSION }}'
+        run: curl -sfL https://raw.githubusercontent.com/securego/gosec/master/install.sh | sh -s -- -b $(go env GOPATH)/bin 'v${{ env.GOSEC_VERSION }}'
 
       - name: Build
         run: |
           go mod tidy
-          make release
-          make tar
+          make lint
+          make image-kube-ovn
+          make tar-kube-ovn
 
-      - name: Upload kube-ovn image to artifact
-        uses: actions/upload-artifact@v2
+      - name: Upload images to artifact
+        uses: actions/upload-artifact@v3
         with:
           name: kube-ovn
           path: kube-ovn.tar
 
-      - name: Upload vpc-nat-gateway image to artifact
-        uses: actions/upload-artifact@v2
+  build-vpc-nat-gateway:
+    name: Build vpc-nat-gateway
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+      - uses: docker/setup-buildx-action@v2
+
+      - name: Build
+        run: |
+          make image-vpc-nat-gateway
+          make tar-vpc-nat-gateway
+
+      - name: Upload image to artifact
+        uses: actions/upload-artifact@v3
         with:
           name: vpc-nat-gateway
           path: vpc-nat-gateway.tar
 
-  single-e2e:
-    needs: build
-    name: 1-master-e2e
-    runs-on: ubuntu-20.04
-    timeout-minutes: 30
+  k8s-conformance-e2e:
+    name: Kubernetes Conformance E2E
+    needs: build-kube-ovn
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        ip-family:
+          - ipv4
+          - ipv6
+          - dual
+        mode:
+          - overlay
+          - underlay
     steps:
-      - name: Check out code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
-      - name: Install Kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+      - name: Create the default branch directory
+        run: mkdir -p test/e2e/source
 
-      - name: Init Kind
-        run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH make kind-init
-
-      - name: Download image
-        uses: actions/download-artifact@v2
+      - name: Check out the default branch
+        uses: actions/checkout@v3
         with:
-          name: kube-ovn
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
 
-      - name: Install Kube-OVN
+      - name: Export E2E directory
         run: |
-          docker load --input kube-ovn.tar
-          sudo make kind-install
+          if [ '${{ github.base_ref || github.ref }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=." >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
+          fi
 
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+      - name: Remove DNS search domain
+        run: |
+          sudo sed -i '/^search/d' /etc/resolv.conf
+          sudo systemctl restart docker
+
+      - uses: actions/setup-go@v3
         with:
-          go-version: ^1.18
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
         id: go
 
-      - name: Run E2E
-        run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
-          sudo kubectl cluster-info
-          sudo cp -r /root/.kube/ /home/runner/.kube/
-          sudo chmod -R 777 /home/runner/.kube/
-          make e2e
+      - name: Export Go full version
+        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
 
-      - name: Cleanup
-        run: |
-          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
-          sh dist/images/cleanup.sh
+      - name: Go cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('${{ env.E2E_DIR }}/**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
-  single-helm-e2e:
-    needs: build
-    name: 1-master-helm-e2e
-    runs-on: ubuntu-20.04
-    timeout-minutes: 30
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v2
+      - name: Build e2e binaries
+        working-directory: ${{ env.E2E_DIR }}
+        run: make e2e-compile
 
-      - name: Install Kind
+      - name: Install kind
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
           sudo mv kind /usr/local/bin
 
-      - name: Init Kind
+      - name: Download image
+        uses: actions/download-artifact@v3
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Create kind cluster
+        run: |
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
+
+      - name: Install Kube-OVN
+        run: make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
+
+      - name: Run E2E
+        working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_BRANCH: ${{ matrix.branch }}
+          E2E_IP_FAMILY: ${{ matrix.ip-family }}
+          E2E_NETWORK_MODE: ${{ matrix.mode }}
+        run: make k8s-conformance-e2e
+
+  k8s-netpol-e2e:
+    name: Kubernetes Network Policy E2E
+    needs: build-kube-ovn
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        ip-family:
+          - ipv4
+          - ipv6
+          - dual
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Create the default branch directory
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=." >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
+          fi
+
+      - name: Remove DNS search domain
+        run: |
+          sudo sed -i '/^search/d' /etc/resolv.conf
+          sudo systemctl restart docker
+
+      - uses: actions/setup-go@v3
+        with:
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
+        id: go
+
+      - name: Export Go full version
+        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+
+      - name: Go cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('${{ env.E2E_DIR }}/**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
+
+      - name: Build e2e binaries
+        working-directory: ${{ env.E2E_DIR }}
+        run: make e2e-compile
+
+      - name: Install kind
+        run: |
+          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
+          chmod +x ./kind
+          sudo mv kind /usr/local/bin
+
+      - name: Download image
+        uses: actions/download-artifact@v3
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Create kind cluster
+        run: |
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
+
+      - name: Install Kube-OVN
+        run: make kind-install-${{ matrix.ip-family }}
+
+      - name: Run E2E
+        working-directory: ${{ env.E2E_DIR }}
+        run: make k8s-netpol-e2e
+
+  cyclonus-netpol-e2e:
+    name: Cyclonus Network Policy E2E
+    needs: build-kube-ovn
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        ip-family:
+          - ipv4
+          - ipv6
+          - dual
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Create the default branch directory
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=." >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
+          fi
+
+      - name: Install kind
+        run: |
+          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
+          chmod +x ./kind
+          sudo mv kind /usr/local/bin
+      - name: Download image
+        uses: actions/download-artifact@v3
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Create kind cluster
+        run: |
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
+
+      - name: Install Kube-OVN
+        run: make kind-install-${{ matrix.ip-family }}
+
+      - name: Run E2E
+        working-directory: ${{ env.E2E_DIR }}
+        run: make cyclonus-netpol-e2e
+
+  kube-ovn-conformance-e2e:
+    name: Kube-OVN Conformance E2E
+    needs: build-kube-ovn
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        ip-family:
+          - ipv4
+          - ipv6
+          - dual
+        mode:
+          - overlay
+          - underlay
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Create the default branch directory
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=." >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/setup-go@v3
+        with:
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
+        id: go
+
+      - name: Export Go full version
+        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+
+      - name: Go cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('${{ env.E2E_DIR }}/**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
+
+      - name: Build e2e binaries
+        working-directory: ${{ env.E2E_DIR }}
+        run: make e2e-compile
+
+      - name: Install kind
+        run: |
+          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
+          chmod +x ./kind
+          sudo mv kind /usr/local/bin
+
+      - name: Download image
+        uses: actions/download-artifact@v3
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Create kind cluster
+        run: |
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
+
+      - name: Install Kube-OVN
+        run: make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
+
+      - name: Run E2E
+        working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_IP_FAMILY: ${{ matrix.ip-family }}
+          E2E_NETWORK_MODE: ${{ matrix.mode }}
+        run: make kube-ovn-conformance-e2e
+
+      - name: Cleanup
+        run: sh dist/images/cleanup.sh
+
+  kube-ovn-ic-conformance-e2e:
+    name: Kube-OVN IC Conformance E2E
+    needs: build-kube-ovn
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Create the default branch directory
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=." >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/setup-go@v3
+        with:
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
+        id: go
+
+      - name: Export Go full version
+        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+
+      - name: Go cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('${{ env.E2E_DIR }}/**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
+
+      - name: Build e2e binaries
+        working-directory: ${{ env.E2E_DIR }}
+        run: make e2e-compile
+
+      - name: Install kind
+        run: |
+          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
+          chmod +x ./kind
+          sudo mv kind /usr/local/bin
+
+      - name: Download image
+        uses: actions/download-artifact@v3
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Create kind clusters
+        run: |
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH make kind-init-ovn-ic
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
+
+      - name: Install Kube-OVN
+        run: make kind-install-ovn-ic
+
+      - name: Run E2E
+        working-directory: ${{ env.E2E_DIR }}
+        run: make kube-ovn-ic-conformance-e2e
+
+  chart-installation-test:
+    needs: build-kube-ovn
+    name: Chart Installation Test
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install kind
+        run: |
+          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
+          chmod +x ./kind
+          sudo mv kind /usr/local/bin
+
+      - name: Download image
+        uses: actions/download-artifact@v3
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Create kind cluster
         run: |
           sudo pip3 install j2cli
           sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init
-
-      - name: Download image
-        uses: actions/download-artifact@v2
-        with:
-          name: kube-ovn
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
         run: |
-          docker load --input kube-ovn.tar
-          sudo cp -r /root/.kube/ /home/runner/.kube/
-          sudo chmod -R 777 /home/runner/.kube/
-          sudo make kind-helm-install
+          make kind-install-chart
           kubectl rollout status deployment/ovn-central -n kube-system --timeout 300s
           kubectl rollout status deployment/kube-ovn-controller -n kube-system --timeout 300s
           kubectl rollout status daemonset/kube-ovn-cni -n kube-system --timeout 300s
 
-      - name: Copy Kubelet-ko
-        run: |
-          sh -c '
-            set -e
-            kubectl -n kube-system get pods --no-headers | grep kube-ovn-controller | awk "{print \$1}" | while read pod; do
-              sudo kubectl -n kube-system cp $pod:/kube-ovn/kubectl-ko  /usr/bin/kubectl-ko
-            done
-            sudo chmod +x /usr/bin/kubectl-ko
-          '
-
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
-        with:
-          go-version: ^1.18
-        id: go
-
-      - name: Run E2E
-        run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
-          sudo kubectl cluster-info
-          sudo cp -r /root/.kube/ /home/runner/.kube/
-          sudo chmod -R 777 /home/runner/.kube/
-          make e2e
-
       - name: Cleanup
-        run: |
-          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
-          sh dist/images/cleanup.sh
+        run: sh dist/images/cleanup.sh
 
-  single-iptables-e2e:
-    needs: build
-    name: 1-master-iptables-e2e
-    runs-on: ubuntu-20.04
+  ha-installation-test:
+    needs: build-kube-ovn
+    name: HA Installation Test
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
-      - name: Check out code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
-      - name: Install Kind
+      - name: Install kind
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
           sudo mv kind /usr/local/bin
 
-      - name: Init Kind
-        run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH make kind-init-iptables
-
       - name: Download image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: kube-ovn
 
-      - name: Install Kube-OVN
-        run: |
-          docker load --input kube-ovn.tar
-          sudo make kind-install
+      - name: Load image
+        run: docker load --input kube-ovn.tar
 
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
-        with:
-          go-version: ^1.18
-        id: go
-
-      - name: Run E2E
-        run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
-          sudo kubectl cluster-info
-          sudo cp -r /root/.kube/ /home/runner/.kube/
-          sudo chmod -R 777 /home/runner/.kube/
-          make e2e
-
-      - name: Cleanup
-        run: |
-          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
-          sh dist/images/cleanup.sh
-
-  single-vlan-e2e:
-    needs: build
-    name: 1-master-vlan-e2e
-    runs-on: ubuntu-20.04
-    timeout-minutes: 30
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v2
-
-      - name: Install Kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
-
-      - name: Init Kind
-        run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH make kind-init
-
-      - name: Download image
-        uses: actions/download-artifact@v2
-        with:
-          name: kube-ovn
-
-      - name: Install Kube-OVN
-        run: |
-          docker load --input kube-ovn.tar
-          sudo make kind-install
-
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
-        with:
-          go-version: ^1.18
-        id: go
-
-      - name: Run E2E
-        run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
-          sudo kubectl cluster-info
-          sudo cp -r /root/.kube/ /home/runner/.kube/
-          sudo chmod -R 777 /home/runner/.kube/
-          make e2e-vlan
-
-      - name: Cleanup
-        run: |
-          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
-          sh dist/images/cleanup.sh
-
-  single-underlay-e2e-single-nic:
-    needs: build
-    name: 1-master-underlay-e2e-single-nic
-    runs-on: ubuntu-20.04
-    timeout-minutes: 30
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v2
-
-      - name: Install Kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
-
-      - name: Init Kind
-        run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH make kind-init
-
-      - name: Download image
-        uses: actions/download-artifact@v2
-        with:
-          name: kube-ovn
-
-      - name: Install Kube-OVN
-        run: |
-          docker load --input kube-ovn.tar
-          sudo make kind-install-underlay
-
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
-        with:
-          go-version: ^1.18
-        id: go
-
-      - name: Run E2E
-        run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
-          sudo kubectl cluster-info
-          sudo cp -r /root/.kube/ /home/runner/.kube/
-          sudo chmod -R 777 /home/runner/.kube/
-          make e2e-underlay-single-nic
-
-      - name: Run networkpolicy E2E
-        working-directory: test/networkpolicy-cyclonus/
-        run: |
-          sudo cp -r /root/.kube/ /home/runner/.kube/
-          sudo chmod -R 777 /home/runner/.kube/
-          bash ./start-test.sh
-
-      - name: Cleanup
-        run: |
-          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
-          sh dist/images/cleanup.sh
-
-      - name: Check Node Network
-        run: |
-          sh -c '
-            set -e
-            kubectl get no --no-headers | awk "{print \$1}" | while read node; do
-              docker inspect $node -f "{{.NetworkSettings.Networks.kind.IPAddress}}"
-            done | while read ip; do
-              docker run --rm --network kind kubeovn/kube-ovn:$(cat VERSION) ping -c1 -w1 $ip
-            done
-            kubectl get no --no-headers | awk "{print \$1}" | while read node; do
-              docker inspect $node -f "{{.NetworkSettings.Networks.kind.GlobalIPv6Address}}"
-            done | while read ip; do
-              docker run --rm --network kind kubeovn/kube-ovn:$(cat VERSION) ping6 -c1 -w1 $ip
-            done
-          '
-
-  single-node-e2e:
-    needs: build
-    name: 1-node-e2e
-    runs-on: ubuntu-20.04
-    timeout-minutes: 30
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v2
-
-      - name: Install Kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
-
-      - name: Init Kind
-        run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH make kind-init-single
-
-      - name: Download image
-        uses: actions/download-artifact@v2
-        with:
-          name: kube-ovn
-
-      - name: Install Kube-OVN
-        run: |
-          docker load --input kube-ovn.tar
-          sudo make kind-install-single
-
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
-        with:
-          go-version: ^1.18
-        id: go
-
-      - name: Run E2E
-        run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
-          sudo kubectl cluster-info
-          sudo cp -r /root/.kube/ /home/runner/.kube/
-          sudo chmod -R 777 /home/runner/.kube/
-          make e2e
-
-      - name: Cleanup
-        run: |
-          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
-          sh dist/images/cleanup.sh
-
-  ha-e2e:
-    needs: build
-    name: 3-master-e2e
-    runs-on: ubuntu-20.04
-    timeout-minutes: 30
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v2
-
-      - name: Install Kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
-
-      - name: Init Kind
+      - name: Create kind cluster
         run: |
           sudo pip3 install j2cli
           sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init-ha
-
-      - name: Download image
-        uses: actions/download-artifact@v2
-        with:
-          name: kube-ovn
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
-        run: |
-          docker load --input kube-ovn.tar
-          sudo make kind-install
-
-  ipv6-e2e:
-    needs: build
-    name: ipv6-e2e
-    runs-on: ubuntu-20.04
-    timeout-minutes: 45
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v2
-
-      - name: Install Kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
-
-      - name: Init Kind
-        run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH make kind-init-ipv6
-
-      - name: Download image
-        uses: actions/download-artifact@v2
-        with:
-          name: kube-ovn
-
-      - name: Load Image
-        run: |
-          docker load --input kube-ovn.tar
-
-      - name: Install Kube-OVN
-        run: |
-          docker load --input kube-ovn.tar
-          sudo make kind-install-ipv6
-
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
-        with:
-          go-version: ^1.18
-        id: go
-
-      - name: Run E2E
-        run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
-          sudo kubectl cluster-info
-          sudo cp -r /root/.kube/ /home/runner/.kube/
-          sudo chmod -R 777 /home/runner/.kube/
-          make e2e-ipv6
-
-      - name: Run networkpolicy E2E
-        working-directory: test/networkpolicy-cyclonus/
-        run: |
-          sudo cp -r /root/.kube/ /home/runner/.kube/
-          sudo chmod -R 777 /home/runner/.kube/
-          bash ./start-test.sh
+        run: sudo ENABLE_SSL=true make kind-install
 
       - name: Cleanup
-        run: |
-          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
-          sh dist/images/cleanup.sh
+        run: sh dist/images/cleanup.sh
 
-  ipv6-vlan-e2e:
-    needs: build
-    name: ipv6-vlan-e2e
-    runs-on: ubuntu-20.04
+  underlay-logical-gateway-installation-test:
+    needs: build-kube-ovn
+    name: Underlay Logical Gateway Installation Test
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
-      - name: Check out code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
-      - name: Install Kind
+      - name: Install kind
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
           sudo mv kind /usr/local/bin
 
-      - name: Init Kind
-        run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH make kind-init-ipv6
-
       - name: Download image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: kube-ovn
 
-      - name: Load Image
-        run: |
-          docker load --input kube-ovn.tar
+      - name: Load image
+        run: docker load --input kube-ovn.tar
 
-      - name: Install Kube-OVN
-        run: |
-          docker load --input kube-ovn.tar
-          sudo make kind-install-ipv6
-
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
-        with:
-          go-version: ^1.18
-        id: go
-
-      - name: Run E2E
-        run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
-          sudo kubectl cluster-info
-          sudo cp -r /root/.kube/ /home/runner/.kube/
-          sudo chmod -R 777 /home/runner/.kube/
-          make e2e-vlan-ipv6
-
-      - name: Cleanup
-        run: |
-          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
-          sh dist/images/cleanup.sh
-
-  ipv6-underlay-e2e-single-nic:
-    needs: build
-    name: ipv6-underlay-e2e-single-nic
-    runs-on: ubuntu-20.04
-    timeout-minutes: 30
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v2
-
-      - name: Install Kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
-
-      - name: Init Kind
-        run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH make kind-init-ipv6
-
-      - name: Download image
-        uses: actions/download-artifact@v2
-        with:
-          name: kube-ovn
-
-      - name: Load Image
-        run: |
-          docker load --input kube-ovn.tar
-
-      - name: Install Kube-OVN
-        run: |
-          docker load --input kube-ovn.tar
-          sudo make kind-install-underlay-ipv6
-
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
-        with:
-          go-version: ^1.18
-        id: go
-
-      - name: Run E2E
-        run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
-          sudo kubectl cluster-info
-          sudo cp -r /root/.kube/ /home/runner/.kube/
-          sudo chmod -R 777 /home/runner/.kube/
-          make e2e-underlay-single-nic
-
-      - name: Cleanup
-        run: |
-          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
-          sh dist/images/cleanup.sh
-
-      - name: Check Node Network
-        run: |
-          sh -c '
-            set -e
-            kubectl get no --no-headers | awk "{print \$1}" | while read node; do
-              docker inspect $node -f "{{.NetworkSettings.Networks.kind.IPAddress}}"
-            done | while read ip; do
-              docker run --rm --network kind kubeovn/kube-ovn:$(cat VERSION) ping -c1 -w1 $ip
-            done
-            kubectl get no --no-headers | awk "{print \$1}" | while read node; do
-              docker inspect $node -f "{{.NetworkSettings.Networks.kind.GlobalIPv6Address}}"
-            done | while read ip; do
-              docker run --rm --network kind kubeovn/kube-ovn:$(cat VERSION) ping6 -c1 -w1 $ip
-            done
-          '
-
-  dual-stack-e2e:
-    needs: build
-    name: dual-stack-e2e
-    runs-on: ubuntu-20.04
-    timeout-minutes: 30
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v2
-
-      - name: Install Kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
-
-      - name: Init Kind
+      - name: Create kind cluster
         run: |
           sudo pip3 install j2cli
           sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init-dual
-
-      - name: Download image
-        uses: actions/download-artifact@v2
-        with:
-          name: kube-ovn
-
-      - name: Load Image
-        run: |
-          docker load --input kube-ovn.tar
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
-        run: |
-          docker load --input kube-ovn.tar
-          sudo make kind-install-dual
-
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
-        with:
-          go-version: ^1.18
-        id: go
-
-      - name: Run E2E
-        run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
-          sudo kubectl cluster-info
-          sudo cp -r /root/.kube/ /home/runner/.kube/
-          sudo chmod -R 777 /home/runner/.kube/
-          make e2e
-
-      - name: Run networkpolicy E2E
-        working-directory: test/networkpolicy-cyclonus/
-        run: |
-          sudo cp -r /root/.kube/ /home/runner/.kube/
-          sudo chmod -R 777 /home/runner/.kube/
-          bash ./start-test.sh
+        run: make kind-install-underlay-logical-gateway-dual
 
       - name: Cleanup
-        run: |
-          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
-          sh dist/images/cleanup.sh
+        run: sh dist/images/cleanup.sh
 
-  dual-stack-underlay-e2e-single-nic:
-    needs: build
-    name: dual-stack-underlay-e2e-single-nic
-    runs-on: ubuntu-20.04
-    timeout-minutes: 45
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v2
-
-      - name: Install Kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
-
-      - name: Init Kind
-        run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH make kind-init-dual
-
-      - name: Download image
-        uses: actions/download-artifact@v2
-        with:
-          name: kube-ovn
-
-      - name: Load Image
-        run: |
-          docker load --input kube-ovn.tar
-
-      - name: Install Kube-OVN
-        run: |
-          docker load --input kube-ovn.tar
-          sudo make kind-install-underlay-dual
-
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
-        with:
-          go-version: ^1.18
-        id: go
-
-      - name: Run E2E
-        run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
-          sudo kubectl cluster-info
-          sudo cp -r /root/.kube/ /home/runner/.kube/
-          sudo chmod -R 777 /home/runner/.kube/
-          make e2e-underlay-single-nic
-
-      - name: Run networkpolicy E2E
-        working-directory: test/networkpolicy-cyclonus/
-        run: |
-          sudo cp -r /root/.kube/ /home/runner/.kube/
-          sudo chmod -R 777 /home/runner/.kube/
-          bash ./start-test.sh
-
-      - name: Cleanup
-        run: |
-          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
-          sh dist/images/cleanup.sh
-
-      - name: Check Node Network
-        run: |
-          sh -c '
-            set -e
-            kubectl get no --no-headers | awk "{print \$1}" | while read node; do
-              docker inspect $node -f "{{.NetworkSettings.Networks.kind.IPAddress}}"
-            done | while read ip; do
-              docker run --rm --network kind kubeovn/kube-ovn:$(cat VERSION) ping -c1 -w1 $ip
-            done
-            kubectl get no --no-headers | awk "{print \$1}" | while read node; do
-              docker inspect $node -f "{{.NetworkSettings.Networks.kind.GlobalIPv6Address}}"
-            done | while read ip; do
-              docker run --rm --network kind kubeovn/kube-ovn:$(cat VERSION) ping6 -c1 -w1 $ip
-            done
-          '
-
-  dual-stack-underlay-logical-gw-e2e:
-    needs: build
-    name: dual-stack-underlay-logical-gateway-e2e
-    runs-on: ubuntu-20.04
-    timeout-minutes: 45
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v2
-
-      - name: Install Kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
-
-      - name: Init Kind
-        run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH make kind-init-dual
-
-      - name: Download image
-        uses: actions/download-artifact@v2
-        with:
-          name: kube-ovn
-
-      - name: Load Image
-        run: |
-          docker load --input kube-ovn.tar
-
-      - name: Install Kube-OVN
-        run: |
-          docker load --input kube-ovn.tar
-          sudo make kind-install-underlay-logical-gateway-dual
-
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
-        with:
-          go-version: ^1.18
-        id: go
-
-      - name: Run E2E
-        run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
-          sudo kubectl cluster-info
-          sudo cp -r /root/.kube/ /home/runner/.kube/
-          sudo chmod -R 777 /home/runner/.kube/
-          make e2e
-
-      - name: Run networkpolicy E2E
-        working-directory: test/networkpolicy-cyclonus/
-        run: |
-          sudo cp -r /root/.kube/ /home/runner/.kube/
-          sudo chmod -R 777 /home/runner/.kube/
-          bash ./start-test.sh
-
-      - name: Cleanup
-        run: |
-          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
-          sh dist/images/cleanup.sh
-
-      - name: Check Node Network
-        run: |
-          sh -c '
-            set -e
-            kubectl get no --no-headers | awk "{print \$1}" | while read node; do
-              docker inspect $node -f "{{.NetworkSettings.Networks.kind.IPAddress}}"
-            done | while read ip; do
-              docker run --rm --network kind kubeovn/kube-ovn:$(cat VERSION) ping -c1 -w1 $ip
-            done
-            kubectl get no --no-headers | awk "{print \$1}" | while read node; do
-              docker inspect $node -f "{{.NetworkSettings.Networks.kind.GlobalIPv6Address}}"
-            done | while read ip; do
-              docker run --rm --network kind kubeovn/kube-ovn:$(cat VERSION) ping6 -c1 -w1 $ip
-            done
-          '
-
-  no-lb-e2e:
-    needs: build
-    name: disable-loadbalancer-e2e
-    runs-on: ubuntu-20.04
+  no-ovn-lb-test:
+    needs: build-kube-ovn
+    name: Disable OVN LB Test
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
-      - name: Check out code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
-      - name: Install Kind
+      - name: Install kind
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
           sudo mv kind /usr/local/bin
 
-      - name: Init Kind
+      - name: Download image
+        uses: actions/download-artifact@v3
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Create kind cluster
         run: |
           sudo pip3 install j2cli
           sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init
-
-      - name: Download image
-        uses: actions/download-artifact@v2
-        with:
-          name: kube-ovn
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN without LoadBalancer
         env:
           ENABLE_LB: "false"
-        run: |
-          docker load --input kube-ovn.tar
-          sudo make kind-install
-
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
-        with:
-          go-version: ^1.18
-        id: go
-
-      - name: Run E2E
-        run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
-          sudo kubectl cluster-info
-          sudo cp -r /root/.kube/ /home/runner/.kube/
-          sudo chmod -R 777 /home/runner/.kube/
-          make e2e
+        run: make kind-install
 
       - name: Cleanup
-        run: |
-          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
-          sh dist/images/cleanup.sh
+        run: sh dist/images/cleanup.sh
 
-  no-lb-iptables-e2e:
-    needs: build
-    name: disable-loadbalancer-iptables-e2e
-    runs-on: ubuntu-20.04
+  no-np-test:
+    needs: build-kube-ovn
+    name: Disable Network Policy Test
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
-      - name: Check out code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
-      - name: Install Kind
+      - name: Install kind
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
           sudo mv kind /usr/local/bin
 
-      - name: Init Kind
-        run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH make kind-init-iptables
-
       - name: Download image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: kube-ovn
 
-      - name: Install Kube-OVN without LoadBalancer
-        env:
-          ENABLE_LB: "false"
-        run: |
-          docker load --input kube-ovn.tar
-          sudo make kind-install
+      - name: Load image
+        run: docker load --input kube-ovn.tar
 
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
-        with:
-          go-version: ^1.18
-        id: go
-
-      - name: Run E2E
-        run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
-          sudo kubectl cluster-info
-          sudo cp -r /root/.kube/ /home/runner/.kube/
-          sudo chmod -R 777 /home/runner/.kube/
-          make e2e
-
-      - name: Cleanup
-        run: |
-          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
-          sh dist/images/cleanup.sh
-
-  no-np-e2e:
-    needs: build
-    name: disable-network-policy-e2e
-    runs-on: ubuntu-20.04
-    timeout-minutes: 30
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v2
-
-      - name: Install Kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
-
-      - name: Init Kind
+      - name: Create kind cluster
         run: |
           sudo pip3 install j2cli
           sudo pip3 install "j2cli[yaml]"
           sudo PATH=~/.local/bin:$PATH make kind-init
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
 
-      - name: Download image
-        uses: actions/download-artifact@v2
-        with:
-          name: kube-ovn
-
-      - name: Install Kube-OVN without network policy support
+      - name: Install Kube-OVN
         env:
           ENABLE_NP: "false"
-        run: |
-          docker load --input kube-ovn.tar
-          sudo make kind-install
-
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
-        with:
-          go-version: ^1.18
-        id: go
-
-      - name: Run E2E
-        run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
-          sudo kubectl cluster-info
-          sudo cp -r /root/.kube/ /home/runner/.kube/
-          sudo chmod -R 777 /home/runner/.kube/
-          make e2e
+        run: make kind-install
 
       - name: Cleanup
-        run: |
-          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
-          sh dist/images/cleanup.sh
+        run: sh dist/images/cleanup.sh
 
-  ovnic-e2e:
-    needs: build
-    name: 1-master-ovnic-e2e
-    runs-on: ubuntu-20.04
-    timeout-minutes: 30
+  installation-compatibility-test:
+    needs: build-kube-ovn
+    name: Installation Compatibility Test
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
     steps:
-      - name: Check out code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
-      - name: Install Kind
+      - name: Install kind
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
           chmod +x ./kind
           sudo mv kind /usr/local/bin
 
-      - name: Init Kind
-        run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH make kind-init-cluster
-
       - name: Download image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: kube-ovn
 
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Create kind cluster
+        run: |
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH k8s_version=v1.23.13 make kind-init
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
+
       - name: Install Kube-OVN
-        run: |
-          docker load --input kube-ovn.tar
-          sudo PATH=~/.local/bin:$PATH make kind-install-cluster
-          sudo PATH=~/.local/bin:$PATH make kind-install-ic
-
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
-        with:
-          go-version: ^1.18
-        id: go
-
-      - name: Run E2E
-        run: |
-          go install github.com/onsi/ginkgo/ginkgo@latest
-          sudo kubectl cluster-info
-          sudo cp -r /root/.kube/ /home/runner/.kube/
-          sudo chmod -R 777 /home/runner/.kube/
-          make e2e-ovn-ic
+        run: make kind-install
 
       - name: Cleanup
+        run: sh dist/images/cleanup.sh
+
+  cilium-chaining-e2e:
+    needs: build-kube-ovn
+    name: Cilium Chaining E2E
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v3
+      - uses: azure/setup-helm@v3
+        with:
+          version: '${{ env.HELM_VERSION }}'
+
+      - name: Create the default branch directory
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
         run: |
-          sh -c 'while :; do if [ $(kubectl get --no-headers subnet | wc -l) -eq 2 ]; then break; fi; sleep 5; done'
-          sh dist/images/cleanup.sh
+          if [ '${{ github.base_ref || github.ref }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=." >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
+          fi
+
+      - name: Remove DNS search domain
+        run: |
+          sudo sed -i '/^search/d' /etc/resolv.conf
+          sudo systemctl restart docker
+
+      - uses: actions/setup-go@v3
+        with:
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
+        id: go
+
+      - name: Export Go full version
+        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+
+      - name: Go cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('${{ env.E2E_DIR }}/**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
+
+      - name: Build e2e binaries
+        working-directory: ${{ env.E2E_DIR }}
+        run: make e2e-compile
+
+      - name: Install kind
+        run: |
+          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
+          chmod +x ./kind
+          sudo mv kind /usr/local/bin
+
+      - name: Download image
+        uses: actions/download-artifact@v3
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Create kind cluster
+        run: |
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH make kind-init
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
+
+      - name: Install Kube-OVN
+        run: make kind-install
+
+      - name: Run E2E
+        working-directory: ${{ env.E2E_DIR }}
+        run: make k8s-conformance-e2e
+
+      - name: Cleanup
+        run: sh dist/images/cleanup.sh
 
   push:
     needs:
-      - single-e2e
-      - single-iptables-e2e
-      - single-vlan-e2e
-      - single-underlay-e2e-single-nic
-      - single-node-e2e
-      - ha-e2e
-      - ipv6-e2e
-      - ipv6-vlan-e2e
-      - ipv6-underlay-e2e-single-nic
-      - dual-stack-e2e
-      - dual-stack-underlay-logical-gw-e2e
-      - dual-stack-underlay-e2e-single-nic
-      - no-lb-e2e
-      - no-lb-iptables-e2e
-      - no-np-e2e
-      - ovnic-e2e
+      - k8s-conformance-e2e
+      # - k8s-netpol-e2e
+      # - cyclonus-netpol-e2e
+      - kube-ovn-conformance-e2e
+      - kube-ovn-ic-conformance-e2e
+      - ha-installation-test
+      - underlay-logical-gateway-installation-test
+      - chart-installation-test
+      - installation-compatibility-test
+      - no-ovn-lb-test
+      - no-np-test
+      - cilium-chaining-e2e
     name: push
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
-      - name: Check out code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Download kube-ovn image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: kube-ovn
 
       - name: Download vpc-nat-gateway image
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: vpc-nat-gateway
 
@@ -1103,7 +860,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install trivy
           make scan
-
 
       - name: Push
         if: ${{ github.ref == 'refs/heads/master' || contains(github.ref, 'release') }}
