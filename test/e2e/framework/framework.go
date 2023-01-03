@@ -1,7 +1,9 @@
 package framework
 
 import (
+	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"k8s.io/client-go/tools/clientcmd"
@@ -27,6 +29,9 @@ type Framework struct {
 
 	// master/release-1.10/...
 	ClusterVersion string
+	// 999.999 for master
+	ClusterVersionMajor uint
+	ClusterVersionMinor uint
 	// ipv4/ipv6/dual
 	ClusterIpFamily string
 	// overlay/underlay/underlay-hairpin
@@ -41,6 +46,14 @@ func NewDefaultFramework(baseName string) *Framework {
 	f.ClusterIpFamily = os.Getenv("E2E_IP_FAMILY")
 	f.ClusterVersion = os.Getenv("E2E_BRANCH")
 	f.ClusterNetworkMode = os.Getenv("E2E_NETWORK_MODE")
+
+	if strings.HasPrefix(f.ClusterVersion, "release-") {
+		n, err := fmt.Sscanf(f.ClusterVersion, "release-%d.%d", &f.ClusterVersionMajor, &f.ClusterVersionMinor)
+		ExpectNoError(err)
+		ExpectEqual(n, 2)
+	} else {
+		f.ClusterVersionMajor, f.ClusterVersionMinor = 999, 999
+	}
 
 	ginkgo.BeforeEach(f.BeforeEach)
 
@@ -110,6 +123,12 @@ func (f *Framework) BeforeEach() {
 	}
 
 	framework.TestContext.Host = ""
+}
+
+func (f *Framework) SkipVersionPriorTo(major, minor uint, message string) {
+	if f.ClusterVersionMajor <= major && f.ClusterVersionMinor < minor {
+		ginkgo.Skip(message)
+	}
 }
 
 func Describe(text string, body func()) bool {

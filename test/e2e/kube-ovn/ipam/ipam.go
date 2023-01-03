@@ -48,7 +48,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 	framework.ConformanceIt("should allocate static ipv4 and mac for pod", func() {
 		name := "pod-" + framework.RandomSuffix()
 		mac := util.GenerateMac()
-		ip := framework.RandomIPPool(cidr, 1)
+		ip := framework.RandomIPPool(cidr, ";", 1)
 
 		ginkgo.By("Creating pod " + name + " with ip " + ip + " and mac " + mac)
 		annotations := map[string]string{
@@ -76,10 +76,46 @@ var _ = framework.Describe("[group:ipam]", func() {
 		podClient.DeleteSync(pod.Name)
 	})
 
-	framework.ConformanceIt("should allocate static ipv4 for deployment with ippool", func() {
+	framework.ConformanceIt("should allocate static ip for pod with comma separated ippool", func() {
+		if f.ClusterIpFamily == "dual" {
+			ginkgo.Skip("Comma separated ippool is not supported for dual stack")
+		}
+
+		name := "pod-" + framework.RandomSuffix()
+		pool := framework.RandomIPPool(cidr, ",", 3)
+
+		ginkgo.By("Creating pod " + name + " with ippool " + pool)
+		annotations := map[string]string{util.IpPoolAnnotation: pool}
+		pod := framework.MakePod(namespaceName, name, nil, annotations, "", nil, nil)
+		pod = podClient.CreateSync(pod)
+
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.IpPoolAnnotation, pool)
+		framework.ExpectEqual(pod.Annotations[util.IpAddressAnnotation], pod.Status.PodIP)
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
+		framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
+
+		framework.ExpectContainElement(strings.Split(pool, ","), pod.Status.PodIP)
+
+		ginkgo.By("Deleting pod " + name)
+		podClient.DeleteSync(pod.Name)
+	})
+
+	framework.ConformanceIt("should allocate static ip for deployment with ippool", func() {
+		ippoolSep := ";"
+		if f.ClusterVersionMajor <= 1 && f.ClusterVersionMinor < 11 {
+			if f.ClusterIpFamily == "dual" {
+				ginkgo.Skip("Support for dual stack ippool was introduced in v1.11")
+			}
+			ippoolSep = ","
+		}
+
 		replicas := 3
 		name := "deployment-" + framework.RandomSuffix()
-		ippool := framework.RandomIPPool(cidr, replicas)
+		ippool := framework.RandomIPPool(cidr, ippoolSep, replicas)
 		labels := map[string]string{"app": name}
 
 		ginkgo.By("Creating deployment " + name + " with ippool " + ippool)
@@ -95,7 +131,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		framework.ExpectNoError(err, "failed to get pods for deployment "+name)
 		framework.ExpectHaveLen(pods.Items, replicas)
 
-		ips := strings.Split(ippool, ";")
+		ips := strings.Split(ippool, ippoolSep)
 		for _, pod := range pods.Items {
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
@@ -151,7 +187,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		framework.ExpectNoError(err, "failed to delete deployment "+name)
 	})
 
-	framework.ConformanceIt("should allocate static ipv4 for statefulset", func() {
+	framework.ConformanceIt("should allocate static ip for statefulset", func() {
 		replicas := 3
 		name := "statefulset-" + framework.RandomSuffix()
 		labels := map[string]string{"app": name}
@@ -212,10 +248,18 @@ var _ = framework.Describe("[group:ipam]", func() {
 		framework.ExpectNoError(err, "failed to delete statefulset "+name)
 	})
 
-	framework.ConformanceIt("should allocate static ipv4 for statefulset with ippool", func() {
+	framework.ConformanceIt("should allocate static ip for statefulset with ippool", func() {
+		ippoolSep := ";"
+		if f.ClusterVersionMajor <= 1 && f.ClusterVersionMinor < 11 {
+			if f.ClusterIpFamily == "dual" {
+				ginkgo.Skip("Support for dual stack ippool was introduced in v1.11")
+			}
+			ippoolSep = ","
+		}
+
 		replicas := 3
 		name := "statefulset-" + framework.RandomSuffix()
-		ippool := framework.RandomIPPool(cidr, replicas)
+		ippool := framework.RandomIPPool(cidr, ippoolSep, replicas)
 		labels := map[string]string{"app": name}
 
 		ginkgo.By("Creating statefulset " + name + " with ippool " + ippool)
@@ -248,7 +292,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IpAddressAnnotation], ","))
 			ips = append(ips, pod.Annotations[util.IpAddressAnnotation])
 		}
-		framework.ExpectConsistOf(ips, strings.Split(ippool, ";"))
+		framework.ExpectConsistOf(ips, strings.Split(ippool, ippoolSep))
 
 		ginkgo.By("Deleting pods for statefulset " + name)
 		for _, pod := range pods.Items {
