@@ -936,7 +936,7 @@ jobs:
       - build-centos-compile
       - k8s-conformance-e2e
       # - k8s-netpol-e2e
-      # - cyclonus-netpol-e2e
+      - cyclonus-netpol-e2e
       - kube-ovn-conformance-e2e
       - kube-ovn-ic-conformance-e2e
       - lb-svc-e2e
