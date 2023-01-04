@@ -53,7 +53,7 @@ jobs:
 
       - name: Unit test
         run: |
-          go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+          go install -mod=mod github.com/onsi/ginkgo/ginkgo
           make ut
 
       - name: Install gosec
