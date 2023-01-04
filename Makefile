@@ -248,10 +248,6 @@ kind-init-cilium:
 kind-load-image:
 	$(call kind_load_image,kube-ovn,$(REGISTRY)/kube-ovn:$(RELEASE_TAG))
 
-.PHONY: kind-load-image
-kind-load-image:
-	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
-
 .PHONY: kind-untaint-control-plane
 kind-untaint-control-plane:
 	@for node in $$(kubectl get no -o jsonpath='{.items[*].metadata.name}'); do \
