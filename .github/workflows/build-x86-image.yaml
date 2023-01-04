@@ -145,7 +145,7 @@ jobs:
 
       - name: Export E2E directory
         run: |
-          if [ '${{ github.base_ref || github.ref }}' = '${{ github.event.repository.default_branch }}' ]; then
+          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
             echo "E2E_DIR=." >> "$GITHUB_ENV"
           else
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
@@ -238,7 +238,7 @@ jobs:
 
       - name: Export E2E directory
         run: |
-          if [ '${{ github.base_ref || github.ref }}' = '${{ github.event.repository.default_branch }}' ]; then
+          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
             echo "E2E_DIR=." >> "$GITHUB_ENV"
           else
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
@@ -327,7 +327,7 @@ jobs:
 
       - name: Export E2E directory
         run: |
-          if [ '${{ github.base_ref || github.ref }}' = '${{ github.event.repository.default_branch }}' ]; then
+          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
             echo "E2E_DIR=." >> "$GITHUB_ENV"
           else
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
@@ -392,7 +392,7 @@ jobs:
 
       - name: Export E2E directory
         run: |
-          if [ '${{ github.base_ref || github.ref }}' = '${{ github.event.repository.default_branch }}' ]; then
+          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
             echo "E2E_DIR=." >> "$GITHUB_ENV"
           else
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
@@ -448,7 +448,7 @@ jobs:
       - name: Run E2E
         working-directory: ${{ env.E2E_DIR }}
         env:
-          E2E_BRANCH: ${{ github.base_ref || github.ref }}
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
           E2E_NETWORK_MODE: ${{ matrix.mode }}
         run: make kube-ovn-conformance-e2e
@@ -476,7 +476,7 @@ jobs:
 
       - name: Export E2E directory
         run: |
-          if [ '${{ github.base_ref || github.ref }}' = '${{ github.event.repository.default_branch }}' ]; then
+          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
             echo "E2E_DIR=." >> "$GITHUB_ENV"
           else
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
@@ -737,7 +737,7 @@ jobs:
 
       - name: Export E2E directory
         run: |
-          if [ '${{ github.base_ref || github.ref }}' = '${{ github.event.repository.default_branch }}' ]; then
+          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
             echo "E2E_DIR=." >> "$GITHUB_ENV"
           else
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
