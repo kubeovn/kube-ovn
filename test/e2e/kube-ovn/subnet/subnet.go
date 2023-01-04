@@ -349,7 +349,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		ginkgo.By("Getting docker network used by kind")
-		network, err := docker.NetworkGet(kind.NetworkName)
+		network, err := docker.NetworkInspect(kind.NetworkName)
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Determine external egress gateway addresses")
@@ -442,7 +442,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		ginkgo.By("Getting docker network used by kind")
-		network, err := docker.NetworkGet(kind.NetworkName)
+		network, err := docker.NetworkInspect(kind.NetworkName)
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Determine external egress gateway addresses")

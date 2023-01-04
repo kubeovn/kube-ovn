@@ -107,7 +107,7 @@ func (n *Node) WaitLinkToDisappear(linkName string, interval time.Duration, dead
 
 func ListClusters() ([]string, error) {
 	filters := map[string][]string{"label": {labelCluster}}
-	nodeList, err := docker.ListContainers(filters)
+	nodeList, err := docker.ContainerList(filters)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +130,7 @@ func ListNodes(cluster, role string) ([]Node, error) {
 	}
 
 	filters := map[string][]string{"label": labels}
-	nodeList, err := docker.ListContainers(filters)
+	nodeList, err := docker.ContainerList(filters)
 	if err != nil {
 		return nil, err
 	}

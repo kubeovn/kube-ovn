@@ -136,7 +136,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.0.1 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
-	github.com/josharian/native v1.0.0 // indirect
+	github.com/josharian/native v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/juju/errors v1.0.0 // indirect
 	github.com/k-sone/critbitgo v1.4.0 // indirect
@@ -150,7 +150,7 @@ require (
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/mdlayher/ethernet v0.0.0-20220221185849-529eae5b6118 // indirect
-	github.com/mdlayher/packet v1.1.0 // indirect
+	github.com/mdlayher/packet v1.1.1 // indirect
 	github.com/mdlayher/socket v0.4.0 // indirect
 	github.com/mindprince/gonvml v0.0.0-20190828220739-9ebdce4bb989 // indirect
 	github.com/mistifyio/go-zfs v2.1.2-0.20190413222219-f784269be439+incompatible // indirect
@@ -263,6 +263,7 @@ require (
 replace (
 	github.com/alauda/felix => github.com/kubeovn/felix v0.0.0-20220325073257-c8a0f705d139
 	github.com/greenpau/ovsdb => github.com/kubeovn/ovsdb v0.0.0-20221213053943-9372db56919f
+	github.com/mdlayher/arp => github.com/kubeovn/arp v0.0.0-20230101053045-8a0772d9c34c
 	github.com/onsi/ginkgo/v2 => github.com/onsi/ginkgo/v2 v2.4.0
 	github.com/openshift/client-go => github.com/openshift/client-go v0.0.0-20221107163225-3335a34a1d24
 	github.com/ovn-org/libovsdb => github.com/kubeovn/libovsdb v0.0.0-20221208095821-f8830e1998e8

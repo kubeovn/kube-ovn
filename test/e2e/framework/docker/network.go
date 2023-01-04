@@ -59,11 +59,14 @@ func getNetwork(name string, ignoreNotFound bool) (*types.NetworkResource, error
 		return nil, nil
 	}
 
-	network := networks[0]
-	return &network, nil
+	info, err := cli.NetworkInspect(context.Background(), networks[0].ID, types.NetworkInspectOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return &info, nil
 }
 
-func NetworkGet(name string) (*types.NetworkResource, error) {
+func NetworkInspect(name string) (*types.NetworkResource, error) {
 	return getNetwork(name, false)
 }
 

@@ -42,31 +42,40 @@ func makeProviderNetwork(providerNetworkName string, exchangeLinkName bool, link
 }
 
 var _ = framework.Describe("[group:underlay]", func() {
-	f := framework.NewDefaultFramework("provider-network")
+	f := framework.NewDefaultFramework("underlay")
 
 	var skip bool
 	var itFn func(bool)
 	var cs clientset.Interface
 	var nodeNames []string
-	var clusterName, providerNetworkName, vlanName, subnetName, namespaceName string
+	var clusterName, providerNetworkName, vlanName, subnetName, namespaceName, podName string
 	var linkMap map[string]*iproute.Link
 	var routeMap map[string][]iproute.Route
+	var eventClient *framework.EventClient
 	var podClient *framework.PodClient
 	var subnetClient *framework.SubnetClient
 	var vlanClient *framework.VlanClient
 	var providerNetworkClient *framework.ProviderNetworkClient
 	var dockerNetwork *dockertypes.NetworkResource
+	var containerID string
+	var image string
 
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
+		eventClient = f.EventClient()
 		podClient = f.PodClient()
 		subnetClient = f.SubnetClient()
 		vlanClient = f.VlanClient()
 		providerNetworkClient = f.ProviderNetworkClient()
 		namespaceName = f.Namespace.Name
+		podName = "pod-" + framework.RandomSuffix()
 		subnetName = "subnet-" + framework.RandomSuffix()
 		vlanName = "vlan-" + framework.RandomSuffix()
 		providerNetworkName = "pn-" + framework.RandomSuffix()
+		containerID = ""
+		if image == "" {
+			image = framework.GetKubeOvnImage(cs)
+		}
 
 		if skip {
 			ginkgo.Skip("underlay spec only runs on kind clusters")
@@ -243,6 +252,15 @@ var _ = framework.Describe("[group:underlay]", func() {
 		}
 	})
 	ginkgo.AfterEach(func() {
+		if containerID != "" {
+			ginkgo.By("Deleting container " + containerID)
+			err := docker.ContainerRemove(containerID)
+			framework.ExpectNoError(err)
+		}
+
+		ginkgo.By("Deleting pod " + podName)
+		podClient.DeleteSync(podName)
+
 		ginkgo.By("Deleting subnet " + subnetName)
 		subnetClient.DeleteSync(subnetName)
 
@@ -286,7 +304,7 @@ var _ = framework.Describe("[group:underlay]", func() {
 		_ = providerNetworkClient.CreateSync(pn)
 
 		ginkgo.By("Getting docker network " + dockerNetworkName)
-		network, err := docker.NetworkGet(dockerNetworkName)
+		network, err := docker.NetworkInspect(dockerNetworkName)
 		framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
 
 		ginkgo.By("Creating vlan " + vlanName)
@@ -297,25 +315,34 @@ var _ = framework.Describe("[group:underlay]", func() {
 		cidr := make([]string, 0, 2)
 		gateway := make([]string, 0, 2)
 		for _, config := range dockerNetwork.IPAM.Config {
-			cidr = append(cidr, config.Subnet)
-			gateway = append(gateway, config.Gateway)
+			switch util.CheckProtocol(config.Subnet) {
+			case apiv1.ProtocolIPv4:
+				if f.ClusterIpFamily != "ipv6" {
+					cidr = append(cidr, config.Subnet)
+					gateway = append(gateway, config.Gateway)
+				}
+			case apiv1.ProtocolIPv6:
+				if f.ClusterIpFamily != "ipv4" {
+					cidr = append(cidr, config.Subnet)
+					gateway = append(gateway, config.Gateway)
+				}
+			}
 		}
 		excludeIPs := make([]string, 0, len(network.Containers)*2)
 		for _, container := range network.Containers {
-			if container.IPv4Address != "" {
-				excludeIPs = append(excludeIPs, container.IPv4Address)
+			if container.IPv4Address != "" && f.ClusterIpFamily != "ipv6" {
+				excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
 			}
-			if container.IPv6Address != "" {
-				excludeIPs = append(excludeIPs, container.IPv6Address)
+			if container.IPv6Address != "" && f.ClusterIpFamily != "ipv4" {
+				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
 			}
 		}
 		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(cidr, ","), strings.Join(gateway, ","), excludeIPs, nil, []string{namespaceName})
 		_ = subnetClient.CreateSync(subnet)
 
-		podName := "pod-" + framework.RandomSuffix()
 		ginkgo.By("Creating pod " + podName)
 		cmd := []string{"sh", "-c", "sleep 600"}
-		pod := framework.MakePod(namespaceName, podName, nil, nil, framework.GetKubeOvnImage(cs), cmd, nil)
+		pod := framework.MakePod(namespaceName, podName, nil, nil, image, cmd, nil)
 		_ = podClient.CreateSync(pod)
 
 		ginkgo.By("Validating pod MTU")
@@ -325,8 +352,69 @@ var _ = framework.Describe("[group:underlay]", func() {
 		framework.ExpectNoError(err)
 		framework.ExpectHaveLen(links, 1, "should get eth0 information")
 		framework.ExpectEqual(links[0].Mtu, docker.MTU)
+	})
 
-		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
+	framework.ConformanceIt("should be able to detect IPv4 address conflict", func() {
+		if f.ClusterIpFamily != "ipv4" {
+			ginkgo.Skip("Address conflict detection only supports IPv4")
+		}
+		f.SkipVersionPriorTo(1, 9, "Address conflict detection was introduced in v1.9")
+
+		ginkgo.By("Creating provider network")
+		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
+		_ = providerNetworkClient.CreateSync(pn)
+
+		ginkgo.By("Getting docker network " + dockerNetworkName)
+		network, err := docker.NetworkInspect(dockerNetworkName)
+		framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
+
+		containerName := "container-" + framework.RandomSuffix()
+		ginkgo.By("Creating container " + containerName)
+		cmd := []string{"sh", "-c", "sleep 600"}
+		containerInfo, err := docker.ContainerCreate(containerName, image, dockerNetworkName, cmd)
+		framework.ExpectNoError(err)
+
+		ginkgo.By("Creating vlan " + vlanName)
+		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
+		_ = vlanClient.Create(vlan)
+
+		ginkgo.By("Creating subnet " + subnetName)
+		cidr := make([]string, 0, 2)
+		gateway := make([]string, 0, 2)
+		for _, config := range dockerNetwork.IPAM.Config {
+			if util.CheckProtocol(config.Subnet) == apiv1.ProtocolIPv4 {
+				cidr = append(cidr, config.Subnet)
+				gateway = append(gateway, config.Gateway)
+				break
+			}
+		}
+		excludeIPs := make([]string, 0, len(network.Containers)*2)
+		for _, container := range network.Containers {
+			if container.IPv4Address != "" {
+				excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
+			}
+		}
+		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(cidr, ","), strings.Join(gateway, ","), excludeIPs, nil, []string{namespaceName})
+		_ = subnetClient.CreateSync(subnet)
+
+		ip := containerInfo.NetworkSettings.Networks[dockerNetworkName].IPAddress
+		mac := containerInfo.NetworkSettings.Networks[dockerNetworkName].MacAddress
+		ginkgo.By("Creating pod " + podName + " with IP address " + ip)
+		annotations := map[string]string{util.IpAddressAnnotation: ip}
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, image, cmd, nil)
+		_ = podClient.Create(pod)
+
+		ginkgo.By("Waiting for pod events")
+		events := eventClient.WaitToHaveEvent("Pod", podName, "Warning", "FailedCreatePodSandBox", "kubelet", "")
+		message := fmt.Sprintf("IP address %s has already been used by host with MAC %s", ip, mac)
+		var found bool
+		for _, event := range events {
+			if strings.Contains(event.Message, message) {
+				found = true
+				framework.Logf("Found pod event: %s", event.Message)
+				break
+			}
+		}
+		framework.ExpectTrue(found, "Address conflict should be reported in pod events")
 	})
 })
