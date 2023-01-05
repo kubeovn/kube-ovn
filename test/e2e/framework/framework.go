@@ -126,7 +126,8 @@ func (f *Framework) BeforeEach() {
 }
 
 func (f *Framework) SkipVersionPriorTo(major, minor uint, message string) {
-	if f.ClusterVersionMajor <= major && f.ClusterVersionMinor < minor {
+	if f.ClusterVersionMajor < major ||
+		(f.ClusterVersionMajor == major && f.ClusterVersionMinor < minor) {
 		ginkgo.Skip(message)
 	}
 }
