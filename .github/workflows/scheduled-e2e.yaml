@@ -24,6 +24,9 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.10
+          - release-1.9
+          - release-1.8
         ip-family:
           - ipv4
           - ipv6
@@ -104,6 +107,9 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.10
+          - release-1.9
+          - release-1.8
         ip-family:
           - ipv4
           - ipv6
@@ -177,6 +183,9 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.10
+          - release-1.9
+          - release-1.8
         ip-family:
           - ipv4
           - ipv6
@@ -232,6 +241,9 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.10
+          - release-1.9
+          - release-1.8
         ip-family:
           - ipv4
           - ipv6
@@ -306,6 +318,8 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.10
+          - release-1.9
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
@@ -371,6 +385,9 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.10
+          - release-1.9
+          - release-1.8
     steps:
       - uses: actions/checkout@v3
 
@@ -418,6 +435,8 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.10
+          - release-1.9
     steps:
       - uses: actions/checkout@v3
 
@@ -465,6 +484,9 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.10
+          - release-1.9
+          - release-1.8
     steps:
       - uses: actions/checkout@v3
 
@@ -514,6 +536,9 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.10
+          - release-1.9
+          - release-1.8
     steps:
       - uses: actions/checkout@v3
 
@@ -632,6 +657,9 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.10
+          - release-1.9
+          - release-1.8
     steps:
       - uses: actions/checkout@v3
 
@@ -678,6 +706,9 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.10
+          - release-1.9
+          - release-1.8
     steps:
       - uses: actions/checkout@v3
       - uses: azure/setup-helm@v3
