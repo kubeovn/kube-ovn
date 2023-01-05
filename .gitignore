@@ -12,5 +12,4 @@ kind.yaml
 image.tar
 image-amd64.tar
 image-arm64.tar
-install-underlay.sh
 test/**/*.test

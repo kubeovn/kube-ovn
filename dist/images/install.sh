@@ -46,11 +46,12 @@ if [ "$DUAL_STACK" = "true" ]; then
   SVC_YAML_IPFAMILYPOLICY="ipFamilyPolicy: PreferDualStack"
 fi
 
-EXCLUDE_IPS=""                         # EXCLUDE_IPS for default subnet
-LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB
-NETWORK_TYPE="geneve"                  # geneve or vlan
-TUNNEL_TYPE="geneve"                   # geneve or vxlan
-POD_NIC_TYPE="veth-pair"               # veth-pair or internal-port
+EXCLUDE_IPS=""                                    # EXCLUDE_IPS for default subnet
+LABEL="node-role.kubernetes.io/control-plane"     # The node label to deploy OVN DB
+DEPRECATED_LABEL="node-role.kubernetes.io/master" # The node label to deploy OVN DB in earlier versions
+NETWORK_TYPE="geneve"                             # geneve or vlan
+TUNNEL_TYPE="geneve"                              # geneve or vxlan
+POD_NIC_TYPE="veth-pair"                          # veth-pair or internal-port
 
 # VLAN Config only take effect when NETWORK_TYPE is vlan
 PROVIDER_NAME="provider"
@@ -144,18 +145,24 @@ if [[ $ENABLE_SSL = "true" ]];then
 fi
 
 echo "[Step 1] Label kube-ovn-master node"
-count=$(kubectl get no -l$LABEL --no-headers -o wide | wc -l | sed 's/ //g')
-if [ "$count" = "0" ]; then
-  echo "ERROR: No node with label $LABEL"
-  exit 1
+count=$(kubectl get no -l$LABEL --no-headers | wc -l)
+node_label="$LABEL"
+if [ $count -eq 0 ]; then
+  count=$(kubectl get no -l$DEPRECATED_LABEL --no-headers | wc -l)
+  node_label="$DEPRECATED_LABEL"
+  if [ $count -eq 0 ]; then
+    echo "ERROR: No node with label $LABEL or $DEPRECATED_LABEL found"
+    exit 1
+  fi
 fi
 kubectl label no -lbeta.kubernetes.io/os=linux kubernetes.io/os=linux --overwrite
-kubectl label no -l$LABEL kube-ovn/role=master --overwrite
+kubectl label no -l$node_label kube-ovn/role=master --overwrite
 echo "-------------------------------"
 echo ""
 
 echo "[Step 2] Install OVN components"
 addresses=$(kubectl get no -lkube-ovn/role=master --no-headers -o wide | awk '{print $6}' | tr \\n ',')
+count=$(kubectl get no -lkube-ovn/role=master --no-headers | wc -l)
 echo "Install OVN DB in $addresses"
 
 cat <<EOF > kube-ovn-crd.yaml
@@ -814,36 +821,6 @@ EOF
 
 if $DPDK; then
   cat <<EOF > ovn.yaml
-apiVersion: policy/v1beta1
-kind: PodSecurityPolicy
-metadata:
-  name: kube-ovn
-  annotations:
-    seccomp.security.alpha.kubernetes.io/allowedProfileNames: '*'
-spec:
-  privileged: true
-  allowPrivilegeEscalation: true
-  allowedCapabilities:
-    - '*'
-  volumes:
-    - '*'
-  hostNetwork: true
-  hostPorts:
-    - min: 0
-      max: 65535
-  hostIPC: true
-  hostPID: true
-  runAsUser:
-    rule: 'RunAsAny'
-  seLinux:
-    rule: 'RunAsAny'
-  supplementalGroups:
-    rule: 'RunAsAny'
-  fsGroup:
-    rule: 'RunAsAny'
-
----
-
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -1333,36 +1310,6 @@ EOF
 
 else
   cat <<EOF > ovn.yaml
-apiVersion: policy/v1beta1
-kind: PodSecurityPolicy
-metadata:
-  name: kube-ovn
-  annotations:
-    seccomp.security.alpha.kubernetes.io/allowedProfileNames: '*'
-spec:
-  privileged: true
-  allowPrivilegeEscalation: true
-  allowedCapabilities:
-    - '*'
-  volumes:
-    - '*'
-  hostNetwork: true
-  hostPorts:
-    - min: 0
-      max: 65535
-  hostIPC: true
-  hostPID: true
-  runAsUser:
-    rule: 'RunAsAny'
-  seLinux:
-    rule: 'RunAsAny'
-  supplementalGroups:
-    rule: 'RunAsAny'
-  fsGroup:
-    rule: 'RunAsAny'
-
----
-
 apiVersion: v1
 kind: ConfigMap
 metadata:
