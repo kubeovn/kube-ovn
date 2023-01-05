@@ -602,6 +602,9 @@ func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, node
 	if subnetName == c.config.NodeSwitch {
 		key = nodeName
 		ipName = fmt.Sprintf("node-%s", nodeName)
+	} else if strings.HasPrefix(podName, util.U2OInterconnName[0:19]) {
+		key = podName
+		ipName = podName
 	} else {
 		key = podName
 		ipName = ovs.PodNameToPortName(podName, ns, providerName)
