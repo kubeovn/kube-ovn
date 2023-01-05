@@ -88,7 +88,8 @@ jobs:
       - name: Install Kube-OVN
         working-directory: test/e2e/k8s-network/branches/${{ matrix.branch }}
         run: |
-          docker pull kubeovn/kube-ovn:$(cat VERSION)
+          version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')
+          docker pull kubeovn/kube-ovn:$version
           make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
 
       - name: Run E2E
@@ -168,7 +169,8 @@ jobs:
       - name: Install Kube-OVN
         working-directory: test/e2e/k8s-network/branches/${{ matrix.branch }}
         run: |
-          docker pull kubeovn/kube-ovn:$(cat VERSION)
+          version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')
+          docker pull kubeovn/kube-ovn:$version
           make kind-install-${{ matrix.ip-family }}
 
       - name: Run E2E
@@ -226,7 +228,8 @@ jobs:
       - name: Install Kube-OVN
         working-directory: test/e2e/k8s-network/branches/${{ matrix.branch }}
         run: |
-          docker pull kubeovn/kube-ovn:$(cat VERSION)
+          version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')
+          docker pull kubeovn/kube-ovn:$version
           make kind-install-${{ matrix.ip-family }}
 
       - name: Run E2E
@@ -299,7 +302,8 @@ jobs:
       - name: Install Kube-OVN
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
-          docker pull kubeovn/kube-ovn:$(cat VERSION)
+          version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')
+          docker pull kubeovn/kube-ovn:$version
           make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
 
       - name: Run E2E
@@ -368,7 +372,8 @@ jobs:
       - name: Install Kube-OVN
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
-          docker pull kubeovn/kube-ovn:$(cat VERSION)
+          version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')
+          docker pull kubeovn/kube-ovn:$version
           make kind-install-ovn-ic
 
       - name: Run E2E
@@ -419,7 +424,8 @@ jobs:
       - name: Install Kube-OVN
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
-          docker pull kubeovn/kube-ovn:$(cat VERSION)
+          version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')
+          docker pull kubeovn/kube-ovn:$version
           sudo ENABLE_SSL=true make kind-install
 
       - name: Cleanup
@@ -449,7 +455,7 @@ jobs:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
-        
+
       - name: Install kind
         run: |
           curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
@@ -468,7 +474,8 @@ jobs:
       - name: Install Kube-OVN
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
-          docker pull kubeovn/kube-ovn:$(cat VERSION)
+          version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')
+          docker pull kubeovn/kube-ovn:$version
           make kind-install-underlay-logical-gateway-dual
 
       - name: Cleanup
@@ -520,7 +527,8 @@ jobs:
         env:
           ENABLE_LB: "false"
         run: |
-          docker pull kubeovn/kube-ovn:$(cat VERSION)
+          version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')
+          docker pull kubeovn/kube-ovn:$version
           make kind-install
 
       - name: Cleanup
@@ -572,7 +580,8 @@ jobs:
         env:
           ENABLE_NP: "false"
         run: |
-          docker pull kubeovn/kube-ovn:$(cat VERSION)
+          version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')
+          docker pull kubeovn/kube-ovn:$version
           make kind-install
 
       - name: Cleanup
@@ -641,8 +650,9 @@ jobs:
       - name: Install Kube-OVN
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
-          docker pull kubeovn/kube-ovn:$(cat VERSION)
-          docker pull kubeovn/vpc-nat-gateway:$(cat VERSION)
+          version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')
+          docker pull kubeovn/kube-ovn:$version
+          docker pull kubeovn/vpc-nat-gateway:$version
           make kind-install-lb-svc
 
       - name: Run E2E
@@ -690,7 +700,8 @@ jobs:
       - name: Install Kube-OVN
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
-          docker pull kubeovn/kube-ovn:$(cat VERSION)
+          version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')
+          docker pull kubeovn/kube-ovn:$version
           make kind-install
 
       - name: Cleanup
@@ -766,7 +777,8 @@ jobs:
       - name: Install Kube-OVN
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
-          docker pull kubeovn/kube-ovn:$(cat VERSION)
+          version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')
+          docker pull kubeovn/kube-ovn:$version
           make kind-install
 
       - name: Run E2E
