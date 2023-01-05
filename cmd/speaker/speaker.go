@@ -3,6 +3,7 @@ package speaker
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/klog/v2"
@@ -27,7 +28,11 @@ func CmdMain() {
 
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
-		klog.Fatal(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.PprofPort), nil))
+		server := &http.Server{
+			Addr:              fmt.Sprintf("0.0.0.0:%d", config.PprofPort),
+			ReadHeaderTimeout: 3 * time.Second,
+		}
+		util.LogFatalAndExit(server.ListenAndServe(), "failed to listen and serve on %s", server.Addr)
 	}()
 
 	ctl.Run(stopCh)
