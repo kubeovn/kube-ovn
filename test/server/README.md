@@ -19,7 +19,7 @@ docker run -d --net=kind kubeovn/test:v1.11.0
 
 # Run test-server analysis tool in one terminal and reload kube-ovn in another terminal
 # terminal 1
-kubectl exec -it test-client -- ./test-server 100.64.0.1
+kubectl exec -it test-client -- ./test-server --remote-address=172.18.0.5 --output=json --duration-seconds=60
  
 # terminal 2
 kubectl ko reload
