@@ -3,6 +3,7 @@ SHELL = /bin/bash
 REGISTRY = kubeovn
 DEV_TAG = dev
 RELEASE_TAG = $(shell cat VERSION)
+VERSION = $(shell echo $${VERSION:-$(RELEASE_TAG)})
 COMMIT = git-$(shell git rev-parse --short HEAD)
 DATE = $(shell date +"%Y-%m-%d_%H:%M:%S")
 GOLDFLAGS = "-w -s -extldflags '-z now' -X github.com/kubeovn/kube-ovn/versions.COMMIT=$(COMMIT) -X github.com/kubeovn/kube-ovn/versions.VERSION=$(RELEASE_TAG) -X github.com/kubeovn/kube-ovn/versions.BUILDDATE=$(DATE)"
@@ -15,7 +16,7 @@ MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/
 CILIUM_VERSION = 1.11.6
 CILIUM_IMAGE_REPO = quay.io/cilium/cilium
 
-VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG)
+VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
 
 E2E_NETWORK = bridge
 ifneq ($(VLAN_ID),)
@@ -158,16 +159,16 @@ define docker_config_bridge
 		default=$$(docker network inspect $(1) -f '{{index .Options "com.docker.network.bridge.default_bridge"}}'); \
 		br="docker0"; \
 		[ "$$default" != "true" ] && br="br-$$(docker network inspect $(1) -f "{{.Id}}" | head -c 12)"; \
-		docker run --rm --privileged --network=host $(REGISTRY)/kube-ovn:$(RELEASE_TAG) bash -ec '\
+		docker run --rm --privileged --network=host $(REGISTRY)/kube-ovn:$(VERSION) bash -ec '\
 			for brif in $$(ls /sys/class/net/'$$br'/brif); do \
 				echo $(2) > /sys/class/net/'$$br'/brif/$$brif/hairpin_mode; \
 			done'; \
 		if [ -z "$(3)" ]; then \
-			docker run --rm --privileged --network=host $(REGISTRY)/kube-ovn:$(RELEASE_TAG) bash -ec '\
+			docker run --rm --privileged --network=host $(REGISTRY)/kube-ovn:$(VERSION) bash -ec '\
 				echo 0 > /sys/class/net/'$$br'/bridge/vlan_filtering; \
 			'; \
 		else \
-			docker run --rm --privileged --network=host $(REGISTRY)/kube-ovn:$(RELEASE_TAG) bash -ec '\
+			docker run --rm --privileged --network=host $(REGISTRY)/kube-ovn:$(VERSION) bash -ec '\
 				echo 1 > /sys/class/net/'$$br'/bridge/vlan_filtering; \
 				bridge vlan show | awk "/^'$$br'/{print \$$2; while (getline > 0) {\
 					if (\$$0 ~ /^[[:blank:]]/) {print \$$1} else {exit 0} }\
@@ -252,7 +253,7 @@ kind-init-cilium:
 
 .PHONY: kind-load-image
 kind-load-image:
-	$(call kind_load_image,kube-ovn,$(REGISTRY)/kube-ovn:$(RELEASE_TAG))
+	$(call kind_load_image,kube-ovn,$(REGISTRY)/kube-ovn:$(VERSION))
 
 .PHONY: kind-untaint-control-plane
 kind-untaint-control-plane:
@@ -287,7 +288,7 @@ kind-install-overlay-ipv4: kind-install
 
 .PHONY: kind-install-ovn-ic
 kind-install-ovn-ic: kind-load-image kind-install
-	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(RELEASE_TAG))
+	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
 	kubectl config use-context kind-kube-ovn1
 	sed -e 's/10.16.0/10.18.0/g' \
 		-e 's/10.96.0/10.98.0/g' \
@@ -296,7 +297,7 @@ kind-install-ovn-ic: kind-load-image kind-install
 		bash
 	kubectl describe no
 
-	docker run -d --name ovn-ic-db --network kind $(REGISTRY)/kube-ovn:$(RELEASE_TAG) bash start-ic-db.sh
+	docker run -d --name ovn-ic-db --network kind $(REGISTRY)/kube-ovn:$(VERSION) bash start-ic-db.sh
 	@set -e; \
 	ic_db_host=$$(docker inspect ovn-ic-db -f "{{.NetworkSettings.Networks.kind.IPAddress}}"); \
 	zone=az0 ic_db_host=$$ic_db_host gateway_node_name=kube-ovn-control-plane j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
