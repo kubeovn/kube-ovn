@@ -172,16 +172,16 @@ define docker_config_bridge
 		default=$$(docker network inspect $(1) -f '{{index .Options "com.docker.network.bridge.default_bridge"}}'); \
 		br="docker0"; \
 		[ "$$default" != "true" ] && br="br-$$(docker network inspect $(1) -f "{{.Id}}" | head -c 12)"; \
-		docker run --rm --privileged --network=host $(REGISTRY)/kube-ovn:$(RELEASE_TAG) bash -ec '\
+		docker run --rm --privileged --network=host $(REGISTRY)/kube-ovn:$(VERSION) bash -ec '\
 			for brif in $$(ls /sys/class/net/'$$br'/brif); do \
 				echo $(2) > /sys/class/net/'$$br'/brif/$$brif/hairpin_mode; \
 			done'; \
 		if [ -z "$(3)" ]; then \
-			docker run --rm --privileged --network=host $(REGISTRY)/kube-ovn:$(RELEASE_TAG) bash -ec '\
+			docker run --rm --privileged --network=host $(REGISTRY)/kube-ovn:$(VERSION) bash -ec '\
 				echo 0 > /sys/class/net/'$$br'/bridge/vlan_filtering; \
 			'; \
 		else \
-			docker run --rm --privileged --network=host $(REGISTRY)/kube-ovn:$(RELEASE_TAG) bash -ec '\
+			docker run --rm --privileged --network=host $(REGISTRY)/kube-ovn:$(VERSION) bash -ec '\
 				echo 1 > /sys/class/net/'$$br'/bridge/vlan_filtering; \
 				bridge vlan show | awk "/^'$$br'/{print \$$2; while (getline > 0) {\
 					if (\$$0 ~ /^[[:blank:]]/) {print \$$1} else {exit 0} }\
