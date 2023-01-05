@@ -7,6 +7,7 @@ ENABLE_SSL=${ENABLE_SSL:-false}
 ENABLE_VLAN=${ENABLE_VLAN:-false}
 CHECK_GATEWAY=${CHECK_GATEWAY:-true}
 LOGICAL_GATEWAY=${LOGICAL_GATEWAY:-false}
+U2O_INTERCONNECTION=${U2O_INTERCONNECTION:-false}
 ENABLE_MIRROR=${ENABLE_MIRROR:-false}
 VLAN_NIC=${VLAN_NIC:-}
 HW_OFFLOAD=${HW_OFFLOAD:-false}
@@ -942,6 +943,9 @@ spec:
       - name: ExcludeIPs
         type: string
         jsonPath: .spec.excludeIps
+      - name: U2OInterconnectionIP
+        type: string
+        jsonPath: .status.u2oInterconnectionIP
       schema:
         openAPIV3Schema:
           type: object
@@ -962,6 +966,8 @@ spec:
                 dhcpV4OptionsUUID:
                   type: string
                 dhcpV6OptionsUUID:
+                  type: string
+                u2oInterconnectionIP:
                   type: string
                 conditions:
                   type: array
@@ -1083,6 +1089,8 @@ spec:
                           - allow
                           - drop
                           - reject
+                u2oInterconnection:
+                  type: boolean
   scope: Cluster
   names:
     plural: subnets
@@ -2585,6 +2593,7 @@ spec:
           - --default-gateway=$POD_GATEWAY
           - --default-gateway-check=$CHECK_GATEWAY
           - --default-logical-gateway=$LOGICAL_GATEWAY
+          - --default-u2o-interconnection=$U2O_INTERCONNECTION
           - --default-exclude-ips=$EXCLUDE_IPS
           - --node-switch-cidr=$JOIN_CIDR
           - --service-cluster-ip-range=$SVC_CIDR

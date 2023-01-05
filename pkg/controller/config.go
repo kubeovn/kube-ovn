@@ -37,12 +37,13 @@ type Configuration struct {
 	KubeFactoryClient    kubernetes.Interface
 	KubeOvnFactoryClient clientset.Interface
 
-	DefaultLogicalSwitch  string
-	DefaultCIDR           string
-	DefaultGateway        string
-	DefaultExcludeIps     string
-	DefaultGatewayCheck   bool
-	DefaultLogicalGateway bool
+	DefaultLogicalSwitch      string
+	DefaultCIDR               string
+	DefaultGateway            string
+	DefaultExcludeIps         string
+	DefaultGatewayCheck       bool
+	DefaultLogicalGateway     bool
+	DefaultU2OInterconnection bool
 
 	ClusterRouter     string
 	NodeSwitch        string
@@ -101,6 +102,8 @@ func ParseFlags() (*Configuration, error) {
 		argDefaultGatewayCheck   = pflag.Bool("default-gateway-check", true, "Check switch for the default subnet's gateway")
 		argDefaultLogicalGateway = pflag.Bool("default-logical-gateway", false, "Create a logical gateway for the default subnet instead of using underlay gateway. Take effect only when the default subnet is in underlay mode. (default false)")
 		argDefaultExcludeIps     = pflag.String("default-exclude-ips", "", "Exclude ips in default switch (default gateway address)")
+
+		argDefaultU2OInterconnection = pflag.Bool("default-u2o-interconnection", false, "usage for underlay to overlay interconnection")
 
 		argClusterRouter     = pflag.String("cluster-router", util.DefaultVpc, "The router name for cluster router")
 		argNodeSwitch        = pflag.String("node-switch", "join", "The name of node gateway switch which help node to access pod network")
@@ -168,6 +171,7 @@ func ParseFlags() (*Configuration, error) {
 		DefaultGateway:                *argDefaultGateway,
 		DefaultGatewayCheck:           *argDefaultGatewayCheck,
 		DefaultLogicalGateway:         *argDefaultLogicalGateway,
+		DefaultU2OInterconnection:     *argDefaultU2OInterconnection,
 		DefaultExcludeIps:             *argDefaultExcludeIps,
 		ClusterRouter:                 *argClusterRouter,
 		NodeSwitch:                    *argNodeSwitch,

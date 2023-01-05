@@ -138,6 +138,8 @@ type SubnetSpec struct {
 	IPv6RAConfigs string `json:"ipv6RAConfigs,omitempty"`
 
 	Acls []Acl `json:"acls,omitempty"`
+
+	U2OInterconnection bool `json:"u2oInterconnection,omitempty"`
 }
 
 type Acl struct {
@@ -178,15 +180,16 @@ type SubnetStatus struct {
 	// +patchStrategy=merge
 	Conditions []SubnetCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
-	AvailableIPs      float64 `json:"availableIPs"`
-	UsingIPs          float64 `json:"usingIPs"`
-	V4AvailableIPs    float64 `json:"v4availableIPs"`
-	V4UsingIPs        float64 `json:"v4usingIPs"`
-	V6AvailableIPs    float64 `json:"v6availableIPs"`
-	V6UsingIPs        float64 `json:"v6usingIPs"`
-	ActivateGateway   string  `json:"activateGateway"`
-	DHCPv4OptionsUUID string  `json:"dhcpV4OptionsUUID"`
-	DHCPv6OptionsUUID string  `json:"dhcpV6OptionsUUID"`
+	AvailableIPs         float64 `json:"availableIPs"`
+	UsingIPs             float64 `json:"usingIPs"`
+	V4AvailableIPs       float64 `json:"v4availableIPs"`
+	V4UsingIPs           float64 `json:"v4usingIPs"`
+	V6AvailableIPs       float64 `json:"v6availableIPs"`
+	V6UsingIPs           float64 `json:"v6usingIPs"`
+	ActivateGateway      string  `json:"activateGateway"`
+	DHCPv4OptionsUUID    string  `json:"dhcpV4OptionsUUID"`
+	DHCPv6OptionsUUID    string  `json:"dhcpV6OptionsUUID"`
+	U2OInterconnectionIP string  `json:"u2oInterconnectionIP"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
