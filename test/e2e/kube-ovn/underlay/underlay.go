@@ -1,17 +1,20 @@
 package underlay
 
 import (
+	"encoding/json"
 	"fmt"
+	"net"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
 
 	dockertypes "github.com/docker/docker/api/types"
+	"github.com/onsi/ginkgo/v2"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
-
-	"github.com/onsi/ginkgo/v2"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -22,6 +25,7 @@ import (
 )
 
 const dockerNetworkName = "kube-ovn-vlan"
+const curlListenPort = 8081
 
 func makeProviderNetwork(providerNetworkName string, exchangeLinkName bool, linkMap map[string]*iproute.Link) *apiv1.ProviderNetwork {
 	var defaultInterface string
@@ -48,7 +52,7 @@ var _ = framework.Describe("[group:underlay]", func() {
 	var itFn func(bool)
 	var cs clientset.Interface
 	var nodeNames []string
-	var clusterName, providerNetworkName, vlanName, subnetName, namespaceName, podName string
+	var clusterName, providerNetworkName, vlanName, subnetName, podName, namespaceName, u2oPodNameUnderlay, u2oOverlaySubnetName, u2oPodNameOverlay string
 	var linkMap map[string]*iproute.Link
 	var routeMap map[string][]iproute.Route
 	var eventClient *framework.EventClient
@@ -76,6 +80,9 @@ var _ = framework.Describe("[group:underlay]", func() {
 		if image == "" {
 			image = framework.GetKubeOvnImage(cs)
 		}
+		u2oPodNameUnderlay = ""
+		u2oOverlaySubnetName = ""
+		u2oPodNameOverlay = ""
 
 		if skip {
 			ginkgo.Skip("underlay spec only runs on kind clusters")
@@ -261,6 +268,17 @@ var _ = framework.Describe("[group:underlay]", func() {
 		ginkgo.By("Deleting pod " + podName)
 		podClient.DeleteSync(podName)
 
+		if u2oPodNameUnderlay != "" {
+			ginkgo.By("Deleting underlay pod " + u2oPodNameUnderlay)
+			podClient.DeleteSync(u2oPodNameUnderlay)
+
+			ginkgo.By("Deleting overlay pod " + u2oPodNameOverlay)
+			podClient.DeleteSync(u2oPodNameOverlay)
+
+			ginkgo.By("Deleting subnet " + u2oOverlaySubnetName)
+			subnetClient.DeleteSync(u2oOverlaySubnetName)
+		}
+
 		ginkgo.By("Deleting subnet " + subnetName)
 		subnetClient.DeleteSync(subnetName)
 
@@ -417,4 +435,307 @@ var _ = framework.Describe("[group:underlay]", func() {
 		}
 		framework.ExpectTrue(found, "Address conflict should be reported in pod events")
 	})
+
+	framework.ConformanceIt("should support underlay to overlay subnet interconnection ", func() {
+		ginkgo.By("Creating provider network")
+		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
+		_ = providerNetworkClient.CreateSync(pn)
+
+		ginkgo.By("Getting docker network " + dockerNetworkName)
+		network, err := docker.NetworkInspect(dockerNetworkName)
+		framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
+
+		ginkgo.By("Creating vlan " + vlanName)
+		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
+		_ = vlanClient.Create(vlan)
+
+		ginkgo.By("Creating underlay subnet " + subnetName)
+		underlayCidr := make([]string, 0, 2)
+		gateway := make([]string, 0, 2)
+		for _, config := range dockerNetwork.IPAM.Config {
+			switch util.CheckProtocol(config.Subnet) {
+			case apiv1.ProtocolIPv4:
+				if f.ClusterIpFamily != "ipv6" {
+					underlayCidr = append(underlayCidr, config.Subnet)
+					gateway = append(gateway, config.Gateway)
+				}
+			case apiv1.ProtocolIPv6:
+				if f.ClusterIpFamily != "ipv4" {
+					underlayCidr = append(underlayCidr, config.Subnet)
+					gateway = append(gateway, config.Gateway)
+				}
+			}
+		}
+
+		excludeIPs := make([]string, 0, len(network.Containers)*2)
+		for _, container := range network.Containers {
+			if container.IPv4Address != "" && f.ClusterIpFamily != "ipv6" {
+				excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
+			}
+			if container.IPv6Address != "" && f.ClusterIpFamily != "ipv4" {
+				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
+			}
+		}
+
+		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(underlayCidr, ","), strings.Join(gateway, ","), excludeIPs, nil, []string{namespaceName})
+		subnet.Spec.U2OInterconnection = true
+		_ = subnetClient.CreateSync(subnet)
+		ginkgo.By("Creating underlay subnet pod")
+		annotations := map[string]string{
+			util.LogicalSwitchAnnotation: subnetName,
+		}
+
+		u2oPodNameUnderlay = "pod-" + framework.RandomSuffix()
+		args := []string{"netexec", "--http-port", strconv.Itoa(curlListenPort)}
+		underlayPod := framework.MakePod(namespaceName, u2oPodNameUnderlay, nil, annotations, framework.AgnhostImage, nil, args)
+		underlayPod.Spec.Containers[0].ImagePullPolicy = corev1.PullIfNotPresent
+
+		originUnderlayPod := underlayPod.DeepCopy()
+		underlayPod = podClient.CreateSync(underlayPod)
+
+		// get subnet again because ipam change
+		subnet = subnetClient.Get(subnetName)
+
+		ginkgo.By("Creating overlay subnet")
+		podClient = f.PodClient()
+		subnetClient = f.SubnetClient()
+		namespaceName = f.Namespace.Name
+		u2oOverlaySubnetName = "subnet-" + framework.RandomSuffix()
+		cidr := framework.RandomCIDR(f.ClusterIpFamily)
+
+		overlaySubnet := framework.MakeSubnet(u2oOverlaySubnetName, "", cidr, "", nil, nil, nil)
+		overlaySubnet = subnetClient.CreateSync(overlaySubnet)
+
+		ginkgo.By("Creating overlay subnet pod")
+		u2oPodNameOverlay = "pod-" + framework.RandomSuffix()
+		overlayAnnotations := map[string]string{
+			util.LogicalSwitchAnnotation: overlaySubnet.Name,
+		}
+		args = []string{"netexec", "--http-port", strconv.Itoa(curlListenPort)}
+		overlayPod := framework.MakePod(namespaceName, u2oPodNameOverlay, nil, overlayAnnotations, framework.AgnhostImage, nil, args)
+		overlayPod.Spec.Containers[0].ImagePullPolicy = corev1.PullIfNotPresent
+		overlayPod = podClient.CreateSync(overlayPod)
+
+		ginkgo.By("step1: Enable u2o check")
+		checkU2OItems(true, subnet, underlayPod, overlayPod)
+
+		ginkgo.By("step2: Disable u2o check")
+		podClient.DeleteSync(u2oPodNameUnderlay)
+
+		subnet = subnetClient.Get(subnetName)
+		modifiedSubnet := subnet.DeepCopy()
+		modifiedSubnet.Spec.U2OInterconnection = false
+		subnetClient.PatchSync(subnet, modifiedSubnet)
+		time.Sleep(5 * time.Second)
+
+		underlayPod = podClient.CreateSync(originUnderlayPod)
+		subnet = subnetClient.Get(subnetName)
+		checkU2OItems(false, subnet, underlayPod, overlayPod)
+
+		ginkgo.By("step3: recover enable u2o check")
+		podClient.DeleteSync(u2oPodNameUnderlay)
+
+		subnet = subnetClient.Get(subnetName)
+		modifiedSubnet = subnet.DeepCopy()
+		modifiedSubnet.Spec.U2OInterconnection = true
+		subnetClient.PatchSync(subnet, modifiedSubnet)
+		time.Sleep(5 * time.Second)
+		underlayPod = podClient.CreateSync(originUnderlayPod)
+		subnet = subnetClient.Get(subnetName)
+		checkU2OItems(true, subnet, underlayPod, overlayPod)
+
+		ginkgo.By("step4: check if kube-ovn-controller restart")
+		restartCmd := "kubectl rollout restart deployment kube-ovn-controller -n kube-system"
+		_, err = exec.Command("bash", "-c", restartCmd).CombinedOutput()
+		framework.ExpectNoError(err, "restart kube-ovn-controller")
+		checkU2OItems(true, subnet, underlayPod, overlayPod)
+
+		ginkgo.By("step5: Disable u2o check after restart kube-controller")
+		podClient.DeleteSync(u2oPodNameUnderlay)
+
+		subnet = subnetClient.Get(subnetName)
+		modifiedSubnet = subnet.DeepCopy()
+		modifiedSubnet.Spec.U2OInterconnection = false
+		subnetClient.PatchSync(subnet, modifiedSubnet)
+		time.Sleep(5 * time.Second)
+		underlayPod = podClient.CreateSync(originUnderlayPod)
+		subnet = subnetClient.Get(subnetName)
+		checkU2OItems(false, subnet, underlayPod, overlayPod)
+
+		ginkgo.By("step6: recover enable u2o check after restart kube-controller")
+		podClient.DeleteSync(u2oPodNameUnderlay)
+
+		subnet = subnetClient.Get(subnetName)
+		modifiedSubnet = subnet.DeepCopy()
+		modifiedSubnet.Spec.U2OInterconnection = true
+		subnetClient.PatchSync(subnet, modifiedSubnet)
+		time.Sleep(5 * time.Second)
+		underlayPod = podClient.CreateSync(originUnderlayPod)
+		subnet = subnetClient.Get(subnetName)
+		checkU2OItems(true, subnet, underlayPod, overlayPod)
+	})
 })
+
+func checkU2OItems(isEnableU2O bool, subnet *apiv1.Subnet, underlayPod, overlayPod *corev1.Pod) {
+
+	ginkgo.By("checking underlay subnet's u2o interconnect ip")
+	if isEnableU2O {
+		framework.ExpectEqual(subnet.Spec.U2OInterconnection, true)
+		framework.ExpectNotEqual(subnet.Status.U2OInterconnectionIP, "")
+	} else {
+		framework.ExpectNotEqual(subnet.Spec.U2OInterconnection, true)
+		framework.ExpectEqual(subnet.Status.U2OInterconnectionIP, "")
+	}
+
+	v4gw, v6gw := util.SplitStringIP(subnet.Spec.Gateway)
+
+	underlayCidr := strings.Split(subnet.Spec.CIDRBlock, ",")
+	for _, cidr := range underlayCidr {
+		if util.CheckProtocol(cidr) == apiv1.ProtocolIPv4 {
+			ginkgo.By("checking underlay subnet's using ips")
+			if isEnableU2O {
+				framework.ExpectEqual(int(subnet.Status.V4UsingIPs), 2)
+			} else {
+				framework.ExpectEqual(int(subnet.Status.V4UsingIPs), 1)
+			}
+
+			agName := strings.Replace(fmt.Sprintf("%s.u2o_exclude_ip.ip4", subnet.Name), "-", ".", -1)
+			ginkgo.By("checking underlay subnet's policy1 route")
+			hitPolicyStr := fmt.Sprintf("%d ip4.dst == $%s && ip4.src == %s allow", util.SubnetRouterPolicyPriority, agName, cidr)
+			checkPolicy(hitPolicyStr, isEnableU2O)
+
+			ginkgo.By("checking underlay subnet's policy2 route")
+			hitPolicyStr = fmt.Sprintf("%d ip4.dst == %s && ip4.dst != $%s allow", util.SubnetRouterPolicyPriority, cidr, agName)
+			checkPolicy(hitPolicyStr, isEnableU2O)
+
+			ginkgo.By("checking underlay subnet's policy3 route")
+			hitPolicyStr = fmt.Sprintf("%d ip4.src == %s reroute %s", util.GatewayRouterPolicyPriority, cidr, v4gw)
+			checkPolicy(hitPolicyStr, isEnableU2O)
+		} else {
+			if isEnableU2O {
+				framework.ExpectEqual(int(subnet.Status.V6UsingIPs), 2)
+			} else {
+				framework.ExpectEqual(int(subnet.Status.V6UsingIPs), 1)
+			}
+
+			agName := strings.Replace(fmt.Sprintf("%s.u2o_exclude_ip.ip6", subnet.Name), "-", ".", -1)
+			ginkgo.By("checking underlay subnet's policy1 route")
+			hitPolicyStr := fmt.Sprintf("%d ip6.dst == $%s && ip6.src == %s allow", util.SubnetRouterPolicyPriority, agName, cidr)
+			checkPolicy(hitPolicyStr, isEnableU2O)
+
+			ginkgo.By("checking underlay subnet's policy2 route")
+			hitPolicyStr = fmt.Sprintf("%d ip6.dst == %s && ip6.dst != $%s allow", util.SubnetRouterPolicyPriority, cidr, agName)
+			checkPolicy(hitPolicyStr, isEnableU2O)
+
+			ginkgo.By("checking underlay subnet's policy3 route")
+			hitPolicyStr = fmt.Sprintf("%d ip6.src == %s reroute %s", util.GatewayRouterPolicyPriority, cidr, v6gw)
+			checkPolicy(hitPolicyStr, isEnableU2O)
+		}
+	}
+
+	ginkgo.By("checking underlay pod's ip route's nexthop equal the u2o interconnection ip")
+	routes, err := getPodDefaultRoute(underlayPod)
+	framework.ExpectNoError(err)
+	framework.ExpectNotEmpty(routes)
+
+	interconnIps := strings.Split(subnet.Status.U2OInterconnectionIP, ",")
+	var v4InterconnIp, v6InterconnIp string
+	for _, connIp := range interconnIps {
+		if util.CheckProtocol(connIp) == apiv1.ProtocolIPv4 {
+			v4InterconnIp = connIp
+		} else {
+			v6InterconnIp = connIp
+		}
+	}
+
+	for _, route := range routes {
+		if route.Dst == "default" {
+			if util.CheckProtocol(route.Gateway) == apiv1.ProtocolIPv4 {
+				if isEnableU2O {
+					framework.ExpectEqual(route.Gateway, v4InterconnIp)
+				} else {
+					framework.ExpectEqual(route.Gateway, v4gw)
+				}
+			} else {
+				if isEnableU2O {
+					framework.ExpectEqual(route.Gateway, v6InterconnIp)
+				} else {
+					framework.ExpectEqual(route.Gateway, v6gw)
+				}
+			}
+		}
+	}
+
+	v4UPodIP, v6UPodIP := util.SplitStringIP(underlayPod.Status.PodIP)
+	v4OPodIP, v6OPodIP := util.SplitStringIP(overlayPod.Status.PodIP)
+	if v4UPodIP != "" && v4OPodIP != "" {
+		ginkgo.By("checking underlay pod access to overlay pod v4")
+		checkReachable(underlayPod.Name, underlayPod.Namespace, v4UPodIP, v4OPodIP, strconv.Itoa(curlListenPort), isEnableU2O)
+
+		ginkgo.By("checking overlay pod access to underlay pod v4")
+		checkReachable(overlayPod.Name, overlayPod.Namespace, v4OPodIP, v4UPodIP, strconv.Itoa(curlListenPort), isEnableU2O)
+	}
+
+	if v6UPodIP != "" && v6OPodIP != "" {
+		ginkgo.By("checking underlay pod access to overlay pod v6")
+		checkReachable(underlayPod.Name, underlayPod.Namespace, v6UPodIP, v6OPodIP, strconv.Itoa(curlListenPort), isEnableU2O)
+
+		ginkgo.By("checking overlay pod access to underlay pod v6")
+		checkReachable(overlayPod.Name, overlayPod.Namespace, v6OPodIP, v6UPodIP, strconv.Itoa(curlListenPort), isEnableU2O)
+	}
+}
+
+func getPodDefaultRoute(pod *corev1.Pod) ([]iproute.Route, error) {
+	var routes, routes6 []iproute.Route
+	stdout, _ := exec.Command("bash", "-c", fmt.Sprintf("kubectl exec %s -n %s -- ip -d -j route show dev eth0", pod.Name, pod.Namespace)).CombinedOutput()
+
+	if err := json.Unmarshal(stdout, &routes); err != nil {
+		return nil, fmt.Errorf("failed to decode json %q: %v", string(stdout), err)
+	}
+
+	stdout, _ = exec.Command("bash", "-c", fmt.Sprintf("kubectl exec %s -n %s -- ip -d -j -6 route show dev eth0", pod.Name, pod.Namespace)).CombinedOutput()
+	if err := json.Unmarshal(stdout, &routes6); err != nil {
+		return nil, fmt.Errorf("failed to decode json %q: %v", string(stdout), err)
+	}
+	return append(routes, routes6...), nil
+}
+
+func checkReachable(podName, podNamespace, sourceIP, targetIP, targetPort string, expectReachable bool) {
+	ginkgo.By("checking ping reachable")
+	isReachable := false
+	pingCmd := fmt.Sprintf("kubectl exec %s -n %s -- ping %s -c 1 -W 1 ", podName, podNamespace, targetIP)
+	output, _ := exec.Command("bash", "-c", pingCmd).CombinedOutput()
+	outputStr := string(output)
+	lines := strings.Split(outputStr, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "1 packets received") {
+			isReachable = true
+		}
+	}
+	framework.ExpectEqual(isReachable, expectReachable)
+	if expectReachable {
+		ginkgo.By("checking curl reachable")
+		cmd := fmt.Sprintf("kubectl exec %s -n %s -- curl -q -s --connect-timeout 5 %s/clientip", podName, podNamespace, net.JoinHostPort(targetIP, targetPort))
+		output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
+		outputStr := string(output)
+		client, _, err := net.SplitHostPort(strings.TrimSpace(outputStr))
+		framework.ExpectNoError(err)
+		// check packet has not SNAT
+		framework.ExpectEqual(sourceIP, client)
+	}
+}
+
+func checkPolicy(hitPolicyStr string, expectPolicyExist bool) {
+	policyExist := false
+	output, _ := exec.Command("bash", "-c", "kubectl ko nbctl lr-policy-list ovn-cluster").CombinedOutput()
+	outputStr := string(output)
+	lines := strings.Split(outputStr, "\n")
+	for _, line := range lines {
+		if strings.Contains(strings.Join(strings.Fields(line), " "), hitPolicyStr) {
+			policyExist = true
+			break
+		}
+
+	}
+	framework.ExpectEqual(policyExist, expectPolicyExist)
+}
