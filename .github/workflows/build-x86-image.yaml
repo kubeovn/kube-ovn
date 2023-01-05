@@ -692,9 +692,10 @@ jobs:
         with:
           name: vpc-nat-gateway
 
-      - name: Load Image
+      - name: Load images
         run: |
-          docker load --input image.tar
+          docker load --input kube-ovn.tar
+          docker load --input vpc-nat-gateway.tar
 
       - name: Security Scan
         run: |
