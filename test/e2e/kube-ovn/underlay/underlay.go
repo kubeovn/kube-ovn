@@ -699,7 +699,7 @@ func checkReachable(podName, podNamespace, sourceIP, targetIP, targetPort string
 		// check packet has not SNAT
 		framework.ExpectEqual(sourceIP, client)
 	} else {
-		isReachable := !strings.Contains(outputStr, "terminated with exit code 28")
+		isReachable := !strings.Contains(outputStr, "terminated with exit code")
 		framework.ExpectEqual(isReachable, expectReachable)
 	}
 }
