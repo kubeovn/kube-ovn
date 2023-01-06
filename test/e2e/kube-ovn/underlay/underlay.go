@@ -627,17 +627,10 @@ func checkU2OItems(isEnableU2O bool, subnet *apiv1.Subnet, underlayPod, overlayP
 	framework.ExpectNoError(err)
 	framework.ExpectNotEmpty(routes)
 
-	interconnIps := strings.Split(subnet.Status.U2OInterconnectionIP, ",")
-	var v4InterconnIp, v6InterconnIp string
-	for _, connIp := range interconnIps {
-		if util.CheckProtocol(connIp) == apiv1.ProtocolIPv4 {
-			v4InterconnIp = connIp
-		} else {
-			v6InterconnIp = connIp
-		}
-	}
+	v4InterconnIp, v6InterconnIp := util.SplitStringIP(subnet.Status.U2OInterconnectionIP)
 
-	isDefaultRouteExist := false
+	isV4DefaultRouteExist := false
+	isV6DefaultRouteExist := false
 	for _, route := range routes {
 		if route.Dst == "default" {
 			if util.CheckProtocol(route.Gateway) == apiv1.ProtocolIPv4 {
@@ -646,18 +639,20 @@ func checkU2OItems(isEnableU2O bool, subnet *apiv1.Subnet, underlayPod, overlayP
 				} else {
 					framework.ExpectEqual(route.Gateway, v4gw)
 				}
+				isV4DefaultRouteExist = true
 			} else {
 				if isEnableU2O {
 					framework.ExpectEqual(route.Gateway, v6InterconnIp)
 				} else {
 					framework.ExpectEqual(route.Gateway, v6gw)
 				}
+				isV6DefaultRouteExist = true
 			}
-			isDefaultRouteExist = true
 		}
 	}
 
-	framework.ExpectTrue(isDefaultRouteExist)
+	framework.ExpectTrue(isV4DefaultRouteExist)
+	framework.ExpectTrue(isV6DefaultRouteExist)
 	UPodIPs := underlayPod.Status.PodIPs
 	OPodIPs := overlayPod.Status.PodIPs
 	var v4UPodIP, v4OPodIP, v6UPodIP, v6OPodIP string
@@ -698,13 +693,14 @@ func checkReachable(podName, podNamespace, sourceIP, targetIP, targetPort string
 	cmd := fmt.Sprintf("kubectl exec %s -n %s -- curl -q -s --connect-timeout 5 %s/clientip", podName, podNamespace, net.JoinHostPort(targetIP, targetPort))
 	output, _ := exec.Command("bash", "-c", cmd).CombinedOutput()
 	outputStr := string(output)
-	client, _, err := net.SplitHostPort(strings.TrimSpace(outputStr))
 	if expectReachable {
+		client, _, err := net.SplitHostPort(strings.TrimSpace(outputStr))
 		framework.ExpectNoError(err)
 		// check packet has not SNAT
 		framework.ExpectEqual(sourceIP, client)
 	} else {
-		framework.ExpectError(err)
+		isReachable := !strings.Contains(outputStr, "terminated with exit code 28")
+		framework.ExpectEqual(isReachable, expectReachable)
 	}
 }
 
