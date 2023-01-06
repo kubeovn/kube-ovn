@@ -141,6 +141,7 @@ const (
 	VpcLbNetworkAttachment = "ovn-vpc-lb"
 	VpcDnsConfig           = "vpc-dns-config"
 	VpcDnsDepTemplate      = "vpc-dns-dep"
+	OvsFlowVlanPriConfig   = "ovs-flow-vlan-pri-config"
 
 	DefaultVpc    = "ovn-cluster"
 	DefaultSubnet = "ovn-default"
