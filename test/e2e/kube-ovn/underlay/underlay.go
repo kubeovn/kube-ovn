@@ -651,8 +651,15 @@ func checkU2OItems(isEnableU2O bool, subnet *apiv1.Subnet, underlayPod, overlayP
 		}
 	}
 
-	framework.ExpectTrue(isV4DefaultRouteExist)
-	framework.ExpectTrue(isV6DefaultRouteExist)
+	if subnet.Spec.Protocol == apiv1.ProtocolIPv4 {
+		framework.ExpectTrue(isV4DefaultRouteExist)
+	} else if subnet.Spec.Protocol == apiv1.ProtocolIPv6 {
+		framework.ExpectTrue(isV6DefaultRouteExist)
+	} else if subnet.Spec.Protocol == apiv1.ProtocolDual {
+		framework.ExpectTrue(isV4DefaultRouteExist)
+		framework.ExpectTrue(isV6DefaultRouteExist)
+	}
+
 	UPodIPs := underlayPod.Status.PodIPs
 	OPodIPs := overlayPod.Status.PodIPs
 	var v4UPodIP, v4OPodIP, v6UPodIP, v6OPodIP string
