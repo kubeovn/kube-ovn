@@ -34,6 +34,7 @@ type Configuration struct {
 	PodProtocols       []string
 	ExternalAddress    string
 	NetworkMode        string
+	EnableMetrics      bool
 
 	// Used for OVS Monitor
 	PollTimeout                     int
@@ -64,6 +65,7 @@ func ParseFlags() (*Configuration, error) {
 		argExternalDns        = pflag.String("external-dns", "", "check external dns resolve from pod")
 		argExternalAddress    = pflag.String("external-address", "", "check ping connection to an external address, default: 114.114.114.114")
 		argNetworkMode        = pflag.String("network-mode", "kube-ovn", "The cni plugin current cluster used, default: kube-ovn")
+		argEnableMetrics      = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 
 		argPollTimeout                     = pflag.Int("ovs.timeout", 2, "Timeout on JSON-RPC requests to OVS.")
 		argPollInterval                    = pflag.Int("ovs.poll-interval", 15, "The minimum interval (in seconds) between collections from OVS server.")
@@ -115,6 +117,7 @@ func ParseFlags() (*Configuration, error) {
 		PodName:            os.Getenv("POD_NAME"),
 		ExternalAddress:    *argExternalAddress,
 		NetworkMode:        *argNetworkMode,
+		EnableMetrics:      *argEnableMetrics,
 
 		// OVS Monitor
 		PollTimeout:                     *argPollTimeout,

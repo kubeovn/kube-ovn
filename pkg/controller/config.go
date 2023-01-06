@@ -84,6 +84,7 @@ type Configuration struct {
 	EnableEcmp        bool
 	EnableKeepVmIP    bool
 	EnableLbSvc       bool
+	EnableMetrics     bool
 
 	ExternalGatewaySwitch   string
 	ExternalGatewayConfigNS string
@@ -147,6 +148,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnableEcmp              = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
 		argKeepVmIP                = pflag.Bool("keep-vm-ip", false, "Whether to keep ip for kubevirt pod when pod is rebuild")
 		argEnableLbSvc             = pflag.Bool("enable-lb-svc", false, "Whether to support loadbalancer service")
+		argEnableMetrics           = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
 		argExternalGatewaySwitch   = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
@@ -226,6 +228,7 @@ func ParseFlags() (*Configuration, error) {
 		GCInterval:                    *argGCInterval,
 		InspectInterval:               *argInspectInterval,
 		EnableLbSvc:                   *argEnableLbSvc,
+		EnableMetrics:                 *argEnableMetrics,
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {

@@ -32,8 +32,10 @@ func CmdMain() {
 	}
 	exporter.StartOvnMetrics()
 
-	http.Handle(config.MetricsPath, promhttp.Handler())
-	klog.Infoln("Listening on", config.ListenAddress)
+	if config.EnableMetrics {
+		http.Handle(config.MetricsPath, promhttp.Handler())
+		klog.Infoln("Listening on", config.ListenAddress)
+	}
 
 	// conform to Gosec G114
 	// https://github.com/securego/gosec#available-rules
