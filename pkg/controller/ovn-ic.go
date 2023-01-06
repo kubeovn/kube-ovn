@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"os"
 	"os/exec"
 	"reflect"
@@ -16,7 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -396,64 +396,8 @@ func genHostAddress(host string, port string) (hostAddress string) {
 }
 
 func (c *Controller) SynRouteToPolicy() {
-
-	lr, err := c.ovnClient.GetLogicalRouter(util.DefaultVpc, false)
-	if err != nil {
-		klog.Errorf("logical router does not exist %v at %v", err, time.Now())
-		return
-	}
-	lrRouteList, err := c.ovnClient.GetLogicalRouterRouteByOpts(util.OvnICKey, util.OvnICValue)
-	if err != nil {
-		klog.Errorf("failed to list lr ovn-ic route %v", err)
-		return
-	}
-	if len(lrRouteList) == 0 {
-		klog.V(5).Info(" lr ovn-ic route does not exist")
-		lrPolicyList, err := c.ovnClient.GetLogicalRouterPoliciesByExtID(util.OvnICKey, util.OvnICValue)
-		if err != nil {
-			klog.Errorf("failed to list ovn-ic lr policy ", err)
-			return
-		}
-		for _, lrPolicy := range lrPolicyList {
-			if err := c.ovnClient.DeleteRouterPolicy(lr, lrPolicy.UUID); err != nil {
-				klog.Errorf("deleting router policy failed %v", err)
-			}
-		}
-		return
-	}
-
-	policyMap := map[string]string{}
-	lrPolicyList, err := c.ovnClient.GetLogicalRouterPoliciesByExtID(util.OvnICKey, util.OvnICValue)
-	if err != nil {
-		klog.Errorf("failed to list ovn-ic lr policy ", err)
-		return
-	}
-	for _, lrPolicy := range lrPolicyList {
-		match, err := stripPrefix(lrPolicy.Match)
-		if err != nil {
-			klog.Errorf("policy match abnormal ", err)
-			continue
-		}
-		policyMap[match] = lrPolicy.UUID
-	}
-	for _, lrRoute := range lrRouteList {
-		if _, ok := policyMap[lrRoute.IPPrefix]; ok {
-			delete(policyMap, lrRoute.IPPrefix)
-		} else {
-			matchFiled := util.MatchV4Dst + " == " + lrRoute.IPPrefix
-			if err := c.ovnClient.AddRouterPolicy(lr, matchFiled, ovnnb.LogicalRouterPolicyActionAllow,
-				map[string]string{},
-				map[string]string{util.OvnICKey: util.OvnICValue, "vendor": util.CniTypeName},
-				util.OvnICPolicyPriority); err != nil {
-				klog.Errorf("adding router policy failed %v", err)
-			}
-		}
-	}
-	for _, uuid := range policyMap {
-		if err := c.ovnClient.DeleteRouterPolicy(lr, uuid); err != nil {
-			klog.Errorf("deleting router policy failed %v", err)
-		}
-	}
+	c.syncOneRouteToPolicy(util.OvnICKey, util.OvnICConnected)
+	c.syncOneRouteToPolicy(util.OvnICKey, util.OvnICStatic)
 }
 
 func (c *Controller) RemoveOldChassisInSbDB() error {
@@ -486,5 +430,65 @@ func stripPrefix(policyMatch string) (string, error) {
 		return strings.Trim(matches[1], " "), nil
 	} else {
 		return "", fmt.Errorf("policy %s is mismatched", policyMatch)
+	}
+}
+
+func (c *Controller) syncOneRouteToPolicy(key, value string) {
+	lr, err := c.ovnClient.GetLogicalRouter(util.DefaultVpc, false)
+	if err != nil {
+		klog.Errorf("logical router does not exist %v at %v", err, time.Now())
+		return
+	}
+	lrRouteList, err := c.ovnClient.GetLogicalRouterRouteByOpts(key, value)
+	if err != nil {
+		klog.Errorf("failed to list lr ovn-ic route %v", err)
+		return
+	}
+	if len(lrRouteList) == 0 {
+		klog.V(5).Info(" lr ovn-ic route does not exist")
+		lrPolicyList, err := c.ovnClient.GetLogicalRouterPoliciesByExtID(key, value)
+		if err != nil {
+			klog.Errorf("failed to list ovn-ic lr policy ", err)
+			return
+		}
+		for _, lrPolicy := range lrPolicyList {
+			if err := c.ovnClient.DeleteRouterPolicy(lr, lrPolicy.UUID); err != nil {
+				klog.Errorf("deleting router policy failed %v", err)
+			}
+		}
+		return
+	}
+
+	policyMap := map[string]string{}
+	lrPolicyList, err := c.ovnClient.GetLogicalRouterPoliciesByExtID(key, value)
+	if err != nil {
+		klog.Errorf("failed to list ovn-ic lr policy ", err)
+		return
+	}
+	for _, lrPolicy := range lrPolicyList {
+		match, err := stripPrefix(lrPolicy.Match)
+		if err != nil {
+			klog.Errorf("policy match abnormal ", err)
+			continue
+		}
+		policyMap[match] = lrPolicy.UUID
+	}
+	for _, lrRoute := range lrRouteList {
+		if _, ok := policyMap[lrRoute.IPPrefix]; ok {
+			delete(policyMap, lrRoute.IPPrefix)
+		} else {
+			matchFiled := util.MatchV4Dst + " == " + lrRoute.IPPrefix
+			if err := c.ovnClient.AddRouterPolicy(lr, matchFiled, ovnnb.LogicalRouterPolicyActionAllow,
+				map[string]string{},
+				map[string]string{key: value, "vendor": util.CniTypeName},
+				util.OvnICPolicyPriority); err != nil {
+				klog.Errorf("adding router policy failed %v", err)
+			}
+		}
+	}
+	for _, uuid := range policyMap {
+		if err := c.ovnClient.DeleteRouterPolicy(lr, uuid); err != nil {
+			klog.Errorf("deleting router policy failed %v", err)
+		}
 	}
 }
