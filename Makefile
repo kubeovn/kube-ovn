@@ -279,6 +279,15 @@ kind-untaint-control-plane:
 		done; \
 	done
 
+.PHONY: kind-upgrade-chart
+kind-upgrade-chart:
+	$(eval MASTERNODES = $(shell docker exec -i kube-ovn-control-plane kubectl get nodes -l node-role.kubernetes.io/control-plane=""  -o jsonpath='{.items[*].status.addresses[].address}'))
+	$(eval EMPTY := )
+	$(eval SPACE := $(EMPTY))
+	$(eval MASTERS = $(subst SPACE,,,$(strip $$(MASTERNODES))))
+	helm upgrade --debug kubeovn ./kubeovn-helm --set MASTER_NODES=$(MASTERNODES)
+	kubectl -n kube-system get pods -o wide
+
 .PHONY: kind-install-chart
 kind-install-chart: kind-untaint-control-plane
 	kubectl label no -lbeta.kubernetes.io/os=linux kubernetes.io/os=linux --overwrite

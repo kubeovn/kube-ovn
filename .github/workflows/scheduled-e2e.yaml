@@ -787,3 +787,93 @@ jobs:
       - name: Cleanup
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: sh dist/images/cleanup.sh
+
+  helm-direct-upgrade-e2e:
+    name: Helm Upgrade E2E
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: [release-1.9]
+        master: [master]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: azure/setup-helm@v3
+        with:
+          version: '${{ env.HELM_VERSION }}'
+
+      - uses: actions/setup-go@v3
+        with:
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
+        id: go
+
+      - name: Export Go full version
+        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+
+      - name: Go cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
+
+      - name: Create branch directory
+        run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
+
+      - name: Check out branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ matrix.branch }}
+          fetch-depth: 1
+          path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+
+      - name: Install kind
+        run: |
+          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
+          chmod +x ./kind
+          sudo mv kind /usr/local/bin
+
+      - name: Create kind cluster
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: |
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH make kind-init
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
+
+      - name: Install Kube-OVN
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: |
+          docker pull kubeovn/kube-ovn:$(cat VERSION)
+          make kind-install-chart
+          kubectl rollout status deployment/ovn-central -n kube-system --timeout 300s
+          kubectl rollout status deployment/kube-ovn-controller -n kube-system --timeout 300s
+          kubectl rollout status daemonset/kube-ovn-cni -n kube-system --timeout 300s
+
+      - name: Check out branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ matrix.master }}
+          fetch-depth: 1
+          path: test/e2e/kube-ovn/branches/${{ matrix.master }}
+
+      - name: Install Kube-OVN
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.master }}
+        run: |
+          docker pull kubeovn/kube-ovn:$(cat VERSION)
+          make kind-upgrade-chart
+          kubectl rollout status deployment/ovn-central -n kube-system --timeout 300s
+          kubectl rollout status deployment/kube-ovn-controller -n kube-system --timeout 300s
+          kubectl rollout status daemonset/kube-ovn-cni -n kube-system --timeout 300s
+
+      - name: Run E2E
+        run: make k8s-conformance-e2e
+
+      - name: Cleanup
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: sh dist/images/cleanup.sh
