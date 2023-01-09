@@ -197,8 +197,9 @@ const (
 	AttachmentProvider = "ovn.kubernetes.io/attachmentprovider"
 	LbSvcPodImg        = "ovn.kubernetes.io/lb_svc_img"
 
-	OvnICKey   = "origin"
-	OvnICValue = "connected"
+	OvnICKey       = "origin"
+	OvnICConnected = "connected"
+	OvnICStatic    = "static"
 
 	MatchV4Src = "ip4.src"
 	MatchV4Dst = "ip4.dst"
