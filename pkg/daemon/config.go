@@ -55,6 +55,7 @@ type Configuration struct {
 	DefaultProviderName     string
 	DefaultInterfaceName    string
 	ExternalGatewayConfigNS string
+	EnableMetrics           bool
 }
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
@@ -84,6 +85,7 @@ func ParseFlags() *Configuration {
 		argsDefaultProviderName    = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name")
 		argsDefaultInterfaceName   = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
+		argEnableMetrics           = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 	)
 
 	// mute info log for ipset lib
@@ -130,6 +132,7 @@ func ParseFlags() *Configuration {
 		DefaultProviderName:     *argsDefaultProviderName,
 		DefaultInterfaceName:    *argsDefaultInterfaceName,
 		ExternalGatewayConfigNS: *argExternalGatewayConfigNS,
+		EnableMetrics:           *argEnableMetrics,
 	}
 	return config
 }

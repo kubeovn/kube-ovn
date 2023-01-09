@@ -87,7 +87,9 @@ func CmdMain() {
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.Handler())
+	if config.EnableMetrics {
+		mux.Handle("/metrics", promhttp.Handler())
+	}
 	if config.EnablePprof {
 		mux.HandleFunc("/debug/pprof/", pprof.Index)
 		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)

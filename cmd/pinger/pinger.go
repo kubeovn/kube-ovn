@@ -24,8 +24,9 @@ func CmdMain() {
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to parse config")
 	}
-	if config.Mode == "server" {
+	if config.Mode == "server" && config.EnableMetrics {
 		http.Handle("/metrics", promhttp.Handler())
+
 		go func() {
 			server := &http.Server{
 				Addr:              fmt.Sprintf("0.0.0.0:%d", config.Port),
