@@ -49,6 +49,7 @@ type Configuration struct {
 	DefaultProviderName     string
 	DefaultInterfaceName    string
 	ExternalGatewayConfigNS string
+	EnableMetrics           bool
 }
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
@@ -73,6 +74,7 @@ func ParseFlags(nicBridgeMappings map[string]string) (*Configuration, error) {
 		argsDefaultProviderName    = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name")
 		argsDefaultInterfaceName   = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
+		argEnableMetrics           = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 	)
 
 	// mute info log for ipset lib
@@ -120,6 +122,7 @@ func ParseFlags(nicBridgeMappings map[string]string) (*Configuration, error) {
 		DefaultProviderName:     *argsDefaultProviderName,
 		DefaultInterfaceName:    *argsDefaultInterfaceName,
 		ExternalGatewayConfigNS: *argExternalGatewayConfigNS,
+		EnableMetrics:           *argEnableMetrics,
 	}
 
 	if err := config.initKubeClient(); err != nil {
