@@ -195,7 +195,7 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 	node := cachedNode.DeepCopy()
-	klog.Infof("handle add node %v", node.Name)
+	klog.Infof("handle add node %s", node.Name)
 
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -780,7 +780,7 @@ func (c *Controller) checkGatewayReady() error {
 
 						if !success {
 							if exist {
-								klog.Warningf("failed to ping ovn0 %s or node %v is not ready, delete ecmp policy route for node", ip, node.Name)
+								klog.Warningf("failed to ping ovn0 %s or node %s is not ready, delete ecmp policy route for node", ip, node.Name)
 								nextHops = util.RemoveString(nextHops, ip)
 								delete(nameIpMap, node.Name)
 								klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
@@ -806,7 +806,7 @@ func (c *Controller) checkGatewayReady() error {
 						}
 					} else {
 						if exist {
-							klog.Infof("subnet %v gatewayNode does not contains node %v, delete policy route for node ip %s", subnet.Name, node.Name, ip)
+							klog.Infof("subnet %s gatewayNode does not contains node %v, delete policy route for node ip %s", subnet.Name, node.Name, ip)
 							nextHops = util.RemoveString(nextHops, ip)
 							delete(nameIpMap, node.Name)
 							klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)

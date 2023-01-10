@@ -14,6 +14,7 @@ HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_LB=${ENABLE_LB:-true}
 ENABLE_NP=${ENABLE_NP:-true}
 ENABLE_EIP_SNAT=${ENABLE_EIP_SNAT:-true}
+ENABLE_NODE_EXT_GW=${ENABLE_NODE_EXT_GW:-false}
 LS_DNAT_MOD_DL_DST=${LS_DNAT_MOD_DL_DST:-true}
 ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-true}
 CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
@@ -773,15 +774,21 @@ spec:
       subresources:
         status: {}
       additionalPrinterColumns:
-      - jsonPath: .spec.v4ip
-        name: IP
+      - jsonPath: .status.v4Ip
+        name: V4IP
         type: string
-      - jsonPath: .spec.macAddress
+      - jsonPath: .status.v6Ip
+        name: V6IP
+        type: string
+      - jsonPath: .status.macAddress
         name: Mac
         type: string
       - jsonPath: .spec.type
         name: Type
         type: string
+      - jsonPath: .status.ready
+        name: Ready
+        type: boolean
       schema:
         openAPIV3Schema:
           type: object
@@ -789,7 +796,11 @@ spec:
             status:
               type: object
               properties:
+                ready:
+                  type: boolean
                 v4Ip:
+                  type: string
+                v6Ip:
                   type: string
                 macAddress:
                   type: string
@@ -817,7 +828,9 @@ spec:
                   type: string
                 type:
                   type: string
-                v4ip:
+                v4Ip:
+                  type: string
+                v6Ip:
                   type: string
                 macAddress:
                   type: string
@@ -3128,6 +3141,7 @@ spec:
         args:
           - --enable-mirror=$ENABLE_MIRROR
           - --encap-checksum=true
+          - --enable-node-ext-gw=$ENABLE_NODE_EXT_GW
           - --service-cluster-ip-range=$SVC_CIDR
           - --iface=${IFACE}
           - --dpdk-tunnel-iface=${DPDK_TUNNEL_IFACE}
@@ -3179,7 +3193,7 @@ spec:
             name: host-run-ovn
           - mountPath: /var/run/netns
             name: host-ns
-            mountPropagation: HostToContainer
+            mountPropagation: Bidirectional
           - mountPath: /var/log/kube-ovn
             name: kube-ovn-log
           - mountPath: /var/log/openvswitch
