@@ -49,6 +49,7 @@ func:
   LS_DNAT_MOD_DL_DST: true
   CHECK_GATEWAY: true
   LOGICAL_GATEWAY: false
+  ENABLE_BIND_LOCAL_IP: true
 
 ipv4:
   POD_CIDR: "10.16.0.0/16"

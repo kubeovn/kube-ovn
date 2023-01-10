@@ -17,9 +17,7 @@ import (
 )
 
 func (c *Controller) enqueueAddOvnSnatRule(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
+
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -30,9 +28,6 @@ func (c *Controller) enqueueAddOvnSnatRule(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateOvnSnatRule(old, new interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
@@ -58,9 +53,6 @@ func (c *Controller) enqueueUpdateOvnSnatRule(old, new interface{}) {
 }
 
 func (c *Controller) enqueueDelOvnSnatRule(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {

@@ -38,12 +38,13 @@ type Configuration struct {
 	KubeFactoryClient    kubernetes.Interface
 	KubeOvnFactoryClient clientset.Interface
 
-	DefaultLogicalSwitch  string
-	DefaultCIDR           string
-	DefaultGateway        string
-	DefaultExcludeIps     string
-	DefaultGatewayCheck   bool
-	DefaultLogicalGateway bool
+	DefaultLogicalSwitch      string
+	DefaultCIDR               string
+	DefaultGateway            string
+	DefaultExcludeIps         string
+	DefaultGatewayCheck       bool
+	DefaultLogicalGateway     bool
+	DefaultU2OInterconnection bool
 
 	ClusterRouter     string
 	NodeSwitch        string
@@ -83,6 +84,7 @@ type Configuration struct {
 	EnableEcmp        bool
 	EnableKeepVmIP    bool
 	EnableLbSvc       bool
+	EnableMetrics     bool
 
 	ExternalGatewaySwitch   string
 	ExternalGatewayConfigNS string
@@ -110,6 +112,8 @@ func ParseFlags() (*Configuration, error) {
 		argDefaultGatewayCheck   = pflag.Bool("default-gateway-check", true, "Check switch for the default subnet's gateway")
 		argDefaultLogicalGateway = pflag.Bool("default-logical-gateway", false, "Create a logical gateway for the default subnet instead of using underlay gateway. Take effect only when the default subnet is in underlay mode. (default false)")
 		argDefaultExcludeIps     = pflag.String("default-exclude-ips", "", "Exclude ips in default switch (default gateway address)")
+
+		argDefaultU2OInterconnection = pflag.Bool("default-u2o-interconnection", false, "usage for underlay to overlay interconnection")
 
 		argClusterRouter     = pflag.String("cluster-router", util.DefaultVpc, "The router name for cluster router")
 		argNodeSwitch        = pflag.String("node-switch", "join", "The name of node gateway switch which help node to access pod network")
@@ -144,6 +148,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnableEcmp              = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
 		argKeepVmIP                = pflag.Bool("keep-vm-ip", false, "Whether to keep ip for kubevirt pod when pod is rebuild")
 		argEnableLbSvc             = pflag.Bool("enable-lb-svc", false, "Whether to support loadbalancer service")
+		argEnableMetrics           = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
 		argExternalGatewaySwitch   = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
@@ -184,6 +189,7 @@ func ParseFlags() (*Configuration, error) {
 		DefaultGateway:                *argDefaultGateway,
 		DefaultGatewayCheck:           *argDefaultGatewayCheck,
 		DefaultLogicalGateway:         *argDefaultLogicalGateway,
+		DefaultU2OInterconnection:     *argDefaultU2OInterconnection,
 		DefaultExcludeIps:             *argDefaultExcludeIps,
 		ClusterRouter:                 *argClusterRouter,
 		NodeSwitch:                    *argNodeSwitch,
@@ -222,6 +228,7 @@ func ParseFlags() (*Configuration, error) {
 		GCInterval:                    *argGCInterval,
 		InspectInterval:               *argInspectInterval,
 		EnableLbSvc:                   *argEnableLbSvc,
+		EnableMetrics:                 *argEnableMetrics,
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {

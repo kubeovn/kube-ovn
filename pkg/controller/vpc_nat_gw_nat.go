@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -14,12 +12,13 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (c *Controller) enqueueAddIptablesFip(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
+
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -31,9 +30,6 @@ func (c *Controller) enqueueAddIptablesFip(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateIptablesFip(old, new interface{}) {
-	if !c.isLeader() {
-		return
-	}
 
 	var key string
 	var err error
@@ -62,9 +58,6 @@ func (c *Controller) enqueueUpdateIptablesFip(old, new interface{}) {
 }
 
 func (c *Controller) enqueueDelIptablesFip(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -75,9 +68,6 @@ func (c *Controller) enqueueDelIptablesFip(obj interface{}) {
 }
 
 func (c *Controller) enqueueAddIptablesDnatRule(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -89,9 +79,6 @@ func (c *Controller) enqueueAddIptablesDnatRule(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateIptablesDnatRule(old, new interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
@@ -121,9 +108,6 @@ func (c *Controller) enqueueUpdateIptablesDnatRule(old, new interface{}) {
 }
 
 func (c *Controller) enqueueDelIptablesDnatRule(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -134,9 +118,6 @@ func (c *Controller) enqueueDelIptablesDnatRule(obj interface{}) {
 }
 
 func (c *Controller) enqueueAddIptablesSnatRule(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -147,9 +128,6 @@ func (c *Controller) enqueueAddIptablesSnatRule(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateIptablesSnatRule(old, new interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(new); err != nil {
@@ -177,9 +155,6 @@ func (c *Controller) enqueueUpdateIptablesSnatRule(old, new interface{}) {
 }
 
 func (c *Controller) enqueueDelIptablesSnatRule(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {

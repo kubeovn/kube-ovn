@@ -7,6 +7,7 @@ ENABLE_SSL=${ENABLE_SSL:-false}
 ENABLE_VLAN=${ENABLE_VLAN:-false}
 CHECK_GATEWAY=${CHECK_GATEWAY:-true}
 LOGICAL_GATEWAY=${LOGICAL_GATEWAY:-false}
+U2O_INTERCONNECTION=${U2O_INTERCONNECTION:-false}
 ENABLE_MIRROR=${ENABLE_MIRROR:-false}
 VLAN_NIC=${VLAN_NIC:-}
 HW_OFFLOAD=${HW_OFFLOAD:-false}
@@ -29,6 +30,7 @@ IFACE=${IFACE:-}
 # Specifies the name of the dpdk tunnel iface.
 # Note that the dpdk tunnel iface and tunnel ip cidr should be diffierent with Kubernetes api cidr,otherwise the route will be a problem.
 DPDK_TUNNEL_IFACE=${DPDK_TUNNEL_IFACE:-br-phy}
+ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
 
 CNI_CONF_DIR="/etc/cni/net.d"
 CNI_BIN_DIR="/opt/cni/bin"
@@ -1335,6 +1337,9 @@ spec:
       - name: ExcludeIPs
         type: string
         jsonPath: .spec.excludeIps
+      - name: U2OInterconnectionIP
+        type: string
+        jsonPath: .status.u2oInterconnectionIP
       schema:
         openAPIV3Schema:
           type: object
@@ -1355,6 +1360,8 @@ spec:
                 dhcpV4OptionsUUID:
                   type: string
                 dhcpV6OptionsUUID:
+                  type: string
+                u2oInterconnectionIP:
                   type: string
                 conditions:
                   type: array
@@ -1478,6 +1485,8 @@ spec:
                           - allow
                           - drop
                           - reject
+                u2oInterconnection:
+                  type: boolean
   scope: Cluster
   names:
     plural: subnets
@@ -2986,6 +2995,7 @@ spec:
           - --default-gateway=$POD_GATEWAY
           - --default-gateway-check=$CHECK_GATEWAY
           - --default-logical-gateway=$LOGICAL_GATEWAY
+          - --default-u2o-interconnection=$U2O_INTERCONNECTION
           - --default-exclude-ips=$EXCLUDE_IPS
           - --node-switch-cidr=$JOIN_CIDR
           - --service-cluster-ip-range=$SVC_CIDR
@@ -3025,6 +3035,12 @@ spec:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
               value: $addresses
+            - name: POD_IPS
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIPs
+            - name: ENABLE_BIND_LOCAL_IP
+              value: "$ENABLE_BIND_LOCAL_IP"
           volumeMounts:
             - mountPath: /etc/localtime
               name: localtime
@@ -3150,6 +3166,12 @@ spec:
             value: $MODULES
           - name: RPMS
             value: $RPMS
+          - name: POD_IPS
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIPs
+          - name: ENABLE_BIND_LOCAL_IP
+            value: "$ENABLE_BIND_LOCAL_IP"
         volumeMounts:
           - name: host-modules
             mountPath: /lib/modules
@@ -3429,6 +3451,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: POD_IPS
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIPs
+            - name: ENABLE_BIND_LOCAL_IP
+              value: "$ENABLE_BIND_LOCAL_IP"
           resources:
             requests:
               cpu: 200m
@@ -3626,7 +3654,7 @@ echo "
                     ,,::,
 "
 echo "Thanks for choosing Kube-OVN!
-For more advanced features, please read https://github.com/kubeovn/kube-ovn#documents
+For more advanced features, please read https://kubeovn.github.io/docs/stable/en/
 If you have any question, please file an issue https://github.com/kubeovn/kube-ovn/issues/new/choose"
 
 

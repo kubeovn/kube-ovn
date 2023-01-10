@@ -439,8 +439,38 @@ func (c LegacyClient) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway s
 		cmd = []string{MayExist, "ls-add", ls}
 	}
 	if needRouter {
-		cmd = append(cmd, []string{"--",
-			"set", "logical_router_port", fmt.Sprintf("%s-%s", lr, ls), fmt.Sprintf("networks=%s", networks)}...)
+		lsTolr := fmt.Sprintf("%s-%s", ls, lr)
+		lrTols := fmt.Sprintf("%s-%s", lr, ls)
+
+		exist, err := c.LogicalSwitchPortExists(lsTolr)
+		if err != nil {
+			klog.Errorf("failed to get logical switch port %s to router, %v", lsTolr, err)
+			return err
+		}
+		if !exist {
+			cmd = append(cmd, []string{"--", MayExist, "lsp-add", ls, lsTolr, "--",
+				"set", "logical_switch_port", lsTolr, "type=router", "--",
+				"lsp-set-addresses", lsTolr, "router", "--",
+				"set", "logical_switch_port", lsTolr, fmt.Sprintf("options:router-port=%s", lrTols), "--",
+				"set", "logical_switch_port", lsTolr, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)}...)
+		}
+
+		// check router port exist
+		results, err := c.ListLogicalEntity("logical_router_port", fmt.Sprintf("name=%s", lrTols))
+		if err != nil {
+			klog.Errorf("failed to list router port %s, %v", lrTols, err)
+			return err
+		}
+		if len(results) == 0 {
+			// v6address no need add \ when use lrp-add
+			networks = strings.ReplaceAll(networks, "\\:", ":")
+			networkList := strings.Split(networks, " ")
+			cmd = append(cmd, []string{"--", MayExist, "lrp-add", lr, lrTols, util.GenerateMac()}...)
+			cmd = append(cmd, networkList...)
+		} else {
+			cmd = append(cmd, []string{"--",
+				"set", "logical_router_port", fmt.Sprintf("%s-%s", lr, ls), fmt.Sprintf("networks=%s", networks)}...)
+		}
 	}
 	cmd = append(cmd, []string{"--",
 		"set", "logical_switch", ls, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName)}...)
@@ -1808,26 +1838,27 @@ func (c LegacyClient) CombineIngressACLCmd(pgName, asIngressName, asExceptName, 
 	if protocol == kubeovnv1.ProtocolIPv6 {
 		ipSuffix = "ip6"
 	}
+	id := pgName + "_" + ipSuffix
 
 	if logEnable {
-		ovnArgs = []string{"--", fmt.Sprintf("--id=@%s.drop.%d", pgName, index), "create", "acl", "action=drop", "direction=to-lport", "log=true", "severity=warning", fmt.Sprintf("priority=%s", util.IngressDefaultDrop), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("outport==@%s && ip", pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.drop.%d", pgName, index)}
+		ovnArgs = []string{"--", fmt.Sprintf("--id=@%s.drop.%d", id, index), "create", "acl", "action=drop", "direction=to-lport", "log=true", "severity=warning", fmt.Sprintf("priority=%s", util.IngressDefaultDrop), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("outport==@%s && ip", pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.drop.%d", id, index)}
 	} else {
-		ovnArgs = []string{"--", fmt.Sprintf("--id=@%s.drop.%d", pgName, index), "create", "acl", "action=drop", "direction=to-lport", "log=false", fmt.Sprintf("priority=%s", util.IngressDefaultDrop), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("outport==@%s && ip", pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.drop.%d", pgName, index)}
+		ovnArgs = []string{"--", fmt.Sprintf("--id=@%s.drop.%d", id, index), "create", "acl", "action=drop", "direction=to-lport", "log=false", fmt.Sprintf("priority=%s", util.IngressDefaultDrop), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("outport==@%s && ip", pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.drop.%d", id, index)}
 	}
 
 	if len(npp) == 0 {
-		allowArgs = []string{"--", fmt.Sprintf("--id=@%s.noport.%d", pgName, index), "create", "acl", "action=allow-related", "direction=to-lport", fmt.Sprintf("priority=%s", util.IngressAllowPriority), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("%s.src == $%s && %s.src != $%s && outport==@%s && ip", ipSuffix, asIngressName, ipSuffix, asExceptName, pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.noport.%d", pgName, index)}
+		allowArgs = []string{"--", fmt.Sprintf("--id=@%s.noport.%d", id, index), "create", "acl", "action=allow-related", "direction=to-lport", fmt.Sprintf("priority=%s", util.IngressAllowPriority), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("%s.src == $%s && %s.src != $%s && outport==@%s && ip", ipSuffix, asIngressName, ipSuffix, asExceptName, pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.noport.%d", id, index)}
 		ovnArgs = append(ovnArgs, allowArgs...)
 	} else {
 		for pidx, port := range npp {
 			if port.Port != nil {
 				if port.EndPort != nil {
-					allowArgs = []string{"--", fmt.Sprintf("--id=@%s.%d.port.%d", pgName, index, pidx), "create", "acl", "action=allow-related", "direction=to-lport", fmt.Sprintf("priority=%s", util.IngressAllowPriority), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("%s.src == $%s && %s.src != $%s && %d <= %s.dst <= %d && outport==@%s && ip", ipSuffix, asIngressName, ipSuffix, asExceptName, port.Port.IntVal, strings.ToLower(string(*port.Protocol)), *port.EndPort, pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.%d.port.%d", pgName, index, pidx)}
+					allowArgs = []string{"--", fmt.Sprintf("--id=@%s.%d.port.%d", id, index, pidx), "create", "acl", "action=allow-related", "direction=to-lport", fmt.Sprintf("priority=%s", util.IngressAllowPriority), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("%s.src == $%s && %s.src != $%s && %d <= %s.dst <= %d && outport==@%s && ip", ipSuffix, asIngressName, ipSuffix, asExceptName, port.Port.IntVal, strings.ToLower(string(*port.Protocol)), *port.EndPort, pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.%d.port.%d", id, index, pidx)}
 				} else {
-					allowArgs = []string{"--", fmt.Sprintf("--id=@%s.%d.port.%d", pgName, index, pidx), "create", "acl", "action=allow-related", "direction=to-lport", fmt.Sprintf("priority=%s", util.IngressAllowPriority), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("%s.src == $%s && %s.src != $%s && %s.dst == %d && outport==@%s && ip", ipSuffix, asIngressName, ipSuffix, asExceptName, strings.ToLower(string(*port.Protocol)), port.Port.IntVal, pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.%d.port.%d", pgName, index, pidx)}
+					allowArgs = []string{"--", fmt.Sprintf("--id=@%s.%d.port.%d", id, index, pidx), "create", "acl", "action=allow-related", "direction=to-lport", fmt.Sprintf("priority=%s", util.IngressAllowPriority), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("%s.src == $%s && %s.src != $%s && %s.dst == %d && outport==@%s && ip", ipSuffix, asIngressName, ipSuffix, asExceptName, strings.ToLower(string(*port.Protocol)), port.Port.IntVal, pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.%d.port.%d", id, index, pidx)}
 				}
 			} else {
-				allowArgs = []string{"--", fmt.Sprintf("--id=@%s.%d.port.%d", pgName, index, pidx), "create", "acl", "action=allow-related", "direction=to-lport", fmt.Sprintf("priority=%s", util.IngressAllowPriority), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("%s.src == $%s && %s.src != $%s && %s && outport==@%s && ip", ipSuffix, asIngressName, ipSuffix, asExceptName, strings.ToLower(string(*port.Protocol)), pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.%d.port.%d", pgName, index, pidx)}
+				allowArgs = []string{"--", fmt.Sprintf("--id=@%s.%d.port.%d", id, index, pidx), "create", "acl", "action=allow-related", "direction=to-lport", fmt.Sprintf("priority=%s", util.IngressAllowPriority), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("%s.src == $%s && %s.src != $%s && %s && outport==@%s && ip", ipSuffix, asIngressName, ipSuffix, asExceptName, strings.ToLower(string(*port.Protocol)), pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.%d.port.%d", id, index, pidx)}
 			}
 			ovnArgs = append(ovnArgs, allowArgs...)
 		}
@@ -1848,26 +1879,27 @@ func (c LegacyClient) CombineEgressACLCmd(pgName, asEgressName, asExceptName, pr
 	if protocol == kubeovnv1.ProtocolIPv6 {
 		ipSuffix = "ip6"
 	}
+	id := pgName + "_" + ipSuffix
 
 	if logEnable {
-		ovnArgs = []string{"--", fmt.Sprintf("--id=@%s.drop.%d", pgName, index), "create", "acl", "action=drop", "direction=from-lport", "log=true", "severity=warning", fmt.Sprintf("priority=%s", util.EgressDefaultDrop), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("inport==@%s && ip", pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.drop.%d", pgName, index)}
+		ovnArgs = []string{"--", fmt.Sprintf("--id=@%s.drop.%d", id, index), "create", "acl", "action=drop", "direction=from-lport", "log=true", "severity=warning", fmt.Sprintf("priority=%s", util.EgressDefaultDrop), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("inport==@%s && ip", pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.drop.%d", id, index)}
 	} else {
-		ovnArgs = []string{"--", fmt.Sprintf("--id=@%s.drop.%d", pgName, index), "create", "acl", "action=drop", "direction=from-lport", "log=false", fmt.Sprintf("priority=%s", util.EgressDefaultDrop), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("inport==@%s && ip", pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.drop.%d", pgName, index)}
+		ovnArgs = []string{"--", fmt.Sprintf("--id=@%s.drop.%d", id, index), "create", "acl", "action=drop", "direction=from-lport", "log=false", fmt.Sprintf("priority=%s", util.EgressDefaultDrop), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("inport==@%s && ip", pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.drop.%d", id, index)}
 	}
 
 	if len(npp) == 0 {
-		allowArgs = []string{"--", fmt.Sprintf("--id=@%s.noport.%d", pgName, index), "create", "acl", "action=allow-related", "direction=from-lport", fmt.Sprintf("priority=%s", util.EgressAllowPriority), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("%s.dst == $%s && %s.dst != $%s && inport==@%s && ip", ipSuffix, asEgressName, ipSuffix, asExceptName, pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.noport.%d", pgName, index)}
+		allowArgs = []string{"--", fmt.Sprintf("--id=@%s.noport.%d", id, index), "create", "acl", "action=allow-related", "direction=from-lport", fmt.Sprintf("priority=%s", util.EgressAllowPriority), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("%s.dst == $%s && %s.dst != $%s && inport==@%s && ip", ipSuffix, asEgressName, ipSuffix, asExceptName, pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.noport.%d", id, index)}
 		ovnArgs = append(ovnArgs, allowArgs...)
 	} else {
 		for pidx, port := range npp {
 			if port.Port != nil {
 				if port.EndPort != nil {
-					allowArgs = []string{"--", fmt.Sprintf("--id=@%s.%d.port.%d", pgName, index, pidx), "create", "acl", "action=allow-related", "direction=from-lport", fmt.Sprintf("priority=%s", util.EgressAllowPriority), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("%s.dst == $%s && %s.dst != $%s && %d <= %s.dst <= %d && inport==@%s && ip", ipSuffix, asEgressName, ipSuffix, asExceptName, port.Port.IntVal, strings.ToLower(string(*port.Protocol)), *port.EndPort, pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.%d.port.%d", pgName, index, pidx)}
+					allowArgs = []string{"--", fmt.Sprintf("--id=@%s.%d.port.%d", id, index, pidx), "create", "acl", "action=allow-related", "direction=from-lport", fmt.Sprintf("priority=%s", util.EgressAllowPriority), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("%s.dst == $%s && %s.dst != $%s && %d <= %s.dst <= %d && inport==@%s && ip", ipSuffix, asEgressName, ipSuffix, asExceptName, port.Port.IntVal, strings.ToLower(string(*port.Protocol)), *port.EndPort, pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.%d.port.%d", id, index, pidx)}
 				} else {
-					allowArgs = []string{"--", fmt.Sprintf("--id=@%s.%d.port.%d", pgName, index, pidx), "create", "acl", "action=allow-related", "direction=from-lport", fmt.Sprintf("priority=%s", util.EgressAllowPriority), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("%s.dst == $%s && %s.dst != $%s && %s.dst == %d && inport==@%s && ip", ipSuffix, asEgressName, ipSuffix, asExceptName, strings.ToLower(string(*port.Protocol)), port.Port.IntVal, pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.%d.port.%d", pgName, index, pidx)}
+					allowArgs = []string{"--", fmt.Sprintf("--id=@%s.%d.port.%d", id, index, pidx), "create", "acl", "action=allow-related", "direction=from-lport", fmt.Sprintf("priority=%s", util.EgressAllowPriority), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("%s.dst == $%s && %s.dst != $%s && %s.dst == %d && inport==@%s && ip", ipSuffix, asEgressName, ipSuffix, asExceptName, strings.ToLower(string(*port.Protocol)), port.Port.IntVal, pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.%d.port.%d", id, index, pidx)}
 				}
 			} else {
-				allowArgs = []string{"--", fmt.Sprintf("--id=@%s.%d.port.%d", pgName, index, pidx), "create", "acl", "action=allow-related", "direction=from-lport", fmt.Sprintf("priority=%s", util.EgressAllowPriority), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("%s.dst == $%s && %s.dst != $%s && %s && inport==@%s && ip", ipSuffix, asEgressName, ipSuffix, asExceptName, strings.ToLower(string(*port.Protocol)), pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.%d.port.%d", pgName, index, pidx)}
+				allowArgs = []string{"--", fmt.Sprintf("--id=@%s.%d.port.%d", id, index, pidx), "create", "acl", "action=allow-related", "direction=from-lport", fmt.Sprintf("priority=%s", util.EgressAllowPriority), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("%s.dst == $%s && %s.dst != $%s && %s && inport==@%s && ip", ipSuffix, asEgressName, ipSuffix, asExceptName, strings.ToLower(string(*port.Protocol)), pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.%d.port.%d", id, index, pidx)}
 			}
 			ovnArgs = append(ovnArgs, allowArgs...)
 		}
@@ -2511,6 +2543,21 @@ func (c *LegacyClient) PolicyRouteExists(priority int32, match string) (bool, er
 	return true, nil
 }
 
+func (c *LegacyClient) DeletePolicyRouteByUUID(router string, uuids []string) error {
+	if len(uuids) == 0 {
+		return nil
+	}
+	for _, uuid := range uuids {
+		var args []string
+		args = append(args, []string{"lr-policy-del", router, uuid}...)
+		if _, err := c.ovnNbCommand(args...); err != nil {
+			klog.Errorf("failed to delete router %s policy route: %v", router, err)
+			return err
+		}
+	}
+	return nil
+}
+
 func (c *LegacyClient) GetPolicyRouteParas(priority int32, match string) ([]string, map[string]string, error) {
 	result, err := c.CustomFindEntity("Logical_Router_Policy", []string{"nexthops", "external_ids"}, fmt.Sprintf("priority=%d", priority), fmt.Sprintf(`match="%s"`, match))
 	if err != nil {
@@ -2986,4 +3033,34 @@ func (c LegacyClient) SetAclLog(pgName string, logEnable, isIngress bool) error 
 	}
 
 	return nil
+}
+
+func (c *LegacyClient) GetRouterNat(routerName string) ([]string, error) {
+	var nat []string
+	results, err := c.CustomFindEntity("logical-router", []string{"nat"}, fmt.Sprintf("name=%s", routerName))
+	if err != nil {
+		klog.Errorf("customFindEntity failed, %v", err)
+		return nat, err
+	}
+	if len(results) == 0 {
+		return nat, nil
+	}
+
+	return results[0]["nat"], nil
+}
+
+func (c *LegacyClient) GetNatIPInfo(uuid string) (string, error) {
+	var logical_ip string
+
+	output, err := c.ovnNbCommand("--data=bare", "--format=csv", "--no-heading", "--columns=logical_ip", "list", "nat", uuid)
+	if err != nil {
+		klog.Errorf("failed to list nat, %v", err)
+		return logical_ip, err
+	}
+	lines := strings.Split(output, "\n")
+
+	if len(lines) > 0 {
+		logical_ip = strings.TrimSpace(lines[0])
+	}
+	return logical_ip, nil
 }

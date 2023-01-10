@@ -24,8 +24,9 @@ func CmdMain() {
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to parse config")
 	}
-	if config.Mode == "server" {
+	if config.Mode == "server" && config.EnableMetrics {
 		http.Handle("/metrics", promhttp.Handler())
+
 		go func() {
 			// conform to Gosec G114
 			// https://github.com/securego/gosec#available-rules
@@ -33,7 +34,7 @@ func CmdMain() {
 				Addr:              fmt.Sprintf("0.0.0.0:%d", config.Port),
 				ReadHeaderTimeout: 3 * time.Second,
 			}
-			klog.Fatal(server.ListenAndServe())
+			util.LogFatalAndExit(server.ListenAndServe(), "failed to listen and serve on %s", server.Addr)
 		}()
 	}
 	e := pinger.NewExporter(config)

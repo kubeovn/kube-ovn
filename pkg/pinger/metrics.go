@@ -625,6 +625,17 @@ var (
 			"hostname",
 			"interfaceName",
 		})
+
+	interfaceStatRxMulticastPackets = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: metricNamespace,
+			Name:      "interface_rx_multicast_packets",
+			Help:      "Represents the count of multicast packets received by OVS interface.",
+		},
+		[]string{
+			"hostname",
+			"interfaceName",
+		})
 )
 
 func InitPingerMetrics() {
@@ -694,6 +705,7 @@ func InitPingerMetrics() {
 	prometheus.MustRegister(interfaceStatTxDropped)
 	prometheus.MustRegister(interfaceStatTxErrorsTotal)
 	prometheus.MustRegister(interfaceStatCollisions)
+	prometheus.MustRegister(interfaceStatRxMulticastPackets)
 }
 
 func SetOvsUpMetrics(nodeName string) {

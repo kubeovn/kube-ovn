@@ -40,6 +40,7 @@ type Configuration struct {
 	ServiceVswitchdFilePidPath      string
 	ServiceNorthdFileLogPath        string
 	ServiceNorthdFilePidPath        string
+	EnableMetrics                   bool
 }
 
 // ParseFlags get parameters information.
@@ -49,6 +50,7 @@ func ParseFlags() (*Configuration, error) {
 		argMetricsPath   = pflag.String("telemetry-path", "/metrics", "Path under which to expose metrics.")
 		argPollTimeout   = pflag.Int("ovs.timeout", 2, "Timeout on JSON-RPC requests to OVN.")
 		argPollInterval  = pflag.Int("ovs.poll-interval", 30, "The minimum interval (in seconds) between collections from OVN server.")
+		argEnableMetrics = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 
 		argSystemRunDir                    = pflag.String("system.run.dir", "/var/run/openvswitch", "OVS default run directory.")
 		argDatabaseVswitchName             = pflag.String("database.vswitch.name", "Open_vSwitch", "The name of OVS db.")
@@ -121,6 +123,7 @@ func ParseFlags() (*Configuration, error) {
 		ServiceVswitchdFilePidPath:      *argServiceVswitchdFilePidPath,
 		ServiceNorthdFileLogPath:        *argServiceNorthdFileLogPath,
 		ServiceNorthdFilePidPath:        *argServiceNorthdFilePidPath,
+		EnableMetrics:                   *argEnableMetrics,
 	}
 
 	klog.Infof("ovn monitor config is %+v", config)

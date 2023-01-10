@@ -22,9 +22,7 @@ import (
 )
 
 func (c *Controller) enqueueAddNp(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
+
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -36,9 +34,6 @@ func (c *Controller) enqueueAddNp(obj interface{}) {
 }
 
 func (c *Controller) enqueueDeleteNp(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -50,9 +45,6 @@ func (c *Controller) enqueueDeleteNp(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateNp(old, new interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	oldNp := old.(*netv1.NetworkPolicy)
 	newNp := new.(*netv1.NetworkPolicy)
 	if !reflect.DeepEqual(oldNp.Spec, newNp.Spec) ||
@@ -540,13 +532,18 @@ func (c *Controller) handleDeleteNp(key string) error {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
+	npName := name
+	nameArray := []rune(name)
+	if !unicode.IsLetter(nameArray[0]) {
+		npName = "np" + name
+	}
 
-	pgName := strings.Replace(fmt.Sprintf("%s.%s", name, namespace), "-", ".", -1)
+	pgName := strings.Replace(fmt.Sprintf("%s.%s", npName, namespace), "-", ".", -1)
 	if err := c.ovnLegacyClient.DeletePortGroup(pgName); err != nil {
 		klog.Errorf("failed to delete np %s port group, %v", key, err)
 	}
 
-	svcAsNames, err := c.ovnLegacyClient.ListNpAddressSet(namespace, name, "service")
+	svcAsNames, err := c.ovnLegacyClient.ListNpAddressSet(namespace, npName, "service")
 	if err != nil {
 		klog.Errorf("failed to list svc address_set, %v", err)
 		return err
@@ -558,7 +555,7 @@ func (c *Controller) handleDeleteNp(key string) error {
 		}
 	}
 
-	ingressAsNames, err := c.ovnLegacyClient.ListNpAddressSet(namespace, name, "ingress")
+	ingressAsNames, err := c.ovnLegacyClient.ListNpAddressSet(namespace, npName, "ingress")
 	if err != nil {
 		klog.Errorf("failed to list address_set, %v", err)
 		return err
@@ -570,7 +567,7 @@ func (c *Controller) handleDeleteNp(key string) error {
 		}
 	}
 
-	egressAsNames, err := c.ovnLegacyClient.ListNpAddressSet(namespace, name, "egress")
+	egressAsNames, err := c.ovnLegacyClient.ListNpAddressSet(namespace, npName, "egress")
 	if err != nil {
 		klog.Errorf("failed to list address_set, %v", err)
 		return err

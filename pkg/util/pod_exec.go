@@ -2,6 +2,7 @@ package util
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/url"
 	"strings"
@@ -71,7 +72,7 @@ func execute(method string, url *url.URL, cfg *rest.Config, stdin io.Reader, std
 		klog.Errorf("remotecommand.NewSPDYExecutor error: %v", err)
 		return err
 	}
-	return exec.Stream(remotecommand.StreamOptions{
+	return exec.StreamWithContext(context.TODO(), remotecommand.StreamOptions{
 		Stdin:  stdin,
 		Stdout: stdout,
 		Stderr: stderr,

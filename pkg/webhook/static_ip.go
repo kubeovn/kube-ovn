@@ -133,35 +133,35 @@ func (v *ValidatingHook) validateIp(ctx context.Context, annotations map[string]
 	if err := v.cache.List(ctx, ipList); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
-	if err := v.validateIPConflict(annotations, ipList.Items); err != nil {
+	if err := v.validateIPConflict(annotations, name, ipList.Items); err != nil {
 		return ctrlwebhook.Denied(err.Error())
 	}
 
 	return ctrlwebhook.Allowed("by pass")
 }
 
-func (v *ValidatingHook) validateIPConflict(annotations map[string]string, ipList []ovnv1.IP) error {
+func (v *ValidatingHook) validateIPConflict(annotations map[string]string, name string, ipList []ovnv1.IP) error {
 	annoSubnet := annotations[util.LogicalSwitchAnnotation]
 	if annotations[util.LogicalSwitchAnnotation] == "" {
 		annoSubnet = util.DefaultSubnet
 	}
 
 	if ipAddress := annotations[util.IpAddressAnnotation]; ipAddress != "" {
-		if err := v.checkIPConflict(ipAddress, annoSubnet, ipList); err != nil {
+		if err := v.checkIPConflict(ipAddress, annoSubnet, name, ipList); err != nil {
 			return err
 		}
 	}
 
 	ipPool := annotations[util.IpPoolAnnotation]
 	if ipPool != "" {
-		if err := v.checkIPConflict(ipPool, annoSubnet, ipList); err != nil {
+		if err := v.checkIPConflict(ipPool, annoSubnet, name, ipList); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (v *ValidatingHook) checkIPConflict(ipAddress, annoSubnet string, ipList []ovnv1.IP) error {
+func (v *ValidatingHook) checkIPConflict(ipAddress, annoSubnet, name string, ipList []ovnv1.IP) error {
 	var ipAddr net.IP
 	for _, ip := range strings.Split(ipAddress, ",") {
 		if strings.Contains(ip, "/") {
@@ -177,8 +177,12 @@ func (v *ValidatingHook) checkIPConflict(ipAddress, annoSubnet string, ipList []
 
 			v4IP, v6IP := util.SplitStringIP(ipCr.Spec.IPAddress)
 			if ipAddr.String() == v4IP || ipAddr.String() == v6IP {
-				err := fmt.Errorf("annotation static-ip %s is conflict with ip crd %s, ip %s", ipAddr.String(), ipCr.Name, ipCr.Spec.IPAddress)
-				return err
+				if name == ipCr.Spec.PodName {
+					klog.Infof("get same ip crd for %s", name)
+				} else {
+					err := fmt.Errorf("annotation static-ip %s is conflict with ip crd %s, ip %s", ipAddr.String(), ipCr.Name, ipCr.Spec.IPAddress)
+					return err
+				}
 			}
 		}
 	}

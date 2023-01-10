@@ -21,9 +21,7 @@ import (
 )
 
 func (c *Controller) enqueueAddVpc(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
+
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -38,9 +36,6 @@ func (c *Controller) enqueueAddVpc(obj interface{}) {
 }
 
 func (c *Controller) enqueueUpdateVpc(old, new interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	oldVpc := old.(*kubeovnv1.Vpc)
 	newVpc := new.(*kubeovnv1.Vpc)
 
@@ -69,9 +64,6 @@ func (c *Controller) enqueueUpdateVpc(old, new interface{}) {
 }
 
 func (c *Controller) enqueueDelVpc(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -199,7 +191,11 @@ func (c *Controller) reconcileRouterPorts(vpc *kubeovnv1.Vpc) error {
 				return nil
 			}
 
-			networks := util.GetIpAddrWithMask(subnet.Spec.Gateway, subnet.Spec.CIDRBlock)
+			gateway := subnet.Spec.Gateway
+			if subnet.Spec.U2OInterconnection && subnet.Status.U2OInterconnectionIP != "" {
+				gateway = subnet.Status.U2OInterconnectionIP
+			}
+			networks := util.GetIpAddrWithMask(gateway, subnet.Spec.CIDRBlock)
 			klog.Infof("add vpc lrp %s, networks %s", routerPortName, networks)
 			if err := c.ovnClient.AddLogicalRouterPort(router, routerPortName, "", networks); err != nil {
 				klog.ErrorS(err, "unable to create router port", "vpc", vpc.Name, "subnet", subnetName)
@@ -228,7 +224,11 @@ func (c *Controller) reconcileRouterPortBySubnet(vpc *kubeovnv1.Vpc, subnet *kub
 			return err
 		}
 
-		networks := util.GetIpAddrWithMask(subnet.Spec.Gateway, subnet.Spec.CIDRBlock)
+		gateway := subnet.Spec.Gateway
+		if subnet.Spec.U2OInterconnection && subnet.Status.U2OInterconnectionIP != "" {
+			gateway = subnet.Status.U2OInterconnectionIP
+		}
+		networks := util.GetIpAddrWithMask(gateway, subnet.Spec.CIDRBlock)
 		klog.Infof("router port does not exist, trying to create %s with ip %s", routerPortName, networks)
 
 		if err := c.ovnClient.AddLogicalRouterPort(router, routerPortName, "", networks); err != nil {
@@ -407,6 +407,40 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				CIDR:      "::/0",
 				NextHopIP: gatewayV6,
 			})
+		}
+
+		if c.config.EnableEipSnat {
+			cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
+			if err == nil {
+				nextHop := cm.Data["external-gw-addr"]
+				if nextHop == "" {
+					klog.Errorf("no available gateway nic address")
+					return fmt.Errorf("no available gateway nic address")
+				}
+				if strings.Contains(nextHop, "/") {
+					nextHop = strings.Split(nextHop, "/")[0]
+				}
+
+				nats, err := c.ovnLegacyClient.GetRouterNat(vpc.Name)
+				if err != nil {
+					klog.Errorf("failed to get nat for vpc %s, %v", vpc.Name, err)
+					return err
+				}
+				for _, nat := range nats {
+					logical_ip, err := c.ovnLegacyClient.GetNatIPInfo(nat)
+					if err != nil {
+						klog.Errorf("failed to get nat ip info for vpc %s, %v", vpc.Name, err)
+						return err
+					}
+					if logical_ip != "" {
+						targetRoutes = append(targetRoutes, &kubeovnv1.StaticRoute{
+							Policy:    kubeovnv1.PolicySrc,
+							CIDR:      logical_ip,
+							NextHopIP: nextHop,
+						})
+					}
+				}
+			}
 		}
 	}
 

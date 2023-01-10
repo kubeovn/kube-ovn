@@ -53,6 +53,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: POD_IPS
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIPs
+            - name: ENABLE_BIND_LOCAL_IP
+              value: "{{- .Values.func.ENABLE_BIND_LOCAL_IP }}"
           resources:
             requests:
               cpu: 200m
@@ -81,14 +87,14 @@ spec:
             exec:
               command:
               - cat
-              - /var/run/ovn/ovnnb_db.pid
+              - /var/run/ovn/ovn-controller.pid
             periodSeconds: 10
             timeoutSeconds: 45
           livenessProbe:
             exec:
               command:
               - cat
-              - /var/run/ovn/ovnnb_db.pid
+              - /var/run/ovn/ovn-controller.pid
             initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 5

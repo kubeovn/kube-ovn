@@ -56,7 +56,7 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 	return nil
 }
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, priority, DeviceID, nicType, latency, limit, loss string, gwCheckMode int) error {
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, priority, DeviceID, nicType, latency, limit, loss string, gwCheckMode int, u2oInterconnectionIP string) error {
 	var err error
 	var hostNicName, containerNicName string
 	if DeviceID == "" {
@@ -121,7 +121,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	if err != nil {
 		return fmt.Errorf("failed to open netns %q: %v", netns, err)
 	}
-	if err = configureContainerNic(containerNicName, ifName, ip, gateway, isDefaultRoute, routes, macAddr, podNS, mtu, nicType, gwCheckMode); err != nil {
+	if err = configureContainerNic(containerNicName, ifName, ip, gateway, isDefaultRoute, detectIPConflict, routes, macAddr, podNS, mtu, nicType, gwCheckMode, u2oInterconnectionIP); err != nil {
 		return err
 	}
 	return nil
@@ -207,7 +207,7 @@ func configureHostNic(nicName string) error {
 	return nil
 }
 
-func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDefaultRoute bool, routes []request.Route, macAddr net.HardwareAddr, netns ns.NetNS, mtu int, nicType string, gwCheckMode int) error {
+func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, macAddr net.HardwareAddr, netns ns.NetNS, mtu int, nicType string, gwCheckMode int, u2oInterconnectionIP string) error {
 	containerLink, err := netlink.LinkByName(nicName)
 	if err != nil {
 		return fmt.Errorf("can not find container nic %s: %v", nicName, err)
@@ -253,17 +253,22 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDef
 			if err = configureAdditionalNic(ifName, ipAddr); err != nil {
 				return err
 			}
-			if err = configureNic(nicName, ipAddr, macAddr, mtu); err != nil {
+			if err = configureNic(nicName, ipAddr, macAddr, mtu, detectIPConflict); err != nil {
 				return err
 			}
 		} else {
-			if err = configureNic(ifName, ipAddr, macAddr, mtu); err != nil {
+			if err = configureNic(ifName, ipAddr, macAddr, mtu, detectIPConflict); err != nil {
 				return err
 			}
 		}
 
 		if isDefaultRoute {
 			// Only eth0 requires the default route and gateway
+			containerGw := gateway
+			if u2oInterconnectionIP != "" {
+				containerGw = u2oInterconnectionIP
+			}
+
 			switch util.CheckProtocol(ipAddr) {
 			case kubeovnv1.ProtocolIPv4:
 				_, defaultNet, _ := net.ParseCIDR("0.0.0.0/0")
@@ -271,7 +276,7 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDef
 					LinkIndex: containerLink.Attrs().Index,
 					Scope:     netlink.SCOPE_UNIVERSE,
 					Dst:       defaultNet,
-					Gw:        net.ParseIP(gateway),
+					Gw:        net.ParseIP(containerGw),
 				})
 			case kubeovnv1.ProtocolIPv6:
 				_, defaultNet, _ := net.ParseCIDR("::/0")
@@ -279,10 +284,10 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDef
 					LinkIndex: containerLink.Attrs().Index,
 					Scope:     netlink.SCOPE_UNIVERSE,
 					Dst:       defaultNet,
-					Gw:        net.ParseIP(gateway),
+					Gw:        net.ParseIP(containerGw),
 				})
 			case kubeovnv1.ProtocolDual:
-				gws := strings.Split(gateway, ",")
+				gws := strings.Split(containerGw, ",")
 				_, defaultNet, _ := net.ParseCIDR("0.0.0.0/0")
 				err = netlink.RouteReplace(&netlink.Route{
 					LinkIndex: containerLink.Attrs().Index,
@@ -335,6 +340,18 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDef
 
 		if gwCheckMode != gatewayModeDisabled {
 			underlayGateway := gwCheckMode == gatewayCheckModeArping
+
+			if u2oInterconnectionIP != "" {
+				if nicType != util.InternalType {
+					if err := waitNetworkReady(ifName, ipAddr, u2oInterconnectionIP, false, true); err != nil {
+						return err
+					}
+				}
+				if err := waitNetworkReady(ifName, ipAddr, u2oInterconnectionIP, false, true); err != nil {
+					return err
+				}
+			}
+
 			if nicType != util.InternalType {
 				return waitNetworkReady(ifName, ipAddr, gateway, underlayGateway, true)
 			}
@@ -350,7 +367,7 @@ func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool
 	for i, gw := range strings.Split(gateway, ",") {
 		src := strings.Split(ips[i], "/")[0]
 		if underlayGateway && util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv4 {
-			mac, count, err := util.Arping(nic, src, gw, time.Second, gatewayCheckMaxRetry)
+			mac, count, err := util.ArpResolve(nic, src, gw, time.Second, gatewayCheckMaxRetry)
 			cniConnectivityResult.WithLabelValues(nodeName).Add(float64(count))
 			if err != nil {
 				err = fmt.Errorf("network %s with gateway %s is not ready for interface %s after %d checks: %v", ips[i], gw, nic, count, err)
@@ -381,7 +398,7 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 		return fmt.Errorf(raw)
 	}
 
-	if err = configureNic(util.NodeNic, ip, macAddr, mtu); err != nil {
+	if err = configureNic(util.NodeNic, ip, macAddr, mtu, false); err != nil {
 		return err
 	}
 
@@ -622,10 +639,26 @@ func configureMirrorLink(portName string, mtu int) error {
 	return nil
 }
 
-func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int) error {
+func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPConflict bool) error {
 	nodeLink, err := netlink.LinkByName(link)
 	if err != nil {
 		return fmt.Errorf("can not find nic %s: %v", link, err)
+	}
+
+	if err = netlink.LinkSetHardwareAddr(nodeLink, macAddr); err != nil {
+		return fmt.Errorf("can not set mac address to nic %s: %v", link, err)
+	}
+
+	if mtu > 0 {
+		if err = netlink.LinkSetMTU(nodeLink, mtu); err != nil {
+			return fmt.Errorf("can not set nic %s mtu: %v", link, err)
+		}
+	}
+
+	if nodeLink.Attrs().OperState != netlink.OperUp {
+		if err = netlink.LinkSetUp(nodeLink); err != nil {
+			return fmt.Errorf("can not set node nic %s up: %v", link, err)
+		}
 	}
 
 	ipDelMap := make(map[string]netlink.Addr)
@@ -662,18 +695,21 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int) error {
 		}
 	}
 	for _, addr := range ipAddMap {
+		if detectIPConflict && addr.IP.To4() != nil {
+			ip := addr.IP.String()
+			mac, err := util.ArpDetectIPConflict(link, ip, macAddr)
+			if err != nil {
+				err = fmt.Errorf("failed to detect address conflict for %s on link %s: %v", ip, link, err)
+				klog.Error(err)
+				return err
+			}
+			if mac != nil {
+				return fmt.Errorf("IP address %s has already been used by host with MAC %s", ip, mac)
+			}
+		}
+
 		if err = netlink.AddrAdd(nodeLink, &addr); err != nil {
 			return fmt.Errorf("can not add address %v to nic %s: %v", addr, link, err)
-		}
-	}
-
-	if err = netlink.LinkSetHardwareAddr(nodeLink, macAddr); err != nil {
-		return fmt.Errorf("can not set mac address to nic %s: %v", link, err)
-	}
-
-	if mtu > 0 {
-		if err = netlink.LinkSetMTU(nodeLink, mtu); err != nil {
-			return fmt.Errorf("can not set nic %s mtu: %v", link, err)
 		}
 	}
 
@@ -1030,7 +1066,7 @@ func renameLink(curName, newName string) error {
 	return nil
 }
 
-func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, priority, DeviceID, nicType, latency, limit, loss string, gwCheckMode int) (string, error) {
+func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, priority, DeviceID, nicType, latency, limit, loss string, gwCheckMode int, u2oInterconnectionIP string) (string, error) {
 	_, containerNicName := generateNicName(containerID, ifName)
 	ipStr := util.GetIpWithoutMask(ip)
 	ifaceID := ovs.PodNameToPortName(podName, podNamespace, provider)
@@ -1066,7 +1102,7 @@ func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, 
 	if err != nil {
 		return containerNicName, fmt.Errorf("failed to open netns %q: %v", netns, err)
 	}
-	if err = configureContainerNic(containerNicName, ifName, ip, gateway, isDefaultRoute, routes, macAddr, podNS, mtu, nicType, gwCheckMode); err != nil {
+	if err = configureContainerNic(containerNicName, ifName, ip, gateway, isDefaultRoute, detectIPConflict, routes, macAddr, podNS, mtu, nicType, gwCheckMode, u2oInterconnectionIP); err != nil {
 		return containerNicName, err
 	}
 	return containerNicName, nil

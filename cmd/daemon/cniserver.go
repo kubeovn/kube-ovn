@@ -18,6 +18,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/sample-controller/pkg/signals"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
 	"github.com/kubeovn/kube-ovn/pkg/daemon"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -34,7 +35,7 @@ func CmdMain() {
 	klog.Infof(versions.String())
 
 	if err := initForOS(); err != nil {
-		klog.Fatal(err)
+		util.LogFatalAndExit(err, "failed to do the OS initialization")
 	}
 
 	nicBridgeMappings, err := daemon.InitOVSBridges()
@@ -86,7 +87,9 @@ func CmdMain() {
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.Handler())
+	if config.EnableMetrics {
+		mux.Handle("/metrics", promhttp.Handler())
+	}
 	if config.EnablePprof {
 		mux.HandleFunc("/debug/pprof/", pprof.Index)
 		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
@@ -95,14 +98,27 @@ func CmdMain() {
 		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	}
 
+	addr := "0.0.0.0"
+	if os.Getenv("ENABLE_BIND_LOCAL_IP") == "true" {
+		podIpsEnv := os.Getenv("POD_IPS")
+		podIps := strings.Split(podIpsEnv, ",")
+		// when pod in dual mode, golang can't support bind v4 and v6 address in the same time,
+		// so not support bind local ip when in dual mode
+		if len(podIps) == 1 {
+			addr = podIps[0]
+			if util.CheckProtocol(podIps[0]) == kubeovnv1.ProtocolIPv6 {
+				addr = fmt.Sprintf("[%s]", podIps[0])
+			}
+		}
+	}
 	// conform to Gosec G114
 	// https://github.com/securego/gosec#available-rules
 	server := &http.Server{
-		Addr:              fmt.Sprintf("0.0.0.0:%d", config.PprofPort),
+		Addr:              fmt.Sprintf("%s:%d", addr, config.PprofPort),
 		ReadHeaderTimeout: 3 * time.Second,
 		Handler:           mux,
 	}
-	klog.Fatal(server.ListenAndServe())
+	util.LogFatalAndExit(server.ListenAndServe(), "failed to listen and serve on %s", server.Addr)
 }
 
 func mvCNIConf(configDir, configFile, confName string) error {

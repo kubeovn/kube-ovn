@@ -26,9 +26,7 @@ import (
 )
 
 func (c *Controller) enqueueAddNode(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
+
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -49,9 +47,6 @@ func nodeReady(node *v1.Node) bool {
 }
 
 func (c *Controller) enqueueUpdateNode(oldObj, newObj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 
 	oldNode := oldObj.(*v1.Node)
 	newNode := newObj.(*v1.Node)
@@ -70,9 +65,6 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj interface{}) {
 }
 
 func (c *Controller) enqueueDeleteNode(obj interface{}) {
-	if !c.isLeader() {
-		return
-	}
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -322,7 +314,7 @@ func (c *Controller) handleAddNode(key string) error {
 	}
 
 	for _, subnet := range subnets {
-		if subnet.Spec.Vlan != "" || subnet.Spec.Vpc != util.DefaultVpc || subnet.Name == c.config.NodeSwitch || subnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
+		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != util.DefaultVpc || subnet.Name == c.config.NodeSwitch || subnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
 			continue
 		}
 		if err = c.createPortGroupForDistributedSubnet(node, subnet); err != nil {
@@ -611,6 +603,9 @@ func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, node
 	if subnetName == c.config.NodeSwitch {
 		key = nodeName
 		ipName = fmt.Sprintf("node-%s", nodeName)
+	} else if strings.HasPrefix(podName, util.U2OInterconnName[0:19]) {
+		key = podName
+		ipName = podName
 	} else {
 		key = podName
 		ipName = ovs.PodNameToPortName(podName, ns, providerName)
@@ -1120,7 +1115,7 @@ func (c *Controller) deletePolicyRouteForNode(nodeName string) error {
 	}
 
 	for _, subnet := range subnets {
-		if subnet.Spec.Vlan != "" || subnet.Spec.Vpc != util.DefaultVpc || subnet.Name == c.config.NodeSwitch {
+		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != util.DefaultVpc || subnet.Name == c.config.NodeSwitch {
 			continue
 		}
 
@@ -1191,7 +1186,7 @@ func (c *Controller) addPolicyRouteForCentralizedSubnetOnNode(nodeName, nodeIP s
 	}
 
 	for _, subnet := range subnets {
-		if subnet.Spec.Vlan != "" || subnet.Spec.Vpc != util.DefaultVpc || subnet.Name == c.config.NodeSwitch || subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType {
+		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != util.DefaultVpc || subnet.Name == c.config.NodeSwitch || subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType {
 			continue
 		}
 

@@ -121,9 +121,16 @@ func (c *Controller) reconcileRouters(event subnetEvent) error {
 		}
 	}
 
+	node, err := c.nodesLister.Get(c.config.NodeName)
+	if err != nil {
+		klog.Errorf("failed to get node %s %v", c.config.NodeName, err)
+		return err
+	}
+	nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
+
 	cidrs := make([]string, 0, len(subnets)*2)
 	for _, subnet := range subnets {
-		if subnet.Spec.Vlan != "" || subnet.Spec.Vpc != util.DefaultVpc || !subnet.Status.IsReady() {
+		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != util.DefaultVpc || !subnet.Status.IsReady() {
 			continue
 		}
 
@@ -131,16 +138,17 @@ func (c *Controller) reconcileRouters(event subnetEvent) error {
 			if _, ipNet, err := net.ParseCIDR(cidrBlock); err != nil {
 				klog.Errorf("%s is not a valid cidr block", cidrBlock)
 			} else {
+				if nodeIPv4 != "" && util.CIDRContainIP(cidrBlock, nodeIPv4) {
+					continue
+				}
+				if nodeIPv6 != "" && util.CIDRContainIP(cidrBlock, nodeIPv6) {
+					continue
+				}
 				cidrs = append(cidrs, ipNet.String())
 			}
 		}
 	}
 
-	node, err := c.nodesLister.Get(c.config.NodeName)
-	if err != nil {
-		klog.Errorf("failed to get node %s %v", c.config.NodeName, err)
-		return err
-	}
 	gateway, ok := node.Annotations[util.GatewayAnnotation]
 	if !ok {
 		klog.Errorf("annotation for node %s ovn.kubernetes.io/gateway not exists", node.Name)

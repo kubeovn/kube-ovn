@@ -624,7 +624,7 @@ func (c *Controller) gcPortGroup() error {
 			return err
 		}
 		for _, subnet := range subnets {
-			if subnet.Spec.Vpc != util.DefaultVpc || subnet.Spec.Vlan != "" || subnet.Name == c.config.NodeSwitch || subnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
+			if subnet.Spec.Vpc != util.DefaultVpc || (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Name == c.config.NodeSwitch || subnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
 				continue
 			}
 			for _, node := range nodes {

@@ -382,14 +382,15 @@ func doOvnLeaderCheck(cfg *Configuration, podName string, podNamespace string) {
 	for k, v := range cachedPod.Labels {
 		labels[k] = v
 	}
-	updatePodLabels(labels, "ovn-nb-leader", checkNbIsLeader())
-	updatePodLabels(labels, "ovn-sb-leader", checkSbIsLeader())
-	updatePodLabels(labels, "ovn-northd-leader", checkNorthdActive())
+	nbLeader, sbLeader, northdLeader := checkNbIsLeader(), checkSbIsLeader(), checkNorthdActive()
+	updatePodLabels(labels, "ovn-nb-leader", nbLeader)
+	updatePodLabels(labels, "ovn-sb-leader", sbLeader)
+	updatePodLabels(labels, "ovn-northd-leader", northdLeader)
 	if err = patchPodLabels(cfg, cachedPod, labels); err != nil {
 		klog.Errorf("patch label error %v", err)
 		return
 	}
-	if checkNorthdSvcExist(cfg, podNamespace, "ovn-northd") {
+	if sbLeader && checkNorthdSvcExist(cfg, podNamespace, "ovn-northd") {
 		if !checkNorthdSvcValidIP(cfg, podNamespace, "ovn-northd") {
 			klog.Warning("no available northd leader, try to release the lock")
 			stealLock()

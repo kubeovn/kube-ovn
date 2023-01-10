@@ -1,427 +1,147 @@
 package framework
 
 import (
-	"bytes"
-	"context"
 	"fmt"
-	"io"
-	"os/exec"
+	"os"
 	"strings"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/tools/remotecommand"
-	"k8s.io/klog/v2"
+	"k8s.io/kubernetes/test/e2e/framework"
+	admissionapi "k8s.io/pod-security-admission/api"
 
-	. "github.com/onsi/ginkgo/v2"
+	"github.com/onsi/ginkgo/v2"
 
-	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
+	kubeovncs "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
+)
+
+const (
+	// poll is how often to Poll resources.
+	poll = 2 * time.Second
+
+	timeout = 2 * time.Minute
 )
 
 type Framework struct {
-	BaseName         string
-	KubeOvnNamespace string
-	KubeClientSet    kubernetes.Interface
-	OvnClientSet     clientset.Interface
-	KubeConfig       *rest.Config
+	KubeContext string
+	*framework.Framework
+	KubeOVNClientSet kubeovncs.Interface
+
+	// master/release-1.10/...
+	ClusterVersion string
+	// 999.999 for master
+	ClusterVersionMajor uint
+	ClusterVersionMinor uint
+	// ipv4/ipv6/dual
+	ClusterIpFamily string
+	// overlay/underlay/underlay-hairpin
+	ClusterNetworkMode string
 }
 
-// timeout for waiting resources ready
-const waitTimeout = 180
-
-func NewFramework(baseName, kubeConfig string) *Framework {
-	f := &Framework{BaseName: baseName}
-
-	cfg, err := clientcmd.BuildConfigFromFlags("", kubeConfig)
-	if err != nil {
-		panic(err.Error())
+func NewDefaultFramework(baseName string) *Framework {
+	f := &Framework{
+		Framework: framework.NewDefaultFramework(baseName),
 	}
-	f.KubeConfig = cfg
+	f.NamespacePodSecurityEnforceLevel = admissionapi.LevelPrivileged
+	f.ClusterIpFamily = os.Getenv("E2E_IP_FAMILY")
+	f.ClusterVersion = os.Getenv("E2E_BRANCH")
+	f.ClusterNetworkMode = os.Getenv("E2E_NETWORK_MODE")
 
-	cfg.QPS = 1000
-	cfg.Burst = 2000
-	kubeClient, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		panic(err.Error())
+	if strings.HasPrefix(f.ClusterVersion, "release-") {
+		n, err := fmt.Sscanf(f.ClusterVersion, "release-%d.%d", &f.ClusterVersionMajor, &f.ClusterVersionMinor)
+		ExpectNoError(err)
+		ExpectEqual(n, 2)
+	} else {
+		f.ClusterVersionMajor, f.ClusterVersionMinor = 999, 999
 	}
 
-	f.KubeClientSet = kubeClient
+	ginkgo.BeforeEach(f.BeforeEach)
 
-	kubeOvnClient, err := clientset.NewForConfig(cfg)
-	if err != nil {
-		panic(err.Error())
-	}
-
-	f.OvnClientSet = kubeOvnClient
 	return f
 }
 
-func (f *Framework) GetName() string {
-	return strings.Replace(CurrentSpecReport().LeafNodeText, " ", "-", -1)
-}
-
-func (f *Framework) WaitProviderNetworkReady(providerNetwork string) error {
-	deadline := time.Now().Add(time.Second * waitTimeout)
-	for {
-		time.Sleep(1 * time.Second)
-
-		pn, err := f.OvnClientSet.KubeovnV1().ProviderNetworks().Get(context.Background(), providerNetwork, metav1.GetOptions{})
-		if err != nil {
-			return err
-		}
-		if pn.Status.Ready {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("timeout waiting for provider-network %s to be ready", providerNetwork)
-		}
-	}
-}
-
-func (f *Framework) WaitSubnetReady(subnet string) error {
-	deadline := time.Now().Add(time.Second * waitTimeout)
-	for {
-		time.Sleep(1 * time.Second)
-		s, err := f.OvnClientSet.KubeovnV1().Subnets().Get(context.Background(), subnet, metav1.GetOptions{})
-		if err != nil {
-			return err
-		}
-		if s.Status.IsReady() {
-			return nil
-		}
-		if s.Status.IsNotValidated() && s.Status.ConditionReason(v1.Validated) != "" {
-			return fmt.Errorf(s.Status.ConditionReason(v1.Validated))
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("timeout waiting for subnet %s to be ready", subnet)
-		}
-	}
-}
-
-func (f *Framework) WaitPodReady(pod, namespace string) (*corev1.Pod, error) {
-	deadline := time.Now().Add(time.Second * waitTimeout)
-	for {
-		time.Sleep(1 * time.Second)
-		p, err := f.KubeClientSet.CoreV1().Pods(namespace).Get(context.Background(), pod, metav1.GetOptions{})
-		if err != nil {
-			return nil, err
-		}
-		if p.Status.Phase == "Running" && p.Status.Reason != "" {
-			return p, nil
-		}
-
-		switch getPodStatus(*p) {
-		case podCompleted:
-			return nil, fmt.Errorf("pod already completed")
-		case podRunning:
-			return p, nil
-		case podIniting, podPending, podInitializing, podContainerCreating, podTerminating:
-			if time.Now().After(deadline) {
-				return nil, fmt.Errorf("timeout waiting for Pod %s/%s to be ready", namespace, pod)
-			}
-			continue
-		default:
-			klog.Info(p.String())
-			return nil, fmt.Errorf("pod status failed")
-		}
-	}
-}
-
-func (f *Framework) WaitPodDeleted(pod, namespace string) error {
-	deadline := time.Now().Add(time.Second * waitTimeout)
-	for {
-		time.Sleep(1 * time.Second)
-		p, err := f.KubeClientSet.CoreV1().Pods(namespace).Get(context.Background(), pod, metav1.GetOptions{})
-		if err != nil {
-			if k8serrors.IsNotFound(err) {
-				return nil
-			}
-			return err
-		}
-
-		if status := getPodStatus(*p); status != podTerminating {
-			return fmt.Errorf("unexpected pod status: %s", status)
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("timeout waiting for pod %s/%s to be deleted", namespace, pod)
-		}
-	}
-}
-
-func (f *Framework) WaitDeploymentReady(deployment, namespace string) error {
-	deadline := time.Now().Add(time.Second * waitTimeout)
-	for {
-		time.Sleep(1 * time.Second)
-		deploy, err := f.KubeClientSet.AppsV1().Deployments(namespace).Get(context.Background(), deployment, metav1.GetOptions{})
-		if err != nil {
-			return err
-		}
-		if deploy.Status.ReadyReplicas != *deploy.Spec.Replicas {
-			if time.Now().After(deadline) {
-				return fmt.Errorf("timeout waiting for deployment %s/%s to be ready", namespace, deployment)
-			}
-			continue
-		}
-
-		pods, err := f.KubeClientSet.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.SelectorFromSet(deploy.Spec.Template.Labels).String()})
-		if err != nil {
-			return err
-		}
-
-		ready := true
-		for _, pod := range pods.Items {
-			switch getPodStatus(pod) {
-			case podCompleted:
-				return fmt.Errorf("pod already completed")
-			case podRunning:
-				continue
-			case podIniting, podPending, podInitializing, podContainerCreating, podTerminating:
-				ready = false
-			default:
-				klog.Info(pod.String())
-				return fmt.Errorf("pod status failed")
-			}
-			if !ready {
-				break
-			}
-		}
-		if ready {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("timeout waiting for deployment %s/%s to be ready", namespace, deployment)
-		}
-	}
-}
-
-func (f *Framework) WaitStatefulsetReady(statefulset, namespace string) error {
-	deadline := time.Now().Add(time.Second * waitTimeout)
-	for {
-		time.Sleep(1 * time.Second)
-		ss, err := f.KubeClientSet.AppsV1().StatefulSets(namespace).Get(context.Background(), statefulset, metav1.GetOptions{})
-		if err != nil {
-			return err
-		}
-		if ss.Status.ReadyReplicas != *ss.Spec.Replicas {
-			if time.Now().After(deadline) {
-				return fmt.Errorf("timeout waiting for statefulset %s/%s to be ready", namespace, statefulset)
-			}
-			continue
-		}
-
-		pods, err := f.KubeClientSet.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labels.SelectorFromSet(ss.Spec.Template.Labels).String()})
-		if err != nil {
-			return err
-		}
-
-		ready := true
-		for _, pod := range pods.Items {
-			switch getPodStatus(pod) {
-			case podCompleted:
-				return fmt.Errorf("pod already completed")
-			case podRunning:
-				continue
-			case podIniting, podPending, podInitializing, podContainerCreating, podTerminating:
-				ready = false
-			default:
-				klog.Info(pod.String())
-				return fmt.Errorf("pod status failed")
-			}
-			if !ready {
-				break
-			}
-		}
-		if ready {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("timeout waiting for statefulset %s/%s to be ready", namespace, statefulset)
-		}
-	}
-}
-
-func (f *Framework) ExecToPodThroughAPI(command, containerName, podName, namespace string, stdin io.Reader) (string, string, error) {
-	req := f.KubeClientSet.CoreV1().RESTClient().Post().
-		Resource("pods").
-		Name(podName).
-		Namespace(namespace).
-		SubResource("exec")
-	scheme := runtime.NewScheme()
-	if err := corev1.AddToScheme(scheme); err != nil {
-		return "", "", fmt.Errorf("error adding to scheme: %v", err)
+func (f *Framework) useContext() error {
+	if f.KubeContext == "" {
+		return nil
 	}
 
-	parameterCodec := runtime.NewParameterCodec(scheme)
-	req.VersionedParams(&corev1.PodExecOptions{
-		Command:   strings.Fields(command),
-		Container: containerName,
-		Stdin:     stdin != nil,
-		Stdout:    true,
-		Stderr:    true,
-		TTY:       false,
-	}, parameterCodec)
+	pathOptions := clientcmd.NewDefaultPathOptions()
+	pathOptions.GlobalFile = framework.TestContext.KubeConfig
+	pathOptions.EnvVar = ""
 
-	exec, err := remotecommand.NewSPDYExecutor(f.KubeConfig, "POST", req.URL())
+	config, err := pathOptions.GetStartingConfig()
 	if err != nil {
-		return "", "", fmt.Errorf("error while creating Executor: %v", err)
+		return err
 	}
 
-	var stdout, stderr bytes.Buffer
-	err = exec.Stream(remotecommand.StreamOptions{
-		Stdin:  stdin,
-		Stdout: &stdout,
-		Stderr: &stderr,
-		Tty:    false,
+	if config.CurrentContext != f.KubeContext {
+		Logf("Switching context to " + f.KubeContext)
+		config.CurrentContext = f.KubeContext
+		if err = clientcmd.ModifyConfig(pathOptions, *config, true); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func NewFrameworkWithContext(baseName, kubeContext string) *Framework {
+	f := &Framework{KubeContext: kubeContext}
+	ginkgo.BeforeEach(f.BeforeEach)
+
+	f.Framework = framework.NewDefaultFramework(baseName)
+	f.NamespacePodSecurityEnforceLevel = admissionapi.LevelPrivileged
+	f.ClusterIpFamily = os.Getenv("E2E_IP_FAMILY")
+	f.ClusterVersion = os.Getenv("E2E_BRANCH")
+	f.ClusterNetworkMode = os.Getenv("E2E_NETWORK_MODE")
+
+	ginkgo.BeforeEach(func() {
+		framework.TestContext.Host = ""
 	})
-	if err != nil {
-		return "", "", fmt.Errorf("error in Stream: %v", err)
-	}
 
-	return stdout.String(), stderr.String(), nil
+	return f
 }
 
-const (
-	podRunning           = "Running"
-	podPending           = "Pending"
-	podCompleted         = "Completed"
-	podContainerCreating = "ContainerCreating"
-	podInitializing      = "PodInitializing"
-	podTerminating       = "Terminating"
-	podIniting           = "Initing"
-)
-
-func getPodContainerStatus(pod corev1.Pod, reason string) string {
-	for i := len(pod.Status.ContainerStatuses) - 1; i >= 0; i-- {
-		container := pod.Status.ContainerStatuses[i]
-
-		if container.State.Waiting != nil && container.State.Waiting.Reason != "" {
-			reason = container.State.Waiting.Reason
-		} else if container.State.Terminated != nil && container.State.Terminated.Reason != "" {
-			reason = container.State.Terminated.Reason
-		} else if container.State.Terminated != nil && container.State.Terminated.Reason == "" {
-			if container.State.Terminated.Signal != 0 {
-				reason = fmt.Sprintf("Signal:%d", container.State.Terminated.Signal)
-			} else {
-				reason = fmt.Sprintf("ExitCode:%d", container.State.Terminated.ExitCode)
-			}
-		}
-	}
-	return reason
+func (f *Framework) IPv6() bool {
+	return f.ClusterIpFamily == "ipv6"
 }
 
-func getPodStatus(pod corev1.Pod) string {
-	reason := string(pod.Status.Phase)
-	if pod.Status.Reason != "" {
-		reason = pod.Status.Reason
-	}
-	initializing, reason := getPodInitStatus(pod, reason)
-	if !initializing {
-		reason = getPodContainerStatus(pod, reason)
+// BeforeEach gets a kube-ovn client
+func (f *Framework) BeforeEach() {
+	ginkgo.By("Setting kubernetes context")
+	ExpectNoError(f.useContext())
+
+	if f.KubeOVNClientSet == nil {
+		ginkgo.By("Creating a Kube-OVN client")
+		config, err := framework.LoadConfig()
+		ExpectNoError(err)
+
+		config.QPS = f.Options.ClientQPS
+		config.Burst = f.Options.ClientBurst
+		f.KubeOVNClientSet, err = kubeovncs.NewForConfig(config)
+		ExpectNoError(err)
 	}
 
-	if pod.DeletionTimestamp != nil && pod.Status.Reason == "NodeLost" {
-		reason = "Unknown"
-	} else if pod.DeletionTimestamp != nil {
-		reason = "Terminating"
-	}
-	return reason
+	framework.TestContext.Host = ""
 }
 
-func getPodInitStatus(pod corev1.Pod, reason string) (bool, string) {
-	initializing := false
-	for i := range pod.Status.InitContainerStatuses {
-		container := pod.Status.InitContainerStatuses[i]
-		switch {
-		case container.State.Terminated != nil && container.State.Terminated.ExitCode == 0:
-			continue
-		case container.State.Terminated != nil:
-			// initialization is failed
-			if len(container.State.Terminated.Reason) == 0 {
-				if container.State.Terminated.Signal != 0 {
-					reason = fmt.Sprintf("Init:Signal:%d", container.State.Terminated.Signal)
-				} else {
-					reason = fmt.Sprintf("Init:ExitCode:%d", container.State.Terminated.ExitCode)
-				}
-			} else {
-				reason = "Init:" + container.State.Terminated.Reason
-			}
-			initializing = true
-		case container.State.Waiting != nil && len(container.State.Waiting.Reason) > 0 && container.State.Waiting.Reason != "PodInitializing":
-			reason = "Initing:" + container.State.Waiting.Reason
-			initializing = true
-		default:
-			reason = fmt.Sprintf("Initing:%d/%d", i, len(pod.Spec.InitContainers))
-			initializing = true
-		}
-		break
+func (f *Framework) SkipVersionPriorTo(major, minor uint, message string) {
+	if f.ClusterVersionMajor < major ||
+		(f.ClusterVersionMajor == major && f.ClusterVersionMinor < minor) {
+		ginkgo.Skip(message)
 	}
-	return initializing, reason
 }
 
-type netemQos struct {
-	Latency string `json:"latency"`
-	Limit   string `json:"limit"`
-	Loss    string `json:"loss"`
+func Describe(text string, body func()) bool {
+	return ginkgo.Describe("[CNI:Kube-OVN] "+text, body)
 }
 
-func GetPodNetemQosPara(podName, podNamespace string) (netemQos, error) {
-	var qosVal netemQos
-
-	output, err := exec.Command("kubectl", "ko", "vsctl", "kube-ovn-control-plane", "--no-heading", "--columns=other_config", "--bare", "find", "qos", fmt.Sprintf(`external_ids:pod="%s/%s"`, podNamespace, podName)).CombinedOutput()
-	if err != nil {
-		return qosVal, err
-	}
-
-	values := strings.Fields(string(output))
-	for _, val := range values {
-		temp := strings.Split(val, "=")
-		if len(temp) != 2 {
-			continue
-		}
-
-		switch temp[0] {
-		case "latency":
-			qosVal.Latency = temp[1]
-		case "limit":
-			qosVal.Limit = temp[1]
-		case "loss":
-			qosVal.Loss = temp[1]
-		}
-	}
-
-	return qosVal, nil
+func OrderedDescribe(text string, body func()) bool {
+	return ginkgo.Describe("[CNI:Kube-OVN] "+text, ginkgo.Ordered, body)
 }
 
-func GetPodHtbQosPara(podName, podNamespace string) (string, string, error) {
-	var priority, rate string
-
-	output, err := exec.Command("kubectl", "ko", "vsctl", "kube-ovn-control-plane", "--no-heading", "--columns=other_config", "--bare", "find", "queue", fmt.Sprintf(`external_ids:pod="%s/%s"`, podNamespace, podName)).CombinedOutput()
-	if err != nil {
-		return "", "", err
-	}
-
-	values := strings.Fields(string(output))
-	for _, val := range values {
-		temp := strings.Split(val, "=")
-		if len(temp) != 2 {
-			continue
-		}
-
-		switch temp[0] {
-		case "max-rate":
-			rate = temp[1]
-		case "priority":
-			priority = temp[1]
-		}
-	}
-
-	return priority, rate, nil
+// ConformanceIt is wrapper function for ginkgo It.
+// Adds "[Conformance]" tag and makes static analysis easier.
+func ConformanceIt(text string, body interface{}) bool {
+	return ginkgo.It(text+" [Conformance]", ginkgo.Offset(1), body)
 }

@@ -137,7 +137,13 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 	}
 	if c.config.NetworkType == util.NetworkTypeVlan {
 		defaultSubnet.Spec.Vlan = c.config.DefaultVlanName
+		if c.config.DefaultLogicalGateway && c.config.DefaultU2OInterconnection {
+			err = fmt.Errorf("logicalGateway and u2oInterconnection can't be opened at the same time")
+			klog.Error(err)
+			return err
+		}
 		defaultSubnet.Spec.LogicalGateway = c.config.DefaultLogicalGateway
+		defaultSubnet.Spec.U2OInterconnection = c.config.DefaultU2OInterconnection
 	}
 
 	_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Create(context.Background(), &defaultSubnet, metav1.CreateOptions{})
@@ -303,6 +309,14 @@ func (c *Controller) InitIPAM() error {
 	for _, subnet := range subnets {
 		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
 			klog.Errorf("failed to init subnet %s: %v", subnet.Name, err)
+		}
+
+		u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
+		u2oInterconnLrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
+		if subnet.Status.U2OInterconnectionIP != "" {
+			if _, _, _, err = c.ipam.GetStaticAddress(u2oInterconnName, u2oInterconnLrpName, subnet.Status.U2OInterconnectionIP, "", subnet.Name, true); err != nil {
+				klog.Errorf("failed to init subnet u2o interonnection ip to ipam %v", subnet.Name, err)
+			}
 		}
 	}
 

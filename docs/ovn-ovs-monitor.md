@@ -3,9 +3,9 @@
 This document shows Kube-OVN monitor metrics.
 
 | Type                | Metric                                   | Description                                                                                                                       |
-| ------------------- |------------------------------------------| --------------------------------------------------------------------------------------------------------------------------------- |
+| ------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | OVN_Monitor         |                                          | OVN NB/SB/Northd metrics                                                                                                          |
-| Gauge               | ovn_status                               | OVN Health Status. The values are: (2) for standby or follower, (1) for active or leader, (0) for unhealthy.                                                                        |
+| Gauge               | ovn_status                               | OVN Health Status. The values are: (2) for standby or follower, (1) for active or leader, (0) for unhealthy.                      |
 | Gauge               | ovn_info                                 | This metric provides basic information about OVN. It is always set to 1.                                                          |
 | Gauge               | failed_req_count                         | The number of failed requests to OVN stack.                                                                                       |
 | Gauge               | log_file_size                            | The size of a log file associated with an OVN component.                                                                          |
@@ -35,7 +35,7 @@ This document shows Kube-OVN monitor metrics.
 | Gauge               | cluster_inbound_connections_error_total  | The total number of failed inbound connections to the server.                                                                     |
 | Gauge               | cluster_outbound_connections_error_total | The total number of failed outbound connections from the server.                                                                  |
 | OVS_Monitor         |                                          | ovsdb/vswitchd metrics                                                                                                            |
-| Gauge               | ovs_status                               | OVS Health Status. The values are: health(1), unhealthy(0).                                                                        |
+| Gauge               | ovs_status                               | OVS Health Status. The values are: health(1), unhealthy(0).                                                                       |
 | Gauge               | ovs_info                                 | This metric provides basic information about OVS. It is always set to 1.                                                          |
 | Gauge               | failed_req_count                         | The number of failed requests to OVS stack.                                                                                       |
 | Gauge               | log_file_size                            | The size of a log file associated with an OVS component.                                                                          |
@@ -71,6 +71,7 @@ This document shows Kube-OVN monitor metrics.
 | Gauge               | interface_tx_dropped                     | Represents the number of output packets dropped by OVS interface.                                                                 |
 | Gauge               | interface_tx_errors                      | Represents the total number of transmit errors by OVS interface.                                                                  |
 | Gauge               | interface_collisions                     | Represents the number of collisions on OVS interface.                                                                             |
+| Gauge               | interface_rx_multicast_packets           | Represents the count of multicast packets received by OVS interface.                                                              |
 | Kube-OVN-Pinger     |                                          | Network quality metrics                                                                                                           |
 | Gauge               | pinger_ovs_up                            | If the ovs on the node is up                                                                                                      |
 | Gauge               | pinger_ovs_down                          | If the ovs on the node is down                                                                                                    |
