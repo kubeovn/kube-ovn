@@ -993,10 +993,11 @@ type OvnEip struct {
 }
 type OvnEipSpec struct {
 	ExternalSubnet string `json:"externalSubnet"`
-	V4Ip           string `json:"v4ip"`
+	V4Ip           string `json:"v4Ip"`
+	V6Ip           string `json:"v6Ip"`
 	MacAddress     string `json:"macAddress"`
 	Type           string `json:"type"`
-	// usage type: fip, snat, lrp
+	// usage type: fip, snat, lrp, node external gw
 }
 
 // Condition describes the state of an object at a certain point.
@@ -1027,7 +1028,9 @@ type OvnEipStatus struct {
 	// +patchStrategy=merge
 	Conditions []OvnEipCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
-	V4Ip       string `json:"v4ip" patchStrategy:"merge"`
+	Ready      bool   `json:"ready" patchStrategy:"merge"`
+	V4Ip       string `json:"v4Ip" patchStrategy:"merge"`
+	V6Ip       string `json:"v6Ip" patchStrategy:"merge"`
 	MacAddress string `json:"macAddress" patchStrategy:"merge"`
 }
 

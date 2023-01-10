@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -19,6 +20,8 @@ import (
 	"github.com/containernetworking/plugins/pkg/utils/sysctl"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 
@@ -426,6 +429,237 @@ func (c *Controller) loopOvn0Check() {
 	}
 }
 
+func checkNodeGwNicInNs(ip, gw string, gwNS ns.NetNS) error {
+	return ns.WithNetNSPath(gwNS.Path(), func(_ ns.NetNS) error {
+		if _, err := netlink.LinkByName(util.NodeGwNic); err != nil {
+			err := fmt.Errorf("not init node gw nic %q, %v", util.NodeGwNic, err)
+			klog.Error(err)
+			return err
+		}
+		return waitNetworkReady(util.NodeGwNic, ip, gw, true, true, 3)
+	})
+}
+
+func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int, gwNS ns.NetNS) error {
+	ipStr := util.GetIpWithoutMask(ip)
+	output, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", util.NodeGwNic, "--",
+		"set", "interface", util.NodeGwNic, "type=internal", "--",
+		"set", "interface", util.NodeGwNic, fmt.Sprintf("external_ids:iface-id=%s", portName),
+		fmt.Sprintf("external_ids:ip=%s", ipStr),
+		fmt.Sprintf("external_ids:pod_netns=%s", util.NodeGwNsPath))
+	if err != nil {
+		klog.Errorf("failed to configure node nic %s: %v, %q", portName, err, output)
+		return fmt.Errorf(output)
+	}
+	gwLink, err := netlink.LinkByName(util.NodeGwNic)
+	if err != nil {
+		return fmt.Errorf("can not found node gw nic %s, %v", util.NodeGwNic, err)
+	}
+	if _, err = GetNsFromName(util.NodeGwNs); err != nil {
+		err := fmt.Errorf("please run 'ip netns add ovnext' to create node gw ns, %v", err)
+		klog.Error(err)
+		return err
+	}
+	if err = netlink.LinkSetNsFd(gwLink, int(gwNS.Fd())); err != nil {
+		return fmt.Errorf("failed to move link into netns: %v", err)
+	}
+	return ns.WithNetNSPath(gwNS.Path(), func(_ ns.NetNS) error {
+		if util.CheckProtocol(ip) == kubeovnv1.ProtocolDual || util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 {
+			// For docker version >=17.x the "none" network will disable ipv6 by default.
+			// We have to enable ipv6 here to add v6 address and gateway.
+			// See https://github.com/containernetworking/cni/issues/531
+			value, err := sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6")
+			if err != nil {
+				return fmt.Errorf("failed to get sysctl net.ipv6.conf.all.disable_ipv6: %v", err)
+			}
+			if value != "0" {
+				if _, err = sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6", "0"); err != nil {
+					return fmt.Errorf("failed to enable ipv6 on all nic: %v", err)
+				}
+			}
+		}
+
+		if err = configureNic(util.NodeGwNic, ip, macAddr, mtu, true); err != nil {
+			klog.Errorf("failed to congigure node gw nic %s, %v", util.NodeGwNic, err)
+			return err
+		}
+
+		if err = configureLoNic(); err != nil {
+			klog.Errorf("failed to configure nic %s, %v", util.LoNic, err)
+			return err
+		}
+
+		switch util.CheckProtocol(ip) {
+		case kubeovnv1.ProtocolIPv4:
+			_, defaultNet, _ := net.ParseCIDR("0.0.0.0/0")
+			err = netlink.RouteReplace(&netlink.Route{
+				LinkIndex: gwLink.Attrs().Index,
+				Scope:     netlink.SCOPE_UNIVERSE,
+				Dst:       defaultNet,
+				Gw:        net.ParseIP(gw),
+			})
+		case kubeovnv1.ProtocolIPv6:
+			_, defaultNet, _ := net.ParseCIDR("::/0")
+			err = netlink.RouteReplace(&netlink.Route{
+				LinkIndex: gwLink.Attrs().Index,
+				Scope:     netlink.SCOPE_UNIVERSE,
+				Dst:       defaultNet,
+				Gw:        net.ParseIP(gw),
+			})
+		case kubeovnv1.ProtocolDual:
+			gws := strings.Split(gw, ",")
+			_, defaultNet, _ := net.ParseCIDR("0.0.0.0/0")
+			err = netlink.RouteReplace(&netlink.Route{
+				LinkIndex: gwLink.Attrs().Index,
+				Scope:     netlink.SCOPE_UNIVERSE,
+				Dst:       defaultNet,
+				Gw:        net.ParseIP(gws[0]),
+			})
+			if err != nil {
+				return fmt.Errorf("config v4 gateway failed: %v", err)
+			}
+
+			_, defaultNet, _ = net.ParseCIDR("::/0")
+			err = netlink.RouteReplace(&netlink.Route{
+				LinkIndex: gwLink.Attrs().Index,
+				Scope:     netlink.SCOPE_UNIVERSE,
+				Dst:       defaultNet,
+				Gw:        net.ParseIP(gws[1]),
+			})
+		}
+		if err != nil {
+			return fmt.Errorf("failed to configure gateway: %v", err)
+		}
+		return waitNetworkReady(util.NodeGwNic, ip, gw, true, true, 3)
+	})
+}
+
+func removeNodeGwNic() error {
+	if _, err := ovs.Exec(ovs.IfExists, "del-port", "br-int", util.NodeGwNic); err != nil {
+		return fmt.Errorf("failed to remove ecmp external port %s from OVS bridge %s: %v", "br-int", util.NodeGwNic, err)
+	}
+	klog.Infof("ecmp gw ovnext0 removed")
+	return nil
+}
+
+func removeNodeGwNs() error {
+	if err := DeleteNamedNs(util.NodeGwNs); err != nil {
+		return fmt.Errorf("failed to remove node external gw ns %s: %v", util.NodeGwNs, err)
+	}
+	klog.Infof("node external gw ns %s removed", util.NodeGwNs)
+	return nil
+}
+
+// If OVS restart, the ovnext0 port will down and prevent host to pod network,
+// Restart the kube-ovn-cni when this happens
+func (c *Controller) loopOvnExt0Check() {
+	node, err := c.nodesLister.Get(c.config.NodeName)
+	if err != nil {
+		klog.Errorf("failed to get node %s: %v", c.config.NodeName, err)
+		return
+	}
+	if _, ok := node.Labels[util.NodeExtGwLabel]; !ok {
+		// non-gw node
+		return
+	}
+	portName := node.Name
+	cachedEip, err := c.ovnEipsLister.Get(portName)
+	needClean := false
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			needClean = true
+		} else {
+			klog.Errorf("ecmp gateway ovn eip not exist, can not setup ecmp gateway")
+			return
+		}
+	}
+
+	if needClean || node.Labels[util.NodeExtGwLabel] == "false" {
+		if err := removeNodeGwNic(); err != nil {
+			klog.Error(err)
+			return
+		}
+		if err := removeNodeGwNs(); err != nil {
+			klog.Error(err)
+			return
+		}
+		if err = c.patchOvnEipStatus(portName, false); err != nil {
+			klog.Errorf("failed to patch status for eip %s, %v", portName, err)
+			return
+		}
+		return
+	}
+
+	if node.Labels[util.NodeExtGwLabel] == "true" {
+		if cachedEip.Status.MacAddress == "" {
+			klog.Errorf("ecmp gateway ovn eip not ready, can not setup ecmp gateway")
+			return
+		}
+		ips := util.GetStringIP(cachedEip.Status.V4Ip, cachedEip.Status.V6Ip)
+		cachedSubnet, err := c.subnetsLister.Get(cachedEip.Spec.ExternalSubnet)
+		if err != nil {
+			klog.Errorf("failed to get external subnet %s, %v", cachedEip.Spec.ExternalSubnet, err)
+			return
+		}
+		gw := cachedSubnet.Spec.Gateway
+		mac, err := net.ParseMAC(cachedEip.Status.MacAddress)
+		if err != nil {
+			klog.Errorf("failed to parse mac %s, %v", cachedEip.Status.MacAddress, err)
+			return
+		}
+		ipAddr := util.GetIpAddrWithMask(ips, cachedSubnet.Spec.CIDRBlock)
+		gwNS, err := ns.GetNS(util.NodeGwNsPath)
+		if err != nil {
+			// ns not exist, create node external gw ns
+			if _, err := NewNamedNs(util.NodeGwNs); err != nil {
+				err := fmt.Errorf("failed to create node gw ns %q, %v", util.NodeGwNs, err)
+				klog.Error(err)
+				return
+			}
+		}
+		if err := checkNodeGwNicInNs(ipAddr, gw, gwNS); err == nil {
+			// already ready
+			return
+		}
+		klog.Infof("setup nic ovnext0 ip %s, mac %v, mtu %d", ipAddr, mac, c.config.MTU)
+		if err := configureNodeGwNic(portName, ipAddr, gw, mac, c.config.MTU, gwNS); err != nil {
+			klog.Errorf("failed to setup ovnext0, %v", err)
+			return
+		}
+		if err = c.patchOvnEipStatus(portName, true); err != nil {
+			klog.Errorf("failed to patch status for eip %s, %v", portName, err)
+			return
+		}
+	}
+}
+
+func (c *Controller) patchOvnEipStatus(key string, ready bool) error {
+	cachedOvnEip, err := c.ovnEipsLister.Get(key)
+	if err != nil {
+		klog.Errorf("failed to get cached ovn eip '%s', %v", key, err)
+		return err
+	}
+	ovnEip := cachedOvnEip.DeepCopy()
+	changed := false
+	if ovnEip.Status.Ready != ready {
+		ovnEip.Status.Ready = ready
+		changed = true
+	}
+	if changed {
+		bytes, err := ovnEip.Status.Bytes()
+		if err != nil {
+			klog.Errorf("failed to marshal ovn eip status '%s', %v", key, err)
+			return err
+		}
+		if _, err = c.config.KubeOvnClient.KubeovnV1().OvnEips().Patch(context.Background(), ovnEip.Name,
+			types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+			klog.Errorf("failed to patch status for ovn eip '%s', %v", key, err)
+			return err
+		}
+	}
+	return nil
+}
+
 func configureMirrorLink(portName string, mtu int) error {
 	mirrorLink, err := netlink.LinkByName(portName)
 	if err != nil {
@@ -519,6 +753,25 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 		klog.Infof("add ip address %s to %s", ip, link)
 		if err = netlink.AddrAdd(nodeLink, &addr); err != nil {
 			return fmt.Errorf("can not add address %v to nic %s: %v", addr, link, err)
+		}
+	}
+
+	return nil
+}
+
+func configureLoNic() error {
+	loLink, err := netlink.LinkByName(util.LoNic)
+	if err != nil {
+		err := fmt.Errorf("can not find nic %s, %v", util.LoNic, err)
+		klog.Error(err)
+		return err
+	}
+
+	if loLink.Attrs().OperState != netlink.OperUp {
+		if err = netlink.LinkSetUp(loLink); err != nil {
+			err := fmt.Errorf("failed to set up nic %s, %v", util.LoNic, err)
+			klog.Error(err)
+			return err
 		}
 	}
 

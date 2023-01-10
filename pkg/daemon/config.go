@@ -57,6 +57,7 @@ type Configuration struct {
 	DefaultInterfaceName    string
 	ExternalGatewayConfigNS string
 	ExternalGatewaySwitch   string // provider network underlay vlan subnet
+	EnableNodeExtGW         bool
 	EnableMetrics           bool
 }
 
@@ -89,6 +90,7 @@ func ParseFlags() *Configuration {
 		argsDefaultInterfaceName   = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
 		argExternalGatewaySwitch   = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
+		argEnableNodeExtGW         = pflag.Bool("enable-node-ext-gw", false, "Setup ovnext0 on gw node in namespace ovnext, default: false")
 		argEnableMetrics           = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 	)
 
@@ -138,6 +140,7 @@ func ParseFlags() *Configuration {
 		DefaultInterfaceName:    *argsDefaultInterfaceName,
 		ExternalGatewayConfigNS: *argExternalGatewayConfigNS,
 		ExternalGatewaySwitch:   *argExternalGatewaySwitch,
+		EnableNodeExtGW:         *argEnableNodeExtGW,
 		EnableMetrics:           *argEnableMetrics,
 	}
 	return config
