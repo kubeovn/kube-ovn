@@ -84,7 +84,6 @@ func (v *ValidatingHook) Handle(ctx context.Context, req admission.Request) (res
 			return
 		}
 	}
-	klog.Infof("@@@@@@@@@@@@@@@@@@@@@@@@@@@@ %v,%v,%v", req.Operation, req.Kind, jobSetGVK)
 	resp = ctrlwebhook.Allowed("by pass")
 	return
 }
