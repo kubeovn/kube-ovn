@@ -92,6 +92,15 @@ webhooks:
     - operations:
         - CREATE
       apiGroups:
+        - "batch"
+      apiVersions:
+        - v1
+      resources:
+        - jobs
+        - cronjobs
+    - operations:
+        - CREATE
+      apiGroups:
         - ""
       apiVersions:
         - v1
