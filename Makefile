@@ -236,8 +236,8 @@ kind-init-ipv4: kind-clean
 	@$(MAKE) kind-create
 
 .PHONY: kind-init-ovn-ic
-kind-init-ovn-ic: kind-clean-ovn-ic kind-init-single
-	@single=true $(MAKE) kind-generate-config
+kind-init-ovn-ic: kind-clean-ovn-ic kind-init-ha
+	@ha=true $(MAKE) kind-generate-config
 	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1)
 
 .PHONY: kind-init-iptables
