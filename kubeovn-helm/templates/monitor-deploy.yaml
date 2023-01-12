@@ -53,10 +53,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-            - name: POD_IPS
+            - name: POD_IP
               valueFrom:
                 fieldRef:
-                  fieldPath: status.podIPs
+                  fieldPath: status.podIP
             - name: ENABLE_BIND_LOCAL_IP
               value: "{{- .Values.func.ENABLE_BIND_LOCAL_IP }}"
           resources:

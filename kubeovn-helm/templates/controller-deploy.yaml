@@ -115,10 +115,10 @@ spec:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
               value: "{{ .Values.MASTER_NODES }}"
-            - name: POD_IPS
+            - name: POD_IP
               valueFrom:
                 fieldRef:
-                  fieldPath: status.podIPs
+                  fieldPath: status.podIP
             - name: ENABLE_BIND_LOCAL_IP
               value: "{{- .Values.func.ENABLE_BIND_LOCAL_IP }}"
           volumeMounts:

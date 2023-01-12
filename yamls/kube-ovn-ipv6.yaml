@@ -76,10 +76,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-            - name: POD_IPS
+            - name: POD_IP
               valueFrom:
                 fieldRef:
-                  fieldPath: status.podIPs
+                  fieldPath: status.podIP
           volumeMounts:
             - mountPath: /var/run/tls
               name: kube-ovn-tls
@@ -175,10 +175,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-            - name: POD_IPS
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIPs
           volumeMounts:
             - name: host-modules
               mountPath: /lib/modules
@@ -402,10 +398,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-            - name: POD_IPS
+            - name: POD_IP
               valueFrom:
                 fieldRef:
-                  fieldPath: status.podIPs
+                  fieldPath: status.podIP
           resources:
             requests:
               cpu: 200m
