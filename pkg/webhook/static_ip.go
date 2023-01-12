@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
@@ -23,6 +24,8 @@ var (
 	deploymentGVK  = metav1.GroupVersionKind{Group: appsv1.SchemeGroupVersion.Group, Version: appsv1.SchemeGroupVersion.Version, Kind: "Deployment"}
 	statefulSetGVK = metav1.GroupVersionKind{Group: appsv1.SchemeGroupVersion.Group, Version: appsv1.SchemeGroupVersion.Version, Kind: "StatefulSet"}
 	daemonSetGVK   = metav1.GroupVersionKind{Group: appsv1.SchemeGroupVersion.Group, Version: appsv1.SchemeGroupVersion.Version, Kind: "DaemonSet"}
+	jobSetGVK      = metav1.GroupVersionKind{Group: batchv1.SchemeGroupVersion.Group, Version: batchv1.SchemeGroupVersion.Version, Kind: "Job"}
+	cornJobSetGVK  = metav1.GroupVersionKind{Group: batchv1.SchemeGroupVersion.Group, Version: batchv1.SchemeGroupVersion.Version, Kind: "CronJob"}
 	podGVK         = metav1.GroupVersionKind{Group: corev1.SchemeGroupVersion.Group, Version: corev1.SchemeGroupVersion.Version, Kind: "Pod"}
 	subnetGVK      = metav1.GroupVersionKind{Group: ovnv1.SchemeGroupVersion.Group, Version: ovnv1.SchemeGroupVersion.Version, Kind: "Subnet"}
 	vpcGVK         = metav1.GroupVersionKind{Group: ovnv1.SchemeGroupVersion.Group, Version: ovnv1.SchemeGroupVersion.Version, Kind: "Vpc"}
@@ -70,6 +73,34 @@ func (v *ValidatingHook) DaemonSetCreateHook(ctx context.Context, req admission.
 	return v.validateIp(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
 }
 
+func (v *ValidatingHook) JobSetCreateHook(ctx context.Context, req admission.Request) admission.Response {
+	o := batchv1.Job{}
+	if err := v.decoder.Decode(req, &o); err != nil {
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+	// Get pod template static ips
+	staticIPSAnno := o.Spec.Template.GetAnnotations()[util.IpPoolAnnotation]
+	klog.V(3).Infof("%s %s@%s, ip_pool: %s", o.Kind, o.GetName(), o.GetNamespace(), staticIPSAnno)
+	if staticIPSAnno == "" {
+		return ctrlwebhook.Allowed("by pass")
+	}
+	return v.validateIp(ctx, o.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
+}
+
+func (v *ValidatingHook) CornJobSetCreateHook(ctx context.Context, req admission.Request) admission.Response {
+	o := batchv1.CronJob{}
+	if err := v.decoder.Decode(req, &o); err != nil {
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+	// Get pod template static ips
+	staticIPSAnno := o.Spec.JobTemplate.Spec.Template.GetAnnotations()[util.IpPoolAnnotation]
+	klog.V(3).Infof("%s %s@%s, ip_pool: %s", o.Kind, o.GetName(), o.GetNamespace(), staticIPSAnno)
+	if staticIPSAnno == "" {
+		return ctrlwebhook.Allowed("by pass")
+	}
+	return v.validateIp(ctx, o.Spec.JobTemplate.Spec.Template.GetAnnotations(), o.Kind, o.GetName(), o.GetNamespace())
+}
+
 func (v *ValidatingHook) PodCreateHook(ctx context.Context, req admission.Request) admission.Response {
 	o := corev1.Pod{}
 	if err := v.decoder.Decode(req, &o); err != nil {
@@ -77,12 +108,10 @@ func (v *ValidatingHook) PodCreateHook(ctx context.Context, req admission.Reques
 	}
 	poolAnno := o.GetAnnotations()[util.IpPoolAnnotation]
 	klog.V(3).Infof("%s %s@%s, ip_pool: %s", o.Kind, o.GetName(), o.GetNamespace(), poolAnno)
-	if poolAnno != "" {
-		return ctrlwebhook.Allowed("by pass")
-	}
+
 	staticIP := o.GetAnnotations()[util.IpAddressAnnotation]
 	klog.V(3).Infof("%s %s@%s, ip_address: %s", o.Kind, o.GetName(), o.GetNamespace(), staticIP)
-	if staticIP == "" {
+	if staticIP == "" && poolAnno == "" {
 		return ctrlwebhook.Allowed("by pass")
 	}
 	if v.allowLiveMigration(ctx, o.GetAnnotations(), o.GetName(), o.GetNamespace()) {
