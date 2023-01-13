@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	clientset "k8s.io/client-go/kubernetes"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
@@ -25,16 +27,19 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 	var subnet *apiv1.Subnet
 	var cs clientset.Interface
 	var podClient *framework.PodClient
+	var serviceClient *framework.ServiceClient
 	var subnetClient *framework.SubnetClient
-	var podName, hostPodName, namespaceName, subnetName, image string
+	var podName, hostPodName, serviceName, namespaceName, subnetName, image string
 	var cidr string
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
 		podClient = f.PodClient()
+		serviceClient = f.ServiceClient()
 		subnetClient = f.SubnetClient()
 		namespaceName = f.Namespace.Name
 		podName = "pod-" + framework.RandomSuffix()
 		hostPodName = "pod-" + framework.RandomSuffix()
+		serviceName = "service-" + framework.RandomSuffix()
 		subnetName = "subnet-" + framework.RandomSuffix()
 		cidr = framework.RandomCIDR(f.ClusterIpFamily)
 
@@ -43,6 +48,9 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 		}
 	})
 	ginkgo.AfterEach(func() {
+		ginkgo.By("Deleting service " + serviceName)
+		serviceClient.DeleteSync(serviceName)
+
 		ginkgo.By("Deleting pod " + podName)
 		podClient.DeleteSync(podName)
 
@@ -93,7 +101,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 	})
 
 	framework.ConformanceIt("should access overlay pods using node ip", func() {
-		f.SkipVersionPriorTo(1, 12, "This feature was introduce inn v1.12")
+		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12")
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, nil, nil)
@@ -124,6 +132,60 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 			protocol := strings.ToLower(util.CheckProtocol(ip))
 			ginkgo.By("Checking connection from " + hostPodName + " to " + podName + " via " + protocol)
 			cmd := fmt.Sprintf("curl -q -s --connect-timeout 5 %s/clientip", net.JoinHostPort(ip, port))
+			ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, namespaceName, hostPodName))
+			output := e2epodoutput.RunHostCmdOrDie(namespaceName, hostPodName, cmd)
+			client, _, err := net.SplitHostPort(strings.TrimSpace(output))
+			framework.ExpectNoError(err)
+			framework.ExpectContainElement(nodeIPs, client)
+		}
+	})
+
+	framework.ConformanceIt("should access overlay services using node ip", func() {
+		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12")
+
+		ginkgo.By("Creating subnet " + subnetName)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, nil, nil)
+		subnet = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Creating pod " + podName)
+		podLabels := map[string]string{"app": podName}
+		annotations := map[string]string{
+			util.LogicalSwitchAnnotation: subnetName,
+		}
+		port := 8000 + rand.Intn(1000)
+		portStr := strconv.Itoa(port)
+		args := []string{"netexec", "--http-port", portStr}
+		pod := framework.MakePod(namespaceName, podName, podLabels, annotations, framework.AgnhostImage, nil, args)
+		_ = podClient.CreateSync(pod)
+
+		ginkgo.By("Creating service " + serviceName)
+		ports := []corev1.ServicePort{{
+			Name:       "tcp",
+			Protocol:   corev1.ProtocolTCP,
+			Port:       int32(port),
+			TargetPort: intstr.FromInt(port),
+		}}
+		service := framework.MakeService(serviceName, "", nil, podLabels, ports, "")
+		service.Spec.IPFamilyPolicy = new(corev1.IPFamilyPolicy)
+		*service.Spec.IPFamilyPolicy = corev1.IPFamilyPolicyPreferDualStack
+		_ = serviceClient.CreateSync(service)
+
+		ginkgo.By("Creating pod " + hostPodName + " with host network")
+		cmd := []string{"sh", "-c", "sleep infinity"}
+		hostPod := framework.MakePod(namespaceName, hostPodName, nil, nil, image, cmd, nil)
+		hostPod.Spec.HostNetwork = true
+		hostPod = podClient.CreateSync(hostPod)
+
+		ginkgo.By("Validating client ip")
+		nodeIPs := make([]string, 0, len(hostPod.Status.PodIPs))
+		for _, podIP := range hostPod.Status.PodIPs {
+			nodeIPs = append(nodeIPs, podIP.IP)
+		}
+		service = serviceClient.Get(serviceName)
+		for _, ip := range service.Spec.ClusterIPs {
+			protocol := strings.ToLower(util.CheckProtocol(ip))
+			ginkgo.By("Checking connection from " + hostPodName + " to " + serviceName + " via " + protocol)
+			cmd := fmt.Sprintf("curl -q -s --connect-timeout 5 %s/clientip", net.JoinHostPort(ip, portStr))
 			ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, namespaceName, hostPodName))
 			output := e2epodoutput.RunHostCmdOrDie(namespaceName, hostPodName, cmd)
 			client, _, err := net.SplitHostPort(strings.TrimSpace(output))
