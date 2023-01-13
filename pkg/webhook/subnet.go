@@ -30,6 +30,17 @@ func (v *ValidatingHook) SubnetCreateHook(ctx context.Context, req admission.Req
 		return ctrlwebhook.Denied(err.Error())
 	}
 
+	vpcList := &ovnv1.VpcList{}
+	if err := v.cache.List(ctx, vpcList); err != nil {
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+	for _, item := range vpcList.Items {
+		if item.Name == o.Name {
+			err := fmt.Errorf("vpc and subnet cannot have the same name")
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
+		}
+	}
+
 	return ctrlwebhook.Allowed("by pass")
 }
 
