@@ -43,6 +43,7 @@ type Configuration struct {
 	KubeOvnClient           clientset.Interface
 	NodeName                string
 	ServiceClusterIPRange   string
+	NodeSwitch              string
 	NodeLocalDnsIP          string
 	EncapChecksum           bool
 	EnablePprof             bool
@@ -73,6 +74,7 @@ func ParseFlags() *Configuration {
 		argOvsSocket             = pflag.String("ovs-socket", "", "The socket to local ovs-server")
 		argKubeConfigFile        = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 		argServiceClusterIPRange = pflag.String("service-cluster-ip-range", "10.96.0.0/12", "The kubernetes service cluster ip range")
+		argNodeSwitch            = pflag.String("node-switch", "join", "The name of node gateway switch which help node to access pod network")
 		argNodeLocalDnsIP        = pflag.String("node-local-dns-ip", "", "If use nodelocaldns the local dns server ip should be set here.")
 		argEncapChecksum         = pflag.Bool("encap-checksum", true, "Enable checksum")
 		argEnablePprof           = pflag.Bool("enable-pprof", false, "Enable pprof")
@@ -125,6 +127,7 @@ func ParseFlags() *Configuration {
 		MacLearningFallback:     *argMacLearningFallback,
 		NodeName:                strings.ToLower(*argNodeName),
 		ServiceClusterIPRange:   *argServiceClusterIPRange,
+		NodeSwitch:              *argNodeSwitch,
 		NodeLocalDnsIP:          *argNodeLocalDnsIP,
 		EncapChecksum:           *argEncapChecksum,
 		NetworkType:             *argsNetworkType,
