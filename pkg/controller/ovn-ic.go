@@ -106,16 +106,17 @@ func (c *Controller) resyncInterConnection() {
 			}
 			c.ovnLegacyClient.OvnICSbAddress = genHostAddress(cm.Data["ic-db-host"], cm.Data["ic-sb-port"])
 
-			if err := c.RemoveOldChassisInSbDB(); err != nil {
-				klog.Errorf("failed to remove remote chassis: %v", err)
-			}
-
 			c.ovnLegacyClient.OvnICNbAddress = genHostAddress(cm.Data["ic-db-host"], cm.Data["ic-nb-port"])
 			klog.Info("start to reestablish ovn-ic")
 			if err := c.establishInterConnection(cm.Data); err != nil {
 				klog.Errorf("failed to reestablish ovn-ic, %v", err)
 				return
 			}
+
+			if err := c.RemoveOldChassisInSbDB(lastIcCm["az-name"]); err != nil {
+				klog.Errorf("failed to remove remote chassis: %v", err)
+			}
+
 			icEnabled = "true"
 			lastIcCm = cm.Data
 			klog.Info("finish reestablishing ovn-ic")
@@ -400,8 +401,8 @@ func (c *Controller) SynRouteToPolicy() {
 	c.syncOneRouteToPolicy(util.OvnICKey, util.OvnICStatic)
 }
 
-func (c *Controller) RemoveOldChassisInSbDB() error {
-	azUUID, err := c.ovnLegacyClient.GetAzUUID(lastIcCm["az-name"])
+func (c *Controller) RemoveOldChassisInSbDB(azName string) error {
+	azUUID, err := c.ovnLegacyClient.GetAzUUID(azName)
 	if err != nil {
 		klog.Errorf("failed to get UUID of AZ %s: %v", lastIcCm["az-name"], err)
 	}
