@@ -244,7 +244,7 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 	if vip.Status.Mac == "" {
 		// TODO:// add vip in its parent port aap list
 		if err = c.createOrUpdateCrdVip(key, vip.Namespace, vip.Spec.Subnet,
-			vip.Spec.V6ip, vip.Spec.V6ip, vip.Spec.MacAddress,
+			vip.Spec.V4ip, vip.Spec.V6ip, vip.Spec.MacAddress,
 			vip.Spec.ParentV4ip, vip.Spec.ParentV6ip, vip.Spec.MacAddress); err != nil {
 			return err
 		}
