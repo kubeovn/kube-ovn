@@ -1412,8 +1412,6 @@ spec:
                   type: string
                 natOutgoing:
                   type: boolean
-                u2oRouting:
-                  type: boolean
                 externalEgressGateway:
                   type: string
                 policyRoutingPriority:
