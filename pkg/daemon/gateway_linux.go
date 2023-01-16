@@ -309,7 +309,7 @@ func (c *Controller) createIptablesRule(protocol string, rule util.IPTableRule) 
 
 	s := strings.Join(rule.Rule, " ")
 	if exists {
-		klog.V(3).Infof(`iptables rule "%s" already exists`, s, exists)
+		klog.V(3).Infof(`iptables rule %q already exists`, s)
 		return nil
 	}
 
