@@ -474,8 +474,13 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 	}
 
 	if mtu > 0 {
-		if err = netlink.LinkSetMTU(nodeLink, mtu); err != nil {
-			return fmt.Errorf("can not set nic %s mtu: %v", link, err)
+		if nodeLink.Type() == "openvswitch" {
+			_, err = ovs.Exec("set", "interface", link, fmt.Sprintf(`mtu_request=%d`, mtu))
+		} else {
+			err = netlink.LinkSetMTU(nodeLink, mtu)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to set nic %s mtu: %v", link, err)
 		}
 	}
 
@@ -608,9 +613,6 @@ func configProviderNic(nicName, brName string) (int, error) {
 		}
 	}
 
-	if err = netlink.LinkSetMTU(bridge, nic.Attrs().MTU); err != nil {
-		return 0, fmt.Errorf("failed to set MTU of OVS bridge %s: %v", brName, err)
-	}
 	if err = netlink.LinkSetUp(bridge); err != nil {
 		return 0, fmt.Errorf("failed to set OVS bridge %s up: %v", brName, err)
 	}
