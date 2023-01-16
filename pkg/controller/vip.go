@@ -241,10 +241,10 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 		return err
 	}
 	// should update
-	if vip.Status.Mac == "" && vip.Spec.MacAddress == "" {
+	if vip.Status.Mac == "" {
 		// TODO:// add vip in its parent port aap list
 		if err = c.createOrUpdateCrdVip(key, vip.Namespace, vip.Spec.Subnet,
-			vip.Spec.V6ip, vip.Spec.V6ip, vip.Spec.MacAddress,
+			vip.Spec.V4ip, vip.Spec.V6ip, vip.Spec.MacAddress,
 			vip.Spec.ParentV4ip, vip.Spec.ParentV6ip, vip.Spec.MacAddress); err != nil {
 			return err
 		}
@@ -357,7 +357,7 @@ func (c *Controller) createOrUpdateCrdVip(key, ns, subnet, v4ip, v6ip, mac, pV4i
 		}
 	} else {
 		vip := vipCr.DeepCopy()
-		if vip.Spec.MacAddress == "" && mac != "" {
+		if vip.Status.Mac == "" && mac != "" {
 			// vip not support to update, just delete and create
 			vip.Spec.Namespace = ns
 			vip.Spec.V4ip = v4ip
