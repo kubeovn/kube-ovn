@@ -4,10 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
-	"strings"
-	"time"
-
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -15,7 +11,9 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	"net"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"strings"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -270,10 +268,9 @@ func (c *Controller) handleResetIptablesEip(key string) error {
 	klog.V(3).Infof("handle reset eip %s", key)
 	var notUse bool
 	switch eip.Status.Nat {
-	case "fip":
+	case util.FipUsingEip:
 		notUse = true
-	case "dnat":
-		time.Sleep(10 * time.Second)
+	case util.DnatUsingEip:
 		// nat change eip not that fast
 		dnats, err := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().List(context.Background(), metav1.ListOptions{
 			LabelSelector: fields.OneTermEqualSelector(util.VpcEipLabel, key).String(),
@@ -285,8 +282,7 @@ func (c *Controller) handleResetIptablesEip(key string) error {
 		if len(dnats.Items) == 0 {
 			notUse = true
 		}
-	case "snat":
-		time.Sleep(10 * time.Second)
+	case util.SnatUsingEip:
 		// nat change eip not that fast
 		snats, err := c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().List(context.Background(), metav1.ListOptions{
 			LabelSelector: fields.OneTermEqualSelector(util.VpcEipLabel, key).String(),
