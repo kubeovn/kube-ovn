@@ -50,7 +50,6 @@ func TestValidateSubnet(t *testing.T) {
 					GatewayType:            "distributed",
 					GatewayNode:            "",
 					NatOutgoing:            false,
-					U2oRouting:             false,
 					ExternalEgressGateway:  "",
 					PolicyRoutingPriority:  0,
 					PolicyRoutingTableID:   0,
