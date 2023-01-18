@@ -450,10 +450,6 @@ func configureMirrorLink(portName string, mtu int) error {
 		return fmt.Errorf("can not find mirror nic %s: %v", portName, err)
 	}
 
-	if err = netlink.LinkSetMTU(mirrorLink, mtu); err != nil {
-		return fmt.Errorf("can not set mirror nic mtu: %v", err)
-	}
-
 	if mirrorLink.Attrs().OperState != netlink.OperUp {
 		if err = netlink.LinkSetUp(mirrorLink); err != nil {
 			return fmt.Errorf("can not set mirror nic %s up: %v", portName, err)
