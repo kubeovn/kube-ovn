@@ -64,18 +64,22 @@ func checkDeployment(cs clientset.Interface, name, process string, ports ...stri
 
 func checkPods(pods []corev1.Pod, process string, ports ...string) {
 	ginkgo.By("Parsing environment variable")
-	var envValue string
-	for _, env := range pods[0].Spec.Containers[0].Env {
-		if env.Name == "ENABLE_BIND_LOCAL_IP" {
-			envValue = env.Value
-			break
+	var listenPodIP bool
+	if len(pods[0].Status.PodIPs) == 1 {
+		var envValue string
+		for _, env := range pods[0].Spec.Containers[0].Env {
+			if env.Name == "ENABLE_BIND_LOCAL_IP" {
+				envValue = env.Value
+				break
+			}
 		}
+		if envValue == "" {
+			envValue = "false"
+		}
+		var err error
+		listenPodIP, err = strconv.ParseBool(envValue)
+		framework.ExpectNoError(err)
 	}
-	if envValue == "" {
-		envValue = "false"
-	}
-	listenPodIP, err := strconv.ParseBool(envValue)
-	framework.ExpectNoError(err)
 
 	ginkgo.By("Validating " + process + " listen addresses")
 	cmd := fmt.Sprintf(`ss -Hntpl | grep -wE pid=$(pidof %s | sed "s/ /|pid=/g") | awk '{print $4}'`, process)

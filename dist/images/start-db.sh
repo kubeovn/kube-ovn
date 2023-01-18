@@ -28,7 +28,10 @@ ENABLE_SSL=${ENABLE_SSL:-false}
 ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-false}
 BIND_LOCAL_ADDR=[::]
 if [[ $ENABLE_BIND_LOCAL_IP == "true" ]]; then
+  POD_IPS_LIST=(${POD_IPS//,/ })
+  if [[ ${#POD_IPS_LIST[@]} == 1 ]]; then
     BIND_LOCAL_ADDR="[${POD_IP}]"
+  fi
 fi
 
 . /usr/share/openvswitch/scripts/ovs-lib || exit 1
