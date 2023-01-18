@@ -2030,6 +2030,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: POD_IPS
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
               value: "$ENABLE_BIND_LOCAL_IP"
           resources:
@@ -2526,6 +2530,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: POD_IPS
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
               value: "$ENABLE_BIND_LOCAL_IP"
           resources:
@@ -3028,10 +3036,10 @@ spec:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
               value: $addresses
-            - name: POD_IP
+            - name: POD_IPS
               valueFrom:
                 fieldRef:
-                  fieldPath: status.podIP
+                  fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
               value: "$ENABLE_BIND_LOCAL_IP"
           volumeMounts:
@@ -3158,6 +3166,10 @@ spec:
             value: $MODULES
           - name: RPMS
             value: $RPMS
+          - name: POD_IPS
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIPs
           - name: ENABLE_BIND_LOCAL_IP
             value: "$ENABLE_BIND_LOCAL_IP"
         volumeMounts:
@@ -3439,10 +3451,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-            - name: POD_IP
+            - name: POD_IPS
               valueFrom:
                 fieldRef:
-                  fieldPath: status.podIP
+                  fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
               value: "$ENABLE_BIND_LOCAL_IP"
           resources:

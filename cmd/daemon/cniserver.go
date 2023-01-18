@@ -4,12 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
 	"net/http/pprof"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +18,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/sample-controller/pkg/signals"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
 	"github.com/kubeovn/kube-ovn/pkg/daemon"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -101,12 +100,21 @@ func CmdMain() {
 
 	addr := "0.0.0.0"
 	if os.Getenv("ENABLE_BIND_LOCAL_IP") == "true" {
-		addr = os.Getenv("POD_IP")
+		podIpsEnv := os.Getenv("POD_IPS")
+		podIps := strings.Split(podIpsEnv, ",")
+		// when pod in dual mode, golang can't support bind v4 and v6 address in the same time,
+		// so not support bind local ip when in dual mode
+		if len(podIps) == 1 {
+			addr = podIps[0]
+			if util.CheckProtocol(podIps[0]) == kubeovnv1.ProtocolIPv6 {
+				addr = fmt.Sprintf("[%s]", podIps[0])
+			}
+		}
 	}
 	// conform to Gosec G114
 	// https://github.com/securego/gosec#available-rules
 	server := &http.Server{
-		Addr:              net.JoinHostPort(addr, strconv.Itoa(config.PprofPort)),
+		Addr:              fmt.Sprintf("%s:%d", addr, config.PprofPort),
 		ReadHeaderTimeout: 3 * time.Second,
 		Handler:           mux,
 	}

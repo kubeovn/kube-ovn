@@ -90,6 +90,10 @@ spec:
             value: "{{- .Values.performance.MODULES }}"
           - name: RPMS
             value: "{{- .Values.performance.RPMS }}"
+          - name: POD_IPS
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIPs
           - name: ENABLE_BIND_LOCAL_IP
             value: "{{- .Values.func.ENABLE_BIND_LOCAL_IP }}"
         volumeMounts:

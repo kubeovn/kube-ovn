@@ -9,9 +9,15 @@ ovn-ctl status_ovnnb
 ovn-ctl status_ovnsb
 
 BIND_LOCAL_ADDR=127.0.0.1
-ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-false}
 if [[ $ENABLE_BIND_LOCAL_IP == "true" ]]; then
-  BIND_LOCAL_ADDR="[${POD_IP}]"
+  POD_IPS_LIST=(${POD_IPS//,/ })
+  if [[ ${#POD_IPS_LIST[@]} == 1 ]]; then
+    if [[ $POD_IP =~ .*:.* ]]; then
+      BIND_LOCAL_ADDR=[${POD_IP}] #ipv6
+    else
+      BIND_LOCAL_ADDR=${POD_IP} #ipv4
+    fi
+  fi
 fi
 
 # For data consistency, only store leader address in endpoint
