@@ -8,17 +8,7 @@ ovn-ctl status_northd
 ovn-ctl status_ovnnb
 ovn-ctl status_ovnsb
 
-BIND_LOCAL_ADDR=127.0.0.1
-if [[ $ENABLE_BIND_LOCAL_IP == "true" ]]; then
-  POD_IPS_LIST=(${POD_IPS//,/ })
-  if [[ ${#POD_IPS_LIST[@]} == 1 ]]; then
-    if [[ $POD_IP =~ .*:.* ]]; then
-      BIND_LOCAL_ADDR=[${POD_IP}] #ipv6
-    else
-      BIND_LOCAL_ADDR=${POD_IP} #ipv4
-    fi
-  fi
-fi
+BIND_LOCAL_ADDR=[${POD_IP:-127.0.0.1}]
 
 # For data consistency, only store leader address in endpoint
 # Store ovn-nb leader to svc kube-system/ovn-nb
