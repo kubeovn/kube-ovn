@@ -35,6 +35,8 @@ RUN dpkg -i /usr/src/python3-openvswitch*.deb /usr/src/libopenvswitch*.deb
 
 RUN cd /usr/src/ && git clone -b branch-21.06 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
+    # fix ssl listen address
+    curl -s https://github.com/kubeovn/ovn/commit/62d4969877712c26fe425698d898b440f91b44bf.patch | git apply && \
     # expr.c: Use expr_destroy and expr_clone instead of free and xmemdup.
     curl -s https://github.com/ovn-org/ovn/commit/4b4cadcfabbc79f7d69c213be2b37e5e8634201c.patch | git apply && \
     # treewide: bump ovs and fix problematic loops

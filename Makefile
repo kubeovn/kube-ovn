@@ -209,8 +209,19 @@ kind-init-iptables:
 	@kube_proxy_mode=iptables $(MAKE) kind-init
 
 .PHONY: kind-init-ha
-kind-init-ha:
+kind-init-ha: kind-init-ha-ipv4
+
+.PHONY: kind-init-ha-ipv4
+kind-init-ha-ipv4:
 	@ha=true $(MAKE) kind-init
+
+.PHONY: kind-init-ha-ipv6
+kind-init-ha-ipv6:
+	@ip_family=ipv6 $(MAKE) kind-init-ha
+
+.PHONY: kind-init-ha-dual
+kind-init-ha-dual:
+	@ip_family=dual $(MAKE) kind-init-ha
 
 .PHONY: kind-init-single
 kind-init-single:

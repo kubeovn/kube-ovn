@@ -584,8 +584,8 @@ jobs:
         run: sh dist/images/cleanup.sh
 
   underlay-logical-gateway-installation-test:
-    needs: build-kube-ovn
     name: Underlay Logical Gateway Installation Test
+    needs: build-kube-ovn
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
@@ -620,8 +620,8 @@ jobs:
         run: sh dist/images/cleanup.sh
 
   no-ovn-lb-test:
-    needs: build-kube-ovn
     name: Disable OVN LB Test
+    needs: build-kube-ovn
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
@@ -658,8 +658,8 @@ jobs:
         run: sh dist/images/cleanup.sh
 
   no-np-test:
-    needs: build-kube-ovn
     name: Disable Network Policy Test
+    needs: build-kube-ovn
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
@@ -696,8 +696,8 @@ jobs:
         run: sh dist/images/cleanup.sh
 
   installation-compatibility-test:
-    needs: build-kube-ovn
     name: Installation Compatibility Test
+    needs: build-kube-ovn
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
@@ -732,8 +732,8 @@ jobs:
         run: sh dist/images/cleanup.sh
 
   cilium-chaining-e2e:
-    needs: build-kube-ovn
     name: Cilium Chaining E2E
+    needs: build-kube-ovn
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
@@ -819,7 +819,106 @@ jobs:
       - name: Cleanup
         run: sh dist/images/cleanup.sh
 
+  kube-ovn-security-e2e:
+    name: Kube-OVN Security E2E
+    needs: build-kube-ovn
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        ssl:
+          - "true"
+          - "false"
+        bind-local:
+          - "true"
+          - "false"
+        ip-family:
+          - ipv4
+          - ipv6
+          - dual
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Create the default branch directory
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=." >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/setup-go@v3
+        with:
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
+        id: go
+
+      - name: Export Go full version
+        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+
+      - name: Go cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('${{ env.E2E_DIR }}/**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
+
+      - name: Build e2e binaries
+        working-directory: ${{ env.E2E_DIR }}
+        run: make e2e-compile
+
+      - name: Install kind
+        run: |
+          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
+          chmod +x ./kind
+          sudo mv kind /usr/local/bin
+
+      - name: Download image
+        uses: actions/download-artifact@v3
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Create kind cluster
+        run: |
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH make kind-init-ha-${{ matrix.ip-family }}
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
+
+      - name: Install Kube-OVN
+        run: |
+          sudo ENABLE_SSL=${{ matrix.ssl }} ENABLE_BIND_LOCAL_IP=${{ matrix.bind-local }} \
+            make kind-install-${{ matrix.ip-family }}
+
+      - name: Run E2E
+        working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
+          E2E_IP_FAMILY: ${{ matrix.ip-family }}
+        run: make kube-ovn-security-e2e
+
+      - name: Cleanup
+        run: sh dist/images/cleanup.sh
+
   push:
+    name: Push Images
     needs:
       - k8s-conformance-e2e
       # - k8s-netpol-e2e
@@ -833,7 +932,7 @@ jobs:
       - no-ovn-lb-test
       - no-np-test
       - cilium-chaining-e2e
-    name: push
+      - kube-ovn-security-e2e
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
