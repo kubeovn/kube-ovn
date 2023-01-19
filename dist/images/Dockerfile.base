@@ -40,6 +40,8 @@ RUN dpkg -i /usr/src/python3-openvswitch*.deb /usr/src/libopenvswitch*.deb
 
 RUN cd /usr/src/ && git clone -b branch-22.03 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
+    # fix ssl listen address
+    curl -s https://github.com/kubeovn/ovn/commit/62d4969877712c26fe425698d898b440f91b44bf.patch | git apply && \
     # ovn-controller: Add a generic way to check if the daemon started recently.
     curl -s https://github.com/kubeovn/ovn/commit/367d7ab6239089ce99dda20818c8833c69ffd77f.patch | git apply && \
     # patch.c: Avoid patch interface deletion & recreation during restart.
