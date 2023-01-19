@@ -25,6 +25,14 @@ DB_NB_PORT=${DB_NB_PORT:-6641}
 DB_SB_ADDR=${DB_SB_ADDR:-::}
 DB_SB_PORT=${DB_SB_PORT:-6642}
 ENABLE_SSL=${ENABLE_SSL:-false}
+ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-false}
+BIND_LOCAL_ADDR=[::]
+if [[ $ENABLE_BIND_LOCAL_IP == "true" ]]; then
+  POD_IPS_LIST=(${POD_IPS//,/ })
+  if [[ ${#POD_IPS_LIST[@]} == 1 ]]; then
+    BIND_LOCAL_ADDR="[${POD_IP}]"
+  fi
+fi
 
 . /usr/share/openvswitch/scripts/ovs-lib || exit 1
 
@@ -177,8 +185,10 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
                 --db-sb-create-insecure-remote=yes \
                 --db-nb-cluster-local-addr="[${POD_IP}]" \
                 --db-sb-cluster-local-addr="[${POD_IP}]" \
-                --db-nb-addr=[::] \
-                --db-sb-addr=[::] \
+                --db-nb-addr=$BIND_LOCAL_ADDR \
+                --db-sb-addr=$BIND_LOCAL_ADDR \
+                --db-nb-use-remote-in-db=no \
+                --db-sb-use-remote-in-db=no \
                 --ovn-northd-nb-db="$(gen_conn_str 6641)" \
                 --ovn-northd-sb-db="$(gen_conn_str 6642)" \
                 start_northd
@@ -222,8 +232,10 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
                 --db-sb-cluster-local-addr="[${POD_IP}]" \
                 --db-nb-cluster-remote-addr="[${nb_leader_ip}]" \
                 --db-sb-cluster-remote-addr="[${sb_leader_ip}]" \
-                --db-nb-addr=[::] \
-                --db-sb-addr=[::] \
+                --db-nb-addr=$BIND_LOCAL_ADDR \
+                --db-sb-addr=$BIND_LOCAL_ADDR \
+                --db-nb-use-remote-in-db=no \
+                --db-sb-use-remote-in-db=no \
                 --ovn-northd-nb-db="$(gen_conn_str 6641)" \
                 --ovn-northd-sb-db="$(gen_conn_str 6642)" \
                 start_northd
@@ -277,16 +289,18 @@ else
                 --ovn-northd-ssl-ca-cert=/var/run/tls/cacert \
                 --db-nb-cluster-local-addr="[${POD_IP}]" \
                 --db-sb-cluster-local-addr="[${POD_IP}]" \
-                --db-nb-addr=[::] \
-                --db-sb-addr=[::] \
+                --db-nb-addr=$BIND_LOCAL_ADDR \
+                --db-sb-addr=$BIND_LOCAL_ADDR \
+                --db-nb-use-remote-in-db=no \
+                --db-sb-use-remote-in-db=no \
                 --ovn-northd-nb-db="$(gen_conn_str 6641)" \
                 --ovn-northd-sb-db="$(gen_conn_str 6642)" \
                 start_northd
-            ovn-nbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set-connection pssl:"${DB_NB_PORT}":[::]
+            ovn-nbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set-connection pssl:"${DB_NB_PORT}":["${DB_NB_ADDR}"]
             ovn-nbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set Connection . inactivity_probe=180000
             ovn-nbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set NB_Global . options:use_logical_dp_groups=true
 
-            ovn-sbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set-connection pssl:"${DB_SB_PORT}":[::]
+            ovn-sbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set-connection pssl:"${DB_SB_PORT}":["${DB_SB_ADDR}"]
             ovn-sbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set Connection . inactivity_probe=180000
         else
             # get leader if cluster exists
@@ -328,8 +342,10 @@ else
                 --db-sb-cluster-local-addr="[${POD_IP}]" \
                 --db-nb-cluster-remote-addr="[${nb_leader_ip}]" \
                 --db-sb-cluster-remote-addr="[${sb_leader_ip}]" \
-                --db-nb-addr=[::] \
-                --db-sb-addr=[::] \
+                --db-nb-addr=$BIND_LOCAL_ADDR \
+                --db-sb-addr=$BIND_LOCAL_ADDR \
+                --db-nb-use-remote-in-db=no \
+                --db-sb-use-remote-in-db=no \
                 --ovn-northd-nb-db="$(gen_conn_str 6641)" \
                 --ovn-northd-sb-db="$(gen_conn_str 6642)" \
                 start_northd
