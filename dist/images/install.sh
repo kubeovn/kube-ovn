@@ -2030,6 +2030,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: POD_IPS
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIPs
+            - name: ENABLE_BIND_LOCAL_IP
+              value: "$ENABLE_BIND_LOCAL_IP"
           resources:
             requests:
               cpu: 300m
@@ -2524,6 +2530,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: POD_IPS
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIPs
+            - name: ENABLE_BIND_LOCAL_IP
+              value: "$ENABLE_BIND_LOCAL_IP"
           resources:
             requests:
               cpu: 300m
