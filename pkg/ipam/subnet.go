@@ -573,3 +573,25 @@ func (subnet *Subnet) isIPAssignedToOtherPod(ip, podName string) (string, bool) 
 	}
 	return "", false
 }
+
+func (subnet *Subnet) GetUsingIPRangeList() (IPRangeList, IPRangeList) {
+	subnet.mutex.RLock()
+	defer subnet.mutex.RUnlock()
+
+	var V4UsingIPRangeList = IPRangeList{}
+	var V6UsingIPRangeList = IPRangeList{}
+
+	for ip, _ := range subnet.V4IPToPod {
+		if merged, NewV4UsingIPRangeList := mergeIPRangeList(V4UsingIPRangeList, ip); merged {
+			V4UsingIPRangeList = NewV4UsingIPRangeList
+		}
+	}
+
+	for ip, _ := range subnet.V6IPToPod {
+		if merged, NewV6UsingIPRangeList := mergeIPRangeList(V6UsingIPRangeList, ip); merged {
+			V6UsingIPRangeList = NewV6UsingIPRangeList
+		}
+	}
+
+	return V4UsingIPRangeList, V6UsingIPRangeList
+}

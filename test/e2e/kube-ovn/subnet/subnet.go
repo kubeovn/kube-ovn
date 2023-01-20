@@ -2,6 +2,7 @@ package subnet
 
 import (
 	"fmt"
+	"math/big"
 	"math/rand"
 	"net"
 	"strconv"
@@ -27,8 +28,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 	var cs clientset.Interface
 	var podClient *framework.PodClient
 	var subnetClient *framework.SubnetClient
-	var namespaceName, subnetName string
-	var cidr, cidrV4, cidrV6, firstIPv4, firstIPv6 string
+	var namespaceName, subnetName, podName string
+	var cidr, cidrV4, cidrV6, firstIPv4, lastIPv4, firstIPv6, lastIPv6 string
 	var gateways []string
 
 	ginkgo.BeforeEach(func() {
@@ -40,20 +41,29 @@ var _ = framework.Describe("[group:subnet]", func() {
 		cidr = framework.RandomCIDR(f.ClusterIpFamily)
 		cidrV4, cidrV6 = util.SplitStringIP(cidr)
 		gateways = nil
+		podName = ""
 		if cidrV4 == "" {
 			firstIPv4 = ""
+			lastIPv4 = ""
 		} else {
 			firstIPv4, _ = util.FirstIP(cidrV4)
+			lastIPv4, _ = util.LastIP(cidrV4)
 			gateways = append(gateways, firstIPv4)
 		}
 		if cidrV6 == "" {
 			firstIPv6 = ""
+			lastIPv6 = ""
 		} else {
 			firstIPv6, _ = util.FirstIP(cidrV6)
+			lastIPv6, _ = util.LastIP(cidrV6)
 			gateways = append(gateways, firstIPv6)
 		}
 	})
 	ginkgo.AfterEach(func() {
+		if podName != "" {
+			ginkgo.By("Deleting pod " + podName)
+			podClient.DeleteSync(podName)
+		}
 		ginkgo.By("Deleting subnet " + subnetName)
 		subnetClient.DeleteSync(subnetName)
 	})
@@ -520,6 +530,72 @@ var _ = framework.Describe("[group:subnet]", func() {
 				nexthops = append(nexthops, route.Gateway)
 			}
 			framework.ExpectConsistOf(nexthops, gateways)
+		}
+	})
+
+	framework.ConformanceIt("should support subnet display AvailableIPRange and UsingIPRange", func() {
+		ginkgo.By("Creating subnet " + subnetName)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, nil, nil)
+		subnet = subnetClient.CreateSync(subnet)
+
+		ipInt := rand.Int63() % 100
+		randomV4IP := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(firstIPv4), big.NewInt(ipInt)))
+		randomV6IP := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(firstIPv6), big.NewInt(ipInt)))
+
+		var podv4IP, podv6IP, allocIP string
+		if subnet.Spec.Protocol == apiv1.ProtocolIPv4 {
+			podv4IP = randomV4IP
+			allocIP = randomV4IP
+		} else if subnet.Spec.Protocol == apiv1.ProtocolIPv6 {
+			podv6IP = randomV6IP
+			allocIP = randomV6IP
+		} else {
+			podv4IP = randomV4IP
+			podv6IP = randomV6IP
+			allocIP = fmt.Sprintf("%s,%s", podv4IP, podv6IP)
+		}
+
+		ginkgo.By("Creating Pod with random address")
+		annotations := map[string]string{
+			util.LogicalSwitchAnnotation:                                        subnetName,
+			fmt.Sprintf(util.IpAddressAnnotationTemplate, subnet.Spec.Provider): allocIP,
+		}
+
+		podName = "sample"
+		pod := framework.MakePod("", podName, nil, annotations, "", nil, nil)
+		pod = podClient.CreateSync(pod)
+
+		subnet = subnetClient.Get(subnetName)
+		if podv4IP != "" {
+			framework.ExpectEqual(subnet.Status.V4UsingIPRange, fmt.Sprintf("%s", podv4IP))
+			if firstIPv4 == podv4IP {
+				framework.ExpectEqual(subnet.Status.V4AvailableIPRange, fmt.Sprintf("%s-%s",
+					util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(string(podv4IP)), big.NewInt(1))), lastIPv4))
+			} else if lastIPv4 == podv4IP {
+				framework.ExpectEqual(subnet.Status.V4AvailableIPRange, fmt.Sprintf("%s-%s",
+					firstIPv4, util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(string(podv4IP)), big.NewInt(-1)))))
+			} else {
+				framework.ExpectEqual(subnet.Status.V4AvailableIPRange, fmt.Sprintf("%s-%s,%s-%s",
+					util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(string(firstIPv4)), big.NewInt(1))),
+					util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(string(podv4IP)), big.NewInt(-1))),
+					util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(string(podv4IP)), big.NewInt(1))), lastIPv4))
+			}
+		}
+
+		if podv6IP != "" {
+			framework.ExpectEqual(subnet.Status.V6UsingIPRange, fmt.Sprintf("%s", podv6IP))
+			if firstIPv6 == podv6IP {
+				framework.ExpectEqual(subnet.Status.V6AvailableIPRange, fmt.Sprintf("%s-%s",
+					util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(string(podv6IP)), big.NewInt(1))), lastIPv6))
+			} else if lastIPv6 == podv6IP {
+				framework.ExpectEqual(subnet.Status.V6AvailableIPRange, fmt.Sprintf("%s-%s",
+					firstIPv6, util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(string(podv6IP)), big.NewInt(-1)))))
+			} else {
+				framework.ExpectEqual(subnet.Status.V6AvailableIPRange, fmt.Sprintf("%s-%s,%s-%s",
+					util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(string(firstIPv6)), big.NewInt(1))),
+					util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(string(podv6IP)), big.NewInt(-1))),
+					util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(string(podv6IP)), big.NewInt(1))), lastIPv6))
+			}
 		}
 	})
 })
