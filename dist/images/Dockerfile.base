@@ -41,21 +41,21 @@ RUN dpkg -i /usr/src/python3-openvswitch*.deb /usr/src/libopenvswitch*.deb
 RUN cd /usr/src/ && git clone -b branch-22.03 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
     # fix ssl listen address
-    curl -s https://github.com/kubeovn/ovn/commit/62d4969877712c26fe425698d898b440f91b44bf.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/7992d55af9ac356d3ad934764f473d1b6aa4cf64.patch | git apply && \
     # ovn-controller: Add a generic way to check if the daemon started recently.
-    curl -s https://github.com/kubeovn/ovn/commit/367d7ab6239089ce99dda20818c8833c69ffd77f.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/b60d6c60b3f78efb92ad2583a64821e618659344.patch | git apply && \
     # patch.c: Avoid patch interface deletion & recreation during restart.
-    curl -s https://github.com/kubeovn/ovn/commit/e4b97b4961fa80071cb73aa40cf97f586f55b1eb.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/d15464497a5e4737bf4122f134ebc006f1a6788f.patch | git apply && \
     # do not send traffic that not designate to svc to conntrack
-    curl -s https://github.com/kubeovn/ovn/commit/d26ae4de0ab070f6b602688ba808c8963f69d5c4.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/7af1a269e5a52938be310108524365a6a75b73ef.patch | git apply && \
     # change hash type from dp_hash to hash with field src_ip
-    curl -s https://github.com/kubeovn/ovn/commit/ab923b252271cbbcccc8091e338ee7efe75e5fcd.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/2c36d523998a20bec95e36fee815a6a46bda80c1.patch | git apply && \
     # set ether dst addr for dnat on logical switch
-    curl -s https://github.com/kubeovn/ovn/commit/58a40438926745dfdd498c09ea71e1746b803a42.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/7d349c9d22a49b6be02d1f679dd771f7ce72c524.patch | git apply && \
     # modify src route priority
-    curl -s https://github.com/kubeovn/ovn/commit/e0e20deb188434f73143b1906e481fdac913429d.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/2b7226d936a60140574827a6a34560e0b332e876.patch | git apply && \
     # fix reaching resubmit limit in underlay
-    curl -s https://github.com/kubeovn/ovn/commit/f531458f2076fc89419a2ce58974230b7be7b76c.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/44b44df9ceb37d526594126c6f8737fafb53269c.patch | git apply && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \
