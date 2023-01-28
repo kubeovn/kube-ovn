@@ -550,7 +550,7 @@ func (c *Controller) setIptables() error {
 			rules[1] = util.IPTableRule{
 				Table: NAT,
 				Chain: OvnPostrouting,
-				Rule:  strings.Fields(fmt.Sprintf(`-m set --match-set %s src -m mark --mark 0x4000/0x4000 -j SNAT --to-source %s`, svcMatchset, nodeIP)),
+				Rule:  strings.Fields(fmt.Sprintf(`-m set --match-set %s src -m set --match-set %s dst -m mark --mark 0x4000/0x4000 -j SNAT --to-source %s`, svcMatchset, matchset, nodeIP)),
 			}
 			iptablesRules = rules
 
