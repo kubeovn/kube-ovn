@@ -261,3 +261,20 @@ func (ipam *IPAM) GetSubnetV4Mask(subnetName string) (string, error) {
 		return "", ErrNoAvailable
 	}
 }
+
+func (ipam *IPAM) GetSubnetIPRangeString(subnetName string) (string, string, string, string) {
+	ipam.mutex.RLock()
+	defer ipam.mutex.RUnlock()
+
+	var v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr string
+
+	if subnet, ok := ipam.Subnets[subnetName]; ok {
+
+		v4UsingIPStr = subnet.V4UsingIPList.IpRangetoString()
+		v6UsingIPStr = subnet.V6UsingIPList.IpRangetoString()
+		v4AvailableIPStr = subnet.V4AvailIPList.IpRangetoString()
+		v6AvailableIPStr = subnet.V6AvailIPList.IpRangetoString()
+	}
+
+	return v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr
+}

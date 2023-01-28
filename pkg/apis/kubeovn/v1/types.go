@@ -181,9 +181,13 @@ type SubnetStatus struct {
 	Conditions []SubnetCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
 	V4AvailableIPs       float64 `json:"v4availableIPs"`
+	V4AvailableIPRange   string  `json:"v4availableIPrange"`
 	V4UsingIPs           float64 `json:"v4usingIPs"`
+	V4UsingIPRange       string  `json:"v4usingIPrange"`
 	V6AvailableIPs       float64 `json:"v6availableIPs"`
+	V6AvailableIPRange   string  `json:"v6availableIPrange"`
 	V6UsingIPs           float64 `json:"v6usingIPs"`
+	V6UsingIPRange       string  `json:"v6usingIPrange"`
 	ActivateGateway      string  `json:"activateGateway"`
 	DHCPv4OptionsUUID    string  `json:"dhcpV4OptionsUUID"`
 	DHCPv6OptionsUUID    string  `json:"dhcpV6OptionsUUID"`

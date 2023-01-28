@@ -1354,6 +1354,14 @@ spec:
                   type: string
                 u2oInterconnectionIP:
                   type: string
+                v4usingIPrange:
+                  type: string
+                v4availableIPrange:
+                  type: string
+                v6usingIPrange:
+                  type: string
+                v6availableIPrange:
+                  type: string
                 conditions:
                   type: array
                   items:

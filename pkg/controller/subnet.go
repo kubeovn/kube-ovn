@@ -1575,10 +1575,16 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		return nil
 	}
 
+	v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr := c.ipam.GetSubnetIPRangeString(subnet.Name)
 	subnet.Status.V4AvailableIPs = v4availableIPs
 	subnet.Status.V6AvailableIPs = v6availableIPs
 	subnet.Status.V4UsingIPs = usingIPs
 	subnet.Status.V6UsingIPs = usingIPs
+	subnet.Status.V4UsingIPRange = v4UsingIPStr
+	subnet.Status.V6UsingIPRange = v6UsingIPStr
+	subnet.Status.V4AvailableIPRange = v4AvailableIPStr
+	subnet.Status.V6AvailableIPRange = v6AvailableIPStr
+
 	bytes, err := subnet.Status.Bytes()
 	if err != nil {
 		return err
@@ -1626,6 +1632,8 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		availableIPs = 0
 	}
 
+	v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr := c.ipam.GetSubnetIPRangeString(subnet.Name)
+
 	cachedFields := [4]float64{
 		subnet.Status.V4AvailableIPs,
 		subnet.Status.V4UsingIPs,
@@ -1635,11 +1643,15 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	if subnet.Spec.Protocol == kubeovnv1.ProtocolIPv4 {
 		subnet.Status.V4AvailableIPs = availableIPs
 		subnet.Status.V4UsingIPs = usingIPs
+		subnet.Status.V4UsingIPRange = v4UsingIPStr
+		subnet.Status.V4AvailableIPRange = v4AvailableIPStr
 		subnet.Status.V6AvailableIPs = 0
 		subnet.Status.V6UsingIPs = 0
 	} else {
 		subnet.Status.V6AvailableIPs = availableIPs
 		subnet.Status.V6UsingIPs = usingIPs
+		subnet.Status.V6UsingIPRange = v6UsingIPStr
+		subnet.Status.V6AvailableIPRange = v6AvailableIPStr
 		subnet.Status.V4AvailableIPs = 0
 		subnet.Status.V4UsingIPs = 0
 	}
