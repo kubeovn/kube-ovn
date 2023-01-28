@@ -94,7 +94,11 @@ jobs:
           make ut
 
       - name: Install gosec
-        run: curl -sfL https://raw.githubusercontent.com/securego/gosec/master/install.sh | sh -s -- -b $(go env GOPATH)/bin 'v${{ env.GOSEC_VERSION }}'
+        run: |
+          curl -sfL https://raw.githubusercontent.com/securego/gosec/master/install.sh | \
+            sed 's#giturl=.*#giturl="https://api.github.com/repos/${owner_repo}/releases/tags/${version}"#' | \
+            sed 's#tag_name":"#tag_name": *"#' | \
+            sh -s -- -b $(go env GOPATH)/bin 'v${{ env.GOSEC_VERSION }}'
 
       - name: Download variable file
         uses: actions/download-artifact@v3
