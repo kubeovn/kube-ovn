@@ -21,7 +21,7 @@ concurrency:
 
 env:
   GO_VERSION: '1.19'
-  GOSEC_VERSION: '2.13.1'
+  GOSEC_VERSION: '2.14.0'
 
 jobs:
   build-ovs-and-ovn:
@@ -37,41 +37,38 @@ jobs:
         uses: actions/checkout@v3
         with:
           repository: openvswitch/ovs
-          ref: branch-2.17
+          ref: branch-3.1
           path: ovs
 
       - name: Check out OVN
         uses: actions/checkout@v3
         with:
           repository: ovn-org/ovn
-          ref: branch-22.03
+          ref: branch-22.12
           path: ovn
 
       - name: Apply OVS patches
         working-directory: ovs
         run: |
-          # ovsdb-idl: Support write-only-changed IDL monitor mode
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/03ce8faf7d0eb79d7dd99f4310dc15be160e92fc.patch" -OutFile ..\ovs-01.patch
           # fix kernel crash
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/64383c14a9c25e9e0ca53c6758d9499c60132536.patch" -OutFile ..\ovs-02.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/64383c14a9c25e9e0ca53c6758d9499c60132536.patch" -OutFile ..\ovs-01.patch
           # support for building in github actions
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/08a95db2ca506fce4d89fdf4fafab74607b2bb9f.patch" -OutFile ..\ovs-03.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/08a95db2ca506fce4d89fdf4fafab74607b2bb9f.patch" -OutFile ..\ovs-02.patch
           # listen on tcp 127.0.0.1:6643 by default
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/680e77a190ae7df3086bc35bb6150238e97f9020.patch" -OutFile ..\ovs-04.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovs/commit/680e77a190ae7df3086bc35bb6150238e97f9020.patch" -OutFile ..\ovs-03.patch
           git apply ..\ovs-01.patch
           git apply ..\ovs-02.patch
           git apply ..\ovs-03.patch
-          git apply ..\ovs-04.patch
 
       - name: Apply OVN patches
         working-directory: ovn
         run: |
           # change hash type from dp_hash to hash with field src_ip
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/ab923b252271cbbcccc8091e338ee7efe75e5fcd.patch" -OutFile ..\ovn-01.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/ae04d5e75d443500d537084d7db466513f63a7af.patch" -OutFile ..\ovn-01.patch
           # add support for windows
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/700870525ffbbccb70c6b00ca0f807b2a387e6ee.patch" -OutFile ..\ovn-02.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/05e57b322758461c54d5cad030486c3d25942c73.patch" -OutFile ..\ovn-02.patch
           # set br-int controller to TCP 127.0.0.1:6653
-          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/e498c03eda80248dd786775d8f7779d9b895e3ff.patch" -OutFile ..\ovn-03.patch
+          Invoke-WebRequest -Uri "https://github.com/kubeovn/ovn/commit/0181b68be18e96bc4ca68a0c3e5082da34c9dcdd.patch" -OutFile ..\ovn-03.patch
           git apply ..\ovn-01.patch
           git apply ..\ovn-02.patch
           git apply ..\ovn-03.patch
