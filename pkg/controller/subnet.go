@@ -1568,14 +1568,19 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		v6availableIPs = 0
 	}
 
+	v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr := c.ipam.GetSubnetIPRangeString(subnet.Name)
+
 	if subnet.Status.V4AvailableIPs == v4availableIPs &&
 		subnet.Status.V6AvailableIPs == v6availableIPs &&
 		subnet.Status.V4UsingIPs == usingIPs &&
-		subnet.Status.V6UsingIPs == usingIPs {
+		subnet.Status.V6UsingIPs == usingIPs &&
+		subnet.Status.V4UsingIPRange == v4UsingIPStr &&
+		subnet.Status.V6UsingIPRange == v6UsingIPStr &&
+		subnet.Status.V4AvailableIPRange == v4AvailableIPStr &&
+		subnet.Status.V6AvailableIPRange == v6AvailableIPStr {
 		return nil
 	}
 
-	v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr := c.ipam.GetSubnetIPRangeString(subnet.Name)
 	subnet.Status.V4AvailableIPs = v4availableIPs
 	subnet.Status.V6AvailableIPs = v6availableIPs
 	subnet.Status.V4UsingIPs = usingIPs
@@ -1633,13 +1638,19 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	}
 
 	v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr := c.ipam.GetSubnetIPRangeString(subnet.Name)
-
-	cachedFields := [4]float64{
+	cachedFloatFields := [4]float64{
 		subnet.Status.V4AvailableIPs,
 		subnet.Status.V4UsingIPs,
 		subnet.Status.V6AvailableIPs,
 		subnet.Status.V6UsingIPs,
 	}
+	cachedStringFields := [4]string{
+		subnet.Status.V4UsingIPRange,
+		subnet.Status.V4AvailableIPRange,
+		subnet.Status.V6UsingIPRange,
+		subnet.Status.V6AvailableIPRange,
+	}
+
 	if subnet.Spec.Protocol == kubeovnv1.ProtocolIPv4 {
 		subnet.Status.V4AvailableIPs = availableIPs
 		subnet.Status.V4UsingIPs = usingIPs
@@ -1655,11 +1666,16 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		subnet.Status.V4AvailableIPs = 0
 		subnet.Status.V4UsingIPs = 0
 	}
-	if cachedFields == [4]float64{
+	if cachedFloatFields == [4]float64{
 		subnet.Status.V4AvailableIPs,
 		subnet.Status.V4UsingIPs,
 		subnet.Status.V6AvailableIPs,
 		subnet.Status.V6UsingIPs,
+	} && cachedStringFields == [4]string{
+		subnet.Status.V4UsingIPRange,
+		subnet.Status.V4AvailableIPRange,
+		subnet.Status.V6UsingIPRange,
+		subnet.Status.V6AvailableIPRange,
 	} {
 		return nil
 	}
