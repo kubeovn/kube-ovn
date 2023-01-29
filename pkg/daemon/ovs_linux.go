@@ -18,6 +18,7 @@ import (
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/utils/sysctl"
 	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 
@@ -488,7 +489,7 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 
 	ipDelMap := make(map[string]netlink.Addr)
 	ipAddMap := make(map[string]netlink.Addr)
-	ipAddrs, err := netlink.AddrList(nodeLink, 0x0)
+	ipAddrs, err := netlink.AddrList(nodeLink, unix.AF_UNSPEC)
 	if err != nil {
 		return fmt.Errorf("can not get addr %s: %v", nodeLink, err)
 	}
@@ -497,7 +498,7 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 			// skip 169.254.0.0/16 and fe80::/10
 			continue
 		}
-		ipDelMap[ipAddr.IP.String()+"/"+ipAddr.Mask.String()] = ipAddr
+		ipDelMap[ipAddr.IPNet.String()] = ipAddr
 	}
 
 	for _, ipStr := range strings.Split(ip, ",") {
@@ -514,12 +515,13 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 		ipAddMap[ipStr] = *ipAddr
 	}
 
-	for _, addr := range ipDelMap {
+	for ip, addr := range ipDelMap {
+		klog.Infof("delete ip address %s on %s", ip, link)
 		if err = netlink.AddrDel(nodeLink, &addr); err != nil {
 			return fmt.Errorf("delete address %s: %v", addr, err)
 		}
 	}
-	for _, addr := range ipAddMap {
+	for ip, addr := range ipAddMap {
 		if detectIPConflict && addr.IP.To4() != nil {
 			ip := addr.IP.String()
 			mac, err := util.ArpDetectIPConflict(link, ip, macAddr)
@@ -533,6 +535,7 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 			}
 		}
 
+		klog.Infof("add ip address %s to %s", ip, link)
 		if err = netlink.AddrAdd(nodeLink, &addr); err != nil {
 			return fmt.Errorf("can not add address %v to nic %s: %v", addr, link, err)
 		}
@@ -932,7 +935,7 @@ func configureAdditionalNic(link, ip string) error {
 			// skip 169.254.0.0/16 and fe80::/10
 			continue
 		}
-		ipDelMap[ipAddr.IP.String()+"/"+ipAddr.Mask.String()] = ipAddr
+		ipDelMap[ipAddr.IPNet.String()] = ipAddr
 	}
 
 	for _, ipStr := range strings.Split(ip, ",") {
