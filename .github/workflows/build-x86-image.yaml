@@ -27,9 +27,46 @@ env:
   HELM_VERSION: v3.10.1
 
 jobs:
+  build-kube-ovn-base:
+    name: Build kube-ovn-base
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+      - uses: docker/setup-buildx-action@v2
+        if: github.base_ref != null
+      - name: Build
+        run: |
+          touch .CI_PASSED_VAR
+          if git diff --name-only HEAD^ HEAD | grep -q ^dist/images/Dockerfile.base$; then
+            echo "BUILD_BASE=1" > .CI_PASSED_VAR
+            echo "BUILD_BASE=1" >> "$GITHUB_ENV"
+            make base-amd64
+            make base-tar-amd64
+          fi
+          if git diff --name-only HEAD^ HEAD | grep -q ^dist/images/Dockerfile.base-dpdk$; then
+            make base-amd64-dpdk
+          fi
+
+      - name: Upload variable file to artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: variables
+          path: .CI_PASSED_VAR
+
+      - name: Upload base images to artifact
+        if: env.BUILD_BASE == 1
+        uses: actions/upload-artifact@v3
+        with:
+          name: kube-ovn-base
+          path: image-amd64.tar
+
   build-kube-ovn:
     name: Build kube-ovn
     runs-on: ubuntu-22.04
+    needs:
+    - build-kube-ovn-base
     steps:
       - uses: actions/checkout@v3
       - uses: docker/setup-buildx-action@v2
@@ -57,14 +94,43 @@ jobs:
           make ut
 
       - name: Install gosec
-        run: curl -sfL https://raw.githubusercontent.com/securego/gosec/master/install.sh | sh -s -- -b $(go env GOPATH)/bin 'v${{ env.GOSEC_VERSION }}'
+        run: |
+          curl -sfL https://raw.githubusercontent.com/securego/gosec/master/install.sh | \
+            sed 's#giturl=.*#giturl="https://api.github.com/repos/${owner_repo}/releases/tags/${version}"#' | \
+            sed 's#tag_name":"#tag_name": *"#' | \
+            sh -s -- -b $(go env GOPATH)/bin 'v${{ env.GOSEC_VERSION }}'
+
+      - name: Download variable file
+        uses: actions/download-artifact@v3
+        with:
+          name: variables
+
+      - name: Export passed variables
+        run: cat .CI_PASSED_VAR >> "$GITHUB_ENV"
+
+      - name: Download base images
+        if: env.BUILD_BASE == 1
+        uses: actions/download-artifact@v3
+        with:
+          name: kube-ovn-base
+
+      - name: Load base images
+        if: env.BUILD_BASE == 1
+        run: docker load --input image-amd64.tar
 
       - name: Build
         run: |
           go mod tidy
           git diff --exit-code
           make lint
-          make image-kube-ovn
+          if [ "x${{ env.BUILD_BASE }}" = "x1" ]; then
+            TAG=$(cat VERSION)
+            docker tag kubeovn/kube-ovn-base:$TAG-amd64 kubeovn/kube-ovn-base:$TAG
+            docker tag kubeovn/kube-ovn-base:$TAG-amd64-no-avx512 kubeovn/kube-ovn-base:$TAG-no-avx512
+            make build-kube-ovn
+          else
+            make image-kube-ovn
+          fi
           make tar-kube-ovn
 
       - name: Upload images to artifact
@@ -78,7 +144,6 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
-      - uses: docker/setup-buildx-action@v2
 
       - name: Build
         run: |
