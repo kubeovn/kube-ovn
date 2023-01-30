@@ -1832,7 +1832,7 @@ func (c LegacyClient) CreateNpAddressSet(asName, npNamespace, npName, direction 
 	return err
 }
 
-func (c LegacyClient) CombineIngressACLCmd(pgName, asIngressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, aclCmds []string, index int, namedPortMap map[string]int32) []string {
+func (c LegacyClient) CombineIngressACLCmd(pgName, asIngressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, aclCmds []string, index int, namedPortMap map[string]*util.NamedPortInfo) []string {
 	var allowArgs, ovnArgs []string
 
 	ipSuffix := "ip4"
@@ -1859,12 +1859,16 @@ func (c LegacyClient) CombineIngressACLCmd(pgName, asIngressName, asExceptName, 
 					if port.Port.Type == intstr.Int {
 						allowArgs = []string{"--", fmt.Sprintf("--id=@%s.%d.port.%d", id, index, pidx), "create", "acl", "action=allow-related", "direction=to-lport", fmt.Sprintf("priority=%s", util.IngressAllowPriority), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("%s.src == $%s && %s.src != $%s && %s.dst == %d && outport==@%s && ip", ipSuffix, asIngressName, ipSuffix, asExceptName, strings.ToLower(string(*port.Protocol)), port.Port.IntVal, pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.%d.port.%d", id, index, pidx)}
 					} else {
-						portId, ok := namedPortMap[port.Port.StrVal]
-						if !ok {
-							// for cyclonus network policy test case 'should allow ingress access on one named port'
-							// this case expect all-deny if no named port defined
-							portId = 0
-							klog.Errorf("no named port with name %s found ", port.Port.StrVal)
+						var portId int32 = 0
+						if namedPortMap != nil {
+							_, ok := namedPortMap[port.Port.StrVal]
+							if !ok {
+								// for cyclonus network policy test case 'should allow ingress access on one named port'
+								// this case expect all-deny if no named port defined
+								klog.Errorf("no named port with name %s found ", port.Port.StrVal)
+							} else {
+								portId = namedPortMap[port.Port.StrVal].PortId
+							}
 						}
 						allowArgs = []string{"--", fmt.Sprintf("--id=@%s.%d.port.%d", id, index, pidx), "create", "acl", "action=allow-related", "direction=to-lport", fmt.Sprintf("priority=%s", util.IngressAllowPriority), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("%s.src == $%s && %s.src != $%s && %s.dst == %d && outport==@%s && ip", ipSuffix, asIngressName, ipSuffix, asExceptName, strings.ToLower(string(*port.Protocol)), portId, pgName)), "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.%d.port.%d", id, index, pidx)}
 					}
@@ -1884,7 +1888,7 @@ func (c LegacyClient) CreateACL(aclCmds []string) error {
 	return err
 }
 
-func (c LegacyClient) CombineEgressACLCmd(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, aclCmds []string, index int, namedPortMap map[string]int32) []string {
+func (c LegacyClient) CombineEgressACLCmd(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, aclCmds []string, index int, namedPortMap map[string]*util.NamedPortInfo) []string {
 	var allowArgs, ovnArgs []string
 
 	ipSuffix := "ip4"
@@ -1911,10 +1915,14 @@ func (c LegacyClient) CombineEgressACLCmd(pgName, asEgressName, asExceptName, pr
 					if port.Port.Type == intstr.Int {
 						allowArgs = []string{"--", fmt.Sprintf("--id=@%s.%d.port.%d", id, index, pidx), "create", "acl", "action=allow-related", "direction=from-lport", fmt.Sprintf("priority=%s", util.EgressAllowPriority), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("%s.dst == $%s && %s.dst != $%s && %s.dst == %d && inport==@%s && ip", ipSuffix, asEgressName, ipSuffix, asExceptName, strings.ToLower(string(*port.Protocol)), port.Port.IntVal, pgName)), "options={apply-after-lb=\"true\"}", "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.%d.port.%d", id, index, pidx)}
 					} else {
-						portId, ok := namedPortMap[port.Port.StrVal]
-						if !ok {
-							portId = 0
-							klog.Errorf("no named port with name %s found ", port.Port.StrVal)
+						var portId int32 = 0
+						if namedPortMap != nil {
+							_, ok := namedPortMap[port.Port.StrVal]
+							if !ok {
+								klog.Errorf("no named port with name %s found ", port.Port.StrVal)
+							} else {
+								portId = namedPortMap[port.Port.StrVal].PortId
+							}
 						}
 						allowArgs = []string{"--", fmt.Sprintf("--id=@%s.%d.port.%d", id, index, pidx), "create", "acl", "action=allow-related", "direction=from-lport", fmt.Sprintf("priority=%s", util.EgressAllowPriority), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("%s.dst == $%s && %s.dst != $%s && %s.dst == %d && inport==@%s && ip", ipSuffix, asEgressName, ipSuffix, asExceptName, strings.ToLower(string(*port.Protocol)), portId, pgName)), "options={apply-after-lb=\"true\"}", "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.%d.port.%d", id, index, pidx)}
 					}

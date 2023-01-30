@@ -196,12 +196,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		return err
 	}
 
-	namedPortMap, err := c.fetchNamedPorts(np.Namespace)
-	if err != nil {
-		klog.Errorf("failed to fetch namedPortMap, %v", err)
-		return err
-	}
-
+	namedPortMap := c.namedPort.GetNamedPortByNs(np.Namespace)
 	ports, err := c.fetchSelectedPorts(np.Namespace, &np.Spec.PodSelector)
 	if err != nil {
 		klog.Errorf("failed to fetch ports, %v", err)
@@ -585,37 +580,6 @@ func (c *Controller) handleDeleteNp(key string) error {
 		}
 	}
 	return nil
-}
-
-func (c *Controller) fetchNamedPorts(namespace string) (map[string]int32, error) {
-	namedPortMap := map[string]int32{}
-
-	pods, err := c.podsLister.Pods(namespace).List(labels.Everything())
-	if err != nil {
-		return nil, fmt.Errorf("failed to list pods, %v", err)
-	}
-
-	for _, pod := range pods {
-		if !isPodAlive(pod) || pod.Spec.HostNetwork {
-			continue
-		}
-		if pod.Spec.Containers != nil {
-			for _, container := range pod.Spec.Containers {
-				if container.Ports != nil {
-					for _, port := range container.Ports {
-						if port.Name != "" && port.ContainerPort > 0 {
-							if _, ok := namedPortMap[port.Name]; ok {
-								klog.Errorf("named port %s has duplicate definition", port.Name)
-							} else {
-								namedPortMap[port.Name] = port.ContainerPort
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-	return namedPortMap, nil
 }
 
 func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.LabelSelector) ([]string, error) {
