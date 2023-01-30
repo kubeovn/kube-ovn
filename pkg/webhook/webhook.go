@@ -52,6 +52,8 @@ func NewValidatingHook(c cache.Cache) (*ValidatingHook, error) {
 
 	deleteHooks[vpcGVK] = v.VpcDeleteHook
 
+	createHooks[vipGVK] = v.VipCreateHook
+	updateHooks[vipGVK] = v.VipUpdateHook
 	return v, nil
 }
 
@@ -63,7 +65,6 @@ func (v *ValidatingHook) Handle(ctx context.Context, req admission.Request) (res
 			klog.V(3).Infof("result: reject, reason: %s", resp.AdmissionResponse.Result.Reason)
 		}
 	}()
-
 	switch req.Operation {
 	case admissionv1.Create:
 		if createHooks[req.Kind] != nil {
