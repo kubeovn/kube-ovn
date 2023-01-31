@@ -1981,7 +1981,7 @@ func (c LegacyClient) CreateACLForNodePg(pgName, nodeIpStr, joinIpStr string) er
 		egressArgs := []string{"--", "acl-del", pgName, "from-lport", util.NodeAllowPriority, fmt.Sprintf("%s.dst == %s && %s.src == $%s", ipSuffix, joinIp, ipSuffix, pgAs)}
 		ovnArgs := append(ingressArgs, egressArgs...)
 		if _, err := c.ovnNbCommand(ovnArgs...); err != nil {
-			klog.Errorf("failed to delete  node port-group acl: %v", err)
+			klog.Errorf("failed to delete node port-group acl: %v", err)
 			return err
 		}
 	}
