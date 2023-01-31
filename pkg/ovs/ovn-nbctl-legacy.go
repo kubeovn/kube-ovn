@@ -1947,8 +1947,9 @@ func (c LegacyClient) CreateGatewayACL(pgName, gateway, cidr string) error {
 	return nil
 }
 
-func (c LegacyClient) CreateACLForNodePg(pgName, nodeIpStr string) error {
-	for _, nodeIp := range strings.Split(nodeIpStr, ",") {
+func (c LegacyClient) CreateACLForNodePg(pgName, nodeIpStr, joinIpStr string) error {
+	nodeIPs := strings.Split(nodeIpStr, ",")
+	for _, nodeIp := range nodeIPs {
 		protocol := util.CheckProtocol(nodeIp)
 		ipSuffix := "ip4"
 		if protocol == kubeovnv1.ProtocolIPv6 {
@@ -1961,6 +1962,26 @@ func (c LegacyClient) CreateACLForNodePg(pgName, nodeIpStr string) error {
 		ovnArgs := append(ingressArgs, egressArgs...)
 		if _, err := c.ovnNbCommand(ovnArgs...); err != nil {
 			klog.Errorf("failed to add node port-group acl: %v", err)
+			return err
+		}
+	}
+	for _, joinIp := range strings.Split(joinIpStr, ",") {
+		if util.ContainsString(nodeIPs, joinIp) {
+			continue
+		}
+
+		protocol := util.CheckProtocol(joinIp)
+		ipSuffix := "ip4"
+		if protocol == kubeovnv1.ProtocolIPv6 {
+			ipSuffix = "ip6"
+		}
+		pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
+
+		ingressArgs := []string{"acl-del", pgName, "to-lport", util.NodeAllowPriority, fmt.Sprintf("%s.src == %s && %s.dst == $%s", ipSuffix, joinIp, ipSuffix, pgAs)}
+		egressArgs := []string{"--", "acl-del", pgName, "from-lport", util.NodeAllowPriority, fmt.Sprintf("%s.dst == %s && %s.src == $%s", ipSuffix, joinIp, ipSuffix, pgAs)}
+		ovnArgs := append(ingressArgs, egressArgs...)
+		if _, err := c.ovnNbCommand(ovnArgs...); err != nil {
+			klog.Errorf("failed to delete  node port-group acl: %v", err)
 			return err
 		}
 	}

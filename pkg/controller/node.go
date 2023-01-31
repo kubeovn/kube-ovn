@@ -968,7 +968,18 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 	for _, node := range nodes {
 		// The port-group should already created when add node
 		pgName := strings.Replace(node.Annotations[util.PortNameAnnotation], "-", ".", -1)
-		nodeIP := node.Annotations[util.IpAddressAnnotation]
+
+		// use join IP only when no internal IP exists
+		nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
+		joinIP := node.Annotations[util.IpAddressAnnotation]
+		joinIPv4, joinIPv6 := util.SplitStringIP(joinIP)
+		if nodeIPv4 == "" {
+			nodeIPv4 = joinIPv4
+		}
+		if nodeIPv6 == "" {
+			nodeIPv6 = joinIPv6
+		}
+		nodeIP := strings.Trim(fmt.Sprintf("%s,%s", nodeIPv4, nodeIPv6), ",")
 
 		ports, err := c.fetchPodsOnNode(node.Name, pods)
 		if err != nil {
@@ -1000,7 +1011,7 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 		}
 
 		if networkPolicyExists {
-			if err := c.ovnLegacyClient.CreateACLForNodePg(pgName, nodeIP); err != nil {
+			if err := c.ovnLegacyClient.CreateACLForNodePg(pgName, nodeIP, joinIP); err != nil {
 				klog.Errorf("failed to create node acl for node pg %v, %v", pgName, err)
 			}
 		} else {
