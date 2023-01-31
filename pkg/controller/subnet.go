@@ -93,6 +93,8 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		oldSubnet.Spec.EnableIPv6RA != newSubnet.Spec.EnableIPv6RA ||
 		oldSubnet.Spec.IPv6RAConfigs != newSubnet.Spec.IPv6RAConfigs ||
 		oldSubnet.Spec.Protocol != newSubnet.Spec.Protocol ||
+		(oldSubnet.Spec.EnableLb != nil && newSubnet.Spec.EnableLb == nil) ||
+		(oldSubnet.Spec.EnableLb != nil && newSubnet.Spec.EnableLb != nil && *oldSubnet.Spec.EnableLb != *newSubnet.Spec.EnableLb) ||
 		!reflect.DeepEqual(oldSubnet.Spec.Acls, newSubnet.Spec.Acls) ||
 		oldSubnet.Spec.U2OInterconnection != newSubnet.Spec.U2OInterconnection {
 		klog.V(3).Infof("enqueue update subnet %s", key)
@@ -311,6 +313,12 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 			}
 		}
 	}
+
+	if subnet.Spec.EnableLb == nil {
+		changed = true
+		subnet.Spec.EnableLb = &c.config.EnableLb
+	}
+
 	klog.Infof("format subnet %v, changed %v", subnet.Name, changed)
 	if changed {
 		_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), subnet, metav1.UpdateOptions{})
@@ -698,9 +706,16 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	if c.config.EnableLb && subnet.Name != c.config.NodeSwitch {
-		if err := c.ovnLegacyClient.AddLbToLogicalSwitch(vpc.Status.TcpLoadBalancer, vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.UdpSessionLoadBalancer, subnet.Name); err != nil {
-			c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", err.Error())
-			return err
+		if subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb {
+			if err := c.ovnLegacyClient.AddLbToLogicalSwitch(vpc.Status.TcpLoadBalancer, vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.UdpSessionLoadBalancer, subnet.Name); err != nil {
+				c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", err.Error())
+				return err
+			}
+		} else {
+			if err := c.ovnLegacyClient.RemoveLbFromLogicalSwitch(vpc.Status.TcpLoadBalancer, vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.UdpSessionLoadBalancer, subnet.Name); err != nil {
+				klog.Error("remove load-balancer from subnet %s failed: %v", subnet.Name, err)
+				return err
+			}
 		}
 	}
 
