@@ -25,7 +25,7 @@ require (
 	github.com/oilbeater/go-ping v0.0.0-20200413021620-332b7197c5b5
 	github.com/onsi/ginkgo/v2 v2.7.0
 	github.com/onsi/gomega v1.26.0
-	github.com/osrg/gobgp/v3 v3.10.0
+	github.com/osrg/gobgp/v3 v3.11.0
 	github.com/ovn-org/libovsdb v0.0.0-20221101143603-8f21d188c3a5
 	github.com/parnurzeal/gorequest v0.2.16
 	github.com/prometheus/client_golang v1.14.0
