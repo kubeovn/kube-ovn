@@ -1484,6 +1484,8 @@ spec:
                           - reject
                 u2oInterconnection:
                   type: boolean
+                enableLb:
+                  type: boolean
   scope: Cluster
   names:
     plural: subnets

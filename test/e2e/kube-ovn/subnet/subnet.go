@@ -757,6 +757,42 @@ var _ = framework.Describe("[group:subnet]", func() {
 			checkFunc2(subnet.Status.V6UsingIPRange, subnet.Status.V6AvailableIPRange, startIPv6, lastIPv6, replicas, true)
 		}
 	})
+
+	framework.ConformanceIt("create subnet with enableLb option", func() {
+		f.SkipVersionPriorTo(1, 12, "Support for enableLb in subnet is introduced in v1.12")
+
+		enbleLb := true
+		ginkgo.By("Creating subnet " + subnetName)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, nil, nil)
+		subnet.Spec.EnableLb = &enbleLb
+		subnet = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Validating subnet load-balancer records exist")
+		framework.ExpectContainElement(subnet.Finalizers, util.ControllerName)
+		execCmd := "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=load_balancer find logical-switch " + fmt.Sprintf("name=%s", subnetName)
+		output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
+		framework.ExpectNoError(err)
+		framework.ExpectNotEmpty(strings.TrimSpace(string(output)))
+
+		ginkgo.By("Validating change subnet spec enableLb to false")
+		enbleLb = false
+		modifiedSubnet := subnet.DeepCopy()
+		modifiedSubnet.Spec.EnableLb = &enbleLb
+		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
+		execCmd = "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=load_balancer find logical-switch " + fmt.Sprintf("name=%s", subnetName)
+		output, err = exec.Command("bash", "-c", execCmd).CombinedOutput()
+		framework.ExpectNoError(err)
+		framework.ExpectEmpty(strings.TrimSpace(string(output)))
+
+		ginkgo.By("Validating empty subnet spec enableLb field, should keep same value as args enableLb")
+		modifiedSubnet = subnet.DeepCopy()
+		modifiedSubnet.Spec.EnableLb = nil
+		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
+		execCmd = "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=load_balancer find logical-switch " + fmt.Sprintf("name=%s", subnetName)
+		output, err = exec.Command("bash", "-c", execCmd).CombinedOutput()
+		framework.ExpectNoError(err)
+		framework.ExpectNotEmpty(strings.TrimSpace(string(output)))
+	})
 })
 
 func createPodsByRandomIPs(podClient *framework.PodClient, subnetClient *framework.SubnetClient, subnetName, podNamePre string, podCount int, startIPv4, startIPv6 string) ([]string, []string) {
