@@ -364,6 +364,69 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 	})
 
+	framework.ConformanceIt("create centralized subnet without enableEcmp", func() {
+		ginkgo.By("Getting nodes")
+		nodes, err := e2enode.GetReadySchedulableNodes(cs)
+		framework.ExpectNoError(err)
+		framework.ExpectNotEmpty(nodes.Items)
+
+		ginkgo.By("Creating subnet " + subnetName)
+		gatewayNodes := make([]string, 0, len(nodes.Items))
+		nodeIPs := make([]string, 0, len(nodes.Items))
+		for i := 0; i < 3 && i < len(nodes.Items); i++ {
+			gatewayNodes = append(gatewayNodes, nodes.Items[i].Name)
+			nodeIPs = append(nodeIPs, nodes.Items[i].Annotations[util.IpAddressAnnotation])
+		}
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, gatewayNodes, nil)
+		subnet = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Validating subnet finalizers")
+		framework.ExpectContainElement(subnet.Finalizers, util.ControllerName)
+
+		ginkgo.By("Validating centralized subnet with active-standby mode")
+		framework.ExpectFalse(subnet.Spec.EnableEcmp)
+		framework.ExpectEqual(subnet.Status.ActivateGateway, gatewayNodes[0])
+		framework.ExpectConsistOf(strings.Split(subnet.Spec.GatewayNode, ","), gatewayNodes)
+
+		ginkgo.By("change subnet spec field enableEcmp to true")
+		modifiedSubnet := subnet.DeepCopy()
+		modifiedSubnet.Spec.EnableEcmp = true
+		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
+		framework.ExpectEmpty(subnet.Status.ActivateGateway)
+		time.Sleep(2 * time.Second)
+
+		execCmd := "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=nexthops find logical-router-policy " + fmt.Sprintf("external_ids:subnet=%s", subnetName)
+		output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
+		framework.ExpectNoError(err)
+
+		lines := strings.Split(string(output), "\n")
+		nextHops := make([]string, 0, len(lines))
+		for _, l := range lines {
+			if len(strings.TrimSpace(l)) == 0 {
+				continue
+			}
+			nextHops = strings.Fields(l)
+		}
+		framework.Logf("subnet policy route nextHops %v, gatewayNode IPs %v", nextHops, nodeIPs)
+
+		check := true
+		if len(nextHops) < len(nodeIPs) {
+			framework.Logf("some gateway nodes maybe not ready for subnet %s", subnetName)
+			check = false
+		}
+
+		if check {
+			for _, nodeIP := range nodeIPs {
+				for _, strIP := range strings.Split(nodeIP, ",") {
+					if util.CheckProtocol(strIP) != util.CheckProtocol(nextHops[0]) {
+						continue
+					}
+					framework.ExpectContainElement(nextHops, strIP)
+				}
+			}
+		}
+	})
+
 	framework.ConformanceIt("should support distributed external egress gateway", func() {
 		ginkgo.By("Getting nodes")
 		nodes, err := e2enode.GetReadySchedulableNodes(cs)

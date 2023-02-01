@@ -95,6 +95,7 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		oldSubnet.Spec.Protocol != newSubnet.Spec.Protocol ||
 		(oldSubnet.Spec.EnableLb != nil && newSubnet.Spec.EnableLb == nil) ||
 		(oldSubnet.Spec.EnableLb != nil && newSubnet.Spec.EnableLb != nil && *oldSubnet.Spec.EnableLb != *newSubnet.Spec.EnableLb) ||
+		oldSubnet.Spec.EnableEcmp != newSubnet.Spec.EnableEcmp ||
 		!reflect.DeepEqual(oldSubnet.Spec.Acls, newSubnet.Spec.Acls) ||
 		oldSubnet.Spec.U2OInterconnection != newSubnet.Spec.U2OInterconnection {
 		klog.V(3).Infof("enqueue update subnet %s", key)
@@ -1274,13 +1275,29 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 				return fmt.Errorf("failed to add ecmp policy route, no gateway node exists")
 			}
 
-			if c.config.EnableEcmp {
+			if subnet.Spec.EnableEcmp {
+				// 1. Default value of subnet.Spec.EnableEcmp is false, so the field subnet.Status.ActivateGateway has value when centralized subnet is created
+				// 2. Change subnet.Spec.EnableEcmp from false to true, ecmp route is added based on gatewayNode, not ActivateGateway
+				// 3. Change subnet.Spec.EnableEcmp from true to false, the ActivateGateway still works and ecmp route does not update, which is incorrect
+				// 4. So delete ActivateGateway field when ecmp is enabled, and when value changed, the policy route will be updated correctly
+				if subnet.Status.ActivateGateway != "" {
+					subnet.Status.ActivateGateway = ""
+					bytes, err := subnet.Status.Bytes()
+					if err != nil {
+						return err
+					}
+					if _, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, ""); err != nil {
+						klog.Errorf("failed to patch for removing subnet activeGateway of subnet %s", subnet.Name)
+						return err
+					}
+				}
+
 				// centralized subnet, enable ecmp, add ecmp policy route
 				gatewayNodes := strings.Split(subnet.Spec.GatewayNode, ",")
 				nodeV4Ips := make([]string, 0, len(gatewayNodes))
 				nodeV6Ips := make([]string, 0, len(gatewayNodes))
-				nameV4IpMap := make(map[string]string, len(gatewayNodes)*2)
-				nameV6IpMap := make(map[string]string, len(gatewayNodes)*2)
+				nameV4IpMap := make(map[string]string, len(gatewayNodes))
+				nameV6IpMap := make(map[string]string, len(gatewayNodes))
 				for _, gw := range gatewayNodes {
 					// the format of gatewayNodeStr can be like 'kube-ovn-worker:172.18.0.2, kube-ovn-control-plane:172.18.0.3', which consists of node name and designative egress ip
 					if strings.Contains(gw, ":") {
@@ -1328,7 +1345,7 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 							klog.Errorf("failed to delete policy route for overlay subnet %s, %v", subnet.Name, err)
 							return err
 						}
-						klog.Infof("subnet %s configure gateway node, nodeIPs %v", subnet.Name, nodeV4Ips)
+						klog.Infof("subnet %s configure ecmp policy route, nexthops %v", subnet.Name, nodeV4Ips)
 						if err = c.updatePolicyRouteForCentralizedSubnet(subnet.Name, v4Cidr, nodeV4Ips, nameV4IpMap); err != nil {
 							klog.Errorf("failed to add v4 ecmp policy route for centralized subnet %s: %v", subnet.Name, err)
 							return err
@@ -1348,8 +1365,8 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 							klog.Errorf("failed to delete policy route for overlay subnet %s, %v", subnet.Name, err)
 							return err
 						}
-						klog.Infof("subnet %s configure gateway node, nodeIPs %v", subnet.Name, nodeV6Ips)
-						if err = c.updatePolicyRouteForCentralizedSubnet(subnet.Name, v6Cidr, nodeV6Ips, nameV4IpMap); err != nil {
+						klog.Infof("subnet %s configure ecmp policy route, nexthops %v", subnet.Name, nodeV6Ips)
+						if err = c.updatePolicyRouteForCentralizedSubnet(subnet.Name, v6Cidr, nodeV6Ips, nameV6IpMap); err != nil {
 							klog.Errorf("failed to add v6 ecmp policy route for centralized subnet %s: %v", subnet.Name, err)
 							return err
 						}
@@ -1404,7 +1421,7 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 				}
 
 				nextHop := getNextHopByTunnelIP(nodeTunlIPAddr)
-				klog.Infof("subnet %s configure new gateway node, nodeIPs %s", subnet.Name, nextHop)
+				klog.Infof("subnet %s configure new gateway node, nextHop %s", subnet.Name, nextHop)
 				if err = c.addPolicyRouteForCentralizedSubnet(subnet, newActivateNode, nil, strings.Split(nextHop, ",")); err != nil {
 					klog.Errorf("failed to add active-backup policy route for centralized subnet %s: %v", subnet.Name, err)
 					return err
@@ -1473,8 +1490,6 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) error {
 
 	needCalcIP := false
-	klog.Infof("reconcile underlay subnet %s  to overlay interconnection with U2OInterconnection %v U2OInterconnectionIP %s ",
-		subnet.Name, subnet.Spec.U2OInterconnection, subnet.Status.U2OInterconnectionIP)
 	if subnet.Spec.U2OInterconnection {
 		if subnet.Status.U2OInterconnectionIP == "" {
 			u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
@@ -1517,6 +1532,8 @@ func (c *Controller) reconcileU2OInterconnectionIP(subnet *kubeovnv1.Subnet) err
 	}
 
 	if needCalcIP {
+		klog.Infof("reconcile underlay subnet %s  to overlay interconnection with U2OInterconnection %v U2OInterconnectionIP %s ",
+			subnet.Name, subnet.Spec.U2OInterconnection, subnet.Status.U2OInterconnectionIP)
 		if subnet.Spec.Protocol == kubeovnv1.ProtocolDual {
 			if err := calcDualSubnetStatusIP(subnet, c); err != nil {
 				return err
@@ -1893,12 +1910,8 @@ func (c *Controller) updatePolicyRouteForCentralizedSubnet(subnetName, cidr stri
 	}
 	match := fmt.Sprintf("%s.src == %s", ipSuffix, cidr)
 
-	// there's no way to update policy route when activeGateway changed for subnet, so delete and readd policy route
-	klog.Infof("delete policy route for router: %s, priority: %d, match %s", c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match)
-	if err := c.ovnLegacyClient.DeletePolicyRoute(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match); err != nil {
-		klog.Errorf("failed to delete policy route for centralized subnet %s: %v", subnetName, err)
-		return err
-	}
+	// there's no way to update policy route when gatewayNode changed for subnet, so delete and readd policy route
+	// The delete operation is processed in AddPolicyRoute if the policy route is inconsistent, so no need delete here
 
 	nextHopIp := strings.Join(nextHops, ",")
 	externalIDs := map[string]string{
@@ -1910,7 +1923,7 @@ func (c *Controller) updatePolicyRouteForCentralizedSubnet(subnetName, cidr stri
 	for node, ip := range nameIpMap {
 		externalIDs[node] = ip
 	}
-	klog.Infof("add ecmp policy route for router: %s, match %s, action %s, nexthop %s, extrenalID %s", c.config.ClusterRouter, match, "allow", "", externalIDs)
+	klog.Infof("add ecmp policy route for router: %s, match %s, action %s, nexthop %s, extrenalID %s", c.config.ClusterRouter, match, "allow", nextHopIp, externalIDs)
 	if err := c.ovnLegacyClient.AddPolicyRoute(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match, "reroute", nextHopIp, externalIDs); err != nil {
 		klog.Errorf("failed to add policy route for centralized subnet %s: %v", subnetName, err)
 		return err
@@ -1925,14 +1938,8 @@ func (c *Controller) addPolicyRouteForCentralizedSubnet(subnet *kubeovnv1.Subnet
 			if util.CheckProtocol(cidrBlock) != util.CheckProtocol(nodeIP) {
 				continue
 			}
-			exist, err := c.checkPolicyRouteExistForNode(nodeName, cidrBlock, nodeIP, util.GatewayRouterPolicyPriority)
-			if err != nil {
-				klog.Errorf("check ecmp policy route exist for subnet %v, error %v", subnet.Name, err)
-				continue
-			}
-			if exist {
-				continue
-			}
+			// Check for repeat policy route is processed in AddPolicyRoute
+
 			var nextHops []string
 			nameIpMap := map[string]string{}
 			nextHops = append(nextHops, nodeIP)
@@ -2062,7 +2069,7 @@ func (c *Controller) deletePolicyRouteByGatewayType(subnet *kubeovnv1.Subnet, ga
 				klog.Errorf("failed to delete port group for subnet %s and node %s, %v", subnet.Name, node.Name, err)
 				return err
 			}
-			klog.Infof("delete policy route for distributed subnet %s, node %s", subnet.Name, node.Name)
+
 			if err = c.deletePolicyRouteForDistributedSubnet(subnet, node.Name); err != nil {
 				klog.Errorf("failed to delete policy route for subnet %s and node %s, %v", subnet.Name, node.Name, err)
 				return err

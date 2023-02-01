@@ -1486,6 +1486,8 @@ spec:
                   type: boolean
                 enableLb:
                   type: boolean
+                enableEcmp:
+                  type: boolean
   scope: Cluster
   names:
     plural: subnets
