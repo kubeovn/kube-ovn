@@ -16,6 +16,7 @@ import (
 	// Import tests.
 	_ "github.com/kubeovn/kube-ovn/test/e2e/kube-ovn/ipam"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/kube-ovn/kubectl-ko"
+	_ "github.com/kubeovn/kube-ovn/test/e2e/kube-ovn/network-policy"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/kube-ovn/node"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/kube-ovn/qos"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/kube-ovn/subnet"
