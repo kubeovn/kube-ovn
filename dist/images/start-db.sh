@@ -187,6 +187,8 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
                 --db-sb-cluster-local-addr="[${POD_IP}]" \
                 --db-nb-addr=$BIND_LOCAL_ADDR \
                 --db-sb-addr=$BIND_LOCAL_ADDR \
+                --db-nb-port=$DB_NB_PORT \
+                --db-sb-port=$DB_SB_PORT \
                 --db-nb-use-remote-in-db=no \
                 --db-sb-use-remote-in-db=no \
                 --ovn-northd-nb-db="$(gen_conn_str 6641)" \
@@ -233,6 +235,8 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
                 --db-sb-cluster-remote-addr="[${sb_leader_ip}]" \
                 --db-nb-addr=$BIND_LOCAL_ADDR \
                 --db-sb-addr=$BIND_LOCAL_ADDR \
+                --db-nb-port=$DB_NB_PORT \
+                --db-sb-port=$DB_SB_PORT \
                 --db-nb-use-remote-in-db=no \
                 --db-sb-use-remote-in-db=no \
                 --ovn-northd-nb-db="$(gen_conn_str 6641)" \
@@ -290,6 +294,8 @@ else
                 --db-sb-cluster-local-addr="[${POD_IP}]" \
                 --db-nb-addr=$BIND_LOCAL_ADDR \
                 --db-sb-addr=$BIND_LOCAL_ADDR \
+                --db-nb-port=$DB_NB_PORT \
+                --db-sb-port=$DB_SB_PORT \
                 --db-nb-use-remote-in-db=no \
                 --db-sb-use-remote-in-db=no \
                 --ovn-northd-nb-db="$(gen_conn_str 6641)" \
@@ -342,6 +348,8 @@ else
                 --db-sb-cluster-remote-addr="[${sb_leader_ip}]" \
                 --db-nb-addr=$BIND_LOCAL_ADDR \
                 --db-sb-addr=$BIND_LOCAL_ADDR \
+                --db-nb-port=$DB_NB_PORT \
+                --db-sb-port=$DB_SB_PORT \
                 --db-nb-use-remote-in-db=no \
                 --db-sb-use-remote-in-db=no \
                 --ovn-northd-nb-db="$(gen_conn_str 6641)" \
