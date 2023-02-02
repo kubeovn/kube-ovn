@@ -314,10 +314,12 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDef
 		}
 
 		for _, r := range routes {
-			_, dst, err := net.ParseCIDR(r.Destination)
-			if err != nil {
-				klog.Errorf("invalid route destination %s: %v", r.Destination, err)
-				continue
+			var dst *net.IPNet
+			if r.Destination != "" {
+				if _, dst, err = net.ParseCIDR(r.Destination); err != nil {
+					klog.Errorf("invalid route destination %s: %v", r.Destination, err)
+					continue
+				}
 			}
 
 			var gw net.IP
