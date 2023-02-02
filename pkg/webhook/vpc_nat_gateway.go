@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"net"
 	"net/http"
+	cli "sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 	"strconv"
@@ -43,39 +44,17 @@ func (v *ValidatingHook) VpcNatGwCreateOrUpdateHook(ctx context.Context, req adm
 }
 
 func (v *ValidatingHook) VpcNatGwDeleteHook(ctx context.Context, req admission.Request) admission.Response {
+	gw := ovnv1.VpcNatGateway{}
+	if err := v.decoder.DecodeRaw(req.OldObject, &gw); err != nil {
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+
 	eipList := ovnv1.IptablesEIPList{}
-	if err := v.client.List(ctx, &eipList); err != nil {
+	if err := v.client.List(ctx, &eipList, cli.MatchingLabels{util.VpcNatGatewayNameLabel: gw.Name}); err != nil {
 		return ctrlwebhook.Errored(http.StatusInternalServerError, err)
 	}
 	if len(eipList.Items) != 0 {
 		err := fmt.Errorf("vpc-nat-gateway \"%s\" cannot be deleted if any eip is in use", req.Name)
-		return ctrlwebhook.Errored(http.StatusBadRequest, err)
-	}
-
-	dnatList := ovnv1.IptablesDnatRuleList{}
-	if err := v.client.List(ctx, &dnatList); err != nil {
-		return ctrlwebhook.Errored(http.StatusInternalServerError, err)
-	}
-	if len(dnatList.Items) != 0 {
-		err := fmt.Errorf("vpc-nat-gateway \"%s\" cannot be deleted if any dnat is in use", req.Name)
-		return ctrlwebhook.Errored(http.StatusBadRequest, err)
-	}
-
-	snatList := ovnv1.IptablesSnatRuleList{}
-	if err := v.client.List(ctx, &snatList); err != nil {
-		return ctrlwebhook.Errored(http.StatusInternalServerError, err)
-	}
-	if len(snatList.Items) != 0 {
-		err := fmt.Errorf("vpc-nat-gateway \"%s\" cannot be deleted if any snat is in use", req.Name)
-		return ctrlwebhook.Errored(http.StatusBadRequest, err)
-	}
-
-	fipList := ovnv1.IptablesFIPRuleList{}
-	if err := v.client.List(ctx, &fipList); err != nil {
-		return ctrlwebhook.Errored(http.StatusInternalServerError, err)
-	}
-	if len(fipList.Items) != 0 {
-		err := fmt.Errorf("vpc-nat-gateway \"%s\" cannot be deleted if any fip is in use", req.Name)
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
