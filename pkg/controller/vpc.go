@@ -667,18 +667,10 @@ func formatVpc(vpc *kubeovnv1.Vpc, c *Controller) error {
 				changed = true
 			}
 		} else {
-			if strings.Contains(route.NextHopIP, ",") {
-				// ecmp policy route, reroute to multiple next hop ips
-				for _, ipStr := range strings.Split(route.NextHopIP, ",") {
-					if ip := net.ParseIP(ipStr); ip == nil {
-						err := fmt.Errorf("invalid next hop ips: %s", route.NextHopIP)
-						klog.Error(err)
-						return err
-					}
-				}
-			} else {
-				if ip := net.ParseIP(route.NextHopIP); ip == nil {
-					err := fmt.Errorf("invalid next hop ip: %s", route.NextHopIP)
+			// ecmp policy route may reroute to multiple next hop ips
+			for _, ipStr := range strings.Split(route.NextHopIP, ",") {
+				if ip := net.ParseIP(ipStr); ip == nil {
+					err := fmt.Errorf("invalid next hop ips: %s", route.NextHopIP)
 					klog.Error(err)
 					return err
 				}
@@ -894,6 +886,7 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error("failed to get vpc %s, %v", key, err)
 		return err
 	}
 	vpc := cachedVpc.DeepCopy()
