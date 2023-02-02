@@ -117,6 +117,12 @@ webhooks:
       resources:
         - subnets
         - vpcs
+        - vips
+        - vpc-nat-gateways
+        - iptables-eips
+        - iptables-dnat-rules
+        - iptables-snat-rules
+        - iptables-fip-rules
   failurePolicy: Ignore
   admissionReviewVersions: ["v1", "v1beta1"]
   sideEffects: None
