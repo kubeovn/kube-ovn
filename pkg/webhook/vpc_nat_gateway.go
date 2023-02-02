@@ -44,13 +44,8 @@ func (v *ValidatingHook) VpcNatGwCreateOrUpdateHook(ctx context.Context, req adm
 }
 
 func (v *ValidatingHook) VpcNatGwDeleteHook(ctx context.Context, req admission.Request) admission.Response {
-	gw := ovnv1.VpcNatGateway{}
-	if err := v.decoder.DecodeRaw(req.OldObject, &gw); err != nil {
-		return ctrlwebhook.Errored(http.StatusBadRequest, err)
-	}
-
 	eipList := ovnv1.IptablesEIPList{}
-	if err := v.client.List(ctx, &eipList, cli.MatchingLabels{util.VpcNatGatewayNameLabel: gw.Name}); err != nil {
+	if err := v.client.List(ctx, &eipList, cli.MatchingLabels{util.VpcNatGatewayNameLabel: req.Name}); err != nil {
 		return ctrlwebhook.Errored(http.StatusInternalServerError, err)
 	}
 	if len(eipList.Items) != 0 {
