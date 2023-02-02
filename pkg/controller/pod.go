@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/logging"
@@ -27,6 +28,117 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+type NamedPort struct {
+	mutex sync.RWMutex
+	// first key is namespace, second key is portName
+	namedPortMap map[string]map[string]*util.NamedPortInfo
+}
+
+func NewNamedPort() *NamedPort {
+	return &NamedPort{
+		mutex:        sync.RWMutex{},
+		namedPortMap: map[string]map[string]*util.NamedPortInfo{},
+	}
+}
+
+func (n *NamedPort) AddNamedPortByPod(pod *v1.Pod) {
+	n.mutex.Lock()
+	defer n.mutex.Unlock()
+	ns := pod.Namespace
+	podName := pod.Name
+
+	if pod.Spec.Containers == nil {
+		return
+	}
+
+	for _, container := range pod.Spec.Containers {
+		if container.Ports == nil {
+			continue
+		}
+
+		for _, port := range container.Ports {
+			if port.Name == "" || port.ContainerPort == 0 {
+				continue
+			}
+
+			if _, ok := n.namedPortMap[ns]; ok {
+				if _, ok := n.namedPortMap[ns][port.Name]; ok {
+					if n.namedPortMap[ns][port.Name].PortId == port.ContainerPort {
+						n.namedPortMap[ns][port.Name].Pods[podName] = ""
+					} else {
+						klog.Errorf("named port %s has already be defined with portID %d",
+							port.Name, n.namedPortMap[ns][port.Name].PortId)
+					}
+					continue
+				}
+			} else {
+				n.namedPortMap[ns] = make(map[string]*util.NamedPortInfo)
+			}
+			n.namedPortMap[ns][port.Name] = &util.NamedPortInfo{
+				PortId: port.ContainerPort,
+				Pods:   map[string]string{podName: ""},
+			}
+		}
+	}
+}
+
+func (n *NamedPort) DeleteNamedPortByPod(pod *v1.Pod) {
+	n.mutex.Lock()
+	defer n.mutex.Unlock()
+
+	ns := pod.Namespace
+	podName := pod.Name
+
+	if pod.Spec.Containers == nil {
+		return
+	}
+
+	for _, container := range pod.Spec.Containers {
+		if container.Ports == nil {
+			continue
+		}
+
+		for _, port := range container.Ports {
+			if port.Name == "" {
+				continue
+			}
+
+			if _, ok := n.namedPortMap[ns]; !ok {
+				continue
+			}
+
+			if _, ok := n.namedPortMap[ns][port.Name]; !ok {
+				continue
+			}
+
+			if _, ok := n.namedPortMap[ns][port.Name].Pods[podName]; !ok {
+				continue
+			}
+
+			delete(n.namedPortMap[ns][port.Name].Pods, podName)
+			if len(n.namedPortMap[ns][port.Name].Pods) == 0 {
+				delete(n.namedPortMap[ns], port.Name)
+				if len(n.namedPortMap[ns]) == 0 {
+					delete(n.namedPortMap, ns)
+				}
+			}
+		}
+	}
+}
+
+func (n *NamedPort) GetNamedPortByNs(namespace string) map[string]*util.NamedPortInfo {
+	n.mutex.RLock()
+	defer n.mutex.RUnlock()
+
+	if result, ok := n.namedPortMap[namespace]; ok {
+		for portName, info := range result {
+			klog.Infof("namespace %s's namedPort portname is %s with info %v ", namespace, portName, info)
+		}
+		return result
+	}
+	return nil
+}
 
 func isPodAlive(p *v1.Pod) bool {
 	if p.DeletionTimestamp != nil && p.DeletionGracePeriodSeconds != nil {
@@ -62,9 +174,12 @@ func (c *Controller) enqueueAddPod(obj interface{}) {
 
 	p := obj.(*v1.Pod)
 	// TODO: we need to find a way to reduce duplicated np added to the queue
-	if c.config.EnableNP && p.Status.PodIP != "" {
-		for _, np := range c.podMatchNetworkPolicies(p) {
-			c.updateNpQueue.Add(np)
+	if c.config.EnableNP {
+		c.namedPort.AddNamedPortByPod(p)
+		if p.Status.PodIP != "" {
+			for _, np := range c.podMatchNetworkPolicies(p) {
+				c.updateNpQueue.Add(np)
+			}
 		}
 	}
 
@@ -130,6 +245,7 @@ func (c *Controller) enqueueDeletePod(obj interface{}) {
 
 	p := obj.(*v1.Pod)
 	if c.config.EnableNP {
+		c.namedPort.DeleteNamedPortByPod(p)
 		for _, np := range c.podMatchNetworkPolicies(p) {
 			c.updateNpQueue.Add(np)
 		}
@@ -151,6 +267,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	}
 
 	if c.config.EnableNP {
+		c.namedPort.AddNamedPortByPod(newPod)
 		if !reflect.DeepEqual(oldPod.Labels, newPod.Labels) {
 			oldNp := c.podMatchNetworkPolicies(oldPod)
 			newNp := c.podMatchNetworkPolicies(newPod)
