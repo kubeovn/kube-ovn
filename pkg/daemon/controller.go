@@ -582,16 +582,13 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
 	}
 
-	if c.config.EnableNodeExtGW {
-		go wait.Until(c.loopOvnExt0Check, 5*time.Second, stopCh)
-	}
-
 	if err := c.setIPSet(); err != nil {
 		util.LogFatalAndExit(err, "failed to set ipsets")
 	}
 
 	klog.Info("Started workers")
 	go wait.Until(c.loopOvn0Check, 5*time.Second, stopCh)
+	go wait.Until(c.loopOvnExt0Check, 5*time.Second, stopCh)
 	go wait.Until(c.runAddOrUpdateProviderNetworkWorker, time.Second, stopCh)
 	go wait.Until(c.runDeleteProviderNetworkWorker, time.Second, stopCh)
 	go wait.Until(c.runSubnetWorker, time.Second, stopCh)

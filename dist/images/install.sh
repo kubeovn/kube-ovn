@@ -14,7 +14,6 @@ HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_LB=${ENABLE_LB:-true}
 ENABLE_NP=${ENABLE_NP:-true}
 ENABLE_EIP_SNAT=${ENABLE_EIP_SNAT:-true}
-ENABLE_NODE_EXT_GW=${ENABLE_NODE_EXT_GW:-false}
 LS_DNAT_MOD_DL_DST=${LS_DNAT_MOD_DL_DST:-true}
 ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-true}
 CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
@@ -3128,7 +3127,6 @@ spec:
         args:
           - --enable-mirror=$ENABLE_MIRROR
           - --encap-checksum=true
-          - --enable-node-ext-gw=$ENABLE_NODE_EXT_GW
           - --service-cluster-ip-range=$SVC_CIDR
           - --iface=${IFACE}
           - --dpdk-tunnel-iface=${DPDK_TUNNEL_IFACE}

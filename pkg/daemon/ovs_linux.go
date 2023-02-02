@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -430,14 +431,20 @@ func (c *Controller) loopOvn0Check() {
 }
 
 func checkNodeGwNicInNs(ip, gw string, gwNS ns.NetNS) error {
-	return ns.WithNetNSPath(gwNS.Path(), func(_ ns.NetNS) error {
-		if _, err := netlink.LinkByName(util.NodeGwNic); err != nil {
-			err := fmt.Errorf("not init node gw nic %q, %v", util.NodeGwNic, err)
-			klog.Error(err)
-			return err
-		}
-		return waitNetworkReady(util.NodeGwNic, ip, gw, true, true, 3)
-	})
+	exists, err := ovs.PortExists(util.NodeGwNic)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if exists {
+		return ns.WithNetNSPath(gwNS.Path(), func(_ ns.NetNS) error {
+			return waitNetworkReady(util.NodeGwNic, ip, gw, true, false)
+		})
+	} else {
+		err := fmt.Errorf("node external gw not ready")
+		klog.Error(err)
+		return err
+	}
 }
 
 func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int, gwNS ns.NetNS) error {
@@ -454,11 +461,6 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 	gwLink, err := netlink.LinkByName(util.NodeGwNic)
 	if err != nil {
 		return fmt.Errorf("can not found node gw nic %s, %v", util.NodeGwNic, err)
-	}
-	if _, err = GetNsFromName(util.NodeGwNs); err != nil {
-		err := fmt.Errorf("please run 'ip netns add ovnext' to create node gw ns, %v", err)
-		klog.Error(err)
-		return err
 	}
 	if err = netlink.LinkSetNsFd(gwLink, int(gwNS.Fd())); err != nil {
 		return fmt.Errorf("failed to move link into netns: %v", err)
@@ -488,7 +490,6 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 			klog.Errorf("failed to configure nic %s, %v", util.LoNic, err)
 			return err
 		}
-
 		switch util.CheckProtocol(ip) {
 		case kubeovnv1.ProtocolIPv4:
 			_, defaultNet, _ := net.ParseCIDR("0.0.0.0/0")
@@ -538,7 +539,7 @@ func removeNodeGwNic() error {
 	if _, err := ovs.Exec(ovs.IfExists, "del-port", "br-int", util.NodeGwNic); err != nil {
 		return fmt.Errorf("failed to remove ecmp external port %s from OVS bridge %s: %v", "br-int", util.NodeGwNic, err)
 	}
-	klog.Infof("ecmp gw ovnext0 removed")
+	klog.Infof("removed node external gw nic %q", util.NodeGwNic)
 	return nil
 }
 
@@ -558,23 +559,27 @@ func (c *Controller) loopOvnExt0Check() {
 		klog.Errorf("failed to get node %s: %v", c.config.NodeName, err)
 		return
 	}
-	if _, ok := node.Labels[util.NodeExtGwLabel]; !ok {
-		// non-gw node
-		return
-	}
+
 	portName := node.Name
 	cachedEip, err := c.ovnEipsLister.Get(portName)
 	needClean := false
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
+			if _, ok := node.Labels[util.NodeExtGwLabel]; !ok {
+				return
+			}
+			if node.Labels[util.NodeExtGwLabel] == "false" {
+				// not gw node and already clean
+				return
+			}
 			needClean = true
 		} else {
-			klog.Errorf("ecmp gateway ovn eip not exist, can not setup ecmp gateway")
+			klog.Errorf("failed to get ecmp gateway ovn eip, %v", err)
 			return
 		}
 	}
 
-	if needClean || node.Labels[util.NodeExtGwLabel] == "false" {
+	if needClean {
 		if err := removeNodeGwNic(); err != nil {
 			klog.Error(err)
 			return
@@ -583,53 +588,61 @@ func (c *Controller) loopOvnExt0Check() {
 			klog.Error(err)
 			return
 		}
-		if err = c.patchOvnEipStatus(portName, false); err != nil {
-			klog.Errorf("failed to patch status for eip %s, %v", portName, err)
+		if err = c.patchNodeExternalGwLabel(node.Name, false); err != nil {
+			klog.Errorf("failed to patch label on node %s, %v", node, err)
 			return
 		}
 		return
 	}
 
-	if node.Labels[util.NodeExtGwLabel] == "true" {
-		if cachedEip.Status.MacAddress == "" {
-			klog.Errorf("ecmp gateway ovn eip not ready, can not setup ecmp gateway")
+	if cachedEip.Status.MacAddress == "" {
+		klog.Errorf("ecmp gateway ovn eip not ready, can not setup ecmp gateway")
+		return
+	}
+	ips := util.GetStringIP(cachedEip.Status.V4Ip, cachedEip.Status.V6Ip)
+	cachedSubnet, err := c.subnetsLister.Get(cachedEip.Spec.ExternalSubnet)
+	if err != nil {
+		klog.Errorf("failed to get external subnet %s, %v", cachedEip.Spec.ExternalSubnet, err)
+		return
+	}
+	gw := cachedSubnet.Spec.Gateway
+	mac, err := net.ParseMAC(cachedEip.Status.MacAddress)
+	if err != nil {
+		klog.Errorf("failed to parse mac %s, %v", cachedEip.Status.MacAddress, err)
+		return
+	}
+	gwNS, err := ns.GetNS(util.NodeGwNsPath)
+	if err != nil {
+		// ns not exist, create node external gw ns
+		cmd := exec.Command("sh", "-c", fmt.Sprintf("/usr/sbin/ip netns add %s", util.NodeGwNs))
+		if err := cmd.Run(); err != nil {
+			err := fmt.Errorf("failed to get create gw ns %s, %v", util.NodeGwNs, err)
+			klog.Error(err)
 			return
 		}
-		ips := util.GetStringIP(cachedEip.Status.V4Ip, cachedEip.Status.V6Ip)
-		cachedSubnet, err := c.subnetsLister.Get(cachedEip.Spec.ExternalSubnet)
-		if err != nil {
-			klog.Errorf("failed to get external subnet %s, %v", cachedEip.Spec.ExternalSubnet, err)
+		if gwNS, err = ns.GetNS(util.NodeGwNsPath); err != nil {
+			err := fmt.Errorf("failed to get node gw ns %s, %v", util.NodeGwNs, err)
+			klog.Error(err)
 			return
 		}
-		gw := cachedSubnet.Spec.Gateway
-		mac, err := net.ParseMAC(cachedEip.Status.MacAddress)
-		if err != nil {
-			klog.Errorf("failed to parse mac %s, %v", cachedEip.Status.MacAddress, err)
-			return
-		}
-		ipAddr := util.GetIpAddrWithMask(ips, cachedSubnet.Spec.CIDRBlock)
-		gwNS, err := ns.GetNS(util.NodeGwNsPath)
-		if err != nil {
-			// ns not exist, create node external gw ns
-			if _, err := NewNamedNs(util.NodeGwNs); err != nil {
-				err := fmt.Errorf("failed to create node gw ns %q, %v", util.NodeGwNs, err)
-				klog.Error(err)
-				return
-			}
-		}
-		if err := checkNodeGwNicInNs(ipAddr, gw, gwNS); err == nil {
-			// already ready
-			return
-		}
-		klog.Infof("setup nic ovnext0 ip %s, mac %v, mtu %d", ipAddr, mac, c.config.MTU)
-		if err := configureNodeGwNic(portName, ipAddr, gw, mac, c.config.MTU, gwNS); err != nil {
-			klog.Errorf("failed to setup ovnext0, %v", err)
-			return
-		}
-		if err = c.patchOvnEipStatus(portName, true); err != nil {
-			klog.Errorf("failed to patch status for eip %s, %v", portName, err)
-			return
-		}
+	}
+	ipAddr := util.GetIpAddrWithMask(ips, cachedSubnet.Spec.CIDRBlock)
+	if err := checkNodeGwNicInNs(ipAddr, gw, gwNS); err == nil {
+		// already ready
+		return
+	}
+	klog.Infof("setup nic ovnext0 ip %s, mac %v, mtu %d", ipAddr, mac, c.config.MTU)
+	if err := configureNodeGwNic(portName, ipAddr, gw, mac, c.config.MTU, gwNS); err != nil {
+		klog.Errorf("failed to setup ovnext0, %v", err)
+		return
+	}
+	if err = c.patchNodeExternalGwLabel(portName, true); err != nil {
+		klog.Errorf("failed to patch label on node %s, %v", node, err)
+		return
+	}
+	if err = c.patchOvnEipStatus(portName, true); err != nil {
+		klog.Errorf("failed to patch status for eip %s, %v", portName, err)
+		return
 	}
 }
 
@@ -656,6 +669,34 @@ func (c *Controller) patchOvnEipStatus(key string, ready bool) error {
 			klog.Errorf("failed to patch status for ovn eip '%s', %v", key, err)
 			return err
 		}
+	}
+	return nil
+}
+
+func (c *Controller) patchNodeExternalGwLabel(key string, enabled bool) error {
+	node, err := c.nodesLister.Get(c.config.NodeName)
+	if err != nil {
+		klog.Errorf("failed to get node %s: %v", c.config.NodeName, err)
+		return err
+	}
+
+	if enabled {
+		node.Labels[util.NodeExtGwLabel] = "true"
+	} else {
+		node.Labels[util.NodeExtGwLabel] = "false"
+	}
+
+	patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
+	op := "replace"
+	if len(node.Labels) == 0 {
+		op = "add"
+	}
+
+	raw, _ := json.Marshal(node.Labels)
+	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
+	if _, err = c.config.KubeClient.CoreV1().Nodes().Patch(context.Background(), key, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
+		klog.Errorf("failed to patch node %s: %v", node.Name, err)
+		return err
 	}
 	return nil
 }

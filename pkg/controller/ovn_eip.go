@@ -240,6 +240,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 	if cachedEip.Spec.Type == util.NodeExtGwUsingEip {
 		mergedIp := util.GetStringIP(v4ip, v6ip)
 		if err := c.ovnLegacyClient.CreatePort(subnet.Name, portName, mergedIp, mac, "", "", false, "", "", false, false, nil, false); err != nil {
+			klog.Error("failed to create lsp for ovn eip %s, %v", key, err)
 			return err
 		}
 	}
@@ -385,6 +386,7 @@ func (c *Controller) createOrUpdateCrdOvnEip(key, subnet, v4ip, v6ip, mac, usage
 			ovnEip.Status.MacAddress = mac
 			bytes, err := ovnEip.Status.Bytes()
 			if err != nil {
+				klog.Error("failed to marshal ovn eip %s, %v", key, err)
 				return err
 			}
 			if _, err = c.config.KubeOvnClient.KubeovnV1().OvnEips().Patch(context.Background(), key, types.MergePatchType,

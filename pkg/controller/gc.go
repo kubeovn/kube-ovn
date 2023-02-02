@@ -328,11 +328,9 @@ func (c *Controller) markAndCleanLSP() error {
 			ipMap[fmt.Sprintf("node-%s", node.Name)] = struct{}{}
 		}
 
-		if _, ok := node.Labels[util.NodeExtGwLabel]; ok {
-			if _, err := c.ovnEipsLister.Get(node.Name); err == nil {
-				// node external gw lsp is managed by ovn eip cr, skip gc its lsp
-				ipMap[node.Name] = struct{}{}
-			}
+		if _, err := c.ovnEipsLister.Get(node.Name); err == nil {
+			// node external gw lsp is managed by ovn eip cr, skip gc its lsp
+			ipMap[node.Name] = struct{}{}
 		}
 	}
 

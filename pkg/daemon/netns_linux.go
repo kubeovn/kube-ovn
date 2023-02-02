@@ -44,52 +44,14 @@ func ClosedNs() NsHandle {
 	return NsHandle(-1)
 }
 
-// New creates a new network namespace, sets it as current and returns
-// a handle to it.
-func newNs() (ns NsHandle, err error) {
-	if err := unix.Unshare(unix.CLONE_NEWNET); err != nil {
-		return -1, err
-	}
-	return GetNs()
-}
-
-// NewNamed creates a new named network namespace, sets it as current,
-// and returns a handle to it
-func NewNamedNs(name string) (NsHandle, error) {
-	if _, err := os.Stat(util.BindMountPath); os.IsNotExist(err) {
-		err = os.MkdirAll(util.BindMountPath, 0755)
-		if err != nil {
-			return ClosedNs(), err
-		}
-	}
-
-	newNs, err := newNs()
-	if err != nil {
-		return ClosedNs(), err
-	}
-
-	namedPath := path.Join(util.BindMountPath, name)
-	f, err := os.OpenFile(namedPath, os.O_CREATE|os.O_EXCL, 0444)
-	if err != nil {
-		return ClosedNs(), err
-	}
-	f.Close()
-
-	nsPath := fmt.Sprintf("/proc/%d/task/%d/ns/net", os.Getpid(), unix.Gettid())
-	err = unix.Mount(nsPath, namedPath, "bind", unix.MS_BIND, "")
-	if err != nil {
-		return ClosedNs(), err
-	}
-
-	return newNs, nil
-}
-
 // DeleteNamed deletes a named network namespace
 // ip netns del
-
 func DeleteNamedNs(name string) error {
 	namedPath := path.Join(util.BindMountPath, name)
-
+	if _, err := os.Stat(namedPath); os.IsNotExist(err) {
+		// already deleted
+		return nil
+	}
 	err := unix.Unmount(namedPath, unix.MNT_DETACH)
 	if err != nil {
 		return err
