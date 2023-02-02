@@ -193,11 +193,10 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
                 --ovn-northd-sb-db="$(gen_conn_str 6642)" \
                 start_northd
             ovn-nbctl --no-leader-only set-connection ptcp:"${DB_NB_PORT}":[::]
-            ovn-nbctl --no-leader-only set Connection . inactivity_probe=180000
+            ovn-nbctl --no-leader-only set NB_Global . options:northd_probe_interval=180000
             ovn-nbctl --no-leader-only set NB_Global . options:use_logical_dp_groups=true
 
             ovn-sbctl --no-leader-only set-connection ptcp:"${DB_SB_PORT}":[::]
-            ovn-sbctl --no-leader-only set Connection . inactivity_probe=180000
         else
             # known leader always first
             set +eo pipefail
@@ -297,11 +296,10 @@ else
                 --ovn-northd-sb-db="$(gen_conn_str 6642)" \
                 start_northd
             ovn-nbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set-connection pssl:"${DB_NB_PORT}":["${DB_NB_ADDR}"]
-            ovn-nbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set Connection . inactivity_probe=180000
+            ovn-nbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set NB_Global . options:northd_probe_interval=180000
             ovn-nbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set NB_Global . options:use_logical_dp_groups=true
 
             ovn-sbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set-connection pssl:"${DB_SB_PORT}":["${DB_SB_ADDR}"]
-            ovn-sbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set Connection . inactivity_probe=180000
         else
             # get leader if cluster exists
             set +eo pipefail
