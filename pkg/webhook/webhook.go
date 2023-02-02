@@ -42,12 +42,16 @@ func NewValidatingHook(c cache.Cache) (*ValidatingHook, error) {
 	createHooks[deploymentGVK] = v.DeploymentCreateHook
 	createHooks[statefulSetGVK] = v.StatefulSetCreateHook
 	createHooks[daemonSetGVK] = v.DaemonSetCreateHook
+	createHooks[cornJobSetGVK] = v.CornJobSetCreateHook
+	createHooks[jobSetGVK] = v.JobSetCreateHook
 	createHooks[podGVK] = v.PodCreateHook
+
 	createHooks[subnetGVK] = v.SubnetCreateHook
-
 	updateHooks[subnetGVK] = v.SubnetUpdateHook
-
 	deleteHooks[subnetGVK] = v.SubnetDeleteHook
+
+	createHooks[vpcGVK] = v.VpcCreateHook
+	updateHooks[vpcGVK] = v.VpcUpdateHook
 	deleteHooks[vpcGVK] = v.VpcDeleteHook
 
 	return v, nil

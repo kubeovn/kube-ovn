@@ -21,6 +21,7 @@ import (
 	"github.com/vishvananda/netlink"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"golang.org/x/sys/unix"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 
@@ -684,10 +685,6 @@ func configureMirrorLink(portName string, mtu int) error {
 		return fmt.Errorf("can not find mirror nic %s: %v", portName, err)
 	}
 
-	if err = netlink.LinkSetMTU(mirrorLink, mtu); err != nil {
-		return fmt.Errorf("can not set mirror nic mtu: %v", err)
-	}
-
 	if mirrorLink.Attrs().OperState != netlink.OperUp {
 		if err = netlink.LinkSetUp(mirrorLink); err != nil {
 			return fmt.Errorf("can not set mirror nic %s up: %v", portName, err)
@@ -708,8 +705,13 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 	}
 
 	if mtu > 0 {
-		if err = netlink.LinkSetMTU(nodeLink, mtu); err != nil {
-			return fmt.Errorf("can not set nic %s mtu: %v", link, err)
+		if nodeLink.Type() == "openvswitch" {
+			_, err = ovs.Exec("set", "interface", link, fmt.Sprintf(`mtu_request=%d`, mtu))
+		} else {
+			err = netlink.LinkSetMTU(nodeLink, mtu)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to set nic %s mtu: %v", link, err)
 		}
 	}
 
@@ -721,7 +723,7 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 
 	ipDelMap := make(map[string]netlink.Addr)
 	ipAddMap := make(map[string]netlink.Addr)
-	ipAddrs, err := netlink.AddrList(nodeLink, 0x0)
+	ipAddrs, err := netlink.AddrList(nodeLink, unix.AF_UNSPEC)
 	if err != nil {
 		return fmt.Errorf("can not get addr %s: %v", nodeLink, err)
 	}
@@ -730,7 +732,7 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 			// skip 169.254.0.0/16 and fe80::/10
 			continue
 		}
-		ipDelMap[ipAddr.IP.String()+"/"+ipAddr.Mask.String()] = ipAddr
+		ipDelMap[ipAddr.IPNet.String()] = ipAddr
 	}
 
 	for _, ipStr := range strings.Split(ip, ",") {
@@ -747,12 +749,13 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 		ipAddMap[ipStr] = *ipAddr
 	}
 
-	for _, addr := range ipDelMap {
+	for ip, addr := range ipDelMap {
+		klog.Infof("delete ip address %s on %s", ip, link)
 		if err = netlink.AddrDel(nodeLink, &addr); err != nil {
 			return fmt.Errorf("delete address %s: %v", addr, err)
 		}
 	}
-	for _, addr := range ipAddMap {
+	for ip, addr := range ipAddMap {
 		if detectIPConflict && addr.IP.To4() != nil {
 			ip := addr.IP.String()
 			mac, err := util.ArpDetectIPConflict(link, ip, macAddr)
@@ -766,6 +769,7 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 			}
 		}
 
+		klog.Infof("add ip address %s to %s", ip, link)
 		if err = netlink.AddrAdd(nodeLink, &addr); err != nil {
 			return fmt.Errorf("can not add address %v to nic %s: %v", addr, link, err)
 		}
@@ -861,9 +865,6 @@ func configProviderNic(nicName, brName string) (int, error) {
 		}
 	}
 
-	if err = netlink.LinkSetMTU(bridge, nic.Attrs().MTU); err != nil {
-		return 0, fmt.Errorf("failed to set MTU of OVS bridge %s: %v", brName, err)
-	}
 	if err = netlink.LinkSetUp(bridge); err != nil {
 		return 0, fmt.Errorf("failed to set OVS bridge %s up: %v", brName, err)
 	}
@@ -1187,7 +1188,7 @@ func configureAdditionalNic(link, ip string) error {
 			// skip 169.254.0.0/16 and fe80::/10
 			continue
 		}
-		ipDelMap[ipAddr.IP.String()+"/"+ipAddr.Mask.String()] = ipAddr
+		ipDelMap[ipAddr.IPNet.String()] = ipAddr
 	}
 
 	for _, ipStr := range strings.Split(ip, ",") {

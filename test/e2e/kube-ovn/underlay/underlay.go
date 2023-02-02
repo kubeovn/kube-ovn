@@ -436,6 +436,8 @@ var _ = framework.Describe("[group:underlay]", func() {
 	})
 
 	framework.ConformanceIt("should support underlay to overlay subnet interconnection ", func() {
+		f.SkipVersionPriorTo(1, 9, "This feature was introduce in v1.9")
+
 		ginkgo.By("Creating provider network")
 		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
 		_ = providerNetworkClient.CreateSync(pn)

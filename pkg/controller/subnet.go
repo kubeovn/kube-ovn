@@ -93,6 +93,8 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		oldSubnet.Spec.EnableIPv6RA != newSubnet.Spec.EnableIPv6RA ||
 		oldSubnet.Spec.IPv6RAConfigs != newSubnet.Spec.IPv6RAConfigs ||
 		oldSubnet.Spec.Protocol != newSubnet.Spec.Protocol ||
+		(oldSubnet.Spec.EnableLb != nil && newSubnet.Spec.EnableLb == nil) ||
+		(oldSubnet.Spec.EnableLb != nil && newSubnet.Spec.EnableLb != nil && *oldSubnet.Spec.EnableLb != *newSubnet.Spec.EnableLb) ||
 		!reflect.DeepEqual(oldSubnet.Spec.Acls, newSubnet.Spec.Acls) ||
 		oldSubnet.Spec.U2OInterconnection != newSubnet.Spec.U2OInterconnection {
 		klog.V(3).Infof("enqueue update subnet %s", key)
@@ -311,6 +313,12 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 			}
 		}
 	}
+
+	if subnet.Spec.EnableLb == nil {
+		changed = true
+		subnet.Spec.EnableLb = &c.config.EnableLb
+	}
+
 	klog.Infof("format subnet %v, changed %v", subnet.Name, changed)
 	if changed {
 		_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), subnet, metav1.UpdateOptions{})
@@ -698,9 +706,16 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	if c.config.EnableLb && subnet.Name != c.config.NodeSwitch {
-		if err := c.ovnLegacyClient.AddLbToLogicalSwitch(vpc.Status.TcpLoadBalancer, vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.UdpSessionLoadBalancer, subnet.Name); err != nil {
-			c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", err.Error())
-			return err
+		if subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb {
+			if err := c.ovnLegacyClient.AddLbToLogicalSwitch(vpc.Status.TcpLoadBalancer, vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.UdpSessionLoadBalancer, subnet.Name); err != nil {
+				c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", err.Error())
+				return err
+			}
+		} else {
+			if err := c.ovnLegacyClient.RemoveLbFromLogicalSwitch(vpc.Status.TcpLoadBalancer, vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.UdpSessionLoadBalancer, subnet.Name); err != nil {
+				klog.Error("remove load-balancer from subnet %s failed: %v", subnet.Name, err)
+				return err
+			}
 		}
 	}
 
@@ -1568,10 +1583,16 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		v6availableIPs = 0
 	}
 
+	v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr := c.ipam.GetSubnetIPRangeString(subnet.Name)
+
 	if subnet.Status.V4AvailableIPs == v4availableIPs &&
 		subnet.Status.V6AvailableIPs == v6availableIPs &&
 		subnet.Status.V4UsingIPs == usingIPs &&
-		subnet.Status.V6UsingIPs == usingIPs {
+		subnet.Status.V6UsingIPs == usingIPs &&
+		subnet.Status.V4UsingIPRange == v4UsingIPStr &&
+		subnet.Status.V6UsingIPRange == v6UsingIPStr &&
+		subnet.Status.V4AvailableIPRange == v4AvailableIPStr &&
+		subnet.Status.V6AvailableIPRange == v6AvailableIPStr {
 		return nil
 	}
 
@@ -1579,6 +1600,11 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	subnet.Status.V6AvailableIPs = v6availableIPs
 	subnet.Status.V4UsingIPs = usingIPs
 	subnet.Status.V6UsingIPs = usingIPs
+	subnet.Status.V4UsingIPRange = v4UsingIPStr
+	subnet.Status.V6UsingIPRange = v6UsingIPStr
+	subnet.Status.V4AvailableIPRange = v4AvailableIPStr
+	subnet.Status.V6AvailableIPRange = v6AvailableIPStr
+
 	bytes, err := subnet.Status.Bytes()
 	if err != nil {
 		return err
@@ -1626,28 +1652,45 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		availableIPs = 0
 	}
 
-	cachedFields := [4]float64{
+	v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr := c.ipam.GetSubnetIPRangeString(subnet.Name)
+	cachedFloatFields := [4]float64{
 		subnet.Status.V4AvailableIPs,
 		subnet.Status.V4UsingIPs,
 		subnet.Status.V6AvailableIPs,
 		subnet.Status.V6UsingIPs,
 	}
+	cachedStringFields := [4]string{
+		subnet.Status.V4UsingIPRange,
+		subnet.Status.V4AvailableIPRange,
+		subnet.Status.V6UsingIPRange,
+		subnet.Status.V6AvailableIPRange,
+	}
+
 	if subnet.Spec.Protocol == kubeovnv1.ProtocolIPv4 {
 		subnet.Status.V4AvailableIPs = availableIPs
 		subnet.Status.V4UsingIPs = usingIPs
+		subnet.Status.V4UsingIPRange = v4UsingIPStr
+		subnet.Status.V4AvailableIPRange = v4AvailableIPStr
 		subnet.Status.V6AvailableIPs = 0
 		subnet.Status.V6UsingIPs = 0
 	} else {
 		subnet.Status.V6AvailableIPs = availableIPs
 		subnet.Status.V6UsingIPs = usingIPs
+		subnet.Status.V6UsingIPRange = v6UsingIPStr
+		subnet.Status.V6AvailableIPRange = v6AvailableIPStr
 		subnet.Status.V4AvailableIPs = 0
 		subnet.Status.V4UsingIPs = 0
 	}
-	if cachedFields == [4]float64{
+	if cachedFloatFields == [4]float64{
 		subnet.Status.V4AvailableIPs,
 		subnet.Status.V4UsingIPs,
 		subnet.Status.V6AvailableIPs,
 		subnet.Status.V6UsingIPs,
+	} && cachedStringFields == [4]string{
+		subnet.Status.V4UsingIPRange,
+		subnet.Status.V4AvailableIPRange,
+		subnet.Status.V6UsingIPRange,
+		subnet.Status.V6AvailableIPRange,
 	} {
 		return nil
 	}

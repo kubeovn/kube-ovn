@@ -731,6 +731,14 @@ spec:
                   type: string
                 u2oInterconnectionIP:
                   type: string
+                v4usingIPrange:
+                  type: string
+                v4availableIPrange:
+                  type: string
+                v6usingIPrange:
+                  type: string
+                v6availableIPrange:
+                  type: string
                 conditions:
                   type: array
                   items:
@@ -788,8 +796,6 @@ spec:
                 gatewayNode:
                   type: string
                 natOutgoing:
-                  type: boolean
-                u2oRouting:
                   type: boolean
                 externalEgressGateway:
                   type: string
@@ -854,6 +860,8 @@ spec:
                           - drop
                           - reject
                 u2oInterconnection:
+                  type: boolean
+                enableLb:
                   type: boolean
   scope: Cluster
   names:

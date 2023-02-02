@@ -309,7 +309,7 @@ func (c *Controller) createIptablesRule(protocol string, rule util.IPTableRule) 
 
 	s := strings.Join(rule.Rule, " ")
 	if exists {
-		klog.V(3).Infof(`iptables rule "%s" already exists`, s, exists)
+		klog.V(3).Infof(`iptables rule %q already exists`, s)
 		return nil
 	}
 
@@ -527,14 +527,14 @@ func (c *Controller) setIptables() error {
 			continue
 		}
 
-		var kubeProxyIpsetProtocol, matchset string
+		var kubeProxyIpsetProtocol, matchset, svcMatchset string
 		var abandonedRules, iptablesRules []util.IPTableRule
 		if protocol == kubeovnv1.ProtocolIPv4 {
 			iptablesRules, abandonedRules = v4Rules, v4AbandonedRules
-			matchset = "ovn40subnets"
+			matchset, svcMatchset = "ovn40subnets", "ovn40services"
 		} else {
 			iptablesRules, abandonedRules = v6Rules, v6AbandonedRules
-			kubeProxyIpsetProtocol, matchset = "6-", "ovn60subnets"
+			kubeProxyIpsetProtocol, matchset, svcMatchset = "6-", "ovn60subnets", "ovn60services"
 		}
 
 		if nodeIP := nodeIPs[protocol]; nodeIP != "" {
@@ -543,6 +543,16 @@ func (c *Controller) setIptables() error {
 				util.IPTableRule{Table: NAT, Chain: Postrouting, Rule: strings.Fields(fmt.Sprintf(`! -s %s -m mark --mark 0x4000/0x4000 -j MASQUERADE`, nodeIP))},
 				util.IPTableRule{Table: NAT, Chain: Postrouting, Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set ! --match-set %s src -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset, matchset))},
 			)
+
+			rules := make([]util.IPTableRule, len(iptablesRules)+1)
+			copy(rules, iptablesRules[:1])
+			copy(rules[2:], iptablesRules[1:])
+			rules[1] = util.IPTableRule{
+				Table: NAT,
+				Chain: OvnPostrouting,
+				Rule:  strings.Fields(fmt.Sprintf(`-m set --match-set %s src -m set --match-set %s dst -m mark --mark 0x4000/0x4000 -j SNAT --to-source %s`, svcMatchset, matchset, nodeIP)),
+			}
+			iptablesRules = rules
 
 			for _, p := range [...]string{"tcp", "udp"} {
 				ipset := fmt.Sprintf("KUBE-%sNODE-PORT-LOCAL-%s", kubeProxyIpsetProtocol, strings.ToUpper(p))

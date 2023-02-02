@@ -128,6 +128,7 @@ func (c *Controller) reconcileRouters(event subnetEvent) error {
 	}
 	nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
 
+	joinCIDR := make([]string, 0, 2)
 	cidrs := make([]string, 0, len(subnets)*2)
 	for _, subnet := range subnets {
 		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != util.DefaultVpc || !subnet.Status.IsReady() {
@@ -145,6 +146,9 @@ func (c *Controller) reconcileRouters(event subnetEvent) error {
 					continue
 				}
 				cidrs = append(cidrs, ipNet.String())
+				if subnet.Name == c.config.NodeSwitch {
+					joinCIDR = append(joinCIDR, ipNet.String())
+				}
 			}
 		}
 	}
@@ -165,23 +169,17 @@ func (c *Controller) reconcileRouters(event subnetEvent) error {
 		return err
 	}
 
-	toAdd, toDel := routeDiff(existRoutes, cidrs)
+	toAdd, toDel := routeDiff(existRoutes, cidrs, joinCIDR, gateway, net.ParseIP(nodeIPv4), net.ParseIP(nodeIPv6))
 	for _, r := range toDel {
-		_, cidr, _ := net.ParseCIDR(r)
-		if err = netlink.RouteDel(&netlink.Route{Dst: cidr}); err != nil {
+		if err = netlink.RouteDel(&netlink.Route{Dst: r.Dst}); err != nil {
 			klog.Errorf("failed to del route %v", err)
 		}
 	}
 
 	for _, r := range toAdd {
-		_, cidr, _ := net.ParseCIDR(r)
-		for _, gw := range strings.Split(gateway, ",") {
-			if util.CheckProtocol(gw) != util.CheckProtocol(r) {
-				continue
-			}
-			if err = netlink.RouteReplace(&netlink.Route{Dst: cidr, LinkIndex: nic.Attrs().Index, Scope: netlink.SCOPE_UNIVERSE, Gw: net.ParseIP(gw)}); err != nil {
-				klog.Errorf("failed to add route %v", err)
-			}
+		r.LinkIndex = nic.Attrs().Index
+		if err = netlink.RouteReplace(&r); err != nil {
+			klog.Errorf("failed to replace route %v: %v", r, err)
 		}
 	}
 
@@ -216,7 +214,7 @@ func getNicExistRoutes(nic netlink.Link, gateway string) ([]netlink.Route, error
 	return existRoutes, nil
 }
 
-func routeDiff(existRoutes []netlink.Route, cidrs []string) (toAdd []string, toDel []string) {
+func routeDiff(existRoutes []netlink.Route, cidrs, joinCIDR []string, gateway string, srcIPv4, srcIPv6 net.IP) (toAdd, toDel []netlink.Route) {
 	for _, route := range existRoutes {
 		if route.Scope == netlink.SCOPE_LINK {
 			continue
@@ -230,23 +228,51 @@ func routeDiff(existRoutes []netlink.Route, cidrs []string) (toAdd []string, toD
 			}
 		}
 		if !found {
-			toDel = append(toDel, route.Dst.String())
+			toDel = append(toDel, route)
 		}
 	}
 	if len(toDel) > 0 {
 		klog.Infof("route to del %v", toDel)
 	}
 
+	ipv4, ipv6 := util.SplitStringIP(gateway)
+	gwV4, gwV6 := net.ParseIP(ipv4), net.ParseIP(ipv6)
 	for _, c := range cidrs {
+		if util.ContainsString(joinCIDR, c) {
+			continue
+		}
+
+		var src, gw net.IP
+		switch util.CheckProtocol(c) {
+		case kubeovnv1.ProtocolIPv4:
+			src, gw = srcIPv4, gwV4
+		case kubeovnv1.ProtocolIPv6:
+			src, gw = srcIPv6, gwV6
+		}
+
 		found := false
 		for _, r := range existRoutes {
-			if r.Dst.String() == c {
+			if r.Dst == nil || r.Dst.String() != c {
+				continue
+			}
+			if src == nil {
+				if r.Src == nil {
+					found = true
+					break
+				}
+			} else if src.Equal(r.Src) {
 				found = true
 				break
 			}
 		}
 		if !found {
-			toAdd = append(toAdd, c)
+			_, cidr, _ := net.ParseCIDR(c)
+			toAdd = append(toAdd, netlink.Route{
+				Dst:   cidr,
+				Src:   src,
+				Gw:    gw,
+				Scope: netlink.SCOPE_UNIVERSE,
+			})
 		}
 	}
 	if len(toAdd) > 0 {

@@ -27,9 +27,46 @@ env:
   HELM_VERSION: v3.10.1
 
 jobs:
+  build-kube-ovn-base:
+    name: Build kube-ovn-base
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+      - uses: docker/setup-buildx-action@v2
+        if: github.base_ref != null
+      - name: Build
+        run: |
+          touch .CI_PASSED_VAR
+          if git diff --name-only HEAD^ HEAD | grep -q ^dist/images/Dockerfile.base$; then
+            echo "BUILD_BASE=1" > .CI_PASSED_VAR
+            echo "BUILD_BASE=1" >> "$GITHUB_ENV"
+            make base-amd64
+            make base-tar-amd64
+          fi
+          if git diff --name-only HEAD^ HEAD | grep -q ^dist/images/Dockerfile.base-dpdk$; then
+            make base-amd64-dpdk
+          fi
+
+      - name: Upload variable file to artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: variables
+          path: .CI_PASSED_VAR
+
+      - name: Upload base images to artifact
+        if: env.BUILD_BASE == 1
+        uses: actions/upload-artifact@v3
+        with:
+          name: kube-ovn-base
+          path: image-amd64.tar
+
   build-kube-ovn:
     name: Build kube-ovn
     runs-on: ubuntu-22.04
+    needs:
+    - build-kube-ovn-base
     steps:
       - uses: actions/checkout@v3
       - uses: docker/setup-buildx-action@v2
@@ -57,14 +94,43 @@ jobs:
           make ut
 
       - name: Install gosec
-        run: curl -sfL https://raw.githubusercontent.com/securego/gosec/master/install.sh | sh -s -- -b $(go env GOPATH)/bin 'v${{ env.GOSEC_VERSION }}'
+        run: |
+          curl -sfL https://raw.githubusercontent.com/securego/gosec/master/install.sh | \
+            sed 's#giturl=.*#giturl="https://api.github.com/repos/${owner_repo}/releases/tags/${version}"#' | \
+            sed 's#tag_name":"#tag_name": *"#' | \
+            sh -s -- -b $(go env GOPATH)/bin 'v${{ env.GOSEC_VERSION }}'
+
+      - name: Download variable file
+        uses: actions/download-artifact@v3
+        with:
+          name: variables
+
+      - name: Export passed variables
+        run: cat .CI_PASSED_VAR >> "$GITHUB_ENV"
+
+      - name: Download base images
+        if: env.BUILD_BASE == 1
+        uses: actions/download-artifact@v3
+        with:
+          name: kube-ovn-base
+
+      - name: Load base images
+        if: env.BUILD_BASE == 1
+        run: docker load --input image-amd64.tar
 
       - name: Build
         run: |
           go mod tidy
           git diff --exit-code
           make lint
-          make image-kube-ovn
+          if [ "x${{ env.BUILD_BASE }}" = "x1" ]; then
+            TAG=$(cat VERSION)
+            docker tag kubeovn/kube-ovn-base:$TAG-amd64 kubeovn/kube-ovn-base:$TAG
+            docker tag kubeovn/kube-ovn-base:$TAG-amd64-no-avx512 kubeovn/kube-ovn-base:$TAG-no-avx512
+            make build-kube-ovn
+          else
+            make image-kube-ovn
+          fi
           make tar-kube-ovn
 
       - name: Upload images to artifact
@@ -78,7 +144,6 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
-      - uses: docker/setup-buildx-action@v2
 
       - name: Build
         run: |
@@ -534,8 +599,8 @@ jobs:
         run: make kube-ovn-ic-conformance-e2e
 
   chart-installation-test:
-    needs: build-kube-ovn
     name: Chart Installation Test
+    needs: build-kube-ovn
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
@@ -573,45 +638,9 @@ jobs:
       - name: Cleanup
         run: sh dist/images/cleanup.sh
 
-  ha-installation-test:
-    needs: build-kube-ovn
-    name: HA Installation Test
-    runs-on: ubuntu-22.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
-
-      - name: Download image
-        uses: actions/download-artifact@v3
-        with:
-          name: kube-ovn
-
-      - name: Load image
-        run: docker load --input kube-ovn.tar
-
-      - name: Create kind cluster
-        run: |
-          sudo pip3 install j2cli
-          sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH make kind-init-ha
-          sudo cp -r /root/.kube/ ~/.kube/
-          sudo chown -R $(id -un). ~/.kube/
-
-      - name: Install Kube-OVN
-        run: sudo ENABLE_SSL=true make kind-install
-
-      - name: Cleanup
-        run: sh dist/images/cleanup.sh
-
   underlay-logical-gateway-installation-test:
-    needs: build-kube-ovn
     name: Underlay Logical Gateway Installation Test
+    needs: build-kube-ovn
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
@@ -646,8 +675,8 @@ jobs:
         run: sh dist/images/cleanup.sh
 
   no-ovn-lb-test:
-    needs: build-kube-ovn
     name: Disable OVN LB Test
+    needs: build-kube-ovn
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
@@ -684,8 +713,8 @@ jobs:
         run: sh dist/images/cleanup.sh
 
   no-np-test:
-    needs: build-kube-ovn
     name: Disable Network Policy Test
+    needs: build-kube-ovn
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
@@ -722,10 +751,10 @@ jobs:
         run: sh dist/images/cleanup.sh
 
   lb-svc-e2e:
+    name: LB Service E2E
     needs:
       - build-kube-ovn
       - build-vpc-nat-gateway
-    name: LB Service E2E
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
@@ -811,8 +840,8 @@ jobs:
         run: make kube-ovn-lb-svc-conformance-e2e
 
   installation-compatibility-test:
-    needs: build-kube-ovn
     name: Installation Compatibility Test
+    needs: build-kube-ovn
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
@@ -847,8 +876,8 @@ jobs:
         run: sh dist/images/cleanup.sh
 
   cilium-chaining-e2e:
-    needs: build-kube-ovn
     name: Cilium Chaining E2E
+    needs: build-kube-ovn
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
@@ -934,7 +963,106 @@ jobs:
       - name: Cleanup
         run: sh dist/images/cleanup.sh
 
+  kube-ovn-security-e2e:
+    name: Kube-OVN Security E2E
+    needs: build-kube-ovn
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        ssl:
+          - "true"
+          - "false"
+        bind-local:
+          - "true"
+          - "false"
+        ip-family:
+          - ipv4
+          - ipv6
+          - dual
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Create the default branch directory
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=." >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/setup-go@v3
+        with:
+          go-version: '${{ env.GO_VERSION }}'
+          check-latest: true
+        id: go
+
+      - name: Export Go full version
+        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+
+      - name: Go cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('${{ env.E2E_DIR }}/**/go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
+
+      - name: Build e2e binaries
+        working-directory: ${{ env.E2E_DIR }}
+        run: make e2e-compile
+
+      - name: Install kind
+        run: |
+          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
+          chmod +x ./kind
+          sudo mv kind /usr/local/bin
+
+      - name: Download image
+        uses: actions/download-artifact@v3
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Create kind cluster
+        run: |
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH make kind-init-ha-${{ matrix.ip-family }}
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
+
+      - name: Install Kube-OVN
+        run: |
+          sudo ENABLE_SSL=${{ matrix.ssl }} ENABLE_BIND_LOCAL_IP=${{ matrix.bind-local }} \
+            make kind-install-${{ matrix.ip-family }}
+
+      - name: Run E2E
+        working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
+          E2E_IP_FAMILY: ${{ matrix.ip-family }}
+        run: make kube-ovn-security-e2e
+
+      - name: Cleanup
+        run: sh dist/images/cleanup.sh
+
   push:
+    name: Push Images
     needs:
       - build-centos-compile
       - k8s-conformance-e2e
@@ -943,14 +1071,13 @@ jobs:
       - kube-ovn-conformance-e2e
       - kube-ovn-ic-conformance-e2e
       - lb-svc-e2e
-      - ha-installation-test
       - underlay-logical-gateway-installation-test
       - chart-installation-test
       - installation-compatibility-test
       - no-ovn-lb-test
       - no-np-test
       - cilium-chaining-e2e
-    name: push
+      - kube-ovn-security-e2e
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3

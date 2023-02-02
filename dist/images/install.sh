@@ -35,7 +35,7 @@ CNI_CONF_DIR="/etc/cni/net.d"
 CNI_BIN_DIR="/opt/cni/bin"
 
 REGISTRY="kubeovn"
-VERSION="v1.11.0"
+VERSION="v1.12.0"
 IMAGE_PULL_POLICY="IfNotPresent"
 POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
 POD_GATEWAY="10.16.0.1"
@@ -1367,6 +1367,14 @@ spec:
                   type: string
                 u2oInterconnectionIP:
                   type: string
+                v4usingIPrange:
+                  type: string
+                v4availableIPrange:
+                  type: string
+                v6usingIPrange:
+                  type: string
+                v6availableIPrange:
+                  type: string
                 conditions:
                   type: array
                   items:
@@ -1424,8 +1432,6 @@ spec:
                 gatewayNode:
                   type: string
                 natOutgoing:
-                  type: boolean
-                u2oRouting:
                   type: boolean
                 externalEgressGateway:
                   type: string
@@ -1490,6 +1496,8 @@ spec:
                           - drop
                           - reject
                 u2oInterconnection:
+                  type: boolean
+                enableLb:
                   type: boolean
   scope: Cluster
   names:
@@ -2045,6 +2053,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: POD_IPS
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIPs
+            - name: ENABLE_BIND_LOCAL_IP
+              value: "$ENABLE_BIND_LOCAL_IP"
           resources:
             requests:
               cpu: 300m
@@ -2539,6 +2553,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: POD_IPS
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIPs
+            - name: ENABLE_BIND_LOCAL_IP
+              value: "$ENABLE_BIND_LOCAL_IP"
           resources:
             requests:
               cpu: 300m

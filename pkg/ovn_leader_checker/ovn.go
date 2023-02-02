@@ -5,9 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"reflect"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -136,79 +138,35 @@ func checkOvnIsAlive() bool {
 	return true
 }
 
-func checkNbIsLeader() bool {
-	var command []string
+func isDBLeader(dbName string, port int) bool {
+	addr := net.JoinHostPort(os.Getenv("POD_IP"), strconv.Itoa(port))
+	query := fmt.Sprintf(`["_Server",{"table":"Database","where":[["name","==","%s"]],"columns":["leader"],"op":"select"}]`, dbName)
+
+	var cmd []string
 	if os.Getenv(EnvSSL) == "false" {
-		command = []string{
-			"query",
-			"tcp:127.0.0.1:6641",
-			`["_Server",{"table":"Database","where":[["name","==","OVN_Northbound"]],"columns":["leader"],"op":"select"}]`,
-		}
+		cmd = []string{"query", fmt.Sprintf("tcp:%s", addr), query}
 	} else {
-		command = []string{
-			"-p",
-			"/var/run/tls/key",
-			"-c",
-			"/var/run/tls/cert",
-			"-C",
-			"/var/run/tls/cacert",
-			"query",
-			"ssl:127.0.0.1:6641",
-			`["_Server",{"table":"Database","where":[["name","==","OVN_Northbound"]],"columns":["leader"],"op":"select"}]`,
+		cmd = []string{
+			"-p", "/var/run/tls/key",
+			"-c", "/var/run/tls/cert",
+			"-C", "/var/run/tls/cacert",
+			"query", fmt.Sprintf("ssl:%s", addr), query,
 		}
 	}
 
-	output, err := exec.Command("ovsdb-client", command...).CombinedOutput()
+	output, err := exec.Command("ovsdb-client", cmd...).CombinedOutput()
 	if err != nil {
-		klog.Errorf("CheckNbIsLeader execute err %v error msg %v", err, string(output))
+		klog.Errorf("failed to execute cmd %q: err=%v, msg=%v", strings.Join(cmd, " "), err, string(output))
 		return false
 	}
 
-	if len(output) == 0 {
-		klog.Errorf("CheckNbIsLeader no output")
-		return false
-	}
-
-	klog.V(5).Infof("CheckNbIsLeader: output %s", string(output))
 	result := strings.TrimSpace(string(output))
-	return strings.Contains(result, "true")
-}
-
-func checkSbIsLeader() bool {
-	var command []string
-	if os.Getenv(EnvSSL) == "false" {
-		command = []string{
-			"query",
-			"tcp:127.0.0.1:6642",
-			`["_Server",{"table":"Database","where":[["name","==","OVN_Southbound"]],"columns":["leader"],"op":"select"}]`,
-		}
-	} else {
-		command = []string{
-			"-p",
-			"/var/run/tls/key",
-			"-c",
-			"/var/run/tls/cert",
-			"-C",
-			"/var/run/tls/cacert",
-			"query",
-			"ssl:127.0.0.1:6642",
-			`["_Server",{"table":"Database","where":[["name","==","OVN_Southbound"]],"columns":["leader"],"op":"select"}]`,
-		}
-	}
-
-	output, err := exec.Command("ovsdb-client", command...).CombinedOutput()
-	if err != nil {
-		klog.Errorf("CheckSbIsLeader execute err %v error msg %v", err, string(output))
+	if len(result) == 0 {
+		klog.Errorf("cmd %q no output", strings.Join(cmd, " "))
 		return false
 	}
 
-	if len(output) == 0 {
-		klog.Errorf("CheckSbIsLeader no output")
-		return false
-	}
-
-	klog.V(5).Infof("CheckSbIsLeader: output %s", string(output))
-	result := strings.TrimSpace(string(output))
+	klog.V(5).Infof("cmd %q output: %s", strings.Join(cmd, " "), string(output))
 	return strings.Contains(result, "true")
 }
 
@@ -382,7 +340,9 @@ func doOvnLeaderCheck(cfg *Configuration, podName string, podNamespace string) {
 	for k, v := range cachedPod.Labels {
 		labels[k] = v
 	}
-	nbLeader, sbLeader, northdLeader := checkNbIsLeader(), checkSbIsLeader(), checkNorthdActive()
+	nbLeader := isDBLeader("OVN_Northbound", 6641)
+	sbLeader := isDBLeader("OVN_Southbound", 6642)
+	northdLeader := checkNorthdActive()
 	updatePodLabels(labels, "ovn-nb-leader", nbLeader)
 	updatePodLabels(labels, "ovn-sb-leader", sbLeader)
 	updatePodLabels(labels, "ovn-northd-leader", northdLeader)

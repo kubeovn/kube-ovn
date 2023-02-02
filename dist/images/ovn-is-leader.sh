@@ -8,12 +8,14 @@ ovn-ctl status_northd
 ovn-ctl status_ovnnb
 ovn-ctl status_ovnsb
 
+BIND_LOCAL_ADDR=[${POD_IP:-127.0.0.1}]
+
 # For data consistency, only store leader address in endpoint
 # Store ovn-nb leader to svc kube-system/ovn-nb
 if [[ "$ENABLE_SSL" == "false" ]]; then
-  nb_leader=$(ovsdb-client query tcp:127.0.0.1:6641 "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Northbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]")
+  nb_leader=$(ovsdb-client query tcp:$BIND_LOCAL_ADDR:6641 "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Northbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]")
 else
-  nb_leader=$(ovsdb-client -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert query ssl:127.0.0.1:6641 "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Northbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]")
+  nb_leader=$(ovsdb-client -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert query ssl:$BIND_LOCAL_ADDR:6641 "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Northbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]")
 fi
 
 if [[ $nb_leader =~ "true" ]]
@@ -34,9 +36,9 @@ fi
 
 # Store ovn-sb leader to svc kube-system/ovn-sb
 if [[ "$ENABLE_SSL" == "false" ]]; then
-  sb_leader=$(ovsdb-client query tcp:127.0.0.1:6642 "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Southbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]")
+  sb_leader=$(ovsdb-client query tcp:$BIND_LOCAL_ADDR:6642 "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Southbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]")
 else
-  sb_leader=$(ovsdb-client -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert query ssl:127.0.0.1:6642 "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Southbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]")
+  sb_leader=$(ovsdb-client -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert query ssl:$BIND_LOCAL_ADDR:6642 "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Southbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]")
 fi
 
 if [[ $sb_leader =~ "true" ]]
@@ -51,9 +53,9 @@ then
     if [ "$northd_leader" == "" ]; then
        # no available northd leader try to release the lock
        if [[ "$ENABLE_SSL" == "false" ]]; then
-         ovsdb-client -v -t 1 steal tcp:127.0.0.1:6642  ovn_northd
+         ovsdb-client -v -t 1 steal tcp:$BIND_LOCAL_ADDR:6642  ovn_northd
        else
-         ovsdb-client -v -t 1 -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert steal ssl:127.0.0.1:6642  ovn_northd
+         ovsdb-client -v -t 1 -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert steal ssl:$BIND_LOCAL_ADDR:6642  ovn_northd
        fi
      fi
    fi

@@ -86,7 +86,7 @@ We are looking forward to your PR!
    
    A: Different CNI Implementations have different scopes, there is no single implementation that can resolve all network problems. Kube-OVN is aiming to bring SDN to Cloud Native. 
       If you are missing the old day network concepts like VPC, Subnet, customize route, security groups etc. you can not find corresponding functions in any other CNIs. Then Kube-OVN
-      is you only choice when you need these functions to build datacenter or enterprise network fabric.
+      is your only choice when you need these functions to build datacenter or enterprise network fabric.
 
 2. Q: How about the scalability of Kube-OVN?
 
@@ -94,7 +94,7 @@ We are looking forward to your PR!
 
 3. Q: What's the Addressing/IPAM? Node-specific or cluster-wide?
 
-   A: Kube-OVN use a cluster-wide IPAM, Pod address can float to any nodes in the cluster.
+   A: Kube-OVN uses a cluster-wide IPAM, Pod address can float to any nodes in the cluster.
 
 4. Q: What's the encapsulation?
 
