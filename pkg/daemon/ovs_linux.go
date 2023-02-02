@@ -269,47 +269,14 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDef
 				containerGw = u2oInterconnectionIP
 			}
 
-			switch util.CheckProtocol(ipAddr) {
-			case kubeovnv1.ProtocolIPv4:
-				_, defaultNet, _ := net.ParseCIDR("0.0.0.0/0")
-				err = netlink.RouteReplace(&netlink.Route{
+			for _, gw := range strings.Split(containerGw, ",") {
+				if err = netlink.RouteReplace(&netlink.Route{
 					LinkIndex: containerLink.Attrs().Index,
 					Scope:     netlink.SCOPE_UNIVERSE,
-					Dst:       defaultNet,
-					Gw:        net.ParseIP(containerGw),
-				})
-			case kubeovnv1.ProtocolIPv6:
-				_, defaultNet, _ := net.ParseCIDR("::/0")
-				err = netlink.RouteReplace(&netlink.Route{
-					LinkIndex: containerLink.Attrs().Index,
-					Scope:     netlink.SCOPE_UNIVERSE,
-					Dst:       defaultNet,
-					Gw:        net.ParseIP(containerGw),
-				})
-			case kubeovnv1.ProtocolDual:
-				gws := strings.Split(containerGw, ",")
-				_, defaultNet, _ := net.ParseCIDR("0.0.0.0/0")
-				err = netlink.RouteReplace(&netlink.Route{
-					LinkIndex: containerLink.Attrs().Index,
-					Scope:     netlink.SCOPE_UNIVERSE,
-					Dst:       defaultNet,
-					Gw:        net.ParseIP(gws[0]),
-				})
-				if err != nil {
-					return fmt.Errorf("config v4 gateway failed: %v", err)
+					Gw:        net.ParseIP(gw),
+				}); err != nil {
+					return fmt.Errorf("failed to configure default gateway %s: %v", gw, err)
 				}
-
-				_, defaultNet, _ = net.ParseCIDR("::/0")
-				err = netlink.RouteReplace(&netlink.Route{
-					LinkIndex: containerLink.Attrs().Index,
-					Scope:     netlink.SCOPE_UNIVERSE,
-					Dst:       defaultNet,
-					Gw:        net.ParseIP(gws[1]),
-				})
-			}
-
-			if err != nil {
-				return fmt.Errorf("failed to configure gateway: %v", err)
 			}
 		}
 
