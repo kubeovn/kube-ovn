@@ -4,8 +4,7 @@ E2E_NETWORK_MODE := $(shell echo $${E2E_NETWORK_MODE:-overlay})
 
 K8S_CONFORMANCE_E2E_FOCUS = "sig-network.*Conformance" "sig-network.*Feature:NoSNAT"
 K8S_CONFORMANCE_E2E_SKIP = "sig-network.*Services.*session affinity"
-K8S_NETPOL_E2E_FOCUS = "sig-network.*Feature:NetworkPolicy"
-K8S_NETPOL_E2E_SKIP = "sig-network.*NetworkPolicyLegacy"
+K8S_NETPOL_E2E_FOCUS = "sig-network.*NetworkPolicyLegacy"
 
 ifeq ($(shell test $(E2E_IP_FAMILY) != ipv6 && echo true),true)
 K8S_CONFORMANCE_E2E_FOCUS += \
@@ -43,8 +42,7 @@ k8s-conformance-e2e:
 k8s-netpol-e2e:
 	go test ./test/e2e/k8s-network -c -o test/e2e/k8s-network/e2e.test
 	./test/e2e/k8s-network/e2e.test --ginkgo.timeout=2h \
-		$(call ginkgo_option,focus,$(K8S_NETPOL_E2E_FOCUS)) \
-		$(call ginkgo_option,skip,$(K8S_NETPOL_E2E_SKIP))
+		$(call ginkgo_option,focus,$(K8S_NETPOL_E2E_FOCUS))
 
 .PHONY: cyclonus-netpol-e2e
 cyclonus-netpol-e2e:
