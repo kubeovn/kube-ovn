@@ -24,8 +24,6 @@ import (
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
-	// HtbQoses returns a HtbQosInformer.
-	HtbQoses() HtbQosInformer
 	// IPs returns a IPInformer.
 	IPs() IPInformer
 	// IptablesDnatRules returns a IptablesDnatRuleInformer.
@@ -71,11 +69,6 @@ type version struct {
 // New returns a new Interface.
 func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakListOptions internalinterfaces.TweakListOptionsFunc) Interface {
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
-}
-
-// HtbQoses returns a HtbQosInformer.
-func (v *version) HtbQoses() HtbQosInformer {
-	return &htbQosInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
 // IPs returns a IPInformer.
