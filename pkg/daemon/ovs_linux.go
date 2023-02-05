@@ -339,27 +339,33 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDef
 		}
 
 		if gwCheckMode != gatewayModeDisabled {
-			underlayGateway := gwCheckMode == gatewayCheckModeArping
+			var (
+				underlayGateway = gwCheckMode == gatewayCheckModeArping || gwCheckMode == gatewayCheckModeArpingNotConcerned
+				interfaceName   = nicName
+			)
+
+			if nicType != util.InternalType {
+				interfaceName = ifName
+			}
 
 			if u2oInterconnectionIP != "" {
-				if nicType != util.InternalType {
-					if err := waitNetworkReady(ifName, ipAddr, u2oInterconnectionIP, false, true); err != nil {
-						return err
-					}
-				}
-				if err := waitNetworkReady(nicName, ipAddr, u2oInterconnectionIP, false, true); err != nil {
+				if err := checkGatewayReady(gwCheckMode, interfaceName, ipAddr, u2oInterconnectionIP, false, true); err != nil {
 					return err
 				}
 			}
-
-			if nicType != util.InternalType {
-				return waitNetworkReady(ifName, ipAddr, gateway, underlayGateway, true)
-			}
-			return waitNetworkReady(nicName, ipAddr, gateway, underlayGateway, true)
+			return checkGatewayReady(gwCheckMode, interfaceName, ipAddr, gateway, underlayGateway, true)
 		}
 
 		return nil
 	})
+}
+
+func checkGatewayReady(gwCheckMode int, intr, ipAddr, gateway string, underlayGateway, verbose bool) error {
+	if gwCheckMode == gatewayCheckModeArpingNotConcerned || gwCheckMode == gatewayCheckModePingNotConcerned {
+		go waitNetworkReady(intr, ipAddr, gateway, underlayGateway, verbose)
+		return nil
+	}
+	return waitNetworkReady(intr, ipAddr, gateway, underlayGateway, verbose)
 }
 
 func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool) error {
