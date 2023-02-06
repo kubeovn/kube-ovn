@@ -29,7 +29,6 @@ rules:
       - provider-networks/status
       - security-groups
       - security-groups/status
-      - htbqoses
       - iptables-eips
       - iptables-fip-rules
       - iptables-dnat-rules

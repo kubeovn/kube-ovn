@@ -12,7 +12,7 @@ import (
 
 // SetInterfaceBandwidth set ingress/egress qos for given pod, annotation values are for node/pod
 // but ingress/egress parameters here are from the point of ovs port/interface view, so reverse input parameters when call func SetInterfaceBandwidth
-func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, podPriority string) error {
+func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string) error {
 	ingressMPS, _ := strconv.Atoi(ingress)
 	ingressKPS := ingressMPS * 1000
 	interfaceList, err := ovsFind("interface", "name", fmt.Sprintf("external-ids:iface-id=%s", iface))
@@ -41,7 +41,7 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, podPri
 		egressBPS := egressMPS * 1000 * 1000
 
 		if egressBPS > 0 {
-			queueUid, err := SetHtbQosQueueRecord(podName, podNamespace, iface, podPriority, egressBPS, queueIfaceUidMap)
+			queueUid, err := SetHtbQosQueueRecord(podName, podNamespace, iface, egressBPS, queueIfaceUidMap)
 			if err != nil {
 				return err
 			}
@@ -67,10 +67,6 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, podPri
 					return fmt.Errorf("failed to remove rate limit for queue in pod %v/%v, %v", podNamespace, podName, err)
 				}
 			}
-		}
-
-		if err = SetHtbQosPriority(podName, podNamespace, iface, ifName, podPriority, qosIfaceUidMap, queueIfaceUidMap); err != nil {
-			return err
 		}
 
 		// Delete Qos and Queue record if both bandwidth and priority do not exist
@@ -134,14 +130,11 @@ func IsHtbQos(iface string) (bool, error) {
 	return false, nil
 }
 
-func SetHtbQosQueueRecord(podName, podNamespace, iface, priority string, maxRateBPS int, queueIfaceUidMap map[string]string) (string, error) {
+func SetHtbQosQueueRecord(podName, podNamespace, iface string, maxRateBPS int, queueIfaceUidMap map[string]string) (string, error) {
 	var queueCommandValues []string
 	var err error
 	if maxRateBPS > 0 {
 		queueCommandValues = append(queueCommandValues, fmt.Sprintf("other_config:max-rate=%d", maxRateBPS))
-	}
-	if priority != "" {
-		queueCommandValues = append(queueCommandValues, fmt.Sprintf("other_config:priority=%s", priority))
 	}
 
 	if queueUid, ok := queueIfaceUidMap[iface]; ok {
@@ -162,58 +155,6 @@ func SetHtbQosQueueRecord(podName, podNamespace, iface, priority string, maxRate
 	}
 
 	return queueIfaceUidMap[iface], nil
-}
-
-// SetPodQosPriority set qos to this pod port.
-func SetPodQosPriority(podName, podNamespace, ifaceID, priority string, qosIfaceUidMap, queueIfaceUidMap map[string]string) error {
-	interfaceList, err := ovsFind("interface", "name", fmt.Sprintf("external-ids:iface-id=%s", ifaceID))
-	if err != nil {
-		return err
-	}
-
-	for _, ifName := range interfaceList {
-		if err = SetHtbQosPriority(podName, podNamespace, ifaceID, ifName, priority, qosIfaceUidMap, queueIfaceUidMap); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func SetHtbQosPriority(podName, podNamespace, iface, ifName, priority string, qosIfaceUidMap, queueIfaceUidMap map[string]string) error {
-	if priority != "" {
-		queueUid, err := SetHtbQosQueueRecord(podName, podNamespace, iface, priority, 0, queueIfaceUidMap)
-		if err != nil {
-			return err
-		}
-
-		if err = SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUid, qosIfaceUidMap); err != nil {
-			return err
-		}
-	} else {
-		var qosUid string
-		var ok bool
-		if qosUid, ok = qosIfaceUidMap[iface]; !ok {
-			return nil
-		}
-
-		qosType, err := ovsGet("qos", qosUid, "type", "")
-		if err != nil {
-			return err
-		}
-		if qosType != util.HtbQos {
-			return nil
-		}
-		queueId, err := ovsGet("qos", qosUid, "queues", "0")
-		if err != nil {
-			return err
-		}
-
-		if _, err := Exec("remove", "queue", queueId, "other_config", "priority"); err != nil {
-			return fmt.Errorf("failed to remove priority for queue in pod %v/%v, %v", podNamespace, podName, err)
-		}
-	}
-
-	return nil
 }
 
 // SetQosQueueBinding set qos related to queue record.
@@ -432,7 +373,6 @@ func CheckAndUpdateHtbQos(podName, podNamespace, ifaceID string, queueIfaceUidMa
 		return nil
 	}
 
-	// recall clearQos
 	if htbQos, _ := IsHtbQos(ifaceID); !htbQos {
 		return nil
 	}
