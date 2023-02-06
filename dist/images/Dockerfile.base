@@ -37,8 +37,6 @@ RUN dpkg -i /usr/src/python3-openvswitch*.deb
 
 RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
-    # fix ssl listen address
-    curl -s https://github.com/kubeovn/ovn/commit/62d4969877712c26fe425698d898b440f91b44bf.patch | git apply && \
     # do not send traffic that not designate to svc to conntrack
     curl -s https://github.com/kubeovn/ovn/commit/0700cb90f950db1fb43490545dd4fc41afa46d70.patch | git apply && \
     # change hash type from dp_hash to hash with field src_ip
