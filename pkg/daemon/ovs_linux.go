@@ -346,9 +346,10 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDef
 					if err := waitNetworkReady(ifName, ipAddr, u2oInterconnectionIP, false, true); err != nil {
 						return err
 					}
-				}
-				if err := waitNetworkReady(ifName, ipAddr, u2oInterconnectionIP, false, true); err != nil {
-					return err
+				} else {
+					if err := waitNetworkReady(nicName, ipAddr, u2oInterconnectionIP, false, true); err != nil {
+						return err
+					}
 				}
 			}
 
