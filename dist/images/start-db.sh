@@ -187,17 +187,15 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
                 --db-sb-cluster-local-addr="[${POD_IP}]" \
                 --db-nb-addr=$BIND_LOCAL_ADDR \
                 --db-sb-addr=$BIND_LOCAL_ADDR \
+                --db-nb-port=$DB_NB_PORT \
+                --db-sb-port=$DB_SB_PORT \
                 --db-nb-use-remote-in-db=no \
                 --db-sb-use-remote-in-db=no \
                 --ovn-northd-nb-db="$(gen_conn_str 6641)" \
                 --ovn-northd-sb-db="$(gen_conn_str 6642)" \
                 start_northd
-            ovn-nbctl --no-leader-only set-connection ptcp:"${DB_NB_PORT}":[::]
-            ovn-nbctl --no-leader-only set Connection . inactivity_probe=180000
+            ovn-nbctl --no-leader-only set NB_Global . options:northd_probe_interval=180000
             ovn-nbctl --no-leader-only set NB_Global . options:use_logical_dp_groups=true
-
-            ovn-sbctl --no-leader-only set-connection ptcp:"${DB_SB_PORT}":[::]
-            ovn-sbctl --no-leader-only set Connection . inactivity_probe=180000
         else
             # known leader always first
             set +eo pipefail
@@ -234,6 +232,8 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
                 --db-sb-cluster-remote-addr="[${sb_leader_ip}]" \
                 --db-nb-addr=$BIND_LOCAL_ADDR \
                 --db-sb-addr=$BIND_LOCAL_ADDR \
+                --db-nb-port=$DB_NB_PORT \
+                --db-sb-port=$DB_SB_PORT \
                 --db-nb-use-remote-in-db=no \
                 --db-sb-use-remote-in-db=no \
                 --ovn-northd-nb-db="$(gen_conn_str 6641)" \
@@ -291,17 +291,15 @@ else
                 --db-sb-cluster-local-addr="[${POD_IP}]" \
                 --db-nb-addr=$BIND_LOCAL_ADDR \
                 --db-sb-addr=$BIND_LOCAL_ADDR \
+                --db-nb-port=$DB_NB_PORT \
+                --db-sb-port=$DB_SB_PORT \
                 --db-nb-use-remote-in-db=no \
                 --db-sb-use-remote-in-db=no \
                 --ovn-northd-nb-db="$(gen_conn_str 6641)" \
                 --ovn-northd-sb-db="$(gen_conn_str 6642)" \
                 start_northd
-            ovn-nbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set-connection pssl:"${DB_NB_PORT}":["${DB_NB_ADDR}"]
-            ovn-nbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set Connection . inactivity_probe=180000
+            ovn-nbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set NB_Global . options:northd_probe_interval=180000
             ovn-nbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set NB_Global . options:use_logical_dp_groups=true
-
-            ovn-sbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set-connection pssl:"${DB_SB_PORT}":["${DB_SB_ADDR}"]
-            ovn-sbctl --no-leader-only -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert set Connection . inactivity_probe=180000
         else
             # get leader if cluster exists
             set +eo pipefail
@@ -344,6 +342,8 @@ else
                 --db-sb-cluster-remote-addr="[${sb_leader_ip}]" \
                 --db-nb-addr=$BIND_LOCAL_ADDR \
                 --db-sb-addr=$BIND_LOCAL_ADDR \
+                --db-nb-port=$DB_NB_PORT \
+                --db-sb-port=$DB_SB_PORT \
                 --db-nb-use-remote-in-db=no \
                 --db-sb-use-remote-in-db=no \
                 --ovn-northd-nb-db="$(gen_conn_str 6641)" \

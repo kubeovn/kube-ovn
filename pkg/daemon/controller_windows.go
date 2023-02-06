@@ -186,7 +186,7 @@ func (c *Controller) handlePod(key string) error {
 
 	// set default nic bandwidth
 	ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
-	err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation], pod.Annotations[util.PriorityAnnotation])
+	err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation])
 	if err != nil {
 		return err
 	}
@@ -207,7 +207,7 @@ func (c *Controller) handlePod(key string) error {
 		}
 		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
 			ifaceID = ovs.PodNameToPortName(podName, pod.Namespace, provider)
-			err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.PriorityAnnotationTemplate, provider)])
+			err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)])
 			if err != nil {
 				return err
 			}
@@ -226,11 +226,6 @@ func (c *Controller) handlePod(key string) error {
 
 func (c *Controller) loopEncapIpCheck() {
 	// TODO
-}
-
-func (c *Controller) clearQos(podName, podNamespace, ifaceID string) error {
-	// TODO
-	return nil
 }
 
 func rotateLog() {

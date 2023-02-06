@@ -45,14 +45,14 @@ func (c *Controller) setGatewayBandwidth() error {
 		klog.Errorf("failed to get node, %v", err)
 		return err
 	}
-	ingress, egress, priority := node.Annotations[util.IngressRateAnnotation], node.Annotations[util.EgressRateAnnotation], node.Annotations[util.PriorityAnnotation]
+	ingress, egress := node.Annotations[util.IngressRateAnnotation], node.Annotations[util.EgressRateAnnotation]
 	ifaceId := fmt.Sprintf("node-%s", c.config.NodeName)
-	if ingress == "" && egress == "" && priority == "" {
+	if ingress == "" && egress == "" {
 		if htbQos, _ := ovs.IsHtbQos(ifaceId); !htbQos {
 			return nil
 		}
 	}
-	return ovs.SetInterfaceBandwidth("", "", ifaceId, egress, ingress, priority)
+	return ovs.SetInterfaceBandwidth("", "", ifaceId, egress, ingress)
 }
 
 func (c *Controller) setICGateway() error {

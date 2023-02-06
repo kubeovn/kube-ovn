@@ -18,8 +18,6 @@ limitations under the License.
 
 package v1
 
-type HtbQosExpansion interface{}
-
 type IPExpansion interface{}
 
 type IptablesDnatRuleExpansion interface{}
