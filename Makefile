@@ -406,7 +406,7 @@ kind-install-ipv6: kind-install-overlay-ipv6
 
 .PHONY: kind-install-overlay-ipv6
 kind-install-overlay-ipv6:
-	IPV6=true $(MAKE) kind-install
+	@IPV6=true $(MAKE) kind-install
 
 .PHONY: kind-install-underlay-ipv6
 kind-install-underlay-ipv6: kind-disable-hairpin kind-load-image kind-untaint-control-plane
@@ -433,7 +433,7 @@ kind-install-dual: kind-install-overlay-dual
 
 .PHONY: kind-install-overlay-dual
 kind-install-overlay-dual:
-	DUAL_STACK=true $(MAKE) kind-install
+	@DUAL_STACK=true $(MAKE) kind-install
 
 .PHONY: kind-install-underlay-dual
 kind-install-underlay-dual: kind-disable-hairpin kind-load-image kind-untaint-control-plane
