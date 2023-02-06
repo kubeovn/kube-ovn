@@ -57,7 +57,6 @@ func TestValidateSubnet(t *testing.T) {
 					Private:                false,
 					AllowSubnets:           nil,
 					Vlan:                   "",
-					HtbQos:                 "",
 					Vips:                   nil,
 					LogicalGateway:         false,
 					DisableGatewayCheck:    false,

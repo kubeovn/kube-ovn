@@ -18,10 +18,6 @@ limitations under the License.
 
 package v1
 
-// HtbQosListerExpansion allows custom methods to be added to
-// HtbQosLister.
-type HtbQosListerExpansion interface{}
-
 // IPListerExpansion allows custom methods to be added to
 // IPLister.
 type IPListerExpansion interface{}

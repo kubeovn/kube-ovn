@@ -185,17 +185,6 @@ func (c *Controller) reconcileRouters(event subnetEvent) error {
 		}
 	}
 
-	if oldSubnet != nil && newSubnet != nil && oldSubnet.Spec.HtbQos != "" && newSubnet.Spec.HtbQos == "" {
-		if err := c.deleteSubnetQos(newSubnet); err != nil {
-			klog.Errorf("failed to delete htb qos for subnet %s: %v", newSubnet.Name, err)
-			return err
-		}
-	} else if newSubnet != nil && newSubnet.Spec.HtbQos != "" {
-		if err := c.setSubnetQosPriority(newSubnet); err != nil {
-			klog.Errorf("failed to set htb qos priority for subnet %s: %v", newSubnet.Name, err)
-			return err
-		}
-	}
 	return nil
 }
 
@@ -423,16 +412,9 @@ func (c *Controller) handlePod(key string) error {
 		podName = pod.Annotations[fmt.Sprintf(util.VmTemplate, util.OvnProvider)]
 	}
 
-	priority := pod.Annotations[util.PriorityAnnotation]
-	subnetName := pod.Annotations[util.LogicalSwitchAnnotation]
-	subnetPriority := c.getSubnetQosPriority(subnetName)
-	if priority == "" && subnetPriority != "" {
-		priority = subnetPriority
-	}
-
 	// set default nic bandwidth
 	ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
-	err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation], priority)
+	err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[util.EgressRateAnnotation], pod.Annotations[util.IngressRateAnnotation])
 	if err != nil {
 		return err
 	}
@@ -458,14 +440,8 @@ func (c *Controller) handlePod(key string) error {
 		}
 		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
 			ifaceID = ovs.PodNameToPortName(podName, pod.Namespace, provider)
-			priority := pod.Annotations[fmt.Sprintf(util.PriorityAnnotationTemplate, provider)]
-			subnetName := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider)]
-			subnetPriority := c.getSubnetQosPriority(subnetName)
-			if priority == "" && subnetPriority != "" {
-				priority = subnetPriority
-			}
 
-			err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)], priority)
+			err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)])
 			if err != nil {
 				return err
 			}
@@ -529,104 +505,6 @@ func (c *Controller) loopEncapIpCheck() {
 	}
 }
 
-func (c *Controller) setSubnetQosPriority(subnet *kubeovnv1.Subnet) error {
-	htbQos, err := c.htbQosLister.Get(subnet.Spec.HtbQos)
-	if err != nil {
-		klog.Errorf("failed to get htbqos %s: %v", subnet.Spec.HtbQos, err)
-		return err
-	}
-
-	pods, err := c.podsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list pods, %v", err)
-		return err
-	}
-
-	qosIfaceUidMap, err := ovs.ListExternalIds("qos")
-	if err != nil {
-		return err
-	}
-	queueIfaceUidMap, err := ovs.ListExternalIds("queue")
-	if err != nil {
-		return err
-	}
-
-	for _, pod := range pods {
-		if pod.Spec.HostNetwork ||
-			pod.DeletionTimestamp != nil ||
-			pod.Status.PodIP == "" {
-			continue
-		}
-		podName := pod.Name
-		if pod.Annotations[fmt.Sprintf(util.VmTemplate, util.OvnProvider)] != "" {
-			podName = pod.Annotations[fmt.Sprintf(util.VmTemplate, util.OvnProvider)]
-		}
-
-		// set priority for eth0 interface in pod
-		if pod.Annotations[util.LogicalSwitchAnnotation] == subnet.Name {
-			ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
-			priority := htbQos.Spec.Priority
-			if pod.Annotations[util.PriorityAnnotation] != "" {
-				priority = pod.Annotations[util.PriorityAnnotation]
-			}
-			if err = ovs.SetPodQosPriority(podName, pod.Namespace, ifaceID, priority, qosIfaceUidMap, queueIfaceUidMap); err != nil {
-				klog.Errorf("failed to set htbqos priority for pod %s/%s, iface %v: %v", pod.Namespace, pod.Name, ifaceID, err)
-				return err
-			}
-		}
-
-		// set priority for attach interface provided by kube-ovn in pod
-		attachNets, err := util.ParsePodNetworkAnnotation(pod.Annotations[util.AttachmentNetworkAnnotation], pod.Namespace)
-		if err != nil {
-			return err
-		}
-		for _, multiNet := range attachNets {
-			provider := fmt.Sprintf("%s.%s.ovn", multiNet.Name, multiNet.Namespace)
-			if subnet.Spec.Provider != provider {
-				continue
-			}
-			if pod.Annotations[fmt.Sprintf(util.VmTemplate, provider)] != "" {
-				podName = pod.Annotations[fmt.Sprintf(util.VmTemplate, provider)]
-			}
-
-			if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
-				ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, provider)
-				priority := htbQos.Spec.Priority
-				if pod.Annotations[fmt.Sprintf(util.PriorityAnnotationTemplate, provider)] != "" {
-					priority = pod.Annotations[fmt.Sprintf(util.PriorityAnnotationTemplate, provider)]
-				}
-
-				if err = ovs.SetPodQosPriority(podName, pod.Namespace, ifaceID, priority, qosIfaceUidMap, queueIfaceUidMap); err != nil {
-					klog.Errorf("failed to set htbqos priority for pod %s/%s, iface %v: %v", pod.Namespace, pod.Name, ifaceID, err)
-					return err
-				}
-			}
-		}
-	}
-	return nil
-}
-
-func (c *Controller) clearQos(podName, podNamespace, ifaceID string) error {
-	if htbQos, _ := ovs.IsHtbQos(ifaceID); !htbQos {
-		return nil
-	}
-
-	if err := ovs.ClearPortQosBinding(ifaceID); err != nil {
-		klog.Errorf("failed to delete qos binding info for interface %s: %v", ifaceID, err)
-		return err
-	}
-
-	if err := ovs.ClearPodBandwidth(podName, podNamespace, ifaceID); err != nil {
-		klog.Errorf("failed to delete htbqos record for pod %s/%s, iface %v: %v", podNamespace, podName, ifaceID, err)
-		return err
-	}
-
-	if err := ovs.ClearHtbQosQueue(podName, podNamespace, ifaceID); err != nil {
-		klog.Errorf("failed to delete htbqos queue for pod %s/%s, iface %v: %v", podNamespace, podName, ifaceID, err)
-		return err
-	}
-	return nil
-}
 func (c *Controller) operateMod() {
 	modules, ok := os.LookupEnv(util.KoENV)
 	if !ok || modules == "" {
