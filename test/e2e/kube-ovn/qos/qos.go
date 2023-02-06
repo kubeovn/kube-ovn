@@ -163,9 +163,8 @@ var _ = framework.Describe("[group:qos]", func() {
 
 		name := "pod-" + framework.RandomSuffix()
 		ginkgo.By("Creating pod " + name)
-		priority, ingressRate := 50, 300
+		ingressRate := 300
 		annotations := map[string]string{
-			util.PriorityAnnotation:    strconv.Itoa(priority),
 			util.IngressRateAnnotation: strconv.Itoa(ingressRate),
 		}
 		pod := framework.MakePod(namespaceName, name, nil, annotations, "", nil, nil)
@@ -174,77 +173,11 @@ var _ = framework.Describe("[group:qos]", func() {
 		ginkgo.By("Validating pod annotations")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.PriorityAnnotation, strconv.Itoa(priority))
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.IngressRateAnnotation, strconv.Itoa(ingressRate))
 
 		ginkgo.By("Validating OVS Queue")
 		queue := getOvsQosForPod(cs, "queue", pod)
 		framework.ExpectHaveKeyWithValue(queue, "max-rate", strconv.Itoa(ingressRate*1000*1000))
-		framework.ExpectHaveKeyWithValue(queue, "priority", strconv.Itoa(priority))
-
-		ginkgo.By("Deleting pod " + name)
-		podClient.DeleteSync(pod.Name)
-	})
-
-	framework.ConformanceIt("should be able to update htb QoS", func() {
-		f.SkipVersionPriorTo(1, 9, "Support for htb QoS with priority was introduced in v1.9")
-
-		subnetName = f.Namespace.Name
-		ginkgo.By("Creating subnet " + subnetName + " with htb QoS")
-		cidr := framework.RandomCIDR(f.ClusterIpFamily)
-		subnet := framework.MakeSubnet(subnetName, "", cidr, "", nil, nil, []string{namespaceName})
-		subnet.Spec.HtbQos = util.HtbQosLow
-		subnetClient.CreateSync(subnet)
-
-		ginkgo.By("Validating subnet .spec.htbqos field")
-		framework.ExpectEqual(subnet.Spec.HtbQos, util.HtbQosLow)
-
-		name := "pod-" + framework.RandomSuffix()
-		ginkgo.By("Creating pod " + name)
-		pod := framework.MakePod(namespaceName, name, nil, nil, "", nil, nil)
-		pod = podClient.CreateSync(pod)
-
-		ginkgo.By("Validating pod annotations")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-		framework.ExpectNotHaveKey(pod.Annotations, util.PriorityAnnotation)
-		framework.ExpectNotHaveKey(pod.Annotations, util.IngressRateAnnotation)
-
-		ginkgo.By("Validating OVS Queue")
-		defaultPriority := 5
-		queue := getOvsQosForPod(cs, "queue", pod)
-		framework.ExpectHaveKeyWithValue(queue, "priority", strconv.Itoa(defaultPriority))
-
-		ginkgo.By("Update htb priority by adding pod annotation")
-		priority := 2
-		modifiedPod := pod.DeepCopy()
-		modifiedPod.Annotations[util.PriorityAnnotation] = strconv.Itoa(priority)
-		pod = podClient.PatchPod(pod, modifiedPod)
-
-		ginkgo.By("Validating pod annotations")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.PriorityAnnotation, strconv.Itoa(priority))
-		framework.ExpectNotHaveKey(pod.Annotations, util.IngressRateAnnotation)
-
-		ginkgo.By("Validating OVS Queue")
-		expected := map[string]string{"priority": strconv.Itoa(priority)}
-		_ = getOvsQosForPodRetry(cs, "queue", pod, expected)
-
-		ginkgo.By("Update htb priority by deleting pod annotation")
-		modifiedPod = pod.DeepCopy()
-		delete(modifiedPod.Annotations, util.PriorityAnnotation)
-		pod = podClient.PatchPod(pod, modifiedPod)
-
-		ginkgo.By("Validating pod annotations")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-		framework.ExpectNotHaveKey(pod.Annotations, util.PriorityAnnotation)
-		framework.ExpectNotHaveKey(pod.Annotations, util.IngressRateAnnotation)
-
-		ginkgo.By("Validating OVS Queue")
-		expected = map[string]string{"priority": strconv.Itoa(defaultPriority)}
-		_ = getOvsQosForPodRetry(cs, "queue", pod, expected)
 
 		ginkgo.By("Deleting pod " + name)
 		podClient.DeleteSync(pod.Name)

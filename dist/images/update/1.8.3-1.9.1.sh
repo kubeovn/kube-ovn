@@ -422,8 +422,6 @@ spec:
                   type: boolean
                 disableInterConnection:
                   type: boolean
-                htbqos:
-                  type: string
   scope: Cluster
   names:
     plural: subnets
@@ -674,36 +672,6 @@ spec:
   conversion:
     strategy: None
 ---
-apiVersion: apiextensions.k8s.io/v1
-kind: CustomResourceDefinition
-metadata:
-  name: htbqoses.kubeovn.io
-spec:
-  group: kubeovn.io
-  versions:
-    - name: v1
-      served: true
-      storage: true
-      additionalPrinterColumns:
-      - name: PRIORITY
-        type: string
-        jsonPath: .spec.priority
-      schema:
-        openAPIV3Schema:
-          type: object
-          properties:
-            spec:
-              type: object
-              properties:
-                priority:
-                  type: string					# Value in range 0 to 4,294,967,295.
-  scope: Cluster
-  names:
-    plural: htbqoses
-    singular: htbqos
-    kind: HtbQos
-    shortNames:
-      - htbqos
 EOF
 
 kubectl apply -f kube-ovn-crd-1.9.yaml
@@ -740,7 +708,6 @@ rules:
       - provider-networks/status
       - security-groups
       - security-groups/status
-      - htbqoses
     verbs:
       - "*"
   - apiGroups:
@@ -1063,11 +1030,11 @@ trace(){
   case $type in
     icmp)
       set -x
-      kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-trace --ct=new "$ls" "inport == \"$podName.$namespace\" && ip.ttl == 64 && icmp && eth.src == $mac && ip$af.src == $podIP && eth.dst == $gwMac && ip$af.dst == $dst"
+      kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-trace "$ls" "inport == \"$podName.$namespace\" && ip.ttl == 64 && icmp && eth.src == $mac && ip$af.src == $podIP && eth.dst == $gwMac && ip$af.dst == $dst && ct.new"
       ;;
     tcp|udp)
       set -x
-      kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-trace --ct=new "$ls" "inport == \"$podName.$namespace\" && ip.ttl == 64 && eth.src == $mac && ip$af.src == $podIP && eth.dst == $gwMac && ip$af.dst == $dst && $type.src == 10000 && $type.dst == $4"
+      kubectl exec "$OVN_SB_POD" -n $KUBE_OVN_NS -c ovn-central -- ovn-trace "$ls" "inport == \"$podName.$namespace\" && ip.ttl == 64 && eth.src == $mac && ip$af.src == $podIP && eth.dst == $gwMac && ip$af.dst == $dst && $type.src == 10000 && $type.dst == $4 && ct.new"
       ;;
     *)
       echo "type $type not supported"

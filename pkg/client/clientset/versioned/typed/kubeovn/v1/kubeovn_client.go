@@ -28,7 +28,6 @@ import (
 
 type KubeovnV1Interface interface {
 	RESTClient() rest.Interface
-	HtbQosesGetter
 	IPsGetter
 	IptablesDnatRulesGetter
 	IptablesEIPsGetter
@@ -51,10 +50,6 @@ type KubeovnV1Interface interface {
 // KubeovnV1Client is used to interact with features provided by the kubeovn.io group.
 type KubeovnV1Client struct {
 	restClient rest.Interface
-}
-
-func (c *KubeovnV1Client) HtbQoses() HtbQosInterface {
-	return newHtbQoses(c)
 }
 
 func (c *KubeovnV1Client) IPs() IPInterface {

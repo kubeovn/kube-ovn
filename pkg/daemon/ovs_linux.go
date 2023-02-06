@@ -30,7 +30,7 @@ import (
 
 var pciAddrRegexp = regexp.MustCompile(`\b([0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}.\d{1}\S*)`)
 
-func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway, ingress, egress, priority, shortSharedDir, socketName string) error {
+func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway, ingress, egress, shortSharedDir, socketName string) error {
 	sharedDir := filepath.Join("/var", shortSharedDir)
 	hostNicName, _ := generateNicName(containerID, ifName)
 
@@ -50,13 +50,13 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 	if err != nil {
 		return fmt.Errorf("add nic to ovs failed %v: %q", err, output)
 	}
-	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress, priority); err != nil {
+	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, priority, DeviceID, nicType, latency, limit, loss string, gwCheckMode int, u2oInterconnectionIP string) error {
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, DeviceID, nicType, latency, limit, loss string, gwCheckMode int, u2oInterconnectionIP string) error {
 	var err error
 	var hostNicName, containerNicName string
 	if DeviceID == "" {
@@ -95,7 +95,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	if err = configureHostNic(hostNicName); err != nil {
 		return err
 	}
-	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress, priority); err != nil {
+	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress); err != nil {
 		return err
 	}
 
@@ -362,18 +362,18 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDef
 
 func checkGatewayReady(gwCheckMode int, intr, ipAddr, gateway string, underlayGateway, verbose bool) error {
 	if gwCheckMode == gatewayCheckModeArpingNotConcerned || gwCheckMode == gatewayCheckModePingNotConcerned {
-		go waitNetworkReady(intr, ipAddr, gateway, underlayGateway, verbose)
+		go waitNetworkReady(intr, ipAddr, gateway, underlayGateway, verbose, 1)
 		return nil
 	}
-	return waitNetworkReady(intr, ipAddr, gateway, underlayGateway, verbose)
+	return waitNetworkReady(intr, ipAddr, gateway, underlayGateway, verbose, gatewayCheckMaxRetry)
 }
 
-func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool) error {
+func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool, maxRetry int) error {
 	ips := strings.Split(ipAddr, ",")
 	for i, gw := range strings.Split(gateway, ",") {
 		src := strings.Split(ips[i], "/")[0]
 		if underlayGateway && util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv4 {
-			mac, count, err := util.ArpResolve(nic, src, gw, time.Second, gatewayCheckMaxRetry)
+			mac, count, err := util.ArpResolve(nic, src, gw, time.Second, maxRetry)
 			cniConnectivityResult.WithLabelValues(nodeName).Add(float64(count))
 			if err != nil {
 				err = fmt.Errorf("network %s with gateway %s is not ready for interface %s after %d checks: %v", ips[i], gw, nic, count, err)
@@ -385,7 +385,7 @@ func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool
 				klog.Infof("network %s with gateway %s is ready for interface %s after %d checks", ips[i], gw, nic, count)
 			}
 		} else {
-			if err := pingGateway(gw, src, verbose); err != nil {
+			if err := pingGateway(gw, src, verbose, maxRetry); err != nil {
 				return err
 			}
 		}
@@ -419,7 +419,7 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 
 	// ping ovn0 gw to activate the flow
 	klog.Infof("wait ovn0 gw ready")
-	if err := waitNetworkReady(util.NodeNic, ip, gw, false, true); err != nil {
+	if err := waitNetworkReady(util.NodeNic, ip, gw, false, true, gatewayCheckMaxRetry); err != nil {
 		klog.Errorf("failed to init ovn0 check: %v", err)
 		return err
 	}
@@ -446,7 +446,7 @@ func (c *Controller) loopOvn0Check() {
 	}
 	ip := node.Annotations[util.IpAddressAnnotation]
 	gw := node.Annotations[util.GatewayAnnotation]
-	if err := waitNetworkReady(util.NodeNic, ip, gw, false, false); err != nil {
+	if err := waitNetworkReady(util.NodeNic, ip, gw, false, false, gatewayCheckMaxRetry); err != nil {
 		util.LogFatalAndExit(err, "failed to ping ovn0 gateway %s", gw)
 	}
 }
@@ -881,7 +881,7 @@ func renameLink(curName, newName string) error {
 	return nil
 }
 
-func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, priority, DeviceID, nicType, latency, limit, loss string, gwCheckMode int, u2oInterconnectionIP string) (string, error) {
+func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, provider, netns, containerID, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, detectIPConflict bool, routes []request.Route, dnsServer, dnsSuffix []string, ingress, egress, DeviceID, nicType, latency, limit, loss string, gwCheckMode int, u2oInterconnectionIP string) (string, error) {
 	_, containerNicName := generateNicName(containerID, ifName)
 	ipStr := util.GetIpWithoutMask(ip)
 	ifaceID := ovs.PodNameToPortName(podName, podNamespace, provider)
@@ -905,7 +905,7 @@ func (csh cniServerHandler) configureNicWithInternalPort(podName, podNamespace, 
 		return containerNicName, fmt.Errorf("failed to parse mac %s %v", macAddr, err)
 	}
 
-	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress, priority); err != nil {
+	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress); err != nil {
 		return containerNicName, err
 	}
 

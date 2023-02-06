@@ -61,8 +61,6 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&OvnSnatRuleList{},
 		&SecurityGroup{},
 		&SecurityGroupList{},
-		&HtbQos{},
-		&HtbQosList{},
 		&SwitchLBRule{},
 		&SwitchLBRuleList{},
 		&VpcDns{},
