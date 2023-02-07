@@ -336,7 +336,6 @@ func (c *Controller) handleAddNode(key string) error {
 		return err
 	}
 
-	klog.Infof("add policy route for centrailized subnet %s, on node %s, ip %s", subnet.Name, node.Name, ipStr)
 	if err := c.addPolicyRouteForCentralizedSubnetOnNode(node.Name, ipStr); err != nil {
 		klog.Errorf("failed to add policy route for node %s, %v", key, err)
 		return err
@@ -713,9 +712,6 @@ func (c *Controller) CheckGatewayReady() {
 }
 
 func (c *Controller) checkGatewayReady() error {
-	if !c.config.EnableEcmp {
-		return nil
-	}
 	klog.V(3).Infoln("start to check gateway status")
 	subnetList, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -731,7 +727,8 @@ func (c *Controller) checkGatewayReady() error {
 	for _, subnet := range subnetList {
 		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) ||
 			subnet.Spec.GatewayNode == "" ||
-			subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType {
+			subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType ||
+			!subnet.Spec.EnableEcmp {
 			continue
 		}
 
@@ -1145,7 +1142,7 @@ func (c *Controller) deletePolicyRouteForNode(nodeName string) error {
 		}
 
 		if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType {
-			if c.config.EnableEcmp {
+			if subnet.Spec.EnableEcmp {
 				for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
 					nextHops, nameIpMap, err := c.getPolicyRouteParas(cidrBlock, util.GatewayRouterPolicyPriority)
 					if err != nil {
@@ -1201,7 +1198,7 @@ func (c *Controller) addPolicyRouteForCentralizedSubnetOnNode(nodeName, nodeIP s
 			continue
 		}
 
-		if c.config.EnableEcmp {
+		if subnet.Spec.EnableEcmp {
 			if !util.GatewayContains(subnet.Spec.GatewayNode, nodeName) {
 				continue
 			}

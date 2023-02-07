@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -2576,6 +2577,7 @@ func (c *LegacyClient) VpcHasPolicyRoute(vpc string, nextHops []string, priority
 			routePriority := result[0]
 			strNodeIPs := result[1]
 			nodeIPs := strings.Fields(strNodeIPs)
+			sort.Strings(nodeIPs)
 			if routePriority == strPriority && slices.Equal(nextHops, nodeIPs) {
 				// make sure priority, nexthops is just the same
 				return true, nil
@@ -2670,15 +2672,17 @@ func (c LegacyClient) CheckPolicyRouteNexthopConsistent(router, match, nexthop s
 		return false, nil
 	}
 
-	nextHops, _, err := c.GetPolicyRouteParas(priority, match)
+	dbNextHops, _, err := c.GetPolicyRouteParas(priority, match)
 	if err != nil {
 		klog.Errorf("failed to get policy route paras, %v", err)
 		return false, err
 	}
-	for _, next := range nextHops {
-		if next == nexthop {
-			return true, nil
-		}
+	cfgNextHops := strings.Split(nexthop, ",")
+
+	sort.Strings(dbNextHops)
+	sort.Strings(cfgNextHops)
+	if slices.Equal(dbNextHops, cfgNextHops) {
+		return true, nil
 	}
 	return false, nil
 }
