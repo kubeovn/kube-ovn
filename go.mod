@@ -49,7 +49,7 @@ require (
 	k8s.io/sample-controller v0.26.1
 	k8s.io/utils v0.0.0-20230115233650-391b47cb4029
 	kubevirt.io/client-go v0.58.0
-	sigs.k8s.io/controller-runtime v0.14.3
+	sigs.k8s.io/controller-runtime v0.14.4
 )
 
 require (

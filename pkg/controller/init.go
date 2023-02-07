@@ -655,6 +655,21 @@ func (c *Controller) initSyncCrdSubnets() error {
 			klog.Errorf("failed to calculate subnet %s used ip: %v", subnet.Name, err)
 			return err
 		}
+
+		// only sync subnet spec enableEcmp when subnet.Spec.EnableEcmp is false and c.config.EnableEcmp is true
+		if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType && !subnet.Spec.EnableEcmp && subnet.Spec.EnableEcmp != c.config.EnableEcmp {
+			subnet, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), subnet.Name, metav1.GetOptions{})
+			if err != nil {
+				klog.Errorf("failed to get subnet %s: %v", subnet.Name, err)
+				return err
+			}
+
+			subnet.Spec.EnableEcmp = c.config.EnableEcmp
+			if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), subnet, metav1.UpdateOptions{}); err != nil {
+				klog.Errorf("failed to sync subnet spec enableEcmp with kube-ovn-controller config enableEcmp %s: %v", subnet.Name, err)
+				return err
+			}
+		}
 	}
 	return nil
 }
