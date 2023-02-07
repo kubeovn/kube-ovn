@@ -22,7 +22,7 @@ func pingGateway(gw, src string, verbose bool, maxRetry int) error {
 	pinger.SetPrivileged(true)
 	// CNITimeoutSec = 220, cannot exceed
 	pinger.Count = maxRetry
-	pinger.Timeout = gatewayCheckMaxRetry * time.Second
+	pinger.Timeout = time.Duration(maxRetry) * time.Second
 	pinger.Interval = time.Second
 
 	var success bool
