@@ -306,7 +306,7 @@ kind-upgrade-chart:
 	kubectl -n kube-system get pods -o wide
 
 .PHONY: kind-install-chart
-kind-install-chart: kind-untaint-control-plane
+kind-install-chart: kind-load-image kind-untaint-control-plane
 	kubectl label no -lbeta.kubernetes.io/os=linux kubernetes.io/os=linux --overwrite
 	kubectl label no -lnode-role.kubernetes.io/control-plane  kube-ovn/role=master --overwrite
 	kubectl label no -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel  --overwrite
