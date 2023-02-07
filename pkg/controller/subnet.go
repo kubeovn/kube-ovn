@@ -93,6 +93,7 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		oldSubnet.Spec.EnableIPv6RA != newSubnet.Spec.EnableIPv6RA ||
 		oldSubnet.Spec.IPv6RAConfigs != newSubnet.Spec.IPv6RAConfigs ||
 		oldSubnet.Spec.Protocol != newSubnet.Spec.Protocol ||
+		(oldSubnet.Spec.EnableLb == nil && newSubnet.Spec.EnableLb != nil) ||
 		(oldSubnet.Spec.EnableLb != nil && newSubnet.Spec.EnableLb == nil) ||
 		(oldSubnet.Spec.EnableLb != nil && newSubnet.Spec.EnableLb != nil && *oldSubnet.Spec.EnableLb != *newSubnet.Spec.EnableLb) ||
 		oldSubnet.Spec.EnableEcmp != newSubnet.Spec.EnableEcmp ||
@@ -315,9 +316,14 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		}
 	}
 
-	if subnet.Spec.EnableLb == nil {
+	if subnet.Spec.EnableLb == nil && subnet.Name != c.config.NodeSwitch {
 		changed = true
 		subnet.Spec.EnableLb = &c.config.EnableLb
+	}
+	// set join subnet Spec.EnableLb to nil
+	if subnet.Spec.EnableLb != nil && subnet.Name == c.config.NodeSwitch {
+		changed = true
+		subnet.Spec.EnableLb = nil
 	}
 
 	klog.Infof("format subnet %v, changed %v", subnet.Name, changed)
