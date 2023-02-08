@@ -365,6 +365,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 	})
 
 	framework.ConformanceIt("create centralized subnet without enableEcmp", func() {
+		f.SkipVersionPriorTo(1, 12, "Support for enableEcmp in subnet is introduced in v1.12")
+
 		ginkgo.By("Getting nodes")
 		nodes, err := e2enode.GetReadySchedulableNodes(cs)
 		framework.ExpectNoError(err)
