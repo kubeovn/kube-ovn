@@ -47,38 +47,39 @@ func TestE2E(t *testing.T) {
 	e2e.RunE2ETests(t)
 }
 
-func checkDeployment(cs clientset.Interface, name, process string, ports ...string) {
+func checkDeployment(f *framework.Framework, name, process string, ports ...string) {
 	ginkgo.By("Getting deployment " + name)
-	deploy, err := cs.AppsV1().Deployments(framework.KubeOvnNamespace).Get(context.TODO(), name, metav1.GetOptions{})
+	deploy, err := f.ClientSet.AppsV1().Deployments(framework.KubeOvnNamespace).Get(context.TODO(), name, metav1.GetOptions{})
 	framework.ExpectNoError(err, "failed to to get deployment")
-	err = deployment.WaitForDeploymentComplete(cs, deploy)
+	err = deployment.WaitForDeploymentComplete(f.ClientSet, deploy)
 	framework.ExpectNoError(err, "deployment failed to complete")
 
 	ginkgo.By("Getting pods")
-	pods, err := deployment.GetPodsForDeployment(cs, deploy)
+	pods, err := deployment.GetPodsForDeployment(f.ClientSet, deploy)
 	framework.ExpectNoError(err, "failed to get pods")
 	framework.ExpectNotEmpty(pods.Items)
 
-	checkPods(pods.Items, process, ports...)
+	checkPods(f, pods.Items, process, ports...)
 }
 
-func checkPods(pods []corev1.Pod, process string, ports ...string) {
+func checkPods(f *framework.Framework, pods []corev1.Pod, process string, ports ...string) {
 	ginkgo.By("Parsing environment variable")
-	var listenPodIP bool
-	if len(pods[0].Status.PodIPs) == 1 {
-		var envValue string
-		for _, env := range pods[0].Spec.Containers[0].Env {
-			if env.Name == "ENABLE_BIND_LOCAL_IP" {
-				envValue = env.Value
-				break
-			}
+	var envValue string
+	for _, env := range pods[0].Spec.Containers[0].Env {
+		if env.Name == "ENABLE_BIND_LOCAL_IP" {
+			envValue = env.Value
+			break
 		}
-		if envValue == "" {
-			envValue = "false"
-		}
-		var err error
-		listenPodIP, err = strconv.ParseBool(envValue)
-		framework.ExpectNoError(err)
+	}
+	if envValue == "" {
+		envValue = "false"
+	}
+	listenPodIP, err := strconv.ParseBool(envValue)
+	framework.ExpectNoError(err)
+
+	if listenPodIP && len(pods[0].Status.PodIPs) != 1 && (process != "ovsdb-server" || f.VersionPriorTo(1, 12)) {
+		// ovn db processes support listening on both ipv4 and ipv6 addresses in versions >= 1.12
+		listenPodIP = false
 	}
 
 	ginkgo.By("Validating " + process + " listen addresses")
@@ -91,12 +92,26 @@ func checkPods(pods []corev1.Pod, process string, ports ...string) {
 		framework.ExpectNoError(err)
 
 		listenAddresses := strings.Split(string(bytes.TrimSpace(stdout)), "\n")
-		podIPPrefix := strings.TrimSuffix(net.JoinHostPort(pod.Status.PodIP, "999"), "999")
-		for _, addr := range listenAddresses {
-			if listenPodIP {
-				framework.ExpectTrue(strings.HasPrefix(addr, podIPPrefix))
-			} else {
-				framework.ExpectTrue(strings.HasPrefix(addr, "*:"))
+		if len(ports) != 0 {
+			expected := make([]string, 0, len(pod.Status.PodIPs)*len(ports))
+			for _, port := range ports {
+				if listenPodIP {
+					for _, ip := range pod.Status.PodIPs {
+						expected = append(expected, net.JoinHostPort(ip.IP, port))
+					}
+				} else {
+					expected = append(expected, net.JoinHostPort("*", port))
+				}
+			}
+			framework.ExpectConsistOf(listenAddresses, expected)
+		} else {
+			podIPPrefix := strings.TrimSuffix(net.JoinHostPort(pod.Status.PodIP, "999"), "999")
+			for _, addr := range listenAddresses {
+				if listenPodIP {
+					framework.ExpectTrue(strings.HasPrefix(addr, podIPPrefix))
+				} else {
+					framework.ExpectTrue(strings.HasPrefix(addr, "*:"))
+				}
 			}
 		}
 	}
@@ -113,15 +128,15 @@ var _ = framework.Describe("[group:security]", func() {
 	})
 
 	framework.ConformanceIt("ovn db should listen on specified addresses for client connections", func() {
-		checkDeployment(cs, "ovn-central", "ovsdb-server", "6641", "6642")
+		checkDeployment(f, "ovn-central", "ovsdb-server", "6641", "6642")
 	})
 
 	framework.ConformanceIt("kube-ovn-controller should listen on specified addresses", func() {
-		checkDeployment(cs, "kube-ovn-controller", "kube-ovn-controller")
+		checkDeployment(f, "kube-ovn-controller", "kube-ovn-controller")
 	})
 
 	framework.ConformanceIt("kube-ovn-monitor should listen on specified addresses", func() {
-		checkDeployment(cs, "kube-ovn-monitor", "kube-ovn-monitor")
+		checkDeployment(f, "kube-ovn-monitor", "kube-ovn-monitor")
 	})
 
 	framework.ConformanceIt("kube-ovn-cni should listen on specified addresses", func() {
@@ -142,6 +157,6 @@ var _ = framework.Describe("[group:security]", func() {
 			pods = append(pods, *pod)
 		}
 
-		checkPods(pods, "kube-ovn-daemon")
+		checkPods(f, pods, "kube-ovn-daemon")
 	})
 })

@@ -125,9 +125,12 @@ func (f *Framework) BeforeEach() {
 	framework.TestContext.Host = ""
 }
 
+func (f *Framework) VersionPriorTo(major, minor uint) bool {
+	return f.ClusterVersionMajor < major || (f.ClusterVersionMajor == major && f.ClusterVersionMinor < minor)
+}
+
 func (f *Framework) SkipVersionPriorTo(major, minor uint, message string) {
-	if f.ClusterVersionMajor < major ||
-		(f.ClusterVersionMajor == major && f.ClusterVersionMinor < minor) {
+	if f.VersionPriorTo(major, minor) {
 		ginkgo.Skip(message)
 	}
 }
