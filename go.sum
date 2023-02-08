@@ -870,8 +870,8 @@ github.com/julienschmidt/httprouter v1.2.0/go.mod h1:SYymIcj16QtmaHHD7aYtjjsJG7V
 github.com/julienschmidt/httprouter v1.3.0/go.mod h1:JR6WtHb+2LUe8TCKY3cZOxFyyO8IZAc4RVcycCCAKdM=
 github.com/k-sone/critbitgo v1.4.0 h1:l71cTyBGeh6X5ATh6Fibgw3+rtNT80BA0uNNWgkPrbE=
 github.com/k-sone/critbitgo v1.4.0/go.mod h1:7E6pyoyADnFxlUBEKcnfS49b7SUAQGMK+OAp/UQvo0s=
-github.com/k8snetworkplumbingwg/multus-cni v0.0.0-20220818150730-3d9cec4ec9d5 h1:/BiK+qv91VvsZGESzj2Ms6fn+aKcwgye/qyfy07YMls=
-github.com/k8snetworkplumbingwg/multus-cni v0.0.0-20220818150730-3d9cec4ec9d5/go.mod h1:UuztUt9fVZCed9aexDAf//44CFiVQwrUnI8o4W4N8L8=
+github.com/k8snetworkplumbingwg/multus-cni v0.0.0-20221222150008-e692127d1962 h1:TG7rCrpqReXvgJR5mXo+K7fhQDT1Qq/MzSyrJIdO2xE=
+github.com/k8snetworkplumbingwg/multus-cni v0.0.0-20221222150008-e692127d1962/go.mod h1:RvTt2WRNNR/fBOt5Ij1P1+eqq+Ib78T32zABo025Xkk=
 github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.4.0 h1:VzM3TYHDgqPkettiP6I6q2jOeQFL4nrJM+UcAc4f6Fs=
 github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.4.0/go.mod h1:nqCI7aelBJU61wiBeeZWJ6oi4bJy5nrjkM6lWIMA4j0=
 github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 h1:iQTw/8FWTuc7uiaSepXwyf3o52HaUYcV+Tu66S3F5GA=
@@ -906,8 +906,8 @@ github.com/kubeovn/felix v0.0.0-20220325073257-c8a0f705d139 h1:MaLC8/dohKHU8nkfg
 github.com/kubeovn/felix v0.0.0-20220325073257-c8a0f705d139/go.mod h1:ulxnUH9cbIOtCH+exhJPeV2mleh+bDv67WKsl/MVU/g=
 github.com/kubeovn/kubevirt-client-go v0.0.0-20221209084839-9c2ed1f0604d h1:sM7V2MhONBa10zYQA1yg/UbPm/Y7JqVqymtgoDiGqMo=
 github.com/kubeovn/kubevirt-client-go v0.0.0-20221209084839-9c2ed1f0604d/go.mod h1:FjHUGVwls5NE1q8rsSL0LsRU46p35cwgnwSItkr8oXs=
-github.com/kubeovn/libovsdb v0.0.0-20221208095821-f8830e1998e8 h1:gkYOU8DJQJeDef9hYETOf0D270zVS3xYuytjFLEi0rc=
-github.com/kubeovn/libovsdb v0.0.0-20221208095821-f8830e1998e8/go.mod h1:N20zsElkDpTm57hVDosiZVghprt9Y4Vfqsi1HBXOzr4=
+github.com/kubeovn/libovsdb v0.0.0-20230208064641-36b813e450dd h1:fPdrmrfxkFEzVoh1mo2kafDI6tW1lJhUHx0uioYKANM=
+github.com/kubeovn/libovsdb v0.0.0-20230208064641-36b813e450dd/go.mod h1:N20zsElkDpTm57hVDosiZVghprt9Y4Vfqsi1HBXOzr4=
 github.com/kubeovn/ovsdb v0.0.0-20221213053943-9372db56919f h1:nm0ZlQesCje/A5D0LyWfaSUM8/0ro9PVpwd8hVbLBeM=
 github.com/kubeovn/ovsdb v0.0.0-20221213053943-9372db56919f/go.mod h1:LAd0qoeAAm/QyZcpxN2BnpndM2/dhZt+/kokPvcxKcE=
 github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0 h1:nHHjmvjitIiyPlUHk/ofpgvBcNcawJLtf4PYHORLjAA=
