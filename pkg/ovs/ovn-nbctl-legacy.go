@@ -1479,6 +1479,16 @@ func (c LegacyClient) CreateLoadBalancer(lb, protocol, selectFields string) erro
 	return err
 }
 
+// SetLoadBalancerAffinityTimeout sets the LB's affinity timeout in seconds
+func (c LegacyClient) SetLoadBalancerAffinityTimeout(lb string, timeout int) error {
+	output, err := c.ovnNbCommand("set", "load_balancer", lb, fmt.Sprintf("options:affinity_timeout=%d", timeout))
+	if err != nil {
+		klog.Errorf("failed to set affinity timeout of LB %s to %d, error: %v, output: %s", lb, timeout, err, output)
+		return err
+	}
+	return nil
+}
+
 // CreateLoadBalancerRule create loadbalancer rul in ovn
 func (c LegacyClient) CreateLoadBalancerRule(lb, vip, ips, protocol string) error {
 	_, err := c.ovnNbCommand(MayExist, "lb-add", lb, vip, ips, strings.ToLower(protocol))

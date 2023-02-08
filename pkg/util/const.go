@@ -200,4 +200,6 @@ const (
 
 	U2OInterconnName = "u2o-interconnection.%s.%s"
 	U2OExcludeIPAg   = "%s.u2o_exclude_ip.%s"
+
+	DefaultServiceSessionStickinessTimeout = 10800
 )

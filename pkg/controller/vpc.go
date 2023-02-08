@@ -297,6 +297,11 @@ func (c *Controller) addLoadBalancer(vpc string) (*VpcLoadBalancer, error) {
 		klog.Infof("tcp session load balancer %s exists", tcpSessionLb)
 	}
 
+	if err = c.ovnLegacyClient.SetLoadBalancerAffinityTimeout(vpcLbConfig.TcpSessLoadBalancer, util.DefaultServiceSessionStickinessTimeout); err != nil {
+		klog.Errorf("failed to set service session stickiness timeout of cluster tcp session load balancer: %v", err)
+		return nil, err
+	}
+
 	udpLb, err := c.ovnLegacyClient.FindLoadbalancer(vpcLbConfig.UdpLoadBalancer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find udp lb %v", err)
@@ -325,6 +330,11 @@ func (c *Controller) addLoadBalancer(vpc string) (*VpcLoadBalancer, error) {
 		}
 	} else {
 		klog.Infof("udp session load balancer %s exists", udpSessionLb)
+	}
+
+	if err = c.ovnLegacyClient.SetLoadBalancerAffinityTimeout(vpcLbConfig.UdpSessLoadBalancer, util.DefaultServiceSessionStickinessTimeout); err != nil {
+		klog.Errorf("failed to set service session stickiness timeout of cluster udp session load balancer: %v", err)
+		return nil, err
 	}
 
 	return vpcLbConfig, nil
