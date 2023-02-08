@@ -1,6 +1,7 @@
 package node
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"net"
@@ -8,6 +9,7 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	clientset "k8s.io/client-go/kubernetes"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
@@ -80,7 +82,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 			framework.ExpectMAC(node.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(node.Annotations, util.PortNameAnnotation, "node-"+node.Name)
 
-			podName := "pod-" + framework.RandomSuffix()
+			podName = "pod-" + framework.RandomSuffix()
 			ginkgo.By("Creating pod " + podName + " with host network")
 			cmd := []string{"sh", "-c", "sleep infinity"}
 			pod := framework.MakePod(namespaceName, podName, nil, nil, image, cmd, nil)
@@ -97,6 +99,9 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 			framework.Logf(util.GetIpAddrWithMask(node.Annotations[util.IpAddressAnnotation], join.Spec.CIDRBlock))
 			ips := strings.Split(util.GetIpAddrWithMask(node.Annotations[util.IpAddressAnnotation], join.Spec.CIDRBlock), ",")
 			framework.ExpectConsistOf(links[0].NonLinkLocalAddresses(), ips)
+
+			err = podClient.Delete(context.Background(), podName, metav1.DeleteOptions{})
+			framework.ExpectNoError(err)
 		}
 	})
 
