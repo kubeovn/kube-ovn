@@ -18,6 +18,7 @@ import (
 	_ "github.com/kubeovn/kube-ovn/test/e2e/kube-ovn/kubectl-ko"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/kube-ovn/network-policy"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/kube-ovn/node"
+	_ "github.com/kubeovn/kube-ovn/test/e2e/kube-ovn/pod"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/kube-ovn/qos"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/kube-ovn/subnet"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/kube-ovn/underlay"

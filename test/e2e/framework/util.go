@@ -135,3 +135,13 @@ func RandomIPPool(cidr, sep string, count int) string {
 
 	return strings.Join(dual, sep)
 }
+
+func PrevIP(ip string) string {
+	n := util.Ip2BigInt(ip)
+	return util.BigInt2Ip(n.Add(n, big.NewInt(-1)))
+}
+
+func NextIP(ip string) string {
+	n := util.Ip2BigInt(ip)
+	return util.BigInt2Ip(n.Add(n, big.NewInt(1)))
+}
