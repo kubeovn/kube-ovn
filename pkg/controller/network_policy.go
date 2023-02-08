@@ -789,8 +789,20 @@ func isSvcMatchPod(svc *corev1.Service, pod *corev1.Pod) (bool, error) {
 }
 
 func (c *Controller) podMatchNetworkPolicies(pod *corev1.Pod) []string {
-	podNs, _ := c.namespacesLister.Get(pod.Namespace)
-	nps, _ := c.npsLister.NetworkPolicies(corev1.NamespaceAll).List(labels.Everything())
+	podNs, err := c.namespacesLister.Get(pod.Namespace)
+	if err != nil {
+		klog.Errorf("failed to get namespace %s: %v", pod.Namespace, err)
+		utilruntime.HandleError(err)
+		return nil
+	}
+
+	nps, err := c.npsLister.NetworkPolicies(corev1.NamespaceAll).List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list network policies: %v", err)
+		utilruntime.HandleError(err)
+		return nil
+	}
+
 	match := []string{}
 	for _, np := range nps {
 		if isPodMatchNetworkPolicy(pod, *podNs, np, np.Namespace) {

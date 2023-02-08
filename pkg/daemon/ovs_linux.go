@@ -362,7 +362,8 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDef
 
 func checkGatewayReady(gwCheckMode int, intr, ipAddr, gateway string, underlayGateway, verbose bool) error {
 	if gwCheckMode == gatewayCheckModeArpingNotConcerned || gwCheckMode == gatewayCheckModePingNotConcerned {
-		go waitNetworkReady(intr, ipAddr, gateway, underlayGateway, verbose, 1)
+		waitNetworkReady(intr, ipAddr, gateway, underlayGateway, verbose, 1)
+		// ignore error while ‘disableGatewayCheck=true’
 		return nil
 	}
 	return waitNetworkReady(intr, ipAddr, gateway, underlayGateway, verbose, gatewayCheckMaxRetry)
