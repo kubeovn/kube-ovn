@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: '1.19'
+  GO_VERSION: '1.20'
   GOSEC_VERSION: '2.14.0'
   KIND_VERSION: v0.17.0
   HELM_VERSION: v3.10.1
