@@ -15,10 +15,6 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func init() {
-	rand.Seed(int64(time.Now().Nanosecond()))
-}
-
 func ArpResolve(nic, srcIP, dstIP string, timeout time.Duration, maxRetry int) (net.HardwareAddr, int, error) {
 	target, err := netip.ParseAddr(dstIP)
 	if err != nil {
