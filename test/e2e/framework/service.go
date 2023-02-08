@@ -28,8 +28,8 @@ func (f *Framework) ServiceClient() *ServiceClient {
 	}
 }
 
-func (s *ServiceClient) Get(name string) *corev1.Service {
-	service, err := s.ServiceInterface.Get(context.TODO(), name, metav1.GetOptions{})
+func (c *ServiceClient) Get(name string) *corev1.Service {
+	service, err := c.ServiceInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
 	return service
 }
