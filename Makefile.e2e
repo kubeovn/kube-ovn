@@ -97,6 +97,14 @@ kube-ovn-ic-conformance-e2e:
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	./test/e2e/ovn-ic/e2e.test --ginkgo.focus=CNI:Kube-OVN
 
+.PHONY: kube-ovn-submariner-conformance-e2e
+kube-ovn-submariner-conformance-e2e:
+	go test ./test/e2e/submariner -c -o test/e2e/submariner/e2e.test
+	E2E_BRANCH=$(E2E_BRANCH) \
+	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
+	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
+	./test/e2e/submariner/e2e.test --ginkgo.focus=CNI:Kube-OVN
+
 .PHONY: kube-ovn-lb-svc-conformance-e2e
 kube-ovn-lb-svc-conformance-e2e:
 	go test ./test/e2e/lb-svc -c -o test/e2e/lb-svc/e2e.test

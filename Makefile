@@ -360,6 +360,43 @@ kind-install-ovn-ic: kind-load-image kind-install
 	sleep 6
 	kubectl -n kube-system get pods | grep ovs-ovn | awk '{print $$1}' | xargs kubectl -n kube-system delete pod
 
+.PHONY: kind-install-ovn-submariner
+kind-install-ovn-submariner: kind-load-image kind-install
+	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
+	kubectl config use-context kind-kube-ovn1
+	sed -e 's/10.16.0/10.18.0/g' \
+		-e 's/10.96.0/10.98.0/g' \
+		-e 's/100.64.0/100.68.0/g' \
+		dist/images/install.sh | \
+		bash
+	kubectl describe no
+
+	kubectl config use-context kind-kube-ovn
+	kubectl config set-cluster kind-kube-ovn --server=https://$(shell docker inspect --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' kube-ovn-control-plane):6443
+
+	kubectl config use-context kind-kube-ovn1
+	kubectl config set-cluster kind-kube-ovn1 --server=https://$(shell docker inspect --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' kube-ovn1-control-plane):6443
+
+	curl -Ls https://get.submariner.io | bash
+	mv ~/.local/bin/subctl /usr/bin/
+
+	kubectl config use-context kind-kube-ovn
+	subctl deploy-broker
+	kubectl label nodes kube-ovn-worker2  submariner.io/gateway=true
+	subctl  join broker-info.subm --clusterid  cluster0 --clustercidr 10.16.0.0/16  --natt=false --cable-driver vxlan --health-check=false
+	kubectl patch clusterrole submariner-operator --type merge --patch-file yamls/subopeRules.yaml
+	sleep 10
+	kubectl -n submariner-operator delete pod --selector=name=submariner-operator
+	kubectl patch subnet ovn-default --type='merge' --patch '{"spec": {"gatewayNode": "kube-ovn-worker2","gatewayType": "centralized"}}'
+
+	kubectl config use-context kind-kube-ovn1
+	kubectl label nodes kube-ovn1-worker2  submariner.io/gateway=true
+	subctl  join broker-info.subm --clusterid  cluster1 --clustercidr 10.18.0.0/16  --natt=false --cable-driver vxlan --health-check=false
+	kubectl patch clusterrole submariner-operator --type merge --patch-file yamls/subopeRules.yaml
+	sleep 10
+	kubectl -n submariner-operator delete pod --selector=name=submariner-operator
+	kubectl patch subnet ovn-default --type='merge' --patch '{"spec": {"gatewayNode": "kube-ovn1-worker2","gatewayType": "centralized"}}'
+
 .PHONY: kind-install-underlay
 kind-install-underlay: kind-install-underlay-ipv4
 
