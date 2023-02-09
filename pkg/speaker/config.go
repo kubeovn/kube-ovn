@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"time"
 
@@ -97,6 +98,9 @@ func ParseFlags() (*Configuration, error) {
 	ht := argHoldTime.Seconds()
 	if ht > 65536 || ht < 3 {
 		return nil, errors.New("the bgp holdtime must be in the range 3s to 65536s")
+	}
+	if *argRouterId != "" && net.ParseIP(*argRouterId) == nil {
+		return nil, fmt.Errorf("invalid router-id format: %s", *argRouterId)
 	}
 
 	config := &Configuration{
