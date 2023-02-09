@@ -13,9 +13,9 @@ make kind-init kind-install
 
 # Build and deploy test-server
 make image-test
-kind load docker-image --name kube-ovn kubeovn/test:v1.11.0
+kind load docker-image --name kube-ovn kubeovn/test:v1.12.0
 kubectl apply -f test/server/test-server.yaml
-docker run -d --net=kind kubeovn/test:v1.11.0
+docker run -d --net=kind kubeovn/test:v1.12.0
 
 # Run test-server analysis tool in one terminal and reload kube-ovn in another terminal
 # terminal 1
