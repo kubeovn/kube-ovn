@@ -178,7 +178,7 @@ jobs:
       - name: Run E2E
         run: make k8s-netpol-e2e
 
-  k8s-netpol-e2e-legacy:
+  k8s-netpol-legacy-e2e:
     name: Kubernetes Network Policy E2E
     runs-on: ubuntu-22.04
     timeout-minutes: 60

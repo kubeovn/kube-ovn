@@ -5,8 +5,8 @@ E2E_NETWORK_MODE := $(shell echo $${E2E_NETWORK_MODE:-overlay})
 K8S_CONFORMANCE_E2E_FOCUS = "sig-network.*Conformance" "sig-network.*Feature:NoSNAT"
 K8S_CONFORMANCE_E2E_SKIP =
 K8S_NETPOL_E2E_FOCUS = "sig-network.*Feature:NetworkPolicy"
-K8S_NETPOL_E2E_SKIP_LEGACY = "sig-network.*NetworkPolicyLegacy"
-K8S_NETPOL_E2E_SKIP_NETPOL = "sig-network.*Netpol"
+K8S_NETPOL_E2E_SKIP = "sig-network.*NetworkPolicyLegacy"
+K8S_NETPOL_LEGACY_E2E_FOCUS = "sig-network.*NetworkPolicyLegacy"
 
 ifeq ($(shell echo $(E2E_BRANCH) | grep -o ^release-),release-)
 VERSION_NUM = $(subst release-,,$(E2E_BRANCH))
@@ -49,19 +49,18 @@ k8s-conformance-e2e:
 		$(call ginkgo_option,focus,$(K8S_CONFORMANCE_E2E_FOCUS)) \
 		$(call ginkgo_option,skip,$(K8S_CONFORMANCE_E2E_SKIP))
 
-.PHONY: k8s-netpol-e2e-legacy
-k8s-netpol-e2e-legacy:
+.PHONY: k8s-netpol-legacy-e2e
+k8s-netpol-legacy-e2e:
 	go test ./test/e2e/k8s-network -c -o test/e2e/k8s-network/e2e.test
 	./test/e2e/k8s-network/e2e.test --ginkgo.timeout=2h \
-		$(call ginkgo_option,focus,$(K8S_NETPOL_E2E_FOCUS)) \
-		$(call ginkgo_option,skip,$(K8S_NETPOL_E2E_SKIP_NETPOL))
+		$(call ginkgo_option,focus,$(K8S_NETPOL_LEGACY_E2E_FOCUS))
 
 .PHONY: k8s-netpol-e2e
 k8s-netpol-e2e:
 	go test ./test/e2e/k8s-network -c -o test/e2e/k8s-network/e2e.test
 	./test/e2e/k8s-network/e2e.test --ginkgo.timeout=2h \
 		$(call ginkgo_option,focus,$(K8S_NETPOL_E2E_FOCUS)) \
-		$(call ginkgo_option,skip,$(K8S_NETPOL_E2E_SKIP_LEGACY))
+		$(call ginkgo_option,skip,$(K8S_NETPOL_E2E_SKIP))
 
 .PHONY: cyclonus-netpol-e2e
 cyclonus-netpol-e2e:

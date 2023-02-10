@@ -362,7 +362,7 @@ jobs:
         working-directory: ${{ env.E2E_DIR }}
         run: make k8s-netpol-e2e
 
-  k8s-netpol-e2e-legacy:
+  k8s-netpol-legacy-e2e:
     name: Kubernetes Network Policy E2E
     needs: build-kube-ovn
     runs-on: ubuntu-22.04
