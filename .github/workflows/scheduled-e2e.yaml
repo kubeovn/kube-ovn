@@ -254,7 +254,7 @@ jobs:
           VERSION=$version make kind-install-${{ matrix.ip-family }}
 
       - name: Run E2E
-        run: make k8s-netpol-e2e-legacy
+        run: make k8s-netpol-legacy-e2e
 
   cyclonus-netpol-e2e:
     name: Cyclonus Network Policy E2E
