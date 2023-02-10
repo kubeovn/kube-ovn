@@ -7,6 +7,7 @@ const (
 
 	AllocatedAnnotation  = "ovn.kubernetes.io/allocated"
 	RoutedAnnotation     = "ovn.kubernetes.io/routed"
+	RoutesAnnotation     = "ovn.kubernetes.io/routes"
 	MacAddressAnnotation = "ovn.kubernetes.io/mac_address"
 	IpAddressAnnotation  = "ovn.kubernetes.io/ip_address"
 	CidrAnnotation       = "ovn.kubernetes.io/cidr"
@@ -49,6 +50,7 @@ const (
 	AllocatedAnnotationSuffix       = ".kubernetes.io/allocated"
 	AllocatedAnnotationTemplate     = "%s.kubernetes.io/allocated"
 	RoutedAnnotationTemplate        = "%s.kubernetes.io/routed"
+	RoutesAnnotationTemplate        = "%s.kubernetes.io/routes"
 	MacAddressAnnotationTemplate    = "%s.kubernetes.io/mac_address"
 	IpAddressAnnotationTemplate     = "%s.kubernetes.io/ip_address"
 	CidrAnnotationTemplate          = "%s.kubernetes.io/cidr"
