@@ -363,7 +363,7 @@ jobs:
         run: make k8s-netpol-e2e
 
   k8s-netpol-legacy-e2e:
-    name: Kubernetes Network Policy E2E
+    name: Kubernetes Network Policy Legacy E2E
     needs: build-kube-ovn
     runs-on: ubuntu-22.04
     timeout-minutes: 60
