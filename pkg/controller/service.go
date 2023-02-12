@@ -14,7 +14,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -230,22 +229,18 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 
 	vpcLbConfig := c.GenVpcLoadBalancer(service.Vpc)
 	vip := service.Vip
-	if service.Protocol == v1.ProtocolTCP {
-		if err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, vpcLbConfig.TcpLoadBalancer); err != nil {
-			klog.Errorf("failed to delete vip %s from tcp lb, %v", vip, err)
-			return err
-		}
-		if err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, vpcLbConfig.TcpSessLoadBalancer); err != nil {
-			klog.Errorf("failed to delete vip %s from tcp session lb, %v", vip, err)
-			return err
-		}
-	} else {
-		if err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, vpcLbConfig.UdpLoadBalancer); err != nil {
-			klog.Errorf("failed to delete vip %s from udp lb, %v", vip, err)
-			return err
-		}
-		if err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, vpcLbConfig.UdpSessLoadBalancer); err != nil {
-			klog.Errorf("failed to delete vip %s from udp session lb, %v", vip, err)
+	var vpcLB [2]string
+	switch service.Protocol {
+	case v1.ProtocolTCP:
+		vpcLB = [2]string{vpcLbConfig.TcpLoadBalancer, vpcLbConfig.TcpSessLoadBalancer}
+	case v1.ProtocolUDP:
+		vpcLB = [2]string{vpcLbConfig.UdpLoadBalancer, vpcLbConfig.UdpSessLoadBalancer}
+	case v1.ProtocolSCTP:
+		vpcLB = [2]string{vpcLbConfig.SctpLoadBalancer, vpcLbConfig.SctpSessLoadBalancer}
+	}
+	for _, lb := range vpcLB {
+		if err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, lb); err != nil {
+			klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
 			return err
 		}
 	}
@@ -285,8 +280,6 @@ func (c *Controller) handleUpdateService(key string) error {
 		}
 	}
 
-	tcpVips := []string{}
-	udpVips := []string{}
 	vpcName := svc.Annotations[util.VpcAnnotation]
 	if vpcName == "" {
 		vpcName = util.DefaultVpc
@@ -297,94 +290,69 @@ func (c *Controller) handleUpdateService(key string) error {
 		return err
 	}
 
-	tcpLb, udpLb := vpc.Status.TcpLoadBalancer, vpc.Status.UdpLoadBalancer
-	oTcpLb, oUdpLb := vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer
+	tcpLb, udpLb, sctpLb := vpc.Status.TcpLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.SctpLoadBalancer
+	oTcpLb, oUdpLb, oSctpLb := vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
 	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
-		tcpLb, udpLb = vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer
-		oTcpLb, oUdpLb = vpc.Status.TcpLoadBalancer, vpc.Status.UdpLoadBalancer
+		tcpLb, udpLb, sctpLb = oTcpLb, oUdpLb, oSctpLb
 	}
 
+	var tcpVips, udpVips, sctpVips []string
 	for _, port := range svc.Spec.Ports {
-		if port.Protocol == v1.ProtocolTCP {
-			if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 {
-				tcpVips = append(tcpVips, fmt.Sprintf("[%s]:%d", ip, port.Port))
-			} else {
-				tcpVips = append(tcpVips, fmt.Sprintf("%s:%d", ip, port.Port))
-			}
-		} else if port.Protocol == v1.ProtocolUDP {
-			if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 {
-				udpVips = append(udpVips, fmt.Sprintf("[%s]:%d", ip, port.Port))
-			} else {
-				udpVips = append(udpVips, fmt.Sprintf("%s:%d", ip, port.Port))
-			}
+		switch port.Protocol {
+		case v1.ProtocolTCP:
+			tcpVips = append(tcpVips, util.JoinHostPort(ip, port.Port))
+		case v1.ProtocolUDP:
+			udpVips = append(udpVips, util.JoinHostPort(ip, port.Port))
+		case v1.ProtocolSCTP:
+			sctpVips = append(sctpVips, util.JoinHostPort(ip, port.Port))
 		}
 	}
+
 	// for service update
-	lbUuid, err := c.ovnLegacyClient.FindLoadbalancer(tcpLb)
-	if err != nil {
-		klog.Errorf("failed to get lb %v", err)
-		return err
-	}
-	vips, err := c.ovnLegacyClient.GetLoadBalancerVips(lbUuid)
-	if err != nil {
-		klog.Errorf("failed to get tcp lb vips %v", err)
-		return err
-	}
-	klog.V(3).Infof("exist tcp vips are %v", vips)
-	for _, vip := range tcpVips {
-		if err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, oTcpLb); err != nil {
-			klog.Errorf("failed to delete lb %s form %s, %v", vip, oTcpLb, err)
+	updateVip := func(lb, oLb string, lbVips []string) error {
+		uuid, err := c.ovnLegacyClient.FindLoadbalancer(lb)
+		if err != nil {
+			klog.Errorf("failed to get LB %s: %v", lb, err)
 			return err
 		}
-		if _, ok := vips[vip]; !ok {
-			klog.Infof("add vip %s to tcp lb %s", vip, oTcpLb)
-			c.updateEndpointQueue.Add(key)
-			break
-		}
-	}
-
-	for vip := range vips {
-		if parseVipAddr(vip) == ip && !util.IsStringIn(vip, tcpVips) {
-			klog.Infof("remove stall vip %s", vip)
-			err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, tcpLb)
-			if err != nil {
-				klog.Errorf("failed to delete vip %s from tcp lb %v", vip, err)
-				return err
-			}
-		}
-	}
-
-	lbUuid, err = c.ovnLegacyClient.FindLoadbalancer(udpLb)
-	if err != nil {
-		klog.Errorf("failed to get lb %v", err)
-		return err
-	}
-	vips, err = c.ovnLegacyClient.GetLoadBalancerVips(lbUuid)
-	if err != nil {
-		klog.Errorf("failed to get udp lb vips %v", err)
-		return err
-	}
-	klog.Infof("exist udp vips are %v", vips)
-	for _, vip := range udpVips {
-		if err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, oUdpLb); err != nil {
-			klog.Errorf("failed to delete lb %s form %s, %v", vip, oUdpLb, err)
+		vips, err := c.ovnLegacyClient.GetLoadBalancerVips(uuid)
+		if err != nil {
+			klog.Errorf("failed to get vips of LB %s: %v", lb, err)
 			return err
 		}
-		if _, ok := vips[vip]; !ok {
-			klog.Infof("add vip %s to udp lb %s", vip, oUdpLb)
-			c.updateEndpointQueue.Add(key)
-			break
-		}
-	}
-
-	for vip := range vips {
-		if parseVipAddr(vip) == ip && !util.IsStringIn(vip, udpVips) {
-			klog.Infof("remove stall vip %s", vip)
-			if err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, udpLb); err != nil {
-				klog.Errorf("failed to delete vip %s from udp lb %v", vip, err)
+		klog.V(3).Infof("existing vips of LB %s: %v", lb, vips)
+		for _, vip := range lbVips {
+			if err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, oLb); err != nil {
+				klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oLb, err)
 				return err
 			}
+			if _, ok := vips[vip]; !ok {
+				klog.Infof("add vip %s to LB %s", vip, lb)
+				c.updateEndpointQueue.Add(key)
+				break
+			}
 		}
+		for vip := range vips {
+			if parseVipAddr(vip) == ip && !util.IsStringIn(vip, lbVips) {
+				klog.Infof("remove stale vip %s", vip)
+				err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, lb)
+				if err != nil {
+					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
+					return err
+				}
+			}
+		}
+		return nil
+	}
+
+	if err = updateVip(tcpLb, oTcpLb, tcpVips); err != nil {
+		return err
+	}
+	if err = updateVip(udpLb, oUdpLb, udpVips); err != nil {
+		return err
+	}
+	if err = updateVip(sctpLb, oSctpLb, sctpVips); err != nil {
+		return err
 	}
 
 	return nil

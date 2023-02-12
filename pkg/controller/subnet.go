@@ -712,14 +712,22 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
+	lbs := []string{
+		vpc.Status.TcpLoadBalancer,
+		vpc.Status.TcpSessionLoadBalancer,
+		vpc.Status.UdpLoadBalancer,
+		vpc.Status.UdpSessionLoadBalancer,
+		vpc.Status.SctpLoadBalancer,
+		vpc.Status.SctpSessionLoadBalancer,
+	}
 	if c.config.EnableLb && subnet.Name != c.config.NodeSwitch {
 		if subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb {
-			if err := c.ovnLegacyClient.AddLbToLogicalSwitch(vpc.Status.TcpLoadBalancer, vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.UdpSessionLoadBalancer, subnet.Name); err != nil {
+			if err := c.ovnLegacyClient.AddLbToLogicalSwitch(subnet.Name, lbs...); err != nil {
 				c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", err.Error())
 				return err
 			}
 		} else {
-			if err := c.ovnLegacyClient.RemoveLbFromLogicalSwitch(vpc.Status.TcpLoadBalancer, vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.UdpSessionLoadBalancer, subnet.Name); err != nil {
+			if err := c.ovnLegacyClient.RemoveLbFromLogicalSwitch(subnet.Name, lbs...); err != nil {
 				klog.Error("remove load-balancer from subnet %s failed: %v", subnet.Name, err)
 				return err
 			}
