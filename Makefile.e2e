@@ -17,13 +17,14 @@ K8S_CONFORMANCE_E2E_SKIP += "sig-network.*Services.*session affinity"
 endif
 endif
 
-ifeq ($(shell test $(E2E_IP_FAMILY) != ipv6 && echo true),true)
-K8S_CONFORMANCE_E2E_FOCUS += \
-	"sig-network.*Feature:Networking-IPv4" \
-	"sig-network.*Feature:Feature:Networking-DNS"
+ifneq ($(E2E_IP_FAMILY),ipv6)
+K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Feature:Networking-IPv4"
+ifeq ($(E2E_NETWORK_MODE),overlay)
+K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Feature:Networking-DNS"
+endif
 endif
 
-ifeq ($(shell test $(E2E_IP_FAMILY) = dual && echo true),true)
+ifeq ($(E2E_IP_FAMILY),dual)
 K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Feature:IPv6DualStack"
 endif
 
@@ -102,7 +103,7 @@ kube-ovn-lb-svc-conformance-e2e:
 
 .PHONY: kube-ovn-security-e2e
 kube-ovn-security-e2e:
-	go test ./test/e2e/kube-ovn -c -o test/e2e/kube-ovn/e2e.test
+	go test ./test/e2e/security -c -o test/e2e/security/e2e.test
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
