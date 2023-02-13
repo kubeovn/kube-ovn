@@ -438,7 +438,7 @@ func checkNodeGwNicInNs(ip, gw string, gwNS ns.NetNS) error {
 	}
 	if exists {
 		return ns.WithNetNSPath(gwNS.Path(), func(_ ns.NetNS) error {
-			return waitNetworkReady(util.NodeGwNic, ip, gw, true, false)
+			return waitNetworkReady(util.NodeGwNic, ip, gw, true, false, 3)
 		})
 	} else {
 		err := fmt.Errorf("node external gw not ready")

@@ -867,9 +867,12 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 		mac = cachedEip.Spec.MacAddress
 	}
 	if v4ip == "" || mac == "" {
-		return fmt.Errorf("lrp '%s' ip or mac should not be empty", lrpEipName)
+		err := fmt.Errorf("lrp '%s' ip or mac should not be empty", lrpEipName)
+		klog.Error(err)
+		return err
 	}
 	if err = c.patchOvnEipStatus(lrpEipName, false); err != nil {
+		klog.Errorf("failed to patch ovn eip %s: %v", lrpEipName, err)
 		return err
 	}
 	// init lrp gw chassis group
@@ -889,6 +892,7 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 		return err
 	}
 	if err = c.patchOvnEipStatus(lrpEipName, true); err != nil {
+		klog.Errorf("failed to patch ovn eip %s: %v", lrpEipName, err)
 		return err
 	}
 	cachedVpc, err := c.vpcsLister.Get(key)
