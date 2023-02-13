@@ -449,33 +449,40 @@ func (c *Controller) gcLoadBalancer() error {
 		klog.Errorf("failed to list svc, %v", err)
 		return err
 	}
-	var tcpVips, udpVips, sctpVips []string
-	var tcpSessionVips, udpSessionVips, sctpSessionVips []string
+	tcpVips := make(map[string]struct{}, len(svcs)*2)
+	udpVips := make(map[string]struct{}, len(svcs)*2)
+	sctpVips := make(map[string]struct{}, len(svcs)*2)
+	tcpSessionVips := make(map[string]struct{}, len(svcs)*2)
+	udpSessionVips := make(map[string]struct{}, len(svcs)*2)
+	sctpSessionVips := make(map[string]struct{}, len(svcs)*2)
 	for _, svc := range svcs {
-		ip := svc.Spec.ClusterIP
+		ips := util.ServiceClusterIPs(*svc)
 		if v, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
-			ip = v
+			ips = strings.Split(v, ",")
 		}
-		for _, port := range svc.Spec.Ports {
-			vip := util.JoinHostPort(ip, port.Port)
-			switch port.Protocol {
-			case corev1.ProtocolTCP:
-				if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
-					tcpSessionVips = append(tcpSessionVips, vip)
-				} else {
-					tcpVips = append(tcpVips, vip)
-				}
-			case corev1.ProtocolUDP:
-				if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
-					udpSessionVips = append(udpSessionVips, vip)
-				} else {
-					udpVips = append(udpVips, vip)
-				}
-			case corev1.ProtocolSCTP:
-				if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
-					sctpSessionVips = append(sctpSessionVips, vip)
-				} else {
-					sctpVips = append(sctpVips, vip)
+
+		for _, ip := range ips {
+			for _, port := range svc.Spec.Ports {
+				vip := util.JoinHostPort(ip, port.Port)
+				switch port.Protocol {
+				case corev1.ProtocolTCP:
+					if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
+						tcpSessionVips[vip] = struct{}{}
+					} else {
+						tcpVips[vip] = struct{}{}
+					}
+				case corev1.ProtocolUDP:
+					if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
+						udpSessionVips[vip] = struct{}{}
+					} else {
+						udpVips[vip] = struct{}{}
+					}
+				case corev1.ProtocolSCTP:
+					if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
+						sctpSessionVips[vip] = struct{}{}
+					} else {
+						sctpVips[vip] = struct{}{}
+					}
 				}
 			}
 		}
@@ -492,24 +499,18 @@ func (c *Controller) gcLoadBalancer() error {
 		tcpSessLb, udpSessLb, sctpSessLb := vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
 		vpcLbs = append(vpcLbs, tcpLb, udpLb, sctpLb, tcpSessLb, udpSessLb, sctpSessLb)
 
-		removeVIP := func(lb string, lbVips []string) error {
+		removeVIP := func(lb string, svcVips map[string]struct{}) error {
 			if lb == "" {
 				return nil
 			}
-			uuid, err := c.ovnLegacyClient.FindLoadbalancer(lb)
-			if err != nil {
-				klog.Errorf("failed to get LB %s: %v", lb, err)
-				return nil
-			}
-			vips, err := c.ovnLegacyClient.GetLoadBalancerVips(uuid)
+			vips, err := c.ovnLegacyClient.GetLoadBalancerVips(lb)
 			if err != nil {
 				klog.Errorf("failed to get vips of LB %s: %v", lb, err)
 				return err
 			}
 			for vip := range vips {
-				if !util.IsStringIn(vip, lbVips) {
-					err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, lb)
-					if err != nil {
+				if _, ok := svcVips[vip]; !ok {
+					if err = c.ovnLegacyClient.DeleteLoadBalancerVip(vip, lb); err != nil {
 						klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
 						return err
 					}

@@ -1490,22 +1490,7 @@ func (c LegacyClient) removeLoadBalancerFromLogicalSwitch(lb, ls string) error {
 
 // DeleteLoadBalancerVip delete a vip rule from loadbalancer
 func (c LegacyClient) DeleteLoadBalancerVip(vip, lb string) error {
-	lbUuid, err := c.FindLoadbalancer(lb)
-	if err != nil {
-		klog.Errorf("failed to get lb: %v", err)
-		return err
-	}
-
-	existVips, err := c.GetLoadBalancerVips(lbUuid)
-	if err != nil {
-		klog.Errorf("failed to list lb %s vips: %v", lb, err)
-		return err
-	}
-	// vip is empty or delete last rule will destroy the loadbalancer
-	if vip == "" || len(existVips) == 1 {
-		return nil
-	}
-	_, err = c.ovnNbCommand(IfExists, "lb-del", lb, vip)
+	_, err := c.ovnNbCommand(IfExists, "lb-del", lb, vip)
 	return err
 }
 
@@ -1517,7 +1502,7 @@ func (c LegacyClient) GetLoadBalancerVips(lb string) (map[string]string, error) 
 		return nil, err
 	}
 	result := map[string]string{}
-	err = json.Unmarshal([]byte(strings.Replace(output, "=", ":", -1)), &result)
+	err = json.Unmarshal([]byte(strings.ReplaceAll(output, "=", ":")), &result)
 	return result, err
 }
 

@@ -113,14 +113,8 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	var LbIPs []string
 	if vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
 		LbIPs = []string{vip}
-	} else {
-		LbIPs = svc.Spec.ClusterIPs
-		if len(LbIPs) == 0 && svc.Spec.ClusterIP != "" && svc.Spec.ClusterIP != v1.ClusterIPNone {
-			LbIPs = []string{svc.Spec.ClusterIP}
-		}
-		if len(LbIPs) == 0 || LbIPs[0] == v1.ClusterIPNone {
-			return nil
-		}
+	} else if LbIPs = util.ServiceClusterIPs(*svc); len(LbIPs) == 0 {
+		return nil
 	}
 
 	pods, err := c.podsLister.Pods(namespace).List(labels.Set(svc.Spec.Selector).AsSelector())

@@ -16,3 +16,11 @@ func GetNodeInternalIP(node v1.Node) (ipv4, ipv6 string) {
 
 	return SplitStringIP(strings.Join(ips, ","))
 }
+
+func ServiceClusterIPs(svc v1.Service) []string {
+	ips := svc.Spec.ClusterIPs
+	if len(ips) == 0 && svc.Spec.ClusterIP != v1.ClusterIPNone && svc.Spec.ClusterIP != "" {
+		ips = []string{svc.Spec.ClusterIP}
+	}
+	return ips
+}

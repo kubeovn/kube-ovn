@@ -187,7 +187,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 			nodeIPs = append(nodeIPs, podIP.IP)
 		}
 		service = serviceClient.Get(serviceName)
-		for _, ip := range service.Spec.ClusterIPs {
+		for _, ip := range util.ServiceClusterIPs(*service) {
 			protocol := strings.ToLower(util.CheckProtocol(ip))
 			ginkgo.By("Checking connection from " + hostPodName + " to " + serviceName + " via " + protocol)
 			cmd := fmt.Sprintf("curl -q -s --connect-timeout 5 %s/clientip", net.JoinHostPort(ip, portStr))
