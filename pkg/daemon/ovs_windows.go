@@ -237,12 +237,12 @@ func generateNicName(containerID, ifname string) (string, string) {
 	return fmt.Sprintf("%s_%s_h", containerID[0:12-len(ifname)], ifname), fmt.Sprintf("%s_%s_c", containerID[0:12-len(ifname)], ifname)
 }
 
-func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool) error {
+func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool, maxRetry int) error {
 	ips := strings.Split(ipAddr, ",")
 	for i, gw := range strings.Split(gateway, ",") {
 		src := strings.Split(ips[i], "/")[0]
 		if !underlayGateway || util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv6 {
-			if err := pingGateway(gw, src, verbose); err != nil {
+			if err := pingGateway(gw, src, verbose, maxRetry); err != nil {
 				return err
 			}
 		}
@@ -267,7 +267,7 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 
 	// ping ovn0 gw to activate the flow
 	klog.Infof("wait ovn0 gw ready")
-	if err := waitNetworkReady(util.NodeNic, ip, gw, false, true); err != nil {
+	if err := waitNetworkReady(util.NodeNic, ip, gw, false, true, gatewayCheckMaxRetry); err != nil {
 		klog.Errorf("failed to init ovn0 check: %v", err)
 		return err
 	}
