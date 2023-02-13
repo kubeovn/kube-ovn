@@ -237,7 +237,9 @@ func getServicePortBackends(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort
 
 		for _, address := range subset.Addresses {
 			if address.TargetRef == nil || address.TargetRef.Kind != "Pod" {
-				backends = append(backends, util.JoinHostPort(address.IP, targetPort))
+				if util.CheckProtocol(address.IP) == protocol {
+					backends = append(backends, util.JoinHostPort(address.IP, targetPort))
+				}
 				continue
 			}
 
@@ -257,7 +259,7 @@ func getServicePortBackends(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort
 					break
 				}
 			}
-			if ip == "" {
+			if ip == "" && util.CheckProtocol(address.IP) == protocol {
 				ip = address.IP
 			}
 			if ip != "" {
