@@ -339,36 +339,47 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDef
 		}
 
 		if gwCheckMode != gatewayModeDisabled {
-			underlayGateway := gwCheckMode == gatewayCheckModeArping
-
-			if u2oInterconnectionIP != "" {
-				if nicType != util.InternalType {
-					if err := waitNetworkReady(ifName, ipAddr, u2oInterconnectionIP, false, true); err != nil {
-						return err
-					}
-				} else {
-					if err := waitNetworkReady(nicName, ipAddr, u2oInterconnectionIP, false, true); err != nil {
-						return err
-					}
-				}
-			}
+			var (
+				underlayGateway = gwCheckMode == gatewayCheckModeArping || gwCheckMode == gatewayCheckModeArpingNotConcerned
+				interfaceName   = nicName
+			)
 
 			if nicType != util.InternalType {
-				return waitNetworkReady(ifName, ipAddr, gateway, underlayGateway, true)
+				interfaceName = ifName
 			}
-			return waitNetworkReady(nicName, ipAddr, gateway, underlayGateway, true)
+
+			if u2oInterconnectionIP != "" {
+				if err := checkGatewayReady(gwCheckMode, interfaceName, ipAddr, u2oInterconnectionIP, false, true); err != nil {
+					return err
+				}
+			}
+			return checkGatewayReady(gwCheckMode, interfaceName, ipAddr, gateway, underlayGateway, true)
 		}
 
 		return nil
 	})
 }
 
-func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool) error {
+func checkGatewayReady(gwCheckMode int, intr, ipAddr, gateway string, underlayGateway, verbose bool) error {
+	var err error
+
+	if gwCheckMode == gatewayCheckModeArpingNotConcerned || gwCheckMode == gatewayCheckModePingNotConcerned {
+		// ignore error while ‘disableGatewayCheck=true’
+		if err = waitNetworkReady(intr, ipAddr, gateway, underlayGateway, verbose, 1); err != nil {
+			err = nil
+		}
+	} else {
+		err = waitNetworkReady(intr, ipAddr, gateway, underlayGateway, verbose, gatewayCheckMaxRetry)
+	}
+	return err
+}
+
+func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool, maxRetry int) error {
 	ips := strings.Split(ipAddr, ",")
 	for i, gw := range strings.Split(gateway, ",") {
 		src := strings.Split(ips[i], "/")[0]
 		if underlayGateway && util.CheckProtocol(gw) == kubeovnv1.ProtocolIPv4 {
-			mac, count, err := util.ArpResolve(nic, src, gw, time.Second, gatewayCheckMaxRetry)
+			mac, count, err := util.ArpResolve(nic, src, gw, time.Second, maxRetry)
 			cniConnectivityResult.WithLabelValues(nodeName).Add(float64(count))
 			if err != nil {
 				err = fmt.Errorf("network %s with gateway %s is not ready for interface %s after %d checks: %v", ips[i], gw, nic, count, err)
@@ -380,7 +391,7 @@ func waitNetworkReady(nic, ipAddr, gateway string, underlayGateway, verbose bool
 				klog.Infof("network %s with gateway %s is ready for interface %s after %d checks", ips[i], gw, nic, count)
 			}
 		} else {
-			if err := pingGateway(gw, src, verbose); err != nil {
+			if err := pingGateway(gw, src, verbose, maxRetry); err != nil {
 				return err
 			}
 		}
@@ -414,7 +425,7 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 
 	// ping ovn0 gw to activate the flow
 	klog.Infof("wait ovn0 gw ready")
-	if err := waitNetworkReady(util.NodeNic, ip, gw, false, true); err != nil {
+	if err := waitNetworkReady(util.NodeNic, ip, gw, false, true, gatewayCheckMaxRetry); err != nil {
 		klog.Errorf("failed to init ovn0 check: %v", err)
 		return err
 	}
@@ -441,7 +452,7 @@ func (c *Controller) loopOvn0Check() {
 	}
 	ip := node.Annotations[util.IpAddressAnnotation]
 	gw := node.Annotations[util.GatewayAnnotation]
-	if err := waitNetworkReady(util.NodeNic, ip, gw, false, false); err != nil {
+	if err := waitNetworkReady(util.NodeNic, ip, gw, false, false, gatewayCheckMaxRetry); err != nil {
 		util.LogFatalAndExit(err, "failed to ping ovn0 gateway %s", gw)
 	}
 }

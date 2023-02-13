@@ -14,15 +14,15 @@ import (
 
 const gatewayCheckMaxRetry = 200
 
-func pingGateway(gw, src string, verbose bool) error {
+func pingGateway(gw, src string, verbose bool, maxRetry int) error {
 	pinger, err := goping.NewPinger(gw)
 	if err != nil {
 		return fmt.Errorf("failed to init pinger: %v", err)
 	}
 	pinger.SetPrivileged(true)
 	// CNITimeoutSec = 220, cannot exceed
-	pinger.Count = gatewayCheckMaxRetry
-	pinger.Timeout = gatewayCheckMaxRetry * time.Second
+	pinger.Count = maxRetry
+	pinger.Timeout = time.Duration(maxRetry) * time.Second
 	pinger.Interval = time.Second
 
 	var success bool
@@ -34,7 +34,7 @@ func pingGateway(gw, src string, verbose bool) error {
 
 	cniConnectivityResult.WithLabelValues(nodeName).Add(float64(pinger.PacketsSent))
 	if !success {
-		return fmt.Errorf("%s network not ready after %d ping %s", src, gatewayCheckMaxRetry, gw)
+		return fmt.Errorf("%s network not ready after %d ping %s", src, maxRetry, gw)
 	}
 	if verbose {
 		klog.Infof("%s network ready after %d ping, gw %s", src, pinger.PacketsSent, gw)

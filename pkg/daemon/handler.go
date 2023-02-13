@@ -26,6 +26,8 @@ const (
 	gatewayModeDisabled = iota
 	gatewayCheckModePing
 	gatewayCheckModeArping
+	gatewayCheckModePingNotConcerned
+	gatewayCheckModeArpingNotConcerned
 )
 
 type cniServerHandler struct {
@@ -213,9 +215,15 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 
 		//skip ping check gateway for pods during live migration
 		if pod.Annotations[fmt.Sprintf(util.LiveMigrationAnnotationTemplate, podRequest.Provider)] != "true" {
-			if !podSubnet.Spec.DisableGatewayCheck {
-				if podSubnet.Spec.Vlan != "" && !podSubnet.Spec.LogicalGateway {
+			if podSubnet.Spec.Vlan != "" && !podSubnet.Spec.LogicalGateway {
+				if podSubnet.Spec.DisableGatewayCheck {
+					gatewayCheckMode = gatewayCheckModeArpingNotConcerned
+				} else {
 					gatewayCheckMode = gatewayCheckModeArping
+				}
+			} else {
+				if podSubnet.Spec.DisableGatewayCheck {
+					gatewayCheckMode = gatewayCheckModePingNotConcerned
 				} else {
 					gatewayCheckMode = gatewayCheckModePing
 				}
