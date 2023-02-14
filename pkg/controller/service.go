@@ -33,6 +33,7 @@ func (c *Controller) enqueueAddService(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
+	c.updateEndpointQueue.Add(key)
 	svc := obj.(*v1.Service)
 
 	if c.config.EnableNP {

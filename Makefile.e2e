@@ -3,7 +3,7 @@ E2E_IP_FAMILY := $(shell echo $${E2E_IP_FAMILY:-ipv4})
 E2E_NETWORK_MODE := $(shell echo $${E2E_NETWORK_MODE:-overlay})
 
 K8S_CONFORMANCE_E2E_FOCUS = "sig-network.*Conformance" "sig-network.*Feature:NoSNAT"
-K8S_CONFORMANCE_E2E_SKIP = "sig-network.*Services.*switch session affinity"
+K8S_CONFORMANCE_E2E_SKIP =
 K8S_NETPOL_E2E_FOCUS = "sig-network.*Feature:NetworkPolicy"
 K8S_NETPOL_E2E_SKIP = "sig-network.*NetworkPolicyLegacy"
 K8S_NETPOL_LEGACY_E2E_FOCUS = "sig-network.*NetworkPolicyLegacy"
