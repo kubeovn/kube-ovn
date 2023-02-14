@@ -160,6 +160,11 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 		klog.Errorf("failed to create external gateway switch, %v", err)
 		return err
 	}
+	lrpEipName := fmt.Sprintf("%s-%s", util.DefaultVpc, c.config.ExternalGatewaySwitch)
+	if err = c.patchOvnEipStatus(lrpEipName, true); err != nil {
+		klog.Errorf("failed to patch ovn eip cr status for lrp %s, %v", lrpEipName, err)
+		return err
+	}
 	return nil
 }
 
@@ -181,8 +186,13 @@ func (c *Controller) createDefaultVpcLrpEip(config map[string]string) (string, s
 	}
 	var v4ip, mac string
 	if !needCreateEip {
-		v4ip = cachedEip.Spec.V4Ip
-		mac = cachedEip.Spec.MacAddress
+		v4ip = cachedEip.Status.V4Ip
+		mac = cachedEip.Status.MacAddress
+		if v4ip == "" || mac == "" {
+			err = fmt.Errorf("lrp '%s' ip or mac should not be empty", lrpEipName)
+			klog.Error(err)
+			return "", "", err
+		}
 	} else {
 		var v6ip string
 		v4ip, v6ip, mac, err = c.acquireIpAddress(c.config.ExternalGatewaySwitch, lrpEipName, lrpEipName)
@@ -194,15 +204,10 @@ func (c *Controller) createDefaultVpcLrpEip(config map[string]string) (string, s
 			klog.Errorf("failed to create ovn eip cr for lrp %s, %v", lrpEipName, err)
 			return "", "", err
 		}
-		if err = c.patchOvnEipStatus(lrpEipName); err != nil {
+		if err = c.patchOvnEipStatus(lrpEipName, false); err != nil {
 			klog.Errorf("failed to patch ovn eip cr status for lrp %s, %v", lrpEipName, err)
 			return "", "", err
 		}
-	}
-	if v4ip == "" || mac == "" {
-		err = fmt.Errorf("lrp '%s' ip or mac should not be empty", lrpEipName)
-		klog.Error(err)
-		return "", "", err
 	}
 	v4ipCidr := util.GetIpAddrWithMask(v4ip, cachedSubnet.Spec.CIDRBlock)
 	return v4ipCidr, mac, nil

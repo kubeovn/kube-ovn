@@ -327,6 +327,11 @@ func (c *Controller) markAndCleanLSP() error {
 		if node.Annotations[util.AllocatedAnnotation] == "true" {
 			ipMap[fmt.Sprintf("node-%s", node.Name)] = struct{}{}
 		}
+
+		if _, err := c.ovnEipsLister.Get(node.Name); err == nil {
+			// node external gw lsp is managed by ovn eip cr, skip gc its lsp
+			ipMap[node.Name] = struct{}{}
+		}
 	}
 
 	// The lsp for vm pod should not be deleted if vm still exists

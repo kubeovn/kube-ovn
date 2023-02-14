@@ -773,15 +773,21 @@ spec:
       subresources:
         status: {}
       additionalPrinterColumns:
-      - jsonPath: .spec.v4ip
-        name: IP
+      - jsonPath: .status.v4Ip
+        name: V4IP
         type: string
-      - jsonPath: .spec.macAddress
+      - jsonPath: .status.v6Ip
+        name: V6IP
+        type: string
+      - jsonPath: .status.macAddress
         name: Mac
         type: string
       - jsonPath: .spec.type
         name: Type
         type: string
+      - jsonPath: .status.ready
+        name: Ready
+        type: boolean
       schema:
         openAPIV3Schema:
           type: object
@@ -789,7 +795,11 @@ spec:
             status:
               type: object
               properties:
+                ready:
+                  type: boolean
                 v4Ip:
+                  type: string
+                v6Ip:
                   type: string
                 macAddress:
                   type: string
@@ -817,7 +827,9 @@ spec:
                   type: string
                 type:
                   type: string
-                v4ip:
+                v4Ip:
+                  type: string
+                v6Ip:
                   type: string
                 macAddress:
                   type: string
@@ -3170,7 +3182,7 @@ spec:
             name: host-run-ovn
           - mountPath: /var/run/netns
             name: host-ns
-            mountPropagation: HostToContainer
+            mountPropagation: Bidirectional
           - mountPath: /var/log/kube-ovn
             name: kube-ovn-log
           - mountPath: /var/log/openvswitch

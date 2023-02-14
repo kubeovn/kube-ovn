@@ -23,6 +23,13 @@ const (
 	VipAnnotation        = "ovn.kubernetes.io/vip"
 	ChassisAnnotation    = "ovn.kubernetes.io/chassis"
 
+	ExternalIpAnnotation         = "ovn.kubernetes.io/external_ip"
+	ExternalMacAnnotation        = "ovn.kubernetes.io/external_mac"
+	ExternalCidrAnnotation       = "ovn.kubernetes.io/external_cidr"
+	ExternalSwitchAnnotation     = "ovn.kubernetes.io/external_switch"
+	ExternalGatewayAnnotation    = "ovn.kubernetes.io/external_gateway"
+	ExternalGwPortNameAnnotation = "ovn.kubernetes.io/external_gw_port_name"
+
 	VpcNatGatewayAnnotation     = "ovn.kubernetes.io/vpc_nat_gw"
 	VpcNatGatewayInitAnnotation = "ovn.kubernetes.io/vpc_nat_gw_init"
 	VpcEipsAnnotation           = "ovn.kubernetes.io/vpc_eips"
@@ -91,6 +98,7 @@ const (
 	SubnetNameLabel            = "ovn.kubernetes.io/subnet"
 	ICGatewayLabel             = "ovn.kubernetes.io/ic-gw"
 	ExGatewayLabel             = "ovn.kubernetes.io/external-gw"
+	NodeExtGwLabel             = "ovn.kubernetes.io/node-ext-gw"
 	VpcNatGatewayLabel         = "ovn.kubernetes.io/vpc-nat-gw"
 	IpReservedLabel            = "ovn.kubernetes.io/ip_reserved"
 	VpcNatGatewayNameLabel     = "ovn.kubernetes.io/vpc-nat-gw-name"
@@ -106,6 +114,12 @@ const (
 	NetworkTypeGeneve = "geneve"
 	NetworkTypeVxlan  = "vxlan"
 	NetworkTypeStt    = "stt"
+
+	LoNic         = "lo"
+	NodeGwNic     = "ovnext0"
+	NodeGwNs      = "ovnext"
+	NodeGwNsPath  = "/var/run/netns/ovnext"
+	BindMountPath = "/run/netns"
 
 	NodeNic           = "ovn0"
 	NodeAllowPriority = "3000"
@@ -150,10 +164,11 @@ const (
 	EcmpRouteType   = "ecmp"
 	NormalRouteType = "normal"
 
-	LrpUsingEip  = "lrp"
-	FipUsingEip  = "fip"
-	SnatUsingEip = "snat"
-	DnatUsingEip = "dnat"
+	LrpUsingEip       = "lrp"
+	FipUsingEip       = "fip"
+	SnatUsingEip      = "snat"
+	DnatUsingEip      = "dnat"
+	NodeExtGwUsingEip = "node-ext-gw"
 
 	OvnFip      = "ovn"
 	IptablesFip = "iptables"

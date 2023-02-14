@@ -619,11 +619,11 @@ func formatVpc(vpc *kubeovnv1.Vpc, c *Controller) error {
 				return fmt.Errorf("invalid cidr %s: %w", item.CIDR, err)
 			}
 		} else if ip := net.ParseIP(item.CIDR); ip == nil {
-			return fmt.Errorf("invalid IP %s", item.CIDR)
+			return fmt.Errorf("invalid ip %s", item.CIDR)
 		}
 		// check next hop ip
 		if ip := net.ParseIP(item.NextHopIP); ip == nil {
-			return fmt.Errorf("invalid next hop IP %s", item.NextHopIP)
+			return fmt.Errorf("invalid next hop ip %s", item.NextHopIP)
 		}
 	}
 
@@ -634,8 +634,13 @@ func formatVpc(vpc *kubeovnv1.Vpc, c *Controller) error {
 				changed = true
 			}
 		} else {
-			if ip := net.ParseIP(route.NextHopIP); ip == nil {
-				return fmt.Errorf("bad next hop ip: %s", route.NextHopIP)
+			// ecmp policy route may reroute to multiple next hop ips
+			for _, ipStr := range strings.Split(route.NextHopIP, ",") {
+				if ip := net.ParseIP(ipStr); ip == nil {
+					err := fmt.Errorf("invalid next hop ips: %s", route.NextHopIP)
+					klog.Error(err)
+					return err
+				}
 			}
 		}
 	}
@@ -819,9 +824,12 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 		mac = cachedEip.Spec.MacAddress
 	}
 	if v4ip == "" || mac == "" {
-		return fmt.Errorf("lrp '%s' ip or mac should not be empty", lrpEipName)
+		err := fmt.Errorf("lrp '%s' ip or mac should not be empty", lrpEipName)
+		klog.Error(err)
+		return err
 	}
-	if err = c.patchOvnEipStatus(lrpEipName); err != nil {
+	if err = c.patchOvnEipStatus(lrpEipName, false); err != nil {
+		klog.Errorf("failed to patch ovn eip %s: %v", lrpEipName, err)
 		return err
 	}
 	// init lrp gw chassis group
@@ -840,11 +848,16 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 		klog.Errorf("failed to connect router '%s' to external, %v", key, err)
 		return err
 	}
+	if err = c.patchOvnEipStatus(lrpEipName, true); err != nil {
+		klog.Errorf("failed to patch ovn eip %s: %v", lrpEipName, err)
+		return err
+	}
 	cachedVpc, err := c.vpcsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		klog.Error("failed to get vpc %s, %v", key, err)
 		return err
 	}
 	vpc := cachedVpc.DeepCopy()
