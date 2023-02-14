@@ -503,51 +503,23 @@ func (c LegacyClient) CreateLogicalSwitch(ls, lr, subnet, gateway string, needRo
 	return nil
 }
 
-func (c LegacyClient) AddLbToLogicalSwitch(tcpLb, tcpSessLb, udpLb, udpSessLb, ls string) error {
-	if err := c.addLoadBalancerToLogicalSwitch(tcpLb, ls); err != nil {
-		klog.Errorf("failed to add tcp lb to %s, %v", ls, err)
-		return err
+func (c LegacyClient) AddLbToLogicalSwitch(ls string, lbs ...string) error {
+	for _, lb := range lbs {
+		if err := c.addLoadBalancerToLogicalSwitch(lb, ls); err != nil {
+			klog.Errorf("failed to add LB %s to LS %s: %v", lb, ls, err)
+			return err
+		}
 	}
-
-	if err := c.addLoadBalancerToLogicalSwitch(udpLb, ls); err != nil {
-		klog.Errorf("failed to add udp lb to %s, %v", ls, err)
-		return err
-	}
-
-	if err := c.addLoadBalancerToLogicalSwitch(tcpSessLb, ls); err != nil {
-		klog.Errorf("failed to add tcp session lb to %s, %v", ls, err)
-		return err
-	}
-
-	if err := c.addLoadBalancerToLogicalSwitch(udpSessLb, ls); err != nil {
-		klog.Errorf("failed to add udp session lb to %s, %v", ls, err)
-		return err
-	}
-
 	return nil
 }
 
-func (c LegacyClient) RemoveLbFromLogicalSwitch(tcpLb, tcpSessLb, udpLb, udpSessLb, ls string) error {
-	if err := c.removeLoadBalancerFromLogicalSwitch(tcpLb, ls); err != nil {
-		klog.Errorf("failed to remove tcp lb from %s, %v", ls, err)
-		return err
+func (c LegacyClient) RemoveLbFromLogicalSwitch(ls string, lbs ...string) error {
+	for _, lb := range lbs {
+		if err := c.removeLoadBalancerFromLogicalSwitch(lb, ls); err != nil {
+			klog.Errorf("failed to remove LB %s from LS %s: %v", lb, ls, err)
+			return err
+		}
 	}
-
-	if err := c.removeLoadBalancerFromLogicalSwitch(udpLb, ls); err != nil {
-		klog.Errorf("failed to remove udp lb from %s, %v", ls, err)
-		return err
-	}
-
-	if err := c.removeLoadBalancerFromLogicalSwitch(tcpSessLb, ls); err != nil {
-		klog.Errorf("failed to remove tcp session lb from %s, %v", ls, err)
-		return err
-	}
-
-	if err := c.removeLoadBalancerFromLogicalSwitch(udpSessLb, ls); err != nil {
-		klog.Errorf("failed to remove udp session lb from %s, %v", ls, err)
-		return err
-	}
-
 	return nil
 }
 
@@ -1518,22 +1490,7 @@ func (c LegacyClient) removeLoadBalancerFromLogicalSwitch(lb, ls string) error {
 
 // DeleteLoadBalancerVip delete a vip rule from loadbalancer
 func (c LegacyClient) DeleteLoadBalancerVip(vip, lb string) error {
-	lbUuid, err := c.FindLoadbalancer(lb)
-	if err != nil {
-		klog.Errorf("failed to get lb: %v", err)
-		return err
-	}
-
-	existVips, err := c.GetLoadBalancerVips(lbUuid)
-	if err != nil {
-		klog.Errorf("failed to list lb %s vips: %v", lb, err)
-		return err
-	}
-	// vip is empty or delete last rule will destroy the loadbalancer
-	if vip == "" || len(existVips) == 1 {
-		return nil
-	}
-	_, err = c.ovnNbCommand(IfExists, "lb-del", lb, vip)
+	_, err := c.ovnNbCommand(IfExists, "lb-del", lb, vip)
 	return err
 }
 
@@ -1545,7 +1502,7 @@ func (c LegacyClient) GetLoadBalancerVips(lb string) (map[string]string, error) 
 		return nil, err
 	}
 	result := map[string]string{}
-	err = json.Unmarshal([]byte(strings.Replace(output, "=", ":", -1)), &result)
+	err = json.Unmarshal([]byte(strings.ReplaceAll(output, "=", ":")), &result)
 	return result, err
 }
 

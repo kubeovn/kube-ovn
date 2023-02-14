@@ -15,6 +15,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -75,6 +76,8 @@ func (c *Controller) InitDefaultVpc() error {
 		vpc.Status.TcpSessionLoadBalancer = c.config.ClusterTcpSessionLoadBalancer
 		vpc.Status.UdpLoadBalancer = c.config.ClusterUdpLoadBalancer
 		vpc.Status.UdpSessionLoadBalancer = c.config.ClusterUdpSessionLoadBalancer
+		vpc.Status.SctpLoadBalancer = c.config.ClusterSctpLoadBalancer
+		vpc.Status.SctpSessionLoadBalancer = c.config.ClusterSctpSessionLoadBalancer
 	}
 	vpc.Status.Standby = true
 	vpc.Status.Default = true
@@ -207,6 +210,36 @@ func (c *Controller) initClusterRouter() error {
 	return c.ovnLegacyClient.CreateLogicalRouter(c.config.ClusterRouter)
 }
 
+func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
+	protocol = strings.ToLower(protocol)
+	uuid, err := c.ovnLegacyClient.FindLoadbalancer(name)
+	if err != nil {
+		return fmt.Errorf("failed to find %s LB: %v", protocol, err)
+	}
+	if uuid == "" {
+		klog.Infof("init cluster %s load balancer %s", protocol, name)
+		var selectFields string
+		if sessionAffinity {
+			selectFields = string(ovnnb.LoadBalancerSelectionFieldsIPSrc)
+		}
+		if err = c.ovnLegacyClient.CreateLoadBalancer(name, protocol, selectFields); err != nil {
+			klog.Errorf("failed to create cluster %s load balancer: %v", protocol, err)
+			return err
+		}
+	} else {
+		klog.Infof("%s load balancer %s already exists: uuid = %s", protocol, name, uuid)
+	}
+
+	if sessionAffinity {
+		if err = c.ovnLegacyClient.SetLoadBalancerAffinityTimeout(name, util.DefaultServiceSessionStickinessTimeout); err != nil {
+			klog.Errorf("failed to set affinity timeout of %s load balancer %s: %v", protocol, name, err)
+			return err
+		}
+	}
+
+	return nil
+}
+
 // InitLoadBalancer init the default tcp and udp cluster loadbalancer
 func (c *Controller) initLoadBalancer() error {
 	vpcs, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().List(context.Background(), metav1.ListOptions{})
@@ -218,74 +251,22 @@ func (c *Controller) initLoadBalancer() error {
 	for _, cachedVpc := range vpcs.Items {
 		vpc := cachedVpc.DeepCopy()
 		vpcLb := c.GenVpcLoadBalancer(vpc.Name)
-
-		tcpLb, err := c.ovnLegacyClient.FindLoadbalancer(vpcLb.TcpLoadBalancer)
-		if err != nil {
-			return fmt.Errorf("failed to find tcp lb: %v", err)
-		}
-		if tcpLb == "" {
-			klog.Infof("init cluster tcp load balancer %s", vpcLb.TcpLoadBalancer)
-			err := c.ovnLegacyClient.CreateLoadBalancer(vpcLb.TcpLoadBalancer, util.ProtocolTCP, "")
-			if err != nil {
-				klog.Errorf("failed to create cluster tcp load balancer: %v", err)
-				return err
-			}
-		} else {
-			klog.Infof("tcp load balancer %s exists", tcpLb)
-		}
-
-		tcpSessionLb, err := c.ovnLegacyClient.FindLoadbalancer(vpcLb.TcpSessLoadBalancer)
-		if err != nil {
-			return fmt.Errorf("failed to find tcp session lb: %v", err)
-		}
-		if tcpSessionLb == "" {
-			klog.Infof("init cluster tcp session load balancer %s", vpcLb.TcpSessLoadBalancer)
-			err := c.ovnLegacyClient.CreateLoadBalancer(vpcLb.TcpSessLoadBalancer, util.ProtocolTCP, "ip_src")
-			if err != nil {
-				klog.Errorf("failed to create cluster tcp session load balancer: %v", err)
-				return err
-			}
-		} else {
-			klog.Infof("tcp session load balancer %s exists", vpcLb.TcpSessLoadBalancer)
-		}
-
-		if err = c.ovnLegacyClient.SetLoadBalancerAffinityTimeout(vpcLb.TcpSessLoadBalancer, util.DefaultServiceSessionStickinessTimeout); err != nil {
-			klog.Errorf("failed to set service session stickiness timeout of cluster tcp session load balancer: %v", err)
+		if err = c.initLB(vpcLb.TcpLoadBalancer, string(v1.ProtocolTCP), false); err != nil {
 			return err
 		}
-
-		udpLb, err := c.ovnLegacyClient.FindLoadbalancer(vpcLb.UdpLoadBalancer)
-		if err != nil {
-			return fmt.Errorf("failed to find udp lb: %v", err)
+		if err = c.initLB(vpcLb.TcpSessLoadBalancer, string(v1.ProtocolTCP), true); err != nil {
+			return err
 		}
-		if udpLb == "" {
-			klog.Infof("init cluster udp load balancer %s", vpcLb.UdpLoadBalancer)
-			err := c.ovnLegacyClient.CreateLoadBalancer(vpcLb.UdpLoadBalancer, util.ProtocolUDP, "")
-			if err != nil {
-				klog.Errorf("failed to create cluster udp load balancer: %v", err)
-				return err
-			}
-		} else {
-			klog.Infof("udp load balancer %s exists", udpLb)
+		if err = c.initLB(vpcLb.UdpLoadBalancer, string(v1.ProtocolUDP), false); err != nil {
+			return err
 		}
-
-		udpSessionLb, err := c.ovnLegacyClient.FindLoadbalancer(vpcLb.UdpSessLoadBalancer)
-		if err != nil {
-			return fmt.Errorf("failed to find udp session lb: %v", err)
+		if err = c.initLB(vpcLb.UdpSessLoadBalancer, string(v1.ProtocolUDP), true); err != nil {
+			return err
 		}
-		if udpSessionLb == "" {
-			klog.Infof("init cluster udp session load balancer %s", vpcLb.UdpSessLoadBalancer)
-			err := c.ovnLegacyClient.CreateLoadBalancer(vpcLb.UdpSessLoadBalancer, util.ProtocolUDP, "ip_src")
-			if err != nil {
-				klog.Errorf("failed to create cluster udp session load balancer: %v", err)
-				return err
-			}
-		} else {
-			klog.Infof("udp session load balancer %s exists", vpcLb.UdpSessLoadBalancer)
+		if err = c.initLB(vpcLb.SctpLoadBalancer, string(v1.ProtocolSCTP), false); err != nil {
+			return err
 		}
-
-		if err = c.ovnLegacyClient.SetLoadBalancerAffinityTimeout(vpcLb.UdpSessLoadBalancer, util.DefaultServiceSessionStickinessTimeout); err != nil {
-			klog.Errorf("failed to set service session stickiness timeout of cluster udp session load balancer: %v", err)
+		if err = c.initLB(vpcLb.SctpSessLoadBalancer, string(v1.ProtocolSCTP), true); err != nil {
 			return err
 		}
 
@@ -293,6 +274,8 @@ func (c *Controller) initLoadBalancer() error {
 		vpc.Status.TcpSessionLoadBalancer = vpcLb.TcpSessLoadBalancer
 		vpc.Status.UdpLoadBalancer = vpcLb.UdpLoadBalancer
 		vpc.Status.UdpSessionLoadBalancer = vpcLb.UdpSessLoadBalancer
+		vpc.Status.SctpLoadBalancer = vpcLb.SctpLoadBalancer
+		vpc.Status.SctpSessionLoadBalancer = vpcLb.SctpSessLoadBalancer
 		bytes, err := vpc.Status.Bytes()
 		if err != nil {
 			return err

@@ -400,17 +400,19 @@ type VpcStatus struct {
 	// +patchStrategy=merge
 	Conditions []VpcCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
-	Standby                bool     `json:"standby"`
-	Default                bool     `json:"default"`
-	DefaultLogicalSwitch   string   `json:"defaultLogicalSwitch"`
-	Router                 string   `json:"router"`
-	TcpLoadBalancer        string   `json:"tcpLoadBalancer"`
-	UdpLoadBalancer        string   `json:"udpLoadBalancer"`
-	TcpSessionLoadBalancer string   `json:"tcpSessionLoadBalancer"`
-	UdpSessionLoadBalancer string   `json:"udpSessionLoadBalancer"`
-	Subnets                []string `json:"subnets"`
-	VpcPeerings            []string `json:"vpcPeerings"`
-	EnableExternal         bool     `json:"enableExternal"`
+	Standby                 bool     `json:"standby"`
+	Default                 bool     `json:"default"`
+	DefaultLogicalSwitch    string   `json:"defaultLogicalSwitch"`
+	Router                  string   `json:"router"`
+	TcpLoadBalancer         string   `json:"tcpLoadBalancer"`
+	UdpLoadBalancer         string   `json:"udpLoadBalancer"`
+	SctpLoadBalancer        string   `json:"sctpLoadBalancer"`
+	TcpSessionLoadBalancer  string   `json:"tcpSessionLoadBalancer"`
+	UdpSessionLoadBalancer  string   `json:"udpSessionLoadBalancer"`
+	SctpSessionLoadBalancer string   `json:"sctpSessionLoadBalancer"`
+	Subnets                 []string `json:"subnets"`
+	VpcPeerings             []string `json:"vpcPeerings"`
+	EnableExternal          bool     `json:"enableExternal"`
 }
 
 // Condition describes the state of an object at a certain point.
