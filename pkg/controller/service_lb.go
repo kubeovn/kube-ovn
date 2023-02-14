@@ -315,7 +315,7 @@ func (c *Controller) updatePodAttachNets(pod *corev1.Pod, svc *corev1.Service) e
 		case corev1.ProtocolTCP:
 			protocol = util.ProtocolTCP
 		case corev1.ProtocolUDP:
-			protocol = util.ProtocolTCP
+			protocol = util.ProtocolUDP
 		case corev1.ProtocolSCTP:
 			protocol = util.ProtocolSCTP
 		}

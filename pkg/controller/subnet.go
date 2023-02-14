@@ -697,8 +697,16 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
+	lbs := []string{
+		vpc.Status.TcpLoadBalancer,
+		vpc.Status.TcpSessionLoadBalancer,
+		vpc.Status.UdpLoadBalancer,
+		vpc.Status.UdpSessionLoadBalancer,
+		vpc.Status.SctpLoadBalancer,
+		vpc.Status.SctpSessionLoadBalancer,
+	}
 	if c.config.EnableLb && subnet.Name != c.config.NodeSwitch {
-		if err := c.ovnLegacyClient.AddLbToLogicalSwitch(vpc.Status.TcpLoadBalancer, vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.UdpSessionLoadBalancer, subnet.Name); err != nil {
+		if err := c.ovnLegacyClient.AddLbToLogicalSwitch(subnet.Name, lbs...); err != nil {
 			c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", err.Error())
 			return err
 		}

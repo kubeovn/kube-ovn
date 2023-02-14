@@ -751,10 +751,7 @@ func svcMatchPods(svcs []*corev1.Service, pod *corev1.Pod, protocol string) ([]s
 			return nil, err
 		}
 		if isMatch {
-			clusterIPs := svc.Spec.ClusterIPs
-			if len(clusterIPs) == 0 && svc.Spec.ClusterIP != "" && svc.Spec.ClusterIP != corev1.ClusterIPNone {
-				clusterIPs = []string{svc.Spec.ClusterIP}
-			}
+			clusterIPs := util.ServiceClusterIPs(*svc)
 			protocolClusterIPs := getProtocolSvcIp(clusterIPs, protocol)
 			if len(protocolClusterIPs) != 0 {
 				matchSvcs = append(matchSvcs, protocolClusterIPs...)

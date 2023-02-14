@@ -1083,6 +1083,10 @@ spec:
                   type: string
                 udpSessionLoadBalancer:
                   type: string
+                sctpLoadBalancer:
+                  type: string
+                sctpSessionLoadBalancer:
+                  type: string
               type: object
           type: object
       served: true

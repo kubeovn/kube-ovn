@@ -403,11 +403,13 @@ func (c *Controller) gcLoadBalancer() error {
 				}
 
 				err = c.ovnLegacyClient.RemoveLbFromLogicalSwitch(
+					subnetName,
 					vpc.Status.TcpLoadBalancer,
 					vpc.Status.TcpSessionLoadBalancer,
 					vpc.Status.UdpLoadBalancer,
 					vpc.Status.UdpSessionLoadBalancer,
-					subnetName)
+					vpc.Status.SctpLoadBalancer,
+					vpc.Status.SctpSessionLoadBalancer)
 				if err != nil {
 					return err
 				}
@@ -417,6 +419,8 @@ func (c *Controller) gcLoadBalancer() error {
 			vpc.Status.TcpSessionLoadBalancer = ""
 			vpc.Status.UdpLoadBalancer = ""
 			vpc.Status.UdpSessionLoadBalancer = ""
+			vpc.Status.SctpLoadBalancer = ""
+			vpc.Status.SctpSessionLoadBalancer = ""
 			bytes, err := vpc.Status.Bytes()
 			if err != nil {
 				return err
@@ -445,27 +449,40 @@ func (c *Controller) gcLoadBalancer() error {
 		klog.Errorf("failed to list svc, %v", err)
 		return err
 	}
-	tcpVips := []string{}
-	udpVips := []string{}
-	tcpSessionVips := []string{}
-	udpSessionVips := []string{}
+	tcpVips := make(map[string]struct{}, len(svcs)*2)
+	udpVips := make(map[string]struct{}, len(svcs)*2)
+	sctpVips := make(map[string]struct{}, len(svcs)*2)
+	tcpSessionVips := make(map[string]struct{}, len(svcs)*2)
+	udpSessionVips := make(map[string]struct{}, len(svcs)*2)
+	sctpSessionVips := make(map[string]struct{}, len(svcs)*2)
 	for _, svc := range svcs {
-		ip := svc.Spec.ClusterIP
+		ips := util.ServiceClusterIPs(*svc)
 		if v, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
-			ip = v
+			ips = strings.Split(v, ",")
 		}
-		for _, port := range svc.Spec.Ports {
-			if port.Protocol == corev1.ProtocolTCP {
-				if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
-					tcpSessionVips = append(tcpSessionVips, fmt.Sprintf("%s:%d", ip, port.Port))
-				} else {
-					tcpVips = append(tcpVips, fmt.Sprintf("%s:%d", ip, port.Port))
-				}
-			} else {
-				if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
-					udpSessionVips = append(udpSessionVips, fmt.Sprintf("%s:%d", ip, port.Port))
-				} else {
-					udpVips = append(udpVips, fmt.Sprintf("%s:%d", ip, port.Port))
+
+		for _, ip := range ips {
+			for _, port := range svc.Spec.Ports {
+				vip := util.JoinHostPort(ip, port.Port)
+				switch port.Protocol {
+				case corev1.ProtocolTCP:
+					if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
+						tcpSessionVips[vip] = struct{}{}
+					} else {
+						tcpVips[vip] = struct{}{}
+					}
+				case corev1.ProtocolUDP:
+					if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
+						udpSessionVips[vip] = struct{}{}
+					} else {
+						udpVips[vip] = struct{}{}
+					}
+				case corev1.ProtocolSCTP:
+					if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
+						sctpSessionVips[vip] = struct{}{}
+					} else {
+						sctpVips[vip] = struct{}{}
+					}
 				}
 			}
 		}
@@ -478,94 +495,47 @@ func (c *Controller) gcLoadBalancer() error {
 	}
 	var vpcLbs []string
 	for _, vpc := range vpcs {
-		tcpLb, udpLb := vpc.Status.TcpLoadBalancer, vpc.Status.UdpLoadBalancer
-		tcpSessLb, udpSessLb := vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer
-		vpcLbs = append(vpcLbs, tcpLb, udpLb, tcpSessLb, udpSessLb)
+		tcpLb, udpLb, sctpLb := vpc.Status.TcpLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.SctpLoadBalancer
+		tcpSessLb, udpSessLb, sctpSessLb := vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
+		vpcLbs = append(vpcLbs, tcpLb, udpLb, sctpLb, tcpSessLb, udpSessLb, sctpSessLb)
 
-		if tcpLb != "" {
-			lbUuid, err := c.ovnLegacyClient.FindLoadbalancer(tcpLb)
-			if err != nil {
-				klog.Errorf("failed to get lb %v", err)
+		removeVIP := func(lb string, svcVips map[string]struct{}) error {
+			if lb == "" {
+				return nil
 			}
-			vips, err := c.ovnLegacyClient.GetLoadBalancerVips(lbUuid)
+			vips, err := c.ovnLegacyClient.GetLoadBalancerVips(lb)
 			if err != nil {
-				klog.Errorf("failed to get tcp lb vips %v", err)
+				klog.Errorf("failed to get vips of LB %s: %v", lb, err)
 				return err
 			}
 			for vip := range vips {
-				if !util.IsStringIn(vip, tcpVips) {
-					err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, tcpLb)
-					if err != nil {
-						klog.Errorf("failed to delete vip %s from tcp lb %s, %v", vip, tcpLb, err)
+				if _, ok := svcVips[vip]; !ok {
+					if err = c.ovnLegacyClient.DeleteLoadBalancerVip(vip, lb); err != nil {
+						klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
 						return err
 					}
 				}
 			}
+			return nil
 		}
 
-		if tcpSessLb != "" {
-			lbUuid, err := c.ovnLegacyClient.FindLoadbalancer(tcpSessLb)
-			if err != nil {
-				klog.Errorf("failed to get lb %v", err)
-			}
-			vips, err := c.ovnLegacyClient.GetLoadBalancerVips(lbUuid)
-			if err != nil {
-				klog.Errorf("failed to get tcp session lb vips %v", err)
-				return err
-			}
-			for vip := range vips {
-				if !util.IsStringIn(vip, tcpSessionVips) {
-					err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, tcpSessLb)
-					if err != nil {
-						klog.Errorf("failed to delete vip %s from tcp session lb %s, %v", vip, tcpSessLb, err)
-						return err
-					}
-				}
-			}
+		if err = removeVIP(tcpLb, tcpVips); err != nil {
+			return err
 		}
-
-		if udpLb != "" {
-			lbUuid, err := c.ovnLegacyClient.FindLoadbalancer(udpLb)
-			if err != nil {
-				klog.Errorf("failed to get lb %v", err)
-				return err
-			}
-			vips, err := c.ovnLegacyClient.GetLoadBalancerVips(lbUuid)
-			if err != nil {
-				klog.Errorf("failed to get udp lb vips %v", err)
-				return err
-			}
-			for vip := range vips {
-				if !util.IsStringIn(vip, udpVips) {
-					err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, udpLb)
-					if err != nil {
-						klog.Errorf("failed to delete vip %s from tcp lb %s, %v", vip, udpLb, err)
-						return err
-					}
-				}
-			}
+		if err = removeVIP(tcpSessLb, tcpSessionVips); err != nil {
+			return err
 		}
-
-		if udpSessLb != "" {
-			lbUuid, err := c.ovnLegacyClient.FindLoadbalancer(udpSessLb)
-			if err != nil {
-				klog.Errorf("failed to get lb %v", err)
-				return err
-			}
-			vips, err := c.ovnLegacyClient.GetLoadBalancerVips(lbUuid)
-			if err != nil {
-				klog.Errorf("failed to get udp session lb vips %v", err)
-				return err
-			}
-			for vip := range vips {
-				if !util.IsStringIn(vip, udpSessionVips) {
-					err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, udpSessLb)
-					if err != nil {
-						klog.Errorf("failed to delete vip %s from udp session lb %s, %v", vip, udpSessLb, err)
-						return err
-					}
-				}
-			}
+		if err = removeVIP(udpLb, udpVips); err != nil {
+			return err
+		}
+		if err = removeVIP(udpSessLb, udpSessionVips); err != nil {
+			return err
+		}
+		if err = removeVIP(sctpLb, sctpVips); err != nil {
+			return err
+		}
+		if err = removeVIP(sctpSessLb, sctpSessionVips); err != nil {
+			return err
 		}
 	}
 
