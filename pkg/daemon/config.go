@@ -198,6 +198,10 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 			klog.Errorf("failed to find iface %s, %v", tunnelNic, err)
 			return err
 		}
+		srcIPs, err := getSrcIPsByRoutes(iface)
+		if err != nil {
+			return fmt.Errorf("failed to get src IPs by routes on interface %s: %v", iface.Name, err)
+		}
 		addrs, err := iface.Addrs()
 		if err != nil {
 			return fmt.Errorf("failed to get iface addr. %v", err)
@@ -207,14 +211,16 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 			if ip := net.ParseIP(ipStr); ip == nil || ip.IsLinkLocalUnicast() {
 				continue
 			}
-			encapIP = ipStr
-			break
+			if len(srcIPs) == 0 || util.ContainsString(srcIPs, ipStr) {
+				encapIP = ipStr
+				break
+			}
 		}
 		if len(encapIP) == 0 {
 			return fmt.Errorf("iface %s has no valid IP address", tunnelNic)
 		}
 
-		klog.Infof("use %s as tunnel interface", iface.Name)
+		klog.Infof("use %s on %s as tunnel address", encapIP, iface.Name)
 		mtu = iface.MTU
 		config.tunnelIface = iface.Name
 	}
