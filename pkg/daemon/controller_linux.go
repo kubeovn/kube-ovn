@@ -205,7 +205,7 @@ func getNicExistRoutes(nic netlink.Link, gateway string) ([]netlink.Route, error
 
 func routeDiff(existRoutes []netlink.Route, cidrs, joinCIDR []string, gateway string, srcIPv4, srcIPv6 net.IP) (toAdd, toDel []netlink.Route) {
 	for _, route := range existRoutes {
-		if route.Scope == netlink.SCOPE_LINK {
+		if route.Scope == netlink.SCOPE_LINK || route.Dst == nil || route.Dst.IP.IsLinkLocalUnicast() {
 			continue
 		}
 
