@@ -94,6 +94,11 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/ovn-*.deb && \
     rm -rf /var/lib/openvswitch/pki/
 
+ENV BFDD_VERSION="v0.5.4"
+RUN curl -sSf -L --retry 3 -o /usr/local/bin/bfdd-control https://github.com/bobz965/bfd-binary-for-kube-ovn-cni/releases/download/${BFDD_VERSION}/bfdd-control && \
+    curl -sSf -L --retry 3 -o /usr/local/bin/bfdd-beacon https://github.com/bobz965/bfd-binary-for-kube-ovn-cni/releases/download/${BFDD_VERSION}/bfdd-beacon && \
+    chmod +x /usr/local/bin/bfdd-control /usr/local/bin/bfdd-beacon
+
 ENV DUMB_INIT_VERSION="1.2.5"
 RUN dump_arch="x86_64"; \
     if [ "$ARCH" = "arm64" ]; then dump_arch="aarch64"; fi; \

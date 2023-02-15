@@ -934,7 +934,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 					nextHop = strings.Split(nextHop, "/")[0]
 				}
 
-				if err := c.ovnLegacyClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nextHop, c.config.ClusterRouter, util.NormalRouteType); err != nil {
+				if err := c.ovnLegacyClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nextHop, "", "", c.config.ClusterRouter, util.NormalRouteType); err != nil {
 					klog.Errorf("failed to add static route, %v", err)
 					return err
 				}
@@ -980,7 +980,8 @@ func (c *Controller) handleUpdatePod(key string) error {
 				}
 
 				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
-					if err := c.ovnLegacyClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], c.config.ClusterRouter, util.NormalRouteType); err != nil {
+					if err := c.ovnLegacyClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation],
+						"", "", c.config.ClusterRouter, util.NormalRouteType); err != nil {
 						klog.Errorf("failed to add static route, %v", err)
 						return err
 					}

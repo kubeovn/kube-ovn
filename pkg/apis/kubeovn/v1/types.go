@@ -356,6 +356,7 @@ type VpcSpec struct {
 	PolicyRoutes   []*PolicyRoute `json:"policyRoutes,omitempty"`
 	VpcPeerings    []*VpcPeering  `json:"vpcPeerings,omitempty"`
 	EnableExternal bool           `json:"enableExternal,omitempty"`
+	EnableBfd      bool           `json:"enableBfd,omitempty"`
 }
 
 type VpcPeering struct {
@@ -374,6 +375,8 @@ type StaticRoute struct {
 	Policy    RoutePolicy `json:"policy,omitempty"`
 	CIDR      string      `json:"cidr"`
 	NextHopIP string      `json:"nextHopIP"`
+	ECMP      string      `json:"ecmp"`
+	BfdId     string      `json:"bfdId"`
 }
 
 type PolicyRouteAction string
@@ -413,6 +416,7 @@ type VpcStatus struct {
 	Subnets                 []string `json:"subnets"`
 	VpcPeerings             []string `json:"vpcPeerings"`
 	EnableExternal          bool     `json:"enableExternal"`
+	EnableBfd               bool     `json:"enableBfd"`
 }
 
 // Condition describes the state of an object at a certain point.

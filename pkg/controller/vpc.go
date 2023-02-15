@@ -108,6 +108,13 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 		klog.Errorf("failed to delete external connection for vpc %s, error %v", vpc.Name, err)
 		return err
 	}
+	if vpc.Spec.EnableBfd || vpc.Status.EnableBfd {
+		lrpEipName := fmt.Sprintf("%s-%s", vpc.Name, c.config.ExternalGatewaySwitch)
+		if err := c.ovnLegacyClient.DeleteBfd(lrpEipName, ""); err != nil {
+			klog.Error(err)
+			return err
+		}
+	}
 	return nil
 }
 
@@ -307,7 +314,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	vpc := cachedVpc.DeepCopy()
 
 	if err = formatVpc(vpc, c); err != nil {
-		klog.Errorf("failed to format vpc: %v", err)
+		klog.Errorf("failed to format vpc %s: %v", key, err)
 		return err
 	}
 	if err = c.createVpcRouter(key); err != nil {
@@ -408,7 +415,10 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			}
 		}
 	}
-
+	if vpc.Name == c.config.ClusterRouter && vpc.Spec.EnableExternal {
+		// custom vpc enable external, just like default vpc with enable eip and snat above
+		targetRoutes = vpc.Spec.StaticRoutes
+	}
 	routeNeedDel, routeNeedAdd, err := diffStaticRoute(existRoute, targetRoutes)
 	if err != nil {
 		klog.Errorf("failed to diff vpc %s static route, %v", vpc.Name, err)
@@ -422,9 +432,18 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	}
 
 	for _, item := range routeNeedAdd {
-		if err = c.ovnLegacyClient.AddStaticRoute(convertPolicy(item.Policy), item.CIDR, item.NextHopIP, vpc.Name, util.NormalRouteType); err != nil {
-			klog.Errorf("add static route to vpc %s failed, %v", vpc.Name, err)
-			return err
+		if item.ECMP == "" {
+			if err = c.ovnLegacyClient.AddStaticRoute(convertPolicy(item.Policy), item.CIDR, item.NextHopIP,
+				"", "", vpc.Name, util.NormalRouteType); err != nil {
+				klog.Errorf("add normal static route to vpc %s failed, %v", vpc.Name, err)
+				return err
+			}
+		} else {
+			if err = c.ovnLegacyClient.AddStaticRoute(convertPolicy(item.Policy), item.CIDR, item.NextHopIP,
+				item.ECMP, item.BfdId, vpc.Name, util.EcmpRouteType); err != nil {
+				klog.Errorf("add ecmp static route to vpc %s failed, %v", vpc.Name, err)
+				return err
+			}
 		}
 	}
 
@@ -508,10 +527,39 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 	}
 
-	if cachedVpc.Spec.EnableExternal && !cachedVpc.Status.EnableExternal {
-		// connecte vpc to external
-		if err := c.handleAddVpcExternal(key); err != nil {
-			klog.Errorf("failed to add external connection for vpc %s, error %v", key, err)
+	if cachedVpc.Spec.EnableExternal {
+		if !cachedVpc.Status.EnableExternal {
+			// connecte vpc to external
+			klog.V(3).Infof("connect external network with vpc %s", vpc.Name)
+			if err := c.handleAddVpcExternal(key); err != nil {
+				klog.Errorf("failed to add external connection for vpc %s, error %v", key, err)
+				return err
+			}
+		}
+		if vpc.Spec.EnableBfd {
+			klog.V(3).Infof("remove normal static ecmp route for vpc %s", vpc.Name)
+			// auto remove normal type static route, if use ecmp based bfd
+			if err := c.reconcileVpcDelNormalStaticRoute(vpc.Name); err != nil {
+				klog.Errorf("failed to reconcile del vpc %q normal static route", vpc.Name)
+			}
+		}
+		if !vpc.Spec.EnableBfd {
+			klog.V(3).Infof("add normal static ecmp route for vpc %s", vpc.Name)
+			// auto add normal type static route, if not use ecmp based bfd
+			if err := c.reconcileVpcAddNormalStaticRoute(vpc.Name); err != nil {
+				klog.Errorf("failed to reconcile vpc %q bfd static route", vpc.Name)
+			}
+		}
+	}
+
+	if !cachedVpc.Spec.EnableBfd && cachedVpc.Status.EnableBfd {
+		lrpEipName := fmt.Sprintf("%s-%s", key, c.config.ExternalGatewaySwitch)
+		if err := c.ovnLegacyClient.DeleteBfd(lrpEipName, ""); err != nil {
+			klog.Error(err)
+			return err
+		}
+		if err := c.handleDeleteVpcStaticRoute(key); err != nil {
+			klog.Errorf("failed to delete bfd route for vpc %s, error %v", key, err)
 			return err
 		}
 	}
@@ -572,6 +620,8 @@ func diffStaticRoute(exist []*ovs.StaticRoute, target []*kubeovnv1.StaticRoute) 
 			Policy:    policy,
 			CIDR:      item.CIDR,
 			NextHopIP: item.NextHop,
+			ECMP:      item.ECMP,
+			BfdId:     item.BfdId,
 		})
 	}
 
@@ -864,6 +914,7 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 	vpc.Status.EnableExternal = cachedVpc.Spec.EnableExternal
 	bytes, err := vpc.Status.Bytes()
 	if err != nil {
+		klog.Errorf("failed to marshal vpc status: %v", err)
 		return err
 	}
 	if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
@@ -876,6 +927,42 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 	}
 	if err = c.handleAddOvnEipFinalizer(cachedEip); err != nil {
 		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
+		return err
+	}
+	if err := c.patchLrpOvnEipEnableBfdLabel(lrpEipName, vpc.Spec.EnableBfd); err != nil {
+		klog.Errorf("failed to patch label for lrp %s, %v", lrpEipName, err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) handleDeleteVpcStaticRoute(key string) error {
+	vpc, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Get(context.Background(), key, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to get vpc %s, %v", key, err)
+		return err
+	}
+	needUpdate := false
+	newStaticRoutes := make([]*kubeovnv1.StaticRoute, 0, len(vpc.Spec.StaticRoutes))
+	for _, route := range vpc.Spec.StaticRoutes {
+		if route.ECMP != util.StaicRouteBfdEcmp {
+			newStaticRoutes = append(newStaticRoutes, route)
+			needUpdate = true
+		}
+	}
+	// keep non ecmp bfd routes
+	vpc.Spec.StaticRoutes = newStaticRoutes
+	if needUpdate {
+		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
+			klog.Errorf("failed to update vpc spec static route %s, %v", vpc.Name, err)
+			return err
+		}
+	}
+	if err = c.patchVpcBfdStatus(vpc.Name); err != nil {
+		klog.Errorf("failed to patch vpc %s, %v", vpc.Name, err)
 		return err
 	}
 	return nil
@@ -919,6 +1006,38 @@ func (c *Controller) handleDelVpcExternal(key string) error {
 	if err = c.config.KubeOvnClient.KubeovnV1().OvnEips().Delete(context.Background(), lrpEipName, metav1.DeleteOptions{}); err != nil {
 		if !k8serrors.IsNotFound(err) {
 			klog.Errorf("failed to delete ovn eip %s, %v", lrpEipName, err)
+			return err
+		}
+	}
+
+	// del all vpc bfds
+	if err := c.ovnLegacyClient.DeleteBfd(lrpEipName, ""); err != nil {
+		klog.Error(err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) patchVpcBfdStatus(key string) error {
+	cachedVpc, err := c.vpcsLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Error("failed to get vpc %s, %v", key, err)
+		return err
+	}
+	vpc := cachedVpc.DeepCopy()
+	if vpc.Status.EnableBfd != vpc.Spec.EnableBfd {
+		vpc.Status.EnableBfd = cachedVpc.Spec.EnableBfd
+		bytes, err := vpc.Status.Bytes()
+		if err != nil {
+			klog.Errorf("failed to marshal vpc status: %v", err)
+			return err
+		}
+		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
+			vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+			klog.Error(err)
 			return err
 		}
 	}

@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -23,6 +24,7 @@ import (
 	"golang.org/x/sys/unix"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 
@@ -430,15 +432,59 @@ func (c *Controller) loopOvn0Check() {
 	}
 }
 
-func checkNodeGwNicInNs(ip, gw string, gwNS ns.NetNS) error {
+func (c *Controller) checkNodeGwNicInNs(nodeExtIp, ip, gw string, gwNS ns.NetNS) error {
 	exists, err := ovs.PortExists(util.NodeGwNic)
 	if err != nil {
 		klog.Error(err)
 		return err
 	}
+	filters := labels.Set{util.OvnEipUsageLabel: util.LrpUsingEip, util.OvnLrpEipEnableBfd: "true"}
+	ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(filters))
+	if err != nil {
+		klog.Errorf("failed to list node external ovn eip, %v", err)
+		return err
+	}
+	if len(ovnEips) == 0 {
+		// no lrp eip, no need to check
+		return nil
+	}
 	if exists {
 		return ns.WithNetNSPath(gwNS.Path(), func(_ ns.NetNS) error {
-			return waitNetworkReady(util.NodeGwNic, ip, gw, true, false, 3)
+			err = waitNetworkReady(util.NodeGwNic, ip, gw, true, true, 3)
+			if err == nil {
+				cmd := exec.Command("sh", "-c", "bfdd-control status")
+				if err := cmd.Run(); err != nil {
+					err := fmt.Errorf("failed to get bfdd status, %v", err)
+					klog.Error(err)
+					return err
+				}
+				for _, eip := range ovnEips {
+					if eip.Status.Ready {
+						cmd := exec.Command("sh", "-c", fmt.Sprintf("bfdd-control status remote %s local %s", eip.Spec.V4Ip, nodeExtIp))
+						var outb bytes.Buffer
+						cmd.Stdout = &outb
+						if err := cmd.Run(); err == nil {
+							out := string(outb.String())
+							klog.V(3).Info(out)
+							if strings.Contains(out, "No session") {
+								// not exist
+								cmd = exec.Command("sh", "-c", fmt.Sprintf("bfdd-control allow %s", eip.Spec.V4Ip))
+								if err := cmd.Run(); err != nil {
+									err := fmt.Errorf("failed to add lrp %s ip %s into bfd listening list, %v", eip.Name, eip.Status.V4Ip, err)
+									klog.Error(err)
+									return err
+								}
+							}
+						} else {
+							err := fmt.Errorf("faild to check bfd status remote %s local %s", eip.Spec.V4Ip, nodeExtIp)
+							klog.Error(err)
+							return err
+						}
+
+					}
+				}
+			}
+			return err
 		})
 	} else {
 		err := fmt.Errorf("node external gw not ready")
@@ -455,15 +501,17 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 		fmt.Sprintf("external_ids:ip=%s", ipStr),
 		fmt.Sprintf("external_ids:pod_netns=%s", util.NodeGwNsPath))
 	if err != nil {
-		klog.Errorf("failed to configure node nic %s: %v, %q", portName, err, output)
+		klog.Errorf("failed to configure node external nic %s: %v, %q", portName, err, output)
 		return fmt.Errorf(output)
 	}
 	gwLink, err := netlink.LinkByName(util.NodeGwNic)
-	if err != nil {
-		return fmt.Errorf("can not found node gw nic %s, %v", util.NodeGwNic, err)
-	}
-	if err = netlink.LinkSetNsFd(gwLink, int(gwNS.Fd())); err != nil {
-		return fmt.Errorf("failed to move link into netns: %v", err)
+	if err == nil {
+		if err = netlink.LinkSetNsFd(gwLink, int(gwNS.Fd())); err != nil {
+			klog.Errorf("failed to move link into netns: %v", err)
+			return err
+		}
+	} else {
+		klog.V(3).Infof("node external nic %q already in ns %s", util.NodeGwNic, util.NodeGwNsPath)
 	}
 	return ns.WithNetNSPath(gwNS.Path(), func(_ ns.NetNS) error {
 		if util.CheckProtocol(ip) == kubeovnv1.ProtocolDual || util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 {
@@ -488,6 +536,11 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 
 		if err = configureLoNic(); err != nil {
 			klog.Errorf("failed to configure nic %s, %v", util.LoNic, err)
+			return err
+		}
+		gwLink, err = netlink.LinkByName(util.NodeGwNic)
+		if err != nil {
+			klog.Errorf("failed to get link %q, %v", util.NodeGwNic, err)
 			return err
 		}
 		switch util.CheckProtocol(ip) {
@@ -531,6 +584,12 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 		if err != nil {
 			return fmt.Errorf("failed to configure gateway: %v", err)
 		}
+		cmd := exec.Command("sh", "-c", "/usr/local/bin/bfdd-beacon --listen=0.0.0.0")
+		if err := cmd.Run(); err != nil {
+			err := fmt.Errorf("failed to get start bfd listen, %v", err)
+			klog.Error(err)
+			return err
+		}
 		return waitNetworkReady(util.NodeGwNic, ip, gw, true, true, 3)
 	})
 }
@@ -565,11 +624,8 @@ func (c *Controller) loopOvnExt0Check() {
 	needClean := false
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			if _, ok := node.Labels[util.NodeExtGwLabel]; !ok {
-				return
-			}
-			if node.Labels[util.NodeExtGwLabel] == "false" {
-				// not gw node and already clean
+			if val, ok := node.Labels[util.NodeExtGwLabel]; !ok || (val == "false") {
+				// not gw node or already clean
 				return
 			}
 			needClean = true
@@ -595,8 +651,8 @@ func (c *Controller) loopOvnExt0Check() {
 		return
 	}
 
-	if cachedEip.Status.MacAddress == "" {
-		klog.Errorf("ecmp gateway ovn eip not ready, can not setup ecmp gateway")
+	if cachedEip.Status.V4Ip == "" {
+		klog.Errorf("ecmp gateway ovn eip still has no ip")
 		return
 	}
 	ips := util.GetStringIP(cachedEip.Status.V4Ip, cachedEip.Status.V6Ip)
@@ -626,9 +682,10 @@ func (c *Controller) loopOvnExt0Check() {
 			return
 		}
 	}
+	nodeExtIp := cachedEip.Spec.V4Ip
 	ipAddr := util.GetIpAddrWithMask(ips, cachedSubnet.Spec.CIDRBlock)
-	if err := checkNodeGwNicInNs(ipAddr, gw, gwNS); err == nil {
-		// already ready
+	if err := c.checkNodeGwNicInNs(nodeExtIp, ipAddr, gw, gwNS); err == nil {
+		// add all lrp ip in bfd listening list
 		return
 	}
 	klog.Infof("setup nic ovnext0 ip %s, mac %v, mtu %d", ipAddr, mac, c.config.MTU)
