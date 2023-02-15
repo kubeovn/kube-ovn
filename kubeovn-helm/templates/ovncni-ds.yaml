@@ -126,7 +126,6 @@ spec:
             name: tmp
         readinessProbe:
           failureThreshold: 3
-          initialDelaySeconds: 30
           periodSeconds: 7
           successThreshold: 1
           tcpSocket:
