@@ -102,6 +102,9 @@ func ParseFlags() (*Configuration, error) {
 	if *argRouterId != "" && net.ParseIP(*argRouterId) == nil {
 		return nil, fmt.Errorf("invalid router-id format: %s", *argRouterId)
 	}
+	if net.ParseIP(*argNeighborAddress) == nil {
+		return nil, fmt.Errorf("invalid neighbor-address format: %s", *argNeighborAddress)
+	}
 
 	config := &Configuration{
 		AnnounceClusterIP:           *argAnnounceClusterIP,
