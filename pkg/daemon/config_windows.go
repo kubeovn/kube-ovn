@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/Microsoft/hcsshim"
@@ -15,6 +16,11 @@ import (
 )
 
 const defaultBindSocket = util.WindowsListenPipe
+
+func getSrcIPsByRoutes(iface *net.Interface) ([]string, error) {
+	// to be implemented in the future
+	return nil, nil
+}
 
 func getIfaceByIP(ip string) (string, int, error) {
 	iface, err := util.GetInterfaceByIP(ip)
