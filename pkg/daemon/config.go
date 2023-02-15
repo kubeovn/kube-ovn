@@ -137,6 +137,25 @@ func ParseFlags(nicBridgeMappings map[string]string) (*Configuration, error) {
 	return config, nil
 }
 
+func getSrcIPsByRoutes(iface *net.Interface) ([]string, error) {
+	link, err := netlink.LinkByName(iface.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get link %s: %v", iface.Name, err)
+	}
+	routes, err := netlink.RouteList(link, netlink.FAMILY_ALL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get routes on link %s: %v", iface.Name, err)
+	}
+
+	srcIPs := make([]string, 0, 2)
+	for _, r := range routes {
+		if r.Src != nil && r.Scope == netlink.SCOPE_LINK {
+			srcIPs = append(srcIPs, r.Src.String())
+		}
+	}
+	return srcIPs, nil
+}
+
 func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) error {
 	var (
 		iface   *net.Interface
@@ -178,16 +197,29 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 			klog.Errorf("failed to find iface %s, %v", tunnelNic, err)
 			return err
 		}
+		srcIPs, err := getSrcIPsByRoutes(iface)
+		if err != nil {
+			return fmt.Errorf("failed to get src IPs by routes on interface %s: %v", iface.Name, err)
+		}
 		addrs, err := iface.Addrs()
 		if err != nil {
 			return fmt.Errorf("failed to get iface addr. %v", err)
 		}
-		if len(addrs) == 0 {
-			return fmt.Errorf("iface %s has no ip address", tunnelNic)
+		for _, addr := range addrs {
+			ipStr := strings.Split(addr.String(), "/")[0]
+			if ip := net.ParseIP(ipStr); ip == nil || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			if len(srcIPs) == 0 || util.ContainsString(srcIPs, ipStr) {
+				encapIP = ipStr
+				break
+			}
 		}
-		encapIP = strings.Split(addrs[0].String(), "/")[0]
+		if len(encapIP) == 0 {
+			return fmt.Errorf("iface %s has no valid IP address", tunnelNic)
+		}
 
-		klog.Infof("use %s as tunnel interface", iface.Name)
+		klog.Infof("use %s on %s as tunnel address", encapIP, iface.Name)
 		config.tunnelIface = iface.Name
 	}
 
