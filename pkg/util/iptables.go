@@ -13,5 +13,4 @@ type IPTableRule struct {
 type GwIPtableCounters struct {
 	Packets     int
 	PacketBytes int
-	direction   string
 }
