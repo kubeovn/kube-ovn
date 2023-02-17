@@ -29,13 +29,12 @@ import (
 var _ = framework.Describe("[group:subnet]", func() {
 	f := framework.NewDefaultFramework("subnet")
 
-	var skip bool
 	var subnet *apiv1.Subnet
 	var cs clientset.Interface
 	var podClient *framework.PodClient
 	var subnetClient *framework.SubnetClient
 	var eventClient *framework.EventClient
-	var namespaceName, subnetName, clusterName string
+	var namespaceName, subnetName string
 	var cidr, cidrV4, cidrV6, firstIPv4, lastIPv4, firstIPv6, lastIPv6 string
 	var gateways []string
 	var podCount int
@@ -68,23 +67,6 @@ var _ = framework.Describe("[group:subnet]", func() {
 			firstIPv6, _ = util.FirstIP(cidrV6)
 			lastIPv6, _ = util.LastIP(cidrV6)
 			gateways = append(gateways, firstIPv6)
-		}
-
-		if skip {
-			ginkgo.Skip("underlay spec only runs on kind clusters")
-		}
-
-		if clusterName == "" {
-			ginkgo.By("Getting k8s nodes")
-			k8sNodes, err := e2enode.GetReadySchedulableNodes(cs)
-			framework.ExpectNoError(err)
-
-			cluster, ok := kind.IsKindProvided(k8sNodes.Items[0].Spec.ProviderID)
-			if !ok {
-				skip = true
-				ginkgo.Skip("underlay spec only runs on kind clusters")
-			}
-			clusterName = cluster
 		}
 	})
 	ginkgo.AfterEach(func() {
@@ -882,6 +864,15 @@ var _ = framework.Describe("[group:subnet]", func() {
 	framework.ConformanceIt("should support subnet add gateway event and metrics", func() {
 		f.SkipVersionPriorTo(1, 12, "Support for subnet add gateway event and metrics is introduced in v1.12")
 
+		ginkgo.By("Getting nodes")
+		nodes, err := e2enode.GetReadySchedulableNodes(cs)
+		framework.ExpectNoError(err)
+		framework.ExpectNotEmpty(nodes.Items)
+
+		clusterName, ok := kind.IsKindProvided(nodes.Items[0].Spec.ProviderID)
+		if !ok {
+			ginkgo.Skip("support subnet add gateway event and metrics only runs in clusters created by kind")
+		}
 		clusterNodes, err := kind.ListNodes(clusterName, "")
 		framework.ExpectNoError(err, "getting nodes in kind cluster")
 
@@ -916,11 +907,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		ginkgo.By("Checking subnet gateway type/node change " + subnetName)
-		nodes, err := e2enode.GetReadySchedulableNodes(cs)
-		framework.ExpectNoError(err)
-		framework.ExpectNotEmpty(nodes.Items)
 
-		ginkgo.By("Creating subnet " + subnetName)
 		gatewayNodes := make([]string, 0, len(nodes.Items))
 		for i := 0; i < 3 && i < len(nodes.Items); i++ {
 			gatewayNodes = append(gatewayNodes, nodes.Items[i].Name)
@@ -933,7 +920,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		eventClient = f.EventClient("default")
 		events := eventClient.WaitToHaveEvent("Subnet", subnetName, "Normal", "SubnetGatewayTypeChanged", "kube-ovn-controller", "")
 
-		message := fmt.Sprintf("subnet gateway type change from %s to %s ", kubeovnv1.GWDistributedType, kubeovnv1.GWCentralizedType)
+		message := fmt.Sprintf("subnet gateway type changes from %s to %s ", kubeovnv1.GWDistributedType, kubeovnv1.GWCentralizedType)
 		found := false
 		for _, event := range events {
 			if strings.Contains(event.Message, message) {
@@ -941,17 +928,17 @@ var _ = framework.Describe("[group:subnet]", func() {
 				break
 			}
 		}
-		framework.ExpectTrue(found, "no SubnetGatewayNodeChanged event")
+		framework.ExpectTrue(found, "no SubnetGatewayTypeChanged event")
 		found = false
 		events = eventClient.WaitToHaveEvent("Subnet", subnetName, "Normal", "SubnetGatewayNodeChanged", "kube-ovn-controller", "")
-		message = fmt.Sprintf("gateway node change from %s to %s ", "", modifiedSubnet.Spec.GatewayNode)
+		message = fmt.Sprintf("gateway node changes from %s to %s ", "", modifiedSubnet.Spec.GatewayNode)
 		for _, event := range events {
 			if strings.Contains(event.Message, message) {
 				found = true
 				break
 			}
 		}
-		framework.ExpectTrue(found, "no SubnetGatewayTypeChanged event")
+		framework.ExpectTrue(found, "no SubnetGatewayNodeChanged event")
 		ginkgo.By("when remove subnet the iptables rules will remove ")
 		subnetClient.DeleteSync(subnetName)
 
