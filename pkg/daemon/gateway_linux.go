@@ -697,7 +697,7 @@ func (c *Controller) setOvnSubnetGatewayMetric() {
 			cidr := ""
 			direction := ""
 			subnetName := ""
-			var packetCount, packetBytes int
+			var currentPackets, currentPacketBytes int
 			if len(items) <= 10 {
 				continue
 			}
@@ -717,11 +717,11 @@ func (c *Controller) setOvnSubnetGatewayMetric() {
 						break
 					}
 					subnetName = comments[1][:len(comments[1])-1]
-					packetCount, err = strconv.Atoi(items[9])
+					currentPackets, err = strconv.Atoi(items[9])
 					if err != nil {
 						break
 					}
-					packetBytes, err = strconv.Atoi(items[10])
+					currentPacketBytes, err = strconv.Atoi(items[10])
 					if err != nil {
 						break
 					}
@@ -731,8 +731,45 @@ func (c *Controller) setOvnSubnetGatewayMetric() {
 				continue
 			}
 
-			metricOvnSubnetGatewayPackets.WithLabelValues(hostname, subnetName, cidr, direction, proto).Set(float64(packetCount))
-			metricOvnSubnetGatewayPacketBytes.WithLabelValues(hostname, subnetName, cidr, direction, proto).Set(float64(packetBytes))
+			lastPacketBytes := 0
+			lastPackets := 0
+			diffPacketBytes := 0
+			diffPackets := 0
+
+			key := strings.Join([]string{subnetName, direction}, "/")
+			if ret, ok := c.gwCounters[key]; ok {
+				lastPackets = ret.Packets
+				lastPacketBytes = ret.PacketBytes
+			} else {
+				c.gwCounters[key] = &util.GwIPtableCounters{
+					Packets:     lastPackets,
+					PacketBytes: lastPacketBytes,
+				}
+			}
+
+			if lastPacketBytes == 0 && lastPackets == 0 {
+				// the gwCounters may just initialize don't cal the diff values,
+				// it may loss packets to calculate during a metric period
+				c.gwCounters[key].Packets = currentPackets
+				c.gwCounters[key].PacketBytes = currentPacketBytes
+				continue
+			}
+
+			if currentPackets >= lastPackets {
+				diffPacketBytes = currentPacketBytes - lastPacketBytes
+				diffPackets = currentPackets - lastPackets
+			} else {
+				// if currentPacketBytes < lastPacketBytes, the reason is that iptables rule is reset ,
+				// it may loss packets to calculate during less than a metric period
+				diffPacketBytes = currentPacketBytes
+				diffPackets = currentPackets
+			}
+
+			c.gwCounters[key].Packets = currentPackets
+			c.gwCounters[key].PacketBytes = currentPacketBytes
+
+			metricOvnSubnetGatewayPackets.WithLabelValues(hostname, key, cidr, direction, proto).Add(float64(diffPackets))
+			metricOvnSubnetGatewayPacketBytes.WithLabelValues(hostname, key, cidr, direction, proto).Add(float64(diffPacketBytes))
 		}
 	}
 }
