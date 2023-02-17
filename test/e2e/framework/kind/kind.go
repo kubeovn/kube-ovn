@@ -79,6 +79,23 @@ func (n *Node) ListRoutes(nonLinkLocalUnicast bool) ([]iproute.Route, error) {
 	return result, nil
 }
 
+func (n *Node) ListIptableRules(table string) ([]string, error) {
+
+	output, _, err := n.Exec(strings.Fields(fmt.Sprintf("/usr/sbin/iptables -S -t %s ", table))...)
+	if err != nil {
+		return nil, err
+	}
+
+	rules := strings.Split(string(output), "\n")
+	output, _, err = n.Exec(strings.Fields(fmt.Sprintf("/usr/sbin/ip6tables -S -t %s ", table))...)
+	if err != nil {
+		return nil, err
+	}
+	rules6 := strings.Split(string(output), "\n")
+
+	return append(rules, rules6...), nil
+}
+
 func (n *Node) WaitLinkToDisappear(linkName string, interval time.Duration, deadline time.Time) error {
 	err := wait.PollImmediate(interval, time.Until(deadline), func() (bool, error) {
 		framework.Logf("Waiting for link %s in node %s to disappear", linkName, n.Name())
