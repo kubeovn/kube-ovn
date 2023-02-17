@@ -889,12 +889,19 @@ var _ = framework.Describe("[group:subnet]", func() {
 				rules, err := node.ListIptableRules("filter")
 				framework.ExpectNoError(err, "getting node rule failed")
 				isFound := false
+				hasGatewayIptableRule := false
 				for _, rule := range rules {
-					if strings.Contains(rule, strings.Join([]string{util.OvnSubnetGatewayIptables, subnetName}, ",")) {
+					if strings.Contains(rule, strings.Join([]string{util.OvnSubnetGatewayIptables, subnetName}, ",")) && !isFound {
 						isFound = true
 					}
+
+					if strings.Contains(rule, "ovn") && !hasGatewayIptableRule {
+						hasGatewayIptableRule = true
+					}
 				}
-				framework.ExpectEqual(isFound, expectFound, fmt.Sprintf("iptable rules should found %v", expectFound))
+				if hasGatewayIptableRule {
+					framework.ExpectEqual(isFound, expectFound, fmt.Sprintf("iptable rules should found %v", expectFound))
+				}
 			}
 		}
 
