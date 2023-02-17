@@ -531,6 +531,11 @@ func (c *Controller) loopEncapIpCheck() {
 	}
 }
 
+func (c *Controller) ovnMetricsUpdate() {
+	resetOvnSubnetGatewayMetrics()
+	c.setOvnSubnetGatewayMetric()
+}
+
 func (c *Controller) operateMod() {
 	modules, ok := os.LookupEnv(util.KoENV)
 	if !ok || modules == "" {

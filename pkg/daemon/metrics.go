@@ -66,6 +66,28 @@ var (
 		[]string{"code", "method", "host"},
 	)
 
+	metricOvnSubnetGatewayPacketBytes = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "ovn_subnet_gateway_packet_bytes",
+		Help: "the ovn subnet gateway packet bytes",
+	}, []string{
+		"hostname",
+		"subnet_name",
+		"cidr",
+		"direction",
+		"protocol",
+	})
+
+	metricOvnSubnetGatewayPackets = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "ovn_subnet_gateway_packets",
+		Help: "the ovn subnet gateway packet num",
+	}, []string{
+		"hostname",
+		"subnet_name",
+		"cidr",
+		"direction",
+		"protocol",
+	})
+
 	// reflector metrics
 
 	// TODO(directxman12): update these to be histograms once the metrics overhaul KEP
@@ -125,9 +147,15 @@ var (
 func InitMetrics() {
 	registerReflectorMetrics()
 	registerClientMetrics()
+	registerOvnSubnetGatewayMetrics()
 	prometheus.MustRegister(cniOperationHistogram)
 	prometheus.MustRegister(cniWaitAddressResult)
 	prometheus.MustRegister(cniConnectivityResult)
+}
+
+func registerOvnSubnetGatewayMetrics() {
+	prometheus.MustRegister(metricOvnSubnetGatewayPacketBytes)
+	prometheus.MustRegister(metricOvnSubnetGatewayPackets)
 }
 
 // registerClientMetrics sets up the client latency metrics from client-go
@@ -156,6 +184,11 @@ func registerReflectorMetrics() {
 	prometheus.MustRegister(lastResourceVersion)
 
 	reflectormetrics.SetReflectorMetricsProvider(reflectorMetricsProvider{})
+}
+
+func resetOvnSubnetGatewayMetrics() {
+	metricOvnSubnetGatewayPacketBytes.Reset()
+	metricOvnSubnetGatewayPackets.Reset()
 }
 
 // this section contains adapters, implementations, and other sundry organic, artisanally

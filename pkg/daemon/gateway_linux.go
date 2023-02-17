@@ -65,7 +65,7 @@ func (c *Controller) setIPSet() error {
 			continue
 		}
 		services := c.getServicesCIDR(protocol)
-		subnets, err := c.getDefaultVpcSubnetsCIDR(protocol)
+		subnets, _, err := c.getDefaultVpcSubnetsCIDR(protocol)
 		if err != nil {
 			klog.Errorf("get subnets failed, %+v", err)
 			return err
@@ -571,6 +571,48 @@ func (c *Controller) setIptables() error {
 			}
 		}
 
+		var ovnSubnetGatewayCountRules []util.IPTableRule
+		_, subnetCidrs, err := c.getDefaultVpcSubnetsCIDR(protocol)
+		if err != nil {
+			klog.Errorf("get subnets failed, %+v", err)
+			return err
+		}
+
+		for name, subnetCidr := range subnetCidrs {
+			ovnSubnetGatewayCountRules = []util.IPTableRule{
+				{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(fmt.Sprintf(`-m comment --comment %s,%s -s %s`, util.OvnSubnetGatewayIptables, name, subnetCidr))},
+				{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(fmt.Sprintf(`-m comment --comment %s,%s -d %s`, util.OvnSubnetGatewayIptables, name, subnetCidr))},
+			}
+			iptablesRules = append(iptablesRules, ovnSubnetGatewayCountRules...)
+		}
+
+		rules, err := c.iptables[protocol].List("filter", "FORWARD")
+		if err != nil {
+			klog.Errorf(`failed to list iptables rule table "filter" chain "FORWARD" with err %v `, err)
+			return err
+		}
+
+		for _, rule := range rules {
+			isAbandonRule := true
+			if !strings.Contains(rule, util.OvnSubnetGatewayIptables) {
+				continue
+			}
+
+			for name := range subnetCidrs {
+				keyStr := strings.Join([]string{util.OvnSubnetGatewayIptables, name}, ",")
+				if strings.Contains(rule, keyStr) {
+					isAbandonRule = false
+					break
+				}
+			}
+
+			if isAbandonRule {
+				rule := strings.ReplaceAll(rule, "\"", "")
+				// rule[11:] skip "-A FORWARD "
+				abandonedRules = append(abandonedRules, util.IPTableRule{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(rule[11:])})
+			}
+		}
+
 		var natPreroutingRules, natPostroutingRules []util.IPTableRule
 		for _, rule := range iptablesRules {
 			if rule.Table == NAT {
@@ -639,6 +681,60 @@ func (c *Controller) setIptables() error {
 		}
 	}
 	return nil
+}
+
+func (c *Controller) setOvnSubnetGatewayMetric() {
+	hostname := os.Getenv(util.HostnameEnv)
+	for proto, iptables := range c.iptables {
+		rules, err := iptables.ListWithCounters("filter", "FORWARD")
+		if err != nil {
+			klog.Errorf("get proto %s iptables failed with err %v ", proto, err)
+			continue
+		}
+
+		for _, rule := range rules {
+			items := strings.Fields(rule)
+			cidr := ""
+			direction := ""
+			subnetName := ""
+			var packetCount, packetBytes int
+			if len(items) <= 10 {
+				continue
+			}
+			for _, item := range items {
+				if strings.Contains(item, util.OvnSubnetGatewayIptables) {
+					cidr = items[3]
+					if items[2] == "-s" {
+						direction = "egress"
+					} else if items[2] == "-d" {
+						direction = "ingress"
+					} else {
+						break
+					}
+
+					comments := strings.Split(items[7], ",")
+					if len(comments) != 2 {
+						break
+					}
+					subnetName = comments[1][:len(comments[1])-1]
+					packetCount, err = strconv.Atoi(items[9])
+					if err != nil {
+						break
+					}
+					packetBytes, err = strconv.Atoi(items[10])
+					if err != nil {
+						break
+					}
+				}
+			}
+			if cidr == "" || direction == "" || subnetName == "" {
+				continue
+			}
+
+			metricOvnSubnetGatewayPackets.WithLabelValues(hostname, subnetName, cidr, direction, proto).Set(float64(packetCount))
+			metricOvnSubnetGatewayPacketBytes.WithLabelValues(hostname, subnetName, cidr, direction, proto).Set(float64(packetBytes))
+		}
+	}
 }
 
 func (c *Controller) addEgressConfig(subnet *kubeovnv1.Subnet, ip string) error {

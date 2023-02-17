@@ -100,6 +100,17 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		!reflect.DeepEqual(oldSubnet.Spec.Acls, newSubnet.Spec.Acls) ||
 		oldSubnet.Spec.U2OInterconnection != newSubnet.Spec.U2OInterconnection {
 		klog.V(3).Infof("enqueue update subnet %s", key)
+
+		if oldSubnet.Spec.GatewayType != newSubnet.Spec.GatewayType {
+			c.recorder.Eventf(newSubnet, v1.EventTypeNormal, "SubnetGatewayTypeChanged",
+				"subnet gateway type change from %s to %s ", oldSubnet.Spec.GatewayType, newSubnet.Spec.GatewayType)
+		}
+
+		if oldSubnet.Spec.GatewayNode != newSubnet.Spec.GatewayNode {
+			c.recorder.Eventf(newSubnet, v1.EventTypeNormal, "SubnetGatewayNodeChanged",
+				"gateway node change from %s to %s ", oldSubnet.Spec.GatewayNode, newSubnet.Spec.GatewayNode)
+		}
+
 		c.addOrUpdateSubnetQueue.Add(key)
 	}
 }
@@ -470,6 +481,7 @@ func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason string, e
 		c.recorder.Eventf(subnet, v1.EventTypeWarning, reason, errStr)
 	} else {
 		subnet.Status.Validated(reason, "")
+		c.recorder.Eventf(subnet, v1.EventTypeNormal, reason, errStr)
 		if reason == "SetPrivateLogicalSwitchSuccess" || reason == "ResetLogicalSwitchAclSuccess" || reason == "ReconcileCentralizedGatewaySuccess" {
 			subnet.Status.Ready(reason, "")
 		}
@@ -1273,8 +1285,11 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 		} else {
 			// centralized subnet
 			if subnet.Spec.GatewayNode == "" {
-				klog.Errorf("subnet %s Spec.GatewayNode field must be specified for centralized gateway type", subnet.Name)
+				errMsg := fmt.Sprintf("subnet %s Spec.GatewayNode field must be specified for centralized gateway type", subnet.Name)
+				klog.Errorf(errMsg)
+				reason := "NoReadyGateway"
 				subnet.Status.NotReady("NoReadyGateway", "")
+				c.recorder.Eventf(subnet, v1.EventTypeWarning, reason, errMsg)
 				bytes, err := subnet.Status.Bytes()
 				if err != nil {
 					return err
