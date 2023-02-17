@@ -532,7 +532,6 @@ func (c *Controller) loopEncapIpCheck() {
 }
 
 func (c *Controller) ovnMetricsUpdate() {
-	resetOvnSubnetGatewayMetrics()
 	c.setOvnSubnetGatewayMetric()
 }
 

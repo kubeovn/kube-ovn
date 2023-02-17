@@ -103,12 +103,12 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 
 		if oldSubnet.Spec.GatewayType != newSubnet.Spec.GatewayType {
 			c.recorder.Eventf(newSubnet, v1.EventTypeNormal, "SubnetGatewayTypeChanged",
-				"subnet gateway type change from %s to %s ", oldSubnet.Spec.GatewayType, newSubnet.Spec.GatewayType)
+				"subnet gateway type changes from %s to %s ", oldSubnet.Spec.GatewayType, newSubnet.Spec.GatewayType)
 		}
 
 		if oldSubnet.Spec.GatewayNode != newSubnet.Spec.GatewayNode {
 			c.recorder.Eventf(newSubnet, v1.EventTypeNormal, "SubnetGatewayNodeChanged",
-				"gateway node change from %s to %s ", oldSubnet.Spec.GatewayNode, newSubnet.Spec.GatewayNode)
+				"gateway node changes from %s to %s ", oldSubnet.Spec.GatewayNode, newSubnet.Spec.GatewayNode)
 		}
 
 		c.addOrUpdateSubnetQueue.Add(key)
@@ -1150,6 +1150,8 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 				}
 				subnet.Spec.GatewayNode = ""
 				subnet.Status.ActivateGateway = ""
+				c.recorder.Eventf(subnet, v1.EventTypeNormal, "ChangeToCentralizedGw", "")
+
 				bytes, err := subnet.Status.Bytes()
 				if err != nil {
 					return err
@@ -1438,6 +1440,7 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 				}
 				if newActivateNode == "" {
 					klog.Warningf("all subnet %s gws are not ready", subnet.Name)
+					c.recorder.Eventf(subnet, v1.EventTypeWarning, "NoActiveGatewayFound", fmt.Sprintf("subnet %s gws are not ready", subnet.Name))
 					subnet.Status.ActivateGateway = newActivateNode
 					bytes, err := subnet.Status.Bytes()
 					if err != nil {
