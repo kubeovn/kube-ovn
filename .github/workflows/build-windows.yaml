@@ -1,6 +1,8 @@
 name: Build Windows
 
 on:
+  workflow_dispatch:
+  release:
   pull_request:
     branches:
     - master
@@ -23,9 +25,49 @@ env:
   GOSEC_VERSION: '2.14.0'
 
 jobs:
+  filter:
+    name: Path Filter
+    runs-on: ubuntu-22.04
+    outputs:
+      build-ovs-ovn: ${{ steps.filter.outputs.windows-ovs-ovn }}
+      build-kube-ovn: ${{ steps.filter.outputs.windows-kube-ovn }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Generate path filter
+        env:
+          GOOS: windows
+        run: |
+          filter=".github/path-filters.yaml"
+          workflow=$(echo ${{ github.workflow_ref }} | awk -F@ '{print $1}' | sed 's@^${{ github.repository }}/@@')
+          cat > $filter <<EOF
+          windows-ovs-ovn:
+          - $workflow
+          windows-kube-ovn:
+          - $workflow
+          - go.mod
+          - go.sum
+          EOF
+          module=$(grep ^module go.mod | awk '{print $2}')
+          go list -f '{{ join .Deps "\n" }}' cmd/windows | grep ^$module/ | while read pkg; do
+            echo "- ${pkg#${module}/}/*" >> $filter
+          done
+          
+      - uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: .github/path-filters.yaml
+
   build-ovs-and-ovn:
     name: Build OVS and OVN
+    needs:
+      - filter
     runs-on: windows-2019
+    if: github.event_name != 'pull_request' || needs.filter.outputs.build-ovs-ovn == 'true'
     steps:
       - name: Check out PTHREADS4W
         run: |
@@ -126,7 +168,10 @@ jobs:
 
   build-kube-ovn:
     name: Build Kube-OVN
+    needs:
+      - filter
     runs-on: windows-2019
+    if: github.event_name != 'pull_request' || needs.filter.outputs.build-kube-ovn == 'true'
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
