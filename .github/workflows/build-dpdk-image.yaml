@@ -14,7 +14,7 @@ jobs:
           make build-dpdk
 
       - name: Push
-        if: ${{ github.ref == 'refs/heads/master' || contains(github.ref, 'release') }}
+        if: github.ref == github.event.repository.default_branch || startsWith(github.ref, 'release-')
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
