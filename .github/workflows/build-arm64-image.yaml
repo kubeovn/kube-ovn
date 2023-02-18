@@ -14,12 +14,9 @@ on:
     - 'docs/**'
     - '**.md'
 
-concurrency: 
+concurrency:
   group: "${{ github.workflow }}-${{ github.ref }}"
   cancel-in-progress: true
-
-env:
-  GO_VERSION: '1.20'
 
 jobs:
   build:
@@ -34,13 +31,11 @@ jobs:
 
       - uses: actions/setup-go@v3
         with:
-          go-version: '${{ env.GO_VERSION }}'
+          go-version-file: go.mod
           check-latest: true
-        id: go
 
       - name: Export Go full version
-        run: |
-          echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
 
       - name: Go Cache
         uses: actions/cache@v3
@@ -49,12 +44,10 @@ jobs:
             ~/.cache/go-build
             ~/go/pkg/mod
           key: ${{ runner.os }}-${{ env.GO_FULL_VER }}-arm64-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ env.GO_FULL_VER }}-arm64-
+          restore-keys: ${{ runner.os }}-${{ env.GO_FULL_VER }}-arm64-
 
       - name: Build
-        run: |
-          make release-arm || make release-arm
+        run: make release-arm || make release-arm
 
       - name: Push
         if: ${{ github.ref == 'refs/heads/master' || contains(github.ref, 'release') }}

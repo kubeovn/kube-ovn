@@ -21,9 +21,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: '1.20'
   GOSEC_VERSION: '2.14.0'
-  KIND_VERSION: v0.17.0
   HELM_VERSION: v3.10.1
 
 jobs:
@@ -72,9 +70,8 @@ jobs:
       - uses: docker/setup-buildx-action@v2
       - uses: actions/setup-go@v3
         with:
-          go-version: '${{ env.GO_VERSION }}'
+          go-version-file: go.mod
           check-latest: true
-        id: go
 
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
@@ -220,9 +217,8 @@ jobs:
 
       - uses: actions/setup-go@v3
         with:
-          go-version: '${{ env.GO_VERSION }}'
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
-        id: go
 
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
@@ -241,10 +237,9 @@ jobs:
         run: make e2e-compile
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Download image
         uses: actions/download-artifact@v3
@@ -313,9 +308,8 @@ jobs:
 
       - uses: actions/setup-go@v3
         with:
-          go-version: '${{ env.GO_VERSION }}'
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
-        id: go
 
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
@@ -334,10 +328,9 @@ jobs:
         run: make e2e-compile
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Download image
         uses: actions/download-artifact@v3
@@ -402,9 +395,8 @@ jobs:
 
       - uses: actions/setup-go@v3
         with:
-          go-version: '${{ env.GO_VERSION }}'
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
-        id: go
 
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
@@ -415,7 +407,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('${{ env.E2E_DIR }}/**/go.sum') }}
+          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Build e2e binaries
@@ -423,10 +415,9 @@ jobs:
         run: make e2e-compile
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Download image
         uses: actions/download-artifact@v3
@@ -485,10 +476,9 @@ jobs:
           fi
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Download image
         uses: actions/download-artifact@v3
@@ -551,9 +541,8 @@ jobs:
 
       - uses: actions/setup-go@v3
         with:
-          go-version: '${{ env.GO_VERSION }}'
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
-        id: go
 
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
@@ -572,10 +561,9 @@ jobs:
         run: make e2e-compile
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Download image
         uses: actions/download-artifact@v3
@@ -635,9 +623,8 @@ jobs:
 
       - uses: actions/setup-go@v3
         with:
-          go-version: '${{ env.GO_VERSION }}'
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
-        id: go
 
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
@@ -656,10 +643,9 @@ jobs:
         run: make e2e-compile
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Download image
         uses: actions/download-artifact@v3
@@ -693,10 +679,9 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Download image
         uses: actions/download-artifact@v3
@@ -733,10 +718,9 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Download image
         uses: actions/download-artifact@v3
@@ -769,10 +753,9 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Download image
         uses: actions/download-artifact@v3
@@ -807,10 +790,9 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Download image
         uses: actions/download-artifact@v3
@@ -866,9 +848,8 @@ jobs:
 
       - uses: actions/setup-go@v3
         with:
-          go-version: '${{ env.GO_VERSION }}'
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
-        id: go
 
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
@@ -887,10 +868,9 @@ jobs:
         run: make e2e-compile
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Download kube-ovn image
         uses: actions/download-artifact@v3
@@ -934,10 +914,9 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Download image
         uses: actions/download-artifact@v3
@@ -997,9 +976,8 @@ jobs:
 
       - uses: actions/setup-go@v3
         with:
-          go-version: '${{ env.GO_VERSION }}'
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
-        id: go
 
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
@@ -1018,10 +996,9 @@ jobs:
         run: make e2e-compile
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Download image
         uses: actions/download-artifact@v3
@@ -1090,9 +1067,8 @@ jobs:
 
       - uses: actions/setup-go@v3
         with:
-          go-version: '${{ env.GO_VERSION }}'
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
-        id: go
 
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
@@ -1111,10 +1087,9 @@ jobs:
         run: make e2e-compile
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Download image
         uses: actions/download-artifact@v3

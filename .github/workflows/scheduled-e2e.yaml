@@ -10,8 +10,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: '1.20'
-  KIND_VERSION: v0.17.0
   HELM_VERSION: v3.10.1
 
 jobs:
@@ -45,9 +43,8 @@ jobs:
 
       - uses: actions/setup-go@v3
         with:
-          go-version: '${{ env.GO_VERSION }}'
+          go-version-file: go.mod
           check-latest: true
-        id: go
 
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
@@ -72,10 +69,9 @@ jobs:
           path: test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Create kind cluster
         working-directory: test/e2e/k8s-network/branches/${{ matrix.branch }}
@@ -127,9 +123,8 @@ jobs:
 
       - uses: actions/setup-go@v3
         with:
-          go-version: '${{ env.GO_VERSION }}'
+          go-version-file: go.mod
           check-latest: true
-        id: go
 
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
@@ -154,10 +149,9 @@ jobs:
           path: test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Create kind cluster
         working-directory: test/e2e/k8s-network/branches/${{ matrix.branch }}
@@ -205,9 +199,8 @@ jobs:
 
       - uses: actions/setup-go@v3
         with:
-          go-version: '${{ env.GO_VERSION }}'
+          go-version-file: go.mod
           check-latest: true
-        id: go
 
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
@@ -232,10 +225,9 @@ jobs:
           path: test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Create kind cluster
         working-directory: test/e2e/k8s-network/branches/${{ matrix.branch }}
@@ -292,10 +284,9 @@ jobs:
           path: test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Create kind cluster
         working-directory: test/e2e/k8s-network/branches/${{ matrix.branch }}
@@ -340,9 +331,8 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
         with:
-          go-version: '${{ env.GO_VERSION }}'
+          go-version-file: go.mod
           check-latest: true
-        id: go
 
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
@@ -367,10 +357,9 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
@@ -411,9 +400,8 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
         with:
-          go-version: '${{ env.GO_VERSION }}'
+          go-version-file: go.mod
           check-latest: true
-        id: go
 
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
@@ -438,10 +426,9 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
@@ -487,10 +474,9 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
@@ -538,10 +524,9 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
@@ -590,10 +575,9 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
@@ -644,10 +628,9 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
@@ -695,9 +678,8 @@ jobs:
 
       - uses: actions/setup-go@v3
         with:
-          go-version: '${{ env.GO_VERSION }}'
+          go-version-file: go.mod
           check-latest: true
-        id: go
 
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
@@ -712,10 +694,9 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
@@ -768,10 +749,9 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Create kind cluster
         run: |
@@ -818,9 +798,8 @@ jobs:
 
       - uses: actions/setup-go@v3
         with:
-          go-version: '${{ env.GO_VERSION }}'
+          go-version-file: go.mod
           check-latest: true
-        id: go
 
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
@@ -845,10 +824,9 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
@@ -899,9 +877,8 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
         with:
-          go-version: '${{ env.GO_VERSION }}'
+          go-version-file: go.mod
           check-latest: true
-        id: go
 
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
@@ -926,10 +903,9 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
@@ -975,9 +951,8 @@ jobs:
 
       - uses: actions/setup-go@v3
         with:
-          go-version: '${{ env.GO_VERSION }}'
+          go-version-file: go.mod
           check-latest: true
-        id: go
 
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
@@ -1002,10 +977,9 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
