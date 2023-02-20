@@ -727,7 +727,10 @@ func (c *Controller) setOvnSubnetGatewayMetric() {
 					}
 				}
 			}
-			if cidr == "" || direction == "" || subnetName == "" {
+
+			proto := util.CheckProtocol(cidr)
+
+			if cidr == "" || direction == "" || subnetName == "" && proto != "" {
 				continue
 			}
 
@@ -736,7 +739,7 @@ func (c *Controller) setOvnSubnetGatewayMetric() {
 			diffPacketBytes := 0
 			diffPackets := 0
 
-			key := strings.Join([]string{subnetName, direction}, "/")
+			key := strings.Join([]string{subnetName, direction, proto}, "/")
 			if ret, ok := c.gwCounters[key]; ok {
 				lastPackets = ret.Packets
 				lastPacketBytes = ret.PacketBytes
@@ -755,21 +758,26 @@ func (c *Controller) setOvnSubnetGatewayMetric() {
 				continue
 			}
 
-			if currentPackets >= lastPackets {
+			if currentPackets >= lastPackets && currentPacketBytes >= lastPacketBytes {
 				diffPacketBytes = currentPacketBytes - lastPacketBytes
 				diffPackets = currentPackets - lastPackets
 			} else {
 				// if currentPacketBytes < lastPacketBytes, the reason is that iptables rule is reset ,
-				// it may loss packets to calculate during less than a metric period
-				diffPacketBytes = currentPacketBytes
-				diffPackets = currentPackets
+				// it may loss packets to calculate during a metric period
+				c.gwCounters[key].Packets = currentPackets
+				c.gwCounters[key].PacketBytes = currentPacketBytes
+				continue
 			}
 
 			c.gwCounters[key].Packets = currentPackets
 			c.gwCounters[key].PacketBytes = currentPacketBytes
 
-			metricOvnSubnetGatewayPackets.WithLabelValues(hostname, key, cidr, direction, proto).Add(float64(diffPackets))
-			metricOvnSubnetGatewayPacketBytes.WithLabelValues(hostname, key, cidr, direction, proto).Add(float64(diffPacketBytes))
+			if diffPackets > 0 {
+				metricOvnSubnetGatewayPackets.WithLabelValues(hostname, key, cidr, direction, proto).Add(float64(diffPackets))
+			}
+			if diffPacketBytes > 0 {
+				metricOvnSubnetGatewayPacketBytes.WithLabelValues(hostname, key, cidr, direction, proto).Add(float64(diffPacketBytes))
+			}
 		}
 	}
 }
