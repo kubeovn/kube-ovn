@@ -1927,7 +1927,7 @@ func (c LegacyClient) CreateGatewayACL(pgName, gateway, cidr string) error {
 				ipSuffix = "ip6"
 			}
 			ingressArgs := []string{MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("%s.src == %s", ipSuffix, gw), "allow-related"}
-			egressArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("%s.dst == %s", ipSuffix, gw), "allow-related"}
+			egressArgs := []string{"--", MayExist, "--type=port-group", "--apply-after-lb", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("%s.dst == %s", ipSuffix, gw), "allow-related"}
 			ovnArgs := append(ingressArgs, egressArgs...)
 			if _, err := c.ovnNbCommand(ovnArgs...); err != nil {
 				return err
@@ -1947,7 +1947,7 @@ func (c LegacyClient) CreateACLForNodePg(pgName, nodeIpStr string) error {
 		pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
 
 		ingressArgs := []string{MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.NodeAllowPriority, fmt.Sprintf("%s.src == %s && %s.dst == $%s", ipSuffix, nodeIp, ipSuffix, pgAs), "allow-related"}
-		egressArgs := []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "from-lport", util.NodeAllowPriority, fmt.Sprintf("%s.dst == %s && %s.src == $%s", ipSuffix, nodeIp, ipSuffix, pgAs), "allow-related"}
+		egressArgs := []string{"--", MayExist, "--type=port-group", "--apply-after-lb", "acl-add", pgName, "from-lport", util.NodeAllowPriority, fmt.Sprintf("%s.dst == %s && %s.src == $%s", ipSuffix, nodeIp, ipSuffix, pgAs), "allow-related"}
 		ovnArgs := append(ingressArgs, egressArgs...)
 		if _, err := c.ovnNbCommand(ovnArgs...); err != nil {
 			klog.Errorf("failed to add node port-group acl: %v", err)
