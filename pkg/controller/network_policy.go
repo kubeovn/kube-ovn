@@ -196,6 +196,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		return err
 	}
 
+	namedPortMap := c.namedPort.GetNamedPortByNs(np.Namespace)
 	ports, err := c.fetchSelectedPorts(np.Namespace, &np.Spec.PodSelector)
 	if err != nil {
 		klog.Errorf("failed to fetch ports, %v", err)
@@ -302,9 +303,9 @@ func (c *Controller) handleUpdateNp(key string) error {
 				}
 
 				if len(allows) != 0 || len(excepts) != 0 {
-					ingressAclCmd = c.ovnLegacyClient.CombineIngressACLCmd(pgName, ingressAllowAsName, ingressExceptAsName, protocol, npr.Ports, logEnable, ingressAclCmd, idx)
+					ingressAclCmd = c.ovnLegacyClient.CombineIngressACLCmd(pgName, ingressAllowAsName, ingressExceptAsName, protocol, npr.Ports, logEnable, ingressAclCmd, idx, namedPortMap)
 				} else {
-					ingressAclCmd = c.ovnLegacyClient.CombineIngressACLCmd(pgName, ingressAllowAsName, ingressExceptAsName, protocol, []netv1.NetworkPolicyPort{}, logEnable, ingressAclCmd, idx)
+					ingressAclCmd = c.ovnLegacyClient.CombineIngressACLCmd(pgName, ingressAllowAsName, ingressExceptAsName, protocol, []netv1.NetworkPolicyPort{}, logEnable, ingressAclCmd, idx, namedPortMap)
 				}
 			}
 			if len(np.Spec.Ingress) == 0 {
@@ -320,7 +321,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 				ingressPorts := []netv1.NetworkPolicyPort{}
-				ingressAclCmd = c.ovnLegacyClient.CombineIngressACLCmd(pgName, ingressAllowAsName, ingressExceptAsName, protocol, ingressPorts, logEnable, ingressAclCmd, 0)
+				ingressAclCmd = c.ovnLegacyClient.CombineIngressACLCmd(pgName, ingressAllowAsName, ingressExceptAsName, protocol, ingressPorts, logEnable, ingressAclCmd, 0, namedPortMap)
 			}
 
 			klog.Infof("create ingress acl cmd is: %v", ingressAclCmd)
@@ -445,7 +446,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 				}
 
 				if len(allows) != 0 || len(excepts) != 0 {
-					egressAclCmd = c.ovnLegacyClient.CombineEgressACLCmd(pgName, egressAllowAsName, egressExceptAsName, protocol, npr.Ports, logEnable, egressAclCmd, idx)
+					egressAclCmd = c.ovnLegacyClient.CombineEgressACLCmd(pgName, egressAllowAsName, egressExceptAsName, protocol, npr.Ports, logEnable, egressAclCmd, idx, namedPortMap)
 				}
 			}
 			if len(np.Spec.Egress) == 0 {
@@ -461,7 +462,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 				egressPorts := []netv1.NetworkPolicyPort{}
-				egressAclCmd = c.ovnLegacyClient.CombineEgressACLCmd(pgName, egressAllowAsName, egressExceptAsName, protocol, egressPorts, logEnable, egressAclCmd, 0)
+				egressAclCmd = c.ovnLegacyClient.CombineEgressACLCmd(pgName, egressAllowAsName, egressExceptAsName, protocol, egressPorts, logEnable, egressAclCmd, 0, namedPortMap)
 			}
 
 			klog.Infof("create egress acl cmd is: %v", egressAclCmd)

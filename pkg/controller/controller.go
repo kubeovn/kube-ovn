@@ -39,6 +39,7 @@ type Controller struct {
 	//subnetVpcMap *sync.Map
 	podSubnetMap *sync.Map
 	ipam         *ovnipam.IPAM
+	namedPort    *NamedPort
 
 	ovnLegacyClient *ovs.LegacyClient
 	ovnClient       *ovs.OvnClient
@@ -260,6 +261,7 @@ func NewController(config *Configuration) *Controller {
 		ovnLegacyClient: ovs.NewLegacyClient(config.OvnNbAddr, config.OvnTimeout, config.OvnSbAddr, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
 		ovnPgKeyMutex:   keymutex.New(97),
 		ipam:            ovnipam.NewIPAM(),
+		namedPort:       NewNamedPort(),
 
 		vpcsLister:           vpcInformer.Lister(),
 		vpcSynced:            vpcInformer.Informer().HasSynced,
