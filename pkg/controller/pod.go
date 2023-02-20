@@ -67,7 +67,7 @@ func (n *NamedPort) AddNamedPortByPod(pod *v1.Pod) {
 					if n.namedPortMap[ns][port.Name].PortId == port.ContainerPort {
 						n.namedPortMap[ns][port.Name].Pods[podName] = ""
 					} else {
-						klog.Errorf("named port %s has already be defined with portID %d",
+						klog.Warning("named port %s has already be defined with portID %d",
 							port.Name, n.namedPortMap[ns][port.Name].PortId)
 					}
 					continue
