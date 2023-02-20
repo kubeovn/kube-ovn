@@ -154,16 +154,16 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 func (c *Controller) initNodeSwitch() error {
 	subnet, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), c.config.NodeSwitch, metav1.GetOptions{})
 	if err == nil {
-		if subnet != nil && util.CheckProtocol(c.config.NodeSwitchCIDR) != util.CheckProtocol(subnet.Spec.CIDRBlock) {
+		if util.CheckProtocol(c.config.NodeSwitchCIDR) == kubeovnv1.ProtocolDual && util.CheckProtocol(subnet.Spec.CIDRBlock) != kubeovnv1.ProtocolDual {
 			// single-stack upgrade to dual-stack
-			if util.CheckProtocol(c.config.NodeSwitchCIDR) == kubeovnv1.ProtocolDual {
-				subnet := subnet.DeepCopy()
-				subnet.Spec.CIDRBlock = c.config.NodeSwitchCIDR
-				if err := formatSubnet(subnet, c); err != nil {
-					klog.Errorf("init format subnet %s failed: %v", c.config.NodeSwitch, err)
-					return err
-				}
+			subnet := subnet.DeepCopy()
+			subnet.Spec.CIDRBlock = c.config.NodeSwitchCIDR
+			if err := formatSubnet(subnet, c); err != nil {
+				klog.Errorf("init format subnet %s failed: %v", c.config.NodeSwitch, err)
+				return err
 			}
+		} else {
+			c.config.NodeSwitchCIDR = subnet.Spec.CIDRBlock
 		}
 		return nil
 	}
