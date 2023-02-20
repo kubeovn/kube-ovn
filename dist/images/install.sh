@@ -3591,11 +3591,10 @@ echo ""
 echo "[Step 4/6] Delete pod that not in host network mode"
 for ns in $(kubectl get ns --no-headers -o custom-columns=NAME:.metadata.name); do
   for pod in $(kubectl get pod --no-headers -n "$ns" --field-selector spec.restartPolicy=Always -o custom-columns=NAME:.metadata.name,HOST:spec.hostNetwork | awk '{if ($2!="true") print $1}'); do
-    kubectl delete pod "$pod" -n "$ns" --ignore-not-found
+    kubectl delete pod "$pod" -n "$ns" --ignore-not-found --wait=false
   done
 done
 
-sleep 5
 kubectl rollout status daemonset/kube-ovn-pinger -n kube-system --timeout 300s
 kubectl rollout status deployment/coredns -n kube-system --timeout 600s
 echo "-------------------------------"
