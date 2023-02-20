@@ -275,12 +275,6 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 				c.updateNpQueue.Add(np)
 			}
 		}
-
-		if oldPod.Status.PodIP != newPod.Status.PodIP {
-			for _, np := range c.podMatchNetworkPolicies(newPod) {
-				c.updateNpQueue.Add(np)
-			}
-		}
 	}
 
 	if newPod.Spec.HostNetwork {
@@ -344,6 +338,13 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 
 		if newPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] == "true" && newPod.Spec.NodeName != "" {
 			if newPod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)] != "true" {
+				if c.config.EnableNP {
+					for _, np := range c.podMatchNetworkPolicies(newPod) {
+						klog.V(3).Infof("enqueue update pod %s' network policy", key)
+						c.updateNpQueue.Add(np)
+					}
+				}
+
 				klog.V(3).Infof("enqueue update pod %s", key)
 				c.updatePodQueue.Add(key)
 				break

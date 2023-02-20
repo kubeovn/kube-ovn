@@ -520,7 +520,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}
 
-	if err = c.ovnLegacyClient.CreateGatewayACL(pgName, subnet.Spec.Gateway, subnet.Spec.CIDRBlock); err != nil {
+	if err = c.ovnLegacyClient.CreateGatewayACL("", pgName, subnet.Spec.Gateway, subnet.Spec.CIDRBlock); err != nil {
 		klog.Errorf("failed to create gateway acl, %v", err)
 		return err
 	}
@@ -594,7 +594,7 @@ func (c *Controller) fetchSelectedPorts(namespace string, selector *metav1.Label
 
 	ports := make([]string, 0, len(pods))
 	for _, pod := range pods {
-		if !isPodAlive(pod) || pod.Spec.HostNetwork {
+		if pod.Spec.HostNetwork {
 			continue
 		}
 		podName := c.getNameByPod(pod)
@@ -724,19 +724,28 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 		}
 
 		for _, pod := range pods {
-			for _, podIP := range pod.Status.PodIPs {
-				if podIP.IP != "" && util.CheckProtocol(podIP.IP) == protocol {
-					selectedAddresses = append(selectedAddresses, podIP.IP)
-					if len(svcs) == 0 {
-						continue
+			podNets, err := c.getPodKubeovnNets(pod)
+			if err != nil {
+				klog.Errorf("failed to get pod nets %v", err)
+				return nil, nil, err
+			}
+			for _, podNet := range podNets {
+				podIPAnnotation := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
+				podIPs := strings.Split(podIPAnnotation, ",")
+				for _, podIP := range podIPs {
+					if podIP != "" && util.CheckProtocol(podIP) == protocol {
+						selectedAddresses = append(selectedAddresses, podIP)
 					}
-
-					svcIPs, err := svcMatchPods(svcs, pod, protocol)
-					if err != nil {
-						return nil, nil, err
-					}
-					selectedAddresses = append(selectedAddresses, svcIPs...)
 				}
+				if len(svcs) == 0 {
+					continue
+				}
+
+				svcIPs, err := svcMatchPods(svcs, pod, protocol)
+				if err != nil {
+					return nil, nil, err
+				}
+				selectedAddresses = append(selectedAddresses, svcIPs...)
 			}
 		}
 	}
