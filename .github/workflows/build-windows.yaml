@@ -64,8 +64,7 @@ jobs:
 
   build-ovs-and-ovn:
     name: Build OVS and OVN
-    needs:
-      - filter
+    needs: filter
     runs-on: windows-2019
     if: github.event_name == 'release' || github.event_name == 'workflow_dispatch' || needs.filter.outputs.build-ovs-ovn == 'true'
     steps:
@@ -168,8 +167,7 @@ jobs:
 
   build-kube-ovn:
     name: Build Kube-OVN
-    needs:
-      - filter
+    needs: filter
     runs-on: windows-2019
     if: github.event_name == 'release' || github.event_name == 'workflow_dispatch' || needs.filter.outputs.build-kube-ovn == 'true'
     steps:
