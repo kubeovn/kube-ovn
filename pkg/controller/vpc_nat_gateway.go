@@ -383,15 +383,13 @@ func (c *Controller) handleUpdateVpcEip(natGwKey string) error {
 		klog.Errorf("failed to init nat gw pod '%s' create at, %v", natGwKey, err)
 		return err
 	}
-	eips, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().List(context.Background(), metav1.ListOptions{
-		LabelSelector: fields.OneTermEqualSelector(util.VpcNatLabel, "").String(),
-	})
+	eips, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
-		klog.Errorf("failed to get not used eips, %v", err)
+		klog.Errorf("failed to get eip list, %v", err)
 		return err
 	}
 	for _, eip := range eips.Items {
-		if eip.Spec.NatGwDp == natGwKey && eip.Status.Redo != NAT_GW_CREATED_AT {
+		if eip.Spec.NatGwDp == natGwKey && eip.Status.Redo != NAT_GW_CREATED_AT && eip.Annotations[util.VpcNatAnnotation] == "" {
 			klog.V(3).Infof("redo eip %s", eip.Name)
 			if err = c.patchEipStatus(eip.Name, "", NAT_GW_CREATED_AT, "", false); err != nil {
 				klog.Errorf("failed to update eip '%s' to make sure applied, %v", eip.Name, err)

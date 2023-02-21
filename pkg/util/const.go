@@ -32,8 +32,10 @@ const (
 	VpcLbAnnotation             = "ovn.kubernetes.io/vpc_lb"
 	VpcExternalLabel            = "ovn.kubernetes.io/vpc_external"
 	VpcEipLabel                 = "ovn.kubernetes.io/vpc_eip"
+	VpcEipAnnotation            = "ovn.kubernetes.io/vpc_eip"
 	VpcDnatEPortLabel           = "ovn.kubernetes.io/vpc_dnat_eport"
 	VpcNatLabel                 = "ovn.kubernetes.io/vpc_nat"
+	VpcNatAnnotation            = "ovn.kubernetes.io/vpc_nat"
 
 	SwitchLBRuleVipsAnnotation = "ovn.kubernetes.io/switch_lb_vip"
 
