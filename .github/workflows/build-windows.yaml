@@ -67,7 +67,7 @@ jobs:
     needs:
       - filter
     runs-on: windows-2019
-    if: github.event_name != 'pull_request' || needs.filter.outputs.build-ovs-ovn == 'true'
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch' || needs.filter.outputs.build-ovs-ovn == 'true'
     steps:
       - name: Check out PTHREADS4W
         run: |
@@ -171,7 +171,7 @@ jobs:
     needs:
       - filter
     runs-on: windows-2019
-    if: github.event_name != 'pull_request' || needs.filter.outputs.build-kube-ovn == 'true'
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch' || needs.filter.outputs.build-kube-ovn == 'true'
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
