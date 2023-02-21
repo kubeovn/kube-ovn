@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -273,26 +272,34 @@ func (c *Controller) handleResetIptablesEip(key string) error {
 	case util.DnatUsingEip:
 		// nat change eip not that fast
 		dnats, err := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().List(context.Background(), metav1.ListOptions{
-			LabelSelector: fields.OneTermEqualSelector(util.VpcEipLabel, key).String(),
+			LabelSelector: fields.OneTermEqualSelector(util.VpcNatGatewayNameLabel, key).String(),
 		})
 		if err != nil {
 			klog.Errorf("failed to get dnats, %v", err)
 			return err
 		}
-		if len(dnats.Items) == 0 {
-			notUse = true
+		notUse = true
+		for _, item := range dnats.Items {
+			if item.Annotations[util.VpcEipAnnotation] == key {
+				notUse = false
+				break
+			}
 		}
 	case util.SnatUsingEip:
 		// nat change eip not that fast
 		snats, err := c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().List(context.Background(), metav1.ListOptions{
-			LabelSelector: fields.OneTermEqualSelector(util.VpcEipLabel, key).String(),
+			LabelSelector: fields.OneTermEqualSelector(util.VpcNatGatewayNameLabel, key).String(),
 		})
 		if err != nil {
 			klog.Errorf("failed to get snats, %v", err)
 			return err
 		}
-		if len(snats.Items) == 0 {
-			notUse = true
+		notUse = true
+		for _, item := range snats.Items {
+			if item.Annotations[util.VpcEipAnnotation] == key {
+				notUse = false
+				break
+			}
 		}
 	default:
 		notUse = true
@@ -568,7 +575,7 @@ func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp string) 
 				return err
 			}
 		}
-		var needUpdateLabel bool
+		var needUpdateLabel, needUpdateAnno bool
 		var op string
 		if len(eip.Labels) == 0 {
 			op = "add"
@@ -585,6 +592,15 @@ func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp string) 
 		}
 		if needUpdateLabel {
 			if err := c.updateIptableLabels(eip.Name, op, "eip", eip.Labels); err != nil {
+				return err
+			}
+		}
+		if needUpdateAnno {
+			if eip.Annotations == nil {
+				eip.Annotations = make(map[string]string)
+			}
+			eip.Annotations[util.VpcNatAnnotation] = ""
+			if err := c.updateIptableAnnotations(eip.Name, op, "eip", eip.Annotations); err != nil {
 				return err
 			}
 		}
@@ -791,7 +807,7 @@ func (c *Controller) natLabelEip(eipName, natName string) error {
 		return err
 	}
 	eip := oriEip.DeepCopy()
-	var needUpdateLabel bool
+	var needUpdateLabel, needUpdateAnno bool
 	var op string
 	if len(eip.Labels) == 0 {
 		op = "add"
