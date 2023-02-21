@@ -110,9 +110,9 @@ func (v *ValidatingHook) iptablesEIPDeleteHook(ctx context.Context, req admissio
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	if eip.Status.Ready && eip.Labels[util.VpcNatLabel] != "" {
+	if eip.Status.Ready && eip.Annotations[util.VpcNatAnnotation] != "" {
 		var err error
-		natName := eip.Labels[util.VpcNatLabel]
+		natName := eip.Annotations[util.VpcNatAnnotation]
 		natType := eip.Status.Nat
 
 		key := types.NamespacedName{Name: natName}
