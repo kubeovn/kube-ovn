@@ -26,8 +26,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GOSEC_VERSION: '2.14.0'
-  HELM_VERSION: v3.10.1
+  GOSEC_VERSION: '2.15.0'
+  HELM_VERSION: v3.10.3
 
 jobs:
   build-kube-ovn-base:
@@ -103,7 +103,12 @@ jobs:
 
       - name: Install gosec
         run: |
-          curl -sfL https://raw.githubusercontent.com/securego/gosec/master/install.sh | sh -s -- -b $(go env GOPATH)/bin 'v${{ env.GOSEC_VERSION }}'
+          tmp=$(mktemp -d)
+          archive="gosec_${{ env.GOSEC_VERSION }}_$(go env GOHOSTOS)_$(go env GOHOSTARCH).tar.gz"
+          wget -q -O "$tmp/$archive" https://github.com/securego/gosec/releases/download/v${{ env.GOSEC_VERSION }}/$archive
+          tar --no-same-owner -C "$tmp" -xzf "$tmp/$archive"
+          install "$tmp/gosec" /usr/local/bin
+          rm -rf $tmp
 
       - name: Download base images
         if: needs.build-kube-ovn-base.outputs.build-base == 1
