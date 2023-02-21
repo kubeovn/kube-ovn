@@ -575,26 +575,16 @@ func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp string) 
 			eip.Labels = map[string]string{
 				util.SubnetNameLabel:        util.VpcExternalNet,
 				util.VpcNatGatewayNameLabel: natGwDp,
-				util.VpcNatLabel:            "",
 			}
 			needUpdateLabel = true
 		} else if eip.Labels[util.SubnetNameLabel] != util.VpcExternalNet {
 			op = "replace"
 			eip.Labels[util.SubnetNameLabel] = util.VpcExternalNet
 			eip.Labels[util.VpcNatGatewayNameLabel] = natGwDp
-			eip.Labels[util.VpcNatLabel] = ""
 			needUpdateLabel = true
 		}
 		if needUpdateLabel {
-			patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
-			raw, _ := json.Marshal(eip.Labels)
-			patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), key, types.JSONPatchType,
-				[]byte(patchPayload), metav1.PatchOptions{}); err != nil {
-				if k8serrors.IsNotFound(err) {
-					return nil
-				}
-				klog.Errorf("failed to patch label for eip %s, %v", eip.Name, err)
+			if err := c.updateIptableLabels(eip.Name, op, "eip", eip.Labels); err != nil {
 				return err
 			}
 		}
@@ -809,26 +799,32 @@ func (c *Controller) natLabelEip(eipName, natName string) error {
 		eip.Labels = map[string]string{
 			util.SubnetNameLabel:        util.VpcExternalNet,
 			util.VpcNatGatewayNameLabel: eip.Spec.NatGwDp,
-			util.VpcNatLabel:            natName,
 		}
-	} else if eip.Labels[util.VpcNatLabel] != natName {
+	} else if eip.Labels[util.VpcNatGatewayNameLabel] != eip.Spec.NatGwDp {
 		op = "replace"
 		needUpdateLabel = true
 		eip.Labels[util.SubnetNameLabel] = util.VpcExternalNet
 		eip.Labels[util.VpcNatGatewayNameLabel] = eip.Spec.NatGwDp
-		eip.Labels[util.VpcNatLabel] = natName
+	}
+	if needUpdateLabel {
+		if err := c.updateIptableLabels(eip.Name, op, "eip", eip.Labels); err != nil {
+			return err
+		}
 	}
 
-	if needUpdateLabel {
-		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
-		raw, _ := json.Marshal(eip.Labels)
-		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-		if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), eip.Name,
-			types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
-			if k8serrors.IsNotFound(err) {
-				return nil
-			}
-			klog.Errorf("failed to patch label for eip %s, %v", eip.Name, err)
+	if len(eip.Annotations) == 0 {
+		op = "add"
+		needUpdateAnno = true
+		eip.Annotations = map[string]string{
+			util.VpcNatAnnotation: natName,
+		}
+	} else if eip.Annotations[util.VpcNatAnnotation] != natName {
+		op = "replace"
+		needUpdateAnno = true
+		eip.Annotations[util.VpcNatAnnotation] = natName
+	}
+	if needUpdateAnno {
+		if err := c.updateIptableAnnotations(eip.Name, op, "eip", eip.Annotations); err != nil {
 			return err
 		}
 	}

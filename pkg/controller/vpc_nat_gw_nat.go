@@ -507,16 +507,16 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	if eip.Status.Nat != "" && eip.Status.Nat != "fip" {
+	if eip.Status.Nat != "" && eip.Status.Nat != util.FipUsingEip {
 		// eip is in use by other nat
 		err = fmt.Errorf("failed to create fip %s, eip '%s' is used by other nat %s", key, eipName, eip.Status.Nat)
 		return err
 	}
 
-	if eip.Status.Nat == "fip" &&
-		eip.Labels[util.VpcNatLabel] != "" &&
-		eip.Labels[util.VpcNatLabel] != fip.Name {
-		err = fmt.Errorf("failed to create fip %s, eip '%s' is used by other fip %s", key, eipName, eip.Labels[util.VpcNatLabel])
+	if eip.Status.Nat == util.FipUsingEip &&
+		eip.Annotations[util.VpcNatAnnotation] != "" &&
+		eip.Annotations[util.VpcNatAnnotation] != fip.Name {
+		err = fmt.Errorf("failed to create fip %s, eip '%s' is used by other fip %s", key, eipName, eip.Annotations[util.VpcNatAnnotation])
 		return err
 	}
 
@@ -591,16 +591,16 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	if eip.Status.Nat != "" && eip.Status.Nat != "fip" {
+	if eip.Status.Nat != "" && eip.Status.Nat != util.FipUsingEip {
 		// eip is in use by other nat
 		err = fmt.Errorf("failed to update fip %s, eip '%s' is used by %s", key, eipName, eip.Status.Nat)
 		klog.Error(err)
 		return err
 	}
-	if eip.Status.Nat == "fip" &&
-		eip.Labels[util.VpcNatLabel] != "" &&
-		eip.Labels[util.VpcNatLabel] != cachedFip.Name {
-		err = fmt.Errorf("failed to update fip %s, eip '%s' is used by other fip %s", key, eipName, eip.Labels[util.VpcNatLabel])
+	if eip.Status.Nat == util.FipUsingEip &&
+		eip.Annotations[util.VpcAnnotation] != "" &&
+		eip.Annotations[util.VpcAnnotation] != cachedFip.Name {
+		err = fmt.Errorf("failed to update fip %s, eip '%s' is used by other fip %s", key, eipName, eip.Annotations[util.VpcAnnotation])
 		return err
 	}
 	// fip change eip
@@ -689,12 +689,12 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	if eip.Status.Nat != "" && eip.Status.Nat != "dnat" {
+	if eip.Status.Nat != "" && eip.Status.Nat != util.DnatUsingEip {
 		// eip is in use by other nat
 		err = fmt.Errorf("failed to create dnat %s, eip '%s' is used by nat %s", key, eipName, eip.Status.Nat)
 		return err
 	}
-	if dup, err := c.isDnatDuplicated(eipName, dnat.Name, dnat.Spec.ExternalPort); dup || err != nil {
+	if dup, err := c.isDnatDuplicated(eip.Spec.NatGwDp, eipName, dnat.Name, dnat.Spec.ExternalPort); dup || err != nil {
 		return err
 	}
 	// create nat
@@ -1146,36 +1146,38 @@ func (c *Controller) patchFipLabel(key string, eip *kubeovnv1.IptablesEIP) error
 		return err
 	}
 	fip := oriFip.DeepCopy()
-	var needUpdateLabel bool
+	var needUpdateLabel, needUpdateAnno bool
 	var op string
 	if len(fip.Labels) == 0 {
 		op = "add"
 		fip.Labels = map[string]string{
 			util.VpcNatGatewayNameLabel: eip.Spec.NatGwDp,
-			util.VpcEipLabel:            eip.Name,
 		}
 		needUpdateLabel = true
 	} else if fip.Labels[util.SubnetNameLabel] != eip.Spec.NatGwDp {
 		op = "replace"
 		fip.Labels[util.VpcNatGatewayNameLabel] = eip.Spec.NatGwDp
-		fip.Labels[util.VpcEipLabel] = eip.Name
-		needUpdateLabel = true
-	}
-	if fip.Labels[util.VpcEipLabel] != eip.Name {
-		op = "replace"
-		fip.Labels[util.VpcEipLabel] = eip.Name
 		needUpdateLabel = true
 	}
 	if needUpdateLabel {
-		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
-		raw, _ := json.Marshal(fip.Labels)
-		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-		_, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Patch(context.Background(), fip.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
-		if k8serrors.IsNotFound(err) {
-			return nil
+		if err := c.updateIptableLabels(fip.Name, op, util.FipUsingEip, fip.Labels); err != nil {
+			return err
 		}
-		if err != nil {
-			klog.Errorf("failed to patch label for fip %s, %v", fip.Name, err)
+	}
+
+	if len(fip.Annotations) == 0 {
+		op = "add"
+		needUpdateAnno = true
+		fip.Annotations = map[string]string{
+			util.VpcEipAnnotation: eip.Name,
+		}
+	} else if fip.Annotations[util.VpcEipAnnotation] != eip.Name {
+		op = "replace"
+		needUpdateAnno = true
+		fip.Annotations[util.VpcEipAnnotation] = eip.Name
+	}
+	if needUpdateAnno {
+		if err := c.updateIptableAnnotations(fip.Name, op, util.FipUsingEip, fip.Annotations); err != nil {
 			return err
 		}
 	}
@@ -1315,40 +1317,40 @@ func (c *Controller) patchDnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 		return err
 	}
 	dnat := oriDnat.DeepCopy()
-	var needUpdateLabel bool
+	var needUpdateLabel, needUpdateAnno bool
 	var op string
 	if len(dnat.Labels) == 0 {
 		op = "add"
 		dnat.Labels = map[string]string{
 			util.VpcNatGatewayNameLabel: eip.Spec.NatGwDp,
-			util.VpcEipLabel:            eip.Name,
 			util.VpcDnatEPortLabel:      dnat.Spec.ExternalPort,
 		}
 		needUpdateLabel = true
 	} else if dnat.Labels[util.SubnetNameLabel] != eip.Spec.NatGwDp {
 		op = "replace"
 		dnat.Labels[util.VpcNatGatewayNameLabel] = eip.Spec.NatGwDp
-		dnat.Labels[util.VpcEipLabel] = eip.Name
-		dnat.Labels[util.VpcDnatEPortLabel] = dnat.Spec.ExternalPort
-		needUpdateLabel = true
-	}
-
-	if dnat.Labels[util.VpcEipLabel] != eip.Name {
-		op = "replace"
-		dnat.Labels[util.VpcEipLabel] = eip.Name
 		dnat.Labels[util.VpcDnatEPortLabel] = dnat.Spec.ExternalPort
 		needUpdateLabel = true
 	}
 	if needUpdateLabel {
-		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
-		raw, _ := json.Marshal(dnat.Labels)
-		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-		if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Patch(context.Background(), dnat.Name,
-			types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
-			if k8serrors.IsNotFound(err) {
-				return nil
-			}
-			klog.Errorf("failed to patch label for dnat %s, %v", dnat.Name, err)
+		if err := c.updateIptableLabels(dnat.Name, op, util.DnatUsingEip, dnat.Labels); err != nil {
+			return err
+		}
+	}
+
+	if len(dnat.Annotations) == 0 {
+		op = "add"
+		needUpdateAnno = true
+		dnat.Annotations = map[string]string{
+			util.VpcEipAnnotation: eip.Name,
+		}
+	} else if dnat.Annotations[util.VpcEipAnnotation] != eip.Name {
+		op = "replace"
+		needUpdateAnno = true
+		dnat.Annotations[util.VpcEipAnnotation] = eip.Name
+	}
+	if needUpdateAnno {
+		if err := c.updateIptableAnnotations(dnat.Name, op, util.DnatUsingEip, dnat.Annotations); err != nil {
 			return err
 		}
 	}
@@ -1427,38 +1429,38 @@ func (c *Controller) patchSnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 		return err
 	}
 	snat := oriSnat.DeepCopy()
-	var needUpdateLabel bool
+	var needUpdateLabel, needUpdateAnno bool
 	var op string
 	if len(snat.Labels) == 0 {
 		op = "add"
 		snat.Labels = map[string]string{
 			util.VpcNatGatewayNameLabel: eip.Spec.NatGwDp,
-			util.VpcEipLabel:            eip.Name,
 		}
 		needUpdateLabel = true
 	} else if snat.Labels[util.SubnetNameLabel] != eip.Spec.NatGwDp {
 		op = "replace"
 		snat.Labels[util.VpcNatGatewayNameLabel] = eip.Spec.NatGwDp
-		snat.Labels[util.VpcEipLabel] = eip.Name
 		needUpdateLabel = true
 	}
-
-	if snat.Labels[util.VpcEipLabel] != eip.Name {
-		op = "replace"
-		snat.Labels[util.VpcEipLabel] = eip.Name
-		needUpdateLabel = true
-	}
-
 	if needUpdateLabel {
-		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
-		raw, _ := json.Marshal(snat.Labels)
-		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-		if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().Patch(context.Background(), snat.Name,
-			types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
-			if k8serrors.IsNotFound(err) {
-				return nil
-			}
-			klog.Errorf("failed to patch label for snat %s, %v", snat.Name, err)
+		if err := c.updateIptableLabels(snat.Name, op, util.SnatUsingEip, snat.Labels); err != nil {
+			return err
+		}
+	}
+
+	if len(snat.Annotations) == 0 {
+		op = "add"
+		needUpdateAnno = true
+		snat.Annotations = map[string]string{
+			util.VpcEipAnnotation: eip.Name,
+		}
+	} else if snat.Annotations[util.VpcEipAnnotation] != eip.Name {
+		op = "replace"
+		needUpdateAnno = true
+		snat.Annotations[util.VpcEipAnnotation] = eip.Name
+	}
+	if needUpdateAnno {
+		if err := c.updateIptableAnnotations(snat.Name, op, util.SnatUsingEip, snat.Annotations); err != nil {
 			return err
 		}
 	}
@@ -1734,6 +1736,61 @@ func (c *Controller) createOrUpdateCrdFip(key, eipName, internalIp string) error
 				return errMsg
 			}
 		}
+	}
+	return nil
+}
+
+func (c *Controller) updateIptableLabels(name, op, natType string, labels map[string]string) error {
+	patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
+	raw, _ := json.Marshal(labels)
+	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
+
+	if err := c.patchIptableInfo(name, natType, patchPayload); err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to patch label for %s %s, %v", natType, name, err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) updateIptableAnnotations(name, op, natType string, anno map[string]string) error {
+	patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/annotations", "value": %s }]`
+	raw, _ := json.Marshal(anno)
+	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
+
+	if err := c.patchIptableInfo(name, natType, patchPayload); err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to patch annotations for %s %s, %v", natType, name, err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) patchIptableInfo(name, natType, patchPayload string) error {
+	var err error
+	switch natType {
+	case util.FipUsingEip:
+		_, err = c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Patch(context.Background(), name,
+			types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
+	case util.SnatUsingEip:
+		_, err = c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().Patch(context.Background(), name,
+			types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
+	case util.DnatUsingEip:
+		_, err = c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Patch(context.Background(), name,
+			types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
+	case "eip":
+		_, err = c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), name,
+			types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
+	}
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
 	}
 	return nil
 }
