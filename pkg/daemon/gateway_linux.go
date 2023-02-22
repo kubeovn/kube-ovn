@@ -772,6 +772,8 @@ func (c *Controller) setOvnSubnetGatewayMetric() {
 			c.gwCounters[key].Packets = currentPackets
 			c.gwCounters[key].PacketBytes = currentPacketBytes
 
+			klog.V(3).Infof(`hostname %s key %s cidr %s direction %s proto %s has diffPackets %d diffPacketBytes %d currentPackets %d currentPacketBytes %d lastPackets %d lastPacketBytes %d`,
+				hostname, key, cidr, direction, proto, diffPackets, diffPacketBytes, currentPackets, currentPacketBytes, lastPackets, lastPacketBytes)
 			if diffPackets > 0 {
 				metricOvnSubnetGatewayPackets.WithLabelValues(hostname, key, cidr, direction, proto).Add(float64(diffPackets))
 			}

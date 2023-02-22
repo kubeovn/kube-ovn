@@ -81,19 +81,57 @@ func (n *Node) ListRoutes(nonLinkLocalUnicast bool) ([]iproute.Route, error) {
 
 func (n *Node) ListIptableRules(table string) ([]string, error) {
 
-	output, _, err := n.Exec(strings.Fields(fmt.Sprintf("/usr/sbin/iptables -S -t %s ", table))...)
+	nfTableRules, err := n.ListNFIptableRules(table)
+	if err != nil {
+		return nil, err
+	}
+	legacyTableRules, err := n.ListLegacyIptableRules(table)
 	if err != nil {
 		return nil, err
 	}
 
-	rules := strings.Split(string(output), "\n")
-	output, _, err = n.Exec(strings.Fields(fmt.Sprintf("/usr/sbin/ip6tables -S -t %s ", table))...)
-	if err != nil {
-		return nil, err
-	}
-	rules6 := strings.Split(string(output), "\n")
+	return append(nfTableRules, legacyTableRules...), nil
+}
 
-	return append(rules, rules6...), nil
+func (n *Node) ListNFIptableRules(table string) ([]string, error) {
+	var rules []string
+
+	for _, nftCmd := range []string{"/usr/sbin/iptables-nft", "/usr/sbin/ip6tables-nft"} {
+		_, stderr, err := n.Exec([]string{"ls", "-al", nftCmd}...)
+		if strings.Contains(string(stderr), "No such file or directory") {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		output, _, err := n.Exec(strings.Fields(fmt.Sprintf("%s -S -t %s ", nftCmd, table))...)
+		if err != nil {
+			return nil, err
+		}
+		rules = append(rules, strings.Split(string(output), "\n")...)
+	}
+
+	return rules, nil
+}
+
+func (n *Node) ListLegacyIptableRules(table string) ([]string, error) {
+	var rules []string
+
+	for _, legacyCmd := range []string{"/usr/sbin/iptables-legacy", "/usr/sbin/ip6tables-legacy"} {
+		output, _, err := n.Exec([]string{"ls", "-al", legacyCmd}...)
+		if err != nil {
+			return nil, err
+		}
+		if output != nil {
+			output, _, err = n.Exec(strings.Fields(fmt.Sprintf("%s -S -t %s ", legacyCmd, table))...)
+			if err != nil {
+				return nil, err
+			}
+			rules = append(rules, strings.Split(string(output), "\n")...)
+		}
+	}
+
+	return rules, nil
 }
 
 func (n *Node) WaitLinkToDisappear(linkName string, interval time.Duration, deadline time.Time) error {
