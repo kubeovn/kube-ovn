@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GOSEC_VERSION: '2.14.0'
+  GOSEC_VERSION: '2.15.0'
 
 jobs:
   filter:
