@@ -1145,6 +1145,9 @@ jobs:
       - kube-ovn-security-e2e
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        target: [ kube-ovn, vpc-nat-gateway]
     steps:
       - uses: actions/checkout@v3
 
@@ -1174,15 +1177,31 @@ jobs:
           docker load --input vpc-nat-gateway.tar
           docker load --input centos7-compile.tar
           # docker load --input centos8-compile.tar
-
-      - name: Security Scan
+          
+      - name: Generate tarball from image
+        env:
+          COMMIT: ${{ github.sha }}
         run: |
-          sudo apt-get install wget apt-transport-https gnupg lsb-release
-          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-          echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
-          sudo apt-get update
-          sudo apt-get install trivy
-          make scan
+          cat VERSION
+          TAG=$(cat VERSION)
+          docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn-dev:$COMMIT-x86
+          docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway-dev:$COMMIT-x86
+
+      - name: Run trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'kubeovn/${{ matrix.target }}-dev:${{ github.sha }}-x86'
+          format: 'sarif'
+          exit-code: '1'
+          ignore-unfixed: true
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+      
 
       - name: Push
         if: github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'release-')
@@ -1212,3 +1231,5 @@ jobs:
           docker push kubeovn/centos7-compile-dev:$TAG-x86
           # docker push kubeovn/centos8-compile:$TAG-x86
           # docker push kubeovn/centos8-compile-dev:$TAG-x86
+      
+
