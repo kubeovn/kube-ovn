@@ -321,15 +321,12 @@ kind-install-chart: kind-load-image kind-untaint-control-plane
 kind-install: kind-load-image
 	kubectl config use-context kind-kube-ovn
 	@$(MAKE) kind-untaint-control-plane
-	bash dist/images/install.sh
+	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | bash
 	kubectl describe no
 
 .PHONY: kind-install-dev
 kind-install-dev:
-	$(call kind_load_image,kube-ovn,$(REGISTRY)/kube-ovn:$(DEV_TAG))
-	kubectl config use-context kind-kube-ovn
-	@$(MAKE) kind-untaint-control-plane
-	sed 's/VERSION=.*/VERSION=$(DEV_TAG)/' dist/images/install.sh | bash
+	@VERSION=$(DEV_TAG) $(MAKE) kind-install
 
 .PHONY: kind-install-ipv4
 kind-install-ipv4: kind-install-overlay-ipv4
@@ -344,8 +341,8 @@ kind-install-ovn-ic: kind-load-image kind-install
 	sed -e 's/10.16.0/10.18.0/g' \
 		-e 's/10.96.0/10.98.0/g' \
 		-e 's/100.64.0/100.68.0/g' \
-		dist/images/install.sh | \
-		bash
+		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
+		dist/images/install.sh | bash
 	kubectl describe no
 
 	docker run -d --name ovn-ic-db --network kind $(REGISTRY)/kube-ovn:$(VERSION) bash start-ic-db.sh
@@ -376,6 +373,7 @@ kind-install-underlay-ipv4: kind-disable-hairpin kind-load-image kind-untaint-co
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(KIND_IPV4_GATEWAY)"@' \
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV4_EXCLUDE_IPS)"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
+		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
 		ENABLE_VLAN=true VLAN_NIC=eth0 bash
 	kubectl describe no
@@ -387,6 +385,7 @@ kind-install-underlay-u2o-interconnection-dual: kind-disable-hairpin kind-load-i
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(KIND_IPV4_GATEWAY),$(KIND_IPV6_GATEWAY)"@' \
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV4_EXCLUDE_IPS),$(KIND_IPV6_EXCLUDE_IPS)"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
+		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
 		ENABLE_SSL=true DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 U2O_INTERCONNECTION=true bash
 
@@ -397,6 +396,7 @@ kind-install-underlay-hairpin-ipv4: kind-enable-hairpin kind-load-image kind-unt
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(KIND_IPV4_GATEWAY)"@' \
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV4_EXCLUDE_IPS)"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
+		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
 		ENABLE_VLAN=true VLAN_NIC=eth0 bash
 	kubectl describe no
@@ -415,6 +415,7 @@ kind-install-underlay-ipv6: kind-disable-hairpin kind-load-image kind-untaint-co
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(KIND_IPV6_GATEWAY)"@' \
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV6_EXCLUDE_IPS)"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
+		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
 		IPV6=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
 
@@ -425,6 +426,7 @@ kind-install-underlay-hairpin-ipv6: kind-enable-hairpin kind-load-image kind-unt
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(KIND_IPV6_GATEWAY)"@' \
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV6_EXCLUDE_IPS)"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
+		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
 		IPV6=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
 
@@ -442,6 +444,7 @@ kind-install-underlay-dual: kind-disable-hairpin kind-load-image kind-untaint-co
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(KIND_IPV4_GATEWAY),$(KIND_IPV6_GATEWAY)"@' \
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV4_EXCLUDE_IPS),$(KIND_IPV6_EXCLUDE_IPS)"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
+		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
 		DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
 
@@ -452,6 +455,7 @@ kind-install-underlay-hairpin-dual: kind-enable-hairpin kind-load-image kind-unt
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(KIND_IPV4_GATEWAY),$(KIND_IPV6_GATEWAY)"@' \
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV4_EXCLUDE_IPS),$(KIND_IPV6_EXCLUDE_IPS)"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
+		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
 		DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=eth0 bash
 
@@ -462,6 +466,7 @@ kind-install-underlay-logical-gateway-dual: kind-disable-hairpin kind-load-image
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$(KIND_IPV4_GATEWAY)9,$(KIND_IPV6_GATEWAY)f"@' \
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$(KIND_IPV4_GATEWAY),$(KIND_IPV4_EXCLUDE_IPS),$(KIND_IPV6_GATEWAY),$(KIND_IPV6_EXCLUDE_IPS)"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
+		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
 		DUAL_STACK=true ENABLE_VLAN=true \
 		VLAN_NIC=eth0 LOGICAL_GATEWAY=true bash
@@ -477,7 +482,8 @@ kind-install-multus:
 kind-install-lb-svc: kind-load-image kind-untaint-control-plane
 	$(call kind_load_image,kube-ovn,$(VPC_NAT_GW_IMG))
 	kubectl apply -f yamls/lb-svc-attachment.yaml
-	ENABLE_LB_SVC=true CNI_CONFIG_PRIORITY=10 dist/images/install.sh
+	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | \
+	ENABLE_LB_SVC=true CNI_CONFIG_PRIORITY=10 bash
 	kubectl describe no
 
 .PHONY: kind-install-cilium
@@ -500,7 +506,8 @@ kind-install-cilium: kind-load-image kind-untaint-control-plane
 		--set cni.configMap=cni-configuration
 	kubectl -n kube-system rollout status ds cilium --timeout 300s
 	bash dist/images/cilium.sh
-	ENABLE_LB=false ENABLE_NP=false WITHOUT_KUBE_PROXY=true CNI_CONFIG_PRIORITY=10 bash dist/images/install.sh
+	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | \
+	ENABLE_LB=false ENABLE_NP=false WITHOUT_KUBE_PROXY=true CNI_CONFIG_PRIORITY=10 bash
 	kubectl describe no
 
 .PHONY: kind-reload
