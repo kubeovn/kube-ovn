@@ -30,13 +30,15 @@ import (
 
 // ControllerRuntime represents runtime specific controller members
 type ControllerRuntime struct {
-	iptables map[string]*iptables.IPTables
-	ipsets   map[string]*ipsets.IPSets
+	iptables   map[string]*iptables.IPTables
+	ipsets     map[string]*ipsets.IPSets
+	gwCounters map[string]*util.GwIPtableCounters
 }
 
 func (c *Controller) initRuntime() error {
 	c.ControllerRuntime.iptables = make(map[string]*iptables.IPTables)
 	c.ControllerRuntime.ipsets = make(map[string]*ipsets.IPSets)
+	c.ControllerRuntime.gwCounters = make(map[string]*util.GwIPtableCounters)
 
 	if c.protocol == kubeovnv1.ProtocolIPv4 || c.protocol == kubeovnv1.ProtocolDual {
 		iptables, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
@@ -529,6 +531,10 @@ func (c *Controller) loopEncapIpCheck() {
 			return
 		}
 	}
+}
+
+func (c *Controller) ovnMetricsUpdate() {
+	c.setOvnSubnetGatewayMetric()
 }
 
 func (c *Controller) operateMod() {

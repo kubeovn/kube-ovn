@@ -18,6 +18,7 @@ import (
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
@@ -32,6 +33,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 	var cs clientset.Interface
 	var podClient *framework.PodClient
 	var subnetClient *framework.SubnetClient
+	var eventClient *framework.EventClient
 	var namespaceName, subnetName string
 	var cidr, cidrV4, cidrV6, firstIPv4, lastIPv4, firstIPv6, lastIPv6 string
 	var gateways []string
@@ -857,6 +859,103 @@ var _ = framework.Describe("[group:subnet]", func() {
 		output, err = exec.Command("bash", "-c", execCmd).CombinedOutput()
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(strings.TrimSpace(string(output)))
+	})
+
+	framework.ConformanceIt("should support subnet add gateway event and metrics", func() {
+		f.SkipVersionPriorTo(1, 12, "Support for subnet add gateway event and metrics is introduced in v1.12")
+
+		ginkgo.By("Getting nodes")
+		nodes, err := e2enode.GetReadySchedulableNodes(cs)
+		framework.ExpectNoError(err)
+		framework.ExpectNotEmpty(nodes.Items)
+
+		clusterName, ok := kind.IsKindProvided(nodes.Items[0].Spec.ProviderID)
+		if !ok {
+			ginkgo.Skip("support subnet add gateway event and metrics only runs in clusters created by kind")
+		}
+		clusterNodes, err := kind.ListNodes(clusterName, "")
+		framework.ExpectNoError(err, "getting nodes in kind cluster")
+
+		ginkgo.By("Creating subnet " + subnetName)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, nil, nil)
+		subnet = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Checking subnet iptables " + subnetName)
+
+		checkFunc := func(expectFound bool) {
+			// runGateway wait 3s
+			time.Sleep(3 * time.Second)
+			for _, node := range clusterNodes {
+				rules, err := node.ListIptableRules("filter")
+				framework.ExpectNoError(err, "getting node rule failed")
+				isFound := false
+				hasGatewayIptableRule := false
+				for _, rule := range rules {
+					if strings.Contains(rule, strings.Join([]string{util.OvnSubnetGatewayIptables, subnetName}, ",")) && !isFound {
+						isFound = true
+					}
+
+					if strings.Contains(rule, "ovn") && !hasGatewayIptableRule {
+						hasGatewayIptableRule = true
+					}
+				}
+				if hasGatewayIptableRule {
+					framework.ExpectEqual(isFound, expectFound, fmt.Sprintf("iptable rules should found %v", expectFound))
+				}
+			}
+		}
+
+		if cidrV4 != "" {
+			checkFunc(true)
+		}
+
+		if cidrV6 != "" {
+			checkFunc(true)
+		}
+
+		ginkgo.By("Checking subnet gateway type/node change " + subnetName)
+
+		gatewayNodes := make([]string, 0, len(nodes.Items))
+		for i := 0; i < 3 && i < len(nodes.Items); i++ {
+			gatewayNodes = append(gatewayNodes, nodes.Items[i].Name)
+		}
+		modifiedSubnet := subnet.DeepCopy()
+		modifiedSubnet.Spec.GatewayType = kubeovnv1.GWCentralizedType
+		modifiedSubnet.Spec.GatewayNode = strings.Join(gatewayNodes, ",")
+
+		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
+		eventClient = f.EventClient("default")
+		events := eventClient.WaitToHaveEvent("Subnet", subnetName, "Normal", "SubnetGatewayTypeChanged", "kube-ovn-controller", "")
+
+		message := fmt.Sprintf("subnet gateway type changes from %s to %s ", kubeovnv1.GWDistributedType, kubeovnv1.GWCentralizedType)
+		found := false
+		for _, event := range events {
+			if strings.Contains(event.Message, message) {
+				found = true
+				break
+			}
+		}
+		framework.ExpectTrue(found, "no SubnetGatewayTypeChanged event")
+		found = false
+		events = eventClient.WaitToHaveEvent("Subnet", subnetName, "Normal", "SubnetGatewayNodeChanged", "kube-ovn-controller", "")
+		message = fmt.Sprintf("gateway node changes from %s to %s ", "", modifiedSubnet.Spec.GatewayNode)
+		for _, event := range events {
+			if strings.Contains(event.Message, message) {
+				found = true
+				break
+			}
+		}
+		framework.ExpectTrue(found, "no SubnetGatewayNodeChanged event")
+		ginkgo.By("when remove subnet the iptables rules will remove ")
+		subnetClient.DeleteSync(subnetName)
+
+		if cidrV4 != "" {
+			checkFunc(false)
+		}
+
+		if cidrV6 != "" {
+			checkFunc(false)
+		}
 	})
 })
 

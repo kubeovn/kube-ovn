@@ -138,14 +138,15 @@ func (c *Controller) getServicesCIDR(protocol string) []string {
 	return ret
 }
 
-func (c *Controller) getDefaultVpcSubnetsCIDR(protocol string) ([]string, error) {
+func (c *Controller) getDefaultVpcSubnetsCIDR(protocol string) ([]string, map[string]string, error) {
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Error("failed to list subnets")
-		return nil, err
+		return nil, nil, err
 	}
 
 	ret := make([]string, 0, len(subnets)+1)
+	subnetMap := make(map[string]string, len(subnets)+1)
 	if c.config.NodeLocalDnsIP != "" && net.ParseIP(c.config.NodeLocalDnsIP) != nil && util.CheckProtocol(c.config.NodeLocalDnsIP) == protocol {
 		ret = append(ret, c.config.NodeLocalDnsIP)
 	}
@@ -153,9 +154,10 @@ func (c *Controller) getDefaultVpcSubnetsCIDR(protocol string) ([]string, error)
 		if subnet.Spec.Vpc == util.DefaultVpc && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && subnet.Spec.CIDRBlock != "" {
 			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
 			ret = append(ret, cidrBlock)
+			subnetMap[subnet.Name] = cidrBlock
 		}
 	}
-	return ret, nil
+	return ret, subnetMap, nil
 }
 
 func (c *Controller) getOtherNodes(protocol string) ([]string, error) {

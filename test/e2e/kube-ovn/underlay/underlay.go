@@ -65,7 +65,7 @@ var _ = framework.Describe("[group:underlay]", func() {
 
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
-		eventClient = f.EventClient()
+		eventClient = f.EventClient("")
 		podClient = f.PodClient()
 		subnetClient = f.SubnetClient()
 		vlanClient = f.VlanClient()

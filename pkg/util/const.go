@@ -221,4 +221,6 @@ const (
 	U2OExcludeIPAg   = "%s.u2o_exclude_ip.%s"
 
 	DefaultServiceSessionStickinessTimeout = 10800
+
+	OvnSubnetGatewayIptables = "ovn-subnet-gateway"
 )

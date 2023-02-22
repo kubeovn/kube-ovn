@@ -595,6 +595,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.runPodWorker, time.Second, stopCh)
 	go wait.Until(c.runGateway, 3*time.Second, stopCh)
 	go wait.Until(c.loopEncapIpCheck, 3*time.Second, stopCh)
+	go wait.Until(c.ovnMetricsUpdate, 3*time.Second, stopCh)
 	go wait.Until(func() {
 		if err := c.markAndCleanInternalPort(); err != nil {
 			klog.Errorf("gc ovs port error: %v", err)

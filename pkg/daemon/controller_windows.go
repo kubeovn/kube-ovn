@@ -232,5 +232,9 @@ func rotateLog() {
 	// TODO
 }
 
+func (c *Controller) ovnMetricsUpdate() {
+	// TODO
+}
+
 func (c *Controller) operateMod() {
 }
