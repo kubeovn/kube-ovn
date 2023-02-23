@@ -448,21 +448,16 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 	}
 	if len(lrRouteList) == 0 {
 		klog.V(5).Info("lr ovn-ic route does not exist")
-		lrPolicyList, err := c.ovnClient.ListLogicalRouterPolicies(map[string]string{key: value})
+		err := c.ovnClient.DeleteLogicalRouterPolicies(lr.Name, util.OvnICPolicyPriority, map[string]string{key: value})
 		if err != nil {
-			klog.Errorf("failed to list ovn-ic lr policy", err)
+			klog.Errorf("delete ovn-ic lr policy", err)
 			return
-		}
-		for _, lrPolicy := range lrPolicyList {
-			if err := c.ovnClient.DeleteRouterPolicy(lr, lrPolicy.UUID); err != nil {
-				klog.Errorf("deleting router policy failed %v", err)
-			}
 		}
 		return
 	}
 
 	policyMap := map[string]string{}
-	lrPolicyList, err := c.ovnClient.ListLogicalRouterPolicies(map[string]string{key: value})
+	lrPolicyList, err := c.ovnClient.ListLogicalRouterPolicies(util.OvnICPolicyPriority, map[string]string{key: value})
 	if err != nil {
 		klog.Errorf("failed to list ovn-ic lr policy ", err)
 		return
@@ -486,7 +481,7 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 		}
 	}
 	for _, uuid := range policyMap {
-		if err := c.ovnClient.DeleteRouterPolicy(lr, uuid); err != nil {
+		if err := c.ovnClient.DeleteLogicalRouterPolicyByUUID(lr.Name, uuid); err != nil {
 			klog.Errorf("deleting router policy failed %v", err)
 		}
 	}

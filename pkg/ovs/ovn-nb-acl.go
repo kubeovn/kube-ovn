@@ -40,7 +40,7 @@ func (c *ovnClient) CreateIngressAcl(pgName, asIngressName, asExceptName, protoc
 	acls = append(acls, defaultDropAcl)
 
 	/* allow acl */
-	matches := newNetworkPolicyAclMatch(pgName, asIngressName, asExceptName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, npp)
+	matches := newNetworkPolicyAclMatch(pgName, asIngressName, asExceptName, protocol, ovnnb.ACLDirectionToLport, npp)
 	for _, m := range matches {
 		allowAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, m, ovnnb.ACLActionAllowRelated)
 		if err != nil {
@@ -80,7 +80,7 @@ func (c *ovnClient) CreateEgressAcl(pgName, asEgressName, asExceptName, protocol
 	acls = append(acls, defaultDropAcl)
 
 	/* allow acl */
-	matches := newNetworkPolicyAclMatch(pgName, asEgressName, asExceptName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionFromLport, npp)
+	matches := newNetworkPolicyAclMatch(pgName, asEgressName, asExceptName, protocol, ovnnb.ACLDirectionFromLport, npp)
 	for _, m := range matches {
 		allowAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, m, ovnnb.ACLActionAllowRelated)
 		if err != nil {
@@ -187,11 +187,6 @@ func (c *ovnClient) UpdateSgAcl(sg *kubeovnv1.SecurityGroup, direction string) e
 		return fmt.Errorf("delete direction '%s' acls from port group %s: %v", direction, pgName, err)
 	}
 
-	// clear address_set
-	if err := c.DeleteAddressSets(map[string]string{sgKey: sg.Name}); err != nil {
-		return err
-	}
-
 	acls := make([]*ovnnb.ACL, 0, 2)
 
 	// ingress rule
@@ -266,6 +261,24 @@ func (c *ovnClient) UpdateLogicalSwitchAcl(lsName string, subnetAcls []kubeovnv1
 	return nil
 }
 
+// UpdateAcl update acl
+func (c *ovnClient) UpdateAcl(acl *ovnnb.ACL, fields ...interface{}) error {
+	if acl == nil {
+		return fmt.Errorf("address_set is nil")
+	}
+
+	op, err := c.Where(acl).Update(acl, fields...)
+	if err != nil {
+		return fmt.Errorf("generate operations for updating acl with 'direction %s priority %d match %s': %v", acl.Direction, acl.Priority, acl.Match, err)
+	}
+
+	if err = c.Transact("acl-update", op); err != nil {
+		return fmt.Errorf("update acl with 'direction %s priority %d match %s': %v", acl.Direction, acl.Priority, acl.Match, err)
+	}
+
+	return nil
+}
+
 // SetLogicalSwitchPrivate will drop all ingress traffic except allow subnets, same subnet and node subnet
 func (c *ovnClient) SetLogicalSwitchPrivate(lsName, cidrBlock string, allowSubnets []string) error {
 	// clear acls
@@ -276,9 +289,7 @@ func (c *ovnClient) SetLogicalSwitchPrivate(lsName, cidrBlock string, allowSubne
 	acls := make([]*ovnnb.ACL, 0)
 
 	/* default drop acl */
-	AllIpMatch := NewAndAclMatch(
-		NewAclMatch("ip", "", "", ""),
-	)
+	AllIpMatch := NewAclMatch("ip", "", "", "")
 
 	options := func(acl *ovnnb.ACL) {
 		acl.Name = &lsName
@@ -388,6 +399,35 @@ func (c *ovnClient) SetLogicalSwitchPrivate(lsName, cidrBlock string, allowSubne
 	return nil
 }
 
+func (c *ovnClient) SetAclLog(pgName string, logEnable, isIngress bool) error {
+	direction := ovnnb.ACLDirectionToLport
+	portDirection := "outport"
+	if !isIngress {
+		direction = ovnnb.ACLDirectionFromLport
+		portDirection = "inport"
+	}
+
+	// match all traffic to or from pgName
+	AllIpMatch := NewAndAclMatch(
+		NewAclMatch(portDirection, "==", "@"+pgName, ""),
+		NewAclMatch("ip", "", "", ""),
+	)
+
+	acl, err := c.GetAcl(pgName, direction, util.IngressDefaultDrop, AllIpMatch.String(), false)
+	if err != nil {
+		return err
+	}
+
+	acl.Log = logEnable
+
+	err = c.UpdateAcl(acl, &acl.Log)
+	if err != nil {
+		return fmt.Errorf("update acl: %v", err)
+	}
+
+	return nil
+}
+
 // CreateAcls create several acl once
 // parentType is 'ls' or 'pg'
 func (c *ovnClient) CreateAcls(parentName, parentType string, acls ...*ovnnb.ACL) error {
@@ -461,7 +501,7 @@ func (c *ovnClient) CreateBareAcl(parentName, direction, priority, match, action
 func (c *ovnClient) DeleteAcls(parentName, parentType string, direction string) error {
 	externalIDs := map[string]string{aclParentKey: parentName}
 
-	/* delete acls from port group or logical switch*/
+	/* delete acls from port group or logical switch */
 	acls, err := c.ListAcls(direction, externalIDs)
 	if err != nil {
 		return fmt.Errorf("list type %s %s acls: %v", parentType, parentName, err)

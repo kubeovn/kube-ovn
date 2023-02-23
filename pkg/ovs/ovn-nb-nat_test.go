@@ -188,6 +188,61 @@ func (suite *OvnClientTestSuite) testUpdateDnatAndSnat() {
 	})
 }
 
+func (suite *OvnClientTestSuite) testDeleteNat() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lrName := "test-del-nat-lr"
+	externalIP := "192.168.30.254"
+	logicalIP := "10.250.0.4"
+
+	err := ovnClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
+	prepareFunc := func() {
+		nats := make([]*ovnnb.NAT, 0)
+
+		// create snat rule
+		nat, err := ovnClient.newNat(lrName, "snat", externalIP, logicalIP)
+		require.NoError(t, err)
+		nats = append(nats, nat)
+
+		// create dnat_and_snat rule
+		nat, err = ovnClient.newNat(lrName, "dnat_and_snat", externalIP, logicalIP)
+		require.NoError(t, err)
+		nats = append(nats, nat)
+
+		err = ovnClient.CreateNats(lrName, nats...)
+		require.NoError(t, err)
+	}
+
+	prepareFunc()
+
+	t.Run("delete snat from logical router", func(t *testing.T) {
+		err = ovnClient.DeleteNat(lrName, "snat", externalIP, logicalIP)
+		require.NoError(t, err)
+
+		lr, err := ovnClient.GetLogicalRouter(lrName, false)
+		require.NoError(t, err)
+		require.Len(t, lr.Nat, 1)
+
+		nat := &ovnnb.NAT{UUID: lr.Nat[0]}
+		err = ovnClient.GetEntityInfo(nat)
+		require.NoError(t, err)
+		require.Equal(t, "dnat_and_snat", nat.Type)
+	})
+
+	t.Run("delete dnat_and_snat from logical router", func(t *testing.T) {
+		err = ovnClient.DeleteNat(lrName, "dnat_and_snat", externalIP, logicalIP)
+		require.NoError(t, err)
+
+		lr, err := ovnClient.GetLogicalRouter(lrName, false)
+		require.NoError(t, err)
+		require.Empty(t, lr.Nat)
+	})
+}
+
 func (suite *OvnClientTestSuite) testDeleteNats() {
 	t := suite.T()
 	t.Parallel()

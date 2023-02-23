@@ -186,8 +186,38 @@ func (c *ovnClient) DeleteNats(lrName, natType, logicalIP string) error {
 	ops = append(ops, removeNatOp...)
 	ops = append(ops, delNatsOp...)
 
-	if err = c.Transact("acls-del", ops); err != nil {
+	if err = c.Transact("nats-del", ops); err != nil {
 		return fmt.Errorf("del nats from logical router %s: %v", lrName, err)
+	}
+
+	return nil
+}
+
+// DeleteNat delete nat rule
+func (c *ovnClient) DeleteNat(lrName, natType, externalIP, logicalIP string) error {
+	nat, err := c.GetNat(lrName, natType, externalIP, logicalIP, false)
+	if err != nil {
+		return err
+	}
+
+	// remove nat from logical router
+	removeNatOp, err := c.LogicalRouterUpdateNatOp(lrName, []string{nat.UUID}, ovsdb.MutateOperationDelete)
+	if err != nil {
+		return fmt.Errorf("generate operations for deleting nat from logical router %s: %v", lrName, err)
+	}
+
+	// delete nat
+	delNatsOp, err := c.Where(nat).Delete()
+	if err != nil {
+		return fmt.Errorf("generate operation for deleting nat: %v", err)
+	}
+
+	ops := make([]ovsdb.Operation, 0, len(removeNatOp)+len(delNatsOp))
+	ops = append(ops, removeNatOp...)
+	ops = append(ops, delNatsOp...)
+
+	if err = c.Transact("lr-nat-del", ops); err != nil {
+		return fmt.Errorf("del nat from logical router %s: %v", lrName, err)
 	}
 
 	return nil

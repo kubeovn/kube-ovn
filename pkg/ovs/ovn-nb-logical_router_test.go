@@ -14,6 +14,20 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+// createLogicalRouter delete logical router in ovn
+func createLogicalRouter(c *ovnClient, lr *ovnnb.LogicalRouter) error {
+	op, err := c.ovnNbClient.Create(lr)
+	if err != nil {
+		return err
+	}
+
+	if err := c.Transact("lr-add", op); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (suite *OvnClientTestSuite) testCreateLogicalRouter() {
 	t := suite.T()
 	t.Parallel()
@@ -132,25 +146,66 @@ func (suite *OvnClientTestSuite) testListLogicalRouter() {
 	ovnClient := suite.ovnClient
 	namePrefix := "test-list-lr"
 
-	names := make([]string, 3)
-	for i := 0; i < 3; i++ {
-		names[i] = fmt.Sprintf("%s-%d", namePrefix, i)
-		err := ovnClient.CreateLogicalRouter(names[i])
+	i := 0
+	// create three logical router
+	for ; i < 3; i++ {
+		name := fmt.Sprintf("%s-%d", namePrefix, i)
+		err := ovnClient.CreateLogicalRouter(name)
 		require.NoError(t, err)
 	}
 
-	t.Run("return all logical router which match vendor", func(t *testing.T) {
-		t.Parallel()
-		lrs, err := ovnClient.ListLogicalRouter(true)
-		require.NoError(t, err)
-		require.NotEmpty(t, lrs)
-
-		for _, lr := range lrs {
-			if !strings.Contains(lr.Name, namePrefix) {
-				continue
-			}
-			require.Contains(t, names, lr.Name)
+	// create two logical router which vendor is others
+	for ; i < 5; i++ {
+		name := fmt.Sprintf("%s-%d", namePrefix, i)
+		lr := &ovnnb.LogicalRouter{
+			Name:        name,
+			ExternalIDs: map[string]string{"vendor": "test-vendor"},
 		}
+
+		err := createLogicalRouter(ovnClient, lr)
+		require.NoError(t, err)
+	}
+
+	// create two logical router without vendor
+	for ; i < 7; i++ {
+		name := fmt.Sprintf("%s-%d", namePrefix, i)
+		lr := &ovnnb.LogicalRouter{
+			Name: name,
+		}
+
+		err := createLogicalRouter(ovnClient, lr)
+		require.NoError(t, err)
+	}
+
+	t.Run("return all logical router which vendor is kube-ovn", func(t *testing.T) {
+		t.Parallel()
+		lrs, err := ovnClient.ListLogicalRouter(true, nil)
+		require.NoError(t, err)
+
+		count := 0
+		for _, lr := range lrs {
+			if strings.Contains(lr.Name, namePrefix) {
+				count++
+			}
+		}
+		require.Equal(t, count, 3)
+	})
+
+	t.Run("has custom filter", func(t *testing.T) {
+		t.Parallel()
+		lrs, err := ovnClient.ListLogicalRouter(false, func(lr *ovnnb.LogicalRouter) bool {
+			return len(lr.ExternalIDs) == 0 || lr.ExternalIDs["vendor"] != util.CniTypeName
+		})
+
+		require.NoError(t, err)
+
+		count := 0
+		for _, lr := range lrs {
+			if strings.Contains(lr.Name, namePrefix) {
+				count++
+			}
+		}
+		require.Equal(t, count, 4)
 	})
 }
 

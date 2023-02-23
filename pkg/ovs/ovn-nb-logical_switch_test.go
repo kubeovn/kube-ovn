@@ -11,7 +11,21 @@ import (
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func createLogicalSwitch(c *ovnClient, ls *ovnnb.LogicalSwitch) error {
+	op, err := c.Create(ls)
+	if err != nil {
+		return err
+	}
+
+	if err := c.Transact("ls-add", op); err != nil {
+		return err
+	}
+
+	return nil
+}
 
 func (suite *OvnClientTestSuite) testCreateLogicalSwitch() {
 	t := suite.T()
@@ -27,7 +41,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitch() {
 	require.NoError(t, err)
 
 	t.Run("create logical switch and router type port when logical switch does't exist and needRouter is true", func(t *testing.T) {
-		err = ovnClient.CreateLogicalSwitch(lsName, lrName, "192.168.2.0/24,fd00::c0a8:6400/120", "192.168.2.1,fd00::c0a8:6401", true)
+		err = ovnClient.CreateLogicalSwitch(lsName, lrName, "192.168.2.0/24,fd00::c0a8:6400/120", "192.168.2.1,fd00::c0a8:6401", true, false)
 		require.NoError(t, err)
 
 		_, err := ovnClient.GetLogicalSwitch(lsName, false)
@@ -41,7 +55,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitch() {
 	})
 
 	t.Run("only update networks when logical switch exist and router type port exist and needRouter is true", func(t *testing.T) {
-		err = ovnClient.CreateLogicalSwitch(lsName, lrName, "192.168.2.0/24,fd00::c0a8:9900/120", "192.168.2.1,fd00::c0a8:9901", true)
+		err = ovnClient.CreateLogicalSwitch(lsName, lrName, "192.168.2.0/24,fd00::c0a8:9900/120", "192.168.2.1,fd00::c0a8:9901", true, false)
 		require.NoError(t, err)
 
 		lrp, err := ovnClient.GetLogicalRouterPort(lrpName, false)
@@ -50,7 +64,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitch() {
 	})
 
 	t.Run("remove router type port when needRouter is false", func(t *testing.T) {
-		err = ovnClient.CreateLogicalSwitch(lsName, lrName, "192.168.2.0/24,fd00::c0a8:9900/120", "192.168.2.1,fd00::c0a8:9901", false)
+		err = ovnClient.CreateLogicalSwitch(lsName, lrName, "192.168.2.0/24,fd00::c0a8:9900/120", "192.168.2.1,fd00::c0a8:9901", false, false)
 		require.NoError(t, err)
 
 		_, err = ovnClient.GetLogicalSwitchPort(lspName, false)
@@ -61,16 +75,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitch() {
 	})
 
 	t.Run("should no err when router type port doest't exist", func(t *testing.T) {
-		err = ovnClient.CreateLogicalSwitch(lsName+"-1", lrName+"-1", "192.168.2.0/24,fd00::c0a8:9900/120", "192.168.2.1,fd00::c0a8:9901", false)
-		require.NoError(t, err)
-
-		_, err = ovnClient.GetLogicalSwitchPort(lspName, false)
-		require.ErrorContains(t, err, "object not found")
-
-		_, err = ovnClient.GetLogicalRouterPort(lrpName, false)
-		require.ErrorContains(t, err, "object not found")
-
-		err = ovnClient.CreateLogicalSwitch(lsName+"-1", lrName+"-1", "192.168.2.0/24,fd00::c0a8:9900/120", "192.168.2.1,fd00::c0a8:9901", false)
+		err = ovnClient.CreateLogicalSwitch(lsName+"-1", lrName+"-1", "192.168.2.0/24,fd00::c0a8:9900/120", "192.168.2.1,fd00::c0a8:9901", false, false)
 		require.NoError(t, err)
 	})
 }
@@ -86,7 +91,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchAddPort() {
 	err := ovnClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
 
-	err = ovnClient.CreateBareLogicalSwitchPort(lsName, lspName)
+	err = ovnClient.CreateBareLogicalSwitchPort(lsName, lspName, "", "")
 	require.NoError(t, err)
 
 	lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
@@ -122,7 +127,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchDelPort() {
 	err := ovnClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
 
-	err = ovnClient.CreateBareLogicalSwitchPort(lsName, lspName)
+	err = ovnClient.CreateBareLogicalSwitchPort(lsName, lspName, "", "")
 	require.NoError(t, err)
 
 	lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
@@ -281,25 +286,67 @@ func (suite *OvnClientTestSuite) testListLogicalSwitch() {
 	ovnClient := suite.ovnClient
 	namePrefix := "test-list-ls"
 
-	names := make([]string, 3)
-	for i := 0; i < 3; i++ {
-		names[i] = fmt.Sprintf("%s-%d", namePrefix, i)
-		err := ovnClient.CreateBareLogicalSwitch(names[i])
+	i := 0
+	// create three logical switch
+	for ; i < 3; i++ {
+		name := fmt.Sprintf("%s-%d", namePrefix, i)
+		err := ovnClient.CreateBareLogicalSwitch(name)
+		require.NoError(t, err)
+	}
+
+	// create two logical switch which vendor is others
+	for ; i < 5; i++ {
+		name := fmt.Sprintf("%s-%d", namePrefix, i)
+		ls := &ovnnb.LogicalSwitch{
+			Name:        name,
+			ExternalIDs: map[string]string{"vendor": "test-vendor"},
+		}
+
+		err := createLogicalSwitch(ovnClient, ls)
+		require.NoError(t, err)
+	}
+
+	// create two logical switch without vendor
+	for ; i < 7; i++ {
+		name := fmt.Sprintf("%s-%d", namePrefix, i)
+		ls := &ovnnb.LogicalSwitch{
+			Name: name,
+		}
+
+		err := createLogicalSwitch(ovnClient, ls)
 		require.NoError(t, err)
 	}
 
 	t.Run("return all logical switch which match vendor", func(t *testing.T) {
 		t.Parallel()
-		lss, err := ovnClient.ListLogicalSwitch(true)
+		lss, err := ovnClient.ListLogicalSwitch(true, nil)
 		require.NoError(t, err)
 		require.NotEmpty(t, lss)
 
+		count := 0
 		for _, ls := range lss {
-			if !strings.Contains(ls.Name, namePrefix) {
-				continue
+			if strings.Contains(ls.Name, namePrefix) {
+				count++
 			}
-			require.Contains(t, names, ls.Name)
 		}
+		require.Equal(t, count, 3)
+	})
+
+	t.Run("has custom filter", func(t *testing.T) {
+		t.Parallel()
+		lss, err := ovnClient.ListLogicalSwitch(false, func(ls *ovnnb.LogicalSwitch) bool {
+			return len(ls.ExternalIDs) == 0 || ls.ExternalIDs["vendor"] != util.CniTypeName
+		})
+
+		require.NoError(t, err)
+
+		count := 0
+		for _, ls := range lss {
+			if strings.Contains(ls.Name, namePrefix) {
+				count++
+			}
+		}
+		require.Equal(t, count, 4)
 	})
 }
 

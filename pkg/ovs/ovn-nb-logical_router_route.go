@@ -106,7 +106,7 @@ func (c *ovnClient) CreateLogicalRouterStaticRoutes(lrName string, routes ...*ov
 	return nil
 }
 
-// AddStaticRoute add a logical router static route
+// AddLogicalRouterStaticRoute add a logical router static route
 func (c *ovnClient) AddLogicalRouterStaticRoute(lrName, policy, cidrBlock, nextHops, routeType string) error {
 	if len(policy) == 0 {
 		policy = ovnnb.LogicalRouterStaticRoutePolicyDstIP
@@ -118,6 +118,10 @@ func (c *ovnClient) AddLogicalRouterStaticRoute(lrName, policy, cidrBlock, nextH
 		for _, nextHop := range strings.Split(nextHops, ",") {
 			if util.CheckProtocol(prefix) != util.CheckProtocol(nextHop) {
 				continue // ignore different address family
+			}
+
+			if strings.Contains(nextHop, "/") {
+				nextHop = strings.Split(nextHop, "/")[0]
 			}
 
 			route, err := c.GetLogicalRouterStaticRoute(lrName, policy, prefix, nextHop, routeType, true)
@@ -224,7 +228,7 @@ func (c *ovnClient) ClearLogicalRouterStaticRoute(lrName string) error {
 		return fmt.Errorf("generate operations for clear logical router %s static route: %v", lrName, err)
 	}
 
-	// delete logical router policy
+	// delete static route
 	routeDelOp, err := c.WhereCache(func(route *ovnnb.LogicalRouterStaticRoute) bool {
 		return len(route.ExternalIDs) != 0 && route.ExternalIDs[logicalRouterKey] == lrName
 	}).Delete()

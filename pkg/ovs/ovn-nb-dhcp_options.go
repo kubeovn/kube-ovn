@@ -12,6 +12,11 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+type DHCPOptionsUUIDs struct {
+	DHCPv4OptionsUUID string
+	DHCPv6OptionsUUID string
+}
+
 func (c *ovnClient) CreateDHCPOptions(lsName, cidr, options string) error {
 	dhcpOpt, err := newDHCPOptions(lsName, cidr, options)
 	if err != nil {
@@ -38,10 +43,10 @@ func (c *ovnClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet) (*DHCPOptionsUUI
 
 	/* delete dhcp options */
 	if !enableDHCP {
-		if err := c.DeleteDHCPOptions(lsName, kubeovnv1.ProtocolDual); err != nil {
+		if err := c.DeleteDHCPOptions(lsName, subnet.Spec.Protocol); err != nil {
 			return nil, fmt.Errorf("delete dhcp options for logical switch %s: %v", lsName, err)
 		}
-		return nil, nil
+		return &DHCPOptionsUUIDs{}, nil
 	}
 
 	/* update dhcp options*/

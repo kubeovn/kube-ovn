@@ -20,6 +20,7 @@ func mockSubnet(name string, enableDHCP bool) *kubeovnv1.Subnet {
 		Spec: kubeovnv1.SubnetSpec{
 			CIDRBlock:  "10.244.0.0/16,fc00::af4:0/112",
 			Gateway:    "10.244.0.1,fc00::0af4:01",
+			Protocol:   kubeovnv1.ProtocolDual,
 			EnableDHCP: enableDHCP,
 		},
 	}
@@ -52,7 +53,10 @@ func (suite *OvnClientTestSuite) testUpdateDHCPOptions() {
 
 		uuid, err := ovnClient.UpdateDHCPOptions(subnet)
 		require.NoError(t, err)
-		require.Nil(t, uuid)
+		require.Equal(t, &DHCPOptionsUUIDs{
+			DHCPv4OptionsUUID: "",
+			DHCPv6OptionsUUID: "",
+		}, uuid)
 
 		_, err = ovnClient.GetDHCPOptions(lsName, "IPv4", false)
 		require.ErrorContains(t, err, "not found")

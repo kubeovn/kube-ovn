@@ -60,14 +60,14 @@ func (suite *OvnClientTestSuite) testAddLogicalRouterStaticRoute() {
 	t.Run("normal route", func(t *testing.T) {
 		t.Parallel()
 
-		prefixes := "192.168.30.0/24,fd00:100:64::4/64"
-		nextHops := "192.168.30.1,fd00:100:64::1"
-		prefixList := strings.Split(prefixes, ",")
+		prefixs := "192.168.30.0/24,fd00:100:64::4/64"
+		nextHops := "192.168.30.1/24,fd00:100:64::1"
+		prefixList := strings.Split(prefixs, ",")
 		nextHopList := strings.Split(nextHops, ",")
 		routeType := util.NormalRouteType
 
 		t.Run("create route", func(t *testing.T) {
-			err = ovnClient.AddLogicalRouterStaticRoute(lrName, policy, prefixes, nextHops, routeType)
+			err = ovnClient.AddLogicalRouterStaticRoute(lrName, policy, prefixs, nextHops, routeType)
 			require.NoError(t, err)
 
 			lr, err := ovnClient.GetLogicalRouter(lrName, false)
@@ -76,6 +76,7 @@ func (suite *OvnClientTestSuite) testAddLogicalRouterStaticRoute() {
 			for i, prefix := range prefixList {
 				route, err := ovnClient.GetLogicalRouterStaticRoute(lrName, policy, prefix, nextHopList[i], "", false)
 				require.NoError(t, err)
+				require.Equal(t, route.Nexthop, strings.Split(nextHopList[i], "/")[0])
 
 				require.Contains(t, lr.StaticRoutes, route.UUID)
 			}
@@ -85,7 +86,7 @@ func (suite *OvnClientTestSuite) testAddLogicalRouterStaticRoute() {
 			nextHops := "192.168.30.254,fd00:100:64::fe"
 			nextHopList := strings.Split(nextHops, ",")
 
-			err = ovnClient.AddLogicalRouterStaticRoute(lrName, policy, prefixes, nextHops, routeType)
+			err = ovnClient.AddLogicalRouterStaticRoute(lrName, policy, prefixs, nextHops, routeType)
 			require.NoError(t, err)
 
 			lr, err := ovnClient.GetLogicalRouter(lrName, false)

@@ -11,7 +11,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-// CreateLogicalRouter delete logical router in ovn
+// CreateLogicalRouter create logical router in ovn
 func (c *ovnClient) CreateLogicalRouter(lrName string) error {
 	exist, err := c.LogicalRouterExists(lrName)
 	if err != nil {
@@ -109,13 +109,18 @@ func (c *ovnClient) LogicalRouterExists(name string) (bool, error) {
 }
 
 // ListLogicalRouter list logical router
-func (c *ovnClient) ListLogicalRouter(needVendorFilter bool) ([]ovnnb.LogicalRouter, error) {
+func (c *ovnClient) ListLogicalRouter(needVendorFilter bool, filter func(lr *ovnnb.LogicalRouter) bool) ([]ovnnb.LogicalRouter, error) {
 	lrList := make([]ovnnb.LogicalRouter, 0)
 
 	if err := c.ovnNbClient.WhereCache(func(lr *ovnnb.LogicalRouter) bool {
 		if needVendorFilter && (len(lr.ExternalIDs) == 0 || lr.ExternalIDs["vendor"] != util.CniTypeName) {
 			return false
 		}
+
+		if filter != nil {
+			return filter(lr)
+		}
+
 		return true
 	}).List(context.TODO(), &lrList); err != nil {
 		return nil, fmt.Errorf("list logical router: %v", err)

@@ -11,8 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ovn-org/libovsdb/ovsdb"
-
 	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/logging"
 	multustypes "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
 
@@ -715,7 +713,7 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 		return nil
 	}
 
-	ports, err := c.ovnClient.ListLogicalSwitchPorts(true, map[string]string{"pod": key})
+	ports, err := c.ovnClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": key})
 	if err != nil {
 		klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
 		return err
@@ -968,10 +966,13 @@ func (c *Controller) handleUpdatePod(key string) error {
 
 							portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 							c.ovnPgKeyMutex.Lock(pgName)
-							if err = c.ovnClient.PortGroupUpdatePorts(pgName, ovsdb.MutateOperationInsert, portName); err != nil {
+
+							if err := c.ovnClient.PortGroupAddPorts(pgName, portName); err != nil {
 								c.ovnPgKeyMutex.Unlock(pgName)
+								klog.Errorf("add port to port group %s: %v", pgName, err)
 								return err
 							}
+
 							c.ovnPgKeyMutex.Unlock(pgName)
 
 							added = true

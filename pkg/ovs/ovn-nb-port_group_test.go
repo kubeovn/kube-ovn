@@ -7,6 +7,7 @@ import (
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
@@ -35,6 +36,53 @@ func (suite *OvnClientTestSuite) testCreatePortGroup() {
 	}, pg.ExternalIDs)
 }
 
+func (suite *OvnClientTestSuite) testPortGroupResetPorts() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	pgName := "test-reset-pg-ports"
+	prefix := "test-reset-ports"
+	lspNames := make([]string, 0, 3)
+
+	err := ovnClient.CreatePortGroup(pgName, map[string]string{
+		"type": "security_group",
+		sgKey:  "test-sg",
+	})
+	require.NoError(t, err)
+
+	for i := 1; i <= 3; i++ {
+		lspName := fmt.Sprintf("%s-%d", prefix, i)
+		lspNames = append(lspNames, lspName)
+
+		lsp := &ovnnb.LogicalSwitchPort{
+			UUID: ovsclient.NamedUUID(),
+			Name: lspName,
+			ExternalIDs: map[string]string{
+				"vendor": util.CniTypeName,
+			},
+		}
+
+		err := createLogicalSwitchPort(ovnClient, lsp)
+		require.NoError(t, err)
+	}
+
+	err = ovnClient.PortGroupAddPorts(pgName, lspNames...)
+	require.NoError(t, err)
+
+	pg, err := ovnClient.GetPortGroup(pgName, false)
+	require.NoError(t, err)
+	require.NotEmpty(t, pg.Ports)
+
+	err = ovnClient.PortGroupResetPorts(pgName)
+	require.NoError(t, err)
+
+	pg, err = ovnClient.GetPortGroup(pgName, false)
+	require.NoError(t, err)
+
+	require.Empty(t, pg.Ports)
+}
+
 func (suite *OvnClientTestSuite) testPortGroupUpdatePorts() {
 	t := suite.T()
 	t.Parallel()
@@ -57,7 +105,7 @@ func (suite *OvnClientTestSuite) testPortGroupUpdatePorts() {
 	for i := 1; i <= 3; i++ {
 		lspName := fmt.Sprintf("%s-%d", prefix, i)
 		lspNames = append(lspNames, lspName)
-		err := ovnClient.CreateBareLogicalSwitchPort(lsName, lspName)
+		err := ovnClient.CreateBareLogicalSwitchPort(lsName, lspName, "", "")
 		require.NoError(t, err)
 	}
 
@@ -81,8 +129,7 @@ func (suite *OvnClientTestSuite) testPortGroupUpdatePorts() {
 		require.NoError(t, err)
 	})
 
-	t.Run("del lbs from logical switch", func(t *testing.T) {
-		// delete the first two lbs from logical switch
+	t.Run("del ports from port group", func(t *testing.T) {
 		err = ovnClient.PortGroupUpdatePorts(pgName, ovsdb.MutateOperationDelete, lspNames[0:2]...)
 		require.NoError(t, err)
 

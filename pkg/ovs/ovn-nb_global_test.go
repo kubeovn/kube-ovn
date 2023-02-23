@@ -95,6 +95,42 @@ func (suite *OvnClientTestSuite) testUpdateNbGlobal() {
 	})
 }
 
+func (suite *OvnClientTestSuite) testSetAzName() {
+	t := suite.T()
+
+	ovnClient := suite.ovnClient
+
+	t.Cleanup(func() {
+		err := ovnClient.DeleteNbGlobal()
+		require.NoError(t, err)
+
+		_, err = ovnClient.GetNbGlobal()
+		require.ErrorContains(t, err, "not found nb_global")
+	})
+
+	nbGlobal := mockNBGlobal()
+	err := ovnClient.CreateNbGlobal(nbGlobal)
+	require.NoError(t, err)
+
+	t.Run("set az name", func(t *testing.T) {
+		err = ovnClient.SetAzName("test-az")
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.Equal(t, "test-az", out.Name)
+	})
+
+	t.Run("clear az name", func(t *testing.T) {
+		err = ovnClient.SetAzName("")
+		require.NoError(t, err)
+
+		out, err := ovnClient.GetNbGlobal()
+		require.NoError(t, err)
+		require.Empty(t, out.Name)
+	})
+}
+
 func (suite *OvnClientTestSuite) testSetICAutoRoute() {
 	t := suite.T()
 
@@ -133,5 +169,55 @@ func (suite *OvnClientTestSuite) testSetICAutoRoute() {
 		require.Equal(t, "false", out.Options["ic-route-learn"])
 		require.Empty(t, out.Options["ic-route-blacklist"])
 	})
+}
 
+func (suite *OvnClientTestSuite) testSetUseCtInvMatch() {
+	t := suite.T()
+
+	ovnClient := suite.ovnClient
+
+	t.Cleanup(func() {
+		err := ovnClient.DeleteNbGlobal()
+		require.NoError(t, err)
+
+		_, err = ovnClient.GetNbGlobal()
+		require.ErrorContains(t, err, "not found nb_global")
+	})
+
+	nbGlobal := mockNBGlobal()
+	err := ovnClient.CreateNbGlobal(nbGlobal)
+	require.NoError(t, err)
+
+	err = ovnClient.SetUseCtInvMatch()
+	require.NoError(t, err)
+
+	out, err := ovnClient.GetNbGlobal()
+	require.NoError(t, err)
+	require.Equal(t, "false", out.Options["use_ct_inv_match"])
+}
+
+func (suite *OvnClientTestSuite) testSetLBCIDR() {
+	t := suite.T()
+
+	ovnClient := suite.ovnClient
+	serviceCIDR := "10.96.0.0/12"
+
+	t.Cleanup(func() {
+		err := ovnClient.DeleteNbGlobal()
+		require.NoError(t, err)
+
+		_, err = ovnClient.GetNbGlobal()
+		require.ErrorContains(t, err, "not found nb_global")
+	})
+
+	nbGlobal := mockNBGlobal()
+	err := ovnClient.CreateNbGlobal(nbGlobal)
+	require.NoError(t, err)
+
+	err = ovnClient.SetLBCIDR(serviceCIDR)
+	require.NoError(t, err)
+
+	out, err := ovnClient.GetNbGlobal()
+	require.NoError(t, err)
+	require.Equal(t, serviceCIDR, out.Options["svc_ipv4_cidr"])
 }

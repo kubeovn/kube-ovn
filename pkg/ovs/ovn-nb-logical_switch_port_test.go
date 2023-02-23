@@ -23,7 +23,7 @@ func createLogicalSwitchPort(c *ovnClient, lsp *ovnnb.LogicalSwitchPort) error {
 		return fmt.Errorf("generate operations for creating logical switch port %s: %v", lsp.Name, err)
 	}
 
-	return c.Transact("lrp-create", op)
+	return c.Transact("lsp-create", op)
 }
 
 func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
@@ -50,7 +50,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 		sgs := "sg,sg1"
 		vpcName := "test-vpc"
 
-		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, vips, true, true, dhcpOptions, vpcName)
+		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, vips, true, dhcpOptions, vpcName)
 		require.NoError(t, err)
 
 		lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
@@ -62,7 +62,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 			"associated_sg_sg":  "true",
 			"associated_sg_sg1": "true",
 			"associated_sg_" + util.DefaultSecurityGroupName: "false",
-			"vips":        strings.ReplaceAll(vips, ",", "/"),
+			"vips":        vips,
 			"attach-vips": "true",
 			"pod":         fmt.Sprintf("%s/%s", podNamespace, podName),
 			"ls":          lsName,
@@ -77,7 +77,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 		sgs := "sg,sg1"
 		vpcName := "test-vpc"
 
-		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, "", true, true, dhcpOptions, vpcName)
+		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, "", true, dhcpOptions, vpcName)
 		require.NoError(t, err)
 
 		lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
@@ -102,7 +102,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 		sgs := "sg,sg1,default-securitygroup"
 		vpcName := "test-vpc"
 
-		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, vips, true, true, dhcpOptions, vpcName)
+		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, vips, true, dhcpOptions, vpcName)
 		require.NoError(t, err)
 
 		lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
@@ -117,7 +117,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 			"pod":         fmt.Sprintf("%s/%s", podNamespace, podName),
 			"ls":          lsName,
 			"vendor":      util.CniTypeName,
-			"vips":        strings.ReplaceAll(vips, ",", "/"),
+			"vips":        vips,
 			"attach-vips": "true",
 		}, lsp.ExternalIDs)
 		require.Equal(t, dhcpOptions.DHCPv4OptionsUUID, *lsp.Dhcpv4Options)
@@ -129,7 +129,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 		sgs := "sg,sg1"
 		vpcName := "ovn-cluster"
 
-		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, vips, true, true, dhcpOptions, vpcName)
+		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, vips, true, dhcpOptions, vpcName)
 		require.NoError(t, err)
 
 		lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
@@ -143,7 +143,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 			"pod":               fmt.Sprintf("%s/%s", podNamespace, podName),
 			"ls":                lsName,
 			"vendor":            util.CniTypeName,
-			"vips":              strings.ReplaceAll(vips, ",", "/"),
+			"vips":              vips,
 			"attach-vips":       "true",
 		}, lsp.ExternalIDs)
 		require.Equal(t, dhcpOptions.DHCPv4OptionsUUID, *lsp.Dhcpv4Options)
@@ -155,7 +155,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 		sgs := "sg,sg1"
 		vpcName := "test-vpc"
 
-		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, false, sgs, vips, true, true, dhcpOptions, vpcName)
+		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, false, sgs, vips, true, dhcpOptions, vpcName)
 		require.NoError(t, err)
 
 		lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
@@ -166,7 +166,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 			"pod":         fmt.Sprintf("%s/%s", podNamespace, podName),
 			"ls":          lsName,
 			"vendor":      util.CniTypeName,
-			"vips":        strings.ReplaceAll(vips, ",", "/"),
+			"vips":        vips,
 			"attach-vips": "true",
 		}, lsp.ExternalIDs)
 		require.Equal(t, dhcpOptions.DHCPv4OptionsUUID, *lsp.Dhcpv4Options)
@@ -178,7 +178,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 		sgs := "sg,sg1"
 		vpcName := "test-vpc"
 
-		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, vips, true, true, nil, vpcName)
+		err = ovnClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, podName, podNamespace, true, sgs, vips, true, nil, vpcName)
 		require.NoError(t, err)
 
 		lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
@@ -190,7 +190,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 			"associated_sg_sg":  "true",
 			"associated_sg_sg1": "true",
 			"associated_sg_" + util.DefaultSecurityGroupName: "false",
-			"vips":        strings.ReplaceAll(vips, ",", "/"),
+			"vips":        vips,
 			"attach-vips": "true",
 			"pod":         fmt.Sprintf("%s/%s", podNamespace, podName),
 			"ls":          lsName,
@@ -294,11 +294,12 @@ func (suite *OvnClientTestSuite) testCreateBareLogicalSwitchPort() {
 	err := ovnClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
 
-	err = ovnClient.CreateBareLogicalSwitchPort(lsName, lspName)
+	err = ovnClient.CreateBareLogicalSwitchPort(lsName, lspName, "100.64.0.4,fd00:100:64::4", "00:00:00:C9:4E:EE")
 	require.NoError(t, err)
 
 	lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
 	require.NoError(t, err)
+	require.Equal(t, []string{"00:00:00:C9:4E:EE 100.64.0.4 fd00:100:64::4"}, lsp.Addresses)
 
 	ls, err := ovnClient.GetLogicalSwitch(lsName, false)
 	require.NoError(t, err)
@@ -373,7 +374,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortSecurity() {
 		require.Equal(t, map[string]string{
 			"vendor":         util.CniTypeName,
 			logicalSwitchKey: lsName,
-			"vips":           "10.244.100.10/10.244.100.11",
+			"vips":           "10.244.100.10,10.244.100.11",
 			"attach-vips":    "true",
 		}, lsp.ExternalIDs)
 	})
@@ -409,7 +410,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortSecurity() {
 		require.NoError(t, err)
 		require.Equal(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25 10.244.100.10 10.244.100.11"}, lsp.PortSecurity)
 		require.Equal(t, map[string]string{
-			"vips":        "10.244.100.10/10.244.100.11",
+			"vips":        "10.244.100.10,10.244.100.11",
 			"attach-vips": "true",
 		}, lsp.ExternalIDs)
 	})
@@ -869,6 +870,15 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortVlanTag() {
 	err := createLogicalSwitchPort(ovnClient, lsp)
 	require.NoError(t, err)
 
+	t.Run("set logical switch port tag when vlan id is 0", func(t *testing.T) {
+		err = ovnClient.SetLogicalSwitchPortVlanTag(lspName, 0)
+		require.NoError(t, err)
+
+		lsp, err = ovnClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.Nil(t, lsp.Tag)
+	})
+
 	t.Run("set logical switch port vlan id", func(t *testing.T) {
 		err = ovnClient.SetLogicalSwitchPortVlanTag(lspName, 10)
 		require.NoError(t, err)
@@ -882,8 +892,17 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortVlanTag() {
 		require.NoError(t, err)
 	})
 
-	t.Run("invalid vlan id", func(t *testing.T) {
+	t.Run("set logical switch port tag when vlan id is 0 again", func(t *testing.T) {
 		err = ovnClient.SetLogicalSwitchPortVlanTag(lspName, 0)
+		require.NoError(t, err)
+
+		lsp, err = ovnClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.Nil(t, lsp.Tag)
+	})
+
+	t.Run("invalid vlan id", func(t *testing.T) {
+		err = ovnClient.SetLogicalSwitchPortVlanTag(lspName, -1)
 		require.ErrorContains(t, err, "invalid vlan id")
 
 		err = ovnClient.SetLogicalSwitchPortVlanTag(lspName, 4096)
@@ -955,179 +974,72 @@ func (suite *OvnClientTestSuite) testListLogicalSwitchPorts() {
 
 	ovnClient := suite.ovnClient
 
-	t.Run("result should exclude lsp when vendor is not kube-ovn", func(t *testing.T) {
-		lspName := "test-list-lsp-other-vendor"
+	lsName := "test-list-lsp-ls"
 
-		lsp := &ovnnb.LogicalSwitchPort{
-			UUID:        ovsclient.NamedUUID(),
-			Name:        lspName,
-			ExternalIDs: map[string]string{"vendor": "other-vendor"},
-		}
+	t.Run("normal lsp", func(t *testing.T) {
+		t.Parallel()
 
-		err := createLogicalSwitchPort(ovnClient, lsp)
-		require.NoError(t, err)
-
-		out, err := ovnClient.ListLogicalSwitchPorts(true, nil)
-		require.NoError(t, err)
-
-		found := false
-		for _, l := range out {
-			if l.Name == lspName {
-				found = true
-				break
-			}
-		}
-		require.False(t, found)
-
-	})
-
-	t.Run("result should exclude lsp when externalIDs's length is not equal", func(t *testing.T) {
-		lspName := "test-list-lsp-mismatch-length"
-
+		// normal lsp
+		lspName := "test-list-normal-lsp"
 		lsp := &ovnnb.LogicalSwitchPort{
 			UUID: ovsclient.NamedUUID(),
 			Name: lspName,
 			ExternalIDs: map[string]string{
-				"vendor": util.CniTypeName,
-				sgsKey:   "sg",
+				logicalSwitchKey: lsName,
+				"vendor":         util.CniTypeName,
 			},
 		}
 
 		err := createLogicalSwitchPort(ovnClient, lsp)
 		require.NoError(t, err)
 
-		out, err := ovnClient.ListLogicalSwitchPorts(true, map[string]string{sgsKey: "sg", "key": "value", "key1": "value"})
-		require.NoError(t, err)
-		require.Empty(t, out)
-	})
-
-	t.Run("result should include lsp when key exists in lsp column: external_ids", func(t *testing.T) {
-		lspName := "test-list-lsp-exist"
-
-		lsp := &ovnnb.LogicalSwitchPort{
-			UUID: ovsclient.NamedUUID(),
-			Name: lspName,
-			ExternalIDs: map[string]string{
-				"vendor": util.CniTypeName,
-				sgsKey:   "sg",
-			},
-		}
-
-		err := createLogicalSwitchPort(ovnClient, lsp)
-		require.NoError(t, err)
-
-		out, err := ovnClient.ListLogicalSwitchPorts(true, map[string]string{sgsKey: "sg"})
-		require.NoError(t, err)
-		require.NotEmpty(t, out)
-	})
-
-	t.Run("result should exclude lsp when key not exists in lsp column: external_ids", func(t *testing.T) {
-		lspName := "test-list-lsp-no-exist"
-
-		lsp := &ovnnb.LogicalSwitchPort{
-			UUID: ovsclient.NamedUUID(),
-			Name: lspName,
-			ExternalIDs: map[string]string{
-				"vendor": util.CniTypeName,
-				sgsKey:   "sg",
-			},
-		}
-
-		err := createLogicalSwitchPort(ovnClient, lsp)
-		require.NoError(t, err)
-
-		out, err := ovnClient.ListLogicalSwitchPorts(true, map[string]string{sgsKey + "_test": "sg"})
-		require.NoError(t, err)
-		require.Empty(t, out)
-	})
-
-	t.Run("result should include all lsp when externalIDs is empty", func(t *testing.T) {
-		prefix := "test-list-lsp-all"
-
-		for i := 0; i < 4; i++ {
-			lspName := fmt.Sprintf("%s-%d", prefix, i)
-			lsp := &ovnnb.LogicalSwitchPort{
-				UUID: ovsclient.NamedUUID(),
-				Name: lspName,
-				ExternalIDs: map[string]string{
-					"vendor": util.CniTypeName,
-					sgsKey:   "sg",
-				},
-			}
-
-			err := createLogicalSwitchPort(ovnClient, lsp)
-			require.NoError(t, err)
-		}
-
-		out, err := ovnClient.ListLogicalSwitchPorts(true, nil)
-		require.NoError(t, err)
-		count := 0
-		for _, v := range out {
-			if strings.Contains(v.Name, prefix) {
-				count++
-			}
-		}
-		require.Equal(t, count, 4)
-
-		out, err = ovnClient.ListLogicalSwitchPorts(true, map[string]string{})
-		require.NoError(t, err)
-		count = 0
-		for _, v := range out {
-			if strings.Contains(v.Name, prefix) {
-				count++
-			}
-		}
-		require.Equal(t, count, 4)
-	})
-
-	t.Run("result should include lsp which externalIDs[key] is ''", func(t *testing.T) {
-		lspName := "test-list-lsp-no-val"
-
-		lsp := &ovnnb.LogicalSwitchPort{
-			UUID: ovsclient.NamedUUID(),
-			Name: lspName,
-			ExternalIDs: map[string]string{
-				"vendor":               util.CniTypeName,
-				"security_groups_test": "sg",
-				"key":                  "val",
-			},
-		}
-
-		err := createLogicalSwitchPort(ovnClient, lsp)
-		require.NoError(t, err)
-
-		out, err := ovnClient.ListLogicalSwitchPorts(true, map[string]string{"security_groups_test": "", "key": ""})
+		out, err := ovnClient.ListLogicalSwitchPorts(true, map[string]string{logicalSwitchKey: lsName}, func(lsp *ovnnb.LogicalSwitchPort) bool {
+			return lsp.Type == ""
+		})
 		require.NoError(t, err)
 		require.Len(t, out, 1)
 		require.Equal(t, lspName, out[0].Name)
+	})
 
-		out, err = ovnClient.ListLogicalSwitchPorts(true, map[string]string{"security_groups_test": ""})
+	t.Run("patch lsp", func(t *testing.T) {
+		t.Parallel()
+
+		// patch lsp
+		lspName := "test-list-patch-lsp"
+		lrpName := "test-list-patch-lsp-lrp"
+		lsp := &ovnnb.LogicalSwitchPort{
+			Name: lspName,
+			ExternalIDs: map[string]string{
+				logicalSwitchKey: lsName,
+				"vendor":         util.CniTypeName,
+			},
+			Type: "router",
+			Options: map[string]string{
+				"router-port": lrpName,
+			},
+		}
+
+		err := createLogicalSwitchPort(ovnClient, lsp)
+		require.NoError(t, err)
+
+		out, err := ovnClient.ListLogicalSwitchPorts(true, map[string]string{logicalSwitchKey: lsName}, func(lsp *ovnnb.LogicalSwitchPort) bool {
+			return lsp.Type == "router" && len(lsp.Options) != 0 && lsp.Options["router-port"] == lrpName
+		})
 		require.NoError(t, err)
 		require.Len(t, out, 1)
 		require.Equal(t, lspName, out[0].Name)
-
-		out, err = ovnClient.ListLogicalSwitchPorts(true, map[string]string{"security_groups_test": "", "key": "", "key1": ""})
-		require.NoError(t, err)
-		require.Empty(t, out)
 	})
-}
 
-func (suite *OvnClientTestSuite) testListRemoteTypeLogicalSwitchPorts() {
-	t := suite.T()
-	t.Parallel()
+	t.Run("remote lsp", func(t *testing.T) {
+		t.Parallel()
 
-	ovnClient := suite.ovnClient
-
-	t.Run("should include lsp which type is remote", func(t *testing.T) {
-		lspName := "test-list-lsp-remote"
-
+		// remote lsp
+		lspName := "test-list-remote-lsp"
 		lsp := &ovnnb.LogicalSwitchPort{
-			UUID: ovsclient.NamedUUID(),
 			Name: lspName,
 			ExternalIDs: map[string]string{
-				"vendor":               util.CniTypeName,
-				"security_groups_test": "sg",
-				"key":                  "val",
+				logicalSwitchKey: lsName,
+				"vendor":         util.CniTypeName,
 			},
 			Type: "remote",
 		}
@@ -1135,7 +1047,34 @@ func (suite *OvnClientTestSuite) testListRemoteTypeLogicalSwitchPorts() {
 		err := createLogicalSwitchPort(ovnClient, lsp)
 		require.NoError(t, err)
 
-		out, err := ovnClient.ListRemoteTypeLogicalSwitchPorts()
+		out, err := ovnClient.ListLogicalSwitchPorts(true, map[string]string{logicalSwitchKey: lsName}, func(lsp *ovnnb.LogicalSwitchPort) bool {
+			return lsp.Type == "remote"
+		})
+		require.NoError(t, err)
+		require.Len(t, out, 1)
+		require.Equal(t, lspName, out[0].Name)
+	})
+
+	t.Run("virtual lsp", func(t *testing.T) {
+		t.Parallel()
+
+		// virtual lsp
+		lspName := "test-list-virtual-lsp"
+		lsp := &ovnnb.LogicalSwitchPort{
+			Name: lspName,
+			ExternalIDs: map[string]string{
+				logicalSwitchKey: lsName,
+				"vendor":         util.CniTypeName,
+			},
+			Type: "virtual",
+		}
+
+		err := createLogicalSwitchPort(ovnClient, lsp)
+		require.NoError(t, err)
+
+		out, err := ovnClient.ListLogicalSwitchPorts(true, map[string]string{logicalSwitchKey: lsName}, func(lsp *ovnnb.LogicalSwitchPort) bool {
+			return lsp.Type == "virtual"
+		})
 		require.NoError(t, err)
 		require.Len(t, out, 1)
 		require.Equal(t, lspName, out[0].Name)
@@ -1153,7 +1092,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPort() {
 	err := ovnClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
 
-	err = ovnClient.CreateBareLogicalSwitchPort(lsName, lspName)
+	err = ovnClient.CreateBareLogicalSwitchPort(lsName, lspName, "", "")
 	require.NoError(t, err)
 
 	t.Run("no err when delete existent logical switch port", func(t *testing.T) {
@@ -1274,7 +1213,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPortOp() {
 	err := ovnClient.CreateBareLogicalSwitch(lsName)
 	require.NoError(t, err)
 
-	err = ovnClient.CreateBareLogicalSwitchPort(lsName, lspName)
+	err = ovnClient.CreateBareLogicalSwitchPort(lsName, lspName, "", "")
 	require.NoError(t, err)
 
 	lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
@@ -1314,7 +1253,239 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPortOp() {
 		}, ops[1])
 }
 
-func (suite *OvnClientTestSuite) test_getLogicalSwitchPortSgs() {
+func (suite *OvnClientTestSuite) testlogicalSwitchPortFilter() {
+	t := suite.T()
+	t.Parallel()
+
+	lsName := "test-filter-lsp-lr"
+	prefix := "test-filter-lsp"
+	lsps := make([]*ovnnb.LogicalSwitchPort, 0)
+	var patchPort string
+
+	i := 0
+	// create three normal lsp
+	for ; i < 3; i++ {
+		lspName := fmt.Sprintf("%s-%d", prefix, i)
+		lsp := &ovnnb.LogicalSwitchPort{
+			Name: lspName,
+			ExternalIDs: map[string]string{
+				logicalSwitchKey: lsName,
+				"vendor":         util.CniTypeName,
+			},
+		}
+
+		lsps = append(lsps, lsp)
+	}
+
+	// create one patch lsp
+	for ; i < 4; i++ {
+		lspName := fmt.Sprintf("%s-%d", prefix, i)
+		patchPort = fmt.Sprintf("%s-lrp", lspName)
+		lsp := &ovnnb.LogicalSwitchPort{
+			Name: lspName,
+			ExternalIDs: map[string]string{
+				logicalSwitchKey: lsName,
+				"vendor":         util.CniTypeName,
+			},
+			Type: "router",
+			Options: map[string]string{
+				"router-port": patchPort,
+			},
+		}
+
+		lsps = append(lsps, lsp)
+	}
+
+	// create one remote lsp
+	for ; i < 5; i++ {
+		lspName := fmt.Sprintf("%s-%d", prefix, i)
+		lsp := &ovnnb.LogicalSwitchPort{
+			Name: lspName,
+			ExternalIDs: map[string]string{
+				logicalSwitchKey: lsName,
+				"vendor":         util.CniTypeName,
+			},
+			Type: "remote",
+		}
+
+		lsps = append(lsps, lsp)
+	}
+
+	// create one virtual lsp
+	for ; i < 6; i++ {
+		lspName := fmt.Sprintf("%s-%d", prefix, i)
+		lsp := &ovnnb.LogicalSwitchPort{
+			Name: lspName,
+			ExternalIDs: map[string]string{
+				logicalSwitchKey: lsName,
+				"vendor":         util.CniTypeName,
+			},
+			Type: "virtual",
+		}
+
+		lsps = append(lsps, lsp)
+	}
+
+	// create two normal lsp with different logical switch name and vendor
+	for ; i < 8; i++ {
+		lspName := fmt.Sprintf("%s-%d", prefix, i)
+		lsp := &ovnnb.LogicalSwitchPort{
+			Name: lspName,
+			ExternalIDs: map[string]string{
+				logicalSwitchKey: lsName + "-test",
+				"vendor":         util.CniTypeName + "-test",
+			},
+		}
+
+		lsps = append(lsps, lsp)
+	}
+
+	// create one normal lsp with different logical switch name and no vendor
+	for ; i < 9; i++ {
+		lspName := fmt.Sprintf("%s-%d", prefix, i)
+		lsp := &ovnnb.LogicalSwitchPort{
+			Name: lspName,
+			ExternalIDs: map[string]string{
+				logicalSwitchKey: lsName + "-test",
+			},
+		}
+
+		lsps = append(lsps, lsp)
+	}
+
+	t.Run("include all lsp", func(t *testing.T) {
+		filterFunc := logicalSwitchPortFilter(false, nil, nil)
+		count := 0
+		for _, lsp := range lsps {
+			if filterFunc(lsp) {
+				count++
+			}
+		}
+		require.Equal(t, count, 9)
+	})
+
+	t.Run("include all lsp which vendor is kube-ovn", func(t *testing.T) {
+		filterFunc := logicalSwitchPortFilter(true, nil, nil)
+		count := 0
+		for _, lsp := range lsps {
+			if filterFunc(lsp) {
+				count++
+			}
+		}
+		require.Equal(t, count, 6)
+	})
+
+	t.Run("include all lsp with external ids", func(t *testing.T) {
+		filterFunc := logicalSwitchPortFilter(true, map[string]string{logicalSwitchKey: lsName}, nil)
+		count := 0
+		for _, lsp := range lsps {
+			if filterFunc(lsp) {
+				count++
+			}
+		}
+		require.Equal(t, count, 6)
+	})
+
+	t.Run("list normal type lsp", func(t *testing.T) {
+		filterFunc := logicalSwitchPortFilter(true, map[string]string{logicalSwitchKey: lsName}, func(lsp *ovnnb.LogicalSwitchPort) bool {
+			return lsp.Type == ""
+		})
+		count := 0
+		for _, lsp := range lsps {
+			if filterFunc(lsp) {
+				count++
+			}
+		}
+		require.Equal(t, count, 3)
+	})
+
+	t.Run("list remote type lsp", func(t *testing.T) {
+		filterFunc := logicalSwitchPortFilter(true, map[string]string{logicalSwitchKey: lsName}, func(lsp *ovnnb.LogicalSwitchPort) bool {
+			return lsp.Type == "remote"
+		})
+		count := 0
+		for _, lsp := range lsps {
+			if filterFunc(lsp) {
+				count++
+			}
+		}
+		require.Equal(t, count, 1)
+	})
+
+	t.Run("list virtual type lsp", func(t *testing.T) {
+		filterFunc := logicalSwitchPortFilter(true, map[string]string{logicalSwitchKey: lsName}, func(lsp *ovnnb.LogicalSwitchPort) bool {
+			return lsp.Type == "virtual"
+		})
+		count := 0
+		for _, lsp := range lsps {
+			if filterFunc(lsp) {
+				count++
+			}
+		}
+		require.Equal(t, count, 1)
+	})
+
+	t.Run("list patch type lsp", func(t *testing.T) {
+		filterFunc := logicalSwitchPortFilter(true, map[string]string{logicalSwitchKey: lsName}, func(lsp *ovnnb.LogicalSwitchPort) bool {
+			return lsp.Type == "router" && len(lsp.Options) != 0 && lsp.Options["router-port"] == patchPort
+		})
+
+		count := 0
+		for _, lsp := range lsps {
+			if filterFunc(lsp) {
+				count++
+			}
+		}
+		require.Equal(t, count, 1)
+	})
+
+	t.Run("externalIDs's length is not equal", func(t *testing.T) {
+		t.Parallel()
+
+		filterFunc := logicalSwitchPortFilter(true, map[string]string{
+			logicalSwitchKey: lsName,
+			"key":            "value",
+		}, nil)
+
+		count := 0
+		for _, lsp := range lsps {
+			if filterFunc(lsp) {
+				count++
+			}
+		}
+		require.Empty(t, count)
+	})
+
+	t.Run("list lsp without vendor", func(t *testing.T) {
+		filterFunc := logicalSwitchPortFilter(false, nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
+			return len(lsp.ExternalIDs) == 0 || len(lsp.ExternalIDs["vendor"]) == 0
+		})
+
+		count := 0
+		for _, lsp := range lsps {
+			if filterFunc(lsp) {
+				count++
+			}
+		}
+		require.Equal(t, count, 1)
+	})
+
+	t.Run("list lsp which vendor is not kube-ovn", func(t *testing.T) {
+		filterFunc := logicalSwitchPortFilter(false, nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
+			return len(lsp.ExternalIDs) == 0 || lsp.ExternalIDs["vendor"] != util.CniTypeName
+		})
+
+		count := 0
+		for _, lsp := range lsps {
+			if filterFunc(lsp) {
+				count++
+			}
+		}
+		require.Equal(t, count, 3)
+	})
+}
+
+func (suite *OvnClientTestSuite) testgetLogicalSwitchPortSgs() {
 	t := suite.T()
 	t.Parallel()
 

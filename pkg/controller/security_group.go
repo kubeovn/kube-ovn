@@ -179,39 +179,54 @@ func (c *Controller) initDenyAllSecurityGroup() error {
 
 // updateDenyAllSgPorts set lsp to deny which security_groups is not empty
 func (c *Controller) updateDenyAllSgPorts() error {
-	sgKey := "security_groups"
 	// list all lsp which security_groups is not empty
-	ports, err := c.ovnClient.ListLogicalSwitchPorts(true, map[string]string{sgKey: ""})
+	lsps, err := c.ovnClient.ListNormalLogicalSwitchPorts(true, map[string]string{sgsKey: ""})
 	if err != nil {
 		klog.Errorf("failed to find logical port, %v", err)
 		return err
 	}
 
-	matchPorts := make([]string, 0, len(ports))
-	for _, port := range ports {
-		// skip lsp which only have mac addresses,
-		// data store in port.PortSecurity[0], em...
-		if len(strings.Split(port.PortSecurity[0], " ")) < 2 {
+	addPorts := make([]string, 0, len(lsps))
+	for _, lsp := range lsps {
+		// skip lsp which only have mac addresses,address is in port.PortSecurity[0]
+		if len(strings.Split(lsp.PortSecurity[0], " ")) < 2 {
 			continue
 		}
 
-		/*  skip lsp which security_group does not exist */
+		/* skip lsp which security_group does not exist */
 		// sgs format: sg1/sg2/sg3
-		sgs := strings.Split(port.ExternalIDs[sgKey], "/")
+		sgs := strings.Split(lsp.ExternalIDs[sgsKey], "/")
 		allNotExist, err := c.securityGroupALLNotExist(sgs)
 		if err != nil {
 			return err
 		}
 
 		if allNotExist {
-			klog.Infof("all sgs of lsp: %s does't exist", port.Name)
 			continue
 		}
 
-		matchPorts = append(matchPorts, port.Name)
+		addPorts = append(addPorts, lsp.Name)
+	}
+	pgName := ovs.GetSgPortGroupName(util.DenyAllSecurityGroup)
+
+	// reset pg ports
+	if err := c.ovnClient.PortGroupResetPorts(pgName); err != nil {
+		klog.Error(err)
+		return err
 	}
 
-	return c.ovnLegacyClient.SetPortsToPortGroup(ovs.GetSgPortGroupName(util.DenyAllSecurityGroup), matchPorts)
+	// add port
+	if len(addPorts) == 0 {
+		return nil
+	}
+
+	klog.V(6).Infof("add ports %v to port group %s", addPorts, pgName)
+	if err := c.ovnClient.PortGroupAddPorts(pgName, addPorts...); err != nil {
+		klog.Errorf("add ports to port group %s: %v", pgName, err)
+		return err
+	}
+
+	return nil
 }
 
 func (c *Controller) handleAddOrUpdateSg(key string) error {

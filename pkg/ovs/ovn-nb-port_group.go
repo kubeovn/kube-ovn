@@ -13,17 +13,17 @@ import (
 )
 
 func (c *ovnClient) CreatePortGroup(pgName string, externalIDs map[string]string) error {
-	pg, err := c.GetPortGroup(pgName, true)
+	exist, err := c.PortGroupExists(pgName)
 	if err != nil {
 		return err
 	}
 
-	// found, ignore
-	if pg != nil {
+	// ingnore
+	if exist {
 		return nil
 	}
 
-	pg = &ovnnb.PortGroup{
+	pg := &ovnnb.PortGroup{
 		Name:        pgName,
 		ExternalIDs: externalIDs,
 	}
@@ -35,6 +35,52 @@ func (c *ovnClient) CreatePortGroup(pgName string, externalIDs map[string]string
 
 	if err = c.Transact("pg-add", ops); err != nil {
 		return fmt.Errorf("create port group %s: %v", pgName, err)
+	}
+
+	return nil
+}
+
+// PortGroupAddPort add ports to port group
+func (c *ovnClient) PortGroupAddPorts(pgName string, lspNames ...string) error {
+	return c.PortGroupUpdatePorts(pgName, ovsdb.MutateOperationInsert, lspNames...)
+}
+
+// PortGroupRemovePort remove ports from port group
+func (c *ovnClient) PortGroupRemovePorts(pgName string, lspNames ...string) error {
+	return c.PortGroupUpdatePorts(pgName, ovsdb.MutateOperationDelete, lspNames...)
+}
+
+// PortGroupResetPorts remove all ports from port group
+func (c *ovnClient) PortGroupResetPorts(pgName string) error {
+	pg, err := c.GetPortGroup(pgName, true)
+	if err != nil {
+		return fmt.Errorf("get port group %s: %v", pgName, err)
+	}
+
+	// not found, skip
+	if pg == nil {
+		return nil
+	}
+
+	// clear ports
+	pg.Ports = nil
+
+	if err := c.UpdatePortGroup(pg, &pg.Ports); err != nil {
+		return fmt.Errorf("reset port group %s ports: %v", pgName, err)
+	}
+
+	return nil
+}
+
+// UpdatePortGroup update port group
+func (c *ovnClient) UpdatePortGroup(pg *ovnnb.PortGroup, fields ...interface{}) error {
+	op, err := c.Where(pg).Update(pg, fields...)
+	if err != nil {
+		return fmt.Errorf("generate operations for updating port group %s: %v", pg.Name, err)
+	}
+
+	if err = c.Transact("pg-update", op); err != nil {
+		return fmt.Errorf("update port group %s: %v", pg.Name, err)
 	}
 
 	return nil
@@ -195,7 +241,7 @@ func (c *ovnClient) portGroupUpdateAclOp(pgName string, aclUUIDs []string, op ov
 func (c *ovnClient) portGroupOp(pgName string, mutationsFunc ...func(pg *ovnnb.PortGroup) *model.Mutation) ([]ovsdb.Operation, error) {
 	pg, err := c.GetPortGroup(pgName, false)
 	if err != nil {
-		return nil, fmt.Errorf("get port group %s when generate mutate operations: %v", pgName, err)
+		return nil, fmt.Errorf("get port group %s: %v", pgName, err)
 	}
 
 	if len(mutationsFunc) == 0 {
@@ -218,56 +264,4 @@ func (c *ovnClient) portGroupOp(pgName string, mutationsFunc ...func(pg *ovnnb.P
 	}
 
 	return ops, nil
-}
-
-/*
-----------------------------------------------------------------------------------------------
-TODO: wait to be deleted
-*/
-func (c *ovnClient) portGroupPortOp(pgName, portName string, opIsAdd bool) error {
-	pg, err := c.GetPortGroup(pgName, false)
-	if err != nil {
-		return err
-	}
-
-	lsp, err := c.GetLogicalSwitchPort(portName, false)
-	if err != nil {
-		return err
-	}
-
-	portMap := make(map[string]struct{}, len(pg.Ports))
-	for _, port := range pg.Ports {
-		portMap[port] = struct{}{}
-	}
-	if _, ok := portMap[lsp.UUID]; ok == opIsAdd {
-		return nil
-	}
-
-	if opIsAdd {
-		pg.Ports = append(pg.Ports, lsp.UUID)
-	} else {
-		delete(portMap, lsp.UUID)
-		pg.Ports = make([]string, 0, len(portMap))
-		for port := range portMap {
-			pg.Ports = append(pg.Ports, port)
-		}
-	}
-
-	ops, err := c.ovnNbClient.Where(pg).Update(pg, &pg.Ports)
-	if err != nil {
-		return fmt.Errorf("failed to generate update operations for port group %s: %v", pgName, err)
-	}
-	if err = c.Transact("update", ops); err != nil {
-		return fmt.Errorf("failed to update ports of port group %s: %v", pgName, err)
-	}
-
-	return nil
-}
-
-func (c *ovnClient) PortGroupAddPort(pgName, portName string) error {
-	return c.portGroupPortOp(pgName, portName, true)
-}
-
-func (c *ovnClient) PortGroupRemovePort(pgName, portName string) error {
-	return c.portGroupPortOp(pgName, portName, false)
 }
