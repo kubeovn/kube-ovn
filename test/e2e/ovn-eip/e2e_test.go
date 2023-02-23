@@ -336,15 +336,13 @@ func init() {
 	config.CopyFlags(config.Flags, flag.CommandLine)
 	k8sframework.RegisterCommonFlags(flag.CommandLine)
 	k8sframework.RegisterClusterFlags(flag.CommandLine)
+}
 
-	// Parse all the flags
-	flag.Parse()
+func TestE2E(t *testing.T) {
 	if k8sframework.TestContext.KubeConfig == "" {
 		k8sframework.TestContext.KubeConfig = filepath.Join(os.Getenv("HOME"), ".kube", "config")
 	}
 	k8sframework.AfterReadingAllFlags(&k8sframework.TestContext)
-}
 
-func TestE2E(t *testing.T) {
 	e2e.RunE2ETests(t)
 }
