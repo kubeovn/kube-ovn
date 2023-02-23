@@ -10,7 +10,6 @@ on:
     branches:
     - master
     - release-*
-    - perf/libovsdb
     paths-ignore:
     - 'docs/**'
     - '**.md'
