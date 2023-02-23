@@ -166,11 +166,6 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 		klog.Errorf("failed to create external gateway switch, %v", err)
 		return err
 	}
-	lrpEipName := fmt.Sprintf("%s-%s", util.DefaultVpc, c.config.ExternalGatewaySwitch)
-	if err = c.patchOvnEipStatus(lrpEipName, true); err != nil {
-		klog.Errorf("failed to patch ovn eip cr status for lrp %s, %v", lrpEipName, err)
-		return err
-	}
 	return nil
 }
 
@@ -208,10 +203,6 @@ func (c *Controller) createDefaultVpcLrpEip(config map[string]string) (string, s
 		}
 		if err := c.createOrUpdateCrdOvnEip(lrpEipName, c.config.ExternalGatewaySwitch, v4ip, v6ip, mac, util.LrpUsingEip); err != nil {
 			klog.Errorf("failed to create ovn eip cr for lrp %s, %v", lrpEipName, err)
-			return "", "", err
-		}
-		if err = c.patchOvnEipStatus(lrpEipName, false); err != nil {
-			klog.Errorf("failed to patch ovn eip cr status for lrp %s, %v", lrpEipName, err)
 			return "", "", err
 		}
 	}

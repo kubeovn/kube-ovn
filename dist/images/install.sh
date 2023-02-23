@@ -867,6 +867,12 @@ spec:
       - jsonPath: .status.ready
         name: Ready
         type: boolean
+     - jsonPath: .spec.ipType
+        name: IpType
+        type: string
+     - jsonPath: .spec.ipName
+        name: IpName
+        type: string
       schema:
         openAPIV3Schema:
           type: object
@@ -905,6 +911,8 @@ spec:
               type: object
               properties:
                 ovnEip:
+                  type: string
+                ipType:
                   type: string
                 ipName:
                   type: string

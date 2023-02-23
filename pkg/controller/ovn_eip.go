@@ -250,11 +250,17 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		klog.Errorf("failed to create or update ovn eip '%s', %v", cachedEip.Name, err)
 		return err
 	}
+	if cachedEip.Spec.Type != util.NodeExtGwUsingEip {
+		// node ext gw eip has a nic on node, so left node to make it ready
+		if err = c.patchOvnEipStatus(key, true); err != nil {
+			klog.Errorf("failed to patch ovn eip %s: %v", key, err)
+			return err
+		}
+	}
 	if err = c.subnetCountIp(subnet); err != nil {
 		klog.Errorf("failed to count ovn eip '%s' in subnet, %v", cachedEip.Name, err)
 		return err
 	}
-
 	if err = c.handleAddOvnEipFinalizer(cachedEip); err != nil {
 		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
 		return err
@@ -286,6 +292,13 @@ func (c *Controller) handleUpdateOvnEip(key string) error {
 			return err
 		}
 		return nil
+	}
+	if cachedEip.Spec.Type != util.NodeExtGwUsingEip {
+		// node ext gw eip has a nic on node, so left node to make it ready
+		if err = c.patchOvnEipStatus(key, true); err != nil {
+			klog.Errorf("failed to patch ovn eip %s: %v", key, err)
+			return err
+		}
 	}
 	return nil
 }

@@ -878,10 +878,6 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if err = c.patchOvnEipStatus(lrpEipName, false); err != nil {
-		klog.Errorf("failed to patch ovn eip %s: %v", lrpEipName, err)
-		return err
-	}
 	// init lrp gw chassis group
 	cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
 	if err != nil && !k8serrors.IsNotFound(err) {
@@ -896,10 +892,6 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 	v4ipCidr := util.GetIpAddrWithMask(v4ip, cachedSubnet.Spec.CIDRBlock)
 	if err := c.ovnLegacyClient.ConnectRouterToExternal(c.config.ExternalGatewaySwitch, key, v4ipCidr, mac, chassises); err != nil {
 		klog.Errorf("failed to connect router '%s' to external, %v", key, err)
-		return err
-	}
-	if err = c.patchOvnEipStatus(lrpEipName, true); err != nil {
-		klog.Errorf("failed to patch ovn eip %s: %v", lrpEipName, err)
 		return err
 	}
 	cachedVpc, err := c.vpcsLister.Get(key)

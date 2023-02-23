@@ -168,6 +168,8 @@ const (
 
 	LrpUsingEip       = "lrp"
 	FipUsingEip       = "fip"
+	FipUsingVip       = "vip"
+	FipUsingIp        = "ip"
 	SnatUsingEip      = "snat"
 	DnatUsingEip      = "dnat"
 	NodeExtGwUsingEip = "node-ext-gw"

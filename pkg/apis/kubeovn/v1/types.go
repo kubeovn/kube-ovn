@@ -1063,7 +1063,8 @@ type OvnFip struct {
 }
 type OvnFipSpec struct {
 	OvnEip string `json:"ovnEip"`
-	IpName string `json:"ipName"`
+	IpType string `json:"ipType"` // vip, ip
+	IpName string `json:"ipName"` // vip, ip crd name
 }
 
 // Condition describes the state of an object at a certain point.
