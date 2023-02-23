@@ -58,8 +58,11 @@ func (c *ovnClient) DeleteGatewayChassises(lrpName string, chassises []string) e
 
 // GetGatewayChassis get gateway chassis by name
 func (c *ovnClient) GetGatewayChassis(name string, ignoreNotFound bool) (*ovnnb.GatewayChassis, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	gwChassis := &ovnnb.GatewayChassis{Name: name}
-	if err := c.Get(context.TODO(), gwChassis); err != nil {
+	if err := c.Get(ctx, gwChassis); err != nil {
 		if ignoreNotFound && err == client.ErrNotFound {
 			return nil, nil
 		}

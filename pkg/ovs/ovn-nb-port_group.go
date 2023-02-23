@@ -40,12 +40,12 @@ func (c *ovnClient) CreatePortGroup(pgName string, externalIDs map[string]string
 	return nil
 }
 
-// PortGroupAddPort add ports to port group
+// PortGroupAddPorts add ports to port group
 func (c *ovnClient) PortGroupAddPorts(pgName string, lspNames ...string) error {
 	return c.PortGroupUpdatePorts(pgName, ovsdb.MutateOperationInsert, lspNames...)
 }
 
-// PortGroupRemovePort remove ports from port group
+// PortGroupRemovePorts remove ports from port group
 func (c *ovnClient) PortGroupRemovePorts(pgName string, lspNames ...string) error {
 	return c.PortGroupUpdatePorts(pgName, ovsdb.MutateOperationDelete, lspNames...)
 }
@@ -161,6 +161,9 @@ func (c *ovnClient) GetPortGroup(pgName string, ignoreNotFound bool) (*ovnnb.Por
 // result should include all port groups when externalIDs is empty,
 // result should include all port groups which externalIDs[key] is not empty when externalIDs[key] is ""
 func (c *ovnClient) ListPortGroups(externalIDs map[string]string) ([]ovnnb.PortGroup, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	pgs := make([]ovnnb.PortGroup, 0)
 
 	if err := c.WhereCache(func(pg *ovnnb.PortGroup) bool {
@@ -186,7 +189,7 @@ func (c *ovnClient) ListPortGroups(externalIDs map[string]string) ([]ovnnb.PortG
 		}
 
 		return true
-	}).List(context.TODO(), &pgs); err != nil {
+	}).List(ctx, &pgs); err != nil {
 		klog.Errorf("list logical switch ports: %v", err)
 		return nil, err
 	}

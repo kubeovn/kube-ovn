@@ -33,12 +33,15 @@ func (c *ovnClient) DeleteNbGlobal() error {
 }
 
 func (c *ovnClient) GetNbGlobal() (*ovnnb.NBGlobal, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	nbGlobalList := make([]ovnnb.NBGlobal, 0, 1)
 
 	// there is only one nb_global in OVN_Northbound, so return true and it will work
 	err := c.WhereCache(func(config *ovnnb.NBGlobal) bool {
 		return true
-	}).List(context.TODO(), &nbGlobalList)
+	}).List(ctx, &nbGlobalList)
 
 	if err != nil {
 		return nil, fmt.Errorf("list nbGlobal: %v", err)

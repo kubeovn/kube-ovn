@@ -95,44 +95,6 @@ func NewOvnClient(ovnNbAddr string, ovnNbTimeout int, nodeSwitchCIDR string) (*o
 	return c, nil
 }
 
-func Transact(c client.Client, method string, operations []ovsdb.Operation, timeout time.Duration) error {
-	ctx, cancel := context.WithTimeout(context.TODO(), timeout)
-	defer cancel()
-
-	start := time.Now()
-	results, err := c.Transact(ctx, operations...)
-	elapsed := float64((time.Since(start)) / time.Millisecond)
-
-	var dbType string
-	switch c.Schema().Name {
-	case "OVN_Northbound":
-		dbType = "ovn-nb"
-	}
-
-	code := "0"
-	defer func() {
-		ovsClientRequestLatency.WithLabelValues(dbType, method, code).Observe(elapsed)
-	}()
-
-	if err != nil {
-		code = "1"
-		klog.Errorf("error occurred in transact with %s operations: %+v in %vms", dbType, operations, elapsed)
-		return err
-	}
-
-	if elapsed > 500 {
-		klog.Warningf("%s operations took too long: %+v in %vms", dbType, operations, elapsed)
-	}
-
-	errors, err := ovsdb.CheckOperationResults(results, operations)
-	if err != nil {
-		klog.Errorf("error occurred in transact with operations %+v with operation errors %+v: %v", operations, errors, err)
-		return err
-	}
-
-	return nil
-}
-
 func ConstructWaitForNameNotExistsOperation(name string, table string) ovsdb.Operation {
 	return ConstructWaitForUniqueOperation(table, "name", name)
 }
@@ -156,7 +118,7 @@ func (c *ovnClient) Transact(method string, operations []ovsdb.Operation) error 
 		return nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.TODO(), c.Timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
 	start := time.Now()

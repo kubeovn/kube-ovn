@@ -196,7 +196,7 @@ func (c *Controller) updateDenyAllSgPorts() error {
 		/* skip lsp which security_group does not exist */
 		// sgs format: sg1/sg2/sg3
 		sgs := strings.Split(lsp.ExternalIDs[sgsKey], "/")
-		allNotExist, err := c.securityGroupALLNotExist(sgs)
+		allNotExist, err := c.securityGroupAllNotExist(sgs)
 		if err != nil {
 			return err
 		}
@@ -475,8 +475,8 @@ func (c *Controller) reconcilePortSg(portName, securityGroups string) error {
 	return nil
 }
 
-// securityGroupALLNotExist return true if all sgs does not exist
-func (c *Controller) securityGroupALLNotExist(sgs []string) (bool, error) {
+// securityGroupAllNotExist return true if all sgs does not exist
+func (c *Controller) securityGroupAllNotExist(sgs []string) (bool, error) {
 	if len(sgs) == 0 {
 		return true, nil
 	}

@@ -498,9 +498,12 @@ func (c *ovnClient) ListNormalLogicalSwitchPorts(needVendorFilter bool, external
 
 // ListLogicalSwitchPorts list logical switch ports
 func (c *ovnClient) ListLogicalSwitchPorts(needVendorFilter bool, externalIDs map[string]string, filter func(lsp *ovnnb.LogicalSwitchPort) bool) ([]ovnnb.LogicalSwitchPort, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	lspList := make([]ovnnb.LogicalSwitchPort, 0)
 
-	if err := c.WhereCache(logicalSwitchPortFilter(needVendorFilter, externalIDs, filter)).List(context.TODO(), &lspList); err != nil {
+	if err := c.WhereCache(logicalSwitchPortFilter(needVendorFilter, externalIDs, filter)).List(ctx, &lspList); err != nil {
 		return nil, fmt.Errorf("list logical switch ports: %v", err)
 	}
 

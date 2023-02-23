@@ -56,7 +56,7 @@ func Test_securityGroupALLNotExist(t *testing.T) {
 		mockOvnClient.EXPECT().PortGroupExists(gomock.Eq(pgName)).Return(true, nil)
 		mockOvnClient.EXPECT().PortGroupExists(gomock.Not(pgName)).Return(false, nil).Times(3)
 
-		exist, err := ctrl.securityGroupALLNotExist([]string{sgName, "sg1", "sg2", "sg3"})
+		exist, err := ctrl.securityGroupAllNotExist([]string{sgName, "sg1", "sg2", "sg3"})
 		require.NoError(t, err)
 		require.False(t, exist)
 	})
@@ -64,13 +64,13 @@ func Test_securityGroupALLNotExist(t *testing.T) {
 	t.Run("should return true when all port group does't exist", func(t *testing.T) {
 		mockOvnClient.EXPECT().PortGroupExists(gomock.Any()).Return(false, nil).Times(3)
 
-		exist, err := ctrl.securityGroupALLNotExist([]string{"sg1", "sg2", "sg3"})
+		exist, err := ctrl.securityGroupAllNotExist([]string{"sg1", "sg2", "sg3"})
 		require.NoError(t, err)
 		require.True(t, exist)
 	})
 
 	t.Run("should return true when sgs is empty", func(t *testing.T) {
-		exist, err := ctrl.securityGroupALLNotExist([]string{})
+		exist, err := ctrl.securityGroupAllNotExist([]string{})
 		require.NoError(t, err)
 		require.True(t, exist)
 	})

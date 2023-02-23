@@ -232,6 +232,9 @@ func (c *ovnClient) GetNat(lrName, natType, externalIP, logicalIP string, ignore
 		return nil, fmt.Errorf("the logical router name is required")
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	if natType == ovnnb.NATTypeDNAT {
 		return nil, fmt.Errorf("does not support dnat for now")
 	}
@@ -247,7 +250,7 @@ func (c *ovnClient) GetNat(lrName, natType, externalIP, logicalIP string, ignore
 		}
 
 		return nat.Type == natType && nat.ExternalIP == externalIP
-	}).List(context.TODO(), &natList); err != nil {
+	}).List(ctx, &natList); err != nil {
 		return nil, fmt.Errorf("get logical router %s nat 'type %s external ip %s logical ip %s': %v", lrName, natType, externalIP, logicalIP, err)
 	}
 
@@ -269,9 +272,12 @@ func (c *ovnClient) GetNat(lrName, natType, externalIP, logicalIP string, ignore
 
 // ListNats list acls which match the given externalIDs
 func (c *ovnClient) ListNats(natType, logicalIP string, externalIDs map[string]string) ([]ovnnb.NAT, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	natList := make([]ovnnb.NAT, 0)
 
-	if err := c.WhereCache(natFilter(natType, logicalIP, externalIDs)).List(context.TODO(), &natList); err != nil {
+	if err := c.WhereCache(natFilter(natType, logicalIP, externalIDs)).List(ctx, &natList); err != nil {
 		return nil, fmt.Errorf("list acls: %v", err)
 	}
 

@@ -26,7 +26,7 @@ func (c *ovnClient) GetLogicalRouterRouteByOpts(key, value string) ([]ovnnb.Logi
 	}
 
 	var lrRouteList []ovnnb.LogicalRouterStaticRoute
-	if err = api.List(context.TODO(), &lrRouteList); err != nil && err != client.ErrNotFound {
+	if err = api.List(ctx, &lrRouteList); err != nil && err != client.ErrNotFound {
 		return nil, err
 	}
 
@@ -45,7 +45,7 @@ func (c *ovnClient) GetLogicalRouterPoliciesByExtID(key, value string) ([]ovnnb.
 	}
 
 	var lrPolicyList []ovnnb.LogicalRouterPolicy
-	if err = api.List(context.TODO(), &lrPolicyList); err != nil && err != client.ErrNotFound {
+	if err = api.List(ctx, &lrPolicyList); err != nil && err != client.ErrNotFound {
 		return nil, err
 	}
 
@@ -256,6 +256,9 @@ func (c *ovnClient) GetLogicalRouterStaticRoute(lrName, policy, prefix, nextHop,
 		return nil, fmt.Errorf("the logical router name is required")
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	routeList := make([]ovnnb.LogicalRouterStaticRoute, 0)
 	if err := c.ovnNbClient.WhereCache(func(route *ovnnb.LogicalRouterStaticRoute) bool {
 		if len(route.ExternalIDs) == 0 || route.ExternalIDs[logicalRouterKey] != lrName {
@@ -270,7 +273,7 @@ func (c *ovnClient) GetLogicalRouterStaticRoute(lrName, policy, prefix, nextHop,
 		// normal route
 		return route.Policy != nil && *route.Policy == policy && route.IPPrefix == prefix
 
-	}).List(context.TODO(), &routeList); err != nil {
+	}).List(ctx, &routeList); err != nil {
 		return nil, fmt.Errorf("get logical router %s static route 'policy %s prefix %s nextHop %s': %v", lrName, policy, prefix, nextHop, err)
 	}
 
@@ -292,6 +295,9 @@ func (c *ovnClient) GetLogicalRouterStaticRoute(lrName, policy, prefix, nextHop,
 
 // ListLogicalRouterStaticRoutes list route which match the given externalIDs
 func (c *ovnClient) ListLogicalRouterStaticRoutes(externalIDs map[string]string) ([]ovnnb.LogicalRouterStaticRoute, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	routeList := make([]ovnnb.LogicalRouterStaticRoute, 0)
 
 	if err := c.WhereCache(func(route *ovnnb.LogicalRouterStaticRoute) bool {
@@ -316,7 +322,7 @@ func (c *ovnClient) ListLogicalRouterStaticRoutes(externalIDs map[string]string)
 		}
 
 		return true
-	}).List(context.TODO(), &routeList); err != nil {
+	}).List(ctx, &routeList); err != nil {
 		return nil, fmt.Errorf("list logical router static routes: %v", err)
 	}
 

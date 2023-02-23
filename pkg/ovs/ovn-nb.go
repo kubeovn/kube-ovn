@@ -201,12 +201,15 @@ func (c *ovnClient) RemoveLogicalPatchPort(lspName, lrpName string) error {
 // reference to ovn-nb.ovsschema(ovsdb-client get-schema unix:/var/run/ovn/ovnnb_db.sock OVN_Northbound) for more information,
 // UUID is index
 func (c *ovnClient) GetEntityInfo(entity interface{}) error {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	entityPtr := reflect.ValueOf(entity)
 	if entityPtr.Kind() != reflect.Pointer {
 		return fmt.Errorf("entity must be pointer")
 	}
 
-	err := c.Get(context.TODO(), entity)
+	err := c.Get(ctx, entity)
 	if err != nil {
 		return err
 	}

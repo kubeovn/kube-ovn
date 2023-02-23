@@ -177,10 +177,13 @@ func (c *ovnClient) DeleteLogicalSwitch(lsName string) error {
 // GetLogicalSwitch get logical switch by name,
 // it is because of lack name index that does't use ovnNbClient.Get
 func (c *ovnClient) GetLogicalSwitch(lsName string, ignoreNotFound bool) (*ovnnb.LogicalSwitch, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	lsList := make([]ovnnb.LogicalSwitch, 0)
 	if err := c.ovnNbClient.WhereCache(func(ls *ovnnb.LogicalSwitch) bool {
 		return ls.Name == lsName
-	}).List(context.TODO(), &lsList); err != nil {
+	}).List(ctx, &lsList); err != nil {
 		return nil, fmt.Errorf("list switch switch %q: %v", lsName, err)
 	}
 
@@ -206,6 +209,9 @@ func (c *ovnClient) LogicalSwitchExists(lsName string) (bool, error) {
 
 // ListLogicalSwitch list logical switch
 func (c *ovnClient) ListLogicalSwitch(needVendorFilter bool, filter func(lr *ovnnb.LogicalSwitch) bool) ([]ovnnb.LogicalSwitch, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	lsList := make([]ovnnb.LogicalSwitch, 0)
 
 	if err := c.ovnNbClient.WhereCache(func(ls *ovnnb.LogicalSwitch) bool {
@@ -218,7 +224,7 @@ func (c *ovnClient) ListLogicalSwitch(needVendorFilter bool, filter func(lr *ovn
 		}
 
 		return true
-	}).List(context.TODO(), &lsList); err != nil {
+	}).List(ctx, &lsList); err != nil {
 		return nil, fmt.Errorf("list logical switch: %v", err)
 	}
 

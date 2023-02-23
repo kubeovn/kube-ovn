@@ -81,10 +81,13 @@ func (c *ovnClient) DeleteLogicalRouter(lrName string) error {
 // GetLogicalRouter get load balancer by name,
 // it is because of lack name index that does't use ovnNbClient.Get
 func (c *ovnClient) GetLogicalRouter(lrName string, ignoreNotFound bool) (*ovnnb.LogicalRouter, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	lrList := make([]ovnnb.LogicalRouter, 0)
 	if err := c.ovnNbClient.WhereCache(func(lr *ovnnb.LogicalRouter) bool {
 		return lr.Name == lrName
-	}).List(context.TODO(), &lrList); err != nil {
+	}).List(ctx, &lrList); err != nil {
 		return nil, fmt.Errorf("list logical router %q: %v", lrName, err)
 	}
 
@@ -110,6 +113,9 @@ func (c *ovnClient) LogicalRouterExists(name string) (bool, error) {
 
 // ListLogicalRouter list logical router
 func (c *ovnClient) ListLogicalRouter(needVendorFilter bool, filter func(lr *ovnnb.LogicalRouter) bool) ([]ovnnb.LogicalRouter, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	lrList := make([]ovnnb.LogicalRouter, 0)
 
 	if err := c.ovnNbClient.WhereCache(func(lr *ovnnb.LogicalRouter) bool {
@@ -122,7 +128,7 @@ func (c *ovnClient) ListLogicalRouter(needVendorFilter bool, filter func(lr *ovn
 		}
 
 		return true
-	}).List(context.TODO(), &lrList); err != nil {
+	}).List(ctx, &lrList); err != nil {
 		return nil, fmt.Errorf("list logical router: %v", err)
 	}
 

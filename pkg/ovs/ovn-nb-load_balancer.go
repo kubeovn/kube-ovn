@@ -166,10 +166,13 @@ func (c *ovnClient) DeleteLoadBalancer(lbName string) error {
 // GetLoadBalancer get load balancer by name,
 // it is because of lack name index that does't use ovnNbClient.Get
 func (c *ovnClient) GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnnb.LoadBalancer, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	lbList := make([]ovnnb.LoadBalancer, 0)
 	if err := c.ovnNbClient.WhereCache(func(lb *ovnnb.LoadBalancer) bool {
 		return lb.Name == lbName
-	}).List(context.TODO(), &lbList); err != nil {
+	}).List(ctx, &lbList); err != nil {
 		return nil, fmt.Errorf("list load balancer %q: %v", lbName, err)
 	}
 
@@ -195,6 +198,9 @@ func (c *ovnClient) LoadBalancerExists(lbName string) (bool, error) {
 
 // ListLoadBalancers list all load balancers
 func (c *ovnClient) ListLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) ([]ovnnb.LoadBalancer, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	lbList := make([]ovnnb.LoadBalancer, 0)
 	if err := c.ovnNbClient.WhereCache(func(lb *ovnnb.LoadBalancer) bool {
 		if filter != nil {
@@ -202,7 +208,7 @@ func (c *ovnClient) ListLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) 
 		}
 
 		return true
-	}).List(context.TODO(), &lbList); err != nil {
+	}).List(ctx, &lbList); err != nil {
 		return nil, fmt.Errorf("list load balancer: %v", err)
 	}
 

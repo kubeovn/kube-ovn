@@ -261,9 +261,12 @@ func (c *ovnClient) GetDHCPOptions(lsName, protocol string, ignoreNotFound bool)
 
 // ListDHCPOptions list dhcp options which match the given externalIDs
 func (c *ovnClient) ListDHCPOptions(needVendorFilter bool, externalIDs map[string]string) ([]ovnnb.DHCPOptions, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	dhcpOptList := make([]ovnnb.DHCPOptions, 0)
 
-	if err := c.WhereCache(dhcpOptionsFilter(needVendorFilter, externalIDs)).List(context.TODO(), &dhcpOptList); err != nil {
+	if err := c.WhereCache(dhcpOptionsFilter(needVendorFilter, externalIDs)).List(ctx, &dhcpOptList); err != nil {
 		return nil, fmt.Errorf("list dhcp options with external IDs %v: %v", externalIDs, err)
 	}
 

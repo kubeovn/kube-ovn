@@ -198,7 +198,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 		return nil
 	}
 
-	if err := c.setAzName(config["az-name"]); err != nil {
+	if err := c.ovnClient.SetAzName(config["az-name"]); err != nil {
 		klog.Errorf("failed to set az name. %v", err)
 		return err
 	}
@@ -485,19 +485,4 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 			klog.Errorf("deleting router policy failed %v", err)
 		}
 	}
-}
-
-func (c *Controller) setAzName(azName string) error {
-	nbGlobal, err := c.ovnClient.GetNbGlobal()
-	if err != nil {
-		return fmt.Errorf("get nb global: %v", err)
-	}
-
-	nbGlobal.Name = azName
-
-	if err := c.ovnClient.UpdateNbGlobal(nbGlobal, &nbGlobal.Name); err != nil {
-		return fmt.Errorf("set nb_global az name %s: %v", azName, err)
-	}
-
-	return nil
 }

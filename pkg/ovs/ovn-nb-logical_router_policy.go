@@ -215,10 +215,13 @@ func (c *ovnClient) GetLogicalRouterPolicy(lrName string, priority int, match st
 		return nil, fmt.Errorf("the logical router name is required")
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	policyList := make([]ovnnb.LogicalRouterPolicy, 0)
 	if err := c.ovnNbClient.WhereCache(func(policy *ovnnb.LogicalRouterPolicy) bool {
 		return len(policy.ExternalIDs) != 0 && policy.ExternalIDs[logicalRouterKey] == lrName && policy.Priority == priority && policy.Match == match
-	}).List(context.TODO(), &policyList); err != nil {
+	}).List(ctx, &policyList); err != nil {
 		return nil, fmt.Errorf("get policy priority %d match %s in logical router %s: %v", priority, match, lrName, err)
 	}
 
@@ -239,9 +242,12 @@ func (c *ovnClient) GetLogicalRouterPolicy(lrName string, priority int, match st
 
 // ListLogicalRouterPolicies list route policy which match the given externalIDs
 func (c *ovnClient) ListLogicalRouterPolicies(priority int, externalIDs map[string]string) ([]ovnnb.LogicalRouterPolicy, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	policyList := make([]ovnnb.LogicalRouterPolicy, 0)
 
-	if err := c.WhereCache(policyFilter(priority, externalIDs)).List(context.TODO(), &policyList); err != nil {
+	if err := c.WhereCache(policyFilter(priority, externalIDs)).List(ctx, &policyList); err != nil {
 		return nil, fmt.Errorf("list logical router policies: %v", err)
 	}
 
@@ -341,7 +347,7 @@ func (c *ovnClient) DeleteRouterPolicy(lr *ovnnb.LogicalRouter, uuid string) err
 	}
 	ops = append(ops, deleteOps...)
 
-	if err = Transact(c.ovnNbClient, "lr-policy-delete", ops, c.ovnNbClient.Timeout); err != nil {
+	if err = c.Transact("lr-policy-delete", ops); err != nil {
 		return fmt.Errorf("failed to delete route policy %s: %v", uuid, err)
 	}
 	return nil

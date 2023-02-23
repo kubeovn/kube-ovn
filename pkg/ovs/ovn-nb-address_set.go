@@ -123,8 +123,11 @@ func (c *ovnClient) DeleteAddressSets(externalIDs map[string]string) error {
 
 // GetAddressSet get address set by name
 func (c *ovnClient) GetAddressSet(asName string, ignoreNotFound bool) (*ovnnb.AddressSet, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	as := &ovnnb.AddressSet{Name: asName}
-	if err := c.ovnNbClient.Get(context.TODO(), as); err != nil {
+	if err := c.ovnNbClient.Get(ctx, as); err != nil {
 		if ignoreNotFound && err == client.ErrNotFound {
 			return nil, nil
 		}
@@ -141,9 +144,12 @@ func (c *ovnClient) AddressSetExists(name string) (bool, error) {
 
 // ListAddressSets list address set by external_ids
 func (c *ovnClient) ListAddressSets(externalIDs map[string]string) ([]ovnnb.AddressSet, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	asList := make([]ovnnb.AddressSet, 0)
 
-	if err := c.WhereCache(addressSetFilter(externalIDs)).List(context.TODO(), &asList); err != nil {
+	if err := c.WhereCache(addressSetFilter(externalIDs)).List(ctx, &asList); err != nil {
 		return nil, fmt.Errorf("list address set: %v", err)
 	}
 

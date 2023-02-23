@@ -550,12 +550,15 @@ func (c *ovnClient) GetAcl(parent, direction, priority, match string, ignoreNotF
 		return nil, fmt.Errorf("the parent name is required")
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	intPriority, _ := strconv.Atoi(priority)
 
 	aclList := make([]ovnnb.ACL, 0)
 	if err := c.ovnNbClient.WhereCache(func(acl *ovnnb.ACL) bool {
 		return len(acl.ExternalIDs) != 0 && acl.ExternalIDs[aclParentKey] == parent && acl.Direction == direction && acl.Priority == intPriority && acl.Match == match
-	}).List(context.TODO(), &aclList); err != nil {
+	}).List(ctx, &aclList); err != nil {
 		return nil, fmt.Errorf("get acl with 'parent %s direction %s priority %s match %s': %v", parent, direction, priority, match, err)
 	}
 
@@ -580,9 +583,12 @@ func (c *ovnClient) GetAcl(parent, direction, priority, match string, ignoreNotF
 // result should include all acls which externalIDs[key] is not empty when externalIDs[key] is ""
 // TODO: maybe add other filter conditions(priority or match)
 func (c *ovnClient) ListAcls(direction string, externalIDs map[string]string) ([]ovnnb.ACL, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
 	aclList := make([]ovnnb.ACL, 0)
 
-	if err := c.WhereCache(aclFilter(direction, externalIDs)).List(context.TODO(), &aclList); err != nil {
+	if err := c.WhereCache(aclFilter(direction, externalIDs)).List(ctx, &aclList); err != nil {
 		return nil, fmt.Errorf("list acls: %v", err)
 	}
 
