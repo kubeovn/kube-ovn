@@ -52,11 +52,11 @@ jobs:
           - go.mod
           - go.sum
           EOF
-          module=$(grep ^module go.mod | awk '{print $2}')
-          go list -f '{{ join .Deps "\n" }}' cmd/windows | grep ^$module/ | while read pkg; do
-            echo "- ${pkg#${module}/}/*" >> $filter
+
+          sh hack/go-list.sh cmd/windows | while read f; do
+            echo "- '$f'" >> $filter
           done
-          
+
       - uses: dorny/paths-filter@v2
         id: filter
         with:
