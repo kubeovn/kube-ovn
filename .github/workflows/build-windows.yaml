@@ -60,6 +60,7 @@ jobs:
       - uses: dorny/paths-filter@v2
         id: filter
         with:
+          base: ${{ github.base_ref || github.ref_name }}
           filters: .github/path-filters.yaml
 
   build-ovs-and-ovn:
