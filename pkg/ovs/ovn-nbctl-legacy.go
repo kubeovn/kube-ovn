@@ -3239,13 +3239,13 @@ func (c LegacyClient) CreateBfd(lrp, dstIp string, minTx, minRx, detectMult int)
 	}
 	if output, err = c.ovnNbCommand("create", "bfd", fmt.Sprintf("logical_port=%s", lrp), fmt.Sprintf("dst_ip=%s", dstIp),
 		fmt.Sprintf("min_tx=%d ", minTx), fmt.Sprintf("min_rx=%d", minRx), fmt.Sprintf("detect_mult=%d", detectMult)); err != nil {
-		klog.Errorf("faild to create bfd for lrp %q dst ip %q, output %s, %v", lrp, dstIp, output, err)
+		klog.Errorf("faild to create bfd for lrp %s dst ip %s, output %s, %v", lrp, dstIp, output, err)
 		return "", err
 	}
 	if bfdId, err := c.FindBfd(lrp, dstIp); err == nil {
 		return bfdId, nil
 	} else {
-		klog.Errorf("faild to create bfd for lrp %q dst ip %q, output %s, %v", lrp, dstIp, output, err)
+		klog.Errorf("faild to create bfd for lrp %s dst ip %s, output %s, %v", lrp, dstIp, output, err)
 		return "", err
 	}
 }

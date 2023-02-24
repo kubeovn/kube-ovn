@@ -945,7 +945,6 @@ func (c *Controller) reconcileSubnet(subnet *kubeovnv1.Subnet) error {
 			klog.Errorf("reconcile default vpc ovn route for subnet %s failed: %v", subnet.Name, err)
 			return err
 		}
-		return nil
 	}
 
 	if subnet.Spec.Vpc != util.DefaultVpc {
@@ -953,7 +952,6 @@ func (c *Controller) reconcileSubnet(subnet *kubeovnv1.Subnet) error {
 			klog.Errorf("reconcile custom vpc ovn route for subnet %s failed: %v", subnet.Name, err)
 			return err
 		}
-		return nil
 	}
 
 	if err := c.reconcileVlan(subnet); err != nil {
@@ -1121,6 +1119,7 @@ func (c *Controller) reconcileVpcUseBfdStaticRoute(vpcName, subnetName string) e
 	lrpEip, err := c.config.KubeOvnClient.KubeovnV1().OvnEips().Get(context.Background(), lrpEipName, metav1.GetOptions{})
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
+			klog.Error(err)
 			return err
 		}
 	}
@@ -1189,10 +1188,8 @@ func (c *Controller) reconcileVpcAddNormalStaticRoute(vpcName string) error {
 
 	defualtExternalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
 	if err != nil {
-		if !k8serrors.IsNotFound(err) {
-			klog.Error("failed to get default external switch subnet %s: %v", c.config.ExternalGatewaySwitch)
-			return err
-		}
+		klog.Error("failed to get default external switch subnet %s: %v", c.config.ExternalGatewaySwitch)
+		return err
 	}
 	gatewayV4, gatewayV6 := util.SplitStringIP(defualtExternalSubnet.Spec.Gateway)
 	v4Exist, v6Exist := false, false
@@ -1265,10 +1262,8 @@ func (c *Controller) reconcileVpcDelNormalStaticRoute(vpcName string) error {
 	// if use ecmp bfd static route, normal static route should not exist
 	defualtExternalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
 	if err != nil {
-		if !k8serrors.IsNotFound(err) {
-			klog.Error("failed to get default external switch subnet %s: %v", c.config.ExternalGatewaySwitch)
-			return err
-		}
+		klog.Error("failed to get default external switch subnet %s: %v", c.config.ExternalGatewaySwitch)
+		return err
 	}
 	gatewayV4, gatewayV6 := util.SplitStringIP(defualtExternalSubnet.Spec.Gateway)
 	needUpdate := false
@@ -1328,12 +1323,14 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 		for _, pod := range pods {
 			if pod.Annotations[util.LogicalSwitchAnnotation] == subnet.Name && pod.Annotations[util.IpAddressAnnotation] != "" {
 				if err := c.deleteStaticRoute(pod.Annotations[util.IpAddressAnnotation], c.config.ClusterRouter); err != nil {
+					klog.Errorf("failed to delete static route %v", err)
 					return err
 				}
 			}
 		}
 
 		if err := c.deleteStaticRoute(subnet.Spec.CIDRBlock, c.config.ClusterRouter); err != nil {
+			klog.Errorf("failed to delete static route %v", err)
 			return err
 		}
 
@@ -1384,10 +1381,12 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 
 				bytes, err := subnet.Status.Bytes()
 				if err != nil {
+					klog.Errorf("failed to marshal subnet status %v", err)
 					return err
 				}
 				_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "")
 				if err != nil {
+					klog.Errorf("failed to patch subnet status %v", err)
 					return err
 				}
 			}
@@ -1399,6 +1398,7 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 			}
 			for _, node := range nodes {
 				if err = c.createPortGroupForDistributedSubnet(node, subnet); err != nil {
+					klog.Errorf("failed to create port group %v", err)
 					return err
 				}
 				if node.Annotations[util.AllocatedAnnotation] != "true" {
@@ -1724,6 +1724,7 @@ func (c *Controller) reconcileOvnCustomVpcRoute(subnet *kubeovnv1.Subnet) error 
 		// bfd ecmp static route depend on subnet cidr
 		if err := c.reconcileVpcUseBfdStaticRoute(vpc.Name, subnet.Name); err != nil {
 			klog.Errorf("failed to reconcile vpc %q bfd static route", vpc.Name)
+			return err
 		}
 	}
 	return nil

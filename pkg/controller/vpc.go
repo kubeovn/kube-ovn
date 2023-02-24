@@ -541,6 +541,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			// auto remove normal type static route, if use ecmp based bfd
 			if err := c.reconcileVpcDelNormalStaticRoute(vpc.Name); err != nil {
 				klog.Errorf("failed to reconcile del vpc %q normal static route", vpc.Name)
+				return err
 			}
 		}
 		if !vpc.Spec.EnableBfd {
@@ -548,6 +549,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			// auto add normal type static route, if not use ecmp based bfd
 			if err := c.reconcileVpcAddNormalStaticRoute(vpc.Name); err != nil {
 				klog.Errorf("failed to reconcile vpc %q bfd static route", vpc.Name)
+				return err
 			}
 		}
 	}
