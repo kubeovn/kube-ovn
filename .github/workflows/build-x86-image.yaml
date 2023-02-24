@@ -228,6 +228,39 @@ jobs:
       - run: make e2e-build
         working-directory: ${{ env.E2E_DIR }}
 
+  netpol-path-filter:
+    name: Network Policy Path Filter
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-22.04
+    outputs:
+      test-netpol: ${{ steps.filter.outputs.kube-ovn-controller }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Generate path filter
+        run: |
+          filter=".github/path-filters.yaml"
+          cat > $filter <<EOF
+          kube-ovn-controller:
+          - go.mod
+          - go.sum
+          EOF
+          module=$(grep ^module go.mod | awk '{print $2}')
+          go list -f '{{ join .Deps "\n" }}' pkg/controller | grep ^$module/ | while read pkg; do
+            echo "- ${pkg#${module}/}/*" >> $filter
+          done
+
+      - uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          base: ${{ github.base_ref || github.ref_name }}
+          filters: .github/path-filters.yaml
+          list-files: csv
+
   k8s-conformance-e2e:
     name: Kubernetes Conformance E2E
     needs:
@@ -328,10 +361,13 @@ jobs:
 
   k8s-netpol-e2e:
     name: Kubernetes Network Policy E2E
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'network policy')
+    if: |
+      always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
+      (needs.netpol-path-filter.outputs.test-netpol == 1 || contains(github.event.pull_request.labels.*.name, 'network policy'))
     needs:
       - build-kube-ovn
       - build-e2e-binaries
+      - netpol-path-filter
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     strategy:
@@ -420,10 +456,13 @@ jobs:
 
   k8s-netpol-legacy-e2e:
     name: Kubernetes Network Policy Legacy E2E
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'network policy')
+    if: |
+      always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
+      (needs.netpol-path-filter.outputs.test-netpol == 1 || contains(github.event.pull_request.labels.*.name, 'network policy'))
     needs:
       - build-kube-ovn
       - build-e2e-binaries
+      - netpol-path-filter
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     strategy:
@@ -512,8 +551,12 @@ jobs:
 
   cyclonus-netpol-e2e:
     name: Cyclonus Network Policy E2E
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'network policy')
-    needs: build-kube-ovn
+    if: |
+      always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
+      (needs.netpol-path-filter.outputs.test-netpol == 1 || contains(github.event.pull_request.labels.*.name, 'network policy'))
+    needs:
+      - build-kube-ovn
+      - netpol-path-filter
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     strategy:
