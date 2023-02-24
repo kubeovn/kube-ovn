@@ -62,6 +62,7 @@ jobs:
         with:
           base: ${{ github.base_ref || github.ref_name }}
           filters: .github/path-filters.yaml
+          list-files: csv
 
   build-ovs-and-ovn:
     name: Build OVS and OVN
