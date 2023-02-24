@@ -455,11 +455,11 @@ func (c *Controller) patchLrpOvnEipEnableBfdLabel(key string, enableBfd bool) er
 	}
 	ovnEip := cachedEip.DeepCopy()
 	expectValue := strconv.FormatBool(enableBfd)
-	if val, ok := ovnEip.Labels[util.OvnLrpEipEnableBfd]; ok && (val == expectValue) {
+	if val, ok := ovnEip.Labels[util.OvnLrpEipEnableBfdLabel]; ok && (val == expectValue) {
 		return nil
 	}
 	op := "replace"
-	ovnEip.Labels[util.OvnLrpEipEnableBfd] = expectValue
+	ovnEip.Labels[util.OvnLrpEipEnableBfdLabel] = expectValue
 	patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
 	raw, _ := json.Marshal(ovnEip.Labels)
 	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)

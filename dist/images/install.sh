@@ -867,10 +867,10 @@ spec:
       - jsonPath: .status.ready
         name: Ready
         type: boolean
-     - jsonPath: .spec.ipType
+      - jsonPath: .spec.ipType
         name: IpType
         type: string
-     - jsonPath: .spec.ipName
+      - jsonPath: .spec.ipName
         name: IpName
         type: string
       schema:

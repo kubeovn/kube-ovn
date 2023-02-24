@@ -9,6 +9,10 @@ import (
 	"strings"
 	"time"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ipam"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,11 +22,6 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ipam"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (c *Controller) enqueueAddSubnet(obj interface{}) {
@@ -1184,7 +1183,7 @@ func (c *Controller) reconcileVpcUseBfdStaticRoute(vpcName, subnetName string) e
 func (c *Controller) reconcileVpcAddNormalStaticRoute(vpcName string) error {
 	// vpc disable bfd and subnet disable ecmp
 	// use normal type static route, not ecmp
-	// dst 0.0.0.0 nexthop lrp
+	// dst 0.0.0.0 nexthop external switch gw
 	// allow all subnet access external based snat
 	// also, this will not conflict with policy route
 
@@ -1263,7 +1262,7 @@ func (c *Controller) reconcileVpcAddNormalStaticRoute(vpcName string) error {
 
 func (c *Controller) reconcileVpcDelNormalStaticRoute(vpcName string) error {
 	// normal static route is prior than ecmp bfd static route
-	// if use ecmp bfd static route, all normal static route should not exist
+	// if use ecmp bfd static route, normal static route should not exist
 	defualtExternalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
@@ -1287,7 +1286,7 @@ func (c *Controller) reconcileVpcDelNormalStaticRoute(vpcName string) error {
 		if route.Policy == kubeovnv1.PolicyDst &&
 			(route.NextHopIP == gatewayV4 || route.NextHopIP == gatewayV6) &&
 			(route.CIDR == "0.0.0.0/0" || route.CIDR == "::/0") {
-			klog.V(3).Infof("in order to use ecmp bfd roue, need remove normal static route %v", route)
+			klog.V(3).Infof("in order to use ecmp bfd route, need remove normal static route %v", route)
 			needUpdate = true
 		} else {
 			routes = append(routes, route)
