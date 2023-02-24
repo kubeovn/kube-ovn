@@ -100,6 +100,17 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		!reflect.DeepEqual(oldSubnet.Spec.Acls, newSubnet.Spec.Acls) ||
 		oldSubnet.Spec.U2OInterconnection != newSubnet.Spec.U2OInterconnection {
 		klog.V(3).Infof("enqueue update subnet %s", key)
+
+		if oldSubnet.Spec.GatewayType != newSubnet.Spec.GatewayType {
+			c.recorder.Eventf(newSubnet, v1.EventTypeNormal, "SubnetGatewayTypeChanged",
+				"subnet gateway type changes from %s to %s ", oldSubnet.Spec.GatewayType, newSubnet.Spec.GatewayType)
+		}
+
+		if oldSubnet.Spec.GatewayNode != newSubnet.Spec.GatewayNode {
+			c.recorder.Eventf(newSubnet, v1.EventTypeNormal, "SubnetGatewayNodeChanged",
+				"gateway node changes from %s to %s ", oldSubnet.Spec.GatewayNode, newSubnet.Spec.GatewayNode)
+		}
+
 		c.addOrUpdateSubnetQueue.Add(key)
 	}
 }
@@ -470,6 +481,7 @@ func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason string, e
 		c.recorder.Eventf(subnet, v1.EventTypeWarning, reason, errStr)
 	} else {
 		subnet.Status.Validated(reason, "")
+		c.recorder.Eventf(subnet, v1.EventTypeNormal, reason, errStr)
 		if reason == "SetPrivateLogicalSwitchSuccess" || reason == "ResetLogicalSwitchAclSuccess" || reason == "ReconcileCentralizedGatewaySuccess" {
 			subnet.Status.Ready(reason, "")
 		}
@@ -751,6 +763,11 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			return err
 		}
 		c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclSuccess", "")
+	}
+
+	if err := c.ovnLegacyClient.CreateGatewayACL(subnet.Name, "", subnet.Spec.Gateway, subnet.Spec.CIDRBlock); err != nil {
+		klog.Errorf("create gateway acl %s failed, %v", subnet.Name, err)
+		return err
 	}
 
 	if err := c.ovnLegacyClient.UpdateSubnetACL(subnet.Name, subnet.Spec.Acls); err != nil {
@@ -1364,6 +1381,8 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 				}
 				subnet.Spec.GatewayNode = ""
 				subnet.Status.ActivateGateway = ""
+				c.recorder.Eventf(subnet, v1.EventTypeNormal, "ChangeToCentralizedGw", "")
+
 				bytes, err := subnet.Status.Bytes()
 				if err != nil {
 					return err
@@ -1500,8 +1519,11 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 		} else {
 			// centralized subnet
 			if subnet.Spec.GatewayNode == "" {
-				klog.Errorf("subnet %s Spec.GatewayNode field must be specified for centralized gateway type", subnet.Name)
+				errMsg := fmt.Sprintf("subnet %s Spec.GatewayNode field must be specified for centralized gateway type", subnet.Name)
+				klog.Errorf(errMsg)
+				reason := "NoReadyGateway"
 				subnet.Status.NotReady("NoReadyGateway", "")
+				c.recorder.Eventf(subnet, v1.EventTypeWarning, reason, errMsg)
 				bytes, err := subnet.Status.Bytes()
 				if err != nil {
 					return err
@@ -1651,6 +1673,7 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 				}
 				if newActivateNode == "" {
 					klog.Warningf("all subnet %s gws are not ready", subnet.Name)
+					c.recorder.Eventf(subnet, v1.EventTypeWarning, "NoActiveGatewayFound", fmt.Sprintf("subnet %s gws are not ready", subnet.Name))
 					subnet.Status.ActivateGateway = newActivateNode
 					bytes, err := subnet.Status.Bytes()
 					if err != nil {

@@ -17,10 +17,6 @@ const (
 	DaemonSetOvsOvn  = "ovs-ovn"
 )
 
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
-
 // RandomSuffix provides a random sequence to append to resources.
 func RandomSuffix() string {
 	return fmt.Sprintf("%04d", rand.Intn(10000))

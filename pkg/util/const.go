@@ -40,11 +40,15 @@ const (
 	VpcLbAnnotation             = "ovn.kubernetes.io/vpc_lb"
 	VpcExternalLabel            = "ovn.kubernetes.io/vpc_external"
 	VpcEipLabel                 = "ovn.kubernetes.io/vpc_eip"
+	VpcEipAnnotation            = "ovn.kubernetes.io/vpc_eip"
 	VpcDnatEPortLabel           = "ovn.kubernetes.io/vpc_dnat_eport"
 	VpcNatLabel                 = "ovn.kubernetes.io/vpc_nat"
+
 	OvnEipUsageLabel            = "ovn.kubernetes.io/ovn_eip_usage"
 	OvnLrpEipEnableBfd          = "ovn.kubernetes.io/ovn_lrp_eip_enable_bfd"
 
+	VpcNatAnnotation            = "ovn.kubernetes.io/vpc_nat"
+  
 	SwitchLBRuleVipsAnnotation = "ovn.kubernetes.io/switch_lb_vip"
 
 	LogicalRouterAnnotation = "ovn.kubernetes.io/logical_router"
@@ -127,6 +131,7 @@ const (
 	NodeAllowPriority = "3000"
 
 	SecurityGroupHighestPriority = "2300"
+	SecurityGroupBasePriority    = "2005"
 	SecurityGroupAllowPriority   = "2004"
 	SecurityGroupDropPriority    = "2003"
 
@@ -224,4 +229,6 @@ const (
 	U2OExcludeIPAg   = "%s.u2o_exclude_ip.%s"
 
 	DefaultServiceSessionStickinessTimeout = 10800
+
+	OvnSubnetGatewayIptables = "ovn-subnet-gateway"
 )

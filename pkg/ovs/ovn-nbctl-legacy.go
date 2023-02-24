@@ -1903,10 +1903,6 @@ func (c LegacyClient) CombineEgressACLCmd(pgName, asEgressName, asExceptName, pr
 		ovnArgs = []string{"--", fmt.Sprintf("--id=@%s.drop.%d", id, index), "create", "acl", "action=drop", "direction=from-lport", "log=false", fmt.Sprintf("priority=%s", util.EgressDefaultDrop), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("inport==@%s && ip", pgName)), "options={apply-after-lb=\"true\"}", "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.drop.%d", id, index)}
 	}
 
-	if ipSuffix == "ip6" {
-		ovnArgs = append(ovnArgs, []string{"--", fmt.Sprintf("--id=@%s.ip6nd.%d", id, index), "create", "acl", "action=allow-related", "direction=from-lport", fmt.Sprintf("priority=%s", util.EgressAllowPriority), "match=\"nd || nd_ra || nd_rs\"", "options={apply-after-lb=\"true\"}", "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.ip6nd.%d", id, index)}...)
-	}
-
 	if len(npp) == 0 {
 		allowArgs = []string{"--", fmt.Sprintf("--id=@%s.noport.%d", id, index), "create", "acl", "action=allow-related", "direction=from-lport", fmt.Sprintf("priority=%s", util.EgressAllowPriority), fmt.Sprintf("match=\"%s\"", fmt.Sprintf("%s.dst == $%s && %s.dst != $%s && inport==@%s && ip", ipSuffix, asEgressName, ipSuffix, asExceptName, pgName)), "options={apply-after-lb=\"true\"}", "--", "add", "port-group", pgName, "acls", fmt.Sprintf("@%s.noport.%d", id, index)}
 		ovnArgs = append(ovnArgs, allowArgs...)
@@ -1958,7 +1954,7 @@ func (c LegacyClient) DeleteACL(pgName, direction string) (err error) {
 	return
 }
 
-func (c LegacyClient) CreateGatewayACL(pgName, gateway, cidr string) error {
+func (c LegacyClient) CreateGatewayACL(ls, pgName, gateway, cidr string) error {
 	for _, cidrBlock := range strings.Split(cidr, ",") {
 		for _, gw := range strings.Split(gateway, ",") {
 			if util.CheckProtocol(cidrBlock) != util.CheckProtocol(gw) {
@@ -1969,8 +1965,22 @@ func (c LegacyClient) CreateGatewayACL(pgName, gateway, cidr string) error {
 			if protocol == kubeovnv1.ProtocolIPv6 {
 				ipSuffix = "ip6"
 			}
-			ingressArgs := []string{MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("%s.src == %s", ipSuffix, gw), "allow-related"}
-			egressArgs := []string{"--", MayExist, "--type=port-group", "--apply-after-lb", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("%s.dst == %s", ipSuffix, gw), "allow-related"}
+
+			var ingressArgs, egressArgs []string
+			if pgName != "" {
+				ingressArgs = []string{"--", MayExist, "--type=port-group", "acl-add", pgName, "to-lport", util.IngressAllowPriority, fmt.Sprintf("%s.src == %s", ipSuffix, gw), "allow-related"}
+				egressArgs = []string{"--", MayExist, "--type=port-group", "--apply-after-lb", "acl-add", pgName, "from-lport", util.EgressAllowPriority, fmt.Sprintf("%s.dst == %s", ipSuffix, gw), "allow-related"}
+				if ipSuffix == "ip6" {
+					egressArgs = append(egressArgs, []string{"--", "--type=port-group", MayExist, "--apply-after-lb", "acl-add", pgName, "from-lport", util.EgressAllowPriority, `nd || nd_ra || nd_rs`, "allow-related"}...)
+				}
+			} else if ls != "" {
+				ingressArgs = []string{"--", MayExist, "acl-add", ls, "to-lport", util.IngressAllowPriority, fmt.Sprintf(`%s.src == %s`, ipSuffix, gw), "allow-related"}
+				egressArgs = []string{"--", MayExist, "--apply-after-lb", "acl-add", ls, "from-lport", util.EgressAllowPriority, fmt.Sprintf(`%s.dst == %s`, ipSuffix, gw), "allow-related"}
+				if ipSuffix == "ip6" {
+					egressArgs = append(egressArgs, []string{"--", MayExist, "--apply-after-lb", "acl-add", ls, "from-lport", util.EgressAllowPriority, `nd || nd_ra || nd_rs`, "allow-related"}...)
+				}
+			}
+
 			ovnArgs := append(ingressArgs, egressArgs...)
 			if _, err := c.ovnNbCommand(ovnArgs...); err != nil {
 				return err
@@ -2424,6 +2434,65 @@ func (c LegacyClient) CreateSgDenyAllACL() error {
 			return err
 		}
 	}
+	return nil
+}
+
+func (c LegacyClient) CreateSgBaseEgressACL(sgName string) error {
+	portGroupName := GetSgPortGroupName(sgName)
+	klog.Infof("add base egress acl, sg: %s", portGroupName)
+	// allow arp
+	if _, err := c.ovnNbCommand(MayExist, "--type=port-group", "acl-add", portGroupName, string(SgAclEgressDirection), util.SecurityGroupBasePriority,
+		fmt.Sprintf("outport==@%s && arp", portGroupName), "allow-related"); err != nil {
+		return err
+	}
+
+	// icmpv6
+	if _, err := c.ovnNbCommand(MayExist, "--type=port-group", "acl-add", portGroupName, string(SgAclEgressDirection), util.SecurityGroupBasePriority,
+		fmt.Sprintf("outport==@%s && icmp6.type=={130, 133, 135, 136} && icmp6.code == 0 && ip.ttl == 255", portGroupName), "allow-related"); err != nil {
+		return err
+	}
+
+	// dhcpv4 res
+	if _, err := c.ovnNbCommand(MayExist, "--type=port-group", "acl-add", portGroupName, string(SgAclEgressDirection), util.SecurityGroupBasePriority,
+		fmt.Sprintf("outport==@%s && udp.src==68 && udp.dst==67 && ip4", portGroupName), "allow-related"); err != nil {
+		return err
+	}
+
+	// dhcpv6 res
+	if _, err := c.ovnNbCommand(MayExist, "--type=port-group", "acl-add", portGroupName, string(SgAclEgressDirection), util.SecurityGroupBasePriority,
+		fmt.Sprintf("outport==@%s && udp.src==546 && udp.dst==547 && ip6", portGroupName), "allow-related"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c LegacyClient) CreateSgBaseIngressACL(sgName string) error {
+	portGroupName := GetSgPortGroupName(sgName)
+	klog.Infof("add base ingress acl, sg: %s", portGroupName)
+	// allow arp
+	if _, err := c.ovnNbCommand(MayExist, "--type=port-group", "acl-add", portGroupName, string(SgAclIngressDirection), util.SecurityGroupBasePriority,
+		fmt.Sprintf("inport==@%s && arp", portGroupName), "allow-related"); err != nil {
+		return err
+	}
+
+	// icmpv6
+	if _, err := c.ovnNbCommand(MayExist, "--type=port-group", "acl-add", portGroupName, string(SgAclIngressDirection), util.SecurityGroupBasePriority,
+		fmt.Sprintf("inport==@%s && icmp6.type=={130, 134, 135, 136} && icmp6.code == 0 && ip.ttl == 255", portGroupName), "allow-related"); err != nil {
+		return err
+	}
+
+	// dhcpv4 offer
+	if _, err := c.ovnNbCommand(MayExist, "--type=port-group", "acl-add", portGroupName, string(SgAclIngressDirection), util.SecurityGroupBasePriority,
+		fmt.Sprintf("inport==@%s && udp.src==67 && udp.dst==68 && ip4", portGroupName), "allow-related"); err != nil {
+		return err
+	}
+
+	// dhcpv6 offer
+	if _, err := c.ovnNbCommand(MayExist, "--type=port-group", "acl-add", portGroupName, string(SgAclIngressDirection), util.SecurityGroupBasePriority,
+		fmt.Sprintf("inport==@%s && udp.src==547 && udp.dst==546 && ip6", portGroupName), "allow-related"); err != nil {
+		return err
+	}
+
 	return nil
 }
 

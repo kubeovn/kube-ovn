@@ -44,7 +44,7 @@ func makeProviderNetwork(providerNetworkName string, exchangeLinkName bool, link
 	return framework.MakeProviderNetwork(providerNetworkName, exchangeLinkName, defaultInterface, customInterfaces, nil)
 }
 
-var _ = framework.Describe("[group:underlay]", func() {
+var _ = framework.SerialDescribe("[group:underlay]", func() {
 	f := framework.NewDefaultFramework("underlay")
 
 	var skip bool
@@ -65,7 +65,7 @@ var _ = framework.Describe("[group:underlay]", func() {
 
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
-		eventClient = f.EventClient()
+		eventClient = f.EventClient("")
 		podClient = f.PodClient()
 		subnetClient = f.SubnetClient()
 		vlanClient = f.VlanClient()

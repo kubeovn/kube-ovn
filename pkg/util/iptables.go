@@ -9,3 +9,8 @@ type IPTableRule struct {
 	Chain string
 	Rule  []string
 }
+
+type GwIPtableCounters struct {
+	Packets     int
+	PacketBytes int
+}

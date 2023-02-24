@@ -11,15 +11,15 @@ type (
 )
 
 var (
-	LoadBalancerProtocolSCTP          LoadBalancerProtocol        = "sctp"
 	LoadBalancerProtocolTCP           LoadBalancerProtocol        = "tcp"
 	LoadBalancerProtocolUDP           LoadBalancerProtocol        = "udp"
-	LoadBalancerSelectionFieldsEthDst LoadBalancerSelectionFields = "eth_dst"
+	LoadBalancerProtocolSCTP          LoadBalancerProtocol        = "sctp"
 	LoadBalancerSelectionFieldsEthSrc LoadBalancerSelectionFields = "eth_src"
-	LoadBalancerSelectionFieldsIPDst  LoadBalancerSelectionFields = "ip_dst"
+	LoadBalancerSelectionFieldsEthDst LoadBalancerSelectionFields = "eth_dst"
 	LoadBalancerSelectionFieldsIPSrc  LoadBalancerSelectionFields = "ip_src"
-	LoadBalancerSelectionFieldsTpDst  LoadBalancerSelectionFields = "tp_dst"
+	LoadBalancerSelectionFieldsIPDst  LoadBalancerSelectionFields = "ip_dst"
 	LoadBalancerSelectionFieldsTpSrc  LoadBalancerSelectionFields = "tp_src"
+	LoadBalancerSelectionFieldsTpDst  LoadBalancerSelectionFields = "tp_dst"
 )
 
 // LoadBalancer defines an object in Load_Balancer table

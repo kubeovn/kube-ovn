@@ -1,11 +1,11 @@
 module github.com/kubeovn/kube-ovn
 
-go 1.19
+go 1.20
 
 require (
 	github.com/Mellanox/sriovnet v1.1.0
 	github.com/Microsoft/go-winio v0.6.0
-	github.com/Microsoft/hcsshim v0.9.6
+	github.com/Microsoft/hcsshim v0.9.7
 	github.com/Wifx/gonetworkmanager v0.5.0
 	github.com/alauda/felix v3.6.6-0.20201207121355-187332daf314+incompatible
 	github.com/bhendo/go-powershell v0.0.0-20190719160123-219e7fb4e41e
@@ -23,10 +23,10 @@ require (
 	github.com/moby/sys/mountinfo v0.6.2
 	github.com/neverlee/keymutex v0.0.0-20171121013845-f593aa834bf9
 	github.com/oilbeater/go-ping v0.0.0-20200413021620-332b7197c5b5
-	github.com/onsi/ginkgo/v2 v2.7.0
-	github.com/onsi/gomega v1.26.0
+	github.com/onsi/ginkgo/v2 v2.8.1
+	github.com/onsi/gomega v1.27.1
 	github.com/osrg/gobgp/v3 v3.11.0
-	github.com/ovn-org/libovsdb v0.0.0-20221101143603-8f21d188c3a5
+	github.com/ovn-org/libovsdb v0.0.0-20230207174348-7f620a35d7e8
 	github.com/parnurzeal/gorequest v0.2.16
 	github.com/prometheus/client_golang v1.14.0
 	github.com/sirupsen/logrus v1.9.0
@@ -38,7 +38,7 @@ require (
 	golang.org/x/time v0.3.0
 	google.golang.org/grpc v1.53.0
 	google.golang.org/protobuf v1.28.1
-	gopkg.in/k8snetworkplumbingwg/multus-cni.v3 v3.9.2
+	gopkg.in/k8snetworkplumbingwg/multus-cni.v3 v3.9.3
 	k8s.io/api v0.26.1
 	k8s.io/apimachinery v0.26.1
 	k8s.io/apiserver v0.26.1
@@ -216,11 +216,11 @@ require (
 	go.uber.org/zap v1.24.0 // indirect
 	golang.org/x/crypto v0.5.0 // indirect
 	golang.org/x/mod v0.7.0 // indirect
-	golang.org/x/net v0.5.0 // indirect
+	golang.org/x/net v0.7.0 // indirect
 	golang.org/x/oauth2 v0.4.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
-	golang.org/x/term v0.4.0 // indirect
-	golang.org/x/text v0.6.0 // indirect
+	golang.org/x/term v0.5.0 // indirect
+	golang.org/x/text v0.7.0 // indirect
 	golang.org/x/tools v0.4.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.2.0 // indirect
 	google.golang.org/api v0.108.0 // indirect
@@ -265,8 +265,8 @@ replace (
 	github.com/mdlayher/arp => github.com/kubeovn/arp v0.0.0-20230101053045-8a0772d9c34c
 	github.com/onsi/ginkgo/v2 => github.com/onsi/ginkgo/v2 v2.4.0
 	github.com/openshift/client-go => github.com/openshift/client-go v0.0.0-20221107163225-3335a34a1d24
-	github.com/ovn-org/libovsdb => github.com/kubeovn/libovsdb v0.0.0-20221208095821-f8830e1998e8
-	gopkg.in/k8snetworkplumbingwg/multus-cni.v3 => github.com/k8snetworkplumbingwg/multus-cni v0.0.0-20220818150730-3d9cec4ec9d5
+	github.com/ovn-org/libovsdb => github.com/kubeovn/libovsdb v0.0.0-20230208064641-36b813e450dd
+	gopkg.in/k8snetworkplumbingwg/multus-cni.v3 => github.com/k8snetworkplumbingwg/multus-cni v0.0.0-20221222150008-e692127d1962
 	k8s.io/api => k8s.io/api v0.26.1
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.26.1
 	k8s.io/apimachinery => k8s.io/apimachinery v0.26.1

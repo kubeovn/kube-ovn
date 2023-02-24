@@ -15,10 +15,14 @@ type EventClient struct {
 	typedcorev1.EventInterface
 }
 
-func (f *Framework) EventClient() *EventClient {
+func (f *Framework) EventClient(namespace string) *EventClient {
+	ns := f.Namespace.Name
+	if namespace != "" {
+		ns = namespace
+	}
 	return &EventClient{
 		f:              f,
-		EventInterface: f.ClientSet.CoreV1().Events(f.Namespace.Name),
+		EventInterface: f.ClientSet.CoreV1().Events(ns),
 	}
 }
 

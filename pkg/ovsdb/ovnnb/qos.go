@@ -13,8 +13,8 @@ type (
 
 var (
 	QoSActionDSCP         QoSAction    = "dscp"
-	QoSBandwidthBurst     QoSBandwidth = "burst"
 	QoSBandwidthRate      QoSBandwidth = "rate"
+	QoSBandwidthBurst     QoSBandwidth = "burst"
 	QoSDirectionFromLport QoSDirection = "from-lport"
 	QoSDirectionToLport   QoSDirection = "to-lport"
 )

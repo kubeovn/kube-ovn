@@ -10,8 +10,8 @@ type (
 )
 
 var (
-	LogicalRouterStaticRoutePolicyDstIP LogicalRouterStaticRoutePolicy = "dst-ip"
 	LogicalRouterStaticRoutePolicySrcIP LogicalRouterStaticRoutePolicy = "src-ip"
+	LogicalRouterStaticRoutePolicyDstIP LogicalRouterStaticRoutePolicy = "dst-ip"
 )
 
 // LogicalRouterStaticRoute defines an object in Logical_Router_Static_Route table
