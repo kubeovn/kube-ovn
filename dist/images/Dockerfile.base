@@ -14,6 +14,8 @@ RUN apt update && apt install -y build-essential fakeroot git curl \
 RUN cd /usr/src/ && \
     git clone -b branch-3.1 --depth=1 https://github.com/openvswitch/ovs.git && \
     cd ovs && \
+    # ofproto: Fix re-creation of tunnel backing interfaces on restart.
+    curl -s https://github.com/kubeovn/ovs/commit/369451a4e838fa48ee0c69f966bba98f338922b9.patch | git apply && \
     # fix memory leak by ofport_usage and trim memory periodically
     curl -s https://github.com/kubeovn/ovs/commit/10972d963208490c5fe6ff66247b86b947136da6.patch | git apply && \
     # increase election timer
