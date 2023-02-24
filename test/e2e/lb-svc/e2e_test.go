@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"math/big"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,7 +56,7 @@ func lbSvcDeploymentName(serviceName string) string {
 	return "lb-svc-" + serviceName
 }
 
-var _ = framework.Describe("[group:lb-svc]", func() {
+var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 	f := framework.NewDefaultFramework("lb-svc")
 
 	var skip bool
@@ -74,7 +75,7 @@ var _ = framework.Describe("[group:lb-svc]", func() {
 		serviceName = "service-" + framework.RandomSuffix()
 
 		if skip {
-			ginkgo.Skip("underlay spec only runs on kind clusters")
+			ginkgo.Skip("lb svc spec only runs on kind clusters")
 		}
 
 		if clusterName == "" {
@@ -85,7 +86,7 @@ var _ = framework.Describe("[group:lb-svc]", func() {
 			cluster, ok := kind.IsKindProvided(k8sNodes.Items[0].Spec.ProviderID)
 			if !ok {
 				skip = true
-				ginkgo.Skip("underlay spec only runs on kind clusters")
+				ginkgo.Skip("lb svc spec only runs on kind clusters")
 			}
 			clusterName = cluster
 		}
@@ -138,8 +139,8 @@ var _ = framework.Describe("[group:lb-svc]", func() {
 		service := framework.MakeService(serviceName, corev1.ServiceTypeLoadBalancer, annotations, selector, ports, corev1.ServiceAffinityNone)
 		_ = serviceClient.CreateSync(service)
 
-		ginkgo.By("Waiting for 5 seconds")
-		time.Sleep(5 * time.Second)
+		ginkgo.By("Waiting for 10 seconds")
+		time.Sleep(10 * time.Second)
 
 		deploymentName := lbSvcDeploymentName(serviceName)
 		ginkgo.By("Getting deployment " + deploymentName)
@@ -176,7 +177,7 @@ var _ = framework.Describe("[group:lb-svc]", func() {
 	framework.ConformanceIt("should allocate static external IP for service", func() {
 		ginkgo.By("Creating service " + serviceName)
 		base := util.Ip2BigInt(gateway)
-		lbIP := util.BigInt2Ip(base.Add(base, big.NewInt(100)))
+		lbIP := util.BigInt2Ip(base.Add(base, big.NewInt(50+rand.Int63n(50))))
 		ports := []corev1.ServicePort{{
 			Name:       "tcp",
 			Protocol:   corev1.ProtocolTCP,
