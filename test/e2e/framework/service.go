@@ -9,9 +9,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/onsi/gomega"
 )
 
@@ -47,6 +49,33 @@ func (c *ServiceClient) CreateSync(service *corev1.Service) *corev1.Service {
 	ExpectTrue(c.WaitToBeUpdated(s))
 	// Get the newest service
 	return c.Get(s.Name).DeepCopy()
+}
+
+// Patch patches the service
+func (c *ServiceClient) Patch(original, modified *corev1.Service) *corev1.Service {
+
+	patch, err := util.GenerateMergePatchPayload(original, modified)
+	ExpectNoError(err)
+
+	var patchedService *corev1.Service
+	err = wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
+		s, err := c.ServiceInterface.Patch(context.TODO(), original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
+		if err != nil {
+			return handleWaitingAPIError(err, false, "patch service %q", original.Name)
+		}
+		patchedService = s
+		return true, nil
+	})
+	if err == nil {
+		return patchedService.DeepCopy()
+	}
+
+	if IsTimeout(err) {
+		Failf("timed out while retrying to patch service %s", original.Name)
+	}
+	ExpectNoError(maybeTimeoutError(err, "patching service %s", original.Name))
+
+	return nil
 }
 
 // Delete deletes a service if the service exists
