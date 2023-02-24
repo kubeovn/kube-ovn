@@ -254,6 +254,9 @@ func (c *Controller) handleAddOrUpdateSg(key string) error {
 			c.patchSgStatus(sg)
 			return err
 		}
+		if err := c.ovnLegacyClient.CreateSgBaseIngressACL(sg.Name); err != nil {
+			return err
+		}
 		sg.Status.IngressMd5 = newIngressMd5
 		sg.Status.IngressLastSyncSuccess = true
 		c.patchSgStatus(sg)
@@ -262,6 +265,9 @@ func (c *Controller) handleAddOrUpdateSg(key string) error {
 		if err = c.ovnLegacyClient.UpdateSgACL(sg, ovs.SgAclEgressDirection); err != nil {
 			sg.Status.EgressLastSyncSuccess = false
 			c.patchSgStatus(sg)
+			return err
+		}
+		if err := c.ovnLegacyClient.CreateSgBaseEgressACL(sg.Name); err != nil {
 			return err
 		}
 		sg.Status.EgressMd5 = newEgressMd5
