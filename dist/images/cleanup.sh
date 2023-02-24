@@ -7,7 +7,7 @@ while :; do
   if [ $(kubectl get pod --no-headers -n kube-system -l app=kube-ovn-pinger | wc -l) -eq 0 ]; then
     break
   fi
-  sleep 5
+  sleep 1
 done
 
 set +e
@@ -74,9 +74,6 @@ for oeip in $(kubectl get oeip -o name); do
    kubectl delete --ignore-not-found $oeip
 done
 
-
-sleep 5
-
 # Delete Kube-OVN components
 kubectl delete --ignore-not-found deploy kube-ovn-monitor -n kube-system
 kubectl delete --ignore-not-found cm ovn-config ovn-ic-config ovn-external-gw-config -n kube-system
@@ -89,7 +86,7 @@ while :; do
   if [ $(kubectl get pod --no-headers -n kube-system -l app=kube-ovn-cni | wc -l) -eq 0 ]; then
     break
   fi
-  sleep 5
+  sleep 1
 done
 
 for pod in $(kubectl get pod -n kube-system -l app=ovs -o 'jsonpath={.items[?(@.status.phase=="Running")].metadata.name}'); do
@@ -147,7 +144,7 @@ kubectl annotate ns --all ovn.kubernetes.io/allocated-
 
 # ensure kube-ovn components have been deleted
 while :; do
-  sleep 5
+  sleep 1
   if [ $(kubectl get pod --no-headers -n kube-system -l component=network | wc -l) -eq 0 ]; then
     break
   fi
