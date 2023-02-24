@@ -19,38 +19,41 @@ K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Feature:IPv6DualStack"
 endif
 
 define ginkgo_option
---ginkgo.$(1)=$(shell echo '$(2)' | sed -E 's/^[[:space:]]+//' | sed -E 's/"[[:space:]]+"/" --ginkgo.$(1)="/g')
+--$(1)=$(shell echo '$(2)' | sed -E 's/^[[:space:]]+//' | sed -E 's/"[[:space:]]+"/" --$(1)="/g')
 endef
 
 .PHONY: e2e
 e2e: kube-ovn-conformance-e2e
 
-.PHONY: e2e-compile
-e2e-compile:
-	go test ./test/e2e/k8s-network -c -o test/e2e/k8s-network/e2e.test
-	go test ./test/e2e/kube-ovn -c -o test/e2e/kube-ovn/e2e.test
-	go test ./test/e2e/ovn-ic -c -o test/e2e/ovn-ic/e2e.test
-	go test ./test/e2e/lb-svc -c -o test/e2e/lb-svc/e2e.test
+.PHONY: e2e-build
+e2e-build:
+	ginkgo build ./test/e2e/k8s-network
+	ginkgo build ./test/e2e/kube-ovn
+	ginkgo build ./test/e2e/ovn-ic
+	ginkgo build ./test/e2e/lb-svc
 
 .PHONY: k8s-conformance-e2e
 k8s-conformance-e2e:
-	go test ./test/e2e/k8s-network -c -o test/e2e/k8s-network/e2e.test
-	./test/e2e/k8s-network/e2e.test --ginkgo.timeout=1h \
+	ginkgo build ./test/e2e/k8s-network
+	ginkgo -p --randomize-all --timeout=1h \
 		$(call ginkgo_option,focus,$(K8S_CONFORMANCE_E2E_FOCUS)) \
-		$(call ginkgo_option,skip,$(K8S_CONFORMANCE_E2E_SKIP))
+		$(call ginkgo_option,skip,$(K8S_CONFORMANCE_E2E_SKIP)) \
+		./test/e2e/k8s-network/k8s-network.test
 
 .PHONY: k8s-netpol-legacy-e2e
 k8s-netpol-legacy-e2e:
-	go test ./test/e2e/k8s-network -c -o test/e2e/k8s-network/e2e.test
-	./test/e2e/k8s-network/e2e.test --ginkgo.timeout=2h \
-		$(call ginkgo_option,focus,$(K8S_NETPOL_LEGACY_E2E_FOCUS))
+	ginkgo build ./test/e2e/k8s-network
+	ginkgo -p --randomize-all --timeout=2h \
+		$(call ginkgo_option,focus,$(K8S_NETPOL_LEGACY_E2E_FOCUS)) \
+		./test/e2e/k8s-network/k8s-network.test
 
 .PHONY: k8s-netpol-e2e
 k8s-netpol-e2e:
-	go test ./test/e2e/k8s-network -c -o test/e2e/k8s-network/e2e.test
-	./test/e2e/k8s-network/e2e.test --ginkgo.timeout=2h \
+	ginkgo build ./test/e2e/k8s-network
+	ginkgo -p --randomize-all --timeout=2h \
 		$(call ginkgo_option,focus,$(K8S_NETPOL_E2E_FOCUS)) \
-		$(call ginkgo_option,skip,$(K8S_NETPOL_E2E_SKIP))
+		$(call ginkgo_option,skip,$(K8S_NETPOL_E2E_SKIP)) \
+		./test/e2e/k8s-network/k8s-network.test
 
 .PHONY: cyclonus-netpol-e2e
 cyclonus-netpol-e2e:
@@ -68,24 +71,24 @@ cyclonus-netpol-e2e:
 
 .PHONY: kube-ovn-conformance-e2e
 kube-ovn-conformance-e2e:
-	go test ./test/e2e/kube-ovn -c -o test/e2e/kube-ovn/e2e.test
+	ginkgo build ./test/e2e/kube-ovn
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	./test/e2e/kube-ovn/e2e.test --ginkgo.focus=CNI:Kube-OVN
+	ginkgo -p --randomize-all --focus=CNI:Kube-OVN ./test/e2e/kube-ovn/kube-ovn.test
 
 .PHONY: kube-ovn-ic-conformance-e2e
 kube-ovn-ic-conformance-e2e:
-	go test ./test/e2e/ovn-ic -c -o test/e2e/ovn-ic/e2e.test
+	ginkgo build ./test/e2e/ovn-ic
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	./test/e2e/ovn-ic/e2e.test --ginkgo.focus=CNI:Kube-OVN
+	ginkgo -p --randomize-all --focus=CNI:Kube-OVN ./test/e2e/ovn-ic/ovn-ic.test
 
 .PHONY: kube-ovn-lb-svc-conformance-e2e
 kube-ovn-lb-svc-conformance-e2e:
-	go test ./test/e2e/lb-svc -c -o test/e2e/lb-svc/e2e.test
+	ginkgo build ./test/e2e/lb-svc
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	./test/e2e/lb-svc/e2e.test --ginkgo.focus=CNI:Kube-OVN
+	ginkgo -p --randomize-all --focus=CNI:Kube-OVN ./test/e2e/lb-svc/lb-svc.test

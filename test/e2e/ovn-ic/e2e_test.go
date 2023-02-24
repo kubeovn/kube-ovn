@@ -42,9 +42,9 @@ func init() {
 	config.CopyFlags(config.Flags, flag.CommandLine)
 	k8sframework.RegisterCommonFlags(flag.CommandLine)
 	k8sframework.RegisterClusterFlags(flag.CommandLine)
+}
 
-	// Parse all the flags
-	flag.Parse()
+func TestE2E(t *testing.T) {
 	if k8sframework.TestContext.KubeConfig == "" {
 		k8sframework.TestContext.KubeConfig = filepath.Join(os.Getenv("HOME"), ".kube", "config")
 	}
@@ -52,14 +52,12 @@ func init() {
 
 	var err error
 	if clusters, err = kind.ListClusters(); err != nil {
-		panic(fmt.Sprintf("failed to list kind clusters: %v", err))
+		t.Fatalf("failed to list kind clusters: %v", err)
 	}
 	if len(clusters) < 2 {
-		panic("no enough kind clusters to run ovn-ic e2e testing")
+		t.Fatal("no enough kind clusters to run ovn-ic e2e testing")
 	}
-}
 
-func TestE2E(t *testing.T) {
 	e2e.RunE2ETests(t)
 }
 
