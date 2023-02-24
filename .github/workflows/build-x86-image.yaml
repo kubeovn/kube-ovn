@@ -2,11 +2,6 @@ name: Build x86 Image
 
 on:
   pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - labeled
     branches:
     - master
     - release-*
@@ -226,7 +221,11 @@ jobs:
           key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
           restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
-      - run: make e2e-compile
+      - name: Install ginkgo
+        working-directory: ${{ env.E2E_DIR }}
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+
+      - run: make e2e-build
         working-directory: ${{ env.E2E_DIR }}
 
   k8s-conformance-e2e:
@@ -295,6 +294,10 @@ jobs:
         uses: helm/kind-action@v1
         with:
           install_only: true
+
+      - name: Install ginkgo
+        working-directory: ${{ env.E2E_DIR }}
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
         uses: actions/download-artifact@v3
@@ -388,6 +391,10 @@ jobs:
         with:
           install_only: true
 
+      - name: Install ginkgo
+        working-directory: ${{ env.E2E_DIR }}
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+
       - name: Download image
         uses: actions/download-artifact@v3
         with:
@@ -476,6 +483,10 @@ jobs:
         with:
           install_only: true
 
+      - name: Install ginkgo
+        working-directory: ${{ env.E2E_DIR }}
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+
       - name: Download image
         uses: actions/download-artifact@v3
         with:
@@ -539,6 +550,10 @@ jobs:
         uses: helm/kind-action@v1
         with:
           install_only: true
+
+      - name: Install ginkgo
+        working-directory: ${{ env.E2E_DIR }}
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
         uses: actions/download-artifact@v3
@@ -622,6 +637,10 @@ jobs:
         with:
           install_only: true
 
+      - name: Install ginkgo
+        working-directory: ${{ env.E2E_DIR }}
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+
       - name: Download image
         uses: actions/download-artifact@v3
         with:
@@ -702,6 +721,10 @@ jobs:
         uses: helm/kind-action@v1
         with:
           install_only: true
+
+      - name: Install ginkgo
+        working-directory: ${{ env.E2E_DIR }}
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
         uses: actions/download-artifact@v3
@@ -927,6 +950,10 @@ jobs:
         with:
           install_only: true
 
+      - name: Install ginkgo
+        working-directory: ${{ env.E2E_DIR }}
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+
       - name: Download kube-ovn image
         uses: actions/download-artifact@v3
         with:
@@ -1055,6 +1082,10 @@ jobs:
         with:
           install_only: true
 
+      - name: Install ginkgo
+        working-directory: ${{ env.E2E_DIR }}
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+
       - name: Download image
         uses: actions/download-artifact@v3
         with:
@@ -1145,6 +1176,10 @@ jobs:
         uses: helm/kind-action@v1
         with:
           install_only: true
+
+      - name: Install ginkgo
+        working-directory: ${{ env.E2E_DIR }}
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Download image
         uses: actions/download-artifact@v3
