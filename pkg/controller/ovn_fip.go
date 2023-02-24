@@ -288,7 +288,10 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 		subnetName = internalVip.Spec.Subnet
 	} else {
 		internalIp, err := c.ipsLister.Get(cachedFip.Spec.IpName)
-		klog.Errorf("failed to get ip %s, %v", cachedFip.Spec.IpName, err)
+		if err != nil {
+			klog.Errorf("failed to get ip %s, %v", cachedFip.Spec.IpName, err)
+			return err
+		}
 		internalV4Ip = internalIp.Spec.V4IPAddress
 		mac = internalIp.Spec.MacAddress
 		subnetName = internalIp.Spec.Subnet
