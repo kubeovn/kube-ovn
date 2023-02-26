@@ -152,7 +152,7 @@ type Acl struct {
 // ConditionType encodes information on the condition
 type ConditionType string
 
-// Condition describes the state of an object at a certain point.
+// SubnetCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
 type SubnetCondition struct {
 	// Type of condition.
@@ -234,7 +234,7 @@ type VlanStatus struct {
 	Conditions []VlanCondition `json:"conditions,omitempty"`
 }
 
-// Condition describes the state of an object at a certain point.
+// VlanCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
 type VlanCondition struct {
 	// Type of condition.
@@ -306,7 +306,7 @@ type ProviderNetworkStatus struct {
 	Conditions []ProviderNetworkCondition `json:"conditions,omitempty"`
 }
 
-// Condition describes the state of an object at a certain point.
+// ProviderNetworkCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
 type ProviderNetworkCondition struct {
 	// Node name
@@ -415,7 +415,7 @@ type VpcStatus struct {
 	EnableExternal          bool     `json:"enableExternal"`
 }
 
-// Condition describes the state of an object at a certain point.
+// VpcCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
 type VpcCondition struct {
 	// Type of condition.
@@ -492,7 +492,7 @@ type IptablesEipSpec struct {
 	NatGwDp    string `json:"natGwDp"`
 }
 
-// Condition describes the state of an object at a certain point.
+// IptablesEIPCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
 type IptablesEIPCondition struct {
 	// Type of condition.
@@ -554,7 +554,7 @@ type IptablesFIPRuleSpec struct {
 	InternalIp string `json:"internalIp"`
 }
 
-// Condition describes the state of an object at a certain point.
+// IptablesFIPRuleCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
 type IptablesFIPRuleCondition struct {
 	// Type of condition.
@@ -617,7 +617,7 @@ type IptablesSnatRuleSpec struct {
 	InternalCIDR string `json:"internalCIDR"`
 }
 
-// Condition describes the state of an object at a certain point.
+// IptablesSnatRuleCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
 type IptablesSnatRuleCondition struct {
 	// Type of condition.
@@ -683,7 +683,7 @@ type IptablesDnatRuleSpec struct {
 	InternalPort string `json:"internalPort"`
 }
 
-// Condition describes the state of an object at a certain point.
+// IptablesDnatRuleCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
 type IptablesDnatRuleCondition struct {
 	// Type of condition.
@@ -811,7 +811,7 @@ type VipSpec struct {
 	AttachSubnets []string `json:"attachSubnets"`
 }
 
-// Condition describes the state of an object at a certain point.
+// VipCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
 type VipCondition struct {
 	// Type of condition.
@@ -893,7 +893,7 @@ type VpcDnsStatus struct {
 	Active bool `json:"active" patchStrategy:"merge"`
 }
 
-// Condition describes the state of an object at a certain point.
+// VpcDnsCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
 type VpcDnsCondition struct {
 	// Type of condition.
@@ -944,6 +944,7 @@ type SwitchLBRuleStatus struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
 // +resourceName=switch-lb-rules
+
 type SwitchLBRule struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -953,6 +954,7 @@ type SwitchLBRule struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
 type SwitchLBRuleList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
@@ -960,7 +962,7 @@ type SwitchLBRuleList struct {
 	Items []SwitchLBRule `json:"items"`
 }
 
-// Condition describes the state of an object at a certain point.
+// SwitchLBRuleCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
 type SwitchLBRuleCondition struct {
 	// Type of condition.
@@ -1002,7 +1004,7 @@ type OvnEipSpec struct {
 	// usage type: fip, snat, lrp, node external gw
 }
 
-// Condition describes the state of an object at a certain point.
+// OvnEipCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
 type OvnEipCondition struct {
 	// Type of condition.
@@ -1062,7 +1064,7 @@ type OvnFipSpec struct {
 	IpName string `json:"ipName"`
 }
 
-// Condition describes the state of an object at a certain point.
+// OvnFipCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
 type OvnFipCondition struct {
 	// Type of condition.
@@ -1112,6 +1114,7 @@ type OvnFipList struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
 // +resourceName=ovn-snat-rules
+
 type OvnSnatRule struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -1126,7 +1129,7 @@ type OvnSnatRuleSpec struct {
 	IpName    string `json:"ipName"`
 }
 
-// Condition describes the state of an object at a certain point.
+// OvnSnatRuleCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
 type OvnSnatRuleCondition struct {
 	// Type of condition.
