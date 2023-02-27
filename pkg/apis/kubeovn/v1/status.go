@@ -8,7 +8,7 @@ import (
 )
 
 func (ss *SubnetStatus) Bytes() ([]byte, error) {
-	//{"availableIPs":65527,"usingIPs":9} => {"status": {"availableIPs":65527,"usingIPs":9}}
+	// {"availableIPs":65527,"usingIPs":9} => {"status": {"availableIPs":65527,"usingIPs":9}}
 	bytes, err := json.Marshal(ss)
 	if err != nil {
 		return nil, err
