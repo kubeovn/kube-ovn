@@ -108,7 +108,22 @@ func (c *Controller) enqueueUpdateService(old, new interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
+
+	oldClusterIps := getVipIps(oldSvc)
+	newClusterIps := getVipIps(newSvc)
+	var ipsToDel []string
+	for _, oldClusterIp := range oldClusterIps {
+		if !util.ContainsString(newClusterIps, oldClusterIp) {
+			ipsToDel = append(ipsToDel, oldClusterIp)
+		}
+	}
+
 	klog.V(3).Infof("enqueue update service %s", key)
+	if len(ipsToDel) != 0 {
+		ipsToDelStr := strings.Join(ipsToDel, ",")
+		key = strings.Join([]string{key, ipsToDelStr}, "#")
+	}
+
 	c.updateServiceQueue.Add(key)
 }
 
@@ -269,6 +284,14 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 }
 
 func (c *Controller) handleUpdateService(key string) error {
+	keys := strings.Split(key, "#")
+	key = keys[0]
+	var ipsToDel []string
+	if len(keys) == 2 {
+		ipsToDelStr := keys[1]
+		ipsToDel = strings.Split(ipsToDelStr, ",")
+	}
+
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
@@ -283,12 +306,7 @@ func (c *Controller) handleUpdateService(key string) error {
 		return err
 	}
 
-	var ips []string
-	if vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
-		ips = strings.Split(vip, ",")
-	} else {
-		ips = util.ServiceClusterIPs(*svc)
-	}
+	ips := getVipIps(svc)
 
 	vpcName := svc.Annotations[util.VpcAnnotation]
 	if vpcName == "" {
@@ -340,7 +358,7 @@ func (c *Controller) handleUpdateService(key string) error {
 			}
 		}
 		for vip := range vips {
-			if ip := parseVipAddr(vip); util.ContainsString(ips, ip) && !util.IsStringIn(vip, svcVips) {
+			if ip := parseVipAddr(vip); (util.ContainsString(ips, ip) && !util.IsStringIn(vip, svcVips)) || util.ContainsString(ipsToDel, ip) {
 				klog.Infof("remove stale vip %s from LB %s", vip, lb)
 				if err = c.ovnLegacyClient.DeleteLoadBalancerVip(vip, lb); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
@@ -354,7 +372,7 @@ func (c *Controller) handleUpdateService(key string) error {
 		}
 		klog.V(3).Infof("existing vips of LB %s: %v", oLb, vips)
 		for vip := range vips {
-			if ip := parseVipAddr(vip); util.ContainsString(ips, ip) {
+			if ip := parseVipAddr(vip); util.ContainsString(ips, ip) || util.ContainsString(ipsToDel, ip) {
 				klog.Infof("remove stale vip %s from LB %s", vip, oLb)
 				if err = c.ovnLegacyClient.DeleteLoadBalancerVip(vip, oLb); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oLb, err)
@@ -472,4 +490,14 @@ func (c *Controller) handleAddService(key string) error {
 	}
 
 	return nil
+}
+
+func getVipIps(svc *v1.Service) []string {
+	var ips []string
+	if vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
+		ips = strings.Split(vip, ",")
+	} else {
+		ips = util.ServiceClusterIPs(*svc)
+	}
+	return ips
 }
