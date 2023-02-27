@@ -89,6 +89,9 @@ cni_conf:
   CNI_CONF_DIR: "/etc/cni/net.d"
   CNI_BIN_DIR: "/opt/cni/bin"
 
+kubelet_conf:
+  KUBELET_DIR: "/var/lib/kubelet"
+  
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
