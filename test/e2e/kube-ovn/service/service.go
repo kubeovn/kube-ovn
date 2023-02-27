@@ -37,7 +37,7 @@ var _ = framework.Describe("[group:service]", func() {
 		if f.ClusterIpFamily != "dual" {
 			ginkgo.Skip("this case only support dual mode")
 		}
-
+		f.SkipVersionPriorTo(1, 11, "This case is support in v1.11")
 		ginkgo.By("Creating service " + serviceName)
 		ports := []corev1.ServicePort{{
 			Name:       "tcp",
