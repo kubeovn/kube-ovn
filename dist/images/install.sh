@@ -33,6 +33,7 @@ ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
 
 # debug
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
+KUBELET_DIR=${KUBELET_DIR:-/var/lib/kubelet}
 
 CNI_CONF_DIR="/etc/cni/net.d"
 CNI_BIN_DIR="/opt/cni/bin"
@@ -2887,7 +2888,7 @@ spec:
             type: DirectoryOrCreate
         - name: shareddir
           hostPath:
-            path: /var/lib/kubelet/pods
+            path: $KUBELET_DIR/pods
             type: ''
         - name: hugepage
           emptyDir:
@@ -3227,7 +3228,7 @@ spec:
             path: /lib/modules
         - name: shared-dir
           hostPath:
-            path: /var/lib/kubelet/pods
+            path: $KUBELET_DIR/pods
         - name: systemid
           hostPath:
             path: /etc/origin/openvswitch
