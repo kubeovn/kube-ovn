@@ -12,6 +12,8 @@ WORKDIR /kube-ovn
 RUN rm -f /usr/bin/nc &&\
     rm -f /usr/bin/netcat
 
+RUN apt install -y python3-openvswitch
+
 COPY kube-ovn-cmd /kube-ovn/kube-ovn-cmd
 COPY kube-ovn-webhook /kube-ovn/kube-ovn-webhook
 RUN ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn && \
