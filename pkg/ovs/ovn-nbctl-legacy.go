@@ -1142,7 +1142,7 @@ func (c LegacyClient) GetStaticRouteList(router string) (routeList []*StaticRout
 	return parseLrRouteListOutput(output)
 }
 
-var routeRegexp = regexp.MustCompile(`^\s*((\d+(\.\d+){3})|(([a-f0-9:]*:+)+[a-f0-9]?))(/\d+)?\s+((\d+(\.\d+){3})|(([a-f0-9:]*:+)+[a-f0-9]?))\s+(dst-ip|src-ip)(\s+.+)?$`)
+var routeRegexp = regexp.MustCompile(`^\s*((\d+(\.\d+){3})|(([a-f0-9:]*:+)+[a-f0-9]*?))(/\d+)?\s+((\d+(\.\d+){3})|(([a-f0-9:]*:+)+[a-f0-9]*?))\s+(dst-ip|src-ip)(\s+.+)?$`)
 
 func parseLrRouteListOutput(output string) (routeList []*StaticRoute, err error) {
 	lines := strings.Split(output, "\n")
