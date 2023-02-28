@@ -411,7 +411,7 @@ func (c LegacyClient) ListPodLogicalSwitchPorts(pod, namespace string) ([]string
 	return result, nil
 }
 
-func (c LegacyClient) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway string, excludeIps []string, needRouter bool) error {
+func (c LegacyClient) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway string, needRouter bool) error {
 	klog.Infof("set logical switch: ls %s, lr %s, protocol %s, subnet %s, gw %s", ls, lr, protocol, subnet, gateway)
 	var err error
 	cidrBlocks := strings.Split(subnet, ",")
@@ -485,7 +485,7 @@ func (c LegacyClient) SetLogicalSwitchConfig(ls, lr, protocol, subnet, gateway s
 }
 
 // CreateLogicalSwitch create logical switch in ovn, connect it to router and apply tcp/udp lb rules
-func (c LegacyClient) CreateLogicalSwitch(ls, lr, subnet, gateway string, needRouter bool) error {
+func (c LegacyClient) CreateLogicalSwitch(ls, lr string, needRouter bool) error {
 	_, err := c.ovnNbCommand(MayExist, "ls-add", ls, "--",
 		"set", "logical_switch", ls, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
 
@@ -980,7 +980,7 @@ func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, router string, route
 
 // AddPolicyRoute add a policy route rule in ovn
 func (c LegacyClient) AddPolicyRoute(router string, priority int32, match, action, nextHop string, externalIDs map[string]string) error {
-	consistent, err := c.CheckPolicyRouteNexthopConsistent(router, match, nextHop, priority)
+	consistent, err := c.CheckPolicyRouteNexthopConsistent(match, nextHop, priority)
 	if err != nil {
 		return err
 	}
@@ -2335,7 +2335,7 @@ func (c LegacyClient) ListSgRuleAddressSet(sgName string, direction AclDirection
 	return strings.Split(output, "\n"), nil
 }
 
-func (c LegacyClient) createSgRuleACL(sgName string, direction AclDirection, rule *kubeovnv1.SgRule, index int) error {
+func (c LegacyClient) createSgRuleACL(sgName string, direction AclDirection, rule *kubeovnv1.SgRule) error {
 	ipSuffix := "ip4"
 	if rule.IPVersion == "ipv6" {
 		ipSuffix = "ip6"
@@ -2514,8 +2514,8 @@ func (c LegacyClient) UpdateSgACL(sg *kubeovnv1.SecurityGroup, direction AclDire
 	} else {
 		sgRules = sg.Spec.EgressRules
 	}
-	for index, rule := range sgRules {
-		if err = c.createSgRuleACL(sg.Name, direction, rule, index); err != nil {
+	for _, rule := range sgRules {
+		if err = c.createSgRuleACL(sg.Name, direction, rule); err != nil {
 			return err
 		}
 	}
@@ -2699,7 +2699,7 @@ func (c LegacyClient) SetPolicyRouteExternalIds(priority int32, match string, na
 	return nil
 }
 
-func (c LegacyClient) CheckPolicyRouteNexthopConsistent(router, match, nexthop string, priority int32) (bool, error) {
+func (c LegacyClient) CheckPolicyRouteNexthopConsistent(match, nexthop string, priority int32) (bool, error) {
 	exist, err := c.PolicyRouteExists(priority, match)
 	if err != nil {
 		return false, err

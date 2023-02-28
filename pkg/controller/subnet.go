@@ -664,7 +664,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	if !exist {
 		subnet.Status.EnsureStandardConditions()
 		// If multiple namespace use same ls name, only first one will success
-		if err := c.ovnLegacyClient.CreateLogicalSwitch(subnet.Name, vpc.Status.Router, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, needRouter); err != nil {
+		if err := c.ovnLegacyClient.CreateLogicalSwitch(subnet.Name, vpc.Status.Router, needRouter); err != nil {
 			c.patchSubnetStatus(subnet, "CreateLogicalSwitchFailed", err.Error())
 			return err
 		}
@@ -681,7 +681,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			if subnet.Status.U2OInterconnectionIP != "" && subnet.Spec.U2OInterconnection {
 				gateway = subnet.Status.U2OInterconnectionIP
 			}
-			if err := c.ovnLegacyClient.SetLogicalSwitchConfig(subnet.Name, vpc.Status.Router, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, gateway, subnet.Spec.ExcludeIps, needRouter); err != nil {
+			if err := c.ovnLegacyClient.SetLogicalSwitchConfig(subnet.Name, vpc.Status.Router, subnet.Spec.Protocol, subnet.Spec.CIDRBlock, gateway, needRouter); err != nil {
 				c.patchSubnetStatus(subnet, "SetLogicalSwitchConfigFailed", err.Error())
 				return err
 			}
