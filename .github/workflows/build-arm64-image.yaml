@@ -54,7 +54,7 @@ jobs:
         run: make release-arm || make release-arm
 
       - name: Push
-        if: github.ref == github.event.repository.default_branch || startsWith(github.ref, 'release-')
+        if: github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'release-')
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
