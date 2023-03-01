@@ -23,8 +23,8 @@ require (
 	github.com/moby/sys/mountinfo v0.6.2
 	github.com/neverlee/keymutex v0.0.0-20171121013845-f593aa834bf9
 	github.com/oilbeater/go-ping v0.0.0-20200413021620-332b7197c5b5
-	github.com/onsi/ginkgo/v2 v2.8.1
-	github.com/onsi/gomega v1.27.1
+	github.com/onsi/ginkgo/v2 v2.8.4
+	github.com/onsi/gomega v1.27.2
 	github.com/osrg/gobgp/v3 v3.11.0
 	github.com/ovn-org/libovsdb v0.0.0-20230207174348-7f620a35d7e8
 	github.com/parnurzeal/gorequest v0.2.16
@@ -44,7 +44,7 @@ require (
 	k8s.io/apiserver v0.26.1
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/klog/v2 v2.90.0
-	k8s.io/kubernetes v1.26.1
+	k8s.io/kubernetes v1.26.2
 	k8s.io/pod-security-admission v0.26.1
 	k8s.io/sample-controller v0.26.1
 	k8s.io/utils v0.0.0-20230115233650-391b47cb4029
@@ -215,13 +215,13 @@ require (
 	go.uber.org/multierr v1.9.0 // indirect
 	go.uber.org/zap v1.24.0 // indirect
 	golang.org/x/crypto v0.5.0 // indirect
-	golang.org/x/mod v0.7.0 // indirect
+	golang.org/x/mod v0.8.0 // indirect
 	golang.org/x/net v0.7.0 // indirect
 	golang.org/x/oauth2 v0.4.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/term v0.5.0 // indirect
 	golang.org/x/text v0.7.0 // indirect
-	golang.org/x/tools v0.4.0 // indirect
+	golang.org/x/tools v0.6.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.2.0 // indirect
 	google.golang.org/api v0.108.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
