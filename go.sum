@@ -2183,8 +2183,8 @@ k8s.io/mount-utils v0.26.1/go.mod h1:au99w4FWU5ZWelLb3Yx6kJc8RZ387IyWVM9tN65Yhxo
 k8s.io/pod-security-admission v0.26.1 h1:EDIxsYFeKMzNvN/JB0PgQcuwBP6fIkIG2O8ZWJhzOp4=
 k8s.io/pod-security-admission v0.26.1/go.mod h1:hCbYTG5UtLlivmukkMPjAWf23PUBUHzEvR60xNVWN4c=
 k8s.io/sample-apiserver v0.26.1 h1:TgEpFTIo22keBrc1yV0m6ch01SyUiY/GBOhQIcZtdzc=
-k8s.io/sample-controller v0.26.1 h1:+t3EbW66zbQSFA378/Bfje6C68ZqjFy1sYPdLgZfkYE=
-k8s.io/sample-controller v0.26.1/go.mod h1:f3gQsdfg38iReAcxh9IaHXVIdO+bEo8LKOzlX63rCP4=
+k8s.io/sample-controller v0.26.2 h1:6d2BxlzFRrnnLmMbKPG5ztlOEWnmZql2q1rCtI0y8fQ=
+k8s.io/sample-controller v0.26.2/go.mod h1:1D3Z8eM0fy3E3OvZkIb0AjZWIPF0ZIK/onRu3tViFrg=
 k8s.io/utils v0.0.0-20190801114015-581e00157fb1/go.mod h1:sZAwmy6armz5eXlNoLmJcl4F1QuKu7sr+mFQ0byX7Ew=
 k8s.io/utils v0.0.0-20191114200735-6ca3b61696b6/go.mod h1:sZAwmy6armz5eXlNoLmJcl4F1QuKu7sr+mFQ0byX7Ew=
 k8s.io/utils v0.0.0-20201110183641-67b214c5f920/go.mod h1:jPW/WVKK9YHAvNhRxK0md/EJ228hCsBRufyofKtW8HA=
