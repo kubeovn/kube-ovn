@@ -726,7 +726,7 @@ func (c *Controller) initSyncCrdVlans() error {
 func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
 	// migrate from old version static route to policy route
 	match := fmt.Sprintf("ip%d.dst == %s", af, ip)
-	consistent, err := c.ovnLegacyClient.CheckPolicyRouteNexthopConsistent(c.config.ClusterRouter, match, nexthop, util.NodeRouterPolicyPriority)
+	consistent, err := c.ovnLegacyClient.CheckPolicyRouteNexthopConsistent(match, nexthop, util.NodeRouterPolicyPriority)
 	if err != nil {
 		return err
 	}
