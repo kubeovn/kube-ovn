@@ -45,7 +45,7 @@ func (c *Controller) resyncExternalGateway() {
 		if exGwEnabled == "true" && lastExGwCM != nil && reflect.DeepEqual(cm.Data, lastExGwCM) {
 			return
 		}
-		klog.Info("last external gw configmap: %v", lastExGwCM)
+		klog.Infof("last external gw configmap: %v", lastExGwCM)
 		if (lastExGwCM["type"] == "distributed" && cm.Data["type"] == "centralized") ||
 			lastExGwCM != nil && !reflect.DeepEqual(lastExGwCM["external-gw-nodes"], cm.Data["external-gw-nodes"]) {
 			klog.Info("external gw nodes list changed, start to remove ovn external gw")
@@ -90,6 +90,12 @@ func (c *Controller) resyncExternalGateway() {
 				klog.Errorf("failed to patch vpc %s, %v", c.config.ClusterRouter, err)
 				return
 			}
+		}
+
+		lrpEipName := fmt.Sprintf("%s-%s", util.DefaultVpc, c.config.ExternalGatewaySwitch)
+		if err := c.patchLrpOvnEipEnableBfdLabel(lrpEipName, vpc.Spec.EnableBfd); err != nil {
+			klog.Errorf("failed to patch label for lrp %s, %v", lrpEipName, err)
+			return
 		}
 	}
 }
@@ -160,11 +166,6 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 		klog.Errorf("failed to create external gateway switch, %v", err)
 		return err
 	}
-	lrpEipName := fmt.Sprintf("%s-%s", util.DefaultVpc, c.config.ExternalGatewaySwitch)
-	if err = c.patchOvnEipStatus(lrpEipName, true); err != nil {
-		klog.Errorf("failed to patch ovn eip cr status for lrp %s, %v", lrpEipName, err)
-		return err
-	}
 	return nil
 }
 
@@ -202,10 +203,6 @@ func (c *Controller) createDefaultVpcLrpEip(config map[string]string) (string, s
 		}
 		if err := c.createOrUpdateCrdOvnEip(lrpEipName, c.config.ExternalGatewaySwitch, v4ip, v6ip, mac, util.LrpUsingEip); err != nil {
 			klog.Errorf("failed to create ovn eip cr for lrp %s, %v", lrpEipName, err)
-			return "", "", err
-		}
-		if err = c.patchOvnEipStatus(lrpEipName, false); err != nil {
-			klog.Errorf("failed to patch ovn eip cr status for lrp %s, %v", lrpEipName, err)
 			return "", "", err
 		}
 	}

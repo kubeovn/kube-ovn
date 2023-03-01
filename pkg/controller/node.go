@@ -588,7 +588,7 @@ func (c *Controller) handleUpdateNode(key string) error {
 	for _, cachedSubnet := range subnets {
 		subnet := cachedSubnet.DeepCopy()
 		if util.GatewayContains(subnet.Spec.GatewayNode, node.Name) {
-			if err := c.reconcileOvnRoute(subnet); err != nil {
+			if err := c.reconcileOvnDefaultVpcRoute(subnet); err != nil {
 				return err
 			}
 		}
@@ -1078,7 +1078,7 @@ func (c *Controller) addNodeGwStaticRoute() error {
 
 			if !exist {
 				klog.Infof("add static route for node gw")
-				if err := c.ovnLegacyClient.AddStaticRoute("", cidrBlock, nextHop, c.config.ClusterRouter, util.NormalRouteType); err != nil {
+				if err := c.ovnLegacyClient.AddStaticRoute("", cidrBlock, nextHop, "", "", c.config.ClusterRouter, util.NormalRouteType); err != nil {
 					klog.Errorf("failed to add static route for node gw: %v", err)
 					return err
 				}

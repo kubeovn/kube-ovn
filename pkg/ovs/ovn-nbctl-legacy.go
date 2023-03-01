@@ -905,6 +905,8 @@ type StaticRoute struct {
 	Policy  string
 	CIDR    string
 	NextHop string
+	ECMP    string
+	BfdId   string
 }
 
 func (c LegacyClient) ListStaticRoute() ([]StaticRoute, error) {
@@ -920,12 +922,20 @@ func (c LegacyClient) ListStaticRoute() ([]StaticRoute, error) {
 			staticRoutes = append(staticRoutes,
 				StaticRoute{CIDR: strings.TrimSpace(t[0]), NextHop: strings.TrimSpace(t[1]), Policy: strings.TrimSpace(t[2])})
 		}
+		if len(strings.Split(entry, ",")) == 6 {
+			t := strings.Split(entry, ",")
+			staticRoutes = append(staticRoutes,
+				StaticRoute{CIDR: strings.TrimSpace(t[0]), NextHop: strings.TrimSpace(t[1]),
+					Policy: strings.TrimSpace(t[2]), ECMP: strings.TrimSpace(t[4])})
+		}
 	}
 	return staticRoutes, nil
 }
 
 // AddStaticRoute add a static route rule in ovn
-func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, router string, routeType string) error {
+func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, ecmp, bfdId, router string, routeType string) error {
+	// route require policy, cidr, nextHop, ecmp
+	// in default, ecmp route with bfd id use ecmp-symmetric-reply mode
 	if policy == "" {
 		policy = PolicyDstIP
 	}
@@ -950,8 +960,21 @@ func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, router string, route
 				continue
 			}
 			if routeType == util.EcmpRouteType {
-				if _, err := c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "--ecmp", "lr-route-add", router, cidrBlock, gw); err != nil {
-					return err
+				if ecmp == util.StaicRouteBfdEcmp {
+					if bfdId == "" {
+						err := fmt.Errorf("bfd id should not be empty")
+						klog.Error(err)
+						return err
+					}
+					ecmpSymmetric := fmt.Sprintf("--%s", util.StaicRouteBfdEcmp)
+					bfd := fmt.Sprintf("--bfd=%s", bfdId)
+					if _, err := c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), bfd, ecmpSymmetric, "lr-route-add", router, cidrBlock, gw); err != nil {
+						return err
+					}
+				} else {
+					if _, err := c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "--ecmp", "lr-route-add", router, cidrBlock, gw); err != nil {
+						return err
+					}
 				}
 			} else {
 				if !strings.ContainsRune(cidrBlock, '/') {
@@ -1162,11 +1185,20 @@ func parseLrRouteListOutput(output string) (routeList []*StaticRoute, err error)
 		}
 
 		fields := strings.Fields(l)
-		routeList = append(routeList, &StaticRoute{
-			Policy:  fields[2],
-			CIDR:    fields[0],
-			NextHop: fields[1],
-		})
+		if len(fields) < 4 {
+			routeList = append(routeList, &StaticRoute{
+				Policy:  fields[2],
+				CIDR:    fields[0],
+				NextHop: fields[1],
+			})
+		} else {
+			routeList = append(routeList, &StaticRoute{
+				Policy:  fields[2],
+				CIDR:    fields[0],
+				NextHop: fields[1],
+				ECMP:    fields[4],
+			})
+		}
 	}
 	return routeList, nil
 }
@@ -3161,4 +3193,94 @@ func (c *LegacyClient) GetNatIPInfo(uuid string) (string, error) {
 		logical_ip = strings.TrimSpace(lines[0])
 	}
 	return logical_ip, nil
+}
+
+// FindBfd find ovn bfd uuid by lrp name and dst ip
+func (c LegacyClient) FindBfd(lrp, dstIp string) (string, error) {
+	var err error
+	var output string
+	if dstIp != "" {
+		output, err = c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid",
+			"find", "bfd", fmt.Sprintf("logical_port=%s", lrp), fmt.Sprintf("dst_ip=%s", dstIp))
+	} else {
+		output, err = c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid",
+			"find", "bfd", fmt.Sprintf("logical_port=%s", lrp))
+	}
+	if err != nil {
+		klog.Errorf("faild to find bfd by lrp %s dst ip %s, %v", lrp, dstIp, err)
+		return "", err
+	}
+	lines := strings.Split(output, "\n")
+	result := make([]string, 0, len(lines))
+	for _, l := range lines {
+		if len(strings.TrimSpace(l)) == 0 {
+			continue
+		}
+		result = append(result, strings.TrimSpace(l))
+	}
+
+	if len(result) == 0 {
+		err := fmt.Errorf("not found bfd entries by lrp %s, dstIp %s", lrp, dstIp)
+		klog.Error(err)
+		return "", err
+	}
+
+	if len(result) > 1 {
+		err := fmt.Errorf("found too many bfd entries, %v", result)
+		klog.Error(err)
+		return "", err
+	}
+
+	return result[0], nil
+}
+
+// CreateBfd find ovn bfd uuid by lrp name and dst ip
+func (c LegacyClient) CreateBfd(lrp, dstIp string, minTx, minRx, detectMult int) (string, error) {
+	var err error
+	var output string
+	if bfdId, err := c.FindBfd(lrp, dstIp); err == nil {
+		return bfdId, nil
+	}
+	if output, err = c.ovnNbCommand("create", "bfd", fmt.Sprintf("logical_port=%s", lrp), fmt.Sprintf("dst_ip=%s", dstIp),
+		fmt.Sprintf("min_tx=%d ", minTx), fmt.Sprintf("min_rx=%d", minRx), fmt.Sprintf("detect_mult=%d", detectMult)); err != nil {
+		klog.Errorf("faild to create bfd for lrp %s dst ip %s, output %s, %v", lrp, dstIp, output, err)
+		return "", err
+	}
+	if bfdId, err := c.FindBfd(lrp, dstIp); err == nil {
+		return bfdId, nil
+	} else {
+		klog.Errorf("faild to create bfd for lrp %s dst ip %s, output %s, %v", lrp, dstIp, output, err)
+		return "", err
+	}
+}
+
+// DeleteBfd delete ovn bfd uuid by lrp name, dstIp
+func (c LegacyClient) DeleteBfd(lrp, dstIp string) error {
+	var err error
+	var output string
+	if dstIp != "" {
+		// delete one specific bfd with lrp and dst ip
+		output, err = c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid",
+			"find", "bfd", fmt.Sprintf("logical_port=%s", lrp), fmt.Sprintf("dst_ip=%s", dstIp))
+	} else {
+		// delete all bfds with specific lrp
+		output, err = c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid",
+			"find", "bfd", fmt.Sprintf("logical_port=%s", lrp))
+	}
+	if err != nil {
+		klog.Errorf("no bfd about lrp %s dst ip %s, %v", lrp, dstIp, err)
+		return err
+	}
+	lines := strings.Split(output, "\n")
+	for _, l := range lines {
+		bfdId := strings.TrimSpace(l)
+		if len(bfdId) == 0 {
+			continue
+		}
+		if _, err = c.ovnNbCommand("destroy", "bfd", bfdId); err != nil {
+			klog.Errorf("faild to destroy bfd %s, %v", output, err)
+			return err
+		}
+	}
+	return nil
 }

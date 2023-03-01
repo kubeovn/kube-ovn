@@ -95,6 +95,10 @@ type Configuration struct {
 
 	GCInterval      int
 	InspectInterval int
+
+	BfdMinTx      int
+	BfdMinRx      int
+	BfdDetectMult int
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -161,6 +165,10 @@ func ParseFlags() (*Configuration, error) {
 
 		argGCInterval      = pflag.Int("gc-interval", 360, "The interval between GC processes, default 360 seconds")
 		argInspectInterval = pflag.Int("inspect-interval", 20, "The interval between inspect processes, default 20 seconds")
+
+		argBfdMinTx      = pflag.Int("bfd-min-tx", 100, "This is the minimum interval, in milliseconds, ovn would like to use when transmitting BFD Control packets")
+		argBfdMinRx      = pflag.Int("bfd-min-rx", 100, "This is the minimum interval, in milliseconds, between received BFD Control packets")
+		argBfdDetectMult = pflag.Int("detect-mult", 3, "The negotiated transmit interval, multiplied by this value, provides the Detection Time for the receiving system in Asynchronous mode.")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -235,6 +243,9 @@ func ParseFlags() (*Configuration, error) {
 		InspectInterval:                *argInspectInterval,
 		EnableLbSvc:                    *argEnableLbSvc,
 		EnableMetrics:                  *argEnableMetrics,
+		BfdMinTx:                       *argBfdMinTx,
+		BfdMinRx:                       *argBfdMinRx,
+		BfdDetectMult:                  *argBfdDetectMult,
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {

@@ -9,6 +9,10 @@ import (
 	"strings"
 	"time"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ipam"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,11 +22,6 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ipam"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (c *Controller) enqueueAddSubnet(obj interface{}) {
@@ -941,9 +940,18 @@ func (c *Controller) reconcileSubnet(subnet *kubeovnv1.Subnet) error {
 		return err
 	}
 
-	if err := c.reconcileOvnRoute(subnet); err != nil {
-		klog.Errorf("reconcile OVN route for subnet %s failed: %v", subnet.Name, err)
-		return err
+	if subnet.Spec.Vpc == util.DefaultVpc {
+		if err := c.reconcileOvnDefaultVpcRoute(subnet); err != nil {
+			klog.Errorf("reconcile default vpc ovn route for subnet %s failed: %v", subnet.Name, err)
+			return err
+		}
+	}
+
+	if subnet.Spec.Vpc != util.DefaultVpc {
+		if err := c.reconcileOvnCustomVpcRoute(subnet); err != nil {
+			klog.Errorf("reconcile custom vpc ovn route for subnet %s failed: %v", subnet.Name, err)
+			return err
+		}
 	}
 
 	if err := c.reconcileVlan(subnet); err != nil {
@@ -1079,11 +1087,223 @@ func (c *Controller) reconcileNamespaces(subnet *kubeovnv1.Subnet) error {
 	return nil
 }
 
-func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
-	if subnet.Spec.Vpc != util.DefaultVpc {
-		return nil
+func (c *Controller) reconcileVpcUseBfdStaticRoute(vpcName, subnetName string) error {
+	// vpc enable bfd and subnet enable ecmp
+	// use static ecmp route with bfd
+	ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(labels.Set{util.OvnEipUsageLabel: util.NodeExtGwUsingEip}))
+	if err != nil {
+		klog.Errorf("failed to list node external ovn eip, %v", err)
+		return err
+	}
+	if len(ovnEips) < 2 {
+		err := fmt.Errorf("ha ecmp route with bfd need two eips at least")
+		klog.Error(err)
+		return err
+	}
+	needUpdate := false
+	v4Exist := false
+	subnet, err := c.subnetsLister.Get(subnetName)
+	if err != nil {
+		klog.Errorf("failed to get subnet %s, %v", subnetName, err)
+		return err
+	}
+	vpc, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Get(context.Background(), vpcName, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to get vpc %s, %v", vpcName, err)
+		return err
+	}
+	lrpEipName := fmt.Sprintf("%s-%s", vpcName, c.config.ExternalGatewaySwitch)
+	lrpEip, err := c.config.KubeOvnClient.KubeovnV1().OvnEips().Get(context.Background(), lrpEipName, metav1.GetOptions{})
+	if err != nil {
+		if !k8serrors.IsNotFound(err) {
+			klog.Error(err)
+			return err
+		}
+	}
+	if !lrpEip.Status.Ready || lrpEip.Status.V4Ip == "" {
+		err := fmt.Errorf("lrp eip %q not ready", lrpEipName)
+		klog.Error(err)
+		return err
+	}
+	for _, eip := range ovnEips {
+		if !eip.Status.Ready || eip.Status.V4Ip == "" {
+			err := fmt.Errorf("ovn eip %q not ready", eip.Name)
+			klog.Error(err)
+			return err
+		}
+		bfdId, err := c.ovnLegacyClient.CreateBfd(lrpEipName, eip.Status.V4Ip, c.config.BfdMinTx, c.config.BfdMinRx, c.config.BfdDetectMult)
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+		// TODO:// support v6
+		v4Exist = false
+		for _, route := range vpc.Spec.StaticRoutes {
+			if route.Policy == kubeovnv1.PolicySrc &&
+				route.NextHopIP == eip.Status.V4Ip &&
+				route.ECMP == util.StaicRouteBfdEcmp &&
+				route.CIDR == subnet.Spec.CIDRBlock {
+				v4Exist = true
+				break
+			}
+		}
+		if !v4Exist {
+			// add ecmp type static route with bfd
+			route := &kubeovnv1.StaticRoute{
+				Policy:    kubeovnv1.PolicySrc,
+				CIDR:      subnet.Spec.CIDRBlock,
+				NextHopIP: eip.Status.V4Ip,
+				ECMP:      util.StaicRouteBfdEcmp,
+				BfdId:     bfdId,
+			}
+			klog.V(3).Infof("add ecmp bfd static route %v", route)
+			vpc.Spec.StaticRoutes = append(vpc.Spec.StaticRoutes, route)
+			needUpdate = true
+		}
+	}
+	if needUpdate {
+		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
+			klog.Errorf("failed to update vpc spec static route %s, %v", vpc.Name, err)
+			return err
+		}
 	}
 
+	if err = c.patchVpcBfdStatus(vpc.Name); err != nil {
+		klog.Errorf("failed to patch vpc %s, %v", vpc.Name, err)
+		return err
+	}
+
+	return nil
+}
+
+func (c *Controller) reconcileVpcAddNormalStaticRoute(vpcName string) error {
+	// vpc disable bfd and subnet disable ecmp
+	// use normal type static route, not ecmp
+	// dst 0.0.0.0 nexthop external switch gw
+	// allow all subnet access external based snat
+	// also, this will not conflict with policy route
+
+	defualtExternalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
+	if err != nil {
+		klog.Error("failed to get default external switch subnet %s: %v", c.config.ExternalGatewaySwitch)
+		return err
+	}
+	gatewayV4, gatewayV6 := util.SplitStringIP(defualtExternalSubnet.Spec.Gateway)
+	v4Exist, v6Exist := false, false
+	needUpdate := false
+	vpc, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Get(context.Background(), vpcName, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to get vpc %s, %v", vpcName, err)
+		return err
+	}
+	routeTotal := len(vpc.Spec.StaticRoutes) + 2
+	routes := make([]*kubeovnv1.StaticRoute, 0, routeTotal)
+	for _, route := range vpc.Spec.StaticRoutes {
+		if route.Policy == kubeovnv1.PolicyDst &&
+			route.NextHopIP == gatewayV4 &&
+			route.CIDR == "0.0.0.0/0" {
+			v4Exist = true
+			continue
+		}
+		if route.Policy == kubeovnv1.PolicyDst &&
+			route.NextHopIP == gatewayV6 &&
+			route.CIDR == "::/0" {
+			v6Exist = true
+			continue
+		}
+		if route.ECMP != util.StaicRouteBfdEcmp {
+			// filter ecmp bfd route
+			routes = append(routes, route)
+		}
+	}
+	if !v4Exist && gatewayV4 != "" {
+		klog.V(3).Infof("add normal static route v4 nexthop %s", gatewayV4)
+		routes = append(routes, &kubeovnv1.StaticRoute{
+			Policy:    kubeovnv1.PolicyDst,
+			CIDR:      "0.0.0.0/0",
+			NextHopIP: gatewayV4,
+		})
+		needUpdate = true
+	}
+	if !v6Exist && gatewayV6 != "" {
+		klog.V(3).Infof("add normal static route v6 nexthop %s", gatewayV6)
+		routes = append(routes, &kubeovnv1.StaticRoute{
+			Policy:    kubeovnv1.PolicyDst,
+			CIDR:      "::/0",
+			NextHopIP: gatewayV6,
+		})
+		needUpdate = true
+	}
+
+	if needUpdate {
+		vpc.Spec.StaticRoutes = routes
+		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
+			klog.Errorf("failed to update vpc spec static route %s, %v", vpc.Name, err)
+			return err
+		}
+	}
+
+	if err = c.patchVpcBfdStatus(vpc.Name); err != nil {
+		klog.Errorf("failed to patch vpc %s, %v", vpc.Name, err)
+		return err
+	}
+
+	return nil
+}
+
+func (c *Controller) reconcileVpcDelNormalStaticRoute(vpcName string) error {
+	// normal static route is prior than ecmp bfd static route
+	// if use ecmp bfd static route, normal static route should not exist
+	defualtExternalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
+	if err != nil {
+		klog.Error("failed to get default external switch subnet %s: %v", c.config.ExternalGatewaySwitch)
+		return err
+	}
+	gatewayV4, gatewayV6 := util.SplitStringIP(defualtExternalSubnet.Spec.Gateway)
+	needUpdate := false
+	vpc, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Get(context.Background(), vpcName, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to get vpc %s, %v", vpcName, err)
+		return err
+	}
+	routeTotal := len(vpc.Spec.StaticRoutes)
+	routes := make([]*kubeovnv1.StaticRoute, 0, routeTotal)
+	for _, route := range vpc.Spec.StaticRoutes {
+		if route.Policy == kubeovnv1.PolicyDst &&
+			(route.NextHopIP == gatewayV4 || route.NextHopIP == gatewayV6) &&
+			(route.CIDR == "0.0.0.0/0" || route.CIDR == "::/0") {
+			klog.V(3).Infof("in order to use ecmp bfd route, need remove normal static route %v", route)
+			needUpdate = true
+		} else {
+			routes = append(routes, route)
+		}
+	}
+	if needUpdate {
+		vpc.Spec.StaticRoutes = routes
+		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
+			klog.Errorf("failed to update vpc spec static route %s, %v", vpc.Name, err)
+			return err
+		}
+	}
+
+	if err = c.patchVpcBfdStatus(vpc.Name); err != nil {
+		klog.Errorf("failed to patch vpc %s, %v", vpc.Name, err)
+		return err
+	}
+
+	return nil
+}
+
+func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error {
 	if subnet.Name == c.config.NodeSwitch {
 		if err := c.addCommonRoutesForSubnet(subnet); err != nil {
 			klog.Error(err)
@@ -1103,12 +1323,14 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 		for _, pod := range pods {
 			if pod.Annotations[util.LogicalSwitchAnnotation] == subnet.Name && pod.Annotations[util.IpAddressAnnotation] != "" {
 				if err := c.deleteStaticRoute(pod.Annotations[util.IpAddressAnnotation], c.config.ClusterRouter); err != nil {
+					klog.Errorf("failed to delete static route %v", err)
 					return err
 				}
 			}
 		}
 
 		if err := c.deleteStaticRoute(subnet.Spec.CIDRBlock, c.config.ClusterRouter); err != nil {
+			klog.Errorf("failed to delete static route %v", err)
 			return err
 		}
 
@@ -1159,10 +1381,12 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 
 				bytes, err := subnet.Status.Bytes()
 				if err != nil {
+					klog.Errorf("failed to marshal subnet status %v", err)
 					return err
 				}
 				_, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "")
 				if err != nil {
+					klog.Errorf("failed to patch subnet status %v", err)
 					return err
 				}
 			}
@@ -1174,6 +1398,7 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 			}
 			for _, node := range nodes {
 				if err = c.createPortGroupForDistributedSubnet(node, subnet); err != nil {
+					klog.Errorf("failed to create port group %v", err)
 					return err
 				}
 				if node.Annotations[util.AllocatedAnnotation] != "true" {
@@ -1237,7 +1462,8 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 							continue
 						}
 
-						if err := c.ovnLegacyClient.AddStaticRoute(ovs.PolicySrcIP, pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)], nextHop, c.config.ClusterRouter, util.NormalRouteType); err != nil {
+						if err := c.ovnLegacyClient.AddStaticRoute(ovs.PolicySrcIP, pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)],
+							nextHop, "", "", c.config.ClusterRouter, util.NormalRouteType); err != nil {
 							klog.Errorf("add static route failed, %v", err)
 							return err
 						}
@@ -1312,6 +1538,7 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 			}
 
 			if subnet.Spec.EnableEcmp {
+				// handle vpc policy route
 				// 1. Default value of subnet.Spec.EnableEcmp is false, so the field subnet.Status.ActivateGateway has value when centralized subnet is created
 				// 2. Change subnet.Spec.EnableEcmp from false to true, ecmp route is added based on gatewayNode, not ActivateGateway
 				// 3. Change subnet.Spec.EnableEcmp from true to false, the ActivateGateway still works and ecmp route does not update, which is incorrect
@@ -1471,6 +1698,33 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 				subnet.Status.ActivateGateway = newActivateNode
 				c.patchSubnetStatus(subnet, "ReconcileCentralizedGatewaySuccess", "")
 			}
+		}
+	}
+	return nil
+}
+
+func (c *Controller) reconcileOvnCustomVpcRoute(subnet *kubeovnv1.Subnet) error {
+	// in custom vpc, subnet gw type is unmeaning
+	// 1. vpc out to public network through vpc nat gw pod, the static route is auto managed by admin user
+	// 2. vpc out to public network through ovn snat, with bfd ecmp, the static route is auto managed here
+	// 3. vpc out to public network through ovn snat, without bfd ecmp, the static route is auto managed in vpc update process
+
+	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	if vpc.Spec.EnableExternal && vpc.Spec.EnableBfd && subnet.Spec.EnableEcmp {
+		klog.V(3).Infof("add bfd and external static ecmp route for vpc %s, subnet %s", vpc.Name, subnet.Name)
+		// handle vpc static route
+		// use static ecmp route with bfd
+		// bfd ecmp static route depend on subnet cidr
+		if err := c.reconcileVpcUseBfdStaticRoute(vpc.Name, subnet.Name); err != nil {
+			klog.Errorf("failed to reconcile vpc %q bfd static route", vpc.Name)
+			return err
 		}
 	}
 	return nil

@@ -45,6 +45,9 @@ const (
 	VpcNatLabel                 = "ovn.kubernetes.io/vpc_nat"
 	VpcNatAnnotation            = "ovn.kubernetes.io/vpc_nat"
 
+	OvnEipUsageLabel        = "ovn.kubernetes.io/ovn_eip_usage"
+	OvnLrpEipEnableBfdLabel = "ovn.kubernetes.io/ovn_lrp_eip_enable_bfd"
+
 	SwitchLBRuleVipsAnnotation = "ovn.kubernetes.io/switch_lb_vip"
 
 	LogicalRouterAnnotation = "ovn.kubernetes.io/logical_router"
@@ -169,9 +172,11 @@ const (
 
 	LrpUsingEip       = "lrp"
 	FipUsingEip       = "fip"
+	FipUsingVip       = "vip"
 	SnatUsingEip      = "snat"
 	DnatUsingEip      = "dnat"
 	NodeExtGwUsingEip = "node-ext-gw"
+	StaicRouteBfdEcmp = "ecmp-symmetric-reply"
 
 	OvnFip      = "ovn"
 	IptablesFip = "iptables"

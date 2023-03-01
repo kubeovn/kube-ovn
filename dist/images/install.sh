@@ -26,7 +26,7 @@ EXCHANGE_LINK_NAME=${EXCHANGE_LINK_NAME:-false}
 # separated by comma, if empty will use the nic that the default route use
 IFACE=${IFACE:-}
 # Specifies the name of the dpdk tunnel iface.
-# Note that the dpdk tunnel iface and tunnel ip cidr should be diffierent with Kubernetes api cidr,otherwise the route will be a problem.
+# Note that the dpdk tunnel iface and tunnel ip cidr should be diffierent with Kubernetes api cidr, otherwise the route will be a problem.
 DPDK_TUNNEL_IFACE=${DPDK_TUNNEL_IFACE:-br-phy}
 ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
 
@@ -869,6 +869,12 @@ spec:
       - jsonPath: .status.ready
         name: Ready
         type: boolean
+      - jsonPath: .spec.ipType
+        name: IpType
+        type: string
+      - jsonPath: .spec.ipName
+        name: IpName
+        type: string
       schema:
         openAPIV3Schema:
           type: object
@@ -907,6 +913,8 @@ spec:
               type: object
               properties:
                 ovnEip:
+                  type: string
+                ipType:
                   type: string
                 ipName:
                   type: string
@@ -997,6 +1005,9 @@ spec:
         - jsonPath: .status.enableExternal
           name: EnableExternal
           type: boolean
+        - jsonPath: .status.enableBfd
+          name: EnableBfd
+          type: boolean
         - jsonPath: .status.standby
           name: Standby
           type: boolean
@@ -1014,6 +1025,8 @@ spec:
               properties:
                 enableExternal:
                   type: boolean
+                enableBfd:
+                  type: boolean
                 namespaces:
                   items:
                     type: string
@@ -1026,6 +1039,10 @@ spec:
                       cidr:
                         type: string
                       nextHopIP:
+                        type: string
+                      ecmp:
+                        type: string
+                      bfdId:
                         type: string
                     type: object
                   type: array
@@ -1080,6 +1097,8 @@ spec:
                 standby:
                   type: boolean
                 enableExternal:
+                  type: boolean
+                enableBfd:
                   type: boolean
                 subnets:
                   items:

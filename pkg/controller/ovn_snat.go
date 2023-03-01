@@ -246,10 +246,6 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		klog.Errorf("failed to patch label for snat %s, %v", key, err)
 		return err
 	}
-	if err = c.patchOvnEipStatus(eipName, true); err != nil {
-		klog.Errorf("failed to patch status for eip %s, %v", key, err)
-		return err
-	}
 	if err = c.patchOvnSnatStatus(key, vpcName, cachedEip.Spec.V4Ip, v4IpCidr, true); err != nil {
 		klog.Errorf("failed to update status for snat %s, %v", key, err)
 		return err
@@ -265,7 +261,7 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 		}
 		return err
 	}
-	klog.V(3).Infof("handle add ovn snat %s", key)
+	klog.V(3).Infof("handle update ovn snat %s", key)
 	eipName := cachedSnat.Spec.OvnEip
 	if len(eipName) == 0 {
 		klog.Errorf("failed to create snat rule, should set eip")
@@ -348,10 +344,6 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 		}
 		if err = c.patchOvnSnatLabel(key, eipName); err != nil {
 			klog.Errorf("failed to patch label for snat %s, %v", key, err)
-			return err
-		}
-		if err = c.patchOvnEipStatus(eipName, true); err != nil {
-			klog.Errorf("failed to patch status for eip %s, %v", key, err)
 			return err
 		}
 		if err = c.patchOvnSnatStatus(key, vpcName, cachedEip.Spec.V4Ip, v4IpCidr, true); err != nil {
