@@ -2318,10 +2318,14 @@ func (c LegacyClient) createSgRuleACL(sgName string, direction AclDirection, rul
 			matchArgs = append(matchArgs, fmt.Sprintf("inport==@%s && %s && %s.dst==%s", sgPortGroupName, ipSuffix, ipSuffix, rule.RemoteAddress))
 		}
 	} else {
+		remotePgName := GetSgV4AssociatedName(rule.RemoteSecurityGroup)
+		if rule.IPVersion == "ipv6" {
+			remotePgName = GetSgV6AssociatedName(rule.RemoteSecurityGroup)
+		}
 		if direction == SgAclIngressDirection {
-			matchArgs = append(matchArgs, fmt.Sprintf("outport==@%s && %s && %s.src==$%s", sgPortGroupName, ipSuffix, ipSuffix, GetSgV4AssociatedName(rule.RemoteSecurityGroup)))
+			matchArgs = append(matchArgs, fmt.Sprintf("outport==@%s && %s && %s.src==$%s", sgPortGroupName, ipSuffix, ipSuffix, remotePgName))
 		} else {
-			matchArgs = append(matchArgs, fmt.Sprintf("inport==@%s && %s && %s.dst==$%s", sgPortGroupName, ipSuffix, ipSuffix, GetSgV4AssociatedName(rule.RemoteSecurityGroup)))
+			matchArgs = append(matchArgs, fmt.Sprintf("inport==@%s && %s && %s.dst==$%s", sgPortGroupName, ipSuffix, ipSuffix, remotePgName))
 		}
 	}
 
