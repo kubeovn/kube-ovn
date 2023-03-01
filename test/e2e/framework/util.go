@@ -28,6 +28,7 @@ func RandomCIDR(family string) string {
 			IP:   net.ParseIP("10.99.0.0").To4(),
 			Mask: net.CIDRMask(24, 32),
 		}
+		rand.Seed(time.Now().Unix())
 		cidr.IP[2] = byte(rand.Intn(0xff + 1))
 		return cidr.String()
 	}
@@ -37,6 +38,7 @@ func RandomCIDR(family string) string {
 			IP:   net.ParseIP("fc00:10:ff::").To16(),
 			Mask: net.CIDRMask(96, 128),
 		}
+		rand.Seed(time.Now().Unix())
 		cidr.IP[10] = byte(rand.Intn(0xff + 1))
 		cidr.IP[11] = byte(rand.Intn(0xff + 1))
 		return cidr.String()
