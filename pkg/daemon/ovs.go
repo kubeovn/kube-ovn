@@ -25,17 +25,29 @@ func pingGateway(gw, src string, verbose bool, maxRetry int) error {
 	pinger.Timeout = time.Duration(maxRetry) * time.Second
 	pinger.Interval = time.Second
 
-	var success bool
 	pinger.OnRecv = func(p *goping.Packet) {
-		success = true
 		pinger.Stop()
 	}
-	pinger.Run()
 
+	// long time keep ping may result in readiness probe failed when start
+	// show ping fails when gw not work
+	go func() {
+		for {
+			time.Sleep(3 * time.Second)
+			stats := pinger.Statistics()
+			if stats.PacketsSent >= pinger.Count {
+				break
+			}
+			if stats.PacketsRecv == 0 {
+				klog.Errorf("%s network not ready after %d ping %s, %v%% packet loss", src, stats.PacketsSent, gw, stats.PacketLoss)
+			} else {
+				break
+			}
+		}
+	}()
+
+	pinger.Run()
 	cniConnectivityResult.WithLabelValues(nodeName).Add(float64(pinger.PacketsSent))
-	if !success {
-		return fmt.Errorf("%s network not ready after %d ping %s", src, maxRetry, gw)
-	}
 	if verbose {
 		klog.Infof("%s network ready after %d ping, gw %s", src, pinger.PacketsSent, gw)
 	}
