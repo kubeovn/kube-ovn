@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  HELM_VERSION: v3.10.1
+  HELM_VERSION: v3.10.3
 
 jobs:
   k8s-conformance-e2e:
@@ -72,6 +72,10 @@ jobs:
         uses: helm/kind-action@v1
         with:
           install_only: true
+
+      - name: Install ginkgo
+        working-directory: ${{ env.E2E_DIR }}
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Create kind cluster
         working-directory: test/e2e/k8s-network/branches/${{ matrix.branch }}
@@ -153,6 +157,10 @@ jobs:
         with:
           install_only: true
 
+      - name: Install ginkgo
+        working-directory: ${{ env.E2E_DIR }}
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+
       - name: Create kind cluster
         working-directory: test/e2e/k8s-network/branches/${{ matrix.branch }}
         run: |
@@ -228,6 +236,10 @@ jobs:
         uses: helm/kind-action@v1
         with:
           install_only: true
+
+      - name: Install ginkgo
+        working-directory: ${{ env.E2E_DIR }}
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Create kind cluster
         working-directory: test/e2e/k8s-network/branches/${{ matrix.branch }}
@@ -361,6 +373,10 @@ jobs:
         with:
           install_only: true
 
+      - name: Install ginkgo
+        working-directory: ${{ env.E2E_DIR }}
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
@@ -429,6 +445,10 @@ jobs:
         uses: helm/kind-action@v1
         with:
           install_only: true
+
+      - name: Install ginkgo
+        working-directory: ${{ env.E2E_DIR }}
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
@@ -663,6 +683,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.11
     steps:
       - uses: actions/checkout@v3
 
@@ -697,6 +718,10 @@ jobs:
         uses: helm/kind-action@v1
         with:
           install_only: true
+
+      - name: Install ginkgo
+        working-directory: ${{ env.E2E_DIR }}
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
@@ -828,6 +853,10 @@ jobs:
         with:
           install_only: true
 
+      - name: Install ginkgo
+        working-directory: ${{ env.E2E_DIR }}
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
@@ -907,6 +936,10 @@ jobs:
         with:
           install_only: true
 
+      - name: Install ginkgo
+        working-directory: ${{ env.E2E_DIR }}
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
@@ -980,6 +1013,10 @@ jobs:
         uses: helm/kind-action@v1
         with:
           install_only: true
+
+      - name: Install ginkgo
+        working-directory: ${{ env.E2E_DIR }}
+        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
 
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
