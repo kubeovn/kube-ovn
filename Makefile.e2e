@@ -99,7 +99,7 @@ kube-ovn-ic-conformance-e2e:
 
 .PHONY: kube-ovn-submariner-conformance-e2e
 kube-ovn-submariner-conformance-e2e:
-	subctl verify --kubecontexts kind-kube-ovn,kind-kube-ovn1 --verbose --disruptive-tests
+	subctl verify --kubecontexts kind-kube-ovn,kind-kube-ovn1 --verbose --disruptive-tests --kubeconfig ~/.kube/config
 
 .PHONY: kube-ovn-lb-svc-conformance-e2e
 kube-ovn-lb-svc-conformance-e2e:

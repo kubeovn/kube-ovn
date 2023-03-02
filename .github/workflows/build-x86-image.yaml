@@ -1328,9 +1328,6 @@ jobs:
 
       - name: Run E2E
         working-directory: ${{ env.E2E_DIR }}
-        env:
-          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
-          KUBECONFIG: ~/.kube/config
         run: make kube-ovn-submariner-conformance-e2e
 
       - name: Cleanup

@@ -1075,9 +1075,6 @@ jobs:
           VERSION=$version make kind-install-ovn-submariner
 
       - name: Run E2E
-        env:
-          E2E_BRANCH: ${{ matrix.branch }}
-          KUBECONFIG: ~/.kube/config
         run: make kube-ovn-submariner-conformance-e2e
 
       - name: Cleanup
