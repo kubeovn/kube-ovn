@@ -43,7 +43,7 @@ require (
 	k8s.io/apimachinery v0.26.2
 	k8s.io/apiserver v0.26.2
 	k8s.io/client-go v12.0.0+incompatible
-	k8s.io/klog/v2 v2.90.0
+	k8s.io/klog/v2 v2.90.1
 	k8s.io/kubernetes v1.26.2
 	k8s.io/pod-security-admission v0.26.2
 	k8s.io/sample-controller v0.26.2
