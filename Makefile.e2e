@@ -97,6 +97,10 @@ kube-ovn-ic-conformance-e2e:
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	./test/e2e/ovn-ic/e2e.test --ginkgo.focus=CNI:Kube-OVN
 
+.PHONY: kube-ovn-submariner-conformance-e2e
+kube-ovn-submariner-conformance-e2e:
+	subctl verify --kubecontexts kind-kube-ovn,kind-kube-ovn1 --verbose --disruptive-tests
+
 .PHONY: kube-ovn-lb-svc-conformance-e2e
 kube-ovn-lb-svc-conformance-e2e:
 	go test ./test/e2e/lb-svc -c -o test/e2e/lb-svc/e2e.test

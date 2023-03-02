@@ -246,6 +246,14 @@ kind-init-ovn-ic: kind-clean-ovn-ic kind-init-ha
 	@ha=true $(MAKE) kind-generate-config
 	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1)
 
+
+.PHONY: kind-init-ovn-submariner
+kind-init-ovn-submariner: kind-clean-ovn-submariner
+	@ha=true pod_cidr_v4=10.16.0.0/16 svc_cidr_v4=10.96.0.0/16 $(MAKE) kind-generate-config
+	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn)
+	@ha=true pod_cidr_v4=10.18.0.0/16 svc_cidr_v4=10.98.0.0/16 $(MAKE) kind-generate-config
+	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1)
+
 .PHONY: kind-init-iptables
 kind-init-iptables:
 	@kube_proxy_mode=iptables $(MAKE) kind-init
@@ -359,6 +367,49 @@ kind-install-ovn-ic: kind-load-image kind-install
 	kubectl apply -f ovn-ic-1.yaml
 	sleep 6
 	kubectl -n kube-system get pods | grep ovs-ovn | awk '{print $$1}' | xargs kubectl -n kube-system delete pod
+
+.PHONY: kind-install-ovn-submariner
+kind-install-ovn-submariner:
+	$(call kind_load_image,kube-ovn,$(REGISTRY)/kube-ovn:$(VERSION))
+	kubectl config use-context kind-kube-ovn
+	@$(MAKE) kind-untaint-control-plane
+	@sed -e 's/10\.96\.0\.0\/12/10.96.0.0\/16/g' \
+		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
+		dist/images/install.sh |  bash
+	kubectl describe no
+
+	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
+	kubectl config use-context kind-kube-ovn1
+	@$(MAKE) kind-untaint-control-plane
+	sed -e 's/10.16.0/10.18.0/g' \
+		-e 's/10\.96\.0\.0\/12/10.98.0.0\/16/g' \
+		-e 's/100.64.0/100.68.0/g' \
+		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
+		dist/images/install.sh | bash
+	kubectl describe no
+
+	kubectl config use-context kind-kube-ovn
+	kubectl config set-cluster kind-kube-ovn --server=https://$(shell docker inspect --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' kube-ovn-control-plane):6443
+
+	kubectl config use-context kind-kube-ovn1
+	kubectl config set-cluster kind-kube-ovn1 --server=https://$(shell docker inspect --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' kube-ovn1-control-plane):6443
+
+	kubectl config use-context kind-kube-ovn
+	subctl deploy-broker
+	kubectl label nodes kube-ovn-worker2  submariner.io/gateway=true
+	subctl  join broker-info.subm --clusterid  cluster0 --clustercidr 10.16.0.0/16  --natt=false --cable-driver vxlan --health-check=false --kubecontext=kind-kube-ovn
+	kubectl patch clusterrole submariner-operator --type merge --patch-file yamls/subopeRules.yaml
+	sleep 10
+	kubectl -n submariner-operator delete pod --selector=name=submariner-operator
+	kubectl patch subnet ovn-default --type='merge' --patch '{"spec": {"gatewayNode": "kube-ovn-worker2","gatewayType": "centralized"}}'
+
+	kubectl config use-context kind-kube-ovn1
+	kubectl label nodes kube-ovn1-worker2  submariner.io/gateway=true
+	subctl  join broker-info.subm --clusterid  cluster1 --clustercidr 10.18.0.0/16  --natt=false --cable-driver vxlan --health-check=false --kubecontext=kind-kube-ovn1
+	kubectl patch clusterrole submariner-operator --type merge --patch-file yamls/subopeRules.yaml
+	sleep 10
+	kubectl -n submariner-operator delete pod --selector=name=submariner-operator
+	kubectl patch subnet ovn-default --type='merge' --patch '{"spec": {"gatewayNode": "kube-ovn1-worker2","gatewayType": "centralized"}}'
 
 .PHONY: kind-install-underlay
 kind-install-underlay: kind-install-underlay-ipv4
@@ -527,6 +578,11 @@ kind-clean:
 .PHONY: kind-clean-ovn-ic
 kind-clean-ovn-ic: kind-clean
 	$(call docker_rm_container,ovn-ic-db)
+	kind delete cluster --name=kube-ovn1
+
+.PHONY: kind-clean-ovn-submariner
+kind-clean-ovn-submariner:
+	kind delete cluster --name=kube-ovn
 	kind delete cluster --name=kube-ovn1
 
 .PHONY: uninstall
