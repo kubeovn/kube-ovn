@@ -1275,9 +1275,6 @@ jobs:
       matrix:
         branch:
           - master
-          - release-1.11
-          - release-1.10
-          - release-1.9
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
@@ -1309,10 +1306,9 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        run: |
-          curl -Lo ./kind https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-$(uname)-amd64
-          chmod +x ./kind
-          sudo mv kind /usr/local/bin
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
 
       - name: Install submariner subctl
         run: |
