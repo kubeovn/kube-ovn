@@ -1054,7 +1054,7 @@ jobs:
 
       - name: Install submariner subctl
         run: |
-          curl -Ls https://get.submariner.io | bash
+          curl -Ls https://get.submariner.io | VERSION=v0.13.4 bash
           sudo chmod +x ~/.local/bin/subctl
           sudo mv ~/.local/bin/subctl /usr/bin/
 

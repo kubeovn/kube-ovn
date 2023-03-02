@@ -1301,7 +1301,7 @@ jobs:
 
       - name: Install submariner subctl
         run: |
-          curl -Ls https://get.submariner.io | bash
+          curl -Ls https://get.submariner.io | VERSION=v0.13.4 bash
           sudo chmod +x ~/.local/bin/subctl
           sudo mv ~/.local/bin/subctl /usr/bin/
 
@@ -1320,7 +1320,6 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-ovn-submariner
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
-          sudo tree /root
           sudo tree ~/.kube/
 
       - name: Install Kube-OVN
