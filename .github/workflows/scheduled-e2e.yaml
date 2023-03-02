@@ -1094,4 +1094,9 @@ jobs:
       - name: Run E2E
         env:
           E2E_BRANCH: ${{ matrix.branch }}
+          KUBECONFIG: ~/.kube/config
         run: make kube-ovn-submariner-conformance-e2e
+
+      - name: Cleanup
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: sh dist/images/cleanup.sh
