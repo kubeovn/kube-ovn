@@ -1317,7 +1317,8 @@ jobs:
       - name: Install submariner subctl
         run: |
           curl -Ls https://get.submariner.io | bash
-          mv ~/.local/bin/subctl /usr/bin/
+          chmod +x ~/.local/bin/subctl
+          sudo mv ~/.local/bin/subctl /usr/bin/
 
       - name: Create kind cluster
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
