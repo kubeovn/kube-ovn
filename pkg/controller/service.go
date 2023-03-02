@@ -337,7 +337,7 @@ func (c *Controller) handleUpdateService(key string) error {
 			}
 		}
 	}
-
+	needUpdateEndpointQueue := false
 	// for service update
 	updateVip := func(lb, oLb string, svcVips []string) error {
 		vips, err := c.ovnLegacyClient.GetLoadBalancerVips(lb)
@@ -351,10 +351,11 @@ func (c *Controller) handleUpdateService(key string) error {
 				klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oLb, err)
 				return err
 			}
-			if _, ok := vips[vip]; !ok {
-				klog.Infof("add vip %s to LB %s", vip, lb)
-				c.updateEndpointQueue.Add(key)
-				break
+			if !needUpdateEndpointQueue {
+				if _, ok := vips[vip]; !ok {
+					klog.Infof("add vip %s to LB %s", vip, lb)
+					needUpdateEndpointQueue = true
+				}
 			}
 		}
 		for vip := range vips {
@@ -393,6 +394,9 @@ func (c *Controller) handleUpdateService(key string) error {
 		return err
 	}
 
+	if needUpdateEndpointQueue {
+		c.updateEndpointQueue.Add(key)
+	}
 	return nil
 }
 
