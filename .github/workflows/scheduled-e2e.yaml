@@ -683,6 +683,7 @@ jobs:
       matrix:
         branch:
           - master
+          - release-1.11
     steps:
       - uses: actions/checkout@v3
 
