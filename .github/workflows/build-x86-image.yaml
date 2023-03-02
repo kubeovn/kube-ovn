@@ -1272,8 +1272,6 @@ jobs:
       - build-e2e-binaries
     runs-on: ubuntu-22.04
     timeout-minutes: 60
-    strategy:
-      fail-fast: false
     steps:
       - uses: actions/checkout@v3
 
@@ -1318,6 +1316,12 @@ jobs:
         uses: helm/kind-action@v1
         with:
           install_only: true
+
+      - name: Install submariner subctl
+        run: |
+          curl -Ls https://get.submariner.io | bash
+          sudo chmod +x ~/.local/bin/subctl
+          sudo mv ~/.local/bin/subctl /usr/bin/
 
       - name: Download image
         uses: actions/download-artifact@v3
