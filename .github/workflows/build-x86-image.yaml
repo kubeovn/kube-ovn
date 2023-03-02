@@ -1269,7 +1269,6 @@ jobs:
     name: Kube-OVN Submariner Conformance E2E
     needs:
       - build-kube-ovn
-      - build-e2e-binaries
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     steps:
@@ -1294,23 +1293,6 @@ jobs:
           else
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
-
-      - uses: actions/setup-go@v3
-        with:
-          go-version-file: ${{ env.E2E_DIR }}/go.mod
-          check-latest: true
-
-      - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
-
-      - name: Go cache
-        uses: actions/cache/restore@v3
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1
