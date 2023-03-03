@@ -1323,12 +1323,12 @@ jobs:
 
       - name: Remvoe nftable module
         run: |
-          docker exec kube-ovn-control-plane modprobe -r nf_tables
-          docker exec kube-ovn-worker modprobe -r nf_tables
-          docker exec kube-ovn-worker2 modprobe -r nf_tables
-          docker exec kube-ovn1-control-plane modprobe -r nf_tables
-          docker exec kube-ovn1-worker modprobe -r nf_tables
-          docker exec kube-ovn1-worker2 modprobe -r nf_tables
+          docker exec kube-ovn-control-plane modprobe -r -f nf_tables
+          docker exec kube-ovn-worker modprobe -r -f nf_tables
+          docker exec kube-ovn-worker2 modprobe -r -f nf_tables
+          docker exec kube-ovn1-control-plane modprobe -r -f nf_tables
+          docker exec kube-ovn1-worker modprobe -r -f nf_tables
+          docker exec kube-ovn1-worker2 modprobe -r -f nf_tables
 
       - name: Install Kube-OVN
         run: make kind-install-ovn-submariner
