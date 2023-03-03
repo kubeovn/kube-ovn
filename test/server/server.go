@@ -3,24 +3,27 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/spf13/pflag"
-	"k8s.io/klog/v2"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/spf13/pflag"
+	"k8s.io/klog/v2"
 )
 
 type Configuration struct {
 	DurationSeconds int64
 	RemoteAddress   string
+	RemotePort      uint32
 	Output          string
 }
 
 type Result struct {
 	DurationSeconds     int64
 	RemoteAddress       string
+	RemotePort          uint32
 	TotalIcmpEcho       int
 	IcmpLost            int
 	TotalTcpOutSegments int
@@ -33,6 +36,7 @@ func parseFlag() *Configuration {
 	var (
 		argDurationSeconds = pflag.Int64("duration-seconds", 60, "The duration to run network break detection.")
 		argRemoteAddress   = pflag.String("remote-address", "100.64.0.1", "The remote address to connect.")
+		argRemotePort      = pflag.Uint32("remote-port", 80, "The remote port to connect.")
 		argOutput          = pflag.String("output", "text", "text or json.")
 	)
 
@@ -41,6 +45,7 @@ func parseFlag() *Configuration {
 	config := &Configuration{
 		DurationSeconds: *argDurationSeconds,
 		RemoteAddress:   *argRemoteAddress,
+		RemotePort:      *argRemotePort,
 		Output:          *argOutput,
 	}
 	return config
@@ -108,7 +113,7 @@ func main() {
 			}
 			time.Sleep(100 * time.Millisecond)
 			totalConnection += 1
-			_, err := exec.Command("curl", "-m", "1", fmt.Sprintf("%s:80", config.RemoteAddress)).CombinedOutput()
+			_, err := exec.Command("curl", "-m", "1", fmt.Sprintf("%s:%d", config.RemoteAddress, config.RemotePort)).CombinedOutput()
 			if err != nil {
 				failedConnection += 1
 			}
@@ -143,6 +148,7 @@ func main() {
 	result := Result{
 		DurationSeconds:     config.DurationSeconds,
 		RemoteAddress:       config.RemoteAddress,
+		RemotePort:          config.RemotePort,
 		TotalIcmpEcho:       curIcmpEcho - preIcmpEcho,
 		IcmpLost:            curDiff - preDiff,
 		TotalTcpOutSegments: curOutSegs - preOutSegs,
@@ -152,11 +158,12 @@ func main() {
 	}
 
 	if config.Output == "text" {
+		klog.Infof("remote address = %s, remote port = %d", result.RemoteAddress, result.RemotePort)
 		klog.Infof("total icmp echo %d, lost %d icmp response", result.TotalIcmpEcho, result.IcmpLost)
 		klog.Infof("total out %d tcp segments, retrans %d tcp segments", result.TotalTcpOutSegments, result.TcpRetransSegment)
 		klog.Infof("%d failed connection, %d total connection", result.TotalTcpConnection, result.FailedTcpConnection)
 	} else {
-		output, _ := json.Marshal(result)
+		output, _ := json.MarshalIndent(result, "", "  ")
 		fmt.Println(string(output))
 	}
 }
