@@ -1321,24 +1321,14 @@ jobs:
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
-      - name: Change kind node iptables to legacy
+      - name: Remvoe nftable module
         run: |
-          docker exec kube-ovn-control-plane update-alternatives --set iptables /usr/sbin/iptables-legacy
-          docker exec kube-ovn-worker update-alternatives --set iptables /usr/sbin/iptables-legacy
-          docker exec kube-ovn-worker2 update-alternatives --set iptables /usr/sbin/iptables-legacy
-          docker exec kube-ovn1-control-plane update-alternatives --set iptables /usr/sbin/iptables-legacy
-          docker exec kube-ovn1-worker update-alternatives --set iptables /usr/sbin/iptables-legacy
-          docker exec kube-ovn1-worker2 update-alternatives --set iptables /usr/sbin/iptables-legacy
-
-          docker exec kube-ovn-control-plane update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
-          docker exec kube-ovn-worker update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
-          docker exec kube-ovn-worker2 update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
-          docker exec kube-ovn1-control-plane update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
-          docker exec kube-ovn1-worker update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
-          docker exec kube-ovn1-worker2 update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
-
-          docker exec kube-ovn1-worker2 iptables -V
-          docker exec kube-ovn-worker2 iptables -V
+          docker exec kube-ovn-control-plane modprobe -r nf_tables
+          docker exec kube-ovn-worker modprobe -r nf_tables
+          docker exec kube-ovn-worker2 modprobe -r nf_tables
+          docker exec kube-ovn1-control-plane modprobe -r nf_tables
+          docker exec kube-ovn1-worker modprobe -r nf_tables
+          docker exec kube-ovn1-worker2 modprobe -r nf_tables
 
       - name: Install Kube-OVN
         run: make kind-install-ovn-submariner
