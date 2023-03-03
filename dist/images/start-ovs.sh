@@ -59,17 +59,6 @@ function quit {
 }
 trap quit EXIT
 
-gen_name=$(kubectl -n $POD_NAMESPACE get pod $POD_NAME -o jsonpath='{.metadata.generateName}')
-selector=$(kubectl -n $POD_NAMESPACE get ds ovs-ovn -o 'go-template={{range $k,$v:=.spec.selector.matchLabels}}{{$k}}{{"="}}{{$v}}{{","}}{{end}}' | sed 's/,$//')
-while true; do
-  count=$(kubectl -n $POD_NAMESPACE get pod -l $selector --field-selector spec.nodeName=$KUBE_NODE_NAME --no-headers | wc -l)
-  if [ $count -eq 1 ]; then
-    break
-  fi
-  echo "waiting for other ${gen_name%-} pods on node $KUBE_NODE_NAME to exit..."
-  sleep 1
-done
-
 # Start ovsdb
 /usr/share/openvswitch/scripts/ovs-ctl restart --no-ovs-vswitchd --system-id=random
 # Restrict the number of pthreads ovs-vswitchd creates to reduce the
@@ -207,7 +196,7 @@ else
 fi
 
 # Start vswitchd. restart will automatically set/unset flow-restore-wait which is not what we want
-/usr/share/openvswitch/scripts/ovs-ctl start --no-ovsdb-server --system-id=random --no-mlockall
+/usr/share/openvswitch/scripts/ovs-ctl restart --no-ovsdb-server --system-id=random --no-mlockall
 /usr/share/openvswitch/scripts/ovs-ctl --protocol=udp --dport=6081 enable-protocol
 
 sleep 1
