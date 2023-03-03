@@ -44,11 +44,31 @@ function quit {
   # Wait a while for prob ready.
   # As the timeout has been increased existing entry will not change to stale or delay at the moment
   sleep 5
-  /usr/share/ovn/scripts/grace_stop_ovn_controller
-  /usr/share/openvswitch/scripts/ovs-ctl stop
+
+  gen_name=$(kubectl -n $POD_NAMESPACE get pod $POD_NAME -o jsonpath='{.metadata.generateName}')
+  revision_hash=$(kubectl -n $POD_NAMESPACE get pod $POD_NAME -o jsonpath='{.metadata.labels.controller-revision-hash}')
+  revision=$(kubectl -n $POD_NAMESPACE get controllerrevision $gen_name$revision_hash -o jsonpath='{.revision}')
+  ds_name=${gen_name%-}
+  latest_revision=$(kubectl -n kube-system get controllerrevision --no-headers | awk '$2 == "daemonset.apps/'$ds_name'" {print $3}' | sort -nr | head -n1)
+  if [ "x$latest_revision" = "x$revision" ]; then
+    /usr/share/ovn/scripts/grace_stop_ovn_controller
+    /usr/share/openvswitch/scripts/ovs-ctl stop
+  fi
+
   exit 0
 }
 trap quit EXIT
+
+gen_name=$(kubectl -n $POD_NAMESPACE get pod $POD_NAME -o jsonpath='{.metadata.generateName}')
+selector=$(kubectl -n $POD_NAMESPACE get ds ovs-ovn -o 'go-template={{range $k,$v:=.spec.selector.matchLabels}}{{$k}}{{"="}}{{$v}}{{","}}{{end}}' | sed 's/,$//')
+while true; do
+  count=$(kubectl -n $POD_NAMESPACE get pod -l $selector --field-selector spec.nodeName=$KUBE_NODE_NAME --no-headers | wc -l)
+  if [ $count -eq 1 ]; then
+    break
+  fi
+  echo "waiting for other ${gen_name%-} pods on node $KUBE_NODE_NAME to exit..."
+  sleep 1
+done
 
 # Start ovsdb
 /usr/share/openvswitch/scripts/ovs-ctl restart --no-ovs-vswitchd --system-id=random

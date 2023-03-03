@@ -1894,6 +1894,13 @@ rules:
       - patch
       - update
   - apiGroups:
+      - apps
+    resources:
+      - controllerrevisions
+    verbs:
+      - get
+      - list
+  - apiGroups:
       - coordination.k8s.io
     resources:
       - leases
@@ -2386,6 +2393,13 @@ rules:
       - patch
       - update
   - apiGroups:
+      - apps
+    resources:
+      - controllerrevisions
+    verbs:
+      - get
+      - list
+  - apiGroups:
       - coordination.k8s.io
     resources:
       - leases
@@ -2639,7 +2653,10 @@ spec:
     matchLabels:
       app: ovs
   updateStrategy:
-    type: OnDelete
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   template:
     metadata:
       labels:
@@ -2673,6 +2690,14 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
             - name: HW_OFFLOAD
               value: "$HW_OFFLOAD"
             - name: TUNNEL_TYPE
