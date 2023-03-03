@@ -1269,7 +1269,7 @@ jobs:
     name: Kube-OVN Submariner Conformance E2E
     needs:
       - build-kube-ovn
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v3
@@ -1293,10 +1293,6 @@ jobs:
           else
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
-
-      - name: Remvoe host nftable module
-        run: |
-          sudo modprobe -r -f nf_tables
 
       - name: Install kind
         uses: helm/kind-action@v1
