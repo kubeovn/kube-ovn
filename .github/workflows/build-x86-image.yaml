@@ -1320,7 +1320,6 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-ovn-submariner
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
-          sudo tree ~/.kube/
 
       - name: Install Kube-OVN
         run: make kind-install-ovn-submariner
