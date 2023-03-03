@@ -59,6 +59,7 @@ e2e-build:
 	ginkgo build ./test/e2e/lb-svc
 	ginkgo build ./test/e2e/ovn-eip
 	ginkgo build ./test/e2e/security
+	ginkgo build ./test/e2e/kubevirt
 
 .PHONY: k8s-conformance-e2e
 k8s-conformance-e2e:
@@ -141,3 +142,12 @@ kube-ovn-security-e2e:
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all --always-emit-ginkgo-writer \
 		--focus=CNI:Kube-OVN ./test/e2e/security/security.test
+
+.PHONY: kube-ovn-kubevirt-e2e
+kube-ovn-kubevirt-e2e:
+	ginkgo build ./test/e2e/kubevirt
+	E2E_BRANCH=$(E2E_BRANCH) \
+	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
+	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
+	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all --always-emit-ginkgo-writer \
+		--focus=CNI:Kube-OVN ./test/e2e/kubevirt/kubevirt.test
