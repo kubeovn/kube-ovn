@@ -1323,22 +1323,22 @@ jobs:
 
       - name: Change kind node iptables to legacy
         run: |
-          docker exec -it kube-ovn-control-plane update-alternatives --set iptables /usr/sbin/iptables-legacy
-          docker exec -it kube-ovn-worker update-alternatives --set iptables /usr/sbin/iptables-legacy
-          docker exec -it kube-ovn-worker2 update-alternatives --set iptables /usr/sbin/iptables-legacy
-          docker exec -it kube-ovn1-control-plane update-alternatives --set iptables /usr/sbin/iptables-legacy
-          docker exec -it kube-ovn1-worker update-alternatives --set iptables /usr/sbin/iptables-legacy
-          docker exec -it kube-ovn1-worker2 update-alternatives --set iptables /usr/sbin/iptables-legacy
+          docker exec kube-ovn-control-plane update-alternatives --set iptables /usr/sbin/iptables-legacy
+          docker exec kube-ovn-worker update-alternatives --set iptables /usr/sbin/iptables-legacy
+          docker exec kube-ovn-worker2 update-alternatives --set iptables /usr/sbin/iptables-legacy
+          docker exec kube-ovn1-control-plane update-alternatives --set iptables /usr/sbin/iptables-legacy
+          docker exec kube-ovn1-worker update-alternatives --set iptables /usr/sbin/iptables-legacy
+          docker exec kube-ovn1-worker2 update-alternatives --set iptables /usr/sbin/iptables-legacy
 
-          docker exec -it kube-ovn-control-plane update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
-          docker exec -it kube-ovn-worker update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
-          docker exec -it kube-ovn-worker2 update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
-          docker exec -it kube-ovn1-control-plane update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
-          docker exec -it kube-ovn1-worker update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
-          docker exec -it kube-ovn1-worker2 update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+          docker exec kube-ovn-control-plane update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+          docker exec kube-ovn-worker update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+          docker exec kube-ovn-worker2 update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+          docker exec kube-ovn1-control-plane update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+          docker exec kube-ovn1-worker update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+          docker exec kube-ovn1-worker2 update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
 
-          docker exec -it kube-ovn1-worker2 iptables -V
-          docker exec -it kube-ovn-worker2 iptables -V
+          docker exec kube-ovn1-worker2 iptables -V
+          docker exec kube-ovn-worker2 iptables -V
 
       - name: Install Kube-OVN
         run: make kind-install-ovn-submariner
