@@ -39,7 +39,7 @@ ICMP test result:
 | Node address the Pod runs on      | 1    |
 | Pod address in another node       | 0    |
 | ovn0 address with in another node | 0    |
-| Node address of anther node       | 0    |
+| Node address of another node      | 0    |
 | Address outside the cluster       | 0    |
 
 TCP test result:
