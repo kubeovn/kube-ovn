@@ -77,7 +77,7 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service) (dp *v1.Deployment)
 		"service":   svc.Name,
 	}
 
-	image := "kubeovn/vpc-nat-gateway:v1.11.0"
+	image := "kubeovn/vpc-nat-gateway:v1.12.0"
 	if svc.Annotations[util.LbSvcPodImg] != "" {
 		image = svc.Annotations[util.LbSvcPodImg]
 	}
