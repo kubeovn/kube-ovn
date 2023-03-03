@@ -1294,6 +1294,10 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
+      - name: Remvoe host nftable module
+        run: |
+          sudo modprobe -r -f nf_tables
+
       - name: Install kind
         uses: helm/kind-action@v1
         with:
@@ -1320,15 +1324,6 @@ jobs:
           sudo PATH=~/.local/bin:$PATH make kind-init-ovn-submariner
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
-
-      - name: Remvoe nftable module
-        run: |
-          docker exec kube-ovn-control-plane modprobe -r -f nf_tables
-          docker exec kube-ovn-worker modprobe -r -f nf_tables
-          docker exec kube-ovn-worker2 modprobe -r -f nf_tables
-          docker exec kube-ovn1-control-plane modprobe -r -f nf_tables
-          docker exec kube-ovn1-worker modprobe -r -f nf_tables
-          docker exec kube-ovn1-worker2 modprobe -r -f nf_tables
 
       - name: Install Kube-OVN
         run: make kind-install-ovn-submariner
