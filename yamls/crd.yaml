@@ -140,6 +140,67 @@ spec:
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
+  name: vpc-nat-gateways.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: vpc-nat-gateways
+    singular: vpc-nat-gateway
+    shortNames:
+      - vpc-nat-gw
+    kind: VpcNatGateway
+    listKind: VpcNatGatewayList
+  scope: Cluster
+  versions:
+    - additionalPrinterColumns:
+        - jsonPath: .spec.vpc
+          name: Vpc
+          type: string
+        - jsonPath: .spec.subnet
+          name: Subnet
+          type: string
+        - jsonPath: .spec.lanIp
+          name: LanIP
+          type: string
+      name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                lanIp:
+                  type: string
+                subnet:
+                  type: string
+                vpc:
+                  type: string
+                selector:
+                  type: array
+                  items:
+                    type: string
+                tolerations:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      key:
+                        type: string
+                      operator:
+                        type: string
+                      value:
+                        type: string
+                      effect:
+                        type: string
+                      tolerationSeconds:
+                        type: integer
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
   name: iptables-eips.kubeovn.io
 spec:
   group: kubeovn.io
@@ -478,6 +539,387 @@ spec:
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
+  name: ovn-eips.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: ovn-eips
+    singular: ovn-eip
+    shortNames:
+      - oeip
+    kind: OvnEip
+    listKind: OvnEipList
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+      - jsonPath: .status.v4Ip
+        name: V4IP
+        type: string
+      - jsonPath: .status.v6Ip
+        name: V6IP
+        type: string
+      - jsonPath: .status.macAddress
+        name: Mac
+        type: string
+      - jsonPath: .spec.type
+        name: Type
+        type: string
+      - jsonPath: .status.ready
+        name: Ready
+        type: boolean
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            status:
+              type: object
+              properties:
+                ready:
+                  type: boolean
+                v4Ip:
+                  type: string
+                v6Ip:
+                  type: string
+                macAddress:
+                  type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                      lastUpdateTime:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+            spec:
+              type: object
+              properties:
+                externalSubnet:
+                  type: string
+                type:
+                  type: string
+                v4Ip:
+                  type: string
+                v6Ip:
+                  type: string
+                macAddress:
+                  type: string
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: ovn-fips.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: ovn-fips
+    singular: ovn-fip
+    shortNames:
+      - ofip
+    kind: OvnFip
+    listKind: OvnFipList
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+      - jsonPath: .status.vpc
+        name: Vpc
+        type: string
+      - jsonPath: .status.v4Eip
+        name: V4Eip
+        type: string
+      - jsonPath: .status.v4Ip
+        name: V4Ip
+        type: string
+      - jsonPath: .status.ready
+        name: Ready
+        type: boolean
+      - jsonPath: .spec.ipType
+        name: IpType
+        type: string
+      - jsonPath: .spec.ipName
+        name: IpName
+        type: string
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            status:
+              type: object
+              properties:
+                ready:
+                  type: boolean
+                v4Eip:
+                  type: string
+                v4Ip:
+                  type: string
+                macAddress:
+                  type: string
+                vpc:
+                  type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                      lastUpdateTime:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+            spec:
+              type: object
+              properties:
+                ovnEip:
+                  type: string
+                ipType:
+                  type: string
+                ipName:
+                  type: string
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: ovn-snat-rules.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: ovn-snat-rules
+    singular: ovn-snat-rule
+    shortNames:
+      - osnat
+    kind: OvnSnatRule
+    listKind: OvnSnatRuleList
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+      - jsonPath: .status.vpc
+        name: Vpc
+        type: string
+      - jsonPath: .status.v4Eip
+        name: V4Eip
+        type: string
+      - jsonPath: .status.v4ipCidr
+        name: V4Ip
+        type: string
+      - jsonPath: .status.ready
+        name: Ready
+        type: boolean
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            status:
+              type: object
+              properties:
+                ready:
+                  type: boolean
+                v4Eip:
+                  type: string
+                v4ipCidr:
+                  type: string
+                vpc:
+                  type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                      lastUpdateTime:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+            spec:
+              type: object
+              properties:
+                ovnEip:
+                  type: string
+                vpcSubnet:
+                  type: string
+                ipName:
+                  type: string
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: vpcs.kubeovn.io
+spec:
+  group: kubeovn.io
+  versions:
+    - additionalPrinterColumns:
+        - jsonPath: .status.enableExternal
+          name: EnableExternal
+          type: boolean
+        - jsonPath: .status.enableBfd
+          name: EnableBfd
+          type: boolean
+        - jsonPath: .status.standby
+          name: Standby
+          type: boolean
+        - jsonPath: .status.subnets
+          name: Subnets
+          type: string
+        - jsonPath: .spec.namespaces
+          name: Namespaces
+          type: string
+      name: v1
+      schema:
+        openAPIV3Schema:
+          properties:
+            spec:
+              properties:
+                enableExternal:
+                  type: boolean
+                enableBfd:
+                  type: boolean
+                namespaces:
+                  items:
+                    type: string
+                  type: array
+                staticRoutes:
+                  items:
+                    properties:
+                      policy:
+                        type: string
+                      cidr:
+                        type: string
+                      nextHopIP:
+                        type: string
+                      ecmp:
+                        type: string
+                      bfdId:
+                        type: string
+                    type: object
+                  type: array
+                policyRoutes:
+                  items:
+                    properties:
+                      priority:
+                        type: integer
+                      action:
+                        type: string
+                      match:
+                        type: string
+                      nextHopIP:
+                        type: string
+                    type: object
+                  type: array
+                vpcPeerings:
+                  items:
+                    properties:
+                      remoteVpc:
+                        type: string
+                      localConnectIP:
+                        type: string
+                    type: object
+                  type: array
+              type: object
+            status:
+              properties:
+                conditions:
+                  items:
+                    properties:
+                      lastTransitionTime:
+                        type: string
+                      lastUpdateTime:
+                        type: string
+                      message:
+                        type: string
+                      reason:
+                        type: string
+                      status:
+                        type: string
+                      type:
+                        type: string
+                    type: object
+                  type: array
+                default:
+                  type: boolean
+                defaultLogicalSwitch:
+                  type: string
+                router:
+                  type: string
+                standby:
+                  type: boolean
+                enableExternal:
+                  type: boolean
+                enableBfd:
+                  type: boolean
+                subnets:
+                  items:
+                    type: string
+                  type: array
+                vpcPeerings:
+                  items:
+                    type: string
+                  type: array
+                tcpLoadBalancer:
+                  type: string
+                tcpSessionLoadBalancer:
+                  type: string
+                udpLoadBalancer:
+                  type: string
+                udpSessionLoadBalancer:
+                  type: string
+                sctpLoadBalancer:
+                  type: string
+                sctpSessionLoadBalancer:
+                  type: string
+              type: object
+          type: object
+      served: true
+      storage: true
+      subresources:
+        status: {}
+  names:
+    kind: Vpc
+    listKind: VpcList
+    plural: vpcs
+    shortNames:
+      - vpc
+    singular: vpc
+  scope: Cluster
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
   name: ips.kubeovn.io
 spec:
   group: kubeovn.io
@@ -569,19 +1011,19 @@ spec:
       additionalPrinterColumns:
       - name: V4IP
         type: string
-        jsonPath: .spec.v4ip
+        jsonPath: .status.v4ip
       - name: PV4IP
         type: string
         jsonPath: .spec.parentV4ip
       - name: Mac
         type: string
-        jsonPath: .spec.macAddress
+        jsonPath: .status.mac
       - name: PMac
         type: string
-        jsonPath: .spec.ParentMac
+        jsonPath: .spec.parentMac
       - name: V6IP
         type: string
-        jsonPath: .spec.v6ip
+        jsonPath: .status.v6ip
       - name: PV6IP
         type: string
         jsonPath: .spec.parentV6ip
@@ -1029,190 +1471,6 @@ spec:
     singular: provider-network
     kind: ProviderNetwork
     listKind: ProviderNetworkList
----
-apiVersion: apiextensions.k8s.io/v1
-kind: CustomResourceDefinition
-metadata:
-  name: vpcs.kubeovn.io
-spec:
-  group: kubeovn.io
-  versions:
-    - additionalPrinterColumns:
-        - jsonPath: .status.standby
-          name: Standby
-          type: boolean
-        - jsonPath: .status.subnets
-          name: Subnets
-          type: string
-        - jsonPath: .spec.namespaces
-          name: Namespaces
-          type: string
-      name: v1
-      schema:
-        openAPIV3Schema:
-          properties:
-            spec:
-              properties:
-                namespaces:
-                  items:
-                    type: string
-                  type: array
-                staticRoutes:
-                  items:
-                    properties:
-                      policy:
-                        type: string
-                      cidr:
-                        type: string
-                      nextHopIP:
-                        type: string
-                    type: object
-                  type: array
-                policyRoutes:
-                  items:
-                    properties:
-                      priority:
-                        type: integer
-                      action:
-                        type: string
-                      match:
-                        type: string
-                      nextHopIP:
-                        type: string
-                    type: object
-                  type: array
-                vpcPeerings:
-                  items:
-                    properties:
-                      remoteVpc:
-                        type: string
-                      localConnectIP:
-                        type: string
-                    type: object
-                  type: array
-              type: object
-            status:
-              properties:
-                conditions:
-                  items:
-                    properties:
-                      lastTransitionTime:
-                        type: string
-                      lastUpdateTime:
-                        type: string
-                      message:
-                        type: string
-                      reason:
-                        type: string
-                      status:
-                        type: string
-                      type:
-                        type: string
-                    type: object
-                  type: array
-                default:
-                  type: boolean
-                defaultLogicalSwitch:
-                  type: string
-                router:
-                  type: string
-                standby:
-                  type: boolean
-                subnets:
-                  items:
-                    type: string
-                  type: array
-                vpcPeerings:
-                  items:
-                    type: string
-                  type: array
-                tcpLoadBalancer:
-                  type: string
-                tcpSessionLoadBalancer:
-                  type: string
-                udpLoadBalancer:
-                  type: string
-                udpSessionLoadBalancer:
-                  type: string
-                sctpLoadBalancer:
-                  type: string
-                sctpSessionLoadBalancer:
-                  type: string
-              type: object
-          type: object
-      served: true
-      storage: true
-      subresources:
-        status: {}
-  names:
-    kind: Vpc
-    listKind: VpcList
-    plural: vpcs
-    shortNames:
-      - vpc
-    singular: vpc
-  scope: Cluster
----
-apiVersion: apiextensions.k8s.io/v1
-kind: CustomResourceDefinition
-metadata:
-  name: vpc-nat-gateways.kubeovn.io
-spec:
-  group: kubeovn.io
-  names:
-    plural: vpc-nat-gateways
-    singular: vpc-nat-gateway
-    shortNames:
-      - vpc-nat-gw
-    kind: VpcNatGateway
-    listKind: VpcNatGatewayList
-  scope: Cluster
-  versions:
-    - additionalPrinterColumns:
-        - jsonPath: .spec.vpc
-          name: Vpc
-          type: string
-        - jsonPath: .spec.subnet
-          name: Subnet
-          type: string
-        - jsonPath: .spec.lanIp
-          name: LanIP
-          type: string
-      name: v1
-      served: true
-      storage: true
-      schema:
-        openAPIV3Schema:
-          type: object
-          properties:
-            spec:
-              type: object
-              properties:
-                lanIp:
-                  type: string
-                subnet:
-                  type: string
-                vpc:
-                  type: string
-                selector:
-                  type: array
-                  items:
-                    type: string
-                tolerations:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      key:
-                        type: string
-                      operator:
-                        type: string
-                      value:
-                        type: string
-                      effect:
-                        type: string
-                      tolerationSeconds:
-                        type: integer
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
