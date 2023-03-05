@@ -313,9 +313,9 @@ kind-install-chart: kind-load-image kind-untaint-control-plane
 	kubectl rollout status deployment/coredns -n kube-system --timeout 60s
 
 .PHONY: kind-upgrade-chart
-kind-upgrade-chart:
+kind-upgrade-chart: kind-load-image
 	$(eval OVN_DB_IPS = $(shell kubectl get no -lkube-ovn/role=master --no-headers -o wide | awk '{print $$6}' | tr \\n ',' | sed -e 's/,$$//' -e 's/,/\\,/g'))
-	helm upgrade --debug kubeovn ./kubeovn-helm \
+	helm upgrade kubeovn ./kubeovn-helm \
 		--set global.images.kubeovn.tag=$(VERSION) \
 		--set replicaCount=$$(echo $(OVN_DB_IPS) | awk -F ',' '{print NF}') \
 		--set MASTER_NODES='$(OVN_DB_IPS)'

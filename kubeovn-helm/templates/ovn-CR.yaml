@@ -57,6 +57,7 @@ rules:
       - watch
       - patch
       - update
+      - delete
   - apiGroups:
       - ""
       - networking.k8s.io
