@@ -13,7 +13,7 @@ CONTROL_PLANE_TAINTS = node-role.kubernetes.io/master node-role.kubernetes.io/co
 MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:stable
 MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset.yml
 
-CILIUM_VERSION = 1.11.6
+CILIUM_VERSION = 1.12.7
 CILIUM_IMAGE_REPO = quay.io/cilium/cilium
 
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
@@ -259,10 +259,6 @@ kind-init-ipv6:
 kind-init-dual:
 	@ip_family=dual $(MAKE) kind-init
 
-.PHONY: kind-init-cilium
-kind-init-cilium:
-	@kube_proxy_mode=iptables $(MAKE) kind-init
-
 .PHONY: kind-load-image
 kind-load-image:
 	$(call kind_load_image,kube-ovn,$(REGISTRY)/kube-ovn:$(VERSION))
@@ -439,12 +435,12 @@ kind-install-multus:
 	kubectl apply -f "$(MULTUS_YAML)"
 	kubectl -n kube-system rollout status ds kube-multus-ds
 
-.PHONY: kind-install-cilium
-kind-install-cilium: kind-load-image kind-untaint-control-plane
+.PHONY: kind-install-cilium-chaining
+kind-install-cilium-chaining: kind-load-image kind-untaint-control-plane
 	$(eval KUBERNETES_SERVICE_HOST = $(shell kubectl get nodes kube-ovn-control-plane -o jsonpath='{.status.addresses[0].address}'))
 	$(call docker_ensure_image_exists,$(CILIUM_IMAGE_REPO):v$(CILIUM_VERSION))
 	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO):v$(CILIUM_VERSION))
-	kubectl apply -f yamls/chaining.yaml
+	kubectl apply -f yamls/cilium-chaining.yaml
 	helm repo add cilium https://helm.cilium.io/
 	helm install cilium cilium/cilium \
 		--version $(CILIUM_VERSION) \
@@ -452,15 +448,15 @@ kind-install-cilium: kind-load-image kind-untaint-control-plane
 		--set k8sServiceHost=$(KUBERNETES_SERVICE_HOST) \
 		--set k8sServicePort=6443 \
 		--set tunnel=disabled \
+		--set sessionAffinity=true \
 		--set enableIPv4Masquerade=false \
-		--set enableIdentityMark=false \
 		--set cni.chainingMode=generic-veth \
 		--set cni.customConf=true \
 		--set cni.configMap=cni-configuration
 	kubectl -n kube-system rollout status ds cilium --timeout 300s
-	bash dist/images/cilium.sh
+	bash dist/images/install-cilium-cli.sh
 	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | \
-	ENABLE_LB=false ENABLE_NP=false WITHOUT_KUBE_PROXY=true CNI_CONFIG_PRIORITY=10 bash
+		ENABLE_LB=false ENABLE_NP=false CNI_CONFIG_PRIORITY=10 bash
 	kubectl describe no
 
 .PHONY: kind-reload
