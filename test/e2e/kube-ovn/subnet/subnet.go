@@ -348,6 +348,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		framework.ExpectEmpty(subnet.Spec.AllowSubnets)
 
 		ginkgo.By("Validating subnet status fields")
+		time.Sleep(2 * time.Second)
 		framework.ExpectContainElement(gatewayNodes, subnet.Status.ActivateGateway)
 		framework.ExpectZero(subnet.Status.V4UsingIPs)
 		framework.ExpectZero(subnet.Status.V6UsingIPs)
