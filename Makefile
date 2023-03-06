@@ -369,8 +369,7 @@ kind-install-ovn-ic: kind-load-image kind-install
 	kubectl -n kube-system get pods | grep ovs-ovn | awk '{print $$1}' | xargs kubectl -n kube-system delete pod
 
 .PHONY: kind-install-ovn-submariner
-kind-install-ovn-submariner:
-	$(call kind_load_image,kube-ovn,$(REGISTRY)/kube-ovn:$(VERSION))
+kind-install-ovn-submariner: kind-load-image
 	kubectl config use-context kind-kube-ovn
 	@$(MAKE) kind-untaint-control-plane
 	@sed -e 's/10\.96\.0\.0\/12/10.96.0.0\/16/g' \
@@ -581,8 +580,7 @@ kind-clean-ovn-ic: kind-clean
 	kind delete cluster --name=kube-ovn1
 
 .PHONY: kind-clean-ovn-submariner
-kind-clean-ovn-submariner:
-	kind delete cluster --name=kube-ovn
+kind-clean-ovn-submariner: kind-clean
 	kind delete cluster --name=kube-ovn1
 
 .PHONY: uninstall
