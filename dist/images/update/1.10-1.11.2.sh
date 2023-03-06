@@ -2,7 +2,7 @@
 set -eo pipefail
 
 echo "begin upgrade iptables-dnat-rules"
-all_dnat=$(k get dnat -o name)
+all_dnat=$(kubectl get dnat -o name)
 for dnat in $all_dnat;do
     nat_anno=$(kubectl get $dnat -o jsonpath='{.metadata.annotations}'|grep "ovn.kubernetes.io/vpc_eip")
     if [ -n "$nat_anno" ];then
@@ -20,7 +20,7 @@ for dnat in $all_dnat;do
 done
 
 echo "begin annotate iptables-snat-rules.kubeovn.io"
-all_snat=$(k get snat -o name)
+all_snat=$(kubectl get snat -o name)
 for snat in $all_snat;do
     nat_anno=$(kubectl get $snat -o jsonpath='{.metadata.annotations}'|grep "ovn.kubernetes.io/vpc_eip")
     if [ -n "$nat_anno" ];then
@@ -37,7 +37,7 @@ for snat in $all_snat;do
 done
 
 echo "begin annotate iptables-fip-rules.kubeovn.io"
-all_fip=$(k get fip -o name)
+all_fip=$(kubectl get fip -o name)
 for fip in $all_fip;do
     nat_anno=$(kubectl get $fip -o jsonpath='{.metadata.annotations}'|grep "ovn.kubernetes.io/vpc_eip")
     if [ -n "$nat_anno" ];then
