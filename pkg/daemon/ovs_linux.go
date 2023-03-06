@@ -339,7 +339,7 @@ func checkGatewayReady(gwCheckMode int, intr, ipAddr, gateway string, underlayGa
 	var err error
 
 	if gwCheckMode == gatewayCheckModeArpingNotConcerned || gwCheckMode == gatewayCheckModePingNotConcerned {
-		// ignore error while ‘disableGatewayCheck=true’
+		// ignore error if disableGatewayCheck=true
 		if err = waitNetworkReady(intr, ipAddr, gateway, underlayGateway, verbose, 1); err != nil {
 			err = nil
 		}
@@ -404,7 +404,6 @@ func configureNodeNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int
 		klog.Errorf("failed to init ovn0 check: %v", err)
 		return err
 	}
-
 	return nil
 }
 
@@ -427,7 +426,7 @@ func (c *Controller) loopOvn0Check() {
 	}
 	ip := node.Annotations[util.IpAddressAnnotation]
 	gw := node.Annotations[util.GatewayAnnotation]
-	if err := waitNetworkReady(util.NodeNic, ip, gw, false, false, gatewayCheckMaxRetry); err != nil {
+	if err := waitNetworkReady(util.NodeNic, ip, gw, false, false, 5); err != nil {
 		util.LogFatalAndExit(err, "failed to ping ovn0 gateway %s", gw)
 	}
 }
