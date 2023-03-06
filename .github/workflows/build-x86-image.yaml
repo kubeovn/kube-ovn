@@ -22,7 +22,7 @@ concurrency:
 
 env:
   GOSEC_VERSION: '2.15.0'
-  HELM_VERSION: v3.10.3
+  HELM_VERSION: v3.11.1
 
 jobs:
   build-kube-ovn:
@@ -758,11 +758,13 @@ jobs:
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
-      - name: Install Kube-OVN
-        run: make kind-install
+      - name: Install Kube-OVN with Cilium chaining
+        run: make kind-install-cilium-chaining
 
       - name: Run E2E
         working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_CILIUM_CHAINING: "true"
         run: make k8s-conformance-e2e
 
       - name: Cleanup
