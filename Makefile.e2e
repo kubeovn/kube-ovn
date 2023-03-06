@@ -108,8 +108,10 @@ kube-ovn-submariner-conformance-e2e:
 	subctl verify --kubecontexts kind-kube-ovn,kind-kube-ovn1 --verbose --disruptive-tests --kubeconfig ~/.kube/config 2>&1 | { \
         output=$$(cat); \
         if echo "$$output" | grep -q "1 Failed"; then \
+            echo "$$output"; \
             exit 0; \
         else \
+            echo "$$output"; \
             exit 1; \
         fi \
     }
