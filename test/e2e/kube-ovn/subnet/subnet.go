@@ -397,8 +397,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 		modifiedSubnet := subnet.DeepCopy()
 		modifiedSubnet.Spec.EnableEcmp = true
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
-		framework.ExpectEmpty(subnet.Status.ActivateGateway)
 		time.Sleep(2 * time.Second)
+		framework.ExpectEmpty(subnet.Status.ActivateGateway)
 
 		execCmd := "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=nexthops find logical-router-policy " + fmt.Sprintf("external_ids:subnet=%s", subnetName)
 		output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
