@@ -53,4 +53,14 @@ spec:
       containers:
         - name: post-upgrade-job
           image: "{{ .Values.global.registry.address}}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}"
-          command: ["/kube-ovn/upgrade-ovs.sh"]
+          command:
+            - sh
+            - -c
+            - /kube-ovn/upgrade-ovs.sh 2>&1 | tee -a /var/log/kube-ovn/upgrade-ovs.log
+          volumeMounts:
+            - mountPath: /var/log/kube-ovn
+              name: kube-ovn-log
+      volumes:
+        - name: kube-ovn-log
+          hostPath:
+            path: /var/log/kube-ovn

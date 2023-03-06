@@ -557,15 +557,21 @@ spec:
       subresources:
         status: {}
       additionalPrinterColumns:
-      - jsonPath: .spec.v4ip
-        name: IP
+      - jsonPath: .status.v4Ip
+        name: V4IP
         type: string
-      - jsonPath: .spec.macAddress
+      - jsonPath: .status.v6Ip
+        name: V6IP
+        type: string
+      - jsonPath: .status.macAddress
         name: Mac
         type: string
       - jsonPath: .spec.type
         name: Type
         type: string
+      - jsonPath: .status.ready
+        name: Ready
+        type: boolean
       schema:
         openAPIV3Schema:
           type: object
@@ -573,7 +579,11 @@ spec:
             status:
               type: object
               properties:
+                ready:
+                  type: boolean
                 v4Ip:
+                  type: string
+                v6Ip:
                   type: string
                 macAddress:
                   type: string
@@ -601,7 +611,9 @@ spec:
                   type: string
                 type:
                   type: string
-                v4ip:
+                v4Ip:
+                  type: string
+                v6Ip:
                   type: string
                 macAddress:
                   type: string
@@ -639,6 +651,12 @@ spec:
       - jsonPath: .status.ready
         name: Ready
         type: boolean
+      - jsonPath: .spec.ipType
+        name: IpType
+        type: string
+      - jsonPath: .spec.ipName
+        name: IpName
+        type: string
       schema:
         openAPIV3Schema:
           type: object
@@ -677,6 +695,8 @@ spec:
               type: object
               properties:
                 ovnEip:
+                  type: string
+                ipType:
                   type: string
                 ipName:
                   type: string
@@ -767,6 +787,9 @@ spec:
         - jsonPath: .status.enableExternal
           name: EnableExternal
           type: boolean
+        - jsonPath: .status.enableBfd
+          name: EnableBfd
+          type: boolean
         - jsonPath: .status.standby
           name: Standby
           type: boolean
@@ -784,6 +807,8 @@ spec:
               properties:
                 enableExternal:
                   type: boolean
+                enableBfd:
+                  type: boolean
                 namespaces:
                   items:
                     type: string
@@ -796,6 +821,10 @@ spec:
                       cidr:
                         type: string
                       nextHopIP:
+                        type: string
+                      ecmp:
+                        type: string
+                      bfdId:
                         type: string
                     type: object
                   type: array
@@ -851,6 +880,8 @@ spec:
                   type: boolean
                 enableExternal:
                   type: boolean
+                enableBfd:
+                  type: boolean
                 subnets:
                   items:
                     type: string
@@ -866,6 +897,10 @@ spec:
                 udpLoadBalancer:
                   type: string
                 udpSessionLoadBalancer:
+                  type: string
+                sctpLoadBalancer:
+                  type: string
+                sctpSessionLoadBalancer:
                   type: string
               type: object
           type: object
@@ -1203,8 +1238,6 @@ spec:
                 gatewayNode:
                   type: string
                 natOutgoing:
-                  type: boolean
-                u2oRouting:
                   type: boolean
                 externalEgressGateway:
                   type: string
