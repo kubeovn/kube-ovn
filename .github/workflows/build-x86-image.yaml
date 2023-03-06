@@ -643,11 +643,7 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
-        run: |
-          make kind-install-chart
-          kubectl rollout status deployment/ovn-central -n kube-system --timeout 300s
-          kubectl rollout status deployment/kube-ovn-controller -n kube-system --timeout 300s
-          kubectl rollout status daemonset/kube-ovn-cni -n kube-system --timeout 300s
+        run: make kind-install-chart
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh

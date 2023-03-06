@@ -251,17 +251,20 @@ kind-untaint-control-plane:
 	done
 
 .PHONY: kind-install-chart
-kind-install-chart: kind-untaint-control-plane
-	kubectl label no -lbeta.kubernetes.io/os=linux kubernetes.io/os=linux --overwrite
-	kubectl label no -lnode-role.kubernetes.io/control-plane  kube-ovn/role=master --overwrite
-	kubectl label no -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel  --overwrite
-	$(eval MASTERNODES = $(shell docker exec -i kube-ovn-control-plane kubectl get nodes -l node-role.kubernetes.io/control-plane=""  -o jsonpath='{.items[*].status.addresses[].address}'))
-	$(eval EMPTY := )
-	$(eval SPACE := $(EMPTY))
-	$(eval MASTERS = $(subst SPACE,,,$(strip $$(MASTERNODES))))
-	kind load docker-image --name kube-ovn $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
-	helm install kubeovn ./kubeovn-helm --set cni_conf.MASTER_NODES=$(MASTERNODES)
-	kubectl -n kube-system get pods -o wide
+kind-install-chart: kind-load-image kind-untaint-control-plane
+	kubectl label node -lbeta.kubernetes.io/os=linux kubernetes.io/os=linux --overwrite
+	kubectl label node -lnode-role.kubernetes.io/control-plane kube-ovn/role=master --overwrite
+	kubectl label node -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel --overwrite
+	ips=$$(kubectl get node -lkube-ovn/role=master --no-headers -o wide | awk '{print $$6}') && \
+	helm install kubeovn ./kubeovn-helm \
+		--set global.images.kubeovn.tag=$(VERSION) \
+		--set replicaCount=$$(echo $$ips | awk '{print NF}') \
+		--set cni_conf.MASTER_NODES="$$(echo $$ips | tr \\n ',' | sed -e 's/,$$//' -e 's/,/\\,/g')"
+	kubectl rollout status deployment/ovn-central -n kube-system --timeout 300s
+	kubectl rollout status deployment/kube-ovn-controller -n kube-system --timeout 120s
+	kubectl rollout status daemonset/kube-ovn-cni -n kube-system --timeout 120s
+	kubectl rollout status daemonset/kube-ovn-pinger -n kube-system --timeout 120s
+	kubectl rollout status deployment/coredns -n kube-system --timeout 60s
 
 .PHONY: kind-install
 kind-install: kind-load-image
