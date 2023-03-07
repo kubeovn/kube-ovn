@@ -1340,3 +1340,69 @@ jobs:
           docker push kubeovn/centos7-compile-dev:$TAG-x86
           # docker push kubeovn/centos8-compile:$TAG-x86
           # docker push kubeovn/centos8-compile-dev:$TAG-x86
+
+  kube-ovn-submariner-conformance-e2e:
+    name: Kube-OVN Submariner Conformance E2E
+    needs:
+      - build-kube-ovn
+    runs-on: ubuntu-20.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Create the default branch directory
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=." >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
+          fi
+
+      - name: Install kind
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
+
+      - name: Install submariner subctl
+        run: |
+          curl -Ls https://get.submariner.io | VERSION=v0.13.4 bash
+          sudo chmod +x ~/.local/bin/subctl
+          sudo mv ~/.local/bin/subctl /usr/bin/
+
+      - name: Download image
+        uses: actions/download-artifact@v3
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Create kind cluster
+        run: |
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH make kind-init-ovn-submariner
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
+
+      - name: Install Kube-OVN
+        run: make kind-install-ovn-submariner
+
+      - name: Run E2E
+        working-directory: ${{ env.E2E_DIR }}
+        run: make kube-ovn-submariner-conformance-e2e
+
+      - name: Cleanup
+        run: sh dist/images/cleanup.sh

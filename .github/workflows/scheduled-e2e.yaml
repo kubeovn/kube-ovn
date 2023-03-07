@@ -1064,3 +1064,62 @@ jobs:
       - name: Cleanup
         working-directory: test/e2e/kube-ovn/branches/${{ env.VERSION_TO }}
         run: sh dist/images/cleanup.sh
+
+  kube-ovn-submariner-conformance-e2e:
+    name: Kube-OVN Submariner Conformance E2E
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        branch:
+          - master
+          - release-1.11
+          - release-1.10
+          - release-1.9
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Create branch directory
+        run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
+
+      - name: Check out branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ matrix.branch }}
+          fetch-depth: 1
+          path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+
+      - name: Install kind
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
+
+      - name: Install submariner subctl
+        run: |
+          curl -Ls https://get.submariner.io | VERSION=v0.13.4 bash
+          sudo chmod +x ~/.local/bin/subctl
+          sudo mv ~/.local/bin/subctl /usr/bin/
+
+      - name: Create kind cluster
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: |
+          sudo pip3 install j2cli
+          sudo pip3 install "j2cli[yaml]"
+          sudo PATH=~/.local/bin:$PATH make kind-init-ovn-submariner
+          sudo cp -r /root/.kube/ ~/.kube/
+          sudo chown -R $(id -un). ~/.kube/
+
+      - name: Install Kube-OVN
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: |
+          version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')
+          docker pull kubeovn/kube-ovn:$version
+          VERSION=$version make kind-install-ovn-submariner
+
+      - name: Run E2E
+        run: make kube-ovn-submariner-conformance-e2e
+
+      - name: Cleanup
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: sh dist/images/cleanup.sh
