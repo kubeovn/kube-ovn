@@ -96,3 +96,4 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
+restart_ovs: false

@@ -12,6 +12,8 @@ GOLDFLAGS = "-w -s -extldflags '-z now' -X github.com/kubeovn/kube-ovn/versions.
 
 CONTROL_PLANE_TAINTS = node-role.kubernetes.io/master node-role.kubernetes.io/control-plane
 
+CHART_UPGRADE_RESTART_OVS=$(shell echo $${CHART_UPGRADE_RESTART_OVS:-false})
+
 MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:stable
 MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset.yml
 
@@ -314,9 +316,11 @@ kind-upgrade-chart: kind-load-image
 	helm upgrade kubeovn ./kubeovn-helm \
 		--set global.images.kubeovn.tag=$(VERSION) \
 		--set replicaCount=$$(echo $(OVN_DB_IPS) | awk -F ',' '{print NF}') \
-		--set MASTER_NODES='$(OVN_DB_IPS)'
+		--set MASTER_NODES='$(OVN_DB_IPS)' \
+		--set restart_ovs=$(CHART_UPGRADE_RESTART_OVS)
 	kubectl rollout status deployment/ovn-central -n kube-system --timeout 300s
-	kubectl rollout status deployment/kube-ovn-controller -n kube-system --timeout 300s
+	kubectl rollout status daemonset/ovs-ovn -n kube-system --timeout 120s
+	kubectl rollout status deployment/kube-ovn-controller -n kube-system --timeout 120s
 	kubectl rollout status daemonset/kube-ovn-cni -n kube-system --timeout 120s
 	kubectl rollout status daemonset/kube-ovn-pinger -n kube-system --timeout 120s
 
