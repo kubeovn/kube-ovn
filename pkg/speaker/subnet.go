@@ -4,6 +4,7 @@ package speaker
 import (
 	"context"
 	"fmt"
+	"golang.org/x/sys/unix"
 	"net"
 	"strconv"
 	"strings"
@@ -90,7 +91,8 @@ func (c *Controller) syncSubnetRoutes() {
 			attrInterfaces, _ := bgpapiutil.UnmarshalPathAttributes(path.Pattrs)
 			nextHop := getNextHopFromPathAttributes(attrInterfaces)
 			klog.V(5).Infof("nexthop is %s, routerID is %s", nextHop.String(), c.config.RouterId)
-			if nextHop.String() == c.config.RouterId {
+			route, _ := netlink.RouteGet(nextHop)
+			if len(route) == 1 && route[0].Type == unix.RTN_LOCAL || nextHop.String() == c.config.RouterId {
 				bgpExists = append(bgpExists, d.Prefix)
 				return
 			}
