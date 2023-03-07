@@ -406,7 +406,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		ginkgo.By("Validating active gateway")
 		subnet, err = subnetClient.Wait(subnetName, func(s *apiv1.Subnet) (bool, error) {
 			return gomega.BeEmpty().Match(s.Status.ActivateGateway)
-		}, fmt.Sprintf("field .status.activateGateway contain element %v", gatewayNodes),
+		}, "field .status.activateGateway is empty",
 			2*time.Second, time.Minute,
 		)
 		framework.ExpectNoError(err)
