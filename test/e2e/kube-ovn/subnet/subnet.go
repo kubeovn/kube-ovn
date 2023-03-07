@@ -751,8 +751,16 @@ var _ = framework.Describe("[group:subnet]", func() {
 		framework.ExpectNoError(err, "deployment failed to complete")
 
 		checkFunc := func(usingIPRange, availableIPRange, startIP, lastIP string, count int64) {
-			usingIPEnd := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIP), big.NewInt(count-1)))
-			availableIPStart := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(usingIPEnd), big.NewInt(1)))
+			checkTimes := 0
+			maxRetryTimes := 30
+			for checkTimes = 0; checkTimes < maxRetryTimes; checkTimes++ {
+				usingIPEnd := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIP), big.NewInt(count-1)))
+				availableIPStart := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(usingIPEnd), big.NewInt(1)))
+				if usingIPRange == fmt.Sprintf("%s-%s", startIP, usingIPEnd) && availableIPRange == fmt.Sprintf("%s-%s", availableIPStart, lastIP) {
+					break
+				}
+				time.Sleep(1 * time.Second)
+			}
 			framework.ExpectEqual(usingIPRange, fmt.Sprintf("%s-%s", startIP, usingIPEnd))
 			framework.ExpectEqual(availableIPRange, fmt.Sprintf("%s-%s", availableIPStart, lastIP))
 		}
