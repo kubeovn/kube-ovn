@@ -857,16 +857,35 @@ func (c *Controller) setExGateway() error {
 			klog.Errorf("failed to set gateway nic %s up, %v", cm.Data["external-gw-nic"], err)
 			return err
 		}
-		if _, err := ovs.Exec(
-			ovs.MayExist, "add-br", externalBride, "--",
-			ovs.MayExist, "add-port", externalBride, cm.Data["external-gw-nic"],
-		); err != nil {
-			return fmt.Errorf("failed to enable external gateway, %v", err)
+		externalBrReady := false
+		// if external nic already attached into another bridge
+		if existBr, err := ovs.Exec("port-to-br", cm.Data["external-gw-nic"]); err == nil {
+			if existBr == externalBride {
+				externalBrReady = true
+			} else {
+				klog.Info("external bridge should change from %s to %s", existBr, externalBride)
+				if _, err := ovs.Exec(ovs.IfExists, "del-br", existBr); err != nil {
+					err = fmt.Errorf("failed to del external br %s, %v", existBr, err)
+					klog.Error(err)
+					return err
+				}
+			}
 		}
 
+		if !externalBrReady {
+			if _, err := ovs.Exec(
+				ovs.MayExist, "add-br", externalBride, "--",
+				ovs.MayExist, "add-port", externalBride, cm.Data["external-gw-nic"],
+			); err != nil {
+				err = fmt.Errorf("failed to enable external gateway, %v", err)
+				klog.Error(err)
+			}
+		}
 		output, err := ovs.Exec(ovs.IfExists, "get", "open", ".", "external-ids:ovn-bridge-mappings")
 		if err != nil {
-			return fmt.Errorf("failed to get external-ids, %v", err)
+			err = fmt.Errorf("failed to get external-ids, %v", err)
+			klog.Error(err)
+			return err
 		}
 		bridgeMappings := fmt.Sprintf("external:%s", externalBride)
 		if output != "" && !util.IsStringIn(bridgeMappings, strings.Split(output, ",")) {
@@ -875,12 +894,16 @@ func (c *Controller) setExGateway() error {
 
 		output, err = ovs.Exec("set", "open", ".", fmt.Sprintf("external-ids:ovn-bridge-mappings=%s", bridgeMappings))
 		if err != nil {
-			return fmt.Errorf("failed to set bridge-mappings, %v: %q", err, output)
+			err = fmt.Errorf("failed to set bridge-mappings, %v: %q", err, output)
+			klog.Error(err)
+			return err
 		}
 	} else {
 		if _, err := ovs.Exec(
 			ovs.IfExists, "del-br", externalBride); err != nil {
-			return fmt.Errorf("failed to disable external gateway, %v", err)
+			err = fmt.Errorf("failed to disable external gateway, %v", err)
+			klog.Error(err)
+			return err
 		}
 	}
 	return nil
