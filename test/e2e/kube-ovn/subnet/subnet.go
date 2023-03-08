@@ -761,8 +761,6 @@ var _ = framework.Describe("[group:subnet]", func() {
 		framework.ExpectNoError(err, "failed to to create deployment")
 		err = deployment.WaitForDeploymentComplete(cs, deploy)
 		framework.ExpectNoError(err, "deployment failed to complete")
-
-		time.Sleep(2 * time.Second)
 		checkFunc := func(usingIPRange, availableIPRange, startIP, lastIP string, count int64, isFrameworkCheck bool) bool {
 			usingIPEnd := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIP), big.NewInt(count-1)))
 			availableIPStart := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(usingIPEnd), big.NewInt(1)))
@@ -782,6 +780,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		isSuccess := false
 		_ = wait.PollImmediate(time.Second, 30*time.Second, func() (bool, error) {
 			subnet = subnetClient.Get(subnetName)
+			framework.Logf("subnet status usingips %d availableIPs %d ", subnet.Status.V4UsingIPs, subnet.Status.V4AvailableIPs)
 			if cidrV4 != "" {
 				isSuccess = checkFunc(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas, false)
 				if !isSuccess {
