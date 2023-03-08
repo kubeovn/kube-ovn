@@ -13,6 +13,18 @@ jobs:
           go-version-file: go.mod
           check-latest: true
 
+      - name: Export Go full version
+        run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+
+      - name: Go cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-${{ env.GO_FULL_VER }}-x86-
+
       - name: Build
         run: make image-debug
 
