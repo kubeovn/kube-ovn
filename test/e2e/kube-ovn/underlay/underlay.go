@@ -485,7 +485,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		annotations := map[string]string{
 			util.LogicalSwitchAnnotation: subnetName,
 		}
-
+		time.Sleep(5 * time.Second)
 		u2oPodNameUnderlay = "pod-" + framework.RandomSuffix()
 		args := []string{"netexec", "--http-port", strconv.Itoa(curlListenPort)}
 		underlayPod := framework.MakePod(namespaceName, u2oPodNameUnderlay, nil, annotations, framework.AgnhostImage, nil, args)

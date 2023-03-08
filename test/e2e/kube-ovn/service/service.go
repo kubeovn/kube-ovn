@@ -1,8 +1,10 @@
 package service
 
 import (
+	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -57,9 +59,11 @@ var _ = framework.Describe("[group:service]", func() {
 
 		podBackend := framework.MakePod(namespaceName, podName, selector, nil, framework.PauseImage, nil, nil)
 		_ = podClient.CreateSync(podBackend)
-
+		time.Sleep(2 * time.Second)
 		execCmd := "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=vips find Load_Balancer name=cluster-tcp-loadbalancer"
 		output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
+		fmt.Printf("output is %s ", output)
+		fmt.Printf("v6ClusterIp is %s ", v6ClusterIp)
 		framework.ExpectNoError(err)
 		framework.ExpectTrue(strings.Contains(string(output), v6ClusterIp), "should contains v6 cluster ip")
 
@@ -69,7 +73,7 @@ var _ = framework.Describe("[group:service]", func() {
 		modifyService.Spec.IPFamilies = []corev1.IPFamily{corev1.IPv4Protocol}
 		modifyService.Spec.ClusterIPs = []string{service.Spec.ClusterIP}
 		service = serviceClient.Patch(service, modifyService)
-
+		time.Sleep(2 * time.Second)
 		output, err = exec.Command("bash", "-c", execCmd).CombinedOutput()
 		framework.ExpectNoError(err)
 		framework.ExpectFalse(strings.Contains(string(output), v6ClusterIp), "should not contains v6 cluster ip")
@@ -80,7 +84,7 @@ var _ = framework.Describe("[group:service]", func() {
 		recoverService.Spec.IPFamilies = originService.Spec.IPFamilies
 		recoverService.Spec.ClusterIPs = originService.Spec.ClusterIPs
 		_ = serviceClient.Patch(service, recoverService)
-
+		time.Sleep(2 * time.Second)
 		output, err = exec.Command("bash", "-c", execCmd).CombinedOutput()
 		framework.ExpectNoError(err)
 		framework.ExpectTrue(strings.Contains(string(output), v6ClusterIp), "should contains v6 cluster ip")
