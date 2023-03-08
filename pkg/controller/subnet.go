@@ -1344,7 +1344,7 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 			lrpName := fmt.Sprintf("%s-%s", c.config.ClusterRouter, subnet.Name)
 			klog.Infof("delete logical router port %s", lrpName)
 			if err := c.ovnLegacyClient.DeleteLogicalRouterPort(lrpName); err != nil {
-				klog.Errorf("failed to delete lrp %s-%s, %v", c.config.ClusterRouter, subnet.Name, err)
+				klog.Errorf("failed to delete lrp %s, %v", lrpName, err)
 				return err
 			}
 		}

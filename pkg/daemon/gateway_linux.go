@@ -863,7 +863,7 @@ func (c *Controller) setExGateway() error {
 			if existBr == externalBride {
 				externalBrReady = true
 			} else {
-				klog.Info("external bridge should change from %s to %s", existBr, externalBride)
+				klog.Infof("external bridge should change from %s to %s, delete external bridge %s", existBr, externalBride, existBr)
 				if _, err := ovs.Exec(ovs.IfExists, "del-br", existBr); err != nil {
 					err = fmt.Errorf("failed to del external br %s, %v", existBr, err)
 					klog.Error(err)
@@ -899,11 +899,51 @@ func (c *Controller) setExGateway() error {
 			return err
 		}
 	} else {
-		if _, err := ovs.Exec(
-			ovs.IfExists, "del-br", externalBride); err != nil {
-			err = fmt.Errorf("failed to disable external gateway, %v", err)
-			klog.Error(err)
+		brExists, err := ovs.BridgeExists(externalBride)
+		if err != nil {
+			return fmt.Errorf("failed to check OVS bridge existence: %v", err)
+		}
+		if !brExists {
+			return nil
+		}
+
+		providerNetworks, err := c.providerNetworksLister.List(labels.Everything())
+		if err != nil && !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to list provider networks: %v", err)
 			return err
+		}
+
+		for _, pn := range providerNetworks {
+			// if external nic already attached into another bridge
+			if existBr, err := ovs.Exec("port-to-br", pn.Spec.DefaultInterface); err == nil {
+				if existBr == externalBride {
+					// delete switch after related provider network not exist
+					return nil
+				}
+			}
+		}
+
+		keepExternalSubnet := false
+		externalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get subnet %s, %v", c.config.ExternalGatewaySwitch, err)
+				return err
+			}
+		} else {
+			if externalSubnet.Spec.Vlan != "" {
+				keepExternalSubnet = true
+			}
+		}
+
+		if !keepExternalSubnet {
+			klog.Infof("delete external bridge %s", externalBride)
+			if _, err := ovs.Exec(
+				ovs.IfExists, "del-br", externalBride); err != nil {
+				err = fmt.Errorf("failed to disable external gateway, %v", err)
+				klog.Error(err)
+				return err
+			}
 		}
 	}
 	return nil

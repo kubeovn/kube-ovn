@@ -37,6 +37,10 @@ func (c *Controller) resyncExternalGateway() {
 			klog.Errorf("failed to remove ovn external gw, %v", err)
 			return
 		}
+		if err := c.updateDefaultVpcExternal(false); err != nil {
+			klog.Error("failed to update default vpc, %v", err)
+			return
+		}
 		exGwEnabled = "false"
 		lastExGwCM = nil
 		klog.Info("finish remove ovn external gw")
@@ -63,41 +67,11 @@ func (c *Controller) resyncExternalGateway() {
 		lastExGwCM = cm.Data
 		c.ovnLegacyClient.ExternalGatewayType = cm.Data["type"]
 		c.ExternalGatewayType = cm.Data["type"]
+		if err := c.updateDefaultVpcExternal(true); err != nil {
+			klog.Error("failed to update default vpc, %v", err)
+			return
+		}
 		klog.Info("finish establishing ovn external gw")
-
-		cachedVpc, err := c.vpcsLister.Get(c.config.ClusterRouter)
-		if err != nil {
-			klog.Errorf("failed to get vpc %s, %v", c.config.ClusterRouter, err)
-			return
-		}
-		vpc := cachedVpc.DeepCopy()
-		if !vpc.Spec.EnableExternal {
-			vpc.Spec.EnableExternal = true
-			if _, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
-				errMsg := fmt.Errorf("failed to update vpc enable external %s, %v", vpc.Name, err)
-				klog.Error(errMsg)
-				return
-			}
-		}
-		if !vpc.Status.EnableExternal {
-			vpc.Status.EnableExternal = true
-			bytes, err := vpc.Status.Bytes()
-			if err != nil {
-				klog.Errorf("failed to get vpc bytes, %v", err)
-				return
-			}
-			if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
-				vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
-				klog.Errorf("failed to patch vpc %s, %v", c.config.ClusterRouter, err)
-				return
-			}
-		}
-
-		lrpEipName := fmt.Sprintf("%s-%s", util.DefaultVpc, c.config.ExternalGatewaySwitch)
-		if err := c.patchLrpOvnEipEnableBfdLabel(lrpEipName, vpc.Spec.EnableBfd); err != nil {
-			klog.Errorf("failed to patch label for lrp %s, %v", lrpEipName, err)
-			return
-		}
 	}
 }
 
@@ -130,10 +104,33 @@ func (c *Controller) removeExternalGateway() error {
 		}
 	}
 
-	klog.Infof("delete external gateway switch %s", c.config.ExternalGatewaySwitch)
-	if err := c.ovnLegacyClient.DeleteGatewaySwitch(c.config.ExternalGatewaySwitch); err != nil {
-		klog.Errorf("failed to delete external gateway switch, %v", err)
-		return err
+	keepExternalSubnet := false
+	externalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
+	if err != nil {
+		if !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to get subnet %s, %v", c.config.ExternalGatewaySwitch, err)
+			return err
+		}
+	} else {
+		if externalSubnet.Spec.Vlan != "" {
+			keepExternalSubnet = true
+		}
+	}
+
+	if !keepExternalSubnet {
+		klog.Infof("delete external gateway switch %s", c.config.ExternalGatewaySwitch)
+		if err := c.ovnLegacyClient.DeleteGatewaySwitch(c.config.ExternalGatewaySwitch); err != nil {
+			klog.Errorf("failed to delete external gateway switch, %v", err)
+			return err
+		}
+	} else {
+		klog.Infof("should keep provider network vlan underlay external gateway switch %s", c.config.ExternalGatewaySwitch)
+		lrpName := fmt.Sprintf("%s-%s", c.config.ClusterRouter, c.config.ExternalGatewaySwitch)
+		klog.Infof("delete logical router port %s", lrpName)
+		if err := c.ovnLegacyClient.DeleteLogicalRouterPort(lrpName); err != nil {
+			klog.Errorf("failed to delete lrp %s, %v", lrpName, err)
+			return err
+		}
 	}
 	return nil
 }
@@ -266,4 +263,39 @@ func (c *Controller) getGatewayChassis(config map[string]string) ([]string, erro
 		return chassises, fmt.Errorf("no available external gw")
 	}
 	return chassises, nil
+}
+
+func (c *Controller) updateDefaultVpcExternal(enableExternal bool) error {
+	cachedVpc, err := c.vpcsLister.Get(c.config.ClusterRouter)
+	if err != nil {
+		klog.Errorf("failed to get vpc %s, %v", c.config.ClusterRouter, err)
+		return err
+	}
+	vpc := cachedVpc.DeepCopy()
+	if vpc.Spec.EnableExternal != enableExternal {
+		if _, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
+			errMsg := fmt.Errorf("failed to update vpc enable external %s, %v", vpc.Name, err)
+			klog.Error(errMsg)
+			return err
+		}
+	}
+	if vpc.Status.EnableExternal != enableExternal {
+		vpc.Status.EnableExternal = enableExternal
+		bytes, err := vpc.Status.Bytes()
+		if err != nil {
+			klog.Errorf("failed to get vpc bytes, %v", err)
+			return err
+		}
+		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
+			vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+			klog.Errorf("failed to patch vpc %s, %v", c.config.ClusterRouter, err)
+			return err
+		}
+		lrpEipName := fmt.Sprintf("%s-%s", util.DefaultVpc, c.config.ExternalGatewaySwitch)
+		if err := c.patchLrpOvnEipEnableBfdLabel(lrpEipName, vpc.Spec.EnableBfd); err != nil {
+			klog.Errorf("failed to patch label for lrp %s, %v", lrpEipName, err)
+			return err
+		}
+	}
+	return nil
 }

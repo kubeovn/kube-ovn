@@ -1164,7 +1164,7 @@ func parseLrRouteListOutput(output string) (routeList []*StaticRoute, err error)
 			switch fields[idx] {
 			case "(learned)":
 				learned = true
-			case "ecmp-symmetric-reply":
+			case util.StaicRouteBfdEcmp:
 				ecmpSymmetricReply = true
 			}
 		}
@@ -1178,7 +1178,7 @@ func parseLrRouteListOutput(output string) (routeList []*StaticRoute, err error)
 			NextHop: fields[1],
 		}
 		if ecmpSymmetricReply {
-			route.ECMPMode = "ecmp-symmetric-reply"
+			route.ECMPMode = util.StaicRouteBfdEcmp
 		}
 
 		routeList = append(routeList, route)
