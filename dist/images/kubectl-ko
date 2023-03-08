@@ -942,7 +942,7 @@ env-check(){
     echo "************************************************"
     echo "Start environment check for node $nodeName"
     echo "************************************************"
-    kubectl exec -it -n $KUBE_OVN_NS $pod -c cni-server -- bash /kube-ovn/env-check.sh
+    kubectl exec -n $KUBE_OVN_NS $pod -c cni-server -- bash /kube-ovn/env-check.sh
   done
 }
 
@@ -967,7 +967,7 @@ log_ovn_ovs(){
     echo "************************************************"
     echo " component $component $sub_component.log pod $pod log"
     echo "************************************************"
-    kubectl exec -it $pod -n kube-system -- tail -n $tail_lines /var/log/$component/$sub_component.log 2>&1 || :
+    kubectl exec $pod -n kube-system -- tail -n $tail_lines /var/log/$component/$sub_component.log 2>&1 || :
   done
 }
 
@@ -980,22 +980,22 @@ log_linux(){
     echo " component $component sub_component $sub_component pod $pod log"
     echo "************************************************"
     if [[ "$sub_component" == "dmesg" ]]; then
-      kubectl exec -it $pod -n kube-system -- dmesg -T | tail -n $tail_lines || :
+      kubectl exec $pod -n kube-system -- dmesg -T | tail -n $tail_lines || :
     elif [[ "$sub_component" == "iptables" ]]; then
       echo "******************legacy************************"
-      kubectl exec -it $pod -n kube-system -- iptables -S
+      kubectl exec $pod -n kube-system -- iptables -S
       echo "*********************nft************************"
-      kubectl exec -it $pod -n kube-system -- /usr/sbin/iptables-nft -S
+      kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -S
     elif [[ "$sub_component" == "route" ]]; then
-      kubectl exec -it $pod -n kube-system -- ip route show
+      kubectl exec $pod -n kube-system -- ip route show
     elif [[ "$sub_component" == "link" ]]; then
-      kubectl exec -it $pod -n kube-system -- ip -d link show
+      kubectl exec $pod -n kube-system -- ip -d link show
     elif [[ "$sub_component" == "neigh" ]]; then
-      kubectl exec -it $pod -n kube-system -- ip n
+      kubectl exec $pod -n kube-system -- ip n
     elif [[ "$sub_component" == "memory" ]]; then
-      kubectl exec -it $pod -n kube-system -- free -m
+      kubectl exec $pod -n kube-system -- free -m
     elif [[ "$sub_component" == "top" ]]; then
-      kubectl exec -it $pod -n kube-system -- top -b -n 1 | head -n 20 | tail -n 10
+      kubectl exec $pod -n kube-system -- top -b -n 1 | head -n 20 | tail -n 10
     fi
   done
 }
