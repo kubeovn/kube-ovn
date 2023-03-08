@@ -433,7 +433,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	}
 
 	for _, item := range routeNeedAdd {
-		if item.ECMP == "" {
+		if item.ECMPMode == "" {
 			if err = c.ovnLegacyClient.AddStaticRoute(convertPolicy(item.Policy), item.CIDR, item.NextHopIP,
 				"", "", vpc.Name, util.NormalRouteType); err != nil {
 				klog.Errorf("add normal static route to vpc %s failed, %v", vpc.Name, err)
@@ -441,7 +441,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			}
 		} else {
 			if err = c.ovnLegacyClient.AddStaticRoute(convertPolicy(item.Policy), item.CIDR, item.NextHopIP,
-				item.ECMP, item.BfdId, vpc.Name, util.EcmpRouteType); err != nil {
+				item.ECMPMode, item.BfdId, vpc.Name, util.EcmpRouteType); err != nil {
 				klog.Errorf("add ecmp static route to vpc %s failed, %v", vpc.Name, err)
 				return err
 			}
@@ -623,7 +623,7 @@ func diffStaticRoute(exist []*ovs.StaticRoute, target []*kubeovnv1.StaticRoute) 
 			Policy:    policy,
 			CIDR:      item.CIDR,
 			NextHopIP: item.NextHop,
-			ECMP:      item.ECMP,
+			ECMPMode:  item.ECMPMode,
 			BfdId:     item.BfdId,
 		})
 	}
@@ -943,7 +943,7 @@ func (c *Controller) handleDeleteVpcStaticRoute(key string) error {
 	needUpdate := false
 	newStaticRoutes := make([]*kubeovnv1.StaticRoute, 0, len(vpc.Spec.StaticRoutes))
 	for _, route := range vpc.Spec.StaticRoutes {
-		if route.ECMP != util.StaicRouteBfdEcmp {
+		if route.ECMPMode != util.StaicRouteBfdEcmp {
 			newStaticRoutes = append(newStaticRoutes, route)
 			needUpdate = true
 		}
