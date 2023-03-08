@@ -142,4 +142,23 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 		ginkgo.By("Deleting pod " + name)
 		podClient.DeleteSync(pod.Name)
 	})
+
+	framework.ConformanceIt(`should succeed to execute "kubectl ko log kube-ovn all"`, func() {
+		components := [...]string{"kube-ovn", "ovn", "ovs", "linux"}
+		for _, component := range components {
+			execOrDie(fmt.Sprintf("ko log %s all 10", component))
+		}
+
+		subComponentMap := make(map[string][]string)
+		subComponentMap["kube-ovn"] = []string{"kube-ovn-controller", "kube-ovn-cni", "kube-ovn-pinger", "kube-ovn-monitor"}
+		subComponentMap["ovs"] = []string{"ovs-vswitchd", "ovsdb-server"}
+		subComponentMap["ovn"] = []string{"ovn-controller", "ovn-northd", "ovsdb-server-nb", "ovsdb-server-sb"}
+		subComponentMap["linux"] = []string{"dmesg", "iptables", "route", "link", "neigh", "memory", "top"}
+
+		for component, subComponents := range subComponentMap {
+			for _, subComponent := range subComponents {
+				execOrDie(fmt.Sprintf("ko log %s %s 10", component, subComponent))
+			}
+		}
+	})
 })
