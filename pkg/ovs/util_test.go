@@ -33,8 +33,7 @@ func Test_parseIpv6RaConfigs(t *testing.T) {
 	t.Run("no validation in ipv6 ra config", func(t *testing.T) {
 		t.Parallel()
 		config := parseIpv6RaConfigs("send_periodic=,test")
-		require.Equal(t, map[string]string{}, config)
-		require.Equal(t, 0, len(config))
+		require.Empty(t, config)
 	})
 }
 
@@ -53,8 +52,7 @@ func Test_parseDHCPOptions(t *testing.T) {
 	t.Run("no validation dhcp options", func(t *testing.T) {
 		t.Parallel()
 		dhcpOpt := parseDHCPOptions("router=,test")
-		require.Equal(t, map[string]string{}, dhcpOpt)
-		require.Equal(t, 0, len(dhcpOpt))
+		require.Empty(t, dhcpOpt)
 	})
 }
 
@@ -64,13 +62,13 @@ func Test_getIpv6Prefix(t *testing.T) {
 	t.Run("return prefix when exists one ipv6 networks", func(t *testing.T) {
 		t.Parallel()
 		config := getIpv6Prefix([]string{"192.168.100.1/24", "fd00::c0a8:6401/120"})
-		require.Equal(t, []string{"120"}, config)
+		require.ElementsMatch(t, []string{"120"}, config)
 	})
 
 	t.Run("return multiple prefix when exists more than one ipv6 networks", func(t *testing.T) {
 		t.Parallel()
 		config := getIpv6Prefix([]string{"192.168.100.1/24", "fd00::c0a8:6401/120", "fd00::c0a8:6501/60"})
-		require.Equal(t, []string{"120", "60"}, config)
+		require.ElementsMatch(t, []string{"120", "60"}, config)
 	})
 }
 

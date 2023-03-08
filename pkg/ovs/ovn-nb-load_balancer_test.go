@@ -27,7 +27,7 @@ func (suite *OvnClientTestSuite) testCreateLoadBalancer() {
 	require.Equal(t, lbName, lb.Name)
 	require.NotEmpty(t, lb.UUID)
 	require.Equal(t, "tcp", *lb.Protocol)
-	require.Equal(t, []string{"ip_dst"}, lb.SelectionFields)
+	require.ElementsMatch(t, []string{"ip_dst"}, lb.SelectionFields)
 
 	// should no err create lb repeatedly
 	err = ovnClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")

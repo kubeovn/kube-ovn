@@ -1264,7 +1264,7 @@ func (suite *OvnClientTestSuite) testnewNetworkPolicyAclMatch() {
 
 		npp := mockNetworkPolicyPort()
 		matches := newNetworkPolicyAclMatch(pgName, asAllowName, asExceptName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, npp)
-		require.Equal(t, []string{
+		require.ElementsMatch(t, []string{
 			fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && ip4.src != $%s && tcp.dst == %d", pgName, asAllowName, asExceptName, npp[0].Port.IntVal),
 			fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && ip4.src != $%s && %d <= tcp.dst <= %d", pgName, asAllowName, asExceptName, npp[1].Port.IntVal, *npp[1].EndPort),
 		}, matches)
@@ -1276,7 +1276,7 @@ func (suite *OvnClientTestSuite) testnewNetworkPolicyAclMatch() {
 		npp := mockNetworkPolicyPort()
 
 		matches := newNetworkPolicyAclMatch(pgName, asAllowName, asExceptName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionFromLport, npp)
-		require.Equal(t, []string{
+		require.ElementsMatch(t, []string{
 			fmt.Sprintf("inport == @%s && ip && ip4.dst == $%s && ip4.dst != $%s && tcp.dst == %d", pgName, asAllowName, asExceptName, npp[0].Port.IntVal),
 			fmt.Sprintf("inport == @%s && ip && ip4.dst == $%s && ip4.dst != $%s && %d <= tcp.dst <= %d", pgName, asAllowName, asExceptName, npp[1].Port.IntVal, *npp[1].EndPort),
 		}, matches)
@@ -1286,7 +1286,7 @@ func (suite *OvnClientTestSuite) testnewNetworkPolicyAclMatch() {
 		t.Parallel()
 
 		matches := newNetworkPolicyAclMatch(pgName, asAllowName, asExceptName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, nil)
-		require.Equal(t, []string{
+		require.ElementsMatch(t, []string{
 			fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && ip4.src != $%s", pgName, asAllowName, asExceptName),
 		}, matches)
 	})
@@ -1298,7 +1298,7 @@ func (suite *OvnClientTestSuite) testnewNetworkPolicyAclMatch() {
 		npp[1].Port = nil
 
 		matches := newNetworkPolicyAclMatch(pgName, asAllowName, asExceptName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, npp)
-		require.Equal(t, []string{
+		require.ElementsMatch(t, []string{
 			fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && ip4.src != $%s && tcp.dst == %d", pgName, asAllowName, asExceptName, npp[0].Port.IntVal),
 			fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && ip4.src != $%s && tcp", pgName, asAllowName, asExceptName),
 		}, matches)
@@ -1311,7 +1311,7 @@ func (suite *OvnClientTestSuite) testnewNetworkPolicyAclMatch() {
 		npp[1].EndPort = nil
 
 		matches := newNetworkPolicyAclMatch(pgName, asAllowName, asExceptName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, npp)
-		require.Equal(t, []string{
+		require.ElementsMatch(t, []string{
 			fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && ip4.src != $%s && tcp.dst == %d", pgName, asAllowName, asExceptName, npp[0].Port.IntVal),
 			fmt.Sprintf("outport == @%s && ip && ip4.src == $%s && ip4.src != $%s && tcp.dst == %d", pgName, asAllowName, asExceptName, npp[1].Port.IntVal),
 		}, matches)

@@ -199,7 +199,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterStaticRoute() {
 
 		route, err := ovnClient.GetLogicalRouterStaticRoute(lrName, policy, prefix, nextHopList[1], routeType, false)
 		require.NoError(t, err)
-		require.Equal(t, []string{route.UUID}, lr.StaticRoutes)
+		require.ElementsMatch(t, []string{route.UUID}, lr.StaticRoutes)
 
 		/* delete second route */
 		err = ovnClient.DeleteLogicalRouterStaticRoute(lrName, policy, prefix, nextHopList[1], routeType)

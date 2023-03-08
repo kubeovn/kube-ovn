@@ -53,10 +53,8 @@ func (suite *OvnClientTestSuite) testUpdateDHCPOptions() {
 
 		uuid, err := ovnClient.UpdateDHCPOptions(subnet)
 		require.NoError(t, err)
-		require.Equal(t, &DHCPOptionsUUIDs{
-			DHCPv4OptionsUUID: "",
-			DHCPv6OptionsUUID: "",
-		}, uuid)
+		require.Empty(t, uuid.DHCPv4OptionsUUID)
+		require.Empty(t, uuid.DHCPv6OptionsUUID)
 
 		_, err = ovnClient.GetDHCPOptions(lsName, "IPv4", false)
 		require.ErrorContains(t, err, "not found")

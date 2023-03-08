@@ -55,8 +55,8 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 
 		lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
 		require.NoError(t, err)
-		require.Equal(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25"}, lsp.Addresses)
-		require.Equal(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25 10.244.0.110 10.244.0.112"}, lsp.PortSecurity)
+		require.ElementsMatch(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25"}, lsp.Addresses)
+		require.ElementsMatch(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25 10.244.0.110 10.244.0.112"}, lsp.PortSecurity)
 		require.Equal(t, map[string]string{
 			sgsKey:              strings.ReplaceAll(sgs, ",", "/"),
 			"associated_sg_sg":  "true",
@@ -82,8 +82,8 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 
 		lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
 		require.NoError(t, err)
-		require.Equal(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25"}, lsp.Addresses)
-		require.Equal(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25"}, lsp.PortSecurity)
+		require.ElementsMatch(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25"}, lsp.Addresses)
+		require.ElementsMatch(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25"}, lsp.PortSecurity)
 		require.Equal(t, map[string]string{
 			sgsKey:              strings.ReplaceAll(sgs, ",", "/"),
 			"associated_sg_sg":  "true",
@@ -107,8 +107,8 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 
 		lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
 		require.NoError(t, err)
-		require.Equal(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25"}, lsp.Addresses)
-		require.Equal(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25 10.244.0.110 10.244.0.112"}, lsp.PortSecurity)
+		require.ElementsMatch(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25"}, lsp.Addresses)
+		require.ElementsMatch(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25 10.244.0.110 10.244.0.112"}, lsp.PortSecurity)
 		require.Equal(t, map[string]string{
 			sgsKey:              strings.ReplaceAll(sgs, ",", "/"),
 			"associated_sg_sg":  "true",
@@ -134,8 +134,8 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 
 		lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
 		require.NoError(t, err)
-		require.Equal(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25"}, lsp.Addresses)
-		require.Equal(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25 10.244.0.110 10.244.0.112"}, lsp.PortSecurity)
+		require.ElementsMatch(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25"}, lsp.Addresses)
+		require.ElementsMatch(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25 10.244.0.110 10.244.0.112"}, lsp.PortSecurity)
 		require.Equal(t, map[string]string{
 			sgsKey:              strings.ReplaceAll(sgs, ",", "/"),
 			"associated_sg_sg":  "true",
@@ -160,7 +160,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 
 		lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
 		require.NoError(t, err)
-		require.Equal(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25"}, lsp.Addresses)
+		require.ElementsMatch(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25"}, lsp.Addresses)
 		require.Equal(t, map[string]string{
 			"associated_sg_" + util.DefaultSecurityGroupName: "false",
 			"pod":         fmt.Sprintf("%s/%s", podNamespace, podName),
@@ -183,8 +183,8 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 
 		lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
 		require.NoError(t, err)
-		require.Equal(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25"}, lsp.Addresses)
-		require.Equal(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25 10.244.0.110 10.244.0.112"}, lsp.PortSecurity)
+		require.ElementsMatch(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25"}, lsp.Addresses)
+		require.ElementsMatch(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25 10.244.0.110 10.244.0.112"}, lsp.PortSecurity)
 		require.Equal(t, map[string]string{
 			sgsKey:              strings.ReplaceAll(sgs, ",", "/"),
 			"associated_sg_sg":  "true",
@@ -221,7 +221,7 @@ func (suite *OvnClientTestSuite) testCreateLocalnetLogicalSwitchPort() {
 		require.NoError(t, err)
 		require.Equal(t, lspName, lsp.Name)
 		require.Equal(t, "localnet", lsp.Type)
-		require.Equal(t, []string{"unknown"}, lsp.Addresses)
+		require.ElementsMatch(t, []string{"unknown"}, lsp.Addresses)
 		require.Equal(t, map[string]string{
 			"network_name": provider,
 		}, lsp.Options)
@@ -238,7 +238,7 @@ func (suite *OvnClientTestSuite) testCreateLocalnetLogicalSwitchPort() {
 		require.NoError(t, err)
 		require.Equal(t, lspName, lsp.Name)
 		require.Equal(t, "localnet", lsp.Type)
-		require.Equal(t, []string{"unknown"}, lsp.Addresses)
+		require.ElementsMatch(t, []string{"unknown"}, lsp.Addresses)
 		require.Equal(t, map[string]string{
 			"network_name": provider,
 		}, lsp.Options)
@@ -299,7 +299,7 @@ func (suite *OvnClientTestSuite) testCreateBareLogicalSwitchPort() {
 
 	lsp, err := ovnClient.GetLogicalSwitchPort(lspName, false)
 	require.NoError(t, err)
-	require.Equal(t, []string{"00:00:00:C9:4E:EE 100.64.0.4 fd00:100:64::4"}, lsp.Addresses)
+	require.ElementsMatch(t, []string{"00:00:00:C9:4E:EE 100.64.0.4 fd00:100:64::4"}, lsp.Addresses)
 
 	ls, err := ovnClient.GetLogicalSwitch(lsName, false)
 	require.NoError(t, err)
@@ -370,7 +370,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortSecurity() {
 
 		lsp, err = ovnClient.GetLogicalSwitchPort(lspName, false)
 		require.NoError(t, err)
-		require.Equal(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25 10.244.100.10 10.244.100.11"}, lsp.PortSecurity)
+		require.ElementsMatch(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25 10.244.100.10 10.244.100.11"}, lsp.PortSecurity)
 		require.Equal(t, map[string]string{
 			"vendor":         util.CniTypeName,
 			logicalSwitchKey: lsName,
@@ -408,7 +408,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortSecurity() {
 
 		lsp, err = ovnClient.GetLogicalSwitchPort(lspName, false)
 		require.NoError(t, err)
-		require.Equal(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25 10.244.100.10 10.244.100.11"}, lsp.PortSecurity)
+		require.ElementsMatch(t, []string{"00:00:00:AB:B4:65 10.244.0.37 fc00::af4:25 10.244.100.10 10.244.100.11"}, lsp.PortSecurity)
 		require.Equal(t, map[string]string{
 			"vips":        "10.244.100.10,10.244.100.11",
 			"attach-vips": "true",
@@ -847,7 +847,7 @@ func (suite *OvnClientTestSuite) testEnablePortLayer2forward() {
 
 	lsp, err = ovnClient.GetLogicalSwitchPort(lspName, false)
 	require.NoError(t, err)
-	require.Equal(t, []string{"unknown"}, lsp.Addresses)
+	require.ElementsMatch(t, []string{"unknown"}, lsp.Addresses)
 }
 
 func (suite *OvnClientTestSuite) testSetLogicalSwitchPortVlanTag() {
@@ -942,7 +942,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalSwitchPort() {
 
 		lsp, err = ovnClient.GetLogicalSwitchPort(lspName, false)
 		require.NoError(t, err)
-		require.Equal(t, []string{"00:0c:29:e4:16:cc 192.168.231.110"}, lsp.Addresses)
+		require.ElementsMatch(t, []string{"00:0c:29:e4:16:cc 192.168.231.110"}, lsp.Addresses)
 		require.Equal(t, map[string]string{
 			"liveMigration": "0",
 		}, lsp.ExternalIDs)

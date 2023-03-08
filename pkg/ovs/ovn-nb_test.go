@@ -71,7 +71,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalPatchPort() {
 
 		lrp, err := ovnClient.GetLogicalRouterPort(lrpName, false)
 		require.NoError(t, err)
-		require.Equal(t, []string{"192.168.230.1/24", "fc00::0af4:01/112"}, lrp.Networks)
+		require.ElementsMatch(t, []string{"192.168.230.1/24", "fc00::0af4:01/112"}, lrp.Networks)
 
 		for _, chassisName := range chassises {
 			gwChassisName := lrpName + "-" + chassisName

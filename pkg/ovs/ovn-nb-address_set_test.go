@@ -64,7 +64,7 @@ func (suite *OvnClientTestSuite) testAddressSetUpdateAddress() {
 
 		as, err := ovnClient.GetAddressSet(asName, false)
 		require.NoError(t, err)
-		require.Equal(t, addresses, as.Addresses)
+		require.ElementsMatch(t, addresses, as.Addresses)
 	})
 
 	t.Run("update address set v6 addresses", func(t *testing.T) {
@@ -74,7 +74,7 @@ func (suite *OvnClientTestSuite) testAddressSetUpdateAddress() {
 
 		as, err := ovnClient.GetAddressSet(asName, false)
 		require.NoError(t, err)
-		require.Equal(t, addresses, as.Addresses)
+		require.ElementsMatch(t, addresses, as.Addresses)
 	})
 
 	t.Run("clear address set addresses", func(t *testing.T) {
