@@ -17,18 +17,25 @@ CHART_UPGRADE_RESTART_OVS=$(shell echo $${CHART_UPGRADE_RESTART_OVS:-false})
 MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:stable
 MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset.yml
 
-KUBEVIRT_OPERATOR_IMAGE = quay.io/kubevirt/virt-operator:v0.58.0
-KUBEVIRT_API_IMAGE = quay.io/kubevirt/virt-api:v0.58.0
-KUBEVIRT_CONTROLLER_IMAGE = quay.io/kubevirt/virt-controller:v0.58.0
-KUBEVIRT_HANDLER_IMAGE = quay.io/kubevirt/virt-handler:v0.58.0
-KUBEVIRT_LAUNCHER_IMAGE = quay.io/kubevirt/virt-launcher:v0.58.0
+KUBEVIRT_VERSION = v0.58.0
+KUBEVIRT_OPERATOR_IMAGE = quay.io/kubevirt/virt-operator:$(KUBEVIRT_VERSION)
+KUBEVIRT_API_IMAGE = quay.io/kubevirt/virt-api:$(KUBEVIRT_VERSION)
+KUBEVIRT_CONTROLLER_IMAGE = quay.io/kubevirt/virt-controller:$(KUBEVIRT_VERSION)
+KUBEVIRT_HANDLER_IMAGE = quay.io/kubevirt/virt-handler:$(KUBEVIRT_VERSION)
+KUBEVIRT_LAUNCHER_IMAGE = quay.io/kubevirt/virt-launcher:$(KUBEVIRT_VERSION)
 KUBEVIRT_TEST_IMAGE = quay.io/kubevirt/cirros-container-disk-demo
-KUBEVIRT_OPERATOR_YAML = https://github.com/kubevirt/kubevirt/releases/download/v0.58.0/kubevirt-operator.yaml
-KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/v0.58.0/kubevirt-cr.yaml
+KUBEVIRT_OPERATOR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-operator.yaml
+KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-cr.yaml
 KUBEVIRT_TEST_YAML = https://kubevirt.io/labs/manifests/vm.yaml
 
 CILIUM_VERSION = 1.12.7
 CILIUM_IMAGE_REPO = quay.io/cilium/cilium
+
+CERT_MANAGER_VERSION = v1.11.0
+CERT_MANAGER_CONTROLLER = quay.io/jetstack/cert-manager-controller:$(CERT_MANAGER_VERSION)
+CERT_MANAGER_CAINJECTOR = quay.io/jetstack/cert-manager-cainjector:$(CERT_MANAGER_VERSION)
+CERT_MANAGER_WEBHOOK = quay.io/jetstack/cert-manager-webhook:$(CERT_MANAGER_VERSION)
+CERT_MANAGER_YAML = https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
 
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
 
@@ -565,7 +572,7 @@ kind-install-kubevirt: kind-load-image kind-untaint-control-plane
 
 	kubectl apply -f "$(KUBEVIRT_OPERATOR_YAML)"
 	kubectl apply -f "$(KUBEVIRT_CR_YAML)"
-	kubectl rollout status deployment/virt-operator -n kubevirt
+	kubectl rollout status deployment/virt-operator -n kubevirt --timeout 120s
 	echo "wait kubevirt releated pod running ..."
 	sleep 60
 
@@ -581,6 +588,26 @@ kind-install-lb-svc: kind-load-image kind-untaint-control-plane
 	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | \
 	ENABLE_LB_SVC=true CNI_CONFIG_PRIORITY=10 bash
 	kubectl describe no
+
+.PHONY: kind-install-webhook
+kind-install-webhook: kind-load-image kind-untaint-control-plane
+	$(call docker_ensure_image_exists,$(CERT_MANAGER_CONTROLLER))
+	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_CONTROLLER))
+	$(call docker_ensure_image_exists,$(CERT_MANAGER_CAINJECTOR))
+	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_CAINJECTOR))
+	$(call docker_ensure_image_exists,$(CERT_MANAGER_WEBHOOK))
+	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_WEBHOOK))
+
+	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | bash
+	kubectl describe no
+
+	kubectl apply -f "$(CERT_MANAGER_YAML)"
+	kubectl rollout status deployment/cert-manager -n cert-manager --timeout 120s
+	kubectl rollout status deployment/cert-manager-cainjector -n cert-manager --timeout 120s
+	kubectl rollout status deployment/cert-manager-webhook -n cert-manager --timeout 120s
+
+	kubectl apply -f yamls/webhook.yaml
+	kubectl rollout status deployment/kube-ovn-webhook -n kube-system --timeout 120s
 
 .PHONY: kind-install-cilium-chaining
 kind-install-cilium-chaining: kind-load-image kind-untaint-control-plane
