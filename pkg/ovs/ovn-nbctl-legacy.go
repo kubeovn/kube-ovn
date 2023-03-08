@@ -1154,7 +1154,7 @@ func parseLrRouteListOutput(output string) (routeList []*StaticRoute, err error)
 		if len(fields) < 3 {
 			continue
 		}
-		if !routeRegexp.MatchString(fields[0]) {
+		if !routeRegexp.MatchString(l) {
 			continue
 		}
 
