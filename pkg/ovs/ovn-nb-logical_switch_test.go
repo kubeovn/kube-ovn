@@ -60,7 +60,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitch() {
 
 		lrp, err := ovnClient.GetLogicalRouterPort(lrpName, false)
 		require.NoError(t, err)
-		require.Equal(t, []string{"192.168.2.1/24", "fd00::c0a8:9901/120"}, lrp.Networks)
+		require.ElementsMatch(t, []string{"192.168.2.1/24", "fd00::c0a8:9901/120"}, lrp.Networks)
 	})
 
 	t.Run("remove router type port when needRouter is false", func(t *testing.T) {

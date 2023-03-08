@@ -27,7 +27,7 @@ func Test_getPortSg(t *testing.T) {
 		port := mockLsp()
 		out, err := c.getPortSg(port)
 		require.NoError(t, err)
-		require.Equal(t, []string{"sg"}, out)
+		require.ElementsMatch(t, []string{"sg"}, out)
 	})
 
 	t.Run("have two and more sgs", func(t *testing.T) {

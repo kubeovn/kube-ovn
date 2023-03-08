@@ -55,12 +55,12 @@ func (suite *OvnClientTestSuite) testCreatePeerRouterPort() {
 		require.NoError(t, err)
 		require.NotEmpty(t, lrp.UUID)
 		require.Equal(t, localLrName, lrp.ExternalIDs[logicalRouterKey])
-		require.Equal(t, []string{"192.168.230.1/24", "192.168.231.1/24"}, lrp.Networks)
+		require.ElementsMatch(t, []string{"192.168.230.1/24", "192.168.231.1/24"}, lrp.Networks)
 		require.Equal(t, remoteRouterPort, *lrp.Peer)
 
 		lr, err := ovnClient.GetLogicalRouter(localLrName, false)
 		require.NoError(t, err)
-		require.Equal(t, []string{lrp.UUID}, lr.Ports)
+		require.ElementsMatch(t, []string{lrp.UUID}, lr.Ports)
 	})
 
 	t.Run("update port networks", func(t *testing.T) {
@@ -70,7 +70,7 @@ func (suite *OvnClientTestSuite) testCreatePeerRouterPort() {
 		lrp, err := ovnClient.GetLogicalRouterPort(localRouterPort, false)
 		require.NoError(t, err)
 		require.NotEmpty(t, lrp.UUID)
-		require.Equal(t, []string{"192.168.230.1/24", "192.168.241.1/24"}, lrp.Networks)
+		require.ElementsMatch(t, []string{"192.168.230.1/24", "192.168.241.1/24"}, lrp.Networks)
 		require.Equal(t, remoteRouterPort, *lrp.Peer)
 	})
 }
@@ -95,7 +95,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouterPortRA() {
 
 		out, err := ovnClient.GetLogicalRouterPort(lrpName, false)
 		require.NoError(t, err)
-		require.Equal(t, []string{"120"}, out.Ipv6Prefix)
+		require.ElementsMatch(t, []string{"120"}, out.Ipv6Prefix)
 		require.Equal(t, map[string]string{
 			"address_mode":  "dhcpv6_stateful",
 			"max_interval":  "30",
@@ -110,7 +110,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouterPortRA() {
 
 		out, err := ovnClient.GetLogicalRouterPort(lrpName, false)
 		require.NoError(t, err)
-		require.Equal(t, []string{"120"}, out.Ipv6Prefix)
+		require.ElementsMatch(t, []string{"120"}, out.Ipv6Prefix)
 		require.Equal(t, map[string]string{
 			"address_mode": "dhcpv6_stateful",
 			"max_interval": "30",
@@ -165,7 +165,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPort() {
 		require.NoError(t, err)
 		require.NotEmpty(t, lrp.UUID)
 		require.Equal(t, "00:11:22:37:af:62", lrp.MAC)
-		require.Equal(t, []string{"192.168.123.1/24"}, lrp.Networks)
+		require.ElementsMatch(t, []string{"192.168.123.1/24"}, lrp.Networks)
 
 		lr, err := ovnClient.GetLogicalRouter(LrName, false)
 		require.NoError(t, err)
@@ -184,7 +184,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPort() {
 		require.NoError(t, err)
 		require.NotEmpty(t, lrp.UUID)
 		require.Equal(t, "00:11:22:37:af:62", lrp.MAC)
-		require.Equal(t, []string{"fd00::c0a8:7b01/120"}, lrp.Networks)
+		require.ElementsMatch(t, []string{"fd00::c0a8:7b01/120"}, lrp.Networks)
 
 		lr, err := ovnClient.GetLogicalRouter(LrName, false)
 		require.NoError(t, err)
@@ -202,7 +202,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouterPort() {
 		require.NoError(t, err)
 		require.NotEmpty(t, lrp.UUID)
 		require.Equal(t, "00:11:22:37:af:62", lrp.MAC)
-		require.Equal(t, []string{"192.168.123.1/24", "fd00::c0a8:7b01/120"}, lrp.Networks)
+		require.ElementsMatch(t, []string{"192.168.123.1/24", "fd00::c0a8:7b01/120"}, lrp.Networks)
 
 		lr, err := ovnClient.GetLogicalRouter(LrName, false)
 		require.NoError(t, err)
@@ -234,7 +234,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalRouterPort() {
 
 		lrp, err = ovnClient.GetLogicalRouterPort(lrpName, false)
 		require.NoError(t, err)
-		require.Equal(t, []string{"192.168.123.1/24", "192.168.125.1/24"}, lrp.Networks)
+		require.ElementsMatch(t, []string{"192.168.123.1/24", "192.168.125.1/24"}, lrp.Networks)
 	})
 
 	t.Run("clear networks", func(t *testing.T) {
