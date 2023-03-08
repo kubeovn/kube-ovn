@@ -38,17 +38,17 @@ RUN dpkg -i /usr/src/python3-openvswitch*.deb
 RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
     # do not send traffic that not designate to svc to conntrack
-    curl -s https://github.com/kubeovn/ovn/commit/0700cb90f950db1fb43490545dd4fc41afa46d70.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/39954085eaf7b968bf8b59b593fc89f95a03a4f1.patch | git apply && \
     # change hash type from dp_hash to hash with field src_ip
-    curl -s https://github.com/kubeovn/ovn/commit/c48049a64fedb1278f9158770a12751ee5bfc358.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/daa09e380eec61620d4ee317e3265c44366d1147.patch | git apply && \
     # set ether dst addr for dnat on logical switch
-    curl -s https://github.com/kubeovn/ovn/commit/540592b9fff8c5574ae605086fdaa16b718551f7.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/ca270f2592d1078323dc5455f1f24857ad1cd407.patch | git apply && \
     # modify src route priority
-    curl -s https://github.com/kubeovn/ovn/commit/b3801ecb732a788efd2380a7daca4e2a7726128e.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/cd31bebd1c15fb8e50107861a9397e672fcbad27.patch | git apply && \
     # fix reaching resubmit limit in underlay
-    curl -s https://github.com/kubeovn/ovn/commit/977e569539893460cd27b2287d6042b62079ea65.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/993147dd6ab2dd4565379315a6d96ab12f4a294d.patch | git apply && \
     # do not remove LB if vips is empty
-    curl -s https://github.com/kubeovn/ovn/commit/45a4a22161e42f17f21baee9106a45964dfd3a1b.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/8693053ed3d5ecd5cd70658315d3079f33e9f8e0.patch | git apply && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \
@@ -84,7 +84,7 @@ ARG ARCH
 ENV CNI_VERSION=v1.2.0
 RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz | tar -xz -C . ./loopback ./portmap ./macvlan
 
-ENV KUBE_VERSION="v1.24.9"
+ENV KUBE_VERSION="v1.25.7"
 
 RUN curl -L https://dl.k8s.io/${KUBE_VERSION}/kubernetes-client-linux-${ARCH}.tar.gz | tar -xz -C . && cp ./kubernetes/client/bin/kubectl /usr/bin/kubectl \
  && chmod +x /usr/bin/kubectl && rm -rf ./kubernetes
