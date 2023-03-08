@@ -12,6 +12,7 @@ import (
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework/deployment"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
@@ -761,9 +762,14 @@ var _ = framework.Describe("[group:subnet]", func() {
 		err = deployment.WaitForDeploymentComplete(cs, deploy)
 		framework.ExpectNoError(err, "deployment failed to complete")
 
+		time.Sleep(2 * time.Second)
 		checkFunc := func(usingIPRange, availableIPRange, startIP, lastIP string, count int64, isFrameworkCheck bool) bool {
 			usingIPEnd := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIP), big.NewInt(count-1)))
 			availableIPStart := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(usingIPEnd), big.NewInt(1)))
+
+			framework.Logf("subnet status usingIPRange %s expect %s-%s ", usingIPRange, startIP, usingIPEnd)
+			framework.Logf("subnet status availableIPRange %s expect %s-%s ", availableIPRange, availableIPStart, lastIP)
+
 			if isFrameworkCheck {
 				framework.ExpectEqual(usingIPRange, fmt.Sprintf("%s-%s", startIP, usingIPEnd))
 				framework.ExpectEqual(availableIPRange, fmt.Sprintf("%s-%s", availableIPStart, lastIP))
@@ -773,25 +779,20 @@ var _ = framework.Describe("[group:subnet]", func() {
 			}
 		}
 
-		checkTimes := 0
 		isSuccess := false
-		maxRetryTimes := 30
-		for {
-			time.Sleep(1 * time.Second)
-			if checkTimes > maxRetryTimes || isSuccess {
-				break
-			}
+		_ = wait.PollImmediate(time.Second, 30*time.Second, func() (bool, error) {
 			subnet = subnetClient.Get(subnetName)
 			if cidrV4 != "" {
 				isSuccess = checkFunc(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas, false)
+				if !isSuccess {
+					return false, nil
+				}
 			}
-
 			if cidrV6 != "" {
 				isSuccess = checkFunc(subnet.Status.V6UsingIPRange, subnet.Status.V6AvailableIPRange, startIPv6, lastIPv6, replicas, false)
 			}
-			checkTimes++
-		}
-
+			return isSuccess, nil
+		})
 		if cidrV4 != "" {
 			checkFunc(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas, true)
 		}
@@ -820,8 +821,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 				util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIP), big.NewInt(2*count-1))),
 			)
 
-			fmt.Printf("subnet status usingIPRange %s expect %s \n", usingIPRange, expectUsingIPRangeStr)
-			fmt.Printf("subnet status availableIPRange %s expect %s \n", availableIPRange, expectAvailIPRangeStr)
+			framework.Logf("subnet status usingIPRange %s expect %s ", usingIPRange, expectUsingIPRangeStr)
+			framework.Logf("subnet status availableIPRange %s expect %s ", availableIPRange, expectAvailIPRangeStr)
 
 			if isFrameworkCheck {
 				framework.ExpectEqual(usingIPRange, expectUsingIPRangeStr)
@@ -832,24 +833,22 @@ var _ = framework.Describe("[group:subnet]", func() {
 			}
 		}
 
-		checkTimes = 0
 		isSuccess = false
-		maxRetryTimes = 30
-		for {
-			time.Sleep(1 * time.Second)
-			if checkTimes > maxRetryTimes || isSuccess {
-				break
-			}
+		_ = wait.PollImmediate(time.Second, 30*time.Second, func() (bool, error) {
 			subnet = subnetClient.Get(subnetName)
 			if cidrV4 != "" {
 				isSuccess = checkFunc2(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas, false)
+				if !isSuccess {
+					return false, nil
+				}
 			}
 
 			if cidrV6 != "" {
 				isSuccess = checkFunc2(subnet.Status.V6UsingIPRange, subnet.Status.V6AvailableIPRange, startIPv6, lastIPv6, replicas, false)
 			}
-			checkTimes++
-		}
+
+			return isSuccess, nil
+		})
 
 		if cidrV4 != "" {
 			checkFunc2(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas, true)

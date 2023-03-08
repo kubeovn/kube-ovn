@@ -1,7 +1,6 @@
 package service
 
 import (
-	"fmt"
 	"os/exec"
 	"strings"
 	"time"
@@ -62,8 +61,8 @@ var _ = framework.Describe("[group:service]", func() {
 		time.Sleep(2 * time.Second)
 		execCmd := "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=vips find Load_Balancer name=cluster-tcp-loadbalancer"
 		output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
-		fmt.Printf("output is %s ", output)
-		fmt.Printf("v6ClusterIp is %s ", v6ClusterIp)
+		framework.Logf("output is %s ", output)
+		framework.Logf("v6ClusterIp is %s ", v6ClusterIp)
 		framework.ExpectNoError(err)
 		framework.ExpectTrue(strings.Contains(string(output), v6ClusterIp), "should contains v6 cluster ip")
 
