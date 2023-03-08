@@ -983,19 +983,19 @@ log_linux(){
       kubectl exec $pod -n kube-system -- dmesg -T | tail -n $tail_lines || :
     elif [[ "$sub_component" == "iptables" ]]; then
       echo "******************legacy************************"
-      kubectl exec $pod -n kube-system -- iptables -S
+      kubectl exec $pod -n kube-system -- iptables -S || :
       echo "*********************nft************************"
-      kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -S
+      kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -S || :
     elif [[ "$sub_component" == "route" ]]; then
-      kubectl exec $pod -n kube-system -- ip route show
+      kubectl exec $pod -n kube-system -- ip route show || :
     elif [[ "$sub_component" == "link" ]]; then
-      kubectl exec $pod -n kube-system -- ip -d link show
+      kubectl exec $pod -n kube-system -- ip -d link show || :
     elif [[ "$sub_component" == "neigh" ]]; then
-      kubectl exec $pod -n kube-system -- ip n
+      kubectl exec $pod -n kube-system -- ip n || :
     elif [[ "$sub_component" == "memory" ]]; then
-      kubectl exec $pod -n kube-system -- free -m
+      kubectl exec $pod -n kube-system -- free -m || :
     elif [[ "$sub_component" == "top" ]]; then
-      kubectl exec $pod -n kube-system -- top -b -n 1 | head -n 20 | tail -n 10
+      kubectl exec $pod -n kube-system -- top -b -n 1 | head -n 20 | tail -n 10 || :
     fi
   done
 }
