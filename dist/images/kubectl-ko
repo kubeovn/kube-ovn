@@ -26,7 +26,13 @@ showHelp(){
   echo "  env-check    check the environment configuration"
   echo "  tuning {install-fastpath|local-install-fastpath|remove-fastpath|install-stt|local-install-stt|remove-stt} {centos7|centos8}} [kernel-devel-version]    deploy kernel optimisation components to the system"
   echo "  reload    restart all kube-ovn components"
+  echo "  log {kube-ovn|ovn|ovs|linux} {all|sub_component...} [tail_lines]
+          kube-ovn with sub_components: kube-ovn-controller,kube-ovn-cni,kube-ovn-pinger,kube-ovn-monitor
+          ovn with sub_components: ovn-controller,ovn-northd,ovsdb-server-nb,ovsdb-server-sb
+          ovs with sub_components: ovs-vswitchd,ovsdb-server
+          linux with sub_components: dmesg,iptables,route,link,neigh,memory,top"
 }
+
 
 # usage: ipv4_to_hex 192.168.0.1
 ipv4_to_hex(){
@@ -940,6 +946,140 @@ env-check(){
   done
 }
 
+log_kube_ovn(){
+  sub_component=$1
+  tail_lines=$2
+  podNames=`kubectl get pod -n kube-system -l app=$sub_component -o 'jsonpath={.items[*].metadata.name}'`
+  for pod in $podNames; do
+    echo "************************************************"
+    echo " component $component sub_component $sub_component pod $pod log"
+    echo "************************************************"
+    kubectl logs $pod -n kube-system --tail=$tail_lines 2>&1 || :
+  done
+}
+
+log_ovn_ovs(){
+  component=$1
+  sub_component=$2
+  tail_lines=$3
+  podNames=`kubectl get pod -n kube-system -l app=ovs -o 'jsonpath={.items[*].metadata.name}'`
+  for pod in $podNames; do
+    echo "************************************************"
+    echo " component $component $sub_component.log pod $pod log"
+    echo "************************************************"
+    kubectl exec -it $pod -n kube-system -- tail -n $tail_lines /var/log/$component/$sub_component.log 2>&1 || :
+  done
+}
+
+log_linux(){
+  sub_component=$1
+  tail_lines=$2
+  podNames=`kubectl get pod -n kube-system -l app=ovs -o 'jsonpath={.items[*].metadata.name}'`
+  for pod in $podNames; do
+    echo "************************************************"
+    echo " component $component sub_component $sub_component pod $pod log"
+    echo "************************************************"
+    if [[ "$sub_component" == "dmesg" ]]; then
+      kubectl exec -it $pod -n kube-system -- dmesg -T | tail -n $tail_lines || :
+    elif [[ "$sub_component" == "iptables" ]]; then
+      echo "******************legacy************************"
+      kubectl exec -it $pod -n kube-system -- iptables -S
+      echo "*********************nft************************"
+      kubectl exec -it $pod -n kube-system -- /usr/sbin/iptables-nft -S
+    elif [[ "$sub_component" == "route" ]]; then
+      kubectl exec -it $pod -n kube-system -- ip route show
+    elif [[ "$sub_component" == "link" ]]; then
+      kubectl exec -it $pod -n kube-system -- ip -d link show
+    elif [[ "$sub_component" == "neigh" ]]; then
+      kubectl exec -it $pod -n kube-system -- ip n
+    elif [[ "$sub_component" == "memory" ]]; then
+      kubectl exec -it $pod -n kube-system -- free -m
+    elif [[ "$sub_component" == "top" ]]; then
+      kubectl exec -it $pod -n kube-system -- top -b -n 1 | head -n 20 | tail -n 10
+    fi
+  done
+}
+
+
+log(){
+  component="$1"
+  sub_component="$2"
+  tail_lines=${3:-100}
+
+  components=("kube-ovn" "ovs" "ovn" "linux")
+  kube_ovn_sub_components=("kube-ovn-controller" "kube-ovn-cni" "kube-ovn-pinger" "kube-ovn-monitor")
+  ovs_sub_components=("ovs-vswitchd" "ovsdb-server")
+  ovn_sub_components=("ovn-controller" "ovn-northd" "ovsdb-server-nb" "ovsdb-server-sb")
+  linux_sub_components=("dmesg" "iptables" "route" "link" "neigh" "memory" "top")
+
+  if [[ ! " ${components[@]} " =~ " $component " ]]; then
+      echo "invalid component $component"
+      exit 1
+  fi
+
+  if [[ ! "$sub_component" == "all" ]]; then
+    case $component in
+    "kube-ovn")
+        sub_components=("${kube_ovn_sub_components[@]}")
+        ;;
+    "ovs")
+        sub_components=("${ovs_sub_components[@]}")
+        ;;
+    "ovn")
+        sub_components=("${ovn_sub_components[@]}")
+        ;;
+    "linux")
+        sub_components=("${linux_sub_components[@]}")
+        ;;
+    esac
+
+    if [[ ! " ${sub_components[@]} " =~ " $sub_component " ]]; then
+      echo "component $component do not have sub component $sub_component"
+      exit 1
+    fi
+  fi
+
+  if [[ "$component" == "kube-ovn" ]]; then
+    if [[ "$sub_component" == "all" ]]; then
+      for kube_ovn_sub_component in ${kube_ovn_sub_components[@]}; do
+        log_kube_ovn "$kube_ovn_sub_component" $tail_lines
+      done
+    else
+      log_kube_ovn "$sub_component" $tail_lines
+    fi
+  fi
+
+  if [[ "$component" == "ovn" ]]; then
+    if [[ "$sub_component" == "all" ]]; then
+      for ovn_sub_component in ${ovn_sub_components[@]}; do
+        log_ovn_ovs "ovn" "$ovn_sub_component" $tail_lines
+      done
+    else
+      log_ovn_ovs "ovn" "$sub_component" $tail_lines
+    fi
+  fi
+
+  if [[ "$component" == "ovs" ]]; then
+    if [[ "$sub_component" == "all" ]]; then
+      for ovs_sub_component in ${ovs_sub_components[@]}; do
+        log_ovn_ovs "openvswitch" "$ovs_sub_component" $tail_lines
+      done
+    else
+      log_ovn_ovs "openvswitch" "$sub_component" $tail_lines
+    fi
+  fi
+
+  if [[ "$component" == "linux" ]]; then
+    if [[ "$sub_component" == "all" ]]; then
+      for linux_sub_component in ${linux_sub_components[@]}; do
+        log_linux "$linux_sub_component" $tail_lines
+      done
+    else
+      log_linux "$sub_component" $tail_lines
+    fi
+  fi
+}
+
 if [ $# -lt 1 ]; then
   showHelp
   exit 0
@@ -979,6 +1119,9 @@ case $subcommand in
     ;;
   env-check)
     env-check
+    ;;
+  log)
+    log "$@"
     ;;
   *)
     showHelp
