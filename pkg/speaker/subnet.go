@@ -4,6 +4,7 @@ package speaker
 import (
 	"context"
 	"fmt"
+	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	"net"
 	"strconv"
