@@ -32,6 +32,16 @@ import (
 
 const controllerAgentName = "kube-ovn-controller"
 
+const (
+	logicalSwitchKey      = "ls"
+	logicalRouterKey      = "lr"
+	portGroupKey          = "pg"
+	networkPolicyKey      = "np"
+	sgKey                 = "sg"
+	associatedSgKeyPrefix = "associated_sg_"
+	sgsKey                = "security_groups"
+)
+
 // Controller is kube-ovn main controller that watch ns/pod/node/svc/ep and operate ovn
 type Controller struct {
 	config *Configuration
@@ -42,8 +52,11 @@ type Controller struct {
 	namedPort    *NamedPort
 
 	ovnLegacyClient *ovs.LegacyClient
-	ovnClient       *ovs.OvnClient
+	ovnClient       ovs.OvnClient
 	ovnPgKeyMutex   *keymutex.KeyMutex
+
+	// ExternalGatewayType define external gateway type, centralized
+	ExternalGatewayType string
 
 	podsLister             v1.PodLister
 	podsSynced             cache.InformerSynced
@@ -391,7 +404,7 @@ func NewController(config *Configuration) *Controller {
 	}
 
 	var err error
-	if controller.ovnClient, err = ovs.NewOvnClient(config.OvnNbAddr, config.OvnTimeout); err != nil {
+	if controller.ovnClient, err = ovs.NewOvnClient(config.OvnNbAddr, config.OvnTimeout, config.NodeSwitchCIDR); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn client")
 	}
 

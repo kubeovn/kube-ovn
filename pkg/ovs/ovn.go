@@ -35,8 +35,10 @@ type LegacyClient struct {
 	Version                       string
 }
 
-type OvnClient struct {
+type ovnClient struct {
 	ovnNbClient
+	ClusterRouter  string
+	NodeSwitchCIDR string
 }
 
 type ovnNbClient struct {
@@ -76,28 +78,51 @@ func NewLegacyClient(ovnNbAddr string, ovnNbTimeout int, ovnSbAddr, clusterRoute
 }
 
 // TODO: support sb/ic-nb client
-func NewOvnClient(ovnNbAddr string, ovnNbTimeout int) (*OvnClient, error) {
+func NewOvnClient(ovnNbAddr string, ovnNbTimeout int, nodeSwitchCIDR string) (*ovnClient, error) {
 	nbClient, err := ovsclient.NewNbClient(ovnNbAddr)
 	if err != nil {
 		klog.Errorf("failed to create OVN NB client: %v", err)
 		return nil, err
 	}
 
-	c := &OvnClient{
+	c := &ovnClient{
 		ovnNbClient: ovnNbClient{
 			Client:  nbClient,
 			Timeout: time.Duration(ovnNbTimeout) * time.Second,
 		},
+		NodeSwitchCIDR: nodeSwitchCIDR,
 	}
 	return c, nil
 }
 
-func Transact(c client.Client, method string, operations []ovsdb.Operation, timeout time.Duration) error {
-	ctx, cancel := context.WithTimeout(context.TODO(), timeout)
+func ConstructWaitForNameNotExistsOperation(name string, table string) ovsdb.Operation {
+	return ConstructWaitForUniqueOperation(table, "name", name)
+}
+
+func ConstructWaitForUniqueOperation(table string, column string, value interface{}) ovsdb.Operation {
+	timeout := OVSDBWaitTimeout
+	return ovsdb.Operation{
+		Op:      ovsdb.OperationWait,
+		Table:   table,
+		Timeout: &timeout,
+		Where:   []ovsdb.Condition{{Column: column, Function: ovsdb.ConditionEqual, Value: value}},
+		Columns: []string{column},
+		Until:   "!=",
+		Rows:    []ovsdb.Row{{column: value}},
+	}
+}
+
+func (c *ovnClient) Transact(method string, operations []ovsdb.Operation) error {
+	if len(operations) == 0 {
+		klog.Warningf("operations should not be empty")
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
 	start := time.Now()
-	results, err := c.Transact(ctx, operations...)
+	results, err := c.ovnNbClient.Transact(ctx, operations...)
 	elapsed := float64((time.Since(start)) / time.Millisecond)
 
 	var dbType string
@@ -128,21 +153,4 @@ func Transact(c client.Client, method string, operations []ovsdb.Operation, time
 	}
 
 	return nil
-}
-
-func ConstructWaitForNameNotExistsOperation(name string, table string) ovsdb.Operation {
-	return ConstructWaitForUniqueOperation(table, "name", name)
-}
-
-func ConstructWaitForUniqueOperation(table string, column string, value interface{}) ovsdb.Operation {
-	timeout := OVSDBWaitTimeout
-	return ovsdb.Operation{
-		Op:      ovsdb.OperationWait,
-		Table:   table,
-		Timeout: &timeout,
-		Where:   []ovsdb.Condition{{Column: column, Function: ovsdb.ConditionEqual, Value: value}},
-		Columns: []string{column},
-		Until:   "!=",
-		Rows:    []ovsdb.Row{{column: value}},
-	}
 }

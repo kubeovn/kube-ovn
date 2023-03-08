@@ -14,6 +14,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/ovn-org/libovsdb/client"
+
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -97,8 +98,16 @@ func NewNbClient(addr string) (client.Client, error) {
 		client.WithTable(&ovnnb.LogicalRouterPort{}),
 		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
 		client.WithTable(&ovnnb.LogicalRouterStaticRoute{}),
+		client.WithTable(&ovnnb.NAT{}),
+		client.WithTable(&ovnnb.LogicalSwitch{}),
 		client.WithTable(&ovnnb.LogicalSwitchPort{}),
+		client.WithTable(&ovnnb.NBGlobal{}),
 		client.WithTable(&ovnnb.PortGroup{}),
+		client.WithTable(&ovnnb.GatewayChassis{}),
+		client.WithTable(&ovnnb.LoadBalancer{}),
+		client.WithTable(&ovnnb.AddressSet{}),
+		client.WithTable(&ovnnb.ACL{}),
+		client.WithTable(&ovnnb.DHCPOptions{}),
 	}
 	if _, err = c.Monitor(context.TODO(), c.NewMonitor(monitorOpts...)); err != nil {
 		klog.Errorf("failed to monitor database on OVN NB server %s: %v", addr, err)

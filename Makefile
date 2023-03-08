@@ -657,6 +657,7 @@ scan:
 .PHONY: ut
 ut:
 	ginkgo -mod=mod -progress --always-emit-ginkgo-writer --slow-spec-threshold=60s test/unittest
+	go test ./pkg/...
 
 .PHONY: ipam-bench
 ipam-bench:

@@ -2759,11 +2759,6 @@ func (c LegacyClient) CheckPolicyRouteNexthopConsistent(match, nexthop string, p
 	return false, nil
 }
 
-type DHCPOptionsUUIDs struct {
-	DHCPv4OptionsUUID string
-	DHCPv6OptionsUUID string
-}
-
 type dhcpOptions struct {
 	UUID        string
 	CIDR        string
