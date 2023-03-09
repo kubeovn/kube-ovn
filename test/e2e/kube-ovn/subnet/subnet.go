@@ -11,14 +11,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onsi/ginkgo/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework/deployment"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 
+	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega"
+
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
@@ -348,8 +349,12 @@ var _ = framework.Describe("[group:subnet]", func() {
 		framework.ExpectEmpty(subnet.Spec.AllowSubnets)
 
 		ginkgo.By("Validating subnet status fields")
-		time.Sleep(2 * time.Second)
-		framework.ExpectContainElement(gatewayNodes, subnet.Status.ActivateGateway)
+		subnet, err = subnetClient.Wait(subnetName, func(s *apiv1.Subnet) (bool, error) {
+			return gomega.ContainElement(s.Status.ActivateGateway).Match(gatewayNodes)
+		}, fmt.Sprintf("field .status.activateGateway contain element %v", gatewayNodes),
+			2*time.Second, time.Minute,
+		)
+		framework.ExpectNoError(err)
 		framework.ExpectZero(subnet.Status.V4UsingIPs)
 		framework.ExpectZero(subnet.Status.V6UsingIPs)
 
@@ -393,12 +398,18 @@ var _ = framework.Describe("[group:subnet]", func() {
 		framework.ExpectEqual(subnet.Status.ActivateGateway, gatewayNodes[0])
 		framework.ExpectConsistOf(strings.Split(subnet.Spec.GatewayNode, ","), gatewayNodes)
 
-		ginkgo.By("change subnet spec field enableEcmp to true")
+		ginkgo.By("Change subnet spec field enableEcmp to true")
 		modifiedSubnet := subnet.DeepCopy()
 		modifiedSubnet.Spec.EnableEcmp = true
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
-		time.Sleep(2 * time.Second)
-		framework.ExpectEmpty(subnet.Status.ActivateGateway)
+
+		ginkgo.By("Validating active gateway")
+		subnet, err = subnetClient.Wait(subnetName, func(s *apiv1.Subnet) (bool, error) {
+			return gomega.BeEmpty().Match(s.Status.ActivateGateway)
+		}, "field .status.activateGateway is empty",
+			2*time.Second, time.Minute,
+		)
+		framework.ExpectNoError(err)
 
 		execCmd := "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=nexthops find logical-router-policy " + fmt.Sprintf("external_ids:subnet=%s", subnetName)
 		output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
@@ -921,14 +932,14 @@ var _ = framework.Describe("[group:subnet]", func() {
 			gatewayNodes = append(gatewayNodes, nodes.Items[i].Name)
 		}
 		modifiedSubnet := subnet.DeepCopy()
-		modifiedSubnet.Spec.GatewayType = kubeovnv1.GWCentralizedType
+		modifiedSubnet.Spec.GatewayType = apiv1.GWCentralizedType
 		modifiedSubnet.Spec.GatewayNode = strings.Join(gatewayNodes, ",")
 
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
 		eventClient = f.EventClient("default")
 		events := eventClient.WaitToHaveEvent("Subnet", subnetName, "Normal", "SubnetGatewayTypeChanged", "kube-ovn-controller", "")
 
-		message := fmt.Sprintf("subnet gateway type changes from %s to %s ", kubeovnv1.GWDistributedType, kubeovnv1.GWCentralizedType)
+		message := fmt.Sprintf("subnet gateway type changes from %s to %s ", apiv1.GWDistributedType, apiv1.GWCentralizedType)
 		found := false
 		for _, event := range events {
 			if strings.Contains(event.Message, message) {

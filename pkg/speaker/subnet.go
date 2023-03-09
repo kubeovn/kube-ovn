@@ -4,7 +4,9 @@ package speaker
 import (
 	"context"
 	"fmt"
+
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+
 	"golang.org/x/sys/unix"
 	"net"
 	"strconv"

@@ -340,7 +340,7 @@ func (c *Controller) markAndCleanLSP() error {
 		ipMap[vmLsp] = struct{}{}
 	}
 
-	lsps, err := c.ovnClient.ListLogicalSwitchPorts(c.config.EnableExternalVpc, nil)
+	lsps, err := c.ovnClient.ListNormalLogicalSwitchPorts(c.config.EnableExternalVpc, nil)
 	if err != nil {
 		klog.Errorf("failed to list logical switch port, %v", err)
 		return err

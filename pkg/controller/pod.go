@@ -13,6 +13,7 @@ import (
 
 	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/logging"
 	multustypes "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
+
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -712,7 +713,7 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 		return nil
 	}
 
-	ports, err := c.ovnClient.ListPodLogicalSwitchPorts(key)
+	ports, err := c.ovnClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": key})
 	if err != nil {
 		klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
 		return err
@@ -943,7 +944,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 				// remove lsp from port group to make EIP/SNAT work
 				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 				c.ovnPgKeyMutex.Lock(pgName)
-				if err = c.ovnClient.PortGroupRemovePort(pgName, portName); err != nil {
+				if err = c.ovnClient.PortGroupRemovePorts(pgName, portName); err != nil {
 					c.ovnPgKeyMutex.Unlock(pgName)
 					return err
 				}
@@ -965,10 +966,13 @@ func (c *Controller) handleUpdatePod(key string) error {
 
 							portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 							c.ovnPgKeyMutex.Lock(pgName)
-							if err = c.ovnClient.PortGroupAddPort(pgName, portName); err != nil {
+
+							if err := c.ovnClient.PortGroupAddPorts(pgName, portName); err != nil {
 								c.ovnPgKeyMutex.Unlock(pgName)
+								klog.Errorf("add port to port group %s: %v", pgName, err)
 								return err
 							}
+
 							c.ovnPgKeyMutex.Unlock(pgName)
 
 							added = true

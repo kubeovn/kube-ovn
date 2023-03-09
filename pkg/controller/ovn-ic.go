@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"os"
 	"os/exec"
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -172,7 +173,7 @@ func (c *Controller) removeInterConnection(azName string) error {
 		}
 	}
 
-	if err := c.stopOVNIC(); err != nil {
+	if err := c.stopOvnIC(); err != nil {
 		klog.Errorf("failed to stop ovn-ic, %v", err)
 		return err
 	}
@@ -181,7 +182,7 @@ func (c *Controller) removeInterConnection(azName string) error {
 }
 
 func (c *Controller) establishInterConnection(config map[string]string) error {
-	if err := c.startOVNIC(config["ic-db-host"], config["ic-nb-port"], config["ic-sb-port"]); err != nil {
+	if err := c.startOvnIC(config["ic-db-host"], config["ic-nb-port"], config["ic-sb-port"]); err != nil {
 		klog.Errorf("failed to start ovn-ic, %v", err)
 		return err
 	}
@@ -197,7 +198,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 		return nil
 	}
 
-	if err := c.ovnLegacyClient.SetAzName(config["az-name"]); err != nil {
+	if err := c.ovnClient.SetAzName(config["az-name"]); err != nil {
 		klog.Errorf("failed to set az name. %v", err)
 		return err
 	}
@@ -284,7 +285,7 @@ func (c *Controller) acquireLrpAddress(ts string) (string, error) {
 	}
 }
 
-func (c *Controller) startOVNIC(icHost, icNbPort, icSbPort string) error {
+func (c *Controller) startOvnIC(icHost, icNbPort, icSbPort string) error {
 	cmd := exec.Command("/usr/share/ovn/scripts/ovn-ctl",
 		fmt.Sprintf("--ovn-ic-nb-db=%s", genHostAddress(icHost, icNbPort)),
 		fmt.Sprintf("--ovn-ic-sb-db=%s", genHostAddress(icHost, icSbPort)),
@@ -309,7 +310,7 @@ func (c *Controller) startOVNIC(icHost, icNbPort, icSbPort string) error {
 	return nil
 }
 
-func (c *Controller) stopOVNIC() error {
+func (c *Controller) stopOvnIC() error {
 	cmd := exec.Command("/usr/share/ovn/scripts/ovn-ctl", "stop_ic")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -446,22 +447,17 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 		return
 	}
 	if len(lrRouteList) == 0 {
-		klog.V(5).Info(" lr ovn-ic route does not exist")
-		lrPolicyList, err := c.ovnClient.GetLogicalRouterPoliciesByExtID(key, value)
+		klog.V(5).Info("lr ovn-ic route does not exist")
+		err := c.ovnClient.DeleteLogicalRouterPolicies(lr.Name, util.OvnICPolicyPriority, map[string]string{key: value})
 		if err != nil {
-			klog.Errorf("failed to list ovn-ic lr policy ", err)
+			klog.Errorf("delete ovn-ic lr policy", err)
 			return
-		}
-		for _, lrPolicy := range lrPolicyList {
-			if err := c.ovnClient.DeleteRouterPolicy(lr, lrPolicy.UUID); err != nil {
-				klog.Errorf("deleting router policy failed %v", err)
-			}
 		}
 		return
 	}
 
 	policyMap := map[string]string{}
-	lrPolicyList, err := c.ovnClient.GetLogicalRouterPoliciesByExtID(key, value)
+	lrPolicyList, err := c.ovnClient.ListLogicalRouterPolicies(util.OvnICPolicyPriority, map[string]string{key: value})
 	if err != nil {
 		klog.Errorf("failed to list ovn-ic lr policy ", err)
 		return
@@ -479,16 +475,13 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 			delete(policyMap, lrRoute.IPPrefix)
 		} else {
 			matchFiled := util.MatchV4Dst + " == " + lrRoute.IPPrefix
-			if err := c.ovnClient.AddRouterPolicy(lr, matchFiled, ovnnb.LogicalRouterPolicyActionAllow,
-				map[string]string{},
-				map[string]string{key: value, "vendor": util.CniTypeName},
-				util.OvnICPolicyPriority); err != nil {
+			if err := c.ovnClient.AddLogicalRouterPolicy(util.DefaultVpc, util.OvnICPolicyPriority, matchFiled, ovnnb.LogicalRouterPolicyActionAllow, nil, map[string]string{key: value, "vendor": util.CniTypeName}); err != nil {
 				klog.Errorf("adding router policy failed %v", err)
 			}
 		}
 	}
 	for _, uuid := range policyMap {
-		if err := c.ovnClient.DeleteRouterPolicy(lr, uuid); err != nil {
+		if err := c.ovnClient.DeleteLogicalRouterPolicyByUUID(lr.Name, uuid); err != nil {
 			klog.Errorf("deleting router policy failed %v", err)
 		}
 	}

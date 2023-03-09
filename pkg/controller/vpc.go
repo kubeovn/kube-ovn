@@ -205,8 +205,9 @@ func (c *Controller) reconcileRouterPorts(vpc *kubeovnv1.Vpc) error {
 			}
 			networks := util.GetIpAddrWithMask(gateway, subnet.Spec.CIDRBlock)
 			klog.Infof("add vpc lrp %s, networks %s", routerPortName, networks)
-			if err := c.ovnClient.AddLogicalRouterPort(router, routerPortName, "", networks); err != nil {
-				klog.ErrorS(err, "unable to create router port", "vpc", vpc.Name, "subnet", subnetName)
+
+			if err := c.ovnClient.CreateLogicalRouterPort(router, routerPortName, "", strings.Split(networks, ",")); err != nil {
+				klog.Errorf("failed to create router port %s, err %v", routerPortName, err)
 				return err
 			}
 		}
@@ -239,7 +240,7 @@ func (c *Controller) reconcileRouterPortBySubnet(vpc *kubeovnv1.Vpc, subnet *kub
 		networks := util.GetIpAddrWithMask(gateway, subnet.Spec.CIDRBlock)
 		klog.Infof("router port does not exist, trying to create %s with ip %s", routerPortName, networks)
 
-		if err := c.ovnClient.AddLogicalRouterPort(router, routerPortName, "", networks); err != nil {
+		if err := c.ovnClient.CreateLogicalRouterPort(router, routerPortName, "", strings.Split(networks, ",")); err != nil {
 			klog.Errorf("failed to create router port %s, err %v", routerPortName, err)
 			return err
 		}

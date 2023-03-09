@@ -909,29 +909,6 @@ type StaticRoute struct {
 	BfdId   string
 }
 
-func (c LegacyClient) ListStaticRoute() ([]StaticRoute, error) {
-	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=ip_prefix,nexthop,policy", "find", "Logical_Router_Static_Route", "external_ids{=}{}")
-	if err != nil {
-		return nil, err
-	}
-	entries := strings.Split(output, "\n")
-	staticRoutes := make([]StaticRoute, 0, len(entries))
-	for _, entry := range strings.Split(output, "\n") {
-		if len(strings.Split(entry, ",")) == 3 {
-			t := strings.Split(entry, ",")
-			staticRoutes = append(staticRoutes,
-				StaticRoute{CIDR: strings.TrimSpace(t[0]), NextHop: strings.TrimSpace(t[1]), Policy: strings.TrimSpace(t[2])})
-		}
-		if len(strings.Split(entry, ",")) == 6 {
-			t := strings.Split(entry, ",")
-			staticRoutes = append(staticRoutes,
-				StaticRoute{CIDR: strings.TrimSpace(t[0]), NextHop: strings.TrimSpace(t[1]),
-					Policy: strings.TrimSpace(t[2]), ECMP: strings.TrimSpace(t[4])})
-		}
-	}
-	return staticRoutes, nil
-}
-
 // AddStaticRoute add a static route rule in ovn
 func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, ecmp, bfdId, router string, routeType string) error {
 	// route require policy, cidr, nextHop, ecmp
@@ -1172,33 +1149,39 @@ func parseLrRouteListOutput(output string) (routeList []*StaticRoute, err error)
 	lines := strings.Split(output, "\n")
 	routeList = make([]*StaticRoute, 0, len(lines))
 	for _, l := range lines {
-		if strings.Contains(l, "learned") {
+		// <PREFIX> <NEXT_HOP> <POLICY> [OUTPUT_PORT] [(learned)] [ecmp] [ecmp-symmetric-reply] [bfd]
+		fields := strings.Fields(l)
+		if len(fields) < 3 {
 			continue
 		}
-
-		if len(l) == 0 {
-			continue
-		}
-
 		if !routeRegexp.MatchString(l) {
 			continue
 		}
 
-		fields := strings.Fields(l)
-		if len(fields) < 4 {
-			routeList = append(routeList, &StaticRoute{
-				Policy:  fields[2],
-				CIDR:    fields[0],
-				NextHop: fields[1],
-			})
-		} else {
-			routeList = append(routeList, &StaticRoute{
-				Policy:  fields[2],
-				CIDR:    fields[0],
-				NextHop: fields[1],
-				ECMP:    fields[4],
-			})
+		var learned, ecmpSymmetricReply bool
+		idx := len(fields) - 1
+		for ; !learned && idx > 2; idx-- {
+			switch fields[idx] {
+			case "(learned)":
+				learned = true
+			case "ecmp-symmetric-reply":
+				ecmpSymmetricReply = true
+			}
 		}
+		if learned {
+			continue
+		}
+
+		route := &StaticRoute{
+			Policy:  fields[2],
+			CIDR:    fields[0],
+			NextHop: fields[1],
+		}
+		if ecmpSymmetricReply {
+			route.ECMP = "ecmp-symmetric-reply"
+		}
+
+		routeList = append(routeList, route)
 	}
 	return routeList, nil
 }
@@ -2757,11 +2740,6 @@ func (c LegacyClient) CheckPolicyRouteNexthopConsistent(match, nexthop string, p
 		return true, nil
 	}
 	return false, nil
-}
-
-type DHCPOptionsUUIDs struct {
-	DHCPv4OptionsUUID string
-	DHCPv6OptionsUUID string
 }
 
 type dhcpOptions struct {

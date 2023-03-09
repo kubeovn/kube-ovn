@@ -44,8 +44,17 @@ function quit {
   # Wait a while for prob ready.
   # As the timeout has been increased existing entry will not change to stale or delay at the moment
   sleep 5
-  /usr/share/ovn/scripts/grace_stop_ovn_controller
-  /usr/share/openvswitch/scripts/ovs-ctl stop
+
+  gen_name=$(kubectl -n $POD_NAMESPACE get pod $POD_NAME -o jsonpath='{.metadata.generateName}')
+  revision_hash=$(kubectl -n $POD_NAMESPACE get pod $POD_NAME -o jsonpath='{.metadata.labels.controller-revision-hash}')
+  revision=$(kubectl -n $POD_NAMESPACE get controllerrevision $gen_name$revision_hash -o jsonpath='{.revision}')
+  ds_name=${gen_name%-}
+  latest_revision=$(kubectl -n kube-system get controllerrevision --no-headers | awk '$2 == "daemonset.apps/'$ds_name'" {print $3}' | sort -nr | head -n1)
+  if [ "x$latest_revision" = "x$revision" ]; then
+    /usr/share/ovn/scripts/grace_stop_ovn_controller
+    /usr/share/openvswitch/scripts/ovs-ctl stop
+  fi
+
   exit 0
 }
 trap quit EXIT
@@ -187,7 +196,7 @@ else
 fi
 
 # Start vswitchd. restart will automatically set/unset flow-restore-wait which is not what we want
-/usr/share/openvswitch/scripts/ovs-ctl start --no-ovsdb-server --system-id=random --no-mlockall
+/usr/share/openvswitch/scripts/ovs-ctl restart --no-ovsdb-server --system-id=random --no-mlockall
 /usr/share/openvswitch/scripts/ovs-ctl --protocol=udp --dport=6081 enable-protocol
 
 sleep 1

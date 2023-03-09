@@ -177,20 +177,56 @@ func (c *Controller) initDenyAllSecurityGroup() error {
 	return nil
 }
 
+// updateDenyAllSgPorts set lsp to deny which security_groups is not empty
 func (c *Controller) updateDenyAllSgPorts() error {
-	results, err := c.ovnLegacyClient.CustomFindEntity("logical_switch_port", []string{"_uuid", "name", "port_security"}, "external_ids:security_groups!=\"\"")
+	// list all lsp which security_groups is not empty
+	lsps, err := c.ovnClient.ListNormalLogicalSwitchPorts(true, map[string]string{sgsKey: ""})
 	if err != nil {
 		klog.Errorf("failed to find logical port, %v", err)
 		return err
 	}
-	var ports []string
-	for _, ret := range results {
-		if len(ret["port_security"]) < 2 {
+
+	addPorts := make([]string, 0, len(lsps))
+	for _, lsp := range lsps {
+		// skip lsp which only have mac addresses,address is in port.PortSecurity[0]
+		if len(strings.Split(lsp.PortSecurity[0], " ")) < 2 {
 			continue
 		}
-		ports = append(ports, ret["name"][0])
+
+		/* skip lsp which security_group does not exist */
+		// sgs format: sg1/sg2/sg3
+		sgs := strings.Split(lsp.ExternalIDs[sgsKey], "/")
+		allNotExist, err := c.securityGroupAllNotExist(sgs)
+		if err != nil {
+			return err
+		}
+
+		if allNotExist {
+			continue
+		}
+
+		addPorts = append(addPorts, lsp.Name)
 	}
-	return c.ovnLegacyClient.SetPortsToPortGroup(ovs.GetSgPortGroupName(util.DenyAllSecurityGroup), ports)
+	pgName := ovs.GetSgPortGroupName(util.DenyAllSecurityGroup)
+
+	// reset pg ports
+	if err := c.ovnClient.PortGroupResetPorts(pgName); err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	// add port
+	if len(addPorts) == 0 {
+		return nil
+	}
+
+	klog.V(6).Infof("add ports %v to port group %s", addPorts, pgName)
+	if err := c.ovnClient.PortGroupAddPorts(pgName, addPorts...); err != nil {
+		klog.Errorf("add ports to port group %s: %v", pgName, err)
+		return err
+	}
+
+	return nil
 }
 
 func (c *Controller) handleAddOrUpdateSg(key string) error {
@@ -446,4 +482,26 @@ func (c *Controller) reconcilePortSg(portName, securityGroups string) error {
 		return err
 	}
 	return nil
+}
+
+// securityGroupAllNotExist return true if all sgs does not exist
+func (c *Controller) securityGroupAllNotExist(sgs []string) (bool, error) {
+	if len(sgs) == 0 {
+		return true, nil
+	}
+
+	notExistsCount := 0
+	// sgs format: sg1/sg2/sg3
+	for _, sg := range sgs {
+		ok, err := c.ovnClient.PortGroupExists(ovs.GetSgPortGroupName(sg))
+		if err != nil {
+			return true, err
+		}
+
+		if !ok {
+			notExistsCount++
+		}
+	}
+
+	return notExistsCount == len(sgs), nil
 }

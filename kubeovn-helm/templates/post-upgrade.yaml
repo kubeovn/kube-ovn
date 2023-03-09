@@ -1,3 +1,4 @@
+{{ if .Values.restart_ovs }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -64,3 +65,4 @@ spec:
         - name: kube-ovn-log
           hostPath:
             path: /var/log/kube-ovn
+{{ end }}

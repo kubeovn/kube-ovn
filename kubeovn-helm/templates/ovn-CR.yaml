@@ -89,6 +89,13 @@ rules:
       - patch
       - update
   - apiGroups:
+      - apps
+    resources:
+      - controllerrevisions
+    verbs:
+      - get
+      - list
+  - apiGroups:
       - coordination.k8s.io
     resources:
       - leases
