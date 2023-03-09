@@ -273,6 +273,7 @@ func (c *Controller) updateDefaultVpcExternal(enableExternal bool) error {
 	}
 	vpc := cachedVpc.DeepCopy()
 	if vpc.Spec.EnableExternal != enableExternal {
+		vpc.Spec.EnableExternal = enableExternal
 		if _, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Update(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
 			errMsg := fmt.Errorf("failed to update vpc enable external %s, %v", vpc.Name, err)
 			klog.Error(errMsg)

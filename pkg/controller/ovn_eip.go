@@ -341,6 +341,14 @@ func (c *Controller) handleDelOvnEip(key string) error {
 			return err
 		}
 	}
+
+	if cachedEip.Spec.Type == util.LrpUsingEip {
+		if err := c.ovnLegacyClient.DeleteLogicalRouterPort(key); err != nil {
+			klog.Errorf("failed to delete lrp %s, %v", key, err)
+			return err
+		}
+	}
+
 	if err = c.handleDelOvnEipFinalizer(cachedEip); err != nil {
 		klog.Errorf("failed to remove finalizer from ovn eip, %v", err)
 		return err
