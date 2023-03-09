@@ -32,7 +32,7 @@ func (c *Controller) InitOVN() error {
 		}
 		v4Svc, _ := util.SplitStringIP(c.config.ServiceClusterIPRange)
 		if v4Svc != "" {
-			if err := c.ovnLegacyClient.SetLBCIDR(v4Svc); err != nil {
+			if err := c.ovnClient.SetLBCIDR(v4Svc); err != nil {
 				klog.Errorf("init load balancer svc cidr failed: %v", err)
 				return err
 			}
