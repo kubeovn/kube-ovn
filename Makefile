@@ -153,7 +153,7 @@ base-tar-arm64:
 	docker save $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-arm64 -o image-arm64.tar
 
 define docker_ensure_image_exists
-	@if ! docker images --format "{{.Repository}}:{{.Tag}}" | grep "^$(1)$$" >/dev/null; then \
+	if ! docker images --format "{{.Repository}}:{{.Tag}}" | grep "^$(1)$$" >/dev/null; then \
 		docker pull "$(1)"; \
 	fi
 endef
@@ -226,6 +226,9 @@ define kind_create_cluster
 endef
 
 define kind_load_image
+	@if [ "x$(3)" = "x1" ]; then \
+		$(call docker_ensure_image_exists,$(2)); \
+	fi
 	kind load docker-image --name $(1) $(2)
 endef
 
@@ -380,7 +383,7 @@ kind-install-ovn-ic: kind-install
 	docker exec ovn-ic-db ovn-ic-sbctl show
 
 .PHONY: kind-install-ovn-submariner
-kind-install-ovn-submariner: kind-init
+kind-install-ovn-submariner: kind-install
 	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
 	kubectl config use-context kind-kube-ovn1
 	@$(MAKE) kind-untaint-control-plane
@@ -527,25 +530,18 @@ kind-install-underlay-logical-gateway-dual: kind-disable-hairpin kind-load-image
 
 .PHONY: kind-install-multus
 kind-install-multus:
-	$(call docker_ensure_image_exists,$(MULTUS_IMAGE))
-	$(call kind_load_image,kube-ovn,$(MULTUS_IMAGE))
+	$(call kind_load_image,kube-ovn,$(MULTUS_IMAGE),1)
 	kubectl apply -f "$(MULTUS_YAML)"
 	kubectl -n kube-system rollout status ds kube-multus-ds
 
 .PHONY: kind-install-kubevirt
 kind-install-kubevirt: kind-load-image kind-untaint-control-plane
-	$(call docker_ensure_image_exists,$(KUBEVIRT_OPERATOR_IMAGE))
-	$(call kind_load_image,kube-ovn,$(KUBEVIRT_OPERATOR_IMAGE))
-	$(call docker_ensure_image_exists,$(KUBEVIRT_API_IMAGE))
-	$(call kind_load_image,kube-ovn,$(KUBEVIRT_API_IMAGE))
-	$(call docker_ensure_image_exists,$(KUBEVIRT_CONTROLLER_IMAGE))
-	$(call kind_load_image,kube-ovn,$(KUBEVIRT_CONTROLLER_IMAGE))
-	$(call docker_ensure_image_exists,$(KUBEVIRT_HANDLER_IMAGE))
-	$(call kind_load_image,kube-ovn,$(KUBEVIRT_HANDLER_IMAGE))
-	$(call docker_ensure_image_exists,$(KUBEVIRT_LAUNCHER_IMAGE))
-	$(call kind_load_image,kube-ovn,$(KUBEVIRT_LAUNCHER_IMAGE))
-	$(call docker_ensure_image_exists,$(KUBEVIRT_TEST_IMAGE))
-	$(call kind_load_image,kube-ovn,$(KUBEVIRT_TEST_IMAGE))
+	$(call kind_load_image,kube-ovn,$(KUBEVIRT_OPERATOR_IMAGE),1)
+	$(call kind_load_image,kube-ovn,$(KUBEVIRT_API_IMAGE),1)
+	$(call kind_load_image,kube-ovn,$(KUBEVIRT_CONTROLLER_IMAGE),1)
+	$(call kind_load_image,kube-ovn,$(KUBEVIRT_HANDLER_IMAGE),1)
+	$(call kind_load_image,kube-ovn,$(KUBEVIRT_LAUNCHER_IMAGE),1)
+	$(call kind_load_image,kube-ovn,$(KUBEVIRT_TEST_IMAGE),1)
 
 	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | bash
 	kubectl describe no
@@ -572,8 +568,7 @@ kind-install-lb-svc: kind-load-image kind-untaint-control-plane
 .PHONY: kind-install-cilium-chaining
 kind-install-cilium-chaining: kind-load-image kind-untaint-control-plane
 	$(eval KUBERNETES_SERVICE_HOST = $(shell kubectl get nodes kube-ovn-control-plane -o jsonpath='{.status.addresses[0].address}'))
-	$(call docker_ensure_image_exists,$(CILIUM_IMAGE_REPO):v$(CILIUM_VERSION))
-	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO):v$(CILIUM_VERSION))
+	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO):v$(CILIUM_VERSION),1)
 	kubectl apply -f yamls/cilium-chaining.yaml
 	helm repo add cilium https://helm.cilium.io/
 	helm install cilium cilium/cilium \
