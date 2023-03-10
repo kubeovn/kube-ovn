@@ -320,8 +320,9 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		}
 		if subnet.Spec.Vlan != "" {
 			if _, err := c.vlansLister.Get(subnet.Spec.Vlan); err != nil {
-				klog.Warningf("subnet %s reference a none exist vlan %s", subnet.Name, subnet.Spec.Vlan)
-				subnet.Spec.Vlan = ""
+				err = fmt.Errorf("failed to get vlan %s: %s", subnet.Spec.Vlan, err)
+				klog.Error(err)
+				return err
 			}
 		}
 	}
