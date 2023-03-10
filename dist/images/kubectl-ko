@@ -990,10 +990,16 @@ log_linux(){
     if [[ "$sub_component_param" == "dmesg" ]]; then
       kubectl exec $pod -n kube-system -- dmesg -T $( [ "$tail_lines" == "all" ] || echo "| tail -n $tail_lines_param" ) || :
     elif [[ "$sub_component_param" == "iptables" ]]; then
-      echo "******************legacy************************"
+      echo "******************legacy filter ************************"
       kubectl exec $pod -n kube-system -- iptables -S || :
-      echo "*********************nft************************"
+      echo "*********************nft filter ************************"
       kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -S || :
+
+      echo "****************** legacy nat ************************"
+      kubectl exec $pod -n kube-system -- iptables -S -t nat || :
+      echo "********************* nft nat ************************"
+      kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -S -t nat || :
+
     elif [[ "$sub_component_param" == "route" ]]; then
       kubectl exec $pod -n kube-system -- ip route show || :
     elif [[ "$sub_component_param" == "link" ]]; then
