@@ -30,7 +30,7 @@ showHelp(){
           kube-ovn with sub_components: kube-ovn-controller,kube-ovn-cni,kube-ovn-pinger,kube-ovn-monitor
           ovn with sub_components: ovn-controller,ovn-northd,ovsdb-server-nb,ovsdb-server-sb
           ovs with sub_components: ovs-vswitchd,ovsdb-server
-          linux with sub_components: dmesg,iptables,route,link,neigh,memory,top
+          linux with sub_components: dmesg,iptables,route,link,neigh,memory,top,sysctl,netstat
           eg:   kubectl ko log all all all       --   show all component logs
                 kubectl ko log all               --   show all component logs with default tail_line=100
                 kubectl ko log kube-ovn all 1000 --   show kube-ovn all sub_component with tail_line=1000
@@ -1004,6 +1004,10 @@ log_linux(){
       kubectl exec $pod -n kube-system -- free -m || :
     elif [[ "$sub_component_param" == "top" ]]; then
       kubectl exec $pod -n kube-system -- top -b -n 1 | head -n 20 | tail -n 10 || :
+    elif [[ "$sub_component_param" == "sysctl" ]]; then
+      kubectl exec $pod -n kube-system -- sysctl -a || :
+    elif [[ "$sub_component_param" == "netstat" ]]; then
+      kubectl exec $pod -n kube-system -- netstat -tunlp || :
     fi
   done
 }
@@ -1018,7 +1022,7 @@ log(){
   kube_ovn_sub_components=("kube-ovn-controller" "kube-ovn-cni" "kube-ovn-pinger" "kube-ovn-monitor")
   ovs_sub_components=("ovs-vswitchd" "ovsdb-server")
   ovn_sub_components=("ovn-controller" "ovn-northd" "ovsdb-server-nb" "ovsdb-server-sb")
-  linux_sub_components=("dmesg" "iptables" "route" "link" "neigh" "memory" "top")
+  linux_sub_components=("dmesg" "iptables" "route" "link" "neigh" "memory" "top" "sysctl" "netstat")
 
   if [[ ! " ${components[@]} " =~ " $component " ]]; then
       echo "invalid component $component"
