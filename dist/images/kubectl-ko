@@ -26,13 +26,16 @@ showHelp(){
   echo "  env-check    check the environment configuration"
   echo "  tuning {install-fastpath|local-install-fastpath|remove-fastpath|install-stt|local-install-stt|remove-stt} {centos7|centos8}} [kernel-devel-version]    deploy kernel optimisation components to the system"
   echo "  reload    restart all kube-ovn components"
-  echo "  log {kube-ovn|ovn|ovs|linux} {all|sub_component...} [tail_lines]
+  echo "  log {kube-ovn|ovn|ovs|linux|all} {all|sub_component...} [tail_lines|all]
           kube-ovn with sub_components: kube-ovn-controller,kube-ovn-cni,kube-ovn-pinger,kube-ovn-monitor
           ovn with sub_components: ovn-controller,ovn-northd,ovsdb-server-nb,ovsdb-server-sb
           ovs with sub_components: ovs-vswitchd,ovsdb-server
-          linux with sub_components: dmesg,iptables,route,link,neigh,memory,top"
+          linux with sub_components: dmesg,iptables,route,link,neigh,memory,top
+          eg:   kubectl ko log all all all       --   show all component logs
+                kubectl ko log all               --   show all component logs with default tail_line=100
+                kubectl ko log kube-ovn all 1000 --   show kube-ovn all sub_component with tail_line=1000
+          "
 }
-
 
 # usage: ipv4_to_hex 192.168.0.1
 ipv4_to_hex(){
@@ -942,59 +945,64 @@ env-check(){
     echo "************************************************"
     echo "Start environment check for node $nodeName"
     echo "************************************************"
-    kubectl exec -n $KUBE_OVN_NS $pod -c cni-server -- bash /kube-ovn/env-check.sh
+    kubectl exec -it -n $KUBE_OVN_NS $pod -c cni-server -- bash /kube-ovn/env-check.sh
   done
 }
 
 log_kube_ovn(){
-  sub_component=$1
-  tail_lines=$2
-  podNames=`kubectl get pod -n kube-system -l app=$sub_component -o 'jsonpath={.items[*].metadata.name}'`
+  sub_component_param=$1
+  tail_lines_param=$2
+  podNames=`kubectl get pod -n kube-system -l app=$sub_component_param -o 'jsonpath={.items[*].metadata.name}'`
   for pod in $podNames; do
     echo "************************************************"
-    echo " component $component sub_component $sub_component pod $pod log"
+    echo " component $component sub_component $sub_component_param pod $pod log"
     echo "************************************************"
-    kubectl logs $pod -n kube-system --tail=$tail_lines 2>&1 || :
+    kubectl logs "$pod" -n kube-system $( [ "$tail_lines" == "all" ] || echo "--tail=$tail_lines" ) 2>&1 || :
   done
 }
 
 log_ovn_ovs(){
-  component=$1
-  sub_component=$2
-  tail_lines=$3
+  component_param=$1
+  sub_component_param=$2
+  tail_lines_param=$3
   podNames=`kubectl get pod -n kube-system -l app=ovs -o 'jsonpath={.items[*].metadata.name}'`
   for pod in $podNames; do
     echo "************************************************"
-    echo " component $component $sub_component.log pod $pod log"
+    echo " component $component_param $sub_component_param.log pod $pod log"
     echo "************************************************"
-    kubectl exec $pod -n kube-system -- tail -n $tail_lines /var/log/$component/$sub_component.log 2>&1 || :
+
+    if [[ "$tail_lines" == "all" ]]; then
+      kubectl exec $pod -n kube-system -- cat /var/log/$component_param/$sub_component_param.log 2>&1 || :
+    else
+      kubectl exec $pod -n kube-system -- tail -n $tail_lines_param /var/log/$component_param/$sub_component_param.log 2>&1 || :
+    fi
   done
 }
 
 log_linux(){
-  sub_component=$1
-  tail_lines=$2
+  sub_component_param=$1
+  tail_lines_param=$2
   podNames=`kubectl get pod -n kube-system -l app=ovs -o 'jsonpath={.items[*].metadata.name}'`
   for pod in $podNames; do
     echo "************************************************"
-    echo " component $component sub_component $sub_component pod $pod log"
+    echo " component $component sub_component $sub_component_param pod $pod log"
     echo "************************************************"
-    if [[ "$sub_component" == "dmesg" ]]; then
-      kubectl exec $pod -n kube-system -- dmesg -T | tail -n $tail_lines || :
-    elif [[ "$sub_component" == "iptables" ]]; then
+    if [[ "$sub_component_param" == "dmesg" ]]; then
+      kubectl exec $pod -n kube-system -- dmesg -T $( [ "$tail_lines" == "all" ] || echo "| tail -n $tail_lines_param" ) || :
+    elif [[ "$sub_component_param" == "iptables" ]]; then
       echo "******************legacy************************"
       kubectl exec $pod -n kube-system -- iptables -S || :
       echo "*********************nft************************"
       kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -S || :
-    elif [[ "$sub_component" == "route" ]]; then
+    elif [[ "$sub_component_param" == "route" ]]; then
       kubectl exec $pod -n kube-system -- ip route show || :
-    elif [[ "$sub_component" == "link" ]]; then
+    elif [[ "$sub_component_param" == "link" ]]; then
       kubectl exec $pod -n kube-system -- ip -d link show || :
-    elif [[ "$sub_component" == "neigh" ]]; then
+    elif [[ "$sub_component_param" == "neigh" ]]; then
       kubectl exec $pod -n kube-system -- ip n || :
-    elif [[ "$sub_component" == "memory" ]]; then
+    elif [[ "$sub_component_param" == "memory" ]]; then
       kubectl exec $pod -n kube-system -- free -m || :
-    elif [[ "$sub_component" == "top" ]]; then
+    elif [[ "$sub_component_param" == "top" ]]; then
       kubectl exec $pod -n kube-system -- top -b -n 1 | head -n 20 | tail -n 10 || :
     fi
   done
@@ -1003,10 +1011,10 @@ log_linux(){
 
 log(){
   component="$1"
-  sub_component="$2"
+  sub_component=${2:-all}
   tail_lines=${3:-100}
 
-  components=("kube-ovn" "ovs" "ovn" "linux")
+  components=("kube-ovn" "ovs" "ovn" "linux" "all")
   kube_ovn_sub_components=("kube-ovn-controller" "kube-ovn-cni" "kube-ovn-pinger" "kube-ovn-monitor")
   ovs_sub_components=("ovs-vswitchd" "ovsdb-server")
   ovn_sub_components=("ovn-controller" "ovn-northd" "ovsdb-server-nb" "ovsdb-server-sb")
@@ -1017,7 +1025,7 @@ log(){
       exit 1
   fi
 
-  if [[ ! "$sub_component" == "all" ]]; then
+  if [[ ! "$sub_component" == "all" && ! "$components" == "all" ]]; then
     case $component in
     "kube-ovn")
         sub_components=("${kube_ovn_sub_components[@]}")
@@ -1039,7 +1047,7 @@ log(){
     fi
   fi
 
-  if [[ "$component" == "kube-ovn" ]]; then
+  if [[ "$component" == "kube-ovn" || "$component" == "all" ]]; then
     if [[ "$sub_component" == "all" ]]; then
       for kube_ovn_sub_component in ${kube_ovn_sub_components[@]}; do
         log_kube_ovn "$kube_ovn_sub_component" $tail_lines
@@ -1049,7 +1057,7 @@ log(){
     fi
   fi
 
-  if [[ "$component" == "ovn" ]]; then
+  if [[ "$component" == "ovn" || "$component" == "all" ]]; then
     if [[ "$sub_component" == "all" ]]; then
       for ovn_sub_component in ${ovn_sub_components[@]}; do
         log_ovn_ovs "ovn" "$ovn_sub_component" $tail_lines
@@ -1059,7 +1067,7 @@ log(){
     fi
   fi
 
-  if [[ "$component" == "ovs" ]]; then
+  if [[ "$component" == "ovs" || "$component" == "all" ]]; then
     if [[ "$sub_component" == "all" ]]; then
       for ovs_sub_component in ${ovs_sub_components[@]}; do
         log_ovn_ovs "openvswitch" "$ovs_sub_component" $tail_lines
@@ -1069,7 +1077,7 @@ log(){
     fi
   fi
 
-  if [[ "$component" == "linux" ]]; then
+  if [[ "$component" == "linux" || "$component" == "all" ]]; then
     if [[ "$sub_component" == "all" ]]; then
       for linux_sub_component in ${linux_sub_components[@]}; do
         log_linux "$linux_sub_component" $tail_lines
