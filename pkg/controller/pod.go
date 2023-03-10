@@ -777,18 +777,11 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 	}
 
 	for _, port := range ports {
-		sgs, err := c.getPortSg(&port)
-		if err != nil {
-			klog.Warningf("failed to get port '%s' sg, %v", port.Name, err)
-		}
 		// when lsp is deleted, the port of pod is deleted from any port-group automatically.
 		klog.Infof("gc logical switch port %s", port.Name)
 		if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(port.Name); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", port.Name, err)
 			return err
-		}
-		for _, sg := range sgs {
-			c.syncSgPortsQueue.Add(sg)
 		}
 	}
 	podNets, err := c.getPodKubeovnNets(pod)
