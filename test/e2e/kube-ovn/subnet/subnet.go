@@ -761,21 +761,43 @@ var _ = framework.Describe("[group:subnet]", func() {
 		framework.ExpectNoError(err, "failed to to create deployment")
 		err = deployment.WaitForDeploymentComplete(cs, deploy)
 		framework.ExpectNoError(err, "deployment failed to complete")
-
-		checkFunc := func(usingIPRange, availableIPRange, startIP, lastIP string, count int64) {
+		checkFunc := func(usingIPRange, availableIPRange, startIP, lastIP string, count int64, isFrameworkCheck bool) bool {
 			usingIPEnd := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIP), big.NewInt(count-1)))
 			availableIPStart := util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(usingIPEnd), big.NewInt(1)))
-			framework.ExpectEqual(usingIPRange, fmt.Sprintf("%s-%s", startIP, usingIPEnd))
-			framework.ExpectEqual(availableIPRange, fmt.Sprintf("%s-%s", availableIPStart, lastIP))
+
+			framework.Logf("subnet status usingIPRange %s expect %s-%s ", usingIPRange, startIP, usingIPEnd)
+			framework.Logf("subnet status availableIPRange %s expect %s-%s ", availableIPRange, availableIPStart, lastIP)
+
+			if isFrameworkCheck {
+				framework.ExpectEqual(usingIPRange, fmt.Sprintf("%s-%s", startIP, usingIPEnd))
+				framework.ExpectEqual(availableIPRange, fmt.Sprintf("%s-%s", availableIPStart, lastIP))
+				return true
+			} else {
+				return usingIPRange == fmt.Sprintf("%s-%s", startIP, usingIPEnd) && availableIPRange == fmt.Sprintf("%s-%s", availableIPStart, lastIP)
+			}
 		}
 
-		subnet = subnetClient.Get(subnetName)
+		isSuccess := false
+		_ = wait.PollImmediate(time.Second, 30*time.Second, func() (bool, error) {
+			subnet = subnetClient.Get(subnetName)
+			framework.Logf("subnet status usingips %d availableIPs %d ", subnet.Status.V4UsingIPs, subnet.Status.V4AvailableIPs)
+			if cidrV4 != "" {
+				isSuccess = checkFunc(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas, false)
+				if !isSuccess {
+					return false, nil
+				}
+			}
+			if cidrV6 != "" {
+				isSuccess = checkFunc(subnet.Status.V6UsingIPRange, subnet.Status.V6AvailableIPRange, startIPv6, lastIPv6, replicas, false)
+			}
+			return isSuccess, nil
+		})
 		if cidrV4 != "" {
-			checkFunc(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas)
+			checkFunc(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas, true)
 		}
 
 		if cidrV6 != "" {
-			checkFunc(subnet.Status.V6UsingIPRange, subnet.Status.V6AvailableIPRange, startIPv6, lastIPv6, replicas)
+			checkFunc(subnet.Status.V6UsingIPRange, subnet.Status.V6AvailableIPRange, startIPv6, lastIPv6, replicas, true)
 		}
 
 		ginkgo.By("restart deployment ")
@@ -798,8 +820,8 @@ var _ = framework.Describe("[group:subnet]", func() {
 				util.BigInt2Ip(big.NewInt(0).Add(util.Ip2BigInt(startIP), big.NewInt(2*count-1))),
 			)
 
-			fmt.Printf("subnet status usingIPRange %s expect %s \n", usingIPRange, expectUsingIPRangeStr)
-			fmt.Printf("subnet status availableIPRange %s expect %s \n", availableIPRange, expectAvailIPRangeStr)
+			framework.Logf("subnet status usingIPRange %s expect %s ", usingIPRange, expectUsingIPRangeStr)
+			framework.Logf("subnet status availableIPRange %s expect %s ", availableIPRange, expectAvailIPRangeStr)
 
 			if isFrameworkCheck {
 				framework.ExpectEqual(usingIPRange, expectUsingIPRangeStr)
@@ -810,24 +832,22 @@ var _ = framework.Describe("[group:subnet]", func() {
 			}
 		}
 
-		checkTimes := 0
-		isSuccess := false
-		maxRetryTimes := 30
-		for {
-			time.Sleep(1 * time.Second)
-			if checkTimes > maxRetryTimes || isSuccess {
-				break
-			}
+		isSuccess = false
+		_ = wait.PollImmediate(time.Second, 30*time.Second, func() (bool, error) {
 			subnet = subnetClient.Get(subnetName)
 			if cidrV4 != "" {
 				isSuccess = checkFunc2(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas, false)
+				if !isSuccess {
+					return false, nil
+				}
 			}
 
 			if cidrV6 != "" {
 				isSuccess = checkFunc2(subnet.Status.V6UsingIPRange, subnet.Status.V6AvailableIPRange, startIPv6, lastIPv6, replicas, false)
 			}
-			checkTimes++
-		}
+
+			return isSuccess, nil
+		})
 
 		if cidrV4 != "" {
 			checkFunc2(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas, true)
