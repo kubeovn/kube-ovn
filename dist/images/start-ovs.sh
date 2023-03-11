@@ -35,16 +35,6 @@ cat /proc/cmdline"
 fi
 
 function quit {
-  set +e
-  for netns in /var/run/netns/*; do
-    nsenter --net=$netns sysctl -w net.ipv4.neigh.eth0.base_reachable_time_ms=180000;
-    nsenter --net=$netns sysctl -w net.ipv4.neigh.eth0.gc_stale_time=180;
-  done
-  # If the arp is in stale or delay status, stop vswitchd will lead prob failed.
-  # Wait a while for prob ready.
-  # As the timeout has been increased existing entry will not change to stale or delay at the moment
-  sleep 5
-
   gen_name=$(kubectl -n $POD_NAMESPACE get pod $POD_NAME -o jsonpath='{.metadata.generateName}')
   revision_hash=$(kubectl -n $POD_NAMESPACE get pod $POD_NAME -o jsonpath='{.metadata.labels.controller-revision-hash}')
   revision=$(kubectl -n $POD_NAMESPACE get controllerrevision $gen_name$revision_hash -o jsonpath='{.revision}')
@@ -152,49 +142,6 @@ function exchange_link_names() {
 
 exchange_link_names
 
-function wait_flows_pre_check() {
-  local devices=""
-  local ips=($(echo $OVN_DB_IPS | sed 's/,/ /g'))
-  for ip in ${ips[*]}; do
-    devices="$devices $(ip route get $ip | grep -oE 'dev .+' | awk '{print $2}')"
-  done
-
-  bridges=($(ovs-vsctl --no-heading --columns=name find bridge external-ids:vendor=kube-ovn))
-  for br in ${bridges[@]}; do
-    ports=($(ovs-vsctl list-ports $br))
-    for port in ${ports[@]}; do
-      if ! echo $devices | grep -qw "$port"; then
-        continue
-      fi
-
-      port_type=$(ovs-vsctl --no-heading --columns=type find interface name=$port)
-      if [ ! "x$port_type" = 'x""' ]; then
-        continue
-      fi
-
-      if ! ip link show $port | grep -qw "master ovs-system"; then
-        return 1
-      fi
-    done
-  done
-
-  return 0
-}
-
-skip_wait_flows=0
-if ! wait_flows_pre_check; then
-  skip_wait_flows=1
-fi
-
-if [ $skip_wait_flows -eq 0 ]; then
-  # When ovs-vswitchd starts with this value set as true, it will neither flush or
-  # expire previously set datapath flows nor will it send and receive any
-  # packets to or from the datapath. Please check ovs-vswitchd.conf.db.5.txt
-  ovs-vsctl --no-wait set open_vswitch . other_config:flow-restore-wait="true"
-else
-  ovs-vsctl --no-wait set open_vswitch . other_config:flow-restore-wait="false"
-fi
-
 # Start vswitchd. restart will automatically set/unset flow-restore-wait which is not what we want
 /usr/share/openvswitch/scripts/ovs-ctl restart --no-ovsdb-server --system-id=random --no-mlockall
 /usr/share/openvswitch/scripts/ovs-ctl --protocol=udp --dport=6081 enable-protocol
@@ -299,29 +246,6 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
 else
   /usr/share/ovn/scripts/ovn-ctl --ovn-controller-ssl-key=/var/run/tls/key --ovn-controller-ssl-cert=/var/run/tls/cert --ovn-controller-ssl-ca-cert=/var/run/tls/cacert restart_controller
 fi
-
-if [ $skip_wait_flows -eq 0 ]; then
-  # Wait ovn-controller finish init flow compute and update it to vswitchd,
-  # then update flow-restore-wait to indicate vswitchd to process flows
-  set +e
-  flow_num=$(ovs-ofctl dump-flows br-int | wc -l)
-  while [ $flow_num -le $FLOW_LIMIT ]
-  do
-    echo "$flow_num flows now, waiting for ovs-vswitchd flow ready"
-    sleep 1
-    flow_num=$(ovs-ofctl dump-flows br-int | wc -l)
-  done
-  set -e
-
-  ovs-vsctl --no-wait set open_vswitch . other_config:flow-restore-wait="false"
-fi
-
-set +e
-for netns in /var/run/netns/*; do
-  nsenter --net=$netns sysctl -w net.ipv4.neigh.eth0.base_reachable_time_ms=30000;
-  nsenter --net=$netns sysctl -w net.ipv4.neigh.eth0.gc_stale_time=60;
-done
-set -e
 
 chmod 600 /etc/openvswitch/*
 tail --follow=name --retry /var/log/ovn/ovn-controller.log

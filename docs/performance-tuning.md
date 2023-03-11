@@ -18,7 +18,7 @@ We use `qperf -t 60 <server ip> -ub -oo msg_size:1 -vu tcp_lat tcp_bw udp_lat ud
 for tcp/udp latency and throughput and compare with host network performance as baseline.
 
 | Type               | tcp_lat (us) | udp_lat (us) | tcp_bw (Mb/s) | udp_bw(Mb/s) |
-| ------------------ | -------------| -------------| --------------| -------------|
+| ------------------ | ------------ | ------------ | ------------- | ------------ |
 | Kube-OVN Default   | 25.7         | 22.9         | 27.1          | 1.59         |
 | Kube-OVN Optimized | 13.9         | 12.9         | 27.6          | 5.57         |
 | HOST Network       | 13.1         | 12.4         | 28.2          | 6.02         |
@@ -35,33 +35,33 @@ In a different environment set, we compare the performance between optimized Kub
 
 `qperf -t 60 <server ip> -ub -oo msg_size:1 -vu tcp_lat tcp_bw udp_lat udp_bw`
 
-| Type               | tcp_lat (us) | udp_lat (us) | tcp_bw (Mb/s) | udp_bw(Mb/s) |
-| ------------------ | -------------| -------------| --------------| -------------|
-| Kube-OVN Overlay   | 15.2         | 14.6         | 23.6          | 2.65         |
-| Kube-OVN Underlay  | 14.3         | 13.8         | 24.2          | 3.46         |
-| Calico IPIP        | 21.4         | 20.2         | 23.6          | 1.18         |
-| Calico NoEncap     | 19.3         | 16.9         | 23.6          | 1.76         |
-| HOST Network       | 16.6         | 15.4         | 24.8          | 2.64         |
+| Type              | tcp_lat (us) | udp_lat (us) | tcp_bw (Mb/s) | udp_bw(Mb/s) |
+| ----------------- | ------------ | ------------ | ------------- | ------------ |
+| Kube-OVN Overlay  | 15.2         | 14.6         | 23.6          | 2.65         |
+| Kube-OVN Underlay | 14.3         | 13.8         | 24.2          | 3.46         |
+| Calico IPIP       | 21.4         | 20.2         | 23.6          | 1.18         |
+| Calico NoEncap    | 19.3         | 16.9         | 23.6          | 1.76         |
+| HOST Network      | 16.6         | 15.4         | 24.8          | 2.64         |
 
 `qperf -t 60 <server ip> -ub -oo msg_size:1K -vu tcp_lat tcp_bw udp_lat udp_bw`
 
-| Type               | tcp_lat (us) | udp_lat (us) | tcp_bw (Gb/s) | udp_bw(Gb/s) |
-| ------------------ | -------------| -------------| --------------| -------------|
-| Kube-OVN Overlay   | 16.5         | 15.8         | 10.2          | 2.77         |
-| Kube-OVN Underlay  | 15.9         | 14.5         | 9.6           | 3.22         |
-| Calico IPIP        | 22.5         | 21.5         | 1.45          | 1.14         |
-| Calico NoEncap     | 19.4         | 18.3         | 3.76          | 1.63         |
-| HOST Network       | 18.1         | 16.6         | 9.32          | 2.66         |
+| Type              | tcp_lat (us) | udp_lat (us) | tcp_bw (Gb/s) | udp_bw(Gb/s) |
+| ----------------- | ------------ | ------------ | ------------- | ------------ |
+| Kube-OVN Overlay  | 16.5         | 15.8         | 10.2          | 2.77         |
+| Kube-OVN Underlay | 15.9         | 14.5         | 9.6           | 3.22         |
+| Calico IPIP       | 22.5         | 21.5         | 1.45          | 1.14         |
+| Calico NoEncap    | 19.4         | 18.3         | 3.76          | 1.63         |
+| HOST Network      | 18.1         | 16.6         | 9.32          | 2.66         |
 
 `qperf -t 60 <server ip> -ub -oo msg_size:4K -vu tcp_lat tcp_bw udp_lat udp_bw`
 
-| Type               | tcp_lat (us) | udp_lat (us) | tcp_bw (Gb/s) | udp_bw(Gb/s) |
-| ------------------ | -------------| -------------| --------------| -------------|
-| Kube-OVN Overlay   | 34.7         | 41.6         | 16.0          | 9.23         |
-| Kube-OVN Underlay  | 32.6         | 44           | 15.1          | 6.71         |
-| Calico IPIP        | 44.8         | 52.9         | 2.94          | 3.26         |
-| Calico NoEncap     | 40           | 49.6         | 6.56          | 4.19         |
-| HOST Network       | 35.9         | 45.9         | 14.6          | 5.59         |
+| Type              | tcp_lat (us) | udp_lat (us) | tcp_bw (Gb/s) | udp_bw(Gb/s) |
+| ----------------- | ------------ | ------------ | ------------- | ------------ |
+| Kube-OVN Overlay  | 34.7         | 41.6         | 16.0          | 9.23         |
+| Kube-OVN Underlay | 32.6         | 44           | 15.1          | 6.71         |
+| Calico IPIP       | 44.8         | 52.9         | 2.94          | 3.26         |
+| Calico NoEncap    | 40           | 49.6         | 6.56          | 4.19         |
+| HOST Network      | 35.9         | 45.9         | 14.6          | 5.59         |
 
 This benchmark is for reference only, the result may vary dramatically due to different hardware and software setups. 
 Optimization for packets with big size and underlay latency are still in progress, we will publish the optimization 
@@ -263,5 +263,5 @@ Unfortunately, this tunnel type is not embedded in kernel, you have to compile O
 ```bash
 kubectl set env daemonset/ovs-ovn -n kube-system TUNNEL_TYPE=stt
 
-kubectl delete pod -n kube-system -lapp=ovs
+kubectl -n kube-system rollout restart ds ovs-ovn
 ```
