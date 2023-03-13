@@ -25,8 +25,8 @@ require (
 	github.com/moby/sys/mountinfo v0.6.2
 	github.com/neverlee/keymutex v0.0.0-20171121013845-f593aa834bf9
 	github.com/oilbeater/go-ping v0.0.0-20200413021620-332b7197c5b5
-	github.com/onsi/ginkgo/v2 v2.8.4
-	github.com/onsi/gomega v1.27.2
+	github.com/onsi/ginkgo/v2 v2.9.0
+	github.com/onsi/gomega v1.27.3
 	github.com/osrg/gobgp/v3 v3.12.0
 	github.com/ovn-org/libovsdb v0.0.0-20230207174348-7f620a35d7e8
 	github.com/parnurzeal/gorequest v0.2.16
@@ -116,7 +116,7 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.5.0 // indirect
 	github.com/golang/glog v1.0.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
-	github.com/golang/protobuf v1.5.2 // indirect
+	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/cadvisor v0.46.0 // indirect
 	github.com/google/cel-go v0.13.0 // indirect
 	github.com/google/gnostic v0.6.9 // indirect
