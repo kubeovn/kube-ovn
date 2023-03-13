@@ -629,9 +629,7 @@ func Test_scratch(t *testing.T) {
 	err = ovnClient.LoadBalancerAddVips(lbName, vips)
 	require.NoError(t, err)
 
-	err = ovnClient.LoadBalancerDeleteVips(lbName, map[string]struct{}{
-		"10.96.0.1:443": {},
-	})
+	err = ovnClient.LoadBalancerDeleteVips(lbName, "10.96.0.1:443")
 	require.NoError(t, err)
 }
 

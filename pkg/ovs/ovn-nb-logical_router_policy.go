@@ -120,6 +120,9 @@ func (c *ovnClient) DeleteLogicalRouterPolicies(lrName string, priority int, ext
 	if err != nil {
 		return err
 	}
+	if len(policies) == 0 {
+		return nil
+	}
 
 	policiesUUIDs := make([]string, 0, len(policies))
 	for _, policy := range policies {

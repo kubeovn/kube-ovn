@@ -3,7 +3,7 @@ package ovs
 import (
 	"context"
 	"fmt"
-	"strconv"
+	"reflect"
 	"strings"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -55,13 +55,6 @@ func (c *ovnClient) GetNbGlobal() (*ovnnb.NBGlobal, error) {
 }
 
 func (c *ovnClient) UpdateNbGlobal(nbGlobal *ovnnb.NBGlobal, fields ...interface{}) error {
-	/* 	// list nb_global which connections != nil
-	   	op, err := c.Where(nbGlobal, model.Condition{
-	   		Field:    &nbGlobal.Connections,
-	   		Function: ovsdb.ConditionNotEqual,
-	   		Value:    []string{""},
-	   	}).Update(nbGlobal) */
-
 	op, err := c.Where(nbGlobal).Update(nbGlobal, fields...)
 	if err != nil {
 		return fmt.Errorf("generate operations for updating nb global: %v", err)
@@ -79,13 +72,11 @@ func (c *ovnClient) SetAzName(azName string) error {
 	if err != nil {
 		return fmt.Errorf("get nb global: %v", err)
 	}
-
 	if azName == nbGlobal.Name {
 		return nil // no need to update
 	}
 
 	nbGlobal.Name = azName
-
 	if err := c.UpdateNbGlobal(nbGlobal, &nbGlobal.Name); err != nil {
 		return fmt.Errorf("set nb_global az name %s: %v", azName, err)
 	}
@@ -93,19 +84,31 @@ func (c *ovnClient) SetAzName(azName string) error {
 	return nil
 }
 
-func (c *ovnClient) SetUseCtInvMatch() error {
+func (c *ovnClient) SetNbGlobalOptions(key string, value interface{}) error {
 	nbGlobal, err := c.GetNbGlobal()
 	if err != nil {
-		return fmt.Errorf("get nb global: %v", err)
+		return fmt.Errorf("failed to get nb global: %v", err)
 	}
 
-	nbGlobal.Options["use_ct_inv_match"] = "false"
+	v := fmt.Sprintf("%v", value)
+	if len(nbGlobal.Options) != 0 && nbGlobal.Options[key] == v {
+		return nil
+	}
 
+	options := make(map[string]string, len(nbGlobal.Options)+1)
+	for k, v := range nbGlobal.Options {
+		options[k] = v
+	}
+	nbGlobal.Options[key] = v
 	if err := c.UpdateNbGlobal(nbGlobal, &nbGlobal.Options); err != nil {
-		return fmt.Errorf("set use_ct_inv_match to false, %v", err)
+		return fmt.Errorf("failed to set nb global option %s to %v: %v", key, value, err)
 	}
 
 	return nil
+}
+
+func (c *ovnClient) SetUseCtInvMatch() error {
+	return c.SetNbGlobalOptions("use_ct_inv_match", false)
 }
 
 func (c *ovnClient) SetICAutoRoute(enable bool, blackList []string) error {
@@ -114,19 +117,25 @@ func (c *ovnClient) SetICAutoRoute(enable bool, blackList []string) error {
 		return fmt.Errorf("get nb global: %v", err)
 	}
 
+	options := make(map[string]string, len(nbGlobal.Options)+3)
+	for k, v := range nbGlobal.Options {
+		options[k] = v
+	}
 	if enable {
-		nbGlobal.Options = map[string]string{
-			"ic-route-adv":       "true",
-			"ic-route-learn":     "true",
-			"ic-route-blacklist": strings.Join(blackList, ","),
-		}
+		options["ic-route-adv"] = "true"
+		options["ic-route-learn"] = "true"
+		options["ic-route-blacklist"] = strings.Join(blackList, ",")
 	} else {
-		nbGlobal.Options = map[string]string{
-			"ic-route-adv":   "false",
-			"ic-route-learn": "false",
-		}
+		delete(options, "ic-route-adv")
+		delete(options, "ic-route-learn")
+		delete(options, "ic-route-blacklist")
+	}
+	if reflect.DeepEqual(options, nbGlobal.Options) {
+		nbGlobal.Options = options
+		return nil
 	}
 
+	nbGlobal.Options = options
 	if err := c.UpdateNbGlobal(nbGlobal, &nbGlobal.Options); err != nil {
 		return fmt.Errorf("enable ovn-ic auto route, %v", err)
 	}
@@ -134,31 +143,9 @@ func (c *ovnClient) SetICAutoRoute(enable bool, blackList []string) error {
 }
 
 func (c *ovnClient) SetLBCIDR(serviceCIDR string) error {
-	nbGlobal, err := c.GetNbGlobal()
-	if err != nil {
-		return fmt.Errorf("get nb global: %v", err)
-	}
-
-	nbGlobal.Options["svc_ipv4_cidr"] = serviceCIDR
-
-	if err := c.UpdateNbGlobal(nbGlobal, &nbGlobal.Options); err != nil {
-		return fmt.Errorf("set svc cidr %s for lb, %v", serviceCIDR, err)
-	}
-
-	return nil
+	return c.SetNbGlobalOptions("svc_ipv4_cidr", serviceCIDR)
 }
 
 func (c *ovnClient) SetLsDnatModDlDst(enabled bool) error {
-	nbGlobal, err := c.GetNbGlobal()
-	if err != nil {
-		return fmt.Errorf("get nb global: %v", err)
-	}
-
-	nbGlobal.Options["ls_dnat_mod_dl_dst"] = strconv.FormatBool(enabled)
-
-	if err := c.UpdateNbGlobal(nbGlobal, &nbGlobal.Options); err != nil {
-		return fmt.Errorf("set NB_Global option ls_dnat_mod_dl_dst to %v: %v", enabled, err)
-	}
-
-	return nil
+	return c.SetNbGlobalOptions("ls_dnat_mod_dl_dst", enabled)
 }

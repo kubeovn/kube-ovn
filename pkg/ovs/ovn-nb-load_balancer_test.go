@@ -187,11 +187,11 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVips() {
 	err = ovnClient.LoadBalancerAddVips(lbName, vips)
 	require.NoError(t, err)
 
-	err = ovnClient.LoadBalancerDeleteVips(lbName, map[string]struct{}{
-		"10.96.0.1:443":           {},
-		"[fd00:10:96::e82f]:8080": {},
-		"10.96.0.100:1443":        {}, // non-existent vip
-	})
+	err = ovnClient.LoadBalancerDeleteVips(lbName,
+		"10.96.0.1:443",
+		"[fd00:10:96::e82f]:8080",
+		"10.96.0.100:1443", // non-existent vip
+	)
 	require.NoError(t, err)
 
 	lb, err := ovnClient.GetLoadBalancer(lbName, false)

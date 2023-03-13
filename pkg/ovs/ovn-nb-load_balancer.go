@@ -3,6 +3,7 @@ package ovs
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strconv"
 
 	"github.com/ovn-org/libovsdb/model"
@@ -60,9 +61,19 @@ func (c *ovnClient) UpdateLoadBalancer(lb *ovnnb.LoadBalancer, fields ...interfa
 	return nil
 }
 
-// LoadBalancerAddVips add vips
-func (c *ovnClient) LoadBalancerAddVips(lbName string, vips map[string]string) error {
-	if len(vips) == 0 {
+func (c *ovnClient) loadBalancerUpdateVips(lbName string, vips interface{}) error {
+	var toAdd map[string]string
+	var toDelete []string
+	value := reflect.ValueOf(vips)
+	switch value.Type().Kind() {
+	case reflect.Slice:
+		toDelete = vips.([]string)
+	case reflect.Map:
+		toAdd = vips.(map[string]string)
+	default:
+		return fmt.Errorf("program error: invalid data type of vips %+v", vips)
+	}
+	if value.Len() == 0 {
 		return nil
 	}
 
@@ -71,14 +82,21 @@ func (c *ovnClient) LoadBalancerAddVips(lbName string, vips map[string]string) e
 		return err
 	}
 
-	if lb.Vips == nil {
-		lb.Vips = make(map[string]string)
+	m := make(map[string]string, len(lb.Vips)+len(toAdd))
+	for k, v := range lb.Vips {
+		m[k] = v
+	}
+	for k, v := range toAdd {
+		m[k] = v
+	}
+	for _, k := range toDelete {
+		delete(m, k)
+	}
+	if reflect.DeepEqual(m, lb.Vips) {
+		return nil
 	}
 
-	for vip, backends := range vips {
-		lb.Vips[vip] = backends
-	}
-
+	lb.Vips = m
 	if err := c.UpdateLoadBalancer(lb, &lb.Vips); err != nil {
 		return fmt.Errorf("add vips %v to lb %s: %v", vips, lbName, err)
 	}
@@ -86,26 +104,14 @@ func (c *ovnClient) LoadBalancerAddVips(lbName string, vips map[string]string) e
 	return nil
 }
 
-// LoadBalancerDeleteVips delete load balancer vips
-func (c *ovnClient) LoadBalancerDeleteVips(lbName string, vips map[string]struct{}) error {
-	if len(vips) == 0 {
-		return nil
-	}
+// LoadBalancerAddVips adds or updates vips
+func (c *ovnClient) LoadBalancerAddVips(lbName string, vips map[string]string) error {
+	return c.loadBalancerUpdateVips(lbName, vips)
+}
 
-	lb, err := c.GetLoadBalancer(lbName, false)
-	if err != nil {
-		return err
-	}
-
-	for vip := range vips {
-		delete(lb.Vips, vip)
-	}
-
-	if err := c.UpdateLoadBalancer(lb, &lb.Vips); err != nil {
-		return fmt.Errorf("delete vips %v from lb %s: %v", vips, lbName, err)
-	}
-
-	return nil
+// LoadBalancerDeleteVips deletes load balancer vips
+func (c *ovnClient) LoadBalancerDeleteVips(lbName string, vips ...string) error {
+	return c.loadBalancerUpdateVips(lbName, vips)
 }
 
 // SetLoadBalancerAffinityTimeout sets the LB's affinity timeout in seconds
@@ -114,15 +120,18 @@ func (c *ovnClient) SetLoadBalancerAffinityTimeout(lbName string, timeout int) e
 	if err != nil {
 		return err
 	}
-
-	if lb.Options == nil {
-		lb.Options = make(map[string]string)
+	value := strconv.Itoa(timeout)
+	if len(lb.Options) != 0 && lb.Options["affinity_timeout"] == value {
+		return nil
 	}
 
-	lb.Options["affinity_timeout"] = strconv.Itoa(timeout)
-
+	options := make(map[string]string, len(lb.Options)+1)
+	for k, v := range lb.Options {
+		options[k] = v
+	}
+	options["affinity_timeout"] = value
 	if err := c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
-		return fmt.Errorf("set affinity timeout of lb %s to %d, err: %v", lbName, timeout, err)
+		return fmt.Errorf("failed to set affinity timeout of lb %s to %d: %v", lbName, timeout, err)
 	}
 
 	return nil
