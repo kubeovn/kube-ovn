@@ -135,7 +135,7 @@ base-tar-arm64:
 	docker save $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-arm64 -o image-arm64.tar
 
 define docker_ensure_image_exists
-	@if ! docker images --format "{{.Repository}}:{{.Tag}}" | grep "^$(1)$$" >/dev/null; then \
+	if ! docker images --format "{{.Repository}}:{{.Tag}}" | grep "^$(1)$$" >/dev/null; then \
 		docker pull "$(1)"; \
 	fi
 endef
@@ -208,6 +208,9 @@ define kind_create_cluster
 endef
 
 define kind_load_image
+	@if [ "x$(3)" = "x1" ]; then \
+		$(call docker_ensure_image_exists,$(2)); \
+	fi
 	kind load docker-image --name $(1) $(2)
 endef
 
@@ -236,8 +239,8 @@ kind-init-ipv4: kind-clean
 	@$(MAKE) kind-create
 
 .PHONY: kind-init-ovn-ic
-kind-init-ovn-ic: kind-clean-ovn-ic kind-init-ha
-	@ha=true $(MAKE) kind-generate-config
+kind-init-ovn-ic: kind-clean-ovn-ic kind-init
+	@$(MAKE) kind-generate-config
 	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1)
 
 .PHONY: kind-init-iptables
@@ -332,7 +335,7 @@ kind-install-ipv4: kind-install-overlay-ipv4
 kind-install-overlay-ipv4: kind-install
 
 .PHONY: kind-install-ovn-ic
-kind-install-ovn-ic: kind-load-image kind-install
+kind-install-ovn-ic: kind-install
 	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
 	kubectl config use-context kind-kube-ovn1
 	sed -e 's/10.16.0/10.18.0/g' \
@@ -345,17 +348,14 @@ kind-install-ovn-ic: kind-load-image kind-install
 	docker run -d --name ovn-ic-db --network kind $(REGISTRY)/kube-ovn:$(VERSION) bash start-ic-db.sh
 	@set -e; \
 	ic_db_host=$$(docker inspect ovn-ic-db -f "{{.NetworkSettings.Networks.kind.IPAddress}}"); \
-	zone=az0 ic_db_host=$$ic_db_host gateway_node_name=kube-ovn-control-plane j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
-	zone=az1 ic_db_host=$$ic_db_host gateway_node_name=kube-ovn1-control-plane j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml; \
-	zone=az1111 ic_db_host=$$ic_db_host gateway_node_name=kube-ovn1-control-plane j2 yamls/ovn-ic.yaml.j2 -o /tmp/ovn-ic-1-alter.yaml
+	zone=az0 ic_db_host=$$ic_db_host gateway_node_name=kube-ovn-worker j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
+	zone=az1 ic_db_host=$$ic_db_host gateway_node_name=kube-ovn1-worker j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
 	kubectl config use-context kind-kube-ovn
 	kubectl apply -f ovn-ic-0.yaml
-	sleep 6
-	kubectl -n kube-system get pods | grep ovs-ovn | awk '{print $$1}' | xargs kubectl -n kube-system delete pod
 	kubectl config use-context kind-kube-ovn1
 	kubectl apply -f ovn-ic-1.yaml
 	sleep 6
-	kubectl -n kube-system get pods | grep ovs-ovn | awk '{print $$1}' | xargs kubectl -n kube-system delete pod
+	docker exec ovn-ic-db ovn-ic-sbctl show
 
 .PHONY: kind-install-underlay
 kind-install-underlay: kind-install-underlay-ipv4
@@ -470,8 +470,7 @@ kind-install-underlay-logical-gateway-dual: kind-disable-hairpin kind-load-image
 
 .PHONY: kind-install-multus
 kind-install-multus:
-	$(call docker_ensure_image_exists,$(MULTUS_IMAGE))
-	$(call kind_load_image,kube-ovn,$(MULTUS_IMAGE))
+	$(call kind_load_image,kube-ovn,$(MULTUS_IMAGE),1)
 	kubectl apply -f "$(MULTUS_YAML)"
 	kubectl -n kube-system rollout status ds kube-multus-ds
 
@@ -486,8 +485,7 @@ kind-install-lb-svc: kind-load-image kind-untaint-control-plane
 .PHONY: kind-install-cilium-chaining
 kind-install-cilium-chaining: kind-load-image kind-untaint-control-plane
 	$(eval KUBERNETES_SERVICE_HOST = $(shell kubectl get nodes kube-ovn-control-plane -o jsonpath='{.status.addresses[0].address}'))
-	$(call docker_ensure_image_exists,$(CILIUM_IMAGE_REPO):v$(CILIUM_VERSION))
-	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO):v$(CILIUM_VERSION))
+	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO):v$(CILIUM_VERSION),1)
 	kubectl apply -f yamls/cilium-chaining.yaml
 	helm repo add cilium https://helm.cilium.io/
 	helm install cilium cilium/cilium \
