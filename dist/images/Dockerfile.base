@@ -24,8 +24,8 @@ RUN cd /usr/src/ && \
     curl -s https://github.com/kubeovn/ovs/commit/403fbd0f6561c8985302734608c2de659671c563.patch | git apply && \
     # ovsdb-tool: add optional server id parameter for "join-cluster" command
     curl -s https://github.com/kubeovn/ovs/commit/9a81b91368b27afda97657a8864b729dc2e029e2.patch | git apply && \
-	# Add jitter parameter patch for netem qos
-    curl -s https://github.com/openvswitch/ovs/commit/a6195e2c4236cbe16b3649940fac3b08493eabb2.patch | git apply && \
+    # Add jitter parameter patch for netem qos
+    curl -s https://github.com/openvswitch/ovs/commit/a6195e2c4236cbe16b3649940fac3b08493eabb2.patch | git apply --whitespace=fix --exclude=NEWS && \
     # compile without avx512
     if [ "$ARCH" = "amd64" -a "$NO_AVX512" = "true" ]; then curl -s https://github.com/kubeovn/ovs/commit/97f9f85a277e5372af6e3cd899cab1b63f6f6b44.patch | git apply; fi && \
     ./boot.sh && \
