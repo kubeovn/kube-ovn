@@ -891,7 +891,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 			return false, nil
 		})
 		if framework.IsTimeout(err) {
-			framework.Failf("timed out while wait lb record of subnet %s to clear ", subnet.Name)
+			framework.Failf("timed out while wait lb record of subnet %s to clear", subnet.Name)
 		}
 		framework.ExpectNoError(err)
 
@@ -899,10 +899,21 @@ var _ = framework.Describe("[group:subnet]", func() {
 		modifiedSubnet = subnet.DeepCopy()
 		modifiedSubnet.Spec.EnableLb = nil
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
-		execCmd = "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=load_balancer find logical-switch " + fmt.Sprintf("name=%s", subnetName)
-		output, err = exec.Command("bash", "-c", execCmd).CombinedOutput()
+		err = wait.PollImmediate(2*time.Second, 1*time.Minute, func() (bool, error) {
+			execCmd = "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=load_balancer find logical-switch " + fmt.Sprintf("name=%s", subnetName)
+			output, err = exec.Command("bash", "-c", execCmd).CombinedOutput()
+			if err != nil {
+				return false, err
+			}
+			if strings.TrimSpace(string(output)) != "" {
+				return true, nil
+			}
+			return false, nil
+		})
+		if framework.IsTimeout(err) {
+			framework.Failf("timed out while wait lb record of subnet %s to sync", subnet.Name)
+		}
 		framework.ExpectNoError(err)
-		framework.ExpectNotEmpty(strings.TrimSpace(string(output)))
 	})
 
 	framework.ConformanceIt("should support subnet add gateway event and metrics", func() {
