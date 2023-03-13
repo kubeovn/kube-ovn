@@ -23,6 +23,7 @@ concurrency:
 env:
   GOSEC_VERSION: '2.15.0'
   HELM_VERSION: v3.11.1
+  SUBMARINER_VERSION: v0.13.4
 
 jobs:
   build-kube-ovn-base:
@@ -1537,10 +1538,10 @@ jobs:
           install_only: true
 
       - name: Install submariner subctl
-        run: |
-          curl -Ls https://get.submariner.io | VERSION=v0.13.4 bash
-          sudo chmod +x ~/.local/bin/subctl
-          sudo mv ~/.local/bin/subctl /usr/bin/
+        env:
+          VERSION: ${{ env.SUBMARINER_VERSION }}
+          DESTDIR: /usr/local/bin
+        run: curl -Ls https://get.submariner.io | bash
 
       - name: Download image
         uses: actions/download-artifact@v3

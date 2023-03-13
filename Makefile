@@ -573,16 +573,10 @@ kind-install-lb-svc: kind-load-image kind-untaint-control-plane
 	kubectl describe no
 
 .PHONY: kind-install-webhook
-kind-install-webhook: kind-load-image kind-untaint-control-plane
-	$(call docker_ensure_image_exists,$(CERT_MANAGER_CONTROLLER))
-	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_CONTROLLER))
-	$(call docker_ensure_image_exists,$(CERT_MANAGER_CAINJECTOR))
-	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_CAINJECTOR))
-	$(call docker_ensure_image_exists,$(CERT_MANAGER_WEBHOOK))
-	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_WEBHOOK))
-
-	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | bash
-	kubectl describe no
+kind-install-webhook: kind-install
+	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_CONTROLLER),1)
+	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_CAINJECTOR),1)
+	$(call kind_load_image,kube-ovn,$(CERT_MANAGER_WEBHOOK),1)
 
 	kubectl apply -f "$(CERT_MANAGER_YAML)"
 	kubectl rollout status deployment/cert-manager -n cert-manager --timeout 120s
