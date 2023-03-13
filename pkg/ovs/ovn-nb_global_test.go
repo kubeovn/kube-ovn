@@ -165,9 +165,9 @@ func (suite *OvnClientTestSuite) testSetICAutoRoute() {
 
 		out, err := ovnClient.GetNbGlobal()
 		require.NoError(t, err)
-		require.Equal(t, "false", out.Options["ic-route-adv"])
-		require.Equal(t, "false", out.Options["ic-route-learn"])
-		require.Empty(t, out.Options["ic-route-blacklist"])
+		require.NotContains(t, out.Options, "ic-route-adv")
+		require.NotContains(t, out.Options, "ic-route-learn")
+		require.NotContains(t, out.Options, "ic-route-blacklist")
 	})
 }
 
