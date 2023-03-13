@@ -16,6 +16,14 @@ for dnat in $all_dnat;do
     fi
     nat_name=$(kubectl get $dnat -o jsonpath='{.metadata.name}')
     kubectl annotate eip $eip ovn.kubernetes.io/vpc_nat=$nat_name
+    gw_anno=$(kubectl get $dnat -o jsonpath='{.metadata.labels}'|grep "ovn.kubernetes.io/vpc-nat-gw-name") || true
+    if [ -n "$gw_anno" ];then
+        continue
+    fi
+    eip_port=$(kubectl get $dnat -o jsonpath='{.spec.externalPort}')
+    kubectl label $dnat ovn.kubernetes.io/vpc_dnat_eport=$eip_port
+    gw=$(kubectl get $dnat -o jsonpath='{.status.natGwDp}')
+    kubectl label $dnat  ovn.kubernetes.io/vpc-nat-gw-name=$gw
 done
 
 echo "begin upgrade iptables-snat-rules.kubeovn.io"
