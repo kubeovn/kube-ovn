@@ -160,7 +160,7 @@ base-tar-arm64:
 	docker save $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-arm64 -o image-arm64.tar
 
 define docker_ensure_image_exists
-	@if ! docker images --format "{{.Repository}}:{{.Tag}}" | grep "^$(1)$$" >/dev/null; then \
+	if ! docker images --format "{{.Repository}}:{{.Tag}}" | grep "^$(1)$$" >/dev/null; then \
 		docker pull "$(1)"; \
 	fi
 endef
@@ -233,6 +233,9 @@ define kind_create_cluster
 endef
 
 define kind_load_image
+	@if [ "x$(3)" = "x1" ]; then \
+		$(call docker_ensure_image_exists,$(2)); \
+	fi
 	kind load docker-image --name $(1) $(2)
 endef
 
@@ -261,16 +264,13 @@ kind-init-ipv4: kind-clean
 	@$(MAKE) kind-create
 
 .PHONY: kind-init-ovn-ic
-kind-init-ovn-ic: kind-clean-ovn-ic kind-init-ha
-	@ha=true $(MAKE) kind-generate-config
+kind-init-ovn-ic: kind-clean-ovn-ic kind-init
+	@$(MAKE) kind-generate-config
 	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1)
 
-
 .PHONY: kind-init-ovn-submariner
-kind-init-ovn-submariner: kind-clean-ovn-submariner
-	@ha=true pod_cidr_v4=10.16.0.0/16 svc_cidr_v4=10.96.0.0/16 $(MAKE) kind-generate-config
-	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn)
-	@ha=true pod_cidr_v4=10.18.0.0/16 svc_cidr_v4=10.98.0.0/16 $(MAKE) kind-generate-config
+kind-init-ovn-submariner: kind-clean-ovn-submariner kind-init
+	@pod_cidr_v4=10.18.0.0/16 svc_cidr_v4=10.112.0.0/12 $(MAKE) kind-generate-config
 	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn1)
 
 .PHONY: kind-init-iptables
@@ -367,7 +367,7 @@ kind-install-ipv4: kind-install-overlay-ipv4
 kind-install-overlay-ipv4: kind-install
 
 .PHONY: kind-install-ovn-ic
-kind-install-ovn-ic: kind-load-image kind-install
+kind-install-ovn-ic: kind-install
 	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
 	kubectl config use-context kind-kube-ovn1
 	sed -e 's/10.16.0/10.18.0/g' \
@@ -380,32 +380,22 @@ kind-install-ovn-ic: kind-load-image kind-install
 	docker run -d --name ovn-ic-db --network kind $(REGISTRY)/kube-ovn:$(VERSION) bash start-ic-db.sh
 	@set -e; \
 	ic_db_host=$$(docker inspect ovn-ic-db -f "{{.NetworkSettings.Networks.kind.IPAddress}}"); \
-	zone=az0 ic_db_host=$$ic_db_host gateway_node_name=kube-ovn-control-plane j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
-	zone=az1 ic_db_host=$$ic_db_host gateway_node_name=kube-ovn1-control-plane j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml; \
-	zone=az1111 ic_db_host=$$ic_db_host gateway_node_name=kube-ovn1-control-plane j2 yamls/ovn-ic.yaml.j2 -o /tmp/ovn-ic-1-alter.yaml
+	zone=az0 ic_db_host=$$ic_db_host gateway_node_name=kube-ovn-worker j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-0.yaml; \
+	zone=az1 ic_db_host=$$ic_db_host gateway_node_name=kube-ovn1-worker j2 yamls/ovn-ic.yaml.j2 -o ovn-ic-1.yaml
 	kubectl config use-context kind-kube-ovn
 	kubectl apply -f ovn-ic-0.yaml
-	sleep 6
-	kubectl -n kube-system get pods | grep ovs-ovn | awk '{print $$1}' | xargs kubectl -n kube-system delete pod
 	kubectl config use-context kind-kube-ovn1
 	kubectl apply -f ovn-ic-1.yaml
 	sleep 6
-	kubectl -n kube-system get pods | grep ovs-ovn | awk '{print $$1}' | xargs kubectl -n kube-system delete pod
+	docker exec ovn-ic-db ovn-ic-sbctl show
 
 .PHONY: kind-install-ovn-submariner
-kind-install-ovn-submariner: kind-load-image
-	kubectl config use-context kind-kube-ovn
-	@$(MAKE) kind-untaint-control-plane
-	@sed -e 's/10\.96\.0\.0\/12/10.96.0.0\/16/g' \
-		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
-		dist/images/install.sh |  bash
-	kubectl describe no
-
+kind-install-ovn-submariner: kind-install
 	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
 	kubectl config use-context kind-kube-ovn1
 	@$(MAKE) kind-untaint-control-plane
 	sed -e 's/10.16.0/10.18.0/g' \
-		-e 's/10\.96\.0\.0\/12/10.98.0.0\/16/g' \
+		-e 's/10.96.0.0/10.112.0.0/g' \
 		-e 's/100.64.0/100.68.0/g' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | bash
@@ -419,20 +409,20 @@ kind-install-ovn-submariner: kind-load-image
 
 	kubectl config use-context kind-kube-ovn
 	subctl deploy-broker
-	kubectl label nodes kube-ovn-worker2  submariner.io/gateway=true
-	subctl  join broker-info.subm --clusterid  cluster0 --clustercidr 10.16.0.0/16  --natt=false --cable-driver vxlan --health-check=false --kubecontext=kind-kube-ovn
+	kubectl label nodes kube-ovn-worker submariner.io/gateway=true
+	subctl join broker-info.subm --clusterid cluster0 --clustercidr 10.16.0.0/16 --natt=false --cable-driver vxlan --health-check=false --kubecontext=kind-kube-ovn
 	kubectl patch clusterrole submariner-operator --type merge --patch-file yamls/subopeRules.yaml
 	sleep 10
 	kubectl -n submariner-operator delete pod --selector=name=submariner-operator
-	kubectl patch subnet ovn-default --type='merge' --patch '{"spec": {"gatewayNode": "kube-ovn-worker2","gatewayType": "centralized"}}'
+	kubectl patch subnet ovn-default --type='merge' --patch '{"spec": {"gatewayNode": "kube-ovn-worker","gatewayType": "centralized"}}'
 
 	kubectl config use-context kind-kube-ovn1
-	kubectl label nodes kube-ovn1-worker2  submariner.io/gateway=true
-	subctl  join broker-info.subm --clusterid  cluster1 --clustercidr 10.18.0.0/16  --natt=false --cable-driver vxlan --health-check=false --kubecontext=kind-kube-ovn1
+	kubectl label nodes kube-ovn1-worker submariner.io/gateway=true
+	subctl join broker-info.subm --clusterid cluster1 --clustercidr 10.18.0.0/16 --natt=false --cable-driver vxlan --health-check=false --kubecontext=kind-kube-ovn1
 	kubectl patch clusterrole submariner-operator --type merge --patch-file yamls/subopeRules.yaml
 	sleep 10
 	kubectl -n submariner-operator delete pod --selector=name=submariner-operator
-	kubectl patch subnet ovn-default --type='merge' --patch '{"spec": {"gatewayNode": "kube-ovn1-worker2","gatewayType": "centralized"}}'
+	kubectl patch subnet ovn-default --type='merge' --patch '{"spec": {"gatewayNode": "kube-ovn1-worker","gatewayType": "centralized"}}'
 
 .PHONY: kind-install-underlay
 kind-install-underlay: kind-install-underlay-ipv4
@@ -547,25 +537,18 @@ kind-install-underlay-logical-gateway-dual: kind-disable-hairpin kind-load-image
 
 .PHONY: kind-install-multus
 kind-install-multus:
-	$(call docker_ensure_image_exists,$(MULTUS_IMAGE))
-	$(call kind_load_image,kube-ovn,$(MULTUS_IMAGE))
+	$(call kind_load_image,kube-ovn,$(MULTUS_IMAGE),1)
 	kubectl apply -f "$(MULTUS_YAML)"
 	kubectl -n kube-system rollout status ds kube-multus-ds
 
 .PHONY: kind-install-kubevirt
 kind-install-kubevirt: kind-load-image kind-untaint-control-plane
-	$(call docker_ensure_image_exists,$(KUBEVIRT_OPERATOR_IMAGE))
-	$(call kind_load_image,kube-ovn,$(KUBEVIRT_OPERATOR_IMAGE))
-	$(call docker_ensure_image_exists,$(KUBEVIRT_API_IMAGE))
-	$(call kind_load_image,kube-ovn,$(KUBEVIRT_API_IMAGE))
-	$(call docker_ensure_image_exists,$(KUBEVIRT_CONTROLLER_IMAGE))
-	$(call kind_load_image,kube-ovn,$(KUBEVIRT_CONTROLLER_IMAGE))
-	$(call docker_ensure_image_exists,$(KUBEVIRT_HANDLER_IMAGE))
-	$(call kind_load_image,kube-ovn,$(KUBEVIRT_HANDLER_IMAGE))
-	$(call docker_ensure_image_exists,$(KUBEVIRT_LAUNCHER_IMAGE))
-	$(call kind_load_image,kube-ovn,$(KUBEVIRT_LAUNCHER_IMAGE))
-	$(call docker_ensure_image_exists,$(KUBEVIRT_TEST_IMAGE))
-	$(call kind_load_image,kube-ovn,$(KUBEVIRT_TEST_IMAGE))
+	$(call kind_load_image,kube-ovn,$(KUBEVIRT_OPERATOR_IMAGE),1)
+	$(call kind_load_image,kube-ovn,$(KUBEVIRT_API_IMAGE),1)
+	$(call kind_load_image,kube-ovn,$(KUBEVIRT_CONTROLLER_IMAGE),1)
+	$(call kind_load_image,kube-ovn,$(KUBEVIRT_HANDLER_IMAGE),1)
+	$(call kind_load_image,kube-ovn,$(KUBEVIRT_LAUNCHER_IMAGE),1)
+	$(call kind_load_image,kube-ovn,$(KUBEVIRT_TEST_IMAGE),1)
 
 	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | bash
 	kubectl describe no
@@ -612,8 +595,7 @@ kind-install-webhook: kind-load-image kind-untaint-control-plane
 .PHONY: kind-install-cilium-chaining
 kind-install-cilium-chaining: kind-load-image kind-untaint-control-plane
 	$(eval KUBERNETES_SERVICE_HOST = $(shell kubectl get nodes kube-ovn-control-plane -o jsonpath='{.status.addresses[0].address}'))
-	$(call docker_ensure_image_exists,$(CILIUM_IMAGE_REPO):v$(CILIUM_VERSION))
-	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO):v$(CILIUM_VERSION))
+	$(call kind_load_image,kube-ovn,$(CILIUM_IMAGE_REPO):v$(CILIUM_VERSION),1)
 	kubectl apply -f yamls/cilium-chaining.yaml
 	helm repo add cilium https://helm.cilium.io/
 	helm install cilium cilium/cilium \
