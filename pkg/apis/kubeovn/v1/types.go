@@ -375,7 +375,7 @@ type StaticRoute struct {
 	Policy    RoutePolicy `json:"policy,omitempty"`
 	CIDR      string      `json:"cidr"`
 	NextHopIP string      `json:"nextHopIP"`
-	ECMP      string      `json:"ecmp"`
+	ECMPMode  string      `json:"ecmpMode"`
 	BfdId     string      `json:"bfdId"`
 }
 

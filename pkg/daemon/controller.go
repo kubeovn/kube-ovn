@@ -231,6 +231,7 @@ func (c *Controller) processNextDeleteProviderNetworkWorkItem() bool {
 }
 
 func (c *Controller) handleAddOrUpdateProviderNetwork(key string) error {
+	klog.V(3).Infof("handle update provider network %s", key)
 	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
 		return err
@@ -261,6 +262,7 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 
 	var mtu int
 	var err error
+	klog.V(3).Infof("ovs init provider network %s", pn.Name)
 	if mtu, err = ovsInitProviderNetwork(pn.Name, nic, pn.Spec.ExchangeLinkName, c.config.MacLearningFallback); err != nil {
 		if oldLen := len(node.Labels); oldLen != 0 {
 			delete(node.Labels, fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name))

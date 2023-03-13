@@ -422,16 +422,14 @@ func (c *Controller) InitIPAM() error {
 			klog.Errorf("failed to init ipam from iptables eip cr %s: %v", eip.Name, err)
 		}
 	}
-	if c.config.EnableEipSnat {
-		oeips, err := c.ovnEipsLister.List(labels.Everything())
-		if err != nil {
-			klog.Errorf("failed to list ovn eips: %v", err)
-			return err
-		}
-		for _, oeip := range oeips {
-			if _, _, _, err = c.ipam.GetStaticAddress(oeip.Name, oeip.Name, oeip.Status.V4Ip, oeip.Status.MacAddress, oeip.Spec.ExternalSubnet, true); err != nil {
-				klog.Errorf("failed to init ipam from ovn eip cr %s: %v", oeip.Name, err)
-			}
+	oeips, err := c.ovnEipsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list ovn eips: %v", err)
+		return err
+	}
+	for _, oeip := range oeips {
+		if _, _, _, err = c.ipam.GetStaticAddress(oeip.Name, oeip.Name, oeip.Status.V4Ip, oeip.Status.MacAddress, oeip.Spec.ExternalSubnet, true); err != nil {
+			klog.Errorf("failed to init ipam from ovn eip cr %s: %v", oeip.Name, err)
 		}
 	}
 	nodes, err := c.nodesLister.List(labels.Everything())

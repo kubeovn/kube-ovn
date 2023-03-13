@@ -578,50 +578,48 @@ func NewController(config *Configuration) *Controller {
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add iptables snat rule event handler")
 	}
-	if config.EnableEipSnat {
-		ovnEipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnEips()
-		controller.ovnEipsLister = ovnEipInformer.Lister()
-		controller.ovnEipSynced = ovnEipInformer.Informer().HasSynced
-		controller.addOvnEipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addOvnEip")
-		controller.updateOvnEipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateOvnEip")
-		controller.resetOvnEipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "resetOvnEip")
-		controller.delOvnEipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delOvnEip")
+	ovnEipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnEips()
+	controller.ovnEipsLister = ovnEipInformer.Lister()
+	controller.ovnEipSynced = ovnEipInformer.Informer().HasSynced
+	controller.addOvnEipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addOvnEip")
+	controller.updateOvnEipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateOvnEip")
+	controller.resetOvnEipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "resetOvnEip")
+	controller.delOvnEipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delOvnEip")
 
-		if _, err = ovnEipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    controller.enqueueAddOvnEip,
-			UpdateFunc: controller.enqueueUpdateOvnEip,
-			DeleteFunc: controller.enqueueDelOvnEip,
-		}); err != nil {
-			util.LogFatalAndExit(err, "failed to add eip event handler")
-		}
+	if _, err = ovnEipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddOvnEip,
+		UpdateFunc: controller.enqueueUpdateOvnEip,
+		DeleteFunc: controller.enqueueDelOvnEip,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add eip event handler")
+	}
 
-		ovnFipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnFips()
-		controller.ovnFipsLister = ovnFipInformer.Lister()
-		controller.ovnFipSynced = ovnFipInformer.Informer().HasSynced
-		controller.addOvnFipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addOvnFip")
-		controller.updateOvnFipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateOvnFip")
-		controller.delOvnFipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delOvnFip")
-		if _, err = ovnFipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    controller.enqueueAddOvnFip,
-			UpdateFunc: controller.enqueueUpdateOvnFip,
-			DeleteFunc: controller.enqueueDelOvnFip,
-		}); err != nil {
-			util.LogFatalAndExit(err, "failed to add ovn fip event handler")
-		}
+	ovnFipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnFips()
+	controller.ovnFipsLister = ovnFipInformer.Lister()
+	controller.ovnFipSynced = ovnFipInformer.Informer().HasSynced
+	controller.addOvnFipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addOvnFip")
+	controller.updateOvnFipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateOvnFip")
+	controller.delOvnFipQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delOvnFip")
+	if _, err = ovnFipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddOvnFip,
+		UpdateFunc: controller.enqueueUpdateOvnFip,
+		DeleteFunc: controller.enqueueDelOvnFip,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add ovn fip event handler")
+	}
 
-		ovnSnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnSnatRules()
-		controller.ovnSnatRulesLister = ovnSnatRuleInformer.Lister()
-		controller.ovnSnatRuleSynced = ovnSnatRuleInformer.Informer().HasSynced
-		controller.addOvnSnatRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addOvnSnatRule")
-		controller.updateOvnSnatRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateOvnSnatRule")
-		controller.delOvnSnatRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delOvnSnatRule")
-		if _, err = ovnSnatRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    controller.enqueueAddOvnSnatRule,
-			UpdateFunc: controller.enqueueUpdateOvnSnatRule,
-			DeleteFunc: controller.enqueueDelOvnSnatRule,
-		}); err != nil {
-			util.LogFatalAndExit(err, "failed to add ovn snat rule event handler")
-		}
+	ovnSnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnSnatRules()
+	controller.ovnSnatRulesLister = ovnSnatRuleInformer.Lister()
+	controller.ovnSnatRuleSynced = ovnSnatRuleInformer.Informer().HasSynced
+	controller.addOvnSnatRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addOvnSnatRule")
+	controller.updateOvnSnatRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateOvnSnatRule")
+	controller.delOvnSnatRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delOvnSnatRule")
+	if _, err = ovnSnatRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddOvnSnatRule,
+		UpdateFunc: controller.enqueueUpdateOvnSnatRule,
+		DeleteFunc: controller.enqueueDelOvnSnatRule,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add ovn snat rule event handler")
 	}
 
 	if _, err = podAnnotatedIptablesEipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -662,10 +660,7 @@ func (c *Controller) Run(ctx context.Context) {
 		c.podAnnotatedIptablesEipSynced, c.podAnnotatedIptablesFipSynced,
 		c.vlanSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced,
 		c.serviceSynced, c.endpointsSynced, c.configMapsSynced,
-	}
-
-	if c.config.EnableEipSnat {
-		cacheSyncs = append(cacheSyncs, c.ovnEipSynced, c.ovnFipSynced, c.ovnSnatRuleSynced)
+		c.ovnEipSynced, c.ovnFipSynced, c.ovnSnatRuleSynced,
 	}
 
 	if c.config.EnableNP {
@@ -824,20 +819,18 @@ func (c *Controller) shutdown() {
 	c.updateIptablesSnatRuleQueue.ShutDown()
 	c.delIptablesSnatRuleQueue.ShutDown()
 
-	if c.config.EnableEipSnat {
-		c.addOvnEipQueue.ShutDown()
-		c.updateOvnEipQueue.ShutDown()
-		c.resetOvnEipQueue.ShutDown()
-		c.delOvnEipQueue.ShutDown()
+	c.addOvnEipQueue.ShutDown()
+	c.updateOvnEipQueue.ShutDown()
+	c.resetOvnEipQueue.ShutDown()
+	c.delOvnEipQueue.ShutDown()
 
-		c.addOvnFipQueue.ShutDown()
-		c.updateOvnFipQueue.ShutDown()
-		c.delOvnFipQueue.ShutDown()
+	c.addOvnFipQueue.ShutDown()
+	c.updateOvnFipQueue.ShutDown()
+	c.delOvnFipQueue.ShutDown()
 
-		c.addIptablesSnatRuleQueue.ShutDown()
-		c.updateIptablesSnatRuleQueue.ShutDown()
-		c.delIptablesSnatRuleQueue.ShutDown()
-	}
+	c.addOvnSnatRuleQueue.ShutDown()
+	c.updateOvnSnatRuleQueue.ShutDown()
+	c.delOvnSnatRuleQueue.ShutDown()
 
 	if c.config.PodDefaultFipType == util.IptablesFip {
 		c.addPodAnnotatedIptablesEipQueue.ShutDown()
@@ -999,20 +992,18 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(c.resyncSubnetMetrics, 30*time.Second, ctx.Done())
 	go wait.Until(c.CheckGatewayReady, 5*time.Second, ctx.Done())
 
-	if c.config.EnableEipSnat {
-		go wait.Until(c.runAddOvnEipWorker, time.Second, ctx.Done())
-		go wait.Until(c.runUpdateOvnEipWorker, time.Second, ctx.Done())
-		go wait.Until(c.runResetOvnEipWorker, time.Second, ctx.Done())
-		go wait.Until(c.runDelOvnEipWorker, time.Second, ctx.Done())
+	go wait.Until(c.runAddOvnEipWorker, time.Second, ctx.Done())
+	go wait.Until(c.runUpdateOvnEipWorker, time.Second, ctx.Done())
+	go wait.Until(c.runResetOvnEipWorker, time.Second, ctx.Done())
+	go wait.Until(c.runDelOvnEipWorker, time.Second, ctx.Done())
 
-		go wait.Until(c.runAddOvnFipWorker, time.Second, ctx.Done())
-		go wait.Until(c.runUpdateOvnFipWorker, time.Second, ctx.Done())
-		go wait.Until(c.runDelOvnFipWorker, time.Second, ctx.Done())
+	go wait.Until(c.runAddOvnFipWorker, time.Second, ctx.Done())
+	go wait.Until(c.runUpdateOvnFipWorker, time.Second, ctx.Done())
+	go wait.Until(c.runDelOvnFipWorker, time.Second, ctx.Done())
 
-		go wait.Until(c.runAddOvnSnatRuleWorker, time.Second, ctx.Done())
-		go wait.Until(c.runUpdateOvnSnatRuleWorker, time.Second, ctx.Done())
-		go wait.Until(c.runDelOvnSnatRuleWorker, time.Second, ctx.Done())
-	}
+	go wait.Until(c.runAddOvnSnatRuleWorker, time.Second, ctx.Done())
+	go wait.Until(c.runUpdateOvnSnatRuleWorker, time.Second, ctx.Done())
+	go wait.Until(c.runDelOvnSnatRuleWorker, time.Second, ctx.Done())
 
 	if c.config.EnableNP {
 		go wait.Until(c.CheckNodePortGroup, time.Duration(c.config.NodePgProbeTime)*time.Minute, ctx.Done())

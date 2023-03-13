@@ -1040,7 +1040,7 @@ spec:
                         type: string
                       nextHopIP:
                         type: string
-                      ecmp:
+                      ecmpMode:
                         type: string
                       bfdId:
                         type: string

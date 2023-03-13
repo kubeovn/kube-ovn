@@ -867,11 +867,11 @@ func (c LegacyClient) CreatePeerRouterPort(localRouter, remoteRouter, localRoute
 }
 
 type StaticRoute struct {
-	Policy  string
-	CIDR    string
-	NextHop string
-	ECMP    string
-	BfdId   string
+	Policy   string
+	CIDR     string
+	NextHop  string
+	ECMPMode string
+	BfdId    string
 }
 
 // AddStaticRoute add a static route rule in ovn
@@ -1129,7 +1129,7 @@ func parseLrRouteListOutput(output string) (routeList []*StaticRoute, err error)
 			switch fields[idx] {
 			case "(learned)":
 				learned = true
-			case "ecmp-symmetric-reply":
+			case util.StaicRouteBfdEcmp:
 				ecmpSymmetricReply = true
 			}
 		}
@@ -1143,7 +1143,7 @@ func parseLrRouteListOutput(output string) (routeList []*StaticRoute, err error)
 			NextHop: fields[1],
 		}
 		if ecmpSymmetricReply {
-			route.ECMP = "ecmp-symmetric-reply"
+			route.ECMPMode = util.StaicRouteBfdEcmp
 		}
 
 		routeList = append(routeList, route)

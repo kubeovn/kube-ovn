@@ -1145,7 +1145,7 @@ func (c *Controller) reconcileVpcUseBfdStaticRoute(vpcName, subnetName string) e
 		for _, route := range vpc.Spec.StaticRoutes {
 			if route.Policy == kubeovnv1.PolicySrc &&
 				route.NextHopIP == eip.Status.V4Ip &&
-				route.ECMP == util.StaicRouteBfdEcmp &&
+				route.ECMPMode == util.StaicRouteBfdEcmp &&
 				route.CIDR == subnet.Spec.CIDRBlock {
 				v4Exist = true
 				break
@@ -1157,7 +1157,7 @@ func (c *Controller) reconcileVpcUseBfdStaticRoute(vpcName, subnetName string) e
 				Policy:    kubeovnv1.PolicySrc,
 				CIDR:      subnet.Spec.CIDRBlock,
 				NextHopIP: eip.Status.V4Ip,
-				ECMP:      util.StaicRouteBfdEcmp,
+				ECMPMode:  util.StaicRouteBfdEcmp,
 				BfdId:     bfdId,
 			}
 			klog.V(3).Infof("add ecmp bfd static route %v", route)
@@ -1218,7 +1218,7 @@ func (c *Controller) reconcileVpcAddNormalStaticRoute(vpcName string) error {
 			v6Exist = true
 			continue
 		}
-		if route.ECMP != util.StaicRouteBfdEcmp {
+		if route.ECMPMode != util.StaicRouteBfdEcmp {
 			// filter ecmp bfd route
 			routes = append(routes, route)
 		}
@@ -1345,7 +1345,7 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 			lrpName := fmt.Sprintf("%s-%s", c.config.ClusterRouter, subnet.Name)
 			klog.Infof("delete logical router port %s", lrpName)
 			if err := c.ovnLegacyClient.DeleteLogicalRouterPort(lrpName); err != nil {
-				klog.Errorf("failed to delete lrp %s-%s, %v", c.config.ClusterRouter, subnet.Name, err)
+				klog.Errorf("failed to delete lrp %s, %v", lrpName, err)
 				return err
 			}
 		}
