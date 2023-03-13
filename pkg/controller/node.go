@@ -983,32 +983,44 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 		}
 		nodeIP := strings.Trim(fmt.Sprintf("%s,%s", nodeIPv4, nodeIPv6), ",")
 
-		ports, err := c.fetchPodsOnNode(node.Name, pods)
-		if err != nil {
-			klog.Errorf("failed to fetch pods for node %v, %v", node.Name, err)
-			return err
-		}
+		var i int
+		for ; i < 3; i++ {
+			ports, err := c.fetchPodsOnNode(node.Name, pods)
+			if err != nil {
+				klog.Errorf("failed to fetch pods for node %v, %v", node.Name, err)
+				return err
+			}
 
-		changed, err := c.checkPodsChangedOnNode(pgName, nameIdMap, namePortsMap[pgName], ports)
-		if err != nil {
-			klog.Errorf("failed to check pod status for node %v, %v", node.Name, err)
-			continue
-		}
+			changed, err := c.checkPodsChangedOnNode(pgName, nameIdMap, namePortsMap[pgName], ports)
+			if err != nil {
+				klog.Errorf("failed to check pod status for node %v, %v", node.Name, err)
+				continue
+			}
 
-		if lastNpExists[node.Name] != networkPolicyExists {
-			klog.Infof("networkpolicy num changed when check nodepg %v", pgName)
-			changed = true
-		}
+			if lastNpExists[node.Name] != networkPolicyExists {
+				klog.Infof("networkpolicy num changed when check node port group %v", pgName)
+				changed = true
+			}
 
-		if !changed {
-			klog.V(3).Infof("pods on node %v do not changed", node.Name)
-			continue
-		}
-		lastNpExists[node.Name] = networkPolicyExists
+			if !changed {
+				klog.V(3).Infof("pods on node %v do not changed", node.Name)
+				continue
+			}
+			lastNpExists[node.Name] = networkPolicyExists
 
-		err = c.ovnLegacyClient.SetPortsToPortGroup(pgName, ports)
-		if err != nil {
-			klog.Errorf("failed to set port group for node %v, %v", node.Name, err)
+			if err = c.ovnLegacyClient.SetPortsToPortGroup(pgName, ports); err != nil {
+				if strings.HasSuffix(err.Error(), "port name not found") {
+					klog.Infof("failed to set port group for node %s, retrying: %v", node.Name, err)
+					continue
+				}
+				klog.Errorf("failed to set port group for node %s: %v", node.Name, err)
+				return err
+			}
+			break
+		}
+		if i == 3 {
+			err = fmt.Errorf("failed to set port group for node %s after 3 tries", node.Name)
+			klog.Error(err)
 			return err
 		}
 
