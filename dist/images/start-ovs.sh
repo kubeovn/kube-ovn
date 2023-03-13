@@ -34,6 +34,12 @@ cat /proc/cmdline"
     exit 1
 fi
 
+function cgroup_match {
+  hash1=$(md5sum /proc/$1/cgroup | awk '{print $1}')
+  hash2=$(md5sum /proc/$2/cgroup | awk '{print $1}')
+  test -n "$hash1" -a "x$hash1" = "x$hash2"
+}
+
 function quit {
   gen_name=$(kubectl -n $POD_NAMESPACE get pod $POD_NAME -o jsonpath='{.metadata.generateName}')
   revision_hash=$(kubectl -n $POD_NAMESPACE get pod $POD_NAME -o jsonpath='{.metadata.labels.controller-revision-hash}')
@@ -41,8 +47,12 @@ function quit {
   ds_name=${gen_name%-}
   latest_revision=$(kubectl -n kube-system get controllerrevision --no-headers | awk '$2 == "daemonset.apps/'$ds_name'" {print $3}' | sort -nr | head -n1)
   if [ "x$latest_revision" = "x$revision" ]; then
-    /usr/share/ovn/scripts/grace_stop_ovn_controller
-    /usr/share/openvswitch/scripts/ovs-ctl stop
+    # stop ovn-controller/ovs only when the processes are in the same cgroup
+    pid=$(/usr/share/ovn/scripts/ovn-ctl status_controller | awk '{print $NF}')
+    if cgroup_match $pid self; then
+      /usr/share/ovn/scripts/grace_stop_ovn_controller
+      /usr/share/openvswitch/scripts/ovs-ctl stop
+    fi
   fi
 
   exit 0
