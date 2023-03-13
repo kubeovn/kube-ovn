@@ -2979,6 +2979,7 @@ EOF
 kubectl apply -f ovn-dpdk.yaml
 fi
 kubectl rollout status deployment/ovn-central -n kube-system --timeout 300s
+kubectl rollout status daemonset/ovs-ovn -n kube-system --timeout 120s
 echo "-------------------------------"
 echo ""
 
