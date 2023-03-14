@@ -162,6 +162,7 @@ kube-ovn-security-e2e:
 	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all --always-emit-ginkgo-writer \
 		--focus=CNI:Kube-OVN ./test/e2e/security/security.test
 
+<<<<<<< HEAD
 .PHONY: kube-ovn-kubevirt-e2e
 kube-ovn-kubevirt-e2e:
 	ginkgo build ./test/e2e/kubevirt
@@ -179,3 +180,8 @@ kube-ovn-webhook-e2e:
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all --always-emit-ginkgo-writer \
 		--focus=CNI:Kube-OVN ./test/e2e/webhook/webhook.test
+=======
+.PHONY: kubectl-ko-log
+kubectl-ko-log:
+	kubectl ko log all all all
+>>>>>>> d2cce41b (add kubectlko log after e2e failed)
