@@ -136,7 +136,7 @@ func (c *Controller) gcLogicalSwitch() error {
 	for _, ls := range lss {
 		if ls.Name == util.InterconnectionSwitch ||
 			ls.Name == util.ExternalGatewaySwitch ||
-			*&ls.Name == c.config.ExternalGatewaySwitch {
+			ls.Name == c.config.ExternalGatewaySwitch {
 			continue
 		}
 		if s := subnetMap[ls.Name]; s != nil && isOvnSubnet(s) {

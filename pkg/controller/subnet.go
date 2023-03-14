@@ -949,6 +949,12 @@ func (c *Controller) reconcileVips(subnet *kubeovnv1.Subnet) error {
 	lsps, err := c.ovnClient.ListLogicalSwitchPorts(true, map[string]string{logicalSwitchKey: subnet.Name}, func(lsp *ovnnb.LogicalSwitchPort) bool {
 		return lsp.Type == "virtual"
 	})
+
+	if err != nil {
+		klog.Errorf("failed to find virtual port for subnet %s: %v", subnet.Name, err)
+		return err
+	}
+
 	/* filter all invaild virtual port */
 	existVips := make(map[string]string) // key is vip, value is port name
 	for _, lsp := range lsps {
