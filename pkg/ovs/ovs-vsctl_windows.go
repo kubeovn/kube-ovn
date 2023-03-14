@@ -29,7 +29,7 @@ func SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUid string, q
 }
 
 // The latency value expressed in us.
-func SetNetemQos(podName, podNamespace, iface, latency, limit, loss string) error {
+func SetNetemQos(podName, podNamespace, iface, latency, limit, loss, jitter string) error {
 	// TODO
 	return nil
 }
