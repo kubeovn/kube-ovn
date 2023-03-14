@@ -59,7 +59,7 @@ restoreNB(){
   echo "restore db file, operate in pod ${podNameArray[0]}"
   kubectl exec -it -n $KUBE_OVN_NS ${podNameArray[0]} -- mv /etc/ovn/ovnnb_db_standalone.db /etc/ovn/ovnnb_db.db
   kubectl scale deployment -n $KUBE_OVN_NS ovn-central --replicas=$replicas
-  kubectl -n kube-system delete pod -l app=ovs
+  kubectl -n kube-system rollout restart ds ovs-ovn
   echo "finish restore db file and ovn-central replicas"
   exit 0
 }

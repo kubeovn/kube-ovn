@@ -623,7 +623,7 @@ kind-reload: kind-reload-ovs
 
 .PHONY: kind-reload-ovs
 kind-reload-ovs: kind-load-image
-	kubectl delete pod -n kube-system -l app=ovs
+	kubectl -n kube-system rollout restart ds ovs-ovn
 
 .PHONY: kind-clean
 kind-clean:

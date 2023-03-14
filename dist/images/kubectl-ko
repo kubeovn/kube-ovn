@@ -740,8 +740,8 @@ dbtool(){
           done
           echo "finish restore nb db file and ovn-central replicas"
 
-          echo "recreate ovs-ovn pods"
-          kubectl delete pod -n $KUBE_OVN_NS -l app=ovs
+          echo "restart ovs-ovn"
+          kubectl -n $KUBE_OVN_NS rollout restart ds ovs-ovn
           ;;
         *)
           echo "unknown action $action"
@@ -915,7 +915,7 @@ tuning(){
 reload(){
   kubectl delete pod -n kube-system -l app=ovn-central
   kubectl rollout status deployment/ovn-central -n kube-system
-  kubectl delete pod -n kube-system -l app=ovs
+  kubectl rollout restart daemonset/ovs-ovn -n kube-system
   kubectl delete pod -n kube-system -l app=kube-ovn-controller
   kubectl rollout status deployment/kube-ovn-controller -n kube-system
   kubectl delete pod -n kube-system -l app=kube-ovn-cni
