@@ -703,7 +703,6 @@ var _ = framework.Describe("[group:subnet]", func() {
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, nil, nil)
 		subnet = subnetClient.CreateSync(subnet)
-
 		ginkgo.By("Creating pod with specify pod ip ")
 		podIPv4s, podIPv6s := createPodsByRandomIPs(podClient, subnetClient, subnetName, podNamePre, podCount, startIPv4, startIPv6)
 		subnet = subnetClient.Get(subnetName)
@@ -751,7 +750,6 @@ var _ = framework.Describe("[group:subnet]", func() {
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, nil, nil)
 		subnet = subnetClient.CreateSync(subnet)
-
 		replicas := int64(5)
 		deployName = "deployment-" + framework.RandomSuffix()
 		labels := map[string]string{"app": deployName}
@@ -939,7 +937,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 		checkFunc := func(expectFound bool) {
 			// runGateway wait 3s
-			time.Sleep(3 * time.Second)
+			time.Sleep(10 * time.Second)
 			for _, node := range clusterNodes {
 				rules, err := node.ListIptableRules("filter")
 				framework.ExpectNoError(err, "getting node rule failed")
