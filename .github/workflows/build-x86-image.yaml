@@ -74,7 +74,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: docker/setup-buildx-action@v2
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
           go-version-file: go.mod
           check-latest: true
@@ -204,7 +204,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
@@ -236,7 +236,7 @@ jobs:
       test-netpol: ${{ steps.filter.outputs.kube-ovn-controller }}
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
           go-version-file: go.mod
           check-latest: true
@@ -306,7 +306,7 @@ jobs:
           sudo sed -i '/^search/d' /etc/resolv.conf
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
@@ -409,7 +409,7 @@ jobs:
           sudo sed -i '/^search/d' /etc/resolv.conf
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
@@ -508,7 +508,7 @@ jobs:
           sudo sed -i '/^search/d' /etc/resolv.conf
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
@@ -674,7 +674,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
@@ -763,7 +763,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
@@ -991,7 +991,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
@@ -1081,7 +1081,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
@@ -1161,7 +1161,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
@@ -1292,7 +1292,7 @@ jobs:
           sudo sed -i '/^search/d' /etc/resolv.conf
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
@@ -1393,7 +1393,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
