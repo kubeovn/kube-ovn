@@ -108,13 +108,24 @@ func LastIP(subnet string) (string, error) {
 }
 
 func CIDRContainIP(cidrStr, ipStr string) bool {
-	for _, cidr := range strings.Split(cidrStr, ",") {
+	cidrs := strings.Split(cidrStr, ",")
+	ips := strings.Split(ipStr, ",")
+
+	if len(cidrs) == 1 {
+		for _, ip := range ips {
+			if CheckProtocol(cidrStr) != CheckProtocol(ip) {
+				return false
+			}
+		}
+	}
+
+	for _, cidr := range cidrs {
 		_, cidrNet, err := net.ParseCIDR(cidr)
 		if err != nil {
 			return false
 		}
 
-		for _, ip := range strings.Split(ipStr, ",") {
+		for _, ip := range ips {
 			if CheckProtocol(cidr) != CheckProtocol(ip) {
 				continue
 			}

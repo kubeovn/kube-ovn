@@ -1012,10 +1012,22 @@ func Test_CIDRContainIP(t *testing.T) {
 			true,
 		},
 		{
+			"ipv4 family which CIDR does't contain ip",
+			"192.168.230.0/24",
+			"192.168.231.10,192.168.230.11",
+			false,
+		},
+		{
 			"ipv6 family",
 			"fc00::0af4:00/112",
 			"fc00::0af4:10,fc00::0af4:11",
 			true,
+		},
+		{
+			"ipv6 family which CIDR does't contain ip",
+			"fd00::c0a8:d200/120",
+			"fc00::c0a8:d210",
+			false,
 		},
 		{
 			"dual",
@@ -1024,25 +1036,35 @@ func Test_CIDRContainIP(t *testing.T) {
 			true,
 		},
 		{
-			"ipv4 family",
-			"192.168.230.0/24",
-			"192.168.231.10,192.168.230.11",
+			"dual which CIDR does't contain ip",
+			"192.168.230.0/24,fc00::0af4:00/112",
+			"fc00::0af4:10,fd00::0af4:11,192.168.230.10,192.168.230.11",
 			false,
 		},
 		{
-			"dual",
-			"192.168.230.0/24,fc00::0af4:00/112",
-			"fc00::0af4:10,fd00::0af4:11,192.168.230.10,192.168.230.11",
+			"different family",
+			"fd00::c0a8:d200/120",
+			"10.96.0.1",
+			false,
+		},
+		{
+			"different family",
+			"10.96.0.0/16",
+			"fd00::c0a8:d201",
+			false,
+		},
+		{
+			"ipv4 family which CIDR has no mask",
+			"192.168.0.23",
+			"192.168.0.23,192.168.0.254",
 			false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			// t.Parallel()
 			got := CIDRContainIP(tt.cidrs, tt.ips)
 			require.Equal(t, got, tt.want)
 		})
 	}
-
 }
