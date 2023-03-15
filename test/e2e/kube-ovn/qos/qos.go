@@ -95,9 +95,11 @@ var _ = framework.Describe("[group:qos]", func() {
 		latency, jitter, limit, loss := 600, 400, 2000, 10
 		annotations := map[string]string{
 			util.NetemQosLatencyAnnotation: strconv.Itoa(latency),
-			util.NetemQosJitterAnnotation:  strconv.Itoa(jitter),
 			util.NetemQosLimitAnnotation:   strconv.Itoa(limit),
 			util.NetemQosLossAnnotation:    strconv.Itoa(loss),
+		}
+		if !f.VersionPriorTo(1, 12) {
+			annotations[util.NetemQosJitterAnnotation] = strconv.Itoa(jitter)
 		}
 		pod := framework.MakePod(namespaceName, name, nil, annotations, "", nil, nil)
 		pod = podClient.CreateSync(pod)
@@ -106,14 +108,18 @@ var _ = framework.Describe("[group:qos]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.NetemQosLatencyAnnotation, strconv.Itoa(latency))
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.NetemQosJitterAnnotation, strconv.Itoa(jitter))
+		if !f.VersionPriorTo(1, 12) {
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.NetemQosJitterAnnotation, strconv.Itoa(jitter))
+		}
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.NetemQosLimitAnnotation, strconv.Itoa(limit))
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.NetemQosLossAnnotation, strconv.Itoa(loss))
 
 		ginkgo.By("Validating OVS QoS")
 		qos := getOvsQosForPod(cs, "qos", pod)
 		framework.ExpectHaveKeyWithValue(qos, "latency", strconv.Itoa(latency*1000))
-		framework.ExpectHaveKeyWithValue(qos, "jitter", strconv.Itoa(jitter*1000))
+		if !f.VersionPriorTo(1, 12) {
+			framework.ExpectHaveKeyWithValue(qos, "jitter", strconv.Itoa(jitter*1000))
+		}
 		framework.ExpectHaveKeyWithValue(qos, "limit", strconv.Itoa(limit))
 		framework.ExpectHaveKeyWithValue(qos, "loss", strconv.Itoa(loss))
 
@@ -141,7 +147,9 @@ var _ = framework.Describe("[group:qos]", func() {
 		latency, jitter, limit, loss := 600, 400, 2000, 10
 		modifiedPod := pod.DeepCopy()
 		modifiedPod.Annotations[util.NetemQosLatencyAnnotation] = strconv.Itoa(latency)
-		modifiedPod.Annotations[util.NetemQosJitterAnnotation] = strconv.Itoa(jitter)
+		if !f.VersionPriorTo(1, 12) {
+			modifiedPod.Annotations[util.NetemQosJitterAnnotation] = strconv.Itoa(jitter)
+		}
 		modifiedPod.Annotations[util.NetemQosLimitAnnotation] = strconv.Itoa(limit)
 		modifiedPod.Annotations[util.NetemQosLossAnnotation] = strconv.Itoa(loss)
 		pod = podClient.PatchPod(pod, modifiedPod)
@@ -150,14 +158,18 @@ var _ = framework.Describe("[group:qos]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.NetemQosLatencyAnnotation, strconv.Itoa(latency))
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.NetemQosJitterAnnotation, strconv.Itoa(jitter))
+		if !f.VersionPriorTo(1, 12) {
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.NetemQosJitterAnnotation, strconv.Itoa(jitter))
+		}
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.NetemQosLimitAnnotation, strconv.Itoa(limit))
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.NetemQosLossAnnotation, strconv.Itoa(loss))
 
 		ginkgo.By("Validating OVS QoS")
 		qos := getOvsQosForPodRetry(cs, "qos", pod, nil)
 		framework.ExpectHaveKeyWithValue(qos, "latency", strconv.Itoa(latency*1000))
-		framework.ExpectHaveKeyWithValue(qos, "jitter", strconv.Itoa(jitter*1000))
+		if !f.VersionPriorTo(1, 12) {
+			framework.ExpectHaveKeyWithValue(qos, "jitter", strconv.Itoa(jitter*1000))
+		}
 		framework.ExpectHaveKeyWithValue(qos, "limit", strconv.Itoa(limit))
 		framework.ExpectHaveKeyWithValue(qos, "loss", strconv.Itoa(loss))
 
