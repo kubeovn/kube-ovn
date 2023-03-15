@@ -571,7 +571,7 @@ func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName 
 			for _, port := range ports {
 				// when lsp is deleted, the port of pod is deleted from any port-group automatically.
 				klog.Infof("gc logical switch port %s", port.Name)
-				if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(port.Name); err != nil {
+				if err := c.ovnClient.DeleteLogicalSwitchPort(port.Name); err != nil {
 					klog.Errorf("failed to delete lsp %s, %v", port.Name, err)
 					return err
 				}
