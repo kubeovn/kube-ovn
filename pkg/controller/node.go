@@ -64,8 +64,13 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj interface{}) {
 			utilruntime.HandleError(err)
 			return
 		}
-		klog.V(3).Infof("enqueue update node %s", key)
-		c.updateNodeQueue.Add(key)
+		if len(newNode.Annotations) == 0 || newNode.Annotations[util.AllocatedAnnotation] != "true" {
+			klog.V(3).Infof("enqueue add node %s", key)
+			c.addNodeQueue.Add(key)
+		} else {
+			klog.V(3).Infof("enqueue update node %s", key)
+			c.updateNodeQueue.Add(key)
+		}
 	}
 }
 
