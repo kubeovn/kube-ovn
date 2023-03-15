@@ -364,8 +364,8 @@ jobs:
         run: make kubectl-ko-log
         uses: actions/upload-artifact@v3
         with:
-          name: kubectl-ko-log
-          path: kubectl-ko-log.tar
+          name: k8s-conformance-e2e-ko-log
+          path: k8s-conformance-e2e-ko-log.tar
 
   k8s-netpol-e2e:
     name: Kubernetes Network Policy E2E
@@ -467,8 +467,8 @@ jobs:
         run: make kubectl-ko-log
         uses: actions/upload-artifact@v3
         with:
-          name: kubectl-ko-log
-          path: kubectl-ko-log.tar
+          name: k8s-netpol-e2e-ko-log
+          path: k8s-netpol-e2e-ko-log.tar
 
   k8s-netpol-legacy-e2e:
     name: Kubernetes Network Policy Legacy E2E
@@ -570,8 +570,8 @@ jobs:
         run: make kubectl-ko-log
         uses: actions/upload-artifact@v3
         with:
-          name: kubectl-ko-log
-          path: kubectl-ko-log.tar
+          name: k8s-netpol-legacy-e2e-ko-log
+          path: k8s-netpol-legacy-e2e-ko-log.tar
 
   cyclonus-netpol-e2e:
     name: Cyclonus Network Policy E2E
@@ -650,8 +650,8 @@ jobs:
         run: make kubectl-ko-log
         uses: actions/upload-artifact@v3
         with:
-          name: kubectl-ko-log
-          path: kubectl-ko-log.tar
+          name: cyclonus-netpol-e2e-ko-log
+          path: cyclonus-netpol-e2e-ko-log.tar
 
   kube-ovn-conformance-e2e:
     name: Kube-OVN Conformance E2E
@@ -747,8 +747,8 @@ jobs:
         run: make kubectl-ko-log
         uses: actions/upload-artifact@v3
         with:
-          name: kubectl-ko-log
-          path: kubectl-ko-log.tar
+          name: kube-ovn-conformance-e2e
+          path: kube-ovn-conformance-e2e.tar
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh
@@ -837,8 +837,8 @@ jobs:
         run: make kubectl-ko-log
         uses: actions/upload-artifact@v3
         with:
-          name: kubectl-ko-log
-          path: kubectl-ko-log.tar
+          name: kube-ovn-ic-conformance-e2e-ko-log
+          path: kube-ovn-ic-conformance-e2e-ko-log.tar
 
   chart-installation-test:
     name: Chart Installation Test
@@ -1240,8 +1240,8 @@ jobs:
         run: make kubectl-ko-log
         uses: actions/upload-artifact@v3
         with:
-          name: kubectl-ko-log
-          path: kubectl-ko-log.tar
+          name: webhook-e2e-ko-log
+          path: webhook-e2e-ko-log.tar
 
   installation-compatibility-test:
     name: Installation Compatibility Test
@@ -1280,8 +1280,8 @@ jobs:
         run: make kubectl-ko-log
         uses: actions/upload-artifact@v3
         with:
-          name: kubectl-ko-log
-          path: kubectl-ko-log.tar
+          name: installation-compatibility-test-ko-log
+          path: installation-compatibility-test-ko-log.tar
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh
@@ -1380,8 +1380,8 @@ jobs:
         run: make kubectl-ko-log
         uses: actions/upload-artifact@v3
         with:
-          name: kubectl-ko-log
-          path: kubectl-ko-log.tar
+          name: cilium-chaining-e2e-ko-log
+          path: cilium-chaining-e2e-ko-log.tar
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh
@@ -1488,8 +1488,8 @@ jobs:
         run: make kubectl-ko-log
         uses: actions/upload-artifact@v3
         with:
-          name: kubectl-ko-log
-          path: kubectl-ko-log.tar
+          name: kube-ovn-security-e2e-ko-log
+          path: kube-ovn-security-e2e-ko-log.tar
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh
@@ -1651,8 +1651,8 @@ jobs:
         run: make kubectl-ko-log
         uses: actions/upload-artifact@v3
         with:
-          name: kubectl-ko-log
-          path: kubectl-ko-log.tar
+          name: kube-ovn-submariner-conformance-e2e-ko-log
+          path: kube-ovn-submariner-conformance-e2e-ko-log.tar
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh
