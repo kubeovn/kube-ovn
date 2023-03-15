@@ -364,8 +364,8 @@ jobs:
         run: make kubectl-ko-log
         uses: actions/upload-artifact@v3
         with:
-          name: k8s-conformance-e2e-ko-log
-          path: k8s-conformance-e2e-ko-log.tar
+          name: k8s-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log
+          path: k8s-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar
 
   k8s-netpol-e2e:
     name: Kubernetes Network Policy E2E
@@ -467,8 +467,8 @@ jobs:
         run: make kubectl-ko-log
         uses: actions/upload-artifact@v3
         with:
-          name: k8s-netpol-e2e-ko-log
-          path: k8s-netpol-e2e-ko-log.tar
+          name: k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log
+          path: k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar
 
   k8s-netpol-legacy-e2e:
     name: Kubernetes Network Policy Legacy E2E
@@ -570,8 +570,8 @@ jobs:
         run: make kubectl-ko-log
         uses: actions/upload-artifact@v3
         with:
-          name: k8s-netpol-legacy-e2e-ko-log
-          path: k8s-netpol-legacy-e2e-ko-log.tar
+          name: k8s-netpol-legacy-e2e-${{ matrix.ip-family }}-ko-log
+          path: k8s-netpol-legacy-e2e-${{ matrix.ip-family }}-ko-log.tar
 
   cyclonus-netpol-e2e:
     name: Cyclonus Network Policy E2E
@@ -650,8 +650,8 @@ jobs:
         run: make kubectl-ko-log
         uses: actions/upload-artifact@v3
         with:
-          name: cyclonus-netpol-e2e-ko-log
-          path: cyclonus-netpol-e2e-ko-log.tar
+          name: cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log
+          path: cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar
 
   kube-ovn-conformance-e2e:
     name: Kube-OVN Conformance E2E
@@ -747,8 +747,8 @@ jobs:
         run: make kubectl-ko-log
         uses: actions/upload-artifact@v3
         with:
-          name: kube-ovn-conformance-e2e
-          path: kube-ovn-conformance-e2e.tar
+          name: kube-ovn-conformance-e2e-${{ matrix.ip-family }}-ko-log
+          path: kube-ovn-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh
@@ -1488,8 +1488,8 @@ jobs:
         run: make kubectl-ko-log
         uses: actions/upload-artifact@v3
         with:
-          name: kube-ovn-security-e2e-ko-log
-          path: kube-ovn-security-e2e-ko-log.tar
+          name: kube-ovn-security-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log
+          path: kube-ovn-security-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh
@@ -1653,6 +1653,5 @@ jobs:
         with:
           name: kube-ovn-submariner-conformance-e2e-ko-log
           path: kube-ovn-submariner-conformance-e2e-ko-log.tar
-
       - name: Cleanup
         run: sh dist/images/cleanup.sh
