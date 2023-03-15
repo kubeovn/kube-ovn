@@ -206,10 +206,12 @@ const (
 	NetemQosLatencyAnnotation = "ovn.kubernetes.io/latency"
 	NetemQosLimitAnnotation   = "ovn.kubernetes.io/limit"
 	NetemQosLossAnnotation    = "ovn.kubernetes.io/loss"
+	NetemQosJitterAnnotation  = "ovn.kubernetes.io/jitter"
 
 	NetemQosLatencyAnnotationTemplate = "%s.kubernetes.io/latency"
 	NetemQosLimitAnnotationTemplate   = "%s.kubernetes.io/limit"
 	NetemQosLossAnnotationTemplate    = "%s.kubernetes.io/loss"
+	NetemQosJitterAnnotationTemplate  = "%s.kubernetes.io/jitter"
 
 	POD_IP             = "POD_IP"
 	ContentType        = "application/vnd.kubernetes.protobuf"
