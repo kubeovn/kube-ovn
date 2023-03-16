@@ -173,7 +173,9 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 		service := framework.MakeService(serviceName, "", nil, podLabels, ports, "")
 		service.Spec.IPFamilyPolicy = new(corev1.IPFamilyPolicy)
 		*service.Spec.IPFamilyPolicy = corev1.IPFamilyPolicyPreferDualStack
-		_ = serviceClient.CreateSync(service)
+		_ = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) {
+			return len(s.Spec.ClusterIPs) != 0, nil
+		}, "cluster ips are not empty")
 
 		ginkgo.By("Creating pod " + hostPodName + " with host network")
 		cmd := []string{"sh", "-c", "sleep infinity"}

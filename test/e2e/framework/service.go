@@ -3,7 +3,6 @@ package framework
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -24,9 +23,13 @@ type ServiceClient struct {
 }
 
 func (f *Framework) ServiceClient() *ServiceClient {
+	return f.ServiceClientNS(f.Namespace.Name)
+}
+
+func (f *Framework) ServiceClientNS(namespace string) *ServiceClient {
 	return &ServiceClient{
 		f:                f,
-		ServiceInterface: f.ClientSet.CoreV1().Services(f.Namespace.Name),
+		ServiceInterface: f.ClientSet.CoreV1().Services(namespace),
 	}
 }
 
@@ -44,16 +47,13 @@ func (c *ServiceClient) Create(service *corev1.Service) *corev1.Service {
 }
 
 // CreateSync creates a new service according to the framework specifications, and waits for it to be updated.
-func (c *ServiceClient) CreateSync(service *corev1.Service) *corev1.Service {
-	s := c.Create(service)
-	ExpectTrue(c.WaitToBeUpdated(s))
-	// Get the newest service
-	return c.Get(s.Name).DeepCopy()
+func (c *ServiceClient) CreateSync(service *corev1.Service, cond func(s *corev1.Service) (bool, error), condDesc string) *corev1.Service {
+	_ = c.Create(service)
+	return c.WaitUntil(service.Name, cond, condDesc, 2*time.Second, timeout)
 }
 
 // Patch patches the service
 func (c *ServiceClient) Patch(original, modified *corev1.Service) *corev1.Service {
-
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
@@ -78,6 +78,12 @@ func (c *ServiceClient) Patch(original, modified *corev1.Service) *corev1.Servic
 	return nil
 }
 
+// PatchSync patches the service and waits the service to meet the condition
+func (c *ServiceClient) PatchSync(original, modified *corev1.Service, cond func(s *corev1.Service) (bool, error), condDesc string) *corev1.Service {
+	_ = c.Patch(original, modified)
+	return c.WaitUntil(original.Name, cond, condDesc, 2*time.Second, timeout)
+}
+
 // Delete deletes a service if the service exists
 func (c *ServiceClient) Delete(name string) {
 	err := c.ServiceInterface.Delete(context.TODO(), name, metav1.DeleteOptions{})
@@ -93,18 +99,26 @@ func (c *ServiceClient) DeleteSync(name string) {
 	gomega.Expect(c.WaitToDisappear(name, 2*time.Second, timeout)).To(gomega.Succeed(), "wait for service %q to disappear", name)
 }
 
-// WaitToBeUpdated returns whether the service is updated within timeout.
-func (c *ServiceClient) WaitToBeUpdated(service *corev1.Service) bool {
-	Logf("Waiting up to %v for service %s to be updated", timeout, service.Name)
-	rv, _ := big.NewInt(0).SetString(service.ResourceVersion, 10)
-	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		s := c.Get(service.Name)
-		if current, _ := big.NewInt(0).SetString(s.ResourceVersion, 10); current.Cmp(rv) > 0 {
-			return true
+// WaitUntil waits the given timeout duration for the specified condition to be met.
+func (c *ServiceClient) WaitUntil(name string, cond func(s *corev1.Service) (bool, error), condDesc string, interval, timeout time.Duration) *corev1.Service {
+	var service *corev1.Service
+	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
+		Logf("Waiting for service %s to meet condition %q", name, condDesc)
+		service = c.Get(name).DeepCopy()
+		met, err := cond(service)
+		if err != nil {
+			return false, fmt.Errorf("failed to check condition for service %s: %v", name, err)
 		}
+		return met, nil
+	})
+	if err == nil {
+		return service
 	}
-	Logf("Service %s was not updated within %v", service.Name, timeout)
-	return false
+	if IsTimeout(err) {
+		Failf("timed out while waiting for service %s to meet condition %q", name, condDesc)
+	}
+	Fail(maybeTimeoutError(err, "waiting for service %s to meet condition %q", name, condDesc).Error())
+	return nil
 }
 
 // WaitToDisappear waits the given timeout duration for the specified service to disappear.

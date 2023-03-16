@@ -8,7 +8,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
-	clientset "k8s.io/client-go/kubernetes"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 
 	"github.com/onsi/ginkgo/v2"
@@ -31,15 +30,23 @@ func parseConfig(table, config string) map[string]string {
 	return kvs
 }
 
-func getOvsQosForPod(cs clientset.Interface, table string, pod *corev1.Pod) map[string]string {
-	ovsPod := framework.GetOvsPodOnNode(cs, pod.Spec.NodeName)
+func getOvsPodOnNode(f *framework.Framework, node string) *corev1.Pod {
+	daemonSetClient := f.DaemonSetClientNS(framework.KubeOvnNamespace)
+	ds := daemonSetClient.Get("ovs-ovn")
+	pod, err := daemonSetClient.GetPodOnNode(ds, node)
+	framework.ExpectNoError(err)
+	return pod
+}
+
+func getOvsQosForPod(f *framework.Framework, table string, pod *corev1.Pod) map[string]string {
+	ovsPod := getOvsPodOnNode(f, pod.Spec.NodeName)
 	cmd := fmt.Sprintf(`ovs-vsctl --no-heading --columns=other_config --bare find %s external_ids:pod="%s/%s"`, table, pod.Namespace, pod.Name)
 	output := e2epodoutput.RunHostCmdOrDie(ovsPod.Namespace, ovsPod.Name, cmd)
 	return parseConfig(table, output)
 }
 
-func getOvsQosForPodRetry(cs clientset.Interface, table string, pod *corev1.Pod, expected map[string]string) map[string]string {
-	ovsPod := framework.GetOvsPodOnNode(cs, pod.Spec.NodeName)
+func waitOvsQosForPod(f *framework.Framework, table string, pod *corev1.Pod, expected map[string]string) map[string]string {
+	ovsPod := getOvsPodOnNode(f, pod.Spec.NodeName)
 	cmd := fmt.Sprintf(`ovs-vsctl --no-heading --columns=other_config --bare find %s external_ids:pod="%s/%s"`, table, pod.Namespace, pod.Name)
 
 	var config map[string]string
@@ -70,12 +77,10 @@ var _ = framework.Describe("[group:qos]", func() {
 	f := framework.NewDefaultFramework("qos")
 
 	var subnetName, namespaceName string
-	var cs clientset.Interface
 	var podClient *framework.PodClient
 	var subnetClient *framework.SubnetClient
 
 	ginkgo.BeforeEach(func() {
-		cs = f.ClientSet
 		podClient = f.PodClient()
 		subnetClient = f.SubnetClient()
 		namespaceName = f.Namespace.Name
@@ -115,7 +120,7 @@ var _ = framework.Describe("[group:qos]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.NetemQosLossAnnotation, strconv.Itoa(loss))
 
 		ginkgo.By("Validating OVS QoS")
-		qos := getOvsQosForPod(cs, "qos", pod)
+		qos := getOvsQosForPod(f, "qos", pod)
 		framework.ExpectHaveKeyWithValue(qos, "latency", strconv.Itoa(latency*1000))
 		if !f.VersionPriorTo(1, 12) {
 			framework.ExpectHaveKeyWithValue(qos, "jitter", strconv.Itoa(jitter*1000))
@@ -165,7 +170,7 @@ var _ = framework.Describe("[group:qos]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.NetemQosLossAnnotation, strconv.Itoa(loss))
 
 		ginkgo.By("Validating OVS QoS")
-		qos := getOvsQosForPodRetry(cs, "qos", pod, nil)
+		qos := waitOvsQosForPod(f, "qos", pod, nil)
 		framework.ExpectHaveKeyWithValue(qos, "latency", strconv.Itoa(latency*1000))
 		if !f.VersionPriorTo(1, 12) {
 			framework.ExpectHaveKeyWithValue(qos, "jitter", strconv.Itoa(jitter*1000))
@@ -195,7 +200,7 @@ var _ = framework.Describe("[group:qos]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.IngressRateAnnotation, strconv.Itoa(ingressRate))
 
 		ginkgo.By("Validating OVS Queue")
-		queue := getOvsQosForPod(cs, "queue", pod)
+		queue := getOvsQosForPod(f, "queue", pod)
 		framework.ExpectHaveKeyWithValue(queue, "max-rate", strconv.Itoa(ingressRate*1000*1000))
 
 		ginkgo.By("Deleting pod " + name)

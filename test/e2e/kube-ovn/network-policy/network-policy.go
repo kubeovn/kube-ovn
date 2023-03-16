@@ -1,7 +1,6 @@
 package network_policy
 
 import (
-	"context"
 	"fmt"
 	"math/rand"
 	"net"
@@ -32,6 +31,7 @@ var _ = framework.Describe("[group:network-policy]", func() {
 	var podClient *framework.PodClient
 	var subnetClient *framework.SubnetClient
 	var netpolClient *framework.NetworkPolicyClient
+	var daemonSetClient *framework.DaemonSetClient
 	var namespaceName, netpolName, subnetName, podName string
 	var cidr, image string
 
@@ -40,6 +40,7 @@ var _ = framework.Describe("[group:network-policy]", func() {
 		podClient = f.PodClient()
 		subnetClient = f.SubnetClient()
 		netpolClient = f.NetworkPolicyClient()
+		daemonSetClient = f.DaemonSetClientNS(framework.KubeOvnNamespace)
 		namespaceName = f.Namespace.Name
 		netpolName = "netpol-" + framework.RandomSuffix()
 		podName = "pod-" + framework.RandomSuffix()
@@ -90,13 +91,12 @@ var _ = framework.Describe("[group:network-policy]", func() {
 		framework.ExpectNotEmpty(nodeList.Items)
 
 		ginkgo.By("Getting daemonset kube-ovn-cni")
-		ds, err := cs.AppsV1().DaemonSets(framework.KubeOvnNamespace).Get(context.TODO(), "kube-ovn-cni", metav1.GetOptions{})
-		framework.ExpectNoError(err, "failed to to get daemonset")
+		ds := daemonSetClient.Get("kube-ovn-cni")
 
 		ginkgo.By("Getting kube-ovn-cni pods")
 		pods := make([]corev1.Pod, 0, len(nodeList.Items))
 		for _, node := range nodeList.Items {
-			pod, err := framework.GetPodOnNodeForDaemonSet(cs, ds, node.Name)
+			pod, err := daemonSetClient.GetPodOnNode(ds, node.Name)
 			framework.ExpectNoError(err, "failed to get kube-ovn-cni pod running on node %s", node.Name)
 			pods = append(pods, *pod)
 		}

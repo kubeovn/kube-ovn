@@ -52,7 +52,9 @@ var _ = framework.Describe("[group:service]", func() {
 		service.Namespace = namespaceName
 		service.Spec.IPFamilyPolicy = new(corev1.IPFamilyPolicy)
 		*service.Spec.IPFamilyPolicy = corev1.IPFamilyPolicyPreferDualStack
-		service = serviceClient.CreateSync(service)
+		service = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) {
+			return len(s.Spec.ClusterIPs) != 0, nil
+		}, "cluster ips are not empty")
 		v6ClusterIp := service.Spec.ClusterIPs[1]
 		originService := service.DeepCopy()
 

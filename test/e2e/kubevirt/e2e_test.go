@@ -6,10 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
@@ -42,17 +40,16 @@ func TestE2E(t *testing.T) {
 var _ = framework.Describe("[group:kubevirt]", func() {
 	f := framework.NewDefaultFramework("kubevirt")
 
-	var cs clientset.Interface
-
+	var podClient *framework.PodClient
 	ginkgo.BeforeEach(func() {
-		cs = f.ClientSet
+		podClient = f.PodClientNS("default")
 	})
 
 	framework.ConformanceIt("Kubevirt vm pod should keep ip", func() {
 		f.SkipVersionPriorTo(1, 12, "Only test kubevirt vm keep ip in master")
 
 		ginkgo.By("Get kubevirt vm pod")
-		podList, err := cs.CoreV1().Pods("default").List(context.TODO(), metav1.ListOptions{
+		podList, err := podClient.List(context.TODO(), metav1.ListOptions{
 			LabelSelector: "vm.kubevirt.io/name=testvm",
 		})
 		framework.ExpectNoError(err)
@@ -66,12 +63,11 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		ipAddr := pod.Annotations[util.IpAddressAnnotation]
 
 		ginkgo.By("Deleting pod " + pod.Name)
-		err = cs.CoreV1().Pods("default").Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+		podClient.DeleteSync(pod.Name)
 		framework.ExpectNoError(err)
-		time.Sleep(10 * time.Second)
 
 		ginkgo.By("Check kubevirt vm pod after rebuild")
-		podList, err = cs.CoreV1().Pods("default").List(context.TODO(), metav1.ListOptions{
+		podList, err = podClient.List(context.TODO(), metav1.ListOptions{
 			LabelSelector: "vm.kubevirt.io/name=testvm",
 		})
 		framework.ExpectNoError(err)

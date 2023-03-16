@@ -350,12 +350,11 @@ var _ = framework.Describe("[group:subnet]", func() {
 		framework.ExpectEmpty(subnet.Spec.AllowSubnets)
 
 		ginkgo.By("Validating subnet status fields")
-		subnet, err = subnetClient.Wait(subnetName, func(s *apiv1.Subnet) (bool, error) {
+		subnet = subnetClient.WaitUntil(subnetName, func(s *apiv1.Subnet) (bool, error) {
 			return gomega.ContainElement(s.Status.ActivateGateway).Match(gatewayNodes)
-		}, fmt.Sprintf("field .status.activateGateway contain element %v", gatewayNodes),
+		}, fmt.Sprintf("field .status.activateGateway is within %v", gatewayNodes),
 			2*time.Second, time.Minute,
 		)
-		framework.ExpectNoError(err)
 		framework.ExpectZero(subnet.Status.V4UsingIPs)
 		framework.ExpectZero(subnet.Status.V6UsingIPs)
 
@@ -405,12 +404,11 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
 
 		ginkgo.By("Validating active gateway")
-		subnet, err = subnetClient.Wait(subnetName, func(s *apiv1.Subnet) (bool, error) {
+		subnet = subnetClient.WaitUntil(subnetName, func(s *apiv1.Subnet) (bool, error) {
 			return gomega.BeEmpty().Match(s.Status.ActivateGateway)
 		}, "field .status.activateGateway is empty",
 			2*time.Second, time.Minute,
 		)
-		framework.ExpectNoError(err)
 
 		execCmd := "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=nexthops find logical-router-policy " + fmt.Sprintf("external_ids:subnet=%s", subnetName)
 		output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
@@ -977,7 +975,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		modifiedSubnet.Spec.GatewayNode = strings.Join(gatewayNodes, ",")
 
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
-		eventClient = f.EventClient("default")
+		eventClient = f.EventClientNS("default")
 		events := eventClient.WaitToHaveEvent("Subnet", subnetName, "Normal", "SubnetGatewayTypeChanged", "kube-ovn-controller", "")
 
 		message := fmt.Sprintf("subnet gateway type changes from %s to %s ", apiv1.GWDistributedType, apiv1.GWCentralizedType)

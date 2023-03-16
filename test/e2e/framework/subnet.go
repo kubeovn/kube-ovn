@@ -198,37 +198,26 @@ func (c *SubnetClient) WaitToBeUpdated(subnet *apiv1.Subnet, timeout time.Durati
 	return false
 }
 
-// Wait waits the given timeout duration for the specified condition to be met.
-func (c *SubnetClient) Wait(name string, cond func(s *apiv1.Subnet) (bool, error), condDesc string, interval, timeout time.Duration) (*apiv1.Subnet, error) {
-	var lastSubnet *apiv1.Subnet
+// WaitUntil waits the given timeout duration for the specified condition to be met.
+func (c *SubnetClient) WaitUntil(name string, cond func(s *apiv1.Subnet) (bool, error), condDesc string, interval, timeout time.Duration) *apiv1.Subnet {
+	var subnet *apiv1.Subnet
 	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
 		Logf("Waiting for subnet %s to meet condition %q", name, condDesc)
-		subnets, err := c.List(context.TODO(), metav1.ListOptions{})
+		subnet = c.Get(name).DeepCopy()
+		met, err := cond(subnet)
 		if err != nil {
-			return handleWaitingAPIError(err, true, "listing subnets")
+			return false, fmt.Errorf("failed to check condition for subnet %s: %v", name, err)
 		}
-		met := false
-		for _, subnet := range subnets.Items {
-			if subnet.Name == name {
-				if met, err = cond(&subnet); err != nil {
-					return false, fmt.Errorf("failed to check condition for subnet %s: %v", name, err)
-				}
-				lastSubnet = subnet.DeepCopy()
-				break
-			}
-		}
-
 		return met, nil
 	})
 	if err == nil {
-		return lastSubnet, nil
+		return subnet
 	}
 	if IsTimeout(err) {
-		return lastSubnet, TimeoutError(fmt.Sprintf("timed out while waiting for subnet %s to meet condition %q", name, condDesc),
-			lastSubnet,
-		)
+		Failf("timed out while waiting for subnet %s to meet condition %q", name, condDesc)
 	}
-	return lastSubnet, maybeTimeoutError(err, "waiting for subnet %s to meet condition %q", name, condDesc)
+	Fail(maybeTimeoutError(err, "waiting for subnet %s to meet condition %q", name, condDesc).Error())
+	return nil
 }
 
 // WaitToDisappear waits the given timeout duration for the specified subnet to disappear.

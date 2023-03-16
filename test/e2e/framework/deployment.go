@@ -23,9 +23,13 @@ type DeploymentClient struct {
 }
 
 func (f *Framework) DeploymentClient() *DeploymentClient {
+	return f.DeploymentClientNS(f.Namespace.Name)
+}
+
+func (f *Framework) DeploymentClientNS(namespace string) *DeploymentClient {
 	return &DeploymentClient{
 		f:                   f,
-		DeploymentInterface: f.ClientSet.AppsV1().Deployments(f.Namespace.Name),
+		DeploymentInterface: f.ClientSet.AppsV1().Deployments(namespace),
 	}
 }
 
