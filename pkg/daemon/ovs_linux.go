@@ -19,7 +19,6 @@ import (
 	"github.com/Mellanox/sriovnet"
 	sriovutilfs "github.com/Mellanox/sriovnet/pkg/utils/filesystem"
 	"github.com/containernetworking/plugins/pkg/ns"
-	"github.com/containernetworking/plugins/pkg/utils/sysctl"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -233,21 +232,6 @@ func configureContainerNic(nicName, ifName string, ipAddr, gateway string, isDef
 		if nicType != util.InternalType {
 			if err = netlink.LinkSetName(containerLink, ifName); err != nil {
 				return err
-			}
-		}
-
-		if util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolDual || util.CheckProtocol(ipAddr) == kubeovnv1.ProtocolIPv6 {
-			// For docker version >=17.x the "none" network will disable ipv6 by default.
-			// We have to enable ipv6 here to add v6 address and gateway.
-			// See https://github.com/containernetworking/cni/issues/531
-			value, err := sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6")
-			if err != nil {
-				return fmt.Errorf("failed to get sysctl net.ipv6.conf.all.disable_ipv6: %v", err)
-			}
-			if value != "0" {
-				if _, err = sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6", "0"); err != nil {
-					return fmt.Errorf("failed to enable ipv6 on all nic: %v", err)
-				}
 			}
 		}
 
@@ -512,21 +496,6 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 		klog.V(3).Infof("node external nic %q already in ns %s", util.NodeGwNic, util.NodeGwNsPath)
 	}
 	return ns.WithNetNSPath(gwNS.Path(), func(_ ns.NetNS) error {
-		if util.CheckProtocol(ip) == kubeovnv1.ProtocolDual || util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 {
-			// For docker version >=17.x the "none" network will disable ipv6 by default.
-			// We have to enable ipv6 here to add v6 address and gateway.
-			// See https://github.com/containernetworking/cni/issues/531
-			value, err := sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6")
-			if err != nil {
-				return fmt.Errorf("failed to get sysctl net.ipv6.conf.all.disable_ipv6: %v", err)
-			}
-			if value != "0" {
-				if _, err = sysctl.Sysctl("net.ipv6.conf.all.disable_ipv6", "0"); err != nil {
-					return fmt.Errorf("failed to enable ipv6 on all nic: %v", err)
-				}
-			}
-		}
-
 		if err = configureNic(util.NodeGwNic, ip, macAddr, mtu, true); err != nil {
 			klog.Errorf("failed to congigure node gw nic %s, %v", util.NodeGwNic, err)
 			return err
@@ -884,17 +853,6 @@ func configProviderNic(nicName, brName string) (int, error) {
 	bridge, err := netlink.LinkByName(brName)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get bridge by name %s: %v", brName, err)
-	}
-
-	sysctlDisableIPv6 := fmt.Sprintf("net.ipv6.conf.%s.disable_ipv6", brName)
-	disableIPv6, err := sysctl.Sysctl(sysctlDisableIPv6)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get sysctl %s: %v", sysctlDisableIPv6, err)
-	}
-	if disableIPv6 != "0" {
-		if _, err = sysctl.Sysctl(sysctlDisableIPv6, "0"); err != nil {
-			return 0, fmt.Errorf("failed to enable ipv6 on OVS bridge %s: %v", brName, err)
-		}
 	}
 
 	addrs, err := netlink.AddrList(nic, netlink.FAMILY_ALL)
