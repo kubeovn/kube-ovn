@@ -178,8 +178,10 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 		framework.ExpectTrue(util.CIDRContainIP(cidr, ip))
 
 		ginkgo.By("Checking service external IP")
-		service = serviceClient.Get(serviceName)
-		framework.ExpectNotEmpty(service.Status.LoadBalancer.Ingress)
+		framework.WaitUntil(func() (bool, error) {
+			service = serviceClient.Get(serviceName)
+			return len(service.Status.LoadBalancer.Ingress) != 0, nil
+		}, ".status.loadBalancer.ingress is not empty")
 		framework.ExpectEqual(service.Status.LoadBalancer.Ingress[0].IP, ip)
 	})
 
@@ -230,8 +232,10 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 		framework.ExpectTrue(util.CIDRContainIP(cidr, lbIP))
 
 		ginkgo.By("Checking service external IP")
-		service = serviceClient.Get(serviceName)
-		framework.ExpectNotEmpty(service.Status.LoadBalancer.Ingress)
+		framework.WaitUntil(func() (bool, error) {
+			service = serviceClient.Get(serviceName)
+			return len(service.Status.LoadBalancer.Ingress) != 0, nil
+		}, ".status.loadBalancer.ingress is not empty")
 		framework.ExpectEqual(service.Status.LoadBalancer.Ingress[0].IP, lbIP)
 	})
 })
