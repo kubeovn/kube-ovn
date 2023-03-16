@@ -33,7 +33,7 @@ jobs:
       build-kube-ovn: ${{ steps.filter.outputs.windows-kube-ovn }}
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
           go-version-file: go.mod
           check-latest: true
@@ -174,7 +174,7 @@ jobs:
     if: github.event_name == 'release' || github.event_name == 'workflow_dispatch' || needs.filter.outputs.build-kube-ovn == 'true'
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
           go-version-file: go.mod
           check-latest: true
