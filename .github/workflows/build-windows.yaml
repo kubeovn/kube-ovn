@@ -37,6 +37,7 @@ jobs:
         with:
           go-version-file: go.mod
           check-latest: true
+          cache: false
 
       - name: Generate path filter
         env:
@@ -178,6 +179,7 @@ jobs:
         with:
           go-version-file: go.mod
           check-latest: true
+          cache: false
 
       - name: Export Go full version
         run: |
