@@ -576,8 +576,15 @@ func configProviderNic(nicName, brName string) (int, error) {
 			continue
 		}
 
+		if !strings.HasPrefix(addr.Label, nicName) {
+			if strings.HasPrefix(addr.Label, brName) {
+				addr.Label = nicName + addr.Label[len(brName):]
+			} else {
+				addr.Label = nicName
+			}
+		}
 		if err = netlink.AddrDel(nic, &addr); err != nil {
-			errMsg := fmt.Errorf("failed to delete address %s on nic %s: %v", addr.String(), nicName, err)
+			errMsg := fmt.Errorf("failed to delete address %q on nic %s: %v", addr.String(), nicName, err)
 			if errors.Is(err, syscall.EADDRNOTAVAIL) {
 				// the IP address does not exist now
 				klog.Warning(errMsg)
@@ -587,10 +594,10 @@ func configProviderNic(nicName, brName string) (int, error) {
 		}
 
 		if addr.Label != "" {
-			addr.Label = brName + strings.TrimPrefix(addr.Label, nicName)
+			addr.Label = brName + addr.Label[len(nicName):]
 		}
 		if err = netlink.AddrReplace(bridge, &addr); err != nil {
-			return 0, fmt.Errorf("failed to replace address %s on OVS bridge %s: %v", addr.String(), brName, err)
+			return 0, fmt.Errorf("failed to replace address %q on OVS bridge %s: %v", addr.String(), brName, err)
 		}
 	}
 
