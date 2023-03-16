@@ -40,6 +40,7 @@ var (
 	cmVersion       = ""
 	k8sServiceHost  = ""
 	k8sServicePort  = ""
+	initRouteImage  = ""
 	enableCoredns   = false
 	hostNameservers []string
 )
@@ -459,7 +460,7 @@ func setVpcDnsRoute(dp *v1.Deployment, subnetGw string) {
 	allowPrivilegeEscalation := true
 	dp.Spec.Template.Spec.InitContainers = append(dp.Spec.Template.Spec.InitContainers, corev1.Container{
 		Name:            "init-route",
-		Image:           InitRouteImage,
+		Image:           initRouteImage,
 		Command:         []string{"sh", "-c", routeCmd},
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		SecurityContext: &corev1.SecurityContext{
@@ -571,8 +572,13 @@ func (c *Controller) resyncVpcDnsConfig() {
 			return
 		}
 	}
-
 	enableCoredns = newEnableCoredns
+
+	if newInitRouteImage, ok := cm.Data["init-route-image"]; ok {
+		initRouteImage = newInitRouteImage
+	} else {
+		initRouteImage = InitRouteImage
+	}
 }
 
 func (c *Controller) getDefaultCoreDnsImage() (string, error) {
