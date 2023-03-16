@@ -33,6 +33,7 @@ jobs:
         with:
           go-version-file: go.mod
           check-latest: true
+          cache: false
 
       - name: Export Go full version
         run: echo "GO_FULL_VER=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
