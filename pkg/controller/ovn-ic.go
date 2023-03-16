@@ -167,8 +167,10 @@ func (c *Controller) removeInterConnection(azName string) error {
 	}
 
 	if azName != "" {
-		if err := c.ovnLegacyClient.DeleteICLogicalRouterPort(azName); err != nil {
-			klog.Errorf("failed to delete ovn-ic lrp, %v", err)
+		lspName := fmt.Sprintf("ts-%s", azName)
+		lrpName := fmt.Sprintf("%s-ts", azName)
+		if err := c.ovnClient.RemoveLogicalPatchPort(lspName, lrpName); err != nil {
+			klog.Errorf("delete ovn-ic logical port %s and %s: %v", lspName, lrpName, err)
 			return err
 		}
 	}
@@ -188,11 +190,12 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 	}
 
 	tsPort := fmt.Sprintf("ts-%s", config["az-name"])
-	exist, err := c.ovnLegacyClient.LogicalSwitchPortExists(tsPort)
+	exist, err := c.ovnClient.LogicalSwitchPortExists(tsPort)
 	if err != nil {
 		klog.Errorf("failed to list logical switch ports, %v", err)
 		return err
 	}
+
 	if exist {
 		klog.Infof("ts port %s already exists", tsPort)
 		return nil
@@ -256,7 +259,8 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 		return err
 	}
 
-	if err := c.ovnLegacyClient.CreateICLogicalRouterPort(config["az-name"], util.GenerateMac(), subnet, chassises); err != nil {
+	lrpName := fmt.Sprintf("%s-ts", config["az-name"])
+	if err := c.ovnClient.CreateLogicalPatchPort(util.InterconnectionSwitch, c.config.ClusterRouter, tsPort, lrpName, subnet, util.GenerateMac(), chassises...); err != nil {
 		klog.Errorf("failed to create ovn-ic lrp %v", err)
 		return err
 	}
@@ -267,19 +271,23 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 func (c *Controller) acquireLrpAddress(ts string) (string, error) {
 	cidr, err := c.ovnLegacyClient.GetTsSubnet(ts)
 	if err != nil {
-		klog.Errorf("failed to get ts subnet, %v", err)
+		klog.Errorf("failed to get ts subnet: %v", err)
 		return "", err
 	}
-	existAddress, err := c.ovnLegacyClient.ListRemoteLogicalSwitchPortAddress()
+	existAddress, err := c.listRemoteLogicalSwitchPortAddress()
 	if err != nil {
-		klog.Errorf("failed to list remote port address, %v", err)
+		klog.Errorf("list remote port address: %v", err)
 		return "", err
 	}
+
 	for {
 		random := util.GenerateRandomV4IP(cidr)
-		if !util.ContainsString(existAddress, random) {
+
+		// find a free address
+		if _, ok := existAddress[random]; !ok {
 			return random, nil
 		}
+
 		klog.Infof("random ip %s already exists", random)
 		time.Sleep(1 * time.Second)
 	}
@@ -322,19 +330,20 @@ func (c *Controller) stopOvnIC() error {
 func (c *Controller) waitTsReady() error {
 	retry := 6
 	for retry > 0 {
-		exists, err := c.ovnLegacyClient.LogicalSwitchExists(util.InterconnectionSwitch, false)
+		ready, err := c.allSubnetReady(util.InterconnectionSwitch)
 		if err != nil {
-			klog.Errorf("failed to list logical switch, %v", err)
 			return err
 		}
-		if exists {
+
+		if ready {
 			return nil
 		}
-		klog.Info("wait for ts logical switch ready")
+
+		klog.Info("wait for logical switch %s ready", util.InterconnectionSwitch)
 		time.Sleep(5 * time.Second)
 		retry = retry - 1
 	}
-	return fmt.Errorf("timeout to wait ts ready")
+	return fmt.Errorf("timeout to wait for logical switch %s ready", util.InterconnectionSwitch)
 }
 
 func (c *Controller) delLearnedRoute() error {
@@ -485,4 +494,31 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 			klog.Errorf("deleting router policy failed %v", err)
 		}
 	}
+}
+
+func (c *Controller) listRemoteLogicalSwitchPortAddress() (map[string]struct{}, error) {
+	lsps, err := c.ovnClient.ListLogicalSwitchPorts(true, nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
+		return lsp.Type == "remote"
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list remote logical switch ports: %v", err)
+	}
+
+	existAddress := make(map[string]struct{})
+	for _, lsp := range lsps {
+		if len(lsp.Addresses) == 0 {
+			continue
+		}
+
+		addresses := lsp.Addresses[0]
+
+		fields := strings.Fields(addresses)
+		if len(fields) != 2 {
+			continue
+		}
+
+		existAddress[fields[1]] = struct{}{}
+	}
+
+	return existAddress, nil
 }

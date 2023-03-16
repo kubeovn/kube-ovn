@@ -561,7 +561,7 @@ func TestValidatePodNetwork(t *testing.T) {
 				"ovn.kubernetes.io/egress_rate":  "1",
 				"ovn.kubernetes.io/cidr":         "10.16.0.0/16",
 			},
-			err: "[10.244.0.0/16 not in cidr 10.16.0.0/16, fd00:10:244:0:2::/80 not in cidr 10.16.0.0/16]",
+			err: "10.244.0.0/16 not in cidr 10.16.0.0/16",
 		},
 		{
 			name: "podMacErr",
@@ -585,7 +585,7 @@ func TestValidatePodNetwork(t *testing.T) {
 				"ovn.kubernetes.io/egress_rate":  "1",
 				"ovn.kubernetes.io/cidr":         "10.16.0.0/16",
 			},
-			err: "10.16.1111.15 in ovn.kubernetes.io/ip_pool is not a valid address",
+			err: "10.16.1111.15,10.16.0.16,10.16.0.17 not in cidr 10.16.0.0/16",
 		},
 		{
 			name: "ingRaErr",

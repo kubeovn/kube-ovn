@@ -114,7 +114,7 @@ func ConstructWaitForUniqueOperation(table string, column string, value interfac
 
 func (c *ovnClient) Transact(method string, operations []ovsdb.Operation) error {
 	if len(operations) == 0 {
-		klog.Warningf("operations should not be empty")
+		klog.V(6).Info("operations should not be empty")
 		return nil
 	}
 

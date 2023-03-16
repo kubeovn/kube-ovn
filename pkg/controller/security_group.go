@@ -470,17 +470,19 @@ func (c *Controller) reconcilePortSg(portName, securityGroups string) error {
 		if util.ContainsString(newSgList, sgName) {
 			needAssociated = "true"
 		}
-		if err = c.ovnLegacyClient.SetPortExternalIds(portName, fmt.Sprintf("associated_sg_%s", sgName), needAssociated); err != nil {
-			klog.Errorf("set port '%s' external_ids failed, %v", portName, err)
+
+		if err = c.ovnClient.SetLogicalSwitchPortExternalIds(portName, map[string]string{fmt.Sprintf("associated_sg_%s", sgName): needAssociated}); err != nil {
+			klog.Errorf("set logical switch port %s external_ids: %v", portName, err)
 			return err
 		}
 		c.syncSgPortsQueue.Add(sgName)
 	}
 
-	if err = c.ovnLegacyClient.SetPortExternalIds(portName, "security_groups", strings.ReplaceAll(securityGroups, ",", "/")); err != nil {
-		klog.Errorf("set port '%s' external_ids failed, %v", portName, err)
+	if err = c.ovnClient.SetLogicalSwitchPortExternalIds(portName, map[string]string{"security_groups": strings.ReplaceAll(securityGroups, ",", "/")}); err != nil {
+		klog.Errorf("set logical switch port %s external_ids: %v", portName, err)
 		return err
 	}
+
 	return nil
 }
 

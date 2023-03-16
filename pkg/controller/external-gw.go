@@ -119,15 +119,15 @@ func (c *Controller) removeExternalGateway() error {
 
 	if !keepExternalSubnet {
 		klog.Infof("delete external gateway switch %s", c.config.ExternalGatewaySwitch)
-		if err := c.ovnLegacyClient.DeleteGatewaySwitch(c.config.ExternalGatewaySwitch); err != nil {
-			klog.Errorf("failed to delete external gateway switch, %v", err)
+		if err := c.ovnClient.DeleteLogicalGatewaySwitch(util.ExternalGatewaySwitch, c.config.ClusterRouter); err != nil {
+			klog.Errorf("delete external gateway switch %s: %v", util.ExternalGatewaySwitch, err)
 			return err
 		}
 	} else {
 		klog.Infof("should keep provider network vlan underlay external gateway switch %s", c.config.ExternalGatewaySwitch)
 		lrpName := fmt.Sprintf("%s-%s", c.config.ClusterRouter, c.config.ExternalGatewaySwitch)
 		klog.Infof("delete logical router port %s", lrpName)
-		if err := c.ovnLegacyClient.DeleteLogicalRouterPort(lrpName); err != nil {
+		if err := c.ovnClient.DeleteLogicalRouterPort(lrpName); err != nil {
 			klog.Errorf("failed to delete lrp %s, %v", lrpName, err)
 			return err
 		}
@@ -160,10 +160,12 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 		klog.Infof("lrp %s exist", lrpName)
 		return nil
 	}
-	if err := c.ovnLegacyClient.CreateGatewaySwitch(c.config.ExternalGatewaySwitch, c.config.ExternalGatewayNet, c.config.ExternalGatewayVlanID, lrpIp, lrpMac, chassises); err != nil {
-		klog.Errorf("failed to create external gateway switch, %v", err)
+
+	if err := c.ovnClient.CreateGatewayLogicalSwitch(c.config.ExternalGatewaySwitch, c.config.ClusterRouter, c.config.ExternalGatewayNet, lrpIp, lrpMac, c.config.ExternalGatewayVlanID, chassises...); err != nil {
+		klog.Errorf("create external gateway switch %s: %v", c.config.ExternalGatewaySwitch, err)
 		return err
 	}
+
 	return nil
 }
 

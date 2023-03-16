@@ -108,14 +108,24 @@ func LastIP(subnet string) (string, error) {
 }
 
 func CIDRContainIP(cidrStr, ipStr string) bool {
-	var containFlag bool
-	for _, cidr := range strings.Split(cidrStr, ",") {
+	cidrs := strings.Split(cidrStr, ",")
+	ips := strings.Split(ipStr, ",")
+
+	if len(cidrs) == 1 {
+		for _, ip := range ips {
+			if CheckProtocol(cidrStr) != CheckProtocol(ip) {
+				return false
+			}
+		}
+	}
+
+	for _, cidr := range cidrs {
 		_, cidrNet, err := net.ParseCIDR(cidr)
 		if err != nil {
 			return false
 		}
 
-		for _, ip := range strings.Split(ipStr, ",") {
+		for _, ip := range ips {
 			if CheckProtocol(cidr) != CheckProtocol(ip) {
 				continue
 			}
@@ -124,15 +134,13 @@ func CIDRContainIP(cidrStr, ipStr string) bool {
 				return false
 			}
 
-			if cidrNet.Contains(ipAddr) {
-				containFlag = true
-			} else {
-				containFlag = false
+			if !cidrNet.Contains(ipAddr) {
+				return false
 			}
 		}
 	}
-	// v4 and v6 address should be both matched for dual-stack check
-	return containFlag
+	// v4 and v6 address should be both matched for dualstack check
+	return true
 }
 
 func CheckProtocol(address string) string {

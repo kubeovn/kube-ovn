@@ -197,17 +197,7 @@ func (c *Controller) initNodeSwitch() error {
 
 // InitClusterRouter init cluster router to connect different logical switches
 func (c *Controller) initClusterRouter() error {
-	lrs, err := c.ovnLegacyClient.ListLogicalRouter(c.config.EnableExternalVpc)
-	if err != nil {
-		return err
-	}
-	klog.Infof("exists routers: %v", lrs)
-	for _, r := range lrs {
-		if c.config.ClusterRouter == r {
-			return nil
-		}
-	}
-	return c.ovnLegacyClient.CreateLogicalRouter(c.config.ClusterRouter)
+	return c.ovnClient.CreateLogicalRouter(c.config.ClusterRouter)
 }
 
 func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
@@ -798,8 +788,8 @@ func (c *Controller) initAppendLspExternalIds(portName string, pod *v1.Pod) erro
 		externalIDs["pod"] = fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
 	}
 
-	if err := c.ovnLegacyClient.SetLspExternalIds(portName, externalIDs); err != nil {
-		klog.Errorf("failed to set lsp external_ids for port %s: %v", portName, err)
+	if err := c.ovnClient.SetLogicalSwitchPortExternalIds(portName, externalIDs); err != nil {
+		klog.Errorf("set lsp external_ids for logical switch port %s: %v", portName, err)
 		return err
 	}
 

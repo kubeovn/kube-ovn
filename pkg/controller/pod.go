@@ -571,7 +571,7 @@ func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName 
 			for _, port := range ports {
 				// when lsp is deleted, the port of pod is deleted from any port-group automatically.
 				klog.Infof("gc logical switch port %s", port.Name)
-				if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(port.Name); err != nil {
+				if err := c.ovnClient.DeleteLogicalSwitchPort(port.Name); err != nil {
 					klog.Errorf("failed to delete lsp %s, %v", port.Name, err)
 					return err
 				}
@@ -693,9 +693,9 @@ func (c *Controller) handleAddPod(key string) error {
 				DHCPv6OptionsUUID: subnet.Status.DHCPv6OptionsUUID,
 			}
 
-			hasUnknown := pod.Annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, podNet.ProviderName)] == "true"
-			if err := c.ovnLegacyClient.CreatePort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace, portSecurity, securityGroupAnnotation, vips, podNet.AllowLiveMigration, podNet.Subnet.Spec.EnableDHCP, dhcpOptions, hasUnknown); err != nil {
+			if err := c.ovnClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace, portSecurity, securityGroupAnnotation, vips, podNet.Subnet.Spec.EnableDHCP, dhcpOptions, subnet.Spec.Vpc); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
+				klog.Errorf("%v", err)
 				return err
 			}
 
@@ -818,7 +818,7 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 	for _, port := range ports {
 		// when lsp is deleted, the port of pod is deleted from any port-group automatically.
 		klog.Infof("gc logical switch port %s", port.Name)
-		if err := c.ovnLegacyClient.DeleteLogicalSwitchPort(port.Name); err != nil {
+		if err := c.ovnClient.DeleteLogicalSwitchPort(port.Name); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", port.Name, err)
 			return err
 		}
@@ -884,10 +884,12 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 		mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
 		ipStr := pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
 		vips := pod.Annotations[fmt.Sprintf(util.PortVipAnnotationTemplate, podNet.ProviderName)]
-		if err = c.ovnLegacyClient.SetPortSecurity(portSecurity, podNet.Subnet.Name, ovs.PodNameToPortName(podName, namespace, podNet.ProviderName), mac, ipStr, vips); err != nil {
-			klog.Errorf("setPortSecurity failed. %v", err)
+
+		if err = c.ovnClient.SetLogicalSwitchPortSecurity(portSecurity, ovs.PodNameToPortName(podName, namespace, podNet.ProviderName), mac, ipStr, vips); err != nil {
+			klog.Errorf("set logical switch port security: %v", err)
 			return err
 		}
+
 		c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
 
 		var securityGroups string
@@ -1570,53 +1572,6 @@ func appendCheckPodToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKind 
 	}
 
 	return false, nil
-}
-
-// syncVmLiveMigrationPort set ip address to lsp after live migration
-func (c *Controller) syncVmLiveMigrationPort() {
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("list get subnet failed, %v", err)
-		return
-	}
-	for _, subnet := range subnets {
-		// lists pods with the 'liveMigration' flag
-		ports, err := c.ovnLegacyClient.ListLogicalEntity("logical_switch_port",
-			fmt.Sprintf("external_ids:ls=%s", subnet.Name),
-			"external_ids:liveMigration=1")
-		if err != nil {
-			klog.Errorf("list logical_switch_port failed, %v", err)
-			return
-		}
-
-		for _, port := range ports {
-			addr, err := c.ipsLister.Get(port)
-			if err != nil {
-				klog.Errorf("get port ip failed, %v", err)
-				return
-			}
-			// lists pods with the same IP address
-			vmLsps, err := c.ovnLegacyClient.ListLogicalEntity("logical_switch_port",
-				fmt.Sprintf("external_ids:ls=%s", subnet.Name),
-				fmt.Sprintf("external_ids:ip=\"%s\"", strings.ReplaceAll(addr.Spec.IPAddress, ",", "/")))
-			if err != nil {
-				klog.Errorf("list logical_switch_port failed, %v", err)
-				return
-			}
-
-			// reset addresses after live Migration
-			if len(vmLsps) == 1 {
-				if err = c.ovnLegacyClient.SetPortAddress(port, addr.Spec.MacAddress, addr.Spec.IPAddress); err != nil {
-					klog.Errorf("set port addresses failed, %v", err)
-					return
-				}
-				if err = c.ovnLegacyClient.SetPortExternalIds(port, "liveMigration", "0"); err != nil {
-					klog.Errorf("set port externalIds failed, %v", err)
-					return
-				}
-			}
-		}
-	}
 }
 
 func isVmPod(pod *v1.Pod) (bool, string) {
