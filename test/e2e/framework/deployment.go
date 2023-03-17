@@ -118,8 +118,9 @@ func MakeDeployment(name string, replicas int32, podLabels, podAnnotations map[s
 
 func RestartSystemDeployment(name string, enableLog bool) {
 	if enableLog {
-		_, err := exec.Command("bash", "-c", fmt.Sprintf("ko log kube-ovn %s all", name)).CombinedOutput()
+		output, err := exec.Command("bash", "-c", fmt.Sprintf("kubectl ko log kube-ovn %s all", name)).CombinedOutput()
 		framework.ExpectNoError(err, fmt.Sprintf("dump all %s log failed", name))
+		framework.Logf(string(output))
 	}
 
 	restartCmd := fmt.Sprintf("kubectl rollout restart deployment %s -n kube-system", name)

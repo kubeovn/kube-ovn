@@ -799,7 +799,9 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		ginkgo.By("restart deployment ")
-		framework.RestartSystemDeployment("kube-ovn-controller", true)
+		restartCmd := fmt.Sprintf("kubectl rollout restart deployment %s -n %s", deployName, namespaceName)
+		_, err = exec.Command("bash", "-c", restartCmd).CombinedOutput()
+		framework.ExpectNoError(err, "restart deployment failed")
 		err = deployment.WaitForDeploymentComplete(cs, deploy)
 		framework.ExpectNoError(err, "deployment failed to complete")
 
