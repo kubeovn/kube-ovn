@@ -1620,11 +1620,11 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
-        run: make kind-install-ovn-submariner
+        run: make kind-install-ovn-submariner-${{ matrix.gateway }}-gateway
 
       - name: Run E2E
         working-directory: ${{ env.E2E_DIR }}
-        run: make kube-ovn-submariner-conformance-e2e-${{ matrix.gateway }}-gateway
+        run: make kube-ovn-submariner-conformance-e2e
 
       - name: kubectl ko log
         if: failure() && steps.e2e.outcome != 'success'
