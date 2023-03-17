@@ -543,9 +543,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		checkU2OItems(true, subnet, underlayPod, overlayPod)
 
 		ginkgo.By("step4: check if kube-ovn-controller restart")
-		restartCmd := "kubectl rollout restart deployment kube-ovn-controller -n kube-system"
-		_, err = exec.Command("bash", "-c", restartCmd).CombinedOutput()
-		framework.ExpectNoError(err, "restart kube-ovn-controller")
+		framework.RestartSystemDeployment("kube-ovn-controller", true)
 		checkU2OItems(true, subnet, underlayPod, overlayPod)
 
 		ginkgo.By("step5: Disable u2o check after restart kube-controller")
