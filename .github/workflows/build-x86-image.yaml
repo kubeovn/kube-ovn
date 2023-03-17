@@ -1563,6 +1563,12 @@ jobs:
       - build-kube-ovn
     runs-on: ubuntu-20.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        gateway:
+          - distributed
+          - centralized
     steps:
       - uses: actions/checkout@v3
 
@@ -1618,7 +1624,7 @@ jobs:
 
       - name: Run E2E
         working-directory: ${{ env.E2E_DIR }}
-        run: make kube-ovn-submariner-conformance-e2e
+        run: make kube-ovn-submariner-conformance-e2e-${{ matrix.gateway }}-gateway
 
       - name: kubectl ko log
         if: failure() && steps.e2e.outcome != 'success'

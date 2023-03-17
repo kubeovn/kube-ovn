@@ -389,6 +389,17 @@ kind-install-ovn-ic: kind-install
 	sleep 6
 	docker exec ovn-ic-db ovn-ic-sbctl show
 
+
+.PHONY: kind-install-ovn-submariner-centralized-gateway
+kind-install-ovn-submariner-centralized-gateway: kind-install-ovn-submariner
+	kubectl config use-context kind-kube-ovn
+	kubectl patch subnet ovn-default --type='merge' --patch '{"spec": {"gatewayNode": "kube-ovn-worker","gatewayType": "centralized"}}'
+	kubectl config use-context kind-kube-ovn1
+	kubectl patch subnet ovn-default --type='merge' --patch '{"spec": {"gatewayNode": "kube-ovn1-worker","gatewayType": "centralized"}}'
+
+.PHONY: kind-install-ovn-submariner-distributed-gateway
+kind-install-ovn-submariner-distributed-gateway: kind-install-ovn-submariner
+
 .PHONY: kind-install-ovn-submariner
 kind-install-ovn-submariner: kind-install
 	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
@@ -414,7 +425,6 @@ kind-install-ovn-submariner: kind-install
 	kubectl patch clusterrole submariner-operator --type merge --patch-file yamls/subopeRules.yaml
 	sleep 10
 	kubectl -n submariner-operator delete pod --selector=name=submariner-operator
-	kubectl patch subnet ovn-default --type='merge' --patch '{"spec": {"gatewayNode": "kube-ovn-worker","gatewayType": "centralized"}}'
 
 	kubectl config use-context kind-kube-ovn1
 	kubectl label nodes kube-ovn1-worker submariner.io/gateway=true
@@ -422,7 +432,6 @@ kind-install-ovn-submariner: kind-install
 	kubectl patch clusterrole submariner-operator --type merge --patch-file yamls/subopeRules.yaml
 	sleep 10
 	kubectl -n submariner-operator delete pod --selector=name=submariner-operator
-	kubectl patch subnet ovn-default --type='merge' --patch '{"spec": {"gatewayNode": "kube-ovn1-worker","gatewayType": "centralized"}}'
 
 .PHONY: kind-install-underlay
 kind-install-underlay: kind-install-underlay-ipv4
