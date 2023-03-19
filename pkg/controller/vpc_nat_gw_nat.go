@@ -100,7 +100,11 @@ func (c *Controller) enqueueUpdateIptablesDnatRule(old, new interface{}) {
 
 	if oldDnat.Status.V4ip != newDnat.Status.V4ip ||
 		oldDnat.Spec.EIP != newDnat.Spec.EIP ||
-		oldDnat.Status.Redo != newDnat.Status.Redo {
+		oldDnat.Status.Redo != newDnat.Status.Redo ||
+		oldDnat.Spec.Protocol != newDnat.Spec.Protocol ||
+		oldDnat.Spec.InternalIp != newDnat.Spec.InternalIp ||
+		oldDnat.Spec.InternalPort != newDnat.Spec.InternalPort ||
+		oldDnat.Spec.ExternalPort != newDnat.Spec.ExternalPort {
 		klog.V(3).Infof("enqueue update dnat %s", key)
 		c.updateIptablesDnatRuleQueue.Add(key)
 		return
@@ -781,24 +785,26 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 	if vpcNatEnabled != "true" {
 		return fmt.Errorf("iptables nat gw not enable")
 	}
+
+	if err = c.deleteDnatInPod(cachedDnat.Status.NatGwDp, cachedDnat.Status.Protocol,
+		cachedDnat.Status.V4ip, cachedDnat.Status.InternalIp,
+		cachedDnat.Status.ExternalPort, cachedDnat.Status.InternalPort); err != nil {
+		klog.Errorf("failed to delete old dnat, %v", err)
+		return err
+	}
+	if err = c.createDnatInPod(eip.Spec.NatGwDp, cachedDnat.Spec.Protocol,
+		eip.Status.IP, cachedDnat.Spec.InternalIp,
+		cachedDnat.Spec.ExternalPort, cachedDnat.Spec.InternalPort); err != nil {
+		klog.Errorf("failed to create new dnat %s, %v", key, err)
+		return err
+	}
+	if err = c.patchDnatStatus(key, eip.Status.IP, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
+		klog.Errorf("failed to patch status for dnat %s , %v", key, err)
+		return err
+	}
+
 	if c.dnatChangeEip(cachedDnat, eip) {
 		klog.V(3).Infof("dnat change ip, old ip '%s', new ip %s", cachedDnat.Status.V4ip, eip.Status.IP)
-		if err = c.deleteDnatInPod(cachedDnat.Status.NatGwDp, cachedDnat.Spec.Protocol,
-			cachedDnat.Status.V4ip, cachedDnat.Spec.InternalIp,
-			cachedDnat.Spec.ExternalPort, cachedDnat.Spec.InternalPort); err != nil {
-			klog.Errorf("failed to delete old dnat, %v", err)
-			return err
-		}
-		if err = c.createDnatInPod(eip.Spec.NatGwDp, cachedDnat.Spec.Protocol,
-			eip.Status.IP, cachedDnat.Spec.InternalIp,
-			cachedDnat.Spec.ExternalPort, cachedDnat.Spec.InternalPort); err != nil {
-			klog.Errorf("failed to create new dnat %s, %v", key, err)
-			return err
-		}
-		if err = c.patchDnatStatus(key, eip.Status.IP, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
-			klog.Errorf("failed to patch status for dnat %s , %v", key, err)
-			return err
-		}
 		if err = c.patchEipNat(eipName, util.DnatUsingEip); err != nil {
 			klog.Errorf("failed to patch dnat use eip %s, %v", key, err)
 			return err
@@ -1379,6 +1385,22 @@ func (c *Controller) patchDnatStatus(key, v4ip, v6ip, natGwDp, redo string, read
 		dnat.Status.V4ip = v4ip
 		dnat.Status.V6ip = v6ip
 		dnat.Status.NatGwDp = natGwDp
+		changed = true
+	}
+	if ready && dnat.Status.Protocol != "" && dnat.Status.Protocol != dnat.Spec.Protocol {
+		dnat.Status.Protocol = dnat.Spec.Protocol
+		changed = true
+	}
+	if ready && dnat.Status.InternalIp != "" && dnat.Status.InternalIp != dnat.Spec.InternalIp {
+		dnat.Status.InternalIp = dnat.Spec.InternalIp
+		changed = true
+	}
+	if ready && dnat.Status.InternalPort != "" && dnat.Status.InternalPort != dnat.Spec.InternalPort {
+		dnat.Status.InternalPort = dnat.Spec.InternalPort
+		changed = true
+	}
+	if ready && dnat.Status.ExternalPort != "" && dnat.Status.ExternalPort != dnat.Spec.ExternalPort {
+		dnat.Status.ExternalPort = dnat.Spec.ExternalPort
 		changed = true
 	}
 
