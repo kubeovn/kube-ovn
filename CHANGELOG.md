@@ -1,5 +1,40 @@
 # Changelog
 
+## v1.11.3 (2023-03-18)
+
+ * [9fe900fc](https://github.com/kubeovn/kube-ovn/commit/9fe900fce63ce684f6d8f440ac7a8154b0cccc69) prepare for release v1.11.3
+ * [d70bf21f](https://github.com/kubeovn/kube-ovn/commit/d70bf21f9a1bb3b5153f8fb5b88bfbc83523f896) ensure address label is correct before deleting it (#2487)
+ * [df493a8b](https://github.com/kubeovn/kube-ovn/commit/df493a8bde433ad88609d871255199d1d6aae835) add node to addNodeQueue if required annations are missing (#2481)
+ * [b4145855](https://github.com/kubeovn/kube-ovn/commit/b4145855dcb8d4a1ab832cbd44aef7d12e87ad74) fix ips CR not found due to etcd error (#2472)
+ * [63afc1f6](https://github.com/kubeovn/kube-ovn/commit/63afc1f6c0f441c3cc1ac59657af4380e1db4831) ci: fix ovn-ic installation (#2456)
+ * [f790d5a1](https://github.com/kubeovn/kube-ovn/commit/f790d5a12680adf8c78b4ea76a1b54c772a2478f) do not set subnet's vlan empty on failure (#2445)
+ * [0ff516bb](https://github.com/kubeovn/kube-ovn/commit/0ff516bbddd2a01ed485e33fa0ca235ba7af08b6) change cni version from v1.1.1 to v1.2.0
+ * [b0935b7c](https://github.com/kubeovn/kube-ovn/commit/b0935b7c7f2f146b4bac3eec298aba6d34d7988b) fix ovn-speaker router bug (#2433)
+ * [7f6ba2b1](https://github.com/kubeovn/kube-ovn/commit/7f6ba2b1a7670e11109f2a0a1f84342c6a6f9809) fix chart install/upgrade e2e (#2426)
+ * [e0fe08c5](https://github.com/kubeovn/kube-ovn/commit/e0fe08c5f5bfe32c3d3eab4fd8bdc7f792f66495) ci: fix cilium chaining e2e (#2391)
+ * [365e8f47](https://github.com/kubeovn/kube-ovn/commit/365e8f47f1fbc51f1a4ea715b433053b8e201a95) Modify the pod scheduling of vpcdns (#2420)
+ * [13c7319f](https://github.com/kubeovn/kube-ovn/commit/13c7319f0d3b509e90ced918f0de51a8812d11be) fix: python package issues
+ * [7100e157](https://github.com/kubeovn/kube-ovn/commit/7100e157f7af9574497603bdae4f4c7853fe3cee) update ipv6 security-group remote group name (#2389)
+ * [909c1b6b](https://github.com/kubeovn/kube-ovn/commit/909c1b6b12c7f56ad2a66c0bf7cad452ab46cc7b) Fix routeregexp ipv6 (#2395)
+ * [20cdc9d8](https://github.com/kubeovn/kube-ovn/commit/20cdc9d8fe265499698d4d1470e607596d863456) ci: fix ref name check (#2390)
+ * [af25e6ad](https://github.com/kubeovn/kube-ovn/commit/af25e6adc03ce52f0237adf6264ccf86ba3ffb14) bump base images
+ * [064df251](https://github.com/kubeovn/kube-ovn/commit/064df2513b5a67f1da286aaa893e309a794ec989) ci: skip netpol e2e automatically for push events (#2379)
+ * [d5005b74](https://github.com/kubeovn/kube-ovn/commit/d5005b74a8f49ae1238462f00ac25d60b3299d12) ci: make path filter more accurate (#2381)
+ * [0f308f34](https://github.com/kubeovn/kube-ovn/commit/0f308f3442fdb5303c5d17a8849b4aa45fba3372) fix service dual stack add/del cluster ips not change ovn nb
+ * [4a70baef](https://github.com/kubeovn/kube-ovn/commit/4a70baefaa9cd760dc384e955062fab17b7baf3c) ci: fix path filter for windows build (#2378)
+ * [37662226](https://github.com/kubeovn/kube-ovn/commit/37662226d2ba62b1083eba1b5eadc948a2b124f2) e2e: run specs in parallel (#2375)
+
+### Contributors
+
+ * Daviddcc
+ * KillMaster9
+ * changluyi
+ * hzma
+ * jeffy
+ * yichanglu
+ * zhangzujian
+ * 张祖建
+
 ## v1.11.2 (2023-02-22)
 
  * [67fd6efb](https://github.com/kubeovn/kube-ovn/commit/67fd6efb8dd37dc640b8f430fb9e33b023bd1238) fix CVE-2022-41723
@@ -475,6 +510,70 @@
  * 尚墨
  * 张祖建
  * 袁又袁
+
+## v1.10.10 (2023-03-18)
+
+ * [0c5fd63b](https://github.com/kubeovn/kube-ovn/commit/0c5fd63b2d7edb7f0b3ced4d65ac908da8dc812e) prepare for release v1.10.10
+ * [3631e4e4](https://github.com/kubeovn/kube-ovn/commit/3631e4e420fea3a4bb9657f0777c1b6da48429ff) ensure address label is correct before deleting it (#2487)
+ * [5ffc237a](https://github.com/kubeovn/kube-ovn/commit/5ffc237af63a7f5283c5a946ce576a1d00103d29) add node to addNodeQueue if required annations are missing (#2481)
+ * [2db927ef](https://github.com/kubeovn/kube-ovn/commit/2db927efdf9c8a52cc31c83b4147376bb0aa6bd5) remove unused subnet status fields (#2482)
+ * [8d08c629](https://github.com/kubeovn/kube-ovn/commit/8d08c629a53eb09c4e635f418cbc4733018171af) fix ips CR not found due to etcd error (#2472)
+ * [ec7a3dd5](https://github.com/kubeovn/kube-ovn/commit/ec7a3dd572cddd375e486aa8581ae8510eeb13a9) ci: fix ovn-ic installation (#2456)
+ * [b4383543](https://github.com/kubeovn/kube-ovn/commit/b4383543d24584deb650abacba9e6f9a08d25bbf) do not set subnet's vlan empty on failure (#2445)
+ * [1c21d6e7](https://github.com/kubeovn/kube-ovn/commit/1c21d6e795b5553010f8d702a3d57dc720f2879f) fix: missing import netlink
+ * [a4228c39](https://github.com/kubeovn/kube-ovn/commit/a4228c3922748bd843bdd3d9ad8241ce432b4140) change cni version from v1.1.1 to v1.2.0 (#2435)
+ * [9e363e41](https://github.com/kubeovn/kube-ovn/commit/9e363e41f4690c3af88eafdba210a3ccdda69475) fix ovn-speaker router bug (#2433)
+ * [45830865](https://github.com/kubeovn/kube-ovn/commit/458308656d05d44015b668789471c3149d94dc9e) fix ovn-ic e2e
+ * [a1f59628](https://github.com/kubeovn/kube-ovn/commit/a1f59628f74f7eaf5d4899c15b1e467934aae995) ci: fix cilium chaining e2e (#2391)
+ * [8a584a7c](https://github.com/kubeovn/kube-ovn/commit/8a584a7c47f55d31a2af5be6e2c921b10cc18c5c) fix: python package issues
+ * [8ec90f57](https://github.com/kubeovn/kube-ovn/commit/8ec90f578322b3f91b77bfae0b8f5771c174c094) update ipv6 security-group remote group name (#2389)
+ * [489d2453](https://github.com/kubeovn/kube-ovn/commit/489d24530b41aa93342b4926509f6c31d7a59ef2) Fix routeregexp ipv6 (#2395)
+ * [8f045d75](https://github.com/kubeovn/kube-ovn/commit/8f045d7539464219cbb6d5b1b07b4460f74318d1) ci: fix ref name check (#2390)
+ * [aec96bf2](https://github.com/kubeovn/kube-ovn/commit/aec96bf2edd3745414bcf5266abdb7032cd6808f) bump base images
+ * [6321f170](https://github.com/kubeovn/kube-ovn/commit/6321f170f9ccd6adc4a8180b67128e63b673e7e7) ci: skip netpol e2e automatically for push events (#2379)
+ * [b8ad1177](https://github.com/kubeovn/kube-ovn/commit/b8ad117757daae38e06fe8aeb6ebf2ba756cdaba) ci: make path filter more accurate (#2381)
+ * [1bc6c814](https://github.com/kubeovn/kube-ovn/commit/1bc6c8145b3302891965796f220efba630eba2d8) ci: fix path filter for windows build (#2378)
+ * [5c6f394f](https://github.com/kubeovn/kube-ovn/commit/5c6f394fff397d62a67b7fb61536bdede969bab9) e2e: run specs in parallel (#2375)
+ * [437f8dfa](https://github.com/kubeovn/kube-ovn/commit/437f8dfa05faab49e11dce96553ecbe5da176b7c) fix CVE-2022-41723
+ * [edf17620](https://github.com/kubeovn/kube-ovn/commit/edf1762001e79efa7574770c8096de6972db9f9d) ci: fix default branch test (#2369)
+ * [74f492e9](https://github.com/kubeovn/kube-ovn/commit/74f492e92a957c0f8d95924faacf4602371760d9) fix github actions workflows (#2363)
+ * [9554adfb](https://github.com/kubeovn/kube-ovn/commit/9554adfb5df3c2250ca62bfd19cf051364de2464) simplify github actions workflows (#2338)
+ * [b62f472e](https://github.com/kubeovn/kube-ovn/commit/b62f472e202eb459b07dc19758693924ffd347b9) use existing node switch cidr instead of the configured one (#2359)
+ * [902b9a35](https://github.com/kubeovn/kube-ovn/commit/902b9a35cf2261f04ae0a55f390fe425a0a6e245) do not remove link local route on ovn0 (#2341)
+ * [e8f32ac6](https://github.com/kubeovn/kube-ovn/commit/e8f32ac64b66ecdaab889cc96c690063f3dce099) fix encap ip when the tunnel interface has multiple addresses (#2340)
+ * [c0c9c71e](https://github.com/kubeovn/kube-ovn/commit/c0c9c71e67bf78aa2bb6e9fe0c827a24a29308b9) enqueue endpoint when handling service add event (#2337)
+ * [fe42367a](https://github.com/kubeovn/kube-ovn/commit/fe42367ae897e66ac631b4cdd4eccc787ea82c0c) fix getting service backends in dual-stack clusters (#2323)
+ * [33e6e41f](https://github.com/kubeovn/kube-ovn/commit/33e6e41fe0ac22ae5eff2455a379978246dc2f7c) fix github actions workflow
+ * [b2d7f735](https://github.com/kubeovn/kube-ovn/commit/b2d7f735eed9f4fba65d5e19a477009c95ab2ca7) prepare for release v1.10.9
+ * [68b34c91](https://github.com/kubeovn/kube-ovn/commit/68b34c91c19baccc1a0e0009a964e5e61c2bbf44) fix u2o code err
+ * [138fc5f1](https://github.com/kubeovn/kube-ovn/commit/138fc5f11b7127baaa73cb2a3a0ab80b8ad78e08) fix kube-ovn-controller crash on startup (#2305)
+ * [50b0c866](https://github.com/kubeovn/kube-ovn/commit/50b0c86625a4cb17214354db8c52fca8b1936e4f) fix gosec ci installation (#2295)
+ * [50cc03e9](https://github.com/kubeovn/kube-ovn/commit/50cc03e963314682b6fbc88e41d3b6586fed8ce5) ovn northd: fix connection inactivity probe (#2286)
+ * [1ba9977a](https://github.com/kubeovn/kube-ovn/commit/1ba9977a0843126baeb8677fa9bf0b9308eebf0c) fix ct new config error
+ * [ed53f304](https://github.com/kubeovn/kube-ovn/commit/ed53f3040bf68933effa7dfe15e64a3dc1a320d9) fix network break on kube-ovn-cni startup (#2272)
+ * [e70839b3](https://github.com/kubeovn/kube-ovn/commit/e70839b3a52f01c312272bbe836cef2240b35ebd) fix setting mtu for ovs internal port (#2247)
+ * [9195dbd3](https://github.com/kubeovn/kube-ovn/commit/9195dbd323c912203aafe150884e4dc4b86fb07b) fix gosec installation
+ * [2a32c9a4](https://github.com/kubeovn/kube-ovn/commit/2a32c9a47183b422259825fe3ea3059d0fe8923b) bump base image version
+ * [8a532627](https://github.com/kubeovn/kube-ovn/commit/8a5326273c3d8ffb479a14ff6ab006ba4ea1fb89) fix ovn patches
+ * [2a4b9805](https://github.com/kubeovn/kube-ovn/commit/2a4b98053e5ee3a0741b51c0d0ef93631f517aac) ovn db: add support for listening on pod ip (#2235)
+ * [0d88edd6](https://github.com/kubeovn/kube-ovn/commit/0d88edd6227595f3f0f9e973a92e8502c6f87639) add enable-metrics arg to disable metrics (#2232)
+ * [41120b2f](https://github.com/kubeovn/kube-ovn/commit/41120b2fbcceea6152b00d116559f7cea1a64283) fix not building no-avx512 image (#2228)
+ * [4320301e](https://github.com/kubeovn/kube-ovn/commit/4320301e11c802c76e031d647c39703bd50e3b6b) u2o feature merge to 1.10 (#2227)
+ * [c92af9b9](https://github.com/kubeovn/kube-ovn/commit/c92af9b90572a2311f12246d8f61490f947a1368) fix windows build
+ * [05801fab](https://github.com/kubeovn/kube-ovn/commit/05801fab4d454d8cee13d401ff3d1ecfd014807c) add release-1.8/1.9/1.10 to scheduled e2e (#2224)
+ * [267e4aff](https://github.com/kubeovn/kube-ovn/commit/267e4aff8315d8343126942445667da4372e8193) cni-server: fix waiting for routed annotation (#2225)
+ * [6a9b2d8a](https://github.com/kubeovn/kube-ovn/commit/6a9b2d8a7dc5211f482214d48d38ade3714603f7) release-1.10: refactor e2e (#2213)
+ * [b2901e8e](https://github.com/kubeovn/kube-ovn/commit/b2901e8ef2c50544d9f6d6c18c50f523bda746b9) feature: detect ipv4 address conflict in underlay (#2208)
+ * [172e1733](https://github.com/kubeovn/kube-ovn/commit/172e1733fe7e702e2416e2f558673c0de6e43861) set release v1.10.8
+
+### Contributors
+
+ * Daviddcc
+ * KillMaster9
+ * changluyi
+ * hzma
+ * zhangzujian
+ * 张祖建
 
 ## v1.10.8 (2023-01-03)
 
@@ -1024,6 +1123,37 @@
  * 张祖建
  * 罗云鹤
  * 范日明
+
+## v1.9.22 (2023-03-16)
+
+ * [439e47f8](https://github.com/kubeovn/kube-ovn/commit/439e47f893972d3590bf97b25303179f5737ea1c) ensure address label is correct before deleting it (#2487)
+ * [0f567b44](https://github.com/kubeovn/kube-ovn/commit/0f567b443414baa8c8e03d0b1038764da50e79d5) add node to addNodeQueue if required annations are missing (#2481)
+ * [db313ad1](https://github.com/kubeovn/kube-ovn/commit/db313ad1fd39910065562b25dd97d710db8bed86) remove unused subnet status fields (#2482)
+ * [183e34ff](https://github.com/kubeovn/kube-ovn/commit/183e34ff9ab7bf8b3127964fcb6cac083edcd836) prepare for release v1.9.22
+ * [bfa779dc](https://github.com/kubeovn/kube-ovn/commit/bfa779dcd1bb4d5c4fdb52a458e6fd0e7ca97250) fix ips CR not found due to etcd error (#2472)
+ * [e06f2b29](https://github.com/kubeovn/kube-ovn/commit/e06f2b2946a5c13311bc7d778b227f5a8db81f7a) ci: fix ovn-ic installation (#2456)
+ * [694059cc](https://github.com/kubeovn/kube-ovn/commit/694059cc66fbafe833e555ecd7ccef3000f9d251) do not set subnet's vlan empty on failure (#2445)
+ * [00134846](https://github.com/kubeovn/kube-ovn/commit/00134846e0c305906698f1656410b3aa0d70f375) set release v1.9.21
+ * [a1f6a3d3](https://github.com/kubeovn/kube-ovn/commit/a1f6a3d3f1cc4231e054e921a520c10ce4d7aa7c) prepare for release v1.9.21
+ * [2861d079](https://github.com/kubeovn/kube-ovn/commit/2861d079bb04a25edb120f1418d562808e572e91) fix: missing import netlink
+ * [f1779eec](https://github.com/kubeovn/kube-ovn/commit/f1779eec383b1ec229c25cc2c5e9e66907de6dcb) release-1.9 cni version update from v0.9.1 => v1.2.0 (#2434)
+ * [51105207](https://github.com/kubeovn/kube-ovn/commit/51105207163b486228cd8e60cb4e0034230fada5) fix ovn-speaker router bug (#2433)
+ * [4cec68c5](https://github.com/kubeovn/kube-ovn/commit/4cec68c557abb3d3f7ce4e026157922f944124ae) fix chart install/upgrade e2e (#2426)
+ * [f2c55a54](https://github.com/kubeovn/kube-ovn/commit/f2c55a544b274d65ea22bfa8c9ab70fda45276e4) ci: fix cilium chaining e2e (#2391)
+ * [8790b3cc](https://github.com/kubeovn/kube-ovn/commit/8790b3ccca2c2a74d00e7b6628d04ffe7984f5d2) Fix routeregexp ipv6 (#2395)
+ * [dc205246](https://github.com/kubeovn/kube-ovn/commit/dc2052461e54c6a58ed2ce5bade4f2e3106f9f14) ci: fix ref name check (#2390)
+ * [6ce0d02a](https://github.com/kubeovn/kube-ovn/commit/6ce0d02ad9e8acdb9db45069b7ff2381803bb97b) bump base image
+ * [551a7140](https://github.com/kubeovn/kube-ovn/commit/551a7140d95bb59ca809bfe553eda0847553b491) ovs: fix re-creation of tunnel backing interfaces on restart.
+ * [0b7e72f8](https://github.com/kubeovn/kube-ovn/commit/0b7e72f802ddaf30bd35a4541be07703ba6bd3c2) ci: skip netpol e2e automatically for push events (#2379)
+ * [d2dfd104](https://github.com/kubeovn/kube-ovn/commit/d2dfd104ab2964f9e0d58529fda74e533daa6fa2) e2e: run specs in parallel (#2375)
+
+### Contributors
+
+ * Daviddcc
+ * KillMaster9
+ * changluyi
+ * zhangzujian
+ * 张祖建
 
 ## v1.9.20 (2023-02-22)
 
