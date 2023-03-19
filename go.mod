@@ -241,7 +241,7 @@ require (
 	k8s.io/csi-translation-lib v0.26.3 // indirect
 	k8s.io/dynamic-resource-allocation v0.0.0 // indirect
 	k8s.io/kms v0.26.3 // indirect
-	k8s.io/kube-openapi v0.0.0-20230308215209-15aac26d736a // indirect
+	k8s.io/kube-openapi v0.0.0-20230303024457-afdc3dddf62d // indirect
 	k8s.io/kube-proxy v0.26.3 // indirect
 	k8s.io/kube-scheduler v0.0.0 // indirect
 	k8s.io/kubectl v0.0.0 // indirect
