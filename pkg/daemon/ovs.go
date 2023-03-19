@@ -88,20 +88,19 @@ func configExternalBridge(provider, bridge, nic string, exchangeLinkName, macLea
 	if err != nil {
 		return fmt.Errorf("failed to check OVS bridge existence: %v", err)
 	}
-	output, err := ovs.Exec(ovs.MayExist, "add-br", bridge,
+	cmd := []string{
+		ovs.MayExist, "add-br", bridge,
 		"--", "set", "bridge", bridge, fmt.Sprintf("other_config:mac-learning-fallback=%v", macLearningFallback),
-		"--", "set", "bridge", bridge, "external_ids:vendor="+util.CniTypeName,
+		"--", "set", "bridge", bridge, "external_ids:vendor=" + util.CniTypeName,
 		"--", "set", "bridge", bridge, fmt.Sprintf("external_ids:exchange-link-name=%v", exchangeLinkName),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create OVS bridge %s, %v: %q", bridge, err, output)
 	}
 	if !brExists {
 		// assign a new generated mac address only when the bridge is newly created
-		output, err = ovs.Exec("set", "bridge", bridge, fmt.Sprintf(`other-config:hwaddr="%s"`, util.GenerateMac()))
-		if err != nil {
-			return fmt.Errorf("failed to set hwaddr of OVS bridge %s, %v: %q", bridge, err, output)
-		}
+		cmd = append(cmd, "--", "set", "bridge", bridge, fmt.Sprintf(`other-config:hwaddr="%s"`, util.GenerateMac()))
+	}
+	output, err := ovs.Exec(cmd...)
+	if err != nil {
+		return fmt.Errorf("failed to create OVS bridge %s, %v: %q", bridge, err, output)
 	}
 	if output, err = ovs.Exec("list-ports", bridge); err != nil {
 		return fmt.Errorf("failed to list ports of OVS bridge %s, %v: %q", bridge, err, output)
