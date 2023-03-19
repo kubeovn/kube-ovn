@@ -5,7 +5,6 @@
 [![Docker Tag](https://img.shields.io/docker/pulls/kubeovn/kube-ovn)](https://img.shields.io/docker/pulls/kubeovn/kube-ovn)
 ![Docker Image Size (latest by date)](https://img.shields.io/docker/image-size/kubeovn/kube-ovn?sort=date)
 [![Go Report Card](https://goreportcard.com/badge/github.com/kubeovn/kube-ovn)](https://goreportcard.com/report/github.com/kubeovn/kube-ovn)
-[![Slack Card](https://kube-ovn-slackin.herokuapp.com/badge.svg)](https://kube-ovn-slackin.herokuapp.com)
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Falauda%2Fkube-ovn.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Falauda%2Fkube-ovn?ref=badge_shield)
 
 [中文文档](https://kubeovn.github.io/docs/)
@@ -18,7 +17,7 @@ It offers an advanced Container Network Fabric for Enterprises with the most fun
 ## Community
 The Kube-OVN community is waiting for your participation!
 - Follow us at [Twitter](https://twitter.com/KubeOvn)
-- Chat with us at [Slack](https://kube-ovn-slackin.herokuapp.com/)
+- Chat with us at [Slack](https://communityinviter.com/apps/kube-ovn/kube-ovn)
 - 微信用户请[填写表单](https://ma.alauda.cn/p/0f39a)加入交流群！
 
 ## Features
