@@ -45,6 +45,34 @@ func nmSetManaged(device string, managed bool) error {
 	return nil
 }
 
+// wait systemd-networkd to finish interface configuration
+func waitNetworkdConfiguration(linkIndex int) {
+	done := make(chan struct{})
+	ch := make(chan netlink.RouteUpdate)
+	if err := netlink.RouteSubscribe(ch, done); err != nil {
+		klog.Warningf("failed to subscribe route update events: %v", err)
+		klog.Info("Waiting 100ms ...")
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	timer := time.NewTimer(50 * time.Millisecond)
+LOOP:
+	for {
+		select {
+		case <-timer.C:
+			done <- struct{}{}
+			break LOOP
+		case event := <-ch:
+			if event.LinkIndex == linkIndex {
+				if !timer.Stop() {
+					<-timer.C
+				}
+				timer.Reset(50 * time.Millisecond)
+			}
+		}
+	}
+}
+
 func changeProvideNicName(current, target string) (bool, error) {
 	link, err := netlink.LinkByName(current)
 	if err != nil {
@@ -92,30 +120,7 @@ func changeProvideNicName(current, target string) (bool, error) {
 	}
 	klog.Infof("link %s has been renamed as %s", current, target)
 
-	// wait systemd-networkd to finish interface configuration
-	done := make(chan struct{})
-	ch := make(chan netlink.RouteUpdate)
-	if err = netlink.RouteSubscribe(ch, done); err != nil {
-		klog.Warningf("failed to subscribe route update events: %v", err)
-		time.Sleep(100 * time.Millisecond)
-	} else {
-		timer := time.NewTimer(50 * time.Millisecond)
-	LOOP:
-		for {
-			select {
-			case <-timer.C:
-				done <- struct{}{}
-				break LOOP
-			case event := <-ch:
-				if event.LinkIndex == link.Attrs().Index {
-					if !timer.Stop() {
-						<-timer.C
-					}
-					timer.Reset(50 * time.Millisecond)
-				}
-			}
-		}
-	}
+	waitNetworkdConfiguration(link.Attrs().Index)
 
 	for _, addr := range addresses {
 		if addr.IP.IsLinkLocalUnicast() {
