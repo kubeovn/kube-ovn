@@ -113,6 +113,8 @@ function exchange_link_names() {
     ip link set $br down
     ip link set $br name $port
     ip link set $port up
+    # wait systemd-networkd to finish interface configuration
+    sleep 0.1
 
     # transfer IPv4 routes
     default_ipv4_routes=()
