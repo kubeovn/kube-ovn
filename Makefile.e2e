@@ -117,7 +117,7 @@ kube-ovn-ic-conformance-e2e:
 		--focus=CNI:Kube-OVN ./test/e2e/ovn-ic/ovn-ic.test
 
 .PHONY: kube-ovn-submariner-conformance-e2e-distributed-gateway
-kube-ovn-submariner-conformance-e2e:
+kube-ovn-submariner-conformance-e2e-distributed-gateway:
 	while ! kubectl wait pod --for=condition=Ready -l app=submariner-routeagent -n submariner-operator && \
 	      ! kubectl wait pod --for=condition=Ready -l app=submariner-gateway -n submariner-operator && \
 	      ! kubectl wait pod --for=condition=Ready -l app=submariner-lighthouse-agent -n submariner-operator && \
@@ -137,7 +137,7 @@ kube-ovn-submariner-conformance-e2e:
 
 
 .PHONY: kube-ovn-submariner-conformance-e2e-centralized-gateway
-kube-ovn-submariner-conformance-e2e:
+kube-ovn-submariner-conformance-e2e-centralized-gateway:
 	while ! kubectl wait pod --for=condition=Ready -l app=submariner-routeagent -n submariner-operator && \
 	      ! kubectl wait pod --for=condition=Ready -l app=submariner-gateway -n submariner-operator && \
 	      ! kubectl wait pod --for=condition=Ready -l app=submariner-lighthouse-agent -n submariner-operator && \
