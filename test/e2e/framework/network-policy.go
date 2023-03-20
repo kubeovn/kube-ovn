@@ -21,9 +21,13 @@ type NetworkPolicyClient struct {
 }
 
 func (f *Framework) NetworkPolicyClient() *NetworkPolicyClient {
+	return f.NetworkPolicyClientNS(f.Namespace.Name)
+}
+
+func (f *Framework) NetworkPolicyClientNS(namespace string) *NetworkPolicyClient {
 	return &NetworkPolicyClient{
 		f:                      f,
-		NetworkPolicyInterface: f.ClientSet.NetworkingV1().NetworkPolicies(f.Namespace.Name),
+		NetworkPolicyInterface: f.ClientSet.NetworkingV1().NetworkPolicies(namespace),
 	}
 }
 

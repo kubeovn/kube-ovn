@@ -22,9 +22,13 @@ type StatefulSetClient struct {
 }
 
 func (f *Framework) StatefulSetClient() *StatefulSetClient {
+	return f.StatefulSetClientNS(f.Namespace.Name)
+}
+
+func (f *Framework) StatefulSetClientNS(namespace string) *StatefulSetClient {
 	return &StatefulSetClient{
 		f:                    f,
-		StatefulSetInterface: f.ClientSet.AppsV1().StatefulSets(f.Namespace.Name),
+		StatefulSetInterface: f.ClientSet.AppsV1().StatefulSets(namespace),
 	}
 }
 

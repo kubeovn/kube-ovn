@@ -144,13 +144,14 @@ var _ = framework.Describe("[group:security]", func() {
 		framework.ExpectNotEmpty(nodeList.Items)
 
 		ginkgo.By("Getting daemonset kube-ovn-cni")
-		ds, err := cs.AppsV1().DaemonSets(framework.KubeOvnNamespace).Get(context.TODO(), "kube-ovn-cni", metav1.GetOptions{})
-		framework.ExpectNoError(err, "failed to to get daemonset")
+		daemonSetClient := f.DaemonSetClientNS(framework.KubeOvnNamespace)
+		ds := daemonSetClient.Get("kube-ovn-cni")
+		framework.ExpectNoError(err, "failed to to get daemonset kube-ovn-cni")
 
 		ginkgo.By("Getting kube-ovn-cni pods")
 		pods := make([]corev1.Pod, 0, len(nodeList.Items))
 		for _, node := range nodeList.Items {
-			pod, err := framework.GetPodOnNodeForDaemonSet(cs, ds, node.Name)
+			pod, err := daemonSetClient.GetPodOnNode(ds, node.Name)
 			framework.ExpectNoError(err, "failed to get kube-ovn-cni pod running on node %s", node.Name)
 			pods = append(pods, *pod)
 		}

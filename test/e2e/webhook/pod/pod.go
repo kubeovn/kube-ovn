@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 
 	"github.com/onsi/ginkgo/v2"
@@ -111,19 +109,11 @@ var _ = framework.Describe("[group:webhook-pod]", func() {
 		_ = podClient.CreateSync(pod)
 		ipCr := podName + "." + namespaceName
 
-		err = wait.PollImmediate(2*time.Second, 1*time.Minute, func() (bool, error) {
-			checkPod, err := cs.CoreV1().Pods(namespaceName).Get(context.TODO(), podName, metav1.GetOptions{})
+		framework.WaitUntil(func() (bool, error) {
+			checkPod, err := podClient.PodInterface.Get(context.TODO(), podName, metav1.GetOptions{})
 			framework.ExpectNoError(err)
-
-			if checkPod.Annotations[util.RoutedAnnotation] == "true" {
-				return true, nil
-			}
-			return false, nil
-		})
-		if framework.IsTimeout(err) {
-			framework.Failf("timed out while wait pod %s update to routed", podName)
-		}
-		framework.ExpectNoError(err)
+			return checkPod.Annotations[util.RoutedAnnotation] == "true", nil
+		}, fmt.Sprintf("pod's annotation %s is true", util.RoutedAnnotation))
 
 		ginkgo.By("validate pod ip conflict")
 		framework.Logf("validate ip conflict, pod %s, ip cr %s, conflict pod %s", podName, ipCr, conflictName)

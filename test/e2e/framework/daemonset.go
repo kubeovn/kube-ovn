@@ -7,16 +7,38 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clientset "k8s.io/client-go/kubernetes"
+	v1apps "k8s.io/client-go/kubernetes/typed/apps/v1"
 )
 
-func GetPodsForDaemonSet(cs clientset.Interface, ds *appsv1.DaemonSet) (*corev1.PodList, error) {
+type DaemonSetClient struct {
+	f *Framework
+	v1apps.DaemonSetInterface
+}
+
+func (f *Framework) DaemonSetClient() *DaemonSetClient {
+	return f.DaemonSetClientNS(f.Namespace.Name)
+}
+
+func (f *Framework) DaemonSetClientNS(namespace string) *DaemonSetClient {
+	return &DaemonSetClient{
+		f:                  f,
+		DaemonSetInterface: f.ClientSet.AppsV1().DaemonSets(namespace),
+	}
+}
+
+func (c *DaemonSetClient) Get(name string) *appsv1.DaemonSet {
+	ds, err := c.DaemonSetInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	ExpectNoError(err)
+	return ds
+}
+
+func (c *DaemonSetClient) GetPods(ds *appsv1.DaemonSet) (*corev1.PodList, error) {
 	podSelector, err := metav1.LabelSelectorAsSelector(ds.Spec.Selector)
 	if err != nil {
 		return nil, err
 	}
 	podListOptions := metav1.ListOptions{LabelSelector: podSelector.String()}
-	allPods, err := cs.CoreV1().Pods(ds.Namespace).List(context.TODO(), podListOptions)
+	allPods, err := c.f.ClientSet.CoreV1().Pods(ds.Namespace).List(context.TODO(), podListOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -32,8 +54,8 @@ func GetPodsForDaemonSet(cs clientset.Interface, ds *appsv1.DaemonSet) (*corev1.
 	return ownedPods, nil
 }
 
-func GetPodOnNodeForDaemonSet(cs clientset.Interface, ds *appsv1.DaemonSet, node string) (*corev1.Pod, error) {
-	pods, err := GetPodsForDaemonSet(cs, ds)
+func (c *DaemonSetClient) GetPodOnNode(ds *appsv1.DaemonSet, node string) (*corev1.Pod, error) {
+	pods, err := c.GetPods(ds)
 	if err != nil {
 		return nil, err
 	}

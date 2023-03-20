@@ -18,7 +18,11 @@ type PodClient struct {
 }
 
 func (f *Framework) PodClient() *PodClient {
-	return &PodClient{e2epod.NewPodClient(f.Framework)}
+	return f.PodClientNS(f.Namespace.Name)
+}
+
+func (f *Framework) PodClientNS(namespace string) *PodClient {
+	return &PodClient{e2epod.PodClientNS(f.Framework, namespace)}
 }
 
 func (c *PodClient) DeleteSync(name string) {

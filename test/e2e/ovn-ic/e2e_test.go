@@ -194,11 +194,11 @@ var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 		ginkgo.By("Waiting for new az names to be applied")
 		time.Sleep(10 * time.Second)
 
-		pods, err := clientSets[0].CoreV1().Pods("kube-system").List(context.TODO(), metav1.ListOptions{LabelSelector: "app=ovs"})
+		pods, err := clientSets[0].CoreV1().Pods(framework.KubeOvnNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: "app=ovs"})
 		framework.ExpectNoError(err, "failed to get ovs-ovn pods")
 		cmd := "ovn-appctl -t ovn-controller inc-engine/recompute"
 		for _, pod := range pods.Items {
-			execPodOrDie(frameworks[0].KubeContext, "kube-system", pod.Name, cmd)
+			execPodOrDie(frameworks[0].KubeContext, pod.Namespace, pod.Name, cmd)
 		}
 		time.Sleep(2 * time.Second)
 
