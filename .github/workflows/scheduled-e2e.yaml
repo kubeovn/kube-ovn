@@ -1273,7 +1273,7 @@ jobs:
           VERSION=$version make kind-install-ovn-submariner-${{ matrix.gateway }}-gateway
 
       - name: Run E2E
-        run: make kube-ovn-submariner-conformance-e2e
+        run: make kube-ovn-submariner-conformance-e2e-${{ matrix.gateway }}-gateway
 
       - name: Cleanup
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}

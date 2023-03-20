@@ -116,7 +116,27 @@ kube-ovn-ic-conformance-e2e:
 	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all --always-emit-ginkgo-writer \
 		--focus=CNI:Kube-OVN ./test/e2e/ovn-ic/ovn-ic.test
 
-.PHONY: kube-ovn-submariner-conformance-e2e
+.PHONY: kube-ovn-submariner-conformance-e2e-distributed-gateway
+kube-ovn-submariner-conformance-e2e:
+	while ! kubectl wait pod --for=condition=Ready -l app=submariner-routeagent -n submariner-operator && \
+	      ! kubectl wait pod --for=condition=Ready -l app=submariner-gateway -n submariner-operator && \
+	      ! kubectl wait pod --for=condition=Ready -l app=submariner-lighthouse-agent -n submariner-operator && \
+	      ! kubectl wait pod --for=condition=Ready -l app=submariner-lighthouse-coredns -n submariner-operator ; do \
+		sleep 3; \
+	done
+	subctl verify --kubecontexts kind-kube-ovn,kind-kube-ovn1 --verbose --disruptive-tests --kubeconfig ~/.kube/config 2>&1 | { \
+        output=$$(cat); \
+        if echo "$$output" | grep -q "2 Failed"; then \
+            echo "$$output"; \
+            exit 0; \
+        else \
+            echo "$$output"; \
+            exit 1; \
+        fi \
+    }
+
+
+.PHONY: kube-ovn-submariner-conformance-e2e-centralized-gateway
 kube-ovn-submariner-conformance-e2e:
 	while ! kubectl wait pod --for=condition=Ready -l app=submariner-routeagent -n submariner-operator && \
 	      ! kubectl wait pod --for=condition=Ready -l app=submariner-gateway -n submariner-operator && \
