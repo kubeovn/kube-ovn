@@ -39,10 +39,8 @@ const (
 	VpcCIDRsAnnotation          = "ovn.kubernetes.io/vpc_cidrs"
 	VpcLbAnnotation             = "ovn.kubernetes.io/vpc_lb"
 	VpcExternalLabel            = "ovn.kubernetes.io/vpc_external"
-	VpcEipLabel                 = "ovn.kubernetes.io/vpc_eip"
 	VpcEipAnnotation            = "ovn.kubernetes.io/vpc_eip"
 	VpcDnatEPortLabel           = "ovn.kubernetes.io/vpc_dnat_eport"
-	VpcNatLabel                 = "ovn.kubernetes.io/vpc_nat"
 	VpcNatAnnotation            = "ovn.kubernetes.io/vpc_nat"
 
 	OvnEipUsageLabel        = "ovn.kubernetes.io/ovn_eip_usage"
