@@ -721,6 +721,17 @@ func (c *Controller) getVmLsps() []string {
 			for _, vm := range vms.Items {
 				vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, util.OvnProvider)
 				vmLsps = append(vmLsps, vmLsp)
+
+				attachNets, err := util.ParsePodNetworkAnnotation(vm.Spec.Template.ObjectMeta.Annotations[util.AttachmentNetworkAnnotation], vm.Namespace)
+				if err != nil {
+					klog.Errorf("failed to get attachment subnet of vm %s, %v", vm.Name, err)
+					continue
+				}
+				for _, multiNet := range attachNets {
+					provider := fmt.Sprintf("%s.%s.ovn", multiNet.Name, multiNet.Namespace)
+					vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, provider)
+					vmLsps = append(vmLsps, vmLsp)
+				}
 			}
 		}
 	}
