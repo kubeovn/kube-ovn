@@ -674,7 +674,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		for i := 1; i <= podCount; i++ {
 			podClient.DeleteSync(fmt.Sprintf("%s%d", podNamePre, i))
 		}
-
+		time.Sleep(5 * time.Second)
 		subnet = subnetClient.Get(subnetName)
 		if cidrV4 != "" {
 			framework.ExpectEqual(subnet.Status.V4UsingIPRange, "")
@@ -723,7 +723,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		for i := 1; i <= podCount; i++ {
 			podClient.DeleteSync(fmt.Sprintf("%s%d", podNamePre, i))
 		}
-
+		time.Sleep(5 * time.Second)
 		subnet = subnetClient.Get(subnetName)
 		if cidrV4 != "" {
 			framework.ExpectEqual(subnet.Status.V4UsingIPRange, "")
