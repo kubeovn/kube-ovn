@@ -238,11 +238,11 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		klog.Errorf("failed to create snat, %v", err)
 		return err
 	}
-	if err = c.natLabelOvnEip(eipName, cachedSnat.Name, vpcName); err != nil {
+	if err = c.natLabelAndAnnoOvnEip(eipName, cachedSnat.Name, vpcName); err != nil {
 		klog.Errorf("failed to label snat '%s' in eip %s, %v", cachedSnat.Name, eipName, err)
 		return err
 	}
-	if err = c.patchOvnSnatLabel(key, eipName); err != nil {
+	if err = c.patchOvnSnatAnnotation(key, eipName); err != nil {
 		klog.Errorf("failed to patch label for snat %s, %v", key, err)
 		return err
 	}
@@ -338,11 +338,11 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 			klog.Errorf("failed to create snat, %v", err)
 			return err
 		}
-		if err = c.natLabelOvnEip(eipName, cachedSnat.Name, vpcName); err != nil {
+		if err = c.natLabelAndAnnoOvnEip(eipName, cachedSnat.Name, vpcName); err != nil {
 			klog.Errorf("failed to label snat '%s' in eip %s, %v", cachedSnat.Name, eipName, err)
 			return err
 		}
-		if err = c.patchOvnSnatLabel(key, eipName); err != nil {
+		if err = c.patchOvnSnatAnnotation(key, eipName); err != nil {
 			klog.Errorf("failed to patch label for snat %s, %v", key, err)
 			return err
 		}
@@ -441,7 +441,7 @@ func (c *Controller) patchOvnSnatStatus(key, vpc, v4Eip, v4IpCidr string, ready 
 	return nil
 }
 
-func (c *Controller) patchOvnSnatLabel(key, eipName string) error {
+func (c *Controller) patchOvnSnatAnnotation(key, eipName string) error {
 	oriFip, err := c.ovnSnatRulesLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -450,27 +450,27 @@ func (c *Controller) patchOvnSnatLabel(key, eipName string) error {
 		return err
 	}
 	snat := oriFip.DeepCopy()
-	var needUpdateLabel bool
+	var needUpdateAnno bool
 	var op string
-	if len(snat.Labels) == 0 {
+	if len(snat.Annotations) == 0 {
 		op = "add"
-		snat.Labels = map[string]string{
-			util.VpcEipLabel: eipName,
+		snat.Annotations = map[string]string{
+			util.VpcEipAnnotation: eipName,
 		}
-		needUpdateLabel = true
+		needUpdateAnno = true
 	}
-	if snat.Labels[util.VpcEipLabel] != eipName {
+	if snat.Annotations[util.VpcEipAnnotation] != eipName {
 		op = "replace"
-		snat.Labels[util.VpcEipLabel] = eipName
-		needUpdateLabel = true
+		snat.Annotations[util.VpcEipAnnotation] = eipName
+		needUpdateAnno = true
 	}
-	if needUpdateLabel {
-		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
-		raw, _ := json.Marshal(snat.Labels)
+	if needUpdateAnno {
+		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/annotations", "value": %s }]`
+		raw, _ := json.Marshal(snat.Annotations)
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
 		_, err := c.config.KubeOvnClient.KubeovnV1().OvnSnatRules().Patch(context.Background(), snat.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
 		if err != nil {
-			klog.Errorf("failed to patch label for ovn snat %s, %v", snat.Name, err)
+			klog.Errorf("failed to patch annotation for ovn snat %s, %v", snat.Name, err)
 			return err
 		}
 	}

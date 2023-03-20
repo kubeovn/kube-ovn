@@ -320,7 +320,7 @@ func (c *Controller) handleResetOvnEip(key string) error {
 		}
 		return nil
 	}
-	if err = c.natLabelOvnEip(cachedEip.Name, "", ""); err != nil {
+	if err = c.natLabelAndAnnoOvnEip(cachedEip.Name, "", ""); err != nil {
 		klog.Errorf("failed to reset ovn eip %s, %v", cachedEip.Name, err)
 		return err
 	}
@@ -538,7 +538,7 @@ func (c *Controller) resetOvnEipSpec(key string) error {
 	}
 	return nil
 }
-func (c *Controller) natLabelOvnEip(eipName, natName, vpcName string) error {
+func (c *Controller) natLabelAndAnnoOvnEip(eipName, natName, vpcName string) error {
 	cachedEip, err := c.ovnEipsLister.Get(eipName)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -547,7 +547,7 @@ func (c *Controller) natLabelOvnEip(eipName, natName, vpcName string) error {
 		return err
 	}
 	eip := cachedEip.DeepCopy()
-	var needUpdateLabel bool
+	var needUpdateLabel, needUpdateAnno bool
 	var op string
 	if len(eip.Labels) == 0 {
 		op = "add"
@@ -555,14 +555,12 @@ func (c *Controller) natLabelOvnEip(eipName, natName, vpcName string) error {
 		eip.Labels = map[string]string{
 			util.SubnetNameLabel: cachedEip.Spec.ExternalSubnet,
 			util.VpcNameLabel:    vpcName,
-			util.VpcNatLabel:     natName,
 		}
-	} else if eip.Labels[util.VpcNatLabel] != natName {
+	} else if eip.Labels[util.VpcNameLabel] != vpcName {
 		op = "replace"
 		needUpdateLabel = true
 		eip.Labels[util.SubnetNameLabel] = cachedEip.Spec.ExternalSubnet
 		eip.Labels[util.VpcNameLabel] = vpcName
-		eip.Labels[util.VpcNatLabel] = natName
 	}
 	if needUpdateLabel {
 		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
@@ -574,6 +572,29 @@ func (c *Controller) natLabelOvnEip(eipName, natName, vpcName string) error {
 			return err
 		}
 	}
+
+	if len(eip.Annotations) == 0 {
+		op = "add"
+		needUpdateAnno = true
+		eip.Annotations = map[string]string{
+			util.VpcNatAnnotation: natName,
+		}
+	} else if eip.Annotations[util.VpcNatAnnotation] != natName {
+		op = "replace"
+		needUpdateAnno = true
+		eip.Annotations[util.VpcNatAnnotation] = natName
+	}
+	if needUpdateAnno {
+		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/annotations", "value": %s }]`
+		raw, _ := json.Marshal(eip.Annotations)
+		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
+		if _, err := c.config.KubeOvnClient.KubeovnV1().OvnEips().Patch(context.Background(), eip.Name,
+			types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
+			klog.Errorf("failed to patch annotation for ovn eip %s, %v", eip.Name, err)
+			return err
+		}
+	}
+
 	return err
 }
 
