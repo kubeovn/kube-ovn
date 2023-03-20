@@ -43,17 +43,17 @@ func (c *VipClient) Patch(original, modified *apiv1.Vip, timeout time.Duration) 
 	patch, err := util.GenerateMergePatchPayload(original, modified)
 	ExpectNoError(err)
 
-	var patchedVlan *apiv1.Vip
+	var patchedVip *apiv1.Vip
 	err = wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
-		pn, err := c.VipInterface.Patch(context.TODO(), original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
+		p, err := c.VipInterface.Patch(context.TODO(), original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch vip %q", original.Name)
 		}
-		patchedVlan = pn
+		patchedVip = p
 		return true, nil
 	})
 	if err == nil {
-		return patchedVlan.DeepCopy()
+		return patchedVip.DeepCopy()
 	}
 
 	if IsTimeout(err) {
