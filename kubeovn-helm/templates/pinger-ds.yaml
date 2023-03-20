@@ -2,7 +2,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-pinger
-  namespace: kube-system
+  namespace: {{ .Values.namespace }}
   annotations:
     kubernetes.io/description: |
       This daemon set launches the openvswitch daemon.
@@ -48,6 +48,7 @@ spec:
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-pinger.log
           - --log_file_max_size=0
+          - --enable-metrics={{- .Values.networking.ENABLE_METRICS }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             runAsUser: 0
@@ -98,11 +99,11 @@ spec:
               name: kube-ovn-tls
           resources:
             requests:
-              cpu: 100m
-              memory: 100Mi
+              cpu: {{ index .Values "kube-ovn-pinger" "requests" "cpu" }}
+              memory: {{ index .Values "kube-ovn-pinger" "requests" "memory" }}
             limits:
-              cpu: 200m
-              memory: 400Mi
+              cpu: {{ index .Values "kube-ovn-pinger" "limits" "cpu" }}
+              memory: {{ index .Values "kube-ovn-pinger" "limits" "memory" }}
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:

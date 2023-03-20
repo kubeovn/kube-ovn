@@ -2,7 +2,7 @@ kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-controller
-  namespace: kube-system
+  namespace: {{ .Values.namespace }}
   annotations:
     kubernetes.io/description: |
       kube-ovn controller
@@ -44,6 +44,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
           - /kube-ovn/start-controller.sh
+          - --default-ls={{ .Values.networking.DEFAULT_SUBNET }}
           - --default-cidr=
           {{- if eq .Values.networking.NET_STACK "dual_stack" -}}
           {{ .Values.dual_stack.POD_CIDR }}
@@ -62,7 +63,10 @@ spec:
           {{- end }}
           - --default-gateway-check={{- .Values.func.CHECK_GATEWAY }}
           - --default-logical-gateway={{- .Values.func.LOGICAL_GATEWAY }}
+          - --default-u2o-interconnection={{- .Values.func.U2O_INTERCONNECTION }}
           - --default-exclude-ips={{- .Values.networking.EXCLUDE_IPS }}
+          - --cluster-router={{ .Values.networking.DEFAULT_VPC }}
+          - --node-switch={{ .Values.networking.NODE_SUBNET }}
           - --node-switch-cidr=
           {{- if eq .Values.networking.NET_STACK "dual_stack" -}}
           {{ .Values.dual_stack.JOIN_CIDR }}
@@ -80,8 +84,10 @@ spec:
           {{ .Values.ipv6.SVC_CIDR }}
           {{- end }}
           - --network-type={{- .Values.networking.NETWORK_TYPE }}
+          - --default-provider-name={{ .Values.networking.vlan.PROVIDER_NAME }}
           - --default-interface-name={{- .Values.networking.vlan.VLAN_INTERFACE_NAME }}
           - --default-exchange-link-name={{- .Values.networking.EXCHANGE_LINK_NAME }}
+          - --default-vlan-name={{- .Values.networking.vlan.VLAN_NAME }}
           - --default-vlan-id={{- .Values.networking.vlan.VLAN_ID }}
           - --ls-dnat-mod-dl-dst={{- .Values.func.LS_DNAT_MOD_DL_DST }}
           - --pod-nic-type={{- .Values.networking.POD_NIC_TYPE }}
@@ -89,6 +95,7 @@ spec:
           - --enable-np={{- .Values.func.ENABLE_NP }}
           - --enable-eip-snat={{- .Values.networking.ENABLE_EIP_SNAT }}
           - --enable-external-vpc={{- .Values.func.ENABLE_EXTERNAL_VPC }}
+          - --enable-ecmp={{- .Values.networking.ENABLE_ECMP }}
           - --logtostderr=false
           - --alsologtostderr=true
           - --gc-interval={{- .Values.performance.GC_INTERVAL }}
@@ -98,6 +105,7 @@ spec:
           - --enable-lb-svc={{- .Values.func.ENABLE_LB_SVC }}
           - --keep-vm-ip={{- .Values.func.ENABLE_KEEP_VM_IP }}
           - --pod-default-fip-type={{- .Values.networking.POD_DEFAULT_FIP_TYPE }}
+          - --enable-metrics={{- .Values.networking.ENABLE_METRICS }}
           env:
             - name: ENABLE_SSL
               value: "{{ .Values.networking.ENABLE_SSL }}"
@@ -144,11 +152,11 @@ spec:
             timeoutSeconds: 45
           resources:
             requests:
-              cpu: 200m
-              memory: 200Mi
+              cpu: {{ index .Values "kube-ovn-controller" "requests" "cpu" }}
+              memory: {{ index .Values "kube-ovn-controller" "requests" "memory" }}
             limits:
-              cpu: 1000m
-              memory: 1Gi
+              cpu: {{ index .Values "kube-ovn-controller" "limits" "cpu" }}
+              memory: {{ index .Values "kube-ovn-controller" "limits" "memory" }}
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
