@@ -93,7 +93,7 @@ function handle_underlay_bridges() {
 
   bridges=($(ovs-vsctl --no-heading --columns=name find bridge external-ids:vendor=kube-ovn external-ids:exchange-link-name=true))
   for br in ${bridges[@]}; do
-    if [ -z $(ip link show $br type openvswitch) ]; then
+    if [ -z $(ip link show $br type openvswitch 2>/dev/null || true) ]; then
       # the bridge does not exist, leave it to be handled by kube-ovn-cni
       echo "deleting ovs bridge $br"
       ovs-vsctl --no-wait del-br $br
