@@ -3,6 +3,7 @@ package framework
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -117,4 +118,16 @@ func MakeDeployment(name string, replicas int32, podLabels, podAnnotations map[s
 	deploy := deployment.NewDeployment(name, replicas, podLabels, containerName, image, strategyType)
 	deploy.Spec.Template.Annotations = podAnnotations
 	return deploy
+}
+
+func RestartSystemDeployment(name string, enableLog bool) {
+	if enableLog {
+		output, err := exec.Command("bash", "-c", fmt.Sprintf("kubectl ko log kube-ovn %s all", name)).CombinedOutput()
+		framework.ExpectNoError(err, fmt.Sprintf("dump all %s log failed", name))
+		framework.Logf(string(output))
+	}
+
+	restartCmd := fmt.Sprintf("kubectl rollout restart deployment %s -n kube-system", name)
+	_, err := exec.Command("bash", "-c", restartCmd).CombinedOutput()
+	framework.ExpectNoError(err, fmt.Sprintf("restart %s failed", name))
 }
