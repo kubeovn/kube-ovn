@@ -673,7 +673,21 @@ var _ = framework.Describe("[group:subnet]", func() {
 			podClient.DeleteSync(fmt.Sprintf("%s%d", podNamePre, i))
 		}
 
-		subnet = subnetClient.Get(subnetName)
+		_ = wait.PollImmediate(time.Second, 30*time.Second, func() (bool, error) {
+			subnet = subnetClient.Get(subnetName)
+			if cidrV4 != "" {
+				if subnet.Status.V4UsingIPRange != "" || subnet.Status.V4AvailableIPRange != fmt.Sprintf("%s-%s", startIPv4, lastIPv4) {
+					return false, nil
+				}
+			}
+			if cidrV6 != "" {
+				if subnet.Status.V6UsingIPRange != "" || subnet.Status.V6AvailableIPRange != fmt.Sprintf("%s-%s", startIPv6, lastIPv6) {
+					return false, nil
+				}
+			}
+			return true, nil
+		})
+
 		if cidrV4 != "" {
 			framework.ExpectEqual(subnet.Status.V4UsingIPRange, "")
 			framework.ExpectEqual(subnet.Status.V4AvailableIPRange, fmt.Sprintf("%s-%s", startIPv4, lastIPv4))
@@ -721,8 +735,21 @@ var _ = framework.Describe("[group:subnet]", func() {
 		for i := 1; i <= podCount; i++ {
 			podClient.DeleteSync(fmt.Sprintf("%s%d", podNamePre, i))
 		}
+		_ = wait.PollImmediate(time.Second, 30*time.Second, func() (bool, error) {
+			subnet = subnetClient.Get(subnetName)
+			if cidrV4 != "" {
+				if subnet.Status.V4UsingIPRange != "" || subnet.Status.V4AvailableIPRange != fmt.Sprintf("%s-%s", startIPv4, lastIPv4) {
+					return false, nil
+				}
+			}
+			if cidrV6 != "" {
+				if subnet.Status.V6UsingIPRange != "" || subnet.Status.V6AvailableIPRange != fmt.Sprintf("%s-%s", startIPv6, lastIPv6) {
+					return false, nil
+				}
+			}
+			return true, nil
+		})
 
-		subnet = subnetClient.Get(subnetName)
 		if cidrV4 != "" {
 			framework.ExpectEqual(subnet.Status.V4UsingIPRange, "")
 			framework.ExpectEqual(subnet.Status.V4AvailableIPRange, fmt.Sprintf("%s-%s", startIPv4, lastIPv4))
