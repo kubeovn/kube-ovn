@@ -323,6 +323,10 @@ func (c *Controller) recordProviderNetworkErr(providerNetwork string, errMsg str
 				break
 			}
 		}
+		if currentPod == nil {
+			klog.Warning("failed to get self pod")
+			return
+		}
 	} else {
 		if currentPod, err = c.config.KubeClient.CoreV1().Pods(c.localNamespace).Get(context.Background(), c.localPodName, metav1.GetOptions{}); err != nil {
 			klog.Errorf("failed to get pod %s, %v", c.localPodName, err)

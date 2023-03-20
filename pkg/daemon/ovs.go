@@ -83,6 +83,41 @@ func configureEmptyMirror(portName string, mtu int) error {
 	return configureMirrorLink(portName, mtu)
 }
 
+func updateOvnMapping(name, key, value string) error {
+	output, err := ovs.Exec(ovs.IfExists, "get", "open", ".", "external-ids:"+name)
+	if err != nil {
+		return fmt.Errorf("failed to get %s, %v: %q", name, err, output)
+	}
+
+	fields := strings.Split(output, ",")
+	mappings := make(map[string]string, len(fields)+1)
+	for _, f := range fields {
+		idx := strings.IndexRune(f, ':')
+		if idx <= 0 || idx == len(f)-1 {
+			klog.Warningf("invalid mapping entry: %s", f)
+			continue
+		}
+		mappings[f[:idx]] = f[idx+1:]
+	}
+	mappings[key] = value
+
+	fields = make([]string, 0, len(mappings))
+	for k, v := range mappings {
+		fields = append(fields, fmt.Sprintf("%s:%s", k, v))
+	}
+
+	if len(fields) == 0 {
+		output, err = ovs.Exec(ovs.IfExists, "remove", "open", ".", "external-ids", name)
+	} else {
+		output, err = ovs.Exec("set", "open", ".", fmt.Sprintf("external-ids:%s=%s", name, strings.Join(fields, ",")))
+	}
+	if err != nil {
+		return fmt.Errorf("failed to set %s, %v: %q", name, err, output)
+	}
+
+	return nil
+}
+
 func configExternalBridge(provider, bridge, nic string, exchangeLinkName, macLearningFallback bool) error {
 	brExists, err := ovs.BridgeExists(bridge)
 	if err != nil {
@@ -121,19 +156,9 @@ func configExternalBridge(provider, bridge, nic string, exchangeLinkName, macLea
 		}
 	}
 
-	if output, err = ovs.Exec(ovs.IfExists, "get", "open", ".", "external-ids:ovn-bridge-mappings"); err != nil {
-		return fmt.Errorf("failed to get ovn-bridge-mappings, %v", err)
-	}
-
-	bridgeMappings := fmt.Sprintf("%s:%s", provider, bridge)
-	if util.IsStringIn(bridgeMappings, strings.Split(output, ",")) {
-		return nil
-	}
-	if output != "" {
-		bridgeMappings = fmt.Sprintf("%s,%s", output, bridgeMappings)
-	}
-	if output, err = ovs.Exec("set", "open", ".", "external-ids:ovn-bridge-mappings="+bridgeMappings); err != nil {
-		return fmt.Errorf("failed to set ovn-bridge-mappings, %v: %q", err, output)
+	if err = updateOvnMapping("ovn-bridge-mappings", provider, bridge); err != nil {
+		klog.Error(err)
+		return err
 	}
 
 	return nil
