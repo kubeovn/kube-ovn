@@ -53,20 +53,25 @@ func waitNetworkdConfiguration(linkIndex int) {
 		klog.Warningf("failed to subscribe route update events: %v", err)
 		klog.Info("Waiting 100ms ...")
 		time.Sleep(100 * time.Millisecond)
+		return
 	}
 
+	// wait route event on the link for 50ms
 	timer := time.NewTimer(50 * time.Millisecond)
-LOOP:
 	for {
 		select {
 		case <-timer.C:
+			// timeout, interface configuration is expected to be completed
 			done <- struct{}{}
-			break LOOP
+			return
 		case event := <-ch:
 			if event.LinkIndex == linkIndex {
+				// received a route event on the link
+				// stop the timer
 				if !timer.Stop() {
 					<-timer.C
 				}
+				// reset the timer, wait for another 50ms
 				timer.Reset(50 * time.Millisecond)
 			}
 		}
