@@ -208,7 +208,7 @@ func (c *ovnClient) LogicalSwitchExists(lsName string) (bool, error) {
 }
 
 // ListLogicalSwitch list logical switch
-func (c *ovnClient) ListLogicalSwitch(needVendorFilter bool, filter func(lr *ovnnb.LogicalSwitch) bool) ([]ovnnb.LogicalSwitch, error) {
+func (c *ovnClient) ListLogicalSwitch(needVendorFilter bool, filter func(ls *ovnnb.LogicalSwitch) bool) ([]ovnnb.LogicalSwitch, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 

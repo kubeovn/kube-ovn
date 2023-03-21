@@ -632,6 +632,21 @@ func (mr *MockLogicalSwitchPortMockRecorder) ListLogicalSwitchPorts(needVendorFi
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalSwitchPorts", reflect.TypeOf((*MockLogicalSwitchPort)(nil).ListLogicalSwitchPorts), needVendorFilter, externalIDs, filter)
 }
 
+// ListLogicalSwitchPortsWithLegacyExternalIDs mocks base method.
+func (m *MockLogicalSwitchPort) ListLogicalSwitchPortsWithLegacyExternalIDs() ([]ovnnb.LogicalSwitchPort, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListLogicalSwitchPortsWithLegacyExternalIDs")
+	ret0, _ := ret[0].([]ovnnb.LogicalSwitchPort)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListLogicalSwitchPortsWithLegacyExternalIDs indicates an expected call of ListLogicalSwitchPortsWithLegacyExternalIDs.
+func (mr *MockLogicalSwitchPortMockRecorder) ListLogicalSwitchPortsWithLegacyExternalIDs() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalSwitchPortsWithLegacyExternalIDs", reflect.TypeOf((*MockLogicalSwitchPort)(nil).ListLogicalSwitchPortsWithLegacyExternalIDs))
+}
+
 // ListNormalLogicalSwitchPorts mocks base method.
 func (m *MockLogicalSwitchPort) ListNormalLogicalSwitchPorts(needVendorFilter bool, externalIDs map[string]string) ([]ovnnb.LogicalSwitchPort, error) {
 	m.ctrl.T.Helper()
@@ -2661,6 +2676,21 @@ func (m *MockOvnClient) ListLogicalSwitchPorts(needVendorFilter bool, externalID
 func (mr *MockOvnClientMockRecorder) ListLogicalSwitchPorts(needVendorFilter, externalIDs, filter interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalSwitchPorts", reflect.TypeOf((*MockOvnClient)(nil).ListLogicalSwitchPorts), needVendorFilter, externalIDs, filter)
+}
+
+// ListLogicalSwitchPortsWithLegacyExternalIDs mocks base method.
+func (m *MockOvnClient) ListLogicalSwitchPortsWithLegacyExternalIDs() ([]ovnnb.LogicalSwitchPort, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListLogicalSwitchPortsWithLegacyExternalIDs")
+	ret0, _ := ret[0].([]ovnnb.LogicalSwitchPort)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListLogicalSwitchPortsWithLegacyExternalIDs indicates an expected call of ListLogicalSwitchPortsWithLegacyExternalIDs.
+func (mr *MockOvnClientMockRecorder) ListLogicalSwitchPortsWithLegacyExternalIDs() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalSwitchPortsWithLegacyExternalIDs", reflect.TypeOf((*MockOvnClient)(nil).ListLogicalSwitchPortsWithLegacyExternalIDs))
 }
 
 // ListNats mocks base method.
