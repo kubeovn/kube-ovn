@@ -231,9 +231,9 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		return err
 	}
 	if cachedEip.Spec.Type == util.FipUsingEip &&
-		cachedEip.Labels[util.VpcNatLabel] != "" &&
-		cachedEip.Labels[util.VpcNatLabel] != cachedFip.Name {
-		err = fmt.Errorf("failed to create fip %s, eip '%s' is using by other fip %s", key, eipName, cachedEip.Labels[util.VpcNatLabel])
+		cachedEip.Annotations[util.VpcNatAnnotation] != "" &&
+		cachedEip.Annotations[util.VpcNatAnnotation] != cachedFip.Name {
+		err = fmt.Errorf("failed to create fip %s, eip '%s' is using by other fip %s", key, eipName, cachedEip.Annotations[util.VpcNatAnnotation])
 		return err
 	}
 	if err = c.handleAddOvnEipFinalizer(cachedEip); err != nil {
@@ -251,11 +251,11 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		return err
 	}
 	// patch fip eip relationship
-	if err = c.natLabelOvnEip(eipName, cachedFip.Name, vpcName); err != nil {
+	if err = c.natLabelAndAnnoOvnEip(eipName, cachedFip.Name, vpcName); err != nil {
 		klog.Errorf("failed to label fip '%s' in eip %s, %v", cachedFip.Name, eipName, err)
 		return err
 	}
-	if err = c.patchOvnFipLabel(key, eipName); err != nil {
+	if err = c.patchOvnFipAnnotations(key, eipName); err != nil {
 		klog.Errorf("failed to update label for fip %s, %v", key, err)
 		return err
 	}
@@ -328,9 +328,9 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 		return err
 	}
 	if cachedEip.Spec.Type == util.FipUsingEip &&
-		cachedEip.Labels[util.VpcNatLabel] != "" &&
-		cachedEip.Labels[util.VpcNatLabel] != cachedFip.Name {
-		err = fmt.Errorf("failed to update fip %s, eip '%s' is using by other fip %s", key, eipName, cachedEip.Labels[util.VpcNatLabel])
+		cachedEip.Annotations[util.VpcNatAnnotation] != "" &&
+		cachedEip.Annotations[util.VpcNatAnnotation] != cachedFip.Name {
+		err = fmt.Errorf("failed to update fip %s, eip '%s' is using by other fip %s", key, eipName, cachedEip.Annotations[util.VpcNatAnnotation])
 		return err
 	}
 	fip := cachedFip.DeepCopy()
@@ -347,11 +347,11 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 			klog.Errorf("failed to create fip, %v", err)
 			return err
 		}
-		if err = c.natLabelOvnEip(eipName, fip.Name, vpcName); err != nil {
+		if err = c.natLabelAndAnnoOvnEip(eipName, fip.Name, vpcName); err != nil {
 			klog.Errorf("failed to label fip '%s' in eip %s, %v", fip.Name, eipName, err)
 			return err
 		}
-		if err = c.patchOvnFipLabel(key, eipName); err != nil {
+		if err = c.patchOvnFipAnnotations(key, eipName); err != nil {
 			klog.Errorf("failed to update label for fip %s, %v", key, err)
 			return err
 		}
@@ -445,7 +445,7 @@ func (c *Controller) handleDelOvnFipFinalizer(cachedFip *kubeovnv1.OvnFip) error
 	return nil
 }
 
-func (c *Controller) patchOvnFipLabel(key, eipName string) error {
+func (c *Controller) patchOvnFipAnnotations(key, eipName string) error {
 	oriFip, err := c.ovnFipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -454,27 +454,27 @@ func (c *Controller) patchOvnFipLabel(key, eipName string) error {
 		return err
 	}
 	fip := oriFip.DeepCopy()
-	var needUpdateLabel bool
+	var needUpdateAnno bool
 	var op string
-	if len(fip.Labels) == 0 {
+	if len(fip.Annotations) == 0 {
 		op = "add"
-		fip.Labels = map[string]string{
-			util.VpcEipLabel: eipName,
+		fip.Annotations = map[string]string{
+			util.VpcEipAnnotation: eipName,
 		}
-		needUpdateLabel = true
+		needUpdateAnno = true
 	}
-	if fip.Labels[util.VpcEipLabel] != eipName {
+	if fip.Annotations[util.VpcEipAnnotation] != eipName {
 		op = "replace"
-		fip.Labels[util.VpcEipLabel] = eipName
-		needUpdateLabel = true
+		fip.Annotations[util.VpcEipAnnotation] = eipName
+		needUpdateAnno = true
 	}
-	if needUpdateLabel {
-		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
-		raw, _ := json.Marshal(fip.Labels)
+	if needUpdateAnno {
+		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/annotations", "value": %s }]`
+		raw, _ := json.Marshal(fip.Annotations)
 		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
 		_, err := c.config.KubeOvnClient.KubeovnV1().OvnFips().Patch(context.Background(), fip.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{})
 		if err != nil {
-			klog.Errorf("failed to patch label for ovn fip %s, %v", fip.Name, err)
+			klog.Errorf("failed to patch annotation for ovn fip %s, %v", fip.Name, err)
 			return err
 		}
 	}
