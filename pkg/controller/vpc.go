@@ -837,7 +837,8 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 	if err != nil {
 		return err
 	}
-	if err = c.handleAddOvnEipFinalizer(cachedEip); err != nil {
+	eipFinalizer := fmt.Sprintf("%s/ovn_lrp", util.ControllerName)
+	if err = c.handleAddOvnEipFinalizer(cachedEip, eipFinalizer); err != nil {
 		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
 		return err
 	}
@@ -915,7 +916,8 @@ func (c *Controller) handleDelVpcExternal(key string) error {
 		}
 		return err
 	}
-	if err = c.handleDelOvnEipFinalizer(cachedEip); err != nil {
+	eipFinalizer := fmt.Sprintf("%s/ovn_lrp", util.ControllerName)
+	if err = c.handleDelOvnEipFinalizer(cachedEip, eipFinalizer); err != nil {
 		klog.Errorf("failed to del finalizer for ovn eip, %v", err)
 		return err
 	}

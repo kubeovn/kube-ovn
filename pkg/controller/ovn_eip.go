@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -262,7 +263,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		klog.Errorf("failed to count ovn eip '%s' in subnet, %v", cachedEip.Name, err)
 		return err
 	}
-	if err = c.handleAddOvnEipFinalizer(cachedEip); err != nil {
+	if err = c.handleAddOvnEipFinalizer(cachedEip, util.ControllerName); err != nil {
 		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
 		return err
 	}
@@ -336,6 +337,13 @@ func (c *Controller) handleDelOvnEip(key string) error {
 		}
 		return err
 	}
+
+	if len(cachedEip.Finalizers) > 1 {
+		err := errors.New("eip is referenced, it cannot be deleted directly")
+		klog.ErrorS(err, "failed to delete eip", "eip", key)
+		return err
+	}
+
 	if cachedEip.Spec.Type == util.NodeExtGwUsingEip {
 		if err := c.ovnClient.DeleteLogicalSwitchPort(cachedEip.Name); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", cachedEip.Name, err)
@@ -350,7 +358,7 @@ func (c *Controller) handleDelOvnEip(key string) error {
 		}
 	}
 
-	if err = c.handleDelOvnEipFinalizer(cachedEip); err != nil {
+	if err = c.handleDelOvnEipFinalizer(cachedEip, util.ControllerName); err != nil {
 		klog.Errorf("failed to remove finalizer from ovn eip, %v", err)
 		return err
 	}
@@ -598,14 +606,14 @@ func (c *Controller) natLabelAndAnnoOvnEip(eipName, natName, vpcName string) err
 	return err
 }
 
-func (c *Controller) handleAddOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip) error {
+func (c *Controller) handleAddOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip, finalizer string) error {
 	if cachedEip.DeletionTimestamp.IsZero() {
-		if util.ContainsString(cachedEip.Finalizers, util.ControllerName) {
+		if util.ContainsString(cachedEip.Finalizers, finalizer) {
 			return nil
 		}
 	}
 	newEip := cachedEip.DeepCopy()
-	controllerutil.AddFinalizer(newEip, util.ControllerName)
+	controllerutil.AddFinalizer(newEip, finalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedEip, newEip)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for ovn eip '%s', %v", cachedEip.Name, err)
@@ -622,12 +630,12 @@ func (c *Controller) handleAddOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip) error
 	return nil
 }
 
-func (c *Controller) handleDelOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip) error {
+func (c *Controller) handleDelOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip, finalizer string) error {
 	if len(cachedEip.Finalizers) == 0 {
 		return nil
 	}
 	newEip := cachedEip.DeepCopy()
-	controllerutil.RemoveFinalizer(newEip, util.ControllerName)
+	controllerutil.RemoveFinalizer(newEip, finalizer)
 	patch, err := util.GenerateMergePatchPayload(cachedEip, newEip)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for ovn eip '%s', %v", cachedEip.Name, err)

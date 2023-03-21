@@ -229,7 +229,8 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		klog.Errorf("failed to add finalizer for ovn snat, %v", err)
 		return err
 	}
-	if err = c.handleAddOvnEipFinalizer(cachedEip); err != nil {
+	eipFinalizer := fmt.Sprintf("%s/ovn_snat", util.ControllerName)
+	if err = c.handleAddOvnEipFinalizer(cachedEip, eipFinalizer); err != nil {
 		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
 		return err
 	}
@@ -285,7 +286,8 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 			klog.Errorf("failed to handle finalizer for snat %s, %v", key, err)
 			return err
 		}
-		if err = c.handleDelOvnEipFinalizer(cachedEip); err != nil {
+		eipFinalizer := fmt.Sprintf("%s/ovn_snat", util.ControllerName)
+		if err = c.handleDelOvnEipFinalizer(cachedEip, eipFinalizer); err != nil {
 			klog.Errorf("failed to handle finalizer for eip %s, %v", key, err)
 			return err
 		}
