@@ -11,7 +11,7 @@ concurrency:
 
 env:
   HELM_VERSION: v3.11.1
-  SUBMARINER_VERSION: v0.13.4
+  SUBMARINER_VERSION: '0.14.3'
 
 jobs:
   k8s-conformance-e2e:
@@ -1249,7 +1249,7 @@ jobs:
 
       - name: Install submariner subctl
         env:
-          VERSION: ${{ env.SUBMARINER_VERSION }}
+          VERSION: v${{ env.SUBMARINER_VERSION }}
           DESTDIR: /usr/local/bin
         run: curl -Ls https://get.submariner.io | bash
 

@@ -10,6 +10,13 @@ COMMIT = git-$(shell git rev-parse --short HEAD)
 DATE = $(shell date +"%Y-%m-%d_%H:%M:%S")
 GOLDFLAGS = "-w -s -extldflags '-z now' -X github.com/kubeovn/kube-ovn/versions.COMMIT=$(COMMIT) -X github.com/kubeovn/kube-ovn/versions.VERSION=$(RELEASE_TAG) -X github.com/kubeovn/kube-ovn/versions.BUILDDATE=$(DATE)"
 
+OS_LINUX = 0
+ifneq ($(OS),Windows_NT)
+ifeq ($(shell uname -s),Linux)
+OS_LINUX = 1
+endif
+endif
+
 CONTROL_PLANE_TAINTS = node-role.kubernetes.io/master node-role.kubernetes.io/control-plane
 
 CHART_UPGRADE_RESTART_OVS=$(shell echo $${CHART_UPGRADE_RESTART_OVS:-false})
@@ -36,6 +43,14 @@ CERT_MANAGER_CONTROLLER = quay.io/jetstack/cert-manager-controller:$(CERT_MANAGE
 CERT_MANAGER_CAINJECTOR = quay.io/jetstack/cert-manager-cainjector:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_WEBHOOK = quay.io/jetstack/cert-manager-webhook:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_YAML = https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
+
+SUBMARINER_VERSION = $(shell echo $${SUBMARINER_VERSION:-0.14.3})
+SUBMARINER_OPERATOR = quay.io/submariner/submariner-operator:$(SUBMARINER_VERSION)
+SUBMARINER_GATEWAY = quay.io/submariner/submariner-gateway:$(SUBMARINER_VERSION)
+SUBMARINER_LIGHTHOUSE_AGENT = quay.io/submariner/lighthouse-agent:$(SUBMARINER_VERSION)
+SUBMARINER_LIGHTHOUSE_COREDNS = quay.io/submariner/lighthouse-coredns:$(SUBMARINER_VERSION)
+SUBMARINER_ROUTE_AGENT = quay.io/submariner/submariner-route-agent:$(SUBMARINER_VERSION)
+SUBMARINER_NETTEST = quay.io/submariner/nettest:$(SUBMARINER_VERSION)
 
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
 
@@ -239,6 +254,52 @@ define kind_load_image
 	kind load docker-image --name $(1) $(2)
 endef
 
+define kind_load_submariner_images
+	$(call kind_load_image,$(1),$(SUBMARINER_OPERATOR),1)
+	$(call kind_load_image,$(1),$(SUBMARINER_GATEWAY),1)
+	$(call kind_load_image,$(1),$(SUBMARINER_LIGHTHOUSE_AGENT),1)
+	$(call kind_load_image,$(1),$(SUBMARINER_LIGHTHOUSE_COREDNS),1)
+	$(call kind_load_image,$(1),$(SUBMARINER_ROUTE_AGENT),1)
+	$(call kind_load_image,$(1),$(SUBMARINER_NETTEST),1)
+endef
+
+define kubectl_wait_exist_and_ready
+	@echo "Waiting for $(2) $(1)/$(3) to exist..."
+	@n=0; while ! kubectl -n $(1) get $(2) -o name | awk -F / '{print $$2}' | grep -q ^$(3)$$; do \
+		test $$n -eq 60 && exit 1; \
+		sleep 1; \
+		n=$$(($$n+1)); \
+	done
+	kubectl -n $(1) rollout status --timeout=60s $(2) $(3)
+endef
+
+define kubectl_wait_submariner_ready
+	$(call kubectl_wait_exist_and_ready,submariner-operator,deployment,submariner-operator)
+	$(call kubectl_wait_exist_and_ready,submariner-operator,deployment,submariner-lighthouse-agent)
+	$(call kubectl_wait_exist_and_ready,submariner-operator,deployment,submariner-lighthouse-coredns)
+	$(call kubectl_wait_exist_and_ready,submariner-operator,daemonset,submariner-gateway)
+	$(call kubectl_wait_exist_and_ready,submariner-operator,daemonset,submariner-metrics-proxy)
+	$(call kubectl_wait_exist_and_ready,submariner-operator,daemonset,submariner-routeagent)
+endef
+
+define subctl_join
+	@if [ $(OS_LINUX) -ne 1 ]; then \
+		set -e; \
+		docker exec $(1)-control-plane bash -c "command -v xz >/dev/null || (apt update && apt install -y xz-utils)"; \
+		docker exec -e VERSION=v$(SUBMARINER_VERSION) -e DESTDIR=/usr/local/bin $(1)-control-plane bash -c "command -v subctl >/dev/null || curl -Ls https://get.submariner.io | bash"; \
+		docker cp broker-info-internal.subm $(1)-control-plane:/broker-info-internal.subm; \
+	fi
+
+	kubectl config use-context kind-$(1)
+	kubectl label --overwrite node $(1)-worker submariner.io/gateway=true
+	@if [ $(OS_LINUX) -eq 1 ]; then \
+		subctl join broker-info-internal.subm --clusterid $(2) --clustercidr $$(echo '$(3)' | tr ';' ',') --natt=false --cable-driver vxlan --health-check=false --context=kind-$(1); \
+	else \
+		docker exec $(1)-control-plane sh -c "subctl join /broker-info-internal.subm --clusterid $(2) --clustercidr $$(echo '$(3)' | tr ';' ',') --natt=false --cable-driver vxlan --health-check=false"; \
+	fi
+	$(call kubectl_wait_submariner_ready)
+endef
+
 .PHONY: kind-generate-config
 kind-generate-config:
 	j2 yamls/kind.yaml.j2 -o yamls/kind.yaml
@@ -391,7 +452,10 @@ kind-install-ovn-ic: kind-install
 
 .PHONY: kind-install-ovn-submariner
 kind-install-ovn-submariner: kind-install
+	$(call kind_load_submariner_images,kube-ovn)
+	$(call kind_load_submariner_images,kube-ovn1)
 	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
+
 	kubectl config use-context kind-kube-ovn1
 	@$(MAKE) kind-untaint-control-plane
 	sed -e 's/10.16.0/10.18.0/g' \
@@ -402,27 +466,13 @@ kind-install-ovn-submariner: kind-install
 	kubectl describe no
 
 	kubectl config use-context kind-kube-ovn
-	kubectl config set-cluster kind-kube-ovn --server=https://$(shell docker inspect --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' kube-ovn-control-plane):6443
-
-	kubectl config use-context kind-kube-ovn1
-	kubectl config set-cluster kind-kube-ovn1 --server=https://$(shell docker inspect --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' kube-ovn1-control-plane):6443
-
-	kubectl config use-context kind-kube-ovn
 	subctl deploy-broker
-	kubectl label nodes kube-ovn-worker submariner.io/gateway=true
-	subctl join broker-info.subm --clusterid cluster0 --clustercidr 10.16.0.0/16 --natt=false --cable-driver vxlan --health-check=false --kubecontext=kind-kube-ovn
-	kubectl patch clusterrole submariner-operator --type merge --patch-file yamls/subopeRules.yaml
-	sleep 10
-	kubectl -n submariner-operator delete pod --selector=name=submariner-operator
-	kubectl patch subnet ovn-default --type='merge' --patch '{"spec": {"gatewayNode": "kube-ovn-worker","gatewayType": "centralized"}}'
+	cat broker-info.subm | base64 -d | \
+		jq '.brokerURL = "https://$(shell docker inspect --format='{{.NetworkSettings.Networks.kind.IPAddress}}' kube-ovn-control-plane):6443"' | \
+		base64 > broker-info-internal.subm
 
-	kubectl config use-context kind-kube-ovn1
-	kubectl label nodes kube-ovn1-worker submariner.io/gateway=true
-	subctl join broker-info.subm --clusterid cluster1 --clustercidr 10.18.0.0/16 --natt=false --cable-driver vxlan --health-check=false --kubecontext=kind-kube-ovn1
-	kubectl patch clusterrole submariner-operator --type merge --patch-file yamls/subopeRules.yaml
-	sleep 10
-	kubectl -n submariner-operator delete pod --selector=name=submariner-operator
-	kubectl patch subnet ovn-default --type='merge' --patch '{"spec": {"gatewayNode": "kube-ovn1-worker","gatewayType": "centralized"}}'
+	$(call subctl_join,kube-ovn,cluster0,100.64.0.0/16;10.16.0.0/16)
+	$(call subctl_join,kube-ovn1,cluster1,100.68.0.0/16;10.18.0.0/16)
 
 .PHONY: kind-install-underlay
 kind-install-underlay: kind-install-underlay-ipv4
