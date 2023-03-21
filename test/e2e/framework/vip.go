@@ -28,7 +28,7 @@ func (f *Framework) VipClient() *VipClient {
 func (c *VipClient) Get(name string) *apiv1.Vip {
 	vip, err := c.VipInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
-	return vip
+	return vip.DeepCopy()
 }
 
 // Create creates a new vip according to the framework specifications
