@@ -496,6 +496,21 @@ func (c *ovnClient) ListNormalLogicalSwitchPorts(needVendorFilter bool, external
 	return lsps, nil
 }
 
+// ListLogicalSwitchPortsWithLegacyExternalIDs list logical switch ports with legacy external-ids
+func (c *ovnClient) ListLogicalSwitchPortsWithLegacyExternalIDs() ([]ovnnb.LogicalSwitchPort, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	lspList := make([]ovnnb.LogicalSwitchPort, 0)
+	if err := c.WhereCache(func(lsp *ovnnb.LogicalSwitchPort) bool {
+		return len(lsp.ExternalIDs) == 0 || lsp.ExternalIDs[logicalSwitchKey] == "" || lsp.ExternalIDs["vendor"] == ""
+	}).List(ctx, &lspList); err != nil {
+		return nil, fmt.Errorf("failed to list logical switch ports with legacy external-ids: %v", err)
+	}
+
+	return lspList, nil
+}
+
 // ListLogicalSwitchPorts list logical switch ports
 func (c *ovnClient) ListLogicalSwitchPorts(needVendorFilter bool, externalIDs map[string]string, filter func(lsp *ovnnb.LogicalSwitchPort) bool) ([]ovnnb.LogicalSwitchPort, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
@@ -605,7 +620,6 @@ func logicalSwitchPortFilter(needVendorFilter bool, externalIDs map[string]strin
 		if needVendorFilter && (len(lsp.ExternalIDs) == 0 || lsp.ExternalIDs["vendor"] != util.CniTypeName) {
 			return false
 		}
-
 		if len(lsp.ExternalIDs) < len(externalIDs) {
 			return false
 		}

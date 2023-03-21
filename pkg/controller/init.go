@@ -299,13 +299,33 @@ func (c *Controller) InitIPAM() error {
 		}
 	}
 
-	result, err := c.ovnLegacyClient.CustomFindEntity("logical_switch_port", []string{"name"}, `external-ids:vendor{<}""`)
+	lsList, err := c.ovnClient.ListLogicalSwitch(false, nil)
 	if err != nil {
-		klog.Errorf("failed to find logical switch port without external-ids:vendor: %v", err)
+		klog.Errorf("failed to list LS: %v", err)
+		return err
 	}
-	lspWithoutVendor := make(map[string]struct{}, len(result))
-	for _, lsp := range result {
-		lspWithoutVendor[lsp["name"][0]] = struct{}{}
+	lsPortsMap := make(map[string]map[string]struct{}, len(lsList))
+	for _, ls := range lsList {
+		lsPortsMap[ls.Name] = make(map[string]struct{}, len(ls.Ports))
+		for _, port := range ls.Ports {
+			lsPortsMap[ls.Name][port] = struct{}{}
+		}
+	}
+
+	lspList, err := c.ovnClient.ListLogicalSwitchPortsWithLegacyExternalIDs()
+	if err != nil {
+		klog.Errorf("failed to list LSP: %v", err)
+		return err
+	}
+	lspWithoutVendor := make(map[string]struct{}, len(lspList))
+	lspWithoutLS := make(map[string]string, len(lspList))
+	for _, lsp := range lspList {
+		if len(lsp.ExternalIDs) == 0 || lsp.ExternalIDs["vendor"] == "" {
+			lspWithoutVendor[lsp.Name] = struct{}{}
+		}
+		if len(lsp.ExternalIDs) == 0 || lsp.ExternalIDs[logicalSwitchKey] == "" {
+			lspWithoutLS[lsp.Name] = lsp.UUID
+		}
 	}
 
 	pods, err := c.podsLister.List(labels.Everything())
@@ -376,10 +396,22 @@ func (c *Controller) InitIPAM() error {
 					}
 				}
 
+				externalIDs := make(map[string]string, 3)
 				if _, ok := lspWithoutVendor[portName]; ok {
-					if err = c.initAppendLspExternalIds(portName, pod); err != nil {
-						klog.Errorf("failed to append external-ids for logical switch port %s: %v", portName, err)
+					externalIDs["vendor"] = util.CniTypeName
+					externalIDs["pod"] = fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
+				}
+				if uuid := lspWithoutLS[portName]; uuid != "" {
+					for ls, ports := range lsPortsMap {
+						if _, ok := ports[uuid]; ok {
+							externalIDs[logicalSwitchKey] = ls
+							break
+						}
 					}
+				}
+
+				if err = c.initAppendLspExternalIds(portName, externalIDs); err != nil {
+					klog.Errorf("failed to append external-ids for logical switch port %s: %v", portName, err)
 				}
 			}
 		}
@@ -441,10 +473,21 @@ func (c *Controller) InitIPAM() error {
 				node.Annotations[util.IpAddressAnnotation] = util.GetStringIP(v4IP, v6IP)
 			}
 
+			externalIDs := make(map[string]string, 2)
 			if _, ok := lspWithoutVendor[portName]; ok {
-				if err = c.initAppendLspExternalIds(portName, nil); err != nil {
-					klog.Errorf("failed to append external-ids for logical switch port %s: %v", portName, err)
+				externalIDs["vendor"] = util.CniTypeName
+			}
+			if uuid := lspWithoutLS[portName]; uuid != "" {
+				for ls, ports := range lsPortsMap {
+					if _, ok := ports[uuid]; ok {
+						externalIDs[logicalSwitchKey] = ls
+						break
+					}
 				}
+			}
+
+			if err = c.initAppendLspExternalIds(portName, externalIDs); err != nil {
+				klog.Errorf("failed to append external-ids for logical switch port %s: %v", portName, err)
 			}
 		}
 	}
@@ -781,18 +824,11 @@ func (c *Controller) initNodeRoutes() error {
 	return nil
 }
 
-func (c *Controller) initAppendLspExternalIds(portName string, pod *v1.Pod) error {
-	externalIDs := make(map[string]string, 2)
-	externalIDs["vendor"] = util.CniTypeName
-	if pod != nil {
-		externalIDs["pod"] = fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
-	}
-
+func (c *Controller) initAppendLspExternalIds(portName string, externalIDs map[string]string) error {
 	if err := c.ovnClient.SetLogicalSwitchPortExternalIds(portName, externalIDs); err != nil {
 		klog.Errorf("set lsp external_ids for logical switch port %s: %v", portName, err)
 		return err
 	}
-
 	return nil
 }
 
