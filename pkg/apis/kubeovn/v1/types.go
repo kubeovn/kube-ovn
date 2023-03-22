@@ -717,6 +717,11 @@ type IptablesDnatRuleStatus struct {
 	NatGwDp string `json:"natGwDp" patchStrategy:"merge"`
 	Redo    string `json:"redo" patchStrategy:"merge"`
 
+	Protocol     string `json:"protocol"  patchStrategy:"merge"`
+	InternalIp   string `json:"internalIp"  patchStrategy:"merge"`
+	InternalPort string `json:"internalPort"  patchStrategy:"merge"`
+	ExternalPort string `json:"externalPort"  patchStrategy:"merge"`
+
 	// Conditions represents the latest state of the object
 	// +optional
 	// +patchMergeKey=type

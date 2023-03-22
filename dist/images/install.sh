@@ -642,6 +642,14 @@ spec:
                   type: string
                 redo:
                   type: string
+                protocol:
+                  type: string
+                internalIp:
+                  type: string
+                internalPort:
+                  type: string
+                externalPort:
+                  type: string
                 conditions:
                   type: array
                   items:
