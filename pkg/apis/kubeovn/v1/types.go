@@ -582,11 +582,12 @@ type IptablesFIPRuleCondition struct {
 type IptablesFIPRuleStatus struct {
 	// +optional
 	// +patchStrategy=merge
-	Ready   bool   `json:"ready" patchStrategy:"merge"`
-	V4ip    string `json:"v4ip" patchStrategy:"merge"`
-	V6ip    string `json:"v6ip" patchStrategy:"merge"`
-	NatGwDp string `json:"natGwDp" patchStrategy:"merge"`
-	Redo    string `json:"redo" patchStrategy:"merge"`
+	Ready      bool   `json:"ready" patchStrategy:"merge"`
+	V4ip       string `json:"v4ip" patchStrategy:"merge"`
+	V6ip       string `json:"v6ip" patchStrategy:"merge"`
+	NatGwDp    string `json:"natGwDp" patchStrategy:"merge"`
+	Redo       string `json:"redo" patchStrategy:"merge"`
+	InternalIp string `json:"internalIp"  patchStrategy:"merge"`
 
 	// Conditions represents the latest state of the object
 	// +optional
@@ -711,12 +712,11 @@ type IptablesDnatRuleCondition struct {
 type IptablesDnatRuleStatus struct {
 	// +optional
 	// +patchStrategy=merge
-	Ready   bool   `json:"ready" patchStrategy:"merge"`
-	V4ip    string `json:"v4ip" patchStrategy:"merge"`
-	V6ip    string `json:"v6ip" patchStrategy:"merge"`
-	NatGwDp string `json:"natGwDp" patchStrategy:"merge"`
-	Redo    string `json:"redo" patchStrategy:"merge"`
-
+	Ready        bool   `json:"ready" patchStrategy:"merge"`
+	V4ip         string `json:"v4ip" patchStrategy:"merge"`
+	V6ip         string `json:"v6ip" patchStrategy:"merge"`
+	NatGwDp      string `json:"natGwDp" patchStrategy:"merge"`
+	Redo         string `json:"redo" patchStrategy:"merge"`
 	Protocol     string `json:"protocol"  patchStrategy:"merge"`
 	InternalIp   string `json:"internalIp"  patchStrategy:"merge"`
 	InternalPort string `json:"internalPort"  patchStrategy:"merge"`

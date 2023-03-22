@@ -50,7 +50,8 @@ func (c *Controller) enqueueUpdateIptablesFip(old, new interface{}) {
 	}
 	if oldFip.Status.V4ip != newFip.Status.V4ip ||
 		oldFip.Spec.EIP != newFip.Spec.EIP ||
-		oldFip.Status.Redo != newFip.Status.Redo {
+		oldFip.Status.Redo != newFip.Status.Redo ||
+		oldFip.Spec.InternalIp != newFip.Spec.InternalIp {
 		klog.V(3).Infof("enqueue update fip %s", key)
 		c.updateIptablesFipQueue.Add(key)
 		return
@@ -568,7 +569,7 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 	if !cachedFip.DeletionTimestamp.IsZero() {
 		if vpcNatEnabled == "true" {
 			klog.V(3).Infof("clean fip '%s' in pod", key)
-			if err = c.deleteFipInPod(cachedFip.Status.NatGwDp, cachedFip.Status.V4ip, cachedFip.Spec.InternalIp); err != nil {
+			if err = c.deleteFipInPod(cachedFip.Status.NatGwDp, cachedFip.Status.V4ip, cachedFip.Status.InternalIp); err != nil {
 				klog.Errorf("failed to delete fip %s, %v", key, err)
 				return err
 			}
@@ -607,21 +608,22 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 		err = fmt.Errorf("failed to update fip %s, eip '%s' is used by other fip %s", key, eipName, eip.Annotations[util.VpcAnnotation])
 		return err
 	}
+
+	klog.V(3).Infof("fip change ip, old ip '%s', new ip %s", cachedFip.Status.V4ip, eip.Status.IP)
+	if err = c.deleteFipInPod(cachedFip.Status.NatGwDp, cachedFip.Status.V4ip, cachedFip.Status.InternalIp); err != nil {
+		klog.Errorf("failed to delete old fip, %v", err)
+		return err
+	}
+	if err = c.createFipInPod(eip.Spec.NatGwDp, eip.Status.IP, cachedFip.Spec.InternalIp); err != nil {
+		klog.Errorf("failed to create new fip, %v", err)
+		return err
+	}
+	if err = c.patchFipStatus(key, eip.Status.IP, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
+		klog.Errorf("failed to patch status for fip '%s', %v", key, err)
+		return err
+	}
 	// fip change eip
 	if c.fipChangeEip(cachedFip, eip) {
-		klog.V(3).Infof("fip change ip, old ip '%s', new ip %s", cachedFip.Status.V4ip, eip.Status.IP)
-		if err = c.deleteFipInPod(cachedFip.Status.NatGwDp, cachedFip.Status.V4ip, cachedFip.Spec.InternalIp); err != nil {
-			klog.Errorf("failed to delete old fip, %v", err)
-			return err
-		}
-		if err = c.createFipInPod(eip.Spec.NatGwDp, eip.Status.IP, cachedFip.Spec.InternalIp); err != nil {
-			klog.Errorf("failed to create new fip, %v", err)
-			return err
-		}
-		if err = c.patchFipStatus(key, eip.Status.IP, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
-			klog.Errorf("failed to patch status for fip '%s', %v", key, err)
-			return err
-		}
 		if err = c.patchEipNat(eipName, util.FipUsingEip); err != nil {
 			klog.Errorf("failed to patch fip use eip %s, %v", key, err)
 			return err
@@ -747,9 +749,9 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 	if !cachedDnat.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("clean dnat '%s' in pod", key)
 		if vpcNatEnabled == "true" {
-			if err = c.deleteDnatInPod(cachedDnat.Status.NatGwDp, cachedDnat.Spec.Protocol,
-				cachedDnat.Status.V4ip, cachedDnat.Spec.InternalIp,
-				cachedDnat.Spec.ExternalPort, cachedDnat.Spec.InternalPort); err != nil {
+			if err = c.deleteDnatInPod(cachedDnat.Status.NatGwDp, cachedDnat.Status.Protocol,
+				cachedDnat.Status.V4ip, cachedDnat.Status.InternalIp,
+				cachedDnat.Status.ExternalPort, cachedDnat.Status.InternalPort); err != nil {
 				klog.Errorf("failed to delete dnat, %v", err)
 				return err
 			}
@@ -802,7 +804,7 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		klog.Errorf("failed to patch status for dnat %s , %v", key, err)
 		return err
 	}
-
+	// dnat change eip
 	if c.dnatChangeEip(cachedDnat, eip) {
 		klog.V(3).Infof("dnat change ip, old ip '%s', new ip %s", cachedDnat.Status.V4ip, eip.Status.IP)
 		if err = c.patchEipNat(eipName, util.DnatUsingEip); err != nil {
@@ -1143,6 +1145,7 @@ func (c *Controller) handleDelIptablesDnatFinalizer(key string) error {
 	}
 	return nil
 }
+
 func (c *Controller) patchFipLabel(key string, eip *kubeovnv1.IptablesEIP) error {
 	oriFip, err := c.iptablesFipsLister.Get(key)
 	if err != nil {
@@ -1275,6 +1278,10 @@ func (c *Controller) patchFipStatus(key, v4ip, v6ip, natGwDp, redo string, ready
 		fip.Status.NatGwDp = natGwDp
 		changed = true
 	}
+	if ready && fip.Spec.InternalIp != "" && fip.Status.InternalIp != fip.Spec.InternalIp {
+		fip.Status.InternalIp = fip.Spec.InternalIp
+		changed = true
+	}
 
 	if changed {
 		bytes, err := fip.Status.Bytes()
@@ -1387,19 +1394,19 @@ func (c *Controller) patchDnatStatus(key, v4ip, v6ip, natGwDp, redo string, read
 		dnat.Status.NatGwDp = natGwDp
 		changed = true
 	}
-	if ready && dnat.Status.Protocol != "" && dnat.Status.Protocol != dnat.Spec.Protocol {
+	if ready && dnat.Spec.Protocol != "" && dnat.Status.Protocol != dnat.Spec.Protocol {
 		dnat.Status.Protocol = dnat.Spec.Protocol
 		changed = true
 	}
-	if ready && dnat.Status.InternalIp != "" && dnat.Status.InternalIp != dnat.Spec.InternalIp {
+	if ready && dnat.Spec.InternalIp != "" && dnat.Status.InternalIp != dnat.Spec.InternalIp {
 		dnat.Status.InternalIp = dnat.Spec.InternalIp
 		changed = true
 	}
-	if ready && dnat.Status.InternalPort != "" && dnat.Status.InternalPort != dnat.Spec.InternalPort {
+	if ready && dnat.Spec.InternalPort != "" && dnat.Status.InternalPort != dnat.Spec.InternalPort {
 		dnat.Status.InternalPort = dnat.Spec.InternalPort
 		changed = true
 	}
-	if ready && dnat.Status.ExternalPort != "" && dnat.Status.ExternalPort != dnat.Spec.ExternalPort {
+	if ready && dnat.Spec.ExternalPort != "" && dnat.Status.ExternalPort != dnat.Spec.ExternalPort {
 		dnat.Status.ExternalPort = dnat.Spec.ExternalPort
 		changed = true
 	}

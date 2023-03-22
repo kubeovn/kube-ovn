@@ -552,6 +552,8 @@ spec:
                   type: string
                 redo:
                   type: string
+                internalIp:
+                  type: string
                 conditions:
                   type: array
                   items:
