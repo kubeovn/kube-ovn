@@ -81,150 +81,31 @@ ovsdb_server_ctl="/var/run/openvswitch/ovsdb-server.$(cat /var/run/openvswitch/o
 ovs-appctl -t "$ovsdb_server_ctl" vlog/set jsonrpc:file:err
 ovs-appctl -t "$ovsdb_server_ctl" vlog/set reconnect:file:err
 
-function exchange_link_names() {
-  mappings=($(ovs-vsctl --if-exists get open . external-ids:ovn-bridge-mappings | tr -d '"' | tr ',' ' '))
+function handle_underlay_bridges() {
+  bridges=($(ovs-vsctl --no-heading --columns=name find bridge external-ids:vendor=kube-ovn))
+  for br in ${bridges[@]}; do
+    if ! ip link show $br >/dev/null; then
+      # the bridge does not exist, leave it to be handled by kube-ovn-cni
+      echo "deleting ovs bridge $br"
+      ovs-vsctl --no-wait del-br $br
+    fi
+  done
+
   bridges=($(ovs-vsctl --no-heading --columns=name find bridge external-ids:vendor=kube-ovn external-ids:exchange-link-name=true))
   for br in ${bridges[@]}; do
-    provider=""
-    for m in ${mappings[*]}; do
-      if echo $m | grep -q ":$br"'$'; then
-        provider=${m%:$br}
-        break
-      fi
-    done
-    if [ "x$provider" = "x" ]; then
-      echo "error: failed to get provider name for bridge $br"
-      continue
+    if [ -z $(ip link show $br type openvswitch 2>/dev/null || true) ]; then
+      # the bridge does not exist, leave it to be handled by kube-ovn-cni
+      echo "deleting ovs bridge $br"
+      ovs-vsctl --no-wait del-br $br
     fi
-
-    port="br-$provider"
-    if ip link show $port 2>/dev/null; then
-      echo "link $port already exists"
-      continue
-    fi
-    if ! ip link show $br 2>/dev/null; then
-      echo "link $br does not exists"
-      continue
-    fi
-
-    echo "change link name from $br to $port"
-    ipv4_routes=($(ip -4 route show dev $br | tr ' ' '#'))
-    ipv6_routes=($(ip -6 route show dev $br | tr ' ' '#'))
-    ip link set $br down
-    ip link set $br name $port
-    ip link set $port up
-
-    # transfer IPv4 routes
-    default_ipv4_routes=()
-    for route in ${ipv4_routes[@]}; do
-      r=$(echo $route | tr '#' ' ')
-      if echo $r | grep -q -w 'scope link'; then
-        printf "add/replace IPv4 route $r to $port\n"
-        ip -4 route replace $r dev $port
-      else
-        default_ipv4_routes=(${default_ipv4_routes[@]} $route)
-      fi
-    done
-    for route in ${default_ipv4_routes[@]}; do
-      r=$(echo $route | tr '#' ' ')
-      printf "add/replace IPv4 route $r to $port\n"
-      ip -4 route replace $r dev $port
-    done
-
-    # transfer IPv6 routes
-    default_ipv6_routes=()
-    for route in ${ipv6_routes[@]}; do
-      r=$(echo $route | tr '#' ' ')
-      if echo $r | grep -q -w 'scope link'; then
-        printf "add/replace IPv6 route $r to $port\n"
-        ip -6 route replace $r dev $port
-      else
-        default_ipv6_routes=(${default_ipv6_routes[@]} $route)
-      fi
-    done
-    for route in ${default_ipv6_routes[@]}; do
-      r=$(echo $route | tr '#' ' ')
-      printf "add/replace IPv6 route $r to $port\n"
-      ip -6 route replace $r dev $port
-    done
   done
 }
 
-exchange_link_names
+handle_underlay_bridges
 
 # Start vswitchd. restart will automatically set/unset flow-restore-wait which is not what we want
 /usr/share/openvswitch/scripts/ovs-ctl restart --no-ovsdb-server --system-id=random --no-mlockall
 /usr/share/openvswitch/scripts/ovs-ctl --protocol=udp --dport=6081 enable-protocol
-
-sleep 1
-
-function handle_underlay_bridges() {
-    bridges=($(ovs-vsctl --no-heading --columns=name find bridge external-ids:vendor=kube-ovn))
-    for br in ${bridges[@]}; do
-        echo "handle bridge $br"
-        ip link set $br up
-
-        ports=($(ovs-vsctl list-ports $br))
-        for port in ${ports[@]}; do
-            port_type=$(ovs-vsctl --no-heading --columns=type find interface name=$port)
-            if [ ! "x$port_type" = 'x""' ]; then
-              continue
-            fi
-
-            echo "handle port $port on bridge $br"
-            ipv4_routes=($(ip -4 route show dev $port | tr ' ' '#'))
-            ipv6_routes=($(ip -6 route show dev $port | tr ' ' '#'))
-
-            set +o pipefail
-            addresses=($(ip addr show dev $port | grep -E '^\s*inet[6]?\s+' | grep -w global | awk '{print $2}'))
-            set -o pipefail
-
-            # transfer IP addresses
-            for addr in ${addresses[@]}; do
-                printf "delete address $addr on $port\n"
-                ip addr del $addr dev $port || true
-                printf "add/replace address $addr to $br\n"
-                ip addr replace $addr dev $br
-            done
-
-            # transfer IPv4 routes
-            default_ipv4_routes=()
-            for route in ${ipv4_routes[@]}; do
-                r=$(echo $route | tr '#' ' ')
-                if echo $r | grep -q -w 'scope link'; then
-                    printf "add/replace IPv4 route $r to $br\n"
-                    ip -4 route replace $r dev $br
-                else
-                    default_ipv4_routes=(${default_ipv4_routes[@]} $route)
-                fi
-            done
-            for route in ${default_ipv4_routes[@]}; do
-                r=$(echo $route | tr '#' ' ')
-                printf "add/replace IPv4 route $r to $br\n"
-                ip -4 route replace $r dev $br
-            done
-
-            # transfer IPv6 routes
-            default_ipv6_routes=()
-            for route in ${ipv6_routes[@]}; do
-                r=$(echo $route | tr '#' ' ')
-                if echo $r | grep -q -w 'scope link'; then
-                    printf "add/replace IPv6 route $r to $br\n"
-                    ip -6 route replace $r dev $br
-                else
-                    default_ipv6_routes=(${default_ipv6_routes[@]} $route)
-                fi
-            done
-            for route in ${default_ipv6_routes[@]}; do
-                r=$(echo $route | tr '#' ' ')
-                printf "add/replace IPv6 route $r to $br\n"
-                ip -6 route replace $r dev $br
-            done
-        done
-    done
-}
-
-handle_underlay_bridges
 
 function gen_conn_str {
   if [[ -z "${OVN_DB_IPS}" ]]; then
