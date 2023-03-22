@@ -1,3 +1,5 @@
+KUBECONFIG = $(shell echo $${KUBECONFIG:-$(HOME)/.kube/config})
+
 E2E_BRANCH := $(shell echo $${E2E_BRANCH:-master})
 E2E_IP_FAMILY := $(shell echo $${E2E_IP_FAMILY:-ipv4})
 E2E_NETWORK_MODE := $(shell echo $${E2E_NETWORK_MODE:-overlay})
@@ -118,22 +120,9 @@ kube-ovn-ic-conformance-e2e:
 
 .PHONY: kube-ovn-submariner-conformance-e2e
 kube-ovn-submariner-conformance-e2e:
-	while ! kubectl wait pod --for=condition=Ready -l app=submariner-routeagent -n submariner-operator && \
-	      ! kubectl wait pod --for=condition=Ready -l app=submariner-gateway -n submariner-operator && \
-	      ! kubectl wait pod --for=condition=Ready -l app=submariner-lighthouse-agent -n submariner-operator && \
-	      ! kubectl wait pod --for=condition=Ready -l app=submariner-lighthouse-coredns -n submariner-operator ; do \
-		sleep 3; \
-	done
-	subctl verify --kubecontexts kind-kube-ovn,kind-kube-ovn1 --verbose --disruptive-tests --kubeconfig ~/.kube/config 2>&1 | { \
-        output=$$(cat); \
-        if echo "$$output" | grep -q "1 Failed"; then \
-            echo "$$output"; \
-            exit 0; \
-        else \
-            echo "$$output"; \
-            exit 1; \
-        fi \
-    }
+	KUBECONFIG=$(KUBECONFIG) subctl verify \
+		--context kind-kube-ovn --tocontext kind-kube-ovn1 \
+		--verbose --disruptive-tests
 
 .PHONY: kube-ovn-lb-svc-conformance-e2e
 kube-ovn-lb-svc-conformance-e2e:
