@@ -340,7 +340,7 @@ func (c *Controller) handleDelOvnEip(key string) error {
 
 	if len(cachedEip.Finalizers) > 1 {
 		err := errors.New("eip is referenced, it cannot be deleted directly")
-		klog.ErrorS(err, "failed to delete eip", "eip", key)
+		klog.Errorf("failed to delete eip %s,%v", key, err)
 		return err
 	}
 
