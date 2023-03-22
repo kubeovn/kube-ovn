@@ -89,6 +89,14 @@ func updateOvnMapping(name, key, value string) error {
 		return fmt.Errorf("failed to get %s, %v: %q", name, err, output)
 	}
 
+	if len(output) == 0 {
+		s := fmt.Sprintf("external-ids:%s=%s:%s", name, key, value)
+		if output, err = ovs.Exec("set", "open", ".", s); err != nil {
+			return fmt.Errorf("failed to set %s, %v: %q", name, err, output)
+		}
+		return nil
+	}
+
 	fields := strings.Split(output, ",")
 	mappings := make(map[string]string, len(fields)+1)
 	for _, f := range fields {

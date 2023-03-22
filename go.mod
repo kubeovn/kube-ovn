@@ -265,6 +265,7 @@ replace (
 	github.com/onsi/ginkgo/v2 => github.com/onsi/ginkgo/v2 v2.4.0
 	github.com/openshift/client-go => github.com/openshift/client-go v0.0.0-20221107163225-3335a34a1d24
 	github.com/ovn-org/libovsdb => github.com/kubeovn/libovsdb v0.0.0-20230208064641-36b813e450dd
+	github.com/vishvananda/netlink => github.com/kubeovn/netlink v0.0.0-20230322092337-960188369daf
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v3 => github.com/k8snetworkplumbingwg/multus-cni v0.0.0-20230220153906-346a54ccd973
 	k8s.io/api => k8s.io/api v0.26.3
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.26.3
