@@ -104,8 +104,11 @@ func ParseFlags() (*Configuration, error) {
 	if *argRouterId != "" && net.ParseIP(*argRouterId) == nil {
 		return nil, fmt.Errorf("invalid router-id format: %s", *argRouterId)
 	}
-	if *argNeighborAddress != "" && net.ParseIP(*argNeighborAddress) == nil {
+	if *argNeighborAddress != "" && net.ParseIP(*argNeighborAddress).To4() == nil {
 		return nil, fmt.Errorf("invalid neighbor-address format: %s", *argNeighborAddress)
+	}
+	if *argNeighborIPv6Address != "" && net.ParseIP(*argNeighborIPv6Address).To16() == nil {
+		return nil, fmt.Errorf("invalid neighbor-ipv6-address format: %s", *argNeighborIPv6Address)
 	}
 
 	config := &Configuration{
