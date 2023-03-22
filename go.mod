@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/Mellanox/sriovnet v1.0.3
-	github.com/Wifx/gonetworkmanager v0.4.0
+	github.com/Wifx/gonetworkmanager v0.5.0
 	github.com/alauda/felix v3.6.6-0.20201207121355-187332daf314+incompatible
 	github.com/cenkalti/backoff/v4 v4.2.0
 	github.com/cnf/structhash v0.0.0-20201127153200-e1b16c1ebc08

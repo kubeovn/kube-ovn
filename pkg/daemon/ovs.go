@@ -1,14 +1,12 @@
 package daemon
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/Mellanox/sriovnet"
@@ -548,25 +546,59 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 	return nil
 }
 
+func updateOvnMapping(name, key, value string) error {
+	output, err := ovs.Exec(ovs.IfExists, "get", "open", ".", "external-ids:"+name)
+	if err != nil {
+		return fmt.Errorf("failed to get %s, %v: %q", name, err, output)
+	}
+
+	fields := strings.Split(output, ",")
+	mappings := make(map[string]string, len(fields)+1)
+	for _, f := range fields {
+		idx := strings.IndexRune(f, ':')
+		if idx <= 0 || idx == len(f)-1 {
+			klog.Warningf("invalid mapping entry: %s", f)
+			continue
+		}
+		mappings[f[:idx]] = f[idx+1:]
+	}
+	mappings[key] = value
+
+	fields = make([]string, 0, len(mappings))
+	for k, v := range mappings {
+		fields = append(fields, fmt.Sprintf("%s:%v", k, v))
+	}
+
+	if len(fields) == 0 {
+		output, err = ovs.Exec(ovs.IfExists, "remove", "open", ".", "external-ids", name)
+	} else {
+		output, err = ovs.Exec("set", "open", ".", fmt.Sprintf("external-ids:%s=%s", name, strings.Join(fields, ",")))
+	}
+	if err != nil {
+		return fmt.Errorf("failed to set %s, %v: %q", name, err, output)
+	}
+
+	return nil
+}
+
 func configExternalBridge(provider, bridge, nic string, exchangeLinkName, macLearningFallback bool) error {
 	brExists, err := ovs.BridgeExists(bridge)
 	if err != nil {
 		return fmt.Errorf("failed to check OVS bridge existence: %v", err)
 	}
-	output, err := ovs.Exec(ovs.MayExist, "add-br", bridge,
+	cmd := []string{
+		ovs.MayExist, "add-br", bridge,
 		"--", "set", "bridge", bridge, fmt.Sprintf("other_config:mac-learning-fallback=%v", macLearningFallback),
-		"--", "set", "bridge", bridge, "external_ids:vendor="+util.CniTypeName,
+		"--", "set", "bridge", bridge, "external_ids:vendor=" + util.CniTypeName,
 		"--", "set", "bridge", bridge, fmt.Sprintf("external_ids:exchange-link-name=%v", exchangeLinkName),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create OVS bridge %s, %v: %q", bridge, err, output)
 	}
 	if !brExists {
 		// assign a new generated mac address only when the bridge is newly created
-		output, err = ovs.Exec("set", "bridge", bridge, fmt.Sprintf(`other-config:hwaddr="%s"`, util.GenerateMac()))
-		if err != nil {
-			return fmt.Errorf("failed to set hwaddr of OVS bridge %s, %v: %q", bridge, err, output)
-		}
+		cmd = append(cmd, "--", "set", "bridge", bridge, fmt.Sprintf(`other-config:hwaddr="%s"`, util.GenerateMac()))
+	}
+	output, err := ovs.Exec(cmd...)
+	if err != nil {
+		return fmt.Errorf("failed to create OVS bridge %s, %v: %q", bridge, err, output)
 	}
 	if output, err = ovs.Exec("list-ports", bridge); err != nil {
 		return fmt.Errorf("failed to list ports of OVS bridge %s, %v: %q", bridge, err, output)
@@ -587,19 +619,9 @@ func configExternalBridge(provider, bridge, nic string, exchangeLinkName, macLea
 		}
 	}
 
-	if output, err = ovs.Exec(ovs.IfExists, "get", "open", ".", "external-ids:ovn-bridge-mappings"); err != nil {
-		return fmt.Errorf("failed to get ovn-bridge-mappings, %v", err)
-	}
-
-	bridgeMappings := fmt.Sprintf("%s:%s", provider, bridge)
-	if util.IsStringIn(bridgeMappings, strings.Split(output, ",")) {
-		return nil
-	}
-	if output != "" {
-		bridgeMappings = fmt.Sprintf("%s,%s", output, bridgeMappings)
-	}
-	if output, err = ovs.Exec("set", "open", ".", "external-ids:ovn-bridge-mappings="+bridgeMappings); err != nil {
-		return fmt.Errorf("failed to set ovn-bridge-mappings, %v: %q", err, output)
+	if err = updateOvnMapping("ovn-bridge-mappings", provider, bridge); err != nil {
+		klog.Error(err)
+		return err
 	}
 
 	return nil
@@ -659,35 +681,30 @@ func configProviderNic(nicName, brName string) (int, error) {
 		return 0, fmt.Errorf("failed to get routes on nic %s: %v", nicName, err)
 	}
 
+	// set link unmanaged by NetworkManager
+	if err = nmSetManaged(nicName, false); err != nil {
+		klog.Errorf("failed set device %s to unmanaged by NetworkManager: %v", nicName, err)
+		return 0, err
+	}
+
 	for _, addr := range addrs {
 		if addr.IP.IsLinkLocalUnicast() {
 			// skip 169.254.0.0/16 and fe80::/10
 			continue
 		}
 
-		if !strings.HasPrefix(addr.Label, nicName) {
-			if strings.HasPrefix(addr.Label, brName) {
-				addr.Label = nicName + addr.Label[len(brName):]
-			} else {
-				addr.Label = nicName
-			}
-		}
 		if err = netlink.AddrDel(nic, &addr); err != nil {
 			errMsg := fmt.Errorf("failed to delete address %q on nic %s: %v", addr.String(), nicName, err)
-			if errors.Is(err, syscall.EADDRNOTAVAIL) {
-				// the IP address does not exist now
-				klog.Warning(errMsg)
-				continue
-			}
+			klog.Error(errMsg)
 			return 0, errMsg
 		}
+		klog.Infof("address %q has been removed from link %s", addr.String(), nicName)
 
-		if addr.Label != "" {
-			addr.Label = brName + addr.Label[len(nicName):]
-		}
+		addr.Label = ""
 		if err = netlink.AddrReplace(bridge, &addr); err != nil {
 			return 0, fmt.Errorf("failed to replace address %q on OVS bridge %s: %v", addr.String(), brName, err)
 		}
+		klog.Infof("address %q has been added/replaced to link %s", addr.String(), brName)
 	}
 
 	// keep mac address the same with the provider nic,
@@ -720,6 +737,7 @@ func configProviderNic(nicName, brName string) (int, error) {
 				if err = netlink.RouteReplace(&route); err != nil {
 					return 0, fmt.Errorf("failed to add/replace route %s: %v", route.String(), err)
 				}
+				klog.Infof("route %q has been added/replaced to link %s", route.String(), brName)
 			}
 		}
 	}
@@ -728,6 +746,7 @@ func configProviderNic(nicName, brName string) (int, error) {
 		"--", "set", "port", nicName, "external_ids:vendor="+util.CniTypeName); err != nil {
 		return 0, fmt.Errorf("failed to add %s to OVS bridge %s: %v", nicName, brName, err)
 	}
+	klog.V(3).Infof("ovs port %s has been added to bridge %s", nicName, brName)
 
 	if err = netlink.LinkSetUp(nic); err != nil {
 		return 0, fmt.Errorf("failed to set link %s up: %v", nicName, err)
@@ -787,6 +806,7 @@ func removeProviderNic(nicName, brName string) error {
 	if _, err = ovs.Exec(ovs.IfExists, "del-port", brName, nicName); err != nil {
 		return fmt.Errorf("failed to remove %s from OVS bridge %s: %v", nicName, brName, err)
 	}
+	klog.V(3).Infof("ovs port %s has been removed from bridge %s", nicName, brName)
 
 	for _, addr := range addrs {
 		if addr.IP.IsLinkLocalUnicast() {
@@ -795,25 +815,22 @@ func removeProviderNic(nicName, brName string) error {
 		}
 
 		if err = netlink.AddrDel(bridge, &addr); err != nil {
-			errMsg := fmt.Errorf("failed to delete address %s on OVS bridge %s: %v", addr.String(), brName, err)
-			if errors.Is(err, syscall.EADDRNOTAVAIL) {
-				// the IP address does not exist now
-				klog.Warning(errMsg)
-				continue
-			}
+			errMsg := fmt.Errorf("failed to delete address %q on OVS bridge %s: %v", addr.String(), brName, err)
+			klog.Error(errMsg)
 			return errMsg
 		}
+		klog.Infof("address %q has been deleted from link %s", addr.String(), brName)
 
-		if addr.Label != "" {
-			addr.Label = nicName + strings.TrimPrefix(addr.Label, brName)
-		}
+		addr.Label = ""
 		if err = netlink.AddrReplace(nic, &addr); err != nil {
-			return fmt.Errorf("failed to replace address %s on nic %s: %v", addr.String(), nicName, err)
+			return fmt.Errorf("failed to replace address %q on nic %s: %v", addr.String(), nicName, err)
 		}
+		klog.Infof("address %q has been added/replaced to link %s", addr.String(), nicName)
 	}
 
-	if err = netlink.LinkSetDown(bridge); err != nil {
-		return fmt.Errorf("failed to set OVS bridge %s down: %v", brName, err)
+	if err = netlink.LinkSetUp(nic); err != nil {
+		klog.Error("failed to set link %s up: %v", nicName, err)
+		return err
 	}
 
 	scopeOrders := [...]netlink.Scope{
@@ -833,9 +850,15 @@ func removeProviderNic(nicName, brName string) error {
 				if err = netlink.RouteReplace(&route); err != nil {
 					return fmt.Errorf("failed to add/replace route %s: %v", route.String(), err)
 				}
+				klog.Infof("route %q has been added/replaced to link %s", route.String(), nicName)
 			}
 		}
 	}
+
+	if err = netlink.LinkSetDown(bridge); err != nil {
+		return fmt.Errorf("failed to set OVS bridge %s down: %v", brName, err)
+	}
+	klog.V(3).Infof("link %s has been set down", brName)
 
 	return nil
 }
