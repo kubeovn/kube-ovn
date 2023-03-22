@@ -147,31 +147,8 @@ func ovsCleanProviderNetwork(provider string) error {
 	for idx, m = range brMappings {
 		if strings.HasPrefix(m, mappingPrefix) {
 			brName = m[len(mappingPrefix):]
+			klog.V(3).Infof("found bridge name for provider %s: %s", provider, brName)
 			break
-		}
-	}
-
-	if output, err = ovs.Exec("list-br"); err != nil {
-		return fmt.Errorf("failed to list OVS bridge %v: %q", err, output)
-	}
-
-	if !util.ContainsString(strings.Split(output, "\n"), brName) {
-		return nil
-	}
-
-	// get host nic
-	if output, err = ovs.Exec("list-ports", brName); err != nil {
-		return fmt.Errorf("failed to list ports of OVS bridge %s, %v: %q", brName, err, output)
-	}
-
-	// remove host nic from the external bridge
-	if output != "" {
-		for _, port := range strings.Split(output, "\n") {
-			if err = removeProviderNic(port, brName); err != nil {
-				errMsg := fmt.Errorf("failed to remove port %s from external bridge %s: %v", port, brName, err)
-				klog.Error(errMsg)
-				return errMsg
-			}
 		}
 	}
 
@@ -206,6 +183,15 @@ func ovsCleanProviderNetwork(provider string) error {
 		return fmt.Errorf("failed to set ovn-chassis-mac-mappings, %v: %q", err, output)
 	}
 
+	if output, err = ovs.Exec("list-br"); err != nil {
+		return fmt.Errorf("failed to list OVS bridge %v: %q", err, output)
+	}
+
+	if !util.ContainsString(strings.Split(output, "\n"), brName) {
+		klog.V(3).Infof("ovs bridge %s not found", brName)
+		return nil
+	}
+
 	// get host nic
 	if output, err = ovs.Exec("list-ports", brName); err != nil {
 		return fmt.Errorf("failed to list ports of OVS bridge %s, %v: %q", brName, err, output)
@@ -214,11 +200,13 @@ func ovsCleanProviderNetwork(provider string) error {
 	// remove host nic from the external bridge
 	if output != "" {
 		for _, port := range strings.Split(output, "\n") {
+			klog.V(3).Infof("removing ovs port %s from bridge %s", port, brName)
 			if err = removeProviderNic(port, brName); err != nil {
 				errMsg := fmt.Errorf("failed to remove port %s from external bridge %s: %v", port, brName, err)
 				klog.Error(errMsg)
 				return errMsg
 			}
+			klog.V(3).Infof("ovs port %s has been removed from bridge %s", port, brName)
 		}
 	}
 
@@ -226,6 +214,7 @@ func ovsCleanProviderNetwork(provider string) error {
 	if output, err = ovs.Exec(ovs.IfExists, "del-br", brName); err != nil {
 		return fmt.Errorf("failed to remove OVS bridge %s, %v: %q", brName, err, output)
 	}
+	klog.V(3).Infof("ovs bridge %s has been deleted", brName)
 
 	if br := util.ExternalBridgeName(provider); br != brName {
 		if _, err = changeProvideNicName(br, brName); err != nil {

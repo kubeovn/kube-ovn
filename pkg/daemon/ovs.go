@@ -71,25 +71,59 @@ func configureEmptyMirror(portName string, mtu int) error {
 	return configureMirrorLink(portName, mtu)
 }
 
+func updateOvnMapping(name, key, value string) error {
+	output, err := ovs.Exec(ovs.IfExists, "get", "open", ".", "external-ids:"+name)
+	if err != nil {
+		return fmt.Errorf("failed to get %s, %v: %q", name, err, output)
+	}
+
+	fields := strings.Split(output, ",")
+	mappings := make(map[string]string, len(fields)+1)
+	for _, f := range fields {
+		idx := strings.IndexRune(f, ':')
+		if idx <= 0 || idx == len(f)-1 {
+			klog.Warningf("invalid mapping entry: %s", f)
+			continue
+		}
+		mappings[f[:idx]] = f[idx+1:]
+	}
+	mappings[key] = value
+
+	fields = make([]string, 0, len(mappings))
+	for k, v := range mappings {
+		fields = append(fields, fmt.Sprintf("%s:%s", k, v))
+	}
+
+	if len(fields) == 0 {
+		output, err = ovs.Exec(ovs.IfExists, "remove", "open", ".", "external-ids", name)
+	} else {
+		output, err = ovs.Exec("set", "open", ".", fmt.Sprintf("external-ids:%s=%s", name, strings.Join(fields, ",")))
+	}
+	if err != nil {
+		return fmt.Errorf("failed to set %s, %v: %q", name, err, output)
+	}
+
+	return nil
+}
+
 func configExternalBridge(provider, bridge, nic string, exchangeLinkName, macLearningFallback bool) error {
 	brExists, err := ovs.BridgeExists(bridge)
 	if err != nil {
 		return fmt.Errorf("failed to check OVS bridge existence: %v", err)
 	}
-	output, err := ovs.Exec(ovs.MayExist, "add-br", bridge,
+	cmd := []string{
+		ovs.MayExist, "add-br", bridge,
 		"--", "set", "bridge", bridge, fmt.Sprintf("other_config:mac-learning-fallback=%v", macLearningFallback),
-		"--", "set", "bridge", bridge, "external_ids:vendor="+util.CniTypeName,
+		"--", "set", "bridge", bridge, "external_ids:vendor=" + util.CniTypeName,
 		"--", "set", "bridge", bridge, fmt.Sprintf("external_ids:exchange-link-name=%v", exchangeLinkName),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create OVS bridge %s, %v: %q", bridge, err, output)
 	}
 	if !brExists {
 		// assign a new generated mac address only when the bridge is newly created
-		output, err = ovs.Exec("set", "bridge", bridge, fmt.Sprintf(`other-config:hwaddr="%s"`, util.GenerateMac()))
-		if err != nil {
-			return fmt.Errorf("failed to set hwaddr of OVS bridge %s, %v: %q", bridge, err, output)
-		}
+		cmd = append(cmd, "--", "set", "bridge", bridge, fmt.Sprintf(`other-config:hwaddr="%s"`, util.GenerateMac()))
+	}
+	output, err := ovs.Exec(cmd...)
+	if err != nil {
+		return fmt.Errorf("failed to create OVS bridge %s, %v: %q", bridge, err, output)
 	}
 	if output, err = ovs.Exec("list-ports", bridge); err != nil {
 		return fmt.Errorf("failed to list ports of OVS bridge %s, %v: %q", bridge, err, output)
@@ -110,19 +144,9 @@ func configExternalBridge(provider, bridge, nic string, exchangeLinkName, macLea
 		}
 	}
 
-	if output, err = ovs.Exec(ovs.IfExists, "get", "open", ".", "external-ids:ovn-bridge-mappings"); err != nil {
-		return fmt.Errorf("failed to get ovn-bridge-mappings, %v", err)
-	}
-
-	bridgeMappings := fmt.Sprintf("%s:%s", provider, bridge)
-	if util.IsStringIn(bridgeMappings, strings.Split(output, ",")) {
-		return nil
-	}
-	if output != "" {
-		bridgeMappings = fmt.Sprintf("%s,%s", output, bridgeMappings)
-	}
-	if output, err = ovs.Exec("set", "open", ".", "external-ids:ovn-bridge-mappings="+bridgeMappings); err != nil {
-		return fmt.Errorf("failed to set ovn-bridge-mappings, %v: %q", err, output)
+	if err = updateOvnMapping("ovn-bridge-mappings", provider, bridge); err != nil {
+		klog.Error(err)
+		return err
 	}
 
 	return nil
