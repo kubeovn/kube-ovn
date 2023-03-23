@@ -23,6 +23,10 @@ const (
 	VipAnnotation        = "ovn.kubernetes.io/vip"
 	ChassisAnnotation    = "ovn.kubernetes.io/chassis"
 
+	OvnFipUseEipFinalizer  = "ovn.kubernetes.io/ovn_fip"
+	OvnSnatUseEipFinalizer = "ovn.kubernetes.io/ovn_snat"
+	OvnLrpUseEipFinalizer  = "ovn.kubernetes.io/ovn_lrp"
+
 	ExternalIpAnnotation         = "ovn.kubernetes.io/external_ip"
 	ExternalMacAnnotation        = "ovn.kubernetes.io/external_mac"
 	ExternalCidrAnnotation       = "ovn.kubernetes.io/external_cidr"

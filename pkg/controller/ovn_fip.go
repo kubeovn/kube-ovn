@@ -236,7 +236,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		err = fmt.Errorf("failed to create fip %s, eip '%s' is using by other fip %s", key, eipName, cachedEip.Annotations[util.VpcNatAnnotation])
 		return err
 	}
-	if err = c.handleAddOvnEipFinalizer(cachedEip); err != nil {
+	if err = c.handleAddOvnEipFinalizer(cachedEip, util.OvnFipUseEipFinalizer); err != nil {
 		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
 		return err
 	}
@@ -394,7 +394,7 @@ func (c *Controller) handleDelOvnFip(key string) error {
 	}
 	//  reset eip
 	c.resetOvnEipQueue.Add(cachedFip.Spec.OvnEip)
-	if err = c.handleDelOvnEipFinalizer(cachedEip); err != nil {
+	if err = c.handleDelOvnEipFinalizer(cachedEip, util.OvnFipUseEipFinalizer); err != nil {
 		klog.Errorf("failed to handle remove finalizer from ovn eip, %v", err)
 		return err
 	}
