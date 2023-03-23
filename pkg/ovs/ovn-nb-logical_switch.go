@@ -7,6 +7,7 @@ import (
 
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
+	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -235,6 +236,31 @@ func (c *ovnClient) ListLogicalSwitch(needVendorFilter bool, filter func(ls *ovn
 func (c *ovnClient) LogicalSwitchUpdatePortOp(lsName string, lspUUID string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
 	if len(lspUUID) == 0 {
 		return nil, nil
+	}
+
+	if lsName == "" {
+		lsList, err := c.ListLogicalSwitch(false, func(ls *ovnnb.LogicalSwitch) bool {
+			return util.ContainsString(ls.Ports, lspUUID)
+		})
+		if err != nil {
+			klog.Error(err)
+			return nil, fmt.Errorf("failed to list LS by LSP UUID %s: %v", lspUUID, err)
+		}
+		if len(lsList) == 0 {
+			err = fmt.Errorf("no LS found for LSP %s", lspUUID)
+			klog.Error(err)
+			return nil, err
+		}
+		if len(lsList) != 1 {
+			lsNames := make([]string, len(lsList))
+			for _, ls := range lsList {
+				lsNames = append(lsNames, ls.Name)
+			}
+			err = fmt.Errorf("multiple LS found for LSP %s: %s", lspUUID, strings.Join(lsNames, ", "))
+			klog.Error(err)
+			return nil, err
+		}
+		lsName = lsList[0].Name
 	}
 
 	mutation := func(ls *ovnnb.LogicalSwitch) *model.Mutation {

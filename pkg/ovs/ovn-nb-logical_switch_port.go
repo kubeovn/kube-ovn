@@ -575,12 +575,8 @@ func (c *ovnClient) DeleteLogicalSwitchPortOp(lspName string) ([]ovsdb.Operation
 		return nil, nil
 	}
 
-	lsName, ok := lsp.ExternalIDs[logicalSwitchKey]
-	if !ok {
-		return nil, fmt.Errorf("no %s exist in lsp's external_ids", logicalSwitchKey)
-	}
-
 	// remove logical switch port from logical switch
+	lsName := lsp.ExternalIDs[logicalSwitchKey]
 	lspRemoveOp, err := c.LogicalSwitchUpdatePortOp(lsName, lsp.UUID, ovsdb.MutateOperationDelete)
 	if err != nil {
 		return nil, fmt.Errorf("generate operations for removing port %s from logical switch %s: %v", lspName, lsName, err)
