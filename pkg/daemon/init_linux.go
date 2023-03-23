@@ -7,6 +7,8 @@ import (
 
 	"github.com/Wifx/gonetworkmanager"
 	"github.com/vishvananda/netlink"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 var routeScopeOrders = [...]netlink.Scope{
@@ -151,6 +153,19 @@ func changeProvideNicName(current, target string) (bool, error) {
 				}
 				klog.Infof("route %q has been added/replaced to link %s", route.String(), target)
 			}
+		}
+	}
+
+	index := link.Attrs().Index
+	if link, err = netlink.LinkByIndex(index); err != nil {
+		klog.Errorf("failed to get link %s by index %d: %v", target, index, err)
+		return false, err
+	}
+
+	if util.ContainsString(link.Attrs().Properties.AlternativeIfnames, current) {
+		if err = netlink.LinkDelAltName(link, current); err != nil {
+			klog.Errorf("failed to delete alternative name %s from link %s: %v", current, link.Attrs().Name, err)
+			return false, err
 		}
 	}
 
