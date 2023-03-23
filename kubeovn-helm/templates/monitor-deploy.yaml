@@ -2,7 +2,7 @@ kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-monitor
-  namespace: kube-system
+  namespace: {{ .Values.namespace }}
   annotations:
     kubernetes.io/description: |
       Metrics for OVN components: northd, nb and sb.
@@ -61,11 +61,11 @@ spec:
               value: "{{- .Values.func.ENABLE_BIND_LOCAL_IP }}"
           resources:
             requests:
-              cpu: 200m
-              memory: 200Mi
+              cpu: {{ index .Values "kube-ovn-monitor" "requests" "cpu" }}
+              memory: {{ index .Values "kube-ovn-monitor" "requests" "memory" }}
             limits:
-              cpu: 200m
-              memory: 200Mi
+              cpu: {{ index .Values "kube-ovn-monitor" "limits" "cpu" }}
+              memory: {{ index .Values "kube-ovn-monitor" "limits" "memory" }}
           volumeMounts:
             - mountPath: /var/run/openvswitch
               name: host-run-ovs

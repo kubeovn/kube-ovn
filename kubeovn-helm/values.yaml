@@ -8,6 +8,7 @@ global:
   images:
     kubeovn:
       repository: kube-ovn
+      dpdkRepository: kube-ovn-dpdk
       tag: v1.12.0
       support_arm: true
       thirdparty: true
@@ -15,6 +16,7 @@ global:
 image:
   pullPolicy: IfNotPresent
 
+namespace: kube-system
 replicaCount: 1
 MASTER_NODES: ""
 
@@ -31,12 +33,19 @@ networking:
   EXCLUDE_IPS: ""
   POD_NIC_TYPE: "veth-pair"
   vlan:
+    PROVIDER_NAME: "provider"
     VLAN_INTERFACE_NAME: ""
     VLAN_NAME: "ovn-vlan"
     VLAN_ID: "100"
   EXCHANGE_LINK_NAME: false
   ENABLE_EIP_SNAT: true
   POD_DEFAULT_FIP_TYPE: ""
+  DEFAULT_SUBNET: "ovn-default"
+  DEFAULT_VPC: "ovn-cluster"
+  NODE_SUBNET: "join"
+  ENABLE_ECMP: false
+  ENABLE_METRICS: true
+  NODE_LOCAL_DNS_IP: ""
 
 func:
   ENABLE_LB: true
@@ -50,6 +59,7 @@ func:
   CHECK_GATEWAY: true
   LOGICAL_GATEWAY: false
   ENABLE_BIND_LOCAL_IP: true
+  U2O_INTERCONNECTION: false
 
 ipv4:
   POD_CIDR: "10.16.0.0/16"
@@ -83,11 +93,13 @@ performance:
 
 debug:
   ENABLE_MIRROR: false
+  MIRROR_IFACE: "mirror0"
 
 cni_conf:
   CNI_CONFIG_PRIORITY: "01"
   CNI_CONF_DIR: "/etc/cni/net.d"
   CNI_BIN_DIR: "/opt/cni/bin"
+  CNI_CONF_FILE: "/kube-ovn/01-kube-ovn.conflist"
 
 kubelet_conf:
   KUBELET_DIR: "/var/lib/kubelet"
@@ -97,3 +109,55 @@ nameOverride: ""
 fullnameOverride: ""
 
 restart_ovs: false
+
+# hybrid dpdk
+HYBRID_DPDK: false
+
+# DPDK
+DPDK: false
+DPDK_VERSION: "19.11"
+DPDK_CPU: "1000m"                        # Default CPU configuration
+DPDK_MEMORY: "2Gi"                       # Default Memory configuration
+
+ovn-central:
+  requests:
+    cpu: "300m"
+    memory: "200Mi"
+  limits:
+    cpu: "3"
+    memory: "4Gi"
+ovs-ovn:
+  requests:
+    cpu: "200m"
+    memory: "200Mi"
+  limits:
+    cpu: "1000m"
+    memory: "1000Mi"
+kube-ovn-controller:
+  requests:
+    cpu: "200m"
+    memory: "200Mi"
+  limits:
+    cpu: "1000m"
+    memory: "1Gi"
+kube-ovn-cni:
+  requests:
+    cpu: "100m"
+    memory: "100Mi"
+  limits:
+    cpu: "1000m"
+    memory: "1Gi"
+kube-ovn-pinger:
+  requests:
+    cpu: "100m"
+    memory: "100Mi"
+  limits:
+    cpu: "200m"
+    memory: "400Mi"
+kube-ovn-monitor:
+  requests:
+    cpu: "200m"
+    memory: "200Mi"
+  limits:
+    cpu: "200m"
+    memory: "200Mi"

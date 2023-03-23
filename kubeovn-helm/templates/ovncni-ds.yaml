@@ -2,7 +2,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: kube-ovn-cni
-  namespace: kube-system
+  namespace: {{ .Values.namespace }}
   annotations:
     kubernetes.io/description: |
       This daemon set launches the kube-ovn cni daemon.
@@ -50,6 +50,9 @@ spec:
           - /kube-ovn/start-cniserver.sh
         args:
           - --enable-mirror={{- .Values.debug.ENABLE_MIRROR }}
+          - --mirror-iface={{- .Values.debug.MIRROR_IFACE }}
+          - --node-switch={{ .Values.networking.NODE_SUBNET }}
+          - --node-local-dns-ip={{ .Values.networking.NODE_LOCAL_DNS_IP }}
           - --encap-checksum=true
           - --service-cluster-ip-range=
           {{- if eq .Values.networking.NET_STACK "dual_stack" -}}
@@ -67,11 +70,14 @@ spec:
           - --dpdk-tunnel-iface={{- .Values.networking.DPDK_TUNNEL_IFACE }}
           - --network-type={{- .Values.networking.TUNNEL_TYPE }}
           - --default-interface-name={{- .Values.networking.vlan.VLAN_INTERFACE_NAME }}
+          - --cni-conf-dir={{ .Values.cni_conf.CNI_CONF_DIR }}
+          - --cni-conf-file={{ .Values.cni_conf.CNI_CONF_FILE }}
           - --cni-conf-name={{- .Values.cni_conf.CNI_CONFIG_PRIORITY -}}-kube-ovn.conflist
           - --logtostderr=false
           - --alsologtostderr=true
           - --log_file=/var/log/kube-ovn/kube-ovn-cni.log
           - --log_file_max_size=0
+          - --enable-metrics={{- .Values.networking.ENABLE_METRICS }}
         securityContext:
           runAsUser: 0
           privileged: true
@@ -141,11 +147,11 @@ spec:
           timeoutSeconds: 3
         resources:
           requests:
-            cpu: 100m
-            memory: 100Mi
+            cpu: {{ index .Values "kube-ovn-cni" "requests" "cpu" }}
+            memory: {{ index .Values "kube-ovn-cni" "requests" "memory" }}
           limits:
-            cpu: 1000m
-            memory: 1Gi
+            cpu: {{ index .Values "kube-ovn-cni" "limits" "cpu" }}
+            memory: {{ index .Values "kube-ovn-cni" "limits" "memory" }}
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
