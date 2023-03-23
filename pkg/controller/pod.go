@@ -324,10 +324,25 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		}()
 		return
 	}
+	// hotplug or hotunplug nic
+	oldPodNets, err := c.getPodKubeovnNets(oldPod)
+	if err != nil {
+		klog.Errorf("failed to get oldPod nets %v", err)
+		return
+	}
 
 	podNets, err := c.getPodKubeovnNets(newPod)
 	if err != nil {
-		klog.Errorf("failed to get pod nets %v", err)
+		klog.Errorf("failed to get newPod nets %v", err)
+		return
+	}
+
+	needHotUnPlug, needHotPlug := diffKubeovnNets(oldPodNets, podNets)
+	if len(needHotUnPlug) > 0 {
+		c.updatePodQueue.Add(key)
+	}
+	if len(needHotPlug) > 0 {
+		c.addPodQueue.Add(key)
 		return
 	}
 
@@ -935,6 +950,11 @@ func (c *Controller) handleUpdatePod(key string) error {
 		return err
 	}
 
+	if err = c.syncKubeOvnNet(pod, podNets); err != nil {
+		klog.Errorf("failed to sync pod nets %v", err)
+		return err
+	}
+
 	for _, podNet := range podNets {
 		if !isOvnSubnet(podNet.Subnet) {
 			continue
@@ -1063,6 +1083,56 @@ func (c *Controller) handleUpdatePod(key string) error {
 		klog.Errorf("patch pod %s/%s failed %v", name, namespace, err)
 		return err
 	}
+	return nil
+}
+
+func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) error {
+	podName := c.getNameByPod(pod)
+	key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
+	targetPortNameList := make(map[string]struct{})
+	portsNeedToDel := []string{}
+	subnetUsedByPort := make(map[string]string)
+
+	for _, podNet := range podNets {
+		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+		targetPortNameList[portName] = struct{}{}
+	}
+
+	ports, err := c.ovnClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": key})
+	if err != nil {
+		klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
+		return err
+	}
+
+	for _, port := range ports {
+		if _, ok := targetPortNameList[port.Name]; !ok {
+			portsNeedToDel = append(portsNeedToDel, port.Name)
+			subnetUsedByPort[port.Name] = port.ExternalIDs["ls"]
+		}
+	}
+
+	if len(portsNeedToDel) == 0 {
+		return nil
+	}
+
+	for _, portNeedDel := range portsNeedToDel {
+
+		if subnet, ok := c.ipam.Subnets[subnetUsedByPort[portNeedDel]]; ok {
+			subnet.ReleaseAddressWithNicName(podName, portNeedDel)
+		}
+
+		if err := c.ovnClient.DeleteLogicalSwitchPort(portNeedDel); err != nil {
+			klog.Errorf("failed to delete lsp %s, %v", portNeedDel, err)
+			return err
+		}
+		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portNeedDel, metav1.DeleteOptions{}); err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to delete ip %s, %v", portNeedDel, err)
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -1231,6 +1301,26 @@ type kubeovnNet struct {
 	Subnet             *kubeovnv1.Subnet
 	IsDefault          bool
 	AllowLiveMigration bool
+}
+
+func diffKubeovnNets(exist []*kubeovnNet, target []*kubeovnNet) (needHotUnPlug []*kubeovnNet, needHotPlug []*kubeovnNet) {
+	existNetMap := make(map[string]*kubeovnNet, len(exist))
+	for _, item := range exist {
+		existNetMap[item.ProviderName] = item
+	}
+
+	for _, item := range target {
+		if _, ok := existNetMap[item.ProviderName]; ok {
+			delete(existNetMap, item.ProviderName)
+		} else {
+			needHotPlug = append(needHotPlug, item)
+		}
+	}
+	for _, item := range existNetMap {
+		needHotUnPlug = append(needHotUnPlug, item)
+	}
+
+	return
 }
 
 func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {

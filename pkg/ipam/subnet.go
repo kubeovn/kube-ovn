@@ -570,6 +570,14 @@ func (subnet *Subnet) ReleaseAddress(podName string) {
 	}
 }
 
+func (subnet *Subnet) ReleaseAddressWithNicName(podName, nicName string) {
+	subnet.mutex.Lock()
+	defer subnet.mutex.Unlock()
+
+	subnet.releaseAddr(podName, nicName)
+	subnet.popPodNic(podName, nicName)
+}
+
 func (subnet *Subnet) ContainAddress(address IP) bool {
 	subnet.mutex.RLock()
 	defer subnet.mutex.RUnlock()
