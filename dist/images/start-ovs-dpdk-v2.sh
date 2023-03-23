@@ -103,10 +103,11 @@ esac
 
 ovs-vsctl set port ${DPDK_TUNNEL_IFACE} tag=${VLAN_TAG}
 
-ip addr add ${ENCAP_IP} dev ${DPDK_TUNNEL_IFACE}
 fi
 
 ip link set ${DPDK_TUNNEL_IFACE} up
+
+ip addr replace ${ENCAP_IP} dev ${DPDK_TUNNEL_IFACE}
 
 ovs-vsctl --may-exist add-br br-int \
   -- set Bridge br-int datapath_type=netdev \
