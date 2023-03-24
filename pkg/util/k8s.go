@@ -23,7 +23,7 @@ func DialApiServer(host string) error {
 		conn, err := net.DialTimeout("tcp", address, 3*time.Second)
 		if err == nil {
 			klog.Infof("succeeded to connected to apiserver %q", host)
-			conn.Close()
+			_ = conn.Close()
 			return nil
 		}
 		klog.Warningf("failed to dial %s: %v", address, err)
