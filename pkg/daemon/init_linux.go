@@ -26,10 +26,8 @@ func nmSetManaged(device string, managed bool) error {
 
 	running, err := nm.Running()
 	if err != nil {
-		if err != nil {
-			klog.Warningf("failed to check NetworkManager running state: %v", err)
-			return nil
-		}
+		klog.Warningf("failed to check NetworkManager running state: %v", err)
+		return nil
 	}
 	if !running {
 		klog.V(5).Info("NetworkManager is not running, ignore")
