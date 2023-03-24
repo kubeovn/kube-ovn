@@ -3303,12 +3303,12 @@ spec:
         - name: host-ns
           hostPath:
             path: /var/run/netns
-        - name: host-log-ovs
-          hostPath:
-            path: /var/log/openvswitch
         - name: host-dbus
           hostPath:
             path: /var/run/dbus
+        - name: host-log-ovs
+          hostPath:
+            path: /var/log/openvswitch
         - name: kube-ovn-log
           hostPath:
             path: /var/log/kube-ovn
