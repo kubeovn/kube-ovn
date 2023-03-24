@@ -22,16 +22,16 @@ func DialApiServer(host string) error {
 	for i := 0; i < 10; i++ {
 		conn, err := net.DialTimeout("tcp", address, 3*time.Second)
 		if err == nil {
-			klog.Infof("succeeded to connected to apiserver %q", host)
+			klog.Infof("succeeded to dial apiserver %q", address)
 			_ = conn.Close()
 			return nil
 		}
-		klog.Warningf("failed to dial %s: %v", address, err)
+		klog.Warningf("failed to dial apiserver %q: %v", address, err)
 		<-timer.C
 		timer.Reset(3 * time.Second)
 	}
 
-	return fmt.Errorf("timed out connecting to apiserver %q", host)
+	return fmt.Errorf("timed out dialing apiserver %q", host)
 }
 
 func GetNodeInternalIP(node v1.Node) (ipv4, ipv6 string) {
