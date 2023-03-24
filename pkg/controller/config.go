@@ -12,10 +12,10 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
+	"kubevirt.io/client-go/kubecli"
 
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	"kubevirt.io/client-go/kubecli"
 )
 
 // Configuration is the controller conf
@@ -253,6 +253,13 @@ func (config *Configuration) initKubeClient() error {
 		klog.Errorf("failed to build kubeconfig %v", err)
 		return err
 	}
+
+	// try to connect to apiserver's tcp port
+	if err = util.DialApiServer(cfg.Host); err != nil {
+		klog.Errorf("failed to dial apiserver: %v", err)
+		return err
+	}
+
 	cfg.QPS = 1000
 	cfg.Burst = 2000
 	// use cmd arg to modify timeout later
