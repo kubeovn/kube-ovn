@@ -1303,7 +1303,7 @@ func (c *Controller) redoFip(key, redo string, eipReady bool) error {
 	}
 	if redo != "" && redo != fip.Status.Redo {
 		if !eipReady {
-			if err = c.patchEipStatus(fip.Spec.EIP, "", redo, "", false); err != nil {
+			if err = c.patchEipStatus(fip.Spec.EIP, "", redo, "", "", false); err != nil {
 				return err
 			}
 		}
@@ -1431,7 +1431,7 @@ func (c *Controller) redoDnat(key, redo string, eipReady bool) error {
 	}
 	if redo != "" && redo != dnat.Status.Redo {
 		if !eipReady {
-			if err = c.patchEipStatus(dnat.Spec.EIP, "", redo, "", false); err != nil {
+			if err = c.patchEipStatus(dnat.Spec.EIP, "", redo, "", "", false); err != nil {
 				return err
 			}
 		}
@@ -1541,7 +1541,7 @@ func (c *Controller) redoSnat(key, redo string, eipReady bool) error {
 	}
 	if redo != "" && redo != snat.Status.Redo {
 		if !eipReady {
-			if err = c.patchEipStatus(snat.Spec.EIP, "", redo, "", false); err != nil {
+			if err = c.patchEipStatus(snat.Spec.EIP, "", redo, "", "", false); err != nil {
 				return err
 			}
 		}

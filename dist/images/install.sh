@@ -467,6 +467,8 @@ spec:
                   type: string
                 redo:
                   type: string
+                qosPolicy:
+                  type: string
                 conditions:
                   type: array
                   items:
@@ -494,6 +496,8 @@ spec:
                 macAddress:
                   type: string
                 natGwDp:
+                  type: string
+                qosPolicy:
                   type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
@@ -1790,6 +1794,75 @@ spec:
         status: {}
   conversion:
     strategy: None
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: qos-policies.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: qos-policies
+    singular: qos-policy
+    shortNames:
+      - qos
+    kind: QoSPolicy
+    listKind: QoSPolicyList
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+      - jsonPath: .spec.bandwidthLimitRule.ingressMax
+        name: IngressMax
+        type: string
+      - jsonPath: .spec.bandwidthLimitRule.egressMax
+        name: EgressMax
+        type: string
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            status:
+              type: object
+              properties:
+                bandwidthLimitRule:
+                  type: object
+                  properties:
+                    ingressMax:
+                      type: string
+                    egressMax:
+                      type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                      lastUpdateTime:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+            spec:
+              type: object
+              properties:
+                bandwidthLimitRule:
+                  type: object
+                  properties:
+                    ingressMax:
+                      type: string
+                    egressMax:
+                      type: string
 EOF
 
 if $DPDK; then
@@ -1844,6 +1917,8 @@ rules:
       - switch-lb-rules/status
       - vpc-dnses
       - vpc-dnses/status
+      - qos-policies
+      - qos-policies/status
     verbs:
       - "*"
   - apiGroups:
@@ -2353,6 +2428,8 @@ rules:
       - vpc-dnses/status
       - switch-lb-rules
       - switch-lb-rules/status
+      - qos-policies
+      - qos-policies/status
     verbs:
       - "*"
   - apiGroups:

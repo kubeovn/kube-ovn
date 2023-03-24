@@ -240,6 +240,71 @@ function del_dnat() {
     done
 }
 
+
+function eip_ingress_qos_add() {
+    for rule in $@
+    do
+        arr=(${rule//,/ })
+        v4ip=(${arr[0]//\// })
+        rate=${arr[1]}
+        tc qdisc add dev net1 ingress 2>/dev/nul || true
+        # get qdisc id
+        qdisc_id=$(tc qdisc show dev net1 ingress | awk '{print $3}')
+        # del old filter
+        tc -p -s -d filter show dev net1 parent $qdisc_id prio 1 | grep -w $v4ip
+        if [ "$?" -eq 0 ];then
+            exec_cmd "tc filter del dev net1 parent $qdisc_id protocol ip prio 1 u32 match ip dst $v4ip"
+        fi
+        exec_cmd "tc filter add dev net1 parent $qdisc_id protocol ip prio 1 u32 match ip dst $v4ip police rate "$rate"Mbit burst "$rate"Mb drop flowid :1"
+    done
+}
+
+function eip_egress_qos_add() {
+    for rule in $@
+    do
+        arr=(${rule//,/ })
+        v4ip=(${arr[0]//\// })
+        rate=${arr[1]}
+        qdisc_id="1:0"
+        tc qdisc add dev net1 root handle $qdisc_id htb 2>/dev/nul || true
+        # del old filter
+        tc -p -s -d filter show dev net1 parent $qdisc_id prio 1 | grep -w $v4ip
+        if [ "$?" -eq 0 ];then
+            exec_cmd "tc filter del dev net1 parent $qdisc_id protocol ip prio 1 u32 match ip src $v4ip"
+        fi
+        exec_cmd "tc filter add dev net1 parent $qdisc_id protocol ip prio 1 u32 match ip src $v4ip police rate "$rate"Mbit burst "$rate"Mb drop flowid :1"
+    done
+}
+
+function eip_ingress_qos_del() {
+    for rule in $@
+    do
+        arr=(${rule//,/ })
+        v4ip=(${arr[0]//\// })
+        
+        qdisc_id=$(tc qdisc show dev net1 ingress | awk '{print $3}')
+        tc -p -s -d filter show dev net1 parent $qdisc_id prio 1 | grep -w $v4ip
+        if [ "$?" -eq 0 ];then
+            exec_cmd "tc filter del dev net1 parent $qdisc_id protocol ip prio 1 u32 match ip dst $v4ip"
+        fi
+    done
+}
+
+function eip_egress_qos_del() {
+    for rule in $@
+    do
+        arr=(${rule//,/ })
+        v4ip=(${arr[0]//\// })
+
+        qdisc_id="1:0"
+        tc -p -s -d filter show dev net1 parent $qdisc_id prio 1 | grep -w $v4ip
+        if [ "$?" -eq 0 ];then
+            exec_cmd "tc filter del dev net1 parent $qdisc_id protocol ip prio 1 u32 match ip src $v4ip"
+        fi
+    done
+}
+
+
 rules=${@:2:${#}}
 opt=$1
 case $opt in
@@ -298,6 +363,22 @@ case $opt in
  get-iptables-version)
         echo "get-iptables-version $rules"
         get_iptables_version $rules
+        ;;
+ eip-ingress-qos-add)
+        echo "eip-ingress-qos-add $rules"
+        eip_ingress_qos_add $rules
+        ;;
+ eip-egress-qos-add)
+        echo "eip-egress-qos-add $rules"
+        eip_egress_qos_add $rules
+        ;;
+ eip-ingress-qos-del)
+        echo "eip-ingress-qos-del $rules"
+        eip_ingress_qos_del $rules
+        ;;
+ eip-egress-qos-del)
+        echo "eip-egress-qos-del $rules"
+        eip_egress_qos_del $rules
         ;;
  *)
         echo "Usage: $0 [init|subnet-route-add|subnet-route-del|eip-add|eip-del|floating-ip-add|floating-ip-del|dnat-add|dnat-del|snat-add|snat-del] ..."

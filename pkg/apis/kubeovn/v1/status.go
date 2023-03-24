@@ -117,3 +117,13 @@ func (osrs *OvnSnatRuleStatus) Bytes() ([]byte, error) {
 	klog.V(5).Info("status body", newStr)
 	return []byte(newStr), nil
 }
+
+func (qoss *QoSPolicyStatus) Bytes() ([]byte, error) {
+	bytes, err := json.Marshal(qoss)
+	if err != nil {
+		return nil, err
+	}
+	newStr := fmt.Sprintf(`{"status": %s}`, string(bytes))
+	klog.V(5).Info("status body", newStr)
+	return []byte(newStr), nil
+}

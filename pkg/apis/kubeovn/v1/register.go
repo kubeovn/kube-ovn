@@ -65,6 +65,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&SwitchLBRuleList{},
 		&VpcDns{},
 		&VpcDnsList{},
+		&QoSPolicy{},
+		&QoSPolicyList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

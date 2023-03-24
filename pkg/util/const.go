@@ -111,6 +111,7 @@ const (
 	VpcNatGatewayNameLabel     = "ovn.kubernetes.io/vpc-nat-gw-name"
 	VpcLbLabel                 = "ovn.kubernetes.io/vpc_lb"
 	VpcDnsNameLabel            = "ovn.kubernetes.io/vpc-dns"
+	QoSLabel                   = "ovn.kubernetes.io/qos"
 	NetworkPolicyLogAnnotation = "ovn.kubernetes.io/enable_log"
 
 	ProtocolTCP  = "tcp"
@@ -235,4 +236,7 @@ const (
 	DefaultServiceSessionStickinessTimeout = 10800
 
 	OvnSubnetGatewayIptables = "ovn-subnet-gateway"
+
+	QoSDirectionIngress = "ingress"
+	QoSDirectionEgress  = "egress"
 )

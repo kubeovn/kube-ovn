@@ -36,6 +36,8 @@ type OvnSnatRuleExpansion interface{}
 
 type ProviderNetworkExpansion interface{}
 
+type QoSPolicyExpansion interface{}
+
 type SecurityGroupExpansion interface{}
 
 type SubnetExpansion interface{}
