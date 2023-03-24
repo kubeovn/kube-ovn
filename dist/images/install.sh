@@ -2773,6 +2773,8 @@ spec:
                 fieldPath: status.podIPs
           - name: ENABLE_BIND_LOCAL_IP
             value: "$ENABLE_BIND_LOCAL_IP"
+          - name: DBUS_SYSTEM_BUS_ADDRESS
+            value: "unix:path=/host/var/run/dbus/system_bus_socket"
         volumeMounts:
           - name: host-modules
             mountPath: /lib/modules
@@ -2788,6 +2790,9 @@ spec:
             mountPropagation: Bidirectional
           - mountPath: /run/ovn
             name: host-run-ovn
+          - mountPath: /host/var/run/dbus
+            name: host-dbus
+            mountPropagation: HostToContainer
           - mountPath: /var/run/netns
             name: host-ns
             mountPropagation: HostToContainer
@@ -2851,6 +2856,9 @@ spec:
         - name: host-ns
           hostPath:
             path: /var/run/netns
+        - name: host-dbus
+          hostPath:
+            path: /var/run/dbus
         - name: host-log-ovs
           hostPath:
             path: /var/log/openvswitch
