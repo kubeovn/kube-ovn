@@ -691,7 +691,7 @@ func configProviderNic(nicName, brName string) (int, error) {
 
 	// set link unmanaged by NetworkManager
 	if err = nmSetManaged(nicName, false); err != nil {
-		klog.Errorf("failed set device %s to unmanaged by NetworkManager: %v", nicName, err)
+		klog.Errorf("failed set device %s unmanaged by NetworkManager: %v", nicName, err)
 		return 0, err
 	}
 

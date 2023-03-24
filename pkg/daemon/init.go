@@ -129,6 +129,7 @@ func nmSetManaged(device string, managed bool) error {
 		return nil
 	}
 
+	klog.Infof(`setting device %s NetworkManager property "managed" to %v`, device, managed)
 	if err = d.SetPropertyManaged(managed); err != nil {
 		klog.Errorf("failed to set device property managed to %v: %v", managed, err)
 		return err
@@ -187,7 +188,7 @@ func changeProvideNicName(current, target string) (bool, error) {
 
 	// set link unmanaged by NetworkManager
 	if err = nmSetManaged(current, false); err != nil {
-		klog.Errorf("failed set device %s to unmanaged by NetworkManager: %v", current, err)
+		klog.Errorf("failed set device %s unmanaged by NetworkManager: %v", current, err)
 		return false, err
 	}
 
