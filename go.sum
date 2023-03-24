@@ -160,8 +160,6 @@ github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578/go.mod h1:uGdko
 github.com/Shopify/logrus-bugsnag v0.0.0-20171204204709-577dee27f20d/go.mod h1:HI8ITrYtUY+O+ZhtlqUnD8+KwNPOyugEhfP9fdUIaEQ=
 github.com/Shopify/sarama v1.19.0/go.mod h1:FVkBWblsNy7DGZRfXLU0O9RCGt5g3g3yEuWXgklEdEo=
 github.com/Shopify/toxiproxy v2.1.4+incompatible/go.mod h1:OXgGpZ6Cli1/URJOF1DMxUHB2q5Ap20/P/eIdh4G0pI=
-github.com/Wifx/gonetworkmanager v0.5.0 h1:P209z0yj705bl5tmyHTlpXPSv3QzjPtIM4X0SyDAqWA=
-github.com/Wifx/gonetworkmanager v0.5.0/go.mod h1:EdhHf2O00IZXfMv9LC6CS6SgTwcMTg/ZSDhGvch0cs8=
 github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc/go.mod h1:LOuyumcjzFXgccqObfd/Ljyb9UuFJ6TxHnclSeseNhc=
 github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751/go.mod h1:LOuyumcjzFXgccqObfd/Ljyb9UuFJ6TxHnclSeseNhc=
 github.com/alecthomas/units v0.0.0-20151022065526-2efee857e7cf/go.mod h1:ybxpYRFXyAe+OPACYpWeL0wqObRcbAqCMya13uyzqw0=
@@ -616,7 +614,6 @@ github.com/gobuffalo/flect v0.1.5/go.mod h1:W3K3X9ksuZfir8f/LrfVtWmCDQFfayuylOJ7
 github.com/godbus/dbus v0.0.0-20151105175453-c7fdd8b5cd55/go.mod h1:/YcGZj5zSblfDWMMoOzV4fas9FZnQYTkDnsGvmh2Grw=
 github.com/godbus/dbus v0.0.0-20180201030542-885f9cc04c9c/go.mod h1:/YcGZj5zSblfDWMMoOzV4fas9FZnQYTkDnsGvmh2Grw=
 github.com/godbus/dbus v0.0.0-20190422162347-ade71ed3457e/go.mod h1:bBOAhwG1umN6/6ZUMtDFBMQR8jRg9O75tm9K00oMsK4=
-github.com/godbus/dbus/v5 v5.0.2/go.mod h1:xhWf0FNVPg57R7Z0UbKHbJfkEywrmjJnf7w5xrFpKfA=
 github.com/godbus/dbus/v5 v5.0.3/go.mod h1:xhWf0FNVPg57R7Z0UbKHbJfkEywrmjJnf7w5xrFpKfA=
 github.com/godbus/dbus/v5 v5.0.4/go.mod h1:xhWf0FNVPg57R7Z0UbKHbJfkEywrmjJnf7w5xrFpKfA=
 github.com/godbus/dbus/v5 v5.0.6/go.mod h1:xhWf0FNVPg57R7Z0UbKHbJfkEywrmjJnf7w5xrFpKfA=
@@ -927,6 +924,8 @@ github.com/kubeovn/arp v0.0.0-20230101053045-8a0772d9c34c h1:AcOKlV+lInNlGO3o3+1
 github.com/kubeovn/arp v0.0.0-20230101053045-8a0772d9c34c/go.mod h1:Ce8lvkopTGXfPmeb5AY3/umEOmoFVV3HlCPGfGk0+Y0=
 github.com/kubeovn/felix v0.0.0-20220325073257-c8a0f705d139 h1:MaLC8/dohKHU8nkfglfE2oikefB6urJG75yZDOcKTRU=
 github.com/kubeovn/felix v0.0.0-20220325073257-c8a0f705d139/go.mod h1:ulxnUH9cbIOtCH+exhJPeV2mleh+bDv67WKsl/MVU/g=
+github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230324083932-9703e27202aa h1:qkH9upUJaWqbtCNOO+AJZ7TQ7E4VmfZ6sS2KfQ49J7w=
+github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230324083932-9703e27202aa/go.mod h1:CFDIM8UHDd7v7MVB41VzMW8FB03yOD7huzQlPsl5elw=
 github.com/kubeovn/kubevirt-client-go v0.0.0-20230301060230-5aae21a9918b h1:lTSeHcqlNKqoeqsaDLGb2iyFcIC0EaT+AtXD+Rzdpi0=
 github.com/kubeovn/kubevirt-client-go v0.0.0-20230301060230-5aae21a9918b/go.mod h1:X7WhI5GBZys91c4WWeoOQemxydZw1eaHdC+9jqo2kyY=
 github.com/kubeovn/libovsdb v0.0.0-20230208064641-36b813e450dd h1:fPdrmrfxkFEzVoh1mo2kafDI6tW1lJhUHx0uioYKANM=
