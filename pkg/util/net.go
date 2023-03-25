@@ -329,7 +329,7 @@ func SplitStringIP(ipStr string) (string, string) {
 
 // ExpandExcludeIPs used to get exclude ips in range of subnet cidr, excludes cidr addr and broadcast addr
 func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
-	rv := []string{}
+	var result []string
 	for _, excludeIP := range excludeIPs {
 		if strings.Contains(excludeIP, "..") {
 			parts := strings.Split(excludeIP, "..")
@@ -366,22 +366,22 @@ func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
 					e1 = Ip2BigInt(lastIP)
 				}
 				if c := s1.Cmp(e1); c == 0 {
-					rv = append(rv, BigInt2Ip(s1))
+					result = append(result, BigInt2Ip(s1))
 				} else if c < 0 {
-					rv = append(rv, BigInt2Ip(s1)+".."+BigInt2Ip(e1))
+					result = append(result, BigInt2Ip(s1)+".."+BigInt2Ip(e1))
 				}
 			}
 		} else {
 			for _, cidrBlock := range strings.Split(cidr, ",") {
 				if CIDRContainIP(cidrBlock, excludeIP) && excludeIP != SubnetNumber(cidrBlock) && excludeIP != SubnetBroadcast(cidrBlock) {
-					rv = append(rv, excludeIP)
+					result = append(result, excludeIP)
 					break
 				}
 			}
 		}
 	}
-	klog.V(3).Infof("expand exclude ips %v", rv)
-	return rv
+	klog.V(3).Infof("expand exclude ips %v", result)
+	return result
 }
 
 func ContainsIPs(excludeIP string, ip string) bool {

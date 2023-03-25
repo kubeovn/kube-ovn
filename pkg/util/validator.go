@@ -109,31 +109,31 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 }
 
 func ValidatePodNetwork(annotations map[string]string) error {
-	errors := []error{}
+	var networkConfigErrors []error
 
 	if ipAddress := annotations[IpAddressAnnotation]; ipAddress != "" {
 		// The format of IP Annotation in dual-stack is 10.244.0.0/16,fd00:10:244:0:2::/80
 		for _, ip := range strings.Split(ipAddress, ",") {
 			if strings.Contains(ip, "/") {
 				if _, _, err := net.ParseCIDR(ip); err != nil {
-					errors = append(errors, fmt.Errorf("%s is not a valid %s", ip, IpAddressAnnotation))
+					networkConfigErrors = append(networkConfigErrors, fmt.Errorf("%s is not a valid %s", ip, IpAddressAnnotation))
 					continue
 				}
 			} else {
 				if net.ParseIP(ip) == nil {
-					errors = append(errors, fmt.Errorf("%s is not a valid %s", ip, IpAddressAnnotation))
+					networkConfigErrors = append(networkConfigErrors, fmt.Errorf("%s is not a valid %s", ip, IpAddressAnnotation))
 					continue
 				}
 			}
 
 			if cidrStr := annotations[CidrAnnotation]; cidrStr != "" {
 				if err := CheckCidrs(cidrStr); err != nil {
-					errors = append(errors, fmt.Errorf("invalid cidr %s", cidrStr))
+					networkConfigErrors = append(networkConfigErrors, fmt.Errorf("invalid cidr %s", cidrStr))
 					continue
 				}
 
 				if !CIDRContainIP(cidrStr, ip) {
-					errors = append(errors, fmt.Errorf("%s not in cidr %s", ip, cidrStr))
+					networkConfigErrors = append(networkConfigErrors, fmt.Errorf("%s not in cidr %s", ip, cidrStr))
 					continue
 				}
 			}
@@ -143,7 +143,7 @@ func ValidatePodNetwork(annotations map[string]string) error {
 	mac := annotations[MacAddressAnnotation]
 	if mac != "" {
 		if _, err := net.ParseMAC(mac); err != nil {
-			errors = append(errors, fmt.Errorf("%s is not a valid %s", mac, MacAddressAnnotation))
+			networkConfigErrors = append(networkConfigErrors, fmt.Errorf("%s is not a valid %s", mac, MacAddressAnnotation))
 		}
 	}
 
@@ -152,14 +152,14 @@ func ValidatePodNetwork(annotations map[string]string) error {
 		for _, ips := range strings.Split(ipPool, ";") {
 			if cidrStr := annotations[CidrAnnotation]; cidrStr != "" {
 				if !CIDRContainIP(cidrStr, ips) {
-					errors = append(errors, fmt.Errorf("%s not in cidr %s", ips, cidrStr))
+					networkConfigErrors = append(networkConfigErrors, fmt.Errorf("%s not in cidr %s", ips, cidrStr))
 					continue
 				}
 			}
 
 			for _, ip := range strings.Split(ips, ",") {
 				if net.ParseIP(strings.TrimSpace(ip)) == nil {
-					errors = append(errors, fmt.Errorf("%s in %s is not a valid address", ip, IpPoolAnnotation))
+					networkConfigErrors = append(networkConfigErrors, fmt.Errorf("%s in %s is not a valid address", ip, IpPoolAnnotation))
 				}
 			}
 		}
@@ -168,18 +168,18 @@ func ValidatePodNetwork(annotations map[string]string) error {
 	ingress := annotations[IngressRateAnnotation]
 	if ingress != "" {
 		if _, err := strconv.Atoi(ingress); err != nil {
-			errors = append(errors, fmt.Errorf("%s is not a valid %s", ingress, IngressRateAnnotation))
+			networkConfigErrors = append(networkConfigErrors, fmt.Errorf("%s is not a valid %s", ingress, IngressRateAnnotation))
 		}
 	}
 
 	egress := annotations[EgressRateAnnotation]
 	if egress != "" {
 		if _, err := strconv.Atoi(egress); err != nil {
-			errors = append(errors, fmt.Errorf("%s is not a valid %s", egress, EgressRateAnnotation))
+			networkConfigErrors = append(networkConfigErrors, fmt.Errorf("%s is not a valid %s", egress, EgressRateAnnotation))
 		}
 	}
 
-	return utilerrors.NewAggregate(errors)
+	return utilerrors.NewAggregate(networkConfigErrors)
 }
 
 func ValidatePodCidr(cidr, ip string) error {
