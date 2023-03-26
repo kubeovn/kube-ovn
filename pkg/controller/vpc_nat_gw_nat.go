@@ -152,7 +152,8 @@ func (c *Controller) enqueueUpdateIptablesSnatRule(old, new interface{}) {
 	}
 	if oldSnat.Status.V4ip != newSnat.Status.V4ip ||
 		oldSnat.Spec.EIP != newSnat.Spec.EIP ||
-		oldSnat.Status.Redo != newSnat.Status.Redo {
+		oldSnat.Status.Redo != newSnat.Status.Redo ||
+		oldSnat.Spec.InternalCIDR != newSnat.Spec.InternalCIDR {
 		klog.V(3).Infof("enqueue update snat %s", key)
 		c.updateIptablesSnatRuleQueue.Add(key)
 		return
@@ -930,8 +931,13 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 		}
 		return err
 	}
-	v4Cidr, _ := util.SplitStringIP(cachedSnat.Spec.InternalCIDR)
+	v4Cidr, _ := util.SplitStringIP(cachedSnat.Status.InternalCIDR)
 	if v4Cidr == "" {
+		err = fmt.Errorf("failed to get snat v4 internal cidr, original cidr is %s", cachedSnat.Status.InternalCIDR)
+		return err
+	}
+	v4CidrSpec, _ := util.SplitStringIP(cachedSnat.Spec.InternalCIDR)
+	if v4CidrSpec == "" {
 		err = fmt.Errorf("failed to get snat v4 internal cidr, original cidr is %s", cachedSnat.Spec.InternalCIDR)
 		return err
 	}
@@ -971,21 +977,22 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 	if vpcNatEnabled != "true" {
 		return fmt.Errorf("iptables nat gw not enable")
 	}
+
+	klog.V(3).Infof("snat change ip, old ip %s, new ip %s", cachedSnat.Status.V4ip, eip.Status.IP)
+	if err = c.deleteSnatInPod(cachedSnat.Status.NatGwDp, cachedSnat.Status.V4ip, v4Cidr); err != nil {
+		klog.Errorf("failed to delete old snat, %v", err)
+		return err
+	}
+	if err = c.createSnatInPod(cachedSnat.Status.NatGwDp, eip.Status.IP, v4CidrSpec); err != nil {
+		klog.Errorf("failed to create new snat, %v", err)
+		return err
+	}
+	if err = c.patchSnatStatus(key, eip.Status.IP, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
+		klog.Errorf("failed to patch status for snat %s, %v", key, err)
+		return err
+	}
 	// snat change eip
 	if c.snatChangeEip(cachedSnat, eip) {
-		klog.V(3).Infof("snat change ip, old ip %s, new ip %s", cachedSnat.Status.V4ip, eip.Status.IP)
-		if err = c.deleteSnatInPod(cachedSnat.Status.NatGwDp, cachedSnat.Status.V4ip, v4Cidr); err != nil {
-			klog.Errorf("failed to delete old snat, %v", err)
-			return err
-		}
-		if err = c.createSnatInPod(cachedSnat.Status.NatGwDp, eip.Status.IP, v4Cidr); err != nil {
-			klog.Errorf("failed to create new snat, %v", err)
-			return err
-		}
-		if err = c.patchSnatStatus(key, eip.Status.IP, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
-			klog.Errorf("failed to patch status for snat %s, %v", key, err)
-			return err
-		}
 		if err = c.patchEipNat(eipName, util.SnatUsingEip); err != nil {
 			klog.Errorf("failed to patch snat use eip %s, %v", key, err)
 			return err
@@ -1005,7 +1012,7 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 		cachedSnat.Status.Redo != "" &&
 		cachedSnat.Status.V4ip != "" &&
 		cachedSnat.DeletionTimestamp.IsZero() {
-		if err = c.createSnatInPod(cachedSnat.Status.NatGwDp, cachedSnat.Status.V4ip, v4Cidr); err != nil {
+		if err = c.createSnatInPod(cachedSnat.Status.NatGwDp, cachedSnat.Status.V4ip, v4CidrSpec); err != nil {
 			klog.Errorf("failed to create new snat, %v", err)
 			return err
 		}
@@ -1519,6 +1526,16 @@ func (c *Controller) patchSnatStatus(key, v4ip, v6ip, natGwDp, redo string, read
 		snat.Status.V6ip = v6ip
 		snat.Status.NatGwDp = natGwDp
 		changed = true
+	}
+	if ready && snat.Spec.InternalCIDR != "" {
+		v4CidrSpec, _ := util.SplitStringIP(snat.Spec.InternalCIDR)
+		if v4CidrSpec != "" {
+			v4Cidr, _ := util.SplitStringIP(snat.Status.InternalCIDR)
+			if v4Cidr != v4CidrSpec {
+				snat.Status.InternalCIDR = v4CidrSpec
+				changed = true
+			}
+		}
 	}
 
 	if changed {

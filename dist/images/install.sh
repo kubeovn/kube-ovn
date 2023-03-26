@@ -739,6 +739,8 @@ spec:
                   type: string
                 redo:
                   type: string
+               internalCIDR:
+                  type: string
                 conditions:
                   type: array
                   items:
