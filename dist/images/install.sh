@@ -739,7 +739,7 @@ spec:
                   type: string
                 redo:
                   type: string
-               internalCIDR:
+                internalCIDR:
                   type: string
                 conditions:
                   type: array
