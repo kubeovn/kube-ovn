@@ -20,7 +20,7 @@ require (
 	github.com/golang/mock v1.6.0
 	github.com/greenpau/ovsdb v1.0.3
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.4.0
-	github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230324083932-9703e27202aa
+	github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230327064018-0b27f88874f7
 	github.com/mdlayher/arp v0.0.0-20220512170110-6706a2966875
 	github.com/moby/sys/mountinfo v0.6.2
 	github.com/neverlee/keymutex v0.0.0-20171121013845-f593aa834bf9
