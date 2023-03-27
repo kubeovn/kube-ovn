@@ -6,7 +6,6 @@ require (
 	github.com/Mellanox/sriovnet v1.1.0
 	github.com/Microsoft/go-winio v0.5.2
 	github.com/Microsoft/hcsshim v0.9.3
-	github.com/Wifx/gonetworkmanager v0.4.0
 	github.com/alauda/felix v3.6.6-0.20201207121355-187332daf314+incompatible
 	github.com/bhendo/go-powershell v0.0.0-20190719160123-219e7fb4e41e
 	github.com/cenkalti/backoff/v4 v4.2.0
@@ -18,6 +17,7 @@ require (
 	github.com/golang/protobuf v1.5.2
 	github.com/greenpau/ovsdb v1.0.2
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.3.0
+	github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230324083932-9703e27202aa
 	github.com/mdlayher/arp v0.0.0-20220512170110-6706a2966875
 	github.com/moby/sys/mountinfo v0.6.0
 	github.com/neverlee/keymutex v0.0.0-20171121013845-f593aa834bf9
