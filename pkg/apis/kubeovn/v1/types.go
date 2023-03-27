@@ -646,11 +646,12 @@ type IptablesSnatRuleCondition struct {
 type IptablesSnatRuleStatus struct {
 	// +optional
 	// +patchStrategy=merge
-	Ready   bool   `json:"ready" patchStrategy:"merge"`
-	V4ip    string `json:"v4ip" patchStrategy:"merge"`
-	V6ip    string `json:"v6ip" patchStrategy:"merge"`
-	NatGwDp string `json:"natGwDp" patchStrategy:"merge"`
-	Redo    string `json:"redo" patchStrategy:"merge"`
+	Ready        bool   `json:"ready" patchStrategy:"merge"`
+	V4ip         string `json:"v4ip" patchStrategy:"merge"`
+	V6ip         string `json:"v6ip" patchStrategy:"merge"`
+	NatGwDp      string `json:"natGwDp" patchStrategy:"merge"`
+	Redo         string `json:"redo" patchStrategy:"merge"`
+	InternalCIDR string `json:"internalCIDR" patchStrategy:"merge"`
 
 	// Conditions represents the latest state of the object
 	// +optional
