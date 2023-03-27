@@ -796,7 +796,7 @@ func (c *Controller) updateCrdNatGw(key string) error {
 			gw.Labels[util.SubnetNameLabel] = gw.Spec.Subnet
 			needUpdateLabel = true
 		}
-		if gw.Labels[util.VpcNameLabel] != gw.Spec.Subnet {
+		if gw.Labels[util.VpcNameLabel] != gw.Spec.Vpc {
 			op = "replace"
 			gw.Labels[util.VpcNameLabel] = gw.Spec.Vpc
 			needUpdateLabel = true
