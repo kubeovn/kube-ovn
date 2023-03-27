@@ -691,8 +691,8 @@ github.com/kubeovn/arp v0.0.0-20230101053045-8a0772d9c34c h1:AcOKlV+lInNlGO3o3+1
 github.com/kubeovn/arp v0.0.0-20230101053045-8a0772d9c34c/go.mod h1:Ce8lvkopTGXfPmeb5AY3/umEOmoFVV3HlCPGfGk0+Y0=
 github.com/kubeovn/felix v0.0.0-20220325073257-c8a0f705d139 h1:MaLC8/dohKHU8nkfglfE2oikefB6urJG75yZDOcKTRU=
 github.com/kubeovn/felix v0.0.0-20220325073257-c8a0f705d139/go.mod h1:ulxnUH9cbIOtCH+exhJPeV2mleh+bDv67WKsl/MVU/g=
-github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230324083932-9703e27202aa h1:qkH9upUJaWqbtCNOO+AJZ7TQ7E4VmfZ6sS2KfQ49J7w=
-github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230324083932-9703e27202aa/go.mod h1:CFDIM8UHDd7v7MVB41VzMW8FB03yOD7huzQlPsl5elw=
+github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230327064018-0b27f88874f7 h1:X5/DAYXXe8p3mUz3Z+j0dsgpIUPiNhaq0f7D1Z9/8CY=
+github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230327064018-0b27f88874f7/go.mod h1:rNwHas8aX9k/BEz5dwObhRvfV7KEd0MnrTTDd4gQ3D0=
 github.com/kubeovn/libovsdb v0.0.0-20221125061852-8b910935f8e4 h1:S/R2b2/S7L3l68Y2YwV/0zDGEVDargfRVqYu6989fIw=
 github.com/kubeovn/libovsdb v0.0.0-20221125061852-8b910935f8e4/go.mod h1:N20zsElkDpTm57hVDosiZVghprt9Y4Vfqsi1HBXOzr4=
 github.com/kubeovn/netlink v0.0.0-20230322092337-960188369daf h1:inZiuUjcQaX0O0Sdki38TWzCl0+wJty+vaQKEr47by8=

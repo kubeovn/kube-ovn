@@ -15,7 +15,7 @@ require (
 	github.com/golang/protobuf v1.5.2
 	github.com/greenpau/ovsdb v0.0.0-20181114004433-3582b85e8968
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.1.1-0.20210510153419-66a699ae3b05
-	github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230324083932-9703e27202aa
+	github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230327064018-0b27f88874f7
 	github.com/mdlayher/arp v0.0.0-20220512170110-6706a2966875
 	github.com/neverlee/keymutex v0.0.0-20171121013845-f593aa834bf9
 	github.com/oilbeater/go-ping v0.0.0-20200413021620-332b7197c5b5
