@@ -4,7 +4,6 @@ go 1.19
 
 require (
 	github.com/Mellanox/sriovnet v1.0.3
-	github.com/Wifx/gonetworkmanager v0.5.0
 	github.com/alauda/felix v3.6.6-0.20201207121355-187332daf314+incompatible
 	github.com/cenkalti/backoff/v4 v4.2.0
 	github.com/cnf/structhash v0.0.0-20201127153200-e1b16c1ebc08
@@ -16,6 +15,7 @@ require (
 	github.com/golang/protobuf v1.5.2
 	github.com/greenpau/ovsdb v0.0.0-20181114004433-3582b85e8968
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.1.1-0.20210510153419-66a699ae3b05
+	github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230324083932-9703e27202aa
 	github.com/mdlayher/arp v0.0.0-20220512170110-6706a2966875
 	github.com/neverlee/keymutex v0.0.0-20171121013845-f593aa834bf9
 	github.com/oilbeater/go-ping v0.0.0-20200413021620-332b7197c5b5

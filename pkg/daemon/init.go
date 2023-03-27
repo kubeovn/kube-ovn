@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wifx/gonetworkmanager"
+	"github.com/kubeovn/gonetworkmanager/v2"
 	"github.com/vishvananda/netlink"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
@@ -112,6 +112,18 @@ func nmSetManaged(device string, managed bool) error {
 	nm, err := gonetworkmanager.NewNetworkManager()
 	if err != nil {
 		klog.V(5).Infof("failed to connect to NetworkManager: %v", err)
+		return nil
+	}
+
+	running, err := nm.Running()
+	if err != nil {
+		if err != nil {
+			klog.Warningf("failed to check NetworkManager running state: %v", err)
+			return nil
+		}
+	}
+	if !running {
+		klog.V(5).Info("NetworkManager is not running, ignore")
 		return nil
 	}
 
