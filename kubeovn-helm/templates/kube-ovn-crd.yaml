@@ -334,6 +334,8 @@ spec:
                   type: string
                 redo:
                   type: string
+                internalIp:
+                  type: string
                 conditions:
                   type: array
                   items:
@@ -423,6 +425,14 @@ spec:
                 natGwDp:
                   type: string
                 redo:
+                  type: string
+                protocol:
+                  type: string
+                internalIp:
+                  type: string
+                internalPort:
+                  type: string
+                externalPort:
                   type: string
                 conditions:
                   type: array
