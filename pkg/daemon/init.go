@@ -135,56 +135,19 @@ func ovsInitProviderNetwork(provider, nic string, exchangeLinkName, macLearningF
 }
 
 func ovsCleanProviderNetwork(provider string) error {
-	output, err := ovs.Exec(ovs.IfExists, "get", "open", ".", "external-ids:ovn-bridge-mappings")
+	mappings, err := getOvnMappings("ovn-bridge-mappings")
 	if err != nil {
-		return fmt.Errorf("failed to get ovn-bridge-mappings, %v: %q", err, output)
+		return err
 	}
 
-	var idx int
-	var m, brName string
-	mappingPrefix := provider + ":"
-	brMappings := strings.Split(output, ",")
-	for idx, m = range brMappings {
-		if strings.HasPrefix(m, mappingPrefix) {
-			brName = m[len(mappingPrefix):]
-			klog.V(3).Infof("found bridge name for provider %s: %s", provider, brName)
-			break
-		}
+	brName := mappings[provider]
+	if brName == "" {
+		return nil
 	}
 
-	if idx != len(brMappings) {
-		brMappings = append(brMappings[:idx], brMappings[idx+1:]...)
-		if len(brMappings) == 0 {
-			output, err = ovs.Exec(ovs.IfExists, "remove", "open", ".", "external-ids", "ovn-bridge-mappings")
-		} else {
-			output, err = ovs.Exec("set", "open", ".", "external-ids:ovn-bridge-mappings="+strings.Join(brMappings, ","))
-		}
-		if err != nil {
-			return fmt.Errorf("failed to set ovn-bridge-mappings, %v: %q", err, output)
-		}
-	}
-
-	if output, err = ovs.Exec(ovs.IfExists, "get", "open", ".", "external-ids:ovn-chassis-mac-mappings"); err != nil {
-		return fmt.Errorf("failed to get ovn-chassis-mac-mappings, %v: %q", err, output)
-	}
-	macMappings := strings.Split(output, ",")
-	for _, macMap := range macMappings {
-		if strings.HasPrefix(macMap, mappingPrefix) {
-			macMappings = util.RemoveString(macMappings, macMap)
-			break
-		}
-	}
-	if len(macMappings) == 0 {
-		output, err = ovs.Exec(ovs.IfExists, "remove", "open", ".", "external-ids", "ovn-chassis-mac-mappings")
-	} else {
-		output, err = ovs.Exec("set", "open", ".", "external-ids:ovn-chassis-mac-mappings="+strings.Join(macMappings, ","))
-	}
+	output, err := ovs.Exec("list-br")
 	if err != nil {
-		return fmt.Errorf("failed to set ovn-chassis-mac-mappings, %v: %q", err, output)
-	}
-
-	if output, err = ovs.Exec("list-br"); err != nil {
-		return fmt.Errorf("failed to list OVS bridge %v: %q", err, output)
+		return fmt.Errorf("failed to list OVS bridges: %v, %q", err, output)
 	}
 
 	if !util.ContainsString(strings.Split(output, "\n"), brName) {
@@ -221,6 +184,13 @@ func ovsCleanProviderNetwork(provider string) error {
 			klog.Errorf("failed to change provider nic name from %s to %s: %v", br, brName, err)
 			return err
 		}
+	}
+
+	if err := removeOvnMapping("ovn-chassis-mac-mappings", provider); err != nil {
+		return err
+	}
+	if err := removeOvnMapping("ovn-bridge-mappings", provider); err != nil {
+		return err
 	}
 
 	return nil
