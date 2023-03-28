@@ -1184,3 +1184,70 @@ type OvnSnatRuleList struct {
 
 	Items []OvnSnatRule `json:"items"`
 }
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +genclient:nonNamespaced
+// +resourceName=ovn-dnat-rules
+
+type OvnDnatRule struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   OvnDnatRuleSpec   `json:"spec"`
+	Status OvnDnatRuleStatus `json:"status,omitempty"`
+}
+
+type OvnDnatRuleSpec struct {
+	OvnEip string `json:"ovnEip"`
+	IpType string `json:"ipType"` // vip, ip
+	IpName string `json:"ipName"` // vip, ip crd name
+}
+
+// OvnDnatRuleCondition describes the state of an object at a certain point.
+// +k8s:deepcopy-gen=true
+type OvnDnatRuleCondition struct {
+	// Type of condition.
+	Type ConditionType `json:"type"`
+	// Status of the condition, one of True, False, Unknown.
+	Status corev1.ConditionStatus `json:"status"`
+	// The reason for the condition's last transition.
+	// +optional
+	Reason string `json:"reason,omitempty"`
+	// A human readable message indicating details about the transition.
+	// +optional
+	Message string `json:"message,omitempty"`
+	// Last time the condition was probed
+	// +optional
+	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
+	// Last time the condition transitioned from one status to another.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+}
+
+// OvnDnatRuleCondition describes the state of an object at a certain point.
+// +k8s:deepcopy-gen=true
+type OvnDnatRuleStatus struct {
+	// +optional
+	// +patchStrategy=merge
+	Ready      bool   `json:"ready" patchStrategy:"merge"`
+	V4Eip      string `json:"v4Eip" patchStrategy:"merge"`
+	V4Ip       string `json:"v4Ip" patchStrategy:"merge"`
+	MacAddress string `json:"macAddress" patchStrategy:"merge"`
+	Vpc        string `json:"vpc" patchStrategy:"merge"`
+
+	// Conditions represents the latest state of the object
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	Conditions []OvnDnatRuleCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type OvnDnatRuleList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []OvnDnatRule `json:"items"`
+}

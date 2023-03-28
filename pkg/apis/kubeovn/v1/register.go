@@ -59,6 +59,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&OvnFipList{},
 		&OvnSnatRule{},
 		&OvnSnatRuleList{},
+		&OvnDnatRule{},
+		&OvnDnatRuleList{},
 		&SecurityGroup{},
 		&SecurityGroupList{},
 		&SwitchLBRule{},
