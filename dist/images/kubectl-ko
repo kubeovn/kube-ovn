@@ -953,21 +953,16 @@ log_kube_ovn(){
   component_param=$1
   sub_component_param=$2
   tail_lines_param=$3
-  podNames=`kubectl get pod -n kube-system -l app=kube-ovn-pinger -o 'jsonpath={.items[*].metadata.name}'`
+  podNames=`kubectl get pod -n kube-system -l app=kube-ovn-cni -o 'jsonpath={.items[*].metadata.name}'`
   for pod in $podNames; do
     nodeName=$(kubectl get pod "$pod" -n kube-system -o jsonpath={.spec.nodeName})
     echo "************************************************"
     echo " component $component sub_component $sub_component_param on node $nodeName pod $pod log "
     echo "************************************************"
-
-    if [[ "$sub_component_param" != "kube-ovn-monitor" ]]; then
-      if [[ "$tail_lines_param" == "all" ]]; then
-        kubectl exec $pod -n kube-system -- cat /var/log/$component_param/$sub_component_param.log 2>&1 || :
-      else
-        kubectl exec $pod -n kube-system -- tail -n $tail_lines_param /var/log/$component_param/$sub_component_param.log 2>&1 || :
-      fi
+    if [[ "$tail_lines_param" == "all" ]]; then
+      kubectl exec $pod -n kube-system -c cni-server -- cat /var/log/$component_param/$sub_component_param.log 2>&1 || :
     else
-      kubectl logs "$pod" -n kube-system $( [ "$tail_lines" == "all" ] || echo "--tail=$tail_lines" ) 2>&1 || :
+      kubectl exec $pod -n kube-system -c cni-server -- tail -n $tail_lines_param /var/log/$component_param/$sub_component_param.log 2>&1 || :
     fi
   done
 }

@@ -1,8 +1,12 @@
 package ovnmonitor
 
 import (
+	"flag"
+
 	"github.com/spf13/pflag"
 	"k8s.io/klog/v2"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // Configuration contains parameters information.
@@ -86,6 +90,22 @@ func ParseFlags() (*Configuration, error) {
 		argServiceNorthdFilePidPath   = pflag.String("service.ovn.northd.file.pid.path", "/var/run/ovn/ovn-northd.pid", "OVN northd daemon process id file.")
 	)
 
+	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
+	klog.InitFlags(klogFlags)
+
+	// Sync the glog and klog flags.
+	pflag.CommandLine.VisitAll(func(f1 *pflag.Flag) {
+		f2 := klogFlags.Lookup(f1.Name)
+		if f2 != nil {
+			value := f1.Value.String()
+			if err := f2.Value.Set(value); err != nil {
+				util.LogFatalAndExit(err, "failed to set flag")
+			}
+		}
+	})
+
+	pflag.CommandLine.AddGoFlagSet(klogFlags)
+	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
 
 	config := &Configuration{
