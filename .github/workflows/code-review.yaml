@@ -12,6 +12,8 @@ on:
     paths-ignore:
       - 'docs/**'
       - '**.md'
+      - 'go.mod'
+      - 'go.sum'
 
 jobs:
   review-code:
