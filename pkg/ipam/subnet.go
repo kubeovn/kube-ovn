@@ -157,6 +157,9 @@ func (subnet *Subnet) pushPodNic(podName, nicName string) {
 
 func (subnet *Subnet) popPodNic(podName, nicName string) {
 	subnet.PodToNicList[podName] = util.RemoveString(subnet.PodToNicList[podName], nicName)
+	if subnet.PodToNicList[podName] == nil {
+		delete(subnet.PodToNicList, podName)
+	}
 }
 
 func (subnet *Subnet) GetRandomAddress(podName, nicName string, skippedAddrs []string) (IP, IP, string, error) {
