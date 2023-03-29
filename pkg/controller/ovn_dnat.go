@@ -12,6 +12,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	"net"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
@@ -49,6 +50,14 @@ func (c *Controller) enqueueUpdateOvnDnatRule(old, new interface{}) {
 
 	if oldDnat.Spec.OvnEip != newDnat.Spec.OvnEip {
 		c.resetOvnEipQueue.Add(oldDnat.Spec.OvnEip)
+	}
+
+	if oldDnat.Spec.OvnEip != newDnat.Spec.OvnEip ||
+		oldDnat.Spec.Protocol != newDnat.Spec.Protocol ||
+		oldDnat.Spec.IpName != newDnat.Spec.IpName ||
+		oldDnat.Spec.InternalPort != newDnat.Spec.InternalPort ||
+		oldDnat.Spec.ExternalPort != newDnat.Spec.ExternalPort {
+		klog.V(3).Infof("enqueue update dnat %s", key)
 		c.updateOvnDnatRuleQueue.Add(key)
 	}
 }
@@ -251,7 +260,8 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		return err
 	}
 
-	if err = c.ovnLegacyClient.AddDnatRule(vpcName, cachedEip.Status.V4Ip, internalV4Ip); err != nil {
+	if err = c.AddDnatRule(vpcName, cachedDnat.Name, cachedEip.Status.V4Ip, internalV4Ip,
+		cachedDnat.Spec.ExternalPort, cachedDnat.Spec.InternalPort, cachedDnat.Spec.Protocol); err != nil {
 		klog.Errorf("failed to create v4 dnat, %v", err)
 		return err
 	}
@@ -298,7 +308,8 @@ func (c *Controller) handleDelOvnDnatRule(key string) error {
 	}
 
 	if cachedDnat.Status.Ready {
-		if err = c.ovnLegacyClient.DeleteDnatRule(cachedDnat.Status.Vpc, cachedDnat.Status.V4Eip, cachedDnat.Status.V4Ip); err != nil {
+		if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
+			cachedDnat.Status.V4Eip, cachedDnat.Status.ExternalPort); err != nil {
 			klog.Errorf("failed to delete dnat, %v", err)
 			return err
 		}
@@ -388,14 +399,15 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 	}
 
 	dnat := cachedDnat.DeepCopy()
-	if dnat.Status.Ready && dnat.Status.V4Eip != cachedEip.Status.V4Ip {
+	if dnat.Status.Ready {
 		klog.V(3).Infof("dnat change ip, old ip '%s', new ip %s", dnat.Status.V4Ip, cachedEip.Status.V4Ip)
-		if err = c.ovnLegacyClient.DeleteDnatRule(vpcName, dnat.Status.V4Ip, internalV4Ip); err != nil {
+		if err = c.DelDnatRule(dnat.Status.Vpc, dnat.Name, dnat.Status.V4Eip, dnat.Status.ExternalPort); err != nil {
 			klog.Errorf("failed to delete dnat, %v", err)
 			return err
 		}
 
-		if err = c.ovnLegacyClient.AddDnatRule(vpcName, cachedEip.Status.V4Ip, internalV4Ip); err != nil {
+		if err = c.AddDnatRule(vpcName, dnat.Name, cachedEip.Status.V4Ip, internalV4Ip,
+			dnat.Spec.ExternalPort, dnat.Spec.InternalPort, dnat.Spec.Protocol); err != nil {
 			klog.Errorf("failed to create dnat, %v", err)
 			return err
 		}
@@ -505,6 +517,26 @@ func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIp, podMac strin
 		changed = true
 	}
 
+	if ready && dnat.Spec.Protocol != "" && dnat.Status.Protocol != dnat.Spec.Protocol {
+		dnat.Status.Protocol = dnat.Spec.Protocol
+		changed = true
+	}
+
+	if ready && dnat.Spec.IpName != "" && dnat.Spec.IpName != dnat.Status.IpName {
+		dnat.Status.IpName = dnat.Spec.IpName
+		changed = true
+	}
+
+	if ready && dnat.Spec.InternalPort != "" && dnat.Status.InternalPort != dnat.Spec.InternalPort {
+		dnat.Status.InternalPort = dnat.Spec.InternalPort
+		changed = true
+	}
+
+	if ready && dnat.Spec.ExternalPort != "" && dnat.Status.ExternalPort != dnat.Spec.ExternalPort {
+		dnat.Status.ExternalPort = dnat.Spec.ExternalPort
+		changed = true
+	}
+
 	if changed {
 		bytes, err := dnat.Status.Bytes()
 		if err != nil {
@@ -537,6 +569,37 @@ func (c *Controller) handleDelOvnDnatFinalizer(cachedDnat *kubeovnv1.OvnDnatRule
 			return nil
 		}
 		klog.Errorf("failed to remove finalizer from ovn dnat '%s', %v", cachedDnat.Name, err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) AddDnatRule(vpcName, dnatName, externalIp, internalIp, externalPort, internalPort, protocol string) error {
+	vip := net.JoinHostPort(externalIp, externalPort)
+	backendIp := net.JoinHostPort(internalIp, internalPort)
+
+	if err := c.ovnLegacyClient.CreateLoadBalancerRule(dnatName, vip, backendIp, protocol); err != nil {
+		klog.Errorf("failed to create loadBalancer rule, %v", err)
+		return err
+	}
+
+	if err := c.ovnLegacyClient.AddLoadBalancerToLogicalRouter(dnatName, vpcName); err != nil {
+		klog.Errorf("failed to add loadBalancer to vpcName, %v", err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) DelDnatRule(vpcName, dnatName, externalIp, externalPort string) error {
+	vip := net.JoinHostPort(externalIp, externalPort)
+
+	if err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, dnatName); err != nil {
+		klog.Errorf("failed to delete loadBalancer rule, %v", err)
+		return err
+	}
+
+	if err := c.ovnLegacyClient.RemoveLoadBalancerFromLogicalRouter(dnatName, vpcName); err != nil {
+		klog.Errorf("failed to remove loadBalancer from vpcName, %v", err)
 		return err
 	}
 	return nil

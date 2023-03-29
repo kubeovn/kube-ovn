@@ -1027,67 +1027,87 @@ spec:
       subresources:
         status: {}
       additionalPrinterColumns:
-      - jsonPath: .status.vpc
-        name: Vpc
-        type: string
-      - jsonPath: .status.v4Eip
-        name: V4Eip
-        type: string
-      - jsonPath: .status.v4Ip
-        name: V4Ip
-        type: string
-      - jsonPath: .status.ready
-        name: Ready
-        type: boolean
-      - jsonPath: .spec.ipType
-        name: IpType
-        type: string
-      - jsonPath: .spec.ipName
-        name: IpName
-        type: string
+        - jsonPath: .spec.ovnEip
+          name: Eip
+          type: string
+        - jsonPath: .status.protocol
+          name: Protocol
+          type: string
+        - jsonPath: .status.v4Eip
+          name: V4Eip
+          type: string
+        - jsonPath: .status.v4Ip
+          name: V4Ip
+          type: string
+        - jsonPath: .status.internalPort
+          name: InternalPort
+          type: string
+        - jsonPath: .status.externalPort
+          name: ExternalPort
+          type: string
+        - jsonPath: .spec.ipName
+          name: IpName
+          type: string
+        - jsonPath: .status.ready
+          name: Ready
+          type: boolean
       schema:
-        openAPIV3Schema:
-          type: object
-          properties:
-            status:
-              type: object
-              properties:
-                ready:
-                  type: boolean
-                v4Eip:
-                  type: string
-                v4Ip:
-                  type: string
-                macAddress:
-                  type: string
-                vpc:
-                  type: string
-                conditions:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      type:
-                        type: string
-                      status:
-                        type: string
-                      reason:
-                        type: string
-                      message:
-                        type: string
-                      lastUpdateTime:
-                        type: string
-                      lastTransitionTime:
-                        type: string
-            spec:
-              type: object
-              properties:
-                ovnEip:
-                  type: string
-                ipType:
-                  type: string
-                ipName:
-                  type: string
+          openAPIV3Schema:
+            type: object
+            properties:
+              status:
+                type: object
+                properties:
+                  ready:
+                    type: boolean
+                  v4Eip:
+                    type: string
+                  v4Ip:
+                    type: string
+                  macAddress:
+                    type: string
+                  vpc:
+                    type: string
+                  externalPort:
+                    type: string
+                  internalPort:
+                    type: string
+                  protocol:
+                    type: string
+                  ipName:
+                    type: string
+                  conditions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                        status:
+                          type: string
+                        reason:
+                          type: string
+                        message:
+                          type: string
+                        lastUpdateTime:
+                          type: string
+                        lastTransitionTime:
+                          type: string
+              spec:
+                type: object
+                properties:
+                  ovnEip:
+                    type: string
+                  ipType:
+                    type: string
+                  ipName:
+                    type: string
+                  externalPort:
+                    type: string
+                  internalPort:
+                    type: string
+                  protocol:
+                    type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition

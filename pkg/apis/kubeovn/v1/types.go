@@ -1199,9 +1199,12 @@ type OvnDnatRule struct {
 }
 
 type OvnDnatRuleSpec struct {
-	OvnEip string `json:"ovnEip"`
-	IpType string `json:"ipType"` // vip, ip
-	IpName string `json:"ipName"` // vip, ip crd name
+	OvnEip       string `json:"ovnEip"`
+	IpType       string `json:"ipType"` // vip, ip
+	IpName       string `json:"ipName"` // vip, ip crd name
+	InternalPort string `json:"internalPort"`
+	ExternalPort string `json:"externalPort"`
+	Protocol     string `json:"protocol,omitempty"`
 }
 
 // OvnDnatRuleCondition describes the state of an object at a certain point.
@@ -1230,11 +1233,15 @@ type OvnDnatRuleCondition struct {
 type OvnDnatRuleStatus struct {
 	// +optional
 	// +patchStrategy=merge
-	Ready      bool   `json:"ready" patchStrategy:"merge"`
-	V4Eip      string `json:"v4Eip" patchStrategy:"merge"`
-	V4Ip       string `json:"v4Ip" patchStrategy:"merge"`
-	MacAddress string `json:"macAddress" patchStrategy:"merge"`
-	Vpc        string `json:"vpc" patchStrategy:"merge"`
+	Ready        bool   `json:"ready" patchStrategy:"merge"`
+	V4Eip        string `json:"v4Eip" patchStrategy:"merge"`
+	V4Ip         string `json:"v4Ip" patchStrategy:"merge"`
+	MacAddress   string `json:"macAddress" patchStrategy:"merge"`
+	Vpc          string `json:"vpc" patchStrategy:"merge"`
+	InternalPort string `json:"internalPort"`
+	ExternalPort string `json:"externalPort"`
+	Protocol     string `json:"protocol,omitempty"`
+	IpName       string `json:"ipName"`
 
 	// Conditions represents the latest state of the object
 	// +optional
