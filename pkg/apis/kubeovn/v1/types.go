@@ -1228,7 +1228,6 @@ type OvnDnatRuleCondition struct {
 	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
 }
 
-// OvnDnatRuleCondition describes the state of an object at a certain point.
 // +k8s:deepcopy-gen=true
 type OvnDnatRuleStatus struct {
 	// +optional

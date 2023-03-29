@@ -216,7 +216,9 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 
 	eipName := cachedDnat.Spec.OvnEip
 	if len(eipName) == 0 {
-		klog.Errorf("failed to create dnat rule, should set eip")
+		err := fmt.Errorf("failed to create dnat %s, should set eip", cachedDnat.Name)
+		klog.Error(err)
+		return err
 	}
 
 	cachedEip, err := c.GetOvnEip(eipName)
@@ -273,7 +275,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 	}
 
 	if err = c.patchOvnDnatAnnotations(key, eipName); err != nil {
-		klog.Errorf("failed to update label for dnat %s, %v", key, err)
+		klog.Errorf("failed to update annotations for dnat %s, %v", key, err)
 		return err
 	}
 
@@ -361,7 +363,7 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 
 	eipName := cachedDnat.Spec.OvnEip
 	if len(eipName) == 0 {
-		err := fmt.Errorf("failed to create dnat rule, should set eip")
+		err := fmt.Errorf("failed to create dnat %s, should set eip", cachedDnat.Name)
 		klog.Error(err)
 		return err
 	}
@@ -418,7 +420,7 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 		}
 
 		if err = c.patchOvnDnatAnnotations(key, eipName); err != nil {
-			klog.Errorf("failed to update label for dnat %s, %v", key, err)
+			klog.Errorf("failed to update annotations for dnat %s, %v", key, err)
 			return err
 		}
 
