@@ -584,7 +584,7 @@ func (c *Controller) AddDnatRule(vpcName, dnatName, externalIp, internalIp, exte
 	}
 
 	if err := c.ovnLegacyClient.AddLoadBalancerToLogicalRouter(dnatName, vpcName); err != nil {
-		klog.Errorf("failed to add loadBalancer to vpc Name, %v", err)
+		klog.Errorf("failed to add lb %s to vpc %s, %v", dnatName, vpcName, err)
 		return err
 	}
 	return nil
@@ -599,7 +599,7 @@ func (c *Controller) DelDnatRule(vpcName, dnatName, externalIp, externalPort str
 	}
 
 	if err := c.ovnLegacyClient.RemoveLoadBalancerFromLogicalRouter(dnatName, vpcName); err != nil {
-		klog.Errorf("failed to remove loadBalancer from vpc Name, %v", err)
+		klog.Errorf("failed to remove lb %s from vpc %s, dnatName, vpcName, %v", err)
 		return err
 	}
 	return nil
