@@ -575,31 +575,31 @@ func (c *Controller) handleDelOvnDnatFinalizer(cachedDnat *kubeovnv1.OvnDnatRule
 }
 
 func (c *Controller) AddDnatRule(vpcName, dnatName, externalIp, internalIp, externalPort, internalPort, protocol string) error {
-	vip := net.JoinHostPort(externalIp, externalPort)
-	backendIp := net.JoinHostPort(internalIp, internalPort)
+	externalEndpoint := net.JoinHostPort(externalIp, externalPort)
+	internalEndpoint := net.JoinHostPort(internalIp, internalPort)
 
-	if err := c.ovnLegacyClient.CreateLoadBalancerRule(dnatName, vip, backendIp, protocol); err != nil {
+	if err := c.ovnLegacyClient.CreateLoadBalancerRule(dnatName, externalEndpoint, internalEndpoint, protocol); err != nil {
 		klog.Errorf("failed to create loadBalancer rule, %v", err)
 		return err
 	}
 
 	if err := c.ovnLegacyClient.AddLoadBalancerToLogicalRouter(dnatName, vpcName); err != nil {
-		klog.Errorf("failed to add loadBalancer to vpcName, %v", err)
+		klog.Errorf("failed to add loadBalancer to vpc Name, %v", err)
 		return err
 	}
 	return nil
 }
 
 func (c *Controller) DelDnatRule(vpcName, dnatName, externalIp, externalPort string) error {
-	vip := net.JoinHostPort(externalIp, externalPort)
+	externalEndpoint := net.JoinHostPort(externalIp, externalPort)
 
-	if err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, dnatName); err != nil {
+	if err := c.ovnLegacyClient.DeleteLoadBalancerVip(externalEndpoint, dnatName); err != nil {
 		klog.Errorf("failed to delete loadBalancer rule, %v", err)
 		return err
 	}
 
 	if err := c.ovnLegacyClient.RemoveLoadBalancerFromLogicalRouter(dnatName, vpcName); err != nil {
-		klog.Errorf("failed to remove loadBalancer from vpcName, %v", err)
+		klog.Errorf("failed to remove loadBalancer from vpc Name, %v", err)
 		return err
 	}
 	return nil
