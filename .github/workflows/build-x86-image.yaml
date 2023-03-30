@@ -323,14 +323,14 @@ jobs:
 
       - name: kubectl ko log
         if: failure()
-        run: make kubectl-ko-log
+        run: make kubectl-ko-log && mv kubectl-ko-log.tar kube-ovn-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v3
         if: failure()
         with:
-          name: kubectl-ko-log
-          path: kubectl-ko-log.tar
+          name: kubectl-ko-log.tar kube-ovn-conformance-e2e-${{ matrix.ip-family }}-ko-log
+          path: kubectl-ko-log.tar kube-ovn-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh
@@ -400,14 +400,14 @@ jobs:
 
       - name: kubectl ko log
         if: failure()
-        run: make kubectl-ko-log
+        run: make kubectl-ko-log && mv kubectl-ko-log.tar kube-ovn-submariner-conformance-e2e-ko-log.tar
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v3
         if: failure()
         with:
-          name: kubectl-ko-log
-          path: kubectl-ko-log.tar
+          name: kube-ovn-submariner-conformance-e2e-ko-log
+          path: kube-ovn-submariner-conformance-e2e-ko-log.tar
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh
