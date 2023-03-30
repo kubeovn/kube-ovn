@@ -327,7 +327,7 @@ jobs:
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v3
-        if: success()
+        if: failure()
         with:
           name: kubectl-ko-log
           path: kubectl-ko-log.tar
@@ -404,7 +404,7 @@ jobs:
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v3
-        if: success()
+        if: failure()
         with:
           name: kubectl-ko-log
           path: kubectl-ko-log.tar
