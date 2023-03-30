@@ -451,11 +451,15 @@ func setVpcDnsRoute(dp *v1.Deployment, subnetGw string) {
 	}
 
 	var routeCmd string
-	routeCmd = fmt.Sprintf("ip route add %s via %s dev net1;", serviceHost, subnetGw)
-	for _, nameserver := range hostNameservers {
-		routeCmd += fmt.Sprintf("ip route add %s via %s dev net1;", nameserver, subnetGw)
-	}
+	v4Gw, _ := util.SplitStringIP(subnetGw)
 
+	if v4Gw != "" {
+		routeCmd = fmt.Sprintf("ip -4 route add %s via %s dev net1;", serviceHost, v4Gw)
+		for _, nameserver := range hostNameservers {
+			routeCmd += fmt.Sprintf("ip -4 route add %s via %s dev net1;", nameserver, v4Gw)
+		}
+	}
+	// TODO:// ipv6
 	privileged := true
 	allowPrivilegeEscalation := true
 	dp.Spec.Template.Spec.InitContainers = append(dp.Spec.Template.Spec.InitContainers, corev1.Container{
