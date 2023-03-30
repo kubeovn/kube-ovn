@@ -2,6 +2,7 @@ package underlay
 
 import (
 	"fmt"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"net"
 	"os/exec"
 	"strconv"
@@ -713,15 +714,17 @@ func checkReachable(podName, podNamespace, sourceIP, targetIP, targetPort string
 
 func checkPolicy(hitPolicyStr string, expectPolicyExist bool) {
 	policyExist := false
-	output, _ := exec.Command("bash", "-c", "kubectl ko nbctl lr-policy-list ovn-cluster").CombinedOutput()
-	outputStr := string(output)
-	lines := strings.Split(outputStr, "\n")
-	for _, line := range lines {
-		if strings.Contains(strings.Join(strings.Fields(line), " "), hitPolicyStr) {
-			policyExist = true
-			break
+	_ = wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
+		output, _ := exec.Command("bash", "-c", "kubectl ko nbctl lr-policy-list ovn-cluster").CombinedOutput()
+		outputStr := string(output)
+		lines := strings.Split(outputStr, "\n")
+		for _, line := range lines {
+			if strings.Contains(strings.Join(strings.Fields(line), " "), hitPolicyStr) {
+				policyExist = true
+				return true, nil
+			}
 		}
-
-	}
+		return false, nil
+	})
 	framework.ExpectEqual(policyExist, expectPolicyExist)
 }
