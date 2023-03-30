@@ -367,6 +367,10 @@ jobs:
       - name: kubectl ko log
         if: failure() && steps.e2e.outcome != 'success'
         run: make kubectl-ko-log
+        uses: actions/upload-artifact@v3
+        with:
+          name: kubectl-ko-log
+          path: kubectl-ko-log.tar
 
   k8s-netpol-e2e:
     name: Kubernetes Network Policy E2E
@@ -467,6 +471,10 @@ jobs:
       - name: kubectl ko log
         if: failure() && steps.e2e.outcome != 'success'
         run: make kubectl-ko-log
+        uses: actions/upload-artifact@v3
+        with:
+          name: kubectl-ko-log
+          path: kubectl-ko-log.tar
 
   k8s-netpol-legacy-e2e:
     name: Kubernetes Network Policy Legacy E2E
@@ -567,6 +575,10 @@ jobs:
       - name: kubectl ko log
         if: failure() && steps.e2e.outcome != 'success'
         run: make kubectl-ko-log
+        uses: actions/upload-artifact@v3
+        with:
+          name: kubectl-ko-log
+          path: kubectl-ko-log.tar
 
   cyclonus-netpol-e2e:
     name: Cyclonus Network Policy E2E
@@ -643,6 +655,10 @@ jobs:
       - name: kubectl ko log
         if: failure() && steps.e2e.outcome != 'success'
         run: make kubectl-ko-log
+        uses: actions/upload-artifact@v3
+        with:
+          name: kubectl-ko-log
+          path: kubectl-ko-log.tar
 
   kube-ovn-conformance-e2e:
     name: Kube-OVN Conformance E2E
@@ -737,6 +753,10 @@ jobs:
       - name: kubectl ko log
         if: failure() && steps.e2e.outcome != 'success'
         run: make kubectl-ko-log
+        uses: actions/upload-artifact@v3
+        with:
+          name: kubectl-ko-log
+          path: kubectl-ko-log.tar
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh
@@ -824,6 +844,10 @@ jobs:
       - name: kubectl ko log
         if: failure() && steps.e2e.outcome != 'success'
         run: make kubectl-ko-log
+        uses: actions/upload-artifact@v3
+        with:
+          name: kubectl-ko-log
+          path: kubectl-ko-log.tar
 
   chart-installation-test:
     name: Chart Installation Test
@@ -1226,6 +1250,10 @@ jobs:
       - name: kubectl ko log
         if: failure() && steps.e2e.outcome != 'success'
         run: make kubectl-ko-log
+        uses: actions/upload-artifact@v3
+        with:
+          name: kubectl-ko-log
+          path: kubectl-ko-log.tar
 
   installation-compatibility-test:
     name: Installation Compatibility Test
@@ -1262,6 +1290,10 @@ jobs:
       - name: kubectl ko log
         if: failure() && steps.e2e.outcome != 'success'
         run: make kubectl-ko-log
+        uses: actions/upload-artifact@v3
+        with:
+          name: kubectl-ko-log
+          path: kubectl-ko-log.tar
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh
@@ -1359,6 +1391,10 @@ jobs:
       - name: kubectl ko log
         if: failure() && steps.e2e.outcome != 'success'
         run: make kubectl-ko-log
+        uses: actions/upload-artifact@v3
+        with:
+          name: kubectl-ko-log
+          path: kubectl-ko-log.tar
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh
@@ -1464,6 +1500,10 @@ jobs:
       - name: kubectl ko log
         if: failure() && steps.e2e.outcome != 'success'
         run: make kubectl-ko-log
+        uses: actions/upload-artifact@v3
+        with:
+          name: kubectl-ko-log
+          path: kubectl-ko-log.tar
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh
@@ -1623,6 +1663,10 @@ jobs:
       - name: kubectl ko log
         if: failure() && steps.e2e.outcome != 'success'
         run: make kubectl-ko-log
+        uses: actions/upload-artifact@v3
+        with:
+          name: kubectl-ko-log
+          path: kubectl-ko-log.tar
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh

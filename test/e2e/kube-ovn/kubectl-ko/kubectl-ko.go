@@ -145,21 +145,9 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 
 	framework.ConformanceIt(`should succeed to execute "kubectl ko log kube-ovn all"`, func() {
 		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12")
-		components := [...]string{"kube-ovn", "ovn", "ovs", "linux"}
+		components := [...]string{"kube-ovn", "ovn", "ovs", "linux", "all"}
 		for _, component := range components {
-			execOrDie(fmt.Sprintf("ko log %s all 10", component))
-		}
-
-		subComponentMap := make(map[string][]string)
-		subComponentMap["kube-ovn"] = []string{"kube-ovn-controller", "kube-ovn-cni", "kube-ovn-pinger", "kube-ovn-monitor"}
-		subComponentMap["ovs"] = []string{"ovs-vswitchd", "ovsdb-server"}
-		subComponentMap["ovn"] = []string{"ovn-controller", "ovn-northd", "ovsdb-server-nb", "ovsdb-server-sb"}
-		subComponentMap["linux"] = []string{"dmesg", "iptables", "route", "link", "neigh", "memory", "top"}
-
-		for component, subComponents := range subComponentMap {
-			for _, subComponent := range subComponents {
-				execOrDie(fmt.Sprintf("ko log %s %s 10", component, subComponent))
-			}
+			execOrDie(fmt.Sprintf("ko log %s", component))
 		}
 	})
 })

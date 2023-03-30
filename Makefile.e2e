@@ -171,4 +171,4 @@ kube-ovn-webhook-e2e:
 
 .PHONY: kubectl-ko-log
 kubectl-ko-log:
-	kubectl ko log all all all
+	kubectl ko log all
