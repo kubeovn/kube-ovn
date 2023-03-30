@@ -201,7 +201,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		framework.ExpectContainElement(subnet.ObjectMeta.Finalizers, util.ControllerName)
 
 		ginkgo.By("Validating subnet spec fields")
-		framework.ExpectFalse(subnet.Spec.Default)
+		framework.ExpectTrue(subnet.Spec.Default)
 		framework.ExpectEqual(subnet.Spec.Protocol, util.CheckProtocol(cidr))
 		framework.ExpectEmpty(subnet.Spec.Namespaces)
 		framework.ExpectConsistOf(subnet.Spec.ExcludeIps, append(excludeIPs, gateways...))
