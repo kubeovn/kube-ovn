@@ -372,8 +372,8 @@ jobs:
         uses: actions/upload-artifact@v3
         if: failure()
         with:
-          name: mv kubectl-ko-log.tar k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log
-          path: mv kubectl-ko-log.tar k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar
+          name: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log
+          path: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar
 
   k8s-netpol-e2e:
     name: Kubernetes Network Policy E2E
@@ -867,7 +867,6 @@ jobs:
           name: kube-ovn-ic-conformance-e2e-ko-log
           path: kube-ovn-ic-conformance-e2e-ko-log.tar
 
-
   chart-installation-test:
     name: Chart Installation Test
     needs: build-kube-ovn
@@ -1276,7 +1275,6 @@ jobs:
         with:
           name: webhook-e2e-ko-log
           path: webhook-e2e-ko-log.tar
-
 
   installation-compatibility-test:
     name: Installation Compatibility Test
