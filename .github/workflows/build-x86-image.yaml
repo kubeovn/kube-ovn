@@ -365,9 +365,12 @@ jobs:
         run: make k8s-conformance-e2e
 
       - name: kubectl ko log
-        if: failure() && steps.e2e.outcome != 'success'
+        if: failure()
         run: make kubectl-ko-log
+
+      - name: upload kubectl ko log
         uses: actions/upload-artifact@v3
+        if: success() && steps.kubectl-ko-log.outcome == 'success'
         with:
           name: kubectl-ko-log
           path: kubectl-ko-log.tar
@@ -469,9 +472,12 @@ jobs:
         run: make k8s-netpol-e2e
 
       - name: kubectl ko log
-        if: failure() && steps.e2e.outcome != 'success'
+        if: failure()
         run: make kubectl-ko-log
+
+      - name: upload kubectl ko log
         uses: actions/upload-artifact@v3
+        if: success() && steps.kubectl-ko-log.outcome == 'success'
         with:
           name: kubectl-ko-log
           path: kubectl-ko-log.tar
@@ -573,9 +579,12 @@ jobs:
         run: make k8s-netpol-legacy-e2e
 
       - name: kubectl ko log
-        if: failure() && steps.e2e.outcome != 'success'
+        if: failure()
         run: make kubectl-ko-log
+
+      - name: upload kubectl ko log
         uses: actions/upload-artifact@v3
+        if: success() && steps.kubectl-ko-log.outcome == 'success'
         with:
           name: kubectl-ko-log
           path: kubectl-ko-log.tar
@@ -653,9 +662,12 @@ jobs:
         run: make cyclonus-netpol-e2e
 
       - name: kubectl ko log
-        if: failure() && steps.e2e.outcome != 'success'
+        if: failure()
         run: make kubectl-ko-log
+
+      - name: upload kubectl ko log
         uses: actions/upload-artifact@v3
+        if: success() && steps.kubectl-ko-log.outcome == 'success'
         with:
           name: kubectl-ko-log
           path: kubectl-ko-log.tar
@@ -751,9 +763,12 @@ jobs:
         run: make kube-ovn-conformance-e2e
 
       - name: kubectl ko log
-        if: failure() && steps.e2e.outcome != 'success'
+        if: failure()
         run: make kubectl-ko-log
+
+      - name: upload kubectl ko log
         uses: actions/upload-artifact@v3
+        if: success() && steps.kubectl-ko-log.outcome == 'success'
         with:
           name: kubectl-ko-log
           path: kubectl-ko-log.tar
@@ -842,9 +857,12 @@ jobs:
         run: make kube-ovn-ic-conformance-e2e
 
       - name: kubectl ko log
-        if: failure() && steps.e2e.outcome != 'success'
+        if: failure()
         run: make kubectl-ko-log
+
+      - name: upload kubectl ko log
         uses: actions/upload-artifact@v3
+        if: success() && steps.kubectl-ko-log.outcome == 'success'
         with:
           name: kubectl-ko-log
           path: kubectl-ko-log.tar
@@ -1248,9 +1266,12 @@ jobs:
         run: make kube-ovn-webhook-e2e
 
       - name: kubectl ko log
-        if: failure() && steps.e2e.outcome != 'success'
+        if: failure()
         run: make kubectl-ko-log
+
+      - name: upload kubectl ko log
         uses: actions/upload-artifact@v3
+        if: success() && steps.kubectl-ko-log.outcome == 'success'
         with:
           name: kubectl-ko-log
           path: kubectl-ko-log.tar
@@ -1288,9 +1309,12 @@ jobs:
         run: make kind-install
 
       - name: kubectl ko log
-        if: failure() && steps.e2e.outcome != 'success'
+        if: failure()
         run: make kubectl-ko-log
+
+      - name: upload kubectl ko log
         uses: actions/upload-artifact@v3
+        if: success() && steps.kubectl-ko-log.outcome == 'success'
         with:
           name: kubectl-ko-log
           path: kubectl-ko-log.tar
@@ -1389,9 +1413,12 @@ jobs:
         run: make k8s-conformance-e2e
 
       - name: kubectl ko log
-        if: failure() && steps.e2e.outcome != 'success'
+        if: failure()
         run: make kubectl-ko-log
+
+      - name: upload kubectl ko log
         uses: actions/upload-artifact@v3
+        if: success() && steps.kubectl-ko-log.outcome == 'success'
         with:
           name: kubectl-ko-log
           path: kubectl-ko-log.tar
@@ -1498,9 +1525,12 @@ jobs:
         run: make kube-ovn-security-e2e
 
       - name: kubectl ko log
-        if: failure() && steps.e2e.outcome != 'success'
+        if: failure()
         run: make kubectl-ko-log
+
+      - name: upload kubectl ko log
         uses: actions/upload-artifact@v3
+        if: success() && steps.kubectl-ko-log.outcome == 'success'
         with:
           name: kubectl-ko-log
           path: kubectl-ko-log.tar
@@ -1661,9 +1691,12 @@ jobs:
         run: make kube-ovn-submariner-conformance-e2e
 
       - name: kubectl ko log
-        if: failure() && steps.e2e.outcome != 'success'
+        if: failure()
         run: make kubectl-ko-log
+
+      - name: upload kubectl ko log
         uses: actions/upload-artifact@v3
+        if: success() && steps.kubectl-ko-log.outcome == 'success'
         with:
           name: kubectl-ko-log
           path: kubectl-ko-log.tar
