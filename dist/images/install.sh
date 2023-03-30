@@ -36,6 +36,7 @@ CNI_CONF_DIR="/etc/cni/net.d"
 CNI_BIN_DIR="/opt/cni/bin"
 
 REGISTRY="kubeovn"
+VPC_NAT_IMAGE="vpc-nat-gateway"
 VERSION="v1.12.0"
 IMAGE_PULL_POLICY="IfNotPresent"
 POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
@@ -3105,6 +3106,17 @@ echo ""
 echo "[Step 3/6] Install Kube-OVN"
 
 cat <<EOF > kube-ovn.yaml
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: ovn-vpc-nat-config
+  namespace: kube-system
+  annotations:
+    kubernetes.io/description: |
+      kube-ovn vpc-nat common config
+data:
+  image: $REGISTRY/$VPC_NAT_IMAGE:$VERSION
 ---
 kind: Deployment
 apiVersion: apps/v1

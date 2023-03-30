@@ -77,11 +77,6 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service) (dp *v1.Deployment)
 		"service":   svc.Name,
 	}
 
-	image := "kubeovn/vpc-nat-gateway:v1.12.0"
-	if svc.Annotations[util.LbSvcPodImg] != "" {
-		image = svc.Annotations[util.LbSvcPodImg]
-	}
-
 	attachmentName, attachmentNs := parseAttachNetworkProvider(svc)
 	providerName := getAttachNetworkProvider(svc)
 	attachSubnetAnnotation := fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)
@@ -115,7 +110,7 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service) (dp *v1.Deployment)
 					Containers: []corev1.Container{
 						{
 							Name:            "lb-svc",
-							Image:           image,
+							Image:           vpcNatImage,
 							Command:         []string{"bash"},
 							Args:            []string{"-c", "while true; do sleep 10000; done"},
 							ImagePullPolicy: corev1.PullIfNotPresent,
