@@ -36,6 +36,8 @@ rules:
       - ovn-eips/status
       - ovn-fips/status
       - ovn-snat-rules/status
+      - ovn-dnat-rules
+      - ovn-dnat-rules/status
       - vpc-dnses
       - vpc-dnses/status
       - switch-lb-rules

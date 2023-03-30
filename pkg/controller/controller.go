@@ -170,6 +170,12 @@ type Controller struct {
 	updateOvnSnatRuleQueue workqueue.RateLimitingInterface
 	delOvnSnatRuleQueue    workqueue.RateLimitingInterface
 
+	ovnDnatRulesLister     kubeovnlister.OvnDnatRuleLister
+	ovnDnatRuleSynced      cache.InformerSynced
+	addOvnDnatRuleQueue    workqueue.RateLimitingInterface
+	updateOvnDnatRuleQueue workqueue.RateLimitingInterface
+	delOvnDnatRuleQueue    workqueue.RateLimitingInterface
+
 	vlansLister kubeovnlister.VlanLister
 	vlanSynced  cache.InformerSynced
 
@@ -623,6 +629,20 @@ func NewController(config *Configuration) *Controller {
 		util.LogFatalAndExit(err, "failed to add ovn snat rule event handler")
 	}
 
+	ovnDnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnDnatRules()
+	controller.ovnDnatRulesLister = ovnDnatRuleInformer.Lister()
+	controller.ovnDnatRuleSynced = ovnDnatRuleInformer.Informer().HasSynced
+	controller.addOvnDnatRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addOvnDnatRule")
+	controller.updateOvnDnatRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateOvnDnatRule")
+	controller.delOvnDnatRuleQueue = workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delOvnDnatRule")
+	if _, err = ovnDnatRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddOvnDnatRule,
+		UpdateFunc: controller.enqueueUpdateOvnDnatRule,
+		DeleteFunc: controller.enqueueDelOvnDnatRule,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add ovn dnat rule event handler")
+	}
+
 	if _, err = podAnnotatedIptablesEipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddPodAnnotatedIptablesEip,
 		UpdateFunc: controller.enqueueUpdatePodAnnotatedIptablesEip,
@@ -662,6 +682,7 @@ func (c *Controller) Run(ctx context.Context) {
 		c.vlanSynced, c.podsSynced, c.namespacesSynced, c.nodesSynced,
 		c.serviceSynced, c.endpointsSynced, c.configMapsSynced,
 		c.ovnEipSynced, c.ovnFipSynced, c.ovnSnatRuleSynced,
+		c.ovnDnatRuleSynced,
 	}
 
 	if c.config.EnableNP {
@@ -833,6 +854,10 @@ func (c *Controller) shutdown() {
 	c.updateOvnSnatRuleQueue.ShutDown()
 	c.delOvnSnatRuleQueue.ShutDown()
 
+	c.addOvnDnatRuleQueue.ShutDown()
+	c.updateOvnDnatRuleQueue.ShutDown()
+	c.delOvnDnatRuleQueue.ShutDown()
+
 	if c.config.PodDefaultFipType == util.IptablesFip {
 		c.addPodAnnotatedIptablesEipQueue.ShutDown()
 		c.updatePodAnnotatedIptablesEipQueue.ShutDown()
@@ -1002,6 +1027,10 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(c.runAddOvnSnatRuleWorker, time.Second, ctx.Done())
 	go wait.Until(c.runUpdateOvnSnatRuleWorker, time.Second, ctx.Done())
 	go wait.Until(c.runDelOvnSnatRuleWorker, time.Second, ctx.Done())
+
+	go wait.Until(c.runAddOvnDnatRuleWorker, time.Second, ctx.Done())
+	go wait.Until(c.runUpdateOvnDnatRuleWorker, time.Second, ctx.Done())
+	go wait.Until(c.runDelOvnDnatRuleWorker, time.Second, ctx.Done())
 
 	if c.config.EnableNP {
 		go wait.Until(c.CheckNodePortGroup, time.Duration(c.config.NodePgProbeTime)*time.Minute, ctx.Done())

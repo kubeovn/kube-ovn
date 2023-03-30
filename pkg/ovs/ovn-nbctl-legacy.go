@@ -792,6 +792,11 @@ func (c LegacyClient) addLoadBalancerToLogicalSwitch(lb, ls string) error {
 	return err
 }
 
+func (c LegacyClient) AddLoadBalancerToLogicalRouter(lb, lr string) error {
+	_, err := c.ovnNbCommand(MayExist, "lr-lb-add", lr, lb)
+	return err
+}
+
 func (c LegacyClient) removeLoadBalancerFromLogicalSwitch(lb, ls string) error {
 	if lb == "" {
 		return nil
@@ -805,6 +810,22 @@ func (c LegacyClient) removeLoadBalancerFromLogicalSwitch(lb, ls string) error {
 	}
 
 	_, err = c.ovnNbCommand(IfExists, "ls-lb-del", ls, lb)
+	return err
+}
+
+func (c LegacyClient) RemoveLoadBalancerFromLogicalRouter(lb, lr string) error {
+	if lb == "" {
+		return nil
+	}
+	lbUuid, err := c.FindLoadbalancer(lb)
+	if err != nil {
+		return err
+	}
+	if lbUuid == "" {
+		return nil
+	}
+
+	_, err = c.ovnNbCommand(IfExists, "lr-lb-del", lr, lb)
 	return err
 }
 

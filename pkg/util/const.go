@@ -25,6 +25,7 @@ const (
 
 	OvnFipUseEipFinalizer  = "ovn.kubernetes.io/ovn_fip"
 	OvnSnatUseEipFinalizer = "ovn.kubernetes.io/ovn_snat"
+	OvnDnatUseEipFinalizer = "ovn.kubernetes.io/ovn_dnat"
 	OvnLrpUseEipFinalizer  = "ovn.kubernetes.io/ovn_lrp"
 
 	ExternalIpAnnotation         = "ovn.kubernetes.io/external_ip"
@@ -176,7 +177,7 @@ const (
 
 	LrpUsingEip       = "lrp"
 	FipUsingEip       = "fip"
-	FipUsingVip       = "vip"
+	NatUsingVip       = "vip"
 	SnatUsingEip      = "snat"
 	DnatUsingEip      = "dnat"
 	NodeExtGwUsingEip = "node-ext-gw"

@@ -1009,6 +1009,109 @@ spec:
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
+  name: ovn-dnat-rules.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: ovn-dnat-rules
+    singular: ovn-dnat-rule
+    shortNames:
+      - odnat
+    kind: OvnDnatRule
+    listKind: OvnDnatRuleList
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - jsonPath: .spec.ovnEip
+          name: Eip
+          type: string
+        - jsonPath: .status.protocol
+          name: Protocol
+          type: string
+        - jsonPath: .status.v4Eip
+          name: V4Eip
+          type: string
+        - jsonPath: .status.v4Ip
+          name: V4Ip
+          type: string
+        - jsonPath: .status.internalPort
+          name: InternalPort
+          type: string
+        - jsonPath: .status.externalPort
+          name: ExternalPort
+          type: string
+        - jsonPath: .spec.ipName
+          name: IpName
+          type: string
+        - jsonPath: .status.ready
+          name: Ready
+          type: boolean
+      schema:
+          openAPIV3Schema:
+            type: object
+            properties:
+              status:
+                type: object
+                properties:
+                  ready:
+                    type: boolean
+                  v4Eip:
+                    type: string
+                  v4Ip:
+                    type: string
+                  macAddress:
+                    type: string
+                  vpc:
+                    type: string
+                  externalPort:
+                    type: string
+                  internalPort:
+                    type: string
+                  protocol:
+                    type: string
+                  ipName:
+                    type: string
+                  conditions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                        status:
+                          type: string
+                        reason:
+                          type: string
+                        message:
+                          type: string
+                        lastUpdateTime:
+                          type: string
+                        lastTransitionTime:
+                          type: string
+              spec:
+                type: object
+                properties:
+                  ovnEip:
+                    type: string
+                  ipType:
+                    type: string
+                  ipName:
+                    type: string
+                  externalPort:
+                    type: string
+                  internalPort:
+                    type: string
+                  protocol:
+                    type: string
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
   name: vpcs.kubeovn.io
 spec:
   group: kubeovn.io
@@ -1844,6 +1947,8 @@ rules:
       - ovn-eips/status
       - ovn-fips/status
       - ovn-snat-rules/status
+      - ovn-dnat-rules
+      - ovn-dnat-rules/status
       - switch-lb-rules
       - switch-lb-rules/status
       - vpc-dnses
@@ -2353,6 +2458,8 @@ rules:
       - ovn-eips/status
       - ovn-fips/status
       - ovn-snat-rules/status
+      - ovn-dnat-rules
+      - ovn-dnat-rules/status
       - vpc-dnses
       - vpc-dnses/status
       - switch-lb-rules
