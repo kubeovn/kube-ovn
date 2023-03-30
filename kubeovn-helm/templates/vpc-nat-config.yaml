@@ -1,0 +1,10 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: ovn-vpc-nat-config
+  namespace: kube-system
+  annotations:
+    kubernetes.io/description: |
+      kube-ovn vpc-nat common config
+data:
+  image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.vpcRepository }}:{{ .Values.global.images.kubeovn.tag }}

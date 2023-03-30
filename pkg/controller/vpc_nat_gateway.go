@@ -26,7 +26,6 @@ import (
 )
 
 var (
-	vpcNatImage       = ""
 	vpcNatEnabled     = "unknown"
 	VpcNatCmVersion   = ""
 	NAT_GW_CREATED_AT = ""
@@ -60,7 +59,7 @@ func (c *Controller) resyncVpcNatGwConfig() {
 		return
 	}
 
-	if k8serrors.IsNotFound(err) || cm.Data["enable-vpc-nat-gw"] == "false" || cm.Data["image"] == "" {
+	if k8serrors.IsNotFound(err) || cm.Data["enable-vpc-nat-gw"] == "false" {
 		if vpcNatEnabled == "false" {
 			return
 		}

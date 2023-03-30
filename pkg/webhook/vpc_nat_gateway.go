@@ -3,19 +3,21 @@ package webhook
 import (
 	"context"
 	"fmt"
-	ovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/util"
+	"net"
+	"net/http"
+	"strconv"
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"net"
-	"net/http"
 	cli "sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
-	"strconv"
-	"strings"
+
+	ovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 var (
@@ -32,7 +34,11 @@ func (v *ValidatingHook) VpcNatGwCreateOrUpdateHook(ctx context.Context, req adm
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	if err := v.natGatewayConfigValid(ctx); err != nil {
+	if err := v.ValidateVpcNatConfig(ctx); err != nil {
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+
+	if err := v.ValidateVpcNatGatewayConfig(ctx); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
@@ -62,7 +68,11 @@ func (v *ValidatingHook) iptablesEIPCreateHook(ctx context.Context, req admissio
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	if err := v.natGatewayConfigValid(ctx); err != nil {
+	if err := v.ValidateVpcNatConfig(ctx); err != nil {
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+
+	if err := v.ValidateVpcNatGatewayConfig(ctx); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
@@ -89,9 +99,14 @@ func (v *ValidatingHook) iptablesEIPUpdateHook(ctx context.Context, req admissio
 			err := fmt.Errorf("IptablesEIP \"%s\" is ready,not support change", eipNew.Name)
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		} else {
-			if err := v.natGatewayConfigValid(ctx); err != nil {
+			if err := v.ValidateVpcNatConfig(ctx); err != nil {
 				return ctrlwebhook.Errored(http.StatusBadRequest, err)
 			}
+
+			if err := v.ValidateVpcNatGatewayConfig(ctx); err != nil {
+				return ctrlwebhook.Errored(http.StatusBadRequest, err)
+			}
+
 			if err := v.ValidateIptablesEIP(ctx, &eipNew); err != nil {
 				return ctrlwebhook.Errored(http.StatusBadRequest, err)
 			}
@@ -106,7 +121,11 @@ func (v *ValidatingHook) iptablesEIPDeleteHook(ctx context.Context, req admissio
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	if err := v.natGatewayConfigValid(ctx); err != nil {
+	if err := v.ValidateVpcNatConfig(ctx); err != nil {
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+
+	if err := v.ValidateVpcNatGatewayConfig(ctx); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
@@ -147,7 +166,11 @@ func (v *ValidatingHook) iptablesDnatCreateHook(ctx context.Context, req admissi
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	if err := v.natGatewayConfigValid(ctx); err != nil {
+	if err := v.ValidateVpcNatConfig(ctx); err != nil {
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+
+	if err := v.ValidateVpcNatGatewayConfig(ctx); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
@@ -174,9 +197,14 @@ func (v *ValidatingHook) iptablesDnatUpdateHook(ctx context.Context, req admissi
 			err := fmt.Errorf("IptablesDnatRule \"%s\" is ready,not support change", dnatNew.Name)
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		} else {
-			if err := v.natGatewayConfigValid(ctx); err != nil {
+			if err := v.ValidateVpcNatConfig(ctx); err != nil {
 				return ctrlwebhook.Errored(http.StatusBadRequest, err)
 			}
+
+			if err := v.ValidateVpcNatGatewayConfig(ctx); err != nil {
+				return ctrlwebhook.Errored(http.StatusBadRequest, err)
+			}
+
 			if err := v.ValidateIptablesDnat(&dnatNew); err != nil {
 				return ctrlwebhook.Errored(http.StatusBadRequest, err)
 			}
@@ -192,7 +220,11 @@ func (v *ValidatingHook) iptablesSnatCreateHook(ctx context.Context, req admissi
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	if err := v.natGatewayConfigValid(ctx); err != nil {
+	if err := v.ValidateVpcNatConfig(ctx); err != nil {
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+
+	if err := v.ValidateVpcNatGatewayConfig(ctx); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
@@ -219,7 +251,11 @@ func (v *ValidatingHook) iptablesSnatUpdateHook(ctx context.Context, req admissi
 			err := fmt.Errorf("IptablesSnatRule \"%s\" is ready,not support change", snatNew.Name)
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		} else {
-			if err := v.natGatewayConfigValid(ctx); err != nil {
+			if err := v.ValidateVpcNatConfig(ctx); err != nil {
+				return ctrlwebhook.Errored(http.StatusBadRequest, err)
+			}
+
+			if err := v.ValidateVpcNatGatewayConfig(ctx); err != nil {
 				return ctrlwebhook.Errored(http.StatusBadRequest, err)
 			}
 
@@ -238,7 +274,11 @@ func (v *ValidatingHook) iptablesFipCreateHook(ctx context.Context, req admissio
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	if err := v.natGatewayConfigValid(ctx); err != nil {
+	if err := v.ValidateVpcNatConfig(ctx); err != nil {
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+
+	if err := v.ValidateVpcNatGatewayConfig(ctx); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
@@ -265,7 +305,11 @@ func (v *ValidatingHook) iptablesFipUpdateHook(ctx context.Context, req admissio
 			err := fmt.Errorf("IptablesFIPRule \"%s\" is ready,not support change", fipNew.Name)
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		} else {
-			if err := v.natGatewayConfigValid(ctx); err != nil {
+			if err := v.ValidateVpcNatConfig(ctx); err != nil {
+				return ctrlwebhook.Errored(http.StatusBadRequest, err)
+			}
+
+			if err := v.ValidateVpcNatGatewayConfig(ctx); err != nil {
 				return ctrlwebhook.Errored(http.StatusBadRequest, err)
 			}
 
@@ -323,7 +367,7 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 	return nil
 }
 
-func (v *ValidatingHook) natGatewayConfigValid(ctx context.Context) error {
+func (v *ValidatingHook) ValidateVpcNatGatewayConfig(ctx context.Context) error {
 	cm := &corev1.ConfigMap{}
 	cmKey := types.NamespacedName{Namespace: "kube-system", Name: util.VpcNatGatewayConfig}
 	if err := v.cache.Get(ctx, cmKey, cm); err != nil {
@@ -335,11 +379,6 @@ func (v *ValidatingHook) natGatewayConfigValid(ctx context.Context) error {
 
 	if cm.Data["enable-vpc-nat-gw"] != "true" {
 		err := fmt.Errorf("parameter \"enable-vpc-nat-gw\" in ConfigMap \"%s\" not true", util.VpcNatGatewayConfig)
-		return err
-	}
-
-	if cm.Data["image"] == "" {
-		err := fmt.Errorf("parameter \"image\" in ConfigMap \"%s\" cannot be empty", util.VpcNatGatewayConfig)
 		return err
 	}
 

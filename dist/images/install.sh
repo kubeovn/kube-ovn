@@ -2999,6 +2999,17 @@ echo "[Step 3/6] Install Kube-OVN"
 
 cat <<EOF > kube-ovn.yaml
 ---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: ovn-vpc-nat-config
+  namespace: kube-system
+  annotations:
+    kubernetes.io/description: |
+      kube-ovn vpc-nat common config
+data:
+  image: $REGISTRY/vpc-nat-gateway:$VERSION
+---
 kind: Deployment
 apiVersion: apps/v1
 metadata:

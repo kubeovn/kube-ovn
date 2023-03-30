@@ -165,6 +165,7 @@ const (
 	VpcLbNetworkAttachment = "ovn-vpc-lb"
 	VpcDnsConfig           = "vpc-dns-config"
 	VpcDnsDepTemplate      = "vpc-dns-dep"
+	VpcNatConfig           = "ovn-vpc-nat-config"
 
 	DefaultSecurityGroupName = "default-securitygroup"
 
