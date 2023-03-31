@@ -187,9 +187,7 @@ func (c *Controller) processNextWorkItem(processName string, queue workqueue.Rat
 			return nil
 		}
 		if err := handler(key); err != nil {
-			if !k8serrors.IsNotFound(err) {
-				return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-			}
+			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
 		queue.Forget(obj)
 		return nil
