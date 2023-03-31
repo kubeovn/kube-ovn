@@ -384,9 +384,11 @@ func (c *Controller) handleDelOvnFip(key string) error {
 		return err
 	}
 	// ovn delete fip
-	if err = c.ovnLegacyClient.DeleteFipRule(cachedFip.Status.Vpc, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
-		klog.Errorf("failed to create fip, %v", err)
-		return err
+	if cachedFip.Status.Ready {
+		if err = c.ovnLegacyClient.DeleteFipRule(cachedFip.Status.Vpc, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
+			klog.Errorf("failed to delete fip, %v", err)
+			return err
+		}
 	}
 	if err = c.handleDelOvnFipFinalizer(cachedFip); err != nil {
 		klog.Errorf("failed to handle remove finalizer from ovn fip, %v", err)

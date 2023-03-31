@@ -275,9 +275,11 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 	if !cachedSnat.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("ovn clean snat %s", key)
 		// ovn delete snat
-		if err = c.ovnLegacyClient.DeleteSnatRule(cachedSnat.Status.Vpc, cachedEip.Spec.V4Ip, cachedSnat.Status.V4IpCidr); err != nil {
-			klog.Errorf("failed to delte snat, %v", err)
-			return err
+		if cachedSnat.Status.Ready {
+			if err = c.ovnLegacyClient.DeleteSnatRule(cachedSnat.Status.Vpc, cachedEip.Spec.V4Ip, cachedSnat.Status.V4IpCidr); err != nil {
+				klog.Errorf("failed to delete snat, %v", err)
+				return err
+			}
 		}
 		//  reset eip
 		c.resetOvnEipQueue.Add(cachedSnat.Spec.OvnEip)
