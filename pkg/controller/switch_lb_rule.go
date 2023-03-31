@@ -149,15 +149,15 @@ func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
 
 	svc := genHeadlessService(slr, oldSvc)
 	if needToCreate {
-		_, err = c.config.KubeClient.CoreV1().Services(slr.Spec.Namespace).Create(context.Background(), svc, metav1.CreateOptions{})
-		if err != nil {
-			klog.Errorf("failed to create service '%s', err: %v", svc, err)
+		if _, err = c.config.KubeClient.CoreV1().Services(slr.Spec.Namespace).Create(context.Background(), svc, metav1.CreateOptions{}); err != nil {
+			err := fmt.Errorf("failed to create service '%s', err: %v", svc, err)
+			klog.Error(err)
 			return err
 		}
 	} else {
-		_, err = c.config.KubeClient.CoreV1().Services(slr.Spec.Namespace).Update(context.Background(), svc, metav1.UpdateOptions{})
-		if err != nil {
-			klog.Errorf("failed to update service '%s', err: %v", svc, err)
+		if _, err = c.config.KubeClient.CoreV1().Services(slr.Spec.Namespace).Update(context.Background(), svc, metav1.UpdateOptions{}); err != nil {
+			err := fmt.Errorf("failed to update service '%s', err: %v", svc, err)
+			klog.Error(err)
 			return err
 		}
 	}
@@ -172,11 +172,12 @@ func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
 		}
 		formatPorts = fmt.Sprintf("%s,%d/%s", formatPorts, port.Port, protocol)
 	}
-	newSlr.Status.Ports = strings.TrimPrefix(formatPorts, ",")
 
-	_, err = c.config.KubeOvnClient.KubeovnV1().SwitchLBRules().UpdateStatus(context.Background(), newSlr, metav1.UpdateOptions{})
-	if err != nil {
-		klog.Errorf("update SwitchLBRule status failed, %v", err)
+	newSlr.Status.Ports = strings.TrimPrefix(formatPorts, ",")
+	if _, err = c.config.KubeOvnClient.KubeovnV1().SwitchLBRules().UpdateStatus(context.Background(), newSlr, metav1.UpdateOptions{}); err != nil {
+		err := fmt.Errorf("failed to update switch lb rule status, %v", err)
+		klog.Error(err)
+		return err
 	}
 
 	return nil
