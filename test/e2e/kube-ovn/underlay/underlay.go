@@ -2,6 +2,7 @@ package underlay
 
 import (
 	"fmt"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"net"
 	"os/exec"
 	"strconv"
@@ -543,7 +544,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		checkU2OItems(true, subnet, underlayPod, overlayPod)
 
 		ginkgo.By("step4: check if kube-ovn-controller restart")
-		framework.RestartSystemDeployment("kube-ovn-controller", true)
+		framework.RestartSystemDeployment("kube-ovn-controller")
 		checkU2OItems(true, subnet, underlayPod, overlayPod)
 
 		ginkgo.By("step5: Disable u2o check after restart kube-controller")
@@ -713,15 +714,17 @@ func checkReachable(podName, podNamespace, sourceIP, targetIP, targetPort string
 
 func checkPolicy(hitPolicyStr string, expectPolicyExist bool) {
 	policyExist := false
-	output, _ := exec.Command("bash", "-c", "kubectl ko nbctl lr-policy-list ovn-cluster").CombinedOutput()
-	outputStr := string(output)
-	lines := strings.Split(outputStr, "\n")
-	for _, line := range lines {
-		if strings.Contains(strings.Join(strings.Fields(line), " "), hitPolicyStr) {
-			policyExist = true
-			break
+	_ = wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
+		output, _ := exec.Command("bash", "-c", "kubectl ko nbctl lr-policy-list ovn-cluster").CombinedOutput()
+		outputStr := string(output)
+		lines := strings.Split(outputStr, "\n")
+		for _, line := range lines {
+			if strings.Contains(strings.Join(strings.Fields(line), " "), hitPolicyStr) {
+				policyExist = true
+				return true, nil
+			}
 		}
-
-	}
+		return false, nil
+	})
 	framework.ExpectEqual(policyExist, expectPolicyExist)
 }

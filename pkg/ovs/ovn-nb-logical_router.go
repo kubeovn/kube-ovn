@@ -3,9 +3,11 @@ package ovs
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
+	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -153,6 +155,31 @@ func (c *ovnClient) UpdateLogicalRouterOp(lr *ovnnb.LogicalRouter, fields ...int
 func (c *ovnClient) LogicalRouterUpdatePortOp(lrName, lrpUUID string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
 	if len(lrpUUID) == 0 {
 		return nil, nil
+	}
+
+	if lrName == "" && op == ovsdb.MutateOperationDelete {
+		lrList, err := c.ListLogicalRouter(false, func(lr *ovnnb.LogicalRouter) bool {
+			return util.ContainsString(lr.Ports, lrpUUID)
+		})
+		if err != nil {
+			klog.Error(err)
+			return nil, fmt.Errorf("failed to list LR by LRP UUID %s: %v", lrpUUID, err)
+		}
+		if len(lrList) == 0 {
+			err = fmt.Errorf("no LR found for LRP %s", lrpUUID)
+			klog.Error(err)
+			return nil, err
+		}
+		if len(lrList) != 1 {
+			lrNames := make([]string, len(lrList))
+			for i := range lrList {
+				lrNames[i] = lrList[i].Name
+			}
+			err = fmt.Errorf("multiple LR found for LRP %s: %s", lrpUUID, strings.Join(lrNames, ", "))
+			klog.Error(err)
+			return nil, err
+		}
+		lrName = lrList[0].Name
 	}
 
 	mutation := func(lr *ovnnb.LogicalRouter) *model.Mutation {

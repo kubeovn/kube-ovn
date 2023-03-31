@@ -950,14 +950,20 @@ env-check(){
 }
 
 log_kube_ovn(){
-  sub_component_param=$1
-  tail_lines_param=$2
-  podNames=`kubectl get pod -n kube-system -l app=$sub_component_param -o 'jsonpath={.items[*].metadata.name}'`
+  component_param=$1
+  sub_component_param=$2
+  tail_lines_param=$3
+  podNames=`kubectl get pod -n kube-system -l app=kube-ovn-cni -o 'jsonpath={.items[*].metadata.name}'`
   for pod in $podNames; do
+    nodeName=$(kubectl get pod "$pod" -n kube-system -o jsonpath={.spec.nodeName})
     echo "************************************************"
-    echo " component $component sub_component $sub_component_param pod $pod log"
+    echo " component $component sub_component $sub_component_param on node $nodeName pod $pod log "
     echo "************************************************"
-    kubectl logs "$pod" -n kube-system $( [ "$tail_lines" == "all" ] || echo "--tail=$tail_lines" ) 2>&1 || :
+    if [[ "$tail_lines_param" == "all" ]]; then
+      kubectl exec $pod -n kube-system -c cni-server -- cat /var/log/$component_param/$sub_component_param.log 2>&1 || :
+    else
+      kubectl exec $pod -n kube-system -c cni-server -- tail -n $tail_lines_param /var/log/$component_param/$sub_component_param.log 2>&1 || :
+    fi
   done
 }
 
@@ -971,7 +977,7 @@ log_ovn_ovs(){
     echo " component $component_param $sub_component_param.log pod $pod log"
     echo "************************************************"
 
-    if [[ "$tail_lines" == "all" ]]; then
+    if [[ "$tail_lines_param" == "all" ]]; then
       kubectl exec $pod -n kube-system -- cat /var/log/$component_param/$sub_component_param.log 2>&1 || :
     else
       kubectl exec $pod -n kube-system -- tail -n $tail_lines_param /var/log/$component_param/$sub_component_param.log 2>&1 || :
@@ -988,7 +994,7 @@ log_linux(){
     echo " component $component sub_component $sub_component_param pod $pod log"
     echo "************************************************"
     if [[ "$sub_component_param" == "dmesg" ]]; then
-      kubectl exec $pod -n kube-system -- dmesg -T $( [ "$tail_lines" == "all" ] || echo "| tail -n $tail_lines_param" ) || :
+      kubectl exec $pod -n kube-system -- dmesg -T $( [ "$tail_lines_param" == "all" ] || echo "| tail -n $tail_lines_param" ) || :
     elif [[ "$sub_component_param" == "iptables" ]]; then
       echo "******************legacy filter ************************"
       kubectl exec $pod -n kube-system -- iptables -S || :
@@ -1060,10 +1066,10 @@ log(){
   if [[ "$component" == "kube-ovn" || "$component" == "all" ]]; then
     if [[ "$sub_component" == "all" ]]; then
       for kube_ovn_sub_component in ${kube_ovn_sub_components[@]}; do
-        log_kube_ovn "$kube_ovn_sub_component" $tail_lines
+        log_kube_ovn "kube-ovn" "$kube_ovn_sub_component" $tail_lines
       done
     else
-      log_kube_ovn "$sub_component" $tail_lines
+      log_kube_ovn "kube-ovn" "$sub_component" $tail_lines
     fi
   fi
 

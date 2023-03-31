@@ -25,6 +25,7 @@ const (
 
 	OvnFipUseEipFinalizer  = "ovn.kubernetes.io/ovn_fip"
 	OvnSnatUseEipFinalizer = "ovn.kubernetes.io/ovn_snat"
+	OvnDnatUseEipFinalizer = "ovn.kubernetes.io/ovn_dnat"
 	OvnLrpUseEipFinalizer  = "ovn.kubernetes.io/ovn_lrp"
 
 	ExternalIpAnnotation         = "ovn.kubernetes.io/external_ip"
@@ -166,6 +167,7 @@ const (
 	VpcLbNetworkAttachment = "ovn-vpc-lb"
 	VpcDnsConfig           = "vpc-dns-config"
 	VpcDnsDepTemplate      = "vpc-dns-dep"
+	VpcNatConfig           = "ovn-vpc-nat-config"
 
 	DefaultSecurityGroupName = "default-securitygroup"
 
@@ -177,7 +179,7 @@ const (
 
 	LrpUsingEip       = "lrp"
 	FipUsingEip       = "fip"
-	FipUsingVip       = "vip"
+	NatUsingVip       = "vip"
 	SnatUsingEip      = "snat"
 	DnatUsingEip      = "dnat"
 	NodeExtGwUsingEip = "node-ext-gw"

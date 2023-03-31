@@ -36,6 +36,7 @@ CNI_CONF_DIR="/etc/cni/net.d"
 CNI_BIN_DIR="/opt/cni/bin"
 
 REGISTRY="kubeovn"
+VPC_NAT_IMAGE="vpc-nat-gateway"
 VERSION="v1.12.0"
 IMAGE_PULL_POLICY="IfNotPresent"
 POD_CIDR="10.16.0.0/16"                # Do NOT overlap with NODE/SVC/JOIN CIDR
@@ -556,6 +557,8 @@ spec:
                   type: string
                 redo:
                   type: string
+                internalIp:
+                  type: string
                 conditions:
                   type: array
                   items:
@@ -740,6 +743,8 @@ spec:
                 natGwDp:
                   type: string
                 redo:
+                  type: string
+                internalCIDR:
                   type: string
                 conditions:
                   type: array
@@ -1005,6 +1010,109 @@ spec:
                   type: string
                 ipName:
                   type: string
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: ovn-dnat-rules.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    plural: ovn-dnat-rules
+    singular: ovn-dnat-rule
+    shortNames:
+      - odnat
+    kind: OvnDnatRule
+    listKind: OvnDnatRuleList
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - jsonPath: .spec.ovnEip
+          name: Eip
+          type: string
+        - jsonPath: .status.protocol
+          name: Protocol
+          type: string
+        - jsonPath: .status.v4Eip
+          name: V4Eip
+          type: string
+        - jsonPath: .status.v4Ip
+          name: V4Ip
+          type: string
+        - jsonPath: .status.internalPort
+          name: InternalPort
+          type: string
+        - jsonPath: .status.externalPort
+          name: ExternalPort
+          type: string
+        - jsonPath: .spec.ipName
+          name: IpName
+          type: string
+        - jsonPath: .status.ready
+          name: Ready
+          type: boolean
+      schema:
+          openAPIV3Schema:
+            type: object
+            properties:
+              status:
+                type: object
+                properties:
+                  ready:
+                    type: boolean
+                  v4Eip:
+                    type: string
+                  v4Ip:
+                    type: string
+                  macAddress:
+                    type: string
+                  vpc:
+                    type: string
+                  externalPort:
+                    type: string
+                  internalPort:
+                    type: string
+                  protocol:
+                    type: string
+                  ipName:
+                    type: string
+                  conditions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                        status:
+                          type: string
+                        reason:
+                          type: string
+                        message:
+                          type: string
+                        lastUpdateTime:
+                          type: string
+                        lastTransitionTime:
+                          type: string
+              spec:
+                type: object
+                properties:
+                  ovnEip:
+                    type: string
+                  ipType:
+                    type: string
+                  ipName:
+                    type: string
+                  externalPort:
+                    type: string
+                  internalPort:
+                    type: string
+                  protocol:
+                    type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -1913,6 +2021,8 @@ rules:
       - ovn-eips/status
       - ovn-fips/status
       - ovn-snat-rules/status
+      - ovn-dnat-rules
+      - ovn-dnat-rules/status
       - switch-lb-rules
       - switch-lb-rules/status
       - vpc-dnses
@@ -2424,6 +2534,8 @@ rules:
       - ovn-eips/status
       - ovn-fips/status
       - ovn-snat-rules/status
+      - ovn-dnat-rules
+      - ovn-dnat-rules/status
       - vpc-dnses
       - vpc-dnses/status
       - switch-lb-rules
@@ -3072,6 +3184,17 @@ echo "[Step 3/6] Install Kube-OVN"
 
 cat <<EOF > kube-ovn.yaml
 ---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: ovn-vpc-nat-config
+  namespace: kube-system
+  annotations:
+    kubernetes.io/description: |
+      kube-ovn vpc-nat common config
+data:
+  image: $REGISTRY/$VPC_NAT_IMAGE:$VERSION
+---
 kind: Deployment
 apiVersion: apps/v1
 metadata:
@@ -3298,6 +3421,8 @@ spec:
                 fieldPath: status.podIPs
           - name: ENABLE_BIND_LOCAL_IP
             value: "$ENABLE_BIND_LOCAL_IP"
+          - name: DBUS_SYSTEM_BUS_ADDRESS
+            value: "unix:path=/host/var/run/dbus/system_bus_socket"
         volumeMounts:
           - name: host-modules
             mountPath: /lib/modules
@@ -3313,6 +3438,9 @@ spec:
             mountPropagation: Bidirectional
           - mountPath: /run/ovn
             name: host-run-ovn
+          - mountPath: /host/var/run/dbus
+            name: host-dbus
+            mountPropagation: HostToContainer
           - mountPath: /var/run/netns
             name: host-ns
             mountPropagation: Bidirectional
@@ -3375,6 +3503,9 @@ spec:
         - name: host-ns
           hostPath:
             path: /var/run/netns
+        - name: host-dbus
+          hostPath:
+            path: /var/run/dbus
         - name: host-log-ovs
           hostPath:
             path: /var/log/openvswitch
@@ -3566,6 +3697,11 @@ spec:
           image: "$REGISTRY/kube-ovn:$VERSION"
           imagePullPolicy: $IMAGE_PULL_POLICY
           command: ["/kube-ovn/start-ovn-monitor.sh"]
+          args:
+          - --log_file=/var/log/kube-ovn/kube-ovn-monitor.log
+          - --logtostderr=false
+          - --alsologtostderr=true
+          - --log_file_max_size=0
           securityContext:
             runAsUser: 0
             privileged: false
@@ -3606,6 +3742,8 @@ spec:
               name: localtime
             - mountPath: /var/run/tls
               name: kube-ovn-tls
+            - mountPath: /var/log/kube-ovn
+              name: kube-ovn-log
           readinessProbe:
             exec:
               command:
@@ -3651,6 +3789,9 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
+        - name: kube-ovn-log
+          hostPath:
+            path: /var/log/kube-ovn
 ---
 kind: Service
 apiVersion: v1

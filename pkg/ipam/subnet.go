@@ -171,6 +171,9 @@ func (subnet *Subnet) pushPodNic(podName, nicName string) {
 
 func (subnet *Subnet) popPodNic(podName, nicName string) {
 	subnet.PodToNicList[podName] = util.RemoveString(subnet.PodToNicList[podName], nicName)
+	if subnet.PodToNicList[podName] == nil {
+		delete(subnet.PodToNicList, podName)
+	}
 }
 
 func (subnet *Subnet) GetRandomAddress(podName, nicName string, mac string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
@@ -632,10 +635,8 @@ func (subnet *Subnet) joinFreeWithReserve() {
 	}
 }
 
+// This func is only called in ipam.GetPodAddress, move mutex to caller
 func (subnet *Subnet) GetPodAddress(podName, nicName string) (IP, IP, string, string) {
-	subnet.mutex.RLock()
-	defer subnet.mutex.RUnlock()
-
 	if subnet.Protocol == kubeovnv1.ProtocolIPv4 {
 		ip, mac := subnet.V4NicToIP[nicName], subnet.NicToMac[nicName]
 		return ip, "", mac, kubeovnv1.ProtocolIPv4

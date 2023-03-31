@@ -33,6 +33,7 @@ type KubeovnV1Interface interface {
 	IptablesEIPsGetter
 	IptablesFIPRulesGetter
 	IptablesSnatRulesGetter
+	OvnDnatRulesGetter
 	OvnEipsGetter
 	OvnFipsGetter
 	OvnSnatRulesGetter
@@ -71,6 +72,10 @@ func (c *KubeovnV1Client) IptablesFIPRules() IptablesFIPRuleInterface {
 
 func (c *KubeovnV1Client) IptablesSnatRules() IptablesSnatRuleInterface {
 	return newIptablesSnatRules(c)
+}
+
+func (c *KubeovnV1Client) OvnDnatRules() OvnDnatRuleInterface {
+	return newOvnDnatRules(c)
 }
 
 func (c *KubeovnV1Client) OvnEips() OvnEipInterface {

@@ -28,6 +28,8 @@ type IptablesFIPRuleExpansion interface{}
 
 type IptablesSnatRuleExpansion interface{}
 
+type OvnDnatRuleExpansion interface{}
+
 type OvnEipExpansion interface{}
 
 type OvnFipExpansion interface{}

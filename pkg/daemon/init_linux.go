@@ -3,10 +3,9 @@ package daemon
 import (
 	"time"
 
-	"k8s.io/klog/v2"
-
-	"github.com/Wifx/gonetworkmanager"
+	"github.com/kubeovn/gonetworkmanager/v2"
 	"github.com/vishvananda/netlink"
+	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -25,6 +24,16 @@ func nmSetManaged(device string, managed bool) error {
 		return nil
 	}
 
+	running, err := nm.Running()
+	if err != nil {
+		klog.Warningf("failed to check NetworkManager running state: %v", err)
+		return nil
+	}
+	if !running {
+		klog.V(5).Info("NetworkManager is not running, ignore")
+		return nil
+	}
+
 	d, err := nm.GetDeviceByIpIface(device)
 	if err != nil {
 		klog.Errorf("failed to get device by IP iface %s: %v", device, err)
@@ -39,6 +48,7 @@ func nmSetManaged(device string, managed bool) error {
 		return nil
 	}
 
+	klog.Infof(`setting device %s NetworkManager property "managed" to %v`, device, managed)
 	if err = d.SetPropertyManaged(managed); err != nil {
 		klog.Errorf("failed to set device property managed to %v: %v", managed, err)
 		return err
@@ -97,7 +107,7 @@ func changeProvideNicName(current, target string) (bool, error) {
 
 	// set link unmanaged by NetworkManager
 	if err = nmSetManaged(current, false); err != nil {
-		klog.Errorf("failed set device %s to unmanaged by NetworkManager: %v", current, err)
+		klog.Errorf("failed set device %s unmanaged by NetworkManager: %v", current, err)
 		return false, err
 	}
 

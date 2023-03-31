@@ -34,6 +34,8 @@ type Interface interface {
 	IptablesFIPRules() IptablesFIPRuleInformer
 	// IptablesSnatRules returns a IptablesSnatRuleInformer.
 	IptablesSnatRules() IptablesSnatRuleInformer
+	// OvnDnatRules returns a OvnDnatRuleInformer.
+	OvnDnatRules() OvnDnatRuleInformer
 	// OvnEips returns a OvnEipInformer.
 	OvnEips() OvnEipInformer
 	// OvnFips returns a OvnFipInformer.
@@ -96,6 +98,11 @@ func (v *version) IptablesFIPRules() IptablesFIPRuleInformer {
 // IptablesSnatRules returns a IptablesSnatRuleInformer.
 func (v *version) IptablesSnatRules() IptablesSnatRuleInformer {
 	return &iptablesSnatRuleInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// OvnDnatRules returns a OvnDnatRuleInformer.
+func (v *version) OvnDnatRules() OvnDnatRuleInformer {
+	return &ovnDnatRuleInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
 // OvnEips returns a OvnEipInformer.

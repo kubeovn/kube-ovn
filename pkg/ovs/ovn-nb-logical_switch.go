@@ -238,7 +238,7 @@ func (c *ovnClient) LogicalSwitchUpdatePortOp(lsName string, lspUUID string, op 
 		return nil, nil
 	}
 
-	if lsName == "" {
+	if lsName == "" && op == ovsdb.MutateOperationDelete {
 		lsList, err := c.ListLogicalSwitch(false, func(ls *ovnnb.LogicalSwitch) bool {
 			return util.ContainsString(ls.Ports, lspUUID)
 		})
@@ -253,8 +253,8 @@ func (c *ovnClient) LogicalSwitchUpdatePortOp(lsName string, lspUUID string, op 
 		}
 		if len(lsList) != 1 {
 			lsNames := make([]string, len(lsList))
-			for _, ls := range lsList {
-				lsNames = append(lsNames, ls.Name)
+			for i := range lsList {
+				lsNames[i] = lsList[i].Name
 			}
 			err = fmt.Errorf("multiple LS found for LSP %s: %s", lspUUID, strings.Join(lsNames, ", "))
 			klog.Error(err)

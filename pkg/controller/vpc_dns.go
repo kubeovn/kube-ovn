@@ -40,7 +40,6 @@ var (
 	cmVersion       = ""
 	k8sServiceHost  = ""
 	k8sServicePort  = ""
-	initRouteImage  = ""
 	enableCoredns   = false
 	hostNameservers []string
 )
@@ -49,7 +48,6 @@ const (
 	CorednsContainerName = "coredns"
 	CorednsLabelKey      = "k8s-app"
 	CorednsTemplateDep   = "coredns-template.yaml"
-	InitRouteImage       = "kubeovn/vpc-nat-gateway:v1.11.0"
 )
 
 func genVpcDnsDpName(name string) string {
@@ -451,16 +449,20 @@ func setVpcDnsRoute(dp *v1.Deployment, subnetGw string) {
 	}
 
 	var routeCmd string
-	routeCmd = fmt.Sprintf("ip route add %s via %s dev net1;", serviceHost, subnetGw)
-	for _, nameserver := range hostNameservers {
-		routeCmd += fmt.Sprintf("ip route add %s via %s dev net1;", nameserver, subnetGw)
-	}
+	v4Gw, _ := util.SplitStringIP(subnetGw)
 
+	if v4Gw != "" {
+		routeCmd = fmt.Sprintf("ip -4 route add %s via %s dev net1;", serviceHost, v4Gw)
+		for _, nameserver := range hostNameservers {
+			routeCmd += fmt.Sprintf("ip -4 route add %s via %s dev net1;", nameserver, v4Gw)
+		}
+	}
+	// TODO:// ipv6
 	privileged := true
 	allowPrivilegeEscalation := true
 	dp.Spec.Template.Spec.InitContainers = append(dp.Spec.Template.Spec.InitContainers, corev1.Container{
 		Name:            "init-route",
-		Image:           initRouteImage,
+		Image:           vpcNatImage,
 		Command:         []string{"sh", "-c", routeCmd},
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		SecurityContext: &corev1.SecurityContext{
@@ -573,12 +575,6 @@ func (c *Controller) resyncVpcDnsConfig() {
 		}
 	}
 	enableCoredns = newEnableCoredns
-
-	if newInitRouteImage, ok := cm.Data["init-route-image"]; ok {
-		initRouteImage = newInitRouteImage
-	} else {
-		initRouteImage = InitRouteImage
-	}
 }
 
 func (c *Controller) getDefaultCoreDnsImage() (string, error) {

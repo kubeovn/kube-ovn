@@ -26,7 +26,6 @@ import (
 )
 
 var (
-	vpcNatImage       = ""
 	vpcNatEnabled     = "unknown"
 	VpcNatCmVersion   = ""
 	NAT_GW_CREATED_AT = ""
@@ -64,7 +63,7 @@ func (c *Controller) resyncVpcNatGwConfig() {
 		return
 	}
 
-	if k8serrors.IsNotFound(err) || cm.Data["enable-vpc-nat-gw"] == "false" || cm.Data["image"] == "" {
+	if k8serrors.IsNotFound(err) || cm.Data["enable-vpc-nat-gw"] == "false" {
 		if vpcNatEnabled == "false" {
 			return
 		}
@@ -192,7 +191,9 @@ func (c *Controller) processNextWorkItem(processName string, queue workqueue.Rat
 			return nil
 		}
 		if err := handler(key); err != nil {
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+			if !k8serrors.IsNotFound(err) {
+				return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+			}
 		}
 		queue.Forget(obj)
 		return nil
@@ -800,7 +801,7 @@ func (c *Controller) updateCrdNatGw(key string) error {
 			gw.Labels[util.SubnetNameLabel] = gw.Spec.Subnet
 			needUpdateLabel = true
 		}
-		if gw.Labels[util.VpcNameLabel] != gw.Spec.Subnet {
+		if gw.Labels[util.VpcNameLabel] != gw.Spec.Vpc {
 			op = "replace"
 			gw.Labels[util.VpcNameLabel] = gw.Spec.Vpc
 			needUpdateLabel = true
