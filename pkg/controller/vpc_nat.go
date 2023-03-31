@@ -14,6 +14,9 @@ var (
 func (c *Controller) resyncVpcNatConfig() {
 	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcNatConfig)
 	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return
+		}
 		klog.Errorf("failed to get ovn-vpc-nat-config, %v", err)
 		return
 	}
