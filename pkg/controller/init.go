@@ -395,23 +395,24 @@ func (c *Controller) InitIPAM() error {
 						klog.Errorf("failed to create/update ips CR %s.%s with ip address %s: %v", podName, pod.Namespace, ip, err)
 					}
 				}
-
-				externalIDs := make(map[string]string, 3)
-				if _, ok := lspWithoutVendor[portName]; ok {
-					externalIDs["vendor"] = util.CniTypeName
-					externalIDs["pod"] = fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
-				}
-				if uuid := lspWithoutLS[portName]; uuid != "" {
-					for ls, ports := range lsPortsMap {
-						if _, ok := ports[uuid]; ok {
-							externalIDs[logicalSwitchKey] = ls
-							break
+				if podNet.ProviderName == util.OvnProvider || strings.HasSuffix(podNet.ProviderName, util.OvnProvider) {
+					externalIDs := make(map[string]string, 3)
+					if _, ok := lspWithoutVendor[portName]; ok {
+						externalIDs["vendor"] = util.CniTypeName
+						externalIDs["pod"] = fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
+					}
+					if uuid := lspWithoutLS[portName]; uuid != "" {
+						for ls, ports := range lsPortsMap {
+							if _, ok := ports[uuid]; ok {
+								externalIDs[logicalSwitchKey] = ls
+								break
+							}
 						}
 					}
-				}
 
-				if err = c.initAppendLspExternalIds(portName, externalIDs); err != nil {
-					klog.Errorf("failed to append external-ids for logical switch port %s: %v", portName, err)
+					if err = c.initAppendLspExternalIds(portName, externalIDs); err != nil {
+						klog.Errorf("failed to append external-ids for logical switch port %s: %v", portName, err)
+					}
 				}
 			}
 		}
