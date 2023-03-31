@@ -365,8 +365,17 @@ jobs:
         run: make k8s-conformance-e2e
 
       - name: kubectl ko log
-        if: failure() && steps.e2e.outcome != 'success'
-        run: make kubectl-ko-log
+        if: failure()
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log
+          path: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
 
   k8s-netpol-e2e:
     name: Kubernetes Network Policy E2E
@@ -465,8 +474,17 @@ jobs:
         run: make k8s-netpol-e2e
 
       - name: kubectl ko log
-        if: failure() && steps.e2e.outcome != 'success'
-        run: make kubectl-ko-log
+        if: failure()
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log
+          path: k8s-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
   k8s-netpol-legacy-e2e:
     name: Kubernetes Network Policy Legacy E2E
@@ -565,8 +583,17 @@ jobs:
         run: make k8s-netpol-legacy-e2e
 
       - name: kubectl ko log
-        if: failure() && steps.e2e.outcome != 'success'
-        run: make kubectl-ko-log
+        if: failure()
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz k8s-netpol-legacy-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: k8s-netpol-legacy-e2e-${{ matrix.ip-family }}-ko-log
+          path: k8s-netpol-legacy-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
   cyclonus-netpol-e2e:
     name: Cyclonus Network Policy E2E
@@ -641,8 +668,17 @@ jobs:
         run: make cyclonus-netpol-e2e
 
       - name: kubectl ko log
-        if: failure() && steps.e2e.outcome != 'success'
-        run: make kubectl-ko-log
+        if: failure()
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log
+          path: cyclonus-netpol-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
   kube-ovn-conformance-e2e:
     name: Kube-OVN Conformance E2E
@@ -735,8 +771,17 @@ jobs:
         run: make kube-ovn-conformance-e2e
 
       - name: kubectl ko log
-        if: failure() && steps.e2e.outcome != 'success'
-        run: make kubectl-ko-log
+        if: failure()
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz kube-ovn-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: kube-ovn-conformance-e2e-${{ matrix.ip-family }}-ko-log
+          path: kube-ovn-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh
@@ -822,8 +867,17 @@ jobs:
         run: make kube-ovn-ic-conformance-e2e
 
       - name: kubectl ko log
-        if: failure() && steps.e2e.outcome != 'success'
-        run: make kubectl-ko-log
+        if: failure()
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz kube-ovn-ic-conformance-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: kube-ovn-ic-conformance-e2e-ko-log
+          path: kube-ovn-ic-conformance-e2e-ko-log.tar.gz
 
   chart-installation-test:
     name: Chart Installation Test
@@ -1224,8 +1278,17 @@ jobs:
         run: make kube-ovn-webhook-e2e
 
       - name: kubectl ko log
-        if: failure() && steps.e2e.outcome != 'success'
-        run: make kubectl-ko-log
+        if: failure()
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz webhook-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: webhook-e2e-ko-log
+          path: webhook-e2e-ko-log.tar.gz
 
   installation-compatibility-test:
     name: Installation Compatibility Test
@@ -1260,8 +1323,17 @@ jobs:
         run: make kind-install
 
       - name: kubectl ko log
-        if: failure() && steps.e2e.outcome != 'success'
-        run: make kubectl-ko-log
+        if: failure()
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz installation-compatibility-test-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: installation-compatibility-test-ko-log
+          path: installation-compatibility-test-ko-log.tar.gz
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh
@@ -1357,8 +1429,17 @@ jobs:
         run: make k8s-conformance-e2e
 
       - name: kubectl ko log
-        if: failure() && steps.e2e.outcome != 'success'
-        run: make kubectl-ko-log
+        if: failure()
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz cilium-chaining-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: cilium-chaining-e2e-ko-log
+          path: cilium-chaining-e2e-ko-log.tar.gz
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh
@@ -1462,8 +1543,17 @@ jobs:
         run: make kube-ovn-security-e2e
 
       - name: kubectl ko log
-        if: failure() && steps.e2e.outcome != 'success'
-        run: make kubectl-ko-log
+        if: failure()
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz kube-ovn-security-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: kube-ovn-security-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log
+          path: kube-ovn-security-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh
@@ -1621,8 +1711,17 @@ jobs:
         run: make kube-ovn-submariner-conformance-e2e
 
       - name: kubectl ko log
-        if: failure() && steps.e2e.outcome != 'success'
-        run: make kubectl-ko-log
+        if: failure()
+        run: |
+          make kubectl-ko-log
+          mv kubectl-ko-log.tar.gz kube-ovn-submariner-conformance-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: kube-ovn-submariner-conformance-e2e-ko-log
+          path: kube-ovn-submariner-conformance-e2e-ko-log.tar.gz
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh
