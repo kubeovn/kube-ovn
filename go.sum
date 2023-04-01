@@ -365,8 +365,6 @@ github.com/coreos/etcd v3.3.13+incompatible/go.mod h1:uF7uidLiAD3TWHmW31ZFd/JWoc
 github.com/coreos/go-etcd v2.0.0+incompatible/go.mod h1:Jez6KQU2B/sWsbdaef3ED8NzMklzPG4d5KIOhIy30Tk=
 github.com/coreos/go-iptables v0.4.5/go.mod h1:/mVI274lEDI2ns62jHCDnCyBF9Iwsmekav8Dbxlm1MU=
 github.com/coreos/go-iptables v0.5.0/go.mod h1:/mVI274lEDI2ns62jHCDnCyBF9Iwsmekav8Dbxlm1MU=
-github.com/coreos/go-iptables v0.6.0 h1:is9qnZMPYjLd8LYqmm/qlE+wwEgJIkTYdhV3rfZo4jk=
-github.com/coreos/go-iptables v0.6.0/go.mod h1:Qe8Bv2Xik5FyTXwgIbLAnv2sWSBmvWdFETJConOQ//Q=
 github.com/coreos/go-oidc v2.1.0+incompatible/go.mod h1:CgnwVTmzoESiwO9qyAFEMiHoZ1nMCKZlZ9V6mm3/LKc=
 github.com/coreos/go-semver v0.2.0/go.mod h1:nnelYz7RCh+5ahJtPPxZlU+153eP4D4r3EedlOD2RNk=
 github.com/coreos/go-semver v0.3.0 h1:wkHLiw0WNATZnSG7epLsujiMCgPAc9xhjJ4tgnAxmfM=
@@ -896,6 +894,8 @@ github.com/kubeovn/arp v0.0.0-20230101053045-8a0772d9c34c h1:AcOKlV+lInNlGO3o3+1
 github.com/kubeovn/arp v0.0.0-20230101053045-8a0772d9c34c/go.mod h1:Ce8lvkopTGXfPmeb5AY3/umEOmoFVV3HlCPGfGk0+Y0=
 github.com/kubeovn/felix v0.0.0-20220325073257-c8a0f705d139 h1:MaLC8/dohKHU8nkfglfE2oikefB6urJG75yZDOcKTRU=
 github.com/kubeovn/felix v0.0.0-20220325073257-c8a0f705d139/go.mod h1:ulxnUH9cbIOtCH+exhJPeV2mleh+bDv67WKsl/MVU/g=
+github.com/kubeovn/go-iptables v0.0.0-20230322103850-8619a8ab3dca h1:fTMjoho2et9nKVOFrjzVEWVd9XD1zzxOYrlxxZpO0fU=
+github.com/kubeovn/go-iptables v0.0.0-20230322103850-8619a8ab3dca/go.mod h1:jY1XeGzkx8ASNJ+SqQSxTESNXARkjvt+I6IJOTnzIjw=
 github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230327064018-0b27f88874f7 h1:X5/DAYXXe8p3mUz3Z+j0dsgpIUPiNhaq0f7D1Z9/8CY=
 github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230327064018-0b27f88874f7/go.mod h1:rNwHas8aX9k/BEz5dwObhRvfV7KEd0MnrTTDd4gQ3D0=
 github.com/kubeovn/kubevirt-client-go v0.0.0-20221209084839-9c2ed1f0604d h1:sM7V2MhONBa10zYQA1yg/UbPm/Y7JqVqymtgoDiGqMo=
