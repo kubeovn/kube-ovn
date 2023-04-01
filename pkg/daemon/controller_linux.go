@@ -14,7 +14,7 @@ import (
 	"syscall"
 
 	"github.com/alauda/felix/ipsets"
-	"github.com/coreos/go-iptables/iptables"
+	"github.com/kubeovn/go-iptables/iptables"
 	"github.com/vishvananda/netlink"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -30,31 +30,79 @@ import (
 
 // ControllerRuntime represents runtime specific controller members
 type ControllerRuntime struct {
-	iptables   map[string]*iptables.IPTables
-	ipsets     map[string]*ipsets.IPSets
-	gwCounters map[string]*util.GwIPtableCounters
+	iptables         map[string]*iptables.IPTables
+	iptablesObsolete map[string]*iptables.IPTables
+	ipsets           map[string]*ipsets.IPSets
+	gwCounters       map[string]*util.GwIPtableCounters
+}
+
+func evalCommandSymlinks(cmd string) (string, error) {
+	path, err := exec.LookPath(cmd)
+	if err != nil {
+		return "", fmt.Errorf("failed to search for command %q: %v", cmd, err)
+	}
+	file, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to read evaluate symbolic links for file %q: %v", path, err)
+	}
+
+	return file, nil
+}
+
+func isLegacyIptablesMode() (bool, error) {
+	path, err := evalCommandSymlinks("iptables")
+	if err != nil {
+		return false, err
+	}
+	pathLegacy, err := evalCommandSymlinks("iptables-legacy")
+	if err != nil {
+		return false, err
+	}
+	return path == pathLegacy, nil
 }
 
 func (c *Controller) initRuntime() error {
-	c.ControllerRuntime.iptables = make(map[string]*iptables.IPTables)
-	c.ControllerRuntime.ipsets = make(map[string]*ipsets.IPSets)
-	c.ControllerRuntime.gwCounters = make(map[string]*util.GwIPtableCounters)
+	ok, err := isLegacyIptablesMode()
+	if err != nil {
+		klog.Errorf("failed to check iptables mode: %v", err)
+		return err
+	}
+	if !ok {
+		// iptables works in nft mode, we should migrate iptables rules
+		c.iptablesObsolete = make(map[string]*iptables.IPTables, 2)
+	}
+
+	c.iptables = make(map[string]*iptables.IPTables)
+	c.ipsets = make(map[string]*ipsets.IPSets)
+	c.gwCounters = make(map[string]*util.GwIPtableCounters)
 
 	if c.protocol == kubeovnv1.ProtocolIPv4 || c.protocol == kubeovnv1.ProtocolDual {
-		iptables, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
+		ipt, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
 		if err != nil {
 			return err
 		}
-		c.ControllerRuntime.iptables[kubeovnv1.ProtocolIPv4] = iptables
-		c.ControllerRuntime.ipsets[kubeovnv1.ProtocolIPv4] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil))
+		c.iptables[kubeovnv1.ProtocolIPv4] = ipt
+		if c.iptablesObsolete != nil {
+			if ipt, err = iptables.NewWithProtocolAndMode(iptables.ProtocolIPv4, "legacy"); err != nil {
+				return err
+			}
+			c.iptablesObsolete[kubeovnv1.ProtocolIPv4] = ipt
+		}
+		c.ipsets[kubeovnv1.ProtocolIPv4] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil))
 	}
 	if c.protocol == kubeovnv1.ProtocolIPv6 || c.protocol == kubeovnv1.ProtocolDual {
-		iptables, err := iptables.NewWithProtocol(iptables.ProtocolIPv6)
+		ipt, err := iptables.NewWithProtocol(iptables.ProtocolIPv6)
 		if err != nil {
 			return err
 		}
-		c.ControllerRuntime.iptables[kubeovnv1.ProtocolIPv6] = iptables
-		c.ControllerRuntime.ipsets[kubeovnv1.ProtocolIPv6] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV6, IPSetPrefix, nil, nil))
+		c.iptables[kubeovnv1.ProtocolIPv6] = ipt
+		if c.iptablesObsolete != nil {
+			if ipt, err = iptables.NewWithProtocolAndMode(iptables.ProtocolIPv6, "legacy"); err != nil {
+				return err
+			}
+			c.iptablesObsolete[kubeovnv1.ProtocolIPv6] = ipt
+		}
+		c.ipsets[kubeovnv1.ProtocolIPv6] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV6, IPSetPrefix, nil, nil))
 	}
 
 	return nil
