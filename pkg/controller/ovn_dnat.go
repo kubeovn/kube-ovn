@@ -240,15 +240,8 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 	}
 
 	vpcName := subnet.Spec.Vpc
-	if cachedEip.Spec.Type != "" && cachedEip.Spec.Type != util.DnatUsingEip {
+	if cachedEip.Status.Type != "" && cachedEip.Status.Type != util.DnatUsingEip {
 		err = fmt.Errorf("failed to create ovn dnat %s, eip '%s' is using by %s", key, eipName, cachedEip.Spec.Type)
-		return err
-	}
-
-	if cachedEip.Spec.Type == util.DnatUsingEip &&
-		cachedEip.Annotations[util.VpcNatAnnotation] != "" &&
-		cachedEip.Annotations[util.VpcNatAnnotation] != cachedDnat.Name {
-		err = fmt.Errorf("failed to create dnat %s, eip '%s' is using by other dnat %s", key, eipName, cachedEip.Annotations[util.VpcNatAnnotation])
 		return err
 	}
 
@@ -282,6 +275,11 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 	if err = c.patchOvnDnatStatus(key, vpcName, cachedEip.Status.V4Ip,
 		internalV4Ip, mac, true); err != nil {
 		klog.Errorf("failed to patch status for dnat %s, %v", key, err)
+		return err
+	}
+
+	if err = c.patchOvnEipNat(eipName, util.DnatUsingEip); err != nil {
+		klog.Errorf("failed to patch status for eip %s, %v", key, err)
 		return err
 	}
 

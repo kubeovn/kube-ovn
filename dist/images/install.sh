@@ -797,7 +797,7 @@ spec:
       - jsonPath: .status.macAddress
         name: Mac
         type: string
-      - jsonPath: .spec.type
+      - jsonPath: .status.type
         name: Type
         type: string
       - jsonPath: .status.ready
@@ -810,6 +810,8 @@ spec:
             status:
               type: object
               properties:
+                type:
+                  type: string
                 ready:
                   type: boolean
                 v4Ip:
