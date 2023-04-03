@@ -61,9 +61,8 @@ type Controller struct {
 
 	podsLister             v1.PodLister
 	podsSynced             cache.InformerSynced
-	addPodQueue            workqueue.RateLimitingInterface
+	addOrUpdatePodQueue    workqueue.RateLimitingInterface
 	deletePodQueue         workqueue.RateLimitingInterface
-	updatePodQueue         workqueue.RateLimitingInterface
 	updatePodSecurityQueue workqueue.RateLimitingInterface
 	podKeyMutex            *keymutex.KeyMutex
 
@@ -367,9 +366,8 @@ func NewController(config *Configuration) *Controller {
 
 		podsLister:             podInformer.Lister(),
 		podsSynced:             podInformer.Informer().HasSynced,
-		addPodQueue:            workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddPod"),
+		addOrUpdatePodQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddOrUpdatePod"),
 		deletePodQueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeletePod"),
-		updatePodQueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdatePod"),
 		updatePodSecurityQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdatePodSecurity"),
 		podKeyMutex:            keymutex.New(97),
 
@@ -772,9 +770,8 @@ func (c *Controller) Run(ctx context.Context) {
 func (c *Controller) shutdown() {
 	utilruntime.HandleCrash()
 
-	c.addPodQueue.ShutDown()
+	c.addOrUpdatePodQueue.ShutDown()
 	c.deletePodQueue.ShutDown()
-	c.updatePodQueue.ShutDown()
 	c.updatePodSecurityQueue.ShutDown()
 
 	c.addNamespaceQueue.ShutDown()
@@ -953,9 +950,8 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	}
 
 	for i := 0; i < c.config.WorkerNum; i++ {
-		go wait.Until(c.runAddPodWorker, time.Second, ctx.Done())
 		go wait.Until(c.runDeletePodWorker, time.Second, ctx.Done())
-		go wait.Until(c.runUpdatePodWorker, time.Second, ctx.Done())
+		go wait.Until(c.runAddOrUpdatePodWorker, time.Second, ctx.Done())
 		go wait.Until(c.runUpdatePodSecurityWorker, time.Second, ctx.Done())
 
 		go wait.Until(c.runDeleteSubnetWorker, time.Second, ctx.Done())
