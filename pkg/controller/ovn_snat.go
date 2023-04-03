@@ -224,6 +224,12 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 		err = fmt.Errorf("failed to get v4 internal ip for snat %s", key)
 		return err
 	}
+
+	if err = c.patchOvnSnatStatus(key, vpcName, cachedEip.Spec.V4Ip, v4IpCidr, false); err != nil {
+		klog.Errorf("failed to update status for snat %s, %v", key, err)
+		return err
+	}
+
 	// create snat
 	if err = c.handleAddOvnSnatRuleFinalizer(cachedSnat); err != nil {
 		klog.Errorf("failed to add finalizer for ovn snat, %v", err)
@@ -275,8 +281,8 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 	if !cachedSnat.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("ovn clean snat %s", key)
 		// ovn delete snat
-		if cachedSnat.Status.Ready {
-			if err = c.ovnLegacyClient.DeleteSnatRule(cachedSnat.Status.Vpc, cachedEip.Spec.V4Ip, cachedSnat.Status.V4IpCidr); err != nil {
+		if cachedSnat.Status.Vpc != "" && cachedSnat.Status.V4Eip != "" && cachedSnat.Status.V4IpCidr != "" {
+			if err = c.ovnLegacyClient.DeleteSnatRule(cachedSnat.Status.Vpc, cachedSnat.Status.V4Eip, cachedSnat.Status.V4IpCidr); err != nil {
 				klog.Errorf("failed to delete snat, %v", err)
 				return err
 			}
@@ -422,7 +428,9 @@ func (c *Controller) patchOvnSnatStatus(key, vpc, v4Eip, v4IpCidr string, ready 
 		snat.Status.Ready = ready
 		changed = true
 	}
-	if ready && v4Eip != "" && snat.Status.V4Eip != v4Eip {
+	if (v4Eip != "" && snat.Status.V4Eip != v4Eip) ||
+		(v4IpCidr != "" && snat.Status.V4IpCidr != v4IpCidr) ||
+		(vpc != "" && snat.Status.Vpc != vpc) {
 		snat.Status.V4Eip = v4Eip
 		snat.Status.V4IpCidr = v4IpCidr
 		snat.Status.Vpc = vpc
