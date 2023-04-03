@@ -285,7 +285,25 @@ function eip_ingress_qos_del() {
         qdisc_id=$(tc qdisc show dev net1 ingress | awk '{print $3}')
         tc -p -s -d filter show dev net1 parent $qdisc_id prio 1 | grep -w $v4ip
         if [ "$?" -eq 0 ];then
-            exec_cmd "tc filter del dev net1 parent $qdisc_id protocol ip prio 1 u32 match ip dst $v4ip"
+            # get filterID(800::800) via IP(x.x.x.x) in the following text:
+            # filter protocol ip u32 chain 0
+            # filter protocol ip u32 chain 0 fh 800: ht divisor 1
+            # filter protocol ip u32 chain 0 fh 800::800 order 2048 key ht 800 bkt 0 *flowid :1 not_in_hw
+            # match IP src x.x.x.x/32
+            # police 0x1 rate 1Mbit burst 1Mb mtu 2Kb action drop overhead 0b linklayer ethernet
+            #         ref 1 bind 1  installed 392 sec used 392 sec firstused 18818153 sec
+
+            # Sent 0 bytes 0 pkts (dropped 0, overlimits 0)
+            ipList=$(tc -p -s -d filter show dev net1 parent $qdisc_id prio 1 | grep "match IP dst" | awk '{print $4}')
+            i=0
+            for line in $ipList; do
+                i=$((i+1))
+                if echo "$line" | grep $v4ip; then
+                    break
+                fi
+            done
+            filterID=$(tc -p -s -d filter show dev net1 parent $qdisc_id prio 1 | grep  "filter protocol ip u32 \(fh\|chain [0-9]\+ fh\) \(\w\+::\w\+\) *" | awk '{print $8}' | sed -n $i"p")
+            exec_cmd "tc filter del dev net1 parent $qdisc_id protocol ip prio 1 handle $filterID u32"
         fi
     done
 }
@@ -299,7 +317,16 @@ function eip_egress_qos_del() {
         qdisc_id="1:0"
         tc -p -s -d filter show dev net1 parent $qdisc_id prio 1 | grep -w $v4ip
         if [ "$?" -eq 0 ];then
-            exec_cmd "tc filter del dev net1 parent $qdisc_id protocol ip prio 1 u32 match ip src $v4ip"
+            ipList=$(tc -p -s -d filter show dev net1 parent 1: prio 1 | grep "match IP src" | awk '{print $4}')
+            i=0
+            for line in $ipList; do
+                i=$((i+1))
+                if echo "$line" | grep $v4ip; then
+                    break
+                fi
+            done
+            filterID=$(tc -p -s -d filter show dev net1 parent 1: prio 1 | grep  "filter protocol ip u32 \(fh\|chain [0-9]\+ fh\) \(\w\+::\w\+\) *" | awk '{print $8}' | sed -n $i"p")
+            exec_cmd "tc filter del dev net1 parent $qdisc_id protocol ip prio 1  handle $filterID u32"
         fi
     done
 }
