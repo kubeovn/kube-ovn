@@ -535,11 +535,7 @@ func (c *Controller) gcLoadBalancer() error {
 
 	// delete lbs
 	if err = c.ovnClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
-		if util.ContainsString(vpcLbs, lb.Name) {
-			return false // ingnore lb both exist in vpc and ovnnb
-		}
-
-		return true
+		return !util.ContainsString(vpcLbs, lb.Name)
 	}); err != nil {
 		klog.Errorf("delete load balancers: %v", err)
 		return err
