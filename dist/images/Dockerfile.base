@@ -62,7 +62,7 @@ RUN mkdir /packages/ && \
      cp /usr/src/openvswitch-*.deb /packages && \
      cp /usr/src/python3-openvswitch*.deb /packages && \
      cp /usr/src/ovn-*.deb /packages && \
-     cd /packages && rm -f *source* *dbg* *doc* *datapath* *docker* *vtep* *ipsec* *test* *dev*
+     cd /packages && rm -f *source* *dbg* *doc* *datapath* *docker* *vtep* *test* *dev*
 
 FROM ubuntu:22.04
 
