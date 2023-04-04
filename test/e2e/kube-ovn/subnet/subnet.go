@@ -11,11 +11,13 @@ import (
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework/deployment"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
+	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
@@ -27,6 +29,43 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/iproute"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/kind"
 )
+
+func getOvsPodOnNode(f *framework.Framework, node string) *corev1.Pod {
+	daemonSetClient := f.DaemonSetClientNS(framework.KubeOvnNamespace)
+	ds := daemonSetClient.Get("ovs-ovn")
+	pod, err := daemonSetClient.GetPodOnNode(ds, node)
+	framework.ExpectNoError(err)
+	return pod
+}
+
+func checkIptablesRulesOnNode(f *framework.Framework, node, table, chain, subnet, cidr string, shouldExist bool) {
+	if cidr == "" {
+		return
+	}
+
+	ovsPod := getOvsPodOnNode(f, node)
+
+	iptBin := "iptables"
+	if util.CheckProtocol(cidr) == apiv1.ProtocolIPv6 {
+		iptBin = "ip6tables"
+	}
+	cmd := fmt.Sprintf(`%s -t %s -S %s`, iptBin, table, chain)
+	expectedRules := []string{
+		fmt.Sprintf(`-A %s -d %s -m comment --comment "%s,%s"`, chain, cidr, util.OvnSubnetGatewayIptables, subnet),
+		fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, chain, cidr, util.OvnSubnetGatewayIptables, subnet),
+	}
+	framework.WaitUntil(func() (bool, error) {
+		output := e2epodoutput.RunHostCmdOrDie(ovsPod.Namespace, ovsPod.Name, cmd)
+		rules := strings.Split(output, "\n")
+		for _, r := range expectedRules {
+			ok, err := gomega.ContainElement(gomega.HavePrefix(r)).Match(rules)
+			if err != nil || ok != shouldExist {
+				return false, err
+			}
+		}
+		return true, nil
+	}, "")
+}
 
 var _ = framework.Describe("[group:subnet]", func() {
 	f := framework.NewDefaultFramework("subnet")
@@ -942,53 +981,19 @@ var _ = framework.Describe("[group:subnet]", func() {
 	framework.ConformanceIt("should support subnet add gateway event and metrics", func() {
 		f.SkipVersionPriorTo(1, 12, "Support for subnet add gateway event and metrics is introduced in v1.12")
 
+		ginkgo.By("Creating subnet " + subnetName)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, nil, nil)
+		subnet = subnetClient.CreateSync(subnet)
+
 		ginkgo.By("Getting nodes")
 		nodes, err := e2enode.GetReadySchedulableNodes(cs)
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(nodes.Items)
 
-		clusterName, ok := kind.IsKindProvided(nodes.Items[0].Spec.ProviderID)
-		if !ok {
-			ginkgo.Skip("support subnet add gateway event and metrics only runs in clusters created by kind")
-		}
-		clusterNodes, err := kind.ListNodes(clusterName, "")
-		framework.ExpectNoError(err, "getting nodes in kind cluster")
-
-		ginkgo.By("Creating subnet " + subnetName)
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, nil, nil)
-		subnet = subnetClient.CreateSync(subnet)
-
-		ginkgo.By("Checking subnet iptables " + subnetName)
-
-		checkFunc := func(expectFound bool) {
-			// runGateway wait 3s
-			time.Sleep(10 * time.Second)
-			for _, node := range clusterNodes {
-				rules, err := node.ListIptableRules("filter")
-				framework.ExpectNoError(err, "getting node rule failed")
-				isFound := false
-				hasGatewayIptableRule := false
-				for _, rule := range rules {
-					if strings.Contains(rule, strings.Join([]string{util.OvnSubnetGatewayIptables, subnetName}, ",")) && !isFound {
-						isFound = true
-					}
-
-					if strings.Contains(rule, "ovn") && !hasGatewayIptableRule {
-						hasGatewayIptableRule = true
-					}
-				}
-				if hasGatewayIptableRule {
-					framework.ExpectEqual(isFound, expectFound, fmt.Sprintf("iptable rules should found %v", expectFound))
-				}
-			}
-		}
-
-		if cidrV4 != "" {
-			checkFunc(true)
-		}
-
-		if cidrV6 != "" {
-			checkFunc(true)
+		for _, node := range nodes.Items {
+			ginkgo.By("Checking iptables rules on node " + node.Name + " for subnet " + subnetName)
+			checkIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", subnetName, cidrV4, true)
+			checkIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", subnetName, cidrV6, true)
 		}
 
 		ginkgo.By("Checking subnet gateway type/node change " + subnetName)
@@ -1027,12 +1032,10 @@ var _ = framework.Describe("[group:subnet]", func() {
 		ginkgo.By("when remove subnet the iptables rules will remove ")
 		subnetClient.DeleteSync(subnetName)
 
-		if cidrV4 != "" {
-			checkFunc(false)
-		}
-
-		if cidrV6 != "" {
-			checkFunc(false)
+		for _, node := range nodes.Items {
+			ginkgo.By("Checking iptables rules on node " + node.Name + " for subnet " + subnetName)
+			checkIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", subnetName, cidrV4, false)
+			checkIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", subnetName, cidrV6, false)
 		}
 	})
 })

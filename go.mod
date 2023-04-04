@@ -12,7 +12,6 @@ require (
 	github.com/cnf/structhash v0.0.0-20201127153200-e1b16c1ebc08
 	github.com/containernetworking/cni v1.1.2
 	github.com/containernetworking/plugins v1.2.0
-	github.com/coreos/go-iptables v0.6.0
 	github.com/docker/docker v23.0.2+incompatible
 	github.com/emicklei/go-restful/v3 v3.10.2
 	github.com/evanphx/json-patch/v5 v5.6.0
@@ -20,6 +19,7 @@ require (
 	github.com/golang/mock v1.6.0
 	github.com/greenpau/ovsdb v1.0.3
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.4.0
+	github.com/kubeovn/go-iptables v0.0.0-20230322103850-8619a8ab3dca
 	github.com/kubeovn/gonetworkmanager/v2 v2.0.0-20230327064018-0b27f88874f7
 	github.com/mdlayher/arp v0.0.0-20220512170110-6706a2966875
 	github.com/moby/sys/mountinfo v0.6.2
@@ -27,7 +27,7 @@ require (
 	github.com/oilbeater/go-ping v0.0.0-20200413021620-332b7197c5b5
 	github.com/onsi/ginkgo/v2 v2.9.2
 	github.com/onsi/gomega v1.27.6
-	github.com/osrg/gobgp/v3 v3.12.0
+	github.com/osrg/gobgp/v3 v3.13.0
 	github.com/ovn-org/libovsdb v0.0.0-20230207174348-7f620a35d7e8
 	github.com/parnurzeal/gorequest v0.2.16
 	github.com/prometheus/client_golang v1.14.0
@@ -184,7 +184,7 @@ require (
 	github.com/rubiojr/go-vhd v0.0.0-20200706105327-02e210299021 // indirect
 	github.com/seccomp/libseccomp-golang v0.10.0 // indirect
 	github.com/smartystreets/assertions v1.13.0 // indirect
-	github.com/spf13/afero v1.9.4 // indirect
+	github.com/spf13/afero v1.9.5 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/spf13/cobra v1.6.1 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
@@ -224,7 +224,7 @@ require (
 	gomodules.xyz/jsonpatch/v2 v2.2.0 // indirect
 	google.golang.org/api v0.111.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/genproto v0.0.0-20230227214838-9b19f0bdc514 // indirect
+	google.golang.org/genproto v0.0.0-20230320184635-7606e756e683 // indirect
 	gopkg.in/gcfg.v1 v1.2.3 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect

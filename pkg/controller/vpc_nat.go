@@ -13,9 +13,17 @@ var (
 
 func (c *Controller) resyncVpcNatConfig() {
 	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcNatConfig)
-	if err != nil && !k8serrors.IsNotFound(err) {
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return
+		}
 		klog.Errorf("failed to get ovn-vpc-nat-config, %v", err)
 		return
 	}
-	vpcNatImage = cm.Data["image"]
+	image, exist := cm.Data["image"]
+	if !exist {
+		klog.Errorf("failed to get 'image' at ovn-vpc-nat-config")
+		return
+	}
+	vpcNatImage = image
 }
