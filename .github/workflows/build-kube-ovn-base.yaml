@@ -18,7 +18,7 @@ jobs:
           make base-tar-amd64
 
       - name: Upload image to artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: image-amd64
           path: image-amd64.tar
@@ -45,7 +45,7 @@ jobs:
           make base-tar-arm64
 
       - name: Upload image to artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: image-arm64
           path: image-arm64.tar
