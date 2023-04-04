@@ -663,7 +663,7 @@ func (c *Controller) handleDelOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip, final
 	}
 
 	if !notUse {
-		klog.V(3).Infof("ovn eip '%s' is still used, finalizer will not be removed", cachedEip.Name)
+		klog.V(3).Infof("ovn eip '%s' is still in use, finalizer will not be removed", cachedEip.Name)
 		return nil
 	}
 

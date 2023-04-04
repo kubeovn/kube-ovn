@@ -245,6 +245,12 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		return err
 	}
 
+	if err = c.patchOvnDnatStatus(key, vpcName, cachedEip.Status.V4Ip,
+		internalV4Ip, mac, false); err != nil {
+		klog.Errorf("failed to patch status for dnat %s, %v", key, err)
+		return err
+	}
+
 	if err = c.handleAddOvnEipFinalizer(cachedEip, util.OvnDnatUseEipFinalizer); err != nil {
 		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
 		return err
@@ -307,7 +313,7 @@ func (c *Controller) handleDelOvnDnatRule(key string) error {
 		return err
 	}
 
-	if cachedDnat.Status.Ready {
+	if cachedDnat.Status.Vpc != "" && cachedDnat.Status.V4Eip != "" && cachedDnat.Status.ExternalPort != "" {
 		if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
 			cachedDnat.Status.V4Eip, cachedDnat.Status.ExternalPort); err != nil {
 			klog.Errorf("failed to delete dnat, %v", err)
@@ -509,7 +515,10 @@ func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, podIp, podMac strin
 		changed = true
 	}
 
-	if ready && v4Eip != "" && dnat.Status.V4Eip != v4Eip {
+	if (v4Eip != "" && dnat.Status.V4Eip != v4Eip) ||
+		(vpcName != "" && dnat.Status.Vpc != vpcName) ||
+		(podIp != "" && dnat.Status.V4Ip != podIp) ||
+		(podMac != "" && dnat.Status.MacAddress != podMac) {
 		dnat.Status.Vpc = vpcName
 		dnat.Status.V4Eip = v4Eip
 		dnat.Status.V4Ip = podIp
