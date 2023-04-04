@@ -36,12 +36,12 @@ require (
 	golang.org/x/time v0.3.0
 	google.golang.org/grpc v1.48.0
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v3 v3.9.0
-	k8s.io/api v0.24.2
-	k8s.io/apimachinery v0.24.2
+	k8s.io/api v0.24.12
+	k8s.io/apimachinery v0.24.12
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/klog/v2 v2.80.1
-	k8s.io/kubernetes v1.24.2
-	k8s.io/sample-controller v0.24.2
+	k8s.io/kubernetes v1.24.12
+	k8s.io/sample-controller v0.24.12
 	k8s.io/utils v0.0.0-20221108210102-8e77b1f39fe2
 	kubevirt.io/client-go v0.54.0
 	sigs.k8s.io/controller-runtime v0.12.3
@@ -143,15 +143,15 @@ require (
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apiextensions-apiserver v0.24.2 // indirect
-	k8s.io/component-base v0.24.2 // indirect
+	k8s.io/apiextensions-apiserver v0.24.12 // indirect
+	k8s.io/component-base v0.24.12 // indirect
 	k8s.io/kube-openapi v0.0.0-20220627174259-011e075b9cb8 // indirect
 	kubevirt.io/api v0.54.0 // indirect
 	kubevirt.io/containerized-data-importer-api v1.51.0 // indirect
 	kubevirt.io/controller-lifecycle-operator-sdk/api v0.2.4 // indirect
 	moul.io/http2curl v1.0.0 // indirect
 	sigs.k8s.io/json v0.0.0-20220525155127-227cbc7cc124 // indirect
-	sigs.k8s.io/structured-merge-diff/v4 v4.2.1 // indirect
+	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
 
@@ -166,31 +166,31 @@ replace (
 	github.com/ovn-org/libovsdb => github.com/kubeovn/libovsdb v0.0.0-20221125061852-8b910935f8e4
 	github.com/vishvananda/netlink => github.com/kubeovn/netlink v0.0.0-20230322092337-960188369daf
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v3 => github.com/k8snetworkplumbingwg/multus-cni v0.0.0-20220621142415-3cda380ad148
-	k8s.io/api => k8s.io/api v0.24.2
-	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.24.2
-	k8s.io/apimachinery => k8s.io/apimachinery v0.24.2
-	k8s.io/apiserver => k8s.io/apiserver v0.24.2
-	k8s.io/cli-runtime => k8s.io/cli-runtime v0.24.2
-	k8s.io/client-go => k8s.io/client-go v0.24.2
-	k8s.io/cloud-provider => k8s.io/cloud-provider v0.24.2
-	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.24.2
-	k8s.io/code-generator => k8s.io/code-generator v0.24.2
-	k8s.io/component-base => k8s.io/component-base v0.24.2
-	k8s.io/component-helpers => k8s.io/component-helpers v0.24.2
-	k8s.io/controller-manager => k8s.io/controller-manager v0.24.2
-	k8s.io/cri-api => k8s.io/cri-api v0.24.2
-	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.24.2
-	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.24.2
-	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.24.2
-	k8s.io/kube-proxy => k8s.io/kube-proxy v0.24.2
-	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.24.2
-	k8s.io/kubectl => k8s.io/kubectl v0.24.2
-	k8s.io/kubelet => k8s.io/kubelet v0.24.2
-	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.24.2
-	k8s.io/metrics => k8s.io/metrics v0.24.2
-	k8s.io/mount-utils => k8s.io/mount-utils v0.24.2
-	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.24.2
-	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.24.2
+	k8s.io/api => k8s.io/api v0.24.12
+	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.24.12
+	k8s.io/apimachinery => k8s.io/apimachinery v0.24.12
+	k8s.io/apiserver => k8s.io/apiserver v0.24.12
+	k8s.io/cli-runtime => k8s.io/cli-runtime v0.24.12
+	k8s.io/client-go => k8s.io/client-go v0.24.12
+	k8s.io/cloud-provider => k8s.io/cloud-provider v0.24.12
+	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.24.12
+	k8s.io/code-generator => k8s.io/code-generator v0.24.12
+	k8s.io/component-base => k8s.io/component-base v0.24.12
+	k8s.io/component-helpers => k8s.io/component-helpers v0.24.12
+	k8s.io/controller-manager => k8s.io/controller-manager v0.24.12
+	k8s.io/cri-api => k8s.io/cri-api v0.24.12
+	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.24.12
+	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.24.12
+	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.24.12
+	k8s.io/kube-proxy => k8s.io/kube-proxy v0.24.12
+	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.24.12
+	k8s.io/kubectl => k8s.io/kubectl v0.24.12
+	k8s.io/kubelet => k8s.io/kubelet v0.24.12
+	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.24.12
+	k8s.io/metrics => k8s.io/metrics v0.24.12
+	k8s.io/mount-utils => k8s.io/mount-utils v0.24.12
+	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.24.12
+	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.24.12
 	kubevirt.io/api => kubevirt.io/api v0.53.1
 	kubevirt.io/client-go => kubevirt.io/client-go v0.53.1
 	kubevirt.io/containerized-data-importer => kubevirt.io/kubevirt-containerized-data-importer v1.47.0
