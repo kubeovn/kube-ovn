@@ -20,13 +20,6 @@ import (
 	"github.com/ovn-org/libovsdb/ovsdb"
 )
 
-const (
-	tcpVipsKey        = "tcpVips"
-	udpVipsKey        = "udpVips"
-	tcpSessionVipsKey = "tcpSessionVips"
-	udpSessionVipsKey = "udpSessionVips"
-)
-
 var lastNoPodLSP map[string]bool
 
 func (c *Controller) gc() error {
