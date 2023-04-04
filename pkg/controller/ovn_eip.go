@@ -315,7 +315,7 @@ func (c *Controller) handleResetOvnEip(key string) error {
 	}
 
 	var notUse bool
-	if notUse, err = c.isOvnEipUsing(cachedEip); err != nil {
+	if notUse, err = c.isOvnEipNotUse(cachedEip); err != nil {
 		klog.Errorf("failed to check whether ovn eip '%s' is still in use, %v", cachedEip.Name, err)
 		return err
 	}
@@ -657,7 +657,7 @@ func (c *Controller) handleDelOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip, final
 
 	var err error
 	var notUse bool
-	if notUse, err = c.isOvnEipUsing(cachedEip); err != nil {
+	if notUse, err = c.isOvnEipNotUse(cachedEip); err != nil {
 		klog.Errorf("failed to check whether ovn eip '%s' is still in use, %v", cachedEip.Name, err)
 		return err
 	}
@@ -714,7 +714,7 @@ func (c *Controller) patchOvnEipNat(key, nat string) error {
 	return nil
 }
 
-func (c *Controller) isOvnEipUsing(cachedEip *kubeovnv1.OvnEip) (bool, error) {
+func (c *Controller) isOvnEipNotUse(cachedEip *kubeovnv1.OvnEip) (bool, error) {
 	switch cachedEip.Status.Type {
 	case util.DnatUsingEip:
 		// nat change eip not that fast
