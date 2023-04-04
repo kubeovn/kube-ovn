@@ -14,6 +14,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
+	"github.com/ovn-org/libovsdb/ovsdb"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -711,12 +712,12 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 	if c.config.EnableLb && subnet.Name != c.config.NodeSwitch {
 		if subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb {
-			if err := c.ovnLegacyClient.AddLbToLogicalSwitch(subnet.Name, lbs...); err != nil {
+			if err := c.ovnClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationInsert, lbs...); err != nil {
 				c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", err.Error())
 				return err
 			}
 		} else {
-			if err := c.ovnLegacyClient.RemoveLbFromLogicalSwitch(subnet.Name, lbs...); err != nil {
+			if err := c.ovnClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationDelete, lbs...); err != nil {
 				klog.Error("remove load-balancer from subnet %s failed: %v", subnet.Name, err)
 				return err
 			}

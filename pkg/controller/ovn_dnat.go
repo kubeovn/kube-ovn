@@ -4,15 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
+
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
+	"github.com/ovn-org/libovsdb/ovsdb"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	"net"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
@@ -589,13 +591,18 @@ func (c *Controller) AddDnatRule(vpcName, dnatName, externalIp, internalIp, exte
 	externalEndpoint := net.JoinHostPort(externalIp, externalPort)
 	internalEndpoint := net.JoinHostPort(internalIp, internalPort)
 
-	if err := c.ovnLegacyClient.CreateLoadBalancerRule(dnatName, externalEndpoint, internalEndpoint, protocol); err != nil {
-		klog.Errorf("failed to create loadBalancer rule, %v", err)
+	if err := c.ovnClient.CreateLoadBalancer(dnatName, protocol, ""); err != nil {
+		klog.Errorf("create loadBalancer %s: %v", dnatName, err)
 		return err
 	}
 
-	if err := c.ovnLegacyClient.AddLoadBalancerToLogicalRouter(dnatName, vpcName); err != nil {
-		klog.Errorf("failed to add lb %s to vpc %s, %v", dnatName, vpcName, err)
+	if err := c.ovnClient.LoadBalancerAddVips(dnatName, map[string]string{externalEndpoint: internalEndpoint}); err != nil {
+		klog.Errorf("add vip %s with backends %s to LB %s: %v", externalEndpoint, internalEndpoint, dnatName, err)
+		return err
+	}
+
+	if err := c.ovnClient.LogicalRouterUpdateLoadBalancers(vpcName, ovsdb.MutateOperationInsert, dnatName); err != nil {
+		klog.Errorf("add lb %s to vpc %s: %v", dnatName, vpcName, err)
 		return err
 	}
 	return nil
@@ -604,14 +611,15 @@ func (c *Controller) AddDnatRule(vpcName, dnatName, externalIp, internalIp, exte
 func (c *Controller) DelDnatRule(vpcName, dnatName, externalIp, externalPort string) error {
 	externalEndpoint := net.JoinHostPort(externalIp, externalPort)
 
-	if err := c.ovnLegacyClient.DeleteLoadBalancerVip(externalEndpoint, dnatName); err != nil {
-		klog.Errorf("failed to delete loadBalancer rule, %v", err)
+	if err := c.ovnClient.LoadBalancerDeleteVips(dnatName, externalEndpoint); err != nil {
+		klog.Errorf("delete loadBalancer vips %s: %v", externalEndpoint, err)
 		return err
 	}
 
-	if err := c.ovnLegacyClient.RemoveLoadBalancerFromLogicalRouter(dnatName, vpcName); err != nil {
-		klog.Errorf("failed to remove lb %s from vpc %s, dnatName, vpcName, %v", err)
+	if err := c.ovnClient.LogicalRouterUpdateLoadBalancers(vpcName, ovsdb.MutateOperationDelete, dnatName); err != nil {
+		klog.Errorf("failed to remove lb %s from vpc %s: %v", dnatName, vpcName, err)
 		return err
 	}
+
 	return nil
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
+	"github.com/ovn-org/libovsdb/ovsdb"
 )
 
 var lastNoPodLSP map[string]bool
@@ -405,15 +406,8 @@ func (c *Controller) gcLoadBalancer() error {
 					continue
 				}
 
-				err = c.ovnLegacyClient.RemoveLbFromLogicalSwitch(
-					subnetName,
-					vpc.Status.TcpLoadBalancer,
-					vpc.Status.TcpSessionLoadBalancer,
-					vpc.Status.UdpLoadBalancer,
-					vpc.Status.UdpSessionLoadBalancer,
-					vpc.Status.SctpLoadBalancer,
-					vpc.Status.SctpSessionLoadBalancer)
-				if err != nil {
+				lbs := []string{vpc.Status.TcpLoadBalancer, vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpLoadBalancer, vpc.Status.UdpSessionLoadBalancer, vpc.Status.SctpLoadBalancer, vpc.Status.SctpSessionLoadBalancer}
+				if err := c.ovnClient.LogicalSwitchUpdateLoadBalancers(subnetName, ovsdb.MutateOperationDelete, lbs...); err != nil {
 					return err
 				}
 			}
@@ -434,14 +428,9 @@ func (c *Controller) gcLoadBalancer() error {
 			}
 		}
 
-		// delete
-		ovnLbs, err := c.ovnLegacyClient.ListLoadBalancer()
-		if err != nil {
-			klog.Errorf("failed to list load balancer, %v", err)
-			return err
-		}
-		if err = c.ovnLegacyClient.DeleteLoadBalancer(ovnLbs...); err != nil {
-			klog.Errorf("failed to delete load balancer, %v", err)
+		// lbs will remove from logical switch automatically when delete lbs
+		if err = c.ovnClient.DeleteLoadBalancers(nil); err != nil {
+			klog.Errorf("delete all load balancers: %v", err)
 			return err
 		}
 		return nil
@@ -502,19 +491,21 @@ func (c *Controller) gcLoadBalancer() error {
 		tcpSessLb, udpSessLb, sctpSessLb := vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
 		vpcLbs = append(vpcLbs, tcpLb, udpLb, sctpLb, tcpSessLb, udpSessLb, sctpSessLb)
 
-		removeVIP := func(lb string, svcVips map[string]struct{}) error {
-			if lb == "" {
+		removeVIP := func(lbName string, svcVips map[string]struct{}) error {
+			if lbName == "" {
 				return nil
 			}
-			vips, err := c.ovnLegacyClient.GetLoadBalancerVips(lb)
+
+			lb, err := c.ovnClient.GetLoadBalancer(lbName, false)
 			if err != nil {
-				klog.Errorf("failed to get vips of LB %s: %v", lb, err)
+				klog.Errorf("get LB %s: %v", lbName, err)
 				return err
 			}
-			for vip := range vips {
+
+			for vip := range lb.Vips {
 				if _, ok := svcVips[vip]; !ok {
-					if err = c.ovnLegacyClient.DeleteLoadBalancerVip(vip, lb); err != nil {
-						klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
+					if err = c.ovnClient.LoadBalancerDeleteVips(lbName, vip); err != nil {
+						klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lbName, err)
 						return err
 					}
 				}
@@ -542,23 +533,14 @@ func (c *Controller) gcLoadBalancer() error {
 		}
 	}
 
-	ovnLbs, err := c.ovnLegacyClient.ListLoadBalancer()
-	if err != nil {
-		klog.Errorf("failed to list load balancer, %v", err)
+	// delete lbs
+	if err = c.ovnClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
+		return !util.ContainsString(vpcLbs, lb.Name)
+	}); err != nil {
+		klog.Errorf("delete load balancers: %v", err)
 		return err
 	}
 
-	klog.Infof("vpcLbs: %v", vpcLbs)
-	klog.Infof("ovnLbs: %v", ovnLbs)
-	for _, lb := range ovnLbs {
-		if util.ContainsString(vpcLbs, lb) {
-			continue
-		}
-		klog.Infof("start to destroy load balancer %s", lb)
-		if err := c.ovnLegacyClient.DeleteLoadBalancer(lb); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 

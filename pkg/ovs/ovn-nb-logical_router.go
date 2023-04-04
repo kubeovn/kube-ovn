@@ -80,7 +80,7 @@ func (c *ovnClient) DeleteLogicalRouter(lrName string) error {
 	return nil
 }
 
-// GetLogicalRouter get load balancer by name,
+// GetLogicalRouter get logical router by name,
 // it is because of lack name index that does't use ovnNbClient.Get
 func (c *ovnClient) GetLogicalRouter(lrName string, ignoreNotFound bool) (*ovnnb.LogicalRouter, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
@@ -135,6 +135,49 @@ func (c *ovnClient) ListLogicalRouter(needVendorFilter bool, filter func(lr *ovn
 	}
 
 	return lrList, nil
+}
+
+// LogicalRouterUpdateLoadBalancers add several lb to or from logical router once
+func (c *ovnClient) LogicalRouterUpdateLoadBalancers(lrName string, op ovsdb.Mutator, lbNames ...string) error {
+	if len(lbNames) == 0 {
+		return nil
+	}
+
+	lbUUIDs := make([]string, 0, len(lbNames))
+
+	for _, lbName := range lbNames {
+		lb, err := c.GetLoadBalancer(lbName, true)
+		if err != nil {
+			return err
+		}
+
+		// ignore non-existent object
+		if lb != nil {
+			lbUUIDs = append(lbUUIDs, lb.UUID)
+		}
+	}
+
+	mutation := func(lr *ovnnb.LogicalRouter) *model.Mutation {
+		mutation := &model.Mutation{
+			Field:   &lr.LoadBalancer,
+			Value:   lbUUIDs,
+			Mutator: op,
+		}
+
+		return mutation
+	}
+
+	ops, err := c.LogicalRouterOp(lrName, mutation)
+	if err != nil {
+		return fmt.Errorf("generate operations for logical router %s update lbs %v: %v", lrName, lbNames, err)
+	}
+
+	if err := c.Transact("ls-lb-update", ops); err != nil {
+		return fmt.Errorf("logical router %s update lbs %v: %v", lrName, lbNames, err)
+
+	}
+
+	return nil
 }
 
 // UpdateLogicalRouterOp generate operations which update logical router

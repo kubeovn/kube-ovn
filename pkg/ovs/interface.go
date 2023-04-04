@@ -22,6 +22,7 @@ type NbGlobal interface {
 type LogicalRouter interface {
 	CreateLogicalRouter(lrName string) error
 	DeleteLogicalRouter(lrName string) error
+	LogicalRouterUpdateLoadBalancers(lrName string, op ovsdb.Mutator, lbNames ...string) error
 	GetLogicalRouter(lrName string, ignoreNotFound bool) (*ovnnb.LogicalRouter, error)
 	ListLogicalRouter(needVendorFilter bool, filter func(lr *ovnnb.LogicalRouter) bool) ([]ovnnb.LogicalRouter, error)
 	LogicalRouterExists(name string) (bool, error)

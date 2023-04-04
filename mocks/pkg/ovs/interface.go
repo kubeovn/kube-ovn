@@ -238,6 +238,25 @@ func (mr *MockLogicalRouterMockRecorder) LogicalRouterExists(name interface{}) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalRouterExists", reflect.TypeOf((*MockLogicalRouter)(nil).LogicalRouterExists), name)
 }
 
+// LogicalRouterUpdateLoadBalancers mocks base method.
+func (m *MockLogicalRouter) LogicalRouterUpdateLoadBalancers(lrName string, op ovsdb.Mutator, lbNames ...string) error {
+	m.ctrl.T.Helper()
+	varargs := []interface{}{lrName, op}
+	for _, a := range lbNames {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "LogicalRouterUpdateLoadBalancers", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// LogicalRouterUpdateLoadBalancers indicates an expected call of LogicalRouterUpdateLoadBalancers.
+func (mr *MockLogicalRouterMockRecorder) LogicalRouterUpdateLoadBalancers(lrName, op interface{}, lbNames ...interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]interface{}{lrName, op}, lbNames...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalRouterUpdateLoadBalancers", reflect.TypeOf((*MockLogicalRouter)(nil).LogicalRouterUpdateLoadBalancers), varargs...)
+}
+
 // MockLogicalRouterPort is a mock of LogicalRouterPort interface.
 type MockLogicalRouterPort struct {
 	ctrl     *gomock.Controller
@@ -2829,6 +2848,25 @@ func (m *MockOvnClient) LogicalRouterStaticRouteExists(lrName, policy, prefix, n
 func (mr *MockOvnClientMockRecorder) LogicalRouterStaticRouteExists(lrName, policy, prefix, nextHop, routeType interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalRouterStaticRouteExists", reflect.TypeOf((*MockOvnClient)(nil).LogicalRouterStaticRouteExists), lrName, policy, prefix, nextHop, routeType)
+}
+
+// LogicalRouterUpdateLoadBalancers mocks base method.
+func (m *MockOvnClient) LogicalRouterUpdateLoadBalancers(lrName string, op ovsdb.Mutator, lbNames ...string) error {
+	m.ctrl.T.Helper()
+	varargs := []interface{}{lrName, op}
+	for _, a := range lbNames {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "LogicalRouterUpdateLoadBalancers", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// LogicalRouterUpdateLoadBalancers indicates an expected call of LogicalRouterUpdateLoadBalancers.
+func (mr *MockOvnClientMockRecorder) LogicalRouterUpdateLoadBalancers(lrName, op interface{}, lbNames ...interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]interface{}{lrName, op}, lbNames...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalRouterUpdateLoadBalancers", reflect.TypeOf((*MockOvnClient)(nil).LogicalRouterUpdateLoadBalancers), varargs...)
 }
 
 // LogicalSwitchExists mocks base method.

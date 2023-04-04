@@ -209,6 +209,72 @@ func (suite *OvnClientTestSuite) testListLogicalRouter() {
 	})
 }
 
+func (suite *OvnClientTestSuite) testLogicalRouterUpdateLoadBalancers() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lrName := "test-add-lb-to-lr"
+	prefix := "test-add-lr-lb"
+	lbNames := make([]string, 0, 3)
+
+	err := ovnClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
+	for i := 1; i <= 3; i++ {
+		lbName := fmt.Sprintf("%s-%d", prefix, i)
+		lbNames = append(lbNames, lbName)
+		err := ovnClient.CreateLoadBalancer(lbName, "tcp", "")
+		require.NoError(t, err)
+	}
+
+	t.Run("add lbs to logical router", func(t *testing.T) {
+		err = ovnClient.LogicalRouterUpdateLoadBalancers(lrName, ovsdb.MutateOperationInsert, lbNames...)
+		require.NoError(t, err)
+
+		ls, err := ovnClient.GetLogicalRouter(lrName, false)
+		require.NoError(t, err)
+
+		for _, lbName := range lbNames {
+			lb, err := ovnClient.GetLoadBalancer(lbName, false)
+			require.NoError(t, err)
+			require.Contains(t, ls.LoadBalancer, lb.UUID)
+		}
+	})
+
+	t.Run("should no err when add non-existent lbs to logical router", func(t *testing.T) {
+		// add a non-existent lb
+		err = ovnClient.LogicalSwitchUpdateLoadBalancers(lrName, ovsdb.MutateOperationInsert, "test-add-lb-non-existent")
+		require.NoError(t, err)
+	})
+
+	t.Run("del lbs from logical router", func(t *testing.T) {
+		// delete the first two lbs from logical switch
+		err = ovnClient.LogicalRouterUpdateLoadBalancers(lrName, ovsdb.MutateOperationDelete, lbNames[0:2]...)
+		require.NoError(t, err)
+
+		ls, err := ovnClient.GetLogicalRouter(lrName, false)
+		require.NoError(t, err)
+
+		for i, lbName := range lbNames {
+			lb, err := ovnClient.GetLoadBalancer(lbName, false)
+			require.NoError(t, err)
+
+			// logical switch contains the last lb
+			if i == 2 {
+				require.Contains(t, ls.LoadBalancer, lb.UUID)
+				continue
+			}
+			require.NotContains(t, ls.LoadBalancer, lb.UUID)
+		}
+	})
+
+	t.Run("del non-existent lbs from logical router", func(t *testing.T) {
+		err = ovnClient.LogicalRouterUpdateLoadBalancers(lrName, ovsdb.MutateOperationDelete, []string{"test-del-lb-non-existent", "test-del-lb-non-existent-1"}...)
+		require.NoError(t, err)
+	})
+}
+
 func (suite *OvnClientTestSuite) testLogicalRouterUpdatePortOp() {
 	t := suite.T()
 	t.Parallel()
