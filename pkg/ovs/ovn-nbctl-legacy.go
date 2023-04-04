@@ -2,7 +2,6 @@ package ovs
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -72,79 +71,6 @@ func (c LegacyClient) GetVersion() (string, error) {
 		c.Version = strings.Split(lines[0], " ")[1]
 	}
 	return c.Version, nil
-}
-
-func (c LegacyClient) AddLbToLogicalSwitch(ls string, lbs ...string) error {
-	for _, lb := range lbs {
-		if err := c.addLoadBalancerToLogicalSwitch(lb, ls); err != nil {
-			klog.Errorf("failed to add LB %s to LS %s: %v", lb, ls, err)
-			return err
-		}
-	}
-	return nil
-}
-
-func (c LegacyClient) RemoveLbFromLogicalSwitch(ls string, lbs ...string) error {
-	for _, lb := range lbs {
-		if err := c.removeLoadBalancerFromLogicalSwitch(lb, ls); err != nil {
-			klog.Errorf("failed to remove LB %s from LS %s: %v", lb, ls, err)
-			return err
-		}
-	}
-	return nil
-}
-
-// DeleteLoadBalancer delete loadbalancer in ovn
-func (c LegacyClient) DeleteLoadBalancer(lbs ...string) error {
-	for _, lb := range lbs {
-		lbid, err := c.FindLoadbalancer(lb)
-		if err != nil {
-			klog.Warningf("failed to find load_balancer '%s', %v", lb, err)
-			continue
-		}
-		if _, err := c.ovnNbCommand(IfExists, "destroy", "load_balancer", lbid); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// ListLoadBalancer list loadbalancer names
-func (c LegacyClient) ListLoadBalancer() ([]string, error) {
-	output, err := c.ovnNbCommand("--format=csv", "--data=bare", "--no-heading", "--columns=name", "find", "load_balancer")
-	if err != nil {
-		klog.Errorf("failed to list load balancer: %v", err)
-		return nil, err
-	}
-	lines := strings.Split(output, "\n")
-	result := make([]string, 0, len(lines))
-	for _, l := range lines {
-
-		l = strings.TrimSpace(l)
-		if len(l) > 0 {
-			result = append(result, l)
-		}
-	}
-	return result, nil
-}
-
-func (c LegacyClient) ListLogicalEntity(entity string, args ...string) ([]string, error) {
-	cmd := []string{"--format=csv", "--data=bare", "--no-heading", "--columns=name", "find", entity}
-	cmd = append(cmd, args...)
-	output, err := c.ovnNbCommand(cmd...)
-	if err != nil {
-		klog.Errorf("failed to list logical %s: %v", entity, err)
-		return nil, err
-	}
-	lines := strings.Split(output, "\n")
-	result := make([]string, 0, len(lines))
-	for _, l := range lines {
-		l = strings.TrimSpace(l)
-		if len(l) > 0 {
-			result = append(result, l)
-		}
-	}
-	return result, nil
 }
 
 func (c LegacyClient) CustomFindEntity(entity string, attris []string, args ...string) (result []map[string][]string, err error) {
@@ -743,108 +669,6 @@ func (c LegacyClient) DeleteStaticRouteByNextHop(nextHop string) error {
 		}
 	}
 	return nil
-}
-
-// FindLoadbalancer find ovn loadbalancer uuid by name
-func (c LegacyClient) FindLoadbalancer(lb string) (string, error) {
-	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid",
-		"find", "load_balancer", fmt.Sprintf("name=%s", lb))
-	count := len(strings.FieldsFunc(output, func(c rune) bool { return c == '\n' }))
-	if count > 1 {
-		klog.Errorf("%s has %d lb entries", lb, count)
-		return "", fmt.Errorf("%s has %d lb entries", lb, count)
-	}
-	return output, err
-}
-
-// CreateLoadBalancer create loadbalancer in ovn
-func (c LegacyClient) CreateLoadBalancer(lb, protocol, selectFields string) error {
-	var err error
-	if selectFields == "" {
-		_, err = c.ovnNbCommand("create", "load_balancer",
-			fmt.Sprintf("name=%s", lb), fmt.Sprintf("protocol=%s", protocol))
-	} else {
-		_, err = c.ovnNbCommand("create", "load_balancer",
-			fmt.Sprintf("name=%s", lb), fmt.Sprintf("protocol=%s", protocol), fmt.Sprintf("selection_fields=%s", selectFields))
-	}
-
-	return err
-}
-
-// SetLoadBalancerAffinityTimeout sets the LB's affinity timeout in seconds
-func (c LegacyClient) SetLoadBalancerAffinityTimeout(lb string, timeout int) error {
-	output, err := c.ovnNbCommand("set", "load_balancer", lb, fmt.Sprintf("options:affinity_timeout=%d", timeout))
-	if err != nil {
-		klog.Errorf("failed to set affinity timeout of LB %s to %d, error: %v, output: %s", lb, timeout, err, output)
-		return err
-	}
-	return nil
-}
-
-// CreateLoadBalancerRule create loadbalancer rul in ovn
-func (c LegacyClient) CreateLoadBalancerRule(lb, vip, ips, protocol string) error {
-	_, err := c.ovnNbCommand(MayExist, "lb-add", lb, vip, ips, strings.ToLower(protocol))
-	return err
-}
-
-func (c LegacyClient) addLoadBalancerToLogicalSwitch(lb, ls string) error {
-	_, err := c.ovnNbCommand(MayExist, "ls-lb-add", ls, lb)
-	return err
-}
-
-func (c LegacyClient) AddLoadBalancerToLogicalRouter(lb, lr string) error {
-	_, err := c.ovnNbCommand(MayExist, "lr-lb-add", lr, lb)
-	return err
-}
-
-func (c LegacyClient) removeLoadBalancerFromLogicalSwitch(lb, ls string) error {
-	if lb == "" {
-		return nil
-	}
-	lbUuid, err := c.FindLoadbalancer(lb)
-	if err != nil {
-		return err
-	}
-	if lbUuid == "" {
-		return nil
-	}
-
-	_, err = c.ovnNbCommand(IfExists, "ls-lb-del", ls, lb)
-	return err
-}
-
-func (c LegacyClient) RemoveLoadBalancerFromLogicalRouter(lb, lr string) error {
-	if lb == "" {
-		return nil
-	}
-	lbUuid, err := c.FindLoadbalancer(lb)
-	if err != nil {
-		return err
-	}
-	if lbUuid == "" {
-		return nil
-	}
-
-	_, err = c.ovnNbCommand(IfExists, "lr-lb-del", lr, lb)
-	return err
-}
-
-// DeleteLoadBalancerVip delete a vip rule from loadbalancer
-func (c LegacyClient) DeleteLoadBalancerVip(vip, lb string) error {
-	_, err := c.ovnNbCommand(IfExists, "lb-del", lb, vip)
-	return err
-}
-
-// GetLoadBalancerVips return vips of a loadbalancer
-func (c LegacyClient) GetLoadBalancerVips(lb string) (map[string]string, error) {
-	output, err := c.ovnNbCommand("--data=bare", "--no-heading",
-		"get", "load_balancer", lb, "vips")
-	if err != nil {
-		return nil, err
-	}
-	result := map[string]string{}
-	err = json.Unmarshal([]byte(strings.ReplaceAll(output, "=", ":")), &result)
-	return result, err
 }
 
 // CleanLogicalSwitchAcl clean acl of a switch

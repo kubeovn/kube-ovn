@@ -192,18 +192,18 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 
 			// for performance reason delete lb with no backends
 			if len(backends) != 0 {
-				err = c.ovnLegacyClient.CreateLoadBalancerRule(lb, vip, backends, string(port.Protocol))
-				if err != nil {
+				if err = c.ovnClient.LoadBalancerAddVips(lb, map[string]string{vip: backends}); err != nil {
 					klog.Errorf("failed to add vip %s with backends %s to LB %s: %v", vip, backends, lb, err)
 					return err
 				}
 			} else {
-				if err = c.ovnLegacyClient.DeleteLoadBalancerVip(vip, lb); err != nil {
+				if err := c.ovnClient.LoadBalancerDeleteVips(lb, vip); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
 					return err
 				}
-				if err = c.ovnLegacyClient.DeleteLoadBalancerVip(vip, oldLb); err != nil {
-					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oldLb, err)
+
+				if err := c.ovnClient.LoadBalancerDeleteVips(oldLb, vip); err != nil {
+					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
 					return err
 				}
 			}

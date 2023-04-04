@@ -202,26 +202,19 @@ func (c *Controller) initClusterRouter() error {
 
 func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
 	protocol = strings.ToLower(protocol)
-	uuid, err := c.ovnLegacyClient.FindLoadbalancer(name)
-	if err != nil {
-		return fmt.Errorf("failed to find %s LB: %v", protocol, err)
+
+	var selectFields string
+	if sessionAffinity {
+		selectFields = string(ovnnb.LoadBalancerSelectionFieldsIPSrc)
 	}
-	if uuid == "" {
-		klog.Infof("init cluster %s load balancer %s", protocol, name)
-		var selectFields string
-		if sessionAffinity {
-			selectFields = string(ovnnb.LoadBalancerSelectionFieldsIPSrc)
-		}
-		if err = c.ovnLegacyClient.CreateLoadBalancer(name, protocol, selectFields); err != nil {
-			klog.Errorf("failed to create cluster %s load balancer: %v", protocol, err)
-			return err
-		}
-	} else {
-		klog.Infof("%s load balancer %s already exists: uuid = %s", protocol, name, uuid)
+
+	if err := c.ovnClient.CreateLoadBalancer(name, protocol, selectFields); err != nil {
+		klog.Errorf("create load balancer %s: %v", name, err)
+		return err
 	}
 
 	if sessionAffinity {
-		if err = c.ovnLegacyClient.SetLoadBalancerAffinityTimeout(name, util.DefaultServiceSessionStickinessTimeout); err != nil {
+		if err := c.ovnClient.SetLoadBalancerAffinityTimeout(name, util.DefaultServiceSessionStickinessTimeout); err != nil {
 			klog.Errorf("failed to set affinity timeout of %s load balancer %s: %v", protocol, name, err)
 			return err
 		}

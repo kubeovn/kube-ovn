@@ -215,6 +215,10 @@ func (suite *OvnClientTestSuite) Test_ListLogicalRouter() {
 	suite.testListLogicalRouter()
 }
 
+func (suite *OvnClientTestSuite) Test_testLogicalRouterUpdateLoadBalancers() {
+	suite.testLogicalRouterUpdateLoadBalancers()
+}
+
 func (suite *OvnClientTestSuite) Test_LogicalRouterUpdatePortOp() {
 	suite.testLogicalRouterUpdatePortOp()
 }
