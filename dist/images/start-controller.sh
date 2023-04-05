@@ -42,6 +42,9 @@ for ((i=0; i<3; i++)); do
     export OVN_NB_DAEMON
     break
   fi
+  if [ $(echo ${OVN_NB_DAEMON} | wc -c) -gt 64 ]; then
+    OVN_NB_DAEMON="$(echo ${OVN_NB_DAEMON} | cut -c1-64)..."
+  fi
   echo "invalid ovn-nbctl daemon socket: \"${OVN_NB_DAEMON}\""
   unset OVN_NB_DAEMON
   pkill -f ovn-nbctl
