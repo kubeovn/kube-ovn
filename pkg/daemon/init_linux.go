@@ -105,13 +105,6 @@ func changeProvideNicName(current, target string) (bool, error) {
 		return true, nil
 	}
 
-	// set link unmanaged by NetworkManager
-	if err = nmSetManaged(current, false); err != nil {
-		klog.Errorf("failed set device %s unmanaged by NetworkManager: %v", current, err)
-		return false, err
-	}
-
-	klog.Infof("renaming link %s as %s", current, target)
 	addresses, err := netlink.AddrList(link, netlink.FAMILY_ALL)
 	if err != nil {
 		klog.Errorf("failed to list addresses of link %s: %v", current, err)
@@ -123,6 +116,13 @@ func changeProvideNicName(current, target string) (bool, error) {
 		return false, err
 	}
 
+	// set link unmanaged by NetworkManager
+	if err = nmSetManaged(current, false); err != nil {
+		klog.Errorf("failed set device %s unmanaged by NetworkManager: %v", current, err)
+		return false, err
+	}
+
+	klog.Infof("renaming link %s as %s", current, target)
 	if err = netlink.LinkSetDown(link); err != nil {
 		klog.Errorf("failed to set link %s down: %v", current, err)
 		return false, err

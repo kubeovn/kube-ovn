@@ -139,7 +139,7 @@ func (c *Controller) handleAddOrUpdateVpcDns(key string) error {
 	if !enableCoredns {
 		time.Sleep(10 * time.Second)
 		if !enableCoredns {
-			return fmt.Errorf("failed to  add/update vpc-dns, enable ='%v'", enableCoredns)
+			return fmt.Errorf("failed to add or update vpc-dns, not enabled")
 		}
 	}
 
@@ -158,59 +158,68 @@ func (c *Controller) handleAddOrUpdateVpcDns(key string) error {
 			newVpcDns.Status.Active = false
 		}
 
-		_, err = c.config.KubeOvnClient.KubeovnV1().VpcDnses().UpdateStatus(context.Background(),
-			newVpcDns, metav1.UpdateOptions{})
-		if err != nil {
-			klog.Errorf("update vpc-dns status failed, %v", err)
+		if _, err = c.config.KubeOvnClient.KubeovnV1().VpcDnses().UpdateStatus(context.Background(),
+			newVpcDns, metav1.UpdateOptions{}); err != nil {
+			err := fmt.Errorf("failed to update vpc dns status, %v", err)
+			klog.Error(err)
 		}
 	}()
 
 	if len(corednsImage) == 0 {
-		err := fmt.Errorf("failed to get the vpc-dns coredns image parameter")
-		klog.Errorf("failed to get corednsImage, err: %s", err)
+		err := fmt.Errorf("vpc-dns coredns image should be set")
+		klog.Error(err)
 		return err
 	}
 
 	if len(corednsVip) == 0 {
-		err := fmt.Errorf("the configuration parameter corednsVip is empty")
-		klog.Errorf("failed to get corednsVip, err: %s", err)
+		err := fmt.Errorf("vpc-dns corednsVip should be set")
+		klog.Error(err)
 		return err
 	}
 
 	if _, err := c.vpcsLister.Get(vpcDns.Spec.Vpc); err != nil {
-		klog.Errorf("failed to get vpc '%s', err: %v", vpcDns.Spec.Vpc, err)
+		err := fmt.Errorf("failed to get vpc '%s', err: %v", vpcDns.Spec.Vpc, err)
+		klog.Error(err)
 		return err
 	}
 
 	if _, err := c.subnetsLister.Get(vpcDns.Spec.Subnet); err != nil {
-		klog.Errorf("failed to get subnet '%s', err: %v", vpcDns.Spec.Subnet, err)
+		err := fmt.Errorf("failed to get subnet '%s', err: %v", vpcDns.Spec.Subnet, err)
+		klog.Error(err)
 		return err
 	}
 
 	if err := c.checkOvnNad(); err != nil {
-		klog.Errorf("failed to check nad, %v", err)
+		err := fmt.Errorf("failed to check nad, %v", err)
+		klog.Error(err)
 		return err
 	}
 
-	if err := c.checkOvnProvided(); err != nil {
-		klog.Errorf("failed to check %s provided, %v", util.DefaultSubnet, err)
+	if err := c.checkOvnDefaultSpecProvider(); err != nil {
+		err := fmt.Errorf("failed to check %s spec provider, %v", util.DefaultSubnet, err)
+		klog.Error(err)
 		return err
 	}
 
 	if err := c.checkVpcDnsDuplicated(vpcDns); err != nil {
-		klog.Errorf("failed to deploy %s, %v", vpcDns.Name, err)
+		err = fmt.Errorf("failed to deploy %s, %v", vpcDns.Name, err)
+		klog.Error(err)
 		return err
 	}
 
 	if err := c.createOrUpdateVpcDnsDep(vpcDns); err != nil {
+		err = fmt.Errorf("failed to create or update vpc dns %s, %v", vpcDns.Name, err)
+		klog.Error(err)
 		return err
 	}
 
 	if err := c.createOrUpdateVpcDnsSlr(vpcDns); err != nil {
+		err = fmt.Errorf("failed to create or update slr for vpc dns %s, %v", vpcDns.Name, err)
+		klog.Error(err)
 		return err
 	}
 
-	return nil
+	return err
 }
 
 func (c *Controller) handleDelVpcDns(key string) error {
@@ -218,13 +227,15 @@ func (c *Controller) handleDelVpcDns(key string) error {
 	name := genVpcDnsDpName(key)
 	err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Delete(context.Background(), name, metav1.DeleteOptions{})
 	if err != nil && !k8serrors.IsNotFound(err) {
-		klog.Errorf("failed to delete Deployments: %v", err)
+		err := fmt.Errorf("failed to delete vpc dns deployment: %v", err)
+		klog.Error(err)
 		return err
 	}
 
 	err = c.config.KubeOvnClient.KubeovnV1().SwitchLBRules().Delete(context.Background(), name, metav1.DeleteOptions{})
 	if err != nil && !k8serrors.IsNotFound(err) {
-		klog.Errorf("failed to delete SwitchLBRule: %v", err)
+		err := fmt.Errorf("failed to delete switch lb rule: %v", err)
+		klog.Error(err)
 		return err
 	}
 	return nil
@@ -482,7 +493,7 @@ func (c *Controller) checkOvnNad() error {
 	return nil
 }
 
-func (c *Controller) checkOvnProvided() error {
+func (c *Controller) checkOvnDefaultSpecProvider() error {
 	cachedSubnet, err := c.subnetsLister.Get(util.DefaultSubnet)
 	if err != nil {
 		return fmt.Errorf("failed to get default subnet %v", err)

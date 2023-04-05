@@ -171,4 +171,5 @@ kube-ovn-webhook-e2e:
 
 .PHONY: kubectl-ko-log
 kubectl-ko-log:
-	kubectl ko log all all all
+	kubectl ko log all
+	tar -zcvf kubectl-ko-log.tar.gz kubectl-ko-log/

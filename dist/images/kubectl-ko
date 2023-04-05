@@ -26,15 +26,7 @@ showHelp(){
   echo "  env-check    check the environment configuration"
   echo "  tuning {install-fastpath|local-install-fastpath|remove-fastpath|install-stt|local-install-stt|remove-stt} {centos7|centos8}} [kernel-devel-version]    deploy kernel optimisation components to the system"
   echo "  reload    restart all kube-ovn components"
-  echo "  log {kube-ovn|ovn|ovs|linux|all} {all|sub_component...} [tail_lines|all]
-          kube-ovn with sub_components: kube-ovn-controller,kube-ovn-cni,kube-ovn-pinger,kube-ovn-monitor
-          ovn with sub_components: ovn-controller,ovn-northd,ovsdb-server-nb,ovsdb-server-sb
-          ovs with sub_components: ovs-vswitchd,ovsdb-server
-          linux with sub_components: dmesg,iptables,route,link,neigh,memory,top,sysctl,netstat
-          eg:   kubectl ko log all all all       --   show all component logs
-                kubectl ko log all               --   show all component logs with default tail_line=100
-                kubectl ko log kube-ovn all 1000 --   show kube-ovn all sub_component with tail_line=1000
-          "
+  echo "  log {kube-ovn|ovn|ovs|linux|all}    save log to ./kubectl-ko-log/"
 }
 
 # usage: ipv4_to_hex 192.168.0.1
@@ -949,77 +941,76 @@ env-check(){
   done
 }
 
+init_dir() {
+    mkdir -p kubectl-ko-log
+    podNames=`kubectl get pod -n kube-system -l app=kube-ovn-cni -o 'jsonpath={.items[*].metadata.name}'`
+    for pod in $podNames; do
+      nodeName=$(kubectl get pod "$pod" -n kube-system -o jsonpath={.spec.nodeName})
+      mkdir -p ./kubectl-ko-log/$nodeName/
+    done
+}
+
 log_kube_ovn(){
-  component_param=$1
-  sub_component_param=$2
-  tail_lines_param=$3
+  echo "Collecting kube-ovn logging files"
   podNames=`kubectl get pod -n kube-system -l app=kube-ovn-cni -o 'jsonpath={.items[*].metadata.name}'`
   for pod in $podNames; do
     nodeName=$(kubectl get pod "$pod" -n kube-system -o jsonpath={.spec.nodeName})
-    echo "************************************************"
-    echo " component $component sub_component $sub_component_param on node $nodeName pod $pod log "
-    echo "************************************************"
-    if [[ "$tail_lines_param" == "all" ]]; then
-      kubectl exec $pod -n kube-system -c cni-server -- cat /var/log/$component_param/$sub_component_param.log 2>&1 || :
-    else
-      kubectl exec $pod -n kube-system -c cni-server -- tail -n $tail_lines_param /var/log/$component_param/$sub_component_param.log 2>&1 || :
-    fi
+    mkdir -p ./kubectl-ko-log/$nodeName/kube-ovn
+    kubectl cp $pod:/var/log/kube-ovn ./kubectl-ko-log/$nodeName/kube-ovn -n kube-system -c cni-server > /dev/null || :
   done
 }
 
 log_ovn_ovs(){
   component_param=$1
-  sub_component_param=$2
-  tail_lines_param=$3
+  echo "Collecting $component_param logging files"
   podNames=`kubectl get pod -n kube-system -l app=ovs -o 'jsonpath={.items[*].metadata.name}'`
   for pod in $podNames; do
-    echo "************************************************"
-    echo " component $component_param $sub_component_param.log pod $pod log"
-    echo "************************************************"
-
-    if [[ "$tail_lines_param" == "all" ]]; then
-      kubectl exec $pod -n kube-system -- cat /var/log/$component_param/$sub_component_param.log 2>&1 || :
-    else
-      kubectl exec $pod -n kube-system -- tail -n $tail_lines_param /var/log/$component_param/$sub_component_param.log 2>&1 || :
-    fi
+    nodeName=$(kubectl get pod "$pod" -n kube-system -o jsonpath={.spec.nodeName})
+    mkdir -p ./kubectl-ko-log/$nodeName/$component_param
+    kubectl cp $pod:/var/log/$component_param ./kubectl-ko-log/$nodeName/$component_param -n kube-system > /dev/null || :
   done
 }
 
 log_linux(){
-  sub_component_param=$1
-  tail_lines_param=$2
+  component_param=$1
+  sub_component_param=$2
+  echo "Collecting $component_param $sub_component_param files"
   podNames=`kubectl get pod -n kube-system -l app=ovs -o 'jsonpath={.items[*].metadata.name}'`
   for pod in $podNames; do
-    echo "************************************************"
-    echo " component $component sub_component $sub_component_param pod $pod log"
-    echo "************************************************"
+    nodeName=$(kubectl get pod "$pod" -n kube-system -o jsonpath={.spec.nodeName})
+    mkdir -p ./kubectl-ko-log/$nodeName/$component_param
     if [[ "$sub_component_param" == "dmesg" ]]; then
-      kubectl exec $pod -n kube-system -- dmesg -T $( [ "$tail_lines_param" == "all" ] || echo "| tail -n $tail_lines_param" ) || :
-    elif [[ "$sub_component_param" == "iptables" ]]; then
-      echo "******************legacy filter ************************"
-      kubectl exec $pod -n kube-system -- iptables -S || :
-      echo "*********************nft filter ************************"
-      kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -S || :
-
-      echo "****************** legacy nat ************************"
-      kubectl exec $pod -n kube-system -- iptables -S -t nat || :
-      echo "********************* nft nat ************************"
-      kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -S -t nat || :
-
+      kubectl exec $pod -n kube-system -- dmesg -T > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+    elif [[ "$sub_component_param" == "iptables-legacy" ]]; then
+      echo "******************legacy filter ************************" > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+      kubectl exec $pod -n kube-system -- /usr/sbin/iptables-legacy -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+      echo "****************** legacy nat ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+      kubectl exec $pod -n kube-system -- /usr/sbin/iptables-legacy -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+    elif [[ "$sub_component_param" == "iptables-nft" ]]; then
+      echo "*********************nft filter ************************" > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+      kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log 2>/dev/null || :
+      echo "********************* nft nat ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+      kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log 2>/dev/null || :
     elif [[ "$sub_component_param" == "route" ]]; then
-      kubectl exec $pod -n kube-system -- ip route show || :
+      kubectl exec $pod -n kube-system -- ip route show > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+      kubectl exec $pod -n kube-system -- ip -6 route show >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
     elif [[ "$sub_component_param" == "link" ]]; then
-      kubectl exec $pod -n kube-system -- ip -d link show || :
+      kubectl exec $pod -n kube-system -- ip -d link show > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
     elif [[ "$sub_component_param" == "neigh" ]]; then
-      kubectl exec $pod -n kube-system -- ip n || :
+      kubectl exec $pod -n kube-system -- ip n > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+      kubectl exec $pod -n kube-system -- ip -6 n >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
     elif [[ "$sub_component_param" == "memory" ]]; then
-      kubectl exec $pod -n kube-system -- free -m || :
+      kubectl exec $pod -n kube-system -- free -m > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
     elif [[ "$sub_component_param" == "top" ]]; then
-      kubectl exec $pod -n kube-system -- top -b -n 1 | head -n 20 | tail -n 10 || :
+      kubectl exec $pod -n kube-system -- top -b -n 1 > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
     elif [[ "$sub_component_param" == "sysctl" ]]; then
-      kubectl exec $pod -n kube-system -- sysctl -a || :
+      kubectl exec $pod -n kube-system -- sysctl -a > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
     elif [[ "$sub_component_param" == "netstat" ]]; then
-      kubectl exec $pod -n kube-system -- netstat -tunlp || :
+      kubectl exec $pod -n kube-system -- netstat -tunlp > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+    elif [[ "$sub_component_param" == "addr" ]]; then
+      kubectl exec $pod -n kube-system -- ip addr show > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+    elif [[ "$sub_component_param" == "ipset" ]]; then
+      kubectl exec $pod -n kube-system -- ipset list > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
     fi
   done
 }
@@ -1027,81 +1018,35 @@ log_linux(){
 
 log(){
   component="$1"
-  sub_component=${2:-all}
-  tail_lines=${3:-100}
-
   components=("kube-ovn" "ovs" "ovn" "linux" "all")
-  kube_ovn_sub_components=("kube-ovn-controller" "kube-ovn-cni" "kube-ovn-pinger" "kube-ovn-monitor")
-  ovs_sub_components=("ovs-vswitchd" "ovsdb-server")
-  ovn_sub_components=("ovn-controller" "ovn-northd" "ovsdb-server-nb" "ovsdb-server-sb")
-  linux_sub_components=("dmesg" "iptables" "route" "link" "neigh" "memory" "top" "sysctl" "netstat")
+  linux_sub_components=("dmesg" "iptables-legacy" "iptables-nft" "route" "link" "neigh" "memory" "top" "sysctl" "netstat" "addr" "ipset")
 
   if [[ ! " ${components[@]} " =~ " $component " ]]; then
       echo "invalid component $component"
       exit 1
   fi
 
-  if [[ ! "$sub_component" == "all" && ! "$components" == "all" ]]; then
-    case $component in
-    "kube-ovn")
-        sub_components=("${kube_ovn_sub_components[@]}")
-        ;;
-    "ovs")
-        sub_components=("${ovs_sub_components[@]}")
-        ;;
-    "ovn")
-        sub_components=("${ovn_sub_components[@]}")
-        ;;
-    "linux")
-        sub_components=("${linux_sub_components[@]}")
-        ;;
-    esac
-
-    if [[ ! " ${sub_components[@]} " =~ " $sub_component " ]]; then
-      echo "component $component do not have sub component $sub_component"
-      exit 1
-    fi
-  fi
+  init_dir
 
   if [[ "$component" == "kube-ovn" || "$component" == "all" ]]; then
-    if [[ "$sub_component" == "all" ]]; then
-      for kube_ovn_sub_component in ${kube_ovn_sub_components[@]}; do
-        log_kube_ovn "kube-ovn" "$kube_ovn_sub_component" $tail_lines
-      done
-    else
-      log_kube_ovn "kube-ovn" "$sub_component" $tail_lines
-    fi
+    log_kube_ovn
   fi
 
   if [[ "$component" == "ovn" || "$component" == "all" ]]; then
-    if [[ "$sub_component" == "all" ]]; then
-      for ovn_sub_component in ${ovn_sub_components[@]}; do
-        log_ovn_ovs "ovn" "$ovn_sub_component" $tail_lines
-      done
-    else
-      log_ovn_ovs "ovn" "$sub_component" $tail_lines
-    fi
+    log_ovn_ovs "ovn"
   fi
 
   if [[ "$component" == "ovs" || "$component" == "all" ]]; then
-    if [[ "$sub_component" == "all" ]]; then
-      for ovs_sub_component in ${ovs_sub_components[@]}; do
-        log_ovn_ovs "openvswitch" "$ovs_sub_component" $tail_lines
-      done
-    else
-      log_ovn_ovs "openvswitch" "$sub_component" $tail_lines
-    fi
+    log_ovn_ovs "openvswitch"
   fi
 
   if [[ "$component" == "linux" || "$component" == "all" ]]; then
-    if [[ "$sub_component" == "all" ]]; then
       for linux_sub_component in ${linux_sub_components[@]}; do
-        log_linux "$linux_sub_component" $tail_lines
+        log_linux "linux" "$linux_sub_component"
       done
-    else
-      log_linux "$sub_component" $tail_lines
-    fi
   fi
+
+  echo "Collected files have been saved in the directory $PWD/kubectl-ko-log "
 }
 
 if [ $# -lt 1 ]; then
