@@ -23,7 +23,7 @@ var _ = Describe("[Net]", func() {
 			2,
 			254,
 		}
-		Expect(len(args)).To(Equal(len(args)))
+		Expect(args).To(HaveLen(len(wants)))
 
 		for i := range args {
 			Expect(args[i].IP).NotTo(BeNil())
@@ -42,7 +42,7 @@ var _ = Describe("[Net]", func() {
 			5,
 			15,
 		}
-		Expect(len(args)).To(Equal(len(args)))
+		Expect(args).To(HaveLen(len(wants)))
 
 		for i := range args {
 			Expect(util.CountIpNums(args[i])).To(Equal(wants[i]))
@@ -137,7 +137,7 @@ var _ = Describe("[Net]", func() {
 			{"fe00::101", "fe00::1a1..fe00::1a5"},
 			{"10.0.1.1", "10.0.1.101..10.0.1.105", "fe00::101", "fe00::1a1..fe00::1a5"},
 		}
-		Expect(len(args)).To(Equal(len(args)))
+		Expect(args).To(HaveLen(len(wants)))
 
 		for i := range args {
 			Expect(util.ExpandExcludeIPs(args[i].excludeIps, args[i].cidr)).To(Equal(wants[i]))
