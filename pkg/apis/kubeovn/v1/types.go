@@ -467,6 +467,7 @@ type VpcNatSpec struct {
 	LanIp       string             `json:"lanIp"`
 	Selector    []string           `json:"selector"`
 	Tolerations []VpcNatToleration `json:"tolerations"`
+	Affinity    corev1.Affinity    `json:"affinity"`
 }
 
 type VpcNatToleration struct {
