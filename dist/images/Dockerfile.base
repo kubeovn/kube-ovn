@@ -14,6 +14,8 @@ RUN apt update && apt install -y build-essential fakeroot git curl \
 RUN cd /usr/src/ && \
     git clone -b branch-3.1 --depth=1 https://github.com/openvswitch/ovs.git && \
     cd ovs && \
+    # dpif-netlink.: fix ofpbuf memory leak
+    curl -s https://github.com/kubeovn/ovs/commit/7fc8c39e8274ba6b1ad53057b1d9a5d68e7bff5a.patch | git apply && \
     # fix memory leak by ofport_usage and trim memory periodically
     curl -s https://github.com/kubeovn/ovs/commit/25d71867370c9a44c66b973556338de7a4d9bad7.patch | git apply && \
     # increase election timer
