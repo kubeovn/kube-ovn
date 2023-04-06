@@ -410,10 +410,17 @@ spec:
                         type: string
                       operator:
                         type: string
+                        enum:
+                          - Equal
+                          - Exists
                       value:
                         type: string
                       effect:
                         type: string
+                        enum:
+                          - NoExecute
+                          - NoSchedule
+                          - PreferNoSchedule
                       tolerationSeconds:
                         type: integer
                 affinity:
