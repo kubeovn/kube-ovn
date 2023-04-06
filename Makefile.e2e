@@ -55,13 +55,14 @@ e2e: kube-ovn-conformance-e2e
 
 .PHONY: e2e-build
 e2e-build:
-	ginkgo build ./test/e2e/k8s-network
-	ginkgo build ./test/e2e/kube-ovn
-	ginkgo build ./test/e2e/ovn-ic
-	ginkgo build ./test/e2e/lb-svc
-	ginkgo build ./test/e2e/ovn-eip
-	ginkgo build ./test/e2e/security
-	ginkgo build ./test/e2e/kubevirt
+	ginkgo build -ldflags "-w -s" ./test/e2e/k8s-network
+	ginkgo build -ldflags "-w -s" ./test/e2e/kube-ovn
+	ginkgo build -ldflags "-w -s" ./test/e2e/ovn-ic
+	ginkgo build -ldflags "-w -s" ./test/e2e/lb-svc
+	ginkgo build -ldflags "-w -s" ./test/e2e/ovn-eip
+	ginkgo build -ldflags "-w -s" ./test/e2e/security
+	ginkgo build -ldflags "-w -s" ./test/e2e/kubevirt
+	ginkgo build -ldflags "-w -s" ./test/e2e/webhook
 
 .PHONY: k8s-conformance-e2e
 k8s-conformance-e2e:
