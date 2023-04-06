@@ -731,6 +731,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 					},
 					NodeSelector: selectors,
 					Tolerations:  tolerations,
+					Affinity:     &gw.Spec.Affinity,
 				},
 			},
 			UpdateStrategy: v1.StatefulSetUpdateStrategy{
