@@ -35,8 +35,12 @@ for pod in $podNames; do
      kubectl cp "${caPod}:/var/lib/openvswitch/pki/switchca/cacert.pem" cacert.pem -n kube-system > /dev/null
      kubectl cp cacert.pem "${pod}:/etc/ipsec.d/cacerts/" -n kube-system > /dev/null
 
+     # clean temp files
      kubectl exec -it $caPod -n kube-system -- rm -f "/kube-ovn/${systemId}-req.pem"
      kubectl exec -it $caPod -n kube-system -- rm -f "/kube-ovn/${systemId}-cert.pem"
+     rm -f ${systemId}-req.pem
+     rm -f ${systemId}-cert.pem
+     rm -f cacert.pem
   fi
 
   kubectl exec -it $pod -n kube-system -- ovs-vsctl set Open_vSwitch . \
