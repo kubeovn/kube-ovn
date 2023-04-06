@@ -226,11 +226,11 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		return err
 	}
 	vpcName := subnet.Spec.Vpc
-	if cachedEip.Spec.Type != "" && cachedEip.Spec.Type != util.FipUsingEip {
+	if cachedEip.Status.Type != "" && cachedEip.Status.Type != util.FipUsingEip {
 		err = fmt.Errorf("failed to create ovn fip %s, eip '%s' is using by %s", key, eipName, cachedEip.Spec.Type)
 		return err
 	}
-	if cachedEip.Spec.Type == util.FipUsingEip &&
+	if cachedEip.Status.Type == util.FipUsingEip &&
 		cachedEip.Annotations[util.VpcNatAnnotation] != "" &&
 		cachedEip.Annotations[util.VpcNatAnnotation] != cachedFip.Name {
 		err = fmt.Errorf("failed to create fip %s, eip '%s' is using by other fip %s", key, eipName, cachedEip.Annotations[util.VpcNatAnnotation])
@@ -267,6 +267,10 @@ func (c *Controller) handleAddOvnFip(key string) error {
 	if err = c.patchOvnFipStatus(key, vpcName, cachedEip.Status.V4Ip,
 		internalV4Ip, mac, true); err != nil {
 		klog.Errorf("failed to patch status for fip %s, %v", key, err)
+		return err
+	}
+	if err = c.patchOvnEipNat(eipName, util.FipUsingEip); err != nil {
+		klog.Errorf("failed to patch status for eip %s, %v", key, err)
 		return err
 	}
 	return nil
