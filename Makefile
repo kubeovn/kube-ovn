@@ -10,7 +10,7 @@ GOLDFLAGS = "-w -s -extldflags '-z now' -X github.com/kubeovn/kube-ovn/versions.
 
 CONTROL_PLANE_TAINTS = node-role.kubernetes.io/master node-role.kubernetes.io/control-plane
 
-MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:stable
+MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:snapshot
 MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset.yml
 
 CILIUM_VERSION = 1.12.7
