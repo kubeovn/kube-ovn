@@ -22,6 +22,8 @@ RUN cd /usr/src/ && \
     rm debian/libopenvswitch.install debian/libopenvswitch-dev.install && \
     # ovsdb-idl: Support write-only-changed IDL monitor mode
     curl -s https://github.com/kubeovn/ovs/commit/bef703ef862fbbf8740b8d5bf6ca8df9ed617da5.patch | git apply && \
+    # dpif-netlink.: fix ofpbuf memory leak
+    curl -s https://github.com/kubeovn/ovs/commit/142fdf9e324a0598b1377b0fa7776616e88a6684.patch | git apply && \
     # fix memleak
     curl -s https://github.com/kubeovn/ovs/commit/3cf5c5236494b5f54dd2c363f2b547f9d90b372d.patch | git apply && \
     # fix log file descriptor leak in monitor process
