@@ -109,7 +109,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12")
 
 		ginkgo.By("Creating subnet " + subnetName)
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, nil, nil)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", nil, nil, nil)
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Creating pod " + podName)
@@ -149,7 +149,7 @@ var _ = framework.OrderedDescribe("[group:node]", func() {
 		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12")
 
 		ginkgo.By("Creating subnet " + subnetName)
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, nil, nil)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", nil, nil, nil)
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Creating pod " + podName)

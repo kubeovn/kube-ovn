@@ -130,7 +130,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 	framework.ConformanceIt("should create subnet with only cidr provided", func() {
 		ginkgo.By("Creating subnet " + subnetName)
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, nil, nil)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", nil, nil, nil)
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Validating subnet finalizers")
@@ -187,7 +187,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 			s = append(s, c)
 		}
 
-		subnet = framework.MakeSubnet(subnetName, "", strings.Join(s, ","), "", nil, nil, nil)
+		subnet = framework.MakeSubnet(subnetName, "", strings.Join(s, ","), "", "", nil, nil, nil)
 		ginkgo.By("Creating subnet " + subnetName + " with cidr " + subnet.Spec.CIDRBlock)
 		subnet = subnetClient.CreateSync(subnet)
 
@@ -233,7 +233,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		excludeIPs := append(excludeIPv4, excludeIPv6...)
 
 		ginkgo.By(fmt.Sprintf("Creating subnet %s with exclude ips %v", subnetName, excludeIPs))
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", excludeIPs, nil, nil)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", excludeIPs, nil, nil)
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Validating subnet finalizers")
@@ -283,7 +283,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		for i := 0; i < 3 && i < len(nodes.Items); i++ {
 			gatewayNodes = append(gatewayNodes, nodes.Items[i].Name)
 		}
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, gatewayNodes, nil)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", nil, gatewayNodes, nil)
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Validating subnet finalizers")
@@ -327,7 +327,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		framework.ExpectNotEmpty(nodes.Items)
 
 		ginkgo.By("Creating subnet " + subnetName)
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, nil, nil)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", nil, nil, nil)
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Validating subnet finalizers")
@@ -426,7 +426,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 			gatewayNodes = append(gatewayNodes, nodes.Items[i].Name)
 			nodeIPs = append(nodeIPs, nodes.Items[i].Annotations[util.IpAddressAnnotation])
 		}
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, gatewayNodes, nil)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", nil, gatewayNodes, nil)
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Validating subnet finalizers")
@@ -520,7 +520,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		ginkgo.By("Creating subnet " + subnetName)
 		prPriority := 1000 + rand.Intn(1000)
 		prTable := 1000 + rand.Intn(1000)
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, nil, nil)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", nil, nil, nil)
 		subnet.Spec.ExternalEgressGateway = strings.Join(gateways, ",")
 		subnet.Spec.PolicyRoutingPriority = uint32(prPriority)
 		subnet.Spec.PolicyRoutingTableID = uint32(prTable)
@@ -620,7 +620,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 		prPriority := 1000 + rand.Intn(1000)
 		prTable := 1000 + rand.Intn(1000)
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, gatewayNodes, nil)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", nil, gatewayNodes, nil)
 		subnet.Spec.ExternalEgressGateway = strings.Join(gateways, ",")
 		subnet.Spec.PolicyRoutingPriority = uint32(prPriority)
 		subnet.Spec.PolicyRoutingTableID = uint32(prTable)
@@ -680,7 +680,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		ginkgo.By("Creating subnet " + subnetName)
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, nil, nil)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", nil, nil, nil)
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Creating pod with no specify pod ip ")
@@ -752,7 +752,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		ginkgo.By("Creating subnet " + subnetName)
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, nil, nil)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", nil, nil, nil)
 		subnet = subnetClient.CreateSync(subnet)
 		ginkgo.By("Creating pod with specify pod ip ")
 		podIPv4s, podIPv6s := createPodsByRandomIPs(podClient, subnetClient, subnetName, podNamePre, podCount, startIPv4, startIPv6)
@@ -812,7 +812,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 
 		ginkgo.By("Creating subnet " + subnetName)
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, nil, nil)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", nil, nil, nil)
 		subnet = subnetClient.CreateSync(subnet)
 		replicas := int64(5)
 		deployName = "deployment-" + framework.RandomSuffix()
@@ -925,7 +925,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 		enbleLb := true
 		ginkgo.By("Creating subnet " + subnetName)
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, nil, nil)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", nil, nil, nil)
 		subnet.Spec.EnableLb = &enbleLb
 		subnet = subnetClient.CreateSync(subnet)
 
@@ -982,7 +982,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		f.SkipVersionPriorTo(1, 12, "Support for subnet add gateway event and metrics is introduced in v1.12")
 
 		ginkgo.By("Creating subnet " + subnetName)
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, nil, nil)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", nil, nil, nil)
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Getting nodes")

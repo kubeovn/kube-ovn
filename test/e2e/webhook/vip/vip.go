@@ -3,10 +3,11 @@ package vip
 import (
 	"context"
 	"fmt"
+	"math/big"
+
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/onsi/ginkgo/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"math/big"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
@@ -39,7 +40,7 @@ var _ = framework.Describe("[group:webhook-vip]", func() {
 		namespaceName = f.Namespace.Name
 
 		ginkgo.By("Creating subnet " + subnetName)
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, nil, []string{namespaceName})
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", nil, nil, []string{namespaceName})
 		subnet = subnetClient.CreateSync(subnet)
 	})
 

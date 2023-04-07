@@ -123,7 +123,7 @@ func (c *OvnEipClient) WaitToBeUpdated(eip *apiv1.OvnEip, timeout time.Duration)
 			return true
 		}
 	}
-	Logf("OvnEip %s was not updated within %v", eip.Name, timeout)
+	Logf("ovn eip %s was not updated within %v", eip.Name, timeout)
 	return false
 }
 
@@ -155,11 +155,11 @@ func (c *OvnEipClient) WaitToDisappear(name string, interval, timeout time.Durat
 		return nil
 	}
 	if IsTimeout(err) {
-		return TimeoutError(fmt.Sprintf("timed out while waiting for subnet %s to disappear", name),
+		return TimeoutError(fmt.Sprintf("timed out while waiting for ovn eip %s to disappear", name),
 			lastOvnEip,
 		)
 	}
-	return maybeTimeoutError(err, "waiting for subnet %s to disappear", name)
+	return maybeTimeoutError(err, "waiting for ovn eip %s to disappear", name)
 }
 
 func MakeOvnEip(name, subnet, v4ip, v6ip, mac, usage string) *apiv1.OvnEip {

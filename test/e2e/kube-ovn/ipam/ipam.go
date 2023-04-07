@@ -42,7 +42,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		cidr = framework.RandomCIDR(f.ClusterIpFamily)
 
 		ginkgo.By("Creating subnet " + subnetName)
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", nil, nil, []string{namespaceName})
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", nil, nil, []string{namespaceName})
 		subnet = subnetClient.CreateSync(subnet)
 	})
 	ginkgo.AfterEach(func() {
