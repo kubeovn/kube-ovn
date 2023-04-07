@@ -617,10 +617,9 @@ kind-install-kubevirt: kind-load-image kind-untaint-control-plane
 .PHONY: kind-install-lb-svc
 kind-install-lb-svc: kind-load-image kind-untaint-control-plane
 	$(call kind_load_image,kube-ovn,$(VPC_NAT_GW_IMG))
+	@$(MAKE) ENABLE_LB_SVC=true CNI_CONFIG_PRIORITY=10 kind-install
+	@$(MAKE) kind-install-multus
 	kubectl apply -f yamls/lb-svc-attachment.yaml
-	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | \
-	ENABLE_LB_SVC=true CNI_CONFIG_PRIORITY=10 bash
-	kubectl describe no
 
 .PHONY: kind-install-webhook
 kind-install-webhook: kind-install
