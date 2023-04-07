@@ -462,20 +462,12 @@ type VpcNatGateway struct {
 }
 
 type VpcNatSpec struct {
-	Vpc         string             `json:"vpc"`
-	Subnet      string             `json:"subnet"`
-	LanIp       string             `json:"lanIp"`
-	Selector    []string           `json:"selector"`
-	Tolerations []VpcNatToleration `json:"tolerations"`
-	Affinity    corev1.Affinity    `json:"affinity"`
-}
-
-type VpcNatToleration struct {
-	Key               string `json:"key"`
-	Operator          string `json:"operator"`
-	Value             string `json:"value"`
-	Effect            string `json:"effect"`
-	TolerationSeconds int64  `json:"tolerationSeconds"`
+	Vpc         string              `json:"vpc"`
+	Subnet      string              `json:"subnet"`
+	LanIp       string              `json:"lanIp"`
+	Selector    []string            `json:"selector"`
+	Tolerations []corev1.Toleration `json:"tolerations"`
+	Affinity    corev1.Affinity     `json:"affinity"`
 }
 
 // +genclient
