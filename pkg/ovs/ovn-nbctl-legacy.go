@@ -2051,12 +2051,25 @@ func (c LegacyClient) ListPgPortsForNodePortgroup() (map[string][]string, error)
 }
 
 func (c LegacyClient) SetPortsToPortGroup(portGroup string, portNames []string) error {
-	ovnArgs := []string{"clear", "port_group", portGroup, "ports"}
+	var err error
 	if len(portNames) > 0 {
-		ovnArgs = []string{"pg-set-ports", portGroup}
-		ovnArgs = append(ovnArgs, portNames...)
+		ovnArgs := []string{"pg-set-ports", portGroup}
+		for _, portName := range portNames {
+			ovnArgs = append(ovnArgs, portName)
+			_, err = c.ovnNbCommand(ovnArgs...)
+			if err != nil {
+				if !strings.Contains(err.Error(), "not found") {
+					break
+				} else {
+					klog.Infof("lsp %s already deleted", portName)
+					err = nil
+				}
+			}
+		}
+	} else {
+		ovnArgs := []string{"clear", "port_group", portGroup, "ports"}
+		_, err = c.ovnNbCommand(ovnArgs...)
 	}
-	_, err := c.ovnNbCommand(ovnArgs...)
 	return err
 }
 
