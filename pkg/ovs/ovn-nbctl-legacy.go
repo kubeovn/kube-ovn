@@ -741,70 +741,6 @@ func (c LegacyClient) SetPrivateLogicalSwitch(ls, cidr string, allow []string) e
 	return err
 }
 
-func (c LegacyClient) CreateNpPortGroup(pgName, npNs, npName string) error {
-	output, err := c.ovnNbCommand(
-		"--data=bare", "--no-heading", "--columns=_uuid", "find", "port_group", fmt.Sprintf("name=%s", pgName))
-	if err != nil {
-		klog.Errorf("failed to find port_group %s: %v, %q", pgName, err, output)
-		return err
-	}
-	if output != "" {
-		return nil
-	}
-	_, err = c.ovnNbCommand(
-		"pg-add", pgName,
-		"--", "set", "port_group", pgName, fmt.Sprintf("external_ids:np=%s/%s", npNs, npName),
-	)
-	return err
-}
-
-func (c LegacyClient) DeletePortGroup(pgName string) error {
-	output, err := c.ovnNbCommand(
-		"--data=bare", "--no-heading", "--columns=_uuid", "find", "port_group", fmt.Sprintf("name=%s", pgName))
-	if err != nil {
-		klog.Errorf("failed to find port_group %s: %v, %q", pgName, err, output)
-		return err
-	}
-	if output == "" {
-		return nil
-	}
-
-	_, err = c.ovnNbCommand("pg-del", pgName)
-	return err
-}
-
-type portGroup struct {
-	Name        string
-	NpName      string
-	NpNamespace string
-}
-
-func (c LegacyClient) ListNpPortGroup() ([]portGroup, error) {
-	output, err := c.ovnNbCommand("--data=bare", "--format=csv", "--no-heading", "--columns=name,external_ids", "find", "port_group", "external_ids:np!=[]")
-	if err != nil {
-		klog.Errorf("failed to list logical port-group, %v", err)
-		return nil, err
-	}
-	lines := strings.Split(output, "\n")
-	result := make([]portGroup, 0, len(lines))
-	for _, l := range lines {
-		if len(strings.TrimSpace(l)) == 0 {
-			continue
-		}
-		parts := strings.Split(strings.TrimSpace(l), ",")
-		if len(parts) != 2 {
-			continue
-		}
-		name := strings.TrimSpace(parts[0])
-		np := strings.Split(strings.TrimPrefix(strings.TrimSpace(parts[1]), "np="), "/")
-		if len(np) != 2 {
-			continue
-		}
-		result = append(result, portGroup{Name: name, NpNamespace: np[0], NpName: np[1]})
-	}
-	return result, nil
-}
-
 func (c LegacyClient) CreateAddressSet(name string) error {
 	output, err := c.ovnNbCommand("--data=bare", "--no-heading", "--columns=_uuid", "find", "address_set", fmt.Sprintf("name=%s", name))
 	if err != nil {
@@ -1122,82 +1058,6 @@ func (c LegacyClient) DeleteAclForNodePg(pgName string) error {
 	return nil
 }
 
-func (c LegacyClient) ListPgPorts(pgName string) ([]string, error) {
-	output, err := c.ovnNbCommand("--format=csv", "--data=bare", "--no-heading", "--columns=ports", "find", "port_group", fmt.Sprintf("name=%s", pgName))
-	if err != nil {
-		klog.Errorf("failed to list port-group ports, %v", err)
-		return nil, err
-	}
-	lines := strings.Split(output, "\n")
-	result := make([]string, 0, len(lines))
-	for _, l := range lines {
-		if len(strings.TrimSpace(l)) == 0 {
-			continue
-		}
-		result = append(result, strings.Fields(l)...)
-	}
-	return result, nil
-}
-
-func (c LegacyClient) ListLspForNodePortgroup() (map[string]string, map[string]string, error) {
-	output, err := c.ovnNbCommand("--data=bare", "--format=csv", "--no-heading", "--columns=name,_uuid", "list", "logical_switch_port")
-	if err != nil {
-		klog.Errorf("failed to list logical-switch-port, %v", err)
-		return nil, nil, err
-	}
-	lines := strings.Split(output, "\n")
-	nameIdMap := make(map[string]string, len(lines))
-	idNameMap := make(map[string]string, len(lines))
-	for _, l := range lines {
-		if len(strings.TrimSpace(l)) == 0 {
-			continue
-		}
-		parts := strings.Split(strings.TrimSpace(l), ",")
-		if len(parts) != 2 {
-			continue
-		}
-		name := strings.TrimSpace(parts[0])
-		uuid := strings.TrimSpace(parts[1])
-		nameIdMap[name] = uuid
-		idNameMap[uuid] = name
-	}
-	return nameIdMap, idNameMap, nil
-}
-
-func (c LegacyClient) ListPgPortsForNodePortgroup() (map[string][]string, error) {
-	output, err := c.ovnNbCommand("--data=bare", "--format=csv", "--no-heading", "--columns=name,ports", "list", "port_group")
-	if err != nil {
-		klog.Errorf("failed to list port_group, %v", err)
-		return nil, err
-	}
-	lines := strings.Split(output, "\n")
-	namePortsMap := make(map[string][]string, len(lines))
-	for _, l := range lines {
-		if len(strings.TrimSpace(l)) == 0 {
-			continue
-		}
-		parts := strings.Split(strings.TrimSpace(l), ",")
-		if len(parts) != 2 {
-			continue
-		}
-		name := strings.TrimSpace(parts[0])
-		ports := strings.Fields(parts[1])
-		namePortsMap[name] = ports
-	}
-
-	return namePortsMap, nil
-}
-
-func (c LegacyClient) SetPortsToPortGroup(portGroup string, portNames []string) error {
-	ovnArgs := []string{"clear", "port_group", portGroup, "ports"}
-	if len(portNames) > 0 {
-		ovnArgs = []string{"pg-set-ports", portGroup}
-		ovnArgs = append(ovnArgs, portNames...)
-	}
-	_, err := c.ovnNbCommand(ovnArgs...)
-	return err
-}
-
 func (c LegacyClient) SetAddressesToAddressSet(addresses []string, as string) error {
 	ovnArgs := []string{"clear", "address_set", as, "addresses"}
 	if len(addresses) > 0 {
@@ -1293,51 +1153,6 @@ func GetSgV4AssociatedName(sgName string) string {
 
 func GetSgV6AssociatedName(sgName string) string {
 	return strings.Replace(fmt.Sprintf("ovn.sg.%s.associated.v6", sgName), "-", ".", -1)
-}
-
-func (c LegacyClient) CreateSgPortGroup(sgName string) error {
-	sgPortGroupName := GetSgPortGroupName(sgName)
-	output, err := c.ovnNbCommand(
-		"--data=bare", "--no-heading", "--columns=_uuid", "find", "port_group", fmt.Sprintf("name=%s", sgPortGroupName))
-	if err != nil {
-		klog.Errorf("failed to find port_group of sg %s: %v", sgPortGroupName, err)
-		return err
-	}
-	if output != "" {
-		return nil
-	}
-	_, err = c.ovnNbCommand(
-		"pg-add", sgPortGroupName,
-		"--", "set", "port_group", sgPortGroupName, "external_ids:type=security_group",
-		fmt.Sprintf("external_ids:sg=%s", sgName),
-		fmt.Sprintf("external_ids:name=%s", sgPortGroupName))
-	return err
-}
-
-func (c LegacyClient) DeleteSgPortGroup(sgName string) error {
-	sgPortGroupName := GetSgPortGroupName(sgName)
-	// delete acl
-	if err := c.DeleteACL(sgPortGroupName, ""); err != nil {
-		return err
-	}
-
-	// delete address_set
-	asList, err := c.ListSgRuleAddressSet(sgName, "")
-	if err != nil {
-		return err
-	}
-	for _, as := range asList {
-		if err = c.DeleteAddressSet(as); err != nil {
-			return err
-		}
-	}
-
-	// delete pg
-	err = c.DeletePortGroup(sgPortGroupName)
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func (c LegacyClient) CreateSgAssociatedAddressSet(sgName string) error {
@@ -1578,18 +1393,6 @@ func (c LegacyClient) UpdateSgACL(sg *kubeovnv1.SecurityGroup, direction AclDire
 func (c *LegacyClient) AclExists(priority, direction string) (bool, error) {
 	priorityVal, _ := strconv.Atoi(priority)
 	results, err := c.CustomFindEntity("acl", []string{"match"}, fmt.Sprintf("priority=%d", priorityVal), fmt.Sprintf("direction=%s", direction))
-	if err != nil {
-		klog.Errorf("customFindEntity failed, %v", err)
-		return false, err
-	}
-	if len(results) == 0 {
-		return false, nil
-	}
-	return true, nil
-}
-
-func (c *LegacyClient) PortGroupExists(pgName string) (bool, error) {
-	results, err := c.CustomFindEntity("port_group", []string{"_uuid"}, fmt.Sprintf("name=%s", pgName))
 	if err != nil {
 		klog.Errorf("customFindEntity failed, %v", err)
 		return false, err

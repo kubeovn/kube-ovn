@@ -990,7 +990,6 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 	}
 	return nil
 }
-
 func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) error {
 	podName := c.getNameByPod(pod)
 	key := fmt.Sprintf("%s/%s", pod.Namespace, podName)

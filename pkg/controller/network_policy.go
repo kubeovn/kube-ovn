@@ -185,27 +185,31 @@ func (c *Controller) handleUpdateNp(key string) error {
 	// TODO: ovn acl doesn't support address_set name with '-', now we replace '-' by '.'.
 	// This may cause conflict if two np with name test-np and test.np. Maybe hash is a better solution,
 	// but we do not want to lost the readability now.
-	pgName := strings.Replace(fmt.Sprintf("%s.%s", npName, np.Namespace), "-", ".", -1)
-	ingressAllowAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.ingress.allow", npName, np.Namespace), "-", ".", -1)
-	ingressExceptAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.ingress.except", npName, np.Namespace), "-", ".", -1)
-	egressAllowAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.egress.allow", npName, np.Namespace), "-", ".", -1)
-	egressExceptAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.egress.except", npName, np.Namespace), "-", ".", -1)
+	pgName := strings.Replace(fmt.Sprintf("%s.%s", np.Name, np.Namespace), "-", ".", -1)
+	ingressAllowAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.ingress.allow", np.Name, np.Namespace), "-", ".", -1)
+	ingressExceptAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.ingress.except", np.Name, np.Namespace), "-", ".", -1)
+	egressAllowAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.egress.allow", np.Name, np.Namespace), "-", ".", -1)
+	egressExceptAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.egress.except", np.Name, np.Namespace), "-", ".", -1)
 
-	if err = c.ovnLegacyClient.CreateNpPortGroup(pgName, np.Namespace, npName); err != nil {
-		klog.Errorf("failed to create port group for np %s, %v", key, err)
+	// delete existing pg to update acl
+	if err = c.ovnClient.DeletePortGroup(pgName); err != nil {
+		klog.Errorf("delete port group %s before networkpolicy update process: %v", pgName, err)
+	}
+
+	if err = c.ovnClient.CreatePortGroup(pgName, map[string]string{networkPolicyKey: np.Namespace + "/" + np.Name}); err != nil {
+		klog.Errorf("create port group for np %s: %v", key, err)
 		return err
 	}
 
 	namedPortMap := c.namedPort.GetNamedPortByNs(np.Namespace)
 	ports, err := c.fetchSelectedPorts(np.Namespace, &np.Spec.PodSelector)
 	if err != nil {
-		klog.Errorf("failed to fetch ports, %v", err)
+		klog.Errorf("fetch ports belongs to np %s: %v", key, err)
 		return err
 	}
 
-	err = c.ovnLegacyClient.SetPortsToPortGroup(pgName, ports)
-	if err != nil && !strings.Contains(err.Error(), "not found") {
-		klog.Errorf("failed to set port group, %v", err)
+	if err := c.ovnClient.PortGroupAddPorts(pgName, ports...); err != nil {
+		klog.Errorf("add ports to port group %s: %v", pgName, err)
 		return err
 	}
 
@@ -248,7 +252,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 
 	var ingressAclCmd []string
-	exist, err := c.ovnLegacyClient.PortGroupExists(pgName)
+	exist, err := c.ovnClient.PortGroupExists(pgName)
 	if err != nil {
 		klog.Errorf("failed to query np %s port group, %v", key, err)
 		return err
@@ -391,7 +395,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 
 	var egressAclCmd []string
-	exist, err = c.ovnLegacyClient.PortGroupExists(pgName)
+	exist, err = c.ovnClient.PortGroupExists(pgName)
 	if err != nil {
 		klog.Errorf("failed to query np %s port group, %v", key, err)
 		return err
@@ -539,9 +543,9 @@ func (c *Controller) handleDeleteNp(key string) error {
 		npName = "np" + name
 	}
 
-	pgName := strings.Replace(fmt.Sprintf("%s.%s", npName, namespace), "-", ".", -1)
-	if err := c.ovnLegacyClient.DeletePortGroup(pgName); err != nil {
-		klog.Errorf("failed to delete np %s port group, %v", key, err)
+	pgName := strings.Replace(fmt.Sprintf("%s.%s", name, namespace), "-", ".", -1)
+	if err = c.ovnClient.DeletePortGroup(pgName); err != nil {
+		klog.Errorf("delete np %s port group: %v", key, err)
 	}
 
 	svcAsNames, err := c.ovnLegacyClient.ListNpAddressSet(namespace, npName, "service")
