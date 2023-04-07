@@ -7,6 +7,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -297,8 +298,13 @@ func (c *Controller) updateProviderNetworkStatusForVlanDeletion(pn *kubeovnv1.Pr
 
 	newPn := pn.DeepCopy()
 	newPn.Status.Vlans = util.RemoveString(newPn.Status.Vlans, vlan)
-	_, err := c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().UpdateStatus(context.Background(), newPn, metav1.UpdateOptions{})
+	bytes, err := newPn.Status.Bytes()
 	if err != nil {
+		klog.Errorf("failed to marshal provider network status '%s', %v", newPn.Name, err)
+		return err
+	}
+	if _, err := c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Patch(context.Background(), newPn.Name, types.MergePatchType,
+		bytes, metav1.PatchOptions{}, "status"); err != nil {
 		klog.Errorf("failed to update status of provider network %s: %v", pn.Name, err)
 		return err
 	}

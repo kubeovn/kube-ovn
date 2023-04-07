@@ -10,6 +10,7 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 	admissionapi "k8s.io/pod-security-admission/api"
 
+	nadclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 	"github.com/onsi/ginkgo/v2"
 
 	kubeovncs "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
@@ -26,6 +27,7 @@ type Framework struct {
 	KubeContext string
 	*framework.Framework
 	KubeOVNClientSet kubeovncs.Interface
+	nadClient        nadclientset.Interface
 
 	// master/release-1.10/...
 	ClusterVersion string

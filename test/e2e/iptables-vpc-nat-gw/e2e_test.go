@@ -30,10 +30,10 @@ import (
 
 const vpcNatGw = "vpc-nat-gw"
 const vpcNatGWConfigMap = "ovn-vpc-nat-gw-config"
-
 const subnetProvider = "lb-svc-attachment.kube-system"
 const networkAttachDef = "ovn-vpc-external-network"
 const externalSubnetProvider = "ovn-vpc-external-network.kube-system"
+const dockerNetworkName = "kube-ovn-vlan"
 
 // create a custom vpc named custom-vpc
 // create a custom subnet named custom-subnet
@@ -68,8 +68,8 @@ func makeOvnEip(name, subnet, v4ip, v6ip, mac, usage string) *apiv1.OvnEip {
 	return framework.MakeOvnEip(name, subnet, v4ip, v6ip, mac, usage)
 }
 
-var _ = framework.Describe("[group:ovn-eip]", func() {
-	f := framework.NewDefaultFramework("ovn-eip")
+var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
+	f := framework.NewDefaultFramework("iptables-vpc-nat-gw")
 
 	var skip bool
 	var itFn func(bool)
@@ -81,7 +81,13 @@ var _ = framework.Describe("[group:ovn-eip]", func() {
 	var subnetClient *framework.SubnetClient
 	var vlanClient *framework.VlanClient
 	var providerNetworkClient *framework.ProviderNetworkClient
-	var ovnEipClient *framework.OvnEipClient
+	var configMapClient *framework.ConfigMapClient
+	var networkAttachDefClient *framework.NetworkAttachmentDefinitionClient
+	var iptablesEipClient *framework.IptablesEIPClient
+	var iptablesFipClient *framework.IptablesFIPClient
+	var iptablesSnatClient *framework.IptablesSnatClient
+	var iptablesDnatClient *framework.IptablesDnatClient
+
 	var dockerNetwork *dockertypes.NetworkResource
 	var containerID string
 	var image string
@@ -92,7 +98,11 @@ var _ = framework.Describe("[group:ovn-eip]", func() {
 		subnetClient = f.SubnetClient()
 		vlanClient = f.VlanClient()
 		providerNetworkClient = f.ProviderNetworkClient()
-		ovnEipClient = f.OvnEipClient()
+		configMapClient = f.ConfigMapClient()
+		iptablesEipClient = f.IptablesEIPClient()
+		iptablesFipClient = f.IptablesFIPClient()
+		iptablesSnatClient = f.IptablesSnatClient()
+		iptablesDnatClient = f.IptablesDnatClient()
 		namespaceName = f.Namespace.Name
 		podName = "pod-" + framework.RandomSuffix()
 		subnetName = "subnet-" + framework.RandomSuffix()

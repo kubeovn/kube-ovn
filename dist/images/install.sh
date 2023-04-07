@@ -2006,7 +2006,6 @@ spec:
                   not:
                     enum:
                       - int
-                      - external
             spec:
               type: object
               properties:

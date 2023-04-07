@@ -134,14 +134,14 @@ kube-ovn-lb-svc-conformance-e2e:
 	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all --always-emit-ginkgo-writer \
 		--focus=CNI:Kube-OVN ./test/e2e/lb-svc/lb-svc.test
 
-.PHONY: kube-ovn-eip-conformance-e2e
-kube-ovn-eip-conformance-e2e:
-	ginkgo build ./test/e2e/ovn-eip
+.PHONY: ovn-vpc-nat-gw-conformance-e2e
+ovn-vpc-nat-gw-conformance-e2e:
+	ginkgo build ./test/e2e/ovn-vpc-nat-gw
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all --always-emit-ginkgo-writer \
-		--focus=CNI:Kube-OVN ./test/e2e/ovn-eip/ovn-eip.test
+		--focus=CNI:Kube-OVN ./test/e2e/ovn-vpc-nat-gw/ovn-vpc-nat-gw.test
 
 .PHONY: kube-ovn-security-e2e
 kube-ovn-security-e2e:

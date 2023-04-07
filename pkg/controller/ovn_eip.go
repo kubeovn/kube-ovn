@@ -430,6 +430,7 @@ func (c *Controller) createOrUpdateCrdOvnEip(key, subnet, v4ip, v6ip, mac, usage
 			ovnEip.Status.V4Ip = v4ip
 			ovnEip.Status.V6Ip = v6ip
 			ovnEip.Status.MacAddress = mac
+			ovnEip.Status.Type = usage
 			bytes, err := ovnEip.Status.Bytes()
 			if err != nil {
 				klog.Error("failed to marshal ovn eip %s, %v", key, err)

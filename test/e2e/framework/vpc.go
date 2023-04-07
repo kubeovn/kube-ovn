@@ -163,19 +163,23 @@ func (c *VpcClient) WaitToDisappear(name string, interval, timeout time.Duration
 	return maybeTimeoutError(err, "waiting for subnet %s to disappear", name)
 }
 
-func MakeVpc(name, gatewayV4 string) *kubeovnv1.Vpc {
+func MakeVpc(name, gatewayV4 string, enableExternal, enableBfd bool) *kubeovnv1.Vpc {
 	routes := make([]*kubeovnv1.StaticRoute, 0, 1)
-	routes = append(routes, &kubeovnv1.StaticRoute{
-		Policy:    kubeovnv1.PolicyDst,
-		CIDR:      "0.0.0.0/0",
-		NextHopIP: gatewayV4,
-	})
+	if gatewayV4 != "" {
+		routes = append(routes, &kubeovnv1.StaticRoute{
+			Policy:    kubeovnv1.PolicyDst,
+			CIDR:      "0.0.0.0/0",
+			NextHopIP: gatewayV4,
+		})
+	}
 	vpc := &kubeovnv1.Vpc{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
 		Spec: kubeovnv1.VpcSpec{
-			StaticRoutes: routes,
+			StaticRoutes:   routes,
+			EnableExternal: enableExternal,
+			EnableBfd:      enableBfd,
 		},
 	}
 	return vpc

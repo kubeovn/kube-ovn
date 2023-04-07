@@ -172,6 +172,7 @@ func (c *SubnetClient) WaitConditionToBe(name string, conditionType apiv1.Condit
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
 		subnet := c.Get(name)
 		if IsSubnetConditionSetAsExpected(subnet, conditionType, wantTrue) {
+			Logf("Subnet %s reach desired %t condition status", name, wantTrue)
 			return true
 		}
 	}

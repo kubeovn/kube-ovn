@@ -1,6 +1,7 @@
 package ovn_eip
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -12,7 +13,6 @@ import (
 
 	dockertypes "github.com/docker/docker/api/types"
 	"github.com/onsi/ginkgo/v2"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e"
@@ -26,6 +26,9 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/iproute"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/kind"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const dockerNetworkName = "kube-ovn-vlan"
@@ -52,19 +55,20 @@ func makeOvnEip(name, subnet, v4ip, v6ip, mac, usage string) *apiv1.OvnEip {
 	return framework.MakeOvnEip(name, subnet, v4ip, v6ip, mac, usage)
 }
 
-var _ = framework.Describe("[group:ovn-eip]", func() {
-	f := framework.NewDefaultFramework("ovn-eip")
+var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
+	f := framework.NewDefaultFramework("ovn-vpc-nat-gw")
 
 	var skip bool
 	var itFn func(bool)
 	var cs clientset.Interface
 	var nodeNames []string
-	var clusterName, providerNetworkName, vlanName, subnetName, podName, namespaceName string
+	var clusterName, providerNetworkName, vlanName, subnetName, vpcName, overlaySubnetName string
 	var linkMap map[string]*iproute.Link
-	var podClient *framework.PodClient
-	var subnetClient *framework.SubnetClient
-	var vlanClient *framework.VlanClient
+	// var configMapClient *framework.ConfigMapClient
 	var providerNetworkClient *framework.ProviderNetworkClient
+	var vlanClient *framework.VlanClient
+	var vpcClient *framework.VpcClient
+	var subnetClient *framework.SubnetClient
 	var ovnEipClient *framework.OvnEipClient
 	var dockerNetwork *dockertypes.NetworkResource
 	var containerID string
@@ -72,16 +76,17 @@ var _ = framework.Describe("[group:ovn-eip]", func() {
 
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
-		podClient = f.PodClient()
 		subnetClient = f.SubnetClient()
 		vlanClient = f.VlanClient()
+		vpcClient = f.VpcClient()
+		// configMapClient = f.ConfigMapClient()
 		providerNetworkClient = f.ProviderNetworkClient()
 		ovnEipClient = f.OvnEipClient()
-		namespaceName = f.Namespace.Name
-		podName = "pod-" + framework.RandomSuffix()
-		subnetName = "subnet-" + framework.RandomSuffix()
+		vpcName = "vpc-" + framework.RandomSuffix()
+		overlaySubnetName = "overlay-subnet-" + framework.RandomSuffix()
+		providerNetworkName = "external"
 		vlanName = "vlan-" + framework.RandomSuffix()
-		providerNetworkName = "pn-" + framework.RandomSuffix()
+		subnetName = "external"
 		containerID = ""
 		if image == "" {
 			image = framework.GetKubeOvnImage(cs)
@@ -142,7 +147,6 @@ var _ = framework.Describe("[group:ovn-eip]", func() {
 			linkMap[node.Name()] = linkMap[node.ID]
 			nodeNames = append(nodeNames, node.Name())
 		}
-
 		itFn = func(exchangeLinkName bool) {
 			ginkgo.By("Creating provider network")
 			pn := makeProviderNetwork(providerNetworkName, exchangeLinkName, linkMap)
@@ -160,6 +164,9 @@ var _ = framework.Describe("[group:ovn-eip]", func() {
 				framework.ExpectHaveKeyWithValue(node.Labels, fmt.Sprintf(util.ProviderNetworkMtuTemplate, providerNetworkName), strconv.Itoa(link.Mtu))
 				framework.ExpectNotHaveKey(node.Labels, fmt.Sprintf(util.ProviderNetworkExcludeTemplate, providerNetworkName))
 			}
+
+			ginkgo.By("Validating provider network spec")
+			framework.ExpectEqual(pn.Spec.ExchangeLinkName, false, "field .spec.exchangeLinkName should be false")
 
 			ginkgo.By("Validating provider network status")
 			framework.ExpectEqual(pn.Status.Ready, true, "field .status.ready should be true")
@@ -222,50 +229,50 @@ var _ = framework.Describe("[group:ovn-eip]", func() {
 			framework.ExpectNoError(err)
 		}
 
-		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
+		// ginkgo.By("Deleting pod " + podName)
+		// podClient.DeleteSync(podName)
 
-		ginkgo.By("Deleting subnet " + subnetName)
-		subnetClient.DeleteSync(subnetName)
+		// ginkgo.By("Deleting subnet " + subnetName)
+		// subnetClient.DeleteSync(subnetName)
 
-		ginkgo.By("Deleting vlan " + vlanName)
-		vlanClient.Delete(vlanName, metav1.DeleteOptions{})
+		// ginkgo.By("Deleting vlan " + vlanName)
+		// vlanClient.Delete(vlanName, metav1.DeleteOptions{})
 
-		ginkgo.By("Deleting provider network")
-		providerNetworkClient.DeleteSync(providerNetworkName)
+		// ginkgo.By("Deleting provider network")
+		// providerNetworkClient.DeleteSync(providerNetworkName)
 
-		ginkgo.By("Getting nodes")
-		nodes, err := kind.ListNodes(clusterName, "")
-		framework.ExpectNoError(err, "getting nodes in cluster")
+		// ginkgo.By("Getting nodes")
+		// nodes, err := kind.ListNodes(clusterName, "")
+		// framework.ExpectNoError(err, "getting nodes in cluster")
 
-		ginkgo.By("Waiting for ovs bridge to disappear")
-		deadline := time.Now().Add(time.Minute)
-		for _, node := range nodes {
-			err = node.WaitLinkToDisappear(util.ExternalBridgeName(providerNetworkName), 2*time.Second, deadline)
-			framework.ExpectNoError(err, "timed out waiting for ovs bridge to disappear in node %s", node.Name())
-		}
+		// ginkgo.By("Waiting for ovs bridge to disappear")
+		// deadline := time.Now().Add(time.Minute)
+		// for _, node := range nodes {
+		// 	err = node.WaitLinkToDisappear(util.ExternalBridgeName(providerNetworkName), 2*time.Second, deadline)
+		// 	framework.ExpectNoError(err, "timed out waiting for ovs bridge to disappear in node %s", node.Name())
+		// }
 
-		if dockerNetwork != nil {
-			ginkgo.By("Disconnecting nodes from the docker network")
-			err = kind.NetworkDisconnect(dockerNetwork.ID, nodes)
-			framework.ExpectNoError(err, "disconnecting nodes from network "+dockerNetworkName)
-		}
+		// if dockerNetwork != nil {
+		// 	ginkgo.By("Disconnecting nodes from the docker network")
+		// 	err = kind.NetworkDisconnect(dockerNetwork.ID, nodes)
+		// 	framework.ExpectNoError(err, "disconnecting nodes from network "+dockerNetworkName)
+		// }
 	})
 
-	framework.ConformanceIt("should be able to sync node external", func() {
-		// create provider network
-		itFn(false)
+	framework.ConformanceIt("ovn eip", func() {
+		// create underlay provider network
+		exchangeLinkName := false
+		itFn(exchangeLinkName)
 
-		// create vlan subnet eip
 		ginkgo.By("Getting docker network " + dockerNetworkName)
 		network, err := docker.NetworkInspect(dockerNetworkName)
 		framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
 
-		ginkgo.By("Creating vlan " + vlanName)
+		ginkgo.By("Creating underlay vlan " + vlanName)
 		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
 		_ = vlanClient.Create(vlan)
 
-		ginkgo.By("Creating subnet " + subnetName)
+		ginkgo.By("Creating underlay subnet " + subnetName)
 		cidr := make([]string, 0, 2)
 		gateway := make([]string, 0, 2)
 		for _, config := range dockerNetwork.IPAM.Config {
@@ -291,8 +298,45 @@ var _ = framework.Describe("[group:ovn-eip]", func() {
 				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
 			}
 		}
-		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(cidr, ","), strings.Join(gateway, ","), excludeIPs, nil, []string{namespaceName})
+		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(cidr, ","), strings.Join(gateway, ","), "", excludeIPs, nil, nil)
 		_ = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Creating config map ovn-external-gw-config")
+		cmData := map[string]string{
+			"enable-external-gw": "true",
+			"external-gw-nodes":  "kube-ovn-control-plane,kube-ovn-worker",
+			"type":               "centralized",
+			"external-gw-nic":    "eth1",
+			"external-gw-addr":   strings.Join(cidr, ","),
+		}
+		configMap := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "ovn-external-gw-config",
+				Namespace: "kube-system",
+			},
+			Data: cmData,
+		}
+		// extCm := framework.MakeConfigMap("ovn-external-gw-config", "kube-system", nil, cmData)
+		// cm := configMapClient.Create(configMap)
+		ginkgo.By("show external gw cm xxxxxxxxxx")
+		cm, err := cs.CoreV1().ConfigMaps("kube-system").Create(context.Background(), configMap, metav1.CreateOptions{})
+		if err != nil {
+			panic(err.Error())
+		}
+		ginkgo.By("show external gw cm" + cm.Name)
+
+		ginkgo.By("Creating custom vpc enable external and bfd")
+		overlaySubnetV4Cidr := "192.168.0.0/24"
+		overlaySubnetV4Gw := "192.168.0.1"
+		enableExternal := true
+		enableBfd := true
+		vpc := framework.MakeVpc(vpcName, overlaySubnetV4Gw, enableExternal, enableBfd)
+		ginkgo.By("show custom vpc" + vpc.Name)
+		_ = vpcClient.CreateSync(vpc)
+
+		ginkgo.By("Creating overlay subnet enable ecmp")
+		overlaySubnet := framework.MakeSubnet(overlaySubnetName, vlanName, overlaySubnetV4Cidr, overlaySubnetV4Gw, vpcName, nil, nil, nil)
+		_ = subnetClient.CreateSync(overlaySubnet)
 
 		ginkgo.By("Getting k8s nodes")
 		k8sNodes, err := e2enode.GetReadySchedulableNodes(cs)
