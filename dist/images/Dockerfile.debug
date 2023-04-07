@@ -26,21 +26,21 @@ RUN cd /usr/src/ && \
     sed -i 10d debian/automake.mk && \
     rm debian/libopenvswitch.install debian/libopenvswitch-dev.install && \
     # ovsdb-idl: Support write-only-changed IDL monitor mode
-    curl -s https://github.com/kubeovn/ovs/commit/24c1b28c416d3a0312c10a9fe9341c04b8b31ce9.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/bef703ef862fbbf8740b8d5bf6ca8df9ed617da5.patch | git apply && \
     # fix memleak
-    curl -s https://github.com/kubeovn/ovs/commit/2dc8e7aa202818952b2fa80b47298604530c9de0.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/3cf5c5236494b5f54dd2c363f2b547f9d90b372d.patch | git apply && \
     # fix log file descriptor leak in monitor process
-    curl -s https://github.com/kubeovn/ovs/commit/918d6dc79634bec760054ee53f7628186315bcfb.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/9bce4a9bced0d699ebbb2893bc68448bb0243846.patch | git apply && \
     # increase election timer
-    curl -s https://github.com/kubeovn/ovs/commit/22ea22c40b46ee5adeae977ff6cfca81b3ff25d7.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/28ee0fc71cd4256fc422fff30d13e2aa0028cfca.patch | git apply && \
     # add fdb update logging
-    curl -s https://github.com/kubeovn/ovs/commit/8c2f28b778129161bbf8f0738fa41d385860d5bc.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/e3ed5ec298e2427b77dd2252e8c2218894e45220.patch | git apply && \
     # fdb: fix mac learning in environments with hairpin enabled
-    curl -s https://github.com/kubeovn/ovs/commit/1cb138aaf2fdf922d75a587e4e9cf610d38f9fee.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/b721a251dadfb0857a2aebe32611d18ca935421f.patch | git apply && \
     # ovsdb-tool: add optional server id parameter for "join-cluster" command
-    curl -s https://github.com/kubeovn/ovs/commit/2e2ec1161cadbec79786d63fde9475053d996586.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovs/commit/0664cbe47d1684ca5b7147e3449779635454970e.patch | git apply && \
     # compile without avx512
-    if [ "$ARCH" = "amd64" -a "$NO_AVX512" = "true" ]; then curl -s https://github.com/kubeovn/ovs/commit/c257b0794b827cfae9660a9f3238bee8a29e7676.patch | git apply; fi && \
+    if [ "$ARCH" = "amd64" -a "$NO_AVX512" = "true" ]; then curl -s https://github.com/kubeovn/ovs/commit/f61283c8934589fe6de2b1e86041204dfc31a3e3.patch | git apply; fi && \
     ./boot.sh && \
     rm -rf .git && \
     CONFIGURE_OPTS='' && \
@@ -55,18 +55,24 @@ RUN cd /usr/src/ && git clone -b branch-22.03 --depth=1 https://github.com/ovn-o
     sed -i 67d debian/rules && \
     sed -i s/--enable-shared//g debian/rules && \
     sed -i 14d debian/ovn-common.install && \
+    # fix ssl listen address
+    curl -s https://github.com/kubeovn/ovn/commit/7992d55af9ac356d3ad934764f473d1b6aa4cf64.patch | git apply && \
     # ovn-controller: Add a generic way to check if the daemon started recently.
-    curl -s https://github.com/kubeovn/ovn/commit/367d7ab6239089ce99dda20818c8833c69ffd77f.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/b60d6c60b3f78efb92ad2583a64821e618659344.patch | git apply && \
     # patch.c: Avoid patch interface deletion & recreation during restart.
-    curl -s https://github.com/kubeovn/ovn/commit/e4b97b4961fa80071cb73aa40cf97f586f55b1eb.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/d15464497a5e4737bf4122f134ebc006f1a6788f.patch | git apply && \
     # do not send traffic that not designate to svc to conntrack
-    curl -s https://github.com/kubeovn/ovn/commit/d26ae4de0ab070f6b602688ba808c8963f69d5c4.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/7af1a269e5a52938be310108524365a6a75b73ef.patch | git apply && \
     # change hash type from dp_hash to hash with field src_ip
-    curl -s https://github.com/kubeovn/ovn/commit/ab923b252271cbbcccc8091e338ee7efe75e5fcd.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/2c36d523998a20bec95e36fee815a6a46bda80c1.patch | git apply && \
     # set ether dst addr for dnat on logical switch
-    curl -s https://github.com/kubeovn/ovn/commit/58a40438926745dfdd498c09ea71e1746b803a42.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/7d349c9d22a49b6be02d1f679dd771f7ce72c524.patch | git apply && \
     # modify src route priority
-    curl -s https://github.com/kubeovn/ovn/commit/e0e20deb188434f73143b1906e481fdac913429d.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/2b7226d936a60140574827a6a34560e0b332e876.patch | git apply && \
+    # fix reaching resubmit limit in underlay
+    curl -s https://github.com/kubeovn/ovn/commit/44b44df9ceb37d526594126c6f8737fafb53269c.patch | git apply && \
+    # do not remove LB if vips is empty
+    curl -s https://github.com/kubeovn/ovn/commit/45a4a22161e42f17f21baee9106a45964dfd3a1b.patch | git apply && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \
@@ -87,7 +93,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
         ethtool iproute2 ncat libunbound-dev procps libatomic1 kmod iptables \
         tcpdump ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 \
-        logrotate dnsutils net-tools nmap -y --no-install-recommends && \
+        logrotate dnsutils net-tools nmap valgrind -y --no-install-recommends && \
         rm -rf /var/lib/apt/lists/* && \
         cd /usr/sbin && \
         ln -sf /usr/sbin/iptables-legacy iptables && \
@@ -100,10 +106,10 @@ RUN mkdir -p /var/run/openvswitch && \
     mkdir -p /opt/cni/bin
 
 ARG ARCH
-ENV CNI_VERSION=v1.1.1
+ENV CNI_VERSION=v1.2.0
 RUN curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz | tar -xz -C . ./loopback ./portmap ./macvlan
 
-ENV KUBE_VERSION="v1.24.2"
+ENV KUBE_VERSION="v1.24.12"
 
 RUN curl -L https://dl.k8s.io/${KUBE_VERSION}/kubernetes-client-linux-${ARCH}.tar.gz | tar -xz -C . && cp ./kubernetes/client/bin/kubectl /usr/bin/kubectl \
  && chmod +x /usr/bin/kubectl && rm -rf ./kubernetes
