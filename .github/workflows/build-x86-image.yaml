@@ -1104,16 +1104,12 @@ jobs:
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
-      - name: Install Multus
-        run: make kind-install-multus
-
-      - name: Install Kube-OVN
+      - name: Install Multus and Kube-OVN
         run: make kind-install-lb-svc
 
       - name: Run E2E
         working-directory: ${{ env.E2E_DIR }}
         run: make kube-ovn-lb-svc-conformance-e2e
-
 
   kubevirt-e2e:
     name: Kubevirt vm E2E
