@@ -172,7 +172,7 @@ func (c *ovnClient) LogicalRouterUpdateLoadBalancers(lrName string, op ovsdb.Mut
 		return fmt.Errorf("generate operations for logical router %s update lbs %v: %v", lrName, lbNames, err)
 	}
 
-	if err := c.Transact("ls-lb-update", ops); err != nil {
+	if err := c.Transact("lr-lb-update", ops); err != nil {
 		return fmt.Errorf("logical router %s update lbs %v: %v", lrName, lbNames, err)
 
 	}

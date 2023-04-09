@@ -51,8 +51,6 @@ RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-o
     curl -s https://github.com/kubeovn/ovn/commit/cd31bebd1c15fb8e50107861a9397e672fcbad27.patch | git apply && \
     # fix reaching resubmit limit in underlay
     curl -s https://github.com/kubeovn/ovn/commit/993147dd6ab2dd4565379315a6d96ab12f4a294d.patch | git apply && \
-    # do not remove LB if vips is empty
-    curl -s https://github.com/kubeovn/ovn/commit/8693053ed3d5ecd5cd70658315d3079f33e9f8e0.patch | git apply && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \

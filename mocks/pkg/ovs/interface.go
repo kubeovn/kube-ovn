@@ -866,37 +866,37 @@ func (mr *MockLoadBalancerMockRecorder) ListLoadBalancers(filter interface{}) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLoadBalancers", reflect.TypeOf((*MockLoadBalancer)(nil).ListLoadBalancers), filter)
 }
 
-// LoadBalancerAddVips mocks base method.
-func (m *MockLoadBalancer) LoadBalancerAddVips(lbName string, vips map[string]string) error {
+// LoadBalancerAddVip mocks base method.
+func (m *MockLoadBalancer) LoadBalancerAddVip(lbName, vip string, backends ...string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "LoadBalancerAddVips", lbName, vips)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// LoadBalancerAddVips indicates an expected call of LoadBalancerAddVips.
-func (mr *MockLoadBalancerMockRecorder) LoadBalancerAddVips(lbName, vips interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerAddVips", reflect.TypeOf((*MockLoadBalancer)(nil).LoadBalancerAddVips), lbName, vips)
-}
-
-// LoadBalancerDeleteVips mocks base method.
-func (m *MockLoadBalancer) LoadBalancerDeleteVips(lbName string, vips ...string) error {
-	m.ctrl.T.Helper()
-	varargs := []interface{}{lbName}
-	for _, a := range vips {
+	varargs := []interface{}{lbName, vip}
+	for _, a := range backends {
 		varargs = append(varargs, a)
 	}
-	ret := m.ctrl.Call(m, "LoadBalancerDeleteVips", varargs...)
+	ret := m.ctrl.Call(m, "LoadBalancerAddVip", varargs...)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// LoadBalancerDeleteVips indicates an expected call of LoadBalancerDeleteVips.
-func (mr *MockLoadBalancerMockRecorder) LoadBalancerDeleteVips(lbName interface{}, vips ...interface{}) *gomock.Call {
+// LoadBalancerAddVip indicates an expected call of LoadBalancerAddVip.
+func (mr *MockLoadBalancerMockRecorder) LoadBalancerAddVip(lbName, vip interface{}, backends ...interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]interface{}{lbName}, vips...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerDeleteVips", reflect.TypeOf((*MockLoadBalancer)(nil).LoadBalancerDeleteVips), varargs...)
+	varargs := append([]interface{}{lbName, vip}, backends...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerAddVip", reflect.TypeOf((*MockLoadBalancer)(nil).LoadBalancerAddVip), varargs...)
+}
+
+// LoadBalancerDeleteVip mocks base method.
+func (m *MockLoadBalancer) LoadBalancerDeleteVip(lbName, vip string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LoadBalancerDeleteVip", lbName, vip)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// LoadBalancerDeleteVip indicates an expected call of LoadBalancerDeleteVip.
+func (mr *MockLoadBalancerMockRecorder) LoadBalancerDeleteVip(lbName, vip interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerDeleteVip", reflect.TypeOf((*MockLoadBalancer)(nil).LoadBalancerDeleteVip), lbName, vip)
 }
 
 // LoadBalancerExists mocks base method.
@@ -2757,37 +2757,37 @@ func (mr *MockOvnClientMockRecorder) ListPortGroups(externalIDs interface{}) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPortGroups", reflect.TypeOf((*MockOvnClient)(nil).ListPortGroups), externalIDs)
 }
 
-// LoadBalancerAddVips mocks base method.
-func (m *MockOvnClient) LoadBalancerAddVips(lbName string, vips map[string]string) error {
+// LoadBalancerAddVip mocks base method.
+func (m *MockOvnClient) LoadBalancerAddVip(lbName, vip string, backends ...string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "LoadBalancerAddVips", lbName, vips)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// LoadBalancerAddVips indicates an expected call of LoadBalancerAddVips.
-func (mr *MockOvnClientMockRecorder) LoadBalancerAddVips(lbName, vips interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerAddVips", reflect.TypeOf((*MockOvnClient)(nil).LoadBalancerAddVips), lbName, vips)
-}
-
-// LoadBalancerDeleteVips mocks base method.
-func (m *MockOvnClient) LoadBalancerDeleteVips(lbName string, vips ...string) error {
-	m.ctrl.T.Helper()
-	varargs := []interface{}{lbName}
-	for _, a := range vips {
+	varargs := []interface{}{lbName, vip}
+	for _, a := range backends {
 		varargs = append(varargs, a)
 	}
-	ret := m.ctrl.Call(m, "LoadBalancerDeleteVips", varargs...)
+	ret := m.ctrl.Call(m, "LoadBalancerAddVip", varargs...)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// LoadBalancerDeleteVips indicates an expected call of LoadBalancerDeleteVips.
-func (mr *MockOvnClientMockRecorder) LoadBalancerDeleteVips(lbName interface{}, vips ...interface{}) *gomock.Call {
+// LoadBalancerAddVip indicates an expected call of LoadBalancerAddVip.
+func (mr *MockOvnClientMockRecorder) LoadBalancerAddVip(lbName, vip interface{}, backends ...interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]interface{}{lbName}, vips...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerDeleteVips", reflect.TypeOf((*MockOvnClient)(nil).LoadBalancerDeleteVips), varargs...)
+	varargs := append([]interface{}{lbName, vip}, backends...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerAddVip", reflect.TypeOf((*MockOvnClient)(nil).LoadBalancerAddVip), varargs...)
+}
+
+// LoadBalancerDeleteVip mocks base method.
+func (m *MockOvnClient) LoadBalancerDeleteVip(lbName, vip string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LoadBalancerDeleteVip", lbName, vip)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// LoadBalancerDeleteVip indicates an expected call of LoadBalancerDeleteVip.
+func (mr *MockOvnClientMockRecorder) LoadBalancerDeleteVip(lbName, vip interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerDeleteVip", reflect.TypeOf((*MockOvnClient)(nil).LoadBalancerDeleteVip), lbName, vip)
 }
 
 // LoadBalancerExists mocks base method.

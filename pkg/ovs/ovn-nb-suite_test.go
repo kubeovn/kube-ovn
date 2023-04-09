@@ -310,8 +310,8 @@ func (suite *OvnClientTestSuite) Test_DeleteLoadBalancer() {
 	suite.testDeleteLoadBalancer()
 }
 
-func (suite *OvnClientTestSuite) Test_LoadBalancerDeleteVips() {
-	suite.testLoadBalancerDeleteVips()
+func (suite *OvnClientTestSuite) Test_LoadBalancerDeleteVip() {
+	suite.testLoadBalancerDeleteVip()
 }
 
 func (suite *OvnClientTestSuite) Test_GetLoadBalancer() {
@@ -322,8 +322,8 @@ func (suite *OvnClientTestSuite) Test_ListLoadBalancers() {
 	suite.testListLoadBalancers()
 }
 
-func (suite *OvnClientTestSuite) Test_LoadBalancerAddVips() {
-	suite.testLoadBalancerAddVips()
+func (suite *OvnClientTestSuite) Test_LoadBalancerAddVip() {
+	suite.testLoadBalancerAddVip()
 }
 
 func (suite *OvnClientTestSuite) Test_DeleteLoadBalancerOp() {
@@ -630,10 +630,12 @@ func Test_scratch(t *testing.T) {
 		"[fd00:10:96::e82f]:8080": "[fc00::af4:f]:8080,[fc00::af4:10]:8080,[fc00::af4:11]:8080",
 	}
 
-	err = ovnClient.LoadBalancerAddVips(lbName, vips)
-	require.NoError(t, err)
+	for vip, backends := range vips {
+		err = ovnClient.LoadBalancerAddVip(lbName, vip, strings.Split(backends, ",")...)
+		require.NoError(t, err)
+	}
 
-	err = ovnClient.LoadBalancerDeleteVips(lbName, "10.96.0.1:443")
+	err = ovnClient.LoadBalancerDeleteVip(lbName, "10.96.0.1:443")
 	require.NoError(t, err)
 }
 

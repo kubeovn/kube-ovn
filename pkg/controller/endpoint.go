@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -192,17 +191,17 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 
 			// for performance reason delete lb with no backends
 			if len(backends) != 0 {
-				if err = c.ovnClient.LoadBalancerAddVips(lb, map[string]string{vip: backends}); err != nil {
+				if err = c.ovnClient.LoadBalancerAddVip(lb, vip, backends...); err != nil {
 					klog.Errorf("failed to add vip %s with backends %s to LB %s: %v", vip, backends, lb, err)
 					return err
 				}
 			} else {
-				if err := c.ovnClient.LoadBalancerDeleteVips(lb, vip); err != nil {
+				if err := c.ovnClient.LoadBalancerDeleteVip(lb, vip); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
 					return err
 				}
 
-				if err := c.ovnClient.LoadBalancerDeleteVips(oldLb, vip); err != nil {
+				if err := c.ovnClient.LoadBalancerDeleteVip(oldLb, vip); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
 					return err
 				}
@@ -213,7 +212,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	return nil
 }
 
-func getServicePortBackends(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort v1.ServicePort, serviceIP string) string {
+func getServicePortBackends(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort v1.ServicePort, serviceIP string) []string {
 	backends := []string{}
 	protocol := util.CheckProtocol(serviceIP)
 	for _, subset := range endpoints.Subsets {
@@ -261,5 +260,5 @@ func getServicePortBackends(endpoints *v1.Endpoints, pods []*v1.Pod, servicePort
 		}
 	}
 
-	return strings.Join(backends, ",")
+	return backends
 }
