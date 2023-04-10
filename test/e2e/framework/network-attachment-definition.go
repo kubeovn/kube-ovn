@@ -16,7 +16,6 @@ import (
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	k8scnicncfiov1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned/typed/k8s.cni.cncf.io/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 // NetworkAttachmentDefinitionClient is a struct for provider network client.
@@ -135,7 +134,7 @@ func (c *NetworkAttachmentDefinitionClient) WaitToDisappear(name string, interva
 	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
 		_, err := c.NetworkAttachmentDefinitionInterface.Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
-			if k8serrors.IsNotFound(err) {
+			if apierrors.IsNotFound(err) {
 				return true, nil
 			}
 			return false, err

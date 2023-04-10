@@ -132,28 +132,13 @@ func (c *IptablesFIPClient) WaitToDisappear(name string, interval, timeout time.
 	var lastIptablesFIPRule *apiv1.IptablesFIPRule
 	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
 		Logf("Waiting for iptables fip %s to disappear", name)
-		subnets, err := c.List(context.TODO(), metav1.ListOptions{})
-		if err != nil {
-			return handleWaitingAPIError(err, true, "listing subnets")
-		}
-		found := false
-		for i, subnet := range subnets.Items {
-			if subnet.Name == name {
-				Logf("iptables fip %s still exists", name)
-				found = true
-				lastIptablesFIPRule = &(subnets.Items[i])
-				break
-			}
-		}
-		if !found {
+		_, err := c.IptablesFIPRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
 			Logf("iptables fip %s no longer exists", name)
 			return true, nil
 		}
 		return false, nil
 	})
-	if err == nil {
-		return nil
-	}
 	if IsTimeout(err) {
 		return TimeoutError(fmt.Sprintf("timed out while waiting for iptables fip %s to disappear", name),
 			lastIptablesFIPRule,

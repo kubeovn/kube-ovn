@@ -132,28 +132,13 @@ func (c *IptablesSnatClient) WaitToDisappear(name string, interval, timeout time
 	var lastIptablesSnatRule *apiv1.IptablesSnatRule
 	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
 		Logf("Waiting for iptables snat %s to disappear", name)
-		subnets, err := c.List(context.TODO(), metav1.ListOptions{})
-		if err != nil {
-			return handleWaitingAPIError(err, true, "listing subnets")
-		}
-		found := false
-		for i, subnet := range subnets.Items {
-			if subnet.Name == name {
-				Logf("iptables snat %s still exists", name)
-				found = true
-				lastIptablesSnatRule = &(subnets.Items[i])
-				break
-			}
-		}
-		if !found {
+		_, err := c.IptablesSnatRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
 			Logf("iptables snat %s no longer exists", name)
 			return true, nil
 		}
 		return false, nil
 	})
-	if err == nil {
-		return nil
-	}
 	if IsTimeout(err) {
 		return TimeoutError(fmt.Sprintf("timed out while waiting for iptables snat %s to disappear", name),
 			lastIptablesSnatRule,

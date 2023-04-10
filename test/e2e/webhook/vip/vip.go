@@ -46,7 +46,7 @@ var _ = framework.Describe("[group:webhook-vip]", func() {
 
 	ginkgo.AfterEach(func() {
 		ginkgo.By("Deleting vip " + vipName)
-		vipClient.Delete(vipName, metav1.DeleteOptions{})
+		vipClient.Delete(vipName)
 
 		ginkgo.By("Deleting subnet " + subnetName)
 		subnetClient.DeleteSync(subnetName)

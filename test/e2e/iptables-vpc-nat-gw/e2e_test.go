@@ -35,9 +35,9 @@ const networkAttachDef = "ovn-vpc-external-network"
 const externalSubnetProvider = "ovn-vpc-external-network.kube-system"
 const dockerNetworkName = "kube-ovn-vlan"
 
-// create a custom vpc named custom-vpc
-// create a custom subnet named custom-subnet
-// create a pod in the vpc subnet named custom-pod
+// create a custom vpc
+// create a custom subnet
+// create a pod in the vpc subnet
 // create a subnet for macvlan named ovn-vpc-external-network
 // create a networkattachmentdefinition named ovn-vpc-external-network
 // enable iptables vpc nat gw based configmap
@@ -81,7 +81,6 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 	var subnetClient *framework.SubnetClient
 	var vlanClient *framework.VlanClient
 	var providerNetworkClient *framework.ProviderNetworkClient
-	var configMapClient *framework.ConfigMapClient
 	var networkAttachDefClient *framework.NetworkAttachmentDefinitionClient
 	var iptablesEipClient *framework.IptablesEIPClient
 	var iptablesFipClient *framework.IptablesFIPClient

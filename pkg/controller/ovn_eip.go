@@ -263,10 +263,6 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		klog.Errorf("failed to count ovn eip '%s' in subnet, %v", cachedEip.Name, err)
 		return err
 	}
-	if err = c.handleAddOvnEipFinalizer(cachedEip, util.ControllerName); err != nil {
-		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
-		return err
-	}
 
 	return nil
 }
@@ -373,10 +369,6 @@ func (c *Controller) handleDelOvnEip(key string) error {
 		}
 	}
 
-	if err = c.handleDelOvnEipFinalizer(cachedEip, util.ControllerName); err != nil {
-		klog.Errorf("failed to remove finalizer from ovn eip, %v", err)
-		return err
-	}
 	c.ipam.ReleaseAddressByPod(key)
 	return nil
 }
