@@ -253,7 +253,7 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 	}
 
 	if cachedEip.Spec.QoSPolicy != "" {
-		if err = c.addEipQoS(cachedEip, cachedEip.Status.IP); err != nil {
+		if err = c.addEipQoS(cachedEip, v4ip); err != nil {
 			klog.Errorf("failed to add qos '%s' in pod, %v", key, err)
 			return err
 		}
