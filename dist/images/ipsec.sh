@@ -74,7 +74,7 @@ initIpsec (){
       kubectl exec -it -n kube-system $pod -- service ipsec restart > /dev/null
   done
 
-  echo " Kube-ovn ipsec init successfully, it may take a few seconds to setup ipsec completely "
+  echo " Kube-OVN ipsec init successfully, it may take a few seconds to setup ipsec completely "
 }
 
 getOvnCentralPod
@@ -86,11 +86,11 @@ case $subcommand in
     ;;
   start)
     kubectl exec "$OVN_NB_POD" -n kube-system -c ovn-central -- ovn-nbctl set nb_global . ipsec=true
-    echo " Kube-ovn ipsec started "
+    echo " Kube-OVN ipsec started "
     ;;
   stop)
     kubectl exec "$OVN_NB_POD" -n kube-system -c ovn-central -- ovn-nbctl set nb_global . ipsec=false
-    echo " Kube-ovn ipsec stopped "
+    echo " Kube-OVN ipsec stopped "
     ;;
   status)
     podNames=`kubectl get pod -n kube-system -l app=ovs -o 'jsonpath={.items[*].metadata.name}'`
