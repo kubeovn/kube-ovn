@@ -68,6 +68,10 @@ func (c *FakeKubeovnV1) ProviderNetworks() v1.ProviderNetworkInterface {
 	return &FakeProviderNetworks{c}
 }
 
+func (c *FakeKubeovnV1) QoSPolicies() v1.QoSPolicyInterface {
+	return &FakeQoSPolicies{c}
+}
+
 func (c *FakeKubeovnV1) SecurityGroups() v1.SecurityGroupInterface {
 	return &FakeSecurityGroups{c}
 }

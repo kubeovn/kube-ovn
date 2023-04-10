@@ -39,6 +39,10 @@ const (
 	natGwDnatDel           = "dnat-del"
 	natGwSnatAdd           = "snat-add"
 	natGwSnatDel           = "snat-del"
+	natGwEipIngressQoSAdd  = "eip-ingress-qos-add"
+	natGwEipIngressQoSDel  = "eip-ingress-qos-del"
+	natGwEipEgressQoSAdd   = "eip-egress-qos-add"
+	natGwEipEgressQoSDel   = "eip-egress-qos-del"
 	natGwSubnetFipAdd      = "floating-ip-add"
 	natGwSubnetFipDel      = "floating-ip-del"
 	natGwSubnetRouteAdd    = "subnet-route-add"
@@ -400,9 +404,8 @@ func (c *Controller) handleUpdateVpcEip(natGwKey string) error {
 	for _, eip := range eips.Items {
 		if eip.Spec.NatGwDp == natGwKey && eip.Status.Redo != NAT_GW_CREATED_AT && eip.Annotations[util.VpcNatAnnotation] == "" {
 			klog.V(3).Infof("redo eip %s", eip.Name)
-			if err = c.patchEipStatus(eip.Name, "", NAT_GW_CREATED_AT, "", false); err != nil {
-				err = fmt.Errorf("failed to update eip '%s' to re-apply, %v", eip.Name, err)
-				klog.Error(err)
+			if err = c.patchEipStatus(eip.Name, "", NAT_GW_CREATED_AT, "", "", false); err != nil {
+				klog.Errorf("failed to update eip '%s' to re-apply, %v", eip.Name, err)
 				return err
 			}
 		}

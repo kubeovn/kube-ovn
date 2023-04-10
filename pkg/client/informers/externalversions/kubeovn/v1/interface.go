@@ -44,6 +44,8 @@ type Interface interface {
 	OvnSnatRules() OvnSnatRuleInformer
 	// ProviderNetworks returns a ProviderNetworkInformer.
 	ProviderNetworks() ProviderNetworkInformer
+	// QoSPolicies returns a QoSPolicyInformer.
+	QoSPolicies() QoSPolicyInformer
 	// SecurityGroups returns a SecurityGroupInformer.
 	SecurityGroups() SecurityGroupInformer
 	// Subnets returns a SubnetInformer.
@@ -121,6 +123,11 @@ func (v *version) OvnSnatRules() OvnSnatRuleInformer {
 // ProviderNetworks returns a ProviderNetworkInformer.
 func (v *version) ProviderNetworks() ProviderNetworkInformer {
 	return &providerNetworkInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// QoSPolicies returns a QoSPolicyInformer.
+func (v *version) QoSPolicies() QoSPolicyInformer {
+	return &qoSPolicyInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
 // SecurityGroups returns a SecurityGroupInformer.

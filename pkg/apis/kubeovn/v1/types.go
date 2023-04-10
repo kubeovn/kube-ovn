@@ -487,6 +487,7 @@ type IptablesEipSpec struct {
 	V6ip       string `json:"v6ip"`
 	MacAddress string `json:"macAddress"`
 	NatGwDp    string `json:"natGwDp"`
+	QoSPolicy  string `json:"qosPolicy"`
 }
 
 // IptablesEIPCondition describes the state of an object at a certain point.
@@ -513,11 +514,11 @@ type IptablesEIPCondition struct {
 type IptablesEipStatus struct {
 	// +optional
 	// +patchStrategy=merge
-	Ready bool   `json:"ready" patchStrategy:"merge"`
-	IP    string `json:"ip" patchStrategy:"merge"`
-	Redo  string `json:"redo" patchStrategy:"merge"`
-	Nat   string `json:"nat" patchStrategy:"merge"`
-
+	Ready     bool   `json:"ready" patchStrategy:"merge"`
+	IP        string `json:"ip" patchStrategy:"merge"`
+	Redo      string `json:"redo" patchStrategy:"merge"`
+	Nat       string `json:"nat" patchStrategy:"merge"`
+	QoSPolicy string `json:"qosPolicy" patchStrategy:"merge"`
 	// Conditions represents the latest state of the object
 	// +optional
 	// +patchMergeKey=type
@@ -1250,4 +1251,68 @@ type OvnDnatRuleList struct {
 	metav1.ListMeta `json:"metadata"`
 
 	Items []OvnDnatRule `json:"items"`
+}
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +genclient:nonNamespaced
+// +resourceName=qos-policies
+
+type QoSPolicy struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   QoSPolicySpec   `json:"spec"`
+	Status QoSPolicyStatus `json:"status,omitempty"`
+}
+type QoSPolicySpec struct {
+	BandwidthLimitRule QoSPolicyBandwidthLimitRule `json:"bandwidthLimitRule,omitempty"`
+}
+
+// Condition describes the state of an object at a certain point.
+// +k8s:deepcopy-gen=true
+type QoSPolicyCondition struct {
+	// Type of condition.
+	Type ConditionType `json:"type"`
+	// Status of the condition, one of True, False, Unknown.
+	Status corev1.ConditionStatus `json:"status"`
+	// The reason for the condition's last transition.
+	// +optional
+	Reason string `json:"reason,omitempty"`
+	// A human readable message indicating details about the transition.
+	// +optional
+	Message string `json:"message,omitempty"`
+	// Last time the condition was probed
+	// +optional
+	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
+	// Last time the condition transitioned from one status to another.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+}
+
+// BandwidthLimitRule describes the rule of an bandwidth limit.
+type QoSPolicyBandwidthLimitRule struct {
+	IngressMax string `json:"ingressMax"`
+	EgressMax  string `json:"egressMax"`
+}
+
+type QoSPolicyStatus struct {
+	// +optional
+	// +patchStrategy=merge
+	BandwidthLimitRule QoSPolicyBandwidthLimitRule `json:"bandwidthLimitRule" patchStrategy:"merge"`
+
+	// Conditions represents the latest state of the object
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	Conditions []QoSPolicyCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type QoSPolicyList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []QoSPolicy `json:"items"`
 }
