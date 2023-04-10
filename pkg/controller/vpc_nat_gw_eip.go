@@ -495,9 +495,7 @@ func (c *Controller) deleteEipInPod(dp, v4Cidr string) error {
 // add tc rule for eip in nat gw pod
 func (c *Controller) addEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
 	var err error
-
 	qosPolicy, err := c.config.KubeOvnClient.KubeovnV1().QoSPolicies().Get(context.Background(), eip.Spec.QoSPolicy, metav1.GetOptions{})
-
 	if err != nil {
 		klog.Errorf("get qos policy %s failed: %v", eip.Spec.QoSPolicy, err)
 		return err
@@ -570,8 +568,8 @@ func (c *Controller) delEipQoSInPod(dp, v4ip, direction string) error {
 	if err != nil {
 		return err
 	}
-	var addRules []string
-	addRules = append(addRules, v4ip)
+	var delRules []string
+	delRules = append(delRules, v4ip)
 
 	switch direction {
 	case util.QoSDirectionIngress:
@@ -580,7 +578,7 @@ func (c *Controller) delEipQoSInPod(dp, v4ip, direction string) error {
 		operation = natGwEipEgressQoSDel
 	}
 
-	if err = c.execNatGwRules(gwPod, operation, addRules); err != nil {
+	if err = c.execNatGwRules(gwPod, operation, delRules); err != nil {
 		return err
 	}
 	return nil

@@ -253,7 +253,7 @@ function delete_tc_filter() {
     # filter protocol ip u32 chain 0
     # filter protocol ip u32 chain 0 fh 800: ht divisor 1
     # filter protocol ip u32 chain 0 fh 800::800 order 2048 key ht 800 bkt 0 *flowid :1 not_in_hw
-    # match EIP dst x.x.x.1/32
+    # match IP dst x.x.x.1/32
     # police 0x1 rate 1Mbit burst 1Mb mtu 2Kb action drop overhead 0b linklayer ethernet
     #         ref 1 bind 1  installed 392 sec used 392 sec firstused 18818153 sec
     # Sent 0 bytes 0 pkts (dropped 0, overlimits 0)
