@@ -3,8 +3,9 @@ package ovs
 import (
 	"context"
 	"fmt"
-	"reflect"
+	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
@@ -61,57 +62,64 @@ func (c *ovnClient) UpdateLoadBalancer(lb *ovnnb.LoadBalancer, fields ...interfa
 	return nil
 }
 
-func (c *ovnClient) loadBalancerUpdateVips(lbName string, vips interface{}) error {
-	var toAdd map[string]string
-	var toDelete []string
-	value := reflect.ValueOf(vips)
-	switch value.Type().Kind() {
-	case reflect.Slice:
-		toDelete = vips.([]string)
-	case reflect.Map:
-		toAdd = vips.(map[string]string)
-	default:
-		return fmt.Errorf("program error: invalid data type of vips %+v", vips)
-	}
-	if value.Len() == 0 {
-		return nil
-	}
-
-	lb, err := c.GetLoadBalancer(lbName, false)
+// LoadBalancerAddVips adds or updates a vip
+func (c *ovnClient) LoadBalancerAddVip(lbName, vip string, backends ...string) error {
+	sort.Strings(backends)
+	ops, err := c.LoadBalancerOp(lbName, func(lb *ovnnb.LoadBalancer) []model.Mutation {
+		mutations := make([]model.Mutation, 0, 2)
+		value := strings.Join(backends, ",")
+		if len(lb.Vips) != 0 {
+			if lb.Vips[vip] == value {
+				return nil
+			}
+			mutations = append(mutations, model.Mutation{
+				Field:   &lb.Vips,
+				Value:   map[string]string{vip: lb.Vips[vip]},
+				Mutator: ovsdb.MutateOperationDelete,
+			})
+		}
+		mutations = append(mutations, model.Mutation{
+			Field:   &lb.Vips,
+			Value:   map[string]string{vip: value},
+			Mutator: ovsdb.MutateOperationInsert,
+		})
+		return mutations
+	})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to generate operations when adding vip %s with backends %v to load balancers %s: %v", vip, backends, lbName, err)
 	}
-
-	m := make(map[string]string, len(lb.Vips)+len(toAdd))
-	for k, v := range lb.Vips {
-		m[k] = v
+	if err = c.Transact("lb-add", ops); err != nil {
+		return fmt.Errorf("failed to add vip %s with backends %v to load balancers %s: %v", vip, backends, lbName, err)
 	}
-	for k, v := range toAdd {
-		m[k] = v
-	}
-	for _, k := range toDelete {
-		delete(m, k)
-	}
-	if reflect.DeepEqual(m, lb.Vips) {
-		return nil
-	}
-
-	lb.Vips = m
-	if err := c.UpdateLoadBalancer(lb, &lb.Vips); err != nil {
-		return fmt.Errorf("add vips %v to lb %s: %v", vips, lbName, err)
-	}
-
 	return nil
 }
 
-// LoadBalancerAddVips adds or updates vips
-func (c *ovnClient) LoadBalancerAddVips(lbName string, vips map[string]string) error {
-	return c.loadBalancerUpdateVips(lbName, vips)
-}
+// LoadBalancerDeleteVip deletes load balancer vip
+func (c *ovnClient) LoadBalancerDeleteVip(lbName string, vip string) error {
+	ops, err := c.LoadBalancerOp(lbName, func(lb *ovnnb.LoadBalancer) []model.Mutation {
+		if len(lb.Vips) == 0 {
+			return nil
+		}
+		if _, ok := lb.Vips[vip]; !ok {
+			return nil
+		}
 
-// LoadBalancerDeleteVips deletes load balancer vips
-func (c *ovnClient) LoadBalancerDeleteVips(lbName string, vips ...string) error {
-	return c.loadBalancerUpdateVips(lbName, vips)
+		return []model.Mutation{{
+			Field:   &lb.Vips,
+			Value:   map[string]string{vip: lb.Vips[vip]},
+			Mutator: ovsdb.MutateOperationDelete,
+		}}
+	})
+	if err != nil {
+		return fmt.Errorf("failed to generate operations when deleting vip %s from load balancers %s: %v", vip, lbName, err)
+	}
+	if len(ops) == 0 {
+		return nil
+	}
+	if err = c.Transact("lb-add", ops); err != nil {
+		return fmt.Errorf("failed to delete vip %s from load balancers %s: %v", vip, lbName, err)
+	}
+	return nil
 }
 
 // SetLoadBalancerAffinityTimeout sets the LB's affinity timeout in seconds
@@ -224,7 +232,7 @@ func (c *ovnClient) ListLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) 
 	return lbList, nil
 }
 
-func (c *ovnClient) LoadBalancerOp(lbName string, mutationsFunc ...func(lb *ovnnb.LoadBalancer) *model.Mutation) ([]ovsdb.Operation, error) {
+func (c *ovnClient) LoadBalancerOp(lbName string, mutationsFunc ...func(lb *ovnnb.LoadBalancer) []model.Mutation) ([]ovsdb.Operation, error) {
 	lb, err := c.GetLoadBalancer(lbName, false)
 	if err != nil {
 		return nil, err
@@ -235,13 +243,13 @@ func (c *ovnClient) LoadBalancerOp(lbName string, mutationsFunc ...func(lb *ovnn
 	}
 
 	mutations := make([]model.Mutation, 0, len(mutationsFunc))
-
 	for _, f := range mutationsFunc {
-		mutation := f(lb)
-
-		if mutation != nil {
-			mutations = append(mutations, *mutation)
+		if m := f(lb); len(m) != 0 {
+			mutations = append(mutations, m...)
 		}
+	}
+	if len(mutations) == 0 {
+		return nil, nil
 	}
 
 	ops, err := c.ovnNbClient.Where(lb).Mutate(lb, mutations...)

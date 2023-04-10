@@ -504,7 +504,7 @@ func (c *Controller) gcLoadBalancer() error {
 
 			for vip := range lb.Vips {
 				if _, ok := svcVips[vip]; !ok {
-					if err = c.ovnClient.LoadBalancerDeleteVips(lbName, vip); err != nil {
+					if err = c.ovnClient.LoadBalancerDeleteVip(lbName, vip); err != nil {
 						klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lbName, err)
 						return err
 					}

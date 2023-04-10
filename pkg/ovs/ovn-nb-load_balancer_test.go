@@ -80,17 +80,17 @@ func (suite *OvnClientTestSuite) testUpdateLoadBalancer() {
 	})
 }
 
-func (suite *OvnClientTestSuite) testLoadBalancerAddVips() {
+func (suite *OvnClientTestSuite) testLoadBalancerAddVip() {
 	t := suite.T()
 	t.Parallel()
 
 	ovnClient := suite.ovnClient
-	lbName := "test-update-lb-vips"
+	lbName := "test-lb-add-vip"
 
 	vips := map[string]string{
 		"10.96.0.1:443":           "192.168.20.3:6443",
 		"10.107.43.237:8080":      "10.244.0.15:8080,10.244.0.16:8080,10.244.0.17:8080",
-		"[fd00:10:96::e82f]:8080": "[fc00::af4:f]:8080,[fc00::af4:10]:8080,[fc00::af4:11]:8080",
+		"[fd00:10:96::e82f]:8080": "[fc00::af4:a]:8080,[fc00::af4:b]:8080,[fc00::af4:c]:8080",
 	}
 
 	err := ovnClient.CreateLoadBalancer(lbName, "tcp", "")
@@ -99,28 +99,35 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddVips() {
 	_, err = ovnClient.GetLoadBalancer(lbName, false)
 	require.NoError(t, err)
 
+	expectedVips := make(map[string]string, len(vips))
 	t.Run("add new vips to load balancer", func(t *testing.T) {
-		err := ovnClient.LoadBalancerAddVips(lbName, vips)
-		require.NoError(t, err)
+		for vip, backends := range vips {
+			err := ovnClient.LoadBalancerAddVip(lbName, vip, strings.Split(backends, ",")...)
+			require.NoError(t, err)
 
-		lb, err := ovnClient.GetLoadBalancer(lbName, false)
-		require.NoError(t, err)
-		require.Equal(t, vips, lb.Vips)
+			lb, err := ovnClient.GetLoadBalancer(lbName, false)
+			require.NoError(t, err)
+
+			expectedVips[vip] = backends
+			require.Equal(t, lb.Vips, expectedVips)
+		}
 	})
 
+	vips = map[string]string{
+		"10.96.0.1:443":   "192.168.20.3:6443,192.168.20.4:6443",
+		"10.96.0.112:143": "192.168.120.3:6443,192.168.120.4:6443",
+	}
 	t.Run("add new vips to load balancer repeatedly", func(t *testing.T) {
-		vips["10.96.0.1:443"] = "192.168.20.3:6443,192.168.20.4:6443"
-		vips["10.96.0.112:143"] = "192.168.120.3:6443,192.168.120.4:6443"
+		for vip, backends := range vips {
+			err := ovnClient.LoadBalancerAddVip(lbName, vip, strings.Split(backends, ",")...)
+			require.NoError(t, err)
 
-		err := ovnClient.LoadBalancerAddVips(lbName, map[string]string{
-			"10.96.0.1:443":   "192.168.20.3:6443,192.168.20.4:6443",
-			"10.96.0.112:143": "192.168.120.3:6443,192.168.120.4:6443",
-		})
-		require.NoError(t, err)
+			lb, err := ovnClient.GetLoadBalancer(lbName, false)
+			require.NoError(t, err)
 
-		lb, err := ovnClient.GetLoadBalancer(lbName, false)
-		require.NoError(t, err)
-		require.Equal(t, vips, lb.Vips)
+			expectedVips[vip] = backends
+			require.Equal(t, expectedVips, lb.Vips)
+		}
 	})
 }
 
@@ -168,37 +175,41 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancer() {
 	require.ErrorContains(t, err, "not found load balancer")
 }
 
-func (suite *OvnClientTestSuite) testLoadBalancerDeleteVips() {
+func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 	t := suite.T()
 	t.Parallel()
 
 	ovnClient := suite.ovnClient
-	lbName := "test-del-lb-vips"
+	lbName := "test-lb-del-vip"
 
 	vips := map[string]string{
 		"10.96.0.1:443":           "192.168.20.3:6443",
 		"10.107.43.237:8080":      "10.244.0.15:8080,10.244.0.16:8080,10.244.0.17:8080",
-		"[fd00:10:96::e82f]:8080": "[fc00::af4:f]:8080,[fc00::af4:10]:8080,[fc00::af4:11]:8080",
+		"[fd00:10:96::e82f]:8080": "[fc00::af4:a]:8080,[fc00::af4:b]:8080,[fc00::af4:c]:8080",
 	}
 
 	err := ovnClient.CreateLoadBalancer(lbName, "tcp", "")
 	require.NoError(t, err)
 
-	err = ovnClient.LoadBalancerAddVips(lbName, vips)
-	require.NoError(t, err)
+	for vip, backends := range vips {
+		err = ovnClient.LoadBalancerAddVip(lbName, vip, strings.Split(backends, ",")...)
+		require.NoError(t, err)
+	}
 
-	err = ovnClient.LoadBalancerDeleteVips(lbName,
+	deletedVips := []string{
 		"10.96.0.1:443",
 		"[fd00:10:96::e82f]:8080",
 		"10.96.0.100:1443", // non-existent vip
-	)
-	require.NoError(t, err)
+	}
+	for _, vip := range deletedVips {
+		err = ovnClient.LoadBalancerDeleteVip(lbName, vip)
+		require.NoError(t, err)
+		delete(vips, vip)
+	}
 
 	lb, err := ovnClient.GetLoadBalancer(lbName, false)
 	require.NoError(t, err)
-	require.Equal(t, map[string]string{
-		"10.107.43.237:8080": "10.244.0.15:8080,10.244.0.16:8080,10.244.0.17:8080",
-	}, lb.Vips)
+	require.Equal(t, vips, lb.Vips)
 }
 
 func (suite *OvnClientTestSuite) testGetLoadBalancer() {
