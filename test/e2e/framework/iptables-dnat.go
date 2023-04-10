@@ -147,7 +147,7 @@ func (c *IptablesDnatClient) WaitToDisappear(name string, interval, timeout time
 	return maybeTimeoutError(err, "waiting for iptables dnat %s to disappear", name)
 }
 
-func MakIptablesDnatRule(name, eip, externalPort, protocol, internalIP, internalPort string) *apiv1.IptablesDnatRule {
+func MakeIptablesDnatRule(name, eip, externalPort, protocol, internalIP, internalPort string) *apiv1.IptablesDnatRule {
 	snat := &apiv1.IptablesDnatRule{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,

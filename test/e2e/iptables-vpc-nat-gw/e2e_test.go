@@ -1,18 +1,17 @@
 package ovn_eip
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	dockertypes "github.com/docker/docker/api/types"
 	"github.com/onsi/ginkgo/v2"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e"
@@ -20,72 +19,66 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework/config"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/iproute"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/kind"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-const vpcNatGw = "vpc-nat-gw"
-const vpcNatGWConfigMap = "ovn-vpc-nat-gw-config"
-const subnetProvider = "lb-svc-attachment.kube-system"
-const networkAttachDef = "ovn-vpc-external-network"
-const externalSubnetProvider = "ovn-vpc-external-network.kube-system"
 const dockerNetworkName = "kube-ovn-vlan"
+const vpcNatGw = "vpc-nat-gw"
+const vpcNatGWConfigMapName = "ovn-vpc-nat-gw-config"
+const networkAttachDefName = "ovn-vpc-external-network"
+const externalSubnetProvider = "ovn-vpc-external-network.kube-system"
 
-// create a custom vpc
-// create a custom subnet
-// create a pod in the vpc subnet
-// create a subnet for macvlan named ovn-vpc-external-network
-// create a networkattachmentdefinition named ovn-vpc-external-network
-// enable iptables vpc nat gw based configmap
-// create eip fip, wait for eip fip ready
-// create eip snat, wait for eip snat ready
-// create eip dnat, wait for eip dnat ready
-// clean all
-
-func makeProviderNetwork(providerNetworkName string, exchangeLinkName bool, linkMap map[string]*iproute.Link) *apiv1.ProviderNetwork {
-	var defaultInterface string
-	customInterfaces := make(map[string][]string, 0)
-	for node, link := range linkMap {
-		if !strings.ContainsRune(node, '-') {
-			continue
-		}
-
-		if defaultInterface == "" {
-			defaultInterface = link.IfName
-		} else if link.IfName != defaultInterface {
-			customInterfaces[link.IfName] = append(customInterfaces[link.IfName], node)
-		}
-	}
-
-	return framework.MakeProviderNetwork(providerNetworkName, exchangeLinkName, defaultInterface, customInterfaces, nil)
+func makeNetworkAttachmentDefinition(networkName, config string) *nadv1.NetworkAttachmentDefinition {
+	return framework.MakeNetworkAttachmentDefinition(networkName, config)
 }
 
-func makeOvnEip(name, subnet, v4ip, v6ip, mac, usage string) *apiv1.OvnEip {
-	return framework.MakeOvnEip(name, subnet, v4ip, v6ip, mac, usage)
+func makeIptablesEIP(name, v4ip, v6ip, mac, natGwDp string) *apiv1.IptablesEIP {
+	return framework.MakeIptablesEIP(name, v4ip, v6ip, mac, natGwDp)
+}
+
+func makeOvnVip(name, subnet, v4ip, v6ip string) *apiv1.Vip {
+	return framework.MakeVip(name, subnet, v4ip, v6ip)
+}
+
+func makeIptablesFIP(name, eip, internalIp string) *apiv1.IptablesFIPRule {
+	return framework.MakeIptablesFIPRule(name, eip, internalIp)
+}
+
+func makeIptablesSnat(name, eip, internalCIDR string) *apiv1.IptablesSnatRule {
+	return framework.MakeIptablesSnatRule(name, eip, internalCIDR)
+}
+
+func makeIptablesDnat(name, eip, externalPort, protocol, internalIP, internalPort string) *apiv1.IptablesDnatRule {
+	return framework.MakeIptablesDnatRule(name, eip, externalPort, protocol, internalIP, internalPort)
 }
 
 var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 	f := framework.NewDefaultFramework("iptables-vpc-nat-gw")
 
 	var skip bool
-	var itFn func(bool)
 	var cs clientset.Interface
 	var nodeNames []string
-	var clusterName, providerNetworkName, vlanName, subnetName, podName, namespaceName string
+	var clusterName, providerNetworkName, vlanName, subnetName, vpcName, overlaySubnetName string
 	var linkMap map[string]*iproute.Link
-	var podClient *framework.PodClient
-	var subnetClient *framework.SubnetClient
+	var networkAttachmentDefinitionClient *framework.NetworkAttachmentDefinitionClient
 	var vlanClient *framework.VlanClient
-	var providerNetworkClient *framework.ProviderNetworkClient
-	var networkAttachDefClient *framework.NetworkAttachmentDefinitionClient
-	var iptablesEipClient *framework.IptablesEIPClient
-	var iptablesFipClient *framework.IptablesFIPClient
-	var iptablesSnatClient *framework.IptablesSnatClient
-	var iptablesDnatClient *framework.IptablesDnatClient
+	var vpcClient *framework.VpcClient
+	var subnetClient *framework.SubnetClient
+	var IptablesEIPClient *framework.IptablesEIPClient
+	var fipVipName, fipEipName, fipName, dnatVipName, dnatEipName, dnatName, snatEipName, snatName string
+	var vipClient *framework.VipClient
+	var IptablesFIPClient *framework.IptablesFIPClient
+	var IptablesSnatRuleClient *framework.IptablesSnatClient
+	var IptablesDnatRuleClient *framework.IptablesDnatClient
 
 	var dockerNetwork *dockertypes.NetworkResource
 	var containerID string
@@ -93,20 +86,32 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
-		podClient = f.PodClient()
 		subnetClient = f.SubnetClient()
 		vlanClient = f.VlanClient()
-		providerNetworkClient = f.ProviderNetworkClient()
-		configMapClient = f.ConfigMapClient()
-		iptablesEipClient = f.IptablesEIPClient()
-		iptablesFipClient = f.IptablesFIPClient()
-		iptablesSnatClient = f.IptablesSnatClient()
-		iptablesDnatClient = f.IptablesDnatClient()
-		namespaceName = f.Namespace.Name
-		podName = "pod-" + framework.RandomSuffix()
-		subnetName = "subnet-" + framework.RandomSuffix()
+		vpcClient = f.VpcClient()
+		networkAttachmentDefinitionClient = f.NetworkAttachmentDefinitionClient()
+		IptablesEIPClient = f.IptablesEIPClient()
+		vipClient = f.VipClient()
+		IptablesFIPClient = f.IptablesFIPClient()
+		IptablesSnatRuleClient = f.IptablesSnatClient()
+		IptablesDnatRuleClient = f.IptablesDnatClient()
+
+		vpcName = "vpc-" + framework.RandomSuffix()
+
+		fipVipName = "fip-vip-" + framework.RandomSuffix()
+		fipEipName = "fip-eip-" + framework.RandomSuffix()
+		fipName = "fip-" + framework.RandomSuffix()
+
+		dnatVipName = "dnat-vip-" + framework.RandomSuffix()
+		dnatEipName = "dnat-eip-" + framework.RandomSuffix()
+		dnatName = "dnat-" + framework.RandomSuffix()
+
+		snatEipName = "snat-eip-" + framework.RandomSuffix()
+		snatName = "snat-" + framework.RandomSuffix()
+		overlaySubnetName = "overlay-subnet-" + framework.RandomSuffix()
+		providerNetworkName = "external"
 		vlanName = "vlan-" + framework.RandomSuffix()
-		providerNetworkName = "pn-" + framework.RandomSuffix()
+		subnetName = "external"
 		containerID = ""
 		if image == "" {
 			image = framework.GetKubeOvnImage(cs)
@@ -151,7 +156,6 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 
 		linkMap = make(map[string]*iproute.Link, len(nodes))
 		nodeNames = make([]string, 0, len(nodes))
-		// ovn eip name is the same as node name in this scenario
 
 		for _, node := range nodes {
 			links, err := node.ListLinks()
@@ -167,97 +171,22 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 			linkMap[node.Name()] = linkMap[node.ID]
 			nodeNames = append(nodeNames, node.Name())
 		}
-
-		itFn = func(exchangeLinkName bool) {
-			ginkgo.By("Creating provider network")
-			pn := makeProviderNetwork(providerNetworkName, exchangeLinkName, linkMap)
-			pn = providerNetworkClient.CreateSync(pn)
-
-			ginkgo.By("Getting k8s nodes")
-			k8sNodes, err := e2enode.GetReadySchedulableNodes(cs)
-			framework.ExpectNoError(err)
-
-			ginkgo.By("Validating node labels")
-			for _, node := range k8sNodes.Items {
-				link := linkMap[node.Name]
-				framework.ExpectHaveKeyWithValue(node.Labels, fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, providerNetworkName), link.IfName)
-				framework.ExpectHaveKeyWithValue(node.Labels, fmt.Sprintf(util.ProviderNetworkReadyTemplate, providerNetworkName), "true")
-				framework.ExpectHaveKeyWithValue(node.Labels, fmt.Sprintf(util.ProviderNetworkMtuTemplate, providerNetworkName), strconv.Itoa(link.Mtu))
-				framework.ExpectNotHaveKey(node.Labels, fmt.Sprintf(util.ProviderNetworkExcludeTemplate, providerNetworkName))
-			}
-
-			ginkgo.By("Validating provider network status")
-			framework.ExpectEqual(pn.Status.Ready, true, "field .status.ready should be true")
-			framework.ExpectConsistOf(pn.Status.ReadyNodes, nodeNames)
-			framework.ExpectEmpty(pn.Status.Vlans)
-
-			ginkgo.By("Getting kind nodes")
-			kindNodes, err := kind.ListNodes(clusterName, "")
-			framework.ExpectNoError(err)
-
-			ginkgo.By("Validating node links")
-			linkNameMap := make(map[string]string, len(kindNodes))
-			bridgeName := util.ExternalBridgeName(providerNetworkName)
-			for _, node := range kindNodes {
-				if exchangeLinkName {
-					bridgeName = linkMap[node.ID].IfName
-				}
-
-				links, err := node.ListLinks()
-				framework.ExpectNoError(err, "failed to list links on node %s: %v", node.Name(), err)
-
-				var port, bridge *iproute.Link
-				for i, link := range links {
-					if link.IfIndex == linkMap[node.ID].IfIndex {
-						port = &links[i]
-					} else if link.IfName == bridgeName {
-						bridge = &links[i]
-					}
-					if port != nil && bridge != nil {
-						break
-					}
-				}
-				framework.ExpectNotNil(port)
-				framework.ExpectEqual(port.Address, linkMap[node.ID].Address)
-				framework.ExpectEqual(port.Mtu, linkMap[node.ID].Mtu)
-				framework.ExpectEqual(port.Master, "ovs-system")
-				framework.ExpectEqual(port.OperState, "UP")
-				if exchangeLinkName {
-					framework.ExpectEqual(port.IfName, util.ExternalBridgeName(providerNetworkName))
-				}
-
-				framework.ExpectNotNil(bridge)
-				framework.ExpectEqual(bridge.LinkInfo.InfoKind, "openvswitch")
-				framework.ExpectEqual(bridge.Address, port.Address)
-				framework.ExpectEqual(bridge.Mtu, port.Mtu)
-				framework.ExpectEqual(bridge.OperState, "UNKNOWN")
-				framework.ExpectContainElement(bridge.Flags, "UP")
-
-				framework.ExpectEmpty(port.NonLinkLocalAddresses())
-				framework.ExpectConsistOf(bridge.NonLinkLocalAddresses(), linkMap[node.ID].NonLinkLocalAddresses())
-
-				linkNameMap[node.ID] = port.IfName
-			}
-		}
 	})
+
 	ginkgo.AfterEach(func() {
 		if containerID != "" {
 			ginkgo.By("Deleting container " + containerID)
 			err := docker.ContainerRemove(containerID)
 			framework.ExpectNoError(err)
 		}
-
-		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
+		ginkgo.By("Deleting overlay subnet " + overlaySubnetName)
+		subnetClient.DeleteSync(overlaySubnetName)
 
 		ginkgo.By("Deleting subnet " + subnetName)
 		subnetClient.DeleteSync(subnetName)
 
-		ginkgo.By("Deleting vlan " + vlanName)
-		vlanClient.Delete(vlanName, metav1.DeleteOptions{})
-
-		ginkgo.By("Deleting provider network")
-		providerNetworkClient.DeleteSync(providerNetworkName)
+		ginkgo.By("Deleting network attachment definition")
+		networkAttachmentDefinitionClient.DeleteSync(networkAttachDefName)
 
 		ginkgo.By("Getting nodes")
 		nodes, err := kind.ListNodes(clusterName, "")
@@ -277,20 +206,31 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		}
 	})
 
-	framework.ConformanceIt("should be able to sync node external", func() {
-		// create provider network
-		itFn(false)
+	framework.ConformanceIt("iptables eip fip snat dnat", func() {
+		ginkgo.By("Getting k8s nodes")
+		k8sNodes, err := e2enode.GetReadySchedulableNodes(cs)
+		framework.ExpectNoError(err)
 
-		// create vlan subnet eip
 		ginkgo.By("Getting docker network " + dockerNetworkName)
 		network, err := docker.NetworkInspect(dockerNetworkName)
 		framework.ExpectNoError(err, "getting docker network "+dockerNetworkName)
 
-		ginkgo.By("Creating vlan " + vlanName)
-		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
-		_ = vlanClient.Create(vlan)
+		ginkgo.By("Creating network attachment fefinition " + networkAttachDefName)
+		nadConfig := `{
+			"cniVersion": "0.3.0",
+			"type": "macvlan",
+			"master": "eth1",
+			"mode": "bridge",
+			"ipam": {
+			  "type": "kube-ovn",
+			  "server_socket": "/run/openvswitch/kube-ovn-daemon.sock",
+			  "provider": "ovn-vpc-external-network.kube-system"
+			}
+		  }`
+		nad := makeNetworkAttachmentDefinition(networkAttachDefName, nadConfig)
+		_ = networkAttachmentDefinitionClient.CreateSync(nad)
 
-		ginkgo.By("Creating subnet " + subnetName)
+		ginkgo.By("Creating underlay macvlan subnet " + networkAttachDefName)
 		cidr := make([]string, 0, 2)
 		gateway := make([]string, 0, 2)
 		for _, config := range dockerNetwork.IPAM.Config {
@@ -316,18 +256,69 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
 			}
 		}
-		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(cidr, ","), strings.Join(gateway, ","), excludeIPs, nil, []string{namespaceName})
-		_ = subnetClient.CreateSync(subnet)
+		macvlanSubnet := framework.MakeSubnet(networkAttachDefName, vlanName, strings.Join(cidr, ","), strings.Join(gateway, ","), "", externalSubnetProvider, excludeIPs, nil, nil)
+		_ = subnetClient.CreateSync(macvlanSubnet)
+
+		ginkgo.By("Creating config map " + vpcNatGWConfigMapName)
+		cmData := map[string]string{
+			"enable-vpc-nat-gw": "true",
+		}
+		configMap := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "ovn-external-gw-config",
+				Namespace: "kube-system",
+			},
+			Data: cmData,
+		}
+		_, err = cs.CoreV1().ConfigMaps("kube-system").Create(context.Background(), configMap, metav1.CreateOptions{})
+		framework.ExpectNoError(err, "failed to create ConfigMap")
+
+		ginkgo.By("Creating custom vpc")
+		overlaySubnetV4Cidr := "192.168.0.0/24"
+		overlaySubnetV4Gw := "192.168.0.1"
+		vpc := framework.MakeVpc(vpcName, overlaySubnetV4Gw, false, false)
+		_ = vpcClient.CreateSync(vpc)
+
+		ginkgo.By("Creating custom overlay subnet")
+		overlaySubnet := framework.MakeSubnet(overlaySubnetName, vlanName, overlaySubnetV4Cidr, overlaySubnetV4Gw, vpcName, nil, nil, nil)
+		_ = subnetClient.CreateSync(overlaySubnet)
 
 		ginkgo.By("Getting k8s nodes")
-		k8sNodes, err := e2enode.GetReadySchedulableNodes(cs)
+		k8sNodes, err = e2enode.GetReadySchedulableNodes(cs)
 		framework.ExpectNoError(err)
 
 		for _, node := range k8sNodes.Items {
-			ginkgo.By("Creating ovn eip " + node.Name)
-			eip := makeOvnEip(node.Name, subnetName, "", "", "", util.NodeExtGwUsingEip)
-			_ = ovnEipClient.CreateSync(eip)
+			ginkgo.By("Creating iptables eip " + node.Name)
+			eip := makeIptablesEIP(node.Name, subnetName, "", "", "", util.NodeExtGwUsingEip)
+			_ = IptablesEIPClient.CreateSync(eip)
 		}
+
+		ginkgo.By("Creating iptables vip for fip")
+		fipVip := makeOvnVip(fipVipName, overlaySubnetName, "", "")
+		_ = vipClient.CreateSync(fipVip)
+		ginkgo.By("Creating iptables eip for fip")
+		fipEip := makeIptablesEIP(fipEipName, subnetName, "", "", "", util.FipUsingEip)
+		_ = IptablesEIPClient.CreateSync(fipEip)
+		ginkgo.By("Creating iptables fip")
+		fip := makeIptablesFIP(fipName, fipEipName, util.NatUsingVip, fipVipName)
+		_ = IptablesFIPClient.CreateSync(fip)
+
+		ginkgo.By("Creating iptables eip for snat")
+		snatEip := makeIptablesEIP(snatEipName, subnetName, "", "", "", util.SnatUsingEip)
+		_ = IptablesEIPClient.CreateSync(snatEip)
+		ginkgo.By("Creating iptables snat")
+		snat := makeIptablesSnat(snatName, snatEipName, overlaySubnetName, "")
+		_ = IptablesSnatRuleClient.CreateSync(snat)
+
+		ginkgo.By("Creating iptables vip for dnat")
+		dnatVip := makeOvnVip(dnatVipName, overlaySubnetName, "", "")
+		_ = vipClient.CreateSync(dnatVip)
+		ginkgo.By("Creating iptables eip for dnat")
+		dnatEip := makeIptablesEIP(dnatEipName, subnetName, "", "", "", util.DnatUsingEip)
+		_ = IptablesEIPClient.CreateSync(dnatEip)
+		ginkgo.By("Creating iptables dnat")
+		dnat := makeIptablesDnat(dnatName, dnatEipName, util.NatUsingVip, dnatVipName, "80", "8080", "tcp")
+		_ = IptablesDnatRuleClient.CreateSync(dnat)
 
 		k8sNodes, err = e2enode.GetReadySchedulableNodes(cs)
 		framework.ExpectNoError(err)
@@ -339,12 +330,44 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		k8sNodes, err = e2enode.GetReadySchedulableNodes(cs)
 		framework.ExpectNoError(err)
 		for _, node := range k8sNodes.Items {
-			ginkgo.By("Deleting ovn eip " + node.Name)
-			ovnEipClient.DeleteSync(node.Name)
+			ginkgo.By("Deleting iptables eip " + node.Name)
+			IptablesEIPClient.DeleteSync(node.Name)
 		}
 
-		time.Sleep(10 * time.Second)
-		// clean process should be finished in 10s
+		ginkgo.By("Deleting iptables fip " + fipName)
+		IptablesFIPClient.DeleteSync(fipName)
+		ginkgo.By("Deleting iptables dnat " + dnatName)
+		IptablesDnatRuleClient.DeleteSync(dnatName)
+		ginkgo.By("Deleting iptables snat " + snatName)
+		IptablesSnatRuleClient.DeleteSync(snatName)
+
+		ginkgo.By("Deleting iptables eip " + fipEipName)
+		IptablesEIPClient.DeleteSync(fipEipName)
+		ginkgo.By("Deleting iptables eip " + dnatEipName)
+		IptablesEIPClient.DeleteSync(dnatEipName)
+		ginkgo.By("Deleting iptables eip " + snatEipName)
+		IptablesEIPClient.DeleteSync(snatEipName)
+
+		lrpEipName := fmt.Sprintf("%s-%s", vpcName, subnetName)
+		ginkgo.By("Deleting iptables eip " + lrpEipName)
+		IptablesEIPClient.DeleteSync(lrpEipName)
+
+		defaultVpcLrpEipName := fmt.Sprintf("%s-%s", util.DefaultVpc, "external")
+		ginkgo.By("Deleting iptables eip " + defaultVpcLrpEipName)
+		IptablesEIPClient.DeleteSync(defaultVpcLrpEipName)
+
+		ginkgo.By("Deleting iptables vip " + fipVipName)
+		vipClient.DeleteSync(fipVipName)
+		ginkgo.By("Deleting iptables vip " + dnatVipName)
+		vipClient.DeleteSync(dnatVipName)
+
+		ginkgo.By("Deleting custom vpc " + vpcName)
+		vpcClient.DeleteSync(vpcName)
+
+		ginkgo.By("Deleting configmap " + vpcName)
+		err = cs.CoreV1().ConfigMaps("kube-system").Delete(context.Background(), "ovn-external-gw-config", metav1.DeleteOptions{})
+		framework.ExpectNoError(err, "failed to delete ConfigMap")
+
 		k8sNodes, err = e2enode.GetReadySchedulableNodes(cs)
 		framework.ExpectNoError(err)
 		for _, node := range k8sNodes.Items {

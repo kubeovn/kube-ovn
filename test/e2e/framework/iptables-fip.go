@@ -147,7 +147,7 @@ func (c *IptablesFIPClient) WaitToDisappear(name string, interval, timeout time.
 	return maybeTimeoutError(err, "waiting for iptables fip %s to disappear", name)
 }
 
-func MakIptablesFIPRule(name, eip, internalIp string) *apiv1.IptablesFIPRule {
+func MakeIptablesFIPRule(name, eip, internalIp string) *apiv1.IptablesFIPRule {
 	fip := &apiv1.IptablesFIPRule{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,

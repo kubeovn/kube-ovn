@@ -333,7 +333,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
 			}
 		}
-		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(cidr, ","), strings.Join(gateway, ","), "", excludeIPs, nil, nil)
+		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(cidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, nil)
 		_ = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Creating config map ovn-external-gw-config")
@@ -360,7 +360,6 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		enableExternal := true
 		enableBfd := true
 		vpc := framework.MakeVpc(vpcName, overlaySubnetV4Gw, enableExternal, enableBfd)
-		ginkgo.By("show custom vpc" + vpc.Name)
 		_ = vpcClient.CreateSync(vpc)
 
 		ginkgo.By("Creating overlay subnet enable ecmp")
