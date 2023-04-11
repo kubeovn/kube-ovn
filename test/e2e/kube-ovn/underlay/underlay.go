@@ -356,7 +356,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
 			}
 		}
-		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(cidr, ","), strings.Join(gateway, ","), "", excludeIPs, nil, []string{namespaceName})
+		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(cidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, []string{namespaceName})
 		_ = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Creating pod " + podName)
@@ -413,7 +413,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 				excludeIPs = append(excludeIPs, strings.Split(container.IPv4Address, "/")[0])
 			}
 		}
-		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(cidr, ","), strings.Join(gateway, ","), "", excludeIPs, nil, []string{namespaceName})
+		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(cidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, []string{namespaceName})
 		_ = subnetClient.CreateSync(subnet)
 
 		ip := containerInfo.NetworkSettings.Networks[dockerNetworkName].IPAddress
@@ -480,7 +480,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 			}
 		}
 
-		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(underlayCidr, ","), strings.Join(gateway, ","), "", excludeIPs, nil, []string{namespaceName})
+		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(underlayCidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, []string{namespaceName})
 		subnet.Spec.U2OInterconnection = true
 		_ = subnetClient.CreateSync(subnet)
 		ginkgo.By("Creating underlay subnet pod")
@@ -503,7 +503,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		u2oOverlaySubnetName = "subnet-" + framework.RandomSuffix()
 		cidr := framework.RandomCIDR(f.ClusterIpFamily)
 
-		overlaySubnet := framework.MakeSubnet(u2oOverlaySubnetName, "", cidr, "", "", nil, nil, nil)
+		overlaySubnet := framework.MakeSubnet(u2oOverlaySubnetName, "", cidr, "", "", "", nil, nil, nil)
 		overlaySubnet = subnetClient.CreateSync(overlaySubnet)
 
 		ginkgo.By("Creating overlay subnet pod")

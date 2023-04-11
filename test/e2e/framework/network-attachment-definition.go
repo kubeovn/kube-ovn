@@ -11,23 +11,22 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 
-	"github.com/onsi/gomega"
-
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
-	k8scnicncfiov1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned/typed/k8s.cni.cncf.io/v1"
+	nadclientsetv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned/typed/k8s.cni.cncf.io/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
+	"github.com/onsi/gomega"
 )
 
 // NetworkAttachmentDefinitionClient is a struct for provider network client.
 type NetworkAttachmentDefinitionClient struct {
 	f *Framework
-	k8scnicncfiov1.NetworkAttachmentDefinitionInterface
+	nadclientsetv1.NetworkAttachmentDefinitionInterface
 }
 
 func (f *Framework) NetworkAttachmentDefinitionClient() *NetworkAttachmentDefinitionClient {
 	return &NetworkAttachmentDefinitionClient{
 		f:                                    f,
-		NetworkAttachmentDefinitionInterface: f.nadClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(f.Namespace.Name),
+		NetworkAttachmentDefinitionInterface: f.NadClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(f.Namespace.Name),
 	}
 }
 

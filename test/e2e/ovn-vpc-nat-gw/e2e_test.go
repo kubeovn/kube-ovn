@@ -167,7 +167,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 
 		linkMap = make(map[string]*iproute.Link, len(nodes))
 		nodeNames = make([]string, 0, len(nodes))
-		// ovn eip name is the same as node name in this scenario
+		// node ext gw ovn eip name is the same as node name in this scenario
 
 		for _, node := range nodes {
 			links, err := node.ListLinks()
@@ -183,6 +183,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			linkMap[node.Name()] = linkMap[node.ID]
 			nodeNames = append(nodeNames, node.Name())
 		}
+
 		itFn = func(exchangeLinkName bool) {
 			ginkgo.By("Creating provider network")
 			pn := makeProviderNetwork(providerNetworkName, exchangeLinkName, linkMap)
@@ -363,7 +364,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		_ = vpcClient.CreateSync(vpc)
 
 		ginkgo.By("Creating overlay subnet enable ecmp")
-		overlaySubnet := framework.MakeSubnet(overlaySubnetName, vlanName, overlaySubnetV4Cidr, overlaySubnetV4Gw, vpcName, nil, nil, nil)
+		overlaySubnet := framework.MakeSubnet(overlaySubnetName, vlanName, overlaySubnetV4Cidr, overlaySubnetV4Gw, vpcName, "", nil, nil, nil)
 		_ = subnetClient.CreateSync(overlaySubnet)
 
 		ginkgo.By("Getting k8s nodes")
@@ -447,7 +448,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("Deleting custom vpc " + vpcName)
 		vpcClient.DeleteSync(vpcName)
 
-		ginkgo.By("Deleting configmap " + vpcName)
+		ginkgo.By("Deleting configmap")
 		err = cs.CoreV1().ConfigMaps("kube-system").Delete(context.Background(), "ovn-external-gw-config", metav1.DeleteOptions{})
 		framework.ExpectNoError(err, "failed to delete ConfigMap")
 

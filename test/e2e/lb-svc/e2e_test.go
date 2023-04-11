@@ -114,7 +114,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 				excludeIPs = append(excludeIPs, container.IPv4Address)
 			}
 		}
-		subnet := framework.MakeSubnet(subnetName, "", cidr, gateway, "", excludeIPs, nil, []string{namespaceName})
+		subnet := framework.MakeSubnet(subnetName, "", cidr, gateway, "", "", excludeIPs, nil, []string{namespaceName})
 		subnet.Spec.Provider = subnetProvider
 		_ = subnetClient.Create(subnet)
 	})

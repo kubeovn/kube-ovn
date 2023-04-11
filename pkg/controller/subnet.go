@@ -313,9 +313,12 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		changed = true
 	}
 	if subnet.Spec.Vpc == "" {
-		changed = true
-		subnet.Spec.Vpc = util.DefaultVpc
-
+		if subnet.Spec.Provider != "" && strings.HasSuffix(subnet.Spec.Provider, util.OvnProvider) {
+			klog.Infof("subnet %s is not ovn subnet, no vpc", subnet.Name)
+		} else {
+			changed = true
+			subnet.Spec.Vpc = util.DefaultVpc
+		}
 		// Some features only work in the default VPC
 		if subnet.Spec.Default && subnet.Name != c.config.DefaultLogicalSwitch {
 			subnet.Spec.Default = false
@@ -330,8 +333,12 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 	}
 
 	if subnet.Spec.EnableLb == nil && subnet.Name != c.config.NodeSwitch {
-		changed = true
-		subnet.Spec.EnableLb = &c.config.EnableLb
+		if subnet.Spec.Provider != "" && strings.HasSuffix(subnet.Spec.Provider, util.OvnProvider) {
+			klog.Infof("subnet %s is not ovn subnet, can not enable lb", subnet.Name)
+		} else {
+			changed = true
+			subnet.Spec.EnableLb = &c.config.EnableLb
+		}
 	}
 	// set join subnet Spec.EnableLb to nil
 	if subnet.Spec.EnableLb != nil && subnet.Name == c.config.NodeSwitch {

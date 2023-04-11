@@ -273,11 +273,12 @@ func MakeSubnet(name, vlan, cidr, gateway, vpc, provider string, excludeIPs, gat
 			Namespaces:  namespaces,
 		},
 	}
-	if len(gatewayNodes) != 0 {
-		subnet.Spec.GatewayType = apiv1.GWCentralizedType
-	} else {
-		subnet.Spec.GatewayType = apiv1.GWDistributedType
+	if provider != "" {
+		if len(gatewayNodes) != 0 {
+			subnet.Spec.GatewayType = apiv1.GWCentralizedType
+		} else {
+			subnet.Spec.GatewayType = apiv1.GWDistributedType
+		}
 	}
-
 	return subnet
 }
