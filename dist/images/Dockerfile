@@ -18,6 +18,7 @@ WORKDIR /kube-ovn
 
 RUN rm -f /usr/bin/nc &&\
     rm -f /usr/bin/netcat
+RUN deluser sync
 
 COPY kube-ovn /kube-ovn/kube-ovn
 COPY kube-ovn-cmd /kube-ovn/kube-ovn-cmd
