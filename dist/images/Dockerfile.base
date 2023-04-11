@@ -70,7 +70,7 @@ RUN mkdir /packages/ && \
      cp /usr/src/openvswitch-*.deb /packages && \
      cp /usr/src/python3-openvswitch*.deb /packages && \
      cp /usr/src/ovn-*.deb /packages && \
-     cd /packages && rm -f *dbg* *datapath* *docker* *vtep* *ipsec* *test* *dev*
+     cd /packages && rm -f *dbg* *datapath* *docker* *vtep* *test* *dev*
 
 FROM ubuntu:22.04
 
@@ -78,7 +78,8 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname libunwind8 netbase \
         ethtool iproute2 ncat libunbound-dev procps libatomic1 kmod iptables \
         tcpdump ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 \
-        logrotate dnsutils net-tools nmap -y --no-install-recommends && \
+        logrotate dnsutils net-tools nmap strongswan strongswan-pki libcharon-extra-plugins \
+        libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins -y --no-install-recommends && \
         rm -rf /var/lib/apt/lists/* && \
         cd /usr/sbin && \
         ln -sf /usr/sbin/iptables-legacy iptables && \
@@ -101,8 +102,8 @@ RUN curl -L https://dl.k8s.io/${KUBE_VERSION}/kubernetes-client-linux-${ARCH}.ta
 
 RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages  \
     dpkg -i /packages/libopenvswitch*.deb && \
-    dpkg -i /packages/openvswitch-*.deb && \
     dpkg -i /packages/python3-openvswitch*.deb && \
+    dpkg -i /packages/openvswitch-*.deb && \
     dpkg -i --ignore-depends=openvswitch-switch,openvswitch-common /packages/ovn-*.deb && \
     mv /usr/lib/python3.7/dist-packages/ovs /usr/lib/python3/dist-packages/ 
 
