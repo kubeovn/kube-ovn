@@ -121,6 +121,8 @@ const (
 	VpcExternalNet         = "ovn-vpc-external-network"
 	VpcLbNetworkAttachment = "ovn-vpc-lb"
 
+	OvsFlowVlanPriConfig = "ovs-flow-vlan-pri-config"
+
 	DefaultVpc    = "ovn-cluster"
 	DefaultSubnet = "ovn-default"
 

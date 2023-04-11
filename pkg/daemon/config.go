@@ -50,6 +50,7 @@ type Configuration struct {
 	DefaultInterfaceName    string
 	ExternalGatewayConfigNS string
 	EnableMetrics           bool
+	EnableAddIPTosFlow      bool
 }
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
@@ -75,6 +76,7 @@ func ParseFlags(nicBridgeMappings map[string]string) (*Configuration, error) {
 		argsDefaultInterfaceName   = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
 		argEnableMetrics           = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
+		argEnableAddIPTosFlow      = pflag.Bool("enable-ip-tos", false, "If enable add ovs flows to map ip tos to vlan priority")
 	)
 
 	// mute info log for ipset lib
@@ -123,6 +125,7 @@ func ParseFlags(nicBridgeMappings map[string]string) (*Configuration, error) {
 		DefaultInterfaceName:    *argsDefaultInterfaceName,
 		ExternalGatewayConfigNS: *argExternalGatewayConfigNS,
 		EnableMetrics:           *argEnableMetrics,
+		EnableAddIPTosFlow:      *argEnableAddIPTosFlow,
 	}
 
 	if err := config.initKubeClient(); err != nil {

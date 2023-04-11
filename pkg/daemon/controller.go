@@ -64,6 +64,9 @@ type Controller struct {
 	htbQosLister kubeovnlister.HtbQosLister
 	htbQosSynced cache.InformerSynced
 
+	configMapsLister listerv1.ConfigMapLister
+	configMapsSynced cache.InformerSynced
+
 	recorder record.EventRecorder
 
 	iptables  map[string]*iptables.IPTables
@@ -88,6 +91,8 @@ func NewController(config *Configuration, podInformerFactory informers.SharedInf
 	nodeInformer := nodeInformerFactory.Core().V1().Nodes()
 	htbQosInformer := kubeovnInformerFactory.Kubeovn().V1().HtbQoses()
 
+	configMapInformer := nodeInformerFactory.Core().V1().ConfigMaps()
+
 	controller := &Controller{
 		config: config,
 
@@ -109,6 +114,9 @@ func NewController(config *Configuration, podInformerFactory informers.SharedInf
 
 		htbQosLister: htbQosInformer.Lister(),
 		htbQosSynced: htbQosInformer.Informer().HasSynced,
+
+		configMapsLister: configMapInformer.Lister(),
+		configMapsSynced: configMapInformer.Informer().HasSynced,
 
 		recorder: recorder,
 	}
@@ -1234,6 +1242,138 @@ func rotateLog() {
 	}
 }
 
+func (c *Controller) initCniPodNamespace() error {
+	pods, err := c.config.KubeClient.CoreV1().Pods("").List(context.Background(), metav1.ListOptions{
+		LabelSelector: "app=kube-ovn-cni",
+		FieldSelector: fmt.Sprintf("spec.nodeName=%s", c.config.NodeName),
+	})
+	if err != nil {
+		klog.Errorf("failed to list pod: %v", err)
+		return err
+	}
+	for _, pod := range pods.Items {
+		if pod.Status.Phase == v1.PodRunning {
+			c.localPodName = pod.Name
+			c.localNamespace = pod.Namespace
+			break
+		}
+	}
+	return nil
+}
+
+func (c *Controller) addFlowWithIPTos(cm *v1.ConfigMap) error {
+	pns, err := c.providerNetworksLister.List(labels.Everything())
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to list provider networks: %v", err)
+		return err
+	}
+	for _, pn := range pns {
+		for tos, priority := range cm.Data {
+			if _, err := strconv.Atoi(tos); err != nil || !strings.HasPrefix(priority, "0x") {
+				continue
+			}
+
+			// ovs-ofctl add-flow br-provider ip,nw_tos=32,actions=mod_vlan_pcp:2,NORMAL
+			if _, err := ovs.OvsExec("add-flow", fmt.Sprintf("br-%s", pn.Name), fmt.Sprintf("ip,nw_tos=%s,actions=mod_vlan_pcp:%s,NORMAL", tos, priority)); err != nil {
+				return fmt.Errorf("failed to add flow with ip_tos %s, %v", tos, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+func (c *Controller) clearFlowWithIPTos(cm *v1.ConfigMap) error {
+	pns, err := c.providerNetworksLister.List(labels.Everything())
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to list provider networks: %v", err)
+		return err
+	}
+	for _, pn := range pns {
+		// ovs-ofctl dump-flows br-provider
+		output, err := ovs.OvsExec("dump-flows", fmt.Sprintf("br-%s", pn.Name))
+		if err != nil {
+			return fmt.Errorf("failed to dump flows for provider-networks %s, %v", pn.Name, err)
+		}
+		klog.Infof("output of dump-flows for provider-networks %s is %s", pn.Name, output)
+		if !strings.Contains(output, "nw_tos") && !strings.Contains(output, "mod_vlan_pcp") {
+			continue
+		}
+
+		toss := ovs.ParseDumpFlowsOutput(output)
+		for _, tos := range toss {
+			// delete existed ip_tos flows
+			if _, err := ovs.OvsExec("del-flows", fmt.Sprintf("br-%s", pn.Name), fmt.Sprintf("ip,nw_tos=%s", tos)); err != nil {
+				return fmt.Errorf("failed to delete flow with ip_tos %s, %v", tos, err)
+			}
+		}
+
+		for tos := range cm.Data {
+			if _, err := strconv.Atoi(tos); err != nil {
+				continue
+			}
+
+			// ovs-ofctl del-flows br-provider ip,nw_tos=32
+			if _, err := ovs.OvsExec("del-flows", fmt.Sprintf("br-%s", pn.Name), fmt.Sprintf("ip,nw_tos=%s", tos)); err != nil {
+				return fmt.Errorf("failed to delete flow with ip_tos %s, %v", tos, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+var (
+	ovsFlowVlanPriEnabled   = "unknown"
+	ovsFlowVlanPriCmVersion = ""
+)
+
+func (c *Controller) syncOvsVlanPriConfig() {
+	cm, err := c.configMapsLister.ConfigMaps(c.localNamespace).Get(util.OvsFlowVlanPriConfig)
+	if err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to get ovs-flow-vlan-pri-config, %v", err)
+		return
+	}
+
+	if k8serrors.IsNotFound(err) || cm.Data["enable-tos-vlan-pri"] == "false" {
+		if ovsFlowVlanPriEnabled == "false" {
+			return
+		}
+		klog.Info("start to clean up ovs flows with ip_tos")
+		if err := c.clearFlowWithIPTos(cm); err != nil {
+			klog.Errorf("failed to delete flows with ip_tos, %v", err)
+			return
+		}
+		ovsFlowVlanPriEnabled = "false"
+		ovsFlowVlanPriCmVersion = ""
+		klog.Info("finish cleaning up ovs flows with ip_tos")
+	} else {
+		if ovsFlowVlanPriEnabled == "true" && ovsFlowVlanPriCmVersion == cm.ResourceVersion {
+			return
+		}
+
+		if err := c.clearFlowWithIPTos(cm); err != nil {
+			klog.Errorf("failed to delete flows with ip_tos, %v", err)
+			return
+		}
+		klog.Info("start to add ovs flows to map ip_tos and vlan priority")
+		if err = c.addFlowWithIPTos(cm); err != nil {
+			klog.Errorf("failed to add flows with ip_tos, %v", err)
+			return
+		}
+
+		ovsFlowVlanPriEnabled = "true"
+		ovsFlowVlanPriCmVersion = cm.ResourceVersion
+		klog.Info("finish adding ovs flows to map ip_tos and vlan priority")
+	}
+}
+
 // Run starts controller
 func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
@@ -1246,12 +1386,15 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(recompute, 10*time.Minute, stopCh)
 	go wait.Until(rotateLog, 1*time.Hour, stopCh)
 
-	if ok := cache.WaitForCacheSync(stopCh, c.providerNetworksSynced, c.subnetsSynced, c.podsSynced, c.nodesSynced, c.htbQosSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.providerNetworksSynced, c.subnetsSynced, c.podsSynced, c.nodesSynced, c.htbQosSynced, c.configMapsSynced); !ok {
 		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
 	}
 
 	if err := c.setIPSet(); err != nil {
 		util.LogFatalAndExit(err, "failed to set ipsets")
+	}
+	if err := c.initCniPodNamespace(); err != nil {
+		klog.Errorf("failed to init pod namespace %v", err)
 	}
 
 	klog.Info("Started workers")
@@ -1267,6 +1410,10 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 			klog.Errorf("gc ovs port error: %v", err)
 		}
 	}, 5*time.Minute, stopCh)
+
+	if c.config.EnableAddIPTosFlow {
+		go wait.Until(c.syncOvsVlanPriConfig, 10*time.Second, stopCh)
+	}
 
 	<-stopCh
 	klog.Info("Shutting down workers")
