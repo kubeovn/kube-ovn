@@ -926,7 +926,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		enbleLb := true
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
-		subnet.Spec.EnableLb = &enbleLb
+		subnet.Spec.EnableLb = enbleLb
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Validating subnet load-balancer records exist")
@@ -939,7 +939,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		ginkgo.By("Validating change subnet spec enableLb to false")
 		enbleLb = false
 		modifiedSubnet := subnet.DeepCopy()
-		modifiedSubnet.Spec.EnableLb = &enbleLb
+		modifiedSubnet.Spec.EnableLb = enbleLb
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
 		err = wait.PollImmediate(2*time.Second, 1*time.Minute, func() (bool, error) {
 			execCmd = "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=load_balancer find logical-switch " + fmt.Sprintf("name=%s", subnetName)
@@ -959,7 +959,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 		ginkgo.By("Validating empty subnet spec enableLb field, should keep same value as args enableLb")
 		modifiedSubnet = subnet.DeepCopy()
-		modifiedSubnet.Spec.EnableLb = nil
+		modifiedSubnet.Spec.EnableLb = false
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
 		err = wait.PollImmediate(2*time.Second, 1*time.Minute, func() (bool, error) {
 			execCmd = "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=load_balancer find logical-switch " + fmt.Sprintf("name=%s", subnetName)

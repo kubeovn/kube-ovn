@@ -107,8 +107,10 @@ func (c *IptablesFIPClient) DeleteSync(name string) {
 func (c *IptablesFIPClient) WaitToBeReady(name string, timeout time.Duration) bool {
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
 		if c.Get(name).Status.Ready {
+			Logf("fip %s is ready ", name)
 			return true
 		}
+		Logf("fip %s is not ready ", name)
 	}
 	return false
 }

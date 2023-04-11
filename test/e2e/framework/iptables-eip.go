@@ -106,9 +106,12 @@ func (c *IptablesEIPClient) DeleteSync(name string) {
 // WaitToBeReady returns whether the iptables eip is ready within timeout.
 func (c *IptablesEIPClient) WaitToBeReady(name string, timeout time.Duration) bool {
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		if c.Get(name).Status.Ready {
+		eip := c.Get(name)
+		if eip.Status.Ready && eip.Status.IP != "" && eip.Spec.V4ip != "" {
+			Logf("eip %s is ready ", name)
 			return true
 		}
+		Logf("eip %s is not ready ", name)
 	}
 	return false
 }

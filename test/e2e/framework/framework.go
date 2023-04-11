@@ -10,7 +10,8 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 	admissionapi "k8s.io/pod-security-admission/api"
 
-	nadclientcs "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
+	attachnetclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
+
 	"github.com/onsi/ginkgo/v2"
 
 	kubeovncs "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
@@ -27,8 +28,7 @@ type Framework struct {
 	KubeContext string
 	*framework.Framework
 	KubeOVNClientSet kubeovncs.Interface
-	NadClient        nadclientcs.Interface
-
+	AttachNetClient  attachnetclientset.Interface
 	// master/release-1.10/...
 	ClusterVersion string
 	// 999.999 for master
@@ -124,14 +124,14 @@ func (f *Framework) BeforeEach() {
 		ExpectNoError(err)
 	}
 
-	if f.NadClient == nil {
+	if f.AttachNetClient == nil {
 		ginkgo.By("Creating a nad client")
 		config, err := framework.LoadConfig()
 		ExpectNoError(err)
 
 		config.QPS = f.Options.ClientQPS
 		config.Burst = f.Options.ClientBurst
-		f.NadClient, err = nadclientcs.NewForConfig(config)
+		f.AttachNetClient, err = attachnetclientset.NewForConfig(config)
 		ExpectNoError(err)
 	}
 

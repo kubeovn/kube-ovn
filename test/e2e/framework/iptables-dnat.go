@@ -107,8 +107,10 @@ func (c *IptablesDnatClient) DeleteSync(name string) {
 func (c *IptablesDnatClient) WaitToBeReady(name string, timeout time.Duration) bool {
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
 		if c.Get(name).Status.Ready {
+			Logf("dnat %s is ready ", name)
 			return true
 		}
+		Logf("dnat %s is not ready ", name)
 	}
 	return false
 }

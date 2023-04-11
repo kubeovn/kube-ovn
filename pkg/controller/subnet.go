@@ -94,9 +94,7 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		oldSubnet.Spec.EnableIPv6RA != newSubnet.Spec.EnableIPv6RA ||
 		oldSubnet.Spec.IPv6RAConfigs != newSubnet.Spec.IPv6RAConfigs ||
 		oldSubnet.Spec.Protocol != newSubnet.Spec.Protocol ||
-		(oldSubnet.Spec.EnableLb == nil && newSubnet.Spec.EnableLb != nil) ||
-		(oldSubnet.Spec.EnableLb != nil && newSubnet.Spec.EnableLb == nil) ||
-		(oldSubnet.Spec.EnableLb != nil && newSubnet.Spec.EnableLb != nil && *oldSubnet.Spec.EnableLb != *newSubnet.Spec.EnableLb) ||
+		oldSubnet.Spec.EnableLb != newSubnet.Spec.EnableLb ||
 		oldSubnet.Spec.EnableEcmp != newSubnet.Spec.EnableEcmp ||
 		!reflect.DeepEqual(oldSubnet.Spec.Acls, newSubnet.Spec.Acls) ||
 		oldSubnet.Spec.U2OInterconnection != newSubnet.Spec.U2OInterconnection {
@@ -313,8 +311,10 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		changed = true
 	}
 	if subnet.Spec.Vpc == "" {
-		if subnet.Spec.Provider != "" && strings.HasSuffix(subnet.Spec.Provider, util.OvnProvider) {
+		if subnet.Spec.Provider != "" && !strings.HasSuffix(subnet.Spec.Provider, util.OvnProvider) {
 			klog.Infof("subnet %s is not ovn subnet, no vpc", subnet.Name)
+			changed = true
+			subnet.Spec.Vpc = ""
 		} else {
 			changed = true
 			subnet.Spec.Vpc = util.DefaultVpc
@@ -332,18 +332,20 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		}
 	}
 
-	if subnet.Spec.EnableLb == nil && subnet.Name != c.config.NodeSwitch {
-		if subnet.Spec.Provider != "" && strings.HasSuffix(subnet.Spec.Provider, util.OvnProvider) {
-			klog.Infof("subnet %s is not ovn subnet, can not enable lb", subnet.Name)
+	if !subnet.Spec.EnableLb && subnet.Name != c.config.NodeSwitch {
+		if subnet.Spec.Provider != "" && !strings.HasSuffix(subnet.Spec.Provider, util.OvnProvider) {
+			klog.Infof("subnet %s is non ovn subnet, disable switch lb", subnet.Name)
+			changed = true
+			subnet.Spec.EnableLb = false
 		} else {
 			changed = true
-			subnet.Spec.EnableLb = &c.config.EnableLb
+			subnet.Spec.EnableLb = c.config.EnableLb
 		}
 	}
 	// set join subnet Spec.EnableLb to nil
-	if subnet.Spec.EnableLb != nil && subnet.Name == c.config.NodeSwitch {
+	if subnet.Spec.EnableLb && subnet.Name == c.config.NodeSwitch {
 		changed = true
-		subnet.Spec.EnableLb = nil
+		subnet.Spec.EnableLb = false
 	}
 
 	klog.Infof("format subnet %v, changed %v", subnet.Name, changed)
@@ -491,7 +493,10 @@ func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason string, e
 	} else {
 		subnet.Status.Validated(reason, "")
 		c.recorder.Eventf(subnet, v1.EventTypeNormal, reason, errStr)
-		if reason == "SetPrivateLogicalSwitchSuccess" || reason == "ResetLogicalSwitchAclSuccess" || reason == "ReconcileCentralizedGatewaySuccess" {
+		if reason == "SetPrivateLogicalSwitchSuccess" ||
+			reason == "ResetLogicalSwitchAclSuccess" ||
+			reason == "ReconcileCentralizedGatewaySuccess" ||
+			reason == "SetNonOvnSubnetSuccess" {
 			subnet.Status.Ready(reason, "")
 		}
 	}
@@ -549,11 +554,43 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
+	if subnet.Spec.Protocol == kubeovnv1.ProtocolDual {
+		err = calcDualSubnetStatusIP(subnet, c)
+	} else {
+		err = calcSubnetStatusIP(subnet, c)
+	}
+	if err != nil {
+		klog.Errorf("calculate subnet %s used ip failed, %v", subnet.Name, err)
+		return err
+	}
+
+	if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
+		return err
+	}
+
+	if err = util.ValidateSubnet(*subnet); err != nil {
+		klog.Errorf("failed to validate subnet %s, %v", subnet.Name, err)
+		c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error())
+		return err
+	} else {
+		c.patchSubnetStatus(subnet, "ValidateLogicalSwitchSuccess", "")
+	}
+
+	if subnet.Spec.Vpc == "" && !isOvnSubnet(subnet) {
+		// subnet provider is not ovn, and vpc is empty, should not reconcile
+		c.patchSubnetStatus(subnet, "SetNonOvnSubnetSuccess", "")
+
+		subnet.Status.EnsureStandardConditions()
+		klog.Infof("non ovn subnet %s is ready", subnet.Name)
+		return nil
+	}
+
 	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
 	if err != nil {
 		klog.Errorf("failed to get subnet's vpc '%s', %v", subnet.Spec.Vpc, err)
 		return err
 	}
+
 	if !vpc.Status.Standby {
 		err = fmt.Errorf("the vpc '%s' not standby yet", vpc.Name)
 		klog.Error(err)
@@ -583,20 +620,6 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
-	if subnet.Spec.Protocol == kubeovnv1.ProtocolDual {
-		err = calcDualSubnetStatusIP(subnet, c)
-	} else {
-		err = calcSubnetStatusIP(subnet, c)
-	}
-	if err != nil {
-		klog.Errorf("calculate subnet %s used ip failed, %v", subnet.Name, err)
-		return err
-	}
-
-	if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
-		return err
-	}
-
 	if err := c.reconcileU2OInterconnectionIP(subnet); err != nil {
 		klog.Errorf("failed to reconcile underlay subnet %s to overlay interconnection %v", subnet.Name, err)
 		return err
@@ -604,14 +627,6 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 
 	if !isOvnSubnet(subnet) {
 		return nil
-	}
-
-	if err = util.ValidateSubnet(*subnet); err != nil {
-		klog.Errorf("failed to validate subnet %s, %v", subnet.Name, err)
-		c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error())
-		return err
-	} else {
-		c.patchSubnetStatus(subnet, "ValidateLogicalSwitchSuccess", "")
 	}
 
 	subnetList, err := c.subnetsLister.List(labels.Everything())
@@ -709,16 +724,16 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
-	lbs := []string{
-		vpc.Status.TcpLoadBalancer,
-		vpc.Status.TcpSessionLoadBalancer,
-		vpc.Status.UdpLoadBalancer,
-		vpc.Status.UdpSessionLoadBalancer,
-		vpc.Status.SctpLoadBalancer,
-		vpc.Status.SctpSessionLoadBalancer,
-	}
 	if c.config.EnableLb && subnet.Name != c.config.NodeSwitch {
-		if subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb {
+		lbs := []string{
+			vpc.Status.TcpLoadBalancer,
+			vpc.Status.TcpSessionLoadBalancer,
+			vpc.Status.UdpLoadBalancer,
+			vpc.Status.UdpSessionLoadBalancer,
+			vpc.Status.SctpLoadBalancer,
+			vpc.Status.SctpSessionLoadBalancer,
+		}
+		if subnet.Spec.EnableLb {
 			if err := c.ovnClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationInsert, lbs...); err != nil {
 				c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", err.Error())
 				return err

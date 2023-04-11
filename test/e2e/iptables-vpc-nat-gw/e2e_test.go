@@ -9,15 +9,17 @@ import (
 	"testing"
 
 	dockertypes "github.com/docker/docker/api/types"
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+	attachnetclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 	"github.com/onsi/ginkgo/v2"
 	clientset "k8s.io/client-go/kubernetes"
+
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 
-	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
@@ -34,28 +36,14 @@ const vpcNatGWConfigMapName = "ovn-vpc-nat-gw-config"
 const networkAttachDefName = "ovn-vpc-external-network"
 const externalSubnetProvider = "ovn-vpc-external-network.kube-system"
 
-func makeNetworkAttachmentDefinition(networkName, config string) *nadv1.NetworkAttachmentDefinition {
-	return framework.MakeNetworkAttachmentDefinition(networkName, config)
-}
-
-func makeIptablesEIP(name, v4ip, v6ip, mac, natGwDp string) *apiv1.IptablesEIP {
-	return framework.MakeIptablesEIP(name, v4ip, v6ip, mac, natGwDp)
-}
-
-func makeOvnVip(name, subnet, v4ip, v6ip string) *apiv1.Vip {
-	return framework.MakeVip(name, subnet, v4ip, v6ip)
-}
-
-func makeIptablesFIP(name, eip, internalIp string) *apiv1.IptablesFIPRule {
-	return framework.MakeIptablesFIPRule(name, eip, internalIp)
-}
-
-func makeIptablesSnat(name, eip, internalCIDR string) *apiv1.IptablesSnatRule {
-	return framework.MakeIptablesSnatRule(name, eip, internalCIDR)
-}
-
-func makeIptablesDnat(name, eip, externalPort, protocol, internalIP, internalPort string) *apiv1.IptablesDnatRule {
-	return framework.MakeIptablesDnatRule(name, eip, externalPort, protocol, internalIP, internalPort)
+func makeNetworkAttachmentDefinition(name, config string) *nadv1.NetworkAttachmentDefinition {
+	netAttachDef := nadv1.NetworkAttachmentDefinition{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: nadv1.NetworkAttachmentDefinitionSpec{Config: config},
+	}
+	return &netAttachDef
 }
 
 var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
@@ -63,10 +51,10 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 
 	var skip bool
 	var cs clientset.Interface
+	var attachNetClient attachnetclientset.Interface
 	var nodeNames []string
 	var clusterName, vpcName, vpcNatGwName, overlaySubnetName string
 	var linkMap map[string]*iproute.Link
-	var networkAttachmentDefinitionClient *framework.NetworkAttachmentDefinitionClient
 	var vpcClient *framework.VpcClient
 	var vpcNatGwClient *framework.VpcNatGatewayClient
 	var subnetClient *framework.SubnetClient
@@ -99,10 +87,10 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 	ginkgo.BeforeEach(func() {
 		containerID = ""
 		cs = f.ClientSet
+		attachNetClient = f.AttachNetClient
 		subnetClient = f.SubnetClient()
 		vpcClient = f.VpcClient()
 		vpcNatGwClient = f.VpcNatGatewayClient()
-		networkAttachmentDefinitionClient = f.NetworkAttachmentDefinitionClient()
 		IptablesEIPClient = f.IptablesEIPClient()
 		vipClient = f.VipClient()
 		IptablesFIPClient = f.IptablesFIPClient()
@@ -177,24 +165,24 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 			framework.ExpectNoError(err)
 		}
 
+		// todo:// statefulset nat gw pod ip not release automatically
+		// these two subnet will not be deleted successfully
+
 		// ginkgo.By("Deleting subnet " + networkAttachDefName)
 		// subnetClient.DeleteSync(networkAttachDefName)
 
 		// ginkgo.By("Deleting overlay subnet " + overlaySubnetName)
 		// subnetClient.DeleteSync(overlaySubnetName)
 
-		// ginkgo.By("Deleting network attachment definition")
-		// networkAttachmentDefinitionClient.DeleteSync(networkAttachDefName)
+		ginkgo.By("Getting nodes")
+		nodes, err := kind.ListNodes(clusterName, "")
+		framework.ExpectNoError(err, "getting nodes in cluster")
 
-		// ginkgo.By("Getting nodes")
-		// nodes, err := kind.ListNodes(clusterName, "")
-		// framework.ExpectNoError(err, "getting nodes in cluster")
-
-		// if dockerNetwork != nil {
-		// 	ginkgo.By("Disconnecting nodes from the docker network")
-		// 	err = kind.NetworkDisconnect(dockerNetwork.ID, nodes)
-		// 	framework.ExpectNoError(err, "disconnecting nodes from network "+dockerNetworkName)
-		// }
+		if dockerNetwork != nil {
+			ginkgo.By("Disconnecting nodes from the docker network")
+			err = kind.NetworkDisconnect(dockerNetwork.ID, nodes)
+			framework.ExpectNoError(err, "disconnecting nodes from network "+dockerNetworkName)
+		}
 	})
 
 	framework.ConformanceIt("iptables eip fip snat dnat", func() {
@@ -218,8 +206,15 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 			  "provider": "ovn-vpc-external-network.kube-system"
 			}
 		  }`
+
+		networkClient := attachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions("kube-system")
 		nad := makeNetworkAttachmentDefinition(networkAttachDefName, nadConfig)
-		_ = networkAttachmentDefinitionClient.CreateSync(nad)
+		_, err = networkClient.Create(context.Background(), nad, metav1.CreateOptions{})
+		framework.ExpectNoError(err, "failed to create")
+
+		nad, err = networkClient.Get(context.Background(), networkAttachDefName, metav1.GetOptions{})
+		ginkgo.By("Got network attachment fefinition " + nad.Name)
+		framework.ExpectNoError(err, "failed to get")
 
 		ginkgo.By("Creating underlay macvlan subnet " + networkAttachDefName)
 		cidr := make([]string, 0, 2)
@@ -256,7 +251,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		}
 		configMap := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "ovn-external-gw-config",
+				Name:      vpcNatGWConfigMapName,
 				Namespace: "kube-system",
 			},
 			Data: cmData,
@@ -276,34 +271,36 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		_ = subnetClient.CreateSync(overlaySubnet)
 
 		ginkgo.By("Creating custom vpc nat gw")
-		vpcNatGw := framework.MakeVpcNatGateway(vpcNatGwName, vpcName, lanIp, overlaySubnetName)
+		vpcNatGw := framework.MakeVpcNatGateway(vpcNatGwName, vpcName, overlaySubnetName, lanIp)
 		_ = vpcNatGwClient.CreateSync(vpcNatGw)
 
 		ginkgo.By("Creating iptables vip for fip")
-		fipVip := makeOvnVip(fipVipName, overlaySubnetName, "", "")
+		fipVip := framework.MakeVip(fipVipName, overlaySubnetName, "", "")
 		_ = vipClient.CreateSync(fipVip)
+		fipVip = vipClient.Get(fipVipName)
 		ginkgo.By("Creating iptables eip for fip")
-		fipEip := makeIptablesEIP(fipEipName, "", "", "", vpcNatGwName)
+		fipEip := framework.MakeIptablesEIP(fipEipName, "", "", "", vpcNatGwName)
 		_ = IptablesEIPClient.CreateSync(fipEip)
 		ginkgo.By("Creating iptables fip")
-		fip := makeIptablesFIP(fipName, fipEipName, fipVip.Status.V4ip)
+		fip := framework.MakeIptablesFIPRule(fipName, fipEipName, fipVip.Status.V4ip)
 		_ = IptablesFIPClient.CreateSync(fip)
 
 		ginkgo.By("Creating iptables eip for snat")
-		snatEip := makeIptablesEIP(snatEipName, "", "", "", vpcNatGwName)
+		snatEip := framework.MakeIptablesEIP(snatEipName, "", "", "", vpcNatGwName)
 		_ = IptablesEIPClient.CreateSync(snatEip)
 		ginkgo.By("Creating iptables snat")
-		snat := makeIptablesSnat(snatName, snatEipName, overlaySubnetV4Cidr)
+		snat := framework.MakeIptablesSnatRule(snatName, snatEipName, overlaySubnetV4Cidr)
 		_ = IptablesSnatRuleClient.CreateSync(snat)
 
 		ginkgo.By("Creating iptables vip for dnat")
-		dnatVip := makeOvnVip(dnatVipName, overlaySubnetName, "", "")
+		dnatVip := framework.MakeVip(dnatVipName, overlaySubnetName, "", "")
 		_ = vipClient.CreateSync(dnatVip)
+		dnatVip = vipClient.Get(dnatVipName)
 		ginkgo.By("Creating iptables eip for dnat")
-		dnatEip := makeIptablesEIP(dnatEipName, "", "", "", vpcNatGwName)
+		dnatEip := framework.MakeIptablesEIP(dnatEipName, "", "", "", vpcNatGwName)
 		_ = IptablesEIPClient.CreateSync(dnatEip)
 		ginkgo.By("Creating iptables dnat")
-		dnat := makeIptablesDnat(dnatName, dnatEipName, "80", "tcp", dnatVip.Status.V4ip, "8080")
+		dnat := framework.MakeIptablesDnatRule(dnatName, dnatEipName, "80", "tcp", dnatVip.Status.V4ip, "8080")
 		_ = IptablesDnatRuleClient.CreateSync(dnat)
 
 		ginkgo.By("Deleting iptables fip " + fipName)
@@ -328,9 +325,15 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		ginkgo.By("Deleting custom vpc " + vpcName)
 		vpcClient.DeleteSync(vpcName)
 
+		ginkgo.By("Deleting custom vpc nat gw")
+		vpcNatGwClient.DeleteSync(vpcNatGwName)
+
 		ginkgo.By("Deleting configmap " + vpcNatGWConfigMapName)
-		err = cs.CoreV1().ConfigMaps("kube-system").Delete(context.Background(), "ovn-external-gw-config", metav1.DeleteOptions{})
+		err = cs.CoreV1().ConfigMaps("kube-system").Delete(context.Background(), vpcNatGWConfigMapName, metav1.DeleteOptions{})
 		framework.ExpectNoError(err, "failed to delete ConfigMap")
+
+		err = networkClient.Delete(context.Background(), networkAttachDefName, metav1.DeleteOptions{})
+		framework.ExpectNoError(err, "failed to delete")
 	})
 })
 

@@ -833,8 +833,7 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 		vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
 		return err
 	}
-	cachedEip, err = c.ovnEipsLister.Get(lrpEipName)
-	if err != nil {
+	if _, err = c.ovnEipsLister.Get(lrpEipName); err != nil {
 		return err
 	}
 	if err := c.patchLrpOvnEipEnableBfdLabel(lrpEipName, vpc.Spec.EnableBfd); err != nil {
