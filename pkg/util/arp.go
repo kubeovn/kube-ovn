@@ -199,17 +199,45 @@ func ArpDetectIPConflict(nic, ip string, mac net.HardwareAddr) (net.HardwareAddr
 	// Announcement is identical to the ARP Probe described above,
 	// except that now the sender and target IP addresses are both
 	// set to the host's newly selected IPv4 address.
-	if pkt, err = arp.NewPacket(arp.OperationRequest, mac, tpa, tha, tpa); err != nil {
+	err = BroadcastFreeArp(nic, ip, mac, announceNum, announceInterval)
+	if err != nil {
 		return nil, err
 	}
 
+	return nil, nil
+}
+
+func BroadcastFreeArp(nic, ip string, mac net.HardwareAddr, announceNum int, announceInterval time.Duration) error {
+	klog.Infof("broadcast free arp with nic %s , ip %s, with mac %v ", nic, ip, mac)
+	ifi, err := net.InterfaceByName(nic)
+	if err != nil {
+		return err
+	}
+
+	client, err := arp.Dial(ifi)
+	if err != nil {
+		return err
+	}
+
+	tpa, err := netip.ParseAddr(ip)
+	if err != nil {
+		klog.Errorf("failed to parse IP address %s: %v ", ip, err)
+		return err
+	}
+	tha := net.HardwareAddr{0, 0, 0, 0, 0, 0}
+	pkt, err := arp.NewPacket(arp.OperationRequest, mac, tpa, tha, tpa)
+	if err != nil {
+		return err
+	}
+
+	dstMac := net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 	for i := 0; i < announceNum; i++ {
 		c := time.NewTimer(announceInterval)
 		if err = client.SetDeadline(time.Now().Add(announceInterval)); err != nil {
-			return nil, err
+			return err
 		}
 		if err = client.WriteTo(pkt, dstMac); err != nil {
-			return nil, err
+			return err
 		}
 		if i == announceNum-1 {
 			// the last one, no need to wait
@@ -219,46 +247,5 @@ func ArpDetectIPConflict(nic, ip string, mac net.HardwareAddr) (net.HardwareAddr
 		}
 	}
 
-	return nil, nil
-}
-
-func BroadcastFreeArp(nic, podIp string, mac net.HardwareAddr) error {
-	klog.Infof(" broadcast free arp with nic %s , ip %s, with mac %v ", nic, podIp, mac)
-	spa, err := netip.ParseAddr(podIp)
-	if err != nil {
-		klog.Errorf("failed to parse IP address %s: %v ", podIp, err)
-		return err
-	}
-
-	tha := net.HardwareAddr{0, 0, 0, 0, 0, 0}
-	pkt, err := arp.NewPacket(arp.OperationRequest, mac, spa, tha, spa)
-	if err != nil {
-		klog.Errorf("generate free arp packet failed with err %v ", err)
-		return err
-	}
-
-	ifi, err := net.InterfaceByName(nic)
-	if err != nil {
-		klog.Errorf("get interface nic %s failed %v ", nic, err)
-		return err
-	}
-
-	client, err := arp.Dial(ifi)
-	if err != nil {
-		klog.Errorf("arp dial failed with err %v ", err)
-		return err
-	}
-	defer client.Close()
-
-	if err = client.SetWriteDeadline(time.Now().Add(time.Second)); err != nil {
-		klog.Errorf("set write deadline failed with %v", err)
-		return err
-	}
-
-	dstMac := net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
-	if err = client.WriteTo(pkt, dstMac); err != nil {
-		klog.Errorf(" write to pkt failed with %v", err)
-		return err
-	}
 	return nil
 }
