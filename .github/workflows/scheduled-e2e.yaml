@@ -739,11 +739,7 @@ jobs:
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
-      - name: Install Multus
-        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
-        run: make kind-install-multus
-
-      - name: Install Kube-OVN
+      - name: Install Multus and Kube-OVN
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
           version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')

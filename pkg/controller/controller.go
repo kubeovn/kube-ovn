@@ -217,6 +217,12 @@ type Controller struct {
 	syncSgPortsQueue   workqueue.RateLimitingInterface
 	sgKeyMutex         *keymutex.KeyMutex
 
+	qosPoliciesLister    kubeovnlister.QoSPolicyLister
+	qosPolicySynced      cache.InformerSynced
+	addQoSPolicyQueue    workqueue.RateLimitingInterface
+	updateQoSPolicyQueue workqueue.RateLimitingInterface
+	delQoSPolicyQueue    workqueue.RateLimitingInterface
+
 	configMapsLister v1.ConfigMapLister
 	configMapsSynced cache.InformerSynced
 
@@ -271,6 +277,7 @@ func NewController(config *Configuration) *Controller {
 	nodeInformer := informerFactory.Core().V1().Nodes()
 	serviceInformer := informerFactory.Core().V1().Services()
 	endpointInformer := informerFactory.Core().V1().Endpoints()
+	qosPolicyInformer := kubeovnInformerFactory.Kubeovn().V1().QoSPolicies()
 	configMapInformer := cmInformerFactory.Core().V1().ConfigMaps()
 
 	controller := &Controller{
@@ -390,6 +397,12 @@ func NewController(config *Configuration) *Controller {
 		endpointsLister:     endpointInformer.Lister(),
 		endpointsSynced:     endpointInformer.Informer().HasSynced,
 		updateEndpointQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateEndpoint"),
+
+		qosPoliciesLister:    qosPolicyInformer.Lister(),
+		qosPolicySynced:      qosPolicyInformer.Informer().HasSynced,
+		addQoSPolicyQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "addQoSPolicy"),
+		updateQoSPolicyQueue: workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "updateQoSPolicy"),
+		delQoSPolicyQueue:    workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "delQoSPolicy"),
 
 		configMapsLister: configMapInformer.Lister(),
 		configMapsSynced: configMapInformer.Informer().HasSynced,
@@ -655,6 +668,15 @@ func NewController(config *Configuration) *Controller {
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add pod iptables fip event handler")
 	}
+
+	if _, err = qosPolicyInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddQoSPolicy,
+		UpdateFunc: controller.enqueueUpdateQoSPolicy,
+		DeleteFunc: controller.enqueueDelQoSPolicy,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add qos policy event handler")
+	}
+
 	return controller
 }
 
@@ -837,6 +859,10 @@ func (c *Controller) shutdown() {
 	c.addIptablesSnatRuleQueue.ShutDown()
 	c.updateIptablesSnatRuleQueue.ShutDown()
 	c.delIptablesSnatRuleQueue.ShutDown()
+
+	c.addQoSPolicyQueue.ShutDown()
+	c.updateQoSPolicyQueue.ShutDown()
+	c.delQoSPolicyQueue.ShutDown()
 
 	c.addOvnEipQueue.ShutDown()
 	c.updateOvnEipQueue.ShutDown()
@@ -1056,6 +1082,10 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(c.runAddIptablesSnatRuleWorker, time.Second, ctx.Done())
 	go wait.Until(c.runUpdateIptablesSnatRuleWorker, time.Second, ctx.Done())
 	go wait.Until(c.runDelIptablesSnatRuleWorker, time.Second, ctx.Done())
+
+	go wait.Until(c.runAddQoSPolicyWorker, time.Second, ctx.Done())
+	go wait.Until(c.runUpdateQoSPolicyWorker, time.Second, ctx.Done())
+	go wait.Until(c.runDelQoSPolicyWorker, time.Second, ctx.Done())
 
 	if c.config.PodDefaultFipType == util.IptablesFip {
 		go wait.Until(c.runAddPodAnnotatedIptablesEipWorker, time.Second, ctx.Done())

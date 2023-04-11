@@ -38,6 +38,7 @@ type KubeovnV1Interface interface {
 	OvnFipsGetter
 	OvnSnatRulesGetter
 	ProviderNetworksGetter
+	QoSPoliciesGetter
 	SecurityGroupsGetter
 	SubnetsGetter
 	SwitchLBRulesGetter
@@ -91,6 +92,10 @@ func (c *KubeovnV1Client) OvnSnatRules() OvnSnatRuleInterface {
 
 func (c *KubeovnV1Client) ProviderNetworks() ProviderNetworkInterface {
 	return newProviderNetworks(c)
+}
+
+func (c *KubeovnV1Client) QoSPolicies() QoSPolicyInterface {
+	return newQoSPolicies(c)
 }
 
 func (c *KubeovnV1Client) SecurityGroups() SecurityGroupInterface {

@@ -21,8 +21,8 @@ CONTROL_PLANE_TAINTS = node-role.kubernetes.io/master node-role.kubernetes.io/co
 
 CHART_UPGRADE_RESTART_OVS=$(shell echo $${CHART_UPGRADE_RESTART_OVS:-false})
 
-MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:snapshot
-MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset.yml
+MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:snapshot-thick
+MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset-thick.yml
 
 KUBEVIRT_VERSION = v0.58.0
 KUBEVIRT_OPERATOR_IMAGE = quay.io/kubevirt/virt-operator:$(KUBEVIRT_VERSION)
@@ -617,10 +617,9 @@ kind-install-kubevirt: kind-load-image kind-untaint-control-plane
 .PHONY: kind-install-lb-svc
 kind-install-lb-svc: kind-load-image kind-untaint-control-plane
 	$(call kind_load_image,kube-ovn,$(VPC_NAT_GW_IMG))
+	@$(MAKE) ENABLE_LB_SVC=true CNI_CONFIG_PRIORITY=10 kind-install
+	@$(MAKE) kind-install-multus
 	kubectl apply -f yamls/lb-svc-attachment.yaml
-	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | \
-	ENABLE_LB_SVC=true CNI_CONFIG_PRIORITY=10 bash
-	kubectl describe no
 
 .PHONY: kind-install-webhook
 kind-install-webhook: kind-install

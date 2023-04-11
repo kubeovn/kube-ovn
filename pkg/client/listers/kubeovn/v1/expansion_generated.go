@@ -58,6 +58,10 @@ type OvnSnatRuleListerExpansion interface{}
 // ProviderNetworkLister.
 type ProviderNetworkListerExpansion interface{}
 
+// QoSPolicyListerExpansion allows custom methods to be added to
+// QoSPolicyLister.
+type QoSPolicyListerExpansion interface{}
+
 // SecurityGroupListerExpansion allows custom methods to be added to
 // SecurityGroupLister.
 type SecurityGroupListerExpansion interface{}

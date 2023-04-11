@@ -33,8 +33,7 @@ type Interface interface {
 	KubeovnV1() kubeovnv1.KubeovnV1Interface
 }
 
-// Clientset contains the clients for groups. Each group has exactly one
-// version included in a Clientset.
+// Clientset contains the clients for groups.
 type Clientset struct {
 	*discovery.DiscoveryClient
 	kubeovnV1 *kubeovnv1.KubeovnV1Client

@@ -41,6 +41,8 @@ rules:
       - switch-lb-rules/status
       - vpc-dnses
       - vpc-dnses/status
+      - qos-policies
+      - qos-policies/status
     verbs:
       - "*"
   - apiGroups:
