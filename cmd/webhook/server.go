@@ -39,10 +39,9 @@ func init() {
 }
 
 func main() {
-	var port int
 	klog.Infof(versions.String())
 
-	port = *pflag.Int("port", 8443, "The port webhook listen on.")
+	port := pflag.Int("port", 8443, "The port webhook listen on.")
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
@@ -67,7 +66,7 @@ func main() {
 
 	// Create a webhook server.
 	hookServer := &ctrlwebhook.Server{
-		Port:    port,
+		Port:    *port,
 		CertDir: hookServerCertDir,
 	}
 
