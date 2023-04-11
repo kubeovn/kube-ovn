@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ovs-flow-vlan-pri-config
+  namespace: kube-system
+data:
+  enable-tos-vlan-pri: "true"
+  "32": "0x1"
+  "64": "0x2"
+  "96": "0x3"
+  "128": "0x4"
+  "160": "0x5"
+  "192": "0x6"
+  "224": "0x7"
+

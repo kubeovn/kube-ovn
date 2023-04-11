@@ -170,6 +170,7 @@ const (
 	VpcNatConfig           = "ovn-vpc-nat-config"
 
 	DefaultSecurityGroupName = "default-securitygroup"
+	OvsFlowVlanPriConfig     = "ovs-flow-vlan-pri-config"
 
 	DefaultVpc    = "ovn-cluster"
 	DefaultSubnet = "ovn-default"

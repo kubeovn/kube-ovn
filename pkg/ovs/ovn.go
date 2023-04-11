@@ -52,6 +52,7 @@ const (
 	OVNIcNbCtl  = "ovn-ic-nbctl"
 	OVNIcSbCtl  = "ovn-ic-sbctl"
 	OvsVsCtl    = "ovs-vsctl"
+	OvsOfCtl    = "ovs-ofctl"
 	MayExist    = "--may-exist"
 	IfExists    = "--if-exists"
 	Policy      = "--policy"

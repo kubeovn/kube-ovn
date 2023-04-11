@@ -58,6 +58,7 @@ type Configuration struct {
 	ExternalGatewayConfigNS string
 	ExternalGatewaySwitch   string // provider network underlay vlan subnet
 	EnableMetrics           bool
+	EnableAddIPTosFlow      bool
 }
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
@@ -90,6 +91,7 @@ func ParseFlags() *Configuration {
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
 		argExternalGatewaySwitch   = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
 		argEnableMetrics           = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
+		argEnableAddIPTosFlow      = pflag.Bool("enable-ip-tos", false, "If enable add ovs flows to map ip tos to vlan priority")
 	)
 
 	// mute info log for ipset lib
@@ -139,6 +141,7 @@ func ParseFlags() *Configuration {
 		ExternalGatewayConfigNS: *argExternalGatewayConfigNS,
 		ExternalGatewaySwitch:   *argExternalGatewaySwitch,
 		EnableMetrics:           *argEnableMetrics,
+		EnableAddIPTosFlow:      *argEnableAddIPTosFlow,
 	}
 	return config
 }
