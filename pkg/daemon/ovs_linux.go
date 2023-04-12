@@ -544,6 +544,12 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPCo
 				return fmt.Errorf("IP address %s has already been used by host with MAC %s", ip, mac)
 			}
 		}
+		if addr.IP.To4() != nil && !detectIPConflict {
+			// when detectIPConflict is true, free arp is already broadcast in the step of announcement
+			if err := util.AnnounceArpAddress(link, addr.IP.String(), macAddr, 1, 1*time.Second); err != nil {
+				klog.Warningf("failed to broadcast free arp with err %v ", err)
+			}
+		}
 
 		klog.Infof("add ip address %s to %s", ip, link)
 		if err = netlink.AddrAdd(nodeLink, &addr); err != nil {
