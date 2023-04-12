@@ -199,16 +199,15 @@ func ArpDetectIPConflict(nic, ip string, mac net.HardwareAddr) (net.HardwareAddr
 	// Announcement is identical to the ARP Probe described above,
 	// except that now the sender and target IP addresses are both
 	// set to the host's newly selected IPv4 address.
-	err = BroadcastFreeArp(nic, ip, mac, announceNum, announceInterval)
-	if err != nil {
+	if err = AnnounceArpAddress(nic, ip, mac, announceNum, announceInterval); err != nil {
 		return nil, err
 	}
 
 	return nil, nil
 }
 
-func BroadcastFreeArp(nic, ip string, mac net.HardwareAddr, announceNum int, announceInterval time.Duration) error {
-	klog.Infof("broadcast free arp with nic %s , ip %s, with mac %v ", nic, ip, mac)
+func AnnounceArpAddress(nic, ip string, mac net.HardwareAddr, announceNum int, announceInterval time.Duration) error {
+	klog.Infof("announce arp address nic %s , ip %s, with mac %v ", nic, ip, mac)
 	ifi, err := net.InterfaceByName(nic)
 	if err != nil {
 		return err
@@ -218,6 +217,7 @@ func BroadcastFreeArp(nic, ip string, mac net.HardwareAddr, announceNum int, ann
 	if err != nil {
 		return err
 	}
+	defer client.Close()
 
 	tpa, err := netip.ParseAddr(ip)
 	if err != nil {
