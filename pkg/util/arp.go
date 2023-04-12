@@ -208,12 +208,12 @@ func ArpDetectIPConflict(nic, ip string, mac net.HardwareAddr) (net.HardwareAddr
 
 func AnnounceArpAddress(nic, ip string, mac net.HardwareAddr, announceNum int, announceInterval time.Duration) error {
 	klog.Infof("announce arp address nic %s , ip %s, with mac %v ", nic, ip, mac)
-	ifi, err := net.InterfaceByName(nic)
+	netInterface, err := net.InterfaceByName(nic)
 	if err != nil {
 		return err
 	}
 
-	client, err := arp.Dial(ifi)
+	client, err := arp.Dial(netInterface)
 	if err != nil {
 		return err
 	}
