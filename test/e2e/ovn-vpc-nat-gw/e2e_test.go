@@ -59,16 +59,16 @@ func makeOvnVip(name, subnet, v4ip, v6ip string) *apiv1.Vip {
 	return framework.MakeVip(name, subnet, v4ip, v6ip)
 }
 
-func makeOvnFip(name, ovnEip, IpType, IpName string) *apiv1.OvnFip {
-	return framework.MakeOvnFip(name, ovnEip, IpType, IpName)
+func makeOvnFip(name, ovnEip, ipType, ipName string) *apiv1.OvnFip {
+	return framework.MakeOvnFip(name, ovnEip, ipType, ipName)
 }
 
-func makeOvnSnat(name, ovnEip, vpcSubnet, IpName string) *apiv1.OvnSnatRule {
-	return framework.MakeOvnSnatRule(name, ovnEip, vpcSubnet, IpName)
+func makeOvnSnat(name, ovnEip, vpcSubnet, ipName string) *apiv1.OvnSnatRule {
+	return framework.MakeOvnSnatRule(name, ovnEip, vpcSubnet, ipName)
 }
 
-func makeOvnDnat(name, ovnEip, ipType, IpName, internalPort, externalPort, protocol string) *apiv1.OvnDnatRule {
-	return framework.MakeOvnDnatRule(name, ovnEip, ipType, IpName, internalPort, externalPort, protocol)
+func makeOvnDnat(name, ovnEip, ipType, ipName, internalPort, externalPort, protocol string) *apiv1.OvnDnatRule {
+	return framework.MakeOvnDnatRule(name, ovnEip, ipType, ipName, internalPort, externalPort, protocol)
 }
 
 var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {

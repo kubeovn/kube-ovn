@@ -923,10 +923,10 @@ var _ = framework.Describe("[group:subnet]", func() {
 	framework.ConformanceIt("create subnet with enableLb option", func() {
 		f.SkipVersionPriorTo(1, 12, "Support for enableLb in subnet is introduced in v1.12")
 
-		enbleLb := true
+		enableLb := true
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
-		subnet.Spec.EnableLb = enbleLb
+		subnet.Spec.EnableLb = enableLb
 		subnet = subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Validating subnet load-balancer records exist")
@@ -937,9 +937,9 @@ var _ = framework.Describe("[group:subnet]", func() {
 		framework.ExpectNotEmpty(strings.TrimSpace(string(output)))
 
 		ginkgo.By("Validating change subnet spec enableLb to false")
-		enbleLb = false
+		enableLb = false
 		modifiedSubnet := subnet.DeepCopy()
-		modifiedSubnet.Spec.EnableLb = enbleLb
+		modifiedSubnet.Spec.EnableLb = enableLb
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
 		err = wait.PollImmediate(2*time.Second, 1*time.Minute, func() (bool, error) {
 			execCmd = "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=load_balancer find logical-switch " + fmt.Sprintf("name=%s", subnetName)
@@ -957,9 +957,12 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}
 		framework.ExpectNoError(err)
 
-		ginkgo.By("Validating empty subnet spec enableLb field, should keep same value as args enableLb")
+		ginkgo.By("Validating subnet spec enableLb field, should keep same value as specified enableLb")
+		// enable lb is true by default in install.sh
+		// and only ovn-default followes the default value
+		enableLb = true
 		modifiedSubnet = subnet.DeepCopy()
-		modifiedSubnet.Spec.EnableLb = false
+		modifiedSubnet.Spec.EnableLb = enableLb
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
 		err = wait.PollImmediate(2*time.Second, 1*time.Minute, func() (bool, error) {
 			execCmd = "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=load_balancer find logical-switch " + fmt.Sprintf("name=%s", subnetName)

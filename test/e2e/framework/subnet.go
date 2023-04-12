@@ -175,6 +175,7 @@ func (c *SubnetClient) WaitConditionToBe(name string, conditionType apiv1.Condit
 			Logf("Subnet %s reach desired %t condition status", name, wantTrue)
 			return true
 		}
+		Logf("Subnet %s still not reach desired %t condition status", name, wantTrue)
 	}
 	Logf("Subnet %s didn't reach desired %s condition status (%t) within %v", name, conditionType, wantTrue, timeout)
 	return false
@@ -192,8 +193,10 @@ func (c *SubnetClient) WaitToBeUpdated(subnet *apiv1.Subnet, timeout time.Durati
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
 		s := c.Get(subnet.Name)
 		if current, _ := big.NewInt(0).SetString(s.ResourceVersion, 10); current.Cmp(rv) > 0 {
+			Logf("Subnet %s updated", subnet.Name)
 			return true
 		}
+		Logf("Subnet %s still not updated", subnet.Name)
 	}
 	Logf("Subnet %s was not updated within %v", subnet.Name, timeout)
 	return false
@@ -273,7 +276,7 @@ func MakeSubnet(name, vlan, cidr, gateway, vpc, provider string, excludeIPs, gat
 			Namespaces:  namespaces,
 		},
 	}
-	if provider != "" {
+	if provider == "" || strings.HasSuffix(provider, util.OvnProvider) {
 		if len(gatewayNodes) != 0 {
 			subnet.Spec.GatewayType = apiv1.GWCentralizedType
 		} else {

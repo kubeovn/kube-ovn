@@ -59,7 +59,8 @@ e2e-build:
 	ginkgo build -ldflags "-w -s" ./test/e2e/kube-ovn
 	ginkgo build -ldflags "-w -s" ./test/e2e/ovn-ic
 	ginkgo build -ldflags "-w -s" ./test/e2e/lb-svc
-	ginkgo build -ldflags "-w -s" ./test/e2e/ovn-eip
+	ginkgo build -ldflags "-w -s" ./test/e2e/iptables-vpc-nat-gw
+	ginkgo build -ldflags "-w -s" ./test/e2e/ovn-vpc-nat-gw
 	ginkgo build -ldflags "-w -s" ./test/e2e/security
 	ginkgo build -ldflags "-w -s" ./test/e2e/kubevirt
 	ginkgo build -ldflags "-w -s" ./test/e2e/webhook

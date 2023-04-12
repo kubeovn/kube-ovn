@@ -151,15 +151,15 @@ func (c *OvnFipClient) WaitToDisappear(name string, interval, timeout time.Durat
 	return maybeTimeoutError(err, "waiting for ovn fip %s to disappear", name)
 }
 
-func MakeOvnFip(name, ovnEip, IpType, IpName string) *apiv1.OvnFip {
+func MakeOvnFip(name, ovnEip, ipType, ipName string) *apiv1.OvnFip {
 	fip := &apiv1.OvnFip{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
 		Spec: apiv1.OvnFipSpec{
 			OvnEip: ovnEip,
-			IpType: IpType,
-			IpName: IpName,
+			IpType: ipType,
+			IpName: ipName,
 		},
 	}
 	return fip

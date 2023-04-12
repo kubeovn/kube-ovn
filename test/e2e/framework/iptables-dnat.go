@@ -32,24 +32,24 @@ func (f *Framework) IptablesDnatClient() *IptablesDnatClient {
 }
 
 func (s *IptablesDnatClient) Get(name string) *apiv1.IptablesDnatRule {
-	snat, err := s.IptablesDnatRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	dnat, err := s.IptablesDnatRuleInterface.Get(context.TODO(), name, metav1.GetOptions{})
 	ExpectNoError(err)
-	return snat
+	return dnat
 }
 
 // Create creates a new iptables dnat according to the framework specifications
-func (c *IptablesDnatClient) Create(snat *apiv1.IptablesDnatRule) *apiv1.IptablesDnatRule {
-	snat, err := c.IptablesDnatRuleInterface.Create(context.TODO(), snat, metav1.CreateOptions{})
+func (c *IptablesDnatClient) Create(dnat *apiv1.IptablesDnatRule) *apiv1.IptablesDnatRule {
+	dnat, err := c.IptablesDnatRuleInterface.Create(context.TODO(), dnat, metav1.CreateOptions{})
 	ExpectNoError(err, "Error creating iptables dnat")
-	return snat.DeepCopy()
+	return dnat.DeepCopy()
 }
 
 // CreateSync creates a new iptables dnat according to the framework specifications, and waits for it to be ready.
-func (c *IptablesDnatClient) CreateSync(snat *apiv1.IptablesDnatRule) *apiv1.IptablesDnatRule {
-	snat = c.Create(snat)
-	ExpectTrue(c.WaitToBeReady(snat.Name, timeout))
+func (c *IptablesDnatClient) CreateSync(dnat *apiv1.IptablesDnatRule) *apiv1.IptablesDnatRule {
+	dnat = c.Create(dnat)
+	ExpectTrue(c.WaitToBeReady(dnat.Name, timeout))
 	// Get the newest iptables dnat after it becomes ready
-	return c.Get(snat.Name).DeepCopy()
+	return c.Get(dnat.Name).DeepCopy()
 }
 
 // Patch patches the iptables dnat
@@ -59,11 +59,11 @@ func (c *IptablesDnatClient) Patch(original, modified *apiv1.IptablesDnatRule) *
 
 	var patchedIptablesDnatRule *apiv1.IptablesDnatRule
 	err = wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
-		snat, err := c.IptablesDnatRuleInterface.Patch(context.TODO(), original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
+		dnat, err := c.IptablesDnatRuleInterface.Patch(context.TODO(), original.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			return handleWaitingAPIError(err, false, "patch iptables dnat %q", original.Name)
 		}
-		patchedIptablesDnatRule = snat
+		patchedIptablesDnatRule = dnat
 		return true, nil
 	})
 	if err == nil {
@@ -81,11 +81,11 @@ func (c *IptablesDnatClient) Patch(original, modified *apiv1.IptablesDnatRule) *
 // PatchSync patches the iptables dnat and waits for the iptables dnat to be ready for `timeout`.
 // If the iptables dnat doesn't become ready before the timeout, it will fail the test.
 func (c *IptablesDnatClient) PatchSync(original, modified *apiv1.IptablesDnatRule, requiredNodes []string, timeout time.Duration) *apiv1.IptablesDnatRule {
-	snat := c.Patch(original, modified)
-	ExpectTrue(c.WaitToBeUpdated(snat, timeout))
-	ExpectTrue(c.WaitToBeReady(snat.Name, timeout))
+	dnat := c.Patch(original, modified)
+	ExpectTrue(c.WaitToBeUpdated(dnat, timeout))
+	ExpectTrue(c.WaitToBeReady(dnat.Name, timeout))
 	// Get the newest iptables dnat after it becomes ready
-	return c.Get(snat.Name).DeepCopy()
+	return c.Get(dnat.Name).DeepCopy()
 }
 
 // Delete deletes a iptables dnat if the iptables dnat exists
@@ -116,16 +116,16 @@ func (c *IptablesDnatClient) WaitToBeReady(name string, timeout time.Duration) b
 }
 
 // WaitToBeUpdated returns whether the iptables dnat is updated within timeout.
-func (c *IptablesDnatClient) WaitToBeUpdated(snat *apiv1.IptablesDnatRule, timeout time.Duration) bool {
-	Logf("Waiting up to %v for iptables dnat %s to be updated", timeout, snat.Name)
-	rv, _ := big.NewInt(0).SetString(snat.ResourceVersion, 10)
+func (c *IptablesDnatClient) WaitToBeUpdated(dnat *apiv1.IptablesDnatRule, timeout time.Duration) bool {
+	Logf("Waiting up to %v for iptables dnat %s to be updated", timeout, dnat.Name)
+	rv, _ := big.NewInt(0).SetString(dnat.ResourceVersion, 10)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		s := c.Get(snat.Name)
+		s := c.Get(dnat.Name)
 		if current, _ := big.NewInt(0).SetString(s.ResourceVersion, 10); current.Cmp(rv) > 0 {
 			return true
 		}
 	}
-	Logf("iptables dnat %s was not updated within %v", snat.Name, timeout)
+	Logf("iptables dnat %s was not updated within %v", dnat.Name, timeout)
 	return false
 }
 
@@ -150,7 +150,7 @@ func (c *IptablesDnatClient) WaitToDisappear(name string, interval, timeout time
 }
 
 func MakeIptablesDnatRule(name, eip, externalPort, protocol, internalIP, internalPort string) *apiv1.IptablesDnatRule {
-	snat := &apiv1.IptablesDnatRule{
+	dnat := &apiv1.IptablesDnatRule{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
@@ -162,5 +162,5 @@ func MakeIptablesDnatRule(name, eip, externalPort, protocol, internalIP, interna
 			InternalPort: internalPort,
 		},
 	}
-	return snat
+	return dnat
 }

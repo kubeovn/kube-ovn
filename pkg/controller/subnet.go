@@ -313,8 +313,6 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 	if subnet.Spec.Vpc == "" {
 		if subnet.Spec.Provider != "" && !strings.HasSuffix(subnet.Spec.Provider, util.OvnProvider) {
 			klog.Infof("subnet %s is not ovn subnet, no vpc", subnet.Name)
-			changed = true
-			subnet.Spec.Vpc = ""
 		} else {
 			changed = true
 			subnet.Spec.Vpc = util.DefaultVpc
@@ -332,20 +330,12 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		}
 	}
 
-	if !subnet.Spec.EnableLb && subnet.Name != c.config.NodeSwitch {
-		if subnet.Spec.Provider != "" && !strings.HasSuffix(subnet.Spec.Provider, util.OvnProvider) {
-			klog.Infof("subnet %s is non ovn subnet, disable switch lb", subnet.Name)
+	if subnet.Spec.EnableLb {
+		// set non ovn subnet, join subnet Spec.EnableLb to false
+		if !isOvnSubnet(subnet) || subnet.Name == c.config.NodeSwitch {
 			changed = true
 			subnet.Spec.EnableLb = false
-		} else {
-			changed = true
-			subnet.Spec.EnableLb = c.config.EnableLb
 		}
-	}
-	// set join subnet Spec.EnableLb to nil
-	if subnet.Spec.EnableLb && subnet.Name == c.config.NodeSwitch {
-		changed = true
-		subnet.Spec.EnableLb = false
 	}
 
 	klog.Infof("format subnet %v, changed %v", subnet.Name, changed)

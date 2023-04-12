@@ -151,7 +151,7 @@ func (c *OvnSnatRuleClient) WaitToDisappear(name string, interval, timeout time.
 	return maybeTimeoutError(err, "waiting for ovn snat %s to disappear", name)
 }
 
-func MakeOvnSnatRule(name, ovnEip, vpcSubnet, IpName string) *apiv1.OvnSnatRule {
+func MakeOvnSnatRule(name, ovnEip, vpcSubnet, ipName string) *apiv1.OvnSnatRule {
 	snat := &apiv1.OvnSnatRule{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -159,7 +159,7 @@ func MakeOvnSnatRule(name, ovnEip, vpcSubnet, IpName string) *apiv1.OvnSnatRule 
 		Spec: apiv1.OvnSnatRuleSpec{
 			OvnEip:    ovnEip,
 			VpcSubnet: vpcSubnet,
-			IpName:    IpName,
+			IpName:    ipName,
 		},
 	}
 	return snat
