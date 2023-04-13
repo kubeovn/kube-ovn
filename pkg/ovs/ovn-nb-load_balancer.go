@@ -138,6 +138,7 @@ func (c *ovnClient) SetLoadBalancerAffinityTimeout(lbName string, timeout int) e
 		options[k] = v
 	}
 	options["affinity_timeout"] = value
+	lb.Options = options
 	if err := c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
 		return fmt.Errorf("failed to set affinity timeout of lb %s to %d: %v", lbName, timeout, err)
 	}
