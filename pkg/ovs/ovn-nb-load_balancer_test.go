@@ -2,6 +2,7 @@ package ovs
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -368,5 +369,46 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerOp() {
 		ops, err := ovnClient.DeleteLoadBalancerOp(lbName + "-non-existent")
 		require.NoError(t, err)
 		require.Len(t, ops, 0)
+	})
+}
+
+func (suite *OvnClientTestSuite) testSetLoadBalancerAffinityTimeout() {
+	t := suite.T()
+	t.Parallel()
+
+	ovnClient := suite.ovnClient
+	lbName := "test-set-lb-affinity-timeout"
+
+	err := ovnClient.CreateLoadBalancer(lbName, "tcp", "")
+	require.NoError(t, err)
+
+	lb, err := ovnClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+
+	oldOptions := make(map[string]string, 1)
+	oldOptions["stateless"] = "true"
+	lb.Options = oldOptions
+	err = ovnClient.UpdateLoadBalancer(lb, &lb.Options)
+	require.NoError(t, err)
+
+	expectedTimeout := 30
+	t.Run("add new affinity timeout to load balancer options", func(t *testing.T) {
+		err := ovnClient.SetLoadBalancerAffinityTimeout(lbName, expectedTimeout)
+		require.NoError(t, err)
+
+		lb, err := ovnClient.GetLoadBalancer(lbName, false)
+		require.NoError(t, err)
+
+		require.Equal(t, lb.Options["affinity_timeout"], strconv.Itoa(expectedTimeout))
+	})
+
+	t.Run("add new affinityTimeout to load balancer options repeatedly", func(t *testing.T) {
+		err := ovnClient.SetLoadBalancerAffinityTimeout(lbName, expectedTimeout)
+		require.NoError(t, err)
+
+		lb, err := ovnClient.GetLoadBalancer(lbName, false)
+		require.NoError(t, err)
+
+		require.Equal(t, lb.Options["affinity_timeout"], strconv.Itoa(expectedTimeout))
 	})
 }
