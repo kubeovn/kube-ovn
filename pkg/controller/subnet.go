@@ -566,13 +566,20 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		c.patchSubnetStatus(subnet, "ValidateLogicalSwitchSuccess", "")
 	}
 
-	if subnet.Spec.Vpc == "" && !isOvnSubnet(subnet) {
+	if !isOvnSubnet(subnet) {
 		// subnet provider is not ovn, and vpc is empty, should not reconcile
 		c.patchSubnetStatus(subnet, "SetNonOvnSubnetSuccess", "")
 
 		subnet.Status.EnsureStandardConditions()
 		klog.Infof("non ovn subnet %s is ready", subnet.Name)
 		return nil
+	}
+
+	if subnet.Spec.Vpc == "" {
+		// ovn subnet, but vpc is empty, should not reconcile
+		err := fmt.Errorf("subnet %s has no vpc, should not reconcile", subnet.Name)
+		klog.Error(err)
+		return err
 	}
 
 	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
@@ -613,10 +620,6 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	if err := c.reconcileU2OInterconnectionIP(subnet); err != nil {
 		klog.Errorf("failed to reconcile underlay subnet %s to overlay interconnection %v", subnet.Name, err)
 		return err
-	}
-
-	if !isOvnSubnet(subnet) {
-		return nil
 	}
 
 	subnetList, err := c.subnetsLister.List(labels.Everything())

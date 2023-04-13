@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -111,7 +112,8 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 		excludeIPs := make([]string, 0, len(dockerNetwork.Containers))
 		for _, container := range dockerNetwork.Containers {
 			if container.IPv4Address != "" {
-				excludeIPs = append(excludeIPs, container.IPv4Address)
+				ip, _, _ := net.ParseCIDR(container.IPv4Address)
+				excludeIPs = append(excludeIPs, ip.String())
 			}
 		}
 		subnet := framework.MakeSubnet(subnetName, "", cidr, gateway, "", "", excludeIPs, nil, []string{namespaceName})
@@ -152,6 +154,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 			if err == nil {
 				return true, nil
 			}
+			ginkgo.By("deployment " + deploymentName + " still not ready")
 			if k8serrors.IsNotFound(err) {
 				return false, nil
 			}

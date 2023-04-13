@@ -23,9 +23,10 @@ func vpcLbDeploymentName(vpc string) string {
 func (c *Controller) createVpcLb(vpc *kubeovnv1.Vpc) error {
 	deployment, err := c.genVpcLbDeployment(vpc)
 	if deployment == nil || err != nil {
+		klog.Errorf("failed to generate vpc lb deployment for %s: %v", vpc.Name, err)
 		return err
 	}
-
+	klog.Infof("create vpc lb deployment %s", deployment.Name)
 	_, err = c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Get(context.Background(), deployment.Name, metav1.GetOptions{})
 	if err == nil {
 		return nil
@@ -45,6 +46,7 @@ func (c *Controller) createVpcLb(vpc *kubeovnv1.Vpc) error {
 
 func (c *Controller) deleteVpcLb(vpc *kubeovnv1.Vpc) error {
 	name := vpcLbDeploymentName(vpc.Name)
+	klog.Infof("delete vpc lb deployment for %s", name)
 	_, err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Get(context.Background(), name, metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -110,8 +112,8 @@ func (c *Controller) genVpcLbDeployment(vpc *kubeovnv1.Vpc) (*v1.Deployment, err
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 			Labels: map[string]string{
-				util.VpcAnnotation:   vpc.Name,
-				util.VpcLbAnnotation: "true",
+				util.VpcNameLabel: vpc.Name,
+				util.VpcLbLabel:   "true",
 			},
 		},
 		Spec: v1.DeploymentSpec{
