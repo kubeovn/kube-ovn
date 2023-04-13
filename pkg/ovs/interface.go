@@ -7,6 +7,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 type NbGlobal interface {
@@ -91,11 +92,12 @@ type PortGroup interface {
 }
 
 type ACL interface {
-	CreateIngressAcl(pgName, asIngressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort) error
-	CreateEgressAcl(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort) error
-	CreateGatewayAcl(pgName, gateway string) error
-	CreateNodeAcl(pgName, nodeIp string) error
+	CreateIngressAcl(pgName, asIngressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) error
+	CreateEgressAcl(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) error
+	CreateGatewayAcl(lsName, pgName, gateway string) error
+	CreateNodeAcl(pgName, nodeIpStr, joinIpStr string) error
 	CreateSgDenyAllAcl(sgName string) error
+	CreateSgBaseACL(sgName string, direction string) error
 	UpdateSgAcl(sg *kubeovnv1.SecurityGroup, direction string) error
 	SetAclLog(pgName string, logEnable, isIngress bool) error
 	SetLogicalSwitchPrivate(lsName, cidrBlock string, allowSubnets []string) error
