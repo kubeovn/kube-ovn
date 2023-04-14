@@ -428,7 +428,7 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 		}
 	}
 
-	if err := c.ovnClient.PortGroupAddPorts(sg.Status.PortGroup, ports...); err != nil {
+	if err = c.ovnClient.PortGroupSetPorts(sg.Status.PortGroup, ports); err != nil {
 		klog.Errorf("add ports to port group %s: %v", sg.Status.PortGroup, err)
 		return err
 	}

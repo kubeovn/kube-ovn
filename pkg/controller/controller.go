@@ -54,7 +54,6 @@ type Controller struct {
 
 	ovnLegacyClient *ovs.LegacyClient
 	ovnClient       ovs.OvnClient
-	ovnPgKeyMutex   *keymutex.KeyMutex
 
 	// ExternalGatewayType define external gateway type, centralized
 	ExternalGatewayType string
@@ -286,7 +285,6 @@ func NewController(config *Configuration) *Controller {
 		vpcs:            &sync.Map{},
 		podSubnetMap:    &sync.Map{},
 		ovnLegacyClient: ovs.NewLegacyClient(config.OvnNbAddr, config.OvnTimeout, config.OvnSbAddr, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
-		ovnPgKeyMutex:   keymutex.New(97),
 		ipam:            ovnipam.NewIPAM(),
 		namedPort:       NewNamedPort(),
 
