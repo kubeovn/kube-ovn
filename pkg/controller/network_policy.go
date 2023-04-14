@@ -195,11 +195,6 @@ func (c *Controller) handleUpdateNp(key string) error {
 	egressAllowAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.egress.allow", np.Name, np.Namespace), "-", ".", -1)
 	egressExceptAsNamePrefix := strings.Replace(fmt.Sprintf("%s.%s.egress.except", np.Name, np.Namespace), "-", ".", -1)
 
-	// delete existing pg to update acl
-	if err = c.ovnClient.DeletePortGroup(pgName); err != nil {
-		klog.Errorf("delete port group %s before networkpolicy update process: %v", pgName, err)
-	}
-
 	if err = c.ovnClient.CreatePortGroup(pgName, map[string]string{networkPolicyKey: np.Namespace + "/" + np.Name}); err != nil {
 		klog.Errorf("create port group for np %s: %v", key, err)
 		return err
@@ -212,8 +207,8 @@ func (c *Controller) handleUpdateNp(key string) error {
 		return err
 	}
 
-	if err := c.ovnClient.PortGroupAddPorts(pgName, ports...); err != nil {
-		klog.Errorf("add ports to port group %s: %v", pgName, err)
+	if err = c.ovnClient.PortGroupSetPorts(pgName, ports); err != nil {
+		klog.Errorf("failed to set ports of port group %s to %v: %v", pgName, ports, err)
 		return err
 	}
 
@@ -399,8 +394,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 
 	var egressAclCmd []string
-	exist, err = c.ovnClient.PortGroupExists(pgName)
-	if err != nil {
+	if exist, err = c.ovnClient.PortGroupExists(pgName); err != nil {
 		klog.Errorf("failed to query np %s port group, %v", key, err)
 		return err
 	}
