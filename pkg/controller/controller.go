@@ -209,6 +209,7 @@ type Controller struct {
 	npsSynced     cache.InformerSynced
 	updateNpQueue workqueue.RateLimitingInterface
 	deleteNpQueue workqueue.RateLimitingInterface
+	npKeyMutex    *keymutex.KeyMutex
 
 	sgsLister          kubeovnlister.SecurityGroupLister
 	sgSynced           cache.InformerSynced
@@ -541,6 +542,7 @@ func NewController(config *Configuration) *Controller {
 		controller.npsSynced = npInformer.Informer().HasSynced
 		controller.updateNpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateNp")
 		controller.deleteNpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteNp")
+		controller.npKeyMutex = keymutex.New(97)
 		if _, err = npInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    controller.enqueueAddNp,
 			UpdateFunc: controller.enqueueUpdateNp,

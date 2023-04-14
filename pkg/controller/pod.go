@@ -552,7 +552,7 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 	if len(needRoutePodNets) > 0 {
 		if c.config.EnableNP {
 			for _, np := range c.podMatchNetworkPolicies(pod) {
-				klog.V(3).Infof("enqueue update pod %s' network policy", key)
+				klog.V(3).Infof("enqueue update network policy %s for pod %s", np, key)
 				c.updateNpQueue.Add(np)
 			}
 		}

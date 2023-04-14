@@ -88,7 +88,7 @@ func (c *Controller) processNextUpdateNpWorkItem() bool {
 		}
 		if err := c.handleUpdateNp(key); err != nil {
 			c.updateNpQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+			return fmt.Errorf("error syncing network policy %s: %v, requeuing", key, err)
 		}
 		c.updateNpQueue.Forget(obj)
 		return nil
@@ -138,6 +138,11 @@ func (c *Controller) handleUpdateNp(key string) error {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
+
+	c.npKeyMutex.Lock(key)
+	defer c.npKeyMutex.Unlock(key)
+	klog.Infof("handle add/update network policy %s", key)
+
 	np, err := c.npsLister.NetworkPolicies(namespace).Get(name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -177,8 +182,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 
 	npName := np.Name
-	nameArray := []rune(np.Name)
-	if !unicode.IsLetter(nameArray[0]) {
+	if nameArray := []rune(np.Name); !unicode.IsLetter(nameArray[0]) {
 		npName = "np" + np.Name
 	}
 
@@ -537,6 +541,11 @@ func (c *Controller) handleDeleteNp(key string) error {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
+
+	c.npKeyMutex.Lock(key)
+	defer c.npKeyMutex.Unlock(key)
+	klog.Infof("handle delete network policy %s", key)
+
 	npName := name
 	nameArray := []rune(name)
 	if !unicode.IsLetter(nameArray[0]) {
