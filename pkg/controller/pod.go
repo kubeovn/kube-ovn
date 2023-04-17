@@ -552,7 +552,7 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 	if len(needRoutePodNets) > 0 {
 		if c.config.EnableNP {
 			for _, np := range c.podMatchNetworkPolicies(pod) {
-				klog.V(3).Infof("enqueue update pod %s' network policy", key)
+				klog.V(3).Infof("enqueue update network policy %s for pod %s", np, key)
 				c.updateNpQueue.Add(np)
 			}
 		}
@@ -742,12 +742,9 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 
 				// remove lsp from port group to make EIP/SNAT work
 				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-				c.ovnPgKeyMutex.Lock(pgName)
 				if err = c.ovnClient.PortGroupRemovePorts(pgName, portName); err != nil {
-					c.ovnPgKeyMutex.Unlock(pgName)
 					return err
 				}
-				c.ovnPgKeyMutex.Unlock(pgName)
 
 			} else {
 				if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType && pod.Annotations[util.NorthGatewayAnnotation] == "" {
@@ -764,15 +761,10 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 							}
 
 							portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-							c.ovnPgKeyMutex.Lock(pgName)
-
 							if err := c.ovnClient.PortGroupAddPorts(pgName, portName); err != nil {
-								c.ovnPgKeyMutex.Unlock(pgName)
 								klog.Errorf("add port to port group %s: %v", pgName, err)
 								return err
 							}
-
-							c.ovnPgKeyMutex.Unlock(pgName)
 
 							added = true
 							break

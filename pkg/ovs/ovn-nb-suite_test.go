@@ -330,6 +330,10 @@ func (suite *OvnClientTestSuite) Test_DeleteLoadBalancerOp() {
 	suite.testDeleteLoadBalancerOp()
 }
 
+func (suite *OvnClientTestSuite) Test_SetLoadBalancerAffinityTimeout() {
+	suite.testSetLoadBalancerAffinityTimeout()
+}
+
 /* port_group unit test */
 func (suite *OvnClientTestSuite) Test_CreatePortGroup() {
 	suite.testCreatePortGroup()

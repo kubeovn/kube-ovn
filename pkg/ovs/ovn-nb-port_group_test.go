@@ -74,7 +74,7 @@ func (suite *OvnClientTestSuite) testPortGroupResetPorts() {
 	require.NoError(t, err)
 	require.NotEmpty(t, pg.Ports)
 
-	err = ovnClient.PortGroupResetPorts(pgName)
+	err = ovnClient.PortGroupSetPorts(pgName, nil)
 	require.NoError(t, err)
 
 	pg, err = ovnClient.GetPortGroup(pgName, false)

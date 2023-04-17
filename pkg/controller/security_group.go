@@ -216,20 +216,9 @@ func (c *Controller) updateDenyAllSgPorts() error {
 	}
 	pgName := ovs.GetSgPortGroupName(util.DenyAllSecurityGroup)
 
-	// reset pg ports
-	if err := c.ovnClient.PortGroupResetPorts(pgName); err != nil {
+	klog.V(6).Infof("setting ports of port group %s to %v", pgName, addPorts)
+	if err = c.ovnClient.PortGroupSetPorts(pgName, addPorts); err != nil {
 		klog.Error(err)
-		return err
-	}
-
-	// add port
-	if len(addPorts) == 0 {
-		return nil
-	}
-
-	klog.V(6).Infof("add ports %v to port group %s", addPorts, pgName)
-	if err := c.ovnClient.PortGroupAddPorts(pgName, addPorts...); err != nil {
-		klog.Errorf("add ports to port group %s: %v", pgName, err)
 		return err
 	}
 
@@ -439,7 +428,7 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 		}
 	}
 
-	if err := c.ovnClient.PortGroupAddPorts(sg.Status.PortGroup, ports...); err != nil {
+	if err = c.ovnClient.PortGroupSetPorts(sg.Status.PortGroup, ports); err != nil {
 		klog.Errorf("add ports to port group %s: %v", sg.Status.PortGroup, err)
 		return err
 	}
