@@ -1,3 +1,5 @@
+E2E_BUILD_FLAGS = -ldflags "-w -s"
+
 KUBECONFIG = $(shell echo $${KUBECONFIG:-$(HOME)/.kube/config})
 
 E2E_BRANCH := $(shell echo $${E2E_BRANCH:-master})
@@ -55,18 +57,18 @@ e2e: kube-ovn-conformance-e2e
 
 .PHONY: e2e-build
 e2e-build:
-	ginkgo build -ldflags "-w -s" ./test/e2e/k8s-network
-	ginkgo build -ldflags "-w -s" ./test/e2e/kube-ovn
-	ginkgo build -ldflags "-w -s" ./test/e2e/ovn-ic
-	ginkgo build -ldflags "-w -s" ./test/e2e/lb-svc
-	ginkgo build -ldflags "-w -s" ./test/e2e/ovn-eip
-	ginkgo build -ldflags "-w -s" ./test/e2e/security
-	ginkgo build -ldflags "-w -s" ./test/e2e/kubevirt
-	ginkgo build -ldflags "-w -s" ./test/e2e/webhook
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/k8s-network
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/kube-ovn
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/ovn-ic
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/lb-svc
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/ovn-eip
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/security
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/kubevirt
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/webhook
 
 .PHONY: k8s-conformance-e2e
 k8s-conformance-e2e:
-	ginkgo build ./test/e2e/k8s-network
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/k8s-network
 	ginkgo $(GINKGO_PARALLEL_OPT) --randomize-all --always-emit-ginkgo-writer --timeout=1h \
 		$(call ginkgo_option,focus,$(K8S_CONFORMANCE_E2E_FOCUS)) \
 		$(call ginkgo_option,skip,$(K8S_CONFORMANCE_E2E_SKIP)) \
@@ -74,14 +76,14 @@ k8s-conformance-e2e:
 
 .PHONY: k8s-netpol-legacy-e2e
 k8s-netpol-legacy-e2e:
-	ginkgo build ./test/e2e/k8s-network
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/k8s-network
 	ginkgo -p --randomize-all --always-emit-ginkgo-writer --timeout=2h \
 		$(call ginkgo_option,focus,$(K8S_NETPOL_LEGACY_E2E_FOCUS)) \
 		./test/e2e/k8s-network/k8s-network.test
 
 .PHONY: k8s-netpol-e2e
 k8s-netpol-e2e:
-	ginkgo build ./test/e2e/k8s-network
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/k8s-network
 	ginkgo -p --randomize-all --always-emit-ginkgo-writer --timeout=2h \
 		$(call ginkgo_option,focus,$(K8S_NETPOL_E2E_FOCUS)) \
 		$(call ginkgo_option,skip,$(K8S_NETPOL_E2E_SKIP)) \
@@ -103,7 +105,7 @@ cyclonus-netpol-e2e:
 
 .PHONY: kube-ovn-conformance-e2e
 kube-ovn-conformance-e2e:
-	ginkgo build ./test/e2e/kube-ovn
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/kube-ovn
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
@@ -112,7 +114,7 @@ kube-ovn-conformance-e2e:
 
 .PHONY: kube-ovn-ic-conformance-e2e
 kube-ovn-ic-conformance-e2e:
-	ginkgo build ./test/e2e/ovn-ic
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/ovn-ic
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
@@ -127,7 +129,7 @@ kube-ovn-submariner-conformance-e2e:
 
 .PHONY: kube-ovn-lb-svc-conformance-e2e
 kube-ovn-lb-svc-conformance-e2e:
-	ginkgo build ./test/e2e/lb-svc
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/lb-svc
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
@@ -136,7 +138,7 @@ kube-ovn-lb-svc-conformance-e2e:
 
 .PHONY: kube-ovn-eip-conformance-e2e
 kube-ovn-eip-conformance-e2e:
-	ginkgo build ./test/e2e/ovn-eip
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/ovn-eip
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
@@ -145,7 +147,7 @@ kube-ovn-eip-conformance-e2e:
 
 .PHONY: kube-ovn-security-e2e
 kube-ovn-security-e2e:
-	ginkgo build ./test/e2e/security
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/security
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
@@ -154,7 +156,7 @@ kube-ovn-security-e2e:
 
 .PHONY: kube-ovn-kubevirt-e2e
 kube-ovn-kubevirt-e2e:
-	ginkgo build ./test/e2e/kubevirt
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/kubevirt
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
@@ -163,7 +165,7 @@ kube-ovn-kubevirt-e2e:
 
 .PHONY: kube-ovn-webhook-e2e
 kube-ovn-webhook-e2e:
-	ginkgo build ./test/e2e/webhook
+	ginkgo build $(E2E_BUILD_FLAGS) ./test/e2e/webhook
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \

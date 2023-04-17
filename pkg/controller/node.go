@@ -963,7 +963,7 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 			return err
 		}
 
-		if err := c.ovnClient.PortGroupAddPorts(pgName, nodePorts...); err != nil {
+		if err = c.ovnClient.PortGroupSetPorts(pgName, nodePorts); err != nil {
 			klog.Errorf("add ports to port group %s: %v", pgName, err)
 			return err
 		}

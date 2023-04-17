@@ -83,7 +83,7 @@ type PortGroup interface {
 	CreatePortGroup(pgName string, externalIDs map[string]string) error
 	PortGroupAddPorts(pgName string, lspNames ...string) error
 	PortGroupRemovePorts(pgName string, lspNames ...string) error
-	PortGroupResetPorts(pgName string) error
+	PortGroupSetPorts(pgName string, ports []string) error
 	DeletePortGroup(pgName string) error
 	ListPortGroups(externalIDs map[string]string) ([]ovnnb.PortGroup, error)
 	GetPortGroup(pgName string, ignoreNotFound bool) (*ovnnb.PortGroup, error)

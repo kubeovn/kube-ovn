@@ -1062,18 +1062,18 @@ func (mr *MockPortGroupMockRecorder) PortGroupRemovePorts(pgName interface{}, ls
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PortGroupRemovePorts", reflect.TypeOf((*MockPortGroup)(nil).PortGroupRemovePorts), varargs...)
 }
 
-// PortGroupResetPorts mocks base method.
-func (m *MockPortGroup) PortGroupResetPorts(pgName string) error {
+// PortGroupSetPorts mocks base method.
+func (m *MockPortGroup) PortGroupSetPorts(pgName string, ports []string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PortGroupResetPorts", pgName)
+	ret := m.ctrl.Call(m, "PortGroupSetPorts", pgName, ports)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// PortGroupResetPorts indicates an expected call of PortGroupResetPorts.
-func (mr *MockPortGroupMockRecorder) PortGroupResetPorts(pgName interface{}) *gomock.Call {
+// PortGroupSetPorts indicates an expected call of PortGroupSetPorts.
+func (mr *MockPortGroupMockRecorder) PortGroupSetPorts(pgName, ports interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PortGroupResetPorts", reflect.TypeOf((*MockPortGroup)(nil).PortGroupResetPorts), pgName)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PortGroupSetPorts", reflect.TypeOf((*MockPortGroup)(nil).PortGroupSetPorts), pgName, ports)
 }
 
 // MockACL is a mock of ACL interface.
@@ -2986,18 +2986,18 @@ func (mr *MockOvnClientMockRecorder) PortGroupRemovePorts(pgName interface{}, ls
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PortGroupRemovePorts", reflect.TypeOf((*MockOvnClient)(nil).PortGroupRemovePorts), varargs...)
 }
 
-// PortGroupResetPorts mocks base method.
-func (m *MockOvnClient) PortGroupResetPorts(pgName string) error {
+// PortGroupSetPorts mocks base method.
+func (m *MockOvnClient) PortGroupSetPorts(pgName string, ports []string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PortGroupResetPorts", pgName)
+	ret := m.ctrl.Call(m, "PortGroupSetPorts", pgName, ports)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// PortGroupResetPorts indicates an expected call of PortGroupResetPorts.
-func (mr *MockOvnClientMockRecorder) PortGroupResetPorts(pgName interface{}) *gomock.Call {
+// PortGroupSetPorts indicates an expected call of PortGroupSetPorts.
+func (mr *MockOvnClientMockRecorder) PortGroupSetPorts(pgName, ports interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PortGroupResetPorts", reflect.TypeOf((*MockOvnClient)(nil).PortGroupResetPorts), pgName)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PortGroupSetPorts", reflect.TypeOf((*MockOvnClient)(nil).PortGroupSetPorts), pgName, ports)
 }
 
 // RemoveLogicalPatchPort mocks base method.

@@ -1471,8 +1471,6 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 				}
 
 				pgName := getOverlaySubnetsPortGroupName(subnet.Name, pod.Spec.NodeName)
-				c.ovnPgKeyMutex.Lock(pgName)
-
 				portsToAdd := make([]string, 0, len(podPorts))
 				for _, port := range podPorts {
 					exist, err := c.ovnClient.LogicalSwitchPortExists(port)
@@ -1488,12 +1486,10 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 					portsToAdd = append(portsToAdd, port)
 				}
 
-				if err := c.ovnClient.PortGroupAddPorts(pgName, portsToAdd...); err != nil {
+				if err = c.ovnClient.PortGroupAddPorts(pgName, portsToAdd...); err != nil {
 					klog.Errorf("add ports to port group %s: %v", pgName, err)
 					return err
 				}
-
-				c.ovnPgKeyMutex.Unlock(pgName)
 			}
 			return nil
 		} else {

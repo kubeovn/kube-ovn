@@ -54,7 +54,6 @@ type Controller struct {
 
 	ovnLegacyClient *ovs.LegacyClient
 	ovnClient       ovs.OvnClient
-	ovnPgKeyMutex   *keymutex.KeyMutex
 
 	// ExternalGatewayType define external gateway type, centralized
 	ExternalGatewayType string
@@ -209,6 +208,7 @@ type Controller struct {
 	npsSynced     cache.InformerSynced
 	updateNpQueue workqueue.RateLimitingInterface
 	deleteNpQueue workqueue.RateLimitingInterface
+	npKeyMutex    *keymutex.KeyMutex
 
 	sgsLister          kubeovnlister.SecurityGroupLister
 	sgSynced           cache.InformerSynced
@@ -285,7 +285,6 @@ func NewController(config *Configuration) *Controller {
 		vpcs:            &sync.Map{},
 		podSubnetMap:    &sync.Map{},
 		ovnLegacyClient: ovs.NewLegacyClient(config.OvnNbAddr, config.OvnTimeout, config.OvnSbAddr, config.ClusterRouter, config.ClusterTcpLoadBalancer, config.ClusterUdpLoadBalancer, config.ClusterTcpSessionLoadBalancer, config.ClusterUdpSessionLoadBalancer, config.NodeSwitch, config.NodeSwitchCIDR),
-		ovnPgKeyMutex:   keymutex.New(97),
 		ipam:            ovnipam.NewIPAM(),
 		namedPort:       NewNamedPort(),
 
@@ -541,6 +540,7 @@ func NewController(config *Configuration) *Controller {
 		controller.npsSynced = npInformer.Informer().HasSynced
 		controller.updateNpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateNp")
 		controller.deleteNpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteNp")
+		controller.npKeyMutex = keymutex.New(97)
 		if _, err = npInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    controller.enqueueAddNp,
 			UpdateFunc: controller.enqueueUpdateNp,
