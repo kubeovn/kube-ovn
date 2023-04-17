@@ -1478,7 +1478,7 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 						return err
 					}
 
-					if exist {
+					if !exist {
 						klog.Errorf("lsp does not exist for pod %v, please delete the pod and retry", port)
 						continue
 					}
