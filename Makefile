@@ -591,6 +591,13 @@ kind-install-multus:
 	kubectl apply -f "$(MULTUS_YAML)"
 	kubectl -n kube-system rollout status ds kube-multus-ds
 
+.PHONY: kind-install-vpc-nat-gw
+kind-install-vpc-nat-gw: kind-load-image kind-untaint-control-plane
+	$(call kind_load_image,kube-ovn,$(VPC_NAT_GW_IMG))
+	@$(MAKE) ENABLE_NAT_GW=true CNI_CONFIG_PRIORITY=10 kind-install
+	@$(MAKE) kind-install-multus
+	kubectl apply -f yamls/vpc-nat-gw-attachment.yaml
+
 .PHONY: kind-install-kubevirt
 kind-install-kubevirt: kind-load-image kind-untaint-control-plane
 	$(call kind_load_image,kube-ovn,$(KUBEVIRT_OPERATOR_IMAGE),1)

@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	dockertypes "github.com/docker/docker/api/types"
-	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	attachnetclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 	"github.com/onsi/ginkgo/v2"
 	clientset "k8s.io/client-go/kubernetes"
@@ -24,10 +23,8 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
-	"github.com/kubeovn/kube-ovn/test/e2e/framework/iproute"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/kind"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -36,25 +33,13 @@ const vpcNatGWConfigMapName = "ovn-vpc-nat-gw-config"
 const networkAttachDefName = "ovn-vpc-external-network"
 const externalSubnetProvider = "ovn-vpc-external-network.kube-system"
 
-func makeNetworkAttachmentDefinition(name, config string) *nadv1.NetworkAttachmentDefinition {
-	netAttachDef := nadv1.NetworkAttachmentDefinition{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
-		Spec: nadv1.NetworkAttachmentDefinitionSpec{Config: config},
-	}
-	return &netAttachDef
-}
-
 var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 	f := framework.NewDefaultFramework("iptables-vpc-nat-gw")
 
 	var skip bool
 	var cs clientset.Interface
 	var attachNetClient attachnetclientset.Interface
-	var nodeNames []string
 	var clusterName, vpcName, vpcNatGwName, overlaySubnetName string
-	var linkMap map[string]*iproute.Link
 	var vpcClient *framework.VpcClient
 	var vpcNatGwClient *framework.VpcNatGatewayClient
 	var subnetClient *framework.SubnetClient
@@ -138,24 +123,26 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		nodes, err = kind.ListNodes(clusterName, "")
 		framework.ExpectNoError(err, "getting nodes in kind cluster")
 
-		linkMap = make(map[string]*iproute.Link, len(nodes))
-		nodeNames = make([]string, 0, len(nodes))
-
+		ginkgo.By("Validating node links")
+		var eth0Exist, eth1Exist bool
 		for _, node := range nodes {
 			links, err := node.ListLinks()
 			framework.ExpectNoError(err, "failed to list links on node %s: %v", node.Name(), err)
 
 			for _, link := range links {
-				if link.Address == node.NetworkSettings.Networks[dockerNetworkName].MacAddress {
-					linkMap[node.ID] = &link
-					break
+				ginkgo.By("exist node nic " + link.IfName)
+				if link.IfName == "eth0" {
+					eth0Exist = true
+				}
+				if link.IfName == "eth1" {
+					eth1Exist = true
 				}
 			}
-			framework.ExpectHaveKey(linkMap, node.ID)
-			linkMap[node.Name()] = linkMap[node.ID]
-			nodeNames = append(nodeNames, node.Name())
+			framework.ExpectTrue(eth0Exist)
+			// nat gw pod use eth1 in this case
+			// retest this case should rebuild kind cluster
+			framework.ExpectTrue(eth1Exist)
 		}
-
 	})
 
 	ginkgo.AfterEach(func() {
@@ -194,27 +181,11 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		_, err = e2enode.GetReadySchedulableNodes(cs)
 		framework.ExpectNoError(err)
 
-		ginkgo.By("Creating network attachment fefinition " + networkAttachDefName)
-		nadConfig := `{
-			"cniVersion": "0.3.0",
-			"type": "macvlan",
-			"master": "eth1",
-			"mode": "bridge",
-			"ipam": {
-			  "type": "kube-ovn",
-			  "server_socket": "/run/openvswitch/kube-ovn-daemon.sock",
-			  "provider": "ovn-vpc-external-network.kube-system"
-			}
-		  }`
-
+		ginkgo.By("Getting network attachment fefinition " + networkAttachDefName)
 		networkClient := attachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions("kube-system")
-		nad := makeNetworkAttachmentDefinition(networkAttachDefName, nadConfig)
-		_, err = networkClient.Create(context.Background(), nad, metav1.CreateOptions{})
-		framework.ExpectNoError(err, "failed to create")
-
-		nad, err = networkClient.Get(context.Background(), networkAttachDefName, metav1.GetOptions{})
-		ginkgo.By("Got network attachment fefinition " + nad.Name)
+		nad, err := networkClient.Get(context.Background(), networkAttachDefName, metav1.GetOptions{})
 		framework.ExpectNoError(err, "failed to get")
+		ginkgo.By("Got network attachment fefinition " + nad.Name)
 
 		ginkgo.By("Creating underlay macvlan subnet " + networkAttachDefName)
 		cidr := make([]string, 0, 2)
@@ -245,19 +216,9 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		macvlanSubnet := framework.MakeSubnet(networkAttachDefName, "", strings.Join(cidr, ","), strings.Join(gateway, ","), "", externalSubnetProvider, excludeIPs, nil, nil)
 		_ = subnetClient.CreateSync(macvlanSubnet)
 
-		ginkgo.By("Creating config map " + vpcNatGWConfigMapName)
-		cmData := map[string]string{
-			"enable-vpc-nat-gw": "true",
-		}
-		configMap := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      vpcNatGWConfigMapName,
-				Namespace: "kube-system",
-			},
-			Data: cmData,
-		}
-		_, err = cs.CoreV1().ConfigMaps("kube-system").Create(context.Background(), configMap, metav1.CreateOptions{})
-		framework.ExpectNoError(err, "failed to create ConfigMap")
+		ginkgo.By("Getting config map " + vpcNatGWConfigMapName)
+		_, err = cs.CoreV1().ConfigMaps("kube-system").Get(context.Background(), vpcNatGWConfigMapName, metav1.GetOptions{})
+		framework.ExpectNoError(err, "failed to get ConfigMap")
 
 		ginkgo.By("Creating custom vpc")
 		overlaySubnetV4Cidr := "192.168.0.0/24"
