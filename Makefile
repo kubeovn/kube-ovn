@@ -386,7 +386,7 @@ kind-install-chart: kind-load-image kind-untaint-control-plane
 	kubectl label node -lnode-role.kubernetes.io/control-plane kube-ovn/role=master --overwrite
 	kubectl label node -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel --overwrite
 	ips=$$(kubectl get node -lkube-ovn/role=master --no-headers -o wide | awk '{print $$6}') && \
-	helm install kubeovn ./kubeovn-helm \
+	helm install kubeovn ./charts \
 		--set global.images.kubeovn.tag=$(VERSION) \
 		--set replicaCount=$$(echo $$ips | awk '{print NF}') \
 		--set MASTER_NODES="$$(echo $$ips | tr \\n ',' | sed -e 's/,$$//' -e 's/,/\\,/g')"
@@ -399,7 +399,7 @@ kind-install-chart: kind-load-image kind-untaint-control-plane
 .PHONY: kind-upgrade-chart
 kind-upgrade-chart: kind-load-image
 	$(eval OVN_DB_IPS = $(shell kubectl get no -lkube-ovn/role=master --no-headers -o wide | awk '{print $$6}' | tr \\n ',' | sed -e 's/,$$//' -e 's/,/\\,/g'))
-	helm upgrade kubeovn ./kubeovn-helm \
+	helm upgrade kubeovn ./charts \
 		--set global.images.kubeovn.tag=$(VERSION) \
 		--set replicaCount=$$(echo $(OVN_DB_IPS) | awk -F ',' '{print NF}') \
 		--set MASTER_NODES='$(OVN_DB_IPS)' \
