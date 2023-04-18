@@ -1011,8 +1011,8 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 					c.ovnPgKeyMutex.Unlock(pgName)
 					return err
 				}
-				c.ovnPgKeyMutex.Unlock(pgName)
 			}
+			c.ovnPgKeyMutex.Unlock(pgName)
 		}
 
 		if networkPolicyExists {
