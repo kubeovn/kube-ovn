@@ -433,6 +433,9 @@ func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason string, e
 
 func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	var err error
+	c.subnetStatusKeyMutex.Lock(key)
+	defer c.subnetStatusKeyMutex.Unlock(key)
+
 	cachedSubnet, err := c.subnetsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
