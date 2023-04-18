@@ -1356,8 +1356,8 @@ jobs:
       - name: Install Kube-OVN
         run: make kind-install
 
-      - name: Install Multus
-        run: make kind-install-multus
+      - name: Install vpc-nat-gw
+        run: make kind-install-vpc-nat-gw
 
       - name: Run E2E
         working-directory: ${{ env.E2E_DIR }}
