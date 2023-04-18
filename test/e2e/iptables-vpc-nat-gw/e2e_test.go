@@ -185,7 +185,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		networkClient := attachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions("kube-system")
 		nad, err := networkClient.Get(context.Background(), networkAttachDefName, metav1.GetOptions{})
 		framework.ExpectNoError(err, "failed to get")
-		ginkgo.By("Got network attachment fefinition " + nad.Name)
+		ginkgo.By("Got network attachment definition " + nad.Name)
 
 		ginkgo.By("Creating underlay macvlan subnet " + networkAttachDefName)
 		cidr := make([]string, 0, 2)
