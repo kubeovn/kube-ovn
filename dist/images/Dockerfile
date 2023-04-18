@@ -1,5 +1,5 @@
 # syntax = docker/dockerfile:experimental
-FROM kubeovn/kube-ovn-base:v1.10.10
+FROM kubeovn/kube-ovn-base:v1.10.11
 
 COPY *.sh /kube-ovn/
 COPY kubectl-ko /kube-ovn/kubectl-ko
