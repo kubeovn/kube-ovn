@@ -357,6 +357,7 @@ type VpcSpec struct {
 	VpcPeerings    []*VpcPeering  `json:"vpcPeerings,omitempty"`
 	EnableExternal bool           `json:"enableExternal,omitempty"`
 	EnableBfd      bool           `json:"enableBfd,omitempty"`
+	RouteTables    []*RouteTable  `json:"routeTables,omitempty"`
 }
 
 type VpcPeering struct {
@@ -377,6 +378,11 @@ type StaticRoute struct {
 	NextHopIP string      `json:"nextHopIP"`
 	ECMPMode  string      `json:"ecmpMode"`
 	BfdId     string      `json:"bfdId"`
+}
+
+type RouteTable struct {
+	Name   string         `json:"name"`
+	Routes []*StaticRoute `json:"routes"`
 }
 
 type PolicyRouteAction string
