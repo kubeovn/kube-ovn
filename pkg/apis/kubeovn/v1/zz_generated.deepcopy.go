@@ -1665,6 +1665,11 @@ func (in *SubnetSpec) DeepCopyInto(out *SubnetSpec) {
 		*out = make([]Acl, len(*in))
 		copy(*out, *in)
 	}
+	if in.EnableLb != nil {
+		in, out := &in.EnableLb, &out.EnableLb
+		*out = new(bool)
+		**out = **in
+	}
 	return
 }
 

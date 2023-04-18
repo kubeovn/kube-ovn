@@ -94,7 +94,9 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		oldSubnet.Spec.EnableIPv6RA != newSubnet.Spec.EnableIPv6RA ||
 		oldSubnet.Spec.IPv6RAConfigs != newSubnet.Spec.IPv6RAConfigs ||
 		oldSubnet.Spec.Protocol != newSubnet.Spec.Protocol ||
-		oldSubnet.Spec.EnableLb != newSubnet.Spec.EnableLb ||
+		(oldSubnet.Spec.EnableLb == nil && newSubnet.Spec.EnableLb != nil) ||
+		(oldSubnet.Spec.EnableLb != nil && newSubnet.Spec.EnableLb == nil) ||
+		(oldSubnet.Spec.EnableLb != nil && newSubnet.Spec.EnableLb != nil && *oldSubnet.Spec.EnableLb != *newSubnet.Spec.EnableLb) ||
 		oldSubnet.Spec.EnableEcmp != newSubnet.Spec.EnableEcmp ||
 		!reflect.DeepEqual(oldSubnet.Spec.Acls, newSubnet.Spec.Acls) ||
 		oldSubnet.Spec.U2OInterconnection != newSubnet.Spec.U2OInterconnection {
@@ -330,12 +332,14 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 		}
 	}
 
-	if subnet.Spec.EnableLb {
-		// set non ovn subnet, join subnet Spec.EnableLb to false
-		if !isOvnSubnet(subnet) || subnet.Name == c.config.NodeSwitch {
-			changed = true
-			subnet.Spec.EnableLb = false
-		}
+	if subnet.Spec.EnableLb == nil && subnet.Name != c.config.NodeSwitch {
+		changed = true
+		subnet.Spec.EnableLb = &c.config.EnableLb
+	}
+	// set join subnet Spec.EnableLb to nil
+	if subnet.Spec.EnableLb != nil && subnet.Name == c.config.NodeSwitch {
+		changed = true
+		subnet.Spec.EnableLb = nil
 	}
 
 	klog.Infof("format subnet %v, changed %v", subnet.Name, changed)
@@ -726,7 +730,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			vpc.Status.SctpLoadBalancer,
 			vpc.Status.SctpSessionLoadBalancer,
 		}
-		if subnet.Spec.EnableLb {
+		if subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb {
 			if err := c.ovnClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationInsert, lbs...); err != nil {
 				c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", err.Error())
 				return err

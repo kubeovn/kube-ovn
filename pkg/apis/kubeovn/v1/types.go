@@ -137,9 +137,9 @@ type SubnetSpec struct {
 
 	Acls []Acl `json:"acls,omitempty"`
 
-	U2OInterconnection bool `json:"u2oInterconnection,omitempty"`
-	EnableLb           bool `json:"enableLb,omitempty"`
-	EnableEcmp         bool `json:"enableEcmp,omitempty"`
+	U2OInterconnection bool  `json:"u2oInterconnection,omitempty"`
+	EnableLb           *bool `json:"enableLb,omitempty"`
+	EnableEcmp         bool  `json:"enableEcmp,omitempty"`
 }
 
 type Acl struct {
