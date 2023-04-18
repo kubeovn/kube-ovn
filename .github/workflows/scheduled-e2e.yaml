@@ -1353,7 +1353,10 @@ jobs:
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
-      - name: Install Multus and Kube-OVN
+      - name: Install Kube-OVN
+        run: make kind-install
+
+      - name: Install Multus
         run: make kind-install-multus
 
       - name: Run E2E
