@@ -10,6 +10,11 @@ updates:
     schedule:
       interval: "daily"
       time: "15:00"
+    ignore:
+      - dependency-name: "k8s.io/*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "sigs.k8s.io/*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
