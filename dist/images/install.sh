@@ -18,6 +18,7 @@ LS_DNAT_MOD_DL_DST=${LS_DNAT_MOD_DL_DST:-true}
 ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-true}
 CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
 ENABLE_LB_SVC=${ENABLE_LB_SVC:-false}
+ENABLE_NAT_GW=${ENABLE_NAT_GW:-false}
 ENABLE_KEEP_VM_IP=${ENABLE_KEEP_VM_IP:-true}
 # exchange link names of OVS bridge and the provider nic
 # in the default provider-network
@@ -2010,7 +2011,6 @@ spec:
                   not:
                     enum:
                       - int
-                      - external
             spec:
               type: object
               properties:
@@ -3473,6 +3473,14 @@ metadata:
       kube-ovn vpc-nat common config
 data:
   image: $REGISTRY/$VPC_NAT_IMAGE:$VERSION
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: ovn-vpc-nat-gw-config
+  namespace: kube-system
+data:
+  enable-vpc-nat-gw: "$ENABLE_NAT_GW"
 ---
 kind: Deployment
 apiVersion: apps/v1

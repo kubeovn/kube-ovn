@@ -833,12 +833,7 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 		vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
 		return err
 	}
-	cachedEip, err = c.ovnEipsLister.Get(lrpEipName)
-	if err != nil {
-		return err
-	}
-	if err = c.handleAddOvnEipFinalizer(cachedEip, util.OvnLrpUseEipFinalizer); err != nil {
-		klog.Errorf("failed to add finalizer for ovn eip, %v", err)
+	if _, err = c.ovnEipsLister.Get(lrpEipName); err != nil {
 		return err
 	}
 	if err := c.patchLrpOvnEipEnableBfdLabel(lrpEipName, vpc.Spec.EnableBfd); err != nil {
@@ -906,17 +901,6 @@ func (c *Controller) handleDelVpcExternal(key string) error {
 	}
 	if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
 		vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
-		return err
-	}
-	cachedEip, err := c.ovnEipsLister.Get(lrpName)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-	if err = c.handleDelOvnEipFinalizer(cachedEip, util.OvnLrpUseEipFinalizer); err != nil {
-		klog.Errorf("failed to del finalizer for ovn eip, %v", err)
 		return err
 	}
 	if err = c.config.KubeOvnClient.KubeovnV1().OvnEips().Delete(context.Background(), lrpName, metav1.DeleteOptions{}); err != nil {
