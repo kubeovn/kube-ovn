@@ -920,17 +920,23 @@ func (c *Controller) fetchPodsOnNode(nodeName string, pods []*v1.Pod) ([]string,
 	return ports, nil
 }
 
-func (c *Controller) checkPodsChangedOnNode(pgName string, nameIdMap map[string]string, pgPorts, ports []string) (bool, error) {
+func (c *Controller) checkPodsChangedOnNode(pgName string, nameIdMap map[string]string, pgPorts, ports []string) (bool, []string, error) {
+
+	toAddPorts := make([]string, 0)
 	for _, port := range ports {
 		if portId, ok := nameIdMap[port]; ok {
 			if !util.IsStringIn(portId, pgPorts) {
-				klog.Infof("pod on node changed, new added port %v should add to node port group %v", port, pgName)
-				return true, nil
+				toAddPorts = append(toAddPorts, port)
 			}
 		}
 	}
 
-	return false, nil
+	if len(toAddPorts) != 0 {
+		klog.Infof("pod on node changed, new added port %v should add to node port group %v", toAddPorts, pgName)
+		return true, toAddPorts, nil
+	}
+
+	return false, toAddPorts, nil
 }
 
 func (c *Controller) CheckNodePortGroup() {
@@ -974,14 +980,14 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 		// The port-group should already created when add node
 		pgName := strings.Replace(node.Annotations[util.PortNameAnnotation], "-", ".", -1)
 		nodeIP := node.Annotations[util.IpAddressAnnotation]
-
+		var toAddPorts []string
 		ports, err := c.fetchPodsOnNode(node.Name, pods)
 		if err != nil {
 			klog.Errorf("failed to fetch pods for node %v, %v", node.Name, err)
 			return err
 		}
 
-		changed, err := c.checkPodsChangedOnNode(pgName, nameIdMap, namePortsMap[pgName], ports)
+		changed, toAddPorts, err := c.checkPodsChangedOnNode(pgName, nameIdMap, namePortsMap[pgName], ports)
 		if err != nil {
 			klog.Errorf("failed to check pod status for node %v, %v", node.Name, err)
 			continue
@@ -998,10 +1004,15 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 		}
 		lastNpExists[node.Name] = networkPolicyExists
 
-		err = c.ovnLegacyClient.SetPortsToPortGroup(pgName, ports)
-		if err != nil {
-			klog.Errorf("failed to set port group for node %v, %v", node.Name, err)
-			return err
+		if len(toAddPorts) != 0 {
+			c.ovnPgKeyMutex.Lock(pgName)
+			for _, toAddPort := range toAddPorts {
+				if err = c.ovnClient.PortGroupAddPort(pgName, toAddPort); err != nil {
+					c.ovnPgKeyMutex.Unlock(pgName)
+					return err
+				}
+			}
+			c.ovnPgKeyMutex.Unlock(pgName)
 		}
 
 		if networkPolicyExists {
