@@ -12,9 +12,8 @@ updates:
       time: "15:00"
     ignore:
       - dependency-name: "k8s.io/*"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "sigs.k8s.io/*"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "github.com/google/cadvisor"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
