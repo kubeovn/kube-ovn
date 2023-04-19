@@ -12,7 +12,7 @@ require (
 	github.com/cnf/structhash v0.0.0-20201127153200-e1b16c1ebc08
 	github.com/containernetworking/cni v1.1.2
 	github.com/containernetworking/plugins v1.2.0
-	github.com/docker/docker v23.0.3+incompatible
+	github.com/docker/docker v23.0.4+incompatible
 	github.com/emicklei/go-restful/v3 v3.10.2
 	github.com/evanphx/json-patch/v5 v5.6.0
 	github.com/go-logr/stdr v1.2.2
@@ -46,7 +46,7 @@ require (
 	k8s.io/apiserver v0.26.4
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/klog/v2 v2.90.1
-	k8s.io/kubernetes v1.26.4
+	k8s.io/kubernetes v1.27.1
 	k8s.io/pod-security-admission v0.26.4
 	k8s.io/sample-controller v0.26.4
 	k8s.io/utils v0.0.0-20230313181309-38a27ef9d749
@@ -72,7 +72,6 @@ require (
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/antlr/antlr4/runtime/Go/antlr v1.4.10 // indirect
 	github.com/armon/circbuf v0.0.0-20190214190532-5111143e8da2 // indirect
-	github.com/aws/aws-sdk-go v1.44.116 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
@@ -117,7 +116,7 @@ require (
 	github.com/golang/glog v1.0.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
-	github.com/google/cadvisor v0.46.0 // indirect
+	github.com/google/cadvisor v0.47.1 // indirect
 	github.com/google/cel-go v0.13.0 // indirect
 	github.com/google/gnostic v0.6.9 // indirect
 	github.com/google/go-cmp v0.5.9 // indirect
@@ -134,7 +133,6 @@ require (
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/imdario/mergo v0.3.14 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/josharian/native v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
@@ -152,7 +150,6 @@ require (
 	github.com/mdlayher/ethernet v0.0.0-20220221185849-529eae5b6118 // indirect
 	github.com/mdlayher/packet v1.1.1 // indirect
 	github.com/mdlayher/socket v0.4.0 // indirect
-	github.com/mindprince/gonvml v0.0.0-20190828220739-9ebdce4bb989 // indirect
 	github.com/mistifyio/go-zfs v2.1.2-0.20190413222219-f784269be439+incompatible // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/moby/ipvs v1.1.0 // indirect
@@ -190,7 +187,6 @@ require (
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/viper v1.15.0 // indirect
 	github.com/stoewer/go-strcase v1.2.1 // indirect
-	github.com/stretchr/objx v0.5.0 // indirect
 	github.com/subosito/gotenv v1.4.2 // indirect
 	github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635 // indirect
 	github.com/vishvananda/netns v0.0.4 // indirect
@@ -237,11 +233,12 @@ require (
 	k8s.io/cluster-bootstrap v0.26.4 // indirect
 	k8s.io/component-base v0.26.4 // indirect
 	k8s.io/component-helpers v0.26.4 // indirect
+	k8s.io/controller-manager v0.26.4 // indirect
 	k8s.io/cri-api v0.26.4 // indirect
 	k8s.io/csi-translation-lib v0.26.4 // indirect
 	k8s.io/dynamic-resource-allocation v0.0.0 // indirect
 	k8s.io/kms v0.26.4 // indirect
-	k8s.io/kube-openapi v0.0.0-20221207184640-f3cff1453715 // indirect
+	k8s.io/kube-openapi v0.0.0-20230308215209-15aac26d736a // indirect
 	k8s.io/kube-proxy v0.26.4 // indirect
 	k8s.io/kube-scheduler v0.0.0 // indirect
 	k8s.io/kubectl v0.0.0 // indirect
