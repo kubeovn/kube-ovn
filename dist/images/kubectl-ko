@@ -1011,6 +1011,8 @@ log_linux(){
       kubectl exec $pod -n kube-system -- ip addr show > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
     elif [[ "$sub_component_param" == "ipset" ]]; then
       kubectl exec $pod -n kube-system -- ipset list > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+    elif [[ "$sub_component_param" == "tcp" ]]; then
+      kubectl exec $pod -n kube-system -- cat /proc/net/sockstat > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
     fi
   done
 }
@@ -1019,7 +1021,7 @@ log_linux(){
 log(){
   component="$1"
   components=("kube-ovn" "ovs" "ovn" "linux" "all")
-  linux_sub_components=("dmesg" "iptables-legacy" "iptables-nft" "route" "link" "neigh" "memory" "top" "sysctl" "netstat" "addr" "ipset")
+  linux_sub_components=("dmesg" "iptables-legacy" "iptables-nft" "route" "link" "neigh" "memory" "top" "sysctl" "netstat" "addr" "ipset" "tcp")
 
   if [[ ! " ${components[@]} " =~ " $component " ]]; then
       echo "invalid component $component"
