@@ -1438,49 +1438,54 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	}
 
 	// IPPool allocate
-	ipPool := strings.Split(pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)], ";")
-	for i, ip := range ipPool {
-		ipPool[i] = strings.TrimSpace(ip)
-	}
+	if pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)] != "" {
+		var ipPool []string
+		if strings.Contains(pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)], ";") {
+			ipPool = strings.Split(pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)], ";")
+		} else {
+			ipPool = strings.Split(pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)], ",")
+		}
+		for i, ip := range ipPool {
+			ipPool[i] = strings.TrimSpace(ip)
+		}
 
-	if !isStsPod {
-		for _, net := range nsNets {
-			for _, staticIPs := range ipPool {
-				ipProtocol := util.CheckProtocol(staticIPs)
-				for _, staticIP := range strings.Split(staticIPs, ",") {
-					if assignedPod, ok := c.ipam.IsIPAssignedToOtherPod(staticIP, net.Subnet.Name, key); ok {
+		if !isStsPod {
+			for _, net := range nsNets {
+				for _, staticIP := range ipPool {
+					var checkIP string
+					ipProtocol := util.CheckProtocol(staticIP)
+					if ipProtocol == kubeovnv1.ProtocolDual {
+						checkIP = strings.Split(staticIP, ",")[0]
+					} else {
+						checkIP = staticIP
+					}
+
+					if assignedPod, ok := c.ipam.IsIPAssignedToOtherPod(checkIP, net.Subnet.Name, key); ok {
 						klog.Errorf("static address %s for %s has been assigned to %s", staticIP, key, assignedPod)
 						continue
 					}
 
-					if ipProtocol != kubeovnv1.ProtocolDual {
-						v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, staticIP, macStr, net.Subnet.Name, net.AllowLiveMigration)
-						if err == nil {
-							return v4IP, v6IP, mac, net.Subnet, nil
-						}
-					}
-				}
-				if ipProtocol == kubeovnv1.ProtocolDual {
-					v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, staticIPs, macStr, net.Subnet.Name, net.AllowLiveMigration)
+					v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, staticIP, macStr, net.Subnet.Name, net.AllowLiveMigration)
 					if err == nil {
 						return v4IP, v6IP, mac, net.Subnet, nil
 					}
 				}
 			}
-		}
-		klog.Errorf("acquire address %s for %s failed, %v", pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)], key, err)
-	} else {
-		tempStrs := strings.Split(pod.Name, "-")
-		numStr := tempStrs[len(tempStrs)-1]
-		index, _ := strconv.Atoi(numStr)
-		if index < len(ipPool) {
-			for _, net := range nsNets {
-				v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipPool[index], macStr, net.Subnet.Name, net.AllowLiveMigration)
-				if err == nil {
-					return v4IP, v6IP, mac, net.Subnet, nil
+			klog.Errorf("acquire address %s for %s failed, %v", pod.Annotations[fmt.Sprintf(util.IpPoolAnnotationTemplate, podNet.ProviderName)], key, err)
+		} else {
+			tempStrs := strings.Split(pod.Name, "-")
+			numStr := tempStrs[len(tempStrs)-1]
+			index, _ := strconv.Atoi(numStr)
+
+			if index < len(ipPool) {
+				for _, net := range nsNets {
+					v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipPool[index], macStr, net.Subnet.Name, net.AllowLiveMigration)
+					if err == nil {
+						return v4IP, v6IP, mac, net.Subnet, nil
+					}
 				}
+				klog.Errorf("acquire address %s for %s failed, %v", ipPool[index], key, err)
 			}
-			klog.Errorf("acquire address %s for %s failed, %v", ipPool[index], key, err)
 		}
 	}
 	klog.Errorf("alloc address for %s failed, return NoAvailableAddress", key)

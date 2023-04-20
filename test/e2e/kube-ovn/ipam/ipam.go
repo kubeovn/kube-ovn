@@ -327,4 +327,72 @@ var _ = framework.Describe("[group:ipam]", func() {
 		err = cs.AppsV1().StatefulSets(namespaceName).Delete(context.TODO(), name, metav1.DeleteOptions{})
 		framework.ExpectNoError(err, "failed to delete statefulset "+name)
 	})
+
+	// separate ippool annotation by comma
+	framework.ConformanceIt("should allocate static ip for statefulset with ippool separated by comma", func() {
+		if f.ClusterIpFamily == "dual" {
+			ginkgo.Skip("Comma separated ippool is not supported for dual stack")
+		}
+
+		ippoolSep := ","
+		replicas := 3
+		ippool := framework.RandomIPPool(cidr, ippoolSep, replicas)
+		labels := map[string]string{"app": stsName}
+
+		ginkgo.By("Creating statefulset " + stsName + " with ippool " + ippool)
+		sts := framework.MakeStatefulSet(stsName, stsName, int32(replicas), labels, framework.PauseImage)
+		sts.Spec.Template.Annotations = map[string]string{util.IpPoolAnnotation: ippool}
+		sts = stsClient.CreateSync(sts)
+
+		ginkgo.By("Getting pods for statefulset " + stsName)
+		pods := stsClient.GetPods(sts)
+		framework.ExpectHaveLen(pods.Items, replicas)
+
+		ips := make([]string, 0, replicas)
+		for _, pod := range pods.Items {
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IpPoolAnnotation, ippool)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
+			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
+
+			podIPs := make([]string, 0, len(pod.Status.PodIPs))
+			for _, podIP := range pod.Status.PodIPs {
+				podIPs = append(podIPs, podIP.IP)
+			}
+			framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IpAddressAnnotation], ","))
+			ips = append(ips, pod.Annotations[util.IpAddressAnnotation])
+		}
+		framework.ExpectConsistOf(ips, strings.Split(ippool, ippoolSep))
+
+		ginkgo.By("Deleting pods for statefulset " + stsName)
+		for _, pod := range pods.Items {
+			err := podClient.Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+			framework.ExpectNoError(err, "failed to delete pod "+pod.Name)
+		}
+		stsClient.WaitForRunningAndReady(sts)
+
+		ginkgo.By("Getting pods for statefulset " + stsName)
+		pods = stsClient.GetPods(sts)
+		framework.ExpectHaveLen(pods.Items, replicas)
+
+		for i, pod := range pods.Items {
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IpPoolAnnotation, ippool)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IpAddressAnnotation, ips[i])
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
+			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
+
+			podIPs := make([]string, 0, len(pod.Status.PodIPs))
+			for _, podIP := range pod.Status.PodIPs {
+				podIPs = append(podIPs, podIP.IP)
+			}
+			framework.ExpectConsistOf(podIPs, strings.Split(pod.Annotations[util.IpAddressAnnotation], ","))
+		}
+	})
 })
