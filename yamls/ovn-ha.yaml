@@ -36,10 +36,18 @@ rules:
       - iptables-fip-rules/status
       - iptables-dnat-rules/status
       - iptables-snat-rules/status
-      - switch-lb-rules
-      - switch-lb-rules/status
+      - ovn-eips
+      - ovn-fips
+      - ovn-snat-rules
+      - ovn-eips/status
+      - ovn-fips/status
+      - ovn-snat-rules/status
+      - ovn-dnat-rules
+      - ovn-dnat-rules/status
       - vpc-dnses
       - vpc-dnses/status
+      - switch-lb-rules
+      - switch-lb-rules/status
       - qos-policies
       - qos-policies/status
     verbs:
@@ -74,13 +82,13 @@ rules:
       - deployments
       - deployments/scale
     verbs:
+      - create
+      - delete
+      - update
+      - patch
       - get
       - list
       - watch
-      - update
-      - create
-      - delete
-      - patch
   - apiGroups:
       - ""
     resources:
@@ -132,13 +140,13 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: ovn
-    namespace:  kube-system
+    namespace: kube-system
 ---
 kind: Service
 apiVersion: v1
 metadata:
   name: ovn-nb
-  namespace:  kube-system
+  namespace: kube-system
 spec:
   ports:
     - name: ovn-nb
@@ -155,7 +163,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: ovn-sb
-  namespace:  kube-system
+  namespace: kube-system
 spec:
   ports:
     - name: ovn-sb
@@ -189,7 +197,7 @@ kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: ovn-central
-  namespace:  kube-system
+  namespace: kube-system
   annotations:
     kubernetes.io/description: |
       OVN components: northd, nb and sb.
@@ -229,7 +237,7 @@ spec:
       hostNetwork: true
       containers:
         - name: ovn-central
-          image: "kubeovn/kube-ovn:v1.10.0"
+          image: "kubeovn/kube-ovn:v1.12.0"
           imagePullPolicy: IfNotPresent
           command: ["/kube-ovn/start-db.sh"]
           securityContext:
@@ -256,9 +264,11 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIPs
+            - name: ENABLE_BIND_LOCAL_IP
+              value: "true"
           resources:
             requests:
-              cpu: 500m
+              cpu: 300m
               memory: 200Mi
             limits:
               cpu: 3
@@ -279,6 +289,8 @@ spec:
               name: host-log-ovs
             - mountPath: /var/log/ovn
               name: host-log-ovn
+            - mountPath: /etc/localtime
+              name: localtime
             - mountPath: /var/run/tls
               name: kube-ovn-tls
           readinessProbe:
@@ -286,7 +298,7 @@ spec:
               command:
                 - bash
                 - /kube-ovn/ovn-healthcheck.sh
-            periodSeconds: 3
+            periodSeconds: 15
             timeoutSeconds: 45
           livenessProbe:
             exec:
@@ -294,7 +306,7 @@ spec:
                 - bash
                 - /kube-ovn/ovn-healthcheck.sh
             initialDelaySeconds: 30
-            periodSeconds: 7
+            periodSeconds: 15
             failureThreshold: 5
             timeoutSeconds: 45
       nodeSelector:
@@ -322,6 +334,9 @@ spec:
         - name: host-log-ovn
           hostPath:
             path: /var/log/ovn
+        - name: localtime
+          hostPath:
+            path: /etc/localtime
         - name: kube-ovn-tls
           secret:
             optional: true
@@ -331,7 +346,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: ovs-ovn
-  namespace:  kube-system
+  namespace: kube-system
   annotations:
     kubernetes.io/description: |
       This daemon set launches the openvswitch daemon.
@@ -358,13 +373,13 @@ spec:
           operator: Exists
         - key: CriticalAddonsOnly
           operator: Exists
-      priorityClassName: system-cluster-critical
+      priorityClassName: system-node-critical
       serviceAccountName: ovn
       hostNetwork: true
       hostPID: true
       containers:
         - name: openvswitch
-          image: "kubeovn/kube-ovn:v1.10.0"
+          image: "kubeovn/kube-ovn:v1.12.0"
           imagePullPolicy: IfNotPresent
           command: ["/kube-ovn/start-ovs.sh"]
           securityContext:
@@ -387,11 +402,16 @@ spec:
                   fieldPath: metadata.namespace
             - name: HW_OFFLOAD
               value: "false"
+            - name: TUNNEL_TYPE
+              value: "geneve"
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
           volumeMounts:
+            - mountPath: /var/run/netns
+              name: host-ns
+              mountPropagation: HostToContainer
             - mountPath: /lib/modules
               name: host-modules
               readOnly: true
@@ -412,8 +432,12 @@ spec:
               name: host-log-ovs
             - mountPath: /var/log/ovn
               name: host-log-ovn
+            - mountPath: /etc/localtime
+              name: localtime
             - mountPath: /var/run/tls
               name: kube-ovn-tls
+            - mountPath: /var/run/containerd
+              name: cruntime
           readinessProbe:
             exec:
               command:
@@ -438,7 +462,7 @@ spec:
               memory: 200Mi
             limits:
               cpu: 1000m
-              memory: 800Mi
+              memory: 1000Mi
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
@@ -454,6 +478,9 @@ spec:
         - name: host-sys
           hostPath:
             path: /sys
+        - name: host-ns
+          hostPath:
+            path: /var/run/netns
         - name: cni-conf
           hostPath:
             path: /etc/cni/net.d
@@ -469,6 +496,12 @@ spec:
         - name: host-log-ovn
           hostPath:
             path: /var/log/ovn
+        - name: localtime
+          hostPath:
+            path: /etc/localtime
+        - hostPath:
+            path: /var/run/containerd
+          name: cruntime
         - name: kube-ovn-tls
           secret:
             optional: true
