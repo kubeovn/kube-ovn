@@ -983,16 +983,24 @@ log_linux(){
       kubectl exec $pod -n kube-system -- dmesg -T > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
     elif [[ "$sub_component_param" == "iptables-legacy" ]]; then
       kubectl exec $pod -n kube-system -- /usr/sbin/iptables-legacy -V > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
-      echo "******************legacy filter ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+      echo "******************legacy filter v4 ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
       kubectl exec $pod -n kube-system -- /usr/sbin/iptables-legacy -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
-      echo "****************** legacy nat ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+      echo "****************** legacy nat v4 ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
       kubectl exec $pod -n kube-system -- /usr/sbin/iptables-legacy -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+      echo "******************legacy filter v6 ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+      kubectl exec $pod -n kube-system -- /usr/sbin/ip6tables-legacy -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+      echo "****************** legacy nat v6 ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+      kubectl exec $pod -n kube-system -- /usr/sbin/ip6tables-legacy -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
     elif [[ "$sub_component_param" == "iptables-nft" ]]; then
       kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -V > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log 2>/dev/null || :
-      echo "*********************nft filter ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+      echo "*********************nft filter v4 ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
       kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log 2>/dev/null || :
-      echo "********************* nft nat ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+      echo "********************* nft nat v4 ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
       kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log 2>/dev/null || :
+      echo "*********************nft filter v6 ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+      kubectl exec $pod -n kube-system -- /usr/sbin/ip6tables-nft -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log 2>/dev/null || :
+      echo "********************* nft nat v6 ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+      kubectl exec $pod -n kube-system -- /usr/sbin/ip6tables-nft -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log 2>/dev/null || :
     elif [[ "$sub_component_param" == "route" ]]; then
       kubectl exec $pod -n kube-system -- ip route show > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
       kubectl exec $pod -n kube-system -- ip -6 route show >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
