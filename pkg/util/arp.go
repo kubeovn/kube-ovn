@@ -148,7 +148,8 @@ func ArpDetectIPConflict(nic, ip string, mac net.HardwareAddr) (net.HardwareAddr
 				return
 			}
 
-			if pkt.SenderIP.String() == ip {
+			if pkt.SenderIP.String() == ip && !macEqual(pkt.SenderHardwareAddr, mac) {
+				klog.Infof("received IPv4 address probe for %s from remote host %s, current host %s", ip, pkt.SenderHardwareAddr.String(), mac.String())
 				ch <- pkt.SenderHardwareAddr
 				return
 			}
@@ -161,7 +162,7 @@ func ArpDetectIPConflict(nic, ip string, mac net.HardwareAddr) (net.HardwareAddr
 				!macEqual(pkt.SenderHardwareAddr, mac) {
 				// received probe from another host
 				// treat this as an address conflict
-				klog.Infof("received IPv4 address probe for %s from host %s", ip, pkt.SenderHardwareAddr.String())
+				klog.Infof("received IPv4 address probe for %s from remote host %s, current host %s", ip, pkt.SenderHardwareAddr.String(), mac.String())
 				ch <- pkt.SenderHardwareAddr
 				return
 			}
