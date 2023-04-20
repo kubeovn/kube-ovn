@@ -242,18 +242,6 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}
 
-	ingressAsNames, err := c.ovnLegacyClient.ListNpAddressSet(np.Namespace, npName, "ingress")
-	if err != nil {
-		klog.Errorf("failed to list ingress address_set, %v", err)
-		return err
-	}
-	for _, ingressAsName := range ingressAsNames {
-		if err = c.ovnLegacyClient.DeleteAddressSet(ingressAsName); err != nil {
-			klog.Errorf("failed to delete np %s address set, %v", key, err)
-			return err
-		}
-	}
-
 	var ingressAclCmd []string
 	exist, err := c.ovnLegacyClient.PortGroupExists(pgName)
 	if err != nil {
@@ -386,18 +374,6 @@ func (c *Controller) handleUpdateNp(key string) error {
 				klog.Errorf("failed to delete np %s address set, %v", key, err)
 				return err
 			}
-		}
-	}
-
-	egressAsNames, err := c.ovnLegacyClient.ListNpAddressSet(np.Namespace, npName, "egress")
-	if err != nil {
-		klog.Errorf("failed to list egress address_set, %v", err)
-		return err
-	}
-	for _, egressAsName := range egressAsNames {
-		if err = c.ovnLegacyClient.DeleteAddressSet(egressAsName); err != nil {
-			klog.Errorf("failed to delete np %s address set, %v", key, err)
-			return err
 		}
 	}
 
