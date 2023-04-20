@@ -140,6 +140,8 @@ type SubnetSpec struct {
 	U2OInterconnection bool  `json:"u2oInterconnection,omitempty"`
 	EnableLb           *bool `json:"enableLb,omitempty"`
 	EnableEcmp         bool  `json:"enableEcmp,omitempty"`
+
+	RouteTable string `json:"routeTable,omitempty"`
 }
 
 type Acl struct {
