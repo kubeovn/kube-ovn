@@ -280,26 +280,26 @@ func diffQoSPolicyBandwithLimitRules(oldList, newList kubeovnv1.QoSPolicyBandwid
 	deleted = kubeovnv1.QoSPolicyBandwidthLimitRules{}
 	updated = kubeovnv1.QoSPolicyBandwidthLimitRules{}
 
-	// Create a map of old structs indexed by name for efficient lookup
+	// Create a map of old rules indexed by name for efficient lookup
 	oldMap := make(map[string]*kubeovnv1.QoSPolicyBandwidthLimitRule)
 	for _, s := range oldList {
 		oldMap[s.Name] = s
 	}
 
-	// Loop through new structs and compare with old structs
+	// Loop through new rules and compare with old rules
 	for _, s := range newList {
 		if old, ok := oldMap[s.Name]; !ok {
-			// New struct
+			// add the rule
 			added = append(added, s)
 		} else if !reflect.DeepEqual(old, s) {
-			// Updated struct
+			// updated the rule
 			updated = append(updated, s)
 		}
-		// Remove old struct from map
+		// keep the rule not changed
 		delete(oldMap, s.Name)
 	}
 
-	// Remaining structs in oldMap are deleted
+	// Remaining rules in oldMap are deleted
 	for _, s := range oldMap {
 		deleted = append(deleted, s)
 	}
@@ -413,7 +413,6 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 				} else {
 					err := fmt.Errorf("not support qos %s change rule, related eip more than one", key)
 					klog.Error(err)
-					// update status to failed?
 					return err
 				}
 			}
