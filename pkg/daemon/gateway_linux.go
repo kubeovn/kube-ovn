@@ -19,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
 	k8sipset "k8s.io/kubernetes/pkg/util/ipset"
+	k8siptables "k8s.io/kubernetes/pkg/util/iptables"
 	k8sexec "k8s.io/utils/exec"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -379,7 +380,7 @@ func (c *Controller) updateIptablesChain(ipt *iptables.IPTables, table, chain, p
 		added++
 	}
 	for i := len(existingRules) - 1; i >= len(rules)-added; i-- {
-		if err = ipt.Delete(table, chain, strconv.Itoa(i+added)); err != nil {
+		if err = ipt.Delete(table, chain, strconv.Itoa(i+added+1)); err != nil {
 			klog.Errorf(`failed to delete iptables rule %v: %v`, existingRules[i], err)
 			return err
 		}
@@ -480,6 +481,9 @@ func (c *Controller) setIptables() error {
 		protocols[0] = c.protocol
 	}
 
+	execer := k8sexec.New()
+	var supportRandomFully bool
+
 	for _, protocol := range protocols {
 		ipt := c.iptables[protocol]
 		if ipt == nil {
@@ -571,6 +575,14 @@ func (c *Controller) setIptables() error {
 			}
 		}
 
+		if protocol == kubeovnv1.ProtocolIPv4 {
+			iptv4 := k8siptables.New(execer, k8siptables.ProtocolIPv4)
+			supportRandomFully = iptv4.HasRandomFully()
+		} else {
+			iptv6 := k8siptables.New(execer, k8siptables.ProtocolIPv6)
+			supportRandomFully = iptv6.HasRandomFully()
+		}
+
 		var natPreroutingRules, natPostroutingRules []util.IPTableRule
 		for _, rule := range iptablesRules {
 			if rule.Table == NAT {
@@ -579,6 +591,13 @@ func (c *Controller) setIptables() error {
 					natPreroutingRules = append(natPreroutingRules, rule)
 					continue
 				case OvnPostrouting:
+					if util.ContainsString(rule.Rule, "MASQUERADE") && supportRandomFully {
+						//https://github.com/kubeovn/kube-ovn/issues/2641
+						//Work around Linux kernel bug that sometimes causes multiple flows to
+						//get mapped to the same IP:PORT and consequently some suffer packet
+						//drops.
+						rule.Rule = append(rule.Rule, "--random-fully")
+					}
 					natPostroutingRules = append(natPostroutingRules, rule)
 					continue
 				}

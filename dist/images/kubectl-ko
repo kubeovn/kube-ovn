@@ -982,12 +982,14 @@ log_linux(){
     if [[ "$sub_component_param" == "dmesg" ]]; then
       kubectl exec $pod -n kube-system -- dmesg -T > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
     elif [[ "$sub_component_param" == "iptables-legacy" ]]; then
-      echo "******************legacy filter ************************" > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+      kubectl exec $pod -n kube-system -- /usr/sbin/iptables-legacy -V > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+      echo "******************legacy filter ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
       kubectl exec $pod -n kube-system -- /usr/sbin/iptables-legacy -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
       echo "****************** legacy nat ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
       kubectl exec $pod -n kube-system -- /usr/sbin/iptables-legacy -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
     elif [[ "$sub_component_param" == "iptables-nft" ]]; then
-      echo "*********************nft filter ************************" > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
+      kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -V > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log 2>/dev/null || :
+      echo "*********************nft filter ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
       kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log 2>/dev/null || :
       echo "********************* nft nat ************************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
       kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log 2>/dev/null || :
