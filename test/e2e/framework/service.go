@@ -109,6 +109,11 @@ func (c *ServiceClient) WaitUntil(name string, cond func(s *corev1.Service) (boo
 		if err != nil {
 			return false, fmt.Errorf("failed to check condition for service %s: %v", name, err)
 		}
+		if met {
+			Logf("service %s met condition %q", name, condDesc)
+		} else {
+			Logf("service %s not met condition %q", name, condDesc)
+		}
 		return met, nil
 	})
 	if err == nil {

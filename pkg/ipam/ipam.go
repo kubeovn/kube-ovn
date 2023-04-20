@@ -155,7 +155,8 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 
 	if subnet, ok := ipam.Subnets[name]; ok {
 		subnet.Protocol = protocol
-		if protocol == kubeovnv1.ProtocolDual || protocol == kubeovnv1.ProtocolIPv4 {
+		if protocol == kubeovnv1.ProtocolDual || protocol == kubeovnv1.ProtocolIPv4 &&
+			(subnet.V4CIDR.String() != v4cidrStr || subnet.V4Gw != v4Gw || !subnet.V4ReservedIPList.Equal(convertExcludeIps(v4ExcludeIps))) {
 			_, cidr, _ := net.ParseCIDR(v4cidrStr)
 			subnet.V4CIDR = cidr
 			subnet.V4ReservedIPList = convertExcludeIps(v4ExcludeIps)
@@ -164,6 +165,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 			subnet.V4FreeIPList = IPRangeList{&IPRange{Start: IP(firstIP), End: IP(lastIP)}}
 			subnet.joinFreeWithReserve()
 			subnet.V4ReleasedIPList = IPRangeList{}
+			subnet.V4Gw = v4Gw
 			for nicName, ip := range subnet.V4NicToIP {
 				mac := subnet.NicToMac[nicName]
 				podName := subnet.V4IPToPod[ip]
@@ -172,7 +174,9 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 				}
 			}
 		}
-		if protocol == kubeovnv1.ProtocolDual || protocol == kubeovnv1.ProtocolIPv6 {
+		if protocol == kubeovnv1.ProtocolDual || protocol == kubeovnv1.ProtocolIPv6 &&
+			(subnet.V6CIDR.String() != v6cidrStr || subnet.V6Gw != v6Gw || !subnet.V6ReservedIPList.Equal(convertExcludeIps(v6ExcludeIps))) {
+
 			_, cidr, _ := net.ParseCIDR(v6cidrStr)
 			subnet.V6CIDR = cidr
 			subnet.V6ReservedIPList = convertExcludeIps(v6ExcludeIps)
@@ -181,6 +185,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 			subnet.V6FreeIPList = IPRangeList{&IPRange{Start: IP(firstIP), End: IP(lastIP)}}
 			subnet.joinFreeWithReserve()
 			subnet.V6ReleasedIPList = IPRangeList{}
+			subnet.V6Gw = v6Gw
 			for nicName, ip := range subnet.V6NicToIP {
 				mac := subnet.NicToMac[nicName]
 				podName := subnet.V6IPToPod[ip]

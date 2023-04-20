@@ -235,10 +235,6 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 			return err
 		}
 	}
-	if err = c.patchEipIP(key, v4ip); err != nil {
-		klog.Errorf("failed to patch status for eip %s, %v", key, err)
-		return err
-	}
 	if eipV4Cidr, err = c.getEipV4Cidr(v4ip); err != nil {
 		klog.Errorf("failed to get eip cidr, err: %v", err)
 		return err
@@ -703,12 +699,12 @@ func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp, qos str
 		}
 	} else {
 		eip := cachedEip.DeepCopy()
-		if v4ip != "" && mac != "" {
+		if v4ip != "" {
 			klog.V(3).Infof("update eip cr %s", key)
-			eip.Spec.MacAddress = mac
 			eip.Spec.V4ip = v4ip
 			eip.Spec.V6ip = v6ip
 			eip.Spec.NatGwDp = natGwDp
+			eip.Spec.MacAddress = mac
 			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Update(context.Background(), eip, metav1.UpdateOptions{}); err != nil {
 				errMsg := fmt.Errorf("failed to update eip crd %s, %v", key, err)
 				klog.Error(errMsg)
@@ -829,31 +825,6 @@ func (c *Controller) handleDelIptablesEipFinalizer(key string) error {
 			return nil
 		}
 		klog.Errorf("failed to remove finalizer from iptables eip '%s', %v", cachedIptablesEip.Name, err)
-		return err
-	}
-	return nil
-}
-
-func (c *Controller) patchEipIP(key, v4ip string) error {
-	oriEip, err := c.iptablesEipsLister.Get(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-	eip := oriEip.DeepCopy()
-	eip.Status.IP = v4ip
-	bytes, err := eip.Status.Bytes()
-	if err != nil {
-		return err
-	}
-	if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), key, types.MergePatchType,
-		bytes, metav1.PatchOptions{}, "status"); err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Errorf("failed to patch eip %s, %v", eip.Name, err)
 		return err
 	}
 	return nil

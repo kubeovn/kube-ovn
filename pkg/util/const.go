@@ -113,6 +113,7 @@ const (
 	VpcLbLabel                 = "ovn.kubernetes.io/vpc_lb"
 	VpcDnsNameLabel            = "ovn.kubernetes.io/vpc-dns"
 	QoSLabel                   = "ovn.kubernetes.io/qos"
+	NodeNameLabel              = "ovn.kubernetes.io/node-name"
 	NetworkPolicyLogAnnotation = "ovn.kubernetes.io/enable_log"
 
 	ProtocolTCP  = "tcp"
