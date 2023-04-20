@@ -574,7 +574,7 @@ getOvnCentralPod(){
     OVN_NB_POD=$NB_POD
     SB_POD=$(kubectl get pod -n $KUBE_OVN_NS -l ovn-sb-leader=true | grep ovn-central | awk '{if($2=="1/1" && $3=="Running") print $1}' | head -n 1 )
     if [ -z "$SB_POD" ]; then
-      echo "nb leader not exists"
+      echo "sb leader not exists"
       exit 1
     fi
     OVN_SB_POD=$SB_POD
