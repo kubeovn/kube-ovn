@@ -381,6 +381,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			klog.Errorf("delete np %s ingress acls: %v", key, err)
 			return err
 		}
+	}
 
 		if err := c.ovnClient.DeleteAddressSets(map[string]string{
 			networkPolicyKey: fmt.Sprintf("%s/%s/%s", np.Namespace, np.Name, "ingress"),
