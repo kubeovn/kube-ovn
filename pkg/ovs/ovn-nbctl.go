@@ -1142,6 +1142,9 @@ func (c Client) ListAddressSet(npNamespace, npName, direction string) ([]string,
 		klog.Errorf("failed to list address_set of %s/%s/%s: %v, %q", npNamespace, npName, direction, err, output)
 		return nil, err
 	}
+	if len(output) == 0 {
+		return nil, nil
+	}
 	return strings.Split(output, "\n"), nil
 }
 
