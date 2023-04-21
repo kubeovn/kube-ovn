@@ -236,6 +236,7 @@ func (suite *OvnClientTestSuite) testCreateEgressAcl() {
 			acl.Severity = &ovnnb.ACLSeverityWarning
 			acl.UUID = defaultDropAcl.UUID
 		})
+		expect.Options = map[string]string{"apply-after-lb": "true"}
 
 		require.Equal(t, expect, defaultDropAcl)
 		require.Contains(t, pg.ACLs, defaultDropAcl.UUID)
@@ -247,6 +248,7 @@ func (suite *OvnClientTestSuite) testCreateEgressAcl() {
 
 			expect := newAcl(pgName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, m, ovnnb.ACLActionAllowRelated)
 			expect.UUID = allowAcl.UUID
+			expect.Options = map[string]string{"apply-after-lb": "true"}
 			require.Equal(t, expect, allowAcl)
 
 			require.Contains(t, pg.ACLs, allowAcl.UUID)
@@ -280,6 +282,7 @@ func (suite *OvnClientTestSuite) testCreateEgressAcl() {
 			acl.Severity = &ovnnb.ACLSeverityWarning
 			acl.UUID = defaultDropAcl.UUID
 		})
+		expect.Options = map[string]string{"apply-after-lb": "true"}
 
 		require.Equal(t, expect, defaultDropAcl)
 		require.Contains(t, pg.ACLs, defaultDropAcl.UUID)
@@ -291,6 +294,7 @@ func (suite *OvnClientTestSuite) testCreateEgressAcl() {
 
 			expect := newAcl(pgName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, m, ovnnb.ACLActionAllowRelated)
 			expect.UUID = allowAcl.UUID
+			expect.Options = map[string]string{"apply-after-lb": "true"}
 			require.Equal(t, expect, allowAcl)
 
 			require.Contains(t, pg.ACLs, allowAcl.UUID)
