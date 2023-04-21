@@ -176,14 +176,16 @@ spec:
                   type: string
                 subnet:
                   type: string
+                externalSubnet:
+                  items:
+                    type: string
+                  type: array
                 vpc:
                   type: string
                 selector:
                   type: array
                   items:
                     type: string
-                externalSubnet:
-                  type: string
                 tolerations:
                   type: array
                   items:
@@ -561,7 +563,9 @@ spec:
                 qosPolicy:
                   type: string
                 externalSubnet:
-                  type: string
+                  items:
+                    type: string
+                  type: array
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -1686,8 +1690,6 @@ spec:
                 enableLb:
                   type: boolean
                 enableEcmp:
-                  type: boolean
-                external:
                   type: boolean
   scope: Cluster
   names:

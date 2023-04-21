@@ -527,11 +527,12 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	pod := oriPod.DeepCopy()
 	var extRules []string
 	var v4ExternalGw, v4InternalGw, v4ExternalCidr string
-	if subnet, ok := c.ipam.Subnets[gw.Spec.ExternalSubnet]; ok {
+	externalNetwork := util.GetExternalNetwork(gw.Spec.ExternalSubnets)
+	if subnet, ok := c.ipam.Subnets[externalNetwork]; ok {
 		v4ExternalGw = subnet.V4Gw
 		v4ExternalCidr = subnet.V4CIDR.String()
 	} else {
-		return fmt.Errorf("failed to get external subnet %s", gw.Spec.ExternalSubnet)
+		return fmt.Errorf("failed to get external subnet %s", externalNetwork)
 	}
 	extRules = append(extRules, fmt.Sprintf("%s,%s", v4ExternalCidr, v4ExternalGw))
 	if err = c.execNatGwRules(pod, natGwExtSubnetRouteAdd, extRules); err != nil {
@@ -661,9 +662,10 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	if oldSts != nil && len(oldSts.Annotations) != 0 {
 		newPodAnnotations = oldSts.Annotations
 	}
+	externalNetwork := util.GetExternalNetwork(gw.Spec.ExternalSubnets)
 	podAnnotations := map[string]string{
 		util.VpcNatGatewayAnnotation:     gw.Name,
-		util.AttachmentNetworkAnnotation: fmt.Sprintf("%s/%s", c.config.PodNamespace, gw.Spec.ExternalSubnet),
+		util.AttachmentNetworkAnnotation: fmt.Sprintf("%s/%s", c.config.PodNamespace, externalNetwork),
 		util.LogicalSwitchAnnotation:     gw.Spec.Subnet,
 		util.IpAddressAnnotation:         gw.Spec.LanIp,
 	}
@@ -755,7 +757,6 @@ func (c *Controller) getNatGwPod(name string) (*corev1.Pod, error) {
 
 	return pods[0], nil
 }
-
 
 func (c *Controller) initCreateAt(key string) (err error) {
 	if NAT_GW_CREATED_AT != "" {

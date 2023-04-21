@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -94,7 +95,7 @@ func (v *ValidatingHook) iptablesEIPUpdateHook(ctx context.Context, req admissio
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	if eipOld.Spec != eipNew.Spec {
+	if !reflect.DeepEqual(eipOld.Spec, eipNew.Spec) {
 		if eipOld.Status.Ready && eipNew.Status.Redo == eipOld.Status.Redo {
 			err := fmt.Errorf("IptablesEIP \"%s\" is ready,not support change", eipNew.Name)
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
@@ -392,7 +393,8 @@ func (v *ValidatingHook) ValidateIptablesEIP(ctx context.Context, eip *ovnv1.Ipt
 	}
 
 	subnet := &ovnv1.Subnet{}
-	key := types.NamespacedName{Name: eip.Spec.ExternalSubnet}
+	externalNetwork := util.GetExternalNetwork(eip.Spec.ExternalSubnets)
+	key := types.NamespacedName{Name: externalNetwork}
 	if err := v.cache.Get(ctx, key, subnet); err != nil {
 		return err
 	}

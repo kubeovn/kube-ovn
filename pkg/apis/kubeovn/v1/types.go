@@ -140,7 +140,6 @@ type SubnetSpec struct {
 	U2OInterconnection bool  `json:"u2oInterconnection,omitempty"`
 	EnableLb           *bool `json:"enableLb,omitempty"`
 	EnableEcmp         bool  `json:"enableEcmp,omitempty"`
-	External           bool  `json:"external,omitempty"`
 }
 
 type Acl struct {
@@ -463,13 +462,13 @@ type VpcNatGateway struct {
 }
 
 type VpcNatSpec struct {
-	Vpc            string              `json:"vpc"`
-	Subnet         string              `json:"subnet"`
-	LanIp          string              `json:"lanIp"`
-	Selector       []string            `json:"selector"`
-	Tolerations    []corev1.Toleration `json:"tolerations"`
-	Affinity       corev1.Affinity     `json:"affinity"`
-	ExternalSubnet string              `json:"externalSubnet"`
+	Vpc             string              `json:"vpc"`
+	Subnet          string              `json:"subnet"`
+	ExternalSubnets []string            `json:"externalSubnets"`
+	LanIp           string              `json:"lanIp"`
+	Selector        []string            `json:"selector"`
+	Tolerations     []corev1.Toleration `json:"tolerations"`
+	Affinity        corev1.Affinity     `json:"affinity"`
 }
 
 // +genclient
@@ -485,12 +484,12 @@ type IptablesEIP struct {
 	Status IptablesEipStatus `json:"status,omitempty"`
 }
 type IptablesEipSpec struct {
-	V4ip           string `json:"v4ip"`
-	V6ip           string `json:"v6ip"`
-	MacAddress     string `json:"macAddress"`
-	NatGwDp        string `json:"natGwDp"`
-	QoSPolicy      string `json:"qosPolicy"`
-	ExternalSubnet string `json:"externalSubnet"`
+	V4ip            string   `json:"v4ip"`
+	V6ip            string   `json:"v6ip"`
+	MacAddress      string   `json:"macAddress"`
+	NatGwDp         string   `json:"natGwDp"`
+	QoSPolicy       string   `json:"qosPolicy"`
+	ExternalSubnets []string `json:"externalSubnets"`
 }
 
 // IptablesEIPCondition describes the state of an object at a certain point.

@@ -20,7 +20,6 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-
 func (c *Controller) enqueueAddIptablesEip(obj interface{}) {
 
 	var key string
@@ -46,7 +45,8 @@ func (c *Controller) enqueueUpdateIptablesEip(old, new interface{}) {
 		oldEip.Spec.QoSPolicy != newEip.Spec.QoSPolicy {
 		c.updateIptablesEipQueue.Add(key)
 	}
-	c.updateSubnetStatusQueue.Add(newEip.Spec.ExternalSubnet)
+	externalNetwork := util.GetExternalNetwork(newEip.Spec.ExternalSubnets)
+	c.updateSubnetStatusQueue.Add(externalNetwork)
 }
 
 func (c *Controller) enqueueDelIptablesEip(obj interface{}) {
@@ -58,7 +58,8 @@ func (c *Controller) enqueueDelIptablesEip(obj interface{}) {
 	}
 	eip := obj.(*kubeovnv1.IptablesEIP)
 	c.delIptablesEipQueue.Add(key)
-	c.updateSubnetStatusQueue.Add(eip.Spec.ExternalSubnet)
+	externalNetwork := util.GetExternalNetwork(eip.Spec.ExternalSubnets)
+	c.updateSubnetStatusQueue.Add(externalNetwork)
 }
 
 func (c *Controller) runAddIptablesEipWorker() {
@@ -219,26 +220,27 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 	}
 	klog.V(3).Infof("handle add eip %s", key)
 	var v4ip, v6ip, mac, eipV4Cidr, v4Gw string
-	externalProvider := fmt.Sprintf("%s.%s", cachedEip.Spec.ExternalSubnet, ATTACHMENT_NS)
+	externalNetwork := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnets)
+	externalProvider := fmt.Sprintf("%s.%s", externalNetwork, ATTACHMENT_NS)
 
 	portName := ovs.PodNameToPortName(cachedEip.Name, cachedEip.Namespace, externalProvider)
 	if cachedEip.Spec.V4ip != "" {
-		if v4ip, v6ip, mac, err = c.acquireStaticEip(cachedEip.Name, cachedEip.Namespace, portName, cachedEip.Spec.V4ip, cachedEip.Spec.ExternalSubnet); err != nil {
+		if v4ip, v6ip, mac, err = c.acquireStaticEip(cachedEip.Name, cachedEip.Namespace, portName, cachedEip.Spec.V4ip, externalNetwork); err != nil {
 			klog.Errorf("failed to acquire static eip, err: %v", err)
 			return err
 		}
 	} else {
 		// Random allocate
-		if v4ip, v6ip, mac, err = c.acquireEip(cachedEip.Name, cachedEip.Namespace, portName, cachedEip.Spec.ExternalSubnet); err != nil {
+		if v4ip, v6ip, mac, err = c.acquireEip(cachedEip.Name, cachedEip.Namespace, portName, externalNetwork); err != nil {
 			klog.Errorf("failed to allocate eip, err: %v", err)
 			return err
 		}
 	}
-	if eipV4Cidr, err = c.getEipV4Cidr(v4ip, cachedEip.Spec.ExternalSubnet); err != nil {
+	if eipV4Cidr, err = c.getEipV4Cidr(v4ip, externalNetwork); err != nil {
 		klog.Errorf("failed to get eip cidr, err: %v", err)
 		return err
 	}
-	if v4Gw, _, err = c.GetGwBySubnet(cachedEip.Spec.ExternalSubnet); err != nil {
+	if v4Gw, _, err = c.GetGwBySubnet(externalNetwork); err != nil {
 		klog.Errorf("failed to get gw, err: %v", err)
 		return err
 	}
@@ -253,7 +255,7 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 			return err
 		}
 	}
-	if err = c.createOrUpdateCrdEip(key, v4ip, v6ip, mac, cachedEip.Spec.NatGwDp, cachedEip.Spec.QoSPolicy, cachedEip.Spec.ExternalSubnet); err != nil {
+	if err = c.createOrUpdateCrdEip(key, v4ip, v6ip, mac, cachedEip.Spec.NatGwDp, cachedEip.Spec.QoSPolicy, externalNetwork); err != nil {
 		klog.Errorf("failed to update eip %s, %v", key, err)
 		return err
 	}
@@ -332,10 +334,11 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 		}
 		return err
 	}
+	externalNetwork := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnets)
 	// should delete
 	if !cachedEip.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("clean eip '%s' in pod", key)
-		v4Cidr, err := c.getEipV4Cidr(cachedEip.Status.IP, cachedEip.Spec.ExternalSubnet)
+		v4Cidr, err := c.getEipV4Cidr(cachedEip.Status.IP, externalNetwork)
 		if err != nil {
 			klog.Errorf("failed to clean eip %s, %v", key, err)
 			return err
@@ -403,13 +406,13 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 		cachedEip.Status.Redo != "" &&
 		cachedEip.Status.IP != "" &&
 		cachedEip.DeletionTimestamp.IsZero() {
-		eipV4Cidr, err := c.getEipV4Cidr(cachedEip.Status.IP, cachedEip.Spec.ExternalSubnet)
+		eipV4Cidr, err := c.getEipV4Cidr(cachedEip.Status.IP, externalNetwork)
 		if err != nil {
 			klog.Errorf("failed to get eip or v4Cidr, %v", err)
 			return err
 		}
 		var v4Gw string
-		if v4Gw, _, err = c.GetGwBySubnet(cachedEip.Spec.ExternalSubnet); err != nil {
+		if v4Gw, _, err = c.GetGwBySubnet(externalNetwork); err != nil {
 			klog.Errorf("failed to get gw, %v", err)
 			return err
 		}
@@ -651,6 +654,7 @@ func (c *Controller) GetGwBySubnet(name string) (string, string, error) {
 
 func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp, qos, externalNet string) error {
 	cachedEip, err := c.iptablesEipsLister.Get(key)
+	externalNetwork := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnets)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			klog.V(3).Infof("create eip cr %s", key)
@@ -718,13 +722,13 @@ func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp, qos, ex
 		if len(eip.Labels) == 0 {
 			op = "add"
 			eip.Labels = map[string]string{
-				util.SubnetNameLabel:        eip.Spec.ExternalSubnet,
+				util.SubnetNameLabel:        externalNetwork,
 				util.VpcNatGatewayNameLabel: natGwDp,
 			}
 			needUpdateLabel = true
-		} else if eip.Labels[util.SubnetNameLabel] != eip.Spec.ExternalSubnet {
+		} else if eip.Labels[util.SubnetNameLabel] != externalNetwork {
 			op = "replace"
-			eip.Labels[util.SubnetNameLabel] = eip.Spec.ExternalSubnet
+			eip.Labels[util.SubnetNameLabel] = externalNetwork
 			eip.Labels[util.VpcNatGatewayNameLabel] = natGwDp
 			needUpdateLabel = true
 		}
@@ -955,6 +959,7 @@ func (c *Controller) patchResetEipStatusNat(key, nat string) error {
 }
 func (c *Controller) natLabelEip(eipName, natName string) error {
 	oriEip, err := c.iptablesEipsLister.Get(eipName)
+	externalNetwork := util.GetExternalNetwork(oriEip.Spec.ExternalSubnets)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -968,13 +973,13 @@ func (c *Controller) natLabelEip(eipName, natName string) error {
 		op = "add"
 		needUpdateLabel = true
 		eip.Labels = map[string]string{
-			util.SubnetNameLabel:        eip.Spec.ExternalSubnet,
+			util.SubnetNameLabel:        externalNetwork,
 			util.VpcNatGatewayNameLabel: eip.Spec.NatGwDp,
 		}
 	} else if eip.Labels[util.VpcNatGatewayNameLabel] != eip.Spec.NatGwDp {
 		op = "replace"
 		needUpdateLabel = true
-		eip.Labels[util.SubnetNameLabel] = eip.Spec.ExternalSubnet
+		eip.Labels[util.SubnetNameLabel] = externalNetwork
 		eip.Labels[util.VpcNatGatewayNameLabel] = eip.Spec.NatGwDp
 	}
 	if needUpdateLabel {

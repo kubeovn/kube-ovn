@@ -1868,7 +1868,7 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		return err
 	}
 	usingIPs += float64(len(vips.Items))
-	if subnet.Spec.External {
+	if !isOvnSubnet(subnet) {
 		eips, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().List(context.Background(), metav1.ListOptions{
 			LabelSelector: fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name).String(),
 		})
@@ -1940,7 +1940,7 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		return err
 	}
 	usingIPs += float64(len(vips.Items))
-	if subnet.Spec.External {
+	if !isOvnSubnet(subnet) {
 		eips, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().List(context.Background(), metav1.ListOptions{
 			LabelSelector: fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name).String(),
 		})

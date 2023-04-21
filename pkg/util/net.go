@@ -507,3 +507,13 @@ func CheckSystemCIDR(cidrs []string) error {
 	}
 	return nil
 }
+
+// GetExternalNetwork returns the external network name
+// if the external network is not specified, return the default external network name
+func GetExternalNetwork(externalNets []string) string {
+	vpcExternalNet := "ovn-vpc-external-network"
+	if len(externalNets) == 0 {
+		return vpcExternalNet
+	}
+	return externalNets[0]
+}
