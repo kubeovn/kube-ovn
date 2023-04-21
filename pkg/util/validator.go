@@ -222,21 +222,23 @@ func ValidateCidrConflict(subnet kubeovnv1.Subnet, subnetList []kubeovnv1.Subnet
 }
 
 func ValidateVpc(vpc *kubeovnv1.Vpc) error {
-	for _, item := range vpc.Spec.StaticRoutes {
-		if item.Policy != "" && item.Policy != kubeovnv1.PolicyDst && item.Policy != kubeovnv1.PolicySrc {
-			return fmt.Errorf("unknown policy type: %s", item.Policy)
-		}
-
-		if strings.Contains(item.CIDR, "/") {
-			if _, _, err := net.ParseCIDR(item.CIDR); err != nil {
-				return fmt.Errorf("invalid cidr %s: %w", item.CIDR, err)
+	for _, rtb := range vpc.Spec.RouteTables {
+		for _, item := range rtb.Routes {
+			if item.Policy != "" && item.Policy != kubeovnv1.PolicyDst && item.Policy != kubeovnv1.PolicySrc {
+				return fmt.Errorf("unknown policy type: %s", item.Policy)
 			}
-		} else if ip := net.ParseIP(item.CIDR); ip == nil {
-			return fmt.Errorf("invalid IP %s", item.CIDR)
-		}
 
-		if ip := net.ParseIP(item.NextHopIP); ip == nil {
-			return fmt.Errorf("invalid next hop IP %s", item.NextHopIP)
+			if strings.Contains(item.CIDR, "/") {
+				if _, _, err := net.ParseCIDR(item.CIDR); err != nil {
+					return fmt.Errorf("invalid cidr %s: %w", item.CIDR, err)
+				}
+			} else if ip := net.ParseIP(item.CIDR); ip == nil {
+				return fmt.Errorf("invalid IP %s", item.CIDR)
+			}
+
+			if ip := net.ParseIP(item.NextHopIP); ip == nil {
+				return fmt.Errorf("invalid next hop IP %s", item.NextHopIP)
+			}
 		}
 	}
 

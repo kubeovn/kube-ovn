@@ -735,7 +735,9 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 					nextHop = strings.Split(nextHop, "/")[0]
 				}
 
-				if err := c.ovnLegacyClient.AddStaticRoute(ovs.PolicySrcIP, podIP, nextHop, "", "", c.config.ClusterRouter, util.NormalRouteType); err != nil {
+				if err := c.ovnLegacyClient.AddStaticRoute(
+					ovs.PolicySrcIP, podIP, nextHop, "", "",
+					c.config.ClusterRouter, subnet.Spec.RouteTable, util.NormalRouteType); err != nil {
 					klog.Errorf("failed to add static route, %v", err)
 					return err
 				}
@@ -776,13 +778,15 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 				}
 
 				if pod.Annotations[util.NorthGatewayAnnotation] != "" {
-					if err := c.ovnLegacyClient.AddStaticRoute(ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation],
-						"", "", c.config.ClusterRouter, util.NormalRouteType); err != nil {
+					if err := c.ovnLegacyClient.AddStaticRoute(
+						ovs.PolicySrcIP, podIP, pod.Annotations[util.NorthGatewayAnnotation], "", "",
+						c.config.ClusterRouter, subnet.Spec.RouteTable, util.NormalRouteType); err != nil {
 						klog.Errorf("failed to add static route, %v", err)
 						return err
 					}
 				} else if c.config.EnableEipSnat {
-					if err := c.ovnLegacyClient.DeleteStaticRoute(podIP, c.config.ClusterRouter); err != nil {
+					if err := c.ovnLegacyClient.DeleteStaticRoute(
+						podIP, c.config.ClusterRouter, subnet.Spec.RouteTable); err != nil {
 						return err
 					}
 				}
@@ -864,7 +868,8 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 			}
 			// If pod has snat or eip, also need delete staticRoute when delete pod
 			if vpc.Name == util.DefaultVpc {
-				if err := c.ovnLegacyClient.DeleteStaticRoute(address.Ip, vpc.Name); err != nil {
+				if err := c.ovnLegacyClient.DeleteStaticRoute(
+					address.Ip, vpc.Name, subnet.Spec.RouteTable); err != nil {
 					return err
 				}
 			}

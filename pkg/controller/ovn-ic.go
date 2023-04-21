@@ -379,9 +379,18 @@ func (c *Controller) delLearnedRoute() error {
 				klog.Errorf("number wrong of logical router for static route %s, %v", aLdPort["_uuid"][0], itsRouter)
 				return nil
 			}
-			if err := c.ovnLegacyClient.DeleteStaticRoute(aLdPort["ip_prefix"][0], itsRouter[0]["name"][0]); err != nil {
-				klog.Errorf("failed to delete stale route %s, %v", aLdPort["ip_prefix"][0], err)
+
+			rtbs, err := c.ovnLegacyClient.GetRouteTables(itsRouter[0]["name"][0])
+			if err != nil {
+				klog.Errorf("failed to list route tables of logical router %s, %v", itsRouter[0]["name"][0], err)
 				return err
+			}
+
+			for rtb, _ := range rtbs {
+				if err := c.ovnLegacyClient.DeleteStaticRoute(aLdPort["ip_prefix"][0], itsRouter[0]["name"][0], rtb); err != nil {
+					klog.Errorf("failed to delete static route %s, %v", aLdPort["ip_prefix"][0], err)
+					return err
+				}
 			}
 		}
 		klog.V(5).Infof("finish removing learned routes")

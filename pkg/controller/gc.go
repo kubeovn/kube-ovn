@@ -625,26 +625,28 @@ func (c *Controller) gcStaticRoute() error {
 		return err
 	}
 	var keepStaticRoute bool
-	for _, route := range routes {
-		keepStaticRoute = false
-		for _, item := range defaultVpc.Spec.StaticRoutes {
-			if route.CIDR == item.CIDR && route.NextHop == item.NextHopIP {
-				keepStaticRoute = true
-				break
+	for _, routeTable := range defaultVpc.Spec.RouteTables {
+		for _, route := range routes {
+			keepStaticRoute = false
+			for _, item := range routeTable.Routes {
+				if route.CIDR == item.CIDR && route.NextHop == item.NextHopIP && route.RouteTable == routeTable.Name {
+					keepStaticRoute = true
+					break
+				}
 			}
-		}
-		if keepStaticRoute {
-			continue
-		}
-		if route.CIDR != "0.0.0.0/0" && route.CIDR != "::/0" && c.ipam.ContainAddress(route.CIDR) {
-			exist, err := c.ovnLegacyClient.NatRuleExists(route.CIDR)
-			if exist || err != nil {
-				klog.Errorf("failed to get NatRule by LogicalIP %s, %v", route.CIDR, err)
+			if keepStaticRoute {
 				continue
 			}
-			klog.Infof("gc static route %s %s %s", route.Policy, route.CIDR, route.NextHop)
-			if err := c.ovnLegacyClient.DeleteStaticRoute(route.CIDR, c.config.ClusterRouter); err != nil {
-				klog.Errorf("failed to delete stale route %s, %v", route.NextHop, err)
+			if route.CIDR != "0.0.0.0/0" && route.CIDR != "::/0" && c.ipam.ContainAddress(route.CIDR) {
+				exist, err := c.ovnLegacyClient.NatRuleExists(route.CIDR)
+				if exist || err != nil {
+					klog.Errorf("failed to get NatRule by LogicalIP %s, %v", route.CIDR, err)
+					continue
+				}
+				klog.Infof("gc static route %s %s %s %s", route.Policy, route.CIDR, route.NextHop, route.RouteTable)
+				if err := c.ovnLegacyClient.DeleteStaticRoute(route.CIDR, c.config.ClusterRouter, routeTable.Name); err != nil {
+					klog.Errorf("failed to delete stale route %s, %v", route.NextHop, err)
+				}
 			}
 		}
 	}

@@ -241,4 +241,6 @@ const (
 
 	QoSDirectionIngress = "ingress"
 	QoSDirectionEgress  = "egress"
+
+	MainRouteTable = "main"
 )
