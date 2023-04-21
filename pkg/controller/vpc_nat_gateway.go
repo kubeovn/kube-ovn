@@ -81,12 +81,6 @@ func (c *Controller) resyncVpcNatGwConfig() {
 			return
 		}
 
-		klog.Info("start establish vpc-nat-gateway")
-		if err = c.checkVpcExternalNet(); err != nil {
-			klog.Errorf("failed to check vpc external net, %v", err)
-			return
-		}
-
 		gws, err := c.vpcNatGatewayLister.List(labels.Everything())
 		if err != nil {
 			klog.Errorf("failed to get vpc nat gateway, %v", err)
@@ -533,11 +527,11 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	pod := oriPod.DeepCopy()
 	var extRules []string
 	var v4ExternalGw, v4InternalGw, v4ExternalCidr string
-	if subnet, ok := c.ipam.Subnets[util.VpcExternalNet]; ok {
+	if subnet, ok := c.ipam.Subnets[gw.Spec.ExternalSubnet]; ok {
 		v4ExternalGw = subnet.V4Gw
 		v4ExternalCidr = subnet.V4CIDR.String()
 	} else {
-		return fmt.Errorf("failed to get external subnet %s", util.VpcExternalNet)
+		return fmt.Errorf("failed to get external subnet %s", gw.Spec.ExternalSubnet)
 	}
 	extRules = append(extRules, fmt.Sprintf("%s,%s", v4ExternalCidr, v4ExternalGw))
 	if err = c.execNatGwRules(pod, natGwExtSubnetRouteAdd, extRules); err != nil {
@@ -667,10 +661,9 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	if oldSts != nil && len(oldSts.Annotations) != 0 {
 		newPodAnnotations = oldSts.Annotations
 	}
-
 	podAnnotations := map[string]string{
 		util.VpcNatGatewayAnnotation:     gw.Name,
-		util.AttachmentNetworkAnnotation: fmt.Sprintf("%s/%s", c.config.PodNamespace, util.VpcExternalNet),
+		util.AttachmentNetworkAnnotation: fmt.Sprintf("%s/%s", c.config.PodNamespace, gw.Spec.ExternalSubnet),
 		util.LogicalSwitchAnnotation:     gw.Spec.Subnet,
 		util.IpAddressAnnotation:         gw.Spec.LanIp,
 	}
@@ -763,17 +756,6 @@ func (c *Controller) getNatGwPod(name string) (*corev1.Pod, error) {
 	return pods[0], nil
 }
 
-func (c *Controller) checkVpcExternalNet() (err error) {
-	networkClient := c.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(c.config.PodNamespace)
-	if _, err = networkClient.Get(context.Background(), util.VpcExternalNet, metav1.GetOptions{}); err != nil {
-		if k8serrors.IsNotFound(err) {
-			klog.Errorf("vpc external multus net '%s' should be exist already before ovn-vpc-nat-gw-config applied", util.VpcExternalNet)
-			return err
-		}
-		return err
-	}
-	return nil
-}
 
 func (c *Controller) initCreateAt(key string) (err error) {
 	if NAT_GW_CREATED_AT != "" {

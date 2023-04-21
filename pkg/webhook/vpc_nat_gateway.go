@@ -392,7 +392,7 @@ func (v *ValidatingHook) ValidateIptablesEIP(ctx context.Context, eip *ovnv1.Ipt
 	}
 
 	subnet := &ovnv1.Subnet{}
-	key := types.NamespacedName{Name: util.VpcExternalNet}
+	key := types.NamespacedName{Name: eip.Spec.ExternalSubnet}
 	if err := v.cache.Get(ctx, key, subnet); err != nil {
 		return err
 	}
