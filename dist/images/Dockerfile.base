@@ -60,6 +60,8 @@ RUN cd /usr/src/ && git clone -b branch-22.03 --depth=1 https://github.com/ovn-o
     curl -s https://github.com/kubeovn/ovn/commit/44b44df9ceb37d526594126c6f8737fafb53269c.patch | git apply && \
     # do not remove LB if vips is empty
     curl -s https://github.com/kubeovn/ovn/commit/45a4a22161e42f17f21baee9106a45964dfd3a1b.patch | git apply && \
+    # ovn-controller: do not send GARP on localnet for Kube-OVN ports
+    curl -s https://github.com/kubeovn/ovn/commit/8af8751cdb55f582c675db921f2526b06fd3d8c0.patch | git apply && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \
