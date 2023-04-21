@@ -765,7 +765,7 @@ func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
 		return err
 	}
 
-	for rtb, _ := range routeTables {
+	for rtb := range routeTables {
 		if err := c.ovnLegacyClient.DeleteStaticRoute(ip, c.config.ClusterRouter, rtb); err != nil {
 			klog.Errorf("failed to delete obsolete static route for node %s: %v", node, err)
 			return err

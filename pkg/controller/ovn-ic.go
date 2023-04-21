@@ -386,7 +386,7 @@ func (c *Controller) delLearnedRoute() error {
 				return err
 			}
 
-			for rtb, _ := range rtbs {
+			for rtb := range rtbs {
 				if err := c.ovnLegacyClient.DeleteStaticRoute(aLdPort["ip_prefix"][0], itsRouter[0]["name"][0], rtb); err != nil {
 					klog.Errorf("failed to delete static route %s, %v", aLdPort["ip_prefix"][0], err)
 					return err
