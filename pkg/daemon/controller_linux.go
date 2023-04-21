@@ -22,6 +22,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	k8siptables "k8s.io/kubernetes/pkg/util/iptables"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -32,6 +33,7 @@ import (
 type ControllerRuntime struct {
 	iptables         map[string]*iptables.IPTables
 	iptablesObsolete map[string]*iptables.IPTables
+	k8sipables       map[string]k8siptables.Interface
 	ipsets           map[string]*ipsets.IPSets
 	gwCounters       map[string]*util.GwIPtableCounters
 }
@@ -75,6 +77,7 @@ func (c *Controller) initRuntime() error {
 	c.iptables = make(map[string]*iptables.IPTables)
 	c.ipsets = make(map[string]*ipsets.IPSets)
 	c.gwCounters = make(map[string]*util.GwIPtableCounters)
+	c.k8sipables = make(map[string]k8siptables.Interface)
 
 	if c.protocol == kubeovnv1.ProtocolIPv4 || c.protocol == kubeovnv1.ProtocolDual {
 		ipt, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
@@ -89,6 +92,7 @@ func (c *Controller) initRuntime() error {
 			c.iptablesObsolete[kubeovnv1.ProtocolIPv4] = ipt
 		}
 		c.ipsets[kubeovnv1.ProtocolIPv4] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil))
+		c.k8sipables[kubeovnv1.ProtocolIPv4] = k8siptables.New(c.k8sExec, k8siptables.ProtocolIPv4)
 	}
 	if c.protocol == kubeovnv1.ProtocolIPv6 || c.protocol == kubeovnv1.ProtocolDual {
 		ipt, err := iptables.NewWithProtocol(iptables.ProtocolIPv6)
@@ -103,6 +107,7 @@ func (c *Controller) initRuntime() error {
 			c.iptablesObsolete[kubeovnv1.ProtocolIPv6] = ipt
 		}
 		c.ipsets[kubeovnv1.ProtocolIPv6] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV6, IPSetPrefix, nil, nil))
+		c.k8sipables[kubeovnv1.ProtocolIPv6] = k8siptables.New(c.k8sExec, k8siptables.ProtocolIPv6)
 	}
 
 	return nil

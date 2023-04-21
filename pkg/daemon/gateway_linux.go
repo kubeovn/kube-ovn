@@ -19,7 +19,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
 	k8sipset "k8s.io/kubernetes/pkg/util/ipset"
-	k8siptables "k8s.io/kubernetes/pkg/util/iptables"
 	k8sexec "k8s.io/utils/exec"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -481,8 +480,6 @@ func (c *Controller) setIptables() error {
 		protocols[0] = c.protocol
 	}
 
-	var supportRandomFully bool
-
 	for _, protocol := range protocols {
 		ipt := c.iptables[protocol]
 		if ipt == nil {
@@ -574,14 +571,6 @@ func (c *Controller) setIptables() error {
 			}
 		}
 
-		if protocol == kubeovnv1.ProtocolIPv4 {
-			iptv4 := k8siptables.New(c.k8sExec, k8siptables.ProtocolIPv4)
-			supportRandomFully = iptv4.HasRandomFully()
-		} else {
-			iptv6 := k8siptables.New(c.k8sExec, k8siptables.ProtocolIPv6)
-			supportRandomFully = iptv6.HasRandomFully()
-		}
-
 		var natPreroutingRules, natPostroutingRules []util.IPTableRule
 		for _, rule := range iptablesRules {
 			if rule.Table == NAT {
@@ -590,7 +579,7 @@ func (c *Controller) setIptables() error {
 					natPreroutingRules = append(natPreroutingRules, rule)
 					continue
 				case OvnPostrouting:
-					if util.ContainsString(rule.Rule, "MASQUERADE") && supportRandomFully {
+					if util.ContainsString(rule.Rule, "MASQUERADE") && c.k8sipables[protocol].HasRandomFully() {
 						// https://github.com/kubeovn/kube-ovn/issues/2641
 						// Work around Linux kernel bug that sometimes causes multiple flows to
 						// get mapped to the same IP:PORT and consequently some suffer packet
