@@ -579,7 +579,7 @@ func (c *Controller) setIptables() error {
 					natPreroutingRules = append(natPreroutingRules, rule)
 					continue
 				case OvnPostrouting:
-					if util.ContainsString(rule.Rule, "MASQUERADE") && c.k8sipables[protocol].HasRandomFully() {
+					if util.ContainsString(rule.Rule, "MASQUERADE") && c.k8siptables[protocol].HasRandomFully() {
 						// https://github.com/kubeovn/kube-ovn/issues/2641
 						// Work around Linux kernel bug that sometimes causes multiple flows to
 						// get mapped to the same IP:PORT and consequently some suffer packet
