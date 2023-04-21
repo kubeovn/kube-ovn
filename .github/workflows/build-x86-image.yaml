@@ -22,7 +22,7 @@ concurrency:
 
 env:
   GOSEC_VERSION: '2.15.0'
-  HELM_VERSION: v3.11.1
+  HELM_VERSION: v3.11.3
   SUBMARINER_VERSION: '0.14.3'
 
 jobs:
@@ -1311,7 +1311,7 @@ jobs:
         run: |
           sudo pip3 install j2cli
           sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH k8s_version=v1.23.13 make kind-init
+          sudo PATH=~/.local/bin:$PATH k8s_version=v1.23.17 make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 

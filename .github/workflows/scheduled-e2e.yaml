@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  HELM_VERSION: v3.11.1
+  HELM_VERSION: v3.11.3
   SUBMARINER_VERSION: '0.14.3'
 
 jobs:
