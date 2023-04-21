@@ -176,7 +176,7 @@ spec:
                   type: string
                 subnet:
                   type: string
-                externalSubnet:
+                externalSubnets:
                   items:
                     type: string
                   type: array
@@ -562,7 +562,7 @@ spec:
                   type: string
                 qosPolicy:
                   type: string
-                externalSubnet:
+                externalSubnets:
                   items:
                     type: string
                   type: array

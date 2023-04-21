@@ -396,6 +396,10 @@ spec:
                   type: string
                 subnet:
                   type: string
+                externalSubnets:
+                  items:
+                    type: string
+                  type: array
                 vpc:
                   type: string
                 selector:
@@ -778,6 +782,10 @@ spec:
                   type: string
                 qosPolicy:
                   type: string
+                externalSubnets:
+                  items:
+                    type: string
+                  type: array
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
