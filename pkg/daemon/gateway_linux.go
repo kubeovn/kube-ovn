@@ -481,7 +481,6 @@ func (c *Controller) setIptables() error {
 		protocols[0] = c.protocol
 	}
 
-	execer := k8sexec.New()
 	var supportRandomFully bool
 
 	for _, protocol := range protocols {
@@ -576,10 +575,10 @@ func (c *Controller) setIptables() error {
 		}
 
 		if protocol == kubeovnv1.ProtocolIPv4 {
-			iptv4 := k8siptables.New(execer, k8siptables.ProtocolIPv4)
+			iptv4 := k8siptables.New(c.k8sExec, k8siptables.ProtocolIPv4)
 			supportRandomFully = iptv4.HasRandomFully()
 		} else {
-			iptv6 := k8siptables.New(execer, k8siptables.ProtocolIPv6)
+			iptv6 := k8siptables.New(c.k8sExec, k8siptables.ProtocolIPv6)
 			supportRandomFully = iptv6.HasRandomFully()
 		}
 
@@ -592,10 +591,10 @@ func (c *Controller) setIptables() error {
 					continue
 				case OvnPostrouting:
 					if util.ContainsString(rule.Rule, "MASQUERADE") && supportRandomFully {
-						//https://github.com/kubeovn/kube-ovn/issues/2641
-						//Work around Linux kernel bug that sometimes causes multiple flows to
-						//get mapped to the same IP:PORT and consequently some suffer packet
-						//drops.
+						// https://github.com/kubeovn/kube-ovn/issues/2641
+						// Work around Linux kernel bug that sometimes causes multiple flows to
+						// get mapped to the same IP:PORT and consequently some suffer packet
+						// drops.
 						rule.Rule = append(rule.Rule, "--random-fully")
 					}
 					natPostroutingRules = append(natPostroutingRules, rule)
