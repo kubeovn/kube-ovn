@@ -74,6 +74,11 @@ func (c *ovnClient) CreateEgressAcl(pgName, asEgressName, asExceptName, protocol
 			acl.Log = true
 			acl.Severity = &ovnnb.ACLSeverityWarning
 		}
+
+		if acl.Options == nil {
+			acl.Options = make(map[string]string)
+		}
+		acl.Options["apply-after-lb"] = "true"
 	}
 
 	defaultDropAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionFromLport, util.EgressDefaultDrop, AllIpMatch.String(), ovnnb.ACLActionDrop, options)
@@ -86,7 +91,12 @@ func (c *ovnClient) CreateEgressAcl(pgName, asEgressName, asExceptName, protocol
 	/* allow acl */
 	matches := newNetworkPolicyAclMatch(pgName, asEgressName, asExceptName, protocol, ovnnb.ACLDirectionFromLport, npp, namedPortMap)
 	for _, m := range matches {
-		allowAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, m, ovnnb.ACLActionAllowRelated)
+		allowAcl, err := c.newAcl(pgName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, m, ovnnb.ACLActionAllowRelated, func(acl *ovnnb.ACL) {
+			if acl.Options == nil {
+				acl.Options = make(map[string]string)
+			}
+			acl.Options["apply-after-lb"] = "true"
+		})
 		if err != nil {
 			return fmt.Errorf("new allow egress acl for port group %s: %v", pgName, err)
 		}
