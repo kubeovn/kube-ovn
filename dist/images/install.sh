@@ -3828,7 +3828,7 @@ metadata:
   namespace: kube-system
   annotations:
     kubernetes.io/description: |
-      This daemon set launches the openvswitch daemon.
+      This daemon set launches the pinger daemon.
 spec:
   selector:
     matchLabels:

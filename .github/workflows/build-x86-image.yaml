@@ -22,7 +22,7 @@ concurrency:
 
 env:
   GOSEC_VERSION: '2.15.0'
-  HELM_VERSION: v3.11.1
+  HELM_VERSION: v3.11.3
   SUBMARINER_VERSION: '0.14.3'
 
 jobs:
@@ -1112,7 +1112,7 @@ jobs:
         run: make kube-ovn-lb-svc-conformance-e2e
 
   kubevirt-e2e:
-    name: Kubevirt vm E2E
+    name: Kubevirt VM E2E
     needs:
       - build-kube-ovn
       - build-e2e-binaries
@@ -1311,7 +1311,7 @@ jobs:
         run: |
           sudo pip3 install j2cli
           sudo pip3 install "j2cli[yaml]"
-          sudo PATH=~/.local/bin:$PATH k8s_version=v1.23.13 make kind-init
+          sudo PATH=~/.local/bin:$PATH k8s_version=v1.23.17 make kind-init
           sudo cp -r /root/.kube/ ~/.kube/
           sudo chown -R $(id -un). ~/.kube/
 
@@ -1564,6 +1564,9 @@ jobs:
       - cyclonus-netpol-e2e
       - kube-ovn-conformance-e2e
       - kube-ovn-ic-conformance-e2e
+      - ovn-vpc-nat-gw-conformance-e2e
+      - iptables-vpc-nat-gw-conformance-e2e
+      - webhook-e2e
       - lb-svc-e2e
       - underlay-logical-gateway-installation-test
       - chart-installation-test
@@ -1723,7 +1726,7 @@ jobs:
         run: sh dist/images/cleanup.sh
 
   iptables-vpc-nat-gw-conformance-e2e:
-    name: Iptables vpc nat gw E2E
+    name: Iptables VPC NAT Gateway E2E
     needs:
       - build-kube-ovn
       - build-vpc-nat-gateway
@@ -1814,7 +1817,7 @@ jobs:
         run: make iptables-vpc-nat-gw-conformance-e2e
 
   ovn-vpc-nat-gw-conformance-e2e:
-    name: Ovn vpc nat gw E2E
+    name: OVN VPC NAT Gateway E2E
     needs:
       - build-kube-ovn
       - build-e2e-binaries
@@ -1876,8 +1879,7 @@ jobs:
           name: kube-ovn
 
       - name: Load images
-        run: |
-          docker load -i kube-ovn.tar
+        run: docker load -i kube-ovn.tar
 
       - name: Create kind cluster
         run: |
