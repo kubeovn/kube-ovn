@@ -207,6 +207,7 @@ func (c *Controller) handleAddQoSPolicy(key string) error {
 	klog.V(3).Infof("handle add qos %s", key)
 
 	if err := c.validateQosPolicy(cachedQoS); err != nil {
+		klog.Errorf("failed to validate qos %s, %v", key, err)
 		return err
 	}
 
@@ -316,16 +317,19 @@ func (c *Controller) reconcileEIPBandtithLimitRules(
 	// in this case, we must delete rules first, then add or update rules
 	if len(deleted) > 0 {
 		if err = c.delEIPBandtithLimitRules(eip, eip.Status.IP, deleted); err != nil {
+			klog.Errorf("failed to delete eip %s bandwidth limit rules, %v", eip.Name, err)
 			return err
 		}
 	}
 	if len(added) > 0 {
 		if err = c.addOrUpdateEIPBandtithLimitRules(eip, eip.Status.IP, added); err != nil {
+			klog.Errorf("failed to add eip %s bandwidth limit rules, %v", eip.Name, err)
 			return err
 		}
 	}
 	if len(updated) > 0 {
 		if err = c.addOrUpdateEIPBandtithLimitRules(eip, eip.Status.IP, updated); err != nil {
+			klog.Errorf("failed to update eip %s bandwidth limit rules, %v", eip.Name, err)
 			return err
 		}
 	}
@@ -380,6 +384,7 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 	}
 
 	if err := c.validateQosPolicy(cachedQos); err != nil {
+		klog.Errorf("failed to validate qos %s, %v", key, err)
 		return err
 	}
 
@@ -408,7 +413,8 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 				} else if len(eips.Items) == 1 {
 					eip := &eips.Items[0]
 					if err = c.reconcileEIPBandtithLimitRules(eip, added, deleted, updated); err != nil {
-						return nil
+						klog.Errorf("failed to reconcile eip %s bandwidth limit rules, %v", eip.Name, err)
+						return err
 					}
 				} else {
 					err := fmt.Errorf("not support qos %s change rule, related eip more than one", key)
