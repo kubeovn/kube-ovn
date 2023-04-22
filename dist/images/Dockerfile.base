@@ -6,10 +6,7 @@ ARG NO_AVX512=false
 ARG DEBIAN_FRONTEND=noninteractive
 ENV SRC_DIR='/usr/src'
 
-RUN apt update && apt install -y build-essential fakeroot git curl \
-    autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
-    graphviz iproute2 libcap-ng-dev libdbus-1-dev libnuma-dev libpcap-dev libssl-dev libtool libunbound-dev \
-    openssl pkg-config procps python3-all-dev python3-setuptools python3-sortedcontainers python3-sphinx
+RUN apt update && apt install -y git curl
 
 RUN cd /usr/src/ && \
     git clone -b branch-3.1 --depth=1 https://github.com/openvswitch/ovs.git && \
@@ -29,15 +26,7 @@ RUN cd /usr/src/ && \
     # Add jitter parameter patch for netem qos
     curl -s https://github.com/kubeovn/ovs/commit/2eaaf89fbf3ee2172719ed10d045fd79900edc8e.patch | git apply && \
     # compile without avx512
-    if [ "$ARCH" = "amd64" -a "$NO_AVX512" = "true" ]; then curl -s https://github.com/kubeovn/ovs/commit/b0974433b39d4ddef71b88ee0bb79ce41fa79640.patch | git apply; fi && \
-    ./boot.sh && \
-    ./configure && \
-    rm -rf .git && \
-    CONFIGURE_OPTS='' && \
-    if [ "$ARCH" = "amd64" ]; then CONFIGURE_OPTS='CFLAGS="-O2 -g -msse4.2 -mpopcnt -fPIC"'; fi && \
-    DATAPATH_CONFIGURE_OPTS='--prefix=/usr' EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS DEB_BUILD_OPTIONS='parallel=8 nocheck nodpdk' make debian-deb
-
-RUN dpkg -i /usr/src/python3-openvswitch*.deb
+    if [ "$ARCH" = "amd64" -a "$NO_AVX512" = "true" ]; then curl -s https://github.com/kubeovn/ovs/commit/b0974433b39d4ddef71b88ee0bb79ce41fa79640.patch | git apply; fi
 
 RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
@@ -52,7 +41,24 @@ RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-o
     # fix reaching resubmit limit in underlay
     curl -s https://github.com/kubeovn/ovn/commit/993147dd6ab2dd4565379315a6d96ab12f4a294d.patch | git apply && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
-    curl -s https://github.com/kubeovn/ovn/commit/8af8751cdb55f582c675db921f2526b06fd3d8c0.patch | git apply && \
+    curl -s https://github.com/kubeovn/ovn/commit/8af8751cdb55f582c675db921f2526b06fd3d8c0.patch | git apply
+
+RUN apt install -y build-essential fakeroot \
+    autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
+    graphviz iproute2 libcap-ng-dev libdbus-1-dev libnuma-dev libpcap-dev libssl-dev libtool libunbound-dev \
+    openssl pkg-config procps python3-all-dev python3-setuptools python3-sortedcontainers python3-sphinx
+
+RUN cd /usr/src/ovs && \
+    ./boot.sh && \
+    ./configure && \
+    rm -rf .git && \
+    CONFIGURE_OPTS='' && \
+    if [ "$ARCH" = "amd64" ]; then CONFIGURE_OPTS='CFLAGS="-O2 -g -msse4.2 -mpopcnt -fPIC"'; fi && \
+    DATAPATH_CONFIGURE_OPTS='--prefix=/usr' EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS DEB_BUILD_OPTIONS='parallel=8 nocheck nodpdk' make debian-deb
+
+RUN dpkg -i /usr/src/python3-openvswitch*.deb
+
+RUN cd /usr/src/ovn && \
     sed -i 's/OVN/ovn/g' debian/changelog && \
     rm -rf .git && \
     ./boot.sh && \
@@ -102,9 +108,9 @@ RUN curl -sSf -L --retry 3 -o /usr/local/bin/bfdd-control https://github.com/bob
     chmod +x /usr/local/bin/bfdd-control /usr/local/bin/bfdd-beacon
 
 ENV DUMB_INIT_VERSION="1.2.5"
-RUN dump_arch="x86_64"; \
-    if [ "$ARCH" = "arm64" ]; then dump_arch="aarch64"; fi; \
-    curl -sSf -L --retry 5 -o /usr/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v${DUMB_INIT_VERSION}/dumb-init_${DUMB_INIT_VERSION}_${dump_arch} && \
+RUN dumb_init_arch="x86_64"; \
+    if [ "$ARCH" = "arm64" ]; then dumb_init_arch="aarch64"; fi; \
+    curl -sSf -L --retry 5 -o /usr/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v${DUMB_INIT_VERSION}/dumb-init_${DUMB_INIT_VERSION}_${dumb_init_arch} && \
     chmod +x /usr/bin/dumb-init
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
