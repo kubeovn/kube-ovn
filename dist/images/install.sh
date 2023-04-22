@@ -1467,6 +1467,26 @@ spec:
                         type: string
                     type: object
                   type: array
+                routeTables:
+                  properties:
+                    name:
+                      type: string
+                    routes:
+                      items:
+                        properties:
+                          policy:
+                            type: string
+                          cidr:
+                            type: string
+                          nextHopIP:
+                            type: string
+                          ecmpMode:
+                            type: string
+                          bfdId:
+                            type: string
+                        type: object
+                      type: array
+                  type: object
               type: object
             status:
               properties:
@@ -1922,6 +1942,8 @@ spec:
                   type: boolean
                 enableEcmp:
                   type: boolean
+                routeTable:
+                  type: string
   scope: Cluster
   names:
     plural: subnets
