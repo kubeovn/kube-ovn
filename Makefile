@@ -24,7 +24,7 @@ CHART_UPGRADE_RESTART_OVS=$(shell echo $${CHART_UPGRADE_RESTART_OVS:-false})
 MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:snapshot-thick
 MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset-thick.yml
 
-KUBEVIRT_VERSION = v0.58.0
+KUBEVIRT_VERSION = v0.58.1
 KUBEVIRT_OPERATOR_IMAGE = quay.io/kubevirt/virt-operator:$(KUBEVIRT_VERSION)
 KUBEVIRT_API_IMAGE = quay.io/kubevirt/virt-api:$(KUBEVIRT_VERSION)
 KUBEVIRT_CONTROLLER_IMAGE = quay.io/kubevirt/virt-controller:$(KUBEVIRT_VERSION)
@@ -35,10 +35,10 @@ KUBEVIRT_OPERATOR_YAML = https://github.com/kubevirt/kubevirt/releases/download/
 KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-cr.yaml
 KUBEVIRT_TEST_YAML = https://kubevirt.io/labs/manifests/vm.yaml
 
-CILIUM_VERSION = 1.12.7
+CILIUM_VERSION = 1.12.9
 CILIUM_IMAGE_REPO = quay.io/cilium/cilium
 
-CERT_MANAGER_VERSION = v1.11.0
+CERT_MANAGER_VERSION = v1.11.1
 CERT_MANAGER_CONTROLLER = quay.io/jetstack/cert-manager-controller:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_CAINJECTOR = quay.io/jetstack/cert-manager-cainjector:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_WEBHOOK = quay.io/jetstack/cert-manager-webhook:$(CERT_MANAGER_VERSION)
@@ -386,7 +386,7 @@ kind-install-chart: kind-load-image kind-untaint-control-plane
 	kubectl label node -lnode-role.kubernetes.io/control-plane kube-ovn/role=master --overwrite
 	kubectl label node -lovn.kubernetes.io/ovs_dp_type!=userspace ovn.kubernetes.io/ovs_dp_type=kernel --overwrite
 	ips=$$(kubectl get node -lkube-ovn/role=master --no-headers -o wide | awk '{print $$6}') && \
-	helm install kubeovn ./kubeovn-helm \
+	helm install kubeovn ./charts \
 		--set global.images.kubeovn.tag=$(VERSION) \
 		--set replicaCount=$$(echo $$ips | awk '{print NF}') \
 		--set MASTER_NODES="$$(echo $$ips | tr \\n ',' | sed -e 's/,$$//' -e 's/,/\\,/g')"
@@ -399,7 +399,7 @@ kind-install-chart: kind-load-image kind-untaint-control-plane
 .PHONY: kind-upgrade-chart
 kind-upgrade-chart: kind-load-image
 	$(eval OVN_DB_IPS = $(shell kubectl get no -lkube-ovn/role=master --no-headers -o wide | awk '{print $$6}' | tr \\n ',' | sed -e 's/,$$//' -e 's/,/\\,/g'))
-	helm upgrade kubeovn ./kubeovn-helm \
+	helm upgrade kubeovn ./charts \
 		--set global.images.kubeovn.tag=$(VERSION) \
 		--set replicaCount=$$(echo $(OVN_DB_IPS) | awk -F ',' '{print NF}') \
 		--set MASTER_NODES='$(OVN_DB_IPS)' \
@@ -590,6 +590,13 @@ kind-install-multus:
 	$(call kind_load_image,kube-ovn,$(MULTUS_IMAGE),1)
 	kubectl apply -f "$(MULTUS_YAML)"
 	kubectl -n kube-system rollout status ds kube-multus-ds
+
+.PHONY: kind-install-vpc-nat-gw
+kind-install-vpc-nat-gw: kind-load-image kind-untaint-control-plane
+	$(call kind_load_image,kube-ovn,$(VPC_NAT_GW_IMG))
+	@$(MAKE) ENABLE_NAT_GW=true CNI_CONFIG_PRIORITY=10 kind-install
+	@$(MAKE) kind-install-multus
+	kubectl apply -f yamls/vpc-nat-gw-attachment.yaml
 
 .PHONY: kind-install-kubevirt
 kind-install-kubevirt: kind-load-image kind-untaint-control-plane

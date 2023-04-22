@@ -302,7 +302,6 @@ func (c *Controller) updateProviderNetworkStatusForVlanDeletion(pn *kubeovnv1.Pr
 		klog.Errorf("failed to update status of provider network %s: %v", pn.Name, err)
 		return err
 	}
-
 	return nil
 }
 

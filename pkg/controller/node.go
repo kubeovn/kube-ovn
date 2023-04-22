@@ -640,6 +640,7 @@ func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, node
 				Name: ipName,
 				Labels: map[string]string{
 					util.SubnetNameLabel: subnetName,
+					util.NodeNameLabel:   nodeName,
 					subnetName:           "",
 				},
 			},
@@ -667,9 +668,11 @@ func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, node
 		newIpCr := ipCr.DeepCopy()
 		if newIpCr.Labels != nil {
 			newIpCr.Labels[util.SubnetNameLabel] = subnetName
+			newIpCr.Labels[util.NodeNameLabel] = nodeName
 		} else {
 			newIpCr.Labels = map[string]string{
 				util.SubnetNameLabel: subnetName,
+				util.NodeNameLabel:   nodeName,
 			}
 		}
 		newIpCr.Spec.PodName = key

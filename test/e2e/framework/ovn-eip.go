@@ -105,11 +105,15 @@ func (c *OvnEipClient) DeleteSync(name string) {
 
 // WaitToBeReady returns whether the ovn eip is ready within timeout.
 func (c *OvnEipClient) WaitToBeReady(name string, timeout time.Duration) bool {
+	Logf("Waiting up to %v for ovn eip %s to be ready", timeout, name)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
 		if c.Get(name).Status.Ready {
+			Logf("ovn eip %s is ready ", name)
 			return true
 		}
+		Logf("ovn eip %s is not ready ", name)
 	}
+	Logf("ovn eip %s was not ready within %v", name, timeout)
 	return false
 }
 
@@ -123,7 +127,7 @@ func (c *OvnEipClient) WaitToBeUpdated(eip *apiv1.OvnEip, timeout time.Duration)
 			return true
 		}
 	}
-	Logf("OvnEip %s was not updated within %v", eip.Name, timeout)
+	Logf("ovn eip %s was not updated within %v", eip.Name, timeout)
 	return false
 }
 
@@ -132,34 +136,19 @@ func (c *OvnEipClient) WaitToDisappear(name string, interval, timeout time.Durat
 	var lastOvnEip *apiv1.OvnEip
 	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
 		Logf("Waiting for ovn eip %s to disappear", name)
-		subnets, err := c.List(context.TODO(), metav1.ListOptions{})
-		if err != nil {
-			return handleWaitingAPIError(err, true, "listing subnets")
-		}
-		found := false
-		for i, subnet := range subnets.Items {
-			if subnet.Name == name {
-				Logf("ovn eip %s still exists", name)
-				found = true
-				lastOvnEip = &(subnets.Items[i])
-				break
-			}
-		}
-		if !found {
+		_, err := c.OvnEipInterface.Get(context.TODO(), name, metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
 			Logf("ovn eip %s no longer exists", name)
 			return true, nil
 		}
 		return false, nil
 	})
-	if err == nil {
-		return nil
-	}
 	if IsTimeout(err) {
-		return TimeoutError(fmt.Sprintf("timed out while waiting for subnet %s to disappear", name),
+		return TimeoutError(fmt.Sprintf("timed out while waiting for ovn eip %s to disappear", name),
 			lastOvnEip,
 		)
 	}
-	return maybeTimeoutError(err, "waiting for subnet %s to disappear", name)
+	return maybeTimeoutError(err, "waiting for ovn eip %s to disappear", name)
 }
 
 func MakeOvnEip(name, subnet, v4ip, v6ip, mac, usage string) *apiv1.OvnEip {

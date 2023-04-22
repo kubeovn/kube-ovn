@@ -1,0 +1,7 @@
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: ovn-vpc-external-network
+  namespace: kube-system
+spec:
+  config: '{"cniVersion": "0.3.0","type": "macvlan","master": "eth1","mode": "bridge"}'
