@@ -354,7 +354,7 @@ type Vpc struct {
 
 type VpcSpec struct {
 	Namespaces     []string       `json:"namespaces,omitempty"`
-	StaticRoutes   []*StaticRoute `json:"staticRoutes,omitempty"`
+	StaticRoutes   []*StaticRoute `json:"staticRoutes,omitempty"` // TO BE DEPRECATED
 	PolicyRoutes   []*PolicyRoute `json:"policyRoutes,omitempty"`
 	VpcPeerings    []*VpcPeering  `json:"vpcPeerings,omitempty"`
 	EnableExternal bool           `json:"enableExternal,omitempty"`

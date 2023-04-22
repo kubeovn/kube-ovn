@@ -583,31 +583,93 @@ func getStaticRouteItemKey(item *kubeovnv1.StaticRoute) (key string) {
 	}
 }
 
-func formatVpc(vpc *kubeovnv1.Vpc, c *Controller) error {
+func checkStaticRoute(route *kubeovnv1.StaticRoute) (bool, error) {
 	var changed bool
+	// check policy
+	if route.Policy == "" {
+		route.Policy = kubeovnv1.PolicyDst
+		changed = true
+	}
+	if route.Policy != kubeovnv1.PolicyDst && route.Policy != kubeovnv1.PolicySrc {
+		return changed, fmt.Errorf("unknown policy type: %s", route.Policy)
+	}
+	// check cidr
+	if strings.Contains(route.CIDR, "/") {
+		if _, _, err := net.ParseCIDR(route.CIDR); err != nil {
+			return changed, fmt.Errorf("invalid cidr %s: %w", route.CIDR, err)
+		}
+	} else if ip := net.ParseIP(route.CIDR); ip == nil {
+		return changed, fmt.Errorf("invalid ip %s", route.CIDR)
+	}
+	// check next hop ip
+	if ip := net.ParseIP(route.NextHopIP); ip == nil {
+		return changed, fmt.Errorf("invalid next hop ip %s", route.NextHopIP)
+	}
+
+	return changed, nil
+}
+
+func checkAndMergeStaticRoute(vpc *kubeovnv1.Vpc) (bool, error) {
+	var (
+		changed bool
+		err     error
+	)
+	rtbs := make(map[string][]*kubeovnv1.StaticRoute)
+	existRtb := make(map[string]struct{})
 
 	for _, rtb := range vpc.Spec.RouteTables {
 		for _, item := range rtb.Routes {
-			// check policy
-			if item.Policy == "" {
-				item.Policy = kubeovnv1.PolicyDst
-				changed = true
+			changed, err = checkStaticRoute(item)
+			if err != nil {
+				return changed, err
 			}
-			if item.Policy != kubeovnv1.PolicyDst && item.Policy != kubeovnv1.PolicySrc {
-				return fmt.Errorf("unknown policy type: %s", item.Policy)
+
+			key := rtb.Name + ":" + getStaticRouteItemKey(item)
+			if _, ok := existRtb[key]; !ok {
+				existRtb[key] = struct{}{}
+				rtbs[rtb.Name] = append(rtbs[rtb.Name], item)
 			}
-			// check cidr
-			if strings.Contains(item.CIDR, "/") {
-				if _, _, err := net.ParseCIDR(item.CIDR); err != nil {
-					return fmt.Errorf("invalid cidr %s: %w", item.CIDR, err)
-				}
-			} else if ip := net.ParseIP(item.CIDR); ip == nil {
-				return fmt.Errorf("invalid ip %s", item.CIDR)
-			}
-			// check next hop ip
-			if ip := net.ParseIP(item.NextHopIP); ip == nil {
-				return fmt.Errorf("invalid next hop ip %s", item.NextHopIP)
-			}
+		}
+	}
+
+	// to compatible with old version copy static routes to main route table
+	// notice that RouteTables priority is higher than StaticRoutes
+	for _, item := range vpc.Spec.StaticRoutes {
+		changed, err = checkStaticRoute(item)
+		if err != nil {
+			return changed, err
+		}
+
+		key := util.MainRouteTable + ":" + getStaticRouteItemKey(item)
+		if _, ok := existRtb[key]; !ok {
+			changed = true
+			existRtb[key] = struct{}{}
+			rtbs[util.MainRouteTable] = append(rtbs[util.MainRouteTable], item)
+		}
+	}
+
+	if changed {
+		routeTables := make([]*kubeovnv1.RouteTable, 0, len(rtbs))
+		for name, routes := range rtbs {
+			routeTables = append(routeTables, &kubeovnv1.RouteTable{
+				Name:   name,
+				Routes: routes,
+			})
+		}
+		vpc.Spec.RouteTables = routeTables
+	}
+
+	return changed, nil
+}
+
+func formatVpc(vpc *kubeovnv1.Vpc, c *Controller) error {
+	var changed bool
+	if ok, err := checkAndMergeStaticRoute(vpc); err != nil {
+		klog.Errorf("failed to check static route: %v", err)
+		return err
+	} else {
+		if ok {
+			changed = ok
 		}
 	}
 
