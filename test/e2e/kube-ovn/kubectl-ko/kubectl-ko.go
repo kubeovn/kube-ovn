@@ -185,6 +185,9 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 
 		nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(node)
 		for _, ip := range []string{nodeIPv4, nodeIPv6} {
+			if ip == "" {
+				continue
+			}
 			target, testARP := targetIPv4, supportARP
 			if util.CheckProtocol(ip) == apiv1.ProtocolIPv6 {
 				target, testARP = targetIPv6, false
