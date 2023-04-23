@@ -633,7 +633,7 @@ func Test_scratch(t *testing.T) {
 	require.NoError(t, err)
 
 	addresses := []string{"10.104.25.159", "10.244.0.78"}
-	err = ovnClient.AddressSetUpdateAddress1("test.as", addresses...)
+	err = ovnClient.AddressSetUpdateAddress("test.as", addresses...)
 	require.NoError(t, err)
 }
 
