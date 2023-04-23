@@ -32,7 +32,6 @@ import (
 const dockerNetworkName = "kube-ovn-vlan"
 const vpcNatGWConfigMapName = "ovn-vpc-nat-gw-config"
 const networkAttachDefName = "ovn-vpc-external-network"
-const vpcNatGwNs = "kube-system"
 const externalSubnetProvider = "ovn-vpc-external-network.kube-system"
 
 var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
@@ -183,7 +182,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Getting network attachment fefinition " + networkAttachDefName)
-		networkClient := attachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions("kube-system")
+		networkClient := attachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(framework.KubeOvnNamespace)
 		nad, err := networkClient.Get(context.Background(), networkAttachDefName, metav1.GetOptions{})
 		framework.ExpectNoError(err, "failed to get")
 		ginkgo.By("Got network attachment definition " + nad.Name)
@@ -218,7 +217,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		_ = subnetClient.CreateSync(macvlanSubnet)
 
 		ginkgo.By("Getting config map " + vpcNatGWConfigMapName)
-		_, err = cs.CoreV1().ConfigMaps("kube-system").Get(context.Background(), vpcNatGWConfigMapName, metav1.GetOptions{})
+		_, err = cs.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Get(context.Background(), vpcNatGWConfigMapName, metav1.GetOptions{})
 		framework.ExpectNoError(err, "failed to get ConfigMap")
 
 		ginkgo.By("Creating custom vpc")
@@ -291,7 +290,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		vpcNatGwClient.DeleteSync(vpcNatGwName)
 
 		ginkgo.By("Deleting configmap " + vpcNatGWConfigMapName)
-		err = cs.CoreV1().ConfigMaps("kube-system").Delete(context.Background(), vpcNatGWConfigMapName, metav1.DeleteOptions{})
+		err = cs.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Delete(context.Background(), vpcNatGWConfigMapName, metav1.DeleteOptions{})
 		framework.ExpectNoError(err, "failed to delete ConfigMap")
 
 		// the only pod for vpc nat gateway
@@ -300,8 +299,8 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		// delete vpc nat gw statefulset remaining ip for eth0 and net1
 		overlaySubnet = subnetClient.Get(overlaySubnetName)
 		macvlanSubnet = subnetClient.Get(networkAttachDefName)
-		eth0IpName := ovs.PodNameToPortName(vpcNatGwPodName, vpcNatGwNs, overlaySubnet.Spec.Provider)
-		net1IpName := ovs.PodNameToPortName(vpcNatGwPodName, vpcNatGwNs, macvlanSubnet.Spec.Provider)
+		eth0IpName := ovs.PodNameToPortName(vpcNatGwPodName, framework.KubeOvnNamespace, overlaySubnet.Spec.Provider)
+		net1IpName := ovs.PodNameToPortName(vpcNatGwPodName, framework.KubeOvnNamespace, macvlanSubnet.Spec.Provider)
 		ginkgo.By("Deleting vpc nat gw eth0 ip " + eth0IpName)
 		ipClient.DeleteSync(eth0IpName)
 		ginkgo.By("Deleting vpc nat gw net1 ip " + net1IpName)
