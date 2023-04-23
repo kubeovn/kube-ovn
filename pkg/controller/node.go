@@ -669,9 +669,9 @@ func (c *Controller) checkGatewayReady() error {
 						continue
 					}
 
-					exist, err := c.checkNodeEcmpRouteExist(ip, cidrBlock)
+					exist, err := c.checkNodeGwRouteExist(ip, cidrBlock)
 					if err != nil {
-						klog.Errorf("get ecmp static route for subnet %v, error %v", subnet.Name, err)
+						klog.Errorf("failed to get static route for subnet %v, error %v", subnet.Name, err)
 						break
 					}
 
@@ -732,7 +732,7 @@ func (c *Controller) checkGatewayReady() error {
 	return nil
 }
 
-func (c *Controller) checkNodeEcmpRouteExist(nodeIp, cidrBlock string) (bool, error) {
+func (c *Controller) checkNodeGwRouteExist(nodeIp, cidrBlock string) (bool, error) {
 	routes, err := c.ovnClient.GetStaticRouteList(c.config.ClusterRouter)
 	if err != nil {
 		klog.Errorf("failed to list static route %v", err)
