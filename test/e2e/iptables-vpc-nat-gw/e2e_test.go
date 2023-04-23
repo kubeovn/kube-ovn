@@ -294,8 +294,8 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		err = cs.CoreV1().ConfigMaps("kube-system").Delete(context.Background(), vpcNatGWConfigMapName, metav1.DeleteOptions{})
 		framework.ExpectNoError(err, "failed to delete ConfigMap")
 
+		// the only pod for vpc nat gateway
 		vpcNatGwPodName := "vpc-nat-gw-" + vpcNatGwName + "-0"
-		// -0 means only one pod name for vpc nat gw
 
 		// delete vpc nat gw statefulset remaining ip for eth0 and net1
 		overlaySubnet = subnetClient.Get(overlaySubnetName)
