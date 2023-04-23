@@ -632,7 +632,8 @@ func Test_scratch(t *testing.T) {
 	ovnClient, err := newOvnClient(t, endpoint, 10, "")
 	require.NoError(t, err)
 
-	err = ovnClient.DeleteAcl("test_pg_ip4", "pg", "to-lport", "12345", "output==@test_pg && ip")
+	addresses := []string{"10.104.25.159", "10.244.0.78"}
+	err = ovnClient.AddressSetUpdateAddress1("test.as", addresses...)
 	require.NoError(t, err)
 }
 

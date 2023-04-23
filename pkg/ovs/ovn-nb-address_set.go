@@ -7,6 +7,7 @@ import (
 	"github.com/ovn-org/libovsdb/client"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // CreateAddressSet create address set with external ids
@@ -50,6 +51,9 @@ func (c *ovnClient) AddressSetUpdateAddress(asName string, addresses ...string) 
 	if err != nil {
 		return fmt.Errorf("get address set %s: %v", asName, err)
 	}
+
+	// update will failed when slice contains duplicate elements
+	addresses = util.UniqString(addresses)
 
 	// clear addresses when addresses is empty
 	as.Addresses = addresses
