@@ -154,9 +154,9 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 					continue
 				}
 				if testARP {
+					execOrDie(fmt.Sprintf("%s %s arp", prefix, mac))
 					execOrDie(fmt.Sprintf("%s %s arp request", prefix, mac))
 				}
-				execOrDie(fmt.Sprintf("%s %s arp", prefix, mac))
 				execOrDie(fmt.Sprintf("%s %s icmp", prefix, mac))
 				execOrDie(fmt.Sprintf("%s %s tcp 80", prefix, mac))
 				execOrDie(fmt.Sprintf("%s %s udp 53", prefix, mac))
@@ -202,9 +202,9 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 					continue
 				}
 				if testARP {
+					execOrDie(fmt.Sprintf("%s %s arp", prefix, mac))
 					execOrDie(fmt.Sprintf("%s %s arp request", prefix, mac))
 				}
-				execOrDie(fmt.Sprintf("%s %s arp", prefix, mac))
 				execOrDie(fmt.Sprintf("%s %s icmp", prefix, mac))
 				execOrDie(fmt.Sprintf("%s %s tcp 80", prefix, mac))
 				execOrDie(fmt.Sprintf("%s %s udp 53", prefix, mac))

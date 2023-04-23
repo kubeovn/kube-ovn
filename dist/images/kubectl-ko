@@ -415,6 +415,7 @@ trace(){
           echo "Error: invalid ARP type $4"
           echo "Usage:"
           echo "  kubectl ko trace {namespace/podname} {target ip address} [target mac address] arp {request|reply}"
+          echo "  kubectl ko trace {node//nodename} {target ip address} [target mac address] arp {request|reply}"
           exit 1
           ;;
       esac
@@ -424,6 +425,8 @@ trace(){
       echo "Usage:"
       echo "  kubectl ko trace {namespace/podname} {target ip address} [target mac address] {icmp|tcp|udp} [target tcp/udp port]"
       echo "  kubectl ko trace {namespace/podname} {target ip address} [target mac address] arp {request|reply}"
+      echo "  kubectl ko trace {node//nodename} {target ip address} [target mac address] {icmp|tcp|udp} [target tcp/udp port]"
+      echo "  kubectl ko trace {node//nodename} {target ip address} [target mac address] arp {request|reply}"
       exit 1
       ;;
   esac
