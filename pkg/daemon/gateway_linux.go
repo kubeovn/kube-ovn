@@ -379,7 +379,7 @@ func (c *Controller) updateIptablesChain(ipt *iptables.IPTables, table, chain, p
 		added++
 	}
 	for i := len(existingRules) - 1; i >= len(rules)-added; i-- {
-		if err = ipt.Delete(table, chain, strconv.Itoa(i+added)); err != nil {
+		if err = ipt.Delete(table, chain, strconv.Itoa(i+added+1)); err != nil {
 			klog.Errorf(`failed to delete iptables rule %v: %v`, existingRules[i], err)
 			return err
 		}
@@ -579,6 +579,13 @@ func (c *Controller) setIptables() error {
 					natPreroutingRules = append(natPreroutingRules, rule)
 					continue
 				case OvnPostrouting:
+					if util.ContainsString(rule.Rule, "MASQUERADE") && c.k8siptables[protocol].HasRandomFully() {
+						// https://github.com/kubeovn/kube-ovn/issues/2641
+						// Work around Linux kernel bug that sometimes causes multiple flows to
+						// get mapped to the same IP:PORT and consequently some suffer packet
+						// drops.
+						rule.Rule = append(rule.Rule, "--random-fully")
+					}
 					natPostroutingRules = append(natPostroutingRules, rule)
 					continue
 				}
