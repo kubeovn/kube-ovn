@@ -213,7 +213,8 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			u2oInterconnectionIP = podSubnet.Status.U2OInterconnectionIP
 		}
 
-		//skip ping check gateway for pods during live migration
+		detectIPConflict := podSubnet.Spec.Vlan != ""
+		// skip ping check gateway for pods during live migration
 		if pod.Annotations[fmt.Sprintf(util.LiveMigrationAnnotationTemplate, podRequest.Provider)] != "true" {
 			if podSubnet.Spec.Vlan != "" && !podSubnet.Spec.LogicalGateway {
 				if podSubnet.Spec.DisableGatewayCheck {
@@ -228,6 +229,9 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 					gatewayCheckMode = gatewayCheckModePing
 				}
 			}
+		} else {
+			// do not perform ipv4 conflict detection during VM live migration
+			detectIPConflict = false
 		}
 
 		var mtu int
@@ -304,7 +308,6 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		}
 
 		klog.Infof("create container interface %s mac %s, ip %s, cidr %s, gw %s, u2o routes %v, custom routes %v", ifName, macAddr, ipAddr, cidr, gw, u2oRoutes, podRequest.Routes)
-		detectIPConflict := podSubnet.Spec.Vlan != ""
 		allRoutes := append(u2oRoutes, podRequest.Routes...)
 		if nicType == util.InternalType {
 			podNicName, err = csh.configureNicWithInternalPort(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, detectIPConflict, allRoutes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, podRequest.DeviceID, nicType, latency, limit, loss, gatewayCheckMode, u2oInterconnectionIP)
