@@ -242,23 +242,11 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}
 
-	// we should first delete acl and address_set before update
-	if err = c.ovnClient.DeleteAcls(pgName, portGroupKey, "", nil); err != nil {
-		klog.Errorf("delete np %s acls: %v", key, err)
-		return err
-	}
-
+	// we should first delete address_set before update
 	if err := c.ovnClient.DeleteAddressSets(map[string]string{
 		networkPolicyKey: fmt.Sprintf("%s/%s/%s", np.Namespace, np.Name, "ingress"),
 	}); err != nil {
 		klog.Errorf("delete np %s ingress address set: %v", key, err)
-		return err
-	}
-
-	if err := c.ovnClient.DeleteAddressSets(map[string]string{
-		networkPolicyKey: fmt.Sprintf("%s/%s/%s", np.Namespace, np.Name, "egress"),
-	}); err != nil {
-		klog.Errorf("delete np %s egress address set: %v", key, err)
 		return err
 	}
 
@@ -394,6 +382,14 @@ func (c *Controller) handleUpdateNp(key string) error {
 			klog.Errorf("delete np %s ingress address set: %v", key, err)
 			return err
 		}
+	}
+
+	// we should first delete address_set before update
+	if err := c.ovnClient.DeleteAddressSets(map[string]string{
+		networkPolicyKey: fmt.Sprintf("%s/%s/%s", np.Namespace, np.Name, "egress"),
+	}); err != nil {
+		klog.Errorf("delete np %s egress address set: %v", key, err)
+		return err
 	}
 
 	if hasEgressRule(np) {

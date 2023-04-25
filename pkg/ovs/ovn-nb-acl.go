@@ -53,8 +53,23 @@ func (c *ovnClient) CreateIngressAcl(pgName, asIngressName, asExceptName, protoc
 		acls = append(acls, allowAcl)
 	}
 
-	if err := c.CreateAcls(pgName, portGroupKey, acls...); err != nil {
-		return fmt.Errorf("add ingress acls to port group %s: %v", pgName, err)
+	// let clear acl and add acl in one transaction to prevent some corner case err
+	AclsDeleteOp, err := c.DeleteAclsOps(pgName, portGroupKey, ovnnb.ACLDirectionToLport, nil)
+	if err != nil {
+		return err
+	}
+
+	aclsAddOp, err := c.CreateAclsOps(pgName, portGroupKey, acls...)
+	if err != nil {
+		return err
+	}
+
+	ops := make([]ovsdb.Operation, 0, len(AclsDeleteOp)+len(aclsAddOp))
+	ops = append(ops, AclsDeleteOp...)
+	ops = append(ops, aclsAddOp...)
+
+	if err = c.Transact("acls-add", ops); err != nil {
+		return fmt.Errorf("add ingress acls to %s: %v", pgName, err)
 	}
 
 	return nil
@@ -104,8 +119,23 @@ func (c *ovnClient) CreateEgressAcl(pgName, asEgressName, asExceptName, protocol
 		acls = append(acls, allowAcl)
 	}
 
-	if err := c.CreateAcls(pgName, portGroupKey, acls...); err != nil {
-		return fmt.Errorf("add egress acls to port group %s: %v", pgName, err)
+	// let clear acl and add acl in one transaction to prevent some corner case err
+	AclsDeleteOp, err := c.DeleteAclsOps(pgName, portGroupKey, ovnnb.ACLDirectionFromLport, nil)
+	if err != nil {
+		return err
+	}
+
+	aclsAddOp, err := c.CreateAclsOps(pgName, portGroupKey, acls...)
+	if err != nil {
+		return err
+	}
+
+	ops := make([]ovsdb.Operation, 0, len(AclsDeleteOp)+len(aclsAddOp))
+	ops = append(ops, AclsDeleteOp...)
+	ops = append(ops, aclsAddOp...)
+
+	if err = c.Transact("acls-add", ops); err != nil {
+		return fmt.Errorf("add ingress acls to %s: %v", pgName, err)
 	}
 
 	return nil
@@ -573,44 +603,10 @@ func (c *ovnClient) SetAclLog(pgName string, logEnable, isIngress bool) error {
 // CreateAcls create several acl once
 // parentType is 'ls' or 'pg'
 func (c *ovnClient) CreateAcls(parentName, parentType string, acls ...*ovnnb.ACL) error {
-	if parentType != portGroupKey && parentType != logicalSwitchKey {
-		return fmt.Errorf("acl parent type must be '%s' or '%s'", portGroupKey, logicalSwitchKey)
-	}
-
-	if len(acls) == 0 {
-		return nil
-	}
-
-	models := make([]model.Model, 0, len(acls))
-	aclUUIDs := make([]string, 0, len(acls))
-	for _, acl := range acls {
-		if acl != nil {
-			models = append(models, model.Model(acl))
-			aclUUIDs = append(aclUUIDs, acl.UUID)
-		}
-	}
-
-	createAclsOp, err := c.ovnNbClient.Create(models...)
+	ops, err := c.CreateAclsOps(parentName, parentType, acls...)
 	if err != nil {
-		return fmt.Errorf("generate operations for creating acls: %v", err)
+		return err
 	}
-
-	var aclAddOp []ovsdb.Operation
-	if parentType == portGroupKey { // acl attach to port group
-		aclAddOp, err = c.portGroupUpdateAclOp(parentName, aclUUIDs, ovsdb.MutateOperationInsert)
-		if err != nil {
-			return fmt.Errorf("generate operations for adding acls to port group %s: %v", parentName, err)
-		}
-	} else { // acl attach to logical switch
-		aclAddOp, err = c.logicalSwitchUpdateAclOp(parentName, aclUUIDs, ovsdb.MutateOperationInsert)
-		if err != nil {
-			return fmt.Errorf("generate operations for adding acls to logical switch %s: %v", parentName, err)
-		}
-	}
-
-	ops := make([]ovsdb.Operation, 0, len(createAclsOp)+len(aclAddOp))
-	ops = append(ops, createAclsOp...)
-	ops = append(ops, aclAddOp...)
 
 	if err = c.Transact("acls-add", ops); err != nil {
 		return fmt.Errorf("add acls to type %s %s: %v", parentType, parentName, err)
@@ -641,45 +637,10 @@ func (c *ovnClient) CreateBareAcl(parentName, direction, priority, match, action
 // delete to-lport and from-lport direction acl when direction is empty, otherwise one-way
 // parentType is 'ls' or 'pg'
 func (c *ovnClient) DeleteAcls(parentName, parentType string, direction string, externalIDs map[string]string) error {
-	if externalIDs == nil {
-		externalIDs = make(map[string]string)
-	}
-
-	externalIDs[aclParentKey] = parentName
-
-	/* delete acls from port group or logical switch */
-	acls, err := c.ListAcls(direction, externalIDs)
+	ops, err := c.DeleteAclsOps(parentName, parentType, direction, externalIDs)
 	if err != nil {
-		return fmt.Errorf("list type %s %s acls: %v", parentType, parentName, err)
+		return err
 	}
-
-	aclUUIDs := make([]string, 0, len(acls))
-	for _, acl := range acls {
-		aclUUIDs = append(aclUUIDs, acl.UUID)
-	}
-
-	var removeAclOp []ovsdb.Operation
-	if parentType == portGroupKey { // remove acl from port group
-		removeAclOp, err = c.portGroupUpdateAclOp(parentName, aclUUIDs, ovsdb.MutateOperationDelete)
-		if err != nil {
-			return fmt.Errorf("generate operations for deleting acls from port group %s: %v", parentName, err)
-		}
-	} else { // remove acl from logical switch
-		removeAclOp, err = c.logicalSwitchUpdateAclOp(parentName, aclUUIDs, ovsdb.MutateOperationDelete)
-		if err != nil {
-			return fmt.Errorf("generate operations for deleting acls from logical switch %s: %v", parentName, err)
-		}
-	}
-
-	// delete acls
-	delAclsOp, err := c.WhereCache(aclFilter(direction, externalIDs)).Delete()
-	if err != nil {
-		return fmt.Errorf("generate operation for deleting acls: %v", err)
-	}
-
-	ops := make([]ovsdb.Operation, 0, len(removeAclOp)+len(delAclsOp))
-	ops = append(ops, removeAclOp...)
-	ops = append(ops, delAclsOp...)
 
 	if err = c.Transact("acls-del", ops); err != nil {
 		return fmt.Errorf("del acls from type %s %s: %v", parentType, parentName, err)
@@ -1031,4 +992,96 @@ func aclFilter(direction string, externalIDs map[string]string) func(acl *ovnnb.
 
 		return true
 	}
+}
+
+// CreateAcls return operations which create several acl once
+// parentType is 'ls' or 'pg'
+func (c *ovnClient) CreateAclsOps(parentName, parentType string, acls ...*ovnnb.ACL) ([]ovsdb.Operation, error) {
+	if parentType != portGroupKey && parentType != logicalSwitchKey {
+		return nil, fmt.Errorf("acl parent type must be '%s' or '%s'", portGroupKey, logicalSwitchKey)
+	}
+
+	if len(acls) == 0 {
+		return nil, nil
+	}
+
+	models := make([]model.Model, 0, len(acls))
+	aclUUIDs := make([]string, 0, len(acls))
+	for _, acl := range acls {
+		if acl != nil {
+			models = append(models, model.Model(acl))
+			aclUUIDs = append(aclUUIDs, acl.UUID)
+		}
+	}
+
+	createAclsOp, err := c.ovnNbClient.Create(models...)
+	if err != nil {
+		return nil, fmt.Errorf("generate operations for creating acls: %v", err)
+	}
+
+	var aclAddOp []ovsdb.Operation
+	if parentType == portGroupKey { // acl attach to port group
+		aclAddOp, err = c.portGroupUpdateAclOp(parentName, aclUUIDs, ovsdb.MutateOperationInsert)
+		if err != nil {
+			return nil, fmt.Errorf("generate operations for adding acls to port group %s: %v", parentName, err)
+		}
+	} else { // acl attach to logical switch
+		aclAddOp, err = c.logicalSwitchUpdateAclOp(parentName, aclUUIDs, ovsdb.MutateOperationInsert)
+		if err != nil {
+			return nil, fmt.Errorf("generate operations for adding acls to logical switch %s: %v", parentName, err)
+		}
+	}
+
+	ops := make([]ovsdb.Operation, 0, len(createAclsOp)+len(aclAddOp))
+	ops = append(ops, createAclsOp...)
+	ops = append(ops, aclAddOp...)
+
+	return ops, nil
+}
+
+// DeleteAcls return operation which delete several acl once,
+// delete to-lport and from-lport direction acl when direction is empty, otherwise one-way
+// parentType is 'ls' or 'pg'
+func (c *ovnClient) DeleteAclsOps(parentName, parentType string, direction string, externalIDs map[string]string) ([]ovsdb.Operation, error) {
+	if externalIDs == nil {
+		externalIDs = make(map[string]string)
+	}
+
+	externalIDs[aclParentKey] = parentName
+
+	/* delete acls from port group or logical switch */
+	acls, err := c.ListAcls(direction, externalIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list type %s %s acls: %v", parentType, parentName, err)
+	}
+
+	aclUUIDs := make([]string, 0, len(acls))
+	for _, acl := range acls {
+		aclUUIDs = append(aclUUIDs, acl.UUID)
+	}
+
+	var removeAclOp []ovsdb.Operation
+	if parentType == portGroupKey { // remove acl from port group
+		removeAclOp, err = c.portGroupUpdateAclOp(parentName, aclUUIDs, ovsdb.MutateOperationDelete)
+		if err != nil {
+			return nil, fmt.Errorf("generate operations for deleting acls from port group %s: %v", parentName, err)
+		}
+	} else { // remove acl from logical switch
+		removeAclOp, err = c.logicalSwitchUpdateAclOp(parentName, aclUUIDs, ovsdb.MutateOperationDelete)
+		if err != nil {
+			return nil, fmt.Errorf("generate operations for deleting acls from logical switch %s: %v", parentName, err)
+		}
+	}
+
+	// delete acls
+	delAclsOp, err := c.WhereCache(aclFilter(direction, externalIDs)).Delete()
+	if err != nil {
+		return nil, fmt.Errorf("generate operation for deleting acls: %v", err)
+	}
+
+	ops := make([]ovsdb.Operation, 0, len(removeAclOp)+len(delAclsOp))
+	ops = append(ops, removeAclOp...)
+	ops = append(ops, delAclsOp...)
+
+	return ops, nil
 }
