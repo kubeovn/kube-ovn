@@ -142,9 +142,9 @@ func (f *Framework) VersionPriorTo(major, minor uint) bool {
 	return f.ClusterVersionMajor < major || (f.ClusterVersionMajor == major && f.ClusterVersionMinor < minor)
 }
 
-func (f *Framework) SkipVersionPriorTo(major, minor uint, message string) {
+func (f *Framework) SkipVersionPriorTo(major, minor uint, reason string) {
 	if f.VersionPriorTo(major, minor) {
-		ginkgo.Skip(message)
+		ginkgo.Skip(reason)
 	}
 }
 
