@@ -936,16 +936,27 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 					}
 				}
 			} else {
-				if err := c.deleteEcmpRouteForNode(subnet); err != nil {
-					klog.Errorf("failed to delete ecmp route for subnet %s", subnet.Name)
+				if err := c.deleteInactiveGwRoute(subnet); err != nil {
+					klog.Errorf("failed to delete route for subnet %s", subnet.Name)
 					return err
 				}
 
+				var nodeTunlIPAddr []net.IP
 				// check if activateGateway still ready
 				if subnet.Status.ActivateGateway != "" && util.GatewayContains(subnet.Spec.GatewayNode, subnet.Status.ActivateGateway) {
 					node, err := c.nodesLister.Get(subnet.Status.ActivateGateway)
 					if err == nil && nodeReady(node) {
 						klog.Infof("subnet %s uses the old activate gw %s", subnet.Name, node.Name)
+						nodeTunlIPAddr, err = getNodeTunlIP(node)
+						if err != nil {
+							klog.Errorf("failed to get gatewayNode tunnel ip for subnet %s", subnet.Name)
+							return err
+						}
+						nextHop := getNextHopByTunnelIP(nodeTunlIPAddr)
+						if err := c.ovnClient.AddStaticRoute(ovs.PolicySrcIP, subnet.Spec.CIDRBlock, nextHop, c.config.ClusterRouter, util.NormalRouteType); err != nil {
+							klog.Errorf("failed to add static route, %v", err)
+							return err
+						}
 						return nil
 					}
 				}
@@ -953,7 +964,6 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 				klog.Info("find a new activate node")
 				// need a new activate gateway
 				newActivateNode := ""
-				var nodeTunlIPAddr []net.IP
 				for _, gw := range strings.Split(subnet.Spec.GatewayNode, ",") {
 					// the format of gatewayNodeStr can be like 'kube-ovn-worker:172.18.0.2, kube-ovn-control-plane:172.18.0.3', which consists of node name and designative egress ip
 					if strings.Contains(gw, ":") {
@@ -992,6 +1002,7 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 				}
 				subnet.Status.ActivateGateway = newActivateNode
 			}
+			c.patchSubnetStatus(subnet, "ReconcileCentralizedGatewaySuccess", "")
 
 			for _, pod := range pods {
 				if isPodAlive(pod) && pod.Annotations[util.IpAddressAnnotation] != "" && pod.Annotations[util.LogicalSwitchAnnotation] == subnet.Name && pod.Annotations[util.NorthGatewayAnnotation] == "" {
@@ -1000,8 +1011,6 @@ func (c *Controller) reconcileGateway(subnet *kubeovnv1.Subnet) error {
 					}
 				}
 			}
-
-			c.patchSubnetStatus(subnet, "ReconcileCentralizedGatewaySuccess", "")
 		}
 	}
 	return nil
@@ -1311,7 +1320,7 @@ func (c *Controller) checkGwNodeExists(gatewayNode string) bool {
 	return found
 }
 
-func (c *Controller) deleteEcmpRouteForNode(subnet *kubeovnv1.Subnet) error {
+func (c *Controller) deleteInactiveGwRoute(subnet *kubeovnv1.Subnet) error {
 	for _, gw := range strings.Split(subnet.Spec.GatewayNode, ",") {
 		// the format of gatewayNodeStr can be like 'kube-ovn-worker:172.18.0.2, kube-ovn-control-plane:172.18.0.3', which consists of node name and designative egress ip
 		if strings.Contains(gw, ":") {
@@ -1332,9 +1341,9 @@ func (c *Controller) deleteEcmpRouteForNode(subnet *kubeovnv1.Subnet) error {
 					continue
 				}
 
-				exist, err := c.checkNodeEcmpRouteExist(ip, cidrBlock)
+				exist, err := c.checkNodeGwRouteExist(ip, cidrBlock)
 				if err != nil {
-					klog.Errorf("get ecmp static route for subnet %v, error %v", subnet.Name, err)
+					klog.Errorf("get static route for subnet %v, error %v", subnet.Name, err)
 					break
 				}
 
@@ -1343,7 +1352,7 @@ func (c *Controller) deleteEcmpRouteForNode(subnet *kubeovnv1.Subnet) error {
 						continue
 					}
 
-					klog.Infof("subnet %v changed to active-standby mode, delete ecmp route for node %s, ip %v", subnet.Name, node.Name, ip)
+					klog.Infof("subnet %v changed to active-standby mode, delete inactive gateway route for node %s, ip %v", subnet.Name, node.Name, ip)
 					if err := c.ovnClient.DeleteMatchedStaticRoute(cidrBlock, ip, c.config.ClusterRouter); err != nil {
 						klog.Errorf("failed to delete static route %s for node %s, %v", ip, node.Name, err)
 						return err
