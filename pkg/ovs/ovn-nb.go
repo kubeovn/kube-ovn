@@ -101,7 +101,7 @@ func (c *ovnClient) DeleteSecurityGroup(sgName string) error {
 	pgName := GetSgPortGroupName(sgName)
 
 	// clear acl
-	if err := c.DeleteAcls(pgName, portGroupKey, ""); err != nil {
+	if err := c.DeleteAcls(pgName, portGroupKey, "", nil); err != nil {
 		return fmt.Errorf("delete acls from port group %s: %v", pgName, err)
 	}
 

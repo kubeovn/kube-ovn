@@ -994,7 +994,7 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 			}
 		} else {
 			// clear all acl
-			if err = c.ovnClient.DeleteAcls(pgName, portGroupKey, ""); err != nil {
+			if err = c.ovnClient.DeleteAcls(pgName, portGroupKey, "", nil); err != nil {
 				klog.Errorf("delete node acl for node pg %s: %v", pgName, err)
 			}
 		}

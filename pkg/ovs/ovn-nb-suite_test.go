@@ -632,8 +632,7 @@ func Test_scratch(t *testing.T) {
 	ovnClient, err := newOvnClient(t, endpoint, 10, "")
 	require.NoError(t, err)
 
-	addresses := []string{"10.104.25.159", "10.244.0.78"}
-	err = ovnClient.AddressSetUpdateAddress("test.as", addresses...)
+	err = ovnClient.CreateGatewayAcl("ovn-default", "", "10.16.0.1")
 	require.NoError(t, err)
 }
 

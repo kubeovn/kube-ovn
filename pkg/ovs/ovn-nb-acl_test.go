@@ -346,7 +346,9 @@ func (suite *OvnClientTestSuite) testCreateGatewayAcl() {
 			checkAcl(parent, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, match, nil)
 
 			match = fmt.Sprintf("%s.dst == %s", ipSuffix, gw)
-			checkAcl(parent, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, match, nil)
+			checkAcl(parent, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, match, map[string]string{
+				"apply-after-lb": "true",
+			})
 
 			if ipSuffix == "ip6" {
 				match = "nd || nd_ra || nd_rs"
@@ -777,6 +779,7 @@ func (suite *OvnClientTestSuite) testUpdateLogicalSwitchAcl() {
 		require.NoError(t, err)
 		expect := newAcl(lsName, subnetAcl.Direction, strconv.Itoa(subnetAcl.Priority), subnetAcl.Match, subnetAcl.Action)
 		expect.UUID = acl.UUID
+		expect.ExternalIDs["subnet"] = lsName
 		require.Equal(t, expect, acl)
 		require.Contains(t, ls.ACLs, acl.UUID)
 	}
@@ -1242,7 +1245,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.NoError(t, err)
 		require.Len(t, pg.ACLs, 5)
 
-		err = ovnClient.DeleteAcls(pgName, portGroupKey, "")
+		err = ovnClient.DeleteAcls(pgName, portGroupKey, "", nil)
 		require.NoError(t, err)
 
 		pg, err = ovnClient.GetPortGroup(pgName, false)
@@ -1279,7 +1282,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.Len(t, pg.ACLs, 5)
 
 		/* delete to-lport direction acl */
-		err = ovnClient.DeleteAcls(pgName, portGroupKey, ovnnb.ACLDirectionToLport)
+		err = ovnClient.DeleteAcls(pgName, portGroupKey, ovnnb.ACLDirectionToLport, nil)
 		require.NoError(t, err)
 
 		pg, err = ovnClient.GetPortGroup(pgName, false)
@@ -1287,7 +1290,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.Len(t, pg.ACLs, 3)
 
 		/* delete from-lport direction acl */
-		err = ovnClient.DeleteAcls(pgName, portGroupKey, ovnnb.ACLDirectionFromLport)
+		err = ovnClient.DeleteAcls(pgName, portGroupKey, ovnnb.ACLDirectionFromLport, nil)
 		require.NoError(t, err)
 
 		pg, err = ovnClient.GetPortGroup(pgName, false)
@@ -1323,7 +1326,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.NoError(t, err)
 		require.Len(t, ls.ACLs, 5)
 
-		err = ovnClient.DeleteAcls(lsName, logicalSwitchKey, "")
+		err = ovnClient.DeleteAcls(lsName, logicalSwitchKey, "", nil)
 		require.NoError(t, err)
 
 		ls, err = ovnClient.GetLogicalSwitch(lsName, false)
@@ -1360,7 +1363,7 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.Len(t, ls.ACLs, 5)
 
 		/* delete to-lport direction acl */
-		err = ovnClient.DeleteAcls(lsName, logicalSwitchKey, ovnnb.ACLDirectionToLport)
+		err = ovnClient.DeleteAcls(lsName, logicalSwitchKey, ovnnb.ACLDirectionToLport, nil)
 		require.NoError(t, err)
 
 		ls, err = ovnClient.GetLogicalSwitch(lsName, false)
@@ -1368,7 +1371,44 @@ func (suite *OvnClientTestSuite) testDeleteAcls() {
 		require.Len(t, ls.ACLs, 3)
 
 		/* delete from-lport direction acl */
-		err = ovnClient.DeleteAcls(lsName, logicalSwitchKey, ovnnb.ACLDirectionFromLport)
+		err = ovnClient.DeleteAcls(lsName, logicalSwitchKey, ovnnb.ACLDirectionFromLport, nil)
+		require.NoError(t, err)
+
+		ls, err = ovnClient.GetLogicalSwitch(lsName, false)
+		require.NoError(t, err)
+		require.Empty(t, ls.ACLs)
+	})
+
+	t.Run("delete acls with additional external ids", func(t *testing.T) {
+		priority := "5801"
+		basePort := 5801
+		acls := make([]*ovnnb.ACL, 0, 5)
+
+		// to-lport
+
+		match := fmt.Sprintf("%s && udp.dst == %d", matchPrefix, basePort)
+		acl, err := ovnClient.newAcl(lsName, ovnnb.ACLDirectionToLport, priority, match, ovnnb.ACLActionAllowRelated, func(acl *ovnnb.ACL) {
+			if acl.ExternalIDs == nil {
+				acl.ExternalIDs = make(map[string]string)
+			}
+			acl.ExternalIDs["subnet"] = lsName
+		})
+		require.NoError(t, err)
+		acls = append(acls, acl)
+
+		err = ovnClient.CreateAcls(lsName, logicalSwitchKey, acls...)
+		require.NoError(t, err)
+
+		ls, err := ovnClient.GetLogicalSwitch(lsName, false)
+		require.NoError(t, err)
+		require.Len(t, ls.ACLs, 1)
+
+		newAcl := &ovnnb.ACL{UUID: ls.ACLs[0]}
+		err = ovnClient.GetEntityInfo(newAcl)
+		require.NoError(t, err)
+
+		/* delete to-lport direction acl */
+		err = ovnClient.DeleteAcls(lsName, logicalSwitchKey, ovnnb.ACLDirectionToLport, map[string]string{"subnet": lsName})
 		require.NoError(t, err)
 
 		ls, err = ovnClient.GetLogicalSwitch(lsName, false)

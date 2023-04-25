@@ -242,6 +242,12 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}
 
+	// we should first delete acl and address_set before update
+	if err = c.ovnClient.DeleteAcls(pgName, portGroupKey, "", nil); err != nil {
+		klog.Errorf("delete np %s acls: %v", key, err)
+		return err
+	}
+
 	if err := c.ovnClient.DeleteAddressSets(map[string]string{
 		networkPolicyKey: fmt.Sprintf("%s/%s/%s", np.Namespace, np.Name, "ingress"),
 	}); err != nil {
@@ -377,7 +383,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			}
 		}
 	} else {
-		if err = c.ovnClient.DeleteAcls(key, portGroupKey, "to-lport"); err != nil {
+		if err = c.ovnClient.DeleteAcls(key, portGroupKey, "to-lport", nil); err != nil {
 			klog.Errorf("delete np %s ingress acls: %v", key, err)
 			return err
 		}
@@ -509,7 +515,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			}
 		}
 	} else {
-		if err = c.ovnClient.DeleteAcls(key, portGroupKey, "from-lport"); err != nil {
+		if err = c.ovnClient.DeleteAcls(key, portGroupKey, "from-lport", nil); err != nil {
 			klog.Errorf("delete np %s egress acls: %v", key, err)
 			return err
 		}

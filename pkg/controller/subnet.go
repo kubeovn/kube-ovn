@@ -757,7 +757,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchSuccess", "")
 	} else {
 		// clear acl when direction is ""
-		if err = c.ovnClient.DeleteAcls(key, logicalSwitchKey, ""); err != nil {
+		if err = c.ovnClient.DeleteAcls(key, logicalSwitchKey, "", nil); err != nil {
 			c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclFailed", err.Error())
 			return err
 		}
@@ -824,7 +824,7 @@ func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
 	}
 
 	// clear acl when direction is ""
-	if err = c.ovnClient.DeleteAcls(key, logicalSwitchKey, ""); err != nil {
+	if err = c.ovnClient.DeleteAcls(key, logicalSwitchKey, "", nil); err != nil {
 		klog.Errorf("clear logical switch %s acls: %v", key, err)
 		return err
 	}

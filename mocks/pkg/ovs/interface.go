@@ -772,20 +772,6 @@ func (mr *MockLogicalSwitchPortMockRecorder) SetLogicalSwitchPortsSecurityGroup(
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortsSecurityGroup", reflect.TypeOf((*MockLogicalSwitchPort)(nil).SetLogicalSwitchPortsSecurityGroup), sgName, op)
 }
 
-// UpdateLogicalSwitchAcl mocks base method.
-func (m *MockLogicalSwitchPort) UpdateLogicalSwitchAcl(lsName string, subnetAcls []v1.Acl) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateLogicalSwitchAcl", lsName, subnetAcls)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// UpdateLogicalSwitchAcl indicates an expected call of UpdateLogicalSwitchAcl.
-func (mr *MockLogicalSwitchPortMockRecorder) UpdateLogicalSwitchAcl(lsName, subnetAcls interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalSwitchAcl", reflect.TypeOf((*MockLogicalSwitchPort)(nil).UpdateLogicalSwitchAcl), lsName, subnetAcls)
-}
-
 // MockLoadBalancer is a mock of LoadBalancer interface.
 type MockLoadBalancer struct {
 	ctrl     *gomock.Controller
@@ -1185,17 +1171,17 @@ func (mr *MockACLMockRecorder) CreateSgDenyAllAcl(sgName interface{}) *gomock.Ca
 }
 
 // DeleteAcls mocks base method.
-func (m *MockACL) DeleteAcls(parentName, parentType, direction string) error {
+func (m *MockACL) DeleteAcls(parentName, parentType, direction string, externalIDs map[string]string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteAcls", parentName, parentType, direction)
+	ret := m.ctrl.Call(m, "DeleteAcls", parentName, parentType, direction, externalIDs)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteAcls indicates an expected call of DeleteAcls.
-func (mr *MockACLMockRecorder) DeleteAcls(parentName, parentType, direction interface{}) *gomock.Call {
+func (mr *MockACLMockRecorder) DeleteAcls(parentName, parentType, direction, externalIDs interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAcls", reflect.TypeOf((*MockACL)(nil).DeleteAcls), parentName, parentType, direction)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAcls", reflect.TypeOf((*MockACL)(nil).DeleteAcls), parentName, parentType, direction, externalIDs)
 }
 
 // SetAclLog mocks base method.
@@ -1224,6 +1210,20 @@ func (m *MockACL) SetLogicalSwitchPrivate(lsName, cidrBlock string, allowSubnets
 func (mr *MockACLMockRecorder) SetLogicalSwitchPrivate(lsName, cidrBlock, allowSubnets interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPrivate", reflect.TypeOf((*MockACL)(nil).SetLogicalSwitchPrivate), lsName, cidrBlock, allowSubnets)
+}
+
+// UpdateLogicalSwitchAcl mocks base method.
+func (m *MockACL) UpdateLogicalSwitchAcl(lsName string, subnetAcls []v1.Acl) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateLogicalSwitchAcl", lsName, subnetAcls)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateLogicalSwitchAcl indicates an expected call of UpdateLogicalSwitchAcl.
+func (mr *MockACLMockRecorder) UpdateLogicalSwitchAcl(lsName, subnetAcls interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalSwitchAcl", reflect.TypeOf((*MockACL)(nil).UpdateLogicalSwitchAcl), lsName, subnetAcls)
 }
 
 // UpdateSgAcl mocks base method.
@@ -2160,17 +2160,17 @@ func (mr *MockOvnClientMockRecorder) CreateVirtualLogicalSwitchPorts(lsName inte
 }
 
 // DeleteAcls mocks base method.
-func (m *MockOvnClient) DeleteAcls(parentName, parentType, direction string) error {
+func (m *MockOvnClient) DeleteAcls(parentName, parentType, direction string, externalIDs map[string]string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteAcls", parentName, parentType, direction)
+	ret := m.ctrl.Call(m, "DeleteAcls", parentName, parentType, direction, externalIDs)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteAcls indicates an expected call of DeleteAcls.
-func (mr *MockOvnClientMockRecorder) DeleteAcls(parentName, parentType, direction interface{}) *gomock.Call {
+func (mr *MockOvnClientMockRecorder) DeleteAcls(parentName, parentType, direction, externalIDs interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAcls", reflect.TypeOf((*MockOvnClient)(nil).DeleteAcls), parentName, parentType, direction)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAcls", reflect.TypeOf((*MockOvnClient)(nil).DeleteAcls), parentName, parentType, direction, externalIDs)
 }
 
 // DeleteAddressSet mocks base method.
