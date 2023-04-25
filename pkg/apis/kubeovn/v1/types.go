@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"fmt"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -37,6 +39,25 @@ type SgPolicy string
 var (
 	PolicyAllow = SgPolicy(ovnnb.ACLActionAllow)
 	PolicyDrop  = SgPolicy(ovnnb.ACLActionDrop)
+)
+
+type QoSPolicyBindingType string
+
+const (
+	QoSBindingTypeEIP QoSPolicyBindingType = "EIP"
+)
+
+type QoSPolicyRuleDirection string
+
+const (
+	DirectionIngress QoSPolicyRuleDirection = "ingress"
+	DirectionEgress  QoSPolicyRuleDirection = "egress"
+)
+
+type QoSPolicyRuleMatchType string
+
+const (
+	MatchTypeIP QoSPolicyRuleMatchType = "ip"
 )
 
 // Constants for condition
@@ -1268,7 +1289,9 @@ type QoSPolicy struct {
 	Status QoSPolicyStatus `json:"status,omitempty"`
 }
 type QoSPolicySpec struct {
-	BandwidthLimitRule QoSPolicyBandwidthLimitRule `json:"bandwidthLimitRule,omitempty"`
+	BandwidthLimitRules QoSPolicyBandwidthLimitRules `json:"bandwidthLimitRules"`
+	Shared              bool                         `json:"shared"`
+	BindingType         QoSPolicyBindingType         `json:"bindingType"`
 }
 
 // Condition describes the state of an object at a certain point.
@@ -1294,14 +1317,30 @@ type QoSPolicyCondition struct {
 
 // BandwidthLimitRule describes the rule of an bandwidth limit.
 type QoSPolicyBandwidthLimitRule struct {
-	IngressMax string `json:"ingressMax"`
-	EgressMax  string `json:"egressMax"`
+	Name       string                 `json:"name"`
+	Interface  string                 `json:"interface,omitempty"`
+	RateMax    string                 `json:"rateMax,omitempty"`
+	BurstMax   string                 `json:"burstMax,omitempty"`
+	Priority   int                    `json:"priority,omitempty"`
+	Direction  QoSPolicyRuleDirection `json:"direction,omitempty"`
+	MatchType  QoSPolicyRuleMatchType `json:"matchType,omitempty"`
+	MatchValue string                 `json:"matchValue,omitempty"`
+}
+
+type QoSPolicyBandwidthLimitRules []*QoSPolicyBandwidthLimitRule
+
+func (s QoSPolicyBandwidthLimitRules) Strings() string {
+	var resultNames []string
+	for _, rule := range s {
+		resultNames = append(resultNames, rule.Name)
+	}
+	return fmt.Sprintf("%s", resultNames)
 }
 
 type QoSPolicyStatus struct {
-	// +optional
-	// +patchStrategy=merge
-	BandwidthLimitRule QoSPolicyBandwidthLimitRule `json:"bandwidthLimitRule" patchStrategy:"merge"`
+	BandwidthLimitRules QoSPolicyBandwidthLimitRules `json:"bandwidthLimitRules" patchStrategy:"merge"`
+	Shared              bool                         `json:"shared" patchStrategy:"merge"`
+	BindingType         QoSPolicyBindingType         `json:"bindingType"`
 
 	// Conditions represents the latest state of the object
 	// +optional

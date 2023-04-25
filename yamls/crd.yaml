@@ -1991,11 +1991,11 @@ spec:
       subresources:
         status: {}
       additionalPrinterColumns:
-      - jsonPath: .spec.bandwidthLimitRule.ingressMax
-        name: IngressMax
+      - jsonPath: .spec.shared
+        name: Shared
         type: string
-      - jsonPath: .spec.bandwidthLimitRule.egressMax
-        name: EgressMax
+      - jsonPath: .spec.bindingType
+        name: BindingType
         type: string
       schema:
         openAPIV3Schema:
@@ -2004,13 +2004,31 @@ spec:
             status:
               type: object
               properties:
-                bandwidthLimitRule:
-                  type: object
-                  properties:
-                    ingressMax:
-                      type: string
-                    egressMax:
-                      type: string
+                shared:
+                  type: boolean
+                bindingType:
+                  type: string
+                bandwidthLimitRules:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      interface:
+                        type: string
+                      rateMax:
+                        type: string
+                      burstMax:
+                        type: string
+                      priority:
+                        type: integer
+                      direction:
+                        type: string
+                      matchType:
+                        type: string
+                      matchValue:
+                        type: string
                 conditions:
                   type: array
                   items:
@@ -2031,10 +2049,33 @@ spec:
             spec:
               type: object
               properties:
-                bandwidthLimitRule:
-                  type: object
-                  properties:
-                    ingressMax:
-                      type: string
-                    egressMax:
-                      type: string
+                shared:
+                  type: boolean
+                bindingType:
+                  type: string
+                bandwidthLimitRules:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      interface:
+                        type: string
+                      rateMax:
+                        type: string
+                      burstMax:
+                        type: string
+                      priority:
+                        type: integer
+                      direction:
+                        type: string
+                      matchType:
+                        type: string
+                      matchValue:
+                        type: string
+                    required:
+                      - name
+                  x-kubernetes-list-map-keys:
+                    - name
+                  x-kubernetes-list-type: map

@@ -22,6 +22,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+	k8sexec "k8s.io/utils/exec"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
@@ -60,6 +61,8 @@ type Controller struct {
 	ControllerRuntime
 	localPodName   string
 	localNamespace string
+
+	k8sExec k8sexec.Interface
 }
 
 // NewController init a daemon controller
@@ -98,6 +101,7 @@ func NewController(config *Configuration, podInformerFactory informers.SharedInf
 		nodesSynced: nodeInformer.Informer().HasSynced,
 
 		recorder: recorder,
+		k8sExec:  k8sexec.New(),
 	}
 
 	node, err := config.KubeClient.CoreV1().Nodes().Get(context.Background(), config.NodeName, metav1.GetOptions{})

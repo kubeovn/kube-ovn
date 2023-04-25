@@ -490,29 +490,49 @@ func (c *Controller) deleteEipInPod(dp, v4Cidr string) error {
 	return nil
 }
 
-// add tc rule for eip in nat gw pod
-func (c *Controller) addEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
+func (c *Controller) addOrUpdateEIPBandtithLimitRules(eip *kubeovnv1.IptablesEIP, v4ip string, rules kubeovnv1.QoSPolicyBandwidthLimitRules) error {
 	var err error
-	qosPolicy, err := c.config.KubeOvnClient.KubeovnV1().QoSPolicies().Get(context.Background(), eip.Spec.QoSPolicy, metav1.GetOptions{})
-	if err != nil {
-		klog.Errorf("get qos policy %s failed: %v", eip.Spec.QoSPolicy, err)
-		return err
-	}
-
-	ingressRate := qosPolicy.Spec.BandwidthLimitRule.IngressMax
-	egressRate := qosPolicy.Spec.BandwidthLimitRule.EgressMax
-	// set ingress qos
-	if ingressRate != "" {
-		if err = c.addEipQoSInPod(eip.Spec.NatGwDp, v4ip, util.QoSDirectionIngress, ingressRate); err != nil {
+	for _, rule := range rules {
+		if err = c.addEipQoSInPod(eip.Spec.NatGwDp, v4ip, rule.Direction, rule.Priority, rule.RateMax, rule.BurstMax); err != nil {
 			klog.Errorf("failed to set ingress eip '%s' qos in pod, %v", eip.Name, err)
 			return err
 		}
 	}
+	return nil
+}
 
-	// set egress qos
-	if egressRate != "" {
-		if err = c.addEipQoSInPod(eip.Spec.NatGwDp, v4ip, util.QoSDirectionEgress, egressRate); err != nil {
-			klog.Errorf("failed to set egress eip '%s' qos in pod, %v", eip.Name, err)
+// add tc rule for eip in nat gw pod
+func (c *Controller) addEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
+	var err error
+	qosPolicy, err := c.config.KubeOvnClient.KubeovnV1().QoSPolicies().Get(context.Background(), eip.Spec.QoSPolicy, metav1.GetOptions{})
+	if !qosPolicy.Status.Shared {
+		eips, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().List(context.Background(),
+			metav1.ListOptions{LabelSelector: fields.OneTermEqualSelector(util.QoSLabel, qosPolicy.Name).String()})
+		if err != nil {
+			klog.Errorf("failed to get eip list, %v", err)
+			return err
+		}
+		if len(eips.Items) != 0 {
+			if eips.Items[0].Name != eip.Name {
+				err := fmt.Errorf("not support unshared qos policy %s to related to multiple eip", eip.Spec.QoSPolicy)
+				klog.Error(err)
+				return err
+			}
+		}
+	}
+	if err != nil {
+		klog.Errorf("get qos policy %s failed: %v", eip.Spec.QoSPolicy, err)
+		return err
+	}
+	return c.addOrUpdateEIPBandtithLimitRules(eip, v4ip, qosPolicy.Status.BandwidthLimitRules)
+}
+
+func (c *Controller) delEIPBandtithLimitRules(eip *kubeovnv1.IptablesEIP, v4ip string, rules kubeovnv1.QoSPolicyBandwidthLimitRules) error {
+	var err error
+	for _, rule := range rules {
+		// del qos
+		if err = c.delEipQoSInPod(eip.Spec.NatGwDp, v4ip, rule.Direction); err != nil {
+			klog.Errorf("failed to del egress eip '%s' qos in pod, %v", eip.Name, err)
 			return err
 		}
 	}
@@ -522,35 +542,31 @@ func (c *Controller) addEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
 // del tc rule for eip in nat gw pod
 func (c *Controller) delEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
 	var err error
-
-	// del ingress qos
-	if err = c.delEipQoSInPod(eip.Spec.NatGwDp, v4ip, util.QoSDirectionIngress); err != nil {
-		klog.Errorf("failed to del ingress eip '%s' qos in pod, %v", eip.Name, err)
+	qosPolicy, err := c.config.KubeOvnClient.KubeovnV1().QoSPolicies().Get(context.Background(), eip.Status.QoSPolicy, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("get qos policy %s failed: %v", eip.Status.QoSPolicy, err)
 		return err
 	}
 
-	// del egress qos
-	if err = c.delEipQoSInPod(eip.Spec.NatGwDp, v4ip, util.QoSDirectionEgress); err != nil {
-		klog.Errorf("failed to del egress eip '%s' qos in pod, %v", eip.Name, err)
-		return err
-	}
-	return nil
+	return c.delEIPBandtithLimitRules(eip, v4ip, qosPolicy.Status.BandwidthLimitRules)
 }
 
-func (c *Controller) addEipQoSInPod(dp, v4ip, direction, rate string) error {
+func (c *Controller) addEipQoSInPod(
+	dp string, v4ip string, direction kubeovnv1.QoSPolicyRuleDirection, priority int, rate string,
+	burst string) error {
 	var operation string
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
 		return err
 	}
 	var addRules []string
-	rule := fmt.Sprintf("%s,%s", v4ip, rate)
+	rule := fmt.Sprintf("%s,%d,%s,%s", v4ip, priority, rate, burst)
 	addRules = append(addRules, rule)
 
 	switch direction {
-	case util.QoSDirectionIngress:
+	case kubeovnv1.DirectionIngress:
 		operation = natGwEipIngressQoSAdd
-	case util.QoSDirectionEgress:
+	case kubeovnv1.DirectionEgress:
 		operation = natGwEipEgressQoSAdd
 	}
 
@@ -560,7 +576,7 @@ func (c *Controller) addEipQoSInPod(dp, v4ip, direction, rate string) error {
 	return nil
 }
 
-func (c *Controller) delEipQoSInPod(dp, v4ip, direction string) error {
+func (c *Controller) delEipQoSInPod(dp string, v4ip string, direction kubeovnv1.QoSPolicyRuleDirection) error {
 	var operation string
 	gwPod, err := c.getNatGwPod(dp)
 	if err != nil {
@@ -570,9 +586,9 @@ func (c *Controller) delEipQoSInPod(dp, v4ip, direction string) error {
 	delRules = append(delRules, v4ip)
 
 	switch direction {
-	case util.QoSDirectionIngress:
+	case kubeovnv1.DirectionIngress:
 		operation = natGwEipIngressQoSDel
-	case util.QoSDirectionEgress:
+	case kubeovnv1.DirectionEgress:
 		operation = natGwEipEgressQoSDel
 	}
 
