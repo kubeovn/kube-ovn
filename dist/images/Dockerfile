@@ -1,5 +1,5 @@
 # syntax = docker/dockerfile:experimental
-FROM kubeovn/kube-ovn-base:v1.9.23
+FROM kubeovn/kube-ovn-base:v1.9.25
 
 ARG ARCH
 ENV DUMB_INIT_VERSION="1.2.5"
