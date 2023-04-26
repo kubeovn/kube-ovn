@@ -46,7 +46,7 @@ func (c *Controller) enqueueUpdateIptablesEip(old, new interface{}) {
 		oldEip.Spec.QoSPolicy != newEip.Spec.QoSPolicy {
 		c.updateIptablesEipQueue.Add(key)
 	}
-	externalNetwork := util.GetExternalNetwork(newEip.Spec.ExternalSubnets)
+	externalNetwork := util.GetExternalNetwork(newEip.Spec.ExternalSubnet)
 	c.updateSubnetStatusQueue.Add(externalNetwork)
 }
 
@@ -59,7 +59,7 @@ func (c *Controller) enqueueDelIptablesEip(obj interface{}) {
 	}
 	eip := obj.(*kubeovnv1.IptablesEIP)
 	c.delIptablesEipQueue.Add(key)
-	externalNetwork := util.GetExternalNetwork(eip.Spec.ExternalSubnets)
+	externalNetwork := util.GetExternalNetwork(eip.Spec.ExternalSubnet)
 	c.updateSubnetStatusQueue.Add(externalNetwork)
 }
 
@@ -221,7 +221,7 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 	}
 	klog.V(3).Infof("handle add eip %s", key)
 	var v4ip, v6ip, mac, eipV4Cidr, v4Gw string
-	externalNetwork := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnets)
+	externalNetwork := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
 	externalProvider := fmt.Sprintf("%s.%s", externalNetwork, ATTACHMENT_NS)
 
 	portName := ovs.PodNameToPortName(cachedEip.Name, cachedEip.Namespace, externalProvider)
@@ -335,7 +335,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 		}
 		return err
 	}
-	externalNetwork := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnets)
+	externalNetwork := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
 	// should delete
 	if !cachedEip.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("clean eip '%s' in pod", key)
@@ -671,7 +671,7 @@ func (c *Controller) GetGwBySubnet(name string) (string, string, error) {
 
 func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp, qos, externalNet string) error {
 	cachedEip, err := c.iptablesEipsLister.Get(key)
-	externalNetwork := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnets)
+	externalNetwork := util.GetExternalNetwork(cachedEip.Spec.ExternalSubnet)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			klog.V(3).Infof("create eip cr %s", key)
@@ -976,7 +976,7 @@ func (c *Controller) patchResetEipStatusNat(key, nat string) error {
 }
 func (c *Controller) natLabelEip(eipName, natName string) error {
 	oriEip, err := c.iptablesEipsLister.Get(eipName)
-	externalNetwork := util.GetExternalNetwork(oriEip.Spec.ExternalSubnets)
+	externalNetwork := util.GetExternalNetwork(oriEip.Spec.ExternalSubnet)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil

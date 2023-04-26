@@ -527,7 +527,7 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	pod := oriPod.DeepCopy()
 	var extRules []string
 	var v4ExternalGw, v4InternalGw, v4ExternalCidr string
-	externalNetwork := util.GetExternalNetwork(gw.Spec.ExternalSubnets)
+	externalNetwork := util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets)
 	if subnet, ok := c.ipam.Subnets[externalNetwork]; ok {
 		v4ExternalGw = subnet.V4Gw
 		v4ExternalCidr = subnet.V4CIDR.String()
@@ -662,7 +662,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	if oldSts != nil && len(oldSts.Annotations) != 0 {
 		newPodAnnotations = oldSts.Annotations
 	}
-	externalNetwork := util.GetExternalNetwork(gw.Spec.ExternalSubnets)
+	externalNetwork := util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets)
 	podAnnotations := map[string]string{
 		util.VpcNatGatewayAnnotation:     gw.Name,
 		util.AttachmentNetworkAnnotation: fmt.Sprintf("%s/%s", c.config.PodNamespace, externalNetwork),

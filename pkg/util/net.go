@@ -26,6 +26,8 @@ const (
 	IPv6Loopback         = "::1/128"
 	IPv6Multicast        = "ff00::/8"
 	IPv6LinkLocalUnicast = "FE80::/10"
+
+	VpcExternalNet = "ovn-vpc-external-network"
 )
 
 // GenerateMac generates mac address.
@@ -510,10 +512,16 @@ func CheckSystemCIDR(cidrs []string) error {
 
 // GetExternalNetwork returns the external network name
 // if the external network is not specified, return the default external network name
-func GetExternalNetwork(externalNets []string) string {
-	vpcExternalNet := "ovn-vpc-external-network"
+func GetExternalNetwork(externalNet string) string {
+	if externalNet == "" {
+		return VpcExternalNet
+	}
+	return externalNet
+}
+
+func GetNatGwExternalNetwork(externalNets []string) string {
 	if len(externalNets) == 0 {
-		return vpcExternalNet
+		return VpcExternalNet
 	}
 	return externalNets[0]
 }

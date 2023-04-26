@@ -782,10 +782,8 @@ spec:
                   type: string
                 qosPolicy:
                   type: string
-                externalSubnets:
-                  items:
-                    type: string
-                  type: array
+                externalSubnet:
+                  type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition

@@ -264,7 +264,7 @@ func (c *Controller) handleAddPodAnnotatedIptablesEip(key string) error {
 			klog.Errorf("failed to get vpc nat gw eip: %v", eipName, err)
 			return err
 		}
-		externalNetwork := util.GetExternalNetwork(eip.Spec.ExternalSubnets)
+		externalNetwork := util.GetExternalNetwork(eip.Spec.ExternalSubnet)
 		if err := c.createOrUpdateCrdEip(eipName, "", "", "", "", natGw, externalNetwork); err != nil {
 			klog.Errorf("failed to create eip %s: %v", eipName, err)
 			return err

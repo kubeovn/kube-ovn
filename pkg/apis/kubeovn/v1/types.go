@@ -505,12 +505,12 @@ type IptablesEIP struct {
 	Status IptablesEipStatus `json:"status,omitempty"`
 }
 type IptablesEipSpec struct {
-	V4ip            string   `json:"v4ip"`
-	V6ip            string   `json:"v6ip"`
-	MacAddress      string   `json:"macAddress"`
-	NatGwDp         string   `json:"natGwDp"`
-	QoSPolicy       string   `json:"qosPolicy"`
-	ExternalSubnets []string `json:"externalSubnets"`
+	V4ip           string `json:"v4ip"`
+	V6ip           string `json:"v6ip"`
+	MacAddress     string `json:"macAddress"`
+	NatGwDp        string `json:"natGwDp"`
+	QoSPolicy      string `json:"qosPolicy"`
+	ExternalSubnet string `json:"externalSubnet"`
 }
 
 // IptablesEIPCondition describes the state of an object at a certain point.
