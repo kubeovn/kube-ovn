@@ -3514,6 +3514,7 @@ metadata:
       kube-ovn vpc-nat common config
 data:
   image: $REGISTRY/$VPC_NAT_IMAGE:$VERSION
+  ssl-vpn-image: "registry.cn-hangzhou.aliyuncs.com/bobz/openvpn:0.0.1"
 ---
 kind: ConfigMap
 apiVersion: v1

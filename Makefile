@@ -53,6 +53,7 @@ SUBMARINER_ROUTE_AGENT = quay.io/submariner/submariner-route-agent:$(SUBMARINER_
 SUBMARINER_NETTEST = quay.io/submariner/nettest:$(SUBMARINER_VERSION)
 
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
+SSL_VPN_IMG = "registry.cn-hangzhou.aliyuncs.com/bobz/openvpn:0.0.1"
 
 E2E_NETWORK = bridge
 ifneq ($(VLAN_ID),)
@@ -594,6 +595,7 @@ kind-install-multus:
 .PHONY: kind-install-vpc-nat-gw
 kind-install-vpc-nat-gw: kind-load-image kind-untaint-control-plane
 	$(call kind_load_image,kube-ovn,$(VPC_NAT_GW_IMG))
+	$(call kind_load_image,kube-ovn,$(SSL_VPN_IMG))
 	@$(MAKE) ENABLE_NAT_GW=true CNI_CONFIG_PRIORITY=10 kind-install
 	@$(MAKE) kind-install-multus
 	kubectl apply -f yamls/vpc-nat-gw-attachment.yaml

@@ -92,7 +92,6 @@ func (c *Controller) resyncVpcNatGwConfig() {
 			klog.Errorf("failed to get vpc nat gateway, %v", err)
 			return
 		}
-		vpcNatImage = cm.Data["image"]
 		vpcNatEnabled = "true"
 		VpcNatCmVersion = cm.ResourceVersion
 		for _, gw := range gws {
@@ -687,6 +686,34 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		selectors[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
 	}
 	klog.V(3).Infof("prepare for vpc nat gateway pod, node selector: %v", selectors)
+	containers := []corev1.Container{
+		{
+			Name:            "vpc-nat-gw",
+			Image:           vpcNatImage,
+			Command:         []string{"bash"},
+			Args:            []string{"-c", "sleep infinity"},
+			ImagePullPolicy: corev1.PullIfNotPresent,
+			SecurityContext: &corev1.SecurityContext{
+				Privileged:               &privileged,
+				AllowPrivilegeEscalation: &allowPrivilegeEscalation,
+			},
+		}}
+
+	if sslVpnImage != "" {
+		klog.Infof("prepare ssl vpn gw")
+		sslContainer := corev1.Container{
+			Name:            "ssl-vpn-gw",
+			Image:           sslVpnImage,
+			Command:         []string{"bash"},
+			Args:            []string{"-c", "sleep infinity"},
+			ImagePullPolicy: corev1.PullIfNotPresent,
+			SecurityContext: &corev1.SecurityContext{
+				Privileged:               &privileged,
+				AllowPrivilegeEscalation: &allowPrivilegeEscalation,
+			},
+		}
+		containers = append(containers, sslContainer)
+	}
 
 	newSts = &v1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -704,19 +731,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 					Annotations: newPodAnnotations,
 				},
 				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:            "vpc-nat-gw",
-							Image:           vpcNatImage,
-							Command:         []string{"bash"},
-							Args:            []string{"-c", "while true; do sleep 10000; done"},
-							ImagePullPolicy: corev1.PullIfNotPresent,
-							SecurityContext: &corev1.SecurityContext{
-								Privileged:               &privileged,
-								AllowPrivilegeEscalation: &allowPrivilegeEscalation,
-							},
-						},
-					},
+					Containers:   containers,
 					NodeSelector: selectors,
 					Tolerations:  gw.Spec.Tolerations,
 					Affinity:     &gw.Spec.Affinity,
