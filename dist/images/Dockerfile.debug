@@ -21,8 +21,6 @@ RUN cd /usr/src/ && \
     rm debian/libopenvswitch.install debian/libopenvswitch-dev.install && \
     # ofproto: Fix re-creation of tunnel backing interfaces on restart.
     curl -s https://github.com/openvswitch/ovs/commit/8661abd4c41a89116fbd4e4d210e73165cedd323.patch | git apply && \
-    # dpif-netlink.: fix ofpbuf memory leak
-    curl -s https://github.com/kubeovn/ovs/commit/c57d7a24cf72a55193aee9bcc2d0425e9477a45b.patch | git apply && \
     # fix memleak
     curl -s https://github.com/kubeovn/ovs/commit/2dc8e7aa202818952b2fa80b47298604530c9de0.patch | git apply && \
     # fix log file descriptor leak in monitor process
