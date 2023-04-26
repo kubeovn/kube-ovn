@@ -10,7 +10,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
@@ -354,13 +354,13 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 	}
 	// should delete
 	if !cachedQos.DeletionTimestamp.IsZero() {
-		eips, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().List(context.Background(),
-			metav1.ListOptions{LabelSelector: fields.OneTermEqualSelector(util.QoSLabel, key).String()})
+		eips, err := c.iptablesEipsLister.List(
+			labels.SelectorFromSet(labels.Set{util.QoSLabel: key}))
 		if err != nil {
 			klog.Errorf("failed to get eip list, %v", err)
 			return err
 		}
-		if len(eips.Items) != 0 {
+		if len(eips) != 0 {
 			err = fmt.Errorf("qos policy %s is being used", key)
 			klog.Error(err)
 			return err
@@ -402,16 +402,16 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 		} else {
 			if cachedQos.Status.BindingType == kubeovnv1.QoSBindingTypeEIP {
 				// filter to eip
-				eips, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().List(context.Background(),
-					metav1.ListOptions{LabelSelector: fields.OneTermEqualSelector(util.QoSLabel, key).String()})
+				eips, err := c.iptablesEipsLister.List(
+					labels.SelectorFromSet(labels.Set{util.QoSLabel: key}))
 				if err != nil {
 					klog.Errorf("failed to get eip list, %v", err)
 					return err
 				}
-				if len(eips.Items) == 0 {
+				if len(eips) == 0 {
 					// not thing to do
-				} else if len(eips.Items) == 1 {
-					eip := &eips.Items[0]
+				} else if len(eips) == 1 {
+					eip := eips[0]
 					if err = c.reconcileEIPBandtithLimitRules(eip, added, deleted, updated); err != nil {
 						klog.Errorf("failed to reconcile eip %s bandwidth limit rules, %v", eip.Name, err)
 						return err

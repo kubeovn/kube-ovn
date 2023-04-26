@@ -9,6 +9,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
@@ -504,14 +505,14 @@ func (c *Controller) addEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
 	var err error
 	qosPolicy, err := c.config.KubeOvnClient.KubeovnV1().QoSPolicies().Get(context.Background(), eip.Spec.QoSPolicy, metav1.GetOptions{})
 	if !qosPolicy.Status.Shared {
-		eips, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().List(context.Background(),
-			metav1.ListOptions{LabelSelector: fields.OneTermEqualSelector(util.QoSLabel, qosPolicy.Name).String()})
+		eips, err := c.iptablesEipsLister.List(
+			labels.SelectorFromSet(labels.Set{util.QoSLabel: qosPolicy.Name}))
 		if err != nil {
 			klog.Errorf("failed to get eip list, %v", err)
 			return err
 		}
-		if len(eips.Items) != 0 {
-			if eips.Items[0].Name != eip.Name {
+		if len(eips) != 0 {
+			if eips[0].Name != eip.Name {
 				err := fmt.Errorf("not support unshared qos policy %s to related to multiple eip", eip.Spec.QoSPolicy)
 				klog.Error(err)
 				return err
