@@ -1365,6 +1365,17 @@ func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
 					node, err := c.nodesLister.Get(subnet.Status.ActivateGateway)
 					if err == nil && nodeReady(node) {
 						klog.Infof("subnet %s uses the old activate gw %s", subnet.Name, node.Name)
+
+						nodeTunlIPAddr, err := getNodeTunlIP(node)
+						if err != nil {
+							klog.Errorf("failed to get gatewayNode tunnel ip for subnet %s", subnet.Name)
+							return err
+						}
+						nextHop := getNextHopByTunnelIP(nodeTunlIPAddr)
+						if err = c.addPolicyRouteForCentralizedSubnet(subnet, subnet.Status.ActivateGateway, nil, strings.Split(nextHop, ",")); err != nil {
+							klog.Errorf("failed to add active-backup policy route for centralized subnet %s: %v", subnet.Name, err)
+							return err
+						}
 						return nil
 					}
 				}
@@ -1898,12 +1909,12 @@ func (c *Controller) addPolicyRouteForCentralizedSubnet(subnet *kubeovnv1.Subnet
 			if util.CheckProtocol(cidrBlock) != util.CheckProtocol(nodeIP) {
 				continue
 			}
-			exist, err := c.checkPolicyRouteExistForNode(nodeName, cidrBlock, nodeIP, util.GatewayRouterPolicyPriority)
+			consistent, err := c.checkPolicyRouteConsistent(nodeName, cidrBlock, nodeIP, util.GatewayRouterPolicyPriority)
 			if err != nil {
-				klog.Errorf("check ecmp policy route exist for subnet %v, error %v", subnet.Name, err)
+				klog.Errorf("failed to check policy route for subnet %v, error %v", subnet.Name, err)
 				continue
 			}
-			if exist {
+			if consistent {
 				continue
 			}
 			var nextHops []string
