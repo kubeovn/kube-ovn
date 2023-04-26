@@ -1534,23 +1534,6 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 			}
 
 			if subnet.Spec.EnableEcmp {
-				// handle vpc policy route
-				// 1. Default value of subnet.Spec.EnableEcmp is false, so the field subnet.Status.ActivateGateway has value when centralized subnet is created
-				// 2. Change subnet.Spec.EnableEcmp from false to true, ecmp route is added based on gatewayNode, not ActivateGateway
-				// 3. Change subnet.Spec.EnableEcmp from true to false, the ActivateGateway still works and ecmp route does not update, which is incorrect
-				// 4. So delete ActivateGateway field when ecmp is enabled, and when value changed, the policy route will be updated correctly
-				if subnet.Status.ActivateGateway != "" {
-					subnet.Status.ActivateGateway = ""
-					bytes, err := subnet.Status.Bytes()
-					if err != nil {
-						return err
-					}
-					if _, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, ""); err != nil {
-						klog.Errorf("failed to patch for removing subnet activeGateway of subnet %s", subnet.Name)
-						return err
-					}
-				}
-
 				// centralized subnet, enable ecmp, add ecmp policy route
 				gatewayNodes := strings.Split(subnet.Spec.GatewayNode, ",")
 				nodeV4Ips := make([]string, 0, len(gatewayNodes))
@@ -1640,6 +1623,17 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 					node, err := c.nodesLister.Get(subnet.Status.ActivateGateway)
 					if err == nil && nodeReady(node) {
 						klog.Infof("subnet %s uses the old activate gw %s", subnet.Name, node.Name)
+
+						nodeTunlIPAddr, err := getNodeTunlIP(node)
+						if err != nil {
+							klog.Errorf("failed to get gatewayNode tunnel ip for subnet %s", subnet.Name)
+							return err
+						}
+						nextHop := getNextHopByTunnelIP(nodeTunlIPAddr)
+						if err = c.addPolicyRouteForCentralizedSubnet(subnet, subnet.Status.ActivateGateway, nil, strings.Split(nextHop, ",")); err != nil {
+							klog.Errorf("failed to add active-backup policy route for centralized subnet %s: %v", subnet.Name, err)
+							return err
+						}
 						return nil
 					}
 				}

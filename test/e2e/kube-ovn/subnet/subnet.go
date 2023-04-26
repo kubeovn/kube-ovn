@@ -443,11 +443,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
 
 		ginkgo.By("Validating active gateway")
-		subnet = subnetClient.WaitUntil(subnetName, func(s *apiv1.Subnet) (bool, error) {
-			return gomega.BeEmpty().Match(s.Status.ActivateGateway)
-		}, "field .status.activateGateway is empty",
-			2*time.Second, time.Minute,
-		)
+		time.Sleep(1 * time.Minute)
 
 		execCmd := "kubectl ko nbctl --format=csv --data=bare --no-heading --columns=nexthops find logical-router-policy " + fmt.Sprintf("external_ids:subnet=%s", subnetName)
 		output, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
