@@ -99,7 +99,8 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		(oldSubnet.Spec.EnableLb != nil && newSubnet.Spec.EnableLb != nil && *oldSubnet.Spec.EnableLb != *newSubnet.Spec.EnableLb) ||
 		oldSubnet.Spec.EnableEcmp != newSubnet.Spec.EnableEcmp ||
 		!reflect.DeepEqual(oldSubnet.Spec.Acls, newSubnet.Spec.Acls) ||
-		oldSubnet.Spec.U2OInterconnection != newSubnet.Spec.U2OInterconnection {
+		oldSubnet.Spec.U2OInterconnection != newSubnet.Spec.U2OInterconnection ||
+		oldSubnet.Spec.RouteTable != newSubnet.Spec.RouteTable {
 		klog.V(3).Infof("enqueue update subnet %s", key)
 
 		if oldSubnet.Spec.GatewayType != newSubnet.Spec.GatewayType {
@@ -2539,12 +2540,21 @@ func (c *Controller) deletePolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) 
 }
 
 func (c *Controller) reconcileRouteTableForSubnet(subnet *kubeovnv1.Subnet) error {
-	cachedSubnet, err := c.subnetsLister.Get(subnet.Name)
-	if err != nil && !k8serrors.IsNotFound(err) {
+	klog.Infof("reconcile route table %s for subnet %s", subnet.Spec.RouteTable, subnet.Name)
+
+	routerPortName := ovs.LogicalRouterPortName(subnet.Spec.Vpc, subnet.Name)
+	lrp, err := c.ovnClient.GetLogicalRouterPort(routerPortName, false)
+	if err != nil {
 		return err
 	}
 
-	if !k8serrors.IsNotFound(err) && cachedSubnet.Spec.RouteTable == subnet.Spec.RouteTable {
+	rtb := lrp.Options["route_table"]
+	if rtb == "" {
+		rtb = util.MainRouteTable
+	}
+
+	// no need to update
+	if rtb == subnet.Spec.RouteTable {
 		return nil
 	}
 
