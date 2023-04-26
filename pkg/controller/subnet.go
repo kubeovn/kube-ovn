@@ -1868,14 +1868,14 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		return err
 	}
 	usingIPs += float64(len(vips.Items))
+
 	if !isOvnSubnet(subnet) {
-		eips, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().List(context.Background(), metav1.ListOptions{
-			LabelSelector: fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name).String(),
-		})
+		eips, err := c.iptablesEipsLister.List(
+			labels.SelectorFromSet(labels.Set{util.SubnetNameLabel: subnet.Name}))
 		if err != nil {
 			return err
 		}
-		usingIPs += float64(len(eips.Items))
+		usingIPs += float64(len(eips))
 	}
 	v4availableIPs = v4availableIPs - usingIPs
 	if v4availableIPs < 0 {
@@ -1941,13 +1941,12 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	}
 	usingIPs += float64(len(vips.Items))
 	if !isOvnSubnet(subnet) {
-		eips, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().List(context.Background(), metav1.ListOptions{
-			LabelSelector: fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name).String(),
-		})
+		eips, err := c.iptablesEipsLister.List(
+			labels.SelectorFromSet(labels.Set{util.SubnetNameLabel: subnet.Name}))
 		if err != nil {
 			return err
 		}
-		usingIPs += float64(len(eips.Items))
+		usingIPs += float64(len(eips))
 	}
 
 	availableIPs = availableIPs - usingIPs

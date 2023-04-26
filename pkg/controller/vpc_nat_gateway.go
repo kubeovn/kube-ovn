@@ -389,13 +389,13 @@ func (c *Controller) handleUpdateVpcEip(natGwKey string) error {
 		klog.Error(err)
 		return err
 	}
-	eips, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().List(context.Background(), metav1.ListOptions{})
+	eips, err := c.iptablesEipsLister.List(labels.Everything())
 	if err != nil {
 		err = fmt.Errorf("failed to get eip list, %v", err)
 		klog.Error(err)
 		return err
 	}
-	for _, eip := range eips.Items {
+	for _, eip := range eips {
 		if eip.Spec.NatGwDp == natGwKey && eip.Status.Redo != NAT_GW_CREATED_AT && eip.Annotations[util.VpcNatAnnotation] == "" {
 			klog.V(3).Infof("redo eip %s", eip.Name)
 			if err = c.patchEipStatus(eip.Name, "", NAT_GW_CREATED_AT, "", "", false); err != nil {
