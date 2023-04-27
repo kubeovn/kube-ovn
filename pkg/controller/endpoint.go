@@ -115,11 +115,8 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 	}
 	svc := orisvc.DeepCopy()
 
-	clusterIPs := svc.Spec.ClusterIPs
-	if len(clusterIPs) == 0 && svc.Spec.ClusterIP != "" && svc.Spec.ClusterIP != v1.ClusterIPNone {
-		clusterIPs = []string{svc.Spec.ClusterIP}
-	}
-	if len(clusterIPs) == 0 || clusterIPs[0] == v1.ClusterIPNone {
+	clusterIPs := util.ServiceClusterIPs(*svc)
+	if len(clusterIPs) == 0 {
 		return nil
 	}
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -322,6 +323,7 @@ func (c *Controller) markAndCleanLSP() error {
 
 func (c *Controller) gcLoadBalancer() error {
 	klog.Infof("start to gc loadbalancers")
+	start := time.Now()
 	if !c.config.EnableLb {
 		// remove lb from logical switch
 		vpcs, err := c.vpcsLister.List(labels.Everything())
@@ -385,24 +387,27 @@ func (c *Controller) gcLoadBalancer() error {
 		klog.Errorf("failed to list svc, %v", err)
 		return err
 	}
-	tcpVips := []string{}
-	udpVips := []string{}
-	tcpSessionVips := []string{}
-	udpSessionVips := []string{}
+	tcpVips := make(map[string]struct{}, len(svcs)*2)
+	udpVips := make(map[string]struct{}, len(svcs)*2)
+	tcpSessionVips := make(map[string]struct{}, len(svcs)*2)
+	udpSessionVips := make(map[string]struct{}, len(svcs)*2)
 	for _, svc := range svcs {
-		ip := svc.Spec.ClusterIP
-		for _, port := range svc.Spec.Ports {
-			if port.Protocol == corev1.ProtocolTCP {
-				if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
-					tcpSessionVips = append(tcpSessionVips, fmt.Sprintf("%s:%d", ip, port.Port))
+		ips := util.ServiceClusterIPs(*svc)
+		for _, ip := range ips {
+			for _, port := range svc.Spec.Ports {
+				vip := util.JoinHostPort(ip, port.Port)
+				if port.Protocol == corev1.ProtocolTCP {
+					if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
+						tcpSessionVips[vip] = struct{}{}
+					} else {
+						tcpVips[vip] = struct{}{}
+					}
 				} else {
-					tcpVips = append(tcpVips, fmt.Sprintf("%s:%d", ip, port.Port))
-				}
-			} else {
-				if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
-					udpSessionVips = append(udpSessionVips, fmt.Sprintf("%s:%d", ip, port.Port))
-				} else {
-					udpVips = append(udpVips, fmt.Sprintf("%s:%d", ip, port.Port))
+					if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
+						udpSessionVips[vip] = struct{}{}
+					} else {
+						udpVips[vip] = struct{}{}
+					}
 				}
 			}
 		}
@@ -430,7 +435,8 @@ func (c *Controller) gcLoadBalancer() error {
 				return err
 			}
 			for vip := range vips {
-				if !util.IsStringIn(vip, tcpVips) {
+				if _, ok := tcpVips[vip]; !ok {
+					klog.Infof("gc vip %s in LB %s", vip, tcpLb)
 					err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, tcpLb)
 					if err != nil {
 						klog.Errorf("failed to delete vip %s from tcp lb %s, %v", vip, tcpLb, err)
@@ -451,7 +457,8 @@ func (c *Controller) gcLoadBalancer() error {
 				return err
 			}
 			for vip := range vips {
-				if !util.IsStringIn(vip, tcpSessionVips) {
+				if _, ok := tcpSessionVips[vip]; !ok {
+					klog.Infof("gc vip %s in LB %s", vip, tcpSessLb)
 					err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, tcpSessLb)
 					if err != nil {
 						klog.Errorf("failed to delete vip %s from tcp session lb %s, %v", vip, tcpSessLb, err)
@@ -473,7 +480,8 @@ func (c *Controller) gcLoadBalancer() error {
 				return err
 			}
 			for vip := range vips {
-				if !util.IsStringIn(vip, udpVips) {
+				if _, ok := udpVips[vip]; !ok {
+					klog.Infof("gc vip %s in LB %s", vip, udpLb)
 					err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, udpLb)
 					if err != nil {
 						klog.Errorf("failed to delete vip %s from tcp lb %s, %v", vip, udpLb, err)
@@ -495,7 +503,8 @@ func (c *Controller) gcLoadBalancer() error {
 				return err
 			}
 			for vip := range vips {
-				if !util.IsStringIn(vip, udpSessionVips) {
+				if _, ok := udpSessionVips[vip]; !ok {
+					klog.Infof("gc vip %s in LB %s", vip, udpSessLb)
 					err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, udpSessLb)
 					if err != nil {
 						klog.Errorf("failed to delete vip %s from udp session lb %s, %v", vip, udpSessLb, err)
@@ -523,6 +532,7 @@ func (c *Controller) gcLoadBalancer() error {
 			return err
 		}
 	}
+	klog.Infof("took %.2fs to gc load balancers", time.Since(start).Seconds())
 	return nil
 }
 
