@@ -252,7 +252,7 @@ func (c *Controller) handleAddPodAnnotatedIptablesEip(key string) error {
 		err = fmt.Errorf("pod network not allocated, failed to create iptables eip %s", eipName)
 		return err
 	}
-	if _, err = c.iptablesEipsLister.Get(eipName); err != nil {
+	if eip, err := c.iptablesEipsLister.Get(eipName); err != nil {
 		if !k8serrors.IsNotFound(err) {
 			return err
 		}
@@ -264,7 +264,8 @@ func (c *Controller) handleAddPodAnnotatedIptablesEip(key string) error {
 			klog.Errorf("failed to get vpc nat gw eip: %v", eipName, err)
 			return err
 		}
-		if err := c.createOrUpdateCrdEip(eipName, "", "", "", "", natGw); err != nil {
+		externalNetwork := util.GetExternalNetwork(eip.Spec.ExternalSubnet)
+		if err := c.createOrUpdateCrdEip(eipName, "", "", "", "", natGw, externalNetwork); err != nil {
 			klog.Errorf("failed to create eip %s: %v", eipName, err)
 			return err
 		}

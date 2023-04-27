@@ -15,6 +15,8 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
+var vpcExternalNet = "ovn-vpc-external-network"
+
 const (
 	IPv4Multicast        = "224.0.0.0/4"
 	IPv4Loopback         = "127.0.0.1/8"
@@ -506,4 +508,20 @@ func CheckSystemCIDR(cidrs []string) error {
 		}
 	}
 	return nil
+}
+
+// GetExternalNetwork returns the external network name
+// if the external network is not specified, return the default external network name
+func GetExternalNetwork(externalNet string) string {
+	if externalNet == "" {
+		return vpcExternalNet
+	}
+	return externalNet
+}
+
+func GetNatGwExternalNetwork(externalNets []string) string {
+	if len(externalNets) == 0 {
+		return vpcExternalNet
+	}
+	return externalNets[0]
 }

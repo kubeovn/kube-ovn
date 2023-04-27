@@ -396,6 +396,10 @@ spec:
                   type: string
                 subnet:
                   type: string
+                externalSubnets:
+                  items:
+                    type: string
+                  type: array
                 vpc:
                   type: string
                 selector:
@@ -777,6 +781,8 @@ spec:
                 natGwDp:
                   type: string
                 qosPolicy:
+                  type: string
+                externalSubnet:
                   type: string
 ---
 apiVersion: apiextensions.k8s.io/v1
