@@ -2540,7 +2540,11 @@ func (c *Controller) deletePolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) 
 }
 
 func (c *Controller) reconcileRouteTableForSubnet(subnet *kubeovnv1.Subnet) error {
-	klog.Infof("reconcile route table %s for subnet %s", subnet.Spec.RouteTable, subnet.Name)
+	if subnet.Spec.Vlan != "" && !subnet.Spec.U2OInterconnection {
+		return nil
+	}
+
+	klog.Infof("reconcile route table %q for subnet %s", subnet.Spec.RouteTable, subnet.Name)
 
 	routerPortName := ovs.LogicalRouterPortName(subnet.Spec.Vpc, subnet.Name)
 	lrp, err := c.ovnClient.GetLogicalRouterPort(routerPortName, false)
