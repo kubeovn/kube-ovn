@@ -118,7 +118,8 @@ function ovn_db_pre_start() {
 
     local db_file="/etc/ovn/ovn${1}_db.db"
     [ ! -e "$db_file" ] && return
-    ovsdb_tool check-cluster "$db_file" && return
+    ! ovsdb-tool db-is-clustered "$db_file" && return
+    ovsdb-tool check-cluster "$db_file" && return
 
     echo "detected database corruption for file $db_file, rebuild it."
     local sid=$(ovsdb-tool db-sid "$db_file")
@@ -142,7 +143,7 @@ function ovn_db_pre_start() {
 
     local db_new="$db_file.init-$(random_str)"
     echo "generating new database file $db_new"
-    ovsdb_tool --sid $sid join-cluster "$db_new" $db $local_addr ${remote_addr[*]} || return 1
+    ovsdb-tool --sid $sid join-cluster "$db_new" $db $local_addr ${remote_addr[*]} || return 1
 
     local db_bak="$db_file.backup-$(random_str)"
     echo "backup $db_file to $db_bak"
