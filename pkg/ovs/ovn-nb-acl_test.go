@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
 
 	v1 "k8s.io/api/core/v1"
@@ -62,11 +63,20 @@ func newAcl(parentName, direction, priority, match, action string, options ...fu
 	return acl
 }
 
-func (suite *OvnClientTestSuite) testCreateIngressAcl() {
+func (suite *OvnClientTestSuite) testUpdateIngressAclOps() {
 	t := suite.T()
 	t.Parallel()
 
 	ovnClient := suite.ovnClient
+
+	expect := func(row ovsdb.Row, action, direction, match, priority string) {
+		intPriority, err := strconv.Atoi(priority)
+		require.NoError(t, err)
+		require.Equal(t, action, row["action"])
+		require.Equal(t, direction, row["direction"])
+		require.Equal(t, match, row["match"])
+		require.Equal(t, intPriority, row["priority"])
+	}
 
 	t.Run("ipv4 acl", func(t *testing.T) {
 		t.Parallel()
@@ -81,36 +91,18 @@ func (suite *OvnClientTestSuite) testCreateIngressAcl() {
 
 		npp := mockNetworkPolicyPort()
 
-		err = ovnClient.CreateIngressAcl(pgName, asIngressName, asExceptName, protocol, npp, true, nil)
+		ops, err := ovnClient.UpdateIngressAclOps(pgName, asIngressName, asExceptName, protocol, npp, true, nil)
 		require.NoError(t, err)
+		require.Len(t, ops, 4)
 
-		pg, err := ovnClient.GetPortGroup(pgName, false)
-		require.NoError(t, err)
-		require.Len(t, pg.ACLs, 3)
-
-		match := fmt.Sprintf("outport == @%s && ip", pgName)
-		defaultDropAcl, err := ovnClient.GetAcl(pgName, ovnnb.ACLDirectionToLport, util.IngressDefaultDrop, match, false)
-		require.NoError(t, err)
-
-		expect := newAcl(pgName, ovnnb.ACLDirectionToLport, util.IngressDefaultDrop, match, ovnnb.ACLActionDrop, func(acl *ovnnb.ACL) {
-			acl.Log = true
-			acl.Severity = &ovnnb.ACLSeverityWarning
-			acl.UUID = defaultDropAcl.UUID
-		})
-
-		require.Equal(t, expect, defaultDropAcl)
-		require.Contains(t, pg.ACLs, defaultDropAcl.UUID)
+		expect(ops[0].Row, "drop", ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && ip4", pgName), util.IngressDefaultDrop)
 
 		matches := newNetworkPolicyAclMatch(pgName, asIngressName, asExceptName, protocol, ovnnb.ACLDirectionToLport, npp, nil)
+		i := 1
 		for _, m := range matches {
-			allowAcl, err := ovnClient.GetAcl(pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, m, false)
-			require.NoError(t, err)
-
-			expect := newAcl(pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, m, ovnnb.ACLActionAllowRelated)
-			expect.UUID = allowAcl.UUID
-			require.Equal(t, expect, allowAcl)
-
-			require.Contains(t, pg.ACLs, allowAcl.UUID)
+			require.Equal(t, m, ops[i].Row["match"])
+			expect(ops[i].Row, ovnnb.ACLActionAllowRelated, ovnnb.ACLDirectionToLport, m, util.IngressAllowPriority)
+			i++
 		}
 	})
 
@@ -125,87 +117,36 @@ func (suite *OvnClientTestSuite) testCreateIngressAcl() {
 		err := ovnClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		err = ovnClient.CreateIngressAcl(pgName, asIngressName, asExceptName, protocol, nil, true, nil)
+		ops, err := ovnClient.UpdateIngressAclOps(pgName, asIngressName, asExceptName, protocol, nil, true, nil)
 		require.NoError(t, err)
+		require.Len(t, ops, 3)
 
-		pg, err := ovnClient.GetPortGroup(pgName, false)
-		require.NoError(t, err)
-		require.Len(t, pg.ACLs, 2)
-
-		match := fmt.Sprintf("outport == @%s && ip", pgName)
-		defaultDropAcl, err := ovnClient.GetAcl(pgName, ovnnb.ACLDirectionToLport, util.IngressDefaultDrop, match, false)
-		require.NoError(t, err)
-
-		expect := newAcl(pgName, ovnnb.ACLDirectionToLport, util.IngressDefaultDrop, match, ovnnb.ACLActionDrop, func(acl *ovnnb.ACL) {
-			acl.Log = true
-			acl.Severity = &ovnnb.ACLSeverityWarning
-			acl.UUID = defaultDropAcl.UUID
-		})
-
-		require.Equal(t, expect, defaultDropAcl)
-		require.Contains(t, pg.ACLs, defaultDropAcl.UUID)
+		expect(ops[0].Row, "drop", ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && ip6", pgName), util.IngressDefaultDrop)
 
 		matches := newNetworkPolicyAclMatch(pgName, asIngressName, asExceptName, protocol, ovnnb.ACLDirectionToLport, nil, nil)
+		i := 1
 		for _, m := range matches {
-			allowAcl, err := ovnClient.GetAcl(pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, m, false)
-			require.NoError(t, err)
-
-			expect := newAcl(pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, m, ovnnb.ACLActionAllowRelated)
-			expect.UUID = allowAcl.UUID
-			require.Equal(t, expect, allowAcl)
-
-			require.Contains(t, pg.ACLs, allowAcl.UUID)
-		}
-	})
-
-	t.Run("ipv4 acl with log is disabled", func(t *testing.T) {
-		t.Parallel()
-
-		pgName := "test_create_v4_ingress_acl_pg_with_log_disabled"
-		asIngressName := "test.default.ingress.allow.ipv4.1"
-		asExceptName := "test.default.ingress.except.ipv4.1"
-		protocol := kubeovnv1.ProtocolIPv4
-
-		err := ovnClient.CreatePortGroup(pgName, nil)
-		require.NoError(t, err)
-
-		err = ovnClient.CreateIngressAcl(pgName, asIngressName, asExceptName, protocol, nil, false, nil)
-		require.NoError(t, err)
-
-		pg, err := ovnClient.GetPortGroup(pgName, false)
-		require.NoError(t, err)
-		require.Len(t, pg.ACLs, 2)
-
-		match := fmt.Sprintf("outport == @%s && ip", pgName)
-		defaultDropAcl, err := ovnClient.GetAcl(pgName, ovnnb.ACLDirectionToLport, util.IngressDefaultDrop, match, false)
-		require.NoError(t, err)
-
-		expect := newAcl(pgName, ovnnb.ACLDirectionToLport, util.IngressDefaultDrop, match, ovnnb.ACLActionDrop, func(acl *ovnnb.ACL) {
-			acl.UUID = defaultDropAcl.UUID
-		})
-
-		require.Equal(t, expect, defaultDropAcl)
-		require.Contains(t, pg.ACLs, defaultDropAcl.UUID)
-
-		matches := newNetworkPolicyAclMatch(pgName, asIngressName, asExceptName, protocol, ovnnb.ACLDirectionToLport, nil, nil)
-		for _, m := range matches {
-			allowAcl, err := ovnClient.GetAcl(pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, m, false)
-			require.NoError(t, err)
-
-			expect := newAcl(pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, m, ovnnb.ACLActionAllowRelated)
-			expect.UUID = allowAcl.UUID
-			require.Equal(t, expect, allowAcl)
-
-			require.Contains(t, pg.ACLs, allowAcl.UUID)
+			require.Equal(t, m, ops[i].Row["match"])
+			expect(ops[i].Row, ovnnb.ACLActionAllowRelated, ovnnb.ACLDirectionToLport, m, util.IngressAllowPriority)
+			i++
 		}
 	})
 }
 
-func (suite *OvnClientTestSuite) testCreateEgressAcl() {
+func (suite *OvnClientTestSuite) testUpdateEgressAclOps() {
 	t := suite.T()
 	t.Parallel()
 
 	ovnClient := suite.ovnClient
+
+	expect := func(row ovsdb.Row, action, direction, match, priority string) {
+		intPriority, err := strconv.Atoi(priority)
+		require.NoError(t, err)
+		require.Equal(t, action, row["action"])
+		require.Equal(t, direction, row["direction"])
+		require.Equal(t, match, row["match"])
+		require.Equal(t, intPriority, row["priority"])
+	}
 
 	t.Run("ipv4 acl", func(t *testing.T) {
 		t.Parallel()
@@ -220,38 +161,18 @@ func (suite *OvnClientTestSuite) testCreateEgressAcl() {
 
 		npp := mockNetworkPolicyPort()
 
-		err = ovnClient.CreateEgressAcl(pgName, asEgressName, asExceptName, protocol, npp, true, nil)
+		ops, err := ovnClient.UpdateEgressAclOps(pgName, asEgressName, asExceptName, protocol, npp, true, nil)
 		require.NoError(t, err)
+		require.Len(t, ops, 4)
 
-		pg, err := ovnClient.GetPortGroup(pgName, false)
-		require.NoError(t, err)
-		require.Len(t, pg.ACLs, 3)
-
-		match := fmt.Sprintf("inport == @%s && ip", pgName)
-		defaultDropAcl, err := ovnClient.GetAcl(pgName, ovnnb.ACLDirectionFromLport, util.EgressDefaultDrop, match, false)
-		require.NoError(t, err)
-
-		expect := newAcl(pgName, ovnnb.ACLDirectionFromLport, util.EgressDefaultDrop, match, ovnnb.ACLActionDrop, func(acl *ovnnb.ACL) {
-			acl.Log = true
-			acl.Severity = &ovnnb.ACLSeverityWarning
-			acl.UUID = defaultDropAcl.UUID
-		})
-		expect.Options = map[string]string{"apply-after-lb": "true"}
-
-		require.Equal(t, expect, defaultDropAcl)
-		require.Contains(t, pg.ACLs, defaultDropAcl.UUID)
+		expect(ops[0].Row, "drop", ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && ip4", pgName), util.EgressDefaultDrop)
 
 		matches := newNetworkPolicyAclMatch(pgName, asEgressName, asExceptName, protocol, ovnnb.ACLDirectionFromLport, npp, nil)
+		i := 1
 		for _, m := range matches {
-			allowAcl, err := ovnClient.GetAcl(pgName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, m, false)
-			require.NoError(t, err)
-
-			expect := newAcl(pgName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, m, ovnnb.ACLActionAllowRelated)
-			expect.UUID = allowAcl.UUID
-			expect.Options = map[string]string{"apply-after-lb": "true"}
-			require.Equal(t, expect, allowAcl)
-
-			require.Contains(t, pg.ACLs, allowAcl.UUID)
+			require.Equal(t, m, ops[i].Row["match"])
+			expect(ops[i].Row, ovnnb.ACLActionAllowRelated, ovnnb.ACLDirectionFromLport, m, util.EgressAllowPriority)
+			i++
 		}
 	})
 
@@ -266,38 +187,18 @@ func (suite *OvnClientTestSuite) testCreateEgressAcl() {
 		err := ovnClient.CreatePortGroup(pgName, nil)
 		require.NoError(t, err)
 
-		err = ovnClient.CreateEgressAcl(pgName, asEgressName, asExceptName, protocol, nil, true, nil)
+		ops, err := ovnClient.UpdateEgressAclOps(pgName, asEgressName, asExceptName, protocol, nil, true, nil)
 		require.NoError(t, err)
+		require.Len(t, ops, 3)
 
-		pg, err := ovnClient.GetPortGroup(pgName, false)
-		require.NoError(t, err)
-		require.Len(t, pg.ACLs, 2)
-
-		match := fmt.Sprintf("inport == @%s && ip", pgName)
-		defaultDropAcl, err := ovnClient.GetAcl(pgName, ovnnb.ACLDirectionFromLport, util.EgressDefaultDrop, match, false)
-		require.NoError(t, err)
-
-		expect := newAcl(pgName, ovnnb.ACLDirectionFromLport, util.EgressDefaultDrop, match, ovnnb.ACLActionDrop, func(acl *ovnnb.ACL) {
-			acl.Log = true
-			acl.Severity = &ovnnb.ACLSeverityWarning
-			acl.UUID = defaultDropAcl.UUID
-		})
-		expect.Options = map[string]string{"apply-after-lb": "true"}
-
-		require.Equal(t, expect, defaultDropAcl)
-		require.Contains(t, pg.ACLs, defaultDropAcl.UUID)
+		expect(ops[0].Row, "drop", ovnnb.ACLDirectionFromLport, fmt.Sprintf("inport == @%s && ip6", pgName), util.EgressDefaultDrop)
 
 		matches := newNetworkPolicyAclMatch(pgName, asEgressName, asExceptName, protocol, ovnnb.ACLDirectionFromLport, nil, nil)
+		i := 1
 		for _, m := range matches {
-			allowAcl, err := ovnClient.GetAcl(pgName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, m, false)
-			require.NoError(t, err)
-
-			expect := newAcl(pgName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, m, ovnnb.ACLActionAllowRelated)
-			expect.UUID = allowAcl.UUID
-			expect.Options = map[string]string{"apply-after-lb": "true"}
-			require.Equal(t, expect, allowAcl)
-
-			require.Contains(t, pg.ACLs, allowAcl.UUID)
+			require.Equal(t, m, ops[i].Row["match"])
+			expect(ops[i].Row, ovnnb.ACLActionAllowRelated, ovnnb.ACLDirectionFromLport, m, util.EgressAllowPriority)
+			i++
 		}
 	})
 }
@@ -796,7 +697,7 @@ func (suite *OvnClientTestSuite) testSetAclLog() {
 	require.NoError(t, err)
 
 	t.Run("set ingress acl log to false", func(t *testing.T) {
-		match := fmt.Sprintf("outport == @%s && ip", pgName)
+		match := fmt.Sprintf("outport == @%s && ip4", pgName)
 		acl := newAcl(pgName, ovnnb.ACLDirectionToLport, util.IngressDefaultDrop, match, ovnnb.ACLActionDrop, func(acl *ovnnb.ACL) {
 			acl.Name = &pgName
 			acl.Log = true
@@ -806,7 +707,7 @@ func (suite *OvnClientTestSuite) testSetAclLog() {
 		err = ovnClient.CreateAcls(pgName, portGroupKey, acl)
 		require.NoError(t, err)
 
-		err = ovnClient.SetAclLog(pgName, false, true)
+		err = ovnClient.SetAclLog(pgName, kubeovnv1.ProtocolIPv4, false, true)
 		require.NoError(t, err)
 
 		acl, err = ovnClient.GetAcl(pgName, ovnnb.ACLDirectionToLport, util.IngressDefaultDrop, match, false)
@@ -815,7 +716,7 @@ func (suite *OvnClientTestSuite) testSetAclLog() {
 	})
 
 	t.Run("set egress acl log to false", func(t *testing.T) {
-		match := fmt.Sprintf("inport == @%s && ip", pgName)
+		match := fmt.Sprintf("inport == @%s && ip4", pgName)
 		acl := newAcl(pgName, ovnnb.ACLDirectionFromLport, util.IngressDefaultDrop, match, ovnnb.ACLActionDrop, func(acl *ovnnb.ACL) {
 			acl.Name = &pgName
 			acl.Log = false
@@ -825,7 +726,7 @@ func (suite *OvnClientTestSuite) testSetAclLog() {
 		err = ovnClient.CreateAcls(pgName, portGroupKey, acl)
 		require.NoError(t, err)
 
-		err = ovnClient.SetAclLog(pgName, true, false)
+		err = ovnClient.SetAclLog(pgName, kubeovnv1.ProtocolIPv4, true, false)
 		require.NoError(t, err)
 
 		acl, err = ovnClient.GetAcl(pgName, ovnnb.ACLDirectionFromLport, util.IngressDefaultDrop, match, false)

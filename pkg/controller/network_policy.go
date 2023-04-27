@@ -16,6 +16,8 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
+	"github.com/ovn-org/libovsdb/ovsdb"
+
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -242,25 +244,16 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}
 
-	// we should first delete acl and address_set before update
-	if err = c.ovnClient.DeleteAcls(pgName, portGroupKey, "", nil); err != nil {
-		klog.Errorf("delete np %s acls: %v", key, err)
+	var ingressAclOps []ovsdb.Operation
+
+	clearIngressAclOps, err := c.ovnClient.DeleteAclsOps(pgName, portGroupKey, "to-lport", nil)
+	if err != nil {
+		klog.Errorf("generate operations that clear np %s ingress acls: %v", key, err)
 		return err
 	}
 
-	if err := c.ovnClient.DeleteAddressSets(map[string]string{
-		networkPolicyKey: fmt.Sprintf("%s/%s/%s", np.Namespace, np.Name, "ingress"),
-	}); err != nil {
-		klog.Errorf("delete np %s ingress address set: %v", key, err)
-		return err
-	}
-
-	if err := c.ovnClient.DeleteAddressSets(map[string]string{
-		networkPolicyKey: fmt.Sprintf("%s/%s/%s", np.Namespace, np.Name, "egress"),
-	}); err != nil {
-		klog.Errorf("delete np %s egress address set: %v", key, err)
-		return err
-	}
+	// put clear acl and update acl in a single transaction to imitate update acl
+	ingressAclOps = append(ingressAclOps, clearIngressAclOps...)
 
 	if hasIngressRule(np) {
 		for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
@@ -320,10 +313,13 @@ func (c *Controller) handleUpdateNp(key string) error {
 					npp = npr.Ports
 				}
 
-				if err = c.ovnClient.CreateIngressAcl(pgName, ingressAllowAsName, ingressExceptAsName, protocol, npp, logEnable, namedPortMap); err != nil {
-					klog.Errorf("create ingress acls for np %s: %v", key, err)
+				ops, err := c.ovnClient.UpdateIngressAclOps(pgName, ingressAllowAsName, ingressExceptAsName, protocol, npp, logEnable, namedPortMap)
+				if err != nil {
+					klog.Errorf("generate operations that add ingress acls to np %s: %v", key, err)
 					return err
 				}
+
+				ingressAclOps = append(ingressAclOps, ops...)
 			}
 			if len(np.Spec.Ingress) == 0 {
 				ingressAllowAsName := fmt.Sprintf("%s.%s.all", ingressAllowAsNamePrefix, protocol)
@@ -343,14 +339,20 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 
-				ingressPorts := []netv1.NetworkPolicyPort{}
-				if err = c.ovnClient.CreateIngressAcl(pgName, ingressAllowAsName, ingressExceptAsName, protocol, ingressPorts, logEnable, namedPortMap); err != nil {
-					klog.Errorf("create ingress acls for np %s: %v", key, err)
+				ops, err := c.ovnClient.UpdateIngressAclOps(pgName, ingressAllowAsName, ingressExceptAsName, protocol, []netv1.NetworkPolicyPort{}, logEnable, namedPortMap)
+				if err != nil {
+					klog.Errorf("generate operations that add ingress acls to np %s: %v", key, err)
 					return err
 				}
+
+				ingressAclOps = append(ingressAclOps, ops...)
 			}
 
-			if err = c.ovnClient.SetAclLog(pgName, logEnable, true); err != nil {
+			if err = c.ovnClient.Transact("add-ingress-acls", ingressAclOps); err != nil {
+				return fmt.Errorf("add ingress acls to %s: %v", pgName, err)
+			}
+
+			if err = c.ovnClient.SetAclLog(pgName, protocol, logEnable, true); err != nil {
 				// just log and do not return err here
 				klog.Errorf("failed to set ingress acl log for np %s, %v", key, err)
 			}
@@ -383,7 +385,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			}
 		}
 	} else {
-		if err = c.ovnClient.DeleteAcls(key, portGroupKey, "to-lport", nil); err != nil {
+		if err = c.ovnClient.DeleteAcls(pgName, portGroupKey, "to-lport", nil); err != nil {
 			klog.Errorf("delete np %s ingress acls: %v", key, err)
 			return err
 		}
@@ -395,6 +397,17 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return err
 		}
 	}
+
+	var egressAclOps []ovsdb.Operation
+
+	clearEgressAclOps, err := c.ovnClient.DeleteAclsOps(pgName, portGroupKey, "from-lport", nil)
+	if err != nil {
+		klog.Errorf("generate operations that clear np %s egress acls: %v", key, err)
+		return err
+	}
+
+	// put clear and add acl in a single transaction to imitate acl update
+	egressAclOps = append(egressAclOps, clearEgressAclOps...)
 
 	if hasEgressRule(np) {
 		for _, cidrBlock := range strings.Split(subnet.Spec.CIDRBlock, ",") {
@@ -450,10 +463,13 @@ func (c *Controller) handleUpdateNp(key string) error {
 				}
 
 				if len(allows) != 0 || len(excepts) != 0 {
-					if err = c.ovnClient.CreateEgressAcl(pgName, egressAllowAsName, egressExceptAsName, protocol, npr.Ports, logEnable, namedPortMap); err != nil {
-						klog.Errorf("create egress acls for np %s: %v", key, err)
+					ops, err := c.ovnClient.UpdateEgressAclOps(pgName, egressAllowAsName, egressExceptAsName, protocol, npr.Ports, logEnable, namedPortMap)
+					if err != nil {
+						klog.Errorf("generate operations that add egress acls to np %s: %v", key, err)
 						return err
 					}
+
+					egressAclOps = append(egressAclOps, ops...)
 				}
 			}
 			if len(np.Spec.Egress) == 0 {
@@ -474,14 +490,20 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 
-				egressPorts := []netv1.NetworkPolicyPort{}
-				if err = c.ovnClient.CreateEgressAcl(pgName, egressAllowAsName, egressExceptAsName, protocol, egressPorts, logEnable, namedPortMap); err != nil {
-					klog.Errorf("create egress acls for np %s: %v", key, err)
+				ops, err := c.ovnClient.UpdateEgressAclOps(pgName, egressAllowAsName, egressExceptAsName, protocol, []netv1.NetworkPolicyPort{}, logEnable, namedPortMap)
+				if err != nil {
+					klog.Errorf("generate operations that add egress acls to np %s: %v", key, err)
 					return err
 				}
+
+				egressAclOps = append(egressAclOps, ops...)
 			}
 
-			if err = c.ovnClient.SetAclLog(pgName, logEnable, false); err != nil {
+			if err = c.ovnClient.Transact("add-egress-acls", egressAclOps); err != nil {
+				return fmt.Errorf("add egress acls to %s: %v", pgName, err)
+			}
+
+			if err = c.ovnClient.SetAclLog(pgName, protocol, logEnable, false); err != nil {
 				// just log and do not return err here
 				klog.Errorf("failed to set egress acl log for np %s, %v", key, err)
 			}
@@ -515,7 +537,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			}
 		}
 	} else {
-		if err = c.ovnClient.DeleteAcls(key, portGroupKey, "from-lport", nil); err != nil {
+		if err = c.ovnClient.DeleteAcls(pgName, portGroupKey, "from-lport", nil); err != nil {
 			klog.Errorf("delete np %s egress acls: %v", key, err)
 			return err
 		}

@@ -91,17 +91,18 @@ type PortGroup interface {
 }
 
 type ACL interface {
-	CreateIngressAcl(pgName, asIngressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) error
-	CreateEgressAcl(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) error
+	UpdateIngressAclOps(pgName, asIngressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
+	UpdateEgressAclOps(pgName, asEgressName, asExceptName, protocol string, npp []netv1.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error)
 	CreateGatewayAcl(lsName, pgName, gateway string) error
 	CreateNodeAcl(pgName, nodeIpStr, joinIpStr string) error
 	CreateSgDenyAllAcl(sgName string) error
 	CreateSgBaseACL(sgName string, direction string) error
 	UpdateSgAcl(sg *kubeovnv1.SecurityGroup, direction string) error
 	UpdateLogicalSwitchAcl(lsName string, subnetAcls []kubeovnv1.Acl) error
-	SetAclLog(pgName string, logEnable, isIngress bool) error
+	SetAclLog(pgName, protocol string, logEnable, isIngress bool) error
 	SetLogicalSwitchPrivate(lsName, cidrBlock string, allowSubnets []string) error
 	DeleteAcls(parentName, parentType string, direction string, externalIDs map[string]string) error
+	DeleteAclsOps(parentName, parentType string, direction string, externalIDs map[string]string) ([]ovsdb.Operation, error)
 }
 
 type AddressSet interface {
@@ -167,4 +168,5 @@ type OvnClient interface {
 	DeleteLogicalGatewaySwitch(lsName, lrName string) error
 	DeleteSecurityGroup(sgName string) error
 	GetEntityInfo(entity interface{}) error
+	Transact(method string, operations []ovsdb.Operation) error
 }

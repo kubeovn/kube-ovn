@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 type OvnClientTestSuite struct {
@@ -397,12 +398,12 @@ func (suite *OvnClientTestSuite) Test_addressSetFilter() {
 }
 
 /* acl unit test */
-func (suite *OvnClientTestSuite) Test_CreateIngressAcl() {
-	suite.testCreateIngressAcl()
+func (suite *OvnClientTestSuite) Test_testUpdateIngressAclOps() {
+	suite.testUpdateIngressAclOps()
 }
 
-func (suite *OvnClientTestSuite) Test_CreateEgressAcl() {
-	suite.testCreateEgressAcl()
+func (suite *OvnClientTestSuite) Test_UpdateEgressAclOps() {
+	suite.testUpdateEgressAclOps()
 }
 
 func (suite *OvnClientTestSuite) Test_CreateGatewayAcl() {
@@ -632,8 +633,17 @@ func Test_scratch(t *testing.T) {
 	ovnClient, err := newOvnClient(t, endpoint, 10, "")
 	require.NoError(t, err)
 
-	err = ovnClient.CreateGatewayAcl("ovn-default", "", "10.16.0.1")
+	pgName := "test_pg"
+	AllIpMatch := NewAndAclMatch(
+		NewAclMatch("outport", "==", "@"+pgName, ""),
+		NewAclMatch("ip4", "", "", ""),
+	)
+
+	acl, err := ovnClient.newAclWithoutCheck(pgName, ovnnb.ACLDirectionToLport, util.IngressDefaultDrop, AllIpMatch.String(), ovnnb.ACLActionDrop)
 	require.NoError(t, err)
+
+	ovnClient.CreateAcls(pgName, portGroupKey, acl)
+
 }
 
 func newOVSDBServer(t *testing.T, dbModel model.ClientDBModel, schema ovsdb.DatabaseSchema) (*server.OvsdbServer, string) {

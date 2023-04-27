@@ -1086,20 +1086,6 @@ func (m *MockACL) EXPECT() *MockACLMockRecorder {
 	return m.recorder
 }
 
-// CreateEgressAcl mocks base method.
-func (m *MockACL) CreateEgressAcl(pgName, asEgressName, asExceptName, protocol string, npp []v10.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateEgressAcl", pgName, asEgressName, asExceptName, protocol, npp, logEnable, namedPortMap)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// CreateEgressAcl indicates an expected call of CreateEgressAcl.
-func (mr *MockACLMockRecorder) CreateEgressAcl(pgName, asEgressName, asExceptName, protocol, npp, logEnable, namedPortMap interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateEgressAcl", reflect.TypeOf((*MockACL)(nil).CreateEgressAcl), pgName, asEgressName, asExceptName, protocol, npp, logEnable, namedPortMap)
-}
-
 // CreateGatewayAcl mocks base method.
 func (m *MockACL) CreateGatewayAcl(lsName, pgName, gateway string) error {
 	m.ctrl.T.Helper()
@@ -1112,20 +1098,6 @@ func (m *MockACL) CreateGatewayAcl(lsName, pgName, gateway string) error {
 func (mr *MockACLMockRecorder) CreateGatewayAcl(lsName, pgName, gateway interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGatewayAcl", reflect.TypeOf((*MockACL)(nil).CreateGatewayAcl), lsName, pgName, gateway)
-}
-
-// CreateIngressAcl mocks base method.
-func (m *MockACL) CreateIngressAcl(pgName, asIngressName, asExceptName, protocol string, npp []v10.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateIngressAcl", pgName, asIngressName, asExceptName, protocol, npp, logEnable, namedPortMap)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// CreateIngressAcl indicates an expected call of CreateIngressAcl.
-func (mr *MockACLMockRecorder) CreateIngressAcl(pgName, asIngressName, asExceptName, protocol, npp, logEnable, namedPortMap interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateIngressAcl", reflect.TypeOf((*MockACL)(nil).CreateIngressAcl), pgName, asIngressName, asExceptName, protocol, npp, logEnable, namedPortMap)
 }
 
 // CreateNodeAcl mocks base method.
@@ -1184,18 +1156,33 @@ func (mr *MockACLMockRecorder) DeleteAcls(parentName, parentType, direction, ext
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAcls", reflect.TypeOf((*MockACL)(nil).DeleteAcls), parentName, parentType, direction, externalIDs)
 }
 
-// SetAclLog mocks base method.
-func (m *MockACL) SetAclLog(pgName string, logEnable, isIngress bool) error {
+// DeleteAclsOps mocks base method.
+func (m *MockACL) DeleteAclsOps(parentName, parentType, direction string, externalIDs map[string]string) ([]ovsdb.Operation, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetAclLog", pgName, logEnable, isIngress)
+	ret := m.ctrl.Call(m, "DeleteAclsOps", parentName, parentType, direction, externalIDs)
+	ret0, _ := ret[0].([]ovsdb.Operation)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteAclsOps indicates an expected call of DeleteAclsOps.
+func (mr *MockACLMockRecorder) DeleteAclsOps(parentName, parentType, direction, externalIDs interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAclsOps", reflect.TypeOf((*MockACL)(nil).DeleteAclsOps), parentName, parentType, direction, externalIDs)
+}
+
+// SetAclLog mocks base method.
+func (m *MockACL) SetAclLog(pgName, protocol string, logEnable, isIngress bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetAclLog", pgName, protocol, logEnable, isIngress)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SetAclLog indicates an expected call of SetAclLog.
-func (mr *MockACLMockRecorder) SetAclLog(pgName, logEnable, isIngress interface{}) *gomock.Call {
+func (mr *MockACLMockRecorder) SetAclLog(pgName, protocol, logEnable, isIngress interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAclLog", reflect.TypeOf((*MockACL)(nil).SetAclLog), pgName, logEnable, isIngress)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAclLog", reflect.TypeOf((*MockACL)(nil).SetAclLog), pgName, protocol, logEnable, isIngress)
 }
 
 // SetLogicalSwitchPrivate mocks base method.
@@ -1210,6 +1197,36 @@ func (m *MockACL) SetLogicalSwitchPrivate(lsName, cidrBlock string, allowSubnets
 func (mr *MockACLMockRecorder) SetLogicalSwitchPrivate(lsName, cidrBlock, allowSubnets interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPrivate", reflect.TypeOf((*MockACL)(nil).SetLogicalSwitchPrivate), lsName, cidrBlock, allowSubnets)
+}
+
+// UpdateEgressAclOps mocks base method.
+func (m *MockACL) UpdateEgressAclOps(pgName, asEgressName, asExceptName, protocol string, npp []v10.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateEgressAclOps", pgName, asEgressName, asExceptName, protocol, npp, logEnable, namedPortMap)
+	ret0, _ := ret[0].([]ovsdb.Operation)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateEgressAclOps indicates an expected call of UpdateEgressAclOps.
+func (mr *MockACLMockRecorder) UpdateEgressAclOps(pgName, asEgressName, asExceptName, protocol, npp, logEnable, namedPortMap interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateEgressAclOps", reflect.TypeOf((*MockACL)(nil).UpdateEgressAclOps), pgName, asEgressName, asExceptName, protocol, npp, logEnable, namedPortMap)
+}
+
+// UpdateIngressAclOps mocks base method.
+func (m *MockACL) UpdateIngressAclOps(pgName, asIngressName, asExceptName, protocol string, npp []v10.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateIngressAclOps", pgName, asIngressName, asExceptName, protocol, npp, logEnable, namedPortMap)
+	ret0, _ := ret[0].([]ovsdb.Operation)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateIngressAclOps indicates an expected call of UpdateIngressAclOps.
+func (mr *MockACLMockRecorder) UpdateIngressAclOps(pgName, asIngressName, asExceptName, protocol, npp, logEnable, namedPortMap interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateIngressAclOps", reflect.TypeOf((*MockACL)(nil).UpdateIngressAclOps), pgName, asIngressName, asExceptName, protocol, npp, logEnable, namedPortMap)
 }
 
 // UpdateLogicalSwitchAcl mocks base method.
@@ -1906,20 +1923,6 @@ func (mr *MockOvnClientMockRecorder) CreateBareLogicalSwitchPort(lsName, lspName
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBareLogicalSwitchPort", reflect.TypeOf((*MockOvnClient)(nil).CreateBareLogicalSwitchPort), lsName, lspName, ip, mac)
 }
 
-// CreateEgressAcl mocks base method.
-func (m *MockOvnClient) CreateEgressAcl(pgName, asEgressName, asExceptName, protocol string, npp []v10.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateEgressAcl", pgName, asEgressName, asExceptName, protocol, npp, logEnable, namedPortMap)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// CreateEgressAcl indicates an expected call of CreateEgressAcl.
-func (mr *MockOvnClientMockRecorder) CreateEgressAcl(pgName, asEgressName, asExceptName, protocol, npp, logEnable, namedPortMap interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateEgressAcl", reflect.TypeOf((*MockOvnClient)(nil).CreateEgressAcl), pgName, asEgressName, asExceptName, protocol, npp, logEnable, namedPortMap)
-}
-
 // CreateGatewayAcl mocks base method.
 func (m *MockOvnClient) CreateGatewayAcl(lsName, pgName, gateway string) error {
 	m.ctrl.T.Helper()
@@ -1951,20 +1954,6 @@ func (mr *MockOvnClientMockRecorder) CreateGatewayLogicalSwitch(lsName, lrName, 
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]interface{}{lsName, lrName, provider, ip, mac, vlanID}, chassises...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGatewayLogicalSwitch", reflect.TypeOf((*MockOvnClient)(nil).CreateGatewayLogicalSwitch), varargs...)
-}
-
-// CreateIngressAcl mocks base method.
-func (m *MockOvnClient) CreateIngressAcl(pgName, asIngressName, asExceptName, protocol string, npp []v10.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateIngressAcl", pgName, asIngressName, asExceptName, protocol, npp, logEnable, namedPortMap)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// CreateIngressAcl indicates an expected call of CreateIngressAcl.
-func (mr *MockOvnClientMockRecorder) CreateIngressAcl(pgName, asIngressName, asExceptName, protocol, npp, logEnable, namedPortMap interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateIngressAcl", reflect.TypeOf((*MockOvnClient)(nil).CreateIngressAcl), pgName, asIngressName, asExceptName, protocol, npp, logEnable, namedPortMap)
 }
 
 // CreateLoadBalancer mocks base method.
@@ -2171,6 +2160,21 @@ func (m *MockOvnClient) DeleteAcls(parentName, parentType, direction string, ext
 func (mr *MockOvnClientMockRecorder) DeleteAcls(parentName, parentType, direction, externalIDs interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAcls", reflect.TypeOf((*MockOvnClient)(nil).DeleteAcls), parentName, parentType, direction, externalIDs)
+}
+
+// DeleteAclsOps mocks base method.
+func (m *MockOvnClient) DeleteAclsOps(parentName, parentType, direction string, externalIDs map[string]string) ([]ovsdb.Operation, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteAclsOps", parentName, parentType, direction, externalIDs)
+	ret0, _ := ret[0].([]ovsdb.Operation)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteAclsOps indicates an expected call of DeleteAclsOps.
+func (mr *MockOvnClientMockRecorder) DeleteAclsOps(parentName, parentType, direction, externalIDs interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAclsOps", reflect.TypeOf((*MockOvnClient)(nil).DeleteAclsOps), parentName, parentType, direction, externalIDs)
 }
 
 // DeleteAddressSet mocks base method.
@@ -3044,17 +3048,17 @@ func (mr *MockOvnClientMockRecorder) RemoveLogicalPatchPort(lspName, lrpName int
 }
 
 // SetAclLog mocks base method.
-func (m *MockOvnClient) SetAclLog(pgName string, logEnable, isIngress bool) error {
+func (m *MockOvnClient) SetAclLog(pgName, protocol string, logEnable, isIngress bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetAclLog", pgName, logEnable, isIngress)
+	ret := m.ctrl.Call(m, "SetAclLog", pgName, protocol, logEnable, isIngress)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SetAclLog indicates an expected call of SetAclLog.
-func (mr *MockOvnClientMockRecorder) SetAclLog(pgName, logEnable, isIngress interface{}) *gomock.Call {
+func (mr *MockOvnClientMockRecorder) SetAclLog(pgName, protocol, logEnable, isIngress interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAclLog", reflect.TypeOf((*MockOvnClient)(nil).SetAclLog), pgName, logEnable, isIngress)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAclLog", reflect.TypeOf((*MockOvnClient)(nil).SetAclLog), pgName, protocol, logEnable, isIngress)
 }
 
 // SetAzName mocks base method.
@@ -3230,6 +3234,20 @@ func (mr *MockOvnClientMockRecorder) SetUseCtInvMatch() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetUseCtInvMatch", reflect.TypeOf((*MockOvnClient)(nil).SetUseCtInvMatch))
 }
 
+// Transact mocks base method.
+func (m *MockOvnClient) Transact(method string, operations []ovsdb.Operation) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Transact", method, operations)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Transact indicates an expected call of Transact.
+func (mr *MockOvnClientMockRecorder) Transact(method, operations interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Transact", reflect.TypeOf((*MockOvnClient)(nil).Transact), method, operations)
+}
+
 // UpdateDHCPOptions mocks base method.
 func (m *MockOvnClient) UpdateDHCPOptions(subnet *v1.Subnet) (*ovs.DHCPOptionsUUIDs, error) {
 	m.ctrl.T.Helper()
@@ -3257,6 +3275,36 @@ func (m *MockOvnClient) UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName
 func (mr *MockOvnClientMockRecorder) UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, externalMac, gatewayType interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDnatAndSnat", reflect.TypeOf((*MockOvnClient)(nil).UpdateDnatAndSnat), lrName, externalIP, logicalIP, lspName, externalMac, gatewayType)
+}
+
+// UpdateEgressAclOps mocks base method.
+func (m *MockOvnClient) UpdateEgressAclOps(pgName, asEgressName, asExceptName, protocol string, npp []v10.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateEgressAclOps", pgName, asEgressName, asExceptName, protocol, npp, logEnable, namedPortMap)
+	ret0, _ := ret[0].([]ovsdb.Operation)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateEgressAclOps indicates an expected call of UpdateEgressAclOps.
+func (mr *MockOvnClientMockRecorder) UpdateEgressAclOps(pgName, asEgressName, asExceptName, protocol, npp, logEnable, namedPortMap interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateEgressAclOps", reflect.TypeOf((*MockOvnClient)(nil).UpdateEgressAclOps), pgName, asEgressName, asExceptName, protocol, npp, logEnable, namedPortMap)
+}
+
+// UpdateIngressAclOps mocks base method.
+func (m *MockOvnClient) UpdateIngressAclOps(pgName, asIngressName, asExceptName, protocol string, npp []v10.NetworkPolicyPort, logEnable bool, namedPortMap map[string]*util.NamedPortInfo) ([]ovsdb.Operation, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateIngressAclOps", pgName, asIngressName, asExceptName, protocol, npp, logEnable, namedPortMap)
+	ret0, _ := ret[0].([]ovsdb.Operation)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateIngressAclOps indicates an expected call of UpdateIngressAclOps.
+func (mr *MockOvnClientMockRecorder) UpdateIngressAclOps(pgName, asIngressName, asExceptName, protocol, npp, logEnable, namedPortMap interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateIngressAclOps", reflect.TypeOf((*MockOvnClient)(nil).UpdateIngressAclOps), pgName, asIngressName, asExceptName, protocol, npp, logEnable, namedPortMap)
 }
 
 // UpdateLogicalRouterPortRA mocks base method.

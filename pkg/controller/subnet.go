@@ -757,7 +757,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchSuccess", "")
 	} else {
 		// clear acl when direction is ""
-		if err = c.ovnClient.DeleteAcls(key, logicalSwitchKey, "", nil); err != nil {
+		if err = c.ovnClient.DeleteAcls(subnet.Name, logicalSwitchKey, "", nil); err != nil {
 			c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclFailed", err.Error())
 			return err
 		}
