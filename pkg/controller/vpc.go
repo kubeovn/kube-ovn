@@ -55,6 +55,7 @@ func (c *Controller) enqueueUpdateVpc(old, new interface{}) {
 
 	if !newVpc.DeletionTimestamp.IsZero() ||
 		!reflect.DeepEqual(oldVpc.Spec.Namespaces, newVpc.Spec.Namespaces) ||
+		!reflect.DeepEqual(oldVpc.Spec.StaticRoutes, newVpc.Spec.StaticRoutes) ||
 		!reflect.DeepEqual(oldVpc.Spec.RouteTables, newVpc.Spec.RouteTables) ||
 		!reflect.DeepEqual(oldVpc.Spec.PolicyRoutes, newVpc.Spec.PolicyRoutes) ||
 		!reflect.DeepEqual(oldVpc.Spec.VpcPeerings, newVpc.Spec.VpcPeerings) ||
@@ -610,19 +611,17 @@ func checkStaticRoute(route *kubeovnv1.StaticRoute) (bool, error) {
 }
 
 func checkAndMergeStaticRoute(vpc *kubeovnv1.Vpc) (bool, error) {
-	var (
-		changed bool
-		err     error
-	)
+	var changed bool
 	rtbs := make(map[string][]*kubeovnv1.StaticRoute)
 	existRtb := make(map[string]struct{})
 
 	for _, rtb := range vpc.Spec.RouteTables {
 		for _, item := range rtb.Routes {
-			changed, err = checkStaticRoute(item)
+			ok, err := checkStaticRoute(item)
 			if err != nil {
-				return changed, err
+				return false, err
 			}
+			changed = changed || ok
 
 			key := rtb.Name + ":" + getStaticRouteItemKey(item)
 			if _, ok := existRtb[key]; !ok {
@@ -635,10 +634,11 @@ func checkAndMergeStaticRoute(vpc *kubeovnv1.Vpc) (bool, error) {
 	// to compatible with old version copy static routes to main route table
 	// notice that RouteTables priority is higher than StaticRoutes
 	for _, item := range vpc.Spec.StaticRoutes {
-		changed, err = checkStaticRoute(item)
+		ok, err := checkStaticRoute(item)
 		if err != nil {
-			return changed, err
+			return false, err
 		}
+		changed = changed || ok
 
 		key := util.MainRouteTable + ":" + getStaticRouteItemKey(item)
 		if _, ok := existRtb[key]; !ok {
