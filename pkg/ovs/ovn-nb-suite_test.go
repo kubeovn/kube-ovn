@@ -22,7 +22,6 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 type OvnClientTestSuite struct {
@@ -633,17 +632,7 @@ func Test_scratch(t *testing.T) {
 	ovnClient, err := newOvnClient(t, endpoint, 10, "")
 	require.NoError(t, err)
 
-	pgName := "test_pg"
-	AllIpMatch := NewAndAclMatch(
-		NewAclMatch("outport", "==", "@"+pgName, ""),
-		NewAclMatch("ip4", "", "", ""),
-	)
-
-	acl, err := ovnClient.newAclWithoutCheck(pgName, ovnnb.ACLDirectionToLport, util.IngressDefaultDrop, AllIpMatch.String(), ovnnb.ACLActionDrop)
-	require.NoError(t, err)
-
-	ovnClient.CreateAcls(pgName, portGroupKey, acl)
-
+	_ = ovnClient
 }
 
 func newOVSDBServer(t *testing.T, dbModel model.ClientDBModel, schema ovsdb.DatabaseSchema) (*server.OvsdbServer, string) {
