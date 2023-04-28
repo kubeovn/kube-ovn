@@ -164,7 +164,6 @@ const (
 	InterconnectionSwitch  = "ts"
 	ExternalGatewaySwitch  = "ovn-external"
 	VpcNatGatewayConfig    = "ovn-vpc-nat-gw-config"
-	VpcExternalNet         = "ovn-vpc-external-network"
 	VpcLbNetworkAttachment = "ovn-vpc-lb"
 	VpcDnsConfig           = "vpc-dns-config"
 	VpcDnsDepTemplate      = "vpc-dns-dep"

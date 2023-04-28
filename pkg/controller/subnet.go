@@ -1869,7 +1869,7 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	}
 	usingIPs += float64(len(vips.Items))
 
-	if subnet.Name == util.VpcExternalNet {
+	if !isOvnSubnet(subnet) {
 		eips, err := c.iptablesEipsLister.List(
 			labels.SelectorFromSet(labels.Set{util.SubnetNameLabel: subnet.Name}))
 		if err != nil {
@@ -1940,7 +1940,7 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		return err
 	}
 	usingIPs += float64(len(vips.Items))
-	if subnet.Name == util.VpcExternalNet {
+	if !isOvnSubnet(subnet) {
 		eips, err := c.iptablesEipsLister.List(
 			labels.SelectorFromSet(labels.Set{util.SubnetNameLabel: subnet.Name}))
 		if err != nil {

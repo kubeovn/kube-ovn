@@ -483,12 +483,13 @@ type VpcNatGateway struct {
 }
 
 type VpcNatSpec struct {
-	Vpc         string              `json:"vpc"`
-	Subnet      string              `json:"subnet"`
-	LanIp       string              `json:"lanIp"`
-	Selector    []string            `json:"selector"`
-	Tolerations []corev1.Toleration `json:"tolerations"`
-	Affinity    corev1.Affinity     `json:"affinity"`
+	Vpc             string              `json:"vpc"`
+	Subnet          string              `json:"subnet"`
+	ExternalSubnets []string            `json:"externalSubnets"`
+	LanIp           string              `json:"lanIp"`
+	Selector        []string            `json:"selector"`
+	Tolerations     []corev1.Toleration `json:"tolerations"`
+	Affinity        corev1.Affinity     `json:"affinity"`
 }
 
 // +genclient
@@ -504,11 +505,12 @@ type IptablesEIP struct {
 	Status IptablesEipStatus `json:"status,omitempty"`
 }
 type IptablesEipSpec struct {
-	V4ip       string `json:"v4ip"`
-	V6ip       string `json:"v6ip"`
-	MacAddress string `json:"macAddress"`
-	NatGwDp    string `json:"natGwDp"`
-	QoSPolicy  string `json:"qosPolicy"`
+	V4ip           string `json:"v4ip"`
+	V6ip           string `json:"v6ip"`
+	MacAddress     string `json:"macAddress"`
+	NatGwDp        string `json:"natGwDp"`
+	QoSPolicy      string `json:"qosPolicy"`
+	ExternalSubnet string `json:"externalSubnet"`
 }
 
 // IptablesEIPCondition describes the state of an object at a certain point.
