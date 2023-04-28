@@ -190,9 +190,10 @@ const (
 	IptablesFip = "iptables"
 
 	GatewayRouterPolicyPriority = 29000
-	NodeRouterPolicyPriority    = 30000
-	SubnetRouterPolicyPriority  = 31000
 	OvnICPolicyPriority         = 29500
+	NodeRouterPolicyPriority    = 30000
+	NodeLocalDnsPolicyPriority  = 30100
+	SubnetRouterPolicyPriority  = 31000
 
 	OffloadType  = "offload-port"
 	InternalType = "internal-port"

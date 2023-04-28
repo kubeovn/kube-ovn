@@ -20,6 +20,7 @@ CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
 ENABLE_LB_SVC=${ENABLE_LB_SVC:-false}
 ENABLE_NAT_GW=${ENABLE_NAT_GW:-false}
 ENABLE_KEEP_VM_IP=${ENABLE_KEEP_VM_IP:-true}
+NODE_LOCAL_DNS_CACHE_IP=${NODE_LOCAL_DNS_CACHE_IP:-}
 # exchange link names of OVS bridge and the provider nic
 # in the default provider-network
 EXCHANGE_LINK_NAME=${EXCHANGE_LINK_NAME:-false}
@@ -3596,6 +3597,7 @@ spec:
           - --enable-lb-svc=$ENABLE_LB_SVC
           - --keep-vm-ip=$ENABLE_KEEP_VM_IP
           - --pod-default-fip-type=$POD_DEFAULT_FIP_TYPE
+          - --node-local-dns-cache-ip=$NODE_LOCAL_DNS_CACHE_IP
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"

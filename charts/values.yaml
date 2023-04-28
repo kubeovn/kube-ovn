@@ -46,7 +46,13 @@ networking:
   NODE_SUBNET: "join"
   ENABLE_ECMP: false
   ENABLE_METRICS: true
+  # NODE_LOCAL_DNS_IP:
+  # this local dns server is customer self-definition,
+  # kube-ovn just put this ip in ipset ovn40subnet or ovn60subnet
   NODE_LOCAL_DNS_IP: ""
+  # NODE_LOCAL_DNS_CACHE_IP:
+  # this feature is to support nodelocaldnscache which is k8s official component
+  NODE_LOCAL_DNS_CACHE_IP: ""
 
 func:
   ENABLE_LB: true

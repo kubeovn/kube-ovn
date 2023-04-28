@@ -273,10 +273,20 @@ func (c *Controller) handleAddNode(key string) error {
 				"node":           node.Name,
 				"address-family": strconv.Itoa(af),
 			}
-			klog.Infof("add policy route for router: %s, match %s, action %s, nexthop %s, extrenalID %v", c.config.ClusterRouter, match, "reroute", ip, externalIDs)
+			klog.Infof("add policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, match, "reroute", ip, externalIDs)
 			if err = c.ovnLegacyClient.AddPolicyRoute(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", ip, externalIDs); err != nil {
 				klog.Errorf("failed to add logical router policy for node %s: %v", node.Name, err)
 				return err
+			}
+
+			if c.config.NodeLocalDnsCacheIP != "" {
+				pgAs := strings.Replace(fmt.Sprintf("%s_ip%d", portName, af), "-", ".", -1)
+				match := fmt.Sprintf("ip%d.src == $%s && ip%d.dst == %s", af, pgAs, af, c.config.NodeLocalDnsCacheIP)
+				klog.Infof("add node local dns cache policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, match, "reroute", ip, externalIDs)
+				if err = c.ovnLegacyClient.AddPolicyRoute(c.config.ClusterRouter, util.NodeLocalDnsPolicyPriority, match, "reroute", ip, externalIDs); err != nil {
+					klog.Errorf("failed to add logical router policy for node %s: %v", node.Name, err)
+					return err
+				}
 			}
 		}
 	}
@@ -461,6 +471,16 @@ func (c *Controller) handleDeleteNode(key string) error {
 
 	// ovn acl doesn't support address_set name with '-', so replace '-' by '.'
 	pgName := strings.Replace(portName, "-", ".", -1)
+	afs := []int{4, 6}
+	for _, af := range afs {
+		pgAs := strings.Replace(fmt.Sprintf("%s_ip%d", pgName, af), "-", ".", -1)
+		match := fmt.Sprintf("ip%d.src == $%s && ip%d.dst == %s", af, pgAs, af, c.config.NodeLocalDnsCacheIP)
+		if err := c.ovnLegacyClient.DeletePolicyRoute(c.config.ClusterRouter, util.NodeLocalDnsPolicyPriority, match); err != nil {
+			klog.Errorf("failed to delete policy route for node local dns in router %s with match %s : %v", c.config.ClusterRouter, match, err)
+			return err
+		}
+	}
+
 	if err := c.ovnClient.DeletePortGroup(pgName); err != nil {
 		klog.Errorf("delete port group %s for node: %v", portName, err)
 		return err
