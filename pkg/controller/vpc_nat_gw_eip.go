@@ -263,16 +263,10 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 	return nil
 }
 
-func (c *Controller) handleResetIptablesEip(key string) error {
-	eip, err := c.iptablesEipsLister.Get(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-	klog.V(3).Infof("handle reset eip %s", key)
+func (c *Controller) checkEipBindNat(key string, eip *kubeovnv1.IptablesEIP) (bool, string, error) {
 	var notUse bool
+	var natName string
+
 	switch eip.Status.Nat {
 	case util.FipUsingEip:
 		notUse = true
@@ -283,12 +277,13 @@ func (c *Controller) handleResetIptablesEip(key string) error {
 		})
 		if err != nil {
 			klog.Errorf("failed to get dnats, %v", err)
-			return err
+			return notUse, natName, err
 		}
 		notUse = true
 		for _, item := range dnats.Items {
 			if item.Annotations[util.VpcEipAnnotation] == key {
 				notUse = false
+				natName = item.Name
 				break
 			}
 		}
@@ -299,21 +294,40 @@ func (c *Controller) handleResetIptablesEip(key string) error {
 		})
 		if err != nil {
 			klog.Errorf("failed to get snats, %v", err)
-			return err
+			return notUse, natName, err
 		}
 		notUse = true
 		for _, item := range snats.Items {
 			if item.Annotations[util.VpcEipAnnotation] == key {
 				notUse = false
+				natName = item.Name
 				break
 			}
 		}
 	default:
 		notUse = true
 	}
+	return notUse, natName, nil
+}
+
+func (c *Controller) handleResetIptablesEip(key string) error {
+	klog.V(3).Infof("handle reset eip %s", key)
+	eip, err := c.iptablesEipsLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	notUse, _, err := c.checkEipBindNat(key, eip)
+	if err != nil {
+		klog.Errorf("failed to check nats bound to eip, %v", err)
+		return err
+	}
 
 	if notUse {
-		if err := c.natLabelEip(key, ""); err != nil {
+		if err := c.natLabelEip(key, "", eip.Spec.QoSPolicy); err != nil {
 			klog.Errorf("failed to clean label for eip %s, %v", key, err)
 			return err
 		}
@@ -391,7 +405,13 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 			}
 		}
 
-		if err = c.qosLabelEIP(key, cachedEip.Spec.QoSPolicy); err != nil {
+		_, natName, err := c.checkEipBindNat(key, cachedEip)
+		if err != nil {
+			klog.Errorf("failed to check nats bound to eip, %v", err)
+			return err
+		}
+
+		if err = c.natLabelEip(key, natName, cachedEip.Spec.QoSPolicy); err != nil {
 			klog.Errorf("failed to label qos in eip, %v", err)
 			return err
 		}
@@ -734,7 +754,7 @@ func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp, qos, ex
 				return err
 			}
 		}
-		var needUpdateLabel, needUpdateAnno bool
+		var needUpdateLabel bool
 		var op string
 		if len(eip.Labels) == 0 {
 			op = "add"
@@ -751,21 +771,14 @@ func (c *Controller) createOrUpdateCrdEip(key, v4ip, v6ip, mac, natGwDp, qos, ex
 		}
 		if eip.Spec.QoSPolicy != "" && eip.Labels[util.QoSLabel] != eip.Spec.QoSPolicy {
 			eip.Labels[util.QoSLabel] = eip.Spec.QoSPolicy
+			needUpdateLabel = true
 		}
 		if needUpdateLabel {
 			if err := c.updateIptableLabels(eip.Name, op, "eip", eip.Labels); err != nil {
 				return err
 			}
 		}
-		if needUpdateAnno {
-			if eip.Annotations == nil {
-				eip.Annotations = make(map[string]string)
-			}
-			eip.Annotations[util.VpcNatAnnotation] = ""
-			if err := c.updateIptableAnnotations(eip.Name, op, "eip", eip.Annotations); err != nil {
-				return err
-			}
-		}
+
 		if err = c.handleAddIptablesEipFinalizer(key); err != nil {
 			klog.Errorf("failed to handle add finalizer for eip, %v", err)
 			return err
@@ -974,15 +987,16 @@ func (c *Controller) patchResetEipStatusNat(key, nat string) error {
 	}
 	return nil
 }
-func (c *Controller) natLabelEip(eipName, natName string) error {
+func (c *Controller) natLabelEip(eipName, natName, qosName string) error {
 	oriEip, err := c.iptablesEipsLister.Get(eipName)
-	externalNetwork := util.GetExternalNetwork(oriEip.Spec.ExternalSubnet)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
+	externalNetwork := util.GetExternalNetwork(oriEip.Spec.ExternalSubnet)
+
 	eip := oriEip.DeepCopy()
 	var needUpdateLabel, needUpdateAnno bool
 	var op string
@@ -992,12 +1006,14 @@ func (c *Controller) natLabelEip(eipName, natName string) error {
 		eip.Labels = map[string]string{
 			util.SubnetNameLabel:        externalNetwork,
 			util.VpcNatGatewayNameLabel: eip.Spec.NatGwDp,
+			util.QoSLabel:               qosName,
 		}
-	} else if eip.Labels[util.VpcNatGatewayNameLabel] != eip.Spec.NatGwDp {
+	} else if eip.Labels[util.VpcNatGatewayNameLabel] != eip.Spec.NatGwDp || eip.Labels[util.QoSLabel] != qosName {
 		op = "replace"
 		needUpdateLabel = true
 		eip.Labels[util.SubnetNameLabel] = externalNetwork
 		eip.Labels[util.VpcNatGatewayNameLabel] = eip.Spec.NatGwDp
+		eip.Labels[util.QoSLabel] = qosName
 	}
 	if needUpdateLabel {
 		if err := c.updateIptableLabels(eip.Name, op, "eip", eip.Labels); err != nil {
@@ -1021,36 +1037,5 @@ func (c *Controller) natLabelEip(eipName, natName string) error {
 			return err
 		}
 	}
-	return err
-}
-
-func (c *Controller) qosLabelEIP(eipName, qosName string) error {
-	oriEip, err := c.iptablesEipsLister.Get(eipName)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-	eip := oriEip.DeepCopy()
-	var needUpdateLabel bool
-	var op string
-	if len(eip.Labels) == 0 {
-		op = "add"
-		needUpdateLabel = true
-		eip.Labels = map[string]string{
-			util.QoSLabel: qosName,
-		}
-	} else if eip.Labels[util.QoSLabel] != qosName {
-		op = "replace"
-		needUpdateLabel = true
-		eip.Labels[util.QoSLabel] = qosName
-	}
-	if needUpdateLabel {
-		if err := c.updateIptableLabels(eip.Name, op, "eip", eip.Labels); err != nil {
-			return err
-		}
-	}
-
 	return err
 }
