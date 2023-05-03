@@ -66,6 +66,10 @@ func (c *Controller) deleteVpcLb(vpc *kubeovnv1.Vpc) error {
 }
 
 func (c *Controller) genVpcLbDeployment(vpc *kubeovnv1.Vpc) (*v1.Deployment, error) {
+	if err := c.resyncVpcNatImage(); err != nil {
+		klog.Errorf("failed to resync vpc nat config, err: %v", err)
+		return nil, err
+	}
 	if len(vpc.Status.Subnets) == 0 {
 		return nil, nil
 	}
