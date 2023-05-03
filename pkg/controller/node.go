@@ -1112,13 +1112,33 @@ func (c *Controller) getPolicyRouteParas(cidr string, priority int32) ([]string,
 }
 
 func (c *Controller) checkPolicyRouteExistForNode(nodeName, cidr, nexthop string, priority int32) (bool, error) {
-	_, nameIpMap, err := c.getPolicyRouteParas(cidr, priority)
+	nextHops, _, err := c.getPolicyRouteParas(cidr, priority)
 	if err != nil {
 		klog.Errorf("failed to get policy route paras, %v", err)
 		return false, err
 	}
-	if nodeIp, ok := nameIpMap[nodeName]; ok && nodeIp == nexthop {
+
+	if util.ContainsString(nextHops, nexthop) {
 		return true, nil
+	}
+	return false, nil
+}
+
+func (c *Controller) checkPolicyRouteConsistent(nodeName, cidr, nexthop string, priority int32) (bool, error) {
+	nextHops, _, err := c.getPolicyRouteParas(cidr, priority)
+	if err != nil {
+		klog.Errorf("failed to get policy route paras, %v", err)
+		return false, err
+	}
+
+	if c.config.EnableEcmp {
+		if util.ContainsString(nextHops, nexthop) {
+			return true, nil
+		}
+	} else {
+		if len(nextHops) == 1 && nextHops[0] == nexthop {
+			return true, nil
+		}
 	}
 	return false, nil
 }
