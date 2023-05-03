@@ -881,7 +881,7 @@ func configureLoNic() error {
 
 // Add host nic to external bridge
 // Mac address, MTU, IP addresses & routes will be copied/transferred to the external bridge
-func configProviderNic(nicName, brName string) (int, error) {
+func configProviderNic(nicName, brName string, exchangeLinkName bool) (int, error) {
 	nic, err := netlink.LinkByName(nicName)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get nic by name %s: %v", nicName, err)
@@ -911,10 +911,12 @@ func configProviderNic(nicName, brName string) (int, error) {
 		return 0, fmt.Errorf("failed to get routes on nic %s: %v", nicName, err)
 	}
 
-	// set link unmanaged by NetworkManager
-	if err = nmSetManaged(nicName, false); err != nil {
-		klog.Errorf("failed set device %s unmanaged by NetworkManager: %v", nicName, err)
-		return 0, err
+	if exchangeLinkName {
+		// set link unmanaged by NetworkManager
+		if err = nmSetManaged(nicName, false); err != nil {
+			klog.Errorf("failed set device %s unmanaged by NetworkManager: %v", nicName, err)
+			return 0, err
+		}
 	}
 
 	for _, addr := range addrs {

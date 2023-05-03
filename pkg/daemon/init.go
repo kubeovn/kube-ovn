@@ -40,7 +40,7 @@ func InitOVSBridges() (map[string]string, error) {
 					return nil, fmt.Errorf("failed to check vendor of port %s: %v", port, err)
 				}
 				if ok {
-					if _, err = configProviderNic(port, brName); err != nil {
+					if _, err = configProviderNic(port, brName, false); err != nil {
 						return nil, err
 					}
 					mappings[port] = brName
@@ -125,7 +125,7 @@ func ovsInitProviderNetwork(provider, nic string, exchangeLinkName, macLearningF
 	}
 
 	// add host nic to the external bridge
-	mtu, err := configProviderNic(nic, brName)
+	mtu, err := configProviderNic(nic, brName, exchangeLinkName)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to add nic %s to external bridge %s: %v", nic, brName, err)
 		klog.Error(errMsg)
