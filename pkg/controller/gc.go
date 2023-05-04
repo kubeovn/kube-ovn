@@ -642,7 +642,7 @@ func (c *Controller) gcStaticRoute() error {
 				klog.Errorf("failed to get NatRule by LogicalIP %s, %v", route.CIDR, err)
 				continue
 			}
-			klog.Infof("gc static route %s %s %s %s", route.Policy, route.CIDR, route.NextHop, route.RouteTable)
+			klog.Infof("gc static route %s %s %s %s", route.RouteTable, route.Policy, route.CIDR, route.NextHop)
 			if err := c.ovnLegacyClient.DeleteStaticRoute(route.CIDR, c.config.ClusterRouter, route.RouteTable); err != nil {
 				klog.Errorf("failed to delete stale route %s, %v", route.NextHop, err)
 			}
