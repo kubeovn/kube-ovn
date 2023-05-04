@@ -2543,9 +2543,6 @@ func (c *Controller) reconcileRouteTableForSubnet(subnet *kubeovnv1.Subnet) erro
 	}
 
 	rtb := lrp.Options["route_table"]
-	if rtb == "" {
-		rtb = util.MainRouteTable
-	}
 
 	// no need to update
 	if rtb == subnet.Spec.RouteTable {

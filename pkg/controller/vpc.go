@@ -584,10 +584,6 @@ func getStaticRouteItemKey(item *kubeovnv1.StaticRoute) (key string) {
 func formatVpc(vpc *kubeovnv1.Vpc, c *Controller) error {
 	var changed bool
 	for _, item := range vpc.Spec.StaticRoutes {
-		if item.RouteTable == "" {
-			item.RouteTable = util.MainRouteTable
-			changed = true
-		}
 		// check policy
 		if item.Policy == "" {
 			item.Policy = kubeovnv1.PolicyDst
@@ -963,11 +959,7 @@ func (c *Controller) patchVpcBfdStatus(key string) error {
 func (c *Controller) getRouteTablesByVpc(vpc *kubeovnv1.Vpc) map[string][]*kubeovnv1.StaticRoute {
 	rtbs := make(map[string][]*kubeovnv1.StaticRoute)
 	for _, route := range vpc.Spec.StaticRoutes {
-		if route.RouteTable == "" {
-			rtbs[util.MainRouteTable] = append(rtbs[util.MainRouteTable], route)
-		} else {
-			rtbs[route.RouteTable] = append(rtbs[route.RouteTable], route)
-		}
+		rtbs[route.RouteTable] = append(rtbs[route.RouteTable], route)
 	}
 	return rtbs
 }

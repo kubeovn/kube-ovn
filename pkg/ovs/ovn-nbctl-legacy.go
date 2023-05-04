@@ -151,10 +151,6 @@ func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, ecmp, bfdId, router 
 		policy = PolicyDstIP
 	}
 
-	if routeTable == util.MainRouteTable {
-		routeTable = ""
-	}
-
 	var existingRoutes []string
 	if routeType != util.EcmpRouteType {
 		result, err := c.CustomFindEntity("Logical_Router", []string{"static_routes"}, fmt.Sprintf("name=%s", router))
@@ -656,9 +652,6 @@ func (c *LegacyClient) SnatRuleExists(eip, ipCidr string) (bool, error) {
 }
 
 func (c LegacyClient) DeleteMatchedStaticRoute(cidr, nexthop, router, routeTable string) error {
-	if routeTable == util.MainRouteTable {
-		routeTable = ""
-	}
 	if cidr == "" || nexthop == "" {
 		return nil
 	}
@@ -671,9 +664,6 @@ func (c LegacyClient) DeleteMatchedStaticRoute(cidr, nexthop, router, routeTable
 
 // DeleteStaticRoute delete a static route rule in ovn
 func (c LegacyClient) DeleteStaticRoute(cidr, router, routeTable string) error {
-	if routeTable == util.MainRouteTable {
-		routeTable = ""
-	}
 	if cidr == "" {
 		return nil
 	}
@@ -691,9 +681,6 @@ func (c LegacyClient) DeleteStaticRoute(cidr, router, routeTable string) error {
 }
 
 func (c LegacyClient) DeleteStaticRouteByNextHop(nextHop, routeTable string) error {
-	if routeTable == util.MainRouteTable {
-		routeTable = ""
-	}
 	if strings.TrimSpace(nextHop) == "" {
 		return nil
 	}
@@ -2067,9 +2054,6 @@ func (c LegacyClient) GetRouteTables(router string) (map[string][]*StaticRoute, 
 	routeTables := make(map[string][]*StaticRoute)
 	for _, r := range routers {
 		routeTable := r.RouteTable
-		if routeTable == "" {
-			routeTable = util.MainRouteTable
-		}
 		routeTables[routeTable] = append(routeTables[routeTable], r)
 	}
 
@@ -2094,9 +2078,6 @@ func (c *LegacyClient) SetRouterPortOptions(lrp string, options map[string]strin
 }
 
 func (c *LegacyClient) UpdateRouterPortRouteTable(ls, lr, routeTable string) error {
-	if routeTable == util.MainRouteTable {
-		routeTable = ""
-	}
 	lrp := fmt.Sprintf("%s-%s", lr, ls)
 	return c.SetRouterPortOptions(lrp, map[string]string{"route_table": routeTable})
 }
