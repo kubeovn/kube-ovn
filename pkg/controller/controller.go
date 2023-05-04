@@ -1012,10 +1012,6 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	}, time.Second, ctx.Done())
 
 	go wait.Until(func() {
-		c.resyncVpcNatConfig()
-	}, time.Second, ctx.Done())
-
-	go wait.Until(func() {
 		c.resyncVpcNatGwConfig()
 	}, time.Second, ctx.Done())
 
