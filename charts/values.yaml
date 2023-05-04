@@ -3,7 +3,7 @@
 # Declare variables to be passed into your templates.
 global:
   registry:
-    address: kubeovn
+    address: docker.io/kubeovn
     imagePullSecrets: []
   images:
     kubeovn:

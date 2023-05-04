@@ -36,7 +36,7 @@ KUBELET_DIR=${KUBELET_DIR:-/var/lib/kubelet}
 CNI_CONF_DIR="/etc/cni/net.d"
 CNI_BIN_DIR="/opt/cni/bin"
 
-REGISTRY="kubeovn"
+REGISTRY="docker.io/kubeovn"
 VPC_NAT_IMAGE="vpc-nat-gateway"
 VERSION="v1.12.0"
 IMAGE_PULL_POLICY="IfNotPresent"
