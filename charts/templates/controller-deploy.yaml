@@ -106,7 +106,7 @@ spec:
           - --keep-vm-ip={{- .Values.func.ENABLE_KEEP_VM_IP }}
           - --pod-default-fip-type={{- .Values.networking.POD_DEFAULT_FIP_TYPE }}
           - --enable-metrics={{- .Values.networking.ENABLE_METRICS }}
-          - --node-local-dns-cache-ip={{- .Values.networking.NODE_LOCAL_DNS_CACHE_IP }}
+          - --node-local-dns-ip={{- .Values.networking.NODE_LOCAL_DNS_IP }}
           env:
             - name: ENABLE_SSL
               value: "{{ .Values.networking.ENABLE_SSL }}"

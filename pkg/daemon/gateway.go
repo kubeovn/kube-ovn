@@ -147,9 +147,7 @@ func (c *Controller) getDefaultVpcSubnetsCIDR(protocol string) ([]string, map[st
 
 	ret := make([]string, 0, len(subnets)+1)
 	subnetMap := make(map[string]string, len(subnets)+1)
-	if c.config.NodeLocalDnsIP != "" && net.ParseIP(c.config.NodeLocalDnsIP) != nil && util.CheckProtocol(c.config.NodeLocalDnsIP) == protocol {
-		ret = append(ret, c.config.NodeLocalDnsIP)
-	}
+
 	for _, subnet := range subnets {
 		if subnet.Spec.Vpc == util.DefaultVpc && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && subnet.Spec.CIDRBlock != "" {
 			cidrBlock := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)

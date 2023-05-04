@@ -279,9 +279,9 @@ func (c *Controller) handleAddNode(key string) error {
 				return err
 			}
 
-			if c.config.NodeLocalDnsCacheIP != "" {
+			if c.config.NodeLocalDnsIP != "" {
 				pgAs := strings.Replace(fmt.Sprintf("%s_ip%d", portName, af), "-", ".", -1)
-				match := fmt.Sprintf("ip%d.src == $%s && ip%d.dst == %s", af, pgAs, af, c.config.NodeLocalDnsCacheIP)
+				match := fmt.Sprintf("ip%d.src == $%s && ip%d.dst == %s", af, pgAs, af, c.config.NodeLocalDnsIP)
 				klog.Infof("add node local dns cache policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, match, "reroute", ip, externalIDs)
 				if err = c.ovnLegacyClient.AddPolicyRoute(c.config.ClusterRouter, util.NodeLocalDnsPolicyPriority, match, "reroute", ip, externalIDs); err != nil {
 					klog.Errorf("failed to add logical router policy for node %s: %v", node.Name, err)
@@ -474,7 +474,7 @@ func (c *Controller) handleDeleteNode(key string) error {
 	afs := []int{4, 6}
 	for _, af := range afs {
 		pgAs := strings.Replace(fmt.Sprintf("%s_ip%d", pgName, af), "-", ".", -1)
-		match := fmt.Sprintf("ip%d.src == $%s && ip%d.dst == %s", af, pgAs, af, c.config.NodeLocalDnsCacheIP)
+		match := fmt.Sprintf("ip%d.src == $%s && ip%d.dst == %s", af, pgAs, af, c.config.NodeLocalDnsIP)
 		if err := c.ovnLegacyClient.DeletePolicyRoute(c.config.ClusterRouter, util.NodeLocalDnsPolicyPriority, match); err != nil {
 			klog.Errorf("failed to delete policy route for node local dns in router %s with match %s : %v", c.config.ClusterRouter, match, err)
 			return err
