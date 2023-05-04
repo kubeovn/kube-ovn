@@ -1450,6 +1450,8 @@ spec:
                         type: string
                       bfdId:
                         type: string
+                      routeTable:
+                        type: string
                     type: object
                   type: array
                 policyRoutes:
@@ -1929,6 +1931,8 @@ spec:
                   type: boolean
                 enableEcmp:
                   type: boolean
+                routeTable:
+                  type: string
   scope: Cluster
   names:
     plural: subnets
