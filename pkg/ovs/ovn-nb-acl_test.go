@@ -741,7 +741,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 	t.Parallel()
 
 	ovnClient := suite.ovnClient
-	lsName := "test_set_private_ls"
+
 	cidrBlock := "10.244.0.0/16,fc00::af4:0/112"
 	allowSubnets := []string{
 		"10.230.0.0/16",
@@ -751,10 +751,13 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 	}
 	direction := ovnnb.ACLDirectionToLport
 
-	err := ovnClient.CreateBareLogicalSwitch(lsName)
-	require.NoError(t, err)
-
 	t.Run("subnet protocol is dual", func(t *testing.T) {
+		t.Parallel()
+
+		lsName := "test_set_private_ls_dual"
+		err := ovnClient.CreateBareLogicalSwitch(lsName)
+		require.NoError(t, err)
+
 		err = ovnClient.SetLogicalSwitchPrivate(lsName, cidrBlock, allowSubnets)
 		require.NoError(t, err)
 
@@ -817,6 +820,12 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 	})
 
 	t.Run("subnet protocol is ipv4", func(t *testing.T) {
+		t.Parallel()
+
+		lsName := "test_set_private_ls_v4"
+		err := ovnClient.CreateBareLogicalSwitch(lsName)
+		require.NoError(t, err)
+
 		cidrBlock := "10.244.0.0/16"
 		err = ovnClient.SetLogicalSwitchPrivate(lsName, cidrBlock, allowSubnets)
 		require.NoError(t, err)

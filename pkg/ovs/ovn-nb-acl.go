@@ -29,7 +29,7 @@ func (c *ovnClient) UpdateIngressAclOps(pgName, asIngressName, asExceptName, pro
 	}
 
 	/* default drop acl */
-	AllIpMatch := NewAndAclMatch(
+	allIpMatch := NewAndAclMatch(
 		NewAclMatch("outport", "==", "@"+pgName, ""),
 		NewAclMatch(ipSuffix, "", "", ""),
 	)
@@ -40,7 +40,7 @@ func (c *ovnClient) UpdateIngressAclOps(pgName, asIngressName, asExceptName, pro
 		}
 	}
 
-	defaultDropAcl, err := c.newAclWithoutCheck(pgName, ovnnb.ACLDirectionToLport, util.IngressDefaultDrop, AllIpMatch.String(), ovnnb.ACLActionDrop, options)
+	defaultDropAcl, err := c.newAclWithoutCheck(pgName, ovnnb.ACLDirectionToLport, util.IngressDefaultDrop, allIpMatch.String(), ovnnb.ACLActionDrop, options)
 	if err != nil {
 		return nil, fmt.Errorf("new default drop ingress acl for port group %s: %v", pgName, err)
 	}
@@ -76,7 +76,7 @@ func (c *ovnClient) UpdateEgressAclOps(pgName, asEgressName, asExceptName, proto
 	}
 
 	/* default drop acl */
-	AllIpMatch := NewAndAclMatch(
+	allIpMatch := NewAndAclMatch(
 		NewAclMatch("inport", "==", "@"+pgName, ""),
 		NewAclMatch(ipSuffix, "", "", ""),
 	)
@@ -92,7 +92,7 @@ func (c *ovnClient) UpdateEgressAclOps(pgName, asEgressName, asExceptName, proto
 		acl.Options["apply-after-lb"] = "true"
 	}
 
-	defaultDropAcl, err := c.newAclWithoutCheck(pgName, ovnnb.ACLDirectionFromLport, util.EgressDefaultDrop, AllIpMatch.String(), ovnnb.ACLActionDrop, options)
+	defaultDropAcl, err := c.newAclWithoutCheck(pgName, ovnnb.ACLDirectionFromLport, util.EgressDefaultDrop, allIpMatch.String(), ovnnb.ACLActionDrop, options)
 	if err != nil {
 		return nil, fmt.Errorf("new default drop egress acl for port group %s: %v", pgName, err)
 	}
@@ -445,7 +445,7 @@ func (c *ovnClient) SetLogicalSwitchPrivate(lsName, cidrBlock string, allowSubne
 	acls := make([]*ovnnb.ACL, 0)
 
 	/* default drop acl */
-	AllIpMatch := NewAclMatch("ip", "", "", "")
+	allIpMatch := NewAclMatch("ip", "", "", "")
 
 	options := func(acl *ovnnb.ACL) {
 		acl.Name = &lsName
@@ -453,7 +453,7 @@ func (c *ovnClient) SetLogicalSwitchPrivate(lsName, cidrBlock string, allowSubne
 		acl.Severity = &ovnnb.ACLSeverityWarning
 	}
 
-	defaultDropAcl, err := c.newAcl(lsName, ovnnb.ACLDirectionToLport, util.DefaultDropPriority, AllIpMatch.String(), ovnnb.ACLActionDrop, options)
+	defaultDropAcl, err := c.newAcl(lsName, ovnnb.ACLDirectionToLport, util.DefaultDropPriority, allIpMatch.String(), ovnnb.ACLActionDrop, options)
 	if err != nil {
 		return fmt.Errorf("new default drop ingress acl for logical switch %s: %v", lsName, err)
 	}
@@ -567,12 +567,12 @@ func (c *ovnClient) SetAclLog(pgName, protocol string, logEnable, isIngress bool
 	}
 
 	// match all traffic to or from pgName
-	AllIpMatch := NewAndAclMatch(
+	allIpMatch := NewAndAclMatch(
 		NewAclMatch(portDirection, "==", "@"+pgName, ""),
 		NewAclMatch(ipSuffix, "", "", ""),
 	)
 
-	acl, err := c.GetAcl(pgName, direction, util.IngressDefaultDrop, AllIpMatch.String(), true)
+	acl, err := c.GetAcl(pgName, direction, util.IngressDefaultDrop, allIpMatch.String(), true)
 	if err != nil {
 		return err
 	}
@@ -650,6 +650,7 @@ func (c *ovnClient) DeleteAcl(parentName, parentType, direction, priority, match
 		return nil // skip if acl not exist
 	}
 
+	// the acls column has a strong reference to the ACL table, so there is no need to delete the ACL
 	var removeAclOp []ovsdb.Operation
 	if parentType == portGroupKey { // remove acl from port group
 		removeAclOp, err = c.portGroupUpdateAclOp(parentName, []string{acl.UUID}, ovsdb.MutateOperationDelete)
@@ -663,17 +664,7 @@ func (c *ovnClient) DeleteAcl(parentName, parentType, direction, priority, match
 		}
 	}
 
-	// delete acl
-	delAclOp, err := c.Where(acl).Delete()
-	if err != nil {
-		return fmt.Errorf("generate operation for deleting acl: %v", err)
-	}
-
-	ops := make([]ovsdb.Operation, 0, len(removeAclOp)+len(delAclOp))
-	ops = append(ops, removeAclOp...)
-	ops = append(ops, delAclOp...)
-
-	if err = c.Transact("acls-del", ops); err != nil {
+	if err = c.Transact("acls-del", removeAclOp); err != nil {
 		return fmt.Errorf("del acls from type %s %s: %v", parentType, parentName, err)
 	}
 
@@ -829,7 +820,7 @@ func (c *ovnClient) newSgRuleACL(sgName string, direction string, rule *kubeovnv
 	ipKey := ipSuffix + "." + srcOrDst
 
 	/* match all traffic to or from pgName */
-	AllIpMatch := NewAndAclMatch(
+	allIpMatch := NewAndAclMatch(
 		NewAclMatch(portDirection, "==", "@"+pgName, ""),
 		NewAclMatch(ipSuffix, "", "", ""),
 	)
@@ -837,7 +828,7 @@ func (c *ovnClient) newSgRuleACL(sgName string, direction string, rule *kubeovnv
 	/* allow allowed ip traffic */
 	// type address
 	allowedIpMatch := NewAndAclMatch(
-		AllIpMatch,
+		allIpMatch,
 		NewAclMatch(ipKey, "==", rule.RemoteAddress, ""),
 	)
 
@@ -848,7 +839,7 @@ func (c *ovnClient) newSgRuleACL(sgName string, direction string, rule *kubeovnv
 	}
 	if rule.RemoteType == kubeovnv1.SgRemoteTypeSg {
 		allowedIpMatch = NewAndAclMatch(
-			AllIpMatch,
+			allIpMatch,
 			NewAclMatch(ipKey, "==", "$"+remotePgName, ""),
 		)
 	}
@@ -907,13 +898,13 @@ func newNetworkPolicyAclMatch(pgName, asAllowName, asExceptName, protocol, direc
 	ipKey := ipSuffix + "." + srcOrDst
 
 	// match all traffic to or from pgName
-	AllIpMatch := NewAndAclMatch(
+	allIpMatch := NewAndAclMatch(
 		NewAclMatch(portDirection, "==", "@"+pgName, ""),
 		NewAclMatch("ip", "", "", ""),
 	)
 
 	allowedIpMatch := NewAndAclMatch(
-		AllIpMatch,
+		allIpMatch,
 		NewAclMatch(ipKey, "==", "$"+asAllowName, ""),
 		NewAclMatch(ipKey, "!=", "$"+asExceptName, ""),
 	)
@@ -1083,6 +1074,7 @@ func (c *ovnClient) DeleteAclsOps(parentName, parentType string, direction strin
 		aclUUIDs = append(aclUUIDs, acl.UUID)
 	}
 
+	// the acls column has a strong reference to the ACL table, so there is no need to delete the ACL
 	var removeAclOp []ovsdb.Operation
 	if parentType == portGroupKey { // remove acl from port group
 		removeAclOp, err = c.portGroupUpdateAclOp(parentName, aclUUIDs, ovsdb.MutateOperationDelete)
@@ -1096,15 +1088,5 @@ func (c *ovnClient) DeleteAclsOps(parentName, parentType string, direction strin
 		}
 	}
 
-	// delete acls
-	delAclsOp, err := c.WhereCache(aclFilter(direction, externalIDs)).Delete()
-	if err != nil {
-		return nil, fmt.Errorf("generate operation for deleting acls: %v", err)
-	}
-
-	ops := make([]ovsdb.Operation, 0, len(removeAclOp)+len(delAclsOp))
-	ops = append(ops, removeAclOp...)
-	ops = append(ops, delAclsOp...)
-
-	return ops, nil
+	return removeAclOp, nil
 }

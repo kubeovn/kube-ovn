@@ -632,7 +632,8 @@ func Test_scratch(t *testing.T) {
 	ovnClient, err := newOvnClient(t, endpoint, 10, "")
 	require.NoError(t, err)
 
-	_ = ovnClient
+	err = ovnClient.DeleteAcls("test_pg", portGroupKey, ovnnb.ACLDirectionToLport, nil)
+	require.NoError(t, err)
 }
 
 func newOVSDBServer(t *testing.T, dbModel model.ClientDBModel, schema ovsdb.DatabaseSchema) (*server.OvsdbServer, string) {
