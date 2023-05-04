@@ -1205,7 +1205,7 @@ func (c *Controller) reconcileVpcAddNormalStaticRoute(vpcName string) error {
 
 	defualtExternalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
 	if err != nil {
-		klog.Error("failed to get default external switch subnet %s: %v", c.config.ExternalGatewaySwitch)
+		klog.Error("failed to get default external switch subnet %s: %v", c.config.ExternalGatewaySwitch, err)
 		return err
 	}
 	gatewayV4, gatewayV6 := util.SplitStringIP(defualtExternalSubnet.Spec.Gateway)
