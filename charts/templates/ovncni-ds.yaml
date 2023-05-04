@@ -52,7 +52,6 @@ spec:
           - --enable-mirror={{- .Values.debug.ENABLE_MIRROR }}
           - --mirror-iface={{- .Values.debug.MIRROR_IFACE }}
           - --node-switch={{ .Values.networking.NODE_SUBNET }}
-          - --node-local-dns-ip={{ .Values.networking.NODE_LOCAL_DNS_IP }}
           - --encap-checksum=true
           - --service-cluster-ip-range=
           {{- if eq .Values.networking.NET_STACK "dual_stack" -}}

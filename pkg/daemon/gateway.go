@@ -2,7 +2,6 @@ package daemon
 
 import (
 	"fmt"
-	"net"
 	"os/exec"
 	"strings"
 
