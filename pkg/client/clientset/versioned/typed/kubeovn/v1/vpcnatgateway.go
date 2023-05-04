@@ -40,6 +40,7 @@ type VpcNatGatewaysGetter interface {
 type VpcNatGatewayInterface interface {
 	Create(ctx context.Context, vpcNatGateway *v1.VpcNatGateway, opts metav1.CreateOptions) (*v1.VpcNatGateway, error)
 	Update(ctx context.Context, vpcNatGateway *v1.VpcNatGateway, opts metav1.UpdateOptions) (*v1.VpcNatGateway, error)
+	UpdateStatus(ctx context.Context, vpcNatGateway *v1.VpcNatGateway, opts metav1.UpdateOptions) (*v1.VpcNatGateway, error)
 	Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error
 	DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Get(ctx context.Context, name string, opts metav1.GetOptions) (*v1.VpcNatGateway, error)
@@ -121,6 +122,21 @@ func (c *vpcNatGateways) Update(ctx context.Context, vpcNatGateway *v1.VpcNatGat
 	err = c.client.Put().
 		Resource("vpc-nat-gateways").
 		Name(vpcNatGateway.Name).
+		VersionedParams(&opts, scheme.ParameterCodec).
+		Body(vpcNatGateway).
+		Do(ctx).
+		Into(result)
+	return
+}
+
+// UpdateStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
+func (c *vpcNatGateways) UpdateStatus(ctx context.Context, vpcNatGateway *v1.VpcNatGateway, opts metav1.UpdateOptions) (result *v1.VpcNatGateway, err error) {
+	result = &v1.VpcNatGateway{}
+	err = c.client.Put().
+		Resource("vpc-nat-gateways").
+		Name(vpcNatGateway.Name).
+		SubResource("status").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(vpcNatGateway).
 		Do(ctx).

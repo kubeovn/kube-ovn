@@ -96,6 +96,17 @@ func (c *FakeVpcNatGateways) Update(ctx context.Context, vpcNatGateway *kubeovnv
 	return obj.(*kubeovnv1.VpcNatGateway), err
 }
 
+// UpdateStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
+func (c *FakeVpcNatGateways) UpdateStatus(ctx context.Context, vpcNatGateway *kubeovnv1.VpcNatGateway, opts v1.UpdateOptions) (*kubeovnv1.VpcNatGateway, error) {
+	obj, err := c.Fake.
+		Invokes(testing.NewRootUpdateSubresourceAction(vpcnatgatewaysResource, "status", vpcNatGateway), &kubeovnv1.VpcNatGateway{})
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*kubeovnv1.VpcNatGateway), err
+}
+
 // Delete takes name of the vpcNatGateway and deletes it. Returns an error if one occurs.
 func (c *FakeVpcNatGateways) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
