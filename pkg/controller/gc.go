@@ -628,7 +628,7 @@ func (c *Controller) gcStaticRoute() error {
 	for _, route := range routes {
 		keepStaticRoute = false
 		for _, item := range defaultVpc.Spec.StaticRoutes {
-			if route.CIDR == item.CIDR && route.NextHop == item.NextHopIP {
+			if route.CIDR == item.CIDR && route.NextHop == item.NextHopIP && route.RouteTable == item.RouteTable {
 				keepStaticRoute = true
 				break
 			}
@@ -642,8 +642,8 @@ func (c *Controller) gcStaticRoute() error {
 				klog.Errorf("failed to get NatRule by LogicalIP %s, %v", route.CIDR, err)
 				continue
 			}
-			klog.Infof("gc static route %s %s %s", route.Policy, route.CIDR, route.NextHop)
-			if err := c.ovnLegacyClient.DeleteStaticRoute(route.CIDR, c.config.ClusterRouter); err != nil {
+			klog.Infof("gc static route %s %s %s %s", route.RouteTable, route.Policy, route.CIDR, route.NextHop)
+			if err := c.ovnLegacyClient.DeleteStaticRoute(route.CIDR, c.config.ClusterRouter, route.RouteTable); err != nil {
 				klog.Errorf("failed to delete stale route %s, %v", route.NextHop, err)
 			}
 		}

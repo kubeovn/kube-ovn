@@ -161,6 +161,8 @@ type SubnetSpec struct {
 	U2OInterconnection bool  `json:"u2oInterconnection,omitempty"`
 	EnableLb           *bool `json:"enableLb,omitempty"`
 	EnableEcmp         bool  `json:"enableEcmp,omitempty"`
+
+	RouteTable string `json:"routeTable,omitempty"`
 }
 
 type Acl struct {
@@ -393,11 +395,12 @@ const (
 )
 
 type StaticRoute struct {
-	Policy    RoutePolicy `json:"policy,omitempty"`
-	CIDR      string      `json:"cidr"`
-	NextHopIP string      `json:"nextHopIP"`
-	ECMPMode  string      `json:"ecmpMode"`
-	BfdId     string      `json:"bfdId"`
+	Policy     RoutePolicy `json:"policy,omitempty"`
+	CIDR       string      `json:"cidr"`
+	NextHopIP  string      `json:"nextHopIP"`
+	ECMPMode   string      `json:"ecmpMode"`
+	BfdId      string      `json:"bfdId"`
+	RouteTable string      `json:"routeTable"`
 }
 
 type PolicyRouteAction string

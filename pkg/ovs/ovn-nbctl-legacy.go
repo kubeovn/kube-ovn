@@ -19,6 +19,8 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+const mainRouteTableName = "<main>"
+
 var nbctlDaemonSocketRegexp = regexp.MustCompile(`^/var/run/ovn/ovn-nbctl\.[0-9]+\.ctl$`)
 
 func (c LegacyClient) ovnNbCommand(cmdArgs ...string) (string, error) {
@@ -124,15 +126,16 @@ func (c LegacyClient) GetEntityInfo(entity string, index string, attris []string
 }
 
 type StaticRoute struct {
-	Policy   string
-	CIDR     string
-	NextHop  string
-	ECMPMode string
-	BfdId    string
+	Policy     string
+	CIDR       string
+	NextHop    string
+	ECMPMode   string
+	BfdId      string
+	RouteTable string
 }
 
 // AddStaticRoute add a static route rule in ovn
-func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, ecmp, bfdId, router string, routeType string) error {
+func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, ecmp, bfdId, router string, routeTable, routeType string) error {
 	// route require policy, cidr, nextHop, ecmp
 	// in default, ecmp route with bfd id use ecmp-symmetric-reply mode
 	if policy == "" {
@@ -167,7 +170,10 @@ func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, ecmp, bfdId, router 
 					}
 					ecmpSymmetric := fmt.Sprintf("--%s", util.StaicRouteBfdEcmp)
 					bfd := fmt.Sprintf("--bfd=%s", bfdId)
-					if _, err := c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), bfd, ecmpSymmetric, "lr-route-add", router, cidrBlock, gw); err != nil {
+					if _, err := c.ovnNbCommand(
+						MayExist,
+						fmt.Sprintf("%s=%s", RouteTable, routeTable),
+						fmt.Sprintf("%s=%s", Policy, policy), bfd, ecmpSymmetric, "lr-route-add", router, cidrBlock, gw); err != nil {
 						return err
 					}
 				} else {
@@ -178,6 +184,10 @@ func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, ecmp, bfdId, router 
 			} else {
 				if !strings.ContainsRune(cidrBlock, '/') {
 					filter := []string{fmt.Sprintf("policy=%s", policy), fmt.Sprintf(`ip_prefix="%s"`, cidrBlock), fmt.Sprintf(`nexthop!="%s"`, gw)}
+					if routeTable != "" {
+						filter = append(filter, fmt.Sprintf("route_table=%s", routeTable))
+					}
+
 					result, err := c.CustomFindEntity("Logical_Router_Static_Route", []string{"_uuid"}, filter...)
 					if err != nil {
 						return err
@@ -190,7 +200,11 @@ func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, ecmp, bfdId, router 
 					}
 				}
 
-				if _, err := c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "lr-route-add", router, cidrBlock, gw); err != nil {
+				if _, err := c.ovnNbCommand(
+					MayExist,
+					fmt.Sprintf("%s=%s", RouteTable, routeTable),
+					fmt.Sprintf("%s=%s", Policy, policy),
+					"lr-route-add", router, cidrBlock, gw); err != nil {
 					return err
 				}
 			}
@@ -366,16 +380,30 @@ func (c LegacyClient) GetStaticRouteList(router string) (routeList []*StaticRout
 }
 
 var routeRegexp = regexp.MustCompile(`^\s*((\d+(\.\d+){3})|(([a-f0-9:]*:+)+[a-f0-9]*?))(/\d+)?\s+((\d+(\.\d+){3})|(([a-f0-9:]*:+)+[a-f0-9]*?))\s+(dst-ip|src-ip)(\s+.+)?$`)
+var routeTableRegexp = regexp.MustCompile(`^Route Table (.+):$`)
 
 func parseLrRouteListOutput(output string) (routeList []*StaticRoute, err error) {
+	var routeTable string
+
 	lines := strings.Split(output, "\n")
 	routeList = make([]*StaticRoute, 0, len(lines))
 	for _, l := range lines {
+		// Route Table <TABLE_NAME>:
 		// <PREFIX> <NEXT_HOP> <POLICY> [OUTPUT_PORT] [(learned)] [ecmp] [ecmp-symmetric-reply] [bfd]
 		fields := strings.Fields(l)
 		if len(fields) < 3 {
 			continue
 		}
+
+		if m := routeTableRegexp.FindStringSubmatch(l); m != nil {
+			if m[1] == mainRouteTableName {
+				routeTable = util.MainRouteTable
+			} else {
+				routeTable = m[1]
+			}
+			continue
+		}
+
 		if !routeRegexp.MatchString(l) {
 			continue
 		}
@@ -395,9 +423,10 @@ func parseLrRouteListOutput(output string) (routeList []*StaticRoute, err error)
 		}
 
 		route := &StaticRoute{
-			Policy:  fields[2],
-			CIDR:    fields[0],
-			NextHop: fields[1],
+			Policy:     fields[2],
+			CIDR:       fields[0],
+			NextHop:    fields[1],
+			RouteTable: routeTable,
 		}
 		if ecmpSymmetricReply {
 			route.ECMPMode = util.StaicRouteBfdEcmp
@@ -613,21 +642,27 @@ func (c *LegacyClient) SnatRuleExists(eip, ipCidr string) (bool, error) {
 	return false, fmt.Errorf("snat rule not exist")
 }
 
-func (c LegacyClient) DeleteMatchedStaticRoute(cidr, nexthop, router string) error {
+func (c LegacyClient) DeleteMatchedStaticRoute(cidr, nexthop, router, routeTable string) error {
 	if cidr == "" || nexthop == "" {
 		return nil
 	}
-	_, err := c.ovnNbCommand(IfExists, "lr-route-del", router, cidr, nexthop)
+	_, err := c.ovnNbCommand(
+		IfExists,
+		fmt.Sprintf("%s=%s", RouteTable, routeTable),
+		"lr-route-del", router, cidr, nexthop)
 	return err
 }
 
 // DeleteStaticRoute delete a static route rule in ovn
-func (c LegacyClient) DeleteStaticRoute(cidr, router string) error {
+func (c LegacyClient) DeleteStaticRoute(cidr, router, routeTable string) error {
 	if cidr == "" {
 		return nil
 	}
 	for _, cidrBlock := range strings.Split(cidr, ",") {
-		if _, err := c.ovnNbCommand(IfExists, "lr-route-del", router, cidrBlock); err != nil {
+		if _, err := c.ovnNbCommand(
+			IfExists,
+			fmt.Sprintf("%s=%s", RouteTable, routeTable),
+			"lr-route-del", router, cidrBlock); err != nil {
 			klog.Errorf("fail to delete static route %s from %s, %v", cidrBlock, router, err)
 			return err
 		}
@@ -636,7 +671,7 @@ func (c LegacyClient) DeleteStaticRoute(cidr, router string) error {
 	return nil
 }
 
-func (c LegacyClient) DeleteStaticRouteByNextHop(nextHop string) error {
+func (c LegacyClient) DeleteStaticRouteByNextHop(nextHop, routeTable string) error {
 	if strings.TrimSpace(nextHop) == "" {
 		return nil
 	}
@@ -654,7 +689,7 @@ func (c LegacyClient) DeleteStaticRouteByNextHop(nextHop string) error {
 		if strings.TrimSpace(ipPre) == "" {
 			continue
 		}
-		if err := c.DeleteStaticRoute(ipPre, c.ClusterRouter); err != nil {
+		if err := c.DeleteStaticRoute(ipPre, c.ClusterRouter, routeTable); err != nil {
 			klog.Errorf("failed to delete route %s, %v", ipPre, err)
 			return err
 		}
@@ -1242,4 +1277,41 @@ func (c LegacyClient) DeleteBfd(lrp, dstIp string) error {
 		}
 	}
 	return nil
+}
+
+func (c LegacyClient) GetRouteTables(router string) (map[string][]*StaticRoute, error) {
+	routers, err := c.GetStaticRouteList(router)
+	if err != nil {
+		return nil, err
+	}
+
+	routeTables := make(map[string][]*StaticRoute)
+	for _, r := range routers {
+		routeTable := r.RouteTable
+		routeTables[routeTable] = append(routeTables[routeTable], r)
+	}
+
+	return routeTables, nil
+}
+
+func (c *LegacyClient) SetRouterPortOptions(lrp string, options map[string]string) error {
+	if len(options) == 0 {
+		return nil
+	}
+
+	args := []string{"lrp-set-options", lrp}
+	for k, v := range options {
+		args = append(args, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	if _, err := c.ovnNbCommand(args...); err != nil {
+		klog.Errorf("failed to set options %v for router port %s, %v", options, lrp, err)
+		return err
+	}
+	return nil
+}
+
+func (c *LegacyClient) UpdateRouterPortRouteTable(ls, lr, routeTable string) error {
+	lrp := fmt.Sprintf("%s-%s", lr, ls)
+	return c.SetRouterPortOptions(lrp, map[string]string{"route_table": routeTable})
 }

@@ -57,6 +57,7 @@ const (
 	Policy      = "--policy"
 	PolicyDstIP = "dst-ip"
 	PolicySrcIP = "src-ip"
+	RouteTable  = "--route-table"
 
 	OVSDBWaitTimeout = 0
 )
