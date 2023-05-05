@@ -622,37 +622,6 @@ func (c LegacyClient) DeleteSnatRule(router, eip, ipCidr string) error {
 	return err
 }
 
-func (c *LegacyClient) SnatRuleExists(eip, ipCidr string) (bool, error) {
-	snat := "snat"
-	output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=type,external_ip", "find", "NAT", fmt.Sprintf("logical_ip=%s", ipCidr))
-	if err != nil {
-		klog.Errorf("failed to list nat rules, %v", err)
-		return false, err
-	}
-	rules := strings.Split(output, "\n")
-	for _, rule := range rules {
-		if len(strings.Split(rule, ",")) != 2 {
-			continue
-		}
-		policy, externalIP := strings.Split(rule, ",")[0], strings.Split(rule, ",")[1]
-		if externalIP == eip && policy == snat {
-			return true, nil
-		}
-	}
-	return false, fmt.Errorf("snat rule not exist")
-}
-
-func (c LegacyClient) DeleteMatchedStaticRoute(cidr, nexthop, router, routeTable string) error {
-	if cidr == "" || nexthop == "" {
-		return nil
-	}
-	_, err := c.ovnNbCommand(
-		IfExists,
-		fmt.Sprintf("%s=%s", RouteTable, routeTable),
-		"lr-route-del", router, cidr, nexthop)
-	return err
-}
-
 // DeleteStaticRoute delete a static route rule in ovn
 func (c LegacyClient) DeleteStaticRoute(cidr, router, routeTable string) error {
 	if cidr == "" {
@@ -857,28 +826,6 @@ func (c *LegacyClient) GetPolicyRouteParas(priority int32, match string) ([]stri
 	}
 
 	return result[0]["nexthops"], nameIpMap, nil
-}
-
-func (c LegacyClient) SetPolicyRouteExternalIds(priority int32, match string, nameIpMaps map[string]string) error {
-	result, err := c.CustomFindEntity("Logical_Router_Policy", []string{"_uuid"}, fmt.Sprintf("priority=%d", priority), fmt.Sprintf("match=\"%s\"", match))
-	if err != nil {
-		klog.Errorf("customFindEntity failed, %v", err)
-		return err
-	}
-	if len(result) == 0 {
-		return nil
-	}
-
-	uuid := result[0]["_uuid"][0]
-	ovnCmd := []string{"set", "logical-router-policy", uuid}
-	for nodeName, nodeIP := range nameIpMaps {
-		ovnCmd = append(ovnCmd, fmt.Sprintf("external_ids:%s=\"%s\"", nodeName, nodeIP))
-	}
-
-	if _, err := c.ovnNbCommand(ovnCmd...); err != nil {
-		return fmt.Errorf("failed to set logical-router-policy externalIds, %v", err)
-	}
-	return nil
 }
 
 func (c LegacyClient) CheckPolicyRouteNexthopConsistent(match, nexthop string, priority int32) (bool, error) {
@@ -1136,41 +1083,6 @@ func (c *LegacyClient) DeleteDHCPOptions(ls string, protocol string) error {
 	}
 
 	return c.DeleteDHCPOptionsByUUIDs(uuidToDeleteList)
-}
-
-func (c *LegacyClient) GetLspExternalIds(lsp string) map[string]string {
-	result, err := c.CustomFindEntity("Logical_Switch_Port", []string{"external_ids"}, fmt.Sprintf("name=%s", lsp))
-	if err != nil {
-		klog.Errorf("customFindEntity failed, %v", err)
-		return nil
-	}
-	if len(result) == 0 {
-		return nil
-	}
-
-	nameNsMap := make(map[string]string, 1)
-	for _, l := range result[0]["external_ids"] {
-		if len(strings.TrimSpace(l)) == 0 {
-			continue
-		}
-		parts := strings.Split(strings.TrimSpace(l), "=")
-		if len(parts) != 2 {
-			continue
-		}
-		if strings.TrimSpace(parts[0]) != "pod" {
-			continue
-		}
-
-		podInfo := strings.Split(strings.TrimSpace(parts[1]), "/")
-		if len(podInfo) != 2 {
-			continue
-		}
-		podNs := podInfo[0]
-		podName := podInfo[1]
-		nameNsMap[podName] = podNs
-	}
-
-	return nameNsMap
 }
 
 func (c *LegacyClient) GetNatIPInfo(uuid string) (string, error) {

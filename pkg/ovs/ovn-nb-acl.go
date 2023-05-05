@@ -6,12 +6,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ovn-org/libovsdb/model"
+	"github.com/ovn-org/libovsdb/ovsdb"
 	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
-
-	"github.com/ovn-org/libovsdb/model"
-	"github.com/ovn-org/libovsdb/ovsdb"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"

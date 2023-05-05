@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
 func newAddressSet(name string, externalIDs map[string]string) *ovnnb.AddressSet {

@@ -1,10 +1,11 @@
 package ovs
 
 import (
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func Test_parseLrRouteListOutput(t *testing.T) {
