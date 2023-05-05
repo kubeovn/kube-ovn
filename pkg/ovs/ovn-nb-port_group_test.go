@@ -5,12 +5,13 @@ import (
 	"strings"
 	"testing"
 
-	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
+
+	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (suite *OvnClientTestSuite) testCreatePortGroup() {

@@ -8,7 +8,6 @@ import (
 
 	"github.com/ovn-org/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
-
 	v1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
