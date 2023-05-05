@@ -279,12 +279,12 @@ func (c *Controller) handleAddNode(key string) error {
 				return err
 			}
 
+			if err = c.deletePolicyRouteForLocalDnsCacheOnNode(portName, node.Name, af); err != nil {
+				return err
+			}
+
 			if c.config.NodeLocalDnsIP != "" {
 				if err = c.addPolicyRouteForLocalDnsCacheOnNode(portName, ip, node.Name, af); err != nil {
-					return err
-				}
-			} else {
-				if err = c.deletePolicyRouteForLocalDnsCacheOnNode(portName, node.Name, af); err != nil {
 					return err
 				}
 			}
