@@ -55,6 +55,17 @@ func (c *ovnClient) AddressSetUpdateAddress(asName string, addresses ...string) 
 	// update will failed when slice contains duplicate elements
 	addresses = util.UniqString(addresses)
 
+	// format CIDR to keep addresses the same in both nb and sb 
+	for i, addr := range addresses {
+		if strings.ContainsRune(addr, '/') {
+			_, ipNet, err := net.ParseCIDR(addr)
+			if err != nil {
+				klog.Warningf("failed to parse CIDR %q: %v", addr, err)
+				continue
+			}
+			addresses[i] = ipNet.String()
+		}
+	}
 	// clear addresses when addresses is empty
 	as.Addresses = addresses
 
