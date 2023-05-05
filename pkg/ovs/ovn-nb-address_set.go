@@ -3,10 +3,14 @@ package ovs
 import (
 	"context"
 	"fmt"
+	"net"
+	"strings"
 
 	"github.com/ovn-org/libovsdb/client"
+	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // CreateAddressSet create address set with external ids
@@ -51,6 +55,20 @@ func (c *ovnClient) AddressSetUpdateAddress(asName string, addresses ...string) 
 		return fmt.Errorf("get address set %s: %v", asName, err)
 	}
 
+	// update will failed when slice contains duplicate elements
+	addresses = util.UniqString(addresses)
+
+	// format CIDR to keep addresses the same in both nb and sb
+	for i, addr := range addresses {
+		if strings.ContainsRune(addr, '/') {
+			_, ipNet, err := net.ParseCIDR(addr)
+			if err != nil {
+				klog.Warningf("failed to parse CIDR %q: %v", addr, err)
+				continue
+			}
+			addresses[i] = ipNet.String()
+		}
+	}
 	// clear addresses when addresses is empty
 	as.Addresses = addresses
 

@@ -749,25 +749,28 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	if subnet.Spec.Private {
-		if err := c.ovnLegacyClient.SetPrivateLogicalSwitch(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.AllowSubnets); err != nil {
+		if err := c.ovnClient.SetLogicalSwitchPrivate(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.AllowSubnets); err != nil {
 			c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchFailed", err.Error())
 			return err
 		}
+
 		c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchSuccess", "")
 	} else {
-		if err := c.ovnLegacyClient.ResetLogicalSwitchAcl(subnet.Name); err != nil {
+		// clear acl when direction is ""
+		if err = c.ovnClient.DeleteAcls(subnet.Name, logicalSwitchKey, "", nil); err != nil {
 			c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclFailed", err.Error())
 			return err
 		}
+
 		c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclSuccess", "")
 	}
 
-	if err := c.ovnLegacyClient.CreateGatewayACL(subnet.Name, "", subnet.Spec.Gateway, subnet.Spec.CIDRBlock); err != nil {
+	if err := c.ovnClient.CreateGatewayAcl(subnet.Name, "", subnet.Spec.Gateway); err != nil {
 		klog.Errorf("create gateway acl %s failed, %v", subnet.Name, err)
 		return err
 	}
 
-	if err := c.ovnLegacyClient.UpdateSubnetACL(subnet.Name, subnet.Spec.Acls); err != nil {
+	if err := c.ovnClient.UpdateLogicalSwitchAcl(subnet.Name, subnet.Spec.Acls); err != nil {
 		c.patchSubnetStatus(subnet, "SetLogicalSwitchAclsFailed", err.Error())
 		return err
 	}
@@ -820,8 +823,9 @@ func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
 		return nil
 	}
 
-	if err = c.ovnLegacyClient.CleanLogicalSwitchAcl(key); err != nil {
-		klog.Errorf("failed to delete acl of logical switch %s %v", key, err)
+	// clear acl when direction is ""
+	if err = c.ovnClient.DeleteAcls(key, logicalSwitchKey, "", nil); err != nil {
+		klog.Errorf("clear logical switch %s acls: %v", key, err)
 		return err
 	}
 
@@ -2389,26 +2393,27 @@ func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) err
 
 	u2oExcludeIp4Ag := strings.Replace(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip4"), "-", ".", -1)
 	u2oExcludeIp6Ag := strings.Replace(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip6"), "-", ".", -1)
-	if err := c.ovnLegacyClient.CreateAddressSet(u2oExcludeIp4Ag); err != nil {
-		klog.Errorf("failed to create address set %s %v", u2oExcludeIp4Ag, err)
+
+	if err := c.ovnClient.CreateAddressSet(u2oExcludeIp4Ag, externalIDs); err != nil {
+		klog.Errorf("create address set %s: %v", u2oExcludeIp4Ag, err)
 		return err
 	}
 
-	if err := c.ovnLegacyClient.CreateAddressSet(u2oExcludeIp6Ag); err != nil {
-		klog.Errorf("failed to create address set %s %v", u2oExcludeIp6Ag, err)
+	if err := c.ovnClient.CreateAddressSet(u2oExcludeIp6Ag, externalIDs); err != nil {
+		klog.Errorf("create address set %s: %v", u2oExcludeIp6Ag, err)
 		return err
 	}
 
 	if len(nodesIPv4) > 0 {
-		if err := c.ovnLegacyClient.SetAddressesToAddressSet(nodesIPv4, u2oExcludeIp4Ag); err != nil {
-			klog.Errorf("failed to set v4 address set %s with address %v err %v", u2oExcludeIp4Ag, nodesIPv4, err)
+		if err := c.ovnClient.AddressSetUpdateAddress(u2oExcludeIp4Ag, nodesIPv4...); err != nil {
+			klog.Errorf("set v4 address set %s with address %v: %v", u2oExcludeIp4Ag, nodesIPv4, err)
 			return err
 		}
 	}
 
 	if len(nodesIPv6) > 0 {
-		if err := c.ovnLegacyClient.SetAddressesToAddressSet(nodesIPv6, u2oExcludeIp6Ag); err != nil {
-			klog.Errorf("failed to set v6 address set %s with address %v err %v", u2oExcludeIp6Ag, nodesIPv6, err)
+		if err := c.ovnClient.AddressSetUpdateAddress(u2oExcludeIp6Ag, nodesIPv6...); err != nil {
+			klog.Errorf("set v6 address set %s with address %v: %v", u2oExcludeIp6Ag, nodesIPv6, err)
 			return err
 		}
 	}
@@ -2491,13 +2496,13 @@ func (c *Controller) deletePolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) 
 	u2oExcludeIp4Ag := strings.Replace(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip4"), "-", ".", -1)
 	u2oExcludeIp6Ag := strings.Replace(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip6"), "-", ".", -1)
 
-	if err := c.ovnLegacyClient.DeleteAddressSet(u2oExcludeIp4Ag); err != nil {
-		klog.Errorf("failed to delete address set %s %v", u2oExcludeIp4Ag, err)
+	if err := c.ovnClient.DeleteAddressSet(u2oExcludeIp4Ag); err != nil {
+		klog.Errorf("delete address set %s: %v", u2oExcludeIp4Ag, err)
 		return err
 	}
 
-	if err := c.ovnLegacyClient.DeleteAddressSet(u2oExcludeIp6Ag); err != nil {
-		klog.Errorf("failed to delete address set %s %v", u2oExcludeIp6Ag, err)
+	if err := c.ovnClient.DeleteAddressSet(u2oExcludeIp6Ag); err != nil {
+		klog.Errorf("delete address set %s: %v", u2oExcludeIp6Ag, err)
 		return err
 	}
 

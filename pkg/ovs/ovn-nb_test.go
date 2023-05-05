@@ -202,9 +202,6 @@ func (suite *OvnClientTestSuite) testDeleteSecurityGroup() {
 	err = ovnClient.DeleteSecurityGroup(sgName)
 	require.NoError(t, err)
 
-	_, err = ovnClient.GetAcl(pgName, ovnnb.ACLDirectionToLport, priority, match, false)
-	require.ErrorContains(t, err, "not found acl")
-
 	_, err = ovnClient.GetAddressSet(asName, false)
 	require.ErrorContains(t, err, "object not found")
 

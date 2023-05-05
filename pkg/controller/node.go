@@ -498,11 +498,11 @@ func (c *Controller) handleDeleteNode(key string) error {
 			return err
 		}
 	}
-	if err := c.ovnLegacyClient.DeleteAddressSet(nodeUnderlayAddressSetName(key, 4)); err != nil {
+	if err := c.ovnClient.DeleteAddressSet(nodeUnderlayAddressSetName(key, 4)); err != nil {
 		klog.Errorf("failed to delete address set for node %s: %v", key, err)
 		return err
 	}
-	if err := c.ovnLegacyClient.DeleteAddressSet(nodeUnderlayAddressSetName(key, 6)); err != nil {
+	if err := c.ovnClient.DeleteAddressSet(nodeUnderlayAddressSetName(key, 6)); err != nil {
 		klog.Errorf("failed to delete address set for node %s: %v", key, err)
 		return err
 	}
@@ -989,12 +989,13 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 		}
 
 		if networkPolicyExists {
-			if err := c.ovnLegacyClient.CreateACLForNodePg(pgName, nodeIP, joinIP); err != nil {
-				klog.Errorf("failed to create node acl for node pg %v, %v", pgName, err)
+			if err := c.ovnClient.CreateNodeAcl(pgName, nodeIP, joinIP); err != nil {
+				klog.Errorf("create node acl for node pg %s: %v", pgName, err)
 			}
 		} else {
-			if err := c.ovnLegacyClient.DeleteAclForNodePg(pgName); err != nil {
-				klog.Errorf("failed to delete node acl for node pg %v, %v", pgName, err)
+			// clear all acl
+			if err = c.ovnClient.DeleteAcls(pgName, portGroupKey, "", nil); err != nil {
+				klog.Errorf("delete node acl for node pg %s: %v", pgName, err)
 			}
 		}
 	}

@@ -773,8 +773,8 @@ func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
 		return err
 	}
 
-	if err := c.ovnLegacyClient.DeleteAddressSet(asName); err != nil {
-		klog.Errorf("failed to delete obsolete address set %s for node %s: %v", asName, node, err)
+	if err := c.ovnClient.DeleteAddressSet(asName); err != nil {
+		klog.Errorf("delete obsolete address set %s for node %s: %v", asName, node, err)
 		return err
 	}
 
