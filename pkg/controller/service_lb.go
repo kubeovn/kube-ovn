@@ -67,6 +67,10 @@ func (c *Controller) checkAttachNetwork(svc *corev1.Service) error {
 }
 
 func (c *Controller) genLbSvcDeployment(svc *corev1.Service) (dp *v1.Deployment) {
+	if err := c.resyncVpcNatImage(); err != nil {
+		klog.Errorf("failed to resync vpc nat config, err: %v", err)
+		return nil
+	}
 	replicas := int32(1)
 	name := genLbSvcDpName(svc.Name)
 	allowPrivilegeEscalation := true

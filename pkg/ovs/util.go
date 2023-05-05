@@ -36,6 +36,18 @@ func LogicalSwitchPortName(lr, ls string) string {
 	return fmt.Sprintf("%s-%s", ls, lr)
 }
 
+func GetSgPortGroupName(sgName string) string {
+	return strings.Replace(fmt.Sprintf("ovn.sg.%s", sgName), "-", ".", -1)
+}
+
+func GetSgV4AssociatedName(sgName string) string {
+	return strings.Replace(fmt.Sprintf("ovn.sg.%s.associated.v4", sgName), "-", ".", -1)
+}
+
+func GetSgV6AssociatedName(sgName string) string {
+	return strings.Replace(fmt.Sprintf("ovn.sg.%s.associated.v6", sgName), "-", ".", -1)
+}
+
 // parseIpv6RaConfigs parses the ipv6 ra config,
 // return default Ipv6RaConfigs when raw="",
 // the raw config's format is: address_mode=dhcpv6_stateful,max_interval=30,min_interval=5,send_periodic=true

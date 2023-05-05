@@ -391,7 +391,10 @@ func (c *Controller) genVpcDnsDeployment(vpcDns *kubeovnv1.VpcDns, oldDeploy *v1
 		klog.Errorf("failed to get default subnet %v", err)
 		return nil, err
 	}
-
+	if err = c.resyncVpcNatImage(); err != nil {
+		klog.Errorf("failed to resync vpc nat config, err: %v", err)
+		return nil, err
+	}
 	setVpcDnsRoute(dep, defaultSubnet.Spec.Gateway)
 	return dep, nil
 }

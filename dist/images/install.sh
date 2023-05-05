@@ -20,6 +20,7 @@ CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
 ENABLE_LB_SVC=${ENABLE_LB_SVC:-false}
 ENABLE_NAT_GW=${ENABLE_NAT_GW:-false}
 ENABLE_KEEP_VM_IP=${ENABLE_KEEP_VM_IP:-true}
+NODE_LOCAL_DNS_IP=${NODE_LOCAL_DNS_IP:-}
 # exchange link names of OVS bridge and the provider nic
 # in the default provider-network
 EXCHANGE_LINK_NAME=${EXCHANGE_LINK_NAME:-false}
@@ -36,7 +37,7 @@ KUBELET_DIR=${KUBELET_DIR:-/var/lib/kubelet}
 CNI_CONF_DIR="/etc/cni/net.d"
 CNI_BIN_DIR="/opt/cni/bin"
 
-REGISTRY="kubeovn"
+REGISTRY="docker.io/kubeovn"
 VPC_NAT_IMAGE="vpc-nat-gateway"
 VERSION="v1.12.0"
 IMAGE_PULL_POLICY="IfNotPresent"
@@ -3606,6 +3607,7 @@ spec:
           - --enable-lb-svc=$ENABLE_LB_SVC
           - --keep-vm-ip=$ENABLE_KEEP_VM_IP
           - --pod-default-fip-type=$POD_DEFAULT_FIP_TYPE
+          - --node-local-dns-ip=$NODE_LOCAL_DNS_IP
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"

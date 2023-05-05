@@ -176,7 +176,8 @@ func (c *Controller) initDenyAllSecurityGroup() error {
 		return err
 	}
 
-	if err := c.ovnLegacyClient.CreateSgDenyAllACL(); err != nil {
+	if err := c.ovnClient.CreateSgDenyAllAcl(util.DenyAllSecurityGroup); err != nil {
+		klog.Errorf("create deny all acl for sg %s: %v", util.DenyAllSecurityGroup, err)
 		return err
 	}
 
@@ -259,8 +260,20 @@ func (c *Controller) handleAddOrUpdateSg(key string) error {
 		return err
 	}
 
-	if err = c.ovnLegacyClient.CreateSgAssociatedAddressSet(sg.Name); err != nil {
-		return fmt.Errorf("failed to create sg associated address_set %s, %v", key, err.Error())
+	v4AsName := ovs.GetSgV4AssociatedName(sg.Name)
+	v6AsName := ovs.GetSgV6AssociatedName(sg.Name)
+	externalIDs := map[string]string{
+		sgKey: sg.Name,
+	}
+
+	if err = c.ovnClient.CreateAddressSet(v4AsName, externalIDs); err != nil {
+		klog.Errorf("create address set %s for sg %s: %v", v4AsName, key, err)
+		return err
+	}
+
+	if err = c.ovnClient.CreateAddressSet(v6AsName, externalIDs); err != nil {
+		klog.Errorf("create address set %s for sg %s: %v", v6AsName, key, err)
+		return err
 	}
 
 	ingressNeedUpdate := false
@@ -287,12 +300,13 @@ func (c *Controller) handleAddOrUpdateSg(key string) error {
 
 	// update sg rule
 	if ingressNeedUpdate {
-		if err = c.ovnLegacyClient.UpdateSgACL(sg, ovs.SgAclIngressDirection); err != nil {
+		if err = c.ovnClient.UpdateSgAcl(sg, ovnnb.ACLDirectionToLport); err != nil {
 			sg.Status.IngressLastSyncSuccess = false
 			c.patchSgStatus(sg)
 			return err
 		}
-		if err := c.ovnLegacyClient.CreateSgBaseIngressACL(sg.Name); err != nil {
+
+		if err := c.ovnClient.CreateSgBaseACL(sg.Name, ovnnb.ACLDirectionToLport); err != nil {
 			return err
 		}
 		sg.Status.IngressMd5 = newIngressMd5
@@ -300,14 +314,16 @@ func (c *Controller) handleAddOrUpdateSg(key string) error {
 		c.patchSgStatus(sg)
 	}
 	if egressNeedUpdate {
-		if err = c.ovnLegacyClient.UpdateSgACL(sg, ovs.SgAclEgressDirection); err != nil {
-			sg.Status.EgressLastSyncSuccess = false
+		if err = c.ovnClient.UpdateSgAcl(sg, ovnnb.ACLDirectionFromLport); err != nil {
+			sg.Status.IngressLastSyncSuccess = false
 			c.patchSgStatus(sg)
 			return err
 		}
-		if err := c.ovnLegacyClient.CreateSgBaseEgressACL(sg.Name); err != nil {
+
+		if err := c.ovnClient.CreateSgBaseACL(sg.Name, ovnnb.ACLDirectionFromLport); err != nil {
 			return err
 		}
+
 		sg.Status.EgressMd5 = newEgressMd5
 		sg.Status.EgressLastSyncSuccess = true
 		c.patchSgStatus(sg)
@@ -433,15 +449,18 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 		return err
 	}
 
-	if err = c.ovnLegacyClient.SetAddressesToAddressSet(v4s, ovs.GetSgV4AssociatedName(key)); err != nil {
-		klog.Errorf("failed to set address_set, %v", err)
+	v4AsName := ovs.GetSgV4AssociatedName(key)
+	if err := c.ovnClient.AddressSetUpdateAddress(v4AsName, v4s...); err != nil {
+		klog.Errorf("set ips to address set %s: %v", v4AsName, err)
 		return err
 	}
 
-	if err = c.ovnLegacyClient.SetAddressesToAddressSet(v6s, ovs.GetSgV6AssociatedName(key)); err != nil {
-		klog.Errorf("failed to set address_set, %v", err)
+	v6AsName := ovs.GetSgV6AssociatedName(key)
+	if err := c.ovnClient.AddressSetUpdateAddress(v6AsName, v6s...); err != nil {
+		klog.Errorf("set ips to address set %s: %v", v6AsName, err)
 		return err
 	}
+
 	c.addOrUpdateSgQueue.Add(util.DenyAllSecurityGroup)
 	return nil
 }

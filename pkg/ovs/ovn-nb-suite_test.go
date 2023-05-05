@@ -397,12 +397,12 @@ func (suite *OvnClientTestSuite) Test_addressSetFilter() {
 }
 
 /* acl unit test */
-func (suite *OvnClientTestSuite) Test_CreateIngressAcl() {
-	suite.testCreateIngressAcl()
+func (suite *OvnClientTestSuite) Test_testUpdateIngressAclOps() {
+	suite.testUpdateIngressAclOps()
 }
 
-func (suite *OvnClientTestSuite) Test_CreateEgressAcl() {
-	suite.testCreateEgressAcl()
+func (suite *OvnClientTestSuite) Test_UpdateEgressAclOps() {
+	suite.testUpdateEgressAclOps()
 }
 
 func (suite *OvnClientTestSuite) Test_CreateGatewayAcl() {
@@ -415,6 +415,10 @@ func (suite *OvnClientTestSuite) Test_CreateNodeAcl() {
 
 func (suite *OvnClientTestSuite) Test_CreateSgDenyAllAcl() {
 	suite.testCreateSgDenyAllAcl()
+}
+
+func (suite *OvnClientTestSuite) Test_CreateSgBaseACL() {
+	suite.testCreateSgBaseACL()
 }
 
 func (suite *OvnClientTestSuite) Test_UpdateSgAcl() {
@@ -443,6 +447,10 @@ func (suite *OvnClientTestSuite) Test_CreateAcls() {
 
 func (suite *OvnClientTestSuite) Test_DeleteAcls() {
 	suite.testDeleteAcls()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteAcl() {
+	suite.testDeleteAcl()
 }
 
 func (suite *OvnClientTestSuite) Test_GetAcl() {
@@ -624,22 +632,7 @@ func Test_scratch(t *testing.T) {
 	ovnClient, err := newOvnClient(t, endpoint, 10, "")
 	require.NoError(t, err)
 
-	lbName := "test-lb"
-	err = ovnClient.CreateLoadBalancer(lbName, "tcp", "ip_src")
-	require.NoError(t, err)
-
-	vips := map[string]string{
-		"10.96.0.1:443":           "192.168.20.11:6443",
-		"10.107.43.237:8080":      "10.244.0.100:8080,10.244.0.16:8080,10.244.0.17:8080",
-		"[fd00:10:96::e82f]:8080": "[fc00::af4:f]:8080,[fc00::af4:10]:8080,[fc00::af4:11]:8080",
-	}
-
-	for vip, backends := range vips {
-		err = ovnClient.LoadBalancerAddVip(lbName, vip, strings.Split(backends, ",")...)
-		require.NoError(t, err)
-	}
-
-	err = ovnClient.LoadBalancerDeleteVip(lbName, "10.96.0.1:443")
+	err = ovnClient.DeleteAcls("test_pg", portGroupKey, ovnnb.ACLDirectionToLport, nil)
 	require.NoError(t, err)
 }
 

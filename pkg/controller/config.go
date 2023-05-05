@@ -99,6 +99,8 @@ type Configuration struct {
 	BfdMinTx      int
 	BfdMinRx      int
 	BfdDetectMult int
+
+	NodeLocalDnsIP string
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -162,6 +164,7 @@ func ParseFlags() (*Configuration, error) {
 		argExternalGatewaySwitch   = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
 		argExternalGatewayNet      = pflag.String("external-gateway-net", "external", "The name of the external network which mappings with an ovs bridge, default: external")
 		argExternalGatewayVlanID   = pflag.Int("external-gateway-vlanid", 0, "The vlanId of port ln-ovn-external, default: 0")
+		argNodeLocalDnsIP          = pflag.String("node-local-dns-ip", "", "The node local dns ip , this feature is using the local dns cache in k8s")
 
 		argGCInterval      = pflag.Int("gc-interval", 360, "The interval between GC processes, default 360 seconds")
 		argInspectInterval = pflag.Int("inspect-interval", 20, "The interval between inspect processes, default 20 seconds")
@@ -246,6 +249,7 @@ func ParseFlags() (*Configuration, error) {
 		BfdMinTx:                       *argBfdMinTx,
 		BfdMinRx:                       *argBfdMinRx,
 		BfdDetectMult:                  *argBfdDetectMult,
+		NodeLocalDnsIP:                 *argNodeLocalDnsIP,
 	}
 
 	if config.NetworkType == util.NetworkTypeVlan && config.DefaultHostInterface == "" {

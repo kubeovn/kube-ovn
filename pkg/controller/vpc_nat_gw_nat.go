@@ -548,7 +548,7 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 		klog.Errorf("failed to update label for fip %s, %v", key, err)
 		return err
 	}
-	if err = c.natLabelEip(eipName, fip.Name); err != nil {
+	if err = c.natLabelEip(eipName, fip.Name, eip.Spec.QoSPolicy); err != nil {
 		klog.Errorf("failed to label fip '%s' in eip %s, %v", fip.Name, eipName, err)
 		return err
 	}
@@ -634,7 +634,7 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 			klog.Errorf("failed to update label for fip %s, %v", key, err)
 			return err
 		}
-		if err = c.natLabelEip(eipName, cachedFip.Name); err != nil {
+		if err = c.natLabelEip(eipName, cachedFip.Name, eip.Spec.QoSPolicy); err != nil {
 			klog.Errorf("failed to label fip '%s' in eip %s, %v", cachedFip.Name, eipName, err)
 			return err
 		}
@@ -728,7 +728,7 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 		klog.Errorf("failed to patch label for dnat %s, %v", key, err)
 		return err
 	}
-	if err = c.natLabelEip(eipName, dnat.Name); err != nil {
+	if err = c.natLabelEip(eipName, dnat.Name, eip.Spec.QoSPolicy); err != nil {
 		klog.Errorf("failed to label dnat in eip, %v", err)
 		return err
 	}
@@ -817,7 +817,7 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 			klog.Errorf("failed to patch label for dnat %s, %v", key, err)
 			return err
 		}
-		if err = c.natLabelEip(eipName, cachedDnat.Name); err != nil {
+		if err = c.natLabelEip(eipName, cachedDnat.Name, eip.Spec.QoSPolicy); err != nil {
 			klog.Errorf("failed to label dnat '%s' in eip %s, %v", cachedDnat.Name, eipName, err)
 			return err
 		}
@@ -909,7 +909,7 @@ func (c *Controller) handleAddIptablesSnatRule(key string) error {
 		return err
 	}
 	// label too long cause error
-	if err = c.natLabelEip(eipName, snat.Name); err != nil {
+	if err = c.natLabelEip(eipName, snat.Name, eip.Spec.QoSPolicy); err != nil {
 		klog.Errorf("failed to label snat '%s' in eip %s, %v", snat.Name, eipName, err)
 		return err
 	}
@@ -998,7 +998,7 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 			return err
 		}
 		// label too long cause error
-		if err = c.natLabelEip(eipName, cachedSnat.Name); err != nil {
+		if err = c.natLabelEip(eipName, cachedSnat.Name, eip.Spec.QoSPolicy); err != nil {
 			klog.Errorf("failed to label snat in eip, %v", err)
 			return err
 		}
