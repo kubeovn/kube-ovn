@@ -273,10 +273,20 @@ func (c *Controller) handleAddNode(key string) error {
 				"node":           node.Name,
 				"address-family": strconv.Itoa(af),
 			}
-			klog.Infof("add policy route for router: %s, match %s, action %s, nexthop %s, extrenalID %v", c.config.ClusterRouter, match, "reroute", ip, externalIDs)
+			klog.Infof("add policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, match, "reroute", ip, externalIDs)
 			if err = c.ovnLegacyClient.AddPolicyRoute(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", ip, externalIDs); err != nil {
 				klog.Errorf("failed to add logical router policy for node %s: %v", node.Name, err)
 				return err
+			}
+
+			if err = c.deletePolicyRouteForLocalDnsCacheOnNode(portName, node.Name, af); err != nil {
+				return err
+			}
+
+			if c.config.NodeLocalDnsIP != "" {
+				if err = c.addPolicyRouteForLocalDnsCacheOnNode(portName, ip, node.Name, af); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -457,6 +467,13 @@ func (c *Controller) handleDeleteNode(key string) error {
 
 	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
 		return err
+	}
+
+	afs := []int{4, 6}
+	for _, af := range afs {
+		if err := c.deletePolicyRouteForLocalDnsCacheOnNode(portName, key, af); err != nil {
+			return err
+		}
 	}
 
 	// ovn acl doesn't support address_set name with '-', so replace '-' by '.'
@@ -1207,6 +1224,53 @@ func (c *Controller) addPolicyRouteForCentralizedSubnetOnNode(nodeName, nodeIP s
 				klog.Errorf("failed to add active-backup policy route for centralized subnet %s: %v", subnet.Name, err)
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+func (c *Controller) addPolicyRouteForLocalDnsCacheOnNode(nodePortName, nodeIP, nodeName string, af int) error {
+	externalIDs := map[string]string{
+		"vendor":          util.CniTypeName,
+		"node":            nodeName,
+		"address-family":  strconv.Itoa(af),
+		"isLocalDnsCache": "true",
+	}
+
+	pgAs := strings.Replace(fmt.Sprintf("%s_ip%d", nodePortName, af), "-", ".", -1)
+	match := fmt.Sprintf("ip%d.src == $%s && ip%d.dst == %s", af, pgAs, af, c.config.NodeLocalDnsIP)
+	klog.Infof("add node local dns cache policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, match, "reroute", nodeIP, externalIDs)
+	if err := c.ovnLegacyClient.AddPolicyRoute(c.config.ClusterRouter, util.NodeLocalDnsPolicyPriority, match, "reroute", nodeIP, externalIDs); err != nil {
+		klog.Errorf("failed to add logical router policy for node %s: %v", nodeName, err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) deletePolicyRouteForLocalDnsCacheOnNode(nodePortName, nodeName string, af int) error {
+	results, err := c.ovnLegacyClient.CustomFindEntity("Logical_Router_Policy", []string{"_uuid", "match", "priority"},
+		fmt.Sprintf("external_ids:vendor=\"%s\"", util.CniTypeName),
+		fmt.Sprintf("external_ids:node=\"%s\"", nodeName),
+		fmt.Sprintf("external_ids:address-family=\"%s\"", strconv.Itoa(af)),
+		"external_ids:isLocalDnsCache=\"true\"",
+	)
+	if err != nil {
+		klog.Errorf("customFindEntity failed, %v", err)
+		return err
+	}
+
+	if len(results) == 0 {
+		return nil
+	}
+
+	var uuids []string
+	for _, result := range results {
+		uuids = append(uuids, result["_uuid"][0])
+		klog.Infof("delete node local dns cache policy route for router %s with match %s ", c.config.ClusterRouter, result["match"])
+
+		if err := c.ovnLegacyClient.DeletePolicyRouteByUUID(c.config.ClusterRouter, uuids); err != nil {
+			klog.Errorf("failed to delete policy route for node local dns in router %s with match %s : %v", c.config.ClusterRouter, result["match"], err)
+			return err
 		}
 	}
 	return nil

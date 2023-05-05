@@ -90,6 +90,7 @@ spec:
             - --enable-lb-svc=false
             - --keep-vm-ip=true
             - --pod-default-fip-type=
+            - --node-local-dns-ip=
           env:
             - name: ENABLE_SSL
               value: "false"

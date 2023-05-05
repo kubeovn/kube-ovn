@@ -984,10 +984,10 @@ func (c LegacyClient) CreateGatewayACL(ls, pgName, gateway, cidr string) error {
 					egressArgs = append(egressArgs, []string{"--", "--type=port-group", MayExist, "--apply-after-lb", "acl-add", pgName, "from-lport", util.EgressAllowPriority, `nd || nd_ra || nd_rs`, "allow-related"}...)
 				}
 			} else if ls != "" {
-				ingressArgs = []string{"--", MayExist, "acl-add", ls, "to-lport", util.IngressAllowPriority, fmt.Sprintf(`%s.src == %s`, ipSuffix, gw), "allow-related"}
-				egressArgs = []string{"--", MayExist, "--apply-after-lb", "acl-add", ls, "from-lport", util.EgressAllowPriority, fmt.Sprintf(`%s.dst == %s`, ipSuffix, gw), "allow-related"}
+				ingressArgs = []string{"--", MayExist, "acl-add", ls, "to-lport", util.IngressAllowPriority, fmt.Sprintf(`%s.src == %s`, ipSuffix, gw), "allow-stateless"}
+				egressArgs = []string{"--", MayExist, "--apply-after-lb", "acl-add", ls, "from-lport", util.EgressAllowPriority, fmt.Sprintf(`%s.dst == %s`, ipSuffix, gw), "allow-stateless"}
 				if ipSuffix == "ip6" {
-					egressArgs = append(egressArgs, []string{"--", MayExist, "--apply-after-lb", "acl-add", ls, "from-lport", util.EgressAllowPriority, `nd || nd_ra || nd_rs`, "allow-related"}...)
+					egressArgs = append(egressArgs, []string{"--", MayExist, "--apply-after-lb", "acl-add", ls, "from-lport", util.EgressAllowPriority, `nd || nd_ra || nd_rs`, "allow-stateless"}...)
 				}
 			}
 
