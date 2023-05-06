@@ -83,9 +83,6 @@ RUN apt update && apt upgrade -y && apt install ca-certificates python3 hostname
         logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins \
         libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins -y --no-install-recommends && \
         rm -rf /var/lib/apt/lists/* && \
-        cd /usr/sbin && \
-        ln -sf /usr/sbin/iptables-legacy iptables && \
-        ln -sf /usr/sbin/ip6tables-legacy ip6tables && \
         rm -rf /etc/localtime
 
 RUN mkdir -p /var/run/openvswitch && \

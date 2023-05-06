@@ -50,6 +50,9 @@ function quit {
 }
 trap quit EXIT
 
+# update links to point to the iptables binaries
+iptables -V
+
 # Start ovsdb
 /usr/share/openvswitch/scripts/ovs-ctl restart --no-ovs-vswitchd --system-id=random
 # Restrict the number of pthreads ovs-vswitchd creates to reduce the
