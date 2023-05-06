@@ -694,6 +694,9 @@ jobs:
           - ipv4
           - ipv6
           - dual
+        mode:
+          - overlay
+          - underlay
     steps:
       - uses: actions/checkout@v3
 
@@ -761,27 +764,28 @@ jobs:
           sudo chown -R $(id -un). ~/.kube/
 
       - name: Install Kube-OVN
-        run: make kind-install-${{ matrix.ip-family }}
+        run: make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
 
       - name: Run E2E
         working-directory: ${{ env.E2E_DIR }}
         env:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
+          E2E_NETWORK_MODE: ${{ matrix.mode }}
         run: make kube-ovn-conformance-e2e
 
       - name: kubectl ko log
         if: failure()
         run: |
           make kubectl-ko-log
-          mv kubectl-ko-log.tar.gz kube-ovn-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+          mv kubectl-ko-log.tar.gz kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v3
         if: failure()
         with:
-          name: kube-ovn-conformance-e2e-${{ matrix.ip-family }}-ko-log
-          path: kube-ovn-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+          name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log
+          path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Cleanup
         run: sh dist/images/cleanup.sh
