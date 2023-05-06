@@ -55,9 +55,6 @@ func (c *ovnClient) AddressSetUpdateAddress(asName string, addresses ...string) 
 		return fmt.Errorf("get address set %s: %v", asName, err)
 	}
 
-	// update will failed when slice contains duplicate elements
-	addresses = util.UniqString(addresses)
-
 	// format CIDR to keep addresses the same in both nb and sb
 	for i, addr := range addresses {
 		if strings.ContainsRune(addr, '/') {
@@ -69,6 +66,10 @@ func (c *ovnClient) AddressSetUpdateAddress(asName string, addresses ...string) 
 			addresses[i] = ipNet.String()
 		}
 	}
+
+	// update will failed when slice contains duplicate elements
+	addresses = util.UniqString(addresses)
+
 	// clear addresses when addresses is empty
 	as.Addresses = addresses
 
