@@ -180,16 +180,23 @@ trace(){
     typedName="node/$node"
     lsp=$(kubectl get $typedName -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/port_name})
   else
-    namespacedPod="$1"
+    local namespacedPod="$1"
     namespace=$(echo "$namespacedPod" | cut -d "/" -f1)
-    podName=$(echo "$namespacedPod" | cut -d "/" -f2)
+    local podName=$(echo "$namespacedPod" | cut -d "/" -f2)
     if [ "$podName" = "$namespacedPod" ]; then
       namespace="default"
     fi
-    typedName="pod/$podName"
-    optNamespace="-n $namespace"
-    lsp="$podName.$namespace"
     node=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.nodeName})
+    typedName="pod/$podName"
+    local hostNetwork=$(kubectl get "$typedName" -n "$namespace" -o jsonpath={.spec.hostNetwork})
+    if [ "$hostNetwork" = "true" ]; then
+      namespace=""
+      typedName="node/$node"
+      lsp=$(kubectl get $typedName -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/port_name})
+    else
+      optNamespace="-n $namespace"
+      lsp="$podName.$namespace"
+    fi
   fi
 
   local dst="$2"
@@ -213,14 +220,6 @@ trace(){
     echo "  kubectl ko trace {node//nodename} {target ip address} [target mac address] {icmp|tcp|udp} [target tcp/udp port]"
     echo "  kubectl ko trace {node//nodename} {target ip address} [target mac address] arp {request|reply}"
     exit 1
-  fi
-
-  if [ ! -z $namespace ]; then
-    hostNetwork=$(kubectl get "$typedName" -n "$namespace" -o jsonpath={.spec.hostNetwork})
-    if [ "$hostNetwork" = "true" ]; then
-      echo "Can not trace host network pod"
-      exit 1
-    fi
   fi
 
   local af="4" nw="nw" proto=

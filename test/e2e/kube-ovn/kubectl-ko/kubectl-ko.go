@@ -164,6 +164,39 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 		}
 	})
 
+	framework.ConformanceIt(`should support "kubectl ko trace <pod> <args...>" for pod with host network`, func() {
+		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12")
+
+		ginkgo.By("Creating pod " + podName + " with host network")
+		pod := framework.MakePod(namespaceName, podName, nil, nil, "", nil, nil)
+		pod.Spec.HostNetwork = true
+		pod = podClient.CreateSync(pod)
+
+		for _, ip := range pod.Status.PodIPs {
+			target, testARP := targetIPv4, true
+			if util.CheckProtocol(ip.IP) == apiv1.ProtocolIPv6 {
+				target, testARP = targetIPv6, false
+			}
+
+			targetMAC := util.GenerateMac()
+			prefix := fmt.Sprintf("ko trace %s/%s %s", pod.Namespace, pod.Name, target)
+			if testARP {
+				execOrDie(fmt.Sprintf("%s %s arp reply", prefix, targetMAC))
+			}
+
+			targetMACs := []string{"", targetMAC}
+			for _, mac := range targetMACs {
+				if testARP {
+					execOrDie(fmt.Sprintf("%s %s arp", prefix, mac))
+					execOrDie(fmt.Sprintf("%s %s arp request", prefix, mac))
+				}
+				execOrDie(fmt.Sprintf("%s %s icmp", prefix, mac))
+				execOrDie(fmt.Sprintf("%s %s tcp 80", prefix, mac))
+				execOrDie(fmt.Sprintf("%s %s udp 53", prefix, mac))
+			}
+		}
+	})
+
 	framework.ConformanceIt(`should support "kubectl ko trace <node> <args...>"`, func() {
 		f.SkipVersionPriorTo(1, 12, "This feature was introduce in v1.12")
 
@@ -174,21 +207,12 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 		framework.ExpectNotEmpty(nodeList.Items)
 		node := nodeList.Items[rand.Intn(len(nodeList.Items))]
 
-		supportARP := !f.VersionPriorTo(1, 11)
-		supportDstMAC := !f.VersionPriorTo(1, 10)
-		if !supportARP {
-			framework.Logf("Support for ARP was introduce in v1.11")
-		}
-		if !supportDstMAC {
-			framework.Logf("Support for destination MAC was introduce in v1.10")
-		}
-
 		nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(node)
 		for _, ip := range []string{nodeIPv4, nodeIPv6} {
 			if ip == "" {
 				continue
 			}
-			target, testARP := targetIPv4, supportARP
+			target, testARP := targetIPv4, true
 			if util.CheckProtocol(ip) == apiv1.ProtocolIPv6 {
 				target, testARP = targetIPv6, false
 			}
@@ -201,9 +225,6 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 
 			targetMACs := []string{"", targetMAC}
 			for _, mac := range targetMACs {
-				if mac != "" && !supportDstMAC {
-					continue
-				}
 				if testARP {
 					execOrDie(fmt.Sprintf("%s %s arp", prefix, mac))
 					execOrDie(fmt.Sprintf("%s %s arp request", prefix, mac))
