@@ -321,16 +321,16 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 				}
 
 				for _, nat := range lr.Nat {
-					logical_ip, err := c.ovnLegacyClient.GetNatIPInfo(nat)
+					logicalIP, err := c.ovnLegacyClient.GetNatIPInfo(nat)
 					if err != nil {
 						klog.Errorf("failed to get nat ip info for vpc %s, %v", vpc.Name, err)
 						return err
 					}
-					if logical_ip != "" {
+					if logicalIP != "" {
 						for rtb := range rtbs {
 							targetRoutes = append(targetRoutes, &kubeovnv1.StaticRoute{
 								Policy:     kubeovnv1.PolicySrc,
-								CIDR:       logical_ip,
+								CIDR:       logicalIP,
 								NextHopIP:  nextHop,
 								RouteTable: rtb,
 							})
@@ -402,7 +402,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 		for _, item := range policyRouteNeedAdd {
 			externalIDs := map[string]string{"vendor": util.CniTypeName}
-			klog.Infof("add policy route for router: %s, match %s, action %s, nexthop %s, extrenalID %v", c.config.ClusterRouter, item.Match, string(item.Action), item.NextHopIP, externalIDs)
+			klog.Infof("add policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, item.Match, string(item.Action), item.NextHopIP, externalIDs)
 			if err = c.ovnLegacyClient.AddPolicyRoute(vpc.Name, item.Priority, item.Match, string(item.Action), item.NextHopIP, externalIDs); err != nil {
 				klog.Errorf("add policy route to vpc %s failed, %v", vpc.Name, err)
 				return err
@@ -455,7 +455,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 
 	if cachedVpc.Spec.EnableExternal {
 		if !cachedVpc.Status.EnableExternal {
-			// connecte vpc to external
+			// connect vpc to external
 			klog.V(3).Infof("connect external network with vpc %s", vpc.Name)
 			if err := c.handleAddVpcExternal(key); err != nil {
 				klog.Errorf("failed to add external connection for vpc %s, error %v", key, err)
@@ -464,7 +464,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 		if vpc.Spec.EnableBfd {
 			klog.V(3).Infof("remove normal static ecmp route for vpc %s", vpc.Name)
-			// auto remove normal type static route, if use ecmp based bfd
+			// auto remove normal type static route, if using ecmp based bfd
 			if err := c.reconcileVpcDelNormalStaticRoute(vpc.Name); err != nil {
 				klog.Errorf("failed to reconcile del vpc %q normal static route", vpc.Name)
 				return err

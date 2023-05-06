@@ -77,6 +77,10 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		return
 	}
 
+	if oldSubnet.Spec.Vpc != newSubnet.Spec.Vpc {
+		c.updateVpcStatusQueue.Add(oldSubnet.Spec.Vpc)
+	}
+
 	if oldSubnet.Spec.Private != newSubnet.Spec.Private ||
 		oldSubnet.Spec.CIDRBlock != newSubnet.Spec.CIDRBlock ||
 		!reflect.DeepEqual(oldSubnet.Spec.AllowSubnets, newSubnet.Spec.AllowSubnets) ||
@@ -100,7 +104,8 @@ func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
 		oldSubnet.Spec.EnableEcmp != newSubnet.Spec.EnableEcmp ||
 		!reflect.DeepEqual(oldSubnet.Spec.Acls, newSubnet.Spec.Acls) ||
 		oldSubnet.Spec.U2OInterconnection != newSubnet.Spec.U2OInterconnection ||
-		oldSubnet.Spec.RouteTable != newSubnet.Spec.RouteTable {
+		oldSubnet.Spec.RouteTable != newSubnet.Spec.RouteTable ||
+		oldSubnet.Spec.Vpc != newSubnet.Spec.Vpc {
 		klog.V(3).Infof("enqueue update subnet %s", key)
 
 		if oldSubnet.Spec.GatewayType != newSubnet.Spec.GatewayType {
