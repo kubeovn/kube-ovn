@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/scylladb/go-set/strset"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -123,35 +124,13 @@ func (c *Controller) reconcileRouters(_ subnetEvent) error {
 }
 
 func routeDiff(existingRoutes, v4Cidrs, v6Cidrs []string) (toAddV4, toAddV6, toDel []string) {
-	existing := make(map[string]struct{}, len(existingRoutes))
-	expectedV4 := make(map[string]struct{}, len(v4Cidrs))
-	expectedV6 := make(map[string]struct{}, len(v6Cidrs))
-	for _, r := range existingRoutes {
-		existing[r] = struct{}{}
-	}
+	existing := strset.New(existingRoutes...)
+	expectedV4 := strset.New(v4Cidrs...)
+	expectedV6 := strset.New(v6Cidrs...)
 
-	var ok bool
-	for _, r := range v4Cidrs {
-		expectedV4[r] = struct{}{}
-		if _, ok = existing[r]; !ok {
-			toAddV4 = append(toAddV4, r)
-		}
-	}
-	for _, r := range v6Cidrs {
-		expectedV6[r] = struct{}{}
-		if _, ok = existing[r]; !ok {
-			toAddV6 = append(toAddV6, r)
-		}
-	}
-	for _, r := range existingRoutes {
-		if _, ok = expectedV4[r]; ok {
-			continue
-		}
-		if _, ok = expectedV6[r]; ok {
-			continue
-		}
-		toDel = append(toDel, r)
-	}
+	toAddV4 = strset.Difference(expectedV4, existing).List()
+	toAddV6 = strset.Difference(expectedV6, existing).List()
+	toDel = strset.Difference(existing, expectedV4, expectedV6).List()
 
 	return
 }

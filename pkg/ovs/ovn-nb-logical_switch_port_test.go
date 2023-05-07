@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ovn-org/libovsdb/ovsdb"
+	"github.com/scylladb/go-set/strset"
 	"github.com/stretchr/testify/require"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
@@ -1500,10 +1501,7 @@ func (suite *OvnClientTestSuite) testgetLogicalSwitchPortSgs() {
 		}
 
 		sgs := getLogicalSwitchPortSgs(lsp)
-		require.Equal(t, map[string]struct{}{
-			"sg1": {},
-			"sg2": {},
-		}, sgs)
+		require.True(t, sgs.IsEqual(strset.New("sg1", "sg2")))
 	})
 
 	t.Run("has no associated security group", func(t *testing.T) {
@@ -1515,7 +1513,7 @@ func (suite *OvnClientTestSuite) testgetLogicalSwitchPortSgs() {
 		}
 
 		sgs := getLogicalSwitchPortSgs(lsp)
-		require.Empty(t, sgs)
+		require.Zero(t, sgs.Size())
 	})
 
 	t.Run("has no external ids", func(t *testing.T) {
@@ -1523,6 +1521,6 @@ func (suite *OvnClientTestSuite) testgetLogicalSwitchPortSgs() {
 		lsp := &ovnnb.LogicalSwitchPort{}
 
 		sgs := getLogicalSwitchPortSgs(lsp)
-		require.Empty(t, sgs)
+		require.Zero(t, sgs.Size())
 	})
 }

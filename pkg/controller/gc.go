@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ovn-org/libovsdb/ovsdb"
+	"github.com/scylladb/go-set/strset"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,10 +19,9 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	"github.com/ovn-org/libovsdb/ovsdb"
 )
 
-var lastNoPodLSP map[string]bool
+var lastNoPodLSP = strset.New()
 
 func (c *Controller) gc() error {
 	gcFunctions := []func() error{
@@ -54,10 +55,10 @@ func (c *Controller) gcLogicalRouterPort() error {
 		return err
 	}
 
-	exceptPeerPorts := make(map[string]struct{})
+	exceptPeerPorts := strset.New()
 	for _, vpc := range vpcs {
 		for _, peer := range vpc.Status.VpcPeerings {
-			exceptPeerPorts[fmt.Sprintf("%s-%s", vpc.Name, peer)] = struct{}{}
+			exceptPeerPorts.Add(fmt.Sprintf("%s-%s", vpc.Name, peer))
 		}
 	}
 
@@ -295,7 +296,7 @@ func (c *Controller) markAndCleanLSP() error {
 		klog.Errorf("failed to list node, %v", err)
 		return err
 	}
-	ipMap := make(map[string]struct{}, len(pods)+len(nodes))
+	ipMap := strset.NewWithSize(len(pods) + len(nodes))
 	for _, pod := range pods {
 		if isStsPod, sts := isStatefulSetPod(pod); isStsPod {
 			if isStatefulSetPodToDel(c.config.KubeClient, pod, sts) {
@@ -318,25 +319,22 @@ func (c *Controller) markAndCleanLSP() error {
 			if !isProviderOvn {
 				continue
 			}
-			ipMap[ovs.PodNameToPortName(podName, pod.Namespace, providerName)] = struct{}{}
+			ipMap.Add(ovs.PodNameToPortName(podName, pod.Namespace, providerName))
 		}
 	}
 	for _, node := range nodes {
 		if node.Annotations[util.AllocatedAnnotation] == "true" {
-			ipMap[fmt.Sprintf("node-%s", node.Name)] = struct{}{}
+			ipMap.Add(fmt.Sprintf("node-%s", node.Name))
 		}
 
 		if _, err := c.ovnEipsLister.Get(node.Name); err == nil {
 			// node external gw lsp is managed by ovn eip cr, skip gc its lsp
-			ipMap[node.Name] = struct{}{}
+			ipMap.Add(node.Name)
 		}
 	}
 
 	// The lsp for vm pod should not be deleted if vm still exists
-	vmLsps := c.getVmLsps()
-	for _, vmLsp := range vmLsps {
-		ipMap[vmLsp] = struct{}{}
-	}
+	ipMap.Add(c.getVmLsps()...)
 
 	lsps, err := c.ovnClient.ListNormalLogicalSwitchPorts(c.config.EnableExternalVpc, nil)
 	if err != nil {
@@ -344,15 +342,15 @@ func (c *Controller) markAndCleanLSP() error {
 		return err
 	}
 
-	noPodLSP := map[string]bool{}
-	lspMap := make(map[string]struct{}, len(lsps))
+	noPodLSP := strset.New()
+	lspMap := strset.NewWithSize(len(lsps))
 	for _, lsp := range lsps {
-		lspMap[lsp.Name] = struct{}{}
-		if _, ok := ipMap[lsp.Name]; ok {
+		lspMap.Add(lsp.Name)
+		if ipMap.Has(lsp.Name) {
 			continue
 		}
-		if !lastNoPodLSP[lsp.Name] {
-			noPodLSP[lsp.Name] = true
+		if !lastNoPodLSP.Has(lsp.Name) {
+			noPodLSP.Add(lsp.Name)
 			continue
 		}
 
@@ -375,11 +373,12 @@ func (c *Controller) markAndCleanLSP() error {
 	}
 	lastNoPodLSP = noPodLSP
 
-	for ipName := range ipMap {
-		if _, ok := lspMap[ipName]; !ok {
+	ipMap.Each(func(ipName string) bool {
+		if !lspMap.Has(ipName) {
 			klog.Errorf("lsp lost for pod %s, please delete the pod and retry", ipName)
 		}
-	}
+		return true
+	})
 
 	return nil
 }
@@ -441,12 +440,12 @@ func (c *Controller) gcLoadBalancer() error {
 		klog.Errorf("failed to list svc, %v", err)
 		return err
 	}
-	tcpVips := make(map[string]struct{}, len(svcs)*2)
-	udpVips := make(map[string]struct{}, len(svcs)*2)
-	sctpVips := make(map[string]struct{}, len(svcs)*2)
-	tcpSessionVips := make(map[string]struct{}, len(svcs)*2)
-	udpSessionVips := make(map[string]struct{}, len(svcs)*2)
-	sctpSessionVips := make(map[string]struct{}, len(svcs)*2)
+	tcpVips := strset.NewWithSize(len(svcs) * 2)
+	udpVips := strset.NewWithSize(len(svcs) * 2)
+	sctpVips := strset.NewWithSize(len(svcs) * 2)
+	tcpSessionVips := strset.NewWithSize(len(svcs) * 2)
+	udpSessionVips := strset.NewWithSize(len(svcs) * 2)
+	sctpSessionVips := strset.NewWithSize(len(svcs) * 2)
 	for _, svc := range svcs {
 		ips := util.ServiceClusterIPs(*svc)
 		if v, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
@@ -459,21 +458,21 @@ func (c *Controller) gcLoadBalancer() error {
 				switch port.Protocol {
 				case corev1.ProtocolTCP:
 					if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
-						tcpSessionVips[vip] = struct{}{}
+						tcpSessionVips.Add(vip)
 					} else {
-						tcpVips[vip] = struct{}{}
+						tcpVips.Add(vip)
 					}
 				case corev1.ProtocolUDP:
 					if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
-						udpSessionVips[vip] = struct{}{}
+						udpSessionVips.Add(vip)
 					} else {
-						udpVips[vip] = struct{}{}
+						udpVips.Add(vip)
 					}
 				case corev1.ProtocolSCTP:
 					if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
-						sctpSessionVips[vip] = struct{}{}
+						sctpSessionVips.Add(vip)
 					} else {
-						sctpVips[vip] = struct{}{}
+						sctpVips.Add(vip)
 					}
 				}
 			}
@@ -491,7 +490,7 @@ func (c *Controller) gcLoadBalancer() error {
 		tcpSessLb, udpSessLb, sctpSessLb := vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
 		vpcLbs = append(vpcLbs, tcpLb, udpLb, sctpLb, tcpSessLb, udpSessLb, sctpSessLb)
 
-		removeVIP := func(lbName string, svcVips map[string]struct{}) error {
+		removeVIP := func(lbName string, svcVips *strset.Set) error {
 			if lbName == "" {
 				return nil
 			}
@@ -503,7 +502,7 @@ func (c *Controller) gcLoadBalancer() error {
 			}
 
 			for vip := range lb.Vips {
-				if _, ok := svcVips[vip]; !ok {
+				if !svcVips.Has(vip) {
 					if err = c.ovnClient.LoadBalancerDeleteVip(lbName, vip); err != nil {
 						klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lbName, err)
 						return err
@@ -547,7 +546,7 @@ func (c *Controller) gcLoadBalancer() error {
 func (c *Controller) gcPortGroup() error {
 	klog.Infof("start to gc network policy")
 
-	npNames := make(map[string]struct{})
+	npNames := strset.New()
 
 	if c.config.EnableNP {
 		nps, err := c.npsLister.List(labels.Everything())
@@ -557,7 +556,7 @@ func (c *Controller) gcPortGroup() error {
 		}
 
 		for _, np := range nps {
-			npNames[fmt.Sprintf("%s/%s", np.Namespace, np.Name)] = struct{}{}
+			npNames.Add(fmt.Sprintf("%s/%s", np.Namespace, np.Name))
 		}
 
 		// append node port group to npNames to avoid gc node port group
@@ -568,7 +567,7 @@ func (c *Controller) gcPortGroup() error {
 		}
 
 		for _, node := range nodes {
-			npNames[fmt.Sprintf("%s/%s", "node", node.Name)] = struct{}{}
+			npNames.Add(fmt.Sprintf("%s/%s", "node", node.Name))
 		}
 
 		// append overlay subnets port group to npNames to avoid gc distributed subnets port group
@@ -583,7 +582,7 @@ func (c *Controller) gcPortGroup() error {
 			}
 
 			for _, node := range nodes {
-				npNames[fmt.Sprintf("%s/%s", subnet.Name, node.Name)] = struct{}{}
+				npNames.Add(fmt.Sprintf("%s/%s", subnet.Name, node.Name))
 			}
 		}
 	}
@@ -600,7 +599,7 @@ func (c *Controller) gcPortGroup() error {
 		npNamespace := np[0]
 		npName := np[1]
 
-		if _, ok := npNames[fmt.Sprintf("%s/%s", npNamespace, npName)]; !c.config.EnableNP || !ok {
+		if !c.config.EnableNP || !npNames.Has(fmt.Sprintf("%s/%s", npNamespace, npName)) {
 			klog.Infof("gc port group %s", pg.Name)
 
 			if err := c.handleDeleteNp(fmt.Sprintf("%s/%s", npNamespace, npName)); err != nil {
@@ -845,9 +844,9 @@ func (c *Controller) gcVpcDns() error {
 	return nil
 }
 
-func logicalRouterPortFilter(exceptPeerPorts map[string]struct{}) func(lrp *ovnnb.LogicalRouterPort) bool {
+func logicalRouterPortFilter(exceptPeerPorts *strset.Set) func(lrp *ovnnb.LogicalRouterPort) bool {
 	return func(lrp *ovnnb.LogicalRouterPort) bool {
-		if _, ok := exceptPeerPorts[lrp.Name]; ok {
+		if exceptPeerPorts.Has(lrp.Name) {
 			return false // ignore except lrp
 		}
 

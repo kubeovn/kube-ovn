@@ -10,14 +10,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
-
+	"github.com/scylladb/go-set/strset"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -284,7 +284,7 @@ func (c *Controller) acquireLrpAddress(ts string) (string, error) {
 		random := util.GenerateRandomV4IP(cidr)
 
 		// find a free address
-		if _, ok := existAddress[random]; !ok {
+		if !existAddress.Has(random) {
 			return random, nil
 		}
 
@@ -505,7 +505,7 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 	}
 }
 
-func (c *Controller) listRemoteLogicalSwitchPortAddress() (map[string]struct{}, error) {
+func (c *Controller) listRemoteLogicalSwitchPortAddress() (*strset.Set, error) {
 	lsps, err := c.ovnClient.ListLogicalSwitchPorts(true, nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
 		return lsp.Type == "remote"
 	})
@@ -513,7 +513,7 @@ func (c *Controller) listRemoteLogicalSwitchPortAddress() (map[string]struct{}, 
 		return nil, fmt.Errorf("list remote logical switch ports: %v", err)
 	}
 
-	existAddress := make(map[string]struct{})
+	existAddress := strset.NewWithSize(len(lsps))
 	for _, lsp := range lsps {
 		if len(lsp.Addresses) == 0 {
 			continue
@@ -526,7 +526,7 @@ func (c *Controller) listRemoteLogicalSwitchPortAddress() (map[string]struct{}, 
 			continue
 		}
 
-		existAddress[fields[1]] = struct{}{}
+		existAddress.Add(fields[1])
 	}
 
 	return existAddress, nil

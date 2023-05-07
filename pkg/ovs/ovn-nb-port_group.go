@@ -7,6 +7,7 @@ import (
 	"github.com/ovn-org/libovsdb/client"
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
+	"github.com/scylladb/go-set/strset"
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -56,30 +57,20 @@ func (c *ovnClient) PortGroupSetPorts(pgName string, ports []string) error {
 		return fmt.Errorf("get port group %s: %v", pgName, err)
 	}
 
-	uuids := make(map[string]struct{}, len(ports))
+	expected := strset.NewWithSize(len(ports))
 	for _, port := range ports {
 		lsp, err := c.GetLogicalSwitchPort(port, true)
 		if err != nil {
 			return err
 		}
 		if lsp != nil {
-			uuids[lsp.UUID] = struct{}{}
+			expected.Add(lsp.UUID)
 		}
 	}
 
-	var toDel []string
-	for _, uuid := range pg.Ports {
-		if _, ok := uuids[uuid]; ok {
-			delete(uuids, uuid)
-			continue
-		}
-		toDel = append(toDel, uuid)
-	}
-
-	toAdd := make([]string, 0, len(uuids))
-	for uuid := range uuids {
-		toAdd = append(toAdd, uuid)
-	}
+	existing := strset.New(pg.Ports...)
+	toAdd := strset.Difference(expected, existing).List()
+	toDel := strset.Difference(existing, expected).List()
 
 	insertOps, err := c.portGroupUpdatePortOp(pgName, toAdd, ovsdb.MutateOperationInsert)
 	if err != nil {
