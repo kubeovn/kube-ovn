@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/scylladb/go-set/strset"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -297,12 +298,9 @@ func (c *Controller) InitIPAM() error {
 		klog.Errorf("failed to list LS: %v", err)
 		return err
 	}
-	lsPortsMap := make(map[string]map[string]struct{}, len(lsList))
+	lsPortsMap := make(map[string]*strset.Set, len(lsList))
 	for _, ls := range lsList {
-		lsPortsMap[ls.Name] = make(map[string]struct{}, len(ls.Ports))
-		for _, port := range ls.Ports {
-			lsPortsMap[ls.Name][port] = struct{}{}
-		}
+		lsPortsMap[ls.Name] = strset.New(ls.Ports...)
 	}
 
 	lspList, err := c.ovnClient.ListLogicalSwitchPortsWithLegacyExternalIDs()
@@ -310,11 +308,11 @@ func (c *Controller) InitIPAM() error {
 		klog.Errorf("failed to list LSP: %v", err)
 		return err
 	}
-	lspWithoutVendor := make(map[string]struct{}, len(lspList))
+	lspWithoutVendor := strset.NewWithSize(len(lspList))
 	lspWithoutLS := make(map[string]string, len(lspList))
 	for _, lsp := range lspList {
 		if len(lsp.ExternalIDs) == 0 || lsp.ExternalIDs["vendor"] == "" {
-			lspWithoutVendor[lsp.Name] = struct{}{}
+			lspWithoutVendor.Add(lsp.Name)
 		}
 		if len(lsp.ExternalIDs) == 0 || lsp.ExternalIDs[logicalSwitchKey] == "" {
 			lspWithoutLS[lsp.Name] = lsp.UUID
@@ -390,13 +388,13 @@ func (c *Controller) InitIPAM() error {
 				}
 				if podNet.ProviderName == util.OvnProvider || strings.HasSuffix(podNet.ProviderName, util.OvnProvider) {
 					externalIDs := make(map[string]string, 3)
-					if _, ok := lspWithoutVendor[portName]; ok {
+					if lspWithoutVendor.Has(portName) {
 						externalIDs["vendor"] = util.CniTypeName
 						externalIDs["pod"] = fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
 					}
 					if uuid := lspWithoutLS[portName]; uuid != "" {
 						for ls, ports := range lsPortsMap {
-							if _, ok := ports[uuid]; ok {
+							if ports.Has(uuid) {
 								externalIDs[logicalSwitchKey] = ls
 								break
 							}
@@ -469,12 +467,12 @@ func (c *Controller) InitIPAM() error {
 			}
 
 			externalIDs := make(map[string]string, 2)
-			if _, ok := lspWithoutVendor[portName]; ok {
+			if lspWithoutVendor.Has(portName) {
 				externalIDs["vendor"] = util.CniTypeName
 			}
 			if uuid := lspWithoutLS[portName]; uuid != "" {
 				for ls, ports := range lsPortsMap {
-					if _, ok := ports[uuid]; ok {
+					if ports.Has(uuid) {
 						externalIDs[logicalSwitchKey] = ls
 						break
 					}
@@ -622,16 +620,12 @@ func (c *Controller) initSyncCrdIPs() error {
 		return err
 	}
 
-	vmLsps := c.getVmLsps()
-	ipMap := make(map[string]struct{}, len(vmLsps))
-	for _, vmLsp := range vmLsps {
-		ipMap[vmLsp] = struct{}{}
-	}
+	ipMap := strset.New(c.getVmLsps()...)
 
 	for _, ipCr := range ips.Items {
 		ip := ipCr.DeepCopy()
 		changed := false
-		if _, ok := ipMap[ip.Name]; ok && ip.Spec.PodType == "" {
+		if ipMap.Has(ip.Name) && ip.Spec.PodType == "" {
 			ip.Spec.PodType = util.Vm
 			changed = true
 		}

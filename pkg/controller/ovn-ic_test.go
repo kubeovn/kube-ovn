@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
+	"github.com/scylladb/go-set/strset"
 	"github.com/stretchr/testify/require"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -35,8 +36,5 @@ func Test_listRemoteLogicalSwitchPortAddress(t *testing.T) {
 
 	addresses, err := ctrl.listRemoteLogicalSwitchPortAddress()
 	require.NoError(t, err)
-	require.Equal(t, map[string]struct{}{
-		"10.244.0.10": {},
-		"10.244.0.18": {},
-	}, addresses)
+	require.True(t, addresses.IsEqual(strset.New("10.244.0.10", "10.244.0.18")))
 }

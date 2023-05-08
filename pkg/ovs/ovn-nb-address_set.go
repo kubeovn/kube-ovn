@@ -7,10 +7,10 @@ import (
 	"strings"
 
 	"github.com/ovn-org/libovsdb/client"
+	"github.com/scylladb/go-set/strset"
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // CreateAddressSet create address set with external ids
@@ -68,7 +68,7 @@ func (c *ovnClient) AddressSetUpdateAddress(asName string, addresses ...string) 
 	}
 
 	// update will failed when slice contains duplicate elements
-	addresses = util.UniqString(addresses)
+	addresses = strset.New(addresses...).List()
 
 	// clear addresses when addresses is empty
 	as.Addresses = addresses

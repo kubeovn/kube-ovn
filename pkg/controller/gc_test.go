@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/scylladb/go-set/strset"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
 func newLogicalRouterPort(lrName, lrpName, mac string, networks []string) *ovnnb.LogicalRouterPort {
@@ -22,10 +24,10 @@ func newLogicalRouterPort(lrName, lrpName, mac string, networks []string) *ovnnb
 func Test_logicalRouterPortFilter(t *testing.T) {
 	t.Parallel()
 
-	exceptPeerPorts := map[string]struct{}{
-		"except-lrp-0": {},
-		"except-lrp-1": {},
-	}
+	exceptPeerPorts := strset.New(
+		"except-lrp-0",
+		"except-lrp-1",
+	)
 
 	lrpNames := []string{"other-0", "other-1", "other-2", "except-lrp-0", "except-lrp-1"}
 	lrps := make([]*ovnnb.LogicalRouterPort, 0)
@@ -39,7 +41,7 @@ func Test_logicalRouterPortFilter(t *testing.T) {
 	filterFunc := logicalRouterPortFilter(exceptPeerPorts)
 
 	for _, lrp := range lrps {
-		if _, ok := exceptPeerPorts[lrp.Name]; ok {
+		if exceptPeerPorts.Has(lrp.Name) {
 			require.False(t, filterFunc(lrp))
 		} else {
 			require.True(t, filterFunc(lrp))

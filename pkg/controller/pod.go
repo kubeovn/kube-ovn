@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/scylladb/go-set/strset"
 	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/logging"
 	multustypes "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
-
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -66,7 +66,7 @@ func (n *NamedPort) AddNamedPortByPod(pod *v1.Pod) {
 			if _, ok := n.namedPortMap[ns]; ok {
 				if _, ok := n.namedPortMap[ns][port.Name]; ok {
 					if n.namedPortMap[ns][port.Name].PortId == port.ContainerPort {
-						n.namedPortMap[ns][port.Name].Pods[podName] = struct{}{}
+						n.namedPortMap[ns][port.Name].Pods.Add(podName)
 					} else {
 						klog.Warningf("named port %s has already be defined with portID %d",
 							port.Name, n.namedPortMap[ns][port.Name].PortId)
@@ -78,7 +78,7 @@ func (n *NamedPort) AddNamedPortByPod(pod *v1.Pod) {
 			}
 			n.namedPortMap[ns][port.Name] = &util.NamedPortInfo{
 				PortId: port.ContainerPort,
-				Pods:   map[string]struct{}{podName: {}},
+				Pods:   strset.New(podName),
 			}
 		}
 	}
@@ -113,12 +113,12 @@ func (n *NamedPort) DeleteNamedPortByPod(pod *v1.Pod) {
 				continue
 			}
 
-			if _, ok := n.namedPortMap[ns][port.Name].Pods[podName]; !ok {
+			if !n.namedPortMap[ns][port.Name].Pods.Has(podName) {
 				continue
 			}
 
-			delete(n.namedPortMap[ns][port.Name].Pods, podName)
-			if len(n.namedPortMap[ns][port.Name].Pods) == 0 {
+			n.namedPortMap[ns][port.Name].Pods.Remove(podName)
+			if n.namedPortMap[ns][port.Name].Pods.Size() == 0 {
 				delete(n.namedPortMap[ns], port.Name)
 				if len(n.namedPortMap[ns]) == 0 {
 					delete(n.namedPortMap, ns)
@@ -1002,13 +1002,13 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) error {
 	podName := c.getNameByPod(pod)
 	key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
-	targetPortNameList := make(map[string]struct{})
+	targetPortNameList := strset.NewWithSize(len(podNets))
 	portsNeedToDel := []string{}
 	subnetUsedByPort := make(map[string]string)
 
 	for _, podNet := range podNets {
 		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-		targetPortNameList[portName] = struct{}{}
+		targetPortNameList.Add(portName)
 	}
 
 	ports, err := c.ovnClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": key})
@@ -1018,7 +1018,7 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) error {
 	}
 
 	for _, port := range ports {
-		if _, ok := targetPortNameList[port.Name]; !ok {
+		if !targetPortNameList.Has(port.Name) {
 			portsNeedToDel = append(portsNeedToDel, port.Name)
 			subnetUsedByPort[port.Name] = port.ExternalIDs["ls"]
 		}

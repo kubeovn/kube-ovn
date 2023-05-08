@@ -7,6 +7,7 @@ import (
 
 	"github.com/ovn-org/libovsdb/client"
 	"github.com/ovn-org/libovsdb/ovsdb"
+	"github.com/scylladb/go-set/strset"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -324,33 +325,25 @@ func (c *ovnClient) SetLogicalSwitchPortSecurityGroup(lsp *ovnnb.LogicalSwitchPo
 	for _, sgName := range sgs {
 		associatedSgKey := associatedSgKeyPrefix + sgName
 		if op == "add" {
-			if _, ok := oldSgs[sgName]; ok {
+			if oldSgs.Has(sgName) {
 				continue // ignore existent
 			}
 
 			lsp.ExternalIDs[associatedSgKey] = "true"
-			oldSgs[sgName] = struct{}{}
+			oldSgs.Add(sgName)
 			diffSgs = append(diffSgs, sgName)
 		} else {
-			if _, ok := oldSgs[sgName]; !ok {
+			if !oldSgs.Has(sgName) {
 				continue // ignore non-existent
 			}
 
 			lsp.ExternalIDs[associatedSgKey] = "false"
-			delete(oldSgs, sgName)
+			oldSgs.Remove(sgName)
 			diffSgs = append(diffSgs, sgName)
 		}
 	}
 
-	newSgs := ""
-	for sg := range oldSgs {
-		if len(newSgs) != 0 {
-			newSgs += "/" + sg
-		} else {
-			newSgs = sg
-		}
-	}
-
+	newSgs := strings.Join(oldSgs.List(), "/")
 	lsp.ExternalIDs[sgsKey] = newSgs
 	if len(newSgs) == 0 { // when all sgs had been removed, delete sgsKey
 		delete(lsp.ExternalIDs, sgsKey)
@@ -645,16 +638,13 @@ func logicalSwitchPortFilter(needVendorFilter bool, externalIDs map[string]strin
 }
 
 // getLogicalSwitchPortSgs get logical switch port security group
-func getLogicalSwitchPortSgs(lsp *ovnnb.LogicalSwitchPort) map[string]struct{} {
-	if lsp == nil {
-		return nil
-	}
-
-	sgs := make(map[string]struct{})
-	for key, value := range lsp.ExternalIDs {
-		if strings.HasPrefix(key, associatedSgKeyPrefix) && value == "true" {
-			sgName := strings.ReplaceAll(key, associatedSgKeyPrefix, "")
-			sgs[sgName] = struct{}{}
+func getLogicalSwitchPortSgs(lsp *ovnnb.LogicalSwitchPort) *strset.Set {
+	sgs := strset.New()
+	if lsp != nil {
+		for key, value := range lsp.ExternalIDs {
+			if strings.HasPrefix(key, associatedSgKeyPrefix) && value == "true" {
+				sgs.Add(strings.ReplaceAll(key, associatedSgKeyPrefix, ""))
+			}
 		}
 	}
 
