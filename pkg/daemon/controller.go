@@ -66,7 +66,7 @@ type Controller struct {
 }
 
 // NewController init a daemon controller
-func NewController(config *Configuration, podInformerFactory informers.SharedInformerFactory, nodeInformerFactory informers.SharedInformerFactory, kubeovnInformerFactory kubeovninformer.SharedInformerFactory) (*Controller, error) {
+func NewController(config *Configuration, stopCh <-chan struct{}, podInformerFactory informers.SharedInformerFactory, nodeInformerFactory informers.SharedInformerFactory, kubeovnInformerFactory kubeovninformer.SharedInformerFactory) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: config.KubeClient.CoreV1().Events("")})
@@ -112,6 +112,16 @@ func NewController(config *Configuration, podInformerFactory informers.SharedInf
 
 	if err = controller.initRuntime(); err != nil {
 		return nil, err
+	}
+
+	podInformerFactory.Start(stopCh)
+	nodeInformerFactory.Start(stopCh)
+	kubeovnInformerFactory.Start(stopCh)
+
+	if !cache.WaitForCacheSync(stopCh,
+		controller.providerNetworksSynced, controller.subnetsSynced,
+		controller.podsSynced, controller.nodesSynced) {
+		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
 	}
 
 	if _, err = providerNetworkInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -589,10 +599,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(recompute, 10*time.Minute, stopCh)
 	go wait.Until(rotateLog, 1*time.Hour, stopCh)
 	go wait.Until(c.operateMod, 10*time.Second, stopCh)
-
-	if ok := cache.WaitForCacheSync(stopCh, c.providerNetworksSynced, c.subnetsSynced, c.podsSynced, c.nodesSynced); !ok {
-		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
-	}
 
 	if err := c.setIPSet(); err != nil {
 		util.LogFatalAndExit(err, "failed to set ipsets")
