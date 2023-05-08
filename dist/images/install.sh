@@ -19,6 +19,7 @@ ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-true}
 CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
 ENABLE_LB_SVC=${ENABLE_LB_SVC:-false}
 ENABLE_KEEP_VM_IP=${ENABLE_KEEP_VM_IP:-true}
+
 # exchange link names of OVS bridge and the provider nic
 # in the default provider-network
 EXCHANGE_LINK_NAME=${EXCHANGE_LINK_NAME:-false}
