@@ -27,6 +27,7 @@ func (c *Controller) enqueueAddVirtualIp(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
+	klog.V(3).Infof("enqueue add vip %s", key)
 	c.addVirtualIpQueue.Add(key)
 }
 
@@ -44,6 +45,7 @@ func (c *Controller) enqueueUpdateVirtualIp(old, new interface{}) {
 		oldVip.Spec.ParentMac != newVip.Spec.ParentMac ||
 		oldVip.Spec.ParentV4ip != newVip.Spec.ParentV4ip ||
 		oldVip.Spec.V4ip != newVip.Spec.V4ip {
+		klog.V(3).Infof("enqueue update vip %s", key)
 		c.updateVirtualIpQueue.Add(key)
 	}
 }
@@ -55,9 +57,9 @@ func (c *Controller) enqueueDelVirtualIp(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	c.delVirtualIpQueue.Add(key)
-	vipObj := obj.(*kubeovnv1.Vip)
-	c.updateSubnetStatusQueue.Add(vipObj.Spec.Subnet)
+	klog.V(3).Infof("enqueue del vip %s", key)
+	vip := obj.(*kubeovnv1.Vip)
+	c.delVirtualIpQueue.Add(vip)
 }
 
 func (c *Controller) runAddVirtualIpWorker() {
@@ -141,16 +143,16 @@ func (c *Controller) processNextDeleteVirtualIpWorkItem() bool {
 
 	err := func(obj interface{}) error {
 		defer c.delVirtualIpQueue.Done(obj)
-		var key string
+		var vip *kubeovnv1.Vip
 		var ok bool
-		if key, ok = obj.(string); !ok {
+		if vip, ok = obj.(*kubeovnv1.Vip); !ok {
 			c.delVirtualIpQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
+			utilruntime.HandleError(fmt.Errorf("expected vip in workqueue but got %#v", obj))
 			return nil
 		}
-		if err := c.handleDelVirtualIp(key); err != nil {
-			c.delVirtualIpQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		if err := c.handleDelVirtualIp(vip); err != nil {
+			c.delVirtualIpQueue.AddRateLimited(obj)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", vip.Name, err.Error())
 		}
 		c.delVirtualIpQueue.Forget(obj)
 		return nil
@@ -260,9 +262,10 @@ func (c *Controller) handleUpdateVirtualIp(key string) error {
 	return nil
 }
 
-func (c *Controller) handleDelVirtualIp(key string) error {
-	klog.V(3).Infof("release vip %s", key)
-	c.ipam.ReleaseAddressByPod(key)
+func (c *Controller) handleDelVirtualIp(vip *kubeovnv1.Vip) error {
+	klog.V(3).Infof("delete vip %s", vip.Name)
+	c.ipam.ReleaseAddressByPod(vip.Name)
+	c.updateSubnetStatusQueue.Add(vip.Spec.Subnet)
 	return nil
 }
 
