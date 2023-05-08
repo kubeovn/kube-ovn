@@ -73,13 +73,10 @@ func CmdMain() {
 		kubeovninformer.WithTweakListOptions(func(listOption *v1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}))
-	ctl, err := daemon.NewController(config, podInformerFactory, nodeInformerFactory, kubeovnInformerFactory)
+	ctl, err := daemon.NewController(config, stopCh, podInformerFactory, nodeInformerFactory, kubeovnInformerFactory)
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to create controller")
 	}
-	podInformerFactory.Start(stopCh)
-	nodeInformerFactory.Start(stopCh)
-	kubeovnInformerFactory.Start(stopCh)
 	klog.Info("start daemon controller")
 	go ctl.Run(stopCh)
 	go daemon.RunServer(config, ctl)
