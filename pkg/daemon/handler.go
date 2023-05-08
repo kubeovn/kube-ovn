@@ -226,10 +226,11 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			u2oInterconnectionIP = podSubnet.Status.U2OInterconnectionIP
 		}
 
-		detectIPConflict := podSubnet.Spec.Vlan != ""
+		subnetHasVlan := podSubnet.Spec.Vlan != ""
+		detectIPConflict := csh.Config.EnableArpDetectIPConflict && subnetHasVlan
 		// skip ping check gateway for pods during live migration
 		if pod.Annotations[fmt.Sprintf(util.LiveMigrationAnnotationTemplate, podRequest.Provider)] != "true" {
-			if podSubnet.Spec.Vlan != "" && !podSubnet.Spec.LogicalGateway {
+			if subnetHasVlan && !podSubnet.Spec.LogicalGateway {
 				if podSubnet.Spec.DisableGatewayCheck {
 					gatewayCheckMode = gatewayCheckModeArpingNotConcerned
 				} else {

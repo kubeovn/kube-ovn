@@ -29,34 +29,35 @@ import (
 // Configuration is the daemon conf
 type Configuration struct {
 	// interface being used for tunnel
-	tunnelIface             string
-	Iface                   string
-	DPDKTunnelIface         string
-	MTU                     int
-	MSS                     int
-	EnableMirror            bool
-	MirrorNic               string
-	BindSocket              string
-	OvsSocket               string
-	KubeConfigFile          string
-	KubeClient              kubernetes.Interface
-	KubeOvnClient           clientset.Interface
-	NodeName                string
-	ServiceClusterIPRange   string
-	NodeSwitch              string
-	EncapChecksum           bool
-	EnablePprof             bool
-	MacLearningFallback     bool
-	PprofPort               int
-	NetworkType             string
-	CniConfDir              string
-	CniConfFile             string
-	CniConfName             string
-	DefaultProviderName     string
-	DefaultInterfaceName    string
-	ExternalGatewayConfigNS string
-	ExternalGatewaySwitch   string // provider network underlay vlan subnet
-	EnableMetrics           bool
+	tunnelIface               string
+	Iface                     string
+	DPDKTunnelIface           string
+	MTU                       int
+	MSS                       int
+	EnableMirror              bool
+	MirrorNic                 string
+	BindSocket                string
+	OvsSocket                 string
+	KubeConfigFile            string
+	KubeClient                kubernetes.Interface
+	KubeOvnClient             clientset.Interface
+	NodeName                  string
+	ServiceClusterIPRange     string
+	NodeSwitch                string
+	EncapChecksum             bool
+	EnablePprof               bool
+	MacLearningFallback       bool
+	PprofPort                 int
+	NetworkType               string
+	CniConfDir                string
+	CniConfFile               string
+	CniConfName               string
+	DefaultProviderName       string
+	DefaultInterfaceName      string
+	ExternalGatewayConfigNS   string
+	ExternalGatewaySwitch     string // provider network underlay vlan subnet
+	EnableMetrics             bool
+	EnableArpDetectIPConflict bool
 }
 
 // ParseFlags will parse cmd args then init kubeClient and configuration
@@ -79,15 +80,16 @@ func ParseFlags() *Configuration {
 		argPprofPort             = pflag.Int("pprof-port", 10665, "The port to get profiling data")
 		argMacLearningFallback   = pflag.Bool("mac-learning-fallback", false, "Fallback to the legacy MAC learning mode")
 
-		argsNetworkType            = pflag.String("network-type", util.NetworkTypeGeneve, "Tunnel encapsulation protocol in overlay networks")
-		argCniConfDir              = pflag.String("cni-conf-dir", "/etc/cni/net.d", "Path of the CNI config directory.")
-		argCniConfFile             = pflag.String("cni-conf-file", "/kube-ovn/01-kube-ovn.conflist", "Path of the CNI config file.")
-		argsCniConfName            = pflag.String("cni-conf-name", "01-kube-ovn.conflist", "Specify the name of kube ovn conflist name in dir /etc/cni/net.d/, default: 01-kube-ovn.conflist")
-		argsDefaultProviderName    = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name")
-		argsDefaultInterfaceName   = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
-		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
-		argExternalGatewaySwitch   = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
-		argEnableMetrics           = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
+		argsNetworkType              = pflag.String("network-type", util.NetworkTypeGeneve, "Tunnel encapsulation protocol in overlay networks")
+		argCniConfDir                = pflag.String("cni-conf-dir", "/etc/cni/net.d", "Path of the CNI config directory.")
+		argCniConfFile               = pflag.String("cni-conf-file", "/kube-ovn/01-kube-ovn.conflist", "Path of the CNI config file.")
+		argsCniConfName              = pflag.String("cni-conf-name", "01-kube-ovn.conflist", "Specify the name of kube ovn conflist name in dir /etc/cni/net.d/, default: 01-kube-ovn.conflist")
+		argsDefaultProviderName      = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name")
+		argsDefaultInterfaceName     = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
+		argExternalGatewayConfigNS   = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
+		argExternalGatewaySwitch     = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
+		argEnableMetrics             = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
+		argEnableArpDetectIPConflict = pflag.Bool("enable-arp-detect-ip-conflict", true, "Whether to support arp detect ip conflict in vlan network")
 	)
 
 	// mute info log for ipset lib
@@ -112,30 +114,31 @@ func ParseFlags() *Configuration {
 	pflag.Parse()
 
 	config := &Configuration{
-		Iface:                   *argIface,
-		DPDKTunnelIface:         *argDPDKTunnelIface,
-		MTU:                     *argMTU,
-		EnableMirror:            *argEnableMirror,
-		MirrorNic:               *argMirrorNic,
-		BindSocket:              *argBindSocket,
-		OvsSocket:               *argOvsSocket,
-		KubeConfigFile:          *argKubeConfigFile,
-		EnablePprof:             *argEnablePprof,
-		PprofPort:               *argPprofPort,
-		MacLearningFallback:     *argMacLearningFallback,
-		NodeName:                strings.ToLower(*argNodeName),
-		ServiceClusterIPRange:   *argServiceClusterIPRange,
-		NodeSwitch:              *argNodeSwitch,
-		EncapChecksum:           *argEncapChecksum,
-		NetworkType:             *argsNetworkType,
-		CniConfDir:              *argCniConfDir,
-		CniConfFile:             *argCniConfFile,
-		CniConfName:             *argsCniConfName,
-		DefaultProviderName:     *argsDefaultProviderName,
-		DefaultInterfaceName:    *argsDefaultInterfaceName,
-		ExternalGatewayConfigNS: *argExternalGatewayConfigNS,
-		ExternalGatewaySwitch:   *argExternalGatewaySwitch,
-		EnableMetrics:           *argEnableMetrics,
+		Iface:                     *argIface,
+		DPDKTunnelIface:           *argDPDKTunnelIface,
+		MTU:                       *argMTU,
+		EnableMirror:              *argEnableMirror,
+		MirrorNic:                 *argMirrorNic,
+		BindSocket:                *argBindSocket,
+		OvsSocket:                 *argOvsSocket,
+		KubeConfigFile:            *argKubeConfigFile,
+		EnablePprof:               *argEnablePprof,
+		PprofPort:                 *argPprofPort,
+		MacLearningFallback:       *argMacLearningFallback,
+		NodeName:                  strings.ToLower(*argNodeName),
+		ServiceClusterIPRange:     *argServiceClusterIPRange,
+		NodeSwitch:                *argNodeSwitch,
+		EncapChecksum:             *argEncapChecksum,
+		NetworkType:               *argsNetworkType,
+		CniConfDir:                *argCniConfDir,
+		CniConfFile:               *argCniConfFile,
+		CniConfName:               *argsCniConfName,
+		DefaultProviderName:       *argsDefaultProviderName,
+		DefaultInterfaceName:      *argsDefaultInterfaceName,
+		ExternalGatewayConfigNS:   *argExternalGatewayConfigNS,
+		ExternalGatewaySwitch:     *argExternalGatewaySwitch,
+		EnableMetrics:             *argEnableMetrics,
+		EnableArpDetectIPConflict: *argEnableArpDetectIPConflict,
 	}
 	return config
 }
