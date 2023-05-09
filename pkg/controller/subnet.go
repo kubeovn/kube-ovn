@@ -9,21 +9,21 @@ import (
 	"strings"
 	"time"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ipam"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/ovn-org/libovsdb/ovsdb"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ipam"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (c *Controller) enqueueAddSubnet(obj interface{}) {
@@ -512,9 +512,8 @@ func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason string, e
 }
 
 func (c *Controller) handleAddOrUpdateSubnet(key string) error {
-	var err error
-	c.subnetStatusKeyMutex.Lock(key)
-	defer c.subnetStatusKeyMutex.Unlock(key)
+	c.subnetStatusKeyMutex.LockKey(key)
+	defer func() { _ = c.subnetStatusKeyMutex.UnlockKey(key) }()
 
 	cachedSubnet, err := c.subnetsLister.Get(key)
 	if err != nil {
@@ -530,7 +529,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
-	subnet, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), key, metav1.GetOptions{})
+	subnet, err = c.subnetsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -786,8 +785,8 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 }
 
 func (c *Controller) handleUpdateSubnetStatus(key string) error {
-	c.subnetStatusKeyMutex.Lock(key)
-	defer c.subnetStatusKeyMutex.Unlock(key)
+	c.subnetStatusKeyMutex.LockKey(key)
+	defer func() { _ = c.subnetStatusKeyMutex.UnlockKey(key) }()
 
 	cachedSubnet, err := c.subnetsLister.Get(key)
 	subnet := cachedSubnet.DeepCopy()
@@ -1139,7 +1138,7 @@ func (c *Controller) reconcileVpcUseBfdStaticRoute(vpcName, subnetName string) e
 		klog.Errorf("failed to get subnet %s, %v", subnetName, err)
 		return err
 	}
-	vpc, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Get(context.Background(), vpcName, metav1.GetOptions{})
+	vpc, err := c.vpcsLister.Get(vpcName)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -1148,7 +1147,7 @@ func (c *Controller) reconcileVpcUseBfdStaticRoute(vpcName, subnetName string) e
 		return err
 	}
 	lrpEipName := fmt.Sprintf("%s-%s", vpcName, c.config.ExternalGatewaySwitch)
-	lrpEip, err := c.config.KubeOvnClient.KubeovnV1().OvnEips().Get(context.Background(), lrpEipName, metav1.GetOptions{})
+	lrpEip, err := c.ovnEipsLister.Get(lrpEipName)
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
 			klog.Error(err)
@@ -1227,7 +1226,7 @@ func (c *Controller) reconcileVpcAddNormalStaticRoute(vpcName string) error {
 	}
 	gatewayV4, gatewayV6 := util.SplitStringIP(defualtExternalSubnet.Spec.Gateway)
 	needUpdate := false
-	vpc, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Get(context.Background(), vpcName, metav1.GetOptions{})
+	vpc, err := c.vpcsLister.Get(vpcName)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -1309,7 +1308,7 @@ func (c *Controller) reconcileVpcDelNormalStaticRoute(vpcName string) error {
 	}
 	gatewayV4, gatewayV6 := util.SplitStringIP(defualtExternalSubnet.Spec.Gateway)
 	needUpdate := false
-	vpc, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Get(context.Background(), vpcName, metav1.GetOptions{})
+	vpc, err := c.vpcsLister.Get(vpcName)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -1867,9 +1866,7 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		return err
 	}
 	// Get the number of pods, not ips. For one pod with two ip(v4 & v6) in dual-stack, num of Items is 1
-	podUsedIPs, err := c.config.KubeOvnClient.KubeovnV1().IPs().List(context.Background(), metav1.ListOptions{
-		LabelSelector: fields.OneTermEqualSelector(subnet.Name, "").String(),
-	})
+	podUsedIPs, err := c.ipsLister.List(labels.SelectorFromSet(labels.Set{subnet.Name: ""}))
 	if err != nil {
 		return err
 	}
@@ -1885,17 +1882,16 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	v4availableIPs := util.AddressCount(v4CIDR) - util.CountIpNums(v4toSubIPs)
 	v6availableIPs := util.AddressCount(v6CIDR) - util.CountIpNums(v6toSubIPs)
 
-	usingIPs := float64(len(podUsedIPs.Items))
+	usingIPs := float64(len(podUsedIPs))
 
-	vipSelectors := fields.AndSelectors(fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name),
-		fields.OneTermEqualSelector(util.IpReservedLabel, "")).String()
-	vips, err := c.config.KubeOvnClient.KubeovnV1().Vips().List(context.Background(), metav1.ListOptions{
-		LabelSelector: vipSelectors,
-	})
+	vips, err := c.virtualIpsLister.List(labels.SelectorFromSet(labels.Set{
+		util.SubnetNameLabel: subnet.Name,
+		util.IpReservedLabel: "",
+	}))
 	if err != nil {
 		return err
 	}
-	usingIPs += float64(len(vips.Items))
+	usingIPs += float64(len(vips))
 
 	if !isOvnSubnet(subnet) {
 		eips, err := c.iptablesEipsLister.List(
@@ -1949,25 +1945,22 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	if err != nil {
 		return err
 	}
-	podUsedIPs, err := c.config.KubeOvnClient.KubeovnV1().IPs().List(context.Background(), metav1.ListOptions{
-		LabelSelector: fields.OneTermEqualSelector(subnet.Name, "").String(),
-	})
+	podUsedIPs, err := c.ipsLister.List(labels.SelectorFromSet(labels.Set{subnet.Name: ""}))
 	if err != nil {
 		return err
 	}
 	// gateway always in excludeIPs
 	toSubIPs := util.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
 	availableIPs := util.AddressCount(cidr) - util.CountIpNums(toSubIPs)
-	usingIPs := float64(len(podUsedIPs.Items))
-	vipSelectors := fields.AndSelectors(fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name),
-		fields.OneTermEqualSelector(util.IpReservedLabel, "")).String()
-	vips, err := c.config.KubeOvnClient.KubeovnV1().Vips().List(context.Background(), metav1.ListOptions{
-		LabelSelector: vipSelectors,
-	})
+	usingIPs := float64(len(podUsedIPs))
+	vips, err := c.virtualIpsLister.List(labels.SelectorFromSet(labels.Set{
+		util.SubnetNameLabel: subnet.Name,
+		util.IpReservedLabel: "",
+	}))
 	if err != nil {
 		return err
 	}
-	usingIPs += float64(len(vips.Items))
+	usingIPs += float64(len(vips))
 	if !isOvnSubnet(subnet) {
 		eips, err := c.iptablesEipsLister.List(
 			labels.SelectorFromSet(labels.Set{util.SubnetNameLabel: subnet.Name}))

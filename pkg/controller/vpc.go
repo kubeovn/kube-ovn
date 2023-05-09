@@ -224,7 +224,7 @@ func (c *Controller) addLoadBalancer(vpc string) (*VpcLoadBalancer, error) {
 
 func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	// get latest vpc info
-	cachedVpc, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Get(context.Background(), key, metav1.GetOptions{})
+	cachedVpc, err := c.vpcsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -856,7 +856,7 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 }
 
 func (c *Controller) handleDeleteVpcStaticRoute(key string) error {
-	vpc, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Get(context.Background(), key, metav1.GetOptions{})
+	vpc, err := c.vpcsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil

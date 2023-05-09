@@ -227,8 +227,9 @@ func (c *Controller) updateDenyAllSgPorts() error {
 }
 
 func (c *Controller) handleAddOrUpdateSg(key string) error {
-	c.sgKeyMutex.Lock(key)
-	defer c.sgKeyMutex.Unlock(key)
+	c.sgKeyMutex.LockKey(key)
+	defer func() { _ = c.sgKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle add/update security group %s", key)
 
 	// set 'deny all' for port associated with security group
 	if key == util.DenyAllSecurityGroup {
@@ -394,8 +395,9 @@ func (c *Controller) patchSgStatus(sg *kubeovnv1.SecurityGroup) {
 }
 
 func (c *Controller) handleDeleteSg(key string) error {
-	c.sgKeyMutex.Lock(key)
-	defer c.sgKeyMutex.Unlock(key)
+	c.sgKeyMutex.LockKey(key)
+	defer func() { _ = c.sgKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle delete security group %s", key)
 
 	if err := c.ovnClient.DeleteSecurityGroup(key); err != nil {
 		klog.Errorf("delete sg %s: %v", key, err)
@@ -406,8 +408,9 @@ func (c *Controller) handleDeleteSg(key string) error {
 }
 
 func (c *Controller) syncSgLogicalPort(key string) error {
-	c.sgKeyMutex.Lock(key)
-	defer c.sgKeyMutex.Unlock(key)
+	c.sgKeyMutex.LockKey(key)
+	defer func() { _ = c.sgKeyMutex.UnlockKey(key) }()
+	klog.Infof("sync lsp for security group %s", key)
 
 	sg, err := c.sgsLister.Get(key)
 	if err != nil {

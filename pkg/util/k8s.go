@@ -8,6 +8,8 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/klog/v2"
 )
 
@@ -51,4 +53,16 @@ func ServiceClusterIPs(svc v1.Service) []string {
 		ips = []string{svc.Spec.ClusterIP}
 	}
 	return ips
+}
+
+func LabelSelectorNotEquals(key, value string) (labels.Selector, error) {
+	requirement, err := labels.NewRequirement(key, selection.NotEquals, []string{value})
+	if err != nil {
+		return nil, err
+	}
+	return labels.Everything().Add(*requirement), nil
+}
+
+func LabelSelectorNotEmpty(key string) (labels.Selector, error) {
+	return LabelSelectorNotEquals(key, "")
 }

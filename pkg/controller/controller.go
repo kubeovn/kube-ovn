@@ -3,10 +3,10 @@ package controller
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"sync"
 	"time"
 
-	"github.com/neverlee/keymutex"
 	"golang.org/x/time/rate"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -22,6 +22,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/keymutex"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
@@ -63,7 +64,7 @@ type Controller struct {
 	addOrUpdatePodQueue    workqueue.RateLimitingInterface
 	deletePodQueue         workqueue.RateLimitingInterface
 	updatePodSecurityQueue workqueue.RateLimitingInterface
-	podKeyMutex            *keymutex.KeyMutex
+	podKeyMutex            keymutex.KeyMutex
 
 	vpcsLister           kubeovnlister.VpcLister
 	vpcSynced            cache.InformerSynced
@@ -81,7 +82,7 @@ type Controller struct {
 	updateVpcDnatQueue            workqueue.RateLimitingInterface
 	updateVpcSnatQueue            workqueue.RateLimitingInterface
 	updateVpcSubnetQueue          workqueue.RateLimitingInterface
-	vpcNatGwKeyMutex              *keymutex.KeyMutex
+	vpcNatGwKeyMutex              keymutex.KeyMutex
 
 	switchLBRuleLister      kubeovnlister.SwitchLBRuleLister
 	switchLBRuleSynced      cache.InformerSynced
@@ -101,7 +102,7 @@ type Controller struct {
 	deleteRouteQueue        workqueue.RateLimitingInterface
 	updateSubnetStatusQueue workqueue.RateLimitingInterface
 	syncVirtualPortsQueue   workqueue.RateLimitingInterface
-	subnetStatusKeyMutex    *keymutex.KeyMutex
+	subnetStatusKeyMutex    keymutex.KeyMutex
 
 	ipsLister kubeovnlister.IPLister
 	ipSynced  cache.InformerSynced
@@ -208,14 +209,14 @@ type Controller struct {
 	npsSynced     cache.InformerSynced
 	updateNpQueue workqueue.RateLimitingInterface
 	deleteNpQueue workqueue.RateLimitingInterface
-	npKeyMutex    *keymutex.KeyMutex
+	npKeyMutex    keymutex.KeyMutex
 
 	sgsLister          kubeovnlister.SecurityGroupLister
 	sgSynced           cache.InformerSynced
 	addOrUpdateSgQueue workqueue.RateLimitingInterface
 	delSgQueue         workqueue.RateLimitingInterface
 	syncSgPortsQueue   workqueue.RateLimitingInterface
-	sgKeyMutex         *keymutex.KeyMutex
+	sgKeyMutex         keymutex.KeyMutex
 
 	qosPoliciesLister    kubeovnlister.QoSPolicyLister
 	qosPolicySynced      cache.InformerSynced
@@ -287,6 +288,10 @@ func Run(ctx context.Context, config *Configuration) {
 	ovnSnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnSnatRules()
 	ovnDnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnDnatRules()
 
+	numKeyLocks := runtime.NumCPU() * 2
+	if numKeyLocks < config.WorkerNum*2 {
+		numKeyLocks = config.WorkerNum * 2
+	}
 	controller := &Controller{
 		config:          config,
 		vpcs:            &sync.Map{},
@@ -311,7 +316,7 @@ func Run(ctx context.Context, config *Configuration) {
 		updateVpcDnatQueue:            workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateVpcDnat"),
 		updateVpcSnatQueue:            workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateVpcSnat"),
 		updateVpcSubnetQueue:          workqueue.NewNamedRateLimitingQueue(custCrdRateLimiter, "UpdateVpcSubnet"),
-		vpcNatGwKeyMutex:              keymutex.New(97),
+		vpcNatGwKeyMutex:              keymutex.NewHashed(numKeyLocks),
 
 		subnetsLister:           subnetInformer.Lister(),
 		subnetSynced:            subnetInformer.Informer().HasSynced,
@@ -320,7 +325,7 @@ func Run(ctx context.Context, config *Configuration) {
 		deleteRouteQueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteRoute"),
 		updateSubnetStatusQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateSubnetStatus"),
 		syncVirtualPortsQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "SyncVirtualPort"),
-		subnetStatusKeyMutex:    keymutex.New(97),
+		subnetStatusKeyMutex:    keymutex.NewHashed(numKeyLocks),
 
 		ipsLister: ipInformer.Lister(),
 		ipSynced:  ipInformer.Informer().HasSynced,
@@ -377,12 +382,15 @@ func Run(ctx context.Context, config *Configuration) {
 		providerNetworksLister: providerNetworkInformer.Lister(),
 		providerNetworkSynced:  providerNetworkInformer.Informer().HasSynced,
 
-		podsLister:             podInformer.Lister(),
-		podsSynced:             podInformer.Informer().HasSynced,
-		addOrUpdatePodQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddOrUpdatePod"),
-		deletePodQueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeletePod"),
+		podsLister:          podInformer.Lister(),
+		podsSynced:          podInformer.Informer().HasSynced,
+		addOrUpdatePodQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddOrUpdatePod"),
+		deletePodQueue: workqueue.NewRateLimitingQueueWithDelayingInterface(
+			workqueue.NewNamedDelayingQueue("DeletePod"),
+			workqueue.DefaultControllerRateLimiter(),
+		),
 		updatePodSecurityQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdatePodSecurity"),
-		podKeyMutex:            keymutex.New(97),
+		podKeyMutex:            keymutex.NewHashed(numKeyLocks),
 
 		namespacesLister:  namespaceInformer.Lister(),
 		namespacesSynced:  namespaceInformer.Informer().HasSynced,
@@ -413,7 +421,7 @@ func Run(ctx context.Context, config *Configuration) {
 		configMapsLister: configMapInformer.Lister(),
 		configMapsSynced: configMapInformer.Informer().HasSynced,
 
-		sgKeyMutex:         keymutex.New(97),
+		sgKeyMutex:         keymutex.NewHashed(numKeyLocks),
 		sgsLister:          sgInformer.Lister(),
 		sgSynced:           sgInformer.Informer().HasSynced,
 		addOrUpdateSgQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateSg"),
@@ -474,7 +482,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.npsSynced = npInformer.Informer().HasSynced
 		controller.updateNpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateNp")
 		controller.deleteNpQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteNp")
-		controller.npKeyMutex = keymutex.New(97)
+		controller.npKeyMutex = keymutex.NewHashed(128)
 	}
 
 	defer controller.shutdown()
