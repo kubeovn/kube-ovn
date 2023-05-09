@@ -281,7 +281,7 @@ trace(){
 
   if [ "$type" != "arp" -o "$4" = "reply" ]; then
     # need destination mac
-    if [ -z "dstMac" ]; then
+    if [ -z "$dstMac" ]; then
       if ipIsInCidr $dst $cidr; then
         set +o pipefail
         if [ $af -eq 4 ]; then
