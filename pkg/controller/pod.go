@@ -697,6 +697,8 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 		}
 	}
 
+	c.ipam.ReleaseAddressByPod(key)
+
 	for _, port := range ports {
 		sgs, err := c.getPortSg(&port)
 		if err != nil {
@@ -723,7 +725,6 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 			klog.Errorf("failed to delete attach ip for pod %v, %v, please delete attach ip manually", pod.Name, err)
 		}
 	}
-	c.ipam.ReleaseAddressByPod(key)
 	return nil
 }
 
