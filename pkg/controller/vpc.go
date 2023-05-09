@@ -341,10 +341,6 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 	}
 
-	if vpc.Name == c.config.ClusterRouter && vpc.Spec.EnableExternal {
-		// custom vpc enable external, just like default vpc with enable eip and snat above
-		targetRoutes = vpc.Spec.StaticRoutes
-	}
 	routeNeedDel, routeNeedAdd, err := diffStaticRoute(existRoute, targetRoutes)
 	if err != nil {
 		klog.Errorf("failed to diff vpc %s static route, %v", vpc.Name, err)
