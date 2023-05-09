@@ -3,8 +3,10 @@ package controller
 import (
 	"context"
 	"fmt"
+	"net"
 	"reflect"
 	"sort"
+	"strings"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -337,7 +339,46 @@ func (c *Controller) reconcileEIPBandtithLimitRules(
 	return nil
 }
 
+func validateIPMatchValue(matachValue string) bool {
+	parts := strings.Split(matachValue, " ")
+	if len(parts) != 2 {
+		klog.Errorf("invalid ip MatchValue %s", matachValue)
+		return false
+	}
+
+	direction := parts[0]
+	if direction != "src" && direction != "dst" {
+		klog.Errorf("invalid direction %s, must be src or dst", direction)
+		return false
+	}
+
+	cidr := parts[1]
+	if _, _, err := net.ParseCIDR(cidr); err != nil {
+		klog.Errorf("invalid cidr %s", cidr)
+		return false
+	}
+	// invalid cidr
+	return true
+}
+
 func (c *Controller) validateQosPolicy(qosPolicy *kubeovnv1.QoSPolicy) error {
+	var err error
+	if qosPolicy.Spec.BandwidthLimitRules != nil {
+		for _, rule := range qosPolicy.Spec.BandwidthLimitRules {
+			if rule.MatchType == "ip" {
+				if !validateIPMatchValue(rule.MatchValue) {
+					err = fmt.Errorf("invalid ip MatchValue %s", rule.MatchValue)
+					klog.Error(err)
+					return err
+				}
+			}
+		}
+	}
+	if !qosPolicy.Spec.Shared && qosPolicy.Spec.BindingType == kubeovnv1.QoSBindingTypeNatGw {
+		err = fmt.Errorf("qos policy %s is not shared, but binding to nat gateway", qosPolicy.Name)
+		klog.Error(err)
+		return err
+	}
 	return nil
 }
 
@@ -354,17 +395,34 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 	}
 	// should delete
 	if !cachedQos.DeletionTimestamp.IsZero() {
-		eips, err := c.iptablesEipsLister.List(
-			labels.SelectorFromSet(labels.Set{util.QoSLabel: key}))
-		if err != nil {
-			klog.Errorf("failed to get eip list, %v", err)
-			return err
+		if cachedQos.Spec.BindingType == kubeovnv1.QoSBindingTypeEIP {
+			eips, err := c.iptablesEipsLister.List(
+				labels.SelectorFromSet(labels.Set{util.QoSLabel: key}))
+			if err != nil {
+				klog.Errorf("failed to get eip list, %v", err)
+				return err
+			}
+			if len(eips) != 0 {
+				err = fmt.Errorf("qos policy %s is being used", key)
+				klog.Error(err)
+				return err
+			}
 		}
-		if len(eips) != 0 {
-			err = fmt.Errorf("qos policy %s is being used", key)
-			klog.Error(err)
-			return err
+
+		if cachedQos.Spec.BindingType == kubeovnv1.QoSBindingTypeNatGw {
+			gws, err := c.vpcNatGatewayLister.List(
+				labels.SelectorFromSet(labels.Set{util.QoSLabel: key}))
+			if err != nil {
+				klog.Errorf("failed to get gw list, %v", err)
+				return err
+			}
+			if len(gws) != 0 {
+				err = fmt.Errorf("qos policy %s is being used", key)
+				klog.Error(err)
+				return err
+			}
 		}
+
 		if err = c.handleDelQoSPoliciesFinalizer(key); err != nil {
 			klog.Errorf("failed to handle del finalizer for qos %s, %v", key, err)
 			return err

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"regexp"
 	"strings"
 	"time"
@@ -41,6 +42,8 @@ const (
 	natGwSnatDel           = "snat-del"
 	natGwEipIngressQoSAdd  = "eip-ingress-qos-add"
 	natGwEipIngressQoSDel  = "eip-ingress-qos-del"
+	QoSAdd                 = "qos-add"
+	QoSDel                 = "qos-del"
 	natGwEipEgressQoSAdd   = "eip-egress-qos-add"
 	natGwEipEgressQoSDel   = "eip-egress-qos-del"
 	natGwSubnetFipAdd      = "floating-ip-add"
@@ -118,6 +121,7 @@ func (c *Controller) enqueueUpdateVpcNatGw(old, new interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
+	klog.V(3).Infof("enqueue update vpc-nat-gw %s", key)
 	c.addOrUpdateVpcNatGatewayQueue.Add(key)
 }
 
@@ -128,6 +132,7 @@ func (c *Controller) enqueueDeleteVpcNatGw(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
+	klog.V(3).Infof("enqueue del vpc-nat-gw %s", key)
 	c.delVpcNatGatewayQueue.Add(key)
 }
 
@@ -216,6 +221,27 @@ func (c *Controller) handleDelVpcNatGw(key string) error {
 	return nil
 }
 
+func isVpcNatGwChanged(gw *kubeovnv1.VpcNatGateway) bool {
+
+	if !reflect.DeepEqual(gw.Spec.ExternalSubnets, gw.Status.ExternalSubnets) {
+		gw.Status.ExternalSubnets = gw.Spec.ExternalSubnets
+		return true
+	}
+	if !reflect.DeepEqual(gw.Spec.Selector, gw.Status.Selector) {
+		gw.Status.Selector = gw.Spec.Selector
+		return true
+	}
+	if !reflect.DeepEqual(gw.Spec.Tolerations, gw.Status.Tolerations) {
+		gw.Status.Tolerations = gw.Spec.Tolerations
+		return true
+	}
+	if !reflect.DeepEqual(gw.Spec.Affinity, gw.Status.Affinity) {
+		gw.Status.Affinity = gw.Spec.Affinity
+		return true
+	}
+	return false
+}
+
 func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	// create nat gw statefulset
 	c.vpcNatGwKeyMutex.Lock(key)
@@ -243,6 +269,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 
 	// check or create statefulset
 	needToCreate := false
+	needToUpdate := false
 	oldSts, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
 		Get(context.Background(), genNatGwStsName(gw.Name), metav1.GetOptions{})
 
@@ -253,8 +280,10 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 			return err
 		}
 	}
-
 	newSts := c.genNatGwStatefulSet(gw, oldSts.DeepCopy())
+	if !needToCreate && isVpcNatGwChanged(gw) {
+		needToUpdate = true
+	}
 
 	if needToCreate {
 		// if pod create successfully, will add initVpcNatGatewayQueue
@@ -264,15 +293,50 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 			klog.Error(err)
 			return err
 		}
+		if err = c.patchNatGwStatus(key); err != nil {
+			klog.Errorf("failed to patch nat gw sts status for nat gw %s, %v", key, err)
+			return err
+		}
 		return nil
-	} else {
+	} else if needToUpdate {
 		if _, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
 			Update(context.Background(), newSts, metav1.UpdateOptions{}); err != nil {
 			err := fmt.Errorf("failed to update statefulset '%s', err: %v", newSts.Name, err)
 			klog.Error(err)
 			return err
 		}
+		if err = c.patchNatGwStatus(key); err != nil {
+			klog.Errorf("failed to patch nat gw sts status for nat gw %s, %v", key, err)
+			return err
+		}
+	} else {
+		// check if need to change qos
+		if gw.Spec.QoSPolicy != gw.Status.QoSPolicy {
+			if gw.Status.QoSPolicy != "" {
+				if err = c.execNatGwQoS(gw, gw.Status.QoSPolicy, QoSDel); err != nil {
+					klog.Errorf("failed to add qos for nat gw %s, %v", key, err)
+					return err
+				}
+			}
+			if gw.Spec.QoSPolicy != "" {
+				if err = c.execNatGwQoS(gw, gw.Spec.QoSPolicy, QoSAdd); err != nil {
+					klog.Errorf("failed to del qos for nat gw %s, %v", key, err)
+					return err
+				}
+			}
+			if err := c.updateCrdNatGwLabels(key, gw.Spec.QoSPolicy); err != nil {
+				err := fmt.Errorf("failed to update nat gw %s: %v", gw.Name, err)
+				klog.Error(err)
+				return err
+			}
+			// if update qos success, will update nat gw status
+			if err = c.patchNatGwQoSStatus(key, gw.Spec.QoSPolicy); err != nil {
+				klog.Errorf("failed to patch nat gw qos status for nat gw %s, %v", key, err)
+				return err
+			}
+		}
 	}
+
 	return nil
 }
 
@@ -294,12 +358,6 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 		v4Cidr = subnet.V4CIDR.String()
 	} else {
 		return fmt.Errorf("failed to get subnet %s", gw.Spec.Subnet)
-	}
-
-	if err := c.updateCrdNatGw(gw.Name); err != nil {
-		err := fmt.Errorf("failed to update nat gw %s: %v", gw.Name, err)
-		klog.Error(err)
-		return err
 	}
 
 	oriPod, err := c.getNatGwPod(key)
@@ -325,6 +383,27 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 		klog.Error(err)
 		return err
 	}
+
+	if gw.Spec.QoSPolicy != "" {
+		if err = c.execNatGwQoS(gw, gw.Spec.QoSPolicy, QoSAdd); err != nil {
+			klog.Errorf("failed to add qos for nat gw %s, %v", key, err)
+			return err
+		}
+	}
+	// if update qos success, will update nat gw status
+	if gw.Spec.QoSPolicy != gw.Status.QoSPolicy {
+		if err = c.patchNatGwQoSStatus(key, gw.Spec.QoSPolicy); err != nil {
+			klog.Errorf("failed to patch status for nat gw %s, %v", key, err)
+			return err
+		}
+	}
+
+	if err := c.updateCrdNatGwLabels(gw.Name, gw.Spec.QoSPolicy); err != nil {
+		err := fmt.Errorf("failed to update nat gw %s: %v", gw.Name, err)
+		klog.Error(err)
+		return err
+	}
+
 	c.updateVpcFloatingIpQueue.Add(key)
 	c.updateVpcDnatQueue.Add(key)
 	c.updateVpcSnatQueue.Add(key)
@@ -772,7 +851,7 @@ func (c *Controller) initCreateAt(key string) (err error) {
 	return nil
 }
 
-func (c *Controller) updateCrdNatGw(key string) error {
+func (c *Controller) updateCrdNatGwLabels(key string, qos string) error {
 	gw, err := c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Get(context.Background(), key, metav1.GetOptions{})
 	if err != nil {
 		errMsg := fmt.Errorf("failed to get vpc nat gw '%s', %v", key, err)
@@ -787,6 +866,7 @@ func (c *Controller) updateCrdNatGw(key string) error {
 		gw.Labels = map[string]string{
 			util.SubnetNameLabel: gw.Spec.Subnet,
 			util.VpcNameLabel:    gw.Spec.Vpc,
+			util.QoSLabel:        qos,
 		}
 		needUpdateLabel = true
 	} else {
@@ -798,6 +878,11 @@ func (c *Controller) updateCrdNatGw(key string) error {
 		if gw.Labels[util.VpcNameLabel] != gw.Spec.Vpc {
 			op = "replace"
 			gw.Labels[util.VpcNameLabel] = gw.Spec.Vpc
+			needUpdateLabel = true
+		}
+		if gw.Labels[util.QoSLabel] != qos {
+			op = "replace"
+			gw.Labels[util.QoSLabel] = qos
 			needUpdateLabel = true
 		}
 	}
@@ -827,4 +912,159 @@ func (c *Controller) getNatGw(router, subnet string) (string, error) {
 		return "", fmt.Errorf("no vpc nat gw found by selector %v", selectors)
 	}
 	return "", fmt.Errorf("too many nat gw")
+}
+
+func (c *Controller) patchNatGwQoSStatus(key, qos string) error {
+	// add qos label to vpc nat gw
+	var changed bool
+	oriGw, err := c.vpcNatGatewayLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to get vpc nat gw %s, %v", key, err)
+		return err
+	}
+	gw := oriGw.DeepCopy()
+
+	// update status.qosPolicy
+	if gw.Status.QoSPolicy != qos {
+		gw.Status.QoSPolicy = qos
+		changed = true
+	}
+
+	if changed {
+		bytes, err := gw.Status.Bytes()
+		if err != nil {
+			klog.Errorf("failed to marshal vpc nat gw %s status, %v", gw.Name, err)
+			return err
+		}
+		if _, err = c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Patch(context.Background(), gw.Name, types.MergePatchType,
+			bytes, metav1.PatchOptions{}, "status"); err != nil {
+			if k8serrors.IsNotFound(err) {
+				return nil
+			}
+			klog.Errorf("failed to patch gw %s, %v", gw.Name, err)
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) patchNatGwStatus(key string) error {
+	var changed bool
+	oriGw, err := c.vpcNatGatewayLister.Get(key)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to get vpc nat gw %s, %v", key, err)
+		return err
+	}
+	gw := oriGw.DeepCopy()
+
+	if !reflect.DeepEqual(gw.Spec.ExternalSubnets, gw.Status.ExternalSubnets) {
+		gw.Status.ExternalSubnets = gw.Spec.ExternalSubnets
+		changed = true
+	}
+	if !reflect.DeepEqual(gw.Spec.Selector, gw.Status.Selector) {
+		gw.Status.Selector = gw.Spec.Selector
+		changed = true
+	}
+	if !reflect.DeepEqual(gw.Spec.Tolerations, gw.Status.Tolerations) {
+		gw.Status.Tolerations = gw.Spec.Tolerations
+		changed = true
+	}
+	if !reflect.DeepEqual(gw.Spec.Affinity, gw.Status.Affinity) {
+		gw.Status.Affinity = gw.Spec.Affinity
+		changed = true
+	}
+
+	if changed {
+		bytes, err := gw.Status.Bytes()
+		if err != nil {
+			return err
+		}
+		if _, err = c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Patch(context.Background(), gw.Name, types.MergePatchType,
+			bytes, metav1.PatchOptions{}, "status"); err != nil {
+			if k8serrors.IsNotFound(err) {
+				return nil
+			}
+			klog.Errorf("failed to patch gw %s, %v", gw.Name, err)
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) execNatGwQoS(gw *kubeovnv1.VpcNatGateway, qos string, operation string) error {
+	var err error
+	qosPolicy, err := c.config.KubeOvnClient.KubeovnV1().QoSPolicies().Get(context.Background(), qos, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("get qos policy %s failed: %v", qos, err)
+		return err
+	}
+	if !qosPolicy.Status.Shared {
+		err := fmt.Errorf("not support unshared qos policy %s to related to gw", qos)
+		klog.Error(err)
+		return err
+	}
+	if qosPolicy.Status.BindingType != kubeovnv1.QoSBindingTypeNatGw {
+		err := fmt.Errorf("not support qos policy %s binding type %s to related to gw", qos, qosPolicy.Status.BindingType)
+		klog.Error(err)
+		return err
+	}
+	return c.execNatGwBandtithLimitRules(gw, qosPolicy.Status.BandwidthLimitRules, operation)
+}
+
+func (c *Controller) execNatGwBandtithLimitRules(gw *kubeovnv1.VpcNatGateway, rules kubeovnv1.QoSPolicyBandwidthLimitRules, operation string) error {
+	var err error
+	for _, rule := range rules {
+		if err = c.execNatGwQoSInPod(gw.Name, rule, operation); err != nil {
+			klog.Errorf("failed to %s ingress gw '%s' qos in pod, %v", operation, gw.Name, err)
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) execNatGwQoSInPod(
+	dp string, r *kubeovnv1.QoSPolicyBandwidthLimitRule, operation string) error {
+	gwPod, err := c.getNatGwPod(dp)
+	if err != nil {
+		klog.Errorf("failed to get nat gw pod, %v", err)
+		return err
+	}
+	var addRules []string
+	var classifierType, matchDirection, cidr string
+	if r.MatchType == "ip" {
+		classifierType = "u32"
+		// matchValue: dst xxx.xxx.xxx.xxx/32
+		splitStr := strings.Split(r.MatchValue, " ")
+		if len(splitStr) != 2 {
+			err := fmt.Errorf("matchValue %s format error", r.MatchValue)
+			klog.Error(err)
+			return err
+		}
+		matchDirection = splitStr[0]
+		cidr = splitStr[1]
+	} else if r.MatchType == "" {
+		classifierType = "matchall"
+	} else {
+		err := fmt.Errorf("MatchType %s format error", r.MatchType)
+		klog.Error(err)
+		return err
+	}
+	rule := fmt.Sprintf("%s,%s,%d,%s,%s,%s,%s,%s,%s",
+		r.Direction, r.Interface, r.Priority,
+		classifierType, r.MatchType, matchDirection,
+		cidr, r.RateMax, r.BurstMax)
+	addRules = append(addRules, rule)
+
+	if err = c.execNatGwRules(gwPod, operation, addRules); err != nil {
+		err = fmt.Errorf("failed to exec nat gateway rule, err: %v", err)
+		klog.Error(err)
+		return err
+	}
+	return nil
 }

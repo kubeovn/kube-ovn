@@ -701,7 +701,7 @@ func (c *Controller) initSyncCrdVpcNatGw() error {
 		return err
 	}
 	for _, gw := range gws {
-		if err := c.updateCrdNatGw(gw.Name); err != nil {
+		if err := c.updateCrdNatGwLabels(gw.Name, ""); err != nil {
 			klog.Errorf("failed to update nat gw: %v", gw.Name, err)
 			return err
 		}

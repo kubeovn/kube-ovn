@@ -242,11 +242,13 @@ function del_dnat() {
 
 
 # example usage:
-# delete_tc_filter "1:0" "192.168.1.1" "src"
-function delete_tc_filter() {
-    qdisc_id=$1
-    v4ip=$2
-    direction=$3
+# delete_tc_u32_filter "net1" "1:0" "192.168.1.1" "src"
+function delete_tc_u32_filter() {
+    dev=$1
+    qdisc_id=$2
+    cidr=$3
+    matchDirection=$4
+    
 
     # tc -p -s -d filter show dev net1 parent $qdisc_id
     # filter protocol ip pref 10 u32 chain 0
@@ -259,16 +261,16 @@ function delete_tc_filter() {
     #  Sent 0 bytes 0 pkts (dropped 0, overlimits 0)
 
     # get the corresponding filterID by the EIP, and use the filterID to delete the corresponding filtering rule.
-    ipList=$(tc -p -s -d filter show dev net1 parent $qdisc_id | grep "match IP " | awk '{print $4}')
+    ipList=$(tc -p -s -d filter show dev $dev parent $qdisc_id | grep -E "match IP src|dst ([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}")
     i=0
-    for line in $ipList; do
+    echo "$ipList" | while read line; do
         i=$((i+1))
-        if echo "$line" | grep $v4ip; then
-            result=$(tc -p -s -d filter show dev net1 parent $qdisc_id | grep "filter protocol ip pref [0-9]\+ u32 \(fh\|chain [0-9]\+ fh\) \(\w\+::\w\+\) *" | awk '{print $5,$10}' | sed -n $i"p")
+        if echo "$line" | grep "$matchDirection $cidr"; then
+            result=$(tc -p -s -d filter show dev $dev parent $qdisc_id | grep "filter protocol ip pref [0-9]\+ u32 \(fh\|chain [0-9]\+ fh\) \(\w\+::\w\+\) *" | awk '{print $5,$10}' | sed -n $i"p")
             arr=($result)
             pref=${arr[0]}
             filterID=${arr[1]}
-            exec_cmd "tc filter del dev net1 parent $qdisc_id protocol ip prio $pref handle $filterID u32"
+            exec_cmd "tc filter del dev $dev parent $qdisc_id protocol ip prio $pref handle $filterID u32"
             break
         fi
     done
@@ -285,16 +287,17 @@ function eip_ingress_qos_add() {
         priority=${arr[1]}
         rate=${arr[2]}
         burst=${arr[3]}
-        direction="dst"
-        tc qdisc add dev net1 ingress 2>/dev/nul || true
+        dev="net1"
+        matchDirection="dst"
+        tc qdisc add dev $dev ingress 2>/dev/nul || true
         # get qdisc id
-        qdisc_id=$(tc qdisc show dev net1 ingress | awk '{print $3}')
+        qdisc_id=$(tc qdisc show dev $dev ingress | awk '{print $3}')
         # del old filter
-        tc -p -s -d filter show dev net1 parent $qdisc_id | grep -w $v4ip
+        tc -p -s -d filter show dev $dev parent $qdisc_id | grep -w $v4ip
         if [ "$?" -eq 0 ];then
-            delete_tc_filter $qdisc_id $v4ip $direction
+            delete_tc_u32_filter $dev $qdisc_id $v4ip $matchDirection
         fi
-        exec_cmd "tc filter add dev net1 parent $qdisc_id protocol ip prio $priority u32 match ip $direction $v4ip police rate "$rate"Mbit burst "$burst"Mb drop flowid :1"
+        exec_cmd "tc filter add dev $dev parent $qdisc_id protocol ip prio $priority u32 match ip $matchDirection $v4ip police rate "$rate"Mbit burst "$burst"Mb drop flowid :1"
     done
 }
 
@@ -310,14 +313,86 @@ function eip_egress_qos_add() {
         rate=${arr[2]}
         burst=${arr[3]}
         qdisc_id="1:0"
-        direction="src"
-        tc qdisc add dev net1 root handle $qdisc_id htb 2>/dev/nul || true
+        matchDirection="src"
+        dev="net1"
+        tc qdisc add dev $dev root handle $qdisc_id htb 2>/dev/nul || true
         # del old filter
-        tc -p -s -d filter show dev net1 parent $qdisc_id | grep -w $v4ip
+        tc -p -s -d filter show dev $dev parent $qdisc_id | grep -w $v4ip
         if [ "$?" -eq 0 ];then
-            delete_tc_filter $qdisc_id $v4ip $direction
+            delete_tc_u32_filter $dev $qdisc_id $v4ip $matchDirection
         fi
-        exec_cmd "tc filter add dev net1 parent $qdisc_id protocol ip prio $priority u32 match ip $direction $v4ip police rate "$rate"Mbit burst "$burst"Mb drop flowid :1"
+        exec_cmd "tc filter add dev $dev parent $qdisc_id protocol ip prio $priority u32 match ip $matchDirection $v4ip police rate "$rate"Mbit burst "$burst"Mb drop flowid :1"
+    done
+}
+
+function qos_add() {
+    for rule in $@
+    do
+        IFS=',' read -r -a arr <<< "$rule"
+        local qdiscType=(${arr[0]})
+        local dev=${arr[1]}
+        local priority=${arr[2]}
+        local classifierType=${arr[3]}
+        local matchType=${arr[4]}
+        local matchDirection=${arr[5]}
+        local cidr=${arr[6]}
+        local rate=${arr[7]}
+        local burst=${arr[8]}
+
+        if [ "$qdiscType" == "ingress" ];then
+            tc qdisc add dev $dev ingress 2>/dev/null || true
+            # get qdisc id
+            qdisc_id=$(tc qdisc show dev $dev ingress | awk '{print $3}')
+        elif [ "$qdiscType" == "egress" ];then
+            qdisc_id="1:0"
+            tc qdisc add dev $dev root handle $qdisc_id htb 2>/dev/null || true
+        fi
+
+        if [ "$classifierType" == "u32" ];then
+            tc -p -s -d filter show dev $dev parent $qdisc_id | grep -w $cidr
+            if [ "$?" -ne 0 ];then
+                exec_cmd "tc filter add dev $dev parent $qdisc_id protocol ip prio $priority u32 match $matchType $matchDirection $cidr police rate "$rate"Mbit burst "$burst"Mb drop flowid :1"
+            fi
+        elif [ "$classifierType" == "matchall" ];then
+            tc -p -s -d filter show dev $dev parent $qdisc_id | grep -w matchall
+            if [ "$?" -ne 0 ];then
+                exec_cmd "tc filter add dev $dev parent $qdisc_id protocol ip prio $priority matchall action police rate "$rate"Mbit burst "$burst"Mb drop flowid :1"
+            fi
+        fi
+    done
+}
+
+function qos_del() {
+    for rule in $@
+    do
+        IFS=',' read -r -a arr <<< "$rule"
+        local qdiscType=(${arr[0]})
+        local dev=${arr[1]}
+        local priority=${arr[2]}
+        local classifierType=${arr[3]}
+        local matchType=${arr[4]}
+        local matchDirection=${arr[5]}
+        local cidr=${arr[6]}
+        local rate=${arr[7]}
+        local burst=${arr[8]}
+
+        if [ "$qdiscType" == "ingress" ];then
+            qdisc_id=$(tc qdisc show dev $dev ingress | awk '{print $3}')
+            if [ -z "$qdisc_id" ]; then
+                exit 0
+            fi
+        elif [ "$qdiscType" == "egress" ];then
+            qdisc_id="1:0"
+        fi
+        # if qdisc_id is empty, this means ingress qdisc is not added, so we don't need to delete filter.
+        if [ "$classifierType" == "u32" ];then
+            delete_tc_u32_filter $dev $qdisc_id $cidr $matchDirection
+        elif [ "$classifierType" == "matchall" ];then
+            tc -p -s -d filter show dev $dev parent $qdisc_id | grep -w matchall
+            if [ "$?" -eq 0 ];then
+                exec_cmd "tc filter del dev $dev parent $qdisc_id protocol ip prio $priority matchall"
+            fi
+        fi
     done
 }
 
@@ -325,12 +400,13 @@ function eip_ingress_qos_del() {
     for rule in $@
     do
         arr=(${rule//,/ })
-        v4ip=(${arr[0]//\// })
-        direction="dst"
-        qdisc_id=$(tc qdisc show dev net1 ingress | awk '{print $3}')
+        cidr=(${arr[0]//\// })
+        matchDirection="dst"
+        dev="net1"
+        qdisc_id=$(tc qdisc show dev $dev ingress | awk '{print $3}')
         # if qdisc_id is empty, this means ingress qdisc is not added, so we don't need to delete filter.
         if [ -n "$qdisc_id" ]; then
-            delete_tc_filter $qdisc_id $v4ip $direction
+            delete_tc_u32_filter $dev $qdisc_id $cidr $matchDirection
         fi
     done
 }
@@ -339,10 +415,11 @@ function eip_egress_qos_del() {
     for rule in $@
     do
         arr=(${rule//,/ })
-        v4ip=(${arr[0]//\// })
-        direction="src"
+        cidr=(${arr[0]//\// })
+        matchDirection="src"
         qdisc_id="1:0"
-        delete_tc_filter $qdisc_id $v4ip $direction
+        dev="net1"
+        delete_tc_u32_filter $dev $qdisc_id $cidr $matchDirection
     done
 }
 
@@ -421,6 +498,14 @@ case $opt in
  eip-egress-qos-del)
         echo "eip-egress-qos-del $rules"
         eip_egress_qos_del $rules
+        ;;
+ qos-add)
+        echo "qos-add $rules"
+        qos_add $rules
+        ;;
+ qos-del)
+        echo "qos-del $rules"
+        qos_del $rules
         ;;
  *)
         echo "Usage: $0 [init|subnet-route-add|subnet-route-del|eip-add|eip-del|floating-ip-add|floating-ip-del|dnat-add|dnat-del|snat-add|snat-del] ..."
