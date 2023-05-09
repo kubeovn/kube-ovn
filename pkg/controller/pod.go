@@ -289,12 +289,22 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		return
 	}
 
+	// enqueue delay
+	var delay time.Duration
+	if newPod.Spec.TerminationGracePeriodSeconds != nil {
+		if newPod.DeletionTimestamp != nil {
+			delay = time.Until(newPod.DeletionTimestamp.Add(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second))
+		} else {
+			delay = time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second
+		}
+	}
+
 	if newPod.DeletionTimestamp != nil && !isStateful && !isVmPod {
 		go func() {
 			// In case node get lost and pod can not be deleted,
 			// the ip address will not be recycled
-			time.Sleep(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second)
-			c.deletePodQueue.Add(newObj)
+			klog.V(3).Infof("enqueue delete pod %s after %v", key, delay)
+			c.deletePodQueue.AddAfter(newObj, delay)
 		}()
 		return
 	}
@@ -302,17 +312,15 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	// do not delete statefulset pod unless ownerReferences is deleted
 	if isStateful && isStatefulSetPodToDel(c.config.KubeClient, newPod, statefulSetName) {
 		go func() {
-			klog.V(3).Infof("enqueue delete pod %s", key)
-			time.Sleep(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second)
-			c.deletePodQueue.Add(newObj)
+			klog.V(3).Infof("enqueue delete pod %s after %v", key, delay)
+			c.deletePodQueue.AddAfter(newObj, delay)
 		}()
 		return
 	}
 	if isVmPod && c.isVmPodToDel(newPod, vmName) {
 		go func() {
-			klog.V(3).Infof("enqueue delete pod %s", key)
-			time.Sleep(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second)
-			c.deletePodQueue.Add(newObj)
+			klog.V(3).Infof("enqueue delete pod %s after %v", key, delay)
+			c.deletePodQueue.AddAfter(newObj, delay)
 		}()
 		return
 	}
