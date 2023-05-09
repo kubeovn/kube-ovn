@@ -47,11 +47,7 @@ func (c *Controller) enqueueDeleteSubnet(obj interface{}) {
 		return
 	}
 	klog.V(3).Infof("enqueue delete subnet %s", key)
-	subnet := obj.(*kubeovnv1.Subnet)
 	c.deleteSubnetQueue.Add(obj)
-	if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType {
-		c.deleteRouteQueue.Add(obj)
-	}
 }
 
 func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
@@ -132,11 +128,6 @@ func (c *Controller) runUpdateSubnetStatusWorker() {
 	}
 }
 
-func (c *Controller) runDeleteRouteWorker() {
-	for c.processNextDeleteRoutePodWorkItem() {
-	}
-}
-
 func (c *Controller) runDeleteSubnetWorker() {
 	for c.processNextDeleteSubnetWorkItem() {
 	}
@@ -197,36 +188,6 @@ func (c *Controller) processNextAddSubnetWorkItem() bool {
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
 		c.addOrUpdateSubnetQueue.Forget(obj)
-		return nil
-	}(obj)
-
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextDeleteRoutePodWorkItem() bool {
-	obj, shutdown := c.deleteRouteQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.deleteRouteQueue.Done(obj)
-		var subnet *kubeovnv1.Subnet
-		var ok bool
-		if subnet, ok = obj.(*kubeovnv1.Subnet); !ok {
-			c.deleteRouteQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected subnet in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleDeleteRoute(subnet); err != nil {
-			c.deleteRouteQueue.AddRateLimited(subnet)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", subnet.Name, err.Error())
-		}
-		c.deleteRouteQueue.Forget(obj)
 		return nil
 	}(obj)
 
@@ -804,17 +765,6 @@ func (c *Controller) handleUpdateSubnetStatus(key string) error {
 	}
 }
 
-func (c *Controller) handleDeleteRoute(subnet *kubeovnv1.Subnet) error {
-	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-	return c.deleteStaticRoute(subnet.Spec.CIDRBlock, vpc.Status.Router, subnet.Spec.RouteTable)
-}
-
 func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
 	c.ipam.DeleteSubnet(key)
 
@@ -1370,11 +1320,6 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 					return err
 				}
 			}
-		}
-
-		if err := c.deleteStaticRoute(subnet.Spec.CIDRBlock, c.config.ClusterRouter, subnet.Spec.RouteTable); err != nil {
-			klog.Errorf("failed to delete static route %v", err)
-			return err
 		}
 
 		if !subnet.Spec.LogicalGateway && subnet.Name != c.config.ExternalGatewaySwitch && !subnet.Spec.U2OInterconnection {
