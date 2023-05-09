@@ -918,6 +918,9 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 			return err
 		}
 	}
+
+	c.ipam.ReleaseAddressByPod(key)
+
 	podNets, err := c.getPodKubeovnNets(pod)
 	if err != nil {
 		klog.Errorf("failed to get pod nets %v", err)
@@ -935,7 +938,6 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 			}
 		}
 	}
-	c.ipam.ReleaseAddressByPod(key)
 	for _, podNet := range podNets {
 		c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
 	}
