@@ -8,8 +8,6 @@ import (
 	"sort"
 	"strings"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -18,6 +16,9 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (c *Controller) enqueueAddQoSPolicy(obj interface{}) {
@@ -182,9 +183,9 @@ func (c *Controller) processNextDeleteQoSPolicyWorkItem() bool {
 }
 
 func (c *Controller) handleAddQoSPolicy(key string) error {
-
-	c.vpcNatGwKeyMutex.Lock(key)
-	defer c.vpcNatGwKeyMutex.Unlock(key)
+	c.vpcNatGwKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle add QoS policy %s", key)
 
 	cachedQoS, err := c.qosPoliciesLister.Get(key)
 	if err != nil {
@@ -383,8 +384,9 @@ func (c *Controller) validateQosPolicy(qosPolicy *kubeovnv1.QoSPolicy) error {
 }
 
 func (c *Controller) handleUpdateQoSPolicy(key string) error {
-	c.vpcNatGwKeyMutex.Lock(key)
-	defer c.vpcNatGwKeyMutex.Unlock(key)
+	c.vpcNatGwKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle update QoS policy %s", key)
 
 	cachedQos, err := c.qosPoliciesLister.Get(key)
 	if err != nil {

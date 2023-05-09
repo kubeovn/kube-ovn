@@ -8,15 +8,17 @@ import (
 	"strconv"
 	"time"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (c *Controller) enqueueAddOvnEip(obj interface{}) {
@@ -711,24 +713,24 @@ func (c *Controller) isOvnEipNotUse(cachedEip *kubeovnv1.OvnEip) (bool, error) {
 	switch cachedEip.Status.Type {
 	case util.DnatUsingEip:
 		// nat change eip not that fast
-		dnats, err := c.config.KubeOvnClient.KubeovnV1().OvnDnatRules().List(context.Background(), metav1.ListOptions{})
+		dnats, err := c.ovnDnatRulesLister.List(labels.Everything())
 		if err != nil {
 			klog.Errorf("failed to get ovn dnat list, %v", err)
 			return false, err
 		}
-		for _, item := range dnats.Items {
+		for _, item := range dnats {
 			if item.Annotations[util.VpcEipAnnotation] == cachedEip.Name {
 				return false, nil
 			}
 		}
 	case util.SnatUsingEip:
 		// nat change eip not that fast
-		snats, err := c.config.KubeOvnClient.KubeovnV1().OvnSnatRules().List(context.Background(), metav1.ListOptions{})
+		snats, err := c.ovnSnatRulesLister.List(labels.Everything())
 		if err != nil {
 			klog.Errorf("failed to get ovn snat, %v", err)
 			return false, err
 		}
-		for _, item := range snats.Items {
+		for _, item := range snats {
 			if item.Annotations[util.VpcEipAnnotation] == cachedEip.Name {
 				return false, nil
 			}

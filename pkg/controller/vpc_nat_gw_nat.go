@@ -7,6 +7,7 @@ import (
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
@@ -488,8 +489,10 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 	if vpcNatEnabled != "true" {
 		return fmt.Errorf("iptables nat gw not enable")
 	}
-	c.vpcNatGwKeyMutex.Lock(key)
-	defer c.vpcNatGwKeyMutex.Unlock(key)
+
+	c.vpcNatGwKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle add iptables fip %s", key)
 
 	fip, err := c.iptablesFipsLister.Get(key)
 	if err != nil {
@@ -556,8 +559,9 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 }
 
 func (c *Controller) handleUpdateIptablesFip(key string) error {
-	c.vpcNatGwKeyMutex.Lock(key)
-	defer c.vpcNatGwKeyMutex.Unlock(key)
+	c.vpcNatGwKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle update iptables fip %s", key)
 
 	cachedFip, err := c.iptablesFipsLister.Get(key)
 	if err != nil {
@@ -671,8 +675,10 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 	if vpcNatEnabled != "true" {
 		return fmt.Errorf("iptables nat gw not enable")
 	}
-	c.vpcNatGwKeyMutex.Lock(key)
-	defer c.vpcNatGwKeyMutex.Unlock(key)
+
+	c.vpcNatGwKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle add iptables dnat rule %s", key)
 
 	dnat, err := c.iptablesDnatRulesLister.Get(key)
 	if err != nil {
@@ -736,8 +742,9 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 }
 
 func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
-	c.vpcNatGwKeyMutex.Lock(key)
-	defer c.vpcNatGwKeyMutex.Unlock(key)
+	c.vpcNatGwKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle update iptables fip %s", key)
 
 	cachedDnat, err := c.iptablesDnatRulesLister.Get(key)
 	if err != nil {
@@ -855,8 +862,10 @@ func (c *Controller) handleAddIptablesSnatRule(key string) error {
 	if vpcNatEnabled != "true" {
 		return fmt.Errorf("iptables nat gw not enable")
 	}
-	c.vpcNatGwKeyMutex.Lock(key)
-	defer c.vpcNatGwKeyMutex.Unlock(key)
+
+	c.vpcNatGwKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle add iptables snat rule %s", key)
 
 	snat, err := c.iptablesSnatRulesLister.Get(key)
 	if err != nil {
@@ -921,8 +930,9 @@ func (c *Controller) handleAddIptablesSnatRule(key string) error {
 }
 
 func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
-	c.vpcNatGwKeyMutex.Lock(key)
-	defer c.vpcNatGwKeyMutex.Unlock(key)
+	c.vpcNatGwKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle update iptables snat rule %s", key)
 
 	cachedSnat, err := c.iptablesSnatRulesLister.Get(key)
 	if err != nil {
@@ -1727,17 +1737,17 @@ func (c *Controller) snatChangeEip(snat *kubeovnv1.IptablesSnatRule, eip *kubeov
 
 func (c *Controller) isDnatDuplicated(gwName, eipName, dnatName, externalPort string) (bool, error) {
 	// check if eip:external port already used
-	dnatLabel := fmt.Sprintf("%s=%s,%s=%s", util.VpcNatGatewayNameLabel, gwName, util.VpcDnatEPortLabel, externalPort)
-	dnats, err := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().List(context.Background(), metav1.ListOptions{
-		LabelSelector: dnatLabel,
-	})
+	dnats, err := c.iptablesDnatRulesLister.List(labels.SelectorFromSet(labels.Set{
+		util.VpcNatGatewayNameLabel: gwName,
+		util.VpcDnatEPortLabel:      externalPort,
+	}))
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
 			return false, err
 		}
 	}
-	if len(dnats.Items) > 0 {
-		for _, d := range dnats.Items {
+	if len(dnats) != 0 {
+		for _, d := range dnats {
 			if d.Name != dnatName && d.Annotations[util.VpcEipAnnotation] == eipName {
 				err = fmt.Errorf("failed to create dnat %s, duplicate, same eip %s, same external port '%s' is using by dnat %s", dnatName, eipName, externalPort, d.Name)
 				return true, err
