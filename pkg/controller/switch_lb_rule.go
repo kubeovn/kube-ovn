@@ -25,7 +25,7 @@ type slrInfo struct {
 	IsRecreate bool
 }
 
-func genSvcName(name string) string {
+func generateSvcName(name string) string {
 	return fmt.Sprintf("slr-%s", name)
 }
 
@@ -127,36 +127,65 @@ func (c *Controller) runAddSwitchLBRuleWorker() {
 
 func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
 	klog.V(3).Infof("handleAddOrUpdateSwitchLBRule %s", key)
-	slr, err := c.switchLBRuleLister.Get(key)
-	if err != nil {
+
+	var (
+		slr             *kubeovnv1.SwitchLBRule
+		oldSvc          *corev1.Service
+		oldEps          *corev1.Endpoints
+		svcName         string
+		needToCreateSvc bool
+		err             error
+	)
+
+	if slr, err = c.switchLBRuleLister.Get(key); err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
 
-	needToCreate := false
-	name := genSvcName(slr.Name)
-	oldSvc, err := c.config.KubeClient.CoreV1().Services(slr.Spec.Namespace).Get(context.Background(), name, metav1.GetOptions{})
-	if err != nil {
+	svcName = generateSvcName(slr.Name)
+	if oldSvc, err = c.config.KubeClient.CoreV1().Services(slr.Spec.Namespace).Get(context.Background(), svcName, metav1.GetOptions{}); err != nil {
 		if k8serrors.IsNotFound(err) {
-			needToCreate = true
+			needToCreateSvc = true
 		} else {
-			klog.Errorf("failed to create service '%s', err: %v", name, err)
+			klog.Errorf("failed to create service '%s', err: %v", svcName, err)
 			return err
 		}
 	}
 
-	svc := genHeadlessService(slr, oldSvc)
-	if needToCreate {
+	var (
+		eps *corev1.Endpoints
+		svc *corev1.Service
+	)
+
+	if len(slr.Spec.Endpoints) > 0 {
+		eps = generateEndpoints(slr, oldEps)
+		if needToCreateSvc {
+			if _, err = c.config.KubeClient.CoreV1().Endpoints(slr.Spec.Namespace).Create(context.Background(), eps, metav1.CreateOptions{}); err != nil {
+				err = fmt.Errorf("failed to create endpoints '%s', err: %v", eps, err)
+				klog.Error(err)
+				return err
+			}
+		} else {
+			if _, err = c.config.KubeClient.CoreV1().Endpoints(slr.Spec.Namespace).Update(context.Background(), eps, metav1.UpdateOptions{}); err != nil {
+				err = fmt.Errorf("failed to update endpoints '%s', err: %v", eps, err)
+				klog.Error(err)
+				return err
+			}
+		}
+	}
+
+	svc = generateHeadlessService(slr, oldSvc)
+	if needToCreateSvc {
 		if _, err = c.config.KubeClient.CoreV1().Services(slr.Spec.Namespace).Create(context.Background(), svc, metav1.CreateOptions{}); err != nil {
-			err := fmt.Errorf("failed to create service '%s', err: %v", svc, err)
+			err = fmt.Errorf("failed to create service '%s', err: %v", svc, err)
 			klog.Error(err)
 			return err
 		}
 	} else {
 		if _, err = c.config.KubeClient.CoreV1().Services(slr.Spec.Namespace).Update(context.Background(), svc, metav1.UpdateOptions{}); err != nil {
-			err := fmt.Errorf("failed to update service '%s', err: %v", svc, err)
+			err = fmt.Errorf("failed to update service '%s', err: %v", svc, err)
 			klog.Error(err)
 			return err
 		}
@@ -172,21 +201,20 @@ func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
 		}
 		formatPorts = fmt.Sprintf("%s,%d/%s", formatPorts, port.Port, protocol)
 	}
-
 	newSlr.Status.Ports = strings.TrimPrefix(formatPorts, ",")
+
 	if _, err = c.config.KubeOvnClient.KubeovnV1().SwitchLBRules().UpdateStatus(context.Background(), newSlr, metav1.UpdateOptions{}); err != nil {
-		err := fmt.Errorf("failed to update switch lb rule status, %v", err)
+		err = fmt.Errorf("failed to update switch lb rule status, %v", err)
 		klog.Error(err)
 		return err
 	}
-
 	return nil
 }
 
 func (c *Controller) handleDelSwitchLBRule(info *slrInfo) error {
 	klog.V(3).Infof("handleDelSwitchLBRule %s", info.Name)
 
-	name := genSvcName(info.Name)
+	name := generateSvcName(info.Name)
 	err := c.config.KubeClient.CoreV1().Services(info.Namespace).Delete(context.Background(), name, metav1.DeleteOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -214,10 +242,18 @@ func (c *Controller) handleUpdateSwitchLBRule(info *slrInfo) error {
 	return nil
 }
 
-func genHeadlessService(slr *kubeovnv1.SwitchLBRule, oldSvc *corev1.Service) *corev1.Service {
-	name := genSvcName(slr.Name)
+func generateHeadlessService(slr *kubeovnv1.SwitchLBRule, oldSvc *corev1.Service) *corev1.Service {
+	var (
+		name, resourceVersion string
+		ports                 []corev1.ServicePort
+		selectors             map[string]string
+		annotations           map[string]string
+	)
 
-	var ports []corev1.ServicePort
+	name = generateSvcName(slr.Name)
+	selectors = make(map[string]string, 0)
+	annotations = make(map[string]string, 0)
+
 	for _, port := range slr.Spec.Ports {
 		ports = append(ports, corev1.ServicePort{
 			Name:     port.Name,
@@ -230,7 +266,6 @@ func genHeadlessService(slr *kubeovnv1.SwitchLBRule, oldSvc *corev1.Service) *co
 		})
 	}
 
-	selectors := make(map[string]string)
 	for _, s := range slr.Spec.Selector {
 		keyValue := strings.Split(strings.TrimSpace(s), ":")
 		if len(keyValue) != 2 {
@@ -239,8 +274,6 @@ func genHeadlessService(slr *kubeovnv1.SwitchLBRule, oldSvc *corev1.Service) *co
 		selectors[strings.TrimSpace(keyValue[0])] = strings.TrimSpace(keyValue[1])
 	}
 
-	var resourceVersion string
-	annotations := map[string]string{}
 	if oldSvc != nil {
 		for k, v := range oldSvc.Annotations {
 			annotations[k] = v
@@ -249,7 +282,7 @@ func genHeadlessService(slr *kubeovnv1.SwitchLBRule, oldSvc *corev1.Service) *co
 	}
 	annotations[util.SwitchLBRuleVipsAnnotation] = slr.Spec.Vip
 
-	svc := &corev1.Service{
+	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            name,
 			Namespace:       slr.Spec.Namespace,
@@ -264,5 +297,62 @@ func genHeadlessService(slr *kubeovnv1.SwitchLBRule, oldSvc *corev1.Service) *co
 			SessionAffinity: corev1.ServiceAffinity(slr.Spec.SessionAffinity),
 		},
 	}
-	return svc
+}
+
+func generateEndpoints(slr *kubeovnv1.SwitchLBRule, oldEps *corev1.Endpoints) *corev1.Endpoints {
+	var (
+		name, resourceVersion string
+		annotations           map[string]string
+	)
+
+	name = generateSvcName(slr.Name)
+	annotations = make(map[string]string, 0)
+
+	if oldEps != nil {
+		for k, v := range oldEps.Annotations {
+			annotations[k] = v
+		}
+		resourceVersion = oldEps.ResourceVersion
+	}
+	annotations[util.SwitchLBRuleVipsAnnotation] = slr.Spec.Vip
+
+	var (
+		ports []corev1.EndpointPort
+		addrs []corev1.EndpointAddress
+	)
+
+	for _, port := range slr.Spec.Ports {
+		ports = append(
+			ports,
+			corev1.EndpointPort{
+				Name:     port.Name,
+				Protocol: corev1.Protocol(port.Protocol),
+				Port:     port.TargetPort,
+			},
+		)
+	}
+
+	for _, addr := range slr.Spec.Endpoints {
+		addrs = append(
+			addrs,
+			corev1.EndpointAddress{
+				IP: addr,
+			},
+		)
+	}
+
+	return &corev1.Endpoints{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            name,
+			Namespace:       slr.Spec.Namespace,
+			Annotations:     annotations,
+			ResourceVersion: resourceVersion,
+		},
+		Subsets: []corev1.EndpointSubset{
+			{
+				Addresses: addrs,
+				Ports:     ports,
+			},
+		},
+	}
 }
