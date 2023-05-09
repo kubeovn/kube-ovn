@@ -150,6 +150,11 @@ func isPodAlive(p *v1.Pod) bool {
 			return false
 		}
 	}
+
+	return isPodStatusPhaseAlive(p)
+}
+
+func isPodStatusPhaseAlive(p *v1.Pod) bool {
 	if p.Status.Phase == v1.PodSucceeded && p.Spec.RestartPolicy != v1.RestartPolicyAlways {
 		return false
 	}
@@ -283,20 +288,21 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 
 	isStateful, statefulSetName := isStatefulSetPod(newPod)
 	isVmPod, vmName := isVmPod(newPod)
-	if !isPodAlive(newPod) && !isStateful && !isVmPod {
-		klog.V(3).Infof("enqueue delete pod %s", key)
-		c.deletePodQueue.Add(newObj)
-		return
-	}
 
-	if newPod.DeletionTimestamp != nil && !isStateful && !isVmPod {
-		go func() {
-			// In case node get lost and pod can not be deleted,
-			// the ip address will not be recycled
-			time.Sleep(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second)
+	if !isStateful && !isVmPod {
+		if newPod.DeletionTimestamp != nil && oldPod.DeletionTimestamp == nil {
+			go func() {
+				// In case node get lost and pod can not be deleted,
+				// the ip address will not be recycled
+				time.Sleep(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second)
+				c.deletePodQueue.Add(newObj)
+			}()
+			return
+		} else if !isPodStatusPhaseAlive(newPod) {
+			klog.V(3).Infof("enqueue delete pod %s", key)
 			c.deletePodQueue.Add(newObj)
-		}()
-		return
+			return
+		}
 	}
 
 	// do not delete statefulset pod unless ownerReferences is deleted
