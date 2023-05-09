@@ -269,22 +269,7 @@ func (c *ovnClient) DeleteLogicalRouterPortOp(lrpName string) ([]ovsdb.Operation
 
 	// remove logical router port from logical router
 	lrName := lrp.ExternalIDs[logicalRouterKey]
-	lrpRemoveOp, err := c.LogicalRouterUpdatePortOp(lrName, lrp.UUID, ovsdb.MutateOperationDelete)
-	if err != nil {
-		return nil, err
-	}
-
-	// delete logical router port
-	lrpDelOp, err := c.Where(lrp).Delete()
-	if err != nil {
-		return nil, err
-	}
-
-	ops := make([]ovsdb.Operation, 0, len(lrpRemoveOp)+len(lrpDelOp))
-	ops = append(ops, lrpRemoveOp...)
-	ops = append(ops, lrpDelOp...)
-
-	return ops, nil
+	return c.LogicalRouterUpdatePortOp(lrName, lrp.UUID, ovsdb.MutateOperationDelete)
 }
 
 // LogicalRouterPortOp create operations about logical router port

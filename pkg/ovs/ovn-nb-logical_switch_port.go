@@ -570,21 +570,10 @@ func (c *ovnClient) DeleteLogicalSwitchPortOp(lspName string) ([]ovsdb.Operation
 
 	// remove logical switch port from logical switch
 	lsName := lsp.ExternalIDs[logicalSwitchKey]
-	lspRemoveOp, err := c.LogicalSwitchUpdatePortOp(lsName, lsp.UUID, ovsdb.MutateOperationDelete)
+	ops, err := c.LogicalSwitchUpdatePortOp(lsName, lsp.UUID, ovsdb.MutateOperationDelete)
 	if err != nil {
 		return nil, fmt.Errorf("generate operations for removing port %s from logical switch %s: %v", lspName, lsName, err)
 	}
-
-	// delete logical switch port
-	lspDelOp, err := c.Where(lsp).Delete()
-	if err != nil {
-		return nil, fmt.Errorf("generate operations for deleting logical switch port %s: %v", lspName, err)
-	}
-
-	ops := make([]ovsdb.Operation, 0, len(lspRemoveOp)+len(lspDelOp))
-	ops = append(ops, lspRemoveOp...)
-	ops = append(ops, lspDelOp...)
-
 	return ops, nil
 }
 

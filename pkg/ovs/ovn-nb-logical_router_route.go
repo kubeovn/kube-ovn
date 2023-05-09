@@ -192,21 +192,10 @@ func (c *ovnClient) DeleteLogicalRouterStaticRoute(lrName, policy, prefix, nextH
 	}
 
 	// remove static route from logical router
-	routeRemoveOp, err := c.LogicalRouterUpdateStaticRouteOp(lrName, []string{route.UUID}, ovsdb.MutateOperationDelete)
+	ops, err := c.LogicalRouterUpdateStaticRouteOp(lrName, []string{route.UUID}, ovsdb.MutateOperationDelete)
 	if err != nil {
 		return fmt.Errorf("generate operations for removing static %s from logical router %s: %v", route.UUID, lrName, err)
 	}
-
-	// delete static route
-	routeDelOp, err := c.Where(route).Delete()
-	if err != nil {
-		return fmt.Errorf("generate operations for deleting static route %s: %v", route.UUID, err)
-	}
-
-	ops := make([]ovsdb.Operation, 0, len(routeRemoveOp)+len(routeDelOp))
-	ops = append(ops, routeRemoveOp...)
-	ops = append(ops, routeDelOp...)
-
 	if err = c.Transact("lr-route-del", ops); err != nil {
 		return fmt.Errorf("delete static route %s", route.UUID)
 	}
@@ -223,23 +212,10 @@ func (c *ovnClient) ClearLogicalRouterStaticRoute(lrName string) error {
 
 	// clear static route
 	lr.StaticRoutes = nil
-	routeClearOp, err := c.UpdateLogicalRouterOp(lr, &lr.StaticRoutes)
+	ops, err := c.UpdateLogicalRouterOp(lr, &lr.StaticRoutes)
 	if err != nil {
 		return fmt.Errorf("generate operations for clear logical router %s static route: %v", lrName, err)
 	}
-
-	// delete static route
-	routeDelOp, err := c.WhereCache(func(route *ovnnb.LogicalRouterStaticRoute) bool {
-		return len(route.ExternalIDs) != 0 && route.ExternalIDs[logicalRouterKey] == lrName
-	}).Delete()
-	if err != nil {
-		return fmt.Errorf("generate operations for deleting logical router %s static routes: %v", lrName, err)
-	}
-
-	ops := make([]ovsdb.Operation, 0, len(routeClearOp)+len(routeDelOp))
-	ops = append(ops, routeClearOp...)
-	ops = append(ops, routeDelOp...)
-
 	if err = c.Transact("lr-route-clear", ops); err != nil {
 		return fmt.Errorf("clear logical router %s static routes: %v", lrName, err)
 	}
