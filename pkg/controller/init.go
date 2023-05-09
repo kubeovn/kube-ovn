@@ -97,7 +97,7 @@ func (c *Controller) InitDefaultVpc() error {
 
 // InitDefaultLogicalSwitch init the default logical switch for ovn network
 func (c *Controller) initDefaultLogicalSwitch() error {
-	subnet, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), c.config.DefaultLogicalSwitch, metav1.GetOptions{})
+	subnet, err := c.subnetsLister.Get(c.config.DefaultLogicalSwitch)
 	if err == nil {
 		if subnet != nil && util.CheckProtocol(c.config.DefaultCIDR) != util.CheckProtocol(subnet.Spec.CIDRBlock) {
 			// single-stack upgrade to dual-stack
@@ -152,7 +152,7 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 
 // InitNodeSwitch init node switch to connect host and pod
 func (c *Controller) initNodeSwitch() error {
-	subnet, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), c.config.NodeSwitch, metav1.GetOptions{})
+	subnet, err := c.subnetsLister.Get(c.config.NodeSwitch)
 	if err == nil {
 		if util.CheckProtocol(c.config.NodeSwitchCIDR) == kubeovnv1.ProtocolDual && util.CheckProtocol(subnet.Spec.CIDRBlock) != kubeovnv1.ProtocolDual {
 			// single-stack upgrade to dual-stack
@@ -226,13 +226,13 @@ func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
 
 // InitLoadBalancer init the default tcp and udp cluster loadbalancer
 func (c *Controller) initLoadBalancer() error {
-	vpcs, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().List(context.Background(), metav1.ListOptions{})
+	vpcs, err := c.vpcsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list vpc: %v", err)
 		return err
 	}
 
-	for _, cachedVpc := range vpcs.Items {
+	for _, cachedVpc := range vpcs {
 		vpc := cachedVpc.DeepCopy()
 		vpcLb := c.GenVpcLoadBalancer(vpc.Name)
 		if err = c.initLB(vpcLb.TcpLoadBalancer, string(v1.ProtocolTCP), false); err != nil {
@@ -612,7 +612,7 @@ func (c *Controller) initDefaultVlan() error {
 
 func (c *Controller) initSyncCrdIPs() error {
 	klog.Info("start to sync ips")
-	ips, err := c.config.KubeOvnClient.KubeovnV1().IPs().List(context.Background(), metav1.ListOptions{})
+	ips, err := c.ipsLister.List(labels.Everything())
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -622,7 +622,7 @@ func (c *Controller) initSyncCrdIPs() error {
 
 	ipMap := strset.New(c.getVmLsps()...)
 
-	for _, ipCr := range ips.Items {
+	for _, ipCr := range ips {
 		ip := ipCr.DeepCopy()
 		changed := false
 		if ipMap.Has(ip.Name) && ip.Spec.PodType == "" {
@@ -669,7 +669,7 @@ func (c *Controller) initSyncCrdSubnets() error {
 
 		// only sync subnet spec enableEcmp when subnet.Spec.EnableEcmp is false and c.config.EnableEcmp is true
 		if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType && !subnet.Spec.EnableEcmp && subnet.Spec.EnableEcmp != c.config.EnableEcmp {
-			subnet, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), subnet.Name, metav1.GetOptions{})
+			subnet, err = c.subnetsLister.Get(subnet.Name)
 			if err != nil {
 				klog.Errorf("failed to get subnet %s: %v", subnet.Name, err)
 				return err

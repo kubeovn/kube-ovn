@@ -10,7 +10,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
@@ -247,14 +246,17 @@ func (c *Controller) gcNode() error {
 
 func (c *Controller) gcVip() error {
 	klog.Infof("start to gc vips")
-	vips, err := c.config.KubeOvnClient.KubeovnV1().Vips().List(context.Background(), metav1.ListOptions{
-		LabelSelector: fields.OneTermNotEqualSelector(util.IpReservedLabel, "").String()},
-	)
+	selector, err := util.LabelSelectorNotEmpty(util.IpReservedLabel)
+	if err != nil {
+		klog.Errorf("failed to generate selector for label %s: %v", util.IpReservedLabel, err)
+		return err
+	}
+	vips, err := c.virtualIpsLister.List(selector)
 	if err != nil {
 		klog.Errorf("failed to list VIPs: %v", err)
 		return err
 	}
-	for _, vip := range vips.Items {
+	for _, vip := range vips {
 		portName := vip.Labels[util.IpReservedLabel]
 		portNameSplits := strings.Split(portName, ".")
 		if len(portNameSplits) >= 2 {
@@ -681,7 +683,7 @@ func (c *Controller) gcChassis() error {
 
 func (c *Controller) isOVNProvided(providerName string, pod *corev1.Pod) (bool, error) {
 	ls := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)]
-	subnet, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), ls, metav1.GetOptions{})
+	subnet, err := c.subnetsLister.Get(ls)
 	if err != nil {
 		klog.Errorf("parse annotation logical switch %s error %v", ls, err)
 		return false, err
@@ -815,15 +817,13 @@ func (c *Controller) gcVpcDns() error {
 		}
 	}
 
-	slrs, err := c.config.KubeOvnClient.KubeovnV1().SwitchLBRules().List(context.Background(), metav1.ListOptions{
-		LabelSelector: sel.String(),
-	})
+	slrs, err := c.switchLBRuleLister.List(sel)
 	if err != nil {
 		klog.Errorf("failed to list vpc-dns SwitchLBRules, %s", err)
 		return err
 	}
 
-	for _, slr := range slrs.Items {
+	for _, slr := range slrs {
 		canFind := false
 		for _, vd := range vds {
 			name := genVpcDnsDpName(vd.Name)

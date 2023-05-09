@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/ovn-org/libovsdb/ovsdb"
 	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -15,8 +16,6 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-
-	"github.com/ovn-org/libovsdb/ovsdb"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -141,8 +140,8 @@ func (c *Controller) handleUpdateNp(key string) error {
 		return nil
 	}
 
-	c.npKeyMutex.Lock(key)
-	defer c.npKeyMutex.Unlock(key)
+	c.npKeyMutex.LockKey(key)
+	defer func() { _ = c.npKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle add/update network policy %s", key)
 
 	np, err := c.npsLister.NetworkPolicies(namespace).Get(name)
@@ -564,8 +563,8 @@ func (c *Controller) handleDeleteNp(key string) error {
 		return nil
 	}
 
-	c.npKeyMutex.Lock(key)
-	defer c.npKeyMutex.Unlock(key)
+	c.npKeyMutex.LockKey(key)
+	defer func() { _ = c.npKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle delete network policy %s", key)
 
 	npName := name

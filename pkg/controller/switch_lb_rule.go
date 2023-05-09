@@ -137,7 +137,7 @@ func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
 
 	needToCreate := false
 	name := genSvcName(slr.Name)
-	oldSvc, err := c.config.KubeClient.CoreV1().Services(slr.Spec.Namespace).Get(context.Background(), name, metav1.GetOptions{})
+	oldSvc, err := c.servicesLister.Services(slr.Spec.Namespace).Get(name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			needToCreate = true

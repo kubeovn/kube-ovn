@@ -638,7 +638,7 @@ func (c *Controller) createOrUpdateCrdIPs(podName, ip, mac, subnetName, ns, node
 	if existingCR != nil {
 		ipCr = *existingCR
 	} else {
-		ipCr, err = c.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), ipName, metav1.GetOptions{})
+		ipCr, err = c.ipsLister.Get(ipName)
 		if err != nil {
 			if !k8serrors.IsNotFound(err) {
 				errMsg := fmt.Errorf("failed to get ip CR %s: %v", ipName, err)
