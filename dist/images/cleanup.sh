@@ -10,45 +10,6 @@ while :; do
   sleep 5
 done
 
-set +e
-for subnet in $(kubectl get subnet -o name); do
-  kubectl patch "$subnet" --type='json' -p '[{"op": "replace", "path": "/metadata/finalizers", "value": []}]'
-  kubectl delete --ignore-not-found "$subnet"
-done
-set -e
-
-for vpc in $(kubectl get vpc -o name); do
-  kubectl delete --ignore-not-found $vpc
-done
-
-for gw in $(kubectl get vpc-nat-gw -o name); do
-  kubectl delete --ignore-not-found $gw
-done
-
-for vlan in $(kubectl get vlan -o name); do
-  kubectl delete --ignore-not-found $vlan
-done
-
-for pn in $(kubectl get provider-network -o name); do
-  kubectl delete --ignore-not-found $pn
-done
-
-for slr in $(kubectl get switch-lb-rule -o name); do
-   kubectl delete --ignore-not-found $slr
-done
-
-for vd in $(kubectl  get vpc-dns -o name); do
-  kubectl delete --ignore-not-found $vd
-done
-
-for vip in $(kubectl get vip -o name); do
-   kubectl delete --ignore-not-found $vip
-done
-
-for eip in $(kubectl get eip -o name); do
-   kubectl delete --ignore-not-found $eip
-done
-
 for snat in $(kubectl get snat -o name); do
    kubectl delete --ignore-not-found $snat
 done
@@ -61,6 +22,25 @@ for fip in $(kubectl get fip -o name); do
    kubectl delete --ignore-not-found $fip
 done
 
+for eip in $(kubectl get eip -o name); do
+   kubectl delete --ignore-not-found $eip
+done
+
+for vd in $(kubectl  get vpc-dns -o name); do
+  kubectl delete --ignore-not-found $vd
+done
+
+for gw in $(kubectl get vpc-nat-gw -o name); do
+  kubectl delete --ignore-not-found $gw
+done
+
+for slr in $(kubectl get switch-lb-rule -o name); do
+   kubectl delete --ignore-not-found $slr
+done
+
+for vip in $(kubectl get vip -o name); do
+   kubectl delete --ignore-not-found $vip
+done
 
 for osnat in $(kubectl get osnat -o name); do
    kubectl delete --ignore-not-found $osnat
@@ -74,6 +54,24 @@ for oeip in $(kubectl get oeip -o name); do
    kubectl delete --ignore-not-found $oeip
 done
 
+for vlan in $(kubectl get vlan -o name); do
+  kubectl delete --ignore-not-found $vlan
+done
+
+for pn in $(kubectl get provider-network -o name); do
+  kubectl delete --ignore-not-found $pn
+done
+
+set +e
+for subnet in $(kubectl get subnet -o name); do
+  kubectl patch "$subnet" --type='json' -p '[{"op": "replace", "path": "/metadata/finalizers", "value": []}]'
+  kubectl delete --ignore-not-found "$subnet"
+done
+set -e
+
+for vpc in $(kubectl get vpc -o name); do
+  kubectl delete --ignore-not-found $vpc
+done
 
 sleep 5
 
