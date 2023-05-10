@@ -99,7 +99,6 @@ type Controller struct {
 	subnetSynced            cache.InformerSynced
 	addOrUpdateSubnetQueue  workqueue.RateLimitingInterface
 	deleteSubnetQueue       workqueue.RateLimitingInterface
-	deleteRouteQueue        workqueue.RateLimitingInterface
 	updateSubnetStatusQueue workqueue.RateLimitingInterface
 	syncVirtualPortsQueue   workqueue.RateLimitingInterface
 	subnetStatusKeyMutex    keymutex.KeyMutex
@@ -322,7 +321,6 @@ func Run(ctx context.Context, config *Configuration) {
 		subnetSynced:            subnetInformer.Informer().HasSynced,
 		addOrUpdateSubnetQueue:  workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "AddSubnet"),
 		deleteSubnetQueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteSubnet"),
-		deleteRouteQueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "DeleteRoute"),
 		updateSubnetStatusQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "UpdateSubnetStatus"),
 		syncVirtualPortsQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "SyncVirtualPort"),
 		subnetStatusKeyMutex:    keymutex.NewHashed(numKeyLocks),
@@ -815,7 +813,6 @@ func (c *Controller) shutdown() {
 
 	c.addOrUpdateSubnetQueue.ShutDown()
 	c.deleteSubnetQueue.ShutDown()
-	c.deleteRouteQueue.ShutDown()
 	c.updateSubnetStatusQueue.ShutDown()
 	c.syncVirtualPortsQueue.ShutDown()
 
@@ -996,7 +993,6 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(c.runUpdatePodSecurityWorker, time.Second, ctx.Done())
 
 		go wait.Until(c.runDeleteSubnetWorker, time.Second, ctx.Done())
-		go wait.Until(c.runDeleteRouteWorker, time.Second, ctx.Done())
 		go wait.Until(c.runUpdateSubnetStatusWorker, time.Second, ctx.Done())
 		go wait.Until(c.runSyncVirtualPortsWorker, time.Second, ctx.Done())
 
