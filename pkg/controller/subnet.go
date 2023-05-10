@@ -473,8 +473,8 @@ func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason string, e
 }
 
 func (c *Controller) handleAddOrUpdateSubnet(key string) error {
-	c.subnetStatusKeyMutex.LockKey(key)
-	defer func() { _ = c.subnetStatusKeyMutex.UnlockKey(key) }()
+	c.subnetKeyMutex.LockKey(key)
+	defer func() { _ = c.subnetKeyMutex.UnlockKey(key) }()
 
 	cachedSubnet, err := c.subnetsLister.Get(key)
 	if err != nil {
@@ -746,8 +746,8 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 }
 
 func (c *Controller) handleUpdateSubnetStatus(key string) error {
-	c.subnetStatusKeyMutex.LockKey(key)
-	defer func() { _ = c.subnetStatusKeyMutex.UnlockKey(key) }()
+	c.subnetKeyMutex.LockKey(key)
+	defer func() { _ = c.subnetKeyMutex.UnlockKey(key) }()
 
 	cachedSubnet, err := c.subnetsLister.Get(key)
 	subnet := cachedSubnet.DeepCopy()
@@ -816,6 +816,9 @@ func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
 }
 
 func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
+	c.subnetKeyMutex.LockKey(subnet.Name)
+	defer func() { _ = c.subnetKeyMutex.UnlockKey(subnet.Name) }()
+
 	c.updateVpcStatusQueue.Add(subnet.Spec.Vpc)
 	klog.Infof("delete u2o interconnection policy route for subnet %s", subnet.Name)
 	if err := c.deletePolicyRouteForU2OInterconn(subnet); err != nil {

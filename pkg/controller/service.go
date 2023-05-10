@@ -235,6 +235,16 @@ func (c *Controller) processNextUpdateServiceWorkItem() bool {
 }
 
 func (c *Controller) handleDeleteService(service *vpcService) error {
+	key, err := cache.MetaNamespaceKeyFunc(service.Svc)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to get meta namespace key of %#v: %v", service.Svc, err))
+		return nil
+	}
+
+	c.svcKeyMutex.LockKey(key)
+	defer func() { _ = c.svcKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle delete service %s", key)
+
 	svcs, err := c.servicesLister.Services(v1.NamespaceAll).List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list svc, %v", err)
@@ -297,7 +307,11 @@ func (c *Controller) handleUpdateService(key string) error {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
-	klog.Infof("update svc %s/%s", namespace, name)
+
+	c.svcKeyMutex.LockKey(key)
+	defer func() { _ = c.svcKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle update service %s", key)
+
 	svc, err := c.servicesLister.Services(namespace).Get(name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -427,6 +441,10 @@ func (c *Controller) handleAddService(key string) error {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
+
+	c.svcKeyMutex.LockKey(key)
+	defer func() { _ = c.svcKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle add service %s", key)
 
 	svc, err := c.servicesLister.Services(namespace).Get(name)
 	if err != nil {

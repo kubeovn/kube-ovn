@@ -90,7 +90,10 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
-	klog.Infof("update endpoint %s/%s", namespace, name)
+
+	c.epKeyMutex.LockKey(key)
+	defer func() { _ = c.epKeyMutex.UnlockKey(key) }()
+	klog.Infof("update add/update endpoint %s/%s", namespace, name)
 
 	ep, err := c.endpointsLister.Endpoints(namespace).Get(name)
 	if err != nil {
