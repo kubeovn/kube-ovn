@@ -310,7 +310,7 @@ func (c *Controller) handleUpdateService(key string) error {
 
 	vpcName := svc.Annotations[util.VpcAnnotation]
 	if vpcName == "" {
-		vpcName = util.DefaultVpc
+		vpcName = c.config.ClusterRouter
 	}
 	vpc, err := c.vpcsLister.Get(vpcName)
 	if err != nil {

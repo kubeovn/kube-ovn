@@ -147,7 +147,7 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 
 	if vpcName == "" {
 		if vpcName = svc.Annotations[util.VpcAnnotation]; vpcName == "" {
-			vpcName = util.DefaultVpc
+			vpcName = c.config.ClusterRouter
 		}
 	}
 

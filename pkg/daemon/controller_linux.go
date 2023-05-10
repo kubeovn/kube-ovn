@@ -186,7 +186,7 @@ func (c *Controller) reconcileRouters(event subnetEvent) error {
 	joinCIDR := make([]string, 0, 2)
 	cidrs := make([]string, 0, len(subnets)*2)
 	for _, subnet := range subnets {
-		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != util.DefaultVpc || !subnet.Status.IsReady() {
+		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != c.config.ClusterRouter || !subnet.Status.IsReady() {
 			continue
 		}
 
@@ -384,7 +384,7 @@ func (c *Controller) diffPolicyRouting(oldSubnet, newSubnet *kubeovnv1.Subnet) (
 }
 
 func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule, []netlink.Route, error) {
-	if subnet == nil || subnet.Spec.ExternalEgressGateway == "" || subnet.Spec.Vpc != util.DefaultVpc {
+	if subnet == nil || subnet.Spec.ExternalEgressGateway == "" || subnet.Spec.Vpc != c.config.ClusterRouter {
 		return nil, nil, nil
 	}
 	if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType && !util.GatewayContains(subnet.Spec.GatewayNode, c.config.NodeName) {
