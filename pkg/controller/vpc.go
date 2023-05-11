@@ -273,6 +273,10 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	rtbs := c.getRouteTablesByVpc(vpc)
 	targetRoutes := vpc.Spec.StaticRoutes
 	if vpc.Name == c.config.ClusterRouter {
+		if _, ok := rtbs[util.MainRouteTable]; !ok {
+			rtbs[util.MainRouteTable] = nil
+		}
+
 		joinSubnet, err := c.subnetsLister.Get(c.config.NodeSwitch)
 		if err != nil {
 			if !k8serrors.IsNotFound(err) {
