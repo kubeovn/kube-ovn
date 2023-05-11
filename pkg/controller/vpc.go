@@ -95,6 +95,10 @@ func (c *Controller) runDelVpcWorker() {
 }
 
 func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
+	c.vpcKeyMutex.LockKey(vpc.Name)
+	defer func() { _ = c.vpcKeyMutex.UnlockKey(vpc.Name) }()
+	klog.Infof("handle delete vpc %s", vpc.Name)
+
 	if err := c.deleteVpcLb(vpc); err != nil {
 		return err
 	}
@@ -119,6 +123,10 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 }
 
 func (c *Controller) handleUpdateVpcStatus(key string) error {
+	c.vpcKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle status update for vpc %s", key)
+
 	cachedVpc, err := c.vpcsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -177,7 +185,7 @@ type VpcLoadBalancer struct {
 }
 
 func (c *Controller) GenVpcLoadBalancer(vpcKey string) *VpcLoadBalancer {
-	if vpcKey == util.DefaultVpc || vpcKey == "" {
+	if vpcKey == c.config.ClusterRouter || vpcKey == "" {
 		return &VpcLoadBalancer{
 			TcpLoadBalancer:      c.config.ClusterTcpLoadBalancer,
 			TcpSessLoadBalancer:  c.config.ClusterTcpSessionLoadBalancer,
@@ -223,8 +231,12 @@ func (c *Controller) addLoadBalancer(vpc string) (*VpcLoadBalancer, error) {
 }
 
 func (c *Controller) handleAddOrUpdateVpc(key string) error {
+	c.vpcKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle add/update vpc %s", key)
+
 	// get latest vpc info
-	cachedVpc, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Get(context.Background(), key, metav1.GetOptions{})
+	cachedVpc, err := c.vpcsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -341,10 +353,6 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 	}
 
-	if vpc.Name == c.config.ClusterRouter && vpc.Spec.EnableExternal {
-		// custom vpc enable external, just like default vpc with enable eip and snat above
-		targetRoutes = vpc.Spec.StaticRoutes
-	}
 	routeNeedDel, routeNeedAdd, err := diffStaticRoute(existRoute, targetRoutes)
 	if err != nil {
 		klog.Errorf("failed to diff vpc %s static route, %v", vpc.Name, err)
@@ -373,7 +381,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 	}
 
-	if vpc.Name != util.DefaultVpc && vpc.Spec.PolicyRoutes == nil {
+	if vpc.Name != c.config.ClusterRouter && vpc.Spec.PolicyRoutes == nil {
 		// do not clean default vpc policy routes
 		if err = c.ovnLegacyClient.CleanPolicyRoute(vpc.Name); err != nil {
 			klog.Errorf("clean all vpc %s policy route failed, %v", vpc.Name, err)
@@ -856,7 +864,7 @@ func (c *Controller) handleAddVpcExternal(key string) error {
 }
 
 func (c *Controller) handleDeleteVpcStaticRoute(key string) error {
-	vpc, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Get(context.Background(), key, metav1.GetOptions{})
+	vpc, err := c.vpcsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil

@@ -9,21 +9,21 @@ import (
 	"strings"
 	"time"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ipam"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/ovn-org/libovsdb/ovsdb"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ipam"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (c *Controller) enqueueAddSubnet(obj interface{}) {
@@ -47,11 +47,7 @@ func (c *Controller) enqueueDeleteSubnet(obj interface{}) {
 		return
 	}
 	klog.V(3).Infof("enqueue delete subnet %s", key)
-	subnet := obj.(*kubeovnv1.Subnet)
 	c.deleteSubnetQueue.Add(obj)
-	if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType {
-		c.deleteRouteQueue.Add(obj)
-	}
 }
 
 func (c *Controller) enqueueUpdateSubnet(old, new interface{}) {
@@ -132,11 +128,6 @@ func (c *Controller) runUpdateSubnetStatusWorker() {
 	}
 }
 
-func (c *Controller) runDeleteRouteWorker() {
-	for c.processNextDeleteRoutePodWorkItem() {
-	}
-}
-
 func (c *Controller) runDeleteSubnetWorker() {
 	for c.processNextDeleteSubnetWorkItem() {
 	}
@@ -197,36 +188,6 @@ func (c *Controller) processNextAddSubnetWorkItem() bool {
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
 		c.addOrUpdateSubnetQueue.Forget(obj)
-		return nil
-	}(obj)
-
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
-func (c *Controller) processNextDeleteRoutePodWorkItem() bool {
-	obj, shutdown := c.deleteRouteQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.deleteRouteQueue.Done(obj)
-		var subnet *kubeovnv1.Subnet
-		var ok bool
-		if subnet, ok = obj.(*kubeovnv1.Subnet); !ok {
-			c.deleteRouteQueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected subnet in workqueue but got %#v", obj))
-			return nil
-		}
-		if err := c.handleDeleteRoute(subnet); err != nil {
-			c.deleteRouteQueue.AddRateLimited(subnet)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", subnet.Name, err.Error())
-		}
-		c.deleteRouteQueue.Forget(obj)
 		return nil
 	}(obj)
 
@@ -323,7 +284,7 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 			klog.Infof("subnet %s is not ovn subnet, no vpc", subnet.Name)
 		} else {
 			changed = true
-			subnet.Spec.Vpc = util.DefaultVpc
+			subnet.Spec.Vpc = c.config.ClusterRouter
 		}
 		// Some features only work in the default VPC
 		if subnet.Spec.Default && subnet.Name != c.config.DefaultLogicalSwitch {
@@ -512,9 +473,8 @@ func (c Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason string, e
 }
 
 func (c *Controller) handleAddOrUpdateSubnet(key string) error {
-	var err error
-	c.subnetStatusKeyMutex.Lock(key)
-	defer c.subnetStatusKeyMutex.Unlock(key)
+	c.subnetKeyMutex.LockKey(key)
+	defer func() { _ = c.subnetKeyMutex.UnlockKey(key) }()
 
 	cachedSubnet, err := c.subnetsLister.Get(key)
 	if err != nil {
@@ -530,7 +490,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
-	subnet, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), key, metav1.GetOptions{})
+	subnet, err = c.subnetsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -659,7 +619,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
-	if subnet.Spec.Vlan == "" && subnet.Spec.Vpc == util.DefaultVpc {
+	if subnet.Spec.Vlan == "" && subnet.Spec.Vpc == c.config.ClusterRouter {
 		nodes, err := c.nodesLister.List(labels.Everything())
 		if err != nil {
 			klog.Errorf("failed to list nodes: %v", err)
@@ -786,8 +746,8 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 }
 
 func (c *Controller) handleUpdateSubnetStatus(key string) error {
-	c.subnetStatusKeyMutex.Lock(key)
-	defer c.subnetStatusKeyMutex.Unlock(key)
+	c.subnetKeyMutex.LockKey(key)
+	defer func() { _ = c.subnetKeyMutex.UnlockKey(key) }()
 
 	cachedSubnet, err := c.subnetsLister.Get(key)
 	subnet := cachedSubnet.DeepCopy()
@@ -802,17 +762,6 @@ func (c *Controller) handleUpdateSubnetStatus(key string) error {
 	} else {
 		return calcSubnetStatusIP(subnet, c)
 	}
-}
-
-func (c *Controller) handleDeleteRoute(subnet *kubeovnv1.Subnet) error {
-	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-	return c.deleteStaticRoute(subnet.Spec.CIDRBlock, vpc.Status.Router, subnet.Spec.RouteTable)
 }
 
 func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
@@ -867,6 +816,9 @@ func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
 }
 
 func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
+	c.subnetKeyMutex.LockKey(subnet.Name)
+	defer func() { _ = c.subnetKeyMutex.UnlockKey(subnet.Name) }()
+
 	c.updateVpcStatusQueue.Add(subnet.Spec.Vpc)
 	klog.Infof("delete u2o interconnection policy route for subnet %s", subnet.Name)
 	if err := c.deletePolicyRouteForU2OInterconn(subnet); err != nil {
@@ -901,7 +853,7 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 			klog.Errorf("get vpc %s: %v", vpc.Name, err)
 			return err
 		}
-		router = util.DefaultVpc
+		router = c.config.ClusterRouter
 	} else {
 		router = vpc.Status.Router
 	}
@@ -955,14 +907,14 @@ func (c *Controller) reconcileSubnet(subnet *kubeovnv1.Subnet) error {
 		return err
 	}
 
-	if subnet.Spec.Vpc == util.DefaultVpc {
+	if subnet.Spec.Vpc == c.config.ClusterRouter {
 		if err := c.reconcileOvnDefaultVpcRoute(subnet); err != nil {
 			klog.Errorf("reconcile default vpc ovn route for subnet %s failed: %v", subnet.Name, err)
 			return err
 		}
 	}
 
-	if subnet.Spec.Vpc != util.DefaultVpc {
+	if subnet.Spec.Vpc != c.config.ClusterRouter {
 		if err := c.reconcileOvnCustomVpcRoute(subnet); err != nil {
 			klog.Errorf("reconcile custom vpc ovn route for subnet %s failed: %v", subnet.Name, err)
 			return err
@@ -1139,7 +1091,7 @@ func (c *Controller) reconcileVpcUseBfdStaticRoute(vpcName, subnetName string) e
 		klog.Errorf("failed to get subnet %s, %v", subnetName, err)
 		return err
 	}
-	vpc, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Get(context.Background(), vpcName, metav1.GetOptions{})
+	vpc, err := c.vpcsLister.Get(vpcName)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -1148,7 +1100,7 @@ func (c *Controller) reconcileVpcUseBfdStaticRoute(vpcName, subnetName string) e
 		return err
 	}
 	lrpEipName := fmt.Sprintf("%s-%s", vpcName, c.config.ExternalGatewaySwitch)
-	lrpEip, err := c.config.KubeOvnClient.KubeovnV1().OvnEips().Get(context.Background(), lrpEipName, metav1.GetOptions{})
+	lrpEip, err := c.ovnEipsLister.Get(lrpEipName)
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
 			klog.Error(err)
@@ -1227,7 +1179,7 @@ func (c *Controller) reconcileVpcAddNormalStaticRoute(vpcName string) error {
 	}
 	gatewayV4, gatewayV6 := util.SplitStringIP(defualtExternalSubnet.Spec.Gateway)
 	needUpdate := false
-	vpc, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Get(context.Background(), vpcName, metav1.GetOptions{})
+	vpc, err := c.vpcsLister.Get(vpcName)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -1309,7 +1261,7 @@ func (c *Controller) reconcileVpcDelNormalStaticRoute(vpcName string) error {
 	}
 	gatewayV4, gatewayV6 := util.SplitStringIP(defualtExternalSubnet.Spec.Gateway)
 	needUpdate := false
-	vpc, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Get(context.Background(), vpcName, metav1.GetOptions{})
+	vpc, err := c.vpcsLister.Get(vpcName)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -1370,11 +1322,6 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 					return err
 				}
 			}
-		}
-
-		if err := c.deleteStaticRoute(subnet.Spec.CIDRBlock, c.config.ClusterRouter, subnet.Spec.RouteTable); err != nil {
-			klog.Errorf("failed to delete static route %v", err)
-			return err
 		}
 
 		if !subnet.Spec.LogicalGateway && subnet.Name != c.config.ExternalGatewaySwitch && !subnet.Spec.U2OInterconnection {
@@ -1867,9 +1814,7 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 		return err
 	}
 	// Get the number of pods, not ips. For one pod with two ip(v4 & v6) in dual-stack, num of Items is 1
-	podUsedIPs, err := c.config.KubeOvnClient.KubeovnV1().IPs().List(context.Background(), metav1.ListOptions{
-		LabelSelector: fields.OneTermEqualSelector(subnet.Name, "").String(),
-	})
+	podUsedIPs, err := c.ipsLister.List(labels.SelectorFromSet(labels.Set{subnet.Name: ""}))
 	if err != nil {
 		return err
 	}
@@ -1885,17 +1830,16 @@ func calcDualSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	v4availableIPs := util.AddressCount(v4CIDR) - util.CountIpNums(v4toSubIPs)
 	v6availableIPs := util.AddressCount(v6CIDR) - util.CountIpNums(v6toSubIPs)
 
-	usingIPs := float64(len(podUsedIPs.Items))
+	usingIPs := float64(len(podUsedIPs))
 
-	vipSelectors := fields.AndSelectors(fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name),
-		fields.OneTermEqualSelector(util.IpReservedLabel, "")).String()
-	vips, err := c.config.KubeOvnClient.KubeovnV1().Vips().List(context.Background(), metav1.ListOptions{
-		LabelSelector: vipSelectors,
-	})
+	vips, err := c.virtualIpsLister.List(labels.SelectorFromSet(labels.Set{
+		util.SubnetNameLabel: subnet.Name,
+		util.IpReservedLabel: "",
+	}))
 	if err != nil {
 		return err
 	}
-	usingIPs += float64(len(vips.Items))
+	usingIPs += float64(len(vips))
 
 	if !isOvnSubnet(subnet) {
 		eips, err := c.iptablesEipsLister.List(
@@ -1949,25 +1893,22 @@ func calcSubnetStatusIP(subnet *kubeovnv1.Subnet, c *Controller) error {
 	if err != nil {
 		return err
 	}
-	podUsedIPs, err := c.config.KubeOvnClient.KubeovnV1().IPs().List(context.Background(), metav1.ListOptions{
-		LabelSelector: fields.OneTermEqualSelector(subnet.Name, "").String(),
-	})
+	podUsedIPs, err := c.ipsLister.List(labels.SelectorFromSet(labels.Set{subnet.Name: ""}))
 	if err != nil {
 		return err
 	}
 	// gateway always in excludeIPs
 	toSubIPs := util.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
 	availableIPs := util.AddressCount(cidr) - util.CountIpNums(toSubIPs)
-	usingIPs := float64(len(podUsedIPs.Items))
-	vipSelectors := fields.AndSelectors(fields.OneTermEqualSelector(util.SubnetNameLabel, subnet.Name),
-		fields.OneTermEqualSelector(util.IpReservedLabel, "")).String()
-	vips, err := c.config.KubeOvnClient.KubeovnV1().Vips().List(context.Background(), metav1.ListOptions{
-		LabelSelector: vipSelectors,
-	})
+	usingIPs := float64(len(podUsedIPs))
+	vips, err := c.virtualIpsLister.List(labels.SelectorFromSet(labels.Set{
+		util.SubnetNameLabel: subnet.Name,
+		util.IpReservedLabel: "",
+	}))
 	if err != nil {
 		return err
 	}
-	usingIPs += float64(len(vips.Items))
+	usingIPs += float64(len(vips))
 	if !isOvnSubnet(subnet) {
 		eips, err := c.iptablesEipsLister.List(
 			labels.SelectorFromSet(labels.Set{util.SubnetNameLabel: subnet.Name}))
@@ -2187,7 +2128,7 @@ func (c *Controller) createPortGroupForDistributedSubnet(node *v1.Node, subnet *
 	if subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway {
 		return nil
 	}
-	if subnet.Spec.Vpc != util.DefaultVpc || subnet.Name == c.config.NodeSwitch {
+	if subnet.Spec.Vpc != c.config.ClusterRouter || subnet.Name == c.config.NodeSwitch {
 		return nil
 	}
 
@@ -2273,7 +2214,7 @@ func (c *Controller) addPolicyRouteForDistributedSubnet(subnet *kubeovnv1.Subnet
 	if subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway {
 		return nil
 	}
-	if subnet.Spec.Vpc != util.DefaultVpc || subnet.Name == c.config.NodeSwitch {
+	if subnet.Spec.Vpc != c.config.ClusterRouter || subnet.Name == c.config.NodeSwitch {
 		return nil
 	}
 
@@ -2330,7 +2271,7 @@ func (c *Controller) deletePolicyRouteForDistributedSubnet(subnet *kubeovnv1.Sub
 }
 
 func (c *Controller) deletePolicyRouteByGatewayType(subnet *kubeovnv1.Subnet, gatewayType string, isDelete bool) error {
-	if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != util.DefaultVpc {
+	if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != c.config.ClusterRouter {
 		return nil
 	}
 

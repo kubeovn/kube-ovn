@@ -44,7 +44,8 @@ var (
 type QoSPolicyBindingType string
 
 const (
-	QoSBindingTypeEIP QoSPolicyBindingType = "EIP"
+	QoSBindingTypeEIP   QoSPolicyBindingType = "EIP"
+	QoSBindingTypeNatGw QoSPolicyBindingType = "NATGW"
 )
 
 type QoSPolicyRuleDirection string
@@ -482,7 +483,8 @@ type VpcNatGateway struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec VpcNatSpec `json:"spec"`
+	Spec   VpcNatSpec   `json:"spec"`
+	Status VpcNatStatus `json:"status,omitempty"`
 }
 
 type VpcNatSpec struct {
@@ -493,6 +495,15 @@ type VpcNatSpec struct {
 	Selector        []string            `json:"selector"`
 	Tolerations     []corev1.Toleration `json:"tolerations"`
 	Affinity        corev1.Affinity     `json:"affinity"`
+	QoSPolicy       string              `json:"qosPolicy"`
+}
+
+type VpcNatStatus struct {
+	QoSPolicy       string              `json:"qosPolicy" patchStrategy:"merge"`
+	ExternalSubnets []string            `json:"externalSubnets" patchStrategy:"merge"`
+	Selector        []string            `json:"selector" patchStrategy:"merge"`
+	Tolerations     []corev1.Toleration `json:"tolerations" patchStrategy:"merge"`
+	Affinity        corev1.Affinity     `json:"affinity" patchStrategy:"merge"`
 }
 
 // +genclient

@@ -8,7 +8,6 @@ import (
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -205,8 +204,9 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		return fmt.Errorf("iptables nat gw not enable")
 	}
 
-	c.vpcNatGwKeyMutex.Lock(key)
-	defer c.vpcNatGwKeyMutex.Unlock(key)
+	c.vpcNatGwKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle add iptables eip %s", key)
 
 	cachedEip, err := c.iptablesEipsLister.Get(key)
 	if err != nil {
@@ -272,15 +272,13 @@ func (c *Controller) checkEipBindNat(key string, eip *kubeovnv1.IptablesEIP) (bo
 		notUse = true
 	case util.DnatUsingEip:
 		// nat change eip not that fast
-		dnats, err := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().List(context.Background(), metav1.ListOptions{
-			LabelSelector: fields.OneTermEqualSelector(util.VpcNatGatewayNameLabel, key).String(),
-		})
+		dnats, err := c.iptablesDnatRulesLister.List(labels.SelectorFromSet(labels.Set{util.VpcNatGatewayNameLabel: key}))
 		if err != nil {
 			klog.Errorf("failed to get dnats, %v", err)
 			return notUse, natName, err
 		}
 		notUse = true
-		for _, item := range dnats.Items {
+		for _, item := range dnats {
 			if item.Annotations[util.VpcEipAnnotation] == key {
 				notUse = false
 				natName = item.Name
@@ -289,15 +287,13 @@ func (c *Controller) checkEipBindNat(key string, eip *kubeovnv1.IptablesEIP) (bo
 		}
 	case util.SnatUsingEip:
 		// nat change eip not that fast
-		snats, err := c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().List(context.Background(), metav1.ListOptions{
-			LabelSelector: fields.OneTermEqualSelector(util.VpcNatGatewayNameLabel, key).String(),
-		})
+		snats, err := c.iptablesSnatRulesLister.List(labels.SelectorFromSet(labels.Set{util.VpcNatGatewayNameLabel: key}))
 		if err != nil {
 			klog.Errorf("failed to get snats, %v", err)
 			return notUse, natName, err
 		}
 		notUse = true
-		for _, item := range snats.Items {
+		for _, item := range snats {
 			if item.Annotations[util.VpcEipAnnotation] == key {
 				notUse = false
 				natName = item.Name
@@ -340,8 +336,10 @@ func (c *Controller) handleResetIptablesEip(key string) error {
 }
 
 func (c *Controller) handleUpdateIptablesEip(key string) error {
-	c.vpcNatGwKeyMutex.Lock(key)
-	defer c.vpcNatGwKeyMutex.Unlock(key)
+	c.vpcNatGwKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle update iptables eip %s", key)
+
 	cachedEip, err := c.iptablesEipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -525,7 +523,7 @@ func (c *Controller) addOrUpdateEIPBandtithLimitRules(eip *kubeovnv1.IptablesEIP
 // add tc rule for eip in nat gw pod
 func (c *Controller) addEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
 	var err error
-	qosPolicy, err := c.config.KubeOvnClient.KubeovnV1().QoSPolicies().Get(context.Background(), eip.Spec.QoSPolicy, metav1.GetOptions{})
+	qosPolicy, err := c.qosPoliciesLister.Get(eip.Spec.QoSPolicy)
 	if !qosPolicy.Status.Shared {
 		eips, err := c.iptablesEipsLister.List(
 			labels.SelectorFromSet(labels.Set{util.QoSLabel: qosPolicy.Name}))
@@ -563,7 +561,7 @@ func (c *Controller) delEIPBandtithLimitRules(eip *kubeovnv1.IptablesEIP, v4ip s
 // del tc rule for eip in nat gw pod
 func (c *Controller) delEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
 	var err error
-	qosPolicy, err := c.config.KubeOvnClient.KubeovnV1().QoSPolicies().Get(context.Background(), eip.Status.QoSPolicy, metav1.GetOptions{})
+	qosPolicy, err := c.qosPoliciesLister.Get(eip.Status.QoSPolicy)
 	if err != nil {
 		klog.Errorf("get qos policy %s failed: %v", eip.Status.QoSPolicy, err)
 		return err

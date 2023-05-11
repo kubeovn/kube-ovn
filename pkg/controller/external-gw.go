@@ -176,7 +176,7 @@ func (c *Controller) createDefaultVpcLrpEip(config map[string]string) (string, s
 		return "", "", err
 	}
 	needCreateEip := false
-	lrpEipName := fmt.Sprintf("%s-%s", util.DefaultVpc, c.config.ExternalGatewaySwitch)
+	lrpEipName := fmt.Sprintf("%s-%s", c.config.ClusterRouter, c.config.ExternalGatewaySwitch)
 	cachedEip, err := c.ovnEipsLister.Get(lrpEipName)
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
@@ -294,7 +294,7 @@ func (c *Controller) updateDefaultVpcExternal(enableExternal bool) error {
 			klog.Errorf("failed to patch vpc %s, %v", c.config.ClusterRouter, err)
 			return err
 		}
-		lrpEipName := fmt.Sprintf("%s-%s", util.DefaultVpc, c.config.ExternalGatewaySwitch)
+		lrpEipName := fmt.Sprintf("%s-%s", c.config.ClusterRouter, c.config.ExternalGatewaySwitch)
 		if err := c.patchLrpOvnEipEnableBfdLabel(lrpEipName, vpc.Spec.EnableBfd); err != nil {
 			klog.Errorf("failed to patch label for lrp %s, %v", lrpEipName, err)
 			return err

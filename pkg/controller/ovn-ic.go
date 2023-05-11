@@ -454,7 +454,7 @@ func stripPrefix(policyMatch string) (string, error) {
 }
 
 func (c *Controller) syncOneRouteToPolicy(key, value string) {
-	lr, err := c.ovnClient.GetLogicalRouter(util.DefaultVpc, false)
+	lr, err := c.ovnClient.GetLogicalRouter(c.config.ClusterRouter, false)
 	if err != nil {
 		klog.Errorf("logical router does not exist %v at %v", err, time.Now())
 		return
@@ -493,7 +493,7 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 			delete(policyMap, lrRoute.IPPrefix)
 		} else {
 			matchFiled := util.MatchV4Dst + " == " + lrRoute.IPPrefix
-			if err := c.ovnClient.AddLogicalRouterPolicy(util.DefaultVpc, util.OvnICPolicyPriority, matchFiled, ovnnb.LogicalRouterPolicyActionAllow, nil, map[string]string{key: value, "vendor": util.CniTypeName}); err != nil {
+			if err := c.ovnClient.AddLogicalRouterPolicy(lr.Name, util.OvnICPolicyPriority, matchFiled, ovnnb.LogicalRouterPolicyActionAllow, nil, map[string]string{key: value, "vendor": util.CniTypeName}); err != nil {
 				klog.Errorf("adding router policy failed %v", err)
 			}
 		}

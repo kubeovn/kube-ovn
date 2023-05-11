@@ -289,12 +289,22 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 		return
 	}
 
+	// enqueue delay
+	var delay time.Duration
+	if newPod.Spec.TerminationGracePeriodSeconds != nil {
+		if newPod.DeletionTimestamp != nil {
+			delay = time.Until(newPod.DeletionTimestamp.Add(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second))
+		} else {
+			delay = time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second
+		}
+	}
+
 	if newPod.DeletionTimestamp != nil && !isStateful && !isVmPod {
 		go func() {
 			// In case node get lost and pod can not be deleted,
 			// the ip address will not be recycled
-			time.Sleep(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second)
-			c.deletePodQueue.Add(newObj)
+			klog.V(3).Infof("enqueue delete pod %s after %v", key, delay)
+			c.deletePodQueue.AddAfter(newObj, delay)
 		}()
 		return
 	}
@@ -302,17 +312,15 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj interface{}) {
 	// do not delete statefulset pod unless ownerReferences is deleted
 	if isStateful && isStatefulSetPodToDel(c.config.KubeClient, newPod, statefulSetName) {
 		go func() {
-			klog.V(3).Infof("enqueue delete pod %s", key)
-			time.Sleep(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second)
-			c.deletePodQueue.Add(newObj)
+			klog.V(3).Infof("enqueue delete pod %s after %v", key, delay)
+			c.deletePodQueue.AddAfter(newObj, delay)
 		}()
 		return
 	}
 	if isVmPod && c.isVmPodToDel(newPod, vmName) {
 		go func() {
-			klog.V(3).Infof("enqueue delete pod %s", key)
-			time.Sleep(time.Duration(*newPod.Spec.TerminationGracePeriodSeconds) * time.Second)
-			c.deletePodQueue.Add(newObj)
+			klog.V(3).Infof("enqueue delete pod %s after %v", key, delay)
+			c.deletePodQueue.AddAfter(newObj, delay)
 		}()
 		return
 	}
@@ -365,7 +373,6 @@ func (c *Controller) processNextAddOrUpdatePodWorkItem() bool {
 			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
 			return nil
 		}
-		klog.Infof("handle sync pod %s", key)
 		if err := c.handleAddOrUpdatePod(key); err != nil {
 			c.addOrUpdatePodQueue.AddRateLimited(key)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
@@ -400,7 +407,6 @@ func (c *Controller) processNextDeletePodWorkItem() bool {
 			utilruntime.HandleError(fmt.Errorf("expected pod in workqueue but got %#v", obj))
 			return nil
 		}
-		klog.Infof("handle delete pod %s/%s", pod.Namespace, pod.Name)
 		if err := c.handleDeletePod(pod); err != nil {
 			c.deletePodQueue.AddRateLimited(obj)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", pod.Name, err.Error())
@@ -475,7 +481,7 @@ func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
 
 func (c *Controller) changeVMSubnet(vmName, namespace, providerName, subnetName string, pod *v1.Pod) error {
 	ipName := ovs.PodNameToPortName(vmName, namespace, providerName)
-	ipCr, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), ipName, metav1.GetOptions{})
+	ipCr, err := c.ipsLister.Get(ipName)
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
 			errMsg := fmt.Errorf("failed to get ip CR %s: %v", ipName, err)
@@ -513,8 +519,9 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 		return nil
 	}
 
-	c.podKeyMutex.Lock(key)
-	defer c.podKeyMutex.Unlock(key)
+	c.podKeyMutex.LockKey(key)
+	defer func() { _ = c.podKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle add/update pod %s", key)
 
 	cachedPod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
@@ -715,7 +722,7 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 		podIP = pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
 		subnet = podNet.Subnet
 
-		if podIP != "" && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && subnet.Spec.Vpc == util.DefaultVpc {
+		if podIP != "" && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && subnet.Spec.Vpc == c.config.ClusterRouter {
 			node, err := c.nodesLister.Get(pod.Spec.NodeName)
 			if err != nil {
 				klog.Errorf("failed to get node %s: %v", pod.Spec.NodeName, err)
@@ -832,13 +839,11 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 }
 
 func (c *Controller) handleDeletePod(pod *v1.Pod) error {
-	var key string
-	var err error
-
 	podName := c.getNameByPod(pod)
-	key = fmt.Sprintf("%s/%s", pod.Namespace, podName)
-	c.podKeyMutex.Lock(key)
-	defer c.podKeyMutex.Unlock(key)
+	key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
+	c.podKeyMutex.LockKey(key)
+	defer func() { _ = c.podKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle delete pod %s", key)
 
 	p, _ := c.podsLister.Pods(pod.Namespace).Get(pod.Name)
 	if p != nil && p.UID != pod.UID {
@@ -871,7 +876,7 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 				return err
 			}
 			// If pod has snat or eip, also need delete staticRoute when delete pod
-			if vpc.Name == util.DefaultVpc {
+			if vpc.Name == c.config.ClusterRouter {
 				if err := c.ovnLegacyClient.DeleteStaticRoute(
 					address.Ip, vpc.Name, subnet.Spec.RouteTable); err != nil {
 					return err
@@ -918,6 +923,9 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 			return err
 		}
 	}
+
+	c.ipam.ReleaseAddressByPod(key)
+
 	podNets, err := c.getPodKubeovnNets(pod)
 	if err != nil {
 		klog.Errorf("failed to get pod nets %v", err)
@@ -935,7 +943,6 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 			}
 		}
 	}
-	c.ipam.ReleaseAddressByPod(key)
 	for _, podNet := range podNets {
 		c.syncVirtualPortsQueue.Add(podNet.Subnet.Name)
 	}
@@ -949,8 +956,8 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 		return nil
 	}
 
-	c.podKeyMutex.Lock(key)
-	defer c.podKeyMutex.Unlock(key)
+	c.podKeyMutex.LockKey(key)
+	defer func() { _ = c.podKeyMutex.UnlockKey(key) }()
 
 	pod, err := c.podsLister.Pods(namespace).Get(name)
 	if err != nil {
@@ -1345,7 +1352,7 @@ func (c *Controller) validatePodIP(podName, subnetName, ipv4, ipv6 string) (bool
 		return false, false, err
 	}
 
-	if subnet.Spec.Vlan == "" && subnet.Spec.Vpc == util.DefaultVpc {
+	if subnet.Spec.Vlan == "" && subnet.Spec.Vpc == c.config.ClusterRouter {
 		nodes, err := c.nodesLister.List(labels.Everything())
 		if err != nil {
 			klog.Errorf("failed to list nodes: %v", err)

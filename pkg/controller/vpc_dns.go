@@ -302,8 +302,7 @@ func (c *Controller) createOrUpdateVpcDnsDep(vpcDns *kubeovnv1.VpcDns) error {
 
 func (c *Controller) createOrUpdateVpcDnsSlr(vpcDns *kubeovnv1.VpcDns) error {
 	needToCreateSlr := false
-	oldSlr, err := c.config.KubeOvnClient.KubeovnV1().SwitchLBRules().Get(context.Background(),
-		genVpcDnsDpName(vpcDns.Name), metav1.GetOptions{})
+	oldSlr, err := c.switchLBRuleLister.Get(genVpcDnsDpName(vpcDns.Name))
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			needToCreateSlr = true
