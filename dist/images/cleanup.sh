@@ -50,14 +50,6 @@ for oeip in $(kubectl get oeip -o name); do
    kubectl delete --ignore-not-found $oeip
 done
 
-for vlan in $(kubectl get vlan -o name); do
-  kubectl delete --ignore-not-found $vlan
-done
-
-for pn in $(kubectl get provider-network -o name); do
-  kubectl delete --ignore-not-found $pn
-done
-
 for slr in $(kubectl get switch-lb-rule -o name); do
    kubectl delete --ignore-not-found $slr
 done
@@ -71,6 +63,14 @@ set -e
 
 for vpc in $(kubectl get vpc -o name); do
   kubectl delete --ignore-not-found $vpc
+done
+
+for vlan in $(kubectl get vlan -o name); do
+  kubectl delete --ignore-not-found $vlan
+done
+
+for pn in $(kubectl get provider-network -o name); do
+  kubectl delete --ignore-not-found $pn
 done
 
 # Delete Kube-OVN components
