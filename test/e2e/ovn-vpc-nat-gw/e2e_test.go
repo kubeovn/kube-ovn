@@ -79,14 +79,14 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 	var itFn func(bool)
 	var cs clientset.Interface
 	var nodeNames []string
-	var clusterName, providerNetworkName, vlanName, subnetName, vpcName, overlaySubnetName string
+	var clusterName, providerNetworkName, vlanName, underlaySubnetName, vpcName, overlaySubnetName string
 	var linkMap map[string]*iproute.Link
 	var providerNetworkClient *framework.ProviderNetworkClient
 	var vlanClient *framework.VlanClient
 	var vpcClient *framework.VpcClient
 	var subnetClient *framework.SubnetClient
 	var ovnEipClient *framework.OvnEipClient
-	var fipVipName, eipName, fipName, dnatVipName, dnatEipName, dnatName, snatEipName, snatName, namespaceName string
+	var fipVipName, fipEipName, fipName, dnatVipName, dnatEipName, dnatName, snatEipName, snatName, namespaceName string
 	var ipClient *framework.IpClient
 	var vipClient *framework.VipClient
 	var ovnFipClient *framework.OvnFipClient
@@ -118,7 +118,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		vpcName = "vpc-" + framework.RandomSuffix()
 
 		fipVipName = "fip-vip-" + framework.RandomSuffix()
-		eipName = "fip-eip-" + framework.RandomSuffix()
+		fipEipName = "fip-eip-" + framework.RandomSuffix()
 		fipName = "fip-" + framework.RandomSuffix()
 
 		dnatVipName = "dnat-vip-" + framework.RandomSuffix()
@@ -130,7 +130,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		overlaySubnetName = "overlay-subnet-" + framework.RandomSuffix()
 		providerNetworkName = "external"
 		vlanName = "vlan-" + framework.RandomSuffix()
-		subnetName = "external"
+		underlaySubnetName = "external"
 		containerID = ""
 		if image == "" {
 			image = framework.GetKubeOvnImage(cs)
@@ -280,8 +280,8 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("Deleting subnet " + overlaySubnetName)
 		subnetClient.DeleteSync(overlaySubnetName)
 
-		ginkgo.By("Deleting subnet " + subnetName)
-		subnetClient.DeleteSync(subnetName)
+		ginkgo.By("Deleting underlay subnet " + underlaySubnetName)
+		subnetClient.DeleteSync(underlaySubnetName)
 
 		ginkgo.By("Deleting vlan " + vlanName)
 		vlanClient.Delete(vlanName, metav1.DeleteOptions{})
@@ -320,7 +320,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
 		_ = vlanClient.Create(vlan)
 
-		ginkgo.By("Creating underlay subnet " + subnetName)
+		ginkgo.By("Creating underlay subnet " + underlaySubnetName)
 		cidr := make([]string, 0, 2)
 		gateway := make([]string, 0, 2)
 		for _, config := range dockerNetwork.IPAM.Config {
@@ -346,13 +346,14 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 				excludeIPs = append(excludeIPs, strings.Split(container.IPv6Address, "/")[0])
 			}
 		}
-		subnet := framework.MakeSubnet(subnetName, vlanName, strings.Join(cidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, nil)
-		_ = subnetClient.CreateSync(subnet)
+		underlaySubnet := framework.MakeSubnet(underlaySubnetName, vlanName, strings.Join(cidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, nil)
+		_ = subnetClient.CreateSync(underlaySubnet)
 
+		externalGwNodes := strings.Join(nodeNames, ",")
 		ginkgo.By("Creating config map ovn-external-gw-config for centralized case")
 		cmData := map[string]string{
 			"enable-external-gw": "true",
-			"external-gw-nodes":  "kube-ovn-control-plane,kube-ovn-worker",
+			"external-gw-nodes":  externalGwNodes,
 			"type":               "centralized",
 			"external-gw-nic":    "eth1",
 			"external-gw-addr":   strings.Join(cidr, ","),
@@ -379,13 +380,9 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		overlaySubnet := framework.MakeSubnet(overlaySubnetName, "", overlaySubnetV4Cidr, overlaySubnetV4Gw, vpcName, util.OvnProvider, nil, nil, nil)
 		_ = subnetClient.CreateSync(overlaySubnet)
 
-		ginkgo.By("Getting k8s nodes")
-		k8sNodes, err := e2enode.GetReadySchedulableNodes(cs)
-		framework.ExpectNoError(err)
-
-		for _, node := range k8sNodes.Items {
-			ginkgo.By("Creating ovn eip " + node.Name)
-			eip := makeOvnEip(node.Name, subnetName, "", "", "", util.NodeExtGwUsingEip)
+		for _, nodeName := range nodeNames {
+			ginkgo.By("Creating ovn eip " + nodeName)
+			eip := makeOvnEip(nodeName, underlaySubnetName, "", "", "", util.NodeExtGwUsingEip)
 			_ = ovnEipClient.CreateSync(eip)
 		}
 		ginkgo.By("Creating crd in centralized case")
@@ -393,15 +390,15 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("Creating ovn vip " + fipVipName)
 		fipVip := makeOvnVip(fipVipName, overlaySubnetName, "", "")
 		_ = vipClient.CreateSync(fipVip)
-		ginkgo.By("Creating ovn eip " + eipName)
-		eip := makeOvnEip(eipName, subnetName, "", "", "", util.FipUsingEip)
+		ginkgo.By("Creating ovn eip " + fipEipName)
+		eip := makeOvnEip(fipEipName, underlaySubnetName, "", "", "", util.FipUsingEip)
 		_ = ovnEipClient.CreateSync(eip)
 		ginkgo.By("Creating ovn fip " + fipName)
-		fip := makeOvnFip(fipName, eipName, util.NatUsingVip, fipVipName)
+		fip := makeOvnFip(fipName, fipEipName, util.NatUsingVip, fipVipName)
 		_ = ovnFipClient.CreateSync(fip)
 
 		ginkgo.By("Creating ovn eip " + snatEipName)
-		snatEip := makeOvnEip(snatEipName, subnetName, "", "", "", util.SnatUsingEip)
+		snatEip := makeOvnEip(snatEipName, underlaySubnetName, "", "", "", util.SnatUsingEip)
 		_ = ovnEipClient.CreateSync(snatEip)
 		ginkgo.By("Creating ovn snat" + snatName)
 		snat := makeOvnSnat(snatName, snatEipName, overlaySubnetName, "")
@@ -411,18 +408,27 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		dnatVip := makeOvnVip(dnatVipName, overlaySubnetName, "", "")
 		_ = vipClient.CreateSync(dnatVip)
 		ginkgo.By("Creating ovn eip " + dnatEipName)
-		dnatEip := makeOvnEip(dnatEipName, subnetName, "", "", "", util.DnatUsingEip)
+		dnatEip := makeOvnEip(dnatEipName, underlaySubnetName, "", "", "", util.DnatUsingEip)
 		_ = ovnEipClient.CreateSync(dnatEip)
 		ginkgo.By("Creating ovn dnat " + dnatName)
 		dnat := makeOvnDnat(dnatName, dnatEipName, util.NatUsingVip, dnatVipName, "80", "8080", "tcp")
 		_ = ovnDnatRuleClient.CreateSync(dnat)
 
-		k8sNodes, err = e2enode.GetReadySchedulableNodes(cs)
+		k8sNodes, err := e2enode.GetReadySchedulableNodes(cs)
 		framework.ExpectNoError(err)
 		for _, node := range k8sNodes.Items {
 			// label should be true after setup node external gw
 			framework.ExpectHaveKeyWithValue(node.Labels, util.NodeExtGwLabel, "true")
 		}
+
+		ginkgo.By("Deleting crd in centralized case")
+
+		ginkgo.By("Deleting ovn fip " + fipName)
+		ovnFipClient.DeleteSync(fipName)
+		ginkgo.By("Deleting ovn dnat " + dnatName)
+		ovnDnatRuleClient.DeleteSync(dnatName)
+		ginkgo.By("Deleting ovn snat " + snatName)
+		ovnSnatRuleClient.DeleteSync(snatName)
 
 		k8sNodes, err = e2enode.GetReadySchedulableNodes(cs)
 		framework.ExpectNoError(err)
@@ -431,38 +437,22 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			ovnEipClient.DeleteSync(node.Name)
 		}
 
-		ginkgo.By("Deleting crd in centralized case")
-		ginkgo.By("Deleting ovn fip " + fipName)
-		ovnFipClient.DeleteSync(fipName)
-		ginkgo.By("Deleting ovn dnat " + dnatName)
-		ovnDnatRuleClient.DeleteSync(dnatName)
-		ginkgo.By("Deleting ovn snat " + snatName)
-		ovnSnatRuleClient.DeleteSync(snatName)
-
-		ginkgo.By("Deleting ovn eip " + eipName)
-		ovnEipClient.DeleteSync(eipName)
-		ginkgo.By("Deleting ovn eip " + dnatEipName)
-		ovnEipClient.DeleteSync(dnatEipName)
-		ginkgo.By("Deleting ovn eip " + snatEipName)
-		ovnEipClient.DeleteSync(snatEipName)
-
-		lrpEipName := fmt.Sprintf("%s-%s", vpcName, subnetName)
-		ginkgo.By("Deleting ovn eip " + lrpEipName)
-		ovnEipClient.DeleteSync(lrpEipName)
-
-		defaultVpcLrpEipName := fmt.Sprintf("%s-%s", util.DefaultVpc, "external")
-		ginkgo.By("Deleting ovn eip " + defaultVpcLrpEipName)
-		ovnEipClient.DeleteSync(defaultVpcLrpEipName)
-
 		ginkgo.By("Deleting ovn vip " + fipVipName)
 		vipClient.DeleteSync(fipVipName)
 		ginkgo.By("Deleting ovn vip " + dnatVipName)
 		vipClient.DeleteSync(dnatVipName)
 
-		ginkgo.By("Creating config map ovn-external-gw-config for distributed case")
+		ginkgo.By("Deleting ovn eip " + fipEipName)
+		ovnEipClient.DeleteSync(fipEipName)
+		ginkgo.By("Deleting ovn eip " + dnatEipName)
+		ovnEipClient.DeleteSync(dnatEipName)
+		ginkgo.By("Deleting ovn eip " + snatEipName)
+		ovnEipClient.DeleteSync(snatEipName)
+
+		ginkgo.By("Updating config map ovn-external-gw-config for distributed case")
 		cmData = map[string]string{
 			"enable-external-gw": "true",
-			"external-gw-nodes":  "kube-ovn-control-plane,kube-ovn-worker",
+			"external-gw-nodes":  externalGwNodes,
 			"type":               "distributed",
 			"external-gw-nic":    "eth1",
 			"external-gw-addr":   strings.Join(cidr, ","),
@@ -496,34 +486,47 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			ipName := ovs.PodNameToPortName(podName, namespaceName, overlaySubnet.Spec.Provider)
 			ginkgo.By("Get pod ip" + ipName)
 			ip := ipClient.Get(ipName)
-			eipName = fmt.Sprintf("fip-%s", node)
-			ginkgo.By("Creating ovn eip " + eipName)
-			eip = makeOvnEip(eipName, subnetName, "", "", "", util.FipUsingEip)
+			fipEipName = fmt.Sprintf("fip-%s", node)
+			ginkgo.By("Creating ovn eip " + fipEipName)
+			eip = makeOvnEip(fipEipName, underlaySubnetName, "", "", "", util.FipUsingEip)
 			_ = ovnEipClient.CreateSync(eip)
 			fipName = fmt.Sprintf("fip-%s", node)
 			ginkgo.By("Creating ovn fip " + fipName)
-			fip := makeOvnFip(fipName, eipName, "", ip.Name)
+			fip := makeOvnFip(fipName, fipEipName, "", ip.Name)
 			_ = ovnFipClient.CreateSync(fip)
 			// clean fip eip in distributed case
 			ginkgo.By("Deleting ovn fip " + fipName)
 			ovnFipClient.DeleteSync(fipName)
-			ginkgo.By("Deleting ovn eip " + eipName)
-			ovnEipClient.DeleteSync(eipName)
+			ginkgo.By("Deleting ovn eip " + fipEipName)
+			ovnEipClient.DeleteSync(fipEipName)
 		}
 
 		ginkgo.By("Deleting crd in distributed case")
 		for _, node := range nodeNames {
-			eipName = fmt.Sprintf("fip-%s", node)
+			fipEipName = fmt.Sprintf("fip-%s", node)
 			fipName = fmt.Sprintf("fip-%s", node)
 			ginkgo.By("Deleting ovn fip " + fipName)
 			ovnFipClient.DeleteSync(fipName)
-			ginkgo.By("Deleting ovn eip " + eipName)
-			ovnEipClient.DeleteSync(eipName)
+			ginkgo.By("Deleting ovn eip " + fipEipName)
+			ovnEipClient.DeleteSync(fipEipName)
 			podName := fmt.Sprintf("fip-%s", node)
 			ipName := ovs.PodNameToPortName(podName, namespaceName, overlaySubnet.Spec.Provider)
 			ginkgo.By("Deleting pod ip" + ipName)
 			ipClient.DeleteSync(ipName)
 		}
+
+		ginkgo.By("Disable ovn eip snat external gateway")
+		ginkgo.By("Deleting configmap")
+		err = cs.CoreV1().ConfigMaps(configMap.Namespace).Delete(context.Background(), configMap.Name, metav1.DeleteOptions{})
+		framework.ExpectNoError(err, "failed to delete ConfigMap")
+
+		lrpEipName := fmt.Sprintf("%s-%s", vpcName, underlaySubnetName)
+		ginkgo.By("Deleting ovn eip " + lrpEipName)
+		ovnEipClient.DeleteSync(lrpEipName)
+
+		defaultVpcLrpEipName := fmt.Sprintf("%s-%s", util.DefaultVpc, underlaySubnetName)
+		ginkgo.By("Deleting ovn eip " + defaultVpcLrpEipName)
+		ovnEipClient.DeleteSync(defaultVpcLrpEipName)
 
 		k8sNodes, err = e2enode.GetReadySchedulableNodes(cs)
 		framework.ExpectNoError(err)
@@ -532,9 +535,6 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			framework.ExpectHaveKeyWithValue(node.Labels, util.NodeExtGwLabel, "false")
 		}
 
-		ginkgo.By("Deleting configmap")
-		err = cs.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Delete(context.Background(), "ovn-external-gw-config", metav1.DeleteOptions{})
-		framework.ExpectNoError(err, "failed to delete ConfigMap")
 	})
 })
 

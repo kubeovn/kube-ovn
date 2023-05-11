@@ -314,7 +314,6 @@ func (c *Controller) handleDelOvnDnatRule(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-
 	if cachedDnat.Status.Vpc != "" && cachedDnat.Status.V4Eip != "" && cachedDnat.Status.ExternalPort != "" {
 		if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
 			cachedDnat.Status.V4Eip, cachedDnat.Status.ExternalPort); err != nil {
@@ -323,16 +322,17 @@ func (c *Controller) handleDelOvnDnatRule(key string) error {
 		}
 	}
 
+	if err = c.handleDelOvnEipFinalizer(cachedEip, util.OvnDnatUseEipFinalizer); err != nil {
+		klog.Errorf("failed to handle remove finalizer from ovn eip, %v", err)
+		return err
+	}
+	c.resetOvnEipQueue.Add(cachedDnat.Spec.OvnEip)
+
 	if err = c.handleDelOvnDnatFinalizer(cachedDnat); err != nil {
 		klog.Errorf("failed to handle remove finalizer from ovn dnat, %v", err)
 		return err
 	}
 
-	c.resetOvnEipQueue.Add(cachedDnat.Spec.OvnEip)
-	if err = c.handleDelOvnEipFinalizer(cachedEip, util.OvnDnatUseEipFinalizer); err != nil {
-		klog.Errorf("failed to handle remove finalizer from ovn eip, %v", err)
-		return err
-	}
 	return nil
 }
 
