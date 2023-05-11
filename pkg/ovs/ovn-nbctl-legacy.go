@@ -2,17 +2,13 @@ package ovs
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"regexp"
-	"sort"
-	"strconv"
 	"strings"
 	"time"
 
-	"golang.org/x/exp/slices"
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -94,33 +90,6 @@ func (c LegacyClient) CustomFindEntity(entity string, attris []string, args ...s
 			}
 		}
 		result = append(result, aResult)
-	}
-	return result, nil
-}
-
-func (c LegacyClient) GetEntityInfo(entity string, index string, attris []string) (result map[string]string, err error) {
-	var attrstr strings.Builder
-	for _, e := range attris {
-		attrstr.WriteString(e)
-		attrstr.WriteString(" ")
-	}
-	cmd := []string{"get", entity, index, strings.TrimSpace(attrstr.String())}
-	output, err := c.ovnNbCommand(cmd...)
-	if err != nil {
-		klog.Errorf("failed to get attributes from %s %s: %v", entity, index, err)
-		return nil, err
-	}
-	result = make(map[string]string)
-	if output == "" {
-		return result, nil
-	}
-	lines := strings.Split(output, "\n")
-	if len(lines) != len(attris) {
-		klog.Errorf("failed to get attributes from %s %s %s", entity, index, attris)
-		return nil, errors.New("length abnormal")
-	}
-	for i, l := range lines {
-		result[attris[i]] = l
 	}
 	return result, nil
 }
@@ -212,162 +181,6 @@ func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, ecmp, bfdId, router 
 	}
 
 	return nil
-}
-
-// AddPolicyRoute add a policy route rule in ovn
-func (c LegacyClient) AddPolicyRoute(router string, priority int32, match, action, nextHop string, externalIDs map[string]string) error {
-	consistent, err := c.CheckPolicyRouteNexthopConsistent(match, nextHop, priority)
-	if err != nil {
-		return err
-	}
-	if consistent {
-		return nil
-	}
-
-	klog.Infof("remove inconsistent policy route from router %s: match %s", router, match)
-	if err := c.DeletePolicyRoute(router, priority, match); err != nil {
-		klog.Errorf("failed to delete policy route: %v", err)
-		return err
-	}
-
-	// lr-policy-add ROUTER PRIORITY MATCH ACTION [NEXTHOP]
-	args := []string{MayExist, "lr-policy-add", router, strconv.Itoa(int(priority)), match, action}
-	if nextHop != "" {
-		args = append(args, nextHop)
-	}
-	klog.Infof("add policy route for router %s: priority %d, match %s, nextHop %s", router, priority, match, nextHop)
-	if _, err := c.ovnNbCommand(args...); err != nil {
-		return err
-	}
-
-	if len(externalIDs) == 0 {
-		return nil
-	}
-
-	result, err := c.CustomFindEntity("logical_router_policy", []string{"_uuid"}, fmt.Sprintf("priority=%d", priority), fmt.Sprintf(`match="%s"`, match))
-	if err != nil {
-		klog.Errorf("failed to get logical router policy UUID: %v", err)
-		return err
-	}
-	for _, policy := range result {
-		args := make([]string, 0, len(externalIDs)+3)
-		args = append(args, "set", "logical_router_policy", policy["_uuid"][0])
-		for k, v := range externalIDs {
-			args = append(args, fmt.Sprintf("external-ids:%s=%v", k, v))
-		}
-		if _, err = c.ovnNbCommand(args...); err != nil {
-			return fmt.Errorf("failed to set external ids of logical router policy %s: %v", policy["_uuid"][0], err)
-		}
-	}
-
-	return nil
-}
-
-// DeletePolicyRoute delete a policy route rule in ovn
-func (c LegacyClient) DeletePolicyRoute(router string, priority int32, match string) error {
-	exist, err := c.IsPolicyRouteExist(router, priority, match)
-	if err != nil {
-		return err
-	}
-	if !exist {
-		return nil
-	}
-	var args = []string{"lr-policy-del", router}
-	// lr-policy-del ROUTER [PRIORITY [MATCH]]
-	if priority > 0 {
-		args = append(args, strconv.Itoa(int(priority)))
-		if match != "" {
-			args = append(args, match)
-		}
-	}
-	klog.Infof("remove policy route from router %s: match %s", router, match)
-	_, err = c.ovnNbCommand(args...)
-	return err
-}
-
-func (c LegacyClient) CleanPolicyRoute(router string) error {
-	// lr-policy-del ROUTER
-	klog.Infof("clean all policy route for route %s", router)
-	var args = []string{"lr-policy-del", router}
-	_, err := c.ovnNbCommand(args...)
-	return err
-}
-
-func (c LegacyClient) IsPolicyRouteExist(router string, priority int32, match string) (bool, error) {
-	existPolicyRoute, err := c.GetPolicyRouteList(router)
-	if err != nil {
-		return false, err
-	}
-	for _, rule := range existPolicyRoute {
-		if rule.Priority != priority {
-			continue
-		}
-		if match == "" || rule.Match == match {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-func (c LegacyClient) DeletePolicyRouteByNexthop(router string, priority int32, nexthop string) error {
-	args := []string{
-		"--no-heading", "--data=bare", "--columns=match", "find", "Logical_Router_Policy",
-		fmt.Sprintf("priority=%d", priority),
-		fmt.Sprintf(`nexthops{=}%s`, strings.ReplaceAll(nexthop, ":", `\:`)),
-	}
-	output, err := c.ovnNbCommand(args...)
-	if err != nil {
-		klog.Errorf("failed to list router policy by nexthop %s: %v", nexthop, err)
-		return err
-	}
-	if output == "" {
-		return nil
-	}
-	klog.Infof("delete policy route for router: %s, priority: %d, match %s", router, priority, output)
-	return c.DeletePolicyRoute(router, priority, output)
-}
-
-type PolicyRoute struct {
-	Priority  int32
-	Match     string
-	Action    string
-	NextHopIP string
-}
-
-func (c LegacyClient) GetPolicyRouteList(router string) (routeList []*PolicyRoute, err error) {
-	output, err := c.ovnNbCommand("lr-policy-list", router)
-	if err != nil {
-		klog.Errorf("failed to list logical router policy route: %v", err)
-		return nil, err
-	}
-	return parseLrPolicyRouteListOutput(output)
-}
-
-var policyRouteRegexp = regexp.MustCompile(`^\s*(\d+)\s+(.*)\b\s+(allow|drop|reroute)\s*(.*)?$`)
-
-func parseLrPolicyRouteListOutput(output string) (routeList []*PolicyRoute, err error) {
-	lines := strings.Split(output, "\n")
-	routeList = make([]*PolicyRoute, 0, len(lines))
-	for _, l := range lines {
-		if len(l) == 0 {
-			continue
-		}
-		sm := policyRouteRegexp.FindStringSubmatch(l)
-		if len(sm) != 5 {
-			continue
-		}
-		priority, err := strconv.ParseInt(sm[1], 10, 32)
-		if err != nil {
-			return nil, fmt.Errorf("found unexpected policy priority %s, please check", sm[1])
-		}
-		routeList = append(routeList, &PolicyRoute{
-			Priority:  int32(priority),
-			Match:     sm[2],
-			Action:    sm[3],
-			NextHopIP: sm[4],
-		})
-	}
-	return routeList, nil
 }
 
 func (c LegacyClient) GetStaticRouteList(router string) (routeList []*StaticRoute, err error) {
@@ -730,126 +543,6 @@ func CheckAlive() error {
 		return err
 	}
 	return nil
-}
-
-func (c *LegacyClient) VpcHasPolicyRoute(vpc string, nextHops []string, priority int32) (bool, error) {
-	// get all policies by vpc
-	outPolicies, err := c.ovnNbCommand("--data=bare", "--no-heading",
-		"--columns=policies", "find", "Logical_Router", fmt.Sprintf("name=%s", vpc))
-	if err != nil {
-		klog.Errorf("failed to find Logical_Router_Policy %s: %v, %q", vpc, err, outPolicies)
-		return false, err
-	}
-	if outPolicies == "" {
-		klog.V(3).Infof("vpc %s has no policy routes", vpc)
-		return false, nil
-	}
-
-	strRoutes := strings.Split(outPolicies, "\n")[0]
-	strPriority := fmt.Sprint(priority)
-	routes := strings.Fields(strRoutes)
-	// check if policie already exist
-	for _, r := range routes {
-		outPriorityNexthops, err := c.ovnNbCommand("--data=bare", "--no-heading", "--format=csv", "--columns=priority,nexthops", "list", "Logical_Router_Policy", r)
-		if err != nil {
-			klog.Errorf("failed to show Logical_Router_Policy %s: %v, %q", r, err, outPriorityNexthops)
-			return false, err
-		}
-		if outPriorityNexthops == "" {
-			return false, nil
-		}
-		priorityNexthops := strings.Split(outPriorityNexthops, "\n")[0]
-		result := strings.Split(priorityNexthops, ",")
-		if len(result) == 2 {
-			routePriority := result[0]
-			strNodeIPs := result[1]
-			nodeIPs := strings.Fields(strNodeIPs)
-			sort.Strings(nodeIPs)
-			if routePriority == strPriority && slices.Equal(nextHops, nodeIPs) {
-				// make sure priority, nexthops is just the same
-				return true, nil
-			}
-		}
-	}
-	return false, nil
-}
-
-func (c *LegacyClient) PolicyRouteExists(priority int32, match string) (bool, error) {
-	results, err := c.CustomFindEntity("Logical_Router_Policy", []string{"_uuid"}, fmt.Sprintf("priority=%d", priority), fmt.Sprintf("match=\"%s\"", match))
-	if err != nil {
-		klog.Errorf("customFindEntity failed, %v", err)
-		return false, err
-	}
-	if len(results) == 0 {
-		return false, nil
-	}
-	return true, nil
-}
-
-func (c *LegacyClient) DeletePolicyRouteByUUID(router string, uuids []string) error {
-	if len(uuids) == 0 {
-		return nil
-	}
-	for _, uuid := range uuids {
-		var args []string
-		args = append(args, []string{"lr-policy-del", router, uuid}...)
-		if _, err := c.ovnNbCommand(args...); err != nil {
-			klog.Errorf("failed to delete router %s policy route: %v", router, err)
-			return err
-		}
-	}
-	return nil
-}
-
-func (c *LegacyClient) GetPolicyRouteParas(priority int32, match string) ([]string, map[string]string, error) {
-	result, err := c.CustomFindEntity("Logical_Router_Policy", []string{"nexthops", "external_ids"}, fmt.Sprintf("priority=%d", priority), fmt.Sprintf(`match="%s"`, match))
-	if err != nil {
-		klog.Errorf("customFindEntity failed, %v", err)
-		return nil, nil, err
-	}
-	if len(result) == 0 {
-		return nil, nil, nil
-	}
-
-	nameIpMap := make(map[string]string, len(result[0]["external_ids"]))
-	for _, l := range result[0]["external_ids"] {
-		if len(strings.TrimSpace(l)) == 0 {
-			continue
-		}
-		parts := strings.Split(strings.TrimSpace(l), "=")
-		if len(parts) != 2 {
-			continue
-		}
-		name := strings.TrimSpace(parts[0])
-		ip := strings.TrimSpace(parts[1])
-		nameIpMap[name] = ip
-	}
-
-	return result[0]["nexthops"], nameIpMap, nil
-}
-
-func (c LegacyClient) CheckPolicyRouteNexthopConsistent(match, nexthop string, priority int32) (bool, error) {
-	exist, err := c.PolicyRouteExists(priority, match)
-	if err != nil {
-		return false, err
-	}
-	if !exist {
-		return false, nil
-	}
-
-	dbNextHops, _, err := c.GetPolicyRouteParas(priority, match)
-	if err != nil {
-		klog.Errorf("failed to get policy route paras, %v", err)
-		return false, err
-	}
-	cfgNextHops := strings.Split(nexthop, ",")
-
-	sort.Strings(dbNextHops)
-	sort.Strings(cfgNextHops)
-	if slices.Equal(dbNextHops, cfgNextHops) {
-		return true, nil
-	}
-	return false, nil
 }
 
 type dhcpOptions struct {

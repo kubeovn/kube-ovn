@@ -744,15 +744,16 @@ func (c *Controller) initSyncCrdVlans() error {
 }
 
 func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
-	// migrate from old version static route to policy route
 	match := fmt.Sprintf("ip%d.dst == %s", af, ip)
-	consistent, err := c.ovnLegacyClient.CheckPolicyRouteNexthopConsistent(match, nexthop, util.NodeRouterPolicyPriority)
-	if err != nil {
-		return err
+	externalIDs := map[string]string{
+		"vendor": util.CniTypeName,
+		"node":   node,
 	}
-	if consistent {
-		klog.V(3).Infof("node policy route migrated")
-		return nil
+	klog.V(3).Infof("add policy route for router: %s, priority: %d, match %s, action %s, nexthop %s, extrenalID %v",
+		c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", nexthop, externalIDs)
+	if err := c.ovnClient.AddLogicalRouterPolicy(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", []string{nexthop}, externalIDs); err != nil {
+		klog.Errorf("failed to add logical router policy for node %s: %v", node, err)
+		return err
 	}
 
 	routeTables, err := c.ovnLegacyClient.GetRouteTables(c.config.ClusterRouter)
@@ -769,25 +770,14 @@ func (c *Controller) migrateNodeRoute(af int, node, ip, nexthop string) error {
 
 	asName := nodeUnderlayAddressSetName(node, af)
 	obsoleteMatch := fmt.Sprintf("ip%d.dst == %s && ip%d.src != $%s", af, ip, af, asName)
-	klog.Infof("delete policy route for router: %s, priority: %d, match %s", c.config.ClusterRouter, util.NodeRouterPolicyPriority, obsoleteMatch)
-	if err := c.ovnLegacyClient.DeletePolicyRoute(c.config.ClusterRouter, util.NodeRouterPolicyPriority, obsoleteMatch); err != nil {
+	klog.V(3).Infof("delete policy route for router: %s, priority: %d, match %s", c.config.ClusterRouter, util.NodeRouterPolicyPriority, obsoleteMatch)
+	if err := c.ovnClient.DeleteLogicalRouterPolicy(c.config.ClusterRouter, util.NodeRouterPolicyPriority, obsoleteMatch); err != nil {
 		klog.Errorf("failed to delete obsolete logical router policy for node %s: %v", node, err)
 		return err
 	}
 
 	if err := c.ovnClient.DeleteAddressSet(asName); err != nil {
 		klog.Errorf("delete obsolete address set %s for node %s: %v", asName, node, err)
-		return err
-	}
-
-	externalIDs := map[string]string{
-		"vendor": util.CniTypeName,
-		"node":   node,
-	}
-	klog.Infof("add policy route for router: %s, priority: %d, match %s, action %s, nexthop %s, extrenalID %v",
-		c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", nexthop, externalIDs)
-	if err := c.ovnLegacyClient.AddPolicyRoute(c.config.ClusterRouter, util.NodeRouterPolicyPriority, match, "reroute", nexthop, externalIDs); err != nil {
-		klog.Errorf("failed to add logical router policy for node %s: %v", node, err)
 		return err
 	}
 

@@ -10,15 +10,12 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
-func newNat(lrName, natType, externalIP, logicalIP string, options ...func(nat *ovnnb.NAT)) *ovnnb.NAT {
+func newNat(natType, externalIP, logicalIP string, options ...func(nat *ovnnb.NAT)) *ovnnb.NAT {
 	nat := &ovnnb.NAT{
 		UUID:       ovsclient.NamedUUID(),
 		Type:       natType,
 		ExternalIP: externalIP,
 		LogicalIP:  logicalIP,
-		ExternalIDs: map[string]string{
-			logicalRouterKey: lrName,
-		},
 	}
 
 	for _, option := range options {
@@ -381,13 +378,16 @@ func (suite *OvnClientTestSuite) testGetNat() {
 	ovnClient := suite.ovnClient
 	lrName := "test_get_nat_lr"
 
+	err := ovnClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
 	t.Run("snat", func(t *testing.T) {
 		t.Parallel()
 		natType := "snat"
 		externalIP := "192.168.30.254"
 		logicalIP := "10.250.0.4"
 
-		err := ovnClient.CreateBareNat(lrName, natType, externalIP, logicalIP)
+		err := ovnClient.AddNat(lrName, natType, externalIP, logicalIP)
 		require.NoError(t, err)
 
 		t.Run("found nat", func(t *testing.T) {
@@ -412,7 +412,7 @@ func (suite *OvnClientTestSuite) testGetNat() {
 		externalIP := "192.168.30.254"
 		logicalIP := "10.250.0.4"
 
-		err := ovnClient.CreateBareNat(lrName, natType, externalIP, logicalIP)
+		err := ovnClient.AddNat(lrName, natType, externalIP, logicalIP)
 		require.NoError(t, err)
 
 		t.Run("found nat", func(t *testing.T) {
@@ -437,6 +437,9 @@ func (suite *OvnClientTestSuite) test_newNat() {
 	externalIP := "192.168.30.254"
 	logicalIP := "10.250.0.4"
 
+	err := ovnClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
 	t.Run("new snat rule", func(t *testing.T) {
 		t.Parallel()
 
@@ -444,9 +447,6 @@ func (suite *OvnClientTestSuite) test_newNat() {
 			Type:       natType,
 			ExternalIP: externalIP,
 			LogicalIP:  logicalIP,
-			ExternalIDs: map[string]string{
-				logicalRouterKey: lrName,
-			},
 		}
 
 		nat, err := ovnClient.newNat(lrName, natType, externalIP, logicalIP)
@@ -463,12 +463,9 @@ func (suite *OvnClientTestSuite) test_newNat() {
 		natType := "dnat_and_snat"
 
 		expect := &ovnnb.NAT{
-			Type:       natType,
-			ExternalIP: externalIP,
-			LogicalIP:  logicalIP,
-			ExternalIDs: map[string]string{
-				logicalRouterKey: lrName,
-			},
+			Type:        natType,
+			ExternalIP:  externalIP,
+			LogicalIP:   logicalIP,
 			LogicalPort: &lspName,
 			ExternalMAC: &externalMac,
 		}
@@ -489,29 +486,29 @@ func (suite *OvnClientTestSuite) test_natFilter() {
 	t := suite.T()
 	t.Parallel()
 
-	lrName := "test-filter-nat-lr"
 	externalIPs := []string{"192.168.30.254", "192.168.30.253"}
 	logicalIPs := []string{"10.250.0.4", "10.250.0.5"}
 
 	nats := make([]*ovnnb.NAT, 0)
 	// create two snat rule
 	for _, logicalIP := range logicalIPs {
-		nat := newNat(lrName, "snat", externalIPs[0], logicalIP)
+		nat := newNat("snat", externalIPs[0], logicalIP)
+		nat.ExternalIDs = map[string]string{"k1": "v1"}
 		nats = append(nats, nat)
 	}
 
 	// create two dnat_and_snat rule
 	for _, externalIP := range externalIPs {
-		nat := newNat(lrName, "dnat_and_snat", externalIP, logicalIPs[0])
+		nat := newNat("dnat_and_snat", externalIP, logicalIPs[0])
+		nat.ExternalIDs = map[string]string{"k1": "v1"}
 		nats = append(nats, nat)
 	}
 
-	// create three snat rule with other acl parent key
+	// create three snat rule with different external-ids
 	for i := 0; i < 3; i++ {
-		nat := newNat(lrName, "snat", externalIPs[0], logicalIPs[0])
-		nat.ExternalIDs[logicalRouterKey] = lrName + "-test"
+		nat := newNat("snat", externalIPs[0], logicalIPs[0])
+		nat.ExternalIDs = map[string]string{"k1": "v2"}
 		nats = append(nats, nat)
-
 	}
 
 	t.Run("include all nat", func(t *testing.T) {
@@ -526,7 +523,7 @@ func (suite *OvnClientTestSuite) test_natFilter() {
 	})
 
 	t.Run("include all nat with external ids", func(t *testing.T) {
-		filterFunc := natFilter("", "", map[string]string{logicalRouterKey: lrName})
+		filterFunc := natFilter("", "", map[string]string{"k1": "v1"})
 		count := 0
 		for _, nat := range nats {
 			if filterFunc(nat) {
@@ -548,7 +545,7 @@ func (suite *OvnClientTestSuite) test_natFilter() {
 	})
 
 	t.Run("include snat with external ids", func(t *testing.T) {
-		filterFunc := natFilter("snat", "", map[string]string{logicalRouterKey: lrName})
+		filterFunc := natFilter("snat", "", map[string]string{"k1": "v1"})
 		count := 0
 		for _, nat := range nats {
 			if filterFunc(nat) {
@@ -570,7 +567,7 @@ func (suite *OvnClientTestSuite) test_natFilter() {
 	})
 
 	t.Run("include dnat_and_snat with external ids", func(t *testing.T) {
-		filterFunc := natFilter("dnat_and_snat", "", map[string]string{logicalRouterKey: lrName})
+		filterFunc := natFilter("dnat_and_snat", "", map[string]string{"k1": "v1"})
 		count := 0
 		for _, nat := range nats {
 			if filterFunc(nat) {
@@ -581,7 +578,7 @@ func (suite *OvnClientTestSuite) test_natFilter() {
 	})
 
 	t.Run("include all nat with same logical ip", func(t *testing.T) {
-		filterFunc := natFilter("", logicalIPs[0], map[string]string{logicalRouterKey: lrName})
+		filterFunc := natFilter("", logicalIPs[0], map[string]string{"k1": "v1"})
 		count := 0
 		for _, nat := range nats {
 			if filterFunc(nat) {
@@ -592,7 +589,7 @@ func (suite *OvnClientTestSuite) test_natFilter() {
 	})
 
 	t.Run("include snat with same logical ip", func(t *testing.T) {
-		filterFunc := natFilter("snat", logicalIPs[0], map[string]string{logicalRouterKey: lrName})
+		filterFunc := natFilter("snat", logicalIPs[0], map[string]string{"k1": "v1"})
 		count := 0
 		for _, nat := range nats {
 			if filterFunc(nat) {
@@ -603,7 +600,7 @@ func (suite *OvnClientTestSuite) test_natFilter() {
 	})
 
 	t.Run("include dnat_and_snat with same logical ip", func(t *testing.T) {
-		filterFunc := natFilter("dnat_and_snat", logicalIPs[0], map[string]string{logicalRouterKey: lrName})
+		filterFunc := natFilter("dnat_and_snat", logicalIPs[0], map[string]string{"k1": "v1"})
 		count := 0
 		for _, nat := range nats {
 			if filterFunc(nat) {
@@ -616,10 +613,10 @@ func (suite *OvnClientTestSuite) test_natFilter() {
 	t.Run("result should exclude nat when externalIDs's length is not equal", func(t *testing.T) {
 		t.Parallel()
 
-		nat := newNat(lrName, "snat", externalIPs[0], logicalIPs[0])
+		nat := newNat("snat", externalIPs[0], logicalIPs[0])
 		filterFunc := natFilter("", "", map[string]string{
-			logicalRouterKey: lrName,
-			"key":            "value",
+			"k1":  "v1",
+			"key": "value",
 		})
 
 		require.False(t, filterFunc(nat))

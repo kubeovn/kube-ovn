@@ -1107,9 +1107,6 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPort() {
 		err = ovnClient.DeleteLogicalSwitchPort(lspName)
 		require.NoError(t, err)
 
-		_, err = ovnClient.GetLogicalSwitchPort(lspName, false)
-		require.ErrorContains(t, err, "object not found")
-
 		ls, err = ovnClient.GetLogicalSwitch(lsName, false)
 		require.NoError(t, err)
 		require.NotContains(t, ls.Ports, lsp.UUID)
@@ -1222,7 +1219,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPortOp() {
 
 	ops, err := ovnClient.DeleteLogicalSwitchPortOp(lspName)
 	require.NoError(t, err)
-	require.Len(t, ops, 2)
+	require.Len(t, ops, 1)
 
 	require.Equal(t, []ovsdb.Mutation{
 		{
@@ -1237,21 +1234,6 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitchPortOp() {
 			},
 		},
 	}, ops[0].Mutations)
-
-	require.Equal(t,
-		ovsdb.Operation{
-			Op:    "delete",
-			Table: "Logical_Switch_Port",
-			Where: []ovsdb.Condition{
-				{
-					Column:   "_uuid",
-					Function: "==",
-					Value: ovsdb.UUID{
-						GoUUID: lsp.UUID,
-					},
-				},
-			},
-		}, ops[1])
 }
 
 func (suite *OvnClientTestSuite) testlogicalSwitchPortFilter() {

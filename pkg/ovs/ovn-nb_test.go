@@ -125,14 +125,6 @@ func (suite *OvnClientTestSuite) testRemoveRouterPort() {
 
 		err = ovnClient.RemoveLogicalPatchPort(lspName, lrpName)
 		require.NoError(t, err)
-
-		/* validate logical switch port*/
-		_, err = ovnClient.GetLogicalSwitchPort(lspName, false)
-		require.ErrorContains(t, err, "object not found")
-
-		/* validate logical router port*/
-		_, err = ovnClient.GetLogicalRouterPort(lrpName, false)
-		require.ErrorContains(t, err, "object not found")
 	})
 
 	t.Run("should no err normal del router type port repeatedly", func(t *testing.T) {
@@ -148,7 +140,6 @@ func (suite *OvnClientTestSuite) testDeleteLogicalGatewaySwitch() {
 	ovnClient := suite.ovnClient
 	lsName := "test-del-gw-ls"
 	lrName := "test-del-gw-lr"
-	lrpName := fmt.Sprintf("%s-%s", lrName, lsName)
 
 	err := ovnClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
@@ -164,9 +155,6 @@ func (suite *OvnClientTestSuite) testDeleteLogicalGatewaySwitch() {
 
 	_, err = ovnClient.GetLogicalSwitch(lsName, false)
 	require.ErrorContains(t, err, "not found logical switch")
-
-	_, err = ovnClient.GetLogicalRouterPort(lrpName, false)
-	require.ErrorContains(t, err, "object not found")
 }
 
 func (suite *OvnClientTestSuite) testDeleteSecurityGroup() {

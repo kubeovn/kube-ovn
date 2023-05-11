@@ -284,12 +284,6 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPorts() {
 
 	require.NoError(t, err)
 
-	for i := 0; i < 3; i++ {
-		lrpName := fmt.Sprintf("%s-%d", prefix, i)
-		_, err := ovnClient.GetLogicalRouterPort(lrpName, false)
-		require.ErrorContains(t, err, "object not found")
-	}
-
 	lr, err = ovnClient.GetLogicalRouter(lrName, false)
 	require.NoError(t, err)
 	require.Empty(t, lr.Ports)
@@ -319,9 +313,6 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPort() {
 
 		err = ovnClient.DeleteLogicalRouterPort(lrpName)
 		require.NoError(t, err)
-
-		_, err = ovnClient.GetLogicalRouterPort(lrpName, false)
-		require.ErrorContains(t, err, "object not found")
 
 		lr, err = ovnClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
@@ -434,7 +425,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPortOp() {
 
 	ops, err := ovnClient.DeleteLogicalRouterPortOp(lrpName)
 	require.NoError(t, err)
-	require.Len(t, ops, 2)
+	require.Len(t, ops, 1)
 
 	require.Equal(t,
 		[]ovsdb.Mutation{
@@ -450,21 +441,6 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPortOp() {
 				},
 			},
 		}, ops[0].Mutations)
-
-	require.Equal(t,
-		ovsdb.Operation{
-			Op:    "delete",
-			Table: "Logical_Router_Port",
-			Where: []ovsdb.Condition{
-				{
-					Column:   "_uuid",
-					Function: "==",
-					Value: ovsdb.UUID{
-						GoUUID: lrp.UUID,
-					},
-				},
-			},
-		}, ops[1])
 }
 
 func (suite *OvnClientTestSuite) testLogicalRouterPortOp() {

@@ -352,6 +352,21 @@ func (mr *MockLogicalRouterPortMockRecorder) GetLogicalRouterPort(lrpName, ignor
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogicalRouterPort", reflect.TypeOf((*MockLogicalRouterPort)(nil).GetLogicalRouterPort), lrpName, ignoreNotFound)
 }
 
+// GetLogicalRouterPortByUUID mocks base method.
+func (m *MockLogicalRouterPort) GetLogicalRouterPortByUUID(uuid string) (*ovnnb.LogicalRouterPort, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLogicalRouterPortByUUID", uuid)
+	ret0, _ := ret[0].(*ovnnb.LogicalRouterPort)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetLogicalRouterPortByUUID indicates an expected call of GetLogicalRouterPortByUUID.
+func (mr *MockLogicalRouterPortMockRecorder) GetLogicalRouterPortByUUID(uuid interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogicalRouterPortByUUID", reflect.TypeOf((*MockLogicalRouterPort)(nil).GetLogicalRouterPortByUUID), uuid)
+}
+
 // ListLogicalRouterPorts mocks base method.
 func (m *MockLogicalRouterPort) ListLogicalRouterPorts(externalIDs map[string]string, filter func(*ovnnb.LogicalRouterPort) bool) ([]ovnnb.LogicalRouterPort, error) {
 	m.ctrl.T.Helper()
@@ -1421,34 +1436,34 @@ func (mr *MockLogicalRouterStaticRouteMockRecorder) DeleteLogicalRouterStaticRou
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLogicalRouterStaticRoute", reflect.TypeOf((*MockLogicalRouterStaticRoute)(nil).DeleteLogicalRouterStaticRoute), lrName, policy, prefix, nextHop, routeType)
 }
 
-// GetLogicalRouterRouteByOpts mocks base method.
-func (m *MockLogicalRouterStaticRoute) GetLogicalRouterRouteByOpts(key, value string) ([]ovnnb.LogicalRouterStaticRoute, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetLogicalRouterRouteByOpts", key, value)
-	ret0, _ := ret[0].([]ovnnb.LogicalRouterStaticRoute)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetLogicalRouterRouteByOpts indicates an expected call of GetLogicalRouterRouteByOpts.
-func (mr *MockLogicalRouterStaticRouteMockRecorder) GetLogicalRouterRouteByOpts(key, value interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogicalRouterRouteByOpts", reflect.TypeOf((*MockLogicalRouterStaticRoute)(nil).GetLogicalRouterRouteByOpts), key, value)
-}
-
 // ListLogicalRouterStaticRoutes mocks base method.
-func (m *MockLogicalRouterStaticRoute) ListLogicalRouterStaticRoutes(externalIDs map[string]string) ([]ovnnb.LogicalRouterStaticRoute, error) {
+func (m *MockLogicalRouterStaticRoute) ListLogicalRouterStaticRoutes(lrName string, externalIDs map[string]string) ([]*ovnnb.LogicalRouterStaticRoute, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListLogicalRouterStaticRoutes", externalIDs)
-	ret0, _ := ret[0].([]ovnnb.LogicalRouterStaticRoute)
+	ret := m.ctrl.Call(m, "ListLogicalRouterStaticRoutes", lrName, externalIDs)
+	ret0, _ := ret[0].([]*ovnnb.LogicalRouterStaticRoute)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListLogicalRouterStaticRoutes indicates an expected call of ListLogicalRouterStaticRoutes.
-func (mr *MockLogicalRouterStaticRouteMockRecorder) ListLogicalRouterStaticRoutes(externalIDs interface{}) *gomock.Call {
+func (mr *MockLogicalRouterStaticRouteMockRecorder) ListLogicalRouterStaticRoutes(lrName, externalIDs interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalRouterStaticRoutes", reflect.TypeOf((*MockLogicalRouterStaticRoute)(nil).ListLogicalRouterStaticRoutes), externalIDs)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalRouterStaticRoutes", reflect.TypeOf((*MockLogicalRouterStaticRoute)(nil).ListLogicalRouterStaticRoutes), lrName, externalIDs)
+}
+
+// ListLogicalRouterStaticRoutesByOption mocks base method.
+func (m *MockLogicalRouterStaticRoute) ListLogicalRouterStaticRoutesByOption(lrName, key, value string) ([]*ovnnb.LogicalRouterStaticRoute, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListLogicalRouterStaticRoutesByOption", lrName, key, value)
+	ret0, _ := ret[0].([]*ovnnb.LogicalRouterStaticRoute)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListLogicalRouterStaticRoutesByOption indicates an expected call of ListLogicalRouterStaticRoutesByOption.
+func (mr *MockLogicalRouterStaticRouteMockRecorder) ListLogicalRouterStaticRoutesByOption(lrName, key, value interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalRouterStaticRoutesByOption", reflect.TypeOf((*MockLogicalRouterStaticRoute)(nil).ListLogicalRouterStaticRoutesByOption), lrName, key, value)
 }
 
 // LogicalRouterStaticRouteExists mocks base method.
@@ -1545,6 +1560,20 @@ func (mr *MockLogicalRouterPolicyMockRecorder) DeleteLogicalRouterPolicy(lrName,
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLogicalRouterPolicy", reflect.TypeOf((*MockLogicalRouterPolicy)(nil).DeleteLogicalRouterPolicy), lrName, priority, match)
 }
 
+// DeleteLogicalRouterPolicyByNexthop mocks base method.
+func (m *MockLogicalRouterPolicy) DeleteLogicalRouterPolicyByNexthop(lrName string, priority int, nexthop string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteLogicalRouterPolicyByNexthop", lrName, priority, nexthop)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteLogicalRouterPolicyByNexthop indicates an expected call of DeleteLogicalRouterPolicyByNexthop.
+func (mr *MockLogicalRouterPolicyMockRecorder) DeleteLogicalRouterPolicyByNexthop(lrName, priority, nexthop interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLogicalRouterPolicyByNexthop", reflect.TypeOf((*MockLogicalRouterPolicy)(nil).DeleteLogicalRouterPolicyByNexthop), lrName, priority, nexthop)
+}
+
 // DeleteLogicalRouterPolicyByUUID mocks base method.
 func (m *MockLogicalRouterPolicy) DeleteLogicalRouterPolicyByUUID(lrName, uuid string) error {
 	m.ctrl.T.Helper()
@@ -1575,18 +1604,18 @@ func (mr *MockLogicalRouterPolicyMockRecorder) GetLogicalRouterPolicy(lrName, pr
 }
 
 // ListLogicalRouterPolicies mocks base method.
-func (m *MockLogicalRouterPolicy) ListLogicalRouterPolicies(priority int, externalIDs map[string]string) ([]ovnnb.LogicalRouterPolicy, error) {
+func (m *MockLogicalRouterPolicy) ListLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string) ([]*ovnnb.LogicalRouterPolicy, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListLogicalRouterPolicies", priority, externalIDs)
-	ret0, _ := ret[0].([]ovnnb.LogicalRouterPolicy)
+	ret := m.ctrl.Call(m, "ListLogicalRouterPolicies", lrName, priority, externalIDs)
+	ret0, _ := ret[0].([]*ovnnb.LogicalRouterPolicy)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListLogicalRouterPolicies indicates an expected call of ListLogicalRouterPolicies.
-func (mr *MockLogicalRouterPolicyMockRecorder) ListLogicalRouterPolicies(priority, externalIDs interface{}) *gomock.Call {
+func (mr *MockLogicalRouterPolicyMockRecorder) ListLogicalRouterPolicies(lrName, priority, externalIDs interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalRouterPolicies", reflect.TypeOf((*MockLogicalRouterPolicy)(nil).ListLogicalRouterPolicies), priority, externalIDs)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalRouterPolicies", reflect.TypeOf((*MockLogicalRouterPolicy)(nil).ListLogicalRouterPolicies), lrName, priority, externalIDs)
 }
 
 // MockNAT is a mock of NAT interface.
@@ -1641,18 +1670,18 @@ func (mr *MockNATMockRecorder) DeleteNats(lrName, natType, logicalIP interface{}
 }
 
 // ListNats mocks base method.
-func (m *MockNAT) ListNats(natType, logicalIP string, externalIDs map[string]string) ([]ovnnb.NAT, error) {
+func (m *MockNAT) ListNats(lrName, natType, logicalIP string, externalIDs map[string]string) ([]*ovnnb.NAT, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListNats", natType, logicalIP, externalIDs)
-	ret0, _ := ret[0].([]ovnnb.NAT)
+	ret := m.ctrl.Call(m, "ListNats", lrName, natType, logicalIP, externalIDs)
+	ret0, _ := ret[0].([]*ovnnb.NAT)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListNats indicates an expected call of ListNats.
-func (mr *MockNATMockRecorder) ListNats(natType, logicalIP, externalIDs interface{}) *gomock.Call {
+func (mr *MockNATMockRecorder) ListNats(lrName, natType, logicalIP, externalIDs interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListNats", reflect.TypeOf((*MockNAT)(nil).ListNats), natType, logicalIP, externalIDs)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListNats", reflect.TypeOf((*MockNAT)(nil).ListNats), lrName, natType, logicalIP, externalIDs)
 }
 
 // NatExists mocks base method.
@@ -2307,6 +2336,20 @@ func (mr *MockOvnClientMockRecorder) DeleteLogicalRouterPolicy(lrName, priority,
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLogicalRouterPolicy", reflect.TypeOf((*MockOvnClient)(nil).DeleteLogicalRouterPolicy), lrName, priority, match)
 }
 
+// DeleteLogicalRouterPolicyByNexthop mocks base method.
+func (m *MockOvnClient) DeleteLogicalRouterPolicyByNexthop(lrName string, priority int, nexthop string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteLogicalRouterPolicyByNexthop", lrName, priority, nexthop)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteLogicalRouterPolicyByNexthop indicates an expected call of DeleteLogicalRouterPolicyByNexthop.
+func (mr *MockOvnClientMockRecorder) DeleteLogicalRouterPolicyByNexthop(lrName, priority, nexthop interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLogicalRouterPolicyByNexthop", reflect.TypeOf((*MockOvnClient)(nil).DeleteLogicalRouterPolicyByNexthop), lrName, priority, nexthop)
+}
+
 // DeleteLogicalRouterPolicyByUUID mocks base method.
 func (m *MockOvnClient) DeleteLogicalRouterPolicyByUUID(lrName, uuid string) error {
 	m.ctrl.T.Helper()
@@ -2535,19 +2578,19 @@ func (mr *MockOvnClientMockRecorder) GetLogicalRouterPort(lrpName, ignoreNotFoun
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogicalRouterPort", reflect.TypeOf((*MockOvnClient)(nil).GetLogicalRouterPort), lrpName, ignoreNotFound)
 }
 
-// GetLogicalRouterRouteByOpts mocks base method.
-func (m *MockOvnClient) GetLogicalRouterRouteByOpts(key, value string) ([]ovnnb.LogicalRouterStaticRoute, error) {
+// GetLogicalRouterPortByUUID mocks base method.
+func (m *MockOvnClient) GetLogicalRouterPortByUUID(uuid string) (*ovnnb.LogicalRouterPort, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetLogicalRouterRouteByOpts", key, value)
-	ret0, _ := ret[0].([]ovnnb.LogicalRouterStaticRoute)
+	ret := m.ctrl.Call(m, "GetLogicalRouterPortByUUID", uuid)
+	ret0, _ := ret[0].(*ovnnb.LogicalRouterPort)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetLogicalRouterRouteByOpts indicates an expected call of GetLogicalRouterRouteByOpts.
-func (mr *MockOvnClientMockRecorder) GetLogicalRouterRouteByOpts(key, value interface{}) *gomock.Call {
+// GetLogicalRouterPortByUUID indicates an expected call of GetLogicalRouterPortByUUID.
+func (mr *MockOvnClientMockRecorder) GetLogicalRouterPortByUUID(uuid interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogicalRouterRouteByOpts", reflect.TypeOf((*MockOvnClient)(nil).GetLogicalRouterRouteByOpts), key, value)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogicalRouterPortByUUID", reflect.TypeOf((*MockOvnClient)(nil).GetLogicalRouterPortByUUID), uuid)
 }
 
 // GetLogicalSwitchPort mocks base method.
@@ -2656,18 +2699,18 @@ func (mr *MockOvnClientMockRecorder) ListLogicalRouter(needVendorFilter, filter 
 }
 
 // ListLogicalRouterPolicies mocks base method.
-func (m *MockOvnClient) ListLogicalRouterPolicies(priority int, externalIDs map[string]string) ([]ovnnb.LogicalRouterPolicy, error) {
+func (m *MockOvnClient) ListLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string) ([]*ovnnb.LogicalRouterPolicy, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListLogicalRouterPolicies", priority, externalIDs)
-	ret0, _ := ret[0].([]ovnnb.LogicalRouterPolicy)
+	ret := m.ctrl.Call(m, "ListLogicalRouterPolicies", lrName, priority, externalIDs)
+	ret0, _ := ret[0].([]*ovnnb.LogicalRouterPolicy)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListLogicalRouterPolicies indicates an expected call of ListLogicalRouterPolicies.
-func (mr *MockOvnClientMockRecorder) ListLogicalRouterPolicies(priority, externalIDs interface{}) *gomock.Call {
+func (mr *MockOvnClientMockRecorder) ListLogicalRouterPolicies(lrName, priority, externalIDs interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalRouterPolicies", reflect.TypeOf((*MockOvnClient)(nil).ListLogicalRouterPolicies), priority, externalIDs)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalRouterPolicies", reflect.TypeOf((*MockOvnClient)(nil).ListLogicalRouterPolicies), lrName, priority, externalIDs)
 }
 
 // ListLogicalRouterPorts mocks base method.
@@ -2686,18 +2729,33 @@ func (mr *MockOvnClientMockRecorder) ListLogicalRouterPorts(externalIDs, filter 
 }
 
 // ListLogicalRouterStaticRoutes mocks base method.
-func (m *MockOvnClient) ListLogicalRouterStaticRoutes(externalIDs map[string]string) ([]ovnnb.LogicalRouterStaticRoute, error) {
+func (m *MockOvnClient) ListLogicalRouterStaticRoutes(lrName string, externalIDs map[string]string) ([]*ovnnb.LogicalRouterStaticRoute, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListLogicalRouterStaticRoutes", externalIDs)
-	ret0, _ := ret[0].([]ovnnb.LogicalRouterStaticRoute)
+	ret := m.ctrl.Call(m, "ListLogicalRouterStaticRoutes", lrName, externalIDs)
+	ret0, _ := ret[0].([]*ovnnb.LogicalRouterStaticRoute)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListLogicalRouterStaticRoutes indicates an expected call of ListLogicalRouterStaticRoutes.
-func (mr *MockOvnClientMockRecorder) ListLogicalRouterStaticRoutes(externalIDs interface{}) *gomock.Call {
+func (mr *MockOvnClientMockRecorder) ListLogicalRouterStaticRoutes(lrName, externalIDs interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalRouterStaticRoutes", reflect.TypeOf((*MockOvnClient)(nil).ListLogicalRouterStaticRoutes), externalIDs)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalRouterStaticRoutes", reflect.TypeOf((*MockOvnClient)(nil).ListLogicalRouterStaticRoutes), lrName, externalIDs)
+}
+
+// ListLogicalRouterStaticRoutesByOption mocks base method.
+func (m *MockOvnClient) ListLogicalRouterStaticRoutesByOption(lrName, key, value string) ([]*ovnnb.LogicalRouterStaticRoute, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListLogicalRouterStaticRoutesByOption", lrName, key, value)
+	ret0, _ := ret[0].([]*ovnnb.LogicalRouterStaticRoute)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListLogicalRouterStaticRoutesByOption indicates an expected call of ListLogicalRouterStaticRoutesByOption.
+func (mr *MockOvnClientMockRecorder) ListLogicalRouterStaticRoutesByOption(lrName, key, value interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogicalRouterStaticRoutesByOption", reflect.TypeOf((*MockOvnClient)(nil).ListLogicalRouterStaticRoutesByOption), lrName, key, value)
 }
 
 // ListLogicalSwitch mocks base method.
@@ -2746,18 +2804,18 @@ func (mr *MockOvnClientMockRecorder) ListLogicalSwitchPortsWithLegacyExternalIDs
 }
 
 // ListNats mocks base method.
-func (m *MockOvnClient) ListNats(natType, logicalIP string, externalIDs map[string]string) ([]ovnnb.NAT, error) {
+func (m *MockOvnClient) ListNats(lrName, natType, logicalIP string, externalIDs map[string]string) ([]*ovnnb.NAT, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListNats", natType, logicalIP, externalIDs)
-	ret0, _ := ret[0].([]ovnnb.NAT)
+	ret := m.ctrl.Call(m, "ListNats", lrName, natType, logicalIP, externalIDs)
+	ret0, _ := ret[0].([]*ovnnb.NAT)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListNats indicates an expected call of ListNats.
-func (mr *MockOvnClientMockRecorder) ListNats(natType, logicalIP, externalIDs interface{}) *gomock.Call {
+func (mr *MockOvnClientMockRecorder) ListNats(lrName, natType, logicalIP, externalIDs interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListNats", reflect.TypeOf((*MockOvnClient)(nil).ListNats), natType, logicalIP, externalIDs)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListNats", reflect.TypeOf((*MockOvnClient)(nil).ListNats), lrName, natType, logicalIP, externalIDs)
 }
 
 // ListNormalLogicalSwitchPorts mocks base method.
