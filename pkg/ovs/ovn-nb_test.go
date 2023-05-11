@@ -19,7 +19,7 @@ func (suite *OvnClientTestSuite) testCreateGatewayLogicalSwitch() {
 	lrName := "test-create-gw-lr"
 	lspName := fmt.Sprintf("%s-%s", lsName, lrName)
 	lrpName := fmt.Sprintf("%s-%s", lrName, lsName)
-	localnetLspName := fmt.Sprintf("ln-%s", lsName)
+	localnetLspName := GetLocalnetName(lsName)
 	chassises := []string{"5de32fcb-495a-40df-919e-f09812c4d11e", "25310674-65ce-69fd-bcfa-65b25268926b"}
 
 	err := ovnClient.CreateLogicalRouter(lrName)

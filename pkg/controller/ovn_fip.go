@@ -399,14 +399,15 @@ func (c *Controller) handleDelOvnFip(key string) error {
 			return err
 		}
 	}
-	if err = c.handleDelOvnFipFinalizer(cachedFip); err != nil {
-		klog.Errorf("failed to handle remove finalizer from ovn fip, %v", err)
+	if err = c.handleDelOvnEipFinalizer(cachedEip, util.OvnFipUseEipFinalizer); err != nil {
+		klog.Errorf("failed to handle remove finalizer from ovn eip, %v", err)
 		return err
 	}
 	//  reset eip
 	c.resetOvnEipQueue.Add(cachedFip.Spec.OvnEip)
-	if err = c.handleDelOvnEipFinalizer(cachedEip, util.OvnFipUseEipFinalizer); err != nil {
-		klog.Errorf("failed to handle remove finalizer from ovn eip, %v", err)
+
+	if err = c.handleDelOvnFipFinalizer(cachedFip); err != nil {
+		klog.Errorf("failed to handle remove finalizer from ovn fip, %v", err)
 		return err
 	}
 	return nil

@@ -283,7 +283,7 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 	}
 	// should delete
 	if !cachedSnat.DeletionTimestamp.IsZero() {
-		klog.V(3).Infof("ovn clean snat %s", key)
+		klog.V(3).Infof("ovn delete snat %s", key)
 		// ovn delete snat
 		if cachedSnat.Status.Vpc != "" && cachedSnat.Status.V4Eip != "" && cachedSnat.Status.V4IpCidr != "" {
 			if err = c.ovnLegacyClient.DeleteSnatRule(cachedSnat.Status.Vpc, cachedSnat.Status.V4Eip, cachedSnat.Status.V4IpCidr); err != nil {
@@ -291,14 +291,15 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 				return err
 			}
 		}
-		if err = c.handleDelOvnSnatRuleFinalizer(cachedSnat); err != nil {
-			klog.Errorf("failed to handle finalizer for snat %s, %v", key, err)
+		if err = c.handleDelOvnEipFinalizer(cachedEip, util.OvnSnatUseEipFinalizer); err != nil {
+			klog.Errorf("failed to handle finalizer for eip %s, %v", key, err)
 			return err
 		}
 		//  reset eip
 		c.resetOvnEipQueue.Add(cachedSnat.Spec.OvnEip)
-		if err = c.handleDelOvnEipFinalizer(cachedEip, util.OvnSnatUseEipFinalizer); err != nil {
-			klog.Errorf("failed to handle finalizer for eip %s, %v", key, err)
+
+		if err = c.handleDelOvnSnatRuleFinalizer(cachedSnat); err != nil {
+			klog.Errorf("failed to handle finalizer for snat %s, %v", key, err)
 			return err
 		}
 		return nil
