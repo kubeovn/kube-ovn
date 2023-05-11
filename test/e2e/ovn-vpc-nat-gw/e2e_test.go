@@ -471,7 +471,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		configMap = &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "ovn-external-gw-config",
-				Namespace: "kube-system",
+				Namespace: framework.KubeOvnNamespace,
 			},
 			Data: cmData,
 		}
