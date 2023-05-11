@@ -707,7 +707,7 @@ func (c *Controller) reconcileAllocateSubnets(cachedPod, pod *v1.Pod, needAlloca
 		if k8serrors.IsNotFound(err) {
 			// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.
 			// Then we need to recycle the resource again.
-			key := fmt.Sprintf("%s/%s", namespace, name)
+			key := strings.Join([]string{namespace, name}, "/")
 			c.deletingPodObjMap[key] = pod
 			c.deletePodQueue.AddRateLimited(key)
 			return nil, nil
@@ -853,7 +853,7 @@ func (c *Controller) reconcileRouteSubnets(cachedPod, pod *v1.Pod, needRoutePodN
 		if k8serrors.IsNotFound(err) {
 			// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.
 			// Then we need to recycle the resource again.
-			key := fmt.Sprintf("%s/%s", pod.Namespace, podName)
+			key := strings.Join([]string{namespace, name}, "/")
 			c.deletingPodObjMap[key] = pod
 			c.deletePodQueue.AddRateLimited(key)
 			return nil
