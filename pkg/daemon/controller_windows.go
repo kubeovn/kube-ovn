@@ -54,7 +54,7 @@ func (c *Controller) reconcileRouters(_ subnetEvent) error {
 	v4Cidrs, v6Cidrs := make([]string, 0, len(subnets)), make([]string, 0, len(subnets))
 	for _, subnet := range subnets {
 		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) ||
-			subnet.Spec.Vpc != util.DefaultVpc ||
+			subnet.Spec.Vpc != c.config.ClusterRouter ||
 			!subnet.Status.IsReady() {
 			continue
 		}

@@ -177,7 +177,7 @@ type VpcLoadBalancer struct {
 }
 
 func (c *Controller) GenVpcLoadBalancer(vpcKey string) *VpcLoadBalancer {
-	if vpcKey == util.DefaultVpc || vpcKey == "" {
+	if vpcKey == c.config.ClusterRouter || vpcKey == "" {
 		return &VpcLoadBalancer{
 			TcpLoadBalancer:      c.config.ClusterTcpLoadBalancer,
 			TcpSessLoadBalancer:  c.config.ClusterTcpSessionLoadBalancer,
@@ -369,7 +369,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 	}
 
-	if vpc.Name != util.DefaultVpc && vpc.Spec.PolicyRoutes == nil {
+	if vpc.Name != c.config.ClusterRouter && vpc.Spec.PolicyRoutes == nil {
 		// do not clean default vpc policy routes
 		if err = c.ovnLegacyClient.CleanPolicyRoute(vpc.Name); err != nil {
 			klog.Errorf("clean all vpc %s policy route failed, %v", vpc.Name, err)
