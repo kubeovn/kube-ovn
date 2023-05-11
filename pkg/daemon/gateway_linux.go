@@ -759,7 +759,7 @@ func (c *Controller) cleanObsoleteIptablesRules(protocol string, rules []util.IP
 func (c *Controller) addEgressConfig(subnet *kubeovnv1.Subnet, ip string) error {
 	if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) ||
 		subnet.Spec.GatewayType != kubeovnv1.GWDistributedType ||
-		subnet.Spec.Vpc != util.DefaultVpc {
+		subnet.Spec.Vpc != c.config.ClusterRouter {
 		return nil
 	}
 
@@ -787,7 +787,7 @@ func (c *Controller) removeEgressConfig(subnet, ip string) error {
 
 	if (podSubnet.Spec.Vlan != "" && !podSubnet.Spec.LogicalGateway) ||
 		podSubnet.Spec.GatewayType != kubeovnv1.GWDistributedType ||
-		podSubnet.Spec.Vpc != util.DefaultVpc {
+		podSubnet.Spec.Vpc != c.config.ClusterRouter {
 		return nil
 	}
 
@@ -875,7 +875,7 @@ func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta]
 		}
 
 		if subnet.Spec.ExternalEgressGateway == "" ||
-			subnet.Spec.Vpc != util.DefaultVpc ||
+			subnet.Spec.Vpc != c.config.ClusterRouter ||
 			subnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
 			continue
 		}
@@ -938,7 +938,7 @@ func (c *Controller) getSubnetsNeedPR(protocol string) (map[policyRouteMeta]stri
 			(subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) &&
 			subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType &&
 			util.GatewayContains(subnet.Spec.GatewayNode, c.config.NodeName) &&
-			subnet.Spec.Vpc == util.DefaultVpc &&
+			subnet.Spec.Vpc == c.config.ClusterRouter &&
 			(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) {
 			meta := policyRouteMeta{
 				priority: subnet.Spec.PolicyRoutingPriority,

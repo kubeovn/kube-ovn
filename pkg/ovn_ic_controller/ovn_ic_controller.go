@@ -508,9 +508,9 @@ func stripPrefix(policyMatch string) (string, error) {
 }
 
 func (c *Controller) syncOneRouteToPolicy(key, value string) {
-	lr, err := c.ovnClient.GetLogicalRouter(util.DefaultVpc, false)
+	lr, err := c.ovnClient.GetLogicalRouter(c.config.ClusterRouter, false)
 	if err != nil {
-		klog.Infof("logical router %s is not ready at %v", util.DefaultVpc, time.Now())
+		klog.Infof("logical router %s is not ready at %v", c.config.ClusterRouter, time.Now())
 		return
 	}
 	lrRouteList, err := c.ovnClient.GetLogicalRouterRouteByOpts(key, value)

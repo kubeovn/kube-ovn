@@ -171,7 +171,7 @@ func (c *Controller) createDefaultVpcLrpEip() (string, string, error) {
 		return "", "", err
 	}
 	needCreateEip := false
-	lrpEipName := fmt.Sprintf("%s-%s", util.DefaultVpc, c.config.ExternalGatewaySwitch)
+	lrpEipName := fmt.Sprintf("%s-%s", c.config.ClusterRouter, c.config.ExternalGatewaySwitch)
 	cachedEip, err := c.ovnEipsLister.Get(lrpEipName)
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {

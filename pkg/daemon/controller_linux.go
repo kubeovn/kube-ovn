@@ -266,7 +266,7 @@ func (c *Controller) reconcileRouters(event *subnetEvent) error {
 	cidrs := make([]string, 0, len(subnets)*2)
 	for _, subnet := range subnets {
 		//The route for overlay subnet cidr via ovn0 should not be deleted even though subnet.Status has changed to not ready
-		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != util.DefaultVpc {
+		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != c.config.ClusterRouter {
 			continue
 		}
 
@@ -440,7 +440,7 @@ func (c *Controller) diffPolicyRouting(oldSubnet, newSubnet *kubeovnv1.Subnet) (
 }
 
 func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule, []netlink.Route, error) {
-	if subnet == nil || subnet.Spec.ExternalEgressGateway == "" || subnet.Spec.Vpc != util.DefaultVpc {
+	if subnet == nil || subnet.Spec.ExternalEgressGateway == "" || subnet.Spec.Vpc != c.config.ClusterRouter {
 		return nil, nil, nil
 	}
 	if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType && !util.GatewayContains(subnet.Spec.GatewayNode, c.config.NodeName) {

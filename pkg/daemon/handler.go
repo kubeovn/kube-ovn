@@ -287,7 +287,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		// routes used for access from underlay to overlay
 		var u2oRoutes []request.Route
 		if podSubnet.Spec.U2oRouting && podSubnet.Spec.Vlan != "" &&
-			!podSubnet.Spec.LogicalGateway && podSubnet.Spec.Vpc == util.DefaultVpc {
+			!podSubnet.Spec.LogicalGateway && podSubnet.Spec.Vpc == csh.Config.ClusterRouter {
 			subnets, err := csh.Controller.subnetsLister.List(labels.Everything())
 			if err != nil {
 				errMsg := fmt.Errorf("failed to list subnets: %v", err)
@@ -314,7 +314,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			v4Routing := util.CIDRContainIP(podCidrV4, nodeIPv4)
 			v6Routing := util.CIDRContainIP(podCidrV6, nodeIPv6)
 			for _, subnet := range subnets {
-				if subnet.Spec.Vpc == util.DefaultVpc && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) {
+				if subnet.Spec.Vpc == csh.Config.ClusterRouter && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) {
 					if !subnet.Status.IsReady() {
 						klog.V(5).Infof("subnet %s is not ready, skip", subnet.Name)
 						continue

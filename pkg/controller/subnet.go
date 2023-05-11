@@ -302,7 +302,7 @@ func formatSubnet(subnet *kubeovnv1.Subnet, c *Controller) error {
 	}
 	if subnet.Spec.Vpc == "" {
 		changed = true
-		subnet.Spec.Vpc = util.DefaultVpc
+		subnet.Spec.Vpc = c.config.ClusterRouter
 
 		// Some features only work in the default VPC
 		if subnet.Spec.Default && subnet.Name != c.config.DefaultLogicalSwitch {
@@ -623,7 +623,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
-	if subnet.Spec.Vlan == "" && subnet.Spec.Vpc == util.DefaultVpc {
+	if subnet.Spec.Vlan == "" && subnet.Spec.Vpc == c.config.ClusterRouter {
 		nodes, err := c.nodesLister.List(labels.Everything())
 		if err != nil {
 			klog.Errorf("failed to list nodes: %v", err)
@@ -947,8 +947,8 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 		}
 	} else {
 		if k8serrors.IsNotFound(err) {
-			klog.Infof("remove connection from router %s to switch %s", util.DefaultVpc, subnet.Name)
-			if err = c.ovnLegacyClient.RemoveRouterPort(subnet.Name, util.DefaultVpc); err != nil {
+			klog.Infof("remove connection from router %s to switch %s", c.config.ClusterRouter, subnet.Name)
+			if err = c.ovnLegacyClient.RemoveRouterPort(subnet.Name, c.config.ClusterRouter); err != nil {
 				klog.Errorf("failed to delete router port %s %v", subnet.Name, err)
 				return err
 			}
@@ -1142,7 +1142,7 @@ func (c *Controller) reconcileNamespaces(subnet *kubeovnv1.Subnet) error {
 }
 
 func (c *Controller) reconcileOvnRoute(subnet *kubeovnv1.Subnet) error {
-	if subnet.Spec.Vpc != util.DefaultVpc {
+	if subnet.Spec.Vpc != c.config.ClusterRouter {
 		return nil
 	}
 
@@ -2051,7 +2051,7 @@ func (c *Controller) createPortGroupForDistributedSubnet(node *v1.Node, subnet *
 	if subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway {
 		return nil
 	}
-	if subnet.Spec.Vpc != util.DefaultVpc || subnet.Name == c.config.NodeSwitch {
+	if subnet.Spec.Vpc != c.config.ClusterRouter || subnet.Name == c.config.NodeSwitch {
 		return nil
 	}
 
@@ -2147,7 +2147,7 @@ func (c *Controller) addPolicyRouteForDistributedSubnet(subnet *kubeovnv1.Subnet
 	if subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway {
 		return nil
 	}
-	if subnet.Spec.Vpc != util.DefaultVpc || subnet.Name == c.config.NodeSwitch {
+	if subnet.Spec.Vpc != c.config.ClusterRouter || subnet.Name == c.config.NodeSwitch {
 		return nil
 	}
 
@@ -2205,7 +2205,7 @@ func (c *Controller) deletePolicyRouteForDistributedSubnet(subnet *kubeovnv1.Sub
 }
 
 func (c *Controller) deletePolicyRouteByGatewayType(subnet *kubeovnv1.Subnet, gatewayType string, isDelete bool) error {
-	if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != util.DefaultVpc {
+	if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != c.config.ClusterRouter {
 		return nil
 	}
 

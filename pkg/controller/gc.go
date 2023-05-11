@@ -199,7 +199,7 @@ func (c *Controller) gcCustomLogicalRouter() error {
 	klog.Infof("lr in ovn %v", lrs)
 	klog.Infof("vpc in kubernetes %v", vpcNames)
 	for _, lr := range lrs {
-		if lr == util.DefaultVpc {
+		if lr == c.config.ClusterRouter {
 			continue
 		}
 		if !util.IsStringIn(lr, vpcNames) {
@@ -612,7 +612,7 @@ func (c *Controller) gcPortGroup() error {
 			return err
 		}
 		for _, subnet := range subnets {
-			if subnet.Spec.Vpc != util.DefaultVpc || (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Name == c.config.NodeSwitch || subnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
+			if subnet.Spec.Vpc != c.config.ClusterRouter || (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Name == c.config.NodeSwitch || subnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
 				continue
 			}
 			for _, node := range nodes {
@@ -640,12 +640,12 @@ func (c *Controller) gcPortGroup() error {
 
 func (c *Controller) gcStaticRoute() error {
 	klog.Infof("start to gc static routes")
-	routes, err := c.ovnLegacyClient.GetStaticRouteList(util.DefaultVpc)
+	routes, err := c.ovnLegacyClient.GetStaticRouteList(c.config.ClusterRouter)
 	if err != nil {
 		klog.Errorf("failed to list static route %v", err)
 		return err
 	}
-	defaultVpc, err := c.vpcsLister.Get(util.DefaultVpc)
+	defaultVpc, err := c.vpcsLister.Get(c.config.ClusterRouter)
 	if err != nil {
 		klog.Errorf("failed to get default vpc, %v", err)
 		return err
