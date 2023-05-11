@@ -475,7 +475,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			},
 			Data: cmData,
 		}
-		_, err = cs.CoreV1().ConfigMaps("kube-system").Update(context.Background(), configMap, metav1.UpdateOptions{})
+		_, err = cs.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Update(context.Background(), configMap, metav1.UpdateOptions{})
 		framework.ExpectNoError(err, "failed to update ConfigMap")
 
 		ginkgo.By("Getting kind nodes")
