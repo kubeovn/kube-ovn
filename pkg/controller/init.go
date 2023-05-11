@@ -62,10 +62,10 @@ func (c *Controller) InitOVN() error {
 }
 
 func (c *Controller) InitDefaultVpc() error {
-	orivpc, err := c.vpcsLister.Get(util.DefaultVpc)
+	orivpc, err := c.vpcsLister.Get(c.config.ClusterRouter)
 	if err != nil {
 		orivpc = &kubeovnv1.Vpc{}
-		orivpc.Name = util.DefaultVpc
+		orivpc.Name = c.config.ClusterRouter
 		orivpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Create(context.Background(), orivpc, metav1.CreateOptions{})
 		if err != nil {
 			klog.Errorf("init default vpc failed: %v", err)
@@ -122,7 +122,7 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 	defaultSubnet := kubeovnv1.Subnet{
 		ObjectMeta: metav1.ObjectMeta{Name: c.config.DefaultLogicalSwitch},
 		Spec: kubeovnv1.SubnetSpec{
-			Vpc:                 util.DefaultVpc,
+			Vpc:                 c.config.ClusterRouter,
 			Default:             true,
 			Provider:            util.OvnProvider,
 			CIDRBlock:           c.config.DefaultCIDR,
@@ -176,7 +176,7 @@ func (c *Controller) initNodeSwitch() error {
 	nodeSubnet := kubeovnv1.Subnet{
 		ObjectMeta: metav1.ObjectMeta{Name: c.config.NodeSwitch},
 		Spec: kubeovnv1.SubnetSpec{
-			Vpc:                    util.DefaultVpc,
+			Vpc:                    c.config.ClusterRouter,
 			Default:                false,
 			Provider:               util.OvnProvider,
 			CIDRBlock:              c.config.NodeSwitchCIDR,

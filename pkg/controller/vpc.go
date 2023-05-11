@@ -245,7 +245,7 @@ type VpcLoadBalancer struct {
 }
 
 func (c *Controller) GenVpcLoadBalancer(vpcKey string) *VpcLoadBalancer {
-	if vpcKey == util.DefaultVpc || vpcKey == "" {
+	if vpcKey == c.config.ClusterRouter || vpcKey == "" {
 		return &VpcLoadBalancer{
 			TcpLoadBalancer:     c.config.ClusterTcpLoadBalancer,
 			TcpSessLoadBalancer: c.config.ClusterTcpSessionLoadBalancer,
@@ -373,7 +373,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 	}
 
-	if vpc.Name != util.DefaultVpc {
+	if vpc.Name != c.config.ClusterRouter {
 		// handle static route
 		existRoute, err := c.ovnLegacyClient.GetStaticRouteList(vpc.Name)
 		if err != nil {

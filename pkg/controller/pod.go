@@ -655,7 +655,7 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 				return err
 			}
 			// If pod has snat or eip, also need delete staticRoute when delete pod
-			if vpc.Name == util.DefaultVpc {
+			if vpc.Name == c.config.ClusterRouter {
 				if err := c.ovnLegacyClient.DeleteStaticRoute(address.Ip, vpc.Name); err != nil {
 					return err
 				}
@@ -821,7 +821,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 		podIP = pod.Annotations[fmt.Sprintf(util.IpAddressAnnotationTemplate, podNet.ProviderName)]
 		subnet = podNet.Subnet
 
-		if podIP != "" && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && subnet.Spec.Vpc == util.DefaultVpc {
+		if podIP != "" && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && subnet.Spec.Vpc == c.config.ClusterRouter {
 			if c.config.EnableEipSnat && (pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "") {
 				cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
 				if err != nil {
@@ -1183,7 +1183,7 @@ func (c *Controller) validatePodIP(podName, subnetName, ipv4, ipv6 string) (bool
 		return false, false, err
 	}
 
-	if subnet.Spec.Vlan == "" && subnet.Spec.Vpc == util.DefaultVpc {
+	if subnet.Spec.Vlan == "" && subnet.Spec.Vpc == c.config.ClusterRouter {
 		nodes, err := c.nodesLister.List(labels.Everything())
 		if err != nil {
 			klog.Errorf("failed to list nodes: %v", err)

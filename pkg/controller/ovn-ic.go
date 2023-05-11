@@ -365,7 +365,7 @@ func genHostAddress(host, port string) (hostaddress string) {
 }
 
 func (c *Controller) SynRouteToPolicy() {
-	lr, err := c.ovnClient.GetLogicalRouter(util.DefaultVpc, false)
+	lr, err := c.ovnClient.GetLogicalRouter(c.config.ClusterRouter, false)
 	if err != nil {
 		klog.Errorf("logical router does not exist %v at %v", err, time.Now())
 		return

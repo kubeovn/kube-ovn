@@ -216,7 +216,7 @@ func (c *Controller) handleAddNode(key string) error {
 
 	nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
 	for _, subnet := range subnets {
-		if subnet.Spec.Vpc != util.DefaultVpc {
+		if subnet.Spec.Vpc != c.config.ClusterRouter {
 			continue
 		}
 
@@ -323,7 +323,7 @@ func (c *Controller) handleAddNode(key string) error {
 	}
 
 	for _, subnet := range subnets {
-		if subnet.Spec.Vlan != "" || subnet.Spec.Vpc != util.DefaultVpc || subnet.Name == c.config.NodeSwitch || subnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
+		if subnet.Spec.Vlan != "" || subnet.Spec.Vpc != c.config.ClusterRouter || subnet.Name == c.config.NodeSwitch || subnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
 			continue
 		}
 		if err = c.createPortGroupForDistributedSubnet(node, subnet); err != nil {
@@ -892,7 +892,7 @@ func (c *Controller) retryDelDupChassis(attempts, sleep int, f func(node *v1.Nod
 func (c *Controller) fetchPodsOnNode(nodeName string, pods []*v1.Pod) ([]string, error) {
 	ports := make([]string, 0, len(pods))
 	for _, pod := range pods {
-		if !isPodAlive(pod) || pod.Spec.HostNetwork || pod.Spec.NodeName != nodeName || pod.Annotations[util.LogicalRouterAnnotation] != util.DefaultVpc {
+		if !isPodAlive(pod) || pod.Spec.HostNetwork || pod.Spec.NodeName != nodeName || pod.Annotations[util.LogicalRouterAnnotation] != c.config.ClusterRouter {
 			continue
 		}
 		podName := c.getNameByPod(pod)
@@ -1151,7 +1151,7 @@ func (c *Controller) deletePolicyRouteForNode(nodeName, portName string) error {
 	}
 
 	for _, subnet := range subnets {
-		if subnet.Spec.Vlan != "" || subnet.Spec.Vpc != util.DefaultVpc || subnet.Name == c.config.NodeSwitch {
+		if subnet.Spec.Vlan != "" || subnet.Spec.Vpc != c.config.ClusterRouter || subnet.Name == c.config.NodeSwitch {
 			continue
 		}
 
@@ -1219,7 +1219,7 @@ func (c *Controller) addPolicyRouteForCentralizedSubnetOnNode(nodeName, nodeIP s
 	}
 
 	for _, subnet := range subnets {
-		if subnet.Spec.Vlan != "" || subnet.Spec.Vpc != util.DefaultVpc || subnet.Name == c.config.NodeSwitch || subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType {
+		if subnet.Spec.Vlan != "" || subnet.Spec.Vpc != c.config.ClusterRouter || subnet.Name == c.config.NodeSwitch || subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType {
 			continue
 		}
 
