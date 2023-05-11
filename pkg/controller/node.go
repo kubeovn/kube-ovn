@@ -192,6 +192,9 @@ func nodeUnderlayAddressSetName(node string, af int) string {
 }
 
 func (c *Controller) handleAddNode(key string) error {
+	c.nodeKeyMutex.LockKey(key)
+	defer func() { _ = c.nodeKeyMutex.UnlockKey(key) }()
+
 	cachedNode, err := c.nodesLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -454,6 +457,10 @@ func (c *Controller) handleNodeAnnotationsForProviderNetworks(node *v1.Node) err
 }
 
 func (c *Controller) handleDeleteNode(key string) error {
+	c.nodeKeyMutex.LockKey(key)
+	defer func() { _ = c.nodeKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle delete node %s", key)
+
 	portName := fmt.Sprintf("node-%s", key)
 	klog.Infof("delete logical switch port %s", portName)
 	if err := c.ovnClient.DeleteLogicalSwitchPort(portName); err != nil {
@@ -579,6 +586,10 @@ func (c *Controller) updateProviderNetworkForNodeDeletion(pn *kubeovnv1.Provider
 }
 
 func (c *Controller) handleUpdateNode(key string) error {
+	c.nodeKeyMutex.LockKey(key)
+	defer func() { _ = c.nodeKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle update node %s", key)
+
 	node, err := c.nodesLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {

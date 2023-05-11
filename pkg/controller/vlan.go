@@ -168,12 +168,15 @@ func (c *Controller) processNextDelVlanWorkItem() bool {
 }
 
 func (c *Controller) handleAddVlan(key string) error {
+	c.vlanKeyMutex.LockKey(key)
+	defer func() { _ = c.vlanKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle add vlan %s", key)
+
 	cachedVlan, err := c.vlansLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
-
 		return err
 	}
 
@@ -229,6 +232,10 @@ func (c *Controller) handleAddVlan(key string) error {
 }
 
 func (c *Controller) handleUpdateVlan(key string) error {
+	c.vlanKeyMutex.LockKey(key)
+	defer func() { _ = c.vlanKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle update vlan %s", key)
+
 	vlan, err := c.vlansLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -263,6 +270,10 @@ func (c *Controller) handleUpdateVlan(key string) error {
 }
 
 func (c *Controller) handleDelVlan(key string) error {
+	c.vlanKeyMutex.LockKey(key)
+	defer func() { _ = c.vlanKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle delete vlan %s", key)
+
 	subnet, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets: %v", err)

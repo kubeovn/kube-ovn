@@ -107,6 +107,10 @@ func (c *Controller) processNextAddNamespaceWorkItem() bool {
 }
 
 func (c *Controller) handleAddNamespace(key string) error {
+	c.nsKeyMutex.LockKey(key)
+	defer func() { _ = c.nsKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle add/update namespace %s", key)
+
 	cachedNs, err := c.namespacesLister.Get(key)
 	if err != nil {
 		if errors.IsNotFound(err) {
