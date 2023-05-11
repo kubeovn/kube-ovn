@@ -470,7 +470,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		// TODO:// external-gw-nodes could be auto managed by recognizing gw chassis node which has the external-gw-nic
 		configMap = &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "ovn-external-gw-config",
+				Name:      util.ExternalGatewayConfig,
 				Namespace: framework.KubeOvnNamespace,
 			},
 			Data: cmData,
