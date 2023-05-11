@@ -376,7 +376,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		_ = vpcClient.CreateSync(vpc)
 
 		ginkgo.By("Creating overlay subnet enable ecmp")
-		overlaySubnet := framework.MakeSubnet(overlaySubnetName, "", overlaySubnetV4Cidr, overlaySubnetV4Gw, vpcName, "ovn", nil, nil, nil)
+		overlaySubnet := framework.MakeSubnet(overlaySubnetName, "", overlaySubnetV4Cidr, overlaySubnetV4Gw, vpcName, util.OvnProvider, nil, nil, nil)
 		_ = subnetClient.CreateSync(overlaySubnet)
 
 		ginkgo.By("Getting k8s nodes")
