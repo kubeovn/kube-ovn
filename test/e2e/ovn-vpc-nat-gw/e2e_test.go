@@ -533,7 +533,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		}
 
 		ginkgo.By("Deleting configmap")
-		err = cs.CoreV1().ConfigMaps("kube-system").Delete(context.Background(), "ovn-external-gw-config", metav1.DeleteOptions{})
+		err = cs.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Delete(context.Background(), "ovn-external-gw-config", metav1.DeleteOptions{})
 		framework.ExpectNoError(err, "failed to delete ConfigMap")
 	})
 })
