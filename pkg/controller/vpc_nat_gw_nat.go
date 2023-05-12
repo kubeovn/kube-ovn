@@ -516,17 +516,19 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	if eip.Status.Nat != "" && eip.Status.Nat != util.FipUsingEip {
-		// eip is in use by other nat
-		err = fmt.Errorf("failed to create fip %s, eip '%s' is used by other nat %s", key, eipName, eip.Status.Nat)
+
+	// check if has another fip using this eip already
+	selector := labels.SelectorFromSet(labels.Set{util.IptablesEipV4IPLabel: eip.Spec.V4ip})
+	usingfips, err := c.iptablesFipsLister.List(selector)
+	if err != nil {
+		klog.Errorf("failed to get dnats, %v", err)
 		return err
 	}
-
-	if eip.Status.Nat == util.FipUsingEip &&
-		eip.Annotations[util.VpcNatAnnotation] != "" &&
-		eip.Annotations[util.VpcNatAnnotation] != fip.Name {
-		err = fmt.Errorf("failed to create fip %s, eip '%s' is used by other fip %s", key, eipName, eip.Annotations[util.VpcNatAnnotation])
-		return err
+	for _, uf := range usingfips {
+		if uf.Name != key {
+			err = fmt.Errorf("failed to create fip %s, eip '%s' is used by other fip %s", key, eipName, uf.Name)
+			return err
+		}
 	}
 
 	// create fip nat
@@ -538,7 +540,8 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 		klog.Errorf("failed to patch status for fip %s, %v", key, err)
 		return err
 	}
-	if err = c.patchEipNat(eipName, util.FipUsingEip); err != nil {
+	if err = c.patchEipStatus(eipName, "", "", "", true); err != nil {
+		// refresh eip nats
 		klog.Errorf("failed to patch fip use eip %s, %v", key, err)
 		return err
 	}
@@ -549,10 +552,6 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 	// label too long cause error
 	if err = c.patchFipLabel(key, eip); err != nil {
 		klog.Errorf("failed to update label for fip %s, %v", key, err)
-		return err
-	}
-	if err = c.natLabelEip(eipName, fip.Name, eip.Spec.QoSPolicy); err != nil {
-		klog.Errorf("failed to label fip '%s' in eip %s, %v", fip.Name, eipName, err)
 		return err
 	}
 	return nil
@@ -601,17 +600,19 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	if eip.Status.Nat != "" && eip.Status.Nat != util.FipUsingEip {
-		// eip is in use by other nat
-		err = fmt.Errorf("failed to update fip %s, eip '%s' is used by %s", key, eipName, eip.Status.Nat)
-		klog.Error(err)
+
+	// check if has another fip using this eip already
+	selector := labels.SelectorFromSet(labels.Set{util.IptablesEipV4IPLabel: eip.Spec.V4ip})
+	usingfips, err := c.iptablesFipsLister.List(selector)
+	if err != nil {
+		klog.Errorf("failed to get dnats, %v", err)
 		return err
 	}
-	if eip.Status.Nat == util.FipUsingEip &&
-		eip.Annotations[util.VpcAnnotation] != "" &&
-		eip.Annotations[util.VpcAnnotation] != cachedFip.Name {
-		err = fmt.Errorf("failed to update fip %s, eip '%s' is used by other fip %s", key, eipName, eip.Annotations[util.VpcAnnotation])
-		return err
+	for _, uf := range usingfips {
+		if uf.Name != key {
+			err = fmt.Errorf("failed to create fip %s, eip '%s' is used by other fip %s", key, eipName, uf.Name)
+			return err
+		}
 	}
 
 	klog.V(3).Infof("fip change ip, old ip '%s', new ip %s", cachedFip.Status.V4ip, eip.Status.IP)
@@ -629,17 +630,14 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 	}
 	// fip change eip
 	if c.fipChangeEip(cachedFip, eip) {
-		if err = c.patchEipNat(eipName, util.FipUsingEip); err != nil {
+		if err = c.patchEipStatus(eipName, "", "", "", true); err != nil {
+			// refresh eip nats
 			klog.Errorf("failed to patch fip use eip %s, %v", key, err)
 			return err
 		}
 		// label too long cause error
 		if err = c.patchFipLabel(key, eip); err != nil {
 			klog.Errorf("failed to update label for fip %s, %v", key, err)
-			return err
-		}
-		if err = c.natLabelEip(eipName, cachedFip.Name, eip.Spec.QoSPolicy); err != nil {
-			klog.Errorf("failed to label fip '%s' in eip %s, %v", cachedFip.Name, eipName, err)
 			return err
 		}
 		return nil
@@ -702,11 +700,6 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	if eip.Status.Nat != "" && eip.Status.Nat != util.DnatUsingEip {
-		// eip is in use by other nat
-		err = fmt.Errorf("failed to create dnat %s, eip '%s' is used by nat %s", key, eipName, eip.Status.Nat)
-		return err
-	}
 	if dup, err := c.isDnatDuplicated(eip.Spec.NatGwDp, eipName, dnat.Name, dnat.Spec.ExternalPort); dup || err != nil {
 		return err
 	}
@@ -721,8 +714,9 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 		klog.Errorf("failed to patch status for dnat %s, %v", key, err)
 		return err
 	}
-	if err = c.patchEipNat(eipName, util.DnatUsingEip); err != nil {
-		klog.Errorf("failed to patch dnat use eip %s, %v", key, err)
+	if err = c.patchEipStatus(eipName, "", "", "", true); err != nil {
+		// refresh eip nats
+		klog.Errorf("failed to patch fip use eip %s, %v", key, err)
 		return err
 	}
 	if err = c.handleAddIptablesDnatFinalizer(key); err != nil {
@@ -732,10 +726,6 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 	// label too long cause error
 	if err = c.patchDnatLabel(key, eip); err != nil {
 		klog.Errorf("failed to patch label for dnat %s, %v", key, err)
-		return err
-	}
-	if err = c.natLabelEip(eipName, dnat.Name, eip.Spec.QoSPolicy); err != nil {
-		klog.Errorf("failed to label dnat in eip, %v", err)
 		return err
 	}
 	return nil
@@ -782,11 +772,6 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	if eip.Status.Nat != "" && eip.Status.Nat != "dnat" {
-		// eip is in use by other nat
-		err = fmt.Errorf("failed to update dnat %s, eip '%s' is used by nat %s", key, eipName, eip.Status.Nat)
-		return err
-	}
 	if dup, err := c.isDnatDuplicated(cachedDnat.Status.NatGwDp, eipName, cachedDnat.Name, cachedDnat.Spec.ExternalPort); dup || err != nil {
 		klog.Errorf("failed to update dnat, %v", err)
 		return err
@@ -815,17 +800,14 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 	// dnat change eip
 	if c.dnatChangeEip(cachedDnat, eip) {
 		klog.V(3).Infof("dnat change ip, old ip '%s', new ip %s", cachedDnat.Status.V4ip, eip.Status.IP)
-		if err = c.patchEipNat(eipName, util.DnatUsingEip); err != nil {
-			klog.Errorf("failed to patch dnat use eip %s, %v", key, err)
+		if err = c.patchEipStatus(eipName, "", "", "", true); err != nil {
+			// refresh eip nats
+			klog.Errorf("failed to patch fip use eip %s, %v", key, err)
 			return err
 		}
 		// label too long cause error
 		if err = c.patchDnatLabel(key, eip); err != nil {
 			klog.Errorf("failed to patch label for dnat %s, %v", key, err)
-			return err
-		}
-		if err = c.natLabelEip(eipName, cachedDnat.Name, eip.Spec.QoSPolicy); err != nil {
-			klog.Errorf("failed to label dnat '%s' in eip %s, %v", cachedDnat.Name, eipName, err)
 			return err
 		}
 	}
@@ -889,11 +871,6 @@ func (c *Controller) handleAddIptablesSnatRule(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	if eip.Status.Nat != "" && eip.Status.Nat != "snat" {
-		// eip is in use by other nat
-		err = fmt.Errorf("failed to create snat %s, eip '%s' is used by nat '%s'", key, eipName, eip.Status.Nat)
-		return err
-	}
 	// create snat
 	v4Cidr, _ := util.SplitStringIP(snat.Spec.InternalCIDR)
 	if v4Cidr == "" {
@@ -909,17 +886,13 @@ func (c *Controller) handleAddIptablesSnatRule(key string) error {
 		klog.Errorf("failed to update status for snat %s, %v", key, err)
 		return err
 	}
-	if err = c.patchEipNat(eipName, util.SnatUsingEip); err != nil {
-		klog.Errorf("failed to patch snat use eip %s, %v", key, err)
+	if err = c.patchEipStatus(eipName, "", "", "", true); err != nil {
+		// refresh eip nats
+		klog.Errorf("failed to patch fip use eip %s, %v", key, err)
 		return err
 	}
 	if err = c.handleAddIptablesSnatFinalizer(key); err != nil {
 		klog.Errorf("failed to handle add finalizer for snat, %v", err)
-		return err
-	}
-	// label too long cause error
-	if err = c.natLabelEip(eipName, snat.Name, eip.Spec.QoSPolicy); err != nil {
-		klog.Errorf("failed to label snat '%s' in eip %s, %v", snat.Name, eipName, err)
 		return err
 	}
 	if err = c.patchSnatLabel(key, eip); err != nil {
@@ -978,11 +951,7 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	if eip.Status.Nat != "" && eip.Status.Nat != "snat" {
-		// eip is in use by other nat
-		err = fmt.Errorf("failed to update snat %s, eip '%s' is used by %s", key, eipName, eip.Status.Nat)
-		return err
-	}
+
 	// add or update should make sure vpc nat enabled
 	if vpcNatEnabled != "true" {
 		return fmt.Errorf("iptables nat gw not enable")
@@ -1003,13 +972,9 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 	}
 	// snat change eip
 	if c.snatChangeEip(cachedSnat, eip) {
-		if err = c.patchEipNat(eipName, util.SnatUsingEip); err != nil {
-			klog.Errorf("failed to patch snat use eip %s, %v", key, err)
-			return err
-		}
-		// label too long cause error
-		if err = c.natLabelEip(eipName, cachedSnat.Name, eip.Spec.QoSPolicy); err != nil {
-			klog.Errorf("failed to label snat in eip, %v", err)
+		if err = c.patchEipStatus(eipName, "", "", "", true); err != nil {
+			// refresh eip nats
+			klog.Errorf("failed to patch fip use eip %s, %v", key, err)
 			return err
 		}
 		if err = c.patchSnatLabel(key, eip); err != nil {
@@ -1178,11 +1143,14 @@ func (c *Controller) patchFipLabel(key string, eip *kubeovnv1.IptablesEIP) error
 		op = "add"
 		fip.Labels = map[string]string{
 			util.VpcNatGatewayNameLabel: eip.Spec.NatGwDp,
+			util.IptablesEipV4IPLabel:   eip.Spec.V4ip,
 		}
 		needUpdateLabel = true
-	} else if fip.Labels[util.SubnetNameLabel] != eip.Spec.NatGwDp {
+	} else if fip.Labels[util.SubnetNameLabel] != eip.Spec.NatGwDp ||
+		fip.Labels[util.IptablesEipV4IPLabel] != eip.Spec.V4ip {
 		op = "replace"
 		fip.Labels[util.VpcNatGatewayNameLabel] = eip.Spec.NatGwDp
+		fip.Labels[util.IptablesEipV4IPLabel] = eip.Spec.V4ip
 		needUpdateLabel = true
 	}
 	if needUpdateLabel {
@@ -1327,7 +1295,10 @@ func (c *Controller) redoFip(key, redo string, eipReady bool) error {
 	}
 	if redo != "" && redo != fip.Status.Redo {
 		if !eipReady {
-			if err = c.patchEipStatus(fip.Spec.EIP, "", redo, "", "", false); err != nil {
+			if err = c.patchEipLabel(fip.Spec.EIP); err != nil {
+				return err
+			}
+			if err = c.patchEipStatus(fip.Spec.EIP, "", redo, "", false); err != nil {
 				return err
 			}
 		}
@@ -1354,12 +1325,15 @@ func (c *Controller) patchDnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 		dnat.Labels = map[string]string{
 			util.VpcNatGatewayNameLabel: eip.Spec.NatGwDp,
 			util.VpcDnatEPortLabel:      dnat.Spec.ExternalPort,
+			util.IptablesEipV4IPLabel:   eip.Spec.V4ip,
 		}
 		needUpdateLabel = true
-	} else if dnat.Labels[util.SubnetNameLabel] != eip.Spec.NatGwDp {
+	} else if dnat.Labels[util.SubnetNameLabel] != eip.Spec.NatGwDp ||
+		dnat.Labels[util.IptablesEipV4IPLabel] != eip.Spec.V4ip {
 		op = "replace"
 		dnat.Labels[util.VpcNatGatewayNameLabel] = eip.Spec.NatGwDp
 		dnat.Labels[util.VpcDnatEPortLabel] = dnat.Spec.ExternalPort
+		dnat.Labels[util.IptablesEipV4IPLabel] = eip.Spec.V4ip
 		needUpdateLabel = true
 	}
 	if needUpdateLabel {
@@ -1455,7 +1429,7 @@ func (c *Controller) redoDnat(key, redo string, eipReady bool) error {
 	}
 	if redo != "" && redo != dnat.Status.Redo {
 		if !eipReady {
-			if err = c.patchEipStatus(dnat.Spec.EIP, "", redo, "", "", false); err != nil {
+			if err = c.patchEipStatus(dnat.Spec.EIP, "", redo, "", false); err != nil {
 				return err
 			}
 		}
@@ -1481,11 +1455,14 @@ func (c *Controller) patchSnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 		op = "add"
 		snat.Labels = map[string]string{
 			util.VpcNatGatewayNameLabel: eip.Spec.NatGwDp,
+			util.IptablesEipV4IPLabel:   eip.Spec.V4ip,
 		}
 		needUpdateLabel = true
-	} else if snat.Labels[util.SubnetNameLabel] != eip.Spec.NatGwDp {
+	} else if snat.Labels[util.SubnetNameLabel] != eip.Spec.NatGwDp ||
+		snat.Labels[util.IptablesEipV4IPLabel] != eip.Spec.V4ip {
 		op = "replace"
 		snat.Labels[util.VpcNatGatewayNameLabel] = eip.Spec.NatGwDp
+		snat.Labels[util.IptablesEipV4IPLabel] = eip.Spec.V4ip
 		needUpdateLabel = true
 	}
 	if needUpdateLabel {
@@ -1575,7 +1552,7 @@ func (c *Controller) redoSnat(key, redo string, eipReady bool) error {
 	}
 	if redo != "" && redo != snat.Status.Redo {
 		if !eipReady {
-			if err = c.patchEipStatus(snat.Spec.EIP, "", redo, "", "", false); err != nil {
+			if err = c.patchEipStatus(snat.Spec.EIP, "", redo, "", false); err != nil {
 				return err
 			}
 		}
@@ -1748,7 +1725,7 @@ func (c *Controller) isDnatDuplicated(gwName, eipName, dnatName, externalPort st
 	}
 	if len(dnats) != 0 {
 		for _, d := range dnats {
-			if d.Name != dnatName && d.Annotations[util.VpcEipAnnotation] == eipName {
+			if d.Name != dnatName && d.Spec.EIP == eipName {
 				err = fmt.Errorf("failed to create dnat %s, duplicate, same eip %s, same external port '%s' is using by dnat %s", dnatName, eipName, externalPort, d.Name)
 				return true, err
 			}
