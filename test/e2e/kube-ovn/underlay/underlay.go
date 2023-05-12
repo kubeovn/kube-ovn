@@ -8,14 +8,14 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/apimachinery/pkg/util/wait"
-
 	dockertypes "github.com/docker/docker/api/types"
-	"github.com/onsi/ginkgo/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
+
+	"github.com/onsi/ginkgo/v2"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -392,6 +392,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		cmd := []string{"sh", "-c", "sleep 600"}
 		containerInfo, err := docker.ContainerCreate(containerName, image, dockerNetworkName, cmd)
 		framework.ExpectNoError(err)
+		containerID = containerInfo.ID
 
 		ginkgo.By("Creating vlan " + vlanName)
 		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
