@@ -262,6 +262,9 @@ func (suite *OvnClientTestSuite) testGetLogicalRouterStaticRoute() {
 	ovnClient := suite.ovnClient
 	lrName := "test_get_route_lr"
 
+	err := ovnClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
 	t.Run("normal route", func(t *testing.T) {
 		t.Parallel()
 		policy := ovnnb.LogicalRouterStaticRoutePolicyDstIP
@@ -269,7 +272,7 @@ func (suite *OvnClientTestSuite) testGetLogicalRouterStaticRoute() {
 		nextHop := "192.168.30.1"
 		routeType := util.NormalRouteType
 
-		err := ovnClient.CreateBareLogicalRouterStaticRoute(lrName, policy, prefix, nextHop, routeType)
+		err := ovnClient.AddLogicalRouterStaticRoute(lrName, policy, prefix, nextHop, routeType)
 		require.NoError(t, err)
 
 		t.Run("found route", func(t *testing.T) {
@@ -300,7 +303,7 @@ func (suite *OvnClientTestSuite) testGetLogicalRouterStaticRoute() {
 		nextHop := "192.168.40.1"
 		routeType := util.EcmpRouteType
 
-		err := ovnClient.CreateBareLogicalRouterStaticRoute(lrName, policy, prefix, nextHop, routeType)
+		err := ovnClient.AddLogicalRouterStaticRoute(lrName, policy, prefix, nextHop, routeType)
 		require.NoError(t, err)
 
 		t.Run("found route", func(t *testing.T) {
@@ -340,7 +343,7 @@ func (suite *OvnClientTestSuite) testListLogicalRouterStaticRoutes() {
 	require.NoError(t, err)
 
 	t.Run("include same router routes", func(t *testing.T) {
-		out, err := ovnClient.ListLogicalRouterStaticRoutes(map[string]string{logicalRouterKey: lrName})
+		out, err := ovnClient.ListLogicalRouterStaticRoutes(lrName, nil)
 		require.NoError(t, err)
 		require.Len(t, out, 3)
 	})
@@ -357,13 +360,13 @@ func (suite *OvnClientTestSuite) test_newLogicalRouterStaticRoute() {
 	nextHop := "192.168.30.1"
 	routeType := util.NormalRouteType
 
+	err := ovnClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
 	expect := &ovnnb.LogicalRouterStaticRoute{
 		Policy:   &policy,
 		IPPrefix: prefix,
 		Nexthop:  nextHop,
-		ExternalIDs: map[string]string{
-			logicalRouterKey: lrName,
-		},
 	}
 
 	route, err := ovnClient.newLogicalRouterStaticRoute(lrName, policy, prefix, nextHop, routeType)

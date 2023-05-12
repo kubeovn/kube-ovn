@@ -459,7 +459,7 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 		klog.Errorf("logical router does not exist %v at %v", err, time.Now())
 		return
 	}
-	lrRouteList, err := c.ovnClient.GetLogicalRouterRouteByOpts(key, value)
+	lrRouteList, err := c.ovnClient.ListLogicalRouterStaticRoutesByOption(lr.Name, key, value)
 	if err != nil {
 		klog.Errorf("failed to list lr ovn-ic route %v", err)
 		return
@@ -468,14 +468,14 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 		klog.V(5).Info("lr ovn-ic route does not exist")
 		err := c.ovnClient.DeleteLogicalRouterPolicies(lr.Name, util.OvnICPolicyPriority, map[string]string{key: value})
 		if err != nil {
-			klog.Errorf("delete ovn-ic lr policy", err)
+			klog.Errorf("failed to delete ovn-ic lr policy: %v", err)
 			return
 		}
 		return
 	}
 
 	policyMap := map[string]string{}
-	lrPolicyList, err := c.ovnClient.ListLogicalRouterPolicies(util.OvnICPolicyPriority, map[string]string{key: value})
+	lrPolicyList, err := c.ovnClient.ListLogicalRouterPolicies(lr.Name, util.OvnICPolicyPriority, map[string]string{key: value})
 	if err != nil {
 		klog.Errorf("failed to list ovn-ic lr policy ", err)
 		return

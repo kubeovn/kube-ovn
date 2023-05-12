@@ -12,22 +12,13 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
-func (c *ovnClient) CreateBareNat(lrName, natType, externalIP, logicalIP string) error {
+func (c *ovnClient) AddNat(lrName, natType, externalIP, logicalIP string) error {
 	nat, err := c.newNat(lrName, natType, externalIP, logicalIP)
 	if err != nil {
 		return err
 	}
 
-	op, err := c.ovnNbClient.Create(nat)
-	if err != nil {
-		return fmt.Errorf("generate operations for creating nat: %v", err)
-	}
-
-	if err = c.Transact("lr-nat-add", op); err != nil {
-		return fmt.Errorf("create nat: %v", err)
-	}
-
-	return nil
+	return c.CreateNats(lrName, nat)
 }
 
 // CreateNats create several logical router nat rule once
@@ -158,10 +149,8 @@ func (c *ovnClient) UpdateNat(nat *ovnnb.NAT, fields ...interface{}) error {
 
 // DeleteNat delete several nat rule once
 func (c *ovnClient) DeleteNats(lrName, natType, logicalIP string) error {
-	externalIDs := map[string]string{logicalRouterKey: lrName}
-
 	/* delete nats from logical router */
-	nats, err := c.ListNats(natType, logicalIP, externalIDs)
+	nats, err := c.ListNats(lrName, natType, logicalIP, nil)
 	if err != nil {
 		return fmt.Errorf("list logical router %s nats 'type %s logical ip %s': %v", lrName, natType, logicalIP, err)
 	}
@@ -171,21 +160,10 @@ func (c *ovnClient) DeleteNats(lrName, natType, logicalIP string) error {
 		natsUUIDs = append(natsUUIDs, nat.UUID)
 	}
 
-	removeNatOp, err := c.LogicalRouterUpdateNatOp(lrName, natsUUIDs, ovsdb.MutateOperationDelete)
+	ops, err := c.LogicalRouterUpdateNatOp(lrName, natsUUIDs, ovsdb.MutateOperationDelete)
 	if err != nil {
 		return fmt.Errorf("generate operations for deleting nats from logical router %s: %v", lrName, err)
 	}
-
-	// delete nats
-	delNatsOp, err := c.WhereCache(natFilter(natType, logicalIP, externalIDs)).Delete()
-	if err != nil {
-		return fmt.Errorf("generate operation for deleting nats: %v", err)
-	}
-
-	ops := make([]ovsdb.Operation, 0, len(removeNatOp)+len(delNatsOp))
-	ops = append(ops, removeNatOp...)
-	ops = append(ops, delNatsOp...)
-
 	if err = c.Transact("nats-del", ops); err != nil {
 		return fmt.Errorf("del nats from logical router %s: %v", lrName, err)
 	}
@@ -201,26 +179,28 @@ func (c *ovnClient) DeleteNat(lrName, natType, externalIP, logicalIP string) err
 	}
 
 	// remove nat from logical router
-	removeNatOp, err := c.LogicalRouterUpdateNatOp(lrName, []string{nat.UUID}, ovsdb.MutateOperationDelete)
+	ops, err := c.LogicalRouterUpdateNatOp(lrName, []string{nat.UUID}, ovsdb.MutateOperationDelete)
 	if err != nil {
 		return fmt.Errorf("generate operations for deleting nat from logical router %s: %v", lrName, err)
 	}
-
-	// delete nat
-	delNatsOp, err := c.Where(nat).Delete()
-	if err != nil {
-		return fmt.Errorf("generate operation for deleting nat: %v", err)
-	}
-
-	ops := make([]ovsdb.Operation, 0, len(removeNatOp)+len(delNatsOp))
-	ops = append(ops, removeNatOp...)
-	ops = append(ops, delNatsOp...)
-
 	if err = c.Transact("lr-nat-del", ops); err != nil {
 		return fmt.Errorf("del nat from logical router %s: %v", lrName, err)
 	}
 
 	return nil
+}
+
+// GetNATByUUID get NAT by UUID
+func (c *ovnClient) GetNATByUUID(uuid string) (*ovnnb.NAT, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	nat := &ovnnb.NAT{UUID: uuid}
+	if err := c.Get(ctx, nat); err != nil {
+		return nil, fmt.Errorf("get NAT by UUID %s: %v", uuid, err)
+	}
+
+	return nat, nil
 }
 
 // GetNat get nat by some attribute,
@@ -232,25 +212,18 @@ func (c *ovnClient) GetNat(lrName, natType, externalIP, logicalIP string, ignore
 		return nil, fmt.Errorf("the logical router name is required")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
 	if natType == ovnnb.NATTypeDNAT {
 		return nil, fmt.Errorf("does not support dnat for now")
 	}
 
-	natList := make([]ovnnb.NAT, 0)
-	if err := c.ovnNbClient.WhereCache(func(nat *ovnnb.NAT) bool {
-		if len(nat.ExternalIDs) == 0 || nat.ExternalIDs[logicalRouterKey] != lrName {
-			return false
-		}
-
+	fnFilter := func(nat *ovnnb.NAT) bool {
 		if natType == ovnnb.NATTypeSNAT {
 			return nat.Type == natType && nat.LogicalIP == logicalIP
 		}
-
 		return nat.Type == natType && nat.ExternalIP == externalIP
-	}).List(ctx, &natList); err != nil {
+	}
+	natList, err := c.listLogicalRouterNatByFilter(lrName, fnFilter)
+	if err != nil {
 		return nil, fmt.Errorf("get logical router %s nat 'type %s external ip %s logical ip %s': %v", lrName, natType, externalIP, logicalIP, err)
 	}
 
@@ -259,7 +232,6 @@ func (c *ovnClient) GetNat(lrName, natType, externalIP, logicalIP string, ignore
 		if ignoreNotFound {
 			return nil, nil
 		}
-
 		return nil, fmt.Errorf("not found logical router %s nat 'type %s external ip %s logical ip %s'", lrName, natType, externalIP, logicalIP)
 	}
 
@@ -267,21 +239,12 @@ func (c *ovnClient) GetNat(lrName, natType, externalIP, logicalIP string, ignore
 		return nil, fmt.Errorf("more than one nat 'type %s external ip %s logical ip %s' in logical router %s", natType, externalIP, logicalIP, lrName)
 	}
 
-	return &natList[0], nil
+	return natList[0], nil
 }
 
 // ListNats list acls which match the given externalIDs
-func (c *ovnClient) ListNats(natType, logicalIP string, externalIDs map[string]string) ([]ovnnb.NAT, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	natList := make([]ovnnb.NAT, 0)
-
-	if err := c.WhereCache(natFilter(natType, logicalIP, externalIDs)).List(ctx, &natList); err != nil {
-		return nil, fmt.Errorf("list acls: %v", err)
-	}
-
-	return natList, nil
+func (c *ovnClient) ListNats(lrName, natType, logicalIP string, externalIDs map[string]string) ([]*ovnnb.NAT, error) {
+	return c.listLogicalRouterNatByFilter(lrName, natFilter(natType, logicalIP, externalIDs))
 }
 
 func (c *ovnClient) NatExists(lrName, natType, externalIP, logicalIP string) (bool, error) {
@@ -318,9 +281,6 @@ func (c *ovnClient) newNat(lrName, natType, externalIP, logicalIP string, option
 		Type:       natType,
 		ExternalIP: externalIP,
 		LogicalIP:  logicalIP,
-		ExternalIDs: map[string]string{
-			logicalRouterKey: lrName,
-		},
 	}
 
 	for _, option := range options {
@@ -366,4 +326,24 @@ func natFilter(natType, logicalIP string, externalIDs map[string]string) func(na
 
 		return true
 	}
+}
+
+func (c *ovnClient) listLogicalRouterNatByFilter(lrName string, filter func(route *ovnnb.NAT) bool) ([]*ovnnb.NAT, error) {
+	lr, err := c.GetLogicalRouter(lrName, false)
+	if err != nil {
+		return nil, err
+	}
+
+	natList := make([]*ovnnb.NAT, 0, len(lr.Nat))
+	for _, uuid := range lr.Nat {
+		nat, err := c.GetNATByUUID(uuid)
+		if err != nil {
+			return nil, err
+		}
+		if filter == nil || filter(nat) {
+			natList = append(natList, nat)
+		}
+	}
+
+	return natList, nil
 }

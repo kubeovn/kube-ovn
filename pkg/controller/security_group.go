@@ -422,7 +422,7 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 		return err
 	}
 
-	results, err := c.ovnLegacyClient.CustomFindEntity("logical_switch_port", []string{"_uuid", "name", "port_security"}, fmt.Sprintf("external_ids:associated_sg_%s=true", key))
+	results, err := c.ovnClient.ListLogicalSwitchPorts(false, map[string]string{"external_ids:associated_sg_" + key: "true"}, nil)
 	if err != nil {
 		klog.Errorf("failed to find logical port, %v", err)
 		return err
@@ -431,18 +431,23 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 		return nil
 	}
 
-	var v4s, v6s []string
-	var ports []string
-	for _, ret := range results {
-		if len(ret["port_security"]) < 2 {
+	var ports, v4s, v6s []string
+	for _, lsp := range results {
+		if len(lsp.PortSecurity) == 0 {
 			continue
 		}
-		ports = append(ports, ret["name"][0])
-		for _, address := range ret["port_security"][1:] {
-			if strings.Contains(address, ":") {
-				v6s = append(v6s, address)
-			} else {
-				v4s = append(v4s, address)
+		ports = append(ports, lsp.Name)
+		for _, ps := range lsp.PortSecurity {
+			fields := strings.Fields(ps)
+			if len(fields) < 2 {
+				continue
+			}
+			for _, address := range fields[1:] {
+				if strings.Contains(address, ":") {
+					v6s = append(v6s, address)
+				} else {
+					v4s = append(v4s, address)
+				}
 			}
 		}
 	}

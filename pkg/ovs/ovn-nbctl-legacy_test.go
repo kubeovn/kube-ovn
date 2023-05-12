@@ -65,16 +65,3 @@ Route Table <main>:
 	ast.Equal(7, len(routeList))
 	ast.Equal(routeList[0].RouteTable, util.MainRouteTable)
 }
-
-func Test_parseLrPolicyRouteListOutput(t *testing.T) {
-	t.SkipNow()
-	ast := assert.New(t)
-	output := `        
-		10                              ip4.src == 1.1.0.0/24         reroute                198.19.0.4
-        10     ip4.src == 1.1.0.0/24 || ip4.src == 1.1.4.0/24         reroute                198.19.0.4
-        10 ip4.src == 1.1.0.0/24 || ip4.src == 1.1.4.0/24 || Iip4.src ==1.1.5.0/24         reroute                198.19.0.4
-        10                              ip4.src == 1.1.1.0/24            drop`
-	routeList, err := parseLrPolicyRouteListOutput(output)
-	ast.Nil(err)
-	ast.Equal(6, len(routeList))
-}

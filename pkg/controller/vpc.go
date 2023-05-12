@@ -18,6 +18,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -387,7 +388,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 
 	if vpc.Name != c.config.ClusterRouter && vpc.Spec.PolicyRoutes == nil {
 		// do not clean default vpc policy routes
-		if err = c.ovnLegacyClient.CleanPolicyRoute(vpc.Name); err != nil {
+		if err = c.ovnClient.ClearLogicalRouterPolicy(vpc.Name); err != nil {
 			klog.Errorf("clean all vpc %s policy route failed, %v", vpc.Name, err)
 			return err
 		}
@@ -395,19 +396,19 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 
 	if vpc.Spec.PolicyRoutes != nil {
 		// diff update vpc policy route
-		existPolicyRoute, err := c.ovnLegacyClient.GetPolicyRouteList(vpc.Name)
+		policyList, err := c.ovnClient.ListLogicalRouterPolicies(vpc.Name, -1, nil)
 		if err != nil {
 			klog.Errorf("failed to get vpc %s policy route list, %v", vpc.Name, err)
 			return err
 		}
-		policyRouteNeedDel, policyRouteNeedAdd, err := diffPolicyRoute(existPolicyRoute, vpc.Spec.PolicyRoutes)
+		policyRouteNeedDel, policyRouteNeedAdd, err := diffPolicyRoute(policyList, vpc.Spec.PolicyRoutes)
 		if err != nil {
 			klog.Errorf("failed to diff vpc %s policy route, %v", vpc.Name, err)
 			return err
 		}
 		for _, item := range policyRouteNeedDel {
 			klog.Infof("delete policy route for router: %s, priority: %d, match %s", vpc.Name, item.Priority, item.Match)
-			if err = c.ovnLegacyClient.DeletePolicyRoute(vpc.Name, item.Priority, item.Match); err != nil {
+			if err = c.ovnClient.DeleteLogicalRouterPolicy(vpc.Name, item.Priority, item.Match); err != nil {
 				klog.Errorf("del vpc %s policy route failed, %v", vpc.Name, err)
 				return err
 			}
@@ -415,7 +416,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		for _, item := range policyRouteNeedAdd {
 			externalIDs := map[string]string{"vendor": util.CniTypeName}
 			klog.Infof("add policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, item.Match, string(item.Action), item.NextHopIP, externalIDs)
-			if err = c.ovnLegacyClient.AddPolicyRoute(vpc.Name, item.Priority, item.Match, string(item.Action), item.NextHopIP, externalIDs); err != nil {
+			if err = c.ovnClient.AddLogicalRouterPolicy(vpc.Name, item.Priority, item.Match, string(item.Action), []string{item.NextHopIP}, externalIDs); err != nil {
 				klog.Errorf("add policy route to vpc %s failed, %v", vpc.Name, err)
 				return err
 			}
@@ -515,14 +516,13 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 	return nil
 }
 
-func diffPolicyRoute(exist []*ovs.PolicyRoute, target []*kubeovnv1.PolicyRoute) (routeNeedDel []*kubeovnv1.PolicyRoute, routeNeedAdd []*kubeovnv1.PolicyRoute, err error) {
+func diffPolicyRoute(exist []*ovnnb.LogicalRouterPolicy, target []*kubeovnv1.PolicyRoute) (routeNeedDel, routeNeedAdd []*kubeovnv1.PolicyRoute, err error) {
 	existV1 := make([]*kubeovnv1.PolicyRoute, 0, len(exist))
 	for _, item := range exist {
 		existV1 = append(existV1, &kubeovnv1.PolicyRoute{
-			Priority:  item.Priority,
-			Match:     item.Match,
-			Action:    kubeovnv1.PolicyRouteAction(item.Action),
-			NextHopIP: item.NextHopIP,
+			Priority: item.Priority,
+			Match:    item.Match,
+			Action:   kubeovnv1.PolicyRouteAction(item.Action),
 		})
 	}
 
