@@ -1949,27 +1949,24 @@ spec:
       - name: V4IP
         type: string
         jsonPath: .status.v4ip
-      - name: PV4IP
-        type: string
-        jsonPath: .spec.parentV4ip
       - name: Mac
         type: string
         jsonPath: .status.mac
-      - name: PMac
-        type: string
-        jsonPath: .spec.parentMac
       - name: V6IP
         type: string
         jsonPath: .status.v6ip
-      - name: PV6IP
+      - name: PMac
         type: string
-        jsonPath: .spec.parentV6ip
+        jsonPath: .spec.parentMac
       - name: Subnet
         type: string
         jsonPath: .spec.subnet
       - jsonPath: .status.ready
         name: Ready
         type: boolean
+      - jsonPath: .status.type
+        name: Type
+        type: string
       schema:
         openAPIV3Schema:
           type: object
@@ -1977,6 +1974,8 @@ spec:
             status:
               type: object
               properties:
+                type:
+                  type: string
                 ready:
                   type: boolean
                 v4ip:
@@ -2014,6 +2013,8 @@ spec:
                 namespace:
                   type: string
                 subnet:
+                  type: string
+                type:
                   type: string
                 attachSubnets:
                   type: array

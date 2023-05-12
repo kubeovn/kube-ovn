@@ -124,7 +124,7 @@ func (c *VipClient) WaitToDisappear(name string, interval, timeout time.Duration
 	return maybeTimeoutError(err, "waiting for ovn vip %s to disappear", name)
 }
 
-func MakeVip(name, subnet, v4ip, v6ip string) *apiv1.Vip {
+func MakeVip(name, subnet, v4ip, v6ip, vipType string) *apiv1.Vip {
 	vip := &apiv1.Vip{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -133,6 +133,7 @@ func MakeVip(name, subnet, v4ip, v6ip string) *apiv1.Vip {
 			Subnet: subnet,
 			V4ip:   v4ip,
 			V6ip:   v6ip,
+			Type:   vipType,
 		},
 	}
 	return vip

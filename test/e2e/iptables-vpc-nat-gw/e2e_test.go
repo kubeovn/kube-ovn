@@ -236,7 +236,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		_ = vpcNatGwClient.CreateSync(vpcNatGw)
 
 		ginkgo.By("Creating iptables vip for fip")
-		fipVip := framework.MakeVip(fipVipName, overlaySubnetName, "", "")
+		fipVip := framework.MakeVip(fipVipName, overlaySubnetName, "", "", "")
 		_ = vipClient.CreateSync(fipVip)
 		fipVip = vipClient.Get(fipVipName)
 		ginkgo.By("Creating iptables eip for fip")
@@ -254,7 +254,7 @@ var _ = framework.Describe("[group:iptables-vpc-nat-gw]", func() {
 		_ = iptablesSnatRuleClient.CreateSync(snat)
 
 		ginkgo.By("Creating iptables vip for dnat")
-		dnatVip := framework.MakeVip(dnatVipName, overlaySubnetName, "", "")
+		dnatVip := framework.MakeVip(dnatVipName, overlaySubnetName, "", "", "")
 		_ = vipClient.CreateSync(dnatVip)
 		dnatVip = vipClient.Get(dnatVipName)
 		ginkgo.By("Creating iptables eip for dnat")

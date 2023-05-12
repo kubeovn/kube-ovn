@@ -355,6 +355,10 @@ func (c *Controller) markAndCleanLSP() error {
 			noPodLSP.Add(lsp.Name)
 			continue
 		}
+		if lsp.Options != nil && lsp.Options["arp_proxy"] == "true" {
+			// arp_proxy lsp is a type of vip crd which should not gc
+			continue
+		}
 
 		klog.Infof("gc logical switch port %s", lsp.Name)
 		if err := c.ovnClient.DeleteLogicalSwitchPort(lsp.Name); err != nil {

@@ -712,6 +712,20 @@ func (mr *MockLogicalSwitchPortMockRecorder) LogicalSwitchPortExists(name interf
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalSwitchPortExists", reflect.TypeOf((*MockLogicalSwitchPort)(nil).LogicalSwitchPortExists), name)
 }
 
+// SetLogicalSwitchPortArpProxy mocks base method.
+func (m *MockLogicalSwitchPort) SetLogicalSwitchPortArpProxy(lspName string, enableArpProxy bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLogicalSwitchPortArpProxy", lspName, enableArpProxy)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLogicalSwitchPortArpProxy indicates an expected call of SetLogicalSwitchPortArpProxy.
+func (mr *MockLogicalSwitchPortMockRecorder) SetLogicalSwitchPortArpProxy(lspName, enableArpProxy interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortArpProxy", reflect.TypeOf((*MockLogicalSwitchPort)(nil).SetLogicalSwitchPortArpProxy), lspName, enableArpProxy)
+}
+
 // SetLogicalSwitchPortExternalIds mocks base method.
 func (m *MockLogicalSwitchPort) SetLogicalSwitchPortExternalIds(lspName string, externalIds map[string]string) error {
 	m.ctrl.T.Helper()
@@ -3173,6 +3187,20 @@ func (m *MockOvnClient) SetLoadBalancerAffinityTimeout(lbName string, timeout in
 func (mr *MockOvnClientMockRecorder) SetLoadBalancerAffinityTimeout(lbName, timeout interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerAffinityTimeout", reflect.TypeOf((*MockOvnClient)(nil).SetLoadBalancerAffinityTimeout), lbName, timeout)
+}
+
+// SetLogicalSwitchPortArpProxy mocks base method.
+func (m *MockOvnClient) SetLogicalSwitchPortArpProxy(lspName string, enableArpProxy bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLogicalSwitchPortArpProxy", lspName, enableArpProxy)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLogicalSwitchPortArpProxy indicates an expected call of SetLogicalSwitchPortArpProxy.
+func (mr *MockOvnClientMockRecorder) SetLogicalSwitchPortArpProxy(lspName, enableArpProxy interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortArpProxy", reflect.TypeOf((*MockOvnClient)(nil).SetLogicalSwitchPortArpProxy), lspName, enableArpProxy)
 }
 
 // SetLogicalSwitchPortExternalIds mocks base method.

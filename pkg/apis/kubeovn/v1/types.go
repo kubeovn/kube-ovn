@@ -841,8 +841,10 @@ type Vip struct {
 }
 
 type VipSpec struct {
-	Namespace     string   `json:"namespace"`
-	Subnet        string   `json:"subnet"`
+	Namespace string `json:"namespace"`
+	Subnet    string `json:"subnet"`
+	Type      string `json:"type"`
+	// usage type: switch lb vip, allowed address pair vip by default
 	V4ip          string   `json:"v4ip"`
 	V6ip          string   `json:"v6ip"`
 	MacAddress    string   `json:"macAddress"`
@@ -881,6 +883,7 @@ type VipStatus struct {
 	Conditions []VipCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
 	Ready bool   `json:"ready" patchStrategy:"merge"`
+	Type  string `json:"type"`
 	V4ip  string `json:"v4ip" patchStrategy:"merge"`
 	V6ip  string `json:"v6ip" patchStrategy:"merge"`
 	Mac   string `json:"mac" patchStrategy:"merge"`
