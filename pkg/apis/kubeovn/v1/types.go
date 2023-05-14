@@ -413,7 +413,7 @@ var (
 )
 
 type PolicyRoute struct {
-	Priority int32             `json:"priority,omitempty"`
+	Priority int               `json:"priority,omitempty"`
 	Match    string            `json:"match,omitempty"`
 	Action   PolicyRouteAction `json:"action,omitempty"`
 	// NextHopIP is an optional parameter. It needs to be provided only when 'action' is 'reroute'.

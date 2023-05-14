@@ -36,6 +36,7 @@ type LogicalRouterPort interface {
 	DeleteLogicalRouterPort(lrpName string) error
 	DeleteLogicalRouterPorts(externalIDs map[string]string, filter func(lrp *ovnnb.LogicalRouterPort) bool) error
 	GetLogicalRouterPort(lrpName string, ignoreNotFound bool) (*ovnnb.LogicalRouterPort, error)
+	GetLogicalRouterPortByUUID(uuid string) (*ovnnb.LogicalRouterPort, error)
 	ListLogicalRouterPorts(externalIDs map[string]string, filter func(lrp *ovnnb.LogicalRouterPort) bool) ([]ovnnb.LogicalRouterPort, error)
 	LogicalRouterPortExists(lrpName string) (bool, error)
 }
@@ -45,7 +46,7 @@ type LogicalSwitch interface {
 	CreateBareLogicalSwitch(lsName string) error
 	LogicalSwitchUpdateLoadBalancers(lsName string, op ovsdb.Mutator, lbNames ...string) error
 	DeleteLogicalSwitch(lsName string) error
-	ListLogicalSwitch(needVendorFilter bool, filter func(lr *ovnnb.LogicalSwitch) bool) ([]ovnnb.LogicalSwitch, error)
+	ListLogicalSwitch(needVendorFilter bool, filter func(ls *ovnnb.LogicalSwitch) bool) ([]ovnnb.LogicalSwitch, error)
 	LogicalSwitchExists(lsName string) (bool, error)
 }
 
@@ -117,8 +118,8 @@ type LogicalRouterStaticRoute interface {
 	AddLogicalRouterStaticRoute(lrName, policy, cidrBlock, nextHops, routeType string) error
 	ClearLogicalRouterStaticRoute(lrName string) error
 	DeleteLogicalRouterStaticRoute(lrName, policy, prefix, nextHop, routeType string) error
-	GetLogicalRouterRouteByOpts(key, value string) ([]ovnnb.LogicalRouterStaticRoute, error)
-	ListLogicalRouterStaticRoutes(externalIDs map[string]string) ([]ovnnb.LogicalRouterStaticRoute, error)
+	ListLogicalRouterStaticRoutesByOption(lrName, key, value string) ([]*ovnnb.LogicalRouterStaticRoute, error)
+	ListLogicalRouterStaticRoutes(lrName string, externalIDs map[string]string) ([]*ovnnb.LogicalRouterStaticRoute, error)
 	LogicalRouterStaticRouteExists(lrName, policy, prefix, nextHop, routeType string) (bool, error)
 }
 
@@ -127,8 +128,9 @@ type LogicalRouterPolicy interface {
 	DeleteLogicalRouterPolicy(lrName string, priority int, match string) error
 	DeleteLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string) error
 	DeleteLogicalRouterPolicyByUUID(lrName string, uuid string) error
+	DeleteLogicalRouterPolicyByNexthop(lrName string, priority int, nexthop string) error
 	ClearLogicalRouterPolicy(lrName string) error
-	ListLogicalRouterPolicies(priority int, externalIDs map[string]string) ([]ovnnb.LogicalRouterPolicy, error)
+	ListLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string) ([]*ovnnb.LogicalRouterPolicy, error)
 	GetLogicalRouterPolicy(lrName string, priority int, match string, ignoreNotFound bool) (*ovnnb.LogicalRouterPolicy, error)
 }
 
@@ -138,7 +140,7 @@ type NAT interface {
 	DeleteNats(lrName, natType, logicalIP string) error
 	DeleteNat(lrName, natType, externalIP, logicalIP string) error
 	NatExists(lrName, natType, externalIP, logicalIP string) (bool, error)
-	ListNats(natType, logicalIP string, externalIDs map[string]string) ([]ovnnb.NAT, error)
+	ListNats(lrName, natType, logicalIP string, externalIDs map[string]string) ([]*ovnnb.NAT, error)
 }
 
 type DHCPOptions interface {
